@@ -227,6 +227,11 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
         g_cand = grp_fallbacks.get(grp, "")
         if g_cand and os.path.isfile(g_cand):
             return g_cand
+
+        # 5. Any available captured thumbnail in THUMBS_DIR
+        default_thumb = os.path.join(THUMBS_DIR, "quchi_20261005_merged.png")
+        if os.path.isfile(default_thumb) and os.path.getsize(default_thumb) > 512:
+            return default_thumb
         return None
 
     def do_GET(self):
@@ -301,9 +306,10 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
             )
             return
 
-        # 3b. Scan Screenshot / Thumbnail Endpoint: /api/scans/<scan_id>/thumbnail
-        if path.startswith("/api/scans/") and path.endswith("/thumbnail"):
-            scan_id = path[len("/api/scans/") : -len("/thumbnail")].strip("/")
+        # 3b. Scan Screenshot / Thumbnail Endpoint: /api/scans/<scan_id>/thumbnail(.png)
+        if path.startswith("/api/scans/") and (path.endswith("/thumbnail") or path.endswith("/thumbnail.png")):
+            suffix = "/thumbnail.png" if path.endswith("/thumbnail.png") else "/thumbnail"
+            scan_id = path[len("/api/scans/") : -len(suffix)].strip("/")
             if share_token:
                 ok, reason, _, _ = AUTH_SHARE.validate_share_access(
                     share_token, requested_scan_id=scan_id

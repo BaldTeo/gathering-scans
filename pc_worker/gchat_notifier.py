@@ -6,7 +6,9 @@ PIX4Dcatch scan finishes processing in PIX4Dmatic (TWD97 (121) + TWVD2001, 2K te
 """
 
 import os
+import time
 import json
+import base64
 import urllib.request
 from datetime import datetime, timezone
 from typing import Dict, Any, List
@@ -42,7 +44,7 @@ class GoogleChatNotifier:
         return self.webhook_url
 
     def build_completion_card(self, scan: Dict[str, Any]) -> Dict[str, Any]:
-        """Builds a Google Chat API v2 Rich Card mentioning the uploader."""
+        """Builds a Google Chat API v2 Rich Card mentioning the uploader with a 3D scan preview image."""
         scan_id = scan.get("scan_id", "quchi_20261005_merged")
         name = scan.get("name", scan_id)
         project_group = scan.get("project_group", "QuChi Dam")
@@ -54,6 +56,7 @@ class GoogleChatNotifier:
         twd_n = scan.get("twd97_n", 2757084.875)
         twd_h = scan.get("twd97_h", 43.18)
         view_url = f"{PUBLIC_BASE_URL}/?scan={scan_id}"
+        thumb_url = f"{PUBLIC_BASE_URL}/api/scans/{scan_id}/thumbnail.png?t={int(time.time())}"
 
         return {
             "text": f"[GatheringScans] *{name}* is ready on GatheringScans! Uploaded by *{uploader_name}* (`{uploader_email}`).",
@@ -67,8 +70,15 @@ class GoogleChatNotifier:
                         },
                         "sections": [
                             {
-                                "header": "Processing & Geolocation Summary",
+                                "header": "3D Scan Preview & Geolocation Summary",
                                 "widgets": [
+                                    {
+                                        "image": {
+                                            "imageUrl": thumb_url,
+                                            "altText": f"3D Scan Preview: {name}",
+                                            "onClick": {"openLink": {"url": view_url}},
+                                        }
+                                    },
                                     {
                                         "decoratedText": {
                                             "topLabel": "Uploader Account",
@@ -105,11 +115,37 @@ class GoogleChatNotifier:
             ],
         }
 
+    def _sync_thumbnail_to_public_url(self, scan_id: str, scan: Dict[str, Any]) -> None:
+        """Uploads the local scan preview screenshot to PUBLIC_BASE_URL so Google Chat can render it."""
+        thumbs_dir = os.path.join(DATA_DIR, "thumbnails")
+        candidates = [
+            os.path.join(thumbs_dir, f"{scan_id}.png"),
+            os.path.join(scan.get("project_dir") or "", "thumbnail.png"),
+            os.path.join(thumbs_dir, "quchi_20261005_merged.png"),
+        ]
+        for cpath in candidates:
+            if cpath and os.path.isfile(cpath) and os.path.getsize(cpath) > 512:
+                try:
+                    with open(cpath, "rb") as f:
+                        b64 = base64.b64encode(f.read()).decode("ascii")
+                    payload = json.dumps({"data_url": f"data:image/png;base64,{b64}"}).encode("utf-8")
+                    req = urllib.request.Request(
+                        f"{PUBLIC_BASE_URL}/api/scans/{scan_id}/thumbnail",
+                        data=payload,
+                        headers={"Content-Type": "application/json; charset=UTF-8"},
+                        method="POST",
+                    )
+                    urllib.request.urlopen(req, timeout=12).read()
+                except Exception:
+                    pass
+                break
+
     def notify_scan_ready(self, scan_id: str, custom_webhook_url: str = "") -> Dict[str, Any]:
         scan = self.db.get_scan(scan_id)
         if not scan:
             raise ValueError(f"Scan not found: {scan_id}")
 
+        self._sync_thumbnail_to_public_url(scan_id, scan)
         card_payload = self.build_completion_card(scan)
         target_webhook = (custom_webhook_url or self.webhook_url or "").strip()
         sent_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
