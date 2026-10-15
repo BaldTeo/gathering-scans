@@ -356,6 +356,8 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
                     ts = json.load(f)
                 base_dir = os.path.dirname(ts_path)
                 root = ts.get("root") or {}
+                if not root.get("transform"):
+                    ts.setdefault("asset", {})["gltfUpAxis"] = "Z"
                 r_content = root.get("content") or {}
                 r_uri = r_content.get("uri") if isinstance(r_content, dict) else None
                 if r_uri:
@@ -385,6 +387,8 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
                         for ch in node.get("children") or []:
                             if _prune_branch(ch, depth + 1):
                                 kept.append(ch)
+                        # Prioritize children with direct level-1 content so main 100k-300k triangle meshes stream first
+                        kept.sort(key=lambda x: 0 if isinstance(x.get("content"), dict) and x["content"].get("uri") else 1)
                         node["children"] = kept
                         return len(kept) > 0
 
@@ -493,7 +497,7 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
             s["stream_url"] = f"/stream/{sid}/{os.path.basename(ts_path)}{q_suffix}"
             s["stream_type"] = "glb"
         else:
-            ts_q = f"?v=opt3&share={share_token}" if share_token else "?v=opt3"
+            ts_q = f"?v=opt4&share={share_token}" if share_token else "?v=opt4"
             s["stream_url"] = f"/stream/{sid}/tileset.json{ts_q}"
             s["stream_type"] = "tileset"
         s["download_obj_url"] = f"/api/download?scan_id={sid}&type=obj" + (f"&share={share_token}" if share_token else "")

@@ -1021,9 +1021,13 @@
       tr.errorTarget = 380.0;
     }
     // If root has no direct content URI (e.g. PIX4Dmatic cubic octree where root center is in sky),
-    // average the bounding box centers of renderable content tiles up to depth 3
+    // average the bounding box centers of primary depth-1 content tiles (or depth <= 3 fallback)
     if (!tr.root.content || !tr.root.content.uri) {
       const rootMat = (tr.root.engineData && tr.root.engineData.transform) || new THREE.Matrix4();
+      let d1x = 0,
+        d1y = 0,
+        d1z = 0,
+        d1Count = 0;
       let sx = 0,
         sy = 0,
         sz = 0,
@@ -1035,6 +1039,12 @@
           const b = node.boundingVolume.box;
           tmpVec.set(Number(b[0]) || 0, Number(b[1]) || 0, Number(b[2]) || 0).applyMatrix4(rootMat);
           if (isFinite(tmpVec.x) && isFinite(tmpVec.y) && isFinite(tmpVec.z)) {
+            if (depth === 1) {
+              d1x += tmpVec.x;
+              d1y += tmpVec.y;
+              d1z += tmpVec.z;
+              d1Count++;
+            }
             sx += tmpVec.x;
             sy += tmpVec.y;
             sz += tmpVec.z;
@@ -1046,7 +1056,9 @@
         }
       };
       walk(tr.root, 0);
-      if (count > 0) {
+      if (d1Count > 0) {
+        outSphere.center.set(d1x / d1Count, d1y / d1Count, d1z / d1Count);
+      } else if (count > 0) {
         outSphere.center.set(sx / count, sy / count, sz / count);
       }
     }
@@ -1187,6 +1199,17 @@
               mats.forEach((m) => applyBrightnessToMaterial(m, STATE.scanBrightness));
             }
           });
+          previewThree.modelPivot.updateMatrixWorld(true);
+          const worldBox = new THREE.Box3().setFromObject(tr.group);
+          if (!worldBox.isEmpty()) {
+            const worldCenter = new THREE.Vector3();
+            worldBox.getCenter(worldCenter);
+            if (worldCenter.length() > 14) {
+              const localOffset = previewThree.modelPivot.worldToLocal(worldCenter.clone());
+              tr.group.position.sub(localOffset);
+              previewThree.modelPivot.updateMatrixWorld(true);
+            }
+          }
           syncTilesLoaderProgress(previewThree, "preview");
         }
       });
@@ -1777,6 +1800,17 @@
               mats.forEach((m) => applyBrightnessToMaterial(m, STATE.scanBrightness));
             }
           });
+          studioThree.modelPivot.updateMatrixWorld(true);
+          const worldBox = new THREE.Box3().setFromObject(tr.group);
+          if (!worldBox.isEmpty()) {
+            const worldCenter = new THREE.Vector3();
+            worldBox.getCenter(worldCenter);
+            if (worldCenter.length() > 14) {
+              const localOffset = studioThree.modelPivot.worldToLocal(worldCenter.clone());
+              tr.group.position.sub(localOffset);
+              studioThree.modelPivot.updateMatrixWorld(true);
+            }
+          }
           syncTilesLoaderProgress(studioThree, "studio");
         }
       });
