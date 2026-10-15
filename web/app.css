@@ -1,0 +1,1264 @@
+/* ============================================================================
+ * GatheringScans (scans.gatheren.cloud) — Clean Architectural UI Stylesheet
+ * Strict Style Discipline:
+ * - Zero emojis (pure monochrome vector SVG stroke icons)
+ * - Strict colour discipline (Slate-White surfaces #ffffff / #f8fafc / #f1f5f9,
+ *   neutral slate typography #0f172a / #475569 / #64748b, single #0284c7 accent)
+ * - Icon-only (0 words) or maximum 1-word buttons
+ * ============================================================================ */
+
+:root {
+  --ui-bg-canvas: #0f172a;
+  --ui-bg-window: rgba(255, 255, 255, 0.96);
+  --ui-bg-subtle: #f8fafc;
+  --ui-bg-pill: #f1f5f9;
+  --ui-bg-hover: #e2e8f0;
+  --ui-border: #e2e8f0;
+  --ui-border-strong: #cbd5e1;
+  --ui-text-primary: #0f172a;
+  --ui-text-secondary: #475569;
+  --ui-text-muted: #64748b;
+  --ui-accent: #0284c7;
+  --ui-accent-hover: #0369a1;
+  --ui-accent-soft: rgba(2, 132, 199, 0.08);
+  --ui-shadow-window: 0 10px 30px rgba(15, 23, 42, 0.14), 0 1px 3px rgba(15, 23, 42, 0.06);
+  --ui-shadow-active: 0 1px 3px rgba(15, 23, 42, 0.10), 0 1px 2px rgba(15, 23, 42, 0.06);
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft JhengHei", Roboto, sans-serif;
+  background: var(--ui-bg-canvas);
+  color: var(--ui-text-primary);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ============================================================================
+ * 1. Top Navigation Bar (Clean Light Slate-White Surface)
+ * ============================================================================ */
+.gs-topbar {
+  height: 52px;
+  background: #ffffff;
+  border-bottom: 1px solid var(--ui-border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 16px;
+  gap: 12px;
+  z-index: 200;
+  position: relative;
+  user-select: none;
+}
+
+.gs-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.gs-brand-logo {
+  width: 30px;
+  height: 30px;
+  border-radius: 7px;
+  background: var(--ui-accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #ffffff;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.gs-brand-title {
+  font-size: 14.5px;
+  font-weight: 700;
+  color: var(--ui-text-primary);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.gs-crs-pill {
+  font-size: 11px;
+  font-weight: 600;
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  background: var(--ui-bg-pill);
+  color: var(--ui-text-secondary);
+  border: 1px solid var(--ui-border-strong);
+  padding: 2px 8px;
+  border-radius: 6px;
+}
+
+/* Segmented Pill Mode Switcher — Exact Match to Reference Image */
+.segmented-pill {
+  display: inline-flex;
+  align-items: center;
+  background: var(--ui-bg-pill);
+  border: 1px solid var(--ui-border-strong);
+  border-radius: 10px;
+  padding: 3px;
+  gap: 2px;
+}
+
+.segmented-pill .btn-seg {
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--ui-text-secondary);
+  border-radius: 7px;
+  padding: 5px 14px;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.14s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.segmented-pill .btn-seg:hover {
+  color: var(--ui-text-primary);
+}
+
+.segmented-pill .btn-seg.active {
+  background: #ffffff;
+  color: var(--ui-accent);
+  border-color: rgba(203, 213, 225, 0.7);
+  box-shadow: var(--ui-shadow-active);
+}
+
+.segmented-pill .btn-seg svg {
+  stroke: currentColor;
+}
+
+/* Right Action Cluster */
+.gs-topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.cloud-sync-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  border: 1px solid var(--ui-border-strong);
+  background: var(--ui-bg-pill);
+  color: var(--ui-text-secondary);
+  cursor: pointer;
+  transition: all 0.14s ease;
+}
+
+.cloud-sync-chip:hover {
+  background: #ffffff;
+  color: var(--ui-accent);
+  border-color: var(--ui-accent);
+}
+
+.cloud-sync-chip .status-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--ui-accent);
+  display: inline-block;
+}
+
+.cloud-sync-chip.state-offline .status-dot {
+  background: var(--ui-text-muted);
+}
+
+.gs-top-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  background: var(--ui-bg-pill);
+  border: 1px solid var(--ui-border-strong);
+  color: var(--ui-text-secondary);
+  height: 32px;
+  min-width: 32px;
+  padding: 0 9px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.14s ease;
+  text-decoration: none;
+}
+
+.gs-top-btn:hover {
+  background: #ffffff;
+  color: var(--ui-accent);
+  border-color: var(--ui-accent);
+  box-shadow: var(--ui-shadow-active);
+}
+
+.gs-top-btn.accent {
+  background: #ffffff;
+  border-color: var(--ui-border-strong);
+  color: var(--ui-accent);
+  box-shadow: var(--ui-shadow-active);
+}
+
+.gs-top-btn.accent:hover {
+  background: var(--ui-accent);
+  color: #ffffff;
+  border-color: var(--ui-accent);
+}
+
+/* External Share Guest Scope Banner */
+.gs-share-banner {
+  background: #f8fafc;
+  border-bottom: 1px solid var(--ui-border-strong);
+  padding: 6px 16px;
+  font-size: 12px;
+  display: none;
+  align-items: center;
+  justify-content: space-between;
+  color: var(--ui-text-primary);
+  z-index: 190;
+}
+
+/* ============================================================================
+ * 2. Main Workspace Views (Map, 3D Studio, Multi-Date Compare)
+ * ============================================================================ */
+.gs-main {
+  position: relative;
+  width: 100%;
+  height: calc(100vh - 52px);
+  overflow: hidden;
+}
+
+.gs-view {
+  position: absolute;
+  inset: 0;
+  display: none;
+}
+
+.gs-view.active {
+  display: block;
+}
+
+/* ============================================================================
+ * 3. Map Overview & Spatial Cluster Windows (Clean Slate-White Cards)
+ * ============================================================================ */
+#mapContainer {
+  width: 100%;
+  height: 100%;
+  background: #0f172a;
+}
+
+.gs-map-hud-top {
+  position: absolute;
+  top: 16px;
+  left: 16px;
+  z-index: 500;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 320px;
+}
+
+.gs-map-card {
+  background: var(--ui-bg-window);
+  backdrop-filter: blur(12px);
+  border: 1px solid var(--ui-border-strong);
+  border-radius: 12px;
+  padding: 14px;
+  box-shadow: var(--ui-shadow-window);
+  color: var(--ui-text-primary);
+}
+
+/* Spatial Cluster Blobs on Map */
+.scan-cluster-blob {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: var(--ui-accent);
+  border: 2.5px solid #ffffff;
+  color: #ffffff;
+  font-weight: 700;
+  font-size: 13px;
+  box-shadow: 0 0 0 5px rgba(2, 132, 199, 0.24), 0 4px 14px rgba(15, 23, 42, 0.35);
+  cursor: pointer;
+  transition: transform 0.16s ease, box-shadow 0.16s ease;
+}
+
+.scan-cluster-blob:hover {
+  transform: scale(1.1);
+  box-shadow: 0 0 0 8px rgba(2, 132, 199, 0.32), 0 6px 20px rgba(15, 23, 42, 0.45);
+}
+
+.scan-cluster-blob .blob-label {
+  position: absolute;
+  top: calc(100% + 6px);
+  white-space: nowrap;
+  background: #ffffff;
+  border: 1px solid var(--ui-border-strong);
+  color: var(--ui-text-primary);
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 6px;
+  box-shadow: var(--ui-shadow-active);
+}
+
+/* Hover Selection Popover for Grouped Scans */
+.gs-cluster-popover {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  width: 400px;
+  max-height: calc(100vh - 88px);
+  overflow-y: auto;
+  background: var(--ui-bg-window);
+  backdrop-filter: blur(14px);
+  border: 1px solid var(--ui-border-strong);
+  border-radius: 12px;
+  box-shadow: var(--ui-shadow-window);
+  z-index: 600;
+  padding: 14px;
+  display: none;
+  color: var(--ui-text-primary);
+}
+
+.gs-cluster-popover.active {
+  display: block;
+}
+
+.gs-scan-item-card {
+  background: var(--ui-bg-subtle);
+  border: 1px solid var(--ui-border);
+  border-radius: 9px;
+  padding: 10px 12px;
+  margin-top: 8px;
+  transition: all 0.14s ease;
+}
+
+.gs-scan-item-card:hover {
+  border-color: var(--ui-border-strong);
+  background: #ffffff;
+  box-shadow: var(--ui-shadow-active);
+}
+
+.gs-scan-item-actions {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 8px;
+}
+
+/* Compact Icon-Only or 1-Word Button */
+.btn-xs {
+  height: 28px;
+  min-width: 28px;
+  padding: 0 8px;
+  border-radius: 6px;
+  font-size: 11.5px;
+  font-weight: 600;
+  border: 1px solid var(--ui-border-strong);
+  background: var(--ui-bg-pill);
+  color: var(--ui-text-secondary);
+  cursor: pointer;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  transition: all 0.14s ease;
+}
+
+.btn-xs:hover {
+  background: #ffffff;
+  border-color: var(--ui-accent);
+  color: var(--ui-accent);
+  box-shadow: var(--ui-shadow-active);
+}
+
+.btn-xs.primary {
+  background: #ffffff;
+  border-color: var(--ui-border-strong);
+  color: var(--ui-accent);
+  box-shadow: var(--ui-shadow-active);
+}
+
+.btn-xs.primary:hover {
+  background: var(--ui-accent);
+  border-color: var(--ui-accent);
+  color: #ffffff;
+}
+
+.btn-xs svg {
+  stroke: currentColor;
+  flex-shrink: 0;
+}
+
+/* ============================================================================
+ * 4. 3D Scan Studio & Clean Icon-Only Toolbars
+ * ============================================================================ */
+#studioCanvasContainer {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at 50% 40%, #162032 0%, #0b0f19 100%);
+}
+
+.gs-studio-top-bar {
+  position: absolute;
+  top: 14px;
+  left: 16px;
+  right: 16px;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  pointer-events: none;
+  z-index: 80;
+}
+
+.gs-studio-top-bar > * {
+  pointer-events: auto;
+}
+
+.gs-active-scan-pill {
+  background: var(--ui-bg-window);
+  backdrop-filter: blur(12px);
+  border: 1px solid var(--ui-border-strong);
+  border-radius: 10px;
+  padding: 7px 12px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  box-shadow: var(--ui-shadow-window);
+  color: var(--ui-text-primary);
+}
+
+.gs-scan-select {
+  background: var(--ui-bg-pill);
+  color: var(--ui-text-primary);
+  border: 1px solid var(--ui-border-strong);
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-size: 12px;
+  font-weight: 600;
+  outline: none;
+}
+
+/* Scan Brightness Control (0.1x – 4.0x, matching Gathering Cloud) */
+.gs-brightness-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border-left: 1px solid var(--ui-border-strong);
+  padding-left: 10px;
+}
+
+.gs-brightness-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  color: var(--ui-accent);
+  cursor: pointer;
+  padding: 2px;
+  border-radius: 4px;
+  transition: color 0.14s ease, background 0.14s ease;
+}
+
+.gs-brightness-icon-btn:hover {
+  background: var(--ui-bg-pill);
+  color: var(--ui-accent-hover);
+}
+
+.gs-brightness-slider {
+  width: 78px;
+  height: 4px;
+  accent-color: var(--ui-accent);
+  cursor: pointer;
+}
+
+.gs-brightness-val {
+  font-size: 11px;
+  font-weight: 700;
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  color: var(--ui-text-primary);
+  min-width: 32px;
+  text-align: right;
+}
+
+/* Bottom Measurement Toolbar & Bottom Dock — Segmented Pill Clean Style */
+.bim-measure-bottom-container {
+  position: absolute;
+  bottom: 68px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  z-index: 100;
+  max-width: calc(100vw - 24px);
+}
+
+.autodesk-measure-toolbar {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--ui-bg-pill) !important;
+  border: 1px solid var(--ui-border-strong);
+  padding: 4px;
+  border-radius: 12px;
+  box-shadow: var(--ui-shadow-window);
+  z-index: 100;
+  user-select: none;
+}
+
+.autodesk-measure-subtools {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.autodesk-measure-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  width: 36px;
+  height: 34px;
+  padding: 0;
+  cursor: pointer;
+  color: var(--ui-text-secondary) !important;
+  transition: all 0.14s ease;
+}
+
+.autodesk-measure-btn > *,
+.bim-dock-btn > * {
+  pointer-events: none;
+}
+
+.autodesk-measure-btn:hover {
+  color: var(--ui-text-primary) !important;
+  background: rgba(255, 255, 255, 0.5) !important;
+}
+
+.autodesk-measure-btn.active {
+  border: 1px solid rgba(203, 213, 225, 0.8) !important;
+  background: #ffffff !important;
+  box-shadow: var(--ui-shadow-active) !important;
+  color: var(--ui-accent) !important;
+}
+
+.autodesk-measure-btn.active svg {
+  stroke: var(--ui-accent) !important;
+  color: var(--ui-accent) !important;
+}
+
+.autodesk-measure-btn svg {
+  stroke: currentColor;
+  color: currentColor;
+}
+
+.autodesk-measure-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+}
+
+.autodesk-measure-label {
+  display: none;
+}
+
+.autodesk-measure-divider {
+  width: 1px;
+  height: 22px;
+  background: var(--ui-border-strong) !important;
+  margin: 0 3px;
+}
+
+.autodesk-measure-clear-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--ui-text-secondary);
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.14s ease;
+}
+
+.autodesk-measure-clear-btn:hover {
+  background: #ffffff;
+  border-color: var(--ui-border-strong);
+  color: var(--ui-text-primary);
+  box-shadow: var(--ui-shadow-active);
+}
+
+/* Bottom Dock — Clean Segmented Pill Style */
+.bim-bottom-dock {
+  position: absolute;
+  bottom: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  background: var(--ui-bg-pill);
+  border: 1px solid var(--ui-border-strong);
+  padding: 4px;
+  border-radius: 12px;
+  box-shadow: var(--ui-shadow-window);
+  z-index: 95;
+  user-select: none;
+}
+
+.bim-dock-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  width: 36px;
+  height: 34px;
+  padding: 0;
+  color: var(--ui-text-secondary);
+  cursor: pointer;
+  transition: all 0.14s ease;
+}
+
+.bim-dock-btn:hover {
+  color: var(--ui-text-primary);
+  background: rgba(255, 255, 255, 0.5);
+}
+
+.bim-dock-btn.active {
+  background: #ffffff;
+  border-color: rgba(203, 213, 225, 0.8);
+  color: var(--ui-accent);
+  box-shadow: var(--ui-shadow-active);
+}
+
+.bim-dock-icon {
+  height: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.bim-dock-label,
+#lblCurrentUser {
+  display: none;
+}
+
+.bim-dock-divider {
+  width: 1px;
+  height: 20px;
+  background: var(--ui-border-strong);
+  margin: 0 2px;
+}
+
+/* 2D Measurement Pin & Distance Labels on 3D Canvas */
+.measure-badge-2d {
+  position: absolute;
+  transform: translate(-50%, -100%);
+  background: #ffffff;
+  border: 1px solid var(--ui-border-strong);
+  color: var(--ui-text-primary);
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 11.5px;
+  font-weight: 600;
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  white-space: nowrap;
+  pointer-events: none;
+  box-shadow: var(--ui-shadow-window);
+  z-index: 60;
+}
+
+/* Gathering Cloud / Autodesk Distance & Orthogonal Delta (X, Y, Z) Badges */
+.autodesk-dist-badge {
+  position: absolute;
+  pointer-events: none !important;
+  cursor: default;
+  z-index: 62;
+  background: #0084ff;
+  color: #ffffff;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 3px 10px;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0, 132, 255, 0.45);
+  white-space: nowrap;
+  user-select: none;
+  transform: translate(-50%, -50%);
+  transition: transform 0.15s ease, filter 0.15s ease;
+}
+
+.autodesk-delta-badge {
+  position: absolute;
+  pointer-events: none !important;
+  cursor: default;
+  z-index: 61;
+  display: flex;
+  align-items: center;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
+  border-radius: 10px;
+  overflow: hidden;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+  user-select: none;
+  transform: translate(-50%, -50%);
+  transition: transform 0.15s ease, filter 0.15s ease;
+}
+
+.autodesk-delta-axis {
+  padding: 2px 6px;
+  color: #ffffff;
+  font-weight: 700;
+}
+.autodesk-delta-axis.axis-x { background: #ef4444; }
+.autodesk-delta-axis.axis-y { background: #10b981; }
+.autodesk-delta-axis.axis-z { background: #3b82f6; }
+
+.autodesk-delta-val {
+  background: #ffffff;
+  color: #0099ff;
+  padding: 2px 8px;
+}
+
+/* ============================================================================
+ * 5. Right-Side Surveying & Engineering Inspector Panel (Clean Slate-White)
+ * ============================================================================ */
+.gs-side-panel {
+  position: absolute;
+  top: 66px;
+  right: 16px;
+  width: 360px;
+  max-height: calc(100vh - 150px);
+  overflow-y: auto;
+  background: var(--ui-bg-window);
+  backdrop-filter: blur(14px);
+  border: 1px solid var(--ui-border-strong);
+  border-radius: 12px;
+  box-shadow: var(--ui-shadow-window);
+  padding: 14px;
+  z-index: 90;
+  display: none;
+  color: var(--ui-text-primary);
+}
+
+.gs-side-panel.active {
+  display: block;
+}
+
+.gs-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--ui-border);
+  padding-bottom: 9px;
+  margin-bottom: 12px;
+}
+
+.gs-panel-title {
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--ui-text-primary);
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.gs-form-group {
+  margin-bottom: 10px;
+}
+
+.gs-form-group label {
+  display: block;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--ui-text-secondary);
+  margin-bottom: 4px;
+}
+
+.gs-input, .gs-select {
+  width: 100%;
+  background: var(--ui-bg-subtle);
+  border: 1px solid var(--ui-border-strong);
+  color: var(--ui-text-primary);
+  padding: 6px 9px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.gs-metric-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+  margin: 10px 0;
+}
+
+.gs-metric-box {
+  background: var(--ui-bg-subtle);
+  border: 1px solid var(--ui-border);
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+
+.gs-metric-box .lbl {
+  font-size: 10.5px;
+  color: var(--ui-text-muted);
+  font-weight: 600;
+}
+
+.gs-metric-box .val {
+  font-size: 14.5px;
+  font-weight: 700;
+  color: var(--ui-text-primary);
+  margin-top: 2px;
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+}
+
+/* ============================================================================
+ * 6. Multi-Date Split Curtain Slider View
+ * ============================================================================ */
+.gs-compare-stage {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  background: #0b0f19;
+}
+
+.gs-compare-layer {
+  position: absolute;
+  inset: 0;
+}
+
+#compareRightLayer {
+  clip-path: inset(0 0 0 50%);
+}
+
+.gs-curtain-divider {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 2px;
+  background: #ffffff;
+  box-shadow: 0 0 8px rgba(15, 23, 42, 0.5);
+  cursor: ew-resize;
+  z-index: 120;
+  transform: translateX(-50%);
+}
+
+.gs-curtain-handle {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: #ffffff;
+  border: 1px solid var(--ui-border-strong);
+  color: var(--ui-accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: var(--ui-shadow-window);
+}
+
+.gs-compare-hud {
+  position: absolute;
+  top: 14px;
+  left: 16px;
+  right: 16px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  z-index: 130;
+  pointer-events: none;
+}
+
+.gs-compare-hud > * {
+  pointer-events: auto;
+}
+
+.gs-epoch-badge {
+  background: var(--ui-bg-window);
+  border: 1px solid var(--ui-border-strong);
+  border-radius: 10px;
+  padding: 6px 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  box-shadow: var(--ui-shadow-window);
+  color: var(--ui-text-primary);
+}
+
+.gs-compare-legend {
+  position: absolute;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 40;
+  background: var(--ui-bg-window);
+  border: 1px solid var(--ui-border-strong);
+  border-radius: 10px;
+  padding: 7px 16px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  box-shadow: var(--ui-shadow-window);
+  color: var(--ui-text-primary);
+  font-size: 11.5px;
+  font-weight: 600;
+}
+
+/* ============================================================================
+ * 7. Modals (Queue Monitor, Sharing Controls, Offline Cache Settings)
+ * ============================================================================ */
+.gs-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.45);
+  backdrop-filter: blur(4px);
+  z-index: 1000;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+.gs-modal-backdrop.active {
+  display: flex;
+}
+
+.gs-modal {
+  background: #ffffff;
+  border: 1px solid var(--ui-border-strong);
+  border-radius: 12px;
+  width: 100%;
+  max-width: 760px;
+  max-height: 88vh;
+  overflow-y: auto;
+  box-shadow: 0 20px 50px rgba(15, 23, 42, 0.25);
+  padding: 18px 20px;
+  color: var(--ui-text-primary);
+}
+
+.gs-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.gs-table th, .gs-table td {
+  border-bottom: 1px solid var(--ui-border);
+  padding: 8px 10px;
+  text-align: left;
+  color: var(--ui-text-primary);
+}
+
+.gs-table th {
+  color: var(--ui-text-secondary);
+  font-weight: 600;
+  background: var(--ui-bg-subtle);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.gs-toast {
+  position: fixed;
+  bottom: 22px;
+  right: 22px;
+  background: #ffffff;
+  border: 1px solid var(--ui-border-strong);
+  color: var(--ui-text-primary);
+  padding: 9px 14px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  box-shadow: var(--ui-shadow-window);
+  z-index: 2000;
+  display: none;
+}
+
+/* ============================================================================
+ * 8. Site Selected Split View: Top 1/3 Timeline Tiles + Bottom 2/3 3D Preview
+ * ============================================================================ */
+.gs-site-timeline-split {
+  position: absolute;
+  inset: 0;
+  z-index: 650;
+  display: none;
+  flex-direction: column;
+  background: #0f172a;
+}
+
+.gs-site-timeline-split.active {
+  display: flex;
+}
+
+.gs-site-timeline-top {
+  height: 33.333%;
+  min-height: 214px;
+  max-height: 256px;
+  background: #ffffff;
+  border-bottom: 1px solid var(--ui-border-strong);
+  display: flex;
+  flex-direction: column;
+  padding: 10px 16px 10px 16px;
+  box-shadow: 0 4px 18px rgba(15, 23, 42, 0.12);
+  z-index: 25;
+}
+
+.gs-timeline-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--ui-border);
+  flex-shrink: 0;
+}
+
+.gs-timeline-header-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.gs-timeline-header-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.gs-timeline-site-title {
+  font-size: 14.5px;
+  font-weight: 700;
+  color: var(--ui-text-primary);
+  letter-spacing: -0.01em;
+}
+
+.gs-timeline-site-sub {
+  font-size: 11px;
+  color: var(--ui-text-muted);
+  margin-top: 1px;
+}
+
+.gs-timeline-track {
+  flex: 1;
+  display: flex;
+  align-items: stretch;
+  gap: 12px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 8px 2px 4px 2px;
+  position: relative;
+}
+
+.gs-timeline-tile {
+  width: 244px;
+  flex-shrink: 0;
+  border-radius: 10px;
+  border: 1.5px solid var(--ui-border);
+  background: #f8fafc;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  cursor: pointer;
+  transition: all 0.16s ease;
+  position: relative;
+  user-select: none;
+}
+
+.gs-timeline-tile:hover {
+  border-color: #94a3b8;
+  background: #ffffff;
+  transform: translateY(-1px);
+  box-shadow: 0 6px 14px rgba(15, 23, 42, 0.08);
+}
+
+.gs-timeline-tile.active {
+  border-color: var(--ui-accent);
+  background: #ffffff;
+  box-shadow: 0 0 0 2px rgba(2, 132, 199, 0.2), 0 6px 16px rgba(2, 132, 199, 0.12);
+}
+
+.gs-tile-thumb-wrap {
+  position: relative;
+  width: 100%;
+  height: 90px;
+  background: #0f172a;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.gs-tile-thumb {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  transition: transform 0.22s ease;
+}
+
+.gs-timeline-tile:hover .gs-tile-thumb {
+  transform: scale(1.03);
+}
+
+.gs-tile-badge-row {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  right: 6px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  pointer-events: none;
+}
+
+.gs-tile-chip {
+  background: rgba(15, 23, 42, 0.78);
+  color: #f8fafc;
+  font-size: 9.5px;
+  font-weight: 600;
+  font-family: 'JetBrains Mono', monospace;
+  padding: 2px 6px;
+  border-radius: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+}
+
+.gs-tile-chip.active-indicator {
+  background: var(--ui-accent);
+  color: #ffffff;
+  border-color: rgba(255, 255, 255, 0.35);
+}
+
+.gs-tile-meta {
+  padding: 7px 10px 8px 10px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  flex: 1;
+  gap: 3px;
+}
+
+.gs-tile-date-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.gs-tile-date {
+  font-size: 11.5px;
+  font-weight: 700;
+  font-family: 'JetBrains Mono', monospace;
+  color: var(--ui-text-primary);
+}
+
+.gs-tile-uploader {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--ui-accent);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.gs-tile-name {
+  font-size: 10.5px;
+  color: var(--ui-text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Bottom 2/3 Interactive 3D Scan Preview Pane */
+.gs-site-preview-bottom {
+  height: 66.667%;
+  flex: 1;
+  position: relative;
+  background: #0b1120;
+  overflow: hidden;
+}
+
+#sitePreviewCanvasContainer {
+  width: 100%;
+  height: 100%;
+  position: relative;
+}
+
+.gs-preview-hud-top-left {
+  position: absolute;
+  top: 14px;
+  left: 16px;
+  z-index: 40;
+  pointer-events: auto;
+}
+
+/* Icon-Only Enlarge Button (Strictly 0 words, only icon) */
+.gs-preview-enlarge-btn {
+  position: absolute;
+  top: 14px;
+  right: 16px;
+  z-index: 45;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border-radius: 11px;
+  background: #ffffff;
+  border: 1.5px solid var(--ui-border-strong);
+  color: var(--ui-text-primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.24);
+  transition: all 0.16s ease;
+}
+
+.gs-preview-enlarge-btn:hover {
+  background: var(--ui-accent);
+  border-color: var(--ui-accent);
+  color: #ffffff;
+  transform: scale(1.05);
+  box-shadow: 0 10px 28px rgba(2, 132, 199, 0.38);
+}
+
+.gs-preview-enlarge-btn svg {
+  stroke: currentColor;
+  pointer-events: none;
+}
+

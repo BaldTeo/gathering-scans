@@ -1,0 +1,814 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>GatheringScans — 3D Photogrammetry &amp; Civil Surveying Studio (scans.gatheren.cloud)</title>
+  <link rel="stylesheet" href="/app.css" />
+</head>
+<body>
+
+  <!-- Top Engineering Navigation Header -->
+  <header class="gs-topbar">
+    <div class="gs-brand">
+      <div class="gs-brand-logo">GS</div>
+      <div class="gs-brand-title">
+        <span>GatheringScans</span>
+        <span class="gs-crs-pill" title="All scans automatically converted in PIX4Dmatic to TWD97 (121) [EPSG:3826] + TWVD2001 [EPSG:8904] with 2K textures">
+          TWD97 (121) + TWVD2001 · 2K
+        </span>
+      </div>
+    </div>
+
+    <!-- Center Mode Switcher (Clean Segmented Pill — 1 Word per Button) -->
+    <div class="segmented-pill" id="mainModeSwitcher">
+      <button type="button" class="btn-seg active" data-view="map" id="btnNavMap" title="Map Overview / 地圖總覽">
+        <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8">
+          <polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/>
+          <line x1="8" y1="2" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="22"/>
+        </svg>
+        <span>Map</span>
+      </button>
+      <button type="button" class="btn-seg" data-view="studio" id="btnNavStudio" title="3D Scan Studio / 三維量測">
+        <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8">
+          <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
+          <polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/>
+        </svg>
+        <span>Studio</span>
+      </button>
+      <button type="button" class="btn-seg" data-view="compare" id="btnNavCompare" title="Multi-Date Slider / 跨期比對">
+        <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8">
+          <rect x="3" y="3" width="18" height="18" rx="2"/><line x1="12" y1="3" x2="12" y2="21"/>
+          <polyline points="9 9 6 12 9 15"/><polyline points="15 9 18 12 15 15"/>
+        </svg>
+        <span>Compare</span>
+      </button>
+    </div>
+
+    <!-- Right Controls Cluster (Icon-Only / 1-Word Discipline) -->
+    <div class="gs-topbar-actions">
+      <button type="button" class="cloud-sync-chip" id="pcStatusChip" title="PIX4Dmatic Smart Priority Queue &amp; Google Drive Inbox Watcher">
+        <span class="status-dot" id="pcStatusDot"></span>
+        <span id="pcStatusText">Queue</span>
+      </button>
+
+      <button type="button" class="gs-top-btn accent" id="btnOpenOptimizer" title="GC_ScanOptimizer PC Actions (Preset Compression &amp; Spatial Crop)">
+        <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8">
+          <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
+        </svg>
+      </button>
+
+      <button type="button" class="gs-top-btn" id="btnOpenSharing" title="Scoped External Share Links (/s/token)">
+        <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8">
+          <circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/>
+          <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/>
+        </svg>
+      </button>
+
+      <button type="button" class="gs-top-btn" id="btnOpenOfflineCache" title="Client-Side Browser Offline Cache &amp; User Settings">
+        <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+          <polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+        </svg>
+      </button>
+
+      <button type="button" class="gs-top-btn" id="btnGoogleUser" title="Company Google Workspace OAuth Account">
+        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8">
+          <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>
+        </svg>
+        <span id="lblCurrentUser">vitaly@gatheren.cloud</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- Scoped External Guest Share Banner (Visible when accessing via ?share=<token>) -->
+  <div class="gs-share-banner" id="externalShareBanner">
+    <div style="display:flex;align-items:center;gap:8px;">
+      <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8">
+        <rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+      </svg>
+      <strong>Scoped Share View:</strong>
+      <span id="lblExternalShareScope">Viewing authorized scan scope only. Other system scans are hidden.</span>
+    </div>
+    <button type="button" class="btn-xs" id="btnExitExternalPreview" style="display:none;" title="Exit Guest Preview">Exit</button>
+  </div>
+
+  <!-- Main Application Workspace -->
+  <main class="gs-main">
+
+    <!-- ======================================================================
+         VIEW 1: INTERACTIVE GEOSPATIAL MAP OVERVIEW (Requirement 4.a)
+         ====================================================================== -->
+    <section class="gs-view active" id="viewMap">
+      <div id="mapContainer"></div>
+
+      <!-- Top-Left Map HUD -->
+      <div class="gs-map-hud-top">
+        <div class="gs-map-card">
+          <div style="display:flex;justify-content:space-between;align-items:center;">
+            <span style="font-size:13px;font-weight:700;color:#0f172a;display:flex;align-items:center;gap:6px;">
+              <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="#0284c7" stroke-width="2">
+                <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/>
+              </svg>
+              <span>Scan Clusters (TWD97)</span>
+            </span>
+            <span class="gs-crs-pill" id="lblMapClusterCount">3 Sites</span>
+          </div>
+          <p style="font-size:11.5px;color:#475569;margin-top:6px;line-height:1.45;">
+            Select a spatial cluster to inspect grouped scans by date, open in 3D Studio, compare dates, download <code>.obj</code>, or comment.
+          </p>
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:6px;margin-top:10px;">
+            <div id="mapSiteQuickButtons" style="display:flex;flex-wrap:wrap;gap:5px;"></div>
+            <div class="segmented-pill" id="mapLayerSwitcher" style="padding:2px;border-radius:7px;">
+              <button type="button" class="btn-seg active" data-lyrs="y" style="padding:3px 8px;font-size:11px;" title="Google Satellite Hybrid">Hybrid</button>
+              <button type="button" class="btn-seg" data-lyrs="m" style="padding:3px 8px;font-size:11px;" title="Google Roadmap">Map</button>
+            </div>
+          </div>
+          <div style="margin-top:10px;padding-top:8px;border-top:1px solid #e2e8f0;font-size:11px;font-family:monospace;color:#475569;" id="mapCursorCoords">
+            TWD97(121) E: 304,952.7m | N: 2,757,084.9m | TWVD2001
+          </div>
+        </div>
+      </div>
+
+      <!-- Hover / Click Selection Popover for Grouped Scans -->
+      <div class="gs-cluster-popover" id="clusterHoverPopover">
+        <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #e2e8f0;padding-bottom:10px;">
+          <div>
+            <div style="font-size:14px;font-weight:700;color:#0f172a;" id="popoverGroupTitle">QuChi Dam</div>
+            <div style="font-size:11px;color:#64748b;margin-top:2px;" id="popoverGroupSubtitle">屈尺堰壩體與護岸工程 · TWD97 (121) + TWVD2001</div>
+          </div>
+          <div style="display:flex;gap:5px;">
+            <button type="button" class="btn-xs primary" id="btnPopoverCompareGroup" title="Compare Dates in Multi-Date Slider">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8">
+                <rect x="3" y="3" width="18" height="18" rx="2"/><line x1="12" y1="3" x2="12" y2="21"/>
+              </svg>
+            </button>
+            <button type="button" class="btn-xs" id="btnPopoverShareGroup" title="Create Scoped Share Link for Group">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8">
+                <circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/>
+                <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/>
+              </svg>
+            </button>
+            <button type="button" class="btn-xs" id="btnClosePopover" title="Close">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8">
+                <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+              </svg>
+            </button>
+          </div>
+        </div>
+        <div id="popoverScanList"></div>
+      </div>
+
+      <!-- Site Selected Split View: Top 1/3 Scan Timeline Tiles + Bottom 2/3 Interactive 3D Scan Preview -->
+      <div class="gs-site-timeline-split" id="siteTimelineSplitView">
+        <!-- Top 1/3: Chronological Site Scan Timeline with Auto-Captured Screenshots, Date & Uploader -->
+        <div class="gs-site-timeline-top" id="siteTimelineTopPane">
+          <div class="gs-timeline-header">
+            <div class="gs-timeline-header-left">
+              <button type="button" class="btn-xs" id="btnCloseSiteTimeline" title="Back to Map Overview">
+                <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2">
+                  <line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/>
+                </svg>
+              </button>
+              <div>
+                <div style="display:flex;align-items:center;gap:8px;">
+                  <span class="gs-timeline-site-title" id="timelineSiteTitle">QuChi Dam</span>
+                  <span class="gs-crs-pill" id="timelineSiteCountPill">4 Scans</span>
+                  <span class="gs-crs-pill" style="background:#f1f5f9;color:#475569;border-color:#cbd5e1;">TWD97 (121) + TWVD2001</span>
+                </div>
+                <div class="gs-timeline-site-sub" id="timelineSiteSubtitle">屈尺堰壩體與護岸工程 · Select a scan tile to preview below</div>
+              </div>
+            </div>
+
+            <div class="gs-timeline-header-right">
+              <div id="timelineSiteSwitcher" style="display:flex;gap:4px;"></div>
+              <button type="button" class="btn-xs" id="btnCapturePreviewScreenshot" title="Capture Live 3D Screenshot for Selected Tile">
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8">
+                  <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
+                  <circle cx="12" cy="13" r="4"/>
+                </svg>
+              </button>
+              <button type="button" class="btn-xs" id="btnTimelineCompare" title="Compare Dates in Multi-Date Slider">
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8">
+                  <rect x="3" y="3" width="18" height="18" rx="2"/><line x1="12" y1="3" x2="12" y2="21"/>
+                </svg>
+              </button>
+              <button type="button" class="btn-xs" id="btnTimelineShare" title="Create Scoped Share Link for Site">
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8">
+                  <circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/>
+                  <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/>
+                </svg>
+              </button>
+            </div>
+          </div>
+
+          <!-- Horizontal Timeline Track of Scan Tiles -->
+          <div class="gs-timeline-track" id="siteTimelineTilesTrack"></div>
+        </div>
+
+        <!-- Bottom 2/3: Interactive 3D Scan Preview with Icon-Only Enlarge Button -->
+        <div class="gs-site-preview-bottom" id="sitePreviewBottomPane">
+          <div id="sitePreviewCanvasContainer"></div>
+
+          <!-- Top-Left Preview Scan Metadata Pill -->
+          <div class="gs-preview-hud-top-left" id="sitePreviewHudBadge">
+            <div class="gs-active-scan-pill" style="gap:10px;">
+              <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="#0284c7" stroke-width="1.8" style="flex-shrink:0;">
+                <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
+              </svg>
+              <div>
+                <div style="font-size:12.5px;font-weight:700;color:#0f172a;" id="previewScanTitle">QuChi Dam — Merged 3D Mesh</div>
+                <div style="font-size:11px;color:#475569;font-family:monospace;" id="previewScanMeta">2026-10-05 15:37 · Vitaly (Field Lead) · E 304952.7 N 2757084.9 H +43.2m</div>
+              </div>
+              <div class="gs-brightness-control" title="Preview Scan Brightness (0.1x – 4.0x)">
+                <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="#475569" stroke-width="1.8">
+                  <circle cx="12" cy="12" r="5"/>
+                  <line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/>
+                  <line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/>
+                </svg>
+                <input type="range" id="previewBrightnessSlider" class="gs-brightness-slider" min="0.1" max="4.0" step="0.05" value="1.0" style="width:64px;" />
+                <span class="gs-brightness-val" id="lblPreviewBrightness">1.0x</span>
+              </div>
+              <button type="button" class="btn-xs" id="btnPreviewResetCamera" title="Frame Scan to Preview Viewport">
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8">
+                  <circle cx="12" cy="12" r="7"/><line x1="12" y1="2" x2="12" y2="5"/><line x1="12" y1="19" x2="12" y2="22"/>
+                  <line x1="2" y1="12" x2="5" y2="12"/><line x1="19" y1="12" x2="22" y2="12"/>
+                </svg>
+              </button>
+            </div>
+          </div>
+
+          <!-- Icon-Only Enlarge Button (Strictly 0 words, only icon -> opens Full 3D Viewer/Editor Interface) -->
+          <button type="button" class="gs-preview-enlarge-btn" id="btnEnlargePreviewToStudio" title="Enlarge to Full 3D Viewer &amp; Editor" aria-label="Enlarge to Full 3D Viewer &amp; Editor">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="15 3 21 3 21 9"/>
+              <polyline points="9 21 3 21 3 15"/>
+              <line x1="21" y1="3" x2="14" y2="10"/>
+              <line x1="3" y1="21" x2="10" y2="14"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ======================================================================
+         VIEW 2: 3D SCAN STUDIO & ICON-ONLY MEASUREMENT TOOLBAR
+         ====================================================================== -->
+    <section class="gs-view" id="viewStudio">
+      <div id="studioCanvasContainer"></div>
+
+      <!-- 2D Measurement Badges Overlay -->
+      <div id="studioOverlay2D" style="position:absolute;inset:0;pointer-events:none;overflow:hidden;z-index:55;"></div>
+
+      <!-- Studio Top Bar -->
+      <div class="gs-studio-top-bar">
+        <div class="gs-active-scan-pill">
+          <button type="button" class="btn-xs" id="btnStudioBackToTimeline" title="Back to Site Timeline &amp; Preview">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/>
+            </svg>
+          </button>
+          <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="#0284c7" stroke-width="1.8" style="flex-shrink:0;">
+            <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
+          </svg>
+          <span class="gs-crs-pill" id="studioProjectGroupBadge" title="Active Project Scope (Only scans from this project are listed)">QuChi Dam</span>
+          <select class="gs-scan-select" id="studioScanSelect" title="Select Active 3D Scan (Current Project Only)"></select>
+          <div style="border-left:1px solid #cbd5e1;padding-left:10px;font-size:11px;font-family:monospace;color:#475569;" id="studioScanMetrics">
+            TWD97 · TWVD2001 · 2K
+          </div>
+
+          <!-- Scan Brightness Control (0.1x – 4.0x, matching Gathering Cloud) -->
+          <div class="gs-brightness-control" title="Scan Brightness (0.1x – 4.0x)">
+            <button type="button" class="gs-brightness-icon-btn" id="btnResetBrightness" title="Reset Scan Brightness (1.0x)">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8">
+                <circle cx="12" cy="12" r="5"/>
+                <line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/>
+                <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
+                <line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/>
+                <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+              </svg>
+            </button>
+            <input type="range" id="studioBrightnessSlider" class="gs-brightness-slider" min="0.1" max="4.0" step="0.05" value="1.0" />
+            <span class="gs-brightness-val" id="lblStudioBrightness">1.0x</span>
+          </div>
+
+          <button type="button" class="btn-xs" id="btnStudioResetCamera" title="Frame Scan to Viewport">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8">
+              <circle cx="12" cy="12" r="7"/><line x1="12" y1="2" x2="12" y2="5"/><line x1="12" y1="19" x2="12" y2="22"/>
+              <line x1="2" y1="12" x2="5" y2="12"/><line x1="19" y1="12" x2="22" y2="12"/>
+            </svg>
+          </button>
+          <a class="btn-xs" id="btnStudioDownloadObj" href="/api/download?scan_id=quchi_20261005_merged&type=obj" download title="Download .OBJ">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+              <polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+            </svg>
+          </a>
+        </div>
+
+        <div class="gs-active-scan-pill" style="gap:8px;">
+          <span style="font-size:11px;font-family:monospace;color:#0f172a;font-weight:600;" id="lblLastPickedCoord">
+            E: 304952.66m, N: 2757084.88m, H: +43.18m
+          </span>
+        </div>
+      </div>
+
+      <!-- Right-Side Engineering & Surveying Inspector Panel -->
+      <aside class="gs-side-panel" id="studioSidePanel">
+        <div class="gs-panel-header">
+          <div class="gs-panel-title" id="sidePanelTitle">Surveying Inspector</div>
+          <button type="button" class="btn-xs" id="btnCloseSidePanel" title="Close">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8">
+              <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+            </svg>
+          </button>
+        </div>
+        <div id="sidePanelBody"></div>
+      </aside>
+
+      <!-- Icon-Only Measurement Toolbar (0 Words per Button) -->
+      <div id="bimMeasureBottomContainer" class="bim-measure-bottom-container">
+        <div id="bimMeasurementToolbar" class="autodesk-measure-toolbar">
+          <div class="autodesk-measure-subtools">
+            <!-- 1. Distance -->
+            <button type="button" class="autodesk-measure-btn active" data-tool="distance" id="btnMeasureDistance" title="Distance &amp; Elevation Δh / 空間距離與高程差">
+              <div class="autodesk-measure-icon">
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8">
+                  <line x1="2" y1="4" x2="2" y2="20" stroke-width="2.2"/>
+                  <line x1="22" y1="4" x2="22" y2="20" stroke-width="2.2"/>
+                  <line x1="2" y1="12" x2="22" y2="12" stroke-width="1.8"/>
+                  <polyline points="6,9 3,12 6,15" stroke-width="1.8"/>
+                  <polyline points="18,9 21,12 18,15" stroke-width="1.8"/>
+                </svg>
+              </div>
+            </button>
+
+            <!-- 2. Angle -->
+            <button type="button" class="autodesk-measure-btn" data-tool="angle" id="btnMeasureAngle" title="Angle &amp; Slope / 角度與坡度">
+              <div class="autodesk-measure-icon">
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8">
+                  <path d="M4 5v14h16"/>
+                  <path d="M4 13a6 6 0 0 1 6 6"/>
+                  <circle cx="4" cy="19" r="1.5" fill="currentColor"/>
+                </svg>
+              </div>
+            </button>
+
+            <!-- 3. Area -->
+            <button type="button" class="autodesk-measure-btn" data-tool="area" id="btnMeasureArea" title="Area &amp; Perimeter (m² / 坪) / 面積與周長">
+              <div class="autodesk-measure-icon">
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8">
+                  <polygon points="3,6 15,3 21,9 18,20 6,18"/>
+                  <polygon points="7,8 14,6 18,10 16,17 8,16" stroke-dasharray="2 2" stroke-width="1.2" opacity="0.6"/>
+                </svg>
+              </div>
+            </button>
+
+            <!-- 4. Coordinates -->
+            <button type="button" class="autodesk-measure-btn" data-tool="coordinates" id="btnMeasureCoordinates" title="TWD97 (121) + TWVD2001 Coordinates / 座標點位">
+              <div class="autodesk-measure-icon">
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8">
+                  <circle cx="12" cy="12" r="6"/>
+                  <line x1="12" y1="2" x2="12" y2="6"/>
+                  <line x1="12" y1="18" x2="12" y2="22"/>
+                  <line x1="2" y1="12" x2="6" y2="12"/>
+                  <line x1="18" y1="12" x2="22" y2="12"/>
+                </svg>
+              </div>
+            </button>
+
+            <!-- 5. Laser -->
+            <button type="button" class="autodesk-measure-btn" data-tool="laser" id="btnMeasureLaser" title="Laser Grade &amp; Elevation / 雷射高程">
+              <div class="autodesk-measure-icon">
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8">
+                  <path d="M5 19l4-4M9 15l7-7 2 2-7 7-2-2z"/>
+                  <circle cx="18" cy="6" r="1" fill="currentColor"/>
+                  <line x1="19" y1="2" x2="21" y2="4"/>
+                  <line x1="15" y1="1" x2="16" y2="2"/>
+                  <line x1="22" y1="8" x2="23" y2="9"/>
+                </svg>
+              </div>
+            </button>
+
+            <!-- 6. Cut/Fill & Stockpile Volume -->
+            <button type="button" class="autodesk-measure-btn" data-tool="volume" id="btnMeasureVolume" title="Cut/Fill Volumes &amp; Stockpile Report / 挖填方與土石堆體積報表">
+              <div class="autodesk-measure-icon">
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8">
+                  <path d="M3 18L9 8l5 6 4-4 3 8H3z"/>
+                  <line x1="2" y1="20" x2="22" y2="20"/>
+                </svg>
+              </div>
+            </button>
+
+            <!-- 7. Elevation Contours & .DWG / .DXF -->
+            <button type="button" class="autodesk-measure-btn" data-tool="contours" id="btnMeasureContours" title="Elevation Contours &amp; Export to .DWG/.DXF / 等高線與 DWG 匯出">
+              <div class="autodesk-measure-icon">
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8">
+                  <ellipse cx="12" cy="12" rx="10" ry="6"/>
+                  <ellipse cx="12" cy="12" rx="6.5" ry="3.8"/>
+                  <ellipse cx="12" cy="12" rx="3" ry="1.6"/>
+                </svg>
+              </div>
+            </button>
+
+            <!-- 8. Cross-Section Elevation Profile -->
+            <button type="button" class="autodesk-measure-btn" data-tool="profile" id="btnMeasureProfile" title="Cross-Section Elevation Profile / 縱橫斷面分析">
+              <div class="autodesk-measure-icon">
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8">
+                  <polyline points="3 17 8 11 13 14 21 6"/>
+                  <line x1="3" y1="20" x2="21" y2="20"/>
+                </svg>
+              </div>
+            </button>
+
+            <!-- 9. RTK Raw Camera Photo Inspector -->
+            <button type="button" class="autodesk-measure-btn" data-tool="photos" id="btnMeasurePhotos" title="RTK Raw Camera Photo Inspector / 原始 RTK 照片檢視">
+              <div class="autodesk-measure-icon">
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8">
+                  <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
+                  <circle cx="12" cy="13" r="4"/>
+                </svg>
+              </div>
+            </button>
+
+            <!-- 10. Snap Toggle -->
+            <button type="button" class="autodesk-measure-btn active" data-tool="snap" id="btnMeasureSnap" title="Toggle Vertex &amp; Surface Snapping / 切換幾何捕捉">
+              <div class="autodesk-measure-icon">
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8">
+                  <path d="M6 3v7a6 6 0 0 0 12 0V3"/>
+                  <line x1="4" y1="3" x2="8" y2="3"/>
+                  <line x1="16" y1="3" x2="20" y2="3"/>
+                </svg>
+              </div>
+            </button>
+          </div>
+
+          <div class="autodesk-measure-divider"></div>
+          <button type="button" class="autodesk-measure-clear-btn" id="btnMeasureClear" title="Clear All Measurements">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8">
+              <polyline points="3 6 5 6 21 6"/>
+              <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
+              <line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      <!-- Bottom Segmented Dock (Icon-Only / 1-Word Discipline) -->
+      <nav class="bim-bottom-dock" id="bimBottomDock" aria-label="GatheringScans 3D Tools Dock">
+        <button type="button" class="bim-dock-btn active" id="btnDockMeasure" data-dock="measure" title="Measurement Tools / 量測工具">
+          <div class="bim-dock-icon">
+            <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8">
+              <path d="M21.3 15.3a2.4 2.4 0 0 1 0 3.4l-2.6 2.6a2.4 2.4 0 0 1-3.4 0L2.7 8.7a2.41 2.41 0 0 1 0-3.4l2.6-2.6a2.41 2.41 0 0 1 3.4 0Z"/>
+              <path d="m14.5 12.5 2-2"/><path d="m11.5 9.5 2-2"/><path d="m8.5 6.5 2-2"/>
+            </svg>
+          </div>
+          <span class="bim-dock-label">量測</span>
+        </button>
+
+        <button type="button" class="bim-dock-btn" id="btnDockVolume" data-dock="volume" title="Earthwork Volume Report / 土方報表">
+          <div class="bim-dock-icon">
+            <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8">
+              <path d="M3 18L9 8l5 6 4-4 3 8H3z"/>
+            </svg>
+          </div>
+          <span class="bim-dock-label">土方</span>
+        </button>
+
+        <button type="button" class="bim-dock-btn" id="btnDockContours" data-dock="contours" title="Elevation Contours DWG / 等高線">
+          <div class="bim-dock-icon">
+            <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8">
+              <ellipse cx="12" cy="12" rx="9" ry="5"/><ellipse cx="12" cy="12" rx="5" ry="2.5"/>
+            </svg>
+          </div>
+          <span class="bim-dock-label">等高線</span>
+        </button>
+
+        <button type="button" class="bim-dock-btn" id="btnDockSection" data-dock="section" title="Section Box / 剖面盒">
+          <div class="bim-dock-icon">
+            <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8">
+              <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
+            </svg>
+          </div>
+          <span class="bim-dock-label">剖面</span>
+        </button>
+
+        <div class="bim-dock-divider"></div>
+
+        <button type="button" class="bim-dock-btn" id="btnDockComments" data-dock="comments" title="3D Geo-Comments / 標註">
+          <div class="bim-dock-icon">
+            <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8">
+              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+            </svg>
+          </div>
+          <span class="bim-dock-label">標註</span>
+        </button>
+
+        <button type="button" class="bim-dock-btn" id="btnDockOptimizer" data-dock="optimizer" title="GC_ScanOptimizer PC Actions / 優化">
+          <div class="bim-dock-icon">
+            <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8">
+              <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
+            </svg>
+          </div>
+          <span class="bim-dock-label">優化</span>
+        </button>
+      </nav>
+    </section>
+
+    <!-- ======================================================================
+         VIEW 3: MULTI-DATE SIDE-BY-SIDE CURTAIN SLIDER (Requirement 4)
+         ====================================================================== -->
+    <section class="gs-view" id="viewCompare">
+      <div class="gs-compare-stage" id="compareStage">
+        <div class="gs-compare-layer" id="compareLeftLayer"></div>
+        <div class="gs-compare-layer" id="compareRightLayer"></div>
+
+        <!-- Draggable Split Curtain Divider -->
+        <div class="gs-curtain-divider" id="curtainDivider">
+          <div class="gs-curtain-handle">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="9 18 3 12 9 6"/><polyline points="15 6 21 12 15 18"/>
+            </svg>
+          </div>
+        </div>
+      </div>
+
+      <!-- Compare Top HUD -->
+      <div class="gs-compare-hud">
+        <div class="gs-epoch-badge">
+          <span class="gs-crs-pill" id="compareProjectGroupBadge" title="Active Project Scope">QuChi Dam</span>
+          <span style="font-size:11px;font-weight:700;color:#475569;">BASELINE</span>
+          <select class="gs-scan-select" id="compareLeftSelect"></select>
+        </div>
+
+        <div class="gs-epoch-badge" style="gap:12px;">
+          <label style="display:flex;align-items:center;gap:6px;font-size:12px;font-weight:600;color:#0f172a;cursor:pointer;">
+            <input type="checkbox" id="chkDeltaZHeatmap" style="accent-color:#0284c7;" />
+            <span>ΔZ Elevation Heatmap</span>
+          </label>
+          <span style="font-size:11px;color:#64748b;font-family:monospace;" id="lblCurtainPct">50%</span>
+        </div>
+
+        <div class="gs-epoch-badge">
+          <span style="font-size:11px;font-weight:700;color:#0284c7;">LATEST</span>
+          <select class="gs-scan-select" id="compareRightSelect"></select>
+        </div>
+      </div>
+
+      <!-- Bottom ΔZ Elevation Change Scale Legend -->
+      <div class="gs-compare-legend">
+        <span style="color:#475569;">TWVD2001 ΔZ:</span>
+        <span>-1.5m Cut</span>
+        <div style="width:130px;height:8px;border-radius:999px;background:linear-gradient(90deg, #0284c7 0%, #38bdf8 45%, #0f172a 100%);border:1px solid #cbd5e1;"></div>
+        <span style="color:#0284c7;">+3.2m Fill (+230.6 m³)</span>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- ========================================================================
+       MODAL 1: PIX4DMATIC SMART PRIORITY QUEUE & GOOGLE DRIVE INBOX WATCHER
+       ======================================================================== -->
+  <div class="gs-modal-backdrop" id="modalQueue">
+    <div class="gs-modal" style="max-width:880px;">
+      <div class="gs-panel-header">
+        <div class="gs-panel-title">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="#0284c7" stroke-width="2">
+            <rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/>
+          </svg>
+          <span>PIX4Dmatic 2.11.0 Automated Worker &amp; Smart Priority Queue</span>
+        </div>
+        <button type="button" class="btn-xs" data-close-modal="modalQueue" title="Close">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8">
+            <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+          </svg>
+        </button>
+      </div>
+
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:10px;">
+        <div class="gs-metric-box">
+          <div class="lbl">Google Drive Inbox Folder</div>
+          <div class="val" style="font-size:12.5px;" id="lblQueueInboxDir">G:\My Drive\SCANS TEST</div>
+        </div>
+        <div class="gs-metric-box">
+          <div class="lbl">Mandatory PIX4Dmatic Output CRS</div>
+          <div class="val" style="font-size:12.5px;color:#0284c7;">TWD97 (121) + TWVD2001</div>
+        </div>
+        <div class="gs-metric-box">
+          <div class="lbl">Texture &amp; Storage Policy</div>
+          <div class="val" style="font-size:12.5px;">2K (2048px) · 0B on VPS</div>
+        </div>
+      </div>
+
+      <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:8px 12px;margin-bottom:10px;display:flex;align-items:center;justify-content:space-between;gap:10px;">
+        <div style="font-size:11.5px;font-weight:600;color:#475569;white-space:nowrap;">Google Chat Space Webhook:</div>
+        <input type="text" class="gs-input" id="inputGChatWebhookUrl" placeholder="https://chat.googleapis.com/v1/spaces/.../messages?key=...&amp;token=..." style="flex:1;font-family:monospace;font-size:11px;" />
+        <button type="button" class="btn-xs primary" id="btnSaveGChatWebhook" title="Save Google Chat Space Webhook URL">Save</button>
+      </div>
+
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;gap:12px;">
+        <div style="font-size:11.5px;color:#475569;">
+          Priority formula <code style="color:#0284c7;background:#f1f5f9;padding:2px 6px;border-radius:4px;border:1px solid #cbd5e1;">Score = (1000 / N<sub>imgs</sub><sup>0.65</sup>) + (1.5 × t<sub>wait</sub><sup>1.15</sup>)</code> with anti-starvation lock after <b>3 bypasses</b> or <b>90m wait</b>.
+        </div>
+        <div style="display:flex;gap:6px;flex-shrink:0;">
+          <button type="button" class="btn-xs primary" id="btnRescanGDriveInbox" title="Rescan G:\My Drive\SCANS TEST">
+            <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8">
+              <polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+            </svg>
+            <span>Scan</span>
+          </button>
+          <button type="button" class="btn-xs" id="btnPreviewGstScript" title="View PIX4Dmatic .GST Script">
+            <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>
+            </svg>
+            <span>Script</span>
+          </button>
+          <button type="button" class="btn-xs" id="btnSendTestGChat" title="Send Google Chat Readiness Card">
+            <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8">
+              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+            </svg>
+            <span>Notify</span>
+          </button>
+        </div>
+      </div>
+
+      <div id="gstScriptPreviewBox" style="display:none;margin-bottom:12px;">
+        <div style="font-size:11px;font-weight:700;color:#475569;margin-bottom:4px;">
+          PIX4Dmatic 2.11.0 Headless .GST Script (TWD97 (121) [EPSG:3826] + TWVD2001 [EPSG:8904] &amp; 2048px Textures):
+        </div>
+        <pre id="gstScriptCode" style="background:#f8fafc;border:1px solid #cbd5e1;padding:10px 12px;border-radius:8px;font-size:10.5px;color:#0f172a;max-height:170px;overflow:auto;line-height:1.4;"></pre>
+      </div>
+
+      <div style="max-height:300px;overflow-y:auto;border:1px solid #e2e8f0;border-radius:8px;">
+        <table class="gs-table">
+          <thead>
+            <tr>
+              <th>Scan / Archive</th>
+              <th>Project</th>
+              <th>Uploader &amp; Time</th>
+              <th>Photos / Size</th>
+              <th>CRS &amp; Texture</th>
+              <th>Score</th>
+              <th>Status</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="queueTableBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========================================================================
+       MODAL 2: SCOPED EXTERNAL SHARE LINK CONTROLS (Requirement 4.b)
+       ======================================================================== -->
+  <div class="gs-modal-backdrop" id="modalSharing">
+    <div class="gs-modal">
+      <div class="gs-panel-header">
+        <div class="gs-panel-title">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="#0284c7" stroke-width="2">
+            <circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/>
+            <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/>
+          </svg>
+          <span>Scoped External Sharing Controls (/s/&lt;token&gt;)</span>
+        </div>
+        <button type="button" class="btn-xs" data-close-modal="modalSharing" title="Close">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8">
+            <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+          </svg>
+        </button>
+      </div>
+
+      <p style="font-size:12px;color:#475569;margin-bottom:12px;">
+        External viewers with a share link can <strong>only</strong> view the specific scan or project group granted below. Access can be revoked immediately at any time.
+      </p>
+
+      <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:12px 14px;margin-bottom:14px;">
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;">
+          <div class="gs-form-group" style="margin-bottom:6px;">
+            <label>Scope Type</label>
+            <select class="gs-select" id="shareScopeType">
+              <option value="scan">Single Scan (單一掃描)</option>
+              <option value="group">Project Group (工區群組)</option>
+            </select>
+          </div>
+          <div class="gs-form-group" style="margin-bottom:6px;">
+            <label>Target Scan or Group</label>
+            <select class="gs-select" id="shareTargetId"></select>
+          </div>
+          <div class="gs-form-group" style="margin-bottom:6px;">
+            <label>Recipient Label</label>
+            <input type="text" class="gs-input" id="shareLabelInput" value="External Consultant Review" />
+          </div>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px;">
+          <div style="display:flex;gap:16px;font-size:11.5px;color:#475569;">
+            <label><input type="checkbox" id="shareAllowMeasure" checked style="accent-color:#0284c7;" /> Measurements</label>
+            <label><input type="checkbox" id="shareAllowComments" checked style="accent-color:#0284c7;" /> Comments</label>
+            <label><input type="checkbox" id="shareAllowDownload" style="accent-color:#0284c7;" /> .OBJ Download</label>
+          </div>
+          <button type="button" class="btn-xs primary" id="btnCreateShareLink" title="Generate Scoped Share Link">
+            <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8">
+              <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+            </svg>
+            <span>Create</span>
+          </button>
+        </div>
+      </div>
+
+      <div style="border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;">
+        <table class="gs-table">
+          <thead>
+            <tr>
+              <th>Label</th>
+              <th>Scope</th>
+              <th>Share URL</th>
+              <th>Permissions</th>
+              <th>Views</th>
+              <th>Status</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="shareLinksTableBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========================================================================
+       MODAL 3: CLIENT-SIDE OFFLINE CACHING & USER SETTINGS (Requirement 5)
+       ======================================================================== -->
+  <div class="gs-modal-backdrop" id="modalOfflineCache">
+    <div class="gs-modal">
+      <div class="gs-panel-header">
+        <div class="gs-panel-title">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="#0284c7" stroke-width="2">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+            <polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+          </svg>
+          <span>Client-Side Browser Offline Cache &amp; User Settings</span>
+        </div>
+        <button type="button" class="btn-xs" data-close-modal="modalOfflineCache" title="Close">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8">
+            <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+          </svg>
+        </button>
+      </div>
+
+      <p style="font-size:12px;color:#475569;margin-bottom:12px;">
+        Zero raw scans, photos, or 3D caches are stored on the Linux server. Optimized 2K 3D tilesets are cached directly in your local browser (<code>CacheStorage</code> + <code>IndexedDB</code>) for offline inspection when the processing PC is powered off.
+      </p>
+
+      <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:12px 14px;margin-bottom:10px;display:flex;justify-content:space-between;align-items:center;">
+        <div>
+          <div style="font-size:12.5px;font-weight:700;color:#0f172a;">Enable Offline Caching in Browser (vitaly@gatheren.cloud)</div>
+          <div style="font-size:11px;color:#64748b;margin-top:2px;">Automatically caches viewed 3D tilesets locally on this PC.</div>
+        </div>
+        <input type="checkbox" id="chkEnableOfflineCache" checked style="width:18px;height:18px;accent-color:#0284c7;cursor:pointer;" />
+      </div>
+
+      <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:12px 14px;margin-bottom:14px;display:flex;justify-content:space-between;align-items:center;">
+        <div>
+          <div style="font-size:12.5px;font-weight:700;color:#0f172a;">Simulate Processing PC Offline Mode</div>
+          <div style="font-size:11px;color:#64748b;margin-top:2px;">Test viewing cached scans directly from local browser storage.</div>
+        </div>
+        <button type="button" class="btn-xs" id="btnToggleSimulatedOffline" title="Toggle Simulated PC Offline Mode">Offline</button>
+      </div>
+
+      <div style="border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;">
+        <table class="gs-table">
+          <thead>
+            <tr>
+              <th>Scan Name</th>
+              <th>Project</th>
+              <th>CRS</th>
+              <th>Status</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="offlineCacheTableBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Notification -->
+  <div class="gs-toast" id="gsToast"></div>
+
+  <!-- Gathering Cloud Shared Google Maps API Key -->
+  <script>
+    window.DEFAULT_GOOGLE_MAPS_API_KEY = "AIzaSyBhHW138sGKgzKHDOTvv4RePukr_q2VbqQ";
+  </script>
+
+  <!-- Three.js + 3D Tileset / KTX2 / Meshopt Libraries -->
+  <script src="/lib/three.min.js"></script>
+  <script src="/lib/OrbitControls.js"></script>
+  <script src="/lib/GLTFLoader.js"></script>
+  <script src="/lib/KTX2Loader.js"></script>
+  <script src="/lib/meshopt_decoder.js"></script>
+  <script src="/lib/3d-tiles-renderer.bundle.js"></script>
+
+  <!-- Main GatheringScans Application Logic -->
+  <script src="/app.js"></script>
+</body>
+</html>

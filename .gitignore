@@ -1,0 +1,26 @@
+# Byte-compiled / cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Local runtime database, generated reports, contours, and cached thumbnails
+# (Never commit scan data, archives, or local runtime state)
+data/*.db
+data/*.db-journal
+data/*.db-wal
+data/reports/
+data/contours/
+data/thumbnails/
+*.zip
+*.obj
+*.glb
+*.b3dm
+*.pnts
+*.dxf
+*.dwg
+
+# OS / Editor files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
