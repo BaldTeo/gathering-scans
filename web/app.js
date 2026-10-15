@@ -1193,6 +1193,8 @@
       });
 
       tr.errorTarget = 6.0;
+      if (tr.downloadQueue) tr.downloadQueue.maxJobs = 12;
+      if (tr.parseQueue) tr.parseQueue.maxJobs = 6;
       previewThree.modelPivot.add(tr.group);
       previewThree.tilesRenderer = tr;
     }
@@ -3549,10 +3551,13 @@
             });
           }
         });
+        syncCompareLoaderProgress();
       }
     });
 
     tr.errorTarget = 6.0;
+    if (tr.downloadQueue) tr.downloadQueue.maxJobs = 12;
+    if (tr.parseQueue) tr.parseQueue.maxJobs = 6;
     side.pivot.add(tr.group);
     side.tilesRenderer = tr;
   }

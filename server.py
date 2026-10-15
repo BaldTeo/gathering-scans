@@ -18,6 +18,7 @@ import socket
 import struct
 import base64
 import shutil
+import hashlib
 import mimetypes
 import threading
 import http.client
@@ -56,10 +57,13 @@ from pc_worker.surveying_engine import SurveyingEngine
 from pc_worker.auth_and_sharing import AuthAndSharingManager
 from pc_worker.gchat_notifier import GoogleChatNotifier
 
+DATA_DIR = os.path.join(BASE_DIR, "data")
 WEB_DIR = os.path.join(BASE_DIR, "web")
-THUMBS_DIR = os.path.join(BASE_DIR, "data", "thumbnails")
+THUMBS_DIR = os.path.join(DATA_DIR, "thumbnails")
+GLB_CACHE_DIR = os.path.join(DATA_DIR, "glb_cache")
 os.makedirs(WEB_DIR, exist_ok=True)
 os.makedirs(THUMBS_DIR, exist_ok=True)
+os.makedirs(GLB_CACHE_DIR, exist_ok=True)
 
 # Initialize Singletons
 DB = ScanQueueDB()
@@ -665,6 +669,47 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
         range_header = self.headers.get("Range")
         accept_enc = self.headers.get("Accept-Encoding", "").lower()
 
+        if ext == ".glb" and not download_name and file_size > 700_000:
+            try:
+                mtime = os.path.getmtime(file_path)
+                os.makedirs(GLB_CACHE_DIR, exist_ok=True)
+                key_hash = hashlib.md5(f"v2:{file_path}:{int(mtime)}:{file_size}".encode("utf-8")).hexdigest()
+                opt_disk_path = os.path.join(GLB_CACHE_DIR, f"{key_hash}.glb")
+                gz_disk_path = os.path.join(GLB_CACHE_DIR, f"{key_hash}.glb.gz")
+                if not os.path.isfile(opt_disk_path) or not os.path.isfile(gz_disk_path):
+                    with open(file_path, "rb") as f:
+                        raw_bytes = f.read()
+                    opt_bytes = self._optimize_cesium_glb_bytes(raw_bytes)
+                    gz_bytes = gzip.compress(opt_bytes, compresslevel=6)
+                    with open(opt_disk_path, "wb") as df:
+                        df.write(opt_bytes)
+                    with open(gz_disk_path, "wb") as df:
+                        df.write(gz_bytes)
+                if not range_header and "gzip" in accept_enc:
+                    cached = self._GZIP_FILE_CACHE.get(gz_disk_path)
+                    if cached and cached[0] == mtime:
+                        gz_bytes = cached[1]
+                    else:
+                        with open(gz_disk_path, "rb") as df:
+                            gz_bytes = df.read()
+                        if len(self._GZIP_FILE_CACHE) < 256:
+                            self._GZIP_FILE_CACHE[gz_disk_path] = (mtime, gz_bytes)
+                    self.send_response(200)
+                    self.send_header("Content-Type", ctype)
+                    self.send_header("Content-Encoding", "gzip")
+                    self.send_header("Content-Length", str(len(gz_bytes)))
+                    self.send_header("Cache-Control", "public, max-age=3600")
+                    self.end_headers()
+                    try:
+                        self.wfile.write(gz_bytes)
+                    except (BrokenPipeError, ConnectionResetError):
+                        pass
+                    return
+                file_path = opt_disk_path
+                file_size = os.path.getsize(file_path)
+            except Exception:
+                pass
+
         # Gzip-compress .json, .glb, .js, .css files for fast reverse-tunnel streaming
         if ext in (".json", ".glb", ".js", ".css") and not range_header and not download_name and "gzip" in accept_enc and 1024 < file_size <= 16 * 1024 * 1024:
             try:
@@ -673,27 +718,9 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
                 if cached and cached[0] == mtime:
                     gz_bytes = cached[1]
                 else:
-                    disk_cache_path = None
-                    if ext == ".glb":
-                        glb_cache_dir = os.path.join(DATA_DIR, "glb_cache")
-                        os.makedirs(glb_cache_dir, exist_ok=True)
-                        key_hash = hashlib.md5(f"v2:{file_path}:{int(mtime)}:{file_size}".encode("utf-8")).hexdigest()
-                        disk_cache_path = os.path.join(glb_cache_dir, f"{key_hash}.glb.gz")
-                    if disk_cache_path and os.path.isfile(disk_cache_path):
-                        with open(disk_cache_path, "rb") as df:
-                            gz_bytes = df.read()
-                    else:
-                        with open(file_path, "rb") as f:
-                            raw_bytes = f.read()
-                        if ext == ".glb":
-                            raw_bytes = self._optimize_cesium_glb_bytes(raw_bytes)
-                        gz_bytes = gzip.compress(raw_bytes, compresslevel=6 if ext == ".glb" else 1)
-                        if disk_cache_path:
-                            try:
-                                with open(disk_cache_path, "wb") as df:
-                                    df.write(gz_bytes)
-                            except Exception:
-                                pass
+                    with open(file_path, "rb") as f:
+                        raw_bytes = f.read()
+                    gz_bytes = gzip.compress(raw_bytes, compresslevel=1)
                     if len(self._GZIP_FILE_CACHE) < 256:
                         self._GZIP_FILE_CACHE[file_path] = (mtime, gz_bytes)
                 self.send_response(200)
