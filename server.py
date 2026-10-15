@@ -217,6 +217,7 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
             ".mtl": "text/plain; charset=utf-8",
             ".dxf": "application/dxf",
             ".dwg": "application/acad",
+            ".pdf": "application/pdf",
             ".csv": "text/csv; charset=utf-8",
             ".js": "application/javascript; charset=utf-8",
             ".css": "text/css; charset=utf-8",
@@ -836,17 +837,22 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
             self.send_json({"error": "Camera photo not found on PC"}, status=404)
             return
 
-        # 14. Serve Generated Reports & Contours (.html, .csv, .dxf, .dwg)
+        # 14. Serve Generated Reports & Contours (.html, .csv, .pdf, .dxf, .dwg)
         if path.startswith("/api/reports/"):
             fname = os.path.basename(path[len("/api/reports/") :])
             fpath = os.path.join(REPORTS_DIR, fname)
-            dl = fname if fname.endswith(".csv") else None
+            if not os.path.isfile(fpath) and os.path.isfile(os.path.join(CONTOURS_DIR, fname)):
+                fpath = os.path.join(CONTOURS_DIR, fname)
+            force_dl = query.get("download", ["0"])[0] == "1"
+            dl = fname if (fname.endswith((".csv", ".dwg", ".dxf")) or force_dl) else None
             self._serve_file_with_range(fpath, download_name=dl)
             return
 
         if path.startswith("/api/contours/"):
             fname = os.path.basename(path[len("/api/contours/") :])
             fpath = os.path.join(CONTOURS_DIR, fname)
+            if not os.path.isfile(fpath) and os.path.isfile(os.path.join(REPORTS_DIR, fname)):
+                fpath = os.path.join(REPORTS_DIR, fname)
             self._serve_file_with_range(fpath, download_name=fname)
             return
 
@@ -924,8 +930,8 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
                 self.send_json(res)
                 return
 
-            # 3. Civil Surveying: Elevation Contours + .DXF / .DWG Export
-            if path == "/api/survey/contours":
+            # 3. Civil Surveying: Elevation Contours + Civil3D.dwg & A3 Survey Report .PDF Export
+            if path in ("/api/survey/contours", "/api/survey/report"):
                 if share_token:
                     ok, reason, _, _ = AUTH_SHARE.validate_share_access(
                         share_token, requested_scan_id=payload.get("scan_id")
@@ -933,7 +939,7 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
                     if not ok:
                         self.send_json({"error": reason}, status=403)
                         return
-                res = SURVEY.generate_elevation_contours(payload)
+                res = SURVEY.generate_civil3d_survey_report(payload)
                 self.send_json(res)
                 return
 

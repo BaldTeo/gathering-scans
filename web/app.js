@@ -68,6 +68,7 @@
     },
     cachedScanIds: new Set(JSON.parse(localStorage.getItem("gs_cached_scans") || '["quchi_20261005_merged"]')),
     measurePoints: [],
+    maskBoundaryPoints: [],
     completedMeasurements: [],
     tempDistanceObjects: [],
     tempDistanceBadges: [],
@@ -1268,7 +1269,10 @@
         if (hoverPt) {
           renderDistanceVisuals(hoverPt, null);
         }
-      } else if ((STATE.activeTool === "volume" || STATE.activeTool === "area") && STATE.measurePoints.length >= 1) {
+      } else if (
+        (STATE.activeTool === "volume" || STATE.activeTool === "area" || STATE.activeTool === "contours") &&
+        STATE.measurePoints.length >= 1
+      ) {
         const hoverPt = pickStudio3DPoint(e.clientX, e.clientY);
         if (hoverPt) {
           renderPolygonRubberband(hoverPt);
@@ -1953,6 +1957,7 @@
       }
       if (STATE.measurePoints.length >= 3) {
         const pts = STATE.measurePoints.slice();
+        STATE.maskBoundaryPoints = pts.map((p) => p.clone());
         const loopPts = [...pts, pts[0]];
         const lineGeom = new THREE.BufferGeometry().setFromPoints(loopPts);
         studioThree.overlayGroup.add(new THREE.Line(lineGeom, new THREE.LineBasicMaterial({ color: 0x0284c7, depthTest: false })));
@@ -1986,7 +1991,8 @@
             studioThree.polyPreviewGroup.remove(studioThree.polyPreviewGroup.children[0]);
           }
         }
-        showToast(`Cut/Fill polygon locked (${STATE.measurePoints.length} vertices)`);
+        STATE.maskBoundaryPoints = STATE.measurePoints.map((p) => p.clone());
+        showToast(`Cut/Fill & Mask boundary polygon locked (${STATE.measurePoints.length} vertices)`);
         STATE.measurePoints = [];
         return;
       }
@@ -1998,9 +2004,37 @@
       drawPlacedCutFillPolygon3D(pts, null);
 
       if (pts.length >= 3) {
+        STATE.maskBoundaryPoints = pts.map((p) => p.clone());
         openCutFillVolumeInspector(pts);
       } else {
         showToast(`Cut/Fill Point ${pts.length} placed — click ${3 - pts.length} more point${3 - pts.length === 1 ? "" : "s"} to compute volume`);
+      }
+      return;
+    }
+
+    if (tool === "contours") {
+      if (STATE.measurePoints.length >= 3 && pt.distanceTo(STATE.measurePoints[0]) < 1.8) {
+        if (studioThree && studioThree.polyPreviewGroup) {
+          while (studioThree.polyPreviewGroup.children.length > 0) {
+            studioThree.polyPreviewGroup.remove(studioThree.polyPreviewGroup.children[0]);
+          }
+        }
+        STATE.maskBoundaryPoints = STATE.measurePoints.map((p) => p.clone());
+        showToast(`Mask boundary locked (${STATE.maskBoundaryPoints.length} vertices) — updating Civil3D.dwg & A3 PDF`);
+        STATE.measurePoints = [];
+        openContoursInspector();
+        return;
+      }
+
+      STATE.measurePoints.push(pt.clone());
+      const pts = STATE.measurePoints.slice();
+      add3DPinMarker(pt, pts.length === 1 ? 0xff3b30 : 0x0284c7);
+
+      if (pts.length >= 3) {
+        STATE.maskBoundaryPoints = pts.map((p) => p.clone());
+        openContoursInspector();
+      } else {
+        showToast(`Mask Boundary Point ${pts.length} placed — click ${3 - pts.length} more point${3 - pts.length === 1 ? "" : "s"} to clip contours`);
       }
       return;
     }
@@ -2303,94 +2337,347 @@
     drawPlacedCutFillPolygon3D(ptsToRender, res);
   }
 
-  // 3B. Elevation Contours & AutoCAD .DWG / .DXF Exporter
+  // 3B. Survey Report: Mask Boundary, 3D Elevation Contours, Civil3D.dwg & A3 Ready-to-Print PDF Exporter
   async function openContoursInspector() {
-    showSidePanel(
-      `<span>Elevation Contours &amp; CAD Export</span>`,
-      `
-      <p style="font-size:11.5px;color:#475569;margin-bottom:10px;line-height:1.45;">
-        Extracts 3D elevation contours in <strong>TWD97 (121) + TWVD2001</strong> and exports CAD layers (<code>CONTOUR-MAJOR</code>, <code>CONTOUR-MINOR</code>, <code>CONTOUR-LABELS</code>) to <code>.dwg</code> and <code>.dxf</code>.
-      </p>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;" class="gs-form-group">
-        <div>
-          <label>Minor Interval (次等高線 m)</label>
-          <select class="gs-select" id="cntMinorStep">
-            <option value="0.25">0.25 m</option>
-            <option value="0.5" selected>0.50 m</option>
-            <option value="1.0">1.00 m</option>
-            <option value="2.0">2.00 m</option>
-          </select>
+    const activeScan = STATE.activeScan || STATE.scans.find((s) => s.scan_id === STATE.activeScanId) || {};
+    const defaultTitle = `${activeScan.name || STATE.activeScanId} — Topographic Survey`;
+    const maskPts =
+      STATE.maskBoundaryPoints && STATE.maskBoundaryPoints.length >= 3
+        ? STATE.maskBoundaryPoints
+        : STATE.measurePoints && STATE.measurePoints.length >= 3
+        ? STATE.measurePoints
+        : [];
+
+    const panel = document.getElementById("studioSidePanel");
+    const alreadyOpenForContours = panel?.classList.contains("active") && document.getElementById("cntDrawingTitle");
+
+    if (!alreadyOpenForContours) {
+      showSidePanel(
+        `<span>Survey Report (Civil3D.dwg &amp; A3 PDF)</span>`,
+        `
+        <div style="font-size:11px;color:#475569;background:#f1f5f9;border:1px solid #cbd5e1;border-radius:7px;padding:7px 9px;margin-bottom:9px;line-height:1.45;">
+          Uses your active <b>Mask Boundary</b> &amp; <b>Contour Lines</b> to generate <code>Civil3D.dwg</code> (real <b>TWD97 XYZ</b>) and a zoom-to-fit <b>A3 Ready-to-Print PDF</b> with filled engineering frame. Click 3+ points on the scan to customize the mask boundary.
         </div>
-        <div>
-          <label>Major Interval (計曲線 m)</label>
-          <select class="gs-select" id="cntMajorStep">
-            <option value="1.0">1.00 m</option>
-            <option value="2.5" selected>2.50 m</option>
-            <option value="5.0">5.00 m</option>
-          </select>
+        <div class="gs-form-group">
+          <label>Engineering Frame Title (圖名 / 掃描專案名稱)</label>
+          <input type="text" class="gs-input" id="cntDrawingTitle" value="${defaultTitle}" />
         </div>
-      </div>
-      <button type="button" class="gs-top-btn accent" style="width:100%;justify-content:center;margin-bottom:8px;" id="btnGenerateContours" title="Generate 3D Contours &amp; CAD Files">
-        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8">
-          <ellipse cx="12" cy="12" rx="9" ry="5"/><ellipse cx="12" cy="12" rx="5" ry="2.5"/>
-        </svg>
-        <span>Generate</span>
-      </button>
-      <div id="cntResultContainer"></div>
-      `
-    );
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;" class="gs-form-group">
+          <div>
+            <label>Minor Interval (次等高線 m)</label>
+            <select class="gs-select" id="cntMinorStep">
+              <option value="0.25">0.25 m</option>
+              <option value="0.5" selected>0.50 m</option>
+              <option value="1.0">1.00 m</option>
+              <option value="2.0">2.00 m</option>
+            </select>
+          </div>
+          <div>
+            <label>Major Interval (計曲線 m)</label>
+            <select class="gs-select" id="cntMajorStep">
+              <option value="1.0">1.00 m</option>
+              <option value="2.5" selected>2.50 m</option>
+              <option value="5.0">5.00 m</option>
+            </select>
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;" class="gs-form-group">
+          <div>
+            <label>Surveyor (測量工程師)</label>
+            <input type="text" class="gs-input" id="cntEngineerName" value="${STATE.currentUser?.name || "Glib Ivanov"}" />
+          </div>
+          <div>
+            <label>Mask Boundary (邊界遮罩)</label>
+            <div style="display:flex;gap:4px;">
+              <button type="button" class="btn-xs" style="flex:1;justify-content:center;" id="btnDrawCustomMask" title="Click 3+ points on 3D scan to define custom mask boundary">Draw</button>
+              <button type="button" class="btn-xs" style="flex:1;justify-content:center;" id="btnResetCustomMask" title="Reset to default scan footprint boundary">Reset</button>
+            </div>
+          </div>
+        </div>
+        <button type="button" class="gs-top-btn accent" style="width:100%;justify-content:center;margin-bottom:8px;" id="btnGenerateContours" title="Generate Civil3D.dwg &amp; A3 Ready-to-Print PDF Survey Report">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>
+          </svg>
+          <span>Create Survey Report</span>
+        </button>
+        <div id="cntResultContainer"></div>
+        `
+      );
+
+      document.getElementById("btnDrawCustomMask")?.addEventListener("click", () => {
+        STATE.activeTool = "contours";
+        STATE.measurePoints = [];
+        document
+          .querySelectorAll('#bimMeasurementToolbar .autodesk-measure-btn:not([data-tool="snap"])')
+          .forEach((b) => b.classList.toggle("active", b.dataset.tool === "contours"));
+        showToast("Click 3+ points on the 3D scan to draw a custom Mask Boundary");
+      });
+
+      document.getElementById("btnResetCustomMask")?.addEventListener("click", () => {
+        STATE.maskBoundaryPoints = [];
+        STATE.measurePoints = [];
+        runContours();
+        showToast("Reset to default scan survey mask boundary");
+      });
+    }
 
     const runContours = async () => {
       const minor = parseFloat(document.getElementById("cntMinorStep")?.value || "0.5");
       const major = parseFloat(document.getElementById("cntMajorStep")?.value || "2.5");
+      const drawingTitle = document.getElementById("cntDrawingTitle")?.value || defaultTitle;
+      const engineerName = document.getElementById("cntEngineerName")?.value || "Glib Ivanov";
+
+      const currentMaskPts =
+        STATE.maskBoundaryPoints && STATE.maskBoundaryPoints.length >= 3
+          ? STATE.maskBoundaryPoints
+          : STATE.measurePoints && STATE.measurePoints.length >= 3
+          ? STATE.measurePoints
+          : maskPts;
+
+      const maskPayload =
+        currentMaskPts && currentMaskPts.length >= 3
+          ? currentMaskPts.map((p) => {
+              const t = localToTwd97(p);
+              return [t.e, t.n, t.h];
+            })
+          : [];
+
       try {
-        const res = await apiPost("/api/survey/contours", {
+        const res = await apiPost("/api/survey/report", {
           scan_id: STATE.activeScanId,
           minor_interval_m: minor,
           major_interval_m: major,
+          drawing_title: drawingTitle,
+          engineer_name: engineerName,
+          mask_polygon: maskPayload,
         });
         STATE.lastContoursResult = res;
         renderContours3DAndPanel(res);
       } catch (err) {
-        showToast(`Contour Error: ${err.message}`);
+        showToast(`Survey Report Error: ${err.message}`);
       }
     };
 
-    document.getElementById("btnGenerateContours")?.addEventListener("click", runContours);
+    const btnGen = document.getElementById("btnGenerateContours");
+    if (btnGen) btnGen.onclick = runContours;
     await runContours();
+  }
+
+  function drawA3PreviewCanvas(canvas, res) {
+    if (!canvas || !res) return;
+    const ctx = canvas.getContext("2d");
+    const w = canvas.width;
+    const h = canvas.height;
+    ctx.clearRect(0, 0, w, h);
+
+    // A3 Sheet background
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, w, h);
+
+    // Double engineering frame border
+    ctx.strokeStyle = "#0f172a";
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(6, 6, w - 12, h - 12);
+    ctx.lineWidth = 0.6;
+    ctx.strokeRect(9, 9, w - 18, h - 18);
+
+    // Map viewport [14 .. 232] x [14 .. h-14]
+    const vpX = 14;
+    const vpY = 14;
+    const vpW = 216;
+    const vpH = h - 28;
+    ctx.fillStyle = "#f8fafc";
+    ctx.fillRect(vpX, vpY, vpW, vpH);
+    ctx.strokeStyle = "#0f172a";
+    ctx.lineWidth = 1;
+    ctx.strokeRect(vpX, vpY, vpW, vpH);
+
+    const polyTwd = res.mask_polygon_twd97 || [];
+    if (polyTwd.length >= 3) {
+      const minE = Math.min(...polyTwd.map((p) => p[0]));
+      const maxE = Math.max(...polyTwd.map((p) => p[0]));
+      const minN = Math.min(...polyTwd.map((p) => p[1]));
+      const maxN = Math.max(...polyTwd.map((p) => p[1]));
+      const ce = 0.5 * (minE + maxE);
+      const cn = 0.5 * (minN + maxN);
+      const span = Math.max(maxE - minE, maxN - minN, 6.0) * 1.24;
+      const scale = Math.min(vpW / span, vpH / span);
+
+      const toXY = (e, n) => [
+        vpX + vpW * 0.5 + (e - ce) * scale,
+        vpY + vpH * 0.5 - (n - cn) * scale,
+      ];
+
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(vpX, vpY, vpW, vpH);
+      ctx.clip();
+
+      // Grid lines
+      ctx.strokeStyle = "#e2e8f0";
+      ctx.lineWidth = 0.6;
+      for (let gx = vpX + 24; gx < vpX + vpW; gx += 32) {
+        ctx.beginPath();
+        ctx.moveTo(gx, vpY);
+        ctx.lineTo(gx, vpY + vpH);
+        ctx.stroke();
+      }
+      for (let gy = vpY + 24; gy < vpY + vpH; gy += 32) {
+        ctx.beginPath();
+        ctx.moveTo(vpX, gy);
+        ctx.lineTo(vpX + vpW, gy);
+        ctx.stroke();
+      }
+
+      // Shaded Mask Boundary
+      ctx.fillStyle = "rgba(2, 132, 199, 0.08)";
+      ctx.beginPath();
+      polyTwd.forEach((p, idx) => {
+        const [x, y] = toXY(p[0], p[1]);
+        if (idx === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      });
+      ctx.closePath();
+      ctx.fill();
+
+      // Clipped Contours
+      (res.contours || []).forEach((c) => {
+        const pts = c.points_twd97 || [];
+        if (pts.length < 2) return;
+        ctx.strokeStyle = c.is_major ? "#0284c7" : "#94a3b8";
+        ctx.lineWidth = c.is_major ? 1.2 : 0.55;
+        ctx.beginPath();
+        pts.forEach((p, idx) => {
+          const [x, y] = toXY(p[0], p[1]);
+          if (idx === 0) ctx.moveTo(x, y);
+          else ctx.lineTo(x, y);
+        });
+        ctx.stroke();
+      });
+
+      // Mask Boundary Stroke & Vertices
+      ctx.strokeStyle = "#0f172a";
+      ctx.lineWidth = 1.4;
+      ctx.setLineDash([5, 2]);
+      ctx.beginPath();
+      polyTwd.forEach((p, idx) => {
+        const [x, y] = toXY(p[0], p[1]);
+        if (idx === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      });
+      ctx.closePath();
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      polyTwd.forEach((p, idx) => {
+        const [x, y] = toXY(p[0], p[1]);
+        ctx.fillStyle = "#0284c7";
+        ctx.fillRect(x - 2, y - 2, 4, 4);
+        ctx.fillStyle = "#0f172a";
+        ctx.font = "bold 7px monospace";
+        ctx.fillText(`V${idx + 1}`, x + 3, y - 2);
+      });
+
+      ctx.restore();
+    }
+
+    // North Arrow & Scale inside viewport
+    ctx.fillStyle = "#0f172a";
+    ctx.font = "bold 8px Inter, sans-serif";
+    ctx.fillText("N", vpX + vpW - 14, vpY + 14);
+    ctx.fillText(`SCALE 1:${res.scale_denom || 250} (A3 FIT)`, vpX + 6, vpY + vpH - 6);
+
+    // Right Engineering Frame & Title Block [234 .. w-10]
+    const tbX = 234;
+    const tbW = w - tbX - 10;
+    ctx.strokeStyle = "#0f172a";
+    ctx.lineWidth = 0.9;
+    ctx.strokeRect(tbX, 14, tbW, vpH);
+
+    // Gatheren Company Banner in Title Block
+    const banY = vpY + vpH - 54;
+    ctx.fillStyle = "#0f172a";
+    ctx.fillRect(tbX, banY, tbW, 20);
+    ctx.fillStyle = "#0284c7";
+    ctx.beginPath();
+    ctx.arc(tbX + 10, banY + 10, 5.5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#ffffff";
+    ctx.font = "bold 8px Inter, sans-serif";
+    ctx.fillText("GATHEREN", tbX + 19, banY + 9);
+    ctx.fillStyle = "#38bdf8";
+    ctx.font = "bold 5.5px Inter, sans-serif";
+    ctx.fillText("GATHERINGSCANS C3D", tbX + 19, banY + 16);
+
+    // Title block metadata rows
+    ctx.fillStyle = "#0f172a";
+    ctx.font = "bold 6.5px Inter, sans-serif";
+    ctx.fillText("BOUNDARY SCHEDULE", tbX + 4, 24);
+    ctx.font = "6px monospace";
+    (polyTwd.slice(0, 6) || []).forEach((p, i) => {
+      ctx.fillText(`V${i + 1} E:${p[0].toFixed(0)} N:${p[1].toFixed(0)}`, tbX + 4, 34 + i * 9);
+    });
+
+    ctx.font = "bold 6.5px Inter, sans-serif";
+    ctx.fillText(String(res.project_group || "QuChi Dam").slice(0, 18), tbX + 4, banY + 29);
+    ctx.font = "6px Inter, sans-serif";
+    ctx.fillStyle = "#475569";
+    ctx.fillText(`Date: ${String(res.survey_date || "").slice(0, 10)}`, tbX + 4, banY + 38);
+    ctx.fillStyle = "#0284c7";
+    ctx.font = "bold 6.5px monospace";
+    ctx.fillText(`A3 1:${res.scale_denom || 250} · TWD97`, tbX + 4, banY + 48);
   }
 
   function renderContours3DAndPanel(res) {
     const box = document.getElementById("cntResultContainer");
     if (box) {
       box.innerHTML = `
+        <div style="margin-bottom:8px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;font-size:10.5px;font-weight:700;color:#475569;margin-bottom:4px;">
+            <span>A3 ENGINEERING SHEET PREVIEW (420×297mm)</span>
+            <span style="color:#0284c7;">SCALE 1:${res.scale_denom || 250}</span>
+          </div>
+          <canvas id="a3SheetPreviewCanvas" width="336" height="210" style="width:100%;background:#ffffff;border:1px solid #cbd5e1;border-radius:7px;box-shadow:0 1px 3px rgba(15,23,42,0.06);"></canvas>
+        </div>
         <div class="gs-metric-grid">
           <div class="gs-metric-box">
-            <div class="lbl">Extracted Contours</div>
+            <div class="lbl">Clipped Contours</div>
             <div class="val" style="color:#0284c7;">${res.contour_count} lines</div>
           </div>
           <div class="gs-metric-box">
-            <div class="lbl">TWVD2001 Range</div>
+            <div class="lbl">A3 Fit Scale</div>
+            <div class="val">1:${res.scale_denom || 250}</div>
+          </div>
+          <div class="gs-metric-box">
+            <div class="lbl">Mask Area</div>
+            <div class="val">${res.planar_area_m2 || 0} m²</div>
+          </div>
+          <div class="gs-metric-box">
+            <div class="lbl">TWVD2001 Elev</div>
             <div class="val">+${res.elevation_range_m[0]}~+${res.elevation_range_m[1]}m</div>
           </div>
         </div>
         <div style="display:flex;gap:6px;margin-top:8px;">
-          <a class="btn-xs primary" style="flex:1;" href="${res.dwg_url}" download title="Export AutoCAD .DWG">
+          <a class="btn-xs primary" style="flex:1.2;justify-content:center;" href="${res.civil3d_dwg_url || res.dwg_url}" download="Civil3D.dwg" title="Download Civil3D.dwg (Real TWD97 XYZ + A3 Engineering Frame)">
             <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8">
               <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
               <polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
             </svg>
-            <span>DWG</span>
+            <span>Civil3D.dwg</span>
           </a>
-          <a class="btn-xs" style="flex:1;" href="${res.dxf_url}" download title="Export AutoCAD .DXF">
+          <a class="btn-xs primary" style="flex:1;justify-content:center;" href="${res.pdf_url}" target="_blank" title="Open Ready-to-Print A3 Survey Report (.PDF)">
             <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8">
-              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-              <polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>
             </svg>
+            <span>A3 PDF</span>
+          </a>
+          <a class="btn-xs" style="flex:0.8;justify-content:center;" href="${res.dxf_url}" download title="Export AutoCAD .DXF">
             <span>DXF</span>
           </a>
         </div>
       `;
+      const previewCanvas = document.getElementById("a3SheetPreviewCanvas");
+      if (previewCanvas) drawA3PreviewCanvas(previewCanvas, res);
     }
 
     if (!studioThree) return;
@@ -2398,14 +2685,42 @@
       studioThree.contourGroup.remove(studioThree.contourGroup.children[0]);
     }
 
+    // 1. Render Clipped 3D Contours in TWD97 / Local 3D Space
     (res.contours || []).forEach((c) => {
       const pts = c.points_local.map((p) => new THREE.Vector3(p[0], p[1] + 0.15, p[2]));
+      if (pts.length < 2) return;
       const geom = new THREE.BufferGeometry().setFromPoints(pts);
       const color = c.is_major ? 0x0284c7 : 0x64748b;
       const line = new THREE.Line(geom, new THREE.LineBasicMaterial({ color }));
       studioThree.contourGroup.add(line);
     });
-    showToast(`Rendered ${res.contour_count} 3D elevation contours in TWD97 (121) + TWVD2001`);
+
+    // 2. Render Active 3D Mask Boundary Loop & Vertex Monuments
+    const maskLocal = res.mask_polygon_local || [];
+    if (maskLocal.length >= 3) {
+      const bPts = maskLocal.map((p) => new THREE.Vector3(p[0], p[1] + 0.25, p[2]));
+      const loopPts = [...bPts, bPts[0].clone()];
+      const bLine = new THREE.Line(
+        new THREE.BufferGeometry().setFromPoints(loopPts),
+        new THREE.LineBasicMaterial({ color: 0x38bdf8, linewidth: 2, depthTest: false })
+      );
+      bLine.renderOrder = 1001;
+      studioThree.contourGroup.add(bLine);
+
+      bPts.forEach((bp, idx) => {
+        const vGeo = new THREE.SphereGeometry(0.42, 14, 14);
+        const vMat = new THREE.MeshBasicMaterial({
+          color: idx === 0 ? 0xff3b30 : 0x0284c7,
+          depthTest: false,
+        });
+        const vMesh = new THREE.Mesh(vGeo, vMat);
+        vMesh.position.copy(bp);
+        vMesh.renderOrder = 1002;
+        studioThree.contourGroup.add(vMesh);
+      });
+    }
+
+    showToast(`Survey Report ready: Civil3D.dwg + A3 PDF (${res.contour_count} clipped contours, 1:${res.scale_denom || 250})`);
   }
 
   // 3C. Cross-Section Elevation Profile Graph
@@ -2820,6 +3135,11 @@
   document.getElementById("btnOpenOptimizer")?.addEventListener("click", () => {
     if (STATE.activeView !== "studio") switchView("studio", STATE.activeScanId);
     openOptimizerInspector();
+  });
+
+  document.getElementById("btnStudioSurveyReport")?.addEventListener("click", () => {
+    if (STATE.activeView !== "studio") switchView("studio", STATE.activeScanId);
+    openContoursInspector();
   });
 
   // ============================================================================
