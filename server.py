@@ -9,6 +9,7 @@ Civil Surveying & CAD Export APIs, Scoped External Share Links, and Client-Side 
 import os
 import re
 import sys
+import gzip
 import json
 import time
 import queue
@@ -332,6 +333,8 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
         q_tok = query_params.get("share", [""])[0].strip()
         return q_tok
 
+    _GZIP_FILE_CACHE: Dict[str, Tuple[float, bytes]] = {}
+
     def _serve_file_with_range(
         self, file_path: str, content_type: Optional[str] = None, download_name: Optional[str] = None
     ):
@@ -345,6 +348,35 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
         ctype = content_type or self.extensions_map.get(ext) or guessed_type or "application/octet-stream"
 
         range_header = self.headers.get("Range")
+        accept_enc = self.headers.get("Accept-Encoding", "").lower()
+
+        # Gzip-compress .json files (e.g. 2MB-17MB tileset.json -> 97KB-1.2MB) for 13x faster reverse-tunnel streaming
+        if ext in (".json", ".js", ".css") and not range_header and not download_name and "gzip" in accept_enc and file_size > 1024:
+            try:
+                mtime = os.path.getmtime(file_path)
+                cached = self._GZIP_FILE_CACHE.get(file_path)
+                if cached and cached[0] == mtime:
+                    gz_bytes = cached[1]
+                else:
+                    with open(file_path, "rb") as f:
+                        raw_bytes = f.read()
+                    gz_bytes = gzip.compress(raw_bytes, compresslevel=1)
+                    if len(self._GZIP_FILE_CACHE) < 64:
+                        self._GZIP_FILE_CACHE[file_path] = (mtime, gz_bytes)
+                self.send_response(200)
+                self.send_header("Content-Type", ctype)
+                self.send_header("Content-Encoding", "gzip")
+                self.send_header("Content-Length", str(len(gz_bytes)))
+                self.send_header("Cache-Control", "public, max-age=3600")
+                self.end_headers()
+                try:
+                    self.wfile.write(gz_bytes)
+                except (BrokenPipeError, ConnectionResetError):
+                    pass
+                return
+            except Exception:
+                pass
+
         start, end = 0, file_size - 1
         status_code = 200
 

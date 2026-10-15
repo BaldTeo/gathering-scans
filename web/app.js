@@ -867,6 +867,7 @@
       }
       ctx._loadingDone = false;
       ctx._tilesetReady = false;
+      ctx._tilesetReadyMs = 0;
       ctx._loadingStartMs = performance.now();
       ctx._maxPct = 6;
       if (scanId) ctx._loadingScanId = scanId;
@@ -901,41 +902,47 @@
     const failed = Number(stats.failed || 0);
     const activeWork = downloading + parsing;
     const pending = activeWork + queued;
-    const elapsed = performance.now() - (ctx._loadingStartMs || 0);
+    const now = performance.now();
+    const elapsed = now - (ctx._loadingStartMs || 0);
+    const sinceTileset = ctx._tilesetReadyMs ? now - ctx._tilesetReadyMs : 0;
 
-    // Complete as soon as all active downloads/parses finish (or if only unscheduled queue items remain after 1.2s)
-    if (loaded > 0 && (pending === 0 || (activeWork === 0 && elapsed > 1200)) && elapsed > 240) {
+    // Complete as soon as >=1 tile is loaded and all active downloads/parses finish
+    if (loaded > 0 && (pending === 0 || (activeWork === 0 && sinceTileset > 900)) && elapsed > 220) {
       finishScanLoader(ctx, prefix, `100% · ${loaded} 3D tiles ready`);
       return;
     }
 
     // If a transient tunnel/network hiccup caused initial tiles to fail with 0 loaded, auto-retry once
-    if (loaded === 0 && activeWork === 0 && failed > 0 && elapsed > 1200) {
+    if (loaded === 0 && activeWork === 0 && failed > 0 && sinceTileset > 1200) {
       if (!ctx._retriedOnce && ctx._loadingScanId && prefix === "preview") {
         ctx._retriedOnce = true;
         loadScanIntoPreview(ctx._loadingScanId);
         return;
       }
-      if (elapsed > 3500) {
+      if (sinceTileset > 8000) {
         finishScanLoader(ctx, prefix, "Scan Ready");
         return;
       }
     }
 
-    if (loaded > 0 || activeWork > 0 || (queued > 0 && elapsed < 3500)) {
+    if (loaded > 0 || activeWork > 0 || queued > 0) {
       const total = Math.max(1, loaded + pending);
-      const timeBoost = activeWork > 0 ? Math.min(18, Math.floor(elapsed / 250)) : 0;
+      const timeBoost = activeWork > 0 ? Math.min(26, Math.floor(elapsed / 220)) : 0;
       const rawPct = Math.round(20 + (loaded / total) * 76) + timeBoost;
-      ctx._maxPct = Math.min(96, Math.max(ctx._maxPct || 20, rawPct));
+      ctx._maxPct = Math.min(96, Math.max(ctx._maxPct || 22, rawPct));
       updateScanLoader(prefix, true, ctx._maxPct, `Streaming 3D Scan · ${loaded} / ${total} tiles`);
       return;
     }
 
-    if (!ctx._tilesetReady && elapsed < 4500) {
-      const waitPct = Math.min(20, 6 + Math.floor(elapsed / 90));
+    if (!ctx._tilesetReady) {
+      const waitPct = Math.min(20, 6 + Math.floor(elapsed / 120));
       ctx._maxPct = Math.max(ctx._maxPct || 6, waitPct);
       updateScanLoader(prefix, true, ctx._maxPct, "Fetching 3D tileset...");
-    } else if (elapsed > 3200) {
+    } else if (sinceTileset < 2500) {
+      // Tileset just arrived; waiting for first frame traversal to schedule .glb downloads
+      ctx._maxPct = Math.max(ctx._maxPct || 22, 22);
+      updateScanLoader(prefix, true, ctx._maxPct, "Streaming 3D tiles...");
+    } else if (sinceTileset > 12000) {
       finishScanLoader(ctx, prefix, "Scan Ready");
     }
   }
@@ -952,6 +959,11 @@
   async function captureAndPersistScanScreenshot(scanId, ctxThree, showManualToast = false) {
     const targetCtx = ctxThree || previewThree || studioThree;
     if (!targetCtx || !targetCtx.renderer || !scanId) return;
+    // Never overwrite thumbnail automatically unless 3D tiles have actually rendered into the scene
+    if (!showManualToast) {
+      const loadedTiles = Number(targetCtx.tilesRenderer?.stats?.loaded || 0);
+      if (targetCtx.tilesRenderer && loadedTiles === 0) return;
+    }
     try {
       targetCtx.renderer.render(targetCtx.scene, targetCtx.camera);
       const dataUrl = targetCtx.renderer.domElement.toDataURL("image/png");
@@ -977,8 +989,16 @@
 
   async function autoCaptureSiteTimelineScreenshots() {
     if (!previewThree || !previewThree.renderer) return;
+    const loadedTiles = Number(previewThree.tilesRenderer?.stats?.loaded || 0);
+    if (previewThree.tilesRenderer && loadedTiles === 0) return;
     const activeId = STATE.selectedTimelineScanId || STATE.activeScanId;
     if (!activeId || STATE.capturedThumbs.has(activeId)) return;
+    // Only auto-capture if tile does not already have a loaded server thumbnail
+    const existingImg = document.querySelector(`img[data-scan-thumb="${activeId}"]`);
+    if (existingImg && existingImg.complete && existingImg.naturalWidth > 400) {
+      STATE.capturedThumbs.add(activeId);
+      return;
+    }
     await captureAndPersistScanScreenshot(activeId, previewThree, false);
   }
 
@@ -989,8 +1009,12 @@
     }
     const rootGe = Number(tr.root.geometricError || 0);
     if (rootGe > 1000) {
-      // Deep PIX4Dmatic octree: use higher errorTarget so level 1-2 tiles stream immediately
-      tr.errorTarget = 16.0;
+      // Deep PIX4Dmatic octree: use higher errorTarget so level 1-2 overview tiles stream immediately
+      tr.errorTarget = 20.0;
+    } else if (tr.root.content && tr.root.content.uri) {
+      // Quadtree where root.glb already contains full-site 2K textured mesh (~318k triangles):
+      // Render root.glb immediately (1 tile) without queuing 46 sub-tiles (230MB) at once; refine on close zoom
+      tr.errorTarget = 380.0;
     }
     // If root has no direct content URI (e.g. PIX4Dmatic cubic octree where root center is in sky),
     // average the bounding box centers of renderable content tiles up to depth 3
@@ -1125,6 +1149,7 @@
 
       tr.addEventListener("load-tileset", () => {
         previewThree._tilesetReady = true;
+        previewThree._tilesetReadyMs = performance.now();
         previewThree._maxPct = Math.max(previewThree._maxPct || 0, 22);
         updateScanLoader("preview", true, previewThree._maxPct, "Streaming 3D tiles...");
         const sphere = new THREE.Sphere();
@@ -1712,6 +1737,7 @@
 
       tr.addEventListener("load-tileset", () => {
         studioThree._tilesetReady = true;
+        studioThree._tilesetReadyMs = performance.now();
         studioThree._maxPct = Math.max(studioThree._maxPct || 0, 22);
         updateScanLoader("studio", true, studioThree._maxPct, "Streaming 3D tiles...");
         const sphere = new THREE.Sphere();
