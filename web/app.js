@@ -906,8 +906,15 @@
     const elapsed = now - (ctx._loadingStartMs || 0);
     const sinceTileset = ctx._tilesetReadyMs ? now - ctx._tilesetReadyMs : 0;
 
-    // Complete as soon as >=1 tile is loaded and all active downloads/parses finish
-    if (loaded > 0 && (pending === 0 || (activeWork === 0 && sinceTileset > 900)) && elapsed > 220) {
+    // Complete as soon as primary 3D tiles are rendered or all active downloads/parses finish
+    const total = Math.max(1, loaded + pending);
+    const enoughTilesReady =
+      loaded > 0 &&
+      (pending === 0 ||
+        (activeWork === 0 && sinceTileset > 900) ||
+        loaded >= Math.min(total, 3) ||
+        (loaded >= 1 && sinceTileset > 6500));
+    if (enoughTilesReady && elapsed > 220) {
       finishScanLoader(ctx, prefix, `100% · ${loaded} 3D tiles ready`);
       return;
     }
@@ -916,7 +923,7 @@
     if (loaded === 0 && activeWork === 0 && failed > 0 && sinceTileset > 1200) {
       if (!ctx._retriedOnce && ctx._loadingScanId && prefix === "preview") {
         ctx._retriedOnce = true;
-        loadScanIntoPreview(ctx._loadingScanId);
+        loadScanIntoPreview(ctx._loadingScanId, true);
         return;
       }
       if (sinceTileset > 8000) {
@@ -926,7 +933,6 @@
     }
 
     if (loaded > 0 || activeWork > 0 || queued > 0) {
-      const total = Math.max(1, loaded + pending);
       const timeBoost = activeWork > 0 ? Math.min(26, Math.floor(elapsed / 220)) : 0;
       const rawPct = Math.round(20 + (loaded / total) * 76) + timeBoost;
       ctx._maxPct = Math.min(96, Math.max(ctx._maxPct || 22, rawPct));
@@ -959,11 +965,9 @@
   async function captureAndPersistScanScreenshot(scanId, ctxThree, showManualToast = false) {
     const targetCtx = ctxThree || previewThree || studioThree;
     if (!targetCtx || !targetCtx.renderer || !scanId) return;
-    // Never overwrite thumbnail automatically unless 3D tiles have actually rendered into the scene
-    if (!showManualToast) {
-      const loadedTiles = Number(targetCtx.tilesRenderer?.stats?.loaded || 0);
-      if (targetCtx.tilesRenderer && loadedTiles === 0) return;
-    }
+    // Never overwrite thumbnail unless 3D tiles have actually rendered into the scene
+    const loadedTiles = Number(targetCtx.tilesRenderer?.stats?.loaded || 0);
+    if (targetCtx.tilesRenderer && loadedTiles === 0) return;
     try {
       targetCtx.renderer.render(targetCtx.scene, targetCtx.camera);
       const dataUrl = targetCtx.renderer.domElement.toDataURL("image/png");
@@ -1049,10 +1053,23 @@
     return outSphere.radius > 0;
   }
 
-  function loadScanIntoPreview(scanId) {
+  function loadScanIntoPreview(scanId, forceReload = false) {
     initPreview3D();
     const scan = STATE.scans.find((s) => s.scan_id === scanId) || STATE.scans[0];
     if (!scan || !previewThree) return;
+
+    // Avoid tearing down an already active/in-flight stream of the exact same scan
+    if (
+      !forceReload &&
+      previewThree._loadingScanId === scan.scan_id &&
+      previewThree.tilesRenderer &&
+      Number(previewThree.tilesRenderer.stats?.failed || 0) === 0
+    ) {
+      STATE.selectedTimelineScanId = scan.scan_id;
+      STATE.activeScanId = scan.scan_id;
+      STATE.activeScan = scan;
+      return;
+    }
 
     STATE.selectedTimelineScanId = scan.scan_id;
     STATE.activeScanId = scan.scan_id;

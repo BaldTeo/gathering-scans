@@ -13,6 +13,7 @@ import gzip
 import json
 import time
 import queue
+import select
 import socket
 import struct
 import base64
@@ -148,6 +149,14 @@ def _acquire_vps_tunnel_socket(timeout: float = 6.0) -> Tuple[Optional[socket.so
             continue
         max_idle = 210.0 if proto_ver >= 2 else 42.0
         if done_evt.is_set() or (time.time() - ts > max_idle):
+            done_evt.set()
+            continue
+        try:
+            rlist, _, xlist = select.select([sock], [], [sock], 0)
+            if rlist or xlist:
+                done_evt.set()
+                continue
+        except Exception:
             done_evt.set()
             continue
         return sock, done_evt, proto_ver
@@ -334,6 +343,63 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
         return q_tok
 
     _GZIP_FILE_CACHE: Dict[str, Tuple[float, bytes]] = {}
+    _OPTIMIZED_TILESET_CACHE: Dict[str, Tuple[float, bytes]] = {}
+
+    def _serve_optimized_tileset_json(self, ts_path: str):
+        try:
+            mtime = os.path.getmtime(ts_path)
+            cached = self._OPTIMIZED_TILESET_CACHE.get(ts_path)
+            if cached and cached[0] == mtime:
+                raw_json = cached[1]
+            else:
+                with open(ts_path, "r", encoding="utf-8") as f:
+                    ts = json.load(f)
+                base_dir = os.path.dirname(ts_path)
+                root = ts.get("root") or {}
+                r_content = root.get("content") or {}
+                r_uri = r_content.get("uri") if isinstance(r_content, dict) else None
+                if r_uri:
+                    r_file = os.path.join(base_dir, r_uri)
+                    if os.path.isfile(r_file) and os.path.getsize(r_file) >= 800_000:
+                        # Root .glb already contains the full-site 2K mesh (~318k triangles)
+                        root["geometricError"] = 0.0
+                        root["children"] = []
+                    else:
+                        # Small root .glb (e.g. QuChi_1_20260921): cap at Depth 2
+                        for c1 in root.get("children") or []:
+                            for c2 in c1.get("children") or []:
+                                c2["geometricError"] = 0.0
+                                c2["children"] = []
+                else:
+                    # PIX4Dmatic Cesium octree: prune each octant branch at its first content node (100k-300k triangles per tile)
+                    def _prune_branch(node: dict, depth: int = 0) -> bool:
+                        c = node.get("content") or {}
+                        if isinstance(c, dict) and c.get("uri"):
+                            node["geometricError"] = 0.0
+                            node["children"] = []
+                            return True
+                        if depth >= 2:
+                            node["children"] = []
+                            return False
+                        kept = []
+                        for ch in node.get("children") or []:
+                            if _prune_branch(ch, depth + 1):
+                                kept.append(ch)
+                        node["children"] = kept
+                        return len(kept) > 0
+
+                    _prune_branch(root, 0)
+                raw_json = json.dumps(ts, separators=(",", ":")).encode("utf-8")
+                self._OPTIMIZED_TILESET_CACHE[ts_path] = (mtime, raw_json)
+
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Content-Length", str(len(raw_json)))
+            self.send_header("Cache-Control", "no-cache")
+            self.end_headers()
+            self.wfile.write(raw_json)
+        except Exception:
+            self._serve_file_with_range(ts_path)
 
     def _serve_file_with_range(
         self, file_path: str, content_type: Optional[str] = None, download_name: Optional[str] = None
@@ -350,8 +416,8 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
         range_header = self.headers.get("Range")
         accept_enc = self.headers.get("Accept-Encoding", "").lower()
 
-        # Gzip-compress .json files (e.g. 2MB-17MB tileset.json -> 97KB-1.2MB) for 13x faster reverse-tunnel streaming
-        if ext in (".json", ".js", ".css") and not range_header and not download_name and "gzip" in accept_enc and file_size > 1024:
+        # Gzip-compress .json, .glb, .js, .css files for fast reverse-tunnel streaming
+        if ext in (".json", ".glb", ".js", ".css") and not range_header and not download_name and "gzip" in accept_enc and 1024 < file_size <= 16 * 1024 * 1024:
             try:
                 mtime = os.path.getmtime(file_path)
                 cached = self._GZIP_FILE_CACHE.get(file_path)
@@ -361,7 +427,7 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
                     with open(file_path, "rb") as f:
                         raw_bytes = f.read()
                     gz_bytes = gzip.compress(raw_bytes, compresslevel=1)
-                    if len(self._GZIP_FILE_CACHE) < 64:
+                    if len(self._GZIP_FILE_CACHE) < 96:
                         self._GZIP_FILE_CACHE[file_path] = (mtime, gz_bytes)
                 self.send_response(200)
                 self.send_header("Content-Type", ctype)
@@ -427,7 +493,8 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
             s["stream_url"] = f"/stream/{sid}/{os.path.basename(ts_path)}{q_suffix}"
             s["stream_type"] = "glb"
         else:
-            s["stream_url"] = f"/stream/{sid}/tileset.json{q_suffix}"
+            ts_q = f"?v=opt3&share={share_token}" if share_token else "?v=opt3"
+            s["stream_url"] = f"/stream/{sid}/tileset.json{ts_q}"
             s["stream_type"] = "tileset"
         s["download_obj_url"] = f"/api/download?scan_id={sid}&type=obj" + (f"&share={share_token}" if share_token else "")
         s["thumbnail_url"] = f"/api/scans/{sid}/thumbnail{q_suffix}"
@@ -528,6 +595,10 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
             or path.endswith("/thumbnail.png")
             or path.endswith("/tileset.json")
         )
+        if method == "POST" and path.endswith("/thumbnail"):
+            for k in list(_VPS_RAM_FALLBACK_CACHE.keys()):
+                if k.startswith(path):
+                    _VPS_RAM_FALLBACK_CACHE.pop(k, None)
 
         # Try up to 4 sockets from the pool
         for _attempt in range(4):
@@ -977,7 +1048,10 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
 
             ts_path = scan.get("tileset_path") or ""
             if sub_path == "tileset.json" and os.path.isfile(ts_path):
-                self._serve_file_with_range(ts_path)
+                if query.get("full_octree", ["0"])[0] == "1":
+                    self._serve_file_with_range(ts_path)
+                else:
+                    self._serve_optimized_tileset_json(ts_path)
                 return
             base_dir = os.path.dirname(ts_path) if os.path.isfile(ts_path) else ts_path
             safe_sub = os.path.normpath(sub_path).lstrip("\\/")
