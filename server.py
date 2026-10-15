@@ -405,6 +405,171 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
         except Exception:
             self._serve_file_with_range(ts_path)
 
+    @staticmethod
+    def _optimize_cesium_glb_bytes(raw_bytes: bytes) -> bytes:
+        """
+        Fast watertight UV-preserving grid clustering for large uncompressed PIX4Dmatic Cesium .glb tiles
+        (> 900 KB) to reduce reverse-tunnel transfer size by ~4x while preserving 2K JPEG textures.
+        """
+        if len(raw_bytes) < 900_000 or raw_bytes[:4] != b"glTF":
+            return raw_bytes
+        try:
+            import numpy as np
+
+            magic, ver, _ = struct.unpack_from("<4sII", raw_bytes, 0)
+            if ver != 2:
+                return raw_bytes
+            j_len, j_type = struct.unpack_from("<I4s", raw_bytes, 12)
+            if j_type != b"JSON":
+                return raw_bytes
+            b_off = 20 + j_len
+            if b_off + 8 > len(raw_bytes):
+                return raw_bytes
+            b_len, b_type = struct.unpack_from("<I4s", raw_bytes, b_off)
+            if b_type != b"BIN\x00":
+                return raw_bytes
+            j = json.loads(raw_bytes[20 : 20 + j_len].decode("utf-8"))
+            meshes = j.get("meshes") or []
+            if len(meshes) != 1 or len(meshes[0].get("primitives") or []) != 1:
+                return raw_bytes
+            prim = meshes[0]["primitives"][0]
+            attrs = prim.get("attributes") or {}
+            if "POSITION" not in attrs or "TEXCOORD_0" not in attrs or "indices" not in prim:
+                return raw_bytes
+            acc_list = j.get("accessors") or []
+            bv_list = j.get("bufferViews") or []
+            idx_acc = acc_list[prim["indices"]]
+            pos_acc = acc_list[attrs["POSITION"]]
+            uv_acc = acc_list[attrs["TEXCOORD_0"]]
+            if idx_acc.get("componentType") != 5125 or idx_acc.get("count", 0) < 45000:
+                return raw_bytes
+            if pos_acc.get("componentType") != 5126 or uv_acc.get("componentType") != 5126:
+                return raw_bytes
+
+            blob = memoryview(raw_bytes)[b_off + 8 : b_off + 8 + b_len]
+            idx_bv = bv_list[idx_acc["bufferView"]]
+            pos_bv = bv_list[pos_acc["bufferView"]]
+            uv_bv = bv_list[uv_acc["bufferView"]]
+
+            idx = np.frombuffer(
+                blob,
+                dtype=np.uint32,
+                count=idx_acc["count"],
+                offset=idx_bv.get("byteOffset", 0) + idx_acc.get("byteOffset", 0),
+            ).reshape(-1, 3)
+            pos = np.frombuffer(
+                blob,
+                dtype=np.float32,
+                count=pos_acc["count"] * 3,
+                offset=pos_bv.get("byteOffset", 0) + pos_acc.get("byteOffset", 0),
+            ).reshape(-1, 3)
+            uv = np.frombuffer(
+                blob,
+                dtype=np.float32,
+                count=uv_acc["count"] * 2,
+                offset=uv_bv.get("byteOffset", 0) + uv_acc.get("byteOffset", 0),
+            ).reshape(-1, 2)
+
+            pmin, pmax = pos.min(axis=0), pos.max(axis=0)
+            diag = float(np.linalg.norm(pmax - pmin))
+            if diag <= 1e-5:
+                return raw_bytes
+            step = diag / 190.0
+            grid = np.floor((pos - pmin) / step).astype(np.int64)
+            cell_hash = grid[:, 0] * 1000003 + grid[:, 1] * 1009 + grid[:, 2]
+            _, first_idx, inv_cell = np.unique(cell_hash, return_index=True, return_inverse=True)
+            snapped_pos = pos[first_idx][inv_cell]
+
+            c0, c1, c2 = inv_cell[idx[:, 0]], inv_cell[idx[:, 1]], inv_cell[idx[:, 2]]
+            keep = (c0 != c1) & (c1 != c2) & (c2 != c0)
+            if np.count_nonzero(keep) < 1000:
+                return raw_bytes
+            kept_tris = idx[keep]
+            used_v, new_tris = np.unique(kept_tris, return_inverse=True)
+            new_idx = new_tris.astype(np.uint32).ravel()
+            new_pos = snapped_pos[used_v].astype(np.float32)
+            new_uv = uv[used_v].astype(np.float32)
+
+            images = j.get("images") or []
+            img_bytes = b""
+            if images and "bufferView" in images[0]:
+                ibv = bv_list[images[0]["bufferView"]]
+                ioff = ibv.get("byteOffset", 0)
+                ilen = ibv["byteLength"]
+                img_bytes = bytes(blob[ioff : ioff + ilen])
+
+            b_idx = new_idx.tobytes()
+            b_pos = new_pos.tobytes()
+            b_uv = new_uv.tobytes()
+
+            new_bin = bytearray()
+            off_idx = 0
+            new_bin.extend(b_idx)
+            while len(new_bin) % 4:
+                new_bin.append(0)
+            off_pos = len(new_bin)
+            new_bin.extend(b_pos)
+            while len(new_bin) % 4:
+                new_bin.append(0)
+            off_uv = len(new_bin)
+            new_bin.extend(b_uv)
+            while len(new_bin) % 4:
+                new_bin.append(0)
+            off_img = len(new_bin)
+            new_bin.extend(img_bytes)
+            while len(new_bin) % 4:
+                new_bin.append(0)
+
+            new_bvs = [
+                {"buffer": 0, "byteOffset": off_idx, "byteLength": len(b_idx), "target": 34963},
+                {"buffer": 0, "byteOffset": off_pos, "byteLength": len(b_pos), "target": 34962},
+                {"buffer": 0, "byteOffset": off_uv, "byteLength": len(b_uv), "target": 34962},
+            ]
+            if img_bytes:
+                new_bvs.append({"buffer": 0, "byteOffset": off_img, "byteLength": len(img_bytes)})
+                images[0]["bufferView"] = 3
+
+            new_accs = [
+                {"bufferView": 0, "componentType": 5125, "count": int(len(new_idx)), "type": "SCALAR"},
+                {
+                    "bufferView": 1,
+                    "componentType": 5126,
+                    "count": int(len(new_pos)),
+                    "type": "VEC3",
+                    "min": [float(x) for x in new_pos.min(axis=0)],
+                    "max": [float(x) for x in new_pos.max(axis=0)],
+                },
+                {"bufferView": 2, "componentType": 5126, "count": int(len(new_uv)), "type": "VEC2"},
+            ]
+            prim["indices"] = 0
+            prim["attributes"] = {"POSITION": 1, "TEXCOORD_0": 2}
+            prim.pop("extensions", None)
+            j.pop("extensions", None)
+            for ext_list_key in ("extensionsUsed", "extensionsRequired"):
+                if ext_list_key in j:
+                    j[ext_list_key] = [
+                        e for e in j[ext_list_key] if e not in ("EXT_mesh_features", "EXT_structural_metadata")
+                    ]
+                    if not j[ext_list_key]:
+                        j.pop(ext_list_key, None)
+            j["bufferViews"] = new_bvs
+            j["accessors"] = new_accs
+            j["buffers"] = [{"byteLength": len(new_bin)}]
+
+            new_j_bytes = json.dumps(j, separators=(",", ":")).encode("utf-8")
+            while len(new_j_bytes) % 4:
+                new_j_bytes += b" "
+            total = 12 + 8 + len(new_j_bytes) + 8 + len(new_bin)
+            out = bytearray()
+            out.extend(struct.pack("<4sII", b"glTF", 2, total))
+            out.extend(struct.pack("<I4s", len(new_j_bytes), b"JSON"))
+            out.extend(new_j_bytes)
+            out.extend(struct.pack("<I4s", len(new_bin), b"BIN\x00"))
+            out.extend(new_bin)
+            return bytes(out)
+        except Exception:
+            return raw_bytes
+
     def _serve_file_with_range(
         self, file_path: str, content_type: Optional[str] = None, download_name: Optional[str] = None
     ):
@@ -430,8 +595,10 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
                 else:
                     with open(file_path, "rb") as f:
                         raw_bytes = f.read()
+                    if ext == ".glb":
+                        raw_bytes = self._optimize_cesium_glb_bytes(raw_bytes)
                     gz_bytes = gzip.compress(raw_bytes, compresslevel=1)
-                    if len(self._GZIP_FILE_CACHE) < 96:
+                    if len(self._GZIP_FILE_CACHE) < 160:
                         self._GZIP_FILE_CACHE[file_path] = (mtime, gz_bytes)
                 self.send_response(200)
                 self.send_header("Content-Type", ctype)
@@ -598,11 +765,30 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
             or path.endswith("/thumbnail")
             or path.endswith("/thumbnail.png")
             or path.endswith("/tileset.json")
+            or path.endswith(".glb")
         )
         if method == "POST" and path.endswith("/thumbnail"):
             for k in list(_VPS_RAM_FALLBACK_CACHE.keys()):
                 if k.startswith(path):
                     _VPS_RAM_FALLBACK_CACHE.pop(k, None)
+
+        # Serve immutable binary .glb tiles from volatile RAM if already pulled from PC while tunnel is online
+        if (
+            method == "GET"
+            and path.endswith(".glb")
+            and not VPS_TUNNEL_POOL.empty()
+            and self.path in _VPS_RAM_FALLBACK_CACHE
+        ):
+            c_status, c_hdrs, c_body = _VPS_RAM_FALLBACK_CACHE[self.path]
+            self.send_response(c_status)
+            for hk, hv in c_hdrs.items():
+                self.send_header(hk, hv)
+            self.end_headers()
+            try:
+                self.wfile.write(c_body)
+            except (BrokenPipeError, ConnectionResetError):
+                pass
+            return True
 
         # Try up to 4 sockets from the pool
         for _attempt in range(4):
@@ -671,8 +857,11 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
                         if chunk is None:
                             stream_clean = False
                             break
-                        if buf_for_cache is not None and len(buf_for_cache) < 2 * 1024 * 1024:
-                            buf_for_cache.extend(chunk)
+                        if buf_for_cache is not None:
+                            if len(buf_for_cache) + len(chunk) <= 4 * 1024 * 1024:
+                                buf_for_cache.extend(chunk)
+                            else:
+                                buf_for_cache = None
                         if client_Write_ok:
                             try:
                                 self.wfile.write(chunk)
@@ -688,8 +877,11 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
                         chunk = tun_sock.recv(65536)
                         if not chunk:
                             break
-                        if buf_for_cache is not None and len(buf_for_cache) < 2 * 1024 * 1024:
-                            buf_for_cache.extend(chunk)
+                        if buf_for_cache is not None:
+                            if len(buf_for_cache) + len(chunk) <= 4 * 1024 * 1024:
+                                buf_for_cache.extend(chunk)
+                            else:
+                                buf_for_cache = None
                         try:
                             self.wfile.write(chunk)
                         except (BrokenPipeError, ConnectionResetError):
@@ -697,7 +889,23 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
                     done_evt.set()
 
                 if buf_for_cache is not None and stream_clean:
+                    if len(_VPS_RAM_FALLBACK_CACHE) > 220:
+                        _VPS_RAM_FALLBACK_CACHE.clear()
                     _VPS_RAM_FALLBACK_CACHE[self.path] = (status_code, filtered_hdrs, bytes(buf_for_cache))
+                    if path == "/api/scans":
+                        try:
+                            raw_payload = bytes(buf_for_cache)
+                            if filtered_hdrs.get("Content-Encoding", "").lower() == "gzip" or filtered_hdrs.get("content-encoding", "").lower() == "gzip":
+                                raw_payload = gzip.decompress(raw_payload)
+                            scan_data = json.loads(raw_payload.decode("utf-8"))
+                            live_ids = {s.get("scan_id") for s in (scan_data.get("scans") or []) if s.get("scan_id")}
+                            for ck in list(_VPS_RAM_FALLBACK_CACHE.keys()):
+                                if ck.startswith("/stream/"):
+                                    parts = ck.split("/")
+                                    if len(parts) > 2 and parts[2] not in live_ids:
+                                        _VPS_RAM_FALLBACK_CACHE.pop(ck, None)
+                        except Exception:
+                            pass
                 return True
             except Exception:
                 done_evt.set()
