@@ -412,6 +412,115 @@ def extract_opf_zip_metadata(zip_path: str) -> Dict[str, Any]:
     return info
 
 
+def _extract_tileset_georef_and_fix_axis(tileset_path: str) -> Dict[str, Any]:
+    """
+    Inspects a 3D Tiles tileset.json on disk:
+    1. Automatically removes erroneous 'gltfUpAxis': 'z' when child tiles are Y-up .glb files (PIX4Dmatic export quirk).
+    2. Extracts TWD97 (E, N, H) and WGS84 (lat, lon) coordinates directly from root.transform / root.boundingVolume.
+    """
+    out: Dict[str, Any] = {}
+    if not (tileset_path and os.path.isfile(tileset_path) and tileset_path.lower().endswith(".json")):
+        return out
+    try:
+        with open(tileset_path, "r", encoding="utf-8") as f:
+            ts = json.load(f)
+        asset = ts.get("asset") or {}
+        raw_str = json.dumps(ts)
+        if str(asset.get("gltfUpAxis", "")).lower() == "z" and ".glb" in raw_str.lower():
+            asset.pop("gltfUpAxis", None)
+            ts["asset"] = asset
+            try:
+                with open(tileset_path, "w", encoding="utf-8") as wf:
+                    json.dump(ts, wf, indent=2)
+            except Exception:
+                pass
+
+        root = ts.get("root") or {}
+        transform = root.get("transform")
+        bv = root.get("boundingVolume") or {}
+        box = bv.get("box")
+        region = bv.get("region")
+
+        tx, ty, tz = 0.0, 0.0, 0.0
+        if isinstance(transform, list) and len(transform) >= 16:
+            tx = float(transform[12] or 0.0)
+            ty = float(transform[13] or 0.0)
+            tz = float(transform[14] or 0.0)
+
+        bx, by, bz = 0.0, 0.0, 0.0
+        if isinstance(box, list) and len(box) >= 3:
+            bx = float(box[0] or 0.0)
+            by = float(box[1] or 0.0)
+            bz = float(box[2] or 0.0)
+
+        cx = tx if abs(tx) > 1000 else bx
+        cy = ty if abs(ty) > 1000 else by
+        cz = tz if abs(tz) > 0.01 else bz
+
+        if 150000.0 <= cx <= 380000.0 and 2400000.0 <= cy <= 2850000.0:
+            lat, lon = twd97_to_wgs84(cx, cy)
+            out.update(
+                {
+                    "lat": lat,
+                    "lon": lon,
+                    "elev_m": round(cz, 2),
+                    "twd97_e": round(cx, 3),
+                    "twd97_n": round(cy, 3),
+                    "twd97_h": round(cz, 2),
+                }
+            )
+        elif 100000.0 <= cx <= 850000.0 and 2500000.0 <= cy <= 3000000.0:
+            lat, lon = utm51n_to_wgs84(cx, cy)
+            twd_e, twd_n, twd_h = wgs84_to_twd97(lat, lon, cz)
+            out.update(
+                {
+                    "lat": lat,
+                    "lon": lon,
+                    "elev_m": twd_h,
+                    "twd97_e": twd_e,
+                    "twd97_n": twd_n,
+                    "twd97_h": twd_h,
+                }
+            )
+        elif isinstance(region, list) and len(region) >= 5:
+            lon = math.degrees((float(region[0]) + float(region[2])) * 0.5)
+            lat = math.degrees((float(region[1]) + float(region[3])) * 0.5)
+            elev = float(region[4] or 40.0)
+            twd_e, twd_n, twd_h = wgs84_to_twd97(lat, lon, elev)
+            out.update(
+                {
+                    "lat": round(lat, 6),
+                    "lon": round(lon, 6),
+                    "elev_m": twd_h,
+                    "twd97_e": twd_e,
+                    "twd97_n": twd_n,
+                    "twd97_h": twd_h,
+                }
+            )
+    except Exception:
+        pass
+    return out
+
+
+def _compute_folder_stats(folder_path: str) -> Tuple[int, int]:
+    """Computes total bytes on disk and estimated tile/photo count for a dynamically added scan folder."""
+    total_bytes = 0
+    tile_count = 0
+    try:
+        for root, _, files in os.walk(folder_path):
+            for fn in files:
+                fpath = os.path.join(root, fn)
+                try:
+                    total_bytes += os.path.getsize(fpath)
+                except OSError:
+                    pass
+                if fn.lower().endswith((".glb", ".b3dm", ".gltf", ".jpg", ".jpeg")):
+                    tile_count += 1
+    except Exception:
+        pass
+    return max(total_bytes, 1024), max(tile_count * 18, 120)
+
+
 def _discover_folder_scan_item(
     folder_path: str,
     parent_project: str = "",
@@ -419,7 +528,7 @@ def _discover_folder_scan_item(
 ) -> Optional[Dict[str, Any]]:
     """
     Dynamically inspects a scan folder inside C:\\GatheringScans (either flat or nested inside a project folder).
-    Reads scan_meta.json if present, or auto-detects tileset.json / *-cesium_mesh.json / mesh.obj / thumbnail.png.
+    Reads scan_meta.json if present, or auto-detects tileset.json / *-cesium_mesh.json / .glb / mesh.obj / thumbnail.png.
     """
     folder_name = os.path.basename(folder_path.rstrip("\\/"))
     if not folder_name or folder_name.startswith(("_", ".")):
@@ -434,27 +543,33 @@ def _discover_folder_scan_item(
         except Exception as e:
             print(f"[GDriveWatcher] Warning reading {meta_file}: {e}")
 
-    # Auto-detect tileset.json inside folder_path (only direct or tileset/ child, avoiding deep unrelated subtrees)
+    # Auto-detect tileset.json or .glb inside folder_path (only direct or depth <= 2)
     tileset_path = meta.get("tileset_path", "")
     if not (tileset_path and os.path.isfile(tileset_path)):
         candidate_ts = [
             os.path.join(folder_path, "tileset", "tileset.json"),
             os.path.join(folder_path, "tileset.json"),
         ]
+        glb_fallbacks = []
         for root, _, files in os.walk(folder_path):
             rel_depth = os.path.relpath(root, folder_path).count(os.sep)
             if rel_depth > 2:
                 continue
             for fn in files:
-                if fn.lower() == "tileset.json" or fn.lower().endswith("-cesium_mesh.json"):
+                low_fn = fn.lower()
+                if low_fn == "tileset.json" or low_fn.endswith("-cesium_mesh.json"):
                     candidate_ts.append(os.path.join(root, fn))
-        for c in candidate_ts:
+                elif low_fn.endswith(".glb") and rel_depth <= 1:
+                    glb_fallbacks.append(os.path.join(root, fn))
+        for c in candidate_ts + glb_fallbacks:
             if os.path.isfile(c):
                 tileset_path = c
                 break
 
     if not (tileset_path and os.path.isfile(tileset_path)):
         return None
+
+    ts_georef = _extract_tileset_georef_and_fix_axis(tileset_path)
 
     # Auto-detect obj_path if not already valid
     obj_path = meta.get("obj_path", "")
@@ -476,12 +591,12 @@ def _discover_folder_scan_item(
 
     stat = os.stat(folder_path)
     scan_id = meta.get("scan_id") or re.sub(r"[^a-zA-Z0-9_]", "_", folder_name.lower())
-    lat = float(meta.get("lat", 24.92032))
-    lon = float(meta.get("lon", 121.54351))
-    elev_m = float(meta.get("elev_m", 43.18))
-    twd_e = float(meta.get("twd97_e", 304952.656))
-    twd_n = float(meta.get("twd97_n", 2757084.875))
-    twd_h = float(meta.get("twd97_h", elev_m))
+    lat = float(meta.get("lat") or ts_georef.get("lat") or 24.92032)
+    lon = float(meta.get("lon") or ts_georef.get("lon") or 121.54351)
+    elev_m = float(meta.get("elev_m") or ts_georef.get("elev_m") or 43.18)
+    twd_e = float(meta.get("twd97_e") or ts_georef.get("twd97_e") or 304952.656)
+    twd_n = float(meta.get("twd97_n") or ts_georef.get("twd97_n") or 2757084.875)
+    twd_h = float(meta.get("twd97_h") or ts_georef.get("twd97_h") or elev_m)
     proj_group = meta.get("project_group")
     proj_zh = meta.get("project_name_zh")
     if not proj_group:
@@ -504,6 +619,10 @@ def _discover_folder_scan_item(
             }
         )
 
+    disk_bytes, est_imgs = (0, 0)
+    if "size_bytes" not in meta or "image_count" not in meta:
+        disk_bytes, est_imgs = _compute_folder_stats(folder_path)
+
     return {
         "scan_id": scan_id,
         "name": meta.get("name") or folder_name.replace("_", " "),
@@ -518,8 +637,8 @@ def _discover_folder_scan_item(
         "tileset_path": tileset_path,
         "obj_path": obj_path,
         "cameras_dir": cameras_dir,
-        "image_count": int(meta.get("image_count", 1200)),
-        "size_bytes": int(meta.get("size_bytes", 64000000)),
+        "image_count": int(meta.get("image_count") or est_imgs or 1200),
+        "size_bytes": int(meta.get("size_bytes") or disk_bytes or 64000000),
         "rtk_accuracy_cm": float(meta.get("rtk_accuracy_cm", 1.5)),
         "crs": meta.get("crs", TWD97_TWVD2001_SHORT),
         "texture_resolution": int(meta.get("texture_resolution", PIX4DMATIC_TEXTURE_SIZE)),
@@ -585,7 +704,7 @@ def seed_and_discover_scans(db: ScanQueueDB) -> List[Dict[str, Any]]:
     Scales cleanly to 100+ projects via:
     - Flat scan folders (C:\\GatheringScans\\<ScanFolder>) or nested project folders (C:\\GatheringScans\\<Project>\\<ScanFolder>)
     - Single-part ('FileName.zip') and multi-part ('FileName_1of4.zip' .. 'FileName_4of4.zip') archives
-    - Dynamic spatial & prefix-based project grouping.
+    - Immediate removal from SQLite when a scan folder or archive is deleted from disk.
     """
     discovered_ids = set()
     dynamic_clusters: List[Dict[str, Any]] = []
@@ -632,17 +751,10 @@ def seed_and_discover_scans(db: ScanQueueDB) -> List[Dict[str, Any]]:
                         db.upsert_scan(item)
                         discovered_ids.add(item["scan_id"])
 
-    # Default QuChi 2026-10-05 tileset for already-processed historical GDrive inbox walks
-    default_quchi_ts = os.path.join(LOCAL_SCANS_ROOT, "QuChi_20261005_Compressed", "tileset", "tileset.json")
-    sector3_quchi_ts = os.path.join(LOCAL_SCANS_ROOT, "QuChi_260510_3", "tileset", "tileset.json")
-    default_quchi_obj = r"C:\Scans\QuChi\QuChi_20261005_Compressed\exports\QuChi_20261005_Compressed-obj_mesh\mesh.obj"
-    default_quchi_cams = r"C:\Scans\QuChi\QuChi_20261005\inputs"
-
-    # 2. Dynamically inspect G:\Shared drives\6.軟體\3. GatheringScans (and legacy inbox)
+    # 2. Dynamically inspect strictly the jailed G:\Shared drives\6.軟體\3. GatheringScans
     inbox_dirs = []
-    for candidate_inbox in (GDRIVE_INBOX_DIR, LEGACY_GDRIVE_INBOX_DIR, os.path.join(LOCAL_SCANS_ROOT, "_GDrive_Inbox")):
-        if candidate_inbox and os.path.isdir(candidate_inbox) and candidate_inbox not in inbox_dirs:
-            inbox_dirs.append(candidate_inbox)
+    if GDRIVE_INBOX_DIR and os.path.isdir(GDRIVE_INBOX_DIR):
+        inbox_dirs.append(GDRIVE_INBOX_DIR)
 
     # Group .zip files by (parent_project_lower, base_name_lower, total_parts) across jailed inbox directories
     grouped_uploads: Dict[Tuple[str, str, int], Dict[str, Any]] = {}
@@ -718,26 +830,9 @@ def seed_and_discover_scans(db: ScanQueueDB) -> List[Dict[str, Any]]:
         else:
             primary_meta["name"] = f"PIX4Dcatch {base_name}"
 
-        # Check if this is one of the 3 historical 2026-10-05 QuChi walks or has a matching processed folder in C:\GatheringScans
         cand_processed_dir = os.path.join(LOCAL_SCANS_ROOT, scan_id)
         cand_processed_ts = os.path.join(cand_processed_dir, "tileset", "tileset.json")
-        if base_name in ("2026-10-05-15-19-27", "2026-10-05-15-37-05", "2026-10-05-15-43-55"):
-            if "15-19-27" in base_name and os.path.isfile(sector3_quchi_ts):
-                primary_meta["tileset_path"] = sector3_quchi_ts
-                primary_meta["project_dir"] = os.path.join(LOCAL_SCANS_ROOT, "QuChi_260510_3")
-            elif os.path.isfile(default_quchi_ts):
-                primary_meta["tileset_path"] = default_quchi_ts
-                primary_meta["project_dir"] = os.path.join(LOCAL_SCANS_ROOT, "QuChi_20261005_Compressed")
-            primary_meta["obj_path"] = default_quchi_obj if os.path.isfile(default_quchi_obj) else ""
-            primary_meta["cameras_dir"] = default_quchi_cams if os.path.isdir(default_quchi_cams) else ""
-            primary_meta["status"] = "completed"
-            primary_meta["progress_pct"] = 100.0
-            primary_meta["stage_label"] = "Processed -> QuChi_20261005 (TWD97 + TWVD2001, 2K)"
-            primary_meta["notes"] = (
-                f"Uploaded via Google Drive Inbox ({base_name}.zip, {primary_meta['image_count']} RTK photos). "
-                f"Converted to TWD97 (121) + TWVD2001 with 2K textures in PIX4Dmatic and optimized via GC_ScanOptimizer."
-            )
-        elif all_parts_ready and os.path.isfile(cand_processed_ts):
+        if all_parts_ready and os.path.isfile(cand_processed_ts):
             primary_meta["tileset_path"] = cand_processed_ts
             primary_meta["project_dir"] = cand_processed_dir
             primary_meta["status"] = "completed"
@@ -755,7 +850,7 @@ def seed_and_discover_scans(db: ScanQueueDB) -> List[Dict[str, Any]]:
                     f"({', '.join(os.path.basename(parts_map[p]) for p in present_parts)}). "
                     f"Waiting for part(s) {missing_str} before launching unified PIX4Dmatic project."
                 )
-            elif existing.get("status") in ("completed", "processing"):
+            elif existing.get("status") in ("completed", "processing") and existing.get("tileset_path") and os.path.isfile(existing.get("tileset_path", "")):
                 primary_meta["status"] = existing["status"]
                 primary_meta["progress_pct"] = existing.get("progress_pct", 100.0)
                 primary_meta["stage_label"] = existing.get("stage_label", "Completed")
@@ -778,78 +873,16 @@ def seed_and_discover_scans(db: ScanQueueDB) -> List[Dict[str, Any]]:
         db.upsert_scan(primary_meta)
         discovered_ids.add(scan_id)
 
-    # 3. Remove any stale scans from SQLite that are no longer present on the filesystem
+    # 3. Strictly remove any scans from SQLite that are no longer present in C:\GatheringScans or the jailed GDrive inbox
     with db._connect() as conn:
-        existing_rows = conn.execute("SELECT scan_id, project_dir, source_zip_path FROM scans").fetchall()
+        existing_rows = conn.execute("SELECT scan_id FROM scans").fetchall()
         for row in existing_rows:
             sid = row["scan_id"]
             if sid not in discovered_ids:
-                pdir = row["project_dir"] or ""
-                szip = row["source_zip_path"] or ""
-                zip_parts = [z.strip() for z in szip.split(";") if z.strip()]
-                any_zip_exists = any(os.path.isfile(z) for z in zip_parts)
-                if not (pdir and os.path.isdir(pdir)) and not any_zip_exists:
-                    conn.execute("DELETE FROM scans WHERE scan_id = ?", (sid,))
-        conn.execute(
-            "UPDATE scans SET uploader_email = 'glibivanov@gatheren.com.tw', uploader_name = 'Glib Ivanov' WHERE lower(uploader_email) LIKE '%vitaly%'"
-        )
-        conn.execute(
-            "UPDATE scan_comments SET author_email = 'glibivanov@gatheren.com.tw', author_name = 'Glib Ivanov' WHERE lower(author_email) LIKE '%vitaly%'"
-        )
-        conn.execute(
-            "UPDATE scan_comments SET author_email = 'argon@gatheren.com.tw', author_name = 'Argon' WHERE author_email IN ('chen.cw@gatheren.cloud', 'lin.yh@gatheren.cloud')"
-        )
-        conn.execute(
-            "UPDATE share_links SET created_by_email = 'glibivanov@gatheren.com.tw', created_by_name = 'Glib Ivanov' WHERE lower(created_by_email) LIKE '%vitaly%'"
-        )
-        conn.execute("DELETE FROM user_settings WHERE lower(email) LIKE '%vitaly%'")
+                conn.execute("DELETE FROM scans WHERE scan_id = ?", (sid,))
+                conn.execute("DELETE FROM scan_comments WHERE scan_id = ?", (sid,))
         conn.commit()
 
-    # 4. Seed sample engineering comments only if scans exist on disk and have 0 comments
-    scans = db.list_scans()
-    if scans and sum(s.get("comment_count", 0) for s in scans) == 0:
-        db.add_comment(
-            {
-                "scan_id": "quchi_20261005_merged",
-                "author_email": "glibivanov@gatheren.com.tw",
-                "author_name": "Glib Ivanov",
-                "text": "North spillway aggregate stockpile measured at 412.6 m³ (TWD97 E:304958.2, N:2757091.4, H:+44.8m).",
-                "pos_x": 5.5,
-                "pos_y": 1.6,
-                "pos_z": -6.5,
-                "twd97_e": 304958.2,
-                "twd97_n": 2757091.4,
-                "twd97_h": 44.8,
-            }
-        )
-        db.add_comment(
-            {
-                "scan_id": "quchi_20261005_merged",
-                "author_email": "argon@gatheren.com.tw",
-                "author_name": "Argon",
-                "text": "Verified TWVD2001 crest elevation against benchmark BM-04 (+43.18m, Δh = 0.012m within tolerance).",
-                "pos_x": -12.0,
-                "pos_y": 0.4,
-                "pos_z": 8.2,
-                "twd97_e": 304940.6,
-                "twd97_n": 2757076.7,
-                "twd97_h": 43.18,
-            }
-        )
-        db.add_comment(
-            {
-                "scan_id": "rosepark_20260918_merged",
-                "author_email": "argon@gatheren.com.tw",
-                "author_name": "Argon",
-                "text": "Drainage sub-base slope confirmed at 1.8% grade toward south retention basin.",
-                "pos_x": 3.2,
-                "pos_y": -0.5,
-                "pos_z": 4.1,
-                "twd97_e": 296048.3,
-                "twd97_n": 2768527.3,
-                "twd97_h": 9.35,
-            }
-        )
-
     return db.list_scans()
+
 

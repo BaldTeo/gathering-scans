@@ -61,7 +61,29 @@ os.makedirs(THUMBS_DIR, exist_ok=True)
 
 # Initialize Singletons
 DB = ScanQueueDB()
-seed_and_discover_scans(DB)
+_FS_SYNC_LOCK = threading.Lock()
+_LAST_FS_SYNC_TS = 0.0
+
+
+def sync_scans_with_filesystem(max_age_s: float = 0.8) -> None:
+    """Live filesystem sync: discovers new folders in C:\\GatheringScans and removes deleted folders."""
+    global _LAST_FS_SYNC_TS
+    if os.name != "nt":
+        return
+    now = time.time()
+    if now - _LAST_FS_SYNC_TS < max_age_s:
+        return
+    with _FS_SYNC_LOCK:
+        if time.time() - _LAST_FS_SYNC_TS < max_age_s:
+            return
+        try:
+            seed_and_discover_scans(DB)
+        except Exception as e:
+            print(f"[GatheringScans] Live filesystem sync note: {e}")
+        _LAST_FS_SYNC_TS = time.time()
+
+
+sync_scans_with_filesystem(max_age_s=0.0)
 OPTIMIZER = OptimizerBridge(DB)
 SURVEY = SurveyingEngine(DB)
 AUTH_SHARE = AuthAndSharingManager(DB)
@@ -350,59 +372,35 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
         return sorted(projects_map.values(), key=lambda x: (-x["scan_count"], x["project_group"].lower()))
 
     def _resolve_scan_thumbnail_path(self, scan_id: str, scan: Optional[Dict[str, Any]] = None) -> Optional[str]:
-        # 1. Check automatically captured WebGL screenshot in data/thumbnails/<scan_id>.png
-        captured_png = os.path.join(THUMBS_DIR, f"{scan_id}.png")
-        if os.path.isfile(captured_png) and os.path.getsize(captured_png) > 512:
-            return captured_png
-
-        # 2. Check scan.project_dir/thumbnail.png dynamically inside C:\GatheringScans (flat or nested)
         s = scan or DB.get_scan(scan_id) or {}
         proj_dir = s.get("project_dir") or ""
+
+        # 1. Check scan.project_dir/thumbnail.png dynamically inside C:\GatheringScans (flat or nested)
         if proj_dir and os.path.isdir(proj_dir):
             for fname in ("thumbnail.png", "preview.png", "thumbnail.jpg", "ortho_preview.png"):
                 cand = os.path.join(proj_dir, fname)
                 if os.path.isfile(cand) and os.path.getsize(cand) > 256:
                     return cand
 
-        # 3. Legacy fallback map for GDrive Inbox walks and known local folders
-        fallback_map = {
-            "quchi_20261005_merged": os.path.join(LOCAL_SCANS_ROOT, "QuChi_20261005_Compressed", "thumbnail.png"),
-            "quchi_20261015_survey": os.path.join(LOCAL_SCANS_ROOT, "QuChi_20261015", "thumbnail.png"),
-            "quchi_20260921_epoch": os.path.join(LOCAL_SCANS_ROOT, "QuChi_1_20260921", "thumbnail.png"),
-            "quchi_20261005_sector3": os.path.join(LOCAL_SCANS_ROOT, "QuChi_260510_3", "thumbnail.png"),
-            "catch_2026_10_05_15_43_55": r"C:\Scans\QuChi\QuChi_20261005\thumbnail.png",
-            "catch_2026_10_05_15_37_05": os.path.join(LOCAL_SCANS_ROOT, "QuChi_1_20260921", "thumbnail.png"),
-            "catch_2026_10_05_15_19_27": os.path.join(LOCAL_SCANS_ROOT, "QuChi_260510_3", "thumbnail.png"),
-            "rosepark_20260918_merged": os.path.join(LOCAL_SCANS_ROOT, "RosePark_Merged2", "thumbnail.png"),
-            "rosepark_20260917_east": os.path.join(LOCAL_SCANS_ROOT, "RosePark_260917", "thumbnail.png"),
-            "ntudorm_20260917_foundation": os.path.join(LOCAL_SCANS_ROOT, "NTU_Dorm_260917", "thumbnail.png"),
-            "ntudorm_20260915_baseline": os.path.join(LOCAL_SCANS_ROOT, "NTU_Dorm_260915", "thumbnail.png"),
-        }
-        cand_map = fallback_map.get(scan_id, "")
-        if cand_map and os.path.isfile(cand_map):
-            return cand_map
+        # 2. Check automatically captured WebGL screenshot in data/thumbnails/<scan_id>.png
+        captured_png = os.path.join(THUMBS_DIR, f"{scan_id}.png")
+        if os.path.isfile(captured_png) and os.path.getsize(captured_png) > 512:
+            return captured_png
 
-        # 4. Dynamic sibling scan thumbnail lookup in the same project_group (supports 100+ projects)
+        # 3. Dynamic sibling scan thumbnail lookup in the same project_group (supports 100+ projects)
         grp = s.get("project_group", "")
         if grp:
             for sib in DB.list_scans(project_group=grp):
+                sib_dir = sib.get("project_dir") or ""
+                if sib_dir and os.path.isdir(sib_dir):
+                    sib_thumb = os.path.join(sib_dir, "thumbnail.png")
+                    if os.path.isfile(sib_thumb) and os.path.getsize(sib_thumb) > 256:
+                        return sib_thumb
                 sib_id = sib.get("scan_id", "")
                 sib_cap = os.path.join(THUMBS_DIR, f"{sib_id}.png")
                 if os.path.isfile(sib_cap) and os.path.getsize(sib_cap) > 512:
                     return sib_cap
-                sib_dir = sib.get("project_dir") or ""
-                if sib_dir:
-                    sib_thumb = os.path.join(sib_dir, "thumbnail.png")
-                    if os.path.isfile(sib_thumb) and os.path.getsize(sib_thumb) > 256:
-                        return sib_thumb
 
-        # 5. Any available captured thumbnail in THUMBS_DIR
-        if os.path.isdir(THUMBS_DIR):
-            for fn in sorted(os.listdir(THUMBS_DIR)):
-                if fn.lower().endswith(".png"):
-                    cand = os.path.join(THUMBS_DIR, fn)
-                    if os.path.isfile(cand) and os.path.getsize(cand) > 512:
-                        return cand
         return None
 
     def _handle_pc_tunnel_register(self):
@@ -559,6 +557,7 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
 
         # 2. Health & Status API
         if path in ("/api/status", "/api/pc/health"):
+            sync_scans_with_filesystem()
             scans = DB.list_scans()
             processing = [s for s in scans if s["status"] == "processing"]
             queued = [s for s in scans if s["status"] in ("queued", "waiting_parts")]
@@ -581,6 +580,7 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
 
         # 3. List Scans & Spatial Clusters (Enforces External Share Token if present)
         if path == "/api/scans":
+            sync_scans_with_filesystem()
             if share_token:
                 ok, reason, link, allowed_scans = AUTH_SHARE.validate_share_access(
                     share_token, increment_view=True
@@ -620,6 +620,7 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
 
         # 3a. Scalable Projects Catalog Endpoint (/api/projects)
         if path == "/api/projects":
+            sync_scans_with_filesystem()
             scans = [self._enrich_scan_urls(s) for s in DB.list_scans()]
             projects = self._build_projects_summary(scans)
             self.send_json(
@@ -686,6 +687,7 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
 
         # 5. Smart Priority Queue Status
         if path == "/api/queue/status":
+            sync_scans_with_filesystem()
             if share_token:
                 self.send_json({"error": "Queue status restricted to internal company users."}, status=403)
                 return
@@ -967,6 +969,14 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
                 out_file = os.path.join(THUMBS_DIR, f"{scan_id}.png")
                 with open(out_file, "wb") as f:
                     f.write(raw_bytes)
+                scan_row = DB.get_scan(scan_id) or {}
+                pdir = scan_row.get("project_dir") or ""
+                if pdir and os.path.isdir(pdir):
+                    try:
+                        with open(os.path.join(pdir, "thumbnail.png"), "wb") as pf:
+                            pf.write(raw_bytes)
+                    except Exception:
+                        pass
                 self.send_json(
                     {
                         "status": "ok",

@@ -4343,6 +4343,7 @@
 
   async function refreshScansCatalog() {
     try {
+      const prevIdsSig = (STATE.scans || []).map((s) => `${s.scan_id}:${s.project_group}`).join("|");
       const data = await apiGet("/api/scans");
       STATE.scans = data.scans || [];
       STATE.projects = data.projects || [];
@@ -4375,7 +4376,10 @@
           STATE.activeScanId = STATE.scans[0].scan_id;
         }
       }
-      if (!STATE.selectedTimelineScanId && STATE.activeScanId) {
+      if (
+        !STATE.selectedTimelineScanId ||
+        !STATE.scans.some((s) => s.scan_id === STATE.selectedTimelineScanId)
+      ) {
         STATE.selectedTimelineScanId = STATE.activeScanId;
       }
 
@@ -4383,28 +4387,39 @@
         STATE.scans.find((s) => s.scan_id === STATE.activeScanId) || STATE.scans[0];
       if (urlProject && STATE.scans.some((s) => s.project_group === urlProject)) {
         STATE.activeProjectGroup = urlProject;
-      } else if (activeScanObj && activeScanObj.project_group) {
-        STATE.activeProjectGroup = activeScanObj.project_group;
+      } else if (
+        !STATE.activeProjectGroup ||
+        !STATE.scans.some((s) => s.project_group === STATE.activeProjectGroup)
+      ) {
+        if (activeScanObj && activeScanObj.project_group) {
+          STATE.activeProjectGroup = activeScanObj.project_group;
+        }
       }
       populateProjectScanDropdowns(STATE.activeProjectGroup, STATE.activeScanId);
-
       renderMapClusters();
+
+      const nextIdsSig = (STATE.scans || []).map((s) => `${s.scan_id}:${s.project_group}`).join("|");
+      if (prevIdsSig && prevIdsSig !== nextIdsSig && STATE.siteTimelineOpen) {
+        openSiteTimeline(STATE.activeProjectGroup, STATE.selectedTimelineScanId);
+      }
     } catch (err) {
-      document.body.innerHTML = `
-        <div style="display:flex;align-items:center;justify-content:center;height:100vh;background:#f8fafc;color:#0f172a;font-family:sans-serif;padding:24px;">
-          <div style="max-width:480px;background:#ffffff;border:1px solid #cbd5e1;border-radius:12px;padding:24px;text-align:center;box-shadow:0 12px 32px rgba(15,23,42,0.08);">
-            <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="#0284c7" stroke-width="1.8" style="margin-bottom:10px;">
-              <rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>
-            </svg>
-            <h2 style="font-size:17px;color:#0f172a;">Access Restricted or Link Revoked</h2>
-            <p style="font-size:13px;color:#475569;margin-top:8px;">${err.message}</p>
+      if (!STATE.scans || STATE.scans.length === 0) {
+        document.body.innerHTML = `
+          <div style="display:flex;align-items:center;justify-content:center;height:100vh;background:#f8fafc;color:#0f172a;font-family:sans-serif;padding:24px;">
+            <div style="max-width:480px;background:#ffffff;border:1px solid #cbd5e1;border-radius:12px;padding:24px;text-align:center;box-shadow:0 12px 32px rgba(15,23,42,0.08);">
+              <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="#0284c7" stroke-width="1.8" style="margin-bottom:10px;">
+                <rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+              </svg>
+              <h2 style="font-size:17px;color:#0f172a;">Access Restricted or Link Revoked</h2>
+              <p style="font-size:13px;color:#475569;margin-top:8px;">${err.message}</p>
+            </div>
           </div>
-        </div>
-      `;
+        `;
+      }
     }
   }
 
-  // Bootstrap Application
+  // Bootstrap Application & Live Folder Sync
   window.addEventListener("DOMContentLoaded", async () => {
     applyUserProfileToUI(STATE.currentUser);
     loadTeamUserProfiles();
@@ -4413,5 +4428,11 @@
     if (urlScan) {
       switchView("studio", urlScan);
     }
+    window.addEventListener("focus", () => {
+      refreshScansCatalog();
+    });
+    setInterval(() => {
+      refreshScansCatalog();
+    }, 5000);
   });
 })();
