@@ -26,6 +26,10 @@ from typing import Dict, Any, Optional, Tuple
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 if BASE_DIR not in sys.path:
     sys.path.insert(0, BASE_DIR)
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+if hasattr(sys.stderr, "reconfigure"):
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
 from pc_worker.config import (
     SERVER_HOST,
@@ -524,7 +528,7 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
         if path in ("/api/status", "/api/pc/health"):
             scans = DB.list_scans()
             processing = [s for s in scans if s["status"] == "processing"]
-            queued = [s for s in scans if s["status"] == "queued"]
+            queued = [s for s in scans if s["status"] in ("queued", "waiting_parts")]
             self.send_json(
                 {
                     "status": "offline" if PC_SIMULATED_OFFLINE else "online",
@@ -635,8 +639,8 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
                 self.send_json({"error": "Queue status restricted to internal company users."}, status=403)
                 return
             all_scans = DB.list_scans()
-            queued = [s for s in all_scans if s["status"] == "queued"]
-            queued.sort(key=lambda x: (-float(x["priority_score"]), float(x["uploaded_at"])))
+            queued = [s for s in all_scans if s["status"] in ("queued", "waiting_parts")]
+            queued.sort(key=lambda x: (0 if x["status"] == "queued" else 1, -float(x["priority_score"]), float(x["uploaded_at"])))
             processing = [s for s in all_scans if s["status"] == "processing"]
             completed = [s for s in all_scans if s["status"] == "completed"]
             self.send_json(

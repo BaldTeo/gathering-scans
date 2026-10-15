@@ -14,8 +14,9 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DATA_DIR = os.path.join(BASE_DIR, "data")
 os.makedirs(DATA_DIR, exist_ok=True)
 
-# 1. Google Drive Inbox & Local Scan Vault Paths
-GDRIVE_INBOX_DIR = os.environ.get("GDRIVE_INBOX_DIR", r"G:\My Drive\SCANS TEST")
+# 1. Google Drive Inbox & Local Scan Vault Paths (Strictly Jailed to 3. GatheringScans & C:\GatheringScans)
+GDRIVE_INBOX_DIR = os.environ.get("GDRIVE_INBOX_DIR", r"G:\Shared drives\6.軟體\3. GatheringScans")
+LEGACY_GDRIVE_INBOX_DIR = os.environ.get("LEGACY_GDRIVE_INBOX_DIR", r"G:\My Drive\SCANS TEST")
 LOCAL_SCANS_ROOT = os.environ.get("LOCAL_SCANS_ROOT", r"C:\GatheringScans")
 LEGACY_SCANS_ROOT = os.environ.get("LEGACY_SCANS_ROOT", r"C:\Scans")
 GC_SCAN_OPTIMIZER_DIR = os.environ.get("GC_SCAN_OPTIMIZER_DIR", r"C:\Antigravity\GC_ScanOptimizer")

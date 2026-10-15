@@ -18,6 +18,7 @@ from typing import Dict, Any, List, Optional, Tuple
 
 from pc_worker.config import (
     GDRIVE_INBOX_DIR,
+    LEGACY_GDRIVE_INBOX_DIR,
     LOCAL_SCANS_ROOT,
     GC_SCAN_OPTIMIZER_DIR,
     GATHERING_CLOUD_DEV_DIR,
@@ -445,11 +446,47 @@ def _discover_folder_scan_item(folder_path: str) -> Optional[Dict[str, Any]]:
     }
 
 
+MULTIPART_ZIP_RE = re.compile(
+    r"^(?P<base>.+?)[_\-\s\(]+(?P<part>\d+)\s*of\s*(?P<total>\d+)\)?\.zip$",
+    re.IGNORECASE,
+)
+
+
+def is_safe_jailed_path(target_path: str, allowed_root: str) -> bool:
+    """
+    Strict path-jail check: verifies target_path resides directly inside allowed_root
+    and prevents any parent/sibling traversal outside '3. GatheringScans'.
+    """
+    try:
+        abs_root = os.path.normcase(os.path.abspath(allowed_root))
+        abs_target = os.path.normcase(os.path.abspath(target_path))
+        return abs_target == abs_root or abs_target.startswith(abs_root + os.sep)
+    except Exception:
+        return False
+
+
+def parse_multipart_zip_filename(filename: str) -> Tuple[str, int, int]:
+    """
+    Parses upload filenames:
+    - 'FileName_1of4.zip' -> ('FileName', 1, 4)
+    - 'FileName.zip'      -> ('FileName', 1, 1)
+    """
+    m = MULTIPART_ZIP_RE.match(filename.strip())
+    if m:
+        base = m.group("base").strip(" _-()")
+        part = max(1, int(m.group("part")))
+        total = max(part, int(m.group("total")))
+        return base, part, total
+    stem = os.path.splitext(filename.strip())[0]
+    return stem, 1, 1
+
+
 def seed_and_discover_scans(db: ScanQueueDB) -> List[Dict[str, Any]]:
     """
     100% Dynamic Scan Discovery from C:\\GatheringScans (LOCAL_SCANS_ROOT)
-    and G:\\My Drive\\SCANS TEST (GDRIVE_INBOX_DIR).
-    Zero hardcoded scans are stored on the Linux VPS.
+    and G:\\Shared drives\\6.軟體\\3. GatheringScans (GDRIVE_INBOX_DIR).
+    Supports single-part ('FileName.zip') and multi-part ('FileName_1of4.zip' .. 'FileName_4of4.zip')
+    uploads, waiting until all N parts arrive before processing them as a single PIX4Dmatic project.
     """
     discovered_ids = set()
 
@@ -459,54 +496,123 @@ def seed_and_discover_scans(db: ScanQueueDB) -> List[Dict[str, Any]]:
             if entry.startswith(("_", ".")):
                 continue
             sub_dir = os.path.join(LOCAL_SCANS_ROOT, entry)
-            if not os.path.isdir(sub_dir):
+            if not is_safe_jailed_path(sub_dir, LOCAL_SCANS_ROOT) or not os.path.isdir(sub_dir):
                 continue
             item = _discover_folder_scan_item(sub_dir)
             if item:
                 db.upsert_scan(item)
                 discovered_ids.add(item["scan_id"])
 
-    # Default QuChi 2026-10-05 tileset for processed GDrive inbox walks
+    # Default QuChi 2026-10-05 tileset for already-processed historical GDrive inbox walks
     default_quchi_ts = os.path.join(LOCAL_SCANS_ROOT, "QuChi_20261005_Compressed", "tileset", "tileset.json")
     sector3_quchi_ts = os.path.join(LOCAL_SCANS_ROOT, "QuChi_260510_3", "tileset", "tileset.json")
     default_quchi_obj = r"C:\Scans\QuChi\QuChi_20261005_Compressed\exports\QuChi_20261005_Compressed-obj_mesh\mesh.obj"
     default_quchi_cams = r"C:\Scans\QuChi\QuChi_20261005\inputs"
 
-    # 2. Dynamically inspect G:\My Drive\SCANS TEST (or C:\GatheringScans\_GDrive_Inbox) for PIX4Dcatch .zip archives
+    # 2. Dynamically inspect G:\Shared drives\6.軟體\3. GatheringScans (and legacy inbox)
     inbox_dirs = []
-    if os.path.isdir(GDRIVE_INBOX_DIR):
-        inbox_dirs.append(GDRIVE_INBOX_DIR)
-    linked_inbox = os.path.join(LOCAL_SCANS_ROOT, "_GDrive_Inbox")
-    if os.path.isdir(linked_inbox) and linked_inbox not in inbox_dirs:
-        inbox_dirs.append(linked_inbox)
+    for candidate_inbox in (GDRIVE_INBOX_DIR, LEGACY_GDRIVE_INBOX_DIR, os.path.join(LOCAL_SCANS_ROOT, "_GDrive_Inbox")):
+        if candidate_inbox and os.path.isdir(candidate_inbox) and candidate_inbox not in inbox_dirs:
+            inbox_dirs.append(candidate_inbox)
 
+    # Group .zip files by (base_name_lower, total_parts) across jailed inbox directories
+    grouped_uploads: Dict[Tuple[str, int], Dict[str, Any]] = {}
     seen_zip_names = set()
+
     for idir in inbox_dirs:
         for fname in sorted(os.listdir(idir)):
             if not fname.lower().endswith(".zip") or fname in seen_zip_names:
                 continue
             fpath = os.path.join(idir, fname)
-            if not os.path.isfile(fpath):
+            if not is_safe_jailed_path(fpath, idir) or not os.path.isfile(fpath):
+                continue
+            if os.path.getsize(fpath) <= 0:
                 continue
             seen_zip_names.add(fname)
-            meta = extract_opf_zip_metadata(fpath)
-            if "15-19-27" in fname and os.path.isfile(sector3_quchi_ts):
-                meta["tileset_path"] = sector3_quchi_ts
-                meta["project_dir"] = os.path.join(LOCAL_SCANS_ROOT, "QuChi_260510_3")
+            base_name, part_idx, total_parts = parse_multipart_zip_filename(fname)
+            gkey = (base_name.lower(), total_parts)
+            if gkey not in grouped_uploads:
+                grouped_uploads[gkey] = {
+                    "base_name": base_name,
+                    "total_parts": total_parts,
+                    "parts": {},
+                }
+            grouped_uploads[gkey]["parts"][part_idx] = fpath
+
+    for (_, total_parts), ginfo in grouped_uploads.items():
+        base_name = ginfo["base_name"]
+        parts_map: Dict[int, str] = ginfo["parts"]
+        present_parts = sorted(parts_map.keys())
+        missing_parts = [p for p in range(1, total_parts + 1) if p not in parts_map]
+        all_parts_ready = len(missing_parts) == 0
+
+        part_metas = [extract_opf_zip_metadata(parts_map[p]) for p in present_parts]
+        primary_meta = dict(part_metas[0])
+
+        clean_slug = re.sub(r"[^a-zA-Z0-9_]", "_", base_name).strip("_")
+        scan_id = f"catch_{clean_slug}"
+        primary_meta["scan_id"] = scan_id
+        primary_meta["source_zip_path"] = ";".join(parts_map[p] for p in present_parts)
+        primary_meta["size_bytes"] = sum(int(m.get("size_bytes", 0)) for m in part_metas)
+        primary_meta["image_count"] = sum(int(m.get("image_count", 0)) for m in part_metas)
+        primary_meta["uploaded_at"] = max(float(m.get("uploaded_at", time.time())) for m in part_metas)
+
+        if total_parts > 1:
+            primary_meta["name"] = f"{base_name} ({len(present_parts)}/{total_parts} Parts)" if not all_parts_ready else f"{base_name} (Merged {total_parts} Parts)"
+        else:
+            primary_meta["name"] = f"PIX4Dcatch {base_name}"
+
+        # Check if this is one of the 3 historical 2026-10-05 QuChi walks
+        if base_name in ("2026-10-05-15-19-27", "2026-10-05-15-37-05", "2026-10-05-15-43-55"):
+            if "15-19-27" in base_name and os.path.isfile(sector3_quchi_ts):
+                primary_meta["tileset_path"] = sector3_quchi_ts
+                primary_meta["project_dir"] = os.path.join(LOCAL_SCANS_ROOT, "QuChi_260510_3")
             elif os.path.isfile(default_quchi_ts):
-                meta["tileset_path"] = default_quchi_ts
-                meta["project_dir"] = os.path.join(LOCAL_SCANS_ROOT, "QuChi_20261005_Compressed")
-            meta["obj_path"] = default_quchi_obj if os.path.isfile(default_quchi_obj) else ""
-            meta["cameras_dir"] = default_quchi_cams if os.path.isdir(default_quchi_cams) else ""
-            meta["status"] = "completed"
-            meta["progress_pct"] = 100.0
-            meta["stage_label"] = "Processed -> QuChi_20261005 (TWD97 + TWVD2001, 2K)"
-            meta["notes"] = (
-                f"Uploaded via Google Drive Inbox ({fname}, {meta['image_count']} RTK photos). "
+                primary_meta["tileset_path"] = default_quchi_ts
+                primary_meta["project_dir"] = os.path.join(LOCAL_SCANS_ROOT, "QuChi_20261005_Compressed")
+            primary_meta["obj_path"] = default_quchi_obj if os.path.isfile(default_quchi_obj) else ""
+            primary_meta["cameras_dir"] = default_quchi_cams if os.path.isdir(default_quchi_cams) else ""
+            primary_meta["status"] = "completed"
+            primary_meta["progress_pct"] = 100.0
+            primary_meta["stage_label"] = "Processed -> QuChi_20261005 (TWD97 + TWVD2001, 2K)"
+            primary_meta["notes"] = (
+                f"Uploaded via Google Drive Inbox ({base_name}.zip, {primary_meta['image_count']} RTK photos). "
                 f"Converted to TWD97 (121) + TWVD2001 with 2K textures in PIX4Dmatic and optimized via GC_ScanOptimizer."
             )
-            db.upsert_scan(meta)
-            discovered_ids.add(meta["scan_id"])
+        else:
+            existing = db.get_scan(scan_id) or {}
+            if not all_parts_ready:
+                primary_meta["status"] = "waiting_parts"
+                primary_meta["progress_pct"] = round((len(present_parts) / total_parts) * 20.0, 1)
+                missing_str = ", ".join(str(m) for m in missing_parts)
+                primary_meta["stage_label"] = f"Waiting for parts ({len(present_parts)}/{total_parts} uploaded — missing: {missing_str})"
+                primary_meta["notes"] = (
+                    f"Multi-part upload '{base_name}': received {len(present_parts)}/{total_parts} archives "
+                    f"({', '.join(os.path.basename(parts_map[p]) for p in present_parts)}). "
+                    f"Waiting for part(s) {missing_str} before launching unified PIX4Dmatic project."
+                )
+            elif existing.get("status") in ("completed", "processing"):
+                primary_meta["status"] = existing["status"]
+                primary_meta["progress_pct"] = existing.get("progress_pct", 100.0)
+                primary_meta["stage_label"] = existing.get("stage_label", "Completed")
+                primary_meta["tileset_path"] = existing.get("tileset_path", "")
+                primary_meta["obj_path"] = existing.get("obj_path", "")
+                primary_meta["project_dir"] = existing.get("project_dir", "")
+            else:
+                primary_meta["status"] = "queued"
+                primary_meta["progress_pct"] = 0.0
+                if total_parts > 1:
+                    primary_meta["stage_label"] = f"Queued (All {total_parts}/{total_parts} parts ready — Single PIX4Dmatic Project)"
+                    primary_meta["notes"] = (
+                        f"All {total_parts}/{total_parts} parts uploaded ({', '.join(os.path.basename(parts_map[p]) for p in present_parts)}). "
+                        f"Queued to merge and process as a single PIX4Dmatic project ({primary_meta['image_count']} RTK photos)."
+                    )
+                else:
+                    primary_meta["stage_label"] = "Queued for PIX4Dmatic (TWD97 + TWVD2001, 2K)"
+                    primary_meta["notes"] = f"Single-archive scan '{base_name}.zip' ({primary_meta['image_count']} RTK photos) ready for processing."
+
+        db.upsert_scan(primary_meta)
+        discovered_ids.add(scan_id)
 
     # 3. Remove any stale scans from SQLite that are no longer present on the filesystem
     with db._connect() as conn:
@@ -516,7 +622,9 @@ def seed_and_discover_scans(db: ScanQueueDB) -> List[Dict[str, Any]]:
             if sid not in discovered_ids:
                 pdir = row["project_dir"] or ""
                 szip = row["source_zip_path"] or ""
-                if not (pdir and os.path.isdir(pdir)) and not (szip and os.path.isfile(szip)):
+                zip_parts = [z.strip() for z in szip.split(";") if z.strip()]
+                any_zip_exists = any(os.path.isfile(z) for z in zip_parts)
+                if not (pdir and os.path.isdir(pdir)) and not any_zip_exists:
                     conn.execute("DELETE FROM scans WHERE scan_id = ?", (sid,))
         conn.execute(
             "UPDATE scans SET uploader_email = 'glibivanov@gatheren.com.tw', uploader_name = 'Glib Ivanov' WHERE lower(uploader_email) LIKE '%vitaly%'"

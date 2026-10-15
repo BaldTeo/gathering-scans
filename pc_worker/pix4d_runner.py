@@ -49,14 +49,16 @@ def generate_pix4dmatic_gst_script(
     5. Saves project and closes session cleanly.
     """
     p4m_clean = project_p4m_path.replace("\\", "/")
-    in_clean = input_zip_or_folder.replace("\\", "/")
     exp_clean = export_dir.replace("\\", "/")
     report_pdf = f"{exp_clean}/quality_report.pdf"
 
     if extracted_image_paths:
         paths_literal = ",\n            ".join(f'"{p.replace(chr(92), "/")}"' for p in extracted_image_paths)
     else:
-        paths_literal = f'"{in_clean}"'
+        part_paths = [p.strip().replace("\\", "/") for p in input_zip_or_folder.split(";") if p.strip()]
+        if not part_paths:
+            part_paths = [input_zip_or_folder.replace("\\", "/")]
+        paths_literal = ",\n            ".join(f'"{p}"' for p in part_paths)
 
     gst_content = f"""import Pix4D.Gst 1.0
 
@@ -72,7 +74,7 @@ Session {{
             outputs : [InputCameras{{ }},TiePointSet{{ }},RoiSet{{ }}]
         }}
 
-        // 2. Import Pix4DCatch RTK Frames + LiDAR Depth & Confidence Maps
+        // 2. Import Pix4DCatch RTK Frames + LiDAR Depth & Confidence Maps (Single or Multi-Part Merged)
         AddImagesFromPaths {{
             paths : [{paths_literal}]
             inputs : [InputCameras{{ }},TiePointSet{{ }},RoiSet{{ }}]
@@ -170,6 +172,9 @@ def run_pix4dmatic_pipeline(
     Executes the automated PIX4Dmatic 2.11.0 workflow (without --batch-mode so the
     cloud license seat 6fdbf93b is acquired automatically, minimized/hidden window)
     and chains GC_ScanOptimizer QuadtreeTiler (2K texture cap) to produce a web tileset.
+    Supports both single .zip archives ('FileName.zip') and multi-part archives
+    ('FileName_1of4.zip;FileName_2of4.zip;FileName_3of4.zip;FileName_4of4.zip')
+    merged into a single PIX4Dmatic project.
     """
     import zipfile
 
@@ -182,18 +187,21 @@ def run_pix4dmatic_pipeline(
     p4m_path = os.path.join(proj_dir, f"{scan_id}.p4m")
     gst_path = os.path.join(proj_dir, f"{scan_id}_pipeline.gst")
 
-    # If input_path is a Pix4DCatch .zip archive and not dry_run, extract into inputs/<stem>
+    # Extract single or multi-part Pix4DCatch .zip archives into inputs/<stem>
     extracted_files = []
-    if not dry_run and os.path.isfile(input_path) and input_path.lower().endswith(".zip"):
-        stem = os.path.splitext(os.path.basename(input_path))[0]
-        target_extract = os.path.join(inputs_dir, stem)
-        if not os.path.isdir(target_extract):
-            with zipfile.ZipFile(input_path, "r") as zf:
-                zf.extractall(target_extract)
-        for root, _, files in os.walk(target_extract):
-            for fn in sorted(files):
-                if fn.lower().endswith((".jpg", ".jpeg", ".png", ".tiff", ".tif")):
-                    extracted_files.append(os.path.join(root, fn))
+    part_paths = [p.strip() for p in input_path.split(";") if p.strip()]
+    if not dry_run:
+        for zpath in part_paths:
+            if os.path.isfile(zpath) and zpath.lower().endswith(".zip"):
+                stem = os.path.splitext(os.path.basename(zpath))[0]
+                target_extract = os.path.join(inputs_dir, stem)
+                if not os.path.isdir(target_extract):
+                    with zipfile.ZipFile(zpath, "r") as zf:
+                        zf.extractall(target_extract)
+                for root, _, files in os.walk(target_extract):
+                    for fn in sorted(files):
+                        if fn.lower().endswith((".jpg", ".jpeg", ".png", ".tiff", ".tif")):
+                            extracted_files.append(os.path.join(root, fn))
 
     gst_code = generate_pix4dmatic_gst_script(
         project_p4m_path=p4m_path,
