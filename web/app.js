@@ -859,7 +859,7 @@
     overlayEl.classList.toggle("active", Boolean(visible));
   }
 
-  function startScanLoader(ctx, prefix, scanName) {
+  function startScanLoader(ctx, prefix, scanName, scanId = null) {
     if (ctx) {
       if (ctx._loaderHideTimer) {
         clearTimeout(ctx._loaderHideTimer);
@@ -869,6 +869,7 @@
       ctx._tilesetReady = false;
       ctx._loadingStartMs = performance.now();
       ctx._maxPct = 6;
+      if (scanId) ctx._loadingScanId = scanId;
     }
     updateScanLoader(prefix, true, 6, `Loading ${scanName || "3D Scan"}...`);
   }
@@ -897,27 +898,44 @@
     const downloading = Number(stats.downloading || 0);
     const parsing = Number(stats.parsing || 0);
     const queued = Number(stats.queued || 0);
-    const pending = downloading + parsing + queued;
+    const failed = Number(stats.failed || 0);
+    const activeWork = downloading + parsing;
+    const pending = activeWork + queued;
     const elapsed = performance.now() - (ctx._loadingStartMs || 0);
 
-    if (loaded > 0 && pending === 0 && elapsed > 260) {
+    // Complete as soon as all active downloads/parses finish (or if only unscheduled queue items remain after 1.2s)
+    if (loaded > 0 && (pending === 0 || (activeWork === 0 && elapsed > 1200)) && elapsed > 240) {
       finishScanLoader(ctx, prefix, `100% · ${loaded} 3D tiles ready`);
       return;
     }
 
-    if (loaded > 0 || pending > 0) {
+    // If a transient tunnel/network hiccup caused initial tiles to fail with 0 loaded, auto-retry once
+    if (loaded === 0 && activeWork === 0 && failed > 0 && elapsed > 1200) {
+      if (!ctx._retriedOnce && ctx._loadingScanId && prefix === "preview") {
+        ctx._retriedOnce = true;
+        loadScanIntoPreview(ctx._loadingScanId);
+        return;
+      }
+      if (elapsed > 3500) {
+        finishScanLoader(ctx, prefix, "Scan Ready");
+        return;
+      }
+    }
+
+    if (loaded > 0 || activeWork > 0 || (queued > 0 && elapsed < 3500)) {
       const total = Math.max(1, loaded + pending);
-      const rawPct = Math.round(20 + (loaded / total) * 76);
+      const timeBoost = activeWork > 0 ? Math.min(18, Math.floor(elapsed / 250)) : 0;
+      const rawPct = Math.round(20 + (loaded / total) * 76) + timeBoost;
       ctx._maxPct = Math.min(96, Math.max(ctx._maxPct || 20, rawPct));
       updateScanLoader(prefix, true, ctx._maxPct, `Streaming 3D Scan · ${loaded} / ${total} tiles`);
       return;
     }
 
-    if (!ctx._tilesetReady) {
-      const waitPct = Math.min(18, 6 + Math.floor(elapsed / 90));
+    if (!ctx._tilesetReady && elapsed < 4500) {
+      const waitPct = Math.min(20, 6 + Math.floor(elapsed / 90));
       ctx._maxPct = Math.max(ctx._maxPct || 6, waitPct);
       updateScanLoader(prefix, true, ctx._maxPct, "Fetching 3D tileset...");
-    } else if (elapsed > 3800) {
+    } else if (elapsed > 3200) {
       finishScanLoader(ctx, prefix, "Scan Ready");
     }
   }
@@ -1042,7 +1060,8 @@
     previewThree.modelPivot.rotation.set(0, 0, 0);
     if (previewThree.fallbackGroup) previewThree.fallbackGroup.visible = false;
 
-    startScanLoader(previewThree, "preview", scan.name);
+    previewThree._retriedOnce = false;
+    startScanLoader(previewThree, "preview", scan.name, scan.scan_id);
 
     const streamUrl = scan.stream_url || `/stream/${scan.scan_id}/tileset.json`;
 
@@ -4341,13 +4360,46 @@
 
   window.addEventListener("resize", handleResize);
 
-  async function refreshScansCatalog() {
+  async function refreshScansCatalog(isBackgroundPoll = false) {
     try {
+      if (
+        isBackgroundPoll &&
+        ((previewThree && !previewThree._loadingDone) || (studioThree && !studioThree._loadingDone))
+      ) {
+        return;
+      }
       const prevIdsSig = (STATE.scans || []).map((s) => `${s.scan_id}:${s.project_group}`).join("|");
       const data = await apiGet("/api/scans");
-      STATE.scans = data.scans || [];
-      STATE.projects = data.projects || [];
-      STATE.materials = data.materials || {};
+      const incomingScans = Array.isArray(data.scans) ? data.scans : [];
+
+      if (incomingScans.length > 0) {
+        STATE.scans = incomingScans;
+        STATE.projects = data.projects || [];
+        try {
+          localStorage.setItem(
+            "gs_last_catalog_v1",
+            JSON.stringify({ scans: STATE.scans, projects: STATE.projects })
+          );
+        } catch (_) {}
+      } else if (data.pc_online === false) {
+        // Never wipe existing timeline scans on a transient tunnel reconnect
+        if (!STATE.scans || STATE.scans.length === 0) {
+          try {
+            const cached = JSON.parse(localStorage.getItem("gs_last_catalog_v1") || "null");
+            if (cached && Array.isArray(cached.scans) && cached.scans.length > 0) {
+              STATE.scans = cached.scans;
+              STATE.projects = cached.projects || [];
+            }
+          } catch (_) {}
+        }
+      } else {
+        STATE.scans = incomingScans;
+        STATE.projects = data.projects || [];
+      }
+
+      if (data.materials) {
+        STATE.materials = data.materials;
+      }
       if (typeof data.pc_online === "boolean") {
         STATE.pcOnline = data.pc_online;
         updatePcStatusUI();
@@ -4399,7 +4451,7 @@
       renderMapClusters();
 
       const nextIdsSig = (STATE.scans || []).map((s) => `${s.scan_id}:${s.project_group}`).join("|");
-      if (prevIdsSig && prevIdsSig !== nextIdsSig && STATE.siteTimelineOpen) {
+      if (prevIdsSig !== nextIdsSig && STATE.siteTimelineOpen && STATE.scans.length > 0) {
         openSiteTimeline(STATE.activeProjectGroup, STATE.selectedTimelineScanId);
       }
     } catch (err) {
@@ -4423,16 +4475,16 @@
   window.addEventListener("DOMContentLoaded", async () => {
     applyUserProfileToUI(STATE.currentUser);
     loadTeamUserProfiles();
-    await refreshScansCatalog();
+    await refreshScansCatalog(false);
     const urlScan = new URLSearchParams(window.location.search).get("scan");
     if (urlScan) {
       switchView("studio", urlScan);
     }
     window.addEventListener("focus", () => {
-      refreshScansCatalog();
+      refreshScansCatalog( true);
     });
     setInterval(() => {
-      refreshScansCatalog();
-    }, 5000);
+      refreshScansCatalog(true);
+    }, 12000);
   });
 })();

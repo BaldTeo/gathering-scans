@@ -63,27 +63,49 @@ os.makedirs(THUMBS_DIR, exist_ok=True)
 DB = ScanQueueDB()
 _FS_SYNC_LOCK = threading.Lock()
 _LAST_FS_SYNC_TS = 0.0
+_LAST_FS_FINGERPRINT: Optional[Tuple[str, ...]] = None
 
 
-def sync_scans_with_filesystem(max_age_s: float = 0.8) -> None:
+def _compute_scans_dir_fingerprint() -> Tuple[str, ...]:
+    if not os.path.isdir(LOCAL_SCANS_ROOT):
+        return ()
+    entries = []
+    try:
+        for name in sorted(os.listdir(LOCAL_SCANS_ROOT)):
+            full = os.path.join(LOCAL_SCANS_ROOT, name)
+            if os.path.isdir(full):
+                try:
+                    sub = sorted(os.listdir(full))
+                except Exception:
+                    sub = []
+                entries.append(f"{name}:{','.join(sub[:12])}")
+    except Exception:
+        pass
+    return tuple(entries)
+
+
+def sync_scans_with_filesystem(max_age_s: float = 1.5, force: bool = False) -> None:
     """Live filesystem sync: discovers new folders in C:\\GatheringScans and removes deleted folders."""
-    global _LAST_FS_SYNC_TS
+    global _LAST_FS_SYNC_TS, _LAST_FS_FINGERPRINT
     if os.name != "nt":
         return
     now = time.time()
-    if now - _LAST_FS_SYNC_TS < max_age_s:
+    if not force and (now - _LAST_FS_SYNC_TS < max_age_s):
         return
     with _FS_SYNC_LOCK:
-        if time.time() - _LAST_FS_SYNC_TS < max_age_s:
+        if not force and (time.time() - _LAST_FS_SYNC_TS < max_age_s):
             return
-        try:
-            seed_and_discover_scans(DB)
-        except Exception as e:
-            print(f"[GatheringScans] Live filesystem sync note: {e}")
+        fp = _compute_scans_dir_fingerprint()
+        if force or fp != _LAST_FS_FINGERPRINT:
+            try:
+                seed_and_discover_scans(DB)
+                _LAST_FS_FINGERPRINT = fp
+            except Exception as e:
+                print(f"[GatheringScans] Live filesystem sync note: {e}")
         _LAST_FS_SYNC_TS = time.time()
 
 
-sync_scans_with_filesystem(max_age_s=0.0)
+sync_scans_with_filesystem(force=True)
 OPTIMIZER = OptimizerBridge(DB)
 SURVEY = SurveyingEngine(DB)
 AUTH_SHARE = AuthAndSharingManager(DB)
@@ -93,7 +115,8 @@ GCHAT = GoogleChatNotifier(DB)
 PC_SIMULATED_OFFLINE = False
 
 # Reverse Tunnel Socket Pool (used on Linux VPS to proxy /api/*, /stream/*, /s/* to Windows PC C:\GatheringScans)
-VPS_TUNNEL_POOL: "queue.LifoQueue[Tuple[socket.socket, threading.Event, float]]" = queue.LifoQueue()
+VPS_TUNNEL_POOL: "queue.LifoQueue[Tuple[socket.socket, threading.Event, float, int]]" = queue.LifoQueue()
+_VPS_RAM_FALLBACK_CACHE: Dict[str, Tuple[int, Dict[str, str], bytes]] = {}
 _TUNNEL_POOL_STARTED = False
 
 
@@ -110,21 +133,26 @@ def _recv_exact(sock: socket.socket, n: int) -> Optional[bytes]:
     return bytes(buf)
 
 
-def _acquire_vps_tunnel_socket(timeout: float = 3.0) -> Tuple[Optional[socket.socket], Optional[threading.Event]]:
+def _acquire_vps_tunnel_socket(timeout: float = 6.0) -> Tuple[Optional[socket.socket], Optional[threading.Event], int]:
     deadline = time.time() + timeout
     while True:
-        rem = max(0.05, deadline - time.time())
+        rem = deadline - time.time()
+        if rem <= 0:
+            return None, None, 0
         try:
-            sock, done_evt, ts = VPS_TUNNEL_POOL.get(timeout=rem)
+            sock, done_evt, ts, proto_ver = VPS_TUNNEL_POOL.get(timeout=min(rem, 0.25))
         except queue.Empty:
-            return None, None
-        if time.time() - ts > 42.0:
+            if time.time() >= deadline:
+                return None, None, 0
+            continue
+        max_idle = 210.0 if proto_ver >= 2 else 42.0
+        if done_evt.is_set() or (time.time() - ts > max_idle):
             done_evt.set()
             continue
-        return sock, done_evt
+        return sock, done_evt, proto_ver
 
 
-def start_pc_reverse_tunnel_pool(local_port: int = SERVER_PORT, pool_size: int = 16):
+def start_pc_reverse_tunnel_pool(local_port: int = SERVER_PORT, pool_size: int = 48):
     """On Windows PC, maintains a pool of persistent reverse TCP sockets to Hostinger VPS (76.13.197.29:8095)."""
     global _TUNNEL_POOL_STARTED
     if os.name != "nt" or _TUNNEL_POOL_STARTED:
@@ -132,15 +160,19 @@ def start_pc_reverse_tunnel_pool(local_port: int = SERVER_PORT, pool_size: int =
     _TUNNEL_POOL_STARTED = True
 
     def _worker(worker_id: int):
+        # Stagger initial connection slightly to prevent synchronized rotation
+        time.sleep((worker_id % 16) * 0.04)
         while True:
             s: Optional[socket.socket] = None
             try:
-                s = socket.create_connection((VPS_HOST, 8095), timeout=10.0)
-                s.settimeout(55.0)
+                s = socket.create_connection((VPS_HOST, 8095), timeout=8.0)
+                s.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+                s.settimeout(240.0)
                 handshake = (
                     f"GET /_pc_tunnel HTTP/1.1\r\n"
                     f"Host: {VPS_HOST}:8095\r\n"
                     f"X-Tunnel-Key: {TUNNEL_SHARED_KEY}\r\n"
+                    f"X-Tunnel-Proto: 2\r\n"
                     f"Connection: keep-alive\r\n\r\n"
                 ).encode("ascii")
                 s.sendall(handshake)
@@ -154,55 +186,77 @@ def start_pc_reverse_tunnel_pool(local_port: int = SERVER_PORT, pool_size: int =
                     resp_buf += chunk
                     if len(resp_buf) > 8192:
                         break
-                if b"200 OK" not in resp_buf or b"X-Tunnel-Ready: 1" not in resp_buf:
+                if b"200 OK" not in resp_buf or (b"X-Tunnel-Ready: 1" not in resp_buf and b"X-Tunnel-Ready: 2" not in resp_buf):
                     s.close()
-                    time.sleep(3.0)
+                    time.sleep(1.0)
                     continue
 
-                # Wait for proxied request frame from VPS (4-byte big-endian length + JSON)
-                len_bytes = _recv_exact(s, 4)
-                if not len_bytes:
-                    # Idle tunnel rotation timeout; reconnect immediately
-                    s.close()
-                    continue
-                (frame_len,) = struct.unpack("!I", len_bytes)
-                if frame_len <= 0 or frame_len > 64 * 1024 * 1024:
-                    s.close()
-                    continue
-                req_raw = _recv_exact(s, frame_len)
-                if not req_raw:
-                    s.close()
-                    continue
-                req_info = json.loads(req_raw.decode("utf-8"))
-                method = req_info.get("method", "GET")
-                path = req_info.get("path", "/")
-                req_headers = req_info.get("headers") or {}
-                body_b64 = req_info.get("body_b64", "")
-                body_bytes = base64.b64decode(body_b64) if body_b64 else None
+                is_v2 = b"X-Tunnel-Ready: 2" in resp_buf
 
-                # Execute against local Windows PC server (127.0.0.1:local_port)
-                conn = http.client.HTTPConnection("127.0.0.1", local_port, timeout=60.0)
-                fwd_headers = {}
-                for hk, hv in req_headers.items():
-                    if hk.lower() not in ("host", "connection", "transfer-encoding"):
-                        fwd_headers[hk] = hv
-                conn.request(method, path, body=body_bytes, headers=fwd_headers)
-                resp = conn.getresponse()
-
-                resp_headers = {k: v for k, v in resp.getheaders()}
-                resp_meta = json.dumps({"status": resp.status, "headers": resp_headers}).encode("utf-8")
-                s.sendall(struct.pack("!I", len(resp_meta)) + resp_meta)
-
+                # Serve multiple requests over the same socket when v2 is active
                 while True:
-                    chunk = resp.read(65536)
-                    if not chunk:
+                    len_bytes = _recv_exact(s, 4)
+                    if not len_bytes:
                         break
-                    s.sendall(chunk)
-                conn.close()
-                try:
-                    s.shutdown(socket.SHUT_WR)
-                except Exception:
-                    pass
+                    (frame_len,) = struct.unpack("!I", len_bytes)
+                    if frame_len == 0:
+                        # Heartbeat ping
+                        continue
+                    if frame_len < 0 or frame_len > 64 * 1024 * 1024:
+                        break
+                    req_raw = _recv_exact(s, frame_len)
+                    if not req_raw:
+                        break
+                    req_info = json.loads(req_raw.decode("utf-8"))
+                    method = req_info.get("method", "GET")
+                    path = req_info.get("path", "/")
+                    req_headers = req_info.get("headers") or {}
+                    body_b64 = req_info.get("body_b64", "")
+                    body_bytes = base64.b64decode(body_b64) if body_b64 else None
+
+                    conn: Optional[http.client.HTTPConnection] = None
+                    try:
+                        conn = http.client.HTTPConnection("127.0.0.1", local_port, timeout=30.0)
+                        fwd_headers = {"Connection": "close"}
+                        for hk, hv in req_headers.items():
+                            if hk.lower() not in ("host", "connection", "transfer-encoding"):
+                                fwd_headers[hk] = hv
+                        conn.request(method, path, body=body_bytes, headers=fwd_headers)
+                        resp = conn.getresponse()
+
+                        resp_headers = {k: v for k, v in resp.getheaders()}
+                        resp_meta = json.dumps(
+                            {
+                                "status": resp.status,
+                                "headers": resp_headers,
+                                "chunked_v2": is_v2,
+                            }
+                        ).encode("utf-8")
+                        s.sendall(struct.pack("!I", len(resp_meta)) + resp_meta)
+
+                        while True:
+                            chunk = resp.read(65536)
+                            if not chunk:
+                                break
+                            if is_v2:
+                                s.sendall(struct.pack("!I", len(chunk)) + chunk)
+                            else:
+                                s.sendall(chunk)
+                        if is_v2:
+                            s.sendall(struct.pack("!I", 0))
+                    finally:
+                        if conn is not None:
+                            try:
+                                conn.close()
+                            except Exception:
+                                pass
+
+                    if not is_v2:
+                        try:
+                            s.shutdown(socket.SHUT_WR)
+                        except Exception:
+                            pass
+                        break
                 s.close()
             except Exception:
                 if s:
@@ -210,12 +264,12 @@ def start_pc_reverse_tunnel_pool(local_port: int = SERVER_PORT, pool_size: int =
                         s.close()
                     except Exception:
                         pass
-                time.sleep(2.0)
+                time.sleep(0.25)
 
     for idx in range(pool_size):
         t = threading.Thread(target=_worker, args=(idx,), daemon=True)
         t.start()
-    print(f"[GatheringScans] Started {pool_size} reverse tunnel sockets to {VPS_HOST}:8095 -> 127.0.0.1:{local_port} ({LOCAL_SCANS_ROOT})")
+    print(f"[GatheringScans] Started {pool_size} persistent reverse tunnel sockets to {VPS_HOST}:8095 -> 127.0.0.1:{local_port} ({LOCAL_SCANS_ROOT})", flush=True)
 
 
 class GatheringScansHandler(SimpleHTTPRequestHandler):
@@ -409,30 +463,43 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
         if key != TUNNEL_SHARED_KEY:
             self.send_json({"error": "Forbidden tunnel key"}, status=403)
             return
+        proto_hdr = self.headers.get("X-Tunnel-Proto", "1").strip()
+        proto_ver = 2 if proto_hdr == "2" else 1
         try:
-            self.connection.sendall(b"HTTP/1.1 200 OK\r\nX-Tunnel-Ready: 1\r\nContent-Length: 0\r\n\r\n")
+            self.connection.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+            self.connection.sendall(
+                f"HTTP/1.1 200 OK\r\nX-Tunnel-Ready: {proto_ver}\r\nContent-Length: 0\r\n\r\n".encode("ascii")
+            )
         except Exception:
             self.close_connection = True
             return
 
         done_evt = threading.Event()
-        VPS_TUNNEL_POOL.put((self.connection, done_evt, time.time()))
-        # Hold handler thread open until this tunnel socket is consumed by a proxied request (or rotates after 45s)
-        done_evt.wait(timeout=45.0)
+        VPS_TUNNEL_POOL.put((self.connection, done_evt, time.time(), proto_ver))
+        # Hold handler thread open while persistent socket serves requests in the pool
+        done_evt.wait(timeout=240.0 if proto_ver >= 2 else 45.0)
+        done_evt.set()
         self.close_connection = True
 
     def _proxy_via_pc_tunnel_if_vps(self, method: str, path: str, body: bytes = b"") -> bool:
         """
         When running on the Linux VPS (os.name != 'nt'), proxies all /api/*, /stream/*, and /s/* requests
         through the reverse socket pool directly to the Windows PC (C:\\GatheringScans).
-        Zero scan files or metadata are stored on the Linux VPS.
+        Zero scan files are stored on the Linux VPS disk.
         """
         if os.name == "nt":
             return False
 
-        # Try up to 2 sockets from the pool in case the top socket just rotated
-        for _attempt in range(2):
-            tun_sock, done_evt = _acquire_vps_tunnel_socket(timeout=2.5)
+        cacheable = method == "GET" and (
+            path in ("/api/scans", "/api/projects", "/api/status", "/api/pc/health", "/api/user-profiles")
+            or path.endswith("/thumbnail")
+            or path.endswith("/thumbnail.png")
+            or path.endswith("/tileset.json")
+        )
+
+        # Try up to 4 sockets from the pool
+        for _attempt in range(4):
+            tun_sock, done_evt, proto_ver = _acquire_vps_tunnel_socket(timeout=5.0)
             if not tun_sock or not done_evt:
                 break
             try:
@@ -460,6 +527,7 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
                 resp_meta = json.loads(meta_raw.decode("utf-8"))
                 status_code = int(resp_meta.get("status", 200))
                 resp_headers = resp_meta.get("headers") or {}
+                chunked_v2 = bool(resp_meta.get("chunked_v2", False))
 
                 self.send_response(status_code)
                 skip_hdrs = {
@@ -472,24 +540,74 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
                     "access-control-allow-headers",
                     "access-control-expose-headers",
                 }
+                filtered_hdrs: Dict[str, str] = {}
                 for hk, hv in resp_headers.items():
                     if hk.lower() not in skip_hdrs:
                         self.send_header(hk, hv)
+                        filtered_hdrs[hk] = hv
                 self.end_headers()
 
-                while True:
-                    chunk = tun_sock.recv(65536)
-                    if not chunk:
-                        break
-                    try:
-                        self.wfile.write(chunk)
-                    except (BrokenPipeError, ConnectionResetError):
-                        break
-                done_evt.set()
+                buf_for_cache = bytearray() if (cacheable and status_code == 200) else None
+                client_Write_ok = True
+                stream_clean = True
+
+                if chunked_v2:
+                    while True:
+                        clen_bytes = _recv_exact(tun_sock, 4)
+                        if not clen_bytes:
+                            stream_clean = False
+                            break
+                        (clen,) = struct.unpack("!I", clen_bytes)
+                        if clen == 0:
+                            break
+                        chunk = _recv_exact(tun_sock, clen)
+                        if chunk is None:
+                            stream_clean = False
+                            break
+                        if buf_for_cache is not None and len(buf_for_cache) < 2 * 1024 * 1024:
+                            buf_for_cache.extend(chunk)
+                        if client_Write_ok:
+                            try:
+                                self.wfile.write(chunk)
+                            except (BrokenPipeError, ConnectionResetError):
+                                client_Write_ok = False
+                    if stream_clean and not done_evt.is_set():
+                        # Return socket immediately to pool for reuse by next request
+                        VPS_TUNNEL_POOL.put((tun_sock, done_evt, time.time(), proto_ver))
+                    else:
+                        done_evt.set()
+                else:
+                    while True:
+                        chunk = tun_sock.recv(65536)
+                        if not chunk:
+                            break
+                        if buf_for_cache is not None and len(buf_for_cache) < 2 * 1024 * 1024:
+                            buf_for_cache.extend(chunk)
+                        try:
+                            self.wfile.write(chunk)
+                        except (BrokenPipeError, ConnectionResetError):
+                            break
+                    done_evt.set()
+
+                if buf_for_cache is not None and stream_clean:
+                    _VPS_RAM_FALLBACK_CACHE[self.path] = (status_code, filtered_hdrs, bytes(buf_for_cache))
                 return True
             except Exception:
                 done_evt.set()
                 continue
+
+        # Serve from in-memory fallback cache if available during momentary tunnel reconnect
+        if self.path in _VPS_RAM_FALLBACK_CACHE:
+            c_status, c_hdrs, c_body = _VPS_RAM_FALLBACK_CACHE[self.path]
+            self.send_response(c_status)
+            for hk, hv in c_hdrs.items():
+                self.send_header(hk, hv)
+            self.end_headers()
+            try:
+                self.wfile.write(c_body)
+            except (BrokenPipeError, ConnectionResetError):
+                pass
+            return True
 
         # No active reverse tunnel from the Windows PC -> PC is offline
         if path in ("/api/status", "/api/pc/health"):
