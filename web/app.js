@@ -810,6 +810,7 @@
       if (previewThree.tilesRenderer) {
         camera.updateMatrixWorld();
         previewThree.tilesRenderer.update();
+        syncTilesLoaderProgress(previewThree, "preview");
         previewThree.tilesRenderer.group.traverse((child) => {
           if (child.isMesh && child.material) {
             const mats = Array.isArray(child.material) ? child.material : [child.material];
@@ -832,6 +833,93 @@
     requestAnimationFrame(animatePreview);
 
     return previewThree;
+  }
+
+  // Circular 3D Scan Loading Indicator (Fill/Void Ring + Centered Percentage)
+  const LOADER_RING_CIRCUMFERENCE = 238.761; // 2 * Math.PI * 38
+
+  function updateScanLoader(prefix, visible, pct, labelText) {
+    const overlayEl = document.getElementById(`${prefix}ScanLoader`);
+    if (!overlayEl) return;
+    const arcEl = document.getElementById(`${prefix}ScanLoaderArc`);
+    const pctEl = document.getElementById(`${prefix}ScanLoaderPct`);
+    const lblEl = document.getElementById(`${prefix}ScanLoaderLabel`);
+
+    const clamped = Math.max(0, Math.min(100, Math.round(Number(pct) || 0)));
+    if (arcEl) {
+      const offset = LOADER_RING_CIRCUMFERENCE * (1 - clamped / 100);
+      arcEl.style.strokeDashoffset = offset.toFixed(2);
+    }
+    if (pctEl) {
+      pctEl.textContent = `${clamped}%`;
+    }
+    if (lblEl && typeof labelText === "string" && labelText) {
+      lblEl.textContent = labelText;
+    }
+    overlayEl.classList.toggle("active", Boolean(visible));
+  }
+
+  function startScanLoader(ctx, prefix, scanName) {
+    if (ctx) {
+      if (ctx._loaderHideTimer) {
+        clearTimeout(ctx._loaderHideTimer);
+        ctx._loaderHideTimer = null;
+      }
+      ctx._loadingDone = false;
+      ctx._tilesetReady = false;
+      ctx._loadingStartMs = performance.now();
+      ctx._maxPct = 6;
+    }
+    updateScanLoader(prefix, true, 6, `Loading ${scanName || "3D Scan"}...`);
+  }
+
+  function finishScanLoader(ctx, prefix, labelText = "Scan Ready") {
+    if (ctx) {
+      ctx._loadingDone = true;
+      ctx._maxPct = 100;
+      if (ctx._loaderHideTimer) clearTimeout(ctx._loaderHideTimer);
+      updateScanLoader(prefix, true, 100, labelText);
+      ctx._loaderHideTimer = setTimeout(() => {
+        updateScanLoader(prefix, false, 100, labelText);
+        if (prefix === "preview") {
+          autoCaptureSiteTimelineScreenshots();
+        }
+      }, 320);
+    } else {
+      updateScanLoader(prefix, false, 100, labelText);
+    }
+  }
+
+  function syncTilesLoaderProgress(ctx, prefix) {
+    if (!ctx || !ctx.tilesRenderer || ctx._loadingDone) return;
+    const stats = ctx.tilesRenderer.stats || {};
+    const loaded = Number(stats.loaded || 0);
+    const downloading = Number(stats.downloading || 0);
+    const parsing = Number(stats.parsing || 0);
+    const queued = Number(stats.queued || 0);
+    const pending = downloading + parsing + queued;
+    const elapsed = performance.now() - (ctx._loadingStartMs || 0);
+
+    if (loaded > 0 && pending === 0 && elapsed > 260) {
+      finishScanLoader(ctx, prefix, `100% · ${loaded} 3D tiles ready`);
+      return;
+    }
+
+    if (loaded > 0 || pending > 0) {
+      const total = Math.max(1, loaded + pending);
+      const rawPct = Math.round(20 + (loaded / total) * 76);
+      ctx._maxPct = Math.min(96, Math.max(ctx._maxPct || 20, rawPct));
+      updateScanLoader(prefix, true, ctx._maxPct, `Streaming 3D Scan · ${loaded} / ${total} tiles`);
+      return;
+    }
+
+    if (!ctx._tilesetReady) {
+      const waitPct = Math.min(18, 6 + Math.floor(elapsed / 90));
+      ctx._maxPct = Math.max(ctx._maxPct || 6, waitPct);
+      updateScanLoader(prefix, true, ctx._maxPct, "Fetching 3D tileset...");
+    } else if (elapsed > 3800) {
+      finishScanLoader(ctx, prefix, "Scan Ready");
+    }
   }
 
   function framePreviewCamera() {
@@ -873,7 +961,7 @@
     if (!previewThree || !previewThree.renderer) return;
     const activeId = STATE.selectedTimelineScanId || STATE.activeScanId;
     if (!activeId || STATE.capturedThumbs.has(activeId)) return;
-    STATE.capturedThumbs.add(activeId);
+    await captureAndPersistScanScreenshot(activeId, previewThree, false);
   }
 
   function computeTilesetContentSphere(tr, outSphere) {
@@ -954,6 +1042,8 @@
     previewThree.modelPivot.rotation.set(0, 0, 0);
     if (previewThree.fallbackGroup) previewThree.fallbackGroup.visible = false;
 
+    startScanLoader(previewThree, "preview", scan.name);
+
     const streamUrl = scan.stream_url || `/stream/${scan.scan_id}/tileset.json`;
 
     if (scan.stream_type === "glb" || streamUrl.toLowerCase().endsWith(".glb")) {
@@ -980,11 +1070,19 @@
           });
           previewThree.modelPivot.add(model);
           framePreviewCamera();
-          setTimeout(() => autoCaptureSiteTimelineScreenshots(), 550);
+          finishScanLoader(previewThree, "preview", "100% · 3D Mesh Ready");
         },
-        undefined,
+        (xhr) => {
+          const pct =
+            xhr && xhr.total > 0
+              ? Math.min(95, Math.max(12, Math.round((xhr.loaded / xhr.total) * 100)))
+              : Math.min(88, (previewThree._maxPct || 12) + 8);
+          previewThree._maxPct = pct;
+          updateScanLoader("preview", true, pct, `Loading 3D Mesh (${pct}%)...`);
+        },
         () => {
           if (previewThree.fallbackGroup) previewThree.fallbackGroup.visible = true;
+          finishScanLoader(previewThree, "preview", "Ready");
         }
       );
     } else if (window.TilesRenderer) {
@@ -1007,6 +1105,9 @@
       tr.manager.addHandler(/\.(gltf|glb)$/i, gltfLoader);
 
       tr.addEventListener("load-tileset", () => {
+        previewThree._tilesetReady = true;
+        previewThree._maxPct = Math.max(previewThree._maxPct || 0, 22);
+        updateScanLoader("preview", true, previewThree._maxPct, "Streaming 3D tiles...");
         const sphere = new THREE.Sphere();
         if (computeTilesetContentSphere(tr, sphere)) {
           tr.group.position.set(-sphere.center.x, -sphere.center.y, -sphere.center.z);
@@ -1025,7 +1126,7 @@
               mats.forEach((m) => applyBrightnessToMaterial(m, STATE.scanBrightness));
             }
           });
-          setTimeout(() => autoCaptureSiteTimelineScreenshots(), 650);
+          syncTilesLoaderProgress(previewThree, "preview");
         }
       });
 
@@ -1038,6 +1139,10 @@
   }
 
   function selectTimelineTile(scanId) {
+    if (STATE._timelineInitTimer) {
+      clearTimeout(STATE._timelineInitTimer);
+      STATE._timelineInitTimer = null;
+    }
     STATE.selectedTimelineScanId = scanId;
     document.querySelectorAll("#siteTimelineTilesTrack .gs-timeline-tile").forEach((tile) => {
       const isAct = tile.dataset.scanId === scanId;
@@ -1051,6 +1156,11 @@
   function openSiteTimeline(projectGroup, preferredScanId = null) {
     const splitEl = document.getElementById("siteTimelineSplitView");
     if (!splitEl) return;
+
+    if (STATE._timelineInitTimer) {
+      clearTimeout(STATE._timelineInitTimer);
+      STATE._timelineInitTimer = null;
+    }
 
     const allGroups = getProjectGroupsList("");
     const grpName =
@@ -1135,7 +1245,8 @@
 
     // Render 3D Scan Preview in Bottom 2/3
     if (chosenScan) {
-      setTimeout(() => {
+      STATE._timelineInitTimer = setTimeout(() => {
+        STATE._timelineInitTimer = null;
         selectTimelineTile(chosenScan.scan_id);
       }, 30);
     }
@@ -1413,6 +1524,7 @@
       if (studioThree.tilesRenderer) {
         camera.updateMatrixWorld();
         studioThree.tilesRenderer.update();
+        syncTilesLoaderProgress(studioThree, "studio");
         studioThree.tilesRenderer.group.traverse((child) => {
           if (child.isMesh && child.material) {
             const mats = Array.isArray(child.material) ? child.material : [child.material];
@@ -1515,6 +1627,8 @@
     studioThree.modelPivot.rotation.set(0, 0, 0);
     if (studioThree.fallbackGroup) studioThree.fallbackGroup.visible = false;
 
+    startScanLoader(studioThree, "studio", scan.name);
+
     const streamUrl = scan.stream_url || `/stream/${scan.scan_id}/tileset.json`;
 
     if (scan.stream_type === "glb" || streamUrl.toLowerCase().endsWith(".glb")) {
@@ -1542,10 +1656,19 @@
           studioThree.modelPivot.add(model);
           studioThree.boundingSphere = sphere;
           frameStudioCamera();
+          finishScanLoader(studioThree, "studio", "100% · 3D Mesh Ready");
         },
-        undefined,
+        (xhr) => {
+          const pct =
+            xhr && xhr.total > 0
+              ? Math.min(95, Math.max(12, Math.round((xhr.loaded / xhr.total) * 100)))
+              : Math.min(88, (studioThree._maxPct || 12) + 8);
+          studioThree._maxPct = pct;
+          updateScanLoader("studio", true, pct, `Loading 3D Mesh (${pct}%)...`);
+        },
         (err) => {
           if (studioThree.fallbackGroup) studioThree.fallbackGroup.visible = true;
+          finishScanLoader(studioThree, "studio", "Ready");
           console.warn("[GatheringScans] Using reference terrain surface for GLB:", err);
         }
       );
@@ -1569,6 +1692,9 @@
       tr.manager.addHandler(/\.(gltf|glb)$/i, gltfLoader);
 
       tr.addEventListener("load-tileset", () => {
+        studioThree._tilesetReady = true;
+        studioThree._maxPct = Math.max(studioThree._maxPct || 0, 22);
+        updateScanLoader("studio", true, studioThree._maxPct, "Streaming 3D tiles...");
         const sphere = new THREE.Sphere();
         if (computeTilesetContentSphere(tr, sphere)) {
           tr.group.position.set(-sphere.center.x, -sphere.center.y, -sphere.center.z);
@@ -1589,6 +1715,7 @@
               mats.forEach((m) => applyBrightnessToMaterial(m, STATE.scanBrightness));
             }
           });
+          syncTilesLoaderProgress(studioThree, "studio");
         }
       });
 

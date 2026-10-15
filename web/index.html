@@ -235,6 +235,20 @@
         <div class="gs-site-preview-bottom" id="sitePreviewBottomPane">
           <div id="sitePreviewCanvasContainer"></div>
 
+          <!-- Circular Scan Loading Indicator (Fill/Void Ring + Centered Percentage) -->
+          <div class="gs-scan-loader-overlay" id="previewScanLoader" role="status" aria-live="polite">
+            <div class="gs-scan-loader-card">
+              <div class="gs-scan-loader-ring-wrap">
+                <svg class="gs-scan-loader-svg" viewBox="0 0 100 100" width="92" height="92" aria-hidden="true">
+                  <circle class="gs-scan-loader-void" cx="50" cy="50" r="38" />
+                  <circle class="gs-scan-loader-fill" id="previewScanLoaderArc" cx="50" cy="50" r="38" />
+                </svg>
+                <div class="gs-scan-loader-pct" id="previewScanLoaderPct">0%</div>
+              </div>
+              <div class="gs-scan-loader-label" id="previewScanLoaderLabel">Loading 3D Scan...</div>
+            </div>
+          </div>
+
           <!-- Top-Left Preview Scan Metadata Pill -->
           <div class="gs-preview-hud-top-left" id="sitePreviewHudBadge">
             <div class="gs-active-scan-pill" style="gap:10px;">
@@ -281,6 +295,20 @@
          ====================================================================== -->
     <section class="gs-view" id="viewStudio">
       <div id="studioCanvasContainer"></div>
+
+      <!-- Circular Scan Loading Indicator (Fill/Void Ring + Centered Percentage) -->
+      <div class="gs-scan-loader-overlay" id="studioScanLoader" role="status" aria-live="polite">
+        <div class="gs-scan-loader-card">
+          <div class="gs-scan-loader-ring-wrap">
+            <svg class="gs-scan-loader-svg" viewBox="0 0 100 100" width="92" height="92" aria-hidden="true">
+              <circle class="gs-scan-loader-void" cx="50" cy="50" r="38" />
+              <circle class="gs-scan-loader-fill" id="studioScanLoaderArc" cx="50" cy="50" r="38" />
+            </svg>
+            <div class="gs-scan-loader-pct" id="studioScanLoaderPct">0%</div>
+          </div>
+          <div class="gs-scan-loader-label" id="studioScanLoaderLabel">Loading 3D Scan...</div>
+        </div>
+      </div>
 
       <!-- 2D Measurement Badges Overlay -->
       <div id="studioOverlay2D" style="position:absolute;inset:0;pointer-events:none;overflow:hidden;z-index:55;"></div>
@@ -555,6 +583,20 @@
       <div class="gs-compare-stage" id="compareStage">
         <div class="gs-compare-layer" id="compareLeftLayer"></div>
         <div class="gs-compare-layer" id="compareRightLayer"></div>
+
+        <!-- Circular Scan Loading Indicator (Fill/Void Ring + Centered Percentage) -->
+        <div class="gs-scan-loader-overlay" id="compareScanLoader" role="status" aria-live="polite">
+          <div class="gs-scan-loader-card">
+            <div class="gs-scan-loader-ring-wrap">
+              <svg class="gs-scan-loader-svg" viewBox="0 0 100 100" width="92" height="92" aria-hidden="true">
+                <circle class="gs-scan-loader-void" cx="50" cy="50" r="38" />
+                <circle class="gs-scan-loader-fill" id="compareScanLoaderArc" cx="50" cy="50" r="38" />
+              </svg>
+              <div class="gs-scan-loader-pct" id="compareScanLoaderPct">0%</div>
+            </div>
+            <div class="gs-scan-loader-label" id="compareScanLoaderLabel">Loading 3D Scan...</div>
+          </div>
+        </div>
 
         <!-- Draggable Split Curtain Divider -->
         <div class="gs-curtain-divider" id="curtainDivider">

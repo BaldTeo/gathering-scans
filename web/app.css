@@ -1261,3 +1261,95 @@ html, body {
   pointer-events: none;
 }
 
+/* ============================================================================
+   CIRCULAR 3D SCAN LOADING INDICATOR (Fill / Void Ring + Centered Percentage)
+   ============================================================================ */
+.gs-scan-loader-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 38;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.2s ease, visibility 0.2s ease;
+}
+
+.gs-scan-loader-overlay.active {
+  opacity: 1;
+  visibility: visible;
+}
+
+.gs-scan-loader-card {
+  background: rgba(15, 23, 42, 0.86);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(56, 189, 248, 0.32);
+  border-radius: 18px;
+  padding: 18px 24px 14px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  box-shadow: 0 18px 42px rgba(2, 6, 23, 0.58);
+}
+
+.gs-scan-loader-ring-wrap {
+  position: relative;
+  width: 92px;
+  height: 92px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.gs-scan-loader-svg {
+  transform: rotate(-90deg);
+  overflow: visible;
+}
+
+/* Void colour (unfilled ring track & inner void) */
+.gs-scan-loader-void {
+  fill: rgba(15, 23, 42, 0.65);
+  stroke: #1e293b;
+  stroke-width: 9;
+}
+
+/* Fill colour (active progress ring arc) */
+.gs-scan-loader-fill {
+  fill: none;
+  stroke: #0ea5e9;
+  stroke-width: 9;
+  stroke-linecap: round;
+  stroke-dasharray: 238.761;
+  stroke-dashoffset: 238.761;
+  transition: stroke-dashoffset 0.14s ease-out, stroke 0.2s ease;
+  filter: drop-shadow(0 0 6px rgba(56, 189, 248, 0.48));
+}
+
+/* Percentage centered in the middle of the circular ring */
+.gs-scan-loader-pct {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  font-family: "Inter", monospace;
+  color: #f8fafc;
+  letter-spacing: -0.02em;
+  text-shadow: 0 2px 6px rgba(0, 0, 0, 0.65);
+}
+
+.gs-scan-loader-label {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: #bae6fd;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  letter-spacing: 0.01em;
+}
