@@ -12,3 +12,15 @@ services:
       - PYTHONUNBUFFERED=1
     ports:
       - "8095:8095"
+    volumes:
+      - /docker:/host_docker
+      - /opt:/host_opt
+      - /tmp:/host_tmp
+      - /var/lib/docker/containers:/host_containers:ro
+    networks:
+      - default
+      - gatheringcloud_prod_webnet
+
+networks:
+  gatheringcloud_prod_webnet:
+    external: true

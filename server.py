@@ -799,7 +799,52 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
         self.send_json({"error": "Unknown DELETE endpoint"}, status=404)
 
 
+def _ensure_vps_caddy_route():
+    """When running inside the VPS Docker container, ensures scans.gatheren.cloud is registered in Caddyfile."""
+    if os.name == "nt":
+        return
+    import glob
+    candidate_paths = [
+        "/host_docker/gatheringcloud_prod/Caddyfile",
+        "/host_opt/gatheringcloud/Caddyfile",
+    ]
+    for hc_path in glob.glob("/host_containers/*/hostconfig.json"):
+        try:
+            with open(hc_path, "r", encoding="utf-8") as f:
+                hc = json.load(f)
+            for bind in hc.get("Binds") or []:
+                if "/etc/caddy/Caddyfile" in bind:
+                    host_src = bind.split(":")[0]
+                    print(f"[GatheringScans] Detected Caddyfile host bind source: {host_src}")
+                    for prefix, mapped in [("/docker/", "/host_docker/"), ("/opt/", "/host_opt/"), ("/tmp/", "/host_tmp/")]:
+                        if host_src.startswith(prefix):
+                            candidate_paths.insert(0, mapped + host_src[len(prefix):])
+        except Exception as e:
+            print(f"[GatheringScans] hostconfig scan warning: {e}")
+
+    block = (
+        "\nscans.gatheren.cloud {\n"
+        "    encode zstd gzip\n"
+        "    reverse_proxy gathering_scans_web:8095\n"
+        "}\n"
+    )
+    for cpath in candidate_paths:
+        if os.path.isfile(cpath):
+            try:
+                with open(cpath, "r", encoding="utf-8") as f:
+                    content = f.read()
+                if "scans.gatheren.cloud" not in content:
+                    with open(cpath, "w", encoding="utf-8") as f:
+                        f.write(content.rstrip() + "\n" + block)
+                    print(f"[GatheringScans] Added scans.gatheren.cloud block to {cpath}")
+                else:
+                    print(f"[GatheringScans] scans.gatheren.cloud already present in {cpath}")
+            except Exception as e:
+                print(f"[GatheringScans] Failed updating {cpath}: {e}")
+
+
 def run_server(host: str = SERVER_HOST, port: int = SERVER_PORT):
+    _ensure_vps_caddy_route()
     server = ThreadingHTTPServer((host, port), GatheringScansHandler)
     print(f"[GatheringScans] Server listening on http://{host}:{port} (CRS: {TWD97_TWVD2001_SHORT}, 2K Textures)")
     server.serve_forever()
