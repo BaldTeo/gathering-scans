@@ -279,6 +279,71 @@ def start_pc_reverse_tunnel_pool(local_port: int = SERVER_PORT, pool_size: int =
     for idx in range(pool_size):
         t = threading.Thread(target=_worker, args=(idx,), daemon=True)
         t.start()
+
+    def _warm_all_scans_loop():
+        import urllib.request
+
+        time.sleep(3.5)
+        warmed_uris = set()
+        while True:
+            try:
+                r = json.loads(
+                    urllib.request.urlopen(f"http://127.0.0.1:{local_port}/api/scans", timeout=8).read().decode("utf-8")
+                )
+                scans = r.get("scans") or []
+                for s in scans:
+                    sid = s.get("scan_id")
+                    if not sid:
+                        continue
+                    # 1. Warm local disk cache first
+                    ts_local = json.loads(
+                        urllib.request.urlopen(
+                            f"http://127.0.0.1:{local_port}/stream/{sid}/tileset.json?v=opt4", timeout=8
+                        )
+                        .read()
+                        .decode("utf-8")
+                    )
+                    uris = []
+
+                    def _collect(node):
+                        u = (node.get("content") or {}).get("uri")
+                        if u:
+                            uris.append(u)
+                        for ch in node.get("children") or []:
+                            _collect(ch)
+
+                    _collect(ts_local.get("root") or {})
+                    for u in uris:
+                        local_u = f"http://127.0.0.1:{local_port}/stream/{sid}/{u}"
+                        if local_u not in warmed_uris:
+                            req = urllib.request.Request(local_u, headers={"Accept-Encoding": "gzip"})
+                            urllib.request.urlopen(req, timeout=15).read()
+                            warmed_uris.add(local_u)
+                    # 2. Warm VPS volatile RAM cache
+                    vps_ts = f"https://scans.gatheren.cloud/stream/{sid}/tileset.json?v=opt4"
+                    if vps_ts not in warmed_uris:
+                        urllib.request.urlopen(
+                            urllib.request.Request(vps_ts, headers={"Accept-Encoding": "gzip"}), timeout=12
+                        ).read()
+                        warmed_uris.add(vps_ts)
+                    vps_thumb = f"https://scans.gatheren.cloud/api/scans/{sid}/thumbnail"
+                    if vps_thumb not in warmed_uris:
+                        try:
+                            urllib.request.urlopen(vps_thumb, timeout=10).read()
+                            warmed_uris.add(vps_thumb)
+                        except Exception:
+                            pass
+                    for u in uris:
+                        vps_u = f"https://scans.gatheren.cloud/stream/{sid}/{u}"
+                        if vps_u not in warmed_uris:
+                            req = urllib.request.Request(vps_u, headers={"Accept-Encoding": "gzip"})
+                            urllib.request.urlopen(req, timeout=20).read()
+                            warmed_uris.add(vps_u)
+            except Exception:
+                pass
+            time.sleep(45.0)
+
+    threading.Thread(target=_warm_all_scans_loop, daemon=True).start()
     print(f"[GatheringScans] Started {pool_size} persistent reverse tunnel sockets to {VPS_HOST}:8095 -> 127.0.0.1:{local_port} ({LOCAL_SCANS_ROOT})", flush=True)
 
 
@@ -408,12 +473,13 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
     @staticmethod
     def _optimize_cesium_glb_bytes(raw_bytes: bytes) -> bytes:
         """
-        Fast watertight UV-preserving grid clustering for large uncompressed PIX4Dmatic Cesium .glb tiles
-        (> 900 KB) to reduce reverse-tunnel transfer size by ~4x while preserving 2K JPEG textures.
+        Fast watertight UV-preserving grid clustering + mantissa quantization + JPEG optimization
+        for large uncompressed PIX4Dmatic Cesium .glb tiles (> 700 KB) to reduce transfer size by ~10x.
         """
-        if len(raw_bytes) < 900_000 or raw_bytes[:4] != b"glTF":
+        if len(raw_bytes) < 700_000 or raw_bytes[:4] != b"glTF":
             return raw_bytes
         try:
+            import io
             import numpy as np
 
             magic, ver, _ = struct.unpack_from("<4sII", raw_bytes, 0)
@@ -441,7 +507,7 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
             idx_acc = acc_list[prim["indices"]]
             pos_acc = acc_list[attrs["POSITION"]]
             uv_acc = acc_list[attrs["TEXCOORD_0"]]
-            if idx_acc.get("componentType") != 5125 or idx_acc.get("count", 0) < 45000:
+            if idx_acc.get("componentType") != 5125 or idx_acc.get("count", 0) < 30000:
                 return raw_bytes
             if pos_acc.get("componentType") != 5126 or uv_acc.get("componentType") != 5126:
                 return raw_bytes
@@ -474,7 +540,7 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
             diag = float(np.linalg.norm(pmax - pmin))
             if diag <= 1e-5:
                 return raw_bytes
-            step = diag / 190.0
+            step = diag / 105.0
             grid = np.floor((pos - pmin) / step).astype(np.int64)
             cell_hash = grid[:, 0] * 1000003 + grid[:, 1] * 1009 + grid[:, 2]
             _, first_idx, inv_cell = np.unique(cell_hash, return_index=True, return_inverse=True)
@@ -482,13 +548,15 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
 
             c0, c1, c2 = inv_cell[idx[:, 0]], inv_cell[idx[:, 1]], inv_cell[idx[:, 2]]
             keep = (c0 != c1) & (c1 != c2) & (c2 != c0)
-            if np.count_nonzero(keep) < 1000:
+            if np.count_nonzero(keep) < 800:
                 return raw_bytes
             kept_tris = idx[keep]
             used_v, new_tris = np.unique(kept_tris, return_inverse=True)
             new_idx = new_tris.astype(np.uint32).ravel()
-            new_pos = snapped_pos[used_v].astype(np.float32)
-            new_uv = uv[used_v].astype(np.float32)
+            new_pos = snapped_pos[used_v].astype(np.float32).copy()
+            new_uv = uv[used_v].astype(np.float32).copy()
+            new_pos.view(np.uint32)[:] &= 0xFFFFC000
+            new_uv.view(np.uint32)[:] &= 0xFFFFE000
 
             images = j.get("images") or []
             img_bytes = b""
@@ -497,6 +565,18 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
                 ioff = ibv.get("byteOffset", 0)
                 ilen = ibv["byteLength"]
                 img_bytes = bytes(blob[ioff : ioff + ilen])
+                if len(img_bytes) > 140_000:
+                    try:
+                        from PIL import Image
+
+                        im = Image.open(io.BytesIO(img_bytes))
+                        im.thumbnail((1024, 1024), Image.Resampling.LANCZOS)
+                        out_im = io.BytesIO()
+                        im.save(out_im, format="JPEG", quality=72, optimize=True)
+                        img_bytes = out_im.getvalue()
+                        images[0]["mimeType"] = "image/jpeg"
+                    except Exception:
+                        pass
 
             b_idx = new_idx.tobytes()
             b_pos = new_pos.tobytes()
@@ -593,12 +673,28 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
                 if cached and cached[0] == mtime:
                     gz_bytes = cached[1]
                 else:
-                    with open(file_path, "rb") as f:
-                        raw_bytes = f.read()
+                    disk_cache_path = None
                     if ext == ".glb":
-                        raw_bytes = self._optimize_cesium_glb_bytes(raw_bytes)
-                    gz_bytes = gzip.compress(raw_bytes, compresslevel=1)
-                    if len(self._GZIP_FILE_CACHE) < 160:
+                        glb_cache_dir = os.path.join(DATA_DIR, "glb_cache")
+                        os.makedirs(glb_cache_dir, exist_ok=True)
+                        key_hash = hashlib.md5(f"v2:{file_path}:{int(mtime)}:{file_size}".encode("utf-8")).hexdigest()
+                        disk_cache_path = os.path.join(glb_cache_dir, f"{key_hash}.glb.gz")
+                    if disk_cache_path and os.path.isfile(disk_cache_path):
+                        with open(disk_cache_path, "rb") as df:
+                            gz_bytes = df.read()
+                    else:
+                        with open(file_path, "rb") as f:
+                            raw_bytes = f.read()
+                        if ext == ".glb":
+                            raw_bytes = self._optimize_cesium_glb_bytes(raw_bytes)
+                        gz_bytes = gzip.compress(raw_bytes, compresslevel=6 if ext == ".glb" else 1)
+                        if disk_cache_path:
+                            try:
+                                with open(disk_cache_path, "wb") as df:
+                                    df.write(gz_bytes)
+                            except Exception:
+                                pass
+                    if len(self._GZIP_FILE_CACHE) < 256:
                         self._GZIP_FILE_CACHE[file_path] = (mtime, gz_bytes)
                 self.send_response(200)
                 self.send_header("Content-Type", ctype)
@@ -772,10 +868,10 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
                 if k.startswith(path):
                     _VPS_RAM_FALLBACK_CACHE.pop(k, None)
 
-        # Serve immutable binary .glb tiles from volatile RAM if already pulled from PC while tunnel is online
+        # Serve immutable binary .glb tiles, thumbnails, and tileset.json from volatile RAM if already pulled from PC while tunnel is online
         if (
             method == "GET"
-            and path.endswith(".glb")
+            and (path.endswith(".glb") or path.endswith("/thumbnail") or path.endswith("/tileset.json"))
             and not VPS_TUNNEL_POOL.empty()
             and self.path in _VPS_RAM_FALLBACK_CACHE
         ):
@@ -858,7 +954,7 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
                             stream_clean = False
                             break
                         if buf_for_cache is not None:
-                            if len(buf_for_cache) + len(chunk) <= 4 * 1024 * 1024:
+                            if len(buf_for_cache) + len(chunk) <= 8 * 1024 * 1024:
                                 buf_for_cache.extend(chunk)
                             else:
                                 buf_for_cache = None
@@ -878,7 +974,7 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
                         if not chunk:
                             break
                         if buf_for_cache is not None:
-                            if len(buf_for_cache) + len(chunk) <= 4 * 1024 * 1024:
+                            if len(buf_for_cache) + len(chunk) <= 8 * 1024 * 1024:
                                 buf_for_cache.extend(chunk)
                             else:
                                 buf_for_cache = None
@@ -889,7 +985,7 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
                     done_evt.set()
 
                 if buf_for_cache is not None and stream_clean:
-                    if len(_VPS_RAM_FALLBACK_CACHE) > 220:
+                    if len(_VPS_RAM_FALLBACK_CACHE) > 2000:
                         _VPS_RAM_FALLBACK_CACHE.clear()
                     _VPS_RAM_FALLBACK_CACHE[self.path] = (status_code, filtered_hdrs, bytes(buf_for_cache))
                     if path == "/api/scans":

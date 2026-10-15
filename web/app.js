@@ -3467,6 +3467,143 @@
   // ============================================================================
   let compareCtx = null;
 
+  function loadScanIntoCompareSide(side, scanId) {
+    if (!side || !scanId) return;
+    const scan = STATE.scans.find((s) => s.scan_id === scanId) || STATE.scans[0];
+    if (!scan) return;
+    if (side._loadedScanId === scan.scan_id && side.tilesRenderer) return;
+    side._loadedScanId = scan.scan_id;
+
+    if (side.tilesRenderer) {
+      try {
+        side.tilesRenderer.dispose();
+      } catch (_) {}
+      side.tilesRenderer = null;
+    }
+    while (side.pivot.children.length > 0) {
+      side.pivot.remove(side.pivot.children[0]);
+    }
+    if (side.fallbackGroup) side.fallbackGroup.visible = false;
+
+    if (compareCtx) {
+      compareCtx._loadingStartMs = performance.now();
+      compareCtx._loadingDone = false;
+      compareCtx._maxPct = 10;
+      if (compareCtx._loaderHideTimer) clearTimeout(compareCtx._loaderHideTimer);
+      updateScanLoader("compare", true, 12, `Loading ${scan.name}...`);
+    }
+
+    let streamUrl = scan.stream_url || "";
+    if (!streamUrl || !window.TilesRenderer) {
+      if (side.fallbackGroup) side.fallbackGroup.visible = true;
+      return;
+    }
+    if (STATE.shareToken && !streamUrl.includes("share=")) {
+      streamUrl += (streamUrl.includes("?") ? "&" : "?") + `share=${encodeURIComponent(STATE.shareToken)}`;
+    }
+
+    const tr = new window.TilesRenderer(streamUrl);
+    tr.fetchOptions = { mode: "cors" };
+    tr.preprocessURL = (uri) => {
+      let u = uri;
+      if (STATE.shareToken && !u.includes("share=")) {
+        u += (u.includes("?") ? "&" : "?") + `share=${encodeURIComponent(STATE.shareToken)}`;
+      }
+      return u;
+    };
+    tr.setCamera(side.camera);
+    tr.setResolutionFromRenderer(side.camera, side.renderer);
+
+    const gltfLoader = new THREE.GLTFLoader(tr.manager);
+    if (window.MeshoptDecoder) gltfLoader.setMeshoptDecoder(window.MeshoptDecoder);
+    const ktx2 = getKTX2Loader(side.renderer);
+    if (ktx2) gltfLoader.setKTX2Loader(ktx2);
+    tr.manager.addHandler(/\.(gltf|glb)$/i, gltfLoader);
+
+    tr.addEventListener("load-tileset", () => {
+      side._tilesetReady = true;
+      if (compareCtx) {
+        compareCtx._tilesetReady = true;
+        compareCtx._tilesetReadyMs = performance.now();
+      }
+      const sphere = new THREE.Sphere();
+      if (computeTilesetContentSphere(tr, sphere)) {
+        tr.group.position.set(-sphere.center.x, -sphere.center.y, -sphere.center.z);
+        side.pivot.rotation.set(THREE.MathUtils.degToRad(270), 0, 0);
+        side.pivot.updateMatrixWorld(true);
+      }
+    });
+
+    tr.addEventListener("load-model", (ev) => {
+      if (ev && ev.scene) {
+        if (side.fallbackGroup) side.fallbackGroup.visible = false;
+        const heatmapOn = Boolean(document.getElementById("chkDeltaZHeatmap")?.checked) && side.isLatest;
+        ev.scene.traverse((c) => {
+          if (c.isMesh && c.material) {
+            const mats = Array.isArray(c.material) ? c.material : [c.material];
+            mats.forEach((m) => {
+              applyBrightnessToMaterial(m, STATE.scanBrightness);
+              if (heatmapOn && m.color) {
+                m.color.setRGB(0.45, 0.92, 1.15);
+              }
+            });
+          }
+        });
+      }
+    });
+
+    tr.errorTarget = 6.0;
+    side.pivot.add(tr.group);
+    side.tilesRenderer = tr;
+  }
+
+  function syncCompareScansFromDropdowns() {
+    if (!compareCtx) return;
+    const lSel = document.getElementById("compareLeftSelect");
+    const rSel = document.getElementById("compareRightSelect");
+    const leftId = lSel?.value || STATE.scans[Math.min(1, STATE.scans.length - 1)]?.scan_id;
+    const rightId = rSel?.value || STATE.scans[0]?.scan_id;
+    if (leftId) loadScanIntoCompareSide(compareCtx.left, leftId);
+    if (rightId) loadScanIntoCompareSide(compareCtx.right, rightId);
+  }
+
+  function syncCompareLoaderProgress() {
+    if (!compareCtx || compareCtx._loadingDone) return;
+    const lStats = compareCtx.left?.tilesRenderer?.stats || {};
+    const rStats = compareCtx.right?.tilesRenderer?.stats || {};
+    const loaded = Number(lStats.loaded || 0) + Number(rStats.loaded || 0);
+    const activeWork =
+      Number(lStats.downloading || 0) +
+      Number(lStats.parsing || 0) +
+      Number(rStats.downloading || 0) +
+      Number(rStats.parsing || 0);
+    const queued = Number(lStats.queued || 0) + Number(rStats.queued || 0);
+    const pending = activeWork + queued;
+    const total = Math.max(1, loaded + pending);
+    const now = performance.now();
+    const elapsed = now - (compareCtx._loadingStartMs || 0);
+    const sinceTileset = compareCtx._tilesetReadyMs ? now - compareCtx._tilesetReadyMs : 0;
+
+    const bothSidesHaveMesh =
+      Number(lStats.loaded || 0) > 0 &&
+      Number(rStats.loaded || 0) > 0 &&
+      (pending === 0 || (activeWork === 0 && sinceTileset > 900) || loaded >= Math.max(2, Math.ceil(total * 0.75)));
+
+    if (bothSidesHaveMesh && elapsed > 220) {
+      finishScanLoader(compareCtx, "compare", `100% · ${loaded} 3D tiles ready`);
+      return;
+    }
+
+    if (loaded > 0 || activeWork > 0 || queued > 0) {
+      const timeBoost = activeWork > 0 ? Math.min(24, Math.floor(elapsed / 250)) : 0;
+      const rawPct = Math.round(18 + (loaded / total) * 78) + timeBoost;
+      compareCtx._maxPct = Math.min(96, Math.max(compareCtx._maxPct || 18, rawPct));
+      updateScanLoader("compare", true, compareCtx._maxPct, `Streaming Compare Scans · ${loaded} / ${total} tiles`);
+    } else if (sinceTileset > 12000) {
+      finishScanLoader(compareCtx, "compare", "Compare Ready");
+    }
+  }
+
   function initCompareView() {
     if (compareCtx) return compareCtx;
     const leftContainer = document.getElementById("compareLeftLayer");
@@ -3482,17 +3619,25 @@
         0.1,
         10000
       );
-      camera.position.set(22, 16, 25);
-      camera.lookAt(0, 1.2, 0);
+      camera.position.set(38, 30, 44);
+      camera.lookAt(0, 0, 0);
 
       const renderer = new THREE.WebGLRenderer({ antialias: true });
       renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
       renderer.setSize(Math.max(1, container.clientWidth), Math.max(1, container.clientHeight));
       container.appendChild(renderer.domElement);
 
-      scene.add(new THREE.GridHelper(120, 24, 0x334155, 0x1e293b));
+      scene.add(new THREE.AmbientLight(0xffffff, 1.35));
+      const dirLight = new THREE.DirectionalLight(0xffffff, 1.15);
+      dirLight.position.set(45, 80, 50);
+      scene.add(dirLight);
+      scene.add(new THREE.GridHelper(180, 36, 0x334155, 0x1e293b));
 
-      // Terrain + Epoch Stockpile Mesh (MeshBasicMaterial with baked slope shading for crisp headless & GPU rendering)
+      const fallbackGroup = new THREE.Group();
+      fallbackGroup.visible = false;
+      scene.add(fallbackGroup);
+
+      // Fallback Terrain + Epoch Stockpile Mesh
       const geom = new THREE.PlaneGeometry(76, 76, 72, 72);
       geom.rotateX(-Math.PI / 2);
       const pos = geom.attributes.position;
@@ -3522,39 +3667,12 @@
       geom.computeVertexNormals();
       const mat = new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.DoubleSide });
       const mesh = new THREE.Mesh(geom, mat);
-      scene.add(mesh);
-
-      // Subtle Topographic Wireframe Mesh Overlay
-      const wireMat = new THREE.MeshBasicMaterial({
-        color: isLatest ? 0x38bdf8 : 0x64748b,
-        wireframe: true,
-        transparent: true,
-        opacity: 0.18,
-      });
-      const wireMesh = new THREE.Mesh(geom, wireMat);
-      wireMesh.position.y = 0.02;
-      scene.add(wireMesh);
-
-      // 3D Elevation Contour Rings around Stockpile
-      const maxElev = isLatest ? 5.2 : 1.1;
-      for (let h = 0.5; h <= maxElev; h += 0.75) {
-        const radius = Math.max(1.8, 13.5 * Math.sqrt(Math.max(0.05, -Math.log(h / (isLatest ? 5.6 : 1.35)) / 1.45)));
-        const pts = [];
-        for (let s = 0; s <= 64; s++) {
-          const ang = (s / 64) * Math.PI * 2;
-          pts.push(new THREE.Vector3(Math.cos(ang) * radius, h + 0.05, Math.sin(ang) * radius));
-        }
-        const cLine = new THREE.Line(
-          new THREE.BufferGeometry().setFromPoints(pts),
-          new THREE.LineBasicMaterial({ color: isLatest ? 0xfbbf24 : 0x38bdf8 })
-        );
-        scene.add(cLine);
-      }
+      fallbackGroup.add(mesh);
 
       const pivot = new THREE.Group();
       scene.add(pivot);
 
-      return { container, scene, camera, renderer, mesh, pivot, tilesRenderer: null };
+      return { container, scene, camera, renderer, mesh, fallbackGroup, pivot, isLatest, tilesRenderer: null };
     };
 
     const left = createEpochScene(leftContainer, 0x38bdf8, false);
@@ -3563,7 +3681,7 @@
     // Synchronized OrbitControls on the stage
     const stage = document.getElementById("compareStage");
     const controls = new THREE.OrbitControls(left.camera, stage);
-    controls.target.set(0, 1.5, 0);
+    controls.target.set(0, 0, 0);
     controls.enableDamping = true;
     controls.update();
     right.camera.position.copy(left.camera.position);
@@ -3590,28 +3708,37 @@
       if (lbl) lbl.textContent = `Split: ${Math.round(pct)}%`;
     });
 
+    // Left / Right Scan Dropdown Listeners
+    document.getElementById("compareLeftSelect")?.addEventListener("change", (e) => {
+      if (e.target.value && compareCtx) {
+        loadScanIntoCompareSide(compareCtx.left, e.target.value);
+      }
+    });
+    document.getElementById("compareRightSelect")?.addEventListener("change", (e) => {
+      if (e.target.value && compareCtx) {
+        loadScanIntoCompareSide(compareCtx.right, e.target.value);
+      }
+    });
+
     // Delta-Z Heatmap Toggle
     document.getElementById("chkDeltaZHeatmap")?.addEventListener("change", (e) => {
       const active = e.target.checked;
-      const pos = right.mesh.geometry.attributes.position;
-      const col = right.mesh.geometry.attributes.color;
-      for (let i = 0; i < pos.count; i++) {
-        const y = pos.getY(i);
-        const t = Math.min(1, Math.max(0, (y + 0.3) / 5.5));
-        if (active) {
-          // Disciplined Monochromatic Slate -> GatheringCloud Blue (#0284c7) -> Ice Cyan (+ΔZ Fill)
-          if (t < 0.5) {
-            const k = t / 0.5;
-            col.setXYZ(i, 0.18 - 0.16 * k, 0.24 + 0.28 * k, 0.33 + 0.45 * k);
-          } else {
-            const k = (t - 0.5) / 0.5;
-            col.setXYZ(i, 0.02 + 0.72 * k, 0.52 + 0.38 * k, 0.78 + 0.20 * k);
+      if (right.pivot) {
+        right.pivot.traverse((c) => {
+          if (c.isMesh && c.material) {
+            const mats = Array.isArray(c.material) ? c.material : [c.material];
+            mats.forEach((m) => {
+              if (m && m.color) {
+                if (active) {
+                  m.color.setRGB(0.45, 0.92, 1.15);
+                } else {
+                  applyBrightnessToMaterial(m, STATE.scanBrightness);
+                }
+              }
+            });
           }
-        } else {
-          col.setXYZ(i, 0.24 + 0.32 * t, 0.30 + 0.34 * t, 0.36 + 0.34 * t);
-        }
+        });
       }
-      col.needsUpdate = true;
       showToast(active ? "Enabled ΔZ Elevation Change Heatmap" : "Restored RGB Texture Shading");
     });
 
@@ -3619,14 +3746,20 @@
       requestAnimationFrame(loop);
       if (STATE.activeView !== "compare") return;
       controls.update();
+      left.camera.updateMatrixWorld();
       right.camera.position.copy(left.camera.position);
       right.camera.quaternion.copy(left.camera.quaternion);
+      right.camera.updateMatrixWorld();
+      if (left.tilesRenderer) left.tilesRenderer.update();
+      if (right.tilesRenderer) right.tilesRenderer.update();
+      syncCompareLoaderProgress();
       left.renderer.render(left.scene, left.camera);
       right.renderer.render(right.scene, right.camera);
     };
     requestAnimationFrame(loop);
 
     compareCtx = { left, right, controls };
+    syncCompareScansFromDropdowns();
     return compareCtx;
   }
 
@@ -3645,6 +3778,7 @@
     const rSel = document.getElementById("compareRightSelect");
     if (lSel && leftScanId) lSel.value = leftScanId;
     if (rSel && rightScanId) rSel.value = rightScanId;
+    syncCompareScansFromDropdowns();
   }
 
   // ============================================================================
@@ -4334,6 +4468,7 @@
     if (!newGrp) return;
     STATE.activeProjectGroup = newGrp;
     populateProjectScanDropdowns(newGrp);
+    syncCompareScansFromDropdowns();
     showToast(`Switched Multi-Date Compare to project: ${newGrp}`);
   });
 
@@ -4358,6 +4493,7 @@
       populateProjectScanDropdowns(STATE.activeProjectGroup, STATE.activeScanId);
       initCompareView();
       handleResize();
+      syncCompareScansFromDropdowns();
     }
   }
 
@@ -4398,6 +4534,9 @@
         side.camera.aspect = w / h;
         side.camera.updateProjectionMatrix();
         side.renderer.setSize(w, h);
+        if (side.tilesRenderer) {
+          side.tilesRenderer.setResolutionFromRenderer(side.camera, side.renderer);
+        }
       });
     }
   }
