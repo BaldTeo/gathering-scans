@@ -6,7 +6,8 @@ COPY server.py start_gathering_scans.py ./
 COPY pc_worker ./pc_worker
 COPY web ./web
 
-RUN mkdir -p /app/data/reports /app/data/contours /app/data/thumbnails
+RUN pip install --no-cache-dir numpy && \
+    mkdir -p /app/data/reports /app/data/contours /app/data/thumbnails
 
 EXPOSE 8095
 
