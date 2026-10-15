@@ -198,16 +198,89 @@ def haversine_m(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     return 2 * r * math.atan2(math.sqrt(a), math.sqrt(1 - a))
 
 
-def match_project_group(lat: float, lon: float) -> Tuple[str, str]:
+def _infer_project_prefix(hint_name: str) -> str:
+    """
+    Infers a clean human-readable project name from a folder or archive name
+    (e.g., 'BridgeNorth_20261015_1of4' -> 'BridgeNorth', 'Taoyuan_MRT_261015' -> 'Taoyuan MRT').
+    Returns '' if the name is purely a numeric timestamp like '2026-10-05-15-37-05'.
+    """
+    if not hint_name:
+        return ""
+    stem = os.path.splitext(os.path.basename(hint_name.strip("\\/")))[0]
+    # Strip trailing date/part tokens like _20261005, _260917, _1of4, _Compressed, _Merged
+    cleaned = re.sub(
+        r"([_\-\s]+(20\d{6}|\d{6}|\d{4}[\-_]\d{2}[\-_]\d{2}.*|\d+\s*of\s*\d+|compressed|merged\d*|sector\d*|part\d*|\d+))+$",
+        "",
+        stem,
+        flags=re.IGNORECASE,
+    ).strip(" _-()")
+    if not cleaned or re.match(r"^[\d\-_]+$", cleaned) or cleaned.lower() in ("catch", "scan", "scans", "export", "tileset"):
+        return ""
+    low = cleaned.lower().replace("_", "").replace("-", "").replace(" ", "")
+    if "quchi" in low:
+        return "QuChi Dam"
+    if "rosepark" in low or "rose" in low:
+        return "Rose Park"
+    if "ntudorm" in low or "ntu" in low:
+        return "NTU Dorm"
+    return cleaned.replace("_", " ").strip()
+
+
+def match_project_group(
+    lat: float,
+    lon: float,
+    hint_name: str = "",
+    parent_project: str = "",
+    dynamic_clusters: Optional[List[Dict[str, Any]]] = None,
+) -> Tuple[str, str]:
+    """
+    Project-agnostic resolver that scales to 100+ engineering projects:
+    1. Explicit parent project folder name (e.g., C:\\GatheringScans\\<Project>\\<Scan>)
+    2. Spatial proximity match (<= radius_m) against known + dynamically discovered project clusters
+    3. Project prefix inferred from folder/archive filename (e.g., 'ProjectX_20261015.zip' -> 'ProjectX')
+    4. Coordinate-based site cluster fallback ('Site (24.9203N, 121.5435E)')
+    """
+    if parent_project and parent_project.strip():
+        pg = parent_project.strip()
+        for p in KNOWN_PROJECTS:
+            if p["project_group"].lower() == pg.lower():
+                return p["project_group"], p["project_name_zh"]
+        return pg, f"{pg} 工程掃描群組"
+
+    candidates = list(KNOWN_PROJECTS)
+    reg_file = os.path.join(LOCAL_SCANS_ROOT, "projects_registry.json")
+    if os.path.isfile(reg_file):
+        try:
+            with open(reg_file, "r", encoding="utf-8") as rf:
+                extra = json.load(rf)
+                if isinstance(extra, list):
+                    candidates.extend(extra)
+        except Exception:
+            pass
+    if dynamic_clusters:
+        candidates.extend(dynamic_clusters)
+
     best = None
     best_dist = 1e12
-    for p in KNOWN_PROJECTS:
-        d = haversine_m(lat, lon, p["lat"], p["lon"])
-        if d <= p["radius_m"] and d < best_dist:
-            best = p
-            best_dist = d
+    for p in candidates:
+        try:
+            d = haversine_m(lat, lon, float(p["lat"]), float(p["lon"]))
+            rad = float(p.get("radius_m", 600.0))
+            if d <= rad and d < best_dist:
+                best = p
+                best_dist = d
+        except Exception:
+            continue
     if best:
-        return best["project_group"], best["project_name_zh"]
+        return best["project_group"], best.get("project_name_zh") or f"{best['project_group']} 工程掃描群組"
+
+    inferred = _infer_project_prefix(hint_name)
+    if inferred:
+        for p in candidates:
+            if p["project_group"].lower() == inferred.lower():
+                return p["project_group"], p.get("project_name_zh") or f"{inferred} 工程掃描群組"
+        return inferred, f"{inferred} 工程掃描群組"
+
     return f"Site ({lat:.4f}N, {lon:.4f}E)", "新增工區掃描點"
 
 
@@ -333,15 +406,19 @@ def extract_opf_zip_metadata(zip_path: str) -> Dict[str, Any]:
     except Exception as e:
         print(f"[GDriveWatcher] Warning parsing {zip_path}: {e}")
 
-    proj_group, proj_zh = match_project_group(info["lat"], info["lon"])
+    proj_group, proj_zh = match_project_group(info["lat"], info["lon"], hint_name=bname)
     info["project_group"] = proj_group
     info["project_name_zh"] = proj_zh
     return info
 
 
-def _discover_folder_scan_item(folder_path: str) -> Optional[Dict[str, Any]]:
+def _discover_folder_scan_item(
+    folder_path: str,
+    parent_project: str = "",
+    dynamic_clusters: Optional[List[Dict[str, Any]]] = None,
+) -> Optional[Dict[str, Any]]:
     """
-    Dynamically inspects a scan folder inside C:\\GatheringScans.
+    Dynamically inspects a scan folder inside C:\\GatheringScans (either flat or nested inside a project folder).
     Reads scan_meta.json if present, or auto-detects tileset.json / *-cesium_mesh.json / mesh.obj / thumbnail.png.
     """
     folder_name = os.path.basename(folder_path.rstrip("\\/"))
@@ -357,7 +434,7 @@ def _discover_folder_scan_item(folder_path: str) -> Optional[Dict[str, Any]]:
         except Exception as e:
             print(f"[GDriveWatcher] Warning reading {meta_file}: {e}")
 
-    # Auto-detect tileset.json inside folder_path
+    # Auto-detect tileset.json inside folder_path (only direct or tileset/ child, avoiding deep unrelated subtrees)
     tileset_path = meta.get("tileset_path", "")
     if not (tileset_path and os.path.isfile(tileset_path)):
         candidate_ts = [
@@ -365,6 +442,9 @@ def _discover_folder_scan_item(folder_path: str) -> Optional[Dict[str, Any]]:
             os.path.join(folder_path, "tileset.json"),
         ]
         for root, _, files in os.walk(folder_path):
+            rel_depth = os.path.relpath(root, folder_path).count(os.sep)
+            if rel_depth > 2:
+                continue
             for fn in files:
                 if fn.lower() == "tileset.json" or fn.lower().endswith("-cesium_mesh.json"):
                     candidate_ts.append(os.path.join(root, fn))
@@ -405,7 +485,24 @@ def _discover_folder_scan_item(folder_path: str) -> Optional[Dict[str, Any]]:
     proj_group = meta.get("project_group")
     proj_zh = meta.get("project_name_zh")
     if not proj_group:
-        proj_group, proj_zh = match_project_group(lat, lon)
+        proj_group, proj_zh = match_project_group(
+            lat,
+            lon,
+            hint_name=folder_name,
+            parent_project=parent_project,
+            dynamic_clusters=dynamic_clusters,
+        )
+
+    if dynamic_clusters is not None and not any(c.get("project_group") == proj_group for c in dynamic_clusters):
+        dynamic_clusters.append(
+            {
+                "project_group": proj_group,
+                "project_name_zh": proj_zh or f"{proj_group} 工程掃描群組",
+                "lat": lat,
+                "lon": lon,
+                "radius_m": 600.0,
+            }
+        )
 
     return {
         "scan_id": scan_id,
@@ -483,14 +580,17 @@ def parse_multipart_zip_filename(filename: str) -> Tuple[str, int, int]:
 
 def seed_and_discover_scans(db: ScanQueueDB) -> List[Dict[str, Any]]:
     """
-    100% Dynamic Scan Discovery from C:\\GatheringScans (LOCAL_SCANS_ROOT)
+    100% Dynamic, Project-Agnostic Scan Discovery from C:\\GatheringScans (LOCAL_SCANS_ROOT)
     and G:\\Shared drives\\6.軟體\\3. GatheringScans (GDRIVE_INBOX_DIR).
-    Supports single-part ('FileName.zip') and multi-part ('FileName_1of4.zip' .. 'FileName_4of4.zip')
-    uploads, waiting until all N parts arrive before processing them as a single PIX4Dmatic project.
+    Scales cleanly to 100+ projects via:
+    - Flat scan folders (C:\\GatheringScans\\<ScanFolder>) or nested project folders (C:\\GatheringScans\\<Project>\\<ScanFolder>)
+    - Single-part ('FileName.zip') and multi-part ('FileName_1of4.zip' .. 'FileName_4of4.zip') archives
+    - Dynamic spatial & prefix-based project grouping.
     """
     discovered_ids = set()
+    dynamic_clusters: List[Dict[str, Any]] = []
 
-    # 1. Dynamically discover all scan folders in C:\GatheringScans (LOCAL_SCANS_ROOT)
+    # 1. Dynamically discover all scan folders in C:\GatheringScans (supports both flat and 2-level project folders)
     if os.path.isdir(LOCAL_SCANS_ROOT):
         for entry in sorted(os.listdir(LOCAL_SCANS_ROOT)):
             if entry.startswith(("_", ".")):
@@ -498,10 +598,39 @@ def seed_and_discover_scans(db: ScanQueueDB) -> List[Dict[str, Any]]:
             sub_dir = os.path.join(LOCAL_SCANS_ROOT, entry)
             if not is_safe_jailed_path(sub_dir, LOCAL_SCANS_ROOT) or not os.path.isdir(sub_dir):
                 continue
-            item = _discover_folder_scan_item(sub_dir)
-            if item:
-                db.upsert_scan(item)
-                discovered_ids.add(item["scan_id"])
+
+            # Check if sub_dir is directly a scan folder
+            direct_ts = (
+                os.path.isfile(os.path.join(sub_dir, "scan_meta.json"))
+                or os.path.isfile(os.path.join(sub_dir, "tileset.json"))
+                or os.path.isfile(os.path.join(sub_dir, "tileset", "tileset.json"))
+            )
+            if direct_ts:
+                item = _discover_folder_scan_item(sub_dir, dynamic_clusters=dynamic_clusters)
+                if item:
+                    db.upsert_scan(item)
+                    discovered_ids.add(item["scan_id"])
+            else:
+                # Check if sub_dir is a Project Folder containing child scan folders (C:\GatheringScans\<Project>\<Scan>)
+                found_nested = False
+                for child_entry in sorted(os.listdir(sub_dir)):
+                    if child_entry.startswith(("_", ".")):
+                        continue
+                    child_dir = os.path.join(sub_dir, child_entry)
+                    if not is_safe_jailed_path(child_dir, LOCAL_SCANS_ROOT) or not os.path.isdir(child_dir):
+                        continue
+                    nested_item = _discover_folder_scan_item(
+                        child_dir, parent_project=entry, dynamic_clusters=dynamic_clusters
+                    )
+                    if nested_item:
+                        db.upsert_scan(nested_item)
+                        discovered_ids.add(nested_item["scan_id"])
+                        found_nested = True
+                if not found_nested:
+                    item = _discover_folder_scan_item(sub_dir, dynamic_clusters=dynamic_clusters)
+                    if item:
+                        db.upsert_scan(item)
+                        discovered_ids.add(item["scan_id"])
 
     # Default QuChi 2026-10-05 tileset for already-processed historical GDrive inbox walks
     default_quchi_ts = os.path.join(LOCAL_SCANS_ROOT, "QuChi_20261005_Compressed", "tileset", "tileset.json")
@@ -515,31 +644,48 @@ def seed_and_discover_scans(db: ScanQueueDB) -> List[Dict[str, Any]]:
         if candidate_inbox and os.path.isdir(candidate_inbox) and candidate_inbox not in inbox_dirs:
             inbox_dirs.append(candidate_inbox)
 
-    # Group .zip files by (base_name_lower, total_parts) across jailed inbox directories
-    grouped_uploads: Dict[Tuple[str, int], Dict[str, Any]] = {}
-    seen_zip_names = set()
+    # Group .zip files by (parent_project_lower, base_name_lower, total_parts) across jailed inbox directories
+    grouped_uploads: Dict[Tuple[str, str, int], Dict[str, Any]] = {}
+    seen_zip_keys = set()
 
     for idir in inbox_dirs:
-        for fname in sorted(os.listdir(idir)):
-            if not fname.lower().endswith(".zip") or fname in seen_zip_names:
+        for entry in sorted(os.listdir(idir)):
+            if entry.startswith(("_", ".")):
                 continue
-            fpath = os.path.join(idir, fname)
-            if not is_safe_jailed_path(fpath, idir) or not os.path.isfile(fpath):
+            epath = os.path.join(idir, entry)
+            if not is_safe_jailed_path(epath, idir):
                 continue
-            if os.path.getsize(fpath) <= 0:
-                continue
-            seen_zip_names.add(fname)
-            base_name, part_idx, total_parts = parse_multipart_zip_filename(fname)
-            gkey = (base_name.lower(), total_parts)
-            if gkey not in grouped_uploads:
-                grouped_uploads[gkey] = {
-                    "base_name": base_name,
-                    "total_parts": total_parts,
-                    "parts": {},
-                }
-            grouped_uploads[gkey]["parts"][part_idx] = fpath
 
-    for (_, total_parts), ginfo in grouped_uploads.items():
+            zip_candidates: List[Tuple[str, str, str]] = []
+            if os.path.isfile(epath) and entry.lower().endswith(".zip"):
+                zip_candidates.append(("", entry, epath))
+            elif os.path.isdir(epath):
+                # Allow project subfolders inside '3. GatheringScans/<ProjectName>/FileName.zip'
+                for sub_fn in sorted(os.listdir(epath)):
+                    if not sub_fn.lower().endswith(".zip"):
+                        continue
+                    sub_fpath = os.path.join(epath, sub_fn)
+                    if is_safe_jailed_path(sub_fpath, idir) and os.path.isfile(sub_fpath):
+                        zip_candidates.append((entry, sub_fn, sub_fpath))
+
+            for parent_proj, fname, fpath in zip_candidates:
+                dedup_key = (parent_proj.lower(), fname.lower())
+                if dedup_key in seen_zip_keys or os.path.getsize(fpath) <= 0:
+                    continue
+                seen_zip_keys.add(dedup_key)
+                base_name, part_idx, total_parts = parse_multipart_zip_filename(fname)
+                gkey = (parent_proj.lower(), base_name.lower(), total_parts)
+                if gkey not in grouped_uploads:
+                    grouped_uploads[gkey] = {
+                        "parent_project": parent_proj,
+                        "base_name": base_name,
+                        "total_parts": total_parts,
+                        "parts": {},
+                    }
+                grouped_uploads[gkey]["parts"][part_idx] = fpath
+
+    for (_, _, total_parts), ginfo in grouped_uploads.items():
+        parent_proj = ginfo["parent_project"]
         base_name = ginfo["base_name"]
         parts_map: Dict[int, str] = ginfo["parts"]
         present_parts = sorted(parts_map.keys())
@@ -548,6 +694,16 @@ def seed_and_discover_scans(db: ScanQueueDB) -> List[Dict[str, Any]]:
 
         part_metas = [extract_opf_zip_metadata(parts_map[p]) for p in present_parts]
         primary_meta = dict(part_metas[0])
+
+        proj_group, proj_zh = match_project_group(
+            primary_meta["lat"],
+            primary_meta["lon"],
+            hint_name=base_name,
+            parent_project=parent_proj,
+            dynamic_clusters=dynamic_clusters,
+        )
+        primary_meta["project_group"] = proj_group
+        primary_meta["project_name_zh"] = proj_zh
 
         clean_slug = re.sub(r"[^a-zA-Z0-9_]", "_", base_name).strip("_")
         scan_id = f"catch_{clean_slug}"
@@ -562,7 +718,9 @@ def seed_and_discover_scans(db: ScanQueueDB) -> List[Dict[str, Any]]:
         else:
             primary_meta["name"] = f"PIX4Dcatch {base_name}"
 
-        # Check if this is one of the 3 historical 2026-10-05 QuChi walks
+        # Check if this is one of the 3 historical 2026-10-05 QuChi walks or has a matching processed folder in C:\GatheringScans
+        cand_processed_dir = os.path.join(LOCAL_SCANS_ROOT, scan_id)
+        cand_processed_ts = os.path.join(cand_processed_dir, "tileset", "tileset.json")
         if base_name in ("2026-10-05-15-19-27", "2026-10-05-15-37-05", "2026-10-05-15-43-55"):
             if "15-19-27" in base_name and os.path.isfile(sector3_quchi_ts):
                 primary_meta["tileset_path"] = sector3_quchi_ts
@@ -579,6 +737,12 @@ def seed_and_discover_scans(db: ScanQueueDB) -> List[Dict[str, Any]]:
                 f"Uploaded via Google Drive Inbox ({base_name}.zip, {primary_meta['image_count']} RTK photos). "
                 f"Converted to TWD97 (121) + TWVD2001 with 2K textures in PIX4Dmatic and optimized via GC_ScanOptimizer."
             )
+        elif all_parts_ready and os.path.isfile(cand_processed_ts):
+            primary_meta["tileset_path"] = cand_processed_ts
+            primary_meta["project_dir"] = cand_processed_dir
+            primary_meta["status"] = "completed"
+            primary_meta["progress_pct"] = 100.0
+            primary_meta["stage_label"] = f"Processed -> {scan_id} (TWD97 + TWVD2001, 2K)"
         else:
             existing = db.get_scan(scan_id) or {}
             if not all_parts_ready:

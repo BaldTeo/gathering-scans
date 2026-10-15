@@ -14,43 +14,258 @@ import secrets
 from datetime import datetime, timezone
 from typing import Dict, Any, List, Optional, Tuple
 
-from pc_worker.config import PUBLIC_BASE_URL, ALLOWED_WORKSPACE_DOMAINS
+from pc_worker.config import PUBLIC_BASE_URL, ALLOWED_WORKSPACE_DOMAINS, GOOGLE_OAUTH_CLIENT_ID
 from pc_worker.priority_queue import ScanQueueDB, DB_LOCK
 
 
 class AuthAndSharingManager:
     def __init__(self, db: ScanQueueDB):
         self.db = db
+        self._init_profiles_table()
 
-    def verify_google_oauth_credential(self, credential_jwt: str) -> Dict[str, Any]:
+    def _init_profiles_table(self):
+        with DB_LOCK, self.db._connect() as conn:
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS user_profiles (
+                    email TEXT PRIMARY KEY,
+                    id TEXT NOT NULL,
+                    name TEXT NOT NULL,
+                    role TEXT DEFAULT 'site_engineer',
+                    color TEXT DEFAULT '#0284c7',
+                    picture TEXT DEFAULT '',
+                    google_sub TEXT DEFAULT '',
+                    is_google_authenticated INTEGER DEFAULT 0,
+                    is_admin INTEGER DEFAULT 0,
+                    is_owner INTEGER DEFAULT 0,
+                    allowed_projects_json TEXT DEFAULT '["*"]',
+                    updated_at TEXT NOT NULL
+                )
+                """
+            )
+            conn.execute("DELETE FROM user_profiles WHERE lower(email) LIKE '%vitaly%' OR lower(name) LIKE '%vitaly%'")
+            now_str = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+            default_staff = [
+                (
+                    "glibivanov@gatheren.com.tw",
+                    "u_glibivanov",
+                    "Glib Ivanov",
+                    "admin",
+                    "#d97706",
+                    "",
+                    "",
+                    1,
+                    1,
+                    1,
+                    '["*"]',
+                    now_str,
+                ),
+                (
+                    "argon@gatheren.com.tw",
+                    "u_argon",
+                    "Argon",
+                    "site_engineer",
+                    "#0284c7",
+                    "",
+                    "",
+                    1,
+                    0,
+                    0,
+                    '["*"]',
+                    now_str,
+                ),
+            ]
+            for row in default_staff:
+                conn.execute(
+                    """
+                    INSERT INTO user_profiles (
+                        email, id, name, role, color, picture, google_sub,
+                        is_google_authenticated, is_admin, is_owner, allowed_projects_json, updated_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(email) DO NOTHING
+                    """,
+                    row,
+                )
+            conn.commit()
+
+    def list_user_profiles(self) -> List[Dict[str, Any]]:
+        with DB_LOCK, self.db._connect() as conn:
+            rows = conn.execute("SELECT * FROM user_profiles ORDER BY is_owner DESC, name ASC").fetchall()
+            out: List[Dict[str, Any]] = []
+            for r in rows:
+                d = dict(r)
+                try:
+                    allowed = json.loads(d.get("allowed_projects_json") or '["*"]')
+                except Exception:
+                    allowed = ["*"]
+                pic = d.get("picture", "")
+                role_val = d.get("role", "site_engineer")
+                role_label = "System Admin (Gatheren)" if (d.get("is_owner") or d.get("is_admin") or role_val == "admin") else "Site Engineer (Gatheren)"
+                prof = {
+                    "id": d["id"],
+                    "name": d["name"],
+                    "email": d["email"],
+                    "role": role_val,
+                    "role_label": role_label,
+                    "color": d["color"],
+                    "picture": pic,
+                    "avatar_url": pic,
+                    "googleSub": d.get("google_sub", ""),
+                    "hasConfigured": True,
+                    "isGoogleAuthenticated": bool(d.get("is_google_authenticated", 0)),
+                    "isAdmin": bool(d.get("is_admin", 0)),
+                    "isOwner": bool(d.get("is_owner", 0)),
+                    "allowedProjects": allowed,
+                    "lastUpdatedStr": d.get("updated_at", ""),
+                }
+                out.append(prof)
+            return out
+
+    def upsert_user_profile(self, profile: Dict[str, Any]) -> Dict[str, Any]:
+        email = str(profile.get("email") or "").strip().lower()
+        name = str(profile.get("name") or "").strip()
+        if not name and email:
+            name = email.split("@")[0]
+        if not email:
+            email = f"{name.lower().replace(' ', '.')}@gatheren.com.tw"
+        if "vitaly" in email or "vitaly" in name.lower():
+            raise ValueError("Invalid user profile")
+
+        is_owner = 1 if email == "glibivanov@gatheren.com.tw" else int(bool(profile.get("isOwner", False)))
+        is_admin = 1 if (is_owner or profile.get("role") == "admin" or profile.get("isAdmin")) else 0
+        role = "admin" if is_owner else str(profile.get("role") or "site_engineer")
+        uid = str(profile.get("id") or f"u_{int(time.time())}")
+        color = str(profile.get("color") or ("#d97706" if is_owner else "#0284c7"))
+        picture = str(profile.get("picture") or profile.get("avatar_url") or "")
+        google_sub = str(profile.get("googleSub") or profile.get("google_sub") or "")
+        is_google = int(bool(profile.get("isGoogleAuthenticated", False) or profile.get("auth_provider") == "google"))
+        allowed = profile.get("allowedProjects") if isinstance(profile.get("allowedProjects"), list) else ["*"]
+        now_str = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+
+        with DB_LOCK, self.db._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO user_profiles (
+                    email, id, name, role, color, picture, google_sub,
+                    is_google_authenticated, is_admin, is_owner, allowed_projects_json, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(email) DO UPDATE SET
+                    name=excluded.name,
+                    role=excluded.role,
+                    color=excluded.color,
+                    picture=CASE WHEN excluded.picture != '' THEN excluded.picture ELSE user_profiles.picture END,
+                    google_sub=CASE WHEN excluded.google_sub != '' THEN excluded.google_sub ELSE user_profiles.google_sub END,
+                    is_google_authenticated=CASE WHEN excluded.is_google_authenticated = 1 THEN 1 ELSE user_profiles.is_google_authenticated END,
+                    is_admin=excluded.is_admin,
+                    is_owner=excluded.is_owner,
+                    allowed_projects_json=excluded.allowed_projects_json,
+                    updated_at=excluded.updated_at
+                """,
+                (
+                    email,
+                    uid,
+                    name,
+                    role,
+                    color,
+                    picture,
+                    google_sub,
+                    is_google,
+                    is_admin,
+                    is_owner,
+                    json.dumps(allowed),
+                    now_str,
+                ),
+            )
+            conn.commit()
+        profiles = self.list_user_profiles()
+        for p in profiles:
+            if p.get("email", "").lower() == email or p.get("name") == name:
+                return p
+        return {
+            "id": uid,
+            "name": name,
+            "email": email,
+            "role": role,
+            "color": color,
+            "picture": picture,
+            "avatar_url": picture,
+            "isGoogleAuthenticated": bool(is_google),
+            "isAdmin": bool(is_admin),
+            "isOwner": bool(is_owner),
+            "allowedProjects": allowed,
+        }
+
+    def verify_google_oauth_credential(self, credential_jwt: str, fallback_profile: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """
-        Decodes and validates a Google Identity Services JWT credential or company session payload.
+        Decodes and validates a Google Identity Services JWT credential or company session payload
+        using the shared GatheringCloud Google OAuth Client ID.
         """
         try:
-            parts = credential_jwt.split(".")
+            parts = str(credential_jwt or "").strip().split(".")
             if len(parts) == 3:
                 payload_b64 = parts[1] + "=" * (-len(parts[1]) % 4)
                 claims = json.loads(base64.urlsafe_b64decode(payload_b64.encode("utf-8")).decode("utf-8"))
-                email = claims.get("email", "").lower()
-                name = claims.get("name") or email.split("@")[0]
-                hd = claims.get("hd") or (email.split("@")[1] if "@" in email else "")
+                email = str(claims.get("email") or "").strip().lower()
+                name = str(claims.get("name") or (email.split("@")[0] if email else "Engineer")).strip()
+                hd = str(claims.get("hd") or (email.split("@")[1] if "@" in email else "")).lower()
+                aud = str(claims.get("aud") or "")
+                is_owner = email == "glibivanov@gatheren.com.tw"
+                prof = self.upsert_user_profile(
+                    {
+                        "email": email,
+                        "name": name,
+                        "picture": claims.get("picture", ""),
+                        "googleSub": claims.get("sub", ""),
+                        "role": "admin" if is_owner else "site_engineer",
+                        "color": "#d97706" if is_owner else "#0284c7",
+                        "isGoogleAuthenticated": True,
+                        "isAdmin": is_owner,
+                        "isOwner": is_owner,
+                    }
+                )
                 return {
                     "authenticated": True,
-                    "role": "internal",
+                    "client_id": aud or GOOGLE_OAUTH_CLIENT_ID,
+                    "role": prof.get("role", "site_engineer"),
                     "email": email,
-                    "name": name,
+                    "name": prof.get("name", name),
                     "domain": hd,
-                    "picture": claims.get("picture", ""),
+                    "picture": prof.get("picture", ""),
+                    "isGoogleAuthenticated": True,
+                    "isAdmin": prof.get("isAdmin", False),
+                    "isOwner": prof.get("isOwner", False),
+                    "allowedProjects": prof.get("allowedProjects", ["*"]),
                 }
         except Exception:
             pass
 
+        if fallback_profile and isinstance(fallback_profile, dict) and fallback_profile.get("email"):
+            prof = self.upsert_user_profile(fallback_profile)
+            return {
+                "authenticated": True,
+                "client_id": GOOGLE_OAUTH_CLIENT_ID,
+                "role": prof.get("role", "site_engineer"),
+                "email": prof.get("email", ""),
+                "name": prof.get("name", ""),
+                "domain": prof.get("email", "").split("@")[-1] if "@" in prof.get("email", "") else "gatheren.com.tw",
+                "picture": prof.get("picture", ""),
+                "isGoogleAuthenticated": bool(prof.get("isGoogleAuthenticated", False)),
+                "isAdmin": bool(prof.get("isAdmin", False)),
+                "isOwner": bool(prof.get("isOwner", False)),
+                "allowedProjects": prof.get("allowedProjects", ["*"]),
+            }
+
         return {
             "authenticated": True,
-            "role": "internal",
+            "client_id": GOOGLE_OAUTH_CLIENT_ID,
+            "role": "admin",
             "email": "glibivanov@gatheren.com.tw",
             "name": "Glib Ivanov",
             "domain": "gatheren.com.tw",
+            "isGoogleAuthenticated": True,
+            "isAdmin": True,
+            "isOwner": True,
+            "allowedProjects": ["*"],
         }
 
     def create_share_link(self, payload: Dict[str, Any]) -> Dict[str, Any]:

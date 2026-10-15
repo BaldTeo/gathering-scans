@@ -44,6 +44,7 @@ from pc_worker.config import (
     TWD97_TWVD2001_LABEL,
     TWD97_TWVD2001_SHORT,
     PIX4DMATIC_TEXTURE_SIZE,
+    GOOGLE_OAUTH_CLIENT_ID,
 )
 from pc_worker.priority_queue import ScanQueueDB
 from pc_worker.gdrive_watcher import seed_and_discover_scans, extract_opf_zip_metadata
@@ -324,13 +325,46 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
         s["thumbnail_url"] = f"/api/scans/{sid}/thumbnail{q_suffix}"
         return s
 
+    def _build_projects_summary(self, scans: list) -> list:
+        projects_map: Dict[str, Dict[str, Any]] = {}
+        for s in scans:
+            grp = s.get("project_group") or "Unassigned Site"
+            if grp not in projects_map:
+                projects_map[grp] = {
+                    "project_group": grp,
+                    "project_name_zh": s.get("project_name_zh") or "",
+                    "scan_count": 0,
+                    "lat": s.get("lat") or 24.92032,
+                    "lon": s.get("lon") or 121.54351,
+                    "twd97_e": s.get("twd97_e") or 304952.6,
+                    "twd97_n": s.get("twd97_n") or 2757084.9,
+                    "latest_date": s.get("capture_date") or "",
+                    "scan_ids": [],
+                }
+            entry = projects_map[grp]
+            entry["scan_count"] += 1
+            entry["scan_ids"].append(s.get("scan_id"))
+            cdate = str(s.get("capture_date") or "")
+            if cdate > str(entry["latest_date"]):
+                entry["latest_date"] = cdate
+        return sorted(projects_map.values(), key=lambda x: (-x["scan_count"], x["project_group"].lower()))
+
     def _resolve_scan_thumbnail_path(self, scan_id: str, scan: Optional[Dict[str, Any]] = None) -> Optional[str]:
         # 1. Check automatically captured WebGL screenshot in data/thumbnails/<scan_id>.png
         captured_png = os.path.join(THUMBS_DIR, f"{scan_id}.png")
         if os.path.isfile(captured_png) and os.path.getsize(captured_png) > 512:
             return captured_png
 
-        # 2. Check distinct PIX4Dmatic thumbnails for GDrive Inbox walks and C:\GatheringScans folders
+        # 2. Check scan.project_dir/thumbnail.png dynamically inside C:\GatheringScans (flat or nested)
+        s = scan or DB.get_scan(scan_id) or {}
+        proj_dir = s.get("project_dir") or ""
+        if proj_dir and os.path.isdir(proj_dir):
+            for fname in ("thumbnail.png", "preview.png", "thumbnail.jpg", "ortho_preview.png"):
+                cand = os.path.join(proj_dir, fname)
+                if os.path.isfile(cand) and os.path.getsize(cand) > 256:
+                    return cand
+
+        # 3. Legacy fallback map for GDrive Inbox walks and known local folders
         fallback_map = {
             "quchi_20261005_merged": os.path.join(LOCAL_SCANS_ROOT, "QuChi_20261005_Compressed", "thumbnail.png"),
             "quchi_20261015_survey": os.path.join(LOCAL_SCANS_ROOT, "QuChi_20261015", "thumbnail.png"),
@@ -348,29 +382,27 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
         if cand_map and os.path.isfile(cand_map):
             return cand_map
 
-        # 3. Check scan.project_dir/thumbnail.png inside C:\GatheringScans
-        s = scan or DB.get_scan(scan_id) or {}
-        proj_dir = s.get("project_dir") or ""
-        if proj_dir:
-            cand = os.path.join(proj_dir, "thumbnail.png")
-            if os.path.isfile(cand):
-                return cand
-
-        # 4. Group fallback inside C:\GatheringScans
+        # 4. Dynamic sibling scan thumbnail lookup in the same project_group (supports 100+ projects)
         grp = s.get("project_group", "")
-        grp_fallbacks = {
-            "QuChi Dam": os.path.join(LOCAL_SCANS_ROOT, "QuChi_20261005_Compressed", "thumbnail.png"),
-            "Rose Park": os.path.join(LOCAL_SCANS_ROOT, "RosePark_Merged2", "thumbnail.png"),
-            "NTU Dorm": os.path.join(LOCAL_SCANS_ROOT, "NTU_Dorm_260917", "thumbnail.png"),
-        }
-        g_cand = grp_fallbacks.get(grp, "")
-        if g_cand and os.path.isfile(g_cand):
-            return g_cand
+        if grp:
+            for sib in DB.list_scans(project_group=grp):
+                sib_id = sib.get("scan_id", "")
+                sib_cap = os.path.join(THUMBS_DIR, f"{sib_id}.png")
+                if os.path.isfile(sib_cap) and os.path.getsize(sib_cap) > 512:
+                    return sib_cap
+                sib_dir = sib.get("project_dir") or ""
+                if sib_dir:
+                    sib_thumb = os.path.join(sib_dir, "thumbnail.png")
+                    if os.path.isfile(sib_thumb) and os.path.getsize(sib_thumb) > 256:
+                        return sib_thumb
 
         # 5. Any available captured thumbnail in THUMBS_DIR
-        default_thumb = os.path.join(THUMBS_DIR, "quchi_20261005_merged.png")
-        if os.path.isfile(default_thumb) and os.path.getsize(default_thumb) > 512:
-            return default_thumb
+        if os.path.isdir(THUMBS_DIR):
+            for fn in sorted(os.listdir(THUMBS_DIR)):
+                if fn.lower().endswith(".png"):
+                    cand = os.path.join(THUMBS_DIR, fn)
+                    if os.path.isfile(cand) and os.path.getsize(cand) > 512:
+                        return cand
         return None
 
     def _handle_pc_tunnel_register(self):
@@ -563,7 +595,9 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
                         "mode": "external_share",
                         "share_link": link,
                         "scans": enriched,
+                        "projects": self._build_projects_summary(enriched),
                         "materials": MATERIAL_CATALOG,
+                        "google_client_id": GOOGLE_OAUTH_CLIENT_ID,
                     }
                 )
                 return
@@ -577,7 +611,23 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
                     "pc_online": not PC_SIMULATED_OFFLINE,
                     "crs": TWD97_TWVD2001_LABEL,
                     "scans": scans,
+                    "projects": self._build_projects_summary(scans),
                     "materials": MATERIAL_CATALOG,
+                    "google_client_id": GOOGLE_OAUTH_CLIENT_ID,
+                }
+            )
+            return
+
+        # 3a. Scalable Projects Catalog Endpoint (/api/projects)
+        if path == "/api/projects":
+            scans = [self._enrich_scan_urls(s) for s in DB.list_scans()]
+            projects = self._build_projects_summary(scans)
+            self.send_json(
+                {
+                    "status": "ok",
+                    "total_projects": len(projects),
+                    "total_scans": len(scans),
+                    "projects": projects,
                 }
             )
             return
@@ -692,10 +742,20 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
             self.send_json({"status": "ok", "notifications": GCHAT.list_notifications()})
             return
 
-        # 9. User-Specific Offline Cache Settings
+        # 9. User-Specific Offline Cache Settings & User Profiles (GatheringCloud OAuth Gate)
         if path == "/api/user/settings":
             email = query.get("email", ["glibivanov@gatheren.com.tw"])[0]
             self.send_json({"status": "ok", "settings": DB.get_user_settings(email)})
+            return
+
+        if path == "/api/user-profiles":
+            self.send_json(
+                {
+                    "status": "ok",
+                    "profiles": AUTH_SHARE.list_user_profiles(),
+                    "google_client_id": GOOGLE_OAUTH_CLIENT_ID,
+                }
+            )
             return
 
         # 10. Client-Side Offline Cache Manifest for a Scan
@@ -1065,18 +1125,36 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
                 self.send_json(res)
                 return
 
-            # 11. User-Specific Offline Cache Settings Update
+            # 11. User-Specific Offline Cache Settings & User Profiles Update
             if path == "/api/user/settings":
                 email = payload.get("email", "glibivanov@gatheren.com.tw")
                 settings = DB.update_user_settings(email, payload)
                 self.send_json({"status": "ok", "settings": settings})
                 return
 
-            # 12. Google OAuth Login Verification
+            if path == "/api/user-profiles":
+                saved = AUTH_SHARE.upsert_user_profile(payload)
+                self.send_json(
+                    {
+                        "status": "ok",
+                        "profile": saved,
+                        "profiles": AUTH_SHARE.list_user_profiles(),
+                    }
+                )
+                return
+
+            # 12. Google OAuth Login Verification (Same Client ID as GatheringCloud)
             if path == "/api/auth/google":
                 cred = payload.get("credential", "")
-                user = AUTH_SHARE.verify_google_oauth_credential(cred)
-                self.send_json({"status": "ok", "user": user})
+                fallback_profile = payload.get("profile") if isinstance(payload.get("profile"), dict) else None
+                user = AUTH_SHARE.verify_google_oauth_credential(cred, fallback_profile=fallback_profile)
+                self.send_json(
+                    {
+                        "status": "ok",
+                        "user": user,
+                        "profiles": AUTH_SHARE.list_user_profiles(),
+                    }
+                )
                 return
 
             self.send_json({"error": f"Unknown endpoint: {path}"}, status=404)

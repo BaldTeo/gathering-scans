@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>GatheringScans — 3D Photogrammetry &amp; Civil Surveying Studio (scans.gatheren.cloud)</title>
   <link rel="stylesheet" href="/app.css" />
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
 <body>
 
@@ -72,11 +73,12 @@
         </svg>
       </button>
 
-      <button type="button" class="gs-top-btn" id="btnGoogleUser" title="Company Google Workspace OAuth Account">
-        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8">
+      <button type="button" class="gs-top-btn" id="btnGoogleUser" title="Google Workspace OAuth Account (GatheringCloud SSO)">
+        <img id="imgCurrentUserAvatar" src="" alt="" style="width:18px;height:18px;border-radius:50%;object-fit:cover;display:none;" />
+        <svg id="svgCurrentUserIcon" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8">
           <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>
         </svg>
-        <span id="lblCurrentUser">glibivanov@gatheren.com.tw</span>
+        <span id="lblCurrentUser" style="display:inline;font-size:11.5px;max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">Glib Ivanov</span>
       </button>
     </div>
   </header>
@@ -102,7 +104,7 @@
     <section class="gs-view active" id="viewMap">
       <div id="mapContainer"></div>
 
-      <!-- Top-Left Map HUD -->
+      <!-- Top-Left Map HUD (Scalable for 100+ Projects) -->
       <div class="gs-map-hud-top">
         <div class="gs-map-card">
           <div style="display:flex;justify-content:space-between;align-items:center;">
@@ -112,18 +114,41 @@
               </svg>
               <span>Scan Clusters (TWD97)</span>
             </span>
-            <span class="gs-crs-pill" id="lblMapClusterCount">3 Sites</span>
+            <span class="gs-crs-pill" id="lblMapClusterCount">0 Sites</span>
           </div>
           <p style="font-size:11.5px;color:#475569;margin-top:6px;line-height:1.45;">
-            Select a spatial cluster to inspect grouped scans by date, open in 3D Studio, compare dates, download <code>.obj</code>, or comment.
+            Search or select any project site to inspect grouped scans by date, open in 3D Studio, compare dates, or export reports.
           </p>
-          <div style="display:flex;justify-content:space-between;align-items:center;gap:6px;margin-top:10px;">
-            <div id="mapSiteQuickButtons" style="display:flex;flex-wrap:wrap;gap:5px;"></div>
-            <div class="segmented-pill" id="mapLayerSwitcher" style="padding:2px;border-radius:7px;">
-              <button type="button" class="btn-seg active" data-lyrs="y" style="padding:3px 8px;font-size:11px;" title="Google Satellite Hybrid">Hybrid</button>
-              <button type="button" class="btn-seg" data-lyrs="m" style="padding:3px 8px;font-size:11px;" title="Google Roadmap">Map</button>
+
+          <!-- Scalable Search + Project Dropdown (Supports 100+ Projects) -->
+          <div style="margin-top:9px;display:flex;flex-direction:column;gap:6px;">
+            <div style="position:relative;display:flex;align-items:center;">
+              <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="#64748b" stroke-width="2" style="position:absolute;left:9px;pointer-events:none;">
+                <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+              </svg>
+              <input
+                type="search"
+                class="gs-input"
+                id="mapProjectSearchInput"
+                placeholder="Search projects, sites, or scan names..."
+                style="padding-left:28px;font-size:11.5px;"
+              />
+            </div>
+
+            <div style="display:flex;align-items:center;gap:6px;">
+              <select class="gs-select" id="mapProjectSelect" title="Select Project Site (Scalable across 100+ Projects)" style="flex:1;font-weight:600;"></select>
+              <button type="button" class="btn-xs primary" id="btnOpenSelectedProjectTimeline" title="Open Selected Project Timeline &amp; 3D Preview">
+                <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2">
+                  <polyline points="9 18 15 12 9 6"/>
+                </svg>
+              </button>
+              <div class="segmented-pill" id="mapLayerSwitcher" style="padding:2px;border-radius:7px;flex-shrink:0;">
+                <button type="button" class="btn-seg active" data-lyrs="y" style="padding:3px 8px;font-size:11px;" title="Google Satellite Hybrid">Hybrid</button>
+                <button type="button" class="btn-seg" data-lyrs="m" style="padding:3px 8px;font-size:11px;" title="Google Roadmap">Map</button>
+              </div>
             </div>
           </div>
+
           <div style="margin-top:10px;padding-top:8px;border-top:1px solid #e2e8f0;font-size:11px;font-family:monospace;color:#475569;" id="mapCursorCoords">
             TWD97(121) E: 304,952.7m | N: 2,757,084.9m | TWVD2001
           </div>
@@ -134,8 +159,8 @@
       <div class="gs-cluster-popover" id="clusterHoverPopover">
         <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #e2e8f0;padding-bottom:10px;">
           <div>
-            <div style="font-size:14px;font-weight:700;color:#0f172a;" id="popoverGroupTitle">QuChi Dam</div>
-            <div style="font-size:11px;color:#64748b;margin-top:2px;" id="popoverGroupSubtitle">屈尺堰壩體與護岸工程 · TWD97 (121) + TWVD2001</div>
+            <div style="font-size:14px;font-weight:700;color:#0f172a;" id="popoverGroupTitle">Project Site</div>
+            <div style="font-size:11px;color:#64748b;margin-top:2px;" id="popoverGroupSubtitle">TWD97 (121) + TWVD2001</div>
           </div>
           <div style="display:flex;gap:5px;">
             <button type="button" class="btn-xs primary" id="btnPopoverCompareGroup" title="Compare Dates in Multi-Date Slider">
@@ -172,16 +197,16 @@
               </button>
               <div>
                 <div style="display:flex;align-items:center;gap:8px;">
-                  <span class="gs-timeline-site-title" id="timelineSiteTitle">QuChi Dam</span>
-                  <span class="gs-crs-pill" id="timelineSiteCountPill">4 Scans</span>
+                  <span class="gs-timeline-site-title" id="timelineSiteTitle">Project Site</span>
+                  <span class="gs-crs-pill" id="timelineSiteCountPill">0 Scans</span>
                   <span class="gs-crs-pill" style="background:#f1f5f9;color:#475569;border-color:#cbd5e1;">TWD97 (121) + TWVD2001</span>
                 </div>
-                <div class="gs-timeline-site-sub" id="timelineSiteSubtitle">屈尺堰壩體與護岸工程 · Select a scan tile to preview below</div>
+                <div class="gs-timeline-site-sub" id="timelineSiteSubtitle">Select a scan tile to preview below</div>
               </div>
             </div>
 
             <div class="gs-timeline-header-right">
-              <div id="timelineSiteSwitcher" style="display:flex;gap:4px;"></div>
+              <select class="gs-scan-select" id="timelineProjectSelect" title="Switch Project Site (Scalable across 100+ Projects)"></select>
               <button type="button" class="btn-xs" id="btnCapturePreviewScreenshot" title="Capture Live 3D Screenshot for Selected Tile">
                 <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8">
                   <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
@@ -217,8 +242,8 @@
                 <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
               </svg>
               <div>
-                <div style="font-size:12.5px;font-weight:700;color:#0f172a;" id="previewScanTitle">QuChi Dam — Merged 3D Mesh</div>
-                <div style="font-size:11px;color:#475569;font-family:monospace;" id="previewScanMeta">2026-10-05 15:37 · Glib Ivanov · E 304952.7 N 2757084.9 H +43.2m</div>
+                <div style="font-size:12.5px;font-weight:700;color:#0f172a;" id="previewScanTitle">3D Mesh Preview</div>
+                <div style="font-size:11px;color:#475569;font-family:monospace;" id="previewScanMeta">TWD97 (121) + TWVD2001</div>
               </div>
               <div class="gs-brightness-control" title="Preview Scan Brightness (0.1x – 4.0x)">
                 <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="#475569" stroke-width="1.8">
@@ -271,7 +296,8 @@
           <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="#0284c7" stroke-width="1.8" style="flex-shrink:0;">
             <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
           </svg>
-          <span class="gs-crs-pill" id="studioProjectGroupBadge" title="Active Project Scope (Only scans from this project are listed)">QuChi Dam</span>
+          <select class="gs-scan-select" id="studioProjectSelect" title="Select Project Site (Scalable across 100+ Projects)"></select>
+          <span class="gs-crs-pill" id="studioProjectGroupBadge" style="display:none;"></span>
           <select class="gs-scan-select" id="studioScanSelect" title="Select Active 3D Scan (Current Project Only)"></select>
           <div style="border-left:1px solid #cbd5e1;padding-left:10px;font-size:11px;font-family:monospace;color:#475569;" id="studioScanMetrics">
             TWD97 · TWVD2001 · 2K
@@ -543,7 +569,8 @@
       <!-- Compare Top HUD -->
       <div class="gs-compare-hud">
         <div class="gs-epoch-badge">
-          <span class="gs-crs-pill" id="compareProjectGroupBadge" title="Active Project Scope">QuChi Dam</span>
+          <select class="gs-scan-select" id="compareProjectSelect" title="Select Project Site (Scalable across 100+ Projects)"></select>
+          <span class="gs-crs-pill" id="compareProjectGroupBadge" style="display:none;"></span>
           <span style="font-size:11px;font-weight:700;color:#475569;">BASELINE</span>
           <select class="gs-scan-select" id="compareLeftSelect"></select>
         </div>
@@ -768,7 +795,7 @@
 
       <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:12px 14px;margin-bottom:10px;display:flex;justify-content:space-between;align-items:center;">
         <div>
-          <div style="font-size:12.5px;font-weight:700;color:#0f172a;">Enable Offline Caching in Browser (glibivanov@gatheren.com.tw)</div>
+          <div style="font-size:12.5px;font-weight:700;color:#0f172a;" id="lblOfflineCacheUserEmail">Enable Offline Caching in Browser (glibivanov@gatheren.com.tw)</div>
           <div style="font-size:11px;color:#64748b;margin-top:2px;">Automatically caches viewed 3D tilesets locally on this PC.</div>
         </div>
         <input type="checkbox" id="chkEnableOfflineCache" checked style="width:18px;height:18px;accent-color:#0284c7;cursor:pointer;" />
@@ -799,12 +826,114 @@
     </div>
   </div>
 
+  <!-- ========================================================================
+       MODAL 4: GATHERINGCLOUD GOOGLE OAUTH & USER PROFILE GATE MODAL
+       (Exact same Google OAuth Client ID & Gate Architecture as GatheringCloud)
+       ======================================================================== -->
+  <div id="userProfileGateModal" class="gs-modal-backdrop" style="z-index:5000;">
+    <div class="gs-modal" style="max-width:540px;padding:0;overflow:hidden;">
+      <!-- Top Header -->
+      <div style="padding:20px 24px 16px;background:linear-gradient(135deg,#0f172a,#1e293b);color:#ffffff;display:flex;align-items:center;justify-content:space-between;gap:14px;">
+        <div style="display:flex;align-items:center;gap:14px;">
+          <div style="width:44px;height:44px;border-radius:12px;background:rgba(56,189,248,0.16);border:1px solid rgba(56,189,248,0.4);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+            <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="#38bdf8" stroke-width="2">
+              <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>
+            </svg>
+          </div>
+          <div>
+            <h3 style="margin:0;font-size:17px;font-weight:700;letter-spacing:0.3px;">GatheringScans Identity Verification</h3>
+            <p style="margin:4px 0 0;font-size:12px;color:#94a3b8;">Same Google Workspace OAuth as GatheringCloud (<code>gatheren.cloud</code>)</p>
+          </div>
+        </div>
+        <button type="button" class="btn-xs" id="btnCloseAuthGateModal" title="Close" style="background:rgba(255,255,255,0.1);border-color:rgba(255,255,255,0.2);color:#f8fafc;">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+          </svg>
+        </button>
+      </div>
+
+      <!-- Body -->
+      <div style="padding:20px 24px;max-height:72vh;overflow-y:auto;display:flex;flex-direction:column;gap:16px;">
+        <!-- Google OAuth Card (Exact same Client ID as GatheringCloud) -->
+        <div id="googleAuthGateCard" style="background:#f0f9ff;border:1px solid #bae6fd;border-radius:12px;padding:16px 18px;display:flex;flex-direction:column;align-items:center;gap:10px;text-align:center;">
+          <div style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:700;color:#0369a1;">
+            <svg width="18" height="18" viewBox="0 0 24 24">
+              <path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.665-5.17 3.665-9.17z"/>
+              <path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.11-6.72-4.96H1.29v3.14C3.26 21.3 7.31 24 12 24z"/>
+              <path fill="#FBBC05" d="M5.28 14.24c-.24-.72-.38-1.49-.38-2.24s.14-1.52.38-2.24V6.62H1.29C.47 8.24 0 10.06 0 12s.47 3.76 1.29 5.38l3.99-3.14z"/>
+              <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.31 0 3.26 2.7 1.29 6.62l3.99 3.14c.95-2.85 3.6-4.96 6.72-4.96z"/>
+            </svg>
+            <span>Google Account Fast Sign-In (GatheringCloud SSO)</span>
+          </div>
+
+          <div
+            id="g_id_onload"
+            data-client_id="753778992341-hpe65ilnti31j0m7etmq5rn7a1q802da.apps.googleusercontent.com"
+            data-context="signin"
+            data-ux_mode="popup"
+            data-callback="handleGoogleSignIn"
+            data-auto_prompt="false">
+          </div>
+          <div
+            class="g_id_signin"
+            id="googleSignInButtonContainer"
+            data-type="standard"
+            data-shape="rectangular"
+            data-theme="outline"
+            data-text="signin_with"
+            data-size="large"
+            data-logo_alignment="left">
+          </div>
+
+          <div id="googleAuthMessage" style="font-size:11.5px;color:#0284c7;">
+            Sign in with your Google account to automatically bind your name, email, and avatar across GatheringScans &amp; GatheringCloud.
+          </div>
+
+          <!-- Origin Helper Notice -->
+          <div id="googleAuthOriginNotice" style="width:100%;margin-top:2px;padding:7px 10px;background:#ffffff;border:1px dashed #cbd5e1;border-radius:8px;font-size:11px;color:#64748b;text-align:left;line-height:1.45;">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;">
+              <span>Authorized JavaScript Origin: <code id="currentOriginCode" style="background:#f1f5f9;padding:2px 6px;border-radius:4px;color:#0f172a;font-weight:700;user-select:all;">https://scans.gatheren.cloud</code></span>
+              <button type="button" id="btnCopyCurrentOriginGate" class="btn-xs" style="height:22px;font-size:10.5px;">Copy</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Team Members Quick Switcher (Server-Persisted Profiles) -->
+        <div id="gateExistingUsersSection">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+            <label style="font-size:12px;font-weight:700;color:#334155;">Verified Team Profiles (Quick Switch)</label>
+            <span id="gateRosterCountBadge" class="gs-crs-pill">2 Members</span>
+          </div>
+          <input
+            type="search"
+            id="gateUserSearchInput"
+            class="gs-input"
+            placeholder="Filter team members by name, email, or role..."
+            style="margin-bottom:8px;font-size:12px;"
+          />
+          <div id="gateExistingUsersGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:8px;max-height:190px;overflow-y:auto;padding:2px;"></div>
+        </div>
+      </div>
+
+      <!-- Footer -->
+      <div style="padding:14px 24px;background:#f8fafc;border-top:1px solid #e2e8f0;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
+        <span id="gateActiveUserStatusText" style="font-size:12px;color:#475569;font-weight:600;">Signed in as: Glib Ivanov</span>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <button type="button" id="btnUserLogout" class="btn-xs" style="display:none;" title="Sign out of current profile">Logout</button>
+          <button type="button" id="btnGateGuestEnter" class="btn-xs" title="Browse in Read-Only Guest Mode">Guest</button>
+          <button type="button" id="btnGateConfirmEnter" class="btn-xs primary" title="Continue to GatheringScans Studio">Continue</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- Toast Notification -->
   <div class="gs-toast" id="gsToast"></div>
 
-  <!-- Gathering Cloud Shared Google Maps API Key -->
+  <!-- Gathering Cloud Shared Google Maps API Key & Google OAuth Client ID -->
   <script>
     window.DEFAULT_GOOGLE_MAPS_API_KEY = "AIzaSyBhHW138sGKgzKHDOTvv4RePukr_q2VbqQ";
+    window.GOOGLE_OAUTH_CLIENT_ID = "753778992341-hpe65ilnti31j0m7etmq5rn7a1q802da.apps.googleusercontent.com";
   </script>
 
   <!-- Three.js + 3D Tileset / KTX2 / Meshopt Libraries -->

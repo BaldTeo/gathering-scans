@@ -43,16 +43,48 @@
   const DEFAULT_GOOGLE_MAPS_API_KEY =
     window.DEFAULT_GOOGLE_MAPS_API_KEY || "AIzaSyBhHW138sGKgzKHDOTvv4RePukr_q2VbqQ";
 
+  const GOOGLE_OAUTH_CLIENT_ID =
+    window.GOOGLE_OAUTH_CLIENT_ID ||
+    "753778992341-hpe65ilnti31j0m7etmq5rn7a1q802da.apps.googleusercontent.com";
+
+  // Load persisted user profile (compatible with GatheringCloud's gathering_user_profile)
+  function getInitialCurrentUser() {
+    try {
+      const saved =
+        localStorage.getItem("gathering_user_profile") ||
+        localStorage.getItem("gs_current_user");
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed && parsed.email) {
+          return Object.assign({ offlineCacheEnabled: true }, parsed);
+        }
+      }
+    } catch (e) {
+      // ignore
+    }
+    return {
+      id: "user_glib_ivanov",
+      email: "glibivanov@gatheren.com.tw",
+      name: "Glib Ivanov",
+      role: "admin",
+      role_label: "System Admin (Gatheren)",
+      auth_provider: "google",
+      offlineCacheEnabled: true,
+    };
+  }
+
   // Application State
   const STATE = {
     activeView: "map",
     scans: [],
+    projects: [],
     materials: {},
-    activeScanId: "quchi_20261005_merged",
+    activeScanId: "",
     activeScan: null,
-    activeProjectGroup: "QuChi Dam",
+    activeProjectGroup: "",
+    projectFilterQuery: "",
     siteTimelineOpen: false,
-    selectedTimelineScanId: "quchi_20261005_merged",
+    selectedTimelineScanId: "",
     capturedThumbs: new Set(),
     scanBrightness: 1.0,
     mapLyrs: "y", // 'y' = Google Satellite Hybrid, 'm' = Google Roadmap
@@ -61,12 +93,9 @@
     pcOnline: true,
     shareToken: new URLSearchParams(window.location.search).get("share") || "",
     shareLinkInfo: null,
-    currentUser: {
-      email: "glibivanov@gatheren.com.tw",
-      name: "Glib Ivanov",
-      offlineCacheEnabled: true,
-    },
-    cachedScanIds: new Set(JSON.parse(localStorage.getItem("gs_cached_scans") || '["quchi_20261005_merged"]')),
+    currentUser: getInitialCurrentUser(),
+    teamProfiles: [],
+    cachedScanIds: new Set(JSON.parse(localStorage.getItem("gs_cached_scans") || "[]")),
     measurePoints: [],
     maskBoundaryPoints: [],
     completedMeasurements: [],
@@ -79,23 +108,108 @@
     lastProfileResult: null,
   };
 
-  // Populate active scan dropdowns strictly with scans from the active project group (Fix #4)
+  // Aggregate unique project groups dynamically (scales cleanly to 100+ projects)
+  function getProjectGroupsList(filterQuery = "") {
+    const q = String(filterQuery || "").trim().toLowerCase();
+    const map = new Map();
+    STATE.scans.forEach((s) => {
+      const g = s.project_group || "Unassigned Site";
+      if (!map.has(g)) {
+        map.set(g, {
+          project_group: g,
+          project_name_zh: s.project_name_zh || "",
+          lat: s.lat || 24.92032,
+          lon: s.lon || 121.54351,
+          scans: [],
+        });
+      }
+      map.get(g).scans.push(s);
+    });
+    let list = Array.from(map.values()).sort(
+      (a, b) => b.scans.length - a.scans.length || a.project_group.localeCompare(b.project_group)
+    );
+    if (q) {
+      list = list.filter((grp) => {
+        if (grp.project_group.toLowerCase().includes(q)) return true;
+        if ((grp.project_name_zh || "").toLowerCase().includes(q)) return true;
+        return grp.scans.some(
+          (s) =>
+            (s.name || "").toLowerCase().includes(q) ||
+            (s.scan_id || "").toLowerCase().includes(q) ||
+            (s.capture_date || "").toLowerCase().includes(q)
+        );
+      });
+    }
+    return list;
+  }
+
+  // Populate all project & scan selectors across Map, Timeline, Studio, and Compare (Supports 100+ Projects)
   function populateProjectScanDropdowns(projectGroup, preferredScanId = null) {
-    if (projectGroup) {
+    const allGroups = getProjectGroupsList("");
+    if (projectGroup && allGroups.some((g) => g.project_group === projectGroup)) {
       STATE.activeProjectGroup = projectGroup;
     } else if (STATE.activeScan && STATE.activeScan.project_group) {
       STATE.activeProjectGroup = STATE.activeScan.project_group;
+    } else if (!STATE.activeProjectGroup && allGroups.length > 0) {
+      STATE.activeProjectGroup = allGroups[0].project_group;
     }
 
-    let projectScans = STATE.scans.filter((s) => s.project_group === STATE.activeProjectGroup);
-    if (!projectScans.length) {
-      projectScans = STATE.scans.slice();
+    // 1. Populate Map Project Selector (#mapProjectSelect) with search filter support
+    const mapProjSel = document.getElementById("mapProjectSelect");
+    if (mapProjSel) {
+      const filteredGroups = getProjectGroupsList(STATE.projectFilterQuery);
+      const prevMapVal = mapProjSel.value;
+      mapProjSel.innerHTML = "";
+      const allOpt = document.createElement("option");
+      allOpt.value = "__all__";
+      allOpt.textContent = STATE.projectFilterQuery
+        ? `Filtered Projects (${filteredGroups.length} / ${allGroups.length} Sites)`
+        : `All Projects (${allGroups.length} Site${allGroups.length === 1 ? "" : "s"} · ${STATE.scans.length} Scans)`;
+      mapProjSel.appendChild(allOpt);
+
+      filteredGroups.forEach((grp) => {
+        const opt = document.createElement("option");
+        opt.value = grp.project_group;
+        opt.textContent = `${grp.project_group} (${grp.scans.length} Scan${grp.scans.length === 1 ? "" : "s"})`;
+        mapProjSel.appendChild(opt);
+      });
+
+      if (STATE.activeProjectGroup && filteredGroups.some((g) => g.project_group === STATE.activeProjectGroup)) {
+        mapProjSel.value = STATE.activeProjectGroup;
+      } else if (prevMapVal && Array.from(mapProjSel.options).some((o) => o.value === prevMapVal)) {
+        mapProjSel.value = prevMapVal;
+      } else {
+        mapProjSel.value = "__all__";
+      }
     }
 
+    // 2. Populate Timeline, Studio, and Compare Project Switcher Dropdowns
+    ["timelineProjectSelect", "studioProjectSelect", "compareProjectSelect"].forEach((selId) => {
+      const sel = document.getElementById(selId);
+      if (!sel) return;
+      sel.innerHTML = "";
+      allGroups.forEach((grp) => {
+        const opt = document.createElement("option");
+        opt.value = grp.project_group;
+        opt.textContent = `${grp.project_group} (${grp.scans.length})`;
+        sel.appendChild(opt);
+      });
+      if (STATE.activeProjectGroup && allGroups.some((g) => g.project_group === STATE.activeProjectGroup)) {
+        sel.value = STATE.activeProjectGroup;
+      }
+    });
+
+    // Update hidden badges for backward compatibility
     const studioBadge = document.getElementById("studioProjectGroupBadge");
     if (studioBadge) studioBadge.textContent = STATE.activeProjectGroup;
     const cmpBadge = document.getElementById("compareProjectGroupBadge");
     if (cmpBadge) cmpBadge.textContent = STATE.activeProjectGroup;
+
+    // 3. Populate Scan Selectors strictly for the active project
+    let projectScans = STATE.scans.filter((s) => s.project_group === STATE.activeProjectGroup);
+    if (!projectScans.length) {
+      projectScans = STATE.scans.slice();
+    }
 
     const studioSel = document.getElementById("studioScanSelect");
     const cmpLeft = document.getElementById("compareLeftSelect");
@@ -108,7 +222,7 @@
       projectScans.forEach((s) => {
         const opt = document.createElement("option");
         opt.value = s.scan_id;
-        opt.textContent = s.name;
+        opt.textContent = `${s.name} (${s.capture_date || ""})`;
         sel.appendChild(opt);
       });
       if (preferredScanId && projectScans.some((s) => s.scan_id === preferredScanId)) {
@@ -442,33 +556,22 @@
     if (!gsMap) return;
 
     gsMap.markerLayer.innerHTML = "";
-    const groups = {};
-    STATE.scans.forEach((s) => {
-      const g = s.project_group || "QuChi Dam";
-      if (!groups[g]) {
-        groups[g] = {
-          project_group: g,
-          project_name_zh: s.project_name_zh || "",
-          lat: s.lat || 24.92032,
-          lon: s.lon || 121.54351,
-          scans: [],
-        };
-      }
-      groups[g].scans.push(s);
-    });
-
-    const groupList = Object.values(groups);
-    gsMap.groups = groupList;
+    const allGroups = getProjectGroupsList("");
+    const visibleGroups = getProjectGroupsList(STATE.projectFilterQuery);
+    gsMap.groups = visibleGroups;
 
     const countEl = document.getElementById("lblMapClusterCount");
     if (countEl) {
-      countEl.textContent = `${groupList.length} Site${groupList.length === 1 ? "" : "s"} (${STATE.scans.length} Scans)`;
+      if (STATE.projectFilterQuery) {
+        countEl.textContent = `${visibleGroups.length}/${allGroups.length} Sites`;
+      } else {
+        countEl.textContent = `${allGroups.length} Site${allGroups.length === 1 ? "" : "s"} (${STATE.scans.length} Scans)`;
+      }
     }
 
-    const quickBtns = document.getElementById("mapSiteQuickButtons");
-    if (quickBtns) quickBtns.innerHTML = "";
+    populateProjectScanDropdowns(STATE.activeProjectGroup, STATE.activeScanId);
 
-    groupList.forEach((grp) => {
+    visibleGroups.forEach((grp) => {
       const count = grp.scans.length;
       const sizePx = count >= 2 ? 50 : 44;
       const blob = document.createElement("div");
@@ -495,29 +598,12 @@
 
       grp.el = blob;
       gsMap.markerLayer.appendChild(blob);
-
-      if (quickBtns) {
-        const b = document.createElement("button");
-        b.type = "button";
-        b.className = "btn-xs";
-        b.dataset.siteGroup = grp.project_group;
-        b.textContent = grp.project_group.split(" ")[0];
-        b.title = `${grp.project_group} (${count} Scans)`;
-        b.addEventListener("click", () => {
-          gsMap.centerLat = grp.lat;
-          gsMap.centerLon = grp.lon;
-          gsMap.zoom = 14.5;
-          openClusterPopover(grp);
-          gsMap.drawMap();
-          openSiteTimeline(grp.project_group);
-        });
-        quickBtns.appendChild(b);
-      }
     });
 
     gsMap.drawMap();
-    if (groupList.length > 0) {
-      const activeGrp = groupList.find((g) => g.project_group === STATE.activeProjectGroup) || groupList[0];
+    if (visibleGroups.length > 0) {
+      const activeGrp =
+        visibleGroups.find((g) => g.project_group === STATE.activeProjectGroup) || visibleGroups[0];
       openClusterPopover(activeGrp);
     }
   }
@@ -790,6 +876,49 @@
     STATE.capturedThumbs.add(activeId);
   }
 
+  function computeTilesetContentSphere(tr, outSphere) {
+    if (!tr || !tr.root) return false;
+    if (typeof tr.getBoundingSphere === "function") {
+      tr.getBoundingSphere(outSphere);
+    }
+    const rootGe = Number(tr.root.geometricError || 0);
+    if (rootGe > 1000) {
+      // Deep PIX4Dmatic octree: use higher errorTarget so level 1-2 tiles stream immediately
+      tr.errorTarget = 16.0;
+    }
+    // If root has no direct content URI (e.g. PIX4Dmatic cubic octree where root center is in sky),
+    // average the bounding box centers of renderable content tiles up to depth 3
+    if (!tr.root.content || !tr.root.content.uri) {
+      const rootMat = (tr.root.engineData && tr.root.engineData.transform) || new THREE.Matrix4();
+      let sx = 0,
+        sy = 0,
+        sz = 0,
+        count = 0;
+      const tmpVec = new THREE.Vector3();
+      const walk = (node, depth) => {
+        if (!node || depth > 3) return;
+        if (node.content && node.content.uri && node.boundingVolume && Array.isArray(node.boundingVolume.box)) {
+          const b = node.boundingVolume.box;
+          tmpVec.set(Number(b[0]) || 0, Number(b[1]) || 0, Number(b[2]) || 0).applyMatrix4(rootMat);
+          if (isFinite(tmpVec.x) && isFinite(tmpVec.y) && isFinite(tmpVec.z)) {
+            sx += tmpVec.x;
+            sy += tmpVec.y;
+            sz += tmpVec.z;
+            count++;
+          }
+        }
+        if (Array.isArray(node.children)) {
+          node.children.forEach((c) => walk(c, depth + 1));
+        }
+      };
+      walk(tr.root, 0);
+      if (count > 0) {
+        outSphere.center.set(sx / count, sy / count, sz / count);
+      }
+    }
+    return outSphere.radius > 0;
+  }
+
   function loadScanIntoPreview(scanId) {
     initPreview3D();
     const scan = STATE.scans.find((s) => s.scan_id === scanId) || STATE.scans[0];
@@ -823,6 +952,7 @@
       previewThree.modelPivot.remove(previewThree.modelPivot.children[0]);
     }
     previewThree.modelPivot.rotation.set(0, 0, 0);
+    if (previewThree.fallbackGroup) previewThree.fallbackGroup.visible = false;
 
     const streamUrl = scan.stream_url || `/stream/${scan.scan_id}/tileset.json`;
 
@@ -853,7 +983,9 @@
           setTimeout(() => autoCaptureSiteTimelineScreenshots(), 550);
         },
         undefined,
-        () => {}
+        () => {
+          if (previewThree.fallbackGroup) previewThree.fallbackGroup.visible = true;
+        }
       );
     } else if (window.TilesRenderer) {
       const tr = new window.TilesRenderer(streamUrl);
@@ -876,15 +1008,17 @@
 
       tr.addEventListener("load-tileset", () => {
         const sphere = new THREE.Sphere();
-        if (typeof tr.getBoundingSphere === "function" && tr.getBoundingSphere(sphere) && sphere.radius > 0) {
+        if (computeTilesetContentSphere(tr, sphere)) {
           tr.group.position.set(-sphere.center.x, -sphere.center.y, -sphere.center.z);
           previewThree.modelPivot.rotation.set(THREE.MathUtils.degToRad(270), 0, 0);
+          previewThree.modelPivot.updateMatrixWorld(true);
           framePreviewCamera();
         }
       });
 
       tr.addEventListener("load-model", (ev) => {
         if (ev && ev.scene) {
+          if (previewThree.fallbackGroup) previewThree.fallbackGroup.visible = false;
           ev.scene.traverse((c) => {
             if (c.isMesh && c.material) {
               const mats = Array.isArray(c.material) ? c.material : [c.material];
@@ -895,7 +1029,7 @@
         }
       });
 
-      tr.errorTarget = 3.5;
+      tr.errorTarget = 6.0;
       previewThree.modelPivot.add(tr.group);
       previewThree.tilesRenderer = tr;
     }
@@ -918,7 +1052,11 @@
     const splitEl = document.getElementById("siteTimelineSplitView");
     if (!splitEl) return;
 
-    const grpName = projectGroup || STATE.activeProjectGroup || "QuChi Dam";
+    const allGroups = getProjectGroupsList("");
+    const grpName =
+      projectGroup ||
+      STATE.activeProjectGroup ||
+      (allGroups[0] ? allGroups[0].project_group : "Project Site");
     STATE.activeProjectGroup = grpName;
     STATE.siteTimelineOpen = true;
 
@@ -952,21 +1090,9 @@
     if (subEl && siteScans[0]) {
       subEl.textContent = `${siteScans[0].project_name_zh || "工程掃描群組"} · Select a scan tile on the timeline to preview below`;
     }
-
-    // Populate Site Switcher buttons in timeline header
-    const switcher = document.getElementById("timelineSiteSwitcher");
-    if (switcher) {
-      switcher.innerHTML = "";
-      const uniqueGroups = [...new Set(STATE.scans.map((s) => s.project_group || "QuChi Dam"))];
-      uniqueGroups.forEach((g) => {
-        const b = document.createElement("button");
-        b.type = "button";
-        b.className = "btn-xs" + (g === grpName ? " primary" : "");
-        b.textContent = g.split(" ")[0];
-        b.title = `Switch Timeline to ${g}`;
-        b.addEventListener("click", () => openSiteTimeline(g));
-        switcher.appendChild(b);
-      });
+    const timelineProjSel = document.getElementById("timelineProjectSelect");
+    if (timelineProjSel) {
+      timelineProjSel.value = grpName;
     }
 
     // Populate Horizontal Timeline Tiles Track
@@ -1387,6 +1513,7 @@
       studioThree.modelPivot.remove(studioThree.modelPivot.children[0]);
     }
     studioThree.modelPivot.rotation.set(0, 0, 0);
+    if (studioThree.fallbackGroup) studioThree.fallbackGroup.visible = false;
 
     const streamUrl = scan.stream_url || `/stream/${scan.scan_id}/tileset.json`;
 
@@ -1418,6 +1545,7 @@
         },
         undefined,
         (err) => {
+          if (studioThree.fallbackGroup) studioThree.fallbackGroup.visible = true;
           console.warn("[GatheringScans] Using reference terrain surface for GLB:", err);
         }
       );
@@ -1442,10 +1570,11 @@
 
       tr.addEventListener("load-tileset", () => {
         const sphere = new THREE.Sphere();
-        if (typeof tr.getBoundingSphere === "function" && tr.getBoundingSphere(sphere) && sphere.radius > 0) {
+        if (computeTilesetContentSphere(tr, sphere)) {
           tr.group.position.set(-sphere.center.x, -sphere.center.y, -sphere.center.z);
           // Z-up TWD97 tilesets: rotate -90 deg on X so elevation points +Y
           studioThree.modelPivot.rotation.set(THREE.MathUtils.degToRad(270), 0, 0);
+          studioThree.modelPivot.updateMatrixWorld(true);
           studioThree.boundingSphere = sphere;
           frameStudioCamera();
         }
@@ -1453,6 +1582,7 @@
 
       tr.addEventListener("load-model", (ev) => {
         if (ev && ev.scene) {
+          if (studioThree.fallbackGroup) studioThree.fallbackGroup.visible = false;
           ev.scene.traverse((c) => {
             if (c.isMesh && c.material) {
               const mats = Array.isArray(c.material) ? c.material : [c.material];
@@ -1462,7 +1592,7 @@
         }
       });
 
-      tr.errorTarget = 3.5;
+      tr.errorTarget = 6.0;
       studioThree.modelPivot.add(tr.group);
       studioThree.tilesRenderer = tr;
     }
@@ -3626,8 +3756,397 @@
   }
 
   // ============================================================================
-  // 6. VIEW NAVIGATION & INITIALIZATION
+  // 5D. GATHERINGCLOUD GOOGLE OAUTH & USER PROFILE GATE
+  //     (Same Client ID 753778992341-hpe65ilnti31j0m7etmq5rn7a1q802da... & Server Persistence)
   // ============================================================================
+  function parseGoogleJwt(token) {
+    try {
+      const parts = String(token || "").split(".");
+      if (parts.length < 2) return null;
+      const base64Url = parts[1];
+      const base64 = base64Url.replace(/-/g, "+").replace(/_/g, "/");
+      const jsonPayload = decodeURIComponent(
+        window
+          .atob(base64)
+          .split("")
+          .map((c) => "%" + ("00" + c.charCodeAt(0).toString(16)).slice(-2))
+          .join("")
+      );
+      return JSON.parse(jsonPayload);
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function applyUserProfileToUI(userObj) {
+    if (!userObj) return;
+    const normalized = Object.assign({}, userObj);
+    if (!normalized.avatar_url && normalized.picture) {
+      normalized.avatar_url = normalized.picture;
+    }
+    if (!normalized.picture && normalized.avatar_url) {
+      normalized.picture = normalized.avatar_url;
+    }
+    STATE.currentUser = Object.assign({ offlineCacheEnabled: true }, STATE.currentUser, normalized);
+    try {
+      localStorage.setItem("gathering_user_profile", JSON.stringify(STATE.currentUser));
+      localStorage.setItem("gs_current_user", JSON.stringify(STATE.currentUser));
+    } catch (e) {
+      // ignore
+    }
+
+    const lblUser = document.getElementById("lblCurrentUser");
+    if (lblUser) {
+      lblUser.textContent = STATE.currentUser.name || STATE.currentUser.email || "Guest";
+    }
+    const btnUser = document.getElementById("btnGoogleUser");
+    if (btnUser) {
+      btnUser.title = `${STATE.currentUser.name || "User"} (${STATE.currentUser.email || ""}) — Click to switch Google OAuth account`;
+    }
+    const avatarImg = document.getElementById("imgCurrentUserAvatar");
+    const svgIcon = document.getElementById("svgCurrentUserIcon");
+    if (avatarImg && svgIcon) {
+      const picUrl = STATE.currentUser.avatar_url || STATE.currentUser.picture;
+      if (picUrl) {
+        avatarImg.src = picUrl;
+        avatarImg.style.display = "inline-block";
+        svgIcon.style.display = "none";
+      } else {
+        avatarImg.style.display = "none";
+        svgIcon.style.display = "inline-block";
+      }
+    }
+
+    const offlineLbl = document.getElementById("lblOfflineCacheUserEmail");
+    if (offlineLbl) {
+      offlineLbl.textContent = `Enable Offline Caching in Browser (${STATE.currentUser.email || "guest"})`;
+    }
+    const engInput = document.getElementById("cntEngineerName");
+    if (engInput && STATE.currentUser.name) {
+      engInput.value = STATE.currentUser.name;
+    }
+    const gateStatus = document.getElementById("gateActiveUserStatusText");
+    if (gateStatus) {
+      gateStatus.textContent = `Signed in as: ${STATE.currentUser.name || STATE.currentUser.email} (${STATE.currentUser.email || ""})`;
+    }
+    const btnLogout = document.getElementById("btnUserLogout");
+    if (btnLogout) {
+      btnLogout.style.display = STATE.currentUser.role === "guest" ? "none" : "inline-flex";
+    }
+  }
+
+  async function loadTeamUserProfiles() {
+    try {
+      const res = await apiGet("/api/user-profiles");
+      if (Array.isArray(res.profiles)) {
+        STATE.teamProfiles = res.profiles;
+      } else if (res.profiles && typeof res.profiles === "object") {
+        STATE.teamProfiles = Object.values(res.profiles);
+      }
+    } catch (e) {
+      // Fallback to seeded team profiles if offline
+      if (!STATE.teamProfiles.length) {
+        STATE.teamProfiles = [
+          {
+            id: "user_glib_ivanov",
+            name: "Glib Ivanov",
+            email: "glibivanov@gatheren.com.tw",
+            role: "admin",
+            role_label: "System Admin (Gatheren)",
+            auth_provider: "google",
+          },
+          {
+            id: "user_argon",
+            name: "Argon",
+            email: "argon@gatheren.com.tw",
+            role: "site_engineer",
+            role_label: "Site Engineer (Gatheren)",
+            auth_provider: "google",
+          },
+        ];
+      }
+    }
+  }
+
+  function renderTeamProfilesGrid() {
+    const grid = document.getElementById("gateExistingUsersGrid");
+    const countBadge = document.getElementById("gateRosterCountBadge");
+    const searchInput = document.getElementById("gateUserSearchInput");
+    if (!grid) return;
+
+    const q = String(searchInput?.value || "").trim().toLowerCase();
+    const list = (STATE.teamProfiles || []).filter((u) => {
+      if (!q) return true;
+      return (
+        (u.name || "").toLowerCase().includes(q) ||
+        (u.email || "").toLowerCase().includes(q) ||
+        (u.role_label || u.role || "").toLowerCase().includes(q)
+      );
+    });
+
+    if (countBadge) {
+      countBadge.textContent = `${list.length} Member${list.length === 1 ? "" : "s"}`;
+    }
+
+    grid.innerHTML = "";
+    list.forEach((u) => {
+      const isCurrent =
+        STATE.currentUser &&
+        String(STATE.currentUser.email || "").toLowerCase() === String(u.email || "").toLowerCase();
+      const initials = (u.name || u.email || "U")
+        .split(" ")
+        .map((w) => w[0])
+        .join("")
+        .slice(0, 2)
+        .toUpperCase();
+      const picUrl = u.avatar_url || u.picture || "";
+      const card = document.createElement("button");
+      card.type = "button";
+      card.style.cssText = `
+        display:flex;align-items:center;gap:10px;padding:9px 11px;border-radius:10px;
+        border:1.5px solid ${isCurrent ? "#0284c7" : "#e2e8f0"};
+        background:${isCurrent ? "#f0f9ff" : "#ffffff"};
+        cursor:pointer;text-align:left;width:100%;transition:all 0.14s ease;
+      `;
+      card.innerHTML = `
+        ${
+          picUrl
+            ? `<img src="${picUrl}" alt="" style="width:32px;height:32px;border-radius:50%;object-fit:cover;flex-shrink:0;" />`
+            : `<div style="width:32px;height:32px;border-radius:50%;background:${isCurrent ? "#0284c7" : "#334155"};color:#ffffff;font-size:11.5px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;">${initials}</div>`
+        }
+        <div style="overflow:hidden;flex:1;">
+          <div style="font-size:12.5px;font-weight:700;color:#0f172a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${u.name}</div>
+          <div style="font-size:10.5px;color:#0284c7;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${u.email}</div>
+          <div style="font-size:10px;color:#64748b;">${u.role_label || u.role || "Team Member"}</div>
+        </div>
+      `;
+      card.addEventListener("click", async () => {
+        applyUserProfileToUI(u);
+        await apiPost("/api/user-profiles", u).catch(() => {});
+        renderTeamProfilesGrid();
+        showToast(`Switched active profile to ${u.name} (${u.email})`);
+      });
+      grid.appendChild(card);
+    });
+  }
+
+  function initGoogleIdentityServicesButton() {
+    const originEl = document.getElementById("currentOriginCode");
+    if (originEl) {
+      originEl.textContent = window.location.origin;
+    }
+
+    const btnContainer = document.getElementById("googleSignInButtonContainer");
+    if (window.google && window.google.accounts && window.google.accounts.id && btnContainer) {
+      try {
+        window.google.accounts.id.initialize({
+          client_id: GOOGLE_OAUTH_CLIENT_ID,
+          callback: window.handleGoogleSignIn,
+          auto_select: false,
+          cancel_on_tap_outside: true,
+        });
+        btnContainer.innerHTML = "";
+        window.google.accounts.id.renderButton(btnContainer, {
+          type: "standard",
+          theme: "outline",
+          size: "large",
+          text: "signin_with",
+          shape: "rectangular",
+          logo_alignment: "left",
+          width: 280,
+        });
+      } catch (e) {
+        console.warn("[GatheringScans] Google Identity Services render note:", e);
+      }
+    }
+  }
+
+  window.handleGoogleSignIn = async function (response) {
+    if (!response || !response.credential) return;
+    const jwtPayload = parseGoogleJwt(response.credential) || {};
+    const fallbackProfile = {
+      id: jwtPayload.sub ? `google_${jwtPayload.sub}` : undefined,
+      name: jwtPayload.name || jwtPayload.given_name || (jwtPayload.email ? jwtPayload.email.split("@")[0] : "Google User"),
+      email: jwtPayload.email || "",
+      avatar_url: jwtPayload.picture || "",
+      picture: jwtPayload.picture || "",
+      google_sub: jwtPayload.sub || "",
+      auth_provider: "google",
+    };
+
+    const msgEl = document.getElementById("googleAuthMessage");
+    if (msgEl) {
+      msgEl.style.color = "#0284c7";
+      msgEl.textContent = "Verifying Google Workspace OAuth credential...";
+    }
+
+    try {
+      const res = await apiPost("/api/auth/google", {
+        credential: response.credential,
+        profile: fallbackProfile,
+      });
+      const verifiedUser = res.user || fallbackProfile;
+      if (Array.isArray(res.profiles)) {
+        STATE.teamProfiles = res.profiles;
+      } else if (res.profiles && typeof res.profiles === "object") {
+        STATE.teamProfiles = Object.values(res.profiles);
+      }
+      applyUserProfileToUI(verifiedUser);
+      renderTeamProfilesGrid();
+      if (msgEl) {
+        msgEl.style.color = "#0284c7";
+        msgEl.innerHTML = `Verified Google Account: <b>${verifiedUser.name}</b> (${verifiedUser.email})`;
+      }
+      showToast(`Signed in with Google OAuth as ${verifiedUser.name} (${verifiedUser.email})`);
+      setTimeout(() => {
+        closeModal("userProfileGateModal");
+      }, 650);
+    } catch (err) {
+      applyUserProfileToUI(fallbackProfile);
+      if (msgEl) {
+        msgEl.innerHTML = `Signed in as <b>${fallbackProfile.name}</b> (${fallbackProfile.email})`;
+      }
+      showToast(`Signed in as ${fallbackProfile.name}`);
+      setTimeout(() => {
+        closeModal("userProfileGateModal");
+      }, 650);
+    }
+  };
+
+  async function openUserProfileGateModal() {
+    openModal("userProfileGateModal");
+    await loadTeamUserProfiles();
+    applyUserProfileToUI(STATE.currentUser);
+    renderTeamProfilesGrid();
+    initGoogleIdentityServicesButton();
+  }
+
+  window.openUserProfileGateModal = openUserProfileGateModal;
+  window.checkUserProfileGate = openUserProfileGateModal;
+
+  document.getElementById("btnGoogleUser")?.addEventListener("click", () => {
+    openUserProfileGateModal();
+  });
+  document.getElementById("btnCloseAuthGateModal")?.addEventListener("click", () => {
+    closeModal("userProfileGateModal");
+  });
+  document.getElementById("btnGateConfirmEnter")?.addEventListener("click", () => {
+    closeModal("userProfileGateModal");
+    showToast(`Active user: ${STATE.currentUser.name} (${STATE.currentUser.email})`);
+  });
+  document.getElementById("btnGateGuestEnter")?.addEventListener("click", () => {
+    applyUserProfileToUI({
+      id: "guest_viewer",
+      name: "Guest Viewer",
+      email: "guest@gatheren.cloud",
+      role: "guest",
+      role_label: "Read-Only Guest",
+      avatar_url: "",
+      auth_provider: "guest",
+    });
+    closeModal("userProfileGateModal");
+    showToast("Entered in Guest Mode");
+  });
+  document.getElementById("btnUserLogout")?.addEventListener("click", () => {
+    localStorage.removeItem("gathering_user_profile");
+    localStorage.removeItem("gs_current_user");
+    if (window.google?.accounts?.id) {
+      try {
+        window.google.accounts.id.disableAutoSelect();
+      } catch (e) {}
+    }
+    applyUserProfileToUI({
+      id: "guest_viewer",
+      name: "Sign In",
+      email: "guest@gatheren.cloud",
+      role: "guest",
+      role_label: "Not Signed In",
+      avatar_url: "",
+    });
+    renderTeamProfilesGrid();
+    showToast("Signed out of Google account");
+  });
+  document.getElementById("gateUserSearchInput")?.addEventListener("input", () => {
+    renderTeamProfilesGrid();
+  });
+  document.getElementById("btnCopyCurrentOriginGate")?.addEventListener("click", () => {
+    navigator.clipboard?.writeText(window.location.origin);
+    showToast(`Copied Authorized JavaScript Origin: ${window.location.origin}`);
+  });
+
+  // ============================================================================
+  // 6. SCALABLE PROJECT & SCAN SELECTOR WIRING + VIEW NAVIGATION
+  // ============================================================================
+  document.getElementById("mapProjectSearchInput")?.addEventListener("input", (e) => {
+    STATE.projectFilterQuery = String(e.target.value || "").trim();
+    renderMapClusters();
+  });
+
+  document.getElementById("mapProjectSelect")?.addEventListener("change", (e) => {
+    const val = e.target.value;
+    if (!val || val === "__all__") {
+      if (STATE.siteTimelineOpen) closeSiteTimeline();
+      if (gsMap) {
+        gsMap.centerLat = 24.976;
+        gsMap.centerLon = 121.522;
+        gsMap.zoom = 11.75;
+        gsMap.drawMap();
+      }
+      return;
+    }
+    const grp = getProjectGroupsList("").find((g) => g.project_group === val);
+    if (grp && gsMap) {
+      STATE.activeProjectGroup = grp.project_group;
+      gsMap.centerLat = grp.lat;
+      gsMap.centerLon = grp.lon;
+      gsMap.zoom = 14.5;
+      openClusterPopover(grp);
+      gsMap.drawMap();
+    }
+  });
+
+  document.getElementById("btnOpenSelectedProjectTimeline")?.addEventListener("click", () => {
+    const selVal = document.getElementById("mapProjectSelect")?.value;
+    const targetGroup =
+      selVal && selVal !== "__all__"
+        ? selVal
+        : STATE.activeProjectGroup || (getProjectGroupsList("")[0]?.project_group ?? "");
+    if (targetGroup) {
+      openSiteTimeline(targetGroup);
+    }
+  });
+
+  document.getElementById("timelineProjectSelect")?.addEventListener("change", (e) => {
+    if (e.target.value) {
+      openSiteTimeline(e.target.value);
+    }
+  });
+
+  document.getElementById("studioProjectSelect")?.addEventListener("change", (e) => {
+    const newGrp = e.target.value;
+    if (!newGrp) return;
+    STATE.activeProjectGroup = newGrp;
+    populateProjectScanDropdowns(newGrp);
+    const firstScan = STATE.scans.find((s) => s.project_group === newGrp);
+    if (firstScan) {
+      loadScanIntoStudio(firstScan.scan_id);
+    }
+  });
+
+  document.getElementById("studioScanSelect")?.addEventListener("change", (e) => {
+    if (e.target.value) {
+      loadScanIntoStudio(e.target.value);
+    }
+  });
+
+  document.getElementById("compareProjectSelect")?.addEventListener("change", (e) => {
+    const newGrp = e.target.value;
+    if (!newGrp) return;
+    STATE.activeProjectGroup = newGrp;
+    populateProjectScanDropdowns(newGrp);
+    showToast(`Switched Multi-Date Compare to project: ${newGrp}`);
+  });
+
   function switchView(viewName, optionalScanId = null) {
     STATE.activeView = viewName;
     document.querySelectorAll("#mainModeSwitcher .btn-seg").forEach((b) => {
@@ -3699,6 +4218,7 @@
     try {
       const data = await apiGet("/api/scans");
       STATE.scans = data.scans || [];
+      STATE.projects = data.projects || [];
       STATE.materials = data.materials || {};
       if (typeof data.pc_online === "boolean") {
         STATE.pcOnline = data.pc_online;
@@ -3717,10 +4237,26 @@
         document.getElementById("btnOpenOptimizer").style.display = "none";
       }
 
-      // Fix #4: Strictly scope active scan & compare dropdowns to the active project only
+      // Dynamically resolve initial project & scan from URL params or discovered scans
+      const params = new URLSearchParams(window.location.search);
+      const urlProject = params.get("project");
+      const urlScan = params.get("scan");
+      if (urlScan && STATE.scans.some((s) => s.scan_id === urlScan)) {
+        STATE.activeScanId = urlScan;
+      } else if (!STATE.activeScanId || !STATE.scans.some((s) => s.scan_id === STATE.activeScanId)) {
+        if (STATE.scans.length > 0) {
+          STATE.activeScanId = STATE.scans[0].scan_id;
+        }
+      }
+      if (!STATE.selectedTimelineScanId && STATE.activeScanId) {
+        STATE.selectedTimelineScanId = STATE.activeScanId;
+      }
+
       const activeScanObj =
         STATE.scans.find((s) => s.scan_id === STATE.activeScanId) || STATE.scans[0];
-      if (activeScanObj && activeScanObj.project_group) {
+      if (urlProject && STATE.scans.some((s) => s.project_group === urlProject)) {
+        STATE.activeProjectGroup = urlProject;
+      } else if (activeScanObj && activeScanObj.project_group) {
         STATE.activeProjectGroup = activeScanObj.project_group;
       }
       populateProjectScanDropdowns(STATE.activeProjectGroup, STATE.activeScanId);
@@ -3743,6 +4279,8 @@
 
   // Bootstrap Application
   window.addEventListener("DOMContentLoaded", async () => {
+    applyUserProfileToUI(STATE.currentUser);
+    loadTeamUserProfiles();
     await refreshScansCatalog();
     const urlScan = new URLSearchParams(window.location.search).get("scan");
     if (urlScan) {
