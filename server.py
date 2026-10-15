@@ -412,7 +412,7 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
 
         # 9. User-Specific Offline Cache Settings
         if path == "/api/user/settings":
-            email = query.get("email", ["vitaly@gatheren.cloud"])[0]
+            email = query.get("email", ["glibivanov@gatheren.com.tw"])[0]
             self.send_json({"status": "ok", "settings": DB.get_user_settings(email)})
             return
 
@@ -772,7 +772,7 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
 
             # 11. User-Specific Offline Cache Settings Update
             if path == "/api/user/settings":
-                email = payload.get("email", "vitaly@gatheren.cloud")
+                email = payload.get("email", "glibivanov@gatheren.com.tw")
                 settings = DB.update_user_settings(email, payload)
                 self.send_json({"status": "ok", "settings": settings})
                 return

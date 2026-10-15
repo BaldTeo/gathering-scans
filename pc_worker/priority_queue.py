@@ -429,8 +429,8 @@ class ScanQueueDB:
         rec = {
             "comment_id": comment_id,
             "scan_id": payload["scan_id"],
-            "author_email": payload.get("author_email", "engineer@gatheren.cloud"),
-            "author_name": payload.get("author_name", "Site Engineer"),
+            "author_email": payload.get("author_email", "glibivanov@gatheren.com.tw"),
+            "author_name": payload.get("author_name", "Glib Ivanov"),
             "text": payload.get("text", "").strip(),
             "pos_x": float(payload.get("pos_x", 0.0)),
             "pos_y": float(payload.get("pos_y", 0.0)),

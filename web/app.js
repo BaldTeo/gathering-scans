@@ -62,8 +62,8 @@
     shareToken: new URLSearchParams(window.location.search).get("share") || "",
     shareLinkInfo: null,
     currentUser: {
-      email: "vitaly@gatheren.cloud",
-      name: "Vitaly (Lead Surveyor)",
+      email: "glibivanov@gatheren.com.tw",
+      name: "Glib Ivanov",
       offlineCacheEnabled: true,
     },
     cachedScanIds: new Set(JSON.parse(localStorage.getItem("gs_cached_scans") || '["quchi_20261005_merged"]')),

@@ -72,8 +72,11 @@ GOOGLE_OAUTH_CLIENT_ID = os.environ.get(
     "GOOGLE_OAUTH_CLIENT_ID",
     "gathering-cloud-workspace.apps.googleusercontent.com"
 )
-ALLOWED_WORKSPACE_DOMAINS = ["gatheren.cloud", "gathering.cloud", "gmail.com"]
-GCHAT_WEBHOOK_URL = os.environ.get("GCHAT_WEBHOOK_URL", "")
+ALLOWED_WORKSPACE_DOMAINS = ["gatheren.com.tw", "gatheren.cloud", "gathering.cloud", "gmail.com"]
+GCHAT_WEBHOOK_URL = os.environ.get(
+    "GCHAT_WEBHOOK_URL",
+    "https://chat.googleapis.com/v1/spaces/AAQA_oh-3w8/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=zCavjGk6CkJ6Dkn8HFqOCR9xP9we8c_Ml2Icq6aWbdM",
+)
 
 # 6. Standard Engineering Material Densities (tonnes / m^3) & Swell Factors
 MATERIAL_CATALOG = {

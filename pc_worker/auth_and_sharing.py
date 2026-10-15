@@ -48,9 +48,9 @@ class AuthAndSharingManager:
         return {
             "authenticated": True,
             "role": "internal",
-            "email": "vitaly@gatheren.cloud",
-            "name": "Vitaly (Gathering Cloud Admin)",
-            "domain": "gatheren.cloud",
+            "email": "glibivanov@gatheren.com.tw",
+            "name": "Glib Ivanov",
+            "domain": "gatheren.com.tw",
         }
 
     def create_share_link(self, payload: Dict[str, Any]) -> Dict[str, Any]:
@@ -69,8 +69,8 @@ class AuthAndSharingManager:
 
         token = payload.get("token") or secrets.token_urlsafe(12)
         label = payload.get("label") or f"External View — {target_id}"
-        created_by_email = payload.get("created_by_email", "vitaly@gatheren.cloud")
-        created_by_name = payload.get("created_by_name", "Vitaly")
+        created_by_email = payload.get("created_by_email", "glibivanov@gatheren.com.tw")
+        created_by_name = payload.get("created_by_name", "Glib Ivanov")
         created_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
         expires_at = payload.get("expires_at", "")
         allow_download = 1 if payload.get("allow_download", False) else 0

@@ -225,8 +225,8 @@ def extract_opf_zip_metadata(zip_path: str) -> Dict[str, Any]:
         "capture_date": bname[:10] + " " + bname[11:16].replace("-", ":")
         if len(bname) >= 16 and bname[4] == "-"
         else datetime.fromtimestamp(stat.st_mtime).strftime("%Y-%m-%d %H:%M"),
-        "uploader_email": "vitaly@gatheren.cloud",
-        "uploader_name": "Vitaly (Field Survey Team)",
+        "uploader_email": "glibivanov@gatheren.com.tw",
+        "uploader_name": "Glib Ivanov",
         "image_count": 0,
         "rtk_accuracy_cm": 1.6,
         "lat": 24.92032,
@@ -365,8 +365,8 @@ def seed_and_discover_scans(db: ScanQueueDB) -> List[Dict[str, Any]]:
             "project_name_zh": "屈尺堰壩體與護岸工程",
             "capture_date": "2026-10-05 15:45",
             "uploaded_at": time.time() - 86400 * 3,
-            "uploader_email": "vitaly@gatheren.cloud",
-            "uploader_name": "Vitaly (Lead Surveyor)",
+            "uploader_email": "glibivanov@gatheren.com.tw",
+            "uploader_name": "Glib Ivanov",
             "source_zip_path": os.path.join(GDRIVE_INBOX_DIR, "2026-10-05-15-43-55.zip"),
             "project_dir": r"C:\Scans\QuChi\QuChi_20261005_Compressed",
             "tileset_path": quchi_20261005_ts,
@@ -399,8 +399,8 @@ def seed_and_discover_scans(db: ScanQueueDB) -> List[Dict[str, Any]]:
             "project_name_zh": "屈尺堰壩體與護岸工程",
             "capture_date": "2026-09-21 11:39",
             "uploaded_at": time.time() - 86400 * 17,
-            "uploader_email": "chen.cw@gatheren.cloud",
-            "uploader_name": "C.W. Chen (Civil Engineer)",
+            "uploader_email": "argon@gatheren.com.tw",
+            "uploader_name": "Argon",
             "project_dir": r"C:\Scans\QuChi\QuChi_1",
             "tileset_path": (
                 r"C:\Antigravity\GC_ScanOptimizer\exports\QuChi_TWD97_260921\tileset.json"
@@ -438,8 +438,8 @@ def seed_and_discover_scans(db: ScanQueueDB) -> List[Dict[str, Any]]:
             "project_name_zh": "板橋玫瑰公園整建工程",
             "capture_date": "2026-09-18 14:20",
             "uploaded_at": time.time() - 86400 * 20,
-            "uploader_email": "lin.yh@gatheren.cloud",
-            "uploader_name": "Y.H. Lin (Site Supervisor)",
+            "uploader_email": "glibivanov@gatheren.com.tw",
+            "uploader_name": "Glib Ivanov",
             "project_dir": r"C:\Scans\RosePark\RosePark_Merged2",
             "tileset_path": (
                 r"C:\Antigravity\GC_ScanOptimizer\exports\RosePark_TWD_Live\tileset.json"
@@ -479,8 +479,8 @@ def seed_and_discover_scans(db: ScanQueueDB) -> List[Dict[str, Any]]:
             "project_name_zh": "板橋玫瑰公園整建工程",
             "capture_date": "2026-09-17 13:40",
             "uploaded_at": time.time() - 86400 * 21,
-            "uploader_email": "lin.yh@gatheren.cloud",
-            "uploader_name": "Y.H. Lin (Site Supervisor)",
+            "uploader_email": "argon@gatheren.com.tw",
+            "uploader_name": "Argon",
             "project_dir": r"C:\Scans\RosePark\RosePark 0917\RosePark 260917",
             "tileset_path": (
                 r"C:\Antigravity\GC_ScanOptimizer\exports\RosePark_TWD_Live\tileset.json"
@@ -517,8 +517,8 @@ def seed_and_discover_scans(db: ScanQueueDB) -> List[Dict[str, Any]]:
             "project_name_zh": "台大新建學生宿舍工程",
             "capture_date": "2026-09-17 09:30",
             "uploaded_at": time.time() - 86400 * 21.5,
-            "uploader_email": "wang.js@gatheren.cloud",
-            "uploader_name": "J.S. Wang (Geotechnical Eng.)",
+            "uploader_email": "glibivanov@gatheren.com.tw",
+            "uploader_name": "Glib Ivanov",
             "project_dir": r"C:\Scans\NTU Dorm\NTU Dorm 260917\NTU Dorm 260917",
             "tileset_path": (
                 r"C:\Antigravity\GC_ScanOptimizer\models\site_scan_quchi.glb"
@@ -555,8 +555,8 @@ def seed_and_discover_scans(db: ScanQueueDB) -> List[Dict[str, Any]]:
             "project_name_zh": "台大新建學生宿舍工程",
             "capture_date": "2026-09-15 16:10",
             "uploaded_at": time.time() - 86400 * 23.5,
-            "uploader_email": "wang.js@gatheren.cloud",
-            "uploader_name": "J.S. Wang (Geotechnical Eng.)",
+            "uploader_email": "argon@gatheren.com.tw",
+            "uploader_name": "Argon",
             "project_dir": r"C:\Scans\ntuDorm_260915\ntuDorm_260915",
             "tileset_path": (
                 r"C:\Antigravity\GC_ScanOptimizer\models\site_scan_quchi.glb"
@@ -599,8 +599,6 @@ def seed_and_discover_scans(db: ScanQueueDB) -> List[Dict[str, Any]]:
             meta = extract_opf_zip_metadata(fpath)
             existing = db.get_scan(meta["scan_id"])
             if not existing:
-                # Link to the verified QuChi_20261005_Compressed-optimized_tileset output
-                # while keeping individual sub-scans inspectable and queue-testable
                 meta["tileset_path"] = quchi_20261005_ts
                 meta["obj_path"] = quchi_20261005_obj if os.path.isfile(quchi_20261005_obj) else ""
                 meta["cameras_dir"] = quchi_20261005_cams if os.path.isdir(quchi_20261005_cams) else ""
@@ -611,7 +609,24 @@ def seed_and_discover_scans(db: ScanQueueDB) -> List[Dict[str, Any]]:
                     f"Uploaded via Google Drive Inbox ({fname}, {meta['image_count']} RTK photos). "
                     f"Converted to TWD97 (121) + TWVD2001 with 2K textures in PIX4Dmatic and optimized via GC_ScanOptimizer."
                 )
-                db.upsert_scan(meta)
+            db.upsert_scan(meta)
+
+    # Migrate any legacy vitaly or old placeholder emails in SQLite tables
+    with db._connect() as conn:
+        conn.execute(
+            "UPDATE scans SET uploader_email = 'glibivanov@gatheren.com.tw', uploader_name = 'Glib Ivanov' WHERE lower(uploader_email) LIKE '%vitaly%'"
+        )
+        conn.execute(
+            "UPDATE scan_comments SET author_email = 'glibivanov@gatheren.com.tw', author_name = 'Glib Ivanov' WHERE lower(author_email) LIKE '%vitaly%'"
+        )
+        conn.execute(
+            "UPDATE scan_comments SET author_email = 'argon@gatheren.com.tw', author_name = 'Argon' WHERE author_email IN ('chen.cw@gatheren.cloud', 'lin.yh@gatheren.cloud')"
+        )
+        conn.execute(
+            "UPDATE share_links SET created_by_email = 'glibivanov@gatheren.com.tw', created_by_name = 'Glib Ivanov' WHERE lower(created_by_email) LIKE '%vitaly%'"
+        )
+        conn.execute("DELETE FROM user_settings WHERE lower(email) LIKE '%vitaly%'")
+        conn.commit()
 
     # Seed sample engineering comments if none exist
     scans = db.list_scans()
@@ -619,8 +634,8 @@ def seed_and_discover_scans(db: ScanQueueDB) -> List[Dict[str, Any]]:
         db.add_comment(
             {
                 "scan_id": "quchi_20261005_merged",
-                "author_email": "vitaly@gatheren.cloud",
-                "author_name": "Vitaly (Lead Surveyor)",
+                "author_email": "glibivanov@gatheren.com.tw",
+                "author_name": "Glib Ivanov",
                 "text": "North spillway aggregate stockpile measured at 412.6 m³ (TWD97 E:304958.2, N:2757091.4, H:+44.8m).",
                 "pos_x": 5.5,
                 "pos_y": 1.6,
@@ -633,8 +648,8 @@ def seed_and_discover_scans(db: ScanQueueDB) -> List[Dict[str, Any]]:
         db.add_comment(
             {
                 "scan_id": "quchi_20261005_merged",
-                "author_email": "chen.cw@gatheren.cloud",
-                "author_name": "C.W. Chen (Civil Engineer)",
+                "author_email": "argon@gatheren.com.tw",
+                "author_name": "Argon",
                 "text": "Verified TWVD2001 crest elevation against benchmark BM-04 (+43.18m, Δh = 0.012m within tolerance).",
                 "pos_x": -12.0,
                 "pos_y": 0.4,
@@ -647,8 +662,8 @@ def seed_and_discover_scans(db: ScanQueueDB) -> List[Dict[str, Any]]:
         db.add_comment(
             {
                 "scan_id": "rosepark_20260918_merged",
-                "author_email": "lin.yh@gatheren.cloud",
-                "author_name": "Y.H. Lin (Site Supervisor)",
+                "author_email": "argon@gatheren.com.tw",
+                "author_name": "Argon",
                 "text": "Drainage sub-base slope confirmed at 1.8% grade toward south retention basin.",
                 "pos_x": 3.2,
                 "pos_y": -0.5,
