@@ -784,49 +784,9 @@
 
   async function autoCaptureSiteTimelineScreenshots() {
     if (!previewThree || !previewThree.renderer) return;
-    const siteScans = STATE.scans.filter((s) => s.project_group === STATE.activeProjectGroup);
-    if (!siteScans.length) return;
-
-    const savedPos = previewThree.camera.position.clone();
-    const savedTarget = previewThree.controls.target.clone();
-
-    const viewpoints = [
-      [38, 30, 44],
-      [-36, 28, 42],
-      [42, 34, -36],
-      [-38, 32, -40],
-      [12, 44, 48],
-    ];
-
-    for (let i = 0; i < siteScans.length; i++) {
-      const s = siteScans[i];
-      if (STATE.capturedThumbs.has(s.scan_id)) continue;
-      const vp = viewpoints[i % viewpoints.length];
-      previewThree.controls.target.set(0, 0, 0);
-      previewThree.camera.position.set(vp[0], vp[1], vp[2]);
-      previewThree.camera.lookAt(0, 0, 0);
-      previewThree.camera.updateMatrixWorld();
-      if (previewThree.tilesRenderer) {
-        previewThree.tilesRenderer.update();
-      }
-      previewThree.renderer.render(previewThree.scene, previewThree.camera);
-      const dataUrl = previewThree.renderer.domElement.toDataURL("image/png");
-      if (dataUrl && dataUrl.length > 1024) {
-        STATE.capturedThumbs.add(s.scan_id);
-        document.querySelectorAll(`img[data-scan-thumb="${s.scan_id}"]`).forEach((img) => {
-          img.src = dataUrl;
-        });
-        apiPost(`/api/scans/${encodeURIComponent(s.scan_id)}/thumbnail`, {
-          data_url: dataUrl,
-        }).catch(() => {});
-      }
-    }
-
-    previewThree.controls.target.copy(savedTarget);
-    previewThree.camera.position.copy(savedPos);
-    previewThree.camera.lookAt(savedTarget);
-    previewThree.controls.update();
-    previewThree.renderer.render(previewThree.scene, previewThree.camera);
+    const activeId = STATE.selectedTimelineScanId || STATE.activeScanId;
+    if (!activeId || STATE.capturedThumbs.has(activeId)) return;
+    STATE.capturedThumbs.add(activeId);
   }
 
   function loadScanIntoPreview(scanId) {

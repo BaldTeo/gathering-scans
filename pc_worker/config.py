@@ -16,7 +16,8 @@ os.makedirs(DATA_DIR, exist_ok=True)
 
 # 1. Google Drive Inbox & Local Scan Vault Paths
 GDRIVE_INBOX_DIR = os.environ.get("GDRIVE_INBOX_DIR", r"G:\My Drive\SCANS TEST")
-LOCAL_SCANS_ROOT = os.environ.get("LOCAL_SCANS_ROOT", r"C:\Scans")
+LOCAL_SCANS_ROOT = os.environ.get("LOCAL_SCANS_ROOT", r"C:\GatheringScans")
+LEGACY_SCANS_ROOT = os.environ.get("LEGACY_SCANS_ROOT", r"C:\Scans")
 GC_SCAN_OPTIMIZER_DIR = os.environ.get("GC_SCAN_OPTIMIZER_DIR", r"C:\Antigravity\GC_ScanOptimizer")
 GATHERING_CLOUD_DEV_DIR = os.environ.get("GATHERING_CLOUD_DEV_DIR", r"C:\Antigravity\GatheringCloud_Develop")
 
@@ -61,11 +62,12 @@ SERVER_HOST = os.environ.get("GATHERING_SCANS_HOST", "0.0.0.0")
 SERVER_PORT = int(os.environ.get("GATHERING_SCANS_PORT", "8095"))
 PUBLIC_BASE_URL = os.environ.get("PUBLIC_BASE_URL", "https://scans.gatheren.cloud")
 
-# 4. Hostinger VPS Reverse SSH Tunnel Settings
+# 4. Hostinger VPS Reverse SSH & Socket Pool Tunnel Settings
 VPS_HOST = os.environ.get("VPS_HOST", "76.13.197.29")
 VPS_USER = os.environ.get("VPS_USER", "root")
 VPS_SSH_KEY = os.environ.get("VPS_SSH_KEY", os.path.expanduser(r"~\.ssh\id_gathering_vps"))
 VPS_REMOTE_TUNNEL_PORT = int(os.environ.get("VPS_REMOTE_TUNNEL_PORT", "18095"))
+TUNNEL_SHARED_KEY = os.environ.get("GATHERING_SCANS_TUNNEL_KEY", "gs_tunnel_gatheren_2026_twd97")
 
 # 5. Google OAuth & Google Chat Notification Settings
 GOOGLE_OAUTH_CLIENT_ID = os.environ.get(

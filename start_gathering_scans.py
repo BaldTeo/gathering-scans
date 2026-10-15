@@ -26,12 +26,12 @@ from pc_worker.config import (
     VPS_REMOTE_TUNNEL_PORT,
     GDRIVE_INBOX_DIR,
 )
-from server import run_server, DB
+from server import run_server, start_pc_reverse_tunnel_pool, DB
 from pc_worker.gdrive_watcher import seed_and_discover_scans
 
 
 def inbox_watcher_loop():
-    """Periodically polls G:\\My Drive\\SCANS TEST for new Pix4DCatch .zip uploads."""
+    """Periodically polls C:\\GatheringScans and G:\\My Drive\\SCANS TEST for new scan folders and Pix4DCatch .zip uploads."""
     while True:
         try:
             seed_and_discover_scans(DB)
@@ -77,10 +77,11 @@ def ssh_reverse_tunnel_loop():
         time.sleep(10)
 
 
-
 if __name__ == "__main__":
     t_watcher = threading.Thread(target=inbox_watcher_loop, daemon=True)
     t_watcher.start()
+
+    start_pc_reverse_tunnel_pool(local_port=SERVER_PORT)
 
     t_tunnel = threading.Thread(target=ssh_reverse_tunnel_loop, daemon=True)
     t_tunnel.start()
@@ -88,7 +89,7 @@ if __name__ == "__main__":
     try:
         run_server(host=SERVER_HOST, port=SERVER_PORT)
     except OSError as e:
-        print(f"[GatheringScans] Port {SERVER_PORT} is already active ({e}). Keeping Inbox Watcher + VPS Tunnel running...")
+        print(f"[GatheringScans] Port {SERVER_PORT} is already active ({e}). Keeping Inbox Watcher + VPS Tunnel Pool running...")
         while True:
             time.sleep(10)
 

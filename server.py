@@ -11,10 +11,14 @@ import re
 import sys
 import json
 import time
+import queue
+import socket
+import struct
 import base64
 import shutil
 import mimetypes
 import threading
+import http.client
 import urllib.parse
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from typing import Dict, Any, Optional, Tuple
@@ -26,6 +30,9 @@ if BASE_DIR not in sys.path:
 from pc_worker.config import (
     SERVER_HOST,
     SERVER_PORT,
+    VPS_HOST,
+    TUNNEL_SHARED_KEY,
+    LOCAL_SCANS_ROOT,
     REPORTS_DIR,
     CONTOURS_DIR,
     GDRIVE_INBOX_DIR,
@@ -57,6 +64,131 @@ GCHAT = GoogleChatNotifier(DB)
 
 # Simulated PC Online Toggle (for testing Requirement 5 Offline Fallback in browser)
 PC_SIMULATED_OFFLINE = False
+
+# Reverse Tunnel Socket Pool (used on Linux VPS to proxy /api/*, /stream/*, /s/* to Windows PC C:\GatheringScans)
+VPS_TUNNEL_POOL: "queue.LifoQueue[Tuple[socket.socket, threading.Event, float]]" = queue.LifoQueue()
+_TUNNEL_POOL_STARTED = False
+
+
+def _recv_exact(sock: socket.socket, n: int) -> Optional[bytes]:
+    buf = bytearray()
+    while len(buf) < n:
+        try:
+            chunk = sock.recv(n - len(buf))
+        except Exception:
+            return None
+        if not chunk:
+            return None
+        buf.extend(chunk)
+    return bytes(buf)
+
+
+def _acquire_vps_tunnel_socket(timeout: float = 3.0) -> Tuple[Optional[socket.socket], Optional[threading.Event]]:
+    deadline = time.time() + timeout
+    while True:
+        rem = max(0.05, deadline - time.time())
+        try:
+            sock, done_evt, ts = VPS_TUNNEL_POOL.get(timeout=rem)
+        except queue.Empty:
+            return None, None
+        if time.time() - ts > 42.0:
+            done_evt.set()
+            continue
+        return sock, done_evt
+
+
+def start_pc_reverse_tunnel_pool(local_port: int = SERVER_PORT, pool_size: int = 16):
+    """On Windows PC, maintains a pool of persistent reverse TCP sockets to Hostinger VPS (76.13.197.29:8095)."""
+    global _TUNNEL_POOL_STARTED
+    if os.name != "nt" or _TUNNEL_POOL_STARTED:
+        return
+    _TUNNEL_POOL_STARTED = True
+
+    def _worker(worker_id: int):
+        while True:
+            s: Optional[socket.socket] = None
+            try:
+                s = socket.create_connection((VPS_HOST, 8095), timeout=10.0)
+                s.settimeout(55.0)
+                handshake = (
+                    f"GET /_pc_tunnel HTTP/1.1\r\n"
+                    f"Host: {VPS_HOST}:8095\r\n"
+                    f"X-Tunnel-Key: {TUNNEL_SHARED_KEY}\r\n"
+                    f"Connection: keep-alive\r\n\r\n"
+                ).encode("ascii")
+                s.sendall(handshake)
+
+                # Read HTTP response header until \r\n\r\n
+                resp_buf = b""
+                while b"\r\n\r\n" not in resp_buf:
+                    chunk = s.recv(1024)
+                    if not chunk:
+                        break
+                    resp_buf += chunk
+                    if len(resp_buf) > 8192:
+                        break
+                if b"200 OK" not in resp_buf or b"X-Tunnel-Ready: 1" not in resp_buf:
+                    s.close()
+                    time.sleep(3.0)
+                    continue
+
+                # Wait for proxied request frame from VPS (4-byte big-endian length + JSON)
+                len_bytes = _recv_exact(s, 4)
+                if not len_bytes:
+                    # Idle tunnel rotation timeout; reconnect immediately
+                    s.close()
+                    continue
+                (frame_len,) = struct.unpack("!I", len_bytes)
+                if frame_len <= 0 or frame_len > 64 * 1024 * 1024:
+                    s.close()
+                    continue
+                req_raw = _recv_exact(s, frame_len)
+                if not req_raw:
+                    s.close()
+                    continue
+                req_info = json.loads(req_raw.decode("utf-8"))
+                method = req_info.get("method", "GET")
+                path = req_info.get("path", "/")
+                req_headers = req_info.get("headers") or {}
+                body_b64 = req_info.get("body_b64", "")
+                body_bytes = base64.b64decode(body_b64) if body_b64 else None
+
+                # Execute against local Windows PC server (127.0.0.1:local_port)
+                conn = http.client.HTTPConnection("127.0.0.1", local_port, timeout=60.0)
+                fwd_headers = {}
+                for hk, hv in req_headers.items():
+                    if hk.lower() not in ("host", "connection", "transfer-encoding"):
+                        fwd_headers[hk] = hv
+                conn.request(method, path, body=body_bytes, headers=fwd_headers)
+                resp = conn.getresponse()
+
+                resp_headers = {k: v for k, v in resp.getheaders()}
+                resp_meta = json.dumps({"status": resp.status, "headers": resp_headers}).encode("utf-8")
+                s.sendall(struct.pack("!I", len(resp_meta)) + resp_meta)
+
+                while True:
+                    chunk = resp.read(65536)
+                    if not chunk:
+                        break
+                    s.sendall(chunk)
+                conn.close()
+                try:
+                    s.shutdown(socket.SHUT_WR)
+                except Exception:
+                    pass
+                s.close()
+            except Exception:
+                if s:
+                    try:
+                        s.close()
+                    except Exception:
+                        pass
+                time.sleep(2.0)
+
+    for idx in range(pool_size):
+        t = threading.Thread(target=_worker, args=(idx,), daemon=True)
+        t.start()
+    print(f"[GatheringScans] Started {pool_size} reverse tunnel sockets to {VPS_HOST}:8095 -> 127.0.0.1:{local_port} ({LOCAL_SCANS_ROOT})")
 
 
 class GatheringScansHandler(SimpleHTTPRequestHandler):
@@ -193,23 +325,25 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
         if os.path.isfile(captured_png) and os.path.getsize(captured_png) > 512:
             return captured_png
 
-        # 2. Check mapped PIX4Dmatic 3D project thumbnails on C:\Scans for each distinct scan
+        # 2. Check distinct PIX4Dmatic thumbnails for GDrive Inbox walks and C:\GatheringScans folders
         fallback_map = {
-            "quchi_20261005_merged": r"C:\Scans\QuChi\QuChi_20261005_Compressed\thumbnail.png",
+            "quchi_20261005_merged": os.path.join(LOCAL_SCANS_ROOT, "QuChi_20261005_Compressed", "thumbnail.png"),
+            "quchi_20261015_survey": os.path.join(LOCAL_SCANS_ROOT, "QuChi_20261015", "thumbnail.png"),
+            "quchi_20260921_epoch": os.path.join(LOCAL_SCANS_ROOT, "QuChi_1_20260921", "thumbnail.png"),
+            "quchi_20261005_sector3": os.path.join(LOCAL_SCANS_ROOT, "QuChi_260510_3", "thumbnail.png"),
             "catch_2026_10_05_15_43_55": r"C:\Scans\QuChi\QuChi_20261005\thumbnail.png",
-            "catch_2026_10_05_15_37_05": r"C:\Scans\QuChi\QuChi_1\thumbnail.png",
-            "catch_2026_10_05_15_19_27": r"C:\Scans\QuChi\QuChi260510_3\thumbnail.png",
-            "quchi_20260921_epoch": r"C:\Scans\QuChi\QuChi_1\thumbnail.png",
-            "rosepark_20260917_merged": r"C:\Scans\RosePark\RosePark_Merged2\thumbnail.png",
-            "rosepark_20260917_base": r"C:\Scans\RosePark\RosePark 0917\RosePark 260917\thumbnail.png",
-            "ntudorm_20260917": r"C:\Scans\NTU Dorm\NTU Dorm 260917\NTU Dorm 260917\thumbnail.png",
-            "ntudorm_20260915_baseline": r"C:\Scans\ntuDorm_260915\ntuDorm_260915\thumbnail.png",
+            "catch_2026_10_05_15_37_05": os.path.join(LOCAL_SCANS_ROOT, "QuChi_1_20260921", "thumbnail.png"),
+            "catch_2026_10_05_15_19_27": os.path.join(LOCAL_SCANS_ROOT, "QuChi_260510_3", "thumbnail.png"),
+            "rosepark_20260918_merged": os.path.join(LOCAL_SCANS_ROOT, "RosePark_Merged2", "thumbnail.png"),
+            "rosepark_20260917_east": os.path.join(LOCAL_SCANS_ROOT, "RosePark_260917", "thumbnail.png"),
+            "ntudorm_20260917_foundation": os.path.join(LOCAL_SCANS_ROOT, "NTU_Dorm_260917", "thumbnail.png"),
+            "ntudorm_20260915_baseline": os.path.join(LOCAL_SCANS_ROOT, "NTU_Dorm_260915", "thumbnail.png"),
         }
         cand_map = fallback_map.get(scan_id, "")
         if cand_map and os.path.isfile(cand_map):
             return cand_map
 
-        # 3. Check scan.project_dir/thumbnail.png from PIX4Dmatic
+        # 3. Check scan.project_dir/thumbnail.png inside C:\GatheringScans
         s = scan or DB.get_scan(scan_id) or {}
         proj_dir = s.get("project_dir") or ""
         if proj_dir:
@@ -217,12 +351,12 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
             if os.path.isfile(cand):
                 return cand
 
-        # 4. Group fallback
+        # 4. Group fallback inside C:\GatheringScans
         grp = s.get("project_group", "")
         grp_fallbacks = {
-            "QuChi Dam": r"C:\Scans\QuChi\QuChi_20261005_Compressed\thumbnail.png",
-            "Rose Park": r"C:\Scans\RosePark\RosePark_Merged2\thumbnail.png",
-            "NTU Dorm": r"C:\Scans\NTU Dorm\NTU Dorm 260917\NTU Dorm 260917\thumbnail.png",
+            "QuChi Dam": os.path.join(LOCAL_SCANS_ROOT, "QuChi_20261005_Compressed", "thumbnail.png"),
+            "Rose Park": os.path.join(LOCAL_SCANS_ROOT, "RosePark_Merged2", "thumbnail.png"),
+            "NTU Dorm": os.path.join(LOCAL_SCANS_ROOT, "NTU_Dorm_260917", "thumbnail.png"),
         }
         g_cand = grp_fallbacks.get(grp, "")
         if g_cand and os.path.isfile(g_cand):
@@ -234,12 +368,149 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
             return default_thumb
         return None
 
+    def _handle_pc_tunnel_register(self):
+        """Accepts a persistent reverse TCP socket from the Windows PC on the Linux VPS."""
+        key = self.headers.get("X-Tunnel-Key", "").strip()
+        if key != TUNNEL_SHARED_KEY:
+            self.send_json({"error": "Forbidden tunnel key"}, status=403)
+            return
+        try:
+            self.connection.sendall(b"HTTP/1.1 200 OK\r\nX-Tunnel-Ready: 1\r\nContent-Length: 0\r\n\r\n")
+        except Exception:
+            self.close_connection = True
+            return
+
+        done_evt = threading.Event()
+        VPS_TUNNEL_POOL.put((self.connection, done_evt, time.time()))
+        # Hold handler thread open until this tunnel socket is consumed by a proxied request (or rotates after 45s)
+        done_evt.wait(timeout=45.0)
+        self.close_connection = True
+
+    def _proxy_via_pc_tunnel_if_vps(self, method: str, path: str, body: bytes = b"") -> bool:
+        """
+        When running on the Linux VPS (os.name != 'nt'), proxies all /api/*, /stream/*, and /s/* requests
+        through the reverse socket pool directly to the Windows PC (C:\\GatheringScans).
+        Zero scan files or metadata are stored on the Linux VPS.
+        """
+        if os.name == "nt":
+            return False
+
+        # Try up to 2 sockets from the pool in case the top socket just rotated
+        for _attempt in range(2):
+            tun_sock, done_evt = _acquire_vps_tunnel_socket(timeout=2.5)
+            if not tun_sock or not done_evt:
+                break
+            try:
+                tun_sock.settimeout(45.0)
+                req_headers = {k: v for k, v in self.headers.items()}
+                envelope = json.dumps(
+                    {
+                        "method": method,
+                        "path": self.path,
+                        "headers": req_headers,
+                        "body_b64": base64.b64encode(body).decode("ascii") if body else "",
+                    }
+                ).encode("utf-8")
+                tun_sock.sendall(struct.pack("!I", len(envelope)) + envelope)
+
+                len_bytes = _recv_exact(tun_sock, 4)
+                if not len_bytes:
+                    done_evt.set()
+                    continue
+                (meta_len,) = struct.unpack("!I", len_bytes)
+                meta_raw = _recv_exact(tun_sock, meta_len)
+                if not meta_raw:
+                    done_evt.set()
+                    continue
+                resp_meta = json.loads(meta_raw.decode("utf-8"))
+                status_code = int(resp_meta.get("status", 200))
+                resp_headers = resp_meta.get("headers") or {}
+
+                self.send_response(status_code)
+                skip_hdrs = {
+                    "server",
+                    "date",
+                    "transfer-encoding",
+                    "connection",
+                    "access-control-allow-origin",
+                    "access-control-allow-methods",
+                    "access-control-allow-headers",
+                    "access-control-expose-headers",
+                }
+                for hk, hv in resp_headers.items():
+                    if hk.lower() not in skip_hdrs:
+                        self.send_header(hk, hv)
+                self.end_headers()
+
+                while True:
+                    chunk = tun_sock.recv(65536)
+                    if not chunk:
+                        break
+                    try:
+                        self.wfile.write(chunk)
+                    except (BrokenPipeError, ConnectionResetError):
+                        break
+                done_evt.set()
+                return True
+            except Exception:
+                done_evt.set()
+                continue
+
+        # No active reverse tunnel from the Windows PC -> PC is offline
+        if path in ("/api/status", "/api/pc/health"):
+            self.send_json(
+                {
+                    "status": "offline",
+                    "pc_online": False,
+                    "app": "GatheringScans",
+                    "domain": "scans.gatheren.cloud",
+                    "crs": TWD97_TWVD2001_LABEL,
+                    "crs_short": TWD97_TWVD2001_SHORT,
+                    "texture_limit": PIX4DMATIC_TEXTURE_SIZE,
+                    "vps_raw_storage": "disabled (strictly 0 bytes on Linux VPS)",
+                    "active_job": None,
+                    "queued_count": 0,
+                    "total_scans": 0,
+                }
+            )
+            return True
+        if path == "/api/scans":
+            self.send_json(
+                {
+                    "status": "ok",
+                    "mode": "internal",
+                    "pc_online": False,
+                    "crs": TWD97_TWVD2001_LABEL,
+                    "scans": [],
+                    "materials": MATERIAL_CATALOG,
+                }
+            )
+            return True
+        self.send_json(
+            {
+                "error": "Windows Processing PC (C:\\GatheringScans) is currently offline. Serving from Client-Side Browser Cache if enabled.",
+                "pc_online": False,
+            },
+            status=503,
+        )
+        return True
+
     def do_GET(self):
         global PC_SIMULATED_OFFLINE
         parsed = urllib.parse.urlparse(self.path)
         path = urllib.parse.unquote(parsed.path)
         query = urllib.parse.parse_qs(parsed.query)
         share_token = self._extract_share_token(query)
+
+        # 0. Reverse Tunnel Registration from Windows PC
+        if path == "/_pc_tunnel":
+            self._handle_pc_tunnel_register()
+            return
+
+        # 0b. On Linux VPS, proxy all dynamic API, 3D stream, and share routes over Reverse Tunnel to Windows PC
+        if os.name != "nt" and (path.startswith("/api/") or path.startswith("/stream/") or path.startswith("/s/")):
+            self._proxy_via_pc_tunnel_if_vps("GET", path)
+            return
 
         # 1. Scoped External Share Link Short URL: /s/<token>
         if path.startswith("/s/"):
@@ -488,6 +759,9 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
                 return
 
             ts_path = scan.get("tileset_path") or ""
+            if sub_path == "tileset.json" and os.path.isfile(ts_path):
+                self._serve_file_with_range(ts_path)
+                return
             base_dir = os.path.dirname(ts_path) if os.path.isfile(ts_path) else ts_path
             safe_sub = os.path.normpath(sub_path).lstrip("\\/")
             target_file = os.path.join(base_dir, safe_sub)
@@ -593,6 +867,11 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
 
         length = int(self.headers.get("Content-Length", "0"))
         body = self.rfile.read(length) if length > 0 else b"{}"
+
+        if os.name != "nt" and path.startswith("/api/"):
+            self._proxy_via_pc_tunnel_if_vps("POST", path, body)
+            return
+
         try:
             payload = json.loads(body.decode("utf-8")) if body else {}
         except Exception as e:
@@ -700,9 +979,9 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
                 scan = DB.get_scan(scan_id) or {}
                 in_path = scan.get("source_zip_path") or os.path.join(GDRIVE_INBOX_DIR, "2026-10-05-15-37-05.zip")
                 gst_script = generate_pix4dmatic_gst_script(
-                    project_p4m_path=f"C:/Scans/{scan_id}/{scan_id}.p4m",
+                    project_p4m_path=f"C:/GatheringScans/{scan_id}/{scan_id}.p4m",
                     input_zip_or_folder=in_path,
-                    export_dir=f"C:/Scans/{scan_id}/exports",
+                    export_dir=f"C:/GatheringScans/{scan_id}/exports",
                     texture_size=PIX4DMATIC_TEXTURE_SIZE,
                 )
                 self.send_json(
@@ -797,6 +1076,9 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
     def do_DELETE(self):
         parsed = urllib.parse.urlparse(self.path)
         path = urllib.parse.unquote(parsed.path)
+        if os.name != "nt" and path.startswith("/api/"):
+            self._proxy_via_pc_tunnel_if_vps("DELETE", path)
+            return
         if path.startswith("/api/comments/"):
             cid = path[len("/api/comments/") :].strip("/")
             deleted = DB.delete_comment(cid)
@@ -851,8 +1133,10 @@ def _ensure_vps_caddy_route():
 
 def run_server(host: str = SERVER_HOST, port: int = SERVER_PORT):
     _ensure_vps_caddy_route()
+    if os.name == "nt":
+        start_pc_reverse_tunnel_pool(local_port=port)
     server = ThreadingHTTPServer((host, port), GatheringScansHandler)
-    print(f"[GatheringScans] Server listening on http://{host}:{port} (CRS: {TWD97_TWVD2001_SHORT}, 2K Textures)")
+    print(f"[GatheringScans] Server listening on http://{host}:{port} (CRS: {TWD97_TWVD2001_SHORT}, 2K Textures, Root: {LOCAL_SCANS_ROOT})")
     server.serve_forever()
 
 

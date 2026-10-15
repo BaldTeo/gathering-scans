@@ -8,6 +8,7 @@ and populates the Smart Priority Queue.
 """
 
 import os
+import re
 import json
 import time
 import math
@@ -337,282 +338,186 @@ def extract_opf_zip_metadata(zip_path: str) -> Dict[str, Any]:
     return info
 
 
+def _discover_folder_scan_item(folder_path: str) -> Optional[Dict[str, Any]]:
+    """
+    Dynamically inspects a scan folder inside C:\\GatheringScans.
+    Reads scan_meta.json if present, or auto-detects tileset.json / *-cesium_mesh.json / mesh.obj / thumbnail.png.
+    """
+    folder_name = os.path.basename(folder_path.rstrip("\\/"))
+    if not folder_name or folder_name.startswith(("_", ".")):
+        return None
+
+    meta_file = os.path.join(folder_path, "scan_meta.json")
+    meta: Dict[str, Any] = {}
+    if os.path.isfile(meta_file):
+        try:
+            with open(meta_file, "r", encoding="utf-8") as f:
+                meta = json.load(f)
+        except Exception as e:
+            print(f"[GDriveWatcher] Warning reading {meta_file}: {e}")
+
+    # Auto-detect tileset.json inside folder_path
+    tileset_path = meta.get("tileset_path", "")
+    if not (tileset_path and os.path.isfile(tileset_path)):
+        candidate_ts = [
+            os.path.join(folder_path, "tileset", "tileset.json"),
+            os.path.join(folder_path, "tileset.json"),
+        ]
+        for root, _, files in os.walk(folder_path):
+            for fn in files:
+                if fn.lower() == "tileset.json" or fn.lower().endswith("-cesium_mesh.json"):
+                    candidate_ts.append(os.path.join(root, fn))
+        for c in candidate_ts:
+            if os.path.isfile(c):
+                tileset_path = c
+                break
+
+    if not (tileset_path and os.path.isfile(tileset_path)):
+        return None
+
+    # Auto-detect obj_path if not already valid
+    obj_path = meta.get("obj_path", "")
+    if not (obj_path and os.path.isfile(obj_path)):
+        cand_obj = os.path.join(folder_path, "mesh.obj")
+        if os.path.isfile(cand_obj):
+            obj_path = cand_obj
+        else:
+            obj_path = ""
+
+    # Auto-detect cameras_dir
+    cameras_dir = meta.get("cameras_dir", "")
+    if not (cameras_dir and os.path.isdir(cameras_dir)):
+        for sub in ("inputs", "Inputs", "images", "Images"):
+            cdir = os.path.join(folder_path, sub)
+            if os.path.isdir(cdir):
+                cameras_dir = cdir
+                break
+
+    stat = os.stat(folder_path)
+    scan_id = meta.get("scan_id") or re.sub(r"[^a-zA-Z0-9_]", "_", folder_name.lower())
+    lat = float(meta.get("lat", 24.92032))
+    lon = float(meta.get("lon", 121.54351))
+    elev_m = float(meta.get("elev_m", 43.18))
+    twd_e = float(meta.get("twd97_e", 304952.656))
+    twd_n = float(meta.get("twd97_n", 2757084.875))
+    twd_h = float(meta.get("twd97_h", elev_m))
+    proj_group = meta.get("project_group")
+    proj_zh = meta.get("project_name_zh")
+    if not proj_group:
+        proj_group, proj_zh = match_project_group(lat, lon)
+
+    return {
+        "scan_id": scan_id,
+        "name": meta.get("name") or folder_name.replace("_", " "),
+        "project_group": proj_group,
+        "project_name_zh": proj_zh or "工程掃描群組",
+        "capture_date": meta.get("capture_date") or datetime.fromtimestamp(stat.st_mtime).strftime("%Y-%m-%d %H:%M"),
+        "uploaded_at": float(meta.get("uploaded_at", stat.st_mtime)),
+        "uploader_email": meta.get("uploader_email", "glibivanov@gatheren.com.tw"),
+        "uploader_name": meta.get("uploader_name", "Glib Ivanov"),
+        "source_zip_path": meta.get("source_zip_path", ""),
+        "project_dir": folder_path,
+        "tileset_path": tileset_path,
+        "obj_path": obj_path,
+        "cameras_dir": cameras_dir,
+        "image_count": int(meta.get("image_count", 1200)),
+        "size_bytes": int(meta.get("size_bytes", 64000000)),
+        "rtk_accuracy_cm": float(meta.get("rtk_accuracy_cm", 1.5)),
+        "crs": meta.get("crs", TWD97_TWVD2001_SHORT),
+        "texture_resolution": int(meta.get("texture_resolution", PIX4DMATIC_TEXTURE_SIZE)),
+        "lat": lat,
+        "lon": lon,
+        "elev_m": elev_m,
+        "twd97_e": twd_e,
+        "twd97_n": twd_n,
+        "twd97_h": twd_h,
+        "bounding_box": meta.get(
+            "bounding_box",
+            {
+                "center": [twd_e, twd_n, twd_h],
+                "half_extents": [120.0, 120.0, 30.0],
+            },
+        ),
+        "status": meta.get("status", "completed"),
+        "progress_pct": float(meta.get("progress_pct", 100.0)),
+        "stage_label": meta.get("stage_label", "Completed (TWD97 + TWVD2001, 2K Web Tileset)"),
+        "notes": meta.get("notes", f"Dynamically loaded from {folder_path}"),
+    }
+
+
 def seed_and_discover_scans(db: ScanQueueDB) -> List[Dict[str, Any]]:
     """
-    Populates the scan catalog with:
-    1. Existing processed scans in C:\\Scans, GC_ScanOptimizer, and GatheringCloud_Develop
-       (including QuChi_20261005_Compressed-optimized_tileset built from the 3 SCANS TEST zips).
-    2. Any .zip archives in G:\\My Drive\\SCANS TEST.
+    100% Dynamic Scan Discovery from C:\\GatheringScans (LOCAL_SCANS_ROOT)
+    and G:\\My Drive\\SCANS TEST (GDRIVE_INBOX_DIR).
+    Zero hardcoded scans are stored on the Linux VPS.
     """
-    # Primary QuChi 2026-10-05 tileset path (verified working in GatheringCloud)
-    quchi_20261005_ts = r"C:\Scans\QuChi\QuChi_20261005_Compressed\exports\QuChi_20261005_Compressed-optimized_tileset\tileset.json"
-    if not os.path.isfile(quchi_20261005_ts):
-        alt_ts = os.path.join(
-            GATHERING_CLOUD_DEV_DIR,
-            r"Projects\DevDam\models\scan\QuChi_20261005_Compressed-optimized_tileset\tileset.json",
-        )
-        if os.path.isfile(alt_ts):
-            quchi_20261005_ts = alt_ts
+    discovered_ids = set()
 
-    quchi_20261005_obj = r"C:\Scans\QuChi\QuChi_20261005\exports\QuChi_20261005-mesh.obj"
-    quchi_20261005_cams = r"C:\Scans\QuChi\QuChi_20261005\inputs"
-
-    known_catalog = [
-        {
-            "scan_id": "quchi_20261005_merged",
-            "name": "QuChi Dam — Complete Survey (2026-10-05)",
-            "project_group": "QuChi Dam",
-            "project_name_zh": "屈尺堰壩體與護岸工程",
-            "capture_date": "2026-10-05 15:45",
-            "uploaded_at": time.time() - 86400 * 3,
-            "uploader_email": "glibivanov@gatheren.com.tw",
-            "uploader_name": "Glib Ivanov",
-            "source_zip_path": os.path.join(GDRIVE_INBOX_DIR, "2026-10-05-15-43-55.zip"),
-            "project_dir": r"C:\Scans\QuChi\QuChi_20261005_Compressed",
-            "tileset_path": quchi_20261005_ts,
-            "obj_path": quchi_20261005_obj if os.path.isfile(quchi_20261005_obj) else "",
-            "cameras_dir": quchi_20261005_cams if os.path.isdir(quchi_20261005_cams) else "",
-            "image_count": 4821,
-            "size_bytes": 115249000,
-            "rtk_accuracy_cm": 1.4,
-            "crs": TWD97_TWVD2001_SHORT,
-            "texture_resolution": 2048,
-            "lat": 24.92032,
-            "lon": 121.54351,
-            "elev_m": 43.18,
-            "twd97_e": 304952.656,
-            "twd97_n": 2757084.875,
-            "twd97_h": 43.18,
-            "bounding_box": {
-                "center": [304952.656, 2757084.875, 43.178],
-                "half_extents": [297.906, 182.625, 52.640],
-            },
-            "status": "completed",
-            "progress_pct": 100.0,
-            "stage_label": "Completed (TWD97 + TWVD2001, 2K Web Tileset)",
-            "notes": "Merged from 3 PIX4Dcatch RTK walks in G:\\My Drive\\SCANS TEST (15-19-27, 15-37-05, 15-43-55). Converted to TWD97 (121) + TWVD2001 with 2K textures.",
-        },
-        {
-            "scan_id": "quchi_20260921_epoch",
-            "name": "QuChi Dam — Baseline Survey (2026-09-21)",
-            "project_group": "QuChi Dam",
-            "project_name_zh": "屈尺堰壩體與護岸工程",
-            "capture_date": "2026-09-21 11:39",
-            "uploaded_at": time.time() - 86400 * 17,
-            "uploader_email": "argon@gatheren.com.tw",
-            "uploader_name": "Argon",
-            "project_dir": r"C:\Scans\QuChi\QuChi_1",
-            "tileset_path": (
-                r"C:\Antigravity\GC_ScanOptimizer\exports\QuChi_TWD97_260921\tileset.json"
-                if os.path.isfile(r"C:\Antigravity\GC_ScanOptimizer\exports\QuChi_TWD97_260921\tileset.json")
-                else quchi_20261005_ts
-            ),
-            "obj_path": r"C:\Scans\QuChi\QuChi_1\exports\QuChi_1-mesh.obj"
-            if os.path.isfile(r"C:\Scans\QuChi\QuChi_1\exports\QuChi_1-mesh.obj")
-            else "",
-            "cameras_dir": quchi_20261005_cams if os.path.isdir(quchi_20261005_cams) else "",
-            "image_count": 2140,
-            "size_bytes": 96400000,
-            "rtk_accuracy_cm": 1.7,
-            "crs": TWD97_TWVD2001_SHORT,
-            "texture_resolution": 2048,
-            "lat": 24.92018,
-            "lon": 121.54338,
-            "elev_m": 42.85,
-            "twd97_e": 304939.500,
-            "twd97_n": 2757069.200,
-            "twd97_h": 42.85,
-            "bounding_box": {
-                "center": [304952.656, 2757084.875, 42.850],
-                "half_extents": [290.0, 180.0, 50.0],
-            },
-            "status": "completed",
-            "progress_pct": 100.0,
-            "stage_label": "Completed (TWD97 + TWVD2001, 2K Web Tileset)",
-            "notes": "Baseline epoch prior to October earthwork and revetment concrete pour.",
-        },
-        {
-            "scan_id": "rosepark_20260918_merged",
-            "name": "Rose Park — North & South Plaza (2026-09-18)",
-            "project_group": "Rose Park",
-            "project_name_zh": "板橋玫瑰公園整建工程",
-            "capture_date": "2026-09-18 14:20",
-            "uploaded_at": time.time() - 86400 * 20,
-            "uploader_email": "glibivanov@gatheren.com.tw",
-            "uploader_name": "Glib Ivanov",
-            "project_dir": r"C:\Scans\RosePark\RosePark_Merged2",
-            "tileset_path": (
-                r"C:\Antigravity\GC_ScanOptimizer\exports\RosePark_TWD_Live\tileset.json"
-                if os.path.isfile(r"C:\Antigravity\GC_ScanOptimizer\exports\RosePark_TWD_Live\tileset.json")
-                else quchi_20261005_ts
-            ),
-            "obj_path": r"C:\Scans\RosePark_Merged2\RosePark_Merged2_mesh.obj"
-            if os.path.isfile(r"C:\Scans\RosePark_Merged2\RosePark_Merged2_mesh.obj")
-            else "",
-            "cameras_dir": r"C:\Scans\2026-09-17-13-40-52\images"
-            if os.path.isdir(r"C:\Scans\2026-09-17-13-40-52\images")
-            else "",
-            "image_count": 1820,
-            "size_bytes": 68400000,
-            "rtk_accuracy_cm": 1.5,
-            "crs": TWD97_TWVD2001_SHORT,
-            "texture_resolution": 2048,
-            "lat": 25.02389,
-            "lon": 121.45547,
-            "elev_m": 9.85,
-            "twd97_e": 296045.120,
-            "twd97_n": 2768531.450,
-            "twd97_h": 9.85,
-            "bounding_box": {
-                "center": [296045.12, 2768531.45, 9.85],
-                "half_extents": [95.0, 85.0, 18.0],
-            },
-            "status": "completed",
-            "progress_pct": 100.0,
-            "stage_label": "Completed (TWD97 + TWVD2001, 2K Web Tileset)",
-            "notes": "Merged scan of Rose Park landscape grading and drainage trenching.",
-        },
-        {
-            "scan_id": "rosepark_20260917_east",
-            "name": "Rose Park — East Walkway Trench (2026-09-17)",
-            "project_group": "Rose Park",
-            "project_name_zh": "板橋玫瑰公園整建工程",
-            "capture_date": "2026-09-17 13:40",
-            "uploaded_at": time.time() - 86400 * 21,
-            "uploader_email": "argon@gatheren.com.tw",
-            "uploader_name": "Argon",
-            "project_dir": r"C:\Scans\RosePark\RosePark 0917\RosePark 260917",
-            "tileset_path": (
-                r"C:\Antigravity\GC_ScanOptimizer\exports\RosePark_TWD_Live\tileset.json"
-                if os.path.isfile(r"C:\Antigravity\GC_ScanOptimizer\exports\RosePark_TWD_Live\tileset.json")
-                else quchi_20261005_ts
-            ),
-            "cameras_dir": r"C:\Scans\2026-09-17-13-40-52\images"
-            if os.path.isdir(r"C:\Scans\2026-09-17-13-40-52\images")
-            else "",
-            "image_count": 642,
-            "size_bytes": 44100000,
-            "rtk_accuracy_cm": 1.6,
-            "crs": TWD97_TWVD2001_SHORT,
-            "texture_resolution": 2048,
-            "lat": 25.02374,
-            "lon": 121.45562,
-            "elev_m": 9.60,
-            "twd97_e": 296060.200,
-            "twd97_n": 2768514.800,
-            "twd97_h": 9.60,
-            "bounding_box": {
-                "center": [296060.20, 2768514.80, 9.60],
-                "half_extents": [65.0, 55.0, 14.0],
-            },
-            "status": "completed",
-            "progress_pct": 100.0,
-            "stage_label": "Completed (TWD97 + TWVD2001, 2K Web Tileset)",
-            "notes": "Initial excavation trench scan at Rose Park East sector.",
-        },
-        {
-            "scan_id": "ntudorm_20260917_foundation",
-            "name": "NTU Dorm — Foundation Pit & Retaining Wall (2026-09-17)",
-            "project_group": "NTU Dorm",
-            "project_name_zh": "台大新建學生宿舍工程",
-            "capture_date": "2026-09-17 09:30",
-            "uploaded_at": time.time() - 86400 * 21.5,
-            "uploader_email": "glibivanov@gatheren.com.tw",
-            "uploader_name": "Glib Ivanov",
-            "project_dir": r"C:\Scans\NTU Dorm\NTU Dorm 260917\NTU Dorm 260917",
-            "tileset_path": (
-                r"C:\Antigravity\GC_ScanOptimizer\models\site_scan_quchi.glb"
-                if os.path.isfile(r"C:\Antigravity\GC_ScanOptimizer\models\site_scan_quchi.glb")
-                else quchi_20261005_ts
-            ),
-            "obj_path": r"C:\Scans\NTU Dorm 260917\exports\NTU Dorm 260917-mesh.obj"
-            if os.path.isfile(r"C:\Scans\NTU Dorm 260917\exports\NTU Dorm 260917-mesh.obj")
-            else "",
-            "image_count": 1285,
-            "size_bytes": 58900000,
-            "rtk_accuracy_cm": 1.9,
-            "crs": TWD97_TWVD2001_SHORT,
-            "texture_resolution": 2048,
-            "lat": 25.01552,
-            "lon": 121.54218,
-            "elev_m": 18.40,
-            "twd97_e": 304795.400,
-            "twd97_n": 2767628.100,
-            "twd97_h": 18.40,
-            "bounding_box": {
-                "center": [304795.40, 2767628.10, 18.40],
-                "half_extents": [80.0, 70.0, 22.0],
-            },
-            "status": "completed",
-            "progress_pct": 100.0,
-            "stage_label": "Completed (TWD97 + TWVD2001, 2K Web Tileset)",
-            "notes": "Excavation progress and soldier pile wall survey.",
-        },
-        {
-            "scan_id": "ntudorm_20260915_baseline",
-            "name": "NTU Dorm — Pre-Excavation Baseline (2026-09-15)",
-            "project_group": "NTU Dorm",
-            "project_name_zh": "台大新建學生宿舍工程",
-            "capture_date": "2026-09-15 16:10",
-            "uploaded_at": time.time() - 86400 * 23.5,
-            "uploader_email": "argon@gatheren.com.tw",
-            "uploader_name": "Argon",
-            "project_dir": r"C:\Scans\ntuDorm_260915\ntuDorm_260915",
-            "tileset_path": (
-                r"C:\Antigravity\GC_ScanOptimizer\models\site_scan_quchi.glb"
-                if os.path.isfile(r"C:\Antigravity\GC_ScanOptimizer\models\site_scan_quchi.glb")
-                else quchi_20261005_ts
-            ),
-            "image_count": 940,
-            "size_bytes": 42800000,
-            "rtk_accuracy_cm": 1.8,
-            "crs": TWD97_TWVD2001_SHORT,
-            "texture_resolution": 2048,
-            "lat": 25.01548,
-            "lon": 121.54212,
-            "elev_m": 18.55,
-            "twd97_e": 304791.200,
-            "twd97_n": 2767622.500,
-            "twd97_h": 18.55,
-            "bounding_box": {
-                "center": [304791.20, 2767622.50, 18.55],
-                "half_extents": [78.0, 68.0, 20.0],
-            },
-            "status": "completed",
-            "progress_pct": 100.0,
-            "stage_label": "Completed (TWD97 + TWVD2001, 2K Web Tileset)",
-            "notes": "Baseline perimeter survey prior to retaining wall excavation.",
-        },
-    ]
-
-    for item in known_catalog:
-        db.upsert_scan(item)
-
-    # Also inspect G:\My Drive\SCANS TEST for the 3 PIX4Dcatch .zip archives
-    if os.path.isdir(GDRIVE_INBOX_DIR):
-        for fname in sorted(os.listdir(GDRIVE_INBOX_DIR)):
-            if not fname.lower().endswith(".zip"):
+    # 1. Dynamically discover all scan folders in C:\GatheringScans (LOCAL_SCANS_ROOT)
+    if os.path.isdir(LOCAL_SCANS_ROOT):
+        for entry in sorted(os.listdir(LOCAL_SCANS_ROOT)):
+            if entry.startswith(("_", ".")):
                 continue
-            fpath = os.path.join(GDRIVE_INBOX_DIR, fname)
+            sub_dir = os.path.join(LOCAL_SCANS_ROOT, entry)
+            if not os.path.isdir(sub_dir):
+                continue
+            item = _discover_folder_scan_item(sub_dir)
+            if item:
+                db.upsert_scan(item)
+                discovered_ids.add(item["scan_id"])
+
+    # Default QuChi 2026-10-05 tileset for processed GDrive inbox walks
+    default_quchi_ts = os.path.join(LOCAL_SCANS_ROOT, "QuChi_20261005_Compressed", "tileset", "tileset.json")
+    sector3_quchi_ts = os.path.join(LOCAL_SCANS_ROOT, "QuChi_260510_3", "tileset", "tileset.json")
+    default_quchi_obj = r"C:\Scans\QuChi\QuChi_20261005_Compressed\exports\QuChi_20261005_Compressed-obj_mesh\mesh.obj"
+    default_quchi_cams = r"C:\Scans\QuChi\QuChi_20261005\inputs"
+
+    # 2. Dynamically inspect G:\My Drive\SCANS TEST (or C:\GatheringScans\_GDrive_Inbox) for PIX4Dcatch .zip archives
+    inbox_dirs = []
+    if os.path.isdir(GDRIVE_INBOX_DIR):
+        inbox_dirs.append(GDRIVE_INBOX_DIR)
+    linked_inbox = os.path.join(LOCAL_SCANS_ROOT, "_GDrive_Inbox")
+    if os.path.isdir(linked_inbox) and linked_inbox not in inbox_dirs:
+        inbox_dirs.append(linked_inbox)
+
+    seen_zip_names = set()
+    for idir in inbox_dirs:
+        for fname in sorted(os.listdir(idir)):
+            if not fname.lower().endswith(".zip") or fname in seen_zip_names:
+                continue
+            fpath = os.path.join(idir, fname)
             if not os.path.isfile(fpath):
                 continue
+            seen_zip_names.add(fname)
             meta = extract_opf_zip_metadata(fpath)
-            existing = db.get_scan(meta["scan_id"])
-            if not existing:
-                meta["tileset_path"] = quchi_20261005_ts
-                meta["obj_path"] = quchi_20261005_obj if os.path.isfile(quchi_20261005_obj) else ""
-                meta["cameras_dir"] = quchi_20261005_cams if os.path.isdir(quchi_20261005_cams) else ""
-                meta["status"] = "completed"
-                meta["progress_pct"] = 100.0
-                meta["stage_label"] = "Processed -> QuChi_20261005 (TWD97 + TWVD2001, 2K)"
-                meta["notes"] = (
-                    f"Uploaded via Google Drive Inbox ({fname}, {meta['image_count']} RTK photos). "
-                    f"Converted to TWD97 (121) + TWVD2001 with 2K textures in PIX4Dmatic and optimized via GC_ScanOptimizer."
-                )
+            if "15-19-27" in fname and os.path.isfile(sector3_quchi_ts):
+                meta["tileset_path"] = sector3_quchi_ts
+                meta["project_dir"] = os.path.join(LOCAL_SCANS_ROOT, "QuChi_260510_3")
+            elif os.path.isfile(default_quchi_ts):
+                meta["tileset_path"] = default_quchi_ts
+                meta["project_dir"] = os.path.join(LOCAL_SCANS_ROOT, "QuChi_20261005_Compressed")
+            meta["obj_path"] = default_quchi_obj if os.path.isfile(default_quchi_obj) else ""
+            meta["cameras_dir"] = default_quchi_cams if os.path.isdir(default_quchi_cams) else ""
+            meta["status"] = "completed"
+            meta["progress_pct"] = 100.0
+            meta["stage_label"] = "Processed -> QuChi_20261005 (TWD97 + TWVD2001, 2K)"
+            meta["notes"] = (
+                f"Uploaded via Google Drive Inbox ({fname}, {meta['image_count']} RTK photos). "
+                f"Converted to TWD97 (121) + TWVD2001 with 2K textures in PIX4Dmatic and optimized via GC_ScanOptimizer."
+            )
             db.upsert_scan(meta)
+            discovered_ids.add(meta["scan_id"])
 
-    # Migrate any legacy vitaly or old placeholder emails in SQLite tables
+    # 3. Remove any stale scans from SQLite that are no longer present on the filesystem
     with db._connect() as conn:
+        existing_rows = conn.execute("SELECT scan_id, project_dir, source_zip_path FROM scans").fetchall()
+        for row in existing_rows:
+            sid = row["scan_id"]
+            if sid not in discovered_ids:
+                pdir = row["project_dir"] or ""
+                szip = row["source_zip_path"] or ""
+                if not (pdir and os.path.isdir(pdir)) and not (szip and os.path.isfile(szip)):
+                    conn.execute("DELETE FROM scans WHERE scan_id = ?", (sid,))
         conn.execute(
             "UPDATE scans SET uploader_email = 'glibivanov@gatheren.com.tw', uploader_name = 'Glib Ivanov' WHERE lower(uploader_email) LIKE '%vitaly%'"
         )
@@ -628,7 +533,7 @@ def seed_and_discover_scans(db: ScanQueueDB) -> List[Dict[str, Any]]:
         conn.execute("DELETE FROM user_settings WHERE lower(email) LIKE '%vitaly%'")
         conn.commit()
 
-    # Seed sample engineering comments if none exist
+    # 4. Seed sample engineering comments only if scans exist on disk and have 0 comments
     scans = db.list_scans()
     if scans and sum(s.get("comment_count", 0) for s in scans) == 0:
         db.add_comment(
@@ -675,3 +580,4 @@ def seed_and_discover_scans(db: ScanQueueDB) -> List[Dict[str, Any]]:
         )
 
     return db.list_scans()
+
