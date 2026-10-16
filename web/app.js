@@ -94,6 +94,8 @@
     shareToken: new URLSearchParams(window.location.search).get("share") || "",
     shareLinkInfo: null,
     currentUser: getInitialCurrentUser(),
+    themePreference: localStorage.getItem("gs_theme_pref") || "auto",
+    resolvedTheme: "light",
     teamProfiles: [],
     cachedScanIds: new Set(JSON.parse(localStorage.getItem("gs_cached_scans") || "[]")),
     measurePoints: [],
@@ -107,6 +109,18 @@
     lastContoursResult: null,
     lastProfileResult: null,
   };
+
+  function resolveThemeFromPreference(pref) {
+    const p = String(pref || "auto").toLowerCase();
+    if (p === "light" || p === "dark") return p;
+    const hr = new Date().getHours();
+    return hr >= 6 && hr < 18 ? "light" : "dark";
+  }
+
+  // Apply initial theme attribute immediately to avoid flash
+  STATE.resolvedTheme = resolveThemeFromPreference(STATE.themePreference);
+  document.documentElement.setAttribute("data-theme", STATE.resolvedTheme);
+  document.documentElement.setAttribute("data-theme-pref", STATE.themePreference);
 
   // Aggregate unique project groups dynamically (scales cleanly to 100+ projects)
   function getProjectGroupsList(filterQuery = "") {
@@ -655,15 +669,15 @@
       const isCached = STATE.cachedScanIds.has(scan.scan_id);
       card.innerHTML = `
         <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
-          <div>
-            <div style="font-size:12.5px;font-weight:700;color:#0f172a;">${scan.name}</div>
-            <div style="font-size:11px;color:#475569;margin-top:2px;">
-              ${scan.capture_date} · ${scan.uploader_name} (<span style="color:#0284c7;">${scan.uploader_email}</span>)
+          <div style="min-width:0;flex:1;">
+            <div style="font-size:12.5px;font-weight:700;color:var(--ui-text-primary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${scan.name}</div>
+            <div style="font-size:11px;color:var(--ui-text-secondary);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+              ${scan.capture_date} · ${scan.uploader_name} (<span style="color:var(--ui-accent);">${scan.uploader_email}</span>)
             </div>
           </div>
-          <span class="gs-crs-pill" style="white-space:nowrap;">RTK σ=${scan.rtk_accuracy_cm}cm</span>
+          <span class="gs-crs-pill" style="white-space:nowrap;flex-shrink:0;">RTK σ=${scan.rtk_accuracy_cm}cm</span>
         </div>
-        <div style="font-size:10.5px;font-family:monospace;color:#64748b;margin-top:5px;">
+        <div style="font-size:10.5px;font-family:monospace;color:var(--ui-text-muted);margin-top:5px;">
           E:${Number(scan.twd97_e).toFixed(1)}m N:${Number(scan.twd97_n).toFixed(1)}m H:+${Number(scan.twd97_h).toFixed(2)}m${isCached ? " · Cached" : ""}
         </div>
         <div class="gs-scan-item-actions">
@@ -746,8 +760,9 @@
     const container = document.getElementById("sitePreviewCanvasContainer");
     if (!container) return null;
 
+    const isDark = STATE.resolvedTheme === "dark";
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x0b1120);
+    scene.background = new THREE.Color(isDark ? 0x0b1120 : 0xe2e8f0);
 
     const camera = new THREE.PerspectiveCamera(
       50,
@@ -779,7 +794,7 @@
     dir.position.set(110, 200, 110);
     scene.add(dir);
 
-    const grid = new THREE.GridHelper(220, 22, 0x334155, 0x1e293b);
+    const grid = new THREE.GridHelper(220, 22, isDark ? 0x334155 : 0x94a3b8, isDark ? 0x1e293b : 0xcbd5e1);
     grid.position.y = -0.2;
     scene.add(grid);
 
@@ -795,6 +810,7 @@
       camera,
       renderer,
       controls,
+      grid,
       modelPivot,
       fallbackGroup,
       tilesRenderer: null,
@@ -1469,8 +1485,9 @@
     const container = document.getElementById("studioCanvasContainer");
     if (!container) return null;
 
+    const isDark = STATE.resolvedTheme === "dark";
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x0b0f19);
+    scene.background = new THREE.Color(isDark ? 0x0b0f19 : 0xe2e8f0);
 
     const camera = new THREE.PerspectiveCamera(
       50,
@@ -1500,7 +1517,7 @@
     dir1.position.set(120, 220, 120);
     scene.add(dir1);
 
-    const grid = new THREE.GridHelper(240, 24, 0x334155, 0x1e293b);
+    const grid = new THREE.GridHelper(240, 24, isDark ? 0x334155 : 0x94a3b8, isDark ? 0x1e293b : 0xcbd5e1);
     grid.position.y = -0.2;
     scene.add(grid);
 
@@ -1536,6 +1553,7 @@
       camera,
       renderer,
       controls,
+      grid,
       modelPivot,
       fallbackGroup,
       overlayGroup,
@@ -2514,7 +2532,7 @@
       showSidePanel(
         `<span>Cut/Fill &amp; Stockpile Volume</span>`,
         `
-        <div style="font-size:11px;color:#475569;background:#f1f5f9;border:1px solid #cbd5e1;border-radius:7px;padding:7px 9px;margin-bottom:9px;line-height:1.4;">
+        <div style="font-size:11px;color:var(--ui-text-secondary);background:var(--ui-bg-pill);border:1px solid var(--ui-border-strong);border-radius:7px;padding:7px 9px;margin-bottom:9px;line-height:1.4;">
           Click <b>3+ points</b> on the 3D scan to place a Cut/Fill boundary polygon. Click the red start point to lock.
         </div>
         <div class="gs-form-group">
@@ -2610,7 +2628,7 @@
         <div class="gs-metric-grid">
           <div class="gs-metric-box">
             <div class="lbl">Fill Volume (+)</div>
-            <div class="val" style="color:#0284c7;">+${res.fill_volume_m3} m³</div>
+            <div class="val" style="color:var(--ui-accent);">+${res.fill_volume_m3} m³</div>
           </div>
           <div class="gs-metric-box">
             <div class="lbl">Cut Volume (-)</div>
@@ -2625,7 +2643,7 @@
             <div class="val">${res.estimated_tonnage_t} t</div>
           </div>
         </div>
-        <div style="font-size:11px;color:#475569;background:#f8fafc;padding:9px 10px;border-radius:8px;border:1px solid #e2e8f0;margin-bottom:10px;line-height:1.5;">
+        <div style="font-size:11px;color:var(--ui-text-secondary);background:var(--ui-bg-subtle);padding:9px 10px;border-radius:8px;border:1px solid var(--ui-border);margin-bottom:10px;line-height:1.5;">
           <div><b>Footprint Area:</b> ${res.planar_area_m2} m² (${res.planar_area_ping} 坪)</div>
           <div><b>Sloped Area:</b> ${res.surface_area_m2} m² · <b>Perim:</b> ${res.perimeter_m} m</div>
           <div><b>Material:</b> ${res.material_name} (${res.density_t_m3} t/m³)</div>
@@ -2677,7 +2695,7 @@
       showSidePanel(
         `<span>Survey Report (Civil3D.dwg &amp; A3 PDF)</span>`,
         `
-        <div style="font-size:11px;color:#475569;background:#f1f5f9;border:1px solid #cbd5e1;border-radius:7px;padding:7px 9px;margin-bottom:9px;line-height:1.45;">
+        <div style="font-size:11px;color:var(--ui-text-secondary);background:var(--ui-bg-pill);border:1px solid var(--ui-border-strong);border-radius:7px;padding:7px 9px;margin-bottom:9px;line-height:1.45;">
           Uses your active <b>Mask Boundary</b> &amp; <b>Contour Lines</b> to generate <code>Civil3D.dwg</code> (real <b>TWD97 XYZ</b>) and a zoom-to-fit <b>A3 Ready-to-Print PDF</b> with filled engineering frame. Click 3+ points on the scan to customize the mask boundary.
         </div>
         <div class="gs-form-group">
@@ -2955,16 +2973,16 @@
     if (box) {
       box.innerHTML = `
         <div style="margin-bottom:8px;">
-          <div style="display:flex;justify-content:space-between;align-items:center;font-size:10.5px;font-weight:700;color:#475569;margin-bottom:4px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;font-size:10.5px;font-weight:700;color:var(--ui-text-secondary);margin-bottom:4px;">
             <span>A3 ENGINEERING SHEET PREVIEW (420×297mm)</span>
-            <span style="color:#0284c7;">SCALE 1:${res.scale_denom || 250}</span>
+            <span style="color:var(--ui-accent);">SCALE 1:${res.scale_denom || 250}</span>
           </div>
-          <canvas id="a3SheetPreviewCanvas" width="336" height="210" style="width:100%;background:#ffffff;border:1px solid #cbd5e1;border-radius:7px;box-shadow:0 1px 3px rgba(15,23,42,0.06);"></canvas>
+          <canvas id="a3SheetPreviewCanvas" width="336" height="210" style="width:100%;background:#ffffff;border:1px solid var(--ui-border-strong);border-radius:7px;box-shadow:0 1px 3px rgba(15,23,42,0.06);"></canvas>
         </div>
         <div class="gs-metric-grid">
           <div class="gs-metric-box">
             <div class="lbl">Clipped Contours</div>
-            <div class="val" style="color:#0284c7;">${res.contour_count} lines</div>
+            <div class="val" style="color:var(--ui-accent);">${res.contour_count} lines</div>
           </div>
           <div class="gs-metric-box">
             <div class="lbl">A3 Fit Scale</div>
@@ -3050,10 +3068,10 @@
     showSidePanel(
       `<span>Cross-Section Profile</span>`,
       `
-      <p style="font-size:11.5px;color:#475569;margin-bottom:10px;">
+      <p style="font-size:11.5px;color:var(--ui-text-secondary);margin-bottom:10px;">
         Compares TWVD2001 elevation profile along the section line between active scan and baseline epoch.
       </p>
-      <canvas id="profileChartCanvas" width="330" height="180" style="width:100%;background:#f8fafc;border:1px solid #cbd5e1;border-radius:8px;"></canvas>
+      <canvas id="profileChartCanvas" width="330" height="180" style="width:100%;background:var(--ui-bg-subtle);border:1px solid var(--ui-border-strong);border-radius:8px;"></canvas>
       <div class="gs-metric-grid" id="profileMetricsBox"></div>
       `
     );
@@ -3083,7 +3101,7 @@
     const maxChain = samples[samples.length - 1].chainage_m || 1;
 
     // Grid lines
-    ctx.strokeStyle = "#e2e8f0";
+    ctx.strokeStyle = STATE.resolvedTheme === "dark" ? "#334155" : "#e2e8f0";
     ctx.lineWidth = 1;
     for (let i = 1; i <= 4; i++) {
       const y = (h - 24) * (i / 5) + 10;
@@ -3128,7 +3146,7 @@
       mBox.innerHTML = `
         <div class="gs-metric-box">
           <div class="lbl">Section Length</div>
-          <div class="val" style="color:#0284c7;">${res.total_length_m} m</div>
+          <div class="val" style="color:var(--ui-accent);">${res.total_length_m} m</div>
         </div>
         <div class="gs-metric-box">
           <div class="lbl">Max Local Grade</div>
@@ -3142,7 +3160,7 @@
   async function openRtkPhotoInspector(pt = new THREE.Vector3(0, 0, 0)) {
     showSidePanel(
       `<span>RTK Camera Inspector</span>`,
-      `<div style="font-size:12px;color:#475569;">Querying calibrated PIX4Dcatch RTK camera poses...</div>`
+      `<div style="font-size:12px;color:var(--ui-text-secondary);">Querying calibrated PIX4Dcatch RTK camera poses...</div>`
     );
     try {
       const res = await apiPost("/api/survey/inspect-photos", {
@@ -3154,13 +3172,13 @@
       const photosHtml = (res.photos || [])
         .map(
           (p) => `
-          <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:8px;margin-top:8px;">
-            <img src="${p.url}" alt="${p.filename}" style="width:100%;height:140px;object-fit:cover;border-radius:6px;background:#e2e8f0;" onerror="this.style.display='none'" />
-            <div style="display:flex;justify-content:space-between;margin-top:6px;font-size:11px;font-weight:700;color:#0f172a;">
+          <div style="background:var(--ui-bg-subtle);border:1px solid var(--ui-border);border-radius:8px;padding:8px;margin-top:8px;">
+            <img src="${p.url}" alt="${p.filename}" style="width:100%;height:140px;object-fit:cover;border-radius:6px;background:var(--ui-bg-pill);" onerror="this.style.display='none'" />
+            <div style="display:flex;justify-content:space-between;margin-top:6px;font-size:11px;font-weight:700;color:var(--ui-text-primary);">
               <span>${p.filename}</span>
-              <span style="color:#0284c7;">RTK σ=${p.rtk_h_sigma_cm}cm</span>
+              <span style="color:var(--ui-accent);">RTK σ=${p.rtk_h_sigma_cm}cm</span>
             </div>
-            <div style="font-size:10.5px;font-family:monospace;color:#64748b;margin-top:2px;">
+            <div style="font-size:10.5px;font-family:monospace;color:var(--ui-text-muted);margin-top:2px;">
               E:${p.camera_twd97_e}m | N:${p.camera_twd97_n}m | H:+${p.camera_twd97_h}m | Dist:${p.distance_m}m
             </div>
           </div>
@@ -3171,10 +3189,10 @@
       showSidePanel(
         `<span>RTK Camera Inspector</span>`,
         `
-        <div style="font-size:11px;font-family:monospace;color:#475569;margin-bottom:6px;">
+        <div style="font-size:11px;font-family:monospace;color:var(--ui-text-secondary);margin-bottom:6px;">
           Target TWD97: E:${res.target_twd97.e}m, N:${res.target_twd97.n}m, H:+${res.target_twd97.h}m
         </div>
-        ${photosHtml || '<div style="font-size:12px;color:#64748b;">No local raw photos found for this point.</div>'}
+        ${photosHtml || '<div style="font-size:12px;color:var(--ui-text-muted);">No local raw photos found for this point.</div>'}
         `
       );
     } catch (err) {
@@ -3238,13 +3256,13 @@
     const listHtml = comments
       .map(
         (c) => `
-        <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:9px;margin-top:8px;">
-          <div style="display:flex;justify-content:space-between;font-size:11px;color:#0284c7;font-weight:700;">
+        <div style="background:var(--ui-bg-subtle);border:1px solid var(--ui-border);border-radius:8px;padding:9px;margin-top:8px;">
+          <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--ui-accent);font-weight:700;">
             <span>${c.author_name}</span>
-            <span style="color:#64748b;font-weight:500;">${c.created_at.slice(0, 16)}</span>
+            <span style="color:var(--ui-text-muted);font-weight:500;">${c.created_at.slice(0, 16)}</span>
           </div>
-          <div style="font-size:12px;color:#0f172a;margin-top:4px;">${c.text}</div>
-          <div style="font-size:10.5px;font-family:monospace;color:#64748b;margin-top:4px;">
+          <div style="font-size:12px;color:var(--ui-text-primary);margin-top:4px;">${c.text}</div>
+          <div style="font-size:10.5px;font-family:monospace;color:var(--ui-text-muted);margin-top:4px;">
             TWD97 E:${Number(c.twd97_e).toFixed(1)}m, N:${Number(c.twd97_n).toFixed(1)}m, H:+${Number(c.twd97_h).toFixed(2)}m
           </div>
         </div>
@@ -3315,7 +3333,7 @@
     showSidePanel(
       `<span>GC_ScanOptimizer PC Actions</span>`,
       `
-      <p style="font-size:11.5px;color:#475569;margin-bottom:10px;">
+      <p style="font-size:11.5px;color:var(--ui-text-secondary);margin-bottom:10px;">
         Invokes <code>c:\\Antigravity\\GC_ScanOptimizer</code> directly on the Windows workstation with a 2K texture limit.
       </p>
       <div class="gs-form-group">
@@ -3334,7 +3352,7 @@
         <span>Optimize</span>
       </button>
 
-      <div style="border-top:1px solid #e2e8f0;padding-top:12px;margin-top:6px;">
+      <div style="border-top:1px solid var(--ui-border);padding-top:12px;margin-top:6px;">
         <div class="gs-form-group">
           <label>Spatial 3D Polygon &amp; Elevation Cutter (空間多邊形裁切)</label>
           <select class="gs-select" id="optCropMode">
@@ -3356,7 +3374,7 @@
     document.getElementById("btnExecuteOptimize")?.addEventListener("click", async () => {
       const preset = document.getElementById("optPresetSelect")?.value || "balanced";
       const box = document.getElementById("optActionResult");
-      if (box) box.innerHTML = `<div style="font-size:12px;color:#0284c7;">Running GC_ScanOptimizer (${preset})...</div>`;
+      if (box) box.innerHTML = `<div style="font-size:12px;color:var(--ui-accent);">Running GC_ScanOptimizer (${preset})...</div>`;
       try {
         const res = await apiPost("/api/optimizer/optimize", {
           scan_id: STATE.activeScanId,
@@ -3365,11 +3383,11 @@
         });
         if (box) {
           box.innerHTML = `
-            <div style="background:#f8fafc;border:1px solid #cbd5e1;border-radius:8px;padding:10px;font-size:12px;color:#0f172a;">
-              <div style="color:#0284c7;font-weight:700;">GC_ScanOptimizer Completed (${res.duration_s}s)</div>
+            <div style="background:var(--ui-bg-subtle);border:1px solid var(--ui-border-strong);border-radius:8px;padding:10px;font-size:12px;color:var(--ui-text-primary);">
+              <div style="color:var(--ui-accent);font-weight:700;">GC_ScanOptimizer Completed (${res.duration_s}s)</div>
               <div style="margin-top:4px;">Preset: <b>${res.preset}</b> (Max Texture: ${res.texture_limit}px)</div>
               <div>Size: ${res.original_mb} MB → <b>${res.compressed_mb} MB (-${res.reduction_pct}%)</b></div>
-              <div style="font-size:10.5px;color:#64748b;margin-top:3px;">CRS: ${res.crs}</div>
+              <div style="font-size:10.5px;color:var(--ui-text-muted);margin-top:3px;">CRS: ${res.crs}</div>
             </div>
           `;
         }
@@ -3392,10 +3410,10 @@
         });
         if (box) {
           box.innerHTML = `
-            <div style="background:#f8fafc;border:1px solid #cbd5e1;border-radius:8px;padding:10px;font-size:12px;color:#0f172a;">
-              <div style="color:#0284c7;font-weight:700;">SpatialCutter Completed (${res.duration_s}s)</div>
+            <div style="background:var(--ui-bg-subtle);border:1px solid var(--ui-border-strong);border-radius:8px;padding:10px;font-size:12px;color:var(--ui-text-primary);">
+              <div style="color:var(--ui-accent);font-weight:700;">SpatialCutter Completed (${res.duration_s}s)</div>
               <div>Mode: <b>${res.mode}</b> · Area: <b>${res.cropped_area_m2} m²</b></div>
-              <div style="font-size:10.5px;color:#64748b;">Output: ${res.output_dir}</div>
+              <div style="font-size:10.5px;color:var(--ui-text-muted);">Output: ${res.output_dir}</div>
             </div>
           `;
         }
@@ -3616,8 +3634,11 @@
     if (!leftContainer || !rightContainer) return null;
 
     const createEpochScene = (container, tintColor, isLatest) => {
+      const isDark = STATE.resolvedTheme === "dark";
       const scene = new THREE.Scene();
-      scene.background = new THREE.Color(isLatest ? 0x091322 : 0x0d1829);
+      scene.background = new THREE.Color(
+        isDark ? (isLatest ? 0x091322 : 0x0d1829) : isLatest ? 0xe2e8f0 : 0xdbe4f0
+      );
       const camera = new THREE.PerspectiveCamera(
         48,
         Math.max(1, container.clientWidth) / Math.max(1, container.clientHeight),
@@ -3636,7 +3657,8 @@
       const dirLight = new THREE.DirectionalLight(0xffffff, 1.15);
       dirLight.position.set(45, 80, 50);
       scene.add(dirLight);
-      scene.add(new THREE.GridHelper(180, 36, 0x334155, 0x1e293b));
+      const grid = new THREE.GridHelper(180, 36, isDark ? 0x334155 : 0x94a3b8, isDark ? 0x1e293b : 0xcbd5e1);
+      scene.add(grid);
 
       const fallbackGroup = new THREE.Group();
       fallbackGroup.visible = false;
@@ -3677,7 +3699,7 @@
       const pivot = new THREE.Group();
       scene.add(pivot);
 
-      return { container, scene, camera, renderer, mesh, fallbackGroup, pivot, isLatest, tilesRenderer: null };
+      return { container, scene, camera, renderer, grid, mesh, fallbackGroup, pivot, isLatest, tilesRenderer: null };
     };
 
     const left = createEpochScene(leftContainer, 0x38bdf8, false);
@@ -3787,8 +3809,91 @@
   }
 
   // ============================================================================
-  // 5. MODALS: SMART QUEUE, SCOPED SHARING, OFFLINE CACHE
+  // 5. MODALS: SMART QUEUE, SCOPED SHARING, OFFLINE CACHE & THEME SWITCHER
   // ============================================================================
+  function syncThreeSceneThemes(theme) {
+    if (!window.THREE) return;
+    const isDark = theme === "dark";
+    const bgHex = isDark ? 0x0b1120 : 0xe2e8f0;
+    const studioBgHex = isDark ? 0x0b0f19 : 0xe2e8f0;
+    const cmpLeftHex = isDark ? 0x0d1829 : 0xdbe4f0;
+    const cmpRightHex = isDark ? 0x091322 : 0xe2e8f0;
+    const gridMain = isDark ? 0x334155 : 0x94a3b8;
+    const gridSub = isDark ? 0x1e293b : 0xcbd5e1;
+
+    if (previewThree && previewThree.scene) {
+      previewThree.scene.background = new THREE.Color(bgHex);
+      if (previewThree.grid && previewThree.grid.material) {
+        const mats = Array.isArray(previewThree.grid.material) ? previewThree.grid.material : [previewThree.grid.material];
+        if (mats[0]?.color) mats[0].color.setHex(gridMain);
+        if (mats[1]?.color) mats[1].color.setHex(gridSub);
+      }
+    }
+
+    if (studioThree && studioThree.scene) {
+      studioThree.scene.background = new THREE.Color(studioBgHex);
+      if (studioThree.grid && studioThree.grid.material) {
+        const mats = Array.isArray(studioThree.grid.material) ? studioThree.grid.material : [studioThree.grid.material];
+        if (mats[0]?.color) mats[0].color.setHex(gridMain);
+        if (mats[1]?.color) mats[1].color.setHex(gridSub);
+      }
+    }
+
+    if (compareCtx) {
+      if (compareCtx.left?.scene) compareCtx.left.scene.background = new THREE.Color(cmpLeftHex);
+      if (compareCtx.right?.scene) compareCtx.right.scene.background = new THREE.Color(cmpRightHex);
+      [compareCtx.left, compareCtx.right].forEach((side) => {
+        if (side?.grid && side.grid.material) {
+          const mats = Array.isArray(side.grid.material) ? side.grid.material : [side.grid.material];
+          if (mats[0]?.color) mats[0].color.setHex(gridMain);
+          if (mats[1]?.color) mats[1].color.setHex(gridSub);
+        }
+      });
+    }
+  }
+
+  async function applyTheme(pref, persistToServer = false) {
+    const normalizedPref = ["auto", "light", "dark"].includes(String(pref || "").toLowerCase())
+      ? String(pref).toLowerCase()
+      : "auto";
+    STATE.themePreference = normalizedPref;
+    const resolved = resolveThemeFromPreference(normalizedPref);
+    STATE.resolvedTheme = resolved;
+
+    document.documentElement.setAttribute("data-theme", resolved);
+    document.documentElement.setAttribute("data-theme-pref", normalizedPref);
+    try {
+      localStorage.setItem("gs_theme_pref", normalizedPref);
+    } catch (_) {}
+
+    document.querySelectorAll("#themeModeSwitcher .btn-seg").forEach((btn) => {
+      btn.classList.toggle("active", btn.dataset.themePref === normalizedPref);
+    });
+
+    const subEl = document.getElementById("lblThemeStatusSub");
+    if (subEl) {
+      if (normalizedPref === "auto") {
+        const nowStr = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+        subEl.textContent = `Auto by Time of Day (${nowStr} → Currently ${resolved === "dark" ? "Dark" : "Light"} · 06:00–18:00 Light)`;
+      } else if (normalizedPref === "light") {
+        subEl.textContent = "Locked to Light Theme across all views & 3D canvases";
+      } else {
+        subEl.textContent = "Locked to Dark Theme across all views & 3D canvases";
+      }
+    }
+
+    syncThreeSceneThemes(resolved);
+
+    if (persistToServer && STATE.currentUser?.email) {
+      await apiPost("/api/user/settings", {
+        user_email: STATE.currentUser.email,
+        user_name: STATE.currentUser.name || "Engineer",
+        offline_cache_enabled: STATE.currentUser.offlineCacheEnabled !== false,
+        theme_preference: normalizedPref,
+      }).catch(() => {});
+    }
+  }
+
   function openModal(id) {
     document.getElementById(id)?.classList.add("active");
   }
@@ -3799,12 +3904,25 @@
     btn.addEventListener("click", () => closeModal(btn.dataset.closeModal));
   });
 
+  document.querySelectorAll("#themeModeSwitcher .btn-seg").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const pref = btn.dataset.themePref || "auto";
+      await applyTheme(pref, true);
+      const labelMap = {
+        auto: `Theme set to Auto (${STATE.resolvedTheme === "dark" ? "Dark" : "Light"} by time of day)`,
+        light: "Theme switched to Light Mode",
+        dark: "Theme switched to Dark Mode",
+      };
+      showToast(labelMap[pref] || "Updated theme preference");
+    });
+  });
+
   // 5A. PIX4Dmatic Smart Queue Modal
   async function openQueueModal() {
     openModal("modalQueue");
     const tbody = document.getElementById("queueTableBody");
     if (!tbody) return;
-    tbody.innerHTML = `<tr><td colspan="8" style="color:#64748b;">Loading...</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="8" style="color:var(--ui-text-muted);">Loading...</td></tr>`;
     try {
       const qData = await apiGet("/api/queue/status");
       document.getElementById("lblQueueInboxDir").textContent = qData.inbox_dir;
@@ -3816,12 +3934,12 @@
       STATE.scans.forEach((s) => {
         const tr = document.createElement("tr");
         tr.innerHTML = `
-          <td><b style="color:#0f172a;">${s.name}</b><br><span style="font-size:10.5px;color:#64748b;">${s.scan_id}</span></td>
-          <td style="color:#475569;">${s.project_group}</td>
-          <td><span style="color:#0f172a;font-weight:600;">${s.uploader_name}</span><br><span style="font-size:10.5px;color:#64748b;">${s.uploader_email} · ${s.capture_date}</span></td>
-          <td><span style="color:#0f172a;font-weight:600;">${s.image_count} imgs</span><br><span style="font-size:10.5px;color:#64748b;">${s.size_mb} MB</span></td>
+          <td><b style="color:var(--ui-text-primary);">${s.name}</b><br><span style="font-size:10.5px;color:var(--ui-text-muted);">${s.scan_id}</span></td>
+          <td style="color:var(--ui-text-secondary);">${s.project_group}</td>
+          <td><span style="color:var(--ui-text-primary);font-weight:600;">${s.uploader_name}</span><br><span style="font-size:10.5px;color:var(--ui-text-muted);">${s.uploader_email} · ${s.capture_date}</span></td>
+          <td><span style="color:var(--ui-text-primary);font-weight:600;">${s.image_count} imgs</span><br><span style="font-size:10.5px;color:var(--ui-text-muted);">${s.size_mb} MB</span></td>
           <td><span class="gs-crs-pill">${s.crs} · ${s.texture_resolution}px</span></td>
-          <td style="font-family:monospace;font-weight:700;color:#0f172a;">${s.priority_score}</td>
+          <td style="font-family:monospace;font-weight:700;color:var(--ui-text-primary);">${s.priority_score}</td>
           <td><span class="gs-crs-pill">${s.status.toUpperCase()}</span></td>
           <td>
             <button type="button" class="btn-xs" data-gst="${s.scan_id}" title="Preview .GST Script">
@@ -3835,7 +3953,7 @@
         tbody.appendChild(tr);
       });
     } catch (err) {
-      tbody.innerHTML = `<tr><td colspan="8" style="color:#475569;">${err.message}</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="8" style="color:var(--ui-text-secondary);">${err.message}</td></tr>`;
     }
   }
 
@@ -3914,7 +4032,7 @@
       const links = res.links || [];
       tbody.innerHTML = "";
       if (!links.length) {
-        tbody.innerHTML = `<tr><td colspan="7" style="color:#64748b;">No external share links created yet.</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="7" style="color:var(--ui-text-muted);">No external share links created yet.</td></tr>`;
         return;
       }
       links.forEach((l) => {
@@ -3928,14 +4046,14 @@
           .join(", ");
         const localUrl = `${window.location.origin}/?share=${l.token}`;
         tr.innerHTML = `
-          <td><b style="color:#0f172a;">${l.label}</b></td>
+          <td><b style="color:var(--ui-text-primary);">${l.label}</b></td>
           <td><span class="gs-crs-pill">${l.scope_type.toUpperCase()}: ${l.target_id}</span></td>
-          <td><code style="color:#0284c7;font-size:11px;">/s/${l.token}</code></td>
-          <td style="font-size:11px;color:#475569;">${perms || "View"}</td>
-          <td style="color:#0f172a;font-weight:600;">${l.view_count}</td>
+          <td><code style="color:var(--ui-accent);font-size:11px;">/s/${l.token}</code></td>
+          <td style="font-size:11px;color:var(--ui-text-secondary);">${perms || "View"}</td>
+          <td style="color:var(--ui-text-primary);font-weight:600;">${l.view_count}</td>
           <td>${
             l.revoked
-              ? '<span style="color:#64748b;font-weight:700;">REVOKED</span>'
+              ? '<span style="color:var(--ui-text-muted);font-weight:700;">REVOKED</span>'
               : '<span class="gs-crs-pill">ACTIVE</span>'
           }</td>
           <td style="display:flex;gap:5px;justify-content:flex-end;">
@@ -3976,7 +4094,7 @@
         tbody.appendChild(tr);
       });
     } catch (err) {
-      tbody.innerHTML = `<tr><td colspan="7" style="color:#475569;">${err.message}</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="7" style="color:var(--ui-text-secondary);">${err.message}</td></tr>`;
     }
   }
 
@@ -4004,9 +4122,10 @@
     }
   });
 
-  // 5C. Client-Side Offline Cache Modal (Requirement 5)
+  // 5C. Client-Side Offline Cache & User Settings Modal (Requirement 5)
   async function openOfflineCacheModal() {
     openModal("modalOfflineCache");
+    await applyTheme(STATE.themePreference, false);
     const tbody = document.getElementById("offlineCacheTableBody");
     if (!tbody) return;
     tbody.innerHTML = "";
@@ -4014,13 +4133,13 @@
       const isCached = STATE.cachedScanIds.has(s.scan_id);
       const tr = document.createElement("tr");
       tr.innerHTML = `
-        <td><b style="color:#0f172a;">${s.name}</b></td>
-        <td style="color:#475569;">${s.project_group}</td>
+        <td><b style="color:var(--ui-text-primary);">${s.name}</b></td>
+        <td style="color:var(--ui-text-secondary);">${s.project_group}</td>
         <td><span class="gs-crs-pill">${s.crs}</span></td>
         <td>${
           isCached
             ? '<span class="gs-crs-pill">Cached</span>'
-            : '<span style="color:#64748b;">Uncached</span>'
+            : '<span style="color:var(--ui-text-muted);">Uncached</span>'
         }</td>
         <td>
           <button type="button" class="btn-xs primary" data-cache-scan="${s.scan_id}" title="${isCached ? "Refresh Browser Cache" : "Cache in Browser"}">
@@ -4056,6 +4175,17 @@
   }
 
   document.getElementById("btnOpenOfflineCache")?.addEventListener("click", openOfflineCacheModal);
+  document.getElementById("chkEnableOfflineCache")?.addEventListener("change", async (e) => {
+    const enabled = Boolean(e.target.checked);
+    STATE.currentUser.offlineCacheEnabled = enabled;
+    await apiPost("/api/user/settings", {
+      user_email: STATE.currentUser.email,
+      user_name: STATE.currentUser.name || "Engineer",
+      offline_cache_enabled: enabled,
+      theme_preference: STATE.themePreference,
+    }).catch(() => {});
+    showToast(enabled ? "Enabled Browser Offline Caching" : "Disabled Browser Offline Caching");
+  });
   document.getElementById("btnToggleSimulatedOffline")?.addEventListener("click", async () => {
     const newOffline = STATE.pcOnline;
     const res = await apiPost("/api/pc/simulate-offline", { offline: newOffline });
@@ -4128,7 +4258,7 @@
     if (lblUser) {
       lblUser.textContent = STATE.currentUser.name || STATE.currentUser.email || "Guest";
     }
-    const btnUser = document.getElementById("btnGoogleUser");
+    const btnUser = document.getElementById("btnGoogleUser") || document.getElementById("btnCurrentUserProfile");
     if (btnUser) {
       btnUser.title = `${STATE.currentUser.name || "User"} (${STATE.currentUser.email || ""}) — Click to switch Google OAuth account`;
     }
@@ -4233,20 +4363,20 @@
       card.type = "button";
       card.style.cssText = `
         display:flex;align-items:center;gap:10px;padding:9px 11px;border-radius:10px;
-        border:1.5px solid ${isCurrent ? "#0284c7" : "#e2e8f0"};
-        background:${isCurrent ? "#f0f9ff" : "#ffffff"};
+        border:1.5px solid ${isCurrent ? "var(--ui-accent)" : "var(--ui-border)"};
+        background:${isCurrent ? "var(--ui-accent-soft)" : "var(--ui-bg-surface)"};
         cursor:pointer;text-align:left;width:100%;transition:all 0.14s ease;
       `;
       card.innerHTML = `
         ${
           picUrl
             ? `<img src="${picUrl}" alt="" style="width:32px;height:32px;border-radius:50%;object-fit:cover;flex-shrink:0;" />`
-            : `<div style="width:32px;height:32px;border-radius:50%;background:${isCurrent ? "#0284c7" : "#334155"};color:#ffffff;font-size:11.5px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;">${initials}</div>`
+            : `<div style="width:32px;height:32px;border-radius:50%;background:${isCurrent ? "var(--ui-accent)" : "#334155"};color:#ffffff;font-size:11.5px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;">${initials}</div>`
         }
         <div style="overflow:hidden;flex:1;">
-          <div style="font-size:12.5px;font-weight:700;color:#0f172a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${u.name}</div>
-          <div style="font-size:10.5px;color:#0284c7;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${u.email}</div>
-          <div style="font-size:10px;color:#64748b;">${u.role_label || u.role || "Team Member"}</div>
+          <div style="font-size:12.5px;font-weight:700;color:var(--ui-text-primary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${u.name}</div>
+          <div style="font-size:10.5px;color:var(--ui-accent);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${u.email}</div>
+          <div style="font-size:10px;color:var(--ui-text-muted);">${u.role_label || u.role || "Team Member"}</div>
         </div>
       `;
       card.addEventListener("click", async () => {
@@ -4277,12 +4407,12 @@
         btnContainer.innerHTML = "";
         window.google.accounts.id.renderButton(btnContainer, {
           type: "standard",
-          theme: "outline",
+          theme: STATE.resolvedTheme === "dark" ? "filled_black" : "outline",
           size: "large",
           text: "signin_with",
           shape: "rectangular",
           logo_alignment: "left",
-          width: 280,
+          width: 260,
         });
       } catch (e) {
         console.warn("[GatheringScans] Google Identity Services render note:", e);
@@ -4305,7 +4435,7 @@
 
     const msgEl = document.getElementById("googleAuthMessage");
     if (msgEl) {
-      msgEl.style.color = "#0284c7";
+      msgEl.style.color = "var(--ui-accent)";
       msgEl.textContent = "Verifying Google Workspace OAuth credential...";
     }
 
@@ -4323,7 +4453,7 @@
       applyUserProfileToUI(verifiedUser);
       renderTeamProfilesGrid();
       if (msgEl) {
-        msgEl.style.color = "#0284c7";
+        msgEl.style.color = "var(--ui-accent)";
         msgEl.innerHTML = `Verified Google Account: <b>${verifiedUser.name}</b> (${verifiedUser.email})`;
       }
       showToast(`Signed in with Google OAuth as ${verifiedUser.name} (${verifiedUser.email})`);
@@ -4354,6 +4484,9 @@
   window.checkUserProfileGate = openUserProfileGateModal;
 
   document.getElementById("btnGoogleUser")?.addEventListener("click", () => {
+    openUserProfileGateModal();
+  });
+  document.getElementById("btnCurrentUserProfile")?.addEventListener("click", () => {
     openUserProfileGateModal();
   });
   document.getElementById("btnCloseAuthGateModal")?.addEventListener("click", () => {
@@ -4592,6 +4725,9 @@
         STATE.pcOnline = data.pc_online;
         updatePcStatusUI();
       }
+      if (data.user_settings && data.user_settings.theme_preference && !localStorage.getItem("gs_theme_pref")) {
+        await applyTheme(data.user_settings.theme_preference, false);
+      }
 
       if (data.mode === "external_share" && data.share_link) {
         STATE.shareLinkInfo = data.share_link;
@@ -4645,13 +4781,13 @@
     } catch (err) {
       if (!STATE.scans || STATE.scans.length === 0) {
         document.body.innerHTML = `
-          <div style="display:flex;align-items:center;justify-content:center;height:100vh;background:#f8fafc;color:#0f172a;font-family:sans-serif;padding:24px;">
-            <div style="max-width:480px;background:#ffffff;border:1px solid #cbd5e1;border-radius:12px;padding:24px;text-align:center;box-shadow:0 12px 32px rgba(15,23,42,0.08);">
-              <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="#0284c7" stroke-width="1.8" style="margin-bottom:10px;">
+          <div style="display:flex;align-items:center;justify-content:center;height:100vh;background:var(--ui-bg-subtle);color:var(--ui-text-primary);font-family:sans-serif;padding:24px;">
+            <div style="max-width:480px;background:var(--ui-bg-surface);border:1px solid var(--ui-border-strong);border-radius:12px;padding:24px;text-align:center;box-shadow:var(--ui-shadow-window);">
+              <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="var(--ui-accent)" stroke-width="1.8" style="margin-bottom:10px;">
                 <rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>
               </svg>
-              <h2 style="font-size:17px;color:#0f172a;">Access Restricted or Link Revoked</h2>
-              <p style="font-size:13px;color:#475569;margin-top:8px;">${err.message}</p>
+              <h2 style="font-size:17px;color:var(--ui-text-primary);">Access Restricted or Link Revoked</h2>
+              <p style="font-size:13px;color:var(--ui-text-secondary);margin-top:8px;">${err.message}</p>
             </div>
           </div>
         `;
@@ -4659,8 +4795,9 @@
     }
   }
 
-  // Bootstrap Application & Live Folder Sync
+  // Bootstrap Application, Theme Engine (Default: Time of Day Auto) & Live Folder Sync
   window.addEventListener("DOMContentLoaded", async () => {
+    await applyTheme(STATE.themePreference, false);
     applyUserProfileToUI(STATE.currentUser);
     loadTeamUserProfiles();
     await refreshScansCatalog(false);
@@ -4669,10 +4806,19 @@
       switchView("studio", urlScan);
     }
     window.addEventListener("focus", () => {
-      refreshScansCatalog( true);
+      refreshScansCatalog(true);
+      if (STATE.themePreference === "auto") {
+        applyTheme("auto", false);
+      }
     });
     setInterval(() => {
       refreshScansCatalog(true);
     }, 12000);
+    setInterval(() => {
+      if (STATE.themePreference === "auto") {
+        applyTheme("auto", false);
+      }
+    }, 60000);
   });
 })();
+

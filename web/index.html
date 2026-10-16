@@ -66,10 +66,10 @@
         </svg>
       </button>
 
-      <button type="button" class="gs-top-btn" id="btnOpenOfflineCache" title="Client-Side Browser Offline Cache &amp; User Settings">
+      <button type="button" class="gs-top-btn" id="btnOpenOfflineCache" title="Settings, Theme Appearance &amp; Client-Side Offline Cache">
         <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8">
-          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-          <polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+          <circle cx="12" cy="12" r="3"/>
+          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
         </svg>
       </button>
 
@@ -85,12 +85,12 @@
 
   <!-- Scoped External Guest Share Banner (Visible when accessing via ?share=<token>) -->
   <div class="gs-share-banner" id="externalShareBanner">
-    <div style="display:flex;align-items:center;gap:8px;">
-      <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8">
+    <div style="display:flex;align-items:center;gap:8px;min-width:0;flex:1;">
+      <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" style="flex-shrink:0;">
         <rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>
       </svg>
       <strong>Scoped Share View:</strong>
-      <span id="lblExternalShareScope">Viewing authorized scan scope only. Other system scans are hidden.</span>
+      <span id="lblExternalShareScope" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">Viewing authorized scan scope only. Other system scans are hidden.</span>
     </div>
     <button type="button" class="btn-xs" id="btnExitExternalPreview" style="display:none;" title="Exit Guest Preview">Exit</button>
   </div>
@@ -107,23 +107,23 @@
       <!-- Top-Left Map HUD (Scalable for 100+ Projects) -->
       <div class="gs-map-hud-top">
         <div class="gs-map-card">
-          <div style="display:flex;justify-content:space-between;align-items:center;">
-            <span style="font-size:13px;font-weight:700;color:#0f172a;display:flex;align-items:center;gap:6px;">
-              <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="#0284c7" stroke-width="2">
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
+            <span style="font-size:13px;font-weight:700;color:var(--ui-text-primary);display:flex;align-items:center;gap:6px;">
+              <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="var(--ui-accent)" stroke-width="2">
                 <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/>
               </svg>
               <span>Scan Clusters (TWD97)</span>
             </span>
             <span class="gs-crs-pill" id="lblMapClusterCount">0 Sites</span>
           </div>
-          <p style="font-size:11.5px;color:#475569;margin-top:6px;line-height:1.45;">
+          <p class="gs-map-desc" style="font-size:11.5px;color:var(--ui-text-secondary);margin-top:6px;line-height:1.45;">
             Search or select any project site to inspect grouped scans by date, open in 3D Studio, compare dates, or export reports.
           </p>
 
           <!-- Scalable Search + Project Dropdown (Supports 100+ Projects) -->
-          <div style="margin-top:9px;display:flex;flex-direction:column;gap:6px;">
+          <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px;">
             <div style="position:relative;display:flex;align-items:center;">
-              <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="#64748b" stroke-width="2" style="position:absolute;left:9px;pointer-events:none;">
+              <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="var(--ui-text-muted)" stroke-width="2" style="position:absolute;left:9px;pointer-events:none;">
                 <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
               </svg>
               <input
@@ -135,8 +135,8 @@
               />
             </div>
 
-            <div style="display:flex;align-items:center;gap:6px;">
-              <select class="gs-select" id="mapProjectSelect" title="Select Project Site (Scalable across 100+ Projects)" style="flex:1;font-weight:600;"></select>
+            <div class="gs-map-controls-row" style="display:flex;align-items:center;gap:6px;">
+              <select class="gs-select" id="mapProjectSelect" title="Select Project Site (Scalable across 100+ Projects)" style="flex:1;min-width:0;font-weight:600;"></select>
               <button type="button" class="btn-xs primary" id="btnOpenSelectedProjectTimeline" title="Open Selected Project Timeline &amp; 3D Preview">
                 <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2">
                   <polyline points="9 18 15 12 9 6"/>
@@ -149,7 +149,7 @@
             </div>
           </div>
 
-          <div style="margin-top:10px;padding-top:8px;border-top:1px solid #e2e8f0;font-size:11px;font-family:monospace;color:#475569;" id="mapCursorCoords">
+          <div class="gs-map-coords-bar" style="margin-top:8px;padding-top:7px;border-top:1px solid var(--ui-border);font-size:11px;font-family:monospace;color:var(--ui-text-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" id="mapCursorCoords">
             TWD97(121) E: 304,952.7m | N: 2,757,084.9m | TWVD2001
           </div>
         </div>
@@ -157,12 +157,12 @@
 
       <!-- Hover / Click Selection Popover for Grouped Scans -->
       <div class="gs-cluster-popover" id="clusterHoverPopover">
-        <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #e2e8f0;padding-bottom:10px;">
-          <div>
-            <div style="font-size:14px;font-weight:700;color:#0f172a;" id="popoverGroupTitle">Project Site</div>
-            <div style="font-size:11px;color:#64748b;margin-top:2px;" id="popoverGroupSubtitle">TWD97 (121) + TWVD2001</div>
+        <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--ui-border);padding-bottom:10px;gap:8px;">
+          <div style="min-width:0;flex:1;">
+            <div style="font-size:14px;font-weight:700;color:var(--ui-text-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" id="popoverGroupTitle">Project Site</div>
+            <div style="font-size:11px;color:var(--ui-text-muted);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" id="popoverGroupSubtitle">TWD97 (121) + TWVD2001</div>
           </div>
-          <div style="display:flex;gap:5px;">
+          <div style="display:flex;gap:5px;flex-shrink:0;">
             <button type="button" class="btn-xs primary" id="btnPopoverCompareGroup" title="Compare Dates in Multi-Date Slider">
               <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8">
                 <rect x="3" y="3" width="18" height="18" rx="2"/><line x1="12" y1="3" x2="12" y2="21"/>
@@ -195,11 +195,11 @@
                   <line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/>
                 </svg>
               </button>
-              <div>
-                <div style="display:flex;align-items:center;gap:8px;">
+              <div style="min-width:0;flex:1;">
+                <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
                   <span class="gs-timeline-site-title" id="timelineSiteTitle">Project Site</span>
                   <span class="gs-crs-pill" id="timelineSiteCountPill">0 Scans</span>
-                  <span class="gs-crs-pill" style="background:#f1f5f9;color:#475569;border-color:#cbd5e1;">TWD97 (121) + TWVD2001</span>
+                  <span class="gs-crs-pill gs-timeline-crs-extra">TWD97 (121) + TWVD2001</span>
                 </div>
                 <div class="gs-timeline-site-sub" id="timelineSiteSubtitle">Select a scan tile to preview below</div>
               </div>
@@ -251,16 +251,16 @@
 
           <!-- Top-Left Preview Scan Metadata Pill -->
           <div class="gs-preview-hud-top-left" id="sitePreviewHudBadge">
-            <div class="gs-active-scan-pill" style="gap:10px;">
-              <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="#0284c7" stroke-width="1.8" style="flex-shrink:0;">
+            <div class="gs-active-scan-pill gs-preview-scan-pill">
+              <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="var(--ui-accent)" stroke-width="1.8" style="flex-shrink:0;">
                 <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
               </svg>
-              <div>
-                <div style="font-size:12.5px;font-weight:700;color:#0f172a;" id="previewScanTitle">3D Mesh Preview</div>
-                <div style="font-size:11px;color:#475569;font-family:monospace;" id="previewScanMeta">TWD97 (121) + TWVD2001</div>
+              <div class="gs-preview-text-wrap">
+                <div style="font-size:12.5px;font-weight:700;color:var(--ui-text-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" id="previewScanTitle">3D Mesh Preview</div>
+                <div style="font-size:11px;color:var(--ui-text-secondary);font-family:monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" id="previewScanMeta">TWD97 (121) + TWVD2001</div>
               </div>
               <div class="gs-brightness-control" title="Preview Scan Brightness (0.1x – 4.0x)">
-                <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="#475569" stroke-width="1.8">
+                <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="var(--ui-text-secondary)" stroke-width="1.8">
                   <circle cx="12" cy="12" r="5"/>
                   <line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/>
                   <line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/>
@@ -315,19 +315,19 @@
 
       <!-- Studio Top Bar -->
       <div class="gs-studio-top-bar">
-        <div class="gs-active-scan-pill">
+        <div class="gs-active-scan-pill gs-studio-main-pill">
           <button type="button" class="btn-xs" id="btnStudioBackToTimeline" title="Back to Site Timeline &amp; Preview">
             <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
               <line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/>
             </svg>
           </button>
-          <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="#0284c7" stroke-width="1.8" style="flex-shrink:0;">
+          <svg class="gs-studio-cube-icon" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="var(--ui-accent)" stroke-width="1.8" style="flex-shrink:0;">
             <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
           </svg>
           <select class="gs-scan-select" id="studioProjectSelect" title="Select Project Site (Scalable across 100+ Projects)"></select>
           <span class="gs-crs-pill" id="studioProjectGroupBadge" style="display:none;"></span>
           <select class="gs-scan-select" id="studioScanSelect" title="Select Active 3D Scan (Current Project Only)"></select>
-          <div style="border-left:1px solid #cbd5e1;padding-left:10px;font-size:11px;font-family:monospace;color:#475569;" id="studioScanMetrics">
+          <div class="gs-studio-metrics-text" style="border-left:1px solid var(--ui-border-strong);padding-left:10px;font-size:11px;font-family:monospace;color:var(--ui-text-secondary);" id="studioScanMetrics">
             TWD97 · TWVD2001 · 2K
           </div>
 
@@ -367,8 +367,8 @@
           </button>
         </div>
 
-        <div class="gs-active-scan-pill" style="gap:8px;">
-          <span style="font-size:11px;font-family:monospace;color:#0f172a;font-weight:600;" id="lblLastPickedCoord">
+        <div class="gs-active-scan-pill gs-studio-coord-pill" style="gap:8px;">
+          <span style="font-size:11px;font-family:monospace;color:var(--ui-text-primary);font-weight:600;" id="lblLastPickedCoord">
             E: 304952.66m, N: 2757084.88m, H: +43.18m
           </span>
         </div>
@@ -610,33 +610,33 @@
 
       <!-- Compare Top HUD -->
       <div class="gs-compare-hud">
-        <div class="gs-epoch-badge">
+        <div class="gs-epoch-badge gs-compare-project-badge">
           <select class="gs-scan-select" id="compareProjectSelect" title="Select Project Site (Scalable across 100+ Projects)"></select>
           <span class="gs-crs-pill" id="compareProjectGroupBadge" style="display:none;"></span>
-          <span style="font-size:11px;font-weight:700;color:#475569;">BASELINE</span>
+          <span style="font-size:11px;font-weight:700;color:var(--ui-text-secondary);white-space:nowrap;">BASELINE</span>
           <select class="gs-scan-select" id="compareLeftSelect"></select>
         </div>
 
-        <div class="gs-epoch-badge" style="gap:12px;">
-          <label style="display:flex;align-items:center;gap:6px;font-size:12px;font-weight:600;color:#0f172a;cursor:pointer;">
+        <div class="gs-epoch-badge gs-compare-heatmap-badge" style="gap:12px;">
+          <label style="display:flex;align-items:center;gap:6px;font-size:12px;font-weight:600;color:var(--ui-text-primary);cursor:pointer;">
             <input type="checkbox" id="chkDeltaZHeatmap" style="accent-color:#0284c7;" />
             <span>ΔZ Elevation Heatmap</span>
           </label>
-          <span style="font-size:11px;color:#64748b;font-family:monospace;" id="lblCurtainPct">50%</span>
+          <span style="font-size:11px;color:var(--ui-text-muted);font-family:monospace;" id="lblCurtainPct">50%</span>
         </div>
 
-        <div class="gs-epoch-badge">
-          <span style="font-size:11px;font-weight:700;color:#0284c7;">LATEST</span>
+        <div class="gs-epoch-badge gs-compare-latest-badge">
+          <span style="font-size:11px;font-weight:700;color:var(--ui-accent);white-space:nowrap;">LATEST</span>
           <select class="gs-scan-select" id="compareRightSelect"></select>
         </div>
       </div>
 
       <!-- Bottom ΔZ Elevation Change Scale Legend -->
       <div class="gs-compare-legend">
-        <span style="color:#475569;">TWVD2001 ΔZ:</span>
+        <span style="color:var(--ui-text-secondary);">TWVD2001 ΔZ:</span>
         <span>-1.5m Cut</span>
-        <div style="width:130px;height:8px;border-radius:999px;background:linear-gradient(90deg, #0284c7 0%, #38bdf8 45%, #0f172a 100%);border:1px solid #cbd5e1;"></div>
-        <span style="color:#0284c7;">+3.2m Fill (+230.6 m³)</span>
+        <div class="gs-compare-legend-bar" style="width:130px;height:8px;border-radius:999px;background:linear-gradient(90deg, #0284c7 0%, #38bdf8 45%, #0f172a 100%);border:1px solid var(--ui-border-strong);"></div>
+        <span style="color:var(--ui-accent);">+3.2m Fill (+230.6 m³)</span>
       </div>
     </section>
 
@@ -649,7 +649,7 @@
     <div class="gs-modal" style="max-width:880px;">
       <div class="gs-panel-header">
         <div class="gs-panel-title">
-          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="#0284c7" stroke-width="2">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="var(--ui-accent)" stroke-width="2">
             <rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/>
           </svg>
           <span>PIX4Dmatic 2.11.0 Automated Worker &amp; Smart Priority Queue</span>
@@ -661,14 +661,14 @@
         </button>
       </div>
 
-      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:10px;">
+      <div class="gs-modal-metrics-grid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:10px;">
         <div class="gs-metric-box">
           <div class="lbl">Google Drive Inbox Folder</div>
-          <div class="val" style="font-size:12px;" id="lblQueueInboxDir">G:\Shared drives\6.軟體\3. GatheringScans</div>
+          <div class="val" style="font-size:12px;word-break:break-all;" id="lblQueueInboxDir">G:\Shared drives\6.軟體\3. GatheringScans</div>
         </div>
         <div class="gs-metric-box">
           <div class="lbl">Mandatory PIX4Dmatic Output CRS</div>
-          <div class="val" style="font-size:12.5px;color:#0284c7;">TWD97 (121) + TWVD2001</div>
+          <div class="val" style="font-size:12.5px;color:var(--ui-accent);">TWD97 (121) + TWVD2001</div>
         </div>
         <div class="gs-metric-box">
           <div class="lbl">Texture &amp; Storage Policy</div>
@@ -676,15 +676,15 @@
         </div>
       </div>
 
-      <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:8px 12px;margin-bottom:10px;display:flex;align-items:center;justify-content:space-between;gap:10px;">
-        <div style="font-size:11.5px;font-weight:600;color:#475569;white-space:nowrap;">Google Chat Space Webhook:</div>
-        <input type="text" class="gs-input" id="inputGChatWebhookUrl" placeholder="https://chat.googleapis.com/v1/spaces/.../messages?key=...&amp;token=..." style="flex:1;font-family:monospace;font-size:11px;" />
+      <div class="gs-webhook-bar" style="background:var(--ui-bg-subtle);border:1px solid var(--ui-border);border-radius:8px;padding:8px 12px;margin-bottom:10px;display:flex;align-items:center;justify-content:space-between;gap:10px;">
+        <div style="font-size:11.5px;font-weight:600;color:var(--ui-text-secondary);white-space:nowrap;">Google Chat Space Webhook:</div>
+        <input type="text" class="gs-input" id="inputGChatWebhookUrl" placeholder="https://chat.googleapis.com/v1/spaces/.../messages?key=...&amp;token=..." style="flex:1;font-family:monospace;font-size:11px;min-width:0;" />
         <button type="button" class="btn-xs primary" id="btnSaveGChatWebhook" title="Save Google Chat Space Webhook URL">Save</button>
       </div>
 
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;gap:12px;">
-        <div style="font-size:11.5px;color:#475569;">
-          Priority formula <code style="color:#0284c7;background:#f1f5f9;padding:2px 6px;border-radius:4px;border:1px solid #cbd5e1;">Score = (1000 / N<sub>imgs</sub><sup>0.65</sup>) + (1.5 × t<sub>wait</sub><sup>1.15</sup>)</code> with anti-starvation lock after <b>3 bypasses</b> or <b>90m wait</b>.
+      <div class="gs-queue-actions-bar" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;gap:12px;">
+        <div style="font-size:11.5px;color:var(--ui-text-secondary);">
+          Priority formula <code style="color:var(--ui-accent);background:var(--ui-bg-subtle);padding:2px 6px;border-radius:4px;border:1px solid var(--ui-border-strong);">Score = (1000 / N<sub>imgs</sub><sup>0.65</sup>) + (1.5 × t<sub>wait</sub><sup>1.15</sup>)</code> with anti-starvation lock after <b>3 bypasses</b> or <b>90m wait</b>.
         </div>
         <div style="display:flex;gap:6px;flex-shrink:0;">
           <button type="button" class="btn-xs primary" id="btnRescanGDriveInbox" title="Rescan G:\Shared drives\6.軟體\3. GatheringScans">
@@ -709,13 +709,13 @@
       </div>
 
       <div id="gstScriptPreviewBox" style="display:none;margin-bottom:12px;">
-        <div style="font-size:11px;font-weight:700;color:#475569;margin-bottom:4px;">
+        <div style="font-size:11px;font-weight:700;color:var(--ui-text-secondary);margin-bottom:4px;">
           PIX4Dmatic 2.11.0 Headless .GST Script (TWD97 (121) [EPSG:3826] + TWVD2001 [EPSG:8904] &amp; 2048px Textures):
         </div>
-        <pre id="gstScriptCode" style="background:#f8fafc;border:1px solid #cbd5e1;padding:10px 12px;border-radius:8px;font-size:10.5px;color:#0f172a;max-height:170px;overflow:auto;line-height:1.4;"></pre>
+        <pre id="gstScriptCode" style="background:var(--ui-bg-subtle);border:1px solid var(--ui-border-strong);padding:10px 12px;border-radius:8px;font-size:10.5px;color:var(--ui-text-primary);max-height:170px;overflow:auto;line-height:1.4;"></pre>
       </div>
 
-      <div style="max-height:300px;overflow-y:auto;border:1px solid #e2e8f0;border-radius:8px;">
+      <div class="gs-table-scroll-wrap" style="max-height:300px;overflow:auto;border:1px solid var(--ui-border);border-radius:8px;">
         <table class="gs-table">
           <thead>
             <tr>
@@ -742,7 +742,7 @@
     <div class="gs-modal">
       <div class="gs-panel-header">
         <div class="gs-panel-title">
-          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="#0284c7" stroke-width="2">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="var(--ui-accent)" stroke-width="2">
             <circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/>
             <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/>
           </svg>
@@ -755,12 +755,12 @@
         </button>
       </div>
 
-      <p style="font-size:12px;color:#475569;margin-bottom:12px;">
+      <p style="font-size:12px;color:var(--ui-text-secondary);margin-bottom:12px;">
         External viewers with a share link can <strong>only</strong> view the specific scan or project group granted below. Access can be revoked immediately at any time.
       </p>
 
-      <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:12px 14px;margin-bottom:14px;">
-        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;">
+      <div style="background:var(--ui-bg-subtle);border:1px solid var(--ui-border);border-radius:10px;padding:12px 14px;margin-bottom:14px;">
+        <div class="gs-share-form-grid" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;">
           <div class="gs-form-group" style="margin-bottom:6px;">
             <label>Scope Type</label>
             <select class="gs-select" id="shareScopeType">
@@ -777,11 +777,11 @@
             <input type="text" class="gs-input" id="shareLabelInput" value="External Consultant Review" />
           </div>
         </div>
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px;">
-          <div style="display:flex;gap:16px;font-size:11.5px;color:#475569;">
-            <label><input type="checkbox" id="shareAllowMeasure" checked style="accent-color:#0284c7;" /> Measurements</label>
-            <label><input type="checkbox" id="shareAllowComments" checked style="accent-color:#0284c7;" /> Comments</label>
-            <label><input type="checkbox" id="shareAllowDownload" style="accent-color:#0284c7;" /> .OBJ Download</label>
+        <div class="gs-share-perms-bar" style="display:flex;justify-content:space-between;align-items:center;margin-top:6px;gap:8px;flex-wrap:wrap;">
+          <div style="display:flex;gap:14px;font-size:11.5px;color:var(--ui-text-secondary);flex-wrap:wrap;">
+            <label style="display:flex;align-items:center;gap:4px;"><input type="checkbox" id="shareAllowMeasure" checked style="accent-color:#0284c7;" /> Measurements</label>
+            <label style="display:flex;align-items:center;gap:4px;"><input type="checkbox" id="shareAllowComments" checked style="accent-color:#0284c7;" /> Comments</label>
+            <label style="display:flex;align-items:center;gap:4px;"><input type="checkbox" id="shareAllowDownload" style="accent-color:#0284c7;" /> .OBJ Download</label>
           </div>
           <button type="button" class="btn-xs primary" id="btnCreateShareLink" title="Generate Scoped Share Link">
             <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8">
@@ -792,7 +792,7 @@
         </div>
       </div>
 
-      <div style="border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;">
+      <div class="gs-table-scroll-wrap" style="border:1px solid var(--ui-border);border-radius:8px;overflow:auto;">
         <table class="gs-table">
           <thead>
             <tr>
@@ -818,11 +818,11 @@
     <div class="gs-modal">
       <div class="gs-panel-header">
         <div class="gs-panel-title">
-          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="#0284c7" stroke-width="2">
-            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-            <polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="var(--ui-accent)" stroke-width="2">
+            <circle cx="12" cy="12" r="3"/>
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
           </svg>
-          <span>Client-Side Browser Offline Cache &amp; User Settings</span>
+          <span>User Settings &amp; Offline Browser Cache</span>
         </div>
         <button type="button" class="btn-xs" data-close-modal="modalOfflineCache" title="Close">
           <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8">
@@ -831,27 +831,68 @@
         </button>
       </div>
 
-      <p style="font-size:12px;color:#475569;margin-bottom:12px;">
+      <!-- Unified Theme Appearance Card (Default: Time of Day Auto) -->
+      <div class="gs-settings-row" style="background:var(--ui-bg-subtle);border:1px solid var(--ui-border);border-radius:10px;padding:12px 14px;margin-bottom:10px;display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;">
+        <div style="min-width:180px;flex:1;">
+          <div style="font-size:12.5px;font-weight:700;color:var(--ui-text-primary);display:flex;align-items:center;gap:6px;">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="var(--ui-accent)" stroke-width="2">
+              <circle cx="12" cy="12" r="5"/>
+              <line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/>
+              <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
+              <line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/>
+            </svg>
+            <span>Interface Theme / 介面外觀主題</span>
+          </div>
+          <div style="font-size:11px;color:var(--ui-text-muted);margin-top:2px;" id="lblThemeStatusSub">
+            Auto (Time of Day: 06:00–18:00 Light · 18:00–06:00 Dark)
+          </div>
+        </div>
+        <div class="segmented-pill gs-theme-switcher" id="themeModeSwitcher" role="group" aria-label="Theme Mode">
+          <button type="button" class="btn-seg active" data-theme-pref="auto" title="Auto by Time of Day (06:00–18:00 Light, 18:00–06:00 Dark)">
+            <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.9">
+              <circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 15"/>
+            </svg>
+            <span>Auto</span>
+          </button>
+          <button type="button" class="btn-seg" data-theme-pref="light" title="Always Light Theme">
+            <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.9">
+              <circle cx="12" cy="12" r="5"/>
+              <line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/>
+              <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
+              <line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/>
+            </svg>
+            <span>Light</span>
+          </button>
+          <button type="button" class="btn-seg" data-theme-pref="dark" title="Always Dark Theme">
+            <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.9">
+              <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+            </svg>
+            <span>Dark</span>
+          </button>
+        </div>
+      </div>
+
+      <p style="font-size:12px;color:var(--ui-text-secondary);margin-bottom:10px;">
         Zero raw scans, photos, or 3D caches are stored on the Linux server. Optimized 2K 3D tilesets are cached directly in your local browser (<code>CacheStorage</code> + <code>IndexedDB</code>) for offline inspection when the processing PC is powered off.
       </p>
 
-      <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:12px 14px;margin-bottom:10px;display:flex;justify-content:space-between;align-items:center;">
-        <div>
-          <div style="font-size:12.5px;font-weight:700;color:#0f172a;" id="lblOfflineCacheUserEmail">Enable Offline Caching in Browser (glibivanov@gatheren.com.tw)</div>
-          <div style="font-size:11px;color:#64748b;margin-top:2px;">Automatically caches viewed 3D tilesets locally on this PC.</div>
+      <div class="gs-settings-row" style="background:var(--ui-bg-subtle);border:1px solid var(--ui-border);border-radius:10px;padding:12px 14px;margin-bottom:10px;display:flex;justify-content:space-between;align-items:center;gap:12px;">
+        <div style="min-width:0;flex:1;">
+          <div style="font-size:12.5px;font-weight:700;color:var(--ui-text-primary);word-break:break-word;" id="lblOfflineCacheUserEmail">Enable Offline Caching in Browser (glibivanov@gatheren.com.tw)</div>
+          <div style="font-size:11px;color:var(--ui-text-muted);margin-top:2px;">Automatically caches viewed 3D tilesets locally on this device.</div>
         </div>
-        <input type="checkbox" id="chkEnableOfflineCache" checked style="width:18px;height:18px;accent-color:#0284c7;cursor:pointer;" />
+        <input type="checkbox" id="chkEnableOfflineCache" checked style="width:18px;height:18px;accent-color:#0284c7;cursor:pointer;flex-shrink:0;" />
       </div>
 
-      <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:12px 14px;margin-bottom:14px;display:flex;justify-content:space-between;align-items:center;">
-        <div>
-          <div style="font-size:12.5px;font-weight:700;color:#0f172a;">Simulate Processing PC Offline Mode</div>
-          <div style="font-size:11px;color:#64748b;margin-top:2px;">Test viewing cached scans directly from local browser storage.</div>
+      <div class="gs-settings-row" style="background:var(--ui-bg-subtle);border:1px solid var(--ui-border);border-radius:10px;padding:12px 14px;margin-bottom:14px;display:flex;justify-content:space-between;align-items:center;gap:12px;">
+        <div style="min-width:0;flex:1;">
+          <div style="font-size:12.5px;font-weight:700;color:var(--ui-text-primary);">Simulate Processing PC Offline Mode</div>
+          <div style="font-size:11px;color:var(--ui-text-muted);margin-top:2px;">Test viewing cached scans directly from local browser storage.</div>
         </div>
-        <button type="button" class="btn-xs" id="btnToggleSimulatedOffline" title="Toggle Simulated PC Offline Mode">Offline</button>
+        <button type="button" class="btn-xs" id="btnToggleSimulatedOffline" title="Toggle Simulated PC Offline Mode" style="flex-shrink:0;">Offline</button>
       </div>
 
-      <div style="border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;">
+      <div class="gs-table-scroll-wrap" style="border:1px solid var(--ui-border);border-radius:8px;overflow:auto;">
         <table class="gs-table">
           <thead>
             <tr>
@@ -875,19 +916,19 @@
   <div id="userProfileGateModal" class="gs-modal-backdrop" style="z-index:5000;">
     <div class="gs-modal" style="max-width:540px;padding:0;overflow:hidden;">
       <!-- Top Header -->
-      <div style="padding:20px 24px 16px;background:linear-gradient(135deg,#0f172a,#1e293b);color:#ffffff;display:flex;align-items:center;justify-content:space-between;gap:14px;">
-        <div style="display:flex;align-items:center;gap:14px;">
-          <div style="width:44px;height:44px;border-radius:12px;background:rgba(56,189,248,0.16);border:1px solid rgba(56,189,248,0.4);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
-            <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="#38bdf8" stroke-width="2">
+      <div style="padding:18px 20px 14px;background:linear-gradient(135deg,#0f172a,#1e293b);color:#ffffff;display:flex;align-items:center;justify-content:space-between;gap:12px;">
+        <div style="display:flex;align-items:center;gap:12px;min-width:0;">
+          <div style="width:40px;height:40px;border-radius:12px;background:rgba(56,189,248,0.16);border:1px solid rgba(56,189,248,0.4);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#38bdf8" stroke-width="2">
               <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>
             </svg>
           </div>
-          <div>
-            <h3 style="margin:0;font-size:17px;font-weight:700;letter-spacing:0.3px;">GatheringScans Identity Verification</h3>
-            <p style="margin:4px 0 0;font-size:12px;color:#94a3b8;">Same Google Workspace OAuth as GatheringCloud (<code>gatheren.cloud</code>)</p>
+          <div style="min-width:0;">
+            <h3 style="margin:0;font-size:16px;font-weight:700;letter-spacing:0.3px;">GatheringScans Identity Verification</h3>
+            <p style="margin:3px 0 0;font-size:11.5px;color:#94a3b8;">Same Google Workspace OAuth as GatheringCloud (<code>gatheren.cloud</code>)</p>
           </div>
         </div>
-        <button type="button" class="btn-xs" id="btnCloseAuthGateModal" title="Close" style="background:rgba(255,255,255,0.1);border-color:rgba(255,255,255,0.2);color:#f8fafc;">
+        <button type="button" class="btn-xs" id="btnCloseAuthGateModal" title="Close" style="background:rgba(255,255,255,0.1);border-color:rgba(255,255,255,0.2);color:#f8fafc;flex-shrink:0;">
           <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
             <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
           </svg>
@@ -895,11 +936,11 @@
       </div>
 
       <!-- Body -->
-      <div style="padding:20px 24px;max-height:72vh;overflow-y:auto;display:flex;flex-direction:column;gap:16px;">
+      <div style="padding:16px 20px;max-height:70vh;overflow-y:auto;display:flex;flex-direction:column;gap:14px;">
         <!-- Google OAuth Card (Exact same Client ID as GatheringCloud) -->
-        <div id="googleAuthGateCard" style="background:#f0f9ff;border:1px solid #bae6fd;border-radius:12px;padding:16px 18px;display:flex;flex-direction:column;align-items:center;gap:10px;text-align:center;">
-          <div style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:700;color:#0369a1;">
-            <svg width="18" height="18" viewBox="0 0 24 24">
+        <div id="googleAuthGateCard" class="gs-oauth-card" style="background:var(--ui-bg-subtle);border:1px solid var(--ui-border-strong);border-radius:12px;padding:14px 16px;display:flex;flex-direction:column;align-items:center;gap:10px;text-align:center;">
+          <div style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:700;color:var(--ui-accent);">
+            <svg width="18" height="18" viewBox="0 0 24 24" style="flex-shrink:0;">
               <path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.665-5.17 3.665-9.17z"/>
               <path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.11-6.72-4.96H1.29v3.14C3.26 21.3 7.31 24 12 24z"/>
               <path fill="#FBBC05" d="M5.28 14.24c-.24-.72-.38-1.49-.38-2.24s.14-1.52.38-2.24V6.62H1.29C.47 8.24 0 10.06 0 12s.47 3.76 1.29 5.38l3.99-3.14z"/>
@@ -927,14 +968,14 @@
             data-logo_alignment="left">
           </div>
 
-          <div id="googleAuthMessage" style="font-size:11.5px;color:#0284c7;">
+          <div id="googleAuthMessage" style="font-size:11.5px;color:var(--ui-accent);">
             Sign in with your Google account to automatically bind your name, email, and avatar across GatheringScans &amp; GatheringCloud.
           </div>
 
           <!-- Origin Helper Notice -->
-          <div id="googleAuthOriginNotice" style="width:100%;margin-top:2px;padding:7px 10px;background:#ffffff;border:1px dashed #cbd5e1;border-radius:8px;font-size:11px;color:#64748b;text-align:left;line-height:1.45;">
+          <div id="googleAuthOriginNotice" style="width:100%;margin-top:2px;padding:7px 10px;background:var(--ui-bg-surface);border:1px dashed var(--ui-border-strong);border-radius:8px;font-size:11px;color:var(--ui-text-muted);text-align:left;line-height:1.45;">
             <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;">
-              <span>Authorized JavaScript Origin: <code id="currentOriginCode" style="background:#f1f5f9;padding:2px 6px;border-radius:4px;color:#0f172a;font-weight:700;user-select:all;">https://scans.gatheren.cloud</code></span>
+              <span style="min-width:0;word-break:break-all;">Authorized JavaScript Origin: <code id="currentOriginCode" style="background:var(--ui-bg-subtle);padding:2px 6px;border-radius:4px;color:var(--ui-text-primary);font-weight:700;user-select:all;">https://scans.gatheren.cloud</code></span>
               <button type="button" id="btnCopyCurrentOriginGate" class="btn-xs" style="height:22px;font-size:10.5px;">Copy</button>
             </div>
           </div>
@@ -943,7 +984,7 @@
         <!-- Team Members Quick Switcher (Server-Persisted Profiles) -->
         <div id="gateExistingUsersSection">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
-            <label style="font-size:12px;font-weight:700;color:#334155;">Verified Team Profiles (Quick Switch)</label>
+            <label style="font-size:12px;font-weight:700;color:var(--ui-text-secondary);">Verified Team Profiles (Quick Switch)</label>
             <span id="gateRosterCountBadge" class="gs-crs-pill">2 Members</span>
           </div>
           <input
@@ -953,14 +994,14 @@
             placeholder="Filter team members by name, email, or role..."
             style="margin-bottom:8px;font-size:12px;"
           />
-          <div id="gateExistingUsersGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:8px;max-height:190px;overflow-y:auto;padding:2px;"></div>
+          <div id="gateExistingUsersGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:8px;max-height:190px;overflow-y:auto;padding:2px;"></div>
         </div>
       </div>
 
       <!-- Footer -->
-      <div style="padding:14px 24px;background:#f8fafc;border-top:1px solid #e2e8f0;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
-        <span id="gateActiveUserStatusText" style="font-size:12px;color:#475569;font-weight:600;">Signed in as: Glib Ivanov</span>
-        <div style="display:flex;gap:8px;align-items:center;">
+      <div style="padding:12px 20px;background:var(--ui-bg-subtle);border-top:1px solid var(--ui-border);display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
+        <span id="gateActiveUserStatusText" style="font-size:12px;color:var(--ui-text-secondary);font-weight:600;">Signed in as: Glib Ivanov</span>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
           <button type="button" id="btnUserLogout" class="btn-xs" style="display:none;" title="Sign out of current profile">Logout</button>
           <button type="button" id="btnGateGuestEnter" class="btn-xs" title="Browse in Read-Only Guest Mode">Guest</button>
           <button type="button" id="btnGateConfirmEnter" class="btn-xs primary" title="Continue to GatheringScans Studio">Continue</button>

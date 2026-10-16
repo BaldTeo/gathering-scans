@@ -138,6 +138,7 @@ class ScanQueueDB:
                     display_name TEXT DEFAULT '',
                     offline_cache_enabled INTEGER DEFAULT 1,
                     auto_cache_pinned_groups TEXT DEFAULT '["QuChi Dam", "Rose Park"]',
+                    theme_preference TEXT DEFAULT 'auto',
                     updated_at TEXT NOT NULL
                 );
 
@@ -151,6 +152,10 @@ class ScanQueueDB:
                 );
                 """
             )
+            try:
+                conn.execute("ALTER TABLE user_settings ADD COLUMN theme_preference TEXT DEFAULT 'auto'")
+            except Exception:
+                pass
             conn.commit()
 
     def upsert_scan(self, scan_data: Dict[str, Any]) -> Dict[str, Any]:
@@ -472,11 +477,14 @@ class ScanQueueDB:
                     "display_name": email.split("@")[0],
                     "offline_cache_enabled": True,
                     "auto_cache_pinned_groups": ["QuChi Dam", "Rose Park"],
+                    "theme_preference": "auto",
                     "updated_at": datetime.now(timezone.utc).isoformat(),
                 }
                 return default
             d = dict(row)
             d["offline_cache_enabled"] = bool(d.get("offline_cache_enabled", 1))
+            if d.get("theme_preference") not in ("auto", "light", "dark"):
+                d["theme_preference"] = "auto"
             try:
                 d["auto_cache_pinned_groups"] = json.loads(d.get("auto_cache_pinned_groups") or "[]")
             except Exception:
@@ -488,19 +496,23 @@ class ScanQueueDB:
         offline_enabled = 1 if payload.get("offline_cache_enabled", current["offline_cache_enabled"]) else 0
         pinned = payload.get("auto_cache_pinned_groups", current["auto_cache_pinned_groups"])
         display_name = payload.get("display_name", current["display_name"])
+        theme_pref = payload.get("theme_preference", current.get("theme_preference", "auto"))
+        if theme_pref not in ("auto", "light", "dark"):
+            theme_pref = "auto"
         now_iso = datetime.now(timezone.utc).isoformat()
         with DB_LOCK, self._connect() as conn:
             conn.execute(
                 """
-                INSERT INTO user_settings (email, display_name, offline_cache_enabled, auto_cache_pinned_groups, updated_at)
-                VALUES (?, ?, ?, ?, ?)
+                INSERT INTO user_settings (email, display_name, offline_cache_enabled, auto_cache_pinned_groups, theme_preference, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?)
                 ON CONFLICT(email) DO UPDATE SET
                     display_name=excluded.display_name,
                     offline_cache_enabled=excluded.offline_cache_enabled,
                     auto_cache_pinned_groups=excluded.auto_cache_pinned_groups,
+                    theme_preference=excluded.theme_preference,
                     updated_at=excluded.updated_at
                 """,
-                (email, display_name, offline_enabled, json.dumps(pinned), now_iso),
+                (email, display_name, offline_enabled, json.dumps(pinned), theme_pref, now_iso),
             )
             conn.commit()
         return self.get_user_settings(email)
