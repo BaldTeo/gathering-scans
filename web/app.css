@@ -515,7 +515,7 @@ body {
 .gs-map-tile-thumb-wrap {
   position: relative;
   width: 100%;
-  height: 104px;
+  height: 168px;
   background: #0f172a;
   overflow: hidden;
   flex-shrink: 0;

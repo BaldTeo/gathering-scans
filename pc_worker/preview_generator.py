@@ -1,9 +1,18 @@
 #!/usr/bin/env python3
 """
-Ultra-Low-Quality 3D Scan Preview Generator for GatheringScans.
-Generates a lightweight `preview_tileset.json` + `preview_low/*.glb` for each scan
-so that the Site Menu 3D Preview loads in <150ms before the user clicks Enlarge
-to open the full-resolution 3D Studio.
+3D Scan Interactive Preview & Full-Quality Zoomed-to-Extents Screenshot Generator
+for GatheringScans.
+
+1. `ensure_scan_low_quality_preview(tileset_path)`:
+   Generates a clean, watertight, fast-loading 3D preview (`preview_tileset.json` + `preview_low/*.glb`)
+   for the Site Menu interactive 3D preview (before the user clicks Enlarge to enter the full 3D Studio).
+   Retains ~45,000-120,000 triangles across the site with locked border vertices (-slb) and crisp
+   768px-1024px JPEG textures (quality 80-82) so the interactive preview has zero holes and sharp visuals.
+
+2. `ensure_scan_full_quality_thumbnail(tileset_path, scan_id, project_dir)`:
+   Auto-generates a crisp 16:9 (800x450) 2D screenshot (`thumbnail.png`) directly from the
+   FULL-QUALITY 3D scan tiles, zoomed tightly to the scan's 3D extents, for the Main Map right-hand
+   scan tile cards and timeline cards whenever a scan is uploaded or discovered.
 """
 
 import copy
@@ -13,11 +22,23 @@ import os
 import shutil
 import struct
 import subprocess
-from typing import Dict, Any, List, Optional
+import tempfile
+from typing import Dict, Any, List, Optional, Tuple
 
-from pc_worker.config import GC_SCAN_OPTIMIZER_DIR
+import numpy as np
+from PIL import Image
+
+from pc_worker.config import GC_SCAN_OPTIMIZER_DIR, DATA_DIR
 
 GLTFPACK_EXE = os.path.join(GC_SCAN_OPTIMIZER_DIR, "bin", "gltfpack.exe")
+
+# Precompute a 28-point uniform barycentric grid (N=6) per triangle for dense, gap-free rasterization
+_BARY_GRID: List[Tuple[float, float, float]] = []
+_BARY_STEPS = 5
+for _i in range(_BARY_STEPS + 1):
+    for _j in range(_BARY_STEPS + 1 - _i):
+        _k = _BARY_STEPS - _i - _j
+        _BARY_GRID.append((_i / _BARY_STEPS, _j / _BARY_STEPS, _k / _BARY_STEPS))
 
 
 def _get_glb_triangle_count(raw_bytes: bytes) -> int:
@@ -41,16 +62,14 @@ def _get_glb_triangle_count(raw_bytes: bytes) -> int:
         return 0
 
 
-def _downscale_glb_textures(raw_bytes: bytes, max_dim: int = 256, jpeg_quality: int = 40) -> bytes:
+def _downscale_glb_textures(raw_bytes: bytes, max_dim: int = 768, jpeg_quality: int = 80) -> bytes:
     """
     Replaces any embedded PNG/JPEG/WebP textures inside a GLB (standard or EXT_meshopt_compression)
-    with a tiny low-resolution JPEG (e.g. 256x256 @ quality 40, ~5-10 KB) for ultra-fast preview streaming.
+    with a crisp, web-optimized JPEG (e.g. 768x768 or 1024x1024 @ quality 80-82) for fast preview streaming.
     """
     if len(raw_bytes) < 28 or raw_bytes[:4] != b"glTF":
         return raw_bytes
     try:
-        from PIL import Image
-
         jl, jtype = struct.unpack_from("<I4s", raw_bytes, 12)
         if jtype != b"JSON":
             return raw_bytes
@@ -79,7 +98,7 @@ def _downscale_glb_textures(raw_bytes: bytes, max_dim: int = 256, jpeg_quality: 
                     continue
                 try:
                     pil_im = Image.open(io.BytesIO(bytes(bin_data[off : off + ln]))).convert("RGB")
-                    pil_im.thumbnail((max_dim, max_dim), Image.Resampling.BILINEAR)
+                    pil_im.thumbnail((max_dim, max_dim), Image.Resampling.LANCZOS)
                     out_buf = io.BytesIO()
                     pil_im.save(out_buf, format="JPEG", quality=jpeg_quality, optimize=True)
                     img_bv_map[bvi] = out_buf.getvalue()
@@ -90,7 +109,6 @@ def _downscale_glb_textures(raw_bytes: bytes, max_dim: int = 256, jpeg_quality: 
         if not img_bv_map:
             return raw_bytes
 
-        # Strip EXT_texture_webp extension references since we converted embedded textures to image/jpeg
         for tex in j.get("textures") or []:
             exts = tex.get("extensions")
             if isinstance(exts, dict) and "EXT_texture_webp" in exts:
@@ -106,7 +124,6 @@ def _downscale_glb_textures(raw_bytes: bytes, max_dim: int = 256, jpeg_quality: 
                 if not j[ext_key]:
                     j.pop(ext_key, None)
 
-        # Collect all binary slices backed by buffer 0 in original offset order
         chunks = []
         for idx_bv, bv in enumerate(bvs):
             ext_mo = (bv.get("extensions") or {}).get("EXT_meshopt_compression")
@@ -154,13 +171,15 @@ def _downscale_glb_textures(raw_bytes: bytes, max_dim: int = 256, jpeg_quality: 
 def build_low_quality_preview_glb(
     src_glb_path: str,
     dst_glb_path: str,
-    target_triangles: int = 3200,
-    max_tex_dim: int = 224,
-    jpeg_quality: int = 38,
+    target_triangles: int = 24000,
+    max_tex_dim: int = 768,
+    jpeg_quality: int = 80,
+    allow_aggressive: bool = True,
 ) -> bool:
     """
-    Generates an ultra-low-quality preview GLB from src_glb_path into dst_glb_path.
-    Uses gltfpack aggressive simplification (-sa -si <ratio> -noq -cc) + low-res JPEG texture downscaling.
+    Generates a clean, watertight preview GLB from src_glb_path into dst_glb_path.
+    Locks border vertices (-slb) and preserves enough triangles (e.g. 18k-52k) and crisp textures
+    (768px-1024px @ quality 80-82) so the interactive 3D preview looks continuous and detailed.
     """
     if not os.path.isfile(src_glb_path):
         return False
@@ -171,13 +190,13 @@ def build_low_quality_preview_glb(
             raw_in = f.read()
         orig_tris = _get_glb_triangle_count(raw_in)
         if orig_tris > 0:
-            ratio = min(0.25, max(0.008, float(target_triangles) / float(orig_tris)))
+            ratio = min(0.85, max(0.18, float(target_triangles) / float(orig_tris)))
         else:
-            ratio = 0.04
+            ratio = 0.30
 
         tmp_path = dst_glb_path + ".tmp.glb"
         ran_gltfpack = False
-        if os.path.isfile(GLTFPACK_EXE):
+        if os.path.isfile(GLTFPACK_EXE) and ratio < 0.80:
             cmd = [
                 GLTFPACK_EXE,
                 "-i",
@@ -186,11 +205,13 @@ def build_low_quality_preview_glb(
                 tmp_path,
                 "-si",
                 f"{ratio:.4f}",
-                "-sa",
+                "-slb",
                 "-sv",
                 "-noq",
                 "-cc",
             ]
+            if allow_aggressive:
+                cmd.insert(-2, "-sa")
             res = subprocess.run(cmd, capture_output=True, timeout=60)
             if res.returncode == 0 and os.path.isfile(tmp_path) and os.path.getsize(tmp_path) > 128:
                 ran_gltfpack = True
@@ -225,8 +246,8 @@ def build_low_quality_preview_glb(
 def ensure_scan_low_quality_preview(tileset_path: str, force: bool = False) -> Optional[str]:
     """
     Given a scan's `tileset_path` (e.g. `.../tileset.json` or `.../*-cesium_mesh.json`),
-    generates `<base_dir>/preview_tileset.json` and ultra-low-quality GLB files inside `<base_dir>/preview_low/`.
-    Returns the path to `preview_tileset.json` (or low-quality `.glb` if standalone GLB).
+    generates `<base_dir>/preview_tileset.json` and watertight preview GLB files inside `<base_dir>/preview_low/`.
+    Returns the path to `preview_tileset.json` (or `.glb` if standalone GLB).
     """
     if not tileset_path or not os.path.isfile(tileset_path):
         return None
@@ -236,7 +257,9 @@ def ensure_scan_low_quality_preview(tileset_path: str, force: bool = False) -> O
         preview_glb = os.path.join(base_dir, "preview_low.glb")
         if not force and os.path.isfile(preview_glb) and os.path.getsize(preview_glb) > 256:
             return preview_glb
-        if build_low_quality_preview_glb(tileset_path, preview_glb, target_triangles=3500, max_tex_dim=256, jpeg_quality=40):
+        if build_low_quality_preview_glb(
+            tileset_path, preview_glb, target_triangles=50000, max_tex_dim=1024, jpeg_quality=82
+        ):
             return preview_glb
         return tileset_path
 
@@ -269,7 +292,7 @@ def ensure_scan_low_quality_preview(tileset_path: str, force: bool = False) -> O
     generated_count = 0
 
     if r_uri:
-        # Single-root tileset (Quadtree or single root GLB): only keep root node in preview_tileset.json
+        # Single-root tileset (Quadtree or single root GLB): keep root node with ~52k tris and 1024px texture
         src_glb = os.path.join(base_dir, r_uri)
         rel_clean = r_uri.replace("\\", "/").lstrip("/")
         dst_rel = f"preview_low/{rel_clean}"
@@ -277,17 +300,18 @@ def ensure_scan_low_quality_preview(tileset_path: str, force: bool = False) -> O
         if build_low_quality_preview_glb(
             src_glb,
             dst_glb,
-            target_triangles=3600,
-            max_tex_dim=256,
-            jpeg_quality=40,
+            target_triangles=52000,
+            max_tex_dim=1024,
+            jpeg_quality=82,
+            allow_aggressive=True,
         ):
             root["content"]["uri"] = dst_rel
             generated_count += 1
         root["geometricError"] = 0.0
         root["children"] = []
     else:
-        # PIX4Dmatic Cesium octree: prune each top-level branch at its first content node (depth <= 2)
-        # and convert each coarsest octant GLB into an ultra-low-poly preview tile (~900 tris, 192px JPEG)
+        # PIX4Dmatic Cesium octree: traverse up to depth <= 3 to capture every octant branch's first content node
+        # and convert each octant GLB into a watertight preview tile (~18,000 tris, 768px JPEG)
         def _prune_and_convert(node: dict, depth: int = 0) -> bool:
             nonlocal generated_count
             c = node.get("content") or {}
@@ -303,16 +327,17 @@ def ensure_scan_low_quality_preview(tileset_path: str, force: bool = False) -> O
                 elif build_low_quality_preview_glb(
                     src_glb,
                     dst_glb,
-                    target_triangles=950,
-                    max_tex_dim=192,
-                    jpeg_quality=36,
+                    target_triangles=18000,
+                    max_tex_dim=768,
+                    jpeg_quality=80,
+                    allow_aggressive=True,
                 ):
                     node["content"]["uri"] = dst_rel
                     generated_count += 1
                 node["geometricError"] = 0.0
                 node["children"] = []
                 return True
-            if depth >= 2:
+            if depth >= 4:
                 node["children"] = []
                 return False
             kept = []
@@ -335,3 +360,425 @@ def ensure_scan_low_quality_preview(tileset_path: str, force: bool = False) -> O
     except Exception as e:
         print(f"[PreviewGenerator] Failed writing {preview_ts_path}: {e}")
         return None
+
+
+# ==============================================================================
+# Full-Quality 3D Scan Screenshot Generator (Zoomed to Extents)
+# ==============================================================================
+
+def _collect_full_quality_tile_uris(root_node: dict, target_depth: int = 2, max_depth: int = 5) -> List[str]:
+    """
+    Selects a complete, non-overlapping set of high-resolution GLB tiles from a 3D Tileset
+    (at target_depth=2 for octrees, recursing up to max_depth=5 where branches only gain content deeper)
+    to render a full-quality screenshot.
+    """
+    def _walk(node: dict, depth: int = 0) -> List[str]:
+        c = node.get("content") or {}
+        u = c.get("uri") if isinstance(c, dict) else None
+        ch = node.get("children") or []
+        if not ch:
+            return [u] if u else []
+        if depth >= target_depth and u:
+            return [u]
+        if depth >= max_depth:
+            return [u] if u else []
+        child_uris: List[str] = []
+        all_covered = True
+        for child in ch:
+            cu = _walk(child, depth + 1)
+            if not cu:
+                all_covered = False
+            child_uris.extend(cu)
+        if child_uris and (all_covered or not u):
+            return child_uris
+        return [u] if u else child_uris
+
+    uris = _walk(root_node, 0)
+    seen = set()
+    out = []
+    for u in uris:
+        if u and u not in seen:
+            seen.add(u)
+            out.append(u)
+    return out
+
+
+def _extract_glb_enh_points_and_colors(
+    glb_path: str, has_root_transform: bool
+) -> Optional[Tuple[np.ndarray, np.ndarray]]:
+    """
+    Decodes a full-quality GLB tile (including EXT_meshopt_compression or KHR_texture_transform)
+    and samples dense 3D points in (Easting, Northing, Elevation) space along with RGB colors
+    from its full-resolution 2K embedded texture.
+    """
+    if not os.path.isfile(glb_path):
+        return None
+
+    tmp_glb = None
+    read_path = glb_path
+    try:
+        with open(glb_path, "rb") as f:
+            header_peek = f.read(4096)
+        if len(header_peek) < 28 or header_peek[:4] != b"glTF":
+            return None
+        jl, _ = struct.unpack_from("<I4s", header_peek, 12)
+        with open(glb_path, "rb") as f:
+            f.seek(20)
+            j_peek = json.loads(f.read(jl).decode("utf-8"))
+
+        exts_used = j_peek.get("extensionsUsed") or []
+        nodes_peek = j_peek.get("nodes") or []
+        needs_gltfpack_decode = (
+            "EXT_meshopt_compression" in exts_used
+            or "KHR_mesh_quantization" in exts_used
+            or any(
+                "matrix" in n or "translation" in n or "scale" in n or "rotation" in n
+                for n in nodes_peek
+                if isinstance(n, dict)
+            )
+        )
+        if needs_gltfpack_decode and os.path.isfile(GLTFPACK_EXE):
+            fd, tmp_glb = tempfile.mkstemp(suffix=".glb", prefix="gs_thumb_")
+            os.close(fd)
+            res = subprocess.run(
+                [GLTFPACK_EXE, "-i", glb_path, "-o", tmp_glb, "-noq"],
+                capture_output=True,
+                timeout=45,
+            )
+            if res.returncode == 0 and os.path.isfile(tmp_glb) and os.path.getsize(tmp_glb) > 128:
+                read_path = tmp_glb
+
+        with open(read_path, "rb") as rf:
+            raw = rf.read()
+        jl, _ = struct.unpack_from("<I4s", raw, 12)
+        j = json.loads(raw[20 : 20 + jl].decode("utf-8"))
+        boff = 20 + jl
+        blen, _ = struct.unpack_from("<I4s", raw, boff)
+        bin_data = memoryview(raw)[boff + 8 : boff + 8 + blen]
+
+        bvs = j.get("bufferViews") or []
+        accs = j.get("accessors") or []
+        imgs = j.get("images") or []
+        mats = j.get("materials") or []
+        texs = j.get("textures") or []
+
+        decoded_images: Dict[int, np.ndarray] = {}
+        for idx_im, im in enumerate(imgs):
+            bvi = im.get("bufferView")
+            if bvi is not None and 0 <= bvi < len(bvs):
+                bv = bvs[bvi]
+                off = int(bv.get("byteOffset", 0))
+                ln = int(bv.get("byteLength", 0))
+                if ln > 0 and off + ln <= len(bin_data):
+                    try:
+                        pil_img = Image.open(io.BytesIO(bytes(bin_data[off : off + ln]))).convert("RGB")
+                        decoded_images[idx_im] = np.asarray(pil_img, dtype=np.uint8)
+                    except Exception:
+                        pass
+
+        pts_list = []
+        col_list = []
+
+        for m in j.get("meshes") or []:
+            for p in m.get("primitives") or []:
+                attrs = p.get("attributes") or {}
+                if "POSITION" not in attrs:
+                    continue
+                pa = accs[attrs["POSITION"]]
+                if pa.get("componentType") != 5126:
+                    continue
+                pbv = bvs[pa["bufferView"]]
+                poff = int(pbv.get("byteOffset", 0)) + int(pa.get("byteOffset", 0))
+                pcount = int(pa["count"])
+                verts = np.frombuffer(bin_data[poff : poff + pcount * 12], dtype=np.float32).reshape(-1, 3)
+
+                tex_arr = decoded_images.get(0)
+                uv_offset = np.array([0.0, 0.0], dtype=np.float32)
+                uv_scale = np.array([1.0, 1.0], dtype=np.float32)
+                has_khr_tt = False
+                mat_idx = p.get("material")
+                if mat_idx is not None and 0 <= mat_idx < len(mats):
+                    pbr = (mats[mat_idx].get("pbrMetallicRoughness") or {})
+                    bct = pbr.get("baseColorTexture") or {}
+                    t_idx = bct.get("index")
+                    if t_idx is not None and 0 <= t_idx < len(texs):
+                        src_im = texs[t_idx].get("source")
+                        if src_im is None:
+                            src_im = ((texs[t_idx].get("extensions") or {}).get("EXT_texture_webp") or {}).get("source")
+                        if src_im is not None and src_im in decoded_images:
+                            tex_arr = decoded_images[src_im]
+                    khr_tt = ((bct.get("extensions") or {}).get("KHR_texture_transform")) or {}
+                    if "offset" in khr_tt or "scale" in khr_tt:
+                        has_khr_tt = True
+                    if "offset" in khr_tt:
+                        uv_offset = np.array(khr_tt["offset"][:2], dtype=np.float32)
+                    if "scale" in khr_tt:
+                        uv_scale = np.array(khr_tt["scale"][:2], dtype=np.float32)
+
+                uvs = None
+                if "TEXCOORD_0" in attrs and tex_arr is not None:
+                    ua = accs[attrs["TEXCOORD_0"]]
+                    if ua.get("componentType") == 5126:
+                        ubv = bvs[ua["bufferView"]]
+                        uoff = int(ubv.get("byteOffset", 0)) + int(ua.get("byteOffset", 0))
+                        ucount = int(ua["count"])
+                        raw_uv = np.frombuffer(bin_data[uoff : uoff + ucount * 8], dtype=np.float32).reshape(-1, 2)
+                        uvs = raw_uv * uv_scale + uv_offset
+
+                if "indices" in p:
+                    ia = accs[p["indices"]]
+                    ibv = bvs[ia["bufferView"]]
+                    ioff = int(ibv.get("byteOffset", 0)) + int(ia.get("byteOffset", 0))
+                    icount = int(ia["count"])
+                    ctype = ia.get("componentType")
+                    if ctype == 5123:
+                        idx = np.frombuffer(bin_data[ioff : ioff + icount * 2], dtype=np.uint16).reshape(-1, 3)
+                    elif ctype == 5125:
+                        idx = np.frombuffer(bin_data[ioff : ioff + icount * 4], dtype=np.uint32).reshape(-1, 3)
+                    else:
+                        continue
+                else:
+                    idx = np.arange(len(verts), dtype=np.uint32).reshape(-1, 3)
+
+                if len(idx) == 0:
+                    continue
+
+                v0, v1, v2 = verts[idx[:, 0]], verts[idx[:, 1]], verts[idx[:, 2]]
+                if uvs is not None and tex_arr is not None:
+                    u0, u1, u2 = uvs[idx[:, 0]], uvs[idx[:, 1]], uvs[idx[:, 2]]
+                    th, tw = tex_arr.shape[:2]
+                    for w0, w1, w2 in _BARY_GRID:
+                        pt = v0 * w0 + v1 * w1 + v2 * w2
+                        uv = u0 * w0 + u1 * w1 + u2 * w2
+                        if has_khr_tt:
+                            u_norm = np.clip(uv[:, 0], 0.0, 1.0)
+                            v_norm = np.clip(uv[:, 1], 0.0, 1.0)
+                        else:
+                            u_norm = np.mod(uv[:, 0], 1.0)
+                            v_norm = np.mod(uv[:, 1], 1.0)
+                        px = np.clip((u_norm * (tw - 1)).astype(np.int32), 0, tw - 1)
+                        py = np.clip((v_norm * (th - 1)).astype(np.int32), 0, th - 1)
+                        sampled_col = tex_arr[py, px]
+                        # Exclude pure-black (0,0,0) empty atlas padding pixels
+                        non_gutter = (sampled_col[:, 0] > 4) | (sampled_col[:, 1] > 4) | (sampled_col[:, 2] > 4)
+                        if np.any(non_gutter):
+                            pts_list.append(pt[non_gutter])
+                            col_list.append(sampled_col[non_gutter])
+                else:
+                    for w0, w1, w2 in _BARY_GRID[::3]:
+                        pt = v0 * w0 + v1 * w1 + v2 * w2
+                        pts_list.append(pt)
+                        col_list.append(np.full((len(pt), 3), 185, dtype=np.uint8))
+
+        if not pts_list:
+            return None
+
+        P = np.vstack(pts_list)
+        C = np.vstack(col_list)
+
+        # Convert to (Easting, Northing, Elevation)
+        if has_root_transform:
+            # glTF Y-up space: X=Easting, Y=Elevation, Z=-Northing -> (X, -Z, Y)
+            enh = np.column_stack((P[:, 0], -P[:, 2], P[:, 1]))
+        else:
+            # Z-up space: X=Easting, Y=Northing, Z=Elevation
+            enh = P
+        return enh, C
+    except Exception as e:
+        print(f"[PreviewGenerator] Warning extracting points from {glb_path}: {e}")
+        return None
+    finally:
+        if tmp_glb and os.path.isfile(tmp_glb):
+            try:
+                os.remove(tmp_glb)
+            except Exception:
+                pass
+
+
+def generate_full_quality_zoomed_thumbnail(
+    tileset_path: str,
+    out_png_paths: List[str],
+    width: int = 800,
+    height: int = 450,
+) -> bool:
+    """
+    Renders a crisp, full-quality 2D screenshot of the scan zoomed tightly to its 3D extents
+    (filling ~88% of the 16:9 frame) and writes it to all paths in `out_png_paths`.
+    """
+    if not tileset_path or not os.path.isfile(tileset_path) or not out_png_paths:
+        return False
+
+    base_dir = os.path.dirname(tileset_path)
+    has_root_transform = False
+    tile_uris: List[str] = []
+
+    if tileset_path.lower().endswith(".glb"):
+        tile_uris = [os.path.basename(tileset_path)]
+    else:
+        try:
+            with open(tileset_path, "r", encoding="utf-8") as f:
+                ts = json.load(f)
+            root = ts.get("root") or {}
+            has_root_transform = bool(root.get("transform"))
+            r_uri = (root.get("content") or {}).get("uri")
+            if r_uri:
+                # For quadtrees, prefer depth-1 tiles (4 tiles, higher resolution) if all exist, else root.glb
+                d1_uris = _collect_full_quality_tile_uris(root, target_depth=1, max_depth=1)
+                if d1_uris and all(os.path.isfile(os.path.join(base_dir, u)) for u in d1_uris):
+                    tile_uris = d1_uris
+                else:
+                    tile_uris = [r_uri]
+            else:
+                # For PIX4Dmatic Cesium octrees, collect complete coverage at target_depth=2 (up to depth 5)
+                tile_uris = _collect_full_quality_tile_uris(root, target_depth=2, max_depth=5)
+        except Exception as e:
+            print(f"[PreviewGenerator] Failed reading {tileset_path} for thumbnail: {e}")
+            return False
+
+    if not tile_uris:
+        return False
+
+    all_pts = []
+    all_cols = []
+    for u in tile_uris:
+        res = _extract_glb_enh_points_and_colors(os.path.join(base_dir, u), has_root_transform)
+        if res is not None:
+            all_pts.append(res[0])
+            all_cols.append(res[1])
+
+    if not all_pts:
+        return False
+
+    P = np.vstack(all_pts)
+    C = np.vstack(all_cols)
+
+    # Filter extreme 0.5% spatial outliers so stray floating points never shrink the zoom-to-extents framing
+    p_lo, p_hi = np.percentile(P, [0.5, 99.5], axis=0)
+    in_box = (
+        (P[:, 0] >= p_lo[0]) & (P[:, 0] <= p_hi[0]) &
+        (P[:, 1] >= p_lo[1]) & (P[:, 1] <= p_hi[1]) &
+        (P[:, 2] >= p_lo[2]) & (P[:, 2] <= p_hi[2])
+    )
+    if np.count_nonzero(in_box) > 1000:
+        P = P[in_box]
+        C = C[in_box]
+
+    center = (np.percentile(P, 2.0, axis=0) + np.percentile(P, 98.0, axis=0)) * 0.5
+    P0 = P - center
+
+    # Isometric 3D perspective/orthographic bird's-eye angle (azimuth -36 deg, elevation 38 deg)
+    az = np.radians(-36.0)
+    el = np.radians(38.0)
+    ca, sa = np.cos(az), np.sin(az)
+    ce, se = np.cos(el), np.sin(el)
+
+    rx = P0[:, 0] * ca - P0[:, 1] * sa
+    ry_plan = P0[:, 0] * sa + P0[:, 1] * ca
+    sy = -ry_plan * se - P0[:, 2] * ce
+    depth = -ry_plan * ce + P0[:, 2] * se
+
+    # Tightly zoom to the 0.8th-99.2th percentile screen extents so the scan fills 88% of the 16:9 viewport
+    x_lo, x_hi = np.percentile(rx, [0.8, 99.2])
+    y_lo, y_hi = np.percentile(sy, [0.8, 99.2])
+    span_x = max(1e-3, float(x_hi - x_lo))
+    span_y = max(1e-3, float(y_hi - y_lo))
+
+    scale = min((width * 0.88) / span_x, (height * 0.88) / span_y)
+    cx_scr = float(x_lo + x_hi) * 0.5
+    cy_scr = float(y_lo + y_hi) * 0.5
+
+    px = ((rx - cx_scr) * scale + width * 0.5).astype(np.int32)
+    py = ((sy - cy_scr) * scale + height * 0.5).astype(np.int32)
+
+    valid = (px >= 2) & (px < width - 2) & (py >= 2) & (py < height - 2)
+    if np.count_nonzero(valid) < 100:
+        return False
+
+    px = px[valid]
+    py = py[valid]
+    depth = depth[valid]
+    C = C[valid]
+
+    order = np.argsort(depth)
+    px = px[order]
+    py = py[order]
+    C = C[order]
+
+    C_boost = np.clip(C.astype(np.float32) * 1.12, 0, 255).astype(np.uint8)
+
+    canvas = np.zeros((height, width, 3), dtype=np.uint8)
+    y_grad = np.linspace(0.0, 1.0, height, dtype=np.float32)[:, None]
+    canvas[:, :, 0] = (14 + y_grad * 10).astype(np.uint8)
+    canvas[:, :, 1] = (21 + y_grad * 13).astype(np.uint8)
+    canvas[:, :, 2] = (34 + y_grad * 18).astype(np.uint8)
+
+    mask = np.zeros((height, width), dtype=bool)
+    # 3x3 splat pass followed by 2x2 and 1x1 sharp center passes for watertight, gap-free surfaces
+    for dy in (-1, 0, 1):
+        for dx in (-1, 0, 1):
+            canvas[py + dy, px + dx] = C_boost
+            mask[py + dy, px + dx] = True
+    for dy in (0, 1):
+        for dx in (0, 1):
+            canvas[py + dy, px + dx] = C_boost
+    canvas[py, px] = C_boost
+
+    # Close any remaining 1-2px interior pinholes inside large triangles
+    for _ in range(2):
+        unfilled = ~mask[1:-1, 1:-1]
+        nbr_h = mask[1:-1, :-2] & mask[1:-1, 2:]
+        nbr_v = mask[:-2, 1:-1] & mask[2:, 1:-1]
+        fill_h = unfilled & nbr_h
+        fill_v = unfilled & (~fill_h) & nbr_v
+        if np.any(fill_h):
+            canvas[1:-1, 1:-1][fill_h] = (
+                (canvas[1:-1, :-2][fill_h].astype(np.uint16) + canvas[1:-1, 2:][fill_h].astype(np.uint16)) // 2
+            ).astype(np.uint8)
+            mask[1:-1, 1:-1][fill_h] = True
+        if np.any(fill_v):
+            canvas[1:-1, 1:-1][fill_v] = (
+                (canvas[:-2, 1:-1][fill_v].astype(np.uint16) + canvas[2:, 1:-1][fill_v].astype(np.uint16)) // 2
+            ).astype(np.uint8)
+            mask[1:-1, 1:-1][fill_v] = True
+
+    img_out = Image.fromarray(canvas, mode="RGB")
+    saved_any = False
+    for out_p in out_png_paths:
+        if not out_p:
+            continue
+        try:
+            os.makedirs(os.path.dirname(out_p), exist_ok=True)
+            img_out.save(out_p, format="PNG", optimize=True)
+            saved_any = True
+        except Exception as e:
+            print(f"[PreviewGenerator] Warning saving thumbnail {out_p}: {e}")
+    return saved_any
+
+
+def ensure_scan_full_quality_thumbnail(
+    tileset_path: str,
+    scan_id: str,
+    project_dir: Optional[str] = None,
+    force: bool = False,
+) -> Optional[str]:
+    """
+    Ensures a full-quality zoomed-to-extents screenshot exists at both:
+    - `<project_dir>/thumbnail.png`
+    - `<DATA_DIR>/thumbnails/<scan_id>.png`
+    Automatically called whenever a scan is uploaded or discovered.
+    """
+    if not tileset_path or not os.path.isfile(tileset_path):
+        return None
+
+    thumbs_dir = os.path.join(DATA_DIR, "thumbnails")
+    os.makedirs(thumbs_dir, exist_ok=True)
+    data_thumb = os.path.join(thumbs_dir, f"{scan_id}.png")
+    proj_thumb = os.path.join(project_dir, "thumbnail.png") if project_dir and os.path.isdir(project_dir) else None
+
+    targets = [p for p in (proj_thumb, data_thumb) if p]
+    if not force and all(os.path.isfile(p) and os.path.getsize(p) > 4096 for p in targets):
+        return proj_thumb or data_thumb
+
+    if generate_full_quality_zoomed_thumbnail(tileset_path, targets):
+        return proj_thumb or data_thumb
+    return None

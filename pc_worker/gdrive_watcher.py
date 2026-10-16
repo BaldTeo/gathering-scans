@@ -781,12 +781,26 @@ def _discover_folder_scan_item(
     if not (tileset_path and os.path.isfile(tileset_path)):
         return None
 
+    stat = os.stat(folder_path)
+    default_id = (
+        folder_name
+        if folder_name.lower().startswith("catch_")
+        else re.sub(r"[^a-zA-Z0-9_]", "_", folder_name.lower())
+    )
+    scan_id = meta.get("scan_id") or default_id
+    if scan_id.lower().startswith("catch_") and folder_name.lower().startswith("catch_"):
+        scan_id = folder_name
+
     try:
-        from pc_worker.preview_generator import ensure_scan_low_quality_preview
+        from pc_worker.preview_generator import (
+            ensure_scan_low_quality_preview,
+            ensure_scan_full_quality_thumbnail,
+        )
 
         ensure_scan_low_quality_preview(tileset_path, force=False)
+        ensure_scan_full_quality_thumbnail(tileset_path, scan_id, project_dir=folder_path, force=False)
     except Exception as e:
-        print(f"[GDriveWatcher] Warning generating low-quality preview for {tileset_path}: {e}")
+        print(f"[GDriveWatcher] Warning generating preview/thumbnail for {tileset_path}: {e}")
 
     ts_georef = _extract_tileset_georef_and_fix_axis(tileset_path)
 
@@ -798,9 +812,6 @@ def _discover_folder_scan_item(
             if os.path.isdir(cdir):
                 cameras_dir = cdir
                 break
-
-    stat = os.stat(folder_path)
-    scan_id = meta.get("scan_id") or re.sub(r"[^a-zA-Z0-9_]", "_", folder_name.lower())
     lat = float(meta.get("lat") or ts_georef.get("lat") or 24.92032)
     lon = float(meta.get("lon") or ts_georef.get("lon") or 121.54351)
     elev_m = float(meta.get("elev_m") or ts_georef.get("elev_m") or 43.18)

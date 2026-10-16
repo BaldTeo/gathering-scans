@@ -748,13 +748,14 @@
 
       card.addEventListener("click", (ev) => {
         if (ev.target.closest("button") || ev.target.closest("a")) return;
+        STATE.activeProjectGroup = scan.project_group;
         STATE.activeScanId = scan.scan_id;
         STATE.activeScan = scan;
         STATE.selectedTimelineScanId = scan.scan_id;
         document.querySelectorAll("#popoverScanList .gs-scan-item-card").forEach((c) => {
           c.classList.toggle("active", c.dataset.scanId === scan.scan_id);
         });
-        loadScanIntoPreview(scan.scan_id);
+        openSiteTimeline(scan.project_group, scan.scan_id);
       });
 
       card.querySelector('[data-action="open3d"]').addEventListener("click", () => {
@@ -787,27 +788,15 @@
 
       listEl.appendChild(card);
     });
-
-    if (STATE.activeScanId && !STATE.siteTimelineOpen) {
-      setTimeout(() => {
-        loadScanIntoPreview(STATE.activeScanId);
-      }, 20);
-    }
   }
 
   // ============================================================================
-  // 1B. SITE TIMELINE (TOP 1/3) + INTERACTIVE 3D PREVIEW (BOTTOM 2/3) + ENLARGE
+  // 1B. SITE TIMELINE (TOP) + INTERACTIVE 3D PREVIEW (BOTTOM) + ENLARGE
   // ============================================================================
   let previewThree = null;
 
   function getActivePreviewContainer() {
-    if (STATE.siteTimelineOpen) {
-      return document.getElementById("sitePreviewCanvasContainer");
-    }
-    return (
-      document.getElementById("mapRightPreviewCanvasContainer") ||
-      document.getElementById("sitePreviewCanvasContainer")
-    );
+    return document.getElementById("sitePreviewCanvasContainer");
   }
 
   function syncPreviewRendererContainer() {
@@ -1046,17 +1035,18 @@
 
   function framePreviewCamera() {
     if (!previewThree) return;
+    const rawR = Number(previewThree.boundingSphere?.radius) || 55;
+    const r = Math.max(22, Math.min(240, rawR));
     previewThree.controls.target.set(0, 0, 0);
-    previewThree.camera.position.set(38, 30, 44);
+    previewThree.camera.position.set(r * 0.68, r * 0.54, r * 0.78);
     previewThree.camera.lookAt(0, 0, 0);
     previewThree.controls.update();
   }
 
-  // Automatically capture WebGL 3D scan screenshot and persist to tile & server
+  // Manually capture WebGL 3D scan screenshot and persist to tile & server when requested by user
   async function captureAndPersistScanScreenshot(scanId, ctxThree, showManualToast = false) {
     const targetCtx = ctxThree || previewThree || studioThree;
     if (!targetCtx || !targetCtx.renderer || !scanId) return;
-    // Never overwrite thumbnail unless 3D tiles have actually rendered into the scene
     const loadedTiles = Number(targetCtx.tilesRenderer?.stats?.loaded || 0);
     if (targetCtx.tilesRenderer && loadedTiles === 0) return;
     try {
@@ -1068,35 +1058,22 @@
       imgEls.forEach((img) => {
         img.src = dataUrl;
       });
-      if (showManualToast || !STATE.capturedThumbs.has(scanId)) {
+      if (showManualToast) {
         STATE.capturedThumbs.add(scanId);
         await apiPost(`/api/scans/${encodeURIComponent(scanId)}/thumbnail`, {
           data_url: dataUrl,
         }).catch(() => {});
-      }
-      if (showManualToast) {
         showToast("Captured live 3D scan screenshot to timeline tile");
       }
     } catch (e) {
-      console.warn("[GatheringScans] Auto screenshot capture note:", e);
+      console.warn("[GatheringScans] Screenshot capture note:", e);
     }
   }
 
   async function autoCaptureSiteTimelineScreenshots() {
-    if (!previewThree || !previewThree.renderer) return;
-    const stats = previewThree.tilesRenderer?.stats || {};
-    const loadedTiles = Number(stats.loaded || 0);
-    const pendingTiles = Number(stats.downloading || 0) + Number(stats.parsing || 0) + Number(stats.queued || 0);
-    if (previewThree.tilesRenderer && (loadedTiles === 0 || pendingTiles > 0)) return;
-    const activeId = STATE.selectedTimelineScanId || STATE.activeScanId;
-    if (!activeId || STATE.capturedThumbs.has(activeId)) return;
-    // Only auto-capture if tile does not already have a loaded server thumbnail
-    const existingImg = document.querySelector(`img[data-scan-thumb="${activeId}"]`);
-    if (existingImg && existingImg.complete && existingImg.naturalWidth > 0) {
-      STATE.capturedThumbs.add(activeId);
-      return;
-    }
-    await captureAndPersistScanScreenshot(activeId, previewThree, false);
+    // Full-quality zoomed-to-extents screenshots are automatically generated on the server
+    // from the high-resolution 3D tileset whenever a scan is uploaded or discovered.
+    return;
   }
 
   function computeTilesetContentSphere(tr, outSphere) {
@@ -1106,31 +1083,40 @@
     }
     const rootGe = Number(tr.root.geometricError || 0);
     if (rootGe > 1000) {
-      // Deep PIX4Dmatic octree: use higher errorTarget so level 1-2 overview tiles stream immediately
-      tr.errorTarget = 20.0;
+      tr.errorTarget = 16.0;
     } else if (tr.root.content && tr.root.content.uri) {
-      // Quadtree where root.glb already contains full-site 2K textured mesh (~318k triangles):
-      // Render root.glb immediately (1 tile) without queuing 46 sub-tiles (230MB) at once; refine on close zoom
       tr.errorTarget = 380.0;
     }
-    // If root has no direct content URI (e.g. PIX4Dmatic cubic octree where root center is in sky),
-    // average the bounding box centers of content tiles up to depth 3
+    // If root has no direct content URI (e.g. PIX4Dmatic cubic octree where root box is in the sky),
+    // compute exact bounding box of all content nodes up to depth 4 for tight zoom-to-extents framing
     if (!tr.root.content || !tr.root.content.uri) {
       const rootMat = (tr.root.engineData && tr.root.engineData.transform) || new THREE.Matrix4();
-      let sx = 0,
-        sy = 0,
-        sz = 0,
+      let minX = Infinity,
+        minY = Infinity,
+        minZ = Infinity,
+        maxX = -Infinity,
+        maxY = -Infinity,
+        maxZ = -Infinity,
         count = 0;
       const tmpVec = new THREE.Vector3();
       const walk = (node, depth) => {
-        if (!node || depth > 3) return;
+        if (!node || depth > 4) return;
         if (node.content && node.content.uri && node.boundingVolume && Array.isArray(node.boundingVolume.box)) {
           const b = node.boundingVolume.box;
-          tmpVec.set(Number(b[0]) || 0, Number(b[1]) || 0, Number(b[2]) || 0).applyMatrix4(rootMat);
+          const cx = Number(b[0]) || 0;
+          const cy = Number(b[1]) || 0;
+          const cz = Number(b[2]) || 0;
+          const hx = Math.abs(Number(b[3]) || 0) + Math.abs(Number(b[6]) || 0) + Math.abs(Number(b[9]) || 0);
+          const hy = Math.abs(Number(b[4]) || 0) + Math.abs(Number(b[7]) || 0) + Math.abs(Number(b[10]) || 0);
+          const hz = Math.abs(Number(b[5]) || 0) + Math.abs(Number(b[8]) || 0) + Math.abs(Number(b[11]) || 0);
+          tmpVec.set(cx, cy, cz).applyMatrix4(rootMat);
           if (isFinite(tmpVec.x) && isFinite(tmpVec.y) && isFinite(tmpVec.z)) {
-            sx += tmpVec.x;
-            sy += tmpVec.y;
-            sz += tmpVec.z;
+            minX = Math.min(minX, tmpVec.x - hx * 0.6);
+            maxX = Math.max(maxX, tmpVec.x + hx * 0.6);
+            minY = Math.min(minY, tmpVec.y - hy * 0.6);
+            maxY = Math.max(maxY, tmpVec.y + hy * 0.6);
+            minZ = Math.min(minZ, tmpVec.z - hz * 0.6);
+            maxZ = Math.max(maxZ, tmpVec.z + hz * 0.6);
             count++;
           }
         }
@@ -1140,8 +1126,14 @@
       };
       walk(tr.root, 0);
       if (count > 0) {
-        outSphere.center.set(sx / count, sy / count, sz / count);
+        outSphere.center.set((minX + maxX) * 0.5, (minY + maxY) * 0.5, (minZ + maxZ) * 0.5);
+        const dx = maxX - minX;
+        const dy = maxY - minY;
+        const dz = maxZ - minZ;
+        outSphere.radius = Math.max(18, Math.sqrt(dx * dx + dy * dy + dz * dz) * 0.42);
       }
+    } else if (outSphere.radius > 0) {
+      outSphere.radius = Math.max(18, outSphere.radius * 0.72);
     }
     return outSphere.radius > 0;
   }
@@ -1154,14 +1146,11 @@
 
     const titleEl = document.getElementById("previewScanTitle");
     if (titleEl) titleEl.textContent = scan.name;
-    const rightTitleEl = document.getElementById("rightPreviewScanTitle");
-    if (rightTitleEl) rightTitleEl.textContent = `${scan.name} (${scan.capture_date})`;
     const metaEl = document.getElementById("previewScanMeta");
     if (metaEl) {
       metaEl.textContent = `${scan.capture_date} · ${scan.uploader_name} · E ${Number(scan.twd97_e).toFixed(1)} N ${Number(scan.twd97_n).toFixed(1)} H +${Number(scan.twd97_h).toFixed(2)}m`;
     }
 
-    // Avoid tearing down an already active/in-flight stream of the exact same scan
     if (
       !forceReload &&
       previewThree._loadingScanId === scan.scan_id &&
@@ -1178,7 +1167,6 @@
     STATE.activeScanId = scan.scan_id;
     STATE.activeScan = scan;
 
-    // Teardown previous preview model
     if (previewThree.tilesRenderer) {
       previewThree.modelPivot.remove(previewThree.tilesRenderer.group);
       previewThree.tilesRenderer.dispose();
@@ -1201,9 +1189,8 @@
       );
       return;
     }
-    startScanLoader(previewThree, "preview", `${scan.name} (Low-Res Preview)`, scan.scan_id);
+    startScanLoader(previewThree, "preview", `${scan.name} (Interactive Preview)`, scan.scan_id);
 
-    // Always use the very low-quality preview version before user clicks Enlarge in site menu
     const streamUrl =
       scan.preview_stream_url ||
       (scan.stream_url
@@ -1234,8 +1221,9 @@
             }
           });
           previewThree.modelPivot.add(model);
+          previewThree.boundingSphere = sphere;
           framePreviewCamera();
-          finishScanLoader(previewThree, "preview", "100% · Low-Res Preview Ready");
+          finishScanLoader(previewThree, "preview", "100% · Interactive Preview Ready");
         },
         (xhr) => {
           const pct =
@@ -1243,7 +1231,7 @@
               ? Math.min(95, Math.max(12, Math.round((xhr.loaded / xhr.total) * 100)))
               : Math.min(88, (previewThree._maxPct || 12) + 8);
           previewThree._maxPct = pct;
-          updateScanLoader("preview", true, pct, `Loading Low-Res Preview (${pct}%)...`);
+          updateScanLoader("preview", true, pct, `Loading Interactive Preview (${pct}%)...`);
         },
         () => {
           if (previewThree.fallbackGroup) previewThree.fallbackGroup.visible = true;
@@ -1273,12 +1261,13 @@
         previewThree._tilesetReady = true;
         previewThree._tilesetReadyMs = performance.now();
         previewThree._maxPct = Math.max(previewThree._maxPct || 0, 22);
-        updateScanLoader("preview", true, previewThree._maxPct, "Streaming low-res preview...");
+        updateScanLoader("preview", true, previewThree._maxPct, "Streaming interactive preview...");
         const sphere = new THREE.Sphere();
         if (computeTilesetContentSphere(tr, sphere)) {
           tr.group.position.set(-sphere.center.x, -sphere.center.y, -sphere.center.z);
           previewThree.modelPivot.rotation.set(THREE.MathUtils.degToRad(270), 0, 0);
           previewThree.modelPivot.updateMatrixWorld(true);
+          previewThree.boundingSphere = sphere;
           framePreviewCamera();
         }
       });
@@ -1296,7 +1285,7 @@
         }
       });
 
-      tr.errorTarget = 24.0;
+      tr.errorTarget = 16.0;
       if (tr.downloadQueue) tr.downloadQueue.maxJobs = 12;
       if (tr.parseQueue) tr.parseQueue.maxJobs = 6;
       previewThree.modelPivot.add(tr.group);
@@ -2038,8 +2027,10 @@
 
   function frameStudioCamera() {
     if (!studioThree) return;
+    const rawR = Number(studioThree.boundingSphere?.radius) || 58;
+    const r = Math.max(22, Math.min(250, rawR));
     studioThree.controls.target.set(0, 0, 0);
-    studioThree.camera.position.set(42, 34, 48);
+    studioThree.camera.position.set(r * 0.7, r * 0.56, r * 0.8);
     studioThree.camera.lookAt(0, 0, 0);
     studioThree.controls.update();
   }
