@@ -1254,13 +1254,78 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
             self.send_json({"status": "ok", "scan": self._enrich_scan_urls(scan, share_token)})
             return
 
-        # 5. Smart Priority Queue Status
+        # 5. Smart Priority Queue Status (with Live PIX4Dmatic Log Progress & Tail)
         if path == "/api/queue/status":
             sync_scans_with_filesystem()
             if share_token:
                 self.send_json({"error": "Queue status restricted to internal company users."}, status=403)
                 return
             all_scans = DB.list_scans()
+            live_log_info: Dict[str, Any] = {}
+            for s in all_scans:
+                if s.get("status") == "processing":
+                    sid = s["scan_id"]
+                    log_dir = os.path.join(LOCAL_SCANS_ROOT, sid, sid, "logs")
+                    if os.path.isdir(log_dir):
+                        txt_files = sorted(
+                            [os.path.join(log_dir, f) for f in os.listdir(log_dir) if f.lower().endswith(".txt")],
+                            key=lambda p: os.path.getmtime(p),
+                        )
+                        if txt_files:
+                            latest_log = txt_files[-1]
+                            try:
+                                fsize = os.path.getsize(latest_log)
+                                with open(latest_log, "rb") as lf:
+                                    if fsize > 12288:
+                                        lf.seek(fsize - 12288)
+                                    tail_text = lf.read().decode("utf-8", errors="replace")
+                                tail_lines = [ln.strip() for ln in tail_text.splitlines() if ln.strip()][-15:]
+                                stage_name = ""
+                                cpu_ram = ""
+                                for ln in reversed(tail_lines):
+                                    m = re.search(r"\[(\d+%CPU)\]\[(\d+%RAM)\]\[([^\]]+)\]", ln)
+                                    if m:
+                                        cpu_ram = f"{m.group(1)} · {m.group(2)}"
+                                        stage_name = m.group(3).strip()
+                                        break
+                                stage_pct_map = {
+                                    "Import": 10.0,
+                                    "Sky mask": 16.0,
+                                    "Keypoints": 24.0,
+                                    "Pair matching": 34.0,
+                                    "Calibration": 46.0,
+                                    "Bundle": 52.0,
+                                    "Densification": 68.0,
+                                    "Dense": 68.0,
+                                    "Mesh": 82.0,
+                                    "Texturing": 88.0,
+                                    "Export": 93.0,
+                                }
+                                est_pct = float(s.get("progress_pct") or 10.0)
+                                for k_stg, v_pct in stage_pct_map.items():
+                                    if k_stg.lower() in stage_name.lower():
+                                        est_pct = max(est_pct, v_pct)
+                                        break
+                                new_label = (
+                                    f"PIX4Dmatic: {stage_name} ({cpu_ram})"
+                                    if stage_name and cpu_ram
+                                    else (f"PIX4Dmatic: {stage_name}" if stage_name else s.get("stage_label", "Processing..."))
+                                )
+                                s["progress_pct"] = est_pct
+                                s["stage_label"] = new_label
+                                DB.update_job_progress(sid, "processing", est_pct, new_label)
+                                live_log_info = {
+                                    "scan_id": sid,
+                                    "scan_name": s.get("name") or sid,
+                                    "log_path": latest_log,
+                                    "stage": stage_name or "Processing",
+                                    "cpu_ram": cpu_ram,
+                                    "progress_pct": est_pct,
+                                    "tail_lines": tail_lines[-10:],
+                                }
+                            except Exception:
+                                pass
+
             queued = [s for s in all_scans if s["status"] in ("queued", "waiting_parts")]
             queued.sort(key=lambda x: (0 if x["status"] == "queued" else 1, -float(x["priority_score"]), float(x["uploaded_at"])))
             processing = [s for s in all_scans if s["status"] == "processing"]
@@ -1273,6 +1338,8 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
                     "texture_size_enforced": PIX4DMATIC_TEXTURE_SIZE,
                     "processing": processing,
                     "queued": queued,
+                    "all_scans": all_scans,
+                    "live_pix4d": live_log_info,
                     "completed_count": len(completed),
                     "gchat_webhook_url": GCHAT.get_webhook_url(),
                 }

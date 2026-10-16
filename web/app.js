@@ -4054,30 +4054,65 @@
     });
   });
 
-  // 5A. PIX4Dmatic Smart Queue Modal
-  async function openQueueModal() {
-    openModal("modalQueue");
+  // 5A. PIX4Dmatic Smart Queue Modal (with Live PIX4Dmatic Progress & Log Tail)
+  let _queuePollTimer = null;
+
+  async function refreshQueueModalData() {
     const tbody = document.getElementById("queueTableBody");
     if (!tbody) return;
-    tbody.innerHTML = `<tr><td colspan="8" style="color:var(--ui-text-muted);">Loading...</td></tr>`;
     try {
       const qData = await apiGet("/api/queue/status");
-      document.getElementById("lblQueueInboxDir").textContent = qData.inbox_dir;
+      const inboxEl = document.getElementById("lblQueueInboxDir");
+      if (inboxEl && qData.inbox_dir) inboxEl.textContent = qData.inbox_dir;
       const gchatInput = document.getElementById("inputGChatWebhookUrl");
-      if (gchatInput && typeof qData.gchat_webhook_url === "string") {
+      if (gchatInput && typeof qData.gchat_webhook_url === "string" && document.activeElement !== gchatInput) {
         gchatInput.value = qData.gchat_webhook_url;
       }
+
+      const monBox = document.getElementById("livePix4dMonitorBox");
+      if (monBox) {
+        if (qData.live_pix4d && qData.live_pix4d.scan_id) {
+          const lp = qData.live_pix4d;
+          monBox.style.display = "block";
+          const tEl = document.getElementById("livePix4dTitle");
+          if (tEl) tEl.textContent = `Active PIX4Dmatic Pipeline: ${lp.scan_name} (${Math.round(lp.progress_pct || 0)}%)`;
+          const bEl = document.getElementById("livePix4dStageBadge");
+          if (bEl) bEl.textContent = `${lp.stage}${lp.cpu_ram ? " · " + lp.cpu_ram : ""}`;
+          const pBar = document.getElementById("livePix4dProgressBar");
+          if (pBar) pBar.style.width = `${Math.max(5, Math.min(100, Number(lp.progress_pct || 10)))}%`;
+          const pathEl = document.getElementById("livePix4dLogPath");
+          if (pathEl) pathEl.textContent = `Log: ${lp.log_path || ""}`;
+          const tailEl = document.getElementById("livePix4dLogTail");
+          if (tailEl) tailEl.textContent = (lp.tail_lines || []).join("\n");
+        } else {
+          monBox.style.display = "none";
+        }
+      }
+
+      const rows = Array.isArray(qData.all_scans) && qData.all_scans.length > 0 ? qData.all_scans : STATE.scans;
       tbody.innerHTML = "";
-      STATE.scans.forEach((s) => {
+      rows.forEach((s) => {
         const tr = document.createElement("tr");
+        const isProc = s.status === "processing";
+        const pct = Math.round(Number(s.progress_pct || (s.status === "completed" ? 100 : 0)));
+        const statusHtml = isProc
+          ? `<div style="display:flex;flex-direction:column;gap:3px;min-width:130px;">
+               <span class="gs-crs-pill" style="background:rgba(2,132,199,0.18);color:var(--ui-accent);">PROCESSING (${pct}%)</span>
+               <div style="height:4px;background:var(--ui-border-strong);border-radius:999px;overflow:hidden;">
+                 <div style="height:100%;width:${Math.max(5, pct)}%;background:var(--ui-accent);"></div>
+               </div>
+               <span style="font-size:10px;color:var(--ui-text-secondary);">${s.stage_label || "Running PIX4Dmatic..."}</span>
+             </div>`
+          : `<span class="gs-crs-pill">${String(s.status || "").toUpperCase()}</span>`;
+
         tr.innerHTML = `
           <td><b style="color:var(--ui-text-primary);">${s.name}</b><br><span style="font-size:10.5px;color:var(--ui-text-muted);">${s.scan_id}</span></td>
           <td style="color:var(--ui-text-secondary);">${s.project_group}</td>
           <td><span style="color:var(--ui-text-primary);font-weight:600;">${s.uploader_name}</span><br><span style="font-size:10.5px;color:var(--ui-text-muted);">${s.uploader_email} · ${s.capture_date}</span></td>
-          <td><span style="color:var(--ui-text-primary);font-weight:600;">${s.image_count} imgs</span><br><span style="font-size:10.5px;color:var(--ui-text-muted);">${s.size_mb} MB</span></td>
+          <td><span style="color:var(--ui-text-primary);font-weight:600;">${s.image_count} imgs</span><br><span style="font-size:10.5px;color:var(--ui-text-muted);">${Number(s.size_mb || (s.size_bytes || 0) / 1048576).toFixed(1)} MB</span></td>
           <td><span class="gs-crs-pill">${s.crs} · ${s.texture_resolution}px</span></td>
           <td style="font-family:monospace;font-weight:700;color:var(--ui-text-primary);">${s.priority_score}</td>
-          <td><span class="gs-crs-pill">${s.status.toUpperCase()}</span></td>
+          <td>${statusHtml}</td>
           <td>
             <button type="button" class="btn-xs" data-gst="${s.scan_id}" title="Preview .GST Script">
               <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8">
@@ -4092,6 +4127,24 @@
     } catch (err) {
       tbody.innerHTML = `<tr><td colspan="8" style="color:var(--ui-text-secondary);">${err.message}</td></tr>`;
     }
+  }
+
+  async function openQueueModal() {
+    openModal("modalQueue");
+    const tbody = document.getElementById("queueTableBody");
+    if (tbody && !tbody.children.length) {
+      tbody.innerHTML = `<tr><td colspan="8" style="color:var(--ui-text-muted);">Loading...</td></tr>`;
+    }
+    await refreshQueueModalData();
+    if (_queuePollTimer) clearInterval(_queuePollTimer);
+    _queuePollTimer = setInterval(() => {
+      if (document.getElementById("modalQueue")?.classList.contains("active")) {
+        refreshQueueModalData();
+      } else {
+        clearInterval(_queuePollTimer);
+        _queuePollTimer = null;
+      }
+    }, 5000);
   }
 
   async function previewGstForScan(scanId) {
