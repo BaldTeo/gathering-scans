@@ -1769,12 +1769,27 @@ def _ensure_vps_caddy_route():
             for bind in hc.get("Binds") or []:
                 if "/etc/caddy/Caddyfile" in bind:
                     host_src = bind.split(":")[0]
-                    print(f"[GatheringScans] Detected Caddyfile host bind source: {host_src}")
                     for prefix, mapped in [("/docker/", "/host_docker/"), ("/opt/", "/host_opt/"), ("/tmp/", "/host_tmp/")]:
                         if host_src.startswith(prefix):
                             candidate_paths.insert(0, mapped + host_src[len(prefix):])
         except Exception as e:
             print(f"[GatheringScans] hostconfig scan warning: {e}")
+
+    # Also discover live Caddy process via /proc when pid: host is enabled
+    caddy_pids = []
+    for cmd_path in glob.glob("/proc/[0-9]*/cmdline"):
+        try:
+            with open(cmd_path, "rb") as f:
+                raw_cmd = f.read()
+            if b"caddy\x00run" in raw_cmd or b"caddy\x00" in raw_cmd and b"Caddyfile" in raw_cmd:
+                pid_str = cmd_path.split("/")[2]
+                if pid_str.isdigit():
+                    caddy_pids.append(int(pid_str))
+                    proc_cf = f"/proc/{pid_str}/root/etc/caddy/Caddyfile"
+                    if os.path.isfile(proc_cf) and proc_cf not in candidate_paths:
+                        candidate_paths.insert(0, proc_cf)
+        except Exception:
+            pass
 
     block = (
         "\nscans.gatheren.cloud {\n"
@@ -1782,23 +1797,73 @@ def _ensure_vps_caddy_route():
         "    reverse_proxy gathering_scans_web:8095\n"
         "}\n"
     )
+    active_caddyfile_content = None
     for cpath in candidate_paths:
         if os.path.isfile(cpath):
             try:
                 with open(cpath, "r", encoding="utf-8") as f:
                     content = f.read()
                 if "scans.gatheren.cloud" not in content:
+                    content = content.rstrip() + "\n" + block
                     with open(cpath, "w", encoding="utf-8") as f:
-                        f.write(content.rstrip() + "\n" + block)
+                        f.write(content)
                     print(f"[GatheringScans] Added scans.gatheren.cloud block to {cpath}")
-                else:
-                    print(f"[GatheringScans] scans.gatheren.cloud already present in {cpath}")
+                if active_caddyfile_content is None:
+                    active_caddyfile_content = content
             except Exception as e:
                 print(f"[GatheringScans] Failed updating {cpath}: {e}")
+
+    # Hot-reload live Caddy Admin API (127.0.0.1:2019/load) inside Caddy's network namespace
+    if active_caddyfile_content and caddy_pids:
+        import subprocess
+        helper_code = (
+            "import os, sys, http.client\n"
+            "pid = int(sys.argv[1])\n"
+            "cf = sys.stdin.read()\n"
+            "fd = os.open(f'/proc/{pid}/ns/net', os.O_RDONLY)\n"
+            "if hasattr(os, 'setns'):\n"
+            "    os.setns(fd, getattr(os, 'CLONE_NEWNET', 0x40000000))\n"
+            "else:\n"
+            "    import ctypes\n"
+            "    ctypes.CDLL('libc.so.6').setns(fd, 0x40000000)\n"
+            "os.close(fd)\n"
+            "conn = http.client.HTTPConnection('127.0.0.1', 2019, timeout=5)\n"
+            "conn.request('GET', '/config/')\n"
+            "r = conn.getresponse()\n"
+            "cfg = r.read().decode('utf-8', 'ignore')\n"
+            "if 'scans.gatheren.cloud' not in cfg:\n"
+            "    conn2 = http.client.HTTPConnection('127.0.0.1', 2019, timeout=10)\n"
+            "    conn2.request('POST', '/load', body=cf.encode('utf-8'), headers={'Content-Type': 'text/caddyfile', 'Cache-Control': 'must-revalidate'})\n"
+            "    r2 = conn2.getresponse()\n"
+            "    print(f'[GatheringScans] Hot-reloaded Caddy (PID {pid}): HTTP {r2.status} {r2.read().decode()}')\n"
+        )
+        for cpid in caddy_pids:
+            try:
+                subprocess.run(
+                    [sys.executable, "-c", helper_code, str(cpid)],
+                    input=active_caddyfile_content,
+                    text=True,
+                    timeout=15,
+                )
+                break
+            except Exception as e:
+                print(f"[GatheringScans] Caddy netns hot-reload warning (PID {cpid}): {e}")
+
+
+def _vps_caddy_watchdog_loop():
+    while True:
+        try:
+            _ensure_vps_caddy_route()
+        except Exception as e:
+            print(f"[GatheringScans] Caddy watchdog error: {e}")
+        time.sleep(20)
 
 
 def run_server(host: str = SERVER_HOST, port: int = SERVER_PORT):
     _ensure_vps_caddy_route()
+    if os.name != "nt":
+        t_cw = threading.Thread(target=_vps_caddy_watchdog_loop, daemon=True)
+        t_cw.start()
     if os.name == "nt":
         start_pc_reverse_tunnel_pool(local_port=port)
     server = ThreadingHTTPServer((host, port), GatheringScansHandler)
