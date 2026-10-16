@@ -69,11 +69,17 @@ html, body {
   transition: background-color 0.2s ease, color 0.2s ease;
 }
 
+body {
+  display: flex;
+  flex-direction: column;
+}
+
 /* ============================================================================
  * 1. Top Navigation Bar (Unified Light / Dark Surface)
  * ============================================================================ */
 .gs-topbar {
   height: 52px;
+  flex-shrink: 0;
   background: var(--ui-bg-surface);
   border-bottom: 1px solid var(--ui-border);
   display: flex;
@@ -267,6 +273,8 @@ html, body {
 .gs-main {
   position: relative;
   width: 100%;
+  flex: 1;
+  min-height: 0;
   height: calc(100vh - 52px);
   overflow: hidden;
 }
@@ -1391,11 +1399,12 @@ html, body {
 @media (max-width: 768px) {
   /* 9.1 Top Navigation Bar (2-Row Compact Layout) */
   .gs-topbar {
-    height: 82px;
+    height: auto;
+    min-height: 76px;
     padding: 6px 10px;
     flex-wrap: wrap;
     align-content: space-between;
-    gap: 4px;
+    gap: 5px;
   }
 
   .gs-brand {
@@ -1431,7 +1440,8 @@ html, body {
     gap: 4px;
   }
 
-  #lblPcStatus {
+  #lblPcStatus,
+  #pcStatusText {
     max-width: 64px;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -1446,12 +1456,14 @@ html, body {
     border-radius: 6px;
   }
 
+  #btnGoogleUser,
   #btnCurrentUserProfile {
     padding: 0 6px !important;
   }
 
+  #btnGoogleUser #lblCurrentUser,
   #btnCurrentUserProfile #lblCurrentUser {
-    display: none;
+    display: none !important;
   }
 
   #mainModeSwitcher {
@@ -1472,8 +1484,9 @@ html, body {
   }
 
   .gs-main {
-    height: calc(100vh - 82px);
-    height: calc(100dvh - 82px);
+    flex: 1;
+    min-height: 0;
+    height: auto;
   }
 
   /* 9.2 Map View & Spatial Cluster Popover */
@@ -1864,15 +1877,45 @@ html, body {
 
   .gs-table th,
   .gs-table td {
-    padding: 5px 5px;
-    font-size: 10.5px;
-    white-space: normal;
-    word-break: break-word;
+    padding: 6px 6px;
+    font-size: 11px;
+    white-space: nowrap;
   }
 
   .gs-table td:first-child {
-    min-width: 100px;
-    max-width: 130px;
+    white-space: normal;
+    overflow-wrap: break-word;
+    word-break: normal;
+    min-width: 110px;
+    max-width: 165px;
+  }
+
+  /* Hide secondary desktop metadata columns on mobile so tables fit 100% cleanly */
+  #modalOfflineCache .gs-table th:nth-child(2),
+  #modalOfflineCache .gs-table td:nth-child(2),
+  #modalOfflineCache .gs-table th:nth-child(3),
+  #modalOfflineCache .gs-table td:nth-child(3) {
+    display: none;
+  }
+
+  #modalQueue .gs-table th:nth-child(2),
+  #modalQueue .gs-table td:nth-child(2),
+  #modalQueue .gs-table th:nth-child(3),
+  #modalQueue .gs-table td:nth-child(3),
+  #modalQueue .gs-table th:nth-child(4),
+  #modalQueue .gs-table td:nth-child(4),
+  #modalQueue .gs-table th:nth-child(5),
+  #modalQueue .gs-table td:nth-child(5) {
+    display: none;
+  }
+
+  #modalSharing .gs-table th:nth-child(2),
+  #modalSharing .gs-table td:nth-child(2),
+  #modalSharing .gs-table th:nth-child(4),
+  #modalSharing .gs-table td:nth-child(4),
+  #modalSharing .gs-table th:nth-child(5),
+  #modalSharing .gs-table td:nth-child(5) {
+    display: none;
   }
 }
 
