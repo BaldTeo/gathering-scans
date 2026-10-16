@@ -12,6 +12,7 @@ import re
 import json
 import time
 import math
+import shutil
 import zipfile
 from datetime import datetime
 from typing import Dict, Any, List, Optional, Tuple
@@ -457,7 +458,15 @@ def _extract_tileset_georef_and_fix_axis(tileset_path: str) -> Dict[str, Any]:
         cy = ty if abs(ty) > 1000 else by
         cz = tz if abs(tz) > 0.01 else bz
 
-        if 150000.0 <= cx <= 380000.0 and 2400000.0 <= cy <= 2850000.0:
+        if isinstance(box, list) and len(box) >= 12:
+            hx = abs(float(box[3] or 0.0)) or 120.0
+            hy = abs(float(box[7] or 0.0)) or 120.0
+            hz = abs(float(box[11] or 0.0)) or 30.0
+            out["half_extents"] = [round(hx, 2), round(hy, 2), round(hz, 2)]
+
+        # In Taiwan (lon <= 122.0E), TWD97 TM2-121 Easting is strictly <= 345,000m;
+        # Eastings around 345,000..400,000m in Northern Taiwan are WGS84 / UTM Zone 51N (EPSG:32651).
+        if 150000.0 <= cx <= 345000.0 and 2400000.0 <= cy <= 2850000.0:
             lat, lon = twd97_to_wgs84(cx, cy)
             out.update(
                 {
@@ -476,6 +485,36 @@ def _extract_tileset_georef_and_fix_axis(tileset_path: str) -> Dict[str, Any]:
                 {
                     "lat": lat,
                     "lon": lon,
+                    "elev_m": twd_h,
+                    "twd97_e": twd_e,
+                    "twd97_n": twd_n,
+                    "twd97_h": twd_h,
+                }
+            )
+        elif abs(tx) > 1000000.0 and abs(ty) > 1000000.0:
+            # ECEF (EPSG:4978) root.transform (e.g. PIX4Dmatic *-cesium_mesh.json)
+            a = 6378137.0
+            f = 1.0 / 298.257223563
+            e2 = 2.0 * f - f * f
+            b = a * (1.0 - f)
+            ep2 = (a * a - b * b) / (b * b)
+            p = math.hypot(tx, ty)
+            th = math.atan2(a * tz, b * p)
+            lon = math.degrees(math.atan2(ty, tx))
+            lat = math.degrees(
+                math.atan2(
+                    tz + ep2 * b * (math.sin(th) ** 3),
+                    p - e2 * a * (math.cos(th) ** 3),
+                )
+            )
+            sin_lat = math.sin(math.radians(lat))
+            N = a / math.sqrt(1.0 - e2 * sin_lat * sin_lat)
+            elev = p / max(math.cos(math.radians(lat)), 1e-9) - N
+            twd_e, twd_n, twd_h = wgs84_to_twd97(lat, lon, max(0.0, elev))
+            out.update(
+                {
+                    "lat": round(lat, 6),
+                    "lon": round(lon, 6),
                     "elev_m": twd_h,
                     "twd97_e": twd_e,
                     "twd97_n": twd_n,
@@ -521,6 +560,129 @@ def _compute_folder_stats(folder_path: str) -> Tuple[int, int]:
     return max(total_bytes, 1024), max(tile_count * 18, 120)
 
 
+def _infer_capture_date_from_name(folder_name: str, fallback_mtime: float) -> str:
+    """Extracts YYYY-MM-DD from folder names like QuChi_20261015-obj_mesh or NTU_Dorm_260915."""
+    time_part = datetime.fromtimestamp(fallback_mtime).strftime("%H:%M")
+    m8 = re.search(r"(20\d{2})([01]\d)([0-3]\d)", folder_name)
+    if m8:
+        return f"{m8.group(1)}-{m8.group(2)}-{m8.group(3)} {time_part}"
+    m6 = re.search(r"(?<!\d)(2\d)([01]\d)([0-3]\d)(?!\d)", folder_name)
+    if m6:
+        return f"20{m6.group(1)}-{m6.group(2)}-{m6.group(3)} {time_part}"
+    return datetime.fromtimestamp(fallback_mtime).strftime("%Y-%m-%d %H:%M")
+
+
+INTERNAL_ASSET_DIRS = {
+    "content",
+    "subtrees",
+    "tiles",
+    "tileset",
+    "inputs",
+    "images",
+    "exports",
+    "processing",
+    "configs",
+    "logs",
+    "temp",
+    "project",
+}
+
+
+def _is_direct_scan_folder(folder_path: str) -> bool:
+    """
+    Returns True if folder_path itself is directly a scan folder (contains scan_meta.json,
+    tileset.json, *-cesium_mesh.json, *.obj, or *.glb at root, or tileset/tileset.json).
+    """
+    if not os.path.isdir(folder_path):
+        return False
+    if os.path.isfile(os.path.join(folder_path, "tileset", "tileset.json")):
+        return True
+    try:
+        for fn in os.listdir(folder_path):
+            low = fn.lower()
+            if os.path.isfile(os.path.join(folder_path, fn)) and (
+                low in ("scan_meta.json", "tileset.json")
+                or low.endswith("-cesium_mesh.json")
+                or low.endswith(".obj")
+                or low.endswith(".glb")
+            ):
+                return True
+    except Exception:
+        pass
+    return False
+
+
+def _folder_has_completed_scan_assets(folder_path: str) -> bool:
+    """Checks if a folder contains completed scan assets (.obj, .glb, tileset.json, *-cesium_mesh.json, scan_meta.json)."""
+    if not os.path.isdir(folder_path):
+        return False
+    folder_name = os.path.basename(folder_path.rstrip("\\/"))
+    if folder_name.lower() in INTERNAL_ASSET_DIRS:
+        return False
+    for root, _, files in os.walk(folder_path):
+        rel_depth = os.path.relpath(root, folder_path).count(os.sep)
+        if rel_depth > 2:
+            continue
+        for fn in files:
+            low = fn.lower()
+            if (
+                low in ("tileset.json", "scan_meta.json")
+                or low.endswith("-cesium_mesh.json")
+                or low.endswith(".obj")
+                or (low.endswith(".glb") and rel_depth <= 1)
+            ):
+                return True
+    return False
+
+
+def _sync_gdrive_folder_to_local_vault(src_folder: str, parent_project: str = "") -> Optional[str]:
+    """
+    Copies a completed scan folder from Google Drive (input-only inbox) into local disk storage
+    (C:\\GatheringScans\\<FolderName> or C:\\GatheringScans\\<ProjectName>\\<FolderName>).
+    Returns the local destination path if scan assets exist, or None otherwise.
+    """
+    if not _folder_has_completed_scan_assets(src_folder):
+        return None
+    folder_name = os.path.basename(src_folder.rstrip("\\/"))
+    if not folder_name or folder_name.startswith(("_", ".")) or folder_name.lower() in INTERNAL_ASSET_DIRS:
+        return None
+
+    if parent_project:
+        dst_folder = os.path.join(LOCAL_SCANS_ROOT, parent_project, folder_name)
+    else:
+        dst_folder = os.path.join(LOCAL_SCANS_ROOT, folder_name)
+
+    if not is_safe_jailed_path(dst_folder, LOCAL_SCANS_ROOT):
+        return None
+
+    copied_any = False
+    for root, dirs, files in os.walk(src_folder):
+        rel_dir = os.path.relpath(root, src_folder)
+        target_dir = dst_folder if rel_dir == "." else os.path.join(dst_folder, rel_dir)
+        os.makedirs(target_dir, exist_ok=True)
+        for fn in files:
+            if fn.startswith("."):
+                continue
+            s_file = os.path.join(root, fn)
+            d_file = os.path.join(target_dir, fn)
+            try:
+                s_stat = os.stat(s_file)
+                need_copy = True
+                if os.path.isfile(d_file):
+                    d_stat = os.stat(d_file)
+                    if d_stat.st_size == s_stat.st_size and abs(d_stat.st_mtime - s_stat.st_mtime) < 2.0:
+                        need_copy = False
+                if need_copy:
+                    shutil.copy2(s_file, d_file)
+                    copied_any = True
+            except Exception as e:
+                print(f"[GDriveWatcher] Warning copying {s_file} -> {d_file}: {e}")
+
+    if copied_any:
+        print(f"[GDriveWatcher] Synced completed scan folder from Google Drive to local disk: {src_folder} -> {dst_folder}")
+    return dst_folder
+
+
 def _discover_folder_scan_item(
     folder_path: str,
     parent_project: str = "",
@@ -531,7 +693,7 @@ def _discover_folder_scan_item(
     Reads scan_meta.json if present, or auto-detects tileset.json / *-cesium_mesh.json / .glb / mesh.obj / thumbnail.png.
     """
     folder_name = os.path.basename(folder_path.rstrip("\\/"))
-    if not folder_name or folder_name.startswith(("_", ".")):
+    if not folder_name or folder_name.startswith(("_", ".")) or folder_name.lower() in INTERNAL_ASSET_DIRS:
         return None
 
     meta_file = os.path.join(folder_path, "scan_meta.json")
@@ -543,8 +705,9 @@ def _discover_folder_scan_item(
         except Exception as e:
             print(f"[GDriveWatcher] Warning reading {meta_file}: {e}")
 
-    # Auto-detect tileset.json or .glb inside folder_path (only direct or depth <= 2)
+    # Auto-detect tileset.json, .glb, or .obj inside folder_path (only direct or depth <= 2)
     tileset_path = meta.get("tileset_path", "")
+    obj_candidates: List[str] = []
     if not (tileset_path and os.path.isfile(tileset_path)):
         candidate_ts = [
             os.path.join(folder_path, "tileset", "tileset.json"),
@@ -561,15 +724,20 @@ def _discover_folder_scan_item(
                     candidate_ts.append(os.path.join(root, fn))
                 elif low_fn.endswith(".glb") and rel_depth <= 1:
                     glb_fallbacks.append(os.path.join(root, fn))
+                elif low_fn.endswith(".obj") and rel_depth <= 2:
+                    obj_candidates.append(os.path.join(root, fn))
         for c in candidate_ts + glb_fallbacks:
             if os.path.isfile(c):
                 tileset_path = c
                 break
-
-    if not (tileset_path and os.path.isfile(tileset_path)):
-        return None
-
-    ts_georef = _extract_tileset_georef_and_fix_axis(tileset_path)
+    else:
+        for root, _, files in os.walk(folder_path):
+            rel_depth = os.path.relpath(root, folder_path).count(os.sep)
+            if rel_depth > 2:
+                continue
+            for fn in files:
+                if fn.lower().endswith(".obj"):
+                    obj_candidates.append(os.path.join(root, fn))
 
     # Auto-detect obj_path if not already valid
     obj_path = meta.get("obj_path", "")
@@ -577,8 +745,42 @@ def _discover_folder_scan_item(
         cand_obj = os.path.join(folder_path, "mesh.obj")
         if os.path.isfile(cand_obj):
             obj_path = cand_obj
+        elif obj_candidates:
+            obj_path = obj_candidates[0]
         else:
             obj_path = ""
+
+    # If a completed .obj mesh was dropped without a 3D tileset, auto-build a 2K quadtree tileset on local disk
+    if not (tileset_path and os.path.isfile(tileset_path)) and obj_path and os.path.isfile(obj_path):
+        try:
+            import sys
+            from pc_worker.config import GC_SCAN_OPTIMIZER_DIR
+            if GC_SCAN_OPTIMIZER_DIR and os.path.isdir(GC_SCAN_OPTIMIZER_DIR) and GC_SCAN_OPTIMIZER_DIR not in sys.path:
+                sys.path.insert(0, GC_SCAN_OPTIMIZER_DIR)
+            from optimizer.quadtree_tiler import QuadtreeTiler  # type: ignore
+            auto_ts_dir = os.path.join(folder_path, "tileset")
+            os.makedirs(auto_ts_dir, exist_ok=True)
+            print(f"[GDriveWatcher] Auto-tiling standalone OBJ mesh on local disk: {obj_path} -> {auto_ts_dir}")
+            tiler = QuadtreeTiler(
+                input_path=obj_path,
+                output_dir=auto_ts_dir,
+                max_levels=3,
+                texture_quality=7,
+                texture_limit=PIX4DMATIC_TEXTURE_SIZE,
+                high_compression=True,
+                verbose=True,
+            )
+            tiler.run()
+            built_ts = os.path.join(auto_ts_dir, "tileset.json")
+            if os.path.isfile(built_ts):
+                tileset_path = built_ts
+        except Exception as e:
+            print(f"[GDriveWatcher] Warning auto-tiling standalone OBJ {obj_path}: {e}")
+
+    if not (tileset_path and os.path.isfile(tileset_path)):
+        return None
+
+    ts_georef = _extract_tileset_georef_and_fix_axis(tileset_path)
 
     # Auto-detect cameras_dir
     cameras_dir = meta.get("cameras_dir", "")
@@ -623,12 +825,13 @@ def _discover_folder_scan_item(
     if "size_bytes" not in meta or "image_count" not in meta:
         disk_bytes, est_imgs = _compute_folder_stats(folder_path)
 
-    return {
+    half_extents = ts_georef.get("half_extents", [120.0, 120.0, 30.0])
+    result_item = {
         "scan_id": scan_id,
-        "name": meta.get("name") or folder_name.replace("_", " "),
+        "name": meta.get("name") or folder_name,
         "project_group": proj_group,
         "project_name_zh": proj_zh or "工程掃描群組",
-        "capture_date": meta.get("capture_date") or datetime.fromtimestamp(stat.st_mtime).strftime("%Y-%m-%d %H:%M"),
+        "capture_date": meta.get("capture_date") or _infer_capture_date_from_name(folder_name, stat.st_mtime),
         "uploaded_at": float(meta.get("uploaded_at", stat.st_mtime)),
         "uploader_email": meta.get("uploader_email", "glibivanov@gatheren.com.tw"),
         "uploader_name": meta.get("uploader_name", "Glib Ivanov"),
@@ -652,7 +855,7 @@ def _discover_folder_scan_item(
             "bounding_box",
             {
                 "center": [twd_e, twd_n, twd_h],
-                "half_extents": [120.0, 120.0, 30.0],
+                "half_extents": half_extents,
             },
         ),
         "status": meta.get("status", "completed"),
@@ -660,6 +863,19 @@ def _discover_folder_scan_item(
         "stage_label": meta.get("stage_label", "Completed (TWD97 + TWVD2001, 2K Web Tileset)"),
         "notes": meta.get("notes", f"Dynamically loaded from {folder_path}"),
     }
+
+    # Persist scan_meta.json on local disk if it did not exist yet
+    if not os.path.isfile(meta_file) and is_safe_jailed_path(folder_path, LOCAL_SCANS_ROOT):
+        try:
+            meta_to_save = dict(result_item)
+            meta_to_save["folder"] = folder_name
+            meta_to_save["thumbnail_path"] = os.path.join(folder_path, "thumbnail.png")
+            with open(meta_file, "w", encoding="utf-8") as wf:
+                json.dump(meta_to_save, wf, indent=2, ensure_ascii=False)
+        except Exception as e:
+            print(f"[GDriveWatcher] Warning writing {meta_file}: {e}")
+
+    return result_item
 
 
 MULTIPART_ZIP_RE = re.compile(
@@ -701,62 +917,22 @@ def seed_and_discover_scans(db: ScanQueueDB) -> List[Dict[str, Any]]:
     """
     100% Dynamic, Project-Agnostic Scan Discovery from C:\\GatheringScans (LOCAL_SCANS_ROOT)
     and G:\\Shared drives\\6.軟體\\3. GatheringScans (GDRIVE_INBOX_DIR).
-    Scales cleanly to 100+ projects via:
-    - Flat scan folders (C:\\GatheringScans\\<ScanFolder>) or nested project folders (C:\\GatheringScans\\<Project>\\<ScanFolder>)
-    - Single-part ('FileName.zip') and multi-part ('FileName_1of4.zip' .. 'FileName_4of4.zip') archives
-    - Immediate removal from SQLite when a scan folder or archive is deleted from disk.
+    - Google Drive (GDRIVE_INBOX_DIR) is strictly an input-only inbox: any completed scan folders
+      dropped into Google Drive are first copied into C:\\GatheringScans (LOCAL_SCANS_ROOT) and
+      tiled/indexed exclusively from local disk.
+    - Scales cleanly to 100+ projects via flat scan folders or nested project folders.
+    - Single-part ('FileName.zip') and multi-part ('FileName_1of4.zip' .. 'FileName_4of4.zip') archives.
+    - Immediate removal from SQLite when a scan folder or archive is deleted from local disk.
     """
     discovered_ids = set()
     dynamic_clusters: List[Dict[str, Any]] = []
 
-    # 1. Dynamically discover all scan folders in C:\GatheringScans (supports both flat and 2-level project folders)
-    if os.path.isdir(LOCAL_SCANS_ROOT):
-        for entry in sorted(os.listdir(LOCAL_SCANS_ROOT)):
-            if entry.startswith(("_", ".")):
-                continue
-            sub_dir = os.path.join(LOCAL_SCANS_ROOT, entry)
-            if not is_safe_jailed_path(sub_dir, LOCAL_SCANS_ROOT) or not os.path.isdir(sub_dir):
-                continue
-
-            # Check if sub_dir is directly a scan folder
-            direct_ts = (
-                os.path.isfile(os.path.join(sub_dir, "scan_meta.json"))
-                or os.path.isfile(os.path.join(sub_dir, "tileset.json"))
-                or os.path.isfile(os.path.join(sub_dir, "tileset", "tileset.json"))
-            )
-            if direct_ts:
-                item = _discover_folder_scan_item(sub_dir, dynamic_clusters=dynamic_clusters)
-                if item:
-                    db.upsert_scan(item)
-                    discovered_ids.add(item["scan_id"])
-            else:
-                # Check if sub_dir is a Project Folder containing child scan folders (C:\GatheringScans\<Project>\<Scan>)
-                found_nested = False
-                for child_entry in sorted(os.listdir(sub_dir)):
-                    if child_entry.startswith(("_", ".")):
-                        continue
-                    child_dir = os.path.join(sub_dir, child_entry)
-                    if not is_safe_jailed_path(child_dir, LOCAL_SCANS_ROOT) or not os.path.isdir(child_dir):
-                        continue
-                    nested_item = _discover_folder_scan_item(
-                        child_dir, parent_project=entry, dynamic_clusters=dynamic_clusters
-                    )
-                    if nested_item:
-                        db.upsert_scan(nested_item)
-                        discovered_ids.add(nested_item["scan_id"])
-                        found_nested = True
-                if not found_nested:
-                    item = _discover_folder_scan_item(sub_dir, dynamic_clusters=dynamic_clusters)
-                    if item:
-                        db.upsert_scan(item)
-                        discovered_ids.add(item["scan_id"])
-
-    # 2. Dynamically inspect strictly the jailed G:\Shared drives\6.軟體\3. GatheringScans
     inbox_dirs = []
     if GDRIVE_INBOX_DIR and os.path.isdir(GDRIVE_INBOX_DIR):
         inbox_dirs.append(GDRIVE_INBOX_DIR)
 
-    # Group .zip files by (parent_project_lower, base_name_lower, total_parts) across jailed inbox directories
+    # 0. Sync any completed scan folders from Google Drive (input-only) into C:\GatheringScans (local disk storage)
+    #    and collect .zip raw-photo archives for the PIX4Dmatic queue.
     grouped_uploads: Dict[Tuple[str, str, int], Dict[str, Any]] = {}
     seen_zip_keys = set()
 
@@ -772,40 +948,27 @@ def seed_and_discover_scans(db: ScanQueueDB) -> List[Dict[str, Any]]:
             if os.path.isfile(epath) and entry.lower().endswith(".zip"):
                 zip_candidates.append(("", entry, epath))
             elif os.path.isdir(epath):
-                # 2a. Check if epath is directly a pre-built scan/tileset folder dropped into GDrive inbox
-                direct_inbox_ts = (
-                    os.path.isfile(os.path.join(epath, "scan_meta.json"))
-                    or os.path.isfile(os.path.join(epath, "tileset.json"))
-                    or os.path.isfile(os.path.join(epath, "tileset", "tileset.json"))
-                )
-                if direct_inbox_ts:
-                    item = _discover_folder_scan_item(epath, dynamic_clusters=dynamic_clusters)
-                    if item and item["scan_id"] not in discovered_ids:
-                        db.upsert_scan(item)
-                        discovered_ids.add(item["scan_id"])
+                # First check if epath itself is directly a scan folder (e.g. QuChi_20261015-obj_mesh or QuChi_20261015-cesium_mesh)
+                if _is_direct_scan_folder(epath):
+                    _sync_gdrive_folder_to_local_vault(epath, parent_project="")
+                else:
+                    # Otherwise check if epath is a Project Folder containing nested scan folders or .zip archives
+                    synced_nested = False
+                    for sub_fn in sorted(os.listdir(epath)):
+                        if sub_fn.startswith(("_", ".")) or sub_fn.lower() in INTERNAL_ASSET_DIRS:
+                            continue
+                        sub_fpath = os.path.join(epath, sub_fn)
+                        if not is_safe_jailed_path(sub_fpath, idir):
+                            continue
+                        if os.path.isfile(sub_fpath) and sub_fn.lower().endswith(".zip"):
+                            zip_candidates.append((entry, sub_fn, sub_fpath))
+                        elif os.path.isdir(sub_fpath):
+                            local_dst = _sync_gdrive_folder_to_local_vault(sub_fpath, parent_project=entry)
+                            if local_dst:
+                                synced_nested = True
 
-                # 2b. Check subfolders / .zip archives inside '3. GatheringScans/<ProjectName>/'
-                for sub_fn in sorted(os.listdir(epath)):
-                    if sub_fn.startswith(("_", ".")):
-                        continue
-                    sub_fpath = os.path.join(epath, sub_fn)
-                    if not is_safe_jailed_path(sub_fpath, idir):
-                        continue
-                    if os.path.isfile(sub_fpath) and sub_fn.lower().endswith(".zip"):
-                        zip_candidates.append((entry, sub_fn, sub_fpath))
-                    elif os.path.isdir(sub_fpath):
-                        nested_ts = (
-                            os.path.isfile(os.path.join(sub_fpath, "scan_meta.json"))
-                            or os.path.isfile(os.path.join(sub_fpath, "tileset.json"))
-                            or os.path.isfile(os.path.join(sub_fpath, "tileset", "tileset.json"))
-                        )
-                        if nested_ts:
-                            n_item = _discover_folder_scan_item(
-                                sub_fpath, parent_project=entry, dynamic_clusters=dynamic_clusters
-                            )
-                            if n_item and n_item["scan_id"] not in discovered_ids:
-                                db.upsert_scan(n_item)
-                                discovered_ids.add(n_item["scan_id"])
+                    if not synced_nested and not zip_candidates:
+                        _sync_gdrive_folder_to_local_vault(epath, parent_project="")
 
             for parent_proj, fname, fpath in zip_candidates:
                 dedup_key = (parent_proj.lower(), fname.lower())
@@ -822,6 +985,43 @@ def seed_and_discover_scans(db: ScanQueueDB) -> List[Dict[str, Any]]:
                         "parts": {},
                     }
                 grouped_uploads[gkey]["parts"][part_idx] = fpath
+
+    # 1. Dynamically discover all scan folders in C:\GatheringScans (local disk storage)
+    if os.path.isdir(LOCAL_SCANS_ROOT):
+        for entry in sorted(os.listdir(LOCAL_SCANS_ROOT)):
+            if entry.startswith(("_", ".")) or entry.lower() in INTERNAL_ASSET_DIRS:
+                continue
+            sub_dir = os.path.join(LOCAL_SCANS_ROOT, entry)
+            if not is_safe_jailed_path(sub_dir, LOCAL_SCANS_ROOT) or not os.path.isdir(sub_dir):
+                continue
+
+            # Check if sub_dir is directly a scan folder
+            if _is_direct_scan_folder(sub_dir):
+                item = _discover_folder_scan_item(sub_dir, dynamic_clusters=dynamic_clusters)
+                if item:
+                    db.upsert_scan(item)
+                    discovered_ids.add(item["scan_id"])
+            else:
+                # Check if sub_dir is a Project Folder containing child scan folders (C:\GatheringScans\<Project>\<Scan>)
+                found_nested = False
+                for child_entry in sorted(os.listdir(sub_dir)):
+                    if child_entry.startswith(("_", ".")) or child_entry.lower() in INTERNAL_ASSET_DIRS:
+                        continue
+                    child_dir = os.path.join(sub_dir, child_entry)
+                    if not is_safe_jailed_path(child_dir, LOCAL_SCANS_ROOT) or not os.path.isdir(child_dir):
+                        continue
+                    nested_item = _discover_folder_scan_item(
+                        child_dir, parent_project=entry, dynamic_clusters=dynamic_clusters
+                    )
+                    if nested_item:
+                        db.upsert_scan(nested_item)
+                        discovered_ids.add(nested_item["scan_id"])
+                        found_nested = True
+                if not found_nested:
+                    item = _discover_folder_scan_item(sub_dir, dynamic_clusters=dynamic_clusters)
+                    if item:
+                        db.upsert_scan(item)
+                        discovered_ids.add(item["scan_id"])
 
     for (_, _, total_parts), ginfo in grouped_uploads.items():
         parent_proj = ginfo["parent_project"]

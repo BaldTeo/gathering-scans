@@ -36,15 +36,28 @@ from pc_worker.pix4d_runner import run_pix4dmatic_pipeline
 from pc_worker.config import LOCAL_SCANS_ROOT
 
 
-def inbox_watcher_loop():
+def inbox_discovery_loop():
     """
-    Periodically polls C:\\GatheringScans and G:\\Shared drives\\6.軟體\\3. GatheringScans
-    for new scan folders and Pix4DCatch .zip uploads, and automatically runs the
-    PIX4Dmatic 2.11.0 + GC_ScanOptimizer pipeline on the highest-priority queued job.
+    Polls G:\\Shared drives\\6.軟體\\3. GatheringScans and C:\\GatheringScans every 10s,
+    copies completed scan folders from Google Drive to local disk, tiles standalone .obj
+    meshes, and updates the SQLite index immediately without waiting for PIX4Dmatic jobs.
     """
     while True:
         try:
             seed_and_discover_scans(DB)
+        except Exception as e:
+            print(f"[InboxDiscovery] Poll warning: {e}")
+        time.sleep(10)
+
+
+def pix4d_worker_loop():
+    """
+    Dedicated background worker thread that pops the highest-priority queued Pix4DCatch
+    .zip job and runs the PIX4Dmatic 2.11.0 + GC_ScanOptimizer pipeline.
+    """
+    time.sleep(3)
+    while True:
+        try:
             next_job = DB.pop_next_job()
             if next_job:
                 sid = next_job["scan_id"]
@@ -84,7 +97,7 @@ def inbox_watcher_loop():
                             f"Pipeline error (exit {res.get('return_code')})",
                         )
         except Exception as e:
-            print(f"[InboxWatcher] Poll warning: {e}")
+            print(f"[InboxWatcher] Worker warning: {e}")
         time.sleep(10)
 
 
@@ -126,8 +139,11 @@ def ssh_reverse_tunnel_loop():
 
 
 if __name__ == "__main__":
-    t_watcher = threading.Thread(target=inbox_watcher_loop, daemon=True)
-    t_watcher.start()
+    t_discovery = threading.Thread(target=inbox_discovery_loop, daemon=True)
+    t_discovery.start()
+
+    t_worker = threading.Thread(target=pix4d_worker_loop, daemon=True)
+    t_worker.start()
 
     start_pc_reverse_tunnel_pool(local_port=SERVER_PORT)
 

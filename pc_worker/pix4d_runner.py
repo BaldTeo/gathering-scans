@@ -46,7 +46,8 @@ def generate_pix4dmatic_gst_script(
        -> GenerateDepthPointCloud -> GenerateFusedPointCloud -> GenerateScalableMesh(2048) -> ExportQualityReport -> ExportMeshToObj)
     6. Saves project and closes session cleanly.
     """
-    p4m_clean = project_p4m_path.replace("\\", "/")
+    proj_folder_clean = os.path.dirname(project_p4m_path).replace("\\", "/")
+    proj_name = os.path.splitext(os.path.basename(project_p4m_path))[0] or "p4m_project"
     exp_clean = export_dir.replace("\\", "/")
     report_pdf = f"{exp_clean}/quality_report.pdf"
     obj_mesh_folder = f"{exp_clean}/obj_mesh"
@@ -104,12 +105,10 @@ def generate_pix4dmatic_gst_script(
 
     imports_joined = "\n\n".join(import_blocks)
 
-    gst_content = f"""import Pix4D.Gst 1.0
-
-Session {{
+    gst_content = f"""Session {{
     Project {{
-        path : "{p4m_clean}"
-        create : true
+        folder : "{proj_folder_clean}"
+        name : "{proj_name}"
 
 {imports_joined}
 
