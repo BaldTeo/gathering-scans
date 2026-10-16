@@ -607,7 +607,6 @@
         gsMap.zoom = 14.5;
         openClusterPopover(grp);
         gsMap.drawMap();
-        openSiteTimeline(grp.project_group);
       });
 
       grp.el = blob;
@@ -629,10 +628,14 @@
 
     // Scope active project to the selected cluster so Studio & Compare only list this project's scans (Fix #4)
     STATE.activeProjectGroup = grp.project_group;
-    if (grp.scans && grp.scans.length > 0) {
-      if (!grp.scans.some((s) => s.scan_id === STATE.activeScanId)) {
-        STATE.activeScanId = grp.scans[0].scan_id;
-        STATE.activeScan = grp.scans[0];
+    const sortedScans = (grp.scans || [])
+      .slice()
+      .sort((a, b) => String(b.capture_date || "").localeCompare(String(a.capture_date || "")));
+
+    if (sortedScans.length > 0) {
+      if (!sortedScans.some((s) => s.scan_id === STATE.activeScanId)) {
+        STATE.activeScanId = sortedScans[0].scan_id;
+        STATE.activeScan = sortedScans[0];
       }
     }
     populateProjectScanDropdowns(grp.project_group, STATE.activeScanId);
@@ -645,16 +648,16 @@
     const btnOpenTimeline = document.getElementById("btnPopoverOpenTimeline");
     if (btnOpenTimeline) {
       btnOpenTimeline.onclick = () => {
-        openSiteTimeline(grp.project_group, grp.scans[0] ? grp.scans[0].scan_id : null);
+        openSiteTimeline(grp.project_group, STATE.activeScanId || (sortedScans[0] ? sortedScans[0].scan_id : null));
       };
     }
 
     const btnCompare = document.getElementById("btnPopoverCompareGroup");
     if (btnCompare) {
       btnCompare.onclick = () => {
-        const s1 = grp.scans[0];
-        const s2 = grp.scans[1] || grp.scans[0];
-        launchMultiDateCompare(s2.scan_id, s1.scan_id);
+        const s1 = sortedScans[0];
+        const s2 = sortedScans[1] || sortedScans[0];
+        if (s1 && s2) launchMultiDateCompare(s2.scan_id, s1.scan_id);
       };
     }
 
@@ -669,13 +672,11 @@
     const listEl = document.getElementById("popoverScanList");
     listEl.innerHTML = "";
 
-    const sortedScans = (grp.scans || [])
-      .slice()
-      .sort((a, b) => String(b.capture_date || "").localeCompare(String(a.capture_date || "")));
-
     sortedScans.forEach((scan) => {
       const card = document.createElement("div");
-      card.className = "gs-scan-item-card";
+      const isSelected = scan.scan_id === STATE.activeScanId;
+      card.className = "gs-scan-item-card" + (isSelected ? " active" : "");
+      card.dataset.scanId = scan.scan_id;
       card.style.cursor = "pointer";
       const isCached = STATE.cachedScanIds.has(scan.scan_id);
       const thumbSrc = scan.thumbnail_url || `/api/scans/${encodeURIComponent(scan.scan_id)}/thumbnail`;
@@ -700,10 +701,12 @@
             E:${Number(scan.twd97_e).toFixed(1)}m N:${Number(scan.twd97_n).toFixed(1)}m H:+${Number(scan.twd97_h).toFixed(2)}m${isCached ? " · Cached" : ""}
           </div>
           <div class="gs-scan-item-actions">
-            <button type="button" class="btn-xs primary" data-action="open3d" title="Open in 3D Studio">
-              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8">
-                <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
-                <polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/>
+            <button type="button" class="btn-xs primary" data-action="open3d" title="Enlarge Full-Quality 3D Scan in Studio">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="15 3 21 3 21 9"/>
+                <polyline points="9 21 3 21 3 15"/>
+                <line x1="21" y1="3" x2="14" y2="10"/>
+                <line x1="3" y1="21" x2="10" y2="14"/>
               </svg>
             </button>
             <button type="button" class="btn-xs" data-action="compare" title="Compare Dates in Split Slider">
@@ -743,7 +746,13 @@
 
       card.addEventListener("click", (ev) => {
         if (ev.target.closest("button") || ev.target.closest("a")) return;
-        openSiteTimeline(scan.project_group, scan.scan_id);
+        STATE.activeScanId = scan.scan_id;
+        STATE.activeScan = scan;
+        STATE.selectedTimelineScanId = scan.scan_id;
+        document.querySelectorAll("#popoverScanList .gs-scan-item-card").forEach((c) => {
+          c.classList.toggle("active", c.dataset.scanId === scan.scan_id);
+        });
+        loadScanIntoPreview(scan.scan_id);
       });
 
       card.querySelector('[data-action="open3d"]').addEventListener("click", () => {
@@ -776,6 +785,12 @@
 
       listEl.appendChild(card);
     });
+
+    if (STATE.activeScanId && !STATE.siteTimelineOpen) {
+      setTimeout(() => {
+        loadScanIntoPreview(STATE.activeScanId);
+      }, 20);
+    }
   }
 
   // ============================================================================
@@ -783,9 +798,40 @@
   // ============================================================================
   let previewThree = null;
 
+  function getActivePreviewContainer() {
+    if (STATE.siteTimelineOpen) {
+      return document.getElementById("sitePreviewCanvasContainer");
+    }
+    return (
+      document.getElementById("mapRightPreviewCanvasContainer") ||
+      document.getElementById("sitePreviewCanvasContainer")
+    );
+  }
+
+  function syncPreviewRendererContainer() {
+    if (!previewThree) return;
+    const targetContainer = getActivePreviewContainer();
+    if (!targetContainer) return;
+    if (previewThree.renderer.domElement.parentElement !== targetContainer) {
+      targetContainer.appendChild(previewThree.renderer.domElement);
+      previewThree.container = targetContainer;
+    }
+    const w = Math.max(1, targetContainer.clientWidth);
+    const h = Math.max(1, targetContainer.clientHeight);
+    previewThree.camera.aspect = w / h;
+    previewThree.camera.updateProjectionMatrix();
+    previewThree.renderer.setSize(w, h);
+    if (previewThree.tilesRenderer) {
+      previewThree.tilesRenderer.setResolutionFromRenderer(previewThree.camera, previewThree.renderer);
+    }
+  }
+
   function initPreview3D() {
-    if (previewThree) return previewThree;
-    const container = document.getElementById("sitePreviewCanvasContainer");
+    if (previewThree) {
+      syncPreviewRendererContainer();
+      return previewThree;
+    }
+    const container = getActivePreviewContainer();
     if (!container) return null;
 
     const isDark = STATE.resolvedTheme === "dark";
@@ -849,7 +895,7 @@
 
     const animatePreview = () => {
       requestAnimationFrame(animatePreview);
-      if (STATE.activeView !== "map" || !STATE.siteTimelineOpen) return;
+      if (STATE.activeView !== "map") return;
       controls.update();
       if (previewThree.tilesRenderer) {
         camera.updateMatrixWorld();
@@ -1100,8 +1146,18 @@
 
   function loadScanIntoPreview(scanId, forceReload = false) {
     initPreview3D();
+    syncPreviewRendererContainer();
     const scan = STATE.scans.find((s) => s.scan_id === scanId) || STATE.scans[0];
     if (!scan || !previewThree) return;
+
+    const titleEl = document.getElementById("previewScanTitle");
+    if (titleEl) titleEl.textContent = scan.name;
+    const rightTitleEl = document.getElementById("rightPreviewScanTitle");
+    if (rightTitleEl) rightTitleEl.textContent = `${scan.name} (${scan.capture_date})`;
+    const metaEl = document.getElementById("previewScanMeta");
+    if (metaEl) {
+      metaEl.textContent = `${scan.capture_date} · ${scan.uploader_name} · E ${Number(scan.twd97_e).toFixed(1)} N ${Number(scan.twd97_n).toFixed(1)} H +${Number(scan.twd97_h).toFixed(2)}m`;
+    }
 
     // Avoid tearing down an already active/in-flight stream of the exact same scan
     if (
@@ -1120,20 +1176,6 @@
     STATE.activeScanId = scan.scan_id;
     STATE.activeScan = scan;
 
-    // Resize preview renderer to fit bottom 2/3 container
-    const w = Math.max(1, previewThree.container.clientWidth);
-    const h = Math.max(1, previewThree.container.clientHeight);
-    previewThree.camera.aspect = w / h;
-    previewThree.camera.updateProjectionMatrix();
-    previewThree.renderer.setSize(w, h);
-
-    const titleEl = document.getElementById("previewScanTitle");
-    if (titleEl) titleEl.textContent = scan.name;
-    const metaEl = document.getElementById("previewScanMeta");
-    if (metaEl) {
-      metaEl.textContent = `${scan.capture_date} · ${scan.uploader_name} · E ${Number(scan.twd97_e).toFixed(1)} N ${Number(scan.twd97_n).toFixed(1)} H +${Number(scan.twd97_h).toFixed(2)}m`;
-    }
-
     // Teardown previous preview model
     if (previewThree.tilesRenderer) {
       previewThree.modelPivot.remove(previewThree.tilesRenderer.group);
@@ -1147,11 +1189,17 @@
     if (previewThree.fallbackGroup) previewThree.fallbackGroup.visible = false;
 
     previewThree._retriedOnce = false;
-    startScanLoader(previewThree, "preview", scan.name, scan.scan_id);
+    startScanLoader(previewThree, "preview", `${scan.name} (Low-Res Preview)`, scan.scan_id);
 
-    const streamUrl = scan.stream_url || `/stream/${scan.scan_id}/tileset.json`;
+    // Always use the very low-quality preview version before user clicks Enlarge in site menu
+    const streamUrl =
+      scan.preview_stream_url ||
+      (scan.stream_url
+        ? scan.stream_url.replace("/tileset.json", "/preview_tileset.json")
+        : `/stream/${scan.scan_id}/preview_tileset.json`);
+    const streamType = scan.preview_stream_type || scan.stream_type;
 
-    if (scan.stream_type === "glb" || streamUrl.toLowerCase().endsWith(".glb")) {
+    if (streamType === "glb" || streamUrl.toLowerCase().endsWith(".glb")) {
       const loader = new THREE.GLTFLoader();
       if (window.MeshoptDecoder) loader.setMeshoptDecoder(window.MeshoptDecoder);
       const ktx2 = getKTX2Loader(previewThree.renderer);
@@ -1175,7 +1223,7 @@
           });
           previewThree.modelPivot.add(model);
           framePreviewCamera();
-          finishScanLoader(previewThree, "preview", "100% · 3D Mesh Ready");
+          finishScanLoader(previewThree, "preview", "100% · Low-Res Preview Ready");
         },
         (xhr) => {
           const pct =
@@ -1183,7 +1231,7 @@
               ? Math.min(95, Math.max(12, Math.round((xhr.loaded / xhr.total) * 100)))
               : Math.min(88, (previewThree._maxPct || 12) + 8);
           previewThree._maxPct = pct;
-          updateScanLoader("preview", true, pct, `Loading 3D Mesh (${pct}%)...`);
+          updateScanLoader("preview", true, pct, `Loading Low-Res Preview (${pct}%)...`);
         },
         () => {
           if (previewThree.fallbackGroup) previewThree.fallbackGroup.visible = true;
@@ -1213,7 +1261,7 @@
         previewThree._tilesetReady = true;
         previewThree._tilesetReadyMs = performance.now();
         previewThree._maxPct = Math.max(previewThree._maxPct || 0, 22);
-        updateScanLoader("preview", true, previewThree._maxPct, "Streaming 3D tiles...");
+        updateScanLoader("preview", true, previewThree._maxPct, "Streaming low-res preview...");
         const sphere = new THREE.Sphere();
         if (computeTilesetContentSphere(tr, sphere)) {
           tr.group.position.set(-sphere.center.x, -sphere.center.y, -sphere.center.z);
@@ -1236,7 +1284,7 @@
         }
       });
 
-      tr.errorTarget = 6.0;
+      tr.errorTarget = 24.0;
       if (tr.downloadQueue) tr.downloadQueue.maxJobs = 12;
       if (tr.parseQueue) tr.parseQueue.maxJobs = 6;
       previewThree.modelPivot.add(tr.group);
@@ -1257,6 +1305,9 @@
       tile.classList.toggle("active", isAct);
       const rtkChip = tile.querySelector("[data-rtk-chip]");
       if (rtkChip) rtkChip.classList.toggle("active-indicator", isAct);
+    });
+    document.querySelectorAll("#popoverScanList .gs-scan-item-card").forEach((c) => {
+      c.classList.toggle("active", c.dataset.scanId === scanId);
     });
     loadScanIntoPreview(scanId);
   }
@@ -1283,6 +1334,7 @@
       switchView("map");
     }
     splitEl.classList.add("active");
+    syncPreviewRendererContainer();
 
     let siteScans = STATE.scans
       .filter((s) => s.project_group === grpName)
@@ -1444,6 +1496,10 @@
       if (prevTitle && (STATE.selectedTimelineScanId === scan.scan_id || STATE.activeScanId === scan.scan_id)) {
         prevTitle.textContent = savedName;
       }
+      const rightTitle = document.getElementById("rightPreviewScanTitle");
+      if (rightTitle && (STATE.selectedTimelineScanId === scan.scan_id || STATE.activeScanId === scan.scan_id)) {
+        rightTitle.textContent = `${savedName} (${scan.capture_date})`;
+      }
       document.querySelectorAll(`#siteTimelineTilesTrack .gs-timeline-tile[data-scan-id="${scan.scan_id}"] .gs-tile-name`).forEach((el) => {
         el.textContent = savedName;
         el.title = savedName;
@@ -1485,6 +1541,7 @@
   function closeSiteTimeline() {
     STATE.siteTimelineOpen = false;
     document.getElementById("siteTimelineSplitView")?.classList.remove("active");
+    syncPreviewRendererContainer();
     if (gsMap && gsMap.drawMap) gsMap.drawMap();
   }
 
@@ -1494,6 +1551,13 @@
     const targetScanId = STATE.selectedTimelineScanId || STATE.activeScanId;
     switchView("studio", targetScanId);
   });
+
+  document.getElementById("btnEnlargeRightPreview")?.addEventListener("click", () => {
+    const targetScanId = STATE.selectedTimelineScanId || STATE.activeScanId;
+    switchView("studio", targetScanId);
+  });
+
+  document.getElementById("btnRightPreviewResetCamera")?.addEventListener("click", framePreviewCamera);
 
   document.getElementById("btnStudioBackToTimeline")?.addEventListener("click", () => {
     openSiteTimeline(STATE.activeProjectGroup, STATE.activeScanId);
@@ -4854,15 +4918,8 @@
     if (gsMap && gsMap.drawMap && STATE.activeView === "map") {
       gsMap.drawMap();
     }
-    if (previewThree && STATE.activeView === "map" && STATE.siteTimelineOpen) {
-      const w = Math.max(1, previewThree.container.clientWidth);
-      const h = Math.max(1, previewThree.container.clientHeight);
-      previewThree.camera.aspect = w / h;
-      previewThree.camera.updateProjectionMatrix();
-      previewThree.renderer.setSize(w, h);
-      if (previewThree.tilesRenderer) {
-        previewThree.tilesRenderer.setResolutionFromRenderer(previewThree.camera, previewThree.renderer);
-      }
+    if (previewThree && STATE.activeView === "map") {
+      syncPreviewRendererContainer();
     }
     if (studioThree && STATE.activeView === "studio") {
       const w = Math.max(1, studioThree.container.clientWidth);

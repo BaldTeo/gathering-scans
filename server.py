@@ -795,10 +795,15 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
         if ts_path.lower().endswith(".glb"):
             s["stream_url"] = f"/stream/{sid}/{os.path.basename(ts_path)}{q_suffix}"
             s["stream_type"] = "glb"
+            s["preview_stream_url"] = f"/stream/{sid}/preview_low.glb{q_suffix}"
+            s["preview_stream_type"] = "glb"
         else:
             ts_q = f"?v=opt4&share={share_token}" if share_token else "?v=opt4"
+            prev_q = f"?v=low1&share={share_token}" if share_token else "?v=low1"
             s["stream_url"] = f"/stream/{sid}/tileset.json{ts_q}"
             s["stream_type"] = "tileset"
+            s["preview_stream_url"] = f"/stream/{sid}/preview_tileset.json{prev_q}"
+            s["preview_stream_type"] = "tileset"
         s["download_obj_url"] = f"/api/download?scan_id={sid}&type=obj" + (f"&share={share_token}" if share_token else "")
         s["thumbnail_url"] = f"/api/scans/{sid}/thumbnail{q_suffix}"
         return s
@@ -897,6 +902,7 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
             or path.endswith("/thumbnail")
             or path.endswith("/thumbnail.png")
             or path.endswith("/tileset.json")
+            or path.endswith("/preview_tileset.json")
             or path.endswith(".glb")
         )
         if method == "POST" and path.endswith("/thumbnail"):
@@ -1462,6 +1468,22 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
                 return
 
             ts_path = scan.get("tileset_path") or ""
+            if sub_path in ("preview_tileset.json", "preview_low.glb") and os.path.isfile(ts_path):
+                base_dir = os.path.dirname(ts_path)
+                prev_target = os.path.join(base_dir, sub_path)
+                if not os.path.isfile(prev_target):
+                    try:
+                        from pc_worker.preview_generator import ensure_scan_low_quality_preview
+
+                        ensure_scan_low_quality_preview(ts_path, force=False)
+                    except Exception:
+                        pass
+                if os.path.isfile(prev_target):
+                    self._serve_file_with_range(prev_target)
+                    return
+                if sub_path == "preview_tileset.json":
+                    self._serve_optimized_tileset_json(ts_path)
+                    return
             if sub_path == "tileset.json" and os.path.isfile(ts_path):
                 if query.get("full_octree", ["0"])[0] == "1":
                     self._serve_file_with_range(ts_path)

@@ -585,6 +585,7 @@ INTERNAL_ASSET_DIRS = {
     "logs",
     "temp",
     "project",
+    "preview_low",
 }
 
 
@@ -779,6 +780,13 @@ def _discover_folder_scan_item(
 
     if not (tileset_path and os.path.isfile(tileset_path)):
         return None
+
+    try:
+        from pc_worker.preview_generator import ensure_scan_low_quality_preview
+
+        ensure_scan_low_quality_preview(tileset_path, force=False)
+    except Exception as e:
+        print(f"[GDriveWatcher] Warning generating low-quality preview for {tileset_path}: {e}")
 
     ts_georef = _extract_tileset_georef_and_fix_axis(tileset_path)
 

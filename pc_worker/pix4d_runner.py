@@ -353,6 +353,12 @@ def run_pix4dmatic_pipeline(
         ts_candidate = os.path.join(tileset_dir, "tileset.json")
         if os.path.isfile(ts_candidate):
             tileset_path = ts_candidate
+            try:
+                from pc_worker.preview_generator import ensure_scan_low_quality_preview
+
+                ensure_scan_low_quality_preview(tileset_path, force=True)
+            except Exception as e:
+                print(f"[PIX4DRunner] Warning generating low-quality preview for {tileset_path}: {e}")
 
     if progress_callback:
         progress_callback(100.0, "Completed (TWD97 + TWVD2001, 2K Web Tileset)")

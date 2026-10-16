@@ -185,6 +185,33 @@
           </div>
         </div>
         <div class="gs-map-right-tiles-scroll" id="popoverScanList"></div>
+
+        <!-- Docked Low-Quality 3D Scan Preview in Right 1/3 Site Menu (Shown before clicking Enlarge) -->
+        <div class="gs-map-right-preview-pane" id="mapRightPreviewPane">
+          <div class="gs-map-right-preview-topbar">
+            <div style="display:flex;align-items:center;gap:6px;min-width:0;flex:1;">
+              <span class="gs-lowres-preview-pill" title="Fast decimated 3D preview generated for instant site browsing">Low-Res Preview</span>
+              <span class="gs-map-right-preview-title" id="rightPreviewScanTitle">Select a scan above</span>
+            </div>
+            <button type="button" class="btn-xs" id="btnRightPreviewResetCamera" title="Frame Preview Camera" style="height:22px;padding:0 6px;">
+              <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="7"/><line x1="12" y1="2" x2="12" y2="5"/><line x1="12" y1="19" x2="12" y2="22"/>
+                <line x1="2" y1="12" x2="5" y2="12"/><line x1="19" y1="12" x2="22" y2="12"/>
+              </svg>
+            </button>
+          </div>
+          <div class="gs-map-right-preview-canvas-wrap">
+            <div id="mapRightPreviewCanvasContainer" class="gs-map-right-preview-canvas"></div>
+            <button type="button" class="gs-preview-enlarge-btn gs-right-preview-enlarge-btn" id="btnEnlargeRightPreview" title="Enlarge to Full-Quality 3D Viewer &amp; Editor" aria-label="Enlarge to Full-Quality 3D Viewer &amp; Editor">
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="15 3 21 3 21 9"/>
+                <polyline points="9 21 3 21 3 15"/>
+                <line x1="21" y1="3" x2="14" y2="10"/>
+                <line x1="3" y1="21" x2="10" y2="14"/>
+              </svg>
+            </button>
+          </div>
+        </div>
       </aside>
 
       <!-- Site Selected Split View: Top 1/3 Scan Timeline Tiles + Bottom 2/3 Interactive 3D Scan Preview -->
@@ -248,7 +275,7 @@
                 </svg>
                 <div class="gs-scan-loader-pct" id="previewScanLoaderPct">0%</div>
               </div>
-              <div class="gs-scan-loader-label" id="previewScanLoaderLabel">Loading 3D Scan...</div>
+              <div class="gs-scan-loader-label" id="previewScanLoaderLabel">Loading Low-Res Preview...</div>
             </div>
           </div>
 
@@ -261,6 +288,7 @@
               <div class="gs-preview-text-wrap">
                 <div style="display:flex;align-items:center;gap:6px;min-width:0;">
                   <div style="font-size:12.5px;font-weight:700;color:var(--ui-text-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" id="previewScanTitle" title="Click pencil icon to edit scan name">3D Mesh Preview</div>
+                  <span class="gs-lowres-preview-pill" id="previewQualityBadge" title="Very low-quality preview loaded for fast browsing. Click Enlarge (bottom-right) for full-resolution 3D scan.">Low-Res Preview</span>
                   <button type="button" class="btn-xs" id="btnRenamePreviewScan" title="Edit Scan Name" style="height:20px;padding:0 5px;flex-shrink:0;">
                     <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2">
                       <path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
