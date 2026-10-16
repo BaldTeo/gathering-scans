@@ -633,9 +633,11 @@
       .sort((a, b) => String(b.capture_date || "").localeCompare(String(a.capture_date || "")));
 
     if (sortedScans.length > 0) {
-      if (!sortedScans.some((s) => s.scan_id === STATE.activeScanId)) {
-        STATE.activeScanId = sortedScans[0].scan_id;
-        STATE.activeScan = sortedScans[0];
+      const currInGroup = sortedScans.find((s) => s.scan_id === STATE.activeScanId);
+      if (!currInGroup || (currInGroup.status !== "completed" && sortedScans.some((s) => s.status === "completed"))) {
+        const bestScan = sortedScans.find((s) => s.status === "completed") || sortedScans[0];
+        STATE.activeScanId = bestScan.scan_id;
+        STATE.activeScan = bestScan;
       }
     }
     populateProjectScanDropdowns(grp.project_group, STATE.activeScanId);
@@ -1189,6 +1191,16 @@
     if (previewThree.fallbackGroup) previewThree.fallbackGroup.visible = false;
 
     previewThree._retriedOnce = false;
+    if (scan.status && scan.status !== "completed") {
+      if (previewThree.fallbackGroup) previewThree.fallbackGroup.visible = true;
+      framePreviewCamera();
+      finishScanLoader(
+        previewThree,
+        "preview",
+        `Processing in PIX4Dmatic (${Math.round(Number(scan.progress_pct) || 0)}%)`
+      );
+      return;
+    }
     startScanLoader(previewThree, "preview", `${scan.name} (Low-Res Preview)`, scan.scan_id);
 
     // Always use the very low-quality preview version before user clicks Enlarge in site menu
@@ -5015,7 +5027,8 @@
         STATE.activeScanId = urlScan;
       } else if (!STATE.activeScanId || !STATE.scans.some((s) => s.scan_id === STATE.activeScanId)) {
         if (STATE.scans.length > 0) {
-          STATE.activeScanId = STATE.scans[0].scan_id;
+          const firstReady = STATE.scans.find((s) => s.status === "completed") || STATE.scans[0];
+          STATE.activeScanId = firstReady.scan_id;
         }
       }
       if (
