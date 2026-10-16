@@ -30,18 +30,62 @@ from pc_worker.config import (
     VPS_REMOTE_TUNNEL_PORT,
     GDRIVE_INBOX_DIR,
 )
-from server import run_server, start_pc_reverse_tunnel_pool, DB
+from server import run_server, start_pc_reverse_tunnel_pool, DB, GCHAT
 from pc_worker.gdrive_watcher import seed_and_discover_scans
+from pc_worker.pix4d_runner import run_pix4dmatic_pipeline
+from pc_worker.config import LOCAL_SCANS_ROOT
 
 
 def inbox_watcher_loop():
-    """Periodically polls C:\\GatheringScans and G:\\My Drive\\SCANS TEST for new scan folders and Pix4DCatch .zip uploads."""
+    """
+    Periodically polls C:\\GatheringScans and G:\\Shared drives\\6.軟體\\3. GatheringScans
+    for new scan folders and Pix4DCatch .zip uploads, and automatically runs the
+    PIX4Dmatic 2.11.0 + GC_ScanOptimizer pipeline on the highest-priority queued job.
+    """
     while True:
         try:
             seed_and_discover_scans(DB)
+            next_job = DB.pop_next_job()
+            if next_job:
+                sid = next_job["scan_id"]
+                src_zip = next_job.get("source_zip_path") or ""
+                if src_zip:
+                    print(f"[InboxWatcher] Auto-starting PIX4Dmatic pipeline for {sid}: {src_zip}")
+                    out_dir = os.path.join(LOCAL_SCANS_ROOT, sid)
+
+                    def _on_progress(pct: float, stage: str):
+                        DB.update_job_progress(sid, "processing", pct, stage)
+
+                    res = run_pix4dmatic_pipeline(
+                        scan_id=sid,
+                        input_path=src_zip,
+                        output_project_dir=out_dir,
+                        progress_callback=_on_progress,
+                    )
+                    if res.get("success") and res.get("tileset_path"):
+                        DB.update_job_progress(
+                            sid,
+                            "completed",
+                            100.0,
+                            "Completed (TWD97 + TWVD2001, 2K Web Tileset)",
+                            tileset_path=res.get("tileset_path"),
+                            obj_path=res.get("obj_path"),
+                        )
+                        try:
+                            GCHAT.notify_scan_ready(sid)
+                        except Exception as ge:
+                            print(f"[InboxWatcher] Google Chat notify note: {ge}")
+                        print(f"[InboxWatcher] Completed {sid} -> {res.get('tileset_path')}")
+                    else:
+                        DB.update_job_progress(
+                            sid,
+                            "failed",
+                            0.0,
+                            f"Pipeline error (exit {res.get('return_code')})",
+                        )
         except Exception as e:
             print(f"[InboxWatcher] Poll warning: {e}")
-        time.sleep(30)
+        time.sleep(10)
 
 
 def ssh_reverse_tunnel_loop():

@@ -772,13 +772,40 @@ def seed_and_discover_scans(db: ScanQueueDB) -> List[Dict[str, Any]]:
             if os.path.isfile(epath) and entry.lower().endswith(".zip"):
                 zip_candidates.append(("", entry, epath))
             elif os.path.isdir(epath):
-                # Allow project subfolders inside '3. GatheringScans/<ProjectName>/FileName.zip'
+                # 2a. Check if epath is directly a pre-built scan/tileset folder dropped into GDrive inbox
+                direct_inbox_ts = (
+                    os.path.isfile(os.path.join(epath, "scan_meta.json"))
+                    or os.path.isfile(os.path.join(epath, "tileset.json"))
+                    or os.path.isfile(os.path.join(epath, "tileset", "tileset.json"))
+                )
+                if direct_inbox_ts:
+                    item = _discover_folder_scan_item(epath, dynamic_clusters=dynamic_clusters)
+                    if item and item["scan_id"] not in discovered_ids:
+                        db.upsert_scan(item)
+                        discovered_ids.add(item["scan_id"])
+
+                # 2b. Check subfolders / .zip archives inside '3. GatheringScans/<ProjectName>/'
                 for sub_fn in sorted(os.listdir(epath)):
-                    if not sub_fn.lower().endswith(".zip"):
+                    if sub_fn.startswith(("_", ".")):
                         continue
                     sub_fpath = os.path.join(epath, sub_fn)
-                    if is_safe_jailed_path(sub_fpath, idir) and os.path.isfile(sub_fpath):
+                    if not is_safe_jailed_path(sub_fpath, idir):
+                        continue
+                    if os.path.isfile(sub_fpath) and sub_fn.lower().endswith(".zip"):
                         zip_candidates.append((entry, sub_fn, sub_fpath))
+                    elif os.path.isdir(sub_fpath):
+                        nested_ts = (
+                            os.path.isfile(os.path.join(sub_fpath, "scan_meta.json"))
+                            or os.path.isfile(os.path.join(sub_fpath, "tileset.json"))
+                            or os.path.isfile(os.path.join(sub_fpath, "tileset", "tileset.json"))
+                        )
+                        if nested_ts:
+                            n_item = _discover_folder_scan_item(
+                                sub_fpath, parent_project=entry, dynamic_clusters=dynamic_clusters
+                            )
+                            if n_item and n_item["scan_id"] not in discovered_ids:
+                                db.upsert_scan(n_item)
+                                discovered_ids.add(n_item["scan_id"])
 
             for parent_proj, fname, fpath in zip_candidates:
                 dedup_key = (parent_proj.lower(), fname.lower())

@@ -73,20 +73,29 @@ _LAST_FS_FINGERPRINT: Optional[Tuple[str, ...]] = None
 
 
 def _compute_scans_dir_fingerprint() -> Tuple[str, ...]:
-    if not os.path.isdir(LOCAL_SCANS_ROOT):
-        return ()
     entries = []
-    try:
-        for name in sorted(os.listdir(LOCAL_SCANS_ROOT)):
-            full = os.path.join(LOCAL_SCANS_ROOT, name)
-            if os.path.isdir(full):
-                try:
-                    sub = sorted(os.listdir(full))
-                except Exception:
-                    sub = []
-                entries.append(f"{name}:{','.join(sub[:12])}")
-    except Exception:
-        pass
+    for root_label, root_dir in (("local", LOCAL_SCANS_ROOT), ("gdrive", GDRIVE_INBOX_DIR)):
+        if not root_dir or not os.path.isdir(root_dir):
+            continue
+        try:
+            for name in sorted(os.listdir(root_dir)):
+                if name.startswith(("_", ".")):
+                    continue
+                full = os.path.join(root_dir, name)
+                if os.path.isdir(full):
+                    try:
+                        sub = sorted(os.listdir(full))
+                    except Exception:
+                        sub = []
+                    entries.append(f"{root_label}:{name}:{','.join(sub[:16])}")
+                elif os.path.isfile(full) and name.lower().endswith(".zip"):
+                    try:
+                        sz = os.path.getsize(full)
+                    except Exception:
+                        sz = 0
+                    entries.append(f"{root_label}:{name}:{sz}")
+        except Exception:
+            pass
     return tuple(entries)
 
 
