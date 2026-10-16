@@ -877,8 +877,15 @@ def seed_and_discover_scans(db: ScanQueueDB) -> List[Dict[str, Any]]:
                     f"({', '.join(os.path.basename(parts_map[p]) for p in present_parts)}). "
                     f"Waiting for part(s) {missing_str} before launching unified PIX4Dmatic project."
                 )
-            elif existing.get("status") in ("completed", "processing") and existing.get("tileset_path") and os.path.isfile(existing.get("tileset_path", "")):
-                primary_meta["status"] = existing["status"]
+            elif existing.get("status") == "processing":
+                primary_meta["status"] = "processing"
+                primary_meta["progress_pct"] = existing.get("progress_pct", 10.0)
+                primary_meta["stage_label"] = existing.get("stage_label", "Processing in PIX4Dmatic...")
+                primary_meta["tileset_path"] = existing.get("tileset_path", "")
+                primary_meta["obj_path"] = existing.get("obj_path", "")
+                primary_meta["project_dir"] = existing.get("project_dir", "")
+            elif existing.get("status") == "completed" and existing.get("tileset_path") and os.path.isfile(existing.get("tileset_path", "")):
+                primary_meta["status"] = "completed"
                 primary_meta["progress_pct"] = existing.get("progress_pct", 100.0)
                 primary_meta["stage_label"] = existing.get("stage_label", "Completed")
                 primary_meta["tileset_path"] = existing.get("tileset_path", "")

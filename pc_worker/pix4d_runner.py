@@ -32,33 +32,77 @@ def generate_pix4dmatic_gst_script(
     texture_size: int = PIX4DMATIC_TEXTURE_SIZE,
     srs_wkt: str = TWD97_TWVD2001_WKT,
     extracted_image_paths: Optional[list] = None,
+    primary_opf_path: Optional[str] = None,
+    part_image_groups: Optional[list] = None,
 ) -> str:
     """
     Generates a verified PIX4Dmatic 2.11.0 .gst / .p4mpl QML automation script matching
-    the exact CommandGraph schema from C:/Scans/QuChi/QuChi_20261005/history.p4mpl:
+    the exact CommandGraph schema from C:/Scans/QuChi/QuChi_20261015/history.p4mpl:
     1. Creates/opens the project (.p4m)
-    2. Sets GCP & Project CRS to TWD97 / TM2 zone 121 + TWVD 2001 height (EPSG:3826+8904 [TWGEOID2018h])
-    3. Imports the Pix4DCatch images/depth/confidence maps via AddImagesFromPaths
-    4. Runs CommandGraph:
-       - GenerateReconstruction (CalibPipeline.AccurateCameraExternalMeasurements, CalibTemplate.CatchRTK, ImageScale.Full)
-       - GenerateGaPmvsDensePointCloud (SensorType.Rgb, ImageScale.Half, PointDensity.Optimal)
-       - GenerateDepthPointCloud (ConfidenceLevel.High)
-       - GenerateFusedPointCloud (distanceThresholdMeters: 0.025, nearestNeighboursCount: 128)
-       - GenerateScalableMesh (MeshPipeline.FixedSize, MeshProjectTemplate.Catch, textureSize: 2048)
-       - ExportMeshToObj (ExportSrs.Project, exportLod: 13)
-    5. Saves project and closes session cleanly.
+    2. Imports primary OPF (ImportOpf) for part 1
+    3. Sets GCP & Project CRS to TWD97 / TM2 zone 121 + TWVD 2001 height (EPSG:3826+8904 [TWGEOID2018h])
+    4. Imports any additional parts via AddImagesFromPaths
+    5. Runs CommandGraph (GenerateReconstruction -> GenerateSkyMasks -> GenerateGaPmvsDensePointCloud
+       -> GenerateDepthPointCloud -> GenerateFusedPointCloud -> GenerateScalableMesh(2048) -> ExportQualityReport -> ExportMeshToObj)
+    6. Saves project and closes session cleanly.
     """
     p4m_clean = project_p4m_path.replace("\\", "/")
     exp_clean = export_dir.replace("\\", "/")
     report_pdf = f"{exp_clean}/quality_report.pdf"
+    obj_mesh_folder = f"{exp_clean}/obj_mesh"
 
-    if extracted_image_paths:
-        paths_literal = ",\n            ".join(f'"{p.replace(chr(92), "/")}"' for p in extracted_image_paths)
-    else:
-        part_paths = [p.strip().replace("\\", "/") for p in input_zip_or_folder.split(";") if p.strip()]
-        if not part_paths:
-            part_paths = [input_zip_or_folder.replace("\\", "/")]
-        paths_literal = ",\n            ".join(f'"{p}"' for p in part_paths)
+    import_blocks = []
+    if primary_opf_path:
+        opf_clean = primary_opf_path.replace("\\", "/")
+        import_blocks.append(
+            f"""        // 1. Import Primary Pix4DCatch OPF Project
+        ImportOpf {{
+            path : "{opf_clean}"
+            settings.colorizeTracks : true
+            outputs : [InputCameras{{ }},CalibratedCameras{{ }},TiePointSet{{ }},FeaturesAndMatches{{ }},IntersectionTiePointSet{{ }},ConstraintSet{{ }},LineFeatures{{ }},Wireframe{{ }},SparsePointCloud{{ }},GaussianSplats{{ }},DensePointCloud{{ }},DepthPointCloud{{ }},FusedPointCloud{{ }},AsprsClasses{{ }},ComputedDepthMaps{{ }},RoiSet{{ }},SkyMasks{{ }},Dsm{{ }},Dtm{{ }},Ortho{{ }},VectorLayer{{ name: 'Polygons'; group: 'polygons'; }},VectorLayer{{ group: 'masks'; }}]
+        }}"""
+        )
+
+    import_blocks.append(
+        f"""        // 2. Enforce TWD97 (121) [EPSG:3826] + TWVD2001 [EPSG:8904, TWGEOID2018h]
+        SetGcpCrs {{
+            settings.srsDefinition : '{srs_wkt}'
+            inputs : [InputCameras{{ }},TiePointSet{{ }},RoiSet{{ }}]
+            outputs : [InputCameras{{ }},TiePointSet{{ }},RoiSet{{ }}]
+        }}"""
+    )
+
+    if part_image_groups:
+        for idx, grp in enumerate(part_image_groups):
+            if not grp:
+                continue
+            grp_literal = ",\n            ".join(f'"{p.replace(chr(92), "/")}"' for p in grp)
+            import_blocks.append(
+                f"""        // Import Part {idx + 2 if primary_opf_path else idx + 1} Images + Depth + Confidence
+        AddImagesFromPaths {{
+            paths : [{grp_literal}]
+            inputs : [InputCameras{{ }},TiePointSet{{ }},RoiSet{{ }}]
+            outputs : [InputCameras{{ }},TiePointSet{{ }},RoiSet{{ }}]
+        }}"""
+            )
+    elif not primary_opf_path:
+        if extracted_image_paths:
+            paths_literal = ",\n            ".join(f'"{p.replace(chr(92), "/")}"' for p in extracted_image_paths)
+        else:
+            part_paths = [p.strip().replace("\\", "/") for p in input_zip_or_folder.split(";") if p.strip()]
+            if not part_paths:
+                part_paths = [input_zip_or_folder.replace("\\", "/")]
+            paths_literal = ",\n            ".join(f'"{p}"' for p in part_paths)
+        import_blocks.insert(
+            0,
+            f"""        AddImagesFromPaths {{
+            paths : [{paths_literal}]
+            inputs : [InputCameras{{ }},TiePointSet{{ }},RoiSet{{ }}]
+            outputs : [InputCameras{{ }},TiePointSet{{ }},RoiSet{{ }}]
+        }}""",
+        )
+
+    imports_joined = "\n\n".join(import_blocks)
 
     gst_content = f"""import Pix4D.Gst 1.0
 
@@ -67,19 +111,8 @@ Session {{
         path : "{p4m_clean}"
         create : true
 
-        // 1. Enforce TWD97 (121) [EPSG:3826] + TWVD2001 [EPSG:8904, TWGEOID2018h]
-        SetGcpCrs {{
-            settings.srsDefinition : '{srs_wkt}'
-            inputs : [InputCameras{{ }},TiePointSet{{ }},RoiSet{{ }}]
-            outputs : [InputCameras{{ }},TiePointSet{{ }},RoiSet{{ }}]
-        }}
+{imports_joined}
 
-        // 2. Import Pix4DCatch RTK Frames + LiDAR Depth & Confidence Maps (Single or Multi-Part Merged)
-        AddImagesFromPaths {{
-            paths : [{paths_literal}]
-            inputs : [InputCameras{{ }},TiePointSet{{ }},RoiSet{{ }}]
-            outputs : [InputCameras{{ }},TiePointSet{{ }},RoiSet{{ }}]
-        }}
         SaveProject {{ }}
 
         // 3. Full Photogrammetry & 2K Mesh Pipeline (PIX4Dmatic 2.11.0 CommandGraph)
@@ -102,6 +135,11 @@ Session {{
                 inputs : [InputCameras{{ }},TiePointSet{{ }},ConstraintSet{{ }}]
                 outputs : [InputCameras{{ }},CalibratedCameras{{ }},SparsePointCloud{{ }},FeaturesAndMatches{{ }},IntersectionTiePointSet{{ }},LineFeatures{{ }}]
             }}
+            GenerateSkyMasks {{
+                resources.useGpu : GpuUsage.Yes
+                inputs : [CalibratedCameras{{ }}]
+                outputs : [SkyMasks{{ }}]
+            }}
             GenerateGaPmvsDensePointCloud {{
                 settings.sensorType : SensorType.Rgb
                 settings.denoise : true
@@ -110,7 +148,7 @@ Session {{
                 settings.minNbrOfMatches : 3
                 settings.multiScale : true
                 settings.pointDensity : PointDensity.Optimal
-                settings.skyless : false
+                settings.skyless : true
                 resources.useGpu : GpuUsage.Automatic
                 inputs : [CalibratedCameras{{ }},SparsePointCloud{{ }},SkyMasks{{ }}]
                 outputs : [DensePointCloud{{ }}]
@@ -137,21 +175,26 @@ Session {{
                 settings.meshProjectTemplate : MeshProjectTemplate.Catch
                 settings.modelSimplification : ModelSimplification.Conservative
                 settings.polygonAware : false
-                settings.skyless : false
+                settings.skyless : true
                 settings.textureSize : {int(texture_size)}
-                inputs : [FusedPointCloud{{ }}]
+                inputs : [FusedPointCloud{{ }},SkyMasks{{ }}]
                 outputs : [Mesh{{ }}]
             }}
+            ExportQualityReport {{
+                path : "{report_pdf}"
+                settings.displayUnit : 'm'
+                settings.reportExportFormat : ReportExportFormat.Pdf
+                settings.temperatureUnit : TemperatureUnit.Celsius
+                settings.thermalColorMap : ColorMap.Inferno
+                inputs : [CalibratedCameras{{ }},SparsePointCloud{{ }},TiePointSet{{ }},IntersectionTiePointSet{{ }},GaussianSplats{{ }},DensePointCloud{{ }},DepthPointCloud{{ }},FusedPointCloud{{ }},Mesh{{ }}]
+            }}
             ExportMeshToObj {{
-                folder : "{exp_clean}"
+                folder : "{obj_mesh_folder}"
                 settings.exportAsTiles : false
-                settings.exportLod : 13
+                settings.exportLod : 0
                 settings.exportSrs : ExportSrs.Project
                 inputs : [Mesh{{ }}]
             }}
-        }}
-        ExportQualityReport {{
-            path : "{report_pdf}"
         }}
         SaveProject {{ }}
     }}
@@ -189,19 +232,32 @@ def run_pix4dmatic_pipeline(
 
     # Extract single or multi-part Pix4DCatch .zip archives into inputs/<stem>
     extracted_files = []
+    primary_opf_path = None
+    part_image_groups = []
     part_paths = [p.strip() for p in input_path.split(";") if p.strip()]
     if not dry_run:
-        for zpath in part_paths:
+        for idx, zpath in enumerate(part_paths):
             if os.path.isfile(zpath) and zpath.lower().endswith(".zip"):
                 stem = os.path.splitext(os.path.basename(zpath))[0]
                 target_extract = os.path.join(inputs_dir, stem)
                 if not os.path.isdir(target_extract):
+                    if progress_callback:
+                        progress_callback(6.0 + idx * 0.8, f"Extracting archive {idx + 1}/{len(part_paths)}: {os.path.basename(zpath)}...")
                     with zipfile.ZipFile(zpath, "r") as zf:
                         zf.extractall(target_extract)
+                cand_opf = os.path.join(target_extract, "project.opf")
+                part_imgs = []
                 for root, _, files in os.walk(target_extract):
                     for fn in sorted(files):
                         if fn.lower().endswith((".jpg", ".jpeg", ".png", ".tiff", ".tif")):
-                            extracted_files.append(os.path.join(root, fn))
+                            full_img = os.path.join(root, fn)
+                            extracted_files.append(full_img)
+                            part_imgs.append(full_img)
+                if idx == 0 and os.path.isfile(cand_opf):
+                    primary_opf_path = cand_opf
+                else:
+                    if part_imgs:
+                        part_image_groups.append(part_imgs)
 
     gst_code = generate_pix4dmatic_gst_script(
         project_p4m_path=p4m_path,
@@ -210,6 +266,8 @@ def run_pix4dmatic_pipeline(
         texture_size=PIX4DMATIC_TEXTURE_SIZE,
         srs_wkt=TWD97_TWVD2001_WKT,
         extracted_image_paths=extracted_files if extracted_files else None,
+        primary_opf_path=primary_opf_path,
+        part_image_groups=part_image_groups if part_image_groups else None,
     )
     with open(gst_path, "w", encoding="utf-8") as f:
         f.write(gst_code)
@@ -265,12 +323,13 @@ def run_pix4dmatic_pipeline(
     ret = proc.wait()
     duration_p4m = round(time.time() - t0, 2)
 
-    # Locate exported .obj and build 2K Web Tileset via GC_ScanOptimizer QuadtreeTiler
-    objs = [
-        os.path.join(export_dir, f)
-        for f in os.listdir(export_dir)
-        if f.lower().endswith(".obj")
-    ] if os.path.isdir(export_dir) else []
+    # Locate exported .obj (recursively in export_dir) and build 2K Web Tileset via GC_ScanOptimizer QuadtreeTiler
+    objs = []
+    if os.path.isdir(export_dir):
+        for r_dir, _, r_files in os.walk(export_dir):
+            for f in sorted(r_files):
+                if f.lower().endswith(".obj"):
+                    objs.append(os.path.join(r_dir, f))
 
     obj_path = objs[0] if objs else ""
     tileset_path = ""
@@ -281,7 +340,7 @@ def run_pix4dmatic_pipeline(
             sys.path.insert(0, GC_SCAN_OPTIMIZER_DIR)
         from optimizer.quadtree_tiler import QuadtreeTiler
 
-        tileset_dir = os.path.join(export_dir, f"{scan_id}-optimized_tileset")
+        tileset_dir = os.path.join(proj_dir, "tileset")
         tiler = QuadtreeTiler(
             input_path=obj_path,
             output_dir=tileset_dir,
