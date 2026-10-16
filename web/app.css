@@ -1849,11 +1849,30 @@ html, body {
     font-size: 11.5px;
   }
 
+  .gs-studio-main-pill .gs-toolbar-divider {
+    display: none !important;
+  }
+
+  .measure-badge-2d {
+    max-width: calc(100vw - 24px) !important;
+    white-space: normal !important;
+    text-align: center;
+    font-size: 10.5px;
+    line-height: 1.35;
+    padding: 4px 8px;
+  }
+
   .gs-table th,
   .gs-table td {
-    padding: 6px 8px;
-    font-size: 11px;
-    white-space: nowrap;
+    padding: 5px 5px;
+    font-size: 10.5px;
+    white-space: normal;
+    word-break: break-word;
+  }
+
+  .gs-table td:first-child {
+    min-width: 100px;
+    max-width: 130px;
   }
 }
 

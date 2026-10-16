@@ -1923,7 +1923,10 @@
       const x = (v.x * 0.5 + 0.5) * w + (b.offsetX || 0);
       const y = (-(v.y * 0.5) + 0.5) * h + (b.offsetY || 0);
       b.el.style.display = b.el.classList.contains("autodesk-delta-badge") ? "flex" : "block";
-      b.el.style.left = `${x}px`;
+      const bw = b.el.offsetWidth || 120;
+      const halfW = Math.min(bw * 0.5, w * 0.5 - 8);
+      const clampedX = Math.max(halfW + 8, Math.min(w - halfW - 8, x));
+      b.el.style.left = `${clampedX}px`;
       b.el.style.top = `${y}px`;
     });
   }
