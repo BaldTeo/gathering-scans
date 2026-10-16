@@ -156,6 +156,49 @@ class ScanQueueDB:
                 conn.execute("ALTER TABLE user_settings ADD COLUMN theme_preference TEXT DEFAULT 'auto'")
             except Exception:
                 pass
+            try:
+                conn.execute("ALTER TABLE scans ADD COLUMN user_edited_name INTEGER DEFAULT 0")
+            except Exception:
+                pass
+            conn.executescript(
+                """
+                DROP TRIGGER IF EXISTS trg_preserve_user_scan_name;
+                CREATE TRIGGER trg_preserve_user_scan_name
+                AFTER UPDATE ON scans
+                WHEN OLD.user_edited_name = 1 AND NEW.user_edited_name = 0
+                BEGIN
+                    UPDATE scans SET name = OLD.name, user_edited_name = 1 WHERE scan_id = NEW.scan_id;
+                END;
+
+                DROP TRIGGER IF EXISTS trg_strip_fake_scan_name_upd;
+                CREATE TRIGGER trg_strip_fake_scan_name_upd
+                AFTER UPDATE OF name ON scans
+                WHEN NEW.user_edited_name = 0 AND (NEW.name LIKE '% (Merged % Parts)' OR NEW.name LIKE 'PIX4Dcatch %')
+                BEGIN
+                    UPDATE scans
+                    SET name = CASE
+                        WHEN NEW.name LIKE '% (Merged % Parts)' THEN SUBSTR(NEW.name, 1, INSTR(NEW.name, ' (Merged ') - 1)
+                        WHEN NEW.name LIKE 'PIX4Dcatch %' THEN SUBSTR(NEW.name, 12)
+                        ELSE NEW.name
+                    END
+                    WHERE scan_id = NEW.scan_id;
+                END;
+
+                DROP TRIGGER IF EXISTS trg_strip_fake_scan_name_ins;
+                CREATE TRIGGER trg_strip_fake_scan_name_ins
+                AFTER INSERT ON scans
+                WHEN NEW.user_edited_name = 0 AND (NEW.name LIKE '% (Merged % Parts)' OR NEW.name LIKE 'PIX4Dcatch %')
+                BEGIN
+                    UPDATE scans
+                    SET name = CASE
+                        WHEN NEW.name LIKE '% (Merged % Parts)' THEN SUBSTR(NEW.name, 1, INSTR(NEW.name, ' (Merged ') - 1)
+                        WHEN NEW.name LIKE 'PIX4Dcatch %' THEN SUBSTR(NEW.name, 12)
+                        ELSE NEW.name
+                    END
+                    WHERE scan_id = NEW.scan_id;
+                END;
+                """
+            )
             conn.commit()
 
     def upsert_scan(self, scan_data: Dict[str, Any]) -> Dict[str, Any]:
@@ -165,6 +208,7 @@ class ScanQueueDB:
         size_bytes = int(scan_data.get("size_bytes", 0))
         bypass_count = int(scan_data.get("bypass_count", 0))
         force_next = int(scan_data.get("force_next", 0))
+        user_edited_name = 1 if scan_data.get("user_edited_name") else 0
         wait_minutes = max(0.0, (now - uploaded_at) / 60.0)
         score = calculate_priority_score(
             image_count=image_count,
@@ -177,6 +221,7 @@ class ScanQueueDB:
         record = {
             "scan_id": scan_data["scan_id"],
             "name": scan_data.get("name", scan_data["scan_id"]),
+            "user_edited_name": user_edited_name,
             "project_group": scan_data.get("project_group", "QuChi Dam"),
             "project_name_zh": scan_data.get("project_name_zh", "屈尺堰工程"),
             "capture_date": scan_data.get("capture_date", datetime.now().strftime("%Y-%m-%d %H:%M")),
@@ -216,7 +261,7 @@ class ScanQueueDB:
             conn.execute(
                 """
                 INSERT INTO scans (
-                    scan_id, name, project_group, project_name_zh, capture_date,
+                    scan_id, name, user_edited_name, project_group, project_name_zh, capture_date,
                     uploaded_at, uploader_email, uploader_name, source_zip_path,
                     project_dir, tileset_path, obj_path, report_path, cameras_dir,
                     image_count, size_bytes, rtk_accuracy_cm, crs, texture_resolution,
@@ -224,7 +269,7 @@ class ScanQueueDB:
                     status, progress_pct, stage_label, bypass_count, force_next,
                     priority_score, notes
                 ) VALUES (
-                    :scan_id, :name, :project_group, :project_name_zh, :capture_date,
+                    :scan_id, :name, :user_edited_name, :project_group, :project_name_zh, :capture_date,
                     :uploaded_at, :uploader_email, :uploader_name, :source_zip_path,
                     :project_dir, :tileset_path, :obj_path, :report_path, :cameras_dir,
                     :image_count, :size_bytes, :rtk_accuracy_cm, :crs, :texture_resolution,
@@ -233,7 +278,8 @@ class ScanQueueDB:
                     :priority_score, :notes
                 )
                 ON CONFLICT(scan_id) DO UPDATE SET
-                    name=excluded.name,
+                    name=CASE WHEN scans.user_edited_name = 1 AND excluded.user_edited_name = 0 THEN scans.name ELSE excluded.name END,
+                    user_edited_name=CASE WHEN scans.user_edited_name = 1 OR excluded.user_edited_name = 1 THEN 1 ELSE 0 END,
                     project_group=excluded.project_group,
                     project_name_zh=excluded.project_name_zh,
                     capture_date=excluded.capture_date,
@@ -266,6 +312,39 @@ class ScanQueueDB:
             )
             conn.commit()
         return self.get_scan(record["scan_id"])
+
+    def rename_scan(self, scan_id: str, new_name: str) -> Optional[Dict[str, Any]]:
+        """Updates a scan's display name in SQLite and persists it in scan_meta.json on disk."""
+        clean_name = (new_name or "").strip()
+        if not scan_id or not clean_name:
+            return None
+        with DB_LOCK, self._connect() as conn:
+            conn.execute(
+                "UPDATE scans SET name = ?, user_edited_name = 1 WHERE scan_id = ?",
+                (clean_name, scan_id),
+            )
+            conn.commit()
+        scan = self.get_scan(scan_id)
+        if not scan:
+            return None
+        proj_dir = scan.get("project_dir") or ""
+        if proj_dir and os.path.isdir(proj_dir):
+            meta_file = os.path.join(proj_dir, "scan_meta.json")
+            meta: Dict[str, Any] = {}
+            if os.path.isfile(meta_file):
+                try:
+                    with open(meta_file, "r", encoding="utf-8") as rf:
+                        meta = json.load(rf)
+                except Exception:
+                    meta = {}
+            meta["name"] = clean_name
+            meta["user_edited_name"] = True
+            try:
+                with open(meta_file, "w", encoding="utf-8") as wf:
+                    json.dump(meta, wf, indent=2, ensure_ascii=False)
+            except Exception as e:
+                print(f"[DB] Warning writing renamed scan_meta.json {meta_file}: {e}")
+        return scan
 
     def refresh_queue_priorities(self, now: Optional[float] = None) -> List[Dict[str, Any]]:
         """Recalculates dynamic WSJF-Aging priority scores for all queued jobs."""

@@ -256,7 +256,14 @@
                 <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
               </svg>
               <div class="gs-preview-text-wrap">
-                <div style="font-size:12.5px;font-weight:700;color:var(--ui-text-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" id="previewScanTitle">3D Mesh Preview</div>
+                <div style="display:flex;align-items:center;gap:6px;min-width:0;">
+                  <div style="font-size:12.5px;font-weight:700;color:var(--ui-text-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" id="previewScanTitle" title="Click pencil icon to edit scan name">3D Mesh Preview</div>
+                  <button type="button" class="btn-xs" id="btnRenamePreviewScan" title="Edit Scan Name" style="height:20px;padding:0 5px;flex-shrink:0;">
+                    <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
+                    </svg>
+                  </button>
+                </div>
                 <div style="font-size:11px;color:var(--ui-text-secondary);font-family:monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" id="previewScanMeta">TWD97 (121) + TWVD2001</div>
               </div>
               <div class="gs-brightness-control" title="Preview Scan Brightness (0.1x – 4.0x)">
@@ -327,6 +334,11 @@
           <select class="gs-scan-select" id="studioProjectSelect" title="Select Project Site (Scalable across 100+ Projects)"></select>
           <span class="gs-crs-pill" id="studioProjectGroupBadge" style="display:none;"></span>
           <select class="gs-scan-select" id="studioScanSelect" title="Select Active 3D Scan (Current Project Only)"></select>
+          <button type="button" class="btn-xs" id="btnRenameStudioScan" title="Edit Active Scan Name">
+            <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
+            </svg>
+          </button>
           <div class="gs-studio-metrics-text" style="border-left:1px solid var(--ui-border-strong);padding-left:10px;font-size:11px;font-family:monospace;color:var(--ui-text-secondary);" id="studioScanMetrics">
             TWD97 · TWVD2001 · 2K
           </div>
@@ -1005,6 +1017,40 @@
           <button type="button" id="btnUserLogout" class="btn-xs" style="display:none;" title="Sign out of current profile">Logout</button>
           <button type="button" id="btnGateGuestEnter" class="btn-xs" title="Browse in Read-Only Guest Mode">Guest</button>
           <button type="button" id="btnGateConfirmEnter" class="btn-xs primary" title="Continue to GatheringScans Studio">Continue</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========================================================================
+       MODAL 4: EDIT & SAVE SCAN NAME
+       ======================================================================== -->
+  <div class="gs-modal-backdrop" id="renameScanModal" role="dialog" aria-modal="true" aria-labelledby="renameScanModalTitle">
+    <div class="gs-modal-window" style="width:440px;max-width:95vw;">
+      <div class="gs-modal-header">
+        <div>
+          <div class="gs-modal-title" id="renameScanModalTitle">Edit Scan Name</div>
+          <div class="gs-modal-subtitle" id="renameScanModalFolderInfo">File / Folder Name</div>
+        </div>
+        <button type="button" class="btn-xs" data-close-modal="renameScanModal" title="Close">✕</button>
+      </div>
+      <div class="gs-modal-body" style="padding:18px 20px;display:flex;flex-direction:column;gap:12px;">
+        <div>
+          <label for="renameScanInput" style="display:block;font-size:12px;font-weight:700;color:var(--ui-text-secondary);margin-bottom:6px;">Scan Name</label>
+          <input
+            type="text"
+            id="renameScanInput"
+            class="gs-input"
+            placeholder="Enter scan name..."
+            style="width:100%;font-size:13.5px;font-weight:600;"
+          />
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-top:4px;">
+          <button type="button" class="btn-xs" id="btnResetScanNameToFile" title="Reset to original file/folder name">Use File Name</button>
+          <div style="display:flex;gap:8px;align-items:center;">
+            <button type="button" class="btn-xs" data-close-modal="renameScanModal">Cancel</button>
+            <button type="button" class="btn-xs primary" id="btnConfirmSaveScanName">Save Name</button>
+          </div>
         </div>
       </div>
     </div>

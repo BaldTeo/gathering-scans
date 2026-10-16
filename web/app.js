@@ -710,6 +710,11 @@
                     <circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/>
                     <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/>
                   </svg>
+                </button>
+                <button type="button" class="btn-xs" data-action="rename" title="Edit Scan Name">
+                  <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8">
+                    <path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
+                  </svg>
                 </button>`
               : ""
           }
@@ -740,6 +745,13 @@
       const shareBtn = card.querySelector('[data-action="share"]');
       if (shareBtn) {
         shareBtn.addEventListener("click", () => openSharingModal("scan", scan.scan_id));
+      }
+      const renameBtn = card.querySelector('[data-action="rename"]');
+      if (renameBtn) {
+        renameBtn.addEventListener("click", (ev) => {
+          ev.stopPropagation();
+          openRenameScanModal(scan.scan_id);
+        });
       }
 
       listEl.appendChild(card);
@@ -1314,11 +1326,32 @@
               </svg>
               <span>${s.uploader_name}</span>
             </div>
-            <div class="gs-tile-name" title="${s.name}">${s.name}</div>
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:4px;min-width:0;">
+              <div class="gs-tile-name" title="${s.name}" style="flex:1;min-width:0;">${s.name}</div>
+              ${
+                !STATE.shareToken
+                  ? `<button type="button" class="btn-xs" data-rename-tile="${s.scan_id}" title="Edit Scan Name" style="height:18px;padding:0 4px;flex-shrink:0;">
+                      <svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
+                      </svg>
+                    </button>`
+                  : ""
+              }
+            </div>
           </div>
         `;
 
-        tile.addEventListener("click", () => selectTimelineTile(s.scan_id));
+        tile.addEventListener("click", (ev) => {
+          if (ev.target.closest("[data-rename-tile]")) return;
+          selectTimelineTile(s.scan_id);
+        });
+        const renTileBtn = tile.querySelector("[data-rename-tile]");
+        if (renTileBtn) {
+          renTileBtn.addEventListener("click", (ev) => {
+            ev.stopPropagation();
+            openRenameScanModal(s.scan_id);
+          });
+        }
         trackEl.appendChild(tile);
       });
     }
@@ -1331,6 +1364,107 @@
       }, 30);
     }
   }
+
+  let _renamingScanId = "";
+
+  function getScanDefaultFileName(scan) {
+    if (!scan) return "";
+    const p = String(scan.project_dir || "").replace(/\\/g, "/").replace(/\/+$/, "");
+    if (p) {
+      const base = p.split("/").pop();
+      if (base) return base;
+    }
+    return scan.scan_id || "";
+  }
+
+  function openRenameScanModal(scanId) {
+    const targetId = scanId || STATE.selectedTimelineScanId || STATE.activeScanId;
+    const scan = STATE.scans.find((s) => s.scan_id === targetId) || STATE.activeScan;
+    if (!scan) return;
+    _renamingScanId = scan.scan_id;
+    const fileBase = getScanDefaultFileName(scan);
+    const folderInfo = document.getElementById("renameScanModalFolderInfo");
+    if (folderInfo) {
+      folderInfo.textContent = `File / Folder: ${fileBase} (${scan.project_group || "Site"})`;
+    }
+    const inp = document.getElementById("renameScanInput");
+    if (inp) {
+      inp.value = scan.name || fileBase;
+    }
+    openModal("renameScanModal");
+    setTimeout(() => {
+      if (inp) {
+        inp.focus();
+        inp.select();
+      }
+    }, 40);
+  }
+
+  async function saveRenamedScan() {
+    const scan = STATE.scans.find((s) => s.scan_id === _renamingScanId);
+    if (!scan) return;
+    const inp = document.getElementById("renameScanInput");
+    const newName = String(inp ? inp.value : "").trim();
+    if (!newName) {
+      showToast("Scan name cannot be empty");
+      return;
+    }
+    try {
+      const res = await apiPost("/api/scans/rename", {
+        scan_id: scan.scan_id,
+        name: newName,
+      });
+      const savedName = (res.scan && res.scan.name) || newName;
+      scan.name = savedName;
+      scan.user_edited_name = true;
+      try {
+        localStorage.setItem(
+          "gs_last_catalog_v1",
+          JSON.stringify({ scans: STATE.scans, projects: STATE.projects })
+        );
+      } catch (_) {}
+
+      const prevTitle = document.getElementById("previewScanTitle");
+      if (prevTitle && (STATE.selectedTimelineScanId === scan.scan_id || STATE.activeScanId === scan.scan_id)) {
+        prevTitle.textContent = savedName;
+      }
+      document.querySelectorAll(`#siteTimelineTilesTrack .gs-timeline-tile[data-scan-id="${scan.scan_id}"] .gs-tile-name`).forEach((el) => {
+        el.textContent = savedName;
+        el.title = savedName;
+      });
+      populateProjectScanDropdowns(STATE.activeProjectGroup, STATE.activeScanId);
+      renderMapClusters();
+      closeModal("renameScanModal");
+      showToast(`Saved scan name: ${savedName}`);
+    } catch (err) {
+      showToast(`Failed to save scan name: ${err.message}`);
+    }
+  }
+
+  document.getElementById("btnRenamePreviewScan")?.addEventListener("click", () => {
+    openRenameScanModal(STATE.selectedTimelineScanId || STATE.activeScanId);
+  });
+  document.getElementById("previewScanTitle")?.addEventListener("dblclick", () => {
+    if (!STATE.shareToken) openRenameScanModal(STATE.selectedTimelineScanId || STATE.activeScanId);
+  });
+  document.getElementById("btnRenameStudioScan")?.addEventListener("click", () => {
+    openRenameScanModal(STATE.activeScanId);
+  });
+  document.getElementById("btnResetScanNameToFile")?.addEventListener("click", () => {
+    const scan = STATE.scans.find((s) => s.scan_id === _renamingScanId);
+    const inp = document.getElementById("renameScanInput");
+    if (scan && inp) {
+      inp.value = getScanDefaultFileName(scan);
+      inp.focus();
+    }
+  });
+  document.getElementById("btnConfirmSaveScanName")?.addEventListener("click", saveRenamedScan);
+  document.getElementById("renameScanInput")?.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      saveRenamedScan();
+    }
+  });
 
   function closeSiteTimeline() {
     STATE.siteTimelineOpen = false;

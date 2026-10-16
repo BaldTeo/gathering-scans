@@ -294,7 +294,7 @@ def extract_opf_zip_metadata(zip_path: str) -> Dict[str, Any]:
     bname = os.path.splitext(os.path.basename(zip_path))[0]
     info: Dict[str, Any] = {
         "scan_id": f"catch_{bname.replace('-', '_')}",
-        "name": f"PIX4Dcatch {bname}",
+        "name": bname,
         "source_zip_path": zip_path,
         "size_bytes": stat.st_size,
         "uploaded_at": stat.st_mtime,
@@ -826,9 +826,15 @@ def _discover_folder_scan_item(
         disk_bytes, est_imgs = _compute_folder_stats(folder_path)
 
     half_extents = ts_georef.get("half_extents", [120.0, 120.0, 30.0])
+    user_edited = bool(meta.get("user_edited_name"))
+    resolved_name = (meta.get("name") or "").strip() if user_edited else folder_name
+    if not resolved_name:
+        resolved_name = folder_name
+
     result_item = {
         "scan_id": scan_id,
-        "name": meta.get("name") or folder_name,
+        "name": resolved_name,
+        "user_edited_name": 1 if user_edited else 0,
         "project_group": proj_group,
         "project_name_zh": proj_zh or "工程掃描群組",
         "capture_date": meta.get("capture_date") or _infer_capture_date_from_name(folder_name, stat.st_mtime),
@@ -864,10 +870,14 @@ def _discover_folder_scan_item(
         "notes": meta.get("notes", f"Dynamically loaded from {folder_path}"),
     }
 
-    # Persist scan_meta.json on local disk if it did not exist yet
-    if not os.path.isfile(meta_file) and is_safe_jailed_path(folder_path, LOCAL_SCANS_ROOT):
+    # Persist scan_meta.json on local disk if it did not exist yet or had a non-user-edited fake name
+    need_write_meta = not os.path.isfile(meta_file) or (not user_edited and meta.get("name") != resolved_name)
+    if need_write_meta and is_safe_jailed_path(folder_path, LOCAL_SCANS_ROOT):
         try:
-            meta_to_save = dict(result_item)
+            meta_to_save = dict(meta)
+            meta_to_save.update(result_item)
+            meta_to_save["name"] = resolved_name
+            meta_to_save["user_edited_name"] = bool(user_edited)
             meta_to_save["folder"] = folder_name
             meta_to_save["thumbnail_path"] = os.path.join(folder_path, "thumbnail.png")
             with open(meta_file, "w", encoding="utf-8") as wf:
@@ -1052,10 +1062,13 @@ def seed_and_discover_scans(db: ScanQueueDB) -> List[Dict[str, Any]]:
         primary_meta["image_count"] = sum(int(m.get("image_count", 0)) for m in part_metas)
         primary_meta["uploaded_at"] = max(float(m.get("uploaded_at", time.time())) for m in part_metas)
 
-        if total_parts > 1:
-            primary_meta["name"] = f"{base_name} ({len(present_parts)}/{total_parts} Parts)" if not all_parts_ready else f"{base_name} (Merged {total_parts} Parts)"
+        existing = db.get_scan(scan_id) or {}
+        if existing.get("user_edited_name") and existing.get("name"):
+            primary_meta["name"] = existing["name"]
+            primary_meta["user_edited_name"] = 1
         else:
-            primary_meta["name"] = f"PIX4Dcatch {base_name}"
+            primary_meta["name"] = base_name
+            primary_meta["user_edited_name"] = 0
 
         cand_processed_dir = os.path.join(LOCAL_SCANS_ROOT, scan_id)
         cand_processed_ts = os.path.join(cand_processed_dir, "tileset", "tileset.json")
@@ -1066,7 +1079,6 @@ def seed_and_discover_scans(db: ScanQueueDB) -> List[Dict[str, Any]]:
             primary_meta["progress_pct"] = 100.0
             primary_meta["stage_label"] = f"Processed -> {scan_id} (TWD97 + TWVD2001, 2K)"
         else:
-            existing = db.get_scan(scan_id) or {}
             if not all_parts_ready:
                 primary_meta["status"] = "waiting_parts"
                 primary_meta["progress_pct"] = round((len(present_parts) / total_parts) * 20.0, 1)

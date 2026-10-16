@@ -903,6 +903,10 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
             for k in list(_VPS_RAM_FALLBACK_CACHE.keys()):
                 if k.startswith(path):
                     _VPS_RAM_FALLBACK_CACHE.pop(k, None)
+        if method == "POST" and ("/rename" in path or path == "/api/scans/rename"):
+            for k in list(_VPS_RAM_FALLBACK_CACHE.keys()):
+                if k.startswith("/api/scans") or k.startswith("/api/projects"):
+                    _VPS_RAM_FALLBACK_CACHE.pop(k, None)
 
         # Serve immutable binary .glb tiles, thumbnails, and tileset.json from volatile RAM if already pulled from PC while tunnel is online
         if (
@@ -1553,6 +1557,29 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
                         "thumbnail_url": f"/api/scans/{scan_id}/thumbnail?t={int(time.time())}",
                     }
                 )
+                return
+
+            # 1c. Edit and Save Scan Display Name (persists to SQLite + scan_meta.json on local disk)
+            if path == "/api/scans/rename" or (path.startswith("/api/scans/") and path.endswith("/rename")):
+                if share_token:
+                    self.send_json({"error": "External guests cannot rename scans."}, status=403)
+                    return
+                if path == "/api/scans/rename":
+                    scan_id = str(payload.get("scan_id") or (query.get("scan_id") or [""])[0]).strip()
+                else:
+                    scan_id = re.sub(r"[^a-zA-Z0-9_\-]", "", path[len("/api/scans/") : -len("/rename")].strip("/"))
+                new_name = str(payload.get("name") or (query.get("name") or [""])[0]).strip()
+                if not scan_id or not new_name:
+                    self.send_json({"error": "scan_id and name are required"}, status=400)
+                    return
+                updated = DB.rename_scan(scan_id, new_name)
+                if not updated:
+                    self.send_json({"error": f"Scan not found: {scan_id}"}, status=404)
+                    return
+                for ck in list(_VPS_RAM_FALLBACK_CACHE.keys()):
+                    if ck.startswith("/api/scans") or ck.startswith("/api/projects"):
+                        _VPS_RAM_FALLBACK_CACHE.pop(ck, None)
+                self.send_json({"status": "ok", "scan": self._enrich_scan_urls(updated)})
                 return
 
             # 2. Civil Surveying: Cut/Fill & Stockpile Volume + Report Generation
