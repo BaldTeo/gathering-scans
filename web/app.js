@@ -366,7 +366,7 @@
       const worldPx = 256 * Math.pow(2, gsMap.zoom);
       const c = latLonToNormMercator(gsMap.centerLat, gsMap.centerLon);
       const p = latLonToNormMercator(lat, lon);
-      const x = w * 0.46 + (p.u - c.u) * worldPx;
+      const x = w * 0.50 + (p.u - c.u) * worldPx;
       const y = h * 0.50 + (p.v - c.v) * worldPx;
       return { x, y };
     };
@@ -376,7 +376,7 @@
       const h = canvas.height || container.clientHeight || 800;
       const worldPx = 256 * Math.pow(2, gsMap.zoom);
       const c = latLonToNormMercator(gsMap.centerLat, gsMap.centerLon);
-      const u = c.u + (x - w * 0.46) / worldPx;
+      const u = c.u + (x - w * 0.50) / worldPx;
       const v = c.v + (y - h * 0.50) / worldPx;
       return normMercatorToLatLon(u, v);
     };
@@ -642,6 +642,13 @@
     document.getElementById("popoverGroupSubtitle").textContent =
       `${grp.project_name_zh || "工程掃描群組"} · TWD97 (121) + TWVD2001`;
 
+    const btnOpenTimeline = document.getElementById("btnPopoverOpenTimeline");
+    if (btnOpenTimeline) {
+      btnOpenTimeline.onclick = () => {
+        openSiteTimeline(grp.project_group, grp.scans[0] ? grp.scans[0].scan_id : null);
+      };
+    }
+
     const btnCompare = document.getElementById("btnPopoverCompareGroup");
     if (btnCompare) {
       btnCompare.onclick = () => {
@@ -662,62 +669,75 @@
     const listEl = document.getElementById("popoverScanList");
     listEl.innerHTML = "";
 
-    grp.scans.forEach((scan) => {
+    const sortedScans = (grp.scans || [])
+      .slice()
+      .sort((a, b) => String(b.capture_date || "").localeCompare(String(a.capture_date || "")));
+
+    sortedScans.forEach((scan) => {
       const card = document.createElement("div");
       card.className = "gs-scan-item-card";
       card.style.cursor = "pointer";
       const isCached = STATE.cachedScanIds.has(scan.scan_id);
+      const thumbSrc = scan.thumbnail_url || `/api/scans/${encodeURIComponent(scan.scan_id)}/thumbnail`;
       card.innerHTML = `
-        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
-          <div style="min-width:0;flex:1;">
-            <div style="font-size:12.5px;font-weight:700;color:var(--ui-text-primary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${scan.name}</div>
-            <div style="font-size:11px;color:var(--ui-text-secondary);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
-              ${scan.capture_date} · ${scan.uploader_name} (<span style="color:var(--ui-accent);">${scan.uploader_email}</span>)
+        <div class="gs-map-tile-thumb-wrap">
+          <img class="gs-map-tile-thumb" data-scan-thumb="${scan.scan_id}" src="${thumbSrc}" alt="${scan.name}" />
+          <div class="gs-tile-badge-row">
+            <span class="gs-tile-chip">${scan.image_count || 0} imgs · 2K</span>
+            <span class="gs-tile-chip">RTK σ=${scan.rtk_accuracy_cm}cm</span>
+          </div>
+        </div>
+        <div class="gs-map-tile-body">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
+            <div style="min-width:0;flex:1;">
+              <div style="font-size:12.5px;font-weight:700;color:var(--ui-text-primary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${scan.name}">${scan.name}</div>
+              <div style="font-size:11px;color:var(--ui-text-secondary);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+                ${scan.capture_date} · ${scan.uploader_name} (<span style="color:var(--ui-accent);">${scan.uploader_email}</span>)
+              </div>
             </div>
           </div>
-          <span class="gs-crs-pill" style="white-space:nowrap;flex-shrink:0;">RTK σ=${scan.rtk_accuracy_cm}cm</span>
-        </div>
-        <div style="font-size:10.5px;font-family:monospace;color:var(--ui-text-muted);margin-top:5px;">
-          E:${Number(scan.twd97_e).toFixed(1)}m N:${Number(scan.twd97_n).toFixed(1)}m H:+${Number(scan.twd97_h).toFixed(2)}m${isCached ? " · Cached" : ""}
-        </div>
-        <div class="gs-scan-item-actions">
-          <button type="button" class="btn-xs primary" data-action="open3d" title="Open in 3D Studio">
-            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8">
-              <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
-              <polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/>
-            </svg>
-          </button>
-          <button type="button" class="btn-xs" data-action="compare" title="Compare Dates in Split Slider">
-            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8">
-              <rect x="3" y="3" width="18" height="18" rx="2"/><line x1="12" y1="3" x2="12" y2="21"/>
-            </svg>
-          </button>
-          <a class="btn-xs" href="${scan.download_obj_url}" download title="Download .OBJ Mesh">
-            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8">
-              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-              <polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
-            </svg>
-          </a>
-          <button type="button" class="btn-xs" data-action="comments" title="Comments (${scan.comment_count || 0})">
-            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8">
-              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
-            </svg>
-          </button>
-          ${
-            !STATE.shareToken
-              ? `<button type="button" class="btn-xs" data-action="share" title="Create Scoped Share Link">
-                  <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8">
-                    <circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/>
-                    <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/>
-                  </svg>
-                </button>
-                <button type="button" class="btn-xs" data-action="rename" title="Edit Scan Name">
-                  <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8">
-                    <path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
-                  </svg>
-                </button>`
-              : ""
-          }
+          <div style="font-size:10.5px;font-family:monospace;color:var(--ui-text-muted);margin-top:5px;">
+            E:${Number(scan.twd97_e).toFixed(1)}m N:${Number(scan.twd97_n).toFixed(1)}m H:+${Number(scan.twd97_h).toFixed(2)}m${isCached ? " · Cached" : ""}
+          </div>
+          <div class="gs-scan-item-actions">
+            <button type="button" class="btn-xs primary" data-action="open3d" title="Open in 3D Studio">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8">
+                <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
+                <polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/>
+              </svg>
+            </button>
+            <button type="button" class="btn-xs" data-action="compare" title="Compare Dates in Split Slider">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8">
+                <rect x="3" y="3" width="18" height="18" rx="2"/><line x1="12" y1="3" x2="12" y2="21"/>
+              </svg>
+            </button>
+            <a class="btn-xs" href="${scan.download_obj_url}" download title="Download .OBJ Mesh">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                <polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+              </svg>
+            </a>
+            <button type="button" class="btn-xs" data-action="comments" title="Comments (${scan.comment_count || 0})">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8">
+                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+              </svg>
+            </button>
+            ${
+              !STATE.shareToken
+                ? `<button type="button" class="btn-xs" data-action="share" title="Create Scoped Share Link">
+                    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8">
+                      <circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/>
+                      <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/>
+                    </svg>
+                  </button>
+                  <button type="button" class="btn-xs" data-action="rename" title="Edit Scan Name">
+                    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8">
+                      <path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
+                    </svg>
+                  </button>`
+                : ""
+            }
+          </div>
         </div>
       `;
 
@@ -757,10 +777,6 @@
       listEl.appendChild(card);
     });
   }
-
-  document.getElementById("btnClosePopover")?.addEventListener("click", () => {
-    document.getElementById("clusterHoverPopover")?.classList.remove("active");
-  });
 
   // ============================================================================
   // 1B. SITE TIMELINE (TOP 1/3) + INTERACTIVE 3D PREVIEW (BOTTOM 2/3) + ENLARGE
@@ -4835,6 +4851,9 @@
   });
 
   function handleResize() {
+    if (gsMap && gsMap.drawMap && STATE.activeView === "map") {
+      gsMap.drawMap();
+    }
     if (previewThree && STATE.activeView === "map" && STATE.siteTimelineOpen) {
       const w = Math.max(1, previewThree.container.clientWidth);
       const h = Math.max(1, previewThree.container.clientHeight);
