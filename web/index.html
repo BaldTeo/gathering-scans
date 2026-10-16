@@ -187,13 +187,13 @@
         <div class="gs-map-right-tiles-scroll" id="popoverScanList"></div>
       </aside>
 
-      <!-- Site Selected Split View: Top Scan Timeline Tiles + Bottom Interactive 3D Scan Preview -->
-      <div class="gs-site-timeline-split" id="siteTimelineSplitView">
-        <!-- Top: Chronological Site Scan Timeline with Auto-Generated Full-Quality Screenshots, Date & Uploader -->
+      <!-- Right 58% Unified Workbench: Top 30% Horizontal Timeline Cards + Bottom 70% Interactive 3D Preview -->
+      <div class="gs-site-timeline-split active" id="siteTimelineSplitView">
+        <!-- Top-Right (30% H): Chronological Site Scan Timeline with Auto-Generated Full-Quality Zoomed Screenshots -->
         <div class="gs-site-timeline-top" id="siteTimelineTopPane">
           <div class="gs-timeline-header">
             <div class="gs-timeline-header-left">
-              <button type="button" class="btn-xs" id="btnCloseSiteTimeline" title="Back to Map Overview">
+              <button type="button" class="btn-xs" id="btnCloseSiteTimeline" title="Back to Map Overview" style="display:none;">
                 <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2">
                   <line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/>
                 </svg>
@@ -234,7 +234,7 @@
           <div class="gs-timeline-track" id="siteTimelineTilesTrack"></div>
         </div>
 
-        <!-- Bottom: Interactive 3D Scan Preview with Icon-Only Enlarge Button -->
+        <!-- Bottom-Right (70% H): Interactive 3D Scan Preview with Icon-Only Enlarge Button -->
         <div class="gs-site-preview-bottom" id="sitePreviewBottomPane">
           <div id="sitePreviewCanvasContainer"></div>
 
@@ -261,7 +261,7 @@
               <div class="gs-preview-text-wrap">
                 <div style="display:flex;align-items:center;gap:6px;min-width:0;">
                   <div style="font-size:12.5px;font-weight:700;color:var(--ui-text-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" id="previewScanTitle" title="Click pencil icon to edit scan name">3D Mesh Preview</div>
-                  <span class="gs-lowres-preview-pill" id="previewQualityBadge" title="Very low-quality preview loaded for fast browsing. Click Enlarge (bottom-right) for full-resolution 3D scan.">Low-Res Preview</span>
+                  <span class="gs-lowres-preview-pill" id="previewQualityBadge" title="Interactive medium-LOD 3D preview loaded for fast browsing. Click Enlarge (bottom-right) for full-resolution 3D Studio.">Interactive Preview</span>
                   <button type="button" class="btn-xs" id="btnRenamePreviewScan" title="Edit Scan Name" style="height:20px;padding:0 5px;flex-shrink:0;">
                     <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2">
                       <path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>

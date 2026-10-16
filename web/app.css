@@ -298,11 +298,11 @@ body {
 }
 
 /* ============================================================================
- * 3. Map Overview (Left 2/3) & Scrollable Site Scan Tiles Panel (Right 1/3)
+ * 3. Unified 3-Pane Workbench: Left 42% Map + Right 58% (Top 30% Timeline + Bottom 70% 3D Preview)
  * ============================================================================ */
 .gs-map-left-pane {
-  width: 66.667%;
-  flex: 0 0 66.667%;
+  width: 42%;
+  flex: 0 0 42%;
   height: 100%;
   min-width: 0;
   position: relative;
@@ -317,13 +317,14 @@ body {
 
 .gs-map-hud-top {
   position: absolute;
-  top: 16px;
-  left: 16px;
+  top: 14px;
+  left: 14px;
   z-index: 500;
   display: flex;
   flex-direction: column;
   gap: 10px;
-  width: 356px;
+  width: 344px;
+  max-width: calc(100% - 28px);
 }
 
 .gs-map-card {
@@ -331,7 +332,7 @@ body {
   backdrop-filter: blur(12px);
   border: 1px solid var(--ui-border-strong);
   border-radius: 12px;
-  padding: 14px;
+  padding: 13px;
   box-shadow: var(--ui-shadow-window);
   color: var(--ui-text-primary);
 }
@@ -353,9 +354,15 @@ body {
   transition: transform 0.16s ease, box-shadow 0.16s ease;
 }
 
-.scan-cluster-blob:hover {
-  transform: scale(1.1);
-  box-shadow: 0 0 0 8px rgba(2, 132, 199, 0.32), 0 6px 20px rgba(15, 23, 42, 0.45);
+.scan-cluster-blob:hover,
+.scan-cluster-blob.active-cluster {
+  transform: scale(1.12);
+  box-shadow: 0 0 0 8px rgba(56, 189, 248, 0.42), 0 6px 20px rgba(15, 23, 42, 0.5);
+}
+
+.scan-cluster-blob.active-cluster .blob-label {
+  border-color: var(--ui-accent);
+  box-shadow: 0 0 0 1.5px rgba(2, 132, 199, 0.35), var(--ui-shadow-active);
 }
 
 .scan-cluster-blob .blob-label {
@@ -372,31 +379,11 @@ body {
   box-shadow: var(--ui-shadow-active);
 }
 
-/* Right 1/3 Docked Scrollable Scan Tiles Panel */
+/* Legacy vertical list popover hidden in Unified 3-Pane Workbench */
 .gs-cluster-popover,
-.gs-cluster-popover.gs-map-right-panel {
-  width: 33.333%;
-  flex: 0 0 33.333%;
-  height: 100%;
-  min-width: 0;
-  position: relative;
-  top: auto;
-  right: auto;
-  max-height: none;
-  background: var(--ui-bg-surface);
-  border-left: 1px solid var(--ui-border-strong);
-  border-radius: 0;
-  box-shadow: -4px 0 20px rgba(15, 23, 42, 0.12);
-  z-index: 600;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  color: var(--ui-text-primary);
-}
-
+.gs-cluster-popover.gs-map-right-panel,
 .gs-cluster-popover.active {
-  display: flex;
+  display: none !important;
 }
 
 .gs-map-right-header {
@@ -1194,30 +1181,37 @@ body {
 }
 
 /* ============================================================================
- * 8. Site Selected Split View: Top 1/3 Timeline Tiles + Bottom 2/3 3D Preview
+ * 8. Right 58% Docked Workbench: Top 30% Timeline Tiles + Bottom 70% 3D Preview
  * ============================================================================ */
-.gs-site-timeline-split {
-  position: absolute;
-  inset: 0;
-  z-index: 650;
-  display: none;
+.gs-site-timeline-split,
+.gs-site-timeline-split.active {
+  position: relative;
+  inset: auto;
+  width: 58%;
+  flex: 0 0 58%;
+  height: 100%;
+  min-width: 0;
+  z-index: 600;
+  display: flex;
   flex-direction: column;
   background: var(--ui-bg-canvas);
+  border-left: 1px solid var(--ui-border-strong);
+  box-shadow: -4px 0 20px rgba(15, 23, 42, 0.12);
 }
 
-.gs-site-timeline-split.active {
-  display: flex;
+#btnCloseSiteTimeline {
+  display: none !important;
 }
 
 .gs-site-timeline-top {
-  height: 33.333%;
+  height: 30%;
   min-height: 214px;
-  max-height: 256px;
+  max-height: 252px;
   background: var(--ui-bg-surface);
   border-bottom: 1px solid var(--ui-border-strong);
   display: flex;
   flex-direction: column;
-  padding: 10px 16px 10px 16px;
+  padding: 9px 14px 8px 14px;
   box-shadow: 0 4px 18px rgba(15, 23, 42, 0.12);
   z-index: 25;
 }
@@ -1226,8 +1220,8 @@ body {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  gap: 12px;
-  padding-bottom: 8px;
+  gap: 10px;
+  padding-bottom: 7px;
   border-bottom: 1px solid var(--ui-border);
   flex-shrink: 0;
 }
@@ -1236,12 +1230,14 @@ body {
   display: flex;
   align-items: center;
   gap: 10px;
+  min-width: 0;
 }
 
 .gs-timeline-header-right {
   display: flex;
   align-items: center;
   gap: 6px;
+  flex-shrink: 0;
 }
 
 .gs-timeline-site-title {
@@ -1269,7 +1265,7 @@ body {
 }
 
 .gs-timeline-tile {
-  width: 244px;
+  width: 248px;
   flex-shrink: 0;
   border-radius: 10px;
   border: 1.5px solid var(--ui-border);
@@ -1299,7 +1295,7 @@ body {
 .gs-tile-thumb-wrap {
   position: relative;
   width: 100%;
-  height: 90px;
+  height: 98px;
   background: #0f172a;
   overflow: hidden;
   flex-shrink: 0;
@@ -1346,12 +1342,12 @@ body {
 }
 
 .gs-tile-meta {
-  padding: 7px 10px 8px 10px;
+  padding: 6px 10px 7px 10px;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
   flex: 1;
-  gap: 3px;
+  gap: 2px;
 }
 
 .gs-tile-date-row {
@@ -1388,10 +1384,11 @@ body {
   text-overflow: ellipsis;
 }
 
-/* Bottom 2/3 Interactive 3D Scan Preview Pane */
+/* Bottom 70% Interactive 3D Scan Preview Pane */
 .gs-site-preview-bottom {
-  height: 66.667%;
+  height: 70%;
   flex: 1;
+  min-height: 0;
   position: relative;
   background: var(--ui-3d-bg);
   overflow: hidden;
@@ -1635,15 +1632,15 @@ body {
     height: auto;
   }
 
-  /* 9.2 Map View & Scrollable Scan Tiles Panel */
+  /* 9.2 Unified 3-Pane Workbench on Mobile (Top 34% Map + Bottom 66% Timeline & 3D Preview) */
   #viewMap.active {
     flex-direction: column;
   }
 
   .gs-map-left-pane {
     width: 100%;
-    flex: 0 0 54%;
-    height: 54%;
+    flex: 0 0 34%;
+    height: 34%;
   }
 
   .gs-map-hud-top {
@@ -1651,15 +1648,17 @@ body {
     left: 8px;
     right: 8px;
     width: auto;
+    max-width: none;
     gap: 6px;
   }
 
   .gs-map-card {
-    padding: 9px 11px;
+    padding: 8px 10px;
     border-radius: 10px;
   }
 
   .gs-map-desc,
+  .gs-map-coords-bar,
   #mapCoordsBar {
     display: none !important;
   }
@@ -1670,45 +1669,26 @@ body {
   }
 
   .gs-cluster-popover,
-  .gs-cluster-popover.gs-map-right-panel {
+  .gs-cluster-popover.gs-map-right-panel,
+  .gs-cluster-popover.active {
+    display: none !important;
+  }
+
+  /* 9.3 Site Timeline Split View (Top Timeline Tiles + Bottom 3D Preview) */
+  .gs-site-timeline-split,
+  .gs-site-timeline-split.active {
     width: 100%;
-    flex: 0 0 46%;
-    height: 46%;
-    max-height: 46%;
+    flex: 0 0 66%;
+    height: 66%;
     border-left: none;
     border-top: 1px solid var(--ui-border-strong);
-    border-radius: 0;
-    padding: 0;
   }
 
-  .gs-map-right-header {
-    padding: 8px 12px;
-  }
-
-  .gs-map-right-tiles-scroll {
-    padding: 8px 10px;
-    gap: 8px;
-  }
-
-  .gs-map-tile-thumb-wrap {
-    height: 76px;
-  }
-
-  .gs-map-tile-body {
-    padding: 8px 10px;
-  }
-
-  .gs-scan-item-actions {
-    flex-wrap: wrap;
-    gap: 4px;
-  }
-
-  /* 9.3 Site Timeline Split View (Top 1/3 Tiles + Bottom 2/3 3D Preview) */
   .gs-site-timeline-top {
     height: auto;
-    min-height: 168px;
-    max-height: 186px;
-    padding: 7px 10px 6px 10px;
+    min-height: 158px;
+    max-height: 176px;
+    padding: 6px 10px 5px 10px;
   }
 
   .gs-timeline-header {

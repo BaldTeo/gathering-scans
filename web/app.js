@@ -589,7 +589,8 @@
       const count = grp.scans.length;
       const sizePx = count >= 2 ? 50 : 44;
       const blob = document.createElement("div");
-      blob.className = "scan-cluster-blob";
+      blob.className = "scan-cluster-blob" + (grp.project_group === STATE.activeProjectGroup ? " active-cluster" : "");
+      blob.dataset.projectGroup = grp.project_group;
       blob.style.position = "absolute";
       blob.style.width = `${sizePx}px`;
       blob.style.height = `${sizePx}px`;
@@ -600,11 +601,10 @@
         <div class="blob-label">${grp.project_group} (${count})</div>
       `;
 
-      blob.addEventListener("mouseenter", () => openClusterPopover(grp));
       blob.addEventListener("click", () => {
         gsMap.centerLat = grp.lat;
         gsMap.centerLon = grp.lon;
-        gsMap.zoom = 14.5;
+        gsMap.zoom = Math.max(gsMap.zoom || 12, 13.8);
         openClusterPopover(grp);
         gsMap.drawMap();
       });
@@ -628,6 +628,9 @@
 
     // Scope active project to the selected cluster so Studio & Compare only list this project's scans (Fix #4)
     STATE.activeProjectGroup = grp.project_group;
+    document.querySelectorAll(".scan-cluster-blob").forEach((b) => {
+      b.classList.toggle("active-cluster", b.dataset.projectGroup === grp.project_group);
+    });
     const sortedScans = (grp.scans || [])
       .slice()
       .sort((a, b) => String(b.capture_date || "").localeCompare(String(a.capture_date || "")));
@@ -646,6 +649,9 @@
     document.getElementById("popoverGroupTitle").textContent = `${grp.project_group} (${grp.scans.length})`;
     document.getElementById("popoverGroupSubtitle").textContent =
       `${grp.project_name_zh || "工程掃描群組"} · TWD97 (121) + TWVD2001`;
+
+    // Unified 3-Pane Workbench: always keep Top-Right Timeline Cards + Bottom-Right 3D Preview synced with selected site
+    openSiteTimeline(grp.project_group, STATE.activeScanId || (sortedScans[0] ? sortedScans[0].scan_id : null));
 
     const btnOpenTimeline = document.getElementById("btnPopoverOpenTimeline");
     if (btnOpenTimeline) {
@@ -1335,7 +1341,11 @@
       switchView("map");
     }
     splitEl.classList.add("active");
+    document.querySelectorAll(".scan-cluster-blob").forEach((b) => {
+      b.classList.toggle("active-cluster", b.dataset.projectGroup === grpName);
+    });
     syncPreviewRendererContainer();
+    if (gsMap && gsMap.drawMap) gsMap.drawMap();
 
     let siteScans = STATE.scans
       .filter((s) => s.project_group === grpName)
@@ -1364,6 +1374,10 @@
     const timelineProjSel = document.getElementById("timelineProjectSelect");
     if (timelineProjSel) {
       timelineProjSel.value = grpName;
+    }
+    const mapProjSel = document.getElementById("mapProjectSelect");
+    if (mapProjSel && Array.from(mapProjSel.options).some((o) => o.value === grpName)) {
+      mapProjSel.value = grpName;
     }
 
     // Populate Horizontal Timeline Tiles Track
@@ -1540,8 +1554,8 @@
   });
 
   function closeSiteTimeline() {
-    STATE.siteTimelineOpen = false;
-    document.getElementById("siteTimelineSplitView")?.classList.remove("active");
+    STATE.siteTimelineOpen = true;
+    document.getElementById("siteTimelineSplitView")?.classList.add("active");
     syncPreviewRendererContainer();
     if (gsMap && gsMap.drawMap) gsMap.drawMap();
   }
@@ -4852,8 +4866,15 @@
   });
 
   document.getElementById("timelineProjectSelect")?.addEventListener("change", (e) => {
-    if (e.target.value) {
-      openSiteTimeline(e.target.value);
+    const val = e.target.value;
+    if (val) {
+      const grp = getProjectGroupsList("").find((g) => g.project_group === val);
+      if (grp && gsMap) {
+        gsMap.centerLat = grp.lat;
+        gsMap.centerLon = grp.lon;
+        gsMap.zoom = Math.max(gsMap.zoom || 12, 13.8);
+      }
+      openSiteTimeline(val);
     }
   });
 
@@ -4893,8 +4914,10 @@
     document.getElementById("viewCompare")?.classList.toggle("active", viewName === "compare");
 
     if (viewName === "map") {
+      document.getElementById("siteTimelineSplitView")?.classList.add("active");
       setTimeout(() => {
         if (gsMap && gsMap.drawMap) gsMap.drawMap();
+        syncPreviewRendererContainer();
       }, 60);
     } else if (viewName === "studio") {
       initStudio3D();
@@ -4910,9 +4933,6 @@
 
   document.querySelectorAll("#mainModeSwitcher .btn-seg").forEach((btn) => {
     btn.addEventListener("click", () => {
-      if (btn.dataset.view === "map" && STATE.siteTimelineOpen) {
-        closeSiteTimeline();
-      }
       switchView(btn.dataset.view);
     });
   });
