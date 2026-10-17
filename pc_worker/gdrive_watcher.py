@@ -846,9 +846,10 @@ def _discover_folder_scan_item(
 
     half_extents = ts_georef.get("half_extents", [120.0, 120.0, 30.0])
     user_edited = bool(meta.get("user_edited_name"))
-    resolved_name = (meta.get("name") or "").strip() if user_edited else folder_name
+    default_display_name = folder_name[6:] if folder_name.lower().startswith("catch_") and len(folder_name) > 6 else folder_name
+    resolved_name = (meta.get("name") or "").strip() if user_edited else default_display_name
     if not resolved_name:
-        resolved_name = folder_name
+        resolved_name = default_display_name
 
     result_item = {
         "scan_id": scan_id,
@@ -1092,8 +1093,16 @@ def seed_and_discover_scans(db: ScanQueueDB) -> List[Dict[str, Any]]:
         cand_processed_dir = os.path.join(LOCAL_SCANS_ROOT, scan_id)
         cand_processed_ts = os.path.join(cand_processed_dir, "tileset", "tileset.json")
         if all_parts_ready and os.path.isfile(cand_processed_ts):
+            if existing and existing.get("tileset_path"):
+                primary_meta = dict(existing)
+                primary_meta["source_zip_path"] = ";".join(parts_map[p] for p in present_parts)
+                if not existing.get("user_edited_name"):
+                    primary_meta["name"] = base_name
             primary_meta["tileset_path"] = cand_processed_ts
             primary_meta["project_dir"] = cand_processed_dir
+            cand_obj = os.path.join(cand_processed_dir, "exports", "obj_mesh", "mesh.obj")
+            if os.path.isfile(cand_obj):
+                primary_meta["obj_path"] = cand_obj
             primary_meta["status"] = "completed"
             primary_meta["progress_pct"] = 100.0
             primary_meta["stage_label"] = f"Processed -> {scan_id} (TWD97 + TWVD2001, 2K)"

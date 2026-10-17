@@ -36,6 +36,9 @@ from pc_worker.pix4d_runner import run_pix4dmatic_pipeline
 from pc_worker.config import LOCAL_SCANS_ROOT
 
 
+_INITIAL_DISCOVERY_DONE = threading.Event()
+
+
 def inbox_discovery_loop():
     """
     Polls G:\\Shared drives\\6.軟體\\3. GatheringScans and C:\\GatheringScans every 10s,
@@ -47,6 +50,8 @@ def inbox_discovery_loop():
             seed_and_discover_scans(DB)
         except Exception as e:
             print(f"[InboxDiscovery] Poll warning: {e}")
+        finally:
+            _INITIAL_DISCOVERY_DONE.set()
         time.sleep(10)
 
 
@@ -55,7 +60,7 @@ def pix4d_worker_loop():
     Dedicated background worker thread that pops the highest-priority queued Pix4DCatch
     .zip job and runs the PIX4Dmatic 2.11.0 + GC_ScanOptimizer pipeline.
     """
-    time.sleep(3)
+    _INITIAL_DISCOVERY_DONE.wait(timeout=60)
     while True:
         try:
             next_job = DB.pop_next_job()
@@ -63,8 +68,22 @@ def pix4d_worker_loop():
                 sid = next_job["scan_id"]
                 src_zip = next_job.get("source_zip_path") or ""
                 if src_zip:
-                    print(f"[InboxWatcher] Auto-starting PIX4Dmatic pipeline for {sid}: {src_zip}")
                     out_dir = os.path.join(LOCAL_SCANS_ROOT, sid)
+                    existing_ts = os.path.join(out_dir, "tileset", "tileset.json")
+                    existing_obj = os.path.join(out_dir, "exports", "obj_mesh", "mesh.obj")
+                    if os.path.isfile(existing_ts):
+                        DB.update_job_progress(
+                            sid,
+                            "completed",
+                            100.0,
+                            "Completed (TWD97 + TWVD2001, 2K Web Tileset)",
+                            tileset_path=existing_ts,
+                            obj_path=existing_obj if os.path.isfile(existing_obj) else "",
+                        )
+                        print(f"[InboxWatcher] Scan {sid} already has completed tileset at {existing_ts}; skipping PIX4Dmatic.")
+                        continue
+
+                    print(f"[InboxWatcher] Auto-starting PIX4Dmatic pipeline for {sid}: {src_zip}")
 
                     def _on_progress(pct: float, stage: str):
                         DB.update_job_progress(sid, "processing", pct, stage)

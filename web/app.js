@@ -1094,19 +1094,13 @@
       tr.errorTarget = 380.0;
     }
     // If root has no direct content URI (e.g. PIX4Dmatic cubic octree where root box is in the sky),
-    // compute exact bounding box of all content nodes up to depth 4 for tight zoom-to-extents framing
+    // compute exact bounding box of content nodes up to depth 6 for tight ground-level framing
     if (!tr.root.content || !tr.root.content.uri) {
       const rootMat = (tr.root.engineData && tr.root.engineData.transform) || new THREE.Matrix4();
-      let minX = Infinity,
-        minY = Infinity,
-        minZ = Infinity,
-        maxX = -Infinity,
-        maxY = -Infinity,
-        maxZ = -Infinity,
-        count = 0;
+      const byDepth = new Map();
       const tmpVec = new THREE.Vector3();
       const walk = (node, depth) => {
-        if (!node || depth > 4) return;
+        if (!node || depth > 6) return;
         if (node.content && node.content.uri && node.boundingVolume && Array.isArray(node.boundingVolume.box)) {
           const b = node.boundingVolume.box;
           const cx = Number(b[0]) || 0;
@@ -1117,13 +1111,15 @@
           const hz = Math.abs(Number(b[5]) || 0) + Math.abs(Number(b[8]) || 0) + Math.abs(Number(b[11]) || 0);
           tmpVec.set(cx, cy, cz).applyMatrix4(rootMat);
           if (isFinite(tmpVec.x) && isFinite(tmpVec.y) && isFinite(tmpVec.z)) {
-            minX = Math.min(minX, tmpVec.x - hx * 0.6);
-            maxX = Math.max(maxX, tmpVec.x + hx * 0.6);
-            minY = Math.min(minY, tmpVec.y - hy * 0.6);
-            maxY = Math.max(maxY, tmpVec.y + hy * 0.6);
-            minZ = Math.min(minZ, tmpVec.z - hz * 0.6);
-            maxZ = Math.max(maxZ, tmpVec.z + hz * 0.6);
-            count++;
+            if (!byDepth.has(depth)) byDepth.set(depth, []);
+            byDepth.get(depth).push({
+              x: tmpVec.x,
+              y: tmpVec.y,
+              z: tmpVec.z,
+              hx,
+              hy,
+              hz,
+            });
           }
         }
         if (Array.isArray(node.children)) {
@@ -1131,8 +1127,28 @@
         }
       };
       walk(tr.root, 0);
-      if (count > 0) {
-        outSphere.center.set((minX + maxX) * 0.5, (minY + maxY) * 0.5, (minZ + maxZ) * 0.5);
+      if (byDepth.size > 0) {
+        const maxDepth = Math.max(...byDepth.keys());
+        const pts = byDepth.get(maxDepth) || [];
+        let minX = Infinity,
+          minY = Infinity,
+          minZ = Infinity,
+          maxX = -Infinity,
+          maxY = -Infinity,
+          maxZ = -Infinity;
+        const zVals = [];
+        for (const p of pts) {
+          minX = Math.min(minX, p.x - p.hx * 0.6);
+          maxX = Math.max(maxX, p.x + p.hx * 0.6);
+          minY = Math.min(minY, p.y - p.hy * 0.6);
+          maxY = Math.max(maxY, p.y + p.hy * 0.6);
+          minZ = Math.min(minZ, p.z - p.hz * 0.6);
+          maxZ = Math.max(maxZ, p.z + p.hz * 0.6);
+          zVals.push(p.z);
+        }
+        zVals.sort((a, b) => a - b);
+        const medZ = zVals.length > 0 ? zVals[Math.floor(zVals.length / 2)] : (minZ + maxZ) * 0.5;
+        outSphere.center.set((minX + maxX) * 0.5, (minY + maxY) * 0.5, medZ);
         const dx = maxX - minX;
         const dy = maxY - minY;
         const dz = maxZ - minZ;
@@ -1618,23 +1634,40 @@
   // ============================================================================
   let studioThree = null;
 
-  // Apply Scan Brightness (0.1x – 4.0x) to any Three.js material (Fix #2, matching Gathering Cloud scan-shaders.js)
+  // Apply Scan Brightness (0.1x – 4.0x) and optional Z-Elevation Heatmap to any Three.js material
   function applyBrightnessToMaterial(mat, brightness) {
     if (!mat) return;
     const b = Math.max(0.1, Math.min(4.0, Number(brightness) || 1.0));
     if (!mat.userData) mat.userData = {};
+    if (mat.color && !mat.userData._origColor) {
+      mat.userData._origColor = mat.color.clone();
+    }
+    if (mat.color && mat.userData._origColor) {
+      mat.color.copy(mat.userData._origColor);
+    }
+
+    const heatmapFlag = mat.userData._elevationHeatmapActive ? 1.0 : 0.0;
+    const elevMin = Number.isFinite(mat.userData._elevMin) ? mat.userData._elevMin : -14.0;
+    const elevMax = Number.isFinite(mat.userData._elevMax) ? mat.userData._elevMax : 24.0;
+
     if (!mat.userData.PassUniforms) {
       mat.userData.PassUniforms = {
         uBrightness: { value: b },
+        uElevationHeatmap: { value: heatmapFlag },
+        uElevMin: { value: elevMin },
+        uElevMax: { value: elevMax },
       };
-    } else if (mat.userData.PassUniforms.uBrightness) {
-      mat.userData.PassUniforms.uBrightness.value = b;
+    } else {
+      if (mat.userData.PassUniforms.uBrightness) mat.userData.PassUniforms.uBrightness.value = b;
+      if (mat.userData.PassUniforms.uElevationHeatmap) mat.userData.PassUniforms.uElevationHeatmap.value = heatmapFlag;
+      if (mat.userData.PassUniforms.uElevMin) mat.userData.PassUniforms.uElevMin.value = elevMin;
+      if (mat.userData.PassUniforms.uElevMax) mat.userData.PassUniforms.uElevMax.value = elevMax;
     }
 
     if (!mat.userData._hasBrightnessShader) {
       mat.userData._hasBrightnessShader = true;
       mat.customProgramCacheKey = function () {
-        return `GS_ScanShader_v2_${mat.type || "Standard"}_${mat.map ? "1" : "0"}_${mat.vertexColors ? "1" : "0"}`;
+        return `GS_ScanShader_v3_${mat.type || "Standard"}_${mat.map ? "1" : "0"}_${mat.vertexColors ? "1" : "0"}`;
       };
       const prevOnBeforeCompile = mat.onBeforeCompile;
       mat.onBeforeCompile = function (shader, renderer) {
@@ -1642,12 +1675,43 @@
           prevOnBeforeCompile.call(this, shader, renderer);
         }
         shader.uniforms.uBrightness = mat.userData.PassUniforms.uBrightness;
+        shader.uniforms.uElevationHeatmap = mat.userData.PassUniforms.uElevationHeatmap;
+        shader.uniforms.uElevMin = mat.userData.PassUniforms.uElevMin;
+        shader.uniforms.uElevMax = mat.userData.PassUniforms.uElevMax;
+
+        shader.vertexShader = shader.vertexShader.replace(
+          "#include <common>",
+          `#include <common>
+           varying float vGsWorldY;`
+        );
+        shader.vertexShader = shader.vertexShader.replace(
+          "#include <project_vertex>",
+          `#include <project_vertex>
+           vec4 gsWorldPos = modelMatrix * vec4(transformed, 1.0);
+           vGsWorldY = gsWorldPos.y;`
+        );
+
         shader.fragmentShader = shader.fragmentShader.replace(
           "#include <common>",
           `#include <common>
            uniform float uBrightness;
+           uniform float uElevationHeatmap;
+           uniform float uElevMin;
+           uniform float uElevMax;
+           varying float vGsWorldY;
            vec3 gcScanPhotoColor = vec3(0.0);
-           bool gcHasPhotoColor = false;`
+           bool gcHasPhotoColor = false;
+           vec3 gsElevationRamp(float t) {
+             vec3 c0 = vec3(0.14, 0.38, 0.92); // Deep Blue (Low Z)
+             vec3 c1 = vec3(0.02, 0.71, 0.83); // Cyan
+             vec3 c2 = vec3(0.06, 0.73, 0.51); // Emerald Green (Mid Z)
+             vec3 c3 = vec3(0.96, 0.62, 0.04); // Amber
+             vec3 c4 = vec3(0.94, 0.27, 0.27); // Red (High Z)
+             if (t < 0.25) return mix(c0, c1, t * 4.0);
+             if (t < 0.50) return mix(c1, c2, (t - 0.25) * 4.0);
+             if (t < 0.75) return mix(c2, c3, (t - 0.50) * 4.0);
+             return mix(c3, c4, (t - 0.75) * 4.0);
+           }`
         );
         if (shader.fragmentShader.includes("#include <color_fragment>")) {
           shader.fragmentShader = shader.fragmentShader.replace(
@@ -1669,7 +1733,17 @@
           "#include <dithering_fragment>",
           `#include <dithering_fragment>
            vec3 basePhoto = gcHasPhotoColor ? gcScanPhotoColor : gl_FragColor.rgb;
-           gl_FragColor.rgb = basePhoto * uBrightness;`
+           vec3 litPhoto = basePhoto * uBrightness;
+           if (uElevationHeatmap > 0.5) {
+             float elevT = clamp((vGsWorldY - uElevMin) / max(0.5, uElevMax - uElevMin), 0.0, 1.0);
+             vec3 ramp = gsElevationRamp(elevT);
+             float luma = clamp(dot(litPhoto, vec3(0.299, 0.587, 0.114)), 0.22, 1.15);
+             float contourBand = smoothstep(0.91, 0.99, abs(fract(vGsWorldY * 0.5) * 2.0 - 1.0));
+             vec3 heatRgb = mix(ramp * (0.52 + 0.56 * luma), litPhoto, 0.20);
+             gl_FragColor.rgb = mix(heatRgb, heatRgb * 1.25, contourBand * 0.32);
+           } else {
+             gl_FragColor.rgb = litPhoto;
+           }`
         );
       };
       mat.needsUpdate = true;
@@ -3721,12 +3795,144 @@
   // ============================================================================
   let compareCtx = null;
 
+  function classifyCompareSideCoords(side) {
+    if (!side || !side.rawSphere || !(side.rawSphere.radius > 0)) return null;
+    const c = side.rawSphere.center;
+    const meta = side.scanMeta || {};
+    const radius = Number(side.rawSphere.radius) || 60;
+    const metaE = Number(meta.twd97_e) || 0;
+    const metaN = Number(meta.twd97_n) || 0;
+    const metaH = Number(meta.twd97_h) || 0;
+
+    // Case 1: Native TWD97 TM2-121 coordinates (150,000 <= E <= 345,000; 2,400,000 <= N <= 2,850,000)
+    if (c.x >= 150000 && c.x <= 345000 && c.y >= 2400000 && c.y <= 2850000) {
+      return {
+        crs: "TWD97",
+        rawCenter: c.clone(),
+        twdCenter: c.clone(),
+        rotZ: 0,
+        scaleXY: 1.0,
+        radius,
+      };
+    }
+
+    // Case 2: UTM Zone 51N coordinates (345,000 < E <= 415,000; 2,400,000 <= N <= 2,850,000, e.g. QuChi_20261015-obj_mesh)
+    if (c.x > 345000 && c.x <= 415000 && c.y >= 2400000 && c.y <= 2850000) {
+      return {
+        crs: "UTM51N",
+        rawCenter: c.clone(),
+        twdCenter: new THREE.Vector3(metaE || c.x, metaN || c.y, c.z),
+        rotZ: 0.01396582, // +0.8002 deg meridian convergence from UTM51N (123E) to TWD97 TM2 (121E)
+        scaleXY: 1.00104762,
+        radius,
+      };
+    }
+
+    // Case 3: Local / ECEF fallback
+    return {
+      crs: "LOCAL",
+      rawCenter: c.clone(),
+      twdCenter: new THREE.Vector3(metaE, metaN, Number.isFinite(c.z) && Math.abs(c.z) < 5000 ? c.z : metaH),
+      rotZ: 0,
+      scaleXY: 1.0,
+      radius,
+    };
+  }
+
+  function alignCompareSides() {
+    if (!compareCtx) return;
+    const left = compareCtx.left;
+    const right = compareCtx.right;
+    const lInfo = classifyCompareSideCoords(left);
+    const rInfo = classifyCompareSideCoords(right);
+
+    // Choose a single shared TWD97 reference anchor so both scans lock 1:1 in world space.
+    // Prefer the scan with the tighter bounding radius so the camera orbits the overlapping core site area.
+    let sharedAnchor = null;
+    let sameVerticalDatum = true;
+
+    if (lInfo && rInfo) {
+      const bothGeoref =
+        (lInfo.crs === "TWD97" || lInfo.crs === "UTM51N") &&
+        (rInfo.crs === "TWD97" || rInfo.crs === "UTM51N");
+      const dist2D = Math.hypot(
+        lInfo.twdCenter.x - rInfo.twdCenter.x,
+        lInfo.twdCenter.y - rInfo.twdCenter.y
+      );
+      if (bothGeoref && dist2D < 2500) {
+        sharedAnchor = (rInfo.radius <= lInfo.radius ? rInfo.twdCenter : lInfo.twdCenter).clone();
+        sameVerticalDatum = Math.abs(lInfo.twdCenter.z - rInfo.twdCenter.z) <= 25.0;
+      }
+    }
+
+    [
+      [left, lInfo],
+      [right, rInfo],
+    ].forEach(([side, info]) => {
+      if (!side || !side.tilesRenderer || !info) return;
+      // 1. Center raw tileset vertices on rawCenter for 32-bit float precision
+      side.tilesRenderer.group.position.set(-info.rawCenter.x, -info.rawCenter.y, -info.rawCenter.z);
+
+      // 2. Apply CRS alignment offset & meridian convergence relative to sharedAnchor
+      if (sharedAnchor && (info.crs === "TWD97" || info.crs === "UTM51N")) {
+        const dx = info.twdCenter.x - sharedAnchor.x;
+        const dy = info.twdCenter.y - sharedAnchor.y;
+        const dz = sameVerticalDatum ? info.twdCenter.z - sharedAnchor.z : 0;
+        side.alignGroup.position.set(dx, dy, dz);
+        side.alignGroup.rotation.set(0, 0, info.rotZ);
+        side.alignGroup.scale.set(info.scaleXY, info.scaleXY, 1.0);
+      } else {
+        side.alignGroup.position.set(0, 0, 0);
+        side.alignGroup.rotation.set(0, 0, 0);
+        side.alignGroup.scale.set(1, 1, 1);
+      }
+      side.alignGroup.updateMatrixWorld(true);
+      side.pivot.rotation.set(THREE.MathUtils.degToRad(270), 0, 0);
+      side.pivot.updateMatrixWorld(true);
+    });
+  }
+
+  function applyCompareElevationHeatmapToMaterial(m, active) {
+    if (!m) return;
+    if (!m.userData) m.userData = {};
+    m.userData._elevationHeatmapActive = Boolean(active);
+    m.userData._elevMin = -10.0;
+    m.userData._elevMax = 22.0;
+    if (m.metalness > 0) {
+      m.metalness = 0.0;
+      m.roughness = 1.0;
+      m.side = THREE.DoubleSide;
+    }
+    applyBrightnessToMaterial(m, STATE.scanBrightness);
+  }
+
+  function applyCompareElevationHeatmapToSide(side, active) {
+    if (!side) return;
+    [side.pivot, side.fallbackGroup].forEach((grp) => {
+      if (!grp) return;
+      grp.traverse((c) => {
+        if (c.isMesh && c.material) {
+          const mats = Array.isArray(c.material) ? c.material : [c.material];
+          mats.forEach((m) => applyCompareElevationHeatmapToMaterial(m, active));
+        }
+      });
+    });
+  }
+
+  function setCompareElevationHeatmap(active) {
+    if (!compareCtx) return;
+    applyCompareElevationHeatmapToSide(compareCtx.left, active);
+    applyCompareElevationHeatmapToSide(compareCtx.right, active);
+  }
+
   function loadScanIntoCompareSide(side, scanId) {
     if (!side || !scanId) return;
     const scan = STATE.scans.find((s) => s.scan_id === scanId) || STATE.scans[0];
     if (!scan) return;
     if (side._loadedScanId === scan.scan_id && side.tilesRenderer) return;
     side._loadedScanId = scan.scan_id;
+    side.scanMeta = scan;
+    side.rawSphere = null;
 
     if (side.tilesRenderer) {
       try {
@@ -3734,8 +3940,8 @@
       } catch (_) {}
       side.tilesRenderer = null;
     }
-    while (side.pivot.children.length > 0) {
-      side.pivot.remove(side.pivot.children[0]);
+    while (side.alignGroup.children.length > 0) {
+      side.alignGroup.remove(side.alignGroup.children[0]);
     }
     if (side.fallbackGroup) side.fallbackGroup.visible = false;
 
@@ -3782,25 +3988,19 @@
       }
       const sphere = new THREE.Sphere();
       if (computeTilesetContentSphere(tr, sphere)) {
-        tr.group.position.set(-sphere.center.x, -sphere.center.y, -sphere.center.z);
-        side.pivot.rotation.set(THREE.MathUtils.degToRad(270), 0, 0);
-        side.pivot.updateMatrixWorld(true);
+        side.rawSphere = sphere.clone();
+        alignCompareSides();
       }
     });
 
     tr.addEventListener("load-model", (ev) => {
       if (ev && ev.scene) {
         if (side.fallbackGroup) side.fallbackGroup.visible = false;
-        const heatmapOn = Boolean(document.getElementById("chkDeltaZHeatmap")?.checked) && side.isLatest;
+        const heatmapOn = Boolean(document.getElementById("chkDeltaZHeatmap")?.checked);
         ev.scene.traverse((c) => {
           if (c.isMesh && c.material) {
             const mats = Array.isArray(c.material) ? c.material : [c.material];
-            mats.forEach((m) => {
-              applyBrightnessToMaterial(m, STATE.scanBrightness);
-              if (heatmapOn && m.color) {
-                m.color.setRGB(0.45, 0.92, 1.15);
-              }
-            });
+            mats.forEach((m) => applyCompareElevationHeatmapToMaterial(m, heatmapOn));
           }
         });
         syncCompareLoaderProgress();
@@ -3810,7 +4010,7 @@
     tr.errorTarget = 6.0;
     if (tr.downloadQueue) tr.downloadQueue.maxJobs = 12;
     if (tr.parseQueue) tr.parseQueue.maxJobs = 6;
-    side.pivot.add(tr.group);
+    side.alignGroup.add(tr.group);
     side.tilesRenderer = tr;
   }
 
@@ -3822,6 +4022,7 @@
     const rightId = rSel?.value || STATE.scans[0]?.scan_id;
     if (leftId) loadScanIntoCompareSide(compareCtx.left, leftId);
     if (rightId) loadScanIntoCompareSide(compareCtx.right, rightId);
+    alignCompareSides();
   }
 
   function syncCompareLoaderProgress() {
@@ -3885,6 +4086,8 @@
       const renderer = new THREE.WebGLRenderer({ antialias: true });
       renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
       renderer.setSize(Math.max(1, container.clientWidth), Math.max(1, container.clientHeight));
+      renderer.toneMapping = THREE.NoToneMapping;
+      renderer.toneMappingExposure = 1.0;
       container.appendChild(renderer.domElement);
 
       scene.add(new THREE.AmbientLight(0xffffff, 1.35));
@@ -3931,9 +4134,26 @@
       fallbackGroup.add(mesh);
 
       const pivot = new THREE.Group();
+      pivot.rotation.set(THREE.MathUtils.degToRad(270), 0, 0);
+      const alignGroup = new THREE.Group();
+      pivot.add(alignGroup);
       scene.add(pivot);
 
-      return { container, scene, camera, renderer, grid, mesh, fallbackGroup, pivot, isLatest, tilesRenderer: null };
+      return {
+        container,
+        scene,
+        camera,
+        renderer,
+        grid,
+        mesh,
+        fallbackGroup,
+        pivot,
+        alignGroup,
+        isLatest,
+        tilesRenderer: null,
+        rawSphere: null,
+        scanMeta: null,
+      };
     };
 
     const left = createEpochScene(leftContainer, 0x38bdf8, false);
@@ -3981,26 +4201,11 @@
       }
     });
 
-    // Delta-Z Heatmap Toggle
+    // Z / Delta-Z Elevation Heatmap Toggle (applies to BOTH Left & Right scans and cleanly restores RGB textures when unchecked)
     document.getElementById("chkDeltaZHeatmap")?.addEventListener("change", (e) => {
-      const active = e.target.checked;
-      if (right.pivot) {
-        right.pivot.traverse((c) => {
-          if (c.isMesh && c.material) {
-            const mats = Array.isArray(c.material) ? c.material : [c.material];
-            mats.forEach((m) => {
-              if (m && m.color) {
-                if (active) {
-                  m.color.setRGB(0.45, 0.92, 1.15);
-                } else {
-                  applyBrightnessToMaterial(m, STATE.scanBrightness);
-                }
-              }
-            });
-          }
-        });
-      }
-      showToast(active ? "Enabled ΔZ Elevation Change Heatmap" : "Restored RGB Texture Shading");
+      const active = Boolean(e.target.checked);
+      setCompareElevationHeatmap(active);
+      showToast(active ? "Enabled Z Elevation Heatmap on Both Scans" : "Restored Original RGB Texture Shading");
     });
 
     const loop = () => {
@@ -4011,8 +4216,26 @@
       right.camera.position.copy(left.camera.position);
       right.camera.quaternion.copy(left.camera.quaternion);
       right.camera.updateMatrixWorld();
-      if (left.tilesRenderer) left.tilesRenderer.update();
-      if (right.tilesRenderer) right.tilesRenderer.update();
+      const heatmapOn = Boolean(document.getElementById("chkDeltaZHeatmap")?.checked);
+      [left, right].forEach((side) => {
+        if (side.tilesRenderer) {
+          side.tilesRenderer.update();
+          side.tilesRenderer.group.traverse((child) => {
+            if (child.isMesh && child.material) {
+              const mats = Array.isArray(child.material) ? child.material : [child.material];
+              mats.forEach((m) => {
+                if (
+                  m &&
+                  (m.userData?._lastBrightness !== STATE.scanBrightness ||
+                    Boolean(m.userData?._elevationHeatmapActive) !== heatmapOn)
+                ) {
+                  applyCompareElevationHeatmapToMaterial(m, heatmapOn);
+                }
+              });
+            }
+          });
+        }
+      });
       syncCompareLoaderProgress();
       left.renderer.render(left.scene, left.camera);
       right.renderer.render(right.scene, right.camera);
