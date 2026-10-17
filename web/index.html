@@ -3,8 +3,9 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>GatheringScans — 3D Photogrammetry &amp; Civil Surveying Studio (scans.gatheren.cloud)</title>
-  <link rel="stylesheet" href="/app.css" />
+  <title>GatheringCloud Scans — 3D Photogrammetry &amp; Civil Surveying Studio (scans.gatheren.cloud)</title>
+  <link rel="icon" type="image/png" href="/assets/gathering_cloud_logo.png" />
+  <link rel="stylesheet" href="/app.css?v=20261017_v3" />
   <script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
 <body>
@@ -12,11 +13,11 @@
   <!-- Top Engineering Navigation Header -->
   <header class="gs-topbar">
     <div class="gs-brand">
-      <div class="gs-brand-logo">GS</div>
+      <img src="/assets/gathering_cloud_logo_dark.png" alt="聚Gathering 雲Cloud" class="gs-brand-logo-img gs-logo-dark" />
+      <img src="/assets/gathering_cloud_logo.png" alt="聚Gathering 雲Cloud" class="gs-brand-logo-img gs-logo-light" />
       <div class="gs-brand-title">
-        <span>GatheringScans</span>
-        <span class="gs-crs-pill" title="All scans automatically converted in PIX4Dmatic to TWD97 (121) [EPSG:3826] + TWVD2001 [EPSG:8904] with 2K textures">
-          TWD97 (121) + TWVD2001 · 2K
+        <span class="gs-crs-pill" id="topCrsBadge" title="All scans automatically converted in PIX4Dmatic to TWD97 (121) [EPSG:3826] + TWVD2001 [EPSG:8904] with 4K textures">
+          TWD97 (121) + TWVD2001 · 4K
         </span>
       </div>
     </div>
@@ -344,7 +345,7 @@
             </svg>
           </button>
           <div class="gs-studio-metrics-text" style="border-left:1px solid var(--ui-border-strong);padding-left:10px;font-size:11px;font-family:monospace;color:var(--ui-text-secondary);" id="studioScanMetrics">
-            TWD97 · TWVD2001 · 2K
+            TWD97 · TWVD2001 · 4K
           </div>
 
           <!-- Scan Brightness Control (0.1x – 4.0x, matching Gathering Cloud) -->
@@ -629,20 +630,43 @@
         <div class="gs-epoch-badge gs-compare-project-badge">
           <select class="gs-scan-select" id="compareProjectSelect" title="Select Project Site (Scalable across 100+ Projects)"></select>
           <span class="gs-crs-pill" id="compareProjectGroupBadge" style="display:none;"></span>
-          <span style="font-size:11px;font-weight:700;color:var(--ui-text-secondary);white-space:nowrap;">BASELINE</span>
+          <span style="font-size:11px;font-weight:700;color:var(--ui-text-secondary);white-space:nowrap;">LEFT</span>
           <select class="gs-scan-select" id="compareLeftSelect"></select>
         </div>
 
-        <div class="gs-epoch-badge gs-compare-heatmap-badge" style="gap:12px;">
+        <div class="gs-epoch-badge gs-compare-heatmap-badge" style="gap:10px;flex-wrap:wrap;justify-content:center;">
+          <!-- Compare Mode Switcher: Slider Mode vs 2-Viewport Mode -->
+          <div class="segmented-pill" id="compareModeSwitcher" style="padding:2px;gap:2px;" title="Switch between Curtain Slider Mode and 2-Viewport Side-by-Side Synced Camera Mode">
+            <button type="button" class="btn-seg active" data-compare-mode="slider" id="btnCompareModeSlider" style="padding:4px 10px;font-size:11.5px;">
+              <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="3" y="3" width="18" height="18" rx="2"/><line x1="12" y1="3" x2="12" y2="21"/>
+                <polyline points="9 9 6 12 9 15"/><polyline points="15 9 18 12 15 15"/>
+              </svg>
+              <span>Slider Mode</span>
+            </button>
+            <button type="button" class="btn-seg" data-compare-mode="split" id="btnCompareModeSplit" style="padding:4px 10px;font-size:11.5px;">
+              <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="2" y="4" width="9" height="16" rx="1.5"/><rect x="13" y="4" width="9" height="16" rx="1.5"/>
+              </svg>
+              <span>2 Viewports</span>
+            </button>
+          </div>
+
           <label style="display:flex;align-items:center;gap:6px;font-size:12px;font-weight:600;color:var(--ui-text-primary);cursor:pointer;">
             <input type="checkbox" id="chkDeltaZHeatmap" style="accent-color:#0284c7;" />
             <span>ΔZ Elevation Heatmap</span>
           </label>
           <span style="font-size:11px;color:var(--ui-text-muted);font-family:monospace;" id="lblCurtainPct">50%</span>
+          <button type="button" class="btn-xs" id="btnCompareResetCamera" title="Reset & Sync Camera Framing">
+            <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9"/>
+            </svg>
+            <span>Reset View</span>
+          </button>
         </div>
 
         <div class="gs-epoch-badge gs-compare-latest-badge">
-          <span style="font-size:11px;font-weight:700;color:var(--ui-accent);white-space:nowrap;">LATEST</span>
+          <span style="font-size:11px;font-weight:700;color:var(--ui-accent);white-space:nowrap;">RIGHT</span>
           <select class="gs-scan-select" id="compareRightSelect"></select>
         </div>
       </div>
@@ -1109,14 +1133,10 @@
     <div class="gs-modal" style="max-width:540px;padding:0;overflow:hidden;">
       <!-- Top Header -->
       <div style="padding:18px 20px 14px;background:linear-gradient(135deg,#0f172a,#1e293b);color:#ffffff;display:flex;align-items:center;justify-content:space-between;gap:12px;">
-        <div style="display:flex;align-items:center;gap:12px;min-width:0;">
-          <div style="width:40px;height:40px;border-radius:12px;background:rgba(56,189,248,0.16);border:1px solid rgba(56,189,248,0.4);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
-            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#38bdf8" stroke-width="2">
-              <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>
-            </svg>
-          </div>
+        <div style="display:flex;align-items:center;gap:14px;min-width:0;">
+          <img src="/assets/gathering_cloud_logo_dark.png" alt="GatheringCloud" style="height:36px;width:auto;object-fit:contain;flex-shrink:0;" />
           <div style="min-width:0;">
-            <h3 style="margin:0;font-size:16px;font-weight:700;letter-spacing:0.3px;">GatheringScans Identity Verification</h3>
+            <h3 style="margin:0;font-size:15.5px;font-weight:700;letter-spacing:0.3px;">GatheringCloud Identity Verification</h3>
             <p style="margin:3px 0 0;font-size:11.5px;color:#94a3b8;">Same Google Workspace OAuth as GatheringCloud (<code>gatheren.cloud</code>)</p>
           </div>
         </div>
@@ -1254,6 +1274,6 @@
   <script src="/lib/3d-tiles-renderer.bundle.js"></script>
 
   <!-- Main GatheringScans Application Logic -->
-  <script src="/app.js?v=20261017_fix2"></script>
+  <script src="/app.js?v=20261017_v3"></script>
 </body>
 </html>

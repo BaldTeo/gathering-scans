@@ -694,11 +694,13 @@
       card.style.cursor = "pointer";
       const isCached = STATE.cachedScanIds.has(scan.scan_id);
       const thumbSrc = scan.thumbnail_url || `/api/scans/${encodeURIComponent(scan.scan_id)}/thumbnail`;
+      const texRes = Number(scan.texture_resolution || 4096);
+      const texLabel = texRes >= 8192 ? "8K" : texRes >= 4096 ? "4K" : "2K";
       card.innerHTML = `
         <div class="gs-map-tile-thumb-wrap">
           <img class="gs-map-tile-thumb" data-scan-thumb="${scan.scan_id}" src="${thumbSrc}" alt="${scan.name}" />
           <div class="gs-tile-badge-row">
-            <span class="gs-tile-chip">${scan.image_count || 0} imgs · 2K</span>
+            <span class="gs-tile-chip">${scan.image_count || 0} imgs · ${texLabel}</span>
             <span class="gs-tile-chip">RTK σ=${scan.rtk_accuracy_cm}cm</span>
           </div>
         </div>
@@ -1100,8 +1102,10 @@
       tr.errorTarget = 380.0;
     }
     // If root has no direct content URI (e.g. PIX4Dmatic cubic octree where root box is in the sky),
-    // compute exact bounding box of content nodes up to depth 6 for tight ground-level framing
-    if (!tr.root.content || !tr.root.content.uri) {
+    // check first if root.boundingVolume.box is already tightened (hx != hz). Otherwise walk content nodes up to depth 6.
+    const rootBox = tr.root.boundingVolume && Array.isArray(tr.root.boundingVolume.box) ? tr.root.boundingVolume.box : null;
+    const isTightRootBox = rootBox && rootBox.length >= 12 && Math.abs(Math.abs(Number(rootBox[3])) - Math.abs(Number(rootBox[11]))) > 0.5;
+    if ((!tr.root.content || !tr.root.content.uri) && !isTightRootBox) {
       const rootMat = (tr.root.engineData && tr.root.engineData.transform) || new THREE.Matrix4();
       const byDepth = new Map();
       const tmpVec = new THREE.Vector3();
@@ -1414,12 +1418,14 @@
         tile.className = "gs-timeline-tile" + (isSelected ? " active" : "");
         tile.dataset.scanId = s.scan_id;
         const thumbSrc = s.thumbnail_url || `/api/scans/${encodeURIComponent(s.scan_id)}/thumbnail`;
+        const texRes = Number(s.texture_resolution || 4096);
+        const texLabel = texRes >= 8192 ? "8K" : texRes >= 4096 ? "4K" : "2K";
 
         tile.innerHTML = `
           <div class="gs-tile-thumb-wrap">
             <img class="gs-tile-thumb" data-scan-thumb="${s.scan_id}" src="${thumbSrc}" alt="${s.name}" />
             <div class="gs-tile-badge-row">
-              <span class="gs-tile-chip">${s.image_count || 0} imgs · 2K</span>
+              <span class="gs-tile-chip">${s.image_count || 0} imgs · ${texLabel}</span>
               <span class="gs-tile-chip ${isSelected ? "active-indicator" : ""}" data-rtk-chip="1">RTK ${s.rtk_accuracy_cm}cm</span>
             </div>
           </div>
@@ -3343,20 +3349,29 @@
     ctx.lineWidth = 0.9;
     ctx.strokeRect(tbX, 14, tbW, vpH);
 
-    // Gatheren Company Banner in Title Block
+    // Gathering Construction Company Banner in Title Block
     const banY = vpY + vpH - 54;
     ctx.fillStyle = "#0f172a";
     ctx.fillRect(tbX, banY, tbW, 20);
-    ctx.fillStyle = "#0284c7";
-    ctx.beginPath();
-    ctx.arc(tbX + 10, banY + 10, 5.5, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = "#ffffff";
-    ctx.font = "bold 8px Inter, sans-serif";
-    ctx.fillText("GATHEREN", tbX + 19, banY + 9);
-    ctx.fillStyle = "#38bdf8";
-    ctx.font = "bold 5.5px Inter, sans-serif";
-    ctx.fillText("GATHERINGSCANS C3D", tbX + 19, banY + 16);
+    if (!window._gconLogoImg) {
+      const img = new Image();
+      img.onload = () => {
+        window._gconLogoImgLoaded = true;
+        if (STATE.lastContourResult) drawA3PreviewCanvas(canvas, STATE.lastContourResult);
+      };
+      img.src = "/assets/gathering_construction_logo_dark.png";
+      window._gconLogoImg = img;
+    }
+    if (window._gconLogoImgLoaded && window._gconLogoImg) {
+      ctx.drawImage(window._gconLogoImg, tbX + 3, banY + 4, tbW - 6, 12);
+    } else {
+      ctx.fillStyle = "#ffffff";
+      ctx.font = "bold 6.5px Inter, sans-serif";
+      ctx.fillText("聚人營造股份有限公司", tbX + 5, banY + 9);
+      ctx.fillStyle = "#38bdf8";
+      ctx.font = "bold 5px Inter, sans-serif";
+      ctx.fillText("GATHERING CONSTRUCTION", tbX + 5, banY + 16);
+    }
 
     // Title block metadata rows
     ctx.fillStyle = "#0f172a";
@@ -3991,6 +4006,7 @@
       if (!side || !side.tilesRenderer || !info) return;
       // 1. Center raw tileset vertices on rawCenter for 32-bit float precision
       side.tilesRenderer.group.position.set(-info.rawCenter.x, -info.rawCenter.y, -info.rawCenter.z);
+      side.tilesRenderer.group.updateMatrix();
 
       // 2. Apply CRS alignment offset & meridian convergence relative to sharedAnchor
       if (sharedAnchor && (info.crs === "TWD97" || info.crs === "UTM51N")) {
@@ -4005,10 +4021,70 @@
         side.alignGroup.rotation.set(0, 0, 0);
         side.alignGroup.scale.set(1, 1, 1);
       }
-      side.alignGroup.updateMatrixWorld(true);
+      side.alignGroup.updateMatrix();
       side.pivot.rotation.set(THREE.MathUtils.degToRad(270), 0, 0);
+      side.pivot.updateMatrix();
+      side.pivot.traverse((obj) => {
+        obj.matrixWorldNeedsUpdate = true;
+      });
       side.pivot.updateMatrixWorld(true);
     });
+
+    // Auto-frame camera when a new scan pair finishes loading tilesets
+    const pairKey = `${left._loadedScanId || ""}|${right._loadedScanId || ""}`;
+    if (lInfo && rInfo && compareCtx._framedPairKey !== pairKey) {
+      compareCtx._framedPairKey = pairKey;
+      frameCompareCamera(false);
+    }
+  }
+
+  function frameCompareCamera(showMsg = false) {
+    if (!compareCtx) return;
+    const { left, right, controls } = compareCtx;
+    const lR = left?.rawSphere?.radius || 0;
+    const rR = right?.rawSphere?.radius || 0;
+    const baseR = lR > 0 && rR > 0 ? Math.min(lR, rR) : Math.max(lR, rR, 65);
+    const r = Math.min(Math.max(baseR, 30), 220);
+    left.camera.position.set(r * 0.68, r * 0.54, r * 0.78);
+    controls.target.set(0, 0, 0);
+    controls.update();
+    left.camera.updateMatrixWorld();
+    right.camera.position.copy(left.camera.position);
+    right.camera.quaternion.copy(left.camera.quaternion);
+    right.camera.updateProjectionMatrix();
+    right.camera.updateMatrixWorld();
+    if (showMsg) {
+      showToast("Reset & Synced Compare Camera Framing");
+    }
+  }
+
+  function setCompareMode(mode) {
+    const resolvedMode = mode === "split" ? "split" : "slider";
+    STATE.compareMode = resolvedMode;
+    const stage = document.getElementById("compareStage");
+    const rightContainer = document.getElementById("compareRightLayer");
+    const divider = document.getElementById("curtainDivider");
+    const lblPct = document.getElementById("lblCurtainPct");
+    const pct = (compareCtx && compareCtx._curtainPct) || 50;
+
+    if (stage) {
+      stage.classList.toggle("mode-split", resolvedMode === "split");
+    }
+    if (rightContainer) {
+      rightContainer.style.clipPath = resolvedMode === "split" ? "none" : `inset(0 0 0 ${pct}%)`;
+    }
+    if (divider) {
+      divider.style.display = resolvedMode === "split" ? "none" : "";
+    }
+    if (lblPct) {
+      lblPct.style.display = resolvedMode === "split" ? "none" : "";
+      lblPct.textContent = `Split: ${Math.round(pct)}%`;
+    }
+    document.querySelectorAll("#compareModeSwitcher .btn-seg").forEach((btn) => {
+      btn.classList.toggle("active", btn.dataset.compareMode === resolvedMode);
+    });
+    handleResize();
+    requestAnimationFrame(() => handleResize());
   }
 
   function applyCompareElevationHeatmapToMaterial(m, active) {
@@ -4115,6 +4191,7 @@
     tr.addEventListener("load-model", (ev) => {
       if (ev && ev.scene) {
         if (side.fallbackGroup) side.fallbackGroup.visible = false;
+        alignCompareSides();
         const heatmapOn = Boolean(document.getElementById("chkDeltaZHeatmap")?.checked);
         ev.scene.traverse((c) => {
           if (c.isMesh && c.material) {
@@ -4199,7 +4276,7 @@
         0.1,
         10000
       );
-      camera.position.set(38, 30, 44);
+      camera.position.set(68, 54, 78);
       camera.lookAt(0, 0, 0);
 
       const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -4292,6 +4369,7 @@
     const divider = document.getElementById("curtainDivider");
     let dragging = false;
     divider.addEventListener("pointerdown", (e) => {
+      if (STATE.compareMode === "split") return;
       dragging = true;
       e.stopPropagation();
     });
@@ -4299,13 +4377,31 @@
       dragging = false;
     });
     window.addEventListener("pointermove", (e) => {
-      if (!dragging) return;
+      if (!dragging || STATE.compareMode === "split") return;
       const rect = stage.getBoundingClientRect();
       const pct = Math.max(5, Math.min(95, ((e.clientX - rect.left) / rect.width) * 100));
+      if (compareCtx) compareCtx._curtainPct = pct;
       divider.style.left = `${pct}%`;
       rightContainer.style.clipPath = `inset(0 0 0 ${pct}%)`;
       const lbl = document.getElementById("lblCurtainPct");
       if (lbl) lbl.textContent = `Split: ${Math.round(pct)}%`;
+    });
+
+    // Compare Mode Switcher (Slider Mode vs 2-Viewport Synced Camera Mode)
+    document.querySelectorAll("#compareModeSwitcher .btn-seg").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const mode = btn.dataset.compareMode || "slider";
+        setCompareMode(mode);
+        showToast(
+          mode === "split"
+            ? "2-Viewport Mode: Full Side-by-Side Scans with Synced Camera"
+            : "Slider Mode: Interactive Split Curtain Comparison"
+        );
+      });
+    });
+
+    document.getElementById("btnCompareResetCamera")?.addEventListener("click", () => {
+      frameCompareCamera(true);
     });
 
     // Left / Right Scan Dropdown Listeners
@@ -4361,7 +4457,8 @@
     };
     requestAnimationFrame(loop);
 
-    compareCtx = { left, right, controls };
+    compareCtx = { left, right, controls, _curtainPct: 50, _framedPairKey: "" };
+    setCompareMode(STATE.compareMode || "slider");
     syncCompareScansFromDropdowns();
     return compareCtx;
   }

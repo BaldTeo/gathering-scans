@@ -545,18 +545,30 @@ def _compute_folder_stats(folder_path: str) -> Tuple[int, int]:
     """Computes total bytes on disk and estimated tile/photo count for a dynamically added scan folder."""
     total_bytes = 0
     tile_count = 0
+    direct_photo_count = 0
     try:
-        for root, _, files in os.walk(folder_path):
+        for img_sub in (os.path.join(folder_path, "inputs", "images"), os.path.join(folder_path, "images")):
+            if os.path.isdir(img_sub):
+                imgs = [f for f in os.listdir(img_sub) if f.lower().endswith((".jpg", ".jpeg", ".png"))]
+                if imgs:
+                    direct_photo_count = len(imgs)
+                    break
+        for root, dirs, files in os.walk(folder_path):
+            # Skip internal PIX4D project pyramid caches when estimating tile counts
+            rel_parts = {p.lower() for p in os.path.relpath(root, folder_path).split(os.sep)}
+            is_internal_proj = "project" in rel_parts or "preview_low" in rel_parts
             for fn in files:
                 fpath = os.path.join(root, fn)
                 try:
                     total_bytes += os.path.getsize(fpath)
                 except OSError:
                     pass
-                if fn.lower().endswith((".glb", ".b3dm", ".gltf", ".jpg", ".jpeg")):
+                if not is_internal_proj and fn.lower().endswith((".glb", ".b3dm", ".gltf")):
                     tile_count += 1
     except Exception:
         pass
+    if direct_photo_count > 0:
+        return max(total_bytes, 1024), direct_photo_count
     return max(total_bytes, 1024), max(tile_count * 18, 120)
 
 
@@ -841,8 +853,11 @@ def _discover_folder_scan_item(
         )
 
     disk_bytes, est_imgs = (0, 0)
-    if "size_bytes" not in meta or "image_count" not in meta:
+    raw_meta_imgs = int(meta.get("image_count") or 0)
+    if "size_bytes" not in meta or raw_meta_imgs <= 0 or raw_meta_imgs > 25000:
         disk_bytes, est_imgs = _compute_folder_stats(folder_path)
+        if raw_meta_imgs > 25000:
+            raw_meta_imgs = est_imgs
 
     half_extents = ts_georef.get("half_extents", [120.0, 120.0, 30.0])
     user_edited = bool(meta.get("user_edited_name"))
@@ -866,7 +881,7 @@ def _discover_folder_scan_item(
         "tileset_path": tileset_path,
         "obj_path": obj_path,
         "cameras_dir": cameras_dir,
-        "image_count": int(meta.get("image_count") or est_imgs or 1200),
+        "image_count": int(raw_meta_imgs or est_imgs or 1200),
         "size_bytes": int(meta.get("size_bytes") or disk_bytes or 64000000),
         "rtk_accuracy_cm": float(meta.get("rtk_accuracy_cm", 1.5)),
         "crs": meta.get("crs", TWD97_TWVD2001_SHORT),

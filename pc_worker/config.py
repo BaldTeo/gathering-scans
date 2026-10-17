@@ -25,8 +25,8 @@ GATHERING_CLOUD_DEV_DIR = os.environ.get("GATHERING_CLOUD_DEV_DIR", r"C:\Antigra
 # 2. PIX4Dmatic 2.11.0 Automated Engine Settings
 PIX4DMATIC_EXE = os.environ.get("PIX4DMATIC_EXE", r"C:\Program Files\PIX4Dmatic\PIX4Dmatic.exe")
 
-# Mandatory 2K texture cap for PIX4Dmatic and GC_ScanOptimizer
-PIX4DMATIC_TEXTURE_SIZE = 2048
+# Default 4K (4096) texture size for PIX4Dmatic and GC_ScanOptimizer
+PIX4DMATIC_TEXTURE_SIZE = 4096
 
 # Mandatory Coordinate Reference System: TWD97 / TM2 zone 121 (EPSG:3826) + TWVD 2001 height (EPSG:8904 [TWGEOID2018h])
 TWD97_TWVD2001_LABEL = "TWD97 / TM2 zone 121 + TWVD 2001 height - EPSG:3826+8904 [TWGEOID2018h]"

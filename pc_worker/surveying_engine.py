@@ -792,7 +792,8 @@ class SurveyingEngine:
   </div>
   <div class="header">
     <div>
-      <div class="title">GatheringScans 土方體積與物料堆置量測報告 (Stockpile & Cut/Fill Report)</div>
+      <img src="/assets/gathering_construction_logo.png" alt="聚人營造股份有限公司 GATHERING CONSTRUCTION.,LTD." style="height:38px;margin-bottom:8px;display:block;" />
+      <div class="title">土方體積與物料堆置量測報告 (Stockpile & Cut/Fill Report)</div>
       <div class="subtitle">Project: <b>{data['project_group']}</b> | Scan: <b>{data['scan_name']}</b> | Generated: {data['generated_at']}</div>
       <div class="subtitle">CRS: <b>{data['crs']}</b></div>
     </div>
@@ -1627,29 +1628,33 @@ class SurveyingEngine:
 
         # Gatheren Vector Company Logo in Title Block (314..332mm, 72..90mm)
         logo_cx, logo_cy = sheet_mm_to_twd(323.0, 81.0)
-        logo_r = 6.8 * mm_to_m
-        for s_i in range(6):
-            a1 = math.radians(60 * s_i + 30)
-            a2 = math.radians(60 * (s_i + 1) + 30)
+        # Draw Gathering Construction "G" House Emblem on G-ANNO-LOGO layer
+        g_pts = [
+            (logo_cx - 4.8 * mm_to_m, logo_cy + 1.8 * mm_to_m),
+            (logo_cx + 1.2 * mm_to_m, logo_cy + 5.8 * mm_to_m),
+            (logo_cx + 1.2 * mm_to_m, logo_cy + 4.1 * mm_to_m),
+            (logo_cx - 3.3 * mm_to_m, logo_cy + 1.1 * mm_to_m),
+            (logo_cx - 3.3 * mm_to_m, logo_cy - 4.2 * mm_to_m),
+            (logo_cx + 3.4 * mm_to_m, logo_cy - 4.2 * mm_to_m),
+            (logo_cx + 3.4 * mm_to_m, logo_cy - 0.2 * mm_to_m),
+            (logo_cx + 0.5 * mm_to_m, logo_cy - 0.2 * mm_to_m),
+            (logo_cx + 0.5 * mm_to_m, logo_cy + 2.2 * mm_to_m),
+            (logo_cx - 1.1 * mm_to_m, logo_cy - 1.8 * mm_to_m),
+            (logo_cx + 1.8 * mm_to_m, logo_cy - 1.8 * mm_to_m),
+            (logo_cx + 1.8 * mm_to_m, logo_cy - 2.9 * mm_to_m),
+            (logo_cx - 4.8 * mm_to_m, logo_cy - 2.9 * mm_to_m),
+            (logo_cx - 4.8 * mm_to_m, logo_cy + 1.8 * mm_to_m),
+        ]
+        for idx_g in range(len(g_pts) - 1):
             add_dxf_line(
                 "G-ANNO-LOGO",
-                logo_cx + logo_r * math.cos(a1),
-                logo_cy + logo_r * math.sin(a1),
-                logo_cx + logo_r * math.cos(a2),
-                logo_cy + logo_r * math.sin(a2),
+                g_pts[idx_g][0],
+                g_pts[idx_g][1],
+                g_pts[idx_g + 1][0],
+                g_pts[idx_g + 1][1],
                 center_h,
-                "4",
+                "3" if idx_g % 2 == 0 else "4",
             )
-            if s_i % 2 == 0:
-                add_dxf_line(
-                    "G-ANNO-LOGO",
-                    logo_cx,
-                    logo_cy,
-                    logo_cx + logo_r * math.cos(a1),
-                    logo_cy + logo_r * math.sin(a1),
-                    center_h,
-                    "5",
-                )
 
         # Title Block & Engineering Schedule Text Rows
         add_dxf_text_mm("G-ANNO-TTLB", 314.0, 276.0, 3.0, "BOUNDARY VERTEX SCHEDULE (TWD97)", "4")
@@ -1659,8 +1664,8 @@ class SurveyingEngine:
             add_dxf_text_mm("G-ANNO-TTLB", 314.0, row_y, 1.85, f"V{idx+1:<2d} {vx:10.2f}  {vy:11.2f}  +{vz:6.2f}m", "7")
 
         add_dxf_rect_mm("G-ANNO-TTLB", 310.0, 12.0, 408.0, 95.0, "7")
-        add_dxf_text_mm("G-ANNO-LOGO", 333.0, 83.5, 3.4, "GATHEREN ENGINEERING", "4")
-        add_dxf_text_mm("G-ANNO-LOGO", 333.0, 78.0, 2.1, "GATHERINGSCANS 3D CIVIL SURVEYING", "7")
+        add_dxf_text_mm("G-ANNO-LOGO", 331.0, 84.0, 2.75, "GATHERING CONSTRUCTION.,LTD.", "4")
+        add_dxf_text_mm("G-ANNO-LOGO", 331.0, 78.2, 2.0, "聚人營造股份有限公司 - 3D CIVIL SURVEYING", "7")
         add_dxf_text_mm("G-ANNO-TTLB", 314.0, 66.0, 2.6, f"PROJECT: {meta.get('project_group', 'QuChi Dam')}", "7")
         add_dxf_text_mm("G-ANNO-TTLB", 314.0, 59.5, 2.3, f"DRAWING: {str(meta.get('drawing_title', 'Topographic Survey'))[:38]}", "7")
         add_dxf_text_mm("G-ANNO-TTLB", 314.0, 53.0, 2.1, f"CRS: TWD97 (121) [EPSG:3826] + TWVD2001", "7")
@@ -2035,39 +2040,41 @@ class SurveyingEngine:
 
         draw_line_mm(310.0, 96.0, 408.0, 96.0)
 
-        # Section 3D: Filled Engineering Title Block with Vector Gatheren Company Logo (Y: 12..96 mm)
+        # Section 3D: Filled Engineering Title Block with Gathering Construction Official Logo (Y: 12..96 mm)
         # Company Banner Box (Y: 72..96 mm)
         set_fill(0.06, 0.09, 0.16)
         draw_rect_mm(310.0, 72.0, 98.0, 24.0, "f")
 
-        # Draw Gatheren Vector Company Emblem (Hexagonal Precision Prism + Crosshair at X=322mm, Y=84mm)
-        logo_x, logo_y = 322.0, 84.0
-        logo_r = 7.2
-        hex_pts = []
-        for h_i in range(6):
-            ang = math.radians(60 * h_i + 30)
-            hex_pts.append((logo_x + logo_r * math.cos(ang), logo_y + logo_r * math.sin(ang)))
+        logo_jpg_path = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            "web",
+            "assets",
+            "gathering_construction_logo_pdf_dark.jpg",
+        )
+        logo_jpg_bytes = b""
+        if os.path.isfile(logo_jpg_path):
+            try:
+                with open(logo_jpg_path, "rb") as lf:
+                    logo_jpg_bytes = lf.read()
+            except Exception:
+                logo_jpg_bytes = b""
 
-        # Filled outer cyan/blue hexagon facets
-        set_fill(0.01, 0.52, 0.78)
-        set_stroke(0.22, 0.74, 0.97, 1.1)
-        h_cmd = [f"{hex_pts[0][0] * MM:.2f} {hex_pts[0][1] * MM:.2f} m"]
-        for hx, hy in hex_pts[1:]:
-            h_cmd.append(f"{hx * MM:.2f} {hy * MM:.2f} l")
-        h_cmd.append("h B")
-        cmds.append(" ".join(h_cmd))
-
-        # Inner cube / precision target lines in white
-        set_stroke(1.0, 1.0, 1.0, 0.95)
-        for h_i in (0, 2, 4):
-            draw_line_mm(logo_x, logo_y, hex_pts[h_i][0], hex_pts[h_i][1])
-        set_fill(1.0, 1.0, 1.0)
-        draw_rect_mm(logo_x - 1.4, logo_y - 1.4, 2.8, 2.8, "f")
-
-        # Company Title & Subtitle in Banner
-        draw_text_mm(333.0, 87.5, 11.0, "GATHEREN", bold=True, rgb=(1.0, 1.0, 1.0))
-        draw_text_mm(333.0, 82.0, 6.5, "GATHERINGSCANS CIVIL SURVEYING", bold=True, rgb=(0.22, 0.74, 0.97))
-        draw_text_mm(333.0, 76.5, 5.4, "3D Photogrammetry, LiDAR & BIM Engineering", bold=False, rgb=(0.80, 0.86, 0.93))
+        if logo_jpg_bytes:
+            # Render embedded Gathering Construction logo XObject (/Im1) at X=312.5mm, Y=79.5mm, W=93.0mm, H=12.8mm
+            cmds.append(
+                f"q {93.0 * MM:.2f} 0 0 {12.8 * MM:.2f} {312.5 * MM:.2f} {79.5 * MM:.2f} cm /Im1 Do Q"
+            )
+            draw_text_mm(
+                313.0,
+                74.8,
+                5.3,
+                "3D Photogrammetry, LiDAR & Civil 3D Topographic Surveying",
+                bold=False,
+                rgb=(0.76, 0.84, 0.94),
+            )
+        else:
+            draw_text_mm(314.0, 86.5, 9.5, "GATHERING CONSTRUCTION.,LTD.", bold=True, rgb=(1.0, 1.0, 1.0))
+            draw_text_mm(314.0, 80.5, 6.2, "3D CIVIL SURVEYING & PHOTOGRAMMETRY", bold=True, rgb=(0.22, 0.74, 0.97))
 
         # Title Block Grid Cells (Y: 12..72 mm)
         set_stroke(0.06, 0.09, 0.16, 0.7)
@@ -2114,12 +2121,13 @@ class SurveyingEngine:
 
         # Assemble valid PDF 1.4 file with exact xref byte offsets
         stream_bytes = "\n".join(cmds).encode("latin-1", "replace")
+        xobj_res = "/XObject << /Im1 7 0 R >> " if logo_jpg_bytes else ""
         objs: List[bytes] = [
             b"1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n",
             b"2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n",
             (
                 f"3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 {PAGE_W:.2f} {PAGE_H:.2f}] "
-                f"/Resources << /Font << /F1 4 0 R /F2 5 0 R >> >> /Contents 6 0 R >>\nendobj\n"
+                f"/Resources << /Font << /F1 4 0 R /F2 5 0 R >> {xobj_res}>> /Contents 6 0 R >>\nendobj\n"
             ).encode("ascii"),
             b"4 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj\n",
             b"5 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>\nendobj\n",
@@ -2127,6 +2135,15 @@ class SurveyingEngine:
             + stream_bytes
             + b"\nendstream\nendobj\n",
         ]
+        if logo_jpg_bytes:
+            objs.append(
+                (
+                    f"7 0 obj\n<< /Type /XObject /Subtype /Image /Width 917 /Height 126 "
+                    f"/ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length {len(logo_jpg_bytes)} >>\nstream\n"
+                ).encode("ascii")
+                + logo_jpg_bytes
+                + b"\nendstream\nendobj\n"
+            )
 
         pdf_buf = bytearray(b"%PDF-1.4\n%\xe2\xe3\xcf\xd3\n")
         offsets: List[int] = []

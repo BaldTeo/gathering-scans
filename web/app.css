@@ -98,6 +98,26 @@ body {
   gap: 10px;
 }
 
+.gs-brand-logo-img {
+  height: 30px;
+  width: auto;
+  object-fit: contain;
+  display: block;
+  flex-shrink: 0;
+}
+
+.gs-logo-light {
+  display: none;
+}
+
+html[data-theme="light"] .gs-logo-dark {
+  display: none;
+}
+
+html[data-theme="light"] .gs-logo-light {
+  display: block;
+}
+
 .gs-brand-logo {
   width: 30px;
   height: 30px;
@@ -1031,6 +1051,32 @@ body {
 
 #compareRightLayer {
   clip-path: inset(0 0 0 50%);
+}
+
+/* 2-Viewport Side-by-Side Synced Camera Mode */
+.gs-compare-stage.mode-split {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+}
+
+.gs-compare-stage.mode-split .gs-compare-layer {
+  position: relative;
+  inset: auto;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+.gs-compare-stage.mode-split #compareLeftLayer {
+  border-right: 2px solid var(--ui-accent);
+}
+
+.gs-compare-stage.mode-split #compareRightLayer {
+  clip-path: none !important;
+}
+
+.gs-compare-stage.mode-split .gs-curtain-divider {
+  display: none !important;
 }
 
 .gs-curtain-divider {
