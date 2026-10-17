@@ -22,6 +22,8 @@ from pc_worker.config import (
     TWD97_TWVD2001_LABEL,
     LOCAL_SCANS_ROOT,
     GC_SCAN_OPTIMIZER_DIR,
+    load_pix4d_settings,
+    load_pix4d_settings_from_dict,
 )
 
 
@@ -29,28 +31,47 @@ def generate_pix4dmatic_gst_script(
     project_p4m_path: str,
     input_zip_or_folder: str,
     export_dir: str,
-    texture_size: int = PIX4DMATIC_TEXTURE_SIZE,
+    texture_size: Optional[int] = None,
     srs_wkt: str = TWD97_TWVD2001_WKT,
     extracted_image_paths: Optional[list] = None,
     primary_opf_path: Optional[str] = None,
     part_image_groups: Optional[list] = None,
+    pipeline_settings: Optional[Dict[str, Any]] = None,
 ) -> str:
     """
     Generates a verified PIX4Dmatic 2.11.0 .gst / .p4mpl QML automation script matching
-    the exact CommandGraph schema from C:/Scans/QuChi/QuChi_20261015/history.p4mpl:
-    1. Creates/opens the project (.p4m)
-    2. Imports primary OPF (ImportOpf) for part 1
-    3. Sets GCP & Project CRS to TWD97 / TM2 zone 121 + TWVD 2001 height (EPSG:3826+8904 [TWGEOID2018h])
-    4. Imports any additional parts via AddImagesFromPaths
-    5. Runs CommandGraph (GenerateReconstruction -> GenerateSkyMasks -> GenerateGaPmvsDensePointCloud
-       -> GenerateDepthPointCloud -> GenerateFusedPointCloud -> GenerateScalableMesh(2048) -> ExportQualityReport -> ExportMeshToObj)
-    6. Saves project and closes session cleanly.
+    the proven QuChi_20261005_Compressed configuration:
+    - Default meshPipeline: MeshPipeline.FixedSize (compact file size, preserves trees when skyless=false)
+    - Default skyless: false (Sky Mask disabled so surrounding trees & canopy are never trimmed away)
+    - Default use_roi: false (excludes restrictive OPF RoiSet bounding box)
+    - Default textureSize: 4096
+    - Default modelSimplification: ModelSimplification.Conservative
+    - Default deghosting: Deghosting.Weak
+    - Default exportLod: 13
     """
+    cfg = load_pix4d_settings()
+    if isinstance(pipeline_settings, dict):
+        cfg = load_pix4d_settings_from_dict({**cfg, **pipeline_settings})
+    if texture_size is not None:
+        cfg["texture_size"] = int(texture_size)
+
+    mesh_pipeline = cfg["mesh_pipeline"]
+    skyless = bool(cfg["skyless"])
+    use_roi = bool(cfg["use_roi"])
+    tex_size = int(cfg["texture_size"])
+    simplification = cfg["model_simplification"]
+    deghosting = cfg["deghosting"]
+    export_lod = int(cfg["export_lod"])
+    skyless_str = "true" if skyless else "false"
+
     proj_folder_clean = os.path.dirname(project_p4m_path).replace("\\", "/")
     proj_name = os.path.splitext(os.path.basename(project_p4m_path))[0] or "p4m_project"
     exp_clean = export_dir.replace("\\", "/")
     report_pdf = f"{exp_clean}/quality_report.pdf"
     obj_mesh_folder = f"{exp_clean}/obj_mesh"
+
+    roi_token = ",RoiSet{ }" if use_roi else ""
+    sky_token = ",SkyMasks{ }" if skyless else ""
 
     import_blocks = []
     if primary_opf_path:
@@ -60,7 +81,7 @@ def generate_pix4dmatic_gst_script(
         ImportOpf {{
             path : "{opf_clean}"
             settings.colorizeTracks : true
-            outputs : [InputCameras{{ }},CalibratedCameras{{ }},TiePointSet{{ }},FeaturesAndMatches{{ }},IntersectionTiePointSet{{ }},ConstraintSet{{ }},LineFeatures{{ }},Wireframe{{ }},SparsePointCloud{{ }},GaussianSplats{{ }},DensePointCloud{{ }},DepthPointCloud{{ }},FusedPointCloud{{ }},AsprsClasses{{ }},ComputedDepthMaps{{ }},RoiSet{{ }},SkyMasks{{ }},Dsm{{ }},Dtm{{ }},Ortho{{ }},VectorLayer{{ name: 'Polygons'; group: 'polygons'; }},VectorLayer{{ group: 'masks'; }}]
+            outputs : [InputCameras{{ }},CalibratedCameras{{ }},TiePointSet{{ }},FeaturesAndMatches{{ }},IntersectionTiePointSet{{ }},ConstraintSet{{ }},LineFeatures{{ }},Wireframe{{ }},SparsePointCloud{{ }},GaussianSplats{{ }},DensePointCloud{{ }},DepthPointCloud{{ }},FusedPointCloud{{ }},AsprsClasses{{ }},ComputedDepthMaps{{ }}{roi_token}{sky_token},Dsm{{ }},Dtm{{ }},Ortho{{ }},VectorLayer{{ name: 'Polygons'; group: 'polygons'; }},VectorLayer{{ group: 'masks'; }}]
         }}"""
         )
 
@@ -68,8 +89,8 @@ def generate_pix4dmatic_gst_script(
         f"""        // 2. Enforce TWD97 (121) [EPSG:3826] + TWVD2001 [EPSG:8904, TWGEOID2018h]
         SetGcpCrs {{
             settings.srsDefinition : '{srs_wkt}'
-            inputs : [InputCameras{{ }},TiePointSet{{ }},RoiSet{{ }}]
-            outputs : [InputCameras{{ }},TiePointSet{{ }},RoiSet{{ }}]
+            inputs : [InputCameras{{ }},TiePointSet{{ }}{roi_token}]
+            outputs : [InputCameras{{ }},TiePointSet{{ }}{roi_token}]
         }}"""
     )
 
@@ -82,8 +103,8 @@ def generate_pix4dmatic_gst_script(
                 f"""        // Import Part {idx + 2 if primary_opf_path else idx + 1} Images + Depth + Confidence
         AddImagesFromPaths {{
             paths : [{grp_literal}]
-            inputs : [InputCameras{{ }},TiePointSet{{ }},RoiSet{{ }}]
-            outputs : [InputCameras{{ }},TiePointSet{{ }},RoiSet{{ }}]
+            inputs : [InputCameras{{ }},TiePointSet{{ }}{roi_token}]
+            outputs : [InputCameras{{ }},TiePointSet{{ }}{roi_token}]
         }}"""
             )
     elif not primary_opf_path:
@@ -98,12 +119,21 @@ def generate_pix4dmatic_gst_script(
             0,
             f"""        AddImagesFromPaths {{
             paths : [{paths_literal}]
-            inputs : [InputCameras{{ }},TiePointSet{{ }},RoiSet{{ }}]
-            outputs : [InputCameras{{ }},TiePointSet{{ }},RoiSet{{ }}]
+            inputs : [InputCameras{{ }},TiePointSet{{ }}{roi_token}]
+            outputs : [InputCameras{{ }},TiePointSet{{ }}{roi_token}]
         }}""",
         )
 
     imports_joined = "\n\n".join(import_blocks)
+
+    sky_masks_step = ""
+    if skyless:
+        sky_masks_step = """            GenerateSkyMasks {
+                resources.useGpu : GpuUsage.Yes
+                inputs : [CalibratedCameras{ }]
+                outputs : [SkyMasks{ }]
+            }
+"""
 
     gst_content = f"""Session {{
     Project {{
@@ -114,7 +144,8 @@ def generate_pix4dmatic_gst_script(
 
         SaveProject {{ }}
 
-        // 3. Full Photogrammetry & 2K Mesh Pipeline (PIX4Dmatic 2.11.0 CommandGraph)
+        // 3. Full Photogrammetry & Mesh Pipeline (PIX4Dmatic 2.11.0 CommandGraph)
+        // Defaults: MeshPipeline.{mesh_pipeline}, skyless={skyless_str}, use_roi={str(use_roi).lower()}, textureSize={tex_size}, exportLod={export_lod}
         CommandGraph {{
             GenerateReconstruction {{
                 settings.calibPipeline : CalibPipeline.AccurateCameraExternalMeasurements
@@ -134,12 +165,7 @@ def generate_pix4dmatic_gst_script(
                 inputs : [InputCameras{{ }},TiePointSet{{ }},ConstraintSet{{ }}]
                 outputs : [InputCameras{{ }},CalibratedCameras{{ }},SparsePointCloud{{ }},FeaturesAndMatches{{ }},IntersectionTiePointSet{{ }},LineFeatures{{ }}]
             }}
-            GenerateSkyMasks {{
-                resources.useGpu : GpuUsage.Yes
-                inputs : [CalibratedCameras{{ }}]
-                outputs : [SkyMasks{{ }}]
-            }}
-            GenerateGaPmvsDensePointCloud {{
+{sky_masks_step}            GenerateGaPmvsDensePointCloud {{
                 settings.sensorType : SensorType.Rgb
                 settings.denoise : true
                 settings.imageScale : ImageScale.Half
@@ -147,9 +173,9 @@ def generate_pix4dmatic_gst_script(
                 settings.minNbrOfMatches : 3
                 settings.multiScale : true
                 settings.pointDensity : PointDensity.Optimal
-                settings.skyless : true
+                settings.skyless : {skyless_str}
                 resources.useGpu : GpuUsage.Automatic
-                inputs : [CalibratedCameras{{ }},SparsePointCloud{{ }},SkyMasks{{ }}]
+                inputs : [CalibratedCameras{{ }},SparsePointCloud{{ }}{sky_token}]
                 outputs : [DensePointCloud{{ }}]
             }}
             GenerateDepthPointCloud {{
@@ -167,16 +193,16 @@ def generate_pix4dmatic_gst_script(
                 outputs : [FusedPointCloud{{ }}]
             }}
             GenerateScalableMesh {{
-                settings.deghosting : Deghosting.Weak
+                settings.deghosting : Deghosting.{deghosting}
                 settings.generatePlanes : false
                 settings.maskAware : false
-                settings.meshPipeline : MeshPipeline.FixedSize
+                settings.meshPipeline : MeshPipeline.{mesh_pipeline}
                 settings.meshProjectTemplate : MeshProjectTemplate.Catch
-                settings.modelSimplification : ModelSimplification.Conservative
+                settings.modelSimplification : ModelSimplification.{simplification}
                 settings.polygonAware : false
-                settings.skyless : true
-                settings.textureSize : {int(texture_size)}
-                inputs : [FusedPointCloud{{ }},SkyMasks{{ }}]
+                settings.skyless : {skyless_str}
+                settings.textureSize : {tex_size}
+                inputs : [FusedPointCloud{{ }}{sky_token}]
                 outputs : [Mesh{{ }}]
             }}
             ExportQualityReport {{
@@ -190,7 +216,7 @@ def generate_pix4dmatic_gst_script(
             ExportMeshToObj {{
                 folder : "{obj_mesh_folder}"
                 settings.exportAsTiles : false
-                settings.exportLod : 0
+                settings.exportLod : {export_lod}
                 settings.exportSrs : ExportSrs.Project
                 inputs : [Mesh{{ }}]
             }}
@@ -201,6 +227,7 @@ def generate_pix4dmatic_gst_script(
 }}
 """
     return gst_content
+
 
 
 def run_pix4dmatic_pipeline(
@@ -333,19 +360,52 @@ def run_pix4dmatic_pipeline(
     obj_path = objs[0] if objs else ""
     tileset_path = ""
     if obj_path and os.path.isfile(obj_path):
+        try:
+            from pc_worker.gdrive_watcher import utm51n_to_wgs84, wgs84_to_twd97
+            first_v = None
+            with open(obj_path, "r", encoding="utf-8", errors="ignore") as f_chk:
+                for ln in f_chk:
+                    if ln.startswith("v "):
+                        pts = ln.split()
+                        first_v = (float(pts[1]), float(pts[2]), float(pts[3]))
+                        break
+            if first_v and 330000.0 < first_v[0] < 450000.0 and 2400000.0 < first_v[1] < 2900000.0:
+                u0, v0 = first_v[0], first_v[1]
+                e0, n0, _ = wgs84_to_twd97(*utm51n_to_wgs84(u0, v0))
+                ex, nx, _ = wgs84_to_twd97(*utm51n_to_wgs84(u0 + 100.0, v0))
+                ey, ny, _ = wgs84_to_twd97(*utm51n_to_wgs84(u0, v0 + 100.0))
+                j00, j01 = (ex - e0) / 100.0, (ey - e0) / 100.0
+                j10, j11 = (nx - n0) / 100.0, (ny - n0) / 100.0
+                out_lns = []
+                with open(obj_path, "r", encoding="utf-8", errors="ignore") as f_in:
+                    for ln in f_in:
+                        if ln.startswith("v "):
+                            p = ln.split()
+                            vx, vy, vz = float(p[1]), float(p[2]), float(p[3])
+                            dx, dy = vx - u0, vy - v0
+                            out_lns.append(f"v {e0 + j00 * dx + j01 * dy:.3f} {n0 + j10 * dx + j11 * dy:.3f} {vz:.3f}\n")
+                        else:
+                            out_lns.append(ln)
+                with open(obj_path, "w", encoding="utf-8") as f_out:
+                    f_out.writelines(out_lns)
+        except Exception as e:
+            print(f"[PIX4DRunner] Warning checking/converting UTM51N OBJ vertices: {e}")
+
         if progress_callback:
-            progress_callback(93.0, "Building 2K Hierarchical 3D Tileset in GC_ScanOptimizer...")
+            progress_callback(93.0, "Building Hierarchical 3D Tileset in GC_ScanOptimizer...")
         if GC_SCAN_OPTIMIZER_DIR not in sys.path:
             sys.path.insert(0, GC_SCAN_OPTIMIZER_DIR)
         from optimizer.quadtree_tiler import QuadtreeTiler
 
+        active_cfg = load_pix4d_settings()
+        active_tex_limit = int(active_cfg.get("texture_size", PIX4DMATIC_TEXTURE_SIZE))
         tileset_dir = os.path.join(proj_dir, "tileset")
         tiler = QuadtreeTiler(
             input_path=obj_path,
             output_dir=tileset_dir,
             max_levels=3,
             texture_quality=7,
-            texture_limit=PIX4DMATIC_TEXTURE_SIZE,  # Enforce 2048 max texture resolution
+            texture_limit=active_tex_limit,
             high_compression=True,
             verbose=False,
         )

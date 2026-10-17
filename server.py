@@ -48,6 +48,8 @@ from pc_worker.config import (
     TWD97_TWVD2001_SHORT,
     PIX4DMATIC_TEXTURE_SIZE,
     GOOGLE_OAUTH_CLIENT_ID,
+    load_pix4d_settings,
+    save_pix4d_settings,
 )
 from pc_worker.priority_queue import ScanQueueDB
 from pc_worker.gdrive_watcher import seed_and_discover_scans, extract_opf_zip_metadata
@@ -1336,12 +1338,14 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
             queued.sort(key=lambda x: (0 if x["status"] == "queued" else 1, -float(x["priority_score"]), float(x["uploaded_at"])))
             processing = [s for s in all_scans if s["status"] == "processing"]
             completed = [s for s in all_scans if s["status"] == "completed"]
+            p4d_cfg = load_pix4d_settings()
             self.send_json(
                 {
                     "status": "ok",
                     "inbox_dir": GDRIVE_INBOX_DIR,
                     "crs_enforced": TWD97_TWVD2001_LABEL,
-                    "texture_size_enforced": PIX4DMATIC_TEXTURE_SIZE,
+                    "texture_size_enforced": p4d_cfg.get("texture_size", PIX4DMATIC_TEXTURE_SIZE),
+                    "pix4d_settings": p4d_cfg,
                     "processing": processing,
                     "queued": queued,
                     "all_scans": all_scans,
@@ -1350,6 +1354,10 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
                     "gchat_webhook_url": GCHAT.get_webhook_url(),
                 }
             )
+            return
+
+        if path == "/api/pix4d/settings":
+            self.send_json({"status": "ok", "settings": load_pix4d_settings()})
             return
 
         # 6. GC_ScanOptimizer Presets
@@ -1727,9 +1735,14 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
                 return
 
             # 7. Smart Queue & PIX4Dmatic Automation Actions
-            if path == "/api/queue/scan-inbox":
+            if path in ("/api/queue/scan-inbox", "/api/queue/rescan"):
                 scans = seed_and_discover_scans(DB)
                 self.send_json({"status": "ok", "inbox_dir": GDRIVE_INBOX_DIR, "total_scans": len(scans)})
+                return
+
+            if path == "/api/pix4d/settings":
+                saved = save_pix4d_settings(payload.get("settings", payload) if isinstance(payload, dict) else {})
+                self.send_json({"status": "ok", "settings": saved})
                 return
 
             if path == "/api/queue/force-next":
@@ -1742,18 +1755,21 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
                 scan_id = payload.get("scan_id", "quchi_20261005_merged")
                 scan = DB.get_scan(scan_id) or {}
                 in_path = scan.get("source_zip_path") or os.path.join(GDRIVE_INBOX_DIR, "2026-10-05-15-37-05.zip")
+                custom_cfg = payload.get("settings") if isinstance(payload.get("settings"), dict) else load_pix4d_settings()
                 gst_script = generate_pix4dmatic_gst_script(
                     project_p4m_path=f"C:/GatheringScans/{scan_id}/{scan_id}.p4m",
                     input_zip_or_folder=in_path,
                     export_dir=f"C:/GatheringScans/{scan_id}/exports",
-                    texture_size=PIX4DMATIC_TEXTURE_SIZE,
+                    texture_size=int(custom_cfg.get("texture_size", PIX4DMATIC_TEXTURE_SIZE)),
+                    pipeline_settings=custom_cfg,
                 )
                 self.send_json(
                     {
                         "status": "ok",
                         "scan_id": scan_id,
                         "crs": TWD97_TWVD2001_LABEL,
-                        "texture_size": PIX4DMATIC_TEXTURE_SIZE,
+                        "texture_size": int(custom_cfg.get("texture_size", PIX4DMATIC_TEXTURE_SIZE)),
+                        "settings": custom_cfg,
                         "gst_script": gst_script,
                     }
                 )

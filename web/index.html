@@ -687,8 +687,69 @@
           <div class="val" style="font-size:12.5px;color:var(--ui-accent);">TWD97 (121) + TWVD2001</div>
         </div>
         <div class="gs-metric-box">
-          <div class="lbl">Texture &amp; Storage Policy</div>
-          <div class="val" style="font-size:12.5px;">2K (2048px) · 0B on VPS</div>
+          <div class="lbl">Pipeline &amp; Storage Policy</div>
+          <div class="val" style="font-size:12px;" id="lblQueuePipelineSummary">FixedSize · 4K · SkyMask OFF · 0B VPS</div>
+        </div>
+      </div>
+
+      <div class="gs-pix4d-settings-card" style="background:var(--ui-bg-subtle);border:1px solid var(--ui-border);border-radius:10px;padding:10px 12px;margin-bottom:10px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap;">
+          <div style="font-size:12px;font-weight:700;color:var(--ui-text-primary);display:flex;align-items:center;gap:6px;">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="var(--ui-accent)" stroke-width="2">
+              <circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9c.26.604.852.997 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+            </svg>
+            <span>PIX4Dmatic 2.11.0 Default Pipeline Settings (Tree-Preserving + Compact Mesh)</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:6px;">
+            <span class="gs-crs-pill" style="font-size:10px;">Default Preset Active</span>
+            <button type="button" class="btn-xs primary" id="btnSavePix4dSettingsQueue" title="Save Default PIX4Dmatic Pipeline Settings">Save Defaults</button>
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:8px;">
+          <div class="gs-form-group" style="margin-bottom:0;">
+            <label style="font-size:10.5px;">Mesh Pipeline</label>
+            <select class="gs-select" id="selPix4dMeshPipeline" style="font-size:11.5px;padding:4px 6px;">
+              <option value="FixedSize" selected>FixedSize (Compact File Size)</option>
+              <option value="Scalable">Scalable (Multi-Tile)</option>
+            </select>
+          </div>
+          <div class="gs-form-group" style="margin-bottom:0;">
+            <label style="font-size:10.5px;">Texture Atlas Size</label>
+            <select class="gs-select" id="selPix4dTextureSize" style="font-size:11.5px;padding:4px 6px;">
+              <option value="4096" selected>4096 px (4K Default)</option>
+              <option value="2048">2048 px (2K Fast)</option>
+              <option value="8192">8192 px (8K Ultra)</option>
+            </select>
+          </div>
+          <div class="gs-form-group" style="margin-bottom:0;">
+            <label style="font-size:10.5px;">Model Simplification</label>
+            <select class="gs-select" id="selPix4dSimplification" style="font-size:11.5px;padding:4px 6px;">
+              <option value="Conservative" selected>Conservative (Keep Detail)</option>
+              <option value="Moderate">Moderate</option>
+              <option value="Aggressive">Aggressive</option>
+            </select>
+          </div>
+          <div class="gs-form-group" style="margin-bottom:0;">
+            <label style="font-size:10.5px;">Deghosting &amp; LOD</label>
+            <div style="display:flex;gap:4px;">
+              <select class="gs-select" id="selPix4dDeghosting" style="font-size:11.5px;padding:4px 6px;flex:1;">
+                <option value="Weak" selected>Weak</option>
+                <option value="Strong">Strong</option>
+                <option value="Disabled">Disabled</option>
+              </select>
+              <input type="number" class="gs-input" id="inpPix4dExportLod" value="13" min="0" max="20" title="ExportMeshToObj LOD (13 = Full Detail)" style="width:52px;font-size:11.5px;padding:4px 6px;text-align:center;" />
+            </div>
+          </div>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;padding-top:6px;border-top:1px solid var(--ui-border);">
+          <label style="display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--ui-text-primary);cursor:pointer;" title="When unchecked (skyless: false), PIX4Dmatic keeps surrounding trees and foliage silhouette instead of carving them out as sky.">
+            <input type="checkbox" id="chkPix4dSkyless" style="accent-color:#0284c7;width:14px;height:14px;" />
+            <span><b>Sky Mask (<code>skyless</code>)</b> — <span style="color:var(--ui-accent);font-weight:600;">Leave OFF to preserve surrounding trees &amp; canopy</span></span>
+          </label>
+          <label style="display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--ui-text-primary);cursor:pointer;" title="When unchecked (use_roi: false), ignores restrictive OPF RoiSet bounding boxes so perimeter trees are not clipped.">
+            <input type="checkbox" id="chkPix4dUseRoi" style="accent-color:#0284c7;width:14px;height:14px;" />
+            <span><b>OPF ROI Clip (<code>RoiSet</code>)</b> — <span style="color:var(--ui-text-secondary);">Leave OFF for full-scene extent</span></span>
+          </label>
         </div>
       </div>
 
@@ -740,8 +801,8 @@
       </div>
 
       <div id="gstScriptPreviewBox" style="display:none;margin-bottom:12px;">
-        <div style="font-size:11px;font-weight:700;color:var(--ui-text-secondary);margin-bottom:4px;">
-          PIX4Dmatic 2.11.0 Headless .GST Script (TWD97 (121) [EPSG:3826] + TWVD2001 [EPSG:8904] &amp; 2048px Textures):
+        <div style="font-size:11px;font-weight:700;color:var(--ui-text-secondary);margin-bottom:4px;" id="gstScriptHeaderTitle">
+          PIX4Dmatic 2.11.0 Headless .GST Script (TWD97 (121) [EPSG:3826] + TWVD2001 [EPSG:8904] · FixedSize · 4096px · SkyMask OFF):
         </div>
         <pre id="gstScriptCode" style="background:var(--ui-bg-subtle);border:1px solid var(--ui-border-strong);padding:10px 12px;border-radius:8px;font-size:10.5px;color:var(--ui-text-primary);max-height:170px;overflow:auto;line-height:1.4;"></pre>
       </div>
@@ -903,8 +964,72 @@
         </div>
       </div>
 
+      <!-- PIX4Dmatic 2.11.0 Default Pipeline Settings in User Settings -->
+      <div class="gs-settings-row" style="background:var(--ui-bg-subtle);border:1px solid var(--ui-border);border-radius:10px;padding:12px 14px;margin-bottom:10px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap;">
+          <div>
+            <div style="font-size:12.5px;font-weight:700;color:var(--ui-text-primary);display:flex;align-items:center;gap:6px;">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="var(--ui-accent)" stroke-width="2">
+                <polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/>
+              </svg>
+              <span>PIX4Dmatic 2.11.0 Default Pipeline Settings</span>
+            </div>
+            <div style="font-size:11px;color:var(--ui-text-muted);margin-top:2px;">
+              Defaults: <b>FixedSize</b> (compact file size) + <b>Sky Mask OFF</b> (preserves surrounding trees) + <b>4096px</b> textures + <b>LOD 13</b>.
+            </div>
+          </div>
+          <button type="button" class="btn-xs primary" id="btnSavePix4dSettingsUser" title="Save Default PIX4Dmatic Pipeline Settings">Save Defaults</button>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:8px;">
+          <div class="gs-form-group" style="margin-bottom:0;">
+            <label style="font-size:10.5px;">Mesh Pipeline</label>
+            <select class="gs-select" id="selPix4dMeshPipelineUser" style="font-size:11.5px;padding:4px 6px;">
+              <option value="FixedSize" selected>FixedSize (Compact)</option>
+              <option value="Scalable">Scalable (Multi-Tile)</option>
+            </select>
+          </div>
+          <div class="gs-form-group" style="margin-bottom:0;">
+            <label style="font-size:10.5px;">Texture Atlas Size</label>
+            <select class="gs-select" id="selPix4dTextureSizeUser" style="font-size:11.5px;padding:4px 6px;">
+              <option value="4096" selected>4096 px (4K Default)</option>
+              <option value="2048">2048 px (2K Fast)</option>
+              <option value="8192">8192 px (8K Ultra)</option>
+            </select>
+          </div>
+          <div class="gs-form-group" style="margin-bottom:0;">
+            <label style="font-size:10.5px;">Simplification</label>
+            <select class="gs-select" id="selPix4dSimplificationUser" style="font-size:11.5px;padding:4px 6px;">
+              <option value="Conservative" selected>Conservative</option>
+              <option value="Moderate">Moderate</option>
+              <option value="Aggressive">Aggressive</option>
+            </select>
+          </div>
+          <div class="gs-form-group" style="margin-bottom:0;">
+            <label style="font-size:10.5px;">Deghosting &amp; LOD</label>
+            <div style="display:flex;gap:4px;">
+              <select class="gs-select" id="selPix4dDeghostingUser" style="font-size:11.5px;padding:4px 6px;flex:1;">
+                <option value="Weak" selected>Weak</option>
+                <option value="Strong">Strong</option>
+                <option value="Disabled">Disabled</option>
+              </select>
+              <input type="number" class="gs-input" id="inpPix4dExportLodUser" value="13" min="0" max="20" style="width:50px;font-size:11.5px;padding:4px 6px;text-align:center;" />
+            </div>
+          </div>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;padding-top:6px;border-top:1px solid var(--ui-border);">
+          <label style="display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--ui-text-primary);cursor:pointer;">
+            <input type="checkbox" id="chkPix4dSkylessUser" style="accent-color:#0284c7;width:14px;height:14px;" />
+            <span><b>Sky Mask (<code>skyless</code>)</b> — <span style="color:var(--ui-accent);font-weight:600;">OFF preserves surrounding trees</span></span>
+          </label>
+          <label style="display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--ui-text-primary);cursor:pointer;">
+            <input type="checkbox" id="chkPix4dUseRoiUser" style="accent-color:#0284c7;width:14px;height:14px;" />
+            <span><b>OPF ROI Clip (<code>RoiSet</code>)</b> — <span style="color:var(--ui-text-secondary);">OFF keeps full extent</span></span>
+          </label>
+        </div>
+      </div>
+
       <p style="font-size:12px;color:var(--ui-text-secondary);margin-bottom:10px;">
-        Zero raw scans, photos, or 3D caches are stored on the Linux server. Optimized 2K 3D tilesets are cached directly in your local browser (<code>CacheStorage</code> + <code>IndexedDB</code>) for offline inspection when the processing PC is powered off.
+        Zero raw scans, photos, or 3D caches are stored on the Linux server. Optimized 3D tilesets are cached directly in your local browser (<code>CacheStorage</code> + <code>IndexedDB</code>) for offline inspection when the processing PC is powered off.
       </p>
 
       <div class="gs-settings-row" style="background:var(--ui-bg-subtle);border:1px solid var(--ui-border);border-radius:10px;padding:12px 14px;margin-bottom:10px;display:flex;justify-content:space-between;align-items:center;gap:12px;">
@@ -1093,6 +1218,6 @@
   <script src="/lib/3d-tiles-renderer.bundle.js"></script>
 
   <!-- Main GatheringScans Application Logic -->
-  <script src="/app.js?v=20261017_cmp1"></script>
+  <script src="/app.js?v=20261017_pix4d1"></script>
 </body>
 </html>

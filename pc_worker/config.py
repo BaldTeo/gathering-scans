@@ -92,3 +92,85 @@ MATERIAL_CATALOG = {
     "concrete_rubble": {"name": "Concrete Rubble / 混凝土廢料", "density_t_m3": 1.50, "swell_factor": 0.78},
     "asphalt_milling": {"name": "Asphalt Millings / 瀝青刨除料", "density_t_m3": 1.40, "swell_factor": 0.85},
 }
+
+# 7. Default PIX4Dmatic 2.11.0 Mesh & Photogrammetry Pipeline Settings
+# Matches QuChi_20261005_Compressed: FixedSize mesh pipeline (compact file size) + Sky Mask OFF (skyless: false)
+# + ROI clipping OFF (use_roi: false) + 4096px texture atlas + Conservative simplification + Export LOD 13
+PIX4D_SETTINGS_PATH = os.path.join(DATA_DIR, "pix4d_settings.json")
+DEFAULT_PIX4D_SETTINGS = {
+    "mesh_pipeline": "FixedSize",           # "FixedSize" (compact file size) or "Scalable"
+    "skyless": False,                       # False = Sky Mask Disabled (preserves surrounding trees & canopy)
+    "use_roi": False,                       # False = Exclude restrictive OPF RoiSet clipping
+    "texture_size": 4096,                   # 2048, 4096, or 8192
+    "model_simplification": "Conservative", # "Conservative", "Moderate", or "Aggressive"
+    "deghosting": "Weak",                   # "Weak", "Strong", or "Disabled"
+    "export_lod": 13,                       # 13 = Full detail LOD export
+}
+
+
+def load_pix4d_settings() -> dict:
+    import json
+    cfg = dict(DEFAULT_PIX4D_SETTINGS)
+    if os.path.isfile(PIX4D_SETTINGS_PATH):
+        try:
+            with open(PIX4D_SETTINGS_PATH, "r", encoding="utf-8") as f:
+                saved = json.load(f)
+            if isinstance(saved, dict):
+                cfg.update(saved)
+        except Exception:
+            pass
+    cfg["mesh_pipeline"] = "Scalable" if str(cfg.get("mesh_pipeline")) == "Scalable" else "FixedSize"
+    cfg["skyless"] = bool(cfg.get("skyless", False))
+    cfg["use_roi"] = bool(cfg.get("use_roi", False))
+    try:
+        ts = int(cfg.get("texture_size", 4096))
+        cfg["texture_size"] = ts if ts in (1024, 2048, 4096, 8192) else 4096
+    except Exception:
+        cfg["texture_size"] = 4096
+    simp = str(cfg.get("model_simplification", "Conservative"))
+    cfg["model_simplification"] = simp if simp in ("Conservative", "Moderate", "Aggressive") else "Conservative"
+    degh = str(cfg.get("deghosting", "Weak"))
+    cfg["deghosting"] = degh if degh in ("Weak", "Strong", "Disabled") else "Weak"
+    try:
+        cfg["export_lod"] = max(0, min(20, int(cfg.get("export_lod", 13))))
+    except Exception:
+        cfg["export_lod"] = 13
+    return cfg
+
+
+def save_pix4d_settings(updates: dict) -> dict:
+    import json
+    cfg = load_pix4d_settings()
+    if isinstance(updates, dict):
+        cfg.update(updates)
+    cfg = load_pix4d_settings_from_dict(cfg)
+    try:
+        with open(PIX4D_SETTINGS_PATH, "w", encoding="utf-8") as f:
+            json.dump(cfg, f, indent=2, ensure_ascii=False)
+    except Exception:
+        pass
+    return cfg
+
+
+def load_pix4d_settings_from_dict(raw: dict) -> dict:
+    cfg = dict(DEFAULT_PIX4D_SETTINGS)
+    if isinstance(raw, dict):
+        cfg.update(raw)
+    cfg["mesh_pipeline"] = "Scalable" if str(cfg.get("mesh_pipeline")) == "Scalable" else "FixedSize"
+    cfg["skyless"] = bool(cfg.get("skyless", False))
+    cfg["use_roi"] = bool(cfg.get("use_roi", False))
+    try:
+        ts = int(cfg.get("texture_size", 4096))
+        cfg["texture_size"] = ts if ts in (1024, 2048, 4096, 8192) else 4096
+    except Exception:
+        cfg["texture_size"] = 4096
+    simp = str(cfg.get("model_simplification", "Conservative"))
+    cfg["model_simplification"] = simp if simp in ("Conservative", "Moderate", "Aggressive") else "Conservative"
+    degh = str(cfg.get("deghosting", "Weak"))
+    cfg["deghosting"] = degh if degh in ("Weak", "Strong", "Disabled") else "Weak"
+    try:
+        cfg["export_lod"] = max(0, min(20, int(cfg.get("export_lod", 13))))
+    except Exception:
+        cfg["export_lod"] = 13
+    return cfg
+

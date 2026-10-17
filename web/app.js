@@ -4374,8 +4374,106 @@
     });
   });
 
-  // 5A. PIX4Dmatic Smart Queue Modal (with Live PIX4Dmatic Progress & Log Tail)
+  // 5A. PIX4Dmatic Smart Queue Modal & Default Pipeline Settings
   let _queuePollTimer = null;
+  let _pix4dSettingsDirty = false;
+
+  function formatPix4dSummaryBadge(cfg) {
+    if (!cfg) return "FixedSize · 4K · SkyMask OFF · 0B VPS";
+    const mp = cfg.mesh_pipeline || "FixedSize";
+    const tex = Number(cfg.texture_size || 4096);
+    const texLabel = tex >= 8192 ? "8K" : tex >= 4096 ? "4K" : "2K";
+    const skyLabel = cfg.skyless ? "SkyMask ON" : "SkyMask OFF";
+    return `${mp} · ${texLabel} · ${skyLabel} · 0B VPS`;
+  }
+
+  function applyPix4dSettingsToUI(cfg, forceOverwrite = false) {
+    if (!cfg) return;
+    STATE.pix4dSettings = Object.assign(
+      {
+        mesh_pipeline: "FixedSize",
+        skyless: false,
+        use_roi: false,
+        texture_size: 4096,
+        model_simplification: "Conservative",
+        deghosting: "Weak",
+        export_lod: 13,
+      },
+      cfg
+    );
+    const c = STATE.pix4dSettings;
+    const sumEl = document.getElementById("lblQueuePipelineSummary");
+    if (sumEl) sumEl.textContent = formatPix4dSummaryBadge(c);
+    const hdrEl = document.getElementById("gstScriptHeaderTitle");
+    if (hdrEl) {
+      hdrEl.textContent = `PIX4Dmatic 2.11.0 Headless .GST Script (TWD97 (121) [EPSG:3826] + TWVD2001 [EPSG:8904] · ${c.mesh_pipeline} · ${c.texture_size}px · ${c.skyless ? "SkyMask ON" : "SkyMask OFF"}):`;
+    }
+
+    if (_pix4dSettingsDirty && !forceOverwrite) return;
+
+    const pairs = [
+      ["selPix4dMeshPipeline", "selPix4dMeshPipelineUser", String(c.mesh_pipeline || "FixedSize")],
+      ["selPix4dTextureSize", "selPix4dTextureSizeUser", String(c.texture_size || 4096)],
+      ["selPix4dSimplification", "selPix4dSimplificationUser", String(c.model_simplification || "Conservative")],
+      ["selPix4dDeghosting", "selPix4dDeghostingUser", String(c.deghosting || "Weak")],
+      ["inpPix4dExportLod", "inpPix4dExportLodUser", String(c.export_lod ?? 13)],
+    ];
+    pairs.forEach(([id1, id2, val]) => {
+      const el1 = document.getElementById(id1);
+      if (el1 && document.activeElement !== el1) el1.value = val;
+      const el2 = document.getElementById(id2);
+      if (el2 && document.activeElement !== el2) el2.value = val;
+    });
+
+    const chkPairs = [
+      ["chkPix4dSkyless", "chkPix4dSkylessUser", Boolean(c.skyless)],
+      ["chkPix4dUseRoi", "chkPix4dUseRoiUser", Boolean(c.use_roi)],
+    ];
+    chkPairs.forEach(([id1, id2, checked]) => {
+      const el1 = document.getElementById(id1);
+      if (el1) el1.checked = checked;
+      const el2 = document.getElementById(id2);
+      if (el2) el2.checked = checked;
+    });
+  }
+
+  function readPix4dSettingsFromUI(suffix = "") {
+    const getVal = (baseId, fallback) => {
+      const el = document.getElementById(baseId + suffix) || document.getElementById(baseId);
+      return el ? el.value : fallback;
+    };
+    const getChk = (baseId, fallback) => {
+      const el = document.getElementById(baseId + suffix) || document.getElementById(baseId);
+      return el ? Boolean(el.checked) : fallback;
+    };
+    return {
+      mesh_pipeline: getVal("selPix4dMeshPipeline", "FixedSize"),
+      texture_size: Number(getVal("selPix4dTextureSize", 4096)) || 4096,
+      model_simplification: getVal("selPix4dSimplification", "Conservative"),
+      deghosting: getVal("selPix4dDeghosting", "Weak"),
+      export_lod: Math.max(0, Math.min(20, Number(getVal("inpPix4dExportLod", 13)) || 13)),
+      skyless: getChk("chkPix4dSkyless", false),
+      use_roi: getChk("chkPix4dUseRoi", false),
+    };
+  }
+
+  async function savePix4dSettingsFromUI(suffix = "") {
+    const draft = readPix4dSettingsFromUI(suffix);
+    try {
+      const res = await apiPost("/api/pix4d/settings", { settings: draft });
+      _pix4dSettingsDirty = false;
+      applyPix4dSettingsToUI(res.settings || draft, true);
+      const gstBox = document.getElementById("gstScriptPreviewBox");
+      if (gstBox && gstBox.style.display !== "none") {
+        await previewGstForScan(STATE.activeScanId);
+      }
+      showToast(
+        `Saved PIX4Dmatic defaults: ${draft.mesh_pipeline} · ${draft.texture_size}px · SkyMask ${draft.skyless ? "ON" : "OFF (Preserves Trees)"}`
+      );
+    } catch (err) {
+      showToast(`Failed to save PIX4Dmatic settings: ${err.message}`);
+    }
+  }
 
   async function refreshQueueModalData() {
     const tbody = document.getElementById("queueTableBody");
@@ -4387,6 +4485,9 @@
       const gchatInput = document.getElementById("inputGChatWebhookUrl");
       if (gchatInput && typeof qData.gchat_webhook_url === "string" && document.activeElement !== gchatInput) {
         gchatInput.value = qData.gchat_webhook_url;
+      }
+      if (qData.pix4d_settings) {
+        applyPix4dSettingsToUI(qData.pix4d_settings, false);
       }
 
       const monBox = document.getElementById("livePix4dMonitorBox");
@@ -4451,6 +4552,7 @@
 
   async function openQueueModal() {
     openModal("modalQueue");
+    _pix4dSettingsDirty = false;
     const tbody = document.getElementById("queueTableBody");
     if (tbody && !tbody.children.length) {
       tbody.innerHTML = `<tr><td colspan="8" style="color:var(--ui-text-muted);">Loading...</td></tr>`;
@@ -4469,17 +4571,56 @@
 
   async function previewGstForScan(scanId) {
     try {
-      const res = await apiPost("/api/queue/preview-gst", { scan_id: scanId });
+      const currentDraft = readPix4dSettingsFromUI("");
+      const res = await apiPost("/api/queue/preview-gst", {
+        scan_id: scanId || STATE.activeScanId,
+        settings: currentDraft,
+      });
       const box = document.getElementById("gstScriptPreviewBox");
       const code = document.getElementById("gstScriptCode");
       if (box && code) {
         box.style.display = "block";
         code.textContent = res.gst_script;
       }
+      if (res.settings) {
+        const hdrEl = document.getElementById("gstScriptHeaderTitle");
+        if (hdrEl) {
+          const c = res.settings;
+          hdrEl.textContent = `PIX4Dmatic 2.11.0 Headless .GST Script (TWD97 (121) [EPSG:3826] + TWVD2001 [EPSG:8904] · ${c.mesh_pipeline} · ${c.texture_size}px · ${c.skyless ? "SkyMask ON" : "SkyMask OFF"}):`;
+        }
+      }
     } catch (err) {
       showToast(`GST Preview Error: ${err.message}`);
     }
   }
+
+  [
+    "selPix4dMeshPipeline",
+    "selPix4dTextureSize",
+    "selPix4dSimplification",
+    "selPix4dDeghosting",
+    "inpPix4dExportLod",
+    "chkPix4dSkyless",
+    "chkPix4dUseRoi",
+  ].forEach((id) => {
+    document.getElementById(id)?.addEventListener("change", () => {
+      _pix4dSettingsDirty = true;
+      const draft = readPix4dSettingsFromUI("");
+      applyPix4dSettingsToUI(draft, true);
+      const gstBox = document.getElementById("gstScriptPreviewBox");
+      if (gstBox && gstBox.style.display !== "none") {
+        previewGstForScan(STATE.activeScanId);
+      }
+    });
+    document.getElementById(id + "User")?.addEventListener("change", () => {
+      _pix4dSettingsDirty = true;
+      const draft = readPix4dSettingsFromUI("User");
+      applyPix4dSettingsToUI(draft, true);
+    });
+  });
+
+  document.getElementById("btnSavePix4dSettingsQueue")?.addEventListener("click", () => savePix4dSettingsFromUI(""));
+  document.getElementById("btnSavePix4dSettingsUser")?.addEventListener("click", () => savePix4dSettingsFromUI("User"));
 
   document.getElementById("pcStatusChip")?.addEventListener("click", openQueueModal);
   document.getElementById("btnPreviewGstScript")?.addEventListener("click", () => previewGstForScan(STATE.activeScanId));
@@ -4635,7 +4776,13 @@
   // 5C. Client-Side Offline Cache & User Settings Modal (Requirement 5)
   async function openOfflineCacheModal() {
     openModal("modalOfflineCache");
+    _pix4dSettingsDirty = false;
     await applyTheme(STATE.themePreference, false);
+    apiGet("/api/pix4d/settings")
+      .then((res) => {
+        if (res && res.settings) applyPix4dSettingsToUI(res.settings, true);
+      })
+      .catch(() => {});
     const tbody = document.getElementById("offlineCacheTableBody");
     if (!tbody) return;
     tbody.innerHTML = "";
