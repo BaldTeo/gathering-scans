@@ -8,6 +8,8 @@ All calculations and CAD exports operate in TWD97 (121) [EPSG:3826] + TWVD2001 [
 4. RTK Raw Camera Photo Pin Inspector (matches 3D surface points to original Pix4DCatch .jpg photos)
 """
 
+from __future__ import annotations
+
 import os
 import csv
 import glob
@@ -19,11 +21,28 @@ import subprocess
 from datetime import datetime
 from typing import Dict, Any, List, Tuple, Optional
 
-import numpy as np
-from scipy.ndimage import distance_transform_edt, gaussian_filter
-import trimesh
-from PIL import Image
-from PIL.ExifTags import GPSTAGS
+try:
+    import numpy as np
+except ImportError:
+    np = None  # type: ignore
+
+try:
+    from scipy.ndimage import distance_transform_edt, gaussian_filter
+except ImportError:
+    distance_transform_edt = None  # type: ignore
+    gaussian_filter = None  # type: ignore
+
+try:
+    import trimesh
+except ImportError:
+    trimesh = None  # type: ignore
+
+try:
+    from PIL import Image
+    from PIL.ExifTags import GPSTAGS
+except ImportError:
+    Image = None  # type: ignore
+    GPSTAGS = {}
 
 from pc_worker.config import (
     LOCAL_SCANS_ROOT as SCANS_ROOT_DIR,

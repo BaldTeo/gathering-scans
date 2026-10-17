@@ -15,6 +15,8 @@ for GatheringScans.
    scan tile cards and timeline cards whenever a scan is uploaded or discovered.
 """
 
+from __future__ import annotations
+
 import copy
 import io
 import json
@@ -25,8 +27,15 @@ import subprocess
 import tempfile
 from typing import Dict, Any, List, Optional, Tuple
 
-import numpy as np
-from PIL import Image
+try:
+    import numpy as np
+except ImportError:
+    np = None  # type: ignore
+
+try:
+    from PIL import Image
+except ImportError:
+    Image = None  # type: ignore
 
 from pc_worker.config import GC_SCAN_OPTIMIZER_DIR, DATA_DIR
 
