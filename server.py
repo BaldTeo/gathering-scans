@@ -117,10 +117,19 @@ def sync_scans_with_filesystem(max_age_s: float = 1.5, force: bool = False) -> N
         if not force and (time.time() - _LAST_FS_SYNC_TS < max_age_s):
             return
         fp = _compute_scans_dir_fingerprint()
-        if force or fp != _LAST_FS_FINGERPRINT:
+        prev_fp = _LAST_FS_FINGERPRINT
+        if force or fp != prev_fp:
             try:
                 seed_and_discover_scans(DB)
                 _LAST_FS_FINGERPRINT = fp
+                if prev_fp is not None and fp != prev_fp and "AUTH_SHARE" in globals():
+                    def _bg_cloud_sync():
+                        try:
+                            from pc_worker.gdrive_cloud_sync import sync_all_scans_to_gdrive_and_vps
+                            sync_all_scans_to_gdrive_and_vps(DB, AUTH_SHARE, force=False)
+                        except Exception:
+                            pass
+                    threading.Thread(target=_bg_cloud_sync, daemon=True).start()
             except Exception as e:
                 print(f"[GatheringScans] Live filesystem sync note: {e}")
         _LAST_FS_SYNC_TS = time.time()
@@ -140,8 +149,16 @@ VPS_TUNNEL_POOL: "queue.LifoQueue[Tuple[socket.socket, threading.Event, float, i
 _VPS_RAM_FALLBACK_CACHE: Dict[str, Tuple[int, Dict[str, str], bytes]] = {}
 _TUNNEL_POOL_STARTED = False
 
-CLOUD_MANIFEST_PATH = os.path.join(DATA_DIR, "gdrive_cloud_manifest.json")
-CLOUD_AUTH_PATH = os.path.join(DATA_DIR, "gdrive_cloud_auth.json")
+CLOUD_MANIFEST_PATH = (
+    "/host_docker/gathering_scans/data/gdrive_cloud_manifest.json"
+    if os.path.isdir("/host_docker/gathering_scans/data")
+    else os.path.join(DATA_DIR, "gdrive_cloud_manifest.json")
+)
+CLOUD_AUTH_PATH = (
+    "/host_docker/gathering_scans/data/gdrive_cloud_auth.json"
+    if os.path.isdir("/host_docker/gathering_scans/data")
+    else os.path.join(DATA_DIR, "gdrive_cloud_auth.json")
+)
 _CLOUD_MANIFEST_MEM: Optional[Dict[str, Any]] = None
 _CLOUD_AUTH_MEM: Optional[Dict[str, Any]] = None
 
@@ -150,24 +167,26 @@ def _load_cloud_manifest() -> Dict[str, Any]:
     global _CLOUD_MANIFEST_MEM
     if _CLOUD_MANIFEST_MEM is not None:
         return _CLOUD_MANIFEST_MEM
-    if os.path.isfile(CLOUD_MANIFEST_PATH):
-        try:
-            with open(CLOUD_MANIFEST_PATH, "r", encoding="utf-8") as f:
-                _CLOUD_MANIFEST_MEM = json.load(f)
-                return _CLOUD_MANIFEST_MEM
-        except Exception:
-            pass
+    for cand in (CLOUD_MANIFEST_PATH, os.path.join(DATA_DIR, "gdrive_cloud_manifest.json")):
+        if os.path.isfile(cand):
+            try:
+                with open(cand, "r", encoding="utf-8") as f:
+                    _CLOUD_MANIFEST_MEM = json.load(f)
+                    return _CLOUD_MANIFEST_MEM
+            except Exception:
+                pass
     return {}
 
 
 def _save_cloud_manifest(manifest: Dict[str, Any]) -> None:
     global _CLOUD_MANIFEST_MEM
     _CLOUD_MANIFEST_MEM = manifest
-    try:
-        with open(CLOUD_MANIFEST_PATH, "w", encoding="utf-8") as f:
-            json.dump(manifest, f, ensure_ascii=False, indent=2)
-    except Exception as e:
-        print(f"[GatheringScans] Cloud manifest save note: {e}")
+    for cand in {CLOUD_MANIFEST_PATH, os.path.join(DATA_DIR, "gdrive_cloud_manifest.json")}:
+        try:
+            with open(cand, "w", encoding="utf-8") as f:
+                json.dump(manifest, f, ensure_ascii=False, indent=2)
+        except Exception as e:
+            print(f"[GatheringScans] Cloud manifest save note: {e}")
 
 
 def _load_cloud_auth() -> Dict[str, Any]:
@@ -317,6 +336,9 @@ def _get_gdrive_bearer_token() -> Optional[str]:
     return str(tok) if (tok and exp > now) else None
 
 
+_GDRIVE_NEGATIVE_FID_CACHE: Dict[str, float] = {}
+
+
 def _fetch_gdrive_byte_slice(file_ids: list, start_byte: int, length: int) -> Optional[bytes]:
     """
     Fetches an exact byte slice `[start_byte, start_byte + length - 1]` from a `.3tz` package
@@ -332,11 +354,15 @@ def _fetch_gdrive_byte_slice(file_ids: list, start_byte: int, length: int) -> Op
     if not clean_ids:
         return None
 
+    now = time.time()
     end_byte = start_byte + length - 1
     range_hdr = f"bytes={start_byte}-{end_byte}"
     bearer = _get_gdrive_bearer_token()
 
     for fid in clean_ids:
+        neg_key = f"{fid}:{'auth' if bearer else 'anon'}"
+        if now - _GDRIVE_NEGATIVE_FID_CACHE.get(neg_key, 0.0) < 300.0:
+            continue
         urls_to_try = []
         if bearer:
             urls_to_try.append(
@@ -351,18 +377,22 @@ def _fetch_gdrive_byte_slice(file_ids: list, start_byte: int, length: int) -> Op
                 {"Range": range_hdr, "User-Agent": "GatheringScans-CloudStreamer/2.0"},
             )
         )
+        got_slice = False
         for url, hdrs in urls_to_try:
             try:
                 req = urllib.request.Request(url, headers=hdrs, method="GET")
-                with urllib.request.urlopen(req, timeout=15) as r:
+                with urllib.request.urlopen(req, timeout=8) as r:
                     ctype = (r.headers.get("Content-Type") or "").lower()
                     if ctype.startswith("text/html"):
                         continue
                     data = r.read(length + 64)
                     if len(data) == length:
+                        got_slice = True
                         return data
             except Exception:
                 continue
+        if not got_slice:
+            _GDRIVE_NEGATIVE_FID_CACHE[neg_key] = now
     return None
 
 
@@ -526,10 +556,7 @@ def start_pc_reverse_tunnel_pool(local_port: int = SERVER_PORT, pool_size: int =
         t.start()
 
     def _warm_all_scans_loop():
-        import urllib.request
-
         time.sleep(3.5)
-        warmed_uris = set()
         while True:
             try:
                 if os.name == "nt":
@@ -539,63 +566,9 @@ def start_pc_reverse_tunnel_pool(local_port: int = SERVER_PORT, pool_size: int =
                         sync_all_scans_to_gdrive_and_vps(DB, AUTH_SHARE, force=False)
                     except Exception as ge:
                         print(f"[GatheringScans] GDrive .3tz cloud sync note: {ge}")
-                r = json.loads(
-                    urllib.request.urlopen(f"http://127.0.0.1:{local_port}/api/scans", timeout=8).read().decode("utf-8")
-                )
-                scans = r.get("scans") or []
-                for s in scans:
-                    sid = s.get("scan_id")
-                    if not sid:
-                        continue
-                    for ts_rel in [s.get("preview_stream_url"), s.get("stream_url")]:
-                        if not ts_rel or not str(ts_rel).startswith("/stream/"):
-                            continue
-                        local_ts_url = f"http://127.0.0.1:{local_port}{ts_rel}"
-                        try:
-                            ts_local = json.loads(
-                                urllib.request.urlopen(local_ts_url, timeout=8).read().decode("utf-8")
-                            )
-                        except Exception:
-                            continue
-                        uris = []
-
-                        def _collect(node):
-                            u = (node.get("content") or {}).get("uri")
-                            if u:
-                                uris.append(u)
-                            for ch in node.get("children") or []:
-                                _collect(ch)
-
-                        _collect(ts_local.get("root") or {})
-                        for u in uris:
-                            local_u = f"http://127.0.0.1:{local_port}/stream/{sid}/{u}"
-                            if local_u not in warmed_uris:
-                                req = urllib.request.Request(local_u, headers={"Accept-Encoding": "gzip"})
-                                urllib.request.urlopen(req, timeout=15).read()
-                                warmed_uris.add(local_u)
-                        vps_ts = f"http://{VPS_HOST}:{local_port}{ts_rel}"
-                        if vps_ts not in warmed_uris:
-                            urllib.request.urlopen(
-                                urllib.request.Request(vps_ts, headers={"Accept-Encoding": "gzip"}), timeout=15
-                            ).read()
-                            warmed_uris.add(vps_ts)
-                        for u in uris:
-                            vps_u = f"http://{VPS_HOST}:{local_port}/stream/{sid}/{u}"
-                            if vps_u not in warmed_uris:
-                                req = urllib.request.Request(vps_u, headers={"Accept-Encoding": "gzip"})
-                                urllib.request.urlopen(req, timeout=30).read()
-                                warmed_uris.add(vps_u)
-                    thumb_rel = s.get("thumbnail_url") or f"/api/scans/{sid}/thumbnail"
-                    vps_thumb = f"http://{VPS_HOST}:{local_port}{thumb_rel}"
-                    if vps_thumb not in warmed_uris:
-                        try:
-                            urllib.request.urlopen(vps_thumb, timeout=10).read()
-                            warmed_uris.add(vps_thumb)
-                        except Exception:
-                            pass
             except Exception:
                 pass
-            time.sleep(45.0)
+            time.sleep(90.0)
 
     threading.Thread(target=_warm_all_scans_loop, daemon=True).start()
     print(f"[GatheringScans] Started {pool_size} persistent reverse tunnel sockets to {VPS_HOST}:8095 -> 127.0.0.1:{local_port} ({LOCAL_SCANS_ROOT})", flush=True)
@@ -783,7 +756,7 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
             idx_acc = acc_list[prim["indices"]]
             pos_acc = acc_list[attrs["POSITION"]]
             uv_acc = acc_list[attrs["TEXCOORD_0"]]
-            if idx_acc.get("componentType") != 5125 or idx_acc.get("count", 0) < 30000:
+            if idx_acc.get("componentType") not in (5125, 5123) or idx_acc.get("count", 0) < 30000:
                 return raw_bytes
             if pos_acc.get("componentType") != 5126 or uv_acc.get("componentType") != 5126:
                 return raw_bytes
@@ -793,12 +766,13 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
             pos_bv = bv_list[pos_acc["bufferView"]]
             uv_bv = bv_list[uv_acc["bufferView"]]
 
+            idx_dtype = np.uint32 if idx_acc.get("componentType") == 5125 else np.uint16
             idx = np.frombuffer(
                 blob,
-                dtype=np.uint32,
+                dtype=idx_dtype,
                 count=idx_acc["count"],
                 offset=idx_bv.get("byteOffset", 0) + idx_acc.get("byteOffset", 0),
-            ).reshape(-1, 3)
+            ).astype(np.uint32).reshape(-1, 3)
             pos = np.frombuffer(
                 blob,
                 dtype=np.float32,
@@ -941,7 +915,8 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
         range_header = self.headers.get("Range")
         accept_enc = self.headers.get("Accept-Encoding", "").lower()
 
-        if ext == ".glb" and not download_name and file_size > 700_000:
+        norm_fp = file_path.replace("\\", "/").lower()
+        if ext == ".glb" and not download_name and file_size > 700_000 and "/content/" in norm_fp and "preview_low" not in norm_fp:
             try:
                 mtime = os.path.getmtime(file_path)
                 os.makedirs(GLB_CACHE_DIR, exist_ok=True)
@@ -983,7 +958,7 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
                 pass
 
         # Gzip-compress .json, .glb, .js, .css files for fast reverse-tunnel streaming
-        if ext in (".json", ".glb", ".js", ".css") and not range_header and not download_name and "gzip" in accept_enc and 1024 < file_size <= 16 * 1024 * 1024:
+        if ext in (".json", ".glb", ".js", ".css") and not range_header and not download_name and "gzip" in accept_enc and 1024 < file_size <= 32 * 1024 * 1024:
             try:
                 mtime = os.path.getmtime(file_path)
                 cached = self._GZIP_FILE_CACHE.get(file_path)
@@ -1263,9 +1238,32 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
             start_b = int(toc_entry["offset"])
             len_b = int(toc_entry["size"])
 
-        data = _fetch_gdrive_byte_slice(file_ids, start_b, len_b)
+        data: Optional[bytes] = None
+        for local_pkg_cand in (
+            f"/host_docker/gathering_scans/data/stream_packages/{scan_id}.3tz",
+            os.path.join(DATA_DIR, "stream_packages", f"{scan_id}.3tz"),
+            pkg.get("pkg_path") or "",
+        ):
+            if local_pkg_cand and os.path.isfile(local_pkg_cand):
+                try:
+                    with open(local_pkg_cand, "rb") as pf:
+                        pf.seek(start_b)
+                        buf = pf.read(len_b)
+                        if len(buf) == len_b:
+                            data = buf
+                            break
+                except Exception:
+                    pass
+
+        if data is None:
+            data = _fetch_gdrive_byte_slice(file_ids, start_b, len_b)
         if data is None:
             return False
+        if not use_gzip and toc_entry.get("gzip_only"):
+            try:
+                data = gzip.decompress(data)
+            except Exception:
+                pass
 
         hdrs: Dict[str, str] = {
             "Content-Type": ctype,
@@ -2190,6 +2188,33 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
         length = int(self.headers.get("Content-Length", "0"))
         body = self.rfile.read(length) if length > 0 else b"{}"
 
+        if path == "/api/cloud-manifest/upload-3tz":
+            t_key = self.headers.get("X-Tunnel-Key", "")
+            client_ip = (self.client_address[0] if self.client_address else "")
+            if t_key != TUNNEL_SHARED_KEY and client_ip not in ("127.0.0.1", "::1"):
+                self.send_json({"error": "Invalid X-Tunnel-Key"}, status=403)
+                return
+            scan_id = re.sub(r"[^a-zA-Z0-9_\-]", "", (query.get("scan_id") or [""])[0].strip())
+            if not scan_id or not body:
+                self.send_json({"error": "scan_id and binary body required"}, status=400)
+                return
+            target_dirs = [os.path.join(DATA_DIR, "stream_packages")]
+            if os.path.isdir("/host_docker/gathering_scans/data"):
+                target_dirs.insert(0, "/host_docker/gathering_scans/data/stream_packages")
+            saved_paths = []
+            for td in target_dirs:
+                try:
+                    os.makedirs(td, exist_ok=True)
+                    dst = os.path.join(td, f"{scan_id}.3tz")
+                    with open(dst, "wb") as f:
+                        f.write(body)
+                    saved_paths.append(dst)
+                except Exception:
+                    pass
+            _VPS_RAM_FALLBACK_CACHE.clear()
+            self.send_json({"status": "ok", "scan_id": scan_id, "bytes": len(body), "saved": saved_paths})
+            return
+
         try:
             payload = json.loads(body.decode("utf-8")) if body else {}
         except Exception as e:
@@ -2203,12 +2228,37 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
             if t_key != TUNNEL_SHARED_KEY and client_ip not in ("127.0.0.1", "::1"):
                 self.send_json({"error": "Invalid X-Tunnel-Key"}, status=403)
                 return
+            missing_vps_pkgs = []
             if isinstance(payload.get("manifest"), dict):
-                _save_cloud_manifest(payload["manifest"])
+                m_in = payload["manifest"]
+                _save_cloud_manifest(m_in)
                 _VPS_RAM_FALLBACK_CACHE.clear()
+                pkgs_in = m_in.get("packages") or {}
+                pkg_dirs = [os.path.join(DATA_DIR, "stream_packages")]
+                if os.path.isdir("/host_docker/gathering_scans/data"):
+                    pkg_dirs.insert(0, "/host_docker/gathering_scans/data/stream_packages")
+                for pd in pkg_dirs:
+                    if os.path.isdir(pd):
+                        for fn in os.listdir(pd):
+                            if fn.endswith(".3tz"):
+                                sid_f = fn[:-4]
+                                if sid_f not in pkgs_in:
+                                    try:
+                                        os.remove(os.path.join(pd, fn))
+                                    except OSError:
+                                        pass
+                primary_pd = pkg_dirs[0]
+                os.makedirs(primary_pd, exist_ok=True)
+                for sid_k, p_info in pkgs_in.items():
+                    expected_sz = int((p_info or {}).get("size_bytes") or 0)
+                    cand_f = os.path.join(primary_pd, f"{sid_k}.3tz")
+                    if not os.path.isfile(cand_f) or (expected_sz > 0 and os.path.getsize(cand_f) != expected_sz):
+                        missing_vps_pkgs.append(sid_k)
             if isinstance(payload.get("auth"), dict) and payload["auth"]:
                 _save_cloud_auth(payload["auth"])
-            self.send_json(self._build_cloud_manifest_status())
+            st_resp = self._build_cloud_manifest_status()
+            st_resp["missing_vps_packages"] = missing_vps_pkgs
+            self.send_json(st_resp)
             return
 
         if path == "/api/cloud-manifest/auth":

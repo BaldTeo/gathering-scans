@@ -194,6 +194,9 @@ def extract_3tz_toc(zip_path: str) -> Dict[str, Dict[str, int]]:
     toc: Dict[str, Dict[str, int]] = {}
     for name, (off, sz) in raw_entries.items():
         if name.endswith(".gz"):
+            base_n = name[:-3]
+            if base_n not in raw_entries:
+                toc[base_n] = {"offset": off, "size": sz, "gz_offset": off, "gz_size": sz, "gzip_only": 1}
             continue
         entry: Dict[str, int] = {"offset": off, "size": sz}
         gz_name = name + ".gz"
@@ -263,9 +266,35 @@ def build_scan_3tz_package(scan: Dict[str, Any], force: bool = False) -> Optiona
         opt_ts_bytes = json.dumps(opt_ts, separators=(",", ":")).encode("utf-8")
         files_to_pack["tileset.json"] = opt_ts_bytes
 
+        glb_cache_dir = os.path.join(DATA_DIR, "glb_cache")
+        os.makedirs(glb_cache_dir, exist_ok=True)
         for u in _collect_referenced_glb_uris(opt_ts):
             gf = os.path.join(base_dir, u)
             if os.path.isfile(gf):
+                norm_u = u.replace("\\", "/").lower()
+                f_sz = os.path.getsize(gf)
+                if f_sz > 700_000 and "content/" in norm_u and "preview_low" not in norm_u:
+                    import hashlib
+
+                    mtime_g = os.path.getmtime(gf)
+                    k_hash = hashlib.md5(f"v2:{gf}:{int(mtime_g)}:{f_sz}".encode("utf-8")).hexdigest()
+                    opt_disk = os.path.join(glb_cache_dir, f"{k_hash}.glb")
+                    if os.path.isfile(opt_disk):
+                        with open(opt_disk, "rb") as f:
+                            files_to_pack[u] = f.read()
+                        continue
+                    try:
+                        from server import GatheringScansHandler
+
+                        with open(gf, "rb") as f:
+                            raw_b = f.read()
+                        opt_b = GatheringScansHandler._optimize_cesium_glb_bytes(raw_b)
+                        with open(opt_disk, "wb") as df:
+                            df.write(opt_b)
+                        files_to_pack[u] = opt_b
+                        continue
+                    except Exception:
+                        pass
                 with open(gf, "rb") as f:
                     files_to_pack[u] = f.read()
 
@@ -305,10 +334,11 @@ def build_scan_3tz_package(scan: Dict[str, Any], force: bool = False) -> Optiona
         with zipfile.ZipFile(tmp_zip, "w", compression=zipfile.ZIP_STORED) as zf:
             for arc_name, raw_data in files_to_pack.items():
                 clean_arc = arc_name.replace("\\", "/").lstrip("/")
-                zf.writestr(clean_arc, raw_data, compress_type=zipfile.ZIP_STORED)
                 if clean_arc.endswith((".glb", ".json")) and len(raw_data) > 512:
                     gz_data = gzip.compress(raw_data, compresslevel=6)
                     zf.writestr(clean_arc + ".gz", gz_data, compress_type=zipfile.ZIP_STORED)
+                else:
+                    zf.writestr(clean_arc, raw_data, compress_type=zipfile.ZIP_STORED)
 
         shutil.move(tmp_zip, pkg_path)
         if my_drive_dir and shared_dir and my_drive_dir != shared_dir:
@@ -461,9 +491,10 @@ def sync_all_scans_to_gdrive_and_vps(db: Any, auth_share: Any = None, force: boo
 
     payload_bytes = json.dumps({"manifest": manifest, "auth": auth_data}, ensure_ascii=False).encode("utf-8")
     vps_synced = False
+    missing_vps_pkgs: List[str] = []
     try:
         req = urllib.request.Request(
-            f"http://{VPS_HOST}:{SERVER_PORT}/api/cloud-manifest/sync",
+            f"http://{VPS_HOST}:8095/api/cloud-manifest/sync",
             data=payload_bytes,
             headers={
                 "Content-Type": "application/json; charset=utf-8",
@@ -473,8 +504,34 @@ def sync_all_scans_to_gdrive_and_vps(db: Any, auth_share: Any = None, force: boo
         )
         with urllib.request.urlopen(req, timeout=12) as resp:
             vps_synced = resp.status == 200
+            try:
+                rj = json.loads(resp.read().decode("utf-8"))
+                missing_vps_pkgs = rj.get("missing_vps_packages") or []
+            except Exception:
+                pass
     except Exception as e:
         print(f"[GDriveCloudSync] VPS manifest push note: {e}")
+
+    for m_sid in missing_vps_pkgs[:4]:
+        p_info = packages.get(m_sid) or {}
+        p_file = p_info.get("pkg_path") or ""
+        if p_file and os.path.isfile(p_file) and os.path.getsize(p_file) <= 35 * 1024 * 1024:
+            try:
+                with open(p_file, "rb") as pf:
+                    raw_pkg = pf.read()
+                ureq = urllib.request.Request(
+                    f"http://{VPS_HOST}:8095/api/cloud-manifest/upload-3tz?scan_id={urllib.parse.quote(m_sid)}",
+                    data=raw_pkg,
+                    headers={
+                        "Content-Type": "application/octet-stream",
+                        "X-Tunnel-Key": TUNNEL_SHARED_KEY,
+                    },
+                    method="POST",
+                )
+                with urllib.request.urlopen(ureq, timeout=45) as uresp:
+                    pass
+            except Exception as ue:
+                print(f"[GDriveCloudSync] VPS .3tz mirror note for {m_sid}: {ue}")
 
     manifest["vps_synced"] = vps_synced
     return manifest

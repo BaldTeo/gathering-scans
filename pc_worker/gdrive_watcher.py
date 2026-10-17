@@ -668,6 +668,9 @@ def _sync_gdrive_folder_to_local_vault(src_folder: str, parent_project: str = ""
     if not is_safe_jailed_path(dst_folder, LOCAL_SCANS_ROOT):
         return None
 
+    was_new_local_dir = not os.path.isdir(dst_folder)
+    origin_marker = os.path.join(dst_folder, ".gdrive_inbox_origin.json")
+
     copied_any = False
     for root, dirs, files in os.walk(src_folder):
         rel_dir = os.path.relpath(root, src_folder)
@@ -690,6 +693,13 @@ def _sync_gdrive_folder_to_local_vault(src_folder: str, parent_project: str = ""
                     copied_any = True
             except Exception as e:
                 print(f"[GDriveWatcher] Warning copying {s_file} -> {d_file}: {e}")
+
+    if was_new_local_dir or os.path.isfile(origin_marker):
+        try:
+            with open(origin_marker, "w", encoding="utf-8") as mf:
+                json.dump({"src_folder": src_folder, "synced_at": time.time()}, mf)
+        except Exception:
+            pass
 
     if copied_any:
         print(f"[GDriveWatcher] Synced completed scan folder from Google Drive to local disk: {src_folder} -> {dst_folder}")
@@ -1044,6 +1054,22 @@ def seed_and_discover_scans(db: ScanQueueDB) -> List[Dict[str, Any]]:
         db.upsert_scan(item)
         discovered_ids.add(item["scan_id"])
 
+    def _cleanup_if_gdrive_origin_deleted(folder_dir: str) -> bool:
+        marker = os.path.join(folder_dir, ".gdrive_inbox_origin.json")
+        if not os.path.isfile(marker):
+            return False
+        try:
+            with open(marker, "r", encoding="utf-8") as mf:
+                mdata = json.load(mf)
+            src_f = mdata.get("src_folder", "")
+            if src_f and not os.path.exists(src_f) and is_safe_jailed_path(folder_dir, LOCAL_SCANS_ROOT):
+                shutil.rmtree(folder_dir, ignore_errors=True)
+                print(f"[GDriveWatcher] Removed local mirror {folder_dir} because Google Drive folder {src_f} was deleted.")
+                return True
+        except Exception:
+            pass
+        return False
+
     # 1. Dynamically discover all scan folders in C:\GatheringScans (local disk storage)
     if os.path.isdir(LOCAL_SCANS_ROOT):
         for entry in sorted(os.listdir(LOCAL_SCANS_ROOT)):
@@ -1051,6 +1077,8 @@ def seed_and_discover_scans(db: ScanQueueDB) -> List[Dict[str, Any]]:
                 continue
             sub_dir = os.path.join(LOCAL_SCANS_ROOT, entry)
             if not is_safe_jailed_path(sub_dir, LOCAL_SCANS_ROOT) or not os.path.isdir(sub_dir):
+                continue
+            if _cleanup_if_gdrive_origin_deleted(sub_dir):
                 continue
 
             # Check if sub_dir is directly a scan folder
@@ -1066,6 +1094,8 @@ def seed_and_discover_scans(db: ScanQueueDB) -> List[Dict[str, Any]]:
                         continue
                     child_dir = os.path.join(sub_dir, child_entry)
                     if not is_safe_jailed_path(child_dir, LOCAL_SCANS_ROOT) or not os.path.isdir(child_dir):
+                        continue
+                    if _cleanup_if_gdrive_origin_deleted(child_dir):
                         continue
                     nested_item = _discover_folder_scan_item(
                         child_dir, parent_project=entry, dynamic_clusters=dynamic_clusters

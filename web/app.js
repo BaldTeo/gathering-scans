@@ -3357,7 +3357,7 @@
       const img = new Image();
       img.onload = () => {
         window._gconLogoImgLoaded = true;
-        if (STATE.lastContourResult) drawA3PreviewCanvas(canvas, STATE.lastContourResult);
+        drawA3PreviewCanvas(canvas, res);
       };
       img.src = "/assets/gathering_construction_logo_dark.png";
       window._gconLogoImg = img;
@@ -5798,12 +5798,29 @@
     });
     setInterval(() => {
       refreshScansCatalog(true);
-    }, 12000);
+    }, 4000);
     setInterval(() => {
       if (STATE.themePreference === "auto") {
         applyTheme("auto", false);
       }
     }, 60000);
   });
+
+  window.__GS_API = {
+    STATE,
+    getContexts: () => ({ previewThree, studioThree, compareCtx }),
+    switchView,
+    openSiteTimeline,
+    selectTimelineTile,
+    launchMultiDateCompare,
+    loadScanIntoCompareSide,
+    setCompareMode,
+    frameCompareCamera,
+    setCompareElevationHeatmap,
+    alignCompareSides,
+    refreshScansCatalog,
+    drawA3PreviewCanvas,
+  };
 })();
+
 

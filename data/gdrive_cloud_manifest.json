@@ -1,5 +1,5 @@
 {
-  "updated_at": 1792251184,
+  "updated_at": 1792254851,
   "shared_drive_dir": "G:\\Shared drives\\6.軟體\\3. GatheringScans\\StreamPackages",
   "my_drive_dir": "G:\\My Drive\\Scans\\StreamPackages",
   "shared_drive_folder_id": "1scUD9IQWsAJjg296pecxFYqhoVm4mpjs",
@@ -37,12 +37,12 @@
       "stage_label": "Processed -> catch_QuChi261016 (TWD97 + TWVD2001, 2K)",
       "bypass_count": 0,
       "force_next": 0,
-      "priority_score": 1000002006.615,
+      "priority_score": 1000002069.652,
       "notes": "Dynamically loaded from C:\\GatheringScans\\catch_QuChi261016",
       "user_edited_name": 0,
       "bounding_box": {},
       "size_mb": 34268.27,
-      "wait_minutes": 2008.6,
+      "wait_minutes": 2069.7,
       "comment_count": 0
     },
     {
@@ -77,7 +77,7 @@
       "stage_label": "Completed (TWD97 + TWVD2001, 4K Web Tileset)",
       "bypass_count": 0,
       "force_next": 0,
-      "priority_score": 1000000421.822,
+      "priority_score": 1000000484.857,
       "notes": "Dynamically loaded from C:\\GatheringScans\\QuChi261016_Trees",
       "user_edited_name": 1,
       "bounding_box": {
@@ -93,7 +93,7 @@
         ]
       },
       "size_mb": 506.77,
-      "wait_minutes": 784.8,
+      "wait_minutes": 846.0,
       "comment_count": 0
     },
     {
@@ -128,7 +128,7 @@
       "stage_label": "Completed (TWD97 + TWVD2001, 4K Web Tileset)",
       "bypass_count": 0,
       "force_next": 0,
-      "priority_score": 1000001898.613,
+      "priority_score": 1000001961.648,
       "notes": "Dynamically loaded from C:\\GatheringScans\\QuChi_20261015-obj_mesh",
       "user_edited_name": 1,
       "bounding_box": {
@@ -144,7 +144,7 @@
         ]
       },
       "size_mb": 128.83,
-      "wait_minutes": 1905.0,
+      "wait_minutes": 1966.1,
       "comment_count": 0
     },
     {
@@ -179,7 +179,7 @@
       "stage_label": "Completed (TWD97 + TWVD2001, 4K Web Tileset)",
       "bypass_count": 0,
       "force_next": 0,
-      "priority_score": 1000001898.61,
+      "priority_score": 1000001961.645,
       "notes": "Dynamically loaded from C:\\GatheringScans\\QuChi_20261015-cesium_mesh",
       "user_edited_name": 0,
       "bounding_box": {
@@ -195,7 +195,7 @@
         ]
       },
       "size_mb": 55.11,
-      "wait_minutes": 1900.6,
+      "wait_minutes": 1961.7,
       "comment_count": 0
     },
     {
@@ -230,7 +230,7 @@
       "stage_label": "Completed (TWD97 + TWVD2001, 4K Web Tileset)",
       "bypass_count": 0,
       "force_next": 0,
-      "priority_score": 1000003005.217,
+      "priority_score": 1000003068.252,
       "notes": "Merged from 3 PIX4Dcatch RTK walks in G:\\My Drive\\SCANS TEST (15-19-27, 15-37-05, 15-43-55). Converted to TWD97 (121) + TWVD2001 with 2K textures.",
       "user_edited_name": 0,
       "bounding_box": {
@@ -246,7 +246,7 @@
         ]
       },
       "size_mb": 109.91,
-      "wait_minutes": 8145.1,
+      "wait_minutes": 8206.2,
       "comment_count": 2
     },
     {
@@ -281,7 +281,7 @@
       "stage_label": "Completed (TWD97 + TWVD2001, 4K Web Tileset)",
       "bypass_count": 0,
       "force_next": 0,
-      "priority_score": 1000003005.225,
+      "priority_score": 1000003068.261,
       "notes": "High-density sector 3 photogrammetry mesh of QuChi Dam spillway.",
       "user_edited_name": 0,
       "bounding_box": {
@@ -297,7 +297,7 @@
         ]
       },
       "size_mb": 70.76,
-      "wait_minutes": 3007.2,
+      "wait_minutes": 3068.3,
       "comment_count": 0
     },
     {
@@ -332,7 +332,7 @@
       "stage_label": "Completed (TWD97 + TWVD2001, 4K Web Tileset)",
       "bypass_count": 0,
       "force_next": 0,
-      "priority_score": 1000003005.216,
+      "priority_score": 1000003068.251,
       "notes": "Baseline epoch prior to October earthwork and revetment concrete pour.",
       "user_edited_name": 0,
       "bounding_box": {
@@ -348,7 +348,7 @@
         ]
       },
       "size_mb": 91.93,
-      "wait_minutes": 28305.1,
+      "wait_minutes": 28366.2,
       "comment_count": 0
     },
     {
@@ -383,7 +383,7 @@
       "stage_label": "Completed (TWD97 + TWVD2001, 4K Web Tileset)",
       "bypass_count": 0,
       "force_next": 0,
-      "priority_score": 1000003005.227,
+      "priority_score": 1000003068.264,
       "notes": "Merged scan of Rose Park landscape grading and drainage trenching.",
       "user_edited_name": 0,
       "bounding_box": {
@@ -399,7 +399,7 @@
         ]
       },
       "size_mb": 65.23,
-      "wait_minutes": 32625.1,
+      "wait_minutes": 32686.2,
       "comment_count": 1
     },
     {
@@ -434,7 +434,7 @@
       "stage_label": "Completed (TWD97 + TWVD2001, 4K Web Tileset)",
       "bypass_count": 0,
       "force_next": 0,
-      "priority_score": 1000003005.225,
+      "priority_score": 1000003068.262,
       "notes": "Initial excavation trench scan at Rose Park East sector.",
       "user_edited_name": 0,
       "bounding_box": {
@@ -450,7 +450,7 @@
         ]
       },
       "size_mb": 42.06,
-      "wait_minutes": 34065.1,
+      "wait_minutes": 34126.2,
       "comment_count": 0
     },
     {
@@ -485,7 +485,7 @@
       "stage_label": "Completed (TWD97 + TWVD2001, 4K Web Tileset)",
       "bypass_count": 0,
       "force_next": 0,
-      "priority_score": 1000003005.212,
+      "priority_score": 1000003068.247,
       "notes": "Excavation progress and soldier pile wall survey at NTU Dorm site.",
       "user_edited_name": 0,
       "bounding_box": {
@@ -501,7 +501,7 @@
         ]
       },
       "size_mb": 56.17,
-      "wait_minutes": 34785.1,
+      "wait_minutes": 34846.2,
       "comment_count": 0
     },
     {
@@ -536,7 +536,7 @@
       "stage_label": "Completed (TWD97 + TWVD2001, 4K Web Tileset)",
       "bypass_count": 0,
       "force_next": 0,
-      "priority_score": 1000003005.211,
+      "priority_score": 1000003068.246,
       "notes": "Baseline perimeter survey prior to retaining wall excavation.",
       "user_edited_name": 0,
       "bounding_box": {
@@ -552,7 +552,7 @@
         ]
       },
       "size_mb": 40.82,
-      "wait_minutes": 37113.6,
+      "wait_minutes": 37174.7,
       "comment_count": 0
     }
   ],
@@ -760,31 +760,33 @@
     "catch_QuChi261016": {
       "scan_id": "catch_QuChi261016",
       "pkg_path": "G:\\Shared drives\\6.軟體\\3. GatheringScans\\StreamPackages\\catch_QuChi261016.3tz",
-      "size_bytes": 11538466,
-      "mtime": 1792243373,
+      "size_bytes": 5590970,
+      "mtime": 1792253214,
       "toc": {
         "tileset.json": {
           "offset": 42,
           "size": 361
         },
         "tiles/root.glb": {
-          "offset": 447,
-          "size": 3248724,
-          "gz_offset": 3249218,
-          "gz_size": 2873745
+          "offset": 450,
+          "size": 2873745,
+          "gz_offset": 450,
+          "gz_size": 2873745,
+          "gzip_only": 1
         },
         "preview_tileset.json": {
-          "offset": 6123013,
+          "offset": 2874245,
           "size": 373
         },
         "preview_low/tiles/root.glb": {
-          "offset": 6123442,
-          "size": 2698540,
-          "gz_offset": 8822041,
-          "gz_size": 2489110
+          "offset": 2874677,
+          "size": 2489110,
+          "gz_offset": 2874677,
+          "gz_size": 2489110,
+          "gzip_only": 1
         },
         "thumbnail.png": {
-          "offset": 11311194,
+          "offset": 5363830,
           "size": 226797
         }
       },
@@ -794,31 +796,33 @@
     "QuChi261016_Trees": {
       "scan_id": "QuChi261016_Trees",
       "pkg_path": "G:\\Shared drives\\6.軟體\\3. GatheringScans\\StreamPackages\\QuChi261016_Trees.3tz",
-      "size_bytes": 21814690,
-      "mtime": 1792249562,
+      "size_bytes": 10625162,
+      "mtime": 1792253215,
       "toc": {
         "tileset.json": {
           "offset": 42,
           "size": 346
         },
         "tiles/root.glb": {
-          "offset": 432,
-          "size": 8439832,
-          "gz_offset": 8440311,
-          "gz_size": 7940918
+          "offset": 435,
+          "size": 7940918,
+          "gz_offset": 435,
+          "gz_size": 7940918,
+          "gzip_only": 1
         },
         "preview_tileset.json": {
-          "offset": 16381279,
+          "offset": 7941403,
           "size": 358
         },
         "preview_low/tiles/root.glb": {
-          "offset": 16381693,
-          "size": 2749464,
-          "gz_offset": 19131216,
-          "gz_size": 2478395
+          "offset": 7941820,
+          "size": 2478395,
+          "gz_offset": 7941820,
+          "gz_size": 2478395,
+          "gzip_only": 1
         },
         "thumbnail.png": {
-          "offset": 21609654,
+          "offset": 10420258,
           "size": 204561
         }
       },
@@ -828,31 +832,33 @@
     "quchi_20261015_obj_mesh": {
       "scan_id": "quchi_20261015_obj_mesh",
       "pkg_path": "G:\\Shared drives\\6.軟體\\3. GatheringScans\\StreamPackages\\quchi_20261015_obj_mesh.3tz",
-      "size_bytes": 6767381,
-      "mtime": 1792243374,
+      "size_bytes": 3192709,
+      "mtime": 1792253215,
       "toc": {
         "tileset.json": {
           "offset": 42,
           "size": 376
         },
         "tiles/root.glb": {
-          "offset": 462,
-          "size": 2083180,
-          "gz_offset": 2083689,
-          "gz_size": 1669488
+          "offset": 465,
+          "size": 1669488,
+          "gz_offset": 465,
+          "gz_size": 1669488,
+          "gzip_only": 1
         },
         "preview_tileset.json": {
-          "offset": 3753227,
+          "offset": 1670003,
           "size": 388
         },
         "preview_low/tiles/root.glb": {
-          "offset": 3753671,
-          "size": 1491260,
-          "gz_offset": 5244990,
-          "gz_size": 1256813
+          "offset": 1670450,
+          "size": 1256813,
+          "gz_offset": 1670450,
+          "gz_size": 1256813,
+          "gzip_only": 1
         },
         "thumbnail.png": {
-          "offset": 6501846,
+          "offset": 2927306,
           "size": 265060
         }
       },
@@ -862,35 +868,39 @@
     "quchi_20261015_cesium_mesh": {
       "scan_id": "quchi_20261015_cesium_mesh",
       "pkg_path": "G:\\Shared drives\\6.軟體\\3. GatheringScans\\StreamPackages\\quchi_20261015_cesium_mesh.3tz",
-      "size_bytes": 14984440,
-      "mtime": 1792243374,
+      "size_bytes": 3477244,
+      "mtime": 1792253217,
       "toc": {
         "tileset.json": {
-          "offset": 42,
-          "size": 601,
-          "gz_offset": 688,
-          "gz_size": 390
+          "offset": 45,
+          "size": 390,
+          "gz_offset": 45,
+          "gz_size": 390,
+          "gzip_only": 1
         },
         "content/0_0_0_0.glb": {
-          "offset": 1127,
-          "size": 4545896,
-          "gz_offset": 4547075,
-          "gz_size": 2890387
+          "offset": 487,
+          "size": 395184,
+          "gz_offset": 487,
+          "gz_size": 395184,
+          "gzip_only": 1
         },
         "preview_tileset.json": {
-          "offset": 7437512,
-          "size": 600,
-          "gz_offset": 7438165,
-          "gz_size": 389
+          "offset": 395724,
+          "size": 389,
+          "gz_offset": 395724,
+          "gz_size": 389,
+          "gzip_only": 1
         },
         "preview_low/content/0_0_0_0.glb": {
-          "offset": 7438615,
-          "size": 4464428,
-          "gz_offset": 11903107,
-          "gz_size": 2808947
+          "offset": 396177,
+          "size": 2808947,
+          "gz_offset": 396177,
+          "gz_size": 2808947,
+          "gzip_only": 1
         },
         "thumbnail.png": {
-          "offset": 14712097,
+          "offset": 3205167,
           "size": 271718
         }
       },
@@ -900,31 +910,33 @@
     "quchi_20261005_merged": {
       "scan_id": "quchi_20261005_merged",
       "pkg_path": "G:\\Shared drives\\6.軟體\\3. GatheringScans\\StreamPackages\\quchi_20261005_merged.3tz",
-      "size_bytes": 16604342,
-      "mtime": 1792243375,
+      "size_bytes": 7826574,
+      "mtime": 1792253218,
       "toc": {
         "tileset.json": {
           "offset": 42,
           "size": 380
         },
         "tiles/root.glb": {
-          "offset": 466,
-          "size": 4236324,
-          "gz_offset": 4236837,
-          "gz_size": 3555605
+          "offset": 469,
+          "size": 3555605,
+          "gz_offset": 469,
+          "gz_size": 3555605,
+          "gzip_only": 1
         },
         "preview_tileset.json": {
-          "offset": 7792492,
+          "offset": 3556124,
           "size": 392
         },
         "preview_low/tiles/root.glb": {
-          "offset": 7792940,
-          "size": 4541212,
-          "gz_offset": 12334211,
-          "gz_size": 3778629
+          "offset": 3556575,
+          "size": 3778629,
+          "gz_offset": 3556575,
+          "gz_size": 3778629,
+          "gzip_only": 1
         },
         "thumbnail.png": {
-          "offset": 16112883,
+          "offset": 7335247,
           "size": 490984
         }
       },
@@ -934,425 +946,494 @@
     "quchi_20261005_sector3": {
       "scan_id": "quchi_20261005_sector3",
       "pkg_path": "G:\\Shared drives\\6.軟體\\3. GatheringScans\\StreamPackages\\quchi_20261005_sector3.3tz",
-      "size_bytes": 101984978,
-      "mtime": 1792250118,
+      "size_bytes": 42988569,
+      "mtime": 1792253220,
       "toc": {
         "tileset.json": {
-          "offset": 42,
-          "size": 2457,
-          "gz_offset": 2544,
-          "gz_size": 510
+          "offset": 45,
+          "size": 510,
+          "gz_offset": 45,
+          "gz_size": 510,
+          "gzip_only": 1
         },
         "content/1_1_1_0.glb": {
-          "offset": 3103,
-          "size": 5061408,
-          "gz_offset": 5064563,
-          "gz_size": 2922758
+          "offset": 607,
+          "size": 461938,
+          "gz_offset": 607,
+          "gz_size": 461938,
+          "gzip_only": 1
         },
         "content/2_0_0_0.glb": {
-          "offset": 7987370,
-          "size": 272796,
-          "gz_offset": 8260218,
-          "gz_size": 197887
+          "offset": 462597,
+          "size": 197887,
+          "gz_offset": 462597,
+          "gz_size": 197887,
+          "gzip_only": 1
         },
         "content/2_1_0_0.glb": {
-          "offset": 8458154,
-          "size": 392692,
-          "gz_offset": 8850898,
-          "gz_size": 290856
+          "offset": 660536,
+          "size": 290856,
+          "gz_offset": 660536,
+          "gz_size": 290856,
+          "gzip_only": 1
         },
         "content/2_3_0_0.glb": {
-          "offset": 9141803,
-          "size": 266264,
-          "gz_offset": 9408119,
-          "gz_size": 222253
+          "offset": 951444,
+          "size": 222253,
+          "gz_offset": 951444,
+          "gz_size": 222253,
+          "gzip_only": 1
         },
         "content/2_0_3_0.glb": {
-          "offset": 9630421,
-          "size": 418996,
-          "gz_offset": 10049469,
-          "gz_size": 290196
+          "offset": 1173749,
+          "size": 290196,
+          "gz_offset": 1173749,
+          "gz_size": 290196,
+          "gzip_only": 1
         },
         "content/2_1_3_0.glb": {
-          "offset": 10339714,
-          "size": 456448,
-          "gz_offset": 10796214,
-          "gz_size": 335225
+          "offset": 1463997,
+          "size": 335225,
+          "gz_offset": 1463997,
+          "gz_size": 335225,
+          "gzip_only": 1
         },
         "preview_tileset.json": {
-          "offset": 11131489,
-          "size": 20180,
-          "gz_offset": 11151722,
-          "gz_size": 1671
+          "offset": 1799275,
+          "size": 1671,
+          "gz_offset": 1799275,
+          "gz_size": 1671,
+          "gzip_only": 1
         },
         "preview_low/content/1_1_1_0.glb": {
-          "offset": 11153454,
-          "size": 1153288,
-          "gz_offset": 12306806,
-          "gz_size": 1035474
+          "offset": 1801010,
+          "size": 1035474,
+          "gz_offset": 1801010,
+          "gz_size": 1035474,
+          "gzip_only": 1
         },
         "preview_low/content/2_0_0_0.glb": {
-          "offset": 13342341,
-          "size": 246288,
-          "gz_offset": 13588693,
-          "gz_size": 172323
+          "offset": 2836548,
+          "size": 172323,
+          "gz_offset": 2836548,
+          "gz_size": 172323,
+          "gzip_only": 1
         },
         "preview_low/content/2_1_0_0.glb": {
-          "offset": 13761077,
-          "size": 357524,
-          "gz_offset": 14118665,
-          "gz_size": 255687
+          "offset": 3008935,
+          "size": 255687,
+          "gz_offset": 3008935,
+          "gz_size": 255687,
+          "gzip_only": 1
         },
         "preview_low/content/3_0_2_0.glb": {
-          "offset": 14374413,
-          "size": 745968,
-          "gz_offset": 15120445,
-          "gz_size": 492201
+          "offset": 3264686,
+          "size": 492201,
+          "gz_offset": 3264686,
+          "gz_size": 492201,
+          "gzip_only": 1
         },
         "preview_low/content/3_1_2_0.glb": {
-          "offset": 15612707,
-          "size": 1189368,
-          "gz_offset": 16802139,
-          "gz_size": 738239
+          "offset": 3756951,
+          "size": 738239,
+          "gz_offset": 3756951,
+          "gz_size": 738239,
+          "gzip_only": 1
         },
         "preview_low/content/3_0_3_0.glb": {
-          "offset": 17540439,
-          "size": 898328,
-          "gz_offset": 18438831,
-          "gz_size": 820076
+          "offset": 4495254,
+          "size": 820076,
+          "gz_offset": 4495254,
+          "gz_size": 820076,
+          "gzip_only": 1
         },
         "preview_low/content/4_2_6_0.glb": {
-          "offset": 19258968,
-          "size": 988328,
-          "gz_offset": 20247360,
-          "gz_size": 618035
+          "offset": 5315394,
+          "size": 618035,
+          "gz_offset": 5315394,
+          "gz_size": 618035,
+          "gzip_only": 1
         },
         "preview_low/content/4_3_6_0.glb": {
-          "offset": 20865456,
-          "size": 911664,
-          "gz_offset": 21777184,
-          "gz_size": 842444
+          "offset": 5933493,
+          "size": 842444,
+          "gz_offset": 5933493,
+          "gz_size": 842444,
+          "gzip_only": 1
         },
         "preview_low/content/4_2_7_0.glb": {
-          "offset": 22619689,
-          "size": 911620,
-          "gz_offset": 23531373,
-          "gz_size": 555956
+          "offset": 6776001,
+          "size": 555956,
+          "gz_offset": 6776001,
+          "gz_size": 555956,
+          "gzip_only": 1
         },
         "preview_low/content/4_2_6_1.glb": {
-          "offset": 24087390,
-          "size": 567156,
-          "gz_offset": 24654610,
-          "gz_size": 375780
+          "offset": 7332021,
+          "size": 375780,
+          "gz_offset": 7332021,
+          "gz_size": 375780,
+          "gzip_only": 1
         },
         "preview_low/content/4_3_7_1.glb": {
-          "offset": 25030451,
-          "size": 472844,
-          "gz_offset": 25503359,
-          "gz_size": 346373
+          "offset": 7707865,
+          "size": 346373,
+          "gz_offset": 7707865,
+          "gz_size": 346373,
+          "gzip_only": 1
         },
         "preview_low/content/3_2_2_0.glb": {
-          "offset": 25849793,
-          "size": 580104,
-          "gz_offset": 26429961,
-          "gz_size": 543223
+          "offset": 8054302,
+          "size": 543223,
+          "gz_offset": 8054302,
+          "gz_size": 543223,
+          "gzip_only": 1
         },
         "preview_low/content/3_3_2_0.glb": {
-          "offset": 26973245,
-          "size": 1042512,
-          "gz_offset": 28015821,
-          "gz_size": 949404
+          "offset": 8597589,
+          "size": 949404,
+          "gz_offset": 8597589,
+          "gz_size": 949404,
+          "gzip_only": 1
         },
         "preview_low/content/4_5_6_0.glb": {
-          "offset": 28965286,
-          "size": 916048,
-          "gz_offset": 29881398,
-          "gz_size": 838845
+          "offset": 9547057,
+          "size": 838845,
+          "gz_offset": 9547057,
+          "gz_size": 838845,
+          "gzip_only": 1
         },
         "preview_low/content/4_4_7_1.glb": {
-          "offset": 30720304,
-          "size": 658036,
-          "gz_offset": 31378404,
-          "gz_size": 489204
+          "offset": 10385966,
+          "size": 489204,
+          "gz_offset": 10385966,
+          "gz_size": 489204,
+          "gzip_only": 1
         },
         "preview_low/content/4_5_7_1.glb": {
-          "offset": 31867669,
-          "size": 1098180,
-          "gz_offset": 32965913,
-          "gz_size": 718693
+          "offset": 10875234,
+          "size": 718693,
+          "gz_offset": 10875234,
+          "gz_size": 718693,
+          "gzip_only": 1
         },
         "preview_low/content/4_6_6_0.glb": {
-          "offset": 33684667,
-          "size": 702248,
-          "gz_offset": 34386979,
-          "gz_size": 658984
+          "offset": 11593991,
+          "size": 658984,
+          "gz_offset": 11593991,
+          "gz_size": 658984,
+          "gzip_only": 1
         },
         "preview_low/content/4_7_6_0.glb": {
-          "offset": 35046024,
-          "size": 549396,
-          "gz_offset": 35595484,
-          "gz_size": 519236
+          "offset": 12253039,
+          "size": 519236,
+          "gz_offset": 12253039,
+          "gz_size": 519236,
+          "gzip_only": 1
         },
         "preview_low/content/4_6_7_0.glb": {
-          "offset": 36114781,
-          "size": 1530224,
-          "gz_offset": 37645069,
-          "gz_size": 1341404
+          "offset": 12772339,
+          "size": 1341404,
+          "gz_offset": 12772339,
+          "gz_size": 1341404,
+          "gzip_only": 1
         },
         "preview_low/content/4_6_6_1.glb": {
-          "offset": 38986534,
-          "size": 440680,
-          "gz_offset": 39427278,
-          "gz_size": 291578
+          "offset": 14113807,
+          "size": 291578,
+          "gz_offset": 14113807,
+          "gz_size": 291578,
+          "gzip_only": 1
         },
         "preview_low/content/4_6_7_1.glb": {
-          "offset": 39718917,
-          "size": 1140912,
-          "gz_offset": 40859893,
-          "gz_size": 755863
+          "offset": 14405449,
+          "size": 755863,
+          "gz_offset": 14405449,
+          "gz_size": 755863,
+          "gzip_only": 1
         },
         "preview_low/content/2_3_0_0.glb": {
-          "offset": 41615817,
-          "size": 231032,
-          "gz_offset": 41846913,
-          "gz_size": 187298
+          "offset": 15161376,
+          "size": 187298,
+          "gz_offset": 15161376,
+          "gz_size": 187298,
+          "gzip_only": 1
         },
         "preview_low/content/3_4_2_0.glb": {
-          "offset": 42034272,
-          "size": 508932,
-          "gz_offset": 42543268,
-          "gz_size": 477507
+          "offset": 15348738,
+          "size": 477507,
+          "gz_offset": 15348738,
+          "gz_size": 477507,
+          "gzip_only": 1
         },
         "preview_low/content/3_5_2_0.glb": {
-          "offset": 43020836,
-          "size": 190852,
-          "gz_offset": 43211752,
-          "gz_size": 167251
+          "offset": 15826309,
+          "size": 167251,
+          "gz_offset": 15826309,
+          "gz_size": 167251,
+          "gzip_only": 1
         },
         "preview_low/content/4_8_6_0.glb": {
-          "offset": 43379064,
-          "size": 842180,
-          "gz_offset": 44221308,
-          "gz_size": 773307
+          "offset": 15993624,
+          "size": 773307,
+          "gz_offset": 15993624,
+          "gz_size": 773307,
+          "gzip_only": 1
         },
         "preview_low/content/4_9_7_0.glb": {
-          "offset": 44994676,
-          "size": 1206144,
-          "gz_offset": 46200884,
-          "gz_size": 1053274
+          "offset": 16766995,
+          "size": 1053274,
+          "gz_offset": 16766995,
+          "gz_size": 1053274,
+          "gzip_only": 1
         },
         "preview_low/content/4_9_7_1.glb": {
-          "offset": 47254219,
-          "size": 479960,
-          "gz_offset": 47734243,
-          "gz_size": 448403
+          "offset": 17820333,
+          "size": 448403,
+          "gz_offset": 17820333,
+          "gz_size": 448403,
+          "gzip_only": 1
         },
         "preview_low/content/4_11_6_0.glb": {
-          "offset": 48182708,
-          "size": 900204,
-          "gz_offset": 49082977,
-          "gz_size": 813780
+          "offset": 18268801,
+          "size": 813780,
+          "gz_offset": 18268801,
+          "gz_size": 813780,
+          "gzip_only": 1
         },
         "preview_low/content/4_10_7_0.glb": {
-          "offset": 49896819,
-          "size": 1069852,
-          "gz_offset": 50966736,
-          "gz_size": 950983
+          "offset": 19082646,
+          "size": 950983,
+          "gz_offset": 19082646,
+          "gz_size": 950983,
+          "gzip_only": 1
         },
         "preview_low/content/4_11_7_0.glb": {
-          "offset": 51917781,
-          "size": 1459484,
-          "gz_offset": 53377330,
-          "gz_size": 1268347
+          "offset": 20033694,
+          "size": 1268347,
+          "gz_offset": 20033694,
+          "gz_size": 1268347,
+          "gzip_only": 1
         },
         "preview_low/content/4_10_7_1.glb": {
-          "offset": 54645739,
-          "size": 463608,
-          "gz_offset": 55109412,
-          "gz_size": 434547
+          "offset": 21302106,
+          "size": 434547,
+          "gz_offset": 21302106,
+          "gz_size": 434547,
+          "gzip_only": 1
         },
         "preview_low/content/3_6_2_0.glb": {
-          "offset": 55544020,
-          "size": 901980,
-          "gz_offset": 56446064,
-          "gz_size": 825459
+          "offset": 21736717,
+          "size": 825459,
+          "gz_offset": 21736717,
+          "gz_size": 825459,
+          "gzip_only": 1
         },
         "preview_low/content/3_7_2_0.glb": {
-          "offset": 57271584,
-          "size": 498432,
-          "gz_offset": 57770080,
-          "gz_size": 467691
+          "offset": 22562240,
+          "size": 467691,
+          "gz_offset": 22562240,
+          "gz_size": 467691,
+          "gzip_only": 1
         },
         "preview_low/content/3_7_3_0.glb": {
-          "offset": 58237832,
-          "size": 574088,
-          "gz_offset": 58811984,
-          "gz_size": 536971
+          "offset": 23029995,
+          "size": 536971,
+          "gz_offset": 23029995,
+          "gz_size": 536971,
+          "gzip_only": 1
         },
         "preview_low/content/4_13_6_0.glb": {
-          "offset": 59349017,
-          "size": 511364,
-          "gz_offset": 59860446,
-          "gz_size": 480381
+          "offset": 23567031,
+          "size": 480381,
+          "gz_offset": 23567031,
+          "gz_size": 480381,
+          "gzip_only": 1
         },
         "preview_low/content/4_12_7_0.glb": {
-          "offset": 60340889,
-          "size": 1114992,
-          "gz_offset": 61455946,
-          "gz_size": 727012
+          "offset": 24047477,
+          "size": 727012,
+          "gz_offset": 24047477,
+          "gz_size": 727012,
+          "gzip_only": 1
         },
         "preview_low/content/4_13_7_0.glb": {
-          "offset": 62183020,
-          "size": 612004,
-          "gz_offset": 62795089,
-          "gz_size": 395692
+          "offset": 24774554,
+          "size": 395692,
+          "gz_offset": 24774554,
+          "gz_size": 395692,
+          "gzip_only": 1
         },
         "preview_low/content/4_12_7_1.glb": {
-          "offset": 63190843,
-          "size": 329084,
-          "gz_offset": 63519992,
-          "gz_size": 259727
+          "offset": 25170311,
+          "size": 259727,
+          "gz_offset": 25170311,
+          "gz_size": 259727,
+          "gzip_only": 1
         },
         "preview_low/content/4_13_7_1.glb": {
-          "offset": 63779781,
-          "size": 722588,
-          "gz_offset": 64502434,
-          "gz_size": 489080
+          "offset": 25430103,
+          "size": 489080,
+          "gz_offset": 25430103,
+          "gz_size": 489080,
+          "gzip_only": 1
         },
         "preview_low/content/2_0_3_0.glb": {
-          "offset": 64991575,
-          "size": 387052,
-          "gz_offset": 65378691,
-          "gz_size": 258145
+          "offset": 25919247,
+          "size": 258145,
+          "gz_offset": 25919247,
+          "gz_size": 258145,
+          "gzip_only": 1
         },
         "preview_low/content/2_1_3_0.glb": {
-          "offset": 65636897,
-          "size": 416508,
-          "gz_offset": 66053469,
-          "gz_size": 295766
+          "offset": 26177456,
+          "size": 295766,
+          "gz_offset": 26177456,
+          "gz_size": 295766,
+          "gzip_only": 1
         },
         "preview_low/content/3_0_4_0.glb": {
-          "offset": 66349296,
-          "size": 664076,
-          "gz_offset": 67013436,
-          "gz_size": 625548
+          "offset": 26473286,
+          "size": 625548,
+          "gz_offset": 26473286,
+          "gz_size": 625548,
+          "gzip_only": 1
         },
         "preview_low/content/3_0_5_0.glb": {
-          "offset": 67639045,
-          "size": 473492,
-          "gz_offset": 68112601,
-          "gz_size": 338339
+          "offset": 27098898,
+          "size": 338339,
+          "gz_offset": 27098898,
+          "gz_size": 338339,
+          "gzip_only": 1
         },
         "preview_low/content/3_1_5_0.glb": {
-          "offset": 68451001,
-          "size": 926000,
-          "gz_offset": 69377065,
-          "gz_size": 850372
+          "offset": 27437301,
+          "size": 850372,
+          "gz_offset": 27437301,
+          "gz_size": 850372,
+          "gzip_only": 1
         },
         "preview_low/content/4_2_8_0.glb": {
-          "offset": 70227498,
-          "size": 669436,
-          "gz_offset": 70896998,
-          "gz_size": 628174
+          "offset": 28287737,
+          "size": 628174,
+          "gz_offset": 28287737,
+          "gz_size": 628174,
+          "gzip_only": 1
         },
         "preview_low/content/4_3_8_0.glb": {
-          "offset": 71525233,
-          "size": 1493628,
-          "gz_offset": 73018925,
-          "gz_size": 1305187
+          "offset": 28915975,
+          "size": 1305187,
+          "gz_offset": 28915975,
+          "gz_size": 1305187,
+          "gzip_only": 1
         },
         "preview_low/content/4_2_9_0.glb": {
-          "offset": 74324173,
-          "size": 1030964,
-          "gz_offset": 75355201,
-          "gz_size": 938029
+          "offset": 30221226,
+          "size": 938029,
+          "gz_offset": 30221226,
+          "gz_size": 938029,
+          "gzip_only": 1
         },
         "preview_low/content/4_2_8_1.glb": {
-          "offset": 76293291,
-          "size": 448980,
-          "gz_offset": 76742335,
-          "gz_size": 337877
+          "offset": 31159319,
+          "size": 337877,
+          "gz_offset": 31159319,
+          "gz_size": 337877,
+          "gzip_only": 1
         },
         "preview_low/content/4_2_9_1.glb": {
-          "offset": 77080273,
-          "size": 569428,
-          "gz_offset": 77649765,
-          "gz_size": 535212
+          "offset": 31497260,
+          "size": 535212,
+          "gz_offset": 31497260,
+          "gz_size": 535212,
+          "gzip_only": 1
         },
         "preview_low/content/3_2_5_0.glb": {
-          "offset": 78185038,
-          "size": 1379568,
-          "gz_offset": 79564670,
-          "gz_size": 1223573
+          "offset": 32032536,
+          "size": 1223573,
+          "gz_offset": 32032536,
+          "gz_size": 1223573,
+          "gzip_only": 1
         },
         "preview_low/content/3_3_5_0.glb": {
-          "offset": 80788304,
-          "size": 852664,
-          "gz_offset": 81641032,
-          "gz_size": 782874
+          "offset": 33256173,
+          "size": 782874,
+          "gz_offset": 33256173,
+          "gz_size": 782874,
+          "gzip_only": 1
         },
         "preview_low/content/4_4_8_0.glb": {
-          "offset": 82423967,
-          "size": 1079752,
-          "gz_offset": 83503783,
-          "gz_size": 991215
+          "offset": 34039111,
+          "size": 991215,
+          "gz_offset": 34039111,
+          "gz_size": 991215,
+          "gzip_only": 1
         },
         "preview_low/content/4_5_8_0.glb": {
-          "offset": 84495059,
-          "size": 1591936,
-          "gz_offset": 86087059,
-          "gz_size": 1400321
+          "offset": 35030390,
+          "size": 1400321,
+          "gz_offset": 35030390,
+          "gz_size": 1400321,
+          "gzip_only": 1
         },
         "preview_low/content/4_4_8_1.glb": {
-          "offset": 87487441,
-          "size": 1237032,
-          "gz_offset": 88724537,
-          "gz_size": 822303
+          "offset": 36430775,
+          "size": 822303,
+          "gz_offset": 36430775,
+          "gz_size": 822303,
+          "gzip_only": 1
         },
         "preview_low/content/4_5_8_1.glb": {
-          "offset": 89546901,
-          "size": 895740,
-          "gz_offset": 90442705,
-          "gz_size": 624697
+          "offset": 37253142,
+          "size": 624697,
+          "gz_offset": 37253142,
+          "gz_size": 624697,
+          "gzip_only": 1
         },
         "preview_low/content/4_4_9_1.glb": {
-          "offset": 91067463,
-          "size": 637620,
-          "gz_offset": 91705147,
-          "gz_size": 468242
+          "offset": 37877903,
+          "size": 468242,
+          "gz_offset": 37877903,
+          "gz_size": 468242,
+          "gzip_only": 1
         },
         "preview_low/content/4_5_9_1.glb": {
-          "offset": 92173450,
-          "size": 572484,
-          "gz_offset": 92745998,
-          "gz_size": 428005
+          "offset": 38346209,
+          "size": 428005,
+          "gz_offset": 38346209,
+          "gz_size": 428005,
+          "gzip_only": 1
         },
         "preview_low/content/4_7_8_0.glb": {
-          "offset": 93174064,
-          "size": 1108236,
-          "gz_offset": 94282364,
-          "gz_size": 993825
+          "offset": 38774278,
+          "size": 993825,
+          "gz_offset": 38774278,
+          "gz_size": 993825,
+          "gzip_only": 1
         },
         "preview_low/content/4_6_9_0.glb": {
-          "offset": 95276250,
-          "size": 1596252,
-          "gz_offset": 96872566,
-          "gz_size": 1364714
+          "offset": 39768167,
+          "size": 1364714,
+          "gz_offset": 39768167,
+          "gz_size": 1364714,
+          "gzip_only": 1
         },
         "preview_low/content/4_7_9_0.glb": {
-          "offset": 98237341,
-          "size": 794900,
-          "gz_offset": 99032305,
-          "gz_size": 736809
+          "offset": 41132945,
+          "size": 736809,
+          "gz_offset": 41132945,
+          "gz_size": 736809,
+          "gzip_only": 1
         },
         "preview_low/content/4_6_8_1.glb": {
-          "offset": 99769175,
-          "size": 1091768,
-          "gz_offset": 100861007,
-          "gz_size": 730746
+          "offset": 41869818,
+          "size": 730746,
+          "gz_offset": 41869818,
+          "gz_size": 730746,
+          "gzip_only": 1
         },
         "thumbnail.png": {
-          "offset": 101591796,
+          "offset": 42600607,
           "size": 382454
         }
       },
@@ -1362,123 +1443,141 @@
     "quchi_20260921_epoch": {
       "scan_id": "quchi_20260921_epoch",
       "pkg_path": "G:\\Shared drives\\6.軟體\\3. GatheringScans\\StreamPackages\\quchi_20260921_epoch.3tz",
-      "size_bytes": 2437364,
-      "mtime": 1792243378,
+      "size_bytes": 1001567,
+      "mtime": 1792253220,
       "toc": {
         "tileset.json": {
-          "offset": 42,
-          "size": 3853,
-          "gz_offset": 3940,
-          "gz_size": 908
+          "offset": 45,
+          "size": 908,
+          "gz_offset": 45,
+          "gz_size": 908,
+          "gzip_only": 1
         },
         "tiles/root.glb": {
-          "offset": 4892,
-          "size": 148884,
-          "gz_offset": 153823,
-          "gz_size": 111026
+          "offset": 1000,
+          "size": 111026,
+          "gz_offset": 1000,
+          "gz_size": 111026,
+          "gzip_only": 1
         },
         "tiles/tile_l1_q0.glb": {
-          "offset": 264899,
-          "size": 58948,
-          "gz_offset": 323900,
-          "gz_size": 40736
+          "offset": 112079,
+          "size": 40736,
+          "gz_offset": 112079,
+          "gz_size": 40736,
+          "gzip_only": 1
         },
         "tiles/tile_l1_q1.glb": {
-          "offset": 364686,
-          "size": 87960,
-          "gz_offset": 452699,
-          "gz_size": 66733
+          "offset": 152868,
+          "size": 66733,
+          "gz_offset": 152868,
+          "gz_size": 66733,
+          "gzip_only": 1
         },
         "tiles/tile_l1_q1_l2_q0.glb": {
-          "offset": 519488,
-          "size": 114928,
-          "gz_offset": 634475,
-          "gz_size": 68193
+          "offset": 219660,
+          "size": 68193,
+          "gz_offset": 219660,
+          "gz_size": 68193,
+          "gzip_only": 1
         },
         "tiles/tile_l1_q1_l2_q1.glb": {
-          "offset": 702724,
-          "size": 68808,
-          "gz_offset": 771591,
-          "gz_size": 45641
+          "offset": 287912,
+          "size": 45641,
+          "gz_offset": 287912,
+          "gz_size": 45641,
+          "gzip_only": 1
         },
         "tiles/tile_l1_q1_l2_q2.glb": {
-          "offset": 817288,
-          "size": 129268,
-          "gz_offset": 946615,
-          "gz_size": 90070
+          "offset": 333612,
+          "size": 90070,
+          "gz_offset": 333612,
+          "gz_size": 90070,
+          "gzip_only": 1
         },
         "tiles/tile_l1_q1_l2_q3.glb": {
-          "offset": 1036741,
-          "size": 43032,
-          "gz_offset": 1079832,
-          "gz_size": 29534
+          "offset": 423741,
+          "size": 29534,
+          "gz_offset": 423741,
+          "gz_size": 29534,
+          "gzip_only": 1
         },
         "tiles/tile_l1_q2.glb": {
-          "offset": 1109416,
-          "size": 82700,
-          "gz_offset": 1192169,
-          "gz_size": 63522
+          "offset": 453328,
+          "size": 63522,
+          "gz_offset": 453328,
+          "gz_size": 63522,
+          "gzip_only": 1
         },
         "tiles/tile_l1_q2_l2_q0.glb": {
-          "offset": 1255747,
-          "size": 67636,
-          "gz_offset": 1323442,
-          "gz_size": 42420
+          "offset": 516909,
+          "size": 42420,
+          "gz_offset": 516909,
+          "gz_size": 42420,
+          "gzip_only": 1
         },
         "tiles/tile_l1_q2_l2_q1.glb": {
-          "offset": 1365918,
-          "size": 125684,
-          "gz_offset": 1491661,
-          "gz_size": 86300
+          "offset": 559388,
+          "size": 86300,
+          "gz_offset": 559388,
+          "gz_size": 86300,
+          "gzip_only": 1
         },
         "tiles/tile_l1_q2_l2_q2.glb": {
-          "offset": 1578017,
-          "size": 88564,
-          "gz_offset": 1666640,
-          "gz_size": 56677
+          "offset": 645747,
+          "size": 56677,
+          "gz_offset": 645747,
+          "gz_size": 56677,
+          "gzip_only": 1
         },
         "tiles/tile_l1_q2_l2_q3.glb": {
-          "offset": 1723373,
-          "size": 72464,
-          "gz_offset": 1795896,
-          "gz_size": 45561
+          "offset": 702483,
+          "size": 45561,
+          "gz_offset": 702483,
+          "gz_size": 45561,
+          "gzip_only": 1
         },
         "tiles/tile_l1_q3.glb": {
-          "offset": 1841507,
-          "size": 72456,
-          "gz_offset": 1914016,
-          "gz_size": 53759
+          "offset": 748097,
+          "size": 53759,
+          "gz_offset": 748097,
+          "gz_size": 53759,
+          "gzip_only": 1
         },
         "tiles/tile_l1_q3_l2_q0.glb": {
-          "offset": 1967831,
-          "size": 103240,
-          "gz_offset": 2071130,
-          "gz_size": 68385
+          "offset": 801915,
+          "size": 68385,
+          "gz_offset": 801915,
+          "gz_size": 68385,
+          "gzip_only": 1
         },
         "tiles/tile_l1_q3_l2_q1.glb": {
-          "offset": 2139571,
-          "size": 2892,
-          "gz_offset": 2142522,
-          "gz_size": 1728
+          "offset": 870359,
+          "size": 1728,
+          "gz_offset": 870359,
+          "gz_size": 1728,
+          "gzip_only": 1
         },
         "tiles/tile_l1_q3_l2_q2.glb": {
-          "offset": 2144306,
-          "size": 13392,
-          "gz_offset": 2157757,
-          "gz_size": 9720
+          "offset": 872146,
+          "size": 9720,
+          "gz_offset": 872146,
+          "gz_size": 9720,
+          "gzip_only": 1
         },
         "preview_tileset.json": {
-          "offset": 2167527,
+          "offset": 881916,
           "size": 376
         },
         "preview_low/tiles/root.glb": {
-          "offset": 2167959,
-          "size": 148884,
-          "gz_offset": 2316902,
-          "gz_size": 111026
+          "offset": 882351,
+          "size": 111026,
+          "gz_offset": 882351,
+          "gz_size": 111026,
+          "gzip_only": 1
         },
         "thumbnail.png": {
-          "offset": 2427971,
+          "offset": 993420,
           "size": 6700
         }
       },
@@ -1488,143 +1587,165 @@
     "rosepark_20260918_merged": {
       "scan_id": "rosepark_20260918_merged",
       "pkg_path": "G:\\Shared drives\\6.軟體\\3. GatheringScans\\StreamPackages\\rosepark_20260918_merged.3tz",
-      "size_bytes": 37930346,
-      "mtime": 1792250111,
+      "size_bytes": 17760466,
+      "mtime": 1792253221,
       "toc": {
         "tileset.json": {
-          "offset": 42,
-          "size": 3294,
-          "gz_offset": 3381,
-          "gz_size": 541
+          "offset": 45,
+          "size": 541,
+          "gz_offset": 45,
+          "gz_size": 541,
+          "gzip_only": 1
         },
         "content/1_0_1_0.glb": {
-          "offset": 3971,
-          "size": 1354972,
-          "gz_offset": 1358995,
-          "gz_size": 1161415
+          "offset": 638,
+          "size": 1161415,
+          "gz_offset": 638,
+          "gz_size": 1161415,
+          "gzip_only": 1
         },
         "content/1_1_1_0.glb": {
-          "offset": 2520459,
-          "size": 1445656,
-          "gz_offset": 3966167,
-          "gz_size": 1253180
+          "offset": 1162105,
+          "size": 1253180,
+          "gz_offset": 1162105,
+          "gz_size": 1253180,
+          "gzip_only": 1
         },
         "content/2_0_0_0.glb": {
-          "offset": 5219396,
-          "size": 68968,
-          "gz_offset": 5288416,
-          "gz_size": 67426
+          "offset": 2415337,
+          "size": 67426,
+          "gz_offset": 2415337,
+          "gz_size": 67426,
+          "gzip_only": 1
         },
         "content/2_1_0_0.glb": {
-          "offset": 5355891,
-          "size": 1035136,
-          "gz_offset": 6391079,
-          "gz_size": 884237
+          "offset": 2482815,
+          "size": 884237,
+          "gz_offset": 2482815,
+          "gz_size": 884237,
+          "gzip_only": 1
         },
         "content/2_0_1_0.glb": {
-          "offset": 7275365,
-          "size": 573588,
-          "gz_offset": 7849005,
-          "gz_size": 512858
+          "offset": 3367104,
+          "size": 512858,
+          "gz_offset": 3367104,
+          "gz_size": 512858,
+          "gzip_only": 1
         },
         "content/2_1_1_0.glb": {
-          "offset": 8361912,
-          "size": 1490520,
-          "gz_offset": 9852484,
-          "gz_size": 1302029
+          "offset": 3880014,
+          "size": 1302029,
+          "gz_offset": 3880014,
+          "gz_size": 1302029,
+          "gzip_only": 1
         },
         "content/2_2_0_0.glb": {
-          "offset": 11154562,
-          "size": 1456132,
-          "gz_offset": 12610746,
-          "gz_size": 1256412
+          "offset": 5182095,
+          "size": 1256412,
+          "gz_offset": 5182095,
+          "gz_size": 1256412,
+          "gzip_only": 1
         },
         "content/2_3_0_0.glb": {
-          "offset": 13867207,
-          "size": 962284,
-          "gz_offset": 14829543,
-          "gz_size": 815303
+          "offset": 6438559,
+          "size": 815303,
+          "gz_offset": 6438559,
+          "gz_size": 815303,
+          "gzip_only": 1
         },
         "content/2_2_1_0.glb": {
-          "offset": 15644895,
-          "size": 1397988,
-          "gz_offset": 17042935,
-          "gz_size": 1196246
+          "offset": 7253914,
+          "size": 1196246,
+          "gz_offset": 7253914,
+          "gz_size": 1196246,
+          "gzip_only": 1
         },
         "content/2_3_1_0.glb": {
-          "offset": 18239230,
-          "size": 430608,
-          "gz_offset": 18669890,
-          "gz_size": 395844
+          "offset": 8450212,
+          "size": 395844,
+          "gz_offset": 8450212,
+          "gz_size": 395844,
+          "gzip_only": 1
         },
         "preview_tileset.json": {
-          "offset": 19065784,
-          "size": 3414,
-          "gz_offset": 19069251,
-          "gz_size": 562
+          "offset": 8846109,
+          "size": 562,
+          "gz_offset": 8846109,
+          "gz_size": 562,
+          "gzip_only": 1
         },
         "preview_low/content/1_0_1_0.glb": {
-          "offset": 19069874,
-          "size": 1441644,
-          "gz_offset": 20511582,
-          "gz_size": 1207712
+          "offset": 8846735,
+          "size": 1207712,
+          "gz_offset": 8846735,
+          "gz_size": 1207712,
+          "gzip_only": 1
         },
         "preview_low/content/1_1_1_0.glb": {
-          "offset": 21719355,
-          "size": 1493420,
-          "gz_offset": 23212839,
-          "gz_size": 1286848
+          "offset": 10054511,
+          "size": 1286848,
+          "gz_offset": 10054511,
+          "gz_size": 1286848,
+          "gzip_only": 1
         },
         "preview_low/content/2_0_0_0.glb": {
-          "offset": 24499748,
-          "size": 82920,
-          "gz_offset": 24582732,
-          "gz_size": 80331
+          "offset": 11341423,
+          "size": 80331,
+          "gz_offset": 11341423,
+          "gz_size": 80331,
+          "gzip_only": 1
         },
         "preview_low/content/2_1_0_0.glb": {
-          "offset": 24663124,
-          "size": 776792,
-          "gz_offset": 25439980,
-          "gz_size": 685738
+          "offset": 11421818,
+          "size": 685738,
+          "gz_offset": 11421818,
+          "gz_size": 685738,
+          "gzip_only": 1
         },
         "preview_low/content/2_0_1_0.glb": {
-          "offset": 26125779,
-          "size": 508588,
-          "gz_offset": 26634431,
-          "gz_size": 473430
+          "offset": 12107620,
+          "size": 473430,
+          "gz_offset": 12107620,
+          "gz_size": 473430,
+          "gzip_only": 1
         },
         "preview_low/content/2_1_1_0.glb": {
-          "offset": 27107922,
-          "size": 1555152,
-          "gz_offset": 28663138,
-          "gz_size": 1331727
+          "offset": 12581114,
+          "size": 1331727,
+          "gz_offset": 12581114,
+          "gz_size": 1331727,
+          "gzip_only": 1
         },
         "preview_low/content/2_2_0_0.glb": {
-          "offset": 29994926,
-          "size": 1526160,
-          "gz_offset": 31521150,
-          "gz_size": 1298167
+          "offset": 13912905,
+          "size": 1298167,
+          "gz_offset": 13912905,
+          "gz_size": 1298167,
+          "gzip_only": 1
         },
         "preview_low/content/2_3_0_0.glb": {
-          "offset": 32819378,
-          "size": 670640,
-          "gz_offset": 33490082,
-          "gz_size": 599257
+          "offset": 15211136,
+          "size": 599257,
+          "gz_offset": 15211136,
+          "gz_size": 599257,
+          "gzip_only": 1
         },
         "preview_low/content/2_2_1_0.glb": {
-          "offset": 34089400,
-          "size": 1455780,
-          "gz_offset": 35545244,
-          "gz_size": 1222724
+          "offset": 15810457,
+          "size": 1222724,
+          "gz_offset": 15810457,
+          "gz_size": 1222724,
+          "gzip_only": 1
         },
         "preview_low/content/2_3_1_0.glb": {
-          "offset": 36768029,
-          "size": 433488,
-          "gz_offset": 37201581,
-          "gz_size": 401506
+          "offset": 17033245,
+          "size": 401506,
+          "gz_offset": 17033245,
+          "gz_size": 401506,
+          "gzip_only": 1
         },
         "thumbnail.png": {
-          "offset": 37603130,
+          "offset": 17434794,
           "size": 323981
         }
       },
@@ -1634,95 +1755,109 @@
     "rosepark_20260917_east": {
       "scan_id": "rosepark_20260917_east",
       "pkg_path": "G:\\Shared drives\\6.軟體\\3. GatheringScans\\StreamPackages\\rosepark_20260917_east.3tz",
-      "size_bytes": 24105817,
-      "mtime": 1792250112,
+      "size_bytes": 11295025,
+      "mtime": 1792253221,
       "toc": {
         "tileset.json": {
-          "offset": 42,
-          "size": 2084,
-          "gz_offset": 2171,
-          "gz_size": 493
+          "offset": 45,
+          "size": 493,
+          "gz_offset": 45,
+          "gz_size": 493,
+          "gzip_only": 1
         },
         "content/1_0_0_0.glb": {
-          "offset": 2713,
-          "size": 1427584,
-          "gz_offset": 1430349,
-          "gz_size": 1226054
+          "offset": 590,
+          "size": 1226054,
+          "gz_offset": 590,
+          "gz_size": 1226054,
+          "gzip_only": 1
         },
         "content/1_1_0_0.glb": {
-          "offset": 2656452,
-          "size": 1346348,
-          "gz_offset": 4002852,
-          "gz_size": 1161195
+          "offset": 1226696,
+          "size": 1161195,
+          "gz_offset": 1226696,
+          "gz_size": 1161195,
+          "gzip_only": 1
         },
         "content/1_1_1_0.glb": {
-          "offset": 5164096,
-          "size": 1455864,
-          "gz_offset": 6620012,
-          "gz_size": 1248895
+          "offset": 2387943,
+          "size": 1248895,
+          "gz_offset": 2387943,
+          "gz_size": 1248895,
+          "gzip_only": 1
         },
         "content/2_0_2_0.glb": {
-          "offset": 7868956,
-          "size": 304680,
-          "gz_offset": 8173688,
-          "gz_size": 291989
+          "offset": 3636890,
+          "size": 291989,
+          "gz_offset": 3636890,
+          "gz_size": 291989,
+          "gzip_only": 1
         },
         "content/2_1_2_0.glb": {
-          "offset": 8465726,
-          "size": 1221664,
-          "gz_offset": 9687442,
-          "gz_size": 1043728
+          "offset": 3928931,
+          "size": 1043728,
+          "gz_offset": 3928931,
+          "gz_size": 1043728,
+          "gzip_only": 1
         },
         "content/2_1_3_0.glb": {
-          "offset": 10731219,
-          "size": 525748,
-          "gz_offset": 11257019,
-          "gz_size": 472114
+          "offset": 4972711,
+          "size": 472114,
+          "gz_offset": 4972711,
+          "gz_size": 472114,
+          "gzip_only": 1
         },
         "preview_tileset.json": {
-          "offset": 11729183,
-          "size": 2156,
-          "gz_offset": 11731392,
-          "gz_size": 503
+          "offset": 5444878,
+          "size": 503,
+          "gz_offset": 5444878,
+          "gz_size": 503,
+          "gzip_only": 1
         },
         "preview_low/content/1_0_0_0.glb": {
-          "offset": 11731956,
-          "size": 1506452,
-          "gz_offset": 13238472,
-          "gz_size": 1271239
+          "offset": 5445445,
+          "size": 1271239,
+          "gz_offset": 5445445,
+          "gz_size": 1271239,
+          "gzip_only": 1
         },
         "preview_low/content/1_1_0_0.glb": {
-          "offset": 14509772,
-          "size": 1403500,
-          "gz_offset": 15913336,
-          "gz_size": 1193290
+          "offset": 6716748,
+          "size": 1193290,
+          "gz_offset": 6716748,
+          "gz_size": 1193290,
+          "gzip_only": 1
         },
         "preview_low/content/1_1_1_0.glb": {
-          "offset": 17106687,
-          "size": 1533928,
-          "gz_offset": 18640679,
-          "gz_size": 1293487
+          "offset": 7910102,
+          "size": 1293487,
+          "gz_offset": 7910102,
+          "gz_size": 1293487,
+          "gzip_only": 1
         },
         "preview_low/content/2_0_2_0.glb": {
-          "offset": 19934227,
-          "size": 326336,
-          "gz_offset": 20260627,
-          "gz_size": 313988
+          "offset": 9203653,
+          "size": 313988,
+          "gz_offset": 9203653,
+          "gz_size": 313988,
+          "gzip_only": 1
         },
         "preview_low/content/2_1_2_0.glb": {
-          "offset": 20574676,
-          "size": 1290280,
-          "gz_offset": 21865020,
-          "gz_size": 1082211
+          "offset": 9517705,
+          "size": 1082211,
+          "gz_offset": 9517705,
+          "gz_size": 1082211,
+          "gzip_only": 1
         },
         "preview_low/content/2_1_3_0.glb": {
-          "offset": 22947292,
-          "size": 462440,
-          "gz_offset": 23409796,
-          "gz_size": 429452
+          "offset": 10599980,
+          "size": 429452,
+          "gz_offset": 10599980,
+          "gz_size": 429452,
+          "gzip_only": 1
         },
         "thumbnail.png": {
-          "offset": 23839291,
+          "offset": 11029475,
           "size": 264451
         }
       },
@@ -1732,119 +1867,137 @@
     "ntudorm_20260917_foundation": {
       "scan_id": "ntudorm_20260917_foundation",
       "pkg_path": "G:\\Shared drives\\6.軟體\\3. GatheringScans\\StreamPackages\\ntudorm_20260917_foundation.3tz",
-      "size_bytes": 61072740,
-      "mtime": 1792250119,
+      "size_bytes": 10728316,
+      "mtime": 1792253222,
       "toc": {
         "tileset.json": {
-          "offset": 42,
-          "size": 2559,
-          "gz_offset": 2646,
-          "gz_size": 513
+          "offset": 45,
+          "size": 513,
+          "gz_offset": 45,
+          "gz_size": 513,
+          "gzip_only": 1
         },
         "content/1_1_0_0.glb": {
-          "offset": 3208,
-          "size": 5829356,
-          "gz_offset": 5832616,
-          "gz_size": 3375498
+          "offset": 610,
+          "size": 534279,
+          "gz_offset": 610,
+          "gz_size": 534279,
+          "gzip_only": 1
         },
         "content/1_0_1_0.glb": {
-          "offset": 9208163,
-          "size": 5680724,
-          "gz_offset": 14888939,
-          "gz_size": 3251817
+          "offset": 534941,
+          "size": 426245,
+          "gz_offset": 534941,
+          "gz_size": 426245,
+          "gzip_only": 1
         },
         "content/1_1_1_0.glb": {
-          "offset": 18140805,
-          "size": 5877296,
-          "gz_offset": 24018153,
-          "gz_size": 3388833
+          "offset": 961238,
+          "size": 516828,
+          "gz_offset": 961238,
+          "gz_size": 516828,
+          "gzip_only": 1
         },
         "content/2_0_1_0.glb": {
-          "offset": 27407035,
-          "size": 1049196,
-          "gz_offset": 28456283,
-          "gz_size": 711060
+          "offset": 1478118,
+          "size": 270709,
+          "gz_offset": 1478118,
+          "gz_size": 270709,
+          "gzip_only": 1
         },
         "content/2_1_1_0.glb": {
-          "offset": 29167392,
-          "size": 5819812,
-          "gz_offset": 34987256,
-          "gz_size": 3307850
+          "offset": 1748879,
+          "size": 446415,
+          "gz_offset": 1748879,
+          "gz_size": 446415,
+          "gzip_only": 1
         },
         "content/2_1_0_1.glb": {
-          "offset": 38295155,
-          "size": 1335712,
-          "gz_offset": 39630919,
-          "gz_size": 834604
+          "offset": 2195346,
+          "size": 355743,
+          "gz_offset": 2195346,
+          "gz_size": 355743,
+          "gzip_only": 1
         },
         "content/2_0_1_1.glb": {
-          "offset": 40465572,
-          "size": 368944,
-          "gz_offset": 40834568,
-          "gz_size": 302328
+          "offset": 2551141,
+          "size": 302328,
+          "gz_offset": 2551141,
+          "gz_size": 302328,
+          "gzip_only": 1
         },
         "content/2_1_1_1.glb": {
-          "offset": 41136945,
-          "size": 2683492,
-          "gz_offset": 43820489,
-          "gz_size": 1562664
+          "offset": 2853521,
+          "size": 387013,
+          "gz_offset": 2853521,
+          "gz_size": 387013,
+          "gzip_only": 1
         },
         "preview_tileset.json": {
-          "offset": 45383203,
-          "size": 2655,
-          "gz_offset": 45385911,
-          "gz_size": 526
+          "offset": 3240587,
+          "size": 526,
+          "gz_offset": 3240587,
+          "gz_size": 526,
+          "gzip_only": 1
         },
         "preview_low/content/1_1_0_0.glb": {
-          "offset": 45386498,
-          "size": 1551080,
-          "gz_offset": 46937642,
-          "gz_size": 1351580
+          "offset": 3241177,
+          "size": 1351580,
+          "gz_offset": 3241177,
+          "gz_size": 1351580,
+          "gzip_only": 1
         },
         "preview_low/content/1_0_1_0.glb": {
-          "offset": 48289283,
-          "size": 1391476,
-          "gz_offset": 49680823,
-          "gz_size": 1212676
+          "offset": 4592821,
+          "size": 1212676,
+          "gz_offset": 4592821,
+          "gz_size": 1212676,
+          "gzip_only": 1
         },
         "preview_low/content/1_1_1_0.glb": {
-          "offset": 50893560,
-          "size": 1550840,
-          "gz_offset": 52444464,
-          "gz_size": 1359586
+          "offset": 5805561,
+          "size": 1359586,
+          "gz_offset": 5805561,
+          "gz_size": 1359586,
+          "gzip_only": 1
         },
         "preview_low/content/2_0_1_0.glb": {
-          "offset": 53804111,
-          "size": 993116,
-          "gz_offset": 54797291,
-          "gz_size": 654411
+          "offset": 7165211,
+          "size": 654411,
+          "gz_offset": 7165211,
+          "gz_size": 654411,
+          "gzip_only": 1
         },
         "preview_low/content/2_1_1_0.glb": {
-          "offset": 55451763,
-          "size": 1447752,
-          "gz_offset": 56899579,
-          "gz_size": 1256785
+          "offset": 7819686,
+          "size": 1256785,
+          "gz_offset": 7819686,
+          "gz_size": 1256785,
+          "gzip_only": 1
         },
         "preview_low/content/2_1_0_1.glb": {
-          "offset": 58156425,
-          "size": 418180,
-          "gz_offset": 58574669,
-          "gz_size": 385760
+          "offset": 9076535,
+          "size": 385760,
+          "gz_offset": 9076535,
+          "gz_size": 385760,
+          "gzip_only": 1
         },
         "preview_low/content/2_0_1_1.glb": {
-          "offset": 58960490,
-          "size": 324236,
-          "gz_offset": 59284790,
-          "gz_size": 257398
+          "offset": 9462359,
+          "size": 257398,
+          "gz_offset": 9462359,
+          "gz_size": 257398,
+          "gzip_only": 1
         },
         "preview_low/content/2_1_1_1.glb": {
-          "offset": 59542249,
-          "size": 520672,
-          "gz_offset": 60062985,
-          "gz_size": 493897
+          "offset": 9719821,
+          "size": 493897,
+          "gz_offset": 9719821,
+          "gz_size": 493897,
+          "gzip_only": 1
         },
         "thumbnail.png": {
-          "offset": 60556925,
+          "offset": 10213761,
           "size": 513160
         }
       },
@@ -1854,124 +2007,143 @@
     "ntudorm_20260915_baseline": {
       "scan_id": "ntudorm_20260915_baseline",
       "pkg_path": "G:\\Shared drives\\6.軟體\\3. GatheringScans\\StreamPackages\\ntudorm_20260915_baseline.3tz",
-      "size_bytes": 61072740,
-      "mtime": 1792250110,
+      "size_bytes": 10728316,
+      "mtime": 1792253223,
       "toc": {
         "tileset.json": {
-          "offset": 42,
-          "size": 2559,
-          "gz_offset": 2646,
-          "gz_size": 513
+          "offset": 45,
+          "size": 513,
+          "gz_offset": 45,
+          "gz_size": 513,
+          "gzip_only": 1
         },
         "content/1_1_0_0.glb": {
-          "offset": 3208,
-          "size": 5829356,
-          "gz_offset": 5832616,
-          "gz_size": 3375498
+          "offset": 610,
+          "size": 534279,
+          "gz_offset": 610,
+          "gz_size": 534279,
+          "gzip_only": 1
         },
         "content/1_0_1_0.glb": {
-          "offset": 9208163,
-          "size": 5680724,
-          "gz_offset": 14888939,
-          "gz_size": 3251817
+          "offset": 534941,
+          "size": 426245,
+          "gz_offset": 534941,
+          "gz_size": 426245,
+          "gzip_only": 1
         },
         "content/1_1_1_0.glb": {
-          "offset": 18140805,
-          "size": 5877296,
-          "gz_offset": 24018153,
-          "gz_size": 3388833
+          "offset": 961238,
+          "size": 516828,
+          "gz_offset": 961238,
+          "gz_size": 516828,
+          "gzip_only": 1
         },
         "content/2_0_1_0.glb": {
-          "offset": 27407035,
-          "size": 1049196,
-          "gz_offset": 28456283,
-          "gz_size": 711060
+          "offset": 1478118,
+          "size": 270709,
+          "gz_offset": 1478118,
+          "gz_size": 270709,
+          "gzip_only": 1
         },
         "content/2_1_1_0.glb": {
-          "offset": 29167392,
-          "size": 5819812,
-          "gz_offset": 34987256,
-          "gz_size": 3307850
+          "offset": 1748879,
+          "size": 446415,
+          "gz_offset": 1748879,
+          "gz_size": 446415,
+          "gzip_only": 1
         },
         "content/2_1_0_1.glb": {
-          "offset": 38295155,
-          "size": 1335712,
-          "gz_offset": 39630919,
-          "gz_size": 834604
+          "offset": 2195346,
+          "size": 355743,
+          "gz_offset": 2195346,
+          "gz_size": 355743,
+          "gzip_only": 1
         },
         "content/2_0_1_1.glb": {
-          "offset": 40465572,
-          "size": 368944,
-          "gz_offset": 40834568,
-          "gz_size": 302328
+          "offset": 2551141,
+          "size": 302328,
+          "gz_offset": 2551141,
+          "gz_size": 302328,
+          "gzip_only": 1
         },
         "content/2_1_1_1.glb": {
-          "offset": 41136945,
-          "size": 2683492,
-          "gz_offset": 43820489,
-          "gz_size": 1562664
+          "offset": 2853521,
+          "size": 387013,
+          "gz_offset": 2853521,
+          "gz_size": 387013,
+          "gzip_only": 1
         },
         "preview_tileset.json": {
-          "offset": 45383203,
-          "size": 2655,
-          "gz_offset": 45385911,
-          "gz_size": 526
+          "offset": 3240587,
+          "size": 526,
+          "gz_offset": 3240587,
+          "gz_size": 526,
+          "gzip_only": 1
         },
         "preview_low/content/1_1_0_0.glb": {
-          "offset": 45386498,
-          "size": 1551080,
-          "gz_offset": 46937642,
-          "gz_size": 1351580
+          "offset": 3241177,
+          "size": 1351580,
+          "gz_offset": 3241177,
+          "gz_size": 1351580,
+          "gzip_only": 1
         },
         "preview_low/content/1_0_1_0.glb": {
-          "offset": 48289283,
-          "size": 1391476,
-          "gz_offset": 49680823,
-          "gz_size": 1212676
+          "offset": 4592821,
+          "size": 1212676,
+          "gz_offset": 4592821,
+          "gz_size": 1212676,
+          "gzip_only": 1
         },
         "preview_low/content/1_1_1_0.glb": {
-          "offset": 50893560,
-          "size": 1550840,
-          "gz_offset": 52444464,
-          "gz_size": 1359586
+          "offset": 5805561,
+          "size": 1359586,
+          "gz_offset": 5805561,
+          "gz_size": 1359586,
+          "gzip_only": 1
         },
         "preview_low/content/2_0_1_0.glb": {
-          "offset": 53804111,
-          "size": 993116,
-          "gz_offset": 54797291,
-          "gz_size": 654411
+          "offset": 7165211,
+          "size": 654411,
+          "gz_offset": 7165211,
+          "gz_size": 654411,
+          "gzip_only": 1
         },
         "preview_low/content/2_1_1_0.glb": {
-          "offset": 55451763,
-          "size": 1447752,
-          "gz_offset": 56899579,
-          "gz_size": 1256785
+          "offset": 7819686,
+          "size": 1256785,
+          "gz_offset": 7819686,
+          "gz_size": 1256785,
+          "gzip_only": 1
         },
         "preview_low/content/2_1_0_1.glb": {
-          "offset": 58156425,
-          "size": 418180,
-          "gz_offset": 58574669,
-          "gz_size": 385760
+          "offset": 9076535,
+          "size": 385760,
+          "gz_offset": 9076535,
+          "gz_size": 385760,
+          "gzip_only": 1
         },
         "preview_low/content/2_0_1_1.glb": {
-          "offset": 58960490,
-          "size": 324236,
-          "gz_offset": 59284790,
-          "gz_size": 257398
+          "offset": 9462359,
+          "size": 257398,
+          "gz_offset": 9462359,
+          "gz_size": 257398,
+          "gzip_only": 1
         },
         "preview_low/content/2_1_1_1.glb": {
-          "offset": 59542249,
-          "size": 520672,
-          "gz_offset": 60062985,
-          "gz_size": 493897
+          "offset": 9719821,
+          "size": 493897,
+          "gz_offset": 9719821,
+          "gz_size": 493897,
+          "gzip_only": 1
         },
         "thumbnail.png": {
-          "offset": 60556925,
+          "offset": 10213761,
           "size": 513160
         }
       },
       "file_id": "1yL4EDLdYMxwo9-d28MbzMW1T3NlRYGml",
       "my_drive_file_id": "1Ou-pqZhTR5VsRzgYE6vlf5EdSPU8-87E"
     }
-  }
+  },
+  "vps_synced": true
 }
