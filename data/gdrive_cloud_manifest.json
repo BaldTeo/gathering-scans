@@ -1,5 +1,5 @@
 {
-  "updated_at": 1792243383,
+  "updated_at": 1792244302,
   "shared_drive_dir": "G:\\Shared drives\\6.軟體\\3. GatheringScans\\StreamPackages",
   "my_drive_dir": "G:\\My Drive\\Scans\\StreamPackages",
   "shared_drive_folder_id": "1scUD9IQWsAJjg296pecxFYqhoVm4mpjs",
@@ -37,12 +37,12 @@
       "stage_label": "Processed -> catch_QuChi261016 (TWD97 + TWVD2001, 2K)",
       "bypass_count": 0,
       "force_next": 0,
-      "priority_score": 1000001878.446,
+      "priority_score": 1000001893.918,
       "notes": "Dynamically loaded from C:\\GatheringScans\\catch_QuChi261016",
       "user_edited_name": 0,
       "bounding_box": {},
       "size_mb": 34268.27,
-      "wait_minutes": 1878.4,
+      "wait_minutes": 1893.9,
       "comment_count": 0
     },
     {
@@ -77,7 +77,7 @@
       "stage_label": "Completed (TWD97 + TWVD2001, 2K Web Tileset)",
       "bypass_count": 0,
       "force_next": 0,
-      "priority_score": 1000000293.654,
+      "priority_score": 1000000309.125,
       "notes": "Dynamically loaded from C:\\GatheringScans\\QuChi261016_Trees",
       "user_edited_name": 1,
       "bounding_box": {
@@ -93,7 +93,7 @@
         ]
       },
       "size_mb": 506.79,
-      "wait_minutes": 654.7,
+      "wait_minutes": 670.1,
       "comment_count": 0
     },
     {
@@ -128,7 +128,7 @@
       "stage_label": "Completed (TWD97 + TWVD2001, 2K Web Tileset)",
       "bypass_count": 0,
       "force_next": 0,
-      "priority_score": 1000001770.445,
+      "priority_score": 1000001785.917,
       "notes": "Dynamically loaded from C:\\GatheringScans\\QuChi_20261015-obj_mesh",
       "user_edited_name": 1,
       "bounding_box": {
@@ -144,7 +144,7 @@
         ]
       },
       "size_mb": 128.83,
-      "wait_minutes": 1774.8,
+      "wait_minutes": 1790.3,
       "comment_count": 0
     },
     {
@@ -179,7 +179,7 @@
       "stage_label": "Completed (TWD97 + TWVD2001, 2K Web Tileset)",
       "bypass_count": 0,
       "force_next": 0,
-      "priority_score": 1000001770.442,
+      "priority_score": 1000001785.913,
       "notes": "Dynamically loaded from C:\\GatheringScans\\QuChi_20261015-cesium_mesh",
       "user_edited_name": 0,
       "bounding_box": {
@@ -195,7 +195,7 @@
         ]
       },
       "size_mb": 55.11,
-      "wait_minutes": 1770.5,
+      "wait_minutes": 1785.9,
       "comment_count": 0
     },
     {
@@ -230,7 +230,7 @@
       "stage_label": "Completed (TWD97 + TWVD2001, 2K Web Tileset)",
       "bypass_count": 0,
       "force_next": 0,
-      "priority_score": 1000002877.049,
+      "priority_score": 1000002892.521,
       "notes": "Merged from 3 PIX4Dcatch RTK walks in G:\\My Drive\\SCANS TEST (15-19-27, 15-37-05, 15-43-55). Converted to TWD97 (121) + TWVD2001 with 2K textures.",
       "user_edited_name": 0,
       "bounding_box": {
@@ -246,7 +246,7 @@
         ]
       },
       "size_mb": 109.91,
-      "wait_minutes": 8014.9,
+      "wait_minutes": 8030.4,
       "comment_count": 2
     },
     {
@@ -281,7 +281,7 @@
       "stage_label": "Completed (TWD97 + TWVD2001, 2K Web Tileset)",
       "bypass_count": 0,
       "force_next": 0,
-      "priority_score": 1000002877.057,
+      "priority_score": 1000002892.528,
       "notes": "High-density sector 3 photogrammetry mesh of QuChi Dam spillway.",
       "user_edited_name": 0,
       "bounding_box": {
@@ -297,7 +297,7 @@
         ]
       },
       "size_mb": 70.76,
-      "wait_minutes": 2877.1,
+      "wait_minutes": 2892.5,
       "comment_count": 0
     },
     {
@@ -332,7 +332,7 @@
       "stage_label": "Completed (TWD97 + TWVD2001, 2K Web Tileset)",
       "bypass_count": 0,
       "force_next": 0,
-      "priority_score": 1000002877.048,
+      "priority_score": 1000002892.519,
       "notes": "Baseline epoch prior to October earthwork and revetment concrete pour.",
       "user_edited_name": 0,
       "bounding_box": {
@@ -348,7 +348,7 @@
         ]
       },
       "size_mb": 91.93,
-      "wait_minutes": 28174.9,
+      "wait_minutes": 28190.4,
       "comment_count": 0
     },
     {
@@ -383,7 +383,7 @@
       "stage_label": "Completed (TWD97 + TWVD2001, 2K Web Tileset)",
       "bypass_count": 0,
       "force_next": 0,
-      "priority_score": 1000002877.059,
+      "priority_score": 1000002892.53,
       "notes": "Merged scan of Rose Park landscape grading and drainage trenching.",
       "user_edited_name": 0,
       "bounding_box": {
@@ -399,7 +399,7 @@
         ]
       },
       "size_mb": 65.23,
-      "wait_minutes": 32494.9,
+      "wait_minutes": 32510.4,
       "comment_count": 1
     },
     {
@@ -434,7 +434,7 @@
       "stage_label": "Completed (TWD97 + TWVD2001, 2K Web Tileset)",
       "bypass_count": 0,
       "force_next": 0,
-      "priority_score": 1000002877.057,
+      "priority_score": 1000002892.528,
       "notes": "Initial excavation trench scan at Rose Park East sector.",
       "user_edited_name": 0,
       "bounding_box": {
@@ -450,7 +450,7 @@
         ]
       },
       "size_mb": 42.06,
-      "wait_minutes": 33934.9,
+      "wait_minutes": 33950.4,
       "comment_count": 0
     },
     {
@@ -485,7 +485,7 @@
       "stage_label": "Completed (TWD97 + TWVD2001, 2K Web Tileset)",
       "bypass_count": 0,
       "force_next": 0,
-      "priority_score": 1000002877.044,
+      "priority_score": 1000002892.516,
       "notes": "Excavation progress and soldier pile wall survey at NTU Dorm site.",
       "user_edited_name": 0,
       "bounding_box": {
@@ -501,7 +501,7 @@
         ]
       },
       "size_mb": 56.17,
-      "wait_minutes": 34654.9,
+      "wait_minutes": 34670.4,
       "comment_count": 0
     },
     {
@@ -536,7 +536,7 @@
       "stage_label": "Completed (TWD97 + TWVD2001, 2K Web Tileset)",
       "bypass_count": 0,
       "force_next": 0,
-      "priority_score": 1000002877.043,
+      "priority_score": 1000002892.514,
       "notes": "Baseline perimeter survey prior to retaining wall excavation.",
       "user_edited_name": 0,
       "bounding_box": {
@@ -552,7 +552,7 @@
         ]
       },
       "size_mb": 40.82,
-      "wait_minutes": 36983.4,
+      "wait_minutes": 36998.9,
       "comment_count": 0
     }
   ],
@@ -788,8 +788,8 @@
           "size": 226797
         }
       },
-      "file_id": "",
-      "my_drive_file_id": ""
+      "file_id": "1C8AY15uKDPFw4DcaFK7snO0SbGFOerQb",
+      "my_drive_file_id": "1Q-X3EkH1Zh76fnLop8-qHOMG3ijCJG1n"
     },
     "QuChi261016_Trees": {
       "scan_id": "QuChi261016_Trees",
@@ -822,8 +822,8 @@
           "size": 204561
         }
       },
-      "file_id": "",
-      "my_drive_file_id": ""
+      "file_id": "1_UkJUkIHOlsqxu6oPJPBQQzCAFsyTXVN",
+      "my_drive_file_id": "1m9ByeyMIwHlKXXZxT5rDGcgiu6gbmi1F"
     },
     "quchi_20261015_obj_mesh": {
       "scan_id": "quchi_20261015_obj_mesh",
@@ -856,8 +856,8 @@
           "size": 265060
         }
       },
-      "file_id": "",
-      "my_drive_file_id": ""
+      "file_id": "1_EuSnk4pwyiBNTygEOLtY1vur1Yz7ssM",
+      "my_drive_file_id": "1-4SRFkfeaBbMMnEGlfzmPZFaa1su1xsn"
     },
     "quchi_20261015_cesium_mesh": {
       "scan_id": "quchi_20261015_cesium_mesh",
@@ -894,8 +894,8 @@
           "size": 271718
         }
       },
-      "file_id": "",
-      "my_drive_file_id": ""
+      "file_id": "1EiloXFgLjCTlsal3DOL4Kqyot493FQRR",
+      "my_drive_file_id": "1FvXb1_hN95gACvfDWmg0YBRds2EXE1mm"
     },
     "quchi_20261005_merged": {
       "scan_id": "quchi_20261005_merged",
@@ -928,8 +928,8 @@
           "size": 490984
         }
       },
-      "file_id": "",
-      "my_drive_file_id": ""
+      "file_id": "1w93SemIOkwtMcSmkw7DtUx7SpgrWIIbd",
+      "my_drive_file_id": "1ZGFD-VaZa6AkCub7LtRWmU659QPtY2rh"
     },
     "quchi_20261005_sector3": {
       "scan_id": "quchi_20261005_sector3",
@@ -1356,8 +1356,8 @@
           "size": 382454
         }
       },
-      "file_id": "",
-      "my_drive_file_id": ""
+      "file_id": "1NlelcStJq0TCD0AFEHCULEXk4CzX84R0",
+      "my_drive_file_id": "1d8XtQFDQHwDp3aofCNsoelJqkogRSQ_h"
     },
     "quchi_20260921_epoch": {
       "scan_id": "quchi_20260921_epoch",
@@ -1482,8 +1482,8 @@
           "size": 6700
         }
       },
-      "file_id": "",
-      "my_drive_file_id": ""
+      "file_id": "19J4iLIx5P39s6v2N2TmoZLHYxrYlnOVh",
+      "my_drive_file_id": "1TD1EDBwX3KqskXtxT-qMbiQDE0Np_wtG"
     },
     "rosepark_20260918_merged": {
       "scan_id": "rosepark_20260918_merged",
@@ -1628,8 +1628,8 @@
           "size": 323981
         }
       },
-      "file_id": "",
-      "my_drive_file_id": ""
+      "file_id": "1c-CLT-FgCpGKtdU__gtzk6YxNypR1wFv",
+      "my_drive_file_id": "1l2TgRbn1JIZckaiyC6KNisX36WtdxVc5"
     },
     "rosepark_20260917_east": {
       "scan_id": "rosepark_20260917_east",
@@ -1726,8 +1726,8 @@
           "size": 264451
         }
       },
-      "file_id": "",
-      "my_drive_file_id": ""
+      "file_id": "1esXVTu7lvTIyFqTVtP5wgmyAD1xX4GrV",
+      "my_drive_file_id": "1fzOLlJneq1ABCbc1su-FWRWHHfyUNpiO"
     },
     "ntudorm_20260917_foundation": {
       "scan_id": "ntudorm_20260917_foundation",
@@ -1848,8 +1848,8 @@
           "size": 513160
         }
       },
-      "file_id": "",
-      "my_drive_file_id": ""
+      "file_id": "1Lra6yRBNZU-zGycOsIilT7U_njsLSEXs",
+      "my_drive_file_id": "1XG_yQOxn8apjs-VsF_fHxwzHdBYvaoxj"
     },
     "ntudorm_20260915_baseline": {
       "scan_id": "ntudorm_20260915_baseline",
@@ -1970,8 +1970,9 @@
           "size": 513160
         }
       },
-      "file_id": "",
-      "my_drive_file_id": ""
+      "file_id": "1yL4EDLdYMxwo9-d28MbzMW1T3NlRYGml",
+      "my_drive_file_id": "1Ou-pqZhTR5VsRzgYE6vlf5EdSPU8-87E"
     }
-  }
+  },
+  "vps_synced": true
 }
