@@ -650,13 +650,19 @@
     document.getElementById("popoverGroupSubtitle").textContent =
       `${grp.project_name_zh || "工程掃描群組"} · TWD97 (121) + TWVD2001`;
 
-    // Unified 3-Pane Workbench: always keep Top-Right Timeline Cards + Bottom-Right 3D Preview synced with selected site
-    openSiteTimeline(grp.project_group, STATE.activeScanId || (sortedScans[0] ? sortedScans[0].scan_id : null));
+    // Unified 3-Pane Workbench: keep Top-Right Timeline Cards + Bottom-Right 3D Preview synced when on Map view
+    if (STATE.activeView === "map" || !document.getElementById("siteTimelineTilesTrack")?.children.length) {
+      openSiteTimeline(
+        grp.project_group,
+        STATE.selectedTimelineScanId || STATE.activeScanId || (sortedScans[0] ? sortedScans[0].scan_id : null),
+        false
+      );
+    }
 
     const btnOpenTimeline = document.getElementById("btnPopoverOpenTimeline");
     if (btnOpenTimeline) {
       btnOpenTimeline.onclick = () => {
-        openSiteTimeline(grp.project_group, STATE.activeScanId || (sortedScans[0] ? sortedScans[0].scan_id : null));
+        openSiteTimeline(grp.project_group, STATE.activeScanId || (sortedScans[0] ? sortedScans[0].scan_id : null), true);
       };
     }
 
@@ -1335,7 +1341,7 @@
     loadScanIntoPreview(scanId);
   }
 
-  function openSiteTimeline(projectGroup, preferredScanId = null) {
+  function openSiteTimeline(projectGroup, preferredScanId = null, forceSwitchToMap = false) {
     const splitEl = document.getElementById("siteTimelineSplitView");
     if (!splitEl) return;
 
@@ -1352,16 +1358,18 @@
     STATE.activeProjectGroup = grpName;
     STATE.siteTimelineOpen = true;
 
-    // Ensure Map view container is active
-    if (STATE.activeView !== "map") {
+    // Only switch back to Map view if explicitly requested by user navigation
+    if (forceSwitchToMap && STATE.activeView !== "map") {
       switchView("map");
     }
     splitEl.classList.add("active");
     document.querySelectorAll(".scan-cluster-blob").forEach((b) => {
       b.classList.toggle("active-cluster", b.dataset.projectGroup === grpName);
     });
-    syncPreviewRendererContainer();
-    if (gsMap && gsMap.drawMap) gsMap.drawMap();
+    if (STATE.activeView === "map") {
+      syncPreviewRendererContainer();
+      if (gsMap && gsMap.drawMap) gsMap.drawMap();
+    }
 
     let siteScans = STATE.scans
       .filter((s) => s.project_group === grpName)
@@ -1455,11 +1463,13 @@
       });
     }
 
-    // Render 3D Scan Preview in Bottom 2/3
-    if (chosenScan) {
+    // Render 3D Scan Preview in Bottom 2/3 when on Map view
+    if (chosenScan && STATE.activeView === "map") {
       STATE._timelineInitTimer = setTimeout(() => {
         STATE._timelineInitTimer = null;
-        selectTimelineTile(chosenScan.scan_id);
+        if (STATE.activeView === "map") {
+          selectTimelineTile(chosenScan.scan_id);
+        }
       }, 30);
     }
   }
@@ -1591,7 +1601,7 @@
   document.getElementById("btnRightPreviewResetCamera")?.addEventListener("click", framePreviewCamera);
 
   document.getElementById("btnStudioBackToTimeline")?.addEventListener("click", () => {
-    openSiteTimeline(STATE.activeProjectGroup, STATE.activeScanId);
+    openSiteTimeline(STATE.activeProjectGroup, STATE.activeScanId, true);
   });
 
   document.getElementById("btnCapturePreviewScreenshot")?.addEventListener("click", () => {
@@ -1639,6 +1649,9 @@
     if (!mat) return;
     const b = Math.max(0.1, Math.min(4.0, Number(brightness) || 1.0));
     if (!mat.userData) mat.userData = {};
+    if (mat.map && mat.color) {
+      mat.color.setRGB(1, 1, 1);
+    }
     if (mat.color && !mat.userData._origColor) {
       mat.userData._origColor = mat.color.clone();
     }
@@ -2144,11 +2157,13 @@
 
     const targets = [];
     studioThree.modelPivot.traverse((c) => {
-      if (c.isMesh) targets.push(c);
+      if (c.isMesh && c.visible) targets.push(c);
     });
-    studioThree.fallbackGroup.traverse((c) => {
-      if (c.isMesh) targets.push(c);
-    });
+    if (studioThree.fallbackGroup && studioThree.fallbackGroup.visible) {
+      studioThree.fallbackGroup.traverse((c) => {
+        if (c.isMesh && c.visible) targets.push(c);
+      });
+    }
 
     const hits = studioThree.raycaster.intersectObjects(targets, true);
     if (hits.length > 0) {
@@ -2660,6 +2675,28 @@
       return;
     }
 
+    if (tool === "profile") {
+      STATE.measurePoints.push(pt.clone());
+      add3DPinMarker(pt, STATE.measurePoints.length === 1 ? 0xff3b30 : 0x0284c7);
+      if (STATE.measurePoints.length === 1) {
+        showToast("Cross-Section Start A placed — click End Point B on the 3D scan");
+      } else if (STATE.measurePoints.length >= 2) {
+        const [p1, p2] = STATE.measurePoints;
+        const lineGeom = new THREE.BufferGeometry().setFromPoints([p1, p2]);
+        const lineMesh = new THREE.Line(
+          lineGeom,
+          new THREE.LineBasicMaterial({ color: 0x0284c7, linewidth: 2, depthTest: false })
+        );
+        lineMesh.renderOrder = 1001;
+        studioThree.overlayGroup.add(lineMesh);
+        add2DBadge(p1, `Section A`, "#ff3b30");
+        add2DBadge(p2, `Section B (${p1.distanceTo(p2).toFixed(1)}m)`, "#0284c7");
+        STATE.measurePoints = [];
+        openProfileInspector(p1, p2);
+      }
+      return;
+    }
+
     if (tool === "contours") {
       if (STATE.measurePoints.length >= 3 && pt.distanceTo(STATE.measurePoints[0]) < 1.8) {
         if (studioThree && studioThree.polyPreviewGroup) {
@@ -2688,13 +2725,12 @@
     }
   }
 
-  // Draw the user's placed Cut/Fill vertices, boundary lines, and 3D extruded prism in studioThree.volumeGroup (Fix #1)
+  // Draw the user's placed Cut/Fill vertices, boundary lines, and real DSM 3D cut/fill columns in studioThree.volumeGroup
   function drawPlacedCutFillPolygon3D(pts, volumeRes = null) {
     if (!studioThree || !studioThree.volumeGroup) return;
     clearVolumeVisualsOnly();
 
     if (!pts || !pts.length) {
-      // Default stockpile visualization when user clicked Compute in panel without placing custom points yet
       if (volumeRes) {
         const defaultPts = [
           new THREE.Vector3(-9.5, 0.3, -8.5),
@@ -2744,38 +2780,103 @@
 
     if (pts.length < 3) return;
 
-    // 3. 3D Triangulated Cut/Fill Surface & Datum Base Prism over user's picked points
-    const minY = Math.min(...pts.map((p) => p.y)) - 0.35;
+    const minY = Math.min(...pts.map((p) => p.y)) - 0.15;
     const maxY = Math.max(...pts.map((p) => p.y));
     const centroid = pts.reduce((acc, p) => acc.add(p.clone()), new THREE.Vector3()).divideScalar(pts.length);
-    const apex = new THREE.Vector3(centroid.x, maxY + 0.85, centroid.z);
 
-    // Top fan surface + vertical skirts down to minY datum plane
-    const positions = [];
-    for (let i = 0; i < pts.length; i++) {
-      const a = pts[i];
-      const b = pts[(i + 1) % pts.length];
-      // Top surface triangle (a, b, apex)
-      positions.push(a.x, a.y + 0.04, a.z, b.x, b.y + 0.04, b.z, apex.x, apex.y, apex.z);
-      // Vertical datum wall quad (2 triangles)
-      positions.push(a.x, minY, a.z, b.x, minY, b.z, b.x, b.y + 0.04, b.z);
-      positions.push(a.x, minY, a.z, b.x, b.y + 0.04, b.z, a.x, a.y + 0.04, a.z);
+    // 3. Render real DSM Cut/Fill columns when heatmap_cells are returned by the backend
+    const cells = volumeRes && Array.isArray(volumeRes.heatmap_cells) ? volumeRes.heatmap_cells : [];
+    if (cells.length > 0) {
+      const fillPositions = [];
+      const cutPositions = [];
+      const halfStep = 0.28;
+      cells.forEach((c) => {
+        const x = Number(c.lx || 0);
+        const z = Number(c.lz || 0);
+        const ySurf = Number(c.ly_surf || 0) + 0.03;
+        const yBase = Number(c.ly_base || 0);
+        const dz = Number(c.dz || 0);
+        if (Math.abs(dz) < 0.02) return;
+        const targetArr = dz >= 0 ? fillPositions : cutPositions;
+        // Top quad at ySurf
+        targetArr.push(
+          x - halfStep, ySurf, z - halfStep,
+          x + halfStep, ySurf, z - halfStep,
+          x + halfStep, ySurf, z + halfStep,
+          x - halfStep, ySurf, z - halfStep,
+          x + halfStep, ySurf, z + halfStep,
+          x - halfStep, ySurf, z + halfStep
+        );
+        // Vertical stem quad
+        targetArr.push(
+          x - halfStep * 0.4, yBase, z,
+          x + halfStep * 0.4, yBase, z,
+          x + halfStep * 0.4, ySurf, z,
+          x - halfStep * 0.4, yBase, z,
+          x + halfStep * 0.4, ySurf, z,
+          x - halfStep * 0.4, ySurf, z
+        );
+      });
+      if (fillPositions.length > 0) {
+        const fillGeo = new THREE.BufferGeometry();
+        fillGeo.setAttribute("position", new THREE.Float32BufferAttribute(fillPositions, 3));
+        fillGeo.computeVertexNormals();
+        const fillMesh = new THREE.Mesh(
+          fillGeo,
+          new THREE.MeshStandardMaterial({
+            color: 0x0284c7,
+            transparent: true,
+            opacity: 0.48,
+            side: THREE.DoubleSide,
+            depthWrite: false,
+          })
+        );
+        fillMesh.renderOrder = 995;
+        studioThree.volumeGroup.add(fillMesh);
+      }
+      if (cutPositions.length > 0) {
+        const cutGeo = new THREE.BufferGeometry();
+        cutGeo.setAttribute("position", new THREE.Float32BufferAttribute(cutPositions, 3));
+        cutGeo.computeVertexNormals();
+        const cutMesh = new THREE.Mesh(
+          cutGeo,
+          new THREE.MeshStandardMaterial({
+            color: 0xef4444,
+            transparent: true,
+            opacity: 0.48,
+            side: THREE.DoubleSide,
+            depthWrite: false,
+          })
+        );
+        cutMesh.renderOrder = 995;
+        studioThree.volumeGroup.add(cutMesh);
+      }
+    } else {
+      // Initial boundary triangulation while awaiting backend DSM response
+      const positions = [];
+      for (let i = 0; i < pts.length; i++) {
+        const a = pts[i];
+        const b = pts[(i + 1) % pts.length];
+        positions.push(a.x, a.y + 0.04, a.z, b.x, b.y + 0.04, b.z, centroid.x, centroid.y + 0.04, centroid.z);
+        positions.push(a.x, minY, a.z, b.x, minY, b.z, b.x, b.y + 0.04, b.z);
+        positions.push(a.x, minY, a.z, b.x, b.y + 0.04, b.z, a.x, a.y + 0.04, a.z);
+      }
+      const prismGeo = new THREE.BufferGeometry();
+      prismGeo.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+      prismGeo.computeVertexNormals();
+      const prismMesh = new THREE.Mesh(
+        prismGeo,
+        new THREE.MeshStandardMaterial({
+          color: 0x0284c7,
+          transparent: true,
+          opacity: 0.35,
+          side: THREE.DoubleSide,
+          depthWrite: false,
+        })
+      );
+      prismMesh.renderOrder = 995;
+      studioThree.volumeGroup.add(prismMesh);
     }
-
-    const prismGeo = new THREE.BufferGeometry();
-    prismGeo.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
-    prismGeo.computeVertexNormals();
-
-    const prismMat = new THREE.MeshStandardMaterial({
-      color: 0x0284c7,
-      transparent: true,
-      opacity: 0.44,
-      side: THREE.DoubleSide,
-      depthWrite: false,
-    });
-    const prismMesh = new THREE.Mesh(prismGeo, prismMat);
-    prismMesh.renderOrder = 995;
-    studioThree.volumeGroup.add(prismMesh);
 
     // Base datum outline
     const baseLoopPts = [...pts.map((p) => new THREE.Vector3(p.x, minY, p.z)), new THREE.Vector3(pts[0].x, minY, pts[0].z)];
@@ -3372,12 +3473,12 @@
   }
 
   // 3C. Cross-Section Elevation Profile Graph
-  async function openProfileInspector() {
+  async function openProfileInspector(p1 = null, p2 = null) {
     showSidePanel(
       `<span>Cross-Section Profile</span>`,
       `
       <p style="font-size:11.5px;color:var(--ui-text-secondary);margin-bottom:10px;">
-        Compares TWVD2001 elevation profile along the section line between active scan and baseline epoch.
+        Click <b>2 points</b> on the 3D scan with the Profile tool to sample TWVD2001 elevation along your custom section line.
       </p>
       <canvas id="profileChartCanvas" width="330" height="180" style="width:100%;background:var(--ui-bg-subtle);border:1px solid var(--ui-border-strong);border-radius:8px;"></canvas>
       <div class="gs-metric-grid" id="profileMetricsBox"></div>
@@ -3385,7 +3486,14 @@
     );
 
     try {
-      const res = await apiPost("/api/survey/profile", { scan_id: STATE.activeScanId });
+      const payload = { scan_id: STATE.activeScanId };
+      if (p1 && p2) {
+        const t1 = localToTwd97(p1);
+        const t2 = localToTwd97(p2);
+        payload.start_pt = [t1.e, t1.n];
+        payload.end_pt = [t2.e, t2.n];
+      }
+      const res = await apiPost("/api/survey/profile", payload);
       STATE.lastProfileResult = res;
       drawProfileCanvas(res);
     } catch (err) {
@@ -3682,20 +3790,19 @@
     document.getElementById("btnExecuteOptimize")?.addEventListener("click", async () => {
       const preset = document.getElementById("optPresetSelect")?.value || "balanced";
       const box = document.getElementById("optActionResult");
-      if (box) box.innerHTML = `<div style="font-size:12px;color:var(--ui-accent);">Running GC_ScanOptimizer (${preset})...</div>`;
+      if (box) box.innerHTML = `<div style="font-size:12px;color:var(--ui-accent);">Running GC_ScanOptimizer (${preset}) on real .GLB tiles...</div>`;
       try {
         const res = await apiPost("/api/optimizer/optimize", {
           scan_id: STATE.activeScanId,
           preset,
-          fast_mode: true,
         });
         if (box) {
           box.innerHTML = `
             <div style="background:var(--ui-bg-subtle);border:1px solid var(--ui-border-strong);border-radius:8px;padding:10px;font-size:12px;color:var(--ui-text-primary);">
               <div style="color:var(--ui-accent);font-weight:700;">GC_ScanOptimizer Completed (${res.duration_s}s)</div>
-              <div style="margin-top:4px;">Preset: <b>${res.preset}</b> (Max Texture: ${res.texture_limit}px)</div>
+              <div style="margin-top:4px;">Preset: <b>${res.preset}</b> (Max Texture: ${res.texture_limit}px · ${res.tiles_processed || 0} tiles)</div>
               <div>Size: ${res.original_mb} MB → <b>${res.compressed_mb} MB (-${res.reduction_pct}%)</b></div>
-              <div style="font-size:10.5px;color:var(--ui-text-muted);margin-top:3px;">CRS: ${res.crs}</div>
+              <div style="font-size:10.5px;color:var(--ui-text-muted);margin-top:3px;">Output: ${res.output_dir || ""}</div>
             </div>
           `;
         }
@@ -3708,19 +3815,31 @@
     document.getElementById("btnExecuteCrop")?.addEventListener("click", async () => {
       const mode = document.getElementById("optCropMode")?.value || "keep_inside";
       const box = document.getElementById("optActionResult");
+      if (box) box.innerHTML = `<div style="font-size:12px;color:var(--ui-accent);">Running SpatialCutter (${mode}) on real 3D mesh tiles...</div>`;
+      const activePolyPts =
+        STATE.maskBoundaryPoints && STATE.maskBoundaryPoints.length >= 3
+          ? STATE.maskBoundaryPoints
+          : STATE.measurePoints && STATE.measurePoints.length >= 3
+          ? STATE.measurePoints
+          : null;
+      const polyPayload = activePolyPts
+        ? activePolyPts.map((p) => {
+            const t = localToTwd97(p);
+            return [t.e, t.n];
+          })
+        : [[-15, -15], [15, -15], [15, 15], [-15, 15]];
       try {
         const res = await apiPost("/api/optimizer/crop", {
           scan_id: STATE.activeScanId,
           mode,
-          polygon: [[-15, -15], [15, -15], [15, 15], [-15, 15]],
-          min_elev: 35.0,
-          max_elev: 55.0,
+          polygon: polyPayload,
         });
         if (box) {
           box.innerHTML = `
             <div style="background:var(--ui-bg-subtle);border:1px solid var(--ui-border-strong);border-radius:8px;padding:10px;font-size:12px;color:var(--ui-text-primary);">
               <div style="color:var(--ui-accent);font-weight:700;">SpatialCutter Completed (${res.duration_s}s)</div>
               <div>Mode: <b>${res.mode}</b> · Area: <b>${res.cropped_area_m2} m²</b></div>
+              <div>Tiles Sliced: <b>${res.tiles_sliced || 0}</b> · Pruned: <b>${res.tiles_pruned || 0}</b></div>
               <div style="font-size:10.5px;color:var(--ui-text-muted);">Output: ${res.output_dir}</div>
             </div>
           `;
@@ -4534,15 +4653,29 @@
           <td><span class="gs-crs-pill">${s.crs} · ${s.texture_resolution}px</span></td>
           <td style="font-family:monospace;font-weight:700;color:var(--ui-text-primary);">${s.priority_score}</td>
           <td>${statusHtml}</td>
-          <td>
+          <td style="display:flex;gap:4px;">
             <button type="button" class="btn-xs" data-gst="${s.scan_id}" title="Preview .GST Script">
               <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8">
                 <polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/>
               </svg>
             </button>
+            <button type="button" class="btn-xs" data-reprocess="${s.scan_id}" title="Enqueue for Autonomous PIX4Dmatic Processing">
+              <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8">
+                <polygon points="5 3 19 12 5 21 5 3"/>
+              </svg>
+            </button>
           </td>
         `;
         tr.querySelector("[data-gst]")?.addEventListener("click", () => previewGstForScan(s.scan_id));
+        tr.querySelector("[data-reprocess]")?.addEventListener("click", async () => {
+          try {
+            await apiPost("/api/queue/enqueue", { scan_id: s.scan_id });
+            showToast(`Enqueued ${s.name} for autonomous PIX4Dmatic processing`);
+            await refreshQueueModalData();
+          } catch (err) {
+            showToast(`Queue Error: ${err.message}`);
+          }
+        });
         tbody.appendChild(tr);
       });
     } catch (err) {
@@ -5348,7 +5481,12 @@
       ) {
         return;
       }
-      const prevIdsSig = (STATE.scans || []).map((s) => `${s.scan_id}:${s.project_group}`).join("|");
+      const prevCatalogSig = (STATE.scans || [])
+        .map(
+          (s) =>
+            `${s.scan_id}:${s.name}:${s.project_group}:${s.status}:${Math.round(s.progress_pct || 0)}:${s.stream_url || ""}:${s.preview_stream_url || ""}`
+        )
+        .join("|");
       const data = await apiGet("/api/scans");
       const incomingScans = Array.isArray(data.scans) ? data.scans : [];
 
@@ -5400,11 +5538,22 @@
         document.getElementById("btnOpenOptimizer").style.display = "none";
       }
 
-      // Dynamically resolve initial project & scan from URL params or discovered scans
+      const nextCatalogSig = (STATE.scans || [])
+        .map(
+          (s) =>
+            `${s.scan_id}:${s.name}:${s.project_group}:${s.status}:${Math.round(s.progress_pct || 0)}:${s.stream_url || ""}:${s.preview_stream_url || ""}`
+        )
+        .join("|");
+
+      if (isBackgroundPoll && prevCatalogSig === nextCatalogSig) {
+        return;
+      }
+
+      // Dynamically resolve initial project & scan from URL params on initial load only
       const params = new URLSearchParams(window.location.search);
       const urlProject = params.get("project");
       const urlScan = params.get("scan");
-      if (urlScan && STATE.scans.some((s) => s.scan_id === urlScan)) {
+      if (!isBackgroundPoll && urlScan && STATE.scans.some((s) => s.scan_id === urlScan)) {
         STATE.activeScanId = urlScan;
       } else if (!STATE.activeScanId || !STATE.scans.some((s) => s.scan_id === STATE.activeScanId)) {
         if (STATE.scans.length > 0) {
@@ -5421,7 +5570,7 @@
 
       const activeScanObj =
         STATE.scans.find((s) => s.scan_id === STATE.activeScanId) || STATE.scans[0];
-      if (urlProject && STATE.scans.some((s) => s.project_group === urlProject)) {
+      if (!isBackgroundPoll && urlProject && STATE.scans.some((s) => s.project_group === urlProject)) {
         STATE.activeProjectGroup = urlProject;
       } else if (
         !STATE.activeProjectGroup ||
@@ -5434,9 +5583,8 @@
       populateProjectScanDropdowns(STATE.activeProjectGroup, STATE.activeScanId);
       renderMapClusters();
 
-      const nextIdsSig = (STATE.scans || []).map((s) => `${s.scan_id}:${s.project_group}`).join("|");
-      if (prevIdsSig !== nextIdsSig && STATE.siteTimelineOpen && STATE.scans.length > 0) {
-        openSiteTimeline(STATE.activeProjectGroup, STATE.selectedTimelineScanId);
+      if (prevCatalogSig !== nextCatalogSig && STATE.siteTimelineOpen && STATE.activeView === "map" && STATE.scans.length > 0) {
+        openSiteTimeline(STATE.activeProjectGroup, STATE.selectedTimelineScanId, false);
       }
     } catch (err) {
       if (!STATE.scans || STATE.scans.length === 0) {

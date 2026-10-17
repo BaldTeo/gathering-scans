@@ -171,15 +171,16 @@ def _downscale_glb_textures(raw_bytes: bytes, max_dim: int = 768, jpeg_quality: 
 def build_low_quality_preview_glb(
     src_glb_path: str,
     dst_glb_path: str,
-    target_triangles: int = 24000,
-    max_tex_dim: int = 768,
-    jpeg_quality: int = 80,
-    allow_aggressive: bool = True,
+    target_triangles: int = 100000,
+    max_tex_dim: int = 2048,
+    jpeg_quality: int = 85,
+    allow_aggressive: bool = False,
 ) -> bool:
     """
     Generates a clean, watertight preview GLB from src_glb_path into dst_glb_path.
-    Locks border vertices (-slb) and preserves enough triangles (e.g. 18k-52k) and crisp textures
-    (768px-1024px @ quality 80-82) so the interactive 3D preview looks continuous and detailed.
+    Preserves KHR_mesh_quantization (-vp 14 -vt 14) so large TWD97 coordinates stay in
+    node.translation without float32 precision loss, locks border vertices (-slb), avoids
+    -sa UV-island tearing, and embeds crisp textures (2048px for single-root, 1024px for octree).
     """
     if not os.path.isfile(src_glb_path):
         return False
@@ -190,13 +191,13 @@ def build_low_quality_preview_glb(
             raw_in = f.read()
         orig_tris = _get_glb_triangle_count(raw_in)
         if orig_tris > 0:
-            ratio = min(0.85, max(0.18, float(target_triangles) / float(orig_tris)))
+            ratio = min(1.0, max(0.22, float(target_triangles) / float(orig_tris)))
         else:
-            ratio = 0.30
+            ratio = 1.0
 
         tmp_path = dst_glb_path + ".tmp.glb"
         ran_gltfpack = False
-        if os.path.isfile(GLTFPACK_EXE) and ratio < 0.80:
+        if os.path.isfile(GLTFPACK_EXE) and ratio < 0.85:
             cmd = [
                 GLTFPACK_EXE,
                 "-i",
@@ -207,7 +208,10 @@ def build_low_quality_preview_glb(
                 f"{ratio:.4f}",
                 "-slb",
                 "-sv",
-                "-noq",
+                "-vp",
+                "14",
+                "-vt",
+                "14",
                 "-cc",
             ]
             if allow_aggressive:
@@ -258,7 +262,7 @@ def ensure_scan_low_quality_preview(tileset_path: str, force: bool = False) -> O
         if not force and os.path.isfile(preview_glb) and os.path.getsize(preview_glb) > 256:
             return preview_glb
         if build_low_quality_preview_glb(
-            tileset_path, preview_glb, target_triangles=50000, max_tex_dim=1024, jpeg_quality=82
+            tileset_path, preview_glb, target_triangles=100000, max_tex_dim=2048, jpeg_quality=85
         ):
             return preview_glb
         return tileset_path
@@ -292,47 +296,52 @@ def ensure_scan_low_quality_preview(tileset_path: str, force: bool = False) -> O
     generated_count = 0
 
     if r_uri:
-        # Single-root tileset (Quadtree or single root GLB): keep root node with ~52k tris and 1024px texture
-        src_glb = os.path.join(base_dir, r_uri)
-        rel_clean = r_uri.replace("\\", "/").lstrip("/")
+        # Single-root tileset (Quadtree or single root GLB): keep up to ~110k tris (no -sa seam tearing) and crisp 2048px texture
+        clean_r_uri = r_uri.split("?")[0]
+        src_glb = os.path.join(base_dir, clean_r_uri)
+        rel_clean = clean_r_uri.replace("\\", "/").lstrip("/")
         dst_rel = f"preview_low/{rel_clean}"
         dst_glb = os.path.join(base_dir, dst_rel)
         if build_low_quality_preview_glb(
             src_glb,
             dst_glb,
-            target_triangles=52000,
-            max_tex_dim=1024,
-            jpeg_quality=82,
-            allow_aggressive=True,
+            target_triangles=110000,
+            max_tex_dim=2048,
+            jpeg_quality=85,
+            allow_aggressive=False,
         ):
-            root["content"]["uri"] = dst_rel
+            v_ts = int(os.path.getmtime(dst_glb)) if os.path.isfile(dst_glb) else int(time.time())
+            root["content"]["uri"] = f"{dst_rel}?v={v_ts}"
             generated_count += 1
         root["geometricError"] = 0.0
         root["children"] = []
     else:
         # PIX4Dmatic Cesium octree: traverse up to depth <= 3 to capture every octant branch's first content node
-        # and convert each octant GLB into a watertight preview tile (~18,000 tris, 768px JPEG)
+        # and convert each octant GLB into a watertight preview tile (~24,000 tris, 1024px JPEG, no -sa)
         def _prune_and_convert(node: dict, depth: int = 0) -> bool:
             nonlocal generated_count
             c = node.get("content") or {}
             uri = c.get("uri") if isinstance(c, dict) else None
             if uri:
-                src_glb = os.path.join(base_dir, uri)
-                rel_clean = uri.replace("\\", "/").lstrip("/")
+                clean_uri = uri.split("?")[0]
+                src_glb = os.path.join(base_dir, clean_uri)
+                rel_clean = clean_uri.replace("\\", "/").lstrip("/")
                 dst_rel = f"preview_low/{rel_clean}"
                 dst_glb = os.path.join(base_dir, dst_rel)
                 if os.path.isfile(dst_glb) and not force and os.path.getsize(dst_glb) > 128:
-                    node["content"]["uri"] = dst_rel
+                    v_ts = int(os.path.getmtime(dst_glb))
+                    node["content"]["uri"] = f"{dst_rel}?v={v_ts}"
                     generated_count += 1
                 elif build_low_quality_preview_glb(
                     src_glb,
                     dst_glb,
-                    target_triangles=18000,
-                    max_tex_dim=768,
-                    jpeg_quality=80,
-                    allow_aggressive=True,
+                    target_triangles=24000,
+                    max_tex_dim=1024,
+                    jpeg_quality=82,
+                    allow_aggressive=False,
                 ):
-                    node["content"]["uri"] = dst_rel
+                    v_ts = int(os.path.getmtime(dst_glb)) if os.path.isfile(dst_glb) else int(time.time())
+                    node["content"]["uri"] = f"{dst_rel}?v={v_ts}"
                     generated_count += 1
                 node["geometricError"] = 0.0
                 node["children"] = []

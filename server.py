@@ -53,7 +53,11 @@ from pc_worker.config import (
 )
 from pc_worker.priority_queue import ScanQueueDB
 from pc_worker.gdrive_watcher import seed_and_discover_scans, extract_opf_zip_metadata
-from pc_worker.pix4d_runner import generate_pix4dmatic_gst_script, run_pix4dmatic_pipeline
+from pc_worker.pix4d_runner import (
+    generate_pix4dmatic_gst_script,
+    run_pix4dmatic_pipeline,
+    parse_pix4dmatic_log_progress,
+)
 from pc_worker.optimizer_bridge import OptimizerBridge
 from pc_worker.surveying_engine import SurveyingEngine
 from pc_worker.auth_and_sharing import AuthAndSharingManager
@@ -427,29 +431,47 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
 
     def _serve_optimized_tileset_json(self, ts_path: str):
         try:
+            base_dir = os.path.dirname(ts_path)
+            r_candidate = os.path.join(base_dir, "tiles", "root.glb")
             mtime = os.path.getmtime(ts_path)
+            if os.path.isfile(r_candidate):
+                mtime = max(mtime, os.path.getmtime(r_candidate))
             cached = self._OPTIMIZED_TILESET_CACHE.get(ts_path)
             if cached and cached[0] == mtime:
                 raw_json = cached[1]
             else:
                 with open(ts_path, "r", encoding="utf-8") as f:
                     ts = json.load(f)
-                base_dir = os.path.dirname(ts_path)
                 root = ts.get("root") or {}
                 if not root.get("transform"):
                     ts.setdefault("asset", {})["gltfUpAxis"] = "Z"
                 r_content = root.get("content") or {}
                 r_uri = r_content.get("uri") if isinstance(r_content, dict) else None
                 if r_uri:
-                    r_file = os.path.join(base_dir, r_uri)
+                    clean_r_uri = r_uri.split("?")[0]
+                    r_file = os.path.join(base_dir, clean_r_uri)
+                    if os.path.isfile(r_file):
+                        r_content["uri"] = f"{clean_r_uri}?v={int(os.path.getmtime(r_file))}"
                     if os.path.isfile(r_file) and os.path.getsize(r_file) >= 800_000:
-                        # Root .glb already contains the full-site 2K mesh (~318k triangles)
+                        # Root .glb already contains the full-site mesh (~300k+ triangles)
                         root["geometricError"] = 0.0
                         root["children"] = []
                     else:
                         # Small root .glb (e.g. QuChi_1_20260921): cap at Depth 2
                         for c1 in root.get("children") or []:
+                            c1_c = c1.get("content") or {}
+                            if isinstance(c1_c, dict) and c1_c.get("uri"):
+                                u1 = c1_c["uri"].split("?")[0]
+                                f1 = os.path.join(base_dir, u1)
+                                if os.path.isfile(f1):
+                                    c1_c["uri"] = f"{u1}?v={int(os.path.getmtime(f1))}"
                             for c2 in c1.get("children") or []:
+                                c2_c = c2.get("content") or {}
+                                if isinstance(c2_c, dict) and c2_c.get("uri"):
+                                    u2 = c2_c["uri"].split("?")[0]
+                                    f2 = os.path.join(base_dir, u2)
+                                    if os.path.isfile(f2):
+                                        c2_c["uri"] = f"{u2}?v={int(os.path.getmtime(f2))}"
                                 c2["geometricError"] = 0.0
                                 c2["children"] = []
                 else:
@@ -457,6 +479,10 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
                     def _prune_branch(node: dict, depth: int = 0) -> bool:
                         c = node.get("content") or {}
                         if isinstance(c, dict) and c.get("uri"):
+                            u_clean = c["uri"].split("?")[0]
+                            f_clean = os.path.join(base_dir, u_clean)
+                            if os.path.isfile(f_clean):
+                                c["uri"] = f"{u_clean}?v={int(os.path.getmtime(f_clean))}"
                             node["geometricError"] = 0.0
                             node["children"] = []
                             return True
@@ -794,20 +820,35 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
         sid = s["scan_id"]
         ts_path = s.get("tileset_path") or ""
         q_suffix = f"?share={share_token}" if share_token else ""
+        ts_ver = "opt5"
+        prev_ver = "low2"
+        if ts_path and ts_path[:2].upper() == "C:" and os.path.isfile(ts_path):
+            try:
+                bdir = os.path.dirname(ts_path)
+                r_glb = os.path.join(bdir, "tiles", "root.glb")
+                p_ts = os.path.join(bdir, "preview_tileset.json")
+                p_glb = os.path.join(bdir, "preview_low", "tiles", "root.glb")
+                m_ts = int(os.path.getmtime(r_glb if os.path.isfile(r_glb) else ts_path))
+                m_prev = int(os.path.getmtime(p_glb if os.path.isfile(p_glb) else (p_ts if os.path.isfile(p_ts) else ts_path)))
+                ts_ver = f"opt5_{m_ts}"
+                prev_ver = f"low2_{m_prev}"
+            except Exception:
+                pass
         if ts_path.lower().endswith(".glb"):
             s["stream_url"] = f"/stream/{sid}/{os.path.basename(ts_path)}{q_suffix}"
             s["stream_type"] = "glb"
             s["preview_stream_url"] = f"/stream/{sid}/preview_low.glb{q_suffix}"
             s["preview_stream_type"] = "glb"
         else:
-            ts_q = f"?v=opt4&share={share_token}" if share_token else "?v=opt4"
-            prev_q = f"?v=low1&share={share_token}" if share_token else "?v=low1"
+            ts_q = f"?v={ts_ver}&share={share_token}" if share_token else f"?v={ts_ver}"
+            prev_q = f"?v={prev_ver}&share={share_token}" if share_token else f"?v={prev_ver}"
             s["stream_url"] = f"/stream/{sid}/tileset.json{ts_q}"
             s["stream_type"] = "tileset"
             s["preview_stream_url"] = f"/stream/{sid}/preview_tileset.json{prev_q}"
             s["preview_stream_type"] = "tileset"
         s["download_obj_url"] = f"/api/download?scan_id={sid}&type=obj" + (f"&share={share_token}" if share_token else "")
-        s["thumbnail_url"] = f"/api/scans/{sid}/thumbnail{q_suffix}"
+        thumb_q = f"?v={ts_ver}&share={share_token}" if share_token else f"?v={ts_ver}"
+        s["thumbnail_url"] = f"/api/scans/{sid}/thumbnail{thumb_q}"
         return s
 
     def _build_projects_summary(self, scans: list) -> list:
@@ -915,6 +956,8 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
             for k in list(_VPS_RAM_FALLBACK_CACHE.keys()):
                 if k.startswith("/api/scans") or k.startswith("/api/projects"):
                     _VPS_RAM_FALLBACK_CACHE.pop(k, None)
+        if method == "POST" and path in ("/api/queue/scan-inbox", "/api/queue/rescan"):
+            _VPS_RAM_FALLBACK_CACHE.clear()
 
         # Serve immutable binary .glb tiles, thumbnails, and tileset.json from volatile RAM if already pulled from PC while tunnel is online
         if (
@@ -1268,71 +1311,78 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
             if share_token:
                 self.send_json({"error": "Queue status restricted to internal company users."}, status=403)
                 return
+
+            # Check if PIX4Dmatic.exe is actively running on Windows PC
+            p4d_running = False
+            if os.name == "nt":
+                try:
+                    import subprocess as _sp
+                    tr = _sp.run(
+                        ["tasklist", "/FI", "IMAGENAME eq PIX4Dmatic.exe", "/NH"],
+                        capture_output=True,
+                        text=True,
+                        timeout=3,
+                    )
+                    p4d_running = "PIX4Dmatic.exe" in (tr.stdout or "")
+                except Exception:
+                    p4d_running = False
+
             all_scans = DB.list_scans()
             live_log_info: Dict[str, Any] = {}
+            candidate_logs = []
             for s in all_scans:
-                if s.get("status") == "processing":
-                    sid = s["scan_id"]
-                    log_dir = os.path.join(LOCAL_SCANS_ROOT, sid, sid, "logs")
-                    if os.path.isdir(log_dir):
-                        txt_files = sorted(
-                            [os.path.join(log_dir, f) for f in os.listdir(log_dir) if f.lower().endswith(".txt")],
-                            key=lambda p: os.path.getmtime(p),
-                        )
-                        if txt_files:
-                            latest_log = txt_files[-1]
-                            try:
-                                fsize = os.path.getsize(latest_log)
-                                with open(latest_log, "rb") as lf:
-                                    if fsize > 12288:
-                                        lf.seek(fsize - 12288)
-                                    tail_text = lf.read().decode("utf-8", errors="replace")
-                                tail_lines = [ln.strip() for ln in tail_text.splitlines() if ln.strip()][-15:]
-                                stage_name = ""
-                                cpu_ram = ""
-                                for ln in reversed(tail_lines):
-                                    m = re.search(r"\[(\d+%CPU)\]\[(\d+%RAM)\]\[([^\]]+)\]", ln)
-                                    if m:
-                                        cpu_ram = f"{m.group(1)} · {m.group(2)}"
-                                        stage_name = m.group(3).strip()
-                                        break
-                                stage_pct_map = {
-                                    "Import": 10.0,
-                                    "Sky mask": 16.0,
-                                    "Keypoints": 24.0,
-                                    "Pair matching": 34.0,
-                                    "Calibration": 46.0,
-                                    "Bundle": 52.0,
-                                    "Densification": 68.0,
-                                    "Dense": 68.0,
-                                    "Mesh": 82.0,
-                                    "Texturing": 88.0,
-                                    "Export": 93.0,
-                                }
-                                est_pct = float(s.get("progress_pct") or 10.0)
-                                for k_stg, v_pct in stage_pct_map.items():
-                                    if k_stg.lower() in stage_name.lower():
-                                        est_pct = max(est_pct, v_pct)
-                                        break
-                                new_label = (
-                                    f"PIX4Dmatic: {stage_name} ({cpu_ram})"
-                                    if stage_name and cpu_ram
-                                    else (f"PIX4Dmatic: {stage_name}" if stage_name else s.get("stage_label", "Processing..."))
-                                )
-                                s["progress_pct"] = est_pct
-                                s["stage_label"] = new_label
-                                DB.update_job_progress(sid, "processing", est_pct, new_label)
-                                live_log_info = {
-                                    "scan_id": sid,
-                                    "scan_name": s.get("name") or sid,
-                                    "log_path": latest_log,
-                                    "stage": stage_name or "Processing",
-                                    "cpu_ram": cpu_ram,
-                                    "progress_pct": est_pct,
-                                    "tail_lines": tail_lines[-10:],
-                                }
-                            except Exception:
-                                pass
+                sid = s["scan_id"]
+                pdir = s.get("project_dir") or os.path.join(LOCAL_SCANS_ROOT, sid)
+                log_dirs = [
+                    os.path.join(pdir, sid, "logs"),
+                    os.path.join(pdir, "project", "logs"),
+                    os.path.join(LOCAL_SCANS_ROOT, sid, sid, "logs"),
+                ]
+                if sid == "QuChi261016_Trees":
+                    log_dirs.append(os.path.join(LOCAL_SCANS_ROOT, "catch_QuChi261016", "catch_QuChi261016", "logs"))
+                for candidate_dir in log_dirs:
+                    if os.path.isdir(candidate_dir):
+                        for f in os.listdir(candidate_dir):
+                            if f.lower().endswith(".txt"):
+                                full_lp = os.path.join(candidate_dir, f)
+                                mtime = os.path.getmtime(full_lp)
+                                if s.get("status") == "processing" or (p4d_running and (time.time() - mtime < 1800.0)):
+                                    candidate_logs.append((mtime, s, full_lp))
+
+            if candidate_logs:
+                candidate_logs.sort(key=lambda x: x[0])
+                latest_mtime, active_scan, latest_log = candidate_logs[-1]
+                sid = active_scan["scan_id"]
+
+                info = parse_pix4dmatic_log_progress(latest_log)
+                if p4d_running or (active_scan.get("status") == "processing" and not info.get("is_finished")):
+                    stage_name = info.get("stage", "Processing")
+                    cpu_ram = info.get("cpu_ram", "")
+                    est_pct = max(float(active_scan.get("progress_pct") or 10.0) if active_scan.get("status") == "processing" else 12.0, float(info.get("progress_pct", 12.0)))
+                    new_label = (
+                        f"PIX4Dmatic: {stage_name} ({cpu_ram})"
+                        if stage_name and cpu_ram
+                        else f"PIX4Dmatic: {stage_name}"
+                    )
+                    active_scan["status"] = "processing"
+                    active_scan["progress_pct"] = est_pct
+                    active_scan["stage_label"] = new_label
+                    DB.update_job_progress(sid, "processing", est_pct, new_label)
+                    for other_s in all_scans:
+                        if other_s["scan_id"] != sid and other_s.get("status") == "processing":
+                            other_s["status"] = "completed"
+                            other_s["progress_pct"] = 100.0
+                            other_s["stage_label"] = "Completed"
+                            DB.update_job_progress(other_s["scan_id"], "completed", 100.0, "Completed")
+                    live_log_info = {
+                        "scan_id": sid,
+                        "scan_name": active_scan.get("name") or sid,
+                        "log_path": latest_log,
+                        "stage": stage_name,
+                        "cpu_ram": cpu_ram,
+                        "progress_pct": est_pct,
+                        "tail_lines": info.get("tail_lines", [])[-10:],
+                    }
 
             queued = [s for s in all_scans if s["status"] in ("queued", "waiting_parts")]
             queued.sort(key=lambda x: (0 if x["status"] == "queued" else 1, -float(x["priority_score"]), float(x["uploaded_at"])))
@@ -1507,7 +1557,7 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
             self._serve_file_with_range(target_file)
             return
 
-        # 12. Download Raw .OBJ or Report from Windows PC
+        # 12. Download Real Raw .OBJ Mesh or Report from Windows PC
         if path == "/api/download":
             scan_id = query.get("scan_id", ["quchi_20261005_merged"])[0]
             dtype = query.get("type", ["obj"])[0]
@@ -1527,45 +1577,73 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
                 self.send_json({"error": "Scan not found"}, status=404)
                 return
 
-            obj_path = scan.get("obj_path") or ""
+            obj_path = SURVEY._resolve_scan_obj_path(scan)
             if dtype == "obj" and obj_path and os.path.isfile(obj_path):
                 self._serve_file_with_range(obj_path, download_name=f"{scan_id}_TWD97_TWVD2001.obj")
                 return
 
-            # Generate a valid Wavefront .OBJ header with TWD97 (121) + TWVD2001 vertices if full raw .obj is archived
-            ce, cn, ch = scan.get("twd97_e", 304952.656), scan.get("twd97_n", 2757084.875), scan.get("twd97_h", 43.18)
-            obj_preview = (
-                f"# GatheringScans Photogrammetry Mesh Export\n"
-                f"# Scan ID: {scan_id} ({scan.get('name')})\n"
-                f"# CRS: {TWD97_TWVD2001_LABEL}\n"
-                f"# Texture Resolution Cap: {PIX4DMATIC_TEXTURE_SIZE}x{PIX4DMATIC_TEXTURE_SIZE} (2K)\n"
-                f"o {scan_id}\n"
-                f"v {ce - 10.0:.3f} {cn - 10.0:.3f} {ch:.3f}\n"
-                f"v {ce + 10.0:.3f} {cn - 10.0:.3f} {ch + 0.2:.3f}\n"
-                f"v {ce + 10.0:.3f} {cn + 10.0:.3f} {ch + 1.5:.3f}\n"
-                f"v {ce - 10.0:.3f} {cn + 10.0:.3f} {ch + 0.8:.3f}\n"
-                f"f 1 2 3\n"
-                f"f 1 3 4\n"
-            ).encode("utf-8")
-            self.send_response(200)
-            self.send_header("Content-Type", "text/plain; charset=utf-8")
-            self.send_header("Content-Length", str(len(obj_preview)))
-            self.send_header("Content-Disposition", f'attachment; filename="{scan_id}_TWD97_TWVD2001.obj"')
-            self.end_headers()
-            self.wfile.write(obj_preview)
+            # If scan was ingested as a 3D Tileset without a standalone .obj, convert its primary .glb tile(s) to .obj on disk
+            proj_dir = scan.get("project_dir") or os.path.join(LOCAL_SCANS_ROOT, scan_id)
+            conv_dir = os.path.join(proj_dir, "exports")
+            os.makedirs(conv_dir, exist_ok=True)
+            conv_obj = os.path.join(conv_dir, f"{scan_id}_TWD97_TWVD2001.obj")
+            if not os.path.isfile(conv_obj):
+                glb_files = SURVEY._collect_scan_glb_files(scan)
+                if glb_files:
+                    try:
+                        import trimesh
+                        import subprocess as _sp
+                        from pc_worker.surveying_engine import GLTFPACK_EXE
+
+                        meshes = []
+                        for gf in glb_files[:4]:
+                            load_target = gf
+                            tmp_gf = None
+                            try:
+                                m = trimesh.load(load_target, force="mesh")
+                            except Exception:
+                                if os.path.isfile(GLTFPACK_EXE):
+                                    tmp_gf = os.path.join(conv_dir, f"_tmp_{os.path.basename(gf)}")
+                                    _sp.run([GLTFPACK_EXE, "-i", gf, "-o", tmp_gf], capture_output=True, timeout=30)
+                                    if os.path.isfile(tmp_gf):
+                                        load_target = tmp_gf
+                                m = trimesh.load(load_target, force="mesh")
+                            finally:
+                                if tmp_gf and os.path.isfile(tmp_gf):
+                                    try:
+                                        os.remove(tmp_gf)
+                                    except OSError:
+                                        pass
+                            if hasattr(m, "vertices") and len(m.vertices) > 0:
+                                meshes.append(m)
+                        if meshes:
+                            combined = meshes[0] if len(meshes) == 1 else trimesh.util.concatenate(meshes)
+                            combined.export(conv_obj, file_type="obj")
+                    except Exception as e:
+                        print(f"[GatheringScans] OBJ conversion error for {scan_id}: {e}")
+
+            if os.path.isfile(conv_obj):
+                self._serve_file_with_range(conv_obj, download_name=f"{scan_id}_TWD97_TWVD2001.obj")
+                return
+
+            self.send_json({"error": f"No mesh geometry found on disk for scan: {scan_id}"}, status=404)
             return
 
-        # 13. Serve RTK Raw Camera Photo from Windows PC
-        if path == "/api/camera-photo":
-            scan_id = query.get("scan_id", ["quchi_20261005_merged"])[0]
-            fname = os.path.basename(query.get("file", [""])[0])
-            scan = DB.get_scan(scan_id) or {}
-            cam_dir = scan.get("cameras_dir") or r"C:\Scans\QuChi\QuChi_20261005\inputs"
-            fpath = os.path.join(cam_dir, fname)
-            if fname and os.path.isfile(fpath):
+        # 13. Serve RTK Raw Camera Photo from Windows PC (or /cameras/<scan_id>/<file> route)
+        if path == "/api/camera-photo" or path.startswith("/cameras/"):
+            if path.startswith("/cameras/"):
+                rel_cam = path[len("/cameras/") :].strip("/")
+                parts_cam = rel_cam.split("/", 1)
+                scan_id = parts_cam[0] if len(parts_cam) >= 1 else "catch_QuChi261016"
+                fname = os.path.basename(parts_cam[1]) if len(parts_cam) >= 2 else ""
+            else:
+                scan_id = query.get("scan_id", ["catch_QuChi261016"])[0]
+                fname = os.path.basename(query.get("file", [""])[0])
+            fpath = SURVEY.resolve_camera_photo_path(scan_id, fname) if fname else None
+            if fpath and os.path.isfile(fpath):
                 self._serve_file_with_range(fpath, content_type="image/jpeg")
                 return
-            self.send_json({"error": "Camera photo not found on PC"}, status=404)
+            self.send_json({"error": f"Camera photo not found on PC: {fname}"}, status=404)
             return
 
         # 14. Serve Generated Reports & Contours (.html, .csv, .pdf, .dxf, .dwg)
@@ -1736,6 +1814,9 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
 
             # 7. Smart Queue & PIX4Dmatic Automation Actions
             if path in ("/api/queue/scan-inbox", "/api/queue/rescan"):
+                self._GZIP_FILE_CACHE.clear()
+                self._OPTIMIZED_TILESET_CACHE.clear()
+                _VPS_RAM_FALLBACK_CACHE.clear()
                 scans = seed_and_discover_scans(DB)
                 self.send_json({"status": "ok", "inbox_dir": GDRIVE_INBOX_DIR, "total_scans": len(scans)})
                 return
@@ -1749,6 +1830,26 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
                 scan_id = payload.get("scan_id", "")
                 updated = DB.set_force_next(scan_id, bool(payload.get("force", True)))
                 self.send_json({"status": "ok", "scan": updated})
+                return
+
+            if path in ("/api/queue/enqueue", "/api/queue/reprocess"):
+                scan_id = str(payload.get("scan_id", "")).strip()
+                scan = DB.get_scan(scan_id)
+                if not scan:
+                    self.send_json({"error": f"Scan not found: {scan_id}"}, status=404)
+                    return
+                force = bool(payload.get("force_next", False))
+                p4d_cfg = load_pix4d_settings()
+                tex_sz = int(p4d_cfg.get("texture_size", PIX4DMATIC_TEXTURE_SIZE))
+                DB.update_job_progress(
+                    scan_id,
+                    "queued",
+                    0.0,
+                    f"Queued for PIX4Dmatic (TWD97 + TWVD2001, {tex_sz}px)",
+                )
+                if force:
+                    DB.set_force_next(scan_id, True)
+                self.send_json({"status": "ok", "scan": DB.get_scan(scan_id)})
                 return
 
             if path == "/api/queue/preview-gst":

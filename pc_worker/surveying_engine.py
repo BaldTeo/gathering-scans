@@ -10,15 +10,23 @@ All calculations and CAD exports operate in TWD97 (121) [EPSG:3826] + TWVD2001 [
 
 import os
 import csv
+import glob
 import math
 import json
 import time
+import tempfile
+import subprocess
 from datetime import datetime
 from typing import Dict, Any, List, Tuple, Optional
 
 import numpy as np
+from scipy.ndimage import distance_transform_edt, gaussian_filter
+import trimesh
+from PIL import Image
+from PIL.ExifTags import GPSTAGS
 
 from pc_worker.config import (
+    LOCAL_SCANS_ROOT as SCANS_ROOT_DIR,
     REPORTS_DIR,
     CONTOURS_DIR,
     MATERIAL_CATALOG,
@@ -26,6 +34,74 @@ from pc_worker.config import (
     TWD97_TWVD2001_SHORT,
 )
 from pc_worker.priority_queue import ScanQueueDB
+
+
+def wgs84_to_twd97(lat_deg: float, lon_deg: float) -> Tuple[float, float]:
+    """Converts WGS84 / TWD97 Geodetic (lat, lon) in degrees to TWD97 TM2 Zone 121 (Easting, Northing) in meters."""
+    a = 6378137.0
+    f = 1.0 / 298.257222101
+    b = a * (1.0 - f)
+    e2 = (a * a - b * b) / (a * a)
+    ep2 = (a * a - b * b) / (b * b)
+    lon0 = math.radians(121.0)
+    k0 = 0.9999
+    dx = 250000.0
+
+    lat = math.radians(lat_deg)
+    lon = math.radians(lon_deg)
+    dlon = lon - lon0
+
+    sin_lat = math.sin(lat)
+    cos_lat = math.cos(lat)
+    tan_lat = math.tan(lat)
+
+    N = a / math.sqrt(1.0 - e2 * sin_lat * sin_lat)
+    T = tan_lat * tan_lat
+    C = ep2 * cos_lat * cos_lat
+    A = dlon * cos_lat
+
+    M = a * (
+        (1.0 - e2 / 4.0 - 3.0 * (e2 ** 2) / 64.0 - 5.0 * (e2 ** 3) / 256.0) * lat
+        - (3.0 * e2 / 8.0 + 3.0 * (e2 ** 2) / 32.0 + 45.0 * (e2 ** 3) / 1024.0) * math.sin(2.0 * lat)
+        + (15.0 * (e2 ** 2) / 256.0 + 45.0 * (e2 ** 3) / 1024.0) * math.sin(4.0 * lat)
+        - (35.0 * (e2 ** 3) / 3072.0) * math.sin(6.0 * lat)
+    )
+
+    easting = dx + k0 * N * (
+        A
+        + (1.0 - T + C) * (A ** 3) / 6.0
+        + (5.0 - 18.0 * T + T * T + 72.0 * C - 58.0 * ep2) * (A ** 5) / 120.0
+    )
+    northing = k0 * (
+        M
+        + N * tan_lat * (
+            (A * A) / 2.0
+            + (5.0 - T + 9.0 * C + 4.0 * C * C) * (A ** 4) / 24.0
+            + (61.0 - 58.0 * T + T * T + 600.0 * C - 330.0 * ep2) * (A ** 6) / 720.0
+        )
+    )
+    return round(easting, 3), round(northing, 3)
+
+GLTFPACK_EXE = r"C:\Antigravity\GC_ScanOptimizer\bin\gltfpack.exe"
+
+# Standard 16-case Marching Squares lookup table
+# Edge indices: 0=bottom (v00->v10), 1=right (v10->v11), 2=top (v01->v11), 3=left (v00->v01)
+MS_CASES: Dict[int, List[Tuple[int, int]]] = {
+    1:  [(3, 0)],
+    2:  [(0, 1)],
+    3:  [(3, 1)],
+    4:  [(1, 2)],
+    5:  [(3, 2), (0, 1)],
+    6:  [(0, 2)],
+    7:  [(3, 2)],
+    8:  [(2, 3)],
+    9:  [(0, 2)],
+    10: [(0, 3), (1, 2)],
+    11: [(1, 2)],
+    12: [(1, 3)],
+    13: [(0, 1)],
+    14: [(3, 0)],
+}
 
 
 def polygon_area_and_perimeter_2d(pts: List[Tuple[float, float]]) -> Tuple[float, float]:
@@ -58,92 +134,409 @@ def point_in_polygon_2d(x: float, y: float, poly: List[Tuple[float, float]]) -> 
     return inside
 
 
+def simplify_polyline_2d(pts: List[Tuple[float, float]], tol: float = 0.08) -> List[Tuple[float, float]]:
+    """Ramer-Douglas-Peucker simplification for 2D contour polylines."""
+    if len(pts) <= 3:
+        return pts
+    is_closed = math.hypot(pts[0][0] - pts[-1][0], pts[0][1] - pts[-1][1]) < 1e-3
+    if is_closed and len(pts) > 4:
+        mid = len(pts) // 2
+        left = simplify_polyline_2d(pts[: mid + 1], tol)
+        right = simplify_polyline_2d(pts[mid:], tol)
+        return left[:-1] + right
+
+    x1, y1 = pts[0]
+    x2, y2 = pts[-1]
+    dx = x2 - x1
+    dy = y2 - y1
+    seg_len = math.hypot(dx, dy)
+    max_d = -1.0
+    max_idx = 0
+    for i in range(1, len(pts) - 1):
+        px, py = pts[i]
+        if seg_len < 1e-9:
+            d = math.hypot(px - x1, py - y1)
+        else:
+            d = abs(dy * px - dx * py + x2 * y1 - y2 * x1) / seg_len
+        if d > max_d:
+            max_d = d
+            max_idx = i
+
+    if max_d > tol:
+        left = simplify_polyline_2d(pts[: max_idx + 1], tol)
+        right = simplify_polyline_2d(pts[max_idx:], tol)
+        return left[:-1] + right
+    return [pts[0], pts[-1]]
+
+
 class SurveyingEngine:
     def __init__(self, db: ScanQueueDB):
         self.db = db
+        self._dsm_mem_cache: Dict[str, Dict[str, Any]] = {}
+        self._camera_mem_cache: Dict[str, List[Dict[str, Any]]] = {}
 
-    def _synthetic_or_sampled_surface_z(
-        self,
+    @staticmethod
+    def _resolve_scan_obj_path(scan: Dict[str, Any]) -> Optional[str]:
+        """Finds the best .obj mesh on disk for the given scan metadata."""
+        candidates = []
+        if scan.get("obj_path"):
+            candidates.append(scan["obj_path"])
+        for dir_key in ("project_dir", "src_project_dir"):
+            d = scan.get(dir_key)
+            if d and os.path.isdir(d):
+                candidates.extend(glob.glob(os.path.join(d, "**", "*.obj"), recursive=True))
+        # Special sibling fallback for Cesium mesh uploads paired with OBJ mesh folders
+        sid = str(scan.get("scan_id") or "").lower()
+        if "20261015" in sid:
+            sib = os.path.join(SCANS_ROOT_DIR, "QuChi_20261015-obj_mesh", "mesh.obj")
+            candidates.append(sib)
+        for c in candidates:
+            if c and os.path.isfile(c) and os.path.getsize(c) > 512:
+                return os.path.abspath(c)
+        return None
+
+    @staticmethod
+    def _load_glb_vertices(glb_path: str) -> Optional[np.ndarray]:
+        """Loads vertex array (N, 3) from a .glb tile, decompressing Meshopt via gltfpack if needed."""
+        tmp_glb = None
+        try:
+            try:
+                loaded = trimesh.load(glb_path, process=False)
+            except Exception:
+                if not os.path.isfile(GLTFPACK_EXE):
+                    return None
+                fd, tmp_glb = tempfile.mkstemp(suffix=".glb")
+                os.close(fd)
+                subprocess.run([GLTFPACK_EXE, "-i", glb_path, "-o", tmp_glb], capture_output=True, timeout=20)
+                loaded = trimesh.load(tmp_glb, process=False)
+
+            if isinstance(loaded, trimesh.Scene):
+                verts_list = [
+                    np.asarray(g.vertices, dtype=np.float32)
+                    for g in loaded.geometry.values()
+                    if hasattr(g, "vertices") and len(g.vertices) > 0
+                ]
+                if not verts_list:
+                    return None
+                return np.vstack(verts_list)
+            elif hasattr(loaded, "vertices") and len(loaded.vertices) > 0:
+                return np.asarray(loaded.vertices, dtype=np.float32)
+            return None
+        except Exception:
+            return None
+        finally:
+            if tmp_glb and os.path.exists(tmp_glb):
+                try:
+                    os.remove(tmp_glb)
+                except OSError:
+                    pass
+
+    def _load_or_build_scan_dsm(self, scan: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Loads or builds a real 2D Digital Surface Model (DSM) heightfield in TWD97 (E, N) -> TWVD2001 (H)
+        directly from the scan's 3D .obj mesh or .glb tileset on disk.
+        Caches to <project_dir>/_dsm_cache_v3.npz and in memory for sub-millisecond reuse.
+        """
+        scan_id = str(scan.get("scan_id") or "unknown")
+        ce = float(scan.get("twd97_e") or 304952.656)
+        cn = float(scan.get("twd97_n") or 2757084.875)
+        ch = float(scan.get("twd97_h") or 43.18)
+
+        proj_dir = scan.get("project_dir") or os.path.join(SCANS_ROOT_DIR, scan_id)
+        obj_path = self._resolve_scan_obj_path(scan)
+        source_mtime = os.path.getmtime(obj_path) if (obj_path and os.path.isfile(obj_path)) else 0.0
+
+        cached = self._dsm_mem_cache.get(scan_id)
+        if cached and abs(cached.get("source_mtime", -1.0) - source_mtime) < 1.0:
+            return cached
+
+        npz_path = os.path.join(proj_dir, "_dsm_cache_v3.npz") if os.path.isdir(proj_dir) else None
+        if npz_path and os.path.isfile(npz_path):
+            try:
+                if source_mtime == 0.0 or os.path.getmtime(npz_path) >= source_mtime:
+                    data = np.load(npz_path)
+                    res_dict = {
+                        "scan_id": scan_id,
+                        "ce": float(data["ce"]),
+                        "cn": float(data["cn"]),
+                        "ch": float(data["ch"]),
+                        "e_min": float(data["e_min"]),
+                        "e_max": float(data["e_max"]),
+                        "n_min": float(data["n_min"]),
+                        "n_max": float(data["n_max"]),
+                        "res": float(data["res"]),
+                        "dsm_raw": data["dsm_raw"],
+                        "dsm_contour": data["dsm_contour"],
+                        "hull_mask": data["hull_mask"].astype(bool),
+                        "source_mtime": source_mtime,
+                    }
+                    self._dsm_mem_cache[scan_id] = res_dict
+                    return res_dict
+            except Exception:
+                pass
+
+        # 1. Extract raw 3D vertices from .obj or .glb tiles
+        raw_verts: Optional[np.ndarray] = None
+        is_z_up = True
+
+        if obj_path and os.path.isfile(obj_path):
+            verts_list = []
+            with open(obj_path, "r", encoding="utf-8", errors="ignore") as f:
+                for line in f:
+                    if line.startswith("v "):
+                        parts = line.split()
+                        if len(parts) >= 4:
+                            verts_list.append((float(parts[1]), float(parts[2]), float(parts[3])))
+            if verts_list:
+                raw_verts = np.array(verts_list, dtype=np.float32)
+                is_z_up = True
+
+        if raw_verts is None or len(raw_verts) == 0:
+            # Fallback to .glb tiles in tileset directory
+            search_dirs = [d for d in (proj_dir, scan.get("src_tileset_dir")) if d and os.path.isdir(d)]
+            glb_files: List[str] = []
+            for sd in search_dirs:
+                found = [
+                    g for g in glob.glob(os.path.join(sd, "**", "*.glb"), recursive=True)
+                    if "preview" not in os.path.basename(g).lower()
+                ]
+                if found:
+                    glb_files = found
+                    break
+            if glb_files:
+                # Sort by size descending and take up to 24 high-detail tiles so loading stays <1.5s
+                glb_files.sort(key=lambda p: os.path.getsize(p), reverse=True)
+                chunks = []
+                for gp in glb_files[:24]:
+                    v_arr = self._load_glb_vertices(gp)
+                    if v_arr is not None and len(v_arr) > 0:
+                        chunks.append(v_arr)
+                if chunks:
+                    raw_verts = np.vstack(chunks)
+                    spans = raw_verts.max(axis=0) - raw_verts.min(axis=0)
+                    v_max_abs = np.abs(raw_verts).max(axis=0)
+                    # If X/Y are large georeferenced coordinates (>100,000) or Z span is smallest, it's Z-up
+                    if v_max_abs[0] > 100000 or spans[2] < min(spans[0], spans[1]) * 0.85:
+                        is_z_up = True
+                    else:
+                        is_z_up = False
+
+        if raw_verts is None or len(raw_verts) < 3:
+            raise RuntimeError(f"No 3D mesh geometry (.obj or .glb) found on disk for scan '{scan_id}'.")
+
+        # 2. Transform vertices to TWD97 (E, N) + TWVD2001 (H) anchored at scan origin (ce, cn, ch)
+        vmin = raw_verts.min(axis=0)
+        vmax = raw_verts.max(axis=0)
+        vcen = 0.5 * (vmin + vmax)
+
+        if is_z_up:
+            de = raw_verts[:, 0] - vcen[0]
+            dn = raw_verts[:, 1] - vcen[1]
+            dh = raw_verts[:, 2] - vcen[2]
+        else:
+            # glTF Y-up: X=East, Y=Up(H), Z=South(-North)
+            de = raw_verts[:, 0] - vcen[0]
+            dh = raw_verts[:, 1] - vcen[1]
+            dn = -(raw_verts[:, 2] - vcen[2])
+
+        pts_e = ce + de
+        pts_n = cn + dn
+        pts_h = ch + dh
+
+        e_min, e_max = float(pts_e.min()), float(pts_e.max())
+        n_min, n_max = float(pts_n.min()), float(pts_n.max())
+        max_span = max(e_max - e_min, n_max - n_min, 10.0)
+        res = 0.25 if max_span <= 160.0 else (0.35 if max_span <= 360.0 else 0.50)
+
+        nx = max(int(math.ceil((e_max - e_min) / res)) + 1, 8)
+        ny = max(int(math.ceil((n_max - n_min) / res)) + 1, 8)
+
+        ie = np.clip(((pts_e - e_min) / res).astype(np.int32), 0, nx - 1)
+        in_ = np.clip(((pts_n - n_min) / res).astype(np.int32), 0, ny - 1)
+
+        grid_max = np.full((ny, nx), -np.inf, dtype=np.float32)
+        np.maximum.at(grid_max, (in_, ie), pts_h)
+        valid = np.isfinite(grid_max)
+
+        # Fill triangle interiors up to 8.0m using Euclidean distance transform
+        dist_cells, nearest_idx = distance_transform_edt(~valid, return_indices=True)
+        hull_mask = dist_cells <= max(4.0, 8.0 / res)
+        filled = grid_max[nearest_idx[0], nearest_idx[1]]
+
+        dsm_raw = gaussian_filter(filled, sigma=0.65).astype(np.float32)
+        dsm_raw = np.where(valid, 0.75 * grid_max + 0.25 * dsm_raw, dsm_raw)
+        dsm_contour = gaussian_filter(filled, sigma=1.65).astype(np.float32)
+
+        res_dict = {
+            "scan_id": scan_id,
+            "ce": ce,
+            "cn": cn,
+            "ch": ch,
+            "e_min": e_min,
+            "e_max": e_max,
+            "n_min": n_min,
+            "n_max": n_max,
+            "res": res,
+            "dsm_raw": dsm_raw,
+            "dsm_contour": dsm_contour,
+            "hull_mask": hull_mask,
+            "source_mtime": source_mtime,
+        }
+        self._dsm_mem_cache[scan_id] = res_dict
+
+        if npz_path:
+            try:
+                np.savez_compressed(
+                    npz_path,
+                    ce=ce,
+                    cn=cn,
+                    ch=ch,
+                    e_min=e_min,
+                    e_max=e_max,
+                    n_min=n_min,
+                    n_max=n_max,
+                    res=res,
+                    dsm_raw=dsm_raw,
+                    dsm_contour=dsm_contour,
+                    hull_mask=hull_mask.astype(np.uint8),
+                )
+            except Exception:
+                pass
+
+        return res_dict
+
+    @staticmethod
+    def _sample_dsm_elevation(
+        dsm_data: Dict[str, Any],
         easting: float,
         northing: float,
-        center_e: float,
-        center_n: float,
-        base_h: float,
-        epoch_offset: float = 0.0,
-        stockpile_peak: float = 2.85,
-        radius_x: float = 18.0,
-        radius_y: float = 18.0,
-    ) -> float:
+        use_contour_smooth: bool = False,
+    ) -> Tuple[float, float, float, bool]:
         """
-        Evaluates high-resolution surface elevation H (TWVD2001 m) at (easting, northing).
-        Combines realistic topographic relief + stockpile/excavation geometry anchored at the scan's
-        exact TWD97 (121) + TWVD2001 coordinates, or samples explicit 3D vertices when provided.
+        Bilinearly samples elevation H (TWVD2001 m) and local slope gradients (dz/de, dz/dn)
+        at TWD97 (easting, northing) from a loaded scan DSM.
+        Returns (elevation_h, dz_de, dz_dn, is_inside_hull).
         """
-        dx = easting - center_e
-        dy = northing - center_n
-        nx = dx / max(radius_x, 1.0)
-        ny = dy / max(radius_y, 1.0)
-        r2 = nx * nx + ny * ny
+        grid = dsm_data["dsm_contour"] if use_contour_smooth else dsm_data["dsm_raw"]
+        hull = dsm_data["hull_mask"]
+        e_min = dsm_data["e_min"]
+        n_min = dsm_data["n_min"]
+        res = dsm_data["res"]
+        ny, nx = grid.shape
 
-        # Smooth natural terrain grade + stockpile mound / trench feature
-        terrain_grade = 0.015 * dx - 0.011 * dy + 0.35 * math.sin(dx * 0.08) * math.cos(dy * 0.08)
-        mound = stockpile_peak * math.exp(-1.8 * r2) if r2 < 2.5 else 0.0
-        return base_h + terrain_grade + mound + epoch_offset
+        fe = (easting - e_min) / res
+        fn = (northing - n_min) / res
+        inside_bounds = (0.0 <= fe <= nx - 1.0) and (0.0 <= fn <= ny - 1.0)
+
+        fe_c = min(max(fe, 0.0), float(nx - 1) - 1e-5)
+        fn_c = min(max(fn, 0.0), float(ny - 1) - 1e-5)
+        i0 = int(fe_c)
+        j0 = int(fn_c)
+        i1 = min(i0 + 1, nx - 1)
+        j1 = min(j0 + 1, ny - 1)
+        tx = fe_c - i0
+        ty = fn_c - j0
+
+        z00 = float(grid[j0, i0])
+        z10 = float(grid[j0, i1])
+        z01 = float(grid[j1, i0])
+        z11 = float(grid[j1, i1])
+
+        z0 = z00 * (1.0 - tx) + z10 * tx
+        z1 = z01 * (1.0 - tx) + z11 * tx
+        z_val = z0 * (1.0 - ty) + z1 * ty
+
+        dz_de = ((z10 - z00) * (1.0 - ty) + (z11 - z01) * ty) / res
+        dz_dn = ((z01 - z00) * (1.0 - tx) + (z11 - z10) * tx) / res
+        is_valid = bool(inside_bounds and hull[j0, i0])
+        return z_val, dz_de, dz_dn, is_valid
 
     def calculate_cut_fill_volume(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Computes Cut/Fill Volumes & Material Stockpile Tonnage inside a 2D/3D boundary polygon.
+        Computes real Cut/Fill Volumes & Material Stockpile Tonnage inside a 2D/3D boundary polygon
+        by integrating the scan's actual 3D mesh Digital Surface Model (DSM).
         Supports 3 Base Modes:
-        - 'triangulated_boundary': interpolates base surface from polygon perimeter vertices (ideal for stockpiles)
+        - 'triangulated_boundary': interpolates base surface from real mesh elevations along polygon perimeter
         - 'custom_plane': uses user-specified flat datum elevation Z0 (TWVD2001 m)
-        - 'epoch_diff': compares active scan against a baseline scan at the same site
+        - 'epoch_diff': compares active scan's 3D mesh DSM against a baseline scan's 3D mesh DSM in TWD97 space
         """
-        scan_id = payload.get("scan_id", "quchi_20261005_merged")
-        compare_scan_id = payload.get("compare_scan_id", "quchi_20260921_epoch")
+        scan_id = payload.get("scan_id", "QuChi261016_Trees")
+        compare_scan_id = payload.get("compare_scan_id")
         base_mode = payload.get("base_mode", "triangulated_boundary")
         material_key = payload.get("material_type", "crushed_stone")
         custom_density = payload.get("density_t_m3")
         stockpile_name = payload.get("stockpile_name") or "Stockpile / Earthwork Zone A"
 
-        scan = self.db.get_scan(scan_id) or {
-            "scan_id": scan_id,
-            "name": "QuChi Dam — Complete Survey (2026-10-05)",
-            "project_group": "QuChi Dam",
-            "twd97_e": 304952.656,
-            "twd97_n": 2757084.875,
-            "twd97_h": 43.18,
-            "capture_date": "2026-10-05 15:45",
-        }
-        center_e = float(scan.get("twd97_e", 304952.656))
-        center_n = float(scan.get("twd97_n", 2757084.875))
-        center_h = float(scan.get("twd97_h", 43.18))
+        scan = self.db.get_scan(scan_id)
+        if not scan:
+            all_scans = self.db.list_scans()
+            scan = all_scans[0] if all_scans else {
+                "scan_id": scan_id,
+                "name": scan_id,
+                "project_group": "QuChi Dam",
+                "twd97_e": 304859.395,
+                "twd97_n": 2757030.65,
+                "twd97_h": 46.63,
+            }
+
+        dsm_curr = self._load_or_build_scan_dsm(scan)
+        center_e = dsm_curr["ce"]
+        center_n = dsm_curr["cn"]
+        center_h = dsm_curr["ch"]
+
+        # Load baseline DSM when epoch_diff is selected
+        dsm_cmp = None
+        if base_mode == "epoch_diff":
+            cmp_scan = self.db.get_scan(compare_scan_id) if compare_scan_id else None
+            if not cmp_scan:
+                for cand in self.db.list_scans():
+                    if cand.get("scan_id") != scan.get("scan_id") and cand.get("project_group") == scan.get("project_group"):
+                        cmp_scan = cand
+                        compare_scan_id = cand.get("scan_id")
+                        break
+            if cmp_scan:
+                try:
+                    dsm_cmp = self._load_or_build_scan_dsm(cmp_scan)
+                except Exception:
+                    dsm_cmp = None
 
         raw_poly = payload.get("polygon", [])
         if not raw_poly or len(raw_poly) < 3:
-            # Default 16m x 14m stockpile boundary around scan center
+            # Default 16m x 14m stockpile boundary around scan center using real DSM vertex heights
             raw_poly = [
-                [center_e - 8.0, center_n - 7.0, center_h],
-                [center_e + 8.0, center_n - 7.0, center_h + 0.15],
-                [center_e + 8.0, center_n + 7.0, center_h + 0.25],
-                [center_e - 8.0, center_n + 7.0, center_h + 0.10],
+                [center_e - 8.0, center_n - 7.0],
+                [center_e + 8.0, center_n - 7.0],
+                [center_e + 8.0, center_n + 7.0],
+                [center_e - 8.0, center_n + 7.0],
             ]
 
-        # Convert local viewer coordinates (if small numbers < 5000) to TWD97 (121) + TWVD2001
+        # Convert local viewer coordinates (if small numbers < 10000) to TWD97 (121) + sample true DSM elevation
         poly_twd: List[Tuple[float, float, float]] = []
+        poly_local: List[List[float]] = []
         for pt in raw_poly:
-            px = float(pt[0])
-            py = float(pt[1])
-            pz = float(pt[2]) if len(pt) >= 3 else center_h
-            if abs(px) < 10000 and abs(py) < 10000:
-                # Viewer local (x=East offset, y=North/Z offset)
-                e_val = round(center_e + px, 3)
-                n_val = round(center_n + py, 3)
-                h_val = round(center_h + pz if abs(pz) < 25 else pz, 3)
+            if isinstance(pt, dict):
+                px = float(pt.get("x", pt.get("e", 0.0)))
+                py = float(pt.get("z", pt.get("n", 0.0)))
+                if abs(px) < 10000 and abs(py) < 10000:
+                    e_val = round(center_e + px, 3)
+                    n_val = round(center_n - py, 3)
+                else:
+                    e_val = round(px, 3)
+                    n_val = round(py, 3)
             else:
-                e_val = round(px, 3)
-                n_val = round(py, 3)
-                h_val = round(pz, 3)
+                px = float(pt[0])
+                py = float(pt[1])
+                if abs(px) < 10000 and abs(py) < 10000:
+                    e_val = round(center_e + px, 3)
+                    n_val = round(center_n + py, 3)
+                else:
+                    e_val = round(px, 3)
+                    n_val = round(py, 3)
+
+            sampled_h, _, _, _ = self._sample_dsm_elevation(dsm_curr, e_val, n_val)
+            h_val = round(sampled_h, 3)
             poly_twd.append((e_val, n_val, h_val))
+            poly_local.append([round(e_val - center_e, 3), round(h_val - center_h, 3), round(center_n - n_val, 3)])
 
         pts_2d = [(p[0], p[1]) for p in poly_twd]
         planar_area_m2, perimeter_m = polygon_area_and_perimeter_2d(pts_2d)
@@ -153,22 +546,31 @@ class SurveyingEngine:
         max_e = max(p[0] for p in poly_twd)
         min_n = min(p[1] for p in poly_twd)
         max_n = max(p[1] for p in poly_twd)
-        poly_cx = sum(p[0] for p in poly_twd) / len(poly_twd)
-        poly_cy = sum(p[1] for p in poly_twd) / len(poly_twd)
-        rx = max((max_e - min_e) * 0.5, 1.0)
-        ry = max((max_n - min_n) * 0.5, 1.0)
 
-        # Determine grid spacing (32x32 sample resolution inside bounding box)
-        nx_steps = 30
-        ny_steps = 30
-        dx_step = max((max_e - min_e) / nx_steps, 0.15)
-        dy_step = max((max_n - min_n) / ny_steps, 0.15)
-        cell_area = dx_step * dy_step
+        # Sample densely along the polygon perimeter on the real DSM for boundary interpolation
+        perim_samples: List[Tuple[float, float, float]] = []
+        n_verts = len(poly_twd)
+        for i in range(n_verts):
+            ax, ay, _ = poly_twd[i]
+            bx, by, _ = poly_twd[(i + 1) % n_verts]
+            seg_len = math.hypot(bx - ax, by - ay)
+            n_sub = max(int(math.ceil(seg_len / 0.5)), 2)
+            for k in range(n_sub):
+                t = k / n_sub
+                sx = ax + t * (bx - ax)
+                sy = ay + t * (by - ay)
+                sz, _, _, _ = self._sample_dsm_elevation(dsm_curr, sx, sy)
+                perim_samples.append((sx, sy, sz))
 
-        # Perimeter average elevation for triangulated_boundary
-        perim_mean_h = sum(p[2] for p in poly_twd) / len(poly_twd)
+        perim_mean_h = sum(p[2] for p in perim_samples) / max(len(perim_samples), 1)
         datum_z = float(payload.get("datum_elevation_m", perim_mean_h))
-        peak_h = float(payload.get("peak_height_m", 2.65))
+
+        # High-resolution integration grid inside bounding box (up to 60x60 cells)
+        nx_steps = min(60, max(24, int(math.ceil((max_e - min_e) / 0.25))))
+        ny_steps = min(60, max(24, int(math.ceil((max_n - min_n) / 0.25))))
+        dx_step = max((max_e - min_e) / nx_steps, 0.10)
+        dy_step = max((max_n - min_n) / ny_steps, 0.10)
+        cell_area = dx_step * dy_step
 
         fill_vol = 0.0
         cut_vol = 0.0
@@ -178,6 +580,10 @@ class SurveyingEngine:
         inside_cells = 0
         heatmap_cells = []
 
+        # Subsample stride for heatmap_cells so we return <= 300 3D visualization cells
+        total_est_inside = max(1, int(nx_steps * ny_steps * 0.6))
+        vis_stride = max(1, total_est_inside // 240)
+
         for ix in range(nx_steps):
             for iy in range(ny_steps):
                 gx = min_e + (ix + 0.5) * dx_step
@@ -186,41 +592,20 @@ class SurveyingEngine:
                     continue
                 inside_cells += 1
 
-                # Surface elevation at (gx, gy)
-                z_surf = self._synthetic_or_sampled_surface_z(
-                    gx,
-                    gy,
-                    poly_cx,
-                    poly_cy,
-                    perim_mean_h,
-                    epoch_offset=0.0,
-                    stockpile_peak=peak_h,
-                    radius_x=rx,
-                    radius_y=ry,
-                )
+                # Real 3D scan surface elevation & slope gradients at (gx, gy)
+                z_surf, dz_de, dz_dn, _ = self._sample_dsm_elevation(dsm_curr, gx, gy)
 
                 if base_mode == "custom_plane":
                     z_base = datum_z
-                elif base_mode == "epoch_diff":
-                    # Baseline epoch has lower stockpile / pre-fill level
-                    z_base = self._synthetic_or_sampled_surface_z(
-                        gx,
-                        gy,
-                        poly_cx,
-                        poly_cy,
-                        perim_mean_h - 0.32,
-                        epoch_offset=-0.45,
-                        stockpile_peak=peak_h * 0.25,
-                        radius_x=rx,
-                        radius_y=ry,
-                    )
+                elif base_mode == "epoch_diff" and dsm_cmp is not None:
+                    z_base, _, _, _ = self._sample_dsm_elevation(dsm_cmp, gx, gy)
                 else:
-                    # Inverse-distance weighted interpolation of boundary vertex elevations
+                    # Inverse-distance weighted interpolation of dense perimeter DSM elevations
                     w_sum = 0.0
                     z_interp = 0.0
-                    for vx, vy, vz in poly_twd:
-                        dist = math.hypot(gx - vx, gy - vy) + 0.05
-                        w = 1.0 / (dist * dist)
+                    for vx, vy, vz in perim_samples:
+                        d2 = (gx - vx) ** 2 + (gy - vy) ** 2 + 0.04
+                        w = 1.0 / d2
                         w_sum += w
                         z_interp += w * vz
                     z_base = z_interp / max(w_sum, 1e-9)
@@ -234,21 +619,25 @@ class SurveyingEngine:
                 else:
                     cut_vol += abs(dz) * cell_area
 
-                # Approximate local slope factor for true 3D surface area
-                surface_area += cell_area * math.sqrt(1.0 + (dz / max(rx, 2.0)) ** 2)
+                # True 3D sloped surface area element dA * sqrt(1 + (dz/de)^2 + (dz/dn)^2)
+                surface_area += cell_area * math.sqrt(1.0 + dz_de * dz_de + dz_dn * dz_dn)
 
-                if len(heatmap_cells) < 250:
+                if (inside_cells - 1) % vis_stride == 0 and len(heatmap_cells) < 300:
                     heatmap_cells.append(
                         {
                             "e": round(gx, 2),
                             "n": round(gy, 2),
-                            "z_surf": round(z_surf, 2),
-                            "z_base": round(z_base, 2),
+                            "z_surf": round(z_surf, 3),
+                            "z_base": round(z_base, 3),
                             "dz": round(dz, 3),
+                            "lx": round(gx - center_e, 3),
+                            "ly_surf": round(z_surf - center_h, 3),
+                            "ly_base": round(z_base - center_h, 3),
+                            "lz": round(center_n - gy, 3),
                         }
                     )
 
-        # Normalize cell sum to exact Shoelace planar polygon area so analytical shapes match <0.1%
+        # Normalize cell sum to exact Shoelace planar polygon area
         if inside_cells > 0:
             raw_grid_area = inside_cells * cell_area
             area_scale = planar_area_m2 / max(raw_grid_area, 1e-6)
@@ -262,7 +651,6 @@ class SurveyingEngine:
         density = float(custom_density) if custom_density is not None else float(mat_info["density_t_m3"])
         swell = float(mat_info["swell_factor"])
 
-        # Stockpile mass in metric tonnes (using positive fill volume for stockpile or abs(net) if excavation)
         effective_m3 = fill_vol if fill_vol >= cut_vol else cut_vol
         tonnage_loose = effective_m3 * density
         tonnage_bank = effective_m3 * density * swell
@@ -302,6 +690,7 @@ class SurveyingEngine:
                 {"vertex": i + 1, "easting_m": p[0], "northing_m": p[1], "twvd2001_h_m": p[2]}
                 for i, p in enumerate(poly_twd)
             ],
+            "boundary_local": poly_local,
             "heatmap_cells": heatmap_cells,
             "report_html_url": f"/api/reports/{html_filename}",
             "report_csv_url": f"/api/reports/{csv_filename}",
@@ -448,11 +837,12 @@ class SurveyingEngine:
         ce: float,
         cn: float,
         ch: float,
+        dsm_data: Optional[Dict[str, Any]] = None,
     ) -> Tuple[List[Tuple[float, float, float]], List[List[float]], bool]:
         """
         Normalizes a user-supplied mask boundary polygon (either local viewer [x,y,z] or TWD97 [E,N,H])
         into (poly_twd97, poly_local, is_custom).
-        If fewer than 3 vertices are provided, generates a default 6-vertex survey boundary around (ce, cn, ch).
+        If fewer than 3 vertices are provided, generates a default 6-vertex survey boundary fitted to the scan's real DSM.
         """
         poly_twd: List[Tuple[float, float, float]] = []
         poly_local: List[List[float]] = []
@@ -475,15 +865,11 @@ class SurveyingEngine:
                         e_val = round(px, 3)
                         n_val = round(py, 3)
                         h_val = round(pz, 3)
-                        lx = round(e_val - ce, 3)
-                        lz = round(cn - n_val, 3)
-                        ly = round(h_val - ch, 3)
                 else:
                     px = float(pt[0])
                     py = float(pt[1])
                     pz = float(pt[2]) if len(pt) >= 3 else ch
                     if abs(px) < 10000 and abs(py) < 10000:
-                        # Local viewer coords [e_offset, n_offset, h_val]
                         e_val = round(ce + px, 3)
                         n_val = round(cn + py, 3)
                         h_val = round(ch + pz if abs(pz) < 25 else pz, 3)
@@ -491,25 +877,39 @@ class SurveyingEngine:
                         e_val = round(px, 3)
                         n_val = round(py, 3)
                         h_val = round(pz, 3)
-                    lx = round(e_val - ce, 3)
-                    lz = round(cn - n_val, 3)
-                    ly = round(h_val - ch, 3)
+
+                if dsm_data is not None:
+                    sampled_h, _, _, _ = self._sample_dsm_elevation(dsm_data, e_val, n_val)
+                    h_val = round(sampled_h, 3)
+
+                lx = round(e_val - ce, 3)
+                lz = round(cn - n_val, 3)
+                ly = round(h_val - ch, 3)
                 poly_twd.append((e_val, n_val, h_val))
                 poly_local.append([lx, ly, lz])
         else:
-            # Default 6-vertex survey mask boundary around active scan center
+            # Default 6-vertex survey mask boundary scaled to the scan's valid DSM footprint
+            half_e = 36.0
+            half_n = 28.0
+            if dsm_data is not None:
+                half_e = min(90.0, max(20.0, (dsm_data["e_max"] - dsm_data["e_min"]) * 0.34))
+                half_n = min(80.0, max(18.0, (dsm_data["n_max"] - dsm_data["n_min"]) * 0.34))
             default_offsets = [
-                (-28.0, -22.0),
-                (14.0, -24.0),
-                (30.0, -6.0),
-                (26.0, 22.0),
-                (-12.0, 24.0),
-                (-30.0, 8.0),
+                (-half_e * 0.85, -half_n * 0.85),
+                (half_e * 0.48, -half_n * 0.92),
+                (half_e * 0.96, -half_n * 0.22),
+                (half_e * 0.84, half_n * 0.86),
+                (-half_e * 0.42, half_n * 0.94),
+                (-half_e * 0.96, half_n * 0.28),
             ]
             for dx, dn in default_offsets:
                 e_val = round(ce + dx, 3)
                 n_val = round(cn + dn, 3)
-                h_val = round(self._synthetic_or_sampled_surface_z(e_val, n_val, ce, cn, ch), 3)
+                if dsm_data is not None:
+                    sampled_h, _, _, _ = self._sample_dsm_elevation(dsm_data, e_val, n_val)
+                    h_val = round(sampled_h, 3)
+                else:
+                    h_val = round(ch, 3)
                 lx = round(dx, 3)
                 lz = round(-dn, 3)
                 ly = round(h_val - ch, 3)
@@ -517,6 +917,127 @@ class SurveyingEngine:
                 poly_local.append([lx, ly, lz])
 
         return poly_twd, poly_local, is_custom
+
+    @staticmethod
+    def _extract_marching_squares_polylines_twd(
+        grid: np.ndarray,
+        valid_mask: np.ndarray,
+        e_min: float,
+        n_min: float,
+        res: float,
+        level: float,
+    ) -> List[List[float]]:
+        """
+        Extracts continuous, topologically stitched 2D/3D contour polylines [[e, n, level], ...]
+        at elevation `level` using the 16-case Marching Squares algorithm over `grid`.
+        """
+        v00 = grid[:-1, :-1]
+        v10 = grid[:-1, 1:]
+        v11 = grid[1:, 1:]
+        v01 = grid[1:, :-1]
+        cell_valid = valid_mask[:-1, :-1] & valid_mask[:-1, 1:] & valid_mask[1:, 1:] & valid_mask[1:, :-1]
+
+        c_idx = (
+            ((v00 >= level).astype(np.uint8) * 1)
+            | ((v10 >= level).astype(np.uint8) * 2)
+            | ((v11 >= level).astype(np.uint8) * 4)
+            | ((v01 >= level).astype(np.uint8) * 8)
+        )
+        c_idx = np.where(cell_valid, c_idx, 0)
+        js, is_ = np.nonzero((c_idx > 0) & (c_idx < 15))
+        if len(js) == 0:
+            return []
+
+        edge_coords: Dict[Tuple[int, int, int], Tuple[float, float]] = {}
+        adj: Dict[Tuple[int, int, int], List[Tuple[int, int, int]]] = {}
+
+        for j, i in zip(js.tolist(), is_.tolist()):
+            code = int(c_idx[j, i])
+            pairs = MS_CASES.get(code)
+            if not pairs:
+                continue
+            val00 = float(v00[j, i])
+            val10 = float(v10[j, i])
+            val11 = float(v11[j, i])
+            val01 = float(v01[j, i])
+            x0 = e_min + i * res
+            y0 = n_min + j * res
+
+            def get_edge_key(e_id: int) -> Tuple[int, int, int]:
+                if e_id == 0:
+                    key = (0, j, i)
+                    if key not in edge_coords:
+                        dv = val10 - val00
+                        t = (level - val00) / dv if abs(dv) > 1e-9 else 0.5
+                        edge_coords[key] = (x0 + float(np.clip(t, 0.0, 1.0)) * res, y0)
+                    return key
+                elif e_id == 1:
+                    key = (1, j, i + 1)
+                    if key not in edge_coords:
+                        dv = val11 - val10
+                        t = (level - val10) / dv if abs(dv) > 1e-9 else 0.5
+                        edge_coords[key] = (x0 + res, y0 + float(np.clip(t, 0.0, 1.0)) * res)
+                    return key
+                elif e_id == 2:
+                    key = (0, j + 1, i)
+                    if key not in edge_coords:
+                        dv = val11 - val01
+                        t = (level - val01) / dv if abs(dv) > 1e-9 else 0.5
+                        edge_coords[key] = (x0 + float(np.clip(t, 0.0, 1.0)) * res, y0 + res)
+                    return key
+                else:
+                    key = (1, j, i)
+                    if key not in edge_coords:
+                        dv = val01 - val00
+                        t = (level - val00) / dv if abs(dv) > 1e-9 else 0.5
+                        edge_coords[key] = (x0, y0 + float(np.clip(t, 0.0, 1.0)) * res)
+                    return key
+
+            for eA, eB in pairs:
+                kA = get_edge_key(eA)
+                kB = get_edge_key(eB)
+                if kA != kB:
+                    adj.setdefault(kA, []).append(kB)
+                    adj.setdefault(kB, []).append(kA)
+
+        visited_edges = set()
+        polylines: List[List[List[float]]] = []
+        nodes_ordered = sorted(adj.keys(), key=lambda k: len(adj[k]))
+
+        for start_node in nodes_ordered:
+            for nxt in adj[start_node]:
+                ekey = (start_node, nxt) if start_node < nxt else (nxt, start_node)
+                if ekey in visited_edges:
+                    continue
+                chain = [start_node, nxt]
+                visited_edges.add(ekey)
+                curr = nxt
+                while True:
+                    neighbors = adj.get(curr, [])
+                    found_next = None
+                    for cand in neighbors:
+                        ckey = (curr, cand) if curr < cand else (cand, curr)
+                        if ckey not in visited_edges:
+                            visited_edges.add(ckey)
+                            found_next = cand
+                            break
+                    if found_next is None:
+                        break
+                    chain.append(found_next)
+                    curr = found_next
+                    if curr == start_node:
+                        break
+                if len(chain) >= 4:
+                    raw_2d = [edge_coords[k] for k in chain]
+                    # Filter out tiny <1.2m noise loops
+                    length_m = sum(
+                        math.hypot(raw_2d[m + 1][0] - raw_2d[m][0], raw_2d[m + 1][1] - raw_2d[m][1])
+                        for m in range(len(raw_2d) - 1)
+                    )
+                    if length_m >= 1.5:
+                        simp_2d = simplify_polyline_2d(raw_2d, tol=0.06)
+                        polylines.append([[round(p[0], 3), round(p[1], 3), round(level, 3)] for p in simp_2d])
+        return polylines
 
     @staticmethod
     def _segment_intersect_2d(
@@ -642,7 +1163,6 @@ class SurveyingEngine:
         chosen_s = int(math.ceil(raw_s / 5.0) * 5)
         for s in standard_scales:
             if s >= raw_s:
-                # Use standard scale if it fills at least 75% of the viewport; otherwise use exact 5-step scale
                 if (raw_s / s) >= 0.75:
                     chosen_s = s
                 break
@@ -653,81 +1173,100 @@ class SurveyingEngine:
 
     def generate_elevation_contours(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Generates 3D Elevation Contours in TWD97 (121) + TWVD2001 clipped to the active mask boundary
+        Generates real 3D Elevation Contours in TWD97 (121) + TWVD2001 by running Marching Squares
+        over the scan's actual 3D mesh Digital Surface Model (DSM), clipped to the active mask boundary,
         and exports AutoCAD Civil3D .DXF, .DWG, and A3 .PDF files.
         """
-        scan_id = payload.get("scan_id", "quchi_20261005_merged")
+        scan_id = payload.get("scan_id", "QuChi261016_Trees")
         minor_interval = max(float(payload.get("minor_interval_m", 0.5)), 0.1)
         major_interval = max(float(payload.get("major_interval_m", minor_interval * 5.0)), minor_interval)
 
-        scan = self.db.get_scan(scan_id) or {
-            "scan_id": scan_id,
-            "name": "QuChi Dam — Complete Survey (2026-10-05)",
-            "project_group": "QuChi Dam",
-            "twd97_e": 304952.656,
-            "twd97_n": 2757084.875,
-            "twd97_h": 43.18,
-            "capture_date": "2026-10-05 15:45",
-            "rtk_accuracy_cm": 1.4,
-        }
-        ce = float(scan.get("twd97_e", 304952.656))
-        cn = float(scan.get("twd97_n", 2757084.875))
-        ch = float(scan.get("twd97_h", 43.18))
+        scan = self.db.get_scan(scan_id)
+        if not scan:
+            all_scans = self.db.list_scans()
+            scan = all_scans[0] if all_scans else {
+                "scan_id": scan_id,
+                "name": scan_id,
+                "project_group": "QuChi Dam",
+                "twd97_e": 304859.395,
+                "twd97_n": 2757030.65,
+                "twd97_h": 46.63,
+                "capture_date": "2026-10-16",
+                "rtk_accuracy_cm": 1.3,
+            }
+
+        dsm_data = self._load_or_build_scan_dsm(scan)
+        ce = dsm_data["ce"]
+        cn = dsm_data["cn"]
+        ch = dsm_data["ch"]
 
         raw_poly = payload.get("mask_polygon") or payload.get("polygon")
-        poly_twd, poly_local, has_custom_mask = self._normalize_mask_polygon_twd97(raw_poly, ce, cn, ch)
+        poly_twd, poly_local, has_custom_mask = self._normalize_mask_polygon_twd97(
+            raw_poly, ce, cn, ch, dsm_data=dsm_data
+        )
         poly_2d = [(p[0], p[1]) for p in poly_twd]
 
         min_e = min(p[0] for p in poly_twd)
         max_e = max(p[0] for p in poly_twd)
         min_n = min(p[1] for p in poly_twd)
         max_n = max(p[1] for p in poly_twd)
-        mask_ce = 0.5 * (min_e + max_e)
-        mask_cn = 0.5 * (min_n + max_n)
         span_e = max(max_e - min_e, 6.0)
         span_n = max(max_n - min_n, 6.0)
-        max_span = max(span_e, span_n)
 
-        min_h = round(ch - 3.0, 1)
-        max_h = round(ch + 5.0, 1)
+        # Slice the DSM sub-grid covering the polygon bounding box (+2 cell margin)
+        res = dsm_data["res"]
+        full_grid = dsm_data["dsm_contour"]
+        full_hull = dsm_data["hull_mask"]
+        ny, nx = full_grid.shape
+
+        i0 = max(0, int(math.floor((min_e - dsm_data["e_min"]) / res)) - 2)
+        i1 = min(nx - 1, int(math.ceil((max_e - dsm_data["e_min"]) / res)) + 2)
+        j0 = max(0, int(math.floor((min_n - dsm_data["n_min"]) / res)) - 2)
+        j1 = min(ny - 1, int(math.ceil((max_n - dsm_data["n_min"]) / res)) + 2)
+
+        sub_grid = full_grid[j0 : j1 + 1, i0 : i1 + 1]
+        sub_hull = full_hull[j0 : j1 + 1, i0 : i1 + 1]
+        sub_e_min = dsm_data["e_min"] + i0 * res
+        sub_n_min = dsm_data["n_min"] + j0 * res
+
+        valid_vals = sub_grid[sub_hull] if np.any(sub_hull) else sub_grid.ravel()
+        if len(valid_vals) > 0:
+            min_h = round(float(np.percentile(valid_vals, 2.0)), 2)
+            max_h = round(float(np.percentile(valid_vals, 98.0)), 2)
+        else:
+            min_h = round(ch - 3.0, 2)
+            max_h = round(ch + 5.0, 2)
+        if max_h - min_h < minor_interval:
+            max_h = round(min_h + minor_interval * 4.0, 2)
 
         levels = []
         curr = math.ceil(min_h / minor_interval) * minor_interval
         while curr <= max_h + 1e-6:
             levels.append(round(curr, 2))
             curr += minor_interval
+        if len(levels) > 80:
+            # Cap at 80 contour intervals if extreme vertical relief with tiny interval
+            stride = int(math.ceil(len(levels) / 80.0))
+            levels = levels[::stride]
 
         contours_out = []
-        for idx, elev in enumerate(levels):
+        for elev in levels:
             is_major = abs((elev / major_interval) - round(elev / major_interval)) < 1e-3
-            rel_h = (elev - min_h) / max(max_h - min_h, 0.5)
-            # Scale contour rings across the active mask boundary extent
-            base_r = max(42.0, max_span * 0.72) * (1.08 - 0.65 * rel_h)
-            raw_twd = []
-            num_seg = 64
-            for s in range(num_seg + 1):
-                ang = (2.0 * math.pi * s) / num_seg
-                r_mod = base_r * (
-                    1.0
-                    + 0.14 * math.cos(2 * ang + idx * 0.25)
-                    + 0.07 * math.sin(3 * ang - idx * 0.15)
-                )
-                ex = round(mask_ce + r_mod * math.cos(ang), 3)
-                ny = round(mask_cn + r_mod * 0.82 * math.sin(ang), 3)
-                raw_twd.append([ex, ny, round(elev, 3)])
-
-            # Clip contour loop strictly to the active mask boundary polygon
-            clipped_parts = self._clip_polyline_to_polygon_2d(raw_twd, ce, cn, ch, poly_2d)
-            for sub_twd, sub_local in clipped_parts:
-                contours_out.append(
-                    {
-                        "elevation_m": elev,
-                        "is_major": is_major,
-                        "layer": "C-TOPO-MAJR" if is_major else "C-TOPO-MINR",
-                        "points_local": sub_local,
-                        "points_twd97": sub_twd,
-                    }
-                )
+            raw_polylines_twd = self._extract_marching_squares_polylines_twd(
+                sub_grid, sub_hull, sub_e_min, sub_n_min, res, elev
+            )
+            for raw_twd in raw_polylines_twd:
+                clipped_parts = self._clip_polyline_to_polygon_2d(raw_twd, ce, cn, ch, poly_2d)
+                for sub_twd, sub_local in clipped_parts:
+                    contours_out.append(
+                        {
+                            "elevation_m": elev,
+                            "is_major": is_major,
+                            "layer": "C-TOPO-MAJR" if is_major else "C-TOPO-MINR",
+                            "points_local": sub_local,
+                            "points_twd97": sub_twd,
+                        }
+                    )
 
         planar_area_m2, perimeter_m = polygon_area_and_perimeter_2d(poly_2d)
         scale_denom, fill_pct = self._compute_a3_zoom_to_fit_scale(span_e, span_n)
@@ -1593,32 +2132,73 @@ class SurveyingEngine:
 
     def compute_cross_section_profile(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Computes a 2D Cross-Section Elevation Profile (Chainage vs. TWVD2001 Elevation H)
-        across the active scan and an optional comparison epoch scan.
+        Computes a real 2D Cross-Section Elevation Profile (Chainage vs. TWVD2001 Elevation H)
+        by sampling the active scan's 3D mesh DSM and a comparison epoch scan's 3D mesh DSM.
         """
-        scan_id = payload.get("scan_id", "quchi_20261005_merged")
-        compare_scan_id = payload.get("compare_scan_id", "quchi_20260921_epoch")
-        scan = self.db.get_scan(scan_id) or {"twd97_e": 304952.656, "twd97_n": 2757084.875, "twd97_h": 43.18}
-        ce = float(scan.get("twd97_e", 304952.656))
-        cn = float(scan.get("twd97_n", 2757084.875))
-        ch = float(scan.get("twd97_h", 43.18))
+        scan_id = payload.get("scan_id", "QuChi261016_Trees")
+        compare_scan_id = payload.get("compare_scan_id")
+        scan = self.db.get_scan(scan_id)
+        if not scan:
+            all_scans = self.db.list_scans()
+            scan = all_scans[0] if all_scans else {
+                "scan_id": scan_id,
+                "name": scan_id,
+                "project_group": "QuChi Dam",
+                "twd97_e": 304859.395,
+                "twd97_n": 2757030.65,
+                "twd97_h": 46.63,
+            }
 
-        p_start = payload.get("start_point") or [ce - 20.0, cn - 10.0]
-        p_end = payload.get("end_point") or [ce + 20.0, cn + 10.0]
+        dsm_curr = self._load_or_build_scan_dsm(scan)
+        ce = dsm_curr["ce"]
+        cn = dsm_curr["cn"]
+        ch = dsm_curr["ch"]
 
-        x1, y1 = float(p_start[0]), float(p_start[1])
-        x2, y2 = float(p_end[0]), float(p_end[1])
-        if abs(x1) < 10000:
-            x1 += ce
-            y1 += cn
-        if abs(x2) < 10000:
-            x2 += ce
-            y2 += cn
+        # Resolve baseline scan from the same project group if not explicitly provided or invalid
+        cmp_scan = self.db.get_scan(compare_scan_id) if compare_scan_id else None
+        if not cmp_scan or cmp_scan.get("scan_id") == scan.get("scan_id"):
+            for cand in self.db.list_scans():
+                if cand.get("scan_id") != scan.get("scan_id") and cand.get("project_group") == scan.get("project_group"):
+                    cmp_scan = cand
+                    compare_scan_id = cand.get("scan_id")
+                    break
 
-        total_len = max(math.hypot(x2 - x1, y2 - y1), 1.0)
-        num_samples = 40
+        dsm_cmp = None
+        if cmp_scan:
+            try:
+                dsm_cmp = self._load_or_build_scan_dsm(cmp_scan)
+            except Exception:
+                dsm_cmp = None
+
+        span_e = max(12.0, (dsm_curr["e_max"] - dsm_curr["e_min"]) * 0.25)
+        span_n = max(10.0, (dsm_curr["n_max"] - dsm_curr["n_min"]) * 0.20)
+        p_start = payload.get("start_point") or [ce - span_e, cn - span_n]
+        p_end = payload.get("end_point") or [ce + span_e, cn + span_n]
+
+        def _to_en(pt_val: Any) -> Tuple[float, float]:
+            if isinstance(pt_val, dict):
+                px = float(pt_val.get("x", pt_val.get("e", 0.0)))
+                pz = float(pt_val.get("z", pt_val.get("n", 0.0)))
+                if abs(px) < 10000 and abs(pz) < 10000:
+                    return ce + px, cn - pz
+                return px, pz
+            px = float(pt_val[0])
+            py = float(pt_val[1])
+            if abs(px) < 10000 and abs(py) < 10000:
+                return ce + px, cn + py
+            return px, py
+
+        x1, y1 = _to_en(p_start)
+        x2, y2 = _to_en(p_end)
+
+        total_len = max(math.hypot(x2 - x1, y2 - y1), 0.5)
+        num_samples = 60
         samples = []
         max_slope_pct = 0.0
+
+        # Compute linear datum connecting start and end elevations as fallback if no baseline epoch exists
+        z_start, _, _, _ = self._sample_dsm_elevation(dsm_curr, x1, y1)
+        z_end, _, _, _ = self._sample_dsm_elevation(dsm_curr, x2, y2)
 
         prev_z = None
         step_m = total_len / num_samples
@@ -1628,8 +2208,14 @@ class SurveyingEngine:
             ny = y1 + t * (y2 - y1)
             chainage = round(t * total_len, 2)
 
-            z_curr = self._synthetic_or_sampled_surface_z(ex, ny, ce, cn, ch, epoch_offset=0.0, stockpile_peak=2.6)
-            z_base = self._synthetic_or_sampled_surface_z(ex, ny, ce, cn, ch - 0.3, epoch_offset=-0.35, stockpile_peak=0.8)
+            z_curr, _, _, _ = self._sample_dsm_elevation(dsm_curr, ex, ny)
+            if dsm_cmp is not None:
+                z_base, _, _, is_cmp_valid = self._sample_dsm_elevation(dsm_cmp, ex, ny)
+                if not is_cmp_valid:
+                    # Shift by vertical datum difference if baseline scan has slight offset
+                    z_base = z_curr - (ch - dsm_cmp["ch"])
+            else:
+                z_base = z_start + t * (z_end - z_start)
 
             slope_pct = 0.0
             if prev_z is not None and step_m > 0:
@@ -1646,6 +2232,9 @@ class SurveyingEngine:
                     "baseline_elevation_m": round(z_base, 3),
                     "delta_z_m": round(z_curr - z_base, 3),
                     "slope_pct": slope_pct,
+                    "local_x": round(ex - ce, 3),
+                    "local_y": round(z_curr - ch, 3),
+                    "local_z": round(cn - ny, 3),
                 }
             )
 
@@ -1653,24 +2242,255 @@ class SurveyingEngine:
             "status": "ok",
             "scan_id": scan_id,
             "compare_scan_id": compare_scan_id,
+            "compare_scan_name": cmp_scan.get("name") if cmp_scan else "Chord Grade Datum",
             "crs": TWD97_TWVD2001_SHORT,
             "total_length_m": round(total_len, 2),
             "max_slope_pct": round(max_slope_pct, 1),
+            "start_twd97": [round(x1, 3), round(y1, 3), round(z_start, 3)],
+            "end_twd97": [round(x2, 3), round(y2, 3), round(z_end, 3)],
             "samples": samples,
         }
 
+    @staticmethod
+    def _dms_to_deg(dms_val: Any, ref: str) -> Optional[float]:
+        try:
+            def _to_f(v: Any) -> float:
+                if hasattr(v, "numerator") and hasattr(v, "denominator"):
+                    return float(v.numerator) / max(float(v.denominator), 1e-12)
+                if isinstance(v, (tuple, list)) and len(v) == 2:
+                    return float(v[0]) / max(float(v[1]), 1e-12)
+                return float(v)
+
+            d = _to_f(dms_val[0])
+            m = _to_f(dms_val[1])
+            s = _to_f(dms_val[2])
+            deg = d + m / 60.0 + s / 3600.0
+            if str(ref).upper().strip() in ("S", "W"):
+                deg = -deg
+            return deg
+        except Exception:
+            return None
+
+    def _get_candidate_camera_dirs(self, scan: Dict[str, Any]) -> List[str]:
+        dirs: List[str] = []
+        for k in ("cameras_dir", "project_dir", "src_project_dir"):
+            v = scan.get(k)
+            if v and os.path.isdir(v) and v not in dirs:
+                dirs.append(v)
+        sid = str(scan.get("scan_id") or "").lower()
+        pgrp = str(scan.get("project_group") or "").lower()
+        if "261016" in sid or "quchi" in sid or "quchi" in pgrp:
+            for extra in (
+                os.path.join(SCANS_ROOT_DIR, "catch_QuChi261016", "inputs"),
+                r"C:\Scans\QuChi\QuChi_20261015\Inputs",
+                r"C:\Scans\QuChi\QuChi_20261005\inputs",
+            ):
+                if os.path.isdir(extra) and extra not in dirs:
+                    dirs.append(extra)
+        if "ntu" in sid or "dorm" in pgrp:
+            extra = r"C:\Scans\NTU Dorm\NTU Dorm 260917\ntuDorm 0917\images"
+            if os.path.isdir(extra) and extra not in dirs:
+                dirs.append(extra)
+        if "rose" in sid or "rose" in pgrp:
+            extra = r"C:\Scans\2026-09-17-13-40-52"
+            if os.path.isdir(extra) and extra not in dirs:
+                dirs.append(extra)
+        return dirs
+
+    def _load_or_build_camera_catalog(self, scan: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """
+        Loads or builds the real RTK camera pose catalog for a scan by parsing
+        Pix4DCatch OPF (`opf_files/camera_list.json` + `opf_files/input_cameras.json`)
+        or extracting EXIF GPS coordinates from raw `.jpg` frames on disk.
+        """
+        scan_id = str(scan.get("scan_id") or "unknown")
+        if scan_id in self._camera_mem_cache:
+            return self._camera_mem_cache[scan_id]
+
+        proj_dir = scan.get("project_dir") or os.path.join(SCANS_ROOT_DIR, scan_id)
+        cache_json = os.path.join(proj_dir, "_cameras_cache_v2.json") if os.path.isdir(proj_dir) else None
+        if cache_json and os.path.isfile(cache_json):
+            try:
+                with open(cache_json, "r", encoding="utf-8") as f:
+                    cams = json.load(f)
+                if isinstance(cams, list) and len(cams) > 0:
+                    self._camera_mem_cache[scan_id] = cams
+                    return cams
+            except Exception:
+                pass
+
+        search_dirs = self._get_candidate_camera_dirs(scan)
+        catalog: List[Dict[str, Any]] = []
+
+        # 1. Try OPF input_cameras.json + camera_list.json first (highest accuracy: RTK sigmas + IMU yaw/pitch/roll)
+        for sdir in search_dirs:
+            opf_inputs = glob.glob(os.path.join(sdir, "**", "input_cameras.json"), recursive=True)
+            for in_cam_path in opf_inputs:
+                opf_dir = os.path.dirname(in_cam_path)
+                cam_list_path = os.path.join(opf_dir, "camera_list.json")
+                if not os.path.isfile(cam_list_path):
+                    continue
+                try:
+                    with open(cam_list_path, "r", encoding="utf-8") as f:
+                        clist_data = json.load(f)
+                    id_to_uri = {
+                        int(c["id"]): str(c["uri"])
+                        for c in clist_data.get("cameras", [])
+                        if "id" in c and "uri" in c and str(c["uri"]).lower().endswith((".jpg", ".jpeg", ".png"))
+                    }
+                    with open(in_cam_path, "r", encoding="utf-8") as f:
+                        icams_data = json.load(f)
+                    part_tag = os.path.basename(os.path.dirname(opf_dir))
+                    for cap in icams_data.get("captures", []):
+                        cam_id = int(cap.get("reference_camera_id") or cap.get("id") or 0)
+                        rel_uri = id_to_uri.get(cam_id)
+                        if not rel_uri:
+                            for sub_c in cap.get("cameras", []):
+                                cid = int(sub_c.get("id") or 0)
+                                if cid in id_to_uri:
+                                    rel_uri = id_to_uri[cid]
+                                    break
+                        if not rel_uri:
+                            continue
+                        abs_img = os.path.normpath(os.path.join(opf_dir, rel_uri))
+                        if not os.path.isfile(abs_img):
+                            continue
+                        geo = cap.get("geolocation") or {}
+                        coords = geo.get("coordinates") or []
+                        if len(coords) < 2:
+                            continue
+                        lat = float(coords[0])
+                        lon = float(coords[1])
+                        h_val = float(coords[2]) if len(coords) >= 3 else float(scan.get("twd97_h") or 43.18)
+                        cam_e, cam_n = wgs84_to_twd97(lat, lon)
+                        sigmas = geo.get("sigmas") or [0.014, 0.014, 0.022]
+                        h_sigma_cm = round(math.hypot(float(sigmas[0]), float(sigmas[1])) * 100.0, 2)
+                        v_sigma_cm = round(float(sigmas[2]) * 100.0, 2) if len(sigmas) >= 3 else 2.2
+                        ori = cap.get("orientation") or {}
+                        angles = ori.get("angles_deg") or [0.0, -20.0, 0.0]
+                        fname = os.path.basename(abs_img)
+                        display_name = f"{part_tag}/{fname}" if part_tag and part_tag not in ("inputs", "opf_files") else fname
+                        catalog.append(
+                            {
+                                "filename": display_name,
+                                "abs_path": abs_img,
+                                "e": round(cam_e, 3),
+                                "n": round(cam_n, 3),
+                                "h": round(h_val, 3),
+                                "rtk_h_sigma_cm": h_sigma_cm,
+                                "rtk_v_sigma_cm": v_sigma_cm,
+                                "yaw_deg": round(float(angles[0]) % 360.0, 1) if len(angles) >= 1 else 0.0,
+                                "pitch_deg": round(float(angles[1]), 1) if len(angles) >= 2 else -20.0,
+                            }
+                        )
+                except Exception:
+                    continue
+            if catalog:
+                break
+
+        # 2. Fallback to EXIF GPS extraction from raw .jpg files if no OPF camera files were present
+        if not catalog:
+            for sdir in search_dirs:
+                jpgs = [
+                    p for p in (
+                        glob.glob(os.path.join(sdir, "**", "*.jpg"), recursive=True)
+                        + glob.glob(os.path.join(sdir, "**", "*.jpeg"), recursive=True)
+                    )
+                    if not os.path.basename(p).lower().startswith(("mesh", "thumb"))
+                ]
+                if not jpgs:
+                    continue
+                jpgs.sort()
+                # Sample up to 600 frames evenly across the capture sequence
+                stride = max(1, len(jpgs) // 600)
+                for jp in jpgs[::stride]:
+                    try:
+                        with Image.open(jp) as im:
+                            exif = im._getexif() or {}
+                        gps_raw = exif.get(34853)
+                        if not gps_raw:
+                            continue
+                        gps = {GPSTAGS.get(k, k): v for k, v in gps_raw.items()}
+                        lat = self._dms_to_deg(gps.get("GPSLatitude"), gps.get("GPSLatitudeRef", "N"))
+                        lon = self._dms_to_deg(gps.get("GPSLongitude"), gps.get("GPSLongitudeRef", "E"))
+                        if lat is None or lon is None:
+                            continue
+                        alt_raw = gps.get("GPSAltitude", scan.get("twd97_h") or 43.18)
+                        if hasattr(alt_raw, "numerator"):
+                            h_val = float(alt_raw.numerator) / max(float(alt_raw.denominator), 1e-9)
+                        elif isinstance(alt_raw, (tuple, list)) and len(alt_raw) == 2:
+                            h_val = float(alt_raw[0]) / max(float(alt_raw[1]), 1e-9)
+                        else:
+                            h_val = float(alt_raw)
+                        cam_e, cam_n = wgs84_to_twd97(lat, lon)
+                        catalog.append(
+                            {
+                                "filename": os.path.basename(jp),
+                                "abs_path": os.path.abspath(jp),
+                                "e": round(cam_e, 3),
+                                "n": round(cam_n, 3),
+                                "h": round(h_val, 3),
+                                "rtk_h_sigma_cm": float(scan.get("rtk_accuracy_cm") or 1.4),
+                                "rtk_v_sigma_cm": round(float(scan.get("rtk_accuracy_cm") or 1.4) * 1.4, 2),
+                                "yaw_deg": 0.0,
+                                "pitch_deg": -22.0,
+                            }
+                        )
+                    except Exception:
+                        continue
+                if catalog:
+                    break
+
+        if catalog:
+            self._camera_mem_cache[scan_id] = catalog
+            if cache_json:
+                try:
+                    with open(cache_json, "w", encoding="utf-8") as f:
+                        json.dump(catalog, f)
+                except Exception:
+                    pass
+        return catalog
+
+    def resolve_camera_photo_path(self, scan_id: str, file_key: str) -> Optional[str]:
+        """Resolves a requested camera photo `file_key` to its verified local `.jpg` path on disk."""
+        scan = self.db.get_scan(scan_id)
+        if not scan:
+            all_scans = self.db.list_scans()
+            scan = all_scans[0] if all_scans else {}
+        catalog = self._load_or_build_camera_catalog(scan)
+        norm_key = str(file_key or "").replace("\\", "/").strip("/")
+        base_key = os.path.basename(norm_key)
+        for cam in catalog:
+            if cam.get("filename") == norm_key and os.path.isfile(cam["abs_path"]):
+                return cam["abs_path"]
+        for cam in catalog:
+            if os.path.basename(cam.get("abs_path", "")) == base_key and os.path.isfile(cam["abs_path"]):
+                return cam["abs_path"]
+        for sdir in self._get_candidate_camera_dirs(scan):
+            direct = os.path.join(sdir, norm_key.replace("/", os.sep))
+            if os.path.isfile(direct):
+                return direct
+            matches = glob.glob(os.path.join(sdir, "**", base_key), recursive=True)
+            if matches and os.path.isfile(matches[0]):
+                return matches[0]
+        return None
+
     def inspect_rtk_camera_photos(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Finds the closest original Pix4DCatch RTK smartphone photographs on the PC
-        looking at the clicked 3D surface point.
+        Finds the closest real Pix4DCatch RTK smartphone photographs on the PC
+        capturing the clicked 3D surface coordinate (TWD97 E, N, TWVD2001 H).
         """
-        scan_id = payload.get("scan_id", "quchi_20261005_merged")
-        scan = self.db.get_scan(scan_id) or {}
-        cam_dir = scan.get("cameras_dir") or r"C:\Scans\QuChi\QuChi_20261005\inputs"
+        from urllib.parse import quote
 
-        ce = float(scan.get("twd97_e", 304952.656))
-        cn = float(scan.get("twd97_n", 2757084.875))
-        ch = float(scan.get("twd97_h", 43.18))
+        scan_id = payload.get("scan_id", "QuChi261016_Trees")
+        scan = self.db.get_scan(scan_id)
+        if not scan:
+            all_scans = self.db.list_scans()
+            scan = all_scans[0] if all_scans else {}
+
+        ce = float(scan.get("twd97_e") or 304859.395)
+        cn = float(scan.get("twd97_n") or 2757030.65)
+        ch = float(scan.get("twd97_h") or 46.63)
 
         click_x = float(payload.get("x", 0.0))
         click_y = float(payload.get("y", 0.0))
@@ -1678,36 +2498,71 @@ class SurveyingEngine:
 
         target_e = round(ce + click_x if abs(click_x) < 10000 else click_x, 3)
         target_n = round(cn - click_z if abs(click_z) < 10000 else click_z, 3)
-        target_h = round(ch + click_y if abs(click_y) < 1000 else click_y, 3)
+        if click_x == 0.0 and click_y == 0.0 and click_z == 0.0:
+            try:
+                dsm = self._load_or_build_scan_dsm(scan)
+                sampled_h, _, _, _ = self._sample_dsm_elevation(dsm, target_e, target_n)
+                target_h = round(sampled_h, 3)
+            except Exception:
+                target_h = round(ch, 3)
+        else:
+            target_h = round(ch + click_y if abs(click_y) < 1000 else click_y, 3)
 
-        photos = []
-        if os.path.isdir(cam_dir):
-            jpgs = sorted([f for f in os.listdir(cam_dir) if f.lower().endswith((".jpg", ".jpeg", ".png"))])
-            if jpgs:
-                # Deterministically pick 4 nearby frames based on clicked coordinate hash
-                seed_idx = int(abs(click_x * 17 + click_z * 31)) % max(len(jpgs) - 4, 1)
-                selected = jpgs[seed_idx : seed_idx + 4]
-                for i, fname in enumerate(selected):
-                    photos.append(
-                        {
-                            "filename": fname,
-                            "url": f"/api/camera-photo?scan_id={scan_id}&file={fname}",
-                            "distance_m": round(2.1 + i * 0.65, 2),
-                            "rtk_h_sigma_cm": round(1.3 + (i % 3) * 0.2, 2),
-                            "rtk_v_sigma_cm": round(1.9 + (i % 2) * 0.3, 2),
-                            "camera_twd97_e": round(target_e + (i - 1.5) * 1.2, 3),
-                            "camera_twd97_n": round(target_n + (i - 1.0) * 1.1, 3),
-                            "camera_twd97_h": round(target_h + 1.55, 3),
-                            "yaw_deg": round((45.0 + i * 28.0) % 360.0, 1),
-                            "pitch_deg": -24.5,
-                        }
-                    )
+        catalog = self._load_or_build_camera_catalog(scan)
+        scored: List[Tuple[float, float, Dict[str, Any]]] = []
+        for cam in catalog:
+            dx = target_e - cam["e"]
+            dy = target_n - cam["n"]
+            dz = target_h - cam["h"]
+            dist_2d = math.hypot(dx, dy)
+            dist_3d = math.sqrt(dx * dx + dy * dy + dz * dz)
+            # Ideal close-range terrestrial photogrammetry distance is 1.5m - 35m
+            dist_penalty = dist_3d if dist_3d >= 1.2 else (1.2 - dist_3d) * 4.0 + 1.2
+            # Bearing from camera to clicked 3D point (0 deg = North, 90 deg = East)
+            bearing_deg = (math.degrees(math.atan2(dx, dy)) + 360.0) % 360.0
+            cam_yaw = float(cam.get("yaw_deg") or 0.0)
+            ang_diff = abs((bearing_deg - cam_yaw + 180.0) % 360.0 - 180.0)
+            score = dist_penalty + (ang_diff / 180.0) * 3.5 if dist_2d > 0.5 else dist_penalty
+            scored.append((score, dist_3d, cam))
+
+        scored.sort(key=lambda item: item[0])
+
+        # Select up to 6 distinct camera viewpoints (> 0.65m apart so burst duplicates are skipped)
+        selected_photos = []
+        used_positions: List[Tuple[float, float, float]] = []
+        for _, dist_3d, cam in scored:
+            pos = (cam["e"], cam["n"], cam["h"])
+            if any(math.hypot(pos[0] - u[0], pos[1] - u[1]) < 0.65 for u in used_positions):
+                continue
+            used_positions.append(pos)
+            fk = cam["filename"]
+            selected_photos.append(
+                {
+                    "filename": fk,
+                    "url": f"/api/camera-photo?scan_id={quote(str(scan_id))}&file={quote(fk)}",
+                    "distance_m": round(dist_3d, 2),
+                    "rtk_h_sigma_cm": cam["rtk_h_sigma_cm"],
+                    "rtk_v_sigma_cm": cam["rtk_v_sigma_cm"],
+                    "camera_twd97_e": cam["e"],
+                    "camera_twd97_n": cam["n"],
+                    "camera_twd97_h": cam["h"],
+                    "camera_local_x": round(cam["e"] - ce, 3),
+                    "camera_local_y": round(cam["h"] - ch, 3),
+                    "camera_local_z": round(cn - cam["n"], 3),
+                    "yaw_deg": cam["yaw_deg"],
+                    "pitch_deg": cam["pitch_deg"],
+                }
+            )
+            if len(selected_photos) >= 6:
+                break
 
         return {
             "status": "ok",
             "scan_id": scan_id,
             "target_twd97": {"e": target_e, "n": target_n, "h": target_h},
             "crs": TWD97_TWVD2001_SHORT,
-            "photo_count": len(photos),
-            "photos": photos,
+            "total_catalog_cameras": len(catalog),
+            "photo_count": len(selected_photos),
+            "photos": selected_photos,
         }
+

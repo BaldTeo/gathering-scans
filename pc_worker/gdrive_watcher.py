@@ -1016,6 +1016,19 @@ def seed_and_discover_scans(db: ScanQueueDB) -> List[Dict[str, Any]]:
                     }
                 grouped_uploads[gkey]["parts"][part_idx] = fpath
 
+    def _upsert_preserving_active_job(item: Dict[str, Any]):
+        existing_row = db.get_scan(item["scan_id"])
+        if existing_row and existing_row.get("status") in ("queued", "processing", "waiting_parts"):
+            item["status"] = existing_row["status"]
+            item["progress_pct"] = float(existing_row.get("progress_pct", 0.0))
+            item["stage_label"] = existing_row.get("stage_label", "Queued")
+            item["force_next"] = int(existing_row.get("force_next", 0))
+            item["bypass_count"] = int(existing_row.get("bypass_count", 0))
+            if existing_row.get("source_zip_path"):
+                item["source_zip_path"] = existing_row["source_zip_path"]
+        db.upsert_scan(item)
+        discovered_ids.add(item["scan_id"])
+
     # 1. Dynamically discover all scan folders in C:\GatheringScans (local disk storage)
     if os.path.isdir(LOCAL_SCANS_ROOT):
         for entry in sorted(os.listdir(LOCAL_SCANS_ROOT)):
@@ -1029,8 +1042,7 @@ def seed_and_discover_scans(db: ScanQueueDB) -> List[Dict[str, Any]]:
             if _is_direct_scan_folder(sub_dir):
                 item = _discover_folder_scan_item(sub_dir, dynamic_clusters=dynamic_clusters)
                 if item:
-                    db.upsert_scan(item)
-                    discovered_ids.add(item["scan_id"])
+                    _upsert_preserving_active_job(item)
             else:
                 # Check if sub_dir is a Project Folder containing child scan folders (C:\GatheringScans\<Project>\<Scan>)
                 found_nested = False
@@ -1044,14 +1056,12 @@ def seed_and_discover_scans(db: ScanQueueDB) -> List[Dict[str, Any]]:
                         child_dir, parent_project=entry, dynamic_clusters=dynamic_clusters
                     )
                     if nested_item:
-                        db.upsert_scan(nested_item)
-                        discovered_ids.add(nested_item["scan_id"])
+                        _upsert_preserving_active_job(nested_item)
                         found_nested = True
                 if not found_nested:
                     item = _discover_folder_scan_item(sub_dir, dynamic_clusters=dynamic_clusters)
                     if item:
-                        db.upsert_scan(item)
-                        discovered_ids.add(item["scan_id"])
+                        _upsert_preserving_active_job(item)
 
     for (_, _, total_parts), ginfo in grouped_uploads.items():
         parent_proj = ginfo["parent_project"]
@@ -1092,7 +1102,14 @@ def seed_and_discover_scans(db: ScanQueueDB) -> List[Dict[str, Any]]:
 
         cand_processed_dir = os.path.join(LOCAL_SCANS_ROOT, scan_id)
         cand_processed_ts = os.path.join(cand_processed_dir, "tileset", "tileset.json")
-        if all_parts_ready and os.path.isfile(cand_processed_ts):
+        if existing.get("status") in ("processing", "queued"):
+            primary_meta["status"] = existing["status"]
+            primary_meta["progress_pct"] = float(existing.get("progress_pct", 0.0))
+            primary_meta["stage_label"] = existing.get("stage_label", "Queued")
+            primary_meta["tileset_path"] = existing.get("tileset_path", cand_processed_ts if os.path.isfile(cand_processed_ts) else "")
+            primary_meta["obj_path"] = existing.get("obj_path", "")
+            primary_meta["project_dir"] = existing.get("project_dir", cand_processed_dir)
+        elif all_parts_ready and os.path.isfile(cand_processed_ts):
             if existing and existing.get("tileset_path"):
                 primary_meta = dict(existing)
                 primary_meta["source_zip_path"] = ";".join(parts_map[p] for p in present_parts)
@@ -1117,13 +1134,6 @@ def seed_and_discover_scans(db: ScanQueueDB) -> List[Dict[str, Any]]:
                     f"({', '.join(os.path.basename(parts_map[p]) for p in present_parts)}). "
                     f"Waiting for part(s) {missing_str} before launching unified PIX4Dmatic project."
                 )
-            elif existing.get("status") == "processing":
-                primary_meta["status"] = "processing"
-                primary_meta["progress_pct"] = existing.get("progress_pct", 10.0)
-                primary_meta["stage_label"] = existing.get("stage_label", "Processing in PIX4Dmatic...")
-                primary_meta["tileset_path"] = existing.get("tileset_path", "")
-                primary_meta["obj_path"] = existing.get("obj_path", "")
-                primary_meta["project_dir"] = existing.get("project_dir", "")
             elif existing.get("status") == "completed" and existing.get("tileset_path") and os.path.isfile(existing.get("tileset_path", "")):
                 primary_meta["status"] = "completed"
                 primary_meta["progress_pct"] = existing.get("progress_pct", 100.0)
@@ -1149,10 +1159,15 @@ def seed_and_discover_scans(db: ScanQueueDB) -> List[Dict[str, Any]]:
 
     # 3. Strictly remove any scans from SQLite that are no longer present in C:\GatheringScans or the jailed GDrive inbox
     with db._connect() as conn:
-        existing_rows = conn.execute("SELECT scan_id FROM scans").fetchall()
+        existing_rows = conn.execute("SELECT scan_id, status, project_dir, source_zip_path FROM scans").fetchall()
         for row in existing_rows:
             sid = row["scan_id"]
             if sid not in discovered_ids:
+                st = row["status"]
+                pdir = row["project_dir"] or ""
+                szip = (row["source_zip_path"] or "").split(";")[0].strip()
+                if st in ("queued", "processing", "waiting_parts") and (os.path.isdir(pdir) or (szip and os.path.isfile(szip))):
+                    continue
                 conn.execute("DELETE FROM scans WHERE scan_id = ?", (sid,))
                 conn.execute("DELETE FROM scan_comments WHERE scan_id = ?", (sid,))
         conn.commit()
