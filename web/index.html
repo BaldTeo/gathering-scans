@@ -753,6 +753,42 @@
         </div>
       </div>
 
+      <!-- Google Drive .3tz Single-File Cloud Streaming Card -->
+      <div class="gs-cloud-stream-card" style="background:var(--ui-bg-subtle);border:1px solid var(--ui-border);border-radius:10px;padding:10px 12px;margin-bottom:10px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px;">
+          <div style="font-size:12px;font-weight:700;color:var(--ui-text-primary);display:flex;align-items:center;gap:6px;">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="var(--ui-accent)" stroke-width="2">
+              <path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/>
+            </svg>
+            <span>Google Drive <code>.3tz</code> Single-File Cloud Streaming (Zero Sync Bogging · 0% PC Upload)</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+            <span class="gs-crs-pill" id="badgeCloudStreamStatus" style="font-size:10px;">11 / 11 .3tz Synced</span>
+            <button type="button" class="btn-xs" id="btnAuthorizeGDriveCloud" title="1-Click Authorize Google Drive Read-Only Token for Direct VPS Cloud Streaming">1-Click GDrive Auth</button>
+            <button type="button" class="btn-xs" id="btnToggleServiceAccountBox" title="Configure Permanent Google Cloud Service Account JSON for 24/7 Unattended Streaming">Service Account</button>
+            <button type="button" class="btn-xs primary" id="btnSyncCloudPackages" title="Build .3tz Packages in Google Drive StreamPackages &amp; Push Byte-Range Manifest to VPS">Sync .3tz</button>
+          </div>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;font-size:11px;color:var(--ui-text-secondary);">
+          <div id="lblCloudStreamDetails">
+            Packages each scan into <b>1 single <code>.3tz</code> archive</b> (<code>ZIP_STORED</code>) inside <code>StreamPackages</code>. VPS streams byte-ranges directly from Google at 300+ Mbps (works 24/7 &amp; supports external guest links <code>/s/&lt;token&gt;</code>).
+          </div>
+          <div style="display:flex;gap:8px;flex-shrink:0;" id="cloudStreamFolderLinks">
+            <a href="https://drive.google.com/drive/folders/1scUD9IQWsAJjg296pecxFYqhoVm4mpjs" target="_blank" rel="noopener" id="lnkCloudSharedDrive" style="color:var(--ui-accent);text-decoration:none;font-weight:600;">Shared Drive Folder ↗</a>
+            <a href="https://drive.google.com/drive/folders/1oBf6wYz3mRaM9kktDQJxcf_JZ2QduICW" target="_blank" rel="noopener" id="lnkCloudMyDrive" style="color:var(--ui-accent);text-decoration:none;font-weight:600;">My Drive Folder ↗</a>
+          </div>
+        </div>
+        <div id="boxServiceAccountConfig" style="display:none;margin-top:8px;padding-top:8px;border-top:1px solid var(--ui-border);">
+          <div style="font-size:11px;color:var(--ui-text-secondary);margin-bottom:4px;">
+            Paste a Google Cloud <b>Service Account JSON</b> key (with Viewer access to <code>StreamPackages</code>) for permanent 24/7 auto-refreshing VPS streaming, or share the <code>StreamPackages</code> folder as <i>"Anyone with the link can view"</i>:
+          </div>
+          <div style="display:flex;gap:6px;align-items:flex-start;">
+            <textarea class="gs-input" id="txtServiceAccountJson" rows="3" placeholder='{"type": "service_account", "project_id": "...", "private_key": "-----BEGIN PRIVATE KEY-----...", "client_email": "..."}' style="flex:1;font-family:monospace;font-size:10.5px;"></textarea>
+            <button type="button" class="btn-xs primary" id="btnSaveServiceAccountJson">Save Key</button>
+          </div>
+        </div>
+      </div>
+
       <div class="gs-webhook-bar" style="background:var(--ui-bg-subtle);border:1px solid var(--ui-border);border-radius:8px;padding:8px 12px;margin-bottom:10px;display:flex;align-items:center;justify-content:space-between;gap:10px;">
         <div style="font-size:11.5px;font-weight:600;color:var(--ui-text-secondary);white-space:nowrap;">Google Chat Space Webhook:</div>
         <input type="text" class="gs-input" id="inputGChatWebhookUrl" placeholder="https://chat.googleapis.com/v1/spaces/.../messages?key=...&amp;token=..." style="flex:1;font-family:monospace;font-size:11px;min-width:0;" />

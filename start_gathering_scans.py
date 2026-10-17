@@ -88,8 +88,8 @@ def _detect_running_pix4dmatic() -> Tuple[bool, str, str]:
     candidate_logs.sort(key=lambda x: x[0])
     _, inferred_sid, latest_log = candidate_logs[-1]
     # Ensure no other scan is left with stale processing status
-    for s in DB.list_scans(status="processing"):
-        if s["scan_id"] != inferred_sid:
+    for s in DB.list_scans():
+        if s.get("status") == "processing" and s["scan_id"] != inferred_sid:
             DB.update_job_progress(s["scan_id"], "completed", 100.0, "Completed")
     return True, inferred_sid, latest_log
 
@@ -141,14 +141,17 @@ def pix4d_worker_loop():
                 adopted_sid = None
                 scan_row = DB.get_scan(fin_sid) or {}
                 proj_dir = scan_row.get("project_dir") or os.path.join(LOCAL_SCANS_ROOT, fin_sid)
-                exp_dir = os.path.join(proj_dir, "exports")
+                exp_dirs = [os.path.join(proj_dir, "exports")]
+                if fin_sid == "catch_QuChi261016":
+                    exp_dirs.append(os.path.join(LOCAL_SCANS_ROOT, "QuChi261016_Trees", "exports"))
                 objs = []
-                if os.path.isdir(exp_dir):
-                    for r_dir, _, r_files in os.walk(exp_dir):
-                        for f in r_files:
-                            if f.lower().endswith(".obj"):
-                                fp = os.path.join(r_dir, f)
-                                objs.append((os.path.getmtime(fp), fp))
+                for exp_dir in exp_dirs:
+                    if os.path.isdir(exp_dir):
+                        for r_dir, _, r_files in os.walk(exp_dir):
+                            for f in r_files:
+                                if f.lower().endswith(".obj"):
+                                    fp = os.path.join(r_dir, f)
+                                    objs.append((os.path.getmtime(fp), fp))
                 objs.sort(key=lambda x: x[0], reverse=True)
                 newest_obj = objs[0][1] if objs else (scan_row.get("obj_path") or "")
                 ts_path = scan_row.get("tileset_path") or os.path.join(proj_dir, "tileset", "tileset.json")

@@ -4691,6 +4691,7 @@
       tbody.innerHTML = `<tr><td colspan="8" style="color:var(--ui-text-muted);">Loading...</td></tr>`;
     }
     await refreshQueueModalData();
+    refreshCloudManifestUI();
     if (_queuePollTimer) clearInterval(_queuePollTimer);
     _queuePollTimer = setInterval(() => {
       if (document.getElementById("modalQueue")?.classList.contains("active")) {
@@ -4750,6 +4751,85 @@
       const draft = readPix4dSettingsFromUI("User");
       applyPix4dSettingsToUI(draft, true);
     });
+  });
+
+  async function refreshCloudManifestUI(data = null) {
+    try {
+      const st = data || (await apiGet("/api/cloud-manifest/status"));
+      if (!st || st.status !== "ok") return;
+      if (st.google_client_id) STATE.googleClientId = st.google_client_id;
+      const badge = document.getElementById("badgeCloudStreamStatus");
+      if (badge) {
+        const total = Number(st.total_packages || 0);
+        const synced = Math.max(Number(st.synced_shared_drive_count || 0), Number(st.synced_my_drive_count || 0));
+        const authTag = st.auth_configured ? " · Auth Ready" : " · Link/OAuth";
+        badge.textContent = `${synced} / ${total} .3tz Synced (${st.total_size_mb || 0} MB)${authTag}`;
+      }
+      const lnkSd = document.getElementById("lnkCloudSharedDrive");
+      if (lnkSd && st.shared_drive_url) lnkSd.href = st.shared_drive_url;
+      const lnkMd = document.getElementById("lnkCloudMyDrive");
+      if (lnkMd && st.my_drive_url) lnkMd.href = st.my_drive_url;
+    } catch (_) {}
+  }
+
+  document.getElementById("btnAuthorizeGDriveCloud")?.addEventListener("click", () => {
+    const clientId = STATE.googleClientId || "449032844615-50b3qrr21rklqf9n9r6q2g7r8b288605.apps.googleusercontent.com";
+    if (window.google && window.google.accounts && window.google.accounts.oauth2) {
+      const tokenClient = window.google.accounts.oauth2.initTokenClient({
+        client_id: clientId,
+        scope: "https://www.googleapis.com/auth/drive.readonly",
+        callback: async (resp) => {
+          if (resp && resp.access_token) {
+            try {
+              const st = await apiPost("/api/cloud-manifest/auth", {
+                access_token: resp.access_token,
+                expires_in: resp.expires_in || 3599,
+              });
+              await refreshCloudManifestUI(st);
+              showToast("Authorized Google Drive Read-Only token & synced to VPS for 300+ Mbps .3tz streaming!");
+            } catch (err) {
+              showToast(`Cloud Auth Error: ${err.message}`);
+            }
+          }
+        },
+      });
+      tokenClient.requestAccessToken({ prompt: "consent" });
+    } else {
+      showToast("Google Identity Services script not loaded yet — try Service Account JSON or folder link sharing.");
+    }
+  });
+
+  document.getElementById("btnToggleServiceAccountBox")?.addEventListener("click", () => {
+    const box = document.getElementById("boxServiceAccountConfig");
+    if (box) box.style.display = box.style.display === "none" ? "block" : "none";
+  });
+
+  document.getElementById("btnSaveServiceAccountJson")?.addEventListener("click", async () => {
+    const raw = document.getElementById("txtServiceAccountJson")?.value.trim() || "";
+    if (!raw) {
+      showToast("Please paste a valid Google Cloud Service Account JSON key.");
+      return;
+    }
+    try {
+      const st = await apiPost("/api/cloud-manifest/auth", { service_account_json: raw });
+      await refreshCloudManifestUI(st);
+      const box = document.getElementById("boxServiceAccountConfig");
+      if (box) box.style.display = "none";
+      showToast(`Saved Service Account (${st.service_account_email || "ready"}) & synced to VPS!`);
+    } catch (err) {
+      showToast(`Service Account Error: ${err.message}`);
+    }
+  });
+
+  document.getElementById("btnSyncCloudPackages")?.addEventListener("click", async () => {
+    showToast("Building .3tz single-file archives in Google Drive StreamPackages & syncing manifest to VPS...");
+    try {
+      const st = await apiPost("/api/cloud-manifest/rebuild", { force: false });
+      await refreshCloudManifestUI(st);
+      showToast(`Synced ${st.total_packages || 0} .3tz packages (${st.total_size_mb || 0} MB) to Google Drive & VPS!`);
+    } catch (err) {
+      showToast(`Cloud Sync Error: ${err.message}`);
+    }
   });
 
   document.getElementById("btnSavePix4dSettingsQueue")?.addEventListener("click", () => savePix4dSettingsFromUI(""));

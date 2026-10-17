@@ -472,6 +472,15 @@ def postprocess_obj_to_tileset(
             ensure_scan_full_quality_thumbnail(ts_candidate, scan_id, project_dir=proj_dir, force=True)
         except Exception as e:
             print(f"[PIX4DRunner] Warning generating preview/thumbnail for {ts_candidate}: {e}")
+        try:
+            from pc_worker.gdrive_cloud_sync import build_scan_3tz_package
+
+            build_scan_3tz_package(
+                {"scan_id": scan_id, "tileset_path": ts_candidate, "project_dir": proj_dir},
+                force=True,
+            )
+        except Exception as e:
+            print(f"[PIX4DRunner] Warning building .3tz cloud package for {scan_id}: {e}")
         return ts_candidate
     return ""
 

@@ -140,6 +140,232 @@ VPS_TUNNEL_POOL: "queue.LifoQueue[Tuple[socket.socket, threading.Event, float, i
 _VPS_RAM_FALLBACK_CACHE: Dict[str, Tuple[int, Dict[str, str], bytes]] = {}
 _TUNNEL_POOL_STARTED = False
 
+CLOUD_MANIFEST_PATH = os.path.join(DATA_DIR, "gdrive_cloud_manifest.json")
+CLOUD_AUTH_PATH = os.path.join(DATA_DIR, "gdrive_cloud_auth.json")
+_CLOUD_MANIFEST_MEM: Optional[Dict[str, Any]] = None
+_CLOUD_AUTH_MEM: Optional[Dict[str, Any]] = None
+
+
+def _load_cloud_manifest() -> Dict[str, Any]:
+    global _CLOUD_MANIFEST_MEM
+    if _CLOUD_MANIFEST_MEM is not None:
+        return _CLOUD_MANIFEST_MEM
+    if os.path.isfile(CLOUD_MANIFEST_PATH):
+        try:
+            with open(CLOUD_MANIFEST_PATH, "r", encoding="utf-8") as f:
+                _CLOUD_MANIFEST_MEM = json.load(f)
+                return _CLOUD_MANIFEST_MEM
+        except Exception:
+            pass
+    return {}
+
+
+def _save_cloud_manifest(manifest: Dict[str, Any]) -> None:
+    global _CLOUD_MANIFEST_MEM
+    _CLOUD_MANIFEST_MEM = manifest
+    try:
+        with open(CLOUD_MANIFEST_PATH, "w", encoding="utf-8") as f:
+            json.dump(manifest, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        print(f"[GatheringScans] Cloud manifest save note: {e}")
+
+
+def _load_cloud_auth() -> Dict[str, Any]:
+    global _CLOUD_AUTH_MEM
+    if _CLOUD_AUTH_MEM is not None:
+        return _CLOUD_AUTH_MEM
+    if os.path.isfile(CLOUD_AUTH_PATH):
+        try:
+            with open(CLOUD_AUTH_PATH, "r", encoding="utf-8") as f:
+                _CLOUD_AUTH_MEM = json.load(f)
+                return _CLOUD_AUTH_MEM
+        except Exception:
+            pass
+    return {}
+
+
+def _save_cloud_auth(auth_data: Dict[str, Any]) -> None:
+    global _CLOUD_AUTH_MEM
+    merged = {**_load_cloud_auth(), **auth_data}
+    _CLOUD_AUTH_MEM = merged
+    try:
+        with open(CLOUD_AUTH_PATH, "w", encoding="utf-8") as f:
+            json.dump(merged, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        print(f"[GatheringScans] Cloud auth save note: {e}")
+
+
+def _get_gdrive_bearer_token() -> Optional[str]:
+    """
+    Returns an active Google Drive API v3 OAuth2 Bearer token if configured via:
+    1. 1-Click Browser OAuth Token (`access_token`), or
+    2. OAuth2 Refresh Token (`oauth_refresh_token` + `oauth_client_secret`), or
+    3. Google Cloud Service Account JSON (`service_account`), signed via openssl CLI.
+    """
+    import subprocess
+    import tempfile
+    import urllib.request
+
+    auth = _load_cloud_auth()
+    now = time.time()
+    tok = auth.get("access_token")
+    exp = float(auth.get("expires_at") or 0)
+    if tok and exp > now + 90:
+        return str(tok)
+
+    # 1. Try Service Account RS256 JWT assertion
+    sa = auth.get("service_account")
+    if isinstance(sa, dict) and sa.get("client_email") and sa.get("private_key"):
+        try:
+            def _b64u(b: bytes) -> str:
+                return base64.urlsafe_b64encode(b).decode("ascii").rstrip("=")
+
+            hdr = _b64u(json.dumps({"alg": "RS256", "typ": "JWT"}, separators=(",", ":")).encode("utf-8"))
+            iat = int(now)
+            claims = _b64u(
+                json.dumps(
+                    {
+                        "iss": sa["client_email"],
+                        "scope": "https://www.googleapis.com/auth/drive.readonly",
+                        "aud": "https://oauth2.googleapis.com/token",
+                        "iat": iat,
+                        "exp": iat + 3600,
+                    },
+                    separators=(",", ":"),
+                ).encode("utf-8")
+            )
+            signing_input = f"{hdr}.{claims}".encode("ascii")
+            with tempfile.NamedTemporaryFile("w", suffix=".pem", delete=False) as kf:
+                kf.write(sa["private_key"])
+                pem_path = kf.name
+            try:
+                proc = subprocess.run(
+                    ["openssl", "dgst", "-sha256", "-sign", pem_path],
+                    input=signing_input,
+                    capture_output=True,
+                    timeout=5,
+                )
+                if proc.returncode == 0 and proc.stdout:
+                    jwt_assertion = f"{hdr}.{claims}.{_b64u(proc.stdout)}"
+                    body = urllib.parse.urlencode(
+                        {
+                            "grant_type": "urn:ietf:params:oauth:grant-type:jwt-bearer",
+                            "assertion": jwt_assertion,
+                        }
+                    ).encode("ascii")
+                    req = urllib.request.Request(
+                        "https://oauth2.googleapis.com/token",
+                        data=body,
+                        headers={"Content-Type": "application/x-www-form-urlencoded"},
+                        method="POST",
+                    )
+                    with urllib.request.urlopen(req, timeout=8) as r:
+                        resp = json.loads(r.read().decode("utf-8"))
+                    new_tok = resp.get("access_token")
+                    if new_tok:
+                        _save_cloud_auth(
+                            {
+                                "access_token": new_tok,
+                                "expires_at": now + float(resp.get("expires_in", 3500)),
+                                "auth_mode": "service_account",
+                            }
+                        )
+                        return str(new_tok)
+            finally:
+                try:
+                    os.remove(pem_path)
+                except OSError:
+                    pass
+        except Exception as e:
+            print(f"[GatheringScans] Service account token refresh warning: {e}")
+
+    # 2. Try OAuth Refresh Token if present
+    ref_tok = auth.get("oauth_refresh_token")
+    cli_sec = auth.get("oauth_client_secret")
+    cli_id = auth.get("oauth_client_id") or GOOGLE_OAUTH_CLIENT_ID
+    if ref_tok and cli_sec:
+        try:
+            body = urllib.parse.urlencode(
+                {
+                    "client_id": cli_id,
+                    "client_secret": cli_sec,
+                    "refresh_token": ref_tok,
+                    "grant_type": "refresh_token",
+                }
+            ).encode("ascii")
+            req = urllib.request.Request(
+                "https://oauth2.googleapis.com/token",
+                data=body,
+                headers={"Content-Type": "application/x-www-form-urlencoded"},
+                method="POST",
+            )
+            with urllib.request.urlopen(req, timeout=8) as r:
+                resp = json.loads(r.read().decode("utf-8"))
+            new_tok = resp.get("access_token")
+            if new_tok:
+                _save_cloud_auth(
+                    {
+                        "access_token": new_tok,
+                        "expires_at": now + float(resp.get("expires_in", 3500)),
+                        "auth_mode": "oauth_refresh",
+                    }
+                )
+                return str(new_tok)
+        except Exception as e:
+            print(f"[GatheringScans] OAuth refresh token warning: {e}")
+
+    return str(tok) if (tok and exp > now) else None
+
+
+def _fetch_gdrive_byte_slice(file_ids: list, start_byte: int, length: int) -> Optional[bytes]:
+    """
+    Fetches an exact byte slice `[start_byte, start_byte + length - 1]` from a `.3tz` package
+    on Google Drive at datacenter speed (300+ Mbps).
+    Tries Drive API v3 (if Bearer token available) and direct `drive.usercontent.google.com`
+    (for link-shared `StreamPackages` folders).
+    """
+    import urllib.request
+
+    if length <= 0:
+        return None
+    clean_ids = [str(fid).strip() for fid in file_ids if fid and not str(fid).startswith("local")]
+    if not clean_ids:
+        return None
+
+    end_byte = start_byte + length - 1
+    range_hdr = f"bytes={start_byte}-{end_byte}"
+    bearer = _get_gdrive_bearer_token()
+
+    for fid in clean_ids:
+        urls_to_try = []
+        if bearer:
+            urls_to_try.append(
+                (
+                    f"https://www.googleapis.com/drive/v3/files/{fid}?alt=media&supportsAllDrives=true",
+                    {"Authorization": f"Bearer {bearer}", "Range": range_hdr},
+                )
+            )
+        urls_to_try.append(
+            (
+                f"https://drive.usercontent.google.com/download?id={fid}&export=download&confirm=t",
+                {"Range": range_hdr, "User-Agent": "GatheringScans-CloudStreamer/2.0"},
+            )
+        )
+        for url, hdrs in urls_to_try:
+            try:
+                req = urllib.request.Request(url, headers=hdrs, method="GET")
+                with urllib.request.urlopen(req, timeout=15) as r:
+                    ctype = (r.headers.get("Content-Type") or "").lower()
+                    if ctype.startswith("text/html"):
+                        continue
+                    data = r.read(length + 64)
+                    if len(data) == length:
+                        return data
+            except Exception:
+                continue
+    return None
+
+
 
 def _recv_exact(sock: socket.socket, n: int) -> Optional[bytes]:
     buf = bytearray()
@@ -306,6 +532,13 @@ def start_pc_reverse_tunnel_pool(local_port: int = SERVER_PORT, pool_size: int =
         warmed_uris = set()
         while True:
             try:
+                if os.name == "nt":
+                    try:
+                        from pc_worker.gdrive_cloud_sync import sync_all_scans_to_gdrive_and_vps
+
+                        sync_all_scans_to_gdrive_and_vps(DB, AUTH_SHARE, force=False)
+                    except Exception as ge:
+                        print(f"[GatheringScans] GDrive .3tz cloud sync note: {ge}")
                 r = json.loads(
                     urllib.request.urlopen(f"http://127.0.0.1:{local_port}/api/scans", timeout=8).read().decode("utf-8")
                 )
@@ -933,14 +1166,144 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
         done_evt.set()
         self.close_connection = True
 
+    def _validate_cloud_share_token(
+        self, share_token: str, requested_scan_id: Optional[str] = None
+    ) -> Tuple[bool, str, Optional[Dict[str, Any]], list]:
+        manifest = _load_cloud_manifest()
+        links = manifest.get("share_links") or []
+        scans = manifest.get("scans") or []
+        link = next((l for l in links if l.get("token") == share_token), None)
+        if not link:
+            return False, "Invalid external share link token.", None, []
+        if link.get("revoked"):
+            return False, "This external share link has been revoked.", link, []
+        exp = float(link.get("expires_at") or 0)
+        if exp > 0 and time.time() > exp:
+            return False, "This external share link has expired.", link, []
+        allowed_ids = link.get("allowed_scan_ids") or []
+        if isinstance(allowed_ids, str):
+            try:
+                allowed_ids = json.loads(allowed_ids)
+            except Exception:
+                allowed_ids = [x.strip() for x in allowed_ids.split(",") if x.strip()]
+        scope_grp = link.get("project_group") or ""
+        allowed_scans = []
+        for s in scans:
+            sid = s.get("scan_id")
+            if allowed_ids and sid in allowed_ids:
+                allowed_scans.append(s)
+            elif not allowed_ids and scope_grp and s.get("project_group") == scope_grp:
+                allowed_scans.append(s)
+            elif not allowed_ids and not scope_grp:
+                allowed_scans.append(s)
+        if requested_scan_id and not any(s.get("scan_id") == requested_scan_id for s in allowed_scans):
+            return False, f"Share token is not authorized for scan {requested_scan_id}.", link, []
+        return True, "", link, allowed_scans
+
+    def _serve_from_gdrive_cloud_if_available(self, path: str, share_token: str = "") -> bool:
+        """
+        Streams `.glb` tiles, `tileset.json`, `preview_tileset.json`, and `thumbnail.png`
+        directly from the scan's single-file `.3tz` package on Google Drive at datacenter
+        speed (300+ Mbps), using 0% of the office workstation's upload bandwidth.
+        """
+        manifest = _load_cloud_manifest()
+        pkgs = manifest.get("packages") or {}
+        if not pkgs:
+            return False
+
+        scan_id = ""
+        inner_path = ""
+        ctype = "application/octet-stream"
+
+        if path.startswith("/stream/"):
+            rel = path[len("/stream/") :]
+            parts = rel.split("/", 1)
+            if len(parts) < 2:
+                return False
+            scan_id, sub_path = parts[0], parts[1]
+            inner_path = sub_path.split("?")[0].replace("\\", "/").lstrip("/")
+            ext = os.path.splitext(inner_path)[1].lower()
+            ctype = self.extensions_map.get(ext, "application/octet-stream")
+        elif path.startswith("/api/scans/") and (path.endswith("/thumbnail") or path.endswith("/thumbnail.png")):
+            suffix = "/thumbnail.png" if path.endswith("/thumbnail.png") else "/thumbnail"
+            scan_id = path[len("/api/scans/") : -len(suffix)].strip("/")
+            inner_path = "thumbnail.png"
+            ctype = "image/png"
+        else:
+            return False
+
+        if share_token:
+            ok, reason, _, _ = self._validate_cloud_share_token(share_token, requested_scan_id=scan_id)
+            if not ok:
+                self.send_json({"error": reason}, status=403)
+                return True
+
+        pkg = pkgs.get(scan_id)
+        if not isinstance(pkg, dict):
+            return False
+        toc = pkg.get("toc") or {}
+        toc_entry = toc.get(inner_path)
+        if not isinstance(toc_entry, dict):
+            return False
+
+        file_ids = [pkg.get("file_id"), pkg.get("my_drive_file_id")]
+        accept_enc = (self.headers.get("Accept-Encoding") or "").lower()
+        range_hdr = self.headers.get("Range")
+
+        use_gzip = (
+            "gzip" in accept_enc
+            and not range_hdr
+            and "gz_offset" in toc_entry
+            and "gz_size" in toc_entry
+        )
+        if use_gzip:
+            start_b = int(toc_entry["gz_offset"])
+            len_b = int(toc_entry["gz_size"])
+        else:
+            start_b = int(toc_entry["offset"])
+            len_b = int(toc_entry["size"])
+
+        data = _fetch_gdrive_byte_slice(file_ids, start_b, len_b)
+        if data is None:
+            return False
+
+        hdrs: Dict[str, str] = {
+            "Content-Type": ctype,
+            "Content-Length": str(len(data)),
+            "Cache-Control": "public, max-age=3600" if not inner_path.endswith(".json") else "no-cache",
+            "X-Stream-Source": "GoogleDrive-3TZ-Cloud",
+        }
+        if use_gzip:
+            hdrs["Content-Encoding"] = "gzip"
+
+        if len(data) <= 12 * 1024 * 1024:
+            if len(_VPS_RAM_FALLBACK_CACHE) > 2000:
+                _VPS_RAM_FALLBACK_CACHE.clear()
+            _VPS_RAM_FALLBACK_CACHE[self.path] = (200, hdrs, data)
+
+        self.send_response(200)
+        for hk, hv in hdrs.items():
+            self.send_header(hk, hv)
+        self.end_headers()
+        try:
+            self.wfile.write(data)
+        except (BrokenPipeError, ConnectionResetError):
+            pass
+        return True
+
     def _proxy_via_pc_tunnel_if_vps(self, method: str, path: str, body: bytes = b"") -> bool:
         """
-        When running on the Linux VPS (os.name != 'nt'), proxies all /api/*, /stream/*, and /s/* requests
-        through the reverse socket pool directly to the Windows PC (C:\\GatheringScans).
-        Zero scan files are stored on the Linux VPS disk.
+        When running on the Linux VPS (os.name != 'nt'):
+        1. Serves cached `.glb` / `.json` / `/thumbnail` hits from volatile RAM in <0.2ms.
+        2. Streams `.3tz` byte ranges directly from Google Drive's servers at 300+ Mbps (0% workstation upload).
+        3. Proxies dynamic surveying/queue API requests over the reverse socket pool to the Windows PC.
+        4. Serves scan catalog & external guest share links 24/7 from `gdrive_cloud_manifest.json` even when the PC is offline.
         """
         if os.name == "nt":
             return False
+
+        parsed_q = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
+        share_token = self._extract_share_token(parsed_q)
 
         cacheable = method == "GET" and (
             path in ("/api/scans", "/api/projects", "/api/status", "/api/pc/health", "/api/user-profiles")
@@ -961,16 +1324,16 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
         if method == "POST" and path in ("/api/queue/scan-inbox", "/api/queue/rescan"):
             _VPS_RAM_FALLBACK_CACHE.clear()
 
-        # Serve immutable binary .glb tiles, thumbnails, and tileset.json from volatile RAM if already pulled from PC while tunnel is online
+        # 1. Serve immutable binary .glb tiles, thumbnails, and tileset.json from volatile RAM if already cached
         if (
             method == "GET"
             and (
                 path.endswith(".glb")
                 or path.endswith("/thumbnail")
+                or path.endswith("/thumbnail.png")
                 or path.endswith("/tileset.json")
                 or path.endswith("/preview_tileset.json")
             )
-            and not VPS_TUNNEL_POOL.empty()
             and self.path in _VPS_RAM_FALLBACK_CACHE
         ):
             c_status, c_hdrs, c_body = _VPS_RAM_FALLBACK_CACHE[self.path]
@@ -984,7 +1347,14 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
                 pass
             return True
 
-        # Try up to 4 sockets from the pool
+        # 2. Try Direct Google Drive .3tz Cloud Range Streaming (300+ Mbps, 0% PC Upload) BEFORE using PC tunnel
+        if method == "GET" and (
+            path.startswith("/stream/") or path.endswith("/thumbnail") or path.endswith("/thumbnail.png")
+        ):
+            if self._serve_from_gdrive_cloud_if_available(path, share_token=share_token):
+                return True
+
+        # 3. Try up to 4 sockets from the PC reverse tunnel pool
         for _attempt in range(4):
             tun_sock, done_evt, proto_ver = _acquire_vps_tunnel_socket(timeout=5.0)
             if not tun_sock or not done_evt:
@@ -1105,7 +1475,7 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
                 done_evt.set()
                 continue
 
-        # Serve from in-memory fallback cache if available during momentary tunnel reconnect
+        # 4. Serve from in-memory fallback cache if available during momentary tunnel reconnect
         if self.path in _VPS_RAM_FALLBACK_CACHE:
             c_status, c_hdrs, c_body = _VPS_RAM_FALLBACK_CACHE[self.path]
             self.send_response(c_status)
@@ -1118,44 +1488,162 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
                 pass
             return True
 
-        # No active reverse tunnel from the Windows PC -> PC is offline
+        # 5. PC is offline: serve catalog, projects, and share links 24/7 from synced Google Drive Cloud Manifest
+        manifest = _load_cloud_manifest()
+        cloud_scans = manifest.get("scans") or []
         if path in ("/api/status", "/api/pc/health"):
             self.send_json(
                 {
-                    "status": "offline",
+                    "status": "cloud_standby" if cloud_scans else "offline",
                     "pc_online": False,
+                    "gdrive_cloud_active": bool(manifest.get("packages")),
                     "app": "GatheringScans",
                     "domain": "scans.gatheren.cloud",
                     "crs": TWD97_TWVD2001_LABEL,
                     "crs_short": TWD97_TWVD2001_SHORT,
                     "texture_limit": PIX4DMATIC_TEXTURE_SIZE,
-                    "vps_raw_storage": "disabled (strictly 0 bytes on Linux VPS)",
+                    "vps_raw_storage": "disabled (strictly 0 bytes on Linux VPS; streaming .3tz from Google Drive)",
                     "active_job": None,
                     "queued_count": 0,
-                    "total_scans": 0,
+                    "total_scans": len(cloud_scans),
                 }
             )
             return True
         if path == "/api/scans":
+            if share_token:
+                ok, reason, link, allowed_scans = self._validate_cloud_share_token(share_token)
+                if not ok:
+                    self.send_json({"error": reason, "revoked": True}, status=403)
+                    return True
+                enriched = [self._enrich_scan_urls(s, share_token) for s in allowed_scans]
+                self.send_json(
+                    {
+                        "status": "ok",
+                        "mode": "external_share",
+                        "pc_online": False,
+                        "gdrive_cloud_active": True,
+                        "share_link": link,
+                        "scans": enriched,
+                        "projects": self._build_projects_summary(enriched),
+                        "materials": MATERIAL_CATALOG,
+                        "google_client_id": GOOGLE_OAUTH_CLIENT_ID,
+                    }
+                )
+                return True
+            enriched = [self._enrich_scan_urls(s) for s in cloud_scans]
             self.send_json(
                 {
                     "status": "ok",
                     "mode": "internal",
                     "pc_online": False,
+                    "gdrive_cloud_active": bool(manifest.get("packages")),
                     "crs": TWD97_TWVD2001_LABEL,
-                    "scans": [],
+                    "scans": enriched,
+                    "projects": self._build_projects_summary(enriched),
                     "materials": MATERIAL_CATALOG,
+                    "google_client_id": GOOGLE_OAUTH_CLIENT_ID,
+                }
+            )
+            return True
+        if path == "/api/projects":
+            enriched = [self._enrich_scan_urls(s) for s in cloud_scans]
+            projects = self._build_projects_summary(enriched)
+            self.send_json(
+                {
+                    "status": "ok",
+                    "total_projects": len(projects),
+                    "total_scans": len(enriched),
+                    "projects": projects,
                 }
             )
             return True
         self.send_json(
             {
-                "error": "Windows Processing PC (C:\\GatheringScans) is currently offline. Serving from Client-Side Browser Cache if enabled.",
+                "error": "Windows Processing PC (C:\\GatheringScans) is currently offline. Serving from Google Drive .3tz Cloud & Browser Cache.",
                 "pc_online": False,
             },
             status=503,
         )
         return True
+
+    def _build_cloud_manifest_status(self) -> Dict[str, Any]:
+        manifest = _load_cloud_manifest()
+        auth = _load_cloud_auth()
+        pkgs = manifest.get("packages") or {}
+        if os.name == "nt" and pkgs:
+            # Refresh DriveFS cloud IDs if any package was recently created
+            missing_ids = any(not p.get("file_id") or not p.get("my_drive_file_id") for p in pkgs.values())
+            if missing_ids:
+                try:
+                    from pc_worker.gdrive_cloud_sync import query_drivefs_cloud_ids
+
+                    dfs = query_drivefs_cloud_ids()
+                    changed = False
+                    for sid, p in pkgs.items():
+                        sd = (dfs.get("files_shared_drive") or {}).get(sid)
+                        md = (dfs.get("files_my_drive") or {}).get(sid)
+                        if sd and sd.get("file_id") and p.get("file_id") != sd["file_id"]:
+                            p["file_id"] = sd["file_id"]
+                            changed = True
+                        if md and md.get("file_id") and p.get("my_drive_file_id") != md["file_id"]:
+                            p["my_drive_file_id"] = md["file_id"]
+                            changed = True
+                    if dfs.get("shared_drive_folder_id"):
+                        manifest["shared_drive_folder_id"] = dfs["shared_drive_folder_id"]
+                    if dfs.get("my_drive_folder_id"):
+                        manifest["my_drive_folder_id"] = dfs["my_drive_folder_id"]
+                    if changed:
+                        _save_cloud_manifest(manifest)
+                except Exception:
+                    pass
+
+        sd_fid = str(manifest.get("shared_drive_folder_id") or "")
+        md_fid = str(manifest.get("my_drive_folder_id") or "")
+        pkg_list = []
+        synced_sd = 0
+        synced_md = 0
+        total_bytes = 0
+        for sid, p in sorted(pkgs.items()):
+            fid = str(p.get("file_id") or "")
+            mfid = str(p.get("my_drive_file_id") or "")
+            sz = int(p.get("size_bytes") or 0)
+            total_bytes += sz
+            if fid:
+                synced_sd += 1
+            if mfid:
+                synced_md += 1
+            pkg_list.append(
+                {
+                    "scan_id": sid,
+                    "size_bytes": sz,
+                    "size_mb": round(sz / (1024 * 1024), 2),
+                    "file_id": fid,
+                    "my_drive_file_id": mfid,
+                    "mtime": p.get("mtime", 0),
+                    "files_count": len(p.get("toc") or {}),
+                }
+            )
+        bearer_ok = bool(_get_gdrive_bearer_token())
+        sa = auth.get("service_account") if isinstance(auth.get("service_account"), dict) else {}
+        return {
+            "status": "ok",
+            "updated_at": manifest.get("updated_at", 0),
+            "shared_drive_dir": manifest.get("shared_drive_dir", ""),
+            "my_drive_dir": manifest.get("my_drive_dir", ""),
+            "shared_drive_folder_id": sd_fid,
+            "my_drive_folder_id": md_fid,
+            "shared_drive_url": f"https://drive.google.com/drive/folders/{sd_fid}" if sd_fid else "",
+            "my_drive_url": f"https://drive.google.com/drive/folders/{md_fid}" if md_fid else "",
+            "total_packages": len(pkg_list),
+            "synced_shared_drive_count": synced_sd,
+            "synced_my_drive_count": synced_md,
+            "total_size_mb": round(total_bytes / (1024 * 1024), 2),
+            "auth_configured": bearer_ok,
+            "auth_mode": auth.get("auth_mode") or ("oauth_or_service_account" if bearer_ok else "link_sharing_or_oauth"),
+            "service_account_email": sa.get("client_email", ""),
+            "google_client_id": GOOGLE_OAUTH_CLIENT_ID,
+            "packages": pkg_list,
+        }
 
     def do_GET(self):
         global PC_SIMULATED_OFFLINE
@@ -1167,6 +1655,14 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
         # 0. Reverse Tunnel Registration from Windows PC
         if path == "/_pc_tunnel":
             self._handle_pc_tunnel_register()
+            return
+
+        # 0a. Google Drive .3tz Cloud Manifest Status (served directly on both VPS and PC)
+        if path == "/api/cloud-manifest/status":
+            if os.name != "nt" and not (_load_cloud_manifest().get("packages")):
+                self._proxy_via_pc_tunnel_if_vps("GET", path)
+                return
+            self.send_json(self._build_cloud_manifest_status())
             return
 
         # 0b. On Linux VPS, proxy all dynamic API, 3D stream, and share routes over Reverse Tunnel to Windows PC
@@ -1694,17 +2190,91 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
         length = int(self.headers.get("Content-Length", "0"))
         body = self.rfile.read(length) if length > 0 else b"{}"
 
-        if os.name != "nt" and path.startswith("/api/"):
-            self._proxy_via_pc_tunnel_if_vps("POST", path, body)
-            return
-
         try:
             payload = json.loads(body.decode("utf-8")) if body else {}
         except Exception as e:
             self.send_json({"error": f"Invalid JSON: {e}"}, status=400)
             return
 
+        # 0. Google Drive .3tz Cloud Manifest Sync & Auth (handled directly on both VPS and PC)
+        if path == "/api/cloud-manifest/sync":
+            t_key = self.headers.get("X-Tunnel-Key", "")
+            client_ip = (self.client_address[0] if self.client_address else "")
+            if t_key != TUNNEL_SHARED_KEY and client_ip not in ("127.0.0.1", "::1"):
+                self.send_json({"error": "Invalid X-Tunnel-Key"}, status=403)
+                return
+            if isinstance(payload.get("manifest"), dict):
+                _save_cloud_manifest(payload["manifest"])
+                _VPS_RAM_FALLBACK_CACHE.clear()
+            if isinstance(payload.get("auth"), dict) and payload["auth"]:
+                _save_cloud_auth(payload["auth"])
+            self.send_json(self._build_cloud_manifest_status())
+            return
+
+        if path == "/api/cloud-manifest/auth":
+            if share_token:
+                self.send_json({"error": "External guests cannot modify cloud auth."}, status=403)
+                return
+            auth_update: Dict[str, Any] = {}
+            if payload.get("access_token"):
+                exp_in = float(payload.get("expires_in", 3500))
+                auth_update["access_token"] = str(payload["access_token"]).strip()
+                auth_update["expires_at"] = time.time() + exp_in
+                auth_update["auth_mode"] = "oauth_token"
+            if payload.get("oauth_refresh_token"):
+                auth_update["oauth_refresh_token"] = str(payload["oauth_refresh_token"]).strip()
+                if payload.get("oauth_client_secret"):
+                    auth_update["oauth_client_secret"] = str(payload["oauth_client_secret"]).strip()
+                auth_update["auth_mode"] = "oauth_refresh"
+            if isinstance(payload.get("service_account"), dict):
+                auth_update["service_account"] = payload["service_account"]
+                auth_update["auth_mode"] = "service_account"
+            elif isinstance(payload.get("service_account_json"), str) and payload["service_account_json"].strip():
+                try:
+                    sa_parsed = json.loads(payload["service_account_json"])
+                    if isinstance(sa_parsed, dict) and sa_parsed.get("client_email"):
+                        auth_update["service_account"] = sa_parsed
+                        auth_update["auth_mode"] = "service_account"
+                except Exception as e:
+                    self.send_json({"error": f"Invalid Service Account JSON: {e}"}, status=400)
+                    return
+
+            if auth_update:
+                _save_cloud_auth(auth_update)
+                # If on Windows PC, push updated auth + manifest to VPS immediately
+                if os.name == "nt":
+                    try:
+                        from pc_worker.gdrive_cloud_sync import sync_all_scans_to_gdrive_and_vps
+
+                        m = sync_all_scans_to_gdrive_and_vps(DB, AUTH_SHARE, force=False)
+                        _save_cloud_manifest(m)
+                    except Exception as e:
+                        print(f"[GatheringScans] Auth sync to VPS note: {e}")
+            self.send_json(self._build_cloud_manifest_status())
+            return
+
+        if os.name != "nt" and path.startswith("/api/"):
+            self._proxy_via_pc_tunnel_if_vps("POST", path, body)
+            return
+
         try:
+            # 0b. Rebuild & Sync .3tz Packages on Google Drive + Push Manifest to VPS
+            if path == "/api/cloud-manifest/rebuild":
+                if share_token:
+                    self.send_json({"error": "External guests cannot rebuild cloud packages."}, status=403)
+                    return
+                from pc_worker.gdrive_cloud_sync import sync_all_scans_to_gdrive_and_vps
+
+                sync_scans_with_filesystem(force=True)
+                manifest = sync_all_scans_to_gdrive_and_vps(
+                    DB, AUTH_SHARE, force=bool(payload.get("force", False))
+                )
+                _save_cloud_manifest(manifest)
+                status_obj = self._build_cloud_manifest_status()
+                status_obj["vps_synced"] = bool(manifest.get("vps_synced", False))
+                self.send_json(status_obj)
+                return
+
             # 1. Simulate PC Online / Offline Mode (for testing Requirement 5)
             if path == "/api/pc/simulate-offline":
                 PC_SIMULATED_OFFLINE = bool(payload.get("offline", False))
@@ -2099,6 +2669,24 @@ def _vps_caddy_watchdog_loop():
         time.sleep(20)
 
 
+def _pc_cloud_manifest_sync_loop():
+    """
+    On the Windows Workstation, periodically checks if any newly completed scan needs a `.3tz`
+    package on Google Drive or if DriveFS has assigned new Google Drive File IDs, and pushes
+    the updated manifest to the Hostinger VPS.
+    """
+    time.sleep(2.0)
+    while True:
+        try:
+            from pc_worker.gdrive_cloud_sync import sync_all_scans_to_gdrive_and_vps
+
+            manifest = sync_all_scans_to_gdrive_and_vps(DB, AUTH_SHARE, force=False)
+            _save_cloud_manifest(manifest)
+        except Exception as e:
+            print(f"[GatheringScans] Background .3tz cloud sync note: {e}")
+        time.sleep(60.0)
+
+
 def run_server(host: str = SERVER_HOST, port: int = SERVER_PORT):
     _ensure_vps_caddy_route()
     if os.name != "nt":
@@ -2106,6 +2694,8 @@ def run_server(host: str = SERVER_HOST, port: int = SERVER_PORT):
         t_cw.start()
     if os.name == "nt":
         start_pc_reverse_tunnel_pool(local_port=port)
+        t_cm = threading.Thread(target=_pc_cloud_manifest_sync_loop, daemon=True)
+        t_cm.start()
     server = ThreadingHTTPServer((host, port), GatheringScansHandler)
     print(f"[GatheringScans] Server listening on http://{host}:{port} (CRS: {TWD97_TWVD2001_SHORT}, 2K Textures, Root: {LOCAL_SCANS_ROOT})")
     server.serve_forever()
@@ -2113,3 +2703,4 @@ def run_server(host: str = SERVER_HOST, port: int = SERVER_PORT):
 
 if __name__ == "__main__":
     run_server()
+
