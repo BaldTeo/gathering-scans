@@ -5834,13 +5834,13 @@
         if (previewThree && previewThree.tilesRenderer && !previewThree._loadingDone) {
           previewThree.camera.updateMatrixWorld();
           previewThree.tilesRenderer.update();
-          syncTilesLoaderProgress(previewThree, previewThree.loaderEl);
+          syncTilesLoaderProgress(previewThree, "preview");
           previewThree.renderer.render(previewThree.scene, previewThree.camera);
         }
         if (studioThree && studioThree.tilesRenderer && !studioThree._loadingDone) {
           studioThree.camera.updateMatrixWorld();
           studioThree.tilesRenderer.update();
-          syncTilesLoaderProgress(studioThree, studioThree.loaderEl);
+          syncTilesLoaderProgress(studioThree, "studio");
           studioThree.renderer.render(studioThree.scene, studioThree.camera);
         }
         if (compareCtx) {
@@ -5850,7 +5850,7 @@
             if (side && side.tilesRenderer && !side._loadingDone) {
               side.camera.updateMatrixWorld();
               side.tilesRenderer.update();
-              syncTilesLoaderProgress(side, side.loaderEl);
+              syncTilesLoaderProgress(side, "compare");
               needsRender = true;
             }
           });

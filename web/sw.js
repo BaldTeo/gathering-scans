@@ -5,7 +5,7 @@
  * Strictly zero scan cache is ever stored on the Linux VPS.
  */
 
-const CACHE_NAME = "gathering-scans-offline-v3";
+const CACHE_NAME = "gathering-scans-offline-v4";
 const APP_SHELL = [
   "/",
   "/index.html",
@@ -42,10 +42,12 @@ self.addEventListener("fetch", (event) => {
 
   const url = new URL(req.url);
 
-  // For 3D tileset streams (/stream/...) and scan list (/api/scans):
-  // Try network first; if the Windows PC is offline (network error or 503), fall back to browser CacheStorage!
+  // Let /stream/ 3D tileset binary payloads use native C++ HTTP/2 + HTTP cache directly without JS stream cloning
+  if (url.pathname.startsWith("/stream/")) {
+    return;
+  }
+
   if (
-    url.pathname.startsWith("/stream/") ||
     url.pathname.startsWith("/api/scans") ||
     APP_SHELL.includes(url.pathname)
   ) {

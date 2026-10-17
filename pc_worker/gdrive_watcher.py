@@ -670,6 +670,13 @@ def _sync_gdrive_folder_to_local_vault(src_folder: str, parent_project: str = ""
 
     was_new_local_dir = not os.path.isdir(dst_folder)
     origin_marker = os.path.join(dst_folder, ".gdrive_inbox_origin.json")
+    os.makedirs(dst_folder, exist_ok=True)
+    if was_new_local_dir or os.path.isfile(origin_marker):
+        try:
+            with open(origin_marker, "w", encoding="utf-8") as mf:
+                json.dump({"src_folder": src_folder, "synced_at": time.time()}, mf)
+        except Exception:
+            pass
 
     copied_any = False
     for root, dirs, files in os.walk(src_folder):
@@ -693,13 +700,6 @@ def _sync_gdrive_folder_to_local_vault(src_folder: str, parent_project: str = ""
                     copied_any = True
             except Exception as e:
                 print(f"[GDriveWatcher] Warning copying {s_file} -> {d_file}: {e}")
-
-    if was_new_local_dir or os.path.isfile(origin_marker):
-        try:
-            with open(origin_marker, "w", encoding="utf-8") as mf:
-                json.dump({"src_folder": src_folder, "synced_at": time.time()}, mf)
-        except Exception:
-            pass
 
     if copied_any:
         print(f"[GDriveWatcher] Synced completed scan folder from Google Drive to local disk: {src_folder} -> {dst_folder}")
@@ -968,7 +968,16 @@ def parse_multipart_zip_filename(filename: str) -> Tuple[str, int, int]:
     return stem, 1, 1
 
 
+import threading as _threading
+_DISCOVERY_LOCK = _threading.RLock()
+
+
 def seed_and_discover_scans(db: ScanQueueDB) -> List[Dict[str, Any]]:
+    with _DISCOVERY_LOCK:
+        return _seed_and_discover_scans_locked(db)
+
+
+def _seed_and_discover_scans_locked(db: ScanQueueDB) -> List[Dict[str, Any]]:
     """
     100% Dynamic, Project-Agnostic Scan Discovery from C:\\GatheringScans (LOCAL_SCANS_ROOT)
     and G:\\Shared drives\\6.軟體\\3. GatheringScans (GDRIVE_INBOX_DIR).

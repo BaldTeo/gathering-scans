@@ -612,6 +612,7 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
         self.send_header("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
         self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Share-Token, Range")
         self.send_header("Access-Control-Expose-Headers", "Content-Range, Content-Length, Accept-Ranges")
+        self.send_header("Alt-Svc", "clear")
         super().end_headers()
 
     def do_OPTIONS(self):
@@ -2398,7 +2399,7 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
                 return
 
             # 3. Civil Surveying: Elevation Contours + Civil3D.dwg & A3 Survey Report .PDF Export
-            if path in ("/api/survey/contours", "/api/survey/report"):
+            if path in ("/api/survey/contours", "/api/survey/report", "/api/surveying/contours", "/api/surveying/report"):
                 if share_token:
                     ok, reason, _, _ = AUTH_SHARE.validate_share_access(
                         share_token, requested_scan_id=payload.get("scan_id")
