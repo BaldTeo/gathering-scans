@@ -314,50 +314,52 @@ def start_pc_reverse_tunnel_pool(local_port: int = SERVER_PORT, pool_size: int =
                     sid = s.get("scan_id")
                     if not sid:
                         continue
-                    # 1. Warm local disk cache first
-                    ts_local = json.loads(
-                        urllib.request.urlopen(
-                            f"http://127.0.0.1:{local_port}/stream/{sid}/tileset.json?v=opt4", timeout=8
-                        )
-                        .read()
-                        .decode("utf-8")
-                    )
-                    uris = []
+                    for ts_rel in [s.get("preview_stream_url"), s.get("stream_url")]:
+                        if not ts_rel or not str(ts_rel).startswith("/stream/"):
+                            continue
+                        local_ts_url = f"http://127.0.0.1:{local_port}{ts_rel}"
+                        try:
+                            ts_local = json.loads(
+                                urllib.request.urlopen(local_ts_url, timeout=8).read().decode("utf-8")
+                            )
+                        except Exception:
+                            continue
+                        uris = []
 
-                    def _collect(node):
-                        u = (node.get("content") or {}).get("uri")
-                        if u:
-                            uris.append(u)
-                        for ch in node.get("children") or []:
-                            _collect(ch)
+                        def _collect(node):
+                            u = (node.get("content") or {}).get("uri")
+                            if u:
+                                uris.append(u)
+                            for ch in node.get("children") or []:
+                                _collect(ch)
 
-                    _collect(ts_local.get("root") or {})
-                    for u in uris:
-                        local_u = f"http://127.0.0.1:{local_port}/stream/{sid}/{u}"
-                        if local_u not in warmed_uris:
-                            req = urllib.request.Request(local_u, headers={"Accept-Encoding": "gzip"})
-                            urllib.request.urlopen(req, timeout=15).read()
-                            warmed_uris.add(local_u)
-                    # 2. Warm VPS volatile RAM cache
-                    vps_ts = f"https://scans.gatheren.cloud/stream/{sid}/tileset.json?v=opt4"
-                    if vps_ts not in warmed_uris:
-                        urllib.request.urlopen(
-                            urllib.request.Request(vps_ts, headers={"Accept-Encoding": "gzip"}), timeout=12
-                        ).read()
-                        warmed_uris.add(vps_ts)
-                    vps_thumb = f"https://scans.gatheren.cloud/api/scans/{sid}/thumbnail"
+                        _collect(ts_local.get("root") or {})
+                        for u in uris:
+                            local_u = f"http://127.0.0.1:{local_port}/stream/{sid}/{u}"
+                            if local_u not in warmed_uris:
+                                req = urllib.request.Request(local_u, headers={"Accept-Encoding": "gzip"})
+                                urllib.request.urlopen(req, timeout=15).read()
+                                warmed_uris.add(local_u)
+                        vps_ts = f"http://{VPS_HOST}:{local_port}{ts_rel}"
+                        if vps_ts not in warmed_uris:
+                            urllib.request.urlopen(
+                                urllib.request.Request(vps_ts, headers={"Accept-Encoding": "gzip"}), timeout=15
+                            ).read()
+                            warmed_uris.add(vps_ts)
+                        for u in uris:
+                            vps_u = f"http://{VPS_HOST}:{local_port}/stream/{sid}/{u}"
+                            if vps_u not in warmed_uris:
+                                req = urllib.request.Request(vps_u, headers={"Accept-Encoding": "gzip"})
+                                urllib.request.urlopen(req, timeout=30).read()
+                                warmed_uris.add(vps_u)
+                    thumb_rel = s.get("thumbnail_url") or f"/api/scans/{sid}/thumbnail"
+                    vps_thumb = f"http://{VPS_HOST}:{local_port}{thumb_rel}"
                     if vps_thumb not in warmed_uris:
                         try:
                             urllib.request.urlopen(vps_thumb, timeout=10).read()
                             warmed_uris.add(vps_thumb)
                         except Exception:
                             pass
-                    for u in uris:
-                        vps_u = f"https://scans.gatheren.cloud/stream/{sid}/{u}"
-                        if vps_u not in warmed_uris:
-                            req = urllib.request.Request(vps_u, headers={"Accept-Encoding": "gzip"})
-                            urllib.request.urlopen(req, timeout=20).read()
-                            warmed_uris.add(vps_u)
             except Exception:
                 pass
             time.sleep(45.0)
@@ -962,7 +964,12 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
         # Serve immutable binary .glb tiles, thumbnails, and tileset.json from volatile RAM if already pulled from PC while tunnel is online
         if (
             method == "GET"
-            and (path.endswith(".glb") or path.endswith("/thumbnail") or path.endswith("/tileset.json"))
+            and (
+                path.endswith(".glb")
+                or path.endswith("/thumbnail")
+                or path.endswith("/tileset.json")
+                or path.endswith("/preview_tileset.json")
+            )
             and not VPS_TUNNEL_POOL.empty()
             and self.path in _VPS_RAM_FALLBACK_CACHE
         ):
@@ -1045,7 +1052,7 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
                             stream_clean = False
                             break
                         if buf_for_cache is not None:
-                            if len(buf_for_cache) + len(chunk) <= 8 * 1024 * 1024:
+                            if len(buf_for_cache) + len(chunk) <= 12 * 1024 * 1024:
                                 buf_for_cache.extend(chunk)
                             else:
                                 buf_for_cache = None
@@ -1065,7 +1072,7 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
                         if not chunk:
                             break
                         if buf_for_cache is not None:
-                            if len(buf_for_cache) + len(chunk) <= 8 * 1024 * 1024:
+                            if len(buf_for_cache) + len(chunk) <= 12 * 1024 * 1024:
                                 buf_for_cache.extend(chunk)
                             else:
                                 buf_for_cache = None
