@@ -1287,7 +1287,7 @@
       if (window.MeshoptDecoder) gltfLoader.setMeshoptDecoder(window.MeshoptDecoder);
       const ktx2 = getKTX2Loader(previewThree.renderer);
       if (ktx2) gltfLoader.setKTX2Loader(ktx2);
-      tr.manager.addHandler(/\.(gltf|glb)$/i, gltfLoader);
+      tr.manager.addHandler(/\.(gltf|glb)(\?.*)?$/i, gltfLoader);
 
       tr.addEventListener("load-tileset", () => {
         previewThree._tilesetReady = true;
@@ -1302,6 +1302,8 @@
           previewThree.boundingSphere = sphere;
           framePreviewCamera();
         }
+        previewThree.camera.updateMatrixWorld();
+        tr.update();
       });
 
       tr.addEventListener("load-model", (ev) => {
@@ -1313,6 +1315,9 @@
               mats.forEach((m) => applyBrightnessToMaterial(m, STATE.scanBrightness));
             }
           });
+          previewThree.camera.updateMatrixWorld();
+          tr.update();
+          previewThree.renderer.render(previewThree.scene, previewThree.camera);
           syncTilesLoaderProgress(previewThree, "preview");
         }
       });
@@ -1322,6 +1327,10 @@
       if (tr.parseQueue) tr.parseQueue.maxJobs = 6;
       previewThree.modelPivot.add(tr.group);
       previewThree.tilesRenderer = tr;
+      framePreviewCamera();
+      previewThree.camera.updateMatrixWorld();
+      tr.update();
+      return;
     }
 
     framePreviewCamera();
@@ -2093,7 +2102,7 @@
       if (window.MeshoptDecoder) gltfLoader.setMeshoptDecoder(window.MeshoptDecoder);
       const ktx2 = getKTX2Loader(studioThree.renderer);
       if (ktx2) gltfLoader.setKTX2Loader(ktx2);
-      tr.manager.addHandler(/\.(gltf|glb)$/i, gltfLoader);
+      tr.manager.addHandler(/\.(gltf|glb)(\?.*)?$/i, gltfLoader);
 
       tr.addEventListener("load-tileset", () => {
         studioThree._tilesetReady = true;
@@ -2109,6 +2118,8 @@
           studioThree.boundingSphere = sphere;
           frameStudioCamera();
         }
+        studioThree.camera.updateMatrixWorld();
+        tr.update();
       });
 
       tr.addEventListener("load-model", (ev) => {
@@ -2120,13 +2131,20 @@
               mats.forEach((m) => applyBrightnessToMaterial(m, STATE.scanBrightness));
             }
           });
+          studioThree.camera.updateMatrixWorld();
+          tr.update();
+          studioThree.renderer.render(studioThree.scene, studioThree.camera);
           syncTilesLoaderProgress(studioThree, "studio");
         }
       });
 
       tr.errorTarget = 6.0;
+      if (tr.downloadQueue) tr.downloadQueue.maxJobs = 12;
+      if (tr.parseQueue) tr.parseQueue.maxJobs = 6;
       studioThree.modelPivot.add(tr.group);
       studioThree.tilesRenderer = tr;
+      studioThree.camera.updateMatrixWorld();
+      tr.update();
     }
 
     renderCommentPins3D();
@@ -4173,7 +4191,7 @@
     if (window.MeshoptDecoder) gltfLoader.setMeshoptDecoder(window.MeshoptDecoder);
     const ktx2 = getKTX2Loader(side.renderer);
     if (ktx2) gltfLoader.setKTX2Loader(ktx2);
-    tr.manager.addHandler(/\.(gltf|glb)$/i, gltfLoader);
+    tr.manager.addHandler(/\.(gltf|glb)(\?.*)?$/i, gltfLoader);
 
     tr.addEventListener("load-tileset", () => {
       side._tilesetReady = true;
@@ -4186,6 +4204,8 @@
         side.rawSphere = sphere.clone();
         alignCompareSides();
       }
+      side.camera.updateMatrixWorld();
+      tr.update();
     });
 
     tr.addEventListener("load-model", (ev) => {
@@ -4199,6 +4219,9 @@
             mats.forEach((m) => applyCompareElevationHeatmapToMaterial(m, heatmapOn));
           }
         });
+        side.camera.updateMatrixWorld();
+        tr.update();
+        side.renderer.render(side.scene, side.camera);
         syncCompareLoaderProgress();
       }
     });
@@ -4208,6 +4231,8 @@
     if (tr.parseQueue) tr.parseQueue.maxJobs = 6;
     side.alignGroup.add(tr.group);
     side.tilesRenderer = tr;
+    side.camera.updateMatrixWorld();
+    tr.update();
   }
 
   function syncCompareScansFromDropdowns() {
@@ -5804,6 +5829,38 @@
         applyTheme("auto", false);
       }
     }, 60000);
+    setInterval(() => {
+      try {
+        if (previewThree && previewThree.tilesRenderer && !previewThree._loadingDone) {
+          previewThree.camera.updateMatrixWorld();
+          previewThree.tilesRenderer.update();
+          syncTilesLoaderProgress(previewThree, previewThree.loaderEl);
+          previewThree.renderer.render(previewThree.scene, previewThree.camera);
+        }
+        if (studioThree && studioThree.tilesRenderer && !studioThree._loadingDone) {
+          studioThree.camera.updateMatrixWorld();
+          studioThree.tilesRenderer.update();
+          syncTilesLoaderProgress(studioThree, studioThree.loaderEl);
+          studioThree.renderer.render(studioThree.scene, studioThree.camera);
+        }
+        if (compareCtx) {
+          let needsRender = false;
+          ["left", "right"].forEach((k) => {
+            const side = compareCtx[k];
+            if (side && side.tilesRenderer && !side._loadingDone) {
+              side.camera.updateMatrixWorld();
+              side.tilesRenderer.update();
+              syncTilesLoaderProgress(side, side.loaderEl);
+              needsRender = true;
+            }
+          });
+          if (needsRender && compareCtx.left && compareCtx.right) {
+            compareCtx.left.renderer.render(compareCtx.left.scene, compareCtx.left.camera);
+            compareCtx.right.renderer.render(compareCtx.right.scene, compareCtx.right.camera);
+          }
+        }
+      } catch (_) {}
+    }, 120);
   });
 
   window.__GS_API = {
