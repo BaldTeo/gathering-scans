@@ -81,6 +81,7 @@ class ScanQueueDB:
                     cameras_dir TEXT DEFAULT '',
                     image_count INTEGER DEFAULT 0,
                     size_bytes INTEGER DEFAULT 0,
+                    covered_area_m2 REAL DEFAULT 0.0,
                     rtk_accuracy_cm REAL DEFAULT 1.8,
                     crs TEXT DEFAULT 'TWD97 (121) + TWVD2001',
                     texture_resolution INTEGER DEFAULT 2048,
@@ -160,6 +161,10 @@ class ScanQueueDB:
                 conn.execute("ALTER TABLE scans ADD COLUMN user_edited_name INTEGER DEFAULT 0")
             except Exception:
                 pass
+            try:
+                conn.execute("ALTER TABLE scans ADD COLUMN covered_area_m2 REAL DEFAULT 0.0")
+            except Exception:
+                pass
             conn.executescript(
                 """
                 DROP TRIGGER IF EXISTS trg_preserve_user_scan_name;
@@ -206,6 +211,7 @@ class ScanQueueDB:
         uploaded_at = float(scan_data.get("uploaded_at", now))
         image_count = int(scan_data.get("image_count", 0))
         size_bytes = int(scan_data.get("size_bytes", 0))
+        covered_area_m2 = float(scan_data.get("covered_area_m2", 0.0))
         bypass_count = int(scan_data.get("bypass_count", 0))
         force_next = int(scan_data.get("force_next", 0))
         user_edited_name = 1 if scan_data.get("user_edited_name") else 0
@@ -236,6 +242,7 @@ class ScanQueueDB:
             "cameras_dir": scan_data.get("cameras_dir", ""),
             "image_count": image_count,
             "size_bytes": size_bytes,
+            "covered_area_m2": covered_area_m2,
             "rtk_accuracy_cm": float(scan_data.get("rtk_accuracy_cm", 1.8)),
             "crs": scan_data.get("crs", TWD97_TWVD2001_SHORT),
             "texture_resolution": int(scan_data.get("texture_resolution", PIX4DMATIC_TEXTURE_SIZE)),
@@ -264,7 +271,7 @@ class ScanQueueDB:
                     scan_id, name, user_edited_name, project_group, project_name_zh, capture_date,
                     uploaded_at, uploader_email, uploader_name, source_zip_path,
                     project_dir, tileset_path, obj_path, report_path, cameras_dir,
-                    image_count, size_bytes, rtk_accuracy_cm, crs, texture_resolution,
+                    image_count, size_bytes, covered_area_m2, rtk_accuracy_cm, crs, texture_resolution,
                     lat, lon, elev_m, twd97_e, twd97_n, twd97_h, bounding_box_json,
                     status, progress_pct, stage_label, bypass_count, force_next,
                     priority_score, notes
@@ -272,7 +279,7 @@ class ScanQueueDB:
                     :scan_id, :name, :user_edited_name, :project_group, :project_name_zh, :capture_date,
                     :uploaded_at, :uploader_email, :uploader_name, :source_zip_path,
                     :project_dir, :tileset_path, :obj_path, :report_path, :cameras_dir,
-                    :image_count, :size_bytes, :rtk_accuracy_cm, :crs, :texture_resolution,
+                    :image_count, :size_bytes, :covered_area_m2, :rtk_accuracy_cm, :crs, :texture_resolution,
                     :lat, :lon, :elev_m, :twd97_e, :twd97_n, :twd97_h, :bounding_box_json,
                     :status, :progress_pct, :stage_label, :bypass_count, :force_next,
                     :priority_score, :notes
@@ -293,6 +300,7 @@ class ScanQueueDB:
                     cameras_dir=CASE WHEN excluded.cameras_dir != '' THEN excluded.cameras_dir ELSE scans.cameras_dir END,
                     image_count=CASE WHEN excluded.image_count > 0 THEN excluded.image_count ELSE scans.image_count END,
                     size_bytes=CASE WHEN excluded.size_bytes > 0 THEN excluded.size_bytes ELSE scans.size_bytes END,
+                    covered_area_m2=CASE WHEN excluded.covered_area_m2 > 0 THEN excluded.covered_area_m2 ELSE scans.covered_area_m2 END,
                     rtk_accuracy_cm=excluded.rtk_accuracy_cm,
                     crs=excluded.crs,
                     texture_resolution=excluded.texture_resolution,
@@ -514,7 +522,7 @@ class ScanQueueDB:
             "comment_id": comment_id,
             "scan_id": payload["scan_id"],
             "author_email": payload.get("author_email", "glibivanov@gatheren.com.tw"),
-            "author_name": payload.get("author_name", "Glib Ivanov"),
+            "author_name": payload.get("author_name", "雲在天"),
             "text": payload.get("text", "").strip(),
             "pos_x": float(payload.get("pos_x", 0.0)),
             "pos_y": float(payload.get("pos_y", 0.0)),

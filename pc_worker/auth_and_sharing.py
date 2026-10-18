@@ -44,36 +44,26 @@ class AuthAndSharingManager:
                 """
             )
             conn.execute("DELETE FROM user_profiles WHERE lower(email) LIKE '%vitaly%' OR lower(name) LIKE '%vitaly%'")
+            conn.execute("UPDATE user_profiles SET name = '雲在天' WHERE lower(email) = 'glibivanov@gatheren.com.tw' AND name = 'Glib Ivanov'")
             now_str = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
             default_staff = [
-                (
-                    "glibivanov@gatheren.com.tw",
-                    "u_glibivanov",
-                    "Glib Ivanov",
-                    "admin",
-                    "#d97706",
-                    "",
-                    "",
-                    1,
-                    1,
-                    1,
-                    '["*"]',
-                    now_str,
-                ),
-                (
-                    "argon@gatheren.com.tw",
-                    "u_argon",
-                    "Argon",
-                    "site_engineer",
-                    "#0284c7",
-                    "",
-                    "",
-                    1,
-                    0,
-                    0,
-                    '["*"]',
-                    now_str,
-                ),
+                ("glibivanov@gatheren.com.tw", "u_glibivanov", "雲在天", "admin", "#14b8a6", "", "107639887113416939995", 1, 1, 1, '["*"]', now_str),
+                ("frankchao@gatheren.com.tw", "u_frankchao", "趙冠人", "admin", "#ef4444", "", "113563863225856947636", 1, 1, 0, '["*"]', now_str),
+                ("wenhu@gatheren.com.tw", "u_wenhu", "胡佳雯", "admin", "#ec4899", "", "", 1, 0, 0, '["*"]', now_str),
+                ("howardhsueh@gatheren.com.tw", "u_howardhsueh", "薛鈞豪", "site_engineer", "#3b82f6", "", "", 1, 0, 0, '["*"]', now_str),
+                ("feiwenhsueh@gatheren.com.tw", "u_feiwenhsueh", "薛斐文", "site_engineer", "#0284c7", "", "103768730904451087495", 1, 0, 0, '["*"]', now_str),
+                ("litasu@gatheren.com.tw", "u_litasu", "蘇容德", "site_engineer", "#a855f7", "", "", 1, 0, 0, '["*"]', now_str),
+                ("szhsienyang@gatheren.com.tw", "u_szhsienyang", "楊斯顯", "site_engineer", "#f97316", "", "", 1, 0, 0, '["*"]', now_str),
+                ("shengwenhuang@gatheren.com.tw", "u_shengwenhuang", "黃聖文", "site_engineer", "#eab308", "", "", 1, 0, 0, '["*"]', now_str),
+                ("leocheng@gatheren.com.tw", "u_leocheng", "鄭宇翔", "site_engineer", "#06b6d4", "", "", 1, 0, 0, '["*"]', now_str),
+                ("jasonlo@gatheren.com.tw", "u_jasonlo", "駱介正", "pm", "#6366f1", "", "", 1, 0, 0, '["*"]', now_str),
+                ("kentyu@gatheren.com.tw", "u_kentyu", "游忠偉", "site_engineer", "#10b981", "", "", 1, 0, 0, '["*"]', now_str),
+                ("chengyouyeh@gatheren.com.tw", "u_chengyouyeh", "葉烝佑", "site_engineer", "#84cc16", "", "", 1, 0, 0, '["*"]', now_str),
+                ("tengtewang@gatheren.com.tw", "u_tengtewang", "王騰德", "pm", "#0ea5e9", "", "", 1, 0, 0, '["*"]', now_str),
+                ("congrongchen@gatheren.com.tw", "u_congrongchen", "陳聰榮", "site_engineer", "#f59e0b", "", "", 1, 0, 0, '["*"]', now_str),
+                ("edwardli@gatheren.com.tw", "u_edwardli", "李振嘉", "site_engineer", "#8b5cf6", "", "", 1, 0, 0, '["*"]', now_str),
+                ("neilsun@gatheren.com.tw", "u_neilsun", "孫暐岑", "site_engineer", "#22c55e", "", "", 1, 0, 0, '["*"]', now_str),
+                ("kevinchen@gatheren.com.tw", "u_kevinchen", "陳冠羽", "site_engineer", "#d946ef", "", "", 1, 0, 0, '["*"]', now_str),
             ]
             for row in default_staff:
                 conn.execute(
@@ -260,7 +250,7 @@ class AuthAndSharingManager:
             "client_id": GOOGLE_OAUTH_CLIENT_ID,
             "role": "admin",
             "email": "glibivanov@gatheren.com.tw",
-            "name": "Glib Ivanov",
+            "name": "雲在天",
             "domain": "gatheren.com.tw",
             "isGoogleAuthenticated": True,
             "isAdmin": True,
@@ -285,7 +275,7 @@ class AuthAndSharingManager:
         token = payload.get("token") or secrets.token_urlsafe(12)
         label = payload.get("label") or f"External View — {target_id}"
         created_by_email = payload.get("created_by_email", "glibivanov@gatheren.com.tw")
-        created_by_name = payload.get("created_by_name", "Glib Ivanov")
+        created_by_name = payload.get("created_by_name", "雲在天")
         created_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
         expires_at = payload.get("expires_at", "")
         allow_download = 1 if payload.get("allow_download", False) else 0

@@ -65,8 +65,10 @@ def _detect_running_pix4dmatic() -> Tuple[bool, str, str]:
         return False, "", ""
 
     # Find the most recently updated PIX4Dmatic project log
+    all_scans = DB.list_scans()
+    active_proc_ids = {s["scan_id"] for s in all_scans if s.get("status") == "processing"}
     candidate_logs = []
-    for s in DB.list_scans():
+    for s in all_scans:
         sid = s["scan_id"]
         pdir = s.get("project_dir") or os.path.join(LOCAL_SCANS_ROOT, sid)
         log_dirs = [
@@ -74,21 +76,22 @@ def _detect_running_pix4dmatic() -> Tuple[bool, str, str]:
             os.path.join(pdir, "project", "logs"),
             os.path.join(LOCAL_SCANS_ROOT, sid, sid, "logs"),
         ]
-        if sid == "QuChi261016_Trees":
+        if sid == "QuChi261016_Trees" and sid in active_proc_ids:
             log_dirs.append(os.path.join(LOCAL_SCANS_ROOT, "catch_QuChi261016", "catch_QuChi261016", "logs"))
         for ldir in log_dirs:
             if os.path.isdir(ldir):
                 for lp in glob.glob(os.path.join(ldir, "*.txt")):
                     try:
-                        candidate_logs.append((os.path.getmtime(lp), sid, lp))
+                        is_active_Bonus = 1 if sid in active_proc_ids else 0
+                        candidate_logs.append((os.path.getmtime(lp), is_active_Bonus, sid, lp))
                     except OSError:
                         pass
     if not candidate_logs:
         return True, "", ""
-    candidate_logs.sort(key=lambda x: x[0])
-    _, inferred_sid, latest_log = candidate_logs[-1]
+    candidate_logs.sort(key=lambda x: (x[0], x[1]))
+    _, _, inferred_sid, latest_log = candidate_logs[-1]
     # Ensure no other scan is left with stale processing status
-    for s in DB.list_scans():
+    for s in all_scans:
         if s.get("status") == "processing" and s["scan_id"] != inferred_sid:
             DB.update_job_progress(s["scan_id"], "completed", 100.0, "Completed")
     return True, inferred_sid, latest_log
@@ -135,7 +138,7 @@ def pix4d_worker_loop():
                 time.sleep(4)
                 continue
 
-            # If a adopted PIX4Dmatic job just finished, finalize its tileset and mark completed
+            # If an adopted PIX4Dmatic job just finished, finalize its tileset, mark completed, and notify uploader on Google Chat
             if adopted_sid:
                 fin_sid = adopted_sid
                 adopted_sid = None
@@ -172,6 +175,11 @@ def pix4d_worker_loop():
                     tileset_path=ts_path if os.path.isfile(ts_path) else None,
                     obj_path=newest_obj if os.path.isfile(newest_obj) else None,
                 )
+                try:
+                    if not GCHAT.has_recent_notification(fin_sid, within_seconds=120.0):
+                        GCHAT.notify_scan_ready(fin_sid)
+                except Exception as ge:
+                    print(f"[InboxWatcher] Google Chat notify note for {fin_sid}: {ge}")
                 print(f"[InboxWatcher] Adopted PIX4Dmatic job {fin_sid} completed -> {ts_path}")
 
             next_job = DB.pop_next_job()

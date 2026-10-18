@@ -975,7 +975,8 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
                 self.send_header("Content-Type", ctype)
                 self.send_header("Content-Encoding", "gzip")
                 self.send_header("Content-Length", str(len(gz_bytes)))
-                self.send_header("Cache-Control", "public, max-age=3600")
+                cc_val = "no-cache, must-revalidate" if ext in (".html", ".js", ".css") else "public, max-age=3600"
+                self.send_header("Cache-Control", cc_val)
                 self.end_headers()
                 try:
                     self.wfile.write(gz_bytes)
@@ -1009,7 +1010,8 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
         if download_name:
             self.send_header("Content-Disposition", f'attachment; filename="{download_name}"')
         else:
-            self.send_header("Cache-Control", "public, max-age=3600")
+            cc_val = "no-cache, must-revalidate" if ext in (".html", ".js", ".css") else "public, max-age=3600"
+            self.send_header("Cache-Control", cc_val)
         self.end_headers()
 
         with open(file_path, "rb") as f:
@@ -1097,10 +1099,17 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
                 if os.path.isfile(cand) and os.path.getsize(cand) > 256:
                     return cand
 
-        # 2. Check automatically captured WebGL screenshot in data/thumbnails/<scan_id>.png
+        # 2. Check automatically captured WebGL screenshot in data/thumbnails/<scan_id>.png (exact & case-insensitive)
         captured_png = os.path.join(THUMBS_DIR, f"{scan_id}.png")
         if os.path.isfile(captured_png) and os.path.getsize(captured_png) > 512:
             return captured_png
+        low_target = f"{scan_id.lower()}.png"
+        if os.path.isdir(THUMBS_DIR):
+            for fn in os.listdir(THUMBS_DIR):
+                if fn.lower() == low_target:
+                    cand = os.path.join(THUMBS_DIR, fn)
+                    if os.path.isfile(cand) and os.path.getsize(cand) > 512:
+                        return cand
 
         # 3. Dynamic sibling scan thumbnail lookup in the same project_group (supports 100+ projects)
         grp = s.get("project_group", "")
@@ -1115,6 +1124,33 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
                 sib_cap = os.path.join(THUMBS_DIR, f"{sib_id}.png")
                 if os.path.isfile(sib_cap) and os.path.getsize(sib_cap) > 512:
                     return sib_cap
+
+        # 4. Fallback for historical/renamed Google Chat message scan_ids so older messages never lose their preview image
+        low_sid = scan_id.lower()
+        fallback_names = []
+        if "rose" in low_sid:
+            fallback_names.extend(["rosepark_20260918_merged.png", "rosepark_20260917_east.png"])
+        elif "ntu" in low_sid or "dorm" in low_sid:
+            fallback_names.extend(["ntudorm_20260917_foundation.png", "ntudorm_20260915_baseline.png"])
+        else:
+            fallback_names.extend(
+                [
+                    "catch_QuChi261016.png",
+                    "quchi_20261005_merged.png",
+                    "quchi261016_trees.png",
+                    "quchi_20261015_obj_mesh.png",
+                ]
+            )
+        for fb in fallback_names:
+            cand = os.path.join(THUMBS_DIR, fb)
+            if os.path.isfile(cand) and os.path.getsize(cand) > 512:
+                return cand
+        if os.path.isdir(THUMBS_DIR):
+            for fn in sorted(os.listdir(THUMBS_DIR)):
+                if fn.lower().endswith(".png"):
+                    cand = os.path.join(THUMBS_DIR, fn)
+                    if os.path.isfile(cand) and os.path.getsize(cand) > 512:
+                        return cand
 
         return None
 
@@ -1324,6 +1360,7 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
             _VPS_RAM_FALLBACK_CACHE.clear()
 
         # 1. Serve immutable binary .glb tiles, thumbnails, and tileset.json from volatile RAM if already cached
+        cache_hit_key = self.path if self.path in _VPS_RAM_FALLBACK_CACHE else (path if path in _VPS_RAM_FALLBACK_CACHE else None)
         if (
             method == "GET"
             and (
@@ -1333,9 +1370,9 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
                 or path.endswith("/tileset.json")
                 or path.endswith("/preview_tileset.json")
             )
-            and self.path in _VPS_RAM_FALLBACK_CACHE
+            and cache_hit_key
         ):
-            c_status, c_hdrs, c_body = _VPS_RAM_FALLBACK_CACHE[self.path]
+            c_status, c_hdrs, c_body = _VPS_RAM_FALLBACK_CACHE[cache_hit_key]
             self.send_response(c_status)
             for hk, hv in c_hdrs.items():
                 self.send_header(hk, hv)
@@ -1345,6 +1382,15 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
             except (BrokenPipeError, ConnectionResetError):
                 pass
             return True
+
+        # 1b. Serve scan thumbnails directly from local VPS /app/data/thumbnails/ if available (24/7 instant PNG for Google Chat)
+        if method == "GET" and path.startswith("/api/scans/") and (path.endswith("/thumbnail") or path.endswith("/thumbnail.png")):
+            suffix = "/thumbnail.png" if path.endswith("/thumbnail.png") else "/thumbnail"
+            req_sid = path[len("/api/scans/") : -len(suffix)].strip("/")
+            local_vps_thumb = self._resolve_scan_thumbnail_path(req_sid)
+            if local_vps_thumb and os.path.isfile(local_vps_thumb):
+                self._serve_file_with_range(local_vps_thumb, content_type="image/png")
+                return True
 
         # 2. Try Direct Google Drive .3tz Cloud Range Streaming (300+ Mbps, 0% PC Upload) BEFORE using PC tunnel
         if method == "GET" and (
@@ -1771,23 +1817,30 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
             if thumb_path and os.path.isfile(thumb_path):
                 self._serve_file_with_range(thumb_path, content_type="image/png")
                 return
-            # Dynamic clean SVG preview fallback if no file exists on disk
-            title = scan.get("name", scan_id)
-            e_coord = scan.get("twd97_e", 304952.6)
-            n_coord = scan.get("twd97_n", 2757084.9)
-            svg = (
-                f'<svg xmlns="http://www.w3.org/2000/svg" width="320" height="180" viewBox="0 0 320 180">'
-                f'<rect width="320" height="180" fill="#0f172a"/>'
-                f'<path d="M20 135 L95 75 L165 110 L235 55 L300 125 Z" fill="rgba(2,132,199,0.28)" stroke="#38bdf8" stroke-width="2"/>'
-                f'<text x="16" y="30" fill="#f8fafc" font-family="Inter,sans-serif" font-size="12" font-weight="600">{title[:32]}</text>'
-                f'<text x="16" y="162" fill="#94a3b8" font-family="JetBrains Mono,monospace" font-size="10">E {e_coord:.1f} N {n_coord:.1f}</text>'
-                f'</svg>'
-            ).encode("utf-8")
+            # Dynamic raster PNG preview fallback if no file exists on disk (Google Chat strictly requires raster image/png)
+            png_bytes = b""
+            try:
+                import io
+                from PIL import Image, ImageDraw
+
+                img = Image.new("RGB", (640, 360), (15, 23, 42))
+                drw = ImageDraw.Draw(img)
+                drw.polygon([(40, 270), (190, 150), (330, 220), (470, 110), (600, 250)], fill=(14, 116, 144), outline=(56, 189, 248))
+                title = str(scan.get("name") or scan_id)[:38]
+                drw.text((28, 28), f"GatheringScans 3D: {title}", fill=(248, 250, 252))
+                buf = io.BytesIO()
+                img.save(buf, format="PNG")
+                png_bytes = buf.getvalue()
+            except Exception:
+                png_bytes = base64.b64decode(
+                    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=="
+                )
             self.send_response(200)
-            self.send_header("Content-Type", "image/svg+xml")
-            self.send_header("Content-Length", str(len(svg)))
+            self.send_header("Content-Type", "image/png")
+            self.send_header("Cache-Control", "public, max-age=3600")
+            self.send_header("Content-Length", str(len(png_bytes)))
             self.end_headers()
-            self.wfile.write(svg)
+            self.wfile.write(png_bytes)
             return
 
         # 4. Single Scan Details (Enforces External Share Token if present)
@@ -1830,6 +1883,7 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
                     p4d_running = False
 
             all_scans = DB.list_scans()
+            active_proc_ids = {s["scan_id"] for s in all_scans if s.get("status") == "processing"}
             live_log_info: Dict[str, Any] = {}
             candidate_logs = []
             for s in all_scans:
@@ -1840,7 +1894,7 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
                     os.path.join(pdir, "project", "logs"),
                     os.path.join(LOCAL_SCANS_ROOT, sid, sid, "logs"),
                 ]
-                if sid == "QuChi261016_Trees":
+                if sid == "QuChi261016_Trees" and sid in active_proc_ids:
                     log_dirs.append(os.path.join(LOCAL_SCANS_ROOT, "catch_QuChi261016", "catch_QuChi261016", "logs"))
                 for candidate_dir in log_dirs:
                     if os.path.isdir(candidate_dir):
@@ -1849,11 +1903,12 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
                                 full_lp = os.path.join(candidate_dir, f)
                                 mtime = os.path.getmtime(full_lp)
                                 if s.get("status") == "processing" or (p4d_running and (time.time() - mtime < 1800.0)):
-                                    candidate_logs.append((mtime, s, full_lp))
+                                    is_proc_bonus = 1 if sid in active_proc_ids else 0
+                                    candidate_logs.append((mtime, is_proc_bonus, s, full_lp))
 
             if candidate_logs:
-                candidate_logs.sort(key=lambda x: x[0])
-                latest_mtime, active_scan, latest_log = candidate_logs[-1]
+                candidate_logs.sort(key=lambda x: (x[0], x[1]))
+                latest_mtime, _, active_scan, latest_log = candidate_logs[-1]
                 sid = active_scan["scan_id"]
 
                 info = parse_pix4dmatic_log_progress(latest_log)
@@ -2305,6 +2360,19 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
             return
 
         if os.name != "nt" and path.startswith("/api/"):
+            if path.startswith("/api/scans/") and path.endswith("/thumbnail"):
+                try:
+                    scan_id_vps = re.sub(r"[^a-zA-Z0-9_\-]", "", path[len("/api/scans/") : -len("/thumbnail")].strip("/"))
+                    data_url_vps = str(payload.get("data_url", "")).strip()
+                    if scan_id_vps and "," in data_url_vps:
+                        raw_vps = base64.b64decode(data_url_vps.split(",", 1)[1])
+                        os.makedirs(THUMBS_DIR, exist_ok=True)
+                        with open(os.path.join(THUMBS_DIR, f"{scan_id_vps}.png"), "wb") as vf:
+                            vf.write(raw_vps)
+                        with open(os.path.join(THUMBS_DIR, f"{scan_id_vps.lower()}.png"), "wb") as vf2:
+                            vf2.write(raw_vps)
+                except Exception:
+                    pass
             self._proxy_via_pc_tunnel_if_vps("POST", path, body)
             return
 
@@ -2344,6 +2412,11 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
                 out_file = os.path.join(THUMBS_DIR, f"{scan_id}.png")
                 with open(out_file, "wb") as f:
                     f.write(raw_bytes)
+                try:
+                    with open(os.path.join(THUMBS_DIR, f"{scan_id.lower()}.png"), "wb") as f2:
+                        f2.write(raw_bytes)
+                except Exception:
+                    pass
                 scan_row = DB.get_scan(scan_id) or {}
                 pdir = scan_row.get("project_dir") or ""
                 if pdir and os.path.isdir(pdir):
@@ -2551,12 +2624,20 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
             # 10. Google Chat Notification Dispatch & Webhook Config
             if path == "/api/gchat/config":
                 webhook = payload.get("webhook_url", "")
-                saved = GCHAT.set_webhook_url(webhook)
-                self.send_json({"status": "ok", "webhook_url": saved})
+                up_email = payload.get("uploader_email", "")
+                saved = GCHAT.set_webhook_url(webhook, uploader_email=up_email)
+                self.send_json(
+                    {
+                        "status": "ok",
+                        "webhook_url": saved,
+                        "user_webhooks": GCHAT.user_webhooks,
+                        "user_gchat_ids": GCHAT.user_gchat_ids,
+                    }
+                )
                 return
 
             if path == "/api/gchat/notify":
-                scan_id = payload.get("scan_id", "quchi_20261005_merged")
+                scan_id = payload.get("scan_id", "catch_QuChi261016")
                 webhook = payload.get("webhook_url", "")
                 if webhook:
                     GCHAT.set_webhook_url(webhook)
@@ -2739,6 +2820,11 @@ def _pc_cloud_manifest_sync_loop():
 
 
 def run_server(host: str = SERVER_HOST, port: int = SERVER_PORT):
+    if os.name != "nt" and os.path.isdir("/host_opt/gathering_scans/web"):
+        try:
+            shutil.copytree("/host_opt/gathering_scans/web", WEB_DIR, dirs_exist_ok=True)
+        except Exception as e:
+            print(f"[GatheringScans] Web dir sync warning: {e}")
     _ensure_vps_caddy_route()
     if os.name != "nt":
         t_cw = threading.Thread(target=_vps_caddy_watchdog_loop, daemon=True)

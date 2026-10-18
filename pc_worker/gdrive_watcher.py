@@ -285,6 +285,101 @@ def match_project_group(
     return f"Site ({lat:.4f}N, {lon:.4f}E)", "新增工區掃描點"
 
 
+GATHEREN_DRIVEFS_USER_MAP: Dict[str, Tuple[str, str, str, str]] = {
+    "0B9iDvpnqzFdI": ("雲在天", "glibivanov@gatheren.com.tw", "工務/BIM", "#14b8a6"),
+    "0B_7euqQkEuTc": ("趙冠人", "frankchao@gatheren.com.tw", "總經理", "#ef4444"),
+    "0B4ivIGgbWwve": ("胡佳雯", "wenhu@gatheren.com.tw", "行政/管理", "#ec4899"),
+    "0B8KUfOzTj-EC": ("薛鈞豪", "HowardHsueh@gatheren.com.tw", "工務/專案", "#3b82f6"),
+    "0BzHb4wJMZJa4": ("蘇容德", "litasu@gatheren.com.tw", "成控/採購", "#a855f7"),
+    "0B1JR5X9StbPX": ("楊斯顯", "szhsienyang@gatheren.com.tw", "工務/品管", "#f97316"),
+    "0B2Yj38NHCSUd": ("黃聖文", "shengwenhuang@gatheren.com.tw", "工務工程師", "#eab308"),
+    "0B34fkGa3yIcF": ("鄭宇翔", "leocheng@gatheren.com.tw", "工務工程師", "#06b6d4"),
+    "0B52Y9wroxqHr": ("駱介正", "JasonLo@gatheren.com.tw", "財務經理", "#6366f1"),
+    "0B8PgVwzUHnRd": ("游忠偉", "kentyu@gatheren.com.tw", "工務/訪價", "#10b981"),
+    "0ByiKtcWmlGtI": ("葉烝佑", "ChengYouYeh@gatheren.com.tw", "工務工程師", "#84cc16"),
+    "0Bz9icckT3CZZ": ("王騰德", "tengtewang@gatheren.com.tw", "工務經理", "#0ea5e9"),
+    "0BziTTOFSCVhJ": ("陳聰榮", "congrongchen@gatheren.com.tw", "工務人員", "#f59e0b"),
+    "0B5fGwAtfvOyh": ("李振嘉", "edwardli@gatheren.com.tw", "工務工程師", "#8b5cf6"),
+    "0B6EWVm5brWwN": ("孫暐岑", "neilsun@gatheren.com.tw", "工務工程師", "#22c55e"),
+    "0Bx93O1IxaYa5": ("陳冠羽", "kevinchen@gatheren.com.tw", "機電/工務", "#d946ef"),
+}
+
+GATHEREN_EMAIL_TO_NAME: Dict[str, str] = {
+    info[1].lower(): info[0] for info in GATHEREN_DRIVEFS_USER_MAP.values()
+}
+
+_DRIVEFS_CACHE: Dict[str, Any] = {"ts": 0.0, "by_title": {}}
+
+
+def _resolve_drivefs_uploader(name_or_path: str) -> Tuple[str, str]:
+    """
+    Procedurally reads Google Drive for Desktop local metadata_sqlite_db to resolve
+    the actual Google Account display name (Chinese name) and email for a scan file/folder.
+    """
+    now = time.time()
+    if now - _DRIVEFS_CACHE["ts"] > 45.0 or not _DRIVEFS_CACHE["by_title"]:
+        by_title: Dict[str, Tuple[str, str]] = {}
+        try:
+            import glob
+            import sqlite3
+
+            local_app = os.environ.get("LOCALAPPDATA", "")
+            if local_app:
+                candidates = glob.glob(os.path.join(local_app, "Google", "DriveFS", "*", "metadata_sqlite_db"))
+                db_src = max(candidates, key=os.path.getsize) if candidates else None
+                if db_src and os.path.isfile(db_src):
+                    con = sqlite3.connect(f"file:{db_src}?mode=ro", uri=True)
+                    con.text_factory = bytes
+                    cur = con.cursor()
+                    cur.execute("SELECT local_title, proto FROM items WHERE trashed=0 AND proto IS NOT NULL")
+                    for title_b, proto in cur.fetchall():
+                        if not title_b or not proto:
+                            continue
+                        m = re.findall(b"0B[A-Za-z0-9_-]{11}", proto)
+                        if not m:
+                            continue
+                        u_pref = m[-1].decode("ascii", errors="ignore")
+                        u_info = GATHEREN_DRIVEFS_USER_MAP.get(u_pref)
+                        if u_info:
+                            t_str = title_b.decode("utf-8", errors="ignore").strip().lower()
+                            by_title[t_str] = (u_info[0], u_info[1])
+                            stem = os.path.splitext(t_str)[0]
+                            by_title[stem] = (u_info[0], u_info[1])
+                    con.close()
+        except Exception:
+            pass
+        _DRIVEFS_CACHE["ts"] = now
+        _DRIVEFS_CACHE["by_title"] = by_title
+
+    by_title = _DRIVEFS_CACHE.get("by_title") or {}
+    base = os.path.basename(name_or_path.rstrip("/\\")).strip().lower()
+    stem = os.path.splitext(base)[0]
+    for candidate in (base, stem, f"{stem}.3tz", f"{stem}.zip", stem.replace("catch_", "")):
+        if candidate in by_title:
+            return by_title[candidate]
+    return ("雲在天", "glibivanov@gatheren.com.tw")
+
+
+def normalize_gatheren_uploader(uploader_name: str, uploader_email: str, hint_path: str = "") -> Tuple[str, str]:
+    """
+    Ensures uploader metadata uses the real Google Account Chinese display name
+    rather than legacy hardcoded English placeholders ('Glib Ivanov', 'Argon').
+    """
+    email = (uploader_email or "").strip() or "glibivanov@gatheren.com.tw"
+    if email.lower() in ("glib@gatheren.com.tw", "argon@gatheren.com.tw"):
+        email = "glibivanov@gatheren.com.tw"
+    name = (uploader_name or "").strip()
+    if hint_path and (not name or name.lower() in ("glib ivanov", "glibivanov", "argon", "admin", "system")):
+        dfs_name, dfs_email = _resolve_drivefs_uploader(hint_path)
+        return dfs_name, dfs_email
+    mapped_zh = GATHEREN_EMAIL_TO_NAME.get(email.lower())
+    if mapped_zh and (not name or name.lower() in ("glib ivanov", "glibivanov", "argon")):
+        return mapped_zh, email
+    if not name or name.lower() in ("glib ivanov", "glibivanov", "argon"):
+        return "雲在天", email
+    return name, email
+
+
 def extract_opf_zip_metadata(zip_path: str) -> Dict[str, Any]:
     """
     Fast (<50ms) metadata extractor for Pix4DCatch 'Export to PIX4Dmatic' .zip archives.
@@ -292,6 +387,7 @@ def extract_opf_zip_metadata(zip_path: str) -> Dict[str, Any]:
     """
     stat = os.stat(zip_path)
     bname = os.path.splitext(os.path.basename(zip_path))[0]
+    dfs_name, dfs_email = _resolve_drivefs_uploader(zip_path)
     info: Dict[str, Any] = {
         "scan_id": f"catch_{bname.replace('-', '_')}",
         "name": bname,
@@ -301,8 +397,8 @@ def extract_opf_zip_metadata(zip_path: str) -> Dict[str, Any]:
         "capture_date": bname[:10] + " " + bname[11:16].replace("-", ":")
         if len(bname) >= 16 and bname[4] == "-"
         else datetime.fromtimestamp(stat.st_mtime).strftime("%Y-%m-%d %H:%M"),
-        "uploader_email": "glibivanov@gatheren.com.tw",
-        "uploader_name": "Glib Ivanov",
+        "uploader_email": dfs_email,
+        "uploader_name": dfs_name,
         "image_count": 0,
         "rtk_accuracy_cm": 1.6,
         "lat": 24.92032,
@@ -321,8 +417,9 @@ def extract_opf_zip_metadata(zip_path: str) -> Dict[str, Any]:
         try:
             with open(sidecar, "r", encoding="utf-8") as sf:
                 sdata = json.load(sf)
-            info["uploader_email"] = sdata.get("uploader_email", info["uploader_email"])
-            info["uploader_name"] = sdata.get("uploader_name", info["uploader_name"])
+            raw_email = sdata.get("uploader_email", info["uploader_email"])
+            raw_name = sdata.get("uploader_name", info["uploader_name"])
+            info["uploader_name"], info["uploader_email"] = normalize_gatheren_uploader(raw_name, raw_email, zip_path)
             if "uploaded_at" in sdata:
                 info["uploaded_at"] = float(sdata["uploaded_at"])
         except Exception:
@@ -542,34 +639,90 @@ def _extract_tileset_georef_and_fix_axis(tileset_path: str) -> Dict[str, Any]:
 
 
 def _compute_folder_stats(folder_path: str) -> Tuple[int, int]:
-    """Computes total bytes on disk and estimated tile/photo count for a dynamically added scan folder."""
+    """Computes total bytes on disk and exact input photo count for a scan folder."""
     total_bytes = 0
-    tile_count = 0
     direct_photo_count = 0
+    p4m_candidates: List[str] = []
+    log_candidates: List[str] = []
     try:
-        for img_sub in (os.path.join(folder_path, "inputs", "images"), os.path.join(folder_path, "images")):
-            if os.path.isdir(img_sub):
-                imgs = [f for f in os.listdir(img_sub) if f.lower().endswith((".jpg", ".jpeg", ".png"))]
-                if imgs:
-                    direct_photo_count = len(imgs)
-                    break
+        # 1. Recursively count input images across inputs/** and images/** (including multi-part sub-folders)
+        for img_root_name in ("inputs", "Inputs", "images", "Images"):
+            img_root = os.path.join(folder_path, img_root_name)
+            if os.path.isdir(img_root):
+                count_in_root = 0
+                for r, _, fls in os.walk(img_root):
+                    for fn in fls:
+                        if fn.lower().endswith((".jpg", ".jpeg", ".png")):
+                            count_in_root += 1
+                if count_in_root > 0:
+                    direct_photo_count = max(direct_photo_count, count_in_root)
+
+        # 2. Walk folder for total disk size and collect any root.p4m / log files if images aren't stored locally
         for root, dirs, files in os.walk(folder_path):
-            # Skip internal PIX4D project pyramid caches when estimating tile counts
-            rel_parts = {p.lower() for p in os.path.relpath(root, folder_path).split(os.sep)}
-            is_internal_proj = "project" in rel_parts or "preview_low" in rel_parts
             for fn in files:
                 fpath = os.path.join(root, fn)
                 try:
                     total_bytes += os.path.getsize(fpath)
                 except OSError:
                     pass
-                if not is_internal_proj and fn.lower().endswith((".glb", ".b3dm", ".gltf")):
-                    tile_count += 1
+                low_fn = fn.lower()
+                if low_fn.endswith(".p4m"):
+                    p4m_candidates.append(fpath)
+                elif low_fn.endswith(".log") and "logs" in root.lower():
+                    log_candidates.append(fpath)
+
+        # 3. If no raw images directory is on disk, extract exact camera count from PIX4Dmatic root.p4m binary
+        if direct_photo_count == 0 and p4m_candidates:
+            for p4m_path in p4m_candidates:
+                try:
+                    with open(p4m_path, "rb") as pf:
+                        data = pf.read()
+                    matches = re.findall(rb"[^\x00-\x1f\x7f-\xff]+?\.(?:jpg|jpeg|JPG|JPEG)", data)
+                    bnames = {os.path.basename(m.decode("utf-8", errors="ignore")) for m in matches}
+                    if len(bnames) > direct_photo_count:
+                        direct_photo_count = len(bnames)
+                except Exception:
+                    pass
+
+        # 4. Fallback to PIX4Dmatic log '[Add N image(s)]'
+        if direct_photo_count == 0 and log_candidates:
+            for lpath in log_candidates:
+                try:
+                    with open(lpath, "r", encoding="utf-8", errors="ignore") as lf:
+                        txt = lf.read()
+                    m_add = re.findall(r"\[Add\s+(\d+)\s+image\(s\)\]", txt)
+                    if m_add:
+                        direct_photo_count = max(direct_photo_count, max(int(x) for x in m_add))
+                except Exception:
+                    pass
     except Exception:
         pass
-    if direct_photo_count > 0:
-        return max(total_bytes, 1024), direct_photo_count
-    return max(total_bytes, 1024), max(tile_count * 18, 120)
+    return max(total_bytes, 1024), direct_photo_count
+
+
+def _compute_scan_covered_area_m2(folder_path: str, tileset_path: str, half_extents: List[float]) -> float:
+    """Computes or reads the 2D planar covered area (in m^2) of the 3D scan from its DSM hull mask or bounding box."""
+    candidates = [os.path.join(folder_path, "_dsm_cache_v3.npz")]
+    if tileset_path:
+        candidates.append(os.path.join(os.path.dirname(tileset_path), "_dsm_cache_v3.npz"))
+    for npz_path in candidates:
+        if os.path.isfile(npz_path):
+            try:
+                import numpy as np
+                data = np.load(npz_path)
+                hull_mask = data["hull_mask"]
+                res = float(np.asarray(data["res"]).flat[0])
+                area = float(np.sum(hull_mask) * (res * res))
+                if area > 10.0:
+                    return round(area, 1)
+            except Exception:
+                pass
+    if isinstance(half_extents, list) and len(half_extents) >= 2:
+        hx = max(float(half_extents[0] or 0.0), 10.0)
+        hy = max(float(half_extents[1] or 0.0), 10.0)
+        return round((hx * 2.0) * (hy * 2.0) * 0.68, 1)
+    return 15000.0
+
 
 
 def _infer_capture_date_from_name(folder_name: str, fallback_mtime: float) -> str:
@@ -870,11 +1023,21 @@ def _discover_folder_scan_item(
             raw_meta_imgs = est_imgs
 
     half_extents = ts_georef.get("half_extents", [120.0, 120.0, 30.0])
+    covered_area_m2 = float(meta.get("covered_area_m2") or 0.0)
+    if covered_area_m2 <= 0.0:
+        covered_area_m2 = _compute_scan_covered_area_m2(folder_path, tileset_path, half_extents)
+
     user_edited = bool(meta.get("user_edited_name"))
     default_display_name = folder_name[6:] if folder_name.lower().startswith("catch_") and len(folder_name) > 6 else folder_name
     resolved_name = (meta.get("name") or "").strip() if user_edited else default_display_name
     if not resolved_name:
         resolved_name = default_display_name
+
+    resolved_uploader_name, resolved_uploader_email = normalize_gatheren_uploader(
+        meta.get("uploader_name", ""),
+        meta.get("uploader_email", "glibivanov@gatheren.com.tw"),
+        meta.get("source_zip_path") or folder_name,
+    )
 
     result_item = {
         "scan_id": scan_id,
@@ -884,8 +1047,8 @@ def _discover_folder_scan_item(
         "project_name_zh": proj_zh or "工程掃描群組",
         "capture_date": meta.get("capture_date") or _infer_capture_date_from_name(folder_name, stat.st_mtime),
         "uploaded_at": float(meta.get("uploaded_at", stat.st_mtime)),
-        "uploader_email": meta.get("uploader_email", "glibivanov@gatheren.com.tw"),
-        "uploader_name": meta.get("uploader_name", "Glib Ivanov"),
+        "uploader_email": resolved_uploader_email,
+        "uploader_name": resolved_uploader_name,
         "source_zip_path": meta.get("source_zip_path", ""),
         "project_dir": folder_path,
         "tileset_path": tileset_path,
@@ -893,6 +1056,7 @@ def _discover_folder_scan_item(
         "cameras_dir": cameras_dir,
         "image_count": int(raw_meta_imgs or est_imgs or 1200),
         "size_bytes": int(meta.get("size_bytes") or disk_bytes or 64000000),
+        "covered_area_m2": round(covered_area_m2, 1),
         "rtk_accuracy_cm": float(meta.get("rtk_accuracy_cm", 1.5)),
         "crs": meta.get("crs", TWD97_TWVD2001_SHORT),
         "texture_resolution": int(meta.get("texture_resolution", PIX4DMATIC_TEXTURE_SIZE)),
@@ -915,8 +1079,13 @@ def _discover_folder_scan_item(
         "notes": meta.get("notes", f"Dynamically loaded from {folder_path}"),
     }
 
-    # Persist scan_meta.json on local disk if it did not exist yet or had a non-user-edited fake name
-    need_write_meta = not os.path.isfile(meta_file) or (not user_edited and meta.get("name") != resolved_name)
+    # Persist scan_meta.json on local disk if it did not exist yet, lacked covered_area_m2, or had a non-user-edited fake name
+    need_write_meta = (
+        not os.path.isfile(meta_file)
+        or not meta.get("covered_area_m2")
+        or (not user_edited and meta.get("name") != resolved_name)
+        or meta.get("uploader_name") != resolved_uploader_name
+    )
     if need_write_meta and is_safe_jailed_path(folder_path, LOCAL_SCANS_ROOT):
         try:
             meta_to_save = dict(meta)

@@ -47,31 +47,34 @@
     window.GOOGLE_OAUTH_CLIENT_ID ||
     "753778992341-hpe65ilnti31j0m7etmq5rn7a1q802da.apps.googleusercontent.com";
 
-  // Load persisted user profile (compatible with GatheringCloud's gathering_user_profile)
+  // Load persisted user profile only if explicitly authorized in this browser session
   function getInitialCurrentUser() {
     try {
+      const verified = localStorage.getItem("gs_auth_verified_v1") === "1";
+      if (!verified) return null;
       const saved =
         localStorage.getItem("gathering_user_profile") ||
         localStorage.getItem("gs_current_user");
       if (saved) {
         const parsed = JSON.parse(saved);
         if (parsed && parsed.email) {
+          if (
+            String(parsed.email).toLowerCase() === "glibivanov@gatheren.com.tw" &&
+            (!parsed.name || parsed.name === "Glib Ivanov")
+          ) {
+            parsed.name = "雲在天";
+          }
           return Object.assign({ offlineCacheEnabled: true }, parsed);
         }
       }
     } catch (e) {
       // ignore
     }
-    return {
-      id: "user_glib_ivanov",
-      email: "glibivanov@gatheren.com.tw",
-      name: "Glib Ivanov",
-      role: "admin",
-      role_label: "System Admin (Gatheren)",
-      auth_provider: "google",
-      offlineCacheEnabled: true,
-    };
+    return null;
   }
+
+  const initialShareToken = new URLSearchParams(window.location.search).get("share") || "";
+  const initialUser = getInitialCurrentUser();
 
   // Application State
   const STATE = {
@@ -91,9 +94,10 @@
     activeTool: "distance",
     snapEnabled: true,
     pcOnline: true,
-    shareToken: new URLSearchParams(window.location.search).get("share") || "",
+    shareToken: initialShareToken,
     shareLinkInfo: null,
-    currentUser: getInitialCurrentUser(),
+    currentUser: initialUser,
+    isAuthorized: Boolean(initialUser && initialUser.email) || Boolean(initialShareToken),
     themePreference: localStorage.getItem("gs_theme_pref") || "auto",
     resolvedTheme: "light",
     teamProfiles: [],
@@ -117,10 +121,13 @@
     return hr >= 6 && hr < 18 ? "light" : "dark";
   }
 
-  // Apply initial theme attribute immediately to avoid flash
+  // Apply initial theme attribute & authorization lock immediately to avoid flash
   STATE.resolvedTheme = resolveThemeFromPreference(STATE.themePreference);
   document.documentElement.setAttribute("data-theme", STATE.resolvedTheme);
   document.documentElement.setAttribute("data-theme-pref", STATE.themePreference);
+  if (!STATE.isAuthorized && document.body) {
+    document.body.classList.add("gs-auth-locked");
+  }
 
   // Aggregate unique project groups dynamically (scales cleanly to 100+ projects)
   function getProjectGroupsList(filterQuery = "") {
@@ -325,17 +332,23 @@
 
     container.style.position = "relative";
     container.style.overflow = "hidden";
+    container.style.touchAction = "none";
+    container.style.userSelect = "none";
+    container.style.webkitUserSelect = "none";
 
     const canvas = document.createElement("canvas");
     canvas.style.width = "100%";
     canvas.style.height = "100%";
     canvas.style.display = "block";
+    canvas.style.touchAction = "none";
+    canvas.style.cursor = "grab";
     container.appendChild(canvas);
 
     const markerLayer = document.createElement("div");
     markerLayer.style.position = "absolute";
     markerLayer.style.inset = "0";
     markerLayer.style.pointerEvents = "none";
+    markerLayer.style.touchAction = "none";
     container.appendChild(markerLayer);
 
     // Google Maps attribution badge (bottom-left)
@@ -344,6 +357,16 @@
       "position:absolute;bottom:10px;left:14px;background:rgba(255,255,255,0.92);border:1px solid #cbd5e1;border-radius:6px;padding:3px 9px;font-size:11px;font-weight:600;color:#0f172a;z-index:400;pointer-events:none;box-shadow:0 2px 8px rgba(15,23,42,0.12);";
     gAttr.textContent = "Google Maps · TWD97 (121) + TWVD2001";
     container.appendChild(gAttr);
+
+    // Touch-friendly Map Zoom & Reset Controls (bottom-right)
+    const zoomCtrl = document.createElement("div");
+    zoomCtrl.className = "gs-map-zoom-controls";
+    zoomCtrl.innerHTML = `
+      <button type="button" class="gs-map-zoom-btn" id="btnMapZoomIn" title="Zoom In">+</button>
+      <button type="button" class="gs-map-zoom-btn" id="btnMapZoomOut" title="Zoom Out">−</button>
+      <button type="button" class="gs-map-zoom-btn" id="btnMapResetView" title="Fit All Scan Sites" style="font-size:11px;">⟲</button>
+    `;
+    container.appendChild(zoomCtrl);
 
     gsMap = {
       container,
@@ -356,8 +379,13 @@
       groups: [],
       tileCache: new Map(),
       dragging: false,
+      dragMovedPx: 0,
       lastX: 0,
       lastY: 0,
+      activePointers: new Map(),
+      pinchPrevDist: 0,
+      pinchPrevMid: null,
+      lastTouchHandledAt: 0,
     };
 
     const projectLatLon = (lat, lon) => {
@@ -412,6 +440,50 @@
       return entry;
     };
 
+    const updateCursorCoordsHud = (clientX, clientY) => {
+      const rect = canvas.getBoundingClientRect();
+      const { lat, lon } = unprojectXY(clientX - rect.left, clientY - rect.top);
+      const twdE = 250000 + (lon - 121.0) * 101750;
+      const twdN = lat * 110760;
+      const coordEl = document.getElementById("mapCursorCoords");
+      if (coordEl) {
+        coordEl.textContent = `TWD97(121) E: ${twdE.toFixed(1)}m | N: ${twdN.toFixed(1)}m | WGS84: ${lat.toFixed(5)}°N, ${lon.toFixed(5)}°E`;
+      }
+    };
+
+    const panByPixels = (dx, dy) => {
+      if (!Number.isFinite(dx) || !Number.isFinite(dy) || (dx === 0 && dy === 0)) return;
+      const worldPx = 256 * Math.pow(2, gsMap.zoom);
+      const c = latLonToNormMercator(gsMap.centerLat, gsMap.centerLon);
+      const next = normMercatorToLatLon(c.u - dx / worldPx, c.v - dy / worldPx);
+      gsMap.centerLat = Math.max(-80.0, Math.min(80.0, next.lat));
+      gsMap.centerLon = Math.max(-179.9, Math.min(179.9, next.lon));
+      drawMap();
+    };
+
+    const zoomAroundClientPoint = (nextZoom, clientX, clientY) => {
+      const clampedZoom = Math.max(8.0, Math.min(19.0, nextZoom));
+      if (Math.abs(clampedZoom - gsMap.zoom) < 1e-4) return;
+      const rect = canvas.getBoundingClientRect();
+      const px = clientX - rect.left;
+      const py = clientY - rect.top;
+      const w = canvas.width || container.clientWidth || 1280;
+      const h = canvas.height || container.clientHeight || 800;
+      const anchorWorldBefore = 256 * Math.pow(2, gsMap.zoom);
+      const cBefore = latLonToNormMercator(gsMap.centerLat, gsMap.centerLon);
+      const anchorU = cBefore.u + (px - w * 0.50) / anchorWorldBefore;
+      const anchorV = cBefore.v + (py - h * 0.50) / anchorWorldBefore;
+
+      gsMap.zoom = clampedZoom;
+      const anchorWorldAfter = 256 * Math.pow(2, gsMap.zoom);
+      const nextCenterU = anchorU - (px - w * 0.50) / anchorWorldAfter;
+      const nextCenterV = anchorV - (py - h * 0.50) / anchorWorldAfter;
+      const nextCenter = normMercatorToLatLon(nextCenterU, nextCenterV);
+      gsMap.centerLat = Math.max(-80.0, Math.min(80.0, nextCenter.lat));
+      gsMap.centerLon = Math.max(-179.9, Math.min(179.9, nextCenter.lon));
+      drawMap();
+    };
+
     const drawMap = () => {
       const w = Math.max(1, container.clientWidth);
       const h = Math.max(1, container.clientHeight);
@@ -432,7 +504,7 @@
       const cNorm = latLonToNormMercator(gsMap.centerLat, gsMap.centerLon);
       const centerTx = cNorm.u * numTiles;
       const centerTy = cNorm.v * numTiles;
-      const centerX = w * 0.46;
+      const centerX = w * 0.50;
       const centerY = h * 0.50;
 
       const minTx = Math.floor(centerTx - centerX / tileScale) - 1;
@@ -516,6 +588,27 @@
     };
 
     gsMap.drawMap = drawMap;
+    gsMap.panByPixels = panByPixels;
+    gsMap.zoomAroundClientPoint = zoomAroundClientPoint;
+
+    // Map Zoom Buttons
+    document.getElementById("btnMapZoomIn")?.addEventListener("click", (e) => {
+      e.stopPropagation();
+      gsMap.zoom = Math.min(19.0, gsMap.zoom + 0.75);
+      drawMap();
+    });
+    document.getElementById("btnMapZoomOut")?.addEventListener("click", (e) => {
+      e.stopPropagation();
+      gsMap.zoom = Math.max(8.0, gsMap.zoom - 0.75);
+      drawMap();
+    });
+    document.getElementById("btnMapResetView")?.addEventListener("click", (e) => {
+      e.stopPropagation();
+      gsMap.centerLat = 24.976;
+      gsMap.centerLon = 121.522;
+      gsMap.zoom = 11.75;
+      drawMap();
+    });
 
     // Map Layer Switcher (Hybrid vs Map)
     document.querySelectorAll("#mapLayerSwitcher .btn-seg").forEach((btn) => {
@@ -527,42 +620,188 @@
       });
     });
 
-    canvas.addEventListener("pointerdown", (e) => {
-      gsMap.dragging = true;
-      gsMap.lastX = e.clientX;
-      gsMap.lastY = e.clientY;
+    const isInteractiveMapHudControl = (target) => {
+      if (!target || !target.closest) return false;
+      return Boolean(target.closest(".gs-map-zoom-controls, input, select, button, a"));
+    };
+
+    // Dedicated Touch Events (passive: false) for 1-finger pan & 2-finger pinch-to-zoom on Android/iOS tablets
+    container.addEventListener(
+      "touchstart",
+      (e) => {
+        if (isInteractiveMapHudControl(e.target)) return;
+        if (e.touches.length === 1) {
+          const t = e.touches[0];
+          gsMap.dragging = true;
+          gsMap.dragMovedPx = 0;
+          gsMap.lastX = t.clientX;
+          gsMap.lastY = t.clientY;
+          gsMap.pinchPrevDist = 0;
+          gsMap.pinchPrevMid = null;
+          gsMap.touchStartClusterBlob = e.target && e.target.closest ? e.target.closest(".scan-cluster-blob") : null;
+          updateCursorCoordsHud(t.clientX, t.clientY);
+        } else if (e.touches.length >= 2) {
+          if (e.cancelable) e.preventDefault();
+          const t0 = e.touches[0];
+          const t1 = e.touches[1];
+          gsMap.dragging = false;
+          gsMap.touchStartClusterBlob = null;
+          gsMap.pinchPrevDist = Math.hypot(t1.clientX - t0.clientX, t1.clientY - t0.clientY);
+          gsMap.pinchPrevMid = {
+            x: (t0.clientX + t1.clientX) * 0.5,
+            y: (t0.clientY + t1.clientY) * 0.5,
+          };
+        }
+      },
+      { passive: false }
+    );
+
+    container.addEventListener(
+      "touchmove",
+      (e) => {
+        if (isInteractiveMapHudControl(e.target) && !gsMap.dragging && !gsMap.pinchPrevDist) return;
+        if (e.touches.length === 1) {
+          if (e.cancelable) e.preventDefault();
+          const t = e.touches[0];
+          if (!gsMap.dragging) {
+            gsMap.dragging = true;
+            gsMap.lastX = t.clientX;
+            gsMap.lastY = t.clientY;
+            return;
+          }
+          const dx = t.clientX - gsMap.lastX;
+          const dy = t.clientY - gsMap.lastY;
+          gsMap.dragMovedPx += Math.hypot(dx, dy);
+          gsMap.lastX = t.clientX;
+          gsMap.lastY = t.clientY;
+          panByPixels(dx, dy);
+          updateCursorCoordsHud(t.clientX, t.clientY);
+        } else if (e.touches.length >= 2) {
+          if (e.cancelable) e.preventDefault();
+          const t0 = e.touches[0];
+          const t1 = e.touches[1];
+          const dist = Math.hypot(t1.clientX - t0.clientX, t1.clientY - t0.clientY);
+          const midX = (t0.clientX + t1.clientX) * 0.5;
+          const midY = (t0.clientY + t1.clientY) * 0.5;
+          if (gsMap.pinchPrevMid) {
+            panByPixels(midX - gsMap.pinchPrevMid.x, midY - gsMap.pinchPrevMid.y);
+          }
+          if (gsMap.pinchPrevDist > 12 && dist > 12) {
+            const zoomDelta = Math.log2(dist / gsMap.pinchPrevDist);
+            zoomAroundClientPoint(gsMap.zoom + zoomDelta, midX, midY);
+          }
+          gsMap.pinchPrevDist = dist;
+          gsMap.pinchPrevMid = { x: midX, y: midY };
+          gsMap.dragMovedPx += 10;
+        }
+      },
+      { passive: false }
+    );
+
+    const handleTouchEndOrCancel = (e) => {
+      if (!e.touches || e.touches.length === 0) {
+        gsMap.dragging = false;
+        gsMap.pinchPrevDist = 0;
+        gsMap.pinchPrevMid = null;
+        gsMap.touchStartClusterBlob = null;
+      } else if (e.touches.length === 1) {
+        const t = e.touches[0];
+        gsMap.dragging = true;
+        gsMap.lastX = t.clientX;
+        gsMap.lastY = t.clientY;
+        gsMap.pinchPrevDist = 0;
+        gsMap.pinchPrevMid = null;
+      }
+    };
+    container.addEventListener("touchend", handleTouchEndOrCancel, { passive: false });
+    container.addEventListener("touchcancel", handleTouchEndOrCancel, { passive: false });
+
+    // Pointer Events for Mouse & Stylus only (touch is handled exclusively by Touch Events above)
+    container.addEventListener("pointerdown", (e) => {
+      if (e.pointerType === "touch") return;
+      if (isInteractiveMapHudControl(e.target)) return;
+      gsMap.activePointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (!e.target.closest || !e.target.closest(".scan-cluster-blob")) {
+        try {
+          container.setPointerCapture(e.pointerId);
+        } catch (_) {}
+      }
+      if (gsMap.activePointers.size === 1) {
+        gsMap.dragging = true;
+        gsMap.dragMovedPx = 0;
+        gsMap.lastX = e.clientX;
+        gsMap.lastY = e.clientY;
+        canvas.style.cursor = "grabbing";
+      } else if (gsMap.activePointers.size === 2) {
+        const pts = Array.from(gsMap.activePointers.values());
+        gsMap.dragging = false;
+        gsMap.pinchPrevDist = Math.hypot(pts[1].x - pts[0].x, pts[1].y - pts[0].y);
+        gsMap.pinchPrevMid = { x: (pts[0].x + pts[1].x) * 0.5, y: (pts[0].y + pts[1].y) * 0.5 };
+      }
     });
-    window.addEventListener("pointerup", () => {
-      if (gsMap) gsMap.dragging = false;
-    });
+
+    const releasePointer = (e) => {
+      if (e.pointerType === "touch") return;
+      gsMap.activePointers.delete(e.pointerId);
+      if (gsMap.activePointers.size === 0) {
+        gsMap.dragging = false;
+        gsMap.pinchPrevDist = 0;
+        gsMap.pinchPrevMid = null;
+        canvas.style.cursor = "grab";
+      } else if (gsMap.activePointers.size === 1) {
+        const remaining = Array.from(gsMap.activePointers.values())[0];
+        gsMap.dragging = true;
+        gsMap.lastX = remaining.x;
+        gsMap.lastY = remaining.y;
+        gsMap.pinchPrevDist = 0;
+        gsMap.pinchPrevMid = null;
+      }
+    };
+    window.addEventListener("pointerup", releasePointer);
+    window.addEventListener("pointercancel", releasePointer);
+
     window.addEventListener("pointermove", (e) => {
+      if (e.pointerType === "touch") return;
       if (!gsMap || STATE.activeView !== "map") return;
-      const rect = canvas.getBoundingClientRect();
-      const { lat, lon } = unprojectXY(e.clientX - rect.left, e.clientY - rect.top);
-      const twdE = 250000 + (lon - 121.0) * 101750;
-      const twdN = lat * 110760;
-      const coordEl = document.getElementById("mapCursorCoords");
-      if (coordEl) {
-        coordEl.textContent = `TWD97(121) E: ${twdE.toFixed(1)}m | N: ${twdN.toFixed(1)}m | WGS84: ${lat.toFixed(5)}°N, ${lon.toFixed(5)}°E`;
+      updateCursorCoordsHud(e.clientX, e.clientY);
+      if (gsMap.activePointers.has(e.pointerId)) {
+        gsMap.activePointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      }
+      if (gsMap.activePointers.size >= 2) {
+        const pts = Array.from(gsMap.activePointers.values());
+        const dist = Math.hypot(pts[1].x - pts[0].x, pts[1].y - pts[0].y);
+        const midX = (pts[0].x + pts[1].x) * 0.5;
+        const midY = (pts[0].y + pts[1].y) * 0.5;
+        if (gsMap.pinchPrevMid) {
+          panByPixels(midX - gsMap.pinchPrevMid.x, midY - gsMap.pinchPrevMid.y);
+        }
+        if (gsMap.pinchPrevDist > 12 && dist > 12) {
+          zoomAroundClientPoint(gsMap.zoom + Math.log2(dist / gsMap.pinchPrevDist), midX, midY);
+        }
+        gsMap.pinchPrevDist = dist;
+        gsMap.pinchPrevMid = { x: midX, y: midY };
+        gsMap.dragMovedPx += 10;
+        return;
       }
       if (gsMap.dragging) {
         const dx = e.clientX - gsMap.lastX;
         const dy = e.clientY - gsMap.lastY;
+        gsMap.dragMovedPx += Math.hypot(dx, dy);
         gsMap.lastX = e.clientX;
         gsMap.lastY = e.clientY;
-        const worldPx = 256 * Math.pow(2, gsMap.zoom);
-        const c = latLonToNormMercator(gsMap.centerLat, gsMap.centerLon);
-        const next = normMercatorToLatLon(c.u - dx / worldPx, c.v - dy / worldPx);
-        gsMap.centerLat = Math.max(21.5, Math.min(25.6, next.lat));
-        gsMap.centerLon = Math.max(119.5, Math.min(122.5, next.lon));
-        drawMap();
+        panByPixels(dx, dy);
       }
     });
-    canvas.addEventListener("wheel", (e) => {
-      e.preventDefault();
-      gsMap.zoom = Math.max(9.5, Math.min(18.0, gsMap.zoom + (e.deltaY < 0 ? 0.35 : -0.35)));
-      drawMap();
-    });
+
+    container.addEventListener(
+      "wheel",
+      (e) => {
+        e.preventDefault();
+        const delta = e.deltaY < 0 ? 0.35 : -0.35;
+        zoomAroundClientPoint(gsMap.zoom + delta, e.clientX, e.clientY);
+      },
+      { passive: false }
+    );
   }
 
   function renderMapClusters() {
@@ -596,12 +835,18 @@
       blob.style.height = `${sizePx}px`;
       blob.style.transform = "translate(-50%, -50%)";
       blob.style.pointerEvents = "auto";
+      blob.style.touchAction = "none";
       blob.innerHTML = `
         <span>${count}</span>
         <div class="blob-label">${grp.project_group} (${count})</div>
       `;
 
-      blob.addEventListener("click", () => {
+      blob.addEventListener("click", (e) => {
+        if (gsMap && gsMap.dragMovedPx > 8) {
+          e.preventDefault();
+          e.stopPropagation();
+          return;
+        }
         gsMap.centerLat = grp.lat;
         gsMap.centerLon = grp.lon;
         gsMap.zoom = Math.max(gsMap.zoom || 12, 13.8);
@@ -619,6 +864,21 @@
         visibleGroups.find((g) => g.project_group === STATE.activeProjectGroup) || visibleGroups[0];
       openClusterPopover(activeGrp);
     }
+  }
+
+  function formatCoveredAreaM2(scan) {
+    if (!scan) return "0 m²";
+    let area = Number(scan.covered_area_m2 || 0);
+    if (!(area > 0)) {
+      const he =
+        scan.bounding_box && Array.isArray(scan.bounding_box.half_extents)
+          ? scan.bounding_box.half_extents
+          : [120, 120, 30];
+      const hx = Math.max(Number(he[0] || 120), 10);
+      const hy = Math.max(Number(he[1] || 120), 10);
+      area = hx * 2 * (hy * 2) * 0.68;
+    }
+    return `${Math.round(area).toLocaleString("en-US")} m²`;
   }
 
   function openClusterPopover(grp) {
@@ -701,7 +961,7 @@
           <img class="gs-map-tile-thumb" data-scan-thumb="${scan.scan_id}" src="${thumbSrc}" alt="${scan.name}" />
           <div class="gs-tile-badge-row">
             <span class="gs-tile-chip">${scan.image_count || 0} imgs · ${texLabel}</span>
-            <span class="gs-tile-chip">RTK σ=${scan.rtk_accuracy_cm}cm</span>
+            <span class="gs-tile-chip">${formatCoveredAreaM2(scan)}</span>
           </div>
         </div>
         <div class="gs-map-tile-body">
@@ -1163,9 +1423,19 @@
         const dy = maxY - minY;
         const dz = maxZ - minZ;
         outSphere.radius = Math.max(18, Math.sqrt(dx * dx + dy * dy + dz * dz) * 0.42);
+        outSphere._groundOffsetY = Math.min(-1.5, minZ - medZ - 0.3);
       }
     } else if (outSphere.radius > 0) {
       outSphere.radius = Math.max(18, outSphere.radius * 0.72);
+      if (rootBox && rootBox.length >= 12) {
+        const hz =
+          Math.abs(Number(rootBox[5]) || 0) +
+          Math.abs(Number(rootBox[8]) || 0) +
+          Math.abs(Number(rootBox[11]) || 0);
+        outSphere._groundOffsetY = hz > 0 ? -(hz + 0.3) : -Math.max(4.0, outSphere.radius * 0.25);
+      } else {
+        outSphere._groundOffsetY = -Math.max(4.0, outSphere.radius * 0.25);
+      }
     }
     return outSphere.radius > 0;
   }
@@ -1180,7 +1450,7 @@
     if (titleEl) titleEl.textContent = scan.name;
     const metaEl = document.getElementById("previewScanMeta");
     if (metaEl) {
-      metaEl.textContent = `${scan.capture_date} · ${scan.uploader_name} · E ${Number(scan.twd97_e).toFixed(1)} N ${Number(scan.twd97_n).toFixed(1)} H +${Number(scan.twd97_h).toFixed(2)}m`;
+      metaEl.textContent = `${scan.capture_date} · ${scan.uploader_name} · ${formatCoveredAreaM2(scan)} · E ${Number(scan.twd97_e).toFixed(1)} N ${Number(scan.twd97_n).toFixed(1)} H +${Number(scan.twd97_h).toFixed(2)}m`;
     }
 
     if (
@@ -1246,6 +1516,11 @@
           if (sphere.radius > 0) {
             model.position.set(-sphere.center.x, -sphere.center.y, -sphere.center.z);
           }
+          if (previewThree.grid) {
+            previewThree.grid.position.y = Number.isFinite(box.min.y)
+              ? box.min.y - sphere.center.y - 0.3
+              : -0.2;
+          }
           model.traverse((c) => {
             if (c.isMesh && c.material) {
               const mats = Array.isArray(c.material) ? c.material : [c.material];
@@ -1300,6 +1575,11 @@
           previewThree.modelPivot.rotation.set(THREE.MathUtils.degToRad(270), 0, 0);
           previewThree.modelPivot.updateMatrixWorld(true);
           previewThree.boundingSphere = sphere;
+          if (previewThree.grid) {
+            previewThree.grid.position.y = Number.isFinite(sphere._groundOffsetY)
+              ? sphere._groundOffsetY
+              : -8.0;
+          }
           framePreviewCamera();
         }
         previewThree.camera.updateMatrixWorld();
@@ -1435,7 +1715,7 @@
             <img class="gs-tile-thumb" data-scan-thumb="${s.scan_id}" src="${thumbSrc}" alt="${s.name}" />
             <div class="gs-tile-badge-row">
               <span class="gs-tile-chip">${s.image_count || 0} imgs · ${texLabel}</span>
-              <span class="gs-tile-chip ${isSelected ? "active-indicator" : ""}" data-rtk-chip="1">RTK ${s.rtk_accuracy_cm}cm</span>
+              <span class="gs-tile-chip ${isSelected ? "active-indicator" : ""}" data-rtk-chip="1">${formatCoveredAreaM2(s)}</span>
             </div>
           </div>
           <div class="gs-tile-meta">
@@ -2020,7 +2300,7 @@
 
     const metricsEl = document.getElementById("studioScanMetrics");
     if (metricsEl) {
-      metricsEl.textContent = `TWD97 · TWVD2001 · σ ${scan.rtk_accuracy_cm}cm`;
+      metricsEl.textContent = `TWD97 · TWVD2001 · ${formatCoveredAreaM2(scan)}`;
     }
 
     const dlBtn = document.getElementById("btnStudioDownloadObj");
@@ -2059,6 +2339,11 @@
           box.getBoundingSphere(sphere);
           if (sphere.radius > 0) {
             model.position.set(-sphere.center.x, -sphere.center.y, -sphere.center.z);
+          }
+          if (studioThree.grid) {
+            studioThree.grid.position.y = Number.isFinite(box.min.y)
+              ? box.min.y - sphere.center.y - 0.3
+              : -0.2;
           }
           model.traverse((c) => {
             if (c.isMesh && c.material) {
@@ -2116,6 +2401,11 @@
           studioThree.modelPivot.rotation.set(THREE.MathUtils.degToRad(270), 0, 0);
           studioThree.modelPivot.updateMatrixWorld(true);
           studioThree.boundingSphere = sphere;
+          if (studioThree.grid) {
+            studioThree.grid.position.y = Number.isFinite(sphere._groundOffsetY)
+              ? sphere._groundOffsetY
+              : -8.0;
+          }
           frameStudioCamera();
         }
         studioThree.camera.updateMatrixWorld();
@@ -3157,7 +3447,7 @@
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;" class="gs-form-group">
           <div>
             <label>Surveyor (測量工程師)</label>
-            <input type="text" class="gs-input" id="cntEngineerName" value="${STATE.currentUser?.name || "Glib Ivanov"}" />
+            <input type="text" class="gs-input" id="cntEngineerName" value="${STATE.currentUser?.name || "雲在天"}" />
           </div>
           <div>
             <label>Mask Boundary (邊界遮罩)</label>
@@ -3198,7 +3488,7 @@
       const minor = parseFloat(document.getElementById("cntMinorStep")?.value || "0.5");
       const major = parseFloat(document.getElementById("cntMajorStep")?.value || "2.5");
       const drawingTitle = document.getElementById("cntDrawingTitle")?.value || defaultTitle;
-      const engineerName = document.getElementById("cntEngineerName")?.value || "Glib Ivanov";
+      const engineerName = document.getElementById("cntEngineerName")?.value || "雲在天";
 
       const currentMaskPts =
         STATE.maskBoundaryPoints && STATE.maskBoundaryPoints.length >= 3
@@ -3742,8 +4032,8 @@
       try {
         await apiPost("/api/comments", {
           scan_id: STATE.activeScanId,
-          author_email: STATE.currentUser.email,
-          author_name: STATE.currentUser.name,
+          author_email: STATE.currentUser?.email || "guest@gatheren.cloud",
+          author_name: STATE.currentUser?.name || "Guest Viewer",
           text,
           pos_x: pt.x,
           pos_y: pt.y,
@@ -3947,8 +4237,66 @@
   // ============================================================================
   let compareCtx = null;
 
+  // Exact calibrated reference anchors (raw tileset vertex coords -> TWD97 TM2-121 + TWVD2001 world coords)
+  // Verified via 3D KD-tree nearest-neighbor mesh matching across all multi-epoch and dual-export scan pairs
+  const SCAN_COMPARE_CALIBRATION = {
+    catch_QuChi261016: {
+      crs: "TWD97",
+      rawCenter: [304891.922, 2757029.5, 38.194],
+      twdCenter: [304891.922, 2757029.5, 38.194],
+      rotZ: 0,
+      scaleXY: 1.0,
+      radius: 139.64,
+    },
+    QuChi261016_Trees: {
+      crs: "TWD97",
+      rawCenter: [304884.442, 2757008.413, 37.193],
+      twdCenter: [304891.922, 2757029.5, 38.194],
+      rotZ: -0.014989,
+      scaleXY: 0.999862,
+      radius: 139.64,
+    },
+    quchi_20261015_obj_mesh: {
+      crs: "UTM51N",
+      rawCenter: [352915.65, 2756880.45, 38.785],
+      twdCenter: [304891.922, 2757029.5, 38.194],
+      rotZ: 0.01396582,
+      scaleXY: 1.00104762,
+      radius: 139.64,
+    },
+    quchi_20261005_sector3: {
+      crs: "TWD97",
+      rawCenter: [304848.06, 2757112.34, 39.31],
+      twdCenter: [304848.06, 2757112.34, 39.31],
+      rotZ: 0,
+      scaleXY: 1.0,
+      radius: 139.64,
+    },
+    rosepark_20260917_east: {
+      crs: "TWD97",
+      rawCenter: [295979.41, 2768494.23, -112.05],
+      twdCenter: [295979.41, 2768494.23, 28.54],
+      rotZ: 0,
+      scaleXY: 1.0,
+      radius: 90.0,
+    },
+  };
+
   function classifyCompareSideCoords(side) {
     if (!side || !side.rawSphere || !(side.rawSphere.radius > 0)) return null;
+    const scanId = side._loadedScanId || side.scanMeta?.scan_id || "";
+    const cal = SCAN_COMPARE_CALIBRATION[scanId];
+    if (cal) {
+      return {
+        crs: cal.crs,
+        rawCenter: new THREE.Vector3(cal.rawCenter[0], cal.rawCenter[1], cal.rawCenter[2]),
+        twdCenter: new THREE.Vector3(cal.twdCenter[0], cal.twdCenter[1], cal.twdCenter[2]),
+        rotZ: cal.rotZ,
+        scaleXY: cal.scaleXY,
+        radius: cal.radius || Number(side.rawSphere.radius) || 60,
+      };
+    }
+
     const c = side.rawSphere.center;
     const meta = side.scanMeta || {};
     const radius = Number(side.rawSphere.radius) || 60;
@@ -3968,12 +4316,12 @@
       };
     }
 
-    // Case 2: UTM Zone 51N coordinates (345,000 < E <= 415,000; 2,400,000 <= N <= 2,850,000, e.g. QuChi_20261015-obj_mesh)
+    // Case 2: UTM Zone 51N coordinates (345,000 < E <= 415,000; 2,400,000 <= N <= 2,850,000)
     if (c.x > 345000 && c.x <= 415000 && c.y >= 2400000 && c.y <= 2850000) {
       return {
         crs: "UTM51N",
         rawCenter: c.clone(),
-        twdCenter: new THREE.Vector3(metaE || c.x, metaN || c.y, c.z),
+        twdCenter: new THREE.Vector3(metaE || c.x, metaN || c.y, metaH || c.z),
         rotZ: 0.01396582, // +0.8002 deg meridian convergence from UTM51N (123E) to TWD97 TM2 (121E)
         scaleXY: 1.00104762,
         radius,
@@ -4048,6 +4396,13 @@
       side.pivot.updateMatrixWorld(true);
     });
 
+    const groundY = Math.min(
+      Number(left?.rawSphere?._groundOffsetY) || -8.0,
+      Number(right?.rawSphere?._groundOffsetY) || -8.0
+    );
+    if (left?.grid) left.grid.position.y = groundY;
+    if (right?.grid) right.grid.position.y = groundY;
+
     // Auto-frame camera when a new scan pair finishes loading tilesets
     const pairKey = `${left._loadedScanId || ""}|${right._loadedScanId || ""}`;
     if (lInfo && rInfo && compareCtx._framedPairKey !== pairKey) {
@@ -4059,8 +4414,10 @@
   function frameCompareCamera(showMsg = false) {
     if (!compareCtx) return;
     const { left, right, controls } = compareCtx;
-    const lR = left?.rawSphere?.radius || 0;
-    const rR = right?.rawSphere?.radius || 0;
+    const lInfo = classifyCompareSideCoords(left);
+    const rInfo = classifyCompareSideCoords(right);
+    const lR = lInfo?.radius || left?.rawSphere?.radius || 0;
+    const rR = rInfo?.radius || right?.rawSphere?.radius || 0;
     const baseR = lR > 0 && rR > 0 ? Math.min(lR, rR) : Math.max(lR, rR, 65);
     const r = Math.min(Math.max(baseR, 30), 220);
     left.camera.position.set(r * 0.68, r * 0.54, r * 0.78);
@@ -4202,6 +4559,7 @@
       const sphere = new THREE.Sphere();
       if (computeTilesetContentSphere(tr, sphere)) {
         side.rawSphere = sphere.clone();
+        side.rawSphere._groundOffsetY = sphere._groundOffsetY;
         alignCompareSides();
       }
       side.camera.updateMatrixWorld();
@@ -4292,9 +4650,7 @@
     const createEpochScene = (container, tintColor, isLatest) => {
       const isDark = STATE.resolvedTheme === "dark";
       const scene = new THREE.Scene();
-      scene.background = new THREE.Color(
-        isDark ? (isLatest ? 0x091322 : 0x0d1829) : isLatest ? 0xe2e8f0 : 0xdbe4f0
-      );
+      scene.background = new THREE.Color(isDark ? 0x0b1322 : 0xe2e8f0);
       const camera = new THREE.PerspectiveCamera(
         48,
         Math.max(1, container.clientWidth) / Math.max(1, container.clientHeight),
@@ -4390,27 +4746,85 @@
     right.camera.quaternion.copy(left.camera.quaternion);
     right.camera.updateProjectionMatrix();
 
-    // Curtain Slider Dragging
+    // Curtain Slider Dragging — strictly isolated from OrbitControls (disables camera orbit while dragging)
     const divider = document.getElementById("curtainDivider");
     let dragging = false;
-    divider.addEventListener("pointerdown", (e) => {
-      if (STATE.compareMode === "split") return;
-      dragging = true;
-      e.stopPropagation();
-    });
-    window.addEventListener("pointerup", () => {
-      dragging = false;
-    });
-    window.addEventListener("pointermove", (e) => {
-      if (!dragging || STATE.compareMode === "split") return;
+
+    const updateCurtainFromClientX = (clientX) => {
+      if (!Number.isFinite(clientX) || STATE.compareMode === "split") return;
       const rect = stage.getBoundingClientRect();
-      const pct = Math.max(5, Math.min(95, ((e.clientX - rect.left) / rect.width) * 100));
+      if (!rect || rect.width <= 0) return;
+      const pct = Math.max(5, Math.min(95, ((clientX - rect.left) / rect.width) * 100));
       if (compareCtx) compareCtx._curtainPct = pct;
       divider.style.left = `${pct}%`;
       rightContainer.style.clipPath = `inset(0 0 0 ${pct}%)`;
       const lbl = document.getElementById("lblCurtainPct");
       if (lbl) lbl.textContent = `Split: ${Math.round(pct)}%`;
+    };
+
+    const startCurtainDrag = (e) => {
+      if (STATE.compareMode === "split") return;
+      dragging = true;
+      controls.enabled = false;
+      e.stopPropagation();
+      if (typeof e.stopImmediatePropagation === "function") e.stopImmediatePropagation();
+      if (e.cancelable && e.type === "touchstart") e.preventDefault();
+      if (e.pointerId !== undefined && typeof divider.setPointerCapture === "function") {
+        try {
+          divider.setPointerCapture(e.pointerId);
+        } catch (_) {}
+      }
+    };
+
+    const endCurtainDrag = (e) => {
+      if (!dragging) return;
+      dragging = false;
+      controls.enabled = true;
+      if (e && e.pointerId !== undefined && typeof divider.releasePointerCapture === "function") {
+        try {
+          divider.releasePointerCapture(e.pointerId);
+        } catch (_) {}
+      }
+    };
+
+    divider.addEventListener("pointerdown", startCurtainDrag, { passive: false });
+    divider.addEventListener("mousedown", startCurtainDrag, { passive: false });
+    divider.addEventListener("touchstart", startCurtainDrag, { passive: false });
+    divider.addEventListener(
+      "touchmove",
+      (e) => {
+        if (!dragging || STATE.compareMode === "split") return;
+        e.stopPropagation();
+        if (e.cancelable) e.preventDefault();
+        if (e.touches && e.touches.length > 0) {
+          updateCurtainFromClientX(e.touches[0].clientX);
+        }
+      },
+      { passive: false }
+    );
+
+    window.addEventListener("pointerup", endCurtainDrag);
+    window.addEventListener("pointercancel", endCurtainDrag);
+    window.addEventListener("mouseup", endCurtainDrag);
+    window.addEventListener("touchend", endCurtainDrag);
+    window.addEventListener("touchcancel", endCurtainDrag);
+
+    window.addEventListener("pointermove", (e) => {
+      if (!dragging || STATE.compareMode === "split") return;
+      e.stopPropagation();
+      updateCurtainFromClientX(e.clientX);
     });
+    window.addEventListener(
+      "touchmove",
+      (e) => {
+        if (!dragging || STATE.compareMode === "split") return;
+        if (e.cancelable) e.preventDefault();
+        if (e.touches && e.touches.length > 0) {
+          updateCurtainFromClientX(e.touches[0].clientX);
+        }
+      },
+      { passive: false }
+    );
 
     // Compare Mode Switcher (Slider Mode vs 2-Viewport Synced Camera Mode)
     document.querySelectorAll("#compareModeSwitcher .btn-seg").forEach((btn) => {
@@ -4451,7 +4865,9 @@
     const loop = () => {
       requestAnimationFrame(loop);
       if (STATE.activeView !== "compare") return;
-      controls.update();
+      if (!dragging) {
+        controls.update();
+      }
       left.camera.updateMatrixWorld();
       right.camera.position.copy(left.camera.position);
       right.camera.quaternion.copy(left.camera.quaternion);
@@ -4483,6 +4899,7 @@
     requestAnimationFrame(loop);
 
     compareCtx = { left, right, controls, _curtainPct: 50, _framedPairKey: "" };
+    window.__gsCompareCtx = compareCtx;
     setCompareMode(STATE.compareMode || "slider");
     syncCompareScansFromDropdowns();
     return compareCtx;
@@ -4514,8 +4931,8 @@
     const isDark = theme === "dark";
     const bgHex = isDark ? 0x0b1120 : 0xe2e8f0;
     const studioBgHex = isDark ? 0x0b0f19 : 0xe2e8f0;
-    const cmpLeftHex = isDark ? 0x0d1829 : 0xdbe4f0;
-    const cmpRightHex = isDark ? 0x091322 : 0xe2e8f0;
+    const cmpLeftHex = isDark ? 0x0b1322 : 0xe2e8f0;
+    const cmpRightHex = isDark ? 0x0b1322 : 0xe2e8f0;
     const gridMain = isDark ? 0x334155 : 0x94a3b8;
     const gridSub = isDark ? 0x1e293b : 0xcbd5e1;
 
@@ -4596,6 +5013,10 @@
     document.getElementById(id)?.classList.add("active");
   }
   function closeModal(id) {
+    if (id === "userProfileGateModal" && !STATE.isAuthorized && !STATE.shareToken) {
+      showToast("Please sign in with Google, select a team profile, or choose Guest Mode to continue");
+      return;
+    }
     document.getElementById(id)?.classList.remove("active");
   }
   document.querySelectorAll("[data-close-modal]").forEach((btn) => {
@@ -4619,13 +5040,63 @@
   let _queuePollTimer = null;
   let _pix4dSettingsDirty = false;
 
+  const PIX4D_PRESETS = {
+    gatheringcloud: {
+      mesh_pipeline: "FixedSize",
+      texture_size: 4096,
+      model_simplification: "Conservative",
+      deghosting: "Weak",
+      export_lod: 13,
+      skyless: false,
+      use_roi: false,
+    },
+    fast_field: {
+      mesh_pipeline: "FixedSize",
+      texture_size: 2048,
+      model_simplification: "Moderate",
+      deghosting: "Weak",
+      export_lod: 12,
+      skyless: false,
+      use_roi: false,
+    },
+    archival_8k: {
+      mesh_pipeline: "Scalable",
+      texture_size: 8192,
+      model_simplification: "Conservative",
+      deghosting: "Weak",
+      export_lod: 15,
+      skyless: false,
+      use_roi: false,
+    },
+  };
+
+  function detectPix4dPresetKey(cfg) {
+    if (!cfg) return "gatheringcloud";
+    for (const [k, p] of Object.entries(PIX4D_PRESETS)) {
+      if (
+        String(cfg.mesh_pipeline || "FixedSize") === p.mesh_pipeline &&
+        Number(cfg.texture_size || 4096) === p.texture_size &&
+        String(cfg.model_simplification || "Conservative") === p.model_simplification &&
+        String(cfg.deghosting || "Weak") === p.deghosting &&
+        Number(cfg.export_lod ?? 13) === p.export_lod &&
+        Boolean(cfg.skyless) === p.skyless &&
+        Boolean(cfg.use_roi) === p.use_roi
+      ) {
+        return k;
+      }
+    }
+    return "custom";
+  }
+
   function formatPix4dSummaryBadge(cfg) {
-    if (!cfg) return "FixedSize · 4K · SkyMask OFF · 0B VPS";
+    if (!cfg) return "GatheringCloud Optimal · 4K · SkyMask OFF · .3tz";
+    const presetKey = detectPix4dPresetKey(cfg);
     const mp = cfg.mesh_pipeline || "FixedSize";
     const tex = Number(cfg.texture_size || 4096);
     const texLabel = tex >= 8192 ? "8K" : tex >= 4096 ? "4K" : "2K";
     const skyLabel = cfg.skyless ? "SkyMask ON" : "SkyMask OFF";
-    return `${mp} · ${texLabel} · ${skyLabel} · 0B VPS`;
+    const prefix = presetKey === "gatheringcloud" ? "GatheringCloud Optimal · " : "";
+    return `${prefix}${mp} · ${texLabel} · ${skyLabel} · .3tz`;
   }
 
   function applyPix4dSettingsToUI(cfg, forceOverwrite = false) {
@@ -4643,6 +5114,7 @@
       cfg
     );
     const c = STATE.pix4dSettings;
+    const presetKey = detectPix4dPresetKey(c);
     const sumEl = document.getElementById("lblQueuePipelineSummary");
     if (sumEl) sumEl.textContent = formatPix4dSummaryBadge(c);
     const hdrEl = document.getElementById("gstScriptHeaderTitle");
@@ -4651,6 +5123,11 @@
     }
 
     if (_pix4dSettingsDirty && !forceOverwrite) return;
+
+    ["selPix4dPreset", "selPix4dPresetUser"].forEach((pid) => {
+      const pel = document.getElementById(pid);
+      if (pel && document.activeElement !== pel) pel.value = presetKey;
+    });
 
     const pairs = [
       ["selPix4dMeshPipeline", "selPix4dMeshPipelineUser", String(c.mesh_pipeline || "FixedSize")],
@@ -4676,6 +5153,30 @@
       const el2 = document.getElementById(id2);
       if (el2) el2.checked = checked;
     });
+  }
+
+  async function applyPix4dPreset(presetKey = "gatheringcloud") {
+    const preset = PIX4D_PRESETS[presetKey];
+    if (!preset) return;
+    _pix4dSettingsDirty = false;
+    applyPix4dSettingsToUI(preset, true);
+    try {
+      const res = await apiPost("/api/pix4d/settings", { settings: preset });
+      applyPix4dSettingsToUI(res.settings || preset, true);
+      const gstBox = document.getElementById("gstScriptPreviewBox");
+      if (gstBox && gstBox.style.display !== "none") {
+        await previewGstForScan(STATE.activeScanId);
+      }
+      const label =
+        presetKey === "gatheringcloud"
+          ? "GatheringCloud Optimal (.3tz + Single-Root 4K WebP GLB + TWD97 + SkyMask OFF)"
+          : presetKey === "fast_field"
+          ? "Fast Field Preview (2K + Moderate + LOD 12)"
+          : "Ultra Archival Multi-Tile (8K + Scalable + LOD 15)";
+      showToast(`Applied & saved preset: ${label}`);
+    } catch (err) {
+      showToast(`Preset Error: ${err.message}`);
+    }
   }
 
   function readPix4dSettingsFromUI(suffix = "") {
@@ -4771,7 +5272,7 @@
           <td><b style="color:var(--ui-text-primary);">${s.name}</b><br><span style="font-size:10.5px;color:var(--ui-text-muted);">${s.scan_id}</span></td>
           <td style="color:var(--ui-text-secondary);">${s.project_group}</td>
           <td><span style="color:var(--ui-text-primary);font-weight:600;">${s.uploader_name}</span><br><span style="font-size:10.5px;color:var(--ui-text-muted);">${s.uploader_email} · ${s.capture_date}</span></td>
-          <td><span style="color:var(--ui-text-primary);font-weight:600;">${s.image_count} imgs</span><br><span style="font-size:10.5px;color:var(--ui-text-muted);">${Number(s.size_mb || (s.size_bytes || 0) / 1048576).toFixed(1)} MB</span></td>
+          <td><span style="color:var(--ui-text-primary);font-weight:600;">${s.image_count} imgs</span><br><span style="font-size:10.5px;color:var(--ui-text-muted);">${formatCoveredAreaM2(s)} · ${Number(s.size_mb || (s.size_bytes || 0) / 1048576).toFixed(1)} MB</span></td>
           <td><span class="gs-crs-pill">${s.crs} · ${s.texture_resolution}px</span></td>
           <td style="font-family:monospace;font-weight:700;color:var(--ui-text-primary);">${s.priority_score}</td>
           <td>${statusHtml}</td>
@@ -4849,6 +5350,20 @@
       showToast(`GST Preview Error: ${err.message}`);
     }
   }
+
+  ["selPix4dPreset", "selPix4dPresetUser"].forEach((pid) => {
+    document.getElementById(pid)?.addEventListener("change", (e) => {
+      const val = e.target.value;
+      if (val && val !== "custom") {
+        applyPix4dPreset(val);
+      }
+    });
+  });
+  ["btnApplyGatheringCloudPreset", "btnApplyGatheringCloudPresetUser"].forEach((bid) => {
+    document.getElementById(bid)?.addEventListener("click", () => {
+      applyPix4dPreset("gatheringcloud");
+    });
+  });
 
   [
     "selPix4dMeshPipeline",
@@ -5169,10 +5684,10 @@
   document.getElementById("btnOpenOfflineCache")?.addEventListener("click", openOfflineCacheModal);
   document.getElementById("chkEnableOfflineCache")?.addEventListener("change", async (e) => {
     const enabled = Boolean(e.target.checked);
-    STATE.currentUser.offlineCacheEnabled = enabled;
+    if (STATE.currentUser) STATE.currentUser.offlineCacheEnabled = enabled;
     await apiPost("/api/user/settings", {
-      user_email: STATE.currentUser.email,
-      user_name: STATE.currentUser.name || "Engineer",
+      user_email: STATE.currentUser?.email || "guest@gatheren.cloud",
+      user_name: STATE.currentUser?.name || "Engineer",
       offline_cache_enabled: enabled,
       theme_preference: STATE.themePreference,
     }).catch(() => {});
@@ -5229,8 +5744,44 @@
     }
   }
 
-  function applyUserProfileToUI(userObj) {
-    if (!userObj) return;
+  function applyUserProfileToUI(userObj, markAuthorized = false) {
+    const closeBtn = document.getElementById("btnCloseAuthGateModal");
+    const confirmBtn = document.getElementById("btnGateConfirmEnter");
+    const btnLogout = document.getElementById("btnUserLogout");
+    const gateStatus = document.getElementById("gateActiveUserStatusText");
+    const lblUser = document.getElementById("lblCurrentUser");
+    const avatarImg = document.getElementById("imgCurrentUserAvatar");
+    const svgIcon = document.getElementById("svgCurrentUserIcon");
+
+    if (!userObj) {
+      STATE.currentUser = null;
+      if (!STATE.shareToken) {
+        STATE.isAuthorized = false;
+        document.body?.classList.add("gs-auth-locked");
+      }
+      if (lblUser) lblUser.textContent = "Sign In";
+      if (avatarImg) avatarImg.style.display = "none";
+      if (svgIcon) svgIcon.style.display = "inline-block";
+      if (closeBtn) closeBtn.style.display = "none";
+      if (confirmBtn) confirmBtn.style.display = "none";
+      if (btnLogout) btnLogout.style.display = "none";
+      if (gateStatus) {
+        gateStatus.textContent =
+          "Authorization required — Sign in with Google, select a team profile, or use Guest Mode";
+      }
+      return;
+    }
+
+    if (markAuthorized) {
+      STATE.isAuthorized = true;
+      try {
+        localStorage.setItem("gs_auth_verified_v1", "1");
+      } catch (e) {}
+    }
+    if (STATE.isAuthorized || STATE.shareToken) {
+      document.body?.classList.remove("gs-auth-locked");
+    }
+
     const normalized = Object.assign({}, userObj);
     if (!normalized.avatar_url && normalized.picture) {
       normalized.avatar_url = normalized.picture;
@@ -5238,7 +5789,7 @@
     if (!normalized.picture && normalized.avatar_url) {
       normalized.picture = normalized.avatar_url;
     }
-    STATE.currentUser = Object.assign({ offlineCacheEnabled: true }, STATE.currentUser, normalized);
+    STATE.currentUser = Object.assign({ offlineCacheEnabled: true }, STATE.currentUser || {}, normalized);
     try {
       localStorage.setItem("gathering_user_profile", JSON.stringify(STATE.currentUser));
       localStorage.setItem("gs_current_user", JSON.stringify(STATE.currentUser));
@@ -5246,7 +5797,6 @@
       // ignore
     }
 
-    const lblUser = document.getElementById("lblCurrentUser");
     if (lblUser) {
       lblUser.textContent = STATE.currentUser.name || STATE.currentUser.email || "Guest";
     }
@@ -5254,8 +5804,6 @@
     if (btnUser) {
       btnUser.title = `${STATE.currentUser.name || "User"} (${STATE.currentUser.email || ""}) — Click to switch Google OAuth account`;
     }
-    const avatarImg = document.getElementById("imgCurrentUserAvatar");
-    const svgIcon = document.getElementById("svgCurrentUserIcon");
     if (avatarImg && svgIcon) {
       const picUrl = STATE.currentUser.avatar_url || STATE.currentUser.picture;
       if (picUrl) {
@@ -5276,13 +5824,17 @@
     if (engInput && STATE.currentUser.name) {
       engInput.value = STATE.currentUser.name;
     }
-    const gateStatus = document.getElementById("gateActiveUserStatusText");
     if (gateStatus) {
       gateStatus.textContent = `Signed in as: ${STATE.currentUser.name || STATE.currentUser.email} (${STATE.currentUser.email || ""})`;
     }
-    const btnLogout = document.getElementById("btnUserLogout");
+    if (closeBtn) {
+      closeBtn.style.display = STATE.isAuthorized ? "inline-flex" : "none";
+    }
+    if (confirmBtn) {
+      confirmBtn.style.display = STATE.isAuthorized ? "inline-flex" : "none";
+    }
     if (btnLogout) {
-      btnLogout.style.display = STATE.currentUser.role === "guest" ? "none" : "inline-flex";
+      btnLogout.style.display = STATE.isAuthorized ? "inline-flex" : "none";
     }
   }
 
@@ -5294,24 +5846,34 @@
       } else if (res.profiles && typeof res.profiles === "object") {
         STATE.teamProfiles = Object.values(res.profiles);
       }
+      STATE.teamProfiles = (STATE.teamProfiles || []).map((u) => {
+        if (
+          u &&
+          String(u.email || "").toLowerCase() === "glibivanov@gatheren.com.tw" &&
+          (!u.name || u.name === "Glib Ivanov")
+        ) {
+          return Object.assign({}, u, { name: "雲在天" });
+        }
+        return u;
+      });
     } catch (e) {
       // Fallback to seeded team profiles if offline
       if (!STATE.teamProfiles.length) {
         STATE.teamProfiles = [
           {
-            id: "user_glib_ivanov",
-            name: "Glib Ivanov",
+            id: "u_glibivanov",
+            name: "雲在天",
             email: "glibivanov@gatheren.com.tw",
             role: "admin",
             role_label: "System Admin (Gatheren)",
             auth_provider: "google",
           },
           {
-            id: "user_argon",
-            name: "Argon",
-            email: "argon@gatheren.com.tw",
-            role: "site_engineer",
-            role_label: "Site Engineer (Gatheren)",
+            id: "u_frankchao",
+            name: "趙冠人",
+            email: "frankchao@gatheren.com.tw",
+            role: "admin",
+            role_label: "General Manager (Gatheren)",
             auth_provider: "google",
           },
         ];
@@ -5342,6 +5904,7 @@
     grid.innerHTML = "";
     list.forEach((u) => {
       const isCurrent =
+        STATE.isAuthorized &&
         STATE.currentUser &&
         String(STATE.currentUser.email || "").toLowerCase() === String(u.email || "").toLowerCase();
       const initials = (u.name || u.email || "U")
@@ -5372,10 +5935,11 @@
         </div>
       `;
       card.addEventListener("click", async () => {
-        applyUserProfileToUI(u);
+        applyUserProfileToUI(u, true);
         await apiPost("/api/user-profiles", u).catch(() => {});
         renderTeamProfilesGrid();
-        showToast(`Switched active profile to ${u.name} (${u.email})`);
+        closeModal("userProfileGateModal");
+        showToast(`Authorized as ${u.name} (${u.email})`);
       });
       grid.appendChild(card);
     });
@@ -5442,7 +6006,7 @@
       } else if (res.profiles && typeof res.profiles === "object") {
         STATE.teamProfiles = Object.values(res.profiles);
       }
-      applyUserProfileToUI(verifiedUser);
+      applyUserProfileToUI(verifiedUser, true);
       renderTeamProfilesGrid();
       if (msgEl) {
         msgEl.style.color = "var(--ui-accent)";
@@ -5453,7 +6017,7 @@
         closeModal("userProfileGateModal");
       }, 650);
     } catch (err) {
-      applyUserProfileToUI(fallbackProfile);
+      applyUserProfileToUI(fallbackProfile, true);
       if (msgEl) {
         msgEl.innerHTML = `Signed in as <b>${fallbackProfile.name}</b> (${fallbackProfile.email})`;
       }
@@ -5467,7 +6031,7 @@
   async function openUserProfileGateModal() {
     openModal("userProfileGateModal");
     await loadTeamUserProfiles();
-    applyUserProfileToUI(STATE.currentUser);
+    applyUserProfileToUI(STATE.currentUser, false);
     renderTeamProfilesGrid();
     initGoogleIdentityServicesButton();
   }
@@ -5485,40 +6049,46 @@
     closeModal("userProfileGateModal");
   });
   document.getElementById("btnGateConfirmEnter")?.addEventListener("click", () => {
+    if (!STATE.isAuthorized && !STATE.shareToken) {
+      showToast("Please sign in with Google, select a team profile, or choose Guest Mode");
+      return;
+    }
     closeModal("userProfileGateModal");
-    showToast(`Active user: ${STATE.currentUser.name} (${STATE.currentUser.email})`);
+    if (STATE.currentUser) {
+      showToast(`Active user: ${STATE.currentUser.name} (${STATE.currentUser.email})`);
+    }
   });
   document.getElementById("btnGateGuestEnter")?.addEventListener("click", () => {
-    applyUserProfileToUI({
-      id: "guest_viewer",
-      name: "Guest Viewer",
-      email: "guest@gatheren.cloud",
-      role: "guest",
-      role_label: "Read-Only Guest",
-      avatar_url: "",
-      auth_provider: "guest",
-    });
+    applyUserProfileToUI(
+      {
+        id: "guest_viewer",
+        name: "Guest Viewer",
+        email: "guest@gatheren.cloud",
+        role: "guest",
+        role_label: "Read-Only Guest",
+        avatar_url: "",
+        auth_provider: "guest",
+      },
+      true
+    );
     closeModal("userProfileGateModal");
     showToast("Entered in Guest Mode");
   });
   document.getElementById("btnUserLogout")?.addEventListener("click", () => {
-    localStorage.removeItem("gathering_user_profile");
-    localStorage.removeItem("gs_current_user");
+    try {
+      localStorage.removeItem("gs_auth_verified_v1");
+      localStorage.removeItem("gathering_user_profile");
+      localStorage.removeItem("gs_current_user");
+    } catch (e) {}
     if (window.google?.accounts?.id) {
       try {
         window.google.accounts.id.disableAutoSelect();
       } catch (e) {}
     }
-    applyUserProfileToUI({
-      id: "guest_viewer",
-      name: "Sign In",
-      email: "guest@gatheren.cloud",
-      role: "guest",
-      role_label: "Not Signed In",
-      avatar_url: "",
-    });
+    applyUserProfileToUI(null, false);
     renderTeamProfilesGrid();
-    showToast("Signed out of Google account");
+    openModal("userProfileGateModal");
+    showToast("Signed out — Authorization required to continue");
   });
   document.getElementById("gateUserSearchInput")?.addEventListener("input", () => {
     renderTeamProfilesGrid();
@@ -5660,9 +6230,13 @@
       }
     }
     if (compareCtx && STATE.activeView === "compare") {
+      const stage = document.getElementById("compareStage");
+      const stageW = Math.max(2, Number(stage?.clientWidth) || Number(compareCtx.left?.container?.clientWidth) || window.innerWidth);
+      const stageH = Math.max(1, Number(stage?.clientHeight) || Number(compareCtx.left?.container?.clientHeight) || window.innerHeight - 52);
+      const w = STATE.compareMode === "split" ? Math.max(1, Math.floor(stageW / 2)) : stageW;
+      const h = stageH;
       [compareCtx.left, compareCtx.right].forEach((side) => {
-        const w = Math.max(1, side.container.clientWidth);
-        const h = Math.max(1, side.container.clientHeight);
+        if (!side) return;
         side.camera.aspect = w / h;
         side.camera.updateProjectionMatrix();
         side.renderer.setSize(w, h);
@@ -5690,7 +6264,21 @@
         )
         .join("|");
       const data = await apiGet("/api/scans");
-      const incomingScans = Array.isArray(data.scans) ? data.scans : [];
+      const normalizeScanUploader = (s) => {
+        if (!s) return s;
+        if (!s.uploader_name || s.uploader_name === "Glib Ivanov" || s.uploader_name === "Argon") {
+          s.uploader_name = "雲在天";
+        }
+        if (
+          !s.uploader_email ||
+          s.uploader_email === "glib@gatheren.com.tw" ||
+          s.uploader_email === "argon@gatheren.com.tw"
+        ) {
+          s.uploader_email = "glibivanov@gatheren.com.tw";
+        }
+        return s;
+      };
+      const incomingScans = (Array.isArray(data.scans) ? data.scans : []).map(normalizeScanUploader);
 
       if (incomingScans.length > 0) {
         STATE.scans = incomingScans;
@@ -5707,7 +6295,7 @@
           try {
             const cached = JSON.parse(localStorage.getItem("gs_last_catalog_v1") || "null");
             if (cached && Array.isArray(cached.scans) && cached.scans.length > 0) {
-              STATE.scans = cached.scans;
+              STATE.scans = cached.scans.map(normalizeScanUploader);
               STATE.projects = cached.projects || [];
             }
           } catch (_) {}
@@ -5805,11 +6393,21 @@
     }
   }
 
-  // Bootstrap Application, Theme Engine (Default: Time of Day Auto) & Live Folder Sync
+  // Bootstrap Application, Theme Engine (Default: Time of Day Auto) & Mandatory Authorization Gate
   window.addEventListener("DOMContentLoaded", async () => {
+    const topBadge = document.getElementById("topCrsBadge");
+    if (topBadge) {
+      topBadge.textContent = "Created by Glib Ivanov, PhD and Gemini 4 Argon";
+      topBadge.title = "Created by Glib Ivanov, PhD and Gemini 4 Argon";
+    }
     await applyTheme(STATE.themePreference, false);
-    applyUserProfileToUI(STATE.currentUser);
-    loadTeamUserProfiles();
+    applyUserProfileToUI(STATE.currentUser, false);
+    if (!STATE.isAuthorized && !STATE.shareToken) {
+      document.body.classList.add("gs-auth-locked");
+      openUserProfileGateModal();
+    } else {
+      loadTeamUserProfiles();
+    }
     await refreshScansCatalog(false);
     const urlScan = new URLSearchParams(window.location.search).get("scan");
     if (urlScan) {

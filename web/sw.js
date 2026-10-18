@@ -5,7 +5,7 @@
  * Strictly zero scan cache is ever stored on the Linux VPS.
  */
 
-const CACHE_NAME = "gathering-scans-offline-v4";
+const CACHE_NAME = "gathering-scans-offline-v9";
 const APP_SHELL = [
   "/",
   "/index.html",
@@ -52,7 +52,7 @@ self.addEventListener("fetch", (event) => {
     APP_SHELL.includes(url.pathname)
   ) {
     event.respondWith(
-      fetch(req)
+      fetch(req, { cache: "no-cache" })
         .then((networkResp) => {
           if (networkResp && networkResp.status === 200) {
             const clone = networkResp.clone();

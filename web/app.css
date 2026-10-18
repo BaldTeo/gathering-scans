@@ -327,12 +327,59 @@ html[data-theme="light"] .gs-logo-light {
   min-width: 0;
   position: relative;
   overflow: hidden;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 #mapContainer {
   width: 100%;
   height: 100%;
   background: var(--ui-3d-solid);
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+#mapContainer canvas {
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.gs-map-zoom-controls {
+  position: absolute;
+  bottom: 14px;
+  right: 14px;
+  z-index: 450;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.gs-map-zoom-btn {
+  width: 36px;
+  height: 36px;
+  border-radius: 9px;
+  border: 1px solid var(--ui-border-strong);
+  background: var(--ui-bg-window);
+  backdrop-filter: blur(10px);
+  color: var(--ui-text-primary);
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: var(--ui-shadow-window);
+  touch-action: manipulation;
+}
+
+.gs-map-zoom-btn:active {
+  background: var(--ui-accent);
+  color: #ffffff;
+  border-color: var(--ui-accent);
 }
 
 .gs-map-hud-top {
@@ -345,6 +392,7 @@ html[data-theme="light"] .gs-logo-light {
   gap: 10px;
   width: 344px;
   max-width: calc(100% - 28px);
+  pointer-events: none;
 }
 
 .gs-map-card {
@@ -355,6 +403,7 @@ html[data-theme="light"] .gs-logo-light {
   padding: 13px;
   box-shadow: var(--ui-shadow-window);
   color: var(--ui-text-primary);
+  pointer-events: auto;
 }
 
 /* Spatial Cluster Blobs on Map */
@@ -371,6 +420,9 @@ html[data-theme="light"] .gs-logo-light {
   font-size: 13px;
   box-shadow: 0 0 0 5px rgba(2, 132, 199, 0.24), 0 4px 14px rgba(15, 23, 42, 0.35);
   cursor: pointer;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
   transition: transform 0.16s ease, box-shadow 0.16s ease;
 }
 
@@ -1064,6 +1116,8 @@ html[data-theme="light"] .gs-logo-light {
   inset: auto;
   width: 100%;
   height: 100%;
+  min-width: 0;
+  min-height: 0;
   overflow: hidden;
 }
 
@@ -1090,6 +1144,20 @@ html[data-theme="light"] .gs-logo-light {
   cursor: ew-resize;
   z-index: 120;
   transform: translateX(-50%);
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.gs-curtain-divider::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -22px;
+  width: 46px;
+  cursor: ew-resize;
+  touch-action: none;
 }
 
 .gs-curtain-handle {
@@ -1097,8 +1165,8 @@ html[data-theme="light"] .gs-logo-light {
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  width: 36px;
-  height: 36px;
+  width: 40px;
+  height: 40px;
   border-radius: 50%;
   background: var(--ui-bg-surface);
   border: 1px solid var(--ui-border-strong);
@@ -1107,6 +1175,10 @@ html[data-theme="light"] .gs-logo-light {
   align-items: center;
   justify-content: center;
   box-shadow: var(--ui-shadow-window);
+  cursor: ew-resize;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .gs-compare-hud {
@@ -1614,7 +1686,9 @@ html[data-theme="light"] .gs-logo-light {
   }
 
   .gs-brand-title .gs-crs-pill {
-    display: none;
+    display: inline-flex;
+    font-size: 9.5px;
+    padding: 2px 6px;
   }
 
   .gs-topbar-actions {
@@ -2114,4 +2188,14 @@ html[data-theme="light"] .gs-logo-light {
     display: none;
   }
 }
+
+/* Mandatory Authorization Gate Lock before App Usage */
+body.gs-auth-locked .gs-topbar,
+body.gs-auth-locked .gs-share-banner,
+body.gs-auth-locked .gs-main {
+  filter: blur(8px);
+  pointer-events: none !important;
+  user-select: none !important;
+}
+
 

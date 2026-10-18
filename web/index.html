@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>GatheringCloud Scans — 3D Photogrammetry &amp; Civil Surveying Studio (scans.gatheren.cloud)</title>
   <link rel="icon" type="image/png" href="/assets/gathering_cloud_logo.png" />
-  <link rel="stylesheet" href="/app.css?v=20261017_v3" />
+  <link rel="stylesheet" href="/app.css?v=20261018_v19" />
   <script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
 <body>
@@ -16,8 +16,8 @@
       <img src="/assets/gathering_cloud_logo_dark.png" alt="聚Gathering 雲Cloud" class="gs-brand-logo-img gs-logo-dark" />
       <img src="/assets/gathering_cloud_logo.png" alt="聚Gathering 雲Cloud" class="gs-brand-logo-img gs-logo-light" />
       <div class="gs-brand-title">
-        <span class="gs-crs-pill" id="topCrsBadge" title="All scans automatically converted in PIX4Dmatic to TWD97 (121) [EPSG:3826] + TWVD2001 [EPSG:8904] with 4K textures">
-          TWD97 (121) + TWVD2001 · 4K
+        <span class="gs-crs-pill" id="topCrsBadge" title="Created by Glib Ivanov, PhD and Gemini 4 Argon">
+          Created by Glib Ivanov, PhD and Gemini 4 Argon
         </span>
       </div>
     </div>
@@ -79,7 +79,7 @@
         <svg id="svgCurrentUserIcon" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8">
           <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>
         </svg>
-        <span id="lblCurrentUser" style="display:inline;font-size:11.5px;max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">Glib Ivanov</span>
+        <span id="lblCurrentUser" style="display:inline;font-size:11.5px;max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">Sign In</span>
       </button>
     </div>
   </header>
@@ -722,12 +722,21 @@
             <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="var(--ui-accent)" stroke-width="2">
               <circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9c.26.604.852.997 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
             </svg>
-            <span>PIX4Dmatic 2.11.0 Default Pipeline Settings (Tree-Preserving + Compact Mesh)</span>
+            <span>PIX4Dmatic 2.11.0 Pipeline Settings &amp; GatheringCloud Optimal Preset</span>
           </div>
-          <div style="display:flex;align-items:center;gap:6px;">
-            <span class="gs-crs-pill" style="font-size:10px;">Default Preset Active</span>
+          <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+            <select class="gs-select" id="selPix4dPreset" style="font-size:11px;padding:3px 8px;height:24px;min-width:255px;font-weight:600;border-color:var(--ui-accent);" title="Select Pipeline Preset">
+              <option value="gatheringcloud" selected>★ GatheringCloud Optimal (.3tz + 4K WebP GLB + TWD97)</option>
+              <option value="fast_field">Fast Field Preview (2K + Moderate + LOD 12)</option>
+              <option value="archival_8k">Ultra Archival Multi-Tile (8K + Scalable + LOD 15)</option>
+              <option value="custom">Custom Detailed Settings</option>
+            </select>
+            <button type="button" class="btn-xs" id="btnApplyGatheringCloudPreset" title="1-Click Apply GatheringCloud Optimal Preset (FixedSize · 4K · Conservative · Weak LOD 13 · SkyMask OFF · .3tz)">⚡ GatheringCloud Optimal</button>
             <button type="button" class="btn-xs primary" id="btnSavePix4dSettingsQueue" title="Save Default PIX4Dmatic Pipeline Settings">Save Defaults</button>
           </div>
+        </div>
+        <div style="font-size:10.5px;color:var(--ui-text-secondary);background:var(--ui-bg-surface);border:1px solid var(--ui-border);border-radius:6px;padding:5px 8px;margin-bottom:8px;line-height:1.35;" id="lblPix4dPresetDesc">
+          <b>GatheringCloud Optimal Strategy:</b> PIX4Dmatic exports native <code>TWD97 (EPSG:3826+8904)</code> <code>.OBJ</code> (4K, LOD 13, SkyMask OFF) → ScanOptimizer flips UV (<code>1-V</code>) &amp; compresses via <code>gltfpack -cc -tc -kn</code> into a <b>Single-Root 4K WebP <code>root.glb</code></b> + <code>preview_low.glb</code> → packed into <b>1 single <code>.3tz</code> archive</b> (<code>ZIP_STORED</code>) in Google Drive <code>StreamPackages</code> for 0% Drive sync bogging &amp; sub-second HTTP byte-range streaming.
         </div>
         <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:8px;">
           <div class="gs-form-group" style="margin-bottom:0;">
@@ -1032,13 +1041,22 @@
               <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="var(--ui-accent)" stroke-width="2">
                 <polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/>
               </svg>
-              <span>PIX4Dmatic 2.11.0 Default Pipeline Settings</span>
+              <span>PIX4Dmatic 2.11.0 Pipeline Settings &amp; GatheringCloud Optimal Preset</span>
             </div>
             <div style="font-size:11px;color:var(--ui-text-muted);margin-top:2px;">
-              Defaults: <b>FixedSize</b> (compact file size) + <b>Sky Mask OFF</b> (preserves surrounding trees) + <b>4096px</b> textures + <b>LOD 13</b>.
+              Optimal: <b>FixedSize</b> + <b>4096px (4K)</b> + <b>Sky Mask OFF</b> (preserves trees) + <b>LOD 13 TWD97 OBJ</b> → <b>Single-Root 4K WebP GLB + .3tz</b>.
             </div>
           </div>
-          <button type="button" class="btn-xs primary" id="btnSavePix4dSettingsUser" title="Save Default PIX4Dmatic Pipeline Settings">Save Defaults</button>
+          <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+            <select class="gs-select" id="selPix4dPresetUser" style="font-size:11px;padding:3px 8px;height:24px;min-width:255px;font-weight:600;border-color:var(--ui-accent);" title="Select Pipeline Preset">
+              <option value="gatheringcloud" selected>★ GatheringCloud Optimal (.3tz + 4K WebP GLB + TWD97)</option>
+              <option value="fast_field">Fast Field Preview (2K + Moderate + LOD 12)</option>
+              <option value="archival_8k">Ultra Archival Multi-Tile (8K + Scalable + LOD 15)</option>
+              <option value="custom">Custom Detailed Settings</option>
+            </select>
+            <button type="button" class="btn-xs" id="btnApplyGatheringCloudPresetUser" title="1-Click Apply GatheringCloud Optimal Preset">⚡ GatheringCloud Optimal</button>
+            <button type="button" class="btn-xs primary" id="btnSavePix4dSettingsUser" title="Save Default PIX4Dmatic Pipeline Settings">Save Defaults</button>
+          </div>
         </div>
         <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:8px;">
           <div class="gs-form-group" style="margin-bottom:0;">
@@ -1137,10 +1155,10 @@
           <img src="/assets/gathering_cloud_logo_dark.png" alt="GatheringCloud" style="height:36px;width:auto;object-fit:contain;flex-shrink:0;" />
           <div style="min-width:0;">
             <h3 style="margin:0;font-size:15.5px;font-weight:700;letter-spacing:0.3px;">GatheringCloud Identity Verification</h3>
-            <p style="margin:3px 0 0;font-size:11.5px;color:#94a3b8;">Same Google Workspace OAuth as GatheringCloud (<code>gatheren.cloud</code>)</p>
+            <p style="margin:3px 0 0;font-size:11.5px;color:#94a3b8;">Authorization required to access GatheringCloud Scans (<code>gatheren.cloud</code>)</p>
           </div>
         </div>
-        <button type="button" class="btn-xs" id="btnCloseAuthGateModal" title="Close" style="background:rgba(255,255,255,0.1);border-color:rgba(255,255,255,0.2);color:#f8fafc;flex-shrink:0;">
+        <button type="button" class="btn-xs" id="btnCloseAuthGateModal" title="Close" style="display:none;background:rgba(255,255,255,0.1);border-color:rgba(255,255,255,0.2);color:#f8fafc;flex-shrink:0;">
           <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
             <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
           </svg>
@@ -1212,11 +1230,11 @@
 
       <!-- Footer -->
       <div style="padding:12px 20px;background:var(--ui-bg-subtle);border-top:1px solid var(--ui-border);display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
-        <span id="gateActiveUserStatusText" style="font-size:12px;color:var(--ui-text-secondary);font-weight:600;">Signed in as: Glib Ivanov</span>
+        <span id="gateActiveUserStatusText" style="font-size:12px;color:var(--ui-text-secondary);font-weight:600;">Authorization required — Sign in with Google, select a team profile, or use Guest Mode</span>
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
           <button type="button" id="btnUserLogout" class="btn-xs" style="display:none;" title="Sign out of current profile">Logout</button>
-          <button type="button" id="btnGateGuestEnter" class="btn-xs" title="Browse in Read-Only Guest Mode">Guest</button>
-          <button type="button" id="btnGateConfirmEnter" class="btn-xs primary" title="Continue to GatheringScans Studio">Continue</button>
+          <button type="button" id="btnGateGuestEnter" class="btn-xs" title="Browse in Read-Only Guest Mode">Guest Mode</button>
+          <button type="button" id="btnGateConfirmEnter" class="btn-xs primary" style="display:none;" title="Continue to GatheringScans Studio">Continue</button>
         </div>
       </div>
     </div>
@@ -1274,6 +1292,6 @@
   <script src="/lib/3d-tiles-renderer.bundle.js"></script>
 
   <!-- Main GatheringScans Application Logic -->
-  <script src="/app.js?v=20261017_v3"></script>
+  <script src="/app.js?v=20261018_v19"></script>
 </body>
 </html>
