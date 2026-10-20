@@ -194,6 +194,39 @@ class SurveyingEngine:
         self._dsm_mem_cache: Dict[str, Dict[str, Any]] = {}
         self._camera_mem_cache: Dict[str, List[Dict[str, Any]]] = {}
 
+    def _resolve_scan_record(self, scan_id: str) -> Dict[str, Any]:
+        """Resolves scan metadata from SQLite DB or falls back to gdrive_cloud_manifest.json on Linux VPS."""
+        scan = self.db.get_scan(scan_id)
+        if scan:
+            return scan
+        base_repo = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        for mp in (
+            os.path.join(base_repo, "data", "gdrive_cloud_manifest.json"),
+            "/host_docker/gathering_scans/data/gdrive_cloud_manifest.json",
+        ):
+            if os.path.isfile(mp):
+                try:
+                    with open(mp, "r", encoding="utf-8") as mf:
+                        mdata = json.load(mf)
+                    for s in mdata.get("scans") or []:
+                        if s.get("scan_id") == scan_id:
+                            return s
+                    if mdata.get("scans"):
+                        return mdata["scans"][0]
+                except Exception:
+                    pass
+        all_scans = self.db.list_scans()
+        if all_scans:
+            return all_scans[0]
+        return {
+            "scan_id": scan_id,
+            "name": scan_id,
+            "project_group": "QuChi Dam",
+            "twd97_e": 304859.395,
+            "twd97_n": 2757030.65,
+            "twd97_h": 46.63,
+        }
+
     @staticmethod
     def _resolve_scan_obj_path(scan: Dict[str, Any]) -> Optional[str]:
         """Finds the best .obj mesh on disk for the given scan metadata."""
@@ -215,8 +248,64 @@ class SurveyingEngine:
         return None
 
     @staticmethod
+    def _extract_glb_positions_from_bytes(raw_bytes: bytes) -> Optional[np.ndarray]:
+        """Fast pure-numpy/struct glTF 2.0 binary .glb POSITION attribute reader (works on Windows & Linux VPS)."""
+        import struct
+
+        try:
+            if len(raw_bytes) < 28 or raw_bytes[:4] != b"glTF":
+                return None
+            j_len, j_type = struct.unpack_from("<I4s", raw_bytes, 12)
+            if j_type != b"JSON":
+                return None
+            b_off = 20 + j_len
+            if b_off + 8 > len(raw_bytes):
+                return None
+            b_len, b_type = struct.unpack_from("<I4s", raw_bytes, b_off)
+            if b_type != b"BIN\x00":
+                return None
+            j = json.loads(raw_bytes[20 : 20 + j_len].decode("utf-8"))
+            acc_list = j.get("accessors") or []
+            bv_list = j.get("bufferViews") or []
+            blob = memoryview(raw_bytes)[b_off + 8 : b_off + 8 + b_len]
+            chunks = []
+            for mesh in j.get("meshes") or []:
+                for prim in mesh.get("primitives") or []:
+                    attrs = prim.get("attributes") or {}
+                    if "POSITION" not in attrs:
+                        continue
+                    pos_acc = acc_list[attrs["POSITION"]]
+                    if pos_acc.get("componentType") != 5126 or pos_acc.get("type") != "VEC3":
+                        continue
+                    pos_bv = bv_list[pos_acc["bufferView"]]
+                    byte_stride = int(pos_bv.get("byteStride") or 12)
+                    byte_offset = int(pos_bv.get("byteOffset", 0)) + int(pos_acc.get("byteOffset", 0))
+                    cnt = int(pos_acc["count"])
+                    if byte_stride == 12:
+                        arr = np.frombuffer(blob, dtype=np.float32, count=cnt * 3, offset=byte_offset).reshape(-1, 3)
+                    else:
+                        raw_u8 = np.frombuffer(blob, dtype=np.uint8, count=cnt * byte_stride, offset=byte_offset).reshape(cnt, byte_stride)
+                        arr = np.frombuffer(raw_u8[:, :12].tobytes(), dtype=np.float32).reshape(-1, 3)
+                    chunks.append(arr.astype(np.float64))
+            if chunks:
+                return np.vstack(chunks)
+            return None
+        except Exception:
+            return None
+
+    @staticmethod
     def _load_glb_vertices(glb_path: str) -> Optional[np.ndarray]:
-        """Loads vertex array (N, 3) from a .glb tile, decompressing Meshopt via gltfpack if needed."""
+        """Loads vertex array (N, 3) from a .glb tile, using fast binary parser or trimesh/gltfpack."""
+        try:
+            with open(glb_path, "rb") as f:
+                raw_bytes = f.read()
+            fast_verts = SurveyingEngine._extract_glb_positions_from_bytes(raw_bytes)
+            if fast_verts is not None and len(fast_verts) > 0:
+                return fast_verts
+        except Exception:
+            pass
+        if trimesh is None:
+            return None
         tmp_glb = None
         try:
             try:
@@ -269,7 +358,7 @@ class SurveyingEngine:
         if cached and abs(cached.get("source_mtime", -1.0) - source_mtime) < 1.0:
             return cached
 
-        npz_path = os.path.join(proj_dir, "_dsm_cache_v3.npz") if os.path.isdir(proj_dir) else None
+        npz_path = os.path.join(proj_dir, "_dsm_cache_v4.npz") if os.path.isdir(proj_dir) else None
         if npz_path and os.path.isfile(npz_path):
             try:
                 if source_mtime == 0.0 or os.path.getmtime(npz_path) >= source_mtime:
@@ -294,7 +383,7 @@ class SurveyingEngine:
             except Exception:
                 pass
 
-        # 1. Extract raw 3D vertices from .obj or .glb tiles
+        # 1. Extract raw 3D vertices from .obj, .glb tiles, or .3tz archive
         raw_verts: Optional[np.ndarray] = None
         is_z_up = True
 
@@ -334,14 +423,51 @@ class SurveyingEngine:
                     raw_verts = np.vstack(chunks)
                     spans = raw_verts.max(axis=0) - raw_verts.min(axis=0)
                     v_max_abs = np.abs(raw_verts).max(axis=0)
-                    # If X/Y are large georeferenced coordinates (>100,000) or Z span is smallest, it's Z-up
                     if v_max_abs[0] > 100000 or spans[2] < min(spans[0], spans[1]) * 0.85:
                         is_z_up = True
                     else:
                         is_z_up = False
 
+        if raw_verts is None or len(raw_verts) == 0:
+            # Fallback to .3tz stream package archive (supports Linux VPS zero-raw-storage mode)
+            import zipfile
+
+            base_repo = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            cand_3tz = [
+                os.path.join(base_repo, "data", "stream_packages", f"{scan_id}.3tz"),
+                f"/host_docker/gathering_scans/data/stream_packages/{scan_id}.3tz",
+                os.path.join(SCANS_ROOT_DIR, f"{scan_id}.3tz"),
+            ]
+            for zp in cand_3tz:
+                if os.path.isfile(zp):
+                    try:
+                        with zipfile.ZipFile(zp, "r") as zf:
+                            glb_names = [
+                                n for n in zf.namelist()
+                                if n.lower().endswith(".glb") and "preview" not in n.lower()
+                            ]
+                            if not glb_names:
+                                glb_names = [n for n in zf.namelist() if n.lower().endswith(".glb")]
+                            glb_names.sort(key=lambda n: zf.getinfo(n).file_size, reverse=True)
+                            chunks = []
+                            for gn in glb_names[:16]:
+                                v_arr = self._extract_glb_positions_from_bytes(zf.read(gn))
+                                if v_arr is not None and len(v_arr) > 0:
+                                    chunks.append(v_arr)
+                            if chunks:
+                                raw_verts = np.vstack(chunks)
+                                spans = raw_verts.max(axis=0) - raw_verts.min(axis=0)
+                                v_max_abs = np.abs(raw_verts).max(axis=0)
+                                if v_max_abs[0] > 100000 or spans[2] < min(spans[0], spans[1]) * 0.85:
+                                    is_z_up = True
+                                else:
+                                    is_z_up = False
+                                break
+                    except Exception:
+                        pass
+
         if raw_verts is None or len(raw_verts) < 3:
-            raise RuntimeError(f"No 3D mesh geometry (.obj or .glb) found on disk for scan '{scan_id}'.")
+            raise RuntimeError(f"No 3D mesh geometry (.obj, .glb, or .3tz) found on disk for scan '{scan_id}'.")
 
         # 2. Transform vertices to TWD97 (E, N) + TWVD2001 (H) anchored at scan origin (ce, cn, ch)
         vmin = raw_verts.min(axis=0)
@@ -364,8 +490,17 @@ class SurveyingEngine:
 
         e_min, e_max = float(pts_e.min()), float(pts_e.max())
         n_min, n_max = float(pts_n.min()), float(pts_n.max())
-        max_span = max(e_max - e_min, n_max - n_min, 10.0)
-        res = 0.25 if max_span <= 160.0 else (0.35 if max_span <= 360.0 else 0.50)
+        max_span = max(e_max - e_min, n_max - n_min, 2.0)
+        if max_span <= 35.0:
+            res = 0.06
+        elif max_span <= 85.0:
+            res = 0.12
+        elif max_span <= 160.0:
+            res = 0.25
+        elif max_span <= 360.0:
+            res = 0.35
+        else:
+            res = 0.50
 
         nx = max(int(math.ceil((e_max - e_min) / res)) + 1, 8)
         ny = max(int(math.ceil((n_max - n_min) / res)) + 1, 8)
@@ -486,17 +621,7 @@ class SurveyingEngine:
         custom_density = payload.get("density_t_m3")
         stockpile_name = payload.get("stockpile_name") or "Stockpile / Earthwork Zone A"
 
-        scan = self.db.get_scan(scan_id)
-        if not scan:
-            all_scans = self.db.list_scans()
-            scan = all_scans[0] if all_scans else {
-                "scan_id": scan_id,
-                "name": scan_id,
-                "project_group": "QuChi Dam",
-                "twd97_e": 304859.395,
-                "twd97_n": 2757030.65,
-                "twd97_h": 46.63,
-            }
+        scan = self._resolve_scan_record(scan_id)
 
         dsm_curr = self._load_or_build_scan_dsm(scan)
         center_e = dsm_curr["ce"]
@@ -521,12 +646,14 @@ class SurveyingEngine:
 
         raw_poly = payload.get("polygon", [])
         if not raw_poly or len(raw_poly) < 3:
-            # Default 16m x 14m stockpile boundary around scan center using real DSM vertex heights
+            # Adaptive default boundary scaled to 28% of the scan's actual DSM span
+            span_e_def = min(8.0, max(1.5, (dsm_curr["e_max"] - dsm_curr["e_min"]) * 0.28))
+            span_n_def = min(7.0, max(1.5, (dsm_curr["n_max"] - dsm_curr["n_min"]) * 0.28))
             raw_poly = [
-                [center_e - 8.0, center_n - 7.0],
-                [center_e + 8.0, center_n - 7.0],
-                [center_e + 8.0, center_n + 7.0],
-                [center_e - 8.0, center_n + 7.0],
+                [center_e - span_e_def, center_n - span_n_def],
+                [center_e + span_e_def, center_n - span_n_def],
+                [center_e + span_e_def, center_n + span_n_def],
+                [center_e - span_e_def, center_n + span_n_def],
             ]
 
         # Convert local viewer coordinates (if small numbers < 10000) to TWD97 (121) + sample true DSM elevation
@@ -547,7 +674,7 @@ class SurveyingEngine:
                 py = float(pt[1])
                 if abs(px) < 10000 and abs(py) < 10000:
                     e_val = round(center_e + px, 3)
-                    n_val = round(center_n + py, 3)
+                    n_val = round(center_n - py, 3)
                 else:
                     e_val = round(px, 3)
                     n_val = round(py, 3)
@@ -573,7 +700,7 @@ class SurveyingEngine:
             ax, ay, _ = poly_twd[i]
             bx, by, _ = poly_twd[(i + 1) % n_verts]
             seg_len = math.hypot(bx - ax, by - ay)
-            n_sub = max(int(math.ceil(seg_len / 0.5)), 2)
+            n_sub = max(int(math.ceil(seg_len / 0.25)), 2)
             for k in range(n_sub):
                 t = k / n_sub
                 sx = ax + t * (bx - ax)
@@ -584,11 +711,13 @@ class SurveyingEngine:
         perim_mean_h = sum(p[2] for p in perim_samples) / max(len(perim_samples), 1)
         datum_z = float(payload.get("datum_elevation_m", perim_mean_h))
 
-        # High-resolution integration grid inside bounding box (up to 60x60 cells)
-        nx_steps = min(60, max(24, int(math.ceil((max_e - min_e) / 0.25))))
-        ny_steps = min(60, max(24, int(math.ceil((max_n - min_n) / 0.25))))
-        dx_step = max((max_e - min_e) / nx_steps, 0.10)
-        dy_step = max((max_n - min_n) / ny_steps, 0.10)
+        # High-resolution integration grid inside bounding box (adaptive 28..64 cells per axis)
+        span_box_e = max(max_e - min_e, 0.25)
+        span_box_n = max(max_n - min_n, 0.25)
+        nx_steps = min(64, max(28, int(math.ceil(span_box_e / max(dsm_curr["res"], 0.08)))))
+        ny_steps = min(64, max(28, int(math.ceil(span_box_n / max(dsm_curr["res"], 0.08)))))
+        dx_step = span_box_e / nx_steps
+        dy_step = span_box_n / ny_steps
         cell_area = dx_step * dy_step
 
         fill_vol = 0.0
@@ -710,6 +839,8 @@ class SurveyingEngine:
                 for i, p in enumerate(poly_twd)
             ],
             "boundary_local": poly_local,
+            "cell_step_m": round(max(dx_step, dy_step), 3),
+            "perim_mean_h_m": round(perim_mean_h, 3),
             "heatmap_cells": heatmap_cells,
             "report_html_url": f"/api/reports/{html_filename}",
             "report_csv_url": f"/api/reports/{csv_filename}",
@@ -891,7 +1022,7 @@ class SurveyingEngine:
                     pz = float(pt[2]) if len(pt) >= 3 else ch
                     if abs(px) < 10000 and abs(py) < 10000:
                         e_val = round(ce + px, 3)
-                        n_val = round(cn + py, 3)
+                        n_val = round(cn - py, 3)
                         h_val = round(ch + pz if abs(pz) < 25 else pz, 3)
                     else:
                         e_val = round(px, 3)
@@ -2173,17 +2304,7 @@ class SurveyingEngine:
         """
         scan_id = payload.get("scan_id", "QuChi261016_Trees")
         compare_scan_id = payload.get("compare_scan_id")
-        scan = self.db.get_scan(scan_id)
-        if not scan:
-            all_scans = self.db.list_scans()
-            scan = all_scans[0] if all_scans else {
-                "scan_id": scan_id,
-                "name": scan_id,
-                "project_group": "QuChi Dam",
-                "twd97_e": 304859.395,
-                "twd97_n": 2757030.65,
-                "twd97_h": 46.63,
-            }
+        scan = self._resolve_scan_record(scan_id)
 
         dsm_curr = self._load_or_build_scan_dsm(scan)
         ce = dsm_curr["ce"]
@@ -2206,10 +2327,10 @@ class SurveyingEngine:
             except Exception:
                 dsm_cmp = None
 
-        span_e = max(12.0, (dsm_curr["e_max"] - dsm_curr["e_min"]) * 0.25)
-        span_n = max(10.0, (dsm_curr["n_max"] - dsm_curr["n_min"]) * 0.20)
-        p_start = payload.get("start_point") or [ce - span_e, cn - span_n]
-        p_end = payload.get("end_point") or [ce + span_e, cn + span_n]
+        span_e = min(12.0, max(1.5, (dsm_curr["e_max"] - dsm_curr["e_min"]) * 0.25))
+        span_n = min(10.0, max(1.2, (dsm_curr["n_max"] - dsm_curr["n_min"]) * 0.20))
+        p_start = payload.get("start_point") or payload.get("start_pt") or [ce - span_e, cn - span_n]
+        p_end = payload.get("end_point") or payload.get("end_pt") or [ce + span_e, cn + span_n]
 
         def _to_en(pt_val: Any) -> Tuple[float, float]:
             if isinstance(pt_val, dict):
@@ -2221,7 +2342,7 @@ class SurveyingEngine:
             px = float(pt_val[0])
             py = float(pt_val[1])
             if abs(px) < 10000 and abs(py) < 10000:
-                return ce + px, cn + py
+                return ce + px, cn - py
             return px, py
 
         x1, y1 = _to_en(p_start)

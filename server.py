@@ -1802,6 +1802,17 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
                 }
             )
             return True
+        # 6. Allow surveying (volume, profile, contours/reports) and user/admin routes to execute locally on VPS from .3tz packages when tunnel is unavailable
+        if (
+            path.startswith("/api/survey/")
+            or path.startswith("/api/surveying/")
+            or path.startswith("/api/reports/")
+            or path.startswith("/api/contours/")
+            or path.startswith("/api/admin/")
+            or path.startswith("/api/user-profiles")
+        ):
+            return False
+
         self.send_json(
             {
                 "error": "Windows Processing PC (C:\\GatheringScans) is currently offline. Serving from Google Drive .3tz Cloud & Browser Cache.",
@@ -1953,8 +1964,8 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
 
         # 0b. On Linux VPS, proxy all dynamic API, 3D stream, and share routes over Reverse Tunnel to Windows PC
         if os.name != "nt" and (path.startswith("/api/") or path.startswith("/stream/") or path.startswith("/s/")):
-            self._proxy_via_pc_tunnel_if_vps("GET", path)
-            return
+            if self._proxy_via_pc_tunnel_if_vps("GET", path):
+                return
 
         # 1. Scoped External Share Link Short URL: /s/<token>
         if path.startswith("/s/"):
@@ -2656,8 +2667,8 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
                             vf2.write(raw_vps)
                 except Exception:
                     pass
-            self._proxy_via_pc_tunnel_if_vps("POST", path, body)
-            return
+            if self._proxy_via_pc_tunnel_if_vps("POST", path, body):
+                return
 
         try:
             # 0b. Rebuild & Sync .3tz Packages on Google Drive + Push Manifest to VPS

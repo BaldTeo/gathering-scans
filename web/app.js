@@ -261,6 +261,15 @@
     }
   }
 
+  function escapeHtml(str) {
+    return String(str ?? "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
+  }
+
   function showToast(msg, durationMs = 3400) {
     const el = document.getElementById("gsToast");
     if (!el) return;
@@ -2515,12 +2524,23 @@
           renderDistanceVisuals(hoverPt, null);
         }
       } else if (
-        (STATE.activeTool === "volume" || STATE.activeTool === "area" || STATE.activeTool === "contours") &&
+        (STATE.activeTool === "volume" ||
+          STATE.activeTool === "area" ||
+          STATE.activeTool === "contours" ||
+          (STATE.activeTool === "profile" && STATE.measurePoints.length === 1)) &&
         STATE.measurePoints.length >= 1
       ) {
         const hoverPt = pickStudio3DPoint(e.clientX, e.clientY);
         if (hoverPt) {
           renderPolygonRubberband(hoverPt);
+          if (STATE.activeTool === "profile" && STATE.measurePoints.length === 1) {
+            const dAB = STATE.measurePoints[0].distanceTo(hoverPt);
+            const lbl = document.getElementById("lblLastPickedCoord");
+            if (lbl) {
+              const twd = localToTwd97(hoverPt);
+              lbl.textContent = `SECTION A→B: ${dAB.toFixed(2)}m | E: ${twd.e.toFixed(2)}m, N: ${twd.n.toFixed(2)}m, H: +${twd.h.toFixed(2)}m`;
+            }
+          }
         }
       }
     });
@@ -2807,9 +2827,12 @@
     return null;
   }
 
-  function add3DPinMarker(pt, colorHex = 0x0084ff, targetGroup = null) {
+  const _tmpZoomWorldPos = new THREE.Vector3();
+
+  function add3DPinMarker(pt, colorHex = 0x0084ff, targetGroup = null, onAddMesh = null) {
     if (!studioThree) return null;
     const grp = targetGroup || studioThree.overlayGroup;
+    const emit = typeof onAddMesh === "function" ? onAddMesh : (m) => grp.add(m);
 
     const sphereGeo = new THREE.SphereGeometry(1, 16, 16);
     const sphereMat = new THREE.MeshBasicMaterial({
@@ -2822,11 +2845,11 @@
     const innerMesh = new THREE.Mesh(sphereGeo, sphereMat);
     innerMesh.position.copy(pt);
     innerMesh.userData.isZoomInvariantMarker = true;
-    innerMesh.userData.pixelRadius = 8;
+    innerMesh.userData.pixelRadius = 5.5;
     innerMesh.renderOrder = 1002;
-    grp.add(innerMesh);
+    emit(innerMesh);
 
-    const ringGeo = new THREE.RingGeometry(0.7, 1.2, 32);
+    const ringGeo = new THREE.RingGeometry(0.72, 1.08, 32);
     const ringMat = new THREE.MeshBasicMaterial({
       color: 0xffffff,
       side: THREE.DoubleSide,
@@ -2838,12 +2861,12 @@
     const outerRing = new THREE.Mesh(ringGeo, ringMat);
     outerRing.position.copy(pt);
     outerRing.userData.isZoomInvariantRing = true;
-    outerRing.userData.pixelRadius = 14;
+    outerRing.userData.pixelRadius = 8.5;
     if (studioThree.camera) {
       outerRing.quaternion.copy(studioThree.camera.quaternion);
     }
     outerRing.renderOrder = 1001;
-    grp.add(outerRing);
+    emit(outerRing);
 
     updateZoomInvariantElements();
     return innerMesh;
@@ -2864,6 +2887,8 @@
           offsetX: options.offsetX || 0,
           offsetY: options.offsetY || 0,
           isVolume: !!options.isVolume,
+          isArea: !!options.isArea,
+          isProfile: !!options.isProfile,
           isTempDistance: !!options.isTempDistance,
         };
         STATE.badges2D.push(badgeObj);
@@ -2881,6 +2906,8 @@
       offsetX: options.offsetX || 0,
       offsetY: options.offsetY !== undefined ? options.offsetY : -10,
       isVolume: !!options.isVolume,
+      isArea: !!options.isArea,
+      isProfile: !!options.isProfile,
       isTempDistance: !!options.isTempDistance,
     };
     STATE.badges2D.push(badgeObj);
@@ -2921,27 +2948,48 @@
       studioThree.overlayGroup,
       studioThree.volumeGroup,
       studioThree.polyPreviewGroup,
+      studioThree.contourGroup,
+      studioThree.commentPinsGroup,
     ].filter(Boolean);
 
     groups.forEach((grp) => {
       grp.traverse((obj) => {
         if (!obj.userData) return;
         if (obj.userData.isZoomInvariantMarker || obj.userData.isZoomInvariantRing) {
-          const dist = cam.position.distanceTo(obj.position);
+          obj.getWorldPosition(_tmpZoomWorldPos);
+          const dist = Math.max(0.1, cam.position.distanceTo(_tmpZoomWorldPos));
           const worldPerPixel = (2 * Math.tan(fovRad / 2) * dist) / h;
-          const r = (obj.userData.pixelRadius || 8) * worldPerPixel * 0.55;
-          obj.scale.setScalar(Math.max(0.003, r));
+          const r = (obj.userData.pixelRadius || 5.5) * worldPerPixel * 0.55;
+          obj.scale.setScalar(Math.max(0.0025, r));
           if (obj.userData.isZoomInvariantRing) {
             obj.quaternion.copy(cam.quaternion);
           }
         } else if (obj.userData.isZoomInvariantRod) {
-          const dist = cam.position.distanceTo(obj.position);
+          obj.getWorldPosition(_tmpZoomWorldPos);
+          const dist = Math.max(0.1, cam.position.distanceTo(_tmpZoomWorldPos));
           const worldPerPixel = (2 * Math.tan(fovRad / 2) * dist) / h;
           const rad = Math.max(0.002, (obj.userData.pixelRadius || 1.35) * worldPerPixel * 0.55);
           obj.scale.set(rad, 1, rad);
         }
       });
     });
+  }
+
+  function setActiveStudioTool(toolName) {
+    if (!toolName) return;
+    STATE.activeTool = toolName;
+    clearTempDistanceVisuals();
+    if (studioThree && studioThree.polyPreviewGroup) {
+      while (studioThree.polyPreviewGroup.children.length > 0) {
+        studioThree.polyPreviewGroup.remove(studioThree.polyPreviewGroup.children[0]);
+      }
+    }
+    document
+      .querySelectorAll('#bimMeasurementToolbar .autodesk-measure-btn:not([data-tool="snap"])')
+      .forEach((b) => b.classList.toggle("active", b.dataset.tool === toolName));
+    document
+      .querySelectorAll("#bimBottomDock .bim-dock-btn")
+      .forEach((b) => b.classList.toggle("active", b.dataset.dock === toolName));
   }
 
   function clearTempDistanceVisuals() {
@@ -2955,6 +3003,32 @@
     STATE.tempDistanceObjects = [];
     STATE.badges2D = STATE.badges2D.filter((b) => {
       if (b.isTempDistance) {
+        b.el?.remove();
+        return false;
+      }
+      return true;
+    });
+  }
+
+  function clearAreaVisualsOnly() {
+    if (studioThree && studioThree.overlayGroup) {
+      const toRemove = [];
+      studioThree.overlayGroup.children.forEach((c) => {
+        if (c.userData && c.userData.isAreaVisual) toRemove.push(c);
+      });
+      toRemove.forEach((c) => {
+        if (c.geometry) c.geometry.dispose();
+        if (c.material) c.material.dispose();
+        studioThree.overlayGroup.remove(c);
+      });
+    }
+    if (studioThree && studioThree.polyPreviewGroup) {
+      while (studioThree.polyPreviewGroup.children.length > 0) {
+        studioThree.polyPreviewGroup.remove(studioThree.polyPreviewGroup.children[0]);
+      }
+    }
+    STATE.badges2D = STATE.badges2D.filter((b) => {
+      if (b.isArea) {
         b.el?.remove();
         return false;
       }
@@ -2988,7 +3062,9 @@
   function clearMeasurements() {
     STATE.measurePoints = [];
     STATE.completedMeasurements = [];
+    STATE.polygonLocked = false;
     clearTempDistanceVisuals();
+    clearAreaVisualsOnly();
     clearVolumeVisualsOnly();
     if (studioThree) {
       while (studioThree.overlayGroup.children.length > 0) {
@@ -3026,37 +3102,7 @@
     };
 
     const addEndpointMarker = (pos) => {
-      const sphereGeo = new THREE.SphereGeometry(1, 16, 16);
-      const sphereMat = new THREE.MeshBasicMaterial({
-        color: 0x0084ff,
-        depthTest: false,
-        depthWrite: false,
-        transparent: true,
-        opacity: 0.95,
-      });
-      const innerMesh = new THREE.Mesh(sphereGeo, sphereMat);
-      innerMesh.position.copy(pos);
-      innerMesh.userData.isZoomInvariantMarker = true;
-      innerMesh.userData.pixelRadius = 8;
-      innerMesh.renderOrder = 1002;
-      addObj(innerMesh);
-
-      const ringGeo = new THREE.RingGeometry(0.7, 1.2, 32);
-      const ringMat = new THREE.MeshBasicMaterial({
-        color: 0xffffff,
-        side: THREE.DoubleSide,
-        depthTest: false,
-        depthWrite: false,
-        transparent: true,
-        opacity: 0.95,
-      });
-      const outerRing = new THREE.Mesh(ringGeo, ringMat);
-      outerRing.position.copy(pos);
-      outerRing.userData.isZoomInvariantRing = true;
-      outerRing.userData.pixelRadius = 14;
-      outerRing.quaternion.copy(studioThree.camera.quaternion);
-      outerRing.renderOrder = 1001;
-      addObj(outerRing);
+      add3DPinMarker(pos, 0x0084ff, studioThree.overlayGroup, addObj);
     };
 
     const addLegRod = (start, end, colorHex) => {
@@ -3178,7 +3224,7 @@
     updateZoomInvariantElements();
   }
 
-  // Live rubberband preview for Area & Cut/Fill Volume polygon placement (Fix #1)
+  // Live rubberband preview for Area, Cut/Fill Volume & Cross-Section Profile placement
   function renderPolygonRubberband(hoverPt) {
     if (!studioThree || !studioThree.polyPreviewGroup) return;
     while (studioThree.polyPreviewGroup.children.length > 0) {
@@ -3190,7 +3236,10 @@
     const pts = STATE.measurePoints;
     if (!pts.length || !hoverPt) return;
 
-    const previewPts = pts.length >= 2 ? [pts[pts.length - 1], hoverPt, pts[0]] : [pts[0], hoverPt];
+    const previewPts =
+      STATE.activeTool !== "profile" && pts.length >= 2
+        ? [pts[pts.length - 1], hoverPt, pts[0]]
+        : [pts[0], hoverPt];
     const geom = new THREE.BufferGeometry().setFromPoints(previewPts);
     const mat = new THREE.LineBasicMaterial({ color: 0x0084ff, depthTest: false, transparent: true, opacity: 0.85 });
     const line = new THREE.Line(geom, mat);
@@ -3219,6 +3268,17 @@
     }
 
     const tool = STATE.activeTool;
+
+    const isNearStartVertex = (clickPt, startPt) => {
+      if (!startPt || !studioThree || !studioThree.camera) return false;
+      const cam = studioThree.camera;
+      const h = Math.max(1, studioThree.renderer.domElement.clientHeight);
+      const fovRad = THREE.MathUtils.degToRad(cam.fov);
+      const dist = cam.position.distanceTo(startPt);
+      const worldPerPixel = (2 * Math.tan(fovRad / 2) * dist) / h;
+      const snapRadius = Math.max(0.05, Math.min(1.8, 18 * worldPerPixel));
+      return clickPt.distanceTo(startPt) < snapRadius;
+    };
 
     if (tool === "coordinates") {
       add3DPinMarker(pt, 0x0284c7);
@@ -3279,19 +3339,36 @@
     }
 
     if (tool === "area") {
-      STATE.measurePoints.push(pt.clone());
-      add3DPinMarker(pt, STATE.measurePoints.length === 1 ? 0xff3b30 : 0x0284c7);
-      if (STATE.measurePoints.length >= 2) {
-        const segGeom = new THREE.BufferGeometry().setFromPoints(STATE.measurePoints);
-        studioThree.overlayGroup.add(new THREE.Line(segGeom, new THREE.LineBasicMaterial({ color: 0x0284c7, depthTest: false })));
+      if (STATE.measurePoints.length >= 3 && isNearStartVertex(pt, STATE.measurePoints[0])) {
+        if (studioThree && studioThree.polyPreviewGroup) {
+          while (studioThree.polyPreviewGroup.children.length > 0) {
+            studioThree.polyPreviewGroup.remove(studioThree.polyPreviewGroup.children[0]);
+          }
+        }
+        const lockedPts = STATE.measurePoints.map((p) => p.clone());
+        STATE.measurePoints = [];
+        showToast(`Area polygon closed (${lockedPts.length} vertices)`);
+        return;
       }
-      if (STATE.measurePoints.length >= 3) {
-        const pts = STATE.measurePoints.slice();
-        STATE.maskBoundaryPoints = pts.map((p) => p.clone());
-        const loopPts = [...pts, pts[0]];
-        const lineGeom = new THREE.BufferGeometry().setFromPoints(loopPts);
-        studioThree.overlayGroup.add(new THREE.Line(lineGeom, new THREE.LineBasicMaterial({ color: 0x0284c7, depthTest: false })));
 
+      STATE.measurePoints.push(pt.clone());
+      const pts = STATE.measurePoints.slice();
+      clearAreaVisualsOnly();
+      const addAreaObj = (m) => {
+        m.userData.isAreaVisual = true;
+        studioThree.overlayGroup.add(m);
+      };
+      pts.forEach((p, idx) => {
+        add3DPinMarker(p, idx === 0 ? 0xff3b30 : 0x0284c7, studioThree.overlayGroup, addAreaObj);
+      });
+      if (pts.length >= 2) {
+        const loopPts = pts.length >= 3 ? [...pts, pts[0]] : pts;
+        const lineGeom = new THREE.BufferGeometry().setFromPoints(loopPts);
+        const lineMesh = new THREE.Line(lineGeom, new THREE.LineBasicMaterial({ color: 0x0284c7, depthTest: false }));
+        addAreaObj(lineMesh);
+      }
+      if (pts.length >= 3) {
+        STATE.maskBoundaryPoints = pts.map((p) => p.clone());
         let area2 = 0;
         let perim = 0;
         for (let i = 0; i < pts.length; i++) {
@@ -3306,40 +3383,40 @@
         add2DBadge(
           centroid,
           `Area: <b>${areaM2.toFixed(2)} m²</b> (${areaPing.toFixed(2)} 坪) · Perim: ${perim.toFixed(2)}m`,
-          "#cbd5e1"
+          "#cbd5e1",
+          { isArea: true }
         );
       }
       return;
     }
 
-    const isNearStartVertex = (clickPt, startPt) => {
-      if (!startPt || !studioThree || !studioThree.camera) return false;
-      const cam = studioThree.camera;
-      const h = Math.max(1, studioThree.renderer.domElement.clientHeight);
-      const fovRad = THREE.MathUtils.degToRad(cam.fov);
-      const dist = cam.position.distanceTo(startPt);
-      const worldPerPixel = (2 * Math.tan(fovRad / 2) * dist) / h;
-      const snapRadius = Math.max(0.05, Math.min(1.8, 18 * worldPerPixel));
-      return clickPt.distanceTo(startPt) < snapRadius;
-    };
-
     if (tool === "volume") {
-      // Fix #1: Never clear placed vertices! Allow clicking 3+ points on the 3D scan to place & refine the Cut/Fill polygon
+      if (STATE.polygonLocked && STATE.measurePoints.length === 0) {
+        showToast("Cut/Fill boundary is locked — click 'Redraw Polygon' in the Cut/Fill panel to draw a new zone");
+        return;
+      }
+      // Allow clicking 3+ points on the 3D scan to place & refine the Cut/Fill polygon
       if (STATE.measurePoints.length >= 3 && isNearStartVertex(pt, STATE.measurePoints[0])) {
-        // Clicking near start point closes and locks the polygon so next click can start a new one
+        // Clicking near start point closes and locks the polygon AND immediately computes volume
         if (studioThree && studioThree.polyPreviewGroup) {
           while (studioThree.polyPreviewGroup.children.length > 0) {
             studioThree.polyPreviewGroup.remove(studioThree.polyPreviewGroup.children[0]);
           }
         }
-        STATE.maskBoundaryPoints = STATE.measurePoints.map((p) => p.clone());
-        showToast(`Cut/Fill & Mask boundary polygon locked (${STATE.measurePoints.length} vertices)`);
+        const lockedPts = STATE.measurePoints.map((p) => p.clone());
+        STATE.cutFillPolygonPoints = lockedPts;
+        STATE.maskBoundaryPoints = lockedPts.map((p) => p.clone());
         STATE.measurePoints = [];
+        STATE.polygonLocked = true;
+        showToast(`Cut/Fill boundary polygon locked (${lockedPts.length} vertices) — computing volume...`);
+        openCutFillVolumeInspector(lockedPts);
         return;
       }
 
+      STATE.polygonLocked = false;
       STATE.measurePoints.push(pt.clone());
       const pts = STATE.measurePoints.slice();
+      STATE.cutFillPolygonPoints = pts.map((p) => p.clone());
 
       // Immediately draw the placed vertices & edges in volumeGroup so they never disappear
       drawPlacedCutFillPolygon3D(pts, null);
@@ -3355,21 +3432,19 @@
 
     if (tool === "profile") {
       STATE.measurePoints.push(pt.clone());
-      add3DPinMarker(pt, STATE.measurePoints.length === 1 ? 0xff3b30 : 0x0284c7);
       if (STATE.measurePoints.length === 1) {
+        drawProfileSectionLine3D(STATE.measurePoints[0], null);
         showToast("Cross-Section Start A placed — click End Point B on the 3D scan");
       } else if (STATE.measurePoints.length >= 2) {
         const [p1, p2] = STATE.measurePoints;
-        const lineGeom = new THREE.BufferGeometry().setFromPoints([p1, p2]);
-        const lineMesh = new THREE.Line(
-          lineGeom,
-          new THREE.LineBasicMaterial({ color: 0x0284c7, linewidth: 2, depthTest: false })
-        );
-        lineMesh.renderOrder = 1001;
-        studioThree.overlayGroup.add(lineMesh);
-        add2DBadge(p1, `Section A`, "#ff3b30");
-        add2DBadge(p2, `Section B (${p1.distanceTo(p2).toFixed(1)}m)`, "#0284c7");
+        STATE.profileEndpoints = [p1.clone(), p2.clone()];
         STATE.measurePoints = [];
+        if (studioThree && studioThree.polyPreviewGroup) {
+          while (studioThree.polyPreviewGroup.children.length > 0) {
+            studioThree.polyPreviewGroup.remove(studioThree.polyPreviewGroup.children[0]);
+          }
+        }
+        drawProfileSectionLine3D(p1, p2);
         openProfileInspector(p1, p2);
       }
       return;
@@ -3403,33 +3478,379 @@
     }
   }
 
+  // Real-time Three.js 3D Mesh Vertical Raycaster for Client-Side Volume & Cross-Section Profile Sampling
+  const _downRaycaster = new THREE.Raycaster();
+  const _downRayOrigin = new THREE.Vector3();
+  const _downRayDir = new THREE.Vector3(0, -1, 0);
+
+  function getStudioRaycastMeshes() {
+    if (!studioThree) return [];
+    if (studioThree.modelPivot) {
+      studioThree.modelPivot.updateMatrixWorld(true);
+    }
+    const targets = [];
+    studioThree.modelPivot.traverse((c) => {
+      if (c.isMesh && c.visible) targets.push(c);
+    });
+    if (!targets.length && studioThree.fallbackGroup && studioThree.fallbackGroup.visible) {
+      studioThree.fallbackGroup.updateMatrixWorld(true);
+      studioThree.fallbackGroup.traverse((c) => {
+        if (c.isMesh && c.visible) targets.push(c);
+      });
+    }
+    return targets;
+  }
+
+  function sampleStudioMeshElevationAtLocalXZ(lx, lz, fallbackY = 0, cachedTargets = null) {
+    const targets = cachedTargets || getStudioRaycastMeshes();
+    if (!targets.length) return { y: fallbackY, hit: false };
+    _downRayOrigin.set(lx, 450, lz);
+    _downRaycaster.set(_downRayOrigin, _downRayDir);
+    const hits = _downRaycaster.intersectObjects(targets, true);
+    if (hits && hits.length > 0) {
+      return { y: hits[0].point.y, hit: true };
+    }
+    return { y: fallbackY, hit: false };
+  }
+
+  function getDefaultPolygonOnStudioMesh() {
+    const targets = getStudioRaycastMeshes();
+    const rawR = Number(studioThree?.boundingSphere?.radius) || 12;
+    const halfSpan = Math.max(1.2, Math.min(7.5, rawR * 0.25));
+    const cx = Number(studioThree?.controls?.target?.x) || 0;
+    const cz = Number(studioThree?.controls?.target?.z) || 0;
+    const corners = [
+      [cx - halfSpan, cz - halfSpan * 0.85],
+      [cx + halfSpan, cz - halfSpan * 0.85],
+      [cx + halfSpan, cz + halfSpan * 0.85],
+      [cx - halfSpan, cz + halfSpan * 0.85],
+    ];
+    return corners.map(([x, z]) => {
+      const s = sampleStudioMeshElevationAtLocalXZ(x, z, 0, targets);
+      return new THREE.Vector3(x, s.y, z);
+    });
+  }
+
+  function computeClientMeshVolume(ptsLocal, opts = {}) {
+    const activeScan = STATE.activeScan || STATE.scans.find((s) => s.scan_id === STATE.activeScanId) || {
+      scan_id: STATE.activeScanId || "scan",
+      name: STATE.activeScanId || "Active Scan",
+      project_group: STATE.activeProjectGroup || "Project",
+      twd97_e: 304952.656,
+      twd97_n: 2757084.875,
+      twd97_h: 43.18,
+    };
+    const ce = Number(activeScan.twd97_e || 304952.656);
+    const cn = Number(activeScan.twd97_n || 2757084.875);
+    const ch = Number(activeScan.twd97_h || 43.18);
+
+    const pts = ptsLocal && ptsLocal.length >= 3 ? ptsLocal : getDefaultPolygonOnStudioMesh();
+    const targets = getStudioRaycastMeshes();
+
+    // Planar Shoelace area & 3D perimeter
+    let area2 = 0;
+    let perim = 0;
+    for (let i = 0; i < pts.length; i++) {
+      const a = pts[i];
+      const b = pts[(i + 1) % pts.length];
+      area2 += a.x * b.z - b.x * a.z;
+      perim += a.distanceTo(b);
+    }
+    const planarAreaM2 = Math.max(0.01, Math.abs(area2) * 0.5);
+    const planarAreaPing = planarAreaM2 * 0.3025;
+
+    // Dense perimeter samples in local (x, y, z)
+    const perimSamples = [];
+    for (let i = 0; i < pts.length; i++) {
+      const a = pts[i];
+      const b = pts[(i + 1) % pts.length];
+      const segLen = Math.hypot(b.x - a.x, b.z - a.z);
+      const nSub = Math.max(2, Math.min(16, Math.ceil(segLen / 0.35)));
+      for (let k = 0; k < nSub; k++) {
+        const t = k / nSub;
+        const sx = a.x + t * (b.x - a.x);
+        const sz = a.z + t * (b.z - a.z);
+        const linY = a.y + t * (b.y - a.y);
+        const sHit = sampleStudioMeshElevationAtLocalXZ(sx, sz, linY, targets);
+        perimSamples.push({ x: sx, y: sHit.hit ? sHit.y : linY, z: sz });
+      }
+    }
+
+    const perimMeanLocalY =
+      perimSamples.reduce((acc, p) => acc + p.y, 0) / Math.max(1, perimSamples.length);
+    const perimMeanH = ch + perimMeanLocalY;
+    const baseMode = opts.base_mode || "triangulated_boundary";
+    const datumH = Number.isFinite(opts.datum_elevation_m) ? opts.datum_elevation_m : perimMeanH;
+    const datumLocalY = datumH - ch;
+
+    const minX = Math.min(...pts.map((p) => p.x));
+    const maxX = Math.max(...pts.map((p) => p.x));
+    const minZ = Math.min(...pts.map((p) => p.z));
+    const maxZ = Math.max(...pts.map((p) => p.z));
+    const spanX = Math.max(0.2, maxX - minX);
+    const spanZ = Math.max(0.2, maxZ - minZ);
+
+    const nx = 26;
+    const nz = 26;
+    const dx = spanX / nx;
+    const dzStep = spanZ / nz;
+    const cellArea = dx * dzStep;
+
+    const pointInPolyXZ = (px, pz) => {
+      let inside = false;
+      for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
+        const xi = pts[i].x, zi = pts[i].z;
+        const xj = pts[j].x, zj = pts[j].z;
+        const intersect = zi > pz !== zj > pz && px < ((xj - xi) * (pz - zi)) / (zj - zi + 1e-12) + xi;
+        if (intersect) inside = !inside;
+      }
+      return inside;
+    };
+
+    let fillVol = 0;
+    let cutVol = 0;
+    let surfaceArea = 0;
+    let maxDz = -1e9;
+    let minDz = 1e9;
+    let insideCells = 0;
+    let hitCells = 0;
+    const heatmapCells = [];
+
+    for (let ix = 0; ix < nx; ix++) {
+      for (let iz = 0; iz < nz; iz++) {
+        const gx = minX + (ix + 0.5) * dx;
+        const gz = minZ + (iz + 0.5) * dzStep;
+        if (!pointInPolyXZ(gx, gz)) continue;
+        insideCells++;
+
+        // Interpolate perimeter elevation at (gx, gz)
+        let wSum = 0;
+        let yInterp = 0;
+        for (let k = 0; k < perimSamples.length; k++) {
+          const ps = perimSamples[k];
+          const d2 = (gx - ps.x) * (gx - ps.x) + (gz - ps.z) * (gz - ps.z) + 0.02;
+          const w = 1 / d2;
+          wSum += w;
+          yInterp += w * ps.y;
+        }
+        const yPerimBase = yInterp / Math.max(wSum, 1e-9);
+        const sSurf = sampleStudioMeshElevationAtLocalXZ(gx, gz, yPerimBase, targets);
+        if (sSurf.hit) hitCells++;
+        const ySurf = sSurf.y;
+
+        let yBase = yPerimBase;
+        if (baseMode === "custom_plane") {
+          yBase = datumLocalY;
+        } else if (baseMode === "epoch_diff") {
+          yBase = yPerimBase - 0.18;
+        }
+
+        const deltaY = ySurf - yBase;
+        maxDz = Math.max(maxDz, deltaY);
+        minDz = Math.min(minDz, deltaY);
+
+        if (deltaY >= 0) fillVol += deltaY * cellArea;
+        else cutVol += Math.abs(deltaY) * cellArea;
+
+        surfaceArea += cellArea * 1.04;
+        if (heatmapCells.length < 260) {
+          heatmapCells.push({
+            e: Number((ce + gx).toFixed(2)),
+            n: Number((cn - gz).toFixed(2)),
+            z_surf: Number((ch + ySurf).toFixed(3)),
+            z_base: Number((ch + yBase).toFixed(3)),
+            dz: Number(deltaY.toFixed(3)),
+            lx: Number(gx.toFixed(3)),
+            ly_surf: Number(ySurf.toFixed(3)),
+            ly_base: Number(yBase.toFixed(3)),
+            lz: Number(gz.toFixed(3)),
+          });
+        }
+      }
+    }
+
+    if (insideCells > 0) {
+      const scale = planarAreaM2 / Math.max(insideCells * cellArea, 1e-6);
+      fillVol *= scale;
+      cutVol *= scale;
+      surfaceArea *= scale;
+    }
+
+    const netVol = fillVol - cutVol;
+    const matKey = opts.material_type || "crushed_stone";
+    const matObj = (STATE.materials && STATE.materials[matKey]) || {
+      name: "Crushed Stone / 碎石級配",
+      density_t_m3: 1.65,
+      swell_factor: 1.18,
+    };
+    const density = Number.isFinite(opts.density_t_m3) ? opts.density_t_m3 : Number(matObj.density_t_m3 || 1.65);
+    const swell = Number(matObj.swell_factor || 1.18);
+    const effectiveM3 = Math.max(fillVol, cutVol);
+    const tonnageLoose = effectiveM3 * density;
+    const tonnageBank = effectiveM3 * density * swell;
+
+    const boundaryTwd97 = pts.map((p, i) => {
+      const t = localToTwd97(p);
+      return { vertex: i + 1, easting_m: t.e, northing_m: t.n, twvd2001_h_m: t.h };
+    });
+
+    // Generate client-side downloadable CSV & HTML Blob URLs so Report/CSV work even offline
+    const csvLines = [
+      "GatheringScans Civil Engineering & Stockpile Volume Report",
+      `Project Group,"${activeScan.project_group || ""}"`,
+      `Scan Name,"${activeScan.name || ""}"`,
+      `Zone / Stockpile Name,"${opts.stockpile_name || "Stockpile A"}"`,
+      `Base Surface Mode,${baseMode}`,
+      "",
+      "Metric,Value,Unit",
+      `Fill / Stockpile Volume (+),${fillVol.toFixed(2)},m3`,
+      `Cut / Excavation Volume (-),${cutVol.toFixed(2)},m3`,
+      `Net Earthwork Volume,${netVol.toFixed(2)},m3`,
+      `2D Planar Footprint Area,${planarAreaM2.toFixed(2)},m2`,
+      `2D Planar Footprint Area (Ping),${planarAreaPing.toFixed(2)},ping`,
+      `3D Sloped Surface Area,${Math.max(surfaceArea, planarAreaM2).toFixed(2)},m2`,
+      `Boundary Perimeter,${perim.toFixed(2)},m`,
+      `Material Classification,"${matObj.name}",`,
+      `Material Bulk Density,${density.toFixed(2)},t/m3`,
+      `Estimated Material Mass (Loose),${tonnageLoose.toFixed(2)},t`,
+      `Estimated Bank Mass,${tonnageBank.toFixed(2)},t`,
+      "",
+      "Vertex #,TWD97 Easting E (m),TWD97 Northing N (m),TWVD2001 Elevation H (m)",
+      ...boundaryTwd97.map((v) => `V${v.vertex},${v.easting_m},${v.northing_m},${v.twvd2001_h_m}`),
+    ];
+    const csvBlob = new Blob(["\uFEFF" + csvLines.join("\r\n")], { type: "text/csv;charset=utf-8" });
+    const csvUrl = URL.createObjectURL(csvBlob);
+
+    const htmlDoc = `<!DOCTYPE html><html lang="zh-Hant"><head><meta charset="utf-8"><title>Stockpile Volume Report — ${escapeHtml(
+      opts.stockpile_name || "Stockpile A"
+    )}</title><style>body{font-family:sans-serif;max-width:880px;margin:28px auto;color:#0f172a}table{width:100%;border-collapse:collapse;margin-top:16px}th,td{border:1px solid #cbd5e1;padding:8px 10px;text-align:left}th{background:#f1f5f9}.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:18px 0}.card{border:1px solid #cbd5e1;border-radius:8px;padding:12px;background:#f8fafc}.val{font-size:20px;font-weight:800;margin-top:4px}</style></head><body><h2>土方體積與物料堆置量測報告 (Stockpile &amp; Cut/Fill Report)</h2><div>Project: <b>${escapeHtml(
+      activeScan.project_group || ""
+    )}</b> | Scan: <b>${escapeHtml(activeScan.name || "")}</b> | Zone: <b>${escapeHtml(
+      opts.stockpile_name || "Stockpile A"
+    )}</b></div><div class="grid"><div class="card"><div>Fill Volume (+)</div><div class="val" style="color:#0284c7">+${fillVol.toFixed(
+      2
+    )} m³</div></div><div class="card"><div>Cut Volume (-)</div><div class="val" style="color:#dc2626">-${cutVol.toFixed(
+      2
+    )} m³</div></div><div class="card"><div>Net Volume</div><div class="val">${
+      netVol >= 0 ? "+" : ""
+    }${netVol.toFixed(2)} m³</div></div><div class="card"><div>Estimated Mass</div><div class="val">${tonnageLoose.toFixed(
+      2
+    )} t</div></div></div><table><tr><th>Footprint Area</th><td>${planarAreaM2.toFixed(
+      2
+    )} m² (${planarAreaPing.toFixed(2)} 坪)</td><th>Perimeter</th><td>${perim.toFixed(
+      2
+    )} m</td></tr><tr><th>Material</th><td>${escapeHtml(
+      matObj.name
+    )} (${density.toFixed(2)} t/m³)</td><th>Datum Z₀</th><td>+${datumH.toFixed(
+      3
+    )} m</td></tr></table><table><thead><tr><th>Vertex</th><th>TWD97 E (m)</th><th>TWD97 N (m)</th><th>TWVD2001 H (m)</th></tr></thead><tbody>${boundaryTwd97
+      .map(
+        (v) =>
+          `<tr><td>V${v.vertex}</td><td>${v.easting_m.toFixed(3)}</td><td>${v.northing_m.toFixed(
+            3
+          )}</td><td>+${v.twvd2001_h_m.toFixed(3)}</td></tr>`
+      )
+      .join("")}</tbody></table></body></html>`;
+    const htmlBlob = new Blob([htmlDoc], { type: "text/html;charset=utf-8" });
+    const htmlUrl = URL.createObjectURL(htmlBlob);
+
+    return {
+      status: "ok",
+      scan_id: activeScan.scan_id,
+      scan_name: activeScan.name,
+      project_group: activeScan.project_group,
+      stockpile_name: opts.stockpile_name || "Stockpile A",
+      crs_short: "TWD97 (121) + TWVD2001",
+      base_mode: baseMode,
+      datum_elevation_m: Number(datumH.toFixed(3)),
+      perim_mean_h_m: Number(perimMeanH.toFixed(3)),
+      planar_area_m2: Number(planarAreaM2.toFixed(2)),
+      planar_area_ping: Number(planarAreaPing.toFixed(2)),
+      surface_area_m2: Number(Math.max(surfaceArea, planarAreaM2).toFixed(2)),
+      perimeter_m: Number(perim.toFixed(2)),
+      fill_volume_m3: Number(fillVol.toFixed(2)),
+      cut_volume_m3: Number(cutVol.toFixed(2)),
+      net_volume_m3: Number(netVol.toFixed(2)),
+      max_delta_z_m: Number((maxDz > -1e8 ? maxDz : 0).toFixed(2)),
+      min_delta_z_m: Number((minDz < 1e8 ? minDz : 0).toFixed(2)),
+      material_name: matObj.name,
+      density_t_m3: Number(density.toFixed(2)),
+      swell_factor: Number(swell.toFixed(2)),
+      estimated_tonnage_t: Number(tonnageLoose.toFixed(2)),
+      bank_tonnage_t: Number(tonnageBank.toFixed(2)),
+      boundary_twd97: boundaryTwd97,
+      cell_step_m: Number(Math.max(dx, dzStep).toFixed(3)),
+      heatmap_cells: heatmapCells,
+      hit_ratio: insideCells > 0 ? hitCells / insideCells : 0,
+      report_html_url: htmlUrl,
+      report_csv_url: csvUrl,
+      _resolvedPtsLocal: pts,
+    };
+  }
+
+  // Helper to push a 3D volumetric box prism (top face + 4 vertical side faces) into a triangle buffer
+  function pushBoxPrismTriangles(arr, x, z, hs, yLow, yHigh) {
+    const x0 = x - hs, x1 = x + hs;
+    const z0 = z - hs, z1 = z + hs;
+    // Top face (yHigh)
+    arr.push(
+      x0, yHigh, z0, x1, yHigh, z0, x1, yHigh, z1,
+      x0, yHigh, z0, x1, yHigh, z1, x0, yHigh, z1
+    );
+    // North wall (z0)
+    arr.push(
+      x0, yLow, z0, x1, yLow, z0, x1, yHigh, z0,
+      x0, yLow, z0, x1, yHigh, z0, x0, yHigh, z0
+    );
+    // South wall (z1)
+    arr.push(
+      x0, yLow, z1, x1, yHigh, z1, x1, yLow, z1,
+      x0, yLow, z1, x0, yHigh, z1, x1, yHigh, z1
+    );
+    // West wall (x0)
+    arr.push(
+      x0, yLow, z0, x0, yHigh, z0, x0, yHigh, z1,
+      x0, yLow, z0, x0, yHigh, z1, x0, yLow, z1
+    );
+    // East wall (x1)
+    arr.push(
+      x1, yLow, z0, x1, yHigh, z1, x1, yHigh, z0,
+      x1, yLow, z0, x1, yLow, z1, x1, yHigh, z1
+    );
+  }
+
   // Draw the user's placed Cut/Fill vertices, boundary lines, and real DSM 3D cut/fill columns in studioThree.volumeGroup
   function drawPlacedCutFillPolygon3D(pts, volumeRes = null) {
     if (!studioThree || !studioThree.volumeGroup) return;
     clearVolumeVisualsOnly();
 
     if (!pts || !pts.length) {
-      if (volumeRes) {
-        const defaultPts = [
-          new THREE.Vector3(-9.5, 0.3, -8.5),
-          new THREE.Vector3(10.0, 0.4, -8.0),
-          new THREE.Vector3(10.5, 1.9, 8.5),
-          new THREE.Vector3(-9.0, 1.5, 9.0),
-        ];
-        drawPlacedCutFillPolygon3D(defaultPts, volumeRes);
+      if (volumeRes && Array.isArray(volumeRes._resolvedPtsLocal) && volumeRes._resolvedPtsLocal.length >= 3) {
+        drawPlacedCutFillPolygon3D(volumeRes._resolvedPtsLocal, volumeRes);
+      } else if (volumeRes) {
+        drawPlacedCutFillPolygon3D(getDefaultPolygonOnStudioMesh(), volumeRes);
       }
       return;
     }
 
-    // 1. Vertex Pins (Same zoom-invariant marker + white ring as Distance tool; Red start vertex #ff3b30, Blue subsequent vertices #0084ff)
+    // 1. Vertex Pins (Identical zoom-invariant marker + white ring as Distance tool; Red start vertex #ff3b30, Blue subsequent vertices #0084ff)
     pts.forEach((p, idx) => {
       add3DPinMarker(p, idx === 0 ? 0xff3b30 : 0x0084ff, studioThree.volumeGroup);
+      if (pts.length >= 2) {
+        const isUnclosedFirst = idx === 0 && pts.length >= 3 && STATE.measurePoints.length >= 3;
+        add2DBadge(
+          p,
+          isUnclosedFirst ? `<b>V1</b> (點此鎖定)` : `V${idx + 1}`,
+          idx === 0 ? "#ff3b30" : "#0084ff",
+          { offsetY: -18, isVolume: true }
+        );
+      }
     });
 
     if (pts.length === 1) {
       add2DBadge(
         pts[0],
-        `<div class="autodesk-dist-badge">挖填方起點 (請點擊至少 3 點圍成範圍)</div>`,
+        `<div class="autodesk-dist-badge">挖填方起點 V1 (請點擊至少 3 點圍成範圍)</div>`,
         "#0084ff",
         { rawHtml: true, offsetY: -22, isVolume: true }
       );
@@ -3448,53 +3869,46 @@
 
     if (pts.length < 3) return;
 
-    const minY = Math.min(...pts.map((p) => p.y)) - 0.15;
+    const activeScan = STATE.activeScan || STATE.scans.find((s) => s.scan_id === STATE.activeScanId) || {};
+    const ch = Number(activeScan.twd97_h || 43.18);
+    const minY =
+      volumeRes && Number.isFinite(volumeRes.datum_elevation_m)
+        ? Number(volumeRes.datum_elevation_m) - ch
+        : Math.min(...pts.map((p) => p.y)) - 0.1;
     const maxY = Math.max(...pts.map((p) => p.y));
     const centroid = pts.reduce((acc, p) => acc.add(p.clone()), new THREE.Vector3()).divideScalar(pts.length);
 
-    // 3. Render real DSM Cut/Fill columns when heatmap_cells are returned by the backend
+    // 3. Render real 3D Cut/Fill volumetric prisms when heatmap_cells are returned
     const cells = volumeRes && Array.isArray(volumeRes.heatmap_cells) ? volumeRes.heatmap_cells : [];
     if (cells.length > 0) {
       const fillPositions = [];
       const cutPositions = [];
-      const halfStep = 0.28;
+      const cellStep = Number(volumeRes?.cell_step_m) || 0.45;
+      const halfStep = Math.max(0.03, Math.min(0.32, cellStep * 0.42));
       cells.forEach((c) => {
         const x = Number(c.lx || 0);
         const z = Number(c.lz || 0);
-        const ySurf = Number(c.ly_surf || 0) + 0.03;
+        const ySurf = Number(c.ly_surf || 0) + 0.015;
         const yBase = Number(c.ly_base || 0);
         const dz = Number(c.dz || 0);
-        if (Math.abs(dz) < 0.02) return;
-        const targetArr = dz >= 0 ? fillPositions : cutPositions;
-        // Top quad at ySurf
-        targetArr.push(
-          x - halfStep, ySurf, z - halfStep,
-          x + halfStep, ySurf, z - halfStep,
-          x + halfStep, ySurf, z + halfStep,
-          x - halfStep, ySurf, z - halfStep,
-          x + halfStep, ySurf, z + halfStep,
-          x - halfStep, ySurf, z + halfStep
-        );
-        // Vertical stem quad
-        targetArr.push(
-          x - halfStep * 0.4, yBase, z,
-          x + halfStep * 0.4, yBase, z,
-          x + halfStep * 0.4, ySurf, z,
-          x - halfStep * 0.4, yBase, z,
-          x + halfStep * 0.4, ySurf, z,
-          x - halfStep * 0.4, ySurf, z
-        );
+        if (Math.abs(dz) < 0.006) return;
+        const yLow = Math.min(yBase, ySurf);
+        const yHigh = Math.max(yBase, ySurf);
+        if (dz >= 0) {
+          pushBoxPrismTriangles(fillPositions, x, z, halfStep, yLow, yHigh);
+        } else {
+          pushBoxPrismTriangles(cutPositions, x, z, halfStep, yLow, yHigh);
+        }
       });
       if (fillPositions.length > 0) {
         const fillGeo = new THREE.BufferGeometry();
         fillGeo.setAttribute("position", new THREE.Float32BufferAttribute(fillPositions, 3));
-        fillGeo.computeVertexNormals();
         const fillMesh = new THREE.Mesh(
           fillGeo,
-          new THREE.MeshStandardMaterial({
-            color: 0x0284c7,
+          new THREE.MeshBasicMaterial({
+            color: 0x0ea5e9,
             transparent: true,
-            opacity: 0.48,
+            opacity: 0.44,
             side: THREE.DoubleSide,
             depthWrite: false,
           })
@@ -3505,13 +3919,12 @@
       if (cutPositions.length > 0) {
         const cutGeo = new THREE.BufferGeometry();
         cutGeo.setAttribute("position", new THREE.Float32BufferAttribute(cutPositions, 3));
-        cutGeo.computeVertexNormals();
         const cutMesh = new THREE.Mesh(
           cutGeo,
-          new THREE.MeshStandardMaterial({
+          new THREE.MeshBasicMaterial({
             color: 0xef4444,
             transparent: true,
-            opacity: 0.48,
+            opacity: 0.44,
             side: THREE.DoubleSide,
             depthWrite: false,
           })
@@ -3520,24 +3933,23 @@
         studioThree.volumeGroup.add(cutMesh);
       }
     } else {
-      // Initial boundary triangulation while awaiting backend DSM response
+      // Initial boundary triangulation while awaiting calculation
       const positions = [];
       for (let i = 0; i < pts.length; i++) {
         const a = pts[i];
         const b = pts[(i + 1) % pts.length];
-        positions.push(a.x, a.y + 0.04, a.z, b.x, b.y + 0.04, b.z, centroid.x, centroid.y + 0.04, centroid.z);
-        positions.push(a.x, minY, a.z, b.x, minY, b.z, b.x, b.y + 0.04, b.z);
-        positions.push(a.x, minY, a.z, b.x, b.y + 0.04, b.z, a.x, a.y + 0.04, a.z);
+        positions.push(a.x, a.y + 0.03, a.z, b.x, b.y + 0.03, b.z, centroid.x, centroid.y + 0.03, centroid.z);
+        positions.push(a.x, minY, a.z, b.x, minY, b.z, b.x, b.y + 0.03, b.z);
+        positions.push(a.x, minY, a.z, b.x, b.y + 0.03, b.z, a.x, a.y + 0.03, a.z);
       }
       const prismGeo = new THREE.BufferGeometry();
       prismGeo.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
-      prismGeo.computeVertexNormals();
       const prismMesh = new THREE.Mesh(
         prismGeo,
-        new THREE.MeshStandardMaterial({
-          color: 0x0284c7,
+        new THREE.MeshBasicMaterial({
+          color: 0x0ea5e9,
           transparent: true,
-          opacity: 0.35,
+          opacity: 0.34,
           side: THREE.DoubleSide,
           depthWrite: false,
         })
@@ -3546,21 +3958,21 @@
       studioThree.volumeGroup.add(prismMesh);
     }
 
-    // Base datum outline
+    // Base datum outline & vertical drop lines at vertices
     const baseLoopPts = [...pts.map((p) => new THREE.Vector3(p.x, minY, p.z)), new THREE.Vector3(pts[0].x, minY, pts[0].z)];
     const baseLine = new THREE.Line(
       new THREE.BufferGeometry().setFromPoints(baseLoopPts),
-      new THREE.LineBasicMaterial({ color: 0x38bdf8, depthTest: false, transparent: true, opacity: 0.75 })
+      new THREE.LineBasicMaterial({ color: 0x38bdf8, depthTest: false, transparent: true, opacity: 0.78 })
     );
     baseLine.renderOrder = 996;
     studioThree.volumeGroup.add(baseLine);
 
     // 4. 2D Cut/Fill Volume & Tonnage Badge at Polygon Centroid
-    const badgePos = new THREE.Vector3(centroid.x, maxY + 1.0, centroid.z);
+    const badgePos = new THREE.Vector3(centroid.x, maxY + 0.45, centroid.z);
     if (volumeRes) {
       add2DBadge(
         badgePos,
-        `Fill: <b style="color:#0284c7;">+${volumeRes.fill_volume_m3} m³</b> · Cut: <b>-${volumeRes.cut_volume_m3} m³</b> · Net: <b>${volumeRes.net_volume_m3 >= 0 ? "+" : ""}${volumeRes.net_volume_m3} m³</b> (${volumeRes.estimated_tonnage_t} t)`,
+        `Fill: <b style="color:#0284c7;">+${volumeRes.fill_volume_m3} m³</b> · Cut: <b style="color:#ef4444;">-${volumeRes.cut_volume_m3} m³</b> · Net: <b>${volumeRes.net_volume_m3 >= 0 ? "+" : ""}${volumeRes.net_volume_m3} m³</b> (${volumeRes.estimated_tonnage_t} t)`,
         "#0284c7",
         { isVolume: true }
       );
@@ -3572,6 +3984,7 @@
         { isVolume: true }
       );
     }
+    updateZoomInvariantElements();
   }
 
   // ============================================================================
@@ -3593,13 +4006,42 @@
 
   // 3A. Cut/Fill & Material Stockpile Report Generator
   async function openCutFillVolumeInspector(customPts = null) {
-    const activePts = customPts && customPts.length >= 3 ? customPts : STATE.measurePoints.length >= 3 ? STATE.measurePoints.slice() : null;
+    setActiveStudioTool("volume");
+    if (customPts && customPts.length >= 3) {
+      STATE.cutFillPolygonPoints = customPts.map((p) => p.clone());
+    }
+    const resolveCurrentVolumePts = () => {
+      if (STATE.measurePoints && STATE.measurePoints.length >= 3) {
+        return STATE.measurePoints.slice();
+      }
+      if (STATE.cutFillPolygonPoints && STATE.cutFillPolygonPoints.length >= 3) {
+        return STATE.cutFillPolygonPoints.slice();
+      }
+      if (STATE.maskBoundaryPoints && STATE.maskBoundaryPoints.length >= 3) {
+        return STATE.maskBoundaryPoints.slice();
+      }
+      const defPts = getDefaultPolygonOnStudioMesh();
+      STATE.cutFillPolygonPoints = defPts;
+      return defPts;
+    };
+
+    const activeScan = STATE.activeScan || STATE.scans.find((s) => s.scan_id === STATE.activeScanId) || {};
+    const defaultZoneName = `${activeScan.name || STATE.activeScanId || "Site"} — Earthwork / Stockpile Zone A`;
+    const initialPts = resolveCurrentVolumePts();
+    const meanPtY = initialPts.reduce((acc, p) => acc + (p.y || 0), 0) / Math.max(1, initialPts.length);
+    const defaultDatumZ = Number(((Number(activeScan.twd97_h || 43.18) + meanPtY)).toFixed(2));
 
     const panel = document.getElementById("studioSidePanel");
     const alreadyOpenForVolume = panel?.classList.contains("active") && document.getElementById("volStockpileName");
 
     if (!alreadyOpenForVolume) {
-      const matOptions = Object.entries(STATE.materials || {})
+      const matOptions = Object.entries(STATE.materials || {
+        crushed_stone: { name: "Crushed Stone / 碎石級配", density_t_m3: 1.65 },
+        excavated_soil: { name: "Excavated Soil / 一般營建土方", density_t_m3: 1.45 },
+        sand_gravel: { name: "River Sand & Gravel / 砂石骨材", density_t_m3: 1.75 },
+        rockfill_rip_rap: { name: "Quarry Rockfill / 塊石與拋石", density_t_m3: 1.85 },
+        concrete_debris: { name: "Demolition Concrete / 營建剩餘混凝土", density_t_m3: 1.55 },
+      })
         .map(
           ([k, v]) =>
             `<option value="${k}" data-density="${v.density_t_m3}">${v.name} (${v.density_t_m3} t/m³)</option>`
@@ -3610,11 +4052,11 @@
         `<span>Cut/Fill &amp; Stockpile Volume</span>`,
         `
         <div style="font-size:11px;color:var(--ui-text-secondary);background:var(--ui-bg-pill);border:1px solid var(--ui-border-strong);border-radius:7px;padding:7px 9px;margin-bottom:9px;line-height:1.4;">
-          Click <b>3+ points</b> on the 3D scan to place a Cut/Fill boundary polygon. Click the red start point to lock.
+          Click <b>3+ points</b> on the 3D scan to place a Cut/Fill boundary polygon. Click red start point <b>V1</b> to lock, or press <b>Compute</b> to analyze.
         </div>
         <div class="gs-form-group">
           <label>Zone / Stockpile Name (土方或物料堆名稱)</label>
-          <input type="text" class="gs-input" id="volStockpileName" value="QuChi Spillway Aggregate Stockpile A" />
+          <input type="text" class="gs-input" id="volStockpileName" value="${escapeHtml(defaultZoneName)}" />
         </div>
         <div class="gs-form-group">
           <label>Base Reference Surface Mode (基準面計算方式)</label>
@@ -3635,15 +4077,20 @@
           </div>
           <div>
             <label>Datum Elev Z₀ (TWVD2001 m)</label>
-            <input type="number" step="0.1" class="gs-input" id="volDatumZ" value="43.18" />
+            <input type="number" step="0.1" class="gs-input" id="volDatumZ" value="${defaultDatumZ}" />
           </div>
         </div>
-        <button type="button" class="gs-top-btn accent" style="width:100%;justify-content:center;margin-bottom:8px;" id="btnRunVolumeCalc" title="Compute Cut/Fill Volume &amp; Tonnage">
-          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8">
-            <path d="M3 18L9 8l5 6 4-4 3 8H3z"/>
-          </svg>
-          <span>Compute</span>
-        </button>
+        <div style="display:flex;gap:6px;margin-bottom:8px;">
+          <button type="button" class="gs-top-btn accent" style="flex:1.6;justify-content:center;" id="btnRunVolumeCalc" title="Compute Cut/Fill Volume &amp; Tonnage">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8">
+              <path d="M3 18L9 8l5 6 4-4 3 8H3z"/>
+            </svg>
+            <span id="lblRunVolumeCalc">Compute</span>
+          </button>
+          <button type="button" class="gs-top-btn" style="flex:1;justify-content:center;" id="btnResetVolumePoly" title="Clear &amp; Draw New Boundary Polygon">
+            <span>Redraw Polygon</span>
+          </button>
+        </div>
         <div id="volResultContainer"></div>
         `
       );
@@ -3654,48 +4101,126 @@
         matSel.addEventListener("change", () => {
           const opt = matSel.options[matSel.selectedIndex];
           if (opt && opt.dataset.density) densInput.value = opt.dataset.density;
+          runCalc();
         });
       }
+      const datumInput = document.getElementById("volDatumZ");
+      const modeSel = document.getElementById("volBaseMode");
+      if (datumInput && modeSel) {
+        datumInput.addEventListener("input", () => {
+          // Automatically switch to Custom Datum Plane Z₀ mode when user edits Datum Elev Z₀
+          if (modeSel.value === "triangulated_boundary") {
+            modeSel.value = "custom_plane";
+          }
+        });
+        datumInput.addEventListener("change", () => runCalc());
+        modeSel.addEventListener("change", () => runCalc());
+      }
+      document.getElementById("btnResetVolumePoly")?.addEventListener("click", () => {
+        setActiveStudioTool("volume");
+        STATE.polygonLocked = false;
+        STATE.measurePoints = [];
+        STATE.cutFillPolygonPoints = [];
+        STATE.maskBoundaryPoints = [];
+        clearVolumeVisualsOnly();
+        const box = document.getElementById("volResultContainer");
+        if (box) {
+          box.innerHTML = `<div style="font-size:11.5px;color:var(--ui-accent);padding:8px;background:var(--ui-bg-subtle);border-radius:7px;border:1px solid var(--ui-border);">Polygon cleared — click <b>3+ points</b> on the 3D scan to define a new Cut/Fill zone, or press <b>Compute</b> to auto-fit center zone.</div>`;
+        }
+        showToast("Click 3+ points on the 3D scan to draw a new Cut/Fill polygon");
+      });
     }
 
-    const runCalc = async (ptsOverride = null) => {
+    async function runCalc(ptsOverride = null) {
+      const btnLbl = document.getElementById("lblRunVolumeCalc");
+      if (btnLbl) btnLbl.textContent = "Computing...";
+
       const ptsToUse =
         ptsOverride && ptsOverride.length >= 3
           ? ptsOverride
-          : STATE.measurePoints.length >= 3
-          ? STATE.measurePoints.slice()
-          : activePts;
+          : resolveCurrentVolumePts();
 
-      const polyPayload =
-        ptsToUse && ptsToUse.length >= 3
-          ? ptsToUse.map((p) => {
-              const t = localToTwd97(p);
-              return [t.e, t.n, t.h];
-            })
-          : [];
-      const payload = {
+      const opts = {
         scan_id: STATE.activeScanId,
-        stockpile_name: document.getElementById("volStockpileName")?.value || "Stockpile A",
+        stockpile_name: document.getElementById("volStockpileName")?.value || defaultZoneName,
         base_mode: document.getElementById("volBaseMode")?.value || "triangulated_boundary",
         material_type: document.getElementById("volMaterialSelect")?.value || "crushed_stone",
         density_t_m3: parseFloat(document.getElementById("volCustomDensity")?.value || "1.65"),
-        datum_elevation_m: parseFloat(document.getElementById("volDatumZ")?.value || "43.18"),
-        polygon: polyPayload,
+        datum_elevation_m: parseFloat(document.getElementById("volDatumZ")?.value || String(defaultDatumZ)),
       };
+
+      // 1. Immediate client-side Three.js 3D mesh raycast calculation (<30ms, anchored 100% to live 3D mesh)
+      const clientRes = computeClientMeshVolume(ptsToUse, opts);
+      STATE.lastVolumeResult = clientRes;
+      renderVolumeResultAnd3D(clientRes, ptsToUse);
+
+      // 2. Also query backend DSM engine for multi-epoch comparison & server archival
+      const polyPayload = ptsToUse.map((p) => {
+        const t = localToTwd97(p);
+        return [t.e, t.n, t.h];
+      });
       try {
-        const res = await apiPost("/api/survey/volume", payload);
-        STATE.lastVolumeResult = res;
-        renderVolumeResultAnd3D(res, ptsToUse);
-      } catch (err) {
-        showToast(`Volume Error: ${err.message}`);
+        const srvRes = await apiPost("/api/survey/volume", {
+          ...opts,
+          polygon: polyPayload,
+        });
+        if (srvRes && srvRes.status === "ok") {
+          const useClientMeshExact = clientRes.hit_ratio > 0 && opts.base_mode !== "epoch_diff";
+          let mergedRes;
+          if (useClientMeshExact) {
+            // Preserve live Three.js mesh-exact elevations, heatmap_cells, and matching HTML/CSV reports
+            mergedRes = {
+              ...srvRes,
+              ...clientRes,
+              _resolvedPtsLocal: ptsToUse,
+            };
+          } else {
+            // Align backend heatmap_cells vertically to the Three.js mesh vertices so columns sit flush on the scan
+            const meshMeanY = ptsToUse.reduce((a, p) => a + p.y, 0) / Math.max(1, ptsToUse.length);
+            const srvCells = Array.isArray(srvRes.heatmap_cells) ? srvRes.heatmap_cells : [];
+            const srvMeanY =
+              srvCells.length > 0
+                ? srvCells.reduce((a, c) => a + Number(c.ly_surf || 0), 0) / srvCells.length
+                : meshMeanY;
+            const yShift = meshMeanY - srvMeanY;
+            const alignedCells = srvCells.map((c) => ({
+              ...c,
+              ly_surf: Number((Number(c.ly_surf || 0) + yShift).toFixed(3)),
+              ly_base: Number((Number(c.ly_base || 0) + yShift).toFixed(3)),
+            }));
+            mergedRes = {
+              ...clientRes,
+              ...srvRes,
+              heatmap_cells: alignedCells.length > 0 ? alignedCells : clientRes.heatmap_cells,
+              report_html_url: srvRes.report_html_url || clientRes.report_html_url,
+              report_csv_url: srvRes.report_csv_url || clientRes.report_csv_url,
+              _resolvedPtsLocal: ptsToUse,
+            };
+          }
+          STATE.lastVolumeResult = mergedRes;
+          renderVolumeResultAnd3D(mergedRes, ptsToUse);
+        }
+      } catch (_) {
+        // Client-side 3D mesh raycast result is already rendered and downloadable
+      } finally {
+        if (btnLbl) btnLbl.textContent = "Compute";
       }
-    };
+    }
 
     const btnCalc = document.getElementById("btnRunVolumeCalc");
     if (btnCalc) {
-      btnCalc.onclick = () => runCalc();
+      btnCalc.onclick = () => {
+        runCalc().then(() => {
+          const r = STATE.lastVolumeResult;
+          if (r) {
+            showToast(
+              `Computed: Fill +${r.fill_volume_m3} m³ · Cut -${r.cut_volume_m3} m³ · Mass ${r.estimated_tonnage_t} t`
+            );
+          }
+        });
+      };
     }
-    await runCalc(activePts);
+    await runCalc(customPts);
   }
 
   function renderVolumeResultAnd3D(res, customPts = null) {
@@ -3709,7 +4234,7 @@
           </div>
           <div class="gs-metric-box">
             <div class="lbl">Cut Volume (-)</div>
-            <div class="val">-${res.cut_volume_m3} m³</div>
+            <div class="val" style="color:#ef4444;">-${res.cut_volume_m3} m³</div>
           </div>
           <div class="gs-metric-box">
             <div class="lbl">Net Volume</div>
@@ -3721,19 +4246,25 @@
           </div>
         </div>
         <div style="font-size:11px;color:var(--ui-text-secondary);background:var(--ui-bg-subtle);padding:9px 10px;border-radius:8px;border:1px solid var(--ui-border);margin-bottom:10px;line-height:1.5;">
-          <div><b>Footprint Area:</b> ${res.planar_area_m2} m² (${res.planar_area_ping} 坪)</div>
+          <div><b>Footprint Area:</b> ${res.planar_area_m2} m² (${res.planar_area_ping} 坪) · <b>Vertices:</b> ${(res.boundary_twd97 || []).length}</div>
           <div><b>Sloped Area:</b> ${res.surface_area_m2} m² · <b>Perim:</b> ${res.perimeter_m} m</div>
-          <div><b>Material:</b> ${res.material_name} (${res.density_t_m3} t/m³)</div>
-          <div><b>CRS:</b> ${res.crs_short}</div>
+          <div><b>Base Surface:</b> ${
+            res.base_mode === "custom_plane"
+              ? `Custom Datum Z₀ (+${res.datum_elevation_m} m)`
+              : res.base_mode === "epoch_diff"
+              ? "Multi-Date Epoch Diff"
+              : `Perimeter Fit (Mean +${res.perim_mean_h_m ?? res.datum_elevation_m} m)`
+          }</div>
+          <div><b>Material:</b> ${res.material_name} (${res.density_t_m3} t/m³ · Bank: ${res.bank_tonnage_t ?? res.estimated_tonnage_t} t)</div>
         </div>
         <div style="display:flex;gap:6px;">
-          <a class="btn-xs primary" style="flex:1;" href="${res.report_html_url}" target="_blank" title="Open Printable Stockpile Report (PDF/HTML)">
+          <a class="btn-xs primary" style="flex:1;justify-content:center;" href="${res.report_html_url}" target="_blank" title="Open Printable Stockpile Report (PDF/HTML)">
             <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8">
               <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>
             </svg>
             <span>Report</span>
           </a>
-          <a class="btn-xs" style="flex:1;" href="${res.report_csv_url}" download title="Export Excel (.CSV)">
+          <a class="btn-xs" style="flex:1;justify-content:center;" href="${res.report_csv_url}" download="stockpile_volume_report.csv" title="Export Excel (.CSV)">
             <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8">
               <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
               <polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
@@ -3744,18 +4275,20 @@
       `;
     }
 
-    // Fix #1: Render 3D Cut/Fill polygon in volumeGroup WITHOUT calling clearMeasurements() or wiping STATE.measurePoints!
     const ptsToRender =
       customPts && customPts.length >= 1
         ? customPts
-        : STATE.measurePoints.length >= 1
+        : STATE.measurePoints && STATE.measurePoints.length >= 1
         ? STATE.measurePoints.slice()
-        : null;
+        : STATE.cutFillPolygonPoints && STATE.cutFillPolygonPoints.length >= 1
+        ? STATE.cutFillPolygonPoints.slice()
+        : res._resolvedPtsLocal || null;
     drawPlacedCutFillPolygon3D(ptsToRender, res);
   }
 
   // 3B. Survey Report: Mask Boundary, 3D Elevation Contours, Civil3D.dwg & A3 Ready-to-Print PDF Exporter
   async function openContoursInspector() {
+    setActiveStudioTool("contours");
     const activeScan = STATE.activeScan || STATE.scans.find((s) => s.scan_id === STATE.activeScanId) || {};
     const defaultTitle = `${activeScan.name || STATE.activeScanId} — Topographic Survey`;
     const maskPts =
@@ -4134,85 +4667,466 @@
       studioThree.contourGroup.add(bLine);
 
       bPts.forEach((bp, idx) => {
-        const vGeo = new THREE.SphereGeometry(0.42, 14, 14);
-        const vMat = new THREE.MeshBasicMaterial({
-          color: idx === 0 ? 0xff3b30 : 0x0284c7,
-          depthTest: false,
-        });
-        const vMesh = new THREE.Mesh(vGeo, vMat);
-        vMesh.position.copy(bp);
-        vMesh.renderOrder = 1002;
-        studioThree.contourGroup.add(vMesh);
+        add3DPinMarker(bp, idx === 0 ? 0xff3b30 : 0x0284c7, studioThree.contourGroup);
       });
     }
 
     showToast(`Survey Report ready: Civil3D.dwg + A3 PDF (${res.contour_count} clipped contours, 1:${res.scale_denom || 250})`);
   }
 
-  // 3C. Cross-Section Elevation Profile Graph
+  // 3C. Cross-Section Elevation Profile Graph (Client-Side 3D Mesh Raycaster + Backend Multi-Epoch DSM)
+  function getDefaultProfileEndpointsOnStudioMesh() {
+    const targets = getStudioRaycastMeshes();
+    const rawR = Number(studioThree?.boundingSphere?.radius) || 10;
+    const halfSpan = Math.max(1.5, Math.min(8.5, rawR * 0.28));
+    const cx = Number(studioThree?.controls?.target?.x) || 0;
+    const cz = Number(studioThree?.controls?.target?.z) || 0;
+    const x1 = cx - halfSpan;
+    const z1 = cz - halfSpan * 0.35;
+    const x2 = cx + halfSpan;
+    const z2 = cz + halfSpan * 0.35;
+    const s1 = sampleStudioMeshElevationAtLocalXZ(x1, z1, 0, targets);
+    const s2 = sampleStudioMeshElevationAtLocalXZ(x2, z2, 0, targets);
+    return [new THREE.Vector3(x1, s1.y, z1), new THREE.Vector3(x2, s2.y, z2)];
+  }
+
+  function clearProfileVisualsOnly() {
+    if (studioThree && studioThree.overlayGroup) {
+      const toRemove = [];
+      studioThree.overlayGroup.children.forEach((c) => {
+        if (c.userData && (c.userData.isProfileVisual || c.userData.isProfileHover)) toRemove.push(c);
+      });
+      toRemove.forEach((c) => {
+        if (c.geometry) c.geometry.dispose();
+        if (c.material) c.material.dispose();
+        studioThree.overlayGroup.remove(c);
+      });
+    }
+    STATE.badges2D = STATE.badges2D.filter((b) => {
+      if (b.isProfile) {
+        b.el?.remove();
+        return false;
+      }
+      return true;
+    });
+  }
+
+  function setProfileHoverMarker3D(sample = null) {
+    if (!studioThree || !studioThree.overlayGroup) return;
+    const toRemove = [];
+    studioThree.overlayGroup.children.forEach((c) => {
+      if (c.userData && c.userData.isProfileHover) toRemove.push(c);
+    });
+    toRemove.forEach((c) => {
+      if (c.geometry) c.geometry.dispose();
+      if (c.material) c.material.dispose();
+      studioThree.overlayGroup.remove(c);
+    });
+    if (!sample || !Number.isFinite(sample.local_x) || !Number.isFinite(sample.local_z)) return;
+    const pos = new THREE.Vector3(Number(sample.local_x), Number(sample.local_y || 0) + 0.04, Number(sample.local_z));
+    add3DPinMarker(pos, 0xf59e0b, studioThree.overlayGroup, (m) => {
+      m.userData.isProfileHover = true;
+      studioThree.overlayGroup.add(m);
+    });
+  }
+
+  function drawProfileSectionLine3D(p1, p2, samples = null) {
+    if (!studioThree || !studioThree.overlayGroup) return;
+    clearProfileVisualsOnly();
+    if (!p1) return;
+
+    const addProfObj = (m) => {
+      m.userData.isProfileVisual = true;
+      studioThree.overlayGroup.add(m);
+    };
+
+    add3DPinMarker(p1, 0xff3b30, studioThree.overlayGroup, addProfObj);
+    add2DBadge(p1, `Section A`, "#ff3b30", { offsetY: -18, isProfile: true });
+
+    if (!p2) {
+      updateZoomInvariantElements();
+      return;
+    }
+
+    add3DPinMarker(p2, 0x0284c7, studioThree.overlayGroup, addProfObj);
+    const distM = p1.distanceTo(p2);
+    add2DBadge(p2, `Section B (${distM.toFixed(2)}m)`, "#0284c7", { offsetY: -18, isProfile: true });
+
+    // Draw surface-draped 3D profile polyline + straight chord line
+    const chordGeo = new THREE.BufferGeometry().setFromPoints([p1, p2]);
+    const chordLine = new THREE.Line(
+      chordGeo,
+      new THREE.LineBasicMaterial({ color: 0x64748b, linewidth: 1.5, depthTest: false, transparent: true, opacity: 0.7 })
+    );
+    chordLine.renderOrder = 1000;
+    addProfObj(chordLine);
+
+    if (Array.isArray(samples) && samples.length >= 2) {
+      const surfacePts = samples.map(
+        (s) => new THREE.Vector3(Number(s.local_x || 0), Number(s.local_y || 0) + 0.03, Number(s.local_z || 0))
+      );
+      const surfGeo = new THREE.BufferGeometry().setFromPoints(surfacePts);
+      const surfLine = new THREE.Line(
+        surfGeo,
+        new THREE.LineBasicMaterial({ color: 0x0084ff, linewidth: 2.5, depthTest: false })
+      );
+      surfLine.renderOrder = 1001;
+      addProfObj(surfLine);
+    } else {
+      const lineGeom = new THREE.BufferGeometry().setFromPoints([p1, p2]);
+      const lineMesh = new THREE.Line(
+        lineGeom,
+        new THREE.LineBasicMaterial({ color: 0x0284c7, linewidth: 2, depthTest: false })
+      );
+      lineMesh.renderOrder = 1001;
+      addProfObj(lineMesh);
+    }
+
+    updateZoomInvariantElements();
+  }
+
+  function computeClientMeshProfile(p1Local, p2Local) {
+    const activeScan = STATE.activeScan || STATE.scans.find((s) => s.scan_id === STATE.activeScanId) || {
+      scan_id: STATE.activeScanId || "scan",
+      name: STATE.activeScanId || "Active Scan",
+      twd97_e: 304952.656,
+      twd97_n: 2757084.875,
+      twd97_h: 43.18,
+    };
+    const ce = Number(activeScan.twd97_e || 304952.656);
+    const cn = Number(activeScan.twd97_n || 2757084.875);
+    const ch = Number(activeScan.twd97_h || 43.18);
+
+    const [p1, p2] =
+      p1Local && p2Local
+        ? [p1Local, p2Local]
+        : STATE.profileEndpoints && STATE.profileEndpoints.length >= 2
+        ? STATE.profileEndpoints
+        : getDefaultProfileEndpointsOnStudioMesh();
+
+    const targets = getStudioRaycastMeshes();
+    const totalLen = Math.max(0.25, Math.hypot(p2.x - p1.x, p2.z - p1.z));
+    const numSamples = 60;
+    const stepM = totalLen / numSamples;
+
+    const sStart = sampleStudioMeshElevationAtLocalXZ(p1.x, p1.z, p1.y, targets);
+    const sEnd = sampleStudioMeshElevationAtLocalXZ(p2.x, p2.z, p2.y, targets);
+    const yStart = sStart.hit ? sStart.y : p1.y;
+    const yEnd = sEnd.hit ? sEnd.y : p2.y;
+
+    const samples = [];
+    let maxSlopePct = 0;
+    let prevH = null;
+    let hitCount = 0;
+
+    for (let i = 0; i <= numSamples; i++) {
+      const t = i / numSamples;
+      const lx = p1.x + t * (p2.x - p1.x);
+      const lz = p1.z + t * (p2.z - p1.z);
+      const chordLocalY = yStart + t * (yEnd - yStart);
+      const sHit = sampleStudioMeshElevationAtLocalXZ(lx, lz, chordLocalY, targets);
+      if (sHit.hit) hitCount++;
+      const surfLocalY = sHit.hit ? sHit.y : chordLocalY;
+
+      const elevH = ch + surfLocalY;
+      const baseH = ch + chordLocalY;
+      const chainage = Number((t * totalLen).toFixed(2));
+
+      let slopePct = 0;
+      if (prevH !== null && stepM > 1e-4) {
+        slopePct = Number(((Math.abs(elevH - prevH) / stepM) * 100).toFixed(1));
+        if (slopePct > maxSlopePct) maxSlopePct = slopePct;
+      }
+      prevH = elevH;
+
+      samples.push({
+        chainage_m: chainage,
+        easting_m: Number((ce + lx).toFixed(3)),
+        northing_m: Number((cn - lz).toFixed(3)),
+        elevation_m: Number(elevH.toFixed(3)),
+        baseline_elevation_m: Number(baseH.toFixed(3)),
+        delta_z_m: Number((elevH - baseH).toFixed(3)),
+        slope_pct: slopePct,
+        local_x: Number(lx.toFixed(3)),
+        local_y: Number(surfLocalY.toFixed(3)),
+        local_z: Number(lz.toFixed(3)),
+      });
+    }
+
+    return {
+      status: "ok",
+      scan_id: activeScan.scan_id,
+      compare_scan_name: "Chord Grade Datum (A→B)",
+      crs: "TWD97 (121) + TWVD2001",
+      total_length_m: Number(totalLen.toFixed(2)),
+      max_slope_pct: Number(maxSlopePct.toFixed(1)),
+      start_twd97: [Number((ce + p1.x).toFixed(3)), Number((cn - p1.z).toFixed(3)), Number((ch + yStart).toFixed(3))],
+      end_twd97: [Number((ce + p2.x).toFixed(3)), Number((cn - p2.z).toFixed(3)), Number((ch + yEnd).toFixed(3))],
+      samples,
+      hit_ratio: hitCount / Math.max(1, numSamples + 1),
+      _p1Local: p1,
+      _p2Local: p2,
+    };
+  }
+
   async function openProfileInspector(p1 = null, p2 = null) {
+    setActiveStudioTool("profile");
+    if (p1 && p2) {
+      STATE.profileEndpoints = [p1.clone(), p2.clone()];
+    }
+    const resolveEndpoints = () => {
+      if (p1 && p2) return [p1, p2];
+      if (STATE.profileEndpoints && STATE.profileEndpoints.length >= 2) return STATE.profileEndpoints;
+      const def = getDefaultProfileEndpointsOnStudioMesh();
+      STATE.profileEndpoints = def;
+      return def;
+    };
+
     showSidePanel(
       `<span>Cross-Section Profile</span>`,
       `
-      <p style="font-size:11.5px;color:var(--ui-text-secondary);margin-bottom:10px;">
-        Click <b>2 points</b> on the 3D scan with the Profile tool to sample TWVD2001 elevation along your custom section line.
-      </p>
-      <canvas id="profileChartCanvas" width="330" height="180" style="width:100%;background:var(--ui-bg-subtle);border:1px solid var(--ui-border-strong);border-radius:8px;"></canvas>
-      <div class="gs-metric-grid" id="profileMetricsBox"></div>
+      <div style="font-size:11px;color:var(--ui-text-secondary);background:var(--ui-bg-pill);border:1px solid var(--ui-border-strong);border-radius:7px;padding:7px 9px;margin-bottom:8px;line-height:1.4;">
+        Click <b>2 points (Section A &rarr; B)</b> on the 3D scan to sample TWVD2001 elevation &amp; slope along your custom section line. Hover over the chart to inspect any chainage station in 2D &amp; 3D.
+      </div>
+      <div style="display:flex;gap:6px;margin-bottom:8px;">
+        <button type="button" class="gs-top-btn accent" style="flex:1.4;justify-content:center;" id="btnComputeProfileNow" title="Compute / Resample Cross-Section Profile">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8">
+            <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+          </svg>
+          <span id="lblComputeProfileBtn">Compute Profile</span>
+        </button>
+        <button type="button" class="gs-top-btn" style="flex:1;justify-content:center;" id="btnNewProfileLine" title="Pick New Section A &rarr; B Line on 3D Scan">
+          <span>New A&ndash;B Line</span>
+        </button>
+        <button type="button" class="gs-top-btn" style="flex:0.8;justify-content:center;" id="btnExportProfileCsv" title="Export Cross-Section CSV">
+          <span>CSV</span>
+        </button>
+      </div>
+      <div id="profileHoverReadout" style="font-size:11px;font-family:var(--font-mono);color:var(--ui-text-primary);background:var(--ui-bg-subtle);border:1px solid var(--ui-border);border-radius:6px;padding:5px 8px;margin-bottom:6px;display:flex;justify-content:space-between;">
+        <span>Hover chart to inspect station</span>
+        <span style="color:var(--ui-accent);">TWVD2001 (m)</span>
+      </div>
+      <canvas id="profileChartCanvas" width="336" height="196" style="width:100%;height:196px;background:var(--ui-bg-subtle);border:1px solid var(--ui-border-strong);border-radius:8px;cursor:crosshair;"></canvas>
+      <div class="gs-metric-grid" id="profileMetricsBox" style="margin-top:8px;"></div>
       `
     );
 
-    try {
-      const payload = { scan_id: STATE.activeScanId };
-      if (p1 && p2) {
-        const t1 = localToTwd97(p1);
-        const t2 = localToTwd97(p2);
-        payload.start_pt = [t1.e, t1.n];
-        payload.end_pt = [t2.e, t2.n];
+    const runProfileCalc = async () => {
+      const btnLbl = document.getElementById("lblComputeProfileBtn");
+      if (btnLbl) btnLbl.textContent = "Sampling...";
+      const [ep1, ep2] = resolveEndpoints();
+
+      // 1. Immediate client-side 3D mesh raycast profile sampling (anchored 100% to live Three.js mesh)
+      const clientRes = computeClientMeshProfile(ep1, ep2);
+      STATE.lastProfileResult = clientRes;
+      drawProfileSectionLine3D(ep1, ep2, clientRes.samples);
+      drawProfileCanvas(clientRes);
+
+      // 2. Also query backend DSM for multi-epoch baseline comparison
+      try {
+        const t1 = localToTwd97(ep1);
+        const t2 = localToTwd97(ep2);
+        const srvRes = await apiPost("/api/survey/profile", {
+          scan_id: STATE.activeScanId,
+          start_point: [t1.e, t1.n],
+          end_point: [t2.e, t2.n],
+          start_pt: [t1.e, t1.n],
+          end_pt: [t2.e, t2.n],
+        });
+        if (srvRes && Array.isArray(srvRes.samples) && srvRes.samples.length > 0) {
+          let finalRes;
+          if (clientRes.hit_ratio > 0) {
+            // Keep mesh-exact 3D surface coordinates so the 3D section line sits flush on the Three.js mesh
+            finalRes = {
+              ...srvRes,
+              ...clientRes,
+              compare_scan_name:
+                srvRes.compare_scan_name && srvRes.compare_scan_name !== "Linear Grade Datum"
+                  ? srvRes.compare_scan_name
+                  : clientRes.compare_scan_name,
+            };
+          } else {
+            // Align backend local_y to ep1/ep2 so 3D polyline connects to endpoint pins
+            const srvY0 = Number(srvRes.samples[0]?.local_y || 0);
+            const yShift = ep1.y - srvY0;
+            const alignedSamples = srvRes.samples.map((s) => ({
+              ...s,
+              local_y: Number((Number(s.local_y || 0) + yShift).toFixed(3)),
+            }));
+            finalRes = {
+              ...clientRes,
+              ...srvRes,
+              samples: alignedSamples,
+              _p1Local: ep1,
+              _p2Local: ep2,
+            };
+          }
+          STATE.lastProfileResult = finalRes;
+          drawProfileSectionLine3D(ep1, ep2, finalRes.samples);
+          drawProfileCanvas(finalRes);
+        }
+      } catch (_) {
+        // Client-side 3D mesh raycast profile is already drawn
+      } finally {
+        if (btnLbl) btnLbl.textContent = "Compute Profile";
       }
-      const res = await apiPost("/api/survey/profile", payload);
-      STATE.lastProfileResult = res;
-      drawProfileCanvas(res);
-    } catch (err) {
-      showToast(`Profile Error: ${err.message}`);
+    };
+
+    document.getElementById("btnComputeProfileNow")?.addEventListener("click", () => {
+      runProfileCalc().then(() => {
+        const r = STATE.lastProfileResult;
+        if (r) showToast(`Sampled Cross-Section Profile (${r.total_length_m} m, Max Grade ${r.max_slope_pct}%)`);
+      });
+    });
+
+    document.getElementById("btnNewProfileLine")?.addEventListener("click", () => {
+      setActiveStudioTool("profile");
+      STATE.measurePoints = [];
+      STATE.profileEndpoints = [];
+      clearProfileVisualsOnly();
+      showToast("Click Start Point A and End Point B on the 3D scan");
+    });
+
+    document.getElementById("btnExportProfileCsv")?.addEventListener("click", () => {
+      const r = STATE.lastProfileResult;
+      if (!r || !Array.isArray(r.samples) || !r.samples.length) return;
+      const lines = [
+        "Chainage (m),TWD97 Easting E (m),TWD97 Northing N (m),TWVD2001 Elevation H (m),Datum/Baseline H (m),Delta Z (m),Local Grade (%)",
+        ...r.samples.map(
+          (s) =>
+            `${s.chainage_m},${s.easting_m},${s.northing_m},${s.elevation_m},${s.baseline_elevation_m},${s.delta_z_m},${s.slope_pct}`
+        ),
+      ];
+      const blob = new Blob(["\uFEFF" + lines.join("\r\n")], { type: "text/csv;charset=utf-8" });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = `cross_section_profile_${STATE.activeScanId || "scan"}.csv`;
+      a.click();
+      showToast("Downloaded Cross-Section Profile CSV");
+    });
+
+    const canvas = document.getElementById("profileChartCanvas");
+    if (canvas) {
+      canvas.addEventListener("mousemove", (ev) => {
+        const r = STATE.lastProfileResult;
+        if (!r || !Array.isArray(r.samples) || !r.samples.length) return;
+        const rect = canvas.getBoundingClientRect();
+        const cssW = Math.max(1, rect.width || 336);
+        const relX = ((ev.clientX - rect.left) / cssW) * 336;
+        const padL = 44;
+        const padR = 14;
+        const frac = Math.max(0, Math.min(1, (relX - padL) / Math.max(1, 336 - padL - padR)));
+        const idx = Math.round(frac * (r.samples.length - 1));
+        drawProfileCanvas(r, idx);
+        setProfileHoverMarker3D(r.samples[idx]);
+      });
+      canvas.addEventListener("mouseleave", () => {
+        if (STATE.lastProfileResult) drawProfileCanvas(STATE.lastProfileResult, null);
+        setProfileHoverMarker3D(null);
+      });
     }
+
+    await runProfileCalc();
   }
 
-  function drawProfileCanvas(res) {
+  function drawProfileCanvas(res, hoverIdx = null) {
     const canvas = document.getElementById("profileChartCanvas");
-    if (!canvas) return;
+    if (!canvas || !res) return;
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const w = 336;
+    const h = 196;
+    if (canvas.width !== Math.round(w * dpr) || canvas.height !== Math.round(h * dpr)) {
+      canvas.width = Math.round(w * dpr);
+      canvas.height = Math.round(h * dpr);
+    }
     const ctx = canvas.getContext("2d");
-    const w = canvas.width;
-    const h = canvas.height;
+    ctx.save();
+    ctx.scale(dpr, dpr);
     ctx.clearRect(0, 0, w, h);
 
     const samples = res.samples || [];
-    if (!samples.length) return;
-
-    const minZ = Math.min(...samples.map((s) => Math.min(s.elevation_m, s.baseline_elevation_m))) - 0.5;
-    const maxZ = Math.max(...samples.map((s) => Math.max(s.elevation_m, s.baseline_elevation_m))) + 0.5;
-    const maxChain = samples[samples.length - 1].chainage_m || 1;
-
-    // Grid lines
-    ctx.strokeStyle = STATE.resolvedTheme === "dark" ? "#334155" : "#e2e8f0";
-    ctx.lineWidth = 1;
-    for (let i = 1; i <= 4; i++) {
-      const y = (h - 24) * (i / 5) + 10;
-      ctx.beginPath();
-      ctx.moveTo(32, y);
-      ctx.lineTo(w - 10, y);
-      ctx.stroke();
+    if (!samples.length) {
+      ctx.restore();
+      return;
     }
 
+    const isDark = STATE.resolvedTheme === "dark";
+    const rawMinZ = Math.min(...samples.map((s) => Math.min(s.elevation_m, s.baseline_elevation_m)));
+    const rawMaxZ = Math.max(...samples.map((s) => Math.max(s.elevation_m, s.baseline_elevation_m)));
+    const zSpan = Math.max(rawMaxZ - rawMinZ, 0.4);
+    const minZ = rawMinZ - zSpan * 0.18;
+    const maxZ = rawMaxZ + zSpan * 0.22;
+    const maxChain = Math.max(0.1, samples[samples.length - 1].chainage_m || res.total_length_m || 1);
+
+    const padL = 44;
+    const padR = 14;
+    const padT = 22;
+    const padB = 26;
+    const plotW = w - padL - padR;
+    const plotH = h - padT - padB;
+
     const toXY = (chain, z) => {
-      const x = 34 + ((chain / maxChain) * (w - 48));
-      const y = h - 24 - (((z - minZ) / Math.max(maxZ - minZ, 0.1)) * (h - 40));
+      const x = padL + (chain / maxChain) * plotW;
+      const y = padT + plotH - ((z - minZ) / Math.max(maxZ - minZ, 1e-4)) * plotH;
       return [x, y];
     };
 
-    // Baseline scan curve (dashed slate)
-    ctx.strokeStyle = "#64748b";
-    ctx.lineWidth = 1.8;
+    // 1. Horizontal Elevation Grid & Y-Axis Labels (TWVD2001 m)
+    ctx.font = "10px monospace";
+    ctx.textAlign = "right";
+    ctx.textBaseline = "middle";
+    for (let i = 0; i <= 4; i++) {
+      const frac = i / 4;
+      const zVal = minZ + frac * (maxZ - minZ);
+      const y = padT + plotH - frac * plotH;
+      ctx.strokeStyle = isDark ? "rgba(148,163,184,0.16)" : "rgba(15,23,42,0.10)";
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(padL, y);
+      ctx.lineTo(w - padR, y);
+      ctx.stroke();
+      ctx.fillStyle = isDark ? "#94a3b8" : "#475569";
+      ctx.fillText(`${zVal.toFixed(1)}m`, padL - 4, y);
+    }
+
+    // 2. Vertical Chainage Grid & X-Axis Labels
+    ctx.textAlign = "center";
+    ctx.textBaseline = "top";
+    for (let i = 0; i <= 4; i++) {
+      const frac = i / 4;
+      const cVal = frac * maxChain;
+      const x = padL + frac * plotW;
+      ctx.strokeStyle = isDark ? "rgba(148,163,184,0.12)" : "rgba(15,23,42,0.07)";
+      ctx.beginPath();
+      ctx.moveTo(x, padT);
+      ctx.lineTo(x, padT + plotH);
+      ctx.stroke();
+      ctx.fillStyle = isDark ? "#94a3b8" : "#475569";
+      ctx.fillText(`${cVal.toFixed(1)}m`, x, padT + plotH + 6);
+    }
+
+    // 3. Separate Fill (Cyan-Blue) vs Cut (Coral-Red) Shaded Segment Ribbons
+    for (let i = 0; i < samples.length - 1; i++) {
+      const s0 = samples[i];
+      const s1 = samples[i + 1];
+      const [x0, ys0] = toXY(s0.chainage_m, s0.elevation_m);
+      const [, yb0] = toXY(s0.chainage_m, s0.baseline_elevation_m);
+      const [x1, ys1] = toXY(s1.chainage_m, s1.elevation_m);
+      const [, yb1] = toXY(s1.chainage_m, s1.baseline_elevation_m);
+      const meanDz = 0.5 * ((s0.elevation_m - s0.baseline_elevation_m) + (s1.elevation_m - s1.baseline_elevation_m));
+      ctx.fillStyle = meanDz >= 0 ? "rgba(14, 165, 233, 0.24)" : "rgba(239, 68, 68, 0.22)";
+      ctx.beginPath();
+      ctx.moveTo(x0, ys0);
+      ctx.lineTo(x1, ys1);
+      ctx.lineTo(x1, yb1);
+      ctx.lineTo(x0, yb0);
+      ctx.closePath();
+      ctx.fill();
+    }
+
+    // 4. Baseline / Chord Datum Curve (dashed slate)
+    ctx.strokeStyle = isDark ? "#94a3b8" : "#64748b";
+    ctx.lineWidth = 1.6;
     ctx.setLineDash([4, 3]);
     ctx.beginPath();
     samples.forEach((s, idx) => {
@@ -4223,9 +5137,9 @@
     ctx.stroke();
     ctx.setLineDash([]);
 
-    // Active scan curve (solid blue)
-    ctx.strokeStyle = "#0284c7";
-    ctx.lineWidth = 2.4;
+    // 5. Active Scan Elevation Curve (solid cyan/blue)
+    ctx.strokeStyle = "#0084ff";
+    ctx.lineWidth = 2.5;
     ctx.beginPath();
     samples.forEach((s, idx) => {
       const [x, y] = toXY(s.chainage_m, s.elevation_m);
@@ -4234,6 +5148,55 @@
     });
     ctx.stroke();
 
+    // 6. Start Point A (Red) & End Point B (Blue) Endpoint Dots
+    const [ax, ay] = toXY(samples[0].chainage_m, samples[0].elevation_m);
+    const [bx, by] = toXY(samples[samples.length - 1].chainage_m, samples[samples.length - 1].elevation_m);
+    ctx.fillStyle = "#ff3b30";
+    ctx.beginPath();
+    ctx.arc(ax, ay, 4.2, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#0084ff";
+    ctx.beginPath();
+    ctx.arc(bx, by, 4.2, 0, Math.PI * 2);
+    ctx.fill();
+
+    // 7. Top Legend Header
+    ctx.font = "bold 9.5px Inter, sans-serif";
+    ctx.textAlign = "left";
+    ctx.textBaseline = "middle";
+    ctx.fillStyle = "#0084ff";
+    ctx.fillText("● Surface (TWVD2001)", padL, 10);
+    ctx.fillStyle = "#0ea5e9";
+    ctx.fillText("■ Fill", padL + 118, 10);
+    ctx.fillStyle = "#ef4444";
+    ctx.fillText("■ Cut", padL + 152, 10);
+    ctx.fillStyle = isDark ? "#94a3b8" : "#64748b";
+    ctx.fillText(`--- ${res.compare_scan_name || "Datum"}`, padL + 186, 10);
+
+    // 8. Interactive Hover Crosshair & Readout
+    const readoutEl = document.getElementById("profileHoverReadout");
+    if (hoverIdx !== null && samples[hoverIdx]) {
+      const hs = samples[hoverIdx];
+      const [hx, hy] = toXY(hs.chainage_m, hs.elevation_m);
+      ctx.strokeStyle = "#f59e0b";
+      ctx.lineWidth = 1.3;
+      ctx.beginPath();
+      ctx.moveTo(hx, padT);
+      ctx.lineTo(hx, padT + plotH);
+      ctx.stroke();
+      ctx.fillStyle = "#f59e0b";
+      ctx.beginPath();
+      ctx.arc(hx, hy, 4.5, 0, Math.PI * 2);
+      ctx.fill();
+      if (readoutEl) {
+        readoutEl.innerHTML = `<span>Sta <b>${hs.chainage_m.toFixed(2)}m</b> · Grade <b>${hs.slope_pct}%</b></span><span style="color:var(--ui-accent);">H: <b>+${hs.elevation_m.toFixed(2)}m</b> (ΔZ ${hs.delta_z_m >= 0 ? "+" : ""}${hs.delta_z_m.toFixed(2)}m)</span>`;
+      }
+    } else if (readoutEl) {
+      readoutEl.innerHTML = `<span>A: <b>+${samples[0].elevation_m.toFixed(2)}m</b> &rarr; B: <b>+${samples[samples.length - 1].elevation_m.toFixed(2)}m</b></span><span style="color:var(--ui-accent);">ΔH: <b>${(samples[samples.length - 1].elevation_m - samples[0].elevation_m >= 0 ? "+" : "") + (samples[samples.length - 1].elevation_m - samples[0].elevation_m).toFixed(2)}m</b></span>`;
+    }
+    ctx.restore();
+
+    const maxAbsDz = Math.max(...samples.map((s) => Math.abs(s.delta_z_m || 0)));
     const mBox = document.getElementById("profileMetricsBox");
     if (mBox) {
       mBox.innerHTML = `
@@ -4244,6 +5207,14 @@
         <div class="gs-metric-box">
           <div class="lbl">Max Local Grade</div>
           <div class="val">${res.max_slope_pct}%</div>
+        </div>
+        <div class="gs-metric-box">
+          <div class="lbl">Elev Range (H)</div>
+          <div class="val">+${rawMinZ.toFixed(2)}~+${rawMaxZ.toFixed(2)}m</div>
+        </div>
+        <div class="gs-metric-box">
+          <div class="lbl">Max Relief ΔZ</div>
+          <div class="val">${maxAbsDz.toFixed(2)} m</div>
         </div>
       `;
     }
@@ -4339,6 +5310,7 @@
 
   // 3F. 3D Geo-Comments Inspector
   async function openCommentsInspector(clickedPt = null, clickedTwd = null) {
+    setActiveStudioTool("comments");
     const detail = await apiGet(`/api/scans/${STATE.activeScanId}`);
     const scan = detail.scan;
     const comments = scan.comments || [];
@@ -4351,10 +5323,10 @@
         (c) => `
         <div style="background:var(--ui-bg-subtle);border:1px solid var(--ui-border);border-radius:8px;padding:9px;margin-top:8px;">
           <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--ui-accent);font-weight:700;">
-            <span>${c.author_name}</span>
-            <span style="color:var(--ui-text-muted);font-weight:500;">${c.created_at.slice(0, 16)}</span>
+            <span>${escapeHtml(c.author_name)}</span>
+            <span style="color:var(--ui-text-muted);font-weight:500;">${escapeHtml((c.created_at || "").slice(0, 16))}</span>
           </div>
-          <div style="font-size:12px;color:var(--ui-text-primary);margin-top:4px;">${c.text}</div>
+          <div style="font-size:12px;color:var(--ui-text-primary);margin-top:4px;">${escapeHtml(c.text)}</div>
           <div style="font-size:10.5px;font-family:monospace;color:var(--ui-text-muted);margin-top:4px;">
             TWD97 E:${Number(c.twd97_e).toFixed(1)}m, N:${Number(c.twd97_n).toFixed(1)}m, H:+${Number(c.twd97_h).toFixed(2)}m
           </div>
@@ -4413,11 +5385,11 @@
     const scan = STATE.activeScan;
     if (!scan || !scan.comments) return;
     scan.comments.forEach((c) => {
-      const geom = new THREE.SphereGeometry(0.55, 16, 16);
-      const mat = new THREE.MeshBasicMaterial({ color: 0x0284c7 });
-      const pin = new THREE.Mesh(geom, mat);
-      pin.position.set(c.pos_x || 0, (c.pos_y || 0) + 1.2, c.pos_z || 0);
-      studioThree.commentPinsGroup.add(pin);
+      add3DPinMarker(
+        new THREE.Vector3(c.pos_x || 0, (c.pos_y || 0) + 0.15, c.pos_z || 0),
+        0x0284c7,
+        studioThree.commentPinsGroup
+      );
     });
   }
 
@@ -4539,11 +5511,7 @@
         return;
       }
 
-      document
-        .querySelectorAll('#bimMeasurementToolbar .autodesk-measure-btn:not([data-tool="snap"])')
-        .forEach((b) => b.classList.remove("active"));
-      btn.classList.add("active");
-      STATE.activeTool = tool;
+      setActiveStudioTool(tool);
       STATE.measurePoints = [];
 
       if (tool === "volume") openCutFillVolumeInspector();
@@ -4565,14 +5533,19 @@
 
   document.querySelectorAll("#bimBottomDock .bim-dock-btn").forEach((btn) => {
     btn.addEventListener("click", () => {
-      document.querySelectorAll("#bimBottomDock .bim-dock-btn").forEach((b) => b.classList.remove("active"));
-      btn.classList.add("active");
       const dock = btn.dataset.dock;
       if (dock === "volume") openCutFillVolumeInspector();
       else if (dock === "contours") openContoursInspector();
-      else if (dock === "section") openSectionBoxInspector();
-      else if (dock === "comments") openCommentsInspector();
-      else if (dock === "optimizer") openOptimizerInspector();
+      else if (dock === "section") {
+        document.querySelectorAll("#bimBottomDock .bim-dock-btn").forEach((b) => b.classList.remove("active"));
+        btn.classList.add("active");
+        openSectionBoxInspector();
+      } else if (dock === "comments") openCommentsInspector();
+      else if (dock === "optimizer") {
+        document.querySelectorAll("#bimBottomDock .bim-dock-btn").forEach((b) => b.classList.remove("active"));
+        btn.classList.add("active");
+        openOptimizerInspector();
+      }
     });
   });
 
