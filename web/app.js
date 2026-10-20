@@ -275,7 +275,116 @@
   function apiHeaders(extra = {}) {
     const h = Object.assign({ "Content-Type": "application/json" }, extra);
     if (STATE.shareToken) h["X-Share-Token"] = STATE.shareToken;
+    if (STATE.currentUser && STATE.currentUser.email) {
+      h["X-User-Email"] = STATE.currentUser.email;
+    }
     return h;
+  }
+
+  const ROLE_LEVELS_MAP = { owner: 5, admin: 4, editor: 3, viewer: 2, guest: 1 };
+  const ROLE_LABELS_MAP = {
+    owner: "1. Owner (System Owner)",
+    admin: "2. Admin (Manage Users & Workflows)",
+    editor: "3. Editor (Edit Names & Run Scans)",
+    viewer: "4. Viewer (View All & Measure)",
+    guest: "5. Guest (Single Scan · Basic Tools)",
+  };
+
+  function getCurrentUserRoleInfo() {
+    if (STATE.shareToken) {
+      return {
+        role: "guest",
+        level: 1,
+        label: ROLE_LABELS_MAP.guest,
+        canEditNames: false,
+        canRunWorkflows: false,
+        canManageUsers: false,
+        isGuestSingleScan: true,
+      };
+    }
+    const email = String(STATE.currentUser?.email || "").trim().toLowerCase();
+    let role = String(STATE.currentUser?.role || "viewer").trim().toLowerCase();
+    if (email === "glibivanov@gatheren.com.tw") {
+      role = "owner";
+    } else if (!ROLE_LEVELS_MAP[role]) {
+      role = "viewer";
+    }
+    const level = ROLE_LEVELS_MAP[role] || 2;
+    return {
+      role,
+      level,
+      label: ROLE_LABELS_MAP[role] || "Viewer",
+      canEditNames: level >= 3,
+      canRunWorkflows: level >= 3,
+      canManageUsers: level >= 4,
+      isGuestSingleScan: role === "guest",
+    };
+  }
+
+  function applyRolePermissionsToUI() {
+    const info = getCurrentUserRoleInfo();
+    const setDisp = (id, show, disp = "") => {
+      const el = document.getElementById(id);
+      if (el) el.style.display = show ? disp : "none";
+    };
+
+    // 1. Rename Site & Rename Scan buttons (Editor, Admin, Owner only)
+    [
+      "btnRenameMapSite",
+      "btnRenamePopoverSite",
+      "btnRenameTimelineSite",
+      "btnRenameStudioSite",
+      "btnRenamePreviewScan",
+      "btnRenameStudioScan",
+    ].forEach((id) => setDisp(id, info.canEditNames, "inline-flex"));
+
+    // 2. Re-run Scan & PC Resource / Optimizer / Queue buttons (Editor, Admin, Owner only; hidden for Viewer & Guest)
+    [
+      "btnRerunPreviewScan",
+      "btnRerunStudioScan",
+      "btnOpenOptimizer",
+      "btnDockOptimizer",
+      "pcStatusChip",
+    ].forEach((id) => setDisp(id, info.canRunWorkflows, "inline-flex"));
+
+    // 3. Sharing & Settings buttons (Hidden for Guest)
+    setDisp("btnOpenSharing", info.level >= 3, "inline-flex");
+    setDisp("btnPopoverShareGroup", info.level >= 3, "inline-flex");
+    setDisp("btnTimelineShare", info.level >= 3, "inline-flex");
+
+    // 4. Guest restrictions: only 1 scan (via guest link) and only basic tools (Distance, Area, Coordinates)
+    const isGuest = info.isGuestSingleScan;
+    setDisp("btnNavMap", !isGuest, "inline-flex");
+    setDisp("btnNavCompare", !isGuest, "inline-flex");
+    setDisp("btnStudioBackToTimeline", !isGuest, "inline-flex");
+    setDisp("studioProjectSelect", !isGuest, "inline-block");
+    const studioScanSel = document.getElementById("studioScanSelect");
+    if (studioScanSel) studioScanSel.disabled = isGuest;
+
+    // Advanced surveying tools hidden for Guest (Guest keeps Distance, Area, Coordinates, Snap, Clear)
+    [
+      "btnMeasureAngle",
+      "btnMeasureLaser",
+      "btnMeasureVolume",
+      "btnMeasureContours",
+      "btnMeasureProfile",
+      "btnMeasurePhotos",
+      "btnStudioSurveyReport",
+      "btnDockVolume",
+      "btnDockContours",
+      "btnDockSection",
+      "btnDockComments",
+    ].forEach((id) => setDisp(id, !isGuest, "inline-flex"));
+
+    // Role badge in Settings Admin Control Panel
+    const badgeRole = document.getElementById("badgeCurrentUserRoleLevel");
+    if (badgeRole) {
+      badgeRole.textContent = `Active Role: ${info.label}`;
+    }
+    const adminForm = document.getElementById("adminUserEditorForm");
+    if (adminForm) {
+      adminForm.style.display = info.canManageUsers ? "grid" : "none";
+    }
   }
 
   async function apiGet(url) {
@@ -1874,6 +1983,212 @@
     }
   });
 
+  // ============================================================================
+  // 1C. RENAME SITE (PROJECT GROUP) MODAL & RE-RUN SCAN FROM ORIGINAL PHOTOS MODAL
+  // ============================================================================
+  let _renamingSiteGroup = "";
+
+  function openRenameSiteModal(projectGroup) {
+    if (!getCurrentUserRoleInfo().canEditNames) {
+      showToast("Only Editor, Admin, or Owner accounts can rename sites.");
+      return;
+    }
+    const targetGroup =
+      projectGroup ||
+      STATE.activeProjectGroup ||
+      (STATE.activeScan && STATE.activeScan.project_group) ||
+      (STATE.scans[0] && STATE.scans[0].project_group) ||
+      "";
+    if (!targetGroup) return;
+    _renamingSiteGroup = targetGroup;
+    const siteScans = STATE.scans.filter((s) => s.project_group === targetGroup);
+    const zhName = (siteScans[0] && siteScans[0].project_name_zh) || targetGroup;
+    const subEl = document.getElementById("renameSiteModalSub");
+    if (subEl) {
+      subEl.textContent = `Current Site: ${targetGroup} (${siteScans.length} Scan${siteScans.length === 1 ? "" : "s"})`;
+    }
+    const grpInp = document.getElementById("renameSiteGroupInput");
+    const zhInp = document.getElementById("renameSiteZhInput");
+    if (grpInp) grpInp.value = targetGroup;
+    if (zhInp) zhInp.value = zhName;
+    openModal("renameSiteModal");
+    setTimeout(() => {
+      if (grpInp) {
+        grpInp.focus();
+        grpInp.select();
+      }
+    }, 40);
+  }
+
+  async function saveRenamedSite() {
+    if (!_renamingSiteGroup) return;
+    const grpInp = document.getElementById("renameSiteGroupInput");
+    const zhInp = document.getElementById("renameSiteZhInput");
+    const newGroup = String(grpInp ? grpInp.value : "").trim();
+    const newZh = String(zhInp ? zhInp.value : "").trim() || newGroup;
+    if (!newGroup) {
+      showToast("Site name cannot be empty");
+      return;
+    }
+    try {
+      const res = await apiPost("/api/projects/rename", {
+        old_project_group: _renamingSiteGroup,
+        new_project_group: newGroup,
+        new_project_name_zh: newZh,
+      });
+      if (Array.isArray(res.scans)) STATE.scans = res.scans;
+      if (Array.isArray(res.projects)) STATE.projects = res.projects;
+      STATE.activeProjectGroup = newGroup;
+      if (STATE.activeScan) {
+        STATE.activeScan = STATE.scans.find((s) => s.scan_id === STATE.activeScan.scan_id) || STATE.activeScan;
+      }
+      const tlTitle = document.getElementById("timelineSiteTitle");
+      if (tlTitle) tlTitle.textContent = newGroup;
+      const popTitle = document.getElementById("popoverGroupTitle");
+      if (popTitle) popTitle.textContent = newGroup;
+      populateProjectScanDropdowns(newGroup, STATE.activeScanId);
+      renderMapClusters();
+      if (STATE.siteTimelineOpen) {
+        openSiteTimeline(newGroup, STATE.selectedTimelineScanId || STATE.activeScanId);
+      }
+      closeModal("renameSiteModal");
+      showToast(`Renamed site "${_renamingSiteGroup}" → "${newGroup}" (${res.updated_count || 1} scans updated)`);
+    } catch (err) {
+      showToast(`Failed to rename site: ${err.message}`);
+    }
+  }
+
+  ["btnRenameMapSite", "btnRenamePopoverSite", "btnRenameTimelineSite", "btnRenameStudioSite"].forEach((id) => {
+    document.getElementById(id)?.addEventListener("click", () => {
+      const mapSel = document.getElementById("mapProjectSelect")?.value;
+      const grp =
+        id === "btnRenameMapSite" && mapSel && mapSel !== "__all__"
+          ? mapSel
+          : STATE.activeProjectGroup;
+      openRenameSiteModal(grp);
+    });
+  });
+  document.getElementById("timelineSiteTitle")?.addEventListener("dblclick", () => {
+    if (!STATE.shareToken) openRenameSiteModal(STATE.activeProjectGroup);
+  });
+  document.getElementById("popoverGroupTitle")?.addEventListener("dblclick", () => {
+    if (!STATE.shareToken) openRenameSiteModal(STATE.activeProjectGroup);
+  });
+  document.getElementById("btnConfirmSaveSiteName")?.addEventListener("click", saveRenamedSite);
+  document.getElementById("renameSiteGroupInput")?.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      saveRenamedSite();
+    }
+  });
+
+  // Re-run Scan from Original Photos Modal
+  let _rerunTargetScanId = "";
+
+  function readRerunModalSettings() {
+    return {
+      mesh_pipeline: document.getElementById("rerunSelMeshPipeline")?.value || "FixedSize",
+      mesh_quality: document.getElementById("rerunSelMeshQuality")?.value || "High",
+      vertex_density: document.getElementById("rerunSelVertexDensity")?.value || "High",
+      texture_size: Number(document.getElementById("rerunSelTextureSize")?.value || 4096),
+      model_simplification: document.getElementById("rerunSelSimplification")?.value || "Conservative",
+      deghosting: document.getElementById("rerunSelDeghosting")?.value || "Weak",
+      export_lod: Number(document.getElementById("rerunInpExportLod")?.value || 13),
+      skyless: Boolean(document.getElementById("rerunChkSkyless")?.checked),
+      use_roi: Boolean(document.getElementById("rerunChkUseRoi")?.checked),
+    };
+  }
+
+  async function updateRerunGstPreview() {
+    if (!_rerunTargetScanId) return;
+    try {
+      const settings = readRerunModalSettings();
+      const res = await apiPost("/api/queue/preview-gst", {
+        scan_id: _rerunTargetScanId,
+        settings,
+      });
+      const codeEl = document.getElementById("rerunGstPreviewCode");
+      if (codeEl && res.gst_script) {
+        codeEl.textContent = res.gst_script;
+      }
+    } catch (err) {
+      const codeEl = document.getElementById("rerunGstPreviewCode");
+      if (codeEl) codeEl.textContent = `// Preview error: ${err.message}`;
+    }
+  }
+
+  function openRerunScanModal(scanId) {
+    if (!getCurrentUserRoleInfo().canRunWorkflows) {
+      showToast("Only Editor, Admin, or Owner accounts can run or re-run scans on the PC.");
+      return;
+    }
+    const targetId = scanId || STATE.selectedTimelineScanId || STATE.activeScanId;
+    const scan = STATE.scans.find((s) => s.scan_id === targetId) || STATE.activeScan;
+    if (!scan) return;
+    _rerunTargetScanId = scan.scan_id;
+    const nameEl = document.getElementById("rerunScanInfoName");
+    if (nameEl) nameEl.textContent = `${scan.name} (${scan.project_group})`;
+    const srcEl = document.getElementById("rerunScanInfoSource");
+    if (srcEl) {
+      const pCount = scan.image_count || scan.total_photos || 100;
+      const srcPath = scan.source_zip_path || `${scan.project_dir || "C:\\GatheringScans\\" + scan.scan_id}\\inputs`;
+      srcEl.textContent = `Original Photos Source: ${srcPath} (${pCount} RTK photos)`;
+    }
+    openModal("rerunScanModal");
+    updateRerunGstPreview();
+  }
+
+  async function confirmRerunScan() {
+    if (!_rerunTargetScanId) return;
+    const settings = readRerunModalSettings();
+    const forceFromPhotos = Boolean(document.getElementById("rerunChkForceFromPhotos")?.checked);
+    const runImmediately = Boolean(document.getElementById("rerunChkRunImmediately")?.checked);
+    const msgEl = document.getElementById("rerunModalStatusMsg");
+    if (msgEl) msgEl.textContent = "Submitting re-run job to PIX4Dmatic 2.11.0...";
+    try {
+      const res = await apiPost("/api/scans/rerun", {
+        scan_id: _rerunTargetScanId,
+        force_from_photos: forceFromPhotos,
+        force_next: true,
+        run_immediately: runImmediately,
+        settings,
+      });
+      closeModal("rerunScanModal");
+      showToast(
+        runImmediately
+          ? `Launched PIX4Dmatic re-run from original photos (${res.original_photos_count || 100} imgs, ${settings.mesh_quality}, ${settings.texture_size}px)`
+          : `Queued ${res.scan?.name || _rerunTargetScanId} for re-run from original photos (${settings.mesh_quality}, ${settings.texture_size}px)`
+      );
+      await refreshScansCatalog();
+    } catch (err) {
+      if (msgEl) msgEl.textContent = `Error: ${err.message}`;
+      showToast(`Re-run Error: ${err.message}`);
+    }
+  }
+
+  document.getElementById("btnRerunPreviewScan")?.addEventListener("click", () => {
+    openRerunScanModal(STATE.selectedTimelineScanId || STATE.activeScanId);
+  });
+  document.getElementById("btnRerunStudioScan")?.addEventListener("click", () => {
+    openRerunScanModal(STATE.activeScanId);
+  });
+  document.getElementById("btnConfirmRerunScan")?.addEventListener("click", confirmRerunScan);
+  [
+    "rerunSelMeshPipeline",
+    "rerunSelMeshQuality",
+    "rerunSelVertexDensity",
+    "rerunSelTextureSize",
+    "rerunSelSimplification",
+    "rerunSelDeghosting",
+    "rerunInpExportLod",
+    "rerunChkSkyless",
+    "rerunChkUseRoi",
+  ].forEach((id) => {
+    document.getElementById(id)?.addEventListener("change", updateRerunGstPreview);
+  });
+  window.openRerunScanModal = openRerunScanModal;
+  window.openRenameSiteModal = openRenameSiteModal;
+
   function closeSiteTimeline() {
     STATE.siteTimelineOpen = true;
     document.getElementById("siteTimelineSplitView")?.classList.add("active");
@@ -2492,16 +2807,46 @@
     return null;
   }
 
-  function add3DPinMarker(pt, colorHex = 0x0284c7, targetGroup = null) {
+  function add3DPinMarker(pt, colorHex = 0x0084ff, targetGroup = null) {
     if (!studioThree) return null;
     const grp = targetGroup || studioThree.overlayGroup;
-    const geom = new THREE.SphereGeometry(0.42, 16, 16);
-    const mat = new THREE.MeshBasicMaterial({ color: colorHex, depthTest: false, transparent: true, opacity: 0.95 });
-    const mesh = new THREE.Mesh(geom, mat);
-    mesh.position.copy(pt);
-    mesh.renderOrder = 1002;
-    grp.add(mesh);
-    return mesh;
+
+    const sphereGeo = new THREE.SphereGeometry(1, 16, 16);
+    const sphereMat = new THREE.MeshBasicMaterial({
+      color: colorHex,
+      depthTest: false,
+      depthWrite: false,
+      transparent: true,
+      opacity: 0.95,
+    });
+    const innerMesh = new THREE.Mesh(sphereGeo, sphereMat);
+    innerMesh.position.copy(pt);
+    innerMesh.userData.isZoomInvariantMarker = true;
+    innerMesh.userData.pixelRadius = 8;
+    innerMesh.renderOrder = 1002;
+    grp.add(innerMesh);
+
+    const ringGeo = new THREE.RingGeometry(0.7, 1.2, 32);
+    const ringMat = new THREE.MeshBasicMaterial({
+      color: 0xffffff,
+      side: THREE.DoubleSide,
+      depthTest: false,
+      depthWrite: false,
+      transparent: true,
+      opacity: 0.95,
+    });
+    const outerRing = new THREE.Mesh(ringGeo, ringMat);
+    outerRing.position.copy(pt);
+    outerRing.userData.isZoomInvariantRing = true;
+    outerRing.userData.pixelRadius = 14;
+    if (studioThree.camera) {
+      outerRing.quaternion.copy(studioThree.camera.quaternion);
+    }
+    outerRing.renderOrder = 1001;
+    grp.add(outerRing);
+
+    updateZoomInvariantElements();
+    return innerMesh;
   }
 
   function add2DBadge(worldPt, htmlText, borderColor = "#cbd5e1", options = {}) {
@@ -2565,29 +2910,37 @@
     });
   }
 
-  // Screen-space zoom-invariant scaling for Gathering Cloud distance markers & rods (Fix #5)
+  // Screen-space zoom-invariant scaling for Gathering Cloud distance & surveying tool markers & rods (Fix #5)
   function updateZoomInvariantElements() {
     if (!studioThree) return;
     const cam = studioThree.camera;
     const h = Math.max(1, studioThree.renderer.domElement.clientHeight);
     const fovRad = THREE.MathUtils.degToRad(cam.fov);
 
-    studioThree.overlayGroup.traverse((obj) => {
-      if (!obj.userData) return;
-      if (obj.userData.isZoomInvariantMarker || obj.userData.isZoomInvariantRing) {
-        const dist = cam.position.distanceTo(obj.position);
-        const worldPerPixel = (2 * Math.tan(fovRad / 2) * dist) / h;
-        const r = (obj.userData.pixelRadius || 8) * worldPerPixel * 0.55;
-        obj.scale.setScalar(Math.max(0.05, r));
-        if (obj.userData.isZoomInvariantRing) {
-          obj.quaternion.copy(cam.quaternion);
+    const groups = [
+      studioThree.overlayGroup,
+      studioThree.volumeGroup,
+      studioThree.polyPreviewGroup,
+    ].filter(Boolean);
+
+    groups.forEach((grp) => {
+      grp.traverse((obj) => {
+        if (!obj.userData) return;
+        if (obj.userData.isZoomInvariantMarker || obj.userData.isZoomInvariantRing) {
+          const dist = cam.position.distanceTo(obj.position);
+          const worldPerPixel = (2 * Math.tan(fovRad / 2) * dist) / h;
+          const r = (obj.userData.pixelRadius || 8) * worldPerPixel * 0.55;
+          obj.scale.setScalar(Math.max(0.003, r));
+          if (obj.userData.isZoomInvariantRing) {
+            obj.quaternion.copy(cam.quaternion);
+          }
+        } else if (obj.userData.isZoomInvariantRod) {
+          const dist = cam.position.distanceTo(obj.position);
+          const worldPerPixel = (2 * Math.tan(fovRad / 2) * dist) / h;
+          const rad = Math.max(0.002, (obj.userData.pixelRadius || 1.35) * worldPerPixel * 0.55);
+          obj.scale.set(rad, 1, rad);
         }
-      } else if (obj.userData.isZoomInvariantRod) {
-        const dist = cam.position.distanceTo(obj.position);
-        const worldPerPixel = (2 * Math.tan(fovRad / 2) * dist) / h;
-        const rad = Math.max(0.015, (obj.userData.pixelRadius || 1.35) * worldPerPixel * 0.55);
-        obj.scale.set(rad, 1, rad);
-      }
+      });
     });
   }
 
@@ -2959,9 +3312,20 @@
       return;
     }
 
+    const isNearStartVertex = (clickPt, startPt) => {
+      if (!startPt || !studioThree || !studioThree.camera) return false;
+      const cam = studioThree.camera;
+      const h = Math.max(1, studioThree.renderer.domElement.clientHeight);
+      const fovRad = THREE.MathUtils.degToRad(cam.fov);
+      const dist = cam.position.distanceTo(startPt);
+      const worldPerPixel = (2 * Math.tan(fovRad / 2) * dist) / h;
+      const snapRadius = Math.max(0.05, Math.min(1.8, 18 * worldPerPixel));
+      return clickPt.distanceTo(startPt) < snapRadius;
+    };
+
     if (tool === "volume") {
       // Fix #1: Never clear placed vertices! Allow clicking 3+ points on the 3D scan to place & refine the Cut/Fill polygon
-      if (STATE.measurePoints.length >= 3 && pt.distanceTo(STATE.measurePoints[0]) < 1.8) {
+      if (STATE.measurePoints.length >= 3 && isNearStartVertex(pt, STATE.measurePoints[0])) {
         // Clicking near start point closes and locks the polygon so next click can start a new one
         if (studioThree && studioThree.polyPreviewGroup) {
           while (studioThree.polyPreviewGroup.children.length > 0) {
@@ -3012,7 +3376,7 @@
     }
 
     if (tool === "contours") {
-      if (STATE.measurePoints.length >= 3 && pt.distanceTo(STATE.measurePoints[0]) < 1.8) {
+      if (STATE.measurePoints.length >= 3 && isNearStartVertex(pt, STATE.measurePoints[0])) {
         if (studioThree && studioThree.polyPreviewGroup) {
           while (studioThree.polyPreviewGroup.children.length > 0) {
             studioThree.polyPreviewGroup.remove(studioThree.polyPreviewGroup.children[0]);
@@ -3057,19 +3421,9 @@
       return;
     }
 
-    // 1. Vertex Pins (Red start vertex #ff3b30, Blue subsequent vertices #0084ff)
+    // 1. Vertex Pins (Same zoom-invariant marker + white ring as Distance tool; Red start vertex #ff3b30, Blue subsequent vertices #0084ff)
     pts.forEach((p, idx) => {
-      const vGeo = new THREE.SphereGeometry(0.45, 16, 16);
-      const vMat = new THREE.MeshBasicMaterial({
-        color: idx === 0 ? 0xff3b30 : 0x0084ff,
-        depthTest: false,
-        transparent: true,
-        opacity: 0.96,
-      });
-      const vMesh = new THREE.Mesh(vGeo, vMat);
-      vMesh.position.copy(p);
-      vMesh.renderOrder = 1002;
-      studioThree.volumeGroup.add(vMesh);
+      add3DPinMarker(p, idx === 0 ? 0xff3b30 : 0x0084ff, studioThree.volumeGroup);
     });
 
     if (pts.length === 1) {
@@ -5282,22 +5636,16 @@
                 <polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/>
               </svg>
             </button>
-            <button type="button" class="btn-xs" data-reprocess="${s.scan_id}" title="Enqueue for Autonomous PIX4Dmatic Processing">
+            <button type="button" class="btn-xs" data-reprocess="${s.scan_id}" title="Re-run from Original Photos with Custom PIX4Dmatic Settings">
               <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8">
-                <polygon points="5 3 19 12 5 21 5 3"/>
+                <polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
               </svg>
             </button>
           </td>
         `;
         tr.querySelector("[data-gst]")?.addEventListener("click", () => previewGstForScan(s.scan_id));
-        tr.querySelector("[data-reprocess]")?.addEventListener("click", async () => {
-          try {
-            await apiPost("/api/queue/enqueue", { scan_id: s.scan_id });
-            showToast(`Enqueued ${s.name} for autonomous PIX4Dmatic processing`);
-            await refreshQueueModalData();
-          } catch (err) {
-            showToast(`Queue Error: ${err.message}`);
-          }
+        tr.querySelector("[data-reprocess]")?.addEventListener("click", () => {
+          openRerunScanModal(s.scan_id);
         });
         tbody.appendChild(tr);
       });
@@ -5628,6 +5976,9 @@
     openModal("modalOfflineCache");
     _pix4dSettingsDirty = false;
     await applyTheme(STATE.themePreference, false);
+    applyRolePermissionsToUI();
+    await renderAdminControlPanel();
+    await refreshSettingsServiceAccountUI();
     apiGet("/api/pix4d/settings")
       .then((res) => {
         if (res && res.settings) applyPix4dSettingsToUI(res.settings, true);
@@ -5661,6 +6012,293 @@
       tbody.appendChild(tr);
     });
   }
+
+  // Admin Control Panel (5-Level Permissions & User Management)
+  async function renderAdminControlPanel() {
+    const tbody = document.getElementById("adminUsersTableBody");
+    const rolePill = document.getElementById("adminCurrentUserRolePill");
+    const saveBtn = document.getElementById("btnAdminSaveUser");
+    const nameIn = document.getElementById("adminNewUserName");
+    const emailIn = document.getElementById("adminNewUserEmail");
+    const roleSel = document.getElementById("adminNewUserRole");
+
+    const myInfo = getCurrentUserRoleInfo();
+    if (rolePill) {
+      rolePill.textContent = `Active Role: ${myInfo.level}. ${myInfo.label}`;
+    }
+    const canManageUsers = Boolean(myInfo.can_manage_users);
+    if (saveBtn) saveBtn.disabled = !canManageUsers;
+    if (nameIn) nameIn.disabled = !canManageUsers;
+    if (emailIn) emailIn.disabled = !canManageUsers;
+    if (roleSel) roleSel.disabled = !canManageUsers;
+
+    if (!tbody) return;
+    let users = [];
+    try {
+      const res = await apiGet("/api/admin/users");
+      if (res && Array.isArray(res.users)) {
+        users = res.users;
+        STATE.teamProfiles = users;
+      }
+    } catch (_) {
+      users = STATE.teamProfiles || [];
+    }
+
+    tbody.innerHTML = "";
+    users.forEach((u) => {
+      const email = String(u.email || "").toLowerCase();
+      const isOwner = email === "glibivanov@gatheren.com.tw" || u.role === "owner";
+      const uRole = isOwner ? "owner" : String(u.role || "viewer").toLowerCase();
+      const uLevel = ROLE_LEVELS_MAP[uRole] || 4;
+      const canEditRow =
+        canManageUsers &&
+        !isOwner &&
+        (myInfo.role === "owner" || (myInfo.role === "admin" && uLevel > 2));
+
+      const tr = document.createElement("tr");
+      const roleOptionsHtml = ["owner", "admin", "editor", "viewer", "guest"]
+        .map((rk) => {
+          const disabledOpt =
+            rk === "owner" || (myInfo.role === "admin" && (rk === "admin" || rk === "owner"));
+          return `<option value="${rk}" ${uRole === rk ? "selected" : ""} ${
+            disabledOpt && uRole !== rk ? "disabled" : ""
+          }>${ROLE_LEVELS_MAP[rk]}. ${ROLE_LABELS_MAP[rk]}</option>`;
+        })
+        .join("");
+
+      tr.innerHTML = `
+        <td><b style="color:var(--ui-text-primary);">${escapeHtml(u.name || "User")}</b></td>
+        <td style="font-family:var(--font-mono);font-size:11.5px;color:var(--ui-accent);">${escapeHtml(
+          u.email || ""
+        )}</td>
+        <td>
+          ${
+            canEditRow
+              ? `<select class="select-sm" data-admin-role-select="${escapeHtml(
+                  u.email
+                )}" style="height:26px;font-size:11.5px;padding:0 8px;">${roleOptionsHtml}</select>`
+              : `<span class="gs-crs-pill" style="${
+                  isOwner ? "background:rgba(37,99,235,0.16);color:#3b82f6;font-weight:800;" : ""
+                }">${uLevel}. ${escapeHtml(ROLE_LABELS_MAP[uRole] || u.role_label || uRole)}</span>`
+          }
+        </td>
+        <td style="font-size:11px;color:var(--ui-text-secondary);">
+          ${
+            uRole === "owner"
+              ? "All permissions + System Owner"
+              : uRole === "admin"
+              ? "Manage Editor/Viewer/Guest users + Editor tools"
+              : uRole === "editor"
+              ? "Rename sites/scans, run PIX4Dmatic & Optimizer"
+              : uRole === "viewer"
+              ? "View all scans + Measurement/Surveying tools (No PC jobs)"
+              : "Single shared scan + Distance/Area/Coordinates only"
+          }
+        </td>
+        <td>
+          ${
+            canEditRow
+              ? `<button type="button" class="btn-xs" data-admin-delete-user="${escapeHtml(
+                  u.email
+                )}" style="color:#ef4444;border-color:rgba(239,68,68,0.35);" title="Remove user">Remove</button>`
+              : `<span style="font-size:10.5px;color:var(--ui-text-muted);">${
+                  isOwner ? "Protected Owner" : "Read-only"
+                }</span>`
+          }
+        </td>
+      `;
+
+      const sel = tr.querySelector("[data-admin-role-select]");
+      if (sel) {
+        sel.addEventListener("change", async (e) => {
+          const newRole = e.target.value;
+          try {
+            await apiPost("/api/admin/users/save", {
+              actor_email: STATE.currentUser?.email || "",
+              email: u.email,
+              name: u.name,
+              role: newRole,
+            });
+            showToast(`Updated ${u.name || u.email} to ${ROLE_LABELS_MAP[newRole] || newRole}`);
+            await loadTeamUserProfiles();
+            await renderAdminControlPanel();
+            renderTeamProfilesGrid();
+          } catch (err) {
+            showToast(`Role Update Error: ${err.message}`);
+            await renderAdminControlPanel();
+          }
+        });
+      }
+
+      const delBtn = tr.querySelector("[data-admin-delete-user]");
+      if (delBtn) {
+        delBtn.addEventListener("click", async () => {
+          try {
+            await apiPost("/api/admin/users/delete", {
+              actor_email: STATE.currentUser?.email || "",
+              email: u.email,
+            });
+            showToast(`Removed user ${u.email}`);
+            await loadTeamUserProfiles();
+            await renderAdminControlPanel();
+            renderTeamProfilesGrid();
+          } catch (err) {
+            showToast(`Delete User Error: ${err.message}`);
+          }
+        });
+      }
+
+      tbody.appendChild(tr);
+    });
+  }
+
+  document.getElementById("btnAdminSaveUser")?.addEventListener("click", async () => {
+    const name = document.getElementById("adminNewUserName")?.value?.trim() || "";
+    const email = document.getElementById("adminNewUserEmail")?.value?.trim() || "";
+    const role = document.getElementById("adminNewUserRole")?.value || "viewer";
+    const statusEl = document.getElementById("adminActionStatusMsg");
+    if (!email || !email.includes("@")) {
+      showToast("Please enter a valid user email address.");
+      return;
+    }
+    try {
+      const res = await apiPost("/api/admin/users/save", {
+        actor_email: STATE.currentUser?.email || "",
+        email,
+        name: name || email.split("@")[0],
+        role,
+      });
+      if (document.getElementById("adminNewUserName")) document.getElementById("adminNewUserName").value = "";
+      if (document.getElementById("adminNewUserEmail")) document.getElementById("adminNewUserEmail").value = "";
+      if (statusEl) {
+        statusEl.style.display = "block";
+        statusEl.style.color = "#10b981";
+        statusEl.textContent = `Saved ${res.user?.name || email} (${res.user?.role_label || role}).`;
+      }
+      showToast(`Saved user ${email} as ${ROLE_LABELS_MAP[role] || role}`);
+      await loadTeamUserProfiles();
+      await renderAdminControlPanel();
+      renderTeamProfilesGrid();
+    } catch (err) {
+      if (statusEl) {
+        statusEl.style.display = "block";
+        statusEl.style.color = "#ef4444";
+        statusEl.textContent = `Error: ${err.message}`;
+      }
+      showToast(`Admin Error: ${err.message}`);
+    }
+  });
+
+  // Google Service Account Settings & Live Verification
+  async function refreshSettingsServiceAccountUI() {
+    const pill = document.getElementById("settingsSaStatusPill");
+    const box = document.getElementById("settingsSaTestResultBox");
+    try {
+      const status = await apiGet("/api/cloud-manifest/status");
+      if (pill) {
+        if (status.has_credentials) {
+          pill.textContent = "Key Configured";
+          pill.style.background = "rgba(16,185,129,0.16)";
+          pill.style.color = "#10b981";
+        } else {
+          pill.textContent = "Key Needed (.json)";
+          pill.style.background = "rgba(245,158,11,0.16)";
+          pill.style.color = "#f59e0b";
+        }
+      }
+      if (box && status.last_error && !status.has_credentials) {
+        box.style.display = "block";
+        box.textContent = `Target Service Account: ${
+          status.expected_service_account_email || "gcworker@modular-temple-508005-c4.iam.gserviceaccount.com"
+        }\nStatus: Waiting for service account .json private key file.`;
+      }
+    } catch (_) {}
+  }
+
+  async function testGDriveServiceAccountLive(customJsonStr = "") {
+    const pill = document.getElementById("settingsSaStatusPill");
+    const box = document.getElementById("settingsSaTestResultBox");
+    if (pill) {
+      pill.textContent = "Testing...";
+      pill.style.background = "rgba(59,130,246,0.16)";
+      pill.style.color = "#3b82f6";
+    }
+    if (box) {
+      box.style.display = "block";
+      box.textContent = "Testing OAuth2 JWT assertion & Google Drive API v3 folder access for gcworker@modular-temple-508005-c4.iam.gserviceaccount.com...";
+    }
+    try {
+      const payload = customJsonStr ? { service_account_json: customJsonStr } : {};
+      const res = await apiPost("/api/cloud-manifest/test-sa", payload);
+      const isOk = Boolean(res && (res.ok || res.status === "ok"));
+      if (isOk) {
+        if (pill) {
+          pill.textContent = "Connected & Verified";
+          pill.style.background = "rgba(16,185,129,0.16)";
+          pill.style.color = "#10b981";
+        }
+        const filesList = res.visible_files || res.sample_files || [];
+        const filesSummary = filesList
+          .slice(0, 8)
+          .map((f) => `• ${f.name} (${f.id})`)
+          .join("\n");
+        if (box) {
+          box.textContent =
+            `✓ Service Account Authenticated: ${res.configured_service_account || res.client_email}\n` +
+            `✓ Project ID: ${res.expected_project_id || res.project_id}\n` +
+            `✓ OAuth2 Token & Drive v3 Access: OK (Range Read: ${res.range_read_ok ? "OK" : "Tested"})\n` +
+            `✓ Drive Folder (${res.stream_packages_folder_id || res.folder_id}): ${res.files_visible_count} files visible\n` +
+            (filesSummary ? `Visible files:\n${filesSummary}` : "");
+        }
+        showToast("Service Account verified & Google Drive synced!");
+        await refreshScansCatalog(false);
+      } else {
+        if (pill) {
+          pill.textContent = res?.private_key_loaded ? "Auth Error" : "Key Needed (.json)";
+          pill.style.background = "rgba(239,68,68,0.16)";
+          pill.style.color = "#ef4444";
+        }
+        if (box) {
+          box.textContent = `✗ Service Account Test Result (${res?.status || "error"}):\n${
+            res?.message || res?.error || "Failed to authenticate service account."
+          }`;
+        }
+        showToast(res?.message || res?.error || "Service Account key required");
+      }
+    } catch (err) {
+      if (box) {
+        box.textContent = `✗ Service Account Test Error: ${err.message}`;
+      }
+      showToast(`Service Account Error: ${err.message}`);
+    }
+  }
+
+  document.getElementById("btnTestServiceAccountLive")?.addEventListener("click", () => {
+    const pasted = document.getElementById("txtServiceAccountJsonUser")?.value?.trim() || "";
+    testGDriveServiceAccountLive(pasted);
+  });
+
+  document.getElementById("btnSaveServiceAccountJsonUser")?.addEventListener("click", async () => {
+    const pasted = document.getElementById("txtServiceAccountJsonUser")?.value?.trim() || "";
+    if (!pasted) {
+      showToast("Paste the Service Account JSON key first or click Upload .JSON Key.");
+      return;
+    }
+    await testGDriveServiceAccountLive(pasted);
+  });
+
+  document.getElementById("fileServiceAccountJsonUser")?.addEventListener("change", async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      const text = await file.text();
+      const txtEl = document.getElementById("txtServiceAccountJsonUser");
+      if (txtEl) txtEl.value = text;
+      await testGDriveServiceAccountLive(text);
+    } catch (err) {
+      showToast(`Failed to read JSON file: ${err.message}`);
+    }
+  });
 
   async function cacheScanInBrowser(scanId) {
     try {
@@ -5769,6 +6407,7 @@
         gateStatus.textContent =
           "Authorization required — Sign in with Google, select a team profile, or use Guest Mode";
       }
+      applyRolePermissionsToUI();
       return;
     }
 
@@ -5797,12 +6436,13 @@
       // ignore
     }
 
+    const rInfo = getCurrentUserRoleInfo();
     if (lblUser) {
-      lblUser.textContent = STATE.currentUser.name || STATE.currentUser.email || "Guest";
+      lblUser.textContent = `${STATE.currentUser.name || STATE.currentUser.email || "Guest"} (${rInfo.label})`;
     }
     const btnUser = document.getElementById("btnGoogleUser") || document.getElementById("btnCurrentUserProfile");
     if (btnUser) {
-      btnUser.title = `${STATE.currentUser.name || "User"} (${STATE.currentUser.email || ""}) — Click to switch Google OAuth account`;
+      btnUser.title = `${STATE.currentUser.name || "User"} (${STATE.currentUser.email || ""}) — Role: ${rInfo.level}. ${rInfo.label}`;
     }
     if (avatarImg && svgIcon) {
       const picUrl = STATE.currentUser.avatar_url || STATE.currentUser.picture;
@@ -5825,7 +6465,7 @@
       engInput.value = STATE.currentUser.name;
     }
     if (gateStatus) {
-      gateStatus.textContent = `Signed in as: ${STATE.currentUser.name || STATE.currentUser.email} (${STATE.currentUser.email || ""})`;
+      gateStatus.textContent = `Signed in as: ${STATE.currentUser.name || STATE.currentUser.email} (${STATE.currentUser.email || ""}) — ${rInfo.level}. ${rInfo.label}`;
     }
     if (closeBtn) {
       closeBtn.style.display = STATE.isAuthorized ? "inline-flex" : "none";
@@ -5836,6 +6476,7 @@
     if (btnLogout) {
       btnLogout.style.display = STATE.isAuthorized ? "inline-flex" : "none";
     }
+    applyRolePermissionsToUI();
   }
 
   async function loadTeamUserProfiles() {
@@ -6322,10 +6963,9 @@
         const scopeLbl = document.getElementById("lblExternalShareScope");
         if (banner && scopeLbl) {
           banner.style.display = "flex";
-          scopeLbl.textContent = `${data.share_link.label} (${data.share_link.scope_type.toUpperCase()}: ${data.share_link.target_id}) — Strictly isolated from other scans.`;
+          scopeLbl.textContent = `${data.share_link.label} (${data.share_link.scope_type.toUpperCase()}: ${data.share_link.target_id}) — Guest Access (Level 5: Distance, Area & Coordinates only).`;
         }
-        document.getElementById("btnOpenSharing").style.display = "none";
-        document.getElementById("btnOpenOptimizer").style.display = "none";
+        applyRolePermissionsToUI();
       }
 
       const nextCatalogSig = (STATE.scans || [])

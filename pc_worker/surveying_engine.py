@@ -231,7 +231,7 @@ class SurveyingEngine:
 
             if isinstance(loaded, trimesh.Scene):
                 verts_list = [
-                    np.asarray(g.vertices, dtype=np.float32)
+                    np.asarray(g.vertices, dtype=np.float64)
                     for g in loaded.geometry.values()
                     if hasattr(g, "vertices") and len(g.vertices) > 0
                 ]
@@ -239,7 +239,7 @@ class SurveyingEngine:
                     return None
                 return np.vstack(verts_list)
             elif hasattr(loaded, "vertices") and len(loaded.vertices) > 0:
-                return np.asarray(loaded.vertices, dtype=np.float32)
+                return np.asarray(loaded.vertices, dtype=np.float64)
             return None
         except Exception:
             return None
@@ -307,7 +307,7 @@ class SurveyingEngine:
                         if len(parts) >= 4:
                             verts_list.append((float(parts[1]), float(parts[2]), float(parts[3])))
             if verts_list:
-                raw_verts = np.array(verts_list, dtype=np.float32)
+                raw_verts = np.array(verts_list, dtype=np.float64)
                 is_z_up = True
 
         if raw_verts is None or len(raw_verts) == 0:

@@ -164,28 +164,28 @@ def utm51n_to_wgs84(utm_e: float, utm_n: float) -> Tuple[float, float]:
     return round(math.degrees(lat), 6), round(math.degrees(lon), 6)
 
 
-# Known Engineering Project Geofences for Auto-Grouping
+# Known Engineering Project Geofences for Auto-Grouping (1 km / 1000m radius)
 KNOWN_PROJECTS = [
     {
         "project_group": "QuChi Dam",
         "project_name_zh": "屈尺堰壩體與護岸工程",
         "lat": 24.92032,
         "lon": 121.54351,
-        "radius_m": 600.0,
+        "radius_m": 1000.0,
     },
     {
         "project_group": "Rose Park",
         "project_name_zh": "板橋玫瑰公園整建工程",
         "lat": 25.02389,
         "lon": 121.45547,
-        "radius_m": 500.0,
+        "radius_m": 1000.0,
     },
     {
         "project_group": "NTU Dorm",
         "project_name_zh": "台大新建學生宿舍工程",
         "lat": 25.01552,
         "lon": 121.54218,
-        "radius_m": 500.0,
+        "radius_m": 1000.0,
     },
 ]
 
@@ -227,6 +227,23 @@ def _infer_project_prefix(hint_name: str) -> str:
     return cleaned.replace("_", " ").strip()
 
 
+def _apply_site_rename_override(pg: str, pzh: str) -> Tuple[str, str]:
+    """Applies any user-configured site rename from data/site_renames.json."""
+    try:
+        from pc_worker.config import DATA_DIR
+        ren_file = os.path.join(DATA_DIR, "site_renames.json")
+        if os.path.isfile(ren_file):
+            with open(ren_file, "r", encoding="utf-8") as rf:
+                ren_map = json.load(rf)
+            if isinstance(ren_map, dict) and pg in ren_map:
+                entry = ren_map[pg]
+                if isinstance(entry, dict) and entry.get("project_group"):
+                    return entry["project_group"], entry.get("project_name_zh") or pzh
+    except Exception:
+        pass
+    return pg, pzh
+
+
 def match_project_group(
     lat: float,
     lon: float,
@@ -237,16 +254,16 @@ def match_project_group(
     """
     Project-agnostic resolver that scales to 100+ engineering projects:
     1. Explicit parent project folder name (e.g., C:\\GatheringScans\\<Project>\\<Scan>)
-    2. Spatial proximity match (<= radius_m) against known + dynamically discovered project clusters
+    2. Spatial proximity match (<= 1000m / 1 km radius) against known + dynamically discovered project clusters
     3. Project prefix inferred from folder/archive filename (e.g., 'ProjectX_20261015.zip' -> 'ProjectX')
-    4. Coordinate-based site cluster fallback ('Site (24.9203N, 121.5435E)')
+    4. Coordinate-based site cluster fallback ('Site (25.0880N, 121.5218E)') when no scans exist within 1 km
     """
     if parent_project and parent_project.strip():
         pg = parent_project.strip()
         for p in KNOWN_PROJECTS:
             if p["project_group"].lower() == pg.lower():
-                return p["project_group"], p["project_name_zh"]
-        return pg, f"{pg} 工程掃描群組"
+                return _apply_site_rename_override(p["project_group"], p["project_name_zh"])
+        return _apply_site_rename_override(pg, f"{pg} 工程掃描群組")
 
     candidates = list(KNOWN_PROJECTS)
     reg_file = os.path.join(LOCAL_SCANS_ROOT, "projects_registry.json")
@@ -266,23 +283,29 @@ def match_project_group(
     for p in candidates:
         try:
             d = haversine_m(lat, lon, float(p["lat"]), float(p["lon"]))
-            rad = float(p.get("radius_m", 600.0))
+            rad = max(float(p.get("radius_m", 1000.0)), 1000.0)
             if d <= rad and d < best_dist:
                 best = p
                 best_dist = d
         except Exception:
             continue
     if best:
-        return best["project_group"], best.get("project_name_zh") or f"{best['project_group']} 工程掃描群組"
+        return _apply_site_rename_override(
+            best["project_group"],
+            best.get("project_name_zh") or f"{best['project_group']} 工程掃描群組",
+        )
 
     inferred = _infer_project_prefix(hint_name)
     if inferred:
         for p in candidates:
             if p["project_group"].lower() == inferred.lower():
-                return p["project_group"], p.get("project_name_zh") or f"{inferred} 工程掃描群組"
-        return inferred, f"{inferred} 工程掃描群組"
+                return _apply_site_rename_override(
+                    p["project_group"],
+                    p.get("project_name_zh") or f"{inferred} 工程掃描群組",
+                )
+        return _apply_site_rename_override(inferred, f"{inferred} 工程掃描群組")
 
-    return f"Site ({lat:.4f}N, {lon:.4f}E)", "新增工區掃描點"
+    return _apply_site_rename_override(f"Site ({lat:.4f}N, {lon:.4f}E)", "新增工區掃描點")
 
 
 GATHEREN_DRIVEFS_USER_MAP: Dict[str, Tuple[str, str, str, str]] = {
@@ -380,19 +403,158 @@ def normalize_gatheren_uploader(uploader_name: str, uploader_email: str, hint_pa
     return name, email
 
 
+def _extract_image_exif_xmp_gps(img_header_bytes: bytes) -> Optional[Dict[str, float]]:
+    """
+    Fast (<1ms) parser that extracts RTK / GPS coordinates and horizontal accuracy from
+    Pix4DCatch XMP headers (Camera:RTKLatitude, Camera:RTKLongitude, Camera:RTKAltitude,
+    Camera:RTKXYAccuracy, exif:GPSLatitude, etc.) or standard EXIF tags in the first 64 KB of a JPEG.
+    """
+    if not img_header_bytes:
+        return None
+    try:
+        header_txt = img_header_bytes[:65536].decode("latin-1", errors="ignore")
+        lat_val: Optional[float] = None
+        lon_val: Optional[float] = None
+        alt_val: float = 37.4
+        acc_cm: Optional[float] = None
+
+        m_lat = re.search(
+            r'(?:Camera:RTKLatitude|Camera:GPSLatitude|exif:GPSLatitude)\s*=\s*"([+\-]?\d+(?:\.\d+)?)"',
+            header_txt,
+        )
+        m_lon = re.search(
+            r'(?:Camera:RTKLongitude|Camera:GPSLongitude|exif:GPSLongitude)\s*=\s*"([+\-]?\d+(?:\.\d+)?)"',
+            header_txt,
+        )
+        if m_lat and m_lon:
+            lat_val = float(m_lat.group(1))
+            lon_val = float(m_lon.group(1))
+
+        m_alt = re.search(
+            r'(?:Camera:RTKAltitude|Camera:GPSAltitude|exif:GPSAltitude)\s*=\s*"([+\-]?\d+(?:\.\d+)?)"',
+            header_txt,
+        )
+        if m_alt:
+            alt_val = float(m_alt.group(1))
+
+        m_acc = re.search(
+            r'(?:Camera:RTKXYAccuracy|Camera:GPSXYAccuracy)\s*=\s*"([+\-]?\d+(?:\.\d+)?)"',
+            header_txt,
+        )
+        if m_acc:
+            acc_m = float(m_acc.group(1))
+            if acc_m > 0:
+                acc_cm = round(max(acc_m * 100.0, 0.5), 2)
+
+        if lat_val is None or lon_val is None:
+            import io
+            from PIL import Image
+
+            with Image.open(io.BytesIO(img_header_bytes)) as im:
+                exif = im._getexif() or {}
+                gps_ifd = exif.get(34853)
+                if isinstance(gps_ifd, dict) and 2 in gps_ifd and 4 in gps_ifd:
+                    def _dms_to_deg(dms, ref: str) -> float:
+                        d = float(dms[0]) + float(dms[1]) / 60.0 + float(dms[2]) / 3600.0
+                        return -d if str(ref).upper() in ("S", "W") else d
+
+                    lat_val = _dms_to_deg(gps_ifd[2], gps_ifd.get(1, "N"))
+                    lon_val = _dms_to_deg(gps_ifd[4], gps_ifd.get(3, "E"))
+                    if 6 in gps_ifd:
+                        alt_val = float(gps_ifd[6])
+
+        if lat_val is not None and lon_val is not None and -90.0 <= lat_val <= 90.0 and -180.0 <= lon_val <= 180.0:
+            if abs(lat_val) > 0.001 and abs(lon_val) > 0.001:
+                res: Dict[str, float] = {
+                    "lat": round(lat_val, 6),
+                    "lon": round(lon_val, 6),
+                    "elev_m": round(alt_val, 2),
+                }
+                if acc_cm is not None:
+                    res["rtk_accuracy_cm"] = acc_cm
+                return res
+    except Exception:
+        pass
+    return None
+
+
+def _apply_extracted_coords_to_info(info: Dict[str, Any], cx: float, cy: float, cz: float, crs_desc: str = "") -> bool:
+    """Applies extracted coordinates (UTM51N, TWD97 TM2-121, or geodetic lat/lon) to info dict."""
+    if "UTM zone 51N" in crs_desc or (100000 <= cx <= 850000 and 2500000 <= cy <= 3000000 and (cx < 200000 or cx > 345000)):
+        lat, lon = utm51n_to_wgs84(cx, cy)
+        twd_e, twd_n, twd_h = wgs84_to_twd97(lat, lon, cz - 20.6)
+        info.update(
+            {
+                "lat": lat,
+                "lon": lon,
+                "elev_m": round(twd_h, 2),
+                "twd97_e": twd_e,
+                "twd97_n": twd_n,
+                "twd97_h": twd_h,
+            }
+        )
+        return True
+    if 150000 <= cx <= 345000 and 2400000 <= cy <= 2850000:
+        lat, lon = twd97_to_wgs84(cx, cy)
+        info.update(
+            {
+                "lat": lat,
+                "lon": lon,
+                "elev_m": round(cz, 2),
+                "twd97_e": round(cx, 3),
+                "twd97_n": round(cy, 3),
+                "twd97_h": round(cz, 2),
+            }
+        )
+        return True
+    # Geodetic degrees: either (lat, lon) = (cx, cy) or (lon, lat) = (cx, cy)
+    if 20.0 <= cx <= 27.0 and 118.0 <= cy <= 123.5:
+        lat, lon = round(cx, 6), round(cy, 6)
+        twd_e, twd_n, twd_h = wgs84_to_twd97(lat, lon, cz)
+        info.update(
+            {
+                "lat": lat,
+                "lon": lon,
+                "elev_m": round(twd_h, 2),
+                "twd97_e": twd_e,
+                "twd97_n": twd_n,
+                "twd97_h": twd_h,
+            }
+        )
+        return True
+    if 118.0 <= cx <= 123.5 and 20.0 <= cy <= 27.0:
+        lat, lon = round(cy, 6), round(cx, 6)
+        twd_e, twd_n, twd_h = wgs84_to_twd97(lat, lon, cz)
+        info.update(
+            {
+                "lat": lat,
+                "lon": lon,
+                "elev_m": round(twd_h, 2),
+                "twd97_e": twd_e,
+                "twd97_n": twd_n,
+                "twd97_h": twd_h,
+            }
+        )
+        return True
+    return False
+
+
 def extract_opf_zip_metadata(zip_path: str) -> Dict[str, Any]:
     """
-    Fast (<50ms) metadata extractor for Pix4DCatch 'Export to PIX4Dmatic' .zip archives.
-    Reads OPF JSON headers directly from the ZIP central directory without unpacking images.
+    Fast metadata extractor for Pix4DCatch 'Export to PIX4Dmatic' .zip archives
+    AND raw photo folders uploaded directly to Google Drive.
+    Reads OPF JSON headers or JPEG EXIF/XMP RTK tags and converts coordinates to TWD97 + TWVD2001.
     """
     stat = os.stat(zip_path)
-    bname = os.path.splitext(os.path.basename(zip_path))[0]
+    is_dir = os.path.isdir(zip_path)
+    raw_base = os.path.basename(zip_path.rstrip("/\\"))
+    bname = raw_base if is_dir else os.path.splitext(raw_base)[0]
     dfs_name, dfs_email = _resolve_drivefs_uploader(zip_path)
     info: Dict[str, Any] = {
         "scan_id": f"catch_{bname.replace('-', '_')}",
         "name": bname,
         "source_zip_path": zip_path,
-        "size_bytes": stat.st_size,
+        "size_bytes": stat.st_size if not is_dir else 0,
         "uploaded_at": stat.st_mtime,
         "capture_date": bname[:10] + " " + bname[11:16].replace("-", ":")
         if len(bname) >= 16 and bname[4] == "-"
@@ -425,42 +587,58 @@ def extract_opf_zip_metadata(zip_path: str) -> Dict[str, Any]:
         except Exception:
             pass
 
+    coords_resolved = False
     try:
-        with zipfile.ZipFile(zip_path, "r") as zf:
-            names = zf.namelist()
-            jpgs = [n for n in names if n.lower().endswith((".jpg", ".jpeg", ".png"))]
-            info["image_count"] = len(jpgs)
+        if is_dir:
+            jpg_files: List[str] = []
+            meta_files_disk: List[str] = []
+            srf_files_disk: List[str] = []
+            cam_files_disk: List[str] = []
+            total_sz = 0
+            latest_mt = stat.st_mtime
+            for root, _, files in os.walk(zip_path):
+                for fn in sorted(files):
+                    fp = os.path.join(root, fn)
+                    try:
+                        fst = os.stat(fp)
+                        total_sz += fst.st_size
+                        if fst.st_mtime > latest_mt:
+                            latest_mt = fst.st_mtime
+                    except OSError:
+                        pass
+                    low = fn.lower()
+                    if low.endswith((".jpg", ".jpeg", ".png")):
+                        jpg_files.append(fp)
+                    elif fn.endswith("projectMetadata.json"):
+                        meta_files_disk.append(fp)
+                    elif fn.endswith("scene_reference_frame.json"):
+                        srf_files_disk.append(fp)
+                    elif fn.endswith("input_cameras.json"):
+                        cam_files_disk.append(fp)
 
-            # 1. Read projectMetadata.json if present
-            meta_files = [n for n in names if n.endswith("projectMetadata.json")]
-            if meta_files:
-                mdata = json.loads(zf.read(meta_files[0]).decode("utf-8"))
-                loc_info = mdata.get("locationInfo", {})
-                min_h_acc = loc_info.get("minHorizontalAccuracy")
+            info["image_count"] = len(jpg_files)
+            info["size_bytes"] = max(total_sz, 1024)
+            info["uploaded_at"] = latest_mt
+
+            if meta_files_disk:
+                with open(meta_files_disk[0], "r", encoding="utf-8") as mf:
+                    mdata = json.load(mf)
+                min_h_acc = (mdata.get("locationInfo") or {}).get("minHorizontalAccuracy")
                 if min_h_acc is not None:
                     info["rtk_accuracy_cm"] = round(max(float(min_h_acc) * 100.0, 0.8), 2)
 
-            # 2. Read scene_reference_frame.json and input_cameras.json
-            srf_files = [n for n in names if n.endswith("scene_reference_frame.json")]
-            cam_files = [n for n in names if n.endswith("input_cameras.json")]
-
             crs_desc = ""
-            tx, ty, tz = 0.0, 0.0, 0.0
-            if srf_files:
-                srf = json.loads(zf.read(srf_files[0]).decode("utf-8"))
-                crs_obj = srf.get("crs", {})
-                crs_desc = crs_obj.get("definition", "")
-                shift = crs_obj.get(" canonical_to_translated_canonical", {}).get("shift") or srf.get("shift") or [0, 0, 0]
-                if len(shift) >= 3:
-                    tx, ty, tz = float(shift[0]), float(shift[1]), float(shift[2])
+            if srf_files_disk:
+                with open(srf_files_disk[0], "r", encoding="utf-8") as sf:
+                    srf = json.load(sf)
+                crs_desc = (srf.get("crs") or {}).get("definition", "")
 
-            if cam_files:
-                cams = json.loads(zf.read(cam_files[0]).decode("utf-8"))
-                cam_list = cams.get("cameras", [])
+            if cam_files_disk:
+                with open(cam_files_disk[0], "r", encoding="utf-8") as cf:
+                    cams = json.load(cf)
+                cam_list = cams.get("cameras") or cams.get("captures") or []
                 if cam_list and info["image_count"] == 0:
                     info["image_count"] = len(cam_list)
-
-                # Extract geolocation from first valid geolocation block
                 geolocs = cams.get("geolocations", []) or [
                     c.get("geolocation") for c in cam_list if c.get("geolocation")
                 ]
@@ -470,37 +648,102 @@ def extract_opf_zip_metadata(zip_path: str) -> Dict[str, Any]:
                     avg_h_sigma = sum(math.hypot(s[0], s[1]) for s in sigmas[:30]) / min(len(sigmas), 30)
                     if avg_h_sigma > 0:
                         info["rtk_accuracy_cm"] = round(avg_h_sigma * 100.0, 2)
-
                 if valid_coords:
                     cx = sum(c[0] for c in valid_coords) / len(valid_coords)
                     cy = sum(c[1] for c in valid_coords) / len(valid_coords)
                     cz = sum(c[2] for c in valid_coords) / len(valid_coords)
+                    coords_resolved = _apply_extracted_coords_to_info(info, cx, cy, cz, crs_desc)
 
-                    if "UTM zone 51N" in crs_desc or (100000 <= cx <= 850000 and 2500000 <= cy <= 3000000 and cx < 200000):
-                        lat, lon = utm51n_to_wgs84(cx, cy)
-                        twd_e, twd_n, twd_h = wgs84_to_twd97(lat, lon, cz - 20.6)
-                        info.update(
-                            {
-                                "lat": lat,
-                                "lon": lon,
-                                "elev_m": round(twd_h, 2),
-                                "twd97_e": twd_e,
-                                "twd97_n": twd_n,
-                                "twd97_h": twd_h,
-                            }
-                        )
-                    elif 150000 <= cx <= 380000 and 2400000 <= cy <= 2850000:
-                        lat, lon = twd97_to_wgs84(cx, cy)
-                        info.update(
-                            {
-                                "lat": lat,
-                                "lon": lon,
-                                "elev_m": round(cz, 2),
-                                "twd97_e": round(cx, 3),
-                                "twd97_n": round(cy, 3),
-                                "twd97_h": round(cz, 2),
-                            }
-                        )
+            if not coords_resolved and jpg_files:
+                sample_paths = jpg_files[:5] if len(jpg_files) <= 10 else [
+                    jpg_files[0],
+                    jpg_files[len(jpg_files) // 4],
+                    jpg_files[len(jpg_files) // 2],
+                    jpg_files[(3 * len(jpg_files)) // 4],
+                    jpg_files[-1],
+                ]
+                samples = []
+                for sp in sample_paths:
+                    try:
+                        with open(sp, "rb") as jf:
+                            parsed = _extract_image_exif_xmp_gps(jf.read(65536))
+                        if parsed:
+                            samples.append(parsed)
+                    except Exception:
+                        pass
+                if samples:
+                    avg_lat = sum(s["lat"] for s in samples) / len(samples)
+                    avg_lon = sum(s["lon"] for s in samples) / len(samples)
+                    avg_elev = sum(s["elev_m"] for s in samples) / len(samples)
+                    accs = [s["rtk_accuracy_cm"] for s in samples if "rtk_accuracy_cm" in s]
+                    if accs:
+                        info["rtk_accuracy_cm"] = round(sum(accs) / len(accs), 2)
+                    coords_resolved = _apply_extracted_coords_to_info(info, avg_lat, avg_lon, avg_elev)
+        else:
+            with zipfile.ZipFile(zip_path, "r") as zf:
+                names = zf.namelist()
+                jpgs = [n for n in names if n.lower().endswith((".jpg", ".jpeg", ".png"))]
+                info["image_count"] = len(jpgs)
+
+                # 1. Read projectMetadata.json if present
+                meta_files = [n for n in names if n.endswith("projectMetadata.json")]
+                if meta_files:
+                    mdata = json.loads(zf.read(meta_files[0]).decode("utf-8"))
+                    loc_info = mdata.get("locationInfo", {})
+                    min_h_acc = loc_info.get("minHorizontalAccuracy")
+                    if min_h_acc is not None:
+                        info["rtk_accuracy_cm"] = round(max(float(min_h_acc) * 100.0, 0.8), 2)
+
+                # 2. Read scene_reference_frame.json and input_cameras.json
+                srf_files = [n for n in names if n.endswith("scene_reference_frame.json")]
+                cam_files = [n for n in names if n.endswith("input_cameras.json")]
+
+                crs_desc = ""
+                if srf_files:
+                    srf = json.loads(zf.read(srf_files[0]).decode("utf-8"))
+                    crs_obj = srf.get("crs", {})
+                    crs_desc = crs_obj.get("definition", "")
+
+                if cam_files:
+                    cams = json.loads(zf.read(cam_files[0]).decode("utf-8"))
+                    cam_list = cams.get("cameras") or cams.get("captures") or []
+                    if cam_list and info["image_count"] == 0:
+                        info["image_count"] = len(cam_list)
+
+                    geolocs = cams.get("geolocations", []) or [
+                        c.get("geolocation") for c in cam_list if c.get("geolocation")
+                    ]
+                    valid_coords = [g["coordinates"] for g in geolocs if g and "coordinates" in g]
+                    sigmas = [g.get("sigmas") for g in geolocs if g and g.get("sigmas")]
+                    if sigmas:
+                        avg_h_sigma = sum(math.hypot(s[0], s[1]) for s in sigmas[:30]) / min(len(sigmas), 30)
+                        if avg_h_sigma > 0:
+                            info["rtk_accuracy_cm"] = round(avg_h_sigma * 100.0, 2)
+
+                    if valid_coords:
+                        cx = sum(c[0] for c in valid_coords) / len(valid_coords)
+                        cy = sum(c[1] for c in valid_coords) / len(valid_coords)
+                        cz = sum(c[2] for c in valid_coords) / len(valid_coords)
+                        coords_resolved = _apply_extracted_coords_to_info(info, cx, cy, cz, crs_desc)
+
+                if not coords_resolved and jpgs:
+                    samples = []
+                    for jname in jpgs[:3]:
+                        try:
+                            with zf.open(jname, "r") as jf:
+                                parsed = _extract_image_exif_xmp_gps(jf.read(65536))
+                            if parsed:
+                                samples.append(parsed)
+                        except Exception:
+                            pass
+                    if samples:
+                        avg_lat = sum(s["lat"] for s in samples) / len(samples)
+                        avg_lon = sum(s["lon"] for s in samples) / len(samples)
+                        avg_elev = sum(s["elev_m"] for s in samples) / len(samples)
+                        accs = [s["rtk_accuracy_cm"] for s in samples if "rtk_accuracy_cm" in s]
+                        if accs:
+                            info["rtk_accuracy_cm"] = round(sum(accs) / len(accs), 2)
+                        coords_resolved = _apply_extracted_coords_to_info(info, avg_lat, avg_lon, avg_elev)
     except Exception as e:
         print(f"[GDriveWatcher] Warning parsing {zip_path}: {e}")
 
@@ -726,11 +969,12 @@ def _compute_scan_covered_area_m2(folder_path: str, tileset_path: str, half_exte
 
 
 def _infer_capture_date_from_name(folder_name: str, fallback_mtime: float) -> str:
-    """Extracts YYYY-MM-DD from folder names like QuChi_20261015-obj_mesh or NTU_Dorm_260915."""
+    """Extracts YYYY-MM-DD (and optional HH:MM) from folder names like 2026-09-21-11-39-49, QuChi_20261015, or NTU_Dorm_260915."""
     time_part = datetime.fromtimestamp(fallback_mtime).strftime("%H:%M")
-    m8 = re.search(r"(20\d{2})([01]\d)([0-3]\d)", folder_name)
-    if m8:
-        return f"{m8.group(1)}-{m8.group(2)}-{m8.group(3)} {time_part}"
+    m_full = re.search(r"(20\d{2})[-_]?([01]\d)[-_]?([0-3]\d)(?:[-_]([0-2]\d)[-_]([0-5]\d))?", folder_name)
+    if m_full:
+        hh_mm = f"{m_full.group(4)}:{m_full.group(5)}" if (m_full.group(4) and m_full.group(5)) else time_part
+        return f"{m_full.group(1)}-{m_full.group(2)}-{m_full.group(3)} {hh_mm}"
     m6 = re.search(r"(?<!\d)(2\d)([01]\d)([0-3]\d)(?!\d)", folder_name)
     if m6:
         return f"20{m6.group(1)}-{m6.group(2)}-{m6.group(3)} {time_part}"
@@ -1003,6 +1247,8 @@ def _discover_folder_scan_item(
             parent_project=parent_project,
             dynamic_clusters=dynamic_clusters,
         )
+    else:
+        proj_group, proj_zh = _apply_site_rename_override(proj_group, proj_zh or f"{proj_group} 工程掃描群組")
 
     if dynamic_clusters is not None and not any(c.get("project_group") == proj_group for c in dynamic_clusters):
         dynamic_clusters.append(
@@ -1011,7 +1257,7 @@ def _discover_folder_scan_item(
                 "project_name_zh": proj_zh or f"{proj_group} 工程掃描群組",
                 "lat": lat,
                 "lon": lon,
-                "radius_m": 600.0,
+                "radius_m": 1000.0,
             }
         )
 
@@ -1066,16 +1312,13 @@ def _discover_folder_scan_item(
         "twd97_e": twd_e,
         "twd97_n": twd_n,
         "twd97_h": twd_h,
-        "bounding_box": meta.get(
-            "bounding_box",
-            {
-                "center": [twd_e, twd_n, twd_h],
-                "half_extents": half_extents,
-            },
-        ),
+        "bounding_box": meta.get("bounding_box") or {
+            "center": [twd_e, twd_n, twd_h],
+            "half_extents": half_extents,
+        },
         "status": meta.get("status", "completed"),
         "progress_pct": float(meta.get("progress_pct", 100.0)),
-        "stage_label": meta.get("stage_label", "Completed (TWD97 + TWVD2001, 2K Web Tileset)"),
+        "stage_label": meta.get("stage_label", "Completed (TWD97 + TWVD2001, 4K Web Tileset)"),
         "notes": meta.get("notes", f"Dynamically loaded from {folder_path}"),
     }
 
@@ -1083,6 +1326,7 @@ def _discover_folder_scan_item(
     need_write_meta = (
         not os.path.isfile(meta_file)
         or not meta.get("covered_area_m2")
+        or not meta.get("bounding_box")
         or (not user_edited and meta.get("name") != resolved_name)
         or meta.get("uploader_name") != resolved_uploader_name
     )
@@ -1103,7 +1347,7 @@ def _discover_folder_scan_item(
 
 
 MULTIPART_ZIP_RE = re.compile(
-    r"^(?P<base>.+?)[_\-\s\(]+(?P<part>\d+)\s*of\s*(?P<total>\d+)\)?\.zip$",
+    r"^(?P<base>.+?)[_\-\s\(]+(?P<part>\d+)\s*of\s*(?P<total>\d+)\)?(?:\.zip)?$",
     re.IGNORECASE,
 )
 
@@ -1137,6 +1381,58 @@ def parse_multipart_zip_filename(filename: str) -> Tuple[str, int, int]:
     return stem, 1, 1
 
 
+def _inspect_raw_photo_scan_folder(folder_path: str) -> Tuple[bool, bool, int, int]:
+    """
+    Checks whether a folder in Google Drive inbox is a raw photo/Pix4DCatch scan folder
+    (not yet processed into .obj/.glb/tileset.json).
+    Returns (is_raw_scan, is_settled, jpg_count, total_file_count).
+    """
+    if not os.path.isdir(folder_path):
+        return False, False, 0, 0
+    folder_name = os.path.basename(folder_path.rstrip("/\\"))
+    if not folder_name or folder_name.startswith(("_", ".")) or folder_name.lower() in INTERNAL_ASSET_DIRS or folder_name.lower() == "streampackages":
+        return False, False, 0, 0
+    if _folder_has_completed_scan_assets(folder_path):
+        return False, False, 0, 0
+
+    jpg_count = 0
+    tiff_count = 0
+    total_files = 0
+    newest_mtime = 0.0
+    try:
+        for root, _, files in os.walk(folder_path):
+            rel_depth = os.path.relpath(root, folder_path).count(os.sep)
+            if rel_depth > 2:
+                continue
+            for fn in files:
+                if fn.startswith("."):
+                    continue
+                fp = os.path.join(root, fn)
+                total_files += 1
+                try:
+                    mt = os.path.getmtime(fp)
+                    if mt > newest_mtime:
+                        newest_mtime = mt
+                except OSError:
+                    pass
+                low = fn.lower()
+                if low.endswith((".jpg", ".jpeg", ".png")):
+                    jpg_count += 1
+                elif low.endswith((".tiff", ".tif")):
+                    tiff_count += 1
+    except Exception:
+        return False, False, 0, 0
+
+    if jpg_count == 0 and tiff_count == 0:
+        return False, False, 0, 0
+
+    expected_jpgs = (tiff_count // 2) if tiff_count >= 2 else 1
+    has_all_expected_jpgs = jpg_count >= max(1, expected_jpgs)
+    quiet_seconds = time.time() - newest_mtime if newest_mtime > 0 else 999.0
+    is_settled = has_all_expected_jpgs and (quiet_seconds >= 5.0 or (tiff_count >= 2 and jpg_count == expected_jpgs))
+    return True, is_settled, jpg_count, total_files
+
+
 import threading as _threading
 _DISCOVERY_LOCK = _threading.RLock()
 
@@ -1154,7 +1450,8 @@ def _seed_and_discover_scans_locked(db: ScanQueueDB) -> List[Dict[str, Any]]:
       dropped into Google Drive are first copied into C:\\GatheringScans (LOCAL_SCANS_ROOT) and
       tiled/indexed exclusively from local disk.
     - Scales cleanly to 100+ projects via flat scan folders or nested project folders.
-    - Single-part ('FileName.zip') and multi-part ('FileName_1of4.zip' .. 'FileName_4of4.zip') archives.
+    - Single-part ('FileName.zip'), multi-part ('FileName_1of4.zip' .. 'FileName_4of4.zip') archives,
+      AND raw photo folders ('2026-09-21-11-39-49') uploaded from tablets/phones.
     - Immediate removal from SQLite when a scan folder or archive is deleted from local disk.
     """
     discovered_ids = set()
@@ -1165,13 +1462,13 @@ def _seed_and_discover_scans_locked(db: ScanQueueDB) -> List[Dict[str, Any]]:
         inbox_dirs.append(GDRIVE_INBOX_DIR)
 
     # 0. Sync any completed scan folders from Google Drive (input-only) into C:\GatheringScans (local disk storage)
-    #    and collect .zip raw-photo archives for the PIX4Dmatic queue.
+    #    and collect .zip raw-photo archives AND raw-photo folders for the PIX4Dmatic queue.
     grouped_uploads: Dict[Tuple[str, str, int], Dict[str, Any]] = {}
     seen_zip_keys = set()
 
     for idir in inbox_dirs:
         for entry in sorted(os.listdir(idir)):
-            if entry.startswith(("_", ".")):
+            if entry.startswith(("_", ".")) or entry.lower() == "streampackages":
                 continue
             epath = os.path.join(idir, entry)
             if not is_safe_jailed_path(epath, idir):
@@ -1181,31 +1478,42 @@ def _seed_and_discover_scans_locked(db: ScanQueueDB) -> List[Dict[str, Any]]:
             if os.path.isfile(epath) and entry.lower().endswith(".zip"):
                 zip_candidates.append(("", entry, epath))
             elif os.path.isdir(epath):
-                # First check if epath itself is directly a scan folder (e.g. QuChi_20261015-obj_mesh or QuChi_20261015-cesium_mesh)
+                # First check if epath itself is directly a completed scan folder
                 if _is_direct_scan_folder(epath):
                     _sync_gdrive_folder_to_local_vault(epath, parent_project="")
                 else:
-                    # Otherwise check if epath is a Project Folder containing nested scan folders or .zip archives
-                    synced_nested = False
-                    for sub_fn in sorted(os.listdir(epath)):
-                        if sub_fn.startswith(("_", ".")) or sub_fn.lower() in INTERNAL_ASSET_DIRS:
-                            continue
-                        sub_fpath = os.path.join(epath, sub_fn)
-                        if not is_safe_jailed_path(sub_fpath, idir):
-                            continue
-                        if os.path.isfile(sub_fpath) and sub_fn.lower().endswith(".zip"):
-                            zip_candidates.append((entry, sub_fn, sub_fpath))
-                        elif os.path.isdir(sub_fpath):
-                            local_dst = _sync_gdrive_folder_to_local_vault(sub_fpath, parent_project=entry)
-                            if local_dst:
-                                synced_nested = True
+                    # Check if epath is a raw photo scan folder (e.g. 2026-09-21-11-39-49)
+                    is_raw, _, _, _ = _inspect_raw_photo_scan_folder(epath)
+                    if is_raw:
+                        zip_candidates.append(("", entry, epath))
+                    else:
+                        # Otherwise check if epath is a Project Folder containing nested scan folders or .zip archives
+                        synced_nested = False
+                        for sub_fn in sorted(os.listdir(epath)):
+                            if sub_fn.startswith(("_", ".")) or sub_fn.lower() in INTERNAL_ASSET_DIRS:
+                                continue
+                            sub_fpath = os.path.join(epath, sub_fn)
+                            if not is_safe_jailed_path(sub_fpath, idir):
+                                continue
+                            if os.path.isfile(sub_fpath) and sub_fn.lower().endswith(".zip"):
+                                zip_candidates.append((entry, sub_fn, sub_fpath))
+                            elif os.path.isdir(sub_fpath):
+                                sub_raw, _, _, _ = _inspect_raw_photo_scan_folder(sub_fpath)
+                                if sub_raw:
+                                    zip_candidates.append((entry, sub_fn, sub_fpath))
+                                else:
+                                    local_dst = _sync_gdrive_folder_to_local_vault(sub_fpath, parent_project=entry)
+                                    if local_dst:
+                                        synced_nested = True
 
-                    if not synced_nested and not zip_candidates:
-                        _sync_gdrive_folder_to_local_vault(epath, parent_project="")
+                        if not synced_nested and not zip_candidates:
+                            _sync_gdrive_folder_to_local_vault(epath, parent_project="")
 
             for parent_proj, fname, fpath in zip_candidates:
                 dedup_key = (parent_proj.lower(), fname.lower())
-                if dedup_key in seen_zip_keys or os.path.getsize(fpath) <= 0:
+                if dedup_key in seen_zip_keys:
+                    continue
+                if os.path.isfile(fpath) and os.path.getsize(fpath) <= 0:
                     continue
                 seen_zip_keys.add(dedup_key)
                 base_name, part_idx, total_parts = parse_multipart_zip_filename(fname)
@@ -1294,6 +1602,18 @@ def _seed_and_discover_scans_locked(db: ScanQueueDB) -> List[Dict[str, Any]]:
         missing_parts = [p for p in range(1, total_parts + 1) if p not in parts_map]
         all_parts_ready = len(missing_parts) == 0
 
+        folder_syncing = False
+        sync_jpg_count = 0
+        sync_total_files = 0
+        for p in present_parts:
+            ppath = parts_map[p]
+            if os.path.isdir(ppath):
+                is_raw, is_settled, j_cnt, tot_cnt = _inspect_raw_photo_scan_folder(ppath)
+                sync_jpg_count += j_cnt
+                sync_total_files += tot_cnt
+                if is_raw and not is_settled:
+                    folder_syncing = True
+
         part_metas = [extract_opf_zip_metadata(parts_map[p]) for p in present_parts]
         primary_meta = dict(part_metas[0])
 
@@ -1332,7 +1652,12 @@ def _seed_and_discover_scans_locked(db: ScanQueueDB) -> List[Dict[str, Any]]:
             primary_meta["tileset_path"] = existing.get("tileset_path", cand_processed_ts if os.path.isfile(cand_processed_ts) else "")
             primary_meta["obj_path"] = existing.get("obj_path", "")
             primary_meta["project_dir"] = existing.get("project_dir", cand_processed_dir)
-        elif all_parts_ready and os.path.isfile(cand_processed_ts):
+        elif all_parts_ready and not folder_syncing and os.path.isfile(cand_processed_ts):
+            if scan_id in discovered_ids and existing and existing.get("tileset_path"):
+                primary_meta = dict(existing)
+                primary_meta["source_zip_path"] = ";".join(parts_map[p] for p in present_parts)
+                db.upsert_scan(primary_meta)
+                continue
             if existing and existing.get("tileset_path"):
                 primary_meta = dict(existing)
                 primary_meta["source_zip_path"] = ";".join(parts_map[p] for p in present_parts)
@@ -1345,9 +1670,17 @@ def _seed_and_discover_scans_locked(db: ScanQueueDB) -> List[Dict[str, Any]]:
                 primary_meta["obj_path"] = cand_obj
             primary_meta["status"] = "completed"
             primary_meta["progress_pct"] = 100.0
-            primary_meta["stage_label"] = f"Processed -> {scan_id} (TWD97 + TWVD2001, 2K)"
+            primary_meta["stage_label"] = f"Processed -> {scan_id} (TWD97 + TWVD2001, 4K)"
         else:
-            if not all_parts_ready:
+            if folder_syncing:
+                primary_meta["status"] = "waiting_parts"
+                primary_meta["progress_pct"] = round(min(18.0, (sync_jpg_count / max(119.0, float(sync_jpg_count + 1))) * 18.0), 1)
+                primary_meta["stage_label"] = f"Syncing from Google Drive ({sync_jpg_count} photos / {sync_total_files} files)..."
+                primary_meta["notes"] = (
+                    f"Raw photo folder '{base_name}' is actively syncing from Google Drive "
+                    f"({sync_jpg_count} photos, {sync_total_files} total files received so far)."
+                )
+            elif not all_parts_ready:
                 primary_meta["status"] = "waiting_parts"
                 primary_meta["progress_pct"] = round((len(present_parts) / total_parts) * 20.0, 1)
                 missing_str = ", ".join(str(m) for m in missing_parts)
@@ -1374,8 +1707,8 @@ def _seed_and_discover_scans_locked(db: ScanQueueDB) -> List[Dict[str, Any]]:
                         f"Queued to merge and process as a single PIX4Dmatic project ({primary_meta['image_count']} RTK photos)."
                     )
                 else:
-                    primary_meta["stage_label"] = "Queued for PIX4Dmatic (TWD97 + TWVD2001, 2K)"
-                    primary_meta["notes"] = f"Single-archive scan '{base_name}.zip' ({primary_meta['image_count']} RTK photos) ready for processing."
+                    primary_meta["stage_label"] = "Queued for PIX4Dmatic (TWD97 + TWVD2001, 4K)"
+                    primary_meta["notes"] = f"Scan '{base_name}' ({primary_meta['image_count']} RTK photos) ready for PIX4Dmatic processing."
 
         db.upsert_scan(primary_meta)
         discovered_ids.add(scan_id)
@@ -1389,7 +1722,7 @@ def _seed_and_discover_scans_locked(db: ScanQueueDB) -> List[Dict[str, Any]]:
                 st = row["status"]
                 pdir = row["project_dir"] or ""
                 szip = (row["source_zip_path"] or "").split(";")[0].strip()
-                if st in ("queued", "processing", "waiting_parts") and (os.path.isdir(pdir) or (szip and os.path.isfile(szip))):
+                if st in ("queued", "processing", "waiting_parts") and (os.path.isdir(pdir) or (szip and os.path.exists(szip))):
                     continue
                 conn.execute("DELETE FROM scans WHERE scan_id = ?", (sid,))
                 conn.execute("DELETE FROM scan_comments WHERE scan_id = ?", (sid,))

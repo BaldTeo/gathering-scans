@@ -354,6 +354,81 @@ class ScanQueueDB:
                 print(f"[DB] Warning writing renamed scan_meta.json {meta_file}: {e}")
         return scan
 
+    def rename_site(
+        self,
+        old_project_group: str,
+        new_project_group: str,
+        new_project_name_zh: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
+        """
+        Renames a site (project_group and optional project_name_zh) across all scans in SQLite,
+        updates each scan's scan_meta.json on disk, and persists the mapping in data/site_renames.json
+        so periodic discovery never reverts the site name.
+        """
+        old_grp = (old_project_group or "").strip()
+        new_grp = (new_project_group or "").strip()
+        if not old_grp or not new_grp:
+            return []
+
+        with DB_LOCK, self._connect() as conn:
+            rows = conn.execute(
+                "SELECT * FROM scans WHERE project_group = ?", (old_grp,)
+            ).fetchall()
+            existing_zh = rows[0]["project_name_zh"] if rows else ""
+            final_zh = (
+                new_project_name_zh.strip()
+                if new_project_name_zh is not None and new_project_name_zh.strip()
+                else (existing_zh or f"{new_grp} 工程掃描群組")
+            )
+            conn.execute(
+                "UPDATE scans SET project_group = ?, project_name_zh = ? WHERE project_group = ?",
+                (new_grp, final_zh, old_grp),
+            )
+            conn.commit()
+
+        # Persist in data/site_renames.json so gdrive_watcher maps old_grp -> (new_grp, final_zh)
+        try:
+            ren_file = os.path.join(os.path.dirname(self.db_path), "site_renames.json")
+            ren_map: Dict[str, Dict[str, str]] = {}
+            if os.path.isfile(ren_file):
+                with open(ren_file, "r", encoding="utf-8") as rf:
+                    loaded = json.load(rf)
+                    if isinstance(loaded, dict):
+                        ren_map = loaded
+            # Update any transitive mappings pointing to old_grp
+            for k, v in list(ren_map.items()):
+                if isinstance(v, dict) and v.get("project_group") == old_grp:
+                    ren_map[k] = {"project_group": new_grp, "project_name_zh": final_zh}
+            ren_map[old_grp] = {"project_group": new_grp, "project_name_zh": final_zh}
+            with open(ren_file, "w", encoding="utf-8") as wf:
+                json.dump(ren_map, wf, indent=2, ensure_ascii=False)
+        except Exception as e:
+            print(f"[DB] Warning persisting site_renames.json: {e}")
+
+        updated_scans = [
+            s for s in self.list_scans() if s.get("project_group") == new_grp
+        ]
+        for sc in updated_scans:
+            proj_dir = sc.get("project_dir") or ""
+            if proj_dir and os.path.isdir(proj_dir):
+                meta_file = os.path.join(proj_dir, "scan_meta.json")
+                meta: Dict[str, Any] = {}
+                if os.path.isfile(meta_file):
+                    try:
+                        with open(meta_file, "r", encoding="utf-8") as rf:
+                            meta = json.load(rf)
+                    except Exception:
+                        meta = {}
+                meta["project_group"] = new_grp
+                meta["project_name_zh"] = final_zh
+                meta["user_edited_project"] = True
+                try:
+                    with open(meta_file, "w", encoding="utf-8") as wf:
+                        json.dump(meta, wf, indent=2, ensure_ascii=False)
+                except Exception as e:
+                    print(f"[DB] Warning updating scan_meta.json for site rename {meta_file}: {e}")
+        return updated_scans
+
     def refresh_queue_priorities(self, now: Optional[float] = None) -> List[Dict[str, Any]]:
         """Recalculates dynamic WSJF-Aging priority scores for all queued jobs."""
         now_ts = now if now is not None else time.time()

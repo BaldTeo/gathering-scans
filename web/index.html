@@ -140,6 +140,11 @@
 
               <div class="gs-map-controls-row" style="display:flex;align-items:center;gap:6px;">
                 <select class="gs-select" id="mapProjectSelect" title="Select Project Site (Scalable across 100+ Projects)" style="flex:1;min-width:0;font-weight:600;"></select>
+                <button type="button" class="btn-xs" id="btnRenameMapSite" title="Rename Project Site (工區重新命名)">
+                  <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
+                  </svg>
+                </button>
                 <button type="button" class="btn-xs primary" id="btnOpenSelectedProjectTimeline" title="Open Selected Project Timeline &amp; 3D Preview">
                   <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2">
                     <polyline points="9 18 15 12 9 6"/>
@@ -163,7 +168,14 @@
       <aside class="gs-cluster-popover gs-map-right-panel active" id="clusterHoverPopover">
         <div class="gs-map-right-header">
           <div style="min-width:0;flex:1;">
-            <div style="font-size:14.5px;font-weight:700;color:var(--ui-text-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" id="popoverGroupTitle">Project Site</div>
+            <div style="display:flex;align-items:center;gap:6px;min-width:0;">
+              <div style="font-size:14.5px;font-weight:700;color:var(--ui-text-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" id="popoverGroupTitle">Project Site</div>
+              <button type="button" class="btn-xs" id="btnRenamePopoverSite" title="Rename Project Site (工區重新命名)" style="height:20px;padding:0 5px;flex-shrink:0;">
+                <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
+                </svg>
+              </button>
+            </div>
             <div style="font-size:11px;color:var(--ui-text-muted);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" id="popoverGroupSubtitle">TWD97 (121) + TWVD2001</div>
           </div>
           <div style="display:flex;gap:5px;flex-shrink:0;">
@@ -202,6 +214,12 @@
               <div style="min-width:0;flex:1;">
                 <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
                   <span class="gs-timeline-site-title" id="timelineSiteTitle">Project Site</span>
+                  <button type="button" class="btn-xs" id="btnRenameTimelineSite" title="Rename Site / 工區重新命名" style="height:21px;padding:0 6px;font-size:10.5px;">
+                    <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
+                    </svg>
+                    <span>Rename Site</span>
+                  </button>
                   <span class="gs-crs-pill" id="timelineSiteCountPill">0 Scans</span>
                   <span class="gs-crs-pill gs-timeline-crs-extra">TWD97 (121) + TWVD2001</span>
                 </div>
@@ -261,12 +279,19 @@
               </svg>
               <div class="gs-preview-text-wrap">
                 <div style="display:flex;align-items:center;gap:6px;min-width:0;">
-                  <div style="font-size:12.5px;font-weight:700;color:var(--ui-text-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" id="previewScanTitle" title="Click pencil icon to edit scan name">3D Mesh Preview</div>
+                  <div style="font-size:12.5px;font-weight:700;color:var(--ui-text-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" id="previewScanTitle" title="Click Rename Scan to edit scan name">3D Mesh Preview</div>
                   <span class="gs-lowres-preview-pill" id="previewQualityBadge" title="Interactive medium-LOD 3D preview loaded for fast browsing. Click Enlarge (bottom-right) for full-resolution 3D Studio.">Interactive Preview</span>
-                  <button type="button" class="btn-xs" id="btnRenamePreviewScan" title="Edit Scan Name" style="height:20px;padding:0 5px;flex-shrink:0;">
+                  <button type="button" class="btn-xs" id="btnRenamePreviewScan" title="Edit Scan Name / 編輯掃描名稱" style="height:21px;padding:0 6px;font-size:10.5px;flex-shrink:0;">
                     <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2">
                       <path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
                     </svg>
+                    <span>Rename</span>
+                  </button>
+                  <button type="button" class="btn-xs" id="btnRerunPreviewScan" title="Re-run Scan from Original Photos with Custom PIX4Dmatic Settings" style="height:21px;padding:0 6px;font-size:10.5px;flex-shrink:0;">
+                    <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2">
+                      <polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+                    </svg>
+                    <span>Re-run</span>
                   </button>
                 </div>
                 <div style="font-size:11px;color:var(--ui-text-secondary);font-family:monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" id="previewScanMeta">TWD97 (121) + TWVD2001</div>
@@ -337,11 +362,21 @@
             <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
           </svg>
           <select class="gs-scan-select" id="studioProjectSelect" title="Select Project Site (Scalable across 100+ Projects)"></select>
+          <button type="button" class="btn-xs" id="btnRenameStudioSite" title="Rename Project Site (工區重新命名)">
+            <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
+            </svg>
+          </button>
           <span class="gs-crs-pill" id="studioProjectGroupBadge" style="display:none;"></span>
           <select class="gs-scan-select" id="studioScanSelect" title="Select Active 3D Scan (Current Project Only)"></select>
           <button type="button" class="btn-xs" id="btnRenameStudioScan" title="Edit Active Scan Name">
             <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
+            </svg>
+          </button>
+          <button type="button" class="btn-xs" id="btnRerunStudioScan" title="Re-run Scan from Original Photos with Custom PIX4Dmatic Settings">
+            <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
             </svg>
           </button>
           <div class="gs-studio-metrics-text" style="border-left:1px solid var(--ui-border-strong);padding-left:10px;font-size:11px;font-family:monospace;color:var(--ui-text-secondary);" id="studioScanMetrics">
@@ -1106,6 +1141,96 @@
         </div>
       </div>
 
+      <!-- ==================================================================
+           ADMIN CONTROL PANEL: 5-LEVEL ACCOUNT PERMISSIONS & USER MANAGEMENT
+           ================================================================== -->
+      <div class="gs-settings-row" id="adminControlPanelSection" style="background:var(--ui-bg-subtle);border:1px solid var(--ui-border-strong);border-radius:10px;padding:12px 14px;margin-bottom:10px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap;">
+          <div>
+            <div style="font-size:12.5px;font-weight:700;color:var(--ui-text-primary);display:flex;align-items:center;gap:6px;">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="var(--ui-accent)" stroke-width="2">
+                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+              </svg>
+              <span>Admin Control Panel — 5-Level Account Permissions &amp; User Roles</span>
+            </div>
+            <div style="font-size:11px;color:var(--ui-text-muted);margin-top:2px;">
+              1. <b>Owner</b> (<code>glibivanov@gatheren.com.tw</code>) · 2. <b>Admin</b> (Manage lower roles &amp; users) · 3. <b>Editor</b> (Rename sites/scans &amp; run workflows) · 4. <b>Viewer</b> (View all scans &amp; measure; no PC workflows) · 5. <b>Guest</b> (Single shared scan &amp; basic tools: Distance, Area, Coordinates)
+            </div>
+          </div>
+          <span class="gs-crs-pill" id="badgeCurrentUserRoleLevel" style="font-weight:700;">Role: Owner (L5)</span>
+        </div>
+
+        <!-- Add / Update User Role Bar (Visible to Owner & Admin) -->
+        <div id="adminUserEditorForm" style="display:grid;grid-template-columns:1.3fr 1fr 0.9fr 1fr auto;gap:6px;margin-bottom:8px;align-items:end;">
+          <div class="gs-form-group" style="margin-bottom:0;">
+            <label style="font-size:10px;">Account Email</label>
+            <input type="email" class="gs-input" id="adminInputUserEmail" placeholder="user@gatheren.com.tw" style="font-size:11.5px;padding:4px 8px;" />
+          </div>
+          <div class="gs-form-group" style="margin-bottom:0;">
+            <label style="font-size:10px;">Display Name</label>
+            <input type="text" class="gs-input" id="adminInputUserName" placeholder="English Name" style="font-size:11.5px;padding:4px 8px;" />
+          </div>
+          <div class="gs-form-group" style="margin-bottom:0;">
+            <label style="font-size:10px;">Chinese Name</label>
+            <input type="text" class="gs-input" id="adminInputUserZhName" placeholder="中文姓名" style="font-size:11.5px;padding:4px 8px;" />
+          </div>
+          <div class="gs-form-group" style="margin-bottom:0;">
+            <label style="font-size:10px;">Permission Level (1–5)</label>
+            <select class="gs-select" id="adminSelectUserRole" style="font-size:11.5px;padding:4px 6px;">
+              <option value="admin">2. Admin (Manage Users + Editor)</option>
+              <option value="editor" selected>3. Editor (Rename &amp; Run Scans)</option>
+              <option value="viewer">4. Viewer (View &amp; Measure Only)</option>
+              <option value="guest">5. Guest (1 Scan · Basic Tools)</option>
+            </select>
+          </div>
+          <button type="button" class="btn-xs primary" id="btnAdminSaveUser" style="height:28px;padding:0 10px;">Add / Save User</button>
+        </div>
+
+        <div class="gs-table-scroll-wrap" style="max-height:185px;overflow:auto;border:1px solid var(--ui-border);border-radius:8px;background:var(--ui-bg-surface);">
+          <table class="gs-table">
+            <thead>
+              <tr>
+                <th>Account / Email</th>
+                <th>Level &amp; Role</th>
+                <th>Allowed Capabilities</th>
+                <th style="text-align:right;">Actions</th>
+              </tr>
+            </thead>
+            <tbody id="adminUsersTableBody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- ==================================================================
+           GOOGLE CLOUD SERVICE ACCOUNT (gcworker@modular-temple-508005-c4.iam.gserviceaccount.com)
+           ================================================================== -->
+      <div class="gs-settings-row" id="settingsServiceAccountCard" style="background:var(--ui-bg-subtle);border:1px solid var(--ui-border);border-radius:10px;padding:12px 14px;margin-bottom:10px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap;">
+          <div>
+            <div style="font-size:12.5px;font-weight:700;color:var(--ui-text-primary);display:flex;align-items:center;gap:6px;">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="var(--ui-accent)" stroke-width="2">
+                <path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/>
+              </svg>
+              <span>Google Drive Service Account (All GDrive Interactions)</span>
+            </div>
+            <div style="font-size:11px;color:var(--ui-text-muted);margin-top:2px;">
+              Mandatory Identity: <code style="color:var(--ui-accent);font-weight:700;user-select:all;">gcworker@modular-temple-508005-c4.iam.gserviceaccount.com</code> (Project: <code>modular-temple-508005-c4</code>)
+            </div>
+          </div>
+          <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
+            <span class="gs-crs-pill" id="badgeSettingsSaStatus">Checking...</span>
+            <label class="btn-xs" for="fileServiceAccountJsonUser" style="cursor:pointer;margin:0;" title="Upload Service Account .json Key File">Upload .JSON Key</label>
+            <input type="file" id="fileServiceAccountJsonUser" accept=".json,application/json" style="display:none;" />
+            <button type="button" class="btn-xs primary" id="btnTestServiceAccountLive" title="Test gcworker@modular-temple-508005-c4.iam.gserviceaccount.com against Google Drive API v3">Test Service Account</button>
+          </div>
+        </div>
+        <div style="display:flex;gap:6px;align-items:flex-start;margin-top:6px;">
+          <textarea class="gs-input" id="txtServiceAccountJsonUser" rows="2" placeholder='Paste JSON key for gcworker@modular-temple-508005-c4.iam.gserviceaccount.com {"type":"service_account","project_id":"modular-temple-508005-c4","private_key":"-----BEGIN PRIVATE KEY-----...","client_email":"gcworker@modular-temple-508005-c4.iam.gserviceaccount.com"}' style="flex:1;font-family:monospace;font-size:10.5px;"></textarea>
+          <button type="button" class="btn-xs primary" id="btnSaveServiceAccountJsonUser" style="height:44px;">Save &amp; Sync</button>
+        </div>
+        <div id="boxServiceAccountTestResult" style="display:none;margin-top:8px;padding:8px 10px;border-radius:6px;background:var(--ui-bg-surface);border:1px solid var(--ui-border-strong);font-size:11px;font-family:monospace;line-height:1.45;white-space:pre-wrap;"></div>
+      </div>
+
       <p style="font-size:12px;color:var(--ui-text-secondary);margin-bottom:10px;">
         Zero raw scans, photos, or 3D caches are stored on the Linux server. Optimized 3D tilesets are cached directly in your local browser (<code>CacheStorage</code> + <code>IndexedDB</code>) for offline inspection when the processing PC is powered off.
       </p>
@@ -1274,6 +1399,156 @@
     </div>
   </div>
 
+  <!-- ========================================================================
+       MODAL 5: EDIT & SAVE SITE (PROJECT GROUP) NAME
+       ======================================================================== -->
+  <div class="gs-modal-backdrop" id="renameSiteModal" role="dialog" aria-modal="true" aria-labelledby="renameSiteModalTitle">
+    <div class="gs-modal-window" style="width:460px;max-width:95vw;">
+      <div class="gs-modal-header">
+        <div>
+          <div class="gs-modal-title" id="renameSiteModalTitle">Rename Project Site / 工區重新命名</div>
+          <div class="gs-modal-subtitle" id="renameSiteModalSub">Updates all scans in this site cluster</div>
+        </div>
+        <button type="button" class="btn-xs" data-close-modal="renameSiteModal" title="Close">✕</button>
+      </div>
+      <div class="gs-modal-body" style="padding:18px 20px;display:flex;flex-direction:column;gap:12px;">
+        <div>
+          <label for="renameSiteGroupInput" style="display:block;font-size:12px;font-weight:700;color:var(--ui-text-secondary);margin-bottom:5px;">Site Name (English / Primary Group Name)</label>
+          <input
+            type="text"
+            id="renameSiteGroupInput"
+            class="gs-input"
+            placeholder="e.g. Office Roof Training"
+            style="width:100%;font-size:13.5px;font-weight:600;"
+          />
+        </div>
+        <div>
+          <label for="renameSiteZhInput" style="display:block;font-size:12px;font-weight:700;color:var(--ui-text-secondary);margin-bottom:5px;">Site Display Subtitle / 中文工區名稱</label>
+          <input
+            type="text"
+            id="renameSiteZhInput"
+            class="gs-input"
+            placeholder="e.g. 辦公室屋頂訓練"
+            style="width:100%;font-size:13px;"
+          />
+        </div>
+        <div style="display:flex;justify-content:flex-end;align-items:center;gap:8px;margin-top:4px;">
+          <button type="button" class="btn-xs" data-close-modal="renameSiteModal">Cancel</button>
+          <button type="button" class="btn-xs primary" id="btnConfirmSaveSiteName">Save Site Name</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========================================================================
+       MODAL 6: RE-RUN SCAN FROM ORIGINAL PHOTOS WITH CUSTOM PIX4DMATIC SETTINGS
+       ======================================================================== -->
+  <div class="gs-modal-backdrop" id="rerunScanModal" role="dialog" aria-modal="true" aria-labelledby="rerunScanModalTitle">
+    <div class="gs-modal-window" style="width:660px;max-width:96vw;">
+      <div class="gs-modal-header">
+        <div>
+          <div class="gs-modal-title" id="rerunScanModalTitle">Re-run Scan from Original Photos (PIX4Dmatic 2.11.0)</div>
+          <div class="gs-modal-subtitle" id="rerunScanModalSub">Rebuilds 3D mesh from raw RTK images with custom settings &amp; ExportSrs.Scene + offset.xyz</div>
+        </div>
+        <button type="button" class="btn-xs" data-close-modal="rerunScanModal" title="Close">✕</button>
+      </div>
+      <div class="gs-modal-body" style="padding:16px 20px;display:flex;flex-direction:column;gap:12px;">
+        <div style="background:var(--ui-bg-subtle);border:1px solid var(--ui-border);border-radius:8px;padding:10px 12px;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
+          <div>
+            <div style="font-size:12.5px;font-weight:700;color:var(--ui-text-primary);" id="rerunScanInfoName">Office Roof Training</div>
+            <div style="font-size:11px;color:var(--ui-text-secondary);font-family:monospace;margin-top:2px;" id="rerunScanInfoSource">Source: C:\GatheringScans\catch_2026_09_21_11_39_49\inputs (100 RTK photos)</div>
+          </div>
+          <span class="gs-crs-pill" id="rerunScanCrsBadge">ExportSrs.Scene + TWD97 Offset (1mm Precision)</span>
+        </div>
+
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;">
+          <div class="gs-form-group" style="margin-bottom:0;">
+            <label style="font-size:11px;">Mesh Pipeline</label>
+            <select class="gs-select" id="rerunSelMeshPipeline">
+              <option value="FixedSize" selected>FixedSize (Compact Single-Root)</option>
+              <option value="Scalable">Scalable (Multi-Tile Octree)</option>
+            </select>
+          </div>
+          <div class="gs-form-group" style="margin-bottom:0;">
+            <label style="font-size:11px;">Mesh Quality &amp; Density</label>
+            <select class="gs-select" id="rerunSelMeshQuality">
+              <option value="High" selected>High Quality (Fine Triangles)</option>
+              <option value="Standard">Standard Quality</option>
+              <option value="Draft">Draft (Fast Preview)</option>
+            </select>
+          </div>
+          <div class="gs-form-group" style="margin-bottom:0;">
+            <label style="font-size:11px;">Point Cloud Vertex Density</label>
+            <select class="gs-select" id="rerunSelVertexDensity">
+              <option value="High" selected>High Density (1/1 Image Scale)</option>
+              <option value="Optimal">Optimal Density (1/2 Scale)</option>
+              <option value="Low">Low Density (Fast)</option>
+            </select>
+          </div>
+          <div class="gs-form-group" style="margin-bottom:0;">
+            <label style="font-size:11px;">Texture Atlas Resolution</label>
+            <select class="gs-select" id="rerunSelTextureSize">
+              <option value="4096" selected>4096 px (4K Sharp)</option>
+              <option value="8192">8192 px (8K Ultra)</option>
+              <option value="2048">2048 px (2K Fast Web)</option>
+            </select>
+          </div>
+          <div class="gs-form-group" style="margin-bottom:0;">
+            <label style="font-size:11px;">Model Simplification</label>
+            <select class="gs-select" id="rerunSelSimplification">
+              <option value="Conservative" selected>Conservative (Preserve Edges)</option>
+              <option value="Moderate">Moderate</option>
+              <option value="Aggressive">Aggressive</option>
+            </select>
+          </div>
+          <div class="gs-form-group" style="margin-bottom:0;">
+            <label style="font-size:11px;">Deghosting &amp; Export LOD</label>
+            <div style="display:flex;gap:6px;">
+              <select class="gs-select" id="rerunSelDeghosting" style="flex:1;">
+                <option value="Weak" selected>Weak</option>
+                <option value="Strong">Strong</option>
+                <option value="Disabled">Disabled</option>
+              </select>
+              <input type="number" class="gs-input" id="rerunInpExportLod" value="13" min="0" max="20" style="width:54px;text-align:center;" title="Export LOD (13 = Full Detail)" />
+            </div>
+          </div>
+        </div>
+
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;padding:8px 10px;background:var(--ui-bg-subtle);border:1px solid var(--ui-border);border-radius:8px;">
+          <label style="display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--ui-text-primary);cursor:pointer;">
+            <input type="checkbox" id="rerunChkSkyless" style="accent-color:#0284c7;" />
+            <span>Sky Mask (<code>skyless</code> — leave OFF for trees)</span>
+          </label>
+          <label style="display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--ui-text-primary);cursor:pointer;">
+            <input type="checkbox" id="rerunChkUseRoi" style="accent-color:#0284c7;" />
+            <span>OPF ROI Clip (<code>RoiSet</code>)</span>
+          </label>
+          <label style="display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--ui-text-primary);cursor:pointer;">
+            <input type="checkbox" id="rerunChkForceFromPhotos" checked style="accent-color:#0284c7;" />
+            <span><b>Re-run from Original Photos</b> (Clean old mesh &amp; rebuild)</span>
+          </label>
+          <label style="display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--ui-text-primary);cursor:pointer;">
+            <input type="checkbox" id="rerunChkRunImmediately" style="accent-color:#0284c7;" />
+            <span>Launch PIX4Dmatic Immediately</span>
+          </label>
+        </div>
+
+        <div>
+          <div style="font-size:11px;font-weight:700;color:var(--ui-text-secondary);margin-bottom:4px;">Generated PIX4Dmatic <code>.gst</code> Pipeline Preview:</div>
+          <pre id="rerunGstPreviewCode" style="background:var(--ui-bg-subtle);border:1px solid var(--ui-border-strong);padding:8px 10px;border-radius:6px;font-size:10px;color:var(--ui-text-primary);max-height:125px;overflow:auto;margin:0;line-height:1.35;"></pre>
+        </div>
+
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:4px;">
+          <span style="font-size:11px;color:var(--ui-text-muted);" id="rerunModalStatusMsg">Ready to queue or launch PIX4Dmatic 2.11.0</span>
+          <div style="display:flex;gap:8px;align-items:center;">
+            <button type="button" class="btn-xs" data-close-modal="rerunScanModal">Cancel</button>
+            <button type="button" class="btn-xs primary" id="btnConfirmRerunScan">Queue / Re-run Scan</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- Toast Notification -->
   <div class="gs-toast" id="gsToast"></div>
 
@@ -1292,6 +1567,6 @@
   <script src="/lib/3d-tiles-renderer.bundle.js"></script>
 
   <!-- Main GatheringScans Application Logic -->
-  <script src="/app.js?v=20261018_v19"></script>
+  <script src="/app.js?v=20261020_v21"></script>
 </body>
 </html>

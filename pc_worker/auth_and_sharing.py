@@ -18,6 +18,74 @@ from pc_worker.config import PUBLIC_BASE_URL, ALLOWED_WORKSPACE_DOMAINS, GOOGLE_
 from pc_worker.priority_queue import ScanQueueDB, DB_LOCK
 
 
+OWNER_EMAIL = "glibivanov@gatheren.com.tw"
+
+ROLE_LEVELS: Dict[str, int] = {
+    "owner": 5,
+    "admin": 4,
+    "editor": 3,
+    "viewer": 2,
+    "guest": 1,
+}
+
+ROLE_LABELS: Dict[str, str] = {
+    "owner": "1. Owner (System Owner)",
+    "admin": "2. Admin (User & Role Manager)",
+    "editor": "3. Editor (Workflows & Renaming)",
+    "viewer": "4. Viewer (View & Measure Only)",
+    "guest": "5. Guest (Single-Link Basic Tools)",
+}
+
+
+def normalize_role(role_str: str, email: str = "", is_owner: bool = False, is_admin: bool = False) -> str:
+    clean_email = (email or "").strip().lower()
+    if clean_email == OWNER_EMAIL or is_owner:
+        return "owner"
+    r = (role_str or "").strip().lower()
+    if r == "owner":
+        return "admin"
+    if r in ("admin", "administrator") or is_admin:
+        return "admin"
+    if r in ("editor", "site_engineer", "pm", "engineer"):
+        return "editor"
+    if r in ("viewer", "read_only", "readonly"):
+        return "viewer"
+    if r in ("guest", "external"):
+        return "guest"
+    return "editor"
+
+
+def get_role_permissions(role: str, has_share_token: bool = False) -> Dict[str, Any]:
+    eff_role = "guest" if has_share_token else (role if role in ROLE_LEVELS else "viewer")
+    lvl = ROLE_LEVELS.get(eff_role, 1)
+    can_manage_users = lvl >= 4 and not has_share_token
+    can_edit_names = lvl >= 3 and not has_share_token
+    can_run_workflows = lvl >= 3 and not has_share_token
+    can_share = lvl >= 3 and not has_share_token
+    if eff_role == "guest":
+        allowed_tools = ["orbit", "distance", "area", "coordinates"]
+    elif eff_role == "viewer":
+        allowed_tools = [
+            "orbit", "laser", "coordinates", "distance", "angle",
+            "area", "volume", "profile", "contours", "photos", "comments",
+        ]
+    else:
+        allowed_tools = [
+            "orbit", "laser", "coordinates", "distance", "angle",
+            "area", "volume", "profile", "contours", "crop", "photos", "comments",
+        ]
+    return {
+        "role": eff_role,
+        "role_label": ROLE_LABELS.get(eff_role, eff_role.title()),
+        "permission_level": lvl,
+        "can_manage_users": can_manage_users,
+        "can_edit_names": can_edit_names,
+        "can_run_workflows": can_run_workflows,
+        "can_share": can_share,
+        "allowed_tools": allowed_tools,
+    }
+
+
 class AuthAndSharingManager:
     def __init__(self, db: ScanQueueDB):
         self.db = db
@@ -31,7 +99,7 @@ class AuthAndSharingManager:
                     email TEXT PRIMARY KEY,
                     id TEXT NOT NULL,
                     name TEXT NOT NULL,
-                    role TEXT DEFAULT 'site_engineer',
+                    role TEXT DEFAULT 'editor',
                     color TEXT DEFAULT '#0284c7',
                     picture TEXT DEFAULT '',
                     google_sub TEXT DEFAULT '',
@@ -44,26 +112,28 @@ class AuthAndSharingManager:
                 """
             )
             conn.execute("DELETE FROM user_profiles WHERE lower(email) LIKE '%vitaly%' OR lower(name) LIKE '%vitaly%'")
-            conn.execute("UPDATE user_profiles SET name = '雲在天' WHERE lower(email) = 'glibivanov@gatheren.com.tw' AND name = 'Glib Ivanov'")
+            conn.execute("UPDATE user_profiles SET name = '雲在天', role = 'owner', is_owner = 1, is_admin = 1 WHERE lower(email) = 'glibivanov@gatheren.com.tw'")
+            conn.execute("UPDATE user_profiles SET role = 'editor' WHERE role IN ('site_engineer', 'pm') AND is_owner = 0 AND is_admin = 0")
+            conn.execute("UPDATE user_profiles SET role = 'admin', is_admin = 1 WHERE role = 'admin' AND is_owner = 0")
             now_str = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
             default_staff = [
-                ("glibivanov@gatheren.com.tw", "u_glibivanov", "雲在天", "admin", "#14b8a6", "", "107639887113416939995", 1, 1, 1, '["*"]', now_str),
+                ("glibivanov@gatheren.com.tw", "u_glibivanov", "雲在天", "owner", "#14b8a6", "", "107639887113416939995", 1, 1, 1, '["*"]', now_str),
                 ("frankchao@gatheren.com.tw", "u_frankchao", "趙冠人", "admin", "#ef4444", "", "113563863225856947636", 1, 1, 0, '["*"]', now_str),
-                ("wenhu@gatheren.com.tw", "u_wenhu", "胡佳雯", "admin", "#ec4899", "", "", 1, 0, 0, '["*"]', now_str),
-                ("howardhsueh@gatheren.com.tw", "u_howardhsueh", "薛鈞豪", "site_engineer", "#3b82f6", "", "", 1, 0, 0, '["*"]', now_str),
-                ("feiwenhsueh@gatheren.com.tw", "u_feiwenhsueh", "薛斐文", "site_engineer", "#0284c7", "", "103768730904451087495", 1, 0, 0, '["*"]', now_str),
-                ("litasu@gatheren.com.tw", "u_litasu", "蘇容德", "site_engineer", "#a855f7", "", "", 1, 0, 0, '["*"]', now_str),
-                ("szhsienyang@gatheren.com.tw", "u_szhsienyang", "楊斯顯", "site_engineer", "#f97316", "", "", 1, 0, 0, '["*"]', now_str),
-                ("shengwenhuang@gatheren.com.tw", "u_shengwenhuang", "黃聖文", "site_engineer", "#eab308", "", "", 1, 0, 0, '["*"]', now_str),
-                ("leocheng@gatheren.com.tw", "u_leocheng", "鄭宇翔", "site_engineer", "#06b6d4", "", "", 1, 0, 0, '["*"]', now_str),
-                ("jasonlo@gatheren.com.tw", "u_jasonlo", "駱介正", "pm", "#6366f1", "", "", 1, 0, 0, '["*"]', now_str),
-                ("kentyu@gatheren.com.tw", "u_kentyu", "游忠偉", "site_engineer", "#10b981", "", "", 1, 0, 0, '["*"]', now_str),
-                ("chengyouyeh@gatheren.com.tw", "u_chengyouyeh", "葉烝佑", "site_engineer", "#84cc16", "", "", 1, 0, 0, '["*"]', now_str),
-                ("tengtewang@gatheren.com.tw", "u_tengtewang", "王騰德", "pm", "#0ea5e9", "", "", 1, 0, 0, '["*"]', now_str),
-                ("congrongchen@gatheren.com.tw", "u_congrongchen", "陳聰榮", "site_engineer", "#f59e0b", "", "", 1, 0, 0, '["*"]', now_str),
-                ("edwardli@gatheren.com.tw", "u_edwardli", "李振嘉", "site_engineer", "#8b5cf6", "", "", 1, 0, 0, '["*"]', now_str),
-                ("neilsun@gatheren.com.tw", "u_neilsun", "孫暐岑", "site_engineer", "#22c55e", "", "", 1, 0, 0, '["*"]', now_str),
-                ("kevinchen@gatheren.com.tw", "u_kevinchen", "陳冠羽", "site_engineer", "#d946ef", "", "", 1, 0, 0, '["*"]', now_str),
+                ("wenhu@gatheren.com.tw", "u_wenhu", "胡佳雯", "admin", "#ec4899", "", "", 1, 1, 0, '["*"]', now_str),
+                ("howardhsueh@gatheren.com.tw", "u_howardhsueh", "薛鈞豪", "editor", "#3b82f6", "", "", 1, 0, 0, '["*"]', now_str),
+                ("feiwenhsueh@gatheren.com.tw", "u_feiwenhsueh", "薛斐文", "editor", "#0284c7", "", "103768730904451087495", 1, 0, 0, '["*"]', now_str),
+                ("litasu@gatheren.com.tw", "u_litasu", "蘇容德", "editor", "#a855f7", "", "", 1, 0, 0, '["*"]', now_str),
+                ("szhsienyang@gatheren.com.tw", "u_szhsienyang", "楊斯顯", "editor", "#f97316", "", "", 1, 0, 0, '["*"]', now_str),
+                ("shengwenhuang@gatheren.com.tw", "u_shengwenhuang", "黃聖文", "editor", "#eab308", "", "", 1, 0, 0, '["*"]', now_str),
+                ("leocheng@gatheren.com.tw", "u_leocheng", "鄭宇翔", "editor", "#06b6d4", "", "", 1, 0, 0, '["*"]', now_str),
+                ("jasonlo@gatheren.com.tw", "u_jasonlo", "駱介正", "viewer", "#6366f1", "", "", 1, 0, 0, '["*"]', now_str),
+                ("kentyu@gatheren.com.tw", "u_kentyu", "游忠偉", "editor", "#10b981", "", "", 1, 0, 0, '["*"]', now_str),
+                ("chengyouyeh@gatheren.com.tw", "u_chengyouyeh", "葉烝佑", "editor", "#84cc16", "", "", 1, 0, 0, '["*"]', now_str),
+                ("tengtewang@gatheren.com.tw", "u_tengtewang", "王騰德", "editor", "#0ea5e9", "", "", 1, 0, 0, '["*"]', now_str),
+                ("congrongchen@gatheren.com.tw", "u_congrongchen", "陳聰榮", "viewer", "#f59e0b", "", "", 1, 0, 0, '["*"]', now_str),
+                ("edwardli@gatheren.com.tw", "u_edwardli", "李振嘉", "viewer", "#8b5cf6", "", "", 1, 0, 0, '["*"]', now_str),
+                ("neilsun@gatheren.com.tw", "u_neilsun", "孫暐岑", "viewer", "#22c55e", "", "", 1, 0, 0, '["*"]', now_str),
+                ("kevinchen@gatheren.com.tw", "u_kevinchen", "陳冠羽", "viewer", "#d946ef", "", "", 1, 0, 0, '["*"]', now_str),
             ]
             for row in default_staff:
                 conn.execute(
@@ -78,9 +148,18 @@ class AuthAndSharingManager:
                 )
             conn.commit()
 
+    def get_user_profile(self, email: str) -> Optional[Dict[str, Any]]:
+        clean = (email or "").strip().lower()
+        if not clean:
+            return None
+        for p in self.list_user_profiles():
+            if p.get("email", "").lower() == clean:
+                return p
+        return None
+
     def list_user_profiles(self) -> List[Dict[str, Any]]:
         with DB_LOCK, self.db._connect() as conn:
-            rows = conn.execute("SELECT * FROM user_profiles ORDER BY is_owner DESC, name ASC").fetchall()
+            rows = conn.execute("SELECT * FROM user_profiles ORDER BY is_owner DESC, is_admin DESC, name ASC").fetchall()
             out: List[Dict[str, Any]] = []
             for r in rows:
                 d = dict(r)
@@ -89,29 +168,37 @@ class AuthAndSharingManager:
                 except Exception:
                     allowed = ["*"]
                 pic = d.get("picture", "")
-                role_val = d.get("role", "site_engineer")
-                role_label = "System Admin (Gatheren)" if (d.get("is_owner") or d.get("is_admin") or role_val == "admin") else "Site Engineer (Gatheren)"
+                norm_r = normalize_role(
+                    d.get("role", "editor"),
+                    email=d.get("email", ""),
+                    is_owner=bool(d.get("is_owner", 0)),
+                    is_admin=bool(d.get("is_admin", 0)),
+                )
+                perms = get_role_permissions(norm_r, has_share_token=False)
                 prof = {
                     "id": d["id"],
                     "name": d["name"],
                     "email": d["email"],
-                    "role": role_val,
-                    "role_label": role_label,
+                    "role": norm_r,
+                    "role_label": perms["role_label"],
+                    "permission_level": perms["permission_level"],
+                    "permissions": perms,
                     "color": d["color"],
                     "picture": pic,
                     "avatar_url": pic,
                     "googleSub": d.get("google_sub", ""),
                     "hasConfigured": True,
                     "isGoogleAuthenticated": bool(d.get("is_google_authenticated", 0)),
-                    "isAdmin": bool(d.get("is_admin", 0)),
-                    "isOwner": bool(d.get("is_owner", 0)),
+                    "isAdmin": norm_r in ("owner", "admin"),
+                    "isOwner": norm_r == "owner",
                     "allowedProjects": allowed,
                     "lastUpdatedStr": d.get("updated_at", ""),
                 }
                 out.append(prof)
+            out.sort(key=lambda x: (-x["permission_level"], x["name"]))
             return out
 
-    def upsert_user_profile(self, profile: Dict[str, Any]) -> Dict[str, Any]:
+    def upsert_user_profile(self, profile: Dict[str, Any], preserve_existing_role: bool = False) -> Dict[str, Any]:
         email = str(profile.get("email") or "").strip().lower()
         name = str(profile.get("name") or "").strip()
         if not name and email:
@@ -121,15 +208,26 @@ class AuthAndSharingManager:
         if "vitaly" in email or "vitaly" in name.lower():
             raise ValueError("Invalid user profile")
 
-        is_owner = 1 if email == "glibivanov@gatheren.com.tw" else int(bool(profile.get("isOwner", False)))
-        is_admin = 1 if (is_owner or profile.get("role") == "admin" or profile.get("isAdmin")) else 0
-        role = "admin" if is_owner else str(profile.get("role") or "site_engineer")
-        uid = str(profile.get("id") or f"u_{int(time.time())}")
-        color = str(profile.get("color") or ("#d97706" if is_owner else "#0284c7"))
-        picture = str(profile.get("picture") or profile.get("avatar_url") or "")
-        google_sub = str(profile.get("googleSub") or profile.get("google_sub") or "")
-        is_google = int(bool(profile.get("isGoogleAuthenticated", False) or profile.get("auth_provider") == "google"))
-        allowed = profile.get("allowedProjects") if isinstance(profile.get("allowedProjects"), list) else ["*"]
+        existing = self.get_user_profile(email)
+        is_owner = 1 if email == OWNER_EMAIL else 0
+        if is_owner:
+            role = "owner"
+        elif preserve_existing_role and existing:
+            role = existing["role"]
+        elif "role" in profile and profile.get("role"):
+            role = normalize_role(str(profile.get("role")), email=email)
+        elif existing:
+            role = existing["role"]
+        else:
+            role = "editor" if email.endswith("@gatheren.com.tw") else "viewer"
+
+        is_admin = 1 if role in ("owner", "admin") else 0
+        uid = str((existing and existing.get("id")) or profile.get("id") or f"u_{int(time.time())}")
+        color = str(profile.get("color") or (existing and existing.get("color")) or ("#14b8a6" if is_owner else "#0284c7"))
+        picture = str(profile.get("picture") or profile.get("avatar_url") or (existing and existing.get("picture")) or "")
+        google_sub = str(profile.get("googleSub") or profile.get("google_sub") or (existing and existing.get("googleSub")) or "")
+        is_google = int(bool(profile.get("isGoogleAuthenticated", False) or profile.get("auth_provider") == "google" or (existing and existing.get("isGoogleAuthenticated"))))
+        allowed = profile.get("allowedProjects") if isinstance(profile.get("allowedProjects"), list) else ((existing and existing.get("allowedProjects")) or ["*"])
         now_str = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
 
         with DB_LOCK, self.db._connect() as conn:
@@ -167,15 +265,14 @@ class AuthAndSharingManager:
                 ),
             )
             conn.commit()
-        profiles = self.list_user_profiles()
-        for p in profiles:
-            if p.get("email", "").lower() == email or p.get("name") == name:
-                return p
-        return {
+        return self.get_user_profile(email) or {
             "id": uid,
             "name": name,
             "email": email,
             "role": role,
+            "role_label": ROLE_LABELS.get(role, role),
+            "permission_level": ROLE_LEVELS.get(role, 2),
+            "permissions": get_role_permissions(role, False),
             "color": color,
             "picture": picture,
             "avatar_url": picture,
@@ -184,6 +281,74 @@ class AuthAndSharingManager:
             "isOwner": bool(is_owner),
             "allowedProjects": allowed,
         }
+
+    def admin_save_user(
+        self,
+        actor_email: str,
+        target_email: str,
+        target_name: str,
+        new_role: str,
+        color: str = "",
+    ) -> Dict[str, Any]:
+        """
+        Enforces 5-level role hierarchy when adding or updating a user from the Admin Control Panel:
+        - Owner (glibivanov@gatheren.com.tw, level 5) can add/edit any lower user and assign Admin/Editor/Viewer/Guest.
+        - Admin (level 4) can add new users and edit lower users (Editor/Viewer/Guest), cannot edit Owner or other Admins.
+        """
+        actor_clean = (actor_email or "").strip().lower()
+        target_clean = (target_email or "").strip().lower()
+        if not target_clean or "@" not in target_clean:
+            raise ValueError("A valid user email address is required.")
+
+        actor_prof = self.get_user_profile(actor_clean)
+        actor_role = actor_prof["role"] if actor_prof else ("owner" if actor_clean == OWNER_EMAIL else "viewer")
+        actor_lvl = ROLE_LEVELS.get(actor_role, 1)
+        if actor_lvl < 4:
+            raise PermissionError("Only Owner and Admin accounts can manage user roles.")
+
+        if target_clean == OWNER_EMAIL and actor_clean != OWNER_EMAIL:
+            raise PermissionError("Cannot modify the System Owner account (glibivanov@gatheren.com.tw).")
+
+        req_role = normalize_role(new_role, email=target_clean)
+        req_lvl = ROLE_LEVELS.get(req_role, 2)
+
+        existing_target = self.get_user_profile(target_clean)
+        if existing_target and target_clean != OWNER_EMAIL:
+            target_cur_lvl = ROLE_LEVELS.get(existing_target["role"], 2)
+            if actor_lvl <= target_cur_lvl and actor_clean != OWNER_EMAIL:
+                raise PermissionError("Admins can only edit users with lower roles (Editor, Viewer, Guest).")
+            if req_lvl >= actor_lvl and actor_clean != OWNER_EMAIL:
+                raise PermissionError("Admins can only assign roles lower than Admin (Editor, Viewer, Guest).")
+
+        return self.upsert_user_profile(
+            {
+                "email": target_clean,
+                "name": (target_name or (existing_target and existing_target["name"]) or target_clean.split("@")[0]).strip(),
+                "role": "owner" if target_clean == OWNER_EMAIL else req_role,
+                "color": color or (existing_target and existing_target.get("color")) or "#0284c7",
+            },
+            preserve_existing_role=False,
+        )
+
+    def admin_delete_user(self, actor_email: str, target_email: str) -> bool:
+        actor_clean = (actor_email or "").strip().lower()
+        target_clean = (target_email or "").strip().lower()
+        if target_clean == OWNER_EMAIL:
+            raise PermissionError("The System Owner account cannot be removed.")
+        actor_prof = self.get_user_profile(actor_clean)
+        actor_role = actor_prof["role"] if actor_prof else ("owner" if actor_clean == OWNER_EMAIL else "viewer")
+        actor_lvl = ROLE_LEVELS.get(actor_role, 1)
+        if actor_lvl < 4:
+            raise PermissionError("Only Owner and Admin accounts can remove users.")
+        existing_target = self.get_user_profile(target_clean)
+        if existing_target:
+            target_lvl = ROLE_LEVELS.get(existing_target["role"], 2)
+            if actor_lvl <= target_lvl and actor_clean != OWNER_EMAIL:
+                raise PermissionError("Admins can only remove users with lower roles.")
+        with DB_LOCK, self.db._connect() as conn:
+            cur = conn.execute("DELETE FROM user_profiles WHERE lower(email) = ?", (target_clean,))
+            conn.commit()
+            return cur.rowcount > 0
 
     def verify_google_oauth_credential(self, credential_jwt: str, fallback_profile: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """
@@ -199,24 +364,28 @@ class AuthAndSharingManager:
                 name = str(claims.get("name") or (email.split("@")[0] if email else "Engineer")).strip()
                 hd = str(claims.get("hd") or (email.split("@")[1] if "@" in email else "")).lower()
                 aud = str(claims.get("aud") or "")
-                is_owner = email == "glibivanov@gatheren.com.tw"
+                is_owner = email == OWNER_EMAIL
                 prof = self.upsert_user_profile(
                     {
                         "email": email,
                         "name": name,
                         "picture": claims.get("picture", ""),
                         "googleSub": claims.get("sub", ""),
-                        "role": "admin" if is_owner else "site_engineer",
-                        "color": "#d97706" if is_owner else "#0284c7",
+                        "role": "owner" if is_owner else "editor",
+                        "color": "#14b8a6" if is_owner else "#0284c7",
                         "isGoogleAuthenticated": True,
                         "isAdmin": is_owner,
                         "isOwner": is_owner,
-                    }
+                    },
+                    preserve_existing_role=True,
                 )
                 return {
                     "authenticated": True,
                     "client_id": aud or GOOGLE_OAUTH_CLIENT_ID,
-                    "role": prof.get("role", "site_engineer"),
+                    "role": prof.get("role", "editor"),
+                    "role_label": prof.get("role_label", ""),
+                    "permission_level": prof.get("permission_level", 3),
+                    "permissions": prof.get("permissions", get_role_permissions(prof.get("role", "editor"), False)),
                     "email": email,
                     "name": prof.get("name", name),
                     "domain": hd,
@@ -230,11 +399,14 @@ class AuthAndSharingManager:
             pass
 
         if fallback_profile and isinstance(fallback_profile, dict) and fallback_profile.get("email"):
-            prof = self.upsert_user_profile(fallback_profile)
+            prof = self.upsert_user_profile(fallback_profile, preserve_existing_role=True)
             return {
                 "authenticated": True,
                 "client_id": GOOGLE_OAUTH_CLIENT_ID,
-                "role": prof.get("role", "site_engineer"),
+                "role": prof.get("role", "editor"),
+                "role_label": prof.get("role_label", ""),
+                "permission_level": prof.get("permission_level", 3),
+                "permissions": prof.get("permissions", get_role_permissions(prof.get("role", "editor"), False)),
                 "email": prof.get("email", ""),
                 "name": prof.get("name", ""),
                 "domain": prof.get("email", "").split("@")[-1] if "@" in prof.get("email", "") else "gatheren.com.tw",
@@ -248,7 +420,10 @@ class AuthAndSharingManager:
         return {
             "authenticated": True,
             "client_id": GOOGLE_OAUTH_CLIENT_ID,
-            "role": "admin",
+            "role": "owner",
+            "role_label": ROLE_LABELS["owner"],
+            "permission_level": 5,
+            "permissions": get_role_permissions("owner", False),
             "email": "glibivanov@gatheren.com.tw",
             "name": "雲在天",
             "domain": "gatheren.com.tw",

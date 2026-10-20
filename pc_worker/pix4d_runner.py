@@ -13,6 +13,7 @@ import os
 import re
 import sys
 import glob
+import json
 import time
 import subprocess
 from typing import Dict, Any, Optional, Callable, List
@@ -165,11 +166,18 @@ def generate_pix4dmatic_gst_script(
     report_pdf = f"{exp_clean}/quality_report.pdf"
     obj_mesh_folder = f"{exp_clean}/obj_mesh"
 
-    roi_token = ",RoiSet{ }" if use_roi else ""
+    mesh_roi_token = ",RoiSet{ }" if use_roi else ""
     sky_token = ",SkyMasks{ }" if skyless else ""
 
     import_blocks = []
     if not existing_project_only:
+        set_crs_block = f"""        // Enforce TWD97 (121) [EPSG:3826] + TWVD2001 [EPSG:8904, TWGEOID2018h]
+        SetGcpCrs {{
+            settings.srsDefinition : '{srs_wkt}'
+            inputs : [InputCameras{{ }},TiePointSet{{ }},RoiSet{{ }}]
+            outputs : [InputCameras{{ }},TiePointSet{{ }},RoiSet{{ }}]
+        }}"""
+
         if primary_opf_path:
             opf_clean = primary_opf_path.replace("\\", "/")
             import_blocks.append(
@@ -177,48 +185,53 @@ def generate_pix4dmatic_gst_script(
         ImportOpf {{
             path : "{opf_clean}"
             settings.colorizeTracks : true
-            outputs : [InputCameras{{ }},CalibratedCameras{{ }},TiePointSet{{ }},FeaturesAndMatches{{ }},IntersectionTiePointSet{{ }},ConstraintSet{{ }},LineFeatures{{ }},Wireframe{{ }},SparsePointCloud{{ }},GaussianSplats{{ }},DensePointCloud{{ }},DepthPointCloud{{ }},FusedPointCloud{{ }},AsprsClasses{{ }},ComputedDepthMaps{{ }}{roi_token}{sky_token},Dsm{{ }},Dtm{{ }},Ortho{{ }},VectorLayer{{ name: 'Polygons'; group: 'polygons'; }},VectorLayer{{ group: 'masks'; }}]
+            outputs : [InputCameras{{ }},CalibratedCameras{{ }},TiePointSet{{ }},FeaturesAndMatches{{ }},IntersectionTiePointSet{{ }},ConstraintSet{{ }},LineFeatures{{ }},Wireframe{{ }},SparsePointCloud{{ }},GaussianSplats{{ }},DensePointCloud{{ }},DepthPointCloud{{ }},FusedPointCloud{{ }},AsprsClasses{{ }},ComputedDepthMaps{{ }},RoiSet{{ }},SkyMasks{{ }},Dsm{{ }},Dtm{{ }},Ortho{{ }},VectorLayer{{ name: 'Polygons'; group: 'polygons'; }},VectorLayer{{ group: 'masks'; }}]
         }}"""
             )
-
-        import_blocks.append(
-            f"""        // 2. Enforce TWD97 (121) [EPSG:3826] + TWVD2001 [EPSG:8904, TWGEOID2018h]
-        SetGcpCrs {{
-            settings.srsDefinition : '{srs_wkt}'
-            inputs : [InputCameras{{ }},TiePointSet{{ }}{roi_token}]
-            outputs : [InputCameras{{ }},TiePointSet{{ }}{roi_token}]
-        }}"""
-        )
-
-        if part_image_groups:
-            for idx, grp in enumerate(part_image_groups):
-                if not grp:
-                    continue
-                grp_literal = ",\n            ".join(f'"{p.replace(chr(92), "/")}"' for p in grp)
-                import_blocks.append(
-                    f"""        // Import Part {idx + 2 if primary_opf_path else idx + 1} Images + Depth + Confidence
+            import_blocks.append(set_crs_block)
+            if part_image_groups:
+                for idx, grp in enumerate(part_image_groups):
+                    if not grp:
+                        continue
+                    grp_literal = ",\n            ".join(f'"{p.replace(chr(92), "/")}"' for p in grp)
+                    import_blocks.append(
+                        f"""        // Import Part {idx + 2} Images + Depth + Confidence
         AddImagesFromPaths {{
             paths : [{grp_literal}]
-            inputs : [InputCameras{{ }},TiePointSet{{ }}{roi_token}]
-            outputs : [InputCameras{{ }},TiePointSet{{ }}{roi_token}]
+            inputs : [InputCameras{{ }},TiePointSet{{ }},RoiSet{{ }}]
+            outputs : [InputCameras{{ }},TiePointSet{{ }},RoiSet{{ }}]
+        }}"""
+                    )
+        else:
+            if part_image_groups:
+                for idx, grp in enumerate(part_image_groups):
+                    if not grp:
+                        continue
+                    grp_literal = ",\n            ".join(f'"{p.replace(chr(92), "/")}"' for p in grp)
+                    import_blocks.append(
+                        f"""        // Import Part {idx + 1} Images + Depth + Confidence
+        AddImagesFromPaths {{
+            paths : [{grp_literal}]
+            inputs : [InputCameras{{ }},TiePointSet{{ }},RoiSet{{ }}]
+            outputs : [InputCameras{{ }},TiePointSet{{ }},RoiSet{{ }}]
+        }}"""
+                    )
+            else:
+                if extracted_image_paths:
+                    paths_literal = ",\n            ".join(f'"{p.replace(chr(92), "/")}"' for p in extracted_image_paths)
+                else:
+                    part_paths = [p.strip().replace("\\", "/") for p in input_zip_or_folder.split(";") if p.strip()]
+                    if not part_paths:
+                        part_paths = [input_zip_or_folder.replace("\\", "/")]
+                    paths_literal = ",\n            ".join(f'"{p}"' for p in part_paths)
+                import_blocks.append(
+                    f"""        AddImagesFromPaths {{
+            paths : [{paths_literal}]
+            inputs : [InputCameras{{ }},TiePointSet{{ }},RoiSet{{ }}]
+            outputs : [InputCameras{{ }},TiePointSet{{ }},RoiSet{{ }}]
         }}"""
                 )
-        elif not primary_opf_path:
-            if extracted_image_paths:
-                paths_literal = ",\n            ".join(f'"{p.replace(chr(92), "/")}"' for p in extracted_image_paths)
-            else:
-                part_paths = [p.strip().replace("\\", "/") for p in input_zip_or_folder.split(";") if p.strip()]
-                if not part_paths:
-                    part_paths = [input_zip_or_folder.replace("\\", "/")]
-                paths_literal = ",\n            ".join(f'"{p}"' for p in part_paths)
-            import_blocks.insert(
-                0,
-                f"""        AddImagesFromPaths {{
-            paths : [{paths_literal}]
-            inputs : [InputCameras{{ }},TiePointSet{{ }}{roi_token}]
-            outputs : [InputCameras{{ }},TiePointSet{{ }}{roi_token}]
-        }}""",
-            )
+            import_blocks.append(set_crs_block)
 
     imports_joined = ("\n\n".join(import_blocks) + "\n\n        SaveProject { }\n") if import_blocks else ""
 
@@ -298,7 +311,7 @@ def generate_pix4dmatic_gst_script(
                 settings.polygonAware : false
                 settings.skyless : {skyless_str}
                 settings.textureSize : {tex_size}
-                inputs : [FusedPointCloud{{ }}{sky_token}]
+                inputs : [FusedPointCloud{{ }}{sky_token}{mesh_roi_token}]
                 outputs : [Mesh{{ }}]
             }}
             ExportQualityReport {{
@@ -307,13 +320,13 @@ def generate_pix4dmatic_gst_script(
                 settings.reportExportFormat : ReportExportFormat.Pdf
                 settings.temperatureUnit : TemperatureUnit.Celsius
                 settings.thermalColorMap : ColorMap.Inferno
-                inputs : [CalibratedCameras{{ }},SparsePointCloud{{ }},TiePointSet{{ }},IntersectionTiePointSet{{ }},GaussianSplats{{ }},DensePointCloud{{ }},DepthPointCloud{{ }},FusedPointCloud{{ }},Mesh{{ }}]
+                inputs : [CalibratedCameras{{ }},SparsePointCloud{{ }},TiePointSet{{ }},IntersectionTiePointSet{{ }}{",GaussianSplats{ }" if primary_opf_path else ""},DensePointCloud{{ }},DepthPointCloud{{ }},FusedPointCloud{{ }},Mesh{{ }}]
             }}
             ExportMeshToObj {{
                 folder : "{obj_mesh_folder}"
                 settings.exportAsTiles : false
                 settings.exportLod : {export_lod}
-                settings.exportSrs : ExportSrs.Project
+                settings.exportSrs : ExportSrs.Scene
                 inputs : [Mesh{{ }}]
             }}
         }}
@@ -332,12 +345,25 @@ def postprocess_obj_to_tileset(
     progress_callback: Optional[Callable[[float, str], None]] = None,
 ) -> str:
     """
-    Converts UTM51N vertices to TWD97 if needed, builds the Hierarchical 3D Tileset
-    via GC_ScanOptimizer QuadtreeTiler, generates preview_low.glb + thumbnail.png,
-    and invalidates cached DSMs so surveying uses the newly generated mesh.
+    Ensures OBJ vertices are in local centered coordinates near (0,0,0) with 64-bit TWD97
+    offset in offset.xyz so neither PIX4Dmatic, trimesh, nor gltfpack quantizes TWD97 coordinates
+    (2,775,627m) in float32 (which causes 25cm steps). Then shifts generated .glb node.translation
+    and tileset.json boundingVolume.box[0..2] by the 64-bit TWD97 offset.
     """
     if not obj_path or not os.path.isfile(obj_path):
         return ""
+    obj_dir = os.path.dirname(obj_path)
+    offset_xyz_path = os.path.join(obj_dir, "offset.xyz")
+    ox, oy, oz = 0.0, 0.0, 0.0
+    if os.path.isfile(offset_xyz_path):
+        try:
+            with open(offset_xyz_path, "r", encoding="utf-8", errors="ignore") as f_off:
+                parts = f_off.read().strip().split()
+                if len(parts) >= 3:
+                    ox, oy, oz = float(parts[0]), float(parts[1]), float(parts[2])
+        except Exception:
+            pass
+
     try:
         from pc_worker.gdrive_watcher import utm51n_to_wgs84, wgs84_to_twd97
         first_v = None
@@ -347,31 +373,72 @@ def postprocess_obj_to_tileset(
                     pts = ln.split()
                     first_v = (float(pts[1]), float(pts[2]), float(pts[3]))
                     break
-        if first_v and 330000.0 < first_v[0] < 450000.0 and 2400000.0 < first_v[1] < 2900000.0:
-            u0, v0 = first_v[0], first_v[1]
-            e0, n0, _ = wgs84_to_twd97(*utm51n_to_wgs84(u0, v0))
-            ex, nx, _ = wgs84_to_twd97(*utm51n_to_wgs84(u0 + 100.0, v0))
-            ey, ny, _ = wgs84_to_twd97(*utm51n_to_wgs84(u0, v0 + 100.0))
-            j00, j01 = (ex - e0) / 100.0, (ey - e0) / 100.0
-            j10, j11 = (nx - n0) / 100.0, (ny - n0) / 100.0
-            out_lns = []
-            with open(obj_path, "r", encoding="utf-8", errors="ignore") as f_in:
-                for ln in f_in:
-                    if ln.startswith("v "):
-                        p = ln.split()
-                        vx, vy, vz = float(p[1]), float(p[2]), float(p[3])
-                        dx, dy = vx - u0, vy - v0
-                        out_lns.append(f"v {e0 + j00 * dx + j01 * dy:.3f} {n0 + j10 * dx + j11 * dy:.3f} {vz:.3f}\n")
-                    else:
-                        out_lns.append(ln)
-            with open(obj_path, "w", encoding="utf-8") as f_out:
-                f_out.writelines(out_lns)
+
+        if first_v:
+            # Case A: OBJ vertices themselves have large georeferenced coordinates (>10,000m)
+            if abs(first_v[0]) > 10000.0 or abs(first_v[1]) > 10000.0:
+                u0, v0, z0 = round(first_v[0]), round(first_v[1]), round(first_v[2])
+                if 330000.0 < u0 < 450000.0 and 2400000.0 < v0 < 2900000.0:
+                    e0, n0, _ = wgs84_to_twd97(*utm51n_to_wgs84(u0, v0))
+                    ex, nx, _ = wgs84_to_twd97(*utm51n_to_wgs84(u0 + 100.0, v0))
+                    ey, ny, _ = wgs84_to_twd97(*utm51n_to_wgs84(u0, v0 + 100.0))
+                    j00, j01 = (ex - e0) / 100.0, (ey - e0) / 100.0
+                    j10, j11 = (nx - n0) / 100.0, (ny - n0) / 100.0
+                    ox, oy, oz = round(e0, 3), round(n0, 3), round(z0, 3)
+                    out_lns = []
+                    with open(obj_path, "r", encoding="utf-8", errors="ignore") as f_in:
+                        for ln in f_in:
+                            if ln.startswith("v "):
+                                p = ln.split()
+                                vx, vy, vz = float(p[1]), float(p[2]), float(p[3])
+                                dx, dy, dz = vx - u0, vy - v0, vz - z0
+                                out_lns.append(f"v {j00 * dx + j01 * dy:.4f} {j10 * dx + j11 * dy:.4f} {dz:.4f}\n")
+                            else:
+                                out_lns.append(ln)
+                    with open(obj_path, "w", encoding="utf-8") as f_out:
+                        f_out.writelines(out_lns)
+                else:
+                    ox, oy, oz = u0, v0, z0
+                    out_lns = []
+                    with open(obj_path, "r", encoding="utf-8", errors="ignore") as f_in:
+                        for ln in f_in:
+                            if ln.startswith("v "):
+                                p = ln.split()
+                                vx, vy, vz = float(p[1]), float(p[2]), float(p[3])
+                                out_lns.append(f"v {vx - ox:.4f} {vy - oy:.4f} {vz - oz:.4f}\n")
+                            else:
+                                out_lns.append(ln)
+                    with open(obj_path, "w", encoding="utf-8") as f_out:
+                        f_out.writelines(out_lns)
+                with open(offset_xyz_path, "w", encoding="utf-8") as f_off:
+                    f_off.write(f"{ox:.3f} {oy:.3f} {oz:.3f}\n")
+            # Case B: OBJ is already in local Scene coordinates, check if offset.xyz is UTM51N
+            elif 330000.0 < ox < 450000.0 and 2400000.0 < oy < 2900000.0:
+                u0, v0 = ox, oy
+                e0, n0, _ = wgs84_to_twd97(*utm51n_to_wgs84(u0, v0))
+                ex, nx, _ = wgs84_to_twd97(*utm51n_to_wgs84(u0 + 100.0, v0))
+                ey, ny, _ = wgs84_to_twd97(*utm51n_to_wgs84(u0, v0 + 100.0))
+                j00, j01 = (ex - e0) / 100.0, (ey - e0) / 100.0
+                j10, j11 = (nx - n0) / 100.0, (ny - n0) / 100.0
+                ox, oy = round(e0, 3), round(n0, 3)
+                out_lns = []
+                with open(obj_path, "r", encoding="utf-8", errors="ignore") as f_in:
+                    for ln in f_in:
+                        if ln.startswith("v "):
+                            p = ln.split()
+                            dx, dy, dz = float(p[1]), float(p[2]), float(p[3])
+                            out_lns.append(f"v {j00 * dx + j01 * dy:.4f} {j10 * dx + j11 * dy:.4f} {dz:.4f}\n")
+                        else:
+                            out_lns.append(ln)
+                with open(obj_path, "w", encoding="utf-8") as f_out:
+                    f_out.writelines(out_lns)
+                with open(offset_xyz_path, "w", encoding="utf-8") as f_off:
+                    f_off.write(f"{ox:.3f} {oy:.3f} {oz:.3f}\n")
     except Exception as e:
-        print(f"[PIX4DRunner] Warning checking/converting UTM51N OBJ vertices: {e}")
+        print(f"[PIX4DRunner] Warning checking/converting OBJ local coordinates & offset: {e}")
 
     # Ensure companion .mtl files specify Kd 1.000000 1.000000 1.000000 so trimesh and gltfpack never dim textures to 0.4
     try:
-        obj_dir = os.path.dirname(obj_path)
         for mtl_file in glob.glob(os.path.join(obj_dir, "*.mtl")):
             with open(mtl_file, "r", encoding="utf-8", errors="ignore") as mf:
                 m_txt = mf.read()
@@ -405,12 +472,12 @@ def postprocess_obj_to_tileset(
     tiler.run()
     ts_candidate = os.path.join(tileset_dir, "tileset.json")
     if os.path.isfile(ts_candidate):
-        # Build high-precision (-vp 14 -vt 12) root.glb directly from obj_path via gltfpack so TWD97 coordinates
-        # stay in double-precision node.translation + 14-bit quantization without trimesh float32 quantization loss
+        # Build high-precision (-vp 14 -vt 12) root.glb directly from local-coordinate obj_path via gltfpack
         try:
             from pc_worker.preview_generator import (
                 GLTFPACK_EXE,
                 _downscale_glb_textures,
+                shift_glb_node_translation,
                 ensure_scan_low_quality_preview,
                 ensure_scan_full_quality_thumbnail,
             )
@@ -452,6 +519,42 @@ def postprocess_obj_to_tileset(
                     opt_r = _downscale_glb_textures(raw_r, max_dim=active_tex_limit, jpeg_quality=88)
                     with open(root_glb, "wb") as wf:
                         wf.write(opt_r)
+
+            # Apply 64-bit TWD97 offset (ox, oy, oz) to all generated .glb node.translation and tileset.json bounding boxes
+            if abs(ox) > 1.0 or abs(oy) > 1.0 or abs(oz) > 0.001:
+                for glb_fp in glob.glob(os.path.join(tileset_dir, "tiles", "*.glb")):
+                    try:
+                        with open(glb_fp, "rb") as gf:
+                            g_bytes = gf.read()
+                        shifted_bytes = shift_glb_node_translation(g_bytes, ox, oy, oz)
+                        if shifted_bytes is not g_bytes:
+                            with open(glb_fp, "wb") as gf:
+                                gf.write(shifted_bytes)
+                    except Exception as ge:
+                        print(f"[PIX4DRunner] Warning shifting GLB translation {glb_fp}: {ge}")
+
+                try:
+                    with open(ts_candidate, "r", encoding="utf-8") as tf_in:
+                        ts_json = json.load(tf_in)
+
+                    def _shift_ts_node_boxes(node: Dict[str, Any]) -> None:
+                        bv = node.get("boundingVolume")
+                        if isinstance(bv, dict) and isinstance(bv.get("box"), list) and len(bv["box"]) >= 3:
+                            bv["box"][0] = round(float(bv["box"][0]) + ox, 4)
+                            bv["box"][1] = round(float(bv["box"][1]) + oy, 4)
+                            bv["box"][2] = round(float(bv["box"][2]) + oz, 4)
+                        for ch in node.get("children") or []:
+                            if isinstance(ch, dict):
+                                _shift_ts_node_boxes(ch)
+
+                    if isinstance(ts_json.get("root"), dict):
+                        _shift_ts_node_boxes(ts_json["root"])
+                    with open(ts_candidate, "w", encoding="utf-8") as tf_out:
+                        json.dump(ts_json, tf_out, indent=2)
+                    with open(os.path.join(tileset_dir, "offset.xyz"), "w", encoding="utf-8") as off_out:
+                        off_out.write(f"{ox:.3f} {oy:.3f} {oz:.3f}\n")
+                except Exception as te:
+                    print(f"[PIX4DRunner] Warning shifting tileset.json boundingVolume: {te}")
         except Exception as e:
             print(f"[PIX4DRunner] Warning building direct gltfpack root.glb: {e}")
 
@@ -492,16 +595,17 @@ def run_pix4dmatic_pipeline(
     progress_callback: Optional[Callable[[float, str], None]] = None,
     dry_run: bool = False,
     custom_gst_path: Optional[str] = None,
+    force_from_photos: bool = False,
+    custom_settings: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """
     Executes the automated PIX4Dmatic 2.11.0 workflow (acquiring cloud license seat 6fdbf93b,
     minimized window) with live log-file progress monitoring and QML error watchdog,
     then chains GC_ScanOptimizer QuadtreeTiler to produce the web 3D Tileset.
+    Supports re-running from original photos (inputs/ or source_zip_path) with custom settings.
     """
     import zipfile
-
-    active_cfg = load_pix4d_settings()
-    active_tex_size = int(active_cfg.get("texture_size", PIX4DMATIC_TEXTURE_SIZE))
+    import shutil
 
     proj_dir = output_project_dir or os.path.join(LOCAL_SCANS_ROOT, scan_id)
     export_dir = os.path.join(proj_dir, "exports")
@@ -509,9 +613,61 @@ def run_pix4dmatic_pipeline(
     os.makedirs(export_dir, exist_ok=True)
     os.makedirs(inputs_dir, exist_ok=True)
 
+    # Check if per-scan rerun_settings.json was queued by /api/scans/rerun or /api/queue/reprocess
+    rerun_cfg_path = os.path.join(proj_dir, "rerun_settings.json")
+    if os.path.isfile(rerun_cfg_path):
+        try:
+            with open(rerun_cfg_path, "r", encoding="utf-8") as rf:
+                r_data = json.load(rf)
+            if isinstance(r_data, dict):
+                if r_data.get("force_from_photos", True):
+                    force_from_photos = True
+                if isinstance(r_data.get("settings"), dict):
+                    custom_settings = r_data["settings"]
+            if not dry_run:
+                os.remove(rerun_cfg_path)
+        except Exception as e:
+            print(f"[PIX4DRunner] Warning reading {rerun_cfg_path}: {e}")
+
+    active_cfg = (
+        load_pix4d_settings_from_dict(custom_settings)
+        if isinstance(custom_settings, dict) and custom_settings
+        else load_pix4d_settings()
+    )
+    active_tex_size = int(active_cfg.get("texture_size", PIX4DMATIC_TEXTURE_SIZE))
+
+    # Persist used pix4d_settings into scan_meta.json for audit/inspection
+    meta_fp = os.path.join(proj_dir, "scan_meta.json")
+    if os.path.isfile(meta_fp) and not dry_run:
+        try:
+            with open(meta_fp, "r", encoding="utf-8") as mf:
+                m_obj = json.load(mf)
+            if isinstance(m_obj, dict):
+                m_obj["pix4d_settings"] = active_cfg
+                m_obj["texture_resolution"] = active_tex_size
+                with open(meta_fp, "w", encoding="utf-8") as mf:
+                    json.dump(m_obj, mf, ensure_ascii=False, indent=2)
+        except Exception:
+            pass
+
     p4m_path = os.path.join(proj_dir, f"{scan_id}.p4m")
-    nested_p4m = os.path.join(proj_dir, scan_id, f"{scan_id}.p4m")
-    existing_project_only = os.path.isfile(nested_p4m) or os.path.isfile(p4m_path)
+    nested_proj_dir = os.path.join(proj_dir, scan_id)
+    recon_dir = os.path.join(nested_proj_dir, "processing", "reconstructions")
+    part_paths = [p.strip() for p in input_path.split(";") if p.strip() and os.path.exists(p.strip())]
+    has_inputs_on_disk = bool(part_paths) or (
+        os.path.isdir(inputs_dir)
+        and any(
+            fn.lower().endswith((".jpg", ".jpeg", ".png", ".tiff", ".tif", ".opf"))
+            for _, _, files in os.walk(inputs_dir)
+            for fn in files
+        )
+    )
+    existing_project_only = (
+        not force_from_photos
+        and not has_inputs_on_disk
+        and os.path.isdir(recon_dir)
+        and bool(os.listdir(recon_dir))
+    )
 
     if custom_gst_path and os.path.isfile(custom_gst_path):
         gst_path = custom_gst_path
@@ -520,9 +676,19 @@ def run_pix4dmatic_pipeline(
         extracted_files: List[str] = []
         primary_opf_path = None
         part_image_groups: List[List[str]] = []
-        part_paths = [p.strip() for p in input_path.split(";") if p.strip() and os.path.exists(p.strip())]
 
         if not dry_run and not existing_project_only:
+            if os.path.isdir(nested_proj_dir):
+                shutil.rmtree(nested_proj_dir, ignore_errors=True)
+            if os.path.isfile(p4m_path):
+                try:
+                    os.remove(p4m_path)
+                except OSError:
+                    pass
+            old_obj_dir = os.path.join(export_dir, "obj_mesh")
+            if os.path.isdir(old_obj_dir):
+                shutil.rmtree(old_obj_dir, ignore_errors=True)
+
             if part_paths:
                 for idx, zpath in enumerate(part_paths):
                     if os.path.isfile(zpath) and zpath.lower().endswith(".zip"):
@@ -536,6 +702,50 @@ def run_pix4dmatic_pipeline(
                                 )
                             with zipfile.ZipFile(zpath, "r") as zf:
                                 zf.extractall(target_extract)
+                        cand_opf = os.path.join(target_extract, "project.opf")
+                        part_imgs = []
+                        for root, _, files in os.walk(target_extract):
+                            for fn in sorted(files):
+                                if fn.lower().endswith((".jpg", ".jpeg", ".png", ".tiff", ".tif")):
+                                    full_img = os.path.join(root, fn)
+                                    extracted_files.append(full_img)
+                                    part_imgs.append(full_img)
+                        if idx == 0 and os.path.isfile(cand_opf):
+                            primary_opf_path = cand_opf
+                        elif part_imgs:
+                            part_image_groups.append(part_imgs)
+                    elif os.path.isdir(zpath):
+                        stem = os.path.basename(zpath.rstrip("/\\"))
+                        target_extract = os.path.join(inputs_dir, stem)
+                        if progress_callback:
+                            progress_callback(
+                                6.0 + idx * 0.8,
+                                f"Staging folder {idx + 1}/{len(part_paths)}: {stem}...",
+                            )
+                        os.makedirs(target_extract, exist_ok=True)
+                        alt_unredacted_dirs = glob.glob(os.path.join(r"G:\My Drive\Scans", "*", stem, "images")) + glob.glob(os.path.join(r"G:\My Drive\Scans", stem, "images"))
+                        alt_src_dir = alt_unredacted_dirs[0] if alt_unredacted_dirs and os.path.isdir(alt_unredacted_dirs[0]) else ""
+                        for root, _, files in os.walk(zpath):
+                            rel_dir = os.path.relpath(root, zpath)
+                            dst_dir = target_extract if rel_dir == "." else os.path.join(target_extract, rel_dir)
+                            os.makedirs(dst_dir, exist_ok=True)
+                            for fn in files:
+                                if fn.startswith("."):
+                                    continue
+                                s_f = os.path.join(root, fn)
+                                d_f = os.path.join(dst_dir, fn)
+                                try:
+                                    if not os.path.isfile(d_f) or os.path.getsize(d_f) != os.path.getsize(s_f):
+                                        shutil.copy2(s_f, d_f)
+                                    if fn.lower().endswith((".jpg", ".jpeg")) and alt_src_dir:
+                                        alt_f = os.path.join(alt_src_dir, fn)
+                                        if os.path.isfile(alt_f):
+                                            with open(d_f, "rb") as chk_f:
+                                                hdr = chk_f.read(4096)
+                                            if b"\x00\x00\x00\x00\x00\x00\x00\x00" in hdr[200:3500] and b"RTKLatitude" not in hdr:
+                                                shutil.copy2(alt_f, d_f)
+                                except Exception:
+                                    pass
                         cand_opf = os.path.join(target_extract, "project.opf")
                         part_imgs = []
                         for root, _, files in os.walk(target_extract):

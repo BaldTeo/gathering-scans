@@ -70,10 +70,18 @@ VPS_SSH_KEY = os.environ.get("VPS_SSH_KEY", os.path.expanduser(r"~\.ssh\id_gathe
 VPS_REMOTE_TUNNEL_PORT = int(os.environ.get("VPS_REMOTE_TUNNEL_PORT", "18095"))
 TUNNEL_SHARED_KEY = os.environ.get("GATHERING_SCANS_TUNNEL_KEY", "gs_tunnel_gatheren_2026_twd97")
 
-# 5. Google OAuth & Google Chat Notification Settings (Shared with GatheringCloud)
+# 5. Google OAuth, Service Account & Google Chat Notification Settings (Shared with GatheringCloud)
 GOOGLE_OAUTH_CLIENT_ID = os.environ.get(
     "GOOGLE_OAUTH_CLIENT_ID",
     "753778992341-hpe65ilnti31j0m7etmq5rn7a1q802da.apps.googleusercontent.com",
+)
+GDRIVE_SERVICE_ACCOUNT_EMAIL = os.environ.get(
+    "GDRIVE_SERVICE_ACCOUNT_EMAIL",
+    "gcworker@modular-temple-508005-c4.iam.gserviceaccount.com",
+)
+GDRIVE_SERVICE_ACCOUNT_PROJECT_ID = os.environ.get(
+    "GDRIVE_SERVICE_ACCOUNT_PROJECT_ID",
+    "modular-temple-508005-c4",
 )
 ALLOWED_WORKSPACE_DOMAINS = ["gatheren.com.tw", "gatheren.cloud", "gathering.cloud", "gmail.com"]
 GCHAT_WEBHOOK_URL = os.environ.get(

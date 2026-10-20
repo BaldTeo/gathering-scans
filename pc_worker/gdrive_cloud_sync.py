@@ -43,8 +43,11 @@ import zipfile
 from typing import Any, Dict, List, Optional, Tuple
 
 from pc_worker.config import (
+    BASE_DIR,
     DATA_DIR,
     GDRIVE_INBOX_DIR,
+    GDRIVE_SERVICE_ACCOUNT_EMAIL,
+    GDRIVE_SERVICE_ACCOUNT_PROJECT_ID,
     LOCAL_SCANS_ROOT,
     SERVER_PORT,
     TUNNEL_SHARED_KEY,
@@ -54,6 +57,111 @@ from pc_worker.config import (
 CLOUD_MANIFEST_PATH = os.path.join(DATA_DIR, "gdrive_cloud_manifest.json")
 CLOUD_AUTH_PATH = os.path.join(DATA_DIR, "gdrive_cloud_auth.json")
 THUMBS_DIR = os.path.join(DATA_DIR, "thumbnails")
+
+
+def discover_service_account_json_on_disk() -> Optional[Dict[str, Any]]:
+    """
+    Searches standard directories (`data/`, project root, `Downloads`, `Desktop`, `G:\\Shared drives\\6.軟體\\3. GatheringScans`)
+    for a Google Cloud Service Account JSON key matching `gcworker@modular-temple-508005-c4.iam.gserviceaccount.com`
+    (project `modular-temple-508005-c4`) or any valid service_account key file.
+    """
+    if os.path.isfile(CLOUD_AUTH_PATH):
+        try:
+            with open(CLOUD_AUTH_PATH, "r", encoding="utf-8") as f:
+                saved = json.load(f)
+            sa = saved.get("service_account") if isinstance(saved, dict) else None
+            if isinstance(sa, dict) and sa.get("private_key") and sa.get("client_email"):
+                return sa
+        except Exception:
+            pass
+
+    search_dirs = [
+        DATA_DIR,
+        BASE_DIR,
+        os.path.expanduser(r"~\Downloads"),
+        os.path.expanduser(r"~\Desktop"),
+        GDRIVE_INBOX_DIR,
+    ]
+    candidates: List[Tuple[int, Dict[str, Any], str]] = []
+    for sdir in search_dirs:
+        if not sdir or not os.path.isdir(sdir):
+            continue
+        try:
+            for fn in os.listdir(sdir):
+                if not fn.lower().endswith(".json"):
+                    continue
+                if fn in ("gdrive_cloud_manifest.json", "pix4d_settings.json", "site_renames.json", "package.json", "tsconfig.json"):
+                    continue
+                fp = os.path.join(sdir, fn)
+                if not os.path.isfile(fp) or os.path.getsize(fp) > 64 * 1024:
+                    continue
+                try:
+                    with open(fp, "r", encoding="utf-8") as jf:
+                        obj = json.load(jf)
+                    if isinstance(obj, dict) and obj.get("type") == "service_account" and obj.get("private_key") and obj.get("client_email"):
+                        email = str(obj.get("client_email") or "").strip().lower()
+                        proj = str(obj.get("project_id") or "").strip().lower()
+                        prio = 2 if (email == GDRIVE_SERVICE_ACCOUNT_EMAIL.lower() or proj == GDRIVE_SERVICE_ACCOUNT_PROJECT_ID.lower()) else 1
+                        candidates.append((prio, obj, fp))
+                except Exception:
+                    continue
+        except Exception:
+            continue
+
+    if candidates:
+        candidates.sort(key=lambda x: x[0], reverse=True)
+        best_sa = candidates[0][1]
+        # Persist into CLOUD_AUTH_PATH automatically
+        try:
+            existing = {}
+            if os.path.isfile(CLOUD_AUTH_PATH):
+                with open(CLOUD_AUTH_PATH, "r", encoding="utf-8") as f:
+                    existing = json.load(f)
+            existing["service_account"] = best_sa
+            existing["auth_mode"] = "service_account"
+            with open(CLOUD_AUTH_PATH, "w", encoding="utf-8") as f:
+                json.dump(existing, f, ensure_ascii=False, indent=2)
+        except Exception:
+            pass
+        return best_sa
+    return None
+
+
+def query_gdrive_api_v3_folder_files(bearer_token: str, folder_id: str) -> Dict[str, Dict[str, Any]]:
+    """
+    Uses the Google Service Account (`gcworker@modular-temple-508005-c4.iam.gserviceaccount.com`)
+    Bearer token to list `<scan_id>.3tz` packages inside `folder_id` via Google Drive API v3.
+    """
+    out: Dict[str, Dict[str, Any]] = {}
+    if not bearer_token or not folder_id:
+        return out
+    try:
+        q = urllib.parse.quote(f"'{folder_id}' in parents and trashed = false")
+        url = (
+            f"https://www.googleapis.com/drive/v3/files?q={q}"
+            f"&supportsAllDrives=true&includeItemsFromAllDrives=true"
+            f"&pageSize=200&fields=files(id,name,size,mimeType,modifiedTime)"
+        )
+        req = urllib.request.Request(
+            url,
+            headers={"Authorization": f"Bearer {bearer_token}"},
+            method="GET",
+        )
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+        for f in data.get("files") or []:
+            name = str(f.get("name") or "")
+            fid = str(f.get("id") or "")
+            if name.endswith(".3tz") and fid:
+                sid = name[: -len(".3tz")]
+                out[sid] = {
+                    "file_id": fid,
+                    "size": int(f.get("size") or 0),
+                    "modifiedTime": f.get("modifiedTime", ""),
+                }
+    except Exception as e:
+        print(f"[GDriveCloudSync] Drive API v3 list note for folder {folder_id}: {e}")
+    return out
 
 
 def resolve_gdrive_stream_dirs() -> Tuple[Optional[str], Optional[str]]:
@@ -481,6 +589,7 @@ def sync_all_scans_to_gdrive_and_vps(db: Any, auth_share: Any = None, force: boo
         json.dump(manifest, mf, ensure_ascii=False, indent=2)
 
     # Also include any saved cloud auth credentials when syncing to VPS so VPS can authenticate with Google Drive API
+    discover_service_account_json_on_disk()
     auth_data: Dict[str, Any] = {}
     if os.path.isfile(CLOUD_AUTH_PATH):
         try:
@@ -488,6 +597,8 @@ def sync_all_scans_to_gdrive_and_vps(db: Any, auth_share: Any = None, force: boo
                 auth_data = json.load(af)
         except Exception:
             auth_data = {}
+    auth_data.setdefault("expected_service_account_email", GDRIVE_SERVICE_ACCOUNT_EMAIL)
+    auth_data.setdefault("expected_project_id", GDRIVE_SERVICE_ACCOUNT_PROJECT_ID)
 
     payload_bytes = json.dumps({"manifest": manifest, "auth": auth_data}, ensure_ascii=False).encode("utf-8")
     vps_synced = False

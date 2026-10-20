@@ -167,20 +167,38 @@ def pix4d_worker_loop():
                         built_ts = postprocess_obj_to_tileset(fin_sid, proj_dir, newest_obj)
                         if built_ts:
                             ts_path = built_ts
-                DB.update_job_progress(
-                    fin_sid,
-                    "completed",
-                    100.0,
-                    "Completed (TWD97 + TWVD2001, 4K Web Tileset)",
-                    tileset_path=ts_path if os.path.isfile(ts_path) else None,
-                    obj_path=newest_obj if os.path.isfile(newest_obj) else None,
-                )
-                try:
-                    if not GCHAT.has_recent_notification(fin_sid, within_seconds=120.0):
-                        GCHAT.notify_scan_ready(fin_sid)
-                except Exception as ge:
-                    print(f"[InboxWatcher] Google Chat notify note for {fin_sid}: {ge}")
-                print(f"[InboxWatcher] Adopted PIX4Dmatic job {fin_sid} completed -> {ts_path}")
+                if os.path.isfile(ts_path) or (newest_obj and os.path.isfile(newest_obj)):
+                    DB.update_job_progress(
+                        fin_sid,
+                        "completed",
+                        100.0,
+                        "Completed (TWD97 + TWVD2001, 4K Web Tileset)",
+                        tileset_path=ts_path if os.path.isfile(ts_path) else None,
+                        obj_path=newest_obj if os.path.isfile(newest_obj) else None,
+                    )
+                    try:
+                        from pc_worker.gdrive_watcher import _discover_folder_scan_item
+                        disc = _discover_folder_scan_item(proj_dir)
+                        if disc:
+                            cur_row = DB.get_scan(fin_sid) or {}
+                            merged = dict(cur_row)
+                            merged.update(disc)
+                            merged["scan_id"] = fin_sid
+                            merged["status"] = "completed"
+                            merged["progress_pct"] = 100.0
+                            if cur_row.get("source_zip_path"):
+                                merged["source_zip_path"] = cur_row["source_zip_path"]
+                            DB.upsert_scan(merged)
+                    except Exception as de:
+                        print(f"[InboxWatcher] Metadata refresh note for {fin_sid}: {de}")
+                    try:
+                        if not GCHAT.has_recent_notification(fin_sid, within_seconds=120.0):
+                            GCHAT.notify_scan_ready(fin_sid)
+                    except Exception as ge:
+                        print(f"[InboxWatcher] Google Chat notify note for {fin_sid}: {ge}")
+                    print(f"[InboxWatcher] Adopted PIX4Dmatic job {fin_sid} completed -> {ts_path}")
+                else:
+                    DB.update_job_progress(fin_sid, "queued", 0.0, "Queued (Awaiting PIX4Dmatic pipeline)")
 
             next_job = DB.pop_next_job()
             if next_job:
@@ -208,6 +226,24 @@ def pix4d_worker_loop():
                         tileset_path=res.get("tileset_path"),
                         obj_path=res.get("obj_path"),
                     )
+                    try:
+                        from pc_worker.gdrive_watcher import _discover_folder_scan_item
+                        disc = _discover_folder_scan_item(out_dir)
+                        if disc:
+                            cur_row = DB.get_scan(sid) or {}
+                            merged = dict(cur_row)
+                            merged.update(disc)
+                            merged["scan_id"] = sid
+                            merged["status"] = "completed"
+                            merged["progress_pct"] = 100.0
+                            merged["stage_label"] = f"Completed (TWD97 + TWVD2001, {res.get('texture_size', 4096)}px Web Tileset)"
+                            if cur_row.get("source_zip_path"):
+                                merged["source_zip_path"] = cur_row["source_zip_path"]
+                            if cur_row.get("rtk_accuracy_cm"):
+                                merged["rtk_accuracy_cm"] = cur_row["rtk_accuracy_cm"]
+                            DB.upsert_scan(merged)
+                    except Exception as de:
+                        print(f"[InboxWatcher] Metadata refresh note for {sid}: {de}")
                     try:
                         GCHAT.notify_scan_ready(sid)
                     except Exception as ge:

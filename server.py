@@ -48,8 +48,11 @@ from pc_worker.config import (
     TWD97_TWVD2001_SHORT,
     PIX4DMATIC_TEXTURE_SIZE,
     GOOGLE_OAUTH_CLIENT_ID,
+    GDRIVE_SERVICE_ACCOUNT_EMAIL,
+    GDRIVE_SERVICE_ACCOUNT_PROJECT_ID,
     load_pix4d_settings,
     save_pix4d_settings,
+    load_pix4d_settings_from_dict,
 )
 from pc_worker.priority_queue import ScanQueueDB
 from pc_worker.gdrive_watcher import seed_and_discover_scans, extract_opf_zip_metadata
@@ -60,7 +63,13 @@ from pc_worker.pix4d_runner import (
 )
 from pc_worker.optimizer_bridge import OptimizerBridge
 from pc_worker.surveying_engine import SurveyingEngine
-from pc_worker.auth_and_sharing import AuthAndSharingManager
+from pc_worker.auth_and_sharing import (
+    AuthAndSharingManager,
+    ROLE_LEVELS,
+    ROLE_LABELS,
+    normalize_role,
+    get_role_permissions,
+)
 from pc_worker.gchat_notifier import GoogleChatNotifier
 
 DATA_DIR = os.path.join(BASE_DIR, "data")
@@ -197,15 +206,30 @@ def _load_cloud_auth() -> Dict[str, Any]:
         try:
             with open(CLOUD_AUTH_PATH, "r", encoding="utf-8") as f:
                 _CLOUD_AUTH_MEM = json.load(f)
-                return _CLOUD_AUTH_MEM
+        except Exception:
+            _CLOUD_AUTH_MEM = {}
+    else:
+        _CLOUD_AUTH_MEM = {}
+    if not isinstance(_CLOUD_AUTH_MEM.get("service_account"), dict) or not _CLOUD_AUTH_MEM["service_account"].get("private_key"):
+        try:
+            from pc_worker.gdrive_cloud_sync import discover_service_account_json_on_disk
+
+            sa_found = discover_service_account_json_on_disk()
+            if isinstance(sa_found, dict) and sa_found.get("private_key"):
+                _CLOUD_AUTH_MEM["service_account"] = sa_found
+                _CLOUD_AUTH_MEM["auth_mode"] = "service_account"
         except Exception:
             pass
-    return {}
+    _CLOUD_AUTH_MEM.setdefault("expected_service_account_email", GDRIVE_SERVICE_ACCOUNT_EMAIL)
+    _CLOUD_AUTH_MEM.setdefault("expected_project_id", GDRIVE_SERVICE_ACCOUNT_PROJECT_ID)
+    return _CLOUD_AUTH_MEM
 
 
 def _save_cloud_auth(auth_data: Dict[str, Any]) -> None:
     global _CLOUD_AUTH_MEM
     merged = {**_load_cloud_auth(), **auth_data}
+    merged.setdefault("expected_service_account_email", GDRIVE_SERVICE_ACCOUNT_EMAIL)
+    merged.setdefault("expected_project_id", GDRIVE_SERVICE_ACCOUNT_PROJECT_ID)
     _CLOUD_AUTH_MEM = merged
     try:
         with open(CLOUD_AUTH_PATH, "w", encoding="utf-8") as f:
@@ -214,89 +238,133 @@ def _save_cloud_auth(auth_data: Dict[str, Any]) -> None:
         print(f"[GatheringScans] Cloud auth save note: {e}")
 
 
-def _get_gdrive_bearer_token() -> Optional[str]:
+def _sign_rs256_jwt_assertion(sa: Dict[str, Any], scope: str = "https://www.googleapis.com/auth/drive") -> Optional[str]:
     """
-    Returns an active Google Drive API v3 OAuth2 Bearer token if configured via:
-    1. 1-Click Browser OAuth Token (`access_token`), or
-    2. OAuth2 Refresh Token (`oauth_refresh_token` + `oauth_client_secret`), or
-    3. Google Cloud Service Account JSON (`service_account`), signed via openssl CLI.
+    Signs an OAuth2 RS256 JWT assertion for `gcworker@modular-temple-508005-c4.iam.gserviceaccount.com`
+    using Python `cryptography` (preferred on Windows & Linux) with fallback to `openssl` CLI.
     """
     import subprocess
     import tempfile
+
+    client_email = str(sa.get("client_email") or GDRIVE_SERVICE_ACCOUNT_EMAIL).strip()
+    private_key_pem = str(sa.get("private_key") or "").strip()
+    if not client_email or not private_key_pem:
+        return None
+    if "\\n" in private_key_pem and "\n" not in private_key_pem:
+        private_key_pem = private_key_pem.replace("\\n", "\n")
+
+    def _b64u(b: bytes) -> str:
+        return base64.urlsafe_b64encode(b).decode("ascii").rstrip("=")
+
+    iat = int(time.time())
+    hdr_obj: Dict[str, str] = {"alg": "RS256", "typ": "JWT"}
+    if sa.get("private_key_id"):
+        hdr_obj["kid"] = str(sa["private_key_id"])
+    hdr = _b64u(json.dumps(hdr_obj, separators=(",", ":")).encode("utf-8"))
+    claims = _b64u(
+        json.dumps(
+            {
+                "iss": client_email,
+                "scope": scope,
+                "aud": str(sa.get("token_uri") or "https://oauth2.googleapis.com/token"),
+                "iat": iat,
+                "exp": iat + 3600,
+            },
+            separators=(",", ":"),
+        ).encode("utf-8")
+    )
+    signing_input = f"{hdr}.{claims}".encode("ascii")
+
+    # 1. Try native Python cryptography first
+    try:
+        from cryptography.hazmat.primitives import hashes, serialization
+        from cryptography.hazmat.primitives.asymmetric import padding
+
+        priv_key = serialization.load_pem_private_key(private_key_pem.encode("utf-8"), password=None)
+        sig = priv_key.sign(signing_input, padding.PKCS1v15(), hashes.SHA256())
+        if sig:
+            return f"{hdr}.{claims}.{_b64u(sig)}"
+    except Exception:
+        pass
+
+    # 2. Fallback to openssl or Git for Windows openssl.exe
+    openssl_bins = ["openssl", r"C:\Program Files\Git\usr\bin\openssl.exe"]
+    with tempfile.NamedTemporaryFile("w", suffix=".pem", delete=False, encoding="utf-8") as kf:
+        kf.write(private_key_pem)
+        pem_path = kf.name
+    try:
+        for obin in openssl_bins:
+            try:
+                proc = subprocess.run(
+                    [obin, "dgst", "-sha256", "-sign", pem_path],
+                    input=signing_input,
+                    capture_output=True,
+                    timeout=5,
+                )
+                if proc.returncode == 0 and proc.stdout:
+                    return f"{hdr}.{claims}.{_b64u(proc.stdout)}"
+            except Exception:
+                continue
+    finally:
+        try:
+            os.remove(pem_path)
+        except OSError:
+            pass
+    return None
+
+
+def _get_gdrive_bearer_token(force_refresh: bool = False) -> Optional[str]:
+    """
+    Returns an active Google Drive API v3 OAuth2 Bearer token, prioritizing the Google Service Account
+    `gcworker@modular-temple-508005-c4.iam.gserviceaccount.com` (`service_account`).
+    """
     import urllib.request
 
     auth = _load_cloud_auth()
     now = time.time()
     tok = auth.get("access_token")
     exp = float(auth.get("expires_at") or 0)
-    if tok and exp > now + 90:
+    if not force_refresh and tok and exp > now + 90 and auth.get("auth_mode") == "service_account":
         return str(tok)
 
-    # 1. Try Service Account RS256 JWT assertion
+    # 1. Prioritize Service Account RS256 JWT assertion (`gcworker@modular-temple-508005-c4.iam.gserviceaccount.com`)
     sa = auth.get("service_account")
     if isinstance(sa, dict) and sa.get("client_email") and sa.get("private_key"):
         try:
-            def _b64u(b: bytes) -> str:
-                return base64.urlsafe_b64encode(b).decode("ascii").rstrip("=")
-
-            hdr = _b64u(json.dumps({"alg": "RS256", "typ": "JWT"}, separators=(",", ":")).encode("utf-8"))
-            iat = int(now)
-            claims = _b64u(
-                json.dumps(
+            jwt_assertion = _sign_rs256_jwt_assertion(sa, scope="https://www.googleapis.com/auth/drive")
+            if jwt_assertion:
+                token_uri = str(sa.get("token_uri") or "https://oauth2.googleapis.com/token")
+                body = urllib.parse.urlencode(
                     {
-                        "iss": sa["client_email"],
-                        "scope": "https://www.googleapis.com/auth/drive.readonly",
-                        "aud": "https://oauth2.googleapis.com/token",
-                        "iat": iat,
-                        "exp": iat + 3600,
-                    },
-                    separators=(",", ":"),
-                ).encode("utf-8")
-            )
-            signing_input = f"{hdr}.{claims}".encode("ascii")
-            with tempfile.NamedTemporaryFile("w", suffix=".pem", delete=False) as kf:
-                kf.write(sa["private_key"])
-                pem_path = kf.name
-            try:
-                proc = subprocess.run(
-                    ["openssl", "dgst", "-sha256", "-sign", pem_path],
-                    input=signing_input,
-                    capture_output=True,
-                    timeout=5,
+                        "grant_type": "urn:ietf:params:oauth:grant-type:jwt-bearer",
+                        "assertion": jwt_assertion,
+                    }
+                ).encode("ascii")
+                req = urllib.request.Request(
+                    token_uri,
+                    data=body,
+                    headers={"Content-Type": "application/x-www-form-urlencoded"},
+                    method="POST",
                 )
-                if proc.returncode == 0 and proc.stdout:
-                    jwt_assertion = f"{hdr}.{claims}.{_b64u(proc.stdout)}"
-                    body = urllib.parse.urlencode(
+                with urllib.request.urlopen(req, timeout=8) as r:
+                    resp = json.loads(r.read().decode("utf-8"))
+                new_tok = resp.get("access_token")
+                if new_tok:
+                    _save_cloud_auth(
                         {
-                            "grant_type": "urn:ietf:params:oauth:grant-type:jwt-bearer",
-                            "assertion": jwt_assertion,
+                            "access_token": new_tok,
+                            "expires_at": now + float(resp.get("expires_in", 3500)),
+                            "auth_mode": "service_account",
+                            "active_service_account_email": sa.get("client_email"),
                         }
-                    ).encode("ascii")
-                    req = urllib.request.Request(
-                        "https://oauth2.googleapis.com/token",
-                        data=body,
-                        headers={"Content-Type": "application/x-www-form-urlencoded"},
-                        method="POST",
                     )
-                    with urllib.request.urlopen(req, timeout=8) as r:
-                        resp = json.loads(r.read().decode("utf-8"))
-                    new_tok = resp.get("access_token")
-                    if new_tok:
-                        _save_cloud_auth(
-                            {
-                                "access_token": new_tok,
-                                "expires_at": now + float(resp.get("expires_in", 3500)),
-                                "auth_mode": "service_account",
-                            }
-                        )
-                        return str(new_tok)
-            finally:
-                try:
-                    os.remove(pem_path)
-                except OSError:
-                    pass
+                    _GDRIVE_NEGATIVE_FID_CACHE.clear()
+                    return str(new_tok)
         except Exception as e:
             print(f"[GatheringScans] Service account token refresh warning: {e}")
+
+    if not force_refresh and tok and exp > now + 90:
+        return str(tok)
 
     # 2. Try OAuth Refresh Token if present
     ref_tok = auth.get("oauth_refresh_token")
@@ -334,6 +402,138 @@ def _get_gdrive_bearer_token() -> Optional[str]:
             print(f"[GatheringScans] OAuth refresh token warning: {e}")
 
     return str(tok) if (tok and exp > now) else None
+
+
+def _test_gdrive_service_account(custom_sa: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """
+    End-to-end live test of the Google Cloud Service Account (`gcworker@modular-temple-508005-c4.iam.gserviceaccount.com`)
+    for all Google Drive interactions:
+      1. Verifies RS256 private key presence & JWT signing
+      2. Exchanges JWT for OAuth2 Bearer token at `https://oauth2.googleapis.com/token`
+      3. Queries Drive API v3 `/drive/v3/about` for identity & quota
+      4. Queries Drive API v3 `/drive/v3/files` on the `StreamPackages` folder (`supportsAllDrives=true`)
+      5. Tests a 64-byte HTTP Range read (`bytes=0-63`) from a `.3tz` package via Drive API v3
+    """
+    import urllib.error
+    import urllib.request
+
+    if isinstance(custom_sa, dict) and custom_sa.get("private_key") and custom_sa.get("client_email"):
+        _save_cloud_auth({"service_account": custom_sa, "auth_mode": "service_account"})
+
+    global _CLOUD_AUTH_MEM
+    _CLOUD_AUTH_MEM = None
+    auth = _load_cloud_auth()
+    manifest = _load_cloud_manifest()
+    sa = auth.get("service_account") if isinstance(auth.get("service_account"), dict) else {}
+    folder_id = str(manifest.get("shared_drive_folder_id") or manifest.get("my_drive_folder_id") or "1scUD9IQWsAJjg296pecxFYqhoVm4mpjs")
+
+    report: Dict[str, Any] = {
+        "expected_service_account": GDRIVE_SERVICE_ACCOUNT_EMAIL,
+        "expected_project_id": GDRIVE_SERVICE_ACCOUNT_PROJECT_ID,
+        "configured_service_account": sa.get("client_email") or GDRIVE_SERVICE_ACCOUNT_EMAIL,
+        "private_key_loaded": bool(sa.get("private_key")),
+        "private_key_id": sa.get("private_key_id", ""),
+        "stream_packages_folder_id": folder_id,
+        "jwt_signed": False,
+        "oauth_token_acquired": False,
+        "drive_about_ok": False,
+        "folder_access_ok": False,
+        "range_read_ok": False,
+        "files_visible_count": 0,
+        "visible_files": [],
+    }
+
+    if not sa.get("private_key"):
+        report["status"] = "missing_private_key"
+        report["message"] = (
+            f"Service account email '{GDRIVE_SERVICE_ACCOUNT_EMAIL}' (project '{GDRIVE_SERVICE_ACCOUNT_PROJECT_ID}') is configured as the mandatory GDrive identity, "
+            f"but its JSON private key file has not been uploaded/dropped into data/gdrive_cloud_auth.json yet. "
+            f"In Google Cloud Console -> IAM & Admin -> Service Accounts -> {GDRIVE_SERVICE_ACCOUNT_EMAIL} -> Keys -> Add Key -> Create new key (JSON), "
+            f"then upload or paste the JSON key in Settings -> Google Service Account."
+        )
+        return report
+
+    jwt_assertion = _sign_rs256_jwt_assertion(sa, scope="https://www.googleapis.com/auth/drive")
+    if not jwt_assertion:
+        report["status"] = "jwt_sign_failed"
+        report["message"] = "Failed to sign RS256 JWT with the provided private_key."
+        return report
+    report["jwt_signed"] = True
+
+    bearer = _get_gdrive_bearer_token(force_refresh=True)
+    if not bearer:
+        report["status"] = "token_exchange_failed"
+        report["message"] = "Google OAuth2 token endpoint rejected the JWT assertion (check private_key validity and system clock)."
+        return report
+    report["oauth_token_acquired"] = True
+
+    # Test 1: /drive/v3/about
+    try:
+        req_about = urllib.request.Request(
+            "https://www.googleapis.com/drive/v3/about?fields=user(displayName,emailAddress),storageQuota",
+            headers={"Authorization": f"Bearer {bearer}"},
+            method="GET",
+        )
+        with urllib.request.urlopen(req_about, timeout=8) as r:
+            about_data = json.loads(r.read().decode("utf-8"))
+        report["drive_about_ok"] = True
+        report["drive_user"] = about_data.get("user", {})
+    except Exception as e:
+        report["drive_about_error"] = str(e)
+
+    # Test 2: List StreamPackages folder
+    try:
+        q = urllib.parse.quote(f"'{folder_id}' in parents and trashed = false")
+        url_list = (
+            f"https://www.googleapis.com/drive/v3/files?q={q}"
+            f"&supportsAllDrives=true&includeItemsFromAllDrives=true"
+            f"&pageSize=50&fields=files(id,name,size,mimeType)"
+        )
+        req_list = urllib.request.Request(
+            url_list,
+            headers={"Authorization": f"Bearer {bearer}"},
+            method="GET",
+        )
+        with urllib.request.urlopen(req_list, timeout=10) as r:
+            list_data = json.loads(r.read().decode("utf-8"))
+        files = list_data.get("files") or []
+        report["folder_access_ok"] = True
+        report["files_visible_count"] = len(files)
+        report["visible_files"] = files[:15]
+
+        # Test 3: Range slice read on first .3tz file (or first package in manifest)
+        test_fid = ""
+        for f in files:
+            if str(f.get("name", "")).endswith(".3tz"):
+                test_fid = str(f.get("id") or "")
+                break
+        if not test_fid:
+            for p in (manifest.get("packages") or {}).values():
+                if p.get("file_id"):
+                    test_fid = str(p["file_id"])
+                    break
+        if test_fid:
+            slice_bytes = _fetch_gdrive_byte_slice([test_fid], 0, 64)
+            if slice_bytes and len(slice_bytes) == 64:
+                report["range_read_ok"] = True
+                report["range_test_file_id"] = test_fid
+                report["range_test_magic_hex"] = slice_bytes[:4].hex()
+    except Exception as e:
+        report["folder_access_error"] = str(e)
+
+    if report["oauth_token_acquired"] and report["folder_access_ok"]:
+        report["status"] = "ok"
+        report["message"] = (
+            f"Service Account {sa.get('client_email')} authenticated and verified! "
+            f"Visible .3tz files in StreamPackages: {report['files_visible_count']}, Range read OK: {report['range_read_ok']}."
+        )
+    else:
+        report["status"] = "partial"
+        report["message"] = (
+            f"Service Account {sa.get('client_email')} authenticated, but ensure folder {folder_id} "
+            f"(3. GatheringScans / StreamPackages) is shared with {sa.get('client_email')}."
+        )
+    return report
 
 
 _GDRIVE_NEGATIVE_FID_CACHE: Dict[str, float] = {}
@@ -1352,9 +1552,9 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
             for k in list(_VPS_RAM_FALLBACK_CACHE.keys()):
                 if k.startswith(path):
                     _VPS_RAM_FALLBACK_CACHE.pop(k, None)
-        if method == "POST" and ("/rename" in path or path == "/api/scans/rename"):
+        if method == "POST" and ("/rename" in path or "/rerun" in path or "/admin/users" in path or path == "/api/scans/rename"):
             for k in list(_VPS_RAM_FALLBACK_CACHE.keys()):
-                if k.startswith("/api/scans") or k.startswith("/api/projects"):
+                if k.startswith("/api/scans") or k.startswith("/api/projects") or k.startswith("/api/user-profiles") or k.startswith("/api/admin/users"):
                     _VPS_RAM_FALLBACK_CACHE.pop(k, None)
         if method == "POST" and path in ("/api/queue/scan-inbox", "/api/queue/rescan"):
             _VPS_RAM_FALLBACK_CACHE.clear()
@@ -1684,11 +1884,45 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
             "synced_my_drive_count": synced_md,
             "total_size_mb": round(total_bytes / (1024 * 1024), 2),
             "auth_configured": bearer_ok,
-            "auth_mode": auth.get("auth_mode") or ("oauth_or_service_account" if bearer_ok else "link_sharing_or_oauth"),
-            "service_account_email": sa.get("client_email", ""),
+            "auth_mode": auth.get("auth_mode") or ("service_account" if bearer_ok else "service_account_pending_key"),
+            "service_account_email": sa.get("client_email") or GDRIVE_SERVICE_ACCOUNT_EMAIL,
+            "expected_service_account_email": GDRIVE_SERVICE_ACCOUNT_EMAIL,
+            "expected_project_id": GDRIVE_SERVICE_ACCOUNT_PROJECT_ID,
+            "private_key_loaded": bool(sa.get("private_key")),
             "google_client_id": GOOGLE_OAUTH_CLIENT_ID,
             "packages": pkg_list,
         }
+
+    def _resolve_request_role(
+        self,
+        payload: Optional[Dict[str, Any]] = None,
+        query: Optional[Dict[str, Any]] = None,
+        share_token: Optional[str] = None,
+    ) -> Tuple[str, str, Dict[str, Any]]:
+        """
+        Resolves `(email, role, permissions)` for the current HTTP request across the 5 permission levels:
+        1. Owner (`glibivanov@gatheren.com.tw`)
+        2. Admin
+        3. Editor
+        4. Viewer
+        5. Guest (scoped external share link or guest role)
+        """
+        if share_token:
+            return ("guest@external", "guest", get_role_permissions("guest"))
+        raw_email = (
+            self.headers.get("X-User-Email")
+            or (payload.get("actor_email") if isinstance(payload, dict) else None)
+            or (payload.get("user_email") if isinstance(payload, dict) else None)
+            or ((query.get("actor_email") or query.get("user_email") or [None])[0] if isinstance(query, dict) else None)
+            or "glibivanov@gatheren.com.tw"
+        )
+        email = str(raw_email).strip().lower()
+        if email == "glibivanov@gatheren.com.tw":
+            return (email, "owner", get_role_permissions("owner"))
+        profiles = AUTH_SHARE.list_user_profiles()
+        matched = next((p for p in profiles if str(p.get("email", "")).lower() == email), None)
+        role = normalize_role(matched.get("role") if matched else "viewer", email=email)
+        return (email, role, get_role_permissions(role))
 
     def do_GET(self):
         global PC_SIMULATED_OFFLINE
@@ -1702,12 +1936,19 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
             self._handle_pc_tunnel_register()
             return
 
-        # 0a. Google Drive .3tz Cloud Manifest Status (served directly on both VPS and PC)
+        # 0a. Google Drive .3tz Cloud Manifest Status & Service Account Live Test (served directly on both VPS and PC)
         if path == "/api/cloud-manifest/status":
             if os.name != "nt" and not (_load_cloud_manifest().get("packages")):
                 self._proxy_via_pc_tunnel_if_vps("GET", path)
                 return
             self.send_json(self._build_cloud_manifest_status())
+            return
+
+        if path == "/api/cloud-manifest/test-sa":
+            if share_token:
+                self.send_json({"error": "Forbidden for guest link"}, status=403)
+                return
+            self.send_json(_test_gdrive_service_account())
             return
 
         # 0b. On Linux VPS, proxy all dynamic API, 3D stream, and share routes over Reverse Tunnel to Windows PC
@@ -2007,11 +2248,28 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
             self.send_json({"status": "ok", "settings": DB.get_user_settings(email)})
             return
 
-        if path == "/api/user-profiles":
+        if path in ("/api/user-profiles", "/api/admin/users"):
+            profiles = []
+            for p in AUTH_SHARE.list_user_profiles():
+                r_norm = normalize_role(p.get("role"), email=p.get("email", ""))
+                profiles.append(
+                    {
+                        **p,
+                        "role": r_norm,
+                        "role_level": ROLE_LEVELS.get(r_norm, 2),
+                        "role_label": ROLE_LABELS.get(r_norm, "Viewer"),
+                        "permissions": get_role_permissions(r_norm),
+                    }
+                )
             self.send_json(
                 {
                     "status": "ok",
-                    "profiles": AUTH_SHARE.list_user_profiles(),
+                    "profiles": profiles,
+                    "users": profiles,
+                    "roles_catalog": [
+                        {"role": k, "level": v, "label": ROLE_LABELS[k], "permissions": get_role_permissions(k)}
+                        for k, v in sorted(ROLE_LEVELS.items(), key=lambda x: -x[1])
+                    ],
                     "google_client_id": GOOGLE_OAUTH_CLIENT_ID,
                 }
             )
@@ -2359,6 +2617,31 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
             self.send_json(self._build_cloud_manifest_status())
             return
 
+        if path == "/api/cloud-manifest/test-sa":
+            if share_token:
+                self.send_json({"error": "External guests cannot test cloud service account."}, status=403)
+                return
+            custom_sa = None
+            if isinstance(payload.get("service_account"), dict):
+                custom_sa = payload["service_account"]
+            elif isinstance(payload.get("service_account_json"), str) and payload["service_account_json"].strip():
+                try:
+                    custom_sa = json.loads(payload["service_account_json"])
+                except Exception as e:
+                    self.send_json({"error": f"Invalid Service Account JSON: {e}"}, status=400)
+                    return
+            test_res = _test_gdrive_service_account(custom_sa=custom_sa)
+            if custom_sa and os.name == "nt":
+                try:
+                    from pc_worker.gdrive_cloud_sync import sync_all_scans_to_gdrive_and_vps
+
+                    m = sync_all_scans_to_gdrive_and_vps(DB, AUTH_SHARE, force=False)
+                    _save_cloud_manifest(m)
+                except Exception:
+                    pass
+            self.send_json(test_res)
+            return
+
         if os.name != "nt" and path.startswith("/api/"):
             if path.startswith("/api/scans/") and path.endswith("/thumbnail"):
                 try:
@@ -2435,10 +2718,12 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
                 )
                 return
 
+            actor_email, actor_role, actor_perms = self._resolve_request_role(payload, query, share_token)
+
             # 1c. Edit and Save Scan Display Name (persists to SQLite + scan_meta.json on local disk)
             if path == "/api/scans/rename" or (path.startswith("/api/scans/") and path.endswith("/rename")):
-                if share_token:
-                    self.send_json({"error": "External guests cannot rename scans."}, status=403)
+                if not actor_perms.get("can_edit_names"):
+                    self.send_json({"error": f"Role '{actor_role}' cannot rename scans (Editor, Admin, or Owner required)."}, status=403)
                     return
                 if path == "/api/scans/rename":
                     scan_id = str(payload.get("scan_id") or (query.get("scan_id") or [""])[0]).strip()
@@ -2458,63 +2743,93 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
                 self.send_json({"status": "ok", "scan": self._enrich_scan_urls(updated)})
                 return
 
+            # 1d. Edit and Save Site / Project Group Name (persists to SQLite + scan_meta.json + site_renames.json)
+            if path in ("/api/projects/rename", "/api/sites/rename"):
+                if not actor_perms.get("can_edit_names"):
+                    self.send_json({"error": f"Role '{actor_role}' cannot rename sites (Editor, Admin, or Owner required)."}, status=403)
+                    return
+                old_group = str(payload.get("old_project_group") or payload.get("project_group") or "").strip()
+                new_group = str(payload.get("new_project_group") or payload.get("name") or "").strip()
+                new_zh = str(payload.get("new_project_name_zh") or payload.get("project_name_zh") or new_group).strip()
+                if not old_group or not new_group:
+                    self.send_json({"error": "old_project_group and new_project_group are required"}, status=400)
+                    return
+                res_rename = DB.rename_site(old_group, new_group, new_zh)
+                if not res_rename.get("ok"):
+                    self.send_json({"error": res_rename.get("error", "Failed to rename site")}, status=404)
+                    return
+                for ck in list(_VPS_RAM_FALLBACK_CACHE.keys()):
+                    if ck.startswith("/api/scans") or ck.startswith("/api/projects"):
+                        _VPS_RAM_FALLBACK_CACHE.pop(ck, None)
+                all_scans = [self._enrich_scan_urls(s) for s in DB.list_scans()]
+                self.send_json(
+                    {
+                        "status": "ok",
+                        **res_rename,
+                        "projects": self._build_projects_summary(all_scans),
+                        "scans": all_scans,
+                    }
+                )
+                return
+
             # 2. Civil Surveying: Cut/Fill & Stockpile Volume + Report Generation
             if path == "/api/survey/volume":
-                if share_token:
-                    ok, reason, link, _ = AUTH_SHARE.validate_share_access(
-                        share_token, requested_scan_id=payload.get("scan_id")
-                    )
-                    if not ok or (link and not link.get("allow_measurements", True)):
-                        self.send_json({"error": reason or "Measurements disabled"}, status=403)
-                        return
+                if share_token or actor_role == "guest":
+                    self.send_json({"error": "Guest role is restricted to basic tools (Distance, Area, and Coordinates)."}, status=403)
+                    return
                 res = SURVEY.calculate_cut_fill_volume(payload)
                 self.send_json(res)
                 return
 
             # 3. Civil Surveying: Elevation Contours + Civil3D.dwg & A3 Survey Report .PDF Export
             if path in ("/api/survey/contours", "/api/survey/report", "/api/surveying/contours", "/api/surveying/report"):
-                if share_token:
-                    ok, reason, _, _ = AUTH_SHARE.validate_share_access(
-                        share_token, requested_scan_id=payload.get("scan_id")
-                    )
-                    if not ok:
-                        self.send_json({"error": reason}, status=403)
-                        return
+                if share_token or actor_role == "guest":
+                    self.send_json({"error": "Guest role is restricted to basic tools (Distance, Area, and Coordinates)."}, status=403)
+                    return
                 res = SURVEY.generate_civil3d_survey_report(payload)
                 self.send_json(res)
                 return
 
             # 4. Civil Surveying: Cross-Section Profile
             if path == "/api/survey/profile":
+                if share_token or actor_role == "guest":
+                    self.send_json({"error": "Guest role is restricted to basic tools (Distance, Area, and Coordinates)."}, status=403)
+                    return
                 res = SURVEY.compute_cross_section_profile(payload)
                 self.send_json(res)
                 return
 
             # 5. Civil Surveying: RTK Raw Camera Photo Pin Inspector
             if path == "/api/survey/inspect-photos":
+                if share_token or actor_role == "guest":
+                    self.send_json({"error": "Guest role is restricted to basic tools (Distance, Area, and Coordinates)."}, status=403)
+                    return
                 res = SURVEY.inspect_rtk_camera_photos(payload)
                 self.send_json(res)
                 return
 
             # 6. GC_ScanOptimizer PC Actions
             if path == "/api/optimizer/optimize":
-                if share_token:
-                    self.send_json({"error": "PC Optimizer actions restricted to internal users."}, status=403)
+                if not actor_perms.get("can_run_workflows"):
+                    self.send_json({"error": f"Role '{actor_role}' cannot run PC optimization workflows (Editor, Admin, or Owner required)."}, status=403)
                     return
                 res = OPTIMIZER.run_optimize_action(payload)
                 self.send_json(res)
                 return
 
             if path == "/api/optimizer/crop":
-                if share_token:
-                    self.send_json({"error": "PC Optimizer actions restricted to internal users."}, status=403)
+                if not actor_perms.get("can_run_workflows"):
+                    self.send_json({"error": f"Role '{actor_role}' cannot run PC crop workflows (Editor, Admin, or Owner required)."}, status=403)
                     return
                 res = OPTIMIZER.run_crop_action(payload)
                 self.send_json(res)
                 return
 
-            # 7. Smart Queue & PIX4Dmatic Automation Actions
+            # 7. Smart Queue & PIX4Dmatic Automation Actions (including Re-run from Original Photos)
             if path in ("/api/queue/scan-inbox", "/api/queue/rescan"):
+                if not actor_perms.get("can_run_workflows"):
+                    self.send_json({"error": f"Role '{actor_role}' cannot trigger PC inbox rescans."}, status=403)
+                    return
                 self._GZIP_FILE_CACHE.clear()
                 self._OPTIMIZED_TILESET_CACHE.clear()
                 _VPS_RAM_FALLBACK_CACHE.clear()
@@ -2523,41 +2838,126 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
                 return
 
             if path == "/api/pix4d/settings":
+                if not actor_perms.get("can_run_workflows"):
+                    self.send_json({"error": f"Role '{actor_role}' cannot modify PIX4Dmatic settings."}, status=403)
+                    return
                 saved = save_pix4d_settings(payload.get("settings", payload) if isinstance(payload, dict) else {})
                 self.send_json({"status": "ok", "settings": saved})
                 return
 
             if path == "/api/queue/force-next":
+                if not actor_perms.get("can_run_workflows"):
+                    self.send_json({"error": f"Role '{actor_role}' cannot reorder the PC processing queue."}, status=403)
+                    return
                 scan_id = payload.get("scan_id", "")
                 updated = DB.set_force_next(scan_id, bool(payload.get("force", True)))
                 self.send_json({"status": "ok", "scan": updated})
                 return
 
-            if path in ("/api/queue/enqueue", "/api/queue/reprocess"):
+            if path in ("/api/scans/rerun", "/api/queue/enqueue", "/api/queue/reprocess"):
+                if not actor_perms.get("can_run_workflows"):
+                    self.send_json({"error": f"Role '{actor_role}' cannot run or re-run scans on the PC (Editor, Admin, or Owner required)."}, status=403)
+                    return
                 scan_id = str(payload.get("scan_id", "")).strip()
                 scan = DB.get_scan(scan_id)
                 if not scan:
                     self.send_json({"error": f"Scan not found: {scan_id}"}, status=404)
                     return
-                force = bool(payload.get("force_next", False))
-                p4d_cfg = load_pix4d_settings()
+                force = bool(payload.get("force_next", True if path == "/api/scans/rerun" else False))
+                force_from_photos = bool(payload.get("force_from_photos", True if path == "/api/scans/rerun" else False))
+                raw_custom = payload.get("settings") if isinstance(payload.get("settings"), dict) else {}
+                p4d_cfg = load_pix4d_settings_from_dict({**load_pix4d_settings(), **raw_custom})
+                for k_extra in ("mesh_quality", "vertex_density"):
+                    if k_extra in raw_custom:
+                        p4d_cfg[k_extra] = str(raw_custom[k_extra])
                 tex_sz = int(p4d_cfg.get("texture_size", PIX4DMATIC_TEXTURE_SIZE))
+                mesh_pipe = str(p4d_cfg.get("mesh_pipeline", "FixedSize"))
+                mesh_qual = str(p4d_cfg.get("mesh_quality", "Standard"))
+
+                proj_dir = scan.get("project_dir") or os.path.join(LOCAL_SCANS_ROOT, scan_id)
+                os.makedirs(proj_dir, exist_ok=True)
+                inputs_dir = os.path.join(proj_dir, "inputs")
+                src_zip = str(scan.get("source_zip_path") or "")
+                photo_files = []
+                if os.path.isdir(inputs_dir):
+                    for r_root, _, r_files in os.walk(inputs_dir):
+                        for fn in r_files:
+                            if fn.lower().endswith((".jpg", ".jpeg", ".png")):
+                                photo_files.append(os.path.join(r_root, fn))
+                has_photos = len(photo_files) > 0 or (bool(src_zip) and os.path.exists(src_zip))
+
+                rerun_cfg_path = os.path.join(proj_dir, "rerun_settings.json")
+                with open(rerun_cfg_path, "w", encoding="utf-8") as rf:
+                    json.dump(
+                        {
+                            "scan_id": scan_id,
+                            "force_from_photos": force_from_photos,
+                            "settings": p4d_cfg,
+                            "requested_by": actor_email,
+                            "requested_at": time.time(),
+                        },
+                        rf,
+                        ensure_ascii=False,
+                        indent=2,
+                    )
+
+                label_mode = "Re-run from Original Photos" if force_from_photos else "Queued for PIX4Dmatic"
                 DB.update_job_progress(
                     scan_id,
                     "queued",
                     0.0,
-                    f"Queued for PIX4Dmatic (TWD97 + TWVD2001, {tex_sz}px)",
+                    f"{label_mode} ({mesh_pipe}/{mesh_qual}, {tex_sz}px, TWD97)",
                 )
                 if force:
                     DB.set_force_next(scan_id, True)
-                self.send_json({"status": "ok", "scan": DB.get_scan(scan_id)})
+
+                in_path = inputs_dir if os.path.isdir(inputs_dir) else (src_zip or proj_dir)
+                gst_script = generate_pix4dmatic_gst_script(
+                    project_p4m_path=f"C:/GatheringScans/{scan_id}/{scan_id}.p4m",
+                    input_zip_or_folder=in_path,
+                    export_dir=f"C:/GatheringScans/{scan_id}/exports",
+                    texture_size=tex_sz,
+                    pipeline_settings=p4d_cfg,
+                )
+
+                run_immediately = bool(payload.get("run_immediately", False))
+                if run_immediately and os.name == "nt":
+                    def _bg_rerun_worker():
+                        try:
+                            run_pix4dmatic_pipeline(
+                                DB.get_scan(scan_id) or scan,
+                                DB,
+                                gchat_notifier=GCHAT,
+                                force_from_photos=force_from_photos,
+                                custom_settings=p4d_cfg,
+                            )
+                        except Exception as e:
+                            print(f"[GatheringScans] Re-run worker error for {scan_id}: {e}")
+
+                    threading.Thread(target=_bg_rerun_worker, daemon=True).start()
+
+                self.send_json(
+                    {
+                        "status": "ok",
+                        "scan": DB.get_scan(scan_id),
+                        "force_from_photos": force_from_photos,
+                        "has_original_photos": has_photos,
+                        "original_photos_count": len(photo_files) or int(scan.get("total_photos") or 0),
+                        "input_source": in_path,
+                        "settings": p4d_cfg,
+                        "gst_script": gst_script,
+                    }
+                )
                 return
 
             if path == "/api/queue/preview-gst":
                 scan_id = payload.get("scan_id", "quchi_20261005_merged")
                 scan = DB.get_scan(scan_id) or {}
-                in_path = scan.get("source_zip_path") or os.path.join(GDRIVE_INBOX_DIR, "2026-10-05-15-37-05.zip")
-                custom_cfg = payload.get("settings") if isinstance(payload.get("settings"), dict) else load_pix4d_settings()
+                proj_dir = scan.get("project_dir") or os.path.join(LOCAL_SCANS_ROOT, scan_id)
+                inputs_dir = os.path.join(proj_dir, "inputs")
+                in_path = inputs_dir if os.path.isdir(inputs_dir) else (scan.get("source_zip_path") or os.path.join(GDRIVE_INBOX_DIR, "2026-10-05-15-37-05.zip"))
+                raw_custom = payload.get("settings") if isinstance(payload.get("settings"), dict) else {}
+                custom_cfg = {**load_pix4d_settings(), **raw_custom}
                 gst_script = generate_pix4dmatic_gst_script(
                     project_p4m_path=f"C:/GatheringScans/{scan_id}/{scan_id}.p4m",
                     input_zip_or_folder=in_path,
@@ -2580,29 +2980,25 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
             # 8. Comments API
             if path == "/api/comments":
                 scan_id = payload.get("scan_id", "")
-                if share_token:
-                    ok, reason, link, _ = AUTH_SHARE.validate_share_access(
-                        share_token, requested_scan_id=scan_id
-                    )
-                    if not ok or (link and not link.get("allow_comments", True)):
-                        self.send_json({"error": reason or "Comments disabled for this share link"}, status=403)
-                        return
+                if share_token or actor_role == "guest":
+                    self.send_json({"error": "Guest role is restricted to basic tools (Distance, Area, and Coordinates)."}, status=403)
+                    return
                 cmt = DB.add_comment(payload)
                 self.send_json({"status": "ok", "comment": cmt})
                 return
 
             # 9. Scoped External Share Link Creation & Revocation
             if path == "/api/share/create":
-                if share_token:
-                    self.send_json({"error": "External guests cannot create share links."}, status=403)
+                if not actor_perms.get("can_manage_shares"):
+                    self.send_json({"error": f"Role '{actor_role}' cannot create external share links."}, status=403)
                     return
                 link = AUTH_SHARE.create_share_link(payload)
                 self.send_json({"status": "ok", "link": link})
                 return
 
             if path == "/api/share/revoke":
-                if share_token:
-                    self.send_json({"error": "External guests cannot revoke share links."}, status=403)
+                if not actor_perms.get("can_manage_shares"):
+                    self.send_json({"error": f"Role '{actor_role}' cannot revoke external share links."}, status=403)
                     return
                 token = payload.get("token", "")
                 link = AUTH_SHARE.revoke_share_link(token)
@@ -2613,8 +3009,8 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
                 return
 
             if path == "/api/share/restore":
-                if share_token:
-                    self.send_json({"error": "External guests cannot restore share links."}, status=403)
+                if not actor_perms.get("can_manage_shares"):
+                    self.send_json({"error": f"Role '{actor_role}' cannot restore external share links."}, status=403)
                     return
                 token = payload.get("token", "")
                 link = AUTH_SHARE.restore_share_link(token)
@@ -2645,11 +3041,37 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
                 self.send_json(res)
                 return
 
-            # 11. User-Specific Offline Cache Settings & User Profiles Update
+            # 11. User-Specific Offline Cache Settings & User Profiles Update / Admin Control Panel
             if path == "/api/user/settings":
                 email = payload.get("email", "glibivanov@gatheren.com.tw")
                 settings = DB.update_user_settings(email, payload)
                 self.send_json({"status": "ok", "settings": settings})
+                return
+
+            if path == "/api/admin/users/save":
+                res_admin = AUTH_SHARE.admin_save_user(
+                    actor_email=actor_email,
+                    target_email=str(payload.get("email") or payload.get("target_email") or ""),
+                    name=str(payload.get("name") or ""),
+                    zh_name=str(payload.get("zh_name") or ""),
+                    role=str(payload.get("role") or "viewer"),
+                    gchat_user_id=str(payload.get("gchat_user_id") or ""),
+                )
+                if not res_admin.get("ok"):
+                    self.send_json({"error": res_admin.get("error", "Permission denied")}, status=403)
+                    return
+                self.send_json({"status": "ok", **res_admin})
+                return
+
+            if path == "/api/admin/users/delete":
+                res_del = AUTH_SHARE.admin_delete_user(
+                    actor_email=actor_email,
+                    target_email=str(payload.get("email") or payload.get("target_email") or ""),
+                )
+                if not res_del.get("ok"):
+                    self.send_json({"error": res_del.get("error", "Permission denied")}, status=403)
+                    return
+                self.send_json({"status": "ok", **res_del})
                 return
 
             if path == "/api/user-profiles":

@@ -177,6 +177,83 @@ def _downscale_glb_textures(raw_bytes: bytes, max_dim: int = 768, jpeg_quality: 
         return raw_bytes
 
 
+def extract_glb_large_offset(raw_bytes: bytes) -> Tuple[float, float, float]:
+    """
+    Returns a rounded (ox, oy, oz) offset if a root/mesh node inside the GLB has large
+    georeferenced coordinates (>1000m), so gltfpack can operate in local coordinates
+    without float32 quantization loss.
+    """
+    if len(raw_bytes) < 28 or raw_bytes[:4] != b"glTF":
+        return (0.0, 0.0, 0.0)
+    try:
+        jl, jtype = struct.unpack_from("<I4s", raw_bytes, 12)
+        if jtype != b"JSON":
+            return (0.0, 0.0, 0.0)
+        j = json.loads(raw_bytes[20 : 20 + jl].decode("utf-8"))
+        for node in j.get("nodes") or []:
+            t = node.get("translation")
+            if isinstance(t, list) and len(t) >= 3:
+                tx, ty, tz = float(t[0]), float(t[1]), float(t[2])
+                if abs(tx) > 1000.0 or abs(ty) > 1000.0:
+                    return (round(tx), round(ty), round(tz))
+    except Exception:
+        pass
+    return (0.0, 0.0, 0.0)
+
+
+def shift_glb_node_translation(raw_bytes: bytes, dx: float, dy: float, dz: float) -> bytes:
+    """
+    Shifts the root/mesh node translation in the GLB JSON chunk by (dx, dy, dz) in 64-bit float
+    without modifying the binary buffer, preserving sub-millimeter quantized vertex precision.
+    """
+    if (abs(dx) < 1e-6 and abs(dy) < 1e-6 and abs(dz) < 1e-6) or len(raw_bytes) < 28 or raw_bytes[:4] != b"glTF":
+        return raw_bytes
+    try:
+        jl, jtype = struct.unpack_from("<I4s", raw_bytes, 12)
+        if jtype != b"JSON":
+            return raw_bytes
+        boff = 20 + jl
+        j = json.loads(raw_bytes[20 : 20 + jl].decode("utf-8"))
+        nodes = j.get("nodes") or []
+        if not nodes:
+            return raw_bytes
+
+        # Identify root scene nodes or nodes holding a mesh
+        scene_roots = set()
+        for sc in j.get("scenes") or []:
+            for ni in sc.get("nodes") or []:
+                scene_roots.add(int(ni))
+        target_indices = [
+            idx for idx, n in enumerate(nodes)
+            if isinstance(n.get("translation"), list) and len(n["translation"]) >= 3
+        ]
+        if not target_indices:
+            target_indices = [idx for idx in scene_roots if 0 <= idx < len(nodes)] or [0]
+
+        for idx in target_indices:
+            n = nodes[idx]
+            t = n.get("translation") or [0.0, 0.0, 0.0]
+            n["translation"] = [
+                round(float(t[0]) + float(dx), 6),
+                round(float(t[1]) + float(dy), 6),
+                round(float(t[2]) + float(dz), 6),
+            ]
+
+        jb = json.dumps(j, separators=(",", ":")).encode("utf-8")
+        while len(jb) % 4:
+            jb += b" "
+        rest = raw_bytes[boff:]
+        total_len = 12 + 8 + len(jb) + len(rest)
+        out = bytearray()
+        out.extend(struct.pack("<4sII", b"glTF", 2, total_len))
+        out.extend(struct.pack("<I4s", len(jb), b"JSON"))
+        out.extend(jb)
+        out.extend(rest)
+        return bytes(out)
+    except Exception:
+        return raw_bytes
+
+
 def build_low_quality_preview_glb(
     src_glb_path: str,
     dst_glb_path: str,
@@ -187,9 +264,8 @@ def build_low_quality_preview_glb(
 ) -> bool:
     """
     Generates a clean, watertight preview GLB from src_glb_path into dst_glb_path.
-    Preserves KHR_mesh_quantization (-vp 14 -vt 14) so large TWD97 coordinates stay in
-    node.translation without float32 precision loss, locks border vertices (-slb), avoids
-    -sa UV-island tearing, and embeds crisp textures (2048px for single-root, 1024px for octree).
+    Shifts large TWD97 node.translation to local (0,0,0) before invoking gltfpack and restores
+    the 64-bit offset afterward so C++ float32 never quantizes TWD97 coordinates to 25cm steps.
     """
     if not os.path.isfile(src_glb_path):
         return False
@@ -205,12 +281,20 @@ def build_low_quality_preview_glb(
             ratio = 1.0
 
         tmp_path = dst_glb_path + ".tmp.glb"
+        tmp_in_path = ""
+        ox, oy, oz = extract_glb_large_offset(raw_in)
         ran_gltfpack = False
         if os.path.isfile(GLTFPACK_EXE) and ratio < 0.85:
+            in_for_gltfpack = src_glb_path
+            if abs(ox) > 1000.0 or abs(oy) > 1000.0:
+                tmp_in_path = dst_glb_path + ".local_in.glb"
+                with open(tmp_in_path, "wb") as lif:
+                    lif.write(shift_glb_node_translation(raw_in, -ox, -oy, -oz))
+                in_for_gltfpack = tmp_in_path
             cmd = [
                 GLTFPACK_EXE,
                 "-i",
-                src_glb_path,
+                in_for_gltfpack,
                 "-o",
                 tmp_path,
                 "-si",
@@ -226,6 +310,11 @@ def build_low_quality_preview_glb(
             if allow_aggressive:
                 cmd.insert(-2, "-sa")
             res = subprocess.run(cmd, capture_output=True, timeout=60)
+            if tmp_in_path and os.path.isfile(tmp_in_path):
+                try:
+                    os.remove(tmp_in_path)
+                except Exception:
+                    pass
             if res.returncode == 0 and os.path.isfile(tmp_path) and os.path.getsize(tmp_path) > 128:
                 ran_gltfpack = True
 
@@ -236,6 +325,8 @@ def build_low_quality_preview_glb(
                 os.remove(tmp_path)
             except Exception:
                 pass
+            if abs(ox) > 1000.0 or abs(oy) > 1000.0:
+                simplified_bytes = shift_glb_node_translation(simplified_bytes, ox, oy, oz)
         else:
             simplified_bytes = raw_in
 
@@ -456,15 +547,33 @@ def _extract_glb_enh_points_and_colors(
             )
         )
         if needs_gltfpack_decode and os.path.isfile(GLTFPACK_EXE):
+            with open(glb_path, "rb") as f_raw:
+                raw_src = f_raw.read()
+            ox, oy, oz = extract_glb_large_offset(raw_src)
+            in_for_decode = glb_path
+            tmp_in_dec = None
+            if abs(ox) > 1000.0 or abs(oy) > 1000.0:
+                fd_in, tmp_in_dec = tempfile.mkstemp(suffix=".glb", prefix="gs_thumb_in_")
+                os.close(fd_in)
+                with open(tmp_in_dec, "wb") as f_in_dec:
+                    f_in_dec.write(shift_glb_node_translation(raw_src, -ox, -oy, -oz))
+                in_for_decode = tmp_in_dec
             fd, tmp_glb = tempfile.mkstemp(suffix=".glb", prefix="gs_thumb_")
             os.close(fd)
             res = subprocess.run(
-                [GLTFPACK_EXE, "-i", glb_path, "-o", tmp_glb, "-noq"],
+                [GLTFPACK_EXE, "-i", in_for_decode, "-o", tmp_glb, "-noq"],
                 capture_output=True,
                 timeout=45,
             )
+            if tmp_in_dec and os.path.isfile(tmp_in_dec):
+                try:
+                    os.remove(tmp_in_dec)
+                except Exception:
+                    pass
             if res.returncode == 0 and os.path.isfile(tmp_glb) and os.path.getsize(tmp_glb) > 128:
                 read_path = tmp_glb
+        else:
+            ox, oy, oz = 0.0, 0.0, 0.0
 
         with open(read_path, "rb") as rf:
             raw = rf.read()
@@ -508,7 +617,11 @@ def _extract_glb_enh_points_and_colors(
                 pbv = bvs[pa["bufferView"]]
                 poff = int(pbv.get("byteOffset", 0)) + int(pa.get("byteOffset", 0))
                 pcount = int(pa["count"])
-                verts = np.frombuffer(bin_data[poff : poff + pcount * 12], dtype=np.float32).reshape(-1, 3)
+                verts = np.frombuffer(bin_data[poff : poff + pcount * 12], dtype=np.float32).reshape(-1, 3).astype(np.float64)
+                if abs(ox) > 1000.0 or abs(oy) > 1000.0:
+                    verts[:, 0] += ox
+                    verts[:, 1] += oy
+                    verts[:, 2] += oz
 
                 tex_arr = decoded_images.get(0)
                 uv_offset = np.array([0.0, 0.0], dtype=np.float32)
