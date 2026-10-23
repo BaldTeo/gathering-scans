@@ -33,8 +33,18 @@ from pc_worker.config import (
     GDRIVE_INBOX_DIR,
     LOCAL_SCANS_ROOT,
 )
-from server import run_server, start_pc_reverse_tunnel_pool, DB, GCHAT
+from server import (
+    run_server,
+    start_pc_reverse_tunnel_pool,
+    DB,
+    GCHAT,
+    AUTH_SHARE,
+    is_pc_daemon_running,
+    mark_daemon_poll_completed,
+    _DAEMON_WAKE_EVENT,
+)
 from pc_worker.gdrive_watcher import seed_and_discover_scans
+from pc_worker.gdrive_cloud_sync import sync_all_scans_to_gdrive_and_vps
 from pc_worker.pix4d_runner import (
     run_pix4dmatic_pipeline,
     parse_pix4dmatic_log_progress,
@@ -102,15 +112,35 @@ def inbox_discovery_loop():
     Polls G:\\Shared drives\\6.軟體\\3. GatheringScans and C:\\GatheringScans every 10s,
     copies completed scan folders from Google Drive to local disk, tiles standalone .obj
     meshes, and updates the SQLite index immediately without waiting for PIX4Dmatic jobs.
+    Respects Admin Panel Start/Stop Daemon toggle (is_pc_daemon_running).
     """
+    last_completed_sig = None
     while True:
-        try:
-            seed_and_discover_scans(DB)
-        except Exception as e:
-            print(f"[InboxDiscovery] Poll warning: {e}")
-        finally:
+        _DAEMON_WAKE_EVENT.clear()
+        if is_pc_daemon_running():
+            try:
+                seed_and_discover_scans(DB)
+                mark_daemon_poll_completed()
+                cur_sig = tuple(
+                    sorted(
+                        (s["scan_id"], str(s.get("tileset_path") or ""))
+                        for s in DB.list_scans()
+                        if s.get("status") == "completed"
+                    )
+                )
+                if cur_sig != last_completed_sig:
+                    last_completed_sig = cur_sig
+                    try:
+                        sync_all_scans_to_gdrive_and_vps(DB, AUTH_SHARE, force=False)
+                    except Exception as se:
+                        print(f"[InboxDiscovery] Cloud sync note: {se}")
+            except Exception as e:
+                print(f"[InboxDiscovery] Poll warning: {e}")
+            finally:
+                _INITIAL_DISCOVERY_DONE.set()
+        else:
             _INITIAL_DISCOVERY_DONE.set()
-        time.sleep(10)
+        _DAEMON_WAKE_EVENT.wait(timeout=10.0)
 
 
 def pix4d_worker_loop():
@@ -125,6 +155,9 @@ def pix4d_worker_loop():
     adopted_sid: Optional[str] = None
 
     while True:
+        if not is_pc_daemon_running():
+            time.sleep(3)
+            continue
         try:
             is_running, running_sid, latest_log = _detect_running_pix4dmatic()
             if is_running and running_sid:

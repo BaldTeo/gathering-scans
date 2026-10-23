@@ -725,6 +725,7 @@ def run_pix4dmatic_pipeline(
                         os.makedirs(target_extract, exist_ok=True)
                         alt_unredacted_dirs = glob.glob(os.path.join(r"G:\My Drive\Scans", "*", stem, "images")) + glob.glob(os.path.join(r"G:\My Drive\Scans", stem, "images"))
                         alt_src_dir = alt_unredacted_dirs[0] if alt_unredacted_dirs and os.path.isdir(alt_unredacted_dirs[0]) else ""
+                        copied_cnt = 0
                         for root, _, files in os.walk(zpath):
                             rel_dir = os.path.relpath(root, zpath)
                             dst_dir = target_extract if rel_dir == "." else os.path.join(target_extract, rel_dir)
@@ -737,6 +738,12 @@ def run_pix4dmatic_pipeline(
                                 try:
                                     if not os.path.isfile(d_f) or os.path.getsize(d_f) != os.path.getsize(s_f):
                                         shutil.copy2(s_f, d_f)
+                                    copied_cnt += 1
+                                    if progress_callback and copied_cnt % 300 == 0:
+                                        progress_callback(
+                                            min(9.5, 6.0 + (copied_cnt / 4500.0) * 3.5),
+                                            f"Staging folder {idx + 1}/{len(part_paths)}: {stem} ({copied_cnt} files staged to SSD)...",
+                                        )
                                     if fn.lower().endswith((".jpg", ".jpeg")) and alt_src_dir:
                                         alt_f = os.path.join(alt_src_dir, fn)
                                         if os.path.isfile(alt_f):

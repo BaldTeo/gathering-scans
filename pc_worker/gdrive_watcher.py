@@ -19,6 +19,7 @@ from typing import Dict, Any, List, Optional, Tuple
 
 from pc_worker.config import (
     GDRIVE_INBOX_DIR,
+    GDRIVE_INPUTS_DIR,
     LEGACY_GDRIVE_INBOX_DIR,
     LOCAL_SCANS_ROOT,
     GC_SCAN_OPTIMIZER_DIR,
@@ -480,7 +481,7 @@ def _extract_image_exif_xmp_gps(img_header_bytes: bytes) -> Optional[Dict[str, f
 
 def _apply_extracted_coords_to_info(info: Dict[str, Any], cx: float, cy: float, cz: float, crs_desc: str = "") -> bool:
     """Applies extracted coordinates (UTM51N, TWD97 TM2-121, or geodetic lat/lon) to info dict."""
-    if "UTM zone 51N" in crs_desc or (100000 <= cx <= 850000 and 2500000 <= cy <= 3000000 and (cx < 200000 or cx > 345000)):
+    if 100000 <= cx <= 850000 and 2500000 <= cy <= 3000000 and ("UTM zone 51N" in crs_desc or cx < 200000 or cx > 345000):
         lat, lon = utm51n_to_wgs84(cx, cy)
         twd_e, twd_n, twd_h = wgs84_to_twd97(lat, lon, cz - 20.6)
         info.update(
@@ -596,25 +597,56 @@ def extract_opf_zip_metadata(zip_path: str) -> Dict[str, Any]:
             cam_files_disk: List[str] = []
             total_sz = 0
             latest_mt = stat.st_mtime
-            for root, _, files in os.walk(zip_path):
-                for fn in sorted(files):
-                    fp = os.path.join(root, fn)
-                    try:
-                        fst = os.stat(fp)
-                        total_sz += fst.st_size
-                        if fst.st_mtime > latest_mt:
-                            latest_mt = fst.st_mtime
-                    except OSError:
-                        pass
-                    low = fn.lower()
-                    if low.endswith((".jpg", ".jpeg", ".png")):
-                        jpg_files.append(fp)
-                    elif fn.endswith("projectMetadata.json"):
-                        meta_files_disk.append(fp)
-                    elif fn.endswith("scene_reference_frame.json"):
-                        srf_files_disk.append(fp)
-                    elif fn.endswith("input_cameras.json"):
-                        cam_files_disk.append(fp)
+
+            # Fast path for Pix4DCatch OPF directories (avoids 4,500 individual os.stat calls over Google Drive File Stream)
+            cand_meta = os.path.join(zip_path, "metadata", "projectMetadata.json")
+            cand_srf = os.path.join(zip_path, "opf_files", "scene_reference_frame.json")
+            cand_cam = os.path.join(zip_path, "opf_files", "input_cameras.json")
+            cand_imgs_dir = os.path.join(zip_path, "images")
+            if os.path.isfile(cand_meta):
+                meta_files_disk.append(cand_meta)
+            if os.path.isfile(cand_srf):
+                srf_files_disk.append(cand_srf)
+            if os.path.isfile(cand_cam):
+                cam_files_disk.append(cand_cam)
+
+            if os.path.isdir(cand_imgs_dir) and (meta_files_disk or cam_files_disk or os.path.isfile(os.path.join(zip_path, "project.opf"))):
+                try:
+                    with os.scandir(cand_imgs_dir) as it:
+                        for entry in it:
+                            low = entry.name.lower()
+                            if low.endswith((".jpg", ".jpeg", ".png")):
+                                jpg_files.append(entry.path)
+                            try:
+                                est = entry.stat()
+                                total_sz += est.st_size
+                                if est.st_mtime > latest_mt:
+                                    latest_mt = est.st_mtime
+                            except OSError:
+                                pass
+                except Exception:
+                    pass
+                jpg_files.sort()
+            else:
+                for root, _, files in os.walk(zip_path):
+                    for fn in sorted(files):
+                        fp = os.path.join(root, fn)
+                        try:
+                            fst = os.stat(fp)
+                            total_sz += fst.st_size
+                            if fst.st_mtime > latest_mt:
+                                latest_mt = fst.st_mtime
+                        except OSError:
+                            pass
+                        low = fn.lower()
+                        if low.endswith((".jpg", ".jpeg", ".png")):
+                            jpg_files.append(fp)
+                        elif fn.endswith("projectMetadata.json"):
+                            meta_files_disk.append(fp)
+                        elif fn.endswith("scene_reference_frame.json"):
+                            srf_files_disk.append(fp)
+                        elif fn.endswith("input_cameras.json"):
+                            cam_files_disk.append(fp)
 
             info["image_count"] = len(jpg_files)
             info["size_bytes"] = max(total_sz, 1024)
@@ -623,7 +655,8 @@ def extract_opf_zip_metadata(zip_path: str) -> Dict[str, Any]:
             if meta_files_disk:
                 with open(meta_files_disk[0], "r", encoding="utf-8") as mf:
                     mdata = json.load(mf)
-                min_h_acc = (mdata.get("locationInfo") or {}).get("minHorizontalAccuracy")
+                loc_obj = mdata.get("locationInfo") or mdata.get("locationInformation") or {}
+                min_h_acc = loc_obj.get("minHorizontalAccuracy") or loc_obj.get("averageHorizontalAccuracy")
                 if min_h_acc is not None:
                     info["rtk_accuracy_cm"] = round(max(float(min_h_acc) * 100.0, 0.8), 2)
 
@@ -995,7 +1028,35 @@ INTERNAL_ASSET_DIRS = {
     "temp",
     "project",
     "preview_low",
+    "meshes",
+    "opf_files",
+    "point_clouds",
+    "region_of_interest",
+    "geolocations",
+    "metadata",
+    "reports",
 }
+
+
+def _is_raw_pix4dcatch_opf_folder(folder_path: str) -> bool:
+    """
+    Returns True if folder_path is an uncompressed Pix4DCatch OPF capture folder
+    (contains project.opf, projectManifest.json, or opf_files/input_cameras.json)
+    that has NOT been tiled into a completed web scan (no tileset/tileset.json or scan_meta.json).
+    Note: Pix4DCatch saves a low-res mobile AR preview mesh in `meshes/mesh.obj`;
+    that preview mesh must NOT cause the folder to be mistaken for a completed scan!
+    """
+    if not os.path.isdir(folder_path):
+        return False
+    if os.path.isfile(os.path.join(folder_path, "tileset", "tileset.json")) or os.path.isfile(
+        os.path.join(folder_path, "scan_meta.json")
+    ):
+        return False
+    return (
+        os.path.isfile(os.path.join(folder_path, "project.opf"))
+        or os.path.isfile(os.path.join(folder_path, "projectManifest.json"))
+        or os.path.isfile(os.path.join(folder_path, "opf_files", "input_cameras.json"))
+    )
 
 
 def _is_direct_scan_folder(folder_path: str) -> bool:
@@ -1004,6 +1065,8 @@ def _is_direct_scan_folder(folder_path: str) -> bool:
     tileset.json, *-cesium_mesh.json, *.obj, or *.glb at root, or tileset/tileset.json).
     """
     if not os.path.isdir(folder_path):
+        return False
+    if _is_raw_pix4dcatch_opf_folder(folder_path):
         return False
     if os.path.isfile(os.path.join(folder_path, "tileset", "tileset.json")):
         return True
@@ -1026,10 +1089,14 @@ def _folder_has_completed_scan_assets(folder_path: str) -> bool:
     """Checks if a folder contains completed scan assets (.obj, .glb, tileset.json, *-cesium_mesh.json, scan_meta.json)."""
     if not os.path.isdir(folder_path):
         return False
+    if _is_raw_pix4dcatch_opf_folder(folder_path):
+        return False
     folder_name = os.path.basename(folder_path.rstrip("\\/"))
     if folder_name.lower() in INTERNAL_ASSET_DIRS:
         return False
-    for root, _, files in os.walk(folder_path):
+    for root, dirs, files in os.walk(folder_path):
+        # Do not descend into Pix4DCatch mobile preview `meshes/` or raw `images/`/`opf_files/`
+        dirs[:] = [d for d in dirs if d.lower() not in ("meshes", "opf_files", "point_clouds", "images", "inputs", "logs", "temp")]
         rel_depth = os.path.relpath(root, folder_path).count(os.sep)
         if rel_depth > 2:
             continue
@@ -1170,36 +1237,6 @@ def _discover_folder_scan_item(
         else:
             obj_path = ""
 
-    # If a completed .obj mesh was dropped without a 3D tileset, auto-build a 2K quadtree tileset on local disk
-    if not (tileset_path and os.path.isfile(tileset_path)) and obj_path and os.path.isfile(obj_path):
-        try:
-            import sys
-            from pc_worker.config import GC_SCAN_OPTIMIZER_DIR
-            if GC_SCAN_OPTIMIZER_DIR and os.path.isdir(GC_SCAN_OPTIMIZER_DIR) and GC_SCAN_OPTIMIZER_DIR not in sys.path:
-                sys.path.insert(0, GC_SCAN_OPTIMIZER_DIR)
-            from optimizer.quadtree_tiler import QuadtreeTiler  # type: ignore
-            auto_ts_dir = os.path.join(folder_path, "tileset")
-            os.makedirs(auto_ts_dir, exist_ok=True)
-            print(f"[GDriveWatcher] Auto-tiling standalone OBJ mesh on local disk: {obj_path} -> {auto_ts_dir}")
-            tiler = QuadtreeTiler(
-                input_path=obj_path,
-                output_dir=auto_ts_dir,
-                max_levels=3,
-                texture_quality=7,
-                texture_limit=PIX4DMATIC_TEXTURE_SIZE,
-                high_compression=True,
-                verbose=True,
-            )
-            tiler.run()
-            built_ts = os.path.join(auto_ts_dir, "tileset.json")
-            if os.path.isfile(built_ts):
-                tileset_path = built_ts
-        except Exception as e:
-            print(f"[GDriveWatcher] Warning auto-tiling standalone OBJ {obj_path}: {e}")
-
-    if not (tileset_path and os.path.isfile(tileset_path)):
-        return None
-
     stat = os.stat(folder_path)
     default_id = (
         folder_name
@@ -1209,6 +1246,45 @@ def _discover_folder_scan_item(
     scan_id = meta.get("scan_id") or default_id
     if scan_id.lower().startswith("catch_") and folder_name.lower().startswith("catch_"):
         scan_id = folder_name
+
+    # If a completed .obj mesh was dropped without a 3D tileset, auto-build a 4K quadtree tileset on local disk
+    # using postprocess_obj_to_tileset so offset.xyz (UTM51N / TWD97) and .mtl Kd factors are properly applied.
+    if not (tileset_path and os.path.isfile(tileset_path)) and obj_path and os.path.isfile(obj_path):
+        try:
+            from pc_worker.pix4d_runner import postprocess_obj_to_tileset
+
+            print(f"[GDriveWatcher] Auto-tiling standalone OBJ mesh with offset.xyz support: {obj_path}")
+            built_ts = postprocess_obj_to_tileset(scan_id, folder_path, obj_path)
+            if built_ts and os.path.isfile(built_ts):
+                tileset_path = built_ts
+        except Exception as e:
+            print(f"[GDriveWatcher] Warning in postprocess_obj_to_tileset for {obj_path}, falling back to QuadtreeTiler: {e}")
+            try:
+                import sys
+                from pc_worker.config import GC_SCAN_OPTIMIZER_DIR
+                if GC_SCAN_OPTIMIZER_DIR and os.path.isdir(GC_SCAN_OPTIMIZER_DIR) and GC_SCAN_OPTIMIZER_DIR not in sys.path:
+                    sys.path.insert(0, GC_SCAN_OPTIMIZER_DIR)
+                from optimizer.quadtree_tiler import QuadtreeTiler  # type: ignore
+                auto_ts_dir = os.path.join(folder_path, "tileset")
+                os.makedirs(auto_ts_dir, exist_ok=True)
+                tiler = QuadtreeTiler(
+                    input_path=obj_path,
+                    output_dir=auto_ts_dir,
+                    max_levels=3,
+                    texture_quality=7,
+                    texture_limit=PIX4DMATIC_TEXTURE_SIZE,
+                    high_compression=True,
+                    verbose=True,
+                )
+                tiler.run()
+                built_ts = os.path.join(auto_ts_dir, "tileset.json")
+                if os.path.isfile(built_ts):
+                    tileset_path = built_ts
+            except Exception as e2:
+                print(f"[GDriveWatcher] Warning auto-tiling standalone OBJ {obj_path}: {e2}")
+
+    if not (tileset_path and os.path.isfile(tileset_path)):
+        return None
 
     try:
         from pc_worker.preview_generator import (
@@ -1222,6 +1298,24 @@ def _discover_folder_scan_item(
         print(f"[GDriveWatcher] Warning generating preview/thumbnail for {tileset_path}: {e}")
 
     ts_georef = _extract_tileset_georef_and_fix_axis(tileset_path)
+    if not ts_georef.get("lat"):
+        # Fallback: inspect offset.xyz in folder_path or obj_path directory
+        for cand_off in (
+            os.path.join(folder_path, "offset.xyz"),
+            os.path.join(os.path.dirname(obj_path), "offset.xyz") if obj_path else "",
+            os.path.join(os.path.dirname(tileset_path), "offset.xyz"),
+        ):
+            if cand_off and os.path.isfile(cand_off):
+                try:
+                    with open(cand_off, "r", encoding="utf-8", errors="ignore") as f_off:
+                        pts = f_off.read().strip().split()
+                    if len(pts) >= 3:
+                        ox, oy, oz = float(pts[0]), float(pts[1]), float(pts[2])
+                        if abs(ox) > 100.0 and abs(oy) > 100.0:
+                            _apply_extracted_coords_to_info(ts_georef, ox, oy, oz)
+                            break
+                except Exception:
+                    pass
 
     # Auto-detect cameras_dir
     cameras_dir = meta.get("cameras_dir", "")
@@ -1390,7 +1484,12 @@ def _inspect_raw_photo_scan_folder(folder_path: str) -> Tuple[bool, bool, int, i
     if not os.path.isdir(folder_path):
         return False, False, 0, 0
     folder_name = os.path.basename(folder_path.rstrip("/\\"))
-    if not folder_name or folder_name.startswith(("_", ".")) or folder_name.lower() in INTERNAL_ASSET_DIRS or folder_name.lower() == "streampackages":
+    if (
+        not folder_name
+        or folder_name.startswith(("_", "."))
+        or folder_name.lower() in INTERNAL_ASSET_DIRS
+        or folder_name.lower() in ("streampackages", "inputs")
+    ):
         return False, False, 0, 0
     if _folder_has_completed_scan_assets(folder_path):
         return False, False, 0, 0
@@ -1400,26 +1499,46 @@ def _inspect_raw_photo_scan_folder(folder_path: str) -> Tuple[bool, bool, int, i
     total_files = 0
     newest_mtime = 0.0
     try:
-        for root, _, files in os.walk(folder_path):
-            rel_depth = os.path.relpath(root, folder_path).count(os.sep)
-            if rel_depth > 2:
-                continue
-            for fn in files:
-                if fn.startswith("."):
+        images_sub = os.path.join(folder_path, "images")
+        if os.path.isdir(images_sub):
+            # Fast scandir path (<15ms for 4,500 files on Google Drive File Stream)
+            with os.scandir(images_sub) as it:
+                for entry in it:
+                    if entry.name.startswith("."):
+                        continue
+                    total_files += 1
+                    low = entry.name.lower()
+                    if low.endswith((".jpg", ".jpeg", ".png")):
+                        jpg_count += 1
+                    elif low.endswith((".tiff", ".tif")):
+                        tiff_count += 1
+                    try:
+                        mt = entry.stat().st_mtime
+                        if mt > newest_mtime:
+                            newest_mtime = mt
+                    except OSError:
+                        pass
+        else:
+            for root, _, files in os.walk(folder_path):
+                rel_depth = os.path.relpath(root, folder_path).count(os.sep)
+                if rel_depth > 2:
                     continue
-                fp = os.path.join(root, fn)
-                total_files += 1
-                try:
-                    mt = os.path.getmtime(fp)
-                    if mt > newest_mtime:
-                        newest_mtime = mt
-                except OSError:
-                    pass
-                low = fn.lower()
-                if low.endswith((".jpg", ".jpeg", ".png")):
-                    jpg_count += 1
-                elif low.endswith((".tiff", ".tif")):
-                    tiff_count += 1
+                for fn in files:
+                    if fn.startswith("."):
+                        continue
+                    fp = os.path.join(root, fn)
+                    total_files += 1
+                    try:
+                        mt = os.path.getmtime(fp)
+                        if mt > newest_mtime:
+                            newest_mtime = mt
+                    except OSError:
+                        pass
+                    low = fn.lower()
+                    if low.endswith((".jpg", ".jpeg", ".png")):
+                        jpg_count += 1
+                    elif low.endswith((".tiff", ".tif")):
+                        tiff_count += 1
     except Exception:
         return False, False, 0, 0
 
@@ -1445,20 +1564,26 @@ def seed_and_discover_scans(db: ScanQueueDB) -> List[Dict[str, Any]]:
 def _seed_and_discover_scans_locked(db: ScanQueueDB) -> List[Dict[str, Any]]:
     """
     100% Dynamic, Project-Agnostic Scan Discovery from C:\\GatheringScans (LOCAL_SCANS_ROOT)
-    and G:\\Shared drives\\6.軟體\\3. GatheringScans (GDRIVE_INBOX_DIR).
-    - Google Drive (GDRIVE_INBOX_DIR) is strictly an input-only inbox: any completed scan folders
-      dropped into Google Drive are first copied into C:\\GatheringScans (LOCAL_SCANS_ROOT) and
-      tiled/indexed exclusively from local disk.
-    - Scales cleanly to 100+ projects via flat scan folders or nested project folders.
-    - Single-part ('FileName.zip'), multi-part ('FileName_1of4.zip' .. 'FileName_4of4.zip') archives,
-      AND raw photo folders ('2026-09-21-11-39-49') uploaded from tablets/phones.
-    - Immediate removal from SQLite when a scan folder or archive is deleted from local disk.
+    and G:\\Shared drives\\6.軟體\\3. GatheringScans\\INPUTS (GDRIVE_INPUTS_DIR).
+    - Google Drive (GDRIVE_INPUTS_DIR / GDRIVE_INBOX_DIR) is strictly an input-only inbox:
+      users can upload either directly into `INPUTS\\<ScanOrZip>` or into project subfolders
+      `INPUTS\\<Project>\\<ScanOrZip>`.
+    - Any completed scan folders dropped into `INPUTS` are automatically copied into
+      `C:\\GatheringScans` (LOCAL_SCANS_ROOT) and tiled/indexed from local disk.
+    - Raw Pix4DCatch OPF folders (`QiHuTender_1..4`, `2026-09-21-11-39-49`), single-part `.zip`,
+      and multi-part (`_1of5.zip`..`_5of5.zip`) archives are queued for PIX4Dmatic processing.
     """
     discovered_ids = set()
     dynamic_clusters: List[Dict[str, Any]] = []
 
     inbox_dirs = []
     if GDRIVE_INBOX_DIR and os.path.isdir(GDRIVE_INBOX_DIR):
+        try:
+            os.makedirs(GDRIVE_INPUTS_DIR, exist_ok=True)
+        except Exception:
+            pass
+        if os.path.isdir(GDRIVE_INPUTS_DIR):
+            inbox_dirs.append(GDRIVE_INPUTS_DIR)
         inbox_dirs.append(GDRIVE_INBOX_DIR)
 
     # 0. Sync any completed scan folders from Google Drive (input-only) into C:\GatheringScans (local disk storage)
@@ -1468,7 +1593,7 @@ def _seed_and_discover_scans_locked(db: ScanQueueDB) -> List[Dict[str, Any]]:
 
     for idir in inbox_dirs:
         for entry in sorted(os.listdir(idir)):
-            if entry.startswith(("_", ".")) or entry.lower() == "streampackages":
+            if entry.startswith(("_", ".")) or entry.lower() in ("streampackages", "inputs"):
                 continue
             epath = os.path.join(idir, entry)
             if not is_safe_jailed_path(epath, idir):

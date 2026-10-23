@@ -78,6 +78,9 @@ def discover_service_account_json_on_disk() -> Optional[Dict[str, Any]]:
     search_dirs = [
         DATA_DIR,
         BASE_DIR,
+        "/host_docker/gathering_scans/data",
+        "/opt/gathering-cloud-data",
+        "/host_opt/gathering-cloud-data",
         os.path.expanduser(r"~\Downloads"),
         os.path.expanduser(r"~\Desktop"),
         GDRIVE_INBOX_DIR,

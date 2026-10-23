@@ -43,6 +43,7 @@ from pc_worker.config import (
     REPORTS_DIR,
     CONTOURS_DIR,
     GDRIVE_INBOX_DIR,
+    GDRIVE_INPUTS_DIR,
     MATERIAL_CATALOG,
     TWD97_TWVD2001_LABEL,
     TWD97_TWVD2001_SHORT,
@@ -86,10 +87,97 @@ _FS_SYNC_LOCK = threading.Lock()
 _LAST_FS_SYNC_TS = 0.0
 _LAST_FS_FINGERPRINT: Optional[Tuple[str, ...]] = None
 
+DAEMON_STATE_PATH = os.path.join(DATA_DIR, "daemon_state.json")
+_DAEMON_PROCESS_START_TS = time.time()
+_DAEMON_LAST_POLL_TS = 0.0
+_DAEMON_WAKE_EVENT = threading.Event()
+
+
+def load_pc_daemon_state() -> Dict[str, Any]:
+    state: Dict[str, Any] = {
+        "daemon_running": True,
+        "updated_at": _DAEMON_PROCESS_START_TS,
+        "updated_by": "system",
+    }
+    if os.path.isfile(DAEMON_STATE_PATH):
+        try:
+            with open(DAEMON_STATE_PATH, "r", encoding="utf-8") as f:
+                saved = json.load(f)
+            if isinstance(saved, dict):
+                state["daemon_running"] = bool(saved.get("daemon_running", True))
+                state["updated_at"] = float(saved.get("updated_at", _DAEMON_PROCESS_START_TS))
+                state["updated_by"] = str(saved.get("updated_by", "system"))
+        except Exception:
+            pass
+    return state
+
+
+def is_pc_daemon_running() -> bool:
+    return bool(load_pc_daemon_state().get("daemon_running", True))
+
+
+def mark_daemon_poll_completed() -> None:
+    global _DAEMON_LAST_POLL_TS
+    _DAEMON_LAST_POLL_TS = time.time()
+
+
+def set_pc_daemon_running(running: bool, actor_email: str = "admin") -> Dict[str, Any]:
+    global PC_SIMULATED_OFFLINE
+    state = {
+        "daemon_running": bool(running),
+        "updated_at": time.time(),
+        "updated_by": actor_email or "admin",
+    }
+    try:
+        with open(DAEMON_STATE_PATH, "w", encoding="utf-8") as f:
+            json.dump(state, f, indent=2, ensure_ascii=False)
+    except Exception as e:
+        print(f"[GatheringScans] Warning saving daemon_state.json: {e}")
+    PC_SIMULATED_OFFLINE = not bool(running)
+    if running:
+        _DAEMON_WAKE_EVENT.set()
+        if os.name == "nt":
+            def _immediate_discover():
+                try:
+                    seed_and_discover_scans(DB)
+                    mark_daemon_poll_completed()
+                    if "AUTH_SHARE" in globals():
+                        from pc_worker.gdrive_cloud_sync import sync_all_scans_to_gdrive_and_vps
+                        sync_all_scans_to_gdrive_and_vps(DB, AUTH_SHARE, force=False)
+                except Exception as ex:
+                    print(f"[GatheringScans] Daemon start discovery note: {ex}")
+            threading.Thread(target=_immediate_discover, daemon=True).start()
+    return get_pc_daemon_status()
+
+
+def get_pc_daemon_status() -> Dict[str, Any]:
+    st = load_pc_daemon_state()
+    running = bool(st.get("daemon_running", True))
+    is_win = os.name == "nt"
+    scans = DB.list_scans() if is_win else []
+    processing = [s for s in scans if s.get("status") == "processing"]
+    queued = [s for s in scans if s.get("status") in ("queued", "waiting_parts")]
+    return {
+        "status": "ok",
+        "pc_online": is_win and (not PC_SIMULATED_OFFLINE),
+        "pc_reachable": is_win,
+        "daemon_running": running,
+        "pid": os.getpid() if is_win else None,
+        "uptime_seconds": round(max(0.0, time.time() - _DAEMON_PROCESS_START_TS), 1) if is_win else 0.0,
+        "last_poll_at": _DAEMON_LAST_POLL_TS,
+        "updated_at": st.get("updated_at", 0.0),
+        "updated_by": st.get("updated_by", "system"),
+        "inbox_dir": GDRIVE_INPUTS_DIR if is_win else "",
+        "local_vault_dir": LOCAL_SCANS_ROOT if is_win else "",
+        "active_job": processing[0] if processing else None,
+        "queued_count": len(queued),
+        "total_scans": len(scans),
+    }
+
 
 def _compute_scans_dir_fingerprint() -> Tuple[str, ...]:
     entries = []
-    for root_label, root_dir in (("local", LOCAL_SCANS_ROOT), ("gdrive", GDRIVE_INBOX_DIR)):
+    for root_label, root_dir in (("local", LOCAL_SCANS_ROOT), ("gdrive_inputs", GDRIVE_INPUTS_DIR), ("gdrive", GDRIVE_INBOX_DIR)):
         if not root_dir or not os.path.isdir(root_dir):
             continue
         try:
@@ -102,7 +190,18 @@ def _compute_scans_dir_fingerprint() -> Tuple[str, ...]:
                         sub = sorted(os.listdir(full))
                     except Exception:
                         sub = []
-                    entries.append(f"{root_label}:{name}:{','.join(sub[:16])}")
+                    nested_parts = []
+                    for sname in sub[:24]:
+                        sfull = os.path.join(full, sname)
+                        try:
+                            if os.path.isdir(sfull):
+                                ssub = sorted(os.listdir(sfull))[:8]
+                                nested_parts.append(f"{sname}[{','.join(ssub)}]")
+                            else:
+                                nested_parts.append(sname)
+                        except Exception:
+                            nested_parts.append(sname)
+                    entries.append(f"{root_label}:{name}:{','.join(nested_parts)}")
                 elif os.path.isfile(full) and name.lower().endswith(".zip"):
                     try:
                         sz = os.path.getsize(full)
@@ -119,6 +218,8 @@ def sync_scans_with_filesystem(max_age_s: float = 1.5, force: bool = False) -> N
     global _LAST_FS_SYNC_TS, _LAST_FS_FINGERPRINT
     if os.name != "nt":
         return
+    if not force and not is_pc_daemon_running():
+        return
     now = time.time()
     if not force and (now - _LAST_FS_SYNC_TS < max_age_s):
         return
@@ -130,8 +231,9 @@ def sync_scans_with_filesystem(max_age_s: float = 1.5, force: bool = False) -> N
         if force or fp != prev_fp:
             try:
                 seed_and_discover_scans(DB)
+                mark_daemon_poll_completed()
                 _LAST_FS_FINGERPRINT = fp
-                if prev_fp is not None and fp != prev_fp and "AUTH_SHARE" in globals():
+                if (force or (prev_fp is not None and fp != prev_fp)) and "AUTH_SHARE" in globals():
                     def _bg_cloud_sync():
                         try:
                             from pc_worker.gdrive_cloud_sync import sync_all_scans_to_gdrive_and_vps
@@ -150,8 +252,8 @@ SURVEY = SurveyingEngine(DB)
 AUTH_SHARE = AuthAndSharingManager(DB)
 GCHAT = GoogleChatNotifier(DB)
 
-# Simulated PC Online Toggle (for testing Requirement 5 Offline Fallback in browser)
-PC_SIMULATED_OFFLINE = False
+# Simulated PC Online Toggle (synchronized with persistent daemon_state.json)
+PC_SIMULATED_OFFLINE = not is_pc_daemon_running()
 
 # Reverse Tunnel Socket Pool (used on Linux VPS to proxy /api/*, /stream/*, /s/* to Windows PC C:\GatheringScans)
 VPS_TUNNEL_POOL: "queue.LifoQueue[Tuple[socket.socket, threading.Event, float, int]]" = queue.LifoQueue()
@@ -481,12 +583,12 @@ def _test_gdrive_service_account(custom_sa: Optional[Dict[str, Any]] = None) -> 
     except Exception as e:
         report["drive_about_error"] = str(e)
 
-    # Test 2: List StreamPackages folder
+    # Test 2: List StreamPackages folder (and fallback to all visible files across Shared Drives)
     try:
         q = urllib.parse.quote(f"'{folder_id}' in parents and trashed = false")
         url_list = (
             f"https://www.googleapis.com/drive/v3/files?q={q}"
-            f"&supportsAllDrives=true&includeItemsFromAllDrives=true"
+            f"&corpora=allDrives&supportsAllDrives=true&includeItemsFromAllDrives=true"
             f"&pageSize=50&fields=files(id,name,size,mimeType)"
         )
         req_list = urllib.request.Request(
@@ -497,6 +599,19 @@ def _test_gdrive_service_account(custom_sa: Optional[Dict[str, Any]] = None) -> 
         with urllib.request.urlopen(req_list, timeout=10) as r:
             list_data = json.loads(r.read().decode("utf-8"))
         files = list_data.get("files") or []
+        if not files:
+            url_any = (
+                "https://www.googleapis.com/drive/v3/files?"
+                "q=trashed%3Dfalse&corpora=allDrives&supportsAllDrives=true&includeItemsFromAllDrives=true"
+                "&pageSize=25&fields=files(id,name,size,mimeType)"
+            )
+            req_any = urllib.request.Request(
+                url_any,
+                headers={"Authorization": f"Bearer {bearer}"},
+                method="GET",
+            )
+            with urllib.request.urlopen(req_any, timeout=10) as r_any:
+                files = (json.loads(r_any.read().decode("utf-8")).get("files") or [])
         report["folder_access_ok"] = True
         report["files_visible_count"] = len(files)
         report["visible_files"] = files[:15]
@@ -522,12 +637,14 @@ def _test_gdrive_service_account(custom_sa: Optional[Dict[str, Any]] = None) -> 
         report["folder_access_error"] = str(e)
 
     if report["oauth_token_acquired"] and report["folder_access_ok"]:
+        report["ok"] = True
         report["status"] = "ok"
         report["message"] = (
             f"Service Account {sa.get('client_email')} authenticated and verified! "
-            f"Visible .3tz files in StreamPackages: {report['files_visible_count']}, Range read OK: {report['range_read_ok']}."
+            f"Visible Drive files: {report['files_visible_count']}."
         )
     else:
+        report["ok"] = bool(report["oauth_token_acquired"])
         report["status"] = "partial"
         report["message"] = (
             f"Service Account {sa.get('client_email')} authenticated, but ensure folder {folder_id} "
@@ -759,7 +876,7 @@ def start_pc_reverse_tunnel_pool(local_port: int = SERVER_PORT, pool_size: int =
         time.sleep(3.5)
         while True:
             try:
-                if os.name == "nt":
+                if os.name == "nt" and is_pc_daemon_running():
                     try:
                         from pc_worker.gdrive_cloud_sync import sync_all_scans_to_gdrive_and_vps
 
@@ -1556,7 +1673,7 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
             for k in list(_VPS_RAM_FALLBACK_CACHE.keys()):
                 if k.startswith("/api/scans") or k.startswith("/api/projects") or k.startswith("/api/user-profiles") or k.startswith("/api/admin/users"):
                     _VPS_RAM_FALLBACK_CACHE.pop(k, None)
-        if method == "POST" and path in ("/api/queue/scan-inbox", "/api/queue/rescan"):
+        if method == "POST" and path in ("/api/queue/scan-inbox", "/api/queue/rescan", "/api/admin/pc-daemon", "/api/pc/simulate-offline"):
             _VPS_RAM_FALLBACK_CACHE.clear()
 
         # 1. Serve immutable binary .glb tiles, thumbnails, and tileset.json from volatile RAM if already cached
@@ -1895,11 +2012,13 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
             "synced_my_drive_count": synced_md,
             "total_size_mb": round(total_bytes / (1024 * 1024), 2),
             "auth_configured": bearer_ok,
+            "has_credentials": bool(sa.get("private_key")),
             "auth_mode": auth.get("auth_mode") or ("service_account" if bearer_ok else "service_account_pending_key"),
             "service_account_email": sa.get("client_email") or GDRIVE_SERVICE_ACCOUNT_EMAIL,
             "expected_service_account_email": GDRIVE_SERVICE_ACCOUNT_EMAIL,
             "expected_project_id": GDRIVE_SERVICE_ACCOUNT_PROJECT_ID,
             "private_key_loaded": bool(sa.get("private_key")),
+            "private_key_id": sa.get("private_key_id", ""),
             "google_client_id": GOOGLE_OAUTH_CLIENT_ID,
             "packages": pkg_list,
         }
@@ -1981,10 +2100,12 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
             scans = DB.list_scans()
             processing = [s for s in scans if s["status"] == "processing"]
             queued = [s for s in scans if s["status"] in ("queued", "waiting_parts")]
+            d_running = is_pc_daemon_running()
             self.send_json(
                 {
-                    "status": "offline" if PC_SIMULATED_OFFLINE else "online",
-                    "pc_online": not PC_SIMULATED_OFFLINE,
+                    "status": "offline" if (PC_SIMULATED_OFFLINE or not d_running) else "online",
+                    "pc_online": (not PC_SIMULATED_OFFLINE) and d_running,
+                    "daemon_running": d_running,
                     "app": "GatheringScans",
                     "domain": "scans.gatheren.cloud",
                     "crs": TWD97_TWVD2001_LABEL,
@@ -2024,11 +2145,13 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
 
             project_group = query.get("group", [None])[0]
             scans = [self._enrich_scan_urls(s) for s in DB.list_scans(project_group=project_group)]
+            d_running = is_pc_daemon_running()
             self.send_json(
                 {
                     "status": "ok",
                     "mode": "internal",
-                    "pc_online": not PC_SIMULATED_OFFLINE,
+                    "pc_online": (not PC_SIMULATED_OFFLINE) and d_running,
+                    "daemon_running": d_running,
                     "crs": TWD97_TWVD2001_LABEL,
                     "scans": scans,
                     "projects": self._build_projects_summary(scans),
@@ -2201,7 +2324,7 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
             self.send_json(
                 {
                     "status": "ok",
-                    "inbox_dir": GDRIVE_INBOX_DIR,
+                    "inbox_dir": GDRIVE_INPUTS_DIR,
                     "crs_enforced": TWD97_TWVD2001_LABEL,
                     "texture_size_enforced": p4d_cfg.get("texture_size", PIX4DMATIC_TEXTURE_SIZE),
                     "pix4d_settings": p4d_cfg,
@@ -2257,6 +2380,13 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
         if path == "/api/user/settings":
             email = query.get("email", ["glibivanov@gatheren.com.tw"])[0]
             self.send_json({"status": "ok", "settings": DB.get_user_settings(email)})
+            return
+
+        if path == "/api/admin/pc-daemon":
+            if share_token:
+                self.send_json({"error": "Forbidden for external guest link"}, status=403)
+                return
+            self.send_json(get_pc_daemon_status())
             return
 
         if path in ("/api/user-profiles", "/api/admin/users"):
@@ -2688,10 +2818,41 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
                 self.send_json(status_obj)
                 return
 
+            actor_email, actor_role, actor_perms = self._resolve_request_role(payload, query, share_token)
+
             # 1. Simulate PC Online / Offline Mode (for testing Requirement 5)
             if path == "/api/pc/simulate-offline":
-                PC_SIMULATED_OFFLINE = bool(payload.get("offline", False))
-                self.send_json({"status": "ok", "pc_online": not PC_SIMULATED_OFFLINE})
+                want_offline = bool(payload.get("offline", False))
+                d_stat = set_pc_daemon_running(not want_offline, actor_email=actor_email)
+                self.send_json({"status": "ok", "pc_online": d_stat["pc_online"], "daemon_running": d_stat["daemon_running"]})
+                return
+
+            if path == "/api/admin/pc-daemon":
+                if not actor_perms.get("can_manage_users") and not actor_perms.get("can_run_workflows"):
+                    self.send_json({"error": "Only Owner, Admin, or Editor accounts can control the PC daemon."}, status=403)
+                    return
+                action = str(payload.get("action") or "").strip().lower()
+                if action == "sync_now":
+                    sync_scans_with_filesystem(force=True)
+                    st_now = get_pc_daemon_status()
+                    st_now["message"] = "Triggered immediate Google Drive Inbox discovery & .3tz Cloud Sync on PC."
+                    self.send_json(st_now)
+                    return
+                if action == "start":
+                    target_running = True
+                elif action == "stop":
+                    target_running = False
+                elif "running" in payload:
+                    target_running = bool(payload.get("running"))
+                else:
+                    target_running = not is_pc_daemon_running()
+                st_res = set_pc_daemon_running(target_running, actor_email=actor_email)
+                st_res["message"] = (
+                    "Workstation Daemon STARTED (Google Drive Inbox Watcher + PIX4Dmatic Queue + 3D Tiler active)."
+                    if target_running
+                    else "Workstation Daemon STOPPED (Background inbox polling & PIX4Dmatic queue paused; tunnel remains on standby)."
+                )
+                self.send_json(st_res)
                 return
 
             # 1b. Save Automatically Captured 3D Scan Screenshot Thumbnail
@@ -2728,8 +2889,6 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
                     }
                 )
                 return
-
-            actor_email, actor_role, actor_perms = self._resolve_request_role(payload, query, share_token)
 
             # 1c. Edit and Save Scan Display Name (persists to SQLite + scan_meta.json on local disk)
             if path == "/api/scans/rename" or (path.startswith("/api/scans/") and path.endswith("/rename")):
@@ -2845,7 +3004,7 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
                 self._OPTIMIZED_TILESET_CACHE.clear()
                 _VPS_RAM_FALLBACK_CACHE.clear()
                 scans = seed_and_discover_scans(DB)
-                self.send_json({"status": "ok", "inbox_dir": GDRIVE_INBOX_DIR, "total_scans": len(scans)})
+                self.send_json({"status": "ok", "inbox_dir": GDRIVE_INPUTS_DIR, "total_scans": len(scans)})
                 return
 
             if path == "/api/pix4d/settings":
@@ -3243,10 +3402,11 @@ def _pc_cloud_manifest_sync_loop():
     time.sleep(2.0)
     while True:
         try:
-            from pc_worker.gdrive_cloud_sync import sync_all_scans_to_gdrive_and_vps
+            if is_pc_daemon_running():
+                from pc_worker.gdrive_cloud_sync import sync_all_scans_to_gdrive_and_vps
 
-            manifest = sync_all_scans_to_gdrive_and_vps(DB, AUTH_SHARE, force=False)
-            _save_cloud_manifest(manifest)
+                manifest = sync_all_scans_to_gdrive_and_vps(DB, AUTH_SHARE, force=False)
+                _save_cloud_manifest(manifest)
         except Exception as e:
             print(f"[GatheringScans] Background .3tz cloud sync note: {e}")
         time.sleep(60.0)
