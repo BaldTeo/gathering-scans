@@ -6623,6 +6623,8 @@
         tbody.appendChild(tr);
       });
     } catch (err) {
+      const monBox = document.getElementById("livePix4dMonitorBox");
+      if (monBox) monBox.style.display = "none";
       tbody.innerHTML = `<tr><td colspan="8" style="color:var(--ui-text-secondary);">${err.message}</td></tr>`;
     }
   }

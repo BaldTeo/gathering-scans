@@ -171,6 +171,13 @@ def pix4d_worker_loop():
                 time.sleep(4)
                 continue
 
+            # Recover any orphaned "processing" job if PIX4Dmatic is not running
+            if not adopted_sid:
+                for s_row in DB.list_scans():
+                    if s_row.get("status") == "processing":
+                        adopted_sid = s_row["scan_id"]
+                        break
+
             # If an adopted PIX4Dmatic job just finished, finalize its tileset, mark completed, and notify uploader on Google Chat
             if adopted_sid:
                 fin_sid = adopted_sid

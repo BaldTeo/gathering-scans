@@ -2287,10 +2287,15 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
                 sid = active_scan["scan_id"]
 
                 info = parse_pix4dmatic_log_progress(latest_log)
-                if p4d_running or (active_scan.get("status") == "processing" and not info.get("is_finished")):
+                from pc_worker.pix4d_runner import get_live_system_cpu_ram
+                _, _, live_os_cpu_ram = get_live_system_cpu_ram()
+                log_age_s = time.time() - latest_mtime
+
+                # Only show active PIX4Dmatic monitor if PIX4Dmatic.exe is actually running (or log updated within last 45s)
+                if p4d_running or (active_scan.get("status") == "processing" and not info.get("is_finished") and log_age_s < 45.0):
                     stage_name = info.get("stage", "Processing")
-                    cpu_ram = info.get("cpu_ram", "")
-                    est_pct = max(float(active_scan.get("progress_pct") or 10.0) if active_scan.get("status") == "processing" else 12.0, float(info.get("progress_pct", 12.0)))
+                    cpu_ram = live_os_cpu_ram or info.get("cpu_ram", "")
+                    est_pct = float(info.get("progress_pct", 12.0))
                     new_label = (
                         f"PIX4Dmatic: {stage_name} ({cpu_ram})"
                         if stage_name and cpu_ram
@@ -2302,10 +2307,10 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
                     DB.update_job_progress(sid, "processing", est_pct, new_label)
                     for other_s in all_scans:
                         if other_s["scan_id"] != sid and other_s.get("status") == "processing":
-                            other_s["status"] = "completed"
-                            other_s["progress_pct"] = 100.0
-                            other_s["stage_label"] = "Completed"
-                            DB.update_job_progress(other_s["scan_id"], "completed", 100.0, "Completed")
+                            other_s["status"] = "queued"
+                            other_s["progress_pct"] = 0.0
+                            other_s["stage_label"] = "Queued for PIX4Dmatic"
+                            DB.update_job_progress(other_s["scan_id"], "queued", 0.0, "Queued for PIX4Dmatic")
                     live_log_info = {
                         "scan_id": sid,
                         "scan_name": active_scan.get("name") or sid,
@@ -2315,6 +2320,14 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
                         "progress_pct": est_pct,
                         "tail_lines": info.get("tail_lines", [])[-10:],
                     }
+                elif not p4d_running and active_scan.get("status") == "processing" and log_age_s >= 45.0:
+                    # PIX4Dmatic.exe stopped before finishing: re-queue if no tileset exists yet so worker resumes it cleanly
+                    ts_chk = active_scan.get("tileset_path") or ""
+                    if not (ts_chk and os.path.isfile(ts_chk)):
+                        active_scan["status"] = "queued"
+                        active_scan["progress_pct"] = 0.0
+                        active_scan["stage_label"] = "Queued (Resuming interrupted PIX4Dmatic job)"
+                        DB.update_job_progress(sid, "queued", 0.0, "Queued (Resuming interrupted PIX4Dmatic job)")
 
             queued = [s for s in all_scans if s["status"] in ("queued", "waiting_parts")]
             queued.sort(key=lambda x: (0 if x["status"] == "queued" else 1, -float(x["priority_score"]), float(x["uploaded_at"])))

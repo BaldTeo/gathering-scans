@@ -16,7 +16,7 @@ import glob
 import json
 import time
 import subprocess
-from typing import Dict, Any, Optional, Callable, List
+from typing import Dict, Any, Optional, Callable, List, Tuple
 
 from pc_worker.config import (
     PIX4DMATIC_EXE,
@@ -29,12 +29,34 @@ from pc_worker.config import (
     load_pix4d_settings_from_dict,
 )
 
+_PSUTIL_WARMED = False
+
+
+def get_live_system_cpu_ram() -> Tuple[Optional[int], Optional[int], str]:
+    """
+    Returns (cpu_pct, ram_pct, formatted_label) directly from live OS hardware counters
+    via psutil (matching Windows Task Manager), rather than stale PIX4Dmatic log headers.
+    """
+    global _PSUTIL_WARMED
+    try:
+        import psutil
+        if not _PSUTIL_WARMED:
+            psutil.cpu_percent(interval=None)
+            _PSUTIL_WARMED = True
+            cpu_val = int(round(psutil.cpu_percent(interval=0.12)))
+        else:
+            cpu_val = int(round(psutil.cpu_percent(interval=None)))
+        ram_val = int(round(psutil.virtual_memory().percent))
+        return cpu_val, ram_val, f"{cpu_val}%CPU · {ram_val}%RAM"
+    except Exception:
+        return None, None, ""
+
 
 def parse_pix4dmatic_log_progress(log_path: str) -> Dict[str, Any]:
     """
     Reads the tail of a PIX4Dmatic project or app log file and extracts:
     - stage: human-readable current stage
-    - cpu_ram: e.g. '94%CPU · 59%RAM'
+    - cpu_ram: live OS CPU/RAM string (with log fallback)
     - progress_pct: float (10.0 .. 96.0)
     - is_finished: bool
     - has_fatal_error: bool
@@ -71,47 +93,60 @@ def parse_pix4dmatic_log_progress(log_path: str) -> Dict[str, Any]:
             if not out["error_message"]:
                 out["error_message"] = "PIX4Dmatic QML pipeline script error"
 
-        for ln in tail_lines[-6:]:
-            if "CloseSession" in ln or ("[Save project" in ln and "Finished" in ln) or "[Processing] Finished" in ln:
+        for ln in tail_lines[-4:]:
+            if "CloseSession" in ln or "[Export mesh to .obj] Finished" in ln or "[Processing] Finished" in ln:
                 out["is_finished"] = True
 
         stage_name = ""
-        cpu_ram = ""
+        log_cpu_ram = ""
         for ln in reversed(tail_lines):
             m = re.search(r"\[(\d+%CPU)\]\[(\d+%RAM)\]\[([^\]]+)\]", ln)
             if m:
-                cpu_ram = f"{m.group(1)} · {m.group(2)}"
+                log_cpu_ram = f"{m.group(1)} · {m.group(2)}"
                 stage_name = m.group(3).strip()
                 break
+
+        _, _, live_cpu_ram = get_live_system_cpu_ram()
+        cpu_ram = live_cpu_ram or log_cpu_ram
 
         stage_pct_map = [
             ("Import", 12.0),
             ("Sky mask", 16.0),
+            ("Feature extraction", 24.0),
             ("Keypoints", 24.0),
             ("Pair matching", 34.0),
-            ("Calibration", 44.0),
-            ("Bundle", 50.0),
+            ("Initial tracks creation", 39.0),
+            ("Calibration sequence", 45.0),
+            ("Calibration", 45.0),
+            ("Bundle", 52.0),
             ("dense point cloud", 62.0),
             ("Densification", 62.0),
             ("Depth point cloud", 75.0),
             ("Fuse", 79.0),
             ("textured mesh", 85.0),
+            ("Mesh generation", 85.0),
             ("scalable mesh", 88.0),
             ("Finalize scalable mesh", 91.0),
             ("Export quality report", 93.0),
             ("Export mesh to .obj", 95.0),
-            ("Save project", 96.0),
         ]
         est_pct = 12.0
-        for k_stg, v_pct in stage_pct_map:
-            if k_stg.lower() in stage_name.lower() or k_stg.lower() in tail_text.lower():
-                est_pct = max(est_pct, v_pct)
+        # Match strictly against the active stage_name so an early "[Save project]" after Import never jumps progress to 96%
+        if stage_name:
+            for k_stg, v_pct in stage_pct_map:
+                if k_stg.lower() in stage_name.lower():
+                    est_pct = max(est_pct, v_pct)
+            if "save project" in stage_name.lower():
+                if "Export mesh to .obj" in tail_text or "Export quality report" in tail_text:
+                    est_pct = 96.0
+                else:
+                    est_pct = 14.0
 
-        if "Scene [2/2]" in tail_text and est_pct < 73.0:
+        if "Scene [2/2]" in tail_text and 60.0 <= est_pct < 73.0:
             est_pct = max(est_pct, 69.0)
             if "colorizing" in tail_text.split("Scene [2/2]")[-1]:
                 est_pct = max(est_pct, 73.0)
-        elif "Scene [1/2]" in tail_text and est_pct < 68.0:
+        elif "Scene [1/2]" in tail_text and 60.0 <= est_pct < 68.0:
             if "colorizing" in tail_text.split("Scene [1/2]")[-1]:
                 est_pct = max(est_pct, 65.0)
 
