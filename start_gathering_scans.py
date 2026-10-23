@@ -221,6 +221,12 @@ def pix4d_worker_loop():
                             merged["progress_pct"] = 100.0
                             if cur_row.get("source_zip_path"):
                                 merged["source_zip_path"] = cur_row["source_zip_path"]
+                            if cur_row.get("project_group") and cur_row["project_group"] != "General / Unassigned":
+                                merged["project_group"] = cur_row["project_group"]
+                            if cur_row.get("project_name_zh"):
+                                merged["project_name_zh"] = cur_row["project_name_zh"]
+                            if int(cur_row.get("image_count") or 0) > int(merged.get("image_count") or 0):
+                                merged["image_count"] = int(cur_row["image_count"])
                             DB.upsert_scan(merged)
                     except Exception as de:
                         print(f"[InboxWatcher] Metadata refresh note for {fin_sid}: {de}")
@@ -274,6 +280,12 @@ def pix4d_worker_loop():
                                 merged["source_zip_path"] = cur_row["source_zip_path"]
                             if cur_row.get("rtk_accuracy_cm"):
                                 merged["rtk_accuracy_cm"] = cur_row["rtk_accuracy_cm"]
+                            if cur_row.get("project_group") and cur_row["project_group"] != "General / Unassigned":
+                                merged["project_group"] = cur_row["project_group"]
+                            if cur_row.get("project_name_zh"):
+                                merged["project_name_zh"] = cur_row["project_name_zh"]
+                            if int(cur_row.get("image_count") or 0) > int(merged.get("image_count") or 0):
+                                merged["image_count"] = int(cur_row["image_count"])
                             DB.upsert_scan(merged)
                     except Exception as de:
                         print(f"[InboxWatcher] Metadata refresh note for {sid}: {de}")
@@ -334,12 +346,45 @@ def ssh_reverse_tunnel_loop():
         time.sleep(10)
 
 
+def prestage_queued_inputs_loop():
+    """
+    Background pre-staging worker: while PIX4Dmatic is busy processing the current job,
+    pre-extracts `.zip` archives or fast-copies uncompressed Google Drive folders for
+    any `queued` jobs onto local SSD (`C:\\GatheringScans\\<scan_id>\\inputs\\`) so the
+    next job starts PIX4Dmatic with zero Google Drive staging delay.
+    """
+    _INITIAL_DISCOVERY_DONE.wait(timeout=60)
+    from pc_worker.pix4d_runner import prestage_input_to_local_ssd
+
+    while True:
+        if not is_pc_daemon_running():
+            time.sleep(5)
+            continue
+        try:
+            scans = DB.list_scans()
+            for row in scans:
+                if row.get("status") != "queued":
+                    continue
+                sid = row.get("scan_id") or ""
+                src = row.get("source_zip_path") or ""
+                out_dir = row.get("project_dir") or os.path.join(LOCAL_SCANS_ROOT, sid)
+                if sid and src:
+                    if prestage_input_to_local_ssd(src, out_dir):
+                        print(f"[PreStager] Pre-staged {sid} inputs to local SSD: {out_dir}\\inputs")
+        except Exception as e:
+            print(f"[PreStager] Warning: {e}")
+        time.sleep(10)
+
+
 if __name__ == "__main__":
     t_discovery = threading.Thread(target=inbox_discovery_loop, daemon=True)
     t_discovery.start()
 
     t_worker = threading.Thread(target=pix4d_worker_loop, daemon=True)
     t_worker.start()
+
+    t_prestager = threading.Thread(target=prestage_queued_inputs_loop, daemon=True)
+    t_prestager.start()
 
     start_pc_reverse_tunnel_pool(local_port=SERVER_PORT)
 

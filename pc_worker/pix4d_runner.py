@@ -694,17 +694,29 @@ def run_pix4dmatic_pipeline(
                     if os.path.isfile(zpath) and zpath.lower().endswith(".zip"):
                         stem = os.path.splitext(os.path.basename(zpath))[0]
                         target_extract = os.path.join(inputs_dir, stem)
-                        if not os.path.isdir(target_extract):
+                        stage_marker = os.path.join(target_extract, ".staged_ok")
+                        if not os.path.isfile(stage_marker):
                             if progress_callback:
                                 progress_callback(
                                     6.0 + idx * 0.8,
-                                    f"Extracting archive {idx + 1}/{len(part_paths)}: {os.path.basename(zpath)}...",
+                                    f"Extracting archive {idx + 1}/{len(part_paths)}: {os.path.basename(zpath)} to local SSD...",
                                 )
+                            os.makedirs(target_extract, exist_ok=True)
                             with zipfile.ZipFile(zpath, "r") as zf:
                                 zf.extractall(target_extract)
+                            # Remove un-georeferenced mobile preview meshes folder so it is never mistaken for exported mesh
+                            preview_meshes_dir = os.path.join(target_extract, "meshes")
+                            if os.path.isdir(preview_meshes_dir):
+                                shutil.rmtree(preview_meshes_dir, ignore_errors=True)
+                            try:
+                                with open(stage_marker, "w", encoding="utf-8") as mf:
+                                    mf.write(str(int(time.time())))
+                            except Exception:
+                                pass
                         cand_opf = os.path.join(target_extract, "project.opf")
                         part_imgs = []
-                        for root, _, files in os.walk(target_extract):
+                        for root, dirs, files in os.walk(target_extract):
+                            dirs[:] = [d for d in dirs if d.lower() != "meshes"]
                             for fn in sorted(files):
                                 if fn.lower().endswith((".jpg", ".jpeg", ".png", ".tiff", ".tif")):
                                     full_img = os.path.join(root, fn)
@@ -720,42 +732,65 @@ def run_pix4dmatic_pipeline(
                         if progress_callback:
                             progress_callback(
                                 6.0 + idx * 0.8,
-                                f"Staging folder {idx + 1}/{len(part_paths)}: {stem}...",
+                                f"Fast-staging folder {idx + 1}/{len(part_paths)} to local SSD: {stem}...",
                             )
                         os.makedirs(target_extract, exist_ok=True)
+                        # Remove any mobile preview meshes directory if previously copied
+                        preview_meshes_dir = os.path.join(target_extract, "meshes")
+                        if os.path.isdir(preview_meshes_dir):
+                            shutil.rmtree(preview_meshes_dir, ignore_errors=True)
+
                         alt_unredacted_dirs = glob.glob(os.path.join(r"G:\My Drive\Scans", "*", stem, "images")) + glob.glob(os.path.join(r"G:\My Drive\Scans", stem, "images"))
                         alt_src_dir = alt_unredacted_dirs[0] if alt_unredacted_dirs and os.path.isdir(alt_unredacted_dirs[0]) else ""
-                        copied_cnt = 0
-                        for root, _, files in os.walk(zpath):
+
+                        copy_tasks = []
+                        for root, dirs, files in os.walk(zpath):
+                            # Skip mobile preview meshes folder (unneeded by PIX4Dmatic and saves time)
+                            dirs[:] = [d for d in dirs if d.lower() not in {"meshes", ".git", "__pycache__"}]
                             rel_dir = os.path.relpath(root, zpath)
                             dst_dir = target_extract if rel_dir == "." else os.path.join(target_extract, rel_dir)
                             os.makedirs(dst_dir, exist_ok=True)
                             for fn in files:
                                 if fn.startswith("."):
                                     continue
-                                s_f = os.path.join(root, fn)
-                                d_f = os.path.join(dst_dir, fn)
-                                try:
-                                    if not os.path.isfile(d_f) or os.path.getsize(d_f) != os.path.getsize(s_f):
-                                        shutil.copy2(s_f, d_f)
-                                    copied_cnt += 1
-                                    if progress_callback and copied_cnt % 300 == 0:
-                                        progress_callback(
-                                            min(9.5, 6.0 + (copied_cnt / 4500.0) * 3.5),
-                                            f"Staging folder {idx + 1}/{len(part_paths)}: {stem} ({copied_cnt} files staged to SSD)...",
-                                        )
-                                    if fn.lower().endswith((".jpg", ".jpeg")) and alt_src_dir:
-                                        alt_f = os.path.join(alt_src_dir, fn)
-                                        if os.path.isfile(alt_f):
-                                            with open(d_f, "rb") as chk_f:
-                                                hdr = chk_f.read(4096)
-                                            if b"\x00\x00\x00\x00\x00\x00\x00\x00" in hdr[200:3500] and b"RTKLatitude" not in hdr:
-                                                shutil.copy2(alt_f, d_f)
-                                except Exception:
-                                    pass
+                                copy_tasks.append((os.path.join(root, fn), os.path.join(dst_dir, fn), fn))
+
+                        total_files = max(1, len(copy_tasks))
+                        copied_cnt = 0
+                        copy_lock = threading.Lock()
+
+                        def _copy_one(task_tuple):
+                            nonlocal copied_cnt
+                            s_f, d_f, fn = task_tuple
+                            try:
+                                if not os.path.isfile(d_f) or os.path.getsize(d_f) != os.path.getsize(s_f):
+                                    shutil.copy2(s_f, d_f)
+                                if fn.lower().endswith((".jpg", ".jpeg")) and alt_src_dir:
+                                    alt_f = os.path.join(alt_src_dir, fn)
+                                    if os.path.isfile(alt_f):
+                                        with open(d_f, "rb") as chk_f:
+                                            hdr = chk_f.read(4096)
+                                        if b"\x00\x00\x00\x00\x00\x00\x00\x00" in hdr[200:3500] and b"RTKLatitude" not in hdr:
+                                            shutil.copy2(alt_f, d_f)
+                            except Exception:
+                                pass
+                            with copy_lock:
+                                copied_cnt += 1
+                                cur_c = copied_cnt
+                            if progress_callback and (cur_c % 250 == 0 or cur_c == total_files):
+                                progress_callback(
+                                    min(9.5, 6.0 + (cur_c / float(total_files)) * 3.5),
+                                    f"Fast-staging {stem} to local SSD ({cur_c}/{total_files} files, 16x parallel)...",
+                                )
+
+                        from concurrent.futures import ThreadPoolExecutor
+                        with ThreadPoolExecutor(max_workers=16) as pool:
+                            list(pool.map(_copy_one, copy_tasks))
+
                         cand_opf = os.path.join(target_extract, "project.opf")
                         part_imgs = []
-                        for root, _, files in os.walk(target_extract):
+                        for root, dirs, files in os.walk(target_extract):
+                            dirs[:] = [d for d in dirs if d.lower() != "meshes"]
                             for fn in sorted(files):
                                 if fn.lower().endswith((".jpg", ".jpeg", ".png", ".tiff", ".tif")):
                                     full_img = os.path.join(root, fn)
@@ -933,3 +968,78 @@ def run_pix4dmatic_pipeline(
         "texture_size": active_tex_size,
         "log_tail": tail_lines[-30:],
     }
+
+
+def prestage_input_to_local_ssd(input_path: str, output_project_dir: str) -> bool:
+    """
+    Pre-extracts `.zip` archives or fast-copies uncompressed Google Drive folders
+    into `<output_project_dir>/inputs/<stem>` in the background (16-thread parallel copy,
+    skipping mobile preview `meshes/`) so queued jobs start immediately when PIX4Dmatic
+    is ready for them.
+    """
+    if not input_path or not output_project_dir:
+        return False
+    inputs_dir = os.path.join(output_project_dir, "inputs")
+    os.makedirs(inputs_dir, exist_ok=True)
+    part_paths = [p.strip() for p in input_path.split(";") if p.strip()]
+    any_staged = False
+    from concurrent.futures import ThreadPoolExecutor
+
+    for zpath in part_paths:
+        if os.path.isfile(zpath) and zpath.lower().endswith(".zip"):
+            stem = os.path.splitext(os.path.basename(zpath))[0]
+            target_extract = os.path.join(inputs_dir, stem)
+            stage_marker = os.path.join(target_extract, ".staged_ok")
+            if os.path.isfile(stage_marker):
+                continue
+            try:
+                os.makedirs(target_extract, exist_ok=True)
+                with zipfile.ZipFile(zpath, "r") as zf:
+                    zf.extractall(target_extract)
+                preview_meshes_dir = os.path.join(target_extract, "meshes")
+                if os.path.isdir(preview_meshes_dir):
+                    shutil.rmtree(preview_meshes_dir, ignore_errors=True)
+                with open(stage_marker, "w", encoding="utf-8") as mf:
+                    mf.write(str(int(time.time())))
+                any_staged = True
+            except Exception:
+                pass
+        elif os.path.isdir(zpath):
+            stem = os.path.basename(zpath.rstrip("/\\"))
+            target_extract = os.path.join(inputs_dir, stem)
+            stage_marker = os.path.join(target_extract, ".staged_ok")
+            if os.path.isfile(stage_marker):
+                continue
+            try:
+                os.makedirs(target_extract, exist_ok=True)
+                preview_meshes_dir = os.path.join(target_extract, "meshes")
+                if os.path.isdir(preview_meshes_dir):
+                    shutil.rmtree(preview_meshes_dir, ignore_errors=True)
+                copy_tasks = []
+                for root, dirs, files in os.walk(zpath):
+                    dirs[:] = [d for d in dirs if d.lower() not in {"meshes", ".git", "__pycache__"}]
+                    rel_dir = os.path.relpath(root, zpath)
+                    dst_dir = target_extract if rel_dir == "." else os.path.join(target_extract, rel_dir)
+                    os.makedirs(dst_dir, exist_ok=True)
+                    for fn in files:
+                        if fn.startswith("."):
+                            continue
+                        s_f = os.path.join(root, fn)
+                        d_f = os.path.join(dst_dir, fn)
+                        if not os.path.isfile(d_f) or os.path.getsize(d_f) != os.path.getsize(s_f):
+                            copy_tasks.append((s_f, d_f))
+                if copy_tasks:
+                    def _cp(pair):
+                        try:
+                            shutil.copy2(pair[0], pair[1])
+                        except Exception:
+                            pass
+                    with ThreadPoolExecutor(max_workers=16) as pool:
+                        list(pool.map(_cp, copy_tasks))
+                    any_staged = True
+                with open(stage_marker, "w", encoding="utf-8") as mf:
+                    mf.write(str(int(time.time())))
+            except Exception:
+                pass
+    return any_staged
+

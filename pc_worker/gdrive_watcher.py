@@ -1192,7 +1192,8 @@ def _discover_folder_scan_item(
         except Exception as e:
             print(f"[GDriveWatcher] Warning reading {meta_file}: {e}")
 
-    # Auto-detect tileset.json, .glb, or .obj inside folder_path (only direct or depth <= 2)
+    # Auto-detect tileset.json, .glb, or .obj inside folder_path (strictly excluding inputs/, images/, meshes/, opf_files/, etc.)
+    _SKIP_WALK_DIRS = {"inputs", "images", "meshes", "opf_files", "point_clouds", "processing", "logs", "temp", "configs"}
     tileset_path = meta.get("tileset_path", "")
     obj_candidates: List[str] = []
     if not (tileset_path and os.path.isfile(tileset_path)):
@@ -1201,7 +1202,8 @@ def _discover_folder_scan_item(
             os.path.join(folder_path, "tileset.json"),
         ]
         glb_fallbacks = []
-        for root, _, files in os.walk(folder_path):
+        for root, dirs, files in os.walk(folder_path):
+            dirs[:] = [d for d in dirs if d.lower() not in _SKIP_WALK_DIRS]
             rel_depth = os.path.relpath(root, folder_path).count(os.sep)
             if rel_depth > 2:
                 continue
@@ -1218,7 +1220,8 @@ def _discover_folder_scan_item(
                 tileset_path = c
                 break
     else:
-        for root, _, files in os.walk(folder_path):
+        for root, dirs, files in os.walk(folder_path):
+            dirs[:] = [d for d in dirs if d.lower() not in _SKIP_WALK_DIRS]
             rel_depth = os.path.relpath(root, folder_path).count(os.sep)
             if rel_depth > 2:
                 continue
@@ -1226,11 +1229,16 @@ def _discover_folder_scan_item(
                 if fn.lower().endswith(".obj"):
                     obj_candidates.append(os.path.join(root, fn))
 
-    # Auto-detect obj_path if not already valid
+    # Auto-detect obj_path if not already valid (ignore mobile preview meshes inside inputs/)
     obj_path = meta.get("obj_path", "")
+    if obj_path and ("\\inputs\\" in obj_path.lower() or "/inputs/" in obj_path.lower() or "\\meshes\\" in obj_path.lower()):
+        obj_path = ""
     if not (obj_path and os.path.isfile(obj_path)):
         cand_obj = os.path.join(folder_path, "mesh.obj")
-        if os.path.isfile(cand_obj):
+        exp_obj = os.path.join(folder_path, "exports", "obj_mesh", "mesh.obj")
+        if os.path.isfile(exp_obj):
+            obj_path = exp_obj
+        elif os.path.isfile(cand_obj):
             obj_path = cand_obj
         elif obj_candidates:
             obj_path = obj_candidates[0]
@@ -1325,15 +1333,32 @@ def _discover_folder_scan_item(
             if os.path.isdir(cdir):
                 cameras_dir = cdir
                 break
-    lat = float(meta.get("lat") or ts_georef.get("lat") or 24.92032)
-    lon = float(meta.get("lon") or ts_georef.get("lon") or 121.54351)
-    elev_m = float(meta.get("elev_m") or ts_georef.get("elev_m") or 43.18)
-    twd_e = float(meta.get("twd97_e") or ts_georef.get("twd97_e") or 304952.656)
-    twd_n = float(meta.get("twd97_n") or ts_georef.get("twd97_n") or 2757084.875)
-    twd_h = float(meta.get("twd97_h") or ts_georef.get("twd97_h") or elev_m)
+    # Always prefer real georeferenced coordinates from tileset.json / offset.xyz over hardcoded default (24.92032, 121.54351)
+    meta_lat = float(meta.get("lat") or 0.0)
+    meta_lon = float(meta.get("lon") or 0.0)
+    is_default_quchi_coord = abs(meta_lat - 24.92032) < 1e-4 and abs(meta_lon - 121.54351) < 1e-4
+    if ts_georef.get("lat") and (not meta_lat or is_default_quchi_coord):
+        lat = float(ts_georef["lat"])
+        lon = float(ts_georef["lon"])
+        elev_m = float(ts_georef.get("elev_m") or meta.get("elev_m") or 43.18)
+        twd_e = float(ts_georef.get("twd97_e") or meta.get("twd97_e") or 304952.656)
+        twd_n = float(ts_georef.get("twd97_n") or meta.get("twd97_n") or 2757084.875)
+        twd_h = float(ts_georef.get("twd97_h") or elev_m)
+    else:
+        lat = float(meta_lat or ts_georef.get("lat") or 24.92032)
+        lon = float(meta_lon or ts_georef.get("lon") or 121.54351)
+        elev_m = float(meta.get("elev_m") or ts_georef.get("elev_m") or 43.18)
+        twd_e = float(meta.get("twd97_e") or ts_georef.get("twd97_e") or 304952.656)
+        twd_n = float(meta.get("twd97_n") or ts_georef.get("twd97_n") or 2757084.875)
+        twd_h = float(meta.get("twd97_h") or ts_georef.get("twd97_h") or elev_m)
+
     proj_group = meta.get("project_group")
     proj_zh = meta.get("project_name_zh")
-    if not proj_group:
+    if parent_project:
+        proj_group, proj_zh = match_project_group(
+            lat, lon, hint_name=folder_name, parent_project=parent_project, dynamic_clusters=dynamic_clusters
+        )
+    elif not proj_group or (proj_group == "QuChi Dam" and is_default_quchi_coord and ts_georef.get("lat")):
         proj_group, proj_zh = match_project_group(
             lat,
             lon,
@@ -1682,12 +1707,23 @@ def _seed_and_discover_scans_locked(db: ScanQueueDB) -> List[Dict[str, Any]]:
         return False
 
     # 1. Dynamically discover all scan folders in C:\GatheringScans (local disk storage)
+    active_job_dirs = set()
+    active_job_ids = set()
+    for r_scan in db.list_scans():
+        if r_scan.get("status") in ("processing", "queued", "waiting_parts"):
+            active_job_ids.add(r_scan["scan_id"])
+            if r_scan.get("project_dir"):
+                active_job_dirs.add(os.path.normcase(os.path.abspath(r_scan["project_dir"])))
+
     if os.path.isdir(LOCAL_SCANS_ROOT):
         for entry in sorted(os.listdir(LOCAL_SCANS_ROOT)):
             if entry.startswith(("_", ".")) or entry.lower() in INTERNAL_ASSET_DIRS:
                 continue
             sub_dir = os.path.join(LOCAL_SCANS_ROOT, entry)
             if not is_safe_jailed_path(sub_dir, LOCAL_SCANS_ROOT) or not os.path.isdir(sub_dir):
+                continue
+            if os.path.normcase(os.path.abspath(sub_dir)) in active_job_dirs or entry in active_job_ids:
+                discovered_ids.add(entry)
                 continue
             if _cleanup_if_gdrive_origin_deleted(sub_dir):
                 continue
@@ -1705,6 +1741,10 @@ def _seed_and_discover_scans_locked(db: ScanQueueDB) -> List[Dict[str, Any]]:
                         continue
                     child_dir = os.path.join(sub_dir, child_entry)
                     if not is_safe_jailed_path(child_dir, LOCAL_SCANS_ROOT) or not os.path.isdir(child_dir):
+                        continue
+                    if os.path.normcase(os.path.abspath(child_dir)) in active_job_dirs or child_entry in active_job_ids:
+                        discovered_ids.add(child_entry)
+                        found_nested = True
                         continue
                     if _cleanup_if_gdrive_origin_deleted(child_dir):
                         continue
@@ -1778,16 +1818,16 @@ def _seed_and_discover_scans_locked(db: ScanQueueDB) -> List[Dict[str, Any]]:
             primary_meta["obj_path"] = existing.get("obj_path", "")
             primary_meta["project_dir"] = existing.get("project_dir", cand_processed_dir)
         elif all_parts_ready and not folder_syncing and os.path.isfile(cand_processed_ts):
-            if scan_id in discovered_ids and existing and existing.get("tileset_path"):
-                primary_meta = dict(existing)
-                primary_meta["source_zip_path"] = ";".join(parts_map[p] for p in present_parts)
-                db.upsert_scan(primary_meta)
-                continue
+            true_img_cnt = sum(int(m.get("image_count", 0)) for m in part_metas)
             if existing and existing.get("tileset_path"):
                 primary_meta = dict(existing)
                 primary_meta["source_zip_path"] = ";".join(parts_map[p] for p in present_parts)
                 if not existing.get("user_edited_name"):
                     primary_meta["name"] = base_name
+            primary_meta["project_group"] = proj_group
+            primary_meta["project_name_zh"] = proj_zh
+            if true_img_cnt > 0:
+                primary_meta["image_count"] = true_img_cnt
             primary_meta["tileset_path"] = cand_processed_ts
             primary_meta["project_dir"] = cand_processed_dir
             cand_obj = os.path.join(cand_processed_dir, "exports", "obj_mesh", "mesh.obj")
@@ -1796,6 +1836,23 @@ def _seed_and_discover_scans_locked(db: ScanQueueDB) -> List[Dict[str, Any]]:
             primary_meta["status"] = "completed"
             primary_meta["progress_pct"] = 100.0
             primary_meta["stage_label"] = f"Processed -> {scan_id} (TWD97 + TWVD2001, 4K)"
+            # Keep scan_meta.json on disk in sync with parent_proj and true_img_cnt
+            meta_on_disk = os.path.join(cand_processed_dir, "scan_meta.json")
+            if os.path.isfile(meta_on_disk):
+                try:
+                    with open(meta_on_disk, "r", encoding="utf-8") as mf:
+                        m_disk = json.load(mf)
+                    if m_disk.get("project_group") != proj_group or m_disk.get("image_count") != primary_meta["image_count"] or (cand_obj and m_disk.get("obj_path") != cand_obj):
+                        m_disk["project_group"] = proj_group
+                        m_disk["project_name_zh"] = proj_zh
+                        m_disk["image_count"] = primary_meta["image_count"]
+                        m_disk["source_zip_path"] = primary_meta["source_zip_path"]
+                        if cand_obj and os.path.isfile(cand_obj):
+                            m_disk["obj_path"] = cand_obj
+                        with open(meta_on_disk, "w", encoding="utf-8") as wf:
+                            json.dump(m_disk, wf, indent=2, ensure_ascii=False)
+                except Exception:
+                    pass
         else:
             if folder_syncing:
                 primary_meta["status"] = "waiting_parts"
