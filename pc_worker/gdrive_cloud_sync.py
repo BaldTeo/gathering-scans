@@ -445,11 +445,10 @@ def build_scan_3tz_package(scan: Dict[str, Any], force: bool = False) -> Optiona
         with zipfile.ZipFile(tmp_zip, "w", compression=zipfile.ZIP_STORED) as zf:
             for arc_name, raw_data in files_to_pack.items():
                 clean_arc = arc_name.replace("\\", "/").lstrip("/")
-                if clean_arc.endswith((".glb", ".json")) and len(raw_data) > 512:
-                    gz_data = gzip.compress(raw_data, compresslevel=6)
-                    zf.writestr(clean_arc + ".gz", gz_data, compress_type=zipfile.ZIP_STORED)
-                else:
-                    zf.writestr(clean_arc, raw_data, compress_type=zipfile.ZIP_STORED)
+                # Always write the canonical file (e.g. tiles/root.glb, tileset.json) directly as ZIP_STORED
+                # so the .3tz/.zip archive works out-of-the-box in any external 3D Tiles viewer or app when unzipped,
+                # while still supporting direct HTTP byte-range streaming.
+                zf.writestr(clean_arc, raw_data, compress_type=zipfile.ZIP_STORED)
 
         shutil.move(tmp_zip, pkg_path)
         if my_drive_dir and shared_dir and my_drive_dir != shared_dir:
