@@ -1355,8 +1355,10 @@ html[data-theme="dark"] .gs-lowres-preview-pill {
 
 .gs-toast {
   position: fixed;
-  bottom: 22px;
-  right: 22px;
+  bottom: 78px;
+  left: 50%;
+  right: auto;
+  transform: translateX(-50%) translateY(12px);
   background: var(--ui-bg-surface);
   border: 1px solid var(--ui-border-strong);
   color: var(--ui-text-primary);
@@ -1367,6 +1369,16 @@ html[data-theme="dark"] .gs-lowres-preview-pill {
   box-shadow: var(--ui-shadow-window);
   z-index: 2000;
   display: none;
+  pointer-events: none;
+  max-width: calc(100vw - 440px);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.gs-toast.show {
+  display: block;
+  transform: translateX(-50%) translateY(0);
 }
 
 /* ============================================================================

@@ -821,9 +821,10 @@ def start_pc_reverse_tunnel_pool(local_port: int = SERVER_PORT, pool_size: int =
 
                     conn: Optional[http.client.HTTPConnection] = None
                     try:
-                        is_long_local = method == "POST" and (
-                            path.startswith("/api/optimizer/") or path in ("/api/scans/merge", "/api/optimizer/merge")
-                        )
+                        is_long_local = (
+                            method == "POST"
+                            and (path.startswith("/api/optimizer/") or path in ("/api/scans/merge", "/api/optimizer/merge"))
+                        ) or path.startswith("/api/download")
                         conn = http.client.HTTPConnection(
                             "127.0.0.1", local_port, timeout=900.0 if is_long_local else 90.0
                         )
@@ -978,6 +979,7 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
 
     _GZIP_FILE_CACHE: Dict[str, Tuple[float, bytes]] = {}
     _OPTIMIZED_TILESET_CACHE: Dict[str, Tuple[float, bytes]] = {}
+    _SCAN_MESH_METRICS_CACHE: Dict[Tuple[str, str], Dict[str, Any]] = {}
 
     def _serve_optimized_tileset_json(self, ts_path: str):
         try:
@@ -1438,9 +1440,143 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
             s["stream_type"] = "tileset"
             s["preview_stream_url"] = f"/stream/{sid}/preview_tileset.json{prev_q}"
             s["preview_stream_type"] = "tileset"
+        s["download_3tz_url"] = f"/api/download?scan_id={sid}&type=3tz" + (f"&share={share_token}" if share_token else "")
+        s["download_glb_url"] = f"/api/download?scan_id={sid}&type=glb" + (f"&share={share_token}" if share_token else "")
         s["download_obj_url"] = f"/api/download?scan_id={sid}&type=obj" + (f"&share={share_token}" if share_token else "")
+        s["download_zip_url"] = f"/api/download?scan_id={sid}&type=zip" + (f"&share={share_token}" if share_token else "")
         thumb_q = f"?v={ts_ver}&share={share_token}" if share_token else f"?v={ts_ver}"
         s["thumbnail_url"] = f"/api/scans/{sid}/thumbnail{thumb_q}"
+
+        # Enrich polygon count, texture size, and 3D scan size (MB) with fast mtime-keyed cache
+        cache_key = (sid, ts_ver)
+        cached_metrics = self._SCAN_MESH_METRICS_CACHE.get(cache_key)
+        if cached_metrics is None:
+            poly_count = int(s.get("poly_count") or 0)
+            tex_res_default = int(s.get("texture_resolution") or PIX4DMATIC_TEXTURE_SIZE)
+            tex_w = int(s.get("texture_width") or tex_res_default)
+            tex_h = int(s.get("texture_height") or tex_w)
+            tex_cnt = int(s.get("texture_count") or 1)
+            tex_label = str(s.get("texture_size_label") or "")
+            stream_mb = float(s.get("stream_size_mb") or 0.0)
+            obj_mb = float(s.get("obj_size_mb") or 0.0)
+
+            if ts_path and os.path.isfile(ts_path):
+                try:
+                    import io as _io
+                    from PIL import Image as _Image
+
+                    bdir_m = os.path.dirname(ts_path)
+                    proj_dir_m = s.get("project_dir") or os.path.dirname(bdir_m)
+                    leaf_glbs = []
+                    if ts_path.lower().endswith(".glb"):
+                        leaf_glbs = [ts_path]
+                    else:
+                        with open(ts_path, "r", encoding="utf-8") as _mf:
+                            _tso = json.load(_mf)
+                        _root = _tso.get("root") or {}
+                        _rc = ((_root.get("content") or {}).get("uri") or "").split("?")[0]
+                        _rf = os.path.join(bdir_m, _rc) if _rc else ""
+                        if _rf and os.path.isfile(_rf) and os.path.getsize(_rf) >= 800_000:
+                            leaf_glbs = [_rf]
+                        else:
+                            def _walk_m(node: dict, depth: int = 0):
+                                _cu = ((node.get("content") or {}).get("uri") or "").split("?")[0]
+                                if _cu:
+                                    _cf = os.path.join(bdir_m, _cu)
+                                    if os.path.isfile(_cf):
+                                        leaf_glbs.append(_cf)
+                                        return
+                                if depth < 3:
+                                    for _ch in node.get("children") or []:
+                                        if isinstance(_ch, dict):
+                                            _walk_m(_ch, depth + 1)
+                            _walk_m(_root, 0)
+
+                    tris_sum = 0
+                    glb_bytes_sum = 0
+                    tex_dims_list = []
+                    for _gfp in leaf_glbs:
+                        try:
+                            glb_bytes_sum += os.path.getsize(_gfp)
+                            with open(_gfp, "rb") as _gf:
+                                _hdr = _gf.read(20)
+                                if len(_hdr) == 20 and _hdr[:4] == b"glTF":
+                                    _jlen = struct.unpack_from("<I", _hdr, 12)[0]
+                                    _gj = json.loads(_gf.read(_jlen).decode("utf-8"))
+                                    _accs = _gj.get("accessors") or []
+                                    for _gm in _gj.get("meshes") or []:
+                                        for _gp in _gm.get("primitives") or []:
+                                            if "indices" in _gp and _gp["indices"] < len(_accs):
+                                                tris_sum += int(_accs[_gp["indices"]].get("count", 0)) // 3
+                                    _imgs = _gj.get("images") or []
+                                    _bvs = _gj.get("bufferViews") or []
+                                    if _imgs and "bufferView" in _imgs[0] and _imgs[0]["bufferView"] < len(_bvs):
+                                        _bv = _bvs[_imgs[0]["bufferView"]]
+                                        _gf.seek(20 + _jlen + 8 + int(_bv.get("byteOffset", 0)))
+                                        _ib = _gf.read(min(int(_bv.get("byteLength", 0)), 65536))
+                                        try:
+                                            _im = _Image.open(_io.BytesIO(_ib))
+                                            tex_dims_list.append((int(_im.width), int(_im.height)))
+                                        except Exception:
+                                            pass
+                        except Exception:
+                            pass
+
+                    obj_dir_m = os.path.join(proj_dir_m, "exports", "obj_mesh")
+                    if os.path.isdir(obj_dir_m):
+                        obj_b_sum = 0
+                        obj_tex_dims = []
+                        for _ofn in sorted(os.listdir(obj_dir_m)):
+                            _ofp = os.path.join(obj_dir_m, _ofn)
+                            if os.path.isfile(_ofp):
+                                obj_b_sum += os.path.getsize(_ofp)
+                                if _ofn.lower().endswith((".jpg", ".jpeg", ".png")):
+                                    try:
+                                        with _Image.open(_ofp) as _oim:
+                                            obj_tex_dims.append((int(_oim.width), int(_oim.height)))
+                                    except Exception:
+                                        pass
+                        if obj_b_sum > 0:
+                            obj_mb = round(obj_b_sum / (1024 * 1024), 2)
+                        if not tex_dims_list and obj_tex_dims:
+                            tex_dims_list = obj_tex_dims
+
+                    if tris_sum > 0:
+                        poly_count = tris_sum
+                    if glb_bytes_sum > 0:
+                        stream_mb = round(glb_bytes_sum / (1024 * 1024), 2)
+                    if tex_dims_list:
+                        tex_w = max(w for w, _ in tex_dims_list)
+                        tex_h = max(h for _, h in tex_dims_list)
+                        tex_cnt = len(tex_dims_list)
+                except Exception:
+                    pass
+
+            if not tex_label:
+                if tex_cnt > 1 and tex_cnt <= 8:
+                    tex_label = f"{tex_w}\u00d7{tex_h} px (\u00d7{tex_cnt})"
+                elif tex_cnt > 8:
+                    tex_label = f"{tex_w}\u00d7{tex_h} px ({tex_cnt} tiles)"
+                else:
+                    tex_label = f"{tex_w}\u00d7{tex_h} px"
+
+            total_mb = round(float(s.get("size_mb") or (float(s.get("size_bytes") or 0) / (1024 * 1024))), 2)
+            scan_mb = stream_mb if stream_mb > 0 else total_mb
+            cached_metrics = {
+                "poly_count": poly_count,
+                "texture_resolution": max(tex_w, tex_h),
+                "texture_width": tex_w,
+                "texture_height": tex_h,
+                "texture_count": tex_cnt,
+                "texture_size_label": tex_label,
+                "stream_size_mb": stream_mb,
+                "obj_size_mb": obj_mb,
+                "scan_size_mb": scan_mb,
+            }
+            if poly_count > 0 or stream_mb > 0:
+                self._SCAN_MESH_METRICS_CACHE[cache_key] = cached_metrics
+
+        s.update(cached_metrics)
         return s
 
     def _build_projects_summary(self, scans: list) -> list:
@@ -1781,10 +1917,11 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
             if self._serve_from_gdrive_cloud_if_available(path, share_token=share_token):
                 return True
 
-        # 3. Try up to 4 sockets from the PC reverse tunnel pool (single 900s pass for long optimizer/merge POSTs)
-        is_long_post = method == "POST" and (
-            path.startswith("/api/optimizer/") or path in ("/api/scans/merge", "/api/optimizer/merge")
-        )
+        # 3. Try up to 4 sockets from the PC reverse tunnel pool (single 900s pass for long optimizer/merge POSTs or large downloads)
+        is_long_post = (
+            method == "POST"
+            and (path.startswith("/api/optimizer/") or path in ("/api/scans/merge", "/api/optimizer/merge"))
+        ) or path.startswith("/api/download")
         for _attempt in range(1 if is_long_post else 4):
             tun_sock, done_evt, proto_ver = _acquire_vps_tunnel_socket(timeout=5.0)
             if not tun_sock or not done_evt:
@@ -2128,6 +2265,13 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
             or ((query.get("session_token") or [None])[0] if isinstance(query, dict) else None)
             or ""
         ).strip()
+        if not sess_tok:
+            raw_cookie = self.headers.get("Cookie") or ""
+            for c_part in raw_cookie.split(";"):
+                c_kv = c_part.strip()
+                if c_kv.startswith("gs_session_token="):
+                    sess_tok = urllib.parse.unquote(c_kv[len("gs_session_token=") :].strip())
+                    break
         verified_email = verify_session_token(sess_tok)
         if not verified_email or verified_email in ("guest", "guest@anonymous", "guest@external"):
             return ("guest@anonymous", "guest", get_role_permissions("guest"))
@@ -2687,11 +2831,223 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
             crs_upper = str(scan.get("crs") or "").upper()
             crs_tag = "LocalOrigin" if "LOCAL" in crs_upper else ("UTM" if "UTM" in crs_upper else "TWD97_TWVD2001")
             dl_obj_name = f"{scan_id}_{crs_tag}.obj"
+            dtype_norm = str(dtype or "obj").strip().lower()
 
             ts_path_check = scan.get("tileset_path") or ""
             ts_mtime = os.path.getmtime(ts_path_check) if ts_path_check and os.path.isfile(ts_path_check) else 0.0
+            proj_dir = scan.get("project_dir") or os.path.join(LOCAL_SCANS_ROOT, scan_id)
+            if os.path.islink(proj_dir) or getattr(os.path, "isjunction", lambda p: False)(proj_dir):
+                proj_dir = os.path.join(LOCAL_SCANS_ROOT, scan_id)
+            conv_dir = os.path.join(proj_dir, "exports")
+            os.makedirs(conv_dir, exist_ok=True)
             obj_path = SURVEY._resolve_scan_obj_path(scan)
-            if dtype == "obj" and obj_path and os.path.isfile(obj_path):
+
+            # A. Download .3tz (3D Tiles Archive Package)
+            if dtype_norm in ("3tz", "t3z"):
+                dl_3tz_name = f"{scan_id}_{crs_tag}.3tz"
+                try:
+                    from pc_worker.gdrive_cloud_sync import build_scan_3tz_package
+
+                    pkg_info = build_scan_3tz_package(scan, force=False)
+                    if pkg_info and pkg_info.get("pkg_path") and os.path.isfile(pkg_info["pkg_path"]):
+                        self._serve_file_with_range(
+                            pkg_info["pkg_path"],
+                            content_type="application/octet-stream",
+                            download_name=dl_3tz_name,
+                        )
+                        return
+                except Exception as _e3tz:
+                    print(f"[GatheringScans] .3tz package build note for {scan_id}: {_e3tz}")
+                local_3tz = os.path.join(conv_dir, f"{scan_id}.3tz")
+                if not os.path.isfile(local_3tz) or (ts_mtime > 0 and os.path.getmtime(local_3tz) < ts_mtime):
+                    try:
+                        import zipfile as _zf
+
+                        with _zf.ZipFile(local_3tz, "w", compression=_zf.ZIP_STORED) as _z:
+                            if ts_path_check and os.path.isfile(ts_path_check):
+                                _bdir_z = os.path.dirname(ts_path_check)
+                                for _root_z, _, _files_z in os.walk(_bdir_z):
+                                    for _fn_z in _files_z:
+                                        if _fn_z.lower().endswith((".json", ".glb", ".png", ".jpg", ".xyz")):
+                                            _fp_z = os.path.join(_root_z, _fn_z)
+                                            _rel_z = os.path.relpath(_fp_z, _bdir_z).replace("\\", "/")
+                                            _z.write(_fp_z, _rel_z)
+                    except Exception as _ez:
+                        print(f"[GatheringScans] Local .3tz fallback error for {scan_id}: {_ez}")
+                if os.path.isfile(local_3tz):
+                    self._serve_file_with_range(
+                        local_3tz,
+                        content_type="application/octet-stream",
+                        download_name=dl_3tz_name,
+                    )
+                    return
+
+            # B. Download .glb (Self-Contained Binary glTF 2.0 3D Model with Embedded Textures)
+            if dtype_norm == "glb":
+                dl_glb_name = f"{scan_id}_{crs_tag}.glb"
+                conv_glb = os.path.join(conv_dir, f"{scan_id}_export_v1.glb")
+                if not os.path.isfile(conv_glb) or (ts_mtime > 0 and os.path.getmtime(conv_glb) < ts_mtime):
+                    try:
+                        import subprocess as _sp
+                        from pc_worker.surveying_engine import GLTFPACK_EXE
+
+                        leaf_glbs_dl = []
+                        if ts_path_check and ts_path_check.lower().endswith(".glb") and os.path.isfile(ts_path_check):
+                            leaf_glbs_dl = [ts_path_check]
+                        elif ts_path_check and os.path.isfile(ts_path_check):
+                            _bdir_g = os.path.dirname(ts_path_check)
+                            with open(ts_path_check, "r", encoding="utf-8") as _gfh:
+                                _gtso = json.load(_gfh)
+                            _groot = _gtso.get("root") or {}
+                            _grc = ((_groot.get("content") or {}).get("uri") or "").split("?")[0]
+                            _grf = os.path.join(_bdir_g, _grc) if _grc else ""
+                            if _grf and os.path.isfile(_grf) and os.path.getsize(_grf) >= 800_000:
+                                leaf_glbs_dl = [_grf]
+                            else:
+                                def _walk_g_dl(node: dict, depth: int = 0):
+                                    _cu = ((node.get("content") or {}).get("uri") or "").split("?")[0]
+                                    if _cu:
+                                        _cf = os.path.join(_bdir_g, _cu)
+                                        if os.path.isfile(_cf):
+                                            leaf_glbs_dl.append(_cf)
+                                            return
+                                    if depth < 3:
+                                        for _ch in node.get("children") or []:
+                                            if isinstance(_ch, dict):
+                                                _walk_g_dl(_ch, depth + 1)
+                                _walk_g_dl(_groot, 0)
+                        if not leaf_glbs_dl:
+                            leaf_glbs_dl = SURVEY._collect_scan_glb_files(scan)[:8]
+
+                        if len(leaf_glbs_dl) == 1 and os.path.isfile(GLTFPACK_EXE):
+                            _sp.run([GLTFPACK_EXE, "-i", leaf_glbs_dl[0], "-o", conv_glb, "-noq"], capture_output=True, timeout=45)
+                        elif len(leaf_glbs_dl) >= 1:
+                            c_bvs, c_accs, c_imgs, c_texs, c_mats, c_prims = [], [], [], [], [], []
+                            c_bin = bytearray()
+                            for _gfp in leaf_glbs_dl:
+                                _tmp_g = os.path.join(conv_dir, f"_tmp_dl_{os.path.basename(_gfp)}")
+                                _read_g = _gfp
+                                if os.path.isfile(GLTFPACK_EXE):
+                                    _sp.run([GLTFPACK_EXE, "-i", _gfp, "-o", _tmp_g, "-noq"], capture_output=True, timeout=45)
+                                    if os.path.isfile(_tmp_g):
+                                        _read_g = _tmp_g
+                                try:
+                                    with open(_read_g, "rb") as _rfg:
+                                        _raw_g = _rfg.read()
+                                finally:
+                                    if os.path.isfile(_tmp_g):
+                                        try:
+                                            os.remove(_tmp_g)
+                                        except OSError:
+                                            pass
+                                if len(_raw_g) < 28 or _raw_g[:4] != b"glTF":
+                                    continue
+                                _jlen_g = struct.unpack_from("<I", _raw_g, 12)[0]
+                                _jg = json.loads(_raw_g[20 : 20 + _jlen_g].decode("utf-8"))
+                                _boff_g = 20 + _jlen_g
+                                _blen_g = struct.unpack_from("<I", _raw_g, _boff_g)[0]
+                                _blob_g = _raw_g[_boff_g + 8 : _boff_g + 8 + _blen_g]
+                                _base_off = len(c_bin)
+                                c_bin.extend(_blob_g)
+                                while len(c_bin) % 4:
+                                    c_bin.append(0)
+                                _bv_base = len(c_bvs)
+                                for _bv in _jg.get("bufferViews") or []:
+                                    _nbv = dict(_bv)
+                                    _nbv["buffer"] = 0
+                                    _nbv["byteOffset"] = int(_bv.get("byteOffset", 0)) + _base_off
+                                    c_bvs.append(_nbv)
+                                _acc_base = len(c_accs)
+                                for _acc in _jg.get("accessors") or []:
+                                    _nacc = dict(_acc)
+                                    if "bufferView" in _nacc:
+                                        _nacc["bufferView"] = int(_nacc["bufferView"]) + _bv_base
+                                    c_accs.append(_nacc)
+                                _mat_idx = len(c_mats)
+                                _imgs = _jg.get("images") or []
+                                if _imgs:
+                                    _img_idx = len(c_imgs)
+                                    _nimg = dict(_imgs[0])
+                                    if "bufferView" in _nimg:
+                                        _nimg["bufferView"] = int(_nimg["bufferView"]) + _bv_base
+                                    c_imgs.append(_nimg)
+                                    _tex_idx = len(c_texs)
+                                    c_texs.append({"source": _img_idx})
+                                    c_mats.append(
+                                        {
+                                            "pbrMetallicRoughness": {
+                                                "baseColorTexture": {"index": _tex_idx},
+                                                "metallicFactor": 0.0,
+                                                "roughnessFactor": 1.0,
+                                            },
+                                            "doubleSided": True,
+                                        }
+                                    )
+                                else:
+                                    c_mats.append({"doubleSided": True})
+                                for _gm in _jg.get("meshes") or []:
+                                    for _gp in _gm.get("primitives") or []:
+                                        _np_prim = {
+                                            "attributes": {k: int(v) + _acc_base for k, v in (_gp.get("attributes") or {}).items()},
+                                            "material": _mat_idx,
+                                        }
+                                        if "indices" in _gp:
+                                            _np_prim["indices"] = int(_gp["indices"]) + _acc_base
+                                        if "mode" in _gp:
+                                            _np_prim["mode"] = _gp["mode"]
+                                        c_prims.append(_np_prim)
+                            if c_prims:
+                                _cj = {
+                                    "asset": {"version": "2.0", "generator": "GatheringScans GLB Exporter"},
+                                    "scene": 0,
+                                    "scenes": [{"nodes": [0]}],
+                                    "nodes": [{"mesh": 0}],
+                                    "meshes": [{"primitives": c_prims}],
+                                    "materials": c_mats,
+                                    "textures": c_texs,
+                                    "images": c_imgs,
+                                    "accessors": c_accs,
+                                    "bufferViews": c_bvs,
+                                    "buffers": [{"byteLength": len(c_bin)}],
+                                }
+                                _jb = json.dumps(_cj, separators=(",", ":")).encode("utf-8")
+                                while len(_jb) % 4:
+                                    _jb += b" "
+                                _tot = 12 + 8 + len(_jb) + 8 + len(c_bin)
+                                with open(conv_glb, "wb") as _fgo:
+                                    _fgo.write(struct.pack("<4sII", b"glTF", 2, _tot))
+                                    _fgo.write(struct.pack("<I4s", len(_jb), b"JSON"))
+                                    _fgo.write(_jb)
+                                    _fgo.write(struct.pack("<I4s", len(c_bin), b"BIN\x00"))
+                                    _fgo.write(c_bin)
+                    except Exception as _eglb:
+                        print(f"[GatheringScans] GLB export error for {scan_id}: {_eglb}")
+                if os.path.isfile(conv_glb):
+                    self._serve_file_with_range(conv_glb, content_type="model/gltf-binary", download_name=dl_glb_name)
+                    return
+
+            # C. Download .zip (Textured .OBJ + .MTL + .JPG Textures + offset.xyz Bundle)
+            if dtype_norm in ("zip", "obj_zip"):
+                dl_zip_name = f"{scan_id}_{crs_tag}_OBJ_Textured.zip"
+                conv_zip = os.path.join(conv_dir, f"{scan_id}_obj_textured_v1.zip")
+                if not os.path.isfile(conv_zip) or (ts_mtime > 0 and os.path.getmtime(conv_zip) < ts_mtime):
+                    try:
+                        import zipfile as _zf
+
+                        obj_dir_z = os.path.dirname(obj_path) if (obj_path and os.path.isfile(obj_path)) else ""
+                        if obj_dir_z and os.path.isdir(obj_dir_z):
+                            with _zf.ZipFile(conv_zip, "w", compression=_zf.ZIP_STORED) as _z:
+                                for _fn_o in sorted(os.listdir(obj_dir_z)):
+                                    _fp_o = os.path.join(obj_dir_z, _fn_o)
+                                    if os.path.isfile(_fp_o) and _fn_o.lower().endswith((".obj", ".mtl", ".jpg", ".jpeg", ".png", ".xyz")):
+                                        _z.write(_fp_o, _fn_o)
+                    except Exception as _ezip:
+                        print(f"[GatheringScans] Textured OBJ ZIP error for {scan_id}: {_ezip}")
+                if os.path.isfile(conv_zip):
+                    self._serve_file_with_range(conv_zip, content_type="application/zip", download_name=dl_zip_name)
+                    return
+
+            if dtype_norm == "obj" and obj_path and os.path.isfile(obj_path):
                 # Only serve raw obj_path directly if it is already in world coordinates (no non-zero offset.xyz) and not older than tileset edits
                 raw_obj_ok = ts_mtime <= os.path.getmtime(obj_path) + 2.0
                 off_file = os.path.join(os.path.dirname(obj_path), "offset.xyz")
@@ -2708,12 +3064,38 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
                     return
 
             # Convert ALL leaf .glb tiles (with accumulated 4x4 tile transforms) into a world-georeferenced .obj on disk
-            proj_dir = scan.get("project_dir") or os.path.join(LOCAL_SCANS_ROOT, scan_id)
-            if os.path.islink(proj_dir) or getattr(os.path, "isjunction", lambda p: False)(proj_dir):
-                proj_dir = os.path.join(LOCAL_SCANS_ROOT, scan_id)
-            conv_dir = os.path.join(proj_dir, "exports")
-            os.makedirs(conv_dir, exist_ok=True)
             conv_obj = os.path.join(conv_dir, f"{scan_id}_world_export_v3.obj")
+            if not os.path.isfile(conv_obj) or (ts_mtime > 0 and os.path.getmtime(conv_obj) < ts_mtime):
+                # Fast path: if raw obj_path + offset.xyz exist and are up to date, shift vertices by offset.xyz in ~1.5s preserving UVs/materials
+                if obj_path and os.path.isfile(obj_path) and (ts_mtime <= os.path.getmtime(obj_path) + 2.0):
+                    try:
+                        import io as _io
+                        import numpy as _np
+
+                        off_file_fast = os.path.join(os.path.dirname(obj_path), "offset.xyz")
+                        ox_f, oy_f, oz_f = 0.0, 0.0, 0.0
+                        if os.path.isfile(off_file_fast):
+                            _op_f = [float(x) for x in open(off_file_fast, "r", encoding="utf-8").read().strip().split()[:3]]
+                            if len(_op_f) == 3:
+                                ox_f, oy_f, oz_f = _op_f[0], _op_f[1], _op_f[2]
+                        with open(obj_path, "r", encoding="utf-8", errors="ignore") as _of_in:
+                            _olines = _of_in.read().splitlines()
+                        _v_lns = [ln[2:] for ln in _olines if ln.startswith("v ")]
+                        _tail_lns = [ln for ln in _olines if not ln.startswith("v ")]
+                        if _v_lns:
+                            _v_arr = _np.fromstring(" ".join(_v_lns), sep=" ", dtype=_np.float64).reshape(-1, 3) + _np.array([ox_f, oy_f, oz_f], dtype=_np.float64)
+                            _v_buf = _io.BytesIO()
+                            _np.savetxt(_v_buf, _v_arr, fmt="v %.4f %.4f %.4f", newline="\n")
+                            with open(conv_obj, "wb") as _of_out:
+                                if _tail_lns and _tail_lns[0].startswith("mtllib "):
+                                    _of_out.write((_tail_lns[0] + "\n").encode("utf-8"))
+                                    _tail_lns = _tail_lns[1:]
+                                _of_out.write(_v_buf.getvalue())
+                                if _tail_lns:
+                                    _of_out.write(("\n".join(_tail_lns) + "\n").encode("utf-8"))
+                    except Exception as _fe:
+                        print(f"[GatheringScans] Fast OBJ shift note for {scan_id}: {_fe}")
+
             if not os.path.isfile(conv_obj) or (ts_mtime > 0 and os.path.getmtime(conv_obj) < ts_mtime):
                 try:
                     import numpy as _np
@@ -2798,7 +3180,7 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
                             meshes.append(m)
                     if meshes:
                         combined = meshes[0] if len(meshes) == 1 else trimesh.util.concatenate(meshes)
-                        combined.export(conv_obj, file_type="obj")
+                        combined.export(conv_obj, file_type="obj", include_texture=False)
                 except Exception as e:
                     print(f"[GatheringScans] OBJ conversion error for {scan_id}: {e}")
 
@@ -3385,6 +3767,19 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
                         self.send_json({"error": "Photo inspection is disabled for this external share link."}, status=403)
                         return
                 res = SURVEY.inspect_rtk_camera_photos(payload)
+                self.send_json(res)
+                return
+
+            # 5b. Civil Surveying: AI + 3D Geometric Surface & Object Categorization
+            if path in ("/api/survey/categorize", "/api/surveying/categorize"):
+                if share_token:
+                    ok_s, reason_s, link_s, _ = AUTH_SHARE.validate_share_access(
+                        share_token, requested_scan_id=payload.get("scan_id")
+                    )
+                    if not ok_s or not (link_s and link_s.get("allow_measurements", True)):
+                        self.send_json({"error": "Surface categorization is disabled for this external share link."}, status=403)
+                        return
+                res = SURVEY.categorize_scan_surfaces_and_objects(payload)
                 self.send_json(res)
                 return
 

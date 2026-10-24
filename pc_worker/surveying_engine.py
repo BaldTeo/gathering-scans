@@ -3224,35 +3224,90 @@ class SurveyingEngine:
                 acc_list = j.get("accessors") or []
                 bv_list = j.get("bufferViews") or []
                 meshes_list = j.get("meshes") or []
+                nodes_list = j.get("nodes") or []
                 images_list = j.get("images") or []
                 blob = memoryview(raw_bytes)[b_off + 8 : b_off + 8 + b_len]
 
                 tex_np_g = None
-                if images_list and "bufferView" in images_list[0] and Image is not None:
-                    try:
-                        import io
-                        ibv = bv_list[images_list[0]["bufferView"]]
-                        ioff = int(ibv.get("byteOffset", 0))
-                        ilen = int(ibv["byteLength"])
-                        im = Image.open(io.BytesIO(bytes(blob[ioff : ioff + ilen]))).convert("RGB")
-                        tex_np_g = np.asarray(im, dtype=np.float32) / 255.0
-                    except Exception:
-                        tex_np_g = None
+                if images_list and Image is not None:
+                    for img_meta in images_list:
+                        if "bufferView" in img_meta:
+                            try:
+                                import io
+                                ibv = bv_list[img_meta["bufferView"]]
+                                ioff = int(ibv.get("byteOffset", 0))
+                                ilen = int(ibv["byteLength"])
+                                im = Image.open(io.BytesIO(bytes(blob[ioff : ioff + ilen]))).convert("RGB")
+                                tex_np_g = np.asarray(im, dtype=np.float32) / 255.0
+                                break
+                            except Exception:
+                                tex_np_g = None
 
-                for m_obj in meshes_list:
+                def _node_mat4_g(nd: Dict[str, Any]) -> np.ndarray:
+                    if isinstance(nd.get("matrix"), list) and len(nd["matrix"]) == 16:
+                        return np.array([float(x) for x in nd["matrix"][:16]], dtype=np.float64).reshape((4, 4), order="F")
+                    m = np.eye(4, dtype=np.float64)
+                    s = nd.get("scale") or [1.0, 1.0, 1.0]
+                    S = np.diag([float(s[0]), float(s[1]), float(s[2])])
+                    q = nd.get("rotation")
+                    if isinstance(q, list) and len(q) == 4:
+                        qx, qy, qz, qw = float(q[0]), float(q[1]), float(q[2]), float(q[3])
+                        nq = math.sqrt(qx * qx + qy * qy + qz * qz + qw * qw)
+                        if nq > 1e-12:
+                            qx, qy, qz, qw = qx / nq, qy / nq, qz / nq, qw / nq
+                        R = np.array(
+                            [
+                                [1.0 - 2.0 * (qy * qy + qz * qz), 2.0 * (qx * qy - qw * qz), 2.0 * (qx * qz + qw * qy)],
+                                [2.0 * (qx * qy + qw * qz), 1.0 - 2.0 * (qx * qx + qz * qz), 2.0 * (qy * qz - qw * qx)],
+                                [2.0 * (qx * qz - qw * qy), 2.0 * (qy * qz + qw * qx), 1.0 - 2.0 * (qx * qx + qy * qy)],
+                            ],
+                            dtype=np.float64,
+                        )
+                    else:
+                        R = np.eye(3, dtype=np.float64)
+                    m[:3, :3] = R @ S
+                    t = nd.get("translation") or [0.0, 0.0, 0.0]
+                    m[:3, 3] = [float(t[0]), float(t[1]), float(t[2])]
+                    return m
+
+                def _read_mesh_tris(m_idx: int, m_tf: np.ndarray) -> Optional[Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]]:
+                    if not (0 <= m_idx < len(meshes_list)):
+                        return None
+                    m_obj = meshes_list[m_idx]
+                    mv0, mv1, mv2, mrgb = [], [], [], []
                     for prim in m_obj.get("primitives") or []:
+                        if prim.get("mode", 4) != 4:
+                            continue
                         attrs = prim.get("attributes") or {}
                         if "POSITION" not in attrs:
                             continue
                         pos_acc = acc_list[attrs["POSITION"]]
-                        if pos_acc.get("componentType") != 5126:
+                        if "bufferView" not in pos_acc:
                             continue
                         pos_bv = bv_list[pos_acc["bufferView"]]
                         if "EXT_meshopt_compression" in (pos_bv.get("extensions") or {}):
-                            continue
+                            return None
+                        ctype = pos_acc.get("componentType")
                         cnt = int(pos_acc["count"])
                         p_off = int(pos_bv.get("byteOffset", 0)) + int(pos_acc.get("byteOffset", 0))
-                        pos = np.frombuffer(blob, dtype=np.float32, count=cnt * 3, offset=p_off).reshape(-1, 3).astype(np.float64)
+                        if ctype == 5126:
+                            b_stride = int(pos_bv.get("byteStride") or 12)
+                            if b_stride == 12:
+                                pos = np.frombuffer(blob, dtype=np.float32, count=cnt * 3, offset=p_off).reshape(-1, 3).astype(np.float64)
+                            else:
+                                raw_u8 = np.frombuffer(blob, dtype=np.uint8, count=cnt * b_stride, offset=p_off).reshape(cnt, b_stride)
+                                pos = np.frombuffer(raw_u8[:, :12].tobytes(), dtype=np.float32).reshape(-1, 3).astype(np.float64)
+                        elif ctype in (5122, 5123):
+                            dt = np.int16 if ctype == 5122 else np.uint16
+                            b_stride = int(pos_bv.get("byteStride") or 6)
+                            raw_u8 = np.frombuffer(blob, dtype=np.uint8, count=cnt * b_stride, offset=p_off).reshape(cnt, b_stride)
+                            pos = np.frombuffer(raw_u8[:, :6].tobytes(), dtype=dt).reshape(-1, 3).astype(np.float64)
+                            if pos_acc.get("normalized"):
+                                pos = pos / (32767.0 if ctype == 5122 else 65535.0)
+                        else:
+                            continue
+
+                        pos = (pos @ m_tf[:3, :3].T) + m_tf[:3, 3]
                         if origin_shift != (0.0, 0.0, 0.0):
                             pos[:, 0] += origin_shift[0]
                             pos[:, 1] += origin_shift[1]
@@ -3260,21 +3315,42 @@ class SurveyingEngine:
 
                         if "indices" in prim:
                             idx_acc = acc_list[prim["indices"]]
+                            if "bufferView" not in idx_acc:
+                                continue
                             idx_bv = bv_list[idx_acc["bufferView"]]
+                            if "EXT_meshopt_compression" in (idx_bv.get("extensions") or {}):
+                                return None
                             i_off = int(idx_bv.get("byteOffset", 0)) + int(idx_acc.get("byteOffset", 0))
                             icnt = int(idx_acc["count"])
-                            idtype = np.uint32 if idx_acc.get("componentType") == 5125 else np.uint16
-                            idx = np.frombuffer(blob, dtype=idtype, count=icnt, offset=i_off).astype(np.int32).reshape(-1, 3)
+                            ictype = idx_acc.get("componentType")
+                            idtype = np.uint32 if ictype == 5125 else (np.uint16 if ictype == 5123 else np.uint8)
+                            idx_flat = np.frombuffer(blob, dtype=idtype, count=icnt, offset=i_off).astype(np.int32)
+                            idx = idx_flat[: icnt - (icnt % 3)].reshape(-1, 3)
                         else:
                             idx = np.arange(cnt - (cnt % 3), dtype=np.int32).reshape(-1, 3)
+
+                        if len(idx) == 0:
+                            continue
 
                         uv_g = None
                         if "TEXCOORD_0" in attrs and tex_np_g is not None:
                             uv_acc = acc_list[attrs["TEXCOORD_0"]]
-                            if uv_acc.get("componentType") == 5126:
+                            if "bufferView" in uv_acc:
                                 uv_bv = bv_list[uv_acc["bufferView"]]
-                                u_off = int(uv_bv.get("byteOffset", 0)) + int(uv_acc.get("byteOffset", 0))
-                                uv_g = np.frombuffer(blob, dtype=np.float32, count=cnt * 2, offset=u_off).reshape(-1, 2)
+                                if "EXT_meshopt_compression" not in (uv_bv.get("extensions") or {}):
+                                    u_off = int(uv_bv.get("byteOffset", 0)) + int(uv_acc.get("byteOffset", 0))
+                                    uctype = uv_acc.get("componentType")
+                                    if uctype == 5126:
+                                        ub_stride = int(uv_bv.get("byteStride") or 8)
+                                        if ub_stride == 8:
+                                            uv_g = np.frombuffer(blob, dtype=np.float32, count=cnt * 2, offset=u_off).reshape(-1, 2)
+                                        else:
+                                            ru8 = np.frombuffer(blob, dtype=np.uint8, count=cnt * ub_stride, offset=u_off).reshape(cnt, ub_stride)
+                                            uv_g = np.frombuffer(ru8[:, :8].tobytes(), dtype=np.float32).reshape(-1, 2)
+                                    elif uctype == 5123:
+                                        ub_stride = int(uv_bv.get("byteStride") or 4)
+                                        ru8 = np.frombuffer(blob, dtype=np.uint8, count=cnt * ub_stride, offset=u_off).reshape(cnt, ub_stride)
+                                        uv_g = np.frombuffer(ru8[:, :4].tobytes(), dtype=np.uint16).reshape(-1, 2).astype(np.float32) / 65535.0
 
                         tv0, tv1, tv2 = pos[idx[:, 0]], pos[idx[:, 1]], pos[idx[:, 2]]
                         if uv_g is not None and tex_np_g is not None:
@@ -3285,7 +3361,100 @@ class SurveyingEngine:
                             trgb = tex_np_g[py, px]
                         else:
                             trgb = np.full((len(tv0), 3), 0.55, dtype=np.float32)
-                        return tv0, tv1, tv2, trgb
+                        mv0.append(tv0)
+                        mv1.append(tv1)
+                        mv2.append(tv2)
+                        mrgb.append(trgb)
+                    if mv0:
+                        return np.vstack(mv0), np.vstack(mv1), np.vstack(mv2), np.vstack(mrgb)
+                    return None
+
+                all_v0, all_v1, all_v2, all_rgb = [], [], [], []
+                if nodes_list:
+                    scenes = j.get("scenes") or []
+                    s_idx = int(j.get("scene", 0)) if scenes else 0
+                    root_idxs = (
+                        list(scenes[s_idx].get("nodes") or [])
+                        if (0 <= s_idx < len(scenes) and scenes[s_idx].get("nodes"))
+                        else [0]
+                    )
+
+                    def _walk_g_node(n_idx: int, m_parent: np.ndarray) -> bool:
+                        if not (0 <= int(n_idx) < len(nodes_list)):
+                            return True
+                        nd = nodes_list[int(n_idx)]
+                        m_cur = m_parent @ _node_mat4_g(nd)
+                        if "mesh" in nd and nd["mesh"] is not None:
+                            mt = _read_mesh_tris(int(nd["mesh"]), m_cur)
+                            if mt is None:
+                                return False
+                            all_v0.append(mt[0])
+                            all_v1.append(mt[1])
+                            all_v2.append(mt[2])
+                            all_rgb.append(mt[3])
+                        for ch_i in nd.get("children") or []:
+                            if not _walk_g_node(int(ch_i), m_cur):
+                                return False
+                        return True
+
+                    for ri in root_idxs:
+                        if not _walk_g_node(int(ri), np.eye(4, dtype=np.float64)):
+                            return None
+                else:
+                    for mi in range(len(meshes_list)):
+                        mt = _read_mesh_tris(mi, np.eye(4, dtype=np.float64))
+                        if mt is None:
+                            return None
+                        all_v0.append(mt[0])
+                        all_v1.append(mt[1])
+                        all_v2.append(mt[2])
+                        all_rgb.append(mt[3])
+
+                if all_v0:
+                    return np.vstack(all_v0), np.vstack(all_v1), np.vstack(all_v2), np.vstack(all_rgb)
+                return None
+
+            def _extract_trimesh_triangles_and_rgb(glb_p: str, origin_shift: Tuple[float, float, float] = (0.0, 0.0, 0.0)) -> Optional[Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]]:
+                if trimesh is None or not os.path.isfile(glb_p):
+                    return None
+                try:
+                    loaded = trimesh.load(glb_p, process=False)
+                    geoms = loaded.dump() if isinstance(loaded, trimesh.Scene) else [loaded]
+                    tv0_l, tv1_l, tv2_l, trgb_l = [], [], [], []
+                    sh_arr = np.array(origin_shift, dtype=np.float64)
+                    for g in geoms:
+                        if not hasattr(g, "vertices") or not hasattr(g, "faces") or len(g.faces) == 0:
+                            continue
+                        gv = np.asarray(g.vertices, dtype=np.float64) + sh_arr
+                        gf = np.asarray(g.faces, dtype=np.int32)
+                        tv0_l.append(gv[gf[:, 0]])
+                        tv1_l.append(gv[gf[:, 1]])
+                        tv2_l.append(gv[gf[:, 2]])
+                        f_rgb = None
+                        try:
+                            vis = getattr(g, "visual", None)
+                            if vis is not None:
+                                if getattr(vis, "kind", None) == "texture" and hasattr(vis, "uv") and vis.uv is not None and getattr(vis, "material", None) is not None:
+                                    mat_img = getattr(vis.material, "baseColorTexture", None) or getattr(vis.material, "image", None)
+                                    if mat_img is not None:
+                                        tnp = np.asarray(mat_img.convert("RGB"), dtype=np.float32) / 255.0
+                                        th, tw, _ = tnp.shape
+                                        uvs_m = np.asarray(vis.uv, dtype=np.float32)
+                                        uvc = (uvs_m[gf[:, 0]] + uvs_m[gf[:, 1]] + uvs_m[gf[:, 2]]) / 3.0
+                                        px = np.clip((np.mod(uvc[:, 0], 1.0) * (tw - 1)).astype(np.int32), 0, tw - 1)
+                                        py = np.clip(((1.0 - np.mod(uvc[:, 1], 1.0)) * (th - 1)).astype(np.int32), 0, th - 1)
+                                        f_rgb = tnp[py, px]
+                                if f_rgb is None and hasattr(vis, "face_colors") and vis.face_colors is not None and len(vis.face_colors) == len(gf):
+                                    f_rgb = np.asarray(vis.face_colors[:, :3], dtype=np.float32) / 255.0
+                        except Exception:
+                            f_rgb = None
+                        if f_rgb is None:
+                            f_rgb = np.full((len(gf), 3), 0.55, dtype=np.float32)
+                        trgb_l.append(f_rgb)
+                    if tv0_l:
+                        return np.vstack(tv0_l), np.vstack(tv1_l), np.vstack(tv2_l), np.vstack(trgb_l)
+                except Exception:
+                    return None
                 return None
 
             for gp in glb_files[:20]:
@@ -3293,9 +3462,11 @@ class SurveyingEngine:
                     with open(gp, "rb") as gf:
                         raw_b = gf.read()
                     parsed = _parse_glb_triangles_and_rgb(raw_b)
+                    if parsed is None:
+                        parsed = _extract_trimesh_triangles_and_rgb(gp)
                     if parsed is None and os.path.isfile(GLTFPACK_EXE):
-                        import subprocess
-                        import tempfile
+                        if GC_SCAN_OPTIMIZER_DIR not in sys.path:
+                            sys.path.append(GC_SCAN_OPTIMIZER_DIR)
                         from optimizer.geometry_optimizer import extract_glb_64bit_origin_to_local
                         loc_b, orig_t = extract_glb_64bit_origin_to_local(raw_b)
                         fd_in, tmp_in = tempfile.mkstemp(suffix=".glb")
@@ -3307,12 +3478,14 @@ class SurveyingEngine:
                             subprocess.run(
                                 [GLTFPACK_EXE, "-i", tmp_in, "-o", tmp_out, "-noq"],
                                 capture_output=True,
-                                timeout=15,
+                                timeout=20,
                                 creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000) if os.name == "nt" else 0,
                             )
                             if os.path.isfile(tmp_out):
                                 with open(tmp_out, "rb") as fo:
                                     parsed = _parse_glb_triangles_and_rgb(fo.read(), origin_shift=orig_t)
+                                if parsed is None:
+                                    parsed = _extract_trimesh_triangles_and_rgb(tmp_out, origin_shift=orig_t)
                         finally:
                             for p_rm in (tmp_in, tmp_out):
                                 if p_rm and os.path.exists(p_rm):
@@ -4138,11 +4311,11 @@ class SurveyingEngine:
             except Exception:
                 hull_2d_mask = site_hull.copy()
 
-        # 2) 8-Direction Ray-Cast Enclosure Mask up to 45m (and opposite-pair channel check within 38m)
+        # 2) 8-Direction Ray-Cast Enclosure Mask up to 35m (and opposite-pair channel check within 26m)
         # An unoccupied cell is an interior hole, river channel, or concave bank embayment ONLY if rays hit
-        # actual occupied scan geometry in >= 5/8 directions (or >= 4/8 directions with >= 1 opposite pair within 38m).
-        max_steps_45m = max(6, int(round(45.0 / res)))
-        max_steps_38m = max(5, int(round(38.0 / res)))
+        # actual occupied scan geometry in >= 6/8 directions within 35m AND >= 2 opposite pairs within 26m.
+        max_steps_35m = max(6, int(round(35.0 / res)))
+        max_steps_26m = max(4, int(round(26.0 / res)))
         step_stride = 2 if res <= 0.30 else 1
         compass_pairs = [
             ((1, 0), (-1, 0)),
@@ -4150,15 +4323,15 @@ class SurveyingEngine:
             ((1, 1), (-1, -1)),
             ((1, -1), (-1, 1)),
         ]
-        dir_count_45m = np.zeros((ny, nx), dtype=np.int16)
-        opp_pair_38m = np.zeros((ny, nx), dtype=np.int16)
+        dir_count_35m = np.zeros((ny, nx), dtype=np.int16)
+        opp_pair_26m = np.zeros((ny, nx), dtype=np.int16)
 
         def _ray_hits_occupied(di: int, dj: int) -> Tuple[np.ndarray, np.ndarray]:
-            hit38 = np.zeros((ny, nx), dtype=bool)
-            hit45 = np.zeros((ny, nx), dtype=bool)
+            hit26 = np.zeros((ny, nx), dtype=bool)
+            hit35 = np.zeros((ny, nx), dtype=bool)
             diag_scale = 1.4142 if (di != 0 and dj != 0) else 1.0
-            n_max_s = max(4, int(round(max_steps_45m / diag_scale)))
-            n_38_s = max(3, int(round(max_steps_38m / diag_scale)))
+            n_max_s = max(4, int(round(max_steps_35m / diag_scale)))
+            n_26_s = max(3, int(round(max_steps_26m / diag_scale)))
             for s_px in range(step_stride, n_max_s + 1, step_stride):
                 # Cell (j, i) looking along (dj, di) by s_px sees raw_occ_closed[j + dj*s_px, i + di*s_px]
                 sh_j = dj * s_px
@@ -4174,19 +4347,19 @@ class SurveyingEngine:
                 src_i0 = max(0, sh_i)
                 src_i1 = min(nx, nx + sh_i)
                 sub_occ = raw_occ_closed[src_j0:src_j1, src_i0:src_i1]
-                hit45[dst_j0:dst_j1, dst_i0:dst_i1] |= sub_occ
-                if s_px <= n_38_s:
-                    hit38[dst_j0:dst_j1, dst_i0:dst_i1] |= sub_occ
-            return hit38, hit45
+                hit35[dst_j0:dst_j1, dst_i0:dst_i1] |= sub_occ
+                if s_px <= n_26_s:
+                    hit26[dst_j0:dst_j1, dst_i0:dst_i1] |= sub_occ
+            return hit26, hit35
 
         for (di1, dj1), (di2, dj2) in compass_pairs:
-            h38_1, h45_1 = _ray_hits_occupied(di1, dj1)
-            h38_2, h45_2 = _ray_hits_occupied(di2, dj2)
-            dir_count_45m += h45_1.astype(np.int16) + h45_2.astype(np.int16)
-            opp_pair_38m += (h38_1 & h38_2).astype(np.int16)
+            h26_1, h35_1 = _ray_hits_occupied(di1, dj1)
+            h26_2, h35_2 = _ray_hits_occupied(di2, dj2)
+            dir_count_35m += h35_1.astype(np.int16) + h35_2.astype(np.int16)
+            opp_pair_26m += (h26_1 & h26_2).astype(np.int16)
 
         enclosed_void_cell = hull_2d_mask & (
-            (dir_count_45m >= 6) & (opp_pair_38m >= 2)
+            (dir_count_35m >= 6) & (opp_pair_26m >= 2)
         )
 
         margin_px = max(3, int(round(3.0 / res)))
@@ -4205,8 +4378,19 @@ class SurveyingEngine:
         for vid in range(1, n_voids + 1):
             vmask = void_labeled == vid
             v_area = float(np.count_nonzero(vmask) * cell_area)
-            if v_area < 25.0 or v_area > 2500.0:
+            if v_area < 25.0 or v_area > 1250.0:
                 continue
+            v_js, v_is = np.nonzero(vmask)
+            if len(v_is) < 8:
+                continue
+            bbox_w = float((int(v_is.max()) - int(v_is.min()) + 1) * res)
+            bbox_h = float((int(v_js.max()) - int(v_js.min()) + 1) * res)
+            diag_span = math.hypot(bbox_w, bbox_h)
+            fill_ratio = v_area / max(bbox_w * bbox_h, 1.0)
+            # Reject long C-shaped scan-border ribbons
+            if diag_span > 68.0 or fill_ratio < 0.22:
+                continue
+
             # Require at least 55% of the void's outer perimeter boundary to touch actual scanned terrain
             b_mask = binary_dilation(vmask, structure=np.ones((3, 3), dtype=bool)) & (~vmask)
             b_cnt = int(np.count_nonzero(b_mask))
@@ -4221,6 +4405,10 @@ class SurveyingEngine:
             if np.count_nonzero(rim_mask) < 8:
                 continue
             rim_h = h_dtm_grid[rim_mask]
+            # Require Shoreline Rim Elevation Consistency (reject steep uphill scan drop-offs)
+            rim_iqr = float(np.percentile(rim_h, 75.0) - np.percentile(rim_h, 15.0))
+            if rim_iqr > 1.75:
+                continue
             shoreline_h_p20 = float(np.percentile(rim_h, 20.0))
             shoreline_h_med = float(np.percentile(rim_h, 45.0))
             # A genuine river/pond water void has its shoreline bank toe in the lower portion of the valley
@@ -4238,9 +4426,16 @@ class SurveyingEngine:
                     simplify_tol=0.38,
                 )
                 for vp in v_polys:
-                    vp.pop("comp_mask", None)
-                    if vp["planar_area_m2"] > 3500.0:
+                    vp_cm = vp.pop("comp_mask", None)
+                    if vp["planar_area_m2"] > 1250.0:
                         continue
+                    if vp_cm is not None:
+                        pj, pi = np.nonzero(vp_cm)
+                        if len(pi) >= 4:
+                            pw = float((int(pi.max()) - int(pi.min()) + 1) * res)
+                            ph = float((int(pj.max()) - int(pj.min()) + 1) * res)
+                            if math.hypot(pw, ph) > 68.0 or (vp["planar_area_m2"] / max(pw * ph, 1.0)) < 0.22:
+                                continue
                     wid = f"W{len(water_list) + 1}"
                     water_list.append(
                         {
@@ -4303,14 +4498,16 @@ class SurveyingEngine:
         # =================================================================================
         # CATEGORY 4: WALLS (Retaining & Building Walls / 擋土牆與垂直牆面)
         # =================================================================================
-        # Filter vertical wall triangles (0.25m <= HAG <= 5.5m, abs(nz) < 0.34, ExG < 0.045 to exclude overhanging green tree canopy!)
-        # + normal-azimuth binning + 3D cKDTree clustering + 3D PCA coplanarity filter (sqrt(lambda_3) <= 0.28m)
+        # Filter vertical wall triangles: allow mossy/weathered Taiwan concrete at retaining wall heights (HAG <= 3.5m, ExG < 0.135)
+        # while strictly rejecting high overhanging green tree crowns (HAG > 3.5m requires ExG < 0.062)
+        # + normal-azimuth binning + 3D PCA coplanarity filter (sigma_plane <= 0.28m, sigma_major >= 0.85m)
         vert_tri_mask = (
-            (tri_hag >= 0.25)
-            & (tri_hag <= 7.5)
-            & (nz_abs < 0.34)
-            & (exg < 0.062)
-            & (area_3d >= 0.005)
+            (tri_hag >= 0.22)
+            & (tri_hag <= 6.8)
+            & (nz_abs < 0.38)
+            & ((tri_hag <= 3.5) | (exg < 0.062))
+            & (exg < 0.135)
+            & (area_3d >= 0.004)
         )
         vert_idx = np.nonzero(vert_tri_mask)[0]
         walls_list: List[Dict[str, Any]] = []
@@ -4327,7 +4524,7 @@ class SurveyingEngine:
             for b_id in range(6):
                 b_mask = (az_bins == b_id) | (az_bins == ((b_id + 1) % 6))
                 b_indices = np.nonzero(b_mask)[0]
-                if len(b_indices) < 12:
+                if len(b_indices) < 10:
                     continue
                 pts_b = v_cent[b_indices]
                 areas_b = v_a3d[b_indices]
@@ -4340,17 +4537,17 @@ class SurveyingEngine:
                 wy = np.clip(((pts_b[:, 1] - n_min) / w_res).astype(np.int32), 0, int(span_n / w_res) + 1)
                 w_grid_a = np.zeros((int(span_n / w_res) + 2, int(span_e / w_res) + 2), dtype=np.float32)
                 np.add.at(w_grid_a, (wy, wx), areas_b)
-                w_occ = binary_closing(w_grid_a >= 0.18, structure=np.ones((2, 2), dtype=bool))
+                w_occ = binary_closing(w_grid_a >= 0.12, structure=np.ones((3, 3), dtype=bool))
                 w_lbl, n_wcomp = nd_label(w_occ)
                 if n_wcomp == 0:
                     continue
                 pt_cid = w_lbl[wy, wx]
                 for wc in range(1, n_wcomp + 1):
                     sel = pt_cid == wc
-                    if np.count_nonzero(sel) < 10:
+                    if np.count_nonzero(sel) < 8:
                         continue
                     w_area_3d = float(areas_b[sel].sum())
-                    if w_area_3d < 3.2:
+                    if w_area_3d < 2.5:
                         continue
                     pts_w = pts_b[sel]
                     # 3D PCA Coplanarity & Linearity Check (rejects chaotic tree foliage/trunks!)
@@ -4457,20 +4654,29 @@ class SurveyingEngine:
         bare_area_2d = float(area_2d[bare_tri].sum())
         bare_area_3d = float(area_3d[bare_tri].sum())
 
-        # Extract top bare-earth / gravel / stockpile zones
-        bare_grid = np.zeros((ny, nx), dtype=bool)
-        bare_grid[in_c[bare_tri], ie_c[bare_tri]] = True
-        bare_grid = binary_opening(bare_grid & raw_occ_closed, structure=np.ones((2, 2), dtype=bool))
+        # Extract compact elevated Material Stockpile Mounds / Earthwork Pads (S1..S6), excluding wide bare-earth floodplain
+        mound_grid = (
+            raw_occ_closed
+            & (hag_grid >= 0.22)
+            & (hag_grid <= 4.2)
+            & (ortho_exg < 0.042)
+            & (~road_grid)
+        )
+        mound_grid = binary_closing(
+            binary_opening(mound_grid, structure=np.ones((2, 2), dtype=bool)),
+            structure=np.ones((2, 2), dtype=bool),
+        )
         stockpiles_list: List[Dict[str, Any]] = []
-        for sp_item in _mask_to_polygons(bare_grid, min_area_m2=25.0, simplify_tol=0.45)[:6]:
+        for sp_item in _mask_to_polygons(mound_grid, min_area_m2=15.0, simplify_tol=0.40):
             cm_s = sp_item.pop("comp_mask")
-            mean_dz = float(np.maximum(0.18, hag_grid[cm_s]).mean())
-            est_vol = round(sp_item["planar_area_m2"] * mean_dz * 0.55, 2)
+            if sp_item["planar_area_m2"] < 15.0 or sp_item["planar_area_m2"] > 550.0:
+                continue
+            est_vol = round(float(np.sum(np.clip(hag_grid[cm_s], 0.15, 3.5)) * cell_area * 0.65), 1)
             sid_s = f"S{len(stockpiles_list) + 1}"
             stockpiles_list.append(
                 {
                     "id": sid_s,
-                    "name": f"裸露土石/卵石區 {sid_s}",
+                    "name": f"土石堆置區 {sid_s} (Material Stockpile Mound)",
                     "planar_area_m2": sp_item["planar_area_m2"],
                     "planar_area_ping": sp_item["planar_area_ping"],
                     "estimated_volume_m3": est_vol,
@@ -4480,10 +4686,13 @@ class SurveyingEngine:
                     "boundary_local": sp_item["boundary_local"],
                 }
             )
+            if len(stockpiles_list) >= 8:
+                break
         stockpiles_list.sort(key=lambda x: x["planar_area_m2"], reverse=True)
+        stockpiles_list = stockpiles_list[:6]
         for idx_s, sp_obj in enumerate(stockpiles_list, 1):
             sp_obj["id"] = f"S{idx_s}"
-            sp_obj["name"] = f"裸露土石/卵石區 S{idx_s}"
+            sp_obj["name"] = f"土石堆置區 S{idx_s} (Material Stockpile Mound)"
 
         # 2. Low Vegetation / Grass / Shrubs (低矮植生與草坡)
         grass_tri = (tri_hag < 1.8) & (exg >= 0.04) & (nz_abs >= 0.55)

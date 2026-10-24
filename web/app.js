@@ -393,8 +393,10 @@
     if (!el) return;
     el.textContent = msg;
     el.style.display = "block";
+    el.classList.add("show");
     clearTimeout(el._timer);
     el._timer = setTimeout(() => {
+      el.classList.remove("show");
       el.style.display = "none";
     }, durationMs);
   }
@@ -10705,11 +10707,11 @@
         rows.push({
           id: sp.id,
           badge: `<span style="color:#d97706;font-weight:800;">${escapeHtml(sp.id)}</span>`,
-          type: "裸露土石 Bare",
+          type: "土石堆置 Mound",
           metric1: `${Number(sp.planar_area_m2 || 0).toFixed(1)} m²`,
-          metric2: `~${Number(sp.estimated_volume_m3 || 0).toFixed(0)} m³`,
+          metric2: `~${Number(sp.estimated_volume_m3 || 0).toFixed(1)} m³`,
           fly: toFlyAttr(sp.center_twd97, sp.center_local),
-          label: `${sp.id} (${sp.planar_area_m2} m²)`,
+          label: `${sp.id} (${sp.planar_area_m2} m² · ~${sp.estimated_volume_m3} m³)`,
         });
       });
     }
@@ -10728,8 +10730,24 @@
       )
       .join("");
 
+    const exportBarHtml = `
+      <div style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:8px;">
+        <a class="btn-xs primary" style="flex:1.25;justify-content:center;font-weight:700;" href="${escapeHtml(appendAuthToDownloadUrl(res.dxf_url))}" download="Civil3D_Categorized.dxf" title="Download AutoCAD Civil 3D Categorized .DXF (C-ROAD-BNDY, C-VEG-TREE, C-HYDR-WATR, C-STRC-WALL)">
+          <span>📐 .DXF (Civil 3D)</span>
+        </a>
+        <a class="btn-xs primary" style="flex:1.1;justify-content:center;font-weight:700;" href="${escapeHtml(appendAuthToDownloadUrl(res.report_html_url))}" target="_blank" title="Open Bilingual Printable Categorization Report (.HTML / Save PDF)">
+          <span>📄 Report (.HTML/PDF)</span>
+        </a>
+        <a class="btn-xs" style="flex:0.95;justify-content:center;font-weight:700;" href="${escapeHtml(appendAuthToDownloadUrl(res.report_csv_url))}" download="Categorization_Schedule.csv" title="Download UTF-8 Excel Schedule (.CSV)">
+          <span>📊 Excel (.CSV)</span>
+        </a>
+      </div>
+    `;
+
     box.innerHTML = `
-      <div style="background:rgba(16,185,129,0.10);border:1px solid rgba(16,185,129,0.35);border-radius:8px;padding:8px 10px;margin-bottom:9px;">
+      ${exportBarHtml}
+
+      <div style="background:rgba(16,185,129,0.10);border:1px solid rgba(16,185,129,0.35);border-radius:8px;padding:8px 10px;margin-bottom:8px;">
         <div style="display:flex;align-items:center;justify-content:space-between;gap:4px;margin-bottom:4px;">
           <span style="font-size:10.5px;font-weight:800;color:#34d399;">✨ ${escapeHtml(res.ai_model || "Gemini 3.6 Flash Multimodal + 3D Geometry")}</span>
           <span style="font-size:9.5px;padding:1px 6px;border-radius:99px;background:rgba(6,182,212,0.18);color:#22d3ee;font-weight:700;">RTK + 3D Verified</span>
@@ -10777,7 +10795,7 @@
             <input type="checkbox" data-cat-filter="walls" ${flt.walls ? "checked" : ""} /> 擋土牆 (${(res.walls || []).length})
           </label>
           <label style="display:inline-flex;align-items:center;gap:3px;cursor:pointer;color:#f59e0b;font-weight:600;">
-            <input type="checkbox" data-cat-filter="stockpiles" ${flt.stockpiles ? "checked" : ""} /> 裸露土石 (${(res.stockpiles || []).length})
+            <input type="checkbox" data-cat-filter="stockpiles" ${flt.stockpiles ? "checked" : ""} /> 土石堆置 (${(res.stockpiles || []).length})
           </label>
         </div>
       </div>
@@ -10829,17 +10847,7 @@
         </table>
       </div>
 
-      <div style="display:flex;gap:5px;flex-wrap:wrap;">
-        <a class="btn-xs primary" style="flex:1.2;justify-content:center;" href="${escapeHtml(appendAuthToDownloadUrl(res.dxf_url))}" download="Civil3D_Categorized.dxf" title="Download AutoCAD Civil 3D Categorized .DXF (C-ROAD-BNDY, C-VEG-TREE, C-HYDR-WATR, C-STRC-WALL)">
-          <span>.DXF (Civil 3D)</span>
-        </a>
-        <a class="btn-xs primary" style="flex:1;justify-content:center;" href="${escapeHtml(appendAuthToDownloadUrl(res.report_html_url))}" target="_blank" title="Open Bilingual Printable Categorization Report (.HTML / Save PDF)">
-          <span>Report (.HTML/PDF)</span>
-        </a>
-        <a class="btn-xs" style="flex:0.9;justify-content:center;" href="${escapeHtml(appendAuthToDownloadUrl(res.report_csv_url))}" download="Categorization_Schedule.csv" title="Download UTF-8 Excel Schedule (.CSV)">
-          <span>Excel (.CSV)</span>
-        </a>
-      </div>
+      ${exportBarHtml}
     `;
 
     box.querySelectorAll("[data-cat-filter]").forEach((cb) => {
@@ -10855,7 +10863,26 @@
 
     box.querySelectorAll("[data-cat-tab]").forEach((btn) => {
       btn.addEventListener("click", () => {
-        STATE.categorizeActiveTab = btn.getAttribute("data-cat-tab") || "all";
+        const tabKey = btn.getAttribute("data-cat-tab") || "all";
+        STATE.categorizeActiveTab = tabKey;
+        if (tabKey !== "all" && STATE.categorizeFilters && STATE.categorizeFilters[tabKey] === false) {
+          STATE.categorizeFilters[tabKey] = true;
+        }
+        renderCategorize3DOverlays(res);
+        const prefixMap = { roads: "R", trees: "T", water: "W", walls: "WL", stockpiles: "S" };
+        const pref = prefixMap[tabKey] || "";
+        STATE.badges2D.forEach((b) => {
+          if (b.isCategorize) {
+            if (!pref) {
+              b.isFocused = false;
+            } else if (pref === "W") {
+              b.isFocused = Boolean(b.featureId && b.featureId.startsWith("W") && !b.featureId.startsWith("WL"));
+            } else {
+              b.isFocused = Boolean(b.featureId && b.featureId.startsWith(pref));
+            }
+          }
+        });
+        update2DBadgePositions();
         renderCategorizePanelContent(res);
       });
     });
