@@ -16787,6 +16787,24 @@
     }, 120);
   });
 
+  // Guard against any stale cached stylesheet missing post-v41 Studio Dock / Flex Badge rules
+  const ensureStudioStylesheetIntegrity = () => {
+    const editDock = document.getElementById("studioEditingDock");
+    if (!editDock) return;
+    const pos = window.getComputedStyle(editDock).position;
+    if (pos !== "absolute" && pos !== "fixed") {
+      const freshLink = document.createElement("link");
+      freshLink.rel = "stylesheet";
+      freshLink.href = `/app.css?fresh=${Date.now()}`;
+      document.head.appendChild(freshLink);
+    }
+  };
+  if (document.readyState === "complete") {
+    setTimeout(ensureStudioStylesheetIntegrity, 80);
+  } else {
+    window.addEventListener("load", () => setTimeout(ensureStudioStylesheetIntegrity, 80), { once: true });
+  }
+
   window.__GS_API = {
     STATE,
     getContexts: () => ({ previewThree, studioThree, compareCtx }),
