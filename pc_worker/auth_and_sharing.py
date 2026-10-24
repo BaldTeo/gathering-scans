@@ -19,6 +19,10 @@ from pc_worker.priority_queue import ScanQueueDB, DB_LOCK
 
 
 OWNER_EMAIL = "glibivanov@gatheren.com.tw"
+OWNER_EMAILS = {
+    "glibivanov@gatheren.com.tw",
+    "gleb.ivanov1999@gmail.com",
+}
 
 ROLE_LEVELS: Dict[str, int] = {
     "owner": 5,
@@ -39,7 +43,7 @@ ROLE_LABELS: Dict[str, str] = {
 
 def normalize_role(role_str: str, email: str = "", is_owner: bool = False, is_admin: bool = False) -> str:
     clean_email = (email or "").strip().lower()
-    if clean_email == OWNER_EMAIL or is_owner:
+    if clean_email in OWNER_EMAILS or is_owner:
         return "owner"
     r = (role_str or "").strip().lower()
     if r == "owner":
@@ -119,11 +123,13 @@ class AuthAndSharingManager:
                 pass
             conn.execute("DELETE FROM user_profiles WHERE lower(email) LIKE '%vitaly%' OR lower(name) LIKE '%vitaly%'")
             conn.execute("UPDATE user_profiles SET name = '雲在天', role = 'owner', is_owner = 1, is_admin = 1 WHERE lower(email) = 'glibivanov@gatheren.com.tw'")
+            conn.execute("UPDATE user_profiles SET role = 'owner', is_owner = 1, is_admin = 1 WHERE lower(email) = 'gleb.ivanov1999@gmail.com'")
             conn.execute("UPDATE user_profiles SET role = 'editor' WHERE role IN ('site_engineer', 'pm') AND is_owner = 0 AND is_admin = 0")
             conn.execute("UPDATE user_profiles SET role = 'admin', is_admin = 1 WHERE role = 'admin' AND is_owner = 0")
             now_str = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
             default_staff = [
                 ("glibivanov@gatheren.com.tw", "u_glibivanov", "雲在天", "owner", "#14b8a6", "", "107639887113416939995", 1, 1, 1, '["*"]', now_str),
+                ("gleb.ivanov1999@gmail.com", "u_glebivanov", "雲在天 (Glib Ivanov)", "owner", "#14b8a6", "", "", 1, 1, 1, '["*"]', now_str),
                 ("frankchao@gatheren.com.tw", "u_frankchao", "趙冠人", "admin", "#ef4444", "", "113563863225856947636", 1, 1, 0, '["*"]', now_str),
                 ("wenhu@gatheren.com.tw", "u_wenhu", "胡佳雯", "admin", "#ec4899", "", "", 1, 1, 0, '["*"]', now_str),
                 ("howardhsueh@gatheren.com.tw", "u_howardhsueh", "薛鈞豪", "editor", "#3b82f6", "", "", 1, 0, 0, '["*"]', now_str),
@@ -221,7 +227,7 @@ class AuthAndSharingManager:
         existing = self.get_user_profile(email)
         if not zh_name:
             zh_name = (existing and existing.get("zh_name")) or name
-        is_owner = 1 if email == OWNER_EMAIL else 0
+        is_owner = 1 if email in OWNER_EMAILS else 0
         if is_owner:
             role = "owner"
         elif preserve_existing_role and existing:
@@ -321,24 +327,24 @@ class AuthAndSharingManager:
                 return {"ok": False, "error": "A valid user email address is required."}
 
             actor_prof = self.get_user_profile(actor_clean)
-            actor_role = actor_prof["role"] if actor_prof else ("owner" if actor_clean == OWNER_EMAIL else "viewer")
+            actor_role = actor_prof["role"] if actor_prof else ("owner" if actor_clean in OWNER_EMAILS else "viewer")
             actor_lvl = ROLE_LEVELS.get(actor_role, 1)
             if actor_lvl < 4:
                 return {"ok": False, "error": "Only Owner and Admin accounts can manage user roles."}
 
-            if target_clean == OWNER_EMAIL and actor_clean != OWNER_EMAIL:
-                return {"ok": False, "error": "Cannot modify the System Owner account (glibivanov@gatheren.com.tw)."}
+            if target_clean in OWNER_EMAILS and actor_clean not in OWNER_EMAILS:
+                return {"ok": False, "error": "Cannot modify the System Owner account."}
 
             eff_role_input = role or new_role or "viewer"
             req_role = normalize_role(eff_role_input, email=target_clean)
             req_lvl = ROLE_LEVELS.get(req_role, 2)
 
             existing_target = self.get_user_profile(target_clean)
-            if existing_target and target_clean != OWNER_EMAIL:
+            if existing_target and target_clean not in OWNER_EMAILS:
                 target_cur_lvl = ROLE_LEVELS.get(existing_target["role"], 2)
-                if actor_lvl <= target_cur_lvl and actor_clean != OWNER_EMAIL:
+                if actor_lvl <= target_cur_lvl and actor_clean not in OWNER_EMAILS:
                     return {"ok": False, "error": "Admins can only edit users with lower roles (Editor, Viewer, Guest)."}
-                if req_lvl >= actor_lvl and actor_clean != OWNER_EMAIL:
+                if req_lvl >= actor_lvl and actor_clean not in OWNER_EMAILS:
                     return {"ok": False, "error": "Admins can only assign roles lower than Admin (Editor, Viewer, Guest)."}
 
             eff_name = (name or target_name or zh_name or (existing_target and existing_target["name"]) or target_clean.split("@")[0]).strip()
@@ -353,7 +359,7 @@ class AuthAndSharingManager:
                     "email": target_clean,
                     "name": display_name,
                     "zh_name": eff_zh,
-                    "role": "owner" if target_clean == OWNER_EMAIL else req_role,
+                    "role": "owner" if target_clean in OWNER_EMAILS else req_role,
                     "color": color or (existing_target and existing_target.get("color")) or "#0284c7",
                 },
                 preserve_existing_role=False,
@@ -367,17 +373,17 @@ class AuthAndSharingManager:
         try:
             actor_clean = (actor_email or "").strip().lower()
             target_clean = (target_email or "").strip().lower()
-            if target_clean == OWNER_EMAIL:
+            if target_clean in OWNER_EMAILS:
                 return {"ok": False, "error": "The System Owner account cannot be removed."}
             actor_prof = self.get_user_profile(actor_clean)
-            actor_role = actor_prof["role"] if actor_prof else ("owner" if actor_clean == OWNER_EMAIL else "viewer")
+            actor_role = actor_prof["role"] if actor_prof else ("owner" if actor_clean in OWNER_EMAILS else "viewer")
             actor_lvl = ROLE_LEVELS.get(actor_role, 1)
             if actor_lvl < 4:
                 return {"ok": False, "error": "Only Owner and Admin accounts can remove users."}
             existing_target = self.get_user_profile(target_clean)
             if existing_target:
                 target_lvl = ROLE_LEVELS.get(existing_target["role"], 2)
-                if actor_lvl <= target_lvl and actor_clean != OWNER_EMAIL:
+                if actor_lvl <= target_lvl and actor_clean not in OWNER_EMAILS:
                     return {"ok": False, "error": "Admins can only remove users with lower roles."}
             with DB_LOCK, self.db._connect() as conn:
                 cur = conn.execute("DELETE FROM user_profiles WHERE lower(email) = ?", (target_clean,))
@@ -402,14 +408,14 @@ class AuthAndSharingManager:
                 name = str(claims.get("name") or (email.split("@")[0] if email else "Engineer")).strip()
                 hd = str(claims.get("hd") or (email.split("@")[1] if "@" in email else "")).lower()
                 aud = str(claims.get("aud") or "")
-                is_owner = email == OWNER_EMAIL
+                is_owner = email in OWNER_EMAILS
                 prof = self.upsert_user_profile(
                     {
                         "email": email,
                         "name": name,
                         "picture": claims.get("picture", ""),
                         "googleSub": claims.get("sub", ""),
-                        "role": "owner" if is_owner else "editor",
+                        "role": "owner" if is_owner else ("editor" if email.endswith("@gatheren.com.tw") else "viewer"),
                         "color": "#14b8a6" if is_owner else "#0284c7",
                         "isGoogleAuthenticated": True,
                         "isAdmin": is_owner,

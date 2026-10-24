@@ -1256,9 +1256,9 @@
       </div>
 
       <!-- Body -->
-      <div style="padding:18px 20px;max-height:70vh;overflow-y:auto;display:flex;flex-direction:column;gap:14px;">
+      <div style="padding:18px 20px;max-height:74vh;overflow-y:auto;display:flex;flex-direction:column;gap:14px;">
         <!-- Google OAuth Card (Exact same Client ID as GatheringCloud) -->
-        <div id="googleAuthGateCard" class="gs-oauth-card" style="background:var(--ui-bg-subtle);border:1px solid var(--ui-border-strong);border-radius:12px;padding:16px 18px;display:flex;flex-direction:column;align-items:center;gap:12px;text-align:center;">
+        <div id="googleAuthGateCard" class="gs-oauth-card" style="background:var(--ui-bg-subtle);border:1px solid var(--ui-border-strong);border-radius:12px;padding:16px 18px;display:flex;flex-direction:column;align-items:center;gap:10px;text-align:center;">
           <div style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:700;color:var(--ui-accent);">
             <svg width="18" height="18" viewBox="0 0 24 24" style="flex-shrink:0;">
               <path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.665-5.17 3.665-9.17z"/>
@@ -1272,10 +1272,9 @@
           <div
             id="g_id_onload"
             data-client_id="753778992341-hpe65ilnti31j0m7etmq5rn7a1q802da.apps.googleusercontent.com"
-            data-context="signin"
-            data-ux_mode="popup"
             data-callback="handleGoogleSignIn"
-            data-auto_prompt="false">
+            data-auto_prompt="false"
+            data-itp_support="true">
           </div>
           <div
             class="g_id_signin"
@@ -1283,13 +1282,34 @@
             data-type="standard"
             data-shape="rectangular"
             data-theme="outline"
-            data-text="signin_with"
+            data-text="continue_with"
             data-size="large"
             data-logo_alignment="left">
           </div>
 
+          <!-- Explicit Google Account Chooser Button (always prompts account selection) -->
+          <button
+            type="button"
+            id="btnChooseGoogleAccountOAuth"
+            class="btn-xs"
+            style="height:34px;padding:0 14px;border-radius:8px;font-size:12px;font-weight:700;display:inline-flex;align-items:center;gap:8px;background:var(--ui-bg-surface);border:1.5px solid var(--ui-accent);color:var(--ui-text-primary);cursor:pointer;box-shadow:0 1px 3px rgba(0,0,0,0.08);"
+            title="Open Google's Account Chooser popup to pick which Google account to sign in with">
+            <svg width="15" height="15" viewBox="0 0 24 24" style="flex-shrink:0;">
+              <path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.665-5.17 3.665-9.17z"/>
+              <path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.11-6.72-4.96H1.29v3.14C3.26 21.3 7.31 24 12 24z"/>
+              <path fill="#FBBC05" d="M5.28 14.24c-.24-.72-.38-1.49-.38-2.24s.14-1.52.38-2.24V6.62H1.29C.47 8.24 0 10.06 0 12s.47 3.76 1.29 5.38l3.99-3.14z"/>
+              <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.31 0 3.26 2.7 1.29 6.62l3.99 3.14c.95-2.85 3.6-4.96 6.72-4.96z"/>
+            </svg>
+            <span>Switch / Choose Google Account (選擇 Google 帳號)</span>
+          </button>
+
           <div id="googleAuthMessage" style="font-size:11.5px;color:var(--ui-accent);">
-            Sign in with your Google account to verify your identity and role permissions across GatheringScans &amp; GatheringCloud.
+            Sign in with your Google account or click &ldquo;Switch / Choose Google Account&rdquo; to pick between accounts.
+          </div>
+
+          <!-- Unregistered Local Origin Warning (shown automatically when opened via http://127.0.0.1:8095) -->
+          <div id="localOriginOAuthWarning" style="display:none;width:100%;padding:8px 11px;background:rgba(245,158,11,0.12);border:1px solid rgba(245,158,11,0.45);border-radius:8px;font-size:11px;color:#f59e0b;text-align:left;line-height:1.45;">
+            <b>Note:</b> <code id="unregisteredOriginLabel">http://127.0.0.1:8095</code> is a local workstation address not listed in Google Cloud Console's Authorised JavaScript Origins. Either select your profile directly from the <b>Team Roster</b> below, or <a href="https://scans.gatheren.cloud" style="color:var(--ui-accent);font-weight:700;text-decoration:underline;">open https://scans.gatheren.cloud</a> for Google OAuth popup sign-in.
           </div>
 
           <!-- Origin Helper Notice -->
@@ -1298,6 +1318,26 @@
               <span style="min-width:0;word-break:break-all;">Authorized JavaScript Origin: <code id="currentOriginCode" style="background:var(--ui-bg-subtle);padding:2px 6px;border-radius:4px;color:var(--ui-text-primary);font-weight:700;user-select:all;">https://scans.gatheren.cloud</code></span>
               <button type="button" id="btnCopyCurrentOriginGate" class="btn-xs" style="height:22px;font-size:10.5px;">Copy</button>
             </div>
+          </div>
+        </div>
+
+        <!-- GatheringCloud Team Roster (Quick Account / Profile Switcher) -->
+        <div id="gateExistingUsersSection" style="display:flex;flex-direction:column;gap:8px;">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;">
+            <div style="display:flex;align-items:center;gap:6px;">
+              <span style="font-size:11.5px;font-weight:700;color:var(--ui-text-secondary);text-transform:uppercase;letter-spacing:0.05em;">Verified GatheringCloud Team Accounts</span>
+              <span id="gateRosterCountBadge" class="gs-crs-pill" style="font-size:10px;padding:1px 7px;">18 Members</span>
+            </div>
+            <input
+              type="search"
+              id="gateUserSearchInput"
+              class="input-sm"
+              placeholder="Search name or email..."
+              style="height:26px;font-size:11.5px;width:185px;padding:0 8px;" />
+          </div>
+          <div
+            id="gateExistingUsersGrid"
+            style="display:grid;grid-template-columns:repeat(auto-fill,minmax(215px,1fr));gap:7px;max-height:210px;overflow-y:auto;padding:2px;">
           </div>
         </div>
       </div>

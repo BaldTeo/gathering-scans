@@ -1928,6 +1928,8 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
             or path.startswith("/api/contours/")
             or path.startswith("/api/admin/")
             or path.startswith("/api/user-profiles")
+            or path.startswith("/api/auth/")
+            or path.startswith("/api/user/")
         ):
             return False
 

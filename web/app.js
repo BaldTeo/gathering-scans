@@ -318,6 +318,7 @@
   }
 
   const ROLE_LEVELS_MAP = { owner: 5, admin: 4, editor: 3, viewer: 2, guest: 1 };
+  const OWNER_EMAILS_SET = new Set(["glibivanov@gatheren.com.tw", "gleb.ivanov1999@gmail.com"]);
   const ROLE_LABELS_MAP = {
     owner: "Owner (System Owner)",
     admin: "Admin (Manage Users & Workflows)",
@@ -350,7 +351,7 @@
     }
     const email = String(STATE.currentUser?.email || "").trim().toLowerCase();
     let role = String(STATE.currentUser?.role || "viewer").trim().toLowerCase();
-    if (email === "glibivanov@gatheren.com.tw") {
+    if (OWNER_EMAILS_SET.has(email)) {
       role = "owner";
     } else if (!ROLE_LEVELS_MAP[role]) {
       role = "viewer";
@@ -9432,7 +9433,7 @@
     tbody.innerHTML = "";
     users.forEach((u) => {
       const email = String(u.email || "").toLowerCase();
-      const isOwner = email === "glibivanov@gatheren.com.tw" || u.role === "owner";
+      const isOwner = OWNER_EMAILS_SET.has(email) || u.role === "owner";
       const uRole = isOwner ? "owner" : String(u.role || "viewer").toLowerCase();
       const uLevel = ROLE_LEVELS_MAP[uRole] || 2;
       const canEditRow =
@@ -9914,8 +9915,16 @@
             id: "u_glibivanov",
             name: "雲在天",
             email: "glibivanov@gatheren.com.tw",
-            role: "admin",
-            role_label: "System Admin (Gatheren)",
+            role: "owner",
+            role_label: "Owner (System Owner)",
+            auth_provider: "google",
+          },
+          {
+            id: "u_glebivanov",
+            name: "雲在天 (Glib Ivanov)",
+            email: "gleb.ivanov1999@gmail.com",
+            role: "owner",
+            role_label: "Owner (System Owner)",
             auth_provider: "google",
           },
           {
@@ -9995,10 +10004,31 @@
     });
   }
 
-  function initGoogleIdentityServicesButton() {
+  const REGISTERED_GOOGLE_OAUTH_ORIGINS = new Set([
+    "https://scans.gatheren.cloud",
+    "https://www.scans.gatheren.cloud",
+    "https://gatheren.cloud",
+    "https://www.gatheren.cloud",
+    "https://www.dev.gatheren.cloud",
+    "http://localhost:8099",
+  ]);
+
+  function initGoogleIdentityServicesButton(retryCount = 0) {
+    const curOrigin = window.location.origin;
     const originEl = document.getElementById("currentOriginCode");
     if (originEl) {
-      originEl.textContent = window.location.origin;
+      originEl.textContent = curOrigin;
+    }
+
+    const warnBox = document.getElementById("localOriginOAuthWarning");
+    const warnLbl = document.getElementById("unregisteredOriginLabel");
+    if (warnBox) {
+      if (!REGISTERED_GOOGLE_OAUTH_ORIGINS.has(curOrigin)) {
+        if (warnLbl) warnLbl.textContent = curOrigin;
+        warnBox.style.display = "block";
+      } else {
+        warnBox.style.display = "none";
+      }
     }
 
     const btnContainer = document.getElementById("googleSignInButtonContainer");
@@ -10009,20 +10039,65 @@
           callback: window.handleGoogleSignIn,
           auto_select: false,
           cancel_on_tap_outside: true,
+          itp_support: true,
+          use_fedcm_for_prompt: false,
         });
-        btnContainer.innerHTML = "";
-        window.google.accounts.id.renderButton(btnContainer, {
-          type: "standard",
-          theme: STATE.resolvedTheme === "dark" ? "filled_black" : "outline",
-          size: "large",
-          text: "signin_with",
-          shape: "rectangular",
-          logo_alignment: "left",
-          width: 260,
-        });
+        if (!btnContainer.querySelector("iframe")) {
+          btnContainer.innerHTML = "";
+          window.google.accounts.id.renderButton(btnContainer, {
+            type: "standard",
+            theme: STATE.resolvedTheme === "dark" ? "filled_black" : "outline",
+            size: "large",
+            text: "continue_with",
+            shape: "rectangular",
+            logo_alignment: "left",
+            width: 260,
+          });
+        }
       } catch (e) {
         console.warn("[GatheringScans] Google Identity Services render note:", e);
       }
+    } else if (retryCount < 10) {
+      setTimeout(() => initGoogleIdentityServicesButton(retryCount + 1), 350);
+    }
+  }
+
+  async function completeGoogleProfileSignIn(profileData, rawCredential = "") {
+    const msgEl = document.getElementById("googleAuthMessage");
+    if (msgEl) {
+      msgEl.style.color = "var(--ui-accent)";
+      msgEl.textContent = "Verifying Google account & role permissions...";
+    }
+    try {
+      const res = await apiPost("/api/auth/google", {
+        credential: rawCredential,
+        profile: profileData,
+      });
+      const verifiedUser = res.user || profileData;
+      if (Array.isArray(res.profiles)) {
+        STATE.teamProfiles = res.profiles;
+      } else if (res.profiles && typeof res.profiles === "object") {
+        STATE.teamProfiles = Object.values(res.profiles);
+      }
+      applyUserProfileToUI(verifiedUser, true);
+      renderTeamProfilesGrid();
+      if (msgEl) {
+        msgEl.style.color = "var(--ui-accent)";
+        msgEl.innerHTML = `Verified Google Account: <b>${escapeHtml(verifiedUser.name)}</b> (${escapeHtml(verifiedUser.email)})`;
+      }
+      showToast(`Signed in with Google OAuth as ${verifiedUser.name} (${verifiedUser.email})`);
+      setTimeout(() => {
+        closeModal("userProfileGateModal");
+      }, 550);
+    } catch (err) {
+      applyUserProfileToUI(profileData, true);
+      if (msgEl) {
+        msgEl.innerHTML = `Signed in as <b>${escapeHtml(profileData.name)}</b> (${escapeHtml(profileData.email)})`;
+      }
+      showToast(`Signed in as ${profileData.name}`);
+      setTimeout(() => {
+        closeModal("userProfileGateModal");
+      }, 550);
     }
   }
 
@@ -10037,46 +10112,61 @@
       picture: jwtPayload.picture || "",
       google_sub: jwtPayload.sub || "",
       auth_provider: "google",
+      isGoogleAuthenticated: true,
     };
-
-    const msgEl = document.getElementById("googleAuthMessage");
-    if (msgEl) {
-      msgEl.style.color = "var(--ui-accent)";
-      msgEl.textContent = "Verifying Google Workspace OAuth credential...";
-    }
-
-    try {
-      const res = await apiPost("/api/auth/google", {
-        credential: response.credential,
-        profile: fallbackProfile,
-      });
-      const verifiedUser = res.user || fallbackProfile;
-      if (Array.isArray(res.profiles)) {
-        STATE.teamProfiles = res.profiles;
-      } else if (res.profiles && typeof res.profiles === "object") {
-        STATE.teamProfiles = Object.values(res.profiles);
-      }
-      applyUserProfileToUI(verifiedUser, true);
-      renderTeamProfilesGrid();
-      if (msgEl) {
-        msgEl.style.color = "var(--ui-accent)";
-        msgEl.innerHTML = `Verified Google Account: <b>${verifiedUser.name}</b> (${verifiedUser.email})`;
-      }
-      showToast(`Signed in with Google OAuth as ${verifiedUser.name} (${verifiedUser.email})`);
-      setTimeout(() => {
-        closeModal("userProfileGateModal");
-      }, 650);
-    } catch (err) {
-      applyUserProfileToUI(fallbackProfile, true);
-      if (msgEl) {
-        msgEl.innerHTML = `Signed in as <b>${fallbackProfile.name}</b> (${fallbackProfile.email})`;
-      }
-      showToast(`Signed in as ${fallbackProfile.name}`);
-      setTimeout(() => {
-        closeModal("userProfileGateModal");
-      }, 650);
-    }
+    await completeGoogleProfileSignIn(fallbackProfile, response.credential);
   };
+
+  function promptChooseGoogleAccountOAuth() {
+    const curOrigin = window.location.origin;
+    if (!REGISTERED_GOOGLE_OAUTH_ORIGINS.has(curOrigin)) {
+      showToast("Local IP is not in Google OAuth Origins — opening https://scans.gatheren.cloud or pick a Team Account below");
+      const warnBox = document.getElementById("localOriginOAuthWarning");
+      if (warnBox) warnBox.style.display = "block";
+      return;
+    }
+    if (window.google?.accounts?.id) {
+      try {
+        window.google.accounts.id.disableAutoSelect();
+      } catch (_) {}
+    }
+    if (window.google?.accounts?.oauth2?.initTokenClient) {
+      const tokenClient = window.google.accounts.oauth2.initTokenClient({
+        client_id: GOOGLE_OAUTH_CLIENT_ID,
+        scope: "openid email profile",
+        prompt: "select_account",
+        callback: async (tokenResponse) => {
+          if (!tokenResponse || tokenResponse.error || !tokenResponse.access_token) {
+            return;
+          }
+          try {
+            const uResp = await fetch("https://www.googleapis.com/oauth2/v3/userinfo", {
+              headers: { Authorization: `Bearer ${tokenResponse.access_token}` },
+            });
+            if (!uResp.ok) throw new Error(`HTTP ${uResp.status}`);
+            const info = await uResp.json();
+            const chosenProfile = {
+              id: info.sub ? `google_${info.sub}` : undefined,
+              name: info.name || info.given_name || (info.email ? info.email.split("@")[0] : "Google User"),
+              email: info.email || "",
+              avatar_url: info.picture || "",
+              picture: info.picture || "",
+              google_sub: info.sub || "",
+              auth_provider: "google",
+              isGoogleAuthenticated: true,
+            };
+            await completeGoogleProfileSignIn(chosenProfile, "");
+          } catch (err) {
+            showToast(`Google Account Selection Error: ${err.message}`);
+          }
+        },
+      });
+      tokenClient.requestAccessToken({ prompt: "select_account" });
+    } else {
+      showToast("Google OAuth client is loading — please click again in a moment.");
+      initGoogleIdentityServicesButton(0);
+    }
+  }
 
   async function openUserProfileGateModal() {
     openModal("userProfileGateModal");
@@ -10094,6 +10184,9 @@
   });
   document.getElementById("btnCurrentUserProfile")?.addEventListener("click", () => {
     openUserProfileGateModal();
+  });
+  document.getElementById("btnChooseGoogleAccountOAuth")?.addEventListener("click", () => {
+    promptChooseGoogleAccountOAuth();
   });
   document.getElementById("btnCloseAuthGateModal")?.addEventListener("click", () => {
     closeModal("userProfileGateModal");
