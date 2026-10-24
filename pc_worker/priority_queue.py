@@ -537,7 +537,14 @@ class ScanQueueDB:
         if not scan:
             return None
 
-        comments = self.list_comments(clean_id)
+        with DB_LOCK, self._connect() as conn:
+            comments = [
+                dict(r)
+                for r in conn.execute(
+                    "SELECT * FROM scan_comments WHERE lower(scan_id) = lower(?)",
+                    (clean_id,),
+                ).fetchall()
+            ]
         tomb = self._collect_tombstone_keys_for_scan(scan, clean_id)
 
         # Add to deleted_scans.json so GDrive watcher skips it while in Bin
