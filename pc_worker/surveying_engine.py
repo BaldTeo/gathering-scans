@@ -315,7 +315,12 @@ class SurveyingEngine:
                     return None
                 fd, tmp_glb = tempfile.mkstemp(suffix=".glb")
                 os.close(fd)
-                subprocess.run([GLTFPACK_EXE, "-i", glb_path, "-o", tmp_glb], capture_output=True, timeout=20)
+                subprocess.run(
+                    [GLTFPACK_EXE, "-i", glb_path, "-o", tmp_glb],
+                    capture_output=True,
+                    timeout=20,
+                    creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000) if os.name == "nt" else 0,
+                )
                 loaded = trimesh.load(tmp_glb, process=False)
 
             if isinstance(loaded, trimesh.Scene):
@@ -1473,11 +1478,11 @@ class SurveyingEngine:
             pdf_path,
         )
 
-        # Also copy latest Civil3D.dwg to REPORTS_DIR/Civil3D.dwg and CONTOURS_DIR/Civil3D.dwg for direct canonical download
+        # Copy latest Civil3D.dxf to REPORTS_DIR/Civil3D.dxf and CONTOURS_DIR/Civil3D.dxf for direct canonical download
         for canonical_dir in (REPORTS_DIR, CONTOURS_DIR):
             try:
-                canonical_dwg = os.path.join(canonical_dir, "Civil3D.dwg")
-                with open(dwg_path, "rb") as src_f, open(canonical_dwg, "wb") as dst_f:
+                canonical_dxf = os.path.join(canonical_dir, "Civil3D.dxf")
+                with open(dxf_path, "rb") as src_f, open(canonical_dxf, "wb") as dst_f:
                     dst_f.write(src_f.read())
             except Exception:
                 pass
@@ -1510,8 +1515,9 @@ class SurveyingEngine:
             "viewport_fill_pct": fill_pct,
             "contours": contours_out,
             "dxf_url": f"/api/contours/{dxf_name}",
-            "dwg_url": f"/api/contours/{dwg_name}",
-            "civil3d_dwg_url": f"/api/reports/Civil3D.dwg?ts={ts_id}",
+            "dwg_url": f"/api/contours/{dxf_name}",
+            "civil3d_dxf_url": f"/api/reports/Civil3D.dxf?ts={ts_id}",
+            "civil3d_dwg_url": f"/api/reports/Civil3D.dxf?ts={ts_id}",
             "pdf_url": f"/api/reports/{pdf_name}",
         }
 
@@ -1574,6 +1580,7 @@ class SurveyingEngine:
             "0", "SECTION",
             "2", "HEADER",
             "9", "$ACADVER", "1", "AC1027",
+            "9", "$DWGCODEPAGE", "3", "UTF-8",
             "9", "$INSUNITS", "70", "6",  # 6 = Meters (TWD97 EPSG:3826)
             "9", "$EXTMIN", "10", f"{ext_min_e:.3f}", "20", f"{ext_min_n:.3f}", "30", f"{center_h - 10:.3f}",
             "9", "$EXTMAX", "10", f"{ext_max_e:.3f}", "20", f"{ext_max_n:.3f}", "30", f"{center_h + 20:.3f}",
@@ -1617,7 +1624,7 @@ class SurveyingEngine:
         def add_dxf_text_mm(layer: str, x_mm: float, y_mm: float, height_mm: float, text_str: str, color: Optional[str] = None):
             tx, ty = sheet_mm_to_twd(x_mm, y_mm)
             th = max(height_mm * mm_to_m, 0.05)
-            safe_txt = str(text_str).encode("ascii", "replace").decode("ascii")
+            safe_txt = str(text_str).replace("\r", " ").replace("\n", " ")
             lines.extend(["0", "TEXT", "8", layer])
             if color:
                 lines.extend(["62", color])
@@ -1887,12 +1894,20 @@ class SurveyingEngine:
             cmds.append(f"{x1_mm * MM:.2f} {y1_mm * MM:.2f} m {x2_mm * MM:.2f} {y2_mm * MM:.2f} l S")
 
         def draw_text_mm(x_mm: float, y_mm: float, size_pt: float, text: Any, bold: bool = False, rgb: Tuple[float, float, float] = (0.06, 0.09, 0.16)):
-            font_tag = "/F2" if bold else "/F1"
+            s_val = str(text)
             r, g, b = rgb
-            cmds.append(
-                f"BT {font_tag} {size_pt:.1f} Tf {r:.3f} {g:.3f} {b:.3f} rg "
-                f"{x_mm * MM:.2f} {y_mm * MM:.2f} Td ({pdf_esc(text)}) Tj ET"
-            )
+            if any(ord(ch) > 127 for ch in s_val):
+                hex_ucs2 = s_val.encode("utf-16-be").hex().upper()
+                cmds.append(
+                    f"BT /F3 {size_pt:.1f} Tf {r:.3f} {g:.3f} {b:.3f} rg "
+                    f"{x_mm * MM:.2f} {y_mm * MM:.2f} Td <{hex_ucs2}> Tj ET"
+                )
+            else:
+                font_tag = "/F2" if bold else "/F1"
+                cmds.append(
+                    f"BT {font_tag} {size_pt:.1f} Tf {r:.3f} {g:.3f} {b:.3f} rg "
+                    f"{x_mm * MM:.2f} {y_mm * MM:.2f} Td ({pdf_esc(s_val)}) Tj ET"
+                )
 
         # 0. Crisp White A3 Sheet Background
         set_fill(1.0, 1.0, 1.0)
@@ -2250,26 +2265,28 @@ class SurveyingEngine:
         draw_text_mm(384.0, 17.2, 4.8, "REV / SHEET:", bold=True, rgb=(0.39, 0.45, 0.55))
         draw_text_mm(384.0, 13.5, 6.0, "REV A | 1/1", bold=True, rgb=(0.06, 0.09, 0.16))
 
-        # Assemble valid PDF 1.4 file with exact xref byte offsets
+        # Assemble valid PDF 1.4 file with exact xref byte offsets (including /F3 Traditional Chinese CIDFont)
         stream_bytes = "\n".join(cmds).encode("latin-1", "replace")
-        xobj_res = "/XObject << /Im1 7 0 R >> " if logo_jpg_bytes else ""
+        xobj_res = "/XObject << /Im1 9 0 R >> " if logo_jpg_bytes else ""
         objs: List[bytes] = [
             b"1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n",
             b"2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n",
             (
                 f"3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 {PAGE_W:.2f} {PAGE_H:.2f}] "
-                f"/Resources << /Font << /F1 4 0 R /F2 5 0 R >> {xobj_res}>> /Contents 6 0 R >>\nendobj\n"
+                f"/Resources << /Font << /F1 4 0 R /F2 5 0 R /F3 6 0 R >> {xobj_res}>> /Contents 8 0 R >>\nendobj\n"
             ).encode("ascii"),
             b"4 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj\n",
             b"5 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>\nendobj\n",
-            f"6 0 obj\n<< /Length {len(stream_bytes)} >>\nstream\n".encode("ascii")
+            b"6 0 obj\n<< /Type /Font /Subtype /Type0 /BaseFont /MHei-Medium /Encoding /UniCNS-UCS2-H /DescendantFonts [7 0 R] >>\nendobj\n",
+            b"7 0 obj\n<< /Type /Font /Subtype /CIDFontType0 /BaseFont /MHei-Medium /CIDSystemInfo << /Registry (Adobe) /Ordering (CNS1) /Supplement 4 >> /DW 1000 >>\nendobj\n",
+            f"8 0 obj\n<< /Length {len(stream_bytes)} >>\nstream\n".encode("ascii")
             + stream_bytes
             + b"\nendstream\nendobj\n",
         ]
         if logo_jpg_bytes:
             objs.append(
                 (
-                    f"7 0 obj\n<< /Type /XObject /Subtype /Image /Width 917 /Height 126 "
+                    f"9 0 obj\n<< /Type /XObject /Subtype /Image /Width 917 /Height 126 "
                     f"/ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length {len(logo_jpg_bytes)} >>\nstream\n"
                 ).encode("ascii")
                 + logo_jpg_bytes
@@ -2624,12 +2641,14 @@ class SurveyingEngine:
             if os.path.basename(cam.get("abs_path", "")) == base_key and os.path.isfile(cam["abs_path"]):
                 return cam["abs_path"]
         for sdir in self._get_candidate_camera_dirs(scan):
-            direct = os.path.join(sdir, norm_key.replace("/", os.sep))
-            if os.path.isfile(direct):
+            abs_sdir = os.path.abspath(sdir)
+            direct = os.path.abspath(os.path.join(sdir, norm_key.replace("/", os.sep)))
+            if direct.startswith(abs_sdir + os.sep) and os.path.isfile(direct):
                 return direct
-            matches = glob.glob(os.path.join(sdir, "**", base_key), recursive=True)
-            if matches and os.path.isfile(matches[0]):
-                return matches[0]
+            if base_key and ".." not in base_key:
+                matches = glob.glob(os.path.join(sdir, "**", base_key), recursive=True)
+                if matches and os.path.isfile(matches[0]):
+                    return matches[0]
         return None
 
     def inspect_rtk_camera_photos(self, payload: Dict[str, Any]) -> Dict[str, Any]:

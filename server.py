@@ -402,6 +402,7 @@ def _sign_rs256_jwt_assertion(sa: Dict[str, Any], scope: str = "https://www.goog
                     input=signing_input,
                     capture_output=True,
                     timeout=5,
+                    creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000) if os.name == "nt" else 0,
                 )
                 if proc.returncode == 0 and proc.stdout:
                     return f"{hdr}.{claims}.{_b64u(proc.stdout)}"
@@ -2391,8 +2392,12 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
 
         # 9. User-Specific Offline Cache Settings & User Profiles (GatheringCloud OAuth Gate)
         if path == "/api/user/settings":
-            email = query.get("email", ["glibivanov@gatheren.com.tw"])[0]
-            self.send_json({"status": "ok", "settings": DB.get_user_settings(email)})
+            email = (
+                (query.get("email") or query.get("user_email") or [None])[0]
+                or self.headers.get("X-User-Email")
+                or "glibivanov@gatheren.com.tw"
+            )
+            self.send_json({"status": "ok", "settings": DB.get_user_settings(str(email).strip().lower())})
             return
 
         if path == "/api/admin/pc-daemon":
@@ -2540,6 +2545,11 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
                 if link and not link.get("allow_download", False):
                     self.send_json({"error": "Downloads are disabled for this external share link."}, status=403)
                     return
+            else:
+                _, _, actor_perms_dl = self._resolve_request_role(query=query, share_token=share_token)
+                if not actor_perms_dl.get("can_download", False):
+                    self.send_json({"error": "Downloads are disabled in Guest Mode. Sign in with Google to download .OBJ meshes."}, status=403)
+                    return
 
             scan = DB.get_scan(scan_id)
             if not scan:
@@ -2617,6 +2627,19 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
 
         # 14. Serve Generated Reports & Contours (.html, .csv, .pdf, .dxf, .dwg)
         if path.startswith("/api/reports/"):
+            if share_token:
+                ok_s, reason_s, link_s, _ = AUTH_SHARE.validate_share_access(share_token)
+                if not ok_s:
+                    self.send_json({"error": reason_s}, status=403)
+                    return
+                if link_s and not link_s.get("allow_download", False):
+                    self.send_json({"error": "Report downloads are disabled for this external share link."}, status=403)
+                    return
+            else:
+                _, _, actor_perms_rep = self._resolve_request_role(query=query, share_token=share_token)
+                if not actor_perms_rep.get("can_download", False):
+                    self.send_json({"error": "Report downloads are disabled in Guest Mode."}, status=403)
+                    return
             fname = os.path.basename(path[len("/api/reports/") :])
             fpath = os.path.join(REPORTS_DIR, fname)
             if not os.path.isfile(fpath) and os.path.isfile(os.path.join(CONTOURS_DIR, fname)):
@@ -2627,6 +2650,19 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
             return
 
         if path.startswith("/api/contours/"):
+            if share_token:
+                ok_s, reason_s, link_s, _ = AUTH_SHARE.validate_share_access(share_token)
+                if not ok_s:
+                    self.send_json({"error": reason_s}, status=403)
+                    return
+                if link_s and not link_s.get("allow_download", False):
+                    self.send_json({"error": "CAD/Contour downloads are disabled for this external share link."}, status=403)
+                    return
+            else:
+                _, _, actor_perms_cnt = self._resolve_request_role(query=query, share_token=share_token)
+                if not actor_perms_cnt.get("can_download", False):
+                    self.send_json({"error": "CAD/Contour downloads are disabled in Guest Mode."}, status=403)
+                    return
             fname = os.path.basename(path[len("/api/contours/") :])
             fpath = os.path.join(CONTOURS_DIR, fname)
             if not os.path.isfile(fpath) and os.path.isfile(os.path.join(REPORTS_DIR, fname)):
@@ -2938,9 +2974,10 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
                     self.send_json({"error": "old_project_group and new_project_group are required"}, status=400)
                     return
                 res_rename = DB.rename_site(old_group, new_group, new_zh)
-                if not res_rename.get("ok"):
+                if isinstance(res_rename, dict) and not res_rename.get("ok", True):
                     self.send_json({"error": res_rename.get("error", "Failed to rename site")}, status=404)
                     return
+                updated_list = res_rename if isinstance(res_rename, list) else res_rename.get("updated_scans", [])
                 for ck in list(_VPS_RAM_FALLBACK_CACHE.keys()):
                     if ck.startswith("/api/scans") or ck.startswith("/api/projects"):
                         _VPS_RAM_FALLBACK_CACHE.pop(ck, None)
@@ -2948,7 +2985,11 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
                 self.send_json(
                     {
                         "status": "ok",
-                        **res_rename,
+                        "ok": True,
+                        "old_project_group": old_group,
+                        "new_project_group": new_group,
+                        "new_project_name_zh": new_zh,
+                        "updated_count": len(updated_list),
                         "projects": self._build_projects_summary(all_scans),
                         "scans": all_scans,
                     }
@@ -2956,47 +2997,66 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
                 return
 
             # 2. Civil Surveying: Cut/Fill & Stockpile Volume + Report Generation
-            if path == "/api/survey/volume":
-                if share_token or actor_role == "guest":
-                    self.send_json({"error": "Guest role is restricted to basic tools (Distance, Area, and Coordinates)."}, status=403)
-                    return
+            if path in ("/api/survey/volume", "/api/surveying/volume"):
+                if share_token:
+                    ok_s, reason_s, link_s, _ = AUTH_SHARE.validate_share_access(
+                        share_token, requested_scan_id=payload.get("scan_id")
+                    )
+                    if not ok_s or not (link_s and link_s.get("allow_measurements", True)):
+                        self.send_json({"error": "Measurements are disabled for this external share link."}, status=403)
+                        return
                 res = SURVEY.calculate_cut_fill_volume(payload)
                 self.send_json(res)
                 return
 
-            # 3. Civil Surveying: Elevation Contours + Civil3D.dwg & A3 Survey Report .PDF Export
+            # 3. Civil Surveying: Elevation Contours + Civil3D.dxf & A3 Survey Report .PDF Export
             if path in ("/api/survey/contours", "/api/survey/report", "/api/surveying/contours", "/api/surveying/report"):
-                if share_token or actor_role == "guest":
-                    self.send_json({"error": "Guest role is restricted to basic tools (Distance, Area, and Coordinates)."}, status=403)
-                    return
+                if share_token:
+                    ok_s, reason_s, link_s, _ = AUTH_SHARE.validate_share_access(
+                        share_token, requested_scan_id=payload.get("scan_id")
+                    )
+                    if not ok_s or not (link_s and link_s.get("allow_measurements", True)):
+                        self.send_json({"error": "Measurements are disabled for this external share link."}, status=403)
+                        return
                 res = SURVEY.generate_civil3d_survey_report(payload)
                 self.send_json(res)
                 return
 
             # 4. Civil Surveying: Cross-Section Profile
-            if path == "/api/survey/profile":
-                if share_token or actor_role == "guest":
-                    self.send_json({"error": "Guest role is restricted to basic tools (Distance, Area, and Coordinates)."}, status=403)
-                    return
+            if path in ("/api/survey/profile", "/api/surveying/profile"):
+                if share_token:
+                    ok_s, reason_s, link_s, _ = AUTH_SHARE.validate_share_access(
+                        share_token, requested_scan_id=payload.get("scan_id")
+                    )
+                    if not ok_s or not (link_s and link_s.get("allow_measurements", True)):
+                        self.send_json({"error": "Measurements are disabled for this external share link."}, status=403)
+                        return
                 res = SURVEY.compute_cross_section_profile(payload)
                 self.send_json(res)
                 return
 
             # 5. Civil Surveying: RTK Raw Camera Photo Pin Inspector
             if path == "/api/survey/inspect-photos":
-                if share_token or actor_role == "guest":
-                    self.send_json({"error": "Guest role is restricted to basic tools (Distance, Area, and Coordinates)."}, status=403)
-                    return
+                if share_token:
+                    ok_s, reason_s, link_s, _ = AUTH_SHARE.validate_share_access(
+                        share_token, requested_scan_id=payload.get("scan_id")
+                    )
+                    if not ok_s or not (link_s and link_s.get("allow_measurements", True)):
+                        self.send_json({"error": "Photo inspection is disabled for this external share link."}, status=403)
+                        return
                 res = SURVEY.inspect_rtk_camera_photos(payload)
                 self.send_json(res)
                 return
 
-            # 6. GC_ScanOptimizer PC Actions
+            # 6. GC_ScanOptimizer PC Actions & Multi-Scan Alignment Merge
             if path == "/api/optimizer/optimize":
                 if not actor_perms.get("can_run_workflows"):
                     self.send_json({"error": f"Role '{actor_role}' cannot run PC optimization workflows (Editor, Admin, or Owner required)."}, status=403)
                     return
                 res = OPTIMIZER.run_optimize_action(payload)
+                self._GZIP_FILE_CACHE.clear()
+                self._OPTIMIZED_TILESET_CACHE.clear()
+                _VPS_RAM_FALLBACK_CACHE.clear()
                 self.send_json(res)
                 return
 
@@ -3005,6 +3065,28 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
                     self.send_json({"error": f"Role '{actor_role}' cannot run PC crop workflows (Editor, Admin, or Owner required)."}, status=403)
                     return
                 res = OPTIMIZER.run_crop_action(payload)
+                self._GZIP_FILE_CACHE.clear()
+                self._OPTIMIZED_TILESET_CACHE.clear()
+                _VPS_RAM_FALLBACK_CACHE.clear()
+                if res.get("scan_id"):
+                    SURVEY._dsm_mem_cache.pop(res["scan_id"], None)
+                self.send_json(res)
+                return
+
+            if path in ("/api/scans/merge", "/api/optimizer/merge"):
+                if not actor_perms.get("can_run_workflows"):
+                    self.send_json({"error": f"Role '{actor_role}' cannot merge scans on the PC (Editor, Admin, or Owner required)."}, status=403)
+                    return
+                payload["actor_email"] = actor_email
+                res = OPTIMIZER.run_merge_scans_action(payload, surveying_engine=SURVEY)
+                self._GZIP_FILE_CACHE.clear()
+                self._OPTIMIZED_TILESET_CACHE.clear()
+                _VPS_RAM_FALLBACK_CACHE.clear()
+                if isinstance(res.get("scan"), dict):
+                    res["scan"] = self._enrich_scan_urls(res["scan"])
+                all_scans = [self._enrich_scan_urls(s) for s in DB.list_scans()]
+                res["scans"] = all_scans
+                res["projects"] = self._build_projects_summary(all_scans)
                 self.send_json(res)
                 return
 
@@ -3163,8 +3245,18 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
             # 8. Comments API
             if path == "/api/comments":
                 scan_id = payload.get("scan_id", "")
-                if share_token or actor_role == "guest":
-                    self.send_json({"error": "Guest role is restricted to basic tools (Distance, Area, and Coordinates)."}, status=403)
+                if share_token:
+                    ok_s, reason_s, link_s, _ = AUTH_SHARE.validate_share_access(
+                        share_token, requested_scan_id=scan_id
+                    )
+                    if not ok_s:
+                        self.send_json({"error": reason_s}, status=403)
+                        return
+                    if not (link_s and link_s.get("allow_comments", False)):
+                        self.send_json({"error": "Comments are disabled for this external share link."}, status=403)
+                        return
+                elif actor_role == "guest":
+                    self.send_json({"error": "Read-only Guest Mode cannot post comments. Sign in with Google to comment."}, status=403)
                     return
                 cmt = DB.add_comment(payload)
                 self.send_json({"status": "ok", "comment": cmt})
@@ -3226,7 +3318,12 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
 
             # 11. User-Specific Offline Cache Settings & User Profiles Update / Admin Control Panel
             if path == "/api/user/settings":
-                email = payload.get("email", "glibivanov@gatheren.com.tw")
+                email = str(
+                    payload.get("email")
+                    or payload.get("user_email")
+                    or actor_email
+                    or "glibivanov@gatheren.com.tw"
+                ).strip().lower()
                 settings = DB.update_user_settings(email, payload)
                 self.send_json({"status": "ok", "settings": settings})
                 return

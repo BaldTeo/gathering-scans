@@ -5,7 +5,7 @@
  * Strictly zero scan cache is ever stored on the Linux VPS.
  */
 
-const CACHE_NAME = "gathering-scans-offline-v9";
+const CACHE_NAME = "gathering-scans-offline-v26";
 const APP_SHELL = [
   "/",
   "/index.html",
@@ -42,8 +42,29 @@ self.addEventListener("fetch", (event) => {
 
   const url = new URL(req.url);
 
-  // Let /stream/ 3D tileset binary payloads use native C++ HTTP/2 + HTTP cache directly without JS stream cloning
+  // For /stream/ 3D tileset & GLB requests: try network first, fall back to offline browser cache when PC/network is offline
   if (url.pathname.startsWith("/stream/")) {
+    event.respondWith(
+      fetch(req)
+        .then((networkResp) => {
+          if (networkResp && (networkResp.status === 503 || networkResp.status === 502 || networkResp.status === 504)) {
+            return caches.match(req, { ignoreSearch: true }).then((cached) => cached || networkResp);
+          }
+          return networkResp;
+        })
+        .catch(() => {
+          return caches.match(req, { ignoreSearch: true }).then((cached) => {
+            if (cached) return cached;
+            return new Response(
+              JSON.stringify({
+                error: "PC is offline and this 3D tile is not cached in your browser.",
+                pc_online: false,
+              }),
+              { status: 503, headers: { "Content-Type": "application/json" } }
+            );
+          });
+        })
+    );
     return;
   }
 
@@ -51,6 +72,7 @@ self.addEventListener("fetch", (event) => {
     url.pathname.startsWith("/api/scans") ||
     APP_SHELL.includes(url.pathname)
   ) {
+    const matchOpts = APP_SHELL.includes(url.pathname) ? { ignoreSearch: true } : undefined;
     event.respondWith(
       fetch(req, { cache: "no-cache" })
         .then((networkResp) => {
@@ -60,12 +82,12 @@ self.addEventListener("fetch", (event) => {
             return networkResp;
           }
           if (networkResp && networkResp.status === 503) {
-            return caches.match(req).then((cached) => cached || networkResp);
+            return caches.match(req, matchOpts).then((cached) => cached || networkResp);
           }
           return networkResp;
         })
         .catch(() => {
-          return caches.match(req).then((cached) => {
+          return caches.match(req, matchOpts).then((cached) => {
             if (cached) return cached;
             return new Response(
               JSON.stringify({

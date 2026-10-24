@@ -309,7 +309,12 @@ def build_low_quality_preview_glb(
             ]
             if allow_aggressive:
                 cmd.insert(-2, "-sa")
-            res = subprocess.run(cmd, capture_output=True, timeout=60)
+            res = subprocess.run(
+                cmd,
+                capture_output=True,
+                timeout=60,
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000) if os.name == "nt" else 0,
+            )
             if tmp_in_path and os.path.isfile(tmp_in_path):
                 try:
                     os.remove(tmp_in_path)
@@ -564,6 +569,7 @@ def _extract_glb_enh_points_and_colors(
                 [GLTFPACK_EXE, "-i", in_for_decode, "-o", tmp_glb, "-noq"],
                 capture_output=True,
                 timeout=45,
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000) if os.name == "nt" else 0,
             )
             if tmp_in_dec and os.path.isfile(tmp_in_dec):
                 try:

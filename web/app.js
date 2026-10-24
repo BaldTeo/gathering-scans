@@ -112,6 +112,14 @@
     lastVolumeResult: null,
     lastContoursResult: null,
     lastProfileResult: null,
+    multiAlign: {
+      active: false,
+      gizmoMode: "both", // 'both' | 'translate' | 'rotate'
+      selectedScanId: null,
+      refCenter: null,
+      layers: [],
+      lastMergedScan: null,
+    },
   };
 
   function resolveThemeFromPreference(pref) {
@@ -167,9 +175,11 @@
   // Populate all project & scan selectors across Map, Timeline, Studio, and Compare (Supports 100+ Projects)
   function populateProjectScanDropdowns(projectGroup, preferredScanId = null) {
     const allGroups = getProjectGroupsList("");
-    if (projectGroup && allGroups.some((g) => g.project_group === projectGroup)) {
+    if (projectGroup === "__all__") {
+      STATE.activeProjectGroup = "__all__";
+    } else if (projectGroup && allGroups.some((g) => g.project_group === projectGroup)) {
       STATE.activeProjectGroup = projectGroup;
-    } else if (STATE.activeScan && STATE.activeScan.project_group) {
+    } else if (STATE.activeScan && STATE.activeScan.project_group && STATE.activeProjectGroup !== "__all__") {
       STATE.activeProjectGroup = STATE.activeScan.project_group;
     } else if (!STATE.activeProjectGroup && allGroups.length > 0) {
       STATE.activeProjectGroup = allGroups[0].project_group;
@@ -195,7 +205,9 @@
         mapProjSel.appendChild(opt);
       });
 
-      if (STATE.activeProjectGroup && filteredGroups.some((g) => g.project_group === STATE.activeProjectGroup)) {
+      if (STATE.activeProjectGroup === "__all__") {
+        mapProjSel.value = "__all__";
+      } else if (STATE.activeProjectGroup && filteredGroups.some((g) => g.project_group === STATE.activeProjectGroup)) {
         mapProjSel.value = STATE.activeProjectGroup;
       } else if (prevMapVal && Array.from(mapProjSel.options).some((o) => o.value === prevMapVal)) {
         mapProjSel.value = prevMapVal;
@@ -209,25 +221,40 @@
       const sel = document.getElementById(selId);
       if (!sel) return;
       sel.innerHTML = "";
+      if (selId === "timelineProjectSelect") {
+        const allOpt = document.createElement("option");
+        allOpt.value = "__all__";
+        allOpt.textContent = `All Projects (${allGroups.length} Sites · ${STATE.scans.length})`;
+        sel.appendChild(allOpt);
+      }
       allGroups.forEach((grp) => {
         const opt = document.createElement("option");
         opt.value = grp.project_group;
         opt.textContent = `${grp.project_group} (${grp.scans.length})`;
         sel.appendChild(opt);
       });
-      if (STATE.activeProjectGroup && allGroups.some((g) => g.project_group === STATE.activeProjectGroup)) {
+      if (selId === "timelineProjectSelect" && STATE.activeProjectGroup === "__all__") {
+        sel.value = "__all__";
+      } else if (STATE.activeProjectGroup && allGroups.some((g) => g.project_group === STATE.activeProjectGroup)) {
         sel.value = STATE.activeProjectGroup;
+      } else if (allGroups[0]) {
+        sel.value = allGroups[0].project_group;
       }
     });
 
+    const resolvedSpecificGroup =
+      STATE.activeProjectGroup && STATE.activeProjectGroup !== "__all__"
+        ? STATE.activeProjectGroup
+        : STATE.activeScan?.project_group || allGroups[0]?.project_group || "";
+
     // Update hidden badges for backward compatibility
     const studioBadge = document.getElementById("studioProjectGroupBadge");
-    if (studioBadge) studioBadge.textContent = STATE.activeProjectGroup;
+    if (studioBadge) studioBadge.textContent = resolvedSpecificGroup;
     const cmpBadge = document.getElementById("compareProjectGroupBadge");
-    if (cmpBadge) cmpBadge.textContent = STATE.activeProjectGroup;
+    if (cmpBadge) cmpBadge.textContent = resolvedSpecificGroup;
 
-    // 3. Populate Scan Selectors strictly for the active project
-    let projectScans = STATE.scans.filter((s) => s.project_group === STATE.activeProjectGroup);
+    // 3. Populate Scan Selectors strictly for the active project (or resolved project when __all__ is selected on map)
+    let projectScans = STATE.scans.filter((s) => s.project_group === resolvedSpecificGroup);
     if (!projectScans.length) {
       projectScans = STATE.scans.slice();
     }
@@ -292,23 +319,33 @@
 
   const ROLE_LEVELS_MAP = { owner: 5, admin: 4, editor: 3, viewer: 2, guest: 1 };
   const ROLE_LABELS_MAP = {
-    owner: "1. Owner (System Owner)",
-    admin: "2. Admin (Manage Users & Workflows)",
-    editor: "3. Editor (Edit Names & Run Scans)",
-    viewer: "4. Viewer (View All & Measure)",
-    guest: "5. Guest (Single Scan · Basic Tools)",
+    owner: "Owner (System Owner)",
+    admin: "Admin (Manage Users & Workflows)",
+    editor: "Editor (Edit Names & Run Scans)",
+    viewer: "Viewer (View All & Measure)",
+    guest: "Guest (Read-Only · Basic Tools)",
   };
 
   function getCurrentUserRoleInfo() {
     if (STATE.shareToken) {
+      const link = STATE.shareLinkInfo || {};
+      const isSingleScan = String(link.scope_type || "scan").toLowerCase() === "scan";
       return {
         role: "guest",
         level: 1,
         label: ROLE_LABELS_MAP.guest,
         canEditNames: false,
+        can_edit_names: false,
         canRunWorkflows: false,
+        can_run_workflows: false,
         canManageUsers: false,
-        isGuestSingleScan: true,
+        can_manage_users: false,
+        isGuestRole: true,
+        isGuestSingleScan: isSingleScan,
+        isSingleScanLock: isSingleScan,
+        allowMeasurements: link.allow_measurements !== false,
+        allowComments: Boolean(link.allow_comments),
+        allowDownload: Boolean(link.allow_download),
       };
     }
     const email = String(STATE.currentUser?.email || "").trim().toLowerCase();
@@ -319,14 +356,23 @@
       role = "viewer";
     }
     const level = ROLE_LEVELS_MAP[role] || 2;
+    const isGuest = role === "guest";
     return {
       role,
       level,
       label: ROLE_LABELS_MAP[role] || "Viewer",
       canEditNames: level >= 3,
+      can_edit_names: level >= 3,
       canRunWorkflows: level >= 3,
+      can_run_workflows: level >= 3,
       canManageUsers: level >= 4,
-      isGuestSingleScan: role === "guest",
+      can_manage_users: level >= 4,
+      isGuestRole: isGuest,
+      isGuestSingleScan: false,
+      isSingleScanLock: false,
+      allowMeasurements: true,
+      allowComments: !isGuest,
+      allowDownload: !isGuest,
     };
   }
 
@@ -347,30 +393,48 @@
       "btnRenameStudioScan",
     ].forEach((id) => setDisp(id, info.canEditNames, "inline-flex"));
 
-    // 2. Re-run Scan & PC Resource / Optimizer / Queue buttons (Editor, Admin, Owner only; hidden for Viewer & Guest)
+    // 2. Re-run Scan & Scan Editing Dock / Lasso Delete / Crop / Align & Merge / Optimizer / Queue buttons (Editor, Admin, Owner only; hidden for Viewer & Guest)
+    setDisp("studioEditingDock", info.canRunWorkflows, "flex");
     [
       "btnRerunPreviewScan",
       "btnRerunStudioScan",
       "btnOpenOptimizer",
+      "btnDockLassoDelete",
+      "btnDockLassoKeep",
       "btnDockOptimizer",
+      "btnDockAlignMerge",
       "pcStatusChip",
     ].forEach((id) => setDisp(id, info.canRunWorkflows, "inline-flex"));
 
-    // 3. Sharing & Settings buttons (Hidden for Guest)
+    // 3. Sharing & Settings buttons (Hidden for Guest / Viewer)
     setDisp("btnOpenSharing", info.level >= 3, "inline-flex");
     setDisp("btnPopoverShareGroup", info.level >= 3, "inline-flex");
     setDisp("btnTimelineShare", info.level >= 3, "inline-flex");
 
-    // 4. Guest restrictions: only 1 scan (via guest link) and only basic tools (Distance, Area, Coordinates)
-    const isGuest = info.isGuestSingleScan;
-    setDisp("btnNavMap", !isGuest, "inline-flex");
-    setDisp("btnNavCompare", !isGuest, "inline-flex");
-    setDisp("btnStudioBackToTimeline", !isGuest, "inline-flex");
-    setDisp("studioProjectSelect", !isGuest, "inline-block");
+    // 4. Single-scan lock applies ONLY to external ?share=<token> links with scope_type="scan".
+    // Interactive Guest Mode can freely browse Map, Studio, and Compare across all projects/scans.
+    const lockSingleScan = Boolean(info.isSingleScanLock);
+    setDisp("btnNavMap", !lockSingleScan, "inline-flex");
+    setDisp("btnNavCompare", !lockSingleScan, "inline-flex");
+    setDisp("btnStudioBackToTimeline", !lockSingleScan, "inline-flex");
+    setDisp("studioProjectSelect", !lockSingleScan, "inline-block");
     const studioScanSel = document.getElementById("studioScanSelect");
-    if (studioScanSel) studioScanSel.disabled = isGuest;
+    if (studioScanSel) studioScanSel.disabled = lockSingleScan;
 
-    // Advanced surveying tools hidden for Guest (Guest keeps Distance, Area, Coordinates, Snap, Clear)
+    // 5. Basic measurement tools (Distance, Area, Coordinates, Snap, Clear) honor allowMeasurements
+    [
+      "btnMeasureDistance",
+      "btnMeasureArea",
+      "btnMeasureCoordinates",
+      "btnMeasureCoords",
+      "btnMeasureSnap",
+      "btnSnapToggle",
+      "btnMeasureClear",
+      "btnClearMeasurements",
+    ].forEach((id) => setDisp(id, info.allowMeasurements, "inline-flex"));
+
+    // 6. Advanced surveying tools hidden for Guest role (Viewer+ gets full surveying suite)
+    const showAdvancedSurvey = !info.isGuestRole && info.allowMeasurements;
     [
       "btnMeasureAngle",
       "btnMeasureLaser",
@@ -378,17 +442,36 @@
       "btnMeasureContours",
       "btnMeasureProfile",
       "btnMeasurePhotos",
-      "btnStudioSurveyReport",
       "btnDockVolume",
       "btnDockContours",
       "btnDockSection",
-      "btnDockComments",
-    ].forEach((id) => setDisp(id, !isGuest, "inline-flex"));
+    ].forEach((id) => setDisp(id, showAdvancedSurvey, "inline-flex"));
+
+    // 7. Comments & Deliverables honor allowComments / allowDownload
+    setDisp("btnDockComments", info.allowComments, "inline-flex");
+    setDisp("btnStudioDownloadObj", info.allowDownload, "inline-flex");
+    setDisp("btnStudioSurveyReport", showAdvancedSurvey && info.allowDownload, "inline-flex");
+
+    // 8. If current active Studio tool is no longer permitted after role change, reset cleanly
+    const advTools = new Set(["angle", "laser", "volume", "contours", "profile", "section", "photos"]);
+    const wfTools = new Set(["optimizer", "crop", "crop_delete", "align_merge"]);
+    if (!info.canRunWorkflows && STATE.multiAlign?.active && typeof exitMultiScanAlignMode === "function") {
+      exitMultiScanAlignMode(true);
+    }
+    if (
+      (!showAdvancedSurvey && advTools.has(STATE.activeTool)) ||
+      (!info.canRunWorkflows && wfTools.has(STATE.activeTool)) ||
+      (!info.allowComments && STATE.activeTool === "comments") ||
+      (!info.allowMeasurements && ["distance", "area", "coordinates"].includes(STATE.activeTool))
+    ) {
+      STATE.activeTool = info.allowMeasurements ? "distance" : "orbit";
+      document.getElementById("studioSidePanel")?.classList.remove("active");
+    }
 
     // Role badge in Settings Admin Control Panel
-    const badgeRole = document.getElementById("badgeCurrentUserRoleLevel");
+    const badgeRole = document.getElementById("badgeCurrentUserRoleLevel") || document.getElementById("adminCurrentUserRolePill");
     if (badgeRole) {
-      badgeRole.textContent = `Active Role: ${info.label}`;
+      badgeRole.textContent = `Active Role: L${info.level} — ${info.label}`;
     }
     const adminForm = document.getElementById("adminUserEditorForm");
     if (adminForm) {
@@ -472,7 +555,7 @@
     // Google Maps attribution badge (bottom-left)
     const gAttr = document.createElement("div");
     gAttr.style.cssText =
-      "position:absolute;bottom:10px;left:14px;background:rgba(255,255,255,0.92);border:1px solid #cbd5e1;border-radius:6px;padding:3px 9px;font-size:11px;font-weight:600;color:#0f172a;z-index:400;pointer-events:none;box-shadow:0 2px 8px rgba(15,23,42,0.12);";
+      "position:absolute;bottom:10px;left:14px;background:var(--ui-bg-window);border:1px solid var(--ui-border-strong);border-radius:6px;padding:3px 9px;font-size:11px;font-weight:600;color:var(--ui-text-primary);z-index:400;pointer-events:none;box-shadow:var(--ui-shadow-hud);";
     gAttr.textContent = "Google Maps · TWD97 (121) + TWVD2001";
     container.appendChild(gAttr);
 
@@ -480,9 +563,11 @@
     const zoomCtrl = document.createElement("div");
     zoomCtrl.className = "gs-map-zoom-controls";
     zoomCtrl.innerHTML = `
-      <button type="button" class="gs-map-zoom-btn" id="btnMapZoomIn" title="Zoom In">+</button>
-      <button type="button" class="gs-map-zoom-btn" id="btnMapZoomOut" title="Zoom Out">−</button>
-      <button type="button" class="gs-map-zoom-btn" id="btnMapResetView" title="Fit All Scan Sites" style="font-size:11px;">⟲</button>
+      <button type="button" class="gs-map-zoom-btn" id="btnMapZoomIn" title="Zoom In" aria-label="Zoom In">+</button>
+      <button type="button" class="gs-map-zoom-btn" id="btnMapZoomOut" title="Zoom Out" aria-label="Zoom Out">−</button>
+      <button type="button" class="gs-map-zoom-btn" id="btnMapResetView" title="Fit All Scan Sites" aria-label="Fit All Scan Sites">
+        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+      </button>
     `;
     container.appendChild(zoomCtrl);
 
@@ -977,7 +1062,10 @@
     });
 
     gsMap.drawMap();
-    if (visibleGroups.length > 0) {
+    if (STATE.activeProjectGroup === "__all__") {
+      document.getElementById("clusterHoverPopover")?.classList.remove("active");
+      document.querySelectorAll(".scan-cluster-blob").forEach((b) => b.classList.remove("active-cluster"));
+    } else if (visibleGroups.length > 0) {
       const activeGrp =
         visibleGroups.find((g) => g.project_group === STATE.activeProjectGroup) || visibleGroups[0];
       openClusterPopover(activeGrp);
@@ -1055,7 +1143,7 @@
 
     const btnShare = document.getElementById("btnPopoverShareGroup");
     if (btnShare) {
-      btnShare.style.display = STATE.shareToken ? "none" : "inline-flex";
+      btnShare.style.display = !STATE.shareToken && getCurrentUserRoleInfo().level >= 3 ? "inline-flex" : "none";
       btnShare.onclick = () => {
         openSharingModal("group", grp.project_group);
       };
@@ -1108,26 +1196,38 @@
                 <rect x="3" y="3" width="18" height="18" rx="2"/><line x1="12" y1="3" x2="12" y2="21"/>
               </svg>
             </button>
-            <a class="btn-xs" href="${scan.download_obj_url}" download title="Download .OBJ Mesh">
-              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8">
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                <polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
-              </svg>
-            </a>
-            <button type="button" class="btn-xs" data-action="comments" title="Comments (${scan.comment_count || 0})">
-              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8">
-                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
-              </svg>
-            </button>
             ${
-              !STATE.shareToken
+              getCurrentUserRoleInfo().allowDownload
+                ? `<a class="btn-xs" href="${scan.download_obj_url}" download title="Download .OBJ Mesh">
+                    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8">
+                      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                      <polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+                    </svg>
+                  </a>`
+                : ""
+            }
+            ${
+              getCurrentUserRoleInfo().allowComments
+                ? `<button type="button" class="btn-xs" data-action="comments" title="Comments (${scan.comment_count || 0})">
+                    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8">
+                      <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+                    </svg>
+                  </button>`
+                : ""
+            }
+            ${
+              !STATE.shareToken && getCurrentUserRoleInfo().level >= 3
                 ? `<button type="button" class="btn-xs" data-action="share" title="Create Scoped Share Link">
                     <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8">
                       <circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/>
                       <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/>
                     </svg>
-                  </button>
-                  <button type="button" class="btn-xs" data-action="rename" title="Edit Scan Name">
+                  </button>`
+                : ""
+            }
+            ${
+              !STATE.shareToken && getCurrentUserRoleInfo().canEditNames
+                ? `<button type="button" class="btn-xs" data-action="rename" title="Edit Scan Name">
                     <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8">
                       <path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
                     </svg>
@@ -1150,17 +1250,17 @@
         openSiteTimeline(scan.project_group, scan.scan_id);
       });
 
-      card.querySelector('[data-action="open3d"]').addEventListener("click", () => {
+      card.querySelector('[data-action="open3d"]')?.addEventListener("click", () => {
         STATE.activeProjectGroup = scan.project_group;
         populateProjectScanDropdowns(scan.project_group, scan.scan_id);
         switchView("studio", scan.scan_id);
       });
-      card.querySelector('[data-action="compare"]').addEventListener("click", () => {
+      card.querySelector('[data-action="compare"]')?.addEventListener("click", () => {
         STATE.activeProjectGroup = scan.project_group;
         const other = grp.scans.find((s) => s.scan_id !== scan.scan_id) || scan;
         launchMultiDateCompare(other.scan_id, scan.scan_id);
       });
-      card.querySelector('[data-action="comments"]').addEventListener("click", () => {
+      card.querySelector('[data-action="comments"]')?.addEventListener("click", () => {
         STATE.activeProjectGroup = scan.project_group;
         populateProjectScanDropdowns(scan.project_group, scan.scan_id);
         switchView("studio", scan.scan_id);
@@ -1765,7 +1865,8 @@
     const grpName =
       projectGroup ||
       STATE.activeProjectGroup ||
-      (allGroups[0] ? allGroups[0].project_group : "Project Site");
+      (allGroups[0] ? allGroups[0].project_group : "__all__");
+    const isAllProjects = grpName === "__all__";
     STATE.activeProjectGroup = grpName;
     STATE.siteTimelineOpen = true;
 
@@ -1775,19 +1876,20 @@
     }
     splitEl.classList.add("active");
     document.querySelectorAll(".scan-cluster-blob").forEach((b) => {
-      b.classList.toggle("active-cluster", b.dataset.projectGroup === grpName);
+      b.classList.toggle("active-cluster", !isAllProjects && b.dataset.projectGroup === grpName);
     });
     if (STATE.activeView === "map") {
       syncPreviewRendererContainer();
       if (gsMap && gsMap.drawMap) gsMap.drawMap();
     }
 
-    let siteScans = STATE.scans
-      .filter((s) => s.project_group === grpName)
+    let siteScans = (isAllProjects ? STATE.scans : STATE.scans.filter((s) => s.project_group === grpName))
       .slice()
       .sort((a, b) => String(b.capture_date || "").localeCompare(String(a.capture_date || "")));
     if (!siteScans.length) {
-      siteScans = STATE.scans.slice();
+      siteScans = STATE.scans
+        .slice()
+        .sort((a, b) => String(b.capture_date || "").localeCompare(String(a.capture_date || "")));
     }
 
     const chosenScan =
@@ -1797,17 +1899,31 @@
 
     populateProjectScanDropdowns(grpName, chosenScan ? chosenScan.scan_id : null);
 
+    const roleInfo = getCurrentUserRoleInfo();
+    const btnRenSite = document.getElementById("btnRenameTimelineSite");
+    if (btnRenSite) {
+      btnRenSite.style.display = roleInfo.canEditNames && !isAllProjects ? "inline-flex" : "none";
+    }
+
     // Populate Header
     const titleEl = document.getElementById("timelineSiteTitle");
-    if (titleEl) titleEl.textContent = grpName;
+    if (titleEl) {
+      titleEl.textContent = isAllProjects ? "All Project Sites (全部工區)" : grpName;
+    }
     const countEl = document.getElementById("timelineSiteCountPill");
-    if (countEl) countEl.textContent = `${siteScans.length} Scan${siteScans.length === 1 ? "" : "s"}`;
+    if (countEl) {
+      countEl.textContent = isAllProjects
+        ? `${allGroups.length} Site${allGroups.length === 1 ? "" : "s"} · ${siteScans.length} Scan${siteScans.length === 1 ? "" : "s"}`
+        : `${siteScans.length} Scan${siteScans.length === 1 ? "" : "s"}`;
+    }
     const subEl = document.getElementById("timelineSiteSubtitle");
     if (subEl && siteScans[0]) {
-      subEl.textContent = `${siteScans[0].project_name_zh || "工程掃描群組"} · Select a scan tile on the timeline to preview below`;
+      subEl.textContent = isAllProjects
+        ? "All project sites sorted newest-first · Select any scan tile to preview below"
+        : `${siteScans[0].project_name_zh || "工程掃描群組"} · Select a scan tile on the timeline to preview below`;
     }
     const timelineProjSel = document.getElementById("timelineProjectSelect");
-    if (timelineProjSel) {
+    if (timelineProjSel && Array.from(timelineProjSel.options).some((o) => o.value === grpName)) {
       timelineProjSel.value = grpName;
     }
     const mapProjSel = document.getElementById("mapProjectSelect");
@@ -1827,30 +1943,39 @@
         const thumbSrc = s.thumbnail_url || `/api/scans/${encodeURIComponent(s.scan_id)}/thumbnail`;
         const texRes = Number(s.texture_resolution || 4096);
         const texLabel = texRes >= 8192 ? "8K" : texRes >= 4096 ? "4K" : "2K";
+        const safeName = escapeHtml(s.name || s.scan_id);
+        const safeUploader = escapeHtml(s.uploader_name || "Engineer");
+        const safeEmail = escapeHtml(s.uploader_email || "");
+        const safeGroup = escapeHtml(s.project_group || "");
 
         tile.innerHTML = `
           <div class="gs-tile-thumb-wrap">
-            <img class="gs-tile-thumb" data-scan-thumb="${s.scan_id}" src="${thumbSrc}" alt="${s.name}" />
+            <img class="gs-tile-thumb" data-scan-thumb="${escapeHtml(s.scan_id)}" src="${thumbSrc}" alt="${safeName}" />
             <div class="gs-tile-badge-row">
               <span class="gs-tile-chip">${s.image_count || 0} imgs · ${texLabel}</span>
               <span class="gs-tile-chip ${isSelected ? "active-indicator" : ""}" data-rtk-chip="1">${formatCoveredAreaM2(s)}</span>
             </div>
           </div>
           <div class="gs-tile-meta">
-            <div class="gs-tile-date-row">
-              <span class="gs-tile-date">${s.capture_date}</span>
+            <div class="gs-tile-date-row" style="display:flex;align-items:center;justify-content:space-between;gap:4px;">
+              <span class="gs-tile-date">${escapeHtml(s.capture_date || "")}</span>
+              ${
+                isAllProjects && safeGroup
+                  ? `<span style="font-size:9.5px;font-weight:700;padding:1px 5px;border-radius:4px;background:var(--ui-accent-soft);color:var(--ui-accent);max-width:96px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${safeGroup}">${safeGroup}</span>`
+                  : ""
+              }
             </div>
-            <div class="gs-tile-uploader" title="${s.uploader_name} (${s.uploader_email})">
+            <div class="gs-tile-uploader" title="${safeUploader} (${safeEmail})">
               <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0;">
                 <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>
               </svg>
-              <span>${s.uploader_name}</span>
+              <span>${safeUploader}</span>
             </div>
             <div style="display:flex;align-items:center;justify-content:space-between;gap:4px;min-width:0;">
-              <div class="gs-tile-name" title="${s.name}" style="flex:1;min-width:0;">${s.name}</div>
+              <div class="gs-tile-name" title="${safeName}" style="flex:1;min-width:0;">${safeName}</div>
               ${
-                !STATE.shareToken
-                  ? `<button type="button" class="btn-xs" data-rename-tile="${s.scan_id}" title="Edit Scan Name" style="height:18px;padding:0 4px;flex-shrink:0;">
+                roleInfo.canEditNames
+                  ? `<button type="button" class="btn-xs" data-rename-tile="${escapeHtml(s.scan_id)}" title="Edit Scan Name" style="height:18px;padding:0 4px;flex-shrink:0;">
                       <svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" stroke-width="2">
                         <path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
                       </svg>
@@ -2263,7 +2388,17 @@
   // ============================================================================
   let studioThree = null;
 
-  // Apply Scan Brightness (0.1x – 4.0x) and optional Z-Elevation Heatmap to any Three.js material
+  let _defaultBaseElevTex = null;
+  function getDefaultBaseElevTex() {
+    if (!_defaultBaseElevTex && window.THREE) {
+      const data = new Uint8Array([128, 0, 0, 0]);
+      _defaultBaseElevTex = new THREE.DataTexture(data, 1, 1, THREE.RGBAFormat, THREE.UnsignedByteType);
+      _defaultBaseElevTex.needsUpdate = true;
+    }
+    return _defaultBaseElevTex;
+  }
+
+  // Apply Scan Brightness (0.1x – 4.0x) and optional Z / Delta-Z Elevation Heatmap to any Three.js material
   function applyBrightnessToMaterial(mat, brightness) {
     if (!mat) return;
     const b = Math.max(0.1, Math.min(4.0, Number(brightness) || 1.0));
@@ -2278,9 +2413,17 @@
       mat.color.copy(mat.userData._origColor);
     }
 
-    const heatmapFlag = mat.userData._elevationHeatmapActive ? 1.0 : 0.0;
+    const heatmapFlag = mat.userData._elevationHeatmapActive
+      ? mat.userData._deltaZMode
+        ? 2.0
+        : 1.0
+      : 0.0;
     const elevMin = Number.isFinite(mat.userData._elevMin) ? mat.userData._elevMin : -14.0;
     const elevMax = Number.isFinite(mat.userData._elevMax) ? mat.userData._elevMax : 24.0;
+    const baseTex = mat.userData._baseElevTex || getDefaultBaseElevTex();
+    const baseBounds = mat.userData._baseBounds || new THREE.Vector4(-80, -80, 80, 80);
+    const baseYRange = mat.userData._baseYRange || new THREE.Vector2(-20, 30);
+    const baseMeanY = Number.isFinite(mat.userData._baseMeanY) ? mat.userData._baseMeanY : 0.0;
 
     if (!mat.userData.PassUniforms) {
       mat.userData.PassUniforms = {
@@ -2288,18 +2431,26 @@
         uElevationHeatmap: { value: heatmapFlag },
         uElevMin: { value: elevMin },
         uElevMax: { value: elevMax },
+        uBaseElevMap: { value: baseTex },
+        uBaseBounds: { value: baseBounds },
+        uBaseYRange: { value: baseYRange },
+        uBaseMeanY: { value: baseMeanY },
       };
     } else {
       if (mat.userData.PassUniforms.uBrightness) mat.userData.PassUniforms.uBrightness.value = b;
       if (mat.userData.PassUniforms.uElevationHeatmap) mat.userData.PassUniforms.uElevationHeatmap.value = heatmapFlag;
       if (mat.userData.PassUniforms.uElevMin) mat.userData.PassUniforms.uElevMin.value = elevMin;
       if (mat.userData.PassUniforms.uElevMax) mat.userData.PassUniforms.uElevMax.value = elevMax;
+      if (mat.userData.PassUniforms.uBaseElevMap) mat.userData.PassUniforms.uBaseElevMap.value = baseTex;
+      if (mat.userData.PassUniforms.uBaseBounds) mat.userData.PassUniforms.uBaseBounds.value = baseBounds;
+      if (mat.userData.PassUniforms.uBaseYRange) mat.userData.PassUniforms.uBaseYRange.value = baseYRange;
+      if (mat.userData.PassUniforms.uBaseMeanY) mat.userData.PassUniforms.uBaseMeanY.value = baseMeanY;
     }
 
     if (!mat.userData._hasBrightnessShader) {
       mat.userData._hasBrightnessShader = true;
       mat.customProgramCacheKey = function () {
-        return `GS_ScanShader_v3_${mat.type || "Standard"}_${mat.map ? "1" : "0"}_${mat.vertexColors ? "1" : "0"}`;
+        return `GS_ScanShader_v4_${mat.type || "Standard"}_${mat.map ? "1" : "0"}_${mat.vertexColors ? "1" : "0"}`;
       };
       const prevOnBeforeCompile = mat.onBeforeCompile;
       mat.onBeforeCompile = function (shader, renderer) {
@@ -2310,17 +2461,21 @@
         shader.uniforms.uElevationHeatmap = mat.userData.PassUniforms.uElevationHeatmap;
         shader.uniforms.uElevMin = mat.userData.PassUniforms.uElevMin;
         shader.uniforms.uElevMax = mat.userData.PassUniforms.uElevMax;
+        shader.uniforms.uBaseElevMap = mat.userData.PassUniforms.uBaseElevMap;
+        shader.uniforms.uBaseBounds = mat.userData.PassUniforms.uBaseBounds;
+        shader.uniforms.uBaseYRange = mat.userData.PassUniforms.uBaseYRange;
+        shader.uniforms.uBaseMeanY = mat.userData.PassUniforms.uBaseMeanY;
 
         shader.vertexShader = shader.vertexShader.replace(
           "#include <common>",
           `#include <common>
-           varying float vGsWorldY;`
+           varying vec3 vGsWorldPos;`
         );
         shader.vertexShader = shader.vertexShader.replace(
           "#include <project_vertex>",
           `#include <project_vertex>
-           vec4 gsWorldPos = modelMatrix * vec4(transformed, 1.0);
-           vGsWorldY = gsWorldPos.y;`
+           vec4 gsWorldPos4 = modelMatrix * vec4(transformed, 1.0);
+           vGsWorldPos = gsWorldPos4.xyz;`
         );
 
         shader.fragmentShader = shader.fragmentShader.replace(
@@ -2330,15 +2485,19 @@
            uniform float uElevationHeatmap;
            uniform float uElevMin;
            uniform float uElevMax;
-           varying float vGsWorldY;
+           uniform sampler2D uBaseElevMap;
+           uniform vec4 uBaseBounds;
+           uniform vec2 uBaseYRange;
+           uniform float uBaseMeanY;
+           varying vec3 vGsWorldPos;
            vec3 gcScanPhotoColor = vec3(0.0);
            bool gcHasPhotoColor = false;
            vec3 gsElevationRamp(float t) {
-             vec3 c0 = vec3(0.14, 0.38, 0.92); // Deep Blue (Low Z)
+             vec3 c0 = vec3(0.14, 0.38, 0.92); // Deep Blue (Cut / Low Z)
              vec3 c1 = vec3(0.02, 0.71, 0.83); // Cyan
-             vec3 c2 = vec3(0.06, 0.73, 0.51); // Emerald Green (Mid Z)
+             vec3 c2 = vec3(0.06, 0.73, 0.51); // Emerald Green (0.0m / Mid Z)
              vec3 c3 = vec3(0.96, 0.62, 0.04); // Amber
-             vec3 c4 = vec3(0.94, 0.27, 0.27); // Red (High Z)
+             vec3 c4 = vec3(0.94, 0.27, 0.27); // Red (Fill / High Z)
              if (t < 0.25) return mix(c0, c1, t * 4.0);
              if (t < 0.50) return mix(c1, c2, (t - 0.25) * 4.0);
              if (t < 0.75) return mix(c2, c3, (t - 0.50) * 4.0);
@@ -2366,11 +2525,24 @@
           `#include <dithering_fragment>
            vec3 basePhoto = gcHasPhotoColor ? gcScanPhotoColor : gl_FragColor.rgb;
            vec3 litPhoto = basePhoto * uBrightness;
-           if (uElevationHeatmap > 0.5) {
-             float elevT = clamp((vGsWorldY - uElevMin) / max(0.5, uElevMax - uElevMin), 0.0, 1.0);
+           if (uElevationHeatmap > 1.5) {
+             vec2 uvBase = clamp((vGsWorldPos.xz - uBaseBounds.xy) / max(vec2(1.0), uBaseBounds.zw - uBaseBounds.xy), 0.0, 1.0);
+             vec4 bSample = texture2D(uBaseElevMap, uvBase);
+             float normH = bSample.r + (bSample.g / 255.0);
+             float baseY = (bSample.a > 0.5) ? mix(uBaseYRange.x, uBaseYRange.y, clamp(normH, 0.0, 1.0)) : uBaseMeanY;
+             float dz = vGsWorldPos.y - baseY;
+             float halfSpan = max(0.5, uElevMax);
+             float elevT = clamp(0.5 + (dz / (halfSpan * 2.0)), 0.0, 1.0);
              vec3 ramp = gsElevationRamp(elevT);
              float luma = clamp(dot(litPhoto, vec3(0.299, 0.587, 0.114)), 0.22, 1.15);
-             float contourBand = smoothstep(0.91, 0.99, abs(fract(vGsWorldY * 0.5) * 2.0 - 1.0));
+             float contourBand = smoothstep(0.91, 0.99, abs(fract(dz * 1.0) * 2.0 - 1.0));
+             vec3 heatRgb = mix(ramp * (0.52 + 0.56 * luma), litPhoto, 0.18);
+             gl_FragColor.rgb = mix(heatRgb, heatRgb * 1.25, contourBand * 0.32);
+           } else if (uElevationHeatmap > 0.5) {
+             float elevT = clamp((vGsWorldPos.y - uElevMin) / max(0.5, uElevMax - uElevMin), 0.0, 1.0);
+             vec3 ramp = gsElevationRamp(elevT);
+             float luma = clamp(dot(litPhoto, vec3(0.299, 0.587, 0.114)), 0.22, 1.15);
+             float contourBand = smoothstep(0.91, 0.99, abs(fract(vGsWorldPos.y * 0.5) * 2.0 - 1.0));
              vec3 heatRgb = mix(ramp * (0.52 + 0.56 * luma), litPhoto, 0.20);
              gl_FragColor.rgb = mix(heatRgb, heatRgb * 1.25, contourBand * 0.32);
            } else {
@@ -2479,6 +2651,14 @@
     const commentPinsGroup = new THREE.Group();
     scene.add(commentPinsGroup);
 
+    const multiAlignGroup = new THREE.Group();
+    multiAlignGroup.visible = false;
+    scene.add(multiAlignGroup);
+
+    const gizmoGroup = new THREE.Group();
+    gizmoGroup.visible = false;
+    scene.add(gizmoGroup);
+
     const raycaster = new THREE.Raycaster();
     const mouse = new THREE.Vector2();
 
@@ -2496,6 +2676,8 @@
       polyPreviewGroup,
       contourGroup,
       commentPinsGroup,
+      multiAlignGroup,
+      gizmoGroup,
       raycaster,
       mouse,
       tilesRenderer: null,
@@ -2504,18 +2686,132 @@
     };
 
     buildReferenceTerrainMesh(studioThree);
+    buildStudioTransformGizmo(studioThree);
+
+    // Freehand 2D/3D Lasso Drag State for Scan Editing (Lasso Delete & Spatial Crop)
+    const _lassoState = {
+      dragging: false,
+      screenPts: [],
+      downClient: { x: 0, y: 0 },
+    };
+
+    const pickStudio3DOrPlanePoint = (clientX, clientY, fallbackY = 0) => {
+      const hit = pickStudio3DPoint(clientX, clientY);
+      if (hit) return hit;
+      const rect = renderer.domElement.getBoundingClientRect();
+      mouse.x = ((clientX - rect.left) / rect.width) * 2 - 1;
+      mouse.y = -((clientY - rect.top) / rect.height) * 2 + 1;
+      raycaster.setFromCamera(mouse, camera);
+      const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -fallbackY);
+      const pt = new THREE.Vector3();
+      if (raycaster.ray.intersectPlane(plane, pt)) return pt;
+      return null;
+    };
+
+    const updateLassoSvgVisual = () => {
+      const svg = document.getElementById("studioLassoSvg");
+      const poly = document.getElementById("studioLassoPolygon");
+      const line = document.getElementById("studioLassoPolyline");
+      if (!svg || !poly || !line) return;
+      if (!_lassoState.dragging || _lassoState.screenPts.length < 2) {
+        svg.classList.remove("active");
+        return;
+      }
+      svg.classList.add("active");
+      svg.classList.toggle("keep-mode", STATE.activeTool === "crop");
+      const ptsStr = _lassoState.screenPts.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" ");
+      poly.setAttribute("points", ptsStr);
+      line.setAttribute("points", ptsStr);
+    };
 
     // Pointer click & live rubberband preview handler for 3D Measurements & Tools
     let downPos = { x: 0, y: 0 };
     renderer.domElement.addEventListener("pointerdown", (e) => {
       downPos = { x: e.clientX, y: e.clientY };
+      if (STATE.activeView === "studio" && STATE.multiAlign.active && STATE.activeTool === "align_merge") {
+        if (handleGizmoPointerDown(e)) return;
+      }
+      if (
+        e.button === 0 &&
+        !e.altKey &&
+        !e.ctrlKey &&
+        STATE.activeView === "studio" &&
+        (STATE.activeTool === "crop_delete" || STATE.activeTool === "crop") &&
+        STATE.lassoInputMethod !== "polygon"
+      ) {
+        const rect = renderer.domElement.getBoundingClientRect();
+        _lassoState.dragging = true;
+        _lassoState.downClient = { x: e.clientX, y: e.clientY };
+        _lassoState.screenPts = [{ x: e.clientX - rect.left, y: e.clientY - rect.top, cx: e.clientX, cy: e.clientY }];
+        controls.enabled = false;
+        updateLassoSvgVisual();
+      }
     });
     renderer.domElement.addEventListener("pointerup", (e) => {
+      if (_lassoState.dragging) {
+        _lassoState.dragging = false;
+        controls.enabled = true;
+        const svg = document.getElementById("studioLassoSvg");
+        if (svg) svg.classList.remove("active");
+        const dragDist = Math.hypot(e.clientX - _lassoState.downClient.x, e.clientY - _lassoState.downClient.y);
+        if (_lassoState.screenPts.length >= 5 && dragDist > 12) {
+          // Subsample screen lasso points into 3D world polygon
+          const step = Math.max(1, Math.floor(_lassoState.screenPts.length / 28));
+          const sampledScreen = [];
+          for (let i = 0; i < _lassoState.screenPts.length; i += step) {
+            sampledScreen.push(_lassoState.screenPts[i]);
+          }
+          let lastValidY = Number(studioThree.grid?.position?.y) || 0;
+          const worldPts = [];
+          sampledScreen.forEach((sp) => {
+            const wp = pickStudio3DOrPlanePoint(sp.cx, sp.cy, lastValidY);
+            if (wp) {
+              lastValidY = wp.y;
+              if (!worldPts.length || worldPts[worldPts.length - 1].distanceTo(wp) > 0.15) {
+                worldPts.push(wp.clone());
+              }
+            }
+          });
+          if (worldPts.length >= 3) {
+            STATE.maskBoundaryPoints = worldPts;
+            STATE.measurePoints = [];
+            STATE.polygonLocked = true;
+            const isDelete = STATE.activeTool === "crop_delete";
+            STATE.cropMode = isDelete ? "delete_inside" : "keep_inside";
+            drawLassoSelection3D(worldPts, isDelete);
+            showToast(
+              isDelete
+                ? `Lasso Delete region selected (${worldPts.length} pts) — click 'Delete Selected Part' to apply`
+                : `Lasso Crop region selected (${worldPts.length} pts) — click 'Crop & Keep Inside' to apply`
+            );
+            openOptimizerInspector(STATE.cropMode);
+            return;
+          }
+        }
+      }
+      if (handleGizmoPointerUp(e)) return;
       if (Math.hypot(e.clientX - downPos.x, e.clientY - downPos.y) > 6) return;
+      if (STATE.activeView === "studio" && STATE.multiAlign.active && STATE.activeTool === "align_merge") {
+        if (handleMultiAlignCanvasClick(e)) return;
+      }
       handleStudioCanvasClick(e);
     });
     renderer.domElement.addEventListener("pointermove", (e) => {
       if (STATE.activeView !== "studio") return;
+      if (_lassoState.dragging) {
+        const rect = renderer.domElement.getBoundingClientRect();
+        const nx = e.clientX - rect.left;
+        const ny = e.clientY - rect.top;
+        const last = _lassoState.screenPts[_lassoState.screenPts.length - 1];
+        if (!last || Math.hypot(nx - last.x, ny - last.y) >= 5) {
+          _lassoState.screenPts.push({ x: nx, y: ny, cx: e.clientX, cy: e.clientY });
+          updateLassoSvgVisual();
+        }
+        return;
+      }
+      if (STATE.multiAlign.active && STATE.activeTool === "align_merge") {
+        if (handleGizmoPointerMove(e)) return;
+      }
       if (STATE.activeTool === "laser") {
         handleStudioLaserMove(e);
       } else if (STATE.activeTool === "distance" && STATE.measurePoints.length === 1) {
@@ -2527,6 +2823,8 @@
         (STATE.activeTool === "volume" ||
           STATE.activeTool === "area" ||
           STATE.activeTool === "contours" ||
+          STATE.activeTool === "crop" ||
+          STATE.activeTool === "crop_delete" ||
           (STATE.activeTool === "profile" && STATE.measurePoints.length === 1)) &&
         STATE.measurePoints.length >= 1
       ) {
@@ -2549,8 +2847,8 @@
       requestAnimationFrame(animate);
       if (STATE.activeView !== "studio") return;
       controls.update();
-      if (studioThree.tilesRenderer) {
-        camera.updateMatrixWorld();
+      camera.updateMatrixWorld();
+      if (studioThree.tilesRenderer && studioThree.modelPivot.visible) {
         studioThree.tilesRenderer.update();
         syncTilesLoaderProgress(studioThree, "studio");
         studioThree.tilesRenderer.group.traverse((child) => {
@@ -2570,6 +2868,10 @@
           }
         });
       }
+      if (STATE.multiAlign.active && studioThree.multiAlignGroup.visible) {
+        updateMultiAlignLayersEachFrame();
+      }
+      updateStudioTransformGizmo();
       updateZoomInvariantElements();
       renderer.render(scene, camera);
       update2DBadgePositions();
@@ -2623,12 +2925,18 @@
     const scan = STATE.scans.find((s) => s.scan_id === scanId) || STATE.scans[0];
     if (!scan || !studioThree) return;
 
+    if (STATE.multiAlign?.active && typeof exitMultiScanAlignMode === "function") {
+      exitMultiScanAlignMode(false);
+    }
+
     STATE.activeScanId = scan.scan_id;
     STATE.activeScan = scan;
-    STATE.activeProjectGroup = scan.project_group || "QuChi Dam";
+    if (STATE.activeProjectGroup !== "__all__") {
+      STATE.activeProjectGroup = scan.project_group || "QuChi Dam";
+    }
 
     // Filter active scan dropdown strictly to this project's scans (Fix #4)
-    populateProjectScanDropdowns(STATE.activeProjectGroup, scan.scan_id);
+    populateProjectScanDropdowns(scan.project_group || "QuChi Dam", scan.scan_id);
 
     const sel = document.getElementById("studioScanSelect");
     if (sel) sel.value = scan.scan_id;
@@ -2805,9 +3113,16 @@
     studioThree.raycaster.setFromCamera(studioThree.mouse, studioThree.camera);
 
     const targets = [];
-    studioThree.modelPivot.traverse((c) => {
-      if (c.isMesh && c.visible) targets.push(c);
-    });
+    if (studioThree.modelPivot && studioThree.modelPivot.visible) {
+      studioThree.modelPivot.traverse((c) => {
+        if (c.isMesh && c.visible) targets.push(c);
+      });
+    }
+    if (studioThree.multiAlignGroup && studioThree.multiAlignGroup.visible) {
+      studioThree.multiAlignGroup.traverse((c) => {
+        if (c.isMesh && c.visible && !c.userData?.isAlignBoxHelper) targets.push(c);
+      });
+    }
     if (studioThree.fallbackGroup && studioThree.fallbackGroup.visible) {
       studioThree.fallbackGroup.traverse((c) => {
         if (c.isMesh && c.visible) targets.push(c);
@@ -2977,7 +3292,18 @@
 
   function setActiveStudioTool(toolName) {
     if (!toolName) return;
+    if (STATE.activeTool === "section" && toolName !== "section") {
+      clearSectionBoxClippingIfNotKept();
+    }
+    if (STATE.multiAlign?.active && toolName !== "align_merge" && typeof exitMultiScanAlignMode === "function") {
+      exitMultiScanAlignMode(true);
+    }
     STATE.activeTool = toolName;
+    if (studioThree && studioThree.gizmoGroup) {
+      studioThree.gizmoGroup.visible = Boolean(
+        STATE.multiAlign?.active && toolName === "align_merge" && STATE.multiAlign?.selectedScanId
+      );
+    }
     clearTempDistanceVisuals();
     if (studioThree && studioThree.polyPreviewGroup) {
       while (studioThree.polyPreviewGroup.children.length > 0) {
@@ -2985,11 +3311,21 @@
       }
     }
     document
-      .querySelectorAll('#bimMeasurementToolbar .autodesk-measure-btn:not([data-tool="snap"])')
-      .forEach((b) => b.classList.toggle("active", b.dataset.tool === toolName));
-    document
-      .querySelectorAll("#bimBottomDock .bim-dock-btn")
-      .forEach((b) => b.classList.toggle("active", b.dataset.dock === toolName));
+      .querySelectorAll(
+        '#bimBottomDock .bim-dock-btn:not([data-tool="snap"]):not(#btnClearMeasurements):not(#btnMeasureClear), #studioEditingDock .bim-dock-btn'
+      )
+      .forEach((b) => {
+        const key = b.dataset.tool || b.dataset.dock || "";
+        b.classList.toggle("active", key === toolName);
+      });
+    const lassoSvg = document.getElementById("studioLassoSvg");
+    if (lassoSvg && toolName !== "crop" && toolName !== "crop_delete") {
+      lassoSvg.classList.remove("active");
+    }
+    if (studioThree && studioThree.renderer && studioThree.renderer.domElement) {
+      studioThree.renderer.domElement.style.cursor =
+        toolName === "crop" || toolName === "crop_delete" ? "crosshair" : "";
+    }
   }
 
   function clearTempDistanceVisuals() {
@@ -3224,6 +3560,51 @@
     updateZoomInvariantElements();
   }
 
+  function drawLassoSelection3D(pts, isDelete = true) {
+    if (!studioThree || !pts || pts.length < 2) return;
+    clearAreaVisualsOnly();
+    const colorHex = isDelete ? 0xef4444 : 0x10b981;
+    const borderCss = isDelete ? "#ef4444" : "#10b981";
+    const addCropObj = (m) => {
+      m.userData.isAreaVisual = true;
+      studioThree.overlayGroup.add(m);
+    };
+    const maxPins = 12;
+    const pinStep = Math.max(1, Math.floor(pts.length / maxPins));
+    pts.forEach((p, idx) => {
+      if (idx === 0 || idx % pinStep === 0 || pts.length <= maxPins) {
+        add3DPinMarker(p, idx === 0 ? 0xff3b30 : colorHex, studioThree.overlayGroup, addCropObj);
+      }
+    });
+    const loopPts = pts.length >= 3 ? [...pts, pts[0]] : pts;
+    const lineGeom = new THREE.BufferGeometry().setFromPoints(loopPts);
+    const lineMesh = new THREE.Line(
+      lineGeom,
+      new THREE.LineBasicMaterial({ color: colorHex, depthTest: false, linewidth: 2 })
+    );
+    lineMesh.renderOrder = 1000;
+    addCropObj(lineMesh);
+
+    if (pts.length >= 3) {
+      let area2 = 0;
+      for (let i = 0; i < pts.length; i++) {
+        const a = pts[i];
+        const b = pts[(i + 1) % pts.length];
+        area2 += a.x * b.z - b.x * a.z;
+      }
+      const areaM2 = Math.abs(area2) * 0.5;
+      const centroid = pts.reduce((acc, p) => acc.add(p.clone()), new THREE.Vector3()).divideScalar(pts.length);
+      add2DBadge(
+        centroid,
+        isDelete
+          ? `🗑️ Lasso Delete Zone: <b>${areaM2.toFixed(1)} m²</b> (${pts.length} pts)`
+          : `✂️ Lasso Keep Zone: <b>${areaM2.toFixed(1)} m²</b> (${pts.length} pts)`,
+        borderCss,
+        { isArea: true }
+      );
+    }
+  }
+
   // Live rubberband preview for Area, Cut/Fill Volume & Cross-Section Profile placement
   function renderPolygonRubberband(hoverPt) {
     if (!studioThree || !studioThree.polyPreviewGroup) return;
@@ -3272,11 +3653,20 @@
     const isNearStartVertex = (clickPt, startPt) => {
       if (!startPt || !studioThree || !studioThree.camera) return false;
       const cam = studioThree.camera;
-      const h = Math.max(1, studioThree.renderer.domElement.clientHeight);
+      const domEl = studioThree.renderer?.domElement;
+      const w = Math.max(1, domEl?.clientWidth || 1);
+      const h = Math.max(1, domEl?.clientHeight || 1);
+      const pClick = clickPt.clone().project(cam);
+      const pStart = startPt.clone().project(cam);
+      const sxClick = (pClick.x * 0.5 + 0.5) * w;
+      const syClick = (-pClick.y * 0.5 + 0.5) * h;
+      const sxStart = (pStart.x * 0.5 + 0.5) * w;
+      const syStart = (-pStart.y * 0.5 + 0.5) * h;
+      if (Math.hypot(sxClick - sxStart, syClick - syStart) <= 18) return true;
       const fovRad = THREE.MathUtils.degToRad(cam.fov);
       const dist = cam.position.distanceTo(startPt);
       const worldPerPixel = (2 * Math.tan(fovRad / 2) * dist) / h;
-      const snapRadius = Math.max(0.05, Math.min(1.8, 18 * worldPerPixel));
+      const snapRadius = Math.max(0.08, 18 * worldPerPixel);
       return clickPt.distanceTo(startPt) < snapRadius;
     };
 
@@ -3390,14 +3780,53 @@
       return;
     }
 
+    if (tool === "crop" || tool === "crop_delete") {
+      const isDelete = tool === "crop_delete";
+      if (STATE.measurePoints.length >= 3 && isNearStartVertex(pt, STATE.measurePoints[0])) {
+        if (studioThree && studioThree.polyPreviewGroup) {
+          while (studioThree.polyPreviewGroup.children.length > 0) {
+            studioThree.polyPreviewGroup.remove(studioThree.polyPreviewGroup.children[0]);
+          }
+        }
+        const lockedPts = STATE.measurePoints.map((p) => p.clone());
+        STATE.maskBoundaryPoints = lockedPts;
+        STATE.measurePoints = [];
+        STATE.polygonLocked = true;
+        STATE.cropMode = isDelete ? "delete_inside" : "keep_inside";
+        drawLassoSelection3D(lockedPts, isDelete);
+        showToast(
+          isDelete
+            ? `Lasso Delete polygon locked (${lockedPts.length} vertices)`
+            : `Lasso Crop polygon locked (${lockedPts.length} vertices)`
+        );
+        openOptimizerInspector(STATE.cropMode);
+        return;
+      }
+      STATE.polygonLocked = false;
+      STATE.measurePoints.push(pt.clone());
+      const pts = STATE.measurePoints.slice();
+      drawLassoSelection3D(pts, isDelete);
+      if (pts.length >= 3) {
+        STATE.maskBoundaryPoints = pts.map((p) => p.clone());
+        openOptimizerInspector(isDelete ? "delete_inside" : "keep_inside");
+        showToast(
+          `${isDelete ? "Lasso Delete" : "Crop"} Polygon: ${pts.length} vertices placed — click red V1 (or press Enter) to lock`
+        );
+      } else {
+        showToast(
+          `${isDelete ? "Lasso Delete" : "Crop"} Point ${pts.length} placed — drag freehand lasso or click ${3 - pts.length} more point${3 - pts.length === 1 ? "" : "s"}`
+        );
+      }
+      return;
+    }
+
     if (tool === "volume") {
       if (STATE.polygonLocked && STATE.measurePoints.length === 0) {
         showToast("Cut/Fill boundary is locked — click 'Redraw Polygon' in the Cut/Fill panel to draw a new zone");
         return;
       }
-      // Allow clicking 3+ points on the 3D scan to place & refine the Cut/Fill polygon
+      // Clicking near start point V1 closes and locks the polygon AND then computes volume
       if (STATE.measurePoints.length >= 3 && isNearStartVertex(pt, STATE.measurePoints[0])) {
-        // Clicking near start point closes and locks the polygon AND immediately computes volume
         if (studioThree && studioThree.polyPreviewGroup) {
           while (studioThree.polyPreviewGroup.children.length > 0) {
             studioThree.polyPreviewGroup.remove(studioThree.polyPreviewGroup.children[0]);
@@ -3418,14 +3847,16 @@
       const pts = STATE.measurePoints.slice();
       STATE.cutFillPolygonPoints = pts.map((p) => p.clone());
 
-      // Immediately draw the placed vertices & edges in volumeGroup so they never disappear
+      // Draw placed vertices & edges in volumeGroup without running volume calculation until polygon is locked
       drawPlacedCutFillPolygon3D(pts, null);
 
       if (pts.length >= 3) {
         STATE.maskBoundaryPoints = pts.map((p) => p.clone());
-        openCutFillVolumeInspector(pts);
+        openCutFillVolumeInspector(null);
+        showToast(`Cut/Fill: ${pts.length} vertices placed — click red start point V1 (or press Enter / Lock & Compute) to calculate volume`);
       } else {
-        showToast(`Cut/Fill Point ${pts.length} placed — click ${3 - pts.length} more point${3 - pts.length === 1 ? "" : "s"} to compute volume`);
+        openCutFillVolumeInspector(null);
+        showToast(`Cut/Fill Point ${pts.length} placed — click ${3 - pts.length} more point${3 - pts.length === 1 ? "" : "s"} to form boundary`);
       }
       return;
     }
@@ -3718,8 +4149,19 @@
       "Vertex #,TWD97 Easting E (m),TWD97 Northing N (m),TWVD2001 Elevation H (m)",
       ...boundaryTwd97.map((v) => `V${v.vertex},${v.easting_m},${v.northing_m},${v.twvd2001_h_m}`),
     ];
+    if (STATE._lastVolCsvBlobUrl) {
+      try {
+        URL.revokeObjectURL(STATE._lastVolCsvBlobUrl);
+      } catch (_) {}
+    }
+    if (STATE._lastVolHtmlBlobUrl) {
+      try {
+        URL.revokeObjectURL(STATE._lastVolHtmlBlobUrl);
+      } catch (_) {}
+    }
     const csvBlob = new Blob(["\uFEFF" + csvLines.join("\r\n")], { type: "text/csv;charset=utf-8" });
     const csvUrl = URL.createObjectURL(csvBlob);
+    STATE._lastVolCsvBlobUrl = csvUrl;
 
     const htmlDoc = `<!DOCTYPE html><html lang="zh-Hant"><head><meta charset="utf-8"><title>Stockpile Volume Report — ${escapeHtml(
       opts.stockpile_name || "Stockpile A"
@@ -3753,6 +4195,7 @@
       .join("")}</tbody></table></body></html>`;
     const htmlBlob = new Blob([htmlDoc], { type: "text/html;charset=utf-8" });
     const htmlUrl = URL.createObjectURL(htmlBlob);
+    STATE._lastVolHtmlBlobUrl = htmlUrl;
 
     return {
       status: "ok",
@@ -3979,7 +4422,7 @@
     } else {
       add2DBadge(
         badgePos,
-        `Computing Cut/Fill Volume (${pts.length} pts)...`,
+        `Boundary: <b>${pts.length} vertices</b> — Click red V1 (or press Enter) to lock &amp; compute volume`,
         "#0284c7",
         { isVolume: true }
       );
@@ -3990,6 +4433,19 @@
   // ============================================================================
   // 3. CIVIL ENGINEERING INSPECTOR PANELS (Volume, Contours, Profile, Photos, Optimizer)
   // ============================================================================
+  function clearSectionBoxClippingIfNotKept() {
+    if (!studioThree || !studioThree.renderer) return;
+    if (!STATE.keepSectionBoxClip) {
+      studioThree.renderer.clippingPlanes = [];
+      if (studioThree._sectionBoxHelper) {
+        studioThree.overlayGroup?.remove(studioThree._sectionBoxHelper);
+        if (studioThree._sectionBoxHelper.geometry) studioThree._sectionBoxHelper.geometry.dispose();
+        if (studioThree._sectionBoxHelper.material) studioThree._sectionBoxHelper.material.dispose();
+        studioThree._sectionBoxHelper = null;
+      }
+    }
+  }
+
   function showSidePanel(title, htmlContent) {
     const panel = document.getElementById("studioSidePanel");
     const titleEl = document.getElementById("sidePanelTitle");
@@ -4001,6 +4457,7 @@
   }
 
   document.getElementById("btnCloseSidePanel")?.addEventListener("click", () => {
+    clearSectionBoxClippingIfNotKept();
     document.getElementById("studioSidePanel")?.classList.remove("active");
   });
 
@@ -4009,26 +4466,30 @@
     setActiveStudioTool("volume");
     if (customPts && customPts.length >= 3) {
       STATE.cutFillPolygonPoints = customPts.map((p) => p.clone());
+      STATE.polygonLocked = true;
     }
-    const resolveCurrentVolumePts = () => {
-      if (STATE.measurePoints && STATE.measurePoints.length >= 3) {
-        return STATE.measurePoints.slice();
+    const resolveLockedVolumePts = () => {
+      if (customPts && customPts.length >= 3) {
+        return customPts.slice();
       }
-      if (STATE.cutFillPolygonPoints && STATE.cutFillPolygonPoints.length >= 3) {
+      if (STATE.polygonLocked && STATE.cutFillPolygonPoints && STATE.cutFillPolygonPoints.length >= 3) {
         return STATE.cutFillPolygonPoints.slice();
       }
-      if (STATE.maskBoundaryPoints && STATE.maskBoundaryPoints.length >= 3) {
-        return STATE.maskBoundaryPoints.slice();
-      }
-      const defPts = getDefaultPolygonOnStudioMesh();
-      STATE.cutFillPolygonPoints = defPts;
-      return defPts;
+      return [];
     };
 
     const activeScan = STATE.activeScan || STATE.scans.find((s) => s.scan_id === STATE.activeScanId) || {};
     const defaultZoneName = `${activeScan.name || STATE.activeScanId || "Site"} — Earthwork / Stockpile Zone A`;
-    const initialPts = resolveCurrentVolumePts();
-    const meanPtY = initialPts.reduce((acc, p) => acc + (p.y || 0), 0) / Math.max(1, initialPts.length);
+    const candidatePts =
+      resolveLockedVolumePts().length >= 3
+        ? resolveLockedVolumePts()
+        : STATE.measurePoints?.length
+        ? STATE.measurePoints
+        : [];
+    const meanPtY =
+      candidatePts.length > 0
+        ? candidatePts.reduce((acc, p) => acc + (p.y || 0), 0) / candidatePts.length
+        : 0;
     const defaultDatumZ = Number(((Number(activeScan.twd97_h || 43.18) + meanPtY)).toFixed(2));
 
     const panel = document.getElementById("studioSidePanel");
@@ -4052,7 +4513,8 @@
         `<span>Cut/Fill &amp; Stockpile Volume</span>`,
         `
         <div style="font-size:11px;color:var(--ui-text-secondary);background:var(--ui-bg-pill);border:1px solid var(--ui-border-strong);border-radius:7px;padding:7px 9px;margin-bottom:9px;line-height:1.4;">
-          Click <b>3+ points</b> on the 3D scan to place a Cut/Fill boundary polygon. Click red start point <b>V1</b> to lock, or press <b>Compute</b> to analyze.
+          Step 1: Click <b>3+ points</b> on the 3D scan to draw a Cut/Fill boundary polygon.<br>
+          Step 2: Click red start point <b>V1</b> (or press <b>Enter</b> / <b>Lock &amp; Compute</b>) to lock the polygon and calculate volume.
         </div>
         <div class="gs-form-group">
           <label>Zone / Stockpile Name (土方或物料堆名稱)</label>
@@ -4081,11 +4543,11 @@
           </div>
         </div>
         <div style="display:flex;gap:6px;margin-bottom:8px;">
-          <button type="button" class="gs-top-btn accent" style="flex:1.6;justify-content:center;" id="btnRunVolumeCalc" title="Compute Cut/Fill Volume &amp; Tonnage">
+          <button type="button" class="gs-top-btn accent" style="flex:1.6;justify-content:center;" id="btnRunVolumeCalc" title="Lock Polygon &amp; Compute Cut/Fill Volume">
             <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8">
               <path d="M3 18L9 8l5 6 4-4 3 8H3z"/>
             </svg>
-            <span id="lblRunVolumeCalc">Compute</span>
+            <span id="lblRunVolumeCalc">Lock &amp; Compute</span>
           </button>
           <button type="button" class="gs-top-btn" style="flex:1;justify-content:center;" id="btnResetVolumePoly" title="Clear &amp; Draw New Boundary Polygon">
             <span>Redraw Polygon</span>
@@ -4101,20 +4563,25 @@
         matSel.addEventListener("change", () => {
           const opt = matSel.options[matSel.selectedIndex];
           if (opt && opt.dataset.density) densInput.value = opt.dataset.density;
-          runCalc();
+          if (STATE.polygonLocked && STATE.cutFillPolygonPoints?.length >= 3) {
+            runCalc();
+          }
         });
       }
       const datumInput = document.getElementById("volDatumZ");
       const modeSel = document.getElementById("volBaseMode");
       if (datumInput && modeSel) {
         datumInput.addEventListener("input", () => {
-          // Automatically switch to Custom Datum Plane Z₀ mode when user edits Datum Elev Z₀
           if (modeSel.value === "triangulated_boundary") {
             modeSel.value = "custom_plane";
           }
         });
-        datumInput.addEventListener("change", () => runCalc());
-        modeSel.addEventListener("change", () => runCalc());
+        datumInput.addEventListener("change", () => {
+          if (STATE.polygonLocked && STATE.cutFillPolygonPoints?.length >= 3) runCalc();
+        });
+        modeSel.addEventListener("change", () => {
+          if (STATE.polygonLocked && STATE.cutFillPolygonPoints?.length >= 3) runCalc();
+        });
       }
       document.getElementById("btnResetVolumePoly")?.addEventListener("click", () => {
         setActiveStudioTool("volume");
@@ -4122,23 +4589,73 @@
         STATE.measurePoints = [];
         STATE.cutFillPolygonPoints = [];
         STATE.maskBoundaryPoints = [];
+        STATE.lastVolumeResult = null;
         clearVolumeVisualsOnly();
-        const box = document.getElementById("volResultContainer");
-        if (box) {
-          box.innerHTML = `<div style="font-size:11.5px;color:var(--ui-accent);padding:8px;background:var(--ui-bg-subtle);border-radius:7px;border:1px solid var(--ui-border);">Polygon cleared — click <b>3+ points</b> on the 3D scan to define a new Cut/Fill zone, or press <b>Compute</b> to auto-fit center zone.</div>`;
-        }
-        showToast("Click 3+ points on the 3D scan to draw a new Cut/Fill polygon");
+        renderUnlockedVolumePrompt();
+        showToast("Click 3+ points on the 3D scan and close on V1 to draw a new Cut/Fill polygon");
       });
     }
 
-    async function runCalc(ptsOverride = null) {
+    function renderUnlockedVolumePrompt() {
+      const box = document.getElementById("volResultContainer");
+      if (!box) return;
+      const placedCount = STATE.measurePoints?.length || 0;
       const btnLbl = document.getElementById("lblRunVolumeCalc");
-      if (btnLbl) btnLbl.textContent = "Computing...";
+      if (btnLbl) {
+        btnLbl.textContent = placedCount >= 3 ? `Lock (${placedCount} pts) & Compute` : "Lock & Compute";
+      }
+      if (placedCount === 0) {
+        box.innerHTML = `
+          <div style="font-size:11.5px;color:var(--ui-text-secondary);padding:10px;background:var(--ui-bg-subtle);border-radius:8px;border:1px dashed var(--ui-border-strong);line-height:1.5;">
+            <b style="color:var(--ui-accent);">Awaiting Boundary Polygon (尚未繪製範圍)</b><br>
+            Click at least <b>3 points</b> around a stockpile or excavation zone on the 3D scan, then click the red start point <b>V1</b> (or press <b>Enter</b>) to lock the polygon and calculate volume.
+          </div>
+        `;
+      } else if (placedCount < 3) {
+        box.innerHTML = `
+          <div style="font-size:11.5px;color:var(--ui-text-primary);padding:10px;background:var(--ui-bg-subtle);border-radius:8px;border:1px solid var(--ui-accent);line-height:1.5;">
+            <b>Drawing Polygon: ${placedCount} / 3+ vertices placed</b><br>
+            Click <b>${3 - placedCount} more point${3 - placedCount === 1 ? "" : "s"}</b> on the 3D scan to form a valid boundary.
+          </div>
+        `;
+      } else {
+        box.innerHTML = `
+          <div style="font-size:11.5px;color:var(--ui-text-primary);padding:10px;background:var(--ui-accent-soft);border-radius:8px;border:1px solid var(--ui-accent);line-height:1.5;">
+            <b style="color:var(--ui-accent);">Ready to Lock: ${placedCount} vertices placed</b><br>
+            Click the red start point <b>V1</b> on the 3D scan, press <b>Enter</b>, or click <b>Lock (${placedCount} pts) &amp; Compute</b> above to calculate earthwork volume.
+          </div>
+        `;
+      }
+    }
 
-      const ptsToUse =
+    async function runCalc(ptsOverride = null) {
+      let ptsToUse =
         ptsOverride && ptsOverride.length >= 3
           ? ptsOverride
-          : resolveCurrentVolumePts();
+          : resolveLockedVolumePts();
+
+      // If the user placed 3+ vertices and clicked "Lock & Compute", lock those vertices now
+      if ((!ptsToUse || ptsToUse.length < 3) && STATE.measurePoints && STATE.measurePoints.length >= 3) {
+        if (studioThree && studioThree.polyPreviewGroup) {
+          while (studioThree.polyPreviewGroup.children.length > 0) {
+            studioThree.polyPreviewGroup.remove(studioThree.polyPreviewGroup.children[0]);
+          }
+        }
+        ptsToUse = STATE.measurePoints.map((p) => p.clone());
+        STATE.cutFillPolygonPoints = ptsToUse;
+        STATE.maskBoundaryPoints = ptsToUse.map((p) => p.clone());
+        STATE.measurePoints = [];
+        STATE.polygonLocked = true;
+      }
+
+      if (!ptsToUse || ptsToUse.length < 3) {
+        renderUnlockedVolumePrompt();
+        showToast("Please click at least 3 points on the 3D scan and lock the polygon first.");
+        return;
+      }
+
+      const btnLbl = document.getElementById("lblRunVolumeCalc");
+      if (btnLbl) btnLbl.textContent = "Computing...";
 
       const opts = {
         scan_id: STATE.activeScanId,
@@ -4154,7 +4671,7 @@
       STATE.lastVolumeResult = clientRes;
       renderVolumeResultAnd3D(clientRes, ptsToUse);
 
-      // 2. Also query backend DSM engine for multi-epoch comparison & server archival
+      // 2. Also query backend DSM engine for multi-epoch comparison & server archival (only once polygon is locked)
       const polyPayload = ptsToUse.map((p) => {
         const t = localToTwd97(p);
         return [t.e, t.n, t.h];
@@ -4168,14 +4685,12 @@
           const useClientMeshExact = clientRes.hit_ratio > 0 && opts.base_mode !== "epoch_diff";
           let mergedRes;
           if (useClientMeshExact) {
-            // Preserve live Three.js mesh-exact elevations, heatmap_cells, and matching HTML/CSV reports
             mergedRes = {
               ...srvRes,
               ...clientRes,
               _resolvedPtsLocal: ptsToUse,
             };
           } else {
-            // Align backend heatmap_cells vertically to the Three.js mesh vertices so columns sit flush on the scan
             const meshMeanY = ptsToUse.reduce((a, p) => a + p.y, 0) / Math.max(1, ptsToUse.length);
             const srvCells = Array.isArray(srvRes.heatmap_cells) ? srvRes.heatmap_cells : [];
             const srvMeanY =
@@ -4203,7 +4718,7 @@
       } catch (_) {
         // Client-side 3D mesh raycast result is already rendered and downloadable
       } finally {
-        if (btnLbl) btnLbl.textContent = "Compute";
+        if (btnLbl) btnLbl.textContent = "Recompute";
       }
     }
 
@@ -4212,7 +4727,7 @@
       btnCalc.onclick = () => {
         runCalc().then(() => {
           const r = STATE.lastVolumeResult;
-          if (r) {
+          if (r && STATE.polygonLocked) {
             showToast(
               `Computed: Fill +${r.fill_volume_m3} m³ · Cut -${r.cut_volume_m3} m³ · Mass ${r.estimated_tonnage_t} t`
             );
@@ -4220,7 +4735,13 @@
         });
       };
     }
-    await runCalc(customPts);
+
+    const lockedPts = resolveLockedVolumePts();
+    if (lockedPts.length >= 3) {
+      await runCalc(lockedPts);
+    } else {
+      renderUnlockedVolumePrompt();
+    }
   }
 
   function renderVolumeResultAnd3D(res, customPts = null) {
@@ -4344,22 +4865,19 @@
             </div>
           </div>
         </div>
-        <button type="button" class="gs-top-btn accent" style="width:100%;justify-content:center;margin-bottom:8px;" id="btnGenerateContours" title="Generate Civil3D.dwg &amp; A3 Ready-to-Print PDF Survey Report">
+        <button type="button" class="gs-top-btn accent" style="width:100%;justify-content:center;margin-bottom:8px;" id="btnGenerateContours" title="Generate .DXF (AutoCAD / Civil 3D) &amp; A3 Ready-to-Print PDF Survey Report">
           <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8">
             <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>
           </svg>
-          <span>Create Survey Report</span>
+          <span>Create Survey Report (.DXF + A3 PDF)</span>
         </button>
         <div id="cntResultContainer"></div>
         `
       );
 
       document.getElementById("btnDrawCustomMask")?.addEventListener("click", () => {
-        STATE.activeTool = "contours";
+        setActiveStudioTool("contours");
         STATE.measurePoints = [];
-        document
-          .querySelectorAll('#bimMeasurementToolbar .autodesk-measure-btn:not([data-tool="snap"])')
-          .forEach((b) => b.classList.toggle("active", b.dataset.tool === "contours"));
         showToast("Click 3+ points on the 3D scan to draw a custom Mask Boundary");
       });
 
@@ -4617,21 +5135,18 @@
           </div>
         </div>
         <div style="display:flex;gap:6px;margin-top:8px;">
-          <a class="btn-xs primary" style="flex:1.2;justify-content:center;" href="${res.civil3d_dwg_url || res.dwg_url}" download="Civil3D.dwg" title="Download Civil3D.dwg (Real TWD97 XYZ + A3 Engineering Frame)">
+          <a class="btn-xs primary" style="flex:1.4;justify-content:center;" href="${res.dxf_url || res.civil3d_dxf_url || res.civil3d_dwg_url || res.dwg_url}" download="Civil3D.dxf" title="Download .DXF (AutoCAD / Civil 3D — Real TWD97 XYZ + A3 Engineering Frame)">
             <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8">
               <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
               <polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
             </svg>
-            <span>Civil3D.dwg</span>
+            <span>.DXF (AutoCAD / Civil 3D)</span>
           </a>
           <a class="btn-xs primary" style="flex:1;justify-content:center;" href="${res.pdf_url}" target="_blank" title="Open Ready-to-Print A3 Survey Report (.PDF)">
             <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8">
               <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>
             </svg>
             <span>A3 PDF</span>
-          </a>
-          <a class="btn-xs" style="flex:0.8;justify-content:center;" href="${res.dxf_url}" download title="Export AutoCAD .DXF">
-            <span>DXF</span>
           </a>
         </div>
       `;
@@ -4671,7 +5186,7 @@
       });
     }
 
-    showToast(`Survey Report ready: Civil3D.dwg + A3 PDF (${res.contour_count} clipped contours, 1:${res.scale_denom || 250})`);
+    showToast(`Survey Report ready: .DXF (AutoCAD / Civil 3D) + A3 PDF (${res.contour_count} clipped contours, 1:${res.scale_denom || 250})`);
   }
 
   // 3C. Cross-Section Elevation Profile Graph (Client-Side 3D Mesh Raycaster + Backend Multi-Epoch DSM)
@@ -5264,48 +5779,147 @@
     }
   }
 
-  // 3E. Section Box Clipping Inspector
+  // 3E. Section Box Clipping Inspector (Auto-scaled to scan bounds + 6-plane clipping + 3D wireframe box)
   function openSectionBoxInspector() {
+    setActiveStudioTool("section");
+    const rawR = Math.max(20, Number(studioThree?.boundingSphere?.radius) || 65);
+    const maxHoriz = Math.ceil(rawR * 1.35);
+    const initHoriz = Math.ceil(rawR * 1.05);
+    const maxElev = Math.max(25, Math.ceil(rawR * 0.75));
+    const minElev = -Math.max(20, Math.ceil(rawR * 0.55));
+    const initYTop = Math.ceil(maxElev * 0.85);
+    const initYBot = Math.floor(minElev * 0.85);
+
     showSidePanel(
-      `<span>Section Box Slicer</span>`,
+      `<span>Section Box Slicer (3D 剖面盒)</span>`,
       `
-      <div class="gs-form-group">
-        <label>East-West Clipping Bound (±X m)</label>
-        <input type="range" min="5" max="80" value="65" class="gs-input" id="secClipX" />
+      <div style="font-size:11px;color:var(--ui-text-secondary);background:var(--ui-bg-pill);border:1px solid var(--ui-border-strong);border-radius:7px;padding:7px 9px;margin-bottom:9px;line-height:1.4;">
+        Auto-scaled to scan bounding radius (<b>${Math.round(rawR)} m</b>). Drag sliders to slice the 3D scan along X, Z, Top (+Y), and Bottom (-Y) planes.
       </div>
       <div class="gs-form-group">
-        <label>Elevation Clipping Bound (+Y TWVD2001 m)</label>
-        <input type="range" min="-5" max="40" value="30" class="gs-input" id="secClipY" />
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+          <label>East-West Clipping Bound (±X m)</label>
+          <span id="lblSecClipX" style="font-size:11px;font-family:var(--font-mono);color:var(--ui-accent);">±${initHoriz} m</span>
+        </div>
+        <input type="range" min="2" max="${maxHoriz}" step="1" value="${initHoriz}" class="gs-input" id="secClipX" />
       </div>
       <div class="gs-form-group">
-        <label>North-South Clipping Bound (±Z m)</label>
-        <input type="range" min="5" max="80" value="65" class="gs-input" id="secClipZ" />
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+          <label>North-South Clipping Bound (±Z m)</label>
+          <span id="lblSecClipZ" style="font-size:11px;font-family:var(--font-mono);color:var(--ui-accent);">±${initHoriz} m</span>
+        </div>
+        <input type="range" min="2" max="${maxHoriz}" step="1" value="${initHoriz}" class="gs-input" id="secClipZ" />
       </div>
-      <button type="button" class="btn-xs" id="btnResetSectionBox" style="width:100%;" title="Reset Clipping Planes">Reset</button>
+      <div class="gs-form-group">
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+          <label>Top Ceiling Bound (+Y Elevation m)</label>
+          <span id="lblSecClipY" style="font-size:11px;font-family:var(--font-mono);color:var(--ui-accent);">+${initYTop} m</span>
+        </div>
+        <input type="range" min="${minElev}" max="${maxElev}" step="0.5" value="${initYTop}" class="gs-input" id="secClipY" />
+      </div>
+      <div class="gs-form-group">
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+          <label>Bottom Floor Bound (-Y Elevation m)</label>
+          <span id="lblSecClipYMin" style="font-size:11px;font-family:var(--font-mono);color:var(--ui-accent);">${initYBot} m</span>
+        </div>
+        <input type="range" min="${minElev}" max="${maxElev}" step="0.5" value="${initYBot}" class="gs-input" id="secClipYMin" />
+      </div>
+      <label style="display:flex;align-items:center;gap:7px;font-size:11.5px;color:var(--ui-text-primary);cursor:pointer;margin:8px 0 10px;">
+        <input type="checkbox" id="chkKeepSectionClip" ${STATE.keepSectionBoxClip ? "checked" : ""} />
+        <span>Keep Clipping Active When Panel Closed (關閉面板後保留剖面裁切)</span>
+      </label>
+      <button type="button" class="gs-top-btn" id="btnResetSectionBox" style="width:100%;justify-content:center;" title="Reset Clipping Planes">
+        <span>Reset Section Box</span>
+      </button>
       `
     );
 
+    const updateWireframeBox = (cx, cz, yMin, yMax) => {
+      if (!studioThree || !studioThree.overlayGroup) return;
+      if (studioThree._sectionBoxHelper) {
+        studioThree.overlayGroup.remove(studioThree._sectionBoxHelper);
+        if (studioThree._sectionBoxHelper.geometry) studioThree._sectionBoxHelper.geometry.dispose();
+        if (studioThree._sectionBoxHelper.material) studioThree._sectionBoxHelper.material.dispose();
+        studioThree._sectionBoxHelper = null;
+      }
+      const w = Math.max(0.5, cx * 2);
+      const h = Math.max(0.5, yMax - yMin);
+      const d = Math.max(0.5, cz * 2);
+      const boxGeo = new THREE.BoxGeometry(w, h, d);
+      const edgesGeo = new THREE.EdgesGeometry(boxGeo);
+      boxGeo.dispose();
+      const lineMat = new THREE.LineBasicMaterial({
+        color: 0x38bdf8,
+        depthTest: false,
+        transparent: true,
+        opacity: 0.85,
+      });
+      const wireframe = new THREE.LineSegments(edgesGeo, lineMat);
+      wireframe.position.set(0, 0.5 * (yMin + yMax), 0);
+      wireframe.renderOrder = 997;
+      studioThree.overlayGroup.add(wireframe);
+      studioThree._sectionBoxHelper = wireframe;
+    };
+
     const updateClip = () => {
       if (!studioThree) return;
-      const cx = parseFloat(document.getElementById("secClipX")?.value || "65");
-      const cy = parseFloat(document.getElementById("secClipY")?.value || "30");
-      const cz = parseFloat(document.getElementById("secClipZ")?.value || "65");
+      const cx = parseFloat(document.getElementById("secClipX")?.value || String(initHoriz));
+      const cz = parseFloat(document.getElementById("secClipZ")?.value || String(initHoriz));
+      let cyTop = parseFloat(document.getElementById("secClipY")?.value || String(initYTop));
+      let cyBot = parseFloat(document.getElementById("secClipYMin")?.value || String(initYBot));
+      if (cyBot >= cyTop - 0.5) {
+        cyBot = cyTop - 0.5;
+        const botEl = document.getElementById("secClipYMin");
+        if (botEl) botEl.value = String(cyBot);
+      }
+      const lblX = document.getElementById("lblSecClipX");
+      if (lblX) lblX.textContent = `±${cx} m`;
+      const lblZ = document.getElementById("lblSecClipZ");
+      if (lblZ) lblZ.textContent = `±${cz} m`;
+      const lblY = document.getElementById("lblSecClipY");
+      if (lblY) lblY.textContent = `${cyTop >= 0 ? "+" : ""}${cyTop} m`;
+      const lblYMin = document.getElementById("lblSecClipYMin");
+      if (lblYMin) lblYMin.textContent = `${cyBot >= 0 ? "+" : ""}${cyBot} m`;
+
       studioThree.renderer.clippingPlanes = [
         new THREE.Plane(new THREE.Vector3(-1, 0, 0), cx),
         new THREE.Plane(new THREE.Vector3(1, 0, 0), cx),
-        new THREE.Plane(new THREE.Vector3(0, -1, 0), cy),
+        new THREE.Plane(new THREE.Vector3(0, -1, 0), cyTop),
+        new THREE.Plane(new THREE.Vector3(0, 1, 0), -cyBot),
         new THREE.Plane(new THREE.Vector3(0, 0, -1), cz),
         new THREE.Plane(new THREE.Vector3(0, 0, 1), cz),
       ];
+      updateWireframeBox(cx, cz, cyBot, cyTop);
     };
 
-    ["secClipX", "secClipY", "secClipZ"].forEach((id) => {
+    ["secClipX", "secClipZ", "secClipY", "secClipYMin"].forEach((id) => {
       document.getElementById(id)?.addEventListener("input", updateClip);
     });
+    document.getElementById("chkKeepSectionClip")?.addEventListener("change", (e) => {
+      STATE.keepSectionBoxClip = Boolean(e.target.checked);
+    });
     document.getElementById("btnResetSectionBox")?.addEventListener("click", () => {
-      if (studioThree) studioThree.renderer.clippingPlanes = [];
+      const elX = document.getElementById("secClipX");
+      const elZ = document.getElementById("secClipZ");
+      const elY = document.getElementById("secClipY");
+      const elYMin = document.getElementById("secClipYMin");
+      if (elX) elX.value = String(maxHoriz);
+      if (elZ) elZ.value = String(maxHoriz);
+      if (elY) elY.value = String(maxElev);
+      if (elYMin) elYMin.value = String(minElev);
+      if (studioThree) {
+        studioThree.renderer.clippingPlanes = [];
+        if (studioThree._sectionBoxHelper) {
+          studioThree.overlayGroup?.remove(studioThree._sectionBoxHelper);
+          if (studioThree._sectionBoxHelper.geometry) studioThree._sectionBoxHelper.geometry.dispose();
+          if (studioThree._sectionBoxHelper.material) studioThree._sectionBoxHelper.material.dispose();
+          studioThree._sectionBoxHelper = null;
+        }
+      }
       showToast("Section Box clipping reset");
     });
+
+    updateClip();
   }
 
   // 3F. 3D Geo-Comments Inspector
@@ -5393,48 +6007,160 @@
     });
   }
 
-  // 3G. GC_ScanOptimizer PC Action Drawer (Requirement 3)
-  function openOptimizerInspector() {
-    showSidePanel(
-      `<span>GC_ScanOptimizer PC Actions</span>`,
-      `
-      <p style="font-size:11.5px;color:var(--ui-text-secondary);margin-bottom:10px;">
-        Invokes <code>c:\\Antigravity\\GC_ScanOptimizer</code> directly on the Windows workstation with a 2K texture limit.
-      </p>
-      <div class="gs-form-group">
-        <label>Optimization Preset (壓縮與串流預設)</label>
-        <select class="gs-select" id="optPresetSelect">
-          <option value="balanced" selected>Balanced Web Stream (50% Tris, 2K KTX2)</option>
-          <option value="quality">High Fidelity Quality (75% Tris, 2K KTX2)</option>
-          <option value="web">Fast Field Tablet (35% Tris, 1K KTX2)</option>
-          <option value="ultra_light">Ultra-Light Browser Offline Cache (20% Tris)</option>
-        </select>
-      </div>
-      <button type="button" class="gs-top-btn accent" style="width:100%;justify-content:center;margin-bottom:12px;" id="btnExecuteOptimize" title="Run Preset Optimization on PC">
-        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8">
-          <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
-        </svg>
-        <span>Optimize</span>
-      </button>
+  // 3G. Scan Editing: Lasso Delete, Spatial Crop & GC_ScanOptimizer PC Action Drawer (Requirement 3)
+  function openOptimizerInspector(preferredCropMode = null) {
+    if (preferredCropMode === "delete_inside") {
+      STATE.cropMode = "delete_inside";
+      if (STATE.activeTool !== "crop_delete") setActiveStudioTool("crop_delete");
+    } else if (preferredCropMode === "keep_inside") {
+      STATE.cropMode = "keep_inside";
+      if (STATE.activeTool !== "crop") setActiveStudioTool("crop");
+    } else if (STATE.activeTool !== "crop_delete" && STATE.activeTool !== "crop") {
+      setActiveStudioTool("optimizer");
+    }
+    const activeCropMode = STATE.cropMode || (STATE.activeTool === "crop_delete" ? "delete_inside" : "keep_inside");
+    const isDeleteMode = activeCropMode === "delete_inside";
+    const inputMethod = STATE.lassoInputMethod || "lasso";
+    const cropPolyCount =
+      STATE.maskBoundaryPoints?.length >= 3
+        ? STATE.maskBoundaryPoints.length
+        : STATE.measurePoints?.length >= 3
+        ? STATE.measurePoints.length
+        : 0;
 
-      <div style="border-top:1px solid var(--ui-border);padding-top:12px;margin-top:6px;">
-        <div class="gs-form-group">
-          <label>Spatial 3D Polygon &amp; Elevation Cutter (空間多邊形裁切)</label>
+    showSidePanel(
+      `<span>${
+        isDeleteMode
+          ? "Scan Editing: Lasso Delete (套索刪除局部掃描)"
+          : STATE.activeTool === "crop"
+          ? "Scan Editing: Lasso Crop / Keep (框選保留裁切)"
+          : "Scan Editing & GC_ScanOptimizer (掃描編輯與優化)"
+      }</span>`,
+      `
+      <div style="background:${
+        isDeleteMode ? "rgba(239,68,68,0.10)" : "rgba(16,185,129,0.10)"
+      };border:1px solid ${
+        isDeleteMode ? "rgba(239,68,68,0.35)" : "rgba(16,185,129,0.35)"
+      };border-radius:8px;padding:10px;margin-bottom:12px;">
+        <div style="font-size:12px;font-weight:700;color:${
+          isDeleteMode ? "#ef4444" : "#10b981"
+        };margin-bottom:4px;display:flex;align-items:center;justify-content:space-between;">
+          <span>${isDeleteMode ? "🗑️ Lasso Delete Part of Scan" : "✂️ Lasso Crop & Keep Inside"}</span>
+          <span style="font-size:10px;padding:1px 6px;border-radius:4px;background:var(--ui-bg-surface);color:var(--ui-text-secondary);">Editor+ Only</span>
+        </div>
+        <div style="font-size:11px;color:var(--ui-text-secondary);margin-bottom:8px;line-height:1.4;">
+          <b>Drag with Left Mouse Button</b> directly on the 3D scan to draw a freehand lasso around the part to ${
+            isDeleteMode ? "delete (e.g. vehicles, crane, noise, trees)" : "keep"
+          }, or click vertices to form a polygon.
+        </div>
+
+        <div class="gs-form-group" style="margin-bottom:8px;">
+          <label>Editing Action Mode (裁切與刪除模式)</label>
           <select class="gs-select" id="optCropMode">
-            <option value="keep_inside">Keep Inside Polygon (保留框選範圍內)</option>
-            <option value="delete_inside">Prune Inside Polygon (移除框選範圍內雜物)</option>
+            <option value="delete_inside" ${isDeleteMode ? "selected" : ""}>🗑️ Delete Inside Lasso (刪除套索選取範圍內之局部模型/雜物)</option>
+            <option value="keep_inside" ${!isDeleteMode ? "selected" : ""}>✂️ Keep Only Inside Lasso (僅保留套索選取範圍內之模型)</option>
           </select>
         </div>
-        <button type="button" class="gs-top-btn" style="width:100%;justify-content:center;" id="btnExecuteCrop" title="Execute SpatialCutter on PC">
-          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8">
+
+        <div style="display:flex;gap:5px;margin-bottom:8px;">
+          <button type="button" class="gs-top-btn ${inputMethod !== "polygon" ? "accent" : ""}" id="btnModeFreehandLasso" style="flex:1;justify-content:center;font-size:11px;">
+            <span>✏️ Freehand Drag Lasso (滑鼠拖曳套索)</span>
+          </button>
+          <button type="button" class="gs-top-btn ${inputMethod === "polygon" ? "accent" : ""}" id="btnModePolygonClick" style="flex:1;justify-content:center;font-size:11px;">
+            <span>📐 Polygon Clicks (多邊形點選)</span>
+          </button>
+        </div>
+
+        <div style="font-size:11px;color:var(--ui-text-secondary);margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;">
+          <span>Selected Boundary: <b>${cropPolyCount >= 3 ? `${cropPolyCount} pts locked` : "Drag lasso on 3D scan"}</b></span>
+          <button type="button" class="gs-top-btn" id="btnDrawCropPolygon" style="padding:2px 8px;font-size:10.5px;">
+            <span>Clear / Redraw</span>
+          </button>
+        </div>
+
+        <button type="button" class="gs-top-btn accent" style="width:100%;justify-content:center;padding:8px 12px;font-weight:700;${
+          isDeleteMode ? "background:#ef4444;border-color:#dc2626;color:#fff;" : ""
+        }" id="btnExecuteCrop" title="Execute Lasso Delete / SpatialCutter on PC">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
             <circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><line x1="20" y1="4" x2="8.12" y2="15.88"/><line x1="14.47" y1="14.48" x2="20" y2="20"/>
           </svg>
-          <span>Crop</span>
+          <span id="lblExecuteCropBtn">${
+            isDeleteMode
+              ? "Delete Selected Part of Scan (執行套索刪除)"
+              : "Crop & Keep Selected Part (執行框選保留)"
+          }</span>
+        </button>
+      </div>
+
+      <div style="border-top:1px solid var(--ui-border);padding-top:10px;margin-top:6px;">
+        <div style="font-size:12px;font-weight:700;color:var(--ui-text-primary);margin-bottom:4px;">
+          ⚡ GC_ScanOptimizer Mesh &amp; KTX2 Compression
+        </div>
+        <p style="font-size:11px;color:var(--ui-text-secondary);margin-bottom:8px;">
+          Invokes <code>c:\\Antigravity\\GC_ScanOptimizer</code> on the Windows workstation with a 2K texture limit.
+        </p>
+        <div class="gs-form-group">
+          <label>Optimization Preset (壓縮與串流預設)</label>
+          <select class="gs-select" id="optPresetSelect">
+            <option value="balanced" selected>Balanced Web Stream (50% Tris, 2K KTX2)</option>
+            <option value="quality">High Fidelity Quality (75% Tris, 2K KTX2)</option>
+            <option value="web">Fast Field Tablet (35% Tris, 1K KTX2)</option>
+            <option value="ultra_light">Ultra-Light Browser Offline Cache (20% Tris)</option>
+          </select>
+        </div>
+        <button type="button" class="gs-top-btn accent" style="width:100%;justify-content:center;" id="btnExecuteOptimize" title="Run Preset Optimization on PC">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8">
+            <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
+          </svg>
+          <span>Run Mesh Optimizer (執行網格優化)</span>
         </button>
       </div>
       <div id="optActionResult" style="margin-top:12px;"></div>
       `
     );
+
+    document.getElementById("optCropMode")?.addEventListener("change", (ev) => {
+      const val = ev.target.value;
+      STATE.cropMode = val;
+      setActiveStudioTool(val === "delete_inside" ? "crop_delete" : "crop");
+      if (STATE.maskBoundaryPoints?.length >= 3) {
+        drawLassoSelection3D(STATE.maskBoundaryPoints, val === "delete_inside");
+      }
+      openOptimizerInspector(val);
+    });
+
+    document.getElementById("btnModeFreehandLasso")?.addEventListener("click", () => {
+      STATE.lassoInputMethod = "lasso";
+      if (STATE.activeTool !== "crop_delete" && STATE.activeTool !== "crop") {
+        setActiveStudioTool(STATE.cropMode === "delete_inside" ? "crop_delete" : "crop");
+      }
+      openOptimizerInspector(STATE.cropMode);
+      showToast("Freehand Drag Lasso enabled — drag left mouse button over the 3D scan to select a region");
+    });
+
+    document.getElementById("btnModePolygonClick")?.addEventListener("click", () => {
+      STATE.lassoInputMethod = "polygon";
+      if (STATE.activeTool !== "crop_delete" && STATE.activeTool !== "crop") {
+        setActiveStudioTool(STATE.cropMode === "delete_inside" ? "crop_delete" : "crop");
+      }
+      openOptimizerInspector(STATE.cropMode);
+      showToast("Polygon Click mode enabled — click 3+ vertices on the 3D scan and click red V1 to lock");
+    });
+
+    document.getElementById("btnDrawCropPolygon")?.addEventListener("click", () => {
+      const targetTool = STATE.cropMode === "delete_inside" ? "crop_delete" : "crop";
+      setActiveStudioTool(targetTool);
+      STATE.polygonLocked = false;
+      STATE.measurePoints = [];
+      STATE.maskBoundaryPoints = [];
+      clearAreaVisualsOnly();
+      openOptimizerInspector(STATE.cropMode);
+      showToast(
+        STATE.lassoInputMethod === "polygon"
+          ? "Cleared selection — click 3+ points on the 3D scan to draw polygon"
+          : "Cleared selection — drag left mouse button on the 3D scan to lasso region"
+      );
+    });
 
     document.getElementById("btnExecuteOptimize")?.addEventListener("click", async () => {
       const preset = document.getElementById("optPresetSelect")?.value || "balanced";
@@ -5456,27 +6182,35 @@
           `;
         }
         showToast(`GC_ScanOptimizer finished: -${res.reduction_pct}% size reduction`);
+        await refreshScansCatalog();
+        if (STATE.activeScanId) loadScanIntoStudio(STATE.activeScanId);
       } catch (err) {
         showToast(`Optimizer Error: ${err.message}`);
       }
     });
 
     document.getElementById("btnExecuteCrop")?.addEventListener("click", async () => {
-      const mode = document.getElementById("optCropMode")?.value || "keep_inside";
-      const box = document.getElementById("optActionResult");
-      if (box) box.innerHTML = `<div style="font-size:12px;color:var(--ui-accent);">Running SpatialCutter (${mode}) on real 3D mesh tiles...</div>`;
+      const mode = document.getElementById("optCropMode")?.value || STATE.cropMode || "delete_inside";
       const activePolyPts =
         STATE.maskBoundaryPoints && STATE.maskBoundaryPoints.length >= 3
           ? STATE.maskBoundaryPoints
           : STATE.measurePoints && STATE.measurePoints.length >= 3
           ? STATE.measurePoints
           : null;
-      const polyPayload = activePolyPts
-        ? activePolyPts.map((p) => {
-            const t = localToTwd97(p);
-            return [t.e, t.n];
-          })
-        : [[-15, -15], [15, -15], [15, 15], [-15, 15]];
+      if (!activePolyPts || activePolyPts.length < 3) {
+        showToast("Please drag a freehand lasso (or click 3+ polygon points) on the 3D scan first.");
+        return;
+      }
+      const box = document.getElementById("optActionResult");
+      if (box) {
+        box.innerHTML = `<div style="font-size:12px;color:var(--ui-accent);">Running ${
+          mode === "delete_inside" ? "Lasso Delete (removing selected triangles)" : "Lasso Keep Crop"
+        } on real 3D mesh tiles...</div>`;
+      }
+      const polyPayload = activePolyPts.map((p) => {
+        const t = localToTwd97(p);
+        return [t.e, t.n];
+      });
       try {
         const res = await apiPost("/api/optimizer/crop", {
           scan_id: STATE.activeScanId,
@@ -5486,30 +6220,1268 @@
         if (box) {
           box.innerHTML = `
             <div style="background:var(--ui-bg-subtle);border:1px solid var(--ui-border-strong);border-radius:8px;padding:10px;font-size:12px;color:var(--ui-text-primary);">
-              <div style="color:var(--ui-accent);font-weight:700;">SpatialCutter Completed (${res.duration_s}s)</div>
-              <div>Mode: <b>${res.mode}</b> · Area: <b>${res.cropped_area_m2} m²</b></div>
+              <div style="color:${mode === "delete_inside" ? "#ef4444" : "#10b981"};font-weight:700;">✓ ${
+            mode === "delete_inside" ? "Lasso Delete Completed" : "Spatial Crop Completed"
+          } (${res.duration_s}s)</div>
+              <div>Action: <b>${res.mode}</b> · Lasso Area: <b>${res.cropped_area_m2} m²</b></div>
               <div>Tiles Sliced: <b>${res.tiles_sliced || 0}</b> · Pruned: <b>${res.tiles_pruned || 0}</b></div>
               <div style="font-size:10.5px;color:var(--ui-text-muted);">Output: ${res.output_dir}</div>
             </div>
           `;
         }
-        showToast("SpatialCutter polygon crop completed on PC");
+        showToast(
+          mode === "delete_inside"
+            ? "Deleted selected part of scan and reloaded 3D mesh!"
+            : "Cropped scan to selected boundary and reloaded 3D mesh!"
+        );
+        await refreshScansCatalog();
+        if (STATE.activeScanId) loadScanIntoStudio(STATE.activeScanId);
       } catch (err) {
         showToast(`Crop Error: ${err.message}`);
       }
     });
   }
 
-  // Toolbar Button Wiring
-  document.querySelectorAll("#bimMeasurementToolbar .autodesk-measure-btn").forEach((btn) => {
+  // =========================================================================
+  // MULTI-SCAN 3D ALIGNMENT & MERGE ENGINE (Move + Rotate Gizmos + Lock + Merge)
+  // =========================================================================
+  const MULTI_ALIGN_PALETTE = [
+    "#38bdf8", // Layer 1 Sky Blue
+    "#f59e0b", // Layer 2 Amber
+    "#10b981", // Layer 3 Emerald
+    "#ec4899", // Layer 4 Pink
+    "#a855f7", // Layer 5 Purple
+    "#eab308", // Layer 6 Yellow
+  ];
+
+  const _gizmoDrag = {
+    active: false,
+    handleType: null, // 'tx' | 'ty' | 'tz' | 'txz' | 'rx' | 'ry' | 'rz'
+    hoveredHandle: null,
+    layer: null,
+    startTx: 0,
+    startTy: 0,
+    startTz: 0,
+    startRx: 0,
+    startRy: 0,
+    startRz: 0,
+    originWorld: new THREE.Vector3(),
+    axisWorld: new THREE.Vector3(),
+    dragPlane: new THREE.Plane(),
+    startHitPt: new THREE.Vector3(),
+    startAngle: 0,
+  };
+
+  function buildStudioTransformGizmo(ctx) {
+    if (!ctx || !ctx.gizmoGroup) return;
+    while (ctx.gizmoGroup.children.length > 0) {
+      ctx.gizmoGroup.remove(ctx.gizmoGroup.children[0]);
+    }
+    const handles = [];
+
+    const makeMat = (hex, opacity = 0.95) =>
+      new THREE.MeshBasicMaterial({
+        color: hex,
+        depthTest: false,
+        depthWrite: false,
+        transparent: true,
+        opacity,
+        side: THREE.DoubleSide,
+      });
+
+    const makeHitMat = () =>
+      new THREE.MeshBasicMaterial({
+        color: 0xffffff,
+        depthTest: false,
+        depthWrite: false,
+        transparent: true,
+        opacity: 0.001,
+        side: THREE.DoubleSide,
+      });
+
+    // Helper to build a translation arrow along +X, +Y, or +Z
+    const addAxisArrow = (axisKey, hexColor, dirVec) => {
+      const grp = new THREE.Group();
+      grp.userData.gizmoModeGroup = "translate";
+      const visMat = makeMat(hexColor, 0.96);
+
+      const shaftGeo = new THREE.CylinderGeometry(0.032, 0.032, 0.82, 14);
+      shaftGeo.translate(0, 0.41, 0);
+      const shaft = new THREE.Mesh(shaftGeo, visMat);
+      shaft.renderOrder = 2500;
+
+      const coneGeo = new THREE.ConeGeometry(0.095, 0.24, 18);
+      coneGeo.translate(0, 0.92, 0);
+      const cone = new THREE.Mesh(coneGeo, visMat);
+      cone.renderOrder = 2501;
+
+      const hitGeo = new THREE.CylinderGeometry(0.13, 0.13, 1.08, 12);
+      hitGeo.translate(0, 0.54, 0);
+      const hitMesh = new THREE.Mesh(hitGeo, makeHitMat());
+      hitMesh.renderOrder = 2502;
+      hitMesh.userData.gizmoHandle = axisKey;
+      hitMesh.userData.visualMat = visMat;
+      hitMesh.userData.baseHex = hexColor;
+
+      grp.add(shaft, cone, hitMesh);
+      if (axisKey === "tx") grp.rotation.z = -Math.PI / 2;
+      else if (axisKey === "tz") grp.rotation.x = Math.PI / 2;
+      ctx.gizmoGroup.add(grp);
+      handles.push(hitMesh);
+    };
+
+    addAxisArrow("tx", 0xef4444, new THREE.Vector3(1, 0, 0)); // +X East (Red)
+    addAxisArrow("ty", 0x22c55e, new THREE.Vector3(0, 1, 0)); // +Y Up/Elev (Green)
+    addAxisArrow("tz", 0x3b82f6, new THREE.Vector3(0, 0, 1)); // +Z South/North (Blue)
+
+    // XZ Horizontal Ground Plane Slider Handle (Amber Quad)
+    const xzGrp = new THREE.Group();
+    xzGrp.userData.gizmoModeGroup = "translate";
+    const xzVisMat = makeMat(0xf59e0b, 0.55);
+    const xzGeo = new THREE.PlaneGeometry(0.28, 0.28);
+    xzGeo.rotateX(-Math.PI / 2);
+    xzGeo.translate(0.28, 0.01, 0.28);
+    const xzQuad = new THREE.Mesh(xzGeo, xzVisMat);
+    xzQuad.renderOrder = 2499;
+    xzQuad.userData.gizmoHandle = "txz";
+    xzQuad.userData.visualMat = xzVisMat;
+    xzQuad.userData.baseHex = 0xf59e0b;
+    xzGrp.add(xzQuad);
+    ctx.gizmoGroup.add(xzGrp);
+    handles.push(xzQuad);
+
+    // Helper to build a 3D rotation torus ring around Y (Yaw), X (Pitch), Z (Roll)
+    const addRotationRing = (handleKey, hexColor, rotX, rotY, radius = 1.15) => {
+      const grp = new THREE.Group();
+      grp.userData.gizmoModeGroup = "rotate";
+      const visMat = makeMat(hexColor, 0.9);
+      const torusGeo = new THREE.TorusGeometry(radius, 0.024, 14, 64);
+      const torus = new THREE.Mesh(torusGeo, visMat);
+      torus.rotation.set(rotX, rotY, 0);
+      torus.renderOrder = 2500;
+
+      const hitTorusGeo = new THREE.TorusGeometry(radius, 0.11, 10, 48);
+      const hitTorus = new THREE.Mesh(hitTorusGeo, makeHitMat());
+      hitTorus.rotation.set(rotX, rotY, 0);
+      hitTorus.renderOrder = 2502;
+      hitTorus.userData.gizmoHandle = handleKey;
+      hitTorus.userData.visualMat = visMat;
+      hitTorus.userData.baseHex = hexColor;
+
+      grp.add(torus, hitTorus);
+      ctx.gizmoGroup.add(grp);
+      handles.push(hitTorus);
+    };
+
+    // RY (Yaw around vertical Y axis - Horizontal XZ ring, Emerald/Cyan)
+    addRotationRing("ry", 0x10b981, Math.PI / 2, 0, 1.22);
+    // RX (Pitch around X axis - YZ ring, Coral Red)
+    addRotationRing("rx", 0xf87171, 0, Math.PI / 2, 1.08);
+    // RZ (Roll around Z axis - XY ring, Sky Blue)
+    addRotationRing("rz", 0x60a5fa, 0, 0, 1.15);
+
+    // Center pivot sphere
+    const centerMat = makeMat(0xffffff, 0.95);
+    const centerSphere = new THREE.Mesh(new THREE.SphereGeometry(0.075, 16, 16), centerMat);
+    centerSphere.renderOrder = 2505;
+    ctx.gizmoGroup.add(centerSphere);
+    ctx.gizmoGroup.userData.handles = handles;
+    ctx.gizmoGroup.userData.centerMat = centerMat;
+  }
+
+  function getSelectedMultiAlignLayer() {
+    if (!STATE.multiAlign.active || !STATE.multiAlign.layers.length) return null;
+    return (
+      STATE.multiAlign.layers.find((l) => l.scan_id === STATE.multiAlign.selectedScanId) ||
+      STATE.multiAlign.layers[0]
+    );
+  }
+
+  function updateStudioTransformGizmo() {
+    if (!studioThree || !studioThree.gizmoGroup) return;
+    const layer = getSelectedMultiAlignLayer();
+    const shouldShow = Boolean(
+      STATE.multiAlign.active &&
+        STATE.activeTool === "align_merge" &&
+        layer &&
+        layer.visible &&
+        layer.layerGroup
+    );
+    studioThree.gizmoGroup.visible = shouldShow;
+    if (!shouldShow) return;
+
+    studioThree.gizmoGroup.position.copy(layer.layerGroup.position);
+    const dist = Math.max(2.0, studioThree.camera.position.distanceTo(studioThree.gizmoGroup.position));
+    const scale = dist * 0.16;
+    studioThree.gizmoGroup.scale.setScalar(scale);
+
+    const mode = STATE.multiAlign.gizmoMode || "both";
+    studioThree.gizmoGroup.children.forEach((child) => {
+      const mGrp = child.userData?.gizmoModeGroup;
+      if (mGrp === "translate") {
+        child.visible = mode === "both" || mode === "translate";
+      } else if (mGrp === "rotate") {
+        child.visible = mode === "both" || mode === "rotate";
+      }
+    });
+
+    if (studioThree.gizmoGroup.userData.centerMat) {
+      studioThree.gizmoGroup.userData.centerMat.color.setHex(layer.locked ? 0xf59e0b : 0xffffff);
+    }
+
+    // Highlight active layer bounding box
+    STATE.multiAlign.layers.forEach((l) => {
+      if (l.boxHelper) {
+        l.boxHelper.visible = l.visible && l.scan_id === layer.scan_id;
+      }
+    });
+  }
+
+  function pickGizmoHandle(clientX, clientY) {
+    if (!studioThree || !studioThree.gizmoGroup || !studioThree.gizmoGroup.visible) return null;
+    const rect = studioThree.renderer.domElement.getBoundingClientRect();
+    studioThree.mouse.x = ((clientX - rect.left) / rect.width) * 2 - 1;
+    studioThree.mouse.y = -((clientY - rect.top) / rect.height) * 2 + 1;
+    studioThree.raycaster.setFromCamera(studioThree.mouse, studioThree.camera);
+
+    const activeHandles = (studioThree.gizmoGroup.userData.handles || []).filter(
+      (h) => h.parent && h.parent.visible
+    );
+    const hits = studioThree.raycaster.intersectObjects(activeHandles, false);
+    return hits.length > 0 ? hits[0].object : null;
+  }
+
+  function handleGizmoPointerDown(e) {
+    if (e.button !== 0) return false;
+    const hitObj = pickGizmoHandle(e.clientX, e.clientY);
+    if (!hitObj) return false;
+
+    const layer = getSelectedMultiAlignLayer();
+    if (!layer) return false;
+    if (layer.locked) {
+      showToast(`"${layer.name}" is locked 🔒 — click Unlock before moving or rotating.`);
+      return true;
+    }
+
+    const handleType = hitObj.userData.gizmoHandle;
+    _gizmoDrag.active = true;
+    _gizmoDrag.handleType = handleType;
+    _gizmoDrag.layer = layer;
+    _gizmoDrag.startTx = layer.tx;
+    _gizmoDrag.startTy = layer.ty;
+    _gizmoDrag.startTz = layer.tz;
+    _gizmoDrag.startRx = layer.rx_deg;
+    _gizmoDrag.startRy = layer.ry_deg;
+    _gizmoDrag.startRz = layer.rz_deg;
+    _gizmoDrag.originWorld.copy(layer.layerGroup.position);
+
+    const camDir = new THREE.Vector3();
+    studioThree.camera.getWorldDirection(camDir);
+
+    if (handleType === "tx" || handleType === "ty" || handleType === "tz") {
+      const axis =
+        handleType === "tx"
+          ? new THREE.Vector3(1, 0, 0)
+          : handleType === "ty"
+          ? new THREE.Vector3(0, 1, 0)
+          : new THREE.Vector3(0, 0, 1);
+      _gizmoDrag.axisWorld.copy(axis);
+      // Plane containing the translation axis and facing the camera as closely as possible
+      const ortho = new THREE.Vector3().crossVectors(axis, camDir);
+      let planeNormal = new THREE.Vector3().crossVectors(ortho, axis).normalize();
+      if (planeNormal.lengthSq() < 1e-4) {
+        planeNormal.copy(camDir).negate();
+      }
+      _gizmoDrag.dragPlane.setFromNormalAndCoplanarPoint(planeNormal, _gizmoDrag.originWorld);
+      studioThree.raycaster.ray.intersectPlane(_gizmoDrag.dragPlane, _gizmoDrag.startHitPt);
+    } else if (handleType === "txz") {
+      _gizmoDrag.dragPlane.setFromNormalAndCoplanarPoint(
+        new THREE.Vector3(0, 1, 0),
+        _gizmoDrag.originWorld
+      );
+      studioThree.raycaster.ray.intersectPlane(_gizmoDrag.dragPlane, _gizmoDrag.startHitPt);
+    } else if (handleType === "rx" || handleType === "ry" || handleType === "rz") {
+      const axis =
+        handleType === "rx"
+          ? new THREE.Vector3(1, 0, 0)
+          : handleType === "ry"
+          ? new THREE.Vector3(0, 1, 0)
+          : new THREE.Vector3(0, 0, 1);
+      _gizmoDrag.axisWorld.copy(axis);
+      _gizmoDrag.dragPlane.setFromNormalAndCoplanarPoint(axis, _gizmoDrag.originWorld);
+      if (studioThree.raycaster.ray.intersectPlane(_gizmoDrag.dragPlane, _gizmoDrag.startHitPt)) {
+        const rel = _gizmoDrag.startHitPt.clone().sub(_gizmoDrag.originWorld);
+        if (handleType === "ry") _gizmoDrag.startAngle = Math.atan2(rel.x, rel.z);
+        else if (handleType === "rx") _gizmoDrag.startAngle = Math.atan2(rel.z, rel.y);
+        else _gizmoDrag.startAngle = Math.atan2(rel.y, rel.x);
+      }
+    }
+
+    studioThree.controls.enabled = false;
+    studioThree.renderer.domElement.style.cursor = "grabbing";
+    return true;
+  }
+
+  function handleGizmoPointerMove(e) {
+    if (!studioThree) return false;
+    if (!_gizmoDrag.active) {
+      const hitObj = pickGizmoHandle(e.clientX, e.clientY);
+      if (_gizmoDrag.hoveredHandle && _gizmoDrag.hoveredHandle !== hitObj) {
+        const prevMat = _gizmoDrag.hoveredHandle.userData.visualMat;
+        if (prevMat) prevMat.color.setHex(_gizmoDrag.hoveredHandle.userData.baseHex);
+      }
+      _gizmoDrag.hoveredHandle = hitObj;
+      if (hitObj) {
+        const layer = getSelectedMultiAlignLayer();
+        if (layer?.locked) {
+          studioThree.renderer.domElement.style.cursor = "not-allowed";
+        } else {
+          if (hitObj.userData.visualMat) hitObj.userData.visualMat.color.setHex(0xffffff);
+          studioThree.renderer.domElement.style.cursor = "grab";
+        }
+      } else {
+        studioThree.renderer.domElement.style.cursor = "";
+      }
+      return false;
+    }
+
+    const rect = studioThree.renderer.domElement.getBoundingClientRect();
+    studioThree.mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+    studioThree.mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+    studioThree.raycaster.setFromCamera(studioThree.mouse, studioThree.camera);
+
+    const curHit = new THREE.Vector3();
+    if (!studioThree.raycaster.ray.intersectPlane(_gizmoDrag.dragPlane, curHit)) return true;
+
+    const layer = _gizmoDrag.layer;
+    if (!layer || layer.locked) return true;
+    const h = _gizmoDrag.handleType;
+    const snapPos = e.shiftKey ? 0.25 : STATE.snapEnabled ? 0.05 : 0.01;
+    const snapDeg = e.shiftKey ? 5.0 : STATE.snapEnabled ? 0.5 : 0.1;
+
+    if (h === "tx" || h === "ty" || h === "tz") {
+      const deltaVec = curHit.clone().sub(_gizmoDrag.startHitPt);
+      const deltaScalar = deltaVec.dot(_gizmoDrag.axisWorld);
+      const q = Math.round(deltaScalar / snapPos) * snapPos;
+      if (h === "tx") layer.tx = Number((_gizmoDrag.startTx + q).toFixed(2));
+      else if (h === "ty") layer.ty = Number((_gizmoDrag.startTy + q).toFixed(2));
+      else if (h === "tz") layer.tz = Number((_gizmoDrag.startTz + q).toFixed(2));
+    } else if (h === "txz") {
+      const deltaVec = curHit.clone().sub(_gizmoDrag.startHitPt);
+      const qx = Math.round(deltaVec.x / snapPos) * snapPos;
+      const qz = Math.round(deltaVec.z / snapPos) * snapPos;
+      layer.tx = Number((_gizmoDrag.startTx + qx).toFixed(2));
+      layer.tz = Number((_gizmoDrag.startTz + qz).toFixed(2));
+    } else if (h === "rx" || h === "ry" || h === "rz") {
+      const rel = curHit.clone().sub(_gizmoDrag.originWorld);
+      let curAngle = 0;
+      if (h === "ry") curAngle = Math.atan2(rel.x, rel.z);
+      else if (h === "rx") curAngle = Math.atan2(rel.z, rel.y);
+      else curAngle = Math.atan2(rel.y, rel.x);
+
+      let diffRad = curAngle - _gizmoDrag.startAngle;
+      while (diffRad > Math.PI) diffRad -= Math.PI * 2;
+      while (diffRad < -Math.PI) diffRad += Math.PI * 2;
+      const diffDeg = THREE.MathUtils.radToDeg(diffRad);
+      const qDeg = Math.round(diffDeg / snapDeg) * snapDeg;
+
+      const normDeg = (d) => {
+        let v = ((d + 180) % 360 + 360) % 360 - 180;
+        return Number(v.toFixed(1));
+      };
+      if (h === "ry") layer.ry_deg = normDeg(_gizmoDrag.startRy + qDeg);
+      else if (h === "rx") layer.rx_deg = normDeg(_gizmoDrag.startRx - qDeg);
+      else if (h === "rz") layer.rz_deg = normDeg(_gizmoDrag.startRz + qDeg);
+    }
+
+    layer._userMoved = true;
+    applyLayerTransformTo3D(layer);
+    syncAlignLayerInputsInDOM(layer);
+    return true;
+  }
+
+  function handleGizmoPointerUp() {
+    if (!_gizmoDrag.active) return false;
+    _gizmoDrag.active = false;
+    _gizmoDrag.handleType = null;
+    if (studioThree) {
+      studioThree.controls.enabled = true;
+      studioThree.renderer.domElement.style.cursor = "";
+    }
+    return true;
+  }
+
+  function handleMultiAlignCanvasClick(e) {
+    if (!studioThree || !STATE.multiAlign.active || STATE.activeTool !== "align_merge") return false;
+    if (pickGizmoHandle(e.clientX, e.clientY)) return true;
+
+    const rect = studioThree.renderer.domElement.getBoundingClientRect();
+    studioThree.mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+    studioThree.mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+    studioThree.raycaster.setFromCamera(studioThree.mouse, studioThree.camera);
+
+    const meshTargets = [];
+    STATE.multiAlign.layers.forEach((layer) => {
+      if (!layer.visible || !layer.layerGroup) return;
+      layer.layerGroup.traverse((c) => {
+        if (c.isMesh && c.visible && !c.userData?.isAlignBoxHelper) {
+          c.userData._alignScanId = layer.scan_id;
+          meshTargets.push(c);
+        }
+      });
+    });
+
+    const hits = studioThree.raycaster.intersectObjects(meshTargets, false);
+    if (hits.length > 0) {
+      const hitScanId = hits[0].object.userData?._alignScanId;
+      if (hitScanId && hitScanId !== STATE.multiAlign.selectedScanId) {
+        STATE.multiAlign.selectedScanId = hitScanId;
+        updateStudioTransformGizmo();
+        renderAlignMergeInspectorContent();
+        const picked = STATE.multiAlign.layers.find((l) => l.scan_id === hitScanId);
+        if (picked) showToast(`Selected "${picked.name}" for 3D Gizmo alignment`);
+        return true;
+      }
+    }
+    return false;
+  }
+
+  function applyLayerTransformTo3D(layer) {
+    if (!layer || !layer.layerGroup) return;
+    layer.layerGroup.position.set(
+      Number(layer.tx) || 0,
+      Number(layer.ty) || 0,
+      Number(layer.tz) || 0
+    );
+    layer.layerGroup.rotation.set(
+      THREE.MathUtils.degToRad(Number(layer.rx_deg) || 0),
+      THREE.MathUtils.degToRad(Number(layer.ry_deg) || 0),
+      THREE.MathUtils.degToRad(Number(layer.rz_deg) || 0),
+      "XYZ"
+    );
+    layer.layerGroup.updateMatrixWorld(true);
+    updateStudioTransformGizmo();
+  }
+
+  function syncAlignLayerInputsInDOM(layer) {
+    if (!layer) return;
+    const fields = ["tx", "ty", "tz", "rx_deg", "ry_deg", "rz_deg"];
+    fields.forEach((f) => {
+      const inp = document.querySelector(
+        `.align-num-input[data-scan-id="${layer.scan_id}"][data-field="${f}"]`
+      );
+      if (inp && document.activeElement !== inp) {
+        inp.value = f.endsWith("_deg") ? Number(layer[f] || 0).toFixed(1) : Number(layer[f] || 0).toFixed(2);
+      }
+    });
+    const lbl = document.getElementById("lblLastPickedCoord");
+    if (lbl) {
+      lbl.textContent = `ALIGN [${layer.name}]: ΔX=${layer.tx.toFixed(2)}m, ΔY=${layer.ty.toFixed(2)}m, ΔZ=${layer.tz.toFixed(2)}m | Yaw=${layer.ry_deg.toFixed(1)}°, Pitch=${layer.rx_deg.toFixed(1)}°, Roll=${layer.rz_deg.toFixed(1)}°`;
+    }
+  }
+
+  function updateMultiAlignLayersEachFrame() {
+    if (!studioThree || !STATE.multiAlign.active) return;
+    STATE.multiAlign.layers.forEach((layer) => {
+      if (!layer.visible) return;
+      if (layer.tilesRenderer) {
+        layer.tilesRenderer.update();
+        const tintKey = `${STATE.scanBrightness}_${layer.tintEnabled ? layer.color : "none"}`;
+        layer.tilesRenderer.group.traverse((child) => {
+          if (child.isMesh && child.material) {
+            const mats = Array.isArray(child.material) ? child.material : [child.material];
+            mats.forEach((m) => {
+              if (!m) return;
+              if (m.metalness > 0) {
+                m.metalness = 0.0;
+                m.roughness = 1.0;
+                m.side = THREE.DoubleSide;
+                m.needsUpdate = true;
+              }
+              if (m.userData?._lastAlignTint !== tintKey) {
+                applyBrightnessToMaterial(m, STATE.scanBrightness);
+                if (layer.tintEnabled && m.color) {
+                  const tintCol = new THREE.Color(layer.color);
+                  m.color.lerp(tintCol, 0.35);
+                }
+                m.userData._lastAlignTint = tintKey;
+              }
+            });
+          }
+        });
+      }
+    });
+  }
+
+  function addScanLayerToMultiAlign(scanId, options = {}) {
+    initStudio3D();
+    const scan = STATE.scans.find((s) => s.scan_id === scanId);
+    if (!scan || !studioThree) return null;
+
+    const existing = STATE.multiAlign.layers.find((l) => l.scan_id === scanId);
+    if (existing) {
+      STATE.multiAlign.selectedScanId = existing.scan_id;
+      updateStudioTransformGizmo();
+      return existing;
+    }
+
+    const idx = STATE.multiAlign.layers.length;
+    const color = MULTI_ALIGN_PALETTE[idx % MULTI_ALIGN_PALETTE.length];
+
+    const layerGroup = new THREE.Group();
+    const zUpGroup = new THREE.Group();
+    zUpGroup.rotation.set(THREE.MathUtils.degToRad(270), 0, 0);
+    layerGroup.add(zUpGroup);
+    studioThree.multiAlignGroup.add(layerGroup);
+
+    const layer = {
+      scan_id: scan.scan_id,
+      name: scan.name,
+      project_group: scan.project_group || "QuChi Dam",
+      color,
+      visible: true,
+      locked: false,
+      tintEnabled: Boolean(options.tintEnabled),
+      tx: Number(options.tx) || 0,
+      ty: Number(options.ty) || 0,
+      tz: Number(options.tz) || 0,
+      rx_deg: Number(options.rx_deg) || 0,
+      ry_deg: Number(options.ry_deg) || 0,
+      rz_deg: Number(options.rz_deg) || 0,
+      _userMoved: Boolean(options.userMoved),
+      layerGroup,
+      zUpGroup,
+      tilesRenderer: null,
+      rawCenter: null,
+      boxHelper: null,
+      ready: false,
+    };
+
+    STATE.multiAlign.layers.push(layer);
+    STATE.multiAlign.selectedScanId = layer.scan_id;
+
+    const streamUrl = scan.stream_url || `/stream/${scan.scan_id}/tileset.json`;
+    if (window.TilesRenderer && !streamUrl.toLowerCase().endsWith(".glb")) {
+      const tr = new window.TilesRenderer(streamUrl);
+      tr.fetchOptions = { mode: "cors" };
+      tr.preprocessURL = (uri) => {
+        let u = uri;
+        if (STATE.shareToken && !u.includes("share=")) {
+          u += (u.includes("?") ? "&" : "?") + `share=${encodeURIComponent(STATE.shareToken)}`;
+        }
+        return u;
+      };
+      tr.setCamera(studioThree.camera);
+      tr.setResolutionFromRenderer(studioThree.camera, studioThree.renderer);
+
+      const gltfLoader = new THREE.GLTFLoader(tr.manager);
+      if (window.MeshoptDecoder) gltfLoader.setMeshoptDecoder(window.MeshoptDecoder);
+      const ktx2 = getKTX2Loader(studioThree.renderer);
+      if (ktx2) gltfLoader.setKTX2Loader(ktx2);
+      tr.manager.addHandler(/\.(gltf|glb)(\?.*)?$/i, gltfLoader);
+
+      tr.addEventListener("load-tileset", () => {
+        const sphere = new THREE.Sphere();
+        if (computeTilesetContentSphere(tr, sphere)) {
+          tr.group.position.set(-sphere.center.x, -sphere.center.y, -sphere.center.z);
+          layer.rawCenter = { x: sphere.center.x, y: sphere.center.y, z: sphere.center.z };
+          layer.ready = true;
+
+          if (STATE.multiAlign.layers[0]?.scan_id === layer.scan_id || !STATE.multiAlign.refCenter) {
+            STATE.multiAlign.refCenter = { ...layer.rawCenter };
+          } else if (!layer._userMoved && STATE.multiAlign.refCenter) {
+            const ref = STATE.multiAlign.refCenter;
+            const dx = layer.rawCenter.x - ref.x;
+            const dy = layer.rawCenter.z - ref.z;
+            const dz = -(layer.rawCenter.y - ref.y);
+            const dist3D = Math.hypot(dx, dy, dz);
+            if (dist3D > 0.3 && dist3D < 400) {
+              layer.tx = Number(dx.toFixed(2));
+              layer.ty = Number(dy.toFixed(2));
+              layer.tz = Number(dz.toFixed(2));
+            } else if (dist3D >= 400) {
+              const myIdx = STATE.multiAlign.layers.indexOf(layer);
+              layer.tx = Number((myIdx * 14).toFixed(2));
+              layer.ty = 0;
+              layer.tz = 0;
+            }
+          }
+
+          // Wireframe selection helper box around layer
+          const r = Math.max(4, Math.min(45, (sphere.radius || 20) * 0.45));
+          const boxGeo = new THREE.BoxGeometry(r * 1.4, r * 0.55, r * 1.4);
+          const edges = new THREE.EdgesGeometry(boxGeo);
+          const lineMat = new THREE.LineBasicMaterial({
+            color: new THREE.Color(layer.color),
+            transparent: true,
+            opacity: 0.75,
+          });
+          const boxHelper = new THREE.LineSegments(edges, lineMat);
+          boxHelper.userData.isAlignBoxHelper = true;
+          layerGroup.add(boxHelper);
+          layer.boxHelper = boxHelper;
+
+          applyLayerTransformTo3D(layer);
+          syncAlignLayerInputsInDOM(layer);
+        }
+        studioThree.camera.updateMatrixWorld();
+        tr.update();
+      });
+
+      tr.errorTarget = 6.0;
+      zUpGroup.add(tr.group);
+      layer.tilesRenderer = tr;
+      studioThree.camera.updateMatrixWorld();
+      tr.update();
+    }
+
+    applyLayerTransformTo3D(layer);
+    return layer;
+  }
+
+  function removeScanLayerFromMultiAlign(scanId) {
+    const idx = STATE.multiAlign.layers.findIndex((l) => l.scan_id === scanId);
+    if (idx === -1) return;
+    const layer = STATE.multiAlign.layers[idx];
+    if (layer.tilesRenderer) {
+      layer.zUpGroup.remove(layer.tilesRenderer.group);
+      layer.tilesRenderer.dispose();
+    }
+    if (studioThree && studioThree.multiAlignGroup && layer.layerGroup) {
+      studioThree.multiAlignGroup.remove(layer.layerGroup);
+    }
+    STATE.multiAlign.layers.splice(idx, 1);
+    if (STATE.multiAlign.selectedScanId === scanId) {
+      STATE.multiAlign.selectedScanId = STATE.multiAlign.layers[0]?.scan_id || null;
+    }
+    if (STATE.multiAlign.layers.length > 0 && STATE.multiAlign.layers[0].rawCenter) {
+      STATE.multiAlign.refCenter = { ...STATE.multiAlign.layers[0].rawCenter };
+    }
+    updateStudioTransformGizmo();
+  }
+
+  function enterMultiScanAlignMode() {
+    initStudio3D();
+    if (!studioThree) return;
+    STATE.multiAlign.active = true;
+    studioThree.modelPivot.visible = false;
+    if (studioThree.fallbackGroup) studioThree.fallbackGroup.visible = false;
+    studioThree.multiAlignGroup.visible = true;
+
+    if (STATE.multiAlign.layers.length === 0) {
+      // Check if current project has multiple scans (e.g. QiHu Tender 1..4)
+      const curGroup = STATE.activeScan?.project_group || STATE.activeProjectGroup;
+      const siteScans = STATE.scans
+        .filter((s) => s.project_group === curGroup)
+        .sort((a, b) => a.scan_id.localeCompare(b.scan_id));
+      if (siteScans.length >= 2 && siteScans.length <= 6) {
+        siteScans.forEach((s) => addScanLayerToMultiAlign(s.scan_id));
+      } else if (STATE.activeScanId) {
+        addScanLayerToMultiAlign(STATE.activeScanId);
+      }
+    }
+    updateStudioTransformGizmo();
+  }
+
+  function exitMultiScanAlignMode(reloadActive = true) {
+    if (!studioThree) return;
+    _gizmoDrag.active = false;
+    STATE.multiAlign.layers.slice().forEach((l) => removeScanLayerFromMultiAlign(l.scan_id));
+    STATE.multiAlign.active = false;
+    STATE.multiAlign.selectedScanId = null;
+    STATE.multiAlign.refCenter = null;
+    if (studioThree.multiAlignGroup) studioThree.multiAlignGroup.visible = false;
+    if (studioThree.gizmoGroup) studioThree.gizmoGroup.visible = false;
+    studioThree.modelPivot.visible = true;
+    studioThree.controls.enabled = true;
+    if (reloadActive && STATE.activeScanId) {
+      loadScanIntoStudio(STATE.activeScanId);
+    }
+  }
+
+  function renderAlignMergeInspectorContent() {
+    const layers = STATE.multiAlign.layers;
+    const allLocked = layers.length >= 2 && layers.every((l) => l.locked);
+    const lockedCount = layers.filter((l) => l.locked).length;
+    const curSite =
+      STATE.activeScan?.project_group ||
+      (STATE.activeProjectGroup !== "__all__" ? STATE.activeProjectGroup : "QiHu") ||
+      "QiHu";
+    const defaultMergedName = `${curSite} — Unified Merged Scan (${layers.length || 4} Scans)`;
+
+    const availableScansOptions = STATE.scans
+      .map((s) => {
+        const already = layers.some((l) => l.scan_id === s.scan_id);
+        return `<option value="${s.scan_id}" ${already ? "disabled" : ""}>[${s.project_group}] ${s.name}${already ? " (Loaded)" : ""}</option>`;
+      })
+      .join("");
+
+    const layerCardsHtml =
+      layers.length === 0
+        ? `<div style="padding:14px;border:1px dashed var(--ui-border-strong);border-radius:8px;text-align:center;font-size:12px;color:var(--ui-text-secondary);">
+            No scan layers loaded yet. Click <b>Load 4 QiHu Scans</b> or add scans below.
+          </div>`
+        : layers
+            .map((l, idx) => {
+              const isSel = l.scan_id === STATE.multiAlign.selectedScanId;
+              const disAttr = l.locked ? "disabled" : "";
+              return `
+              <div class="align-layer-card" data-scan-id="${l.scan_id}" style="background:${
+                isSel ? "var(--ui-bg-elevated)" : "var(--ui-bg-subtle)"
+              };border:1.5px solid ${
+                isSel ? l.color : "var(--ui-border)"
+              };border-radius:8px;padding:9px 10px;margin-bottom:8px;transition:border-color 0.15s;">
+                <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;margin-bottom:6px;">
+                  <div style="display:flex;align-items:center;gap:6px;min-width:0;cursor:pointer;" class="btn-select-align-layer" data-scan-id="${l.scan_id}" title="Click to attach 3D Move/Rotate Gizmo to this scan">
+                    <span style="width:11px;height:11px;border-radius:50%;background:${l.color};flex-shrink:0;box-shadow:0 0 0 2px rgba(255,255,255,0.15);"></span>
+                    <span style="font-size:12px;font-weight:700;color:var(--ui-text-primary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+                      #${idx + 1} ${l.name}
+                    </span>
+                    ${
+                      idx === 0
+                        ? `<span style="font-size:9.5px;padding:1px 5px;border-radius:4px;background:rgba(56,189,248,0.16);color:#38bdf8;font-weight:600;">ANCHOR</span>`
+                        : ""
+                    }
+                  </div>
+                  <div style="display:flex;align-items:center;gap:4px;flex-shrink:0;">
+                    <button type="button" class="gs-top-btn btn-align-tint ${l.tintEnabled ? "accent" : ""}" data-scan-id="${l.scan_id}" style="padding:2px 6px;font-size:10px;" title="Toggle false-color tint on this scan to inspect overlap">
+                      🎨
+                    </button>
+                    <button type="button" class="gs-top-btn btn-align-vis" data-scan-id="${l.scan_id}" style="padding:2px 6px;font-size:10px;opacity:${l.visible ? 1 : 0.45};" title="Show/Hide scan layer">
+                      ${l.visible ? "👁" : "🚫"}
+                    </button>
+                    <button type="button" class="gs-top-btn btn-align-lock ${l.locked ? "accent" : ""}" data-scan-id="${l.scan_id}" style="padding:2px 7px;font-size:10.5px;font-weight:700;${
+                      l.locked
+                        ? "background:#10b981;border-color:#059669;color:#ffffff;"
+                        : ""
+                    }" title="${l.locked ? "Orientation Locked (Click to Unlock)" : "Lock Orientation before Merging"}">
+                      ${l.locked ? "🔒 Locked" : "🔓 Lock"}
+                    </button>
+                    <button type="button" class="gs-top-btn btn-align-remove" data-scan-id="${l.scan_id}" style="padding:2px 6px;font-size:10px;" title="Remove scan from alignment view">
+                      ✕
+                    </button>
+                  </div>
+                </div>
+
+                <div style="display:grid;grid-template-columns:repeat(3, 1fr);gap:5px;font-size:10.5px;">
+                  <div>
+                    <label style="display:block;color:#ef4444;font-weight:600;margin-bottom:2px;">Move X (E m)</label>
+                    <input type="number" step="0.1" class="gs-input align-num-input" data-scan-id="${l.scan_id}" data-field="tx" value="${Number(l.tx || 0).toFixed(2)}" ${disAttr} style="padding:3px 5px;font-size:11px;width:100%;" />
+                  </div>
+                  <div>
+                    <label style="display:block;color:#22c55e;font-weight:600;margin-bottom:2px;">Elev Y (H m)</label>
+                    <input type="number" step="0.1" class="gs-input align-num-input" data-scan-id="${l.scan_id}" data-field="ty" value="${Number(l.ty || 0).toFixed(2)}" ${disAttr} style="padding:3px 5px;font-size:11px;width:100%;" />
+                  </div>
+                  <div>
+                    <label style="display:block;color:#3b82f6;font-weight:600;margin-bottom:2px;">Move Z (N m)</label>
+                    <input type="number" step="0.1" class="gs-input align-num-input" data-scan-id="${l.scan_id}" data-field="tz" value="${Number(l.tz || 0).toFixed(2)}" ${disAttr} style="padding:3px 5px;font-size:11px;width:100%;" />
+                  </div>
+                  <div>
+                    <label style="display:block;color:#10b981;font-weight:600;margin-bottom:2px;">Yaw Ry (°)</label>
+                    <input type="number" step="0.5" class="gs-input align-num-input" data-scan-id="${l.scan_id}" data-field="ry_deg" value="${Number(l.ry_deg || 0).toFixed(1)}" ${disAttr} style="padding:3px 5px;font-size:11px;width:100%;" />
+                  </div>
+                  <div>
+                    <label style="display:block;color:#f87171;font-weight:600;margin-bottom:2px;">Pitch Rx (°)</label>
+                    <input type="number" step="0.5" class="gs-input align-num-input" data-scan-id="${l.scan_id}" data-field="rx_deg" value="${Number(l.rx_deg || 0).toFixed(1)}" ${disAttr} style="padding:3px 5px;font-size:11px;width:100%;" />
+                  </div>
+                  <div>
+                    <label style="display:block;color:#60a5fa;font-weight:600;margin-bottom:2px;">Roll Rz (°)</label>
+                    <input type="number" step="0.5" class="gs-input align-num-input" data-scan-id="${l.scan_id}" data-field="rz_deg" value="${Number(l.rz_deg || 0).toFixed(1)}" ${disAttr} style="padding:3px 5px;font-size:11px;width:100%;" />
+                  </div>
+                </div>
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px;gap:4px;">
+                  <button type="button" class="gs-top-btn btn-select-align-layer ${isSel ? "accent" : ""}" data-scan-id="${l.scan_id}" style="padding:2px 8px;font-size:10.5px;flex:1;justify-content:center;">
+                    <span>${isSel ? "🎯 Gizmo Active" : "Select for 3D Gizmo"}</span>
+                  </button>
+                  <button type="button" class="gs-top-btn btn-align-rot90" data-scan-id="${l.scan_id}" ${disAttr} style="padding:2px 7px;font-size:10.5px;" title="Rotate Yaw +90°">
+                    <span>↻ +90°</span>
+                  </button>
+                  <button type="button" class="gs-top-btn btn-align-zero" data-scan-id="${l.scan_id}" ${disAttr} style="padding:2px 7px;font-size:10.5px;" title="Reset this scan to (0,0,0) and 0° rotation">
+                    <span>Reset</span>
+                  </button>
+                </div>
+              </div>
+            `;
+            })
+            .join("");
+
+    const postMergeHtml = STATE.multiAlign.lastMergedScan
+      ? `
+        <div style="margin-top:10px;padding:10px;border-radius:8px;background:rgba(16,185,129,0.12);border:1px solid rgba(16,185,129,0.4);font-size:11.5px;">
+          <div style="font-weight:700;color:#10b981;margin-bottom:4px;">
+            ✓ Merged Scan Ready: ${STATE.multiAlign.lastMergedScan.name}
+          </div>
+          <div style="color:var(--ui-text-secondary);font-size:11px;margin-bottom:8px;">
+            Loaded as the active Studio scan. Apply existing tools directly to this unified scan:
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;">
+            <button type="button" class="gs-top-btn accent" id="btnPostMergeOptimize" style="justify-content:center;font-size:11px;">
+              <span>⚡ Optimize / Crop</span>
+            </button>
+            <button type="button" class="gs-top-btn" id="btnPostMergeVolume" style="justify-content:center;font-size:11px;">
+              <span>📐 Cut/Fill Volume</span>
+            </button>
+            <button type="button" class="gs-top-btn" id="btnPostMergeContours" style="justify-content:center;font-size:11px;">
+              <span>🗺️ Contours / DXF</span>
+            </button>
+            <button type="button" class="gs-top-btn" id="btnPostMergeSection" style="justify-content:center;font-size:11px;">
+              <span>🧊 3D Section Box</span>
+            </button>
+          </div>
+        </div>
+      `
+      : "";
+
+    showSidePanel(
+      "Multi-Scan 3D Alignment & Merge (多掃描對齊與合併)",
+      `
+      <div style="font-size:11.5px;color:var(--ui-text-secondary);margin-bottom:8px;line-height:1.45;">
+        Load multiple misaligned scans into the same 3D view, drag the <b>3D Gizmo arrows (X/Y/Z/XZ) &amp; rotation rings (Yaw/Pitch/Roll)</b>, lock each scan's orientation (<b>🔒</b>), and merge them into one unified scan.
+      </div>
+
+      <div style="display:flex;gap:5px;margin-bottom:8px;flex-wrap:wrap;">
+        <button type="button" class="gs-top-btn accent" id="btnAlignLoadQiHu4" style="flex:1;justify-content:center;font-size:11px;" title="Load the 4 QiHu Tender scans (or all scans in current site) into the same 3D view">
+          <span>+ Load 4 Site Scans</span>
+        </button>
+        <button type="button" class="gs-top-btn" id="btnAlignSpreadScans" style="justify-content:center;font-size:11px;" title="Spread unlocked scans side-by-side along X so you can inspect them individually">
+          <span>Spread</span>
+        </button>
+        <button type="button" class="gs-top-btn" id="btnAlignStackOrigin" style="justify-content:center;font-size:11px;" title="Co-locate unlocked scans at (0,0,0)">
+          <span>Co-locate</span>
+        </button>
+      </div>
+
+      <div style="display:flex;gap:5px;margin-bottom:10px;">
+        <select class="gs-select" id="alignAddScanSelect" style="flex:1;font-size:11.5px;">
+          <option value="">+ Add another scan to 3D view...</option>
+          ${availableScansOptions}
+        </select>
+        <button type="button" class="gs-top-btn" id="btnAlignAddSelectedScan" style="padding:0 10px;font-size:11.5px;">
+          <span>Add</span>
+        </button>
+      </div>
+
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:4px;margin-bottom:8px;background:var(--ui-bg-subtle);padding:5px 7px;border-radius:7px;border:1px solid var(--ui-border);">
+        <span style="font-size:11px;font-weight:600;color:var(--ui-text-secondary);">3D Gizmo Mode:</span>
+        <div style="display:flex;gap:4px;">
+          <button type="button" class="gs-top-btn btn-gizmo-mode ${STATE.multiAlign.gizmoMode === "both" ? "accent" : ""}" data-mode="both" style="padding:2px 7px;font-size:10.5px;">
+            <span>Move + Rotate (R)</span>
+          </button>
+          <button type="button" class="gs-top-btn btn-gizmo-mode ${STATE.multiAlign.gizmoMode === "translate" ? "accent" : ""}" data-mode="translate" style="padding:2px 7px;font-size:10.5px;">
+            <span>Move (W)</span>
+          </button>
+          <button type="button" class="gs-top-btn btn-gizmo-mode ${STATE.multiAlign.gizmoMode === "rotate" ? "accent" : ""}" data-mode="rotate" style="padding:2px 7px;font-size:10.5px;">
+            <span>Rotate (E)</span>
+          </button>
+        </div>
+      </div>
+
+      <div id="alignLayersList" style="max-height:310px;overflow-y:auto;padding-right:2px;margin-bottom:8px;">
+        ${layerCardsHtml}
+      </div>
+
+      <div style="display:flex;gap:6px;margin-bottom:10px;">
+        <button type="button" class="gs-top-btn ${allLocked ? "accent" : ""}" id="btnAlignLockAll" style="flex:1;justify-content:center;font-size:11.5px;${
+          allLocked ? "background:#10b981;border-color:#059669;color:#fff;" : ""
+        }">
+          <span>🔒 Lock All Orientations (${lockedCount}/${layers.length})</span>
+        </button>
+        <button type="button" class="gs-top-btn" id="btnAlignUnlockAll" style="justify-content:center;font-size:11.5px;">
+          <span>🔓 Unlock All</span>
+        </button>
+      </div>
+
+      <div style="border-top:1px solid var(--ui-border);padding-top:10px;">
+        <div class="gs-form-group" style="margin-bottom:7px;">
+          <label style="font-size:11px;">Unified Scan Name (合併後新掃描名稱)</label>
+          <input type="text" class="gs-input" id="alignMergedScanName" value="${defaultMergedName}" style="font-size:12px;" />
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:8px;">
+          <div class="gs-form-group" style="margin-bottom:0;">
+            <label style="font-size:11px;">Target Project Site</label>
+            <input type="text" class="gs-input" id="alignMergedProjectGroup" value="${curSite}" style="font-size:11.5px;" />
+          </div>
+          <div class="gs-form-group" style="margin-bottom:0;">
+            <label style="font-size:11px;">Post-Merge Optimizer</label>
+            <select class="gs-select" id="alignPostOptPreset" style="font-size:11.5px;">
+              <option value="none" selected>Keep Native Merged Mesh</option>
+              <option value="balanced">Auto-Run Balanced (50% Tris)</option>
+              <option value="quality">Auto-Run High Quality (75% Tris)</option>
+              <option value="web">Auto-Run Fast Tablet (35% Tris)</option>
+            </select>
+          </div>
+        </div>
+
+        <button type="button" class="gs-top-btn accent" id="btnExecuteMergeScans" style="width:100%;justify-content:center;padding:8px 12px;font-weight:700;${
+          allLocked ? "" : "opacity:0.85;"
+        }">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/>
+          </svg>
+          <span>${
+            allLocked
+              ? `Merge ${layers.length} Locked Scans into Unified Scan`
+              : `Lock All Scans (🔒) to Merge (${lockedCount}/${layers.length} Locked)`
+          }</span>
+        </button>
+
+        <button type="button" class="gs-top-btn" id="btnExitMultiAlign" style="width:100%;justify-content:center;margin-top:6px;font-size:11px;">
+          <span>Exit Multi-Scan Alignment View</span>
+        </button>
+      </div>
+
+      <div id="alignMergeResultBox" style="margin-top:8px;"></div>
+      ${postMergeHtml}
+      `
+    );
+
+    // Wire events
+    document.getElementById("btnAlignLoadQiHu4")?.addEventListener("click", () => {
+      if (!STATE.multiAlign.active) enterMultiScanAlignMode();
+      const qihuScans = STATE.scans
+        .filter((s) => s.project_group === "QiHu" || s.scan_id.includes("QiHuTender"))
+        .sort((a, b) => a.scan_id.localeCompare(b.scan_id));
+      const targetList =
+        qihuScans.length >= 2
+          ? qihuScans.slice(0, 4)
+          : STATE.scans
+              .filter((s) => s.project_group === curSite)
+              .sort((a, b) => a.scan_id.localeCompare(b.scan_id))
+              .slice(0, 4);
+      targetList.forEach((s) => addScanLayerToMultiAlign(s.scan_id));
+      renderAlignMergeInspectorContent();
+      showToast(`Loaded ${STATE.multiAlign.layers.length} scans into unified 3D alignment view`);
+    });
+
+    document.getElementById("btnAlignSpreadScans")?.addEventListener("click", () => {
+      STATE.multiAlign.layers.forEach((l, i) => {
+        if (l.locked) return;
+        l.tx = Number(((i - (STATE.multiAlign.layers.length - 1) * 0.5) * 18).toFixed(2));
+        l.ty = 0;
+        l.tz = 0;
+        l._userMoved = true;
+        applyLayerTransformTo3D(l);
+      });
+      renderAlignMergeInspectorContent();
+      showToast("Spread unlocked scans along X axis for clear visual inspection");
+    });
+
+    document.getElementById("btnAlignStackOrigin")?.addEventListener("click", () => {
+      STATE.multiAlign.layers.forEach((l) => {
+        if (l.locked) return;
+        l.tx = 0;
+        l.ty = 0;
+        l.tz = 0;
+        l._userMoved = true;
+        applyLayerTransformTo3D(l);
+      });
+      renderAlignMergeInspectorContent();
+      showToast("Co-located unlocked scans at (0, 0, 0)");
+    });
+
+    document.getElementById("btnAlignAddSelectedScan")?.addEventListener("click", () => {
+      const sel = document.getElementById("alignAddScanSelect");
+      const sid = sel?.value;
+      if (!sid) {
+        showToast("Select a scan from the dropdown first");
+        return;
+      }
+      if (!STATE.multiAlign.active) enterMultiScanAlignMode();
+      addScanLayerToMultiAlign(sid);
+      renderAlignMergeInspectorContent();
+    });
+
+    document.querySelectorAll(".btn-gizmo-mode").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        STATE.multiAlign.gizmoMode = btn.dataset.mode || "both";
+        updateStudioTransformGizmo();
+        renderAlignMergeInspectorContent();
+      });
+    });
+
+    document.querySelectorAll(".btn-select-align-layer").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        STATE.multiAlign.selectedScanId = btn.dataset.scanId;
+        updateStudioTransformGizmo();
+        renderAlignMergeInspectorContent();
+      });
+    });
+
+    document.querySelectorAll(".btn-align-tint").forEach((btn) => {
+      btn.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        const l = STATE.multiAlign.layers.find((x) => x.scan_id === btn.dataset.scanId);
+        if (l) {
+          l.tintEnabled = !l.tintEnabled;
+          renderAlignMergeInspectorContent();
+        }
+      });
+    });
+
+    document.querySelectorAll(".btn-align-vis").forEach((btn) => {
+      btn.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        const l = STATE.multiAlign.layers.find((x) => x.scan_id === btn.dataset.scanId);
+        if (l) {
+          l.visible = !l.visible;
+          if (l.layerGroup) l.layerGroup.visible = l.visible;
+          updateStudioTransformGizmo();
+          renderAlignMergeInspectorContent();
+        }
+      });
+    });
+
+    document.querySelectorAll(".btn-align-lock").forEach((btn) => {
+      btn.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        const l = STATE.multiAlign.layers.find((x) => x.scan_id === btn.dataset.scanId);
+        if (l) {
+          l.locked = !l.locked;
+          updateStudioTransformGizmo();
+          renderAlignMergeInspectorContent();
+          showToast(
+            l.locked
+              ? `Locked orientation for "${l.name}" 🔒`
+              : `Unlocked "${l.name}" 🔓`
+          );
+        }
+      });
+    });
+
+    document.querySelectorAll(".btn-align-remove").forEach((btn) => {
+      btn.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        removeScanLayerFromMultiAlign(btn.dataset.scanId);
+        renderAlignMergeInspectorContent();
+      });
+    });
+
+    document.querySelectorAll(".btn-align-rot90").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const l = STATE.multiAlign.layers.find((x) => x.scan_id === btn.dataset.scanId);
+        if (!l || l.locked) return;
+        l.ry_deg = Number((((l.ry_deg + 90 + 180) % 360 + 360) % 360 - 180).toFixed(1));
+        l._userMoved = true;
+        applyLayerTransformTo3D(l);
+        syncAlignLayerInputsInDOM(l);
+      });
+    });
+
+    document.querySelectorAll(".btn-align-zero").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const l = STATE.multiAlign.layers.find((x) => x.scan_id === btn.dataset.scanId);
+        if (!l || l.locked) return;
+        l.tx = 0;
+        l.ty = 0;
+        l.tz = 0;
+        l.rx_deg = 0;
+        l.ry_deg = 0;
+        l.rz_deg = 0;
+        l._userMoved = true;
+        applyLayerTransformTo3D(l);
+        syncAlignLayerInputsInDOM(l);
+      });
+    });
+
+    document.querySelectorAll(".align-num-input").forEach((inp) => {
+      inp.addEventListener("input", () => {
+        const l = STATE.multiAlign.layers.find((x) => x.scan_id === inp.dataset.scanId);
+        if (!l || l.locked) return;
+        const field = inp.dataset.field;
+        const val = parseFloat(inp.value);
+        if (Number.isFinite(val)) {
+          l[field] = val;
+          l._userMoved = true;
+          STATE.multiAlign.selectedScanId = l.scan_id;
+          applyLayerTransformTo3D(l);
+        }
+      });
+    });
+
+    document.getElementById("btnAlignLockAll")?.addEventListener("click", () => {
+      STATE.multiAlign.layers.forEach((l) => {
+        l.locked = true;
+      });
+      updateStudioTransformGizmo();
+      renderAlignMergeInspectorContent();
+      showToast(`All ${STATE.multiAlign.layers.length} scan orientations locked 🔒 — ready to merge!`);
+    });
+
+    document.getElementById("btnAlignUnlockAll")?.addEventListener("click", () => {
+      STATE.multiAlign.layers.forEach((l) => {
+        l.locked = false;
+      });
+      updateStudioTransformGizmo();
+      renderAlignMergeInspectorContent();
+      showToast("Unlocked all scan layers 🔓");
+    });
+
+    document.getElementById("btnExitMultiAlign")?.addEventListener("click", () => {
+      exitMultiScanAlignMode(true);
+      document.getElementById("studioSidePanel")?.classList.remove("active");
+      setActiveStudioTool("distance");
+    });
+
+    document.getElementById("btnExecuteMergeScans")?.addEventListener("click", async () => {
+      if (STATE.multiAlign.layers.length < 2) {
+        showToast("Please load at least 2 scans to merge.");
+        return;
+      }
+      if (STATE.multiAlign.layers.some((l) => !l.ready)) {
+        showToast("Please wait a moment for all 3D scan layers to finish loading their bounds before merging.");
+        return;
+      }
+      const unlocked = STATE.multiAlign.layers.filter((l) => !l.locked);
+      if (unlocked.length > 0) {
+        showToast(
+          `Please lock all scan orientations (🔒) before merging (${unlocked.length} still unlocked).`
+        );
+        return;
+      }
+
+      const mergedName =
+        document.getElementById("alignMergedScanName")?.value?.trim() ||
+        defaultMergedName;
+      const mergedProject =
+        document.getElementById("alignMergedProjectGroup")?.value?.trim() ||
+        curSite;
+      const postOptPreset =
+        document.getElementById("alignPostOptPreset")?.value || "none";
+
+      const resBox = document.getElementById("alignMergeResultBox");
+      if (resBox) {
+        resBox.innerHTML = `<div style="padding:10px;border-radius:8px;background:var(--ui-bg-subtle);border:1px solid var(--ui-border-strong);font-size:12px;color:var(--ui-accent);">
+          Merging ${STATE.multiAlign.layers.length} locked scans, baking 3D transforms &amp; 4K texture atlas, and building 3D Tileset...
+        </div>`;
+      }
+
+      try {
+        const serializedLayers = STATE.multiAlign.layers.map((l) => {
+          applyLayerTransformTo3D(l);
+          const pos = l.layerGroup ? l.layerGroup.position : { x: Number(l.tx) || 0, y: Number(l.ty) || 0, z: Number(l.tz) || 0 };
+          const quat = l.layerGroup ? l.layerGroup.quaternion : { x: 0, y: 0, z: 0, w: 1 };
+          return {
+            scan_id: l.scan_id,
+            locked: Boolean(l.locked),
+            tx: Number(l.tx) || 0,
+            ty: Number(l.ty) || 0,
+            tz: Number(l.tz) || 0,
+            rx_deg: Number(l.rx_deg) || 0,
+            ry_deg: Number(l.ry_deg) || 0,
+            rz_deg: Number(l.rz_deg) || 0,
+            position_three: [Number(pos.x) || 0, Number(pos.y) || 0, Number(pos.z) || 0],
+            quaternion_three: [Number(quat.x) || 0, Number(quat.y) || 0, Number(quat.z) || 0, Number(quat.w ?? 1)],
+            euler_deg_three: [Number(l.rx_deg) || 0, Number(l.ry_deg) || 0, Number(l.rz_deg) || 0],
+          };
+        });
+        const refC = STATE.multiAlign.refCenter || STATE.multiAlign.layers[0]?.rawCenter || null;
+        const payload = {
+          name: mergedName,
+          new_scan_name: mergedName,
+          project_group: mergedProject,
+          ref_center_zup: refC ? [Number(refC.x), Number(refC.y), Number(refC.z)] : null,
+          layers: serializedLayers,
+          scans: serializedLayers,
+        };
+
+        const res = await apiPost("/api/scans/merge", payload);
+        let optNote = "";
+        if (postOptPreset && postOptPreset !== "none" && res.scan_id) {
+          if (resBox) {
+            resBox.innerHTML = `<div style="padding:10px;border-radius:8px;background:var(--ui-bg-subtle);border:1px solid var(--ui-border-strong);font-size:12px;color:var(--ui-accent);">
+              Merged! Running post-merge GC_ScanOptimizer (${postOptPreset}) on unified scan...
+            </div>`;
+          }
+          const optRes = await apiPost("/api/optimizer/optimize", {
+            scan_id: res.scan_id,
+            preset: postOptPreset,
+            apply_to_scan: true,
+          });
+          optNote = ` · Optimized (${optRes.compressed_mb} MB, -${optRes.reduction_pct}%)`;
+        }
+
+        STATE.multiAlign.lastMergedScan = res.scan || {
+          scan_id: res.scan_id,
+          name: mergedName,
+          project_group: mergedProject,
+        };
+
+        await refreshScansCatalog();
+        exitMultiScanAlignMode(false);
+        loadScanIntoStudio(res.scan_id);
+        renderAlignMergeInspectorContent();
+
+        const finalBox = document.getElementById("alignMergeResultBox");
+        if (finalBox) {
+          const outMb = res.glb_size_mb ?? res.output_mb ?? 0;
+          finalBox.innerHTML = `
+            <div style="background:var(--ui-bg-subtle);border:1px solid var(--ui-border-strong);border-radius:8px;padding:10px;font-size:12px;color:var(--ui-text-primary);">
+              <div style="color:#10b981;font-weight:700;">✓ Unified Scan Created (${res.duration_s}s)</div>
+              <div style="margin-top:3px;">Scan ID: <code>${res.scan_id}</code></div>
+              <div>Geometry: <b>${(res.total_vertices || 0).toLocaleString()} verts · ${(res.total_faces || 0).toLocaleString()} faces</b></div>
+              <div>Stream Size: <b>${outMb} MB</b>${optNote}</div>
+            </div>
+          `;
+        }
+        showToast(`Merged ${res.merged_count} scans into "${mergedName}"!`);
+      } catch (err) {
+        if (resBox) {
+          resBox.innerHTML = `<div style="padding:8px;border-radius:6px;background:rgba(239,68,68,0.12);color:#ef4444;font-size:11.5px;">Merge failed: ${err.message}</div>`;
+        }
+        showToast(`Merge Error: ${err.message}`);
+      }
+    });
+
+    // Post-merge quick workflow launchers
+    document.getElementById("btnPostMergeOptimize")?.addEventListener("click", () => {
+      setActiveStudioTool("optimizer");
+      openOptimizerInspector();
+    });
+    document.getElementById("btnPostMergeVolume")?.addEventListener("click", () => {
+      setActiveStudioTool("volume");
+      openCutFillVolumeInspector();
+    });
+    document.getElementById("btnPostMergeContours")?.addEventListener("click", () => {
+      setActiveStudioTool("contours");
+      openContoursInspector();
+    });
+    document.getElementById("btnPostMergeSection")?.addEventListener("click", () => {
+      setActiveStudioTool("section");
+      openSectionBoxInspector();
+    });
+  }
+
+  function openAlignMergeInspector() {
+    if (!STATE.multiAlign.active && !STATE.multiAlign.lastMergedScan) {
+      enterMultiScanAlignMode();
+    } else if (STATE.multiAlign.active) {
+      updateStudioTransformGizmo();
+    }
+    renderAlignMergeInspectorContent();
+  }
+
+  // Unified Bottom Dock (#bimBottomDock) + Separate Left-Side Scan Editing Dock (#studioEditingDock) Button Wiring
+  document.querySelectorAll("#bimBottomDock .bim-dock-btn, #studioEditingDock .bim-dock-btn").forEach((btn) => {
     btn.addEventListener("click", () => {
-      const tool = btn.dataset.tool;
+      if (btn.id === "btnClearMeasurements" || btn.id === "btnMeasureClear") {
+        clearMeasurements();
+        if (studioThree && studioThree.contourGroup) {
+          while (studioThree.contourGroup.children.length > 0) {
+            studioThree.contourGroup.remove(studioThree.contourGroup.children[0]);
+          }
+        }
+        showToast("Cleared 3D measurements & overlays");
+        return;
+      }
+
+      const tool = btn.dataset.tool || btn.dataset.dock || "";
       if (tool === "snap") {
         STATE.snapEnabled = !STATE.snapEnabled;
         btn.classList.toggle("active", STATE.snapEnabled);
         showToast(`Snapping ${STATE.snapEnabled ? "Enabled" : "Disabled"}`);
         return;
       }
+      if (!tool) return;
 
       setActiveStudioTool(tool);
       STATE.measurePoints = [];
@@ -5517,36 +7489,111 @@
       if (tool === "volume") openCutFillVolumeInspector();
       else if (tool === "contours") openContoursInspector();
       else if (tool === "profile") openProfileInspector();
+      else if (tool === "section") openSectionBoxInspector();
       else if (tool === "photos") openRtkPhotoInspector();
+      else if (tool === "comments") openCommentsInspector();
+      else if (tool === "crop_delete") {
+        STATE.cropMode = "delete_inside";
+        openOptimizerInspector("delete_inside");
+        showToast("Lasso Delete active — drag mouse around part of scan to delete");
+      } else if (tool === "crop") {
+        STATE.cropMode = "keep_inside";
+        openOptimizerInspector("keep_inside");
+        showToast("Lasso Crop active — drag mouse around part of scan to keep");
+      } else if (tool === "optimizer") {
+        openOptimizerInspector(null);
+      } else if (tool === "align_merge") {
+        openAlignMergeInspector();
+      }
     });
   });
 
-  document.getElementById("btnMeasureClear")?.addEventListener("click", () => {
-    clearMeasurements();
-    if (studioThree) {
-      while (studioThree.contourGroup.children.length > 0) {
-        studioThree.contourGroup.remove(studioThree.contourGroup.children[0]);
+  // Keyboard shortcuts for Esc (cancel active measurement or close top modal), Enter (lock active polygon), and W/E/R/L in Align & Merge mode
+  window.addEventListener("keydown", (e) => {
+    const tag = (e.target && e.target.tagName) ? e.target.tagName.toLowerCase() : "";
+    if (tag === "input" || tag === "textarea" || tag === "select") return;
+
+    if (STATE.activeView === "studio" && STATE.multiAlign.active && STATE.activeTool === "align_merge") {
+      const k = e.key.toLowerCase();
+      if (k === "w") {
+        STATE.multiAlign.gizmoMode = "translate";
+        updateStudioTransformGizmo();
+        renderAlignMergeInspectorContent();
+        showToast("Gizmo Mode: Move (W)");
+        return;
+      } else if (k === "e") {
+        STATE.multiAlign.gizmoMode = "rotate";
+        updateStudioTransformGizmo();
+        renderAlignMergeInspectorContent();
+        showToast("Gizmo Mode: Rotate (E)");
+        return;
+      } else if (k === "r") {
+        STATE.multiAlign.gizmoMode = "both";
+        updateStudioTransformGizmo();
+        renderAlignMergeInspectorContent();
+        showToast("Gizmo Mode: Move + Rotate (R)");
+        return;
+      } else if (k === "l") {
+        const sel = getSelectedMultiAlignLayer();
+        if (sel) {
+          sel.locked = !sel.locked;
+          updateStudioTransformGizmo();
+          renderAlignMergeInspectorContent();
+          showToast(sel.locked ? `Locked "${sel.name}" 🔒` : `Unlocked "${sel.name}" 🔓`);
+          return;
+        }
       }
     }
-    showToast("Cleared 3D measurements & overlays");
-  });
 
-  document.querySelectorAll("#bimBottomDock .bim-dock-btn").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      const dock = btn.dataset.dock;
-      if (dock === "volume") openCutFillVolumeInspector();
-      else if (dock === "contours") openContoursInspector();
-      else if (dock === "section") {
-        document.querySelectorAll("#bimBottomDock .bim-dock-btn").forEach((b) => b.classList.remove("active"));
-        btn.classList.add("active");
-        openSectionBoxInspector();
-      } else if (dock === "comments") openCommentsInspector();
-      else if (dock === "optimizer") {
-        document.querySelectorAll("#bimBottomDock .bim-dock-btn").forEach((b) => b.classList.remove("active"));
-        btn.classList.add("active");
-        openOptimizerInspector();
+    if (e.key === "Escape") {
+      // 1. If a non-locked modal is open, close the topmost open modal
+      const openModals = Array.from(document.querySelectorAll(".gs-modal-backdrop.active"));
+      if (openModals.length > 0) {
+        const topModal = openModals[openModals.length - 1];
+        if (topModal.id !== "userProfileGateModal" || STATE.isAuthorized || STATE.shareToken) {
+          closeModal(topModal.id);
+          return;
+        }
       }
-    });
+      // 2. Otherwise cancel any in-progress measurement points
+      if (STATE.activeView === "studio" && STATE.measurePoints.length > 0) {
+        STATE.measurePoints = [];
+        clearTempDistanceVisuals();
+        if (studioThree && studioThree.polyPreviewGroup) {
+          while (studioThree.polyPreviewGroup.children.length > 0) {
+            studioThree.polyPreviewGroup.remove(studioThree.polyPreviewGroup.children[0]);
+          }
+        }
+        if (STATE.activeTool === "volume" && !STATE.polygonLocked) {
+          clearVolumeVisualsOnly();
+          openCutFillVolumeInspector(null);
+        }
+        showToast("Cancelled in-progress points (Esc)");
+      }
+    } else if (e.key === "Enter" && STATE.activeView === "studio" && STATE.measurePoints.length >= 3) {
+      if (studioThree && studioThree.polyPreviewGroup) {
+        while (studioThree.polyPreviewGroup.children.length > 0) {
+          studioThree.polyPreviewGroup.remove(studioThree.polyPreviewGroup.children[0]);
+        }
+      }
+      const lockedPts = STATE.measurePoints.map((p) => p.clone());
+      STATE.measurePoints = [];
+      STATE.polygonLocked = true;
+      STATE.maskBoundaryPoints = lockedPts.map((p) => p.clone());
+      if (STATE.activeTool === "volume") {
+        STATE.cutFillPolygonPoints = lockedPts;
+        showToast(`Cut/Fill polygon locked (${lockedPts.length} vertices) — computing volume...`);
+        openCutFillVolumeInspector(lockedPts);
+      } else if (STATE.activeTool === "crop" || STATE.activeTool === "crop_delete") {
+        const isDel = STATE.activeTool === "crop_delete";
+        STATE.cropMode = isDel ? "delete_inside" : "keep_inside";
+        drawLassoSelection3D(lockedPts, isDel);
+        showToast(`${isDel ? "Lasso Delete" : "Spatial Crop"} polygon locked (${lockedPts.length} vertices)`);
+        openOptimizerInspector(STATE.cropMode);
+      } else if (STATE.activeTool === "area") {
+        showToast(`Area polygon locked (${lockedPts.length} vertices)`);
+      }
+    }
   });
 
   document.getElementById("btnOpenOptimizer")?.addEventListener("click", () => {
@@ -5696,10 +7743,12 @@
       [left, lInfo],
       [right, rInfo],
     ].forEach(([side, info]) => {
-      if (!side || !side.tilesRenderer || !info) return;
-      // 1. Center raw tileset vertices on rawCenter for 32-bit float precision
-      side.tilesRenderer.group.position.set(-info.rawCenter.x, -info.rawCenter.y, -info.rawCenter.z);
-      side.tilesRenderer.group.updateMatrix();
+      if (!side || !info) return;
+      const rootObj = side.tilesRenderer?.group || side.loadedMesh;
+      if (!rootObj) return;
+      // 1. Center raw tileset/mesh vertices on rawCenter for 32-bit float precision
+      rootObj.position.set(-info.rawCenter.x, -info.rawCenter.y, -info.rawCenter.z);
+      rootObj.updateMatrix();
 
       // 2. Apply CRS alignment offset & meridian convergence relative to sharedAnchor
       if (sharedAnchor && (info.crs === "TWD97" || info.crs === "UTM51N")) {
@@ -5715,7 +7764,8 @@
         side.alignGroup.scale.set(1, 1, 1);
       }
       side.alignGroup.updateMatrix();
-      side.pivot.rotation.set(THREE.MathUtils.degToRad(270), 0, 0);
+      const isGlbYUp = Boolean(side.loadedMesh && side._glbIsYUp);
+      side.pivot.rotation.set(isGlbYUp ? 0 : THREE.MathUtils.degToRad(270), 0, 0);
       side.pivot.updateMatrix();
       side.pivot.traverse((obj) => {
         obj.matrixWorldNeedsUpdate = true;
@@ -5789,12 +7839,153 @@
     requestAnimationFrame(() => handleResize());
   }
 
-  function applyCompareElevationHeatmapToMaterial(m, active) {
+  function buildCompareBaselineHeightMap() {
+    if (!compareCtx || !compareCtx.left || !window.THREE) return null;
+    const left = compareCtx.left;
+    const targets = [];
+    left.pivot?.traverse((c) => {
+      if (c.isMesh && c.visible) targets.push(c);
+    });
+    if (!targets.length && left.fallbackGroup?.visible) {
+      left.fallbackGroup.traverse((c) => {
+        if (c.isMesh && c.visible) targets.push(c);
+      });
+    }
+    const span = Math.max(35, Math.min(140, Number(left.rawSphere?.radius) || 75));
+    const minX = -span,
+      maxX = span,
+      minZ = -span,
+      maxZ = span;
+    const N = 24;
+    const heights = new Float32Array(N * N);
+    const hitsMask = new Uint8Array(N * N);
+    let yMin = Infinity,
+      yMax = -Infinity,
+      ySum = 0,
+      hitCount = 0;
+
+    if (targets.length > 0) {
+      const rc = new THREE.Raycaster();
+      const down = new THREE.Vector3(0, -1, 0);
+      const orig = new THREE.Vector3();
+      for (let iz = 0; iz < N; iz++) {
+        const z = minZ + (iz / (N - 1)) * (maxZ - minZ);
+        for (let ix = 0; ix < N; ix++) {
+          const x = minX + (ix / (N - 1)) * (maxX - minX);
+          orig.set(x, 450, z);
+          rc.set(orig, down);
+          const hits = rc.intersectObjects(targets, true);
+          const idx = iz * N + ix;
+          if (hits.length > 0) {
+            const hy = hits[0].point.y;
+            heights[idx] = hy;
+            hitsMask[idx] = 1;
+            if (hy < yMin) yMin = hy;
+            if (hy > yMax) yMax = hy;
+            ySum += hy;
+            hitCount++;
+          }
+        }
+      }
+    }
+    if (hitCount === 0) {
+      yMin = -12;
+      yMax = 20;
+    } else if (yMax - yMin < 1.0) {
+      yMin -= 2.0;
+      yMax += 2.0;
+    }
+    const meanY = hitCount > 0 ? ySum / hitCount : 0.0;
+    const data = new Uint8Array(N * N * 4);
+    for (let i = 0; i < N * N; i++) {
+      if (hitsMask[i]) {
+        const norm = Math.max(0, Math.min(1, (heights[i] - yMin) / Math.max(0.5, yMax - yMin)));
+        const scaled = Math.round(norm * 65535);
+        data[i * 4 + 0] = (scaled >> 8) & 255;
+        data[i * 4 + 1] = scaled & 255;
+        data[i * 4 + 2] = 0;
+        data[i * 4 + 3] = 255;
+      } else {
+        data[i * 4 + 0] = 128;
+        data[i * 4 + 1] = 0;
+        data[i * 4 + 2] = 0;
+        data[i * 4 + 3] = 0;
+      }
+    }
+    if (compareCtx._baselineHeightMap?.tex) {
+      try {
+        compareCtx._baselineHeightMap.tex.dispose();
+      } catch (_) {}
+    }
+    const tex = new THREE.DataTexture(data, N, N, THREE.RGBAFormat, THREE.UnsignedByteType);
+    tex.magFilter = THREE.LinearFilter;
+    tex.minFilter = THREE.LinearFilter;
+    tex.needsUpdate = true;
+
+    compareCtx._baselineHeightMap = {
+      tex,
+      bounds: new THREE.Vector4(minX, minZ, maxX, maxZ),
+      yRange: new THREE.Vector2(yMin, yMax),
+      meanY,
+      deltaSpan: 4.0,
+    };
+    return compareCtx._baselineHeightMap;
+  }
+
+  function updateCompareHeatmapLegendUI(active) {
+    const stage = document.getElementById("compareStage");
+    if (!stage) return;
+    let legend = document.getElementById("compareHeatmapLegend");
+    if (!active) {
+      if (legend) legend.style.display = "none";
+      return;
+    }
+    if (!legend) {
+      legend = document.createElement("div");
+      legend.id = "compareHeatmapLegend";
+      legend.style.cssText =
+        "position:absolute;bottom:14px;left:50%;transform:translateX(-50%);z-index:60;background:var(--ui-bg-window);border:1px solid var(--ui-border-strong);border-radius:10px;padding:7px 14px;box-shadow:var(--ui-shadow-hud);display:flex;flex-direction:column;gap:4px;min-width:290px;pointer-events:none;";
+      stage.appendChild(legend);
+    }
+    const hm = compareCtx?._baselineHeightMap;
+    const zMin = hm ? hm.yRange.x.toFixed(1) : "-12.0";
+    const zMax = hm ? hm.yRange.y.toFixed(1) : "+22.0";
+    const dSpan = hm ? hm.deltaSpan.toFixed(1) : "4.0";
+    legend.style.display = "flex";
+    legend.innerHTML = `
+      <div style="display:flex;justify-content:space-between;align-items:center;font-size:10.5px;font-weight:700;color:var(--ui-text-primary);gap:12px;">
+        <span>Left: Baseline Z (${zMin}m ~ +${zMax}m)</span>
+        <span style="color:var(--ui-accent);">Right: ΔZ Height Change (Right − Left)</span>
+      </div>
+      <div style="height:7px;border-radius:999px;background:linear-gradient(90deg, #2461eb 0%, #05b5d4 25%, #0fba82 50%, #f59e0a 75%, #ef4545 100%);"></div>
+      <div style="display:flex;justify-content:space-between;font-size:10px;font-family:var(--font-mono);color:var(--ui-text-secondary);">
+        <span>-${dSpan}m (Cut / Lower)</span>
+        <span>0.0m (No Change)</span>
+        <span>+${dSpan}m (Fill / Higher)</span>
+      </div>
+    `;
+  }
+
+  function applyCompareElevationHeatmapToMaterial(m, active, side = null) {
     if (!m) return;
     if (!m.userData) m.userData = {};
+    const isRightDelta = Boolean(side && side.isLatest);
+    const hm = compareCtx?._baselineHeightMap;
     m.userData._elevationHeatmapActive = Boolean(active);
-    m.userData._elevMin = -10.0;
-    m.userData._elevMax = 22.0;
+    m.userData._deltaZMode = Boolean(active && isRightDelta);
+    if (isRightDelta) {
+      m.userData._elevMin = -(hm?.deltaSpan || 4.0);
+      m.userData._elevMax = hm?.deltaSpan || 4.0;
+      if (hm) {
+        m.userData._baseElevTex = hm.tex;
+        m.userData._baseBounds = hm.bounds;
+        m.userData._baseYRange = hm.yRange;
+        m.userData._baseMeanY = hm.meanY;
+      }
+    } else {
+      m.userData._elevMin = hm ? hm.yRange.x : -12.0;
+      m.userData._elevMax = hm ? hm.yRange.y : 22.0;
+    }
     if (m.metalness > 0) {
       m.metalness = 0.0;
       m.roughness = 1.0;
@@ -5810,7 +8001,7 @@
       grp.traverse((c) => {
         if (c.isMesh && c.material) {
           const mats = Array.isArray(c.material) ? c.material : [c.material];
-          mats.forEach((m) => applyCompareElevationHeatmapToMaterial(m, active));
+          mats.forEach((m) => applyCompareElevationHeatmapToMaterial(m, active, side));
         }
       });
     });
@@ -5818,18 +8009,24 @@
 
   function setCompareElevationHeatmap(active) {
     if (!compareCtx) return;
+    if (active) {
+      buildCompareBaselineHeightMap();
+    }
     applyCompareElevationHeatmapToSide(compareCtx.left, active);
     applyCompareElevationHeatmapToSide(compareCtx.right, active);
+    updateCompareHeatmapLegendUI(active);
   }
 
   function loadScanIntoCompareSide(side, scanId) {
     if (!side || !scanId) return;
     const scan = STATE.scans.find((s) => s.scan_id === scanId) || STATE.scans[0];
     if (!scan) return;
-    if (side._loadedScanId === scan.scan_id && side.tilesRenderer) return;
+    if (side._loadedScanId === scan.scan_id && (side.tilesRenderer || side.loadedMesh)) return;
     side._loadedScanId = scan.scan_id;
     side.scanMeta = scan;
     side.rawSphere = null;
+    side._glbLoaded = false;
+    side._fallbackLoaded = false;
 
     if (side.tilesRenderer) {
       try {
@@ -5837,6 +8034,7 @@
       } catch (_) {}
       side.tilesRenderer = null;
     }
+    side.loadedMesh = null;
     while (side.alignGroup.children.length > 0) {
       side.alignGroup.remove(side.alignGroup.children[0]);
     }
@@ -5851,12 +8049,70 @@
     }
 
     let streamUrl = scan.stream_url || "";
-    if (!streamUrl || !window.TilesRenderer) {
+    if (!streamUrl) {
       if (side.fallbackGroup) side.fallbackGroup.visible = true;
+      side._fallbackLoaded = true;
+      syncCompareLoaderProgress();
       return;
     }
     if (STATE.shareToken && !streamUrl.includes("share=")) {
       streamUrl += (streamUrl.includes("?") ? "&" : "?") + `share=${encodeURIComponent(STATE.shareToken)}`;
+    }
+
+    const isGlbStream = scan.stream_type === "glb" || streamUrl.split("?")[0].toLowerCase().endsWith(".glb");
+    if (isGlbStream && THREE.GLTFLoader) {
+      const loader = new THREE.GLTFLoader();
+      if (window.MeshoptDecoder) loader.setMeshoptDecoder(window.MeshoptDecoder);
+      const ktx2 = getKTX2Loader(side.renderer);
+      if (ktx2) loader.setKTX2Loader(ktx2);
+      loader.load(
+        streamUrl,
+        (gltf) => {
+          const root = gltf.scene || (gltf.scenes && gltf.scenes[0]);
+          if (!root) {
+            if (side.fallbackGroup) side.fallbackGroup.visible = true;
+            side._fallbackLoaded = true;
+            syncCompareLoaderProgress();
+            return;
+          }
+          const box = new THREE.Box3().setFromObject(root);
+          const sphere = new THREE.Sphere();
+          box.getBoundingSphere(sphere);
+          const spanY = box.max.y - box.min.y;
+          const spanZ = box.max.z - box.min.z;
+          side._glbIsYUp = spanY <= spanZ * 1.35;
+          sphere._groundOffsetY = -(sphere.radius * 0.18);
+          side.rawSphere = sphere;
+          side.loadedMesh = root;
+          side.alignGroup.add(root);
+          side._glbLoaded = true;
+          alignCompareSides();
+          const heatmapOn = Boolean(document.getElementById("chkDeltaZHeatmap")?.checked);
+          if (heatmapOn) buildCompareBaselineHeightMap();
+          root.traverse((c) => {
+            if (c.isMesh && c.material) {
+              const mats = Array.isArray(c.material) ? c.material : [c.material];
+              mats.forEach((m) => applyCompareElevationHeatmapToMaterial(m, heatmapOn, side));
+            }
+          });
+          side.renderer.render(side.scene, side.camera);
+          syncCompareLoaderProgress();
+        },
+        undefined,
+        () => {
+          if (side.fallbackGroup) side.fallbackGroup.visible = true;
+          side._fallbackLoaded = true;
+          syncCompareLoaderProgress();
+        }
+      );
+      return;
+    }
+
+    if (!window.TilesRenderer) {
+      if (side.fallbackGroup) side.fallbackGroup.visible = true;
+      side._fallbackLoaded = true;
+      syncCompareLoaderProgress();
+      return;
     }
 
     const tr = new window.TilesRenderer(streamUrl);
@@ -5898,10 +8154,13 @@
         if (side.fallbackGroup) side.fallbackGroup.visible = false;
         alignCompareSides();
         const heatmapOn = Boolean(document.getElementById("chkDeltaZHeatmap")?.checked);
+        if (heatmapOn) {
+          buildCompareBaselineHeightMap();
+        }
         ev.scene.traverse((c) => {
           if (c.isMesh && c.material) {
             const mats = Array.isArray(c.material) ? c.material : [c.material];
-            mats.forEach((m) => applyCompareElevationHeatmapToMaterial(m, heatmapOn));
+            mats.forEach((m) => applyCompareElevationHeatmapToMaterial(m, heatmapOn, side));
           }
         });
         side.camera.updateMatrixWorld();
@@ -5933,9 +8192,17 @@
 
   function syncCompareLoaderProgress() {
     if (!compareCtx || compareCtx._loadingDone) return;
-    const lStats = compareCtx.left?.tilesRenderer?.stats || {};
-    const rStats = compareCtx.right?.tilesRenderer?.stats || {};
-    const loaded = Number(lStats.loaded || 0) + Number(rStats.loaded || 0);
+    const lSide = compareCtx.left;
+    const rSide = compareCtx.right;
+    const lStats = lSide?.tilesRenderer?.stats || {};
+    const rStats = rSide?.tilesRenderer?.stats || {};
+    const lReady = Boolean(lSide?._glbLoaded || lSide?._fallbackLoaded || Number(lStats.loaded || 0) > 0);
+    const rReady = Boolean(rSide?._glbLoaded || rSide?._fallbackLoaded || Number(rStats.loaded || 0) > 0);
+    const loaded =
+      Number(lStats.loaded || 0) +
+      Number(rStats.loaded || 0) +
+      (lSide?._glbLoaded ? 1 : 0) +
+      (rSide?._glbLoaded ? 1 : 0);
     const activeWork =
       Number(lStats.downloading || 0) +
       Number(lStats.parsing || 0) +
@@ -5949,12 +8216,15 @@
     const sinceTileset = compareCtx._tilesetReadyMs ? now - compareCtx._tilesetReadyMs : 0;
 
     const bothSidesHaveMesh =
-      Number(lStats.loaded || 0) > 0 &&
-      Number(rStats.loaded || 0) > 0 &&
+      lReady &&
+      rReady &&
       (pending === 0 || (activeWork === 0 && sinceTileset > 900) || loaded >= Math.max(2, Math.ceil(total * 0.75)));
 
-    if (bothSidesHaveMesh && elapsed > 220) {
-      finishScanLoader(compareCtx, "compare", `100% · ${loaded} 3D tiles ready`);
+    if (bothSidesHaveMesh && elapsed > 180) {
+      if (document.getElementById("chkDeltaZHeatmap")?.checked) {
+        setCompareElevationHeatmap(true);
+      }
+      finishScanLoader(compareCtx, "compare", `100% · Compare scans ready`);
       return;
     }
 
@@ -5963,7 +8233,7 @@
       const rawPct = Math.round(18 + (loaded / total) * 78) + timeBoost;
       compareCtx._maxPct = Math.min(96, Math.max(compareCtx._maxPct || 18, rawPct));
       updateScanLoader("compare", true, compareCtx._maxPct, `Streaming Compare Scans · ${loaded} / ${total} tiles`);
-    } else if (sinceTileset > 12000) {
+    } else if (sinceTileset > 12000 || elapsed > 14000) {
       finishScanLoader(compareCtx, "compare", "Compare Ready");
     }
   }
@@ -6182,11 +8452,15 @@
       }
     });
 
-    // Z / Delta-Z Elevation Heatmap Toggle (applies to BOTH Left & Right scans and cleanly restores RGB textures when unchecked)
+    // Z / Delta-Z Elevation Heatmap Toggle (Left: Baseline Z Ramp · Right: ΔZ Height Change)
     document.getElementById("chkDeltaZHeatmap")?.addEventListener("change", (e) => {
       const active = Boolean(e.target.checked);
       setCompareElevationHeatmap(active);
-      showToast(active ? "Enabled Z Elevation Heatmap on Both Scans" : "Restored Original RGB Texture Shading");
+      showToast(
+        active
+          ? "Enabled ΔZ Elevation Heatmap (Left: Baseline Z · Right: ΔZ Cut/Fill Change)"
+          : "Restored Original RGB Texture Shading"
+      );
     });
 
     const loop = () => {
@@ -6212,7 +8486,7 @@
                   (m.userData?._lastBrightness !== STATE.scanBrightness ||
                     Boolean(m.userData?._elevationHeatmapActive) !== heatmapOn)
                 ) {
-                  applyCompareElevationHeatmapToMaterial(m, heatmapOn);
+                  applyCompareElevationHeatmapToMaterial(m, heatmapOn, side);
                 }
               });
             }
@@ -6341,7 +8615,7 @@
   }
   function closeModal(id) {
     if (id === "userProfileGateModal" && !STATE.isAuthorized && !STATE.shareToken) {
-      showToast("Please sign in with Google, select a team profile, or choose Guest Mode to continue");
+      showToast("Please sign in with Google or choose Guest Mode to continue");
       return;
     }
     document.getElementById(id)?.classList.remove("active");
@@ -6507,22 +8781,33 @@
   }
 
   function readPix4dSettingsFromUI(suffix = "") {
-    const getVal = (baseId, fallback) => {
-      const el = document.getElementById(baseId + suffix) || document.getElementById(baseId);
-      return el ? el.value : fallback;
+    const saved = STATE.pix4dSettings || {};
+    const getVal = (baseId, stateKey, fallback) => {
+      const el =
+        document.getElementById(baseId + suffix) ||
+        document.getElementById(baseId + "User") ||
+        document.getElementById(baseId);
+      if (el && el.value !== undefined && el.value !== "") return el.value;
+      if (saved[stateKey] !== undefined && saved[stateKey] !== null) return saved[stateKey];
+      return fallback;
     };
-    const getChk = (baseId, fallback) => {
-      const el = document.getElementById(baseId + suffix) || document.getElementById(baseId);
-      return el ? Boolean(el.checked) : fallback;
+    const getChk = (baseId, stateKey, fallback) => {
+      const el =
+        document.getElementById(baseId + suffix) ||
+        document.getElementById(baseId + "User") ||
+        document.getElementById(baseId);
+      if (el) return Boolean(el.checked);
+      if (saved[stateKey] !== undefined && saved[stateKey] !== null) return Boolean(saved[stateKey]);
+      return fallback;
     };
     return {
-      mesh_pipeline: getVal("selPix4dMeshPipeline", "FixedSize"),
-      texture_size: Number(getVal("selPix4dTextureSize", 4096)) || 4096,
-      model_simplification: getVal("selPix4dSimplification", "Conservative"),
-      deghosting: getVal("selPix4dDeghosting", "Weak"),
-      export_lod: Math.max(0, Math.min(20, Number(getVal("inpPix4dExportLod", 13)) || 13)),
-      skyless: getChk("chkPix4dSkyless", false),
-      use_roi: getChk("chkPix4dUseRoi", false),
+      mesh_pipeline: String(getVal("selPix4dMeshPipeline", "mesh_pipeline", "FixedSize")),
+      texture_size: Number(getVal("selPix4dTextureSize", "texture_size", 4096)) || 4096,
+      model_simplification: String(getVal("selPix4dSimplification", "model_simplification", "Conservative")),
+      deghosting: String(getVal("selPix4dDeghosting", "deghosting", "Weak")),
+      export_lod: Math.max(0, Math.min(20, Number(getVal("inpPix4dExportLod", "export_lod", 13)) || 13)),
+      skyless: getChk("chkPix4dSkyless", "skyless", false),
+      use_roi: getChk("chkPix4dUseRoi", "use_roi", false),
     };
   }
 
@@ -7103,23 +9388,32 @@
     }
   });
 
+  document.getElementById("btnJumpQueueToSettings")?.addEventListener("click", () => {
+    closeModal("modalQueue");
+    openOfflineCacheModal();
+  });
+
   // Admin Control Panel (5-Level Permissions & User Management)
   async function renderAdminControlPanel() {
     refreshAdminPcDaemonUI();
     const tbody = document.getElementById("adminUsersTableBody");
-    const rolePill = document.getElementById("adminCurrentUserRolePill");
+    const rolePill =
+      document.getElementById("badgeCurrentUserRoleLevel") ||
+      document.getElementById("adminCurrentUserRolePill");
     const saveBtn = document.getElementById("btnAdminSaveUser");
-    const nameIn = document.getElementById("adminNewUserName");
-    const emailIn = document.getElementById("adminNewUserEmail");
-    const roleSel = document.getElementById("adminNewUserRole");
+    const nameIn = document.getElementById("adminInputUserName") || document.getElementById("adminNewUserName");
+    const zhNameIn = document.getElementById("adminInputUserZhName");
+    const emailIn = document.getElementById("adminInputUserEmail") || document.getElementById("adminNewUserEmail");
+    const roleSel = document.getElementById("adminSelectUserRole") || document.getElementById("adminNewUserRole");
 
     const myInfo = getCurrentUserRoleInfo();
     if (rolePill) {
-      rolePill.textContent = `Active Role: ${myInfo.level}. ${myInfo.label}`;
+      rolePill.textContent = `Active Role: L${myInfo.level} — ${myInfo.label}`;
     }
-    const canManageUsers = Boolean(myInfo.can_manage_users);
+    const canManageUsers = Boolean(myInfo.canManageUsers || myInfo.can_manage_users);
     if (saveBtn) saveBtn.disabled = !canManageUsers;
     if (nameIn) nameIn.disabled = !canManageUsers;
+    if (zhNameIn) zhNameIn.disabled = !canManageUsers;
     if (emailIn) emailIn.disabled = !canManageUsers;
     if (roleSel) roleSel.disabled = !canManageUsers;
 
@@ -7140,11 +9434,11 @@
       const email = String(u.email || "").toLowerCase();
       const isOwner = email === "glibivanov@gatheren.com.tw" || u.role === "owner";
       const uRole = isOwner ? "owner" : String(u.role || "viewer").toLowerCase();
-      const uLevel = ROLE_LEVELS_MAP[uRole] || 4;
+      const uLevel = ROLE_LEVELS_MAP[uRole] || 2;
       const canEditRow =
         canManageUsers &&
         !isOwner &&
-        (myInfo.role === "owner" || (myInfo.role === "admin" && uLevel > 2));
+        (myInfo.role === "owner" || (myInfo.role === "admin" && uLevel < myInfo.level));
 
       const tr = document.createElement("tr");
       const roleOptionsHtml = ["owner", "admin", "editor", "viewer", "guest"]
@@ -7153,12 +9447,13 @@
             rk === "owner" || (myInfo.role === "admin" && (rk === "admin" || rk === "owner"));
           return `<option value="${rk}" ${uRole === rk ? "selected" : ""} ${
             disabledOpt && uRole !== rk ? "disabled" : ""
-          }>${ROLE_LEVELS_MAP[rk]}. ${ROLE_LABELS_MAP[rk]}</option>`;
+          }>L${ROLE_LEVELS_MAP[rk]} — ${ROLE_LABELS_MAP[rk]}</option>`;
         })
         .join("");
 
+      const displayName = u.zh_name && u.zh_name !== u.name ? `${u.name} (${u.zh_name})` : (u.name || "User");
       tr.innerHTML = `
-        <td><b style="color:var(--ui-text-primary);">${escapeHtml(u.name || "User")}</b></td>
+        <td><b style="color:var(--ui-text-primary);">${escapeHtml(displayName)}</b></td>
         <td style="font-family:var(--font-mono);font-size:11.5px;color:var(--ui-accent);">${escapeHtml(
           u.email || ""
         )}</td>
@@ -7170,7 +9465,7 @@
                 )}" style="height:26px;font-size:11.5px;padding:0 8px;">${roleOptionsHtml}</select>`
               : `<span class="gs-crs-pill" style="${
                   isOwner ? "background:rgba(37,99,235,0.16);color:#3b82f6;font-weight:800;" : ""
-                }">${uLevel}. ${escapeHtml(ROLE_LABELS_MAP[uRole] || u.role_label || uRole)}</span>`
+                }">L${uLevel} — ${escapeHtml(ROLE_LABELS_MAP[uRole] || u.role_label || uRole)}</span>`
           }
         </td>
         <td style="font-size:11px;color:var(--ui-text-secondary);">
@@ -7183,7 +9478,7 @@
               ? "Rename sites/scans, run PIX4Dmatic & Optimizer"
               : uRole === "viewer"
               ? "View all scans + Measurement/Surveying tools (No PC jobs)"
-              : "Single shared scan + Distance/Area/Coordinates only"
+              : "Browse & inspect scans + Distance/Area/Coordinates"
           }
         </td>
         <td>
@@ -7208,6 +9503,7 @@
               actor_email: STATE.currentUser?.email || "",
               email: u.email,
               name: u.name,
+              zh_name: u.zh_name || "",
               role: newRole,
             });
             showToast(`Updated ${u.name || u.email} to ${ROLE_LABELS_MAP[newRole] || newRole}`);
@@ -7244,9 +9540,14 @@
   }
 
   document.getElementById("btnAdminSaveUser")?.addEventListener("click", async () => {
-    const name = document.getElementById("adminNewUserName")?.value?.trim() || "";
-    const email = document.getElementById("adminNewUserEmail")?.value?.trim() || "";
-    const role = document.getElementById("adminNewUserRole")?.value || "viewer";
+    const nameEl = document.getElementById("adminInputUserName") || document.getElementById("adminNewUserName");
+    const zhNameEl = document.getElementById("adminInputUserZhName");
+    const emailEl = document.getElementById("adminInputUserEmail") || document.getElementById("adminNewUserEmail");
+    const roleEl = document.getElementById("adminSelectUserRole") || document.getElementById("adminNewUserRole");
+    const name = nameEl?.value?.trim() || "";
+    const zh_name = zhNameEl?.value?.trim() || "";
+    const email = emailEl?.value?.trim() || "";
+    const role = roleEl?.value || "viewer";
     const statusEl = document.getElementById("adminActionStatusMsg");
     if (!email || !email.includes("@")) {
       showToast("Please enter a valid user email address.");
@@ -7256,11 +9557,13 @@
       const res = await apiPost("/api/admin/users/save", {
         actor_email: STATE.currentUser?.email || "",
         email,
-        name: name || email.split("@")[0],
+        name: name || zh_name || email.split("@")[0],
+        zh_name,
         role,
       });
-      if (document.getElementById("adminNewUserName")) document.getElementById("adminNewUserName").value = "";
-      if (document.getElementById("adminNewUserEmail")) document.getElementById("adminNewUserEmail").value = "";
+      if (nameEl) nameEl.value = "";
+      if (zhNameEl) zhNameEl.value = "";
+      if (emailEl) emailEl.value = "";
       if (statusEl) {
         statusEl.style.display = "block";
         statusEl.style.color = "#10b981";
@@ -7409,7 +9712,7 @@
     try {
       const manifest = await apiGet(`/api/cache/manifest/${scanId}`);
       if ("caches" in window) {
-        const cache = await caches.open("gathering-scans-offline-v1");
+        const cache = await caches.open("gathering-scans-offline-v10");
         for (const u of manifest.asset_urls || []) {
           await cache.add(u).catch(() => {});
         }
@@ -7511,7 +9814,7 @@
       if (btnLogout) btnLogout.style.display = "none";
       if (gateStatus) {
         gateStatus.textContent =
-          "Authorization required — Sign in with Google, select a team profile, or use Guest Mode";
+          "Authorization required — Sign in with Google or use Guest Mode";
       }
       applyRolePermissionsToUI();
       return;
@@ -7797,7 +10100,7 @@
   });
   document.getElementById("btnGateConfirmEnter")?.addEventListener("click", () => {
     if (!STATE.isAuthorized && !STATE.shareToken) {
-      showToast("Please sign in with Google, select a team profile, or choose Guest Mode");
+      showToast("Please sign in with Google or choose Guest Mode");
       return;
     }
     closeModal("userProfileGateModal");
@@ -7856,8 +10159,12 @@
   document.getElementById("mapProjectSelect")?.addEventListener("change", (e) => {
     const val = e.target.value;
     if (!val || val === "__all__") {
-      if (STATE.siteTimelineOpen) closeSiteTimeline();
+      STATE.activeProjectGroup = "__all__";
+      document.getElementById("clusterHoverPopover")?.classList.remove("active");
+      document.querySelectorAll(".scan-cluster-blob").forEach((b) => b.classList.remove("active-cluster"));
+      openSiteTimeline("__all__");
       if (gsMap) {
+        gsMap.selectedGroup = null;
         gsMap.centerLat = 24.976;
         gsMap.centerLon = 121.522;
         gsMap.zoom = 11.75;
@@ -7872,24 +10179,34 @@
       gsMap.centerLon = grp.lon;
       gsMap.zoom = 14.5;
       openClusterPopover(grp);
+      openSiteTimeline(grp.project_group);
       gsMap.drawMap();
     }
   });
 
   document.getElementById("btnOpenSelectedProjectTimeline")?.addEventListener("click", () => {
     const selVal = document.getElementById("mapProjectSelect")?.value;
-    const targetGroup =
-      selVal && selVal !== "__all__"
-        ? selVal
-        : STATE.activeProjectGroup || (getProjectGroupsList("")[0]?.project_group ?? "");
-    if (targetGroup) {
-      openSiteTimeline(targetGroup);
-    }
+    const targetGroup = selVal || STATE.activeProjectGroup || "__all__";
+    openSiteTimeline(targetGroup);
   });
 
   document.getElementById("timelineProjectSelect")?.addEventListener("change", (e) => {
     const val = e.target.value;
     if (val) {
+      if (val === "__all__") {
+        STATE.activeProjectGroup = "__all__";
+        document.getElementById("clusterHoverPopover")?.classList.remove("active");
+        document.querySelectorAll(".scan-cluster-blob").forEach((b) => b.classList.remove("active-cluster"));
+        if (gsMap) {
+          gsMap.selectedGroup = null;
+          gsMap.centerLat = 24.976;
+          gsMap.centerLon = 121.522;
+          gsMap.zoom = 11.75;
+          gsMap.drawMap();
+        }
+        openSiteTimeline("__all__");
+        return;
+      }
       const grp = getProjectGroupsList("").find((g) => g.project_group === val);
       if (grp && gsMap) {
         gsMap.centerLat = grp.lat;
@@ -7927,6 +10244,9 @@
   });
 
   function switchView(viewName, optionalScanId = null) {
+    if (viewName !== "studio" && STATE.multiAlign?.active && typeof exitMultiScanAlignMode === "function") {
+      exitMultiScanAlignMode(false);
+    }
     STATE.activeView = viewName;
     document.querySelectorAll("#mainModeSwitcher .btn-seg").forEach((b) => {
       b.classList.toggle("active", b.dataset.view === viewName);
@@ -8109,8 +10429,9 @@
       if (!isBackgroundPoll && urlProject && STATE.scans.some((s) => s.project_group === urlProject)) {
         STATE.activeProjectGroup = urlProject;
       } else if (
-        !STATE.activeProjectGroup ||
-        !STATE.scans.some((s) => s.project_group === STATE.activeProjectGroup)
+        STATE.activeProjectGroup !== "__all__" &&
+        (!STATE.activeProjectGroup ||
+          !STATE.scans.some((s) => s.project_group === STATE.activeProjectGroup))
       ) {
         if (activeScanObj && activeScanObj.project_group) {
           STATE.activeProjectGroup = activeScanObj.project_group;
@@ -8123,7 +10444,29 @@
         openSiteTimeline(STATE.activeProjectGroup, STATE.selectedTimelineScanId, false);
       }
     } catch (err) {
+      // Try offline cached catalog first before showing any error
       if (!STATE.scans || STATE.scans.length === 0) {
+        try {
+          const cached = JSON.parse(localStorage.getItem("gs_last_catalog_v1") || "null");
+          if (cached && Array.isArray(cached.scans) && cached.scans.length > 0) {
+            STATE.scans = cached.scans;
+            STATE.projects = cached.projects || [];
+            populateProjectScanDropdowns(STATE.activeProjectGroup, STATE.activeScanId);
+            renderMapClusters();
+            if (!isBackgroundPoll) {
+              showToast("Offline Mode: Loaded scans from local browser cache");
+            }
+            return;
+          }
+        } catch (_) {}
+      }
+      const errMsg = String(err?.message || "");
+      const isRevokedShare =
+        Boolean(STATE.shareToken) &&
+        (errMsg.toLowerCase().includes("revoked") ||
+          errMsg.toLowerCase().includes("invalid") ||
+          errMsg.includes("403"));
+      if (isRevokedShare && (!STATE.scans || STATE.scans.length === 0)) {
         document.body.innerHTML = `
           <div style="display:flex;align-items:center;justify-content:center;height:100vh;background:var(--ui-bg-subtle);color:var(--ui-text-primary);font-family:sans-serif;padding:24px;">
             <div style="max-width:480px;background:var(--ui-bg-surface);border:1px solid var(--ui-border-strong);border-radius:12px;padding:24px;text-align:center;box-shadow:var(--ui-shadow-window);">
@@ -8131,10 +10474,12 @@
                 <rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>
               </svg>
               <h2 style="font-size:17px;color:var(--ui-text-primary);">Access Restricted or Link Revoked</h2>
-              <p style="font-size:13px;color:var(--ui-text-secondary);margin-top:8px;">${err.message}</p>
+              <p style="font-size:13px;color:var(--ui-text-secondary);margin-top:8px;">${escapeHtml(errMsg)}</p>
             </div>
           </div>
         `;
+      } else if (!isBackgroundPoll) {
+        showToast(`Catalog sync note: ${errMsg}`);
       }
     }
   }
@@ -8175,29 +10520,29 @@
     }, 60000);
     setInterval(() => {
       try {
-        if (previewThree && previewThree.tilesRenderer && !previewThree._loadingDone) {
+        if (STATE.activeView === "map" && previewThree && previewThree.tilesRenderer && !previewThree._loadingDone) {
           previewThree.camera.updateMatrixWorld();
           previewThree.tilesRenderer.update();
           syncTilesLoaderProgress(previewThree, "preview");
           previewThree.renderer.render(previewThree.scene, previewThree.camera);
         }
-        if (studioThree && studioThree.tilesRenderer && !studioThree._loadingDone) {
+        if (STATE.activeView === "studio" && studioThree && studioThree.tilesRenderer && !studioThree._loadingDone) {
           studioThree.camera.updateMatrixWorld();
           studioThree.tilesRenderer.update();
           syncTilesLoaderProgress(studioThree, "studio");
           studioThree.renderer.render(studioThree.scene, studioThree.camera);
         }
-        if (compareCtx) {
+        if (STATE.activeView === "compare" && compareCtx && !compareCtx._loadingDone) {
           let needsRender = false;
           ["left", "right"].forEach((k) => {
             const side = compareCtx[k];
-            if (side && side.tilesRenderer && !side._loadingDone) {
+            if (side && side.tilesRenderer) {
               side.camera.updateMatrixWorld();
               side.tilesRenderer.update();
-              syncTilesLoaderProgress(side, "compare");
               needsRender = true;
             }
           });
+          syncCompareLoaderProgress();
           if (needsRender && compareCtx.left && compareCtx.right) {
             compareCtx.left.renderer.render(compareCtx.left.scene, compareCtx.left.camera);
             compareCtx.right.renderer.render(compareCtx.right.scene, compareCtx.right.camera);

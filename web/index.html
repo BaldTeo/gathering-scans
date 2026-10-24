@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>GatheringCloud Scans — 3D Photogrammetry &amp; Civil Surveying Studio (scans.gatheren.cloud)</title>
   <link rel="icon" type="image/png" href="/assets/gathering_cloud_logo.png" />
-  <link rel="stylesheet" href="/app.css?v=20261018_v19" />
+  <link rel="stylesheet" href="/app.css?v=20261024_v26" />
   <script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
 <body>
@@ -410,7 +410,7 @@
               <polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
             </svg>
           </a>
-          <button type="button" class="btn-xs primary" id="btnStudioSurveyReport" title="Create Survey Report: Civil3D.dwg (TWD97 XYZ) &amp; A3 Ready-to-Print PDF">
+          <button type="button" class="btn-xs primary" id="btnStudioSurveyReport" title="Create Survey Report: Civil3D.dxf (AutoCAD / Civil 3D TWD97 XYZ) &amp; A3 Ready-to-Print PDF">
             <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8">
               <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>
               <line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="16" y2="17"/>
@@ -420,7 +420,7 @@
         </div>
 
         <div class="gs-active-scan-pill gs-studio-coord-pill" style="gap:8px;">
-          <span style="font-size:11px;font-family:monospace;color:var(--ui-text-primary);font-weight:600;" id="lblLastPickedCoord">
+          <span style="font-size:11px;font-family:var(--mono);color:var(--ui-text-primary);font-weight:600;" id="lblLastPickedCoord">
             E: 304952.66m, N: 2757084.88m, H: +43.18m
           </span>
         </div>
@@ -430,7 +430,7 @@
       <aside class="gs-side-panel" id="studioSidePanel">
         <div class="gs-panel-header">
           <div class="gs-panel-title" id="sidePanelTitle">Surveying Inspector</div>
-          <button type="button" class="btn-xs" id="btnCloseSidePanel" title="Close">
+          <button type="button" class="btn-xs" id="btnCloseSidePanel" title="Close" aria-label="Close Inspector Panel">
             <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8">
               <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
             </svg>
@@ -439,147 +439,77 @@
         <div id="sidePanelBody"></div>
       </aside>
 
-      <!-- Icon-Only Measurement Toolbar (0 Words per Button) -->
-      <div id="bimMeasureBottomContainer" class="bim-measure-bottom-container">
-        <div id="bimMeasurementToolbar" class="autodesk-measure-toolbar">
-          <div class="autodesk-measure-subtools">
-            <!-- 1. Distance -->
-            <button type="button" class="autodesk-measure-btn active" data-tool="distance" id="btnMeasureDistance" title="Distance &amp; Elevation Δh / 空間距離與高程差">
-              <div class="autodesk-measure-icon">
-                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8">
-                  <line x1="2" y1="4" x2="2" y2="20" stroke-width="2.2"/>
-                  <line x1="22" y1="4" x2="22" y2="20" stroke-width="2.2"/>
-                  <line x1="2" y1="12" x2="22" y2="12" stroke-width="1.8"/>
-                  <polyline points="6,9 3,12 6,15" stroke-width="1.8"/>
-                  <polyline points="18,9 21,12 18,15" stroke-width="1.8"/>
-                </svg>
-              </div>
-            </button>
-
-            <!-- 2. Angle -->
-            <button type="button" class="autodesk-measure-btn" data-tool="angle" id="btnMeasureAngle" title="Angle &amp; Slope / 角度與坡度">
-              <div class="autodesk-measure-icon">
-                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8">
-                  <path d="M4 5v14h16"/>
-                  <path d="M4 13a6 6 0 0 1 6 6"/>
-                  <circle cx="4" cy="19" r="1.5" fill="currentColor"/>
-                </svg>
-              </div>
-            </button>
-
-            <!-- 3. Area -->
-            <button type="button" class="autodesk-measure-btn" data-tool="area" id="btnMeasureArea" title="Area &amp; Perimeter (m² / 坪) / 面積與周長">
-              <div class="autodesk-measure-icon">
-                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8">
-                  <polygon points="3,6 15,3 21,9 18,20 6,18"/>
-                  <polygon points="7,8 14,6 18,10 16,17 8,16" stroke-dasharray="2 2" stroke-width="1.2" opacity="0.6"/>
-                </svg>
-              </div>
-            </button>
-
-            <!-- 4. Coordinates -->
-            <button type="button" class="autodesk-measure-btn" data-tool="coordinates" id="btnMeasureCoordinates" title="TWD97 (121) + TWVD2001 Coordinates / 座標點位">
-              <div class="autodesk-measure-icon">
-                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8">
-                  <circle cx="12" cy="12" r="6"/>
-                  <line x1="12" y1="2" x2="12" y2="6"/>
-                  <line x1="12" y1="18" x2="12" y2="22"/>
-                  <line x1="2" y1="12" x2="6" y2="12"/>
-                  <line x1="18" y1="12" x2="22" y2="12"/>
-                </svg>
-              </div>
-            </button>
-
-            <!-- 5. Laser -->
-            <button type="button" class="autodesk-measure-btn" data-tool="laser" id="btnMeasureLaser" title="Laser Grade &amp; Elevation / 雷射高程">
-              <div class="autodesk-measure-icon">
-                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8">
-                  <path d="M5 19l4-4M9 15l7-7 2 2-7 7-2-2z"/>
-                  <circle cx="18" cy="6" r="1" fill="currentColor"/>
-                  <line x1="19" y1="2" x2="21" y2="4"/>
-                  <line x1="15" y1="1" x2="16" y2="2"/>
-                  <line x1="22" y1="8" x2="23" y2="9"/>
-                </svg>
-              </div>
-            </button>
-
-            <!-- 6. Cut/Fill & Stockpile Volume -->
-            <button type="button" class="autodesk-measure-btn" data-tool="volume" id="btnMeasureVolume" title="Cut/Fill Volumes &amp; Stockpile Report / 挖填方與土石堆體積報表">
-              <div class="autodesk-measure-icon">
-                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8">
-                  <path d="M3 18L9 8l5 6 4-4 3 8H3z"/>
-                  <line x1="2" y1="20" x2="22" y2="20"/>
-                </svg>
-              </div>
-            </button>
-
-            <!-- 7. Elevation Contours & Survey Report (Civil3D.dwg + A3 PDF) -->
-            <button type="button" class="autodesk-measure-btn" data-tool="contours" id="btnMeasureContours" title="Survey Report: Mask Boundary, Contours, Civil3D.dwg &amp; A3 PDF / 測量成果圖 (Civil3D.dwg + A3 PDF)">
-              <div class="autodesk-measure-icon">
-                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8">
-                  <ellipse cx="12" cy="12" rx="10" ry="6"/>
-                  <ellipse cx="12" cy="12" rx="6.5" ry="3.8"/>
-                  <ellipse cx="12" cy="12" rx="3" ry="1.6"/>
-                </svg>
-              </div>
-            </button>
-
-            <!-- 8. Cross-Section Elevation Profile -->
-            <button type="button" class="autodesk-measure-btn" data-tool="profile" id="btnMeasureProfile" title="Cross-Section Elevation Profile / 縱橫斷面分析">
-              <div class="autodesk-measure-icon">
-                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8">
-                  <polyline points="3 17 8 11 13 14 21 6"/>
-                  <line x1="3" y1="20" x2="21" y2="20"/>
-                </svg>
-              </div>
-            </button>
-
-            <!-- 9. RTK Raw Camera Photo Inspector -->
-            <button type="button" class="autodesk-measure-btn" data-tool="photos" id="btnMeasurePhotos" title="RTK Raw Camera Photo Inspector / 原始 RTK 照片檢視">
-              <div class="autodesk-measure-icon">
-                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8">
-                  <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
-                  <circle cx="12" cy="13" r="4"/>
-                </svg>
-              </div>
-            </button>
-
-            <!-- 10. Snap Toggle -->
-            <button type="button" class="autodesk-measure-btn active" data-tool="snap" id="btnMeasureSnap" title="Toggle Vertex &amp; Surface Snapping / 切換幾何捕捉">
-              <div class="autodesk-measure-icon">
-                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8">
-                  <path d="M6 3v7a6 6 0 0 0 12 0V3"/>
-                  <line x1="4" y1="3" x2="8" y2="3"/>
-                  <line x1="16" y1="3" x2="20" y2="3"/>
-                </svg>
-              </div>
-            </button>
-          </div>
-
-          <div class="autodesk-measure-divider"></div>
-          <button type="button" class="autodesk-measure-clear-btn" id="btnMeasureClear" title="Clear All Measurements">
-            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8">
-              <polyline points="3 6 5 6 21 6"/>
-              <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
-              <line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/>
-            </svg>
-          </button>
-        </div>
-      </div>
-
-      <!-- Bottom Segmented Dock (Icon-Only / 1-Word Discipline) -->
-      <nav class="bim-bottom-dock" id="bimBottomDock" aria-label="GatheringScans 3D Tools Dock">
-        <button type="button" class="bim-dock-btn active" id="btnDockMeasure" data-dock="measure" title="Measurement Tools / 量測工具">
+      <!-- Unified Bottom Segmented Dock (All Surveying, Measurement & BIM Tools in One Bar) -->
+      <nav class="bim-bottom-dock" id="bimBottomDock" aria-label="GatheringScans 3D Surveying &amp; Measurement Dock">
+        <!-- 1. Distance -->
+        <button type="button" class="bim-dock-btn autodesk-measure-btn active" id="btnMeasureDistance" data-tool="distance" data-dock="measure" title="Distance &amp; Elevation Δh / 空間距離與高程差" aria-label="Distance Measurement">
           <div class="bim-dock-icon">
             <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8">
-              <path d="M21.3 15.3a2.4 2.4 0 0 1 0 3.4l-2.6 2.6a2.4 2.4 0 0 1-3.4 0L2.7 8.7a2.41 2.41 0 0 1 0-3.4l2.6-2.6a2.41 2.41 0 0 1 3.4 0Z"/>
-              <path d="m14.5 12.5 2-2"/><path d="m11.5 9.5 2-2"/><path d="m8.5 6.5 2-2"/>
+              <line x1="2" y1="4" x2="2" y2="20" stroke-width="2.2"/>
+              <line x1="22" y1="4" x2="22" y2="20" stroke-width="2.2"/>
+              <line x1="2" y1="12" x2="22" y2="12" stroke-width="1.8"/>
+              <polyline points="6,9 3,12 6,15" stroke-width="1.8"/>
+              <polyline points="18,9 21,12 18,15" stroke-width="1.8"/>
             </svg>
           </div>
-          <span class="bim-dock-label">量測</span>
+          <span class="bim-dock-label">距離</span>
         </button>
 
-        <button type="button" class="bim-dock-btn" id="btnDockVolume" data-dock="volume" title="Earthwork Volume Report / 土方報表">
+        <!-- 2. Angle -->
+        <button type="button" class="bim-dock-btn autodesk-measure-btn" id="btnMeasureAngle" data-tool="angle" data-dock="angle" title="Angle &amp; Slope / 角度與坡度" aria-label="Angle Measurement">
+          <div class="bim-dock-icon">
+            <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8">
+              <path d="M4 5v14h16"/>
+              <path d="M4 13a6 6 0 0 1 6 6"/>
+              <circle cx="4" cy="19" r="1.5" fill="currentColor"/>
+            </svg>
+          </div>
+          <span class="bim-dock-label">角度</span>
+        </button>
+
+        <!-- 3. Area -->
+        <button type="button" class="bim-dock-btn autodesk-measure-btn" id="btnMeasureArea" data-tool="area" data-dock="area" title="Area &amp; Perimeter (m² / 坪) / 面積與周長" aria-label="Area Measurement">
+          <div class="bim-dock-icon">
+            <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8">
+              <polygon points="3,6 15,3 21,9 18,20 6,18"/>
+              <polygon points="7,8 14,6 18,10 16,17 8,16" stroke-dasharray="2 2" stroke-width="1.2" opacity="0.6"/>
+            </svg>
+          </div>
+          <span class="bim-dock-label">面積</span>
+        </button>
+
+        <!-- 4. Coordinates -->
+        <button type="button" class="bim-dock-btn autodesk-measure-btn" id="btnMeasureCoordinates" data-tool="coordinates" data-dock="coordinates" title="TWD97 (121) + TWVD2001 Coordinates / 座標點位" aria-label="Coordinate Point">
+          <div class="bim-dock-icon">
+            <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8">
+              <circle cx="12" cy="12" r="6"/>
+              <line x1="12" y1="2" x2="12" y2="6"/>
+              <line x1="12" y1="18" x2="12" y2="22"/>
+              <line x1="2" y1="12" x2="6" y2="12"/>
+              <line x1="18" y1="12" x2="22" y2="12"/>
+            </svg>
+          </div>
+          <span class="bim-dock-label">座標</span>
+        </button>
+
+        <!-- 5. Laser -->
+        <button type="button" class="bim-dock-btn autodesk-measure-btn" id="btnMeasureLaser" data-tool="laser" data-dock="laser" title="Laser Grade &amp; Elevation / 雷射高程" aria-label="Laser Elevation">
+          <div class="bim-dock-icon">
+            <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8">
+              <path d="M5 19l4-4M9 15l7-7 2 2-7 7-2-2z"/>
+              <circle cx="18" cy="6" r="1" fill="currentColor"/>
+              <line x1="19" y1="2" x2="21" y2="4"/>
+              <line x1="15" y1="1" x2="16" y2="2"/>
+              <line x1="22" y1="8" x2="23" y2="9"/>
+            </svg>
+          </div>
+          <span class="bim-dock-label">雷射</span>
+        </button>
+
+        <div class="bim-dock-divider"></div>
+
+        <!-- 6. Earthwork Volume -->
+        <button type="button" class="bim-dock-btn autodesk-measure-btn" id="btnDockVolume" data-tool="volume" data-dock="volume" title="Cut/Fill &amp; Stockpile Volume Report / 土方挖填體積報表" aria-label="Earthwork Volume">
           <div class="bim-dock-icon">
             <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8">
               <path d="M3 18L9 8l5 6 4-4 3 8H3z"/>
@@ -588,7 +518,8 @@
           <span class="bim-dock-label">土方</span>
         </button>
 
-        <button type="button" class="bim-dock-btn" id="btnDockContours" data-dock="contours" title="Survey Report: Contours, Mask, Civil3D.dwg &amp; A3 PDF / 等高線與測量成果圖">
+        <!-- 7. Elevation Contours & Survey Report (.DXF + A3 PDF) -->
+        <button type="button" class="bim-dock-btn autodesk-measure-btn" id="btnDockContours" data-tool="contours" data-dock="contours" title="Survey Report: Contours, Mask, Civil3D.dxf &amp; A3 PDF / 等高線與測量成果圖" aria-label="Contours and Survey Report">
           <div class="bim-dock-icon">
             <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8">
               <ellipse cx="12" cy="12" rx="9" ry="5"/><ellipse cx="12" cy="12" rx="5" ry="2.5"/>
@@ -597,7 +528,19 @@
           <span class="bim-dock-label">等高線</span>
         </button>
 
-        <button type="button" class="bim-dock-btn" id="btnDockSection" data-dock="section" title="Section Box / 剖面盒">
+        <!-- 8. Cross-Section Profile -->
+        <button type="button" class="bim-dock-btn autodesk-measure-btn" id="btnMeasureProfile" data-tool="profile" data-dock="profile" title="Cross-Section Elevation Profile / 縱橫斷面分析" aria-label="Cross-Section Profile">
+          <div class="bim-dock-icon">
+            <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8">
+              <polyline points="3 17 8 11 13 14 21 6"/>
+              <line x1="3" y1="20" x2="21" y2="20"/>
+            </svg>
+          </div>
+          <span class="bim-dock-label">斷面</span>
+        </button>
+
+        <!-- 9. Section Box Slicer -->
+        <button type="button" class="bim-dock-btn" id="btnDockSection" data-dock="section" title="Section Box Slicer / 剖面盒裁切" aria-label="Section Box Slicer">
           <div class="bim-dock-icon">
             <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8">
               <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
@@ -608,7 +551,19 @@
 
         <div class="bim-dock-divider"></div>
 
-        <button type="button" class="bim-dock-btn" id="btnDockComments" data-dock="comments" title="3D Geo-Comments / 標註">
+        <!-- 10. RTK Camera Photos -->
+        <button type="button" class="bim-dock-btn autodesk-measure-btn" id="btnMeasurePhotos" data-tool="photos" data-dock="rtk" title="RTK Raw Camera Photo Inspector / 原始 RTK 照片檢視" aria-label="RTK Camera Photos">
+          <div class="bim-dock-icon">
+            <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8">
+              <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
+              <circle cx="12" cy="13" r="4"/>
+            </svg>
+          </div>
+          <span class="bim-dock-label">照片</span>
+        </button>
+
+        <!-- 11. 3D Geo-Comments -->
+        <button type="button" class="bim-dock-btn" id="btnDockComments" data-dock="comments" title="3D Geo-Comments / 標註" aria-label="3D Geo-Comments">
           <div class="bim-dock-icon">
             <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8">
               <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
@@ -617,15 +572,96 @@
           <span class="bim-dock-label">標註</span>
         </button>
 
-        <button type="button" class="bim-dock-btn" id="btnDockOptimizer" data-dock="optimizer" title="GC_ScanOptimizer PC Actions / 優化">
+        <div class="bim-dock-divider"></div>
+
+        <!-- 12. Vertex & Surface Snapping -->
+        <button type="button" class="bim-dock-btn active" id="btnMeasureSnap" data-tool="snap" title="Toggle Vertex &amp; Surface Snapping / 切換幾何捕捉" aria-label="Toggle Snapping">
+          <div class="bim-dock-icon">
+            <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8">
+              <path d="M6 3v7a6 6 0 0 0 12 0V3"/>
+              <line x1="4" y1="3" x2="8" y2="3"/>
+              <line x1="16" y1="3" x2="20" y2="3"/>
+            </svg>
+          </div>
+          <span class="bim-dock-label">捕捉</span>
+        </button>
+
+        <!-- 13. Clear All Measurements -->
+        <button type="button" class="bim-dock-btn" id="btnMeasureClear" title="Clear All Measurements (Esc) / 清除量測" aria-label="Clear Measurements">
+          <div class="bim-dock-icon">
+            <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8">
+              <polyline points="3 6 5 6 21 6"/>
+              <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
+              <line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/>
+            </svg>
+          </div>
+          <span class="bim-dock-label">清除</span>
+        </button>
+      </nav>
+
+      <!-- Freehand 2D/3D Lasso Selection SVG Overlay -->
+      <svg id="studioLassoSvg" class="gs-studio-lasso-svg" aria-hidden="true">
+        <polygon id="studioLassoPoly" class="gs-studio-lasso-poly" points="" />
+        <polyline id="studioLassoLine" class="gs-studio-lasso-line" points="" />
+      </svg>
+
+      <!-- Separate Permission-Gated Scan Editing Dock (Left Floating Pill — Hidden for Guest / Viewer) -->
+      <aside class="gs-studio-editing-dock" id="studioEditingDock" aria-label="Scan Editing &amp; Unification Tools (Editor/Admin/Owner Only)">
+        <div class="gs-edit-dock-badge" title="Scan Editing &amp; Modification Tools (Requires Edit Permission)">
+          <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.2">
+            <path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
+          </svg>
+          <span>編輯 EDIT</span>
+        </div>
+
+        <!-- Edit 1. Lasso Delete Part of Scan (移除選取區域) -->
+        <button type="button" class="bim-dock-btn gs-edit-dock-btn" id="btnDockLassoDelete" data-tool="crop_delete" data-dock="crop_delete" title="Lasso Delete: Select part of scan with freehand lasso or polygon and delete it / 套索刪除局部掃描雜物" aria-label="Lasso Delete Part of Scan">
+          <div class="bim-dock-icon">
+            <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8">
+              <path d="M7 22a5 5 0 0 1-2-4"/>
+              <path d="M3.3 14A6.8 6.8 0 0 1 2 10c0-4.4 4.5-8 10-8s10 3.6 10 8-4.5 8-10 8a12 12 0 0 1-5-1"/>
+              <circle cx="5" cy="18" r="2"/>
+              <line x1="9" y1="8" x2="15" y2="12"/><line x1="15" y1="8" x2="9" y2="12"/>
+            </svg>
+          </div>
+          <span class="bim-dock-label">套索刪除</span>
+        </button>
+
+        <!-- Edit 2. Lasso / Polygon Crop Keep (裁切保留選取區域) -->
+        <button type="button" class="bim-dock-btn gs-edit-dock-btn" id="btnDockLassoKeep" data-tool="crop" data-dock="crop" title="Spatial Crop: Keep only the lasso/polygon selected region of the scan / 框選裁切保留" aria-label="Crop and Keep Selected Region">
+          <div class="bim-dock-icon">
+            <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8">
+              <circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/>
+              <line x1="20" y1="4" x2="8.12" y2="15.88"/>
+              <line x1="14.47" y1="14.48" x2="20" y2="20"/>
+            </svg>
+          </div>
+          <span class="bim-dock-label">框選裁切</span>
+        </button>
+
+        <!-- Edit 3. Multi-Scan Align & Merge (多掃描對齊與合併) -->
+        <button type="button" class="bim-dock-btn gs-edit-dock-btn" id="btnDockAlignMerge" data-tool="align_merge" data-dock="align_merge" title="Multi-Scan 3D Alignment &amp; Merge (Move/Rotate Gizmos + Lock Orientation) / 多掃描對齊與合併" aria-label="Multi-Scan Align and Merge">
+          <div class="bim-dock-icon">
+            <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8">
+              <rect x="2" y="2" width="9" height="9" rx="1.5"/>
+              <rect x="13" y="13" width="9" height="9" rx="1.5"/>
+              <path d="M15 4h5v5"/><line x1="12" y1="12" x2="20" y2="4"/>
+              <path d="M9 20H4v-5"/><line x1="12" y1="12" x2="4" y2="20"/>
+            </svg>
+          </div>
+          <span class="bim-dock-label">對齊合併</span>
+        </button>
+
+        <!-- Edit 4. ScanOptimizer Mesh & Texture Compression (網格優化) -->
+        <button type="button" class="bim-dock-btn gs-edit-dock-btn" id="btnDockOptimizer" data-tool="optimizer" data-dock="optimizer" title="GC_ScanOptimizer: Compress mesh triangles &amp; KTX2 textures / 網格壓縮優化" aria-label="Scan Optimizer">
           <div class="bim-dock-icon">
             <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8">
               <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
             </svg>
           </div>
-          <span class="bim-dock-label">優化</span>
+          <span class="bim-dock-label">網格優化</span>
         </button>
-      </nav>
+      </aside>
     </section>
 
     <!-- ======================================================================
@@ -707,159 +743,61 @@
       </div>
 
       <!-- Bottom Z / ΔZ Elevation Scale Legend -->
-      <div class="gs-compare-legend">
-        <span style="color:var(--ui-text-secondary);">TWVD2001 Z Elevation:</span>
-        <span>Low Z (-10m)</span>
+      <div class="gs-compare-legend" id="compareElevationLegend">
+        <span style="color:var(--ui-text-secondary);" id="lblCompareLegendTitle">TWVD2001 Elevation &amp; ΔZ Change:</span>
+        <span id="lblCompareLegendMin">Cut / Low (-5.0m)</span>
         <div class="gs-compare-legend-bar" style="width:150px;height:8px;border-radius:999px;background:linear-gradient(90deg, #2563eb 0%, #06b6d4 25%, #10b981 50%, #f59e0b 75%, #ef4444 100%);border:1px solid var(--ui-border-strong);"></div>
-        <span style="color:var(--ui-accent);">High Z (+22m · 2m Contours)</span>
+        <span style="color:var(--ui-accent);" id="lblCompareLegendMax">Fill / High (+5.0m · Right ΔZ vs Left)</span>
       </div>
     </section>
 
   </main>
 
   <!-- ========================================================================
-       MODAL 1: PIX4DMATIC SMART PRIORITY QUEUE & GOOGLE DRIVE INBOX WATCHER
+       MODAL 1: PIX4DMATIC SMART PRIORITY QUEUE & PROCESSING MONITOR
        ======================================================================== -->
-  <div class="gs-modal-backdrop" id="modalQueue">
+  <div class="gs-modal-backdrop" id="modalQueue" role="dialog" aria-modal="true" aria-labelledby="modalQueueTitle">
     <div class="gs-modal" style="max-width:880px;">
       <div class="gs-panel-header">
-        <div class="gs-panel-title">
+        <div class="gs-panel-title" id="modalQueueTitle">
           <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="var(--ui-accent)" stroke-width="2">
             <rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/>
           </svg>
-          <span>PIX4Dmatic 2.11.0 Automated Worker &amp; Smart Priority Queue</span>
+          <span>PIX4Dmatic 2.11.0 Processing Queue &amp; Job Monitor</span>
         </div>
-        <button type="button" class="btn-xs" data-close-modal="modalQueue" title="Close">
+        <button type="button" class="btn-xs" data-close-modal="modalQueue" title="Close" aria-label="Close Queue Modal">
           <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8">
             <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
           </svg>
         </button>
       </div>
 
-      <div class="gs-modal-metrics-grid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:10px;">
+      <div class="gs-modal-metrics-grid gs-responsive-grid-3" style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:10px;">
         <div class="gs-metric-box">
-          <div class="lbl">Google Drive Inputs Folder (Direct or Project Subfolders)</div>
+          <div class="lbl">Google Drive Inputs Folder</div>
           <div class="val" style="font-size:12px;word-break:break-all;" id="lblQueueInboxDir">G:\Shared drives\6.軟體\3. GatheringScans\INPUTS</div>
         </div>
         <div class="gs-metric-box">
           <div class="lbl">Mandatory PIX4Dmatic Output CRS</div>
           <div class="val" style="font-size:12.5px;color:var(--ui-accent);">TWD97 (121) + TWVD2001</div>
         </div>
-        <div class="gs-metric-box">
-          <div class="lbl">Pipeline &amp; Storage Policy</div>
-          <div class="val" style="font-size:12px;" id="lblQueuePipelineSummary">FixedSize · 4K · SkyMask OFF · 0B VPS</div>
-        </div>
-      </div>
-
-      <div class="gs-pix4d-settings-card" style="background:var(--ui-bg-subtle);border:1px solid var(--ui-border);border-radius:10px;padding:10px 12px;margin-bottom:10px;">
-        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap;">
-          <div style="font-size:12px;font-weight:700;color:var(--ui-text-primary);display:flex;align-items:center;gap:6px;">
-            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="var(--ui-accent)" stroke-width="2">
-              <circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9c.26.604.852.997 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+        <div class="gs-metric-box" style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
+          <div>
+            <div class="lbl">Active Pipeline Defaults</div>
+            <div class="val" style="font-size:12px;" id="lblQueuePipelineSummary">FixedSize · 4K · SkyMask OFF · 0B VPS</div>
+          </div>
+          <button type="button" class="btn-xs" id="btnJumpQueueToSettings" title="Configure Default PIX4Dmatic Pipeline, PC Daemon &amp; Google Cloud Settings">
+            <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8">
+              <circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9"/>
             </svg>
-            <span>PIX4Dmatic 2.11.0 Pipeline Settings &amp; GatheringCloud Optimal Preset</span>
-          </div>
-          <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
-            <select class="gs-select" id="selPix4dPreset" style="font-size:11px;padding:3px 8px;height:24px;min-width:255px;font-weight:600;border-color:var(--ui-accent);" title="Select Pipeline Preset">
-              <option value="gatheringcloud" selected>★ GatheringCloud Optimal (.3tz + 4K WebP GLB + TWD97)</option>
-              <option value="fast_field">Fast Field Preview (2K + Moderate + LOD 12)</option>
-              <option value="archival_8k">Ultra Archival Multi-Tile (8K + Scalable + LOD 15)</option>
-              <option value="custom">Custom Detailed Settings</option>
-            </select>
-            <button type="button" class="btn-xs" id="btnApplyGatheringCloudPreset" title="1-Click Apply GatheringCloud Optimal Preset (FixedSize · 4K · Conservative · Weak LOD 13 · SkyMask OFF · .3tz)">⚡ GatheringCloud Optimal</button>
-            <button type="button" class="btn-xs primary" id="btnSavePix4dSettingsQueue" title="Save Default PIX4Dmatic Pipeline Settings">Save Defaults</button>
-          </div>
-        </div>
-        <div style="font-size:10.5px;color:var(--ui-text-secondary);background:var(--ui-bg-surface);border:1px solid var(--ui-border);border-radius:6px;padding:5px 8px;margin-bottom:8px;line-height:1.35;" id="lblPix4dPresetDesc">
-          <b>GatheringCloud Optimal Strategy:</b> PIX4Dmatic exports native <code>TWD97 (EPSG:3826+8904)</code> <code>.OBJ</code> (4K, LOD 13, SkyMask OFF) → ScanOptimizer flips UV (<code>1-V</code>) &amp; compresses via <code>gltfpack -cc -tc -kn</code> into a <b>Single-Root 4K WebP <code>root.glb</code></b> + <code>preview_low.glb</code> → packed into <b>1 single <code>.3tz</code> archive</b> (<code>ZIP_STORED</code>) in Google Drive <code>StreamPackages</code> for 0% Drive sync bogging &amp; sub-second HTTP byte-range streaming.
-        </div>
-        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:8px;">
-          <div class="gs-form-group" style="margin-bottom:0;">
-            <label style="font-size:10.5px;">Mesh Pipeline</label>
-            <select class="gs-select" id="selPix4dMeshPipeline" style="font-size:11.5px;padding:4px 6px;">
-              <option value="FixedSize" selected>FixedSize (Compact File Size)</option>
-              <option value="Scalable">Scalable (Multi-Tile)</option>
-            </select>
-          </div>
-          <div class="gs-form-group" style="margin-bottom:0;">
-            <label style="font-size:10.5px;">Texture Atlas Size</label>
-            <select class="gs-select" id="selPix4dTextureSize" style="font-size:11.5px;padding:4px 6px;">
-              <option value="4096" selected>4096 px (4K Default)</option>
-              <option value="2048">2048 px (2K Fast)</option>
-              <option value="8192">8192 px (8K Ultra)</option>
-            </select>
-          </div>
-          <div class="gs-form-group" style="margin-bottom:0;">
-            <label style="font-size:10.5px;">Model Simplification</label>
-            <select class="gs-select" id="selPix4dSimplification" style="font-size:11.5px;padding:4px 6px;">
-              <option value="Conservative" selected>Conservative (Keep Detail)</option>
-              <option value="Moderate">Moderate</option>
-              <option value="Aggressive">Aggressive</option>
-            </select>
-          </div>
-          <div class="gs-form-group" style="margin-bottom:0;">
-            <label style="font-size:10.5px;">Deghosting &amp; LOD</label>
-            <div style="display:flex;gap:4px;">
-              <select class="gs-select" id="selPix4dDeghosting" style="font-size:11.5px;padding:4px 6px;flex:1;">
-                <option value="Weak" selected>Weak</option>
-                <option value="Strong">Strong</option>
-                <option value="Disabled">Disabled</option>
-              </select>
-              <input type="number" class="gs-input" id="inpPix4dExportLod" value="13" min="0" max="20" title="ExportMeshToObj LOD (13 = Full Detail)" style="width:52px;font-size:11.5px;padding:4px 6px;text-align:center;" />
-            </div>
-          </div>
-        </div>
-        <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;padding-top:6px;border-top:1px solid var(--ui-border);">
-          <label style="display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--ui-text-primary);cursor:pointer;" title="When unchecked (skyless: false), PIX4Dmatic keeps surrounding trees and foliage silhouette instead of carving them out as sky.">
-            <input type="checkbox" id="chkPix4dSkyless" style="accent-color:#0284c7;width:14px;height:14px;" />
-            <span><b>Sky Mask (<code>skyless</code>)</b> — <span style="color:var(--ui-accent);font-weight:600;">Leave OFF to preserve surrounding trees &amp; canopy</span></span>
-          </label>
-          <label style="display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--ui-text-primary);cursor:pointer;" title="When unchecked (use_roi: false), ignores restrictive OPF RoiSet bounding boxes so perimeter trees are not clipped.">
-            <input type="checkbox" id="chkPix4dUseRoi" style="accent-color:#0284c7;width:14px;height:14px;" />
-            <span><b>OPF ROI Clip (<code>RoiSet</code>)</b> — <span style="color:var(--ui-text-secondary);">Leave OFF for full-scene extent</span></span>
-          </label>
+            <span>Settings</span>
+          </button>
         </div>
       </div>
 
-      <!-- Google Drive .3tz Single-File Cloud Streaming Card -->
-      <div class="gs-cloud-stream-card" style="background:var(--ui-bg-subtle);border:1px solid var(--ui-border);border-radius:10px;padding:10px 12px;margin-bottom:10px;">
-        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px;">
-          <div style="font-size:12px;font-weight:700;color:var(--ui-text-primary);display:flex;align-items:center;gap:6px;">
-            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="var(--ui-accent)" stroke-width="2">
-              <path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/>
-            </svg>
-            <span>Google Drive <code>.3tz</code> Single-File Cloud Streaming (Zero Sync Bogging · 0% PC Upload)</span>
-          </div>
-          <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
-            <span class="gs-crs-pill" id="badgeCloudStreamStatus" style="font-size:10px;">11 / 11 .3tz Synced</span>
-            <button type="button" class="btn-xs" id="btnAuthorizeGDriveCloud" title="1-Click Authorize Google Drive Read-Only Token for Direct VPS Cloud Streaming">1-Click GDrive Auth</button>
-            <button type="button" class="btn-xs" id="btnToggleServiceAccountBox" title="Configure Permanent Google Cloud Service Account JSON for 24/7 Unattended Streaming">Service Account</button>
-            <button type="button" class="btn-xs primary" id="btnSyncCloudPackages" title="Build .3tz Packages in Google Drive StreamPackages &amp; Push Byte-Range Manifest to VPS">Sync .3tz</button>
-          </div>
-        </div>
-        <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;font-size:11px;color:var(--ui-text-secondary);">
-          <div id="lblCloudStreamDetails">
-            Packages each scan into <b>1 single <code>.3tz</code> archive</b> (<code>ZIP_STORED</code>) inside <code>StreamPackages</code>. VPS streams byte-ranges directly from Google at 300+ Mbps (works 24/7 &amp; supports external guest links <code>/s/&lt;token&gt;</code>).
-          </div>
-          <div style="display:flex;gap:8px;flex-shrink:0;" id="cloudStreamFolderLinks">
-            <a href="https://drive.google.com/drive/folders/1scUD9IQWsAJjg296pecxFYqhoVm4mpjs" target="_blank" rel="noopener" id="lnkCloudSharedDrive" style="color:var(--ui-accent);text-decoration:none;font-weight:600;">Shared Drive Folder ↗</a>
-            <a href="https://drive.google.com/drive/folders/1oBf6wYz3mRaM9kktDQJxcf_JZ2QduICW" target="_blank" rel="noopener" id="lnkCloudMyDrive" style="color:var(--ui-accent);text-decoration:none;font-weight:600;">My Drive Folder ↗</a>
-          </div>
-        </div>
-        <div id="boxServiceAccountConfig" style="display:none;margin-top:8px;padding-top:8px;border-top:1px solid var(--ui-border);">
-          <div style="font-size:11px;color:var(--ui-text-secondary);margin-bottom:4px;">
-            Paste a Google Cloud <b>Service Account JSON</b> key (with Viewer access to <code>StreamPackages</code>) for permanent 24/7 auto-refreshing VPS streaming, or share the <code>StreamPackages</code> folder as <i>"Anyone with the link can view"</i>:
-          </div>
-          <div style="display:flex;gap:6px;align-items:flex-start;">
-            <textarea class="gs-input" id="txtServiceAccountJson" rows="3" placeholder='{"type": "service_account", "project_id": "...", "private_key": "-----BEGIN PRIVATE KEY-----...", "client_email": "..."}' style="flex:1;font-family:monospace;font-size:10.5px;"></textarea>
-            <button type="button" class="btn-xs primary" id="btnSaveServiceAccountJson">Save Key</button>
-          </div>
-        </div>
-      </div>
-
-      <div class="gs-webhook-bar" style="background:var(--ui-bg-subtle);border:1px solid var(--ui-border);border-radius:8px;padding:8px 12px;margin-bottom:10px;display:flex;align-items:center;justify-content:space-between;gap:10px;">
+      <div class="gs-webhook-bar" style="background:var(--ui-bg-subtle);border:1px solid var(--ui-border);border-radius:8px;padding:8px 12px;margin-bottom:10px;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;">
         <div style="font-size:11.5px;font-weight:600;color:var(--ui-text-secondary);white-space:nowrap;">Google Chat Space Webhook:</div>
-        <input type="text" class="gs-input" id="inputGChatWebhookUrl" placeholder="https://chat.googleapis.com/v1/spaces/.../messages?key=...&amp;token=..." style="flex:1;font-family:monospace;font-size:11px;min-width:0;" />
+        <input type="text" class="gs-input" id="inputGChatWebhookUrl" placeholder="https://chat.googleapis.com/v1/spaces/.../messages?key=...&amp;token=..." style="flex:1;font-family:var(--mono);font-size:11px;min-width:180px;" />
         <button type="button" class="btn-xs primary" id="btnSaveGChatWebhook" title="Save Google Chat Space Webhook URL">Save</button>
       </div>
 
@@ -934,17 +872,17 @@
   <!-- ========================================================================
        MODAL 2: SCOPED EXTERNAL SHARE LINK CONTROLS (Requirement 4.b)
        ======================================================================== -->
-  <div class="gs-modal-backdrop" id="modalSharing">
+  <div class="gs-modal-backdrop" id="modalSharing" role="dialog" aria-modal="true" aria-labelledby="modalSharingTitle">
     <div class="gs-modal">
       <div class="gs-panel-header">
-        <div class="gs-panel-title">
+        <div class="gs-panel-title" id="modalSharingTitle">
           <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="var(--ui-accent)" stroke-width="2">
             <circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/>
             <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/>
           </svg>
           <span>Scoped External Sharing Controls (/s/&lt;token&gt;)</span>
         </div>
-        <button type="button" class="btn-xs" data-close-modal="modalSharing" title="Close">
+        <button type="button" class="btn-xs" data-close-modal="modalSharing" title="Close" aria-label="Close Sharing Modal">
           <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8">
             <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
           </svg>
@@ -956,7 +894,7 @@
       </p>
 
       <div style="background:var(--ui-bg-subtle);border:1px solid var(--ui-border);border-radius:10px;padding:12px 14px;margin-bottom:14px;">
-        <div class="gs-share-form-grid" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;">
+        <div class="gs-share-form-grid gs-responsive-grid-3" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;">
           <div class="gs-form-group" style="margin-bottom:6px;">
             <label>Scope Type</label>
             <select class="gs-select" id="shareScopeType">
@@ -1010,17 +948,17 @@
   <!-- ========================================================================
        MODAL 3: CLIENT-SIDE OFFLINE CACHING & USER SETTINGS (Requirement 5)
        ======================================================================== -->
-  <div class="gs-modal-backdrop" id="modalOfflineCache">
+  <div class="gs-modal-backdrop" id="modalOfflineCache" role="dialog" aria-modal="true" aria-labelledby="modalOfflineCacheTitle">
     <div class="gs-modal">
       <div class="gs-panel-header">
-        <div class="gs-panel-title">
+        <div class="gs-panel-title" id="modalOfflineCacheTitle">
           <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="var(--ui-accent)" stroke-width="2">
             <circle cx="12" cy="12" r="3"/>
             <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
           </svg>
-          <span>User Settings &amp; Offline Browser Cache</span>
+          <span>User Settings, Pipeline Defaults &amp; Offline Browser Cache</span>
         </div>
-        <button type="button" class="btn-xs" data-close-modal="modalOfflineCache" title="Close">
+        <button type="button" class="btn-xs" data-close-modal="modalOfflineCache" title="Close" aria-label="Close Settings Modal">
           <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8">
             <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
           </svg>
@@ -1084,16 +1022,16 @@
           </div>
           <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
             <select class="gs-select" id="selPix4dPresetUser" style="font-size:11px;padding:3px 8px;height:24px;min-width:255px;font-weight:600;border-color:var(--ui-accent);" title="Select Pipeline Preset">
-              <option value="gatheringcloud" selected>★ GatheringCloud Optimal (.3tz + 4K WebP GLB + TWD97)</option>
+              <option value="gatheringcloud" selected>GatheringCloud Optimal (.3tz + 4K WebP GLB + TWD97)</option>
               <option value="fast_field">Fast Field Preview (2K + Moderate + LOD 12)</option>
               <option value="archival_8k">Ultra Archival Multi-Tile (8K + Scalable + LOD 15)</option>
               <option value="custom">Custom Detailed Settings</option>
             </select>
-            <button type="button" class="btn-xs" id="btnApplyGatheringCloudPresetUser" title="1-Click Apply GatheringCloud Optimal Preset">⚡ GatheringCloud Optimal</button>
-            <button type="button" class="btn-xs primary" id="btnSavePix4dSettingsUser" title="Save Default PIX4Dmatic Pipeline Settings">Save Defaults</button>
+            <button type="button" class="btn-xs" id="btnApplyGatheringCloudPresetUser" title="1-Click Apply GatheringCloud Optimal Preset">Optimal</button>
+            <button type="button" class="btn-xs primary" id="btnSavePix4dSettingsUser" title="Save Default PIX4Dmatic Pipeline Settings">Save</button>
           </div>
         </div>
-        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:8px;">
+        <div class="gs-responsive-grid-4" style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:8px;">
           <div class="gs-form-group" style="margin-bottom:0;">
             <label style="font-size:10.5px;">Mesh Pipeline</label>
             <select class="gs-select" id="selPix4dMeshPipelineUser" style="font-size:11.5px;padding:4px 6px;">
@@ -1182,7 +1120,7 @@
         </div>
 
         <!-- Add / Update User Role Bar (Visible to Owner & Admin) -->
-        <div id="adminUserEditorForm" style="display:grid;grid-template-columns:1.3fr 1fr 0.9fr 1fr auto;gap:6px;margin-bottom:8px;align-items:end;">
+        <div id="adminUserEditorForm" class="gs-admin-editor-grid" style="display:grid;grid-template-columns:1.3fr 1fr 0.9fr 1fr auto;gap:6px;margin-bottom:8px;align-items:end;">
           <div class="gs-form-group" style="margin-bottom:0;">
             <label style="font-size:10px;">Account Email</label>
             <input type="email" class="gs-input" id="adminInputUserEmail" placeholder="user@gatheren.com.tw" style="font-size:11.5px;padding:4px 8px;" />
@@ -1196,22 +1134,25 @@
             <input type="text" class="gs-input" id="adminInputUserZhName" placeholder="中文姓名" style="font-size:11.5px;padding:4px 8px;" />
           </div>
           <div class="gs-form-group" style="margin-bottom:0;">
-            <label style="font-size:10px;">Permission Level (1–5)</label>
+            <label style="font-size:10px;">Permission Level (L1–L5)</label>
             <select class="gs-select" id="adminSelectUserRole" style="font-size:11.5px;padding:4px 6px;">
-              <option value="admin">2. Admin (Manage Users + Editor)</option>
-              <option value="editor" selected>3. Editor (Rename &amp; Run Scans)</option>
-              <option value="viewer">4. Viewer (View &amp; Measure Only)</option>
-              <option value="guest">5. Guest (1 Scan · Basic Tools)</option>
+              <option value="admin">L4 — Admin (Manage Users + Editor)</option>
+              <option value="editor" selected>L3 — Editor (Rename &amp; Run Scans)</option>
+              <option value="viewer">L2 — Viewer (View &amp; Measure Only)</option>
+              <option value="guest">L1 — Guest (Read-Only Basic Tools)</option>
             </select>
           </div>
-          <button type="button" class="btn-xs primary" id="btnAdminSaveUser" style="height:28px;padding:0 10px;">Add / Save User</button>
+          <button type="button" class="btn-xs primary" id="btnAdminSaveUser" style="height:28px;padding:0 10px;">Save</button>
         </div>
+
+        <div id="adminActionStatusMsg" style="font-size:11px;color:var(--ui-accent);margin-bottom:6px;min-height:16px;"></div>
 
         <div class="gs-table-scroll-wrap" style="max-height:185px;overflow:auto;border:1px solid var(--ui-border);border-radius:8px;background:var(--ui-bg-surface);">
           <table class="gs-table">
             <thead>
               <tr>
-                <th>Account / Email</th>
+                <th>Name</th>
+                <th>Account Email</th>
                 <th>Level &amp; Role</th>
                 <th>Allowed Capabilities</th>
                 <th style="text-align:right;">Actions</th>
@@ -1223,7 +1164,7 @@
       </div>
 
       <!-- ==================================================================
-           GOOGLE CLOUD SERVICE ACCOUNT (gcworker@modular-temple-508005-c4.iam.gserviceaccount.com)
+           GOOGLE CLOUD SERVICE ACCOUNT & .3TZ CLOUD STREAMING (gcworker@modular-temple-508005-c4.iam.gserviceaccount.com)
            ================================================================== -->
       <div class="gs-settings-row" id="settingsServiceAccountCard" style="background:var(--ui-bg-subtle);border:1px solid var(--ui-border);border-radius:10px;padding:12px 14px;margin-bottom:10px;">
         <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap;">
@@ -1232,24 +1173,27 @@
               <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="var(--ui-accent)" stroke-width="2">
                 <path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/>
               </svg>
-              <span>Google Drive Service Account (All GDrive Interactions)</span>
+              <span>Google Drive <code>.3tz</code> Cloud Streaming &amp; Service Account</span>
             </div>
             <div style="font-size:11px;color:var(--ui-text-muted);margin-top:2px;">
-              Mandatory Identity: <code style="color:var(--ui-accent);font-weight:700;user-select:all;">gcworker@modular-temple-508005-c4.iam.gserviceaccount.com</code> (Project: <code>modular-temple-508005-c4</code>)
+              Identity: <code style="color:var(--ui-accent);font-weight:700;user-select:all;">gcworker@modular-temple-508005-c4.iam.gserviceaccount.com</code> · <span id="lblCloudStreamDetails">Packages each scan into 1 single <code>.3tz</code> archive in <code>StreamPackages</code>.</span>
             </div>
           </div>
           <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
+            <span class="gs-crs-pill" id="badgeCloudStreamStatus" style="font-size:10px;">.3tz Ready</span>
             <span class="gs-crs-pill" id="badgeSettingsSaStatus">Checking...</span>
-            <label class="btn-xs" for="fileServiceAccountJsonUser" style="cursor:pointer;margin:0;" title="Upload Service Account .json Key File">Upload .JSON Key</label>
+            <button type="button" class="btn-xs" id="btnAuthorizeGDriveCloud" title="1-Click Authorize Google Drive Read-Only Token for Direct VPS Cloud Streaming">OAuth</button>
+            <button type="button" class="btn-xs primary" id="btnSyncCloudPackages" title="Build .3tz Packages in Google Drive StreamPackages &amp; Push Byte-Range Manifest to VPS">Sync</button>
+            <label class="btn-xs" for="fileServiceAccountJsonUser" style="cursor:pointer;margin:0;" title="Upload Service Account .json Key File">Key</label>
             <input type="file" id="fileServiceAccountJsonUser" accept=".json,application/json" style="display:none;" />
-            <button type="button" class="btn-xs primary" id="btnTestServiceAccountLive" title="Test gcworker@modular-temple-508005-c4.iam.gserviceaccount.com against Google Drive API v3">Test Service Account</button>
+            <button type="button" class="btn-xs primary" id="btnTestServiceAccountLive" title="Test gcworker@modular-temple-508005-c4.iam.gserviceaccount.com against Google Drive API v3">Test</button>
           </div>
         </div>
         <div style="display:flex;gap:6px;align-items:flex-start;margin-top:6px;">
-          <textarea class="gs-input" id="txtServiceAccountJsonUser" rows="2" placeholder='Paste JSON key for gcworker@modular-temple-508005-c4.iam.gserviceaccount.com {"type":"service_account","project_id":"modular-temple-508005-c4","private_key":"-----BEGIN PRIVATE KEY-----...","client_email":"gcworker@modular-temple-508005-c4.iam.gserviceaccount.com"}' style="flex:1;font-family:monospace;font-size:10.5px;"></textarea>
-          <button type="button" class="btn-xs primary" id="btnSaveServiceAccountJsonUser" style="height:44px;">Save &amp; Sync</button>
+          <textarea class="gs-input" id="txtServiceAccountJsonUser" rows="2" placeholder='Paste JSON key for gcworker@modular-temple-508005-c4.iam.gserviceaccount.com {"type":"service_account","project_id":"modular-temple-508005-c4","private_key":"-----BEGIN PRIVATE KEY-----...","client_email":"gcworker@modular-temple-508005-c4.iam.gserviceaccount.com"}' style="flex:1;font-family:var(--mono);font-size:10.5px;"></textarea>
+          <button type="button" class="btn-xs primary" id="btnSaveServiceAccountJsonUser" style="height:44px;">Save</button>
         </div>
-        <div id="boxServiceAccountTestResult" style="display:none;margin-top:8px;padding:8px 10px;border-radius:6px;background:var(--ui-bg-surface);border:1px solid var(--ui-border-strong);font-size:11px;font-family:monospace;line-height:1.45;white-space:pre-wrap;"></div>
+        <div id="boxServiceAccountTestResult" style="display:none;margin-top:8px;padding:8px 10px;border-radius:6px;background:var(--ui-bg-surface);border:1px solid var(--ui-border-strong);font-size:11px;font-family:var(--mono);line-height:1.45;white-space:pre-wrap;"></div>
       </div>
 
       <p style="font-size:12px;color:var(--ui-text-secondary);margin-bottom:10px;">
@@ -1293,18 +1237,18 @@
        MODAL 4: GATHERINGCLOUD GOOGLE OAUTH & USER PROFILE GATE MODAL
        (Exact same Google OAuth Client ID & Gate Architecture as GatheringCloud)
        ======================================================================== -->
-  <div id="userProfileGateModal" class="gs-modal-backdrop" style="z-index:5000;">
-    <div class="gs-modal" style="max-width:540px;padding:0;overflow:hidden;">
+  <div id="userProfileGateModal" class="gs-modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="userProfileGateTitle" style="z-index:5000;">
+    <div class="gs-modal" style="max-width:520px;padding:0;overflow:hidden;">
       <!-- Top Header -->
       <div style="padding:18px 20px 14px;background:linear-gradient(135deg,#0f172a,#1e293b);color:#ffffff;display:flex;align-items:center;justify-content:space-between;gap:12px;">
         <div style="display:flex;align-items:center;gap:14px;min-width:0;">
           <img src="/assets/gathering_cloud_logo_dark.png" alt="GatheringCloud" style="height:36px;width:auto;object-fit:contain;flex-shrink:0;" />
           <div style="min-width:0;">
-            <h3 style="margin:0;font-size:15.5px;font-weight:700;letter-spacing:0.3px;">GatheringCloud Identity Verification</h3>
+            <h3 id="userProfileGateTitle" style="margin:0;font-size:15.5px;font-weight:700;letter-spacing:0.3px;">GatheringCloud Identity Verification</h3>
             <p style="margin:3px 0 0;font-size:11.5px;color:#94a3b8;">Authorization required to access GatheringCloud Scans (<code>gatheren.cloud</code>)</p>
           </div>
         </div>
-        <button type="button" class="btn-xs" id="btnCloseAuthGateModal" title="Close" style="display:none;background:rgba(255,255,255,0.1);border-color:rgba(255,255,255,0.2);color:#f8fafc;flex-shrink:0;">
+        <button type="button" class="btn-xs" id="btnCloseAuthGateModal" title="Close" aria-label="Close Identity Verification Modal" style="display:none;background:rgba(255,255,255,0.1);border-color:rgba(255,255,255,0.2);color:#f8fafc;flex-shrink:0;">
           <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
             <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
           </svg>
@@ -1312,9 +1256,9 @@
       </div>
 
       <!-- Body -->
-      <div style="padding:16px 20px;max-height:70vh;overflow-y:auto;display:flex;flex-direction:column;gap:14px;">
+      <div style="padding:18px 20px;max-height:70vh;overflow-y:auto;display:flex;flex-direction:column;gap:14px;">
         <!-- Google OAuth Card (Exact same Client ID as GatheringCloud) -->
-        <div id="googleAuthGateCard" class="gs-oauth-card" style="background:var(--ui-bg-subtle);border:1px solid var(--ui-border-strong);border-radius:12px;padding:14px 16px;display:flex;flex-direction:column;align-items:center;gap:10px;text-align:center;">
+        <div id="googleAuthGateCard" class="gs-oauth-card" style="background:var(--ui-bg-subtle);border:1px solid var(--ui-border-strong);border-radius:12px;padding:16px 18px;display:flex;flex-direction:column;align-items:center;gap:12px;text-align:center;">
           <div style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:700;color:var(--ui-accent);">
             <svg width="18" height="18" viewBox="0 0 24 24" style="flex-shrink:0;">
               <path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.665-5.17 3.665-9.17z"/>
@@ -1322,7 +1266,7 @@
               <path fill="#FBBC05" d="M5.28 14.24c-.24-.72-.38-1.49-.38-2.24s.14-1.52.38-2.24V6.62H1.29C.47 8.24 0 10.06 0 12s.47 3.76 1.29 5.38l3.99-3.14z"/>
               <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.31 0 3.26 2.7 1.29 6.62l3.99 3.14c.95-2.85 3.6-4.96 6.72-4.96z"/>
             </svg>
-            <span>Google Account Fast Sign-In (GatheringCloud SSO)</span>
+            <span>Google Account Sign-In (GatheringCloud SSO)</span>
           </div>
 
           <div
@@ -1345,7 +1289,7 @@
           </div>
 
           <div id="googleAuthMessage" style="font-size:11.5px;color:var(--ui-accent);">
-            Sign in with your Google account to automatically bind your name, email, and avatar across GatheringScans &amp; GatheringCloud.
+            Sign in with your Google account to verify your identity and role permissions across GatheringScans &amp; GatheringCloud.
           </div>
 
           <!-- Origin Helper Notice -->
@@ -1356,30 +1300,14 @@
             </div>
           </div>
         </div>
-
-        <!-- Team Members Quick Switcher (Server-Persisted Profiles) -->
-        <div id="gateExistingUsersSection">
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
-            <label style="font-size:12px;font-weight:700;color:var(--ui-text-secondary);">Verified Team Profiles (Quick Switch)</label>
-            <span id="gateRosterCountBadge" class="gs-crs-pill">2 Members</span>
-          </div>
-          <input
-            type="search"
-            id="gateUserSearchInput"
-            class="gs-input"
-            placeholder="Filter team members by name, email, or role..."
-            style="margin-bottom:8px;font-size:12px;"
-          />
-          <div id="gateExistingUsersGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:8px;max-height:190px;overflow-y:auto;padding:2px;"></div>
-        </div>
       </div>
 
       <!-- Footer -->
       <div style="padding:12px 20px;background:var(--ui-bg-subtle);border-top:1px solid var(--ui-border);display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
-        <span id="gateActiveUserStatusText" style="font-size:12px;color:var(--ui-text-secondary);font-weight:600;">Authorization required — Sign in with Google, select a team profile, or use Guest Mode</span>
+        <span id="gateActiveUserStatusText" style="font-size:12px;color:var(--ui-text-secondary);font-weight:600;">Sign in with Google or browse in Read-Only Guest Mode</span>
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
           <button type="button" id="btnUserLogout" class="btn-xs" style="display:none;" title="Sign out of current profile">Logout</button>
-          <button type="button" id="btnGateGuestEnter" class="btn-xs" title="Browse in Read-Only Guest Mode">Guest Mode</button>
+          <button type="button" id="btnGateGuestEnter" class="btn-xs" title="Browse all projects &amp; scans in Read-Only Guest Mode">Guest</button>
           <button type="button" id="btnGateConfirmEnter" class="btn-xs primary" style="display:none;" title="Continue to GatheringScans Studio">Continue</button>
         </div>
       </div>
@@ -1396,7 +1324,11 @@
           <div class="gs-modal-title" id="renameScanModalTitle">Edit Scan Name</div>
           <div class="gs-modal-subtitle" id="renameScanModalFolderInfo">File / Folder Name</div>
         </div>
-        <button type="button" class="btn-xs" data-close-modal="renameScanModal" title="Close">✕</button>
+        <button type="button" class="btn-xs" data-close-modal="renameScanModal" title="Close" aria-label="Close Rename Scan Modal">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8">
+            <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+          </svg>
+        </button>
       </div>
       <div class="gs-modal-body" style="padding:18px 20px;display:flex;flex-direction:column;gap:12px;">
         <div>
@@ -1410,10 +1342,10 @@
           />
         </div>
         <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-top:4px;">
-          <button type="button" class="btn-xs" id="btnResetScanNameToFile" title="Reset to original file/folder name">Use File Name</button>
+          <button type="button" class="btn-xs" id="btnResetScanNameToFile" title="Reset to original file/folder name">Reset</button>
           <div style="display:flex;gap:8px;align-items:center;">
             <button type="button" class="btn-xs" data-close-modal="renameScanModal">Cancel</button>
-            <button type="button" class="btn-xs primary" id="btnConfirmSaveScanName">Save Name</button>
+            <button type="button" class="btn-xs primary" id="btnConfirmSaveScanName">Save</button>
           </div>
         </div>
       </div>
@@ -1430,7 +1362,11 @@
           <div class="gs-modal-title" id="renameSiteModalTitle">Rename Project Site / 工區重新命名</div>
           <div class="gs-modal-subtitle" id="renameSiteModalSub">Updates all scans in this site cluster</div>
         </div>
-        <button type="button" class="btn-xs" data-close-modal="renameSiteModal" title="Close">✕</button>
+        <button type="button" class="btn-xs" data-close-modal="renameSiteModal" title="Close" aria-label="Close Rename Site Modal">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8">
+            <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+          </svg>
+        </button>
       </div>
       <div class="gs-modal-body" style="padding:18px 20px;display:flex;flex-direction:column;gap:12px;">
         <div>
@@ -1455,7 +1391,7 @@
         </div>
         <div style="display:flex;justify-content:flex-end;align-items:center;gap:8px;margin-top:4px;">
           <button type="button" class="btn-xs" data-close-modal="renameSiteModal">Cancel</button>
-          <button type="button" class="btn-xs primary" id="btnConfirmSaveSiteName">Save Site Name</button>
+          <button type="button" class="btn-xs primary" id="btnConfirmSaveSiteName">Save</button>
         </div>
       </div>
     </div>
@@ -1471,18 +1407,22 @@
           <div class="gs-modal-title" id="rerunScanModalTitle">Re-run Scan from Original Photos (PIX4Dmatic 2.11.0)</div>
           <div class="gs-modal-subtitle" id="rerunScanModalSub">Rebuilds 3D mesh from raw RTK images with custom settings &amp; ExportSrs.Scene + offset.xyz</div>
         </div>
-        <button type="button" class="btn-xs" data-close-modal="rerunScanModal" title="Close">✕</button>
+        <button type="button" class="btn-xs" data-close-modal="rerunScanModal" title="Close" aria-label="Close Rerun Scan Modal">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8">
+            <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+          </svg>
+        </button>
       </div>
       <div class="gs-modal-body" style="padding:16px 20px;display:flex;flex-direction:column;gap:12px;">
         <div style="background:var(--ui-bg-subtle);border:1px solid var(--ui-border);border-radius:8px;padding:10px 12px;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
           <div>
             <div style="font-size:12.5px;font-weight:700;color:var(--ui-text-primary);" id="rerunScanInfoName">Office Roof Training</div>
-            <div style="font-size:11px;color:var(--ui-text-secondary);font-family:monospace;margin-top:2px;" id="rerunScanInfoSource">Source: C:\GatheringScans\catch_2026_09_21_11_39_49\inputs (100 RTK photos)</div>
+            <div style="font-size:11px;color:var(--ui-text-secondary);font-family:var(--mono);margin-top:2px;" id="rerunScanInfoSource">Source: C:\GatheringScans\catch_2026_09_21_11_39_49\inputs (100 RTK photos)</div>
           </div>
           <span class="gs-crs-pill" id="rerunScanCrsBadge">ExportSrs.Scene + TWD97 Offset (1mm Precision)</span>
         </div>
 
-        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;">
+        <div class="gs-responsive-grid-3" style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;">
           <div class="gs-form-group" style="margin-bottom:0;">
             <label style="font-size:11px;">Mesh Pipeline</label>
             <select class="gs-select" id="rerunSelMeshPipeline">
@@ -1588,6 +1528,6 @@
   <script src="/lib/3d-tiles-renderer.bundle.js"></script>
 
   <!-- Main GatheringScans Application Logic -->
-  <script src="/app.js?v=20261020_v23"></script>
+  <script src="/app.js?v=20261024_v26"></script>
 </body>
 </html>

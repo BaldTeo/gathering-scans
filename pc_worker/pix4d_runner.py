@@ -29,25 +29,26 @@ from pc_worker.config import (
     load_pix4d_settings_from_dict,
 )
 
-_PSUTIL_WARMED = False
+_PSUTIL_CACHE = {"ts": 0.0, "cpu": 0, "ram": 0, "label": ""}
 
 
 def get_live_system_cpu_ram() -> Tuple[Optional[int], Optional[int], str]:
     """
     Returns (cpu_pct, ram_pct, formatted_label) directly from live OS hardware counters
     via psutil (matching Windows Task Manager), rather than stale PIX4Dmatic log headers.
+    Caches samples for 1.5s so back-to-back calls within the same millisecond never
+    produce a 0ms zero-delta reading.
     """
-    global _PSUTIL_WARMED
+    now = time.time()
+    if now - _PSUTIL_CACHE["ts"] < 1.5 and _PSUTIL_CACHE["label"]:
+        return _PSUTIL_CACHE["cpu"], _PSUTIL_CACHE["ram"], _PSUTIL_CACHE["label"]
     try:
         import psutil
-        if not _PSUTIL_WARMED:
-            psutil.cpu_percent(interval=None)
-            _PSUTIL_WARMED = True
-            cpu_val = int(round(psutil.cpu_percent(interval=0.12)))
-        else:
-            cpu_val = int(round(psutil.cpu_percent(interval=None)))
+        cpu_val = int(round(psutil.cpu_percent(interval=0.12)))
         ram_val = int(round(psutil.virtual_memory().percent))
-        return cpu_val, ram_val, f"{cpu_val}%CPU · {ram_val}%RAM"
+        lbl = f"{cpu_val}%CPU · {ram_val}%RAM"
+        _PSUTIL_CACHE.update({"ts": now, "cpu": cpu_val, "ram": ram_val, "label": lbl})
+        return cpu_val, ram_val, lbl
     except Exception:
         return None, None, ""
 
@@ -546,6 +547,7 @@ def postprocess_obj_to_tileset(
                     ],
                     capture_output=True,
                     timeout=180,
+                    creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000) if os.name == "nt" else 0,
                 )
                 if r_res.returncode == 0 and os.path.isfile(tmp_root) and os.path.getsize(tmp_root) > 1024:
                     with open(tmp_root, "rb") as tf:

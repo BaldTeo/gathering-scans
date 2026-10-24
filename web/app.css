@@ -27,6 +27,8 @@ html[data-theme="light"] {
   --ui-shadow-active: 0 1px 3px rgba(15, 23, 42, 0.10), 0 1px 2px rgba(15, 23, 42, 0.06);
   --ui-3d-bg: radial-gradient(circle at 50% 40%, #f1f5f9 0%, #dbe4f0 100%);
   --ui-3d-solid: #e2e8f0;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  --mono: var(--font-mono);
   color-scheme: light;
 }
 
@@ -49,6 +51,8 @@ html[data-theme="dark"] {
   --ui-shadow-active: 0 2px 6px rgba(2, 6, 23, 0.5);
   --ui-3d-bg: radial-gradient(circle at 50% 40%, #162032 0%, #0b0f19 100%);
   --ui-3d-solid: #0b1120;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  --mono: var(--font-mono);
   color-scheme: dark;
 }
 
@@ -545,9 +549,14 @@ html[data-theme="light"] .gs-logo-light {
   letter-spacing: 0.03em;
   text-transform: uppercase;
   background: rgba(245, 158, 11, 0.16);
-  border: 1px solid rgba(245, 158, 11, 0.45);
-  color: #f59e0b;
+  border: 1px solid rgba(217, 119, 6, 0.55);
+  color: #b45309;
   flex-shrink: 0;
+}
+
+html[data-theme="dark"] .gs-lowres-preview-pill {
+  color: #fbbf24;
+  border-color: rgba(251, 191, 36, 0.45);
 }
 
 .gs-map-right-preview-canvas-wrap {
@@ -857,7 +866,7 @@ html[data-theme="light"] .gs-logo-light {
   box-shadow: var(--ui-shadow-active);
 }
 
-/* Bottom Dock — Clean Segmented Pill Style */
+/* Unified Bottom Dock — Clean Segmented Pill Style */
 .bim-bottom-dock {
   position: absolute;
   bottom: 16px;
@@ -868,26 +877,31 @@ html[data-theme="light"] .gs-logo-light {
   gap: 3px;
   background: var(--ui-bg-pill);
   border: 1px solid var(--ui-border-strong);
-  padding: 4px;
+  padding: 4px 6px;
   border-radius: 12px;
   box-shadow: var(--ui-shadow-window);
   z-index: 95;
   user-select: none;
+  max-width: calc(100vw - 20px);
+  overflow-x: auto;
 }
 
 .bim-dock-btn {
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
+  gap: 2px;
   background: transparent;
   border: 1px solid transparent;
   border-radius: 8px;
-  width: 36px;
-  height: 34px;
-  padding: 0;
+  min-width: 44px;
+  height: 44px;
+  padding: 3px 6px;
   color: var(--ui-text-secondary);
   cursor: pointer;
   transition: all 0.14s ease;
+  flex-shrink: 0;
 }
 
 .bim-dock-btn:hover {
@@ -910,14 +924,19 @@ html[data-theme="light"] .gs-logo-light {
 }
 
 .bim-dock-label {
-  display: none;
+  display: block;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1.1;
+  white-space: nowrap;
 }
 
 .bim-dock-divider {
   width: 1px;
-  height: 20px;
+  height: 24px;
   background: var(--ui-border-strong);
-  margin: 0 2px;
+  margin: 0 3px;
+  flex-shrink: 0;
 }
 
 /* 2D Measurement Pin & Distance Labels on 3D Canvas */
@@ -1247,7 +1266,8 @@ html[data-theme="light"] .gs-logo-light {
   display: flex;
 }
 
-.gs-modal {
+.gs-modal,
+.gs-modal-window {
   background: var(--ui-bg-surface);
   border: 1px solid var(--ui-border-strong);
   border-radius: 12px;
@@ -1258,6 +1278,52 @@ html[data-theme="light"] .gs-logo-light {
   box-shadow: 0 20px 50px rgba(2, 6, 23, 0.45);
   padding: 18px 20px;
   color: var(--ui-text-primary);
+}
+
+.gs-modal-window {
+  padding: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.gs-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 20px;
+  background: var(--ui-bg-subtle);
+  border-bottom: 1px solid var(--ui-border);
+}
+
+.gs-modal-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--ui-text-primary);
+}
+
+.gs-modal-subtitle {
+  font-size: 11px;
+  color: var(--ui-text-muted);
+  margin-top: 2px;
+}
+
+.gs-modal-body {
+  overflow-y: auto;
+  max-height: calc(88vh - 64px);
+  color: var(--ui-text-primary);
+}
+
+.select-sm {
+  background: var(--ui-bg-subtle);
+  border: 1px solid var(--ui-border-strong);
+  color: var(--ui-text-primary);
+  padding: 3px 7px;
+  border-radius: 6px;
+  font-size: 11.5px;
+  font-weight: 600;
+  cursor: pointer;
 }
 
 .gs-table {
@@ -1522,8 +1588,15 @@ html[data-theme="light"] .gs-logo-light {
   position: absolute;
   top: 14px;
   left: 16px;
+  right: 68px;
+  max-width: calc(100% - 84px);
   z-index: 40;
   pointer-events: auto;
+}
+
+.gs-preview-hud-top-left .gs-preview-scan-pill {
+  max-width: 100%;
+  overflow: hidden;
 }
 
 /* Icon-Only Enlarge Button (Strictly 0 words, only icon) */
@@ -1779,7 +1852,8 @@ html[data-theme="light"] .gs-logo-light {
 
   .gs-map-desc,
   .gs-map-coords-bar,
-  #mapCoordsBar {
+  #mapCoordsBar,
+  #mapCursorCoords {
     display: none !important;
   }
 
@@ -1852,7 +1926,8 @@ html[data-theme="light"] .gs-logo-light {
     font-size: 10.5px;
   }
 
-  #lblTimelineScanCountBadge {
+  #lblTimelineScanCountBadge,
+  #timelineSiteCountPill {
     font-size: 10px;
     padding: 2px 6px;
     white-space: nowrap;
@@ -1906,14 +1981,16 @@ html[data-theme="light"] .gs-logo-light {
     flex: 1;
   }
 
-  #lblPreviewActiveScanTitle {
+  #lblPreviewActiveScanTitle,
+  #previewScanTitle {
     font-size: 11.5px !important;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
   }
 
-  #lblPreviewActiveScanSub {
+  #lblPreviewActiveScanSub,
+  #previewScanMeta {
     font-size: 10px !important;
     white-space: nowrap;
     overflow: hidden;
@@ -1947,6 +2024,7 @@ html[data-theme="light"] .gs-logo-light {
 
   .gs-studio-cube-icon,
   #studioScanMetricsText,
+  #studioScanMetrics,
   .gs-studio-coord-pill {
     display: none !important;
   }
@@ -2022,24 +2100,31 @@ html[data-theme="light"] .gs-logo-light {
 
   .bim-bottom-dock {
     bottom: 8px;
-    padding: 3px;
+    padding: 3px 4px;
     border-radius: 10px;
     gap: 2px;
+    max-width: calc(100vw - 12px);
+    overflow-x: auto;
   }
 
   .bim-dock-btn {
-    width: 34px;
-    height: 30px;
+    min-width: 34px;
+    height: 34px;
+    padding: 2px 4px;
     border-radius: 6px;
+  }
+
+  .bim-dock-label {
+    font-size: 8.5px;
   }
 
   .gs-side-panel {
     top: auto;
-    bottom: 92px;
+    bottom: 54px;
     left: 8px;
     right: 8px;
     width: auto;
-    max-height: 44vh;
+    max-height: 46vh;
     padding: 10px 12px;
     border-radius: 11px;
   }
@@ -2104,7 +2189,10 @@ html[data-theme="light"] .gs-logo-light {
   }
 
   .gs-modal-metrics-grid,
-  .gs-share-form-grid {
+  .gs-share-form-grid,
+  .gs-responsive-grid-3,
+  .gs-responsive-grid-4,
+  .gs-admin-editor-grid {
     grid-template-columns: 1fr !important;
     gap: 6px !important;
   }
@@ -2197,5 +2285,106 @@ body.gs-auth-locked .gs-main {
   pointer-events: none !important;
   user-select: none !important;
 }
+
+/* ============================================================================
+ * Separate Scan Editing Toolbar (#studioEditingDock) & Freehand Lasso Overlay
+ * Permission-gated: Only visible to Editor, Admin & Owner roles
+ * ============================================================================ */
+.gs-studio-editing-dock {
+  position: absolute;
+  left: 16px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  background: var(--ui-bg-pill);
+  backdrop-filter: blur(14px);
+  border: 1.5px solid var(--ui-border-strong);
+  padding: 8px 6px;
+  border-radius: 14px;
+  box-shadow: var(--ui-shadow-window);
+  z-index: 94;
+  user-select: none;
+}
+
+.gs-edit-dock-badge {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 9.5px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  color: var(--ui-accent);
+  background: rgba(2, 132, 199, 0.12);
+  border: 1px solid rgba(2, 132, 199, 0.28);
+  border-radius: 6px;
+  padding: 2px 6px;
+  margin-bottom: 2px;
+  white-space: nowrap;
+}
+
+.gs-edit-dock-btn {
+  min-width: 56px !important;
+  height: 46px !important;
+  padding: 4px 6px !important;
+  border-radius: 9px !important;
+}
+
+.gs-edit-dock-btn[data-tool="crop_delete"].active {
+  border-color: #ef4444 !important;
+  color: #ef4444 !important;
+  background: rgba(239, 68, 68, 0.12) !important;
+}
+
+.gs-studio-lasso-svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 58;
+  display: none;
+}
+
+.gs-studio-lasso-svg.active {
+  display: block;
+}
+
+.gs-studio-lasso-poly {
+  fill: rgba(239, 68, 68, 0.18);
+  stroke: #ef4444;
+  stroke-width: 2;
+  stroke-dasharray: 6 4;
+}
+
+.gs-studio-lasso-svg.keep-mode .gs-studio-lasso-poly {
+  fill: rgba(16, 185, 129, 0.18);
+  stroke: #10b981;
+}
+
+.gs-studio-lasso-line {
+  fill: none;
+  stroke: #ffffff;
+  stroke-width: 1.5;
+  stroke-opacity: 0.75;
+}
+
+@media (max-width: 900px) {
+  .gs-studio-editing-dock {
+    left: 10px;
+    top: auto;
+    bottom: 74px;
+    transform: none;
+    flex-direction: row;
+    padding: 4px 7px;
+  }
+  .gs-edit-dock-badge {
+    margin-bottom: 0;
+    margin-right: 2px;
+  }
+}
+
 
 

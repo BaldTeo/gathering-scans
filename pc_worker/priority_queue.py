@@ -434,6 +434,8 @@ class ScanQueueDB:
         now_ts = now if now is not None else time.time()
         with DB_LOCK, self._connect() as conn:
             rows = conn.execute("SELECT * FROM scans WHERE status = 'queued'").fetchall()
+            if not rows:
+                return []
             for r in rows:
                 wait_m = max(0.0, (now_ts - float(r["uploaded_at"])) / 60.0)
                 score = calculate_priority_score(
@@ -551,7 +553,16 @@ class ScanQueueDB:
         except Exception:
             d["bounding_box"] = {}
         d["size_mb"] = round(float(d.get("size_bytes", 0)) / (1024 * 1024), 2)
-        d["wait_minutes"] = round(max(0.0, (time.time() - float(d.get("uploaded_at", time.time()))) / 60.0), 1)
+        wait_m = max(0.0, (time.time() - float(d.get("uploaded_at", time.time()))) / 60.0)
+        d["wait_minutes"] = round(wait_m, 1)
+        if d.get("status") == "queued":
+            d["priority_score"] = calculate_priority_score(
+                image_count=int(d.get("image_count") or 0),
+                size_mb=float(d.get("size_bytes") or 0) / (1024 * 1024),
+                wait_minutes=wait_m,
+                bypass_count=int(d.get("bypass_count") or 0),
+                force_next=int(d.get("force_next") or 0),
+            )
         return d
 
     def get_scan(self, scan_id: str) -> Optional[Dict[str, Any]]:
@@ -569,7 +580,6 @@ class ScanQueueDB:
             return res
 
     def list_scans(self, project_group: Optional[str] = None) -> List[Dict[str, Any]]:
-        self.refresh_queue_priorities()
         with DB_LOCK, self._connect() as conn:
             if project_group:
                 rows = conn.execute(

@@ -29,11 +29,11 @@ ROLE_LEVELS: Dict[str, int] = {
 }
 
 ROLE_LABELS: Dict[str, str] = {
-    "owner": "1. Owner (System Owner)",
-    "admin": "2. Admin (User & Role Manager)",
-    "editor": "3. Editor (Workflows & Renaming)",
-    "viewer": "4. Viewer (View & Measure Only)",
-    "guest": "5. Guest (Single-Link Basic Tools)",
+    "owner": "Owner (System Owner)",
+    "admin": "Admin (User & Role Manager)",
+    "editor": "Editor (Workflows & Renaming)",
+    "viewer": "Viewer (View & Measure Only)",
+    "guest": "Guest (Read-Only Basic Tools)",
 }
 
 
@@ -82,6 +82,7 @@ def get_role_permissions(role: str, has_share_token: bool = False) -> Dict[str, 
         "can_edit_names": can_edit_names,
         "can_run_workflows": can_run_workflows,
         "can_share": can_share,
+        "can_manage_shares": can_share,
         "allowed_tools": allowed_tools,
     }
 
@@ -99,6 +100,7 @@ class AuthAndSharingManager:
                     email TEXT PRIMARY KEY,
                     id TEXT NOT NULL,
                     name TEXT NOT NULL,
+                    zh_name TEXT DEFAULT '',
                     role TEXT DEFAULT 'editor',
                     color TEXT DEFAULT '#0284c7',
                     picture TEXT DEFAULT '',
@@ -111,6 +113,10 @@ class AuthAndSharingManager:
                 )
                 """
             )
+            try:
+                conn.execute("ALTER TABLE user_profiles ADD COLUMN zh_name TEXT DEFAULT ''")
+            except Exception:
+                pass
             conn.execute("DELETE FROM user_profiles WHERE lower(email) LIKE '%vitaly%' OR lower(name) LIKE '%vitaly%'")
             conn.execute("UPDATE user_profiles SET name = '雲在天', role = 'owner', is_owner = 1, is_admin = 1 WHERE lower(email) = 'glibivanov@gatheren.com.tw'")
             conn.execute("UPDATE user_profiles SET role = 'editor' WHERE role IN ('site_engineer', 'pm') AND is_owner = 0 AND is_admin = 0")
@@ -178,6 +184,7 @@ class AuthAndSharingManager:
                 prof = {
                     "id": d["id"],
                     "name": d["name"],
+                    "zh_name": d.get("zh_name") or d["name"],
                     "email": d["email"],
                     "role": norm_r,
                     "role_label": perms["role_label"],
@@ -201,6 +208,9 @@ class AuthAndSharingManager:
     def upsert_user_profile(self, profile: Dict[str, Any], preserve_existing_role: bool = False) -> Dict[str, Any]:
         email = str(profile.get("email") or "").strip().lower()
         name = str(profile.get("name") or "").strip()
+        zh_name = str(profile.get("zh_name") or "").strip()
+        if not name and zh_name:
+            name = zh_name
         if not name and email:
             name = email.split("@")[0]
         if not email:
@@ -209,6 +219,8 @@ class AuthAndSharingManager:
             raise ValueError("Invalid user profile")
 
         existing = self.get_user_profile(email)
+        if not zh_name:
+            zh_name = (existing and existing.get("zh_name")) or name
         is_owner = 1 if email == OWNER_EMAIL else 0
         if is_owner:
             role = "owner"
@@ -234,11 +246,12 @@ class AuthAndSharingManager:
             conn.execute(
                 """
                 INSERT INTO user_profiles (
-                    email, id, name, role, color, picture, google_sub,
+                    email, id, name, zh_name, role, color, picture, google_sub,
                     is_google_authenticated, is_admin, is_owner, allowed_projects_json, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(email) DO UPDATE SET
                     name=excluded.name,
+                    zh_name=CASE WHEN excluded.zh_name != '' THEN excluded.zh_name ELSE user_profiles.zh_name END,
                     role=excluded.role,
                     color=excluded.color,
                     picture=CASE WHEN excluded.picture != '' THEN excluded.picture ELSE user_profiles.picture END,
@@ -253,6 +266,7 @@ class AuthAndSharingManager:
                     email,
                     uid,
                     name,
+                    zh_name,
                     role,
                     color,
                     picture,
@@ -268,6 +282,7 @@ class AuthAndSharingManager:
         return self.get_user_profile(email) or {
             "id": uid,
             "name": name,
+            "zh_name": zh_name,
             "email": email,
             "role": role,
             "role_label": ROLE_LABELS.get(role, role),
@@ -286,69 +301,92 @@ class AuthAndSharingManager:
         self,
         actor_email: str,
         target_email: str,
-        target_name: str,
-        new_role: str,
+        target_name: str = "",
+        new_role: str = "viewer",
         color: str = "",
+        name: str = "",
+        zh_name: str = "",
+        role: str = "",
+        gchat_user_id: str = "",
     ) -> Dict[str, Any]:
         """
         Enforces 5-level role hierarchy when adding or updating a user from the Admin Control Panel:
         - Owner (glibivanov@gatheren.com.tw, level 5) can add/edit any lower user and assign Admin/Editor/Viewer/Guest.
         - Admin (level 4) can add new users and edit lower users (Editor/Viewer/Guest), cannot edit Owner or other Admins.
         """
-        actor_clean = (actor_email or "").strip().lower()
-        target_clean = (target_email or "").strip().lower()
-        if not target_clean or "@" not in target_clean:
-            raise ValueError("A valid user email address is required.")
+        try:
+            actor_clean = (actor_email or "").strip().lower()
+            target_clean = (target_email or "").strip().lower()
+            if not target_clean or "@" not in target_clean:
+                return {"ok": False, "error": "A valid user email address is required."}
 
-        actor_prof = self.get_user_profile(actor_clean)
-        actor_role = actor_prof["role"] if actor_prof else ("owner" if actor_clean == OWNER_EMAIL else "viewer")
-        actor_lvl = ROLE_LEVELS.get(actor_role, 1)
-        if actor_lvl < 4:
-            raise PermissionError("Only Owner and Admin accounts can manage user roles.")
+            actor_prof = self.get_user_profile(actor_clean)
+            actor_role = actor_prof["role"] if actor_prof else ("owner" if actor_clean == OWNER_EMAIL else "viewer")
+            actor_lvl = ROLE_LEVELS.get(actor_role, 1)
+            if actor_lvl < 4:
+                return {"ok": False, "error": "Only Owner and Admin accounts can manage user roles."}
 
-        if target_clean == OWNER_EMAIL and actor_clean != OWNER_EMAIL:
-            raise PermissionError("Cannot modify the System Owner account (glibivanov@gatheren.com.tw).")
+            if target_clean == OWNER_EMAIL and actor_clean != OWNER_EMAIL:
+                return {"ok": False, "error": "Cannot modify the System Owner account (glibivanov@gatheren.com.tw)."}
 
-        req_role = normalize_role(new_role, email=target_clean)
-        req_lvl = ROLE_LEVELS.get(req_role, 2)
+            eff_role_input = role or new_role or "viewer"
+            req_role = normalize_role(eff_role_input, email=target_clean)
+            req_lvl = ROLE_LEVELS.get(req_role, 2)
 
-        existing_target = self.get_user_profile(target_clean)
-        if existing_target and target_clean != OWNER_EMAIL:
-            target_cur_lvl = ROLE_LEVELS.get(existing_target["role"], 2)
-            if actor_lvl <= target_cur_lvl and actor_clean != OWNER_EMAIL:
-                raise PermissionError("Admins can only edit users with lower roles (Editor, Viewer, Guest).")
-            if req_lvl >= actor_lvl and actor_clean != OWNER_EMAIL:
-                raise PermissionError("Admins can only assign roles lower than Admin (Editor, Viewer, Guest).")
+            existing_target = self.get_user_profile(target_clean)
+            if existing_target and target_clean != OWNER_EMAIL:
+                target_cur_lvl = ROLE_LEVELS.get(existing_target["role"], 2)
+                if actor_lvl <= target_cur_lvl and actor_clean != OWNER_EMAIL:
+                    return {"ok": False, "error": "Admins can only edit users with lower roles (Editor, Viewer, Guest)."}
+                if req_lvl >= actor_lvl and actor_clean != OWNER_EMAIL:
+                    return {"ok": False, "error": "Admins can only assign roles lower than Admin (Editor, Viewer, Guest)."}
 
-        return self.upsert_user_profile(
-            {
-                "email": target_clean,
-                "name": (target_name or (existing_target and existing_target["name"]) or target_clean.split("@")[0]).strip(),
-                "role": "owner" if target_clean == OWNER_EMAIL else req_role,
-                "color": color or (existing_target and existing_target.get("color")) or "#0284c7",
-            },
-            preserve_existing_role=False,
-        )
+            eff_name = (name or target_name or zh_name or (existing_target and existing_target["name"]) or target_clean.split("@")[0]).strip()
+            eff_zh = (zh_name or (existing_target and existing_target.get("zh_name")) or eff_name).strip()
+            if zh_name and name and zh_name not in eff_name:
+                display_name = f"{zh_name} ({name})"
+            else:
+                display_name = eff_name
 
-    def admin_delete_user(self, actor_email: str, target_email: str) -> bool:
-        actor_clean = (actor_email or "").strip().lower()
-        target_clean = (target_email or "").strip().lower()
-        if target_clean == OWNER_EMAIL:
-            raise PermissionError("The System Owner account cannot be removed.")
-        actor_prof = self.get_user_profile(actor_clean)
-        actor_role = actor_prof["role"] if actor_prof else ("owner" if actor_clean == OWNER_EMAIL else "viewer")
-        actor_lvl = ROLE_LEVELS.get(actor_role, 1)
-        if actor_lvl < 4:
-            raise PermissionError("Only Owner and Admin accounts can remove users.")
-        existing_target = self.get_user_profile(target_clean)
-        if existing_target:
-            target_lvl = ROLE_LEVELS.get(existing_target["role"], 2)
-            if actor_lvl <= target_lvl and actor_clean != OWNER_EMAIL:
-                raise PermissionError("Admins can only remove users with lower roles.")
-        with DB_LOCK, self.db._connect() as conn:
-            cur = conn.execute("DELETE FROM user_profiles WHERE lower(email) = ?", (target_clean,))
-            conn.commit()
-            return cur.rowcount > 0
+            saved_user = self.upsert_user_profile(
+                {
+                    "email": target_clean,
+                    "name": display_name,
+                    "zh_name": eff_zh,
+                    "role": "owner" if target_clean == OWNER_EMAIL else req_role,
+                    "color": color or (existing_target and existing_target.get("color")) or "#0284c7",
+                },
+                preserve_existing_role=False,
+            )
+            all_users = self.list_user_profiles()
+            return {"ok": True, "user": saved_user, "users": all_users, "profiles": all_users}
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
+    def admin_delete_user(self, actor_email: str, target_email: str) -> Dict[str, Any]:
+        try:
+            actor_clean = (actor_email or "").strip().lower()
+            target_clean = (target_email or "").strip().lower()
+            if target_clean == OWNER_EMAIL:
+                return {"ok": False, "error": "The System Owner account cannot be removed."}
+            actor_prof = self.get_user_profile(actor_clean)
+            actor_role = actor_prof["role"] if actor_prof else ("owner" if actor_clean == OWNER_EMAIL else "viewer")
+            actor_lvl = ROLE_LEVELS.get(actor_role, 1)
+            if actor_lvl < 4:
+                return {"ok": False, "error": "Only Owner and Admin accounts can remove users."}
+            existing_target = self.get_user_profile(target_clean)
+            if existing_target:
+                target_lvl = ROLE_LEVELS.get(existing_target["role"], 2)
+                if actor_lvl <= target_lvl and actor_clean != OWNER_EMAIL:
+                    return {"ok": False, "error": "Admins can only remove users with lower roles."}
+            with DB_LOCK, self.db._connect() as conn:
+                cur = conn.execute("DELETE FROM user_profiles WHERE lower(email) = ?", (target_clean,))
+                conn.commit()
+                deleted = cur.rowcount > 0
+            all_users = self.list_user_profiles()
+            return {"ok": True, "deleted": deleted, "users": all_users, "profiles": all_users}
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
 
     def verify_google_oauth_credential(self, credential_jwt: str, fallback_profile: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """

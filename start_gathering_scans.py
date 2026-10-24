@@ -55,6 +55,9 @@ from pc_worker.pix4d_runner import (
 _INITIAL_DISCOVERY_DONE = threading.Event()
 
 
+_WIN_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000) if os.name == "nt" else 0
+
+
 def _detect_running_pix4dmatic() -> Tuple[bool, str, str]:
     """
     Checks if PIX4Dmatic.exe is currently running on the workstation.
@@ -68,6 +71,7 @@ def _detect_running_pix4dmatic() -> Tuple[bool, str, str]:
             capture_output=True,
             text=True,
             timeout=5,
+            creationflags=_WIN_NO_WINDOW,
         )
         if "PIX4Dmatic.exe" not in (r.stdout or ""):
             return False, "", ""
@@ -346,7 +350,14 @@ def ssh_reverse_tunnel_loop():
     )
     while True:
         try:
-            proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+            proc = subprocess.Popen(
+                cmd,
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                creationflags=_WIN_NO_WINDOW,
+            )
             proc.wait()
         except Exception as e:
             print(f"[Tunnel] Connection error: {e}")
@@ -395,8 +406,9 @@ if __name__ == "__main__":
 
     start_pc_reverse_tunnel_pool(local_port=SERVER_PORT)
 
-    t_tunnel = threading.Thread(target=ssh_reverse_tunnel_loop, daemon=True)
-    t_tunnel.start()
+    if os.environ.get("ENABLE_LEGACY_SSH_TUNNEL") == "1":
+        t_tunnel = threading.Thread(target=ssh_reverse_tunnel_loop, daemon=True)
+        t_tunnel.start()
 
     try:
         run_server(host=SERVER_HOST, port=SERVER_PORT)
