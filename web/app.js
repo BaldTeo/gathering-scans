@@ -6869,17 +6869,10 @@
     if (studioThree.fallbackGroup) studioThree.fallbackGroup.visible = false;
     studioThree.multiAlignGroup.visible = true;
 
-    if (STATE.multiAlign.layers.length === 0) {
-      // Check if current project has multiple scans (e.g. QiHu Tender 1..4)
-      const curGroup = STATE.activeScan?.project_group || STATE.activeProjectGroup;
-      const siteScans = STATE.scans
-        .filter((s) => s.project_group === curGroup)
-        .sort((a, b) => a.scan_id.localeCompare(b.scan_id));
-      if (siteScans.length >= 2 && siteScans.length <= 6) {
-        siteScans.forEach((s) => addScanLayerToMultiAlign(s.scan_id));
-      } else if (STATE.activeScanId) {
-        addScanLayerToMultiAlign(STATE.activeScanId);
-      }
+    if (STATE.multiAlign.layers.length === 0 && STATE.activeScanId) {
+      // Only include the currently active Studio scan as the starting anchor (#1);
+      // the user selects which additional scans to import from the checklist in the panel.
+      addScanLayerToMultiAlign(STATE.activeScanId);
     }
     updateStudioTransformGizmo();
   }
@@ -6906,21 +6899,93 @@
     const lockedCount = layers.filter((l) => l.locked).length;
     const curSite =
       STATE.activeScan?.project_group ||
-      (STATE.activeProjectGroup !== "__all__" ? STATE.activeProjectGroup : "QiHu") ||
-      "QiHu";
-    const defaultMergedName = `${curSite} — Unified Merged Scan (${layers.length || 4} Scans)`;
+      (STATE.activeProjectGroup && STATE.activeProjectGroup !== "__all__" ? STATE.activeProjectGroup : "") ||
+      STATE.scans[0]?.project_group ||
+      "QuChi Dam";
+    const pickerProject = STATE.multiAlign.pickerProjectGroup || curSite;
+    const defaultMergedName = `${curSite} — Unified Merged Scan (${Math.max(2, layers.length)} Scans)`;
 
-    const availableScansOptions = STATE.scans
+    const allProjectNames = Array.from(
+      new Set(STATE.scans.map((s) => s.project_group || "Default"))
+    ).sort();
+    const projectFilterOptionsHtml = [
+      `<option value="__all__" ${pickerProject === "__all__" ? "selected" : ""}>All Projects (${STATE.scans.length} Scans)</option>`,
+      ...allProjectNames.map((pg) => {
+        const cnt = STATE.scans.filter((s) => (s.project_group || "Default") === pg).length;
+        return `<option value="${escapeHtml(pg)}" ${pickerProject === pg ? "selected" : ""}>${escapeHtml(pg)} (${cnt} Scans)</option>`;
+      }),
+    ].join("");
+
+    const candidateScans = STATE.scans
+      .filter((s) => pickerProject === "__all__" || (s.project_group || "Default") === pickerProject)
+      .sort((a, b) => String(a.name || a.scan_id).localeCompare(String(b.name || b.scan_id)));
+
+    if (!STATE.multiAlign.checkedScanIds) {
+      STATE.multiAlign.checkedScanIds = new Set();
+    }
+
+    const scanChecklistRowsHtml = candidateScans
       .map((s) => {
-        const already = layers.some((l) => l.scan_id === s.scan_id);
-        return `<option value="${s.scan_id}" ${already ? "disabled" : ""}>[${s.project_group}] ${s.name}${already ? " (Loaded)" : ""}</option>`;
+        const loadedIdx = layers.findIndex((l) => l.scan_id === s.scan_id);
+        const isLoaded = loadedIdx !== -1;
+        const loadedLayer = isLoaded ? layers[loadedIdx] : null;
+        const isChecked = !isLoaded && STATE.multiAlign.checkedScanIds.has(s.scan_id);
+        return `
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;padding:5px 7px;border-radius:6px;background:${
+            isLoaded
+              ? "rgba(56,189,248,0.10)"
+              : isChecked
+              ? "var(--ui-accent-soft)"
+              : "var(--ui-bg-surface)"
+          };border:1px solid ${
+            isLoaded
+              ? loadedLayer.color
+              : isChecked
+              ? "var(--ui-accent)"
+              : "var(--ui-border)"
+          };">
+            <label style="display:flex;align-items:center;gap:7px;min-width:0;flex:1;cursor:pointer;margin:0;">
+              ${
+                isLoaded
+                  ? `<span style="width:12px;height:12px;border-radius:50%;background:${loadedLayer.color};display:inline-block;flex-shrink:0;" title="Loaded in 3D View"></span>`
+                  : `<input type="checkbox" class="chk-align-pick-scan" data-scan-id="${escapeHtml(s.scan_id)}" ${
+                      isChecked ? "checked" : ""
+                    } style="accent-color:var(--ui-accent);width:14px;height:14px;margin:0;flex-shrink:0;cursor:pointer;" />`
+              }
+              <div style="min-width:0;flex:1;">
+                <div style="font-size:11.5px;font-weight:600;color:var(--ui-text-primary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+                  ${escapeHtml(s.name || s.scan_id)}
+                </div>
+                <div style="font-size:10px;color:var(--ui-text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+                  ${escapeHtml(s.project_group || "")}${s.capture_date ? ` · ${escapeHtml(s.capture_date)}` : ""}
+                </div>
+              </div>
+            </label>
+            ${
+              isLoaded
+                ? `<span style="font-size:10px;font-weight:700;padding:1px 6px;border-radius:4px;background:rgba(16,185,129,0.16);color:#10b981;flex-shrink:0;">#${
+                    loadedIdx + 1
+                  }${loadedIdx === 0 ? " Anchor" : " Loaded"}</span>
+                   <button type="button" class="gs-top-btn btn-align-remove" data-scan-id="${escapeHtml(
+                     s.scan_id
+                   )}" style="padding:1px 6px;font-size:10px;flex-shrink:0;" title="Remove from 3D alignment view">✕</button>`
+                : `<button type="button" class="gs-top-btn btn-align-quick-add" data-scan-id="${escapeHtml(
+                    s.scan_id
+                  )}" style="padding:2px 7px;font-size:10.5px;flex-shrink:0;" title="Add this scan to 3D alignment view">+ Add</button>`
+            }
+          </div>
+        `;
       })
       .join("");
 
+    const checkedCount = candidateScans.filter(
+      (s) => !layers.some((l) => l.scan_id === s.scan_id) && STATE.multiAlign.checkedScanIds.has(s.scan_id)
+    ).length;
+
     const layerCardsHtml =
       layers.length === 0
-        ? `<div style="padding:14px;border:1px dashed var(--ui-border-strong);border-radius:8px;text-align:center;font-size:12px;color:var(--ui-text-secondary);">
-            No scan layers loaded yet. Click <b>Load 4 QiHu Scans</b> or add scans below.
+        ? `<div style="padding:12px;border:1px dashed var(--ui-border-strong);border-radius:8px;text-align:center;font-size:11.5px;color:var(--ui-text-secondary);">
+            No scan layers in 3D view yet. Check scans above and click <b>+ Add Selected Scans</b>.
           </div>`
         : layers
             .map((l, idx) => {
@@ -7036,30 +7101,42 @@
     showSidePanel(
       "Multi-Scan 3D Alignment & Merge (多掃描對齊與合併)",
       `
-      <div style="font-size:11.5px;color:var(--ui-text-secondary);margin-bottom:8px;line-height:1.45;">
-        Load multiple misaligned scans into the same 3D view, drag the <b>3D Gizmo arrows (X/Y/Z/XZ) &amp; rotation rings (Yaw/Pitch/Roll)</b>, lock each scan's orientation (<b>🔒</b>), and merge them into one unified scan.
+      <!-- Step 1: User-Controlled Scan Selector Checklist -->
+      <div style="background:var(--ui-bg-subtle);border:1px solid var(--ui-border-strong);border-radius:8px;padding:9px 10px;margin-bottom:10px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;margin-bottom:6px;">
+          <span style="font-size:11.5px;font-weight:700;color:var(--ui-text-primary);">1. Select Scans to Add (選擇要加入的掃描)</span>
+          <div style="display:flex;gap:4px;">
+            <button type="button" class="gs-top-btn" id="btnAlignCheckAllCandidates" style="padding:1px 6px;font-size:10px;" title="Check all unloaded scans in this list">Select All</button>
+            <button type="button" class="gs-top-btn" id="btnAlignUncheckAllCandidates" style="padding:1px 6px;font-size:10px;" title="Uncheck all">Clear</button>
+          </div>
+        </div>
+
+        <div style="margin-bottom:6px;">
+          <select class="gs-select" id="alignProjectFilterSelect" style="width:100%;font-size:11.5px;height:28px;" title="Filter scans by project site">
+            ${projectFilterOptionsHtml}
+          </select>
+        </div>
+
+        <div id="alignScanPickerChecklist" style="display:flex;flex-direction:column;gap:4px;max-height:155px;overflow-y:auto;padding-right:2px;margin-bottom:7px;">
+          ${scanChecklistRowsHtml}
+        </div>
+
+        <button type="button" class="gs-top-btn accent" id="btnAlignAddCheckedScans" style="width:100%;justify-content:center;font-size:11.5px;font-weight:700;padding:6px 10px;">
+          <span>+ Add Selected Scans to 3D View (${checkedCount} Checked)</span>
+        </button>
       </div>
 
-      <div style="display:flex;gap:5px;margin-bottom:8px;flex-wrap:wrap;">
-        <button type="button" class="gs-top-btn accent" id="btnAlignLoadQiHu4" style="flex:1;justify-content:center;font-size:11px;" title="Load the 4 QiHu Tender scans (or all scans in current site) into the same 3D view">
-          <span>+ Load 4 Site Scans</span>
-        </button>
-        <button type="button" class="gs-top-btn" id="btnAlignSpreadScans" style="justify-content:center;font-size:11px;" title="Spread unlocked scans side-by-side along X so you can inspect them individually">
-          <span>Spread</span>
-        </button>
-        <button type="button" class="gs-top-btn" id="btnAlignStackOrigin" style="justify-content:center;font-size:11px;" title="Co-locate unlocked scans at (0,0,0)">
-          <span>Co-locate</span>
-        </button>
-      </div>
-
-      <div style="display:flex;gap:5px;margin-bottom:10px;">
-        <select class="gs-select" id="alignAddScanSelect" style="flex:1;font-size:11.5px;">
-          <option value="">+ Add another scan to 3D view...</option>
-          ${availableScansOptions}
-        </select>
-        <button type="button" class="gs-top-btn" id="btnAlignAddSelectedScan" style="padding:0 10px;font-size:11.5px;">
-          <span>Add</span>
-        </button>
+      <!-- Step 2: 3D Gizmo Mode & Active Layers -->
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:4px;margin-bottom:6px;">
+        <span style="font-size:11.5px;font-weight:700;color:var(--ui-text-primary);">2. Active 3D Layers (${layers.length} Loaded)</span>
+        <div style="display:flex;gap:4px;">
+          <button type="button" class="gs-top-btn" id="btnAlignSpreadScans" style="padding:2px 7px;font-size:10.5px;" title="Spread unlocked scans side-by-side along X so you can inspect them individually">
+            <span>Spread</span>
+          </button>
+          <button type="button" class="gs-top-btn" id="btnAlignStackOrigin" style="padding:2px 7px;font-size:10.5px;" title="Co-locate unlocked scans at (0,0,0)">
+            <span>Co-locate</span>
+          </button>
+        </div>
       </div>
 
       <div style="display:flex;align-items:center;justify-content:space-between;gap:4px;margin-bottom:8px;background:var(--ui-bg-subtle);padding:5px 7px;border-radius:7px;border:1px solid var(--ui-border);">
@@ -7077,7 +7154,7 @@
         </div>
       </div>
 
-      <div id="alignLayersList" style="max-height:310px;overflow-y:auto;padding-right:2px;margin-bottom:8px;">
+      <div id="alignLayersList" style="max-height:270px;overflow-y:auto;padding-right:2px;margin-bottom:8px;">
         ${layerCardsHtml}
       </div>
 
@@ -7136,22 +7213,70 @@
       `
     );
 
-    // Wire events
-    document.getElementById("btnAlignLoadQiHu4")?.addEventListener("click", () => {
-      if (!STATE.multiAlign.active) enterMultiScanAlignMode();
-      const qihuScans = STATE.scans
-        .filter((s) => s.project_group === "QiHu" || s.scan_id.includes("QiHuTender"))
-        .sort((a, b) => a.scan_id.localeCompare(b.scan_id));
-      const targetList =
-        qihuScans.length >= 2
-          ? qihuScans.slice(0, 4)
-          : STATE.scans
-              .filter((s) => s.project_group === curSite)
-              .sort((a, b) => a.scan_id.localeCompare(b.scan_id))
-              .slice(0, 4);
-      targetList.forEach((s) => addScanLayerToMultiAlign(s.scan_id));
+    // Wire scan selector checklist events
+    document.getElementById("alignProjectFilterSelect")?.addEventListener("change", (ev) => {
+      STATE.multiAlign.pickerProjectGroup = ev.target.value;
       renderAlignMergeInspectorContent();
-      showToast(`Loaded ${STATE.multiAlign.layers.length} scans into unified 3D alignment view`);
+    });
+
+    document.querySelectorAll(".chk-align-pick-scan").forEach((chk) => {
+      chk.addEventListener("change", () => {
+        const sid = chk.dataset.scanId;
+        if (!sid) return;
+        if (chk.checked) {
+          STATE.multiAlign.checkedScanIds.add(sid);
+        } else {
+          STATE.multiAlign.checkedScanIds.delete(sid);
+        }
+        renderAlignMergeInspectorContent();
+      });
+    });
+
+    document.querySelectorAll(".btn-align-quick-add").forEach((btn) => {
+      btn.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        const sid = btn.dataset.scanId;
+        if (!sid) return;
+        if (!STATE.multiAlign.active) enterMultiScanAlignMode();
+        addScanLayerToMultiAlign(sid);
+        STATE.multiAlign.checkedScanIds?.delete(sid);
+        renderAlignMergeInspectorContent();
+        const added = STATE.scans.find((s) => s.scan_id === sid);
+        showToast(`Added "${added?.name || sid}" to 3D alignment view`);
+      });
+    });
+
+    document.getElementById("btnAlignCheckAllCandidates")?.addEventListener("click", () => {
+      candidateScans.forEach((s) => {
+        if (!STATE.multiAlign.layers.some((l) => l.scan_id === s.scan_id)) {
+          STATE.multiAlign.checkedScanIds.add(s.scan_id);
+        }
+      });
+      renderAlignMergeInspectorContent();
+    });
+
+    document.getElementById("btnAlignUncheckAllCandidates")?.addEventListener("click", () => {
+      STATE.multiAlign.checkedScanIds.clear();
+      renderAlignMergeInspectorContent();
+    });
+
+    document.getElementById("btnAlignAddCheckedScans")?.addEventListener("click", () => {
+      const toAdd = candidateScans.filter(
+        (s) =>
+          !STATE.multiAlign.layers.some((l) => l.scan_id === s.scan_id) &&
+          STATE.multiAlign.checkedScanIds.has(s.scan_id)
+      );
+      if (toAdd.length === 0) {
+        showToast("Please check at least one scan in the list above (or click '+ Add' next to a scan).");
+        return;
+      }
+      if (!STATE.multiAlign.active) enterMultiScanAlignMode();
+      toAdd.forEach((s) => {
+        addScanLayerToMultiAlign(s.scan_id);
+        STATE.multiAlign.checkedScanIds.delete(s.scan_id);
+      });
+      renderAlignMergeInspectorContent();
+      showToast(`Added ${toAdd.length} selected scan(s) to 3D alignment view`);
     });
 
     document.getElementById("btnAlignSpreadScans")?.addEventListener("click", () => {
@@ -7178,18 +7303,6 @@
       });
       renderAlignMergeInspectorContent();
       showToast("Co-located unlocked scans at (0, 0, 0)");
-    });
-
-    document.getElementById("btnAlignAddSelectedScan")?.addEventListener("click", () => {
-      const sel = document.getElementById("alignAddScanSelect");
-      const sid = sel?.value;
-      if (!sid) {
-        showToast("Select a scan from the dropdown first");
-        return;
-      }
-      if (!STATE.multiAlign.active) enterMultiScanAlignMode();
-      addScanLayerToMultiAlign(sid);
-      renderAlignMergeInspectorContent();
     });
 
     document.querySelectorAll(".btn-gizmo-mode").forEach((btn) => {
