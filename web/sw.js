@@ -5,8 +5,8 @@
  * Strictly zero scan cache is ever stored on the Linux VPS.
  */
 
-const CACHE_NAME = "gathering-scans-offline-v43";
-const SCAN_TILES_CACHE = "gathering-scans-tiles-v1";
+const CACHE_NAME = "gathering-scans-offline-v44";
+const SCAN_TILES_CACHE = "gathering-scans-tiles-v2";
 const APP_SHELL = [
   "/",
   "/index.html",
@@ -86,6 +86,14 @@ self.addEventListener("fetch", (event) => {
             caches.open(SCAN_TILES_CACHE).then(async (tileCache) => {
               const existing = (await tileCache.match(req)) || (await tileCache.match(req, { ignoreSearch: true }));
               if (existing) {
+                const allKeys = await tileCache.keys();
+                for (const k of allKeys) {
+                  try {
+                    if (new URL(k.url).pathname === url.pathname && k.url !== req.url) {
+                      await tileCache.delete(k);
+                    }
+                  } catch (_) {}
+                }
                 await tileCache.put(req, clone);
               }
             }).catch(() => {});

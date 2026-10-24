@@ -645,7 +645,7 @@ def sync_all_scans_to_gdrive_and_vps(db: Any, auth_share: Any = None, force: boo
     for m_sid in missing_vps_pkgs[:4]:
         p_info = packages.get(m_sid) or {}
         p_file = p_info.get("pkg_path") or ""
-        if p_file and os.path.isfile(p_file) and os.path.getsize(p_file) <= 35 * 1024 * 1024:
+        if p_file and os.path.isfile(p_file) and os.path.getsize(p_file) <= 120 * 1024 * 1024:
             try:
                 with open(p_file, "rb") as pf:
                     raw_pkg = pf.read()
@@ -658,7 +658,7 @@ def sync_all_scans_to_gdrive_and_vps(db: Any, auth_share: Any = None, force: boo
                     },
                     method="POST",
                 )
-                with urllib.request.urlopen(ureq, timeout=45) as uresp:
+                with urllib.request.urlopen(ureq, timeout=180) as uresp:
                     pass
             except Exception as ue:
                 print(f"[GDriveCloudSync] VPS .3tz mirror note for {m_sid}: {ue}")

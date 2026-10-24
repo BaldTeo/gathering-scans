@@ -96,6 +96,10 @@ def _downscale_glb_textures(raw_bytes: bytes, max_dim: int = 768, jpeg_quality: 
         if not images or not bvs:
             return raw_bytes
 
+        has_webp_ext = any(
+            isinstance((t.get("extensions") or {}).get("EXT_texture_webp"), dict)
+            for t in (j.get("textures") or [])
+        )
         img_bv_map: Dict[int, bytes] = {}
         for im in images:
             bvi = im.get("bufferView")
@@ -106,8 +110,23 @@ def _downscale_glb_textures(raw_bytes: bytes, max_dim: int = 768, jpeg_quality: 
                 if ln <= 0 or off + ln > len(bin_data):
                     continue
                 try:
-                    pil_im = Image.open(io.BytesIO(bytes(bin_data[off : off + ln]))).convert("RGB")
-                    pil_im.thumbnail((max_dim, max_dim), Image.Resampling.LANCZOS)
+                    raw_img_bytes = bytes(bin_data[off : off + ln])
+                    pil_hdr = Image.open(io.BytesIO(raw_img_bytes))
+                    orig_fmt = (pil_hdr.format or "").upper()
+                    orig_w, orig_h = pil_hdr.size
+                    if (
+                        orig_fmt == "JPEG"
+                        and im.get("mimeType") == "image/jpeg"
+                        and orig_w <= max_dim
+                        and orig_h <= max_dim
+                        and jpeg_quality >= 82
+                        and not has_webp_ext
+                    ):
+                        # Already JPEG within max_dim at high quality -> preserve exact bytes (zero re-encode loss)
+                        continue
+                    pil_im = pil_hdr.convert("RGB")
+                    if orig_w > max_dim or orig_h > max_dim:
+                        pil_im.thumbnail((max_dim, max_dim), Image.Resampling.LANCZOS)
                     out_buf = io.BytesIO()
                     pil_im.save(out_buf, format="JPEG", quality=jpeg_quality, optimize=True)
                     img_bv_map[bvi] = out_buf.getvalue()
@@ -115,7 +134,7 @@ def _downscale_glb_textures(raw_bytes: bytes, max_dim: int = 768, jpeg_quality: 
                 except Exception:
                     pass
 
-        if not img_bv_map:
+        if not img_bv_map and not has_webp_ext:
             return raw_bytes
 
         for tex in j.get("textures") or []:
@@ -146,6 +165,100 @@ def _downscale_glb_textures(raw_bytes: bytes, max_dim: int = 768, jpeg_quality: 
         for ctype, idx_bv, old_off, old_len in chunks:
             if ctype == "bv" and idx_bv in img_bv_map:
                 data = img_bv_map[idx_bv]
+            else:
+                data = bytes(bin_data[old_off : old_off + old_len])
+            new_off = len(new_bin)
+            new_bin.extend(data)
+            while len(new_bin) % 4:
+                new_bin.append(0)
+            if ctype == "bv":
+                bvs[idx_bv]["byteOffset"] = new_off
+                bvs[idx_bv]["byteLength"] = len(data)
+            else:
+                bvs[idx_bv]["extensions"]["EXT_meshopt_compression"]["byteOffset"] = new_off
+                bvs[idx_bv]["extensions"]["EXT_meshopt_compression"]["byteLength"] = len(data)
+
+        if j.get("buffers"):
+            j["buffers"][0]["byteLength"] = len(new_bin)
+
+        jb = json.dumps(j, separators=(",", ":")).encode("utf-8")
+        while len(jb) % 4:
+            jb += b" "
+        total_len = 12 + 8 + len(jb) + 8 + len(new_bin)
+        out = bytearray()
+        out.extend(struct.pack("<4sII", b"glTF", 2, total_len))
+        out.extend(struct.pack("<I4s", len(jb), b"JSON"))
+        out.extend(jb)
+        out.extend(struct.pack("<I4s", len(new_bin), b"BIN\x00"))
+        out.extend(new_bin)
+        return bytes(out)
+    except Exception:
+        return raw_bytes
+
+
+def replace_glb_single_image_bytes(
+    raw_bytes: bytes,
+    exact_img_bytes: bytes,
+    mime_type: str = "image/jpeg",
+) -> bytes:
+    """
+    Splices exact original JPEG/PNG image bytes into a single-texture GLB (standard or EXT_meshopt_compression)
+    so zero JPEG re-encoding generation loss occurs when packing .obj -> .glb via gltfpack.
+    """
+    if not exact_img_bytes or len(raw_bytes) < 28 or raw_bytes[:4] != b"glTF":
+        return raw_bytes
+    try:
+        jl, jtype = struct.unpack_from("<I4s", raw_bytes, 12)
+        if jtype != b"JSON":
+            return raw_bytes
+        boff = 20 + jl
+        if boff + 8 > len(raw_bytes):
+            return raw_bytes
+        blen, btype = struct.unpack_from("<I4s", raw_bytes, boff)
+        if btype != b"BIN\x00":
+            return raw_bytes
+
+        j = json.loads(raw_bytes[20 : 20 + jl].decode("utf-8"))
+        bin_data = memoryview(raw_bytes)[boff + 8 : boff + 8 + blen]
+        images = j.get("images") or []
+        bvs = j.get("bufferViews") or []
+        if not images or not bvs:
+            return raw_bytes
+
+        target_bvi = images[0].get("bufferView")
+        if target_bvi is None or not (0 <= int(target_bvi) < len(bvs)):
+            return raw_bytes
+        target_bvi = int(target_bvi)
+        images[0]["mimeType"] = mime_type
+
+        for tex in j.get("textures") or []:
+            exts = tex.get("extensions")
+            if isinstance(exts, dict) and "EXT_texture_webp" in exts:
+                src_idx = exts["EXT_texture_webp"].get("source")
+                if src_idx is not None:
+                    tex["source"] = src_idx
+                exts.pop("EXT_texture_webp", None)
+                if not exts:
+                    tex.pop("extensions", None)
+        for ext_key in ("extensionsUsed", "extensionsRequired"):
+            if ext_key in j and isinstance(j[ext_key], list):
+                j[ext_key] = [x for x in j[ext_key] if x != "EXT_texture_webp"]
+                if not j[ext_key]:
+                    j.pop(ext_key, None)
+
+        chunks = []
+        for idx_bv, bv in enumerate(bvs):
+            ext_mo = (bv.get("extensions") or {}).get("EXT_meshopt_compression")
+            if isinstance(ext_mo, dict) and int(ext_mo.get("buffer", 0)) == 0:
+                chunks.append(("mo", idx_bv, int(ext_mo.get("byteOffset", 0)), int(ext_mo["byteLength"])))
+            elif int(bv.get("buffer", 0)) == 0:
+                chunks.append(("bv", idx_bv, int(bv.get("byteOffset", 0)), int(bv["byteLength"])))
+
+        chunks.sort(key=lambda x: x[2])
+        new_bin = bytearray()
+        for ctype, idx_bv, old_off, old_len in chunks:
+            if ctype == "bv" and idx_bv == target_bvi:
+                data = exact_img_bytes
             else:
                 data = bytes(bin_data[old_off : old_off + old_len])
             new_off = len(new_bin)

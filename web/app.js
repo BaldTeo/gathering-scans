@@ -3012,6 +3012,10 @@
     mat.userData._lastBrightness = b;
     if (mat.map && mat.color) {
       mat.color.setRGB(1, 1, 1);
+      if (!mat.map.anisotropy || mat.map.anisotropy < 8) {
+        mat.map.anisotropy = 8;
+        mat.map.needsUpdate = true;
+      }
     }
     if (mat.color && !mat.userData._origColor) {
       mat.userData._origColor = mat.color.clone();
@@ -13459,6 +13463,69 @@
     };
   }
 
+  function findMergedComponentAlignment(compSide, compInfo, unifiedSide) {
+    if (!compSide || !compInfo || !unifiedSide) return null;
+    const mfList = Array.isArray(unifiedSide.scanMeta?.merged_from) ? unifiedSide.scanMeta.merged_from : [];
+    if (!mfList.length) return null;
+    const compId = String(compSide._loadedScanId || compSide.scanMeta?.scan_id || "");
+    const compDerived = String(compSide.scanMeta?.derived_from_scan_id || "");
+    const compName = String(compSide.scanMeta?.name || "").trim();
+    const entry = mfList.find(
+      (m) =>
+        m &&
+        (m.scan_id === compId ||
+          (compDerived && m.scan_id === compDerived) ||
+          (m.derived_from_scan_id && m.derived_from_scan_id === compId) ||
+          (compName && m.name && String(m.name).trim() === compName))
+    );
+    if (!entry) return null;
+
+    const mat4Zup = new THREE.Matrix4();
+    if (Array.isArray(entry.r_zup_rowmajor) && entry.r_zup_rowmajor.length === 9) {
+      const r = entry.r_zup_rowmajor.map(Number);
+      mat4Zup.set(r[0], r[1], r[2], 0, r[3], r[4], r[5], 0, r[6], r[7], r[8], 0, 0, 0, 0, 1);
+    } else if (Array.isArray(entry.quaternion_three) && entry.quaternion_three.length >= 4) {
+      const q3 = new THREE.Quaternion(
+        Number(entry.quaternion_three[0]) || 0,
+        Number(entry.quaternion_three[1]) || 0,
+        Number(entry.quaternion_three[2]) || 0,
+        Number(entry.quaternion_three[3] ?? 1)
+      ).normalize();
+      const mThree = new THREE.Matrix4().makeRotationFromQuaternion(q3);
+      const rxPos90 = new THREE.Matrix4().makeRotationX(Math.PI / 2);
+      const rxNeg90 = new THREE.Matrix4().makeRotationX(-Math.PI / 2);
+      mat4Zup.multiplyMatrices(rxPos90, mThree).multiply(rxNeg90);
+    }
+
+    let nativeAnchor = null;
+    let mergedAnchor = null;
+    if (
+      Array.isArray(entry.native_anchor_zup) &&
+      entry.native_anchor_zup.length >= 3 &&
+      Array.isArray(entry.merged_anchor_zup) &&
+      entry.merged_anchor_zup.length >= 3
+    ) {
+      nativeAnchor = new THREE.Vector3(
+        Number(entry.native_anchor_zup[0]),
+        Number(entry.native_anchor_zup[1]),
+        Number(entry.native_anchor_zup[2])
+      );
+      mergedAnchor = new THREE.Vector3(
+        Number(entry.merged_anchor_zup[0]),
+        Number(entry.merged_anchor_zup[1]),
+        Number(entry.merged_anchor_zup[2])
+      );
+    } else if (Array.isArray(entry.zup_shift) && entry.zup_shift.length >= 3) {
+      nativeAnchor = compInfo.rawCenter.clone();
+      mergedAnchor = compInfo.rawCenter
+        .clone()
+        .add(new THREE.Vector3(Number(entry.zup_shift[0]) || 0, Number(entry.zup_shift[1]) || 0, Number(entry.zup_shift[2]) || 0));
+    }
+    if (!nativeAnchor || !mergedAnchor) return null;
+    const qZup = new THREE.Quaternion().setFromRotationMatrix(mat4Zup);
+    return { compSide, nativeAnchor, mergedAnchor, mat4Zup, qZup };
+  }
+
   function alignCompareSides() {
     if (!compareCtx) return;
     const left = compareCtx.left;
@@ -13470,6 +13537,9 @@
     // Prefer the scan with the tighter bounding radius so the camera orbits the overlapping core site area.
     let sharedAnchor = null;
     let sameVerticalDatum = true;
+    const mergedLink =
+      findMergedComponentAlignment(left, lInfo, right) ||
+      findMergedComponentAlignment(right, rInfo, left);
 
     if (lInfo && rInfo) {
       const bothGeoref =
@@ -13479,7 +13549,10 @@
         lInfo.twdCenter.x - rInfo.twdCenter.x,
         lInfo.twdCenter.y - rInfo.twdCenter.y
       );
-      if (bothGeoref && dist2D < 2500) {
+      if (mergedLink && bothGeoref) {
+        sharedAnchor = mergedLink.mergedAnchor.clone();
+        sameVerticalDatum = true;
+      } else if (bothGeoref && dist2D < 2500) {
         sharedAnchor = (rInfo.radius <= lInfo.radius ? rInfo.twdCenter : lInfo.twdCenter).clone();
         sameVerticalDatum = Math.abs(lInfo.twdCenter.z - rInfo.twdCenter.z) <= 25.0;
       }
@@ -13496,8 +13569,14 @@
       rootObj.position.set(-info.rawCenter.x, -info.rawCenter.y, -info.rawCenter.z);
       rootObj.updateMatrix();
 
-      // 2. Apply CRS alignment offset & meridian convergence relative to sharedAnchor
-      if (sharedAnchor && (info.crs === "TWD97" || info.crs === "UTM51N")) {
+      // 2. Apply exact Multi-Scan co-registration (when comparing source vs merged) or CRS alignment offset
+      if (mergedLink && mergedLink.compSide === side && sharedAnchor) {
+        const deltaRaw = info.rawCenter.clone().sub(mergedLink.nativeAnchor).applyMatrix4(mergedLink.mat4Zup);
+        const tAlign = mergedLink.mergedAnchor.clone().sub(sharedAnchor).add(deltaRaw);
+        side.alignGroup.position.copy(tAlign);
+        side.alignGroup.quaternion.copy(mergedLink.qZup);
+        side.alignGroup.scale.set(1.0, 1.0, 1.0);
+      } else if (sharedAnchor && (info.crs === "TWD97" || info.crs === "UTM51N")) {
         const dx = info.twdCenter.x - sharedAnchor.x;
         const dy = info.twdCenter.y - sharedAnchor.y;
         const dz = sameVerticalDatum ? info.twdCenter.z - sharedAnchor.z : 0;

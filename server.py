@@ -982,10 +982,15 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
     def _serve_optimized_tileset_json(self, ts_path: str):
         try:
             base_dir = os.path.dirname(ts_path)
-            r_candidate = os.path.join(base_dir, "tiles", "root.glb")
+            tiles_sub = os.path.join(base_dir, "tiles")
             mtime = os.path.getmtime(ts_path)
-            if os.path.isfile(r_candidate):
-                mtime = max(mtime, os.path.getmtime(r_candidate))
+            if os.path.isdir(tiles_sub):
+                try:
+                    for fn_t in os.listdir(tiles_sub):
+                        if fn_t.lower().endswith(".glb"):
+                            mtime = max(mtime, os.path.getmtime(os.path.join(tiles_sub, fn_t)))
+                except OSError:
+                    pass
             cached = self._OPTIMIZED_TILESET_CACHE.get(ts_path)
             if cached and cached[0] == mtime:
                 raw_json = cached[1]
@@ -1397,16 +1402,15 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
             try:
                 bdir = os.path.dirname(ts_path)
                 proj_dir = s.get("project_dir") or os.path.dirname(bdir)
-                r_glb = os.path.join(bdir, "tiles", "root.glb")
+                tiles_sub = os.path.join(bdir, "tiles")
                 p_ts = os.path.join(bdir, "preview_tileset.json")
                 p_glb = os.path.join(bdir, "preview_low", "tiles", "root.glb")
-                m_ts = int(
-                    max(
-                        os.path.getmtime(ts_path),
-                        os.path.getmtime(r_glb) if os.path.isfile(r_glb) else 0.0,
-                    )
-                    * 1000
-                )
+                max_tile_mt = os.path.getmtime(ts_path)
+                if os.path.isdir(tiles_sub):
+                    for fn_t in os.listdir(tiles_sub):
+                        if fn_t.lower().endswith(".glb"):
+                            max_tile_mt = max(max_tile_mt, os.path.getmtime(os.path.join(tiles_sub, fn_t)))
+                m_ts = int(max(max_tile_mt, float(s.get("tileset_version") or 0) / 1000.0) * 1000)
                 m_prev = int(
                     max(
                         os.path.getmtime(p_ts) if os.path.isfile(p_ts) else 0.0,

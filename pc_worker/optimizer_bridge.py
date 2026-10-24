@@ -689,14 +689,22 @@ def _downscale_glb_embedded_textures(glb_path: str, tex_limit: int = 2048, jpeg_
                 img_obj = img_bv_indices[bv_idx]
                 try:
                     im = Image.open(io.BytesIO(chunk))
-                    if im.mode not in ("RGB", "L"):
-                        im = im.convert("RGB")
-                    if max(im.size) > tex_limit or len(chunk) > 250_000:
-                        im.thumbnail((tex_limit, tex_limit), Image.Resampling.LANCZOS)
+                    orig_fmt = (im.format or "").upper()
+                    w_im, h_im = im.size
+                    need_downscale = (
+                        max(w_im, h_im) > tex_limit
+                        or orig_fmt != "JPEG"
+                        or (jpeg_quality < 82 and len(chunk) > 600_000)
+                    )
+                    if need_downscale:
+                        if im.mode not in ("RGB", "L"):
+                            im = im.convert("RGB")
+                        if max(w_im, h_im) > tex_limit:
+                            im.thumbnail((tex_limit, tex_limit), Image.Resampling.LANCZOS)
                         out_io = io.BytesIO()
                         im.save(out_io, format="JPEG", quality=jpeg_quality, optimize=True)
                         new_chunk = out_io.getvalue()
-                        if len(new_chunk) < len(chunk):
+                        if max(w_im, h_im) > tex_limit or orig_fmt != "JPEG" or len(new_chunk) < len(chunk):
                             chunk = new_chunk
                             img_obj["mimeType"] = "image/jpeg"
                             modified_any = True
@@ -903,6 +911,165 @@ def _eval_multiscan_layer_delete_mask(
     return overall_del
 
 
+def _trim_multiscan_overlap_skirts(
+    parts_list: List[Dict[str, Any]],
+    cell_m: float = 0.5,
+    border_m: float = 4.0,
+    safety_margin_m: float = 1.5,
+    max_z_diff_m: float = 4.5,
+) -> int:
+    """
+    Removes noisy outer photogrammetry boundary 'skirt' triangles in overlap zones between aligned scans.
+    A perimeter triangle of scan `s` (`dist_from_outer_edge <= border_m`) is trimmed ONLY when another
+    scan `j` covers that exact XY location strictly deeper inside its interior
+    (`dist_j >= max(2.5m, dist_s + safety_margin_m)`) within `max_z_diff_m` vertical separation.
+    Because the scan with strictly maximum interior distance at any cell can never satisfy
+    `dist_other >= dist_self + safety_margin_m`, zero gaps can ever open between adjacent scans.
+    """
+    scan_ids_unique = sorted({int(p["scan_idx"]) for p in parts_list if len(p.get("f", ())) > 0})
+    if len(scan_ids_unique) < 2:
+        return 0
+    try:
+        from scipy import ndimage as _ndi
+    except Exception:
+        return 0
+
+    xmin, ymin = 1e30, 1e30
+    xmax, ymax = -1e30, -1e30
+    for p in parts_list:
+        f_p = p.get("f")
+        v_p = p.get("v_local")
+        if f_p is None or v_p is None or len(f_p) == 0:
+            continue
+        used_idx = np.clip(np.unique(f_p[:, [0, 2, 4]] - 1), 0, len(v_p) - 1)
+        vs = v_p[used_idx]
+        xmin = min(xmin, float(vs[:, 0].min()))
+        ymin = min(ymin, float(vs[:, 1].min()))
+        xmax = max(xmax, float(vs[:, 0].max()))
+        ymax = max(ymax, float(vs[:, 1].max()))
+
+    span_x = max(1.0, xmax - xmin)
+    span_y = max(1.0, ymax - ymin)
+    eff_cell = max(cell_m, max(span_x, span_y) / 2200.0)
+    pad_m = eff_cell * 3.0
+    x0 = xmin - pad_m
+    y0 = ymin - pad_m
+    nx = int(math.ceil((xmax + pad_m - x0) / eff_cell)) + 1
+    ny = int(math.ceil((ymax + pad_m - y0) / eff_cell)) + 1
+    if nx < 8 or ny < 8:
+        return 0
+
+    dist_by_scan: Dict[int, np.ndarray] = {}
+    z_by_scan: Dict[int, np.ndarray] = {}
+    close_struct = np.ones((3, 3), dtype=bool)
+
+    for s_idx in scan_ids_unique:
+        occ = np.zeros((ny, nx), dtype=bool)
+        z_sum = np.zeros((ny, nx), dtype=np.float64)
+        z_cnt = np.zeros((ny, nx), dtype=np.int32)
+        for p in parts_list:
+            if int(p["scan_idx"]) != s_idx or len(p["f"]) == 0:
+                continue
+            v_p = p["v_local"]
+            f_p = p["f"]
+            i0 = np.clip(f_p[:, 0] - 1, 0, len(v_p) - 1)
+            i1 = np.clip(f_p[:, 2] - 1, 0, len(v_p) - 1)
+            i2 = np.clip(f_p[:, 4] - 1, 0, len(v_p) - 1)
+            p0, p1, p2 = v_p[i0], v_p[i1], v_p[i2]
+            samples = np.vstack(
+                [
+                    p0,
+                    p1,
+                    p2,
+                    (p0 + p1) * 0.5,
+                    (p1 + p2) * 0.5,
+                    (p2 + p0) * 0.5,
+                    (p0 + p1 + p2) * (1.0 / 3.0),
+                ]
+            )
+            gx = np.clip(((samples[:, 0] - x0) / eff_cell).astype(np.int32), 0, nx - 1)
+            gy = np.clip(((samples[:, 1] - y0) / eff_cell).astype(np.int32), 0, ny - 1)
+            occ[gy, gx] = True
+            np.add.at(z_sum, (gy, gx), samples[:, 2].astype(np.float64))
+            np.add.at(z_cnt, (gy, gx), 1)
+
+        occ_closed = _ndi.binary_closing(occ, structure=close_struct)
+        dist_m = _ndi.distance_transform_edt(occ_closed).astype(np.float32) * float(eff_cell)
+        z_grid = np.full((ny, nx), np.nan, dtype=np.float32)
+        valid_z = z_cnt > 0
+        z_grid[valid_z] = (z_sum[valid_z] / z_cnt[valid_z]).astype(np.float32)
+        if np.any(~valid_z & occ_closed):
+            _, nearest_idx = _ndi.distance_transform_edt(~valid_z, return_indices=True)
+            z_grid = z_grid[nearest_idx[0], nearest_idx[1]]
+        dist_by_scan[s_idx] = dist_m
+        z_by_scan[s_idx] = z_grid
+
+    total_trimmed = 0
+    for p in parts_list:
+        s_idx = int(p["scan_idx"])
+        f_p = p["f"]
+        v_p = p["v_local"]
+        if len(f_p) < 32:
+            continue
+        i0 = np.clip(f_p[:, 0] - 1, 0, len(v_p) - 1)
+        i1 = np.clip(f_p[:, 2] - 1, 0, len(v_p) - 1)
+        i2 = np.clip(f_p[:, 4] - 1, 0, len(v_p) - 1)
+        p0, p1, p2 = v_p[i0], v_p[i1], v_p[i2]
+        cent = (p0 + p1 + p2) * (1.0 / 3.0)
+
+        gx_c = np.clip(((cent[:, 0] - x0) / eff_cell).astype(np.int32), 0, nx - 1)
+        gy_c = np.clip(((cent[:, 1] - y0) / eff_cell).astype(np.int32), 0, ny - 1)
+        gx_0 = np.clip(((p0[:, 0] - x0) / eff_cell).astype(np.int32), 0, nx - 1)
+        gy_0 = np.clip(((p0[:, 1] - y0) / eff_cell).astype(np.int32), 0, ny - 1)
+        gx_1 = np.clip(((p1[:, 0] - x0) / eff_cell).astype(np.int32), 0, nx - 1)
+        gy_1 = np.clip(((p1[:, 1] - y0) / eff_cell).astype(np.int32), 0, ny - 1)
+        gx_2 = np.clip(((p2[:, 0] - x0) / eff_cell).astype(np.int32), 0, nx - 1)
+        gy_2 = np.clip(((p2[:, 1] - y0) / eff_cell).astype(np.int32), 0, ny - 1)
+
+        d_map_self = dist_by_scan[s_idx]
+        d_self = np.minimum.reduce(
+            [
+                d_map_self[gy_c, gx_c],
+                d_map_self[gy_0, gx_0],
+                d_map_self[gy_1, gx_1],
+                d_map_self[gy_2, gx_2],
+            ]
+        )
+
+        best_other_d = np.zeros(len(f_p), dtype=np.float32)
+        best_other_z = np.full(len(f_p), np.nan, dtype=np.float32)
+        for j_idx in scan_ids_unique:
+            if j_idx == s_idx:
+                continue
+            dj = dist_by_scan[j_idx][gy_c, gx_c]
+            zj = z_by_scan[j_idx][gy_c, gx_c]
+            better = dj > best_other_d
+            best_other_d = np.where(better, dj, best_other_d)
+            best_other_z = np.where(better, zj, best_other_z)
+
+        dz_ok = np.isnan(best_other_z) | (np.abs(cent[:, 2] - best_other_z) <= float(max_z_diff_m))
+        drop_mask = (
+            (d_self <= float(border_m))
+            & (best_other_d >= np.maximum(2.5, d_self + float(safety_margin_m)))
+            & dz_ok
+        )
+        n_drop = int(drop_mask.sum())
+        if n_drop > 0 and n_drop > int(len(f_p) * 0.40):
+            # Safety guard: only trim the outermost perimeter triangles up to 40% of a scan part
+            cand_idx = np.flatnonzero(drop_mask)
+            order = np.argsort(d_self[cand_idx])
+            keep_limit = int(len(f_p) * 0.40)
+            drop_mask[:] = False
+            drop_mask[cand_idx[order[:keep_limit]]] = True
+            n_drop = int(drop_mask.sum())
+
+        if n_drop > 0 and (len(f_p) - n_drop) >= 16:
+            p["f"] = f_p[~drop_mask]
+            total_trimmed += n_drop
+
+    return total_trimmed
+
+
 class OptimizerBridge:
     def __init__(self, db: ScanQueueDB):
         self.db = db
@@ -1097,6 +1264,7 @@ class OptimizerBridge:
         if new_size_bytes > 0:
             scan_upd["size_bytes"] = max(int(new_size_bytes), 1024)
         scan_upd["tileset_path"] = ts_path
+        scan_upd["tileset_version"] = tileset_ver_ms
         if extra_updates:
             scan_upd.update(extra_updates)
         self.db.upsert_scan(scan_upd)
@@ -1453,6 +1621,7 @@ class OptimizerBridge:
         from pc_worker.preview_generator import (
             GLTFPACK_EXE,
             _downscale_glb_textures,
+            replace_glb_single_image_bytes,
             shift_glb_node_translation,
             ensure_scan_low_quality_preview,
             ensure_scan_full_quality_thumbnail,
@@ -1560,34 +1729,34 @@ class OptimizerBridge:
             )
 
         try:
-            num_scans = len(resolved_layers)
-            grid_g = max(1, int(math.ceil(math.sqrt(num_scans))))
-            if has_comp:
-                per_scan_res = tex_res_map.get(raw_preset, 1536)
-                target_tex_res = min(8192, per_scan_res * grid_g)
-                atlas_dim = min(8192, max(4096, target_tex_res))
-            else:
-                atlas_dim = min(8192, PIX4DMATIC_TEXTURE_SIZE * grid_g)
-                target_tex_res = atlas_dim
-            cell_px = atlas_dim // grid_g
-            atlas_img = Image.new("RGB", (atlas_dim, atlas_dim), (128, 128, 128))
+            import hashlib
 
-            all_v: List[np.ndarray] = []
-            all_vt: List[np.ndarray] = []
-            all_f: List[np.ndarray] = []
-            v_offset = 0
-            vt_offset = 0
+            num_scans = len(resolved_layers)
+            if has_comp:
+                target_tex_res = tex_res_map.get(raw_preset, 1536)
+            else:
+                target_tex_res = PIX4DMATIC_TEXTURE_SIZE
+
             total_images = 0
             total_deleted_faces = 0
             merged_from_meta: List[Dict[str, Any]] = []
-            applied_steps: List[str] = [f"Aligned & merged {num_scans} scans"]
+            applied_steps: List[str] = [f"Aligned & merged {num_scans} scans (4K multi-tile)"]
+            merged_parts: List[Dict[str, Any]] = []
+
+            def _parse_face_lines_to_nx6(flist: List[str]) -> np.ndarray:
+                sample_tok = flist[0].strip().split()[0]
+                scnt = sample_tok.count("/")
+                if scnt == 1:
+                    return np.fromstring(" ".join(flist).replace("/", " "), sep=" ", dtype=np.int64).reshape(-1, 6)
+                if scnt >= 2:
+                    rf = np.fromstring(" ".join(flist).replace("//", "/0/").replace("/", " "), sep=" ", dtype=np.int64).reshape(-1, 9)
+                    return rf[:, [0, 1, 3, 4, 6, 7]]
+                rf = np.fromstring(" ".join(flist), sep=" ", dtype=np.int64).reshape(-1, 3)
+                return np.column_stack([rf[:, 0], rf[:, 0], rf[:, 1], rf[:, 1], rf[:, 2], rf[:, 2]])
 
             for idx, (ly, sc) in enumerate(resolved_layers):
                 sid = sc["scan_id"]
                 total_images += int(sc.get("image_count") or 0)
-                col = idx % grid_g
-                row_uv = idx // grid_g
-                row_pil = grid_g - 1 - row_uv
 
                 # Locate .obj path (or convert primary / leaf .glb tiles if needed)
                 obj_p = surveying_engine._resolve_scan_obj_path(sc) if surveying_engine else sc.get("obj_path")
@@ -1596,10 +1765,7 @@ class OptimizerBridge:
                     if os.path.isfile(cand_obj):
                         obj_p = cand_obj
 
-                v_arr = None
-                vt_arr = None
-                f_arr = None
-                tex_im = None
+                scan_raw_parts: List[Dict[str, Any]] = []
                 obj_offset_xyz: Optional[np.ndarray] = None
 
                 ts_p_check = sc.get("tileset_path") or ""
@@ -1612,8 +1778,13 @@ class OptimizerBridge:
                 # Prefer tileset .glb ONLY when an in-place edit backup (`tileset_backup`) exists and tileset is newer than obj_p
                 has_inplace_bk = os.path.isdir(os.path.join(sc.get("project_dir") or "", "tileset_backup"))
                 if has_inplace_bk and obj_p and os.path.isfile(obj_p) and ts_p_check and os.path.isfile(ts_p_check):
-                    r_glb_check = os.path.join(os.path.dirname(ts_p_check), "tiles", "root.glb")
-                    if os.path.isfile(r_glb_check) and os.path.getmtime(r_glb_check) > os.path.getmtime(obj_p) + 60.0:
+                    tiles_check_dir = os.path.join(os.path.dirname(ts_p_check), "tiles")
+                    newest_glb_mt = os.path.getmtime(ts_p_check)
+                    if os.path.isdir(tiles_check_dir):
+                        for fn_chk in os.listdir(tiles_check_dir):
+                            if fn_chk.lower().endswith(".glb"):
+                                newest_glb_mt = max(newest_glb_mt, os.path.getmtime(os.path.join(tiles_check_dir, fn_chk)))
+                    if newest_glb_mt > os.path.getmtime(obj_p) + 60.0:
                         obj_p = ""
 
                 if obj_p and os.path.isfile(obj_p):
@@ -1630,58 +1801,105 @@ class OptimizerBridge:
                                 )
                         except Exception:
                             pass
-                    for jpg_cand in ("mesh_0.jpg", "texture.jpg", "mesh.jpg", "mesh_0.png"):
-                        jp = os.path.join(obj_dir, jpg_cand)
-                        if os.path.isfile(jp):
-                            try:
-                                tex_im = Image.open(jp).convert("RGB")
-                                break
-                            except Exception:
-                                pass
-                    if tex_im is None:
-                        import glob as _glob
-                        jpgs = _glob.glob(os.path.join(obj_dir, "*.jpg")) + _glob.glob(os.path.join(obj_dir, "*.png"))
-                        if jpgs:
-                            try:
-                                tex_im = Image.open(jpgs[0]).convert("RGB")
-                            except Exception:
-                                pass
 
                     with open(obj_p, "r", encoding="utf-8", errors="ignore") as f_in:
                         lines = f_in.read().splitlines()
-                    v_lines = [ln[2:] for ln in lines if ln.startswith("v ")]
-                    vt_lines = [ln[3:] for ln in lines if ln.startswith("vt ")]
-                    f_lines = [ln[2:] for ln in lines if ln.startswith("f ")]
 
-                    if v_lines and f_lines:
-                        v_arr = np.fromstring(" ".join(v_lines), sep=" ", dtype=np.float64).reshape(-1, 3)
+                    v_lines: List[str] = []
+                    vt_lines: List[str] = []
+                    f_groups: Dict[str, List[str]] = {}
+                    cur_mtl = "__default__"
+                    mtl_filename = "mesh.mtl"
+                    for ln in lines:
+                        if ln.startswith("v "):
+                            v_lines.append(ln[2:])
+                        elif ln.startswith("vt "):
+                            vt_lines.append(ln[3:])
+                        elif ln.startswith("f "):
+                            f_groups.setdefault(cur_mtl, []).append(ln[2:])
+                        elif ln.startswith("usemtl "):
+                            cur_mtl = ln[7:].strip() or "__default__"
+                        elif ln.startswith("mtllib "):
+                            mtl_filename = ln[7:].strip() or "mesh.mtl"
+
+                    if v_lines and f_groups:
+                        v_arr_obj = np.fromstring(" ".join(v_lines), sep=" ", dtype=np.float64).reshape(-1, 3)
                         # Reject obj_p if its world coords (e.g. local 0,0,0 or UTM 51N 351xxx) disagree with scan's TWD97 center!
                         if rc_vec_check is not None and float(np.max(np.abs(rc_vec_check))) >= 50000.0:
-                            eff_v_mid = ((v_arr.min(axis=0) + v_arr.max(axis=0)) * 0.5) + (
+                            eff_v_mid = ((v_arr_obj.min(axis=0) + v_arr_obj.max(axis=0)) * 0.5) + (
                                 obj_offset_xyz if obj_offset_xyz is not None else np.zeros(3, dtype=np.float64)
                             )
                             if float(np.linalg.norm(eff_v_mid[:2] - rc_vec_check[:2])) > 2000.0:
-                                v_arr = None
-                                tex_im = None
+                                v_arr_obj = None
                                 obj_offset_xyz = None
-                        if v_arr is not None:
-                            if vt_lines:
-                                vt_arr = np.fromstring(" ".join(vt_lines), sep=" ", dtype=np.float64).reshape(-1, 2)
-                            else:
-                                vt_arr = np.zeros((len(v_arr), 2), dtype=np.float64)
 
-                            sample_f = f_lines[0].strip().split()[0]
-                            slash_cnt = sample_f.count("/")
-                            if slash_cnt == 1:
-                                f_arr = np.fromstring(" ".join(f_lines).replace("/", " "), sep=" ", dtype=np.int64).reshape(-1, 6)
-                            elif slash_cnt >= 2:
-                                raw_f = np.fromstring(" ".join(f_lines).replace("//", "/0/").replace("/", " "), sep=" ", dtype=np.int64).reshape(-1, 9)
-                                f_arr = raw_f[:, [0, 1, 3, 4, 6, 7]]
-                            else:
-                                raw_f = np.fromstring(" ".join(f_lines), sep=" ", dtype=np.int64).reshape(-1, 3)
-                                f_arr = np.column_stack([raw_f[:, 0], raw_f[:, 0], raw_f[:, 1], raw_f[:, 1], raw_f[:, 2], raw_f[:, 2]])
+                        if v_arr_obj is not None:
+                            vt_arr_obj = (
+                                np.fromstring(" ".join(vt_lines), sep=" ", dtype=np.float64).reshape(-1, 2)
+                                if vt_lines
+                                else np.zeros((len(v_arr_obj), 2), dtype=np.float64)
+                            )
+                            mtl_tex_map: Dict[str, str] = {}
+                            mtl_p = os.path.join(obj_dir, mtl_filename)
+                            if os.path.isfile(mtl_p):
+                                try:
+                                    active_m = ""
+                                    with open(mtl_p, "r", encoding="utf-8", errors="ignore") as mf_in:
+                                        for mln in mf_in:
+                                            ms = mln.strip()
+                                            if ms.startswith("newmtl "):
+                                                active_m = ms[7:].strip()
+                                            elif ms.lower().startswith("map_kd ") and active_m:
+                                                mtl_tex_map[active_m] = ms[7:].strip()
+                                except Exception:
+                                    pass
 
-                if v_arr is None or f_arr is None:
+                            def _load_obj_tex_pair(m_key: str) -> Tuple[Optional[bytes], Optional[Image.Image]]:
+                                cand_paths: List[str] = []
+                                if m_key in mtl_tex_map:
+                                    cand_paths.append(os.path.join(obj_dir, mtl_tex_map[m_key]))
+                                for jc in ("mesh_0.jpg", "texture.jpg", "mesh.jpg", "mesh_0.png"):
+                                    cand_paths.append(os.path.join(obj_dir, jc))
+                                for cp in cand_paths:
+                                    if os.path.isfile(cp):
+                                        try:
+                                            with open(cp, "rb") as tf_b:
+                                                rb = tf_b.read()
+                                            if rb[:2] == b"\xff\xd8":
+                                                return rb, None
+                                            return None, Image.open(io.BytesIO(rb)).convert("RGB")
+                                        except Exception:
+                                            pass
+                                import glob as _glob
+                                jpgs = _glob.glob(os.path.join(obj_dir, "*.jpg")) + _glob.glob(os.path.join(obj_dir, "*.png"))
+                                if jpgs:
+                                    try:
+                                        with open(jpgs[0], "rb") as tf_b:
+                                            rb = tf_b.read()
+                                        if rb[:2] == b"\xff\xd8":
+                                            return rb, None
+                                        return None, Image.open(io.BytesIO(rb)).convert("RGB")
+                                    except Exception:
+                                        pass
+                                return None, None
+
+                            for m_key, flist in f_groups.items():
+                                if not flist:
+                                    continue
+                                f_grp = _parse_face_lines_to_nx6(flist)
+                                raw_jb, pil_im = _load_obj_tex_pair(m_key)
+                                scan_raw_parts.append(
+                                    {
+                                        "v": v_arr_obj,
+                                        "vt": vt_arr_obj,
+                                        "f": f_grp,
+                                        "raw_jpeg": raw_jb,
+                                        "pil_img": pil_im,
+                                        "obj_offset": obj_offset_xyz,
+                                    }
+                                )
+
+                if not scan_raw_parts:
                     # Fallback: load from root.glb OR leaf .glb tiles via trimesh (+ gltfpack -noq for meshopt), accumulating 4x4 tile transforms
                     import subprocess as _sp
                     import trimesh
@@ -1714,7 +1932,7 @@ class OptimizerBridge:
                                 if not valid_child:
                                     c_uri = ((node.get("content") or {}).get("uri") or (node.get("content") or {}).get("url") or "")
                                     if c_uri and "{level}" not in c_uri:
-                                        cand_p = os.path.normpath(os.path.join(ts_base_dir, c_uri))
+                                        cand_p = os.path.normpath(os.path.join(ts_base_dir, c_uri.split("?")[0]))
                                         if os.path.isfile(cand_p):
                                             out_list.append((cand_p, cur_tf))
 
@@ -1731,7 +1949,6 @@ class OptimizerBridge:
                                 glb_entries = [(r_glb, rtf)]
                             elif not glb_entries and isinstance(tsj.get("root"), dict):
                                 _collect_leaf_glbs(tsj["root"], np.eye(4, dtype=np.float64), glb_entries)
-                                # Implicit tiling fallback: use preview_tileset.json or content/*.glb
                                 if not glb_entries:
                                     prev_ts = os.path.join(ts_base_dir, "preview_tileset.json")
                                     if os.path.isfile(prev_ts):
@@ -1762,18 +1979,60 @@ class OptimizerBridge:
                     apply_y_to_z = (gltf_up_axis == "Y") or (gltf_up_axis == "" and has_root_tf)
                     from optimizer.geometry_optimizer import extract_glb_64bit_origin_to_local, parse_glb_chunks
 
-                    tile_chunks: List[Tuple[np.ndarray, np.ndarray, np.ndarray, Optional[Image.Image]]] = []
+                    tile_chunks: List[Tuple[np.ndarray, np.ndarray, np.ndarray, Optional[bytes], Optional[Image.Image], str]] = []
                     for g_idx, (gp, tile_tf) in enumerate(glb_entries):
                         tmp_loc = None
                         tmp_dec = None
                         scene_or_mesh = None
                         origin_64 = (0.0, 0.0, 0.0)
                         khr_tf_by_mat: List[Optional[Dict[str, Any]]] = []
+                        raw_jpeg_by_mat: List[Optional[bytes]] = []
                         try:
                             with open(gp, "rb") as f_gp:
                                 raw_gp_bytes = f_gp.read()
                             # Strip 64-bit TWD97/ECEF translation BEFORE gltfpack -noq so float32 never truncates to 25cm steps!
                             loc_gp_bytes, origin_64 = extract_glb_64bit_origin_to_local(raw_gp_bytes)
+
+                            # Extract untouched embedded JPEG streams directly from binary GLB bufferViews BEFORE trimesh/PIL!
+                            try:
+                                j_loc, bin_loc = parse_glb_chunks(loc_gp_bytes)
+                                loc_texs = j_loc.get("textures") or []
+                                loc_imgs = j_loc.get("images") or []
+                                loc_bvs = j_loc.get("bufferViews") or []
+                                for m_def in j_loc.get("materials") or []:
+                                    raw_ib: Optional[bytes] = None
+                                    bct_l = (m_def.get("pbrMetallicRoughness") or {}).get("baseColorTexture") or {}
+                                    t_idx_l = bct_l.get("index")
+                                    if t_idx_l is not None and 0 <= int(t_idx_l) < len(loc_texs):
+                                        t_obj_l = loc_texs[int(t_idx_l)]
+                                        s_idx_l = t_obj_l.get("source")
+                                        if s_idx_l is None:
+                                            s_idx_l = ((t_obj_l.get("extensions") or {}).get("EXT_texture_webp") or {}).get("source")
+                                        if s_idx_l is not None and 0 <= int(s_idx_l) < len(loc_imgs):
+                                            im_obj_l = loc_imgs[int(s_idx_l)]
+                                            bv_i_l = im_obj_l.get("bufferView")
+                                            if bv_i_l is not None and 0 <= int(bv_i_l) < len(loc_bvs):
+                                                bv_o_l = loc_bvs[int(bv_i_l)]
+                                                bo_l = int(bv_o_l.get("byteOffset") or 0)
+                                                bl_l = int(bv_o_l.get("byteLength") or 0)
+                                                if bl_l > 0 and bo_l + bl_l <= len(bin_loc):
+                                                    cand_b = bytes(bin_loc[bo_l : bo_l + bl_l])
+                                                    if cand_b[:2] == b"\xff\xd8":
+                                                        raw_ib = cand_b
+                                    raw_jpeg_by_mat.append(raw_ib)
+                                if not any(raw_jpeg_by_mat) and len(loc_imgs) == 1:
+                                    bv_i0 = loc_imgs[0].get("bufferView")
+                                    if bv_i0 is not None and 0 <= int(bv_i0) < len(loc_bvs):
+                                        bv_o0 = loc_bvs[int(bv_i0)]
+                                        bo0 = int(bv_o0.get("byteOffset") or 0)
+                                        bl0 = int(bv_o0.get("byteLength") or 0)
+                                        if bl0 > 0 and bo0 + bl0 <= len(bin_loc):
+                                            cand_b0 = bytes(bin_loc[bo0 : bo0 + bl0])
+                                            if cand_b0[:2] == b"\xff\xd8":
+                                                raw_jpeg_by_mat = [cand_b0]
+                            except Exception:
+                                raw_jpeg_by_mat = []
+
                             tmp_loc = os.path.join(work_proj_dir, f"_loc_{idx}_{g_idx}.glb")
                             with open(tmp_loc, "wb") as f_loc:
                                 f_loc.write(loc_gp_bytes)
@@ -1869,8 +2128,13 @@ class OptimizerBridge:
                                 guv[:, 0] = ug
                                 guv[:, 1] = 1.0 - vg
 
+                            raw_jb_chunk = (
+                                raw_jpeg_by_mat[m_ord]
+                                if m_ord < len(raw_jpeg_by_mat)
+                                else (raw_jpeg_by_mat[0] if raw_jpeg_by_mat else None)
+                            )
                             g_img = None
-                            if hasattr(geom.visual, "material") and geom.visual.material is not None:
+                            if raw_jb_chunk is None and hasattr(geom.visual, "material") and geom.visual.material is not None:
                                 mat_obj = geom.visual.material
                                 raw_tex = getattr(mat_obj, "baseColorTexture", None)
                                 if raw_tex is None:
@@ -1880,100 +2144,159 @@ class OptimizerBridge:
                                         g_img = raw_tex.convert("RGB")
                                     except Exception:
                                         g_img = None
-                            tile_chunks.append((gv, guv, gf, g_img))
+
+                            if raw_jb_chunk is not None:
+                                tex_key = hashlib.sha256(raw_jb_chunk).hexdigest()
+                            elif g_img is not None:
+                                tex_key = f"pil_{g_img.size[0]}x{g_img.size[1]}_{hashlib.sha256(g_img.tobytes()[:65536]).hexdigest()[:16]}"
+                            else:
+                                tex_key = "notex"
+                            tile_chunks.append((gv, guv, gf, raw_jb_chunk, g_img, tex_key))
 
                     if not tile_chunks:
                         raise ValueError(f"Empty 3D mesh loaded for scan: {sid}")
 
-                    # Pack sub-tile textures into scan i's cell_px x cell_px image so multi-tile meshes retain crisp UVs
-                    sub_vs, sub_vts, sub_fs = [], [], []
-                    sub_v_off = 0
-                    imgs_present = [tc[3] for tc in tile_chunks if tc[3] is not None]
-                    shared_single_atlas = False
-                    if len(imgs_present) > 1:
+                    # Group chunks by exact texture SHA256 so shared-atlas tiles stay unified and distinct 4K scan tiles stay separate!
+                    grouped_by_tex: Dict[str, List[Tuple[np.ndarray, np.ndarray, np.ndarray, Optional[bytes], Optional[Image.Image]]]] = {}
+                    for gv, guv, gf, rjb, gim, tkey in tile_chunks:
+                        grouped_by_tex.setdefault(tkey, []).append((gv, guv, gf, rjb, gim))
+
+                    def _weld_and_append_group(
+                        grp_items: List[Tuple[np.ndarray, np.ndarray, np.ndarray, Optional[bytes], Optional[Image.Image]]],
+                        grp_raw_jpeg: Optional[bytes],
+                        grp_pil_img: Optional[Image.Image],
+                    ) -> None:
+                        sub_vs, sub_vts, sub_fs = [], [], []
+                        sub_v_off = 0
+                        for gv_i, guv_i, gf_i, _, _ in grp_items:
+                            gf1 = gf_i + 1 + sub_v_off
+                            sub_vs.append(gv_i)
+                            sub_vts.append(guv_i)
+                            sub_fs.append(np.column_stack([gf1[:, 0], gf1[:, 0], gf1[:, 1], gf1[:, 1], gf1[:, 2], gf1[:, 2]]))
+                            sub_v_off += len(gv_i)
+                        v_raw_g = np.vstack(sub_vs)
+                        vt_g = np.vstack(sub_vts)
+                        f_g = np.vstack(sub_fs)
+                        v_quant_g = np.round(v_raw_g * 2000.0).astype(np.int64)
+                        _, unique_v_first, inverse_v_map = np.unique(
+                            v_quant_g, axis=0, return_index=True, return_inverse=True
+                        )
+                        v_welded = v_raw_g[unique_v_first]
+                        f_g[:, 0] = inverse_v_map[f_g[:, 0] - 1] + 1
+                        f_g[:, 2] = inverse_v_map[f_g[:, 2] - 1] + 1
+                        f_g[:, 4] = inverse_v_map[f_g[:, 4] - 1] + 1
+                        scan_raw_parts.append(
+                            {
+                                "v": v_welded,
+                                "vt": vt_g,
+                                "f": f_g,
+                                "raw_jpeg": grp_raw_jpeg,
+                                "pil_img": grp_pil_img,
+                                "obj_offset": None,
+                            }
+                        )
+
+                    def _maybe_upgrade_to_gen0_jpeg(leaf_jb: Optional[bytes]) -> Optional[bytes]:
+                        if not leaf_jb or leaf_jb[:2] != b"\xff\xd8":
+                            return leaf_jb
                         try:
-                            ref_im = imgs_present[0]
-                            w0, h0 = ref_im.size
-                            pts_chk = [(w0 // 2, h0 // 2), (w0 // 4, h0 // 4), ((w0 * 3) // 4, (h0 * 3) // 4)]
-                            ref_sig = (w0, h0, tuple(ref_im.getpixel(pt) for pt in pts_chk))
-                            shared_single_atlas = all(
-                                im.size == (w0, h0) and tuple(im.getpixel(pt) for pt in pts_chk) == ref_sig[2]
-                                for im in imgs_present[1:]
+                            im_leaf = Image.open(io.BytesIO(leaf_jb)).convert("RGB")
+                            thumb_leaf = np.asarray(
+                                im_leaf.resize((128, 128), Image.Resampling.BILINEAR), dtype=np.float32
                             )
                         except Exception:
-                            shared_single_atlas = False
-                    if len(tile_chunks) == 1 or len(imgs_present) <= 1 or shared_single_atlas:
-                        tex_im = imgs_present[0] if imgs_present else None
-                        for gv, guv, gf, _ in tile_chunks:
-                            gf1 = gf + 1 + sub_v_off
-                            sub_vs.append(gv)
-                            sub_vts.append(guv)
-                            sub_fs.append(np.column_stack([gf1[:, 0], gf1[:, 0], gf1[:, 1], gf1[:, 1], gf1[:, 2], gf1[:, 2]]))
-                            sub_v_off += len(gv)
+                            return leaf_jb
+
+                        cand_jpegs: List[bytes] = []
+                        if r_glb and os.path.isfile(r_glb):
+                            try:
+                                jr, br = parse_glb_chunks(open(r_glb, "rb").read())
+                                for im_d in jr.get("images") or []:
+                                    bv_i = im_d.get("bufferView")
+                                    bvs_r = jr.get("bufferViews") or []
+                                    if bv_i is not None and 0 <= int(bv_i) < len(bvs_r):
+                                        bv_r = bvs_r[int(bv_i)]
+                                        bo_r = int(bv_r.get("byteOffset") or 0)
+                                        bl_r = int(bv_r.get("byteLength") or 0)
+                                        cb = bytes(br[bo_r : bo_r + bl_r])
+                                        if cb[:2] == b"\xff\xd8" and len(cb) > len(leaf_jb):
+                                            cand_jpegs.append(cb)
+                            except Exception:
+                                pass
+
+                        cand_scans: List[Dict[str, Any]] = []
+                        deriv_id = str(sc.get("derived_from_scan_id") or "").strip()
+                        if deriv_id:
+                            d_sc = db.get_scan(deriv_id)
+                            if d_sc:
+                                cand_scans.append(d_sc)
+                        pg_cur = str(sc.get("project_group") or "").strip().lower()
+                        for sib in db.list_scans():
+                            if sib.get("scan_id") == sid:
+                                continue
+                            if pg_cur and str(sib.get("project_group") or "").strip().lower() == pg_cur:
+                                cand_scans.append(sib)
+                        for c_sc in cand_scans:
+                            c_pdir = str(c_sc.get("project_dir") or "")
+                            c_obj_dir = os.path.join(c_pdir, "exports", "obj_mesh")
+                            if os.path.isdir(c_obj_dir):
+                                for fn_j in sorted(os.listdir(c_obj_dir)):
+                                    if fn_j.lower().endswith((".jpg", ".jpeg")):
+                                        jp_full = os.path.join(c_obj_dir, fn_j)
+                                        try:
+                                            if os.path.getsize(jp_full) > len(leaf_jb):
+                                                with open(jp_full, "rb") as fj_c:
+                                                    cand_jpegs.append(fj_c.read())
+                                        except Exception:
+                                            pass
+
+                        best_jb = leaf_jb
+                        for cb in cand_jpegs:
+                            if len(cb) <= len(best_jb) or cb[:2] != b"\xff\xd8":
+                                continue
+                            try:
+                                im_c = Image.open(io.BytesIO(cb)).convert("RGB")
+                                if im_c.size != im_leaf.size:
+                                    continue
+                                thumb_c = np.asarray(
+                                    im_c.resize((128, 128), Image.Resampling.BILINEAR), dtype=np.float32
+                                )
+                                if float(np.mean(np.abs(thumb_c - thumb_leaf))) < 3.0:
+                                    best_jb = cb
+                            except Exception:
+                                continue
+                        return best_jb
+
+                    if len(grouped_by_tex) <= 8:
+                        for _, grp_items in grouped_by_tex.items():
+                            upgraded_jb = _maybe_upgrade_to_gen0_jpeg(grp_items[0][3])
+                            _weld_and_append_group(grp_items, upgraded_jb, grp_items[0][4])
                     else:
+                        # Rare fallback (>8 tiny per-octant unique textures without .obj): pack into 4096px atlas
                         sub_g = max(1, min(16, int(math.ceil(math.sqrt(len(tile_chunks))))))
-                        sub_px = max(16, cell_px // sub_g)
-                        tex_im = Image.new("RGB", (sub_g * sub_px, sub_g * sub_px), (200, 200, 200))
-                        for c_i, (gv, guv, gf, g_img) in enumerate(tile_chunks):
+                        sub_px = max(32, 4096 // sub_g)
+                        atlas_fb = Image.new("RGB", (sub_g * sub_px, sub_g * sub_px), (200, 200, 200))
+                        packed_items: List[Tuple[np.ndarray, np.ndarray, np.ndarray, Optional[bytes], Optional[Image.Image]]] = []
+                        for c_i, (gv, guv, gf, rjb, gim, _) in enumerate(tile_chunks):
                             slot = c_i % (sub_g * sub_g)
                             scol = slot % sub_g
                             srow_uv = slot // sub_g
                             srow_pil = sub_g - 1 - srow_uv
-                            if g_img is not None:
-                                tex_im.paste(g_img.resize((sub_px, sub_px), Image.Resampling.BILINEAR), (scol * sub_px, srow_pil * sub_px))
-                            u_clamped = np.clip(guv[:, 0], 0.002, 0.998)
-                            v_clamped = np.clip(guv[:, 1], 0.002, 0.998)
+                            im_use = gim
+                            if im_use is None and rjb is not None:
+                                try:
+                                    im_use = Image.open(io.BytesIO(rjb)).convert("RGB")
+                                except Exception:
+                                    im_use = None
+                            if im_use is not None:
+                                atlas_fb.paste(im_use.resize((sub_px, sub_px), Image.Resampling.LANCZOS), (scol * sub_px, srow_pil * sub_px))
+                            u_w = np.mod(guv[:, 0], 1.0)
+                            v_w = np.mod(guv[:, 1], 1.0)
+                            u_clamped = np.clip(u_w, 0.002, 0.998)
+                            v_clamped = np.clip(v_w, 0.002, 0.998)
                             mapped_uv = np.column_stack([(scol + u_clamped) / sub_g, (srow_uv + v_clamped) / sub_g])
-                            gf1 = gf + 1 + sub_v_off
-                            sub_vs.append(gv)
-                            sub_vts.append(mapped_uv)
-                            sub_fs.append(np.column_stack([gf1[:, 0], gf1[:, 0], gf1[:, 1], gf1[:, 1], gf1[:, 2], gf1[:, 2]]))
-                            sub_v_off += len(gv)
-
-                    v_raw_glb = np.vstack(sub_vs)
-                    vt_arr = np.vstack(sub_vts)
-                    f_arr = np.vstack(sub_fs)
-                    # Weld coincident 3D vertices (0.5mm grid) across tiles & UV seams while preserving independent per-corner vt indices!
-                    v_quant_glb = np.round(v_raw_glb * 2000.0).astype(np.int64)
-                    _, unique_v_first, inverse_v_map = np.unique(
-                        v_quant_glb, axis=0, return_index=True, return_inverse=True
-                    )
-                    v_arr = v_raw_glb[unique_v_first]
-                    f_arr[:, 0] = inverse_v_map[f_arr[:, 0] - 1] + 1
-                    f_arr[:, 2] = inverse_v_map[f_arr[:, 2] - 1] + 1
-                    f_arr[:, 4] = inverse_v_map[f_arr[:, 4] - 1] + 1
-                    obj_offset_xyz = None
-
-                if tex_im is not None:
-                    tile_im = tex_im.resize((cell_px, cell_px), Image.Resampling.LANCZOS)
-                    atlas_img.paste(tile_im, (col * cell_px, row_pil * cell_px))
-
-                # Center scan i's vertices in Three.js zUpGroup frame (`v_twd_native - raw_center_zup` when available, else bbox midpoint)
-                raw_cz = ly.get("raw_center_zup")
-                if isinstance(raw_cz, list) and len(raw_cz) >= 3:
-                    rc_vec = np.array([float(raw_cz[0]), float(raw_cz[1]), float(raw_cz[2])], dtype=np.float64)
-                    if obj_offset_xyz is not None and float(np.max(np.abs(v_arr))) < 50000.0 and float(np.max(np.abs(rc_vec))) >= 50000.0:
-                        v_centered = (v_arr + obj_offset_xyz) - rc_vec
-                    elif float(np.max(np.abs(v_arr))) >= 50000.0 and float(np.max(np.abs(rc_vec))) >= 50000.0:
-                        v_centered = v_arr - rc_vec
-                    else:
-                        v_mid = (v_arr.min(axis=0) + v_arr.max(axis=0)) * 0.5
-                        v_centered = v_arr - v_mid
-                else:
-                    v_mid = (v_arr.min(axis=0) + v_arr.max(axis=0)) * 0.5
-                    v_centered = v_arr - v_mid
-
-                # Apply Multi-Scan Lasso / Plan-Polygon Deletions if staged
-                if raw_deletions and len(f_arr) > 0:
-                    f_v0_idx = np.clip(f_arr[:, [0, 2, 4]] - 1, 0, len(v_centered) - 1)
-                    del_mask = _eval_multiscan_layer_delete_mask(v_centered, f_v0_idx, sid, raw_deletions)
-                    n_del = int(del_mask.sum())
-                    if n_del > 0:
-                        total_deleted_faces += n_del
-                        f_arr = f_arr[~del_mask]
-
-                if len(f_arr) == 0:
-                    continue
+                            packed_items.append((gv, mapped_uv, gf, None, None))
+                        _weld_and_append_group(packed_items, None, atlas_fb)
 
                 # Extract Three.js translation & rotation (quaternion or Euler XYZ in degrees) from alignment layer
                 pos_three = ly.get("position_three")
@@ -2012,53 +2335,270 @@ class OptimizerBridge:
                 r_zup = r_x_pos90 @ r_three @ r_x_neg90
                 d_zup = np.array([tx, -tz, ty], dtype=np.float64)
 
-                # Transform into unified TWD97 Z-up coordinates, then subtract merged_offset
-                v_twd97 = c_ref + d_zup + (v_centered @ r_zup.T)
-                v_local_merged = (v_twd97 - merged_offset).astype(np.float32)
+                # Compute shared native_anchor_twd across all parts of scan idx (for multi-material consistency)
+                all_part_world_mins = []
+                all_part_world_maxs = []
+                for rp in scan_raw_parts:
+                    off_v = rp["obj_offset"] if rp["obj_offset"] is not None else np.zeros(3, dtype=np.float64)
+                    all_part_world_mins.append(rp["v"].min(axis=0) + off_v)
+                    all_part_world_maxs.append(rp["v"].max(axis=0) + off_v)
+                scan_wmin = np.min(np.vstack(all_part_world_mins), axis=0)
+                scan_wmax = np.max(np.vstack(all_part_world_maxs), axis=0)
+                scan_wmid = (scan_wmin + scan_wmax) * 0.5
 
-                # Map UV into quadrant (col, row_uv) of the unified texture atlas
-                vt_clipped = np.clip(vt_arr, 0.0, 1.0).astype(np.float32)
-                vt_mapped = np.empty_like(vt_clipped)
-                vt_mapped[:, 0] = (float(col) + vt_clipped[:, 0]) / float(grid_g)
-                vt_mapped[:, 1] = (float(row_uv) + vt_clipped[:, 1]) / float(grid_g)
+                raw_cz = ly.get("raw_center_zup")
+                if isinstance(raw_cz, list) and len(raw_cz) >= 3:
+                    rc_vec = np.array([float(raw_cz[0]), float(raw_cz[1]), float(raw_cz[2])], dtype=np.float64)
+                    if float(np.max(np.abs(scan_wmid))) >= 50000.0 and float(np.max(np.abs(rc_vec))) >= 50000.0:
+                        native_anchor_twd = rc_vec
+                    else:
+                        native_anchor_twd = scan_wmid
+                else:
+                    native_anchor_twd = scan_wmid
 
-                f_shifted = f_arr.copy()
-                f_shifted[:, [0, 2, 4]] += v_offset
-                f_shifted[:, [1, 3, 5]] += vt_offset
+                merged_anchor_twd = c_ref + d_zup
+                scan_kept_any = False
 
-                all_v.append(v_local_merged)
-                all_vt.append(vt_mapped)
-                all_f.append(f_shifted)
-                v_offset += len(v_local_merged)
-                vt_offset += len(vt_mapped)
+                for rp in scan_raw_parts:
+                    v_arr = rp["v"]
+                    vt_arr = rp["vt"]
+                    f_arr = rp["f"].copy()
+                    off_v = rp["obj_offset"]
+                    if off_v is not None and float(np.max(np.abs(v_arr))) < 50000.0 and float(np.max(np.abs(native_anchor_twd))) >= 50000.0:
+                        v_centered = (v_arr + off_v) - native_anchor_twd
+                    else:
+                        v_centered = v_arr - native_anchor_twd
 
-                merged_from_meta.append(
-                    {
-                        "scan_id": sid,
-                        "name": sc.get("name") or sid,
-                        "position_three": [round(tx, 4), round(ty, 4), round(tz, 4)],
-                        "quaternion_three": [round(float(x), 6) for x in quat_three[:4]],
-                        "euler_deg_three": [round(rx_deg, 2), round(ry_deg, 2), round(rz_deg, 2)],
-                    }
-                )
+                    if raw_deletions and len(f_arr) > 0:
+                        f_v0_idx = np.clip(f_arr[:, [0, 2, 4]] - 1, 0, len(v_centered) - 1)
+                        del_mask = _eval_multiscan_layer_delete_mask(v_centered, f_v0_idx, sid, raw_deletions)
+                        n_del = int(del_mask.sum())
+                        if n_del > 0:
+                            total_deleted_faces += n_del
+                            f_arr = f_arr[~del_mask]
 
-            if not all_f:
+                    if len(f_arr) == 0:
+                        continue
+
+                    v_twd97 = merged_anchor_twd + (v_centered @ r_zup.T)
+                    v_local_merged = (v_twd97 - merged_offset).astype(np.float32)
+                    vt_float32 = vt_arr.astype(np.float32)
+
+                    merged_parts.append(
+                        {
+                            "scan_idx": idx,
+                            "scan_id": sid,
+                            "v_local": v_local_merged,
+                            "vt": vt_float32,
+                            "f": f_arr,
+                            "raw_jpeg": rp["raw_jpeg"],
+                            "pil_img": rp["pil_img"],
+                        }
+                    )
+                    scan_kept_any = True
+
+                if scan_kept_any:
+                    merged_from_meta.append(
+                        {
+                            "scan_id": sid,
+                            "derived_from_scan_id": str(sc.get("derived_from_scan_id") or ""),
+                            "name": sc.get("name") or sid,
+                            "position_three": [round(tx, 4), round(ty, 4), round(tz, 4)],
+                            "quaternion_three": [round(float(x), 6) for x in quat_three[:4]],
+                            "euler_deg_three": [round(rx_deg, 2), round(ry_deg, 2), round(rz_deg, 2)],
+                            "native_anchor_zup": [round(float(x), 4) for x in native_anchor_twd],
+                            "merged_anchor_zup": [round(float(x), 4) for x in merged_anchor_twd],
+                            "zup_shift": [round(float(x), 4) for x in (merged_anchor_twd - native_anchor_twd)],
+                            "r_zup_rowmajor": [round(float(x), 8) for x in r_zup.ravel()],
+                        }
+                    )
+
+            if not merged_parts:
                 raise ValueError("Lasso deletions removed 100% of triangles across all combined scans. Undo or adjust your marked regions.")
 
             if total_deleted_faces > 0:
                 applied_steps.append(f"Deleted {total_deleted_faces:,} triangles via Lasso")
 
-            v_merged = np.vstack(all_v)
-            vt_merged = np.vstack(all_vt)
-            f_merged = np.vstack(all_f)
+            # Clean noisy outer photogrammetry boundary skirts in overlap zones where an adjacent scan has deep interior coverage
+            if payload.get("clean_overlap_skirts", True):
+                skirt_trimmed = _trim_multiscan_overlap_skirts(merged_parts)
+                if skirt_trimmed > 0:
+                    applied_steps.append(f"Trimmed {skirt_trimmed:,} overlap skirt tris")
 
-            # Save unified texture atlas, .mtl, offset.xyz, and .obj inside work_proj_dir
-            atlas_path = os.path.join(obj_work_dir, "mesh_0.jpg")
-            atlas_img.save(atlas_path, format="JPEG", quality=target_jpeg_q, optimize=True)
+            # Compact each part's surviving vertices & UVs, write multi-material mesh.obj + mesh_{p}.jpg, and build per-part tile_s{p}.glb
+            all_v_compact: List[np.ndarray] = []
+            all_vt_compact: List[np.ndarray] = []
+            all_f_blocks: List[Tuple[str, np.ndarray]] = []
+            mtl_blocks: List[str] = []
+            child_tile_nodes: List[Dict[str, Any]] = []
+            v_global_off = 0
+            vt_global_off = 0
+
+            if has_comp:
+                applied_steps.append(f"Optimized ({raw_preset}, {target_tex_res}px/scan)")
+
+            for p_idx, part in enumerate(merged_parts):
+                f_p = part["f"]
+                if len(f_p) == 0:
+                    continue
+                v_p = part["v_local"]
+                vt_p = part["vt"]
+
+                used_v, inv_v = np.unique(np.clip(f_p[:, [0, 2, 4]] - 1, 0, len(v_p) - 1), return_inverse=True)
+                used_vt, inv_vt = np.unique(np.clip(f_p[:, [1, 3, 5]] - 1, 0, len(vt_p) - 1), return_inverse=True)
+                v_comp = v_p[used_v]
+                vt_comp = vt_p[used_vt]
+                inv_v_2d = inv_v.reshape(-1, 3) + 1
+                inv_vt_2d = inv_vt.reshape(-1, 3) + 1
+                f_local_1based = np.column_stack(
+                    [
+                        inv_v_2d[:, 0],
+                        inv_vt_2d[:, 0],
+                        inv_v_2d[:, 1],
+                        inv_vt_2d[:, 1],
+                        inv_v_2d[:, 2],
+                        inv_vt_2d[:, 2],
+                    ]
+                )
+
+                mtl_name = f"mesh_{p_idx}"
+                jpg_name = f"mesh_{p_idx}.jpg"
+                jpg_path = os.path.join(obj_work_dir, jpg_name)
+                raw_jb = part.get("raw_jpeg")
+                pil_im = part.get("pil_img")
+                exact_jpeg_for_glb: Optional[bytes] = None
+
+                if not has_comp and raw_jb is not None and raw_jb[:2] == b"\xff\xd8":
+                    # Zero-reencode pass-through: bit-identical 4096x4096 JPEG bytes!
+                    with open(jpg_path, "wb") as jf:
+                        jf.write(raw_jb)
+                    exact_jpeg_for_glb = raw_jb
+                else:
+                    if pil_im is None and raw_jb is not None:
+                        try:
+                            pil_im = Image.open(io.BytesIO(raw_jb)).convert("RGB")
+                        except Exception:
+                            pil_im = None
+                    if pil_im is None:
+                        pil_im = Image.new("RGB", (64, 64), (160, 160, 160))
+                    else:
+                        pil_im = pil_im.convert("RGB")
+                    if has_comp and max(pil_im.size) > target_tex_res:
+                        pil_im = pil_im.copy()
+                        pil_im.thumbnail((target_tex_res, target_tex_res), Image.Resampling.LANCZOS)
+                    q_use = target_jpeg_q if has_comp else 95
+                    out_jb = io.BytesIO()
+                    pil_im.save(out_jb, format="JPEG", quality=q_use, optimize=True)
+                    exact_jpeg_for_glb = out_jb.getvalue()
+                    with open(jpg_path, "wb") as jf:
+                        jf.write(exact_jpeg_for_glb)
+
+                mtl_blocks.append(f"newmtl {mtl_name}\nKd 1.000000 1.000000 1.000000\nillum 0\nmap_Kd {jpg_name}\n")
+
+                # Build dedicated per-part 3D tile `tileset/tiles/tile_s{p_idx}.glb`
+                tmp_part_mtl = os.path.join(obj_work_dir, f"_tmp_part_{p_idx}.mtl")
+                tmp_part_obj = os.path.join(obj_work_dir, f"_tmp_part_{p_idx}.obj")
+                tile_rel_uri = f"tiles/tile_s{p_idx}.glb"
+                tile_out_path = os.path.join(tiles_work_dir, f"tile_s{p_idx}.glb")
+                tmp_tile_glb = tile_out_path + ".tmp.glb"
+                try:
+                    with open(tmp_part_mtl, "w", encoding="utf-8") as pmf:
+                        pmf.write(f"newmtl {mtl_name}\nKd 1.000000 1.000000 1.000000\nillum 0\nmap_Kd {jpg_name}\n")
+                    with open(tmp_part_obj, "wb") as pof:
+                        pof.write(f"mtllib _tmp_part_{p_idx}.mtl\nusemtl {mtl_name}\n".encode("utf-8"))
+                        np.savetxt(pof, v_comp, fmt="v %.4f %.4f %.4f")
+                        np.savetxt(pof, vt_comp, fmt="vt %.6f %.6f")
+                        np.savetxt(pof, f_local_1based, fmt="f %d/%d %d/%d %d/%d")
+
+                    gp_cmd = [
+                        GLTFPACK_EXE,
+                        "-i",
+                        tmp_part_obj,
+                        "-o",
+                        tmp_tile_glb,
+                        "-vp",
+                        "16",
+                        "-vt",
+                        "16",
+                        "-vn",
+                        "8",
+                        "-cc",
+                    ]
+                    if has_comp:
+                        ratio_p = max(0.08, min(0.98, float(comp_mult_map[raw_preset])))
+                        gp_cmd.extend(["-si", f"{ratio_p:.4f}", "-slb", "-sv"])
+
+                    subprocess.run(
+                        gp_cmd,
+                        capture_output=True,
+                        timeout=180,
+                        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000) if os.name == "nt" else 0,
+                    )
+                    if os.path.isfile(tmp_tile_glb) and os.path.getsize(tmp_tile_glb) > 256:
+                        with open(tmp_tile_glb, "rb") as tf_g:
+                            raw_tile_b = tf_g.read()
+                        if exact_jpeg_for_glb:
+                            raw_tile_b = replace_glb_single_image_bytes(raw_tile_b, exact_jpeg_for_glb, "image/jpeg")
+                        shifted_tile_b = shift_glb_node_translation(raw_tile_b, ox_m, oy_m, oz_m)
+                        with open(tile_out_path, "wb") as wf_g:
+                            wf_g.write(shifted_tile_b)
+                finally:
+                    for p_clean in (tmp_part_mtl, tmp_part_obj, tmp_tile_glb):
+                        if os.path.isfile(p_clean):
+                            try:
+                                os.remove(p_clean)
+                            except OSError:
+                                pass
+
+                p_vmin_twd = v_comp.min(axis=0).astype(np.float64) + merged_offset
+                p_vmax_twd = v_comp.max(axis=0).astype(np.float64) + merged_offset
+                p_bc = (p_vmin_twd + p_vmax_twd) * 0.5
+                p_bh = (p_vmax_twd - p_vmin_twd) * 0.5
+                if os.path.isfile(tile_out_path):
+                    child_tile_nodes.append(
+                        {
+                            "boundingVolume": {
+                                "box": [
+                                    round(float(p_bc[0]), 4),
+                                    round(float(p_bc[1]), 4),
+                                    round(float(p_bc[2]), 4),
+                                    round(max(float(p_bh[0]), 0.5), 4),
+                                    0.0,
+                                    0.0,
+                                    0.0,
+                                    round(max(float(p_bh[1]), 0.5), 4),
+                                    0.0,
+                                    0.0,
+                                    0.0,
+                                    round(max(float(p_bh[2]), 0.5), 4),
+                                ]
+                            },
+                            "geometricError": 0.0,
+                            "refine": "REPLACE",
+                            "content": {"uri": tile_rel_uri},
+                            "children": [],
+                        }
+                    )
+
+                f_global = f_local_1based.copy()
+                f_global[:, [0, 2, 4]] += v_global_off
+                f_global[:, [1, 3, 5]] += vt_global_off
+                all_v_compact.append(v_comp)
+                all_vt_compact.append(vt_comp)
+                all_f_blocks.append((mtl_name, f_global))
+                v_global_off += len(v_comp)
+                vt_global_off += len(vt_comp)
+
+            if not all_v_compact or not child_tile_nodes:
+                raise RuntimeError("Failed to generate 3D tile meshes for merged scan.")
+
+            v_merged = np.vstack(all_v_compact)
+            vt_merged = np.vstack(all_vt_compact)
+            f_merged = np.vstack([blk[1] for blk in all_f_blocks])
 
             mtl_path = os.path.join(obj_work_dir, "mesh.mtl")
             with open(mtl_path, "w", encoding="utf-8") as mf:
-                mf.write("newmtl mesh_0\nKd 1.000000 1.000000 1.000000\nillum 0\nmap_Kd mesh_0.jpg\n")
+                mf.write("\n".join(mtl_blocks))
 
             off_path = os.path.join(obj_work_dir, "offset.xyz")
             with open(off_path, "w", encoding="utf-8") as of:
@@ -2066,67 +2606,28 @@ class OptimizerBridge:
 
             obj_work_path = os.path.join(obj_work_dir, "mesh.obj")
             with open(obj_work_path, "wb") as obj_f:
-                obj_f.write(b"mtllib mesh.mtl\nusemtl mesh_0\n")
+                obj_f.write(b"mtllib mesh.mtl\n")
                 np.savetxt(obj_f, v_merged, fmt="v %.4f %.4f %.4f")
-                np.savetxt(obj_f, vt_merged, fmt="vt %.5f %.5f")
-                np.savetxt(obj_f, f_merged, fmt="f %d/%d %d/%d %d/%d")
+                np.savetxt(obj_f, vt_merged, fmt="vt %.6f %.6f")
+                for mtl_nm, f_blk in all_f_blocks:
+                    obj_f.write(f"usemtl {mtl_nm}\n".encode("utf-8"))
+                    np.savetxt(obj_f, f_blk, fmt="f %d/%d %d/%d %d/%d")
 
-            # Build fast 3D Tileset (tileset/tiles/root.glb + tileset/tileset.json) via gltfpack
-            total_faces = len(f_merged)
-            root_glb_work = os.path.join(tiles_work_dir, "root.glb")
-            if has_comp:
-                base_ratio = min(1.0, max(0.08, 480000.0 / float(max(total_faces, 1))))
-                ratio_full = max(0.05, min(0.98, base_ratio * comp_mult_map[raw_preset]))
-                applied_steps.append(f"Optimized ({raw_preset}, {target_tex_res}px)")
-            else:
-                ratio_full = min(1.0, max(0.12, 720000.0 / float(max(total_faces, 1))))
-            tmp_root = root_glb_work + ".tmp.glb"
-            subprocess.run(
-                [
-                    GLTFPACK_EXE,
-                    "-i",
-                    obj_work_path,
-                    "-o",
-                    tmp_root,
-                    "-si",
-                    f"{ratio_full:.4f}",
-                    "-slb",
-                    "-sv",
-                    "-vp",
-                    "16",
-                    "-vt",
-                    "14",
-                    "-cc",
-                ],
-                capture_output=True,
-                timeout=180,
-                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000) if os.name == "nt" else 0,
-            )
-            if os.path.isfile(tmp_root) and os.path.getsize(tmp_root) > 1024:
-                with open(tmp_root, "rb") as tf:
-                    raw_r = tf.read()
-                os.remove(tmp_root)
-                opt_r = _downscale_glb_textures(raw_r, max_dim=target_tex_res, jpeg_quality=target_jpeg_q)
-                shifted_r = shift_glb_node_translation(opt_r, ox_m, oy_m, oz_m)
-                with open(root_glb_work, "wb") as wf:
-                    wf.write(shifted_r)
-
-            used_v_idx = np.unique(f_merged[:, [0, 2, 4]] - 1)
-            used_v_idx = np.clip(used_v_idx, 0, len(v_merged) - 1)
-            v_surviving = v_merged[used_v_idx]
+            v_surviving = v_merged
             vmin_twd = v_surviving.min(axis=0).astype(np.float64) + merged_offset
             vmax_twd = v_surviving.max(axis=0).astype(np.float64) + merged_offset
             bc = (vmin_twd + vmax_twd) * 0.5
             bh = (vmax_twd - vmin_twd) * 0.5
             diag = float(np.linalg.norm(vmax_twd - vmin_twd))
+            root_geom_err = round(max(500.0, diag * 8.0), 4)
 
             ts_dict = {
                 "asset": {
                     "version": "1.1",
-                    "generator": "GatheringCloud Multi-Scan Unifier v1.1",
+                    "generator": "GatheringCloud Multi-Scan Unifier v2.0 (Zero-Loss Multi-Tile 4K)",
                     "gltfUpAxis": "Z",
                 },
-                "geometricError": round(max(1.0, diag / 16.0), 4),
+                "geometricError": root_geom_err,
                 "root": {
                     "boundingVolume": {
                         "box": [
@@ -2144,10 +2645,9 @@ class OptimizerBridge:
                             round(max(float(bh[2]), 0.5), 4),
                         ]
                     },
-                    "geometricError": 0.0,
-                    "refine": "REPLACE",
-                    "content": {"uri": "tiles/root.glb"},
-                    "children": [],
+                    "geometricError": root_geom_err,
+                    "refine": "ADD",
+                    "children": child_tile_nodes,
                 },
             }
             ts_work_dir = os.path.join(work_proj_dir, "tileset")
@@ -2672,6 +3172,7 @@ class OptimizerBridge:
                 "notes": f"Edited from {source_scan_id} (backup moved to Trash Bin): {summary_str}",
                 "derived_from_scan_id": source_scan_id,
                 "applied_adjustments": applied_steps,
+                **({"merged_from": source_scan["merged_from"]} if source_scan.get("merged_from") else {}),
             }
 
             with open(os.path.join(work_proj_dir, "scan_meta.json"), "w", encoding="utf-8") as mf_pre:

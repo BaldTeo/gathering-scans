@@ -98,7 +98,9 @@ class ScanQueueDB:
                     bypass_count INTEGER DEFAULT 0,
                     force_next INTEGER DEFAULT 0,
                     priority_score REAL DEFAULT 0.0,
-                    notes TEXT DEFAULT ''
+                    notes TEXT DEFAULT '',
+                    tileset_version INTEGER DEFAULT 0,
+                    extra_json TEXT DEFAULT '{}'
                 );
 
                 CREATE TABLE IF NOT EXISTS scan_comments (
@@ -181,6 +183,14 @@ class ScanQueueDB:
                 conn.execute("ALTER TABLE scans ADD COLUMN covered_area_m2 REAL DEFAULT 0.0")
             except Exception:
                 pass
+            try:
+                conn.execute("ALTER TABLE scans ADD COLUMN tileset_version INTEGER DEFAULT 0")
+            except Exception:
+                pass
+            try:
+                conn.execute("ALTER TABLE scans ADD COLUMN extra_json TEXT DEFAULT '{}'")
+            except Exception:
+                pass
             conn.executescript(
                 """
                 DROP TRIGGER IF EXISTS trg_preserve_user_scan_name;
@@ -242,6 +252,18 @@ class ScanQueueDB:
 
         raw_lat = scan_data.get("lat")
         raw_lon = scan_data.get("lon")
+        extra_payload: Dict[str, Any] = {}
+        if isinstance(scan_data.get("extra_json"), str) and scan_data["extra_json"].strip() not in ("", "{}"):
+            try:
+                parsed_ex = json.loads(scan_data["extra_json"])
+                if isinstance(parsed_ex, dict):
+                    extra_payload.update(parsed_ex)
+            except Exception:
+                pass
+        for ex_k in ("merged_from", "derived_from_scan_id", "applied_adjustments"):
+            if ex_k in scan_data and scan_data[ex_k] not in (None, "", [], {}):
+                extra_payload[ex_k] = scan_data[ex_k]
+
         record = {
             "scan_id": scan_data["scan_id"],
             "name": scan_data.get("name", scan_data["scan_id"]),
@@ -286,6 +308,8 @@ class ScanQueueDB:
             "force_next": force_next,
             "priority_score": score,
             "notes": scan_data.get("notes", ""),
+            "tileset_version": int(scan_data.get("tileset_version") or 0),
+            "extra_json": json.dumps(extra_payload, ensure_ascii=False) if extra_payload else "{}",
         }
 
         with DB_LOCK, self._connect() as conn:
@@ -298,7 +322,7 @@ class ScanQueueDB:
                     image_count, size_bytes, covered_area_m2, rtk_accuracy_cm, crs, texture_resolution,
                     lat, lon, elev_m, twd97_e, twd97_n, twd97_h, bounding_box_json,
                     status, progress_pct, stage_label, bypass_count, force_next,
-                    priority_score, notes
+                    priority_score, notes, tileset_version, extra_json
                 ) VALUES (
                     :scan_id, :name, :user_edited_name, :project_group, :project_name_zh, :capture_date,
                     :uploaded_at, :uploader_email, :uploader_name, :source_zip_path,
@@ -306,7 +330,7 @@ class ScanQueueDB:
                     :image_count, :size_bytes, :covered_area_m2, :rtk_accuracy_cm, :crs, :texture_resolution,
                     :lat, :lon, :elev_m, :twd97_e, :twd97_n, :twd97_h, :bounding_box_json,
                     :status, :progress_pct, :stage_label, :bypass_count, :force_next,
-                    :priority_score, :notes
+                    :priority_score, :notes, :tileset_version, :extra_json
                 )
                 ON CONFLICT(scan_id) DO UPDATE SET
                     name=CASE WHEN scans.user_edited_name = 1 AND excluded.user_edited_name = 0 THEN scans.name ELSE excluded.name END,
@@ -339,7 +363,9 @@ class ScanQueueDB:
                     progress_pct=excluded.progress_pct,
                     stage_label=excluded.stage_label,
                     priority_score=excluded.priority_score,
-                    notes=CASE WHEN excluded.notes != '' THEN excluded.notes ELSE scans.notes END
+                    notes=CASE WHEN excluded.notes != '' THEN excluded.notes ELSE scans.notes END,
+                    tileset_version=CASE WHEN excluded.tileset_version > 0 THEN excluded.tileset_version ELSE scans.tileset_version END,
+                    extra_json=CASE WHEN excluded.extra_json != '{}' THEN excluded.extra_json ELSE scans.extra_json END
                 """,
                 record,
             )
@@ -1097,6 +1123,32 @@ class ScanQueueDB:
             d["bounding_box"] = json.loads(d.get("bounding_box_json") or "{}")
         except Exception:
             d["bounding_box"] = {}
+        extra_raw = d.get("extra_json") or "{}"
+        extra_dict: Dict[str, Any] = {}
+        if isinstance(extra_raw, str) and extra_raw.strip() not in ("", "{}"):
+            try:
+                parsed_ex = json.loads(extra_raw)
+                if isinstance(parsed_ex, dict):
+                    extra_dict = parsed_ex
+            except Exception:
+                pass
+        elif d.get("project_dir") and str(d.get("scan_id") or "").startswith(("merged_", "edited_")):
+            meta_fp = os.path.join(str(d["project_dir"]), "scan_meta.json")
+            if os.path.isfile(meta_fp):
+                try:
+                    with open(meta_fp, "r", encoding="utf-8") as mf:
+                        m_obj = json.load(mf)
+                    if isinstance(m_obj, dict):
+                        for ex_k in ("merged_from", "derived_from_scan_id", "applied_adjustments"):
+                            if ex_k in m_obj and m_obj[ex_k] not in (None, "", [], {}):
+                                extra_dict[ex_k] = m_obj[ex_k]
+                        if not d.get("tileset_version") and m_obj.get("tileset_version"):
+                            d["tileset_version"] = int(m_obj["tileset_version"])
+                except Exception:
+                    pass
+        for ex_k in ("merged_from", "derived_from_scan_id", "applied_adjustments"):
+            if ex_k in extra_dict:
+                d[ex_k] = extra_dict[ex_k]
         d["size_mb"] = round(float(d.get("size_bytes", 0)) / (1024 * 1024), 2)
         wait_m = max(0.0, (time.time() - float(d.get("uploaded_at", time.time()))) / 60.0)
         d["wait_minutes"] = round(wait_m, 1)
