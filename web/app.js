@@ -412,6 +412,37 @@
     return h;
   }
 
+  function syncSessionTokenCookie(userObj = STATE.currentUser) {
+    try {
+      const sessTok = userObj?.session_token || userObj?.sessionToken || "";
+      if (sessTok) {
+        document.cookie = `gs_session_token=${encodeURIComponent(sessTok)}; path=/; max-age=2592000; SameSite=Lax`;
+      } else {
+        document.cookie = "gs_session_token=; path=/; max-age=0; SameSite=Lax";
+      }
+    } catch (e) {}
+  }
+
+  function appendAuthToDownloadUrl(rawUrl) {
+    if (!rawUrl || rawUrl === "#") return rawUrl || "#";
+    const u = String(rawUrl);
+    if (u.startsWith("blob:") || u.startsWith("data:")) return u;
+    try {
+      const parsed = new URL(u, window.location.origin);
+      const sessTok = STATE.currentUser?.session_token || STATE.currentUser?.sessionToken || "";
+      if (sessTok && !STATE.shareToken) {
+        parsed.searchParams.set("session_token", sessTok);
+      } else if (STATE.shareToken && !parsed.searchParams.get("share")) {
+        parsed.searchParams.set("share", STATE.shareToken);
+      }
+      return parsed.pathname + parsed.search;
+    } catch (e) {
+      return u;
+    }
+  }
+
+  syncSessionTokenCookie(initialUser);
+
   const ROLE_LEVELS_MAP = { owner: 5, admin: 4, editor: 3, viewer: 2, guest: 1 };
   const OWNER_EMAILS_SET = new Set(["glibivanov@gatheren.com.tw", "gleb.ivanov1999@gmail.com"]);
   const ROLE_LABELS_MAP = {
@@ -1290,6 +1321,274 @@
     return `${Math.round(area).toLocaleString("en-US")} m²`;
   }
 
+  function formatScanPolyCount(scan, { short = false } = {}) {
+    if (!scan) return "— polys";
+    const polys = Number(scan._live_poly_count || scan.poly_count || 0);
+    if (!(polys > 0)) return "— polys";
+    if (short) {
+      if (polys >= 1000000) return `${(polys / 1000000).toFixed(2)}M polys`;
+      if (polys >= 1000) return `${Math.round(polys / 1000)}K polys`;
+    }
+    return `${Math.round(polys).toLocaleString("en-US")} polys`;
+  }
+
+  function formatScanTextureSize(scan, { short = false } = {}) {
+    if (!scan) return "4096×4096 px";
+    const cnt = Number(scan.texture_count || 1);
+    const w = Number(scan.texture_width || scan.texture_resolution || 4096);
+    const h = Number(scan.texture_height || scan.texture_resolution || w);
+    if (short) {
+      const kTag = w >= 8192 ? "8K" : w >= 4096 ? "4K" : w >= 2048 ? "2K" : `${w}px`;
+      return cnt > 1 && cnt <= 8 ? `${kTag}×${cnt}` : kTag;
+    }
+    if (scan.texture_size_label) return String(scan.texture_size_label);
+    return cnt > 1 && cnt <= 8 ? `${w}×${h} px (×${cnt})` : `${w}×${h} px`;
+  }
+
+  function formatScanSizeMb(scan, { includeTotal = false } = {}) {
+    if (!scan) return "0.0 MB";
+    const streamMb = Number(scan.scan_size_mb || scan.stream_size_mb || 0);
+    const totalMb = Number(scan.size_mb || (Number(scan.size_bytes || 0) / 1048576) || 0);
+    const primaryMb = streamMb > 0 ? streamMb : totalMb;
+    if (includeTotal && streamMb > 0 && totalMb > streamMb + 1.0) {
+      return `${primaryMb.toFixed(1)} MB (${totalMb.toFixed(1)} MB total)`;
+    }
+    return `${primaryMb.toFixed(1)} MB`;
+  }
+
+  function updateStudioScanMetricsReadout(scan = STATE.activeScan) {
+    const metricsEl = document.getElementById("studioScanMetrics");
+    if (!metricsEl || !scan) return;
+
+    // Also inspect live loaded Three.js studio scene if available
+    if (studioThree && studioThree.modelPivot && scan.scan_id === STATE.activeScanId) {
+      let liveTris = 0;
+      const liveTexDims = [];
+      const seenTex = new Set();
+      studioThree.modelPivot.traverse((node) => {
+        if (node && node.isMesh && node.geometry && node.visible !== false) {
+          const g = node.geometry;
+          if (g.index) {
+            liveTris += Math.floor(g.index.count / 3);
+          } else if (g.attributes && g.attributes.position) {
+            liveTris += Math.floor(g.attributes.position.count / 3);
+          }
+          const mats = Array.isArray(node.material) ? node.material : node.material ? [node.material] : [];
+          mats.forEach((m) => {
+            const map = m && m.map;
+            const img = map && map.image;
+            if (img && img.width > 0 && img.height > 0 && !seenTex.has(map.uuid)) {
+              seenTex.add(map.uuid);
+              liveTexDims.push([Number(img.width), Number(img.height)]);
+            }
+          });
+        }
+      });
+      if (liveTris > 0 && (!scan.poly_count || scan._has_staged_crop_preview)) {
+        scan._live_poly_count = liveTris;
+      } else {
+        delete scan._live_poly_count;
+      }
+      if (!scan.texture_size_label && liveTexDims.length > 0) {
+        const mw = Math.max(...liveTexDims.map((d) => d[0]));
+        const mh = Math.max(...liveTexDims.map((d) => d[1]));
+        scan.texture_width = mw;
+        scan.texture_height = mh;
+        scan.texture_count = liveTexDims.length;
+        scan.texture_size_label =
+          liveTexDims.length > 1 && liveTexDims.length <= 8
+            ? `${mw}×${mh} px (×${liveTexDims.length})`
+            : `${mw}×${mh} px`;
+      }
+    }
+
+    const crsText = getScanCrsDisplayLabel(scan);
+    const areaText = formatCoveredAreaM2(scan);
+    const polyText = formatScanPolyCount(scan);
+    const texText = formatScanTextureSize(scan);
+    const sizeText = formatScanSizeMb(scan);
+
+    metricsEl.textContent = `${crsText} · ${areaText} · ${polyText} · ${texText} · ${sizeText}`;
+    const totalDiskMb = Number(scan.size_mb || (Number(scan.size_bytes || 0) / 1048576) || 0);
+    const objMb = Number(scan.obj_size_mb || 0);
+    metricsEl.title = [
+      `CRS: ${crsText}`,
+      `Covered Area: ${areaText}`,
+      `Polygon Count: ${polyText}`,
+      `Texture Size: ${texText}`,
+      `3D Scan Size (GLB): ${sizeText}`,
+      objMb > 0 ? `OBJ + Textures Export Size: ${objMb.toFixed(1)} MB` : null,
+      totalDiskMb > 0 ? `Total Project Folder Size: ${totalDiskMb.toFixed(1)} MB` : null,
+    ]
+      .filter(Boolean)
+      .join(" | ");
+  }
+
+  function closeDownloadFormatMenu() {
+    const existing = document.getElementById("gsDownloadFormatPopover");
+    if (existing) existing.remove();
+  }
+
+  function openDownloadFormatMenu(anchorEl, scan = STATE.activeScan) {
+    if (!scan || !scan.scan_id) return;
+    const existing = document.getElementById("gsDownloadFormatPopover");
+    if (existing && existing.dataset.scanId === scan.scan_id && existing.dataset.anchorId === (anchorEl?.id || "")) {
+      existing.remove();
+      return;
+    }
+    closeDownloadFormatMenu();
+
+    const sid = encodeURIComponent(scan.scan_id);
+    const url3tz = appendAuthToDownloadUrl(scan.download_3tz_url || `/api/download?scan_id=${sid}&type=3tz`);
+    const urlGlb = appendAuthToDownloadUrl(scan.download_glb_url || `/api/download?scan_id=${sid}&type=glb`);
+    const urlObj = appendAuthToDownloadUrl(scan.download_obj_url || `/api/download?scan_id=${sid}&type=obj`);
+    const urlZip = appendAuthToDownloadUrl(scan.download_zip_url || `/api/download?scan_id=${sid}&type=zip`);
+
+    const streamMbStr = formatScanSizeMb(scan);
+    const objMb = Number(scan.obj_size_mb || 0);
+    const objMbStr = objMb > 0 ? `${objMb.toFixed(1)} MB` : "Georef Mesh";
+    const crsLabel = getScanCrsDisplayLabel(scan);
+    const safeScanName = escapeHtml(scan.name || scan.scan_id);
+
+    const pop = document.createElement("div");
+    pop.id = "gsDownloadFormatPopover";
+    pop.dataset.scanId = scan.scan_id;
+    pop.dataset.anchorId = anchorEl?.id || "";
+    pop.style.cssText = [
+      "position:fixed",
+      "z-index:9999",
+      "width:310px",
+      "background:var(--ui-bg-window)",
+      "backdrop-filter:blur(16px)",
+      "border:1px solid var(--ui-border-strong)",
+      "border-radius:10px",
+      "box-shadow:0 14px 36px rgba(0,0,0,0.32)",
+      "padding:8px",
+      "color:var(--ui-text-primary)",
+      "font-family:var(--sans, system-ui, sans-serif)",
+    ].join(";");
+
+    const formats = [
+      {
+        ext: ".3tz",
+        title: "3D Tiles Package (.3tz)",
+        badge: streamMbStr,
+        desc: "Complete Cesium / 3D Tileset archive (tileset.json + .glb tiles + preview LOD)",
+        url: url3tz,
+        color: "#0284c7",
+      },
+      {
+        ext: ".glb",
+        title: "Binary glTF 2.0 Model (.glb)",
+        badge: `${formatScanTextureSize(scan, { short: true })} Embedded`,
+        desc: "Single self-contained 3D model with embedded JPEG textures (Blender, 3D Viewer, Three.js)",
+        url: urlGlb,
+        color: "#10b981",
+      },
+      {
+        ext: ".obj",
+        title: "Wavefront .OBJ Mesh (.obj)",
+        badge: crsLabel,
+        desc: "Georeferenced world-coordinate .obj geometry for Civil 3D, AutoCAD & CloudCompare",
+        url: urlObj,
+        color: "#f59e0b",
+      },
+      {
+        ext: ".zip",
+        title: "Textured .OBJ + .MTL + .JPG (.zip)",
+        badge: objMbStr,
+        desc: "Full Wavefront .obj + .mtl + full-res .jpg texture atlases + offset.xyz in one ZIP",
+        url: urlZip,
+        color: "#8b5cf6",
+      },
+    ];
+
+    pop.innerHTML = `
+      <div style="padding:4px 6px 7px;border-bottom:1px solid var(--ui-border);margin-bottom:6px;display:flex;justify-content:space-between;align-items:center;gap:8px;">
+        <div style="min-width:0;">
+          <div style="font-size:11.5px;font-weight:700;color:var(--ui-text-primary);">Download 3D Scan (選擇下載格式)</div>
+          <div style="font-size:10px;color:var(--ui-text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${safeScanName}">${safeScanName} · ${escapeHtml(formatScanPolyCount(scan, { short: true }))}</div>
+        </div>
+        <button type="button" id="btnCloseDlPopover" style="background:none;border:none;color:var(--ui-text-muted);cursor:pointer;font-size:13px;padding:2px 5px;line-height:1;" title="Close">✕</button>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:5px;">
+        ${formats
+          .map(
+            (f) => `
+          <a href="${escapeHtml(f.url)}" download data-dl-ext="${escapeHtml(f.ext)}" style="display:flex;align-items:flex-start;gap:9px;padding:7px 8px;border-radius:7px;border:1px solid var(--ui-border);background:var(--ui-bg-surface);text-decoration:none;color:inherit;transition:background 0.12s,border-color 0.12s;">
+            <span style="flex-shrink:0;min-width:38px;text-align:center;font-family:monospace;font-size:11px;font-weight:800;padding:3px 5px;border-radius:5px;background:${f.color}20;color:${f.color};border:1px solid ${f.color}55;margin-top:1px;">${escapeHtml(f.ext)}</span>
+            <span style="flex:1;min-width:0;">
+              <span style="display:flex;justify-content:space-between;align-items:center;gap:4px;">
+                <span style="font-size:11.5px;font-weight:700;color:var(--ui-text-primary);">${escapeHtml(f.title)}</span>
+                <span style="font-size:9.5px;font-family:monospace;color:var(--ui-text-secondary);background:var(--ui-bg-subtle);padding:1px 5px;border-radius:4px;white-space:nowrap;">${escapeHtml(f.badge)}</span>
+              </span>
+              <span style="display:block;font-size:10px;color:var(--ui-text-secondary);line-height:1.35;margin-top:2px;">${escapeHtml(f.desc)}</span>
+            </span>
+          </a>
+        `
+          )
+          .join("")}
+      </div>
+    `;
+
+    document.body.appendChild(pop);
+
+    // Position near anchorEl
+    if (anchorEl && typeof anchorEl.getBoundingClientRect === "function") {
+      const rect = anchorEl.getBoundingClientRect();
+      const popRect = pop.getBoundingClientRect();
+      let left = rect.left;
+      if (left + popRect.width > window.innerWidth - 12) {
+        left = Math.max(12, window.innerWidth - popRect.width - 12);
+      }
+      let top = rect.bottom + 6;
+      if (top + popRect.height > window.innerHeight - 12) {
+        top = Math.max(12, rect.top - popRect.height - 6);
+      }
+      pop.style.left = `${Math.round(left)}px`;
+      pop.style.top = `${Math.round(top)}px`;
+    } else {
+      pop.style.top = "64px";
+      pop.style.right = "24px";
+    }
+
+    pop.querySelector("#btnCloseDlPopover")?.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      closeDownloadFormatMenu();
+    });
+
+    pop.querySelectorAll("a[data-dl-ext]").forEach((aEl) => {
+      aEl.addEventListener("mouseenter", () => {
+        aEl.style.borderColor = "var(--ui-accent)";
+      });
+      aEl.addEventListener("mouseleave", () => {
+        aEl.style.borderColor = "var(--ui-border)";
+      });
+      aEl.addEventListener("click", () => {
+        const ext = aEl.getAttribute("data-dl-ext") || "";
+        // Refresh session_token right on click
+        aEl.href = appendAuthToDownloadUrl(aEl.getAttribute("href") || "");
+        showToast(`Preparing ${scan.name || scan.scan_id} (${ext}) download...`);
+        setTimeout(() => closeDownloadFormatMenu(), 120);
+      });
+    });
+
+    setTimeout(() => {
+      const onDocClick = (ev) => {
+        const curPop = document.getElementById("gsDownloadFormatPopover");
+        if (!curPop) {
+          document.removeEventListener("mousedown", onDocClick);
+          return;
+        }
+        if (!curPop.contains(ev.target) && (!anchorEl || !anchorEl.contains(ev.target))) {
+          closeDownloadFormatMenu();
+          document.removeEventListener("mousedown", onDocClick);
+        }
+      };
+      document.addEventListener("mousedown", onDocClick);
+    }, 10);
+  }
+
   function openClusterPopover(grp) {
     const pop = document.getElementById("clusterHoverPopover");
     if (!pop || !grp) return;
@@ -1364,14 +1663,18 @@
       const isCached = STATE.cachedScanIds.has(scan.scan_id);
       const thumbSrc = scan.thumbnail_url || `/api/scans/${encodeURIComponent(scan.scan_id)}/thumbnail`;
       const texRes = Number(scan.texture_resolution || 4096);
-      const texLabel = texRes >= 8192 ? "8K" : texRes >= 4096 ? "4K" : "2K";
+      const texLabel = formatScanTextureSize(scan, { short: true });
+      const polyShort = formatScanPolyCount(scan, { short: true });
+      const sizeShort = formatScanSizeMb(scan);
       const safeId = escapeHtml(scan.scan_id);
       const safeThumbSrc = escapeHtml(thumbSrc);
       const safeName = escapeHtml(scan.name || scan.scan_id);
       const safeDate = escapeHtml(scan.capture_date || "");
       const safeUploaderName = escapeHtml(scan.uploader_name || "");
       const safeUploaderEmail = escapeHtml(scan.uploader_email || "");
-      const safeDownloadObjUrl = escapeHtml(scan.download_obj_url || "");
+      const safeDownloadObjUrl = escapeHtml(
+        appendAuthToDownloadUrl(scan.download_obj_url || `/api/download?scan_id=${encodeURIComponent(scan.scan_id)}&type=obj`)
+      );
       const coordReadout = escapeHtml(
         formatScanCoordReadout({ e: scan.twd97_e, n: scan.twd97_n, h: scan.twd97_h }, scan)
       );
@@ -1379,7 +1682,7 @@
         <div class="gs-map-tile-thumb-wrap">
           <img class="gs-map-tile-thumb" data-scan-thumb="${safeId}" src="${safeThumbSrc}" alt="${safeName}" />
           <div class="gs-tile-badge-row">
-            <span class="gs-tile-chip">${Number(scan.image_count || 0)} imgs · ${texLabel}</span>
+            <span class="gs-tile-chip">${escapeHtml(polyShort)} · ${escapeHtml(texLabel)} · ${escapeHtml(sizeShort)}</span>
             <span class="gs-tile-chip">${escapeHtml(formatCoveredAreaM2(scan))}</span>
           </div>
         </div>
@@ -1392,7 +1695,10 @@
               </div>
             </div>
           </div>
-          <div style="font-size:10.5px;font-family:monospace;color:var(--ui-text-muted);margin-top:5px;">
+          <div style="font-size:10.5px;font-family:monospace;color:var(--ui-text-muted);margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="Polygons: ${escapeHtml(formatScanPolyCount(scan))} | Texture: ${escapeHtml(formatScanTextureSize(scan))} | Scan Size: ${escapeHtml(formatScanSizeMb(scan, { includeTotal: true }))}">
+            ${escapeHtml(formatScanPolyCount(scan))} · ${escapeHtml(formatScanTextureSize(scan))} · ${escapeHtml(sizeShort)}
+          </div>
+          <div style="font-size:10.5px;font-family:monospace;color:var(--ui-text-muted);margin-top:3px;">
             ${coordReadout}${isCached ? " · Cached" : ""}
           </div>
           <div class="gs-scan-item-actions">
@@ -1411,12 +1717,15 @@
             </button>
             ${
               getCurrentUserRoleInfo().allowDownload
-                ? `<a class="btn-xs" href="${safeDownloadObjUrl}" download title="Download .OBJ Mesh">
+                ? `<button type="button" class="btn-xs" data-action="download" title="Download 3D Scan (.3tz, .glb, .obj, .zip)" style="gap:2px;">
                     <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8">
                       <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
                       <polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
                     </svg>
-                  </a>`
+                    <svg viewBox="0 0 24 24" width="9" height="9" fill="none" stroke="currentColor" stroke-width="2.2" style="opacity:0.75;">
+                      <polyline points="6 9 12 15 18 9"/>
+                    </svg>
+                  </button>`
                 : ""
             }
             ${
@@ -1478,6 +1787,14 @@
         const other = grp.scans.find((s) => s.scan_id !== scan.scan_id) || scan;
         launchMultiDateCompare(other.scan_id, scan.scan_id);
       });
+      const dlCardBtn = card.querySelector('[data-action="download"]');
+      if (dlCardBtn) {
+        dlCardBtn.addEventListener("click", (ev) => {
+          ev.preventDefault();
+          ev.stopPropagation();
+          openDownloadFormatMenu(dlCardBtn, scan);
+        });
+      }
       card.querySelector('[data-action="comments"]')?.addEventListener("click", () => {
         STATE.activeProjectGroup = scan.project_group;
         populateProjectScanDropdowns(scan.project_group, scan.scan_id);
@@ -1698,6 +2015,8 @@
         updateScanLoader(prefix, false, 100, labelText);
         if (prefix === "preview") {
           autoCaptureSiteTimelineScreenshots();
+        } else if (prefix === "studio") {
+          updateStudioScanMetricsReadout(STATE.activeScan);
         }
       }, 320);
     } else {
@@ -2189,7 +2508,9 @@
         tile.dataset.scanId = s.scan_id;
         const thumbSrc = s.thumbnail_url || `/api/scans/${encodeURIComponent(s.scan_id)}/thumbnail`;
         const texRes = Number(s.texture_resolution || 4096);
-        const texLabel = texRes >= 8192 ? "8K" : texRes >= 4096 ? "4K" : "2K";
+        const texLabel = formatScanTextureSize(s, { short: true });
+        const polyShort = formatScanPolyCount(s, { short: true });
+        const sizeShort = formatScanSizeMb(s);
         const safeName = escapeHtml(s.name || s.scan_id);
         const safeUploader = escapeHtml(s.uploader_name || "Engineer");
         const safeEmail = escapeHtml(s.uploader_email || "");
@@ -2199,7 +2520,7 @@
           <div class="gs-tile-thumb-wrap">
             <img class="gs-tile-thumb" data-scan-thumb="${escapeHtml(s.scan_id)}" src="${thumbSrc}" alt="${safeName}" />
             <div class="gs-tile-badge-row">
-              <span class="gs-tile-chip">${s.image_count || 0} imgs · ${texLabel}</span>
+              <span class="gs-tile-chip" title="Polygons: ${escapeHtml(formatScanPolyCount(s))} · Texture: ${escapeHtml(formatScanTextureSize(s))} · Scan Size: ${escapeHtml(sizeShort)}">${escapeHtml(polyShort)} · ${escapeHtml(texLabel)} · ${escapeHtml(sizeShort)}</span>
               <span class="gs-tile-chip ${isSelected ? "active-indicator" : ""}" data-rtk-chip="1">${formatCoveredAreaM2(s)}</span>
             </div>
           </div>
@@ -3292,6 +3613,9 @@
     const contourGroup = new THREE.Group();
     scene.add(contourGroup);
 
+    const categoryGroup = new THREE.Group();
+    scene.add(categoryGroup);
+
     const commentPinsGroup = new THREE.Group();
     scene.add(commentPinsGroup);
 
@@ -3319,6 +3643,7 @@
       volumeGroup,
       polyPreviewGroup,
       contourGroup,
+      categoryGroup,
       commentPinsGroup,
       multiAlignGroup,
       gizmoGroup,
@@ -3901,10 +4226,7 @@
     const sel = document.getElementById("studioScanSelect");
     if (sel) sel.value = scan.scan_id;
 
-    const metricsEl = document.getElementById("studioScanMetrics");
-    if (metricsEl) {
-      metricsEl.textContent = `${getScanCrsDisplayLabel(scan)} · ${formatCoveredAreaM2(scan)}`;
-    }
+    updateStudioScanMetricsReadout(scan);
 
     const pickedEl = document.getElementById("lblLastPickedCoord");
     if (pickedEl) {
@@ -3924,12 +4246,17 @@
 
     const dlBtn = document.getElementById("btnStudioDownloadObj");
     if (dlBtn) {
-      dlBtn.href = scan.download_obj_url || `/api/download?scan_id=${scan.scan_id}&type=obj`;
+      dlBtn.href = appendAuthToDownloadUrl(
+        scan.download_obj_url || `/api/download?scan_id=${encodeURIComponent(scan.scan_id)}&type=obj`
+      );
     }
 
     // Clear any stale scan-editing lasso selection & staged preview when loading a scan
     if (typeof clearLassoSelectionState === "function") {
       clearLassoSelectionState();
+    }
+    if (typeof clearCategorizeVisualsOnly === "function") {
+      clearCategorizeVisualsOnly();
     }
     if (typeof resetStagedEditsForScan === "function") {
       resetStagedEditsForScan(scan);
@@ -4063,6 +4390,13 @@
             studioThree.controls.update();
           } else {
             frameStudioCamera();
+          }
+          if (
+            STATE.activeTool === "categorize" &&
+            STATE.lastCategorizeResult &&
+            STATE.lastCategorizeResult.scan_id === scan.scan_id
+          ) {
+            renderCategorize3DOverlays(STATE.lastCategorizeResult);
           }
         }
         studioThree.camera.updateMatrixWorld();
@@ -4403,6 +4737,7 @@
       if (firstChild) {
         firstChild.style.position = "absolute";
         firstChild.style.pointerEvents = "none";
+        if (options.isCategorize) firstChild.classList.add("is-categorize-badge");
         container.appendChild(firstChild);
         const badgeObj = {
           el: firstChild,
@@ -4413,14 +4748,18 @@
           isArea: !!options.isArea,
           isLassoHighlight: !!options.isLassoHighlight,
           isProfile: !!options.isProfile,
+          isCategorize: !!options.isCategorize,
           isTempDistance: !!options.isTempDistance,
+          priority: options.priority !== undefined ? Number(options.priority) : 50,
+          featureId: options.featureId || "",
+          isFocused: !!options.isFocused,
         };
         STATE.badges2D.push(badgeObj);
         update2DBadgePositions();
         return badgeObj;
       }
     }
-    el.className = "measure-badge-2d";
+    el.className = options.isCategorize ? "measure-badge-2d is-categorize-badge" : "measure-badge-2d";
     el.style.position = "absolute";
     el.style.pointerEvents = "none";
     el.style.borderColor = borderColor;
@@ -4435,7 +4774,11 @@
       isArea: !!options.isArea,
       isLassoHighlight: !!options.isLassoHighlight,
       isProfile: !!options.isProfile,
+      isCategorize: !!options.isCategorize,
       isTempDistance: !!options.isTempDistance,
+      priority: options.priority !== undefined ? Number(options.priority) : 50,
+      featureId: options.featureId || "",
+      isFocused: !!options.isFocused,
     };
     STATE.badges2D.push(badgeObj);
     update2DBadgePositions();
@@ -4446,7 +4789,31 @@
     if (!studioThree) return;
     const w = studioThree.renderer.domElement.clientWidth;
     const h = studioThree.renderer.domElement.clientHeight;
-    STATE.badges2D.forEach((b) => {
+    const panelEl = document.getElementById("studioSidePanel");
+    const panelOpen = Boolean(panelEl && (panelEl.classList.contains("open") || panelEl.classList.contains("active")));
+    const rightSafeX = w - (panelOpen ? (panelEl.offsetWidth || 380) + 16 : 14);
+    const leftSafeX = 86;
+    const topSafeY = 68;
+    const bottomSafeY = h - 84;
+    const placedRects = [];
+    const candidateOffsets = [
+      [0, 0],
+      [0, -28],
+      [0, 28],
+      [-36, -20],
+      [36, 20],
+    ];
+
+    const orderedBadges = STATE.badges2D.slice().sort((a, b) => {
+      const aCat = Boolean(a.isCategorize || a.el?.classList?.contains("is-categorize-badge"));
+      const bCat = Boolean(b.isCategorize || b.el?.classList?.contains("is-categorize-badge"));
+      if (aCat !== bCat) return aCat ? 1 : -1;
+      const aPri = a.isFocused ? -1000 : Number(a.priority ?? 50);
+      const bPri = b.isFocused ? -1000 : Number(b.priority ?? 50);
+      return aPri - bPri;
+    });
+
+    orderedBadges.forEach((b) => {
       if (!b.el || !b.worldPt) return;
       const v = b.worldPt.clone().project(studioThree.camera);
       if (v.z > 1 || Math.abs(v.x) > 1.22 || Math.abs(v.y) > 1.22) {
@@ -4455,17 +4822,88 @@
       }
       const x = (v.x * 0.5 + 0.5) * w + (b.offsetX || 0);
       const y = (-(v.y * 0.5) + 0.5) * h + (b.offsetY || 0);
-      b.el.style.display = b.el.classList.contains("autodesk-delta-badge")
+      const dispMode = b.el.classList.contains("autodesk-delta-badge")
         ? "flex"
         : b.el.classList.contains("autodesk-flex-badge")
         ? "inline-flex"
         : "block";
-      const bw = b.el.offsetWidth || 120;
-      const halfW = Math.min(bw * 0.5, Math.max(16, w * 0.5 - 8));
-      const clampedX = Math.max(halfW + 8, Math.min(w - halfW - 8, x));
-      const clampedY = h > 160 ? Math.max(58, Math.min(h - 72, y)) : y;
-      b.el.style.left = `${clampedX}px`;
-      b.el.style.top = `${clampedY}px`;
+
+      const isCat = Boolean(b.isCategorize || b.el.classList.contains("is-categorize-badge"));
+      if (!isCat) {
+        b.el.style.display = dispMode;
+        const bw = b.el.offsetWidth || 120;
+        const bh = b.el.offsetHeight || 24;
+        const halfW = Math.min(bw * 0.5, Math.max(16, w * 0.5 - 8));
+        const halfH = bh * 0.5;
+        const clampedX = Math.max(halfW + 8, Math.min(w - halfW - 8, x));
+        const clampedY = h > 160 ? Math.max(58, Math.min(h - 72, y)) : y;
+        b.el.style.left = `${clampedX}px`;
+        b.el.style.top = `${clampedY}px`;
+        placedRects.push([clampedX - halfW - 4, clampedY - halfH - 4, clampedX + halfW + 4, clampedY + halfH + 4]);
+        return;
+      }
+
+      // Measure dimensions for categorize badge
+      if (!b._cachedW || !b._cachedH) {
+        b.el.style.display = dispMode;
+        b._cachedW = b.el.offsetWidth || 152;
+        b._cachedH = b.el.offsetHeight || 24;
+      }
+      const bw = b._cachedW;
+      const bh = b._cachedH;
+      const halfW = bw * 0.5;
+      const halfH = bh * 0.5;
+
+      // Hide categorize badge if its raw projected anchor falls outside the safe viewport (or behind #studioSidePanel / #studioEditingDock)
+      if (
+        x < leftSafeX + halfW ||
+        x > rightSafeX - halfW ||
+        y < topSafeY + halfH ||
+        y > bottomSafeY - halfH
+      ) {
+        b.el.style.display = "none";
+        return;
+      }
+
+      // 2D Screen-Space AABB Collision Avoidance across candidate offsets
+      let chosenPos = null;
+      let chosenRect = null;
+      for (let oi = 0; oi < candidateOffsets.length; oi++) {
+        const cx = x + candidateOffsets[oi][0];
+        const cy = y + candidateOffsets[oi][1];
+        if (
+          cx - halfW < leftSafeX ||
+          cx + halfW > rightSafeX ||
+          cy - halfH < topSafeY ||
+          cy + halfH > bottomSafeY
+        ) {
+          continue;
+        }
+        const candRect = [cx - halfW - 6, cy - halfH - 5, cx + halfW + 6, cy + halfH + 5];
+        let collides = false;
+        for (let ri = 0; ri < placedRects.length; ri++) {
+          const r = placedRects[ri];
+          if (!(candRect[2] < r[0] || candRect[0] > r[2] || candRect[3] < r[1] || candRect[1] > r[3])) {
+            collides = true;
+            break;
+          }
+        }
+        if (!collides) {
+          chosenPos = [cx, cy];
+          chosenRect = candRect;
+          break;
+        }
+      }
+
+      if (!chosenPos) {
+        b.el.style.display = "none";
+        return;
+      }
+
+      placedRects.push(chosenRect);
+      b.el.style.display = dispMode;
+      b.el.style.left = `${Math.round(chosenPos[0])}px`;
+      b.el.style.top = `${Math.round(chosenPos[1])}px`;
     });
   }
 
@@ -4481,6 +4919,7 @@
       studioThree.volumeGroup,
       studioThree.polyPreviewGroup,
       studioThree.contourGroup,
+      studioThree.categoryGroup,
       studioThree.commentPinsGroup,
     ].filter(Boolean);
 
@@ -5158,6 +5597,7 @@
     "profile",
     "photos",
     "rtk",
+    "categorize",
     "comments",
     "crop",
   ]);
@@ -5167,6 +5607,7 @@
     "btnDockContours",
     "btnMeasureProfile",
     "btnMeasurePhotos",
+    "btnDockCategorize",
     "btnDockComments",
     "btnDockLassoKeep",
     "btnStudioSurveyReport",
@@ -5358,6 +5799,9 @@
     clearTempDistanceVisuals();
     clearAreaVisualsOnly();
     clearVolumeVisualsOnly();
+    if (typeof clearCategorizeVisualsOnly === "function") {
+      clearCategorizeVisualsOnly();
+    }
     if (studioThree) {
       while (studioThree.overlayGroup.children.length > 0) {
         studioThree.overlayGroup.remove(studioThree.overlayGroup.children[0]);
@@ -9051,7 +9495,8 @@
     if (!panel || !titleEl || !bodyEl) return;
     titleEl.innerHTML = title;
     bodyEl.innerHTML = htmlContent;
-    panel.classList.add("active");
+    panel.classList.add("active", "open");
+    update2DBadgePositions();
   }
 
   document.getElementById("btnCloseSidePanel")?.addEventListener("click", () => {
@@ -9063,7 +9508,9 @@
     ) {
       setActiveStudioTool(STATE.multiAlign?.active ? "align_merge" : "orbit");
     }
-    document.getElementById("studioSidePanel")?.classList.remove("active");
+    const panel = document.getElementById("studioSidePanel");
+    panel?.classList.remove("active", "open");
+    update2DBadgePositions();
   });
 
   // 3A. Cut/Fill & Material Stockpile Report Generator
@@ -9484,6 +9931,12 @@
             </div>
           </div>
         </div>
+        <div class="gs-form-group" style="margin-bottom:8px;">
+          <label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer;font-size:11px;font-weight:600;color:var(--ui-text-primary);">
+            <input type="checkbox" id="chkBareEarthContours" checked />
+            <span>濾除樹木與建物之純地形等高線 (Bare-Earth DTM Contours)</span>
+          </label>
+        </div>
         <button type="button" class="gs-top-btn accent" style="width:100%;justify-content:center;margin-bottom:8px;" id="btnGenerateContours" title="Generate .DXF (AutoCAD / Civil 3D) &amp; A3 Ready-to-Print PDF Survey Report">
           <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8">
             <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>
@@ -9513,6 +9966,9 @@
       const major = parseFloat(document.getElementById("cntMajorStep")?.value || "2.5");
       const drawingTitle = document.getElementById("cntDrawingTitle")?.value || defaultTitle;
       const engineerName = document.getElementById("cntEngineerName")?.value || "雲在天";
+      const bareEarthDtm = document.getElementById("chkBareEarthContours")
+        ? Boolean(document.getElementById("chkBareEarthContours").checked)
+        : true;
 
       const currentMaskPts =
         STATE.maskBoundaryPoints && STATE.maskBoundaryPoints.length >= 3
@@ -9537,6 +9993,7 @@
           drawing_title: drawingTitle,
           engineer_name: engineerName,
           mask_polygon: maskPayload,
+          bare_earth_dtm: bareEarthDtm,
         });
         STATE.lastContoursResult = res;
         renderContours3DAndPanel(res);
@@ -9754,14 +10211,14 @@
           </div>
         </div>
         <div style="display:flex;gap:6px;margin-top:8px;">
-          <a class="btn-xs primary" style="flex:1.4;justify-content:center;" href="${res.dxf_url || res.civil3d_dxf_url || res.civil3d_dwg_url || res.dwg_url}" download="Civil3D.dxf" title="Download .DXF (AutoCAD / Civil 3D — Real TWD97 XYZ + A3 Engineering Frame)">
+          <a class="btn-xs primary" style="flex:1.4;justify-content:center;" href="${escapeHtml(appendAuthToDownloadUrl(res.dxf_url || res.civil3d_dxf_url || res.civil3d_dwg_url || res.dwg_url))}" download="Civil3D.dxf" title="Download .DXF (AutoCAD / Civil 3D — Real TWD97 XYZ + A3 Engineering Frame)">
             <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8">
               <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
               <polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
             </svg>
             <span>.DXF (AutoCAD / Civil 3D)</span>
           </a>
-          <a class="btn-xs primary" style="flex:1;justify-content:center;" href="${res.pdf_url}" target="_blank" title="Open Ready-to-Print A3 Survey Report (.PDF)">
+          <a class="btn-xs primary" style="flex:1;justify-content:center;" href="${escapeHtml(appendAuthToDownloadUrl(res.pdf_url))}" target="_blank" title="Open Ready-to-Print A3 Survey Report (.PDF)">
             <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8">
               <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>
             </svg>
@@ -9806,6 +10263,677 @@
     }
 
     showToast(`Survey Report ready: .DXF (AutoCAD / Civil 3D) + A3 PDF (${res.contour_count} clipped contours, 1:${res.scale_denom || 250})`);
+  }
+
+  // 3B-2. AI + 3D Geometric Surface & Object Categorization (Roads, Trees & 1.3m DBH, Water Voids, Walls, Stockpiles)
+  function clearCategorizeVisualsOnly() {
+    if (studioThree && studioThree.categoryGroup) {
+      while (studioThree.categoryGroup.children.length > 0) {
+        const c = studioThree.categoryGroup.children[0];
+        if (c.geometry) c.geometry.dispose();
+        if (c.material) {
+          if (Array.isArray(c.material)) c.material.forEach((m) => m.dispose());
+          else c.material.dispose();
+        }
+        studioThree.categoryGroup.remove(c);
+      }
+    }
+    STATE.badges2D = STATE.badges2D.filter((b) => {
+      if (b.isCategorize) {
+        b.el?.remove();
+        return false;
+      }
+      return true;
+    });
+  }
+
+  function twd97PointToStudioVec3(twdArr, fallbackLocalArr, originTwd) {
+    if (Array.isArray(twdArr) && twdArr.length >= 3 && Math.abs(Number(twdArr[0])) > 50000) {
+      const lx = Number(twdArr[0]) - originTwd.e;
+      const ly = Number(twdArr[2]) - originTwd.h;
+      const lz = originTwd.n - Number(twdArr[1]);
+      return new THREE.Vector3(lx, ly, lz);
+    }
+    if (Array.isArray(fallbackLocalArr) && fallbackLocalArr.length >= 3) {
+      return new THREE.Vector3(Number(fallbackLocalArr[0] || 0), Number(fallbackLocalArr[1] || 0), Number(fallbackLocalArr[2] || 0));
+    }
+    return new THREE.Vector3(0, 0, 0);
+  }
+
+  function flyToCategorizeFeature(lx, ly, lz, labelText = "", featureId = "") {
+    if (!studioThree || !studioThree.camera || !studioThree.controls) return;
+    const targetPt = new THREE.Vector3(Number(lx) || 0, Number(ly) || 0, Number(lz) || 0);
+    const curTarget = studioThree.controls.target.clone();
+    const curPos = studioThree.camera.position.clone();
+    const offset = curPos.clone().sub(curTarget);
+    const curDist = Math.max(12, Math.min(48, offset.length() * 0.65));
+    if (offset.lengthSq() < 1e-3) offset.set(16, 22, 18);
+    offset.normalize().multiplyScalar(curDist);
+    offset.y = Math.max(offset.y, curDist * 0.55);
+
+    studioThree.controls.target.copy(targetPt);
+    studioThree.camera.position.copy(targetPt).add(offset);
+    studioThree.controls.update();
+
+    if (featureId) {
+      let foundBadge = false;
+      STATE.badges2D.forEach((b) => {
+        if (b.isCategorize) {
+          b.isFocused = b.featureId === featureId;
+          if (b.isFocused) foundBadge = true;
+        }
+      });
+      if (!foundBadge && labelText) {
+        add2DBadge(
+          new THREE.Vector3(targetPt.x, targetPt.y + 1.2, targetPt.z),
+          `<span style="color:#38bdf8;font-weight:800;">🎯 ${escapeHtml(labelText)}</span>`,
+          "#38bdf8",
+          { isCategorize: true, offsetY: -14, priority: 100, featureId, isFocused: true }
+        );
+      }
+    }
+
+    updateZoomInvariantElements();
+    update2DBadgePositions();
+    if (studioThree.renderer && studioThree.scene) {
+      studioThree.renderer.render(studioThree.scene, studioThree.camera);
+    }
+    if (labelText) {
+      showToast(`Focused on ${labelText}`);
+    }
+  }
+
+  function renderCategorize3DOverlays(res) {
+    if (!studioThree || !studioThree.categoryGroup || !res) return;
+    clearCategorizeVisualsOnly();
+
+    if (!STATE.categorizeFilters) {
+      STATE.categorizeFilters = {
+        roads: true,
+        trees: true,
+        water: true,
+        walls: true,
+        stockpiles: true,
+      };
+    }
+    const flt = STATE.categorizeFilters;
+    const originTwd = localToTwd97({ x: 0, y: 0, z: 0 });
+    const grp = studioThree.categoryGroup;
+
+    // Smart 3D Spatial Separation & Priority Queue for 2D Floating Badges
+    const placedBadgeAnchors3D = [];
+    const MIN_BADGE_SEPARATION_3D_M = 22.0;
+    const tryAddCategorizeBadge = (anchorVec3, html, colorHex, opts = {}) => {
+      if (!anchorVec3) return false;
+      for (const prev of placedBadgeAnchors3D) {
+        if (anchorVec3.distanceTo(prev) < MIN_BADGE_SEPARATION_3D_M) {
+          return false;
+        }
+      }
+      placedBadgeAnchors3D.push(anchorVec3.clone());
+      add2DBadge(anchorVec3, html, colorHex, {
+        isCategorize: true,
+        offsetY: opts.offsetY ?? -12,
+        priority: opts.priority ?? 10,
+        featureId: opts.featureId || null,
+        isFocused: Boolean(opts.isFocused),
+      });
+      return true;
+    };
+
+    const addPolygonHorizontalMesh = (ptsVec3, fillHex, strokeHex, fillOpacity = 0.34, yLift = 0.22) => {
+      if (!Array.isArray(ptsVec3) || ptsVec3.length < 3) return;
+      const meanY = ptsVec3.reduce((acc, p) => acc + p.y, 0) / ptsVec3.length + yLift;
+      const shape = new THREE.Shape();
+      ptsVec3.forEach((p, idx) => {
+        if (idx === 0) shape.moveTo(p.x, -p.z);
+        else shape.lineTo(p.x, -p.z);
+      });
+      shape.closePath();
+      const sGeo = new THREE.ShapeGeometry(shape);
+      sGeo.rotateX(-Math.PI / 2);
+      sGeo.translate(0, meanY, 0);
+      const sMat = new THREE.MeshBasicMaterial({
+        color: fillHex,
+        transparent: true,
+        opacity: fillOpacity,
+        side: THREE.DoubleSide,
+        depthWrite: false,
+      });
+      const fillMesh = new THREE.Mesh(sGeo, sMat);
+      fillMesh.renderOrder = 992;
+      grp.add(fillMesh);
+
+      const loopPts = ptsVec3.map((p) => new THREE.Vector3(p.x, p.y + yLift + 0.06, p.z));
+      loopPts.push(loopPts[0].clone());
+      const lGeo = new THREE.BufferGeometry().setFromPoints(loopPts);
+      const lMat = new THREE.LineBasicMaterial({
+        color: strokeHex,
+        linewidth: 2,
+        depthTest: false,
+      });
+      const line = new THREE.Line(lGeo, lMat);
+      line.renderOrder = 996;
+      grp.add(line);
+    };
+
+    // 1. WATER BODIES & UN-MODELLED WATER VOIDS (Hydrostatic Cyan Plane #06b6d4) — Highest badge priority (Top 2: W1, W2)
+    if (flt.water && Array.isArray(res.water_bodies)) {
+      let waterBadgesAdded = 0;
+      res.water_bodies.forEach((w, idx) => {
+        const bTwd = w.boundary_twd97 || [];
+        const bLoc = w.boundary_local || [];
+        const waterLevelH = Number(w.water_level_twvd2001_m ?? (w.center_twd97 && w.center_twd97[2]) ?? originTwd.h);
+        const pts = (bTwd.length >= 3 ? bTwd : bLoc).map((p, i) => {
+          const v = twd97PointToStudioVec3(bTwd[i], bLoc[i], originTwd);
+          v.y = waterLevelH - originTwd.h;
+          return v;
+        });
+        addPolygonHorizontalMesh(pts, 0x06b6d4, 0x22d3ee, 0.42, 0.16);
+        const cPt = twd97PointToStudioVec3(w.center_twd97, w.center_local, originTwd);
+        cPt.y = waterLevelH - originTwd.h + 0.5;
+        if (waterBadgesAdded < 2) {
+          const isVoid = w.detection_mode === "unmodelled_void_shoreline";
+          const added = tryAddCategorizeBadge(
+            cPt,
+            `<span style="color:#22d3ee;font-weight:800;">💧 ${escapeHtml(w.id)}</span> ${isVoid ? "水域空洞" : "水體"} · <b>TWVD2001 +${waterLevelH.toFixed(2)}m</b> (${Number(w.planar_area_m2 || 0).toFixed(0)} m²)`,
+            "#06b6d4",
+            { offsetY: -14, priority: 90 - idx, featureId: w.id }
+          );
+          if (added) waterBadgesAdded++;
+        }
+      });
+    }
+
+    // 2. ROADS (Amber #f59e0b) — Top 3 badges (R1..R3)
+    if (flt.roads && Array.isArray(res.roads)) {
+      let roadBadgesAdded = 0;
+      res.roads.forEach((r, idx) => {
+        const bTwd = r.boundary_twd97 || [];
+        const bLoc = r.boundary_local || [];
+        const pts = (bTwd.length >= 3 ? bTwd : bLoc).map((p, i) =>
+          twd97PointToStudioVec3(bTwd[i], bLoc[i], originTwd)
+        );
+        addPolygonHorizontalMesh(pts, 0xf59e0b, 0xfbbf24, 0.36, 0.25);
+        const cPt = twd97PointToStudioVec3(r.center_twd97, r.center_local, originTwd);
+        cPt.y += 0.6;
+        if (roadBadgesAdded < 3) {
+          const added = tryAddCategorizeBadge(
+            cPt,
+            `<span style="color:#fbbf24;font-weight:800;">🛣️ ${escapeHtml(r.id)}</span> · <b>${Number(r.planar_area_m2 || 0).toFixed(1)} m²</b> (${Number(r.mean_width_m || 0).toFixed(1)}m W)`,
+            "#f59e0b",
+            { offsetY: -12, priority: 80 - idx, featureId: r.id }
+          );
+          if (added) roadBadgesAdded++;
+        }
+      });
+    }
+
+    // 3. WALLS (Extruded 3D Vertical Wall Ribbon + Wireframe #f43f5e) — Top 3 badges (WL1..WL3)
+    if (flt.walls && Array.isArray(res.walls)) {
+      let wallBadgesAdded = 0;
+      res.walls.forEach((wl, idx) => {
+        const bTwd = wl.base_polyline_twd97 || [];
+        const tTwd = wl.top_polyline_twd97 || [];
+        const bLoc = wl.base_polyline_local || [];
+        const tLoc = wl.top_polyline_local || [];
+        const nPts = Math.min(bTwd.length || bLoc.length, tTwd.length || tLoc.length);
+        if (nPts < 2) return;
+
+        const basePts = [];
+        const topPts = [];
+        for (let i = 0; i < nPts; i++) {
+          basePts.push(twd97PointToStudioVec3(bTwd[i], bLoc[i], originTwd));
+          topPts.push(twd97PointToStudioVec3(tTwd[i], tLoc[i], originTwd));
+        }
+
+        const posArr = [];
+        for (let i = 0; i < nPts - 1; i++) {
+          const b0 = basePts[i], b1 = basePts[i + 1];
+          const t0 = topPts[i], t1 = topPts[i + 1];
+          posArr.push(b0.x, b0.y, b0.z, b1.x, b1.y, b1.z, t1.x, t1.y, t1.z);
+          posArr.push(b0.x, b0.y, b0.z, t1.x, t1.y, t1.z, t0.x, t0.y, t0.z);
+        }
+        const wallGeo = new THREE.BufferGeometry();
+        wallGeo.setAttribute("position", new THREE.Float32BufferAttribute(posArr, 3));
+        wallGeo.computeVertexNormals();
+        const wallMat = new THREE.MeshBasicMaterial({
+          color: 0xf43f5e,
+          transparent: true,
+          opacity: 0.62,
+          side: THREE.DoubleSide,
+          depthWrite: false,
+        });
+        const wallMesh = new THREE.Mesh(wallGeo, wallMat);
+        wallMesh.renderOrder = 997;
+        grp.add(wallMesh);
+
+        const outlinePts = [...basePts, ...topPts.slice().reverse(), basePts[0].clone()];
+        const outGeo = new THREE.BufferGeometry().setFromPoints(outlinePts);
+        const outLine = new THREE.Line(
+          outGeo,
+          new THREE.LineBasicMaterial({ color: 0xfda4af, linewidth: 2, depthTest: false })
+        );
+        outLine.renderOrder = 999;
+        grp.add(outLine);
+
+        if (wallBadgesAdded < 3) {
+          const cPt = twd97PointToStudioVec3(wl.center_twd97, wl.center_local, originTwd);
+          cPt.y += Number(wl.mean_height_m || wl.height_m || 2.0) * 0.6 + 0.5;
+          const added = tryAddCategorizeBadge(
+            cPt,
+            `<span style="color:#fb7185;font-weight:800;">🧱 ${escapeHtml(wl.id)}</span> · L ${Number(wl.length_m || 0).toFixed(1)}m · 3D <b>${Number(wl.vertical_area_m2 || 0).toFixed(1)} m²</b>`,
+            "#f43f5e",
+            { offsetY: -12, priority: 70 - idx, featureId: wl.id }
+          );
+          if (added) wallBadgesAdded++;
+        }
+      });
+    }
+
+    // 4. TREES & 1.3m BREAST-HEIGHT DBH (3D Trunk Cylinders + 1.3m DBH Ring + Emerald Canopy Domes #10b981) — Top 3 badges (T1..T3)
+    if (flt.trees && Array.isArray(res.trees)) {
+      let treeBadgesAdded = 0;
+      res.trees.forEach((t, idx) => {
+        const basePt = twd97PointToStudioVec3(t.trunk_twd97, t.trunk_local, originTwd);
+        const treeH = Math.max(2.5, Number(t.height_m || 6.0));
+        const dbhCm = Math.max(10.0, Number(t.dbh_cm || 30.0));
+        const crownD = Math.max(2.0, Number(t.crown_diameter_m || 4.0));
+        const rTrunk = Math.max(0.22, (dbhCm / 200.0) * 1.35);
+        const trunkH = Math.max(1.8, treeH * 0.52);
+
+        const trunkGeo = new THREE.CylinderGeometry(rTrunk * 0.85, rTrunk * 1.15, trunkH, 10);
+        const trunkMat = new THREE.MeshBasicMaterial({
+          color: 0xb45309,
+          transparent: true,
+          opacity: 0.88,
+        });
+        const trunkMesh = new THREE.Mesh(trunkGeo, trunkMat);
+        trunkMesh.position.set(basePt.x, basePt.y + trunkH * 0.5, basePt.z);
+        trunkMesh.renderOrder = 995;
+        grp.add(trunkMesh);
+
+        // 1.3m Breast-Height (DBH) bright measurement collar ring
+        const dbhRingGeo = new THREE.RingGeometry(rTrunk * 1.05, rTrunk * 1.55, 20);
+        dbhRingGeo.rotateX(-Math.PI / 2);
+        const dbhRingMat = new THREE.MeshBasicMaterial({
+          color: 0xfef08a,
+          side: THREE.DoubleSide,
+          depthTest: false,
+        });
+        const dbhRing = new THREE.Mesh(dbhRingGeo, dbhRingMat);
+        dbhRing.position.set(basePt.x, basePt.y + 1.3, basePt.z);
+        dbhRing.renderOrder = 999;
+        grp.add(dbhRing);
+
+        // Translucent 3D Canopy Crown Sphere/Dome
+        const crownR = Math.max(1.2, crownD * 0.46);
+        const crownGeo = new THREE.SphereGeometry(crownR, 12, 10);
+        const crownMat = new THREE.MeshBasicMaterial({
+          color: 0x10b981,
+          transparent: true,
+          opacity: 0.28,
+          depthWrite: false,
+        });
+        const crownMesh = new THREE.Mesh(crownGeo, crownMat);
+        crownMesh.position.set(basePt.x, basePt.y + trunkH + crownR * 0.35, basePt.z);
+        crownMesh.scale.set(1.0, Math.max(0.65, (treeH * 0.55) / Math.max(crownR * 1.6, 1.0)), 1.0);
+        crownMesh.renderOrder = 994;
+        grp.add(crownMesh);
+
+        if (treeBadgesAdded < 3) {
+          const topPt = new THREE.Vector3(basePt.x, basePt.y + treeH + 0.6, basePt.z);
+          const added = tryAddCategorizeBadge(
+            topPt,
+            `<span style="color:#34d399;font-weight:800;">🌳 ${escapeHtml(t.id)}</span> · DBH <b>${dbhCm.toFixed(1)} cm</b> · H ${treeH.toFixed(1)}m`,
+            "#10b981",
+            { offsetY: -10, priority: 60 - idx, featureId: t.id }
+          );
+          if (added) treeBadgesAdded++;
+        }
+      });
+    }
+
+    // 5. BARE EARTH / STOCKPILES (Orange #d97706) — Top 1 badge (S1)
+    if (flt.stockpiles && Array.isArray(res.stockpiles)) {
+      let spBadgesAdded = 0;
+      res.stockpiles.slice(0, 4).forEach((sp, idx) => {
+        const bTwd = sp.boundary_twd97 || [];
+        const bLoc = sp.boundary_local || [];
+        const pts = (bTwd.length >= 3 ? bTwd : bLoc).map((p, i) =>
+          twd97PointToStudioVec3(bTwd[i], bLoc[i], originTwd)
+        );
+        addPolygonHorizontalMesh(pts, 0xd97706, 0xf59e0b, 0.22, 0.18);
+        if (spBadgesAdded < 1) {
+          const cPt = twd97PointToStudioVec3(sp.center_twd97, sp.center_local, originTwd);
+          cPt.y += 0.5;
+          const added = tryAddCategorizeBadge(
+            cPt,
+            `<span style="color:#fbbf24;font-weight:800;">⛰️ ${escapeHtml(sp.id)}</span> · <b>${Number(sp.planar_area_m2 || 0).toFixed(0)} m²</b> (~${Number(sp.estimated_volume_m3 || 0).toFixed(0)} m³)`,
+            "#d97706",
+            { offsetY: -10, priority: 50 - idx, featureId: sp.id }
+          );
+          if (added) spBadgesAdded++;
+        }
+      });
+    }
+
+    updateZoomInvariantElements();
+    update2DBadgePositions();
+    if (studioThree.renderer && studioThree.scene && studioThree.camera) {
+      studioThree.renderer.render(studioThree.scene, studioThree.camera);
+    }
+  }
+
+  function renderCategorizePanelContent(res) {
+    const box = document.getElementById("catResultContainer");
+    if (!box || !res) return;
+    const s = res.summary || {};
+    if (!STATE.categorizeFilters) {
+      STATE.categorizeFilters = {
+        roads: true,
+        trees: true,
+        water: true,
+        walls: true,
+        stockpiles: true,
+      };
+    }
+    const flt = STATE.categorizeFilters;
+    const activeTab = STATE.categorizeActiveTab || "all";
+    const originTwd = localToTwd97({ x: 0, y: 0, z: 0 });
+
+    const toFlyAttr = (twdArr, locArr) => {
+      const v = twd97PointToStudioVec3(twdArr, locArr, originTwd);
+      return `${v.x.toFixed(2)},${v.y.toFixed(2)},${v.z.toFixed(2)}`;
+    };
+
+    const rows = [];
+    if ((activeTab === "all" || activeTab === "roads") && flt.roads) {
+      (res.roads || []).forEach((r) => {
+        rows.push({
+          id: r.id,
+          badge: `<span style="color:#f59e0b;font-weight:800;">${escapeHtml(r.id)}</span>`,
+          type: r.label_zh ? String(r.label_zh).split(" (")[0] : "道路 Road",
+          metric1: `${Number(r.planar_area_m2 || 0).toFixed(1)} m²`,
+          metric2: `W ${Number(r.mean_width_m || 0).toFixed(1)}m · ${Number(r.mean_slope_pct || 0).toFixed(1)}%`,
+          fly: toFlyAttr(r.center_twd97, r.center_local),
+          label: `${r.id} (${r.planar_area_m2} m²)`,
+        });
+      });
+    }
+    if ((activeTab === "all" || activeTab === "trees") && flt.trees) {
+      (res.trees || []).slice(0, activeTab === "trees" ? 50 : 12).forEach((t) => {
+        rows.push({
+          id: t.id,
+          badge: `<span style="color:#10b981;font-weight:800;">${escapeHtml(t.id)}</span>`,
+          type: "喬木 Tree",
+          metric1: `DBH ${Number(t.dbh_cm || 0).toFixed(1)} cm`,
+          metric2: `H ${Number(t.height_m || 0).toFixed(1)}m · Ø${Number(t.crown_diameter_m || 0).toFixed(1)}m`,
+          fly: toFlyAttr(t.trunk_twd97, t.trunk_local),
+          label: `${t.id} (DBH ${t.dbh_cm}cm)`,
+        });
+      });
+    }
+    if ((activeTab === "all" || activeTab === "water") && flt.water) {
+      (res.water_bodies || []).forEach((w) => {
+        rows.push({
+          id: w.id,
+          badge: `<span style="color:#06b6d4;font-weight:800;">${escapeHtml(w.id)}</span>`,
+          type: w.detection_mode === "unmodelled_void_shoreline" ? "水域空洞 Void" : "水體 Water",
+          metric1: `${Number(w.planar_area_m2 || 0).toFixed(1)} m²`,
+          metric2: `TWVD +${Number(w.water_level_twvd2001_m || 0).toFixed(2)}m`,
+          fly: toFlyAttr(w.center_twd97, w.center_local),
+          label: `${w.id} (+${w.water_level_twvd2001_m}m)`,
+        });
+      });
+    }
+    if ((activeTab === "all" || activeTab === "walls") && flt.walls) {
+      (res.walls || []).forEach((wl) => {
+        rows.push({
+          id: wl.id,
+          badge: `<span style="color:#f43f5e;font-weight:800;">${escapeHtml(wl.id)}</span>`,
+          type: "擋土牆 Wall",
+          metric1: `3D ${Number(wl.vertical_area_m2 || 0).toFixed(1)} m²`,
+          metric2: `L ${Number(wl.length_m || 0).toFixed(1)}m · H ${Number(wl.mean_height_m || wl.height_m || 0).toFixed(1)}m`,
+          fly: toFlyAttr(wl.center_twd97, wl.center_local),
+          label: `${wl.id} (${wl.vertical_area_m2} m²)`,
+        });
+      });
+    }
+    if ((activeTab === "all" || activeTab === "stockpiles") && flt.stockpiles) {
+      (res.stockpiles || []).forEach((sp) => {
+        rows.push({
+          id: sp.id,
+          badge: `<span style="color:#d97706;font-weight:800;">${escapeHtml(sp.id)}</span>`,
+          type: "裸露土石 Bare",
+          metric1: `${Number(sp.planar_area_m2 || 0).toFixed(1)} m²`,
+          metric2: `~${Number(sp.estimated_volume_m3 || 0).toFixed(0)} m³`,
+          fly: toFlyAttr(sp.center_twd97, sp.center_local),
+          label: `${sp.id} (${sp.planar_area_m2} m²)`,
+        });
+      });
+    }
+
+    const breakdownHtml = (res.categories_breakdown || [])
+      .slice(0, 10)
+      .map(
+        (c) => `
+        <div style="display:flex;align-items:center;justify-content:space-between;font-size:10.5px;padding:2px 0;">
+          <span style="display:inline-flex;align-items:center;gap:5px;color:var(--ui-text-primary);font-weight:600;">
+            <span style="width:8px;height:8px;border-radius:2px;background:${escapeHtml(c.color || "#38bdf8")};display:inline-block;"></span>
+            ${escapeHtml(c.name_zh || c.name_en)}
+          </span>
+          <span style="font-family:monospace;color:var(--ui-text-secondary);">${Number(c.planar_area_m2 || c.surface_area_3d_m2 || 0).toLocaleString()} m² (${Number(c.site_share_pct || 0).toFixed(1)}%)</span>
+        </div>`
+      )
+      .join("");
+
+    box.innerHTML = `
+      <div style="background:rgba(16,185,129,0.10);border:1px solid rgba(16,185,129,0.35);border-radius:8px;padding:8px 10px;margin-bottom:9px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:4px;margin-bottom:4px;">
+          <span style="font-size:10.5px;font-weight:800;color:#34d399;">✨ ${escapeHtml(res.ai_model || "Gemini 3.6 Flash Multimodal + 3D Geometry")}</span>
+          <span style="font-size:9.5px;padding:1px 6px;border-radius:99px;background:rgba(6,182,212,0.18);color:#22d3ee;font-weight:700;">RTK + 3D Verified</span>
+        </div>
+        <div style="font-size:11px;color:var(--ui-text-primary);line-height:1.42;margin-bottom:3px;">${escapeHtml(res.ai_summary_zh || "")}</div>
+        <div style="font-size:10px;color:var(--ui-text-secondary);line-height:1.35;">${escapeHtml(res.ai_summary_en || "")}</div>
+      </div>
+
+      <div class="gs-metric-grid" style="grid-template-columns:1fr 1fr;gap:6px;margin-bottom:8px;">
+        <div class="gs-metric-box" style="border-left:3px solid #f59e0b;">
+          <div class="lbl">🛣️ 道路鋪面 Roads (${s.roads_count || 0})</div>
+          <div class="val" style="color:#fbbf24;font-size:13px;">${Number(s.roads_planar_area_m2 || 0).toLocaleString()} m²</div>
+          <div style="font-size:9.5px;color:var(--ui-text-muted);">${Number(s.roads_planar_area_ping || 0).toLocaleString()} 坪 · 3D ${Number(s.roads_surface_area_3d_m2 || 0).toLocaleString()} m²</div>
+        </div>
+        <div class="gs-metric-box" style="border-left:3px solid #10b981;">
+          <div class="lbl">🌳 喬木與胸徑 Trees (${s.trees_count || 0} 棵)</div>
+          <div class="val" style="color:#34d399;font-size:13px;">DBH ${Number(s.trees_mean_dbh_cm || 0).toFixed(1)} cm</div>
+          <div style="font-size:9.5px;color:var(--ui-text-muted);">Max ${Number(s.trees_max_dbh_cm || 0).toFixed(1)} cm · H ${Number(s.trees_mean_height_m || 0).toFixed(1)} m</div>
+        </div>
+        <div class="gs-metric-box" style="border-left:3px solid #06b6d4;">
+          <div class="lbl">💧 水體與河道空洞 Water (${s.water_count || 0})</div>
+          <div class="val" style="color:#22d3ee;font-size:13px;">+${Number(s.water_level_twvd2001_m || 0).toFixed(2)} m</div>
+          <div style="font-size:9.5px;color:var(--ui-text-muted);">${Number(s.water_planar_area_m2 || 0).toLocaleString()} m² (岸際等位面)</div>
+        </div>
+        <div class="gs-metric-box" style="border-left:3px solid #f43f5e;">
+          <div class="lbl">🧱 擋土牆與垂直面 Walls (${s.walls_count || 0})</div>
+          <div class="val" style="color:#fb7185;font-size:13px;">3D ${Number(s.walls_vertical_area_m2 || 0).toLocaleString()} m²</div>
+          <div style="font-size:9.5px;color:var(--ui-text-muted);">總長 L ${Number(s.walls_total_length_m || 0).toFixed(1)} m · PCA 共面</div>
+        </div>
+      </div>
+
+      <div style="background:var(--ui-bg-pill);border:1px solid var(--ui-border-strong);border-radius:7px;padding:6px 8px;margin-bottom:8px;">
+        <div style="font-size:10px;font-weight:700;color:var(--ui-text-secondary);margin-bottom:4px;">3D SCENE OVERLAY FILTERS (3D 圖層開關)</div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px;font-size:10.5px;">
+          <label style="display:inline-flex;align-items:center;gap:3px;cursor:pointer;color:#fbbf24;font-weight:600;">
+            <input type="checkbox" data-cat-filter="roads" ${flt.roads ? "checked" : ""} /> 道路 (${(res.roads || []).length})
+          </label>
+          <label style="display:inline-flex;align-items:center;gap:3px;cursor:pointer;color:#34d399;font-weight:600;">
+            <input type="checkbox" data-cat-filter="trees" ${flt.trees ? "checked" : ""} /> 喬木 DBH (${(res.trees || []).length})
+          </label>
+          <label style="display:inline-flex;align-items:center;gap:3px;cursor:pointer;color:#22d3ee;font-weight:600;">
+            <input type="checkbox" data-cat-filter="water" ${flt.water ? "checked" : ""} /> 水域空洞 (${(res.water_bodies || []).length})
+          </label>
+          <label style="display:inline-flex;align-items:center;gap:3px;cursor:pointer;color:#fb7185;font-weight:600;">
+            <input type="checkbox" data-cat-filter="walls" ${flt.walls ? "checked" : ""} /> 擋土牆 (${(res.walls || []).length})
+          </label>
+          <label style="display:inline-flex;align-items:center;gap:3px;cursor:pointer;color:#f59e0b;font-weight:600;">
+            <input type="checkbox" data-cat-filter="stockpiles" ${flt.stockpiles ? "checked" : ""} /> 裸露土石 (${(res.stockpiles || []).length})
+          </label>
+        </div>
+      </div>
+
+      <div style="background:var(--ui-bg-pill);border:1px solid var(--ui-border-strong);border-radius:7px;padding:6px 8px;margin-bottom:8px;">
+        <div style="font-size:10px;font-weight:700;color:var(--ui-text-secondary);margin-bottom:3px;">SITE SURFACE BREAKDOWN (全場地物面積組成 · ${(s.triangle_count || 0).toLocaleString()} tris)</div>
+        ${breakdownHtml}
+      </div>
+
+      <div style="display:flex;gap:3px;margin-bottom:5px;flex-wrap:wrap;">
+        ${[
+          ["all", "全部 All"],
+          ["roads", "道路"],
+          ["trees", "喬木 DBH"],
+          ["water", "水域"],
+          ["walls", "擋土牆"],
+          ["stockpiles", "土石"],
+        ]
+          .map(
+            ([k, lbl]) =>
+              `<button type="button" class="btn-xs ${activeTab === k ? "primary" : ""}" data-cat-tab="${k}" style="padding:2px 7px;font-size:10px;">${lbl}</button>`
+          )
+          .join("")}
+      </div>
+
+      <div style="max-height:165px;overflow-y:auto;border:1px solid var(--ui-border-strong);border-radius:6px;margin-bottom:8px;">
+        <table style="width:100%;border-collapse:collapse;font-size:10.5px;">
+          <thead>
+            <tr style="background:var(--ui-bg-pill);color:var(--ui-text-secondary);text-align:left;position:sticky;top:0;">
+              <th style="padding:4px 6px;">ID</th>
+              <th style="padding:4px 6px;">類別</th>
+              <th style="padding:4px 6px;">主量測值</th>
+              <th style="padding:4px 6px;">次要參數 (點擊定位)</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rows
+              .map(
+                (r) => `
+              <tr data-cat-fly="${escapeHtml(r.fly)}" data-cat-id="${escapeHtml(r.id || "")}" data-cat-label="${escapeHtml(r.label)}" style="cursor:pointer;border-top:1px solid rgba(148,163,184,0.14);" title="Click to fly 3D camera to ${escapeHtml(r.label)}">
+                <td style="padding:4px 6px;font-family:monospace;">${r.badge}</td>
+                <td style="padding:4px 6px;">${escapeHtml(r.type)}</td>
+                <td style="padding:4px 6px;font-weight:700;">${escapeHtml(r.metric1)}</td>
+                <td style="padding:4px 6px;color:var(--ui-text-secondary);">${escapeHtml(r.metric2)}</td>
+              </tr>`
+              )
+              .join("")}
+          </tbody>
+        </table>
+      </div>
+
+      <div style="display:flex;gap:5px;flex-wrap:wrap;">
+        <a class="btn-xs primary" style="flex:1.2;justify-content:center;" href="${escapeHtml(appendAuthToDownloadUrl(res.dxf_url))}" download="Civil3D_Categorized.dxf" title="Download AutoCAD Civil 3D Categorized .DXF (C-ROAD-BNDY, C-VEG-TREE, C-HYDR-WATR, C-STRC-WALL)">
+          <span>.DXF (Civil 3D)</span>
+        </a>
+        <a class="btn-xs primary" style="flex:1;justify-content:center;" href="${escapeHtml(appendAuthToDownloadUrl(res.report_html_url))}" target="_blank" title="Open Bilingual Printable Categorization Report (.HTML / Save PDF)">
+          <span>Report (.HTML/PDF)</span>
+        </a>
+        <a class="btn-xs" style="flex:0.9;justify-content:center;" href="${escapeHtml(appendAuthToDownloadUrl(res.report_csv_url))}" download="Categorization_Schedule.csv" title="Download UTF-8 Excel Schedule (.CSV)">
+          <span>Excel (.CSV)</span>
+        </a>
+      </div>
+    `;
+
+    box.querySelectorAll("[data-cat-filter]").forEach((cb) => {
+      cb.addEventListener("change", () => {
+        const k = cb.getAttribute("data-cat-filter");
+        if (k && STATE.categorizeFilters) {
+          STATE.categorizeFilters[k] = cb.checked;
+          renderCategorize3DOverlays(res);
+          renderCategorizePanelContent(res);
+        }
+      });
+    });
+
+    box.querySelectorAll("[data-cat-tab]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        STATE.categorizeActiveTab = btn.getAttribute("data-cat-tab") || "all";
+        renderCategorizePanelContent(res);
+      });
+    });
+
+    box.querySelectorAll("[data-cat-fly]").forEach((tr) => {
+      tr.addEventListener("click", () => {
+        const raw = tr.getAttribute("data-cat-fly") || "";
+        const lbl = tr.getAttribute("data-cat-label") || "";
+        const fid = tr.getAttribute("data-cat-id") || "";
+        const parts = raw.split(",").map(Number);
+        if (parts.length >= 3 && Number.isFinite(parts[0])) {
+          flyToCategorizeFeature(parts[0], parts[1], parts[2], lbl, fid);
+        }
+      });
+    });
+  }
+
+  async function openCategorizeInspector(opts = {}) {
+    const activeScan = STATE.activeScan || STATE.scans.find((s) => s.scan_id === STATE.activeScanId) || {
+      scan_id: STATE.activeScanId || "scan",
+      name: STATE.activeScanId || "Active Scan",
+    };
+
+    showSidePanel(
+      `<span>AI Surface &amp; Object Categorization (AI 地物分類)</span>`,
+      `
+      <div style="font-size:11px;color:var(--ui-text-secondary);background:var(--ui-bg-pill);border:1px solid var(--ui-border-strong);border-radius:7px;padding:7px 9px;margin-bottom:8px;line-height:1.42;">
+        Combines <b>3D Mesh Geometry</b> (Bare-Earth DTM, 1.3m Breast-Height Trunk Slicing + Pratt Circle DBH, Un-Modelled Water Void Shoreline Clamping, 3D PCA Wall Coplanarity) with <b>Gemini 3.6 Flash Multimodal</b> verification.
+      </div>
+      <div style="display:flex;gap:6px;margin-bottom:8px;">
+        <button type="button" class="gs-top-btn accent" style="flex:1;justify-content:center;" id="btnRunCategorize">
+          <span>Analyze &amp; Categorize 3D Scan (執行 AI 地物分類)</span>
+        </button>
+        <button type="button" class="btn-xs" id="btnRecomputeCategorize" title="Force Recompute &amp; Re-run Gemini Multimodal Analysis">
+          <span>↻ Recompute</span>
+        </button>
+      </div>
+      <div id="catResultContainer">
+        <div style="padding:18px 10px;text-align:center;color:var(--ui-text-secondary);font-size:11.5px;">
+          ⏳ Analyzing 3D mesh triangles, UV ortho texture, 1.3m tree DBH slices, shoreline water voids, and vertical walls...
+        </div>
+      </div>
+      `
+    );
+
+    const runCategorize = async (forceRecompute = false) => {
+      const box = document.getElementById("catResultContainer");
+      if (box && (forceRecompute || !STATE.lastCategorizeResult || STATE.lastCategorizeResult.scan_id !== activeScan.scan_id)) {
+        box.innerHTML = `
+          <div style="padding:18px 10px;text-align:center;color:var(--ui-text-secondary);font-size:11.5px;">
+            ⏳ Running 3D Geometric + Gemini Multimodal Categorization on <b>${escapeHtml(activeScan.name || activeScan.scan_id)}</b>...
+          </div>
+        `;
+      }
+      try {
+        const res = await apiPost("/api/survey/categorize", {
+          scan_id: activeScan.scan_id,
+          force_recompute: Boolean(forceRecompute),
+        });
+        STATE.lastCategorizeResult = res;
+        renderCategorize3DOverlays(res);
+        renderCategorizePanelContent(res);
+        const s = res.summary || {};
+        showToast(
+          `Categorized: ${s.roads_count || 0} Roads (${s.roads_planar_area_m2 || 0}m²), ${s.trees_count || 0} Trees (DBH ${s.trees_mean_dbh_cm || 0}cm), ${s.water_count || 0} Water Zones (+${s.water_level_twvd2001_m || 0}m), ${s.walls_count || 0} Walls`
+        );
+      } catch (err) {
+        if (box) {
+          box.innerHTML = `<div style="color:#ef4444;font-size:11.5px;padding:10px;">Categorization Error: ${escapeHtml(err.message)}</div>`;
+        }
+        showToast(`Categorization Error: ${err.message}`);
+      }
+    };
+
+    document.getElementById("btnRunCategorize")?.addEventListener("click", () => runCategorize(false));
+    document.getElementById("btnRecomputeCategorize")?.addEventListener("click", () => runCategorize(true));
+
+    await runCategorize(Boolean(opts.forceRecompute));
   }
 
   // 3C. Cross-Section Elevation Profile Graph (Client-Side 3D Mesh Raycaster + Backend Multi-Epoch DSM)
@@ -11800,6 +12928,36 @@
     bindStagedAdjustmentsCardEvents(() => openLassoKeepInspector({ armLasso: STATE.activeTool === "crop" }));
   }
 
+  function renderActiveScanSpecsCardHtml(scan = STATE.activeScan) {
+    if (!scan) return "";
+    updateStudioScanMetricsReadout(scan);
+    const polyStr = formatScanPolyCount(scan);
+    const texStr = formatScanTextureSize(scan);
+    const sizeStr = formatScanSizeMb(scan, { includeTotal: true });
+    return `
+      <div style="background:var(--ui-bg-subtle);border:1px solid var(--ui-border-strong);border-radius:8px;padding:10px;margin-bottom:10px;">
+        <div style="font-size:11px;font-weight:700;color:var(--ui-text-secondary);margin-bottom:6px;display:flex;justify-content:space-between;align-items:center;">
+          <span>📊 Active Scan Metrics (目前掃描規格)</span>
+          <span style="color:var(--ui-accent);font-family:monospace;">${escapeHtml(formatCoveredAreaM2(scan))}</span>
+        </div>
+        <div class="gs-metric-grid" style="grid-template-columns:repeat(3,1fr);gap:6px;">
+          <div class="gs-metric-box" style="padding:6px 7px;">
+            <div class="lbl">Polygon Count</div>
+            <div class="val" style="font-size:11.5px;">${escapeHtml(polyStr)}</div>
+          </div>
+          <div class="gs-metric-box" style="padding:6px 7px;">
+            <div class="lbl">Texture Size</div>
+            <div class="val" style="font-size:11.5px;">${escapeHtml(texStr)}</div>
+          </div>
+          <div class="gs-metric-box" style="padding:6px 7px;">
+            <div class="lbl">Scan Size (MB)</div>
+            <div class="val" style="font-size:11.5px;" title="${escapeHtml(sizeStr)}">${escapeHtml(formatScanSizeMb(scan))}</div>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
   function openMeshCompressionInspector() {
     const st = ensureStagedEditsForActiveScan();
     const curPreset = st.compressionPreset || "balanced";
@@ -11807,6 +12965,7 @@
     showSidePanel(
       `<span>Mesh &amp; Texture Compression (網格壓縮優化)</span>`,
       `
+      ${renderActiveScanSpecsCardHtml(STATE.activeScan)}
       <div style="background:var(--ui-bg-subtle);border:1px solid var(--ui-border-strong);border-radius:8px;padding:11px;margin-bottom:10px;">
         <div style="font-size:12px;font-weight:700;color:var(--ui-text-primary);margin-bottom:4px;">
           ⚡ GC_ScanOptimizer Compression Preset
@@ -11969,6 +13128,7 @@
     showSidePanel(
       `<span>Save Scan Edits (儲存掃描變更)</span>`,
       `
+      ${renderActiveScanSpecsCardHtml(STATE.activeScan)}
       <div style="font-size:11.5px;color:var(--ui-text-secondary);line-height:1.45;margin-bottom:6px;">
         Combine multiple <b>Lasso Deletions</b>, <b>Mesh Compression</b>, and <b>Coordinate System</b> changes, then press <b>Save Edits</b> once — your edited scan is saved and a backup of <b>${escapeHtml(
           STATE.activeScan?.name || STATE.activeScanId || "the original scan"
@@ -13688,6 +14848,7 @@
       else if (tool === "profile") openProfileInspector();
       else if (tool === "section") openSectionBoxInspector();
       else if (tool === "photos") openRtkPhotoInspector();
+      else if (tool === "categorize") openCategorizeInspector();
       else if (tool === "comments") openCommentsInspector();
       else if (tool === "crop_delete") {
         STATE.cropMode = "delete_inside";
@@ -13953,6 +15114,7 @@
           "section",
           "photos",
           "rtk",
+          "categorize",
           "comments",
           "optimizer",
           "crs",
@@ -13961,6 +15123,9 @@
       ) {
         if (STATE.activeTool === "section") {
           clearSectionBoxClippingIfNotKept();
+        }
+        if (STATE.activeTool === "categorize") {
+          clearCategorizeVisualsOnly();
         }
         document.getElementById("studioSidePanel")?.classList.remove("active");
         setActiveStudioTool(STATE.multiAlign?.active ? "align_merge" : "orbit");
@@ -14012,9 +15177,17 @@
   });
 
   document.getElementById("btnStudioDownloadObj")?.addEventListener("click", (ev) => {
+    ev.preventDefault();
+    ev.stopPropagation();
     if (STATE.multiAlign?.active) {
-      ev.preventDefault();
       showToast("Unavailable during Multi-Scan Editing — merge scans first to download unified mesh");
+      return;
+    }
+    const dlBtn = document.getElementById("btnStudioDownloadObj");
+    const activeScan =
+      STATE.activeScan || STATE.scans.find((s) => s.scan_id === STATE.activeScanId) || null;
+    if (dlBtn && activeScan) {
+      openDownloadFormatMenu(dlBtn, activeScan);
     }
   });
 
@@ -16395,6 +17568,7 @@
 
     if (!userObj) {
       STATE.currentUser = null;
+      syncSessionTokenCookie(null);
       if (!STATE.shareToken) {
         STATE.isAuthorized = false;
         document.body?.classList.add("gs-auth-locked");
@@ -16431,6 +17605,13 @@
       normalized.picture = normalized.avatar_url;
     }
     STATE.currentUser = Object.assign({ offlineCacheEnabled: true }, STATE.currentUser || {}, normalized);
+    syncSessionTokenCookie(STATE.currentUser);
+    const dlBtn = document.getElementById("btnStudioDownloadObj");
+    if (dlBtn && STATE.activeScanId) {
+      dlBtn.href = appendAuthToDownloadUrl(
+        STATE.activeScan?.download_obj_url || `/api/download?scan_id=${encodeURIComponent(STATE.activeScanId)}&type=obj`
+      );
+    }
     try {
       localStorage.setItem("gathering_user_profile", JSON.stringify(STATE.currentUser));
       localStorage.setItem("gs_current_user", JSON.stringify(STATE.currentUser));

@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>GatheringCloud Scans — 3D Photogrammetry &amp; Civil Surveying Studio (scans.gatheren.cloud)</title>
   <link rel="icon" type="image/png" href="/assets/gathering_cloud_logo.png" />
-  <link rel="stylesheet" href="/app.css?v=20261024_v47" />
+  <link rel="stylesheet" href="/app.css?v=20261024_v50" />
   <script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
 <body>
@@ -443,10 +443,13 @@
             </svg>
             <span>WASD</span>
           </button>
-          <a class="btn-xs" id="btnStudioDownloadObj" href="#" download title="Download .OBJ">
+          <a class="btn-xs" id="btnStudioDownloadObj" href="#" title="Download 3D Scan (.3tz, .glb, .obj, .zip)" style="gap:3px;">
             <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8">
               <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
               <polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+            </svg>
+            <svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" stroke-width="2.2" style="opacity:0.75;">
+              <polyline points="6 9 12 15 18 9"/>
             </svg>
           </a>
           <button type="button" class="btn-xs primary" id="btnStudioSurveyReport" title="Create Survey Report: Civil3D.dxf (AutoCAD / Civil 3D TWD97 XYZ) &amp; A3 Ready-to-Print PDF">
@@ -654,6 +657,18 @@
             </svg>
           </div>
           <span class="bim-dock-label">照片</span>
+        </button>
+
+        <!-- 10b. AI Surface & Object Categorization (Roads, Trees DBH, Water Voids, Walls) -->
+        <button type="button" class="bim-dock-btn autodesk-measure-btn" id="btnDockCategorize" data-tool="categorize" data-dock="categorize" title="AI Surface &amp; Object Categorization (Road, Tree DBH, Water Void, Wall) / AI 地物與表面自動分類" aria-label="AI Surface Categorization">
+          <div class="bim-dock-icon">
+            <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8">
+              <polygon points="12 2 2 7 12 12 22 7 12 2"/>
+              <polyline points="2 12 12 17 22 12"/>
+              <polyline points="2 17 12 22 22 17"/>
+            </svg>
+          </div>
+          <span class="bim-dock-label">分類</span>
         </button>
 
         <!-- 11. 3D Geo-Comments -->
@@ -1787,6 +1802,6 @@
   <script src="/lib/3d-tiles-renderer.bundle.js"></script>
 
   <!-- Main GatheringScans Application Logic -->
-  <script src="/app.js?v=20261024_v47"></script>
+  <script src="/app.js?v=20261024_v50"></script>
 </body>
 </html>
