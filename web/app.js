@@ -384,7 +384,7 @@
       if (el) el.style.display = show ? disp : "none";
     };
 
-    // 1. Rename Site & Rename Scan buttons (Editor, Admin, Owner only)
+    // 1. Rename Site, Rename Scan & Delete Scan buttons (Editor, Admin, Owner only)
     [
       "btnRenameMapSite",
       "btnRenamePopoverSite",
@@ -392,6 +392,8 @@
       "btnRenameStudioSite",
       "btnRenamePreviewScan",
       "btnRenameStudioScan",
+      "btnDeletePreviewScan",
+      "btnDeleteStudioScan",
     ].forEach((id) => setDisp(id, info.canEditNames, "inline-flex"));
 
     // 2. Re-run Scan & Scan Editing Dock / Lasso Delete / Crop / Align & Merge / Optimizer / Queue buttons (Editor, Admin, Owner only; hidden for Viewer & Guest)
@@ -1232,6 +1234,11 @@
                     <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8">
                       <path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
                     </svg>
+                  </button>
+                  <button type="button" class="btn-xs" data-action="delete" title="Delete Scan (刪除掃描)" style="color:#ef4444;">
+                    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8">
+                      <polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                    </svg>
                   </button>`
                 : ""
             }
@@ -1276,6 +1283,13 @@
         renameBtn.addEventListener("click", (ev) => {
           ev.stopPropagation();
           openRenameScanModal(scan.scan_id);
+        });
+      }
+      const deleteBtn = card.querySelector('[data-action="delete"]');
+      if (deleteBtn) {
+        deleteBtn.addEventListener("click", (ev) => {
+          ev.stopPropagation();
+          openDeleteScanModal(scan.scan_id);
         });
       }
 
@@ -1976,11 +1990,18 @@
               <div class="gs-tile-name" title="${safeName}" style="flex:1;min-width:0;">${safeName}</div>
               ${
                 roleInfo.canEditNames
-                  ? `<button type="button" class="btn-xs" data-rename-tile="${escapeHtml(s.scan_id)}" title="Edit Scan Name" style="height:18px;padding:0 4px;flex-shrink:0;">
-                      <svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
-                      </svg>
-                    </button>`
+                  ? `<div style="display:flex;align-items:center;gap:2px;flex-shrink:0;">
+                      <button type="button" class="btn-xs" data-rename-tile="${escapeHtml(s.scan_id)}" title="Edit Scan Name" style="height:18px;padding:0 4px;">
+                        <svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" stroke-width="2">
+                          <path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
+                        </svg>
+                      </button>
+                      <button type="button" class="btn-xs" data-delete-tile="${escapeHtml(s.scan_id)}" title="Delete Scan (刪除掃描)" style="height:18px;padding:0 4px;color:#ef4444;">
+                        <svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" stroke-width="2">
+                          <polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                        </svg>
+                      </button>
+                    </div>`
                   : ""
               }
             </div>
@@ -1988,7 +2009,7 @@
         `;
 
         tile.addEventListener("click", (ev) => {
-          if (ev.target.closest("[data-rename-tile]")) return;
+          if (ev.target.closest("[data-rename-tile]") || ev.target.closest("[data-delete-tile]")) return;
           selectTimelineTile(s.scan_id);
         });
         const renTileBtn = tile.querySelector("[data-rename-tile]");
@@ -1996,6 +2017,13 @@
           renTileBtn.addEventListener("click", (ev) => {
             ev.stopPropagation();
             openRenameScanModal(s.scan_id);
+          });
+        }
+        const delTileBtn = tile.querySelector("[data-delete-tile]");
+        if (delTileBtn) {
+          delTileBtn.addEventListener("click", (ev) => {
+            ev.stopPropagation();
+            openDeleteScanModal(s.scan_id);
           });
         }
         trackEl.appendChild(tile);
@@ -2117,6 +2145,101 @@
       saveRenamedScan();
     }
   });
+
+  let _deletingScanId = "";
+
+  function openDeleteScanModal(scanId) {
+    if (!getCurrentUserRoleInfo().canEditNames) {
+      showToast("Only Editor, Admin, or Owner accounts can delete scans.");
+      return;
+    }
+    const targetId = scanId || STATE.selectedTimelineScanId || STATE.activeScanId;
+    const scan = STATE.scans.find((s) => s.scan_id === targetId) || STATE.activeScan;
+    if (!scan) {
+      showToast("No scan selected to delete.");
+      return;
+    }
+    _deletingScanId = scan.scan_id;
+    const nameEl = document.getElementById("deleteScanTargetName");
+    const metaEl = document.getElementById("deleteScanTargetMeta");
+    const fileBase = getScanDefaultFileName(scan);
+    if (nameEl) nameEl.textContent = scan.name || fileBase;
+    if (metaEl) {
+      metaEl.textContent = `Site: ${scan.project_group || "Site"} · Date: ${scan.capture_date || "—"} · ID: ${scan.scan_id}`;
+    }
+    openModal("deleteScanModal");
+  }
+
+  async function confirmDeleteScan() {
+    const scan = STATE.scans.find((s) => s.scan_id === _deletingScanId);
+    if (!scan) {
+      closeModal("deleteScanModal");
+      return;
+    }
+    const btn = document.getElementById("btnConfirmDeleteScan");
+    const origText = btn ? btn.textContent : "";
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = "Deleting...";
+    }
+    try {
+      const deletedName = scan.name || scan.scan_id;
+      const deletedGroup = scan.project_group;
+      const res = await apiPost("/api/scans/delete", { scan_id: scan.scan_id });
+      if (Array.isArray(res.scans)) {
+        STATE.scans = res.scans;
+      } else {
+        STATE.scans = STATE.scans.filter((s) => s.scan_id !== scan.scan_id);
+      }
+      if (Array.isArray(res.projects)) {
+        STATE.projects = res.projects;
+      }
+      try {
+        localStorage.setItem(
+          "gs_last_catalog_v1",
+          JSON.stringify({ scans: STATE.scans, projects: STATE.projects })
+        );
+      } catch (_) {}
+
+      const remainingInGroup = STATE.scans.filter((s) => s.project_group === deletedGroup);
+      const nextScan = remainingInGroup[0] || STATE.scans[0] || null;
+      const nextGroup = nextScan ? nextScan.project_group : "";
+      const nextId = nextScan ? nextScan.scan_id : "";
+
+      STATE.activeProjectGroup = nextGroup;
+      STATE.activeScanId = nextId;
+      STATE.activeScan = nextScan;
+      STATE.selectedTimelineScanId = nextId;
+
+      populateProjectScanDropdowns(nextGroup, nextId);
+      renderMapClusters();
+      if (nextGroup) {
+        openSiteTimeline(nextGroup, nextId);
+      }
+      if (STATE.activeView === "studio" && nextId) {
+        switchView("studio", nextId);
+      } else if (STATE.activeView === "studio" && !nextId) {
+        switchView("map");
+      }
+      closeModal("deleteScanModal");
+      showToast(`Deleted scan: ${deletedName}`);
+    } catch (err) {
+      showToast(`Failed to delete scan: ${err.message}`);
+    } finally {
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = origText || "Delete Scan (確定刪除)";
+      }
+    }
+  }
+
+  document.getElementById("btnDeletePreviewScan")?.addEventListener("click", () => {
+    openDeleteScanModal(STATE.selectedTimelineScanId || STATE.activeScanId);
+  });
+  document.getElementById("btnDeleteStudioScan")?.addEventListener("click", () => {
+    openDeleteScanModal(STATE.activeScanId);
+  });
+  document.getElementById("btnConfirmDeleteScan")?.addEventListener("click", confirmDeleteScan);
 
   // ============================================================================
   // 1C. RENAME SITE (PROJECT GROUP) MODAL & RE-RUN SCAN FROM ORIGINAL PHOTOS MODAL

@@ -429,6 +429,132 @@ class ScanQueueDB:
                     print(f"[DB] Warning updating scan_meta.json for site rename {meta_file}: {e}")
         return updated_scans
 
+    def get_deleted_scans_registry_path(self) -> str:
+        return os.path.join(os.path.dirname(self.db_path), "deleted_scans.json")
+
+    def load_deleted_scans_registry(self) -> Dict[str, List[str]]:
+        reg_path = self.get_deleted_scans_registry_path()
+        default_reg: Dict[str, List[str]] = {"scan_ids": [], "folder_names": [], "source_paths": []}
+        if not os.path.isfile(reg_path):
+            return default_reg
+        try:
+            with open(reg_path, "r", encoding="utf-8") as rf:
+                data = json.load(rf)
+            if isinstance(data, dict):
+                return {
+                    "scan_ids": [str(x).lower() for x in (data.get("scan_ids") or []) if x],
+                    "folder_names": [str(x).lower() for x in (data.get("folder_names") or []) if x],
+                    "source_paths": [str(x).lower() for x in (data.get("source_paths") or []) if x],
+                }
+        except Exception:
+            pass
+        return default_reg
+
+    def delete_scan(self, scan_id: str) -> Optional[Dict[str, Any]]:
+        """
+        Deletes a scan from SQLite, removes its local folder inside C:\\GatheringScans,
+        removes its cached thumbnail & .3tz stream package, and records a tombstone in
+        data/deleted_scans.json so Google Drive inbox polling does not re-import it.
+        """
+        import shutil
+        from pc_worker.config import LOCAL_SCANS_ROOT
+
+        clean_id = (scan_id or "").strip()
+        if not clean_id:
+            return None
+
+        scan = self.get_scan(clean_id)
+        if not scan:
+            # Case-insensitive fallback lookup
+            for s in self.list_scans():
+                if str(s.get("scan_id") or "").lower() == clean_id.lower():
+                    scan = s
+                    clean_id = s["scan_id"]
+                    break
+
+        proj_dir = (scan or {}).get("project_dir") or ""
+        src_zip = (scan or {}).get("source_zip_path") or ""
+        folder_name = os.path.basename(proj_dir.rstrip("\\/")) if proj_dir else clean_id
+
+        # 1. Record tombstone in data/deleted_scans.json so GDrive watcher skips it
+        try:
+            reg = self.load_deleted_scans_registry()
+            sids = set(reg["scan_ids"])
+            fnames = set(reg["folder_names"])
+            spaths = set(reg["source_paths"])
+            sids.add(clean_id.lower())
+            if folder_name:
+                fnames.add(folder_name.lower())
+                if folder_name.lower().startswith("catch_"):
+                    fnames.add(folder_name[6:].lower())
+            if src_zip:
+                for p in src_zip.split(";"):
+                    if p.strip():
+                        spaths.add(os.path.normcase(os.path.abspath(p.strip())))
+                        fnames.add(os.path.basename(p.strip().rstrip("\\/")).lower())
+            if proj_dir and os.path.isdir(proj_dir):
+                origin_marker = os.path.join(proj_dir, ".gdrive_inbox_origin.json")
+                if os.path.isfile(origin_marker):
+                    try:
+                        with open(origin_marker, "r", encoding="utf-8") as mf:
+                            om = json.load(mf)
+                        if om.get("src_folder"):
+                            spaths.add(os.path.normcase(os.path.abspath(om["src_folder"])))
+                            fnames.add(os.path.basename(om["src_folder"].rstrip("\\/")).lower())
+                    except Exception:
+                        pass
+            with open(self.get_deleted_scans_registry_path(), "w", encoding="utf-8") as wf:
+                json.dump(
+                    {
+                        "scan_ids": sorted(sids),
+                        "folder_names": sorted(fnames),
+                        "source_paths": sorted(spaths),
+                    },
+                    wf,
+                    indent=2,
+                    ensure_ascii=False,
+                )
+        except Exception as e:
+            print(f"[DB] Warning updating deleted_scans.json: {e}")
+
+        # 2. Delete from SQLite tables
+        with DB_LOCK, self._connect() as conn:
+            conn.execute("DELETE FROM scans WHERE lower(scan_id) = lower(?)", (clean_id,))
+            conn.execute("DELETE FROM scan_comments WHERE lower(scan_id) = lower(?)", (clean_id,))
+            conn.commit()
+
+        # 3. Remove local scan folder inside C:\GatheringScans (strictly jailed)
+        candidates_to_remove = []
+        if proj_dir:
+            candidates_to_remove.append(proj_dir)
+        if LOCAL_SCANS_ROOT:
+            candidates_to_remove.append(os.path.join(LOCAL_SCANS_ROOT, clean_id))
+        for cand_dir in candidates_to_remove:
+            try:
+                if cand_dir and os.path.isdir(cand_dir) and LOCAL_SCANS_ROOT:
+                    abs_root = os.path.normcase(os.path.abspath(LOCAL_SCANS_ROOT))
+                    abs_cand = os.path.normcase(os.path.abspath(cand_dir))
+                    if abs_cand.startswith(abs_root + os.sep) and abs_cand != abs_root:
+                        shutil.rmtree(cand_dir, ignore_errors=True)
+            except Exception as e:
+                print(f"[DB] Warning removing folder {cand_dir}: {e}")
+
+        # 4. Remove cached thumbnail & .3tz stream package
+        data_dir = os.path.dirname(self.db_path)
+        for rel_rm in (
+            os.path.join(data_dir, "thumbnails", f"{clean_id}.png"),
+            os.path.join(data_dir, "thumbnails", f"{clean_id.lower()}.png"),
+            os.path.join(data_dir, "stream_packages", f"{clean_id}.3tz"),
+            os.path.join(data_dir, "stream_packages", f"{clean_id.lower()}.3tz"),
+        ):
+            try:
+                if os.path.isfile(rel_rm):
+                    os.remove(rel_rm)
+            except OSError:
+                pass
+
+        return scan or {"scan_id": clean_id, "name": clean_id}
+
     def refresh_queue_priorities(self, now: Optional[float] = None) -> List[Dict[str, Any]]:
         """Recalculates dynamic WSJF-Aging priority scores for all queued jobs."""
         now_ts = now if now is not None else time.time()

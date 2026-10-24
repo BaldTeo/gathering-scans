@@ -1600,6 +1600,24 @@ def _seed_and_discover_scans_locked(db: ScanQueueDB) -> List[Dict[str, Any]]:
     """
     discovered_ids = set()
     dynamic_clusters: List[Dict[str, Any]] = []
+    deleted_reg = db.load_deleted_scans_registry() if hasattr(db, "load_deleted_scans_registry") else {"scan_ids": [], "folder_names": [], "source_paths": []}
+    deleted_scan_ids = set(deleted_reg.get("scan_ids") or [])
+    deleted_folder_names = set(deleted_reg.get("folder_names") or [])
+    deleted_source_paths = set(deleted_reg.get("source_paths") or [])
+
+    def _is_entry_deleted(fname_or_id: str, full_path: str = "") -> bool:
+        low_n = (fname_or_id or "").strip().lower()
+        if not low_n:
+            return False
+        if low_n in deleted_scan_ids or low_n in deleted_folder_names or f"catch_{low_n}" in deleted_scan_ids:
+            return True
+        if full_path:
+            try:
+                if os.path.normcase(os.path.abspath(full_path)) in deleted_source_paths:
+                    return True
+            except Exception:
+                pass
+        return False
 
     inbox_dirs = []
     if GDRIVE_INBOX_DIR and os.path.isdir(GDRIVE_INBOX_DIR):
@@ -1621,7 +1639,7 @@ def _seed_and_discover_scans_locked(db: ScanQueueDB) -> List[Dict[str, Any]]:
             if entry.startswith(("_", ".")) or entry.lower() in ("streampackages", "inputs"):
                 continue
             epath = os.path.join(idir, entry)
-            if not is_safe_jailed_path(epath, idir):
+            if not is_safe_jailed_path(epath, idir) or _is_entry_deleted(entry, epath):
                 continue
 
             zip_candidates: List[Tuple[str, str, str]] = []
@@ -1643,7 +1661,7 @@ def _seed_and_discover_scans_locked(db: ScanQueueDB) -> List[Dict[str, Any]]:
                             if sub_fn.startswith(("_", ".")) or sub_fn.lower() in INTERNAL_ASSET_DIRS:
                                 continue
                             sub_fpath = os.path.join(epath, sub_fn)
-                            if not is_safe_jailed_path(sub_fpath, idir):
+                            if not is_safe_jailed_path(sub_fpath, idir) or _is_entry_deleted(sub_fn, sub_fpath):
                                 continue
                             if os.path.isfile(sub_fpath) and sub_fn.lower().endswith(".zip"):
                                 zip_candidates.append((entry, sub_fn, sub_fpath))
@@ -1678,6 +1696,8 @@ def _seed_and_discover_scans_locked(db: ScanQueueDB) -> List[Dict[str, Any]]:
                 grouped_uploads[gkey]["parts"][part_idx] = fpath
 
     def _upsert_preserving_active_job(item: Dict[str, Any]):
+        if _is_entry_deleted(item.get("scan_id", ""), item.get("project_dir", "")):
+            return
         existing_row = db.get_scan(item["scan_id"])
         if existing_row and existing_row.get("status") in ("queued", "processing", "waiting_parts"):
             item["status"] = existing_row["status"]
@@ -1794,6 +1814,8 @@ def _seed_and_discover_scans_locked(db: ScanQueueDB) -> List[Dict[str, Any]]:
 
         clean_slug = re.sub(r"[^a-zA-Z0-9_]", "_", base_name).strip("_")
         scan_id = f"catch_{clean_slug}"
+        if _is_entry_deleted(scan_id) or _is_entry_deleted(base_name):
+            continue
         primary_meta["scan_id"] = scan_id
         primary_meta["source_zip_path"] = ";".join(parts_map[p] for p in present_parts)
         primary_meta["size_bytes"] = sum(int(m.get("size_bytes", 0)) for m in part_metas)

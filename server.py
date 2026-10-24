@@ -1670,9 +1670,9 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
             for k in list(_VPS_RAM_FALLBACK_CACHE.keys()):
                 if k.startswith(path):
                     _VPS_RAM_FALLBACK_CACHE.pop(k, None)
-        if method == "POST" and ("/rename" in path or "/rerun" in path or "/admin/users" in path or path == "/api/scans/rename"):
+        if method == "POST" and ("/rename" in path or "/delete" in path or "/rerun" in path or "/admin/users" in path or path in ("/api/scans/rename", "/api/scans/delete")):
             for k in list(_VPS_RAM_FALLBACK_CACHE.keys()):
-                if k.startswith("/api/scans") or k.startswith("/api/projects") or k.startswith("/api/user-profiles") or k.startswith("/api/admin/users"):
+                if k.startswith("/api/scans") or k.startswith("/api/projects") or k.startswith("/api/user-profiles") or k.startswith("/api/admin/users") or k.startswith("/stream/"):
                     _VPS_RAM_FALLBACK_CACHE.pop(k, None)
         if method == "POST" and path in ("/api/queue/scan-inbox", "/api/queue/rescan", "/api/admin/pc-daemon", "/api/pc/simulate-offline"):
             _VPS_RAM_FALLBACK_CACHE.clear()
@@ -1930,6 +1930,7 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
             or path.startswith("/api/user-profiles")
             or path.startswith("/api/auth/")
             or path.startswith("/api/user/")
+            or path == "/api/scans/delete"
         ):
             return False
 
@@ -2962,6 +2963,54 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
                     if ck.startswith("/api/scans") or ck.startswith("/api/projects"):
                         _VPS_RAM_FALLBACK_CACHE.pop(ck, None)
                 self.send_json({"status": "ok", "scan": self._enrich_scan_urls(updated)})
+                return
+
+            # 1c-2. Delete Scan (removes from SQLite, local disk C:\GatheringScans, and Cloud Manifest)
+            if path == "/api/scans/delete" or (path.startswith("/api/scans/") and path.endswith("/delete")):
+                if not actor_perms.get("can_edit_names"):
+                    self.send_json({"error": f"Role '{actor_role}' cannot delete scans (Editor, Admin, or Owner required)."}, status=403)
+                    return
+                if path == "/api/scans/delete":
+                    scan_id = str(payload.get("scan_id") or (query.get("scan_id") or [""])[0]).strip()
+                else:
+                    scan_id = re.sub(r"[^a-zA-Z0-9_\-]", "", path[len("/api/scans/") : -len("/delete")].strip("/"))
+                if not scan_id:
+                    self.send_json({"error": "scan_id is required"}, status=400)
+                    return
+                deleted_scan = DB.delete_scan(scan_id)
+                # Also remove from cloud manifest on disk (both PC and VPS)
+                try:
+                    m_cur = _load_cloud_manifest()
+                    if isinstance(m_cur, dict):
+                        if isinstance(m_cur.get("scans"), list):
+                            m_cur["scans"] = [s for s in m_cur["scans"] if str(s.get("scan_id") or "").lower() != scan_id.lower()]
+                        if isinstance(m_cur.get("packages"), dict):
+                            for pk in list(m_cur["packages"].keys()):
+                                if pk.lower() == scan_id.lower():
+                                    m_cur["packages"].pop(pk, None)
+                        _save_cloud_manifest(m_cur)
+                except Exception as me:
+                    print(f"[GatheringScans] Manifest cleanup warning for {scan_id}: {me}")
+                _VPS_RAM_FALLBACK_CACHE.clear()
+                if os.name == "nt":
+                    def _bg_sync_after_delete():
+                        try:
+                            from pc_worker.gdrive_cloud_sync import sync_all_scans_to_gdrive_and_vps
+                            sync_all_scans_to_gdrive_and_vps(DB, AUTH_SHARE, force=False)
+                        except Exception:
+                            pass
+                    threading.Thread(target=_bg_sync_after_delete, daemon=True).start()
+                all_scans = [self._enrich_scan_urls(s) for s in DB.list_scans()]
+                self.send_json(
+                    {
+                        "status": "ok",
+                        "ok": True,
+                        "deleted_scan_id": scan_id,
+                        "deleted": deleted_scan,
+                        "scans": all_scans,
+                        "projects": self._build_projects_summary(all_scans),
+                    }
+                )
                 return
 
             # 1d. Edit and Save Site / Project Group Name (persists to SQLite + scan_meta.json + site_renames.json)
