@@ -517,10 +517,14 @@
     setDisp("btnPopoverShareGroup", info.level >= 3, "inline-flex");
     setDisp("btnTimelineShare", info.level >= 3, "inline-flex");
 
-    // 3b. Recycle Bin management buttons (Admin & Owner only: info.canManageUsers)
-    setDisp("btnOpenRecycleBin", info.canManageUsers, "inline-flex");
-    setDisp("btnTimelineRecycleBin", info.canManageUsers, "inline-flex");
-    setDisp("btnOpenBinFromDeleteModal", info.canManageUsers, "inline-flex");
+    // 3b. Recycle Bin buttons (Editor, Admin & Owner can view & restore backups; Purge is Admin/Owner)
+    const canAccessBin = Boolean(info.canEditNames || info.canManageUsers);
+    setDisp("btnOpenRecycleBin", canAccessBin, "inline-flex");
+    setDisp("btnTimelineRecycleBin", canAccessBin, "inline-flex");
+    setDisp("btnStudioRecycleBin", canAccessBin, "inline-flex");
+    setDisp("btnOpenBinFromDeleteModal", canAccessBin, "inline-flex");
+    setDisp("btnPurgeSelectedBinScans", info.canManageUsers, "inline-flex");
+    setDisp("btnClearAllBinScans", info.canManageUsers, "inline-flex");
 
     // 4. Single-scan lock applies ONLY to external ?share=<token> links with scope_type="scan".
     // Interactive Guest Mode can freely browse Map, Studio, and Compare across all projects/scans.
@@ -2385,6 +2389,11 @@
       tlBadge.textContent = String(n);
       tlBadge.style.display = n > 0 ? "inline-block" : "none";
     }
+    const studioBadge = document.getElementById("studioRecycleBinBadge");
+    if (studioBadge) {
+      studioBadge.textContent = String(n);
+      studioBadge.style.display = n > 0 ? "inline-block" : "none";
+    }
     const modalPill = document.getElementById("recycleBinModalCountPill");
     if (modalPill) {
       modalPill.textContent = `${n} Scan${n === 1 ? "" : "s"}`;
@@ -2516,12 +2525,24 @@
   function renderRecycleBinItems(items) {
     _cachedBinScans = Array.isArray(items) ? items : [];
     updateRecycleBinBadges(_cachedBinScans.length);
+    const roleInfo = getCurrentUserRoleInfo();
+    const canPurge = Boolean(roleInfo.canManageUsers);
+    const btnPurgeSel = document.getElementById("btnPurgeSelectedBinScans");
+    const btnClearAll = document.getElementById("btnClearAllBinScans");
+    if (btnPurgeSel) btnPurgeSel.style.display = canPurge ? "inline-flex" : "none";
+    if (btnClearAll) btnClearAll.style.display = canPurge ? "inline-flex" : "none";
+    const footerEl = document.getElementById("recycleBinStatusFooter");
+    if (footerEl) {
+      footerEl.textContent = canPurge
+        ? "Original backups & deleted scans can be restored anytime · Permanent delete removes files from disk."
+        : "Original backups & deleted scans can be restored anytime (Permanent delete requires Admin / Owner).";
+    }
     const listEl = document.getElementById("recycleBinListContainer");
     if (!listEl) return;
     if (_cachedBinScans.length === 0) {
       listEl.innerHTML = `
         <div style="padding:32px 16px;text-align:center;color:var(--ui-text-muted);font-size:12.5px;border:1px dashed var(--ui-border);border-radius:8px;">
-          Recycle Bin is empty (回收桶目前沒有掃描檔案).
+          Recycle Bin is empty (回收桶目前沒有掃描備份或檔案).
         </div>
       `;
       updateBinSelectionActionState();
@@ -2540,6 +2561,7 @@
         ? new Date(Number(item.trashed_at) * 1000).toLocaleString("zh-TW", { hour12: false })
         : "";
       const thumbSrc = item.thumbnail_url || `/api/scans/${encodeURIComponent(sid)}/thumbnail`;
+      const isBackup = Boolean(item.is_edit_backup || /\((Original|Pre-Merge) Backup\)/i.test(String(item.name || "")));
 
       const row = document.createElement("div");
       row.className = "gs-bin-item-row";
@@ -2552,11 +2574,16 @@
           <div style="display:flex;flex-direction:column;gap:2px;min-width:0;flex:1;">
             <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
               <span style="font-size:12.5px;font-weight:700;color:var(--ui-text-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${safeName}</span>
+              ${
+                isBackup
+                  ? `<span style="font-size:10px;font-weight:700;padding:1px 6px;border-radius:4px;background:rgba(16,185,129,0.14);color:#10b981;">Backup · 原始備份</span>`
+                  : ""
+              }
               <span style="font-size:10px;font-weight:700;padding:1px 6px;border-radius:4px;background:var(--ui-accent-soft);color:var(--ui-accent);">${safeGroup}</span>
               <span style="font-size:10.5px;color:var(--ui-text-secondary);font-family:var(--mono);">${safeDate} · ${item.image_count || 0} imgs · ${sizeMb}</span>
             </div>
             <div style="font-size:10.5px;color:var(--ui-text-muted);">
-              Deleted by ${safeActor}${trashedTime ? ` · ${escapeHtml(trashedTime)}` : ""} · ID: <code>${escapeHtml(sid)}</code>
+              ${isBackup ? "Archived by" : "Deleted by"} ${safeActor}${trashedTime ? ` · ${escapeHtml(trashedTime)}` : ""} · ID: <code>${escapeHtml(sid)}</code>
             </div>
           </div>
         </label>
@@ -2564,9 +2591,13 @@
           <button type="button" class="btn-xs primary" data-bin-restore="${escapeHtml(sid)}" title="Restore this scan back to Map & Studio">
             ↩ Restore (還原)
           </button>
-          <button type="button" class="btn-xs" data-bin-purge="${escapeHtml(sid)}" style="color:#ef4444;border-color:rgba(239,68,68,0.4);" title="Permanently delete this scan and its files from disk">
-            🗑 Delete Forever
-          </button>
+          ${
+            canPurge
+              ? `<button type="button" class="btn-xs" data-bin-purge="${escapeHtml(sid)}" style="color:#ef4444;border-color:rgba(239,68,68,0.4);" title="Permanently delete this scan and its files from disk">
+                  🗑 Delete Forever
+                </button>`
+              : ""
+          }
         </div>
       `;
 
@@ -2594,8 +2625,9 @@
   }
 
   async function openRecycleBinModal() {
-    if (!getCurrentUserRoleInfo().canManageUsers) {
-      showToast("Only Admin or Owner accounts can access the Recycle Bin.");
+    const rInfo = getCurrentUserRoleInfo();
+    if (!rInfo.canEditNames && !rInfo.canManageUsers) {
+      showToast("Only Editor, Admin, or Owner accounts can access the Recycle Bin.");
       return;
     }
     closeModal("deleteScanModal");
@@ -2604,8 +2636,9 @@
   }
 
   async function restoreBinScans(scanIds) {
-    if (!getCurrentUserRoleInfo().canManageUsers) {
-      showToast("Only Admin or Owner accounts can restore scans from the Bin.");
+    const rInfo = getCurrentUserRoleInfo();
+    if (!rInfo.canEditNames && !rInfo.canManageUsers) {
+      showToast("Only Editor, Admin, or Owner accounts can restore scans from the Bin.");
       return;
     }
     if (!Array.isArray(scanIds) || scanIds.length === 0) return;
@@ -2656,6 +2689,7 @@
   document.getElementById("btnConfirmDeleteScan")?.addEventListener("click", confirmDeleteScan);
   document.getElementById("btnOpenRecycleBin")?.addEventListener("click", openRecycleBinModal);
   document.getElementById("btnTimelineRecycleBin")?.addEventListener("click", openRecycleBinModal);
+  document.getElementById("btnStudioRecycleBin")?.addEventListener("click", openRecycleBinModal);
   document.getElementById("btnOpenBinFromDeleteModal")?.addEventListener("click", openRecycleBinModal);
   document.getElementById("chkSelectAllBinScans")?.addEventListener("change", (ev) => {
     const checked = Boolean(ev.target.checked);
@@ -5018,12 +5052,48 @@
     }
   }
 
-  function cancelLassoToolMode(keepPanelOpen = true) {
-    const wasKeep = STATE.activeTool === "crop" && STATE.cropMode === "keep_inside";
+  function preserveLassoSelectionBeforeToolSwitch() {
+    if (studioThree && typeof studioThree._cancelLassoDrag === "function") {
+      studioThree._cancelLassoDrag();
+    }
+    if (
+      (STATE.activeTool === "crop_delete" || STATE.activeTool === "crop") &&
+      Array.isArray(STATE.measurePoints) &&
+      STATE.measurePoints.length >= 3
+    ) {
+      const lockedPts = STATE.measurePoints.map((p) => p.clone());
+      if (!Array.isArray(STATE.pendingCropPolygons)) STATE.pendingCropPolygons = [];
+      STATE.pendingCropPolygons.push(lockedPts);
+      STATE.polygonLocked = true;
+    }
     STATE.measurePoints = [];
-    STATE.polygonLocked = false;
+    STATE.cropPolygonPoints = [];
+    if (studioThree && studioThree.polyPreviewGroup) {
+      while (studioThree.polyPreviewGroup.children.length > 0) {
+        const c = studioThree.polyPreviewGroup.children[0];
+        if (c.geometry) c.geometry.dispose();
+        if (c.material) c.material.dispose();
+        studioThree.polyPreviewGroup.remove(c);
+      }
+    }
+    if (
+      (Array.isArray(STATE.lassoStrokes) && STATE.lassoStrokes.length > 0) ||
+      (Array.isArray(STATE.pendingCropPolygons) && STATE.pendingCropPolygons.length > 0)
+    ) {
+      rebuildLassoHighlight3D();
+    }
+  }
+
+  function cancelLassoToolMode(keepPanelOpen = true, clearSelection = false) {
+    const wasKeep = (STATE.activeTool === "crop" || STATE.cropMode === "keep_inside") && !STATE.multiAlign?.active;
+    if (clearSelection) {
+      STATE.measurePoints = [];
+      STATE.polygonLocked = false;
+      clearLassoSelectionState();
+    } else {
+      preserveLassoSelectionBeforeToolSwitch();
+    }
     STATE.cropMode = wasKeep ? "keep_inside" : "delete_inside";
-    clearLassoSelectionState();
     setActiveStudioTool("orbit");
     const panel = document.getElementById("studioSidePanel");
     if (keepPanelOpen && panel && panel.classList.contains("active")) {
@@ -7301,7 +7371,7 @@
     const todayStr = new Date().toISOString().slice(0, 10);
     const baseName = STATE.multiAlign?.active
       ? `${curSite}_Merged_${todayStr}`
-      : `${String(sc.name || sid || "Scan").trim()}_Edited`;
+      : `${String(sc.name || sid || "Scan").trim()}`;
     STATE.stagedEdits = {
       scanId: sid,
       rev: 0,
@@ -10261,10 +10331,126 @@
     });
   }
 
+  function commitPendingLassoMarksToStagedEdits(modeOverride = null) {
+    const mode =
+      modeOverride ||
+      (!STATE.multiAlign?.active && STATE.cropMode === "keep_inside" ? "keep_inside" : "delete_inside");
+    const st = ensureStagedEditsForActiveScan();
+
+    if (mode === "keep_inside" && !STATE.multiAlign?.active) {
+      const effVis = getEffectiveLassoVisibleOnly("keep_inside");
+      const batchStrokes = (STATE.lassoStrokes || []).map((s) => Object.assign({}, s, { visible_only: effVis }));
+      const batchPolys = [];
+      const rawKeepPolys = [];
+      (STATE.pendingCropPolygons || []).forEach((pts) => {
+        if (Array.isArray(pts) && pts.length >= 3) rawKeepPolys.push(pts);
+      });
+      if (Array.isArray(STATE.measurePoints) && STATE.measurePoints.length >= 3) {
+        rawKeepPolys.push(STATE.measurePoints);
+      }
+      if (rawKeepPolys.length > 0 && isActiveStudioTilesetEcef()) {
+        rawKeepPolys.forEach((pts) => {
+          const orthoSt = planPolygonToTopDownFrustumStroke(pts);
+          if (orthoSt) batchStrokes.push(orthoSt);
+        });
+      } else {
+        rawKeepPolys.forEach((pts) => {
+          batchPolys.push(pts.map((p) => studioWorldToTilesetNative(p).slice(0, 2)));
+        });
+      }
+      const regionCount = batchStrokes.filter((s) => s.op !== "sub").length + batchPolys.length;
+      if (regionCount === 0) return { committed: 0, triCount: 0, mode };
+      const triEst = Number(STATE.lassoSelectedTriCount || 0);
+      st.cropKeep = {
+        regionCount,
+        triCount: triEst,
+        frustum_strokes: batchStrokes,
+        native_polygons: batchPolys,
+      };
+      st.rev++;
+      STATE.measurePoints = [];
+      clearLassoSelectionState();
+      applyStagedEditsToStudioMeshes(true);
+      syncStagedEditsDockBadge();
+      return { committed: regionCount, triCount: triEst, mode };
+    }
+
+    const effVis = getEffectiveLassoVisibleOnly("delete_inside");
+    const batchStrokes = (STATE.lassoStrokes || []).map((s) => Object.assign({}, s, { visible_only: effVis }));
+    const rawWorldPolys = [];
+    if (Array.isArray(STATE.pendingCropPolygons)) {
+      STATE.pendingCropPolygons.forEach((pts) => {
+        if (Array.isArray(pts) && pts.length >= 3) rawWorldPolys.push(pts);
+      });
+    }
+    if (Array.isArray(STATE.measurePoints) && STATE.measurePoints.length >= 3) {
+      rawWorldPolys.push(STATE.measurePoints);
+    }
+
+    const batchPolys = [];
+    let layerCenteredPolygons = null;
+    if (STATE.multiAlign?.active && rawWorldPolys.length > 0) {
+      if (studioThree?.multiAlignGroup) studioThree.multiAlignGroup.updateMatrixWorld(true);
+      layerCenteredPolygons = {};
+      (STATE.multiAlign.layers || []).forEach((layer) => {
+        if (!layer || !layer.visible || !layer.zUpGroup) return;
+        const invZUp = layer.zUpGroup.matrixWorld.clone().invert();
+        layerCenteredPolygons[layer.scan_id] = rawWorldPolys.map((pts) =>
+          pts.map((p) => {
+            const loc = p.clone().applyMatrix4(invZUp);
+            return [loc.x, loc.y];
+          })
+        );
+      });
+    } else if (rawWorldPolys.length > 0 && isActiveStudioTilesetEcef()) {
+      rawWorldPolys.forEach((pts) => {
+        const orthoSt = planPolygonToTopDownFrustumStroke(pts);
+        if (orthoSt) batchStrokes.push(orthoSt);
+      });
+    } else {
+      rawWorldPolys.forEach((pts) => {
+        batchPolys.push(
+          pts.map((p) => {
+            const n = studioWorldToTilesetNative(p);
+            return [n[0], n[1]];
+          })
+        );
+      });
+    }
+
+    const regionCount =
+      batchStrokes.filter((s) => s.op !== "sub").length +
+      batchPolys.length +
+      (layerCenteredPolygons ? rawWorldPolys.length : 0);
+    if (regionCount === 0) return { committed: 0, triCount: 0, mode: "delete_inside" };
+
+    const markedTriEstimate = Number(STATE.lassoSelectedTriCount || 0);
+    const delBatch = {
+      id: Date.now(),
+      regionCount,
+      triCount: markedTriEstimate,
+      frustum_strokes: batchStrokes,
+      native_polygons: batchPolys,
+    };
+    if (layerCenteredPolygons) {
+      delBatch.layer_centered_polygons = layerCenteredPolygons;
+    }
+    st.deletions.push(delBatch);
+    st.rev++;
+
+    STATE.measurePoints = [];
+    clearLassoSelectionState();
+    applyStagedEditsToStudioMeshes(true);
+    syncStagedEditsDockBadge();
+    return { committed: regionCount, triCount: markedTriEstimate, mode: "delete_inside" };
+  }
+
   function renderStagedAdjustmentsCardHtml(opts = {}) {
     const st = ensureStagedEditsForActiveScan();
     const isMulti = Boolean(STATE.multiAlign?.active);
-    const totalAdj = countStagedAdjustments();
+    const pendingMarks = countMarkedRegionsPending();
+    const pendingMarkTris = Number(STATE.lassoSelectedTriCount || 0);
+    const totalAdj = countStagedAdjustments() + (pendingMarks > 0 && st.deletions.length === 0 && !st.cropKeep ? 1 : 0);
     const alwaysShow = Boolean(opts.alwaysShow);
     if (!alwaysShow && totalAdj === 0) return "";
 
@@ -10303,6 +10489,14 @@
         </div>
       `);
     }
+    if (pendingMarks > 0) {
+      itemsHtml.push(`
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;padding:5px 7px;background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.35);border-radius:6px;font-size:11px;">
+          <span>🔴 <b>Selected Polygons:</b> ${pendingMarks} region${pendingMarks === 1 ? "" : "s"} (${pendingMarkTris.toLocaleString()} tris · preserved)</span>
+          <button type="button" class="gs-top-btn" data-stage-pending-marks="1" style="padding:1px 7px;font-size:10px;border-color:rgba(239,68,68,0.45);color:#ef4444;" title="Apply these selected polygons to the 3D delete preview now">Delete Now</button>
+        </div>
+      `);
+    }
     if (!isMulti && st.cropKeep) {
       itemsHtml.push(`
         <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;padding:5px 7px;background:var(--ui-bg-surface);border:1px solid var(--ui-border);border-radius:6px;font-size:11px;">
@@ -10328,28 +10522,28 @@
       `);
     }
 
-    const defaultNewName = st.newScanName || `${STATE.activeScan?.name || STATE.activeScanId || "Scan"}_Edited`;
+    const defaultNewName = st.newScanName || `${STATE.activeScan?.name || STATE.activeScanId || "Scan"}`;
     const canGenerate = isMulti
       ? Array.isArray(STATE.multiAlign?.layers) && STATE.multiAlign.layers.length >= 2
       : totalAdj > 0;
 
     return `
       <div style="background:rgba(2,132,199,0.08);border:1px solid rgba(2,132,199,0.35);border-radius:8px;padding:10px;margin-top:10px;">
-        <div style="font-size:12px;font-weight:700;color:var(--ui-accent);display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+        <div style="font-size:12px;font-weight:700;color:var(--ui-accent);display:flex;align-items:center;justify-content:space-between;gap:6px;margin-bottom:6px;flex-wrap:wrap;">
           <span>✨ Pending Adjustments (${totalAdj})</span>
-          <span style="font-size:10px;color:var(--ui-text-secondary);">Original scan${isMulti ? "s stay" : " stays"} untouched</span>
+          <span style="font-size:10px;color:var(--ui-text-secondary);" title="The untouched original scan is safely moved to the Trash Bin where you can restore it anytime">🗑️ Original${isMulti ? "s" : ""} → Trash Bin</span>
         </div>
         ${
           itemsHtml.length > 0
             ? `<div style="display:flex;flex-direction:column;gap:4px;margin-bottom:8px;">${itemsHtml.join("")}</div>`
             : `<div style="font-size:11px;color:var(--ui-text-secondary);background:var(--ui-bg-surface);border:1px dashed var(--ui-border-strong);border-radius:6px;padding:8px;margin-bottom:8px;">
-                No adjustments staged yet. Use <b>Lasso Delete (套索刪除)</b>, <b>Mesh Compression (網格優化)</b>, or <b>Coordinate System (座標系統)</b> on the left dock first, then press <b>Generate Scan</b> once!
+                No adjustments staged yet. Use <b>Lasso Delete (套索刪除)</b>, <b>Mesh Compression (網格優化)</b>, or <b>Coordinate System (座標系統)</b> on the left dock first, then press <b>Save Edits</b>!
               </div>`
         }
         <div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:8px;">
           ${
             isMulti
-              ? `<button type="button" class="gs-top-btn" data-jump-edit="align_merge" style="font-size:10.5px;padding:3px 7px;">🎯 Align Layers</button>`
+              ? `<button type="button" class="gs-top-btn" data-jump-edit="align_merge" style="font-size:10.5px;padding:3px 7px;">🎯 Return to Alignment</button>`
               : ""
           }
           <button type="button" class="gs-top-btn" data-jump-edit="crop_delete" style="font-size:10.5px;padding:3px 7px;">+ Delete Regions</button>
@@ -10357,13 +10551,13 @@
           <button type="button" class="gs-top-btn" data-jump-edit="crs" style="font-size:10.5px;padding:3px 7px;">+ Coordinate System</button>
         </div>
         <div class="gs-form-group" style="margin-bottom:8px;">
-          <label style="font-size:11px;">New Scan Name (新掃描名稱)</label>
-          <input type="text" class="gs-input" id="txtGenerateScanName" value="${escapeHtml(defaultNewName)}" placeholder="Enter new scan name..." />
+          <label style="font-size:11px;">Scan Name (掃描名稱 · 原掃描將自動備份至回收桶)</label>
+          <input type="text" class="gs-input" id="txtGenerateScanName" value="${escapeHtml(defaultNewName)}" placeholder="Enter scan name..." />
         </div>
         <button type="button" class="gs-top-btn accent" id="btnGenerateStagedScan" style="width:100%;justify-content:center;padding:9px 12px;font-weight:700;${
           !canGenerate ? "opacity:0.5;pointer-events:none;" : ""
-        }" ${!canGenerate ? "disabled" : ""} title="Generate a brand-new scan with all staged adjustments applied in one pass">
-          <span>✨ ${isMulti ? `Generate Combined Scan (${totalAdj} step${totalAdj === 1 ? "" : "s"} · 合併產生新掃描)` : `Generate Scan (${totalAdj} adjustment${totalAdj === 1 ? "" : "s"} · 產生新掃描)`}</span>
+        }" ${!canGenerate ? "disabled" : ""} title="Save edited scan and move untouched original backup to Trash Bin (easily restorable)">
+          <span>💾 ${isMulti ? `Save Merged Scan (${totalAdj} step${totalAdj === 1 ? "" : "s"} · 合併並儲存)` : `Save Edits (${totalAdj} adjustment${totalAdj === 1 ? "" : "s"} · 儲存變更)`}</span>
         </button>
         <div id="generateScanResultBox" style="margin-top:8px;"></div>
       </div>
@@ -10378,6 +10572,16 @@
         st.newScanName = nameInput.value;
       });
     }
+
+    document.querySelectorAll("[data-stage-pending-marks]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const res = commitPendingLassoMarksToStagedEdits();
+        if (res.committed > 0) {
+          showToast(`Staged ${res.committed} selected region(s) for deletion`);
+        }
+        if (typeof rerenderFn === "function") rerenderFn();
+      });
+    });
 
     document.querySelectorAll("[data-unstage]").forEach((btn) => {
       btn.addEventListener("click", () => {
@@ -10403,6 +10607,7 @@
     document.querySelectorAll("[data-jump-edit]").forEach((btn) => {
       btn.addEventListener("click", () => {
         const target = btn.getAttribute("data-jump-edit");
+        preserveLassoSelectionBeforeToolSwitch();
         if (target === "align_merge") {
           setActiveStudioTool("align_merge");
           openAlignMergeInspector();
@@ -10428,9 +10633,13 @@
     const st = ensureStagedEditsForActiveScan();
     const isMulti = Boolean(STATE.multiAlign?.active);
 
+    if (countMarkedRegionsPending() > 0) {
+      commitPendingLassoMarksToStagedEdits();
+    }
+
     if (isMulti) {
       if (!Array.isArray(STATE.multiAlign.layers) || STATE.multiAlign.layers.length < 2) {
-        showToast("Please add at least 2 scans in Align & Merge before generating a combined scan.");
+        showToast("Please add at least 2 scans in Align & Merge before saving a merged scan.");
         return;
       }
       if (STATE.multiAlign.layers.some((l) => !l.ready)) {
@@ -10438,24 +10647,24 @@
         return;
       }
     } else if (countStagedAdjustments() === 0) {
-      showToast("Stage at least one adjustment (Delete, Compression, or CRS) before generating a new scan.");
+      showToast("Stage at least one adjustment (Delete, Compression, or CRS) before saving edits.");
       return;
     }
 
     const nameEl = document.getElementById("txtGenerateScanName");
-    const newScanName = String(nameEl?.value || st.newScanName || `${STATE.activeScan?.name || "Scan"}_Edited`).trim();
+    const newScanName = String(nameEl?.value || st.newScanName || `${STATE.activeScan?.name || "Scan"}`).trim();
     st.newScanName = newScanName;
 
     const btnGen = document.getElementById("btnGenerateStagedScan");
     if (btnGen) {
       btnGen.disabled = true;
-      btnGen.innerHTML = `<span>⏳ ${isMulti ? "Combining & Generating Scan on PC..." : "Generating New Scan on PC..."}</span>`;
+      btnGen.innerHTML = `<span>⏳ ${isMulti ? "Merging & Saving Scan on PC..." : "Saving Edits & Backing Up Original to Trash Bin..."}</span>`;
     }
     const resBox = document.getElementById("generateScanResultBox");
     if (resBox) {
-      resBox.innerHTML = `<div style="font-size:11.5px;color:var(--ui-accent);">Building new scan "${escapeHtml(
+      resBox.innerHTML = `<div style="font-size:11.5px;color:var(--ui-accent);">Saving "${escapeHtml(
         newScanName
-      )}" with all staged adjustments (original scan${isMulti ? "s" : ""} untouched)...</div>`;
+      )}" with all staged edits (moving untouched original backup${isMulti ? "s" : ""} to Trash Bin)...</div>`;
     }
 
     try {
@@ -10478,6 +10687,7 @@
           deletions: st.deletions,
           compression_preset: st.compressionPreset || "",
           crs_config: st.crsConfig || null,
+          archive_originals_to_bin: STATE.multiAlign.archiveOriginals !== false,
         });
         STATE.multiAlign.lastMergedScan = res.scan || {
           scan_id: res.scan_id,
@@ -10492,6 +10702,7 @@
           crop_keep: st.cropKeep || null,
           compression_preset: st.compressionPreset || "",
           crs_config: st.crsConfig || null,
+          archive_original_to_bin: true,
         };
         res = await apiPost("/api/optimizer/generate-scan", payload);
       }
@@ -10503,6 +10714,12 @@
       }
       setActiveStudioTool("orbit");
 
+      if (typeof res.bin_scans_count === "number") {
+        updateRecycleBinBadges(res.bin_scans_count);
+      } else if (Array.isArray(res.bin_scans)) {
+        updateRecycleBinBadges(res.bin_scans.length);
+      }
+
       if (Array.isArray(res.scans)) {
         STATE.scans = res.scans;
       } else {
@@ -10511,6 +10728,8 @@
       if (Array.isArray(res.projects)) {
         STATE.projects = res.projects;
       }
+      populateProjectScanDropdowns(res.scan?.project_group || STATE.activeProjectGroup, res.scan_id || res.scan?.scan_id || "");
+      renderMapClusters();
 
       const createdId = res.scan_id || res.scan?.scan_id;
       if (createdId) {
@@ -10518,16 +10737,27 @@
       }
 
       const outMb = res.output_mb ?? res.glb_size_mb ?? 0;
+      const backupMsg = isMulti
+        ? `${Number(res.archived_to_bin_count || 0)} original scan backup(s) moved to Trash Bin`
+        : res.archived_to_bin
+        ? `Original scan backup ("${escapeHtml(res.trashed_backup?.name || "Original Backup")}") moved to Trash Bin`
+        : "Original scan backup preserved";
       showSidePanel(
-        `<span>✨ New Scan Generated (新掃描已建立)</span>`,
+        `<span>✓ Edits Saved · Backup in Trash Bin (變更已儲存)</span>`,
         `
         <div style="background:rgba(16,185,129,0.10);border:1px solid rgba(16,185,129,0.38);border-radius:8px;padding:12px;font-size:12px;color:var(--ui-text-primary);">
-          <div style="color:#10b981;font-weight:700;font-size:13px;margin-bottom:6px;">✓ Generated "${escapeHtml(
+          <div style="color:#10b981;font-weight:700;font-size:13px;margin-bottom:6px;">✓ Saved "${escapeHtml(
             res.scan?.name || newScanName
           )}" (${res.duration_s}s)</div>
           <div style="margin-bottom:4px;">Scan ID: <code>${escapeHtml(createdId || "")}</code></div>
           <div style="margin-bottom:4px;">Coordinate System: <b>${escapeHtml(res.crs || res.scan?.crs || "TWD97 (121) + TWVD2001")}</b></div>
           <div style="margin-bottom:6px;">Output Size: <b>${outMb} MB</b></div>
+          <div style="margin-bottom:8px;padding:6px 8px;border-radius:6px;background:var(--ui-bg-surface);border:1px solid var(--ui-border);font-size:11px;color:var(--ui-text-secondary);">
+            🗑️ <b>Backup in Trash Bin:</b> ${backupMsg}. Easily restore it anytime from the Trash Bin.
+          </div>
+          <button type="button" class="gs-top-btn" id="btnOpenBinAfterSaveEdit" style="width:100%;justify-content:center;margin-bottom:8px;font-size:11.5px;">
+            <span>🗑️ Open Trash Bin to View / Restore Backup (開啟回收桶)</span>
+          </button>
           <div style="font-size:11px;color:var(--ui-text-secondary);border-top:1px solid var(--ui-border);padding-top:6px;">
             <b>Applied Adjustments:</b>
             <ul style="margin:4px 0 0 16px;padding:0;">
@@ -10537,16 +10767,19 @@
         </div>
         `
       );
-      showToast(`Generated new scan "${res.scan?.name || newScanName}" (${outMb} MB)!`);
+      document.getElementById("btnOpenBinAfterSaveEdit")?.addEventListener("click", () => {
+        openRecycleBinModal();
+      });
+      showToast(`Saved "${res.scan?.name || newScanName}" — original backup sent to Trash Bin!`);
     } catch (err) {
       if (resBox) {
-        resBox.innerHTML = `<div style="font-size:11.5px;color:#ef4444;">Generate Scan Error: ${escapeHtml(err.message)}</div>`;
+        resBox.innerHTML = `<div style="font-size:11.5px;color:#ef4444;">Save Edits Error: ${escapeHtml(err.message)}</div>`;
       }
       if (btnGen) {
         btnGen.disabled = false;
-        btnGen.innerHTML = `<span>✨ Generate Scan (產生新掃描)</span>`;
+        btnGen.innerHTML = `<span>💾 Save Edits (儲存變更)</span>`;
       }
-      showToast(`Generate Scan Error: ${err.message}`);
+      showToast(`Save Edits Error: ${err.message}`);
     }
   }
 
@@ -10570,7 +10803,9 @@
     const totalStagedDelTris = st.deletions.reduce((acc, b) => acc + (Number(b.triCount) || 0), 0);
 
     const execBtnText = !isLassoActive
-      ? "Select with Lasso — Mark for Deletion (啟用套索標記刪除)"
+      ? markedCount > 0
+        ? `Resume Lasso (${markedCount} selected kept · 繼續套索標記)`
+        : "Select with Lasso — Mark for Deletion (啟用套索標記刪除)"
       : markedCount > 0
       ? `🗑️ Delete (${markedCount} region${markedCount === 1 ? "" : "s"} · ${triCountLabel})`
       : "🗑️ Delete (Mark polygons with Lasso first)";
@@ -10580,10 +10815,10 @@
       `
       ${
         STATE.multiAlign?.active
-          ? `<div style="background:rgba(56,189,248,0.11);border:1px solid rgba(56,189,248,0.4);border-radius:8px;padding:8px 10px;margin-bottom:8px;font-size:11px;color:var(--ui-text-primary);display:flex;align-items:center;justify-content:space-between;gap:8px;">
-              <span>🔗 <b>Multi-Scan Mode:</b> Lasso deletes across all visible scan layers (toggle 👁 in Align &amp; Merge to isolate one scan).</span>
-              <button type="button" class="gs-top-btn" id="btnLassoBackToAlign" style="padding:3px 8px;font-size:10.5px;flex-shrink:0;" title="Return to 3D Gizmo Alignment &amp; Layer Checklist">
-                <span>🎯 Align</span>
+          ? `<div style="background:rgba(56,189,248,0.11);border:1px solid rgba(56,189,248,0.4);border-radius:8px;padding:8px 10px;margin-bottom:8px;font-size:11px;color:var(--ui-text-primary);display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;">
+              <span style="flex:1;min-width:140px;">🔗 <b>Multi-Scan Mode:</b> Selected &amp; deleted polygons stay preserved when returning to Alignment.</span>
+              <button type="button" class="gs-top-btn" id="btnLassoBackToAlign" style="padding:4px 9px;font-size:11px;font-weight:700;flex-shrink:0;" title="Return to 3D Gizmo Alignment &amp; Layer Checklist (keeps all selected &amp; deleted polygons)">
+                <span>🎯 Return to Alignment</span>
               </button>
             </div>`
           : ""
@@ -10593,19 +10828,21 @@
           <span>🗑️ Mark Polygons for Deletion</span>
           ${
             isLassoActive
-              ? `<button type="button" class="gs-top-btn" id="btnCancelLassoMode" style="padding:2px 7px;font-size:10.5px;border-color:rgba(239,68,68,0.45);color:#ef4444;" title="Cancel Lasso Mode &amp; Return to Free Orbit (Esc)">
-                  <span>✖ Cancel (Esc)</span>
+              ? `<button type="button" class="gs-top-btn" id="btnCancelLassoMode" style="padding:2px 7px;font-size:10.5px;border-color:rgba(239,68,68,0.45);color:#ef4444;" title="Pause Lasso to Orbit Freely — Selected Polygons Stay Preserved (Esc)">
+                  <span>✋ Orbit (Esc)</span>
                 </button>`
-              : `<span style="font-size:10px;padding:1px 6px;border-radius:4px;background:var(--ui-bg-surface);color:var(--ui-text-secondary);">Lasso Off</span>`
+              : `<span style="font-size:10px;padding:1px 6px;border-radius:4px;background:var(--ui-bg-surface);color:var(--ui-text-secondary);">Orbit Mode</span>`
           }
         </div>
         <div style="font-size:11px;color:var(--ui-text-secondary);margin-bottom:8px;line-height:1.45;">
           ${
             !isLassoActive
-              ? `Lasso cancelled — rotate freely with <b>Left Mouse</b> or <b>Mouse Wheel</b>. Press the <b>red button below</b> to select with Lasso again.`
+              ? `Orbit mode active — rotate freely with <b>Left Mouse</b> or <b>Mouse Wheel</b>${
+                  markedCount > 0 ? ` (your <b>${markedCount}</b> selected region${markedCount === 1 ? " is" : "s are"} preserved)` : ""
+                }. Press the button below to resume Lasso.`
               : inputMethod !== "polygon"
-              ? `<b>1.</b> Drag <b>Left Mouse</b> several times to mark multiple regions in red (rotate anytime by pressing <b>Mouse Wheel</b> · <b>Alt+Drag</b> to unmark).<br/><b>2.</b> Press <b>Delete</b> below to remove all marked regions from the preview · <b>Esc</b> to cancel.`
-              : `<b>1.</b> Click 3+ vertices and click red <b>V1</b> (or <b>Enter</b>) to lock Polygon #1, then draw Polygon #2, #3... (<b>Mouse Wheel</b> to rotate).<br/><b>2.</b> Press <b>Delete</b> below to remove all marked polygons · <b>Esc</b> to cancel.`
+              ? `<b>1.</b> Drag <b>Left Mouse</b> several times to mark multiple regions in red (rotate anytime by pressing <b>Mouse Wheel</b> · <b>Alt+Drag</b> to unmark).<br/><b>2.</b> Press <b>Delete</b> below to remove marked regions from preview · <b>Esc</b> to orbit.`
+              : `<b>1.</b> Click 3+ vertices and click red <b>V1</b> (or <b>Enter</b>) to lock Polygon #1, then draw Polygon #2, #3... (<b>Mouse Wheel</b> to rotate).<br/><b>2.</b> Press <b>Delete</b> below to remove marked polygons · <b>Esc</b> to orbit.`
           }
         </div>
 
@@ -10641,19 +10878,28 @@
             }" ${markedCount > 0 ? "" : "disabled"} title="Remove the most recently marked polygon/lasso stroke">
               <span>Undo Mark</span>
             </button>
-            <button type="button" class="gs-top-btn" id="btnDrawCropPolygon" style="padding:2px 7px;font-size:10.5px;">
+            <button type="button" class="gs-top-btn" id="btnDrawCropPolygon" style="padding:2px 7px;font-size:10.5px;" title="Clear all currently marked red regions">
               <span>Clear</span>
             </button>
           </div>
         </div>
 
-        <button type="button" class="gs-top-btn accent" style="width:100%;justify-content:center;padding:9px 12px;font-weight:700;background:#ef4444;border-color:#dc2626;color:#fff;" id="btnExecuteCrop" title="${
-          !isLassoActive
-            ? "Activate 3D Lasso Selection (Mark for Deletion)"
-            : "Delete all marked regions in 3D preview and stage for Generate Scan"
-        }">
-          <span id="lblExecuteCropBtn">${execBtnText}</span>
-        </button>
+        <div style="display:flex;gap:6px;">
+          <button type="button" class="gs-top-btn accent" style="flex:1;justify-content:center;padding:9px 12px;font-weight:700;background:#ef4444;border-color:#dc2626;color:#fff;" id="btnExecuteCrop" title="${
+            !isLassoActive
+              ? "Activate 3D Lasso Selection (Mark for Deletion)"
+              : "Delete all marked regions in 3D preview and stage for Save Edits"
+          }">
+            <span id="lblExecuteCropBtn">${execBtnText}</span>
+          </button>
+          ${
+            !isLassoActive && markedCount > 0
+              ? `<button type="button" class="gs-top-btn" id="btnCommitMarkedWhilePaused" style="justify-content:center;padding:9px 10px;font-weight:700;border-color:#dc2626;color:#ef4444;" title="Delete the ${markedCount} marked region(s) right now">
+                  <span>🗑️ Delete (${markedCount})</span>
+                </button>`
+              : ""
+          }
+        </div>
       </div>
 
       ${
@@ -10680,14 +10926,23 @@
     );
 
     document.getElementById("btnLassoBackToAlign")?.addEventListener("click", () => {
-      cancelLassoToolMode(false);
+      preserveLassoSelectionBeforeToolSwitch();
+      const keptMarks = countMarkedRegionsPending();
       setActiveStudioTool("align_merge");
       openAlignMergeInspector();
+      if (keptMarks > 0) {
+        showToast(`Returned to Alignment — ${keptMarks} selected polygon region${keptMarks === 1 ? "" : "s"} preserved`);
+      }
     });
 
     document.getElementById("btnCancelLassoMode")?.addEventListener("click", () => {
-      cancelLassoToolMode(true);
-      showToast("Lasso cancelled — press the red button on the right to start Lasso again");
+      cancelLassoToolMode(true, false);
+      const keptMarks = countMarkedRegionsPending();
+      showToast(
+        keptMarks > 0
+          ? `Orbit mode (${keptMarks} selected region${keptMarks === 1 ? "" : "s"} preserved) — press Resume Lasso to mark more`
+          : "Orbit mode — press the red button on the right to start Lasso again"
+      );
     });
 
     document.getElementById("chkLassoVisibleOnly")?.addEventListener("change", (ev) => {
@@ -10766,6 +11021,14 @@
       showToast("Restored all deleted regions in 3D preview");
     });
 
+    document.getElementById("btnCommitMarkedWhilePaused")?.addEventListener("click", () => {
+      const res = commitPendingLassoMarksToStagedEdits("delete_inside");
+      openLassoDeleteInspector({ armLasso: false });
+      if (res.committed > 0) {
+        showToast(`Deleted ${res.committed} marked region(s) in 3D preview — press Save Edits when ready!`);
+      }
+    });
+
     document.getElementById("btnExecuteCrop")?.addEventListener("click", () => {
       if (STATE.activeTool !== "crop_delete") {
         setActiveStudioTool("crop_delete");
@@ -10774,51 +11037,8 @@
         return;
       }
 
-      const effVis = getEffectiveLassoVisibleOnly("delete_inside");
-      const batchStrokes = (STATE.lassoStrokes || []).map((s) => Object.assign({}, s, { visible_only: effVis }));
-      const rawWorldPolys = [];
-      if (Array.isArray(STATE.pendingCropPolygons)) {
-        STATE.pendingCropPolygons.forEach((pts) => {
-          if (Array.isArray(pts) && pts.length >= 3) rawWorldPolys.push(pts);
-        });
-      }
-      if (Array.isArray(STATE.measurePoints) && STATE.measurePoints.length >= 3) {
-        rawWorldPolys.push(STATE.measurePoints);
-      }
-
-      const batchPolys = [];
-      let layerCenteredPolygons = null;
-      if (STATE.multiAlign?.active && rawWorldPolys.length > 0) {
-        if (studioThree?.multiAlignGroup) studioThree.multiAlignGroup.updateMatrixWorld(true);
-        layerCenteredPolygons = {};
-        (STATE.multiAlign.layers || []).forEach((layer) => {
-          if (!layer || !layer.visible || !layer.zUpGroup) return;
-          const invZUp = layer.zUpGroup.matrixWorld.clone().invert();
-          layerCenteredPolygons[layer.scan_id] = rawWorldPolys.map((pts) =>
-            pts.map((p) => {
-              const loc = p.clone().applyMatrix4(invZUp);
-              return [loc.x, loc.y];
-            })
-          );
-        });
-      } else if (rawWorldPolys.length > 0 && isActiveStudioTilesetEcef()) {
-        rawWorldPolys.forEach((pts) => {
-          const orthoSt = planPolygonToTopDownFrustumStroke(pts);
-          if (orthoSt) batchStrokes.push(orthoSt);
-        });
-      } else {
-        rawWorldPolys.forEach((pts) => {
-          batchPolys.push(
-            pts.map((p) => {
-              const n = studioWorldToTilesetNative(p);
-              return [n[0], n[1]];
-            })
-          );
-        });
-      }
-
-      const regionCount = batchStrokes.filter((s) => s.op !== "sub").length + batchPolys.length + (layerCenteredPolygons ? rawWorldPolys.length : 0);
-      if (regionCount === 0) {
+      const res = commitPendingLassoMarksToStagedEdits("delete_inside");
+      if (res.committed === 0) {
         showToast(
           STATE.lassoInputMethod === "polygon"
             ? "Click 3+ polygon vertices on the 3D scan to mark regions first (Mouse Wheel to rotate)"
@@ -10827,27 +11047,9 @@
         return;
       }
 
-      const markedTriEstimate = Number(STATE.lassoSelectedTriCount || 0);
-      const delBatch = {
-        id: Date.now(),
-        regionCount,
-        triCount: markedTriEstimate,
-        frustum_strokes: batchStrokes,
-        native_polygons: batchPolys,
-      };
-      if (layerCenteredPolygons) {
-        delBatch.layer_centered_polygons = layerCenteredPolygons;
-      }
-      st.deletions.push(delBatch);
-      st.rev++;
-
-      STATE.measurePoints = [];
-      clearLassoSelectionState();
-      applyStagedEditsToStudioMeshes(true);
-      syncStagedEditsDockBadge();
       openLassoDeleteInspector({ armLasso: true });
       showToast(
-        `Deleted ${regionCount} marked region${regionCount === 1 ? "" : "s"} in 3D preview — mark more, adjust Compression / CRS, or press Generate Scan!`
+        `Deleted ${res.committed} marked region${res.committed === 1 ? "" : "s"} in 3D preview — mark more, adjust Compression / CRS, or press Save Edits!`
       );
     });
 
@@ -10870,7 +11072,9 @@
     const triCountLabel = `${Number(STATE.lassoSelectedTriCount || 0).toLocaleString()} tris`;
 
     const execBtnText = !isLassoActive
-      ? "Select Keep Boundary (啟用框選保留)"
+      ? markedCount > 0
+        ? `Resume Keep Selection (${markedCount} kept · 繼續框選)`
+        : "Select Keep Boundary (啟用框選保留)"
       : markedCount > 0
       ? `✂️ Stage Keep Crop (${markedCount} region${markedCount === 1 ? "" : "s"} · ${triCountLabel})`
       : "✂️ Stage Keep Crop (Mark region to keep first)";
@@ -10883,12 +11087,12 @@
           <span>✂️ Mark Region(s) to Keep</span>
           ${
             isLassoActive
-              ? `<button type="button" class="gs-top-btn" id="btnCancelLassoMode" style="padding:2px 7px;font-size:10.5px;" title="Cancel Lasso (Esc)">✖ Cancel (Esc)</button>`
-              : `<span style="font-size:10px;padding:1px 6px;border-radius:4px;background:var(--ui-bg-surface);color:var(--ui-text-secondary);">Off</span>`
+              ? `<button type="button" class="gs-top-btn" id="btnCancelLassoMode" style="padding:2px 7px;font-size:10.5px;" title="Pause Lasso to Orbit (Esc)">✋ Orbit (Esc)</button>`
+              : `<span style="font-size:10px;padding:1px 6px;border-radius:4px;background:var(--ui-bg-surface);color:var(--ui-text-secondary);">Orbit Mode</span>`
           }
         </div>
         <div style="font-size:11px;color:var(--ui-text-secondary);margin-bottom:8px;line-height:1.45;">
-          Mark the boundary you want to <b>keep</b> (everything outside will be cropped out when you press <b>Generate Scan</b>). Rotate anytime with <b>Mouse Wheel</b>.
+          Mark the boundary you want to <b>keep</b> (everything outside will be cropped out when you press <b>Save Edits</b>). Rotate anytime with <b>Mouse Wheel</b>.
         </div>
 
         <div style="display:flex;gap:5px;margin-bottom:8px;">
@@ -10918,13 +11122,13 @@
     );
 
     document.getElementById("btnLassoBackToAlign")?.addEventListener("click", () => {
-      cancelLassoToolMode(false);
+      preserveLassoSelectionBeforeToolSwitch();
       setActiveStudioTool("align_merge");
       openAlignMergeInspector();
     });
 
     document.getElementById("btnCancelLassoMode")?.addEventListener("click", () => {
-      cancelLassoToolMode(true);
+      cancelLassoToolMode(true, false);
     });
     document.getElementById("btnModeFreehandLasso")?.addEventListener("click", () => {
       STATE.lassoInputMethod = "lasso";
@@ -10954,45 +11158,14 @@
         openLassoKeepInspector({ armLasso: true });
         return;
       }
-      const effVis = getEffectiveLassoVisibleOnly("keep_inside");
-      const batchStrokes = (STATE.lassoStrokes || []).map((s) => Object.assign({}, s, { visible_only: effVis }));
-      const batchPolys = [];
-      const rawKeepPolys = [];
-      (STATE.pendingCropPolygons || []).forEach((pts) => {
-        if (Array.isArray(pts) && pts.length >= 3) rawKeepPolys.push(pts);
-      });
-      if (Array.isArray(STATE.measurePoints) && STATE.measurePoints.length >= 3) {
-        rawKeepPolys.push(STATE.measurePoints);
-      }
-      if (!STATE.multiAlign?.active && rawKeepPolys.length > 0 && isActiveStudioTilesetEcef()) {
-        rawKeepPolys.forEach((pts) => {
-          const orthoSt = planPolygonToTopDownFrustumStroke(pts);
-          if (orthoSt) batchStrokes.push(orthoSt);
-        });
-      } else {
-        rawKeepPolys.forEach((pts) => {
-          batchPolys.push(pts.map((p) => studioWorldToTilesetNative(p).slice(0, 2)));
-        });
-      }
-      const regionCount = batchStrokes.filter((s) => s.op !== "sub").length + batchPolys.length;
-      if (regionCount === 0) {
+      const res = commitPendingLassoMarksToStagedEdits("keep_inside");
+      if (res.committed === 0) {
         showToast("Mark at least 1 region to keep first.");
         return;
       }
-      st.cropKeep = {
-        regionCount,
-        triCount: Number(STATE.lassoSelectedTriCount || 0),
-        frustum_strokes: batchStrokes,
-        native_polygons: batchPolys,
-      };
-      st.rev++;
-      STATE.measurePoints = [];
-      clearLassoSelectionState();
       setActiveStudioTool("orbit");
-      applyStagedEditsToStudioMeshes(true);
-      syncStagedEditsDockBadge();
       openLassoKeepInspector({ armLasso: false });
-      showToast("Staged Keep Crop in 3D preview — adjust Compression / CRS or press Generate Scan!");
+      showToast("Staged Keep Crop in 3D preview — adjust Compression / CRS or press Save Edits!");
     });
 
     bindStagedAdjustmentsCardEvents(() => openLassoKeepInspector({ armLasso: STATE.activeTool === "crop" }));
@@ -11165,12 +11338,12 @@
 
   function openGenerateScanInspector() {
     showSidePanel(
-      `<span>Generate Edited Scan (產生新掃描)</span>`,
+      `<span>Save Scan Edits (儲存掃描變更)</span>`,
       `
       <div style="font-size:11.5px;color:var(--ui-text-secondary);line-height:1.45;margin-bottom:6px;">
-        Combine multiple <b>Lasso Deletions</b>, <b>Mesh Compression</b>, and <b>Coordinate System</b> changes, then press <b>Generate Scan</b> once to create a new scan while keeping <b>${escapeHtml(
+        Combine multiple <b>Lasso Deletions</b>, <b>Mesh Compression</b>, and <b>Coordinate System</b> changes, then press <b>Save Edits</b> once — your edited scan is saved and a backup of <b>${escapeHtml(
           STATE.activeScan?.name || STATE.activeScanId || "the original scan"
-        )}</b> 100% untouched.
+        )}</b> is moved to the <b>Trash Bin</b> (restorable anytime).
       </div>
       ${renderStagedAdjustmentsCardHtml({ alwaysShow: true })}
       `
@@ -11551,6 +11724,9 @@
     if (studioThree) {
       studioThree.controls.enabled = true;
       studioThree.renderer.domElement.style.cursor = "";
+      if (countMarkedRegionsPending() > 0) {
+        rebuildLassoHighlight3D();
+      }
     }
     return true;
   }
@@ -11605,6 +11781,12 @@
     );
     layer.layerGroup.updateMatrixWorld(true);
     updateStudioTransformGizmo();
+    if (!_gizmoDrag.active && studioThree && countMarkedRegionsPending() > 0) {
+      if (studioThree._lassoRebuildTimer) clearTimeout(studioThree._lassoRebuildTimer);
+      studioThree._lassoRebuildTimer = setTimeout(() => {
+        rebuildLassoHighlight3D();
+      }, 60);
+    }
   }
 
   function syncAlignLayerInputsInDOM(layer) {
@@ -11870,6 +12052,12 @@
           if (studioThree.renderer && studioThree.scene && studioThree.camera) {
             studioThree.renderer.render(studioThree.scene, studioThree.camera);
           }
+          if (STATE.multiAlign?.active && countMarkedRegionsPending() > 0) {
+            if (studioThree._lassoRebuildTimer) clearTimeout(studioThree._lassoRebuildTimer);
+            studioThree._lassoRebuildTimer = setTimeout(() => {
+              rebuildLassoHighlight3D();
+            }, 90);
+          }
         },
         undefined,
         (err) => {
@@ -11908,10 +12096,84 @@
   function enterMultiScanAlignMode() {
     initStudio3D();
     if (!studioThree) return;
-    clearLassoSelectionState();
+    if (STATE.multiAlign?.active) {
+      syncMultiAlignToolAvailability();
+      syncStagedEditsDockBadge();
+      updateStudioTransformGizmo();
+      return;
+    }
+
+    // Preserve any active Lasso strokes, locked polygons, unclosed >=3pt polygon, and staged edits
+    // from Single-Scan mode so switching to Align & Merge NEVER discards selected polygons!
+    preserveLassoSelectionBeforeToolSwitch();
+    const anchorScanId = STATE.activeScanId || STATE.activeScan?.scan_id || "";
+    const anchorZUpMat = new THREE.Matrix4().makeRotationX(THREE.MathUtils.degToRad(270));
+    const tcSingle = Array.isArray(studioThree.tilesCenter) ? studioThree.tilesCenter.slice() : [0, 0, 0];
+
+    const upgradeStrokeToAnchorLayer = (stObj) => {
+      if (!stObj || !anchorScanId) return stObj;
+      if (stObj.layer_zup_to_clip && stObj.layer_zup_to_clip[anchorScanId]) return stObj;
+      if (Array.isArray(stObj.view_proj_matrix) && stObj.view_proj_matrix.length === 16) {
+        const vpMat = new THREE.Matrix4().fromArray(stObj.view_proj_matrix);
+        const lMat = new THREE.Matrix4().multiplyMatrices(vpMat, anchorZUpMat);
+        stObj.layer_zup_to_clip = Object.assign({}, stObj.layer_zup_to_clip || {}, {
+          [anchorScanId]: Array.from(lMat.elements),
+        });
+      }
+      return stObj;
+    };
+
+    if (Array.isArray(STATE.lassoStrokes) && STATE.lassoStrokes.length > 0 && anchorScanId) {
+      STATE.lassoStrokes.forEach((s) => upgradeStrokeToAnchorLayer(s));
+    }
+    if (STATE.cropMode === "keep_inside") {
+      STATE.cropMode = "delete_inside";
+    }
+
+    const prevSingleStaged =
+      STATE.stagedEdits && anchorScanId && STATE.stagedEdits.scanId === anchorScanId
+        ? {
+            deletions: Array.isArray(STATE.stagedEdits.deletions)
+              ? STATE.stagedEdits.deletions.map((b) => {
+                  const cloned = JSON.parse(JSON.stringify(b));
+                  if (Array.isArray(cloned.frustum_strokes)) {
+                    cloned.frustum_strokes.forEach((s) => upgradeStrokeToAnchorLayer(s));
+                  }
+                  if (
+                    (!cloned.layer_centered_polygons || !cloned.layer_centered_polygons[anchorScanId]) &&
+                    Array.isArray(cloned.native_polygons) &&
+                    cloned.native_polygons.length > 0
+                  ) {
+                    cloned.layer_centered_polygons = Object.assign({}, cloned.layer_centered_polygons || {}, {
+                      [anchorScanId]: cloned.native_polygons.map((poly) =>
+                        poly.map((pt) => [Number(pt[0]) - (Number(tcSingle[0]) || 0), Number(pt[1]) - (Number(tcSingle[1]) || 0)])
+                      ),
+                    });
+                  }
+                  return cloned;
+                })
+              : [],
+            compressionPreset: STATE.stagedEdits.compressionPreset || null,
+            crsConfig: STATE.stagedEdits.crsConfig ? { ...STATE.stagedEdits.crsConfig } : null,
+          }
+        : null;
+
     restoreOriginalStudioMeshIndices();
     STATE.multiAlign.active = true;
     resetStagedEditsForScan(STATE.activeScan);
+    if (prevSingleStaged) {
+      if (prevSingleStaged.deletions.length > 0) {
+        STATE.stagedEdits.deletions = prevSingleStaged.deletions;
+        STATE.stagedEdits.rev = (STATE.stagedEdits.rev || 0) + 1;
+      }
+      if (prevSingleStaged.compressionPreset) {
+        STATE.stagedEdits.compressionPreset = prevSingleStaged.compressionPreset;
+      }
+      if (prevSingleStaged.crsConfig) {
+        STATE.stagedEdits.crsConfig = prevSingleStaged.crsConfig;
+      }
+    }
+
     studioThree.modelPivot.visible = false;
     if (studioThree.fallbackGroup) studioThree.fallbackGroup.visible = false;
     studioThree.multiAlignGroup.visible = true;
@@ -11920,6 +12182,15 @@
       // Only include the currently active Studio scan as the starting anchor (#1);
       // the user selects which additional scans to import from the checklist in the panel.
       addScanLayerToMultiAlign(STATE.activeScanId);
+    }
+    if (hasStagedMeshEditsForActiveScan()) {
+      applyStagedEditsToStudioMeshes(true);
+    }
+    if (countMarkedRegionsPending() > 0) {
+      if (studioThree._lassoRebuildTimer) clearTimeout(studioThree._lassoRebuildTimer);
+      studioThree._lassoRebuildTimer = setTimeout(() => {
+        rebuildLassoHighlight3D();
+      }, 110);
     }
     syncMultiAlignToolAvailability();
     syncStagedEditsDockBadge();
@@ -12248,10 +12519,19 @@
           const stMulti = ensureStagedEditsForActiveScan();
           const delRegs = (stMulti.deletions || []).reduce((acc, b) => acc + (Number(b.regionCount) || 1), 0);
           const delTris = (stMulti.deletions || []).reduce((acc, b) => acc + (Number(b.triCount) || 0), 0);
+          const pendingRegs = countMarkedRegionsPending();
+          const pendingTris = Number(STATE.lassoSelectedTriCount) || 0;
           const crsItem = stMulti.crsConfig
             ? CRS_UI_CATALOG.find((c) => c.code === stMulti.crsConfig.target_crs)
             : null;
           const chips = [];
+          if (pendingRegs > 0) {
+            chips.push(
+              `<span style="color:#ef4444;font-weight:700;">🔴 ${pendingRegs} selected polygon${
+                pendingRegs === 1 ? "" : "s"
+              }${pendingTris > 0 ? ` (~${pendingTris.toLocaleString()} tris)` : ""} preserved</span>`
+            );
+          }
           if (delRegs > 0) {
             chips.push(`🗑️ ${delRegs} deleted region${delRegs === 1 ? "" : "s"} (-${delTris.toLocaleString()} tris)`);
           }
@@ -12259,19 +12539,35 @@
             chips.push(`🌐 CRS: ${escapeHtml(crsItem.shortLabel)}`);
           }
           return `
-            <div style="display:flex;align-items:center;justify-content:space-between;gap:5px;flex-wrap:wrap;margin-bottom:8px;padding:6px 8px;border-radius:7px;background:var(--ui-bg-subtle);border:1px solid var(--ui-border);font-size:10.5px;">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:5px;flex-wrap:wrap;margin-bottom:8px;padding:6px 8px;border-radius:7px;background:var(--ui-bg-subtle);border:1px solid ${
+              pendingRegs > 0 ? "rgba(239,68,68,0.45)" : "var(--ui-border)"
+            };font-size:10.5px;">
               <span style="color:var(--ui-text-secondary);">${
                 chips.length > 0
                   ? `<b>Included in Merge:</b> ${chips.join(" · ")}`
                   : `Tip: Use <b>Lasso Delete (套索刪除)</b> or <b>CRS (座標系統)</b> before merging!`
               }</span>
-              <div style="display:flex;gap:4px;">
-                <button type="button" class="gs-top-btn" id="btnAlignOpenLassoDelete" style="padding:2px 7px;font-size:10px;border-color:rgba(239,68,68,0.4);color:#ef4444;">🗑️ Lasso Delete</button>
+              <div style="display:flex;gap:4px;flex-wrap:wrap;">
+                ${
+                  pendingRegs > 0
+                    ? `<button type="button" class="gs-top-btn accent" id="btnAlignCommitPendingLasso" style="padding:2px 7px;font-size:10px;background:#ef4444;border-color:#dc2626;color:#fff;" title="Apply live 3D deletion to the preserved red polygon(s)">✓ Delete Selected (${pendingRegs})</button>`
+                    : ""
+                }
+                <button type="button" class="gs-top-btn" id="btnAlignOpenLassoDelete" style="padding:2px 7px;font-size:10px;border-color:rgba(239,68,68,0.4);color:#ef4444;">🗑️ ${
+                  pendingRegs > 0 ? "Edit Polygons" : "Lasso Delete"
+                }</button>
                 <button type="button" class="gs-top-btn" id="btnAlignOpenCrs" style="padding:2px 7px;font-size:10px;">🌐 CRS</button>
               </div>
             </div>
           `;
         })()}
+
+        <label style="display:flex;align-items:center;gap:7px;margin-bottom:8px;padding:6px 8px;border-radius:7px;background:rgba(16,185,129,0.08);border:1px solid rgba(16,185,129,0.28);font-size:11px;color:var(--ui-text-primary);cursor:pointer;">
+          <input type="checkbox" id="chkAlignArchiveOriginals" ${
+            STATE.multiAlign.archiveOriginals !== false ? "checked" : ""
+          } style="accent-color:#10b981;width:14px;height:14px;margin:0;cursor:pointer;flex-shrink:0;" />
+          <span>Move original source scans to <b>Trash Bin</b> as backups (原掃描移至回收桶備份，隨時可還原)</span>
+        </label>
 
         <button type="button" class="gs-top-btn accent" id="btnExecuteMergeScans" style="width:100%;justify-content:center;padding:8px 12px;font-weight:700;${
           allLocked ? "" : "opacity:0.85;"
@@ -12422,6 +12718,7 @@
         if (l) {
           l.visible = !l.visible;
           if (l.layerGroup) l.layerGroup.visible = l.visible;
+          if (countMarkedRegionsPending() > 0) rebuildLassoHighlight3D();
           updateStudioTransformGizmo();
           renderAlignMergeInspectorContent();
         }
@@ -12513,13 +12810,28 @@
       showToast("Unlocked all scan layers 🔓");
     });
 
+    document.getElementById("chkAlignArchiveOriginals")?.addEventListener("change", (ev) => {
+      STATE.multiAlign.archiveOriginals = Boolean(ev.target.checked);
+    });
+
+    document.getElementById("btnAlignCommitPendingLasso")?.addEventListener("click", () => {
+      const committed = commitPendingLassoMarksToStagedEdits("delete_inside");
+      renderAlignMergeInspectorContent();
+      if (committed.committed) {
+        showToast(
+          `Deleted ${committed.regionCount} selected polygon(s) in live 3D preview (${(committed.hiddenTris || 0).toLocaleString()} tris hidden)`
+        );
+      }
+    });
+
     document.getElementById("btnAlignOpenLassoDelete")?.addEventListener("click", () => {
       STATE.cropMode = "delete_inside";
       openLassoDeleteInspector({ armLasso: true });
-      showToast("Lasso active across visible scan layers — mark regions & press Delete, then return to Align & Merge!");
+      showToast("Lasso active across visible scan layers — mark regions & press Delete, or Return to Alignment anytime!");
     });
 
     document.getElementById("btnAlignOpenCrs")?.addEventListener("click", () => {
+      preserveLassoSelectionBeforeToolSwitch();
       setActiveStudioTool("crs");
       openCoordinateSystemInspector();
     });
@@ -12547,6 +12859,10 @@
         return;
       }
 
+      if (countMarkedRegionsPending() > 0) {
+        commitPendingLassoMarksToStagedEdits("delete_inside");
+      }
+
       const stMulti = ensureStagedEditsForActiveScan();
       const mergedName =
         document.getElementById("alignMergedScanName")?.value?.trim() ||
@@ -12561,11 +12877,14 @@
         postOptPresetRaw && postOptPresetRaw !== "none"
           ? postOptPresetRaw
           : stMulti.compressionPreset || "";
+      const archiveOriginals = STATE.multiAlign.archiveOriginals !== false;
 
       const resBox = document.getElementById("alignMergeResultBox");
       if (resBox) {
         resBox.innerHTML = `<div style="padding:10px;border-radius:8px;background:var(--ui-bg-subtle);border:1px solid var(--ui-border-strong);font-size:12px;color:var(--ui-accent);">
-          Merging ${STATE.multiAlign.layers.length} locked scans, applying staged deletions / CRS / compression, and building unified 3D Tileset...
+          Merging ${STATE.multiAlign.layers.length} locked scans, applying deletions / CRS / compression${
+            archiveOriginals ? ", and moving source scan backups to Trash Bin" : ""
+          }...
         </div>`;
       }
 
@@ -12582,9 +12901,16 @@
           deletions: stMulti.deletions || [],
           compression_preset: effectiveCompression,
           crs_config: stMulti.crsConfig || null,
+          archive_originals_to_bin: archiveOriginals,
         };
 
         const res = await apiPost("/api/scans/merge", payload);
+
+        if (typeof res.bin_scans_count === "number") {
+          updateRecycleBinBadges(res.bin_scans_count);
+        } else if (Array.isArray(res.bin_scans)) {
+          updateRecycleBinBadges(res.bin_scans.length);
+        }
 
         STATE.multiAlign.lastMergedScan = res.scan || {
           scan_id: res.scan_id,
@@ -12600,17 +12926,33 @@
         const finalBox = document.getElementById("alignMergeResultBox");
         if (finalBox) {
           const outMb = res.output_mb ?? res.glb_size_mb ?? 0;
+          const archivedCount = Number(res.archived_to_bin_count) || 0;
           finalBox.innerHTML = `
             <div style="background:var(--ui-bg-subtle);border:1px solid var(--ui-border-strong);border-radius:8px;padding:10px;font-size:12px;color:var(--ui-text-primary);">
-              <div style="color:#10b981;font-weight:700;">✓ Unified Scan Created (${res.duration_s}s)</div>
+              <div style="color:#10b981;font-weight:700;">✓ Unified Scan Saved (${res.duration_s}s)</div>
               <div style="margin-top:3px;">Scan ID: <code>${res.scan_id}</code></div>
               <div>Coordinate System: <b>${escapeHtml(res.crs || res.scan?.crs || "TWD97 (121) + TWVD2001")}</b></div>
               <div>Geometry: <b>${(res.total_vertices || 0).toLocaleString()} verts · ${(res.total_faces || 0).toLocaleString()} faces</b></div>
               <div>Stream Size: <b>${outMb} MB</b></div>
+              ${
+                archivedCount > 0
+                  ? `<div style="margin-top:5px;padding-top:5px;border-top:1px solid var(--ui-border);display:flex;align-items:center;justify-content:space-between;gap:6px;flex-wrap:wrap;font-size:11px;color:var(--ui-text-secondary);">
+                       <span>🗑️ <b>${archivedCount}</b> source scan backup${archivedCount === 1 ? "" : "s"} moved to Trash Bin</span>
+                       <button type="button" class="gs-top-btn" id="btnMergeResultOpenBin" style="padding:2px 7px;font-size:10.5px;">Open Trash Bin</button>
+                     </div>`
+                  : ""
+              }
             </div>
           `;
+          document.getElementById("btnMergeResultOpenBin")?.addEventListener("click", () => {
+            openRecycleBinModal();
+          });
         }
-        showToast(`Merged ${res.merged_count} scans into "${mergedName}"!`);
+        showToast(
+          `Merged ${res.merged_count} scans into "${mergedName}"${
+            Number(res.archived_to_bin_count) > 0 ? " · Source backups in Trash Bin" : ""
+          }!`
+        );
       } catch (err) {
         if (resBox) {
           resBox.innerHTML = `<div style="padding:8px;border-radius:6px;background:rgba(239,68,68,0.12);color:#ef4444;font-size:11.5px;">Merge failed: ${err.message}</div>`;
@@ -12680,37 +13022,35 @@
       }
       if (!tool) return;
 
-      // Clicking an already-active Lasso dock button toggles Lasso OFF cleanly
+      // Clicking an already-active Lasso dock button pauses Lasso cleanly WITHOUT discarding selected polygons
       if ((tool === "crop_delete" && STATE.activeTool === "crop_delete") || (tool === "crop" && STATE.activeTool === "crop")) {
-        cancelLassoToolMode(true);
-        showToast("Lasso cancelled — press the red button on the right to start Lasso again");
+        cancelLassoToolMode(true, false);
+        showToast("Lasso paused (orbit mode) — selected polygons preserved");
         return;
       }
 
       if (tool === "optimizer") {
-        STATE.measurePoints = [];
-        clearLassoSelectionState();
+        preserveLassoSelectionBeforeToolSwitch();
         setActiveStudioTool("optimizer");
         openMeshCompressionInspector();
         return;
       }
 
       if (tool === "crs") {
-        STATE.measurePoints = [];
-        clearLassoSelectionState();
+        preserveLassoSelectionBeforeToolSwitch();
         setActiveStudioTool("crs");
         openCoordinateSystemInspector();
         return;
       }
 
       if (tool === "generate_scan") {
-        STATE.measurePoints = [];
-        clearLassoSelectionState();
+        preserveLassoSelectionBeforeToolSwitch();
         setActiveStudioTool("generate_scan");
         openGenerateScanInspector();
         return;
       }
 
+      preserveLassoSelectionBeforeToolSwitch();
       setActiveStudioTool(tool);
       STATE.measurePoints = [];
 
@@ -12940,24 +13280,19 @@
           return;
         }
       }
-      // 2. Cancel Lasso completely on Esc (mid-drag, with marked strokes, or while Lasso tool is armed)
-      //    and keep the right panel open so pressing the red button on the right starts Lasso again!
+      // 2. Pause Lasso on Esc (if mid-drag, cancel only the in-progress drag; if armed, switch to orbit mode while keeping all selected polygons!)
       if (STATE.activeView === "studio") {
         const isDraggingLasso = Boolean(studioThree && typeof studioThree._isLassoDragging === "function" && studioThree._isLassoDragging());
-        const hasLassoSelection = Boolean(
-          (STATE.lassoStrokes && STATE.lassoStrokes.length > 0) ||
-            (STATE.pendingCropPolygons && STATE.pendingCropPolygons.length > 0) ||
-            (STATE.cropPolygonPoints && STATE.cropPolygonPoints.length > 0)
-        );
-        if (
-          isDraggingLasso ||
-          STATE.activeTool === "crop_delete" ||
-          STATE.activeTool === "crop" ||
-          hasLassoSelection
-        ) {
+        if (isDraggingLasso) {
           e.preventDefault();
-          cancelLassoToolMode(true);
-          showToast("Lasso cancelled (Esc) — press the red button on the right to start Lasso again");
+          if (typeof studioThree._cancelLassoDrag === "function") studioThree._cancelLassoDrag();
+          showToast("Cancelled current Lasso drag (Esc) — previous polygons preserved");
+          return;
+        }
+        if (STATE.activeTool === "crop_delete" || STATE.activeTool === "crop") {
+          e.preventDefault();
+          cancelLassoToolMode(true, false);
+          showToast("Lasso paused (Esc) — selected polygons preserved");
           return;
         }
       }

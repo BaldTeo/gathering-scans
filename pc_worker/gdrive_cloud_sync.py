@@ -586,6 +586,11 @@ def sync_all_scans_to_gdrive_and_vps(db: Any, auth_share: Any = None, force: boo
 
     share_links = auth_share.list_share_links() if auth_share else []
     shared_dir, my_drive_dir = resolve_gdrive_stream_dirs()
+    trashed_ids = [
+        str(t.get("scan_id") or "")
+        for t in (db.list_trashed_scans() if hasattr(db, "list_trashed_scans") else [])
+        if t.get("scan_id")
+    ]
 
     manifest = {
         "updated_at": int(time.time()),
@@ -594,6 +599,7 @@ def sync_all_scans_to_gdrive_and_vps(db: Any, auth_share: Any = None, force: boo
         "shared_drive_folder_id": dfs_ids.get("shared_drive_folder_id") or prev_manifest.get("shared_drive_folder_id", ""),
         "my_drive_folder_id": dfs_ids.get("my_drive_folder_id") or prev_manifest.get("my_drive_folder_id", ""),
         "scans": scans,
+        "trashed_scan_ids": trashed_ids,
         "share_links": share_links,
         "packages": packages,
     }

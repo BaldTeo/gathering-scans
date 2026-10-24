@@ -525,7 +525,14 @@ class ScanQueueDB:
         except Exception as e:
             print(f"[DB] Warning updating deleted_scans.json: {e}")
 
-    def trash_scan(self, scan_id: str, actor_email: str = "", actor_name: str = "") -> Optional[Dict[str, Any]]:
+    def trash_scan(
+        self,
+        scan_id: str,
+        actor_email: str = "",
+        actor_name: str = "",
+        backup_name_override: Optional[str] = None,
+        replaced_by_scan_id: Optional[str] = None,
+    ) -> Optional[Dict[str, Any]]:
         """
         Soft-deletes a scan by moving its metadata and comments into trashed_scans (Recycle Bin)
         while preserving its local folder in C:\\GatheringScans, .3tz package, and thumbnail on disk.
@@ -555,6 +562,9 @@ class ScanQueueDB:
                 ).fetchall()
             ]
         tomb = self._collect_tombstone_keys_for_scan(scan, clean_id)
+        if replaced_by_scan_id:
+            tomb["replaced_by_scan_id"] = str(replaced_by_scan_id).strip()
+            tomb["is_edit_backup"] = True
 
         # Add to deleted_scans.json so GDrive watcher skips it while in Bin
         reg = self.load_deleted_scans_registry()
@@ -580,6 +590,8 @@ class ScanQueueDB:
             except Exception:
                 pass
 
+        bin_display_name = (backup_name_override or scan.get("name") or clean_id).strip()
+
         with DB_LOCK, self._connect() as conn:
             conn.execute(
                 """
@@ -591,7 +603,7 @@ class ScanQueueDB:
                 """,
                 (
                     clean_id,
-                    scan.get("name") or clean_id,
+                    bin_display_name,
                     scan.get("project_group") or "",
                     scan.get("capture_date") or "",
                     proj_dir,
@@ -611,7 +623,10 @@ class ScanQueueDB:
 
         return {
             "scan_id": clean_id,
-            "name": scan.get("name") or clean_id,
+            "name": bin_display_name,
+            "original_name": scan.get("name") or clean_id,
+            "replaced_by_scan_id": tomb.get("replaced_by_scan_id", ""),
+            "is_edit_backup": bool(tomb.get("is_edit_backup")),
             "project_group": scan.get("project_group") or "",
             "capture_date": scan.get("capture_date") or "",
             "size_bytes": size_bytes,
@@ -620,6 +635,75 @@ class ScanQueueDB:
             "trashed_by_name": actor_name or actor_email or "User",
             "trashed_at": now_ts,
         }
+
+    def get_trashed_scan(self, scan_id: str) -> Optional[Dict[str, Any]]:
+        clean_id = (scan_id or "").strip()
+        if not clean_id:
+            return None
+        with DB_LOCK, self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM trashed_scans WHERE lower(scan_id) = lower(?) LIMIT 1",
+                (clean_id,),
+            ).fetchone()
+        if not row:
+            return None
+        d = dict(row)
+        try:
+            sc = json.loads(d.get("scan_json") or "{}")
+            if not isinstance(sc, dict):
+                sc = {}
+        except Exception:
+            sc = {}
+        sc.setdefault("scan_id", d.get("scan_id") or clean_id)
+        sc.setdefault("name", d.get("name") or clean_id)
+        sc.setdefault("project_group", d.get("project_group") or "")
+        sc.setdefault("project_dir", d.get("project_dir") or "")
+        return sc
+
+    def clone_comments_to_scan(self, source_scan_id: str, target_scan_id: str) -> int:
+        src_id = (source_scan_id or "").strip()
+        dst_id = (target_scan_id or "").strip()
+        if not src_id or not dst_id or src_id.lower() == dst_id.lower():
+            return 0
+        with DB_LOCK, self._connect() as conn:
+            rows = [
+                dict(r)
+                for r in conn.execute(
+                    "SELECT * FROM scan_comments WHERE lower(scan_id) = lower(?)",
+                    (src_id,),
+                ).fetchall()
+            ]
+            copied = 0
+            for idx, c in enumerate(rows):
+                orig_cid = str(c.get("comment_id") or f"cmt_{idx}")
+                new_cid = f"{orig_cid}_{dst_id[-16:]}"
+                conn.execute(
+                    """
+                    INSERT OR REPLACE INTO scan_comments (
+                        comment_id, scan_id, author_email, author_name, text,
+                        pos_x, pos_y, pos_z, twd97_e, twd97_n, twd97_h, camera_json, created_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        new_cid,
+                        dst_id,
+                        c.get("author_email") or "",
+                        c.get("author_name") or "User",
+                        c.get("text") or "",
+                        float(c.get("pos_x") or 0.0),
+                        float(c.get("pos_y") or 0.0),
+                        float(c.get("pos_z") or 0.0),
+                        float(c.get("twd97_e") or 0.0),
+                        float(c.get("twd97_n") or 0.0),
+                        float(c.get("twd97_h") or 0.0),
+                        c.get("camera_json") or "{}",
+                        c.get("created_at") or "",
+                    ),
+                )
+                copied += 1
+            if copied:
+                conn.commit()
+        return copied
 
     def list_trashed_scans(self) -> List[Dict[str, Any]]:
         with DB_LOCK, self._connect() as conn:
@@ -633,6 +717,19 @@ class ScanQueueDB:
             proj_dir = d.get("project_dir") or ""
             d["thumbnail_url"] = f"/api/scans/{sid}/thumbnail"
             d["has_local_files"] = bool(proj_dir and os.path.isdir(proj_dir))
+            try:
+                sc_j = json.loads(d.get("scan_json") or "{}")
+                if isinstance(sc_j, dict) and sc_j.get("name"):
+                    d["original_name"] = sc_j["name"]
+            except Exception:
+                pass
+            try:
+                tb_j = json.loads(d.get("tombstone_json") or "{}")
+                if isinstance(tb_j, dict):
+                    d["replaced_by_scan_id"] = tb_j.get("replaced_by_scan_id", "")
+                    d["is_edit_backup"] = bool(tb_j.get("is_edit_backup"))
+            except Exception:
+                pass
             items.append(d)
         return items
 
@@ -707,6 +804,17 @@ class ScanQueueDB:
                 scan_data["image_count"] = row.get("image_count") or 0
                 scan_data["status"] = "completed"
 
+            # Disambiguate any active edited scan derived from this backup if both share the exact same name
+            replaced_by_id = str(tomb.get("replaced_by_scan_id") or "").strip()
+            orig_clean_name = str(scan_data.get("name") or "").strip()
+            if replaced_by_id and orig_clean_name:
+                existing_edited = self.get_scan(replaced_by_id)
+                if existing_edited and str(existing_edited.get("name") or "").strip() == orig_clean_name:
+                    try:
+                        self.rename_scan(replaced_by_id, f"{orig_clean_name} (Edited)")
+                    except Exception:
+                        pass
+
             restored_item = self.upsert_scan(scan_data)
             restored_scans.append(restored_item)
 
@@ -721,8 +829,8 @@ class ScanQueueDB:
                             """
                             INSERT OR REPLACE INTO scan_comments (
                                 comment_id, scan_id, author_name, author_email, text,
-                                pos_x, pos_y, pos_z, twd97_e, twd97_n, twd97_h, created_at
-                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                pos_x, pos_y, pos_z, twd97_e, twd97_n, twd97_h, camera_json, created_at
+                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                             """,
                             (
                                 c.get("comment_id"),
@@ -736,6 +844,7 @@ class ScanQueueDB:
                                 float(c.get("twd97_e") or 0.0),
                                 float(c.get("twd97_n") or 0.0),
                                 float(c.get("twd97_h") or 0.0),
+                                c.get("camera_json") or "{}",
                                 c.get("created_at") or "",
                             ),
                         )
@@ -779,6 +888,7 @@ class ScanQueueDB:
 
         purged_ids: List[str] = []
         data_dir = os.path.dirname(self.db_path)
+        active_scans_snapshot = self.list_scans()
 
         for row in targets:
             clean_id = row["scan_id"]
@@ -806,6 +916,28 @@ class ScanQueueDB:
                         abs_root = os.path.normcase(os.path.abspath(LOCAL_SCANS_ROOT))
                         abs_cand = os.path.normcase(os.path.abspath(cand_dir))
                         if abs_cand.startswith(abs_root + os.sep) and abs_cand != abs_root:
+                            # Preserve inherited cameras_dir if any active edited/merged scan still points inside cand_dir
+                            for act_sc in active_scans_snapshot:
+                                act_cam = str(act_sc.get("cameras_dir") or "").strip()
+                                act_pdir = str(act_sc.get("project_dir") or "").strip()
+                                if act_cam and act_pdir and os.path.isdir(act_cam) and os.path.isdir(act_pdir):
+                                    abs_cam = os.path.normcase(os.path.abspath(act_cam))
+                                    if abs_cam == abs_cand or abs_cam.startswith(abs_cand + os.sep):
+                                        try:
+                                            relocated_cam = os.path.join(act_pdir, "inputs")
+                                            if not os.path.isdir(relocated_cam):
+                                                shutil.copytree(act_cam, relocated_cam)
+                                            act_sc["cameras_dir"] = relocated_cam
+                                            self.upsert_scan(act_sc)
+                                            act_meta = os.path.join(act_pdir, "scan_meta.json")
+                                            if os.path.isfile(act_meta):
+                                                with open(act_meta, "r", encoding="utf-8") as mf_r:
+                                                    mj = json.load(mf_r)
+                                                mj["cameras_dir"] = relocated_cam
+                                                with open(act_meta, "w", encoding="utf-8") as mf_w:
+                                                    json.dump(mj, mf_w, indent=2, ensure_ascii=False)
+                                        except Exception as ce:
+                                            print(f"[DB] Note relocating shared cameras_dir for {act_sc.get('scan_id')}: {ce}")
                             shutil.rmtree(cand_dir, ignore_errors=True)
                 except Exception as e:
                     print(f"[DB] Warning removing folder {cand_dir}: {e}")

@@ -1603,10 +1603,11 @@ class OptimizerBridge:
                     if (isinstance(raw_cz, list) and len(raw_cz) >= 3)
                     else None
                 )
-                # Prefer tileset .glb if tileset.json was edited more recently than obj_p
-                if obj_p and os.path.isfile(obj_p) and ts_p_check and os.path.isfile(ts_p_check):
+                # Prefer tileset .glb ONLY when an in-place edit backup (`tileset_backup`) exists and tileset is newer than obj_p
+                has_inplace_bk = os.path.isdir(os.path.join(sc.get("project_dir") or "", "tileset_backup"))
+                if has_inplace_bk and obj_p and os.path.isfile(obj_p) and ts_p_check and os.path.isfile(ts_p_check):
                     r_glb_check = os.path.join(os.path.dirname(ts_p_check), "tiles", "root.glb")
-                    if os.path.isfile(r_glb_check) and os.path.getmtime(r_glb_check) > os.path.getmtime(obj_p) + 2.0:
+                    if os.path.isfile(r_glb_check) and os.path.getmtime(r_glb_check) > os.path.getmtime(obj_p) + 60.0:
                         obj_p = ""
 
                 if obj_p and os.path.isfile(obj_p):
@@ -1711,7 +1712,10 @@ class OptimizerBridge:
                                         if os.path.isfile(cand_p):
                                             out_list.append((cand_p, cur_tf))
 
-                            if r_glb and os.path.isfile(r_glb):
+                            root_has_children = bool([c for c in ((tsj.get("root") or {}).get("children") or []) if isinstance(c, dict)])
+                            if isinstance(tsj.get("root"), dict) and root_has_children:
+                                _collect_leaf_glbs(tsj["root"], np.eye(4, dtype=np.float64), glb_entries)
+                            if not glb_entries and r_glb and os.path.isfile(r_glb):
                                 rtf_raw = (tsj.get("root") or {}).get("transform")
                                 rtf = (
                                     np.array(rtf_raw, dtype=np.float64).reshape((4, 4), order="F")
@@ -1719,7 +1723,7 @@ class OptimizerBridge:
                                     else np.eye(4, dtype=np.float64)
                                 )
                                 glb_entries = [(r_glb, rtf)]
-                            elif isinstance(tsj.get("root"), dict):
+                            elif not glb_entries and isinstance(tsj.get("root"), dict):
                                 _collect_leaf_glbs(tsj["root"], np.eye(4, dtype=np.float64), glb_entries)
                                 # Implicit tiling fallback: use preview_tileset.json or content/*.glb
                                 if not glb_entries:
@@ -1765,8 +1769,13 @@ class OptimizerBridge:
                                 raise ValueError("Empty or meshopt-compressed GLB")
                         except Exception:
                             if os.path.isfile(GLTFPACK_EXE):
-                                tmp_dec = os.path.join(work_dir, f"_dec_{idx}_{g_idx}.glb")
-                                _sp.run([GLTFPACK_EXE, "-i", gp, "-o", tmp_dec, "-noq"], capture_output=True, timeout=45)
+                                tmp_dec = os.path.join(work_proj_dir, f"_dec_{idx}_{g_idx}.glb")
+                                _sp.run(
+                                    [GLTFPACK_EXE, "-i", gp, "-o", tmp_dec, "-noq"],
+                                    capture_output=True,
+                                    timeout=45,
+                                    creationflags=getattr(_sp, "CREATE_NO_WINDOW", 0x08000000) if os.name == "nt" else 0,
+                                )
                                 if os.path.isfile(tmp_dec):
                                     scene_or_mesh = trimesh.load(tmp_dec, process=False)
                         finally:
@@ -1806,11 +1815,16 @@ class OptimizerBridge:
                                 else np.zeros((len(gv), 2), dtype=np.float64)
                             )
                             g_img = None
-                            if hasattr(geom.visual, "material") and getattr(geom.visual.material, "image", None) is not None:
-                                try:
-                                    g_img = geom.visual.material.image.convert("RGB")
-                                except Exception:
-                                    g_img = None
+                            if hasattr(geom.visual, "material") and geom.visual.material is not None:
+                                mat_obj = geom.visual.material
+                                raw_tex = getattr(mat_obj, "baseColorTexture", None)
+                                if raw_tex is None:
+                                    raw_tex = getattr(mat_obj, "image", None)
+                                if raw_tex is not None:
+                                    try:
+                                        g_img = raw_tex.convert("RGB")
+                                    except Exception:
+                                        g_img = None
                             tile_chunks.append((gv, guv, gf, g_img))
 
                     if not tile_chunks:
@@ -1820,7 +1834,20 @@ class OptimizerBridge:
                     sub_vs, sub_vts, sub_fs = [], [], []
                     sub_v_off = 0
                     imgs_present = [tc[3] for tc in tile_chunks if tc[3] is not None]
-                    if len(tile_chunks) == 1 or len(imgs_present) <= 1:
+                    shared_single_atlas = False
+                    if len(imgs_present) > 1:
+                        try:
+                            ref_im = imgs_present[0]
+                            w0, h0 = ref_im.size
+                            pts_chk = [(w0 // 2, h0 // 2), (w0 // 4, h0 // 4), ((w0 * 3) // 4, (h0 * 3) // 4)]
+                            ref_sig = (w0, h0, tuple(ref_im.getpixel(pt) for pt in pts_chk))
+                            shared_single_atlas = all(
+                                im.size == (w0, h0) and tuple(im.getpixel(pt) for pt in pts_chk) == ref_sig[2]
+                                for im in imgs_present[1:]
+                            )
+                        except Exception:
+                            shared_single_atlas = False
+                    if len(tile_chunks) == 1 or len(imgs_present) <= 1 or shared_single_atlas:
                         tex_im = imgs_present[0] if imgs_present else None
                         for gv, guv, gf, _ in tile_chunks:
                             gf1 = gf + 1 + sub_v_off
@@ -2184,6 +2211,41 @@ class OptimizerBridge:
 
             saved_scan = self.db.upsert_scan(scan_record)
 
+            # Copy 3D geo-comments from source scans to the unified scan before moving originals to Trash Bin
+            seen_src_ids = set()
+            for _, src_sc in resolved_layers:
+                src_sid = str(src_sc.get("scan_id") or "").strip()
+                if src_sid and src_sid.lower() not in seen_src_ids:
+                    seen_src_ids.add(src_sid.lower())
+                    try:
+                        self.db.clone_comments_to_scan(src_sid, new_scan_id)
+                    except Exception:
+                        pass
+
+            archive_originals = payload.get("archive_originals_to_bin")
+            if archive_originals is None:
+                archive_originals = True
+            trashed_backups: List[Dict[str, Any]] = []
+            if bool(archive_originals):
+                actor_em = str(payload.get("actor_email") or "")
+                actor_nm = str(payload.get("actor_name") or actor_em or "Editor")
+                trashed_seen = set()
+                for _, src_sc in resolved_layers:
+                    src_sid = str(src_sc.get("scan_id") or "").strip()
+                    if not src_sid or src_sid.lower() in trashed_seen or src_sid.lower() == new_scan_id.lower():
+                        continue
+                    trashed_seen.add(src_sid.lower())
+                    src_nm = str(src_sc.get("name") or src_sid).strip()
+                    tb = self.db.trash_scan(
+                        src_sid,
+                        actor_email=actor_em,
+                        actor_name=actor_nm,
+                        backup_name_override=f"{src_nm} (Pre-Merge Backup)",
+                        replaced_by_scan_id=new_scan_id,
+                    )
+                    if tb:
+                        trashed_backups.append(tb)
+
             def _bg_sync_merged_scan():
                 try:
                     from pc_worker.gdrive_cloud_sync import build_scan_3tz_package, sync_all_scans_to_gdrive_and_vps
@@ -2208,6 +2270,8 @@ class OptimizerBridge:
                 "merged_count": num_scans,
                 "deleted_faces": total_deleted_faces,
                 "applied_adjustments": applied_steps,
+                "archived_to_bin_count": len(trashed_backups),
+                "trashed_backups": trashed_backups,
                 "crs": final_crs_label,
                 "total_vertices": int(len(v_merged)),
                 "total_faces": int(len(f_merged)),
@@ -2339,7 +2403,7 @@ class OptimizerBridge:
         base_name = str(source_scan.get("name") or source_scan_id).strip()
         raw_name = str(payload.get("new_scan_name") or payload.get("name") or "").strip()
         if not raw_name:
-            raw_name = f"{base_name}_Edited"
+            raw_name = base_name
 
         proj_group = str(payload.get("project_group") or source_scan.get("project_group") or "Unassigned Site").strip()
         proj_zh = str(payload.get("project_name_zh") or source_scan.get("project_name_zh") or f"{proj_group} 工程掃描群組").strip()
@@ -2524,14 +2588,15 @@ class OptimizerBridge:
                 covered_area_m2 = float(source_scan.get("covered_area_m2") or 1000.0)
 
             now_ts = time.time()
-            summary_str = " · ".join(applied_steps) if applied_steps else "Generated Edited Scan"
+            summary_str = " · ".join(applied_steps) if applied_steps else "Saved Edited Scan"
+            orig_capture_date = str(source_scan.get("capture_date") or "").strip() or datetime.now().strftime("%Y-%m-%d %H:%M")
             scan_record = {
                 "scan_id": new_scan_id,
                 "name": raw_name,
                 "user_edited_name": 1,
                 "project_group": proj_group,
                 "project_name_zh": proj_zh,
-                "capture_date": datetime.now().strftime("%Y-%m-%d %H:%M"),
+                "capture_date": orig_capture_date,
                 "uploaded_at": now_ts,
                 "uploader_email": str(payload.get("actor_email") or source_scan.get("uploader_email") or "engineer@gatheren.cloud"),
                 "uploader_name": str(payload.get("actor_name") or source_scan.get("uploader_name") or "Survey Engineer"),
@@ -2559,8 +2624,8 @@ class OptimizerBridge:
                 "tileset_version": int(now_ts * 1000),
                 "status": "completed",
                 "progress_pct": 100.0,
-                "stage_label": f"Generated ({summary_str})"[:180],
-                "notes": f"Generated from {source_scan_id}: {summary_str}",
+                "stage_label": f"Edited ({summary_str})"[:180],
+                "notes": f"Edited from {source_scan_id} (backup moved to Trash Bin): {summary_str}",
                 "derived_from_scan_id": source_scan_id,
                 "applied_adjustments": applied_steps,
             }
@@ -2570,6 +2635,27 @@ class OptimizerBridge:
                 json.dump(scan_record, mf, indent=2, ensure_ascii=False)
 
             saved_scan = self.db.upsert_scan(scan_record)
+
+            # Copy 3D geo-comments onto the saved edited scan before moving the original scan to Trash Bin
+            try:
+                self.db.clone_comments_to_scan(source_scan_id, new_scan_id)
+            except Exception as ce:
+                print(f"[OptimizerBridge] Note cloning comments from {source_scan_id} to {new_scan_id}: {ce}")
+
+            archive_original = payload.get("archive_original_to_bin")
+            if archive_original is None:
+                archive_original = True
+            trashed_backup = None
+            if bool(archive_original):
+                actor_em = str(payload.get("actor_email") or "")
+                actor_nm = str(payload.get("actor_name") or actor_em or "Editor")
+                trashed_backup = self.db.trash_scan(
+                    source_scan_id,
+                    actor_email=actor_em,
+                    actor_name=actor_nm,
+                    backup_name_override=f"{base_name} (Original Backup)",
+                    replaced_by_scan_id=new_scan_id,
+                )
 
             def _bg_sync_new_scan():
                 try:
@@ -2592,6 +2678,8 @@ class OptimizerBridge:
                 "source_scan_id": source_scan_id,
                 "scan_id": new_scan_id,
                 "scan": saved_scan,
+                "archived_to_bin": bool(trashed_backup),
+                "trashed_backup": trashed_backup,
                 "applied_adjustments": applied_steps,
                 "delete_stats": del_stats,
                 "crop_keep_stats": keep_stats,

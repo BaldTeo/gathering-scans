@@ -772,7 +772,7 @@ def start_pc_reverse_tunnel_pool(local_port: int = SERVER_PORT, pool_size: int =
             try:
                 s = socket.create_connection((VPS_HOST, 8095), timeout=8.0)
                 s.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
-                s.settimeout(240.0)
+                s.settimeout(900.0)
                 handshake = (
                     f"GET /_pc_tunnel HTTP/1.1\r\n"
                     f"Host: {VPS_HOST}:8095\r\n"
@@ -821,7 +821,12 @@ def start_pc_reverse_tunnel_pool(local_port: int = SERVER_PORT, pool_size: int =
 
                     conn: Optional[http.client.HTTPConnection] = None
                     try:
-                        conn = http.client.HTTPConnection("127.0.0.1", local_port, timeout=30.0)
+                        is_long_local = method == "POST" and (
+                            path.startswith("/api/optimizer/") or path in ("/api/scans/merge", "/api/optimizer/merge")
+                        )
+                        conn = http.client.HTTPConnection(
+                            "127.0.0.1", local_port, timeout=900.0 if is_long_local else 90.0
+                        )
                         fwd_headers = {"Connection": "close"}
                         for hk, hv in req_headers.items():
                             if hk.lower() not in ("host", "connection", "transfer-encoding"):
@@ -1489,7 +1494,7 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
         return sorted(projects_map.values(), key=lambda x: (-x["scan_count"], x["project_group"].lower()))
 
     def _resolve_scan_thumbnail_path(self, scan_id: str, scan: Optional[Dict[str, Any]] = None) -> Optional[str]:
-        s = scan or DB.get_scan(scan_id) or {}
+        s = scan or DB.get_scan(scan_id) or (DB.get_trashed_scan(scan_id) if hasattr(DB, "get_trashed_scan") else None) or {}
         proj_dir = s.get("project_dir") or ""
 
         # 1. Check scan.project_dir/thumbnail.png dynamically inside C:\GatheringScans (flat or nested)
@@ -1772,14 +1777,16 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
             if self._serve_from_gdrive_cloud_if_available(path, share_token=share_token):
                 return True
 
-        # 3. Try up to 4 sockets from the PC reverse tunnel pool (single 300s pass for long optimizer/merge POSTs)
-        is_long_post = method == "POST" and (path.startswith("/api/optimizer/") or path == "/api/scans/merge")
+        # 3. Try up to 4 sockets from the PC reverse tunnel pool (single 900s pass for long optimizer/merge POSTs)
+        is_long_post = method == "POST" and (
+            path.startswith("/api/optimizer/") or path in ("/api/scans/merge", "/api/optimizer/merge")
+        )
         for _attempt in range(1 if is_long_post else 4):
             tun_sock, done_evt, proto_ver = _acquire_vps_tunnel_socket(timeout=5.0)
             if not tun_sock or not done_evt:
                 break
             try:
-                tun_sock.settimeout(300.0 if is_long_post else 45.0)
+                tun_sock.settimeout(900.0 if is_long_post else 60.0)
                 req_headers = {k: v for k, v in self.headers.items()}
                 envelope = json.dumps(
                     {
@@ -2277,7 +2284,7 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
                 if not ok:
                     self.send_json({"error": reason}, status=403)
                     return
-            scan = DB.get_scan(scan_id) or {}
+            scan = DB.get_scan(scan_id) or (DB.get_trashed_scan(scan_id) if hasattr(DB, "get_trashed_scan") else None) or {}
             thumb_path = self._resolve_scan_thumbnail_path(scan_id, scan)
             if thumb_path and os.path.isfile(thumb_path):
                 self._serve_file_with_range(thumb_path, content_type="image/png")
@@ -2926,6 +2933,7 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
                 _save_cloud_manifest(m_in)
                 _VPS_RAM_FALLBACK_CACHE.clear()
                 pkgs_in = m_in.get("packages") or {}
+                trashed_keep = {str(x) for x in (m_in.get("trashed_scan_ids") or []) if x}
                 pkg_dirs = [os.path.join(DATA_DIR, "stream_packages")]
                 if os.path.isdir("/host_docker/gathering_scans/data"):
                     pkg_dirs.insert(0, "/host_docker/gathering_scans/data/stream_packages")
@@ -2934,7 +2942,7 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
                         for fn in os.listdir(pd):
                             if fn.endswith(".3tz"):
                                 sid_f = fn[:-4]
-                                if sid_f not in pkgs_in:
+                                if sid_f not in pkgs_in and sid_f not in trashed_keep:
                                     try:
                                         os.remove(os.path.join(pd, fn))
                                     except OSError:
@@ -3197,10 +3205,10 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
                 )
                 return
 
-            # 1c-3. Admin-Only Recycle Bin Restore (/api/scans/bin/restore)
+            # 1c-3. Recycle Bin Restore (/api/scans/bin/restore — Editor, Admin, or Owner)
             if path == "/api/scans/bin/restore":
-                if not actor_perms.get("can_manage_users"):
-                    self.send_json({"error": f"Role '{actor_role}' cannot restore from the Recycle Bin (Admin or Owner required)."}, status=403)
+                if not (actor_perms.get("can_edit_names") or actor_perms.get("can_manage_users")):
+                    self.send_json({"error": f"Role '{actor_role}' cannot restore from the Recycle Bin (Editor, Admin, or Owner required)."}, status=403)
                     return
                 raw_ids = payload.get("scan_ids")
                 if not isinstance(raw_ids, list):
@@ -3430,8 +3438,11 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
                 if isinstance(res.get("scan"), dict):
                     res["scan"] = self._enrich_scan_urls(res["scan"])
                 all_scans = [self._enrich_scan_urls(s) for s in DB.list_scans()]
+                bin_scans = DB.list_trashed_scans()
                 res["scans"] = all_scans
                 res["projects"] = self._build_projects_summary(all_scans)
+                res["bin_scans"] = bin_scans
+                res["bin_scans_count"] = len(bin_scans)
                 self.send_json(res)
                 return
 
@@ -3440,6 +3451,7 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
                     self.send_json({"error": f"Role '{actor_role}' cannot merge scans on the PC (Editor, Admin, or Owner required)."}, status=403)
                     return
                 payload["actor_email"] = actor_email
+                payload["actor_name"] = str(payload.get("actor_name") or self.headers.get("X-User-Name") or actor_email or "雲在天").strip()
                 res = OPTIMIZER.run_merge_scans_action(payload, surveying_engine=SURVEY)
                 self._GZIP_FILE_CACHE.clear()
                 self._OPTIMIZED_TILESET_CACHE.clear()
@@ -3447,8 +3459,11 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
                 if isinstance(res.get("scan"), dict):
                     res["scan"] = self._enrich_scan_urls(res["scan"])
                 all_scans = [self._enrich_scan_urls(s) for s in DB.list_scans()]
+                bin_scans = DB.list_trashed_scans()
                 res["scans"] = all_scans
                 res["projects"] = self._build_projects_summary(all_scans)
+                res["bin_scans"] = bin_scans
+                res["bin_scans_count"] = len(bin_scans)
                 self.send_json(res)
                 return
 
