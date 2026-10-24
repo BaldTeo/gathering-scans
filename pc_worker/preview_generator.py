@@ -542,6 +542,7 @@ def ensure_scan_low_quality_preview(tileset_path: str, force: bool = False) -> O
             uri = c.get("uri") if isinstance(c, dict) else None
             if uri:
                 clean_uri = uri.split("?")[0]
+                is_multiscan_tile = os.path.basename(clean_uri).lower().startswith("tile_s")
                 src_glb = os.path.join(base_dir, clean_uri)
                 rel_clean = clean_uri.replace("\\", "/").lstrip("/")
                 dst_rel = f"preview_low/{rel_clean}"
@@ -553,9 +554,9 @@ def ensure_scan_low_quality_preview(tileset_path: str, force: bool = False) -> O
                 elif build_low_quality_preview_glb(
                     src_glb,
                     dst_glb,
-                    target_triangles=24000,
-                    max_tex_dim=1024,
-                    jpeg_quality=82,
+                    target_triangles=75000 if is_multiscan_tile else 24000,
+                    max_tex_dim=2048 if is_multiscan_tile else 1024,
+                    jpeg_quality=85 if is_multiscan_tile else 82,
                     allow_aggressive=False,
                 ):
                     v_ts = int(os.path.getmtime(dst_glb)) if os.path.isfile(dst_glb) else int(time.time())

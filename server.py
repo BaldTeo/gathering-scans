@@ -3429,6 +3429,24 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
                 self.send_json(res)
                 return
 
+            if path == "/api/optimizer/restore-region":
+                if not actor_perms.get("can_run_workflows"):
+                    self.send_json({"error": f"Role '{actor_role}' cannot restore scan regions on the PC (Editor, Admin, or Owner required)."}, status=403)
+                    return
+                res = OPTIMIZER.run_restore_region_action(payload)
+                self._GZIP_FILE_CACHE.clear()
+                self._OPTIMIZED_TILESET_CACHE.clear()
+                _VPS_RAM_FALLBACK_CACHE.clear()
+                if res.get("scan_id"):
+                    SURVEY._dsm_mem_cache.pop(res["scan_id"], None)
+                if isinstance(res.get("scan"), dict):
+                    res["scan"] = self._enrich_scan_urls(res["scan"])
+                all_scans = [self._enrich_scan_urls(s) for s in DB.list_scans()]
+                res["scans"] = all_scans
+                res["projects"] = self._build_projects_summary(all_scans)
+                self.send_json(res)
+                return
+
             if path == "/api/optimizer/generate-scan":
                 if not actor_perms.get("can_run_workflows"):
                     self.send_json({"error": f"Role '{actor_role}' cannot generate edited scans on the PC (Editor, Admin, or Owner required)."}, status=403)

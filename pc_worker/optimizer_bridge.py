@@ -3275,3 +3275,531 @@ class OptimizerBridge:
             if os.path.isdir(out_proj_dir):
                 shutil.rmtree(out_proj_dir, ignore_errors=True)
             raise
+
+    def run_restore_region_action(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Restores accidentally deleted triangles inside one or more 3D Lasso frustum strokes or 2D
+        polygons directly from the scan's untouched original/parent source scan(s) (`merged_from` or
+        `derived_from_scan_id`), preserving Generation-0 4K JPEGs and sub-millimeter 6-DOF alignment.
+        """
+        import copy
+        import subprocess
+        from collections import deque
+        from scipy.spatial import cKDTree
+        from cutter.spatial_cutter import SpatialCutter
+        from pc_worker.preview_generator import (
+            GLTFPACK_EXE,
+            replace_glb_single_image_bytes,
+            shift_glb_node_translation,
+            ensure_scan_low_quality_preview,
+            ensure_scan_full_quality_thumbnail,
+        )
+
+        t0 = time.time()
+        scan_id = str(payload.get("scan_id") or "").strip()
+        if not scan_id:
+            raise ValueError("Missing scan_id.")
+        scan = self.db.get_scan(scan_id)
+        if not scan:
+            raise ValueError(f"Scan not found: {scan_id}")
+
+        raw_strokes = payload.get("frustum_strokes") if isinstance(payload.get("frustum_strokes"), list) else []
+        raw_polys = payload.get("native_polygons") if isinstance(payload.get("native_polygons"), list) else []
+        connected_only = bool(payload.get("connected_only", True))
+
+        # Convert strokes to Z-up tileset evaluation (up_matrix = identity, visible_only = False over empty holes)
+        zup_strokes: List[Dict[str, Any]] = []
+        eye16 = [1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0]
+        for st in raw_strokes:
+            if isinstance(st, dict) and len(st.get("ndc_polygon") or []) >= 3:
+                st_c = dict(st)
+                st_c["up_matrix"] = eye16
+                st_c["visible_only"] = False
+                zup_strokes.append(st_c)
+
+        clean_polys: List[List[List[float]]] = []
+        for poly in raw_polys:
+            if isinstance(poly, list) and len(poly) >= 3:
+                clean_polys.append([[float(p[0]), float(p[1])] for p in poly])
+
+        if not zup_strokes and not clean_polys:
+            raise ValueError("Mark the missing gap with Freehand 3D Lasso or Plan Polygon first.")
+
+        proj_dir = str(scan.get("project_dir") or os.path.join(LOCAL_SCANS_ROOT, scan_id))
+        ts_path = str(scan.get("tileset_path") or os.path.join(proj_dir, "tileset", "tileset.json"))
+        ts_dir = os.path.dirname(ts_path)
+        tiles_dir = os.path.join(ts_dir, "tiles")
+
+        cutter_eval = SpatialCutter(
+            input_tileset_dir=ts_dir,
+            output_tileset_dir=ts_dir,
+            up_axis="z",
+            mode="keep_inside",
+            frustum_strokes=zup_strokes if zup_strokes else None,
+            polygons_list=clean_polys if clean_polys else None,
+        )
+
+        def _load_raw_obj_source(cand_sid: str) -> Optional[Tuple[np.ndarray, np.ndarray, np.ndarray, bytes, str]]:
+            visited = set()
+            cur_sid = str(cand_sid or "").strip()
+            for _ in range(8):
+                if not cur_sid or cur_sid in visited:
+                    break
+                visited.add(cur_sid)
+                c_sc = self.db.get_scan(cur_sid)
+                c_pdir = str((c_sc or {}).get("project_dir") or os.path.join(LOCAL_SCANS_ROOT, cur_sid))
+                c_odir = os.path.join(c_pdir, "exports", "obj_mesh")
+                m_obj = os.path.join(c_odir, "mesh.obj")
+                m_jpg = os.path.join(c_odir, "mesh_0.jpg")
+                if os.path.isfile(m_obj) and os.path.isfile(m_jpg):
+                    off_f = os.path.join(c_odir, "offset.xyz")
+                    if os.path.isfile(off_f):
+                        ox_c, oy_c, oz_c = [float(x) for x in open(off_f, encoding="utf-8").read().split()[:3]]
+                        off_v = np.array([ox_c, oy_c, oz_c], dtype=np.float64)
+                    else:
+                        off_v = np.zeros(3, dtype=np.float64)
+                    with open(m_obj, "r", encoding="utf-8", errors="ignore") as f_o:
+                        lns = f_o.read().splitlines()
+                    v_nat = np.fromstring(" ".join(ln[2:] for ln in lns if ln.startswith("v ")), sep=" ", dtype=np.float64).reshape(-1, 3) + off_v
+                    vt_nat = np.fromstring(" ".join(ln[3:] for ln in lns if ln.startswith("vt ")), sep=" ", dtype=np.float64).reshape(-1, 2)
+                    f_nat = np.fromstring(" ".join(ln[2:] for ln in lns if ln.startswith("f ")).replace("/", " "), sep=" ", dtype=np.int64).reshape(-1, 6)
+                    jb_nat = open(m_jpg, "rb").read()
+                    return v_nat, vt_nat, f_nat, jb_nat, m_jpg
+                cur_sid = str((c_sc or {}).get("derived_from_scan_id") or "").strip()
+            return None
+
+        mf_list = scan.get("merged_from") if isinstance(scan.get("merged_from"), list) else []
+        obj_dir = os.path.join(proj_dir, "exports", "obj_mesh")
+        cur_obj_p = os.path.join(obj_dir, "mesh.obj")
+        total_restored = 0
+
+        # Case 1: Multi-Tile Unified Merged Scan with multi-material exports/obj_mesh/mesh.obj
+        if mf_list and os.path.isfile(cur_obj_p) and os.path.isfile(os.path.join(obj_dir, "offset.xyz")):
+            ox_m, oy_m, oz_m = [float(x) for x in open(os.path.join(obj_dir, "offset.xyz"), encoding="utf-8").read().split()[:3]]
+            off_m = np.array([ox_m, oy_m, oz_m], dtype=np.float64)
+            with open(cur_obj_p, "r", encoding="utf-8", errors="ignore") as fm:
+                mlines = fm.read().splitlines()
+            v_cur_local = np.fromstring(" ".join(ln[2:] for ln in mlines if ln.startswith("v ")), sep=" ", dtype=np.float64).reshape(-1, 3)
+            vt_cur = np.fromstring(" ".join(ln[3:] for ln in mlines if ln.startswith("vt ")), sep=" ", dtype=np.float64).reshape(-1, 2)
+
+            blocks_cur: List[Tuple[str, np.ndarray]] = []
+            cur_mtl = "mesh_0"
+            cur_fl: List[str] = []
+            for ln in mlines:
+                if ln.startswith("usemtl "):
+                    if cur_fl:
+                        blocks_cur.append((cur_mtl, np.fromstring(" ".join(cur_fl).replace("/", " "), sep=" ", dtype=np.int64).reshape(-1, 6)))
+                        cur_fl = []
+                    cur_mtl = ln.split()[1].strip()
+                elif ln.startswith("f "):
+                    cur_fl.append(ln[2:])
+            if cur_fl:
+                blocks_cur.append((cur_mtl, np.fromstring(" ".join(cur_fl).replace("/", " "), sep=" ", dtype=np.int64).reshape(-1, 6)))
+
+            ts_dict = json.load(open(ts_path, encoding="utf-8"))
+            updated_parts: List[Tuple[str, np.ndarray, np.ndarray, np.ndarray]] = []
+
+            # Build per-scan existing centroids across ALL scan tiles so trimmed overlap skirts from
+            # secondary scans are never re-stacked on top of another scan's existing surface
+            all_cur_cents_list: List[np.ndarray] = []
+            for _, f_blk_c in blocks_cur:
+                fv_g = f_blk_c[:, [0, 2, 4]] - 1
+                all_cur_cents_list.append((v_cur_local[fv_g] + off_m).mean(axis=1))
+
+            for p_idx, (mtl_nm, f_blk) in enumerate(blocks_cur):
+                uv_i, inv_vi = np.unique(f_blk[:, [0, 2, 4]] - 1, return_inverse=True)
+                uvt_i, inv_vti = np.unique(f_blk[:, [1, 3, 5]] - 1, return_inverse=True)
+                v_ex_loc = v_cur_local[uv_i]
+                vt_ex = vt_cur[uvt_i]
+                fv_ex = inv_vi.reshape(-1, 3)
+                fvt_ex = inv_vti.reshape(-1, 3)
+
+                mf_entry = mf_list[p_idx] if p_idx < len(mf_list) else None
+                raw_loaded = None
+                if isinstance(mf_entry, dict):
+                    raw_loaded = _load_raw_obj_source(str(mf_entry.get("derived_from_scan_id") or "")) or _load_raw_obj_source(str(mf_entry.get("scan_id") or ""))
+
+                if raw_loaded is not None and isinstance(mf_entry, dict):
+                    v_nat, vt_nat, f_nat, jb_nat, _ = raw_loaded
+                    if isinstance(mf_entry.get("r_zup_rowmajor"), list) and len(mf_entry["r_zup_rowmajor"]) == 9:
+                        R_p = np.array(mf_entry["r_zup_rowmajor"], dtype=np.float64).reshape(3, 3)
+                    else:
+                        R_p = np.eye(3, dtype=np.float64)
+                    na_p = np.array(mf_entry.get("native_anchor_zup") or [0.0, 0.0, 0.0], dtype=np.float64)
+                    ma_p = np.array(mf_entry.get("merged_anchor_zup") or [0.0, 0.0, 0.0], dtype=np.float64)
+                    v_raw_twd = ma_p + (v_nat - na_p) @ R_p.T if np.linalg.norm(ma_p) > 1.0 else v_nat
+
+                    fv_raw = f_nat[:, [0, 2, 4]] - 1
+                    inside_m = cutter_eval._compute_inside_mask_for_triangles(
+                        v_raw_twd[fv_raw[:, 0]], v_raw_twd[fv_raw[:, 1]], v_raw_twd[fv_raw[:, 2]], np.eye(4, dtype=np.float64)
+                    )
+                    cand_faces = np.where(inside_m)[0]
+                    if len(cand_faces) > 0:
+                        cents_ex = (v_ex_loc + off_m)[fv_ex].mean(axis=1)
+                        tree_ex = cKDTree(cents_ex)
+                        cents_cand = v_raw_twd[fv_raw[cand_faces]].mean(axis=1)
+                        d_ex, _ = tree_ex.query(cents_cand, k=1)
+                        other_cents_l = [c_arr for ci, c_arr in enumerate(all_cur_cents_list) if ci != p_idx and len(c_arr) > 0]
+                        if other_cents_l:
+                            other_cents = np.vstack(other_cents_l)
+                            tree_other_xy = cKDTree(other_cents[:, :2])
+                            d_oxy, idx_oxy = tree_other_xy.query(cents_cand[:, :2], k=1)
+                            dz_other = np.abs(cents_cand[:, 2] - other_cents[idx_oxy, 2])
+                            not_covered_by_other = (d_oxy > 0.30) | (dz_other > 1.5)
+                            missing_loc = (d_ex > 0.015) & not_covered_by_other
+                        else:
+                            missing_loc = d_ex > 0.015
+
+                        if int(missing_loc.sum()) > 0:
+                            rest_idxs = cand_faces[missing_loc]
+                            if connected_only:
+                                c_min = cents_cand.min(axis=0) - 1.5
+                                c_max = cents_cand.max(axis=0) + 1.5
+                                all_c = v_raw_twd[fv_raw].mean(axis=1)
+                                near_zone = np.where(
+                                    (all_c[:, 0] >= c_min[0]) & (all_c[:, 0] <= c_max[0]) &
+                                    (all_c[:, 1] >= c_min[1]) & (all_c[:, 1] <= c_max[1])
+                                )[0]
+                                d_nz, _ = tree_ex.query(all_c[near_zone], k=1)
+                                seed_present = d_nz <= 0.025
+                                allowed_set = set(rest_idxs.tolist())
+                                vq_r = np.round(v_raw_twd * 1000.0).astype(np.int64)
+                                _, _, wid_r = np.unique(vq_r, axis=0, return_index=True, return_inverse=True)
+                                v2f_nz: Dict[int, List[int]] = {}
+                                for li_z, fi_z in enumerate(near_zone):
+                                    if seed_present[li_z] or (int(fi_z) in allowed_set):
+                                        for vi_z in fv_raw[fi_z]:
+                                            v2f_nz.setdefault(int(wid_r[vi_z]), []).append(li_z)
+                                vis_nz = np.zeros(len(near_zone), dtype=bool)
+                                q_bfs = deque()
+                                for li_s in np.where(seed_present)[0]:
+                                    vis_nz[li_s] = True
+                                    q_bfs.append(int(li_s))
+                                while q_bfs:
+                                    cli = q_bfs.popleft()
+                                    for vi_z in fv_raw[near_zone[cli]]:
+                                        for nli in v2f_nz.get(int(wid_r[vi_z]), ()):
+                                            if not vis_nz[nli]:
+                                                vis_nz[nli] = True
+                                                q_bfs.append(nli)
+                                conn_faces = [int(near_zone[li_z]) for li_z in np.where(vis_nz & (~seed_present))[0] if int(near_zone[li_z]) in allowed_set]
+                                rest_idxs = np.array(conn_faces, dtype=np.int64)
+
+                            if len(rest_idxs) > 0:
+                                new_rest_cents = v_raw_twd[fv_raw[rest_idxs]].mean(axis=1)
+                                if p_idx < len(all_cur_cents_list):
+                                    all_cur_cents_list[p_idx] = np.vstack([all_cur_cents_list[p_idx], new_rest_cents])
+                                else:
+                                    all_cur_cents_list.append(new_rest_cents)
+                                f_r = f_nat[rest_idxs]
+                                u_vr, inv_vr = np.unique(f_r[:, [0, 2, 4]] - 1, return_inverse=True)
+                                u_vtr, inv_vtr = np.unique(f_r[:, [1, 3, 5]] - 1, return_inverse=True)
+                                v_comb = np.vstack([v_ex_loc, v_raw_twd[u_vr] - off_m])
+                                vt_comb = np.vstack([vt_ex, vt_nat[u_vtr]]).astype(np.float32)
+                                fv_comb = np.vstack([fv_ex, inv_vr.reshape(-1, 3) + len(v_ex_loc)])
+                                fvt_comb = np.vstack([fvt_ex, inv_vtr.reshape(-1, 3) + len(vt_ex)])
+                                vq_c = np.round((v_comb + off_m) * 2000.0).astype(np.int64)
+                                _, u_w, inv_w = np.unique(vq_c, axis=0, return_index=True, return_inverse=True)
+                                v_ex_loc = v_comb[u_w]
+                                vt_ex = vt_comb
+                                fv_ex = inv_w[fv_comb]
+                                fvt_ex = fvt_comb
+                                total_restored += len(rest_idxs)
+
+                                # Rebuild tile_s{p_idx}.glb
+                                f_loc_1b = np.column_stack([
+                                    fv_ex[:, 0] + 1, fvt_ex[:, 0] + 1,
+                                    fv_ex[:, 1] + 1, fvt_ex[:, 1] + 1,
+                                    fv_ex[:, 2] + 1, fvt_ex[:, 2] + 1,
+                                ])
+                                tmp_m = os.path.join(obj_dir, f"_rst_{p_idx}.mtl")
+                                tmp_o = os.path.join(obj_dir, f"_rst_{p_idx}.obj")
+                                tile_out = os.path.join(tiles_dir, f"tile_s{p_idx}.glb")
+                                tmp_g = tile_out + ".tmp.glb"
+                                try:
+                                    with open(tmp_m, "w", encoding="utf-8") as mf_t:
+                                        mf_t.write(f"newmtl {mtl_nm}\nKd 1.0 1.0 1.0\nillum 0\nmap_Kd {mtl_nm}.jpg\n")
+                                    with open(tmp_o, "wb") as of_t:
+                                        of_t.write(f"mtllib _rst_{p_idx}.mtl\nusemtl {mtl_nm}\n".encode("utf-8"))
+                                        np.savetxt(of_t, v_ex_loc.astype(np.float32), fmt="v %.4f %.4f %.4f")
+                                        np.savetxt(of_t, vt_ex.astype(np.float32), fmt="vt %.6f %.6f")
+                                        np.savetxt(of_t, f_loc_1b, fmt="f %d/%d %d/%d %d/%d")
+                                    subprocess.run(
+                                        [GLTFPACK_EXE, "-i", tmp_o, "-o", tmp_g, "-vp", "16", "-vt", "16", "-vn", "8", "-cc"],
+                                        capture_output=True,
+                                        check=True,
+                                        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000) if os.name == "nt" else 0,
+                                    )
+                                    jpg_disk = os.path.join(obj_dir, f"{mtl_nm}.jpg")
+                                    raw_jb_use = open(jpg_disk, "rb").read() if os.path.isfile(jpg_disk) else jb_nat
+                                    rb_new = replace_glb_single_image_bytes(open(tmp_g, "rb").read(), raw_jb_use, "image/jpeg")
+                                    with open(tile_out, "wb") as wf_t:
+                                        wf_t.write(shift_glb_node_translation(rb_new, ox_m, oy_m, oz_m))
+                                finally:
+                                    for prm in (tmp_m, tmp_o, tmp_g):
+                                        if os.path.isfile(prm):
+                                            os.remove(prm)
+
+                                p_vmin = v_ex_loc.min(axis=0) + off_m
+                                p_vmax = v_ex_loc.max(axis=0) + off_m
+                                p_bc, p_bh = (p_vmin + p_vmax) * 0.5, (p_vmax - p_vmin) * 0.5
+                                if p_idx < len(ts_dict.get("root", {}).get("children") or []):
+                                    ts_dict["root"]["children"][p_idx]["boundingVolume"]["box"] = [
+                                        round(float(p_bc[0]), 4), round(float(p_bc[1]), 4), round(float(p_bc[2]), 4),
+                                        round(max(float(p_bh[0]), 0.5), 4), 0.0, 0.0,
+                                        0.0, round(max(float(p_bh[1]), 0.5), 4), 0.0,
+                                        0.0, 0.0, round(max(float(p_bh[2]), 0.5), 4),
+                                    ]
+
+                f_part_1b = np.column_stack([
+                    fv_ex[:, 0] + 1, fvt_ex[:, 0] + 1,
+                    fv_ex[:, 1] + 1, fvt_ex[:, 1] + 1,
+                    fv_ex[:, 2] + 1, fvt_ex[:, 2] + 1,
+                ])
+                updated_parts.append((mtl_nm, v_ex_loc.astype(np.float32), vt_ex.astype(np.float32), f_part_1b))
+
+            if total_restored == 0:
+                raise ValueError("No missing original triangles were found inside your marked Lasso / Polygon area.")
+
+            # Save updated multi-material mesh.obj & tileset.json
+            v_all_l, vt_all_l, f_blks_out = [], [], []
+            vo, vto = 0, 0
+            for m_nm, vc, vtc, fl1 in updated_parts:
+                fg = fl1.copy()
+                fg[:, [0, 2, 4]] += vo
+                fg[:, [1, 3, 5]] += vto
+                v_all_l.append(vc)
+                vt_all_l.append(vtc)
+                f_blks_out.append((m_nm, fg))
+                vo += len(vc)
+                vto += len(vtc)
+            v_tot = np.vstack(v_all_l)
+            vt_tot = np.vstack(vt_all_l)
+            with open(cur_obj_p, "wb") as obj_f:
+                obj_f.write(b"mtllib mesh.mtl\n")
+                np.savetxt(obj_f, v_tot, fmt="v %.4f %.4f %.4f")
+                np.savetxt(obj_f, vt_tot, fmt="vt %.6f %.6f")
+                for m_nm, fg in f_blks_out:
+                    obj_f.write(f"usemtl {m_nm}\n".encode("utf-8"))
+                    np.savetxt(obj_f, fg, fmt="f %d/%d %d/%d %d/%d")
+
+            r_vmin = v_tot.min(axis=0).astype(np.float64) + off_m
+            r_vmax = v_tot.max(axis=0).astype(np.float64) + off_m
+            r_bc, r_bh = (r_vmin + r_vmax) * 0.5, (r_vmax - r_vmin) * 0.5
+            ts_dict["root"]["boundingVolume"]["box"] = [
+                round(float(r_bc[0]), 4), round(float(r_bc[1]), 4), round(float(r_bc[2]), 4),
+                round(max(float(r_bh[0]), 0.5), 4), 0.0, 0.0,
+                0.0, round(max(float(r_bh[1]), 0.5), 4), 0.0,
+                0.0, 0.0, round(max(float(r_bh[2]), 0.5), 4),
+            ]
+            json.dump(ts_dict, open(ts_path, "w", encoding="utf-8"), indent=2)
+
+        # Case 2: Edited Single Scan or Multi-Gen Edited Scan -> append lightweight zero-loss ADD patch tile(s)
+        else:
+            src_specs: List[Dict[str, Any]] = []
+            if mf_list:
+                for mf_e in mf_list:
+                    if isinstance(mf_e, dict):
+                        src_specs.append(mf_e)
+            else:
+                deriv_sid = str(scan.get("derived_from_scan_id") or "").strip()
+                if deriv_sid:
+                    src_specs.append({"scan_id": deriv_sid})
+
+            if not src_specs:
+                raise ValueError("This scan has no raw original source scan (`derived_from_scan_id` / `merged_from`) to restore missing triangles from.")
+
+            # Collect existing triangle centroids from leaf .glb tiles to avoid duplicating existing faces
+            ex_cents_list: List[np.ndarray] = []
+            try:
+                import trimesh
+                ts_cur_j = json.load(open(ts_path, encoding="utf-8"))
+                gltf_up = str((ts_cur_j.get("asset") or {}).get("gltfUpAxis") or "").upper().strip()
+                leaf_glbs: List[Tuple[str, np.ndarray]] = []
+
+                def _gather_leaves(nd: Dict[str, Any], p_tf: np.ndarray):
+                    c_tf = p_tf
+                    ntf = nd.get("transform")
+                    if isinstance(ntf, list) and len(ntf) == 16:
+                        c_tf = p_tf @ np.array(ntf, dtype=np.float64).reshape((4, 4), order="F")
+                    chs = [c for c in (nd.get("children") or []) if isinstance(c, dict)]
+                    if chs:
+                        for ch in chs:
+                            _gather_leaves(ch, c_tf)
+                    else:
+                        uri_c = ((nd.get("content") or {}).get("uri") or "").split("?")[0]
+                        if uri_c and "{level}" not in uri_c:
+                            gp = os.path.normpath(os.path.join(ts_dir, uri_c))
+                            if os.path.isfile(gp):
+                                leaf_glbs.append((gp, c_tf))
+
+                if isinstance(ts_cur_j.get("root"), dict):
+                    _gather_leaves(ts_cur_j["root"], np.eye(4, dtype=np.float64))
+
+                tmp_dec_dir = os.path.join(proj_dir, "_tmp_dec_ex")
+                os.makedirs(tmp_dec_dir, exist_ok=True)
+                try:
+                    for gi, (gp, gtf) in enumerate(leaf_glbs):
+                        dec_p = os.path.join(tmp_dec_dir, f"d_{gi}.glb")
+                        r_dec = subprocess.run(
+                            [GLTFPACK_EXE, "-i", gp, "-o", dec_p, "-noq"],
+                            capture_output=True,
+                            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000) if os.name == "nt" else 0,
+                        )
+                        load_p = dec_p if (r_dec.returncode == 0 and os.path.isfile(dec_p)) else gp
+                        sc_tm = trimesh.load(load_p, force="scene")
+                        for geom_nm, geom in sc_tm.geometry.items():
+                            if not hasattr(geom, "vertices") or len(geom.faces) == 0:
+                                continue
+                            nd_tfs = [sc_tm.graph.get(n)[0] for n in sc_tm.graph.nodes_geometry if sc_tm.graph.get(n)[1] == geom_nm]
+                            m_tf = nd_tfs[0] if nd_tfs else np.eye(4, dtype=np.float64)
+                            vh = np.hstack([np.asarray(geom.vertices, dtype=np.float64), np.ones((len(geom.vertices), 1), dtype=np.float64)])
+                            vw = (vh @ m_tf.T)
+                            if gltf_up != "Z":
+                                # glTF Y-up -> Z-up before applying tileset transform
+                                vw_z = np.column_stack([vw[:, 0], -vw[:, 2], vw[:, 1], vw[:, 3]])
+                            else:
+                                vw_z = vw
+                            vz = (vw_z @ gtf.T)[:, :3]
+                            ex_cents_list.append(vz[np.asarray(geom.faces)].mean(axis=1))
+                finally:
+                    shutil.rmtree(tmp_dec_dir, ignore_errors=True)
+            except Exception as ex_e:
+                print(f"[OptimizerBridge] Existing centroid scan note: {ex_e}")
+
+            tree_ex_all = cKDTree(np.vstack(ex_cents_list)) if ex_cents_list else None
+            patch_nodes: List[Dict[str, Any]] = []
+            os.makedirs(tiles_dir, exist_ok=True)
+
+            for s_idx, sp_e in enumerate(src_specs):
+                raw_loaded_s = _load_raw_obj_source(str(sp_e.get("derived_from_scan_id") or "")) or _load_raw_obj_source(str(sp_e.get("scan_id") or ""))
+                if raw_loaded_s is None:
+                    continue
+                v_nat, vt_nat, f_nat, jb_nat, src_jpg_path = raw_loaded_s
+                if isinstance(sp_e.get("r_zup_rowmajor"), list) and len(sp_e["r_zup_rowmajor"]) == 9:
+                    R_s = np.array(sp_e["r_zup_rowmajor"], dtype=np.float64).reshape(3, 3)
+                else:
+                    R_s = np.eye(3, dtype=np.float64)
+                na_s = np.array(sp_e.get("native_anchor_zup") or [0.0, 0.0, 0.0], dtype=np.float64)
+                ma_s = np.array(sp_e.get("merged_anchor_zup") or [0.0, 0.0, 0.0], dtype=np.float64)
+                v_s_twd = ma_s + (v_nat - na_s) @ R_s.T if np.linalg.norm(ma_s) > 1.0 else v_nat
+
+                fv_raw = f_nat[:, [0, 2, 4]] - 1
+                inside_m = cutter_eval._compute_inside_mask_for_triangles(
+                    v_s_twd[fv_raw[:, 0]], v_s_twd[fv_raw[:, 1]], v_s_twd[fv_raw[:, 2]], np.eye(4, dtype=np.float64)
+                )
+                cand_faces = np.where(inside_m)[0]
+                if len(cand_faces) == 0:
+                    continue
+                if tree_ex_all is not None:
+                    d_ex_s, _ = tree_ex_all.query(v_s_twd[fv_raw[cand_faces]].mean(axis=1), k=1)
+                    cand_faces = cand_faces[d_ex_s > 0.015]
+                if len(cand_faces) == 0:
+                    continue
+
+                total_restored += len(cand_faces)
+                f_r = f_nat[cand_faces]
+                u_vr, inv_vr = np.unique(f_r[:, [0, 2, 4]] - 1, return_inverse=True)
+                u_vtr, inv_vtr = np.unique(f_r[:, [1, 3, 5]] - 1, return_inverse=True)
+                vp_twd = v_s_twd[u_vr]
+                off_p = np.round(vp_twd.mean(axis=0))
+                vp_loc = (vp_twd - off_p).astype(np.float32)
+                vtp = vt_nat[u_vtr].astype(np.float32)
+                iv2 = inv_vr.reshape(-1, 3) + 1
+                ivt2 = inv_vtr.reshape(-1, 3) + 1
+                fl_1b = np.column_stack([iv2[:, 0], ivt2[:, 0], iv2[:, 1], ivt2[:, 1], iv2[:, 2], ivt2[:, 2]])
+
+                patch_fn = f"tile_s_patch_{s_idx}_{int(time.time() * 1000) % 1000000}.glb"
+                patch_rel = f"tiles/{patch_fn}"
+                patch_out = os.path.join(tiles_dir, patch_fn)
+                tmp_dir_p = os.path.join(proj_dir, f"_tmp_patch_{s_idx}")
+                os.makedirs(tmp_dir_p, exist_ok=True)
+                try:
+                    shutil.copyfile(src_jpg_path, os.path.join(tmp_dir_p, "mesh_0.jpg"))
+                    with open(os.path.join(tmp_dir_p, "p.mtl"), "w", encoding="utf-8") as mf_p:
+                        mf_p.write("newmtl m0\nKd 1.0 1.0 1.0\nillum 0\nmap_Kd mesh_0.jpg\n")
+                    with open(os.path.join(tmp_dir_p, "p.obj"), "wb") as of_p:
+                        of_p.write(b"mtllib p.mtl\nusemtl m0\n")
+                        np.savetxt(of_p, vp_loc, fmt="v %.4f %.4f %.4f")
+                        np.savetxt(of_p, vtp, fmt="vt %.6f %.6f")
+                        np.savetxt(of_p, fl_1b, fmt="f %d/%d %d/%d %d/%d")
+                    tmp_gp = os.path.join(tmp_dir_p, "p.glb")
+                    subprocess.run(
+                        [GLTFPACK_EXE, "-i", os.path.join(tmp_dir_p, "p.obj"), "-o", tmp_gp, "-vp", "16", "-vt", "16", "-vn", "8", "-cc"],
+                        capture_output=True,
+                        check=True,
+                        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000) if os.name == "nt" else 0,
+                    )
+                    rb_p = replace_glb_single_image_bytes(open(tmp_gp, "rb").read(), jb_nat, "image/jpeg")
+                    with open(patch_out, "wb") as wf_p:
+                        wf_p.write(shift_glb_node_translation(rb_p, float(off_p[0]), float(off_p[1]), float(off_p[2])))
+                finally:
+                    shutil.rmtree(tmp_dir_p, ignore_errors=True)
+
+                p_vmin, p_vmax = vp_twd.min(axis=0), vp_twd.max(axis=0)
+                p_bc, p_bh = (p_vmin + p_vmax) * 0.5, (p_vmax - p_vmin) * 0.5
+                patch_nodes.append({
+                    "boundingVolume": {
+                        "box": [
+                            round(float(p_bc[0]), 4), round(float(p_bc[1]), 4), round(float(p_bc[2]), 4),
+                            round(max(float(p_bh[0]), 0.5), 4), 0.0, 0.0,
+                            0.0, round(max(float(p_bh[1]), 0.5), 4), 0.0,
+                            0.0, 0.0, round(max(float(p_bh[2]), 0.5), 4),
+                        ]
+                    },
+                    "geometricError": 0.0,
+                    "refine": "ADD",
+                    "content": {"uri": patch_rel},
+                    "children": [],
+                })
+
+            if total_restored == 0 or not patch_nodes:
+                raise ValueError("No missing original triangles were found inside your marked Lasso / Polygon area.")
+
+            ts_dict = json.load(open(ts_path, encoding="utf-8"))
+            old_root = copy.deepcopy(ts_dict.get("root") or {})
+            if str(old_root.get("refine") or "").upper() == "ADD" and not old_root.get("content"):
+                old_root.setdefault("children", []).extend(patch_nodes)
+                ts_dict["root"] = old_root
+            else:
+                ts_dict["root"] = {
+                    "boundingVolume": copy.deepcopy(old_root.get("boundingVolume") or patch_nodes[0]["boundingVolume"]),
+                    "geometricError": max(float(old_root.get("geometricError") or 500.0), 500.0),
+                    "refine": "ADD",
+                    "children": [old_root, *patch_nodes],
+                }
+            json.dump(ts_dict, open(ts_path, "w", encoding="utf-8"), indent=2)
+
+        ensure_scan_low_quality_preview(ts_path, force=True)
+        ensure_scan_full_quality_thumbnail(ts_path, scan_id, project_dir=proj_dir, force=True)
+
+        now_ts = time.time()
+        scan_upd = dict(scan)
+        scan_upd["tileset_version"] = int(now_ts * 1000)
+        scan_upd["uploaded_at"] = now_ts
+        scan_upd["size_bytes"] = sum(os.path.getsize(os.path.join(rd, fn)) for rd, _, rfs in os.walk(proj_dir) for fn in rfs)
+        adj_l = list(scan_upd.get("applied_adjustments") or [])
+        adj_l.append(f"Restored {total_restored:,} tris from original")
+        scan_upd["applied_adjustments"] = adj_l
+        meta_p = os.path.join(proj_dir, "scan_meta.json")
+        json.dump(scan_upd, open(meta_p, "w", encoding="utf-8"), indent=2, ensure_ascii=False)
+        saved_scan = self.db.upsert_scan(scan_upd)
+
+        def _bg_sync_restored():
+            try:
+                from pc_worker.gdrive_cloud_sync import build_scan_3tz_package, sync_all_scans_to_gdrive_and_vps
+                build_scan_3tz_package({"scan_id": scan_id, "tileset_path": ts_path, "project_dir": proj_dir}, force=True)
+                sync_all_scans_to_gdrive_and_vps(self.db, None, force=False)
+            except Exception as ce:
+                print(f"[OptimizerBridge] Background .3tz sync note after restore-region on {scan_id}: {ce}")
+
+        threading.Thread(target=_bg_sync_restored, daemon=True).start()
+
+        return {
+            "status": "ok",
+            "action": "restore_region",
+            "scan_id": scan_id,
+            "scan": saved_scan,
+            "restored_triangles": total_restored,
+            "duration_s": round(time.time() - t0, 2),
+        }

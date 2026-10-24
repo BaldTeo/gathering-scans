@@ -3412,11 +3412,18 @@
       const totalRegions =
         (Array.isArray(STATE.lassoStrokes) ? STATE.lassoStrokes.filter((s) => s.op !== "sub").length : 0) +
         (Array.isArray(STATE.pendingCropPolygons) ? STATE.pendingCropPolygons.length : 0);
+      const canRestoreGap =
+        isDelete &&
+        !STATE.multiAlign?.active &&
+        ((Array.isArray(STATE.activeScan?.merged_from) && STATE.activeScan.merged_from.length > 0) ||
+          Boolean(STATE.activeScan?.derived_from_scan_id));
       showToast(
         selTris > 0
           ? `${isDelete ? "Marked for Deletion" : "Marked to Keep"}: ${totalRegions} region${
               totalRegions === 1 ? "" : "s"
             } (${selTris.toLocaleString()} tris) · Mark more or press ${isDelete ? "Delete" : "Apply Crop"}`
+          : canRestoreGap
+          ? `Gap region marked (${totalRegions}) — press '🩹 Restore Deleted Area' to patch missing geometry, or zoom closer to select triangles`
           : "No visible triangles inside lasso — zoom closer or uncheck 'Protect Occluded Background'"
       );
       if (isDelete) {
@@ -3868,10 +3875,12 @@
     ctx.fallbackGroup.add(mesh);
   }
 
-  function loadScanIntoStudio(scanId) {
+  function loadScanIntoStudio(scanId, opts = {}) {
     initStudio3D();
     const scan = STATE.scans.find((s) => s.scan_id === scanId) || STATE.scans[0];
     if (!scan || !studioThree) return;
+    const preserveCamera = Boolean(opts && opts.preserveCamera);
+    const bustCache = Boolean(opts && opts.bustCache);
 
     if (STATE.fpMode?.active && typeof exitFirstPersonMode === "function") {
       exitFirstPersonMode(true);
@@ -3926,6 +3935,11 @@
       resetStagedEditsForScan(scan);
     }
 
+    const prevTilesCenter =
+      preserveCamera && Array.isArray(studioThree.tilesCenter) ? studioThree.tilesCenter.slice() : null;
+    const prevCamPos = preserveCamera && studioThree.camera ? studioThree.camera.position.clone() : null;
+    const prevCamTarget = preserveCamera && studioThree.controls ? studioThree.controls.target.clone() : null;
+
     // Teardown previous tilesRenderer / mesh
     if (studioThree.tilesRenderer) {
       studioThree.modelPivot.remove(studioThree.tilesRenderer.group);
@@ -3943,7 +3957,11 @@
 
     startScanLoader(studioThree, "studio", scan.name);
 
-    const streamUrl = scan.stream_url || `/stream/${scan.scan_id}/tileset.json`;
+    let streamUrl = scan.stream_url || `/stream/${scan.scan_id}/tileset.json`;
+    if (bustCache) {
+      const baseNoQ = streamUrl.split("?")[0];
+      streamUrl = `${baseNoQ}?v=${scan.tileset_version || Date.now()}`;
+    }
 
     if (scan.stream_type === "glb" || streamUrl.toLowerCase().endsWith(".glb")) {
       const loader = new THREE.GLTFLoader();
@@ -3976,7 +3994,17 @@
           });
           studioThree.modelPivot.add(model);
           studioThree.boundingSphere = sphere;
-          frameStudioCamera();
+          if (preserveCamera && prevCamPos && prevCamTarget) {
+            const dx = prevTilesCenter ? sphere.center.x - prevTilesCenter[0] : 0;
+            const dy = prevTilesCenter ? sphere.center.y - prevTilesCenter[1] : 0;
+            const dz = prevTilesCenter ? sphere.center.z - prevTilesCenter[2] : 0;
+            // modelPivot rotates -90 deg around X: Z-up delta (dx, dy, dz) -> world delta (dx, dz, -dy)
+            studioThree.camera.position.set(prevCamPos.x - dx, prevCamPos.y - dz, prevCamPos.z + dy);
+            studioThree.controls.target.set(prevCamTarget.x - dx, prevCamTarget.y - dz, prevCamTarget.z + dy);
+            studioThree.controls.update();
+          } else {
+            frameStudioCamera();
+          }
           finishScanLoader(studioThree, "studio", "100% · 3D Mesh Ready");
         },
         (xhr) => {
@@ -4025,7 +4053,17 @@
               ? sphere._groundOffsetY
               : -8.0;
           }
-          frameStudioCamera();
+          if (preserveCamera && prevCamPos && prevCamTarget) {
+            const dx = prevTilesCenter ? sphere.center.x - prevTilesCenter[0] : 0;
+            const dy = prevTilesCenter ? sphere.center.y - prevTilesCenter[1] : 0;
+            const dz = prevTilesCenter ? sphere.center.z - prevTilesCenter[2] : 0;
+            // modelPivot rotates -90 deg around X: Z-up delta (dx, dy, dz) -> world delta (dx, dz, -dy)
+            studioThree.camera.position.set(prevCamPos.x - dx, prevCamPos.y - dz, prevCamPos.z + dy);
+            studioThree.controls.target.set(prevCamTarget.x - dx, prevCamTarget.y - dz, prevCamTarget.z + dy);
+            studioThree.controls.update();
+          } else {
+            frameStudioCamera();
+          }
         }
         studioThree.camera.updateMatrixWorld();
         tr.update();
@@ -10805,6 +10843,12 @@
 
     const totalStagedDelRegions = st.deletions.reduce((acc, b) => acc + (Number(b.regionCount) || 1), 0);
     const totalStagedDelTris = st.deletions.reduce((acc, b) => acc + (Number(b.triCount) || 0), 0);
+    const activeScanObj = STATE.scans.find((s) => s.scan_id === STATE.activeScanId) || STATE.activeScan;
+    const canRestoreFromOriginal =
+      !STATE.multiAlign?.active &&
+      ((Array.isArray(activeScanObj?.merged_from) && activeScanObj.merged_from.length > 0) ||
+        Boolean(activeScanObj?.derived_from_scan_id));
+    const restoreConnChecked = STATE.restoreConnectedOnly !== false;
 
     const execBtnText = !isLassoActive
       ? markedCount > 0
@@ -10921,6 +10965,38 @@
                   <span>Restore All Deleted</span>
                 </button>
               </div>
+            </div>`
+          : ""
+      }
+
+      ${
+        canRestoreFromOriginal
+          ? `<div style="background:rgba(16,185,129,0.09);border:1px solid rgba(16,185,129,0.38);border-radius:8px;padding:10px;margin-bottom:10px;">
+              <div style="font-size:12px;font-weight:700;color:#10b981;margin-bottom:4px;display:flex;align-items:center;justify-content:space-between;gap:6px;">
+                <span>🩹 Restore Accidentally Deleted Area (從原始掃描補回缺口)</span>
+              </div>
+              <div style="font-size:11px;color:var(--ui-text-secondary);margin-bottom:7px;line-height:1.45;">
+                Draw a <b>Freehand 3D Lasso</b> or <b>Plan Polygon</b> over any missing gap above, then click below to splice the missing triangles back from the untouched original scan at full 4K quality.
+              </div>
+              <label style="display:flex;align-items:flex-start;gap:7px;font-size:11px;color:var(--ui-text-primary);background:var(--ui-bg-surface);border:1px solid var(--ui-border);border-radius:6px;padding:5px 8px;margin-bottom:8px;cursor:pointer;">
+                <input type="checkbox" id="chkRestoreConnectedOnly" ${restoreConnChecked ? "checked" : ""} style="margin-top:2px;accent-color:#10b981;" />
+                <span>
+                  <b>Boundary-connected surface only (排除懸浮碎塊)</b><br/>
+                  <span style="font-size:10px;color:var(--ui-text-secondary);">Restores surfaces connected to surrounding road/walls while skipping floating sky/tree debris.</span>
+                </span>
+              </label>
+              <button type="button" class="gs-top-btn" id="btnRestoreDeletedRegion" style="width:100%;justify-content:center;padding:8px 12px;font-weight:700;background:${
+                markedCount > 0 ? "#10b981" : "rgba(16,185,129,0.16)"
+              };border-color:#059669;color:${markedCount > 0 ? "#fff" : "#10b981"};">
+                <span>${
+                  !isLassoActive && markedCount === 0
+                    ? "🩹 Activate Lasso to Mark Gap for Restore (啟用套索圈選缺口)"
+                    : markedCount > 0
+                    ? `🩹 Restore Deleted Area (${markedCount} marked region${markedCount === 1 ? "" : "s"} · 補回原始模型)`
+                    : "🩹 Restore Deleted Area (Circle missing gap with Lasso first)"
+                }</span>
+              </button>
+              <div id="restoreDeletedRegionStatus" style="margin-top:5px;"></div>
             </div>`
           : ""
       }
@@ -11055,6 +11131,97 @@
       showToast(
         `Deleted ${res.committed} marked region${res.committed === 1 ? "" : "s"} in 3D preview — mark more, adjust Compression / CRS, or press Save Edits!`
       );
+    });
+
+    document.getElementById("chkRestoreConnectedOnly")?.addEventListener("change", (ev) => {
+      STATE.restoreConnectedOnly = Boolean(ev.target.checked);
+    });
+
+    document.getElementById("btnRestoreDeletedRegion")?.addEventListener("click", async () => {
+      if (STATE.activeTool !== "crop_delete" && countMarkedRegionsPending() === 0) {
+        setActiveStudioTool("crop_delete");
+        openLassoDeleteInspector({ armLasso: true });
+        showToast("Lasso active — circle the missing gap with Left-Drag, then press '🩹 Restore Deleted Area'");
+        return;
+      }
+
+      const restoreStrokes = (STATE.lassoStrokes || []).map((s) => Object.assign({}, s, { visible_only: false }));
+      const rawWorldPolys = [];
+      if (Array.isArray(STATE.pendingCropPolygons)) {
+        STATE.pendingCropPolygons.forEach((pts) => {
+          if (Array.isArray(pts) && pts.length >= 3) rawWorldPolys.push(pts);
+        });
+      }
+      if (Array.isArray(STATE.measurePoints) && STATE.measurePoints.length >= 3) {
+        rawWorldPolys.push(STATE.measurePoints);
+      }
+      const restorePolys = [];
+      if (rawWorldPolys.length > 0 && isActiveStudioTilesetEcef()) {
+        rawWorldPolys.forEach((pts) => {
+          const orthoSt = planPolygonToTopDownFrustumStroke(pts);
+          if (orthoSt) restoreStrokes.push(orthoSt);
+        });
+      } else {
+        rawWorldPolys.forEach((pts) => {
+          restorePolys.push(
+            pts.map((p) => {
+              const n = studioWorldToTilesetNative(p);
+              return [n[0], n[1]];
+            })
+          );
+        });
+      }
+
+      const regionTotal = restoreStrokes.filter((s) => s.op !== "sub").length + restorePolys.length;
+      if (regionTotal === 0) {
+        showToast("Drag Left Mouse over the missing gap to mark it first, then press '🩹 Restore Deleted Area'");
+        return;
+      }
+
+      const btnR = document.getElementById("btnRestoreDeletedRegion");
+      const statusBox = document.getElementById("restoreDeletedRegionStatus");
+      if (btnR) {
+        btnR.disabled = true;
+        btnR.innerHTML = `<span>⏳ Splicing Missing Geometry from Original 4K Scan...</span>`;
+      }
+      if (statusBox) {
+        statusBox.innerHTML = `<div style="font-size:11px;color:#10b981;">Restoring missing triangles from original source scan...</div>`;
+      }
+
+      try {
+        const res = await apiPost("/api/optimizer/restore-region", {
+          scan_id: STATE.activeScanId,
+          frustum_strokes: restoreStrokes,
+          native_polygons: restorePolys,
+          connected_only: STATE.restoreConnectedOnly !== false,
+        });
+        STATE.measurePoints = [];
+        clearLassoSelectionState();
+        if (Array.isArray(res.scans)) {
+          STATE.scans = res.scans;
+        } else {
+          await refreshScansCatalog();
+        }
+        if (Array.isArray(res.projects)) {
+          STATE.projects = res.projects;
+        }
+        populateProjectScanDropdowns(res.scan?.project_group || STATE.activeProjectGroup, STATE.activeScanId);
+        renderMapClusters();
+        loadScanIntoStudio(STATE.activeScanId, { preserveCamera: true, bustCache: true });
+        openLassoDeleteInspector({ armLasso: false });
+        showToast(
+          `Restored ${Number(res.restored_triangles || 0).toLocaleString()} triangles from original scan (${res.duration_s}s)!`
+        );
+      } catch (err) {
+        if (btnR) {
+          btnR.disabled = false;
+          btnR.innerHTML = `<span>🩹 Restore Deleted Area (${regionTotal} marked)</span>`;
+        }
+        if (statusBox) {
+          statusBox.innerHTML = `<div style="font-size:11px;color:#ef4444;">${escapeHtml(err.message)}</div>`;
+        }
+        showToast(`Restore note: ${err.message}`);
+      }
     });
 
     bindStagedAdjustmentsCardEvents(() => openLassoDeleteInspector({ armLasso: STATE.activeTool === "crop_delete" }));
