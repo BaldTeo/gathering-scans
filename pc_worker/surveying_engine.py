@@ -3618,8 +3618,21 @@ class SurveyingEngine:
                         resp_obj = json.loads(resp.read().decode("utf-8"))
                     cands = resp_obj.get("candidates") or []
                     if cands:
-                        txt_out = (((cands[0].get("content") or {}).get("parts") or [{}])[0]).get("text") or ""
-                        parsed_json = json.loads(txt_out)
+                        parts_list = (cands[0].get("content") or {}).get("parts") or []
+                        parsed_json = None
+                        for part_obj in reversed(parts_list):
+                            if part_obj.get("thought"):
+                                continue
+                            cand_txt = (part_obj.get("text") or "").strip()
+                            if not cand_txt:
+                                continue
+                            try:
+                                parsed_json = json.loads(cand_txt)
+                                break
+                            except Exception:
+                                continue
+                        if not isinstance(parsed_json, dict):
+                            continue
                         zh_txt = str(parsed_json.get("ai_summary_zh") or "").strip() or default_zh
                         en_txt = str(parsed_json.get("ai_summary_en") or "").strip() or default_en
                         return {
@@ -4173,7 +4186,7 @@ class SurveyingEngine:
             opp_pair_38m += (h38_1 & h38_2).astype(np.int16)
 
         enclosed_void_cell = hull_2d_mask & (
-            (dir_count_45m >= 5) | ((dir_count_45m >= 4) & (opp_pair_38m >= 1))
+            (dir_count_45m >= 6) & (opp_pair_38m >= 2)
         )
 
         margin_px = max(3, int(round(3.0 / res)))
@@ -4183,7 +4196,7 @@ class SurveyingEngine:
             (~raw_occ_closed)
             & inner_box
             & enclosed_void_cell
-            & (dist_cells * res <= 7.5)
+            & (dist_cells * res <= 5.5)
             & (dist_cells * res >= 0.35)
             & (h_dtm_grid <= p18_site_h + 1.40)
         )
@@ -4192,15 +4205,15 @@ class SurveyingEngine:
         for vid in range(1, n_voids + 1):
             vmask = void_labeled == vid
             v_area = float(np.count_nonzero(vmask) * cell_area)
-            if v_area < 25.0 or v_area > 3500.0:
+            if v_area < 25.0 or v_area > 2500.0:
                 continue
-            # Require at least 38% of the void's outer perimeter boundary to touch actual scanned terrain
+            # Require at least 55% of the void's outer perimeter boundary to touch actual scanned terrain
             b_mask = binary_dilation(vmask, structure=np.ones((3, 3), dtype=bool)) & (~vmask)
             b_cnt = int(np.count_nonzero(b_mask))
             if b_cnt < 8:
                 continue
             touch_cnt = int(np.count_nonzero(b_mask & occ_dilated_3))
-            if (float(touch_cnt) / float(b_cnt)) < 0.38:
+            if (float(touch_cnt) / float(b_cnt)) < 0.55:
                 continue
 
             # Inspect the modelled shoreline rim ∂V_k where the void touches actual 3D mesh occupancy
