@@ -4401,6 +4401,8 @@
       el.innerHTML = htmlText;
       const firstChild = el.firstElementChild;
       if (firstChild) {
+        firstChild.style.position = "absolute";
+        firstChild.style.pointerEvents = "none";
         container.appendChild(firstChild);
         const badgeObj = {
           el: firstChild,
@@ -4419,6 +4421,8 @@
       }
     }
     el.className = "measure-badge-2d";
+    el.style.position = "absolute";
+    el.style.pointerEvents = "none";
     el.style.borderColor = borderColor;
     el.innerHTML = htmlText;
     container.appendChild(el);
@@ -4445,7 +4449,7 @@
     STATE.badges2D.forEach((b) => {
       if (!b.el || !b.worldPt) return;
       const v = b.worldPt.clone().project(studioThree.camera);
-      if (v.z > 1) {
+      if (v.z > 1 || Math.abs(v.x) > 1.22 || Math.abs(v.y) > 1.22) {
         b.el.style.display = "none";
         return;
       }
@@ -4457,10 +4461,11 @@
         ? "inline-flex"
         : "block";
       const bw = b.el.offsetWidth || 120;
-      const halfW = Math.min(bw * 0.5, w * 0.5 - 8);
+      const halfW = Math.min(bw * 0.5, Math.max(16, w * 0.5 - 8));
       const clampedX = Math.max(halfW + 8, Math.min(w - halfW - 8, x));
+      const clampedY = h > 160 ? Math.max(58, Math.min(h - 72, y)) : y;
       b.el.style.left = `${clampedX}px`;
-      b.el.style.top = `${y}px`;
+      b.el.style.top = `${clampedY}px`;
     });
   }
 
@@ -5839,8 +5844,8 @@
       return studioThree._laserSpatialIndex;
     }
 
-    // Cap indexed triangle count smoothly on ultra-dense meshes via deterministic stride=1 (or 2 above 950k tris)
-    const triStride = totalTris > 950000 ? 2 : 1;
+    // Keep 100% of triangles (triStride = 1) up to 2.8M tris so multi-scan merged models never get swiss-cheese gaps!
+    const triStride = totalTris > 2800000 ? 2 : 1;
     const maxIndexed = Math.ceil(totalTris / triStride) + 16;
     const triVerts = new Float32Array(maxIndexed * 9);
     const triAbsNy = new Float32Array(maxIndexed);
@@ -6134,15 +6139,14 @@
       const tMinY = Math.min(y0, y1, y2);
       const tMaxY = Math.max(y0, y1, y2);
 
-      // Detect vertical curb / barrier / wall face rising right at (qx, qz)
-      if (absNy < 0.62 && tMaxY > prevY + 0.15 && tMinY < prevY + 1.45) {
-        // Point-to-segment distance in XZ for near-vertical faces
+      // Detect genuinely near-vertical curb / barrier / wall face rising right at (qx, qz)
+      if (absNy < 0.56 && tMaxY > prevY + 0.17 && tMinY < prevY + 1.55) {
         const checkSeg = (ax, az, bx, bz) => {
           const vx = bx - ax, vz = bz - az;
           const len2 = vx * vx + vz * vz;
           const s = len2 > 1e-8 ? Math.max(0, Math.min(1, ((qx - ax) * vx + (qz - az) * vz) / len2)) : 0;
           const dx = qx - (ax + s * vx), dz = qz - (az + s * vz);
-          return dx * dx + dz * dz <= 0.025;
+          return dx * dx + dz * dz <= 0.020;
         };
         if (checkSeg(x0, z0, x1, z1) || checkSeg(x1, z1, x2, z2) || checkSeg(x2, z2, x0, z0)) {
           obstacle = true;
@@ -6159,12 +6163,12 @@
       const w = 1.0 - u - v;
 
       const yHit = u * y0 + v * y1 + w * y2;
-      if (absNy < 0.66 && yHit > prevY + 0.14 && yHit < prevY + 1.6) {
+      if (absNy < 0.58 && yHit > prevY + 0.16 && yHit < prevY + 1.65) {
         obstacle = true;
         continue;
       }
 
-      if (yHit < prevY - 0.58 || yHit > prevY + 0.58) continue;
+      if (yHit < prevY - 0.65 || yHit > prevY + 0.65) continue;
       const diff = Math.abs(yHit - expectedY);
       if (diff < bestDiff) {
         bestDiff = diff;
@@ -6177,47 +6181,144 @@
     return { hit: found, y: bestY, absNy: bestNy, obstacle };
   }
 
-  function traceRoadEdgeAlongRay(idx, ox, oy, oz, ux, uz, maxDist = 26.0) {
-    const step = 0.28;
+  function traceRoadEdgeAlongRay(idx, ox, oy, oz, ux, uz, maxDist = 26.0, initSlope = null) {
+    const step = 0.24;
     let prevS = 0.0;
     let prevY = oy;
-    let slopeEst = 0.0;
-    let slopeSamples = 0;
+    let localSlope = Number.isFinite(initSlope) ? Math.max(-0.10, Math.min(0.10, initSlope)) : 0.0;
+    let hasSlope = Number.isFinite(initSlope);
+    const histS = [0.0];
+    const histY = [oy];
 
     for (let s = step; s <= maxDist; s += step) {
       const qx = ox + ux * s;
       const qz = oz + uz * s;
-      const expY = oy + slopeEst * s;
+      const expY = prevY + localSlope * (s - prevS);
       const probe = queryRoadSurfaceAtXZ(idx, qx, qz, prevY, expY);
 
       const isMissingOrObstacle = !probe.hit || probe.obstacle;
-      const stepJump = probe.hit ? Math.abs(probe.y - prevY) : 999;
-      const planeDev = probe.hit ? Math.abs(probe.y - expY) : 999;
-      const isSteep = probe.hit && probe.absNy < 0.75;
+      const stepDelta = probe.hit ? probe.y - prevY : 999;
+      const stepJump = Math.abs(stepDelta);
 
-      let edgeTriggered = isMissingOrObstacle || stepJump > 0.135 || planeDev > 0.30;
+      // Multi-scale local trailing windows (0.48m and 0.96m) detect beveled 13–24 cm curbs & pool walls
+      // while allowing smooth rolling grades on hill streets (westRoad 4.2%) and sloped pool floors (bigPool 2.2%)!
+      const idx2 = Math.max(0, histY.length - 2);
+      const idx4 = Math.max(0, histY.length - 4);
+      const win2Rise = probe.hit ? probe.y - histY[idx2] - localSlope * (s - histS[idx2]) : 999;
+      const win4Rise = probe.hit ? probe.y - histY[idx4] - localSlope * (s - histS[idx4]) : 999;
+      const isSteep = probe.hit && probe.absNy < 0.72;
+
+      let edgeTriggered =
+        isMissingOrObstacle ||
+        stepJump > 0.135 ||
+        win2Rise > 0.115 ||
+        win2Rise < -0.145 ||
+        win4Rise > 0.135 ||
+        win4Rise < -0.175;
+
       if (!edgeTriggered && isSteep) {
-        // Confirm steepness at s + 0.22m so single noisy photogrammetry asphalt triangles don't false-trigger
-        const cProbe = queryRoadSurfaceAtXZ(idx, ox + ux * (s + 0.22), oz + uz * (s + 0.22), probe.y, oy + slopeEst * (s + 0.22));
-        if (!cProbe.hit || cProbe.obstacle || cProbe.absNy < 0.76 || Math.abs(cProbe.y - expY) > 0.25) {
+        const cS = s + 0.24;
+        const expNext = expY + localSlope * 0.24;
+        const cProbe = queryRoadSurfaceAtXZ(idx, ox + ux * cS, oz + uz * cS, probe.y, expNext);
+        if (!cProbe.hit || cProbe.obstacle || cProbe.absNy < 0.74 || Math.abs(cProbe.y - expNext) > 0.115) {
           edgeTriggered = true;
         }
       }
 
       if (edgeTriggered) {
-        // 3-step binary refinement between prevS (on-road) and s (off-road) for ~3.5 cm road-edge accuracy
-        let lo = prevS;
+        // Check if this is a sustained upward curb/median ridge (>= +0.12m across s and s + 0.22m) or low wall:
+        // NEVER bridge across a real raised curb divider onto the sidewalk behind it!
+        const nextCheckS = s + 0.22;
+        const nextCheck = queryRoadSurfaceAtXZ(
+          idx,
+          ox + ux * nextCheckS,
+          oz + uz * nextCheckS,
+          probe.hit ? probe.y : prevY + 0.18,
+          expY + localSlope * 0.22
+        );
+        const isSustainedUpCurb =
+          (probe.hit && probe.y - expY >= 0.19 && nextCheck.hit && nextCheck.y - (expY + localSlope * 0.22) >= 0.15) ||
+          (probe.obstacle && nextCheck.hit && nextCheck.y - (expY + localSlope * 0.22) >= 0.14);
+
+        let bridged = false;
+        if (!isSustainedUpCurb) {
+          const blockRay = castRayInLaserGrid(
+            idx,
+            ox,
+            prevY + 0.24,
+            oz,
+            ux,
+            0,
+            uz,
+            Math.max(0.10, prevS),
+            Math.min(maxDist, s + 0.78),
+            0.68
+          );
+          if (!blockRay) {
+            const lookOffsets = [0.30, 0.58, 0.84];
+            for (let li = 0; li < lookOffsets.length; li++) {
+              const sLook = s + lookOffsets[li];
+              if (sLook + 0.22 > maxDist) break;
+              const expLook1 = prevY + localSlope * (sLook - prevS);
+              const lProbe1 = queryRoadSurfaceAtXZ(idx, ox + ux * sLook, oz + uz * sLook, expLook1, expLook1);
+              if (
+                lProbe1.hit &&
+                !lProbe1.obstacle &&
+                lProbe1.absNy >= 0.78 &&
+                Math.abs(lProbe1.y - expLook1) <= 0.085
+              ) {
+                const sLook2 = sLook + 0.22;
+                const expLook2 = prevY + localSlope * (sLook2 - prevS);
+                const lProbe2 = queryRoadSurfaceAtXZ(idx, ox + ux * sLook2, oz + uz * sLook2, lProbe1.y, expLook2);
+                if (
+                  lProbe2.hit &&
+                  !lProbe2.obstacle &&
+                  lProbe2.absNy >= 0.76 &&
+                  Math.abs(lProbe2.y - expLook2) <= 0.095
+                ) {
+                  s = sLook;
+                  prevS = sLook;
+                  prevY = lProbe1.y;
+                  histS.push(sLook);
+                  histY.push(lProbe1.y);
+                  bridged = true;
+                  break;
+                }
+              }
+            }
+          }
+        }
+        if (bridged) {
+          continue;
+        }
+
+        // Backtrack 1–2 steps if curb bevel already started creeping up so lo sits right at the curb/wall toe
+        let loIdx = histS.length - 1;
+        const refIdx = Math.max(0, histS.length - 4);
+        const refBaseY = histY[refIdx];
+        const refBaseS = histS[refIdx];
+        while (
+          loIdx > refIdx &&
+          Math.abs(histY[loIdx] - (refBaseY + localSlope * (histS[loIdx] - refBaseS))) > 0.055
+        ) {
+          loIdx--;
+        }
+        let lo = histS[loIdx];
         let hi = s;
-        let edgeY = prevY;
+        let edgeY = histY[loIdx];
+        const baseLo = lo;
+        const baseEdgeY = edgeY;
         for (let b = 0; b < 3; b++) {
           const mid = 0.5 * (lo + hi);
-          const mProbe = queryRoadSurfaceAtXZ(idx, ox + ux * mid, oz + uz * mid, edgeY, oy + slopeEst * mid);
+          const expMid = baseEdgeY + localSlope * (mid - baseLo);
+          const mProbe = queryRoadSurfaceAtXZ(idx, ox + ux * mid, oz + uz * mid, edgeY, expMid);
           if (
             mProbe.hit &&
             !mProbe.obstacle &&
-            mProbe.absNy >= 0.74 &&
-            Math.abs(mProbe.y - edgeY) <= 0.09 &&
-            Math.abs(mProbe.y - (oy + slopeEst * mid)) <= 0.28
+            mProbe.absNy >= 0.75 &&
+            Math.abs(mProbe.y - edgeY) <= 0.065 &&
+            mProbe.y - expMid <= 0.075 &&
+            mProbe.y - expMid >= -0.105
           ) {
             lo = mid;
             edgeY = mProbe.y;
@@ -6225,26 +6326,127 @@
             hi = mid;
           }
         }
+
+        // Classify edge signature (rising curb/rim vs wall vs drop-off/void)
+        const beyondS = Math.min(maxDist + 0.6, hi + 0.50);
+        const bProbe = queryRoadSurfaceAtXZ(idx, ox + ux * beyondS, oz + uz * beyondS, edgeY + 0.45, edgeY + 0.45);
+        const bProbeHi = queryRoadSurfaceAtXZ(idx, ox + ux * (hi + 0.85), oz + uz * (hi + 0.85), edgeY + 0.90, edgeY + 0.90);
+        const wNear = castRayInLaserGrid(
+          idx,
+          ox,
+          edgeY + 0.28,
+          oz,
+          ux,
+          0,
+          uz,
+          Math.max(0.10, lo - 0.15),
+          hi + 0.75,
+          0.74
+        );
+        let edgeKind = "down_step";
+        let rimHeight = 0;
+        const riseHere = probe.hit ? probe.y - edgeY : -999;
+        const riseBeyond = bProbe.hit ? bProbe.y - edgeY : -999;
+        const riseFar = bProbeHi.hit ? bProbeHi.y - edgeY : -999;
+        const maxDeckRise = Math.max(riseHere, riseBeyond, riseFar);
+
+        if (wNear) {
+          edgeKind = "wall";
+          const wHi = castRayInLaserGrid(idx, ox, edgeY + 0.80, oz, ux, 0, uz, Math.max(0.10, lo - 0.15), hi + 0.95, 0.76);
+          rimHeight = maxDeckRise > 0.20 ? maxDeckRise : wHi ? 0.95 : 0.38;
+        } else if (maxDeckRise >= 0.095 || probe.obstacle) {
+          edgeKind = "up_step";
+          rimHeight = Math.max(0.12, maxDeckRise);
+        } else if (!probe.hit && !bProbe.hit) {
+          edgeKind = "void";
+        }
+
         return {
           bounded: true,
           dist: lo,
           pt: new THREE.Vector3(ox + ux * lo, edgeY, oz + uz * lo),
+          edgeKind,
+          rimHeight,
         };
       }
 
-      if (s <= 1.4) {
-        const instSlope = Math.max(-0.14, Math.min(0.14, (probe.y - oy) / s));
-        slopeEst = (slopeEst * slopeSamples + instSlope) / (slopeSamples + 1);
-        slopeSamples++;
+      // Smoothly track rolling road/pool-floor grade via EMA on smooth steps (never polluted by curb ramps!)
+      if (stepJump <= 0.042 && probe.absNy >= 0.84) {
+        const backK = Math.max(0, histS.length - 3);
+        const dsSpan = s - histS[backK];
+        if (dsSpan >= 0.20) {
+          const instSlope = Math.max(-0.11, Math.min(0.11, (probe.y - histY[backK]) / dsSpan));
+          localSlope = hasSlope ? localSlope * 0.76 + instSlope * 0.24 : instSlope;
+          hasSlope = true;
+        }
       }
       prevS = s;
       prevY = probe.y;
+      histS.push(s);
+      histY.push(probe.y);
     }
 
     return {
       bounded: false,
       dist: maxDist,
       pt: new THREE.Vector3(ox + ux * maxDist, prevY, oz + uz * maxDist),
+      edgeKind: "open",
+      rimHeight: 0,
+    };
+  }
+
+  function findDirectionalBoundary(idx, ox, oy, oz, ux, uz, maxDist, hasCeiling) {
+    const surf = traceRoadEdgeAlongRay(idx, ox, oy, oz, ux, uz, maxDist);
+    const hitLo = castRayInLaserGrid(idx, ox, oy + 0.24, oz, ux, 0, uz, 0.20, maxDist, 0.68);
+    const hitHi = castRayInLaserGrid(idx, ox, oy + 0.78, oz, ux, 0, uz, 0.20, maxDist, 0.72);
+
+    let wallHit = null;
+    if (hitLo && hitHi) {
+      if (hasCeiling || Math.abs(hitHi.t - hitLo.t) <= 0.70) {
+        wallHit = hitLo.t <= hitHi.t ? hitLo : hitHi;
+      } else {
+        wallHit = hitLo;
+      }
+    } else if (hitLo) {
+      wallHit = hitLo;
+    } else if (hitHi && (hasCeiling || (surf.bounded && Math.abs(hitHi.t - surf.dist) <= 0.85))) {
+      wallHit = hitHi;
+    }
+
+    const wallRimH = wallHit
+      ? hitHi && Math.abs(hitHi.t - wallHit.t) <= 0.85
+        ? 0.85
+        : 0.32
+      : 0;
+
+    // Rule 1: If surface already terminated at a closer curb, pool toe, or drop-off BEFORE a distant setback wall/fence,
+    // respect the closer surface boundary (prevents shooting over 15 cm road curbs into sidewalk fences/trucks!).
+    if (surf.bounded && (!wallHit || surf.dist < wallHit.t - 0.32)) {
+      return surf;
+    }
+
+    // Rule 2: Floor-rooted wall / pool wall / room wall stops the span
+    if (wallHit && (!surf.bounded || wallHit.t <= surf.dist + 0.32)) {
+      const dIn = Math.max(0, wallHit.t - 0.14);
+      const fProbe = queryRoadSurfaceAtXZ(idx, ox + ux * dIn, oz + uz * dIn, oy, oy);
+      const baseFloorY = fProbe.hit ? fProbe.y : surf.bounded ? surf.pt.y : oy;
+      return {
+        bounded: true,
+        dist: wallHit.t,
+        pt: new THREE.Vector3(ox + ux * wallHit.t, baseFloorY + 0.05, oz + uz * wallHit.t),
+        edgeKind: "wall",
+        rimHeight: Math.max(wallRimH, surf.bounded && Math.abs(surf.dist - wallHit.t) <= 0.55 ? surf.rimHeight : 0),
+      };
+    }
+
+    if (surf.bounded) return surf;
+
+    return {
+      bounded: false,
+      dist: maxDist,
+      pt: new THREE.Vector3(ox + ux * maxDist, surf.pt.y, oz + uz * maxDist),
+      edgeKind: "open",
+      rimHeight: 0,
     };
   }
 
@@ -6256,9 +6458,11 @@
     const n = surfNormal ? surfNormal.clone().normalize() : new THREE.Vector3(0, 1, 0);
     const camPos = studioThree.camera ? studioThree.camera.position : new THREE.Vector3(0, 50, 50);
 
-    // Case 1: Hovered directly on a Wall / Facade / Barrier (|ny| < 0.52) -> Shoot horizontal laser across room/street!
-    let sweepPt = rawPt;
-    if (Math.abs(n.y) < 0.52) {
+    // Step 0: If hovered/clicked on a vertical wall, pool side, or curb riser (|ny| < 0.55),
+    // step slightly inward toward the open space and drop onto the floor/road/pool bottom so the full 36-azimuth W×L solver runs!
+    let sweepPt = rawPt.clone();
+    let fallbackWallSpan = null;
+    if (Math.abs(n.y) < 0.55) {
       let dx = n.x;
       let dz = n.z;
       const hLen = Math.hypot(dx, dz);
@@ -6269,59 +6473,53 @@
           dx = -dx;
           dz = -dz;
         }
-        const hitOpp = castRayInLaserGrid(idx, rawPt.x + dx * 0.06, rawPt.y, rawPt.z + dz * 0.06, dx, 0, dz, 0.14, 75.0, 0.85);
-        if (hitOpp) {
-          const pB = new THREE.Vector3(hitOpp.x, hitOpp.y, hitOpp.z);
-          const w = rawPt.distanceTo(pB);
-          const mid = new THREE.Vector3().addVectors(rawPt, pB).multiplyScalar(0.5);
-          const ceilRayW = castRayInLaserGrid(idx, mid.x, mid.y, mid.z, 0, 1, 0, 0.20, 22.0, 1.01);
-          const floorRayW = castRayInLaserGrid(idx, mid.x, mid.y, mid.z, 0, -1, 0, 0.10, 22.0, 1.01);
-          const ceilRayW2 = ceilRayW
-            ? castRayInLaserGrid(idx, mid.x + 0.35, mid.y, mid.z + 0.35, 0, 1, 0, 0.20, 22.0, 1.01)
-            : null;
-          const validCeil = Boolean(
-            ceilRayW &&
-              floorRayW &&
-              ceilRayW.absNy >= 0.55 &&
-              (!ceilRayW2 || Math.abs(ceilRayW2.y - ceilRayW.y) <= 0.45)
+        let landedOnFloor = false;
+        for (const stepIn of [0.35, 0.70]) {
+          const gProbe = castRayInLaserGrid(
+            idx,
+            rawPt.x + dx * stepIn,
+            rawPt.y + 0.45,
+            rawPt.z + dz * stepIn,
+            0,
+            -1,
+            0,
+            0.05,
+            9.0,
+            1.01
           );
-          const ceilHeightW = validCeil ? ceilRayW.y - floorRayW.y : null;
-
-          // Also probe orthogonal room dimension through midpoint
-          const ox = -dz;
-          const oz = dx;
-          const orthoHitP = castRayInLaserGrid(idx, mid.x, mid.y, mid.z, ox, 0, oz, 0.20, 55.0, 0.72);
-          const orthoHitM = castRayInLaserGrid(idx, mid.x, mid.y, mid.z, -ox, 0, -oz, 0.20, 55.0, 0.72);
-          const orthoW = orthoHitP && orthoHitM ? orthoHitP.t + orthoHitM.t : null;
-          const hasOrtho = Boolean(orthoW && orthoW >= 0.85);
-
-          // If indoors (validCeil) OR w is a genuine opposing wall span (<= 30m and not much wider than orthogonal corridor), return directly;
-          // otherwise (e.g. grazed an outdoor sign/bollard pointing 65m down the street), fall through to ground road-width sweep!
-          if (validCeil || (w <= 30.0 && (!hasOrtho || w <= orthoW * 1.45))) {
-            return {
-              kind: validCeil ? "room" : w >= 2.2 ? "road" : "wall_span",
+          if (gProbe && gProbe.absNy >= 0.58) {
+            sweepPt = new THREE.Vector3(gProbe.x, gProbe.y, gProbe.z);
+            landedOnFloor = true;
+            break;
+          }
+        }
+        if (!landedOnFloor) {
+          const hitOpp = castRayInLaserGrid(idx, rawPt.x + dx * 0.06, rawPt.y, rawPt.z + dz * 0.06, dx, 0, dz, 0.14, 75.0, 0.85);
+          if (hitOpp) {
+            const pB = new THREE.Vector3(hitOpp.x, hitOpp.y, hitOpp.z);
+            const w = rawPt.distanceTo(pB);
+            const mid = new THREE.Vector3().addVectors(rawPt, pB).multiplyScalar(0.5);
+            const ox = -dz, oz = dx;
+            const oP = castRayInLaserGrid(idx, mid.x, mid.y, mid.z, ox, 0, oz, 0.20, 75.0, 0.75);
+            const oM = castRayInLaserGrid(idx, mid.x, mid.y, mid.z, -ox, 0, -oz, 0.20, 75.0, 0.75);
+            const oLen = oP && oM ? oP.t + oM.t : null;
+            fallbackWallSpan = {
+              kind: "wall_span",
               originPt: rawPt.clone(),
               pA: rawPt.clone(),
               pB,
               width: w,
-              orthoLength: validCeil && hasOrtho ? orthoW : null,
-              orthoPA: validCeil && hasOrtho ? new THREE.Vector3(mid.x - ox * orthoHitM.t, mid.y, mid.z - oz * orthoHitM.t) : null,
-              orthoPB: validCeil && hasOrtho ? new THREE.Vector3(mid.x + ox * orthoHitP.t, mid.y, mid.z + oz * orthoHitP.t) : null,
-              ceilHeight: ceilHeightW,
-              ceilPt: validCeil ? new THREE.Vector3(ceilRayW.x, ceilRayW.y, ceilRayW.z) : null,
-              floorPt: validCeil ? new THREE.Vector3(floorRayW.x, floorRayW.y, floorRayW.z) : null,
+              orthoLength: oLen && oLen >= 0.85 ? oLen : null,
+              orthoPA: oLen && oLen >= 0.85 ? new THREE.Vector3(mid.x - ox * oM.t, mid.y, mid.z - oz * oM.t) : null,
+              orthoPB: oLen && oLen >= 0.85 ? new THREE.Vector3(mid.x + ox * oP.t, mid.y, mid.z + oz * oP.t) : null,
+              crossPt: mid,
             };
           }
-        }
-        // Step slightly off the vertical obstacle and drop to local ground for full 18-azimuth road width sweep
-        const gProbe = castRayInLaserGrid(idx, rawPt.x + dx * 0.22, rawPt.y + 0.35, rawPt.z + dz * 0.22, 0, -1, 0, 0.05, 6.0, 1.01);
-        if (gProbe && gProbe.absNy >= 0.55) {
-          sweepPt = new THREE.Vector3(gProbe.x, gProbe.y, gProbe.z);
         }
       }
     }
 
-    // Case 2: Hovered on Road / Floor / Deck / Ground -> Sweep 18 azimuth diameters (every 10°)
+    // Step 1: Detect overhead ceiling for indoor Room classification
     const ceilRay = castRayInLaserGrid(idx, sweepPt.x, sweepPt.y + 0.18, sweepPt.z, 0, 1, 0, 0.9, 25.0, 1.01);
     const ceilRayCheck = ceilRay
       ? castRayInLaserGrid(idx, sweepPt.x + 0.38, sweepPt.y + 0.18, sweepPt.z + 0.38, 0, 1, 0, 0.9, 25.0, 1.01)
@@ -6334,115 +6532,333 @@
     const ceilHeight = hasCeiling ? ceilRay.y - sweepPt.y : null;
     const ceilPt = hasCeiling ? new THREE.Vector3(ceilRay.x, ceilRay.y, ceilRay.z) : null;
 
-    const N_AZ = 18;
-    const wallSpans = new Array(N_AZ).fill(null);
-    let bestWall = null;
-    let bestRoad = null;
+    // Step 2: Sweep N_AZ = 36 azimuths (every 5°) for primary cross-section candidates
+    const N_AZ = 36;
+    const MAX_WIDTH_SCAN = 44.0;
+    const cands = new Array(N_AZ).fill(null);
 
     for (let k = 0; k < N_AZ; k++) {
       const ang = (k * Math.PI) / N_AZ;
       const ux = Math.cos(ang);
       const uz = Math.sin(ang);
+      const bP = findDirectionalBoundary(idx, sweepPt.x, sweepPt.y, sweepPt.z, ux, uz, MAX_WIDTH_SCAN, hasCeiling);
+      const bM = findDirectionalBoundary(idx, sweepPt.x, sweepPt.y, sweepPt.z, -ux, -uz, MAX_WIDTH_SCAN, hasCeiling);
+      if (bP.bounded && bM.bounded && bP.dist >= 0.28 && bM.dist >= 0.28) {
+        const w0 = Math.hypot(bP.pt.x - bM.pt.x, bP.pt.z - bM.pt.z);
+        if (w0 >= 0.95) {
+          cands[k] = { k, ang, ux, uz, bP, bM, w0 };
+        }
+      }
+    }
 
-      // Pass A: Opposing Walls / Retaining Walls / Guardrails / Tall Curbs (at +0.82m and +0.28m)
-      const hitP_hi = castRayInLaserGrid(idx, sweepPt.x, sweepPt.y + 0.82, sweepPt.z, ux, 0, uz, 0.20, 52.0, 0.72);
-      const hitP_lo = castRayInLaserGrid(idx, sweepPt.x, sweepPt.y + 0.28, sweepPt.z, ux, 0, uz, 0.20, 32.0, 0.65);
-      const hitP = hitP_hi && hitP_lo ? (hitP_lo.t < hitP_hi.t ? hitP_lo : hitP_hi) : hitP_hi || hitP_lo;
+    const validList = cands.filter(Boolean);
+    if (validList.length === 0) {
+      if (fallbackWallSpan) return fallbackWallSpan;
+      return {
+        kind: "point_only",
+        originPt: rawPt.clone(),
+        slopeDeg: THREE.MathUtils.radToDeg(Math.acos(Math.max(-1, Math.min(1, Math.abs(n.y))))),
+      };
+    }
 
-      const hitM_hi = castRayInLaserGrid(idx, sweepPt.x, sweepPt.y + 0.82, sweepPt.z, -ux, 0, -uz, 0.20, 52.0, 0.72);
-      const hitM_lo = castRayInLaserGrid(idx, sweepPt.x, sweepPt.y + 0.28, sweepPt.z, -ux, 0, -uz, 0.20, 32.0, 0.65);
-      const hitM = hitM_hi && hitM_lo ? (hitM_lo.t < hitM_hi.t ? hitM_lo : hitM_hi) : hitM_hi || hitM_lo;
+    // Step 3: Parallel-Corridor Consistency & 90° Right-Angle Boundary Scoring
+    // Select local minima around the 36-azimuth circle + top 8 narrowest chords
+    const evalSet = new Set();
+    const sortedByW = validList.slice().sort((a, b) => a.w0 - b.w0);
+    for (let i = 0; i < Math.min(8, sortedByW.length); i++) {
+      evalSet.add(sortedByW[i].k);
+    }
+    for (let k = 0; k < N_AZ; k++) {
+      const c = cands[k];
+      if (!c) continue;
+      const prevC = cands[(k + N_AZ - 1) % N_AZ];
+      const nextC = cands[(k + 1) % N_AZ];
+      if ((!prevC || c.w0 <= prevC.w0 * 1.02) && (!nextC || c.w0 <= nextC.w0 * 1.02)) {
+        evalSet.add(k);
+      }
+    }
 
-      if (hitP && hitM) {
-        const wSpan = hitP.t + hitM.t;
-        if (wSpan >= 0.85) {
-          const beamY = sweepPt.y + 0.14;
-          const entry = {
-            k,
-            width: wSpan,
-            pA: new THREE.Vector3(sweepPt.x - ux * hitM.t, beamY, sweepPt.z - uz * hitM.t),
-            pB: new THREE.Vector3(sweepPt.x + ux * hitP.t, beamY, sweepPt.z + uz * hitP.t),
-          };
-          wallSpans[k] = entry;
-          if (!bestWall || wSpan < bestWall.width) {
-            bestWall = entry;
+    let bestCand = null;
+    evalSet.forEach((k) => {
+      const c = cands[k];
+      const lx = -c.uz;
+      const lz = c.ux;
+      const dOff = Math.min(1.35, Math.max(0.50, c.w0 * 0.18));
+
+      const evalOffsetChord = (mult) => {
+        const ox = sweepPt.x + lx * dOff * mult;
+        const oz = sweepPt.z + lz * dOff * mult;
+        const oSurf = queryRoadSurfaceAtXZ(idx, ox, oz, sweepPt.y, sweepPt.y);
+        if (!oSurf.hit || oSurf.obstacle || Math.abs(oSurf.y - sweepPt.y) > 0.28) {
+          return { status: "end_wall" };
+        }
+        const oP = findDirectionalBoundary(idx, ox, oSurf.y, oz, c.ux, c.uz, MAX_WIDTH_SCAN, hasCeiling);
+        const oM = findDirectionalBoundary(idx, ox, oSurf.y, oz, -c.ux, -c.uz, MAX_WIDTH_SCAN, hasCeiling);
+        const wOff = oP.bounded && oM.bounded ? Math.hypot(oP.pt.x - oM.pt.x, oP.pt.z - oM.pt.z) : oP.dist + oM.dist;
+        if (wOff > c.w0 * 1.24 + 0.45) {
+          // Parallel ray on the same floor sailed right past c's endpoint to a much wider real wall/curb -> c hit an internal bump/obstacle!
+          return { status: "wider_open", wOff };
+        }
+        if (!oP.bounded || !oM.bounded || Math.abs(wOff - c.w0) > Math.max(0.75, c.w0 * 0.26)) {
+          return { status: "mismatch", wOff };
+        }
+        return { status: "match", oP, oM, wOff };
+      };
+
+      const rP1 = evalOffsetChord(1);
+      const rM1 = evalOffsetChord(-1);
+      const rP2 = evalOffsetChord(2.2);
+      const rM2 = evalOffsetChord(-2.2);
+
+      const chPlus = rP1.status === "match" ? rP1 : null;
+      const chMinus = rM1.status === "match" ? rM1 : null;
+      const widerCount = [rP1, rM1, rP2, rM2].filter((r) => r.status === "wider_open").length;
+
+      let score;
+      let refinedAng = c.ang;
+      if (!chPlus && !chMinus) {
+        score = c.w0 * 3.2;
+      } else {
+        const p1A = chMinus ? chMinus.oM.pt : c.bM.pt;
+        const p2A = chPlus ? chPlus.oM.pt : c.bM.pt;
+        const p1B = chMinus ? chMinus.oP.pt : c.bP.pt;
+        const p2B = chPlus ? chPlus.oP.pt : c.bP.pt;
+
+        const tAx = p2A.x - p1A.x, tAz = p2A.z - p1A.z;
+        const tBx = p2B.x - p1B.x, tBz = p2B.z - p1B.z;
+        const lenA = Math.hypot(tAx, tAz);
+        const lenB = Math.hypot(tBx, tBz);
+
+        const skewA = lenA > 0.15 ? Math.abs(c.ux * tAx + c.uz * tAz) / lenA : 0.25;
+        const skewB = lenB > 0.15 ? Math.abs(c.ux * tBx + c.uz * tBz) / lenB : 0.25;
+        const skewPenalty = 0.5 * (skewA + skewB);
+
+        const diffs = [];
+        if (chPlus) diffs.push(Math.abs(chPlus.wOff - c.w0) / c.w0);
+        if (chMinus) diffs.push(Math.abs(chMinus.wOff - c.w0) / c.w0);
+        const relDiff = diffs.reduce((s, v) => s + v, 0) / diffs.length;
+
+        // Penalize internal floor bumps/parked scooter grazes where adjacent floor chords open up much wider!
+        const internalBumpPenalty = widerCount > 0 ? 1.0 + 0.85 * widerCount : 1.0;
+        const singleSidePenalty = !chPlus || !chMinus ? 1.12 : 1.0;
+        score = c.w0 * (1.0 + 0.85 * skewPenalty + 0.65 * relDiff) * internalBumpPenalty * singleSidePenalty;
+
+        // Sub-5° exact edge-normal refinement when both opposing curbs/walls agree in tangent direction
+        if (lenA > 0.25 && lenB > 0.25 && skewA < 0.24 && skewB < 0.24) {
+          let uAx = tAx / lenA, uAz = tAz / lenA;
+          let uBx = tBx / lenB, uBz = tBz / lenB;
+          if (uAx * uBx + uAz * uBz < 0) {
+            uBx = -uBx;
+            uBz = -uBz;
+          }
+          const avgTx = uAx + uBx;
+          const avgTz = uAz + uBz;
+          const avgTLen = Math.hypot(avgTx, avgTz);
+          if (avgTLen > 0.5) {
+            let nx = avgTz / avgTLen;
+            let nz = -avgTx / avgTLen;
+            if (nx * c.ux + nz * c.uz < 0) {
+              nx = -nx;
+              nz = -nz;
+            }
+            refinedAng = Math.atan2(nz, nx);
           }
         }
       }
 
-      // Pass B: Continuous Road / Floor Surface Cross-Section (curbs, ditches, shoulders, embankments)
-      const edgeP = traceRoadEdgeAlongRay(idx, sweepPt.x, sweepPt.y, sweepPt.z, ux, uz, 26.0);
-      const edgeM = traceRoadEdgeAlongRay(idx, sweepPt.x, sweepPt.y, sweepPt.z, -ux, -uz, 26.0);
-      if (edgeP.bounded && edgeM.bounded && edgeP.dist >= 0.42 && edgeM.dist >= 0.42) {
-        const rWidth = edgeM.pt.distanceTo(edgeP.pt);
-        if (rWidth >= 0.95 && (!bestRoad || rWidth < bestRoad.width)) {
-          const horizSpan = Math.max(0.1, Math.hypot(edgeP.pt.x - edgeM.pt.x, edgeP.pt.z - edgeM.pt.z));
-          const crossSlopePct = (Math.abs(edgeP.pt.y - edgeM.pt.y) / horizSpan) * 100;
-          bestRoad = {
-            k,
-            width: rWidth,
-            pA: edgeM.pt,
-            pB: edgeP.pt,
-            crossSlopePct,
+      if (!bestCand || score < bestCand.score) {
+        bestCand = { ...c, score, refinedAng };
+      }
+    });
+
+    if (!bestCand) {
+      bestCand = { ...sortedByW[0], score: sortedByW[0].w0, refinedAng: sortedByW[0].ang };
+    }
+
+    // Step 4: Lock Orthogonal Width × Length Axes (leveraging longitudinal corridor lever-arm on roads!)
+    let angW = bestCand.refinedAng;
+    let uxW = Math.cos(angW);
+    let uzW = Math.sin(angW);
+    let bW_P = bestCand.bP;
+    let bW_M = bestCand.bM;
+    if (Math.abs(angW - bestCand.ang) > 0.008) {
+      const rP = findDirectionalBoundary(idx, sweepPt.x, sweepPt.y, sweepPt.z, uxW, uzW, MAX_WIDTH_SCAN, hasCeiling);
+      const rM = findDirectionalBoundary(idx, sweepPt.x, sweepPt.y, sweepPt.z, -uxW, -uzW, MAX_WIDTH_SCAN, hasCeiling);
+      if (rP.bounded && rM.bounded) {
+        const rw = Math.hypot(rP.pt.x - rM.pt.x, rP.pt.z - rM.pt.z);
+        if (rw >= 0.85 && rw <= bestCand.w0 * 1.08) {
+          bW_P = rP;
+          bW_M = rM;
+        } else {
+          angW = bestCand.ang;
+          uxW = bestCand.ux;
+          uzW = bestCand.uz;
+        }
+      }
+    }
+
+    const computeCenterlineOrigin = (pM, pP) => {
+      const mx = 0.5 * (pM.pt.x + pP.pt.x);
+      const mz = 0.5 * (pM.pt.z + pP.pt.z);
+      const avgY = 0.5 * (pM.pt.y + pP.pt.y);
+      const mSurf = queryRoadSurfaceAtXZ(idx, mx, mz, sweepPt.y, avgY);
+      if (mSurf.hit && !mSurf.obstacle && Math.abs(mSurf.y - sweepPt.y) <= 0.45) {
+        return new THREE.Vector3(mx, mSurf.y, mz);
+      }
+      return sweepPt.clone();
+    };
+
+    let midOrigin = computeCenterlineOrigin(bW_M, bW_P);
+    const width0 = bW_M.pt.distanceTo(bW_P.pt);
+
+    // Probe longitudinal Length along angL = angW + π/2 (+ fine ±8° sweep to prevent grazing curbs on long streets)
+    const MAX_LEN_SCAN = 120.0;
+    const baseAngL = angW + Math.PI * 0.5;
+    const fineDeltasDeg = [0, -2, 2, -4, 4, -6, 6, -8, 8];
+    const lenProbes = [];
+    for (let i = 0; i < fineDeltasDeg.length; i++) {
+      const dRad = (fineDeltasDeg[i] * Math.PI) / 180;
+      const aL = baseAngL + dRad;
+      const lx = Math.cos(aL);
+      const lz = Math.sin(aL);
+      const lP = findDirectionalBoundary(idx, midOrigin.x, midOrigin.y, midOrigin.z, lx, lz, MAX_LEN_SCAN, hasCeiling);
+      const lM = findDirectionalBoundary(idx, midOrigin.x, midOrigin.y, midOrigin.z, -lx, -lz, MAX_LEN_SCAN, hasCeiling);
+      const spanL = lP.dist + lM.dist;
+      lenProbes.push({ dDeg: fineDeltasDeg[i], aL, lx, lz, lP, lM, spanL });
+    }
+
+    let chosenLen = lenProbes[0];
+    const maxLenRun = Math.max(...lenProbes.map((p) => p.spanL));
+    const minLenRun = Math.min(...lenProbes.map((p) => p.spanL));
+
+    if (maxLenRun > width0 * 2.1 && maxLenRun > chosenLen.spanL * 1.15) {
+      // Elongated road/corridor regime: the angle that runs farthest down the corridor without grazing curbs is the true road axis!
+      chosenLen = lenProbes.reduce((best, p) => (p.spanL > best.spanL ? p : best), lenProbes[0]);
+      // Re-lock Width strictly 90.0° perpendicular to the true longitudinal road axis
+      const lockedAngW = chosenLen.aL - Math.PI * 0.5;
+      const lux = Math.cos(lockedAngW);
+      const luz = Math.sin(lockedAngW);
+      const lockP = findDirectionalBoundary(idx, sweepPt.x, sweepPt.y, sweepPt.z, lux, luz, MAX_WIDTH_SCAN, hasCeiling);
+      const lockM = findDirectionalBoundary(idx, sweepPt.x, sweepPt.y, sweepPt.z, -lux, -luz, MAX_WIDTH_SCAN, hasCeiling);
+      if (lockP.bounded && lockM.bounded) {
+        const lw = lockM.pt.distanceTo(lockP.pt);
+        if (lw >= 0.85 && lw <= width0 * 1.12) {
+          uxW = lux;
+          uzW = luz;
+          bW_P = lockP;
+          bW_M = lockM;
+          midOrigin = computeCenterlineOrigin(bW_M, bW_P);
+        }
+      }
+    } else if (maxLenRun <= width0 * 3.8 && maxLenRun <= minLenRun * 1.25) {
+      // Enclosed Pool / Room regime: pick shortest perpendicular end-to-end distance
+      chosenLen = lenProbes.reduce((best, p) => (p.spanL < best.spanL ? p : best), lenProbes[0]);
+    }
+
+    // On wide roads (>= 2.8m), also check quarter-width lane chords so a single parked vehicle/pole on centerline doesn't truncate road length
+    let finalLP = chosenLen.lP;
+    let finalLM = chosenLen.lM;
+    const lx = chosenLen.lx;
+    const lz = chosenLen.lz;
+    const curWidth = bW_M.pt.distanceTo(bW_P.pt);
+
+    if (!hasCeiling && curWidth >= 2.8) {
+      const laneOff = Math.min(2.2, curWidth * 0.24);
+      for (const sgn of [-1, 1]) {
+        const qx = midOrigin.x + uxW * laneOff * sgn;
+        const qz = midOrigin.z + uzW * laneOff * sgn;
+        const qSurf = queryRoadSurfaceAtXZ(idx, qx, qz, midOrigin.y, midOrigin.y);
+        if (!qSurf.hit || qSurf.obstacle || Math.abs(qSurf.y - midOrigin.y) > 0.25) continue;
+        const qLP = findDirectionalBoundary(idx, qx, qSurf.y, qz, lx, lz, MAX_LEN_SCAN, false);
+        const qLM = findDirectionalBoundary(idx, qx, qSurf.y, qz, -lx, -lz, MAX_LEN_SCAN, false);
+        if (qLP.dist > finalLP.dist * 1.45 && qLP.dist > curWidth * 1.6) {
+          finalLP = {
+            ...qLP,
+            pt: new THREE.Vector3(midOrigin.x + lx * qLP.dist, qLP.pt.y, midOrigin.z + lz * qLP.dist),
+          };
+        }
+        if (qLM.dist > finalLM.dist * 1.45 && qLM.dist > curWidth * 1.6) {
+          finalLM = {
+            ...qLM,
+            pt: new THREE.Vector3(midOrigin.x - lx * qLM.dist, qLM.pt.y, midOrigin.z - lz * qLM.dist),
           };
         }
       }
     }
 
-    // Decide between Indoor Room (hasCeiling) vs Road Width vs Narrow Corridor/Clearance:
-    // Never let distant setback walls/trees override a narrower curb/shoulder-bounded road!
-    if (bestWall && (!bestRoad || bestWall.width <= bestRoad.width * 1.28)) {
-      const kPerp = (bestWall.k + 9) % N_AZ;
-      const ortho = wallSpans[kPerp] || null;
-      const isRoom = Boolean(hasCeiling);
-      return {
-        kind: isRoom ? "room" : bestWall.width >= 2.2 ? "road" : "corridor",
-        originPt: rawPt.clone(),
-        pA: bestWall.pA,
-        pB: bestWall.pB,
-        width: bestWall.width,
-        crossSlopePct: bestRoad ? bestRoad.crossSlopePct : undefined,
-        orthoLength: isRoom && ortho ? ortho.width : null,
-        orthoPA: isRoom && ortho ? ortho.pA : null,
-        orthoPB: isRoom && ortho ? ortho.pB : null,
-        ceilHeight,
-        ceilPt,
-        floorPt: sweepPt.clone(),
-      };
+    let pA = bW_M.pt.clone();
+    let pB = bW_P.pt.clone();
+    let width = pA.distanceTo(pB);
+
+    let orthoPA = finalLM.pt.clone();
+    let orthoPB = finalLP.pt.clone();
+    let orthoLength = orthoPA.distanceTo(orthoPB);
+    if (!Number.isFinite(orthoLength) || orthoLength < 0.85) {
+      orthoPA = null;
+      orthoPB = null;
+      orthoLength = null;
     }
 
-    if (bestRoad) {
-      return {
-        kind: "road",
-        originPt: rawPt.clone(),
-        pA: bestRoad.pA,
-        pB: bestRoad.pB,
-        width: bestRoad.width,
-        crossSlopePct: bestRoad.crossSlopePct,
-        ceilHeight,
-        ceilPt,
-        floorPt: rawPt.clone(),
-      };
+    const horizSpan = Math.max(0.1, Math.hypot(pB.x - pA.x, pB.z - pA.z));
+    const crossSlopePct = (Math.abs(pB.y - pA.y) / horizSpan) * 100;
+
+    // Step 5: Classify Indoor Room vs Sunken Pool / Pit / Open Basin vs Road / Corridor
+    const fourSides = [bW_M, bW_P, finalLM, finalLP];
+    const boundedCount = fourSides.filter((s) => s && s.bounded).length;
+    const risingSides = fourSides.filter((s) => s && s.bounded && (s.edgeKind === "wall" || s.edgeKind === "up_step"));
+    const tallRimSides = risingSides.filter((s) => (s.rimHeight || 0) >= 0.25);
+    const maxSpan = orthoLength ? Math.max(width, orthoLength) : width;
+    const minSpan = orthoLength ? Math.min(width, orthoLength) : width;
+    const aspect = maxSpan / Math.max(0.4, minSpan);
+
+    let kind = "road";
+    let pitDepth = null;
+
+    if (hasCeiling) {
+      kind = "room";
+    } else if (
+      orthoLength &&
+      boundedCount === 4 &&
+      ((risingSides.length === 4 && maxSpan <= 55.0 && aspect <= 3.8) ||
+        (risingSides.length >= 3 && tallRimSides.length >= 2 && maxSpan <= 78.0 && aspect <= 4.5))
+    ) {
+      kind = "pool";
+      const avgRim =
+        risingSides.reduce((acc, s) => acc + (s.rimHeight || 0), 0) / Math.max(1, risingSides.length);
+      if (avgRim >= 0.24) {
+        pitDepth = avgRim;
+      }
     }
 
-    if (bestWall) {
-      return {
-        kind: "corridor",
-        originPt: rawPt.clone(),
-        pA: bestWall.pA,
-        pB: bestWall.pB,
-        width: bestWall.width,
-        ceilHeight,
-        ceilPt,
-        floorPt: rawPt.clone(),
-      };
+    // For Rooms and Pools/Pits, canonicalize so Width <= Length (寬 <= 長)
+    if ((kind === "room" || kind === "pool") && orthoLength && width > orthoLength) {
+      const tmpA = pA, tmpB = pB, tmpW = width;
+      pA = orthoPA;
+      pB = orthoPB;
+      width = orthoLength;
+      orthoPA = tmpA;
+      orthoPB = tmpB;
+      orthoLength = tmpW;
     }
 
-    // Fallback when hovering an isolated irregular boulder/slope with no defined corridor edges
+    const areaM2 = (kind === "room" || kind === "pool") && orthoLength ? width * orthoLength : null;
+
     return {
-      kind: "point_only",
+      kind,
       originPt: rawPt.clone(),
-      slopeDeg: THREE.MathUtils.radToDeg(Math.acos(Math.max(-1, Math.min(1, Math.abs(n.y))))),
+      pA,
+      pB,
+      width,
+      orthoLength,
+      orthoPA,
+      orthoPB,
+      crossPt: midOrigin.clone(),
+      crossSlopePct,
+      areaM2,
+      pitDepth,
+      ceilHeight,
+      ceilPt,
+      floorPt: sweepPt.clone(),
     };
   }
 
@@ -6466,7 +6882,7 @@
       if (lLen <= 0.02) return;
       const coreLine = new THREE.Line(
         new THREE.BufferGeometry().setFromPoints([start, end]),
-        new THREE.LineBasicMaterial({ color: 0xffffff, linewidth: 1, depthTest: false, transparent: true, opacity: 0.85 })
+        new THREE.LineBasicMaterial({ color: 0xffffff, linewidth: 1, depthTest: false, transparent: true, opacity: 0.88 })
       );
       coreLine.renderOrder = 1000;
       addObj(coreLine);
@@ -6495,41 +6911,69 @@
       const twd = localToTwd97(info.originPt);
       add2DBadge(
         info.originPt,
-        `<div class="autodesk-flex-badge autodesk-laser-badge">🔴 雷射高程 H ${twd.h >= 0 ? "+" : ""}${twd.h.toFixed(2)} m <span class="autodesk-sub-pill">坡度 ${(info.slopeDeg || 0).toFixed(1)}°</span></div>`,
+        `<div class="autodesk-flex-badge autodesk-laser-badge ${isTemp ? "" : "pinned"}">🔴 雷射高程 H ${twd.h >= 0 ? "+" : ""}${twd.h.toFixed(2)} m <span class="autodesk-sub-pill">坡度 ${(info.slopeDeg || 0).toFixed(1)}°</span></div>`,
         "#e11d48",
-        { rawHtml: true, offsetY: -22, isTempDistance: isTemp }
+        { rawHtml: true, offsetY: isTemp ? -24 : -18, isTempDistance: isTemp }
       );
       updateZoomInvariantElements();
       return;
     }
 
-    // Primary Width Laser Beam (pA <-> pB) + endpoint pins
-    addLaserBeam(info.pA, info.pB, 0xff2d55, 1.75, 0.94);
+    // Primary Width Laser Beam (pA <-> pB, crimson-pink) + endpoint pins
+    addLaserBeam(info.pA, info.pB, 0xff2d55, 1.85, 0.95);
     add3DPinMarker(info.pA, 0xff2d55, studioThree.overlayGroup, addObj);
     add3DPinMarker(info.pB, 0xff2d55, studioThree.overlayGroup, addObj);
 
-    // Optional Secondary Orthogonal Room Length Beam (subtle sky-blue)
+    // Secondary Orthogonal Length Laser Beam (orthoPA <-> orthoPB, vivid sky-blue) + 90° intersection tick
     if (info.orthoPA && info.orthoPB && info.orthoLength) {
-      addLaserBeam(info.orthoPA, info.orthoPB, 0x38bdf8, 1.05, 0.62);
+      addLaserBeam(info.orthoPA, info.orthoPB, 0x38bdf8, 1.40, 0.88);
       add3DPinMarker(info.orthoPA, 0x38bdf8, studioThree.overlayGroup, addObj);
       add3DPinMarker(info.orthoPB, 0x38bdf8, studioThree.overlayGroup, addObj);
+
+      // Draw crisp 90° right-angle symbol at intersection of Width & Length axes
+      const crossC = info.crossPt || new THREE.Vector3().addVectors(info.pA, info.pB).multiplyScalar(0.5);
+      const uW = new THREE.Vector3().subVectors(info.pB, info.pA).setY(0);
+      const uL = new THREE.Vector3().subVectors(info.orthoPB, info.orthoPA).setY(0);
+      if (uW.lengthSq() > 1e-4 && uL.lengthSq() > 1e-4) {
+        uW.normalize();
+        uL.normalize();
+        const tickSz = Math.min(0.65, Math.max(0.22, Math.min(info.width, info.orthoLength) * 0.08));
+        const yTick = crossC.y + 0.08;
+        const c1 = new THREE.Vector3(crossC.x + uW.x * tickSz, yTick, crossC.z + uW.z * tickSz);
+        const c2 = new THREE.Vector3(
+          crossC.x + uW.x * tickSz + uL.x * tickSz,
+          yTick,
+          crossC.z + uW.z * tickSz + uL.z * tickSz
+        );
+        const c3 = new THREE.Vector3(crossC.x + uL.x * tickSz, yTick, crossC.z + uL.z * tickSz);
+        const sqLine = new THREE.Line(
+          new THREE.BufferGeometry().setFromPoints([c1, c2, c3]),
+          new THREE.LineBasicMaterial({ color: 0xfef08a, linewidth: 2, depthTest: false, transparent: true, opacity: 0.95 })
+        );
+        sqLine.renderOrder = 1002;
+        addObj(sqLine);
+      }
     }
 
-    // Optional Vertical Ceiling Clearance Laser (floorPt <-> ceilPt)
+    // Optional Vertical Ceiling Clearance Laser (floorPt <-> ceilPt, amber)
     if (info.ceilPt && info.floorPt && info.ceilHeight) {
-      addLaserBeam(info.floorPt, info.ceilPt, 0xf59e0b, 1.05, 0.65);
+      addLaserBeam(info.floorPt, info.ceilPt, 0xf59e0b, 1.15, 0.72);
       add3DPinMarker(info.ceilPt, 0xf59e0b, studioThree.overlayGroup, addObj);
     }
 
     const mid = new THREE.Vector3().addVectors(info.pA, info.pB).multiplyScalar(0.5);
-    const labelAnchor = mid.clone().lerp(info.originPt, 0.35);
+    const labelAnchor = mid.clone().lerp(info.originPt, 0.55);
 
     let titlePrefix = "路寬";
     const subParts = [];
     if (info.kind === "room") {
-      titlePrefix = "室內淨寬";
-      if (info.orthoLength) subParts.push(`× 長 ${info.orthoLength.toFixed(2)} m`);
+      titlePrefix = "室內 寬";
+      if (info.areaM2) subParts.push(`面積 ${info.areaM2.toFixed(1)} m²`);
       if (info.ceilHeight) subParts.push(`淨高 ${info.ceilHeight.toFixed(2)} m`);
+    } else if (info.kind === "pool") {
+      titlePrefix = "寬";
+      if (info.areaM2) subParts.push(`面積 ${info.areaM2.toFixed(1)} m²`);
+      if (info.pitDepth) subParts.push(`深 ${info.pitDepth.toFixed(2)} m`);
     } else if (info.kind === "corridor" || info.kind === "wall_span") {
       titlePrefix = "淨寬";
       if (info.ceilHeight) subParts.push(`淨高 ${info.ceilHeight.toFixed(2)} m`);
@@ -6543,12 +6987,16 @@
       }
     }
 
+    const lenChipHtml = info.orthoLength
+      ? `<span class="autodesk-laser-len-chip">× 長 ${info.orthoLength.toFixed(2)} m</span>`
+      : "";
     const subHtml = subParts.length > 0 ? `<span class="autodesk-sub-pill">${subParts.join(" · ")}</span>` : "";
+
     add2DBadge(
       labelAnchor,
-      `<div class="autodesk-flex-badge autodesk-laser-badge"><span>🔴 ${titlePrefix} ~ ${info.width.toFixed(2)} m</span>${subHtml}</div>`,
+      `<div class="autodesk-flex-badge autodesk-laser-badge ${isTemp ? "" : "pinned"}"><span>🔴 ${titlePrefix} ${info.width.toFixed(2)} m</span>${lenChipHtml}${subHtml}</div>`,
       "#e11d48",
-      { rawHtml: true, offsetY: -18, isTempDistance: isTemp }
+      { rawHtml: true, offsetY: isTemp ? -26 : -16, isTempDistance: isTemp }
     );
 
     updateZoomInvariantElements();
@@ -7678,7 +8126,10 @@
       const twd = localToTwd97(hit.rawPoint);
       const lbl = document.getElementById("lblLastPickedCoord");
       if (lbl) {
-        const wTxt = span && span.width ? `Width: ${span.width.toFixed(2)}m | ` : "";
+        const wTxt =
+          span && span.width
+            ? `W: ${span.width.toFixed(2)}m${span.orthoLength ? ` × L: ${span.orthoLength.toFixed(2)}m` : ""} | `
+            : "";
         lbl.textContent = `LASER -> ${wTxt}${formatScanCoordReadout(twd, STATE.activeScan)}`;
       }
     });
@@ -7781,9 +8232,16 @@
         STATE.completedMeasurements.push(meas);
         renderLaserVisuals(null, meas);
         if (span.width) {
-          showToast(
-            `${span.kind === "room" ? "室內淨寬" : span.kind === "road" ? "雷射路寬" : "雷射淨寬"} ~ ${span.width.toFixed(2)} m 已釘選`
-          );
+          const kindLabel =
+            span.kind === "room"
+              ? "室內 寬"
+              : span.kind === "pool"
+              ? "區域 寬"
+              : span.kind === "road"
+              ? "雷射路寬"
+              : "雷射淨寬";
+          const lenSuffix = span.orthoLength ? ` × 長 ${span.orthoLength.toFixed(2)} m` : "";
+          showToast(`${kindLabel} ${span.width.toFixed(2)} m${lenSuffix} 已釘選`);
         }
       }
       return;
@@ -16787,12 +17245,19 @@
     }, 120);
   });
 
-  // Guard against any stale cached stylesheet missing post-v41 Studio Dock / Flex Badge rules
+  // Guard against any stale cached stylesheet missing post-v41 Studio Dock / Modal / Flex Badge rules
   const ensureStudioStylesheetIntegrity = () => {
     const editDock = document.getElementById("studioEditingDock");
-    if (!editDock) return;
-    const pos = window.getComputedStyle(editDock).position;
-    if (pos !== "absolute" && pos !== "fixed") {
+    const sampleModalWin = document.querySelector(".gs-modal-window");
+    const dockBroken =
+      editDock &&
+      window.getComputedStyle(editDock).position !== "absolute" &&
+      window.getComputedStyle(editDock).position !== "fixed";
+    const modalBroken =
+      sampleModalWin &&
+      (window.getComputedStyle(sampleModalWin).backgroundColor === "rgba(0, 0, 0, 0)" ||
+        window.getComputedStyle(sampleModalWin).backgroundColor === "transparent");
+    if (dockBroken || modalBroken) {
       const freshLink = document.createElement("link");
       freshLink.rel = "stylesheet";
       freshLink.href = `/app.css?fresh=${Date.now()}`;
