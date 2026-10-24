@@ -16,8 +16,17 @@ import subprocess
 from typing import Optional, Tuple
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-if BASE_DIR not in sys.path:
+if sys.path[:1] != [BASE_DIR]:
+    while BASE_DIR in sys.path:
+        sys.path.remove(BASE_DIR)
     sys.path.insert(0, BASE_DIR)
+if sys.stdout is None or sys.stderr is None:
+    os.makedirs(os.path.join(BASE_DIR, "data"), exist_ok=True)
+    _log_fh = open(os.path.join(BASE_DIR, "data", "daemon_stdout.log"), "a", encoding="utf-8", buffering=1, errors="replace")
+    if sys.stdout is None:
+        sys.stdout = _log_fh
+    if sys.stderr is None:
+        sys.stderr = _log_fh
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 if hasattr(sys.stderr, "reconfigure"):
@@ -42,6 +51,7 @@ from server import (
     is_pc_daemon_running,
     mark_daemon_poll_completed,
     _DAEMON_WAKE_EVENT,
+    _PIX4D_WAKE_EVENT,
 )
 from pc_worker.gdrive_watcher import seed_and_discover_scans
 from pc_worker.gdrive_cloud_sync import sync_all_scans_to_gdrive_and_vps
@@ -78,20 +88,37 @@ def _detect_running_pix4dmatic() -> Tuple[bool, str, str]:
     except Exception:
         return False, "", ""
 
-    # Find the most recently updated PIX4Dmatic project log
+    # Find the active PIX4Dmatic scan_id (prefer rerun_settings.json with matching running PID, then recent logs)
     all_scans = DB.list_scans()
     active_proc_ids = {s["scan_id"] for s in all_scans if s.get("status") == "processing"}
+    pid_matched_sid = ""
+    for s in all_scans:
+        sid = s["scan_id"]
+        pdir = s.get("project_dir") or os.path.join(LOCAL_SCANS_ROOT, sid)
+        rcfg = os.path.join(pdir, "rerun_settings.json")
+        if os.path.isfile(rcfg):
+            try:
+                import json as _json
+                with open(rcfg, "r", encoding="utf-8") as rf:
+                    rd = _json.load(rf)
+                rpid = int(rd.get("pid") or 0)
+                if rpid > 0 and f" {rpid} " in f" {r.stdout or ''} ":
+                    pid_matched_sid = sid
+                    break
+            except Exception:
+                pass
+
     candidate_logs = []
     for s in all_scans:
         sid = s["scan_id"]
+        if pid_matched_sid and sid != pid_matched_sid:
+            continue
         pdir = s.get("project_dir") or os.path.join(LOCAL_SCANS_ROOT, sid)
         log_dirs = [
             os.path.join(pdir, sid, "logs"),
             os.path.join(pdir, "project", "logs"),
             os.path.join(LOCAL_SCANS_ROOT, sid, sid, "logs"),
         ]
-        if sid == "QuChi261016_Trees" and sid in active_proc_ids:
-            log_dirs.append(os.path.join(LOCAL_SCANS_ROOT, "catch_QuChi261016", "catch_QuChi261016", "logs"))
         for ldir in log_dirs:
             if os.path.isdir(ldir):
                 for lp in glob.glob(os.path.join(ldir, "*.txt")):
@@ -101,13 +128,17 @@ def _detect_running_pix4dmatic() -> Tuple[bool, str, str]:
                     except OSError:
                         pass
     if not candidate_logs:
+        if pid_matched_sid:
+            return True, pid_matched_sid, ""
+        if len(active_proc_ids) == 1:
+            return True, next(iter(active_proc_ids)), ""
         return True, "", ""
     candidate_logs.sort(key=lambda x: (x[0], x[1]))
     _, _, inferred_sid, latest_log = candidate_logs[-1]
     # Ensure no other scan is left with stale processing status
     for s in all_scans:
         if s.get("status") == "processing" and s["scan_id"] != inferred_sid:
-            DB.update_job_progress(s["scan_id"], "completed", 100.0, "Completed")
+            DB.update_job_progress(s["scan_id"], "queued", 0.0, "Queued (Awaiting PIX4Dmatic pipeline)")
     return True, inferred_sid, latest_log
 
 
@@ -127,7 +158,14 @@ def inbox_discovery_loop():
                 mark_daemon_poll_completed()
                 cur_sig = tuple(
                     sorted(
-                        (s["scan_id"], str(s.get("tileset_path") or ""))
+                        (
+                            s["scan_id"],
+                            str(s.get("tileset_path") or ""),
+                            int(s.get("tileset_version") or 0),
+                            round(float(s.get("twd97_e") or 0.0), 3),
+                            round(float(s.get("twd97_n") or 0.0), 3),
+                            round(float(s.get("twd97_h") or 0.0), 3),
+                        )
                         for s in DB.list_scans()
                         if s.get("status") == "completed"
                     )
@@ -159,8 +197,9 @@ def pix4d_worker_loop():
     adopted_sid: Optional[str] = None
 
     while True:
+        _PIX4D_WAKE_EVENT.clear()
         if not is_pc_daemon_running():
-            time.sleep(3)
+            _PIX4D_WAKE_EVENT.wait(timeout=3.0)
             continue
         try:
             is_running, running_sid, latest_log = _detect_running_pix4dmatic()
@@ -172,7 +211,7 @@ def pix4d_worker_loop():
                 cpu_ram = info.get("cpu_ram", "")
                 label = f"PIX4Dmatic: {stg} ({cpu_ram})" if cpu_ram else f"PIX4Dmatic: {stg}"
                 DB.update_job_progress(running_sid, "processing", pct, label)
-                time.sleep(4)
+                _PIX4D_WAKE_EVENT.wait(timeout=4.0)
                 continue
 
             # Recover any orphaned "processing" job if PIX4Dmatic is not running
@@ -188,67 +227,93 @@ def pix4d_worker_loop():
                 adopted_sid = None
                 scan_row = DB.get_scan(fin_sid) or {}
                 proj_dir = scan_row.get("project_dir") or os.path.join(LOCAL_SCANS_ROOT, fin_sid)
-                exp_dirs = [os.path.join(proj_dir, "exports")]
-                if fin_sid == "catch_QuChi261016":
-                    exp_dirs.append(os.path.join(LOCAL_SCANS_ROOT, "QuChi261016_Trees", "exports"))
+                rerun_cfg_fp = os.path.join(proj_dir, "rerun_settings.json")
+                rerun_req_ts = 0.0
+                if os.path.isfile(rerun_cfg_fp):
+                    try:
+                        import json as _json
+                        with open(rerun_cfg_fp, "r", encoding="utf-8") as rf:
+                            rd = _json.load(rf)
+                        rerun_req_ts = float(rd.get("started_at") or rd.get("requested_at") or 0.0)
+                    except Exception:
+                        rerun_req_ts = os.path.getmtime(rerun_cfg_fp)
+
+                exp_dirs = [
+                    os.path.join(proj_dir, "exports"),
+                    os.path.join(proj_dir, "project", "exports"),
+                ]
                 objs = []
                 for exp_dir in exp_dirs:
                     if os.path.isdir(exp_dir):
-                        for r_dir, _, r_files in os.walk(exp_dir):
+                        for r_dir, r_subdirs, r_files in os.walk(exp_dir):
+                            r_subdirs[:] = [d for d in r_subdirs if d != "obj_mesh_prev"]
                             for f in r_files:
                                 if f.lower().endswith(".obj"):
                                     fp = os.path.join(r_dir, f)
                                     objs.append((os.path.getmtime(fp), fp))
                 objs.sort(key=lambda x: x[0], reverse=True)
                 newest_obj = objs[0][1] if objs else (scan_row.get("obj_path") or "")
-                ts_path = scan_row.get("tileset_path") or os.path.join(proj_dir, "tileset", "tileset.json")
-                if newest_obj and os.path.isfile(newest_obj):
-                    # If OBJ is newer than tileset.json, rebuild tileset + preview + DSM
-                    if not os.path.isfile(ts_path) or os.path.getmtime(newest_obj) > os.path.getmtime(ts_path):
-                        DB.update_job_progress(
-                            fin_sid, "processing", 96.0, "Building Hierarchical 3D Tileset in GC_ScanOptimizer..."
-                        )
-                        built_ts = postprocess_obj_to_tileset(fin_sid, proj_dir, newest_obj)
-                        if built_ts:
-                            ts_path = built_ts
-                if os.path.isfile(ts_path) or (newest_obj and os.path.isfile(newest_obj)):
-                    DB.update_job_progress(
-                        fin_sid,
-                        "completed",
-                        100.0,
-                        "Completed (TWD97 + TWVD2001, 4K Web Tileset)",
-                        tileset_path=ts_path if os.path.isfile(ts_path) else None,
-                        obj_path=newest_obj if os.path.isfile(newest_obj) else None,
-                    )
-                    try:
-                        from pc_worker.gdrive_watcher import _discover_folder_scan_item
-                        disc = _discover_folder_scan_item(proj_dir)
-                        if disc:
-                            cur_row = DB.get_scan(fin_sid) or {}
-                            merged = dict(cur_row)
-                            merged.update(disc)
-                            merged["scan_id"] = fin_sid
-                            merged["status"] = "completed"
-                            merged["progress_pct"] = 100.0
-                            if cur_row.get("source_zip_path"):
-                                merged["source_zip_path"] = cur_row["source_zip_path"]
-                            if cur_row.get("project_group") and cur_row["project_group"] != "General / Unassigned":
-                                merged["project_group"] = cur_row["project_group"]
-                            if cur_row.get("project_name_zh"):
-                                merged["project_name_zh"] = cur_row["project_name_zh"]
-                            if int(cur_row.get("image_count") or 0) > int(merged.get("image_count") or 0):
-                                merged["image_count"] = int(cur_row["image_count"])
-                            DB.upsert_scan(merged)
-                    except Exception as de:
-                        print(f"[InboxWatcher] Metadata refresh note for {fin_sid}: {de}")
-                    try:
-                        if not GCHAT.has_recent_notification(fin_sid, within_seconds=120.0):
-                            GCHAT.notify_scan_ready(fin_sid)
-                    except Exception as ge:
-                        print(f"[InboxWatcher] Google Chat notify note for {fin_sid}: {ge}")
-                    print(f"[InboxWatcher] Adopted PIX4Dmatic job {fin_sid} completed -> {ts_path}")
+                newest_obj_mtime = objs[0][0] if objs else (os.path.getmtime(newest_obj) if newest_obj and os.path.isfile(newest_obj) else 0.0)
+
+                # If rerun_settings.json is still present and no new .obj was exported after the rerun started,
+                # do NOT falsely mark a stale pre-rerun tileset.json as completed! Re-queue or mark failed.
+                if os.path.isfile(rerun_cfg_fp) and (not newest_obj or not os.path.isfile(newest_obj) or newest_obj_mtime < rerun_req_ts):
+                    DB.update_job_progress(fin_sid, "queued", 0.0, "Queued (Resuming interrupted Re-run)")
+                    DB.set_force_next(fin_sid, True)
                 else:
-                    DB.update_job_progress(fin_sid, "queued", 0.0, "Queued (Awaiting PIX4Dmatic pipeline)")
+                    ts_path = scan_row.get("tileset_path") or os.path.join(proj_dir, "tileset", "tileset.json")
+                    if newest_obj and os.path.isfile(newest_obj):
+                        # If OBJ is newer than tileset.json, rebuild tileset + preview + DSM
+                        if not os.path.isfile(ts_path) or os.path.getmtime(newest_obj) > os.path.getmtime(ts_path):
+                            DB.update_job_progress(
+                                fin_sid, "processing", 96.0, "Building Hierarchical 3D Tileset in GC_ScanOptimizer..."
+                            )
+                            built_ts = postprocess_obj_to_tileset(fin_sid, proj_dir, newest_obj)
+                            if built_ts:
+                                ts_path = built_ts
+                    if os.path.isfile(rerun_cfg_fp):
+                        try:
+                            os.remove(rerun_cfg_fp)
+                        except OSError:
+                            pass
+                    if os.path.isfile(ts_path) or (newest_obj and os.path.isfile(newest_obj)):
+                        DB.update_job_progress(
+                            fin_sid,
+                            "completed",
+                            100.0,
+                            "Completed (TWD97 + TWVD2001, 4K Web Tileset)",
+                            tileset_path=ts_path if os.path.isfile(ts_path) else None,
+                            obj_path=newest_obj if os.path.isfile(newest_obj) else None,
+                        )
+                        try:
+                            from pc_worker.gdrive_watcher import _discover_folder_scan_item
+                            disc = _discover_folder_scan_item(proj_dir)
+                            if disc:
+                                cur_row = DB.get_scan(fin_sid) or {}
+                                merged = dict(cur_row)
+                                merged.update(disc)
+                                merged["scan_id"] = fin_sid
+                                merged["status"] = "completed"
+                                merged["progress_pct"] = 100.0
+                                if cur_row.get("source_zip_path"):
+                                    merged["source_zip_path"] = cur_row["source_zip_path"]
+                                if cur_row.get("project_group") and cur_row["project_group"] != "General / Unassigned":
+                                    merged["project_group"] = cur_row["project_group"]
+                                if cur_row.get("project_name_zh"):
+                                    merged["project_name_zh"] = cur_row["project_name_zh"]
+                                if int(cur_row.get("image_count") or 0) > int(merged.get("image_count") or 0):
+                                    merged["image_count"] = int(cur_row["image_count"])
+                                DB.upsert_scan(merged)
+                        except Exception as de:
+                            print(f"[InboxWatcher] Metadata refresh note for {fin_sid}: {de}")
+                        try:
+                            if not GCHAT.has_recent_notification(fin_sid, within_seconds=120.0):
+                                GCHAT.notify_scan_ready(fin_sid)
+                        except Exception as ge:
+                            print(f"[InboxWatcher] Google Chat notify note for {fin_sid}: {ge}")
+                        print(f"[InboxWatcher] Adopted PIX4Dmatic job {fin_sid} completed -> {ts_path}")
+                    else:
+                        DB.update_job_progress(fin_sid, "queued", 0.0, "Queued (Awaiting PIX4Dmatic pipeline)")
 
             next_job = DB.pop_next_job()
             if next_job:
@@ -261,12 +326,24 @@ def pix4d_worker_loop():
                 def _on_progress(pct: float, stage: str):
                     DB.update_job_progress(sid, "processing", pct, stage)
 
-                res = run_pix4dmatic_pipeline(
-                    scan_id=sid,
-                    input_path=src_zip,
-                    output_project_dir=out_dir,
-                    progress_callback=_on_progress,
-                )
+                try:
+                    res = run_pix4dmatic_pipeline(
+                        scan_id=sid,
+                        input_path=src_zip,
+                        output_project_dir=out_dir,
+                        progress_callback=_on_progress,
+                    )
+                except Exception as job_exc:
+                    import traceback
+                    traceback.print_exc()
+                    DB.update_job_progress(
+                        sid,
+                        "failed",
+                        0.0,
+                        f"Pipeline exception ({job_exc})",
+                    )
+                    continue
+
                 if res.get("success") and res.get("tileset_path"):
                     DB.update_job_progress(
                         sid,
@@ -315,7 +392,7 @@ def pix4d_worker_loop():
                     )
         except Exception as e:
             print(f"[InboxWatcher] Worker warning: {e}")
-        time.sleep(5)
+        _PIX4D_WAKE_EVENT.wait(timeout=5.0)
 
 
 def ssh_reverse_tunnel_loop():

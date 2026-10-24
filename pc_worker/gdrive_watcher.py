@@ -75,13 +75,13 @@ def twd97_to_wgs84(easting: float, northing: float) -> Tuple[float, float]:
         - (1 + 2 * t1 + c1) * d**3 / 6
         + (5 - 2 * c1 + 28 * t1 - 3 * c1**2 + 8 * e2 + 24 * t1**2) * d**5 / 120
     ) / math.cos(fp)
-    return round(math.degrees(lat), 6), round(math.degrees(lon), 6)
+    return round(math.degrees(lat), 9), round(math.degrees(lon), 9)
 
 
-def wgs84_to_twd97(lat_deg: float, lon_deg: float, ellip_h: float = 40.0) -> Tuple[float, float, float]:
+def wgs84_to_twd97(lat_deg: float, lon_deg: float, ortho_h: float = 0.0) -> Tuple[float, float, float]:
     """
-    Converts WGS84 (lat, lon, ellipsoidal height) to TWD97 (121) [EPSG:3826] + TWVD2001 [EPSG:8904].
-    Applies Taiwan geoid undulation model approximation (TWGEOID2018h ~20.6m in Northern Taiwan).
+    Converts WGS84 geodetic (lat_deg, lon_deg) to TWD97 (121) [EPSG:3826] Easting/Northing meters,
+    carrying through the supplied elevation `ortho_h` (caller subtracts geoid separation when source is ellipsoidal).
     """
     a = 6378137.0
     f = 1.0 / 298.257222101
@@ -121,9 +121,53 @@ def wgs84_to_twd97(lat_deg: float, lon_deg: float, ellip_h: float = 40.0) -> Tup
             + (61 - 58 * t + t**2 + 600 * c - 330 * e_prime2) * (A**6) / 720
         )
     )
-    # If height already looks like orthometric height (<55m in Taipei basin), preserve or convert
-    twvd2001_h = round(ellip_h, 2)
-    return round(easting, 3), round(northing, 3), twvd2001_h
+    twvd2001_h = round(ortho_h, 3)
+    return round(easting, 4), round(northing, 4), twvd2001_h
+
+
+def wgs84_to_utm(lat_deg: float, lon_deg: float) -> Tuple[float, float, int, str]:
+    """Converts global WGS84 (lat, lon) to standard UTM (Easting, Northing, zone, hemisphere 'N'|'S')."""
+    zone = max(1, min(60, int(math.floor((lon_deg + 180.0) / 6.0)) + 1))
+    lon0 = math.radians((zone - 1) * 6.0 - 180.0 + 3.0)
+    a = 6378137.0
+    f = 1.0 / 298.257223563
+    e2 = 2.0 * f - f * f
+    ep2 = e2 / (1.0 - e2)
+    k0 = 0.9996
+    lat = math.radians(lat_deg)
+    lon = math.radians(lon_deg)
+    sin_lat = math.sin(lat)
+    cos_lat = math.cos(lat)
+    tan_lat = math.tan(lat)
+    n = a / math.sqrt(1.0 - e2 * sin_lat * sin_lat)
+    t = tan_lat * tan_lat
+    c = ep2 * cos_lat * cos_lat
+    A = cos_lat * (lon - lon0)
+    M = a * (
+        (1.0 - e2 / 4.0 - 3.0 * e2**2 / 64.0 - 5.0 * e2**3 / 256.0) * lat
+        - (3.0 * e2 / 8.0 + 3.0 * e2**2 / 32.0 + 45.0 * e2**3 / 1024.0) * math.sin(2.0 * lat)
+        + (15.0 * e2**2 / 256.0 + 45.0 * e2**3 / 1024.0) * math.sin(4.0 * lat)
+        - (35.0 * e2**3 / 3072.0) * math.sin(6.0 * lat)
+    )
+    easting = 500000.0 + k0 * n * (
+        A
+        + (1.0 - t + c) * (A**3) / 6.0
+        + (5.0 - 18.0 * t + t**2 + 72.0 * c - 58.0 * ep2) * (A**5) / 120.0
+    )
+    northing = k0 * (
+        M
+        + n
+        * tan_lat
+        * (
+            (A**2) / 2.0
+            + (5.0 - t + 9.0 * c + 4.0 * c**2) * (A**4) / 24.0
+            + (61.0 - 58.0 * t + t**2 + 600.0 * c - 330.0 * ep2) * (A**6) / 720.0
+        )
+    )
+    hemi = "N" if lat_deg >= 0.0 else "S"
+    if lat_deg < 0.0:
+        northing += 10000000.0
+    return round(easting, 3), round(northing, 3), zone, hemi
 
 
 def utm51n_to_wgs84(utm_e: float, utm_n: float) -> Tuple[float, float]:
@@ -160,35 +204,14 @@ def utm51n_to_wgs84(utm_e: float, utm_n: float) -> Tuple[float, float]:
     lat = fp - (n1 * math.tan(fp) / r1) * (
         d**2 / 2
         - (5 + 3 * t1 + 10 * c1 - 4 * c1**2 - 9 * e2) * d**4 / 24
+        + (61 + 90 * t1 + 298 * c1 + 45 * t1**2 - 252 * e2 - 3 * c1**2) * d**6 / 720
     )
-    lon = lon0 + (d - (1 + 2 * t1 + c1) * d**3 / 6) / math.cos(fp)
-    return round(math.degrees(lat), 6), round(math.degrees(lon), 6)
-
-
-# Known Engineering Project Geofences for Auto-Grouping (1 km / 1000m radius)
-KNOWN_PROJECTS = [
-    {
-        "project_group": "QuChi Dam",
-        "project_name_zh": "屈尺堰壩體與護岸工程",
-        "lat": 24.92032,
-        "lon": 121.54351,
-        "radius_m": 1000.0,
-    },
-    {
-        "project_group": "Rose Park",
-        "project_name_zh": "板橋玫瑰公園整建工程",
-        "lat": 25.02389,
-        "lon": 121.45547,
-        "radius_m": 1000.0,
-    },
-    {
-        "project_group": "NTU Dorm",
-        "project_name_zh": "台大新建學生宿舍工程",
-        "lat": 25.01552,
-        "lon": 121.54218,
-        "radius_m": 1000.0,
-    },
-]
+    lon = lon0 + (
+        d
+        - (1 + 2 * t1 + c1) * d**3 / 6
+        + (5 - 2 * c1 + 28 * t1 - 3 * c1**2 + 8 * e2 + 24 * t1**2) * d**5 / 120
+    ) / math.cos(fp)
+    return round(math.degrees(lat), 9), round(math.degrees(lon), 9)
 
 
 def haversine_m(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
@@ -203,29 +226,26 @@ def haversine_m(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
 def _infer_project_prefix(hint_name: str) -> str:
     """
     Infers a clean human-readable project name from a folder or archive name
-    (e.g., 'BridgeNorth_20261015_1of4' -> 'BridgeNorth', 'Taoyuan_MRT_261015' -> 'Taoyuan MRT').
+    (e.g., 'BridgeNorth_20261015_1of4' -> 'Bridge North', 'Taoyuan_MRT_261015' -> 'Taoyuan MRT').
     Returns '' if the name is purely a numeric timestamp like '2026-10-05-15-37-05'.
     """
     if not hint_name:
         return ""
     stem = os.path.splitext(os.path.basename(hint_name.strip("\\/")))[0]
-    # Strip trailing date/part tokens like _20261005, _260917, _1of4, _Compressed, _Merged
+    if stem.lower().startswith("catch_"):
+        stem = stem[6:]
+    # Strip trailing export/date/part tokens like -cesium_mesh, -obj_mesh, _20261005, _260917, _1of4, _Compressed, _Merged
     cleaned = re.sub(
-        r"([_\-\s]+(20\d{6}|\d{6}|\d{4}[\-_]\d{2}[\-_]\d{2}.*|\d+\s*of\s*\d+|compressed|merged\d*|sector\d*|part\d*|\d+))+$",
+        r"([_\-\s]+(cesium[_\-]?mesh|obj[_\-]?mesh|20\d{6}|\d{6}|\d{4}[\-_]\d{2}[\-_]\d{2}.*|\d+\s*of\s*\d+|compressed|merged\d*|sector\d*|part\d*|trees|nortk|\d+))+$",
         "",
         stem,
         flags=re.IGNORECASE,
     ).strip(" _-()")
     if not cleaned or re.match(r"^[\d\-_]+$", cleaned) or cleaned.lower() in ("catch", "scan", "scans", "export", "tileset"):
         return ""
-    low = cleaned.lower().replace("_", "").replace("-", "").replace(" ", "")
-    if "quchi" in low:
-        return "QuChi Dam"
-    if "rosepark" in low or "rose" in low:
-        return "Rose Park"
-    if "ntudorm" in low or "ntu" in low:
-        return "NTU Dorm"
-    return cleaned.replace("_", " ").strip()
+    spaced = re.sub(r"[_\-]+", " ", cleaned)
+    spaced = re.sub(r"([a-z])([A-Z])", r"\1 \2", spaced)
+    return re.sub(r"\s+", " ", spaced).strip()
 
 
 def _apply_site_rename_override(pg: str, pzh: str) -> Tuple[str, str]:
@@ -246,27 +266,20 @@ def _apply_site_rename_override(pg: str, pzh: str) -> Tuple[str, str]:
 
 
 def match_project_group(
-    lat: float,
-    lon: float,
+    lat: Optional[float],
+    lon: Optional[float],
     hint_name: str = "",
     parent_project: str = "",
     dynamic_clusters: Optional[List[Dict[str, Any]]] = None,
 ) -> Tuple[str, str]:
     """
-    Project-agnostic resolver that scales to 100+ engineering projects:
+    100% Data-Driven Project-Agnostic Resolver (zero hardcoded coordinates or site names):
     1. Explicit parent project folder name (e.g., C:\\GatheringScans\\<Project>\\<Scan>)
-    2. Spatial proximity match (<= 1000m / 1 km radius) against known + dynamically discovered project clusters
-    3. Project prefix inferred from folder/archive filename (e.g., 'ProjectX_20261015.zip' -> 'ProjectX')
-    4. Coordinate-based site cluster fallback ('Site (25.0880N, 121.5218E)') when no scans exist within 1 km
+    2. Spatial proximity match (<= 1000m / 1 km radius) against dynamically discovered scan clusters & projects_registry.json
+    3. Project prefix inferred from folder/archive filename (e.g., 'ProjectX_20261015.zip' -> 'Project X')
+    4. Coordinate-based site cluster fallback ('Site (25.0374N, 121.5253E)') or 'Unassigned Site' if un-georeferenced
     """
-    if parent_project and parent_project.strip():
-        pg = parent_project.strip()
-        for p in KNOWN_PROJECTS:
-            if p["project_group"].lower() == pg.lower():
-                return _apply_site_rename_override(p["project_group"], p["project_name_zh"])
-        return _apply_site_rename_override(pg, f"{pg} 工程掃描群組")
-
-    candidates = list(KNOWN_PROJECTS)
+    candidates: List[Dict[str, Any]] = []
     reg_file = os.path.join(LOCAL_SCANS_ROOT, "projects_registry.json")
     if os.path.isfile(reg_file):
         try:
@@ -279,34 +292,58 @@ def match_project_group(
     if dynamic_clusters:
         candidates.extend(dynamic_clusters)
 
-    best = None
-    best_dist = 1e12
-    for p in candidates:
-        try:
-            d = haversine_m(lat, lon, float(p["lat"]), float(p["lon"]))
-            rad = max(float(p.get("radius_m", 1000.0)), 1000.0)
-            if d <= rad and d < best_dist:
-                best = p
-                best_dist = d
-        except Exception:
-            continue
-    if best:
-        return _apply_site_rename_override(
-            best["project_group"],
-            best.get("project_name_zh") or f"{best['project_group']} 工程掃描群組",
-        )
+    if parent_project and parent_project.strip():
+        pg = parent_project.strip()
+        for p in candidates:
+            if str(p.get("project_group") or "").lower() == pg.lower():
+                return _apply_site_rename_override(
+                    p["project_group"],
+                    p.get("project_name_zh") or f"{p['project_group']} 工程掃描群組",
+                )
+        return _apply_site_rename_override(pg, f"{pg} 工程掃描群組")
+
+    has_valid_georef = (
+        lat is not None
+        and lon is not None
+        and (abs(float(lat)) > 0.001 or abs(float(lon)) > 0.001)
+    )
+    if has_valid_georef:
+        best = None
+        best_dist = 1e12
+        for p in candidates:
+            try:
+                if p.get("lat") is None or p.get("lon") is None:
+                    continue
+                plat, plon = float(p["lat"]), float(p["lon"])
+                if abs(plat) <= 0.001 and abs(plon) <= 0.001:
+                    continue
+                d = haversine_m(float(lat), float(lon), plat, plon)
+                rad = max(float(p.get("radius_m", 1000.0)), 1000.0)
+                if d <= rad and d < best_dist:
+                    best = p
+                    best_dist = d
+            except Exception:
+                continue
+        if best:
+            return _apply_site_rename_override(
+                best["project_group"],
+                best.get("project_name_zh") or f"{best['project_group']} 工程掃描群組",
+            )
 
     inferred = _infer_project_prefix(hint_name)
     if inferred:
         for p in candidates:
-            if p["project_group"].lower() == inferred.lower():
+            if str(p.get("project_group") or "").lower() == inferred.lower():
                 return _apply_site_rename_override(
                     p["project_group"],
                     p.get("project_name_zh") or f"{inferred} 工程掃描群組",
                 )
         return _apply_site_rename_override(inferred, f"{inferred} 工程掃描群組")
 
-    return _apply_site_rename_override(f"Site ({lat:.4f}N, {lon:.4f}E)", "新增工區掃描點")
+    if has_valid_georef:
+        return _apply_site_rename_override(f"Site ({float(lat):.4f}N, {float(lon):.4f}E)", "新增工區掃描點")
+
+    return _apply_site_rename_override("Unassigned Site", "未定位掃描工區")
 
 
 GATHEREN_DRIVEFS_USER_MAP: Dict[str, Tuple[str, str, str, str]] = {
@@ -416,7 +453,7 @@ def _extract_image_exif_xmp_gps(img_header_bytes: bytes) -> Optional[Dict[str, f
         header_txt = img_header_bytes[:65536].decode("latin-1", errors="ignore")
         lat_val: Optional[float] = None
         lon_val: Optional[float] = None
-        alt_val: float = 37.4
+        alt_val: float = 0.0
         acc_cm: Optional[float] = None
 
         m_lat = re.search(
@@ -480,10 +517,13 @@ def _extract_image_exif_xmp_gps(img_header_bytes: bytes) -> Optional[Dict[str, f
 
 
 def _apply_extracted_coords_to_info(info: Dict[str, Any], cx: float, cy: float, cz: float, crs_desc: str = "") -> bool:
-    """Applies extracted coordinates (UTM51N, TWD97 TM2-121, or geodetic lat/lon) to info dict."""
-    if 100000 <= cx <= 850000 and 2500000 <= cy <= 3000000 and ("UTM zone 51N" in crs_desc or cx < 200000 or cx > 345000):
+    """Applies extracted coordinates (UTM51N, TWD97 TM2-121, or global WGS84 lat/lon) to info dict."""
+    crs_low = (crs_desc or "").lower()
+    is_ellip = ("ellipsoid" in crs_low) or ("4979" in crs_low) or ("wgs 84" in crs_low and "twvd" not in crs_low and "8904" not in crs_low)
+    if 100000 <= cx <= 850000 and 2500000 <= cy <= 3000000 and ("utm zone 51n" in crs_low or cx < 200000 or cx > 345000):
         lat, lon = utm51n_to_wgs84(cx, cy)
-        twd_e, twd_n, twd_h = wgs84_to_twd97(lat, lon, cz - 20.6)
+        ortho_z = cz - 17.20 if (is_ellip and "twvd" not in crs_low and "8904" not in crs_low) else cz
+        twd_e, twd_n, twd_h = wgs84_to_twd97(lat, lon, ortho_z)
         info.update(
             {
                 "lat": lat,
@@ -492,6 +532,7 @@ def _apply_extracted_coords_to_info(info: Dict[str, Any], cx: float, cy: float, 
                 "twd97_e": twd_e,
                 "twd97_n": twd_n,
                 "twd97_h": twd_h,
+                "crs": TWD97_TWVD2001_SHORT,
             }
         )
         return True
@@ -505,13 +546,15 @@ def _apply_extracted_coords_to_info(info: Dict[str, Any], cx: float, cy: float, 
                 "twd97_e": round(cx, 3),
                 "twd97_n": round(cy, 3),
                 "twd97_h": round(cz, 2),
+                "crs": TWD97_TWVD2001_SHORT,
             }
         )
         return True
-    # Geodetic degrees: either (lat, lon) = (cx, cy) or (lon, lat) = (cx, cy)
+    # Geodetic degrees: Taiwan region -> TWD97 (121) + TWVD2001
     if 20.0 <= cx <= 27.0 and 118.0 <= cy <= 123.5:
         lat, lon = round(cx, 6), round(cy, 6)
-        twd_e, twd_n, twd_h = wgs84_to_twd97(lat, lon, cz)
+        ortho_z = cz - 17.20 if is_ellip else cz
+        twd_e, twd_n, twd_h = wgs84_to_twd97(lat, lon, ortho_z)
         info.update(
             {
                 "lat": lat,
@@ -520,12 +563,14 @@ def _apply_extracted_coords_to_info(info: Dict[str, Any], cx: float, cy: float, 
                 "twd97_e": twd_e,
                 "twd97_n": twd_n,
                 "twd97_h": twd_h,
+                "crs": TWD97_TWVD2001_SHORT,
             }
         )
         return True
     if 118.0 <= cx <= 123.5 and 20.0 <= cy <= 27.0:
         lat, lon = round(cy, 6), round(cx, 6)
-        twd_e, twd_n, twd_h = wgs84_to_twd97(lat, lon, cz)
+        ortho_z = cz - 17.20 if is_ellip else cz
+        twd_e, twd_n, twd_h = wgs84_to_twd97(lat, lon, ortho_z)
         info.update(
             {
                 "lat": lat,
@@ -534,6 +579,28 @@ def _apply_extracted_coords_to_info(info: Dict[str, Any], cx: float, cy: float, 
                 "twd97_e": twd_e,
                 "twd97_n": twd_n,
                 "twd97_h": twd_h,
+                "crs": TWD97_TWVD2001_SHORT,
+            }
+        )
+        return True
+    # Global WGS84 geodetic degrees outside Taiwan -> standard UTM zone
+    cand_lat_lon: Optional[Tuple[float, float]] = None
+    if -90.0 <= cx <= 90.0 and -180.0 <= cy <= 180.0 and (abs(cx) > 0.01 or abs(cy) > 0.01):
+        cand_lat_lon = (round(cx, 6), round(cy, 6))
+    elif -180.0 <= cx <= 180.0 and -90.0 <= cy <= 90.0 and abs(cx) > 90.0 and (abs(cx) > 0.01 or abs(cy) > 0.01):
+        cand_lat_lon = (round(cy, 6), round(cx, 6))
+    if cand_lat_lon is not None:
+        lat, lon = cand_lat_lon
+        utm_e, utm_n, zone, hemi = wgs84_to_utm(lat, lon)
+        info.update(
+            {
+                "lat": lat,
+                "lon": lon,
+                "elev_m": round(cz, 2),
+                "twd97_e": utm_e,
+                "twd97_n": utm_n,
+                "twd97_h": round(cz, 2),
+                "crs": f"WGS84 / UTM Zone {zone}{hemi}",
             }
         )
         return True
@@ -564,13 +631,13 @@ def extract_opf_zip_metadata(zip_path: str) -> Dict[str, Any]:
         "uploader_name": dfs_name,
         "image_count": 0,
         "rtk_accuracy_cm": 1.6,
-        "lat": 24.92032,
-        "lon": 121.54351,
-        "elev_m": 43.18,
-        "twd97_e": 304952.656,
-        "twd97_n": 2757084.875,
-        "twd97_h": 43.18,
-        "crs": TWD97_TWVD2001_SHORT,
+        "lat": None,
+        "lon": None,
+        "elev_m": 0.0,
+        "twd97_e": 0.0,
+        "twd97_n": 0.0,
+        "twd97_h": 0.0,
+        "crs": "LOCAL_ORIGIN",
         "texture_resolution": PIX4DMATIC_TEXTURE_SIZE,
     }
 
@@ -786,11 +853,93 @@ def extract_opf_zip_metadata(zip_path: str) -> Dict[str, Any]:
     return info
 
 
-def _extract_tileset_georef_and_fix_axis(tileset_path: str) -> Dict[str, Any]:
+def _ecef_to_wgs84(x: float, y: float, z: float) -> Tuple[float, float, float]:
+    """Converts ECEF (EPSG:4978) meters to WGS84 (lat_deg, lon_deg, h_ellip_m)."""
+    a = 6378137.0
+    f = 1.0 / 298.257223563
+    e2 = 2.0 * f - f * f
+    b = a * (1.0 - f)
+    ep2 = (a * a - b * b) / (b * b)
+    p = math.hypot(x, y)
+    th = math.atan2(a * z, b * p)
+    lon = math.degrees(math.atan2(y, x))
+    lat = math.degrees(
+        math.atan2(
+            z + ep2 * b * (math.sin(th) ** 3),
+            p - e2 * a * (math.cos(th) ** 3),
+        )
+    )
+    sin_lat = math.sin(math.radians(lat))
+    N = a / math.sqrt(1.0 - e2 * sin_lat * sin_lat)
+    h_ellip = p / max(math.cos(math.radians(lat)), 1e-9) - N
+    return lat, lon, h_ellip
+
+
+def _mat4_mul_pt(m: List[float], x: float, y: float, z: float) -> Tuple[float, float, float]:
+    """Multiplies a column-major 4x4 3D Tiles transform matrix by local point (x, y, z, 1)."""
+    return (
+        float(m[0]) * x + float(m[4]) * y + float(m[8]) * z + float(m[12]),
+        float(m[1]) * x + float(m[5]) * y + float(m[9]) * z + float(m[13]),
+        float(m[2]) * x + float(m[6]) * y + float(m[10]) * z + float(m[14]),
+    )
+
+
+def _walk_tight_leaf_center_and_extents(root: Dict[str, Any]) -> Tuple[float, float, float, Optional[List[float]]]:
+    """
+    Walks 3D Tiles content leaf boundingVolume.box nodes (up to depth 8) to compute
+    the tight 3D mesh centroid and half-extents, avoiding sky-high cubic octree root boxes.
+    """
+    by_depth: Dict[int, List[List[float]]] = {}
+
+    def _walk(node: Any, d: int) -> None:
+        if not isinstance(node, dict) or d > 8:
+            return
+        content = node.get("content") or {}
+        uri = content.get("uri") or content.get("url")
+        box = (node.get("boundingVolume") or {}).get("box")
+        if uri and isinstance(box, list) and len(box) >= 12:
+            by_depth.setdefault(d, []).append([float(v or 0.0) for v in box[:12]])
+        for ch in node.get("children") or []:
+            _walk(ch, d + 1)
+
+    _walk(root, 0)
+    if by_depth:
+        max_d = max(by_depth.keys())
+        boxes = by_depth[max_d]
+        xs = [b[0] for b in boxes]
+        ys = [b[1] for b in boxes]
+        zs = sorted(b[2] for b in boxes)
+        lx = (min(xs) + max(xs)) * 0.5
+        ly = (min(ys) + max(ys)) * 0.5
+        lz = zs[len(zs) // 2]
+        min_x = min(b[0] - (abs(b[3]) + abs(b[6]) + abs(b[9])) for b in boxes)
+        max_x = max(b[0] + (abs(b[3]) + abs(b[6]) + abs(b[9])) for b in boxes)
+        min_y = min(b[1] - (abs(b[4]) + abs(b[7]) + abs(b[10])) for b in boxes)
+        max_y = max(b[1] + (abs(b[4]) + abs(b[7]) + abs(b[10])) for b in boxes)
+        min_z = min(b[2] - (abs(b[5]) + abs(b[8]) + abs(b[11])) for b in boxes)
+        max_z = max(b[2] + (abs(b[5]) + abs(b[8]) + abs(b[11])) for b in boxes)
+        he = [
+            round(max((max_x - min_x) * 0.5, 1.0), 2),
+            round(max((max_y - min_y) * 0.5, 1.0), 2),
+            round(max((max_z - min_z) * 0.5, 1.0), 2),
+        ]
+        return lx, ly, lz, he
+
+    box = (root.get("boundingVolume") or {}).get("box")
+    if isinstance(box, list) and len(box) >= 12:
+        hx = abs(float(box[3] or 0.0)) + abs(float(box[6] or 0.0)) + abs(float(box[9] or 0.0))
+        hy = abs(float(box[4] or 0.0)) + abs(float(box[7] or 0.0)) + abs(float(box[10] or 0.0))
+        hz = abs(float(box[5] or 0.0)) + abs(float(box[8] or 0.0)) + abs(float(box[11] or 0.0))
+        he = [round(max(hx, 1.0), 2), round(max(hy, 1.0), 2), round(max(hz, 1.0), 2)]
+        return float(box[0] or 0.0), float(box[1] or 0.0), float(box[2] or 0.0), he
+    return 0.0, 0.0, 0.0, None
+
+
+def _extract_tileset_georef_and_fix_axis(tileset_path: str, geoid_sep_m: float = 17.2) -> Dict[str, Any]:
     """
     Inspects a 3D Tiles tileset.json on disk:
     1. Automatically removes erroneous 'gltfUpAxis': 'z' when child tiles are Y-up .glb files (PIX4Dmatic export quirk).
-    2. Extracts TWD97 (E, N, H) and WGS84 (lat, lon) coordinates directly from root.transform / root.boundingVolume.
+    2. Extracts tight 3D mesh centroid in TWD97 (E, N, H) and WGS84 (lat, lon) from root.transform * tight_leaf_center.
     """
     out: Dict[str, Any] = {}
     if not (tileset_path and os.path.isfile(tileset_path) and tileset_path.lower().endswith(".json")):
@@ -800,7 +949,8 @@ def _extract_tileset_georef_and_fix_axis(tileset_path: str) -> Dict[str, Any]:
             ts = json.load(f)
         asset = ts.get("asset") or {}
         raw_str = json.dumps(ts)
-        if str(asset.get("gltfUpAxis", "")).lower() == "z" and ".glb" in raw_str.lower():
+        has_root_tf = bool((ts.get("root") or {}).get("transform"))
+        if str(asset.get("gltfUpAxis", "")).lower() == "z" and has_root_tf and ".glb" in raw_str.lower():
             asset.pop("gltfUpAxis", None)
             ts["asset"] = asset
             try:
@@ -812,92 +962,81 @@ def _extract_tileset_georef_and_fix_axis(tileset_path: str) -> Dict[str, Any]:
         root = ts.get("root") or {}
         transform = root.get("transform")
         bv = root.get("boundingVolume") or {}
-        box = bv.get("box")
         region = bv.get("region")
 
-        tx, ty, tz = 0.0, 0.0, 0.0
+        lx, ly, lz, tight_he = _walk_tight_leaf_center_and_extents(root)
+        if tight_he:
+            out["half_extents"] = tight_he
+
         if isinstance(transform, list) and len(transform) >= 16:
-            tx = float(transform[12] or 0.0)
-            ty = float(transform[13] or 0.0)
-            tz = float(transform[14] or 0.0)
+            wx, wy, wz = _mat4_mul_pt([float(v or 0.0) for v in transform[:16]], lx, ly, lz)
+        else:
+            wx, wy, wz = lx, ly, lz
 
-        bx, by, bz = 0.0, 0.0, 0.0
-        if isinstance(box, list) and len(box) >= 3:
-            bx = float(box[0] or 0.0)
-            by = float(box[1] or 0.0)
-            bz = float(box[2] or 0.0)
-
-        cx = tx if abs(tx) > 1000 else bx
-        cy = ty if abs(ty) > 1000 else by
-        cz = tz if abs(tz) > 0.01 else bz
-
-        if isinstance(box, list) and len(box) >= 12:
-            hx = abs(float(box[3] or 0.0)) or 120.0
-            hy = abs(float(box[7] or 0.0)) or 120.0
-            hz = abs(float(box[11] or 0.0)) or 30.0
-            out["half_extents"] = [round(hx, 2), round(hy, 2), round(hz, 2)]
-
-        # In Taiwan (lon <= 122.0E), TWD97 TM2-121 Easting is strictly <= 345,000m;
-        # Eastings around 345,000..400,000m in Northern Taiwan are WGS84 / UTM Zone 51N (EPSG:32651).
-        if 150000.0 <= cx <= 345000.0 and 2400000.0 <= cy <= 2850000.0:
-            lat, lon = twd97_to_wgs84(cx, cy)
-            out.update(
-                {
-                    "lat": lat,
-                    "lon": lon,
-                    "elev_m": round(cz, 2),
-                    "twd97_e": round(cx, 3),
-                    "twd97_n": round(cy, 3),
-                    "twd97_h": round(cz, 2),
-                }
-            )
-        elif 100000.0 <= cx <= 850000.0 and 2500000.0 <= cy <= 3000000.0:
-            lat, lon = utm51n_to_wgs84(cx, cy)
-            twd_e, twd_n, twd_h = wgs84_to_twd97(lat, lon, cz)
-            out.update(
-                {
-                    "lat": lat,
-                    "lon": lon,
-                    "elev_m": twd_h,
-                    "twd97_e": twd_e,
-                    "twd97_n": twd_n,
-                    "twd97_h": twd_h,
-                }
-            )
-        elif abs(tx) > 1000000.0 and abs(ty) > 1000000.0:
-            # ECEF (EPSG:4978) root.transform (e.g. PIX4Dmatic *-cesium_mesh.json)
-            a = 6378137.0
-            f = 1.0 / 298.257223563
-            e2 = 2.0 * f - f * f
-            b = a * (1.0 - f)
-            ep2 = (a * a - b * b) / (b * b)
-            p = math.hypot(tx, ty)
-            th = math.atan2(a * tz, b * p)
-            lon = math.degrees(math.atan2(ty, tx))
-            lat = math.degrees(
-                math.atan2(
-                    tz + ep2 * b * (math.sin(th) ** 3),
-                    p - e2 * a * (math.cos(th) ** 3),
+        # 1. ECEF (EPSG:4978) root.transform (e.g. PIX4Dmatic *-cesium_mesh.json)
+        if abs(wx) > 1000000.0 and abs(wy) > 1000000.0:
+            lat, lon, h_ellip = _ecef_to_wgs84(wx, wy, wz)
+            if 20.0 <= lat <= 27.0 and 118.0 <= lon <= 123.5:
+                ortho_h = round(h_ellip - geoid_sep_m, 2)
+                twd_e, twd_n, twd_h = wgs84_to_twd97(lat, lon, ortho_h)
+                out.update(
+                    {
+                        "lat": round(lat, 6),
+                        "lon": round(lon, 6),
+                        "elev_m": twd_h,
+                        "twd97_e": twd_e,
+                        "twd97_n": twd_n,
+                        "twd97_h": twd_h,
+                        "crs": TWD97_TWVD2001_SHORT,
+                    }
                 )
-            )
-            sin_lat = math.sin(math.radians(lat))
-            N = a / math.sqrt(1.0 - e2 * sin_lat * sin_lat)
-            elev = p / max(math.cos(math.radians(lat)), 1e-9) - N
-            twd_e, twd_n, twd_h = wgs84_to_twd97(lat, lon, max(0.0, elev))
+            else:
+                utm_e, utm_n, zone, hemi = wgs84_to_utm(lat, lon)
+                out.update(
+                    {
+                        "lat": round(lat, 6),
+                        "lon": round(lon, 6),
+                        "elev_m": round(h_ellip, 2),
+                        "twd97_e": utm_e,
+                        "twd97_n": utm_n,
+                        "twd97_h": round(h_ellip, 2),
+                        "crs": f"WGS84 / UTM Zone {zone}{hemi}",
+                    }
+                )
+        # 2. TWD97 TM2-121 (Easting <= 345,000m in Taiwan)
+        elif 150000.0 <= wx <= 345000.0 and 2400000.0 <= wy <= 2850000.0:
+            lat, lon = twd97_to_wgs84(wx, wy)
             out.update(
                 {
-                    "lat": round(lat, 6),
-                    "lon": round(lon, 6),
+                    "lat": lat,
+                    "lon": lon,
+                    "elev_m": round(wz, 2),
+                    "twd97_e": round(wx, 3),
+                    "twd97_n": round(wy, 3),
+                    "twd97_h": round(wz, 2),
+                    "crs": TWD97_TWVD2001_SHORT,
+                }
+            )
+        # 3. WGS84 / UTM Zone 51N (Easting ~345,000..400,000m in Northern Taiwan)
+        elif 100000.0 <= wx <= 850000.0 and 2500000.0 <= wy <= 3000000.0:
+            lat, lon = utm51n_to_wgs84(wx, wy)
+            twd_e, twd_n, twd_h = wgs84_to_twd97(lat, lon, wz)
+            out.update(
+                {
+                    "lat": lat,
+                    "lon": lon,
                     "elev_m": twd_h,
                     "twd97_e": twd_e,
                     "twd97_n": twd_n,
                     "twd97_h": twd_h,
+                    "crs": TWD97_TWVD2001_SHORT,
                 }
             )
+        # 4. 3D Tiles boundingVolume.region [west_rad, south_rad, east_rad, north_rad, min_h, max_h]
         elif isinstance(region, list) and len(region) >= 5:
             lon = math.degrees((float(region[0]) + float(region[2])) * 0.5)
             lat = math.degrees((float(region[1]) + float(region[3])) * 0.5)
-            elev = float(region[4] or 40.0)
+            elev = (float(region[4]) + float(region[5])) * 0.5 if len(region) >= 6 else float(region[4] or 0.0)
             twd_e, twd_n, twd_h = wgs84_to_twd97(lat, lon, elev)
             out.update(
                 {
@@ -907,10 +1046,265 @@ def _extract_tileset_georef_and_fix_axis(tileset_path: str) -> Dict[str, Any]:
                     "twd97_e": twd_e,
                     "twd97_n": twd_n,
                     "twd97_h": twd_h,
+                    "crs": TWD97_TWVD2001_SHORT,
                 }
             )
+        else:
+            out["local_center"] = [round(wx, 3), round(wy, 3), round(wz, 3)]
+            out["is_local_origin"] = True
     except Exception:
         pass
+    return out
+
+
+def _get_imported_opf_roots(folder_path: str) -> List[str]:
+    """Reads PIX4Dmatic project/configs/opf.json (if present) to locate original OPF capture folders."""
+    roots: List[str] = []
+    for rel_cfg in (os.path.join("project", "configs", "opf.json"), os.path.join("configs", "opf.json")):
+        cfg_p = os.path.join(folder_path, rel_cfg)
+        if os.path.isfile(cfg_p):
+            try:
+                with open(cfg_p, "r", encoding="utf-8", errors="ignore") as f:
+                    obj = json.load(f)
+                imp = obj.get("imported-opf") or []
+                if isinstance(imp, dict):
+                    imp = [imp]
+                for item in imp:
+                    if isinstance(item, dict) and item.get("path"):
+                        rdir = os.path.dirname(str(item["path"]))
+                        if os.path.isdir(rdir) and rdir not in roots:
+                            roots.append(rdir)
+            except Exception:
+                pass
+    return roots
+
+
+def _detect_project_geoid_separation_and_ortho_h(folder_path: str, cameras_dir: str = "") -> Tuple[float, Optional[float]]:
+    """
+    Inspects rtkGPS.csv in the scan folder or its linked OPF capture directory to extract
+    exact local GeoidSeparation (m) and median RTK orthometric height (Alt - GeoidSeparation).
+    """
+    import csv
+
+    search_roots = [folder_path]
+    if cameras_dir and os.path.isdir(cameras_dir):
+        search_roots.append(cameras_dir)
+        parent_cam = os.path.dirname(cameras_dir.rstrip("\\/"))
+        if parent_cam and os.path.isdir(parent_cam) and parent_cam not in search_roots:
+            search_roots.append(parent_cam)
+    search_roots.extend(_get_imported_opf_roots(folder_path))
+
+    for sroot in search_roots:
+        for cand_csv in (
+            os.path.join(sroot, "rtkGPS.csv"),
+            os.path.join(sroot, "geolocations", "rtkGPS.csv"),
+            os.path.join(sroot, "inputs", "rtkGPS.csv"),
+        ):
+            if os.path.isfile(cand_csv):
+                try:
+                    geoids: List[float] = []
+                    ortho_hs: List[float] = []
+                    with open(cand_csv, "r", encoding="utf-8", errors="ignore") as cf:
+                        reader = csv.DictReader(cf)
+                        for i, row in enumerate(reader):
+                            if i >= 500:
+                                break
+                            g_raw = row.get("GeoidSeparation") or row.get("geoid_separation")
+                            ref_raw = row.get("ReferenceAltitude") or row.get("reference_altitude")
+                            a_raw = (
+                                row.get("GPSAltitude")
+                                or row.get("Alt")
+                                or row.get("Altitude")
+                                or row.get("alt")
+                            )
+                            if g_raw is not None and str(g_raw).strip() != "":
+                                g_val = float(g_raw)
+                                if 5.0 <= g_val <= 35.0:
+                                    geoids.append(g_val)
+                                    if ref_raw is not None and str(ref_raw).strip() != "":
+                                        ortho_hs.append(float(ref_raw))
+                                    elif a_raw is not None and str(a_raw).strip() != "":
+                                        ortho_hs.append(float(a_raw) - g_val)
+                    if geoids:
+                        geoids.sort()
+                        med_g = geoids[len(geoids) // 2]
+                        med_h = None
+                        if ortho_hs:
+                            ortho_hs.sort()
+                            med_h = round(ortho_hs[len(ortho_hs) // 2], 2)
+                        return med_g, med_h
+                except Exception:
+                    pass
+    return 17.2, None
+
+
+def _sample_georef_from_obj_or_xyz(mesh_or_xyz_path: str) -> Dict[str, Any]:
+    """Samples vertex coordinates from a georeferenced .obj or .xyz file when coordinates are in TWD97 or UTM51N."""
+    res: Dict[str, Any] = {}
+    if not (mesh_or_xyz_path and os.path.isfile(mesh_or_xyz_path)):
+        return res
+    is_obj = mesh_or_xyz_path.lower().endswith(".obj")
+    xs: List[float] = []
+    ys: List[float] = []
+    zs: List[float] = []
+    try:
+        fsize = os.path.getsize(mesh_or_xyz_path)
+        with open(mesh_or_xyz_path, "rb") as bf:
+            # Sample 32 chunks evenly across the file for an unbiased spatial median
+            n_chunks = 32 if fsize > 1024 * 1024 else 1
+            step = max(fsize // n_chunks, 65536)
+            for c_idx in range(n_chunks):
+                bf.seek(min(c_idx * step, max(0, fsize - 32768)))
+                chunk = bf.read(32768).decode("ascii", errors="ignore")
+                lines = chunk.splitlines()[1:-1] if c_idx > 0 else chunk.splitlines()
+                for ln in lines[:120]:
+                    if is_obj:
+                        if not ln.startswith("v "):
+                            continue
+                        parts = ln[2:].split()
+                    else:
+                        parts = ln.split()
+                    if len(parts) >= 3:
+                        try:
+                            vx, vy, vz = float(parts[0]), float(parts[1]), float(parts[2])
+                            if abs(vx) > 100000.0 and abs(vy) > 1000000.0:
+                                xs.append(vx)
+                                ys.append(vy)
+                                zs.append(vz)
+                        except ValueError:
+                            continue
+        if xs:
+            xs.sort()
+            ys.sort()
+            zs.sort()
+            mx = (xs[0] + xs[-1]) * 0.5
+            my = (ys[0] + ys[-1]) * 0.5
+            mz = zs[len(zs) // 2]
+            if 150000.0 <= mx <= 345000.0 and 2400000.0 <= my <= 2850000.0:
+                lat, lon = twd97_to_wgs84(mx, my)
+                res.update(
+                    {
+                        "lat": lat,
+                        "lon": lon,
+                        "elev_m": round(mz, 2),
+                        "twd97_e": round(mx, 3),
+                        "twd97_n": round(my, 3),
+                        "twd97_h": round(mz, 2),
+                        "crs": TWD97_TWVD2001_SHORT,
+                    }
+                )
+            elif 100000.0 <= mx <= 850000.0 and 2500000.0 <= my <= 3000000.0:
+                lat, lon = utm51n_to_wgs84(mx, my)
+                twd_e, twd_n, twd_h = wgs84_to_twd97(lat, lon, mz)
+                res.update(
+                    {
+                        "lat": lat,
+                        "lon": lon,
+                        "elev_m": twd_h,
+                        "twd97_e": twd_e,
+                        "twd97_n": twd_n,
+                        "twd97_h": twd_h,
+                        "crs": TWD97_TWVD2001_SHORT,
+                    }
+                )
+    except Exception:
+        pass
+    return res
+
+
+def _extract_authentic_project_georef(
+    folder_path: str,
+    tileset_path: str,
+    obj_path: str = "",
+    cameras_dir: str = "",
+) -> Dict[str, Any]:
+    """
+    Extracts 100% authentic scan-derived coordinates by inspecting:
+    1. Primary tileset.json (root.transform * tight_leaf_center)
+    2. Sibling / PIX4Dmatic project/exports *-cesium_mesh.json (ECEF transform * tight_leaf_center)
+    3. offset.xyz sidecars
+    4. Georeferenced mesh.obj or dense_point_cloud.xyz in folder_path / project/exports
+    5. Linked OPF input_cameras.json / rtkGPS.csv / JPEG EXIF
+    Returns lat=None, lon=None, crs='LOCAL_ORIGIN' if the scan has no georeferencing on disk.
+    """
+    import glob
+
+    geoid_sep_m, rtk_ortho_h = _detect_project_geoid_separation_and_ortho_h(folder_path, cameras_dir=cameras_dir)
+    out = _extract_tileset_georef_and_fix_axis(tileset_path, geoid_sep_m=geoid_sep_m)
+
+    # Fallback A: inspect PIX4Dmatic *-cesium_mesh.json in project/exports or tileset/
+    if out.get("lat") is None:
+        cesium_jsons = glob.glob(os.path.join(folder_path, "project", "exports", "**", "*-cesium_mesh.json"), recursive=True)
+        cesium_jsons.extend(glob.glob(os.path.join(folder_path, "tileset", "*-cesium_mesh.json")))
+        for cj in cesium_jsons:
+            c_geo = _extract_tileset_georef_and_fix_axis(cj, geoid_sep_m=geoid_sep_m)
+            if c_geo.get("lat") is not None:
+                he = out.get("half_extents") or c_geo.get("half_extents")
+                out.update(c_geo)
+                if he:
+                    out["half_extents"] = he
+                break
+
+    # Fallback B: inspect offset.xyz
+    if out.get("lat") is None:
+        off_candidates = [
+            os.path.join(folder_path, "offset.xyz"),
+            os.path.join(os.path.dirname(obj_path), "offset.xyz") if obj_path else "",
+            os.path.join(os.path.dirname(tileset_path), "offset.xyz") if tileset_path else "",
+        ]
+        for cand_off in off_candidates:
+            if cand_off and os.path.isfile(cand_off):
+                try:
+                    with open(cand_off, "r", encoding="utf-8", errors="ignore") as f_off:
+                        pts = f_off.read().strip().split()
+                    if len(pts) >= 3:
+                        ox, oy, oz = float(pts[0]), float(pts[1]), float(pts[2])
+                        if abs(ox) > 100.0 and abs(oy) > 100.0:
+                            if _apply_extracted_coords_to_info(out, ox, oy, oz):
+                                break
+                except Exception:
+                    pass
+
+    # Fallback C: inspect georeferenced mesh.obj or .xyz in folder_path / project/exports
+    if out.get("lat") is None:
+        mesh_cands = [obj_path] if obj_path else []
+        mesh_cands.extend(glob.glob(os.path.join(folder_path, "project", "exports", "**", "*.obj"), recursive=True))
+        mesh_cands.extend(glob.glob(os.path.join(folder_path, "project", "exports", "*.xyz")))
+        for mc in mesh_cands:
+            m_geo = _sample_georef_from_obj_or_xyz(mc)
+            if m_geo.get("lat") is not None:
+                out.update(m_geo)
+                break
+
+    # Fallback D: inspect OPF input_cameras.json / JPEG EXIF in cameras_dir or linked opf.json
+    if out.get("lat") is None:
+        cam_roots = [cameras_dir] if (cameras_dir and os.path.isdir(cameras_dir)) else []
+        cam_roots.extend(_get_imported_opf_roots(folder_path))
+        for croot in cam_roots:
+            try:
+                opf_meta = extract_opf_zip_metadata(croot)
+                if opf_meta.get("lat") is not None and opf_meta.get("lon") is not None:
+                    out.update(
+                        {
+                            "lat": opf_meta["lat"],
+                            "lon": opf_meta["lon"],
+                            "elev_m": opf_meta["elev_m"],
+                            "twd97_e": opf_meta["twd97_e"],
+                            "twd97_n": opf_meta["twd97_n"],
+                            "twd97_h": opf_meta["twd97_h"],
+                            "crs": TWD97_TWVD2001_SHORT,
+                        }
+                    )
+                    break
+            except Exception:
+                pass
+
+    # Refine vertical datum if single-session uncalibrated barometric GPS drifted strongly negative (e.g. -116m)
+    # while the scan's own RTK CSV log recorded the true orthometric ground height
+    if out.get("lat") is not None and float(out.get("elev_m") or 0.0) < -50.0 and rtk_ortho_h is not None:
+        out["elev_m"] = rtk_ortho_h
+        out["twd97_h"] = rtk_ortho_h
+
     return out
 
 
@@ -978,9 +1372,16 @@ def _compute_folder_stats(folder_path: str) -> Tuple[int, int]:
 
 def _compute_scan_covered_area_m2(folder_path: str, tileset_path: str, half_extents: List[float]) -> float:
     """Computes or reads the 2D planar covered area (in m^2) of the 3D scan from its DSM hull mask or bounding box."""
-    candidates = [os.path.join(folder_path, "_dsm_cache_v3.npz")]
+    candidates = [
+        os.path.join(folder_path, "_dsm_cache_v5.npz"),
+        os.path.join(folder_path, "_dsm_cache_v4.npz"),
+        os.path.join(folder_path, "_dsm_cache_v3.npz"),
+    ]
     if tileset_path:
-        candidates.append(os.path.join(os.path.dirname(tileset_path), "_dsm_cache_v3.npz"))
+        tdir = os.path.dirname(tileset_path)
+        candidates.append(os.path.join(tdir, "_dsm_cache_v5.npz"))
+        candidates.append(os.path.join(tdir, "_dsm_cache_v4.npz"))
+        candidates.append(os.path.join(tdir, "_dsm_cache_v3.npz"))
     for npz_path in candidates:
         if os.path.isfile(npz_path):
             try:
@@ -994,15 +1395,15 @@ def _compute_scan_covered_area_m2(folder_path: str, tileset_path: str, half_exte
             except Exception:
                 pass
     if isinstance(half_extents, list) and len(half_extents) >= 2:
-        hx = max(float(half_extents[0] or 0.0), 10.0)
-        hy = max(float(half_extents[1] or 0.0), 10.0)
-        return round((hx * 2.0) * (hy * 2.0) * 0.68, 1)
-    return 15000.0
-
+        hx = float(half_extents[0] or 0.0)
+        hy = float(half_extents[1] or 0.0)
+        if hx > 0.0 and hy > 0.0:
+            return round((hx * 2.0) * (hy * 2.0) * 0.68, 1)
+    return 0.0
 
 
 def _infer_capture_date_from_name(folder_name: str, fallback_mtime: float) -> str:
-    """Extracts YYYY-MM-DD (and optional HH:MM) from folder names like 2026-09-21-11-39-49, QuChi_20261015, or NTU_Dorm_260915."""
+    """Extracts YYYY-MM-DD (and optional HH:MM) from folder names with YYYYMMDD or YYMMDD date stamps."""
     time_part = datetime.fromtimestamp(fallback_mtime).strftime("%H:%M")
     m_full = re.search(r"(20\d{2})[-_]?([01]\d)[-_]?([0-3]\d)(?:[-_]([0-2]\d)[-_]([0-5]\d))?", folder_name)
     if m_full:
@@ -1157,7 +1558,9 @@ def _sync_gdrive_folder_to_local_vault(src_folder: str, parent_project: str = ""
                 need_copy = True
                 if os.path.isfile(d_file):
                     d_stat = os.stat(d_file)
-                    if d_stat.st_size == s_stat.st_size and abs(d_stat.st_mtime - s_stat.st_mtime) < 2.0:
+                    if fn.lower() == "scan_meta.json" and d_stat.st_mtime >= s_stat.st_mtime:
+                        need_copy = False
+                    elif d_stat.st_size == s_stat.st_size and abs(d_stat.st_mtime - s_stat.st_mtime) < 2.0:
                         need_copy = False
                 if need_copy:
                     shutil.copy2(s_file, d_file)
@@ -1271,7 +1674,7 @@ def _discover_folder_scan_item(
                 import sys
                 from pc_worker.config import GC_SCAN_OPTIMIZER_DIR
                 if GC_SCAN_OPTIMIZER_DIR and os.path.isdir(GC_SCAN_OPTIMIZER_DIR) and GC_SCAN_OPTIMIZER_DIR not in sys.path:
-                    sys.path.insert(0, GC_SCAN_OPTIMIZER_DIR)
+                    sys.path.append(GC_SCAN_OPTIMIZER_DIR)
                 from optimizer.quadtree_tiler import QuadtreeTiler  # type: ignore
                 auto_ts_dir = os.path.join(folder_path, "tileset")
                 os.makedirs(auto_ts_dir, exist_ok=True)
@@ -1305,26 +1708,6 @@ def _discover_folder_scan_item(
     except Exception as e:
         print(f"[GDriveWatcher] Warning generating preview/thumbnail for {tileset_path}: {e}")
 
-    ts_georef = _extract_tileset_georef_and_fix_axis(tileset_path)
-    if not ts_georef.get("lat"):
-        # Fallback: inspect offset.xyz in folder_path or obj_path directory
-        for cand_off in (
-            os.path.join(folder_path, "offset.xyz"),
-            os.path.join(os.path.dirname(obj_path), "offset.xyz") if obj_path else "",
-            os.path.join(os.path.dirname(tileset_path), "offset.xyz"),
-        ):
-            if cand_off and os.path.isfile(cand_off):
-                try:
-                    with open(cand_off, "r", encoding="utf-8", errors="ignore") as f_off:
-                        pts = f_off.read().strip().split()
-                    if len(pts) >= 3:
-                        ox, oy, oz = float(pts[0]), float(pts[1]), float(pts[2])
-                        if abs(ox) > 100.0 and abs(oy) > 100.0:
-                            _apply_extracted_coords_to_info(ts_georef, ox, oy, oz)
-                            break
-                except Exception:
-                    pass
-
     # Auto-detect cameras_dir
     cameras_dir = meta.get("cameras_dir", "")
     if not (cameras_dir and os.path.isdir(cameras_dir)):
@@ -1333,24 +1716,41 @@ def _discover_folder_scan_item(
             if os.path.isdir(cdir):
                 cameras_dir = cdir
                 break
-    # Always prefer real georeferenced coordinates from tileset.json / offset.xyz over hardcoded default (24.92032, 121.54351)
-    meta_lat = float(meta.get("lat") or 0.0)
-    meta_lon = float(meta.get("lon") or 0.0)
-    is_default_quchi_coord = abs(meta_lat - 24.92032) < 1e-4 and abs(meta_lon - 121.54351) < 1e-4
-    if ts_georef.get("lat") and (not meta_lat or is_default_quchi_coord):
-        lat = float(ts_georef["lat"])
-        lon = float(ts_georef["lon"])
-        elev_m = float(ts_georef.get("elev_m") or meta.get("elev_m") or 43.18)
-        twd_e = float(ts_georef.get("twd97_e") or meta.get("twd97_e") or 304952.656)
-        twd_n = float(ts_georef.get("twd97_n") or meta.get("twd97_n") or 2757084.875)
-        twd_h = float(ts_georef.get("twd97_h") or elev_m)
+
+    ts_georef = _extract_authentic_project_georef(
+        folder_path, tileset_path, obj_path=obj_path, cameras_dir=cameras_dir
+    )
+
+    if ts_georef.get("lat") is not None and ts_georef.get("lon") is not None:
+        lat: Optional[float] = float(ts_georef["lat"])
+        lon: Optional[float] = float(ts_georef["lon"])
+        elev_m = float(ts_georef.get("elev_m") if ts_georef.get("elev_m") is not None else 0.0)
+        twd_e = float(ts_georef.get("twd97_e") if ts_georef.get("twd97_e") is not None else 0.0)
+        twd_n = float(ts_georef.get("twd97_n") if ts_georef.get("twd97_n") is not None else 0.0)
+        twd_h = float(ts_georef.get("twd97_h") if ts_georef.get("twd97_h") is not None else elev_m)
+        raw_crs = str(meta.get("crs") or "").strip()
+        crs_val = raw_crs if (raw_crs and "LOCAL" not in raw_crs.upper()) else TWD97_TWVD2001_SHORT
+    elif (
+        meta.get("lat") is not None
+        and meta.get("lon") is not None
+        and (abs(float(meta["lat"])) > 0.001 or abs(float(meta["lon"])) > 0.001)
+        and "LOCAL" not in str(meta.get("crs") or "").upper()
+    ):
+        lat = float(meta["lat"])
+        lon = float(meta["lon"])
+        elev_m = float(meta.get("elev_m") or 0.0)
+        twd_e = float(meta.get("twd97_e") or 0.0)
+        twd_n = float(meta.get("twd97_n") or 0.0)
+        twd_h = float(meta.get("twd97_h") if meta.get("twd97_h") is not None else elev_m)
+        crs_val = str(meta.get("crs") or TWD97_TWVD2001_SHORT)
     else:
-        lat = float(meta_lat or ts_georef.get("lat") or 24.92032)
-        lon = float(meta_lon or ts_georef.get("lon") or 121.54351)
-        elev_m = float(meta.get("elev_m") or ts_georef.get("elev_m") or 43.18)
-        twd_e = float(meta.get("twd97_e") or ts_georef.get("twd97_e") or 304952.656)
-        twd_n = float(meta.get("twd97_n") or ts_georef.get("twd97_n") or 2757084.875)
-        twd_h = float(meta.get("twd97_h") or ts_georef.get("twd97_h") or elev_m)
+        lat = None
+        lon = None
+        elev_m = 0.0
+        twd_e = 0.0
+        twd_n = 0.0
+        twd_h = 0.0
+        crs_val = "LOCAL_ORIGIN"
 
     proj_group = meta.get("project_group")
     proj_zh = meta.get("project_name_zh")
@@ -1358,7 +1758,7 @@ def _discover_folder_scan_item(
         proj_group, proj_zh = match_project_group(
             lat, lon, hint_name=folder_name, parent_project=parent_project, dynamic_clusters=dynamic_clusters
         )
-    elif not proj_group or (proj_group == "QuChi Dam" and is_default_quchi_coord and ts_georef.get("lat")):
+    elif not proj_group or proj_group == "Unassigned Site":
         proj_group, proj_zh = match_project_group(
             lat,
             lon,
@@ -1369,7 +1769,13 @@ def _discover_folder_scan_item(
     else:
         proj_group, proj_zh = _apply_site_rename_override(proj_group, proj_zh or f"{proj_group} 工程掃描群組")
 
-    if dynamic_clusters is not None and not any(c.get("project_group") == proj_group for c in dynamic_clusters):
+    if (
+        dynamic_clusters is not None
+        and lat is not None
+        and lon is not None
+        and (abs(lat) > 0.001 or abs(lon) > 0.001)
+        and not any(c.get("project_group") == proj_group for c in dynamic_clusters)
+    ):
         dynamic_clusters.append(
             {
                 "project_group": proj_group,
@@ -1387,7 +1793,7 @@ def _discover_folder_scan_item(
         if raw_meta_imgs > 25000:
             raw_meta_imgs = est_imgs
 
-    half_extents = ts_georef.get("half_extents", [120.0, 120.0, 30.0])
+    half_extents = ts_georef.get("half_extents", [50.0, 50.0, 15.0])
     covered_area_m2 = float(meta.get("covered_area_m2") or 0.0)
     if covered_area_m2 <= 0.0:
         covered_area_m2 = _compute_scan_covered_area_m2(folder_path, tileset_path, half_extents)
@@ -1402,6 +1808,13 @@ def _discover_folder_scan_item(
         meta.get("uploader_name", ""),
         meta.get("uploader_email", "glibivanov@gatheren.com.tw"),
         meta.get("source_zip_path") or folder_name,
+    )
+
+    bbox_center = [twd_e, twd_n, twd_h] if lat is not None else (ts_georef.get("local_center") or [0.0, 0.0, 0.0])
+    ts_ver = (
+        int(os.path.getmtime(tileset_path) * 1000)
+        if (tileset_path and os.path.isfile(tileset_path))
+        else int(meta.get("tileset_version") or (stat.st_mtime * 1000))
     )
 
     result_item = {
@@ -1419,11 +1832,11 @@ def _discover_folder_scan_item(
         "tileset_path": tileset_path,
         "obj_path": obj_path,
         "cameras_dir": cameras_dir,
-        "image_count": int(raw_meta_imgs or est_imgs or 1200),
-        "size_bytes": int(meta.get("size_bytes") or disk_bytes or 64000000),
+        "image_count": int(raw_meta_imgs or est_imgs or 0),
+        "size_bytes": int(meta.get("size_bytes") or disk_bytes or 0),
         "covered_area_m2": round(covered_area_m2, 1),
         "rtk_accuracy_cm": float(meta.get("rtk_accuracy_cm", 1.5)),
-        "crs": meta.get("crs", TWD97_TWVD2001_SHORT),
+        "crs": crs_val,
         "texture_resolution": int(meta.get("texture_resolution", PIX4DMATIC_TEXTURE_SIZE)),
         "lat": lat,
         "lon": lon,
@@ -1431,19 +1844,32 @@ def _discover_folder_scan_item(
         "twd97_e": twd_e,
         "twd97_n": twd_n,
         "twd97_h": twd_h,
-        "bounding_box": meta.get("bounding_box") or {
-            "center": [twd_e, twd_n, twd_h],
+        "bounding_box": {
+            "center": bbox_center,
             "half_extents": half_extents,
         },
+        "tileset_version": ts_ver,
         "status": meta.get("status", "completed"),
         "progress_pct": float(meta.get("progress_pct", 100.0)),
-        "stage_label": meta.get("stage_label", "Completed (TWD97 + TWVD2001, 4K Web Tileset)"),
+        "stage_label": meta.get("stage_label", f"Completed ({crs_val}, 4K Web Tileset)"),
         "notes": meta.get("notes", f"Dynamically loaded from {folder_path}"),
     }
 
-    # Persist scan_meta.json on local disk if it did not exist yet, lacked covered_area_m2, or had a non-user-edited fake name
+    # Persist scan_meta.json on local disk whenever georeferencing, bounding_box, or metadata changed
+    coords_changed = (
+        meta.get("lat") != lat
+        or meta.get("lon") != lon
+        or meta.get("elev_m") != elev_m
+        or meta.get("twd97_e") != twd_e
+        or meta.get("twd97_n") != twd_n
+        or meta.get("twd97_h") != twd_h
+        or meta.get("crs") != crs_val
+        or meta.get("bounding_box") != result_item["bounding_box"]
+        or meta.get("tileset_version") != ts_ver
+    )
     need_write_meta = (
         not os.path.isfile(meta_file)
+        or coords_changed
         or not meta.get("covered_area_m2")
         or not meta.get("bounding_box")
         or (not user_edited and meta.get("name") != resolved_name)
@@ -1839,6 +2265,8 @@ def _seed_and_discover_scans_locked(db: ScanQueueDB) -> List[Dict[str, Any]]:
             primary_meta["tileset_path"] = existing.get("tileset_path", cand_processed_ts if os.path.isfile(cand_processed_ts) else "")
             primary_meta["obj_path"] = existing.get("obj_path", "")
             primary_meta["project_dir"] = existing.get("project_dir", cand_processed_dir)
+            primary_meta["force_next"] = int(existing.get("force_next", 0))
+            primary_meta["bypass_count"] = int(existing.get("bypass_count", 0))
         elif all_parts_ready and not folder_syncing and os.path.isfile(cand_processed_ts):
             true_img_cnt = sum(int(m.get("image_count", 0)) for m in part_metas)
             if existing and existing.get("tileset_path"):
@@ -1864,7 +2292,14 @@ def _seed_and_discover_scans_locked(db: ScanQueueDB) -> List[Dict[str, Any]]:
                 try:
                     with open(meta_on_disk, "r", encoding="utf-8") as mf:
                         m_disk = json.load(mf)
-                    if m_disk.get("project_group") != proj_group or m_disk.get("image_count") != primary_meta["image_count"] or (cand_obj and m_disk.get("obj_path") != cand_obj):
+                    if m_disk.get("bounding_box") and not primary_meta.get("bounding_box"):
+                        primary_meta["bounding_box"] = m_disk["bounding_box"]
+                    if m_disk.get("tileset_version"):
+                        primary_meta["tileset_version"] = m_disk["tileset_version"]
+                    for coord_k in ("twd97_e", "twd97_n", "twd97_h", "elev_m", "lat", "lon"):
+                        if m_disk.get(coord_k) is not None and not primary_meta.get(coord_k):
+                            primary_meta[coord_k] = m_disk[coord_k]
+                    if m_disk.get("project_group") != proj_group or m_disk.get("image_count") != primary_meta["image_count"] or (cand_obj and os.path.isfile(cand_obj) and m_disk.get("obj_path") != cand_obj):
                         m_disk["project_group"] = proj_group
                         m_disk["project_name_zh"] = proj_zh
                         m_disk["image_count"] = primary_meta["image_count"]

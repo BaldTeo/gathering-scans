@@ -776,7 +776,7 @@
 						break;
 
 					case THREE.MOUSE.ROTATE:
-						if ( event.ctrlKey || event.metaKey || event.shiftKey ) {
+						if ( event.button === 0 && ( event.ctrlKey || event.metaKey || event.shiftKey ) ) {
 
 							if ( scope.enablePan === false ) return;
 							handleMouseDownPan( event );

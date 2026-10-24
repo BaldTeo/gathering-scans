@@ -99,13 +99,17 @@ def notify_server_daemon_state(running: bool) -> None:
     if not is_port_open(8095):
         return
     try:
-        body = json.dumps({"online": bool(running), "daemon_running": bool(running)}).encode("utf-8")
+        if BASE_DIR not in sys.path:
+            sys.path.insert(0, BASE_DIR)
+        from pc_worker.config import TUNNEL_SHARED_KEY
+
+        body = json.dumps({"action": "start" if running else "stop"}).encode("utf-8")
         req = urllib.request.Request(
-            "http://127.0.0.1:8095/api/pc-status/toggle",
+            "http://127.0.0.1:8095/api/admin/pc-daemon",
             data=body,
             headers={
                 "Content-Type": "application/json",
-                "X-User-Email": "glibivanov@gatheren.com.tw",
+                "X-Tunnel-Key": TUNNEL_SHARED_KEY,
             },
             method="POST",
         )

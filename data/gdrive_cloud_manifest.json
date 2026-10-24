@@ -1,48 +1,320 @@
 {
-  "updated_at": 1792254851,
+  "updated_at": 1792833698,
   "shared_drive_dir": "G:\\Shared drives\\6.軟體\\3. GatheringScans\\StreamPackages",
   "my_drive_dir": "G:\\My Drive\\Scans\\StreamPackages",
   "shared_drive_folder_id": "1scUD9IQWsAJjg296pecxFYqhoVm4mpjs",
   "my_drive_folder_id": "1oBf6wYz3mRaM9kktDQJxcf_JZ2QduICW",
   "scans": [
     {
+      "scan_id": "catch_QiHuTender_4",
+      "name": "QiHuTender_4",
+      "project_group": "QiHu",
+      "project_name_zh": "QiHu 工程掃描群組",
+      "capture_date": "2026-10-23 23:22",
+      "uploaded_at": 1792761802.705,
+      "uploader_email": "glibivanov@gatheren.com.tw",
+      "uploader_name": "雲在天",
+      "source_zip_path": "G:\\Shared drives\\6.軟體\\3. GatheringScans\\INPUTS\\QiHu\\QiHuTender_4.zip",
+      "project_dir": "C:\\GatheringScans\\catch_QiHuTender_4",
+      "tileset_path": "C:\\GatheringScans\\catch_QiHuTender_4\\tileset\\tileset.json",
+      "obj_path": "C:\\GatheringScans\\catch_QiHuTender_4\\exports\\obj_mesh\\mesh.obj",
+      "report_path": "",
+      "cameras_dir": "C:\\GatheringScans\\catch_QiHuTender_4\\inputs",
+      "image_count": 1500,
+      "size_bytes": 7047785757,
+      "rtk_accuracy_cm": 1.5,
+      "crs": "TWD97 (121) + TWVD2001",
+      "texture_resolution": 4096,
+      "lat": 25.136138941,
+      "lon": 121.501779809,
+      "elev_m": 20.44,
+      "twd97_e": 300594.115,
+      "twd97_n": 2780950.804,
+      "twd97_h": 20.44,
+      "bounding_box_json": "{\"center\": [300594.115, 2780950.804, 20.44], \"half_extents\": [47.09, 26.16, 7.84]}",
+      "status": "completed",
+      "progress_pct": 100.0,
+      "stage_label": "Processed -> catch_QiHuTender_4 (TWD97 + TWVD2001, 4K)",
+      "bypass_count": 0,
+      "force_next": 0,
+      "priority_score": 1000001198.115,
+      "notes": "Dynamically loaded from C:\\GatheringScans\\catch_QiHuTender_4",
+      "user_edited_name": 0,
+      "covered_area_m2": 8835.7,
+      "bounding_box": {
+        "center": [
+          300594.115,
+          2780950.804,
+          20.44
+        ],
+        "half_extents": [
+          47.09,
+          26.16,
+          7.84
+        ]
+      },
+      "size_mb": 6721.29,
+      "wait_minutes": 1198.2,
+      "comment_count": 0
+    },
+    {
+      "scan_id": "catch_QiHuTender_3",
+      "name": "QiHuTender_3",
+      "project_group": "QiHu",
+      "project_name_zh": "QiHu 工程掃描群組",
+      "capture_date": "2026-10-23 23:02",
+      "uploaded_at": 1792761695.594,
+      "uploader_email": "glibivanov@gatheren.com.tw",
+      "uploader_name": "雲在天",
+      "source_zip_path": "G:\\Shared drives\\6.軟體\\3. GatheringScans\\INPUTS\\QiHu\\QiHuTender_3.zip",
+      "project_dir": "C:\\GatheringScans\\catch_QiHuTender_3",
+      "tileset_path": "C:\\GatheringScans\\catch_QiHuTender_3\\tileset\\tileset.json",
+      "obj_path": "C:\\GatheringScans\\catch_QiHuTender_3\\exports\\obj_mesh\\mesh.obj",
+      "report_path": "",
+      "cameras_dir": "C:\\GatheringScans\\catch_QiHuTender_3\\inputs",
+      "image_count": 1500,
+      "size_bytes": 7542000404,
+      "rtk_accuracy_cm": 1.5,
+      "crs": "TWD97 (121) + TWVD2001",
+      "texture_resolution": 4096,
+      "lat": 25.136430529,
+      "lon": 121.501433051,
+      "elev_m": 16.33,
+      "twd97_e": 300559.031,
+      "twd97_n": 2780982.973,
+      "twd97_h": 16.33,
+      "bounding_box_json": "{\"center\": [300559.031, 2780982.973, 16.33], \"half_extents\": [47.47, 32.38, 9.97]}",
+      "status": "completed",
+      "progress_pct": 100.0,
+      "stage_label": "Processed -> catch_QiHuTender_3 (TWD97 + TWVD2001, 4K)",
+      "bypass_count": 0,
+      "force_next": 0,
+      "priority_score": 1000001199.9,
+      "notes": "Dynamically loaded from C:\\GatheringScans\\catch_QiHuTender_3",
+      "user_edited_name": 0,
+      "covered_area_m2": 11207.3,
+      "bounding_box": {
+        "center": [
+          300559.031,
+          2780982.973,
+          16.33
+        ],
+        "half_extents": [
+          47.47,
+          32.38,
+          9.97
+        ]
+      },
+      "size_mb": 7192.61,
+      "wait_minutes": 1200.0,
+      "comment_count": 0
+    },
+    {
+      "scan_id": "catch_QiHuTender_2",
+      "name": "QiHuTender_2",
+      "project_group": "QiHu",
+      "project_name_zh": "QiHu 工程掃描群組",
+      "capture_date": "2026-10-23 22:41",
+      "uploaded_at": 1792761508.629,
+      "uploader_email": "glibivanov@gatheren.com.tw",
+      "uploader_name": "雲在天",
+      "source_zip_path": "G:\\Shared drives\\6.軟體\\3. GatheringScans\\INPUTS\\QiHu\\QiHuTender_2.zip",
+      "project_dir": "C:\\GatheringScans\\catch_QiHuTender_2",
+      "tileset_path": "C:\\GatheringScans\\catch_QiHuTender_2\\tileset\\tileset.json",
+      "obj_path": "C:\\GatheringScans\\catch_QiHuTender_2\\exports\\obj_mesh\\mesh.obj",
+      "report_path": "",
+      "cameras_dir": "C:\\GatheringScans\\catch_QiHuTender_2\\inputs",
+      "image_count": 1500,
+      "size_bytes": 8034139911,
+      "rtk_accuracy_cm": 1.5,
+      "crs": "TWD97 (121) + TWVD2001",
+      "texture_resolution": 4096,
+      "lat": 25.13657134,
+      "lon": 121.501292501,
+      "elev_m": 11.94,
+      "twd97_e": 300544.802,
+      "twd97_n": 2780998.517,
+      "twd97_h": 11.94,
+      "bounding_box_json": "{\"center\": [300544.802, 2780998.517, 11.94], \"half_extents\": [41.45, 32.05, 7.8]}",
+      "status": "completed",
+      "progress_pct": 100.0,
+      "stage_label": "Processed -> catch_QiHuTender_2 (TWD97 + TWVD2001, 4K)",
+      "bypass_count": 0,
+      "force_next": 0,
+      "priority_score": 1000001203.015,
+      "notes": "Dynamically loaded from C:\\GatheringScans\\catch_QiHuTender_2",
+      "user_edited_name": 0,
+      "covered_area_m2": 4926.9,
+      "bounding_box": {
+        "center": [
+          300544.802,
+          2780998.517,
+          11.94
+        ],
+        "half_extents": [
+          41.45,
+          32.05,
+          7.8
+        ]
+      },
+      "size_mb": 7661.95,
+      "wait_minutes": 1203.2,
+      "comment_count": 0
+    },
+    {
+      "scan_id": "catch_QiHuTender_1",
+      "name": "QiHuTender_1",
+      "project_group": "QiHu",
+      "project_name_zh": "QiHu 工程掃描群組",
+      "capture_date": "2026-10-23 21:31",
+      "uploaded_at": 1792657620.335,
+      "uploader_email": "glibivanov@gatheren.com.tw",
+      "uploader_name": "雲在天",
+      "source_zip_path": "G:\\Shared drives\\6.軟體\\3. GatheringScans\\INPUTS\\QiHu\\QiHuTender_1",
+      "project_dir": "C:\\GatheringScans\\catch_QiHuTender_1",
+      "tileset_path": "C:\\GatheringScans\\catch_QiHuTender_1\\tileset\\tileset.json",
+      "obj_path": "C:\\GatheringScans\\catch_QiHuTender_1\\exports\\obj_mesh\\mesh.obj",
+      "report_path": "",
+      "cameras_dir": "C:\\GatheringScans\\catch_QiHuTender_1\\inputs",
+      "image_count": 1500,
+      "size_bytes": 7212273585,
+      "rtk_accuracy_cm": 1.5,
+      "crs": "TWD97 (121) + TWVD2001",
+      "texture_resolution": 4096,
+      "lat": 25.136526378,
+      "lon": 121.50110867,
+      "elev_m": 13.85,
+      "twd97_e": 300526.284,
+      "twd97_n": 2780993.468,
+      "twd97_h": 13.85,
+      "bounding_box_json": "{\"center\": [300526.284, 2780993.468, 13.85], \"half_extents\": [58.16, 51.17, 9.77]}",
+      "status": "completed",
+      "progress_pct": 100.0,
+      "stage_label": "Completed (TWD97 + TWVD2001, 4K Web Tileset)",
+      "bypass_count": 0,
+      "force_next": 1,
+      "priority_score": 1000001190.069,
+      "notes": "Dynamically loaded from C:\\GatheringScans\\catch_QiHuTender_1",
+      "user_edited_name": 0,
+      "covered_area_m2": 14118.6,
+      "bounding_box": {
+        "center": [
+          300526.284,
+          2780993.468,
+          13.85
+        ],
+        "half_extents": [
+          58.16,
+          51.17,
+          9.77
+        ]
+      },
+      "size_mb": 6878.16,
+      "wait_minutes": 2934.6,
+      "comment_count": 0
+    },
+    {
+      "scan_id": "qihutender_nortk_obj_mesh",
+      "name": "QiHuTender_NoRTK-obj_mesh",
+      "project_group": "QiHu",
+      "project_name_zh": "QiHu 工程掃描群組",
+      "capture_date": "2026-10-23 18:31",
+      "uploaded_at": 1792751499.5038967,
+      "uploader_email": "glibivanov@gatheren.com.tw",
+      "uploader_name": "雲在天",
+      "source_zip_path": "",
+      "project_dir": "C:\\GatheringScans\\QiHu\\QiHuTender_NoRTK-obj_mesh",
+      "tileset_path": "C:\\GatheringScans\\QiHu\\QiHuTender_NoRTK-obj_mesh\\tileset\\tileset.json",
+      "obj_path": "C:\\GatheringScans\\QiHu\\QiHuTender_NoRTK-obj_mesh\\mesh.obj",
+      "report_path": "",
+      "cameras_dir": "",
+      "image_count": 1200,
+      "size_bytes": 651304898,
+      "rtk_accuracy_cm": 1.5,
+      "crs": "TWD97 (121) + TWVD2001",
+      "texture_resolution": 4096,
+      "lat": 25.136330722,
+      "lon": 121.501362731,
+      "elev_m": 16.67,
+      "twd97_e": 300551.982,
+      "twd97_n": 2780971.891,
+      "twd97_h": 16.67,
+      "bounding_box_json": "{\"center\": [300551.982, 2780971.891, 16.67], \"half_extents\": [84.74, 78.81, 26.72]}",
+      "status": "completed",
+      "progress_pct": 100.0,
+      "stage_label": "Completed (TWD97 + TWVD2001, 4K Web Tileset)",
+      "bypass_count": 0,
+      "force_next": 0,
+      "priority_score": 1000001369.81,
+      "notes": "Dynamically loaded from C:\\GatheringScans\\QiHu\\QiHuTender_NoRTK-obj_mesh",
+      "user_edited_name": 0,
+      "covered_area_m2": 18165.1,
+      "bounding_box": {
+        "center": [
+          300551.982,
+          2780971.891,
+          16.67
+        ],
+        "half_extents": [
+          84.74,
+          78.81,
+          26.72
+        ]
+      },
+      "size_mb": 621.13,
+      "wait_minutes": 1370.0,
+      "comment_count": 0
+    },
+    {
       "scan_id": "catch_QuChi261016",
       "name": "QuChi261016",
       "project_group": "QuChi Dam",
-      "project_name_zh": "屈尺堰壩體與護岸工程",
+      "project_name_zh": "工程掃描群組",
       "capture_date": "2026-10-16 21:41",
       "uploaded_at": 1792130666.355157,
       "uploader_email": "glibivanov@gatheren.com.tw",
-      "uploader_name": "Glib Ivanov",
-      "source_zip_path": "G:\\Shared drives\\6.軟體\\3. GatheringScans\\QuChi261016_1of5.zip;G:\\Shared drives\\6.軟體\\3. GatheringScans\\QuChi261016_2of5.zip;G:\\Shared drives\\6.軟體\\3. GatheringScans\\QuChi261016_3of5.zip;G:\\Shared drives\\6.軟體\\3. GatheringScans\\QuChi261016_4of5.zip;G:\\Shared drives\\6.軟體\\3. GatheringScans\\QuChi261016_5of5.zip",
+      "uploader_name": "雲在天",
+      "source_zip_path": "G:\\Shared drives\\6.軟體\\3. GatheringScans\\INPUTS\\QuChi261016_1of5.zip;G:\\Shared drives\\6.軟體\\3. GatheringScans\\INPUTS\\QuChi261016_2of5.zip;G:\\Shared drives\\6.軟體\\3. GatheringScans\\INPUTS\\QuChi261016_3of5.zip;G:\\Shared drives\\6.軟體\\3. GatheringScans\\INPUTS\\QuChi261016_4of5.zip;G:\\Shared drives\\6.軟體\\3. GatheringScans\\INPUTS\\QuChi261016_5of5.zip",
       "project_dir": "C:\\GatheringScans\\catch_QuChi261016",
       "tileset_path": "C:\\GatheringScans\\catch_QuChi261016\\tileset\\tileset.json",
       "obj_path": "C:\\GatheringScans\\catch_QuChi261016\\exports\\obj_mesh\\mesh.obj",
       "report_path": "",
       "cameras_dir": "C:\\GatheringScans\\catch_QuChi261016\\inputs",
-      "image_count": 1008,
+      "image_count": 7588,
       "size_bytes": 35932885132,
       "rtk_accuracy_cm": 1.5,
       "crs": "TWD97 (121) + TWVD2001",
       "texture_resolution": 4096,
-      "lat": 24.920028,
-      "lon": 121.543451,
-      "elev_m": 38.19,
-      "twd97_e": 304891.922,
-      "twd97_n": 2757029.5,
-      "twd97_h": 38.19,
-      "bounding_box_json": "{}",
+      "lat": 24.919990001,
+      "lon": 121.543451144,
+      "elev_m": 45.03,
+      "twd97_e": 304891.961,
+      "twd97_n": 2757025.25,
+      "twd97_h": 45.03,
+      "bounding_box_json": "{\"center\": [304891.961, 2757025.25, 45.03], \"half_extents\": [140.3, 124.0, 19.34]}",
       "status": "completed",
       "progress_pct": 100.0,
-      "stage_label": "Processed -> catch_QuChi261016 (TWD97 + TWVD2001, 2K)",
+      "stage_label": "Processed -> catch_QuChi261016 (TWD97 + TWVD2001, 4K)",
       "bypass_count": 0,
       "force_next": 0,
-      "priority_score": 1000002069.652,
+      "priority_score": 1000011717.057,
       "notes": "Dynamically loaded from C:\\GatheringScans\\catch_QuChi261016",
       "user_edited_name": 0,
-      "bounding_box": {},
+      "covered_area_m2": 36259.4,
+      "bounding_box": {
+        "center": [
+          304891.961,
+          2757025.25,
+          45.03
+        ],
+        "half_extents": [
+          140.3,
+          124.0,
+          19.34
+        ]
+      },
       "size_mb": 34268.27,
-      "wait_minutes": 2069.7,
+      "wait_minutes": 11717.2,
       "comment_count": 0
     },
     {
@@ -52,48 +324,49 @@
       "project_name_zh": "工程掃描群組",
       "capture_date": "2026-10-16",
       "uploaded_at": 1792204092.876785,
-      "uploader_email": "glib@gatheren.com.tw",
-      "uploader_name": "Glib Ivanov",
+      "uploader_email": "glibivanov@gatheren.com.tw",
+      "uploader_name": "雲在天",
       "source_zip_path": "",
       "project_dir": "C:\\GatheringScans\\QuChi261016_Trees",
       "tileset_path": "C:\\GatheringScans\\QuChi261016_Trees\\tileset\\tileset.json",
       "obj_path": "C:\\GatheringScans\\QuChi261016_Trees\\exports\\obj_mesh_full\\mesh.obj",
       "report_path": "",
       "cameras_dir": "",
-      "image_count": 1008,
-      "size_bytes": 531385257,
+      "image_count": 7588,
+      "size_bytes": 531385292,
       "rtk_accuracy_cm": 1.3,
-      "crs": "TWD97 / TM2 zone 121 + TWVD 2001 height - EPSG:3826+8904 [TWGEOID2018h]",
+      "crs": "TWD97 (121) + TWVD2001",
       "texture_resolution": 4096,
-      "lat": 24.922195,
-      "lon": 121.545318,
-      "elev_m": 38.19,
-      "twd97_e": 304891.922,
-      "twd97_n": 2757029.5,
-      "twd97_h": 38.194,
-      "bounding_box_json": "{\"center\": [352881.438, 2756882.0, 46.63], \"half_extents\": [176.66, 155.0, 28.53]}",
+      "lat": 24.920043162,
+      "lon": 121.543168574,
+      "elev_m": 44.35,
+      "twd97_e": 304863.395,
+      "twd97_n": 2757031.024,
+      "twd97_h": 44.35,
+      "bounding_box_json": "{\"center\": [304863.395, 2757031.024, 44.35], \"half_extents\": [169.11, 154.03, 27.86]}",
       "status": "completed",
       "progress_pct": 100.0,
       "stage_label": "Completed (TWD97 + TWVD2001, 4K Web Tileset)",
       "bypass_count": 0,
       "force_next": 0,
-      "priority_score": 1000000484.857,
+      "priority_score": 1000010132.253,
       "notes": "Dynamically loaded from C:\\GatheringScans\\QuChi261016_Trees",
       "user_edited_name": 1,
+      "covered_area_m2": 49671.9,
       "bounding_box": {
         "center": [
-          352881.438,
-          2756882.0,
-          46.63
+          304863.395,
+          2757031.024,
+          44.35
         ],
         "half_extents": [
-          176.66,
-          155.0,
-          28.53
+          169.11,
+          154.03,
+          27.86
         ]
       },
       "size_mb": 506.77,
-      "wait_minutes": 846.0,
+      "wait_minutes": 10493.4,
       "comment_count": 0
     },
     {
@@ -104,47 +377,48 @@
       "capture_date": "2026-10-15 15:52",
       "uploaded_at": 1792136886.3280134,
       "uploader_email": "glibivanov@gatheren.com.tw",
-      "uploader_name": "Glib Ivanov",
+      "uploader_name": "雲在天",
       "source_zip_path": "",
       "project_dir": "C:\\GatheringScans\\QuChi_20261015-obj_mesh",
       "tileset_path": "C:\\GatheringScans\\QuChi_20261015-obj_mesh\\tileset\\tileset.json",
       "obj_path": "C:\\GatheringScans\\QuChi_20261015-obj_mesh\\mesh.obj",
       "report_path": "",
       "cameras_dir": "",
-      "image_count": 936,
+      "image_count": 7588,
       "size_bytes": 135083984,
       "rtk_accuracy_cm": 1.5,
       "crs": "TWD97 (121) + TWVD2001",
       "texture_resolution": 4096,
-      "lat": 24.919967,
-      "lon": 121.543979,
-      "elev_m": 51.3,
-      "twd97_e": 304945.289,
-      "twd97_n": 2757022.915,
-      "twd97_h": 51.3,
-      "bounding_box_json": "{\"center\": [304945.289, 2757022.915, 51.3], \"half_extents\": [192.52, 125.62, 16.51]}",
+      "lat": 24.919967393,
+      "lon": 121.54397913,
+      "elev_m": 45.467,
+      "twd97_e": 304945.3019,
+      "twd97_n": 2757022.9591,
+      "twd97_h": 45.467,
+      "bounding_box_json": "{\"center\": [304945.3019, 2757022.9591, 45.467], \"half_extents\": [192.52, 125.62, 15.3]}",
       "status": "completed",
       "progress_pct": 100.0,
       "stage_label": "Completed (TWD97 + TWVD2001, 4K Web Tileset)",
       "bypass_count": 0,
       "force_next": 0,
-      "priority_score": 1000001961.648,
+      "priority_score": 1000011609.047,
       "notes": "Dynamically loaded from C:\\GatheringScans\\QuChi_20261015-obj_mesh",
       "user_edited_name": 1,
+      "covered_area_m2": 45203.2,
       "bounding_box": {
         "center": [
-          304945.289,
-          2757022.915,
-          51.3
+          304945.3019,
+          2757022.9591,
+          45.467
         ],
         "half_extents": [
           192.52,
           125.62,
-          16.51
+          15.3
         ]
       },
       "size_mb": 128.83,
-      "wait_minutes": 1966.1,
+      "wait_minutes": 11613.5,
       "comment_count": 0
     },
     {
@@ -155,47 +429,48 @@
       "capture_date": "2026-10-15 15:52",
       "uploaded_at": 1792137145.7458365,
       "uploader_email": "glibivanov@gatheren.com.tw",
-      "uploader_name": "Glib Ivanov",
+      "uploader_name": "雲在天",
       "source_zip_path": "",
       "project_dir": "C:\\GatheringScans\\QuChi_20261015-cesium_mesh",
       "tileset_path": "C:\\GatheringScans\\QuChi_20261015-cesium_mesh\\QuChi_20261015-cesium_mesh.json",
       "obj_path": "",
       "report_path": "",
       "cameras_dir": "",
-      "image_count": 612,
+      "image_count": 7588,
       "size_bytes": 57782915,
       "rtk_accuracy_cm": 1.5,
       "crs": "TWD97 (121) + TWVD2001",
       "texture_resolution": 4096,
-      "lat": 24.919961,
-      "lon": 121.543474,
-      "elev_m": 66.87,
-      "twd97_e": 304894.26,
-      "twd97_n": 2757022.021,
-      "twd97_h": 66.87,
-      "bounding_box_json": "{\"center\": [304894.26, 2757022.021, 66.87], \"half_extents\": [281.36, 281.36, 281.36]}",
+      "lat": 24.919632,
+      "lon": 121.54349,
+      "elev_m": 59.13,
+      "twd97_e": 304896.0405,
+      "twd97_n": 2756985.6536,
+      "twd97_h": 59.13,
+      "bounding_box_json": "{\"center\": [304896.0405, 2756985.6536, 59.13], \"half_extents\": [35.17, 35.17, 17.58]}",
       "status": "completed",
       "progress_pct": 100.0,
       "stage_label": "Completed (TWD97 + TWVD2001, 4K Web Tileset)",
       "bypass_count": 0,
       "force_next": 0,
-      "priority_score": 1000001961.645,
+      "priority_score": 1000011609.043,
       "notes": "Dynamically loaded from C:\\GatheringScans\\QuChi_20261015-cesium_mesh",
       "user_edited_name": 0,
+      "covered_area_m2": 45203.2,
       "bounding_box": {
         "center": [
-          304894.26,
-          2757022.021,
-          66.87
+          304896.0405,
+          2756985.6536,
+          59.13
         ],
         "half_extents": [
-          281.36,
-          281.36,
-          281.36
+          35.17,
+          35.17,
+          17.58
         ]
       },
       "size_mb": 55.11,
-      "wait_minutes": 1961.7,
+      "wait_minutes": 11609.2,
       "comment_count": 0
     },
     {
@@ -206,7 +481,7 @@
       "capture_date": "2026-10-05 15:45",
       "uploaded_at": 1791762476.7314816,
       "uploader_email": "glibivanov@gatheren.com.tw",
-      "uploader_name": "Glib Ivanov",
+      "uploader_name": "雲在天",
       "source_zip_path": "G:\\My Drive\\SCANS TEST\\2026-10-05-15-43-55.zip",
       "project_dir": "C:\\GatheringScans\\QuChi_20261005_Compressed",
       "tileset_path": "C:\\GatheringScans\\QuChi_20261005_Compressed\\tileset\\tileset.json",
@@ -218,35 +493,36 @@
       "rtk_accuracy_cm": 1.4,
       "crs": "TWD97 (121) + TWVD2001",
       "texture_resolution": 4096,
-      "lat": 24.92032,
-      "lon": 121.54351,
-      "elev_m": 43.18,
-      "twd97_e": 304952.656,
-      "twd97_n": 2757084.875,
-      "twd97_h": 43.18,
-      "bounding_box_json": "{\"center\": [304952.656, 2757084.875, 43.178], \"half_extents\": [297.906, 182.625, 52.64]}",
+      "lat": 24.920523684,
+      "lon": 121.543945555,
+      "elev_m": 41.65,
+      "twd97_e": 304941.664,
+      "twd97_n": 2757084.562,
+      "twd97_h": 41.65,
+      "bounding_box_json": "{\"center\": [304941.664, 2757084.562, 41.65], \"half_extents\": [297.91, 182.62, 52.64]}",
       "status": "completed",
       "progress_pct": 100.0,
       "stage_label": "Completed (TWD97 + TWVD2001, 4K Web Tileset)",
       "bypass_count": 0,
       "force_next": 0,
-      "priority_score": 1000003068.252,
+      "priority_score": 1000012715.651,
       "notes": "Merged from 3 PIX4Dcatch RTK walks in G:\\My Drive\\SCANS TEST (15-19-27, 15-37-05, 15-43-55). Converted to TWD97 (121) + TWVD2001 with 2K textures.",
       "user_edited_name": 0,
+      "covered_area_m2": 149594.3,
       "bounding_box": {
         "center": [
-          304952.656,
-          2757084.875,
-          43.178
+          304941.664,
+          2757084.562,
+          41.65
         ],
         "half_extents": [
-          297.906,
-          182.625,
+          297.91,
+          182.62,
           52.64
         ]
       },
       "size_mb": 109.91,
-      "wait_minutes": 8206.2,
+      "wait_minutes": 17853.7,
       "comment_count": 2
     },
     {
@@ -256,48 +532,49 @@
       "project_name_zh": "屈尺堰壩體與護岸工程",
       "capture_date": "2026-10-05 15:19",
       "uploaded_at": 1792070749.364175,
-      "uploader_email": "argon@gatheren.com.tw",
-      "uploader_name": "Argon",
+      "uploader_email": "glibivanov@gatheren.com.tw",
+      "uploader_name": "雲在天",
       "source_zip_path": "",
       "project_dir": "C:\\GatheringScans\\QuChi_260510_3",
       "tileset_path": "C:\\GatheringScans\\QuChi_260510_3\\tileset\\tileset.json",
-      "obj_path": "C:\\Scans\\QuChi\\QuChi_20261005_Compressed\\exports\\QuChi_20261005_Compressed-obj_mesh\\mesh.obj",
+      "obj_path": "",
       "report_path": "",
       "cameras_dir": "C:\\Scans\\QuChi\\QuChi_20261005\\inputs",
-      "image_count": 1580,
+      "image_count": 4821,
       "size_bytes": 74200000,
       "rtk_accuracy_cm": 1.5,
       "crs": "TWD97 (121) + TWVD2001",
       "texture_resolution": 4096,
-      "lat": 24.92025,
-      "lon": 121.54344,
-      "elev_m": 43.05,
-      "twd97_e": 304945.2,
-      "twd97_n": 2757078.4,
-      "twd97_h": 43.05,
-      "bounding_box_json": "{\"center\": [304945.2, 2757078.4, 43.05], \"half_extents\": [294.9, 294.9, 55.0]}",
+      "lat": 24.920597247,
+      "lon": 121.543930128,
+      "elev_m": 49.85,
+      "twd97_e": 304940.073,
+      "twd97_n": 2757092.704,
+      "twd97_h": 49.85,
+      "bounding_box_json": "{\"center\": [304940.073, 2757092.704, 49.85], \"half_extents\": [264.99, 112.91, 23.04]}",
       "status": "completed",
       "progress_pct": 100.0,
       "stage_label": "Completed (TWD97 + TWVD2001, 4K Web Tileset)",
       "bypass_count": 0,
       "force_next": 0,
-      "priority_score": 1000003068.261,
+      "priority_score": 1000012715.663,
       "notes": "High-density sector 3 photogrammetry mesh of QuChi Dam spillway.",
       "user_edited_name": 0,
+      "covered_area_m2": 136580.4,
       "bounding_box": {
         "center": [
-          304945.2,
-          2757078.4,
-          43.05
+          304940.073,
+          2757092.704,
+          49.85
         ],
         "half_extents": [
-          294.9,
-          294.9,
-          55.0
+          264.99,
+          112.91,
+          23.04
         ]
       },
       "size_mb": 70.76,
-      "wait_minutes": 3068.3,
+      "wait_minutes": 12715.8,
       "comment_count": 0
     },
     {
@@ -307,48 +584,101 @@
       "project_name_zh": "屈尺堰壩體與護岸工程",
       "capture_date": "2026-09-21 11:39",
       "uploaded_at": 1790552876.7314816,
-      "uploader_email": "argon@gatheren.com.tw",
-      "uploader_name": "Argon",
+      "uploader_email": "glibivanov@gatheren.com.tw",
+      "uploader_name": "雲在天",
       "source_zip_path": "",
       "project_dir": "C:\\GatheringScans\\QuChi_1_20260921",
       "tileset_path": "C:\\GatheringScans\\QuChi_1_20260921\\tileset\\tileset.json",
-      "obj_path": "C:\\Scans\\QuChi\\QuChi_1\\exports\\QuChi_1-obj_mesh\\mesh.obj",
+      "obj_path": "C:\\GatheringScans\\QuChi_1_20260921\\project\\exports\\QuChi_1-obj_mesh\\mesh.obj",
       "report_path": "",
       "cameras_dir": "C:\\Scans\\QuChi\\QuChi_20261005\\inputs",
-      "image_count": 2140,
+      "image_count": 8000,
       "size_bytes": 96400000,
       "rtk_accuracy_cm": 1.7,
       "crs": "TWD97 (121) + TWVD2001",
       "texture_resolution": 4096,
-      "lat": 24.92018,
-      "lon": 121.54338,
-      "elev_m": 42.85,
-      "twd97_e": 304939.5,
-      "twd97_n": 2757069.2,
-      "twd97_h": 42.85,
-      "bounding_box_json": "{\"center\": [304952.656, 2757084.875, 42.85], \"half_extents\": [290.0, 180.0, 50.0]}",
+      "lat": 24.919767,
+      "lon": 121.546162,
+      "elev_m": 60.81,
+      "twd97_e": 305165.9193,
+      "twd97_n": 2757001.6445,
+      "twd97_h": 60.81,
+      "bounding_box_json": "{\"center\": [305165.9193, 2757001.6445, 60.81], \"half_extents\": [74.0, 144.0, 13.26]}",
       "status": "completed",
       "progress_pct": 100.0,
       "stage_label": "Completed (TWD97 + TWVD2001, 4K Web Tileset)",
       "bypass_count": 0,
       "force_next": 0,
-      "priority_score": 1000003068.251,
+      "priority_score": 1000012715.649,
       "notes": "Baseline epoch prior to October earthwork and revetment concrete pour.",
       "user_edited_name": 0,
+      "covered_area_m2": 47792.8,
       "bounding_box": {
         "center": [
-          304952.656,
-          2757084.875,
-          42.85
+          305165.9193,
+          2757001.6445,
+          60.81
         ],
         "half_extents": [
-          290.0,
-          180.0,
-          50.0
+          74.0,
+          144.0,
+          13.26
         ]
       },
       "size_mb": 91.93,
-      "wait_minutes": 28366.2,
+      "wait_minutes": 38013.7,
+      "comment_count": 0
+    },
+    {
+      "scan_id": "catch_2026_09_21_11_39_49",
+      "name": "Office Roof Training",
+      "project_group": "Site (25.0880N, 121.5218E)",
+      "project_name_zh": "新增工區掃描點",
+      "capture_date": "2026-09-21 11:39",
+      "uploaded_at": 1792321664.992,
+      "uploader_email": "glibivanov@gatheren.com.tw",
+      "uploader_name": "雲在天",
+      "source_zip_path": "G:\\Shared drives\\6.軟體\\3. GatheringScans\\INPUTS\\2026-09-21-11-39-49",
+      "project_dir": "C:\\GatheringScans\\catch_2026_09_21_11_39_49",
+      "tileset_path": "C:\\GatheringScans\\catch_2026_09_21_11_39_49\\tileset\\tileset.json",
+      "obj_path": "C:\\GatheringScans\\catch_2026_09_21_11_39_49\\exports\\obj_mesh\\mesh.obj",
+      "report_path": "",
+      "cameras_dir": "C:\\GatheringScans\\catch_2026_09_21_11_39_49\\inputs",
+      "image_count": 119,
+      "size_bytes": 788910643,
+      "rtk_accuracy_cm": 1.5,
+      "crs": "TWD97 (121) + TWVD2001",
+      "texture_resolution": 4096,
+      "lat": 25.088011718,
+      "lon": 121.521759381,
+      "elev_m": 36.76,
+      "twd97_e": 302629.28,
+      "twd97_n": 2775627.567,
+      "twd97_h": 36.76,
+      "bounding_box_json": "{\"center\": [302629.28, 2775627.567, 36.76], \"half_extents\": [5.95, 4.28, 1.54]}",
+      "status": "completed",
+      "progress_pct": 100.0,
+      "stage_label": "Processed -> catch_2026_09_21_11_39_49 (TWD97 + TWVD2001, 4K)",
+      "bypass_count": 0,
+      "force_next": 0,
+      "priority_score": 1000008533.742,
+      "notes": "Dynamically loaded from C:\\GatheringScans\\catch_2026_09_21_11_39_49",
+      "user_edited_name": 1,
+      "covered_area_m2": 272.0,
+      "bounding_box": {
+        "center": [
+          302629.28,
+          2775627.567,
+          36.76
+        ],
+        "half_extents": [
+          5.95,
+          4.28,
+          1.54
+        ]
+      },
+      "size_mb": 752.36,
+      "wait_minutes": 8533.9,
       "comment_count": 0
     },
     {
@@ -359,47 +689,48 @@
       "capture_date": "2026-09-18 14:20",
       "uploaded_at": 1790293676.7314816,
       "uploader_email": "glibivanov@gatheren.com.tw",
-      "uploader_name": "Glib Ivanov",
+      "uploader_name": "雲在天",
       "source_zip_path": "",
       "project_dir": "C:\\GatheringScans\\RosePark_Merged2",
       "tileset_path": "C:\\GatheringScans\\RosePark_Merged2\\tileset\\tileset.json",
-      "obj_path": "C:\\Scans\\RosePark\\RosePark 0917\\RosePark 260917\\exports\\RosePark 260917-obj_mesh\\mesh.obj",
+      "obj_path": "",
       "report_path": "",
-      "cameras_dir": "C:\\Scans\\2026-09-17-13-40-52\\images",
-      "image_count": 1820,
+      "cameras_dir": "C:\\Scans\\RosePark\\RosePark 0916\\Images",
+      "image_count": 5853,
       "size_bytes": 68400000,
       "rtk_accuracy_cm": 1.5,
       "crs": "TWD97 (121) + TWVD2001",
       "texture_resolution": 4096,
-      "lat": 25.02389,
-      "lon": 121.45547,
-      "elev_m": 9.85,
-      "twd97_e": 296045.12,
-      "twd97_n": 2768531.45,
-      "twd97_h": 9.85,
-      "bounding_box_json": "{\"center\": [296045.12, 2768531.45, 9.85], \"half_extents\": [95.0, 85.0, 18.0]}",
+      "lat": 25.023903896,
+      "lon": 121.455629985,
+      "elev_m": 9.09,
+      "twd97_e": 295982.7,
+      "twd97_n": 2768502.545,
+      "twd97_h": 9.09,
+      "bounding_box_json": "{\"center\": [295982.7, 2768502.545, 9.09], \"half_extents\": [37.24, 42.56, 3.19]}",
       "status": "completed",
       "progress_pct": 100.0,
       "stage_label": "Completed (TWD97 + TWVD2001, 4K Web Tileset)",
       "bypass_count": 0,
       "force_next": 0,
-      "priority_score": 1000003068.264,
+      "priority_score": 1000012715.665,
       "notes": "Merged scan of Rose Park landscape grading and drainage trenching.",
       "user_edited_name": 0,
+      "covered_area_m2": 6684.2,
       "bounding_box": {
         "center": [
-          296045.12,
-          2768531.45,
-          9.85
+          295982.7,
+          2768502.545,
+          9.09
         ],
         "half_extents": [
-          95.0,
-          85.0,
-          18.0
+          37.24,
+          42.56,
+          3.19
         ]
       },
       "size_mb": 65.23,
-      "wait_minutes": 32686.2,
+      "wait_minutes": 42333.7,
       "comment_count": 1
     },
     {
@@ -409,48 +740,49 @@
       "project_name_zh": "板橋玫瑰公園整建工程",
       "capture_date": "2026-09-17 13:40",
       "uploaded_at": 1790207276.7314816,
-      "uploader_email": "argon@gatheren.com.tw",
-      "uploader_name": "Argon",
+      "uploader_email": "glibivanov@gatheren.com.tw",
+      "uploader_name": "雲在天",
       "source_zip_path": "",
       "project_dir": "C:\\GatheringScans\\RosePark_260917",
       "tileset_path": "C:\\GatheringScans\\RosePark_260917\\tileset\\tileset.json",
       "obj_path": "C:\\Scans\\RosePark\\RosePark 0917\\RosePark 260917\\exports\\RosePark 260917-obj_mesh\\mesh.obj",
       "report_path": "",
       "cameras_dir": "C:\\Scans\\2026-09-17-13-40-52\\images",
-      "image_count": 642,
+      "image_count": 2001,
       "size_bytes": 44100000,
       "rtk_accuracy_cm": 1.6,
       "crs": "TWD97 (121) + TWVD2001",
       "texture_resolution": 4096,
-      "lat": 25.02374,
-      "lon": 121.45562,
-      "elev_m": 9.6,
-      "twd97_e": 296060.2,
-      "twd97_n": 2768514.8,
-      "twd97_h": 9.6,
-      "bounding_box_json": "{\"center\": [296060.2, 2768514.8, 9.6], \"half_extents\": [65.0, 55.0, 14.0]}",
+      "lat": 25.023908094,
+      "lon": 121.455708111,
+      "elev_m": 11.08,
+      "twd97_e": 295990.583,
+      "twd97_n": 2768503.037,
+      "twd97_h": 11.08,
+      "bounding_box_json": "{\"center\": [295990.583, 2768503.037, 11.08], \"half_extents\": [29.21, 36.16, 4.17]}",
       "status": "completed",
       "progress_pct": 100.0,
       "stage_label": "Completed (TWD97 + TWVD2001, 4K Web Tileset)",
       "bypass_count": 0,
       "force_next": 0,
-      "priority_score": 1000003068.262,
+      "priority_score": 1000012715.663,
       "notes": "Initial excavation trench scan at Rose Park East sector.",
       "user_edited_name": 0,
+      "covered_area_m2": 8410.0,
       "bounding_box": {
         "center": [
-          296060.2,
-          2768514.8,
-          9.6
+          295990.583,
+          2768503.037,
+          11.08
         ],
         "half_extents": [
-          65.0,
-          55.0,
-          14.0
+          29.21,
+          36.16,
+          4.17
         ]
       },
       "size_mb": 42.06,
-      "wait_minutes": 34126.2,
+      "wait_minutes": 43773.7,
       "comment_count": 0
     },
     {
@@ -461,47 +793,48 @@
       "capture_date": "2026-09-17 09:30",
       "uploaded_at": 1790164076.7314816,
       "uploader_email": "glibivanov@gatheren.com.tw",
-      "uploader_name": "Glib Ivanov",
+      "uploader_name": "雲在天",
       "source_zip_path": "",
       "project_dir": "C:\\GatheringScans\\NTU_Dorm_260917",
       "tileset_path": "C:\\GatheringScans\\NTU_Dorm_260917\\tileset\\tileset.json",
-      "obj_path": "C:\\Scans\\NTU Dorm\\NTU Dorm 260917\\NTU Dorm 260917\\exports\\NTU Dorm 260917-obj_mesh\\mesh.obj",
+      "obj_path": "C:\\GatheringScans\\NTU_Dorm_260917\\project\\exports\\NTU Dorm 260917-obj_mesh\\mesh.obj",
       "report_path": "",
       "cameras_dir": "C:\\Scans\\NTU Dorm\\NTU Dorm 260917\\ntuDorm 0917\\images",
-      "image_count": 1285,
+      "image_count": 2290,
       "size_bytes": 58900000,
       "rtk_accuracy_cm": 1.9,
       "crs": "TWD97 (121) + TWVD2001",
       "texture_resolution": 4096,
-      "lat": 25.01552,
-      "lon": 121.54218,
-      "elev_m": 18.4,
-      "twd97_e": 304795.4,
-      "twd97_n": 2767628.1,
-      "twd97_h": 18.4,
-      "bounding_box_json": "{\"center\": [304795.4, 2767628.1, 18.4], \"half_extents\": [80.0, 70.0, 22.0]}",
+      "lat": 25.037366598,
+      "lon": 121.525261864,
+      "elev_m": 9.79,
+      "twd97_e": 303004.363,
+      "twd97_n": 2770019.191,
+      "twd97_h": 9.79,
+      "bounding_box_json": "{\"center\": [303004.363, 2770019.191, 9.79], \"half_extents\": [23.77, 13.8, 4.46]}",
       "status": "completed",
       "progress_pct": 100.0,
       "stage_label": "Completed (TWD97 + TWVD2001, 4K Web Tileset)",
       "bypass_count": 0,
       "force_next": 0,
-      "priority_score": 1000003068.247,
+      "priority_score": 1000012715.644,
       "notes": "Excavation progress and soldier pile wall survey at NTU Dorm site.",
       "user_edited_name": 0,
+      "covered_area_m2": 5781.2,
       "bounding_box": {
         "center": [
-          304795.4,
-          2767628.1,
-          18.4
+          303004.363,
+          2770019.191,
+          9.79
         ],
         "half_extents": [
-          80.0,
-          70.0,
-          22.0
+          23.77,
+          13.8,
+          4.46
         ]
       },
       "size_mb": 56.17,
-      "wait_minutes": 34846.2,
+      "wait_minutes": 44493.7,
       "comment_count": 0
     },
     {
@@ -511,48 +844,49 @@
       "project_name_zh": "台大新建學生宿舍工程",
       "capture_date": "2026-09-15 16:10",
       "uploaded_at": 1790024368.0391726,
-      "uploader_email": "argon@gatheren.com.tw",
-      "uploader_name": "Argon",
+      "uploader_email": "glibivanov@gatheren.com.tw",
+      "uploader_name": "雲在天",
       "source_zip_path": "",
       "project_dir": "C:\\GatheringScans\\NTU_Dorm_260915",
       "tileset_path": "C:\\GatheringScans\\NTU_Dorm_260915\\tileset\\tileset.json",
-      "obj_path": "C:\\Scans\\ntuDorm_260915\\ntuDorm_260915\\exports\\ntuDorm_260915-obj_mesh\\mesh.obj",
+      "obj_path": "C:\\GatheringScans\\NTU_Dorm_260915\\project\\exports\\ntuDorm_260915-obj_mesh\\mesh.obj",
       "report_path": "",
-      "cameras_dir": "C:\\Scans\\NTU Dorm\\NTU Dorm 260917\\ntuDorm 0917\\images",
-      "image_count": 940,
+      "cameras_dir": "G:\\My Drive\\Scans\\NTU Dorm 2026-09-15\\images",
+      "image_count": 4000,
       "size_bytes": 42800000,
       "rtk_accuracy_cm": 1.8,
       "crs": "TWD97 (121) + TWVD2001",
       "texture_resolution": 4096,
-      "lat": 25.01548,
-      "lon": 121.54212,
-      "elev_m": 18.55,
-      "twd97_e": 304791.2,
-      "twd97_n": 2767622.5,
-      "twd97_h": 18.55,
-      "bounding_box_json": "{\"center\": [304791.2, 2767622.5, 18.55], \"half_extents\": [78.0, 68.0, 20.0]}",
+      "lat": 25.037339381,
+      "lon": 121.52532359,
+      "elev_m": 15.2,
+      "twd97_e": 303010.604,
+      "twd97_n": 2770016.2,
+      "twd97_h": 15.2,
+      "bounding_box_json": "{\"center\": [303010.604, 2770016.2, 15.2], \"half_extents\": [69.38, 53.55, 25.43]}",
       "status": "completed",
       "progress_pct": 100.0,
       "stage_label": "Completed (TWD97 + TWVD2001, 4K Web Tileset)",
       "bypass_count": 0,
       "force_next": 0,
-      "priority_score": 1000003068.246,
+      "priority_score": 1000012715.643,
       "notes": "Baseline perimeter survey prior to retaining wall excavation.",
       "user_edited_name": 0,
+      "covered_area_m2": 10905.3,
       "bounding_box": {
         "center": [
-          304791.2,
-          2767622.5,
-          18.55
+          303010.604,
+          2770016.2,
+          15.2
         ],
         "half_extents": [
-          78.0,
-          68.0,
-          20.0
+          69.38,
+          53.55,
+          25.43
         ]
       },
       "size_mb": 40.82,
-      "wait_minutes": 37174.7,
+      "wait_minutes": 46822.2,
       "comment_count": 0
     }
   ],
@@ -563,7 +897,7 @@
       "scope_type": "scan",
       "target_id": "quchi_20261005_merged",
       "created_by_email": "glibivanov@gatheren.com.tw",
-      "created_by_name": "Glib Ivanov",
+      "created_by_name": "雲在天",
       "created_at": "2026-10-15 09:04:17 UTC",
       "expires_at": "",
       "allow_download": false,
@@ -581,7 +915,7 @@
       "scope_type": "scan",
       "target_id": "quchi_20261005_merged",
       "created_by_email": "glibivanov@gatheren.com.tw",
-      "created_by_name": "Glib Ivanov",
+      "created_by_name": "雲在天",
       "created_at": "2026-10-15 09:02:39 UTC",
       "expires_at": "",
       "allow_download": false,
@@ -599,7 +933,7 @@
       "scope_type": "scan",
       "target_id": "quchi_20261005_merged",
       "created_by_email": "glibivanov@gatheren.com.tw",
-      "created_by_name": "Glib Ivanov",
+      "created_by_name": "雲在天",
       "created_at": "2026-10-15 09:00:31 UTC",
       "expires_at": "",
       "allow_download": false,
@@ -617,7 +951,7 @@
       "scope_type": "scan",
       "target_id": "quchi_20261005_merged",
       "created_by_email": "glibivanov@gatheren.com.tw",
-      "created_by_name": "Glib Ivanov",
+      "created_by_name": "雲在天",
       "created_at": "2026-10-15 01:30:01 UTC",
       "expires_at": "",
       "allow_download": false,
@@ -635,7 +969,7 @@
       "scope_type": "scan",
       "target_id": "quchi_20261005_merged",
       "created_by_email": "glibivanov@gatheren.com.tw",
-      "created_by_name": "Glib Ivanov",
+      "created_by_name": "雲在天",
       "created_at": "2026-10-15 01:25:03 UTC",
       "expires_at": "",
       "allow_download": false,
@@ -653,7 +987,7 @@
       "scope_type": "scan",
       "target_id": "quchi_20261005_merged",
       "created_by_email": "glibivanov@gatheren.com.tw",
-      "created_by_name": "Glib Ivanov",
+      "created_by_name": "雲在天",
       "created_at": "2026-10-15 00:36:18 UTC",
       "expires_at": "",
       "allow_download": false,
@@ -671,7 +1005,7 @@
       "scope_type": "scan",
       "target_id": "quchi_20261005_merged",
       "created_by_email": "glibivanov@gatheren.com.tw",
-      "created_by_name": "Glib Ivanov",
+      "created_by_name": "雲在天",
       "created_at": "2026-10-15 00:34:19 UTC",
       "expires_at": "",
       "allow_download": false,
@@ -689,14 +1023,14 @@
       "scope_type": "scan",
       "target_id": "quchi_20261005_merged",
       "created_by_email": "glibivanov@gatheren.com.tw",
-      "created_by_name": "Glib Ivanov",
+      "created_by_name": "雲在天",
       "created_at": "2026-10-15 00:18:47 UTC",
       "expires_at": "",
       "allow_download": false,
       "allow_measurements": true,
       "allow_comments": true,
-      "revoked": true,
-      "revoked_at": "2026-10-15 00:18:47 UTC",
+      "revoked": false,
+      "revoked_at": "",
       "view_count": 1,
       "share_url": "https://scans.gatheren.cloud/?share=NCmOFwZ0sfFxuvTC",
       "short_path": "/s/NCmOFwZ0sfFxuvTC"
@@ -707,7 +1041,7 @@
       "scope_type": "scan",
       "target_id": "quchi_20261005_merged",
       "created_by_email": "glibivanov@gatheren.com.tw",
-      "created_by_name": "Glib Ivanov",
+      "created_by_name": "雲在天",
       "created_at": "2026-10-15 00:18:11 UTC",
       "expires_at": "",
       "allow_download": false,
@@ -725,7 +1059,7 @@
       "scope_type": "scan",
       "target_id": "quchi_20261005_merged",
       "created_by_email": "glibivanov@gatheren.com.tw",
-      "created_by_name": "Glib Ivanov",
+      "created_by_name": "雲在天",
       "created_at": "2026-10-15 00:14:10 UTC",
       "expires_at": "",
       "allow_download": false,
@@ -743,50 +1077,194 @@
       "scope_type": "scan",
       "target_id": "quchi_20261005_merged",
       "created_by_email": "glibivanov@gatheren.com.tw",
-      "created_by_name": "Glib Ivanov",
+      "created_by_name": "雲在天",
       "created_at": "2026-10-14 23:48:41 UTC",
       "expires_at": "",
       "allow_download": false,
       "allow_measurements": true,
       "allow_comments": true,
-      "revoked": true,
-      "revoked_at": "2026-10-14 23:48:41 UTC",
+      "revoked": false,
+      "revoked_at": "",
       "view_count": 1,
       "share_url": "https://scans.gatheren.cloud/?share=a12DbhKzAstyI028",
       "short_path": "/s/a12DbhKzAstyI028"
     }
   ],
   "packages": {
+    "catch_QiHuTender_4": {
+      "scan_id": "catch_QiHuTender_4",
+      "pkg_path": "G:\\Shared drives\\6.軟體\\3. GatheringScans\\StreamPackages\\catch_QiHuTender_4.3tz",
+      "size_bytes": 11169607,
+      "mtime": 1792833371,
+      "toc": {
+        "tileset.json": {
+          "offset": 42,
+          "size": 362
+        },
+        "tiles/root.glb": {
+          "offset": 448,
+          "size": 8239364
+        },
+        "preview_tileset.json": {
+          "offset": 8239862,
+          "size": 374
+        },
+        "preview_low/tiles/root.glb": {
+          "offset": 8240292,
+          "size": 2474268
+        },
+        "thumbnail.png": {
+          "offset": 10714603,
+          "size": 454667
+        }
+      },
+      "file_id": "1wGZQQQh9X9P2l75kmBY9IAgOeRnUHm_e",
+      "my_drive_file_id": "1n3zIwtjQyYbdHrQhWQtSE_WuTPO7pgJW"
+    },
+    "catch_QiHuTender_3": {
+      "scan_id": "catch_QiHuTender_3",
+      "pkg_path": "G:\\Shared drives\\6.軟體\\3. GatheringScans\\StreamPackages\\catch_QiHuTender_3.3tz",
+      "size_bytes": 10863036,
+      "mtime": 1792833371,
+      "toc": {
+        "tileset.json": {
+          "offset": 42,
+          "size": 377
+        },
+        "tiles/root.glb": {
+          "offset": 463,
+          "size": 8131144
+        },
+        "preview_tileset.json": {
+          "offset": 8131657,
+          "size": 389
+        },
+        "preview_low/tiles/root.glb": {
+          "offset": 8132102,
+          "size": 2396120
+        },
+        "thumbnail.png": {
+          "offset": 10528265,
+          "size": 334434
+        }
+      },
+      "file_id": "1XFMnlAgufvUWqY-jm-z8_aPZlQNsOl6d",
+      "my_drive_file_id": "1KcE8TiUYM53uvP9Xl_U0IzGV_DyIKWkz"
+    },
+    "catch_QiHuTender_2": {
+      "scan_id": "catch_QiHuTender_2",
+      "pkg_path": "G:\\Shared drives\\6.軟體\\3. GatheringScans\\StreamPackages\\catch_QiHuTender_2.3tz",
+      "size_bytes": 10290974,
+      "mtime": 1792833371,
+      "toc": {
+        "tileset.json": {
+          "offset": 42,
+          "size": 352
+        },
+        "tiles/root.glb": {
+          "offset": 438,
+          "size": 7692824
+        },
+        "preview_tileset.json": {
+          "offset": 7693312,
+          "size": 364
+        },
+        "preview_low/tiles/root.glb": {
+          "offset": 7693732,
+          "size": 2183388
+        },
+        "thumbnail.png": {
+          "offset": 9877163,
+          "size": 413474
+        }
+      },
+      "file_id": "1cWGC-eXp0A-s6xlv_lTjRUykLqkPKmx6",
+      "my_drive_file_id": "1oJ-iDZu4cEBTKn-Iw9IIxhGN0X19cFHM"
+    },
+    "catch_QiHuTender_1": {
+      "scan_id": "catch_QiHuTender_1",
+      "pkg_path": "G:\\Shared drives\\6.軟體\\3. GatheringScans\\StreamPackages\\catch_QiHuTender_1.3tz",
+      "size_bytes": 9407512,
+      "mtime": 1792833371,
+      "toc": {
+        "tileset.json": {
+          "offset": 42,
+          "size": 367
+        },
+        "tiles/root.glb": {
+          "offset": 453,
+          "size": 6966192
+        },
+        "preview_tileset.json": {
+          "offset": 6966695,
+          "size": 379
+        },
+        "preview_low/tiles/root.glb": {
+          "offset": 6967130,
+          "size": 2117648
+        },
+        "thumbnail.png": {
+          "offset": 9084821,
+          "size": 322354
+        }
+      },
+      "file_id": "1-nGh2mh5LIJed36cQxiflwxx6cLvZOyK",
+      "my_drive_file_id": "1Uv-aBDeeCLKLRnUmp6pd7eaBarRKdKnH"
+    },
+    "qihutender_nortk_obj_mesh": {
+      "scan_id": "qihutender_nortk_obj_mesh",
+      "pkg_path": "G:\\Shared drives\\6.軟體\\3. GatheringScans\\StreamPackages\\qihutender_nortk_obj_mesh.3tz",
+      "size_bytes": 15114804,
+      "mtime": 1792833371,
+      "toc": {
+        "tileset.json": {
+          "offset": 42,
+          "size": 367
+        },
+        "tiles/root.glb": {
+          "offset": 453,
+          "size": 10048904
+        },
+        "preview_tileset.json": {
+          "offset": 10049407,
+          "size": 379
+        },
+        "preview_low/tiles/root.glb": {
+          "offset": 10049842,
+          "size": 4708748
+        },
+        "thumbnail.png": {
+          "offset": 14758633,
+          "size": 355834
+        }
+      },
+      "file_id": "1aSS1G3b7KCbqWq0PXHTCeFPe3GgvQ0Bp",
+      "my_drive_file_id": "1huSyY3Acoi-b7R-eKiRaqD_XrQCZAVcc"
+    },
     "catch_QuChi261016": {
       "scan_id": "catch_QuChi261016",
       "pkg_path": "G:\\Shared drives\\6.軟體\\3. GatheringScans\\StreamPackages\\catch_QuChi261016.3tz",
-      "size_bytes": 5590970,
-      "mtime": 1792253214,
+      "size_bytes": 6175367,
+      "mtime": 1792833371,
       "toc": {
         "tileset.json": {
           "offset": 42,
           "size": 361
         },
         "tiles/root.glb": {
-          "offset": 450,
-          "size": 2873745,
-          "gz_offset": 450,
-          "gz_size": 2873745,
-          "gzip_only": 1
+          "offset": 447,
+          "size": 3248724
         },
         "preview_tileset.json": {
-          "offset": 2874245,
+          "offset": 3249221,
           "size": 373
         },
         "preview_low/tiles/root.glb": {
-          "offset": 2874677,
-          "size": 2489110,
-          "gz_offset": 2874677,
-          "gz_size": 2489110,
-          "gzip_only": 1
+          "offset": 3249650,
+          "size": 2698540
         },
         "thumbnail.png": {
-          "offset": 5363830,
+          "offset": 5948233,
           "size": 226797
         }
       },
@@ -796,33 +1274,27 @@
     "QuChi261016_Trees": {
       "scan_id": "QuChi261016_Trees",
       "pkg_path": "G:\\Shared drives\\6.軟體\\3. GatheringScans\\StreamPackages\\QuChi261016_Trees.3tz",
-      "size_bytes": 10625162,
-      "mtime": 1792253215,
+      "size_bytes": 11395133,
+      "mtime": 1792833426,
       "toc": {
         "tileset.json": {
           "offset": 42,
           "size": 346
         },
         "tiles/root.glb": {
-          "offset": 435,
-          "size": 7940918,
-          "gz_offset": 435,
-          "gz_size": 7940918,
-          "gzip_only": 1
+          "offset": 432,
+          "size": 8439832
         },
         "preview_tileset.json": {
-          "offset": 7941403,
+          "offset": 8440314,
           "size": 358
         },
         "preview_low/tiles/root.glb": {
-          "offset": 7941820,
-          "size": 2478395,
-          "gz_offset": 7941820,
-          "gz_size": 2478395,
-          "gzip_only": 1
+          "offset": 8440728,
+          "size": 2749464
         },
         "thumbnail.png": {
-          "offset": 10420258,
+          "offset": 11190235,
           "size": 204561
         }
       },
@@ -832,33 +1304,27 @@
     "quchi_20261015_obj_mesh": {
       "scan_id": "quchi_20261015_obj_mesh",
       "pkg_path": "G:\\Shared drives\\6.軟體\\3. GatheringScans\\StreamPackages\\quchi_20261015_obj_mesh.3tz",
-      "size_bytes": 3192709,
-      "mtime": 1792253215,
+      "size_bytes": 3840836,
+      "mtime": 1792833372,
       "toc": {
         "tileset.json": {
           "offset": 42,
           "size": 376
         },
         "tiles/root.glb": {
-          "offset": 465,
-          "size": 1669488,
-          "gz_offset": 465,
-          "gz_size": 1669488,
-          "gzip_only": 1
+          "offset": 462,
+          "size": 2083180
         },
         "preview_tileset.json": {
-          "offset": 1670003,
+          "offset": 2083692,
           "size": 388
         },
         "preview_low/tiles/root.glb": {
-          "offset": 1670450,
-          "size": 1256813,
-          "gz_offset": 1670450,
-          "gz_size": 1256813,
-          "gzip_only": 1
+          "offset": 2084136,
+          "size": 1491260
         },
         "thumbnail.png": {
-          "offset": 2927306,
+          "offset": 3575439,
           "size": 265060
         }
       },
@@ -868,39 +1334,27 @@
     "quchi_20261015_cesium_mesh": {
       "scan_id": "quchi_20261015_cesium_mesh",
       "pkg_path": "G:\\Shared drives\\6.軟體\\3. GatheringScans\\StreamPackages\\quchi_20261015_cesium_mesh.3tz",
-      "size_bytes": 3477244,
-      "mtime": 1792253217,
+      "size_bytes": 5249735,
+      "mtime": 1792833372,
       "toc": {
         "tileset.json": {
-          "offset": 45,
-          "size": 390,
-          "gz_offset": 45,
-          "gz_size": 390,
-          "gzip_only": 1
+          "offset": 42,
+          "size": 601
         },
         "content/0_0_0_0.glb": {
-          "offset": 487,
-          "size": 395184,
-          "gz_offset": 487,
-          "gz_size": 395184,
-          "gzip_only": 1
+          "offset": 692,
+          "size": 511796
         },
         "preview_tileset.json": {
-          "offset": 395724,
-          "size": 389,
-          "gz_offset": 395724,
-          "gz_size": 389,
-          "gzip_only": 1
+          "offset": 512538,
+          "size": 600
         },
         "preview_low/content/0_0_0_0.glb": {
-          "offset": 396177,
-          "size": 2808947,
-          "gz_offset": 396177,
-          "gz_size": 2808947,
-          "gzip_only": 1
+          "offset": 513199,
+          "size": 4464428
         },
         "thumbnail.png": {
-          "offset": 3205167,
+          "offset": 4977670,
           "size": 271718
         }
       },
@@ -910,33 +1364,27 @@
     "quchi_20261005_merged": {
       "scan_id": "quchi_20261005_merged",
       "pkg_path": "G:\\Shared drives\\6.軟體\\3. GatheringScans\\StreamPackages\\quchi_20261005_merged.3tz",
-      "size_bytes": 7826574,
-      "mtime": 1792253218,
+      "size_bytes": 9269864,
+      "mtime": 1792833372,
       "toc": {
         "tileset.json": {
           "offset": 42,
           "size": 380
         },
         "tiles/root.glb": {
-          "offset": 469,
-          "size": 3555605,
-          "gz_offset": 469,
-          "gz_size": 3555605,
-          "gzip_only": 1
+          "offset": 466,
+          "size": 4236324
         },
         "preview_tileset.json": {
-          "offset": 3556124,
+          "offset": 4236840,
           "size": 392
         },
         "preview_low/tiles/root.glb": {
-          "offset": 3556575,
-          "size": 3778629,
-          "gz_offset": 3556575,
-          "gz_size": 3778629,
-          "gzip_only": 1
+          "offset": 4237288,
+          "size": 4541212
         },
         "thumbnail.png": {
-          "offset": 7335247,
+          "offset": 8778543,
           "size": 490984
         }
       },
@@ -946,494 +1394,287 @@
     "quchi_20261005_sector3": {
       "scan_id": "quchi_20261005_sector3",
       "pkg_path": "G:\\Shared drives\\6.軟體\\3. GatheringScans\\StreamPackages\\quchi_20261005_sector3.3tz",
-      "size_bytes": 42988569,
-      "mtime": 1792253220,
+      "size_bytes": 52553059,
+      "mtime": 1792833374,
       "toc": {
         "tileset.json": {
-          "offset": 45,
-          "size": 510,
-          "gz_offset": 45,
-          "gz_size": 510,
-          "gzip_only": 1
+          "offset": 42,
+          "size": 2457
         },
         "content/1_1_1_0.glb": {
-          "offset": 607,
-          "size": 461938,
-          "gz_offset": 607,
-          "gz_size": 461938,
-          "gzip_only": 1
+          "offset": 2548,
+          "size": 696300
         },
         "content/2_0_0_0.glb": {
-          "offset": 462597,
-          "size": 197887,
-          "gz_offset": 462597,
-          "gz_size": 197887,
-          "gzip_only": 1
+          "offset": 698897,
+          "size": 272796
         },
         "content/2_1_0_0.glb": {
-          "offset": 660536,
-          "size": 290856,
-          "gz_offset": 660536,
-          "gz_size": 290856,
-          "gzip_only": 1
+          "offset": 971742,
+          "size": 392692
         },
         "content/2_3_0_0.glb": {
-          "offset": 951444,
-          "size": 222253,
-          "gz_offset": 951444,
-          "gz_size": 222253,
-          "gzip_only": 1
+          "offset": 1364483,
+          "size": 266264
         },
         "content/2_0_3_0.glb": {
-          "offset": 1173749,
-          "size": 290196,
-          "gz_offset": 1173749,
-          "gz_size": 290196,
-          "gzip_only": 1
+          "offset": 1630796,
+          "size": 418996
         },
         "content/2_1_3_0.glb": {
-          "offset": 1463997,
-          "size": 335225,
-          "gz_offset": 1463997,
-          "gz_size": 335225,
-          "gzip_only": 1
+          "offset": 2049841,
+          "size": 456448
         },
         "preview_tileset.json": {
-          "offset": 1799275,
-          "size": 1671,
-          "gz_offset": 1799275,
-          "gz_size": 1671,
-          "gzip_only": 1
+          "offset": 2506339,
+          "size": 20180
         },
         "preview_low/content/1_1_1_0.glb": {
-          "offset": 1801010,
-          "size": 1035474,
-          "gz_offset": 1801010,
-          "gz_size": 1035474,
-          "gzip_only": 1
+          "offset": 2526580,
+          "size": 1153288
         },
         "preview_low/content/2_0_0_0.glb": {
-          "offset": 2836548,
-          "size": 172323,
-          "gz_offset": 2836548,
-          "gz_size": 172323,
-          "gzip_only": 1
+          "offset": 3679929,
+          "size": 246288
         },
         "preview_low/content/2_1_0_0.glb": {
-          "offset": 3008935,
-          "size": 255687,
-          "gz_offset": 3008935,
-          "gz_size": 255687,
-          "gzip_only": 1
+          "offset": 3926278,
+          "size": 357524
         },
         "preview_low/content/3_0_2_0.glb": {
-          "offset": 3264686,
-          "size": 492201,
-          "gz_offset": 3264686,
-          "gz_size": 492201,
-          "gzip_only": 1
+          "offset": 4283863,
+          "size": 745968
         },
         "preview_low/content/3_1_2_0.glb": {
-          "offset": 3756951,
-          "size": 738239,
-          "gz_offset": 3756951,
-          "gz_size": 738239,
-          "gzip_only": 1
+          "offset": 5029892,
+          "size": 1189368
         },
         "preview_low/content/3_0_3_0.glb": {
-          "offset": 4495254,
-          "size": 820076,
-          "gz_offset": 4495254,
-          "gz_size": 820076,
-          "gzip_only": 1
+          "offset": 6219321,
+          "size": 898328
         },
         "preview_low/content/4_2_6_0.glb": {
-          "offset": 5315394,
-          "size": 618035,
-          "gz_offset": 5315394,
-          "gz_size": 618035,
-          "gzip_only": 1
+          "offset": 7117710,
+          "size": 988328
         },
         "preview_low/content/4_3_6_0.glb": {
-          "offset": 5933493,
-          "size": 842444,
-          "gz_offset": 5933493,
-          "gz_size": 842444,
-          "gzip_only": 1
+          "offset": 8106099,
+          "size": 911664
         },
         "preview_low/content/4_2_7_0.glb": {
-          "offset": 6776001,
-          "size": 555956,
-          "gz_offset": 6776001,
-          "gz_size": 555956,
-          "gzip_only": 1
+          "offset": 9017824,
+          "size": 911620
         },
         "preview_low/content/4_2_6_1.glb": {
-          "offset": 7332021,
-          "size": 375780,
-          "gz_offset": 7332021,
-          "gz_size": 375780,
-          "gzip_only": 1
+          "offset": 9929505,
+          "size": 567156
         },
         "preview_low/content/4_3_7_1.glb": {
-          "offset": 7707865,
-          "size": 346373,
-          "gz_offset": 7707865,
-          "gz_size": 346373,
-          "gzip_only": 1
+          "offset": 10496722,
+          "size": 472844
         },
         "preview_low/content/3_2_2_0.glb": {
-          "offset": 8054302,
-          "size": 543223,
-          "gz_offset": 8054302,
-          "gz_size": 543223,
-          "gzip_only": 1
+          "offset": 10969627,
+          "size": 580104
         },
         "preview_low/content/3_3_2_0.glb": {
-          "offset": 8597589,
-          "size": 949404,
-          "gz_offset": 8597589,
-          "gz_size": 949404,
-          "gzip_only": 1
+          "offset": 11549792,
+          "size": 1042512
         },
         "preview_low/content/4_5_6_0.glb": {
-          "offset": 9547057,
-          "size": 838845,
-          "gz_offset": 9547057,
-          "gz_size": 838845,
-          "gzip_only": 1
+          "offset": 12592365,
+          "size": 916048
         },
         "preview_low/content/4_4_7_1.glb": {
-          "offset": 10385966,
-          "size": 489204,
-          "gz_offset": 10385966,
-          "gz_size": 489204,
-          "gzip_only": 1
+          "offset": 13508474,
+          "size": 658036
         },
         "preview_low/content/4_5_7_1.glb": {
-          "offset": 10875234,
-          "size": 718693,
-          "gz_offset": 10875234,
-          "gz_size": 718693,
-          "gzip_only": 1
+          "offset": 14166571,
+          "size": 1098180
         },
         "preview_low/content/4_6_6_0.glb": {
-          "offset": 11593991,
-          "size": 658984,
-          "gz_offset": 11593991,
-          "gz_size": 658984,
-          "gzip_only": 1
+          "offset": 15264812,
+          "size": 702248
         },
         "preview_low/content/4_7_6_0.glb": {
-          "offset": 12253039,
-          "size": 519236,
-          "gz_offset": 12253039,
-          "gz_size": 519236,
-          "gzip_only": 1
+          "offset": 15967121,
+          "size": 549396
         },
         "preview_low/content/4_6_7_0.glb": {
-          "offset": 12772339,
-          "size": 1341404,
-          "gz_offset": 12772339,
-          "gz_size": 1341404,
-          "gzip_only": 1
+          "offset": 16516578,
+          "size": 1530224
         },
         "preview_low/content/4_6_6_1.glb": {
-          "offset": 14113807,
-          "size": 291578,
-          "gz_offset": 14113807,
-          "gz_size": 291578,
-          "gzip_only": 1
+          "offset": 18046863,
+          "size": 440680
         },
         "preview_low/content/4_6_7_1.glb": {
-          "offset": 14405449,
-          "size": 755863,
-          "gz_offset": 14405449,
-          "gz_size": 755863,
-          "gzip_only": 1
+          "offset": 18487604,
+          "size": 1140912
         },
         "preview_low/content/2_3_0_0.glb": {
-          "offset": 15161376,
-          "size": 187298,
-          "gz_offset": 15161376,
-          "gz_size": 187298,
-          "gzip_only": 1
+          "offset": 19628577,
+          "size": 231032
         },
         "preview_low/content/3_4_2_0.glb": {
-          "offset": 15348738,
-          "size": 477507,
-          "gz_offset": 15348738,
-          "gz_size": 477507,
-          "gzip_only": 1
+          "offset": 19859670,
+          "size": 508932
         },
         "preview_low/content/3_5_2_0.glb": {
-          "offset": 15826309,
-          "size": 167251,
-          "gz_offset": 15826309,
-          "gz_size": 167251,
-          "gzip_only": 1
+          "offset": 20368663,
+          "size": 190852
         },
         "preview_low/content/4_8_6_0.glb": {
-          "offset": 15993624,
-          "size": 773307,
-          "gz_offset": 15993624,
-          "gz_size": 773307,
-          "gzip_only": 1
+          "offset": 20559576,
+          "size": 842180
         },
         "preview_low/content/4_9_7_0.glb": {
-          "offset": 16766995,
-          "size": 1053274,
-          "gz_offset": 16766995,
-          "gz_size": 1053274,
-          "gzip_only": 1
+          "offset": 21401817,
+          "size": 1206144
         },
         "preview_low/content/4_9_7_1.glb": {
-          "offset": 17820333,
-          "size": 448403,
-          "gz_offset": 17820333,
-          "gz_size": 448403,
-          "gzip_only": 1
+          "offset": 22608022,
+          "size": 479960
         },
         "preview_low/content/4_11_6_0.glb": {
-          "offset": 18268801,
-          "size": 813780,
-          "gz_offset": 18268801,
-          "gz_size": 813780,
-          "gzip_only": 1
+          "offset": 23088044,
+          "size": 900204
         },
         "preview_low/content/4_10_7_0.glb": {
-          "offset": 19082646,
-          "size": 950983,
-          "gz_offset": 19082646,
-          "gz_size": 950983,
-          "gzip_only": 1
+          "offset": 23988310,
+          "size": 1069852
         },
         "preview_low/content/4_11_7_0.glb": {
-          "offset": 20033694,
-          "size": 1268347,
-          "gz_offset": 20033694,
-          "gz_size": 1268347,
-          "gzip_only": 1
+          "offset": 25058224,
+          "size": 1459484
         },
         "preview_low/content/4_10_7_1.glb": {
-          "offset": 21302106,
-          "size": 434547,
-          "gz_offset": 21302106,
-          "gz_size": 434547,
-          "gzip_only": 1
+          "offset": 26517770,
+          "size": 463608
         },
         "preview_low/content/3_6_2_0.glb": {
-          "offset": 21736717,
-          "size": 825459,
-          "gz_offset": 21736717,
-          "gz_size": 825459,
-          "gzip_only": 1
+          "offset": 26981439,
+          "size": 901980
         },
         "preview_low/content/3_7_2_0.glb": {
-          "offset": 22562240,
-          "size": 467691,
-          "gz_offset": 22562240,
-          "gz_size": 467691,
-          "gzip_only": 1
+          "offset": 27883480,
+          "size": 498432
         },
         "preview_low/content/3_7_3_0.glb": {
-          "offset": 23029995,
-          "size": 536971,
-          "gz_offset": 23029995,
-          "gz_size": 536971,
-          "gzip_only": 1
+          "offset": 28381973,
+          "size": 574088
         },
         "preview_low/content/4_13_6_0.glb": {
-          "offset": 23567031,
-          "size": 480381,
-          "gz_offset": 23567031,
-          "gz_size": 480381,
-          "gzip_only": 1
+          "offset": 28956123,
+          "size": 511364
         },
         "preview_low/content/4_12_7_0.glb": {
-          "offset": 24047477,
-          "size": 727012,
-          "gz_offset": 24047477,
-          "gz_size": 727012,
-          "gzip_only": 1
+          "offset": 29467549,
+          "size": 1114992
         },
         "preview_low/content/4_13_7_0.glb": {
-          "offset": 24774554,
-          "size": 395692,
-          "gz_offset": 24774554,
-          "gz_size": 395692,
-          "gzip_only": 1
+          "offset": 30582603,
+          "size": 612004
         },
         "preview_low/content/4_12_7_1.glb": {
-          "offset": 25170311,
-          "size": 259727,
-          "gz_offset": 25170311,
-          "gz_size": 259727,
-          "gzip_only": 1
+          "offset": 31194669,
+          "size": 329084
         },
         "preview_low/content/4_13_7_1.glb": {
-          "offset": 25430103,
-          "size": 489080,
-          "gz_offset": 25430103,
-          "gz_size": 489080,
-          "gzip_only": 1
+          "offset": 31523815,
+          "size": 722588
         },
         "preview_low/content/2_0_3_0.glb": {
-          "offset": 25919247,
-          "size": 258145,
-          "gz_offset": 25919247,
-          "gz_size": 258145,
-          "gzip_only": 1
+          "offset": 32246464,
+          "size": 387052
         },
         "preview_low/content/2_1_3_0.glb": {
-          "offset": 26177456,
-          "size": 295766,
-          "gz_offset": 26177456,
-          "gz_size": 295766,
-          "gzip_only": 1
+          "offset": 32633577,
+          "size": 416508
         },
         "preview_low/content/3_0_4_0.glb": {
-          "offset": 26473286,
-          "size": 625548,
-          "gz_offset": 26473286,
-          "gz_size": 625548,
-          "gzip_only": 1
+          "offset": 33050146,
+          "size": 664076
         },
         "preview_low/content/3_0_5_0.glb": {
-          "offset": 27098898,
-          "size": 338339,
-          "gz_offset": 27098898,
-          "gz_size": 338339,
-          "gzip_only": 1
+          "offset": 33714283,
+          "size": 473492
         },
         "preview_low/content/3_1_5_0.glb": {
-          "offset": 27437301,
-          "size": 850372,
-          "gz_offset": 27437301,
-          "gz_size": 850372,
-          "gzip_only": 1
+          "offset": 34187836,
+          "size": 926000
         },
         "preview_low/content/4_2_8_0.glb": {
-          "offset": 28287737,
-          "size": 628174,
-          "gz_offset": 28287737,
-          "gz_size": 628174,
-          "gzip_only": 1
+          "offset": 35113897,
+          "size": 669436
         },
         "preview_low/content/4_3_8_0.glb": {
-          "offset": 28915975,
-          "size": 1305187,
-          "gz_offset": 28915975,
-          "gz_size": 1305187,
-          "gzip_only": 1
+          "offset": 35783394,
+          "size": 1493628
         },
         "preview_low/content/4_2_9_0.glb": {
-          "offset": 30221226,
-          "size": 938029,
-          "gz_offset": 30221226,
-          "gz_size": 938029,
-          "gzip_only": 1
+          "offset": 37277083,
+          "size": 1030964
         },
         "preview_low/content/4_2_8_1.glb": {
-          "offset": 31159319,
-          "size": 337877,
-          "gz_offset": 31159319,
-          "gz_size": 337877,
-          "gzip_only": 1
+          "offset": 38308108,
+          "size": 448980
         },
         "preview_low/content/4_2_9_1.glb": {
-          "offset": 31497260,
-          "size": 535212,
-          "gz_offset": 31497260,
-          "gz_size": 535212,
-          "gzip_only": 1
+          "offset": 38757149,
+          "size": 569428
         },
         "preview_low/content/3_2_5_0.glb": {
-          "offset": 32032536,
-          "size": 1223573,
-          "gz_offset": 32032536,
-          "gz_size": 1223573,
-          "gzip_only": 1
+          "offset": 39326638,
+          "size": 1379568
         },
         "preview_low/content/3_3_5_0.glb": {
-          "offset": 33256173,
-          "size": 782874,
-          "gz_offset": 33256173,
-          "gz_size": 782874,
-          "gzip_only": 1
+          "offset": 40706267,
+          "size": 852664
         },
         "preview_low/content/4_4_8_0.glb": {
-          "offset": 34039111,
-          "size": 991215,
-          "gz_offset": 34039111,
-          "gz_size": 991215,
-          "gzip_only": 1
+          "offset": 41558992,
+          "size": 1079752
         },
         "preview_low/content/4_5_8_0.glb": {
-          "offset": 35030390,
-          "size": 1400321,
-          "gz_offset": 35030390,
-          "gz_size": 1400321,
-          "gzip_only": 1
+          "offset": 42638805,
+          "size": 1591936
         },
         "preview_low/content/4_4_8_1.glb": {
-          "offset": 36430775,
-          "size": 822303,
-          "gz_offset": 36430775,
-          "gz_size": 822303,
-          "gzip_only": 1
+          "offset": 44230802,
+          "size": 1237032
         },
         "preview_low/content/4_5_8_1.glb": {
-          "offset": 37253142,
-          "size": 624697,
-          "gz_offset": 37253142,
-          "gz_size": 624697,
-          "gzip_only": 1
+          "offset": 45467895,
+          "size": 895740
         },
         "preview_low/content/4_4_9_1.glb": {
-          "offset": 37877903,
-          "size": 468242,
-          "gz_offset": 37877903,
-          "gz_size": 468242,
-          "gzip_only": 1
+          "offset": 46363696,
+          "size": 637620
         },
         "preview_low/content/4_5_9_1.glb": {
-          "offset": 38346209,
-          "size": 428005,
-          "gz_offset": 38346209,
-          "gz_size": 428005,
-          "gzip_only": 1
+          "offset": 47001377,
+          "size": 572484
         },
         "preview_low/content/4_7_8_0.glb": {
-          "offset": 38774278,
-          "size": 993825,
-          "gz_offset": 38774278,
-          "gz_size": 993825,
-          "gzip_only": 1
+          "offset": 47573922,
+          "size": 1108236
         },
         "preview_low/content/4_6_9_0.glb": {
-          "offset": 39768167,
-          "size": 1364714,
-          "gz_offset": 39768167,
-          "gz_size": 1364714,
-          "gzip_only": 1
+          "offset": 48682219,
+          "size": 1596252
         },
         "preview_low/content/4_7_9_0.glb": {
-          "offset": 41132945,
-          "size": 736809,
-          "gz_offset": 41132945,
-          "gz_size": 736809,
-          "gzip_only": 1
+          "offset": 50278532,
+          "size": 794900
         },
         "preview_low/content/4_6_8_1.glb": {
-          "offset": 41869818,
-          "size": 730746,
-          "gz_offset": 41869818,
-          "gz_size": 730746,
-          "gzip_only": 1
+          "offset": 51073493,
+          "size": 1091768
         },
         "thumbnail.png": {
-          "offset": 42600607,
+          "offset": 52165304,
           "size": 382454
         }
       },
@@ -1443,309 +1684,219 @@
     "quchi_20260921_epoch": {
       "scan_id": "quchi_20260921_epoch",
       "pkg_path": "G:\\Shared drives\\6.軟體\\3. GatheringScans\\StreamPackages\\quchi_20260921_epoch.3tz",
-      "size_bytes": 1001567,
-      "mtime": 1792253220,
+      "size_bytes": 1443113,
+      "mtime": 1792833374,
       "toc": {
         "tileset.json": {
-          "offset": 45,
-          "size": 908,
-          "gz_offset": 45,
-          "gz_size": 908,
-          "gzip_only": 1
+          "offset": 42,
+          "size": 3853
         },
         "tiles/root.glb": {
-          "offset": 1000,
-          "size": 111026,
-          "gz_offset": 1000,
-          "gz_size": 111026,
-          "gzip_only": 1
+          "offset": 3939,
+          "size": 148884
         },
         "tiles/tile_l1_q0.glb": {
-          "offset": 112079,
-          "size": 40736,
-          "gz_offset": 112079,
-          "gz_size": 40736,
-          "gzip_only": 1
+          "offset": 152873,
+          "size": 58948
         },
         "tiles/tile_l1_q1.glb": {
-          "offset": 152868,
-          "size": 66733,
-          "gz_offset": 152868,
-          "gz_size": 66733,
-          "gzip_only": 1
+          "offset": 211871,
+          "size": 87960
         },
         "tiles/tile_l1_q1_l2_q0.glb": {
-          "offset": 219660,
-          "size": 68193,
-          "gz_offset": 219660,
-          "gz_size": 68193,
-          "gzip_only": 1
+          "offset": 299887,
+          "size": 114928
         },
         "tiles/tile_l1_q1_l2_q1.glb": {
-          "offset": 287912,
-          "size": 45641,
-          "gz_offset": 287912,
-          "gz_size": 45641,
-          "gzip_only": 1
+          "offset": 414871,
+          "size": 68808
         },
         "tiles/tile_l1_q1_l2_q2.glb": {
-          "offset": 333612,
-          "size": 90070,
-          "gz_offset": 333612,
-          "gz_size": 90070,
-          "gzip_only": 1
+          "offset": 483735,
+          "size": 129268
         },
         "tiles/tile_l1_q1_l2_q3.glb": {
-          "offset": 423741,
-          "size": 29534,
-          "gz_offset": 423741,
-          "gz_size": 29534,
-          "gzip_only": 1
+          "offset": 613059,
+          "size": 43032
         },
         "tiles/tile_l1_q2.glb": {
-          "offset": 453328,
-          "size": 63522,
-          "gz_offset": 453328,
-          "gz_size": 63522,
-          "gzip_only": 1
+          "offset": 656141,
+          "size": 82700
         },
         "tiles/tile_l1_q2_l2_q0.glb": {
-          "offset": 516909,
-          "size": 42420,
-          "gz_offset": 516909,
-          "gz_size": 42420,
-          "gzip_only": 1
+          "offset": 738897,
+          "size": 67636
         },
         "tiles/tile_l1_q2_l2_q1.glb": {
-          "offset": 559388,
-          "size": 86300,
-          "gz_offset": 559388,
-          "gz_size": 86300,
-          "gzip_only": 1
+          "offset": 806589,
+          "size": 125684
         },
         "tiles/tile_l1_q2_l2_q2.glb": {
-          "offset": 645747,
-          "size": 56677,
-          "gz_offset": 645747,
-          "gz_size": 56677,
-          "gzip_only": 1
+          "offset": 932329,
+          "size": 88564
         },
         "tiles/tile_l1_q2_l2_q3.glb": {
-          "offset": 702483,
-          "size": 45561,
-          "gz_offset": 702483,
-          "gz_size": 45561,
-          "gzip_only": 1
+          "offset": 1020949,
+          "size": 72464
         },
         "tiles/tile_l1_q3.glb": {
-          "offset": 748097,
-          "size": 53759,
-          "gz_offset": 748097,
-          "gz_size": 53759,
-          "gzip_only": 1
+          "offset": 1093463,
+          "size": 72456
         },
         "tiles/tile_l1_q3_l2_q0.glb": {
-          "offset": 801915,
-          "size": 68385,
-          "gz_offset": 801915,
-          "gz_size": 68385,
-          "gzip_only": 1
+          "offset": 1165975,
+          "size": 103240
         },
         "tiles/tile_l1_q3_l2_q1.glb": {
-          "offset": 870359,
-          "size": 1728,
-          "gz_offset": 870359,
-          "gz_size": 1728,
-          "gzip_only": 1
+          "offset": 1269271,
+          "size": 2892
         },
         "tiles/tile_l1_q3_l2_q2.glb": {
-          "offset": 872146,
-          "size": 9720,
-          "gz_offset": 872146,
-          "gz_size": 9720,
-          "gzip_only": 1
+          "offset": 1272219,
+          "size": 13392
         },
         "preview_tileset.json": {
-          "offset": 881916,
+          "offset": 1285661,
           "size": 376
         },
         "preview_low/tiles/root.glb": {
-          "offset": 882351,
-          "size": 111026,
-          "gz_offset": 882351,
-          "gz_size": 111026,
-          "gzip_only": 1
+          "offset": 1286093,
+          "size": 148884
         },
         "thumbnail.png": {
-          "offset": 993420,
+          "offset": 1435020,
           "size": 6700
         }
       },
       "file_id": "19J4iLIx5P39s6v2N2TmoZLHYxrYlnOVh",
       "my_drive_file_id": "1TD1EDBwX3KqskXtxT-qMbiQDE0Np_wtG"
     },
+    "catch_2026_09_21_11_39_49": {
+      "scan_id": "catch_2026_09_21_11_39_49",
+      "pkg_path": "G:\\Shared drives\\6.軟體\\3. GatheringScans\\StreamPackages\\catch_2026_09_21_11_39_49.3tz",
+      "size_bytes": 6931856,
+      "mtime": 1792833374,
+      "toc": {
+        "tileset.json": {
+          "offset": 42,
+          "size": 349
+        },
+        "tiles/root.glb": {
+          "offset": 435,
+          "size": 4951808
+        },
+        "preview_tileset.json": {
+          "offset": 4952293,
+          "size": 361
+        },
+        "preview_low/tiles/root.glb": {
+          "offset": 4952710,
+          "size": 1500456
+        },
+        "thumbnail.png": {
+          "offset": 6453209,
+          "size": 478310
+        }
+      },
+      "file_id": "1Ms3AC_2RDk70y8xZKkWmnaXpMxjAeBP5",
+      "my_drive_file_id": "1gvSgW9OYQfgRTNcYk851QubCm_CDoaKo"
+    },
     "rosepark_20260918_merged": {
       "scan_id": "rosepark_20260918_merged",
       "pkg_path": "G:\\Shared drives\\6.軟體\\3. GatheringScans\\StreamPackages\\rosepark_20260918_merged.3tz",
-      "size_bytes": 17760466,
-      "mtime": 1792253221,
+      "size_bytes": 20493967,
+      "mtime": 1792833440,
       "toc": {
         "tileset.json": {
-          "offset": 45,
-          "size": 541,
-          "gz_offset": 45,
-          "gz_size": 541,
-          "gzip_only": 1
+          "offset": 42,
+          "size": 3285
         },
         "content/1_0_1_0.glb": {
-          "offset": 638,
-          "size": 1161415,
-          "gz_offset": 638,
-          "gz_size": 1161415,
-          "gzip_only": 1
+          "offset": 3376,
+          "size": 1354972
         },
         "content/1_1_1_0.glb": {
-          "offset": 1162105,
-          "size": 1253180,
-          "gz_offset": 1162105,
-          "gz_size": 1253180,
-          "gzip_only": 1
+          "offset": 1358397,
+          "size": 1445656
         },
         "content/2_0_0_0.glb": {
-          "offset": 2415337,
-          "size": 67426,
-          "gz_offset": 2415337,
-          "gz_size": 67426,
-          "gzip_only": 1
+          "offset": 2804102,
+          "size": 68968
         },
         "content/2_1_0_0.glb": {
-          "offset": 2482815,
-          "size": 884237,
-          "gz_offset": 2482815,
-          "gz_size": 884237,
-          "gzip_only": 1
+          "offset": 2873119,
+          "size": 1035136
         },
         "content/2_0_1_0.glb": {
-          "offset": 3367104,
-          "size": 512858,
-          "gz_offset": 3367104,
-          "gz_size": 512858,
-          "gzip_only": 1
+          "offset": 3908304,
+          "size": 573588
         },
         "content/2_1_1_0.glb": {
-          "offset": 3880014,
-          "size": 1302029,
-          "gz_offset": 3880014,
-          "gz_size": 1302029,
-          "gzip_only": 1
+          "offset": 4481941,
+          "size": 1490520
         },
         "content/2_2_0_0.glb": {
-          "offset": 5182095,
-          "size": 1256412,
-          "gz_offset": 5182095,
-          "gz_size": 1256412,
-          "gzip_only": 1
+          "offset": 5972510,
+          "size": 1456132
         },
         "content/2_3_0_0.glb": {
-          "offset": 6438559,
-          "size": 815303,
-          "gz_offset": 6438559,
-          "gz_size": 815303,
-          "gzip_only": 1
+          "offset": 7428691,
+          "size": 962284
         },
         "content/2_2_1_0.glb": {
-          "offset": 7253914,
-          "size": 1196246,
-          "gz_offset": 7253914,
-          "gz_size": 1196246,
-          "gzip_only": 1
+          "offset": 8391024,
+          "size": 1397988
         },
         "content/2_3_1_0.glb": {
-          "offset": 8450212,
-          "size": 395844,
-          "gz_offset": 8450212,
-          "gz_size": 395844,
-          "gzip_only": 1
+          "offset": 9789061,
+          "size": 430608
         },
         "preview_tileset.json": {
-          "offset": 8846109,
-          "size": 562,
-          "gz_offset": 8846109,
-          "gz_size": 562,
-          "gzip_only": 1
+          "offset": 10219719,
+          "size": 3405
         },
         "preview_low/content/1_0_1_0.glb": {
-          "offset": 8846735,
-          "size": 1207712,
-          "gz_offset": 8846735,
-          "gz_size": 1207712,
-          "gzip_only": 1
+          "offset": 10223185,
+          "size": 1441644
         },
         "preview_low/content/1_1_1_0.glb": {
-          "offset": 10054511,
-          "size": 1286848,
-          "gz_offset": 10054511,
-          "gz_size": 1286848,
-          "gzip_only": 1
+          "offset": 11664890,
+          "size": 1493420
         },
         "preview_low/content/2_0_0_0.glb": {
-          "offset": 11341423,
-          "size": 80331,
-          "gz_offset": 11341423,
-          "gz_size": 80331,
-          "gzip_only": 1
+          "offset": 13158371,
+          "size": 82920
         },
         "preview_low/content/2_1_0_0.glb": {
-          "offset": 11421818,
-          "size": 685738,
-          "gz_offset": 11421818,
-          "gz_size": 685738,
-          "gzip_only": 1
+          "offset": 13241352,
+          "size": 776792
         },
         "preview_low/content/2_0_1_0.glb": {
-          "offset": 12107620,
-          "size": 473430,
-          "gz_offset": 12107620,
-          "gz_size": 473430,
-          "gzip_only": 1
+          "offset": 14018205,
+          "size": 508588
         },
         "preview_low/content/2_1_1_0.glb": {
-          "offset": 12581114,
-          "size": 1331727,
-          "gz_offset": 12581114,
-          "gz_size": 1331727,
-          "gzip_only": 1
+          "offset": 14526854,
+          "size": 1555152
         },
         "preview_low/content/2_2_0_0.glb": {
-          "offset": 13912905,
-          "size": 1298167,
-          "gz_offset": 13912905,
-          "gz_size": 1298167,
-          "gzip_only": 1
+          "offset": 16082067,
+          "size": 1526160
         },
         "preview_low/content/2_3_0_0.glb": {
-          "offset": 15211136,
-          "size": 599257,
-          "gz_offset": 15211136,
-          "gz_size": 599257,
-          "gzip_only": 1
+          "offset": 17608288,
+          "size": 670640
         },
         "preview_low/content/2_2_1_0.glb": {
-          "offset": 15810457,
-          "size": 1222724,
-          "gz_offset": 15810457,
-          "gz_size": 1222724,
-          "gzip_only": 1
+          "offset": 18278989,
+          "size": 1455780
         },
         "preview_low/content/2_3_1_0.glb": {
-          "offset": 17033245,
-          "size": 401506,
-          "gz_offset": 17033245,
-          "gz_size": 401506,
-          "gzip_only": 1
+          "offset": 19734830,
+          "size": 433488
         },
         "thumbnail.png": {
-          "offset": 17434794,
+          "offset": 20168361,
           "size": 323981
         }
       },
@@ -1755,109 +1906,67 @@
     "rosepark_20260917_east": {
       "scan_id": "rosepark_20260917_east",
       "pkg_path": "G:\\Shared drives\\6.軟體\\3. GatheringScans\\StreamPackages\\rosepark_20260917_east.3tz",
-      "size_bytes": 11295025,
-      "mtime": 1792253221,
+      "size_bytes": 13075373,
+      "mtime": 1792833440,
       "toc": {
         "tileset.json": {
-          "offset": 45,
-          "size": 493,
-          "gz_offset": 45,
-          "gz_size": 493,
-          "gzip_only": 1
+          "offset": 42,
+          "size": 2087
         },
         "content/1_0_0_0.glb": {
-          "offset": 590,
-          "size": 1226054,
-          "gz_offset": 590,
-          "gz_size": 1226054,
-          "gzip_only": 1
+          "offset": 2178,
+          "size": 1427584
         },
         "content/1_1_0_0.glb": {
-          "offset": 1226696,
-          "size": 1161195,
-          "gz_offset": 1226696,
-          "gz_size": 1161195,
-          "gzip_only": 1
+          "offset": 1429811,
+          "size": 1346348
         },
         "content/1_1_1_0.glb": {
-          "offset": 2387943,
-          "size": 1248895,
-          "gz_offset": 2387943,
-          "gz_size": 1248895,
-          "gzip_only": 1
+          "offset": 2776208,
+          "size": 1455864
         },
         "content/2_0_2_0.glb": {
-          "offset": 3636890,
-          "size": 291989,
-          "gz_offset": 3636890,
-          "gz_size": 291989,
-          "gzip_only": 1
+          "offset": 4232121,
+          "size": 304680
         },
         "content/2_1_2_0.glb": {
-          "offset": 3928931,
-          "size": 1043728,
-          "gz_offset": 3928931,
-          "gz_size": 1043728,
-          "gzip_only": 1
+          "offset": 4536850,
+          "size": 1221664
         },
         "content/2_1_3_0.glb": {
-          "offset": 4972711,
-          "size": 472114,
-          "gz_offset": 4972711,
-          "gz_size": 472114,
-          "gzip_only": 1
+          "offset": 5758563,
+          "size": 525748
         },
         "preview_tileset.json": {
-          "offset": 5444878,
-          "size": 503,
-          "gz_offset": 5444878,
-          "gz_size": 503,
-          "gzip_only": 1
+          "offset": 6284361,
+          "size": 2159
         },
         "preview_low/content/1_0_0_0.glb": {
-          "offset": 5445445,
-          "size": 1271239,
-          "gz_offset": 5445445,
-          "gz_size": 1271239,
-          "gzip_only": 1
+          "offset": 6286581,
+          "size": 1506452
         },
         "preview_low/content/1_1_0_0.glb": {
-          "offset": 6716748,
-          "size": 1193290,
-          "gz_offset": 6716748,
-          "gz_size": 1193290,
-          "gzip_only": 1
+          "offset": 7793094,
+          "size": 1403500
         },
         "preview_low/content/1_1_1_0.glb": {
-          "offset": 7910102,
-          "size": 1293487,
-          "gz_offset": 7910102,
-          "gz_size": 1293487,
-          "gzip_only": 1
+          "offset": 9196655,
+          "size": 1533928
         },
         "preview_low/content/2_0_2_0.glb": {
-          "offset": 9203653,
-          "size": 313988,
-          "gz_offset": 9203653,
-          "gz_size": 313988,
-          "gzip_only": 1
+          "offset": 10730644,
+          "size": 326336
         },
         "preview_low/content/2_1_2_0.glb": {
-          "offset": 9517705,
-          "size": 1082211,
-          "gz_offset": 9517705,
-          "gz_size": 1082211,
-          "gzip_only": 1
+          "offset": 11057041,
+          "size": 1290280
         },
         "preview_low/content/2_1_3_0.glb": {
-          "offset": 10599980,
-          "size": 429452,
-          "gz_offset": 10599980,
-          "gz_size": 429452,
-          "gzip_only": 1
+          "offset": 12347382,
+          "size": 462440
         },
         "thumbnail.png": {
-          "offset": 11029475,
+          "offset": 12809865,
           "size": 264451
         }
       },
@@ -1867,137 +1976,83 @@
     "ntudorm_20260917_foundation": {
       "scan_id": "ntudorm_20260917_foundation",
       "pkg_path": "G:\\Shared drives\\6.軟體\\3. GatheringScans\\StreamPackages\\ntudorm_20260917_foundation.3tz",
-      "size_bytes": 10728316,
-      "mtime": 1792253222,
+      "size_bytes": 13824302,
+      "mtime": 1792833430,
       "toc": {
         "tileset.json": {
-          "offset": 45,
-          "size": 513,
-          "gz_offset": 45,
-          "gz_size": 513,
-          "gzip_only": 1
+          "offset": 42,
+          "size": 2563
         },
         "content/1_1_0_0.glb": {
-          "offset": 610,
-          "size": 534279,
-          "gz_offset": 610,
-          "gz_size": 534279,
-          "gzip_only": 1
+          "offset": 2654,
+          "size": 858960
         },
         "content/1_0_1_0.glb": {
-          "offset": 534941,
-          "size": 426245,
-          "gz_offset": 534941,
-          "gz_size": 426245,
-          "gzip_only": 1
+          "offset": 861663,
+          "size": 627496
         },
         "content/1_1_1_0.glb": {
-          "offset": 961238,
-          "size": 516828,
-          "gz_offset": 961238,
-          "gz_size": 516828,
-          "gzip_only": 1
+          "offset": 1489208,
+          "size": 815768
         },
         "content/2_0_1_0.glb": {
-          "offset": 1478118,
-          "size": 270709,
-          "gz_offset": 1478118,
-          "gz_size": 270709,
-          "gzip_only": 1
+          "offset": 2305025,
+          "size": 424312
         },
         "content/2_1_1_0.glb": {
-          "offset": 1748879,
-          "size": 446415,
-          "gz_offset": 1748879,
-          "gz_size": 446415,
-          "gzip_only": 1
+          "offset": 2729386,
+          "size": 654756
         },
         "content/2_1_0_1.glb": {
-          "offset": 2195346,
-          "size": 355743,
-          "gz_offset": 2195346,
-          "gz_size": 355743,
-          "gzip_only": 1
+          "offset": 3384191,
+          "size": 682356
         },
         "content/2_0_1_1.glb": {
-          "offset": 2551141,
-          "size": 302328,
-          "gz_offset": 2551141,
-          "gz_size": 302328,
-          "gzip_only": 1
+          "offset": 4066596,
+          "size": 368944
         },
         "content/2_1_1_1.glb": {
-          "offset": 2853521,
-          "size": 387013,
-          "gz_offset": 2853521,
-          "gz_size": 387013,
-          "gzip_only": 1
+          "offset": 4435589,
+          "size": 673620
         },
         "preview_tileset.json": {
-          "offset": 3240587,
-          "size": 526,
-          "gz_offset": 3240587,
-          "gz_size": 526,
-          "gzip_only": 1
+          "offset": 5109259,
+          "size": 2659
         },
         "preview_low/content/1_1_0_0.glb": {
-          "offset": 3241177,
-          "size": 1351580,
-          "gz_offset": 3241177,
-          "gz_size": 1351580,
-          "gzip_only": 1
+          "offset": 5111979,
+          "size": 1551080
         },
         "preview_low/content/1_0_1_0.glb": {
-          "offset": 4592821,
-          "size": 1212676,
-          "gz_offset": 4592821,
-          "gz_size": 1212676,
-          "gzip_only": 1
+          "offset": 6663120,
+          "size": 1391476
         },
         "preview_low/content/1_1_1_0.glb": {
-          "offset": 5805561,
-          "size": 1359586,
-          "gz_offset": 5805561,
-          "gz_size": 1359586,
-          "gzip_only": 1
+          "offset": 8054657,
+          "size": 1550840
         },
         "preview_low/content/2_0_1_0.glb": {
-          "offset": 7165211,
-          "size": 654411,
-          "gz_offset": 7165211,
-          "gz_size": 654411,
-          "gzip_only": 1
+          "offset": 9605558,
+          "size": 993116
         },
         "preview_low/content/2_1_1_0.glb": {
-          "offset": 7819686,
-          "size": 1256785,
-          "gz_offset": 7819686,
-          "gz_size": 1256785,
-          "gzip_only": 1
+          "offset": 10598735,
+          "size": 1447752
         },
         "preview_low/content/2_1_0_1.glb": {
-          "offset": 9076535,
-          "size": 385760,
-          "gz_offset": 9076535,
-          "gz_size": 385760,
-          "gzip_only": 1
+          "offset": 12046548,
+          "size": 418180
         },
         "preview_low/content/2_0_1_1.glb": {
-          "offset": 9462359,
-          "size": 257398,
-          "gz_offset": 9462359,
-          "gz_size": 257398,
-          "gzip_only": 1
+          "offset": 12464789,
+          "size": 324236
         },
         "preview_low/content/2_1_1_1.glb": {
-          "offset": 9719821,
-          "size": 493897,
-          "gz_offset": 9719821,
-          "gz_size": 493897,
-          "gzip_only": 1
+          "offset": 12789086,
+          "size": 520672
         },
         "thumbnail.png": {
-          "offset": 10213761,
+          "offset": 13309801,
           "size": 513160
         }
       },
@@ -2007,143 +2062,160 @@
     "ntudorm_20260915_baseline": {
       "scan_id": "ntudorm_20260915_baseline",
       "pkg_path": "G:\\Shared drives\\6.軟體\\3. GatheringScans\\StreamPackages\\ntudorm_20260915_baseline.3tz",
-      "size_bytes": 10728316,
-      "mtime": 1792253223,
+      "size_bytes": 23362398,
+      "mtime": 1792833427,
       "toc": {
         "tileset.json": {
-          "offset": 45,
-          "size": 513,
-          "gz_offset": 45,
-          "gz_size": 513,
-          "gzip_only": 1
-        },
-        "content/1_1_0_0.glb": {
-          "offset": 610,
-          "size": 534279,
-          "gz_offset": 610,
-          "gz_size": 534279,
-          "gzip_only": 1
-        },
-        "content/1_0_1_0.glb": {
-          "offset": 534941,
-          "size": 426245,
-          "gz_offset": 534941,
-          "gz_size": 426245,
-          "gzip_only": 1
+          "offset": 42,
+          "size": 4311
         },
         "content/1_1_1_0.glb": {
-          "offset": 961238,
-          "size": 516828,
-          "gz_offset": 961238,
-          "gz_size": 516828,
-          "gzip_only": 1
+          "offset": 4402,
+          "size": 606772
+        },
+        "content/2_0_0_1.glb": {
+          "offset": 611223,
+          "size": 687388
         },
         "content/2_0_1_0.glb": {
-          "offset": 1478118,
-          "size": 270709,
-          "gz_offset": 1478118,
-          "gz_size": 270709,
-          "gzip_only": 1
-        },
-        "content/2_1_1_0.glb": {
-          "offset": 1748879,
-          "size": 446415,
-          "gz_offset": 1748879,
-          "gz_size": 446415,
-          "gzip_only": 1
-        },
-        "content/2_1_0_1.glb": {
-          "offset": 2195346,
-          "size": 355743,
-          "gz_offset": 2195346,
-          "gz_size": 355743,
-          "gzip_only": 1
+          "offset": 1298660,
+          "size": 928968
         },
         "content/2_0_1_1.glb": {
-          "offset": 2551141,
-          "size": 302328,
-          "gz_offset": 2551141,
-          "gz_size": 302328,
-          "gzip_only": 1
+          "offset": 2227677,
+          "size": 363764
+        },
+        "content/2_1_0_1.glb": {
+          "offset": 2591490,
+          "size": 675732
+        },
+        "content/2_1_1_0.glb": {
+          "offset": 3267271,
+          "size": 671580
         },
         "content/2_1_1_1.glb": {
-          "offset": 2853521,
-          "size": 387013,
-          "gz_offset": 2853521,
-          "gz_size": 387013,
-          "gzip_only": 1
+          "offset": 3938900,
+          "size": 699332
+        },
+        "content/2_0_2_0.glb": {
+          "offset": 4638281,
+          "size": 290568
+        },
+        "content/2_0_2_1.glb": {
+          "offset": 4928898,
+          "size": 561192
+        },
+        "content/2_0_3_1.glb": {
+          "offset": 5490139,
+          "size": 1763244
+        },
+        "content/2_1_2_0.glb": {
+          "offset": 7253432,
+          "size": 104652
+        },
+        "content/2_1_2_1.glb": {
+          "offset": 7358133,
+          "size": 842276
+        },
+        "content/2_1_3_1.glb": {
+          "offset": 8200458,
+          "size": 599924
+        },
+        "content/2_2_0_1.glb": {
+          "offset": 8800431,
+          "size": 769728
+        },
+        "content/2_2_1_0.glb": {
+          "offset": 9570208,
+          "size": 170248
+        },
+        "content/2_2_1_1.glb": {
+          "offset": 9740505,
+          "size": 809916
+        },
+        "content/2_3_1_1.glb": {
+          "offset": 10550470,
+          "size": 815124
         },
         "preview_tileset.json": {
-          "offset": 3240587,
-          "size": 526,
-          "gz_offset": 3240587,
-          "gz_size": 526,
-          "gzip_only": 1
-        },
-        "preview_low/content/1_1_0_0.glb": {
-          "offset": 3241177,
-          "size": 1351580,
-          "gz_offset": 3241177,
-          "gz_size": 1351580,
-          "gzip_only": 1
-        },
-        "preview_low/content/1_0_1_0.glb": {
-          "offset": 4592821,
-          "size": 1212676,
-          "gz_offset": 4592821,
-          "gz_size": 1212676,
-          "gzip_only": 1
+          "offset": 11365644,
+          "size": 4515
         },
         "preview_low/content/1_1_1_0.glb": {
-          "offset": 5805561,
-          "size": 1359586,
-          "gz_offset": 5805561,
-          "gz_size": 1359586,
-          "gzip_only": 1
+          "offset": 11370220,
+          "size": 1268820
+        },
+        "preview_low/content/2_0_0_1.glb": {
+          "offset": 12639101,
+          "size": 687388
         },
         "preview_low/content/2_0_1_0.glb": {
-          "offset": 7165211,
-          "size": 654411,
-          "gz_offset": 7165211,
-          "gz_size": 654411,
-          "gzip_only": 1
-        },
-        "preview_low/content/2_1_1_0.glb": {
-          "offset": 7819686,
-          "size": 1256785,
-          "gz_offset": 7819686,
-          "gz_size": 1256785,
-          "gzip_only": 1
-        },
-        "preview_low/content/2_1_0_1.glb": {
-          "offset": 9076535,
-          "size": 385760,
-          "gz_offset": 9076535,
-          "gz_size": 385760,
-          "gzip_only": 1
+          "offset": 13326550,
+          "size": 343740
         },
         "preview_low/content/2_0_1_1.glb": {
-          "offset": 9462359,
-          "size": 257398,
-          "gz_offset": 9462359,
-          "gz_size": 257398,
-          "gzip_only": 1
+          "offset": 13670351,
+          "size": 1005112
+        },
+        "preview_low/content/2_1_0_1.glb": {
+          "offset": 14675524,
+          "size": 368932
+        },
+        "preview_low/content/2_1_1_0.glb": {
+          "offset": 15044517,
+          "size": 327884
         },
         "preview_low/content/2_1_1_1.glb": {
-          "offset": 9719821,
-          "size": 493897,
-          "gz_offset": 9719821,
-          "gz_size": 493897,
-          "gzip_only": 1
+          "offset": 15372462,
+          "size": 1242168
+        },
+        "preview_low/content/2_0_2_0.glb": {
+          "offset": 16614691,
+          "size": 290568
+        },
+        "preview_low/content/2_0_2_1.glb": {
+          "offset": 16905320,
+          "size": 1205768
+        },
+        "preview_low/content/2_0_3_1.glb": {
+          "offset": 18111149,
+          "size": 475908
+        },
+        "preview_low/content/2_1_2_0.glb": {
+          "offset": 18587118,
+          "size": 104652
+        },
+        "preview_low/content/2_1_2_1.glb": {
+          "offset": 18691831,
+          "size": 1273240
+        },
+        "preview_low/content/2_1_3_1.glb": {
+          "offset": 19965132,
+          "size": 1082880
+        },
+        "preview_low/content/2_2_0_1.glb": {
+          "offset": 21048073,
+          "size": 418372
+        },
+        "preview_low/content/2_2_1_0.glb": {
+          "offset": 21466506,
+          "size": 170248
+        },
+        "preview_low/content/2_2_1_1.glb": {
+          "offset": 21636815,
+          "size": 1257124
+        },
+        "preview_low/content/2_3_1_1.glb": {
+          "offset": 22894000,
+          "size": 456504
         },
         "thumbnail.png": {
-          "offset": 10213761,
-          "size": 513160
+          "offset": 23350547,
+          "size": 9232
         }
       },
       "file_id": "1yL4EDLdYMxwo9-d28MbzMW1T3NlRYGml",
       "my_drive_file_id": "1Ou-pqZhTR5VsRzgYE6vlf5EdSPU8-87E"
     }
-  },
-  "vps_synced": true
+  }
 }

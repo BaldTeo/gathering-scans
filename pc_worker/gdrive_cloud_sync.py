@@ -337,12 +337,23 @@ def build_scan_3tz_package(scan: Dict[str, Any], force: bool = False) -> Optiona
 
     pkg_path = os.path.join(target_dir, f"{scan_id}.3tz")
     base_dir = os.path.dirname(ts_path)
+    proj_dir = str(scan.get("project_dir") or os.path.dirname(base_dir) or "")
     r_glb = os.path.join(base_dir, "tiles", "root.glb")
     p_glb = os.path.join(base_dir, "preview_low", "tiles", "root.glb")
+    meta_json = os.path.join(proj_dir, "scan_meta.json") if proj_dir else ""
     src_mtime = os.path.getmtime(ts_path)
-    for cand in (r_glb, p_glb):
-        if os.path.isfile(cand):
+    for cand in (r_glb, p_glb, meta_json):
+        if cand and os.path.isfile(cand):
             src_mtime = max(src_mtime, os.path.getmtime(cand))
+    for sub_d in ("content", os.path.join("preview_low", "content"), "tiles"):
+        sd_full = os.path.join(base_dir, sub_d)
+        if os.path.isdir(sd_full):
+            try:
+                for fn in os.listdir(sd_full)[:64]:
+                    if fn.lower().endswith(".glb"):
+                        src_mtime = max(src_mtime, os.path.getmtime(os.path.join(sd_full, fn)))
+            except OSError:
+                pass
 
     if not force and os.path.isfile(pkg_path) and os.path.getsize(pkg_path) > 1024:
         try:

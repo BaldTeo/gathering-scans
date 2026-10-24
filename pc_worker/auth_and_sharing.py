@@ -9,13 +9,56 @@ Implements:
 
 import time
 import json
+import hmac
+import hashlib
 import base64
 import secrets
+import urllib.parse
+import urllib.request
 from datetime import datetime, timezone
 from typing import Dict, Any, List, Optional, Tuple
 
-from pc_worker.config import PUBLIC_BASE_URL, ALLOWED_WORKSPACE_DOMAINS, GOOGLE_OAUTH_CLIENT_ID
+from pc_worker.config import PUBLIC_BASE_URL, ALLOWED_WORKSPACE_DOMAINS, GOOGLE_OAUTH_CLIENT_ID, TUNNEL_SHARED_KEY
 from pc_worker.priority_queue import ScanQueueDB, DB_LOCK
+
+
+def _get_session_hmac_key() -> bytes:
+    return hashlib.sha256(f"gatheringscans-session-hmac-v1:{TUNNEL_SHARED_KEY}".encode("utf-8")).digest()
+
+
+def issue_session_token(email: str, role: str = "", ttl_sec: int = 86400 * 14) -> str:
+    clean_email = (email or "").strip().lower()
+    if not clean_email:
+        return ""
+    payload = {
+        "email": clean_email,
+        "role": (role or "").strip().lower(),
+        "exp": int(time.time()) + int(ttl_sec),
+    }
+    raw_b64 = base64.urlsafe_b64encode(json.dumps(payload, separators=(",", ":")).encode("utf-8")).decode("ascii").rstrip("=")
+    sig = hmac.new(_get_session_hmac_key(), raw_b64.encode("ascii"), hashlib.sha256).digest()
+    sig_b64 = base64.urlsafe_b64encode(sig).decode("ascii").rstrip("=")
+    return f"{raw_b64}.{sig_b64}"
+
+
+def verify_session_token(token: str) -> Optional[str]:
+    tok = (token or "").strip()
+    if not tok or "." not in tok:
+        return None
+    try:
+        raw_b64, sig_b64 = tok.split(".", 1)
+        expected_sig = hmac.new(_get_session_hmac_key(), raw_b64.encode("ascii"), hashlib.sha256).digest()
+        expected_b64 = base64.urlsafe_b64encode(expected_sig).decode("ascii").rstrip("=")
+        if not hmac.compare_digest(sig_b64, expected_b64):
+            return None
+        padded = raw_b64 + "=" * (-len(raw_b64) % 4)
+        payload = json.loads(base64.urlsafe_b64decode(padded.encode("ascii")).decode("utf-8"))
+        if int(payload.get("exp") or 0) <= int(time.time()):
+            return None
+        email = str(payload.get("email") or "").strip().lower()
+        return email if email else None
+    except Exception:
+        return None
 
 
 OWNER_EMAIL = "glibivanov@gatheren.com.tw"
@@ -66,6 +109,7 @@ def get_role_permissions(role: str, has_share_token: bool = False) -> Dict[str, 
     can_edit_names = lvl >= 3 and not has_share_token
     can_run_workflows = lvl >= 3 and not has_share_token
     can_share = lvl >= 3 and not has_share_token
+    can_download = lvl >= 2 and not has_share_token
     if eff_role == "guest":
         allowed_tools = ["orbit", "distance", "area", "coordinates"]
     elif eff_role == "viewer":
@@ -87,6 +131,7 @@ def get_role_permissions(role: str, has_share_token: bool = False) -> Dict[str, 
         "can_run_workflows": can_run_workflows,
         "can_share": can_share,
         "can_manage_shares": can_share,
+        "can_download": can_download,
         "allowed_tools": allowed_tools,
     }
 
@@ -396,85 +441,92 @@ class AuthAndSharingManager:
 
     def verify_google_oauth_credential(self, credential_jwt: str, fallback_profile: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """
-        Decodes and validates a Google Identity Services JWT credential or company session payload
-        using the shared GatheringCloud Google OAuth Client ID.
+        Cryptographically verifies a Google Identity Services JWT credential against Google's
+        public keys / tokeninfo endpoint (`aud == GOOGLE_OAUTH_CLIENT_ID`, `iss`, `exp`, `email_verified`)
+        and issues an HMAC-signed `session_token`. Never accepts unsigned JWTs or unverified fallback profiles.
         """
+        raw_jwt = str(credential_jwt or "").strip()
+        parts = raw_jwt.split(".")
+        if len(parts) != 3 or not all(parts):
+            raise ValueError("Invalid or missing Google OAuth ID token.")
+
+        claims: Optional[Dict[str, Any]] = None
+        verify_err = ""
         try:
-            parts = str(credential_jwt or "").strip().split(".")
-            if len(parts) == 3:
-                payload_b64 = parts[1] + "=" * (-len(parts[1]) % 4)
-                claims = json.loads(base64.urlsafe_b64decode(payload_b64.encode("utf-8")).decode("utf-8"))
-                email = str(claims.get("email") or "").strip().lower()
-                name = str(claims.get("name") or (email.split("@")[0] if email else "Engineer")).strip()
-                hd = str(claims.get("hd") or (email.split("@")[1] if "@" in email else "")).lower()
-                aud = str(claims.get("aud") or "")
-                is_owner = email in OWNER_EMAILS
-                prof = self.upsert_user_profile(
-                    {
-                        "email": email,
-                        "name": name,
-                        "picture": claims.get("picture", ""),
-                        "googleSub": claims.get("sub", ""),
-                        "role": "owner" if is_owner else ("editor" if email.endswith("@gatheren.com.tw") else "viewer"),
-                        "color": "#14b8a6" if is_owner else "#0284c7",
-                        "isGoogleAuthenticated": True,
-                        "isAdmin": is_owner,
-                        "isOwner": is_owner,
-                    },
-                    preserve_existing_role=True,
-                )
-                return {
-                    "authenticated": True,
-                    "client_id": aud or GOOGLE_OAUTH_CLIENT_ID,
-                    "role": prof.get("role", "editor"),
-                    "role_label": prof.get("role_label", ""),
-                    "permission_level": prof.get("permission_level", 3),
-                    "permissions": prof.get("permissions", get_role_permissions(prof.get("role", "editor"), False)),
-                    "email": email,
-                    "name": prof.get("name", name),
-                    "domain": hd,
-                    "picture": prof.get("picture", ""),
-                    "isGoogleAuthenticated": True,
-                    "isAdmin": prof.get("isAdmin", False),
-                    "isOwner": prof.get("isOwner", False),
-                    "allowedProjects": prof.get("allowedProjects", ["*"]),
-                }
-        except Exception:
-            pass
+            from google.auth.transport import requests as _g_requests
+            from google.oauth2 import id_token as _g_id_token
 
-        if fallback_profile and isinstance(fallback_profile, dict) and fallback_profile.get("email"):
-            prof = self.upsert_user_profile(fallback_profile, preserve_existing_role=True)
-            return {
-                "authenticated": True,
-                "client_id": GOOGLE_OAUTH_CLIENT_ID,
-                "role": prof.get("role", "editor"),
-                "role_label": prof.get("role_label", ""),
-                "permission_level": prof.get("permission_level", 3),
-                "permissions": prof.get("permissions", get_role_permissions(prof.get("role", "editor"), False)),
-                "email": prof.get("email", ""),
-                "name": prof.get("name", ""),
-                "domain": prof.get("email", "").split("@")[-1] if "@" in prof.get("email", "") else "gatheren.com.tw",
-                "picture": prof.get("picture", ""),
-                "isGoogleAuthenticated": bool(prof.get("isGoogleAuthenticated", False)),
-                "isAdmin": bool(prof.get("isAdmin", False)),
-                "isOwner": bool(prof.get("isOwner", False)),
-                "allowedProjects": prof.get("allowedProjects", ["*"]),
-            }
+            claims = _g_id_token.verify_oauth2_token(raw_jwt, _g_requests.Request(), GOOGLE_OAUTH_CLIENT_ID)
+        except ImportError:
+            claims = None
+        except Exception as ge:
+            verify_err = str(ge)
+            claims = None
 
+        if claims is None:
+            try:
+                ti_url = "https://oauth2.googleapis.com/tokeninfo?id_token=" + urllib.parse.quote(raw_jwt, safe="")
+                req = urllib.request.Request(ti_url, headers={"Accept": "application/json"}, method="GET")
+                with urllib.request.urlopen(req, timeout=8) as resp:
+                    if resp.status == 200:
+                        claims = json.loads(resp.read().decode("utf-8"))
+            except Exception as te:
+                verify_err = verify_err or str(te)
+                claims = None
+
+        if not isinstance(claims, dict):
+            raise ValueError(f"Google OAuth signature verification failed: {verify_err or 'invalid token'}")
+
+        aud = str(claims.get("aud") or "").strip()
+        iss = str(claims.get("iss") or "").strip()
+        exp = int(claims.get("exp") or 0)
+        email_verified = str(claims.get("email_verified", "")).strip().lower() in ("true", "1")
+        email = str(claims.get("email") or "").strip().lower()
+
+        if aud != GOOGLE_OAUTH_CLIENT_ID:
+            raise ValueError("Google OAuth audience mismatch.")
+        if iss not in ("accounts.google.com", "https://accounts.google.com"):
+            raise ValueError("Google OAuth issuer mismatch.")
+        if exp <= int(time.time()):
+            raise ValueError("Google OAuth token has expired.")
+        if not email or not email_verified:
+            raise ValueError("Google OAuth account email is not verified.")
+
+        name = str(claims.get("name") or (email.split("@")[0] if email else "Engineer")).strip()
+        hd = str(claims.get("hd") or (email.split("@")[1] if "@" in email else "")).lower()
+        is_owner = email in OWNER_EMAILS
+        prof = self.upsert_user_profile(
+            {
+                "email": email,
+                "name": name,
+                "picture": claims.get("picture", ""),
+                "googleSub": claims.get("sub", ""),
+                "role": "owner" if is_owner else ("editor" if email.endswith("@gatheren.com.tw") else "viewer"),
+                "color": "#14b8a6" if is_owner else "#0284c7",
+                "isGoogleAuthenticated": True,
+                "isAdmin": is_owner,
+                "isOwner": is_owner,
+            },
+            preserve_existing_role=True,
+        )
+        eff_role = prof.get("role", "editor")
+        session_token = issue_session_token(email, role=eff_role)
         return {
             "authenticated": True,
+            "session_token": session_token,
             "client_id": GOOGLE_OAUTH_CLIENT_ID,
-            "role": "owner",
-            "role_label": ROLE_LABELS["owner"],
-            "permission_level": 5,
-            "permissions": get_role_permissions("owner", False),
-            "email": "glibivanov@gatheren.com.tw",
-            "name": "雲在天",
-            "domain": "gatheren.com.tw",
+            "role": eff_role,
+            "role_label": prof.get("role_label", ""),
+            "permission_level": prof.get("permission_level", 3),
+            "permissions": prof.get("permissions", get_role_permissions(eff_role, False)),
+            "email": email,
+            "name": prof.get("name", name),
+            "domain": hd,
+            "picture": prof.get("picture", ""),
             "isGoogleAuthenticated": True,
-            "isAdmin": True,
-            "isOwner": True,
-            "allowedProjects": ["*"],
+            "isAdmin": prof.get("isAdmin", False),
+            "isOwner": prof.get("isOwner", False),
+            "allowedProjects": prof.get("allowedProjects", ["*"]),
         }
 
     def create_share_link(self, payload: Dict[str, Any]) -> Dict[str, Any]:
@@ -493,8 +545,12 @@ class AuthAndSharingManager:
 
         token = payload.get("token") or secrets.token_urlsafe(12)
         label = payload.get("label") or f"External View — {target_id}"
-        created_by_email = payload.get("created_by_email", "glibivanov@gatheren.com.tw")
-        created_by_name = payload.get("created_by_name", "雲在天")
+        created_by_email = (
+            payload.get("created_by_email")
+            or payload.get("actor_email")
+            or "system@gatheren.com.tw"
+        )
+        created_by_name = payload.get("created_by_name") or created_by_email.split("@")[0]
         created_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
         expires_at = payload.get("expires_at", "")
         allow_download = 1 if payload.get("allow_download", False) else 0

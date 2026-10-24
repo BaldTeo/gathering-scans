@@ -47,7 +47,7 @@
     window.GOOGLE_OAUTH_CLIENT_ID ||
     "753778992341-hpe65ilnti31j0m7etmq5rn7a1q802da.apps.googleusercontent.com";
 
-  // Load persisted user profile only if explicitly authorized in this browser session
+  // Load persisted user profile only if explicitly authorized with a cryptographic session_token (or Guest mode)
   function getInitialCurrentUser() {
     try {
       const verified = localStorage.getItem("gs_auth_verified_v1") === "1";
@@ -58,6 +58,12 @@
       if (saved) {
         const parsed = JSON.parse(saved);
         if (parsed && parsed.email) {
+          const isGuest = String(parsed.role || "").toLowerCase() === "guest" || String(parsed.email).startsWith("guest@");
+          const hasToken = Boolean(parsed.session_token || parsed.sessionToken);
+          if (!isGuest && !hasToken) {
+            localStorage.removeItem("gs_auth_verified_v1");
+            return null;
+          }
           if (
             String(parsed.email).toLowerCase() === "glibivanov@gatheren.com.tw" &&
             (!parsed.name || parsed.name === "Glib Ivanov")
@@ -104,6 +110,24 @@
     cachedScanIds: new Set(JSON.parse(localStorage.getItem("gs_cached_scans") || "[]")),
     measurePoints: [],
     maskBoundaryPoints: [],
+    cropMode: "delete_inside",
+    lassoInputMethod: "lasso",
+    lassoVisibleOnlyDelete: true,
+    lassoVisibleOnlyKeep: false,
+    lassoStrokes: [],
+    pendingCropPolygons: [],
+    cropPolygonPoints: [],
+    lassoSelectedTriCount: 0,
+    scanBackupStatus: null,
+    stagedEdits: {
+      scanId: "",
+      rev: 0,
+      deletions: [],
+      cropKeep: null,
+      compressionPreset: null,
+      crsConfig: null,
+      newScanName: "",
+    },
     completedMeasurements: [],
     tempDistanceObjects: [],
     tempDistanceBadges: [],
@@ -120,6 +144,26 @@
       layers: [],
       lastMergedScan: null,
     },
+    fpMode: {
+      active: false,
+      locomotion: "fly", // 'fly' | 'walk'
+      pointerLocked: false,
+      yaw: 0,
+      pitch: 0,
+      baseSpeed: 8.0, // m/s (0.5 - 60.0 via Mouse Wheel or HUD slider)
+      eyeHeight: 1.68, // meters above surface in 'walk' mode
+      currentEyeOffset: 1.68,
+      velX: 0,
+      velY: 0,
+      velZ: 0,
+      onGround: false,
+      keys: Object.create(null),
+      dragLooking: false,
+      dragLastX: 0,
+      dragLastY: 0,
+      dragDist: 0,
+      lastFrameTime: 0,
+    },
   };
 
   function resolveThemeFromPreference(pref) {
@@ -127,6 +171,22 @@
     if (p === "light" || p === "dark") return p;
     const hr = new Date().getHours();
     return hr >= 6 && hr < 18 ? "light" : "dark";
+  }
+
+  function preprocessTileStreamUrl(uri, rootStreamUrl) {
+    let u = uri;
+    try {
+      if (rootStreamUrl && rootStreamUrl.includes("?")) {
+        const vParam = new URL(rootStreamUrl, window.location.origin).searchParams.get("v");
+        if (vParam && !/[?&]v=/.test(u)) {
+          u += (u.includes("?") ? "&" : "?") + `v=${encodeURIComponent(vParam)}`;
+        }
+      }
+    } catch (_) {}
+    if (STATE.shareToken && !u.includes("share=")) {
+      u += (u.includes("?") ? "&" : "?") + `share=${encodeURIComponent(STATE.shareToken)}`;
+    }
+    return u;
   }
 
   // Apply initial theme attribute & authorization lock immediately to avoid flash
@@ -141,18 +201,49 @@
   function getProjectGroupsList(filterQuery = "") {
     const q = String(filterQuery || "").trim().toLowerCase();
     const map = new Map();
+    const isGeorefScan = (sc) =>
+      sc &&
+      sc.lat !== null &&
+      sc.lat !== undefined &&
+      sc.lon !== null &&
+      sc.lon !== undefined &&
+      Number.isFinite(Number(sc.lat)) &&
+      Number.isFinite(Number(sc.lon)) &&
+      (Math.abs(Number(sc.lat)) > 0.001 || Math.abs(Number(sc.lon)) > 0.001) &&
+      !String(sc.crs || "").toUpperCase().includes("LOCAL");
+
     STATE.scans.forEach((s) => {
       const g = s.project_group || "Unassigned Site";
       if (!map.has(g)) {
         map.set(g, {
           project_group: g,
           project_name_zh: s.project_name_zh || "",
-          lat: s.lat || 24.92032,
-          lon: s.lon || 121.54351,
+          lat: null,
+          lon: null,
+          hasGeoref: false,
+          _latSum: 0,
+          _lonSum: 0,
+          _geoCount: 0,
           scans: [],
         });
       }
-      map.get(g).scans.push(s);
+      const entry = map.get(g);
+      if (!entry.project_name_zh && s.project_name_zh) {
+        entry.project_name_zh = s.project_name_zh;
+      }
+      if (isGeorefScan(s)) {
+        entry._latSum += Number(s.lat);
+        entry._lonSum += Number(s.lon);
+        entry._geoCount += 1;
+      }
+      entry.scans.push(s);
+    });
+    map.forEach((entry) => {
+      if (entry._geoCount > 0) {
+        entry.lat = entry._latSum / entry._geoCount;
+        entry.lon = entry._lonSum / entry._geoCount;
+        entry.hasGeoref = true;
+      }
     });
     let list = Array.from(map.values()).sort(
       (a, b) => b.scans.length - a.scans.length || a.project_group.localeCompare(b.project_group)
@@ -314,6 +405,10 @@
     if (STATE.currentUser && STATE.currentUser.email) {
       h["X-User-Email"] = STATE.currentUser.email;
     }
+    const sessTok = STATE.currentUser?.session_token || STATE.currentUser?.sessionToken || "";
+    if (sessTok) {
+      h["X-Session-Token"] = sessTok;
+    }
     return h;
   }
 
@@ -350,8 +445,11 @@
       };
     }
     const email = String(STATE.currentUser?.email || "").trim().toLowerCase();
-    let role = String(STATE.currentUser?.role || "viewer").trim().toLowerCase();
-    if (OWNER_EMAILS_SET.has(email)) {
+    const hasSessionToken = Boolean(STATE.currentUser?.session_token || STATE.currentUser?.sessionToken);
+    let role = String(STATE.currentUser?.role || "guest").trim().toLowerCase();
+    if (!hasSessionToken || !email || email.startsWith("guest@")) {
+      role = "guest";
+    } else if (OWNER_EMAILS_SET.has(email)) {
       role = "owner";
     } else if (!ROLE_LEVELS_MAP[role]) {
       role = "viewer";
@@ -408,7 +506,9 @@
       "btnDockLassoDelete",
       "btnDockLassoKeep",
       "btnDockOptimizer",
+      "btnDockCrs",
       "btnDockAlignMerge",
+      "btnDockGenerateScan",
       "pcStatusChip",
     ].forEach((id) => setDisp(id, info.canRunWorkflows, "inline-flex"));
 
@@ -430,7 +530,7 @@
     setDisp("btnStudioBackToTimeline", !lockSingleScan, "inline-flex");
     setDisp("studioProjectSelect", !lockSingleScan, "inline-block");
     const studioScanSel = document.getElementById("studioScanSelect");
-    if (studioScanSel) studioScanSel.disabled = lockSingleScan;
+    if (studioScanSel) studioScanSel.disabled = lockSingleScan || Boolean(STATE.multiAlign?.active);
 
     // 5. Basic measurement tools (Distance, Area, Coordinates, Snap, Clear) honor allowMeasurements
     [
@@ -465,7 +565,7 @@
 
     // 8. If current active Studio tool is no longer permitted after role change, reset cleanly
     const advTools = new Set(["angle", "laser", "volume", "contours", "profile", "section", "photos"]);
-    const wfTools = new Set(["optimizer", "crop", "crop_delete", "align_merge"]);
+    const wfTools = new Set(["optimizer", "crs", "generate_scan", "crop", "crop_delete", "align_merge"]);
     if (!info.canRunWorkflows && STATE.multiAlign?.active && typeof exitMultiScanAlignMode === "function") {
       exitMultiScanAlignMode(true);
     }
@@ -477,6 +577,10 @@
     ) {
       STATE.activeTool = info.allowMeasurements ? "distance" : "orbit";
       document.getElementById("studioSidePanel")?.classList.remove("active");
+    }
+
+    if (typeof syncMultiAlignToolAvailability === "function") {
+      syncMultiAlignToolAvailability();
     }
 
     // Role badge in Settings Admin Control Panel
@@ -538,6 +642,46 @@
     return { lat, lon };
   }
 
+  function fitMapToAllGeorefGroups(targetGroups = null) {
+    if (!gsMap) return;
+    const groups = (targetGroups || getProjectGroupsList("")).filter(
+      (g) => g && g.hasGeoref && Number.isFinite(g.lat) && Number.isFinite(g.lon)
+    );
+    if (groups.length === 0) {
+      gsMap.centerLat = 0;
+      gsMap.centerLon = 0;
+      gsMap.zoom = 2.0;
+      return;
+    }
+    if (groups.length === 1) {
+      gsMap.centerLat = groups[0].lat;
+      gsMap.centerLon = groups[0].lon;
+      gsMap.zoom = 14.5;
+      return;
+    }
+    let minLat = Infinity,
+      maxLat = -Infinity,
+      minLon = Infinity,
+      maxLon = -Infinity;
+    groups.forEach((g) => {
+      if (g.lat < minLat) minLat = g.lat;
+      if (g.lat > maxLat) maxLat = g.lat;
+      if (g.lon < minLon) minLon = g.lon;
+      if (g.lon > maxLon) maxLon = g.lon;
+    });
+    gsMap.centerLat = (minLat + maxLat) * 0.5;
+    gsMap.centerLon = (minLon + maxLon) * 0.5;
+    const pMin = latLonToNormMercator(maxLat, minLon);
+    const pMax = latLonToNormMercator(minLat, maxLon);
+    const du = Math.abs(pMax.u - pMin.u);
+    const dv = Math.abs(pMax.v - pMin.v);
+    const w = Math.max(320, gsMap.container?.clientWidth || 840);
+    const h = Math.max(240, gsMap.container?.clientHeight || 640);
+    const zX = du > 1e-9 ? Math.log2((w * 0.68) / (256 * du)) : 14.5;
+    const zY = dv > 1e-9 ? Math.log2((h * 0.68) / (256 * dv)) : 14.5;
+    gsMap.zoom = Math.max(2.0, Math.min(15.0, Math.min(zX, zY)));
+  }
+
   function initMap() {
     const container = document.getElementById("mapContainer");
     if (!container || gsMap) return;
@@ -587,9 +731,10 @@
       canvas,
       ctx: canvas.getContext("2d"),
       markerLayer,
-      centerLat: 24.976,
-      centerLon: 121.522,
-      zoom: 11.75,
+      centerLat: 0,
+      centerLon: 0,
+      zoom: 2.0,
+      _initialFitDone: false,
       groups: [],
       tileCache: new Map(),
       dragging: false,
@@ -657,11 +802,23 @@
     const updateCursorCoordsHud = (clientX, clientY) => {
       const rect = canvas.getBoundingClientRect();
       const { lat, lon } = unprojectXY(clientX - rect.left, clientY - rect.top);
-      const twdE = 250000 + (lon - 121.0) * 101750;
-      const twdN = lat * 110760;
       const coordEl = document.getElementById("mapCursorCoords");
-      if (coordEl) {
-        coordEl.textContent = `TWD97(121) E: ${twdE.toFixed(1)}m | N: ${twdN.toFixed(1)}m | WGS84: ${lat.toFixed(5)}°N, ${lon.toFixed(5)}°E`;
+      if (!coordEl) return;
+      if (lat >= 21.5 && lat <= 26.5 && lon >= 119.8 && lon <= 122.3) {
+        const tm = wgs84ToTransverseMercatorJS(lat, lon, 121.0, 250000.0, 0.9999, 298.257222101);
+        coordEl.textContent = `TWD97(121) E: ${tm.e.toFixed(1)}m | N: ${tm.n.toFixed(1)}m | WGS84: ${lat.toFixed(5)}°N, ${lon.toFixed(5)}°E`;
+      } else if (lat >= 21.5 && lat <= 26.5 && lon >= 118.0 && lon < 119.8) {
+        const tm = wgs84ToTransverseMercatorJS(lat, lon, 119.0, 250000.0, 0.9999, 298.257222101);
+        coordEl.textContent = `TWD97(119) E: ${tm.e.toFixed(1)}m | N: ${tm.n.toFixed(1)}m | WGS84: ${lat.toFixed(5)}°N, ${lon.toFixed(5)}°E`;
+      } else if (Math.abs(lat) <= 84.0) {
+        const zone = Math.max(1, Math.min(60, Math.floor((lon + 180.0) / 6.0) + 1));
+        const lon0 = (zone - 1) * 6.0 - 180.0 + 3.0;
+        const utm = wgs84ToTransverseMercatorJS(lat, lon, lon0, 500000.0, 0.9996, 298.257223563);
+        const uN = lat < 0 ? utm.n + 10000000.0 : utm.n;
+        const hemi = lat >= 0 ? "N" : "S";
+        coordEl.textContent = `UTM ${zone}${hemi} E: ${utm.e.toFixed(1)}m | N: ${uN.toFixed(1)}m | WGS84: ${lat.toFixed(5)}°, ${lon.toFixed(5)}°`;
+      } else {
+        coordEl.textContent = `WGS84: ${lat.toFixed(5)}°, ${lon.toFixed(5)}°`;
       }
     };
 
@@ -676,7 +833,7 @@
     };
 
     const zoomAroundClientPoint = (nextZoom, clientX, clientY) => {
-      const clampedZoom = Math.max(8.0, Math.min(19.0, nextZoom));
+      const clampedZoom = Math.max(2.0, Math.min(19.0, nextZoom));
       if (Math.abs(clampedZoom - gsMap.zoom) < 1e-4) return;
       const rect = canvas.getBoundingClientRect();
       const px = clientX - rect.left;
@@ -712,7 +869,7 @@
       ctx.fillRect(0, 0, w, h);
 
       // Render Web Mercator Google Maps Tiles (Satellite Hybrid 'y' or Roadmap 'm')
-      const zInt = Math.max(8, Math.min(19, Math.round(gsMap.zoom)));
+      const zInt = Math.max(2, Math.min(19, Math.round(gsMap.zoom)));
       const numTiles = 1 << zInt;
       const tileScale = 256 * Math.pow(2, gsMap.zoom - zInt);
       const cNorm = latLonToNormMercator(gsMap.centerLat, gsMap.centerLon);
@@ -746,33 +903,61 @@
         }
       }
 
-      // Subtle TWD97 (121) Coordinate Grid Overlay
+      // Dynamic Viewport Coordinate Grid Overlay (Zero Hardcoded Lat/Lon Bounds)
       ctx.strokeStyle = STATE.mapLyrs === "m" ? "rgba(2, 132, 199, 0.16)" : "rgba(56, 189, 248, 0.18)";
       ctx.lineWidth = 1;
       ctx.fillStyle = STATE.mapLyrs === "m" ? "rgba(15, 23, 42, 0.72)" : "rgba(248, 250, 252, 0.80)";
       ctx.font = "600 10px Consolas, monospace";
 
-      for (let lon = 121.35; lon <= 121.68; lon += 0.05) {
+      const nw = unprojectXY(0, 0);
+      const se = unprojectXY(w, h);
+      const viewMinLon = Math.max(-180, Math.min(nw.lon, se.lon));
+      const viewMaxLon = Math.min(180, Math.max(nw.lon, se.lon));
+      const viewMinLat = Math.max(-85, Math.min(nw.lat, se.lat));
+      const viewMaxLat = Math.min(85, Math.max(nw.lat, se.lat));
+      const gridStep =
+        gsMap.zoom >= 15 ? 0.005 : gsMap.zoom >= 13 ? 0.02 : gsMap.zoom >= 10 ? 0.05 : gsMap.zoom >= 7 ? 0.5 : 10.0;
+
+      const startLon = Math.floor(viewMinLon / gridStep) * gridStep;
+      for (let lon = startLon, n = 0; lon <= viewMaxLon + gridStep && n < 40; lon += gridStep, n++) {
         const p = projectLatLon(gsMap.centerLat, lon);
         ctx.beginPath();
         ctx.moveTo(p.x, 0);
         ctx.lineTo(p.x, h);
         ctx.stroke();
-        const twdE = Math.round(250000 + (lon - 121.0) * 101750);
-        ctx.fillText(`E:${twdE}m`, p.x + 4, h - 12);
+        const isTm2 = gsMap.centerLat >= 21.5 && gsMap.centerLat <= 26.5 && lon >= 118.0 && lon <= 122.3;
+        let lbl;
+        if (isTm2) {
+          const lon0 = lon < 119.8 ? 119.0 : 121.0;
+          const tm = wgs84ToTransverseMercatorJS(gsMap.centerLat, lon, lon0, 250000.0, 0.9999, 298.257222101);
+          lbl = `E:${Math.round(tm.e)}m`;
+        } else {
+          lbl = `${lon.toFixed(gsMap.zoom >= 13 ? 3 : 2)}°`;
+        }
+        ctx.fillText(lbl, p.x + 4, h - 12);
       }
-      for (let lat = 24.85; lat <= 25.12; lat += 0.05) {
+      const startLat = Math.floor(viewMinLat / gridStep) * gridStep;
+      for (let lat = startLat, n = 0; lat <= viewMaxLat + gridStep && n < 40; lat += gridStep, n++) {
         const p = projectLatLon(lat, gsMap.centerLon);
         ctx.beginPath();
         ctx.moveTo(0, p.y);
         ctx.lineTo(w, p.y);
         ctx.stroke();
-        const twdN = Math.round(lat * 110760);
-        ctx.fillText(`N:${twdN}m`, 14, p.y - 4);
+        const isTm2 = lat >= 21.5 && lat <= 26.5 && gsMap.centerLon >= 118.0 && gsMap.centerLon <= 122.3;
+        let lbl;
+        if (isTm2) {
+          const lon0 = gsMap.centerLon < 119.8 ? 119.0 : 121.0;
+          const tm = wgs84ToTransverseMercatorJS(lat, gsMap.centerLon, lon0, 250000.0, 0.9999, 298.257222101);
+          lbl = `N:${Math.round(tm.n)}m`;
+        } else {
+          lbl = `${lat.toFixed(gsMap.zoom >= 13 ? 3 : 2)}°`;
+        }
+        ctx.fillText(lbl, 14, p.y - 4);
       }
 
-      // Draw Scan Geofence Rings & Position Cluster Blobs
+      // Draw Scan Geofence Rings & Position Cluster Blobs (Strictly Georeferenced Sites Only)
       gsMap.groups.forEach((grp) => {
+        if (!grp.hasGeoref || !Number.isFinite(grp.lat) || !Number.isFinite(grp.lon)) return;
         const pos = projectLatLon(grp.lat, grp.lon);
         const isCurrentGroup = grp.project_group === STATE.activeProjectGroup;
 
@@ -813,14 +998,12 @@
     });
     document.getElementById("btnMapZoomOut")?.addEventListener("click", (e) => {
       e.stopPropagation();
-      gsMap.zoom = Math.max(8.0, gsMap.zoom - 0.75);
+      gsMap.zoom = Math.max(2.0, gsMap.zoom - 0.75);
       drawMap();
     });
     document.getElementById("btnMapResetView")?.addEventListener("click", (e) => {
       e.stopPropagation();
-      gsMap.centerLat = 24.976;
-      gsMap.centerLon = 121.522;
-      gsMap.zoom = 11.75;
+      fitMapToAllGeorefGroups();
       drawMap();
     });
 
@@ -1026,6 +1209,10 @@
     const allGroups = getProjectGroupsList("");
     const visibleGroups = getProjectGroupsList(STATE.projectFilterQuery);
     gsMap.groups = visibleGroups;
+    if (!gsMap._initialFitDone && allGroups.some((g) => g.hasGeoref)) {
+      fitMapToAllGeorefGroups(allGroups);
+      gsMap._initialFitDone = true;
+    }
 
     const countEl = document.getElementById("lblMapClusterCount");
     if (countEl) {
@@ -1039,6 +1226,7 @@
     populateProjectScanDropdowns(STATE.activeProjectGroup, STATE.activeScanId);
 
     visibleGroups.forEach((grp) => {
+      if (!grp.hasGeoref || !Number.isFinite(grp.lat) || !Number.isFinite(grp.lon)) return;
       const count = grp.scans.length;
       const sizePx = count >= 2 ? 50 : 44;
       const blob = document.createElement("div");
@@ -1052,7 +1240,7 @@
       blob.style.touchAction = "none";
       blob.innerHTML = `
         <span>${count}</span>
-        <div class="blob-label">${grp.project_group} (${count})</div>
+        <div class="blob-label">${escapeHtml(grp.project_group)} (${count})</div>
       `;
 
       blob.addEventListener("click", (e) => {
@@ -1173,25 +1361,35 @@
       const thumbSrc = scan.thumbnail_url || `/api/scans/${encodeURIComponent(scan.scan_id)}/thumbnail`;
       const texRes = Number(scan.texture_resolution || 4096);
       const texLabel = texRes >= 8192 ? "8K" : texRes >= 4096 ? "4K" : "2K";
+      const safeId = escapeHtml(scan.scan_id);
+      const safeThumbSrc = escapeHtml(thumbSrc);
+      const safeName = escapeHtml(scan.name || scan.scan_id);
+      const safeDate = escapeHtml(scan.capture_date || "");
+      const safeUploaderName = escapeHtml(scan.uploader_name || "");
+      const safeUploaderEmail = escapeHtml(scan.uploader_email || "");
+      const safeDownloadObjUrl = escapeHtml(scan.download_obj_url || "");
+      const coordReadout = escapeHtml(
+        formatScanCoordReadout({ e: scan.twd97_e, n: scan.twd97_n, h: scan.twd97_h }, scan)
+      );
       card.innerHTML = `
         <div class="gs-map-tile-thumb-wrap">
-          <img class="gs-map-tile-thumb" data-scan-thumb="${scan.scan_id}" src="${thumbSrc}" alt="${scan.name}" />
+          <img class="gs-map-tile-thumb" data-scan-thumb="${safeId}" src="${safeThumbSrc}" alt="${safeName}" />
           <div class="gs-tile-badge-row">
-            <span class="gs-tile-chip">${scan.image_count || 0} imgs · ${texLabel}</span>
-            <span class="gs-tile-chip">${formatCoveredAreaM2(scan)}</span>
+            <span class="gs-tile-chip">${Number(scan.image_count || 0)} imgs · ${texLabel}</span>
+            <span class="gs-tile-chip">${escapeHtml(formatCoveredAreaM2(scan))}</span>
           </div>
         </div>
         <div class="gs-map-tile-body">
           <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
             <div style="min-width:0;flex:1;">
-              <div style="font-size:12.5px;font-weight:700;color:var(--ui-text-primary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${scan.name}">${scan.name}</div>
+              <div style="font-size:12.5px;font-weight:700;color:var(--ui-text-primary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${safeName}">${safeName}</div>
               <div style="font-size:11px;color:var(--ui-text-secondary);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
-                ${scan.capture_date} · ${scan.uploader_name} (<span style="color:var(--ui-accent);">${scan.uploader_email}</span>)
+                ${safeDate} · ${safeUploaderName} (<span style="color:var(--ui-accent);">${safeUploaderEmail}</span>)
               </div>
             </div>
           </div>
           <div style="font-size:10.5px;font-family:monospace;color:var(--ui-text-muted);margin-top:5px;">
-            E:${Number(scan.twd97_e).toFixed(1)}m N:${Number(scan.twd97_n).toFixed(1)}m H:+${Number(scan.twd97_h).toFixed(2)}m${isCached ? " · Cached" : ""}
+            ${coordReadout}${isCached ? " · Cached" : ""}
           </div>
           <div class="gs-scan-item-actions">
             <button type="button" class="btn-xs primary" data-action="open3d" title="Enlarge Full-Quality 3D Scan in Studio">
@@ -1209,7 +1407,7 @@
             </button>
             ${
               getCurrentUserRoleInfo().allowDownload
-                ? `<a class="btn-xs" href="${scan.download_obj_url}" download title="Download .OBJ Mesh">
+                ? `<a class="btn-xs" href="${safeDownloadObjUrl}" download title="Download .OBJ Mesh">
                     <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8">
                       <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
                       <polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
@@ -1367,6 +1565,21 @@
     controls.enableDamping = true;
     controls.dampingFactor = 0.06;
     controls.screenSpacePanning = true;
+    controls.mouseButtons = {
+      LEFT: THREE.MOUSE.ROTATE,
+      MIDDLE: THREE.MOUSE.ROTATE,
+      RIGHT: THREE.MOUSE.PAN,
+    };
+    controls.touches = {
+      ONE: THREE.TOUCH.ROTATE,
+      TWO: THREE.TOUCH.DOLLY_ROTATE,
+    };
+    renderer.domElement.addEventListener("mousedown", (e) => {
+      if (e.button === 1) e.preventDefault();
+    });
+    renderer.domElement.addEventListener("auxclick", (e) => {
+      if (e.button === 1) e.preventDefault();
+    });
 
     scene.add(new THREE.AmbientLight(0xffffff, 0.92));
     scene.add(new THREE.HemisphereLight(0xffffff, 0x475569, 0.45));
@@ -1789,13 +2002,7 @@
     } else if (window.TilesRenderer) {
       const tr = new window.TilesRenderer(streamUrl);
       tr.fetchOptions = { mode: "cors" };
-      tr.preprocessURL = (uri) => {
-        let u = uri;
-        if (STATE.shareToken && !u.includes("share=")) {
-          u += (u.includes("?") ? "&" : "?") + `share=${encodeURIComponent(STATE.shareToken)}`;
-        }
-        return u;
-      };
+      tr.preprocessURL = (uri) => preprocessTileStreamUrl(uri, streamUrl);
       tr.setCamera(previewThree.camera);
       tr.setResolutionFromRenderer(previewThree.camera, previewThree.renderer);
 
@@ -1863,6 +2070,11 @@
       STATE._timelineInitTimer = null;
     }
     STATE.selectedTimelineScanId = scanId;
+    const selScan = STATE.scans.find((s) => s.scan_id === scanId);
+    const crsPill = document.getElementById("timelineCrsExtraPill");
+    if (crsPill && selScan) {
+      crsPill.textContent = getScanCrsDisplayLabel(selScan);
+    }
     document.querySelectorAll("#siteTimelineTilesTrack .gs-timeline-tile").forEach((tile) => {
       const isAct = tile.dataset.scanId === scanId;
       tile.classList.toggle("active", isAct);
@@ -1938,6 +2150,14 @@
       countEl.textContent = isAllProjects
         ? `${allGroups.length} Site${allGroups.length === 1 ? "" : "s"} · ${siteScans.length} Scan${siteScans.length === 1 ? "" : "s"}`
         : `${siteScans.length} Scan${siteScans.length === 1 ? "" : "s"}`;
+    }
+    const crsExtraPill = document.getElementById("timelineCrsExtraPill");
+    if (crsExtraPill) {
+      const uniqueCrs = new Set(siteScans.map((s) => inferActiveScanCrsCode(s)));
+      crsExtraPill.textContent =
+        uniqueCrs.size > 1
+          ? `Multi-CRS (${uniqueCrs.size}) · Auto-Aligned`
+          : getScanCrsDisplayLabel(chosenScan || siteScans[0]);
     }
     const subEl = document.getElementById("timelineSiteSubtitle");
     if (subEl && siteScans[0]) {
@@ -2667,8 +2887,8 @@
   window.openRenameSiteModal = openRenameSiteModal;
 
   function closeSiteTimeline() {
-    STATE.siteTimelineOpen = true;
-    document.getElementById("siteTimelineSplitView")?.classList.add("active");
+    STATE.siteTimelineOpen = false;
+    document.getElementById("siteTimelineSplitView")?.classList.remove("active");
     syncPreviewRendererContainer();
     if (gsMap && gsMap.drawMap) gsMap.drawMap();
   }
@@ -2746,6 +2966,16 @@
     if (!mat) return;
     const b = Math.max(0.1, Math.min(4.0, Number(brightness) || 1.0));
     if (!mat.userData) mat.userData = {};
+    if (mat.side !== THREE.DoubleSide) {
+      mat.side = THREE.DoubleSide;
+      mat.needsUpdate = true;
+    }
+    if (typeof mat.metalness === "number" && mat.metalness > 0) {
+      mat.metalness = 0.0;
+      mat.roughness = 1.0;
+      mat.needsUpdate = true;
+    }
+    mat.userData._lastBrightness = b;
     if (mat.map && mat.color) {
       mat.color.setRGB(1, 1, 1);
     }
@@ -2767,6 +2997,7 @@
     const baseBounds = mat.userData._baseBounds || new THREE.Vector4(-80, -80, 80, 80);
     const baseYRange = mat.userData._baseYRange || new THREE.Vector2(-20, 30);
     const baseMeanY = Number.isFinite(mat.userData._baseMeanY) ? mat.userData._baseMeanY : 0.0;
+    const baseGridN = Number.isFinite(mat.userData._baseGridN) ? mat.userData._baseGridN : 96.0;
 
     if (!mat.userData.PassUniforms) {
       mat.userData.PassUniforms = {
@@ -2778,6 +3009,7 @@
         uBaseBounds: { value: baseBounds },
         uBaseYRange: { value: baseYRange },
         uBaseMeanY: { value: baseMeanY },
+        uBaseGridN: { value: baseGridN },
       };
     } else {
       if (mat.userData.PassUniforms.uBrightness) mat.userData.PassUniforms.uBrightness.value = b;
@@ -2788,12 +3020,13 @@
       if (mat.userData.PassUniforms.uBaseBounds) mat.userData.PassUniforms.uBaseBounds.value = baseBounds;
       if (mat.userData.PassUniforms.uBaseYRange) mat.userData.PassUniforms.uBaseYRange.value = baseYRange;
       if (mat.userData.PassUniforms.uBaseMeanY) mat.userData.PassUniforms.uBaseMeanY.value = baseMeanY;
+      if (mat.userData.PassUniforms.uBaseGridN) mat.userData.PassUniforms.uBaseGridN.value = baseGridN;
     }
 
     if (!mat.userData._hasBrightnessShader) {
       mat.userData._hasBrightnessShader = true;
       mat.customProgramCacheKey = function () {
-        return `GS_ScanShader_v4_${mat.type || "Standard"}_${mat.map ? "1" : "0"}_${mat.vertexColors ? "1" : "0"}`;
+        return `GS_ScanShader_v5_${mat.type || "Standard"}_${mat.map ? "1" : "0"}_${mat.vertexColors ? "1" : "0"}`;
       };
       const prevOnBeforeCompile = mat.onBeforeCompile;
       mat.onBeforeCompile = function (shader, renderer) {
@@ -2808,6 +3041,7 @@
         shader.uniforms.uBaseBounds = mat.userData.PassUniforms.uBaseBounds;
         shader.uniforms.uBaseYRange = mat.userData.PassUniforms.uBaseYRange;
         shader.uniforms.uBaseMeanY = mat.userData.PassUniforms.uBaseMeanY;
+        shader.uniforms.uBaseGridN = mat.userData.PassUniforms.uBaseGridN;
 
         shader.vertexShader = shader.vertexShader.replace(
           "#include <common>",
@@ -2832,9 +3066,18 @@
            uniform vec4 uBaseBounds;
            uniform vec2 uBaseYRange;
            uniform float uBaseMeanY;
+           uniform float uBaseGridN;
            varying vec3 vGsWorldPos;
            vec3 gcScanPhotoColor = vec3(0.0);
            bool gcHasPhotoColor = false;
+           float gsSampleBaseElevCell(vec2 ij) {
+             float gMax = max(1.0, uBaseGridN - 1.0);
+             vec2 uv = (clamp(ij, vec2(0.0), vec2(gMax)) + 0.5) / max(2.0, uBaseGridN);
+             vec4 s = texture2D(uBaseElevMap, uv);
+             if (s.a < 0.5) return uBaseMeanY;
+             float n = clamp((s.r * 256.0 + s.g) / 257.0, 0.0, 1.0);
+             return mix(uBaseYRange.x, uBaseYRange.y, n);
+           }
            vec3 gsElevationRamp(float t) {
              vec3 c0 = vec3(0.14, 0.38, 0.92); // Deep Blue (Cut / Low Z)
              vec3 c1 = vec3(0.02, 0.71, 0.83); // Cyan
@@ -2869,10 +3112,15 @@
            vec3 basePhoto = gcHasPhotoColor ? gcScanPhotoColor : gl_FragColor.rgb;
            vec3 litPhoto = basePhoto * uBrightness;
            if (uElevationHeatmap > 1.5) {
-             vec2 uvBase = clamp((vGsWorldPos.xz - uBaseBounds.xy) / max(vec2(1.0), uBaseBounds.zw - uBaseBounds.xy), 0.0, 1.0);
-             vec4 bSample = texture2D(uBaseElevMap, uvBase);
-             float normH = bSample.r + (bSample.g / 255.0);
-             float baseY = (bSample.a > 0.5) ? mix(uBaseYRange.x, uBaseYRange.y, clamp(normH, 0.0, 1.0)) : uBaseMeanY;
+             vec2 relUv = clamp((vGsWorldPos.xz - uBaseBounds.xy) / max(vec2(0.5), uBaseBounds.zw - uBaseBounds.xy), 0.0, 1.0);
+             vec2 gCoord = relUv * max(1.0, uBaseGridN - 1.0);
+             vec2 g0 = floor(gCoord);
+             vec2 gf = gCoord - g0;
+             float h00 = gsSampleBaseElevCell(g0);
+             float h10 = gsSampleBaseElevCell(g0 + vec2(1.0, 0.0));
+             float h01 = gsSampleBaseElevCell(g0 + vec2(0.0, 1.0));
+             float h11 = gsSampleBaseElevCell(g0 + vec2(1.0, 1.0));
+             float baseY = mix(mix(h00, h10, gf.x), mix(h01, h11, gf.x), gf.y);
              float dz = vGsWorldPos.y - baseY;
              float halfSpan = max(0.5, uElevMax);
              float elevT = clamp(0.5 + (dz / (halfSpan * 2.0)), 0.0, 1.0);
@@ -2959,6 +3207,21 @@
     controls.enableDamping = true;
     controls.dampingFactor = 0.06;
     controls.screenSpacePanning = true;
+    controls.mouseButtons = {
+      LEFT: THREE.MOUSE.ROTATE,
+      MIDDLE: THREE.MOUSE.ROTATE,
+      RIGHT: THREE.MOUSE.PAN,
+    };
+    controls.touches = {
+      ONE: THREE.TOUCH.ROTATE,
+      TWO: THREE.TOUCH.DOLLY_ROTATE,
+    };
+    renderer.domElement.addEventListener("mousedown", (e) => {
+      if (e.button === 1) e.preventDefault();
+    });
+    renderer.domElement.addEventListener("auxclick", (e) => {
+      if (e.button === 1) e.preventDefault();
+    });
 
     scene.add(new THREE.AmbientLight(0xffffff, 0.9));
     const hemi = new THREE.HemisphereLight(0xffffff, 0x475569, 0.45);
@@ -3026,127 +3289,402 @@
       tilesRenderer: null,
       loadedMesh: null,
       boundingSphere: null,
+      tilesCenter: [0, 0, 0],
+      tileUpMatrix: new THREE.Matrix4(),
+      _cancelLassoDrag: null,
+      _lassoHighlightTimer: null,
     };
 
     buildReferenceTerrainMesh(studioThree);
     buildStudioTransformGizmo(studioThree);
 
-    // Freehand 2D/3D Lasso Drag State for Scan Editing (Lasso Delete & Spatial Crop)
+    // Freehand 2D/3D Camera-Frustum Lasso Drag State (Default: Mark for Deletion, Middle-Wheel = Rotate, Esc = Cancel)
     const _lassoState = {
       dragging: false,
+      pointerId: null,
+      op: "add",
+      totalArcLen: 0,
       screenPts: [],
       downClient: { x: 0, y: 0 },
-    };
-
-    const pickStudio3DOrPlanePoint = (clientX, clientY, fallbackY = 0) => {
-      const hit = pickStudio3DPoint(clientX, clientY);
-      if (hit) return hit;
-      const rect = renderer.domElement.getBoundingClientRect();
-      mouse.x = ((clientX - rect.left) / rect.width) * 2 - 1;
-      mouse.y = -((clientY - rect.top) / rect.height) * 2 + 1;
-      raycaster.setFromCamera(mouse, camera);
-      const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -fallbackY);
-      const pt = new THREE.Vector3();
-      if (raycaster.ray.intersectPlane(plane, pt)) return pt;
-      return null;
+      chordOrbitActive: false,
+      chordLastX: 0,
+      chordLastY: 0,
     };
 
     const updateLassoSvgVisual = () => {
       const svg = document.getElementById("studioLassoSvg");
-      const poly = document.getElementById("studioLassoPolygon");
-      const line = document.getElementById("studioLassoPolyline");
+      const poly = document.getElementById("studioLassoPoly") || document.getElementById("studioLassoPolygon");
+      const line = document.getElementById("studioLassoLine") || document.getElementById("studioLassoPolyline");
       if (!svg || !poly || !line) return;
       if (!_lassoState.dragging || _lassoState.screenPts.length < 2) {
-        svg.classList.remove("active");
+        svg.classList.remove("active", "keep-mode", "sub-mode");
+        poly.setAttribute("points", "");
+        line.setAttribute("points", "");
         return;
       }
       svg.classList.add("active");
-      svg.classList.toggle("keep-mode", STATE.activeTool === "crop");
+      const isSub = _lassoState.op === "sub";
+      const isKeep = !isSub && STATE.cropMode === "keep_inside" && STATE.activeTool === "crop";
+      svg.classList.toggle("sub-mode", isSub);
+      svg.classList.toggle("keep-mode", isKeep);
       const ptsStr = _lassoState.screenPts.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" ");
       poly.setAttribute("points", ptsStr);
       line.setAttribute("points", ptsStr);
     };
 
+    const cancelActiveLassoDrag = (e = null) => {
+      if (!_lassoState.dragging && !_lassoState.chordOrbitActive) return;
+      if (_lassoState.pointerId !== null) {
+        try {
+          renderer.domElement.releasePointerCapture(_lassoState.pointerId);
+        } catch (_) {}
+      }
+      _lassoState.dragging = false;
+      _lassoState.pointerId = null;
+      _lassoState.screenPts = [];
+      _lassoState.totalArcLen = 0;
+      _lassoState.chordOrbitActive = false;
+      controls.enabled = true;
+      syncStudioControlsForTool();
+      updateLassoSvgVisual();
+    };
+    studioThree._cancelLassoDrag = cancelActiveLassoDrag;
+    studioThree._isLassoDragging = () => Boolean(_lassoState.dragging || _lassoState.chordOrbitActive);
+
+    const finalizeLassoStrokePoints = (ptsCopy, arcLen, strokeOp) => {
+      if (!ptsCopy || ptsCopy.length < 4 || arcLen < 18) return false;
+      const isKeep = STATE.cropMode === "keep_inside" && STATE.activeTool === "crop";
+      const isDelete = !isKeep;
+      STATE.cropMode = isDelete ? "delete_inside" : "keep_inside";
+      if (strokeOp === "sub" && (!STATE.lassoStrokes || STATE.lassoStrokes.length === 0)) {
+        showToast("Mark a region with Left-Drag first, then Alt+Drag to unmark.");
+        return true;
+      }
+      const stroke = buildStudioLassoFrustumStroke(ptsCopy, strokeOp);
+      if (!stroke) return false;
+      if (Array.isArray(STATE.lassoStrokes) && STATE.lassoStrokes.length > 0) {
+        STATE.lassoStrokes.push(stroke);
+      } else {
+        STATE.lassoStrokes = [stroke];
+      }
+      STATE.cropPolygonPoints = [];
+      STATE.measurePoints = [];
+      STATE.polygonLocked = true;
+      const selTris = rebuildLassoHighlight3D();
+      const totalRegions =
+        (Array.isArray(STATE.lassoStrokes) ? STATE.lassoStrokes.filter((s) => s.op !== "sub").length : 0) +
+        (Array.isArray(STATE.pendingCropPolygons) ? STATE.pendingCropPolygons.length : 0);
+      showToast(
+        selTris > 0
+          ? `${isDelete ? "Marked for Deletion" : "Marked to Keep"}: ${totalRegions} region${
+              totalRegions === 1 ? "" : "s"
+            } (${selTris.toLocaleString()} tris) · Mark more or press ${isDelete ? "Delete" : "Apply Crop"}`
+          : "No visible triangles inside lasso — zoom closer or uncheck 'Protect Occluded Background'"
+      );
+      if (isDelete) {
+        openLassoDeleteInspector({ armLasso: true });
+      } else {
+        openLassoKeepInspector({ armLasso: true });
+      }
+      return true;
+    };
+
+    const applyChordedMiddleOrbitDelta = (dx, dy) => {
+      if (!dx && !dy) return;
+      const el = renderer.domElement;
+      const h = Math.max(1, el.clientHeight || 600);
+      const rotSpeed = 2 * Math.PI * (controls.rotateSpeed || 1.0);
+      const dTheta = -(dx / h) * rotSpeed;
+      const dPhi = -(dy / h) * rotSpeed;
+      const offset = camera.position.clone().sub(controls.target);
+      const sph = new THREE.Spherical().setFromVector3(offset);
+      sph.theta += dTheta;
+      sph.phi = Math.max(0.02, Math.min(Math.PI - 0.02, sph.phi + dPhi));
+      offset.setFromSpherical(sph);
+      camera.position.copy(controls.target).add(offset);
+      camera.lookAt(controls.target);
+      controls.update();
+    };
+
+    // Suppress right-click context menu on canvas while First-Person Mode is active (or immediately after right-drag release)
+    let _lastFpRightDragTs = 0;
+    renderer.domElement.addEventListener("contextmenu", (e) => {
+      if ((STATE.activeView === "studio" && STATE.fpMode.active) || performance.now() - _lastFpRightDragTs < 400) {
+        e.preventDefault();
+      }
+    });
+
+    // Mouse Wheel adjusts First-Person movement speed smoothly (Unreal / Blender style)
+    renderer.domElement.addEventListener(
+      "wheel",
+      (e) => {
+        if (STATE.activeView !== "studio" || !STATE.fpMode.active) return;
+        e.preventDefault();
+        e.stopPropagation();
+        const factor = e.deltaY < 0 ? 1.16 : 1 / 1.16;
+        const nextSpeed = Math.max(0.5, Math.min(60.0, Number((STATE.fpMode.baseSpeed * factor).toFixed(2))));
+        STATE.fpMode.baseSpeed = nextSpeed;
+        syncFirstPersonHudUI();
+      },
+      { passive: false }
+    );
+
+    // Double-click on 3D surface in First-Person Mode teleports smoothly above that point
+    renderer.domElement.addEventListener("dblclick", (e) => {
+      if (STATE.activeView !== "studio" || !STATE.fpMode.active) return;
+      if (STATE.activeTool !== "orbit" && STATE.activeTool !== "align_merge") return;
+      const rect = renderer.domElement.getBoundingClientRect();
+      const qx = document.pointerLockElement === renderer.domElement ? rect.left + rect.width * 0.5 : e.clientX;
+      const qy = document.pointerLockElement === renderer.domElement ? rect.top + rect.height * 0.5 : e.clientY;
+      const hit = pickStudio3DHit(qx, qy);
+      if (hit && hit.rawPoint) {
+        const hOffset = STATE.fpMode.locomotion === "walk" ? STATE.fpMode.eyeHeight : 1.75;
+        camera.position.set(hit.rawPoint.x, hit.rawPoint.y + hOffset, hit.rawPoint.z);
+        STATE.fpMode.velX = 0;
+        STATE.fpMode.velY = 0;
+        STATE.fpMode.velZ = 0;
+        if (STATE.fpMode.locomotion === "walk") STATE.fpMode.onGround = true;
+        showToast("已瞬移至目標位置 (Teleported)");
+      }
+    });
+
     // Pointer click & live rubberband preview handler for 3D Measurements & Tools
     let downPos = { x: 0, y: 0 };
     renderer.domElement.addEventListener("pointerdown", (e) => {
       downPos = { x: e.clientX, y: e.clientY };
+      if (
+        STATE.activeView === "studio" &&
+        STATE.multiAlign.active &&
+        STATE.activeTool === "align_merge" &&
+        document.pointerLockElement !== renderer.domElement &&
+        e.button === 0
+      ) {
+        if (handleGizmoPointerDown(e)) return;
+      }
+      if (STATE.activeView === "studio" && STATE.fpMode.active) {
+        if (document.pointerLockElement !== renderer.domElement && (e.button === 0 || e.button === 2 || e.pointerType === "touch")) {
+          if (e.button === 2) _lastFpRightDragTs = performance.now();
+          STATE.fpMode.dragLooking = true;
+          STATE.fpMode.lookPointerId = e.pointerId;
+          STATE.fpMode.dragLastX = e.clientX;
+          STATE.fpMode.dragLastY = e.clientY;
+          STATE.fpMode.dragDist = 0;
+          try {
+            renderer.domElement.setPointerCapture(e.pointerId);
+          } catch (_) {}
+        }
+        return;
+      }
       if (STATE.activeView === "studio" && STATE.multiAlign.active && STATE.activeTool === "align_merge") {
         if (handleGizmoPointerDown(e)) return;
       }
+      // Multi-touch safety: if a second finger touches down while lassoing, cancel lasso so pinch-zoom/orbit works
+      if (_lassoState.dragging && e.pointerId !== _lassoState.pointerId) {
+        cancelActiveLassoDrag(e);
+        return;
+      }
+      // Middle mouse button (e.button === 1) ALWAYS orbits via OrbitControls!
+      if (e.button === 1) {
+        if (_lassoState.dragging) {
+          cancelActiveLassoDrag(e);
+        }
+        return;
+      }
       if (
         e.button === 0 &&
-        !e.altKey &&
         !e.ctrlKey &&
+        !e.metaKey &&
         STATE.activeView === "studio" &&
         (STATE.activeTool === "crop_delete" || STATE.activeTool === "crop") &&
         STATE.lassoInputMethod !== "polygon"
       ) {
+        syncStudioControlsForTool();
         const rect = renderer.domElement.getBoundingClientRect();
         _lassoState.dragging = true;
+        _lassoState.pointerId = e.pointerId;
+        _lassoState.op = e.altKey ? "sub" : "add";
+        _lassoState.totalArcLen = 0;
+        _lassoState.chordOrbitActive = false;
         _lassoState.downClient = { x: e.clientX, y: e.clientY };
         _lassoState.screenPts = [{ x: e.clientX - rect.left, y: e.clientY - rect.top, cx: e.clientX, cy: e.clientY }];
-        controls.enabled = false;
+        try {
+          renderer.domElement.setPointerCapture(e.pointerId);
+        } catch (_) {}
         updateLassoSvgVisual();
       }
     });
+
+    renderer.domElement.addEventListener("pointercancel", (e) => {
+      if (STATE.fpMode?.dragLooking && (STATE.fpMode.lookPointerId == null || e.pointerId === STATE.fpMode.lookPointerId)) {
+        STATE.fpMode.dragLooking = false;
+        STATE.fpMode.lookPointerId = null;
+      }
+      if ((_lassoState.dragging || _lassoState.chordOrbitActive) && (_lassoState.pointerId === null || e.pointerId === _lassoState.pointerId)) {
+        cancelActiveLassoDrag(e);
+      }
+    });
+
+    renderer.domElement.addEventListener("lostpointercapture", (e) => {
+      if (_lassoState.dragging && (_lassoState.pointerId === null || e.pointerId === _lassoState.pointerId)) {
+        cancelActiveLassoDrag(e);
+      }
+    });
+
     renderer.domElement.addEventListener("pointerup", (e) => {
-      if (_lassoState.dragging) {
-        _lassoState.dragging = false;
-        controls.enabled = true;
-        const svg = document.getElementById("studioLassoSvg");
-        if (svg) svg.classList.remove("active");
-        const dragDist = Math.hypot(e.clientX - _lassoState.downClient.x, e.clientY - _lassoState.downClient.y);
-        if (_lassoState.screenPts.length >= 5 && dragDist > 12) {
-          // Subsample screen lasso points into 3D world polygon
-          const step = Math.max(1, Math.floor(_lassoState.screenPts.length / 28));
-          const sampledScreen = [];
-          for (let i = 0; i < _lassoState.screenPts.length; i += step) {
-            sampledScreen.push(_lassoState.screenPts[i]);
+      if (handleGizmoPointerUp(e)) return;
+      if (STATE.activeView === "studio" && STATE.fpMode.active) {
+        const wasDragDist = STATE.fpMode.dragDist || 0;
+        if (e.button === 2) _lastFpRightDragTs = performance.now();
+        if (STATE.fpMode.dragLooking && (STATE.fpMode.lookPointerId == null || e.pointerId === STATE.fpMode.lookPointerId)) {
+          STATE.fpMode.dragLooking = false;
+          STATE.fpMode.lookPointerId = null;
+          try {
+            renderer.domElement.releasePointerCapture(e.pointerId);
+          } catch (_) {}
+        }
+        if (e.button !== 0 && e.pointerType !== "touch") return;
+        const isLocked = document.pointerLockElement === renderer.domElement;
+        if (!isLocked && wasDragDist > 5) return;
+        if (isLocked) {
+          if (STATE.activeTool && STATE.activeTool !== "orbit" && STATE.activeTool !== "align_merge") {
+            const rect = renderer.domElement.getBoundingClientRect();
+            handleStudioCanvasClick({
+              clientX: rect.left + rect.width * 0.5,
+              clientY: rect.top + rect.height * 0.5,
+            });
           }
-          let lastValidY = Number(studioThree.grid?.position?.y) || 0;
-          const worldPts = [];
-          sampledScreen.forEach((sp) => {
-            const wp = pickStudio3DOrPlanePoint(sp.cx, sp.cy, lastValidY);
-            if (wp) {
-              lastValidY = wp.y;
-              if (!worldPts.length || worldPts[worldPts.length - 1].distanceTo(wp) > 0.15) {
-                worldPts.push(wp.clone());
-              }
-            }
-          });
-          if (worldPts.length >= 3) {
-            STATE.maskBoundaryPoints = worldPts;
-            STATE.measurePoints = [];
-            STATE.polygonLocked = true;
-            const isDelete = STATE.activeTool === "crop_delete";
-            STATE.cropMode = isDelete ? "delete_inside" : "keep_inside";
-            drawLassoSelection3D(worldPts, isDelete);
-            showToast(
-              isDelete
-                ? `Lasso Delete region selected (${worldPts.length} pts) — click 'Delete Selected Part' to apply`
-                : `Lasso Crop region selected (${worldPts.length} pts) — click 'Crop & Keep Inside' to apply`
-            );
-            openOptimizerInspector(STATE.cropMode);
-            return;
+          return;
+        }
+        // Unlocked single left-click: allow Multi-Align layer selection when in align_merge, engage Pointer Lock on desktop mouse in orbit, or place measurement point
+        if (STATE.multiAlign.active && STATE.activeTool === "align_merge") {
+          if (handleMultiAlignCanvasClick(e)) return;
+          return;
+        }
+        if (!STATE.activeTool || STATE.activeTool === "orbit") {
+          if (e.pointerType !== "touch") {
+            requestStudioPointerLock();
           }
+        } else {
+          handleStudioCanvasClick(e);
+        }
+        return;
+      }
+      if (_lassoState.chordOrbitActive && (e.buttons & 4) === 0) {
+        _lassoState.chordOrbitActive = false;
+        if (_lassoState.pointerId !== null && (e.buttons & 1) === 0) {
+          cancelActiveLassoDrag(e);
+          return;
         }
       }
+      if (_lassoState.dragging && e.button === 0 && (_lassoState.pointerId === null || e.pointerId === _lassoState.pointerId)) {
+        const ptsCopy = _lassoState.screenPts.slice();
+        const arcLen = _lassoState.totalArcLen;
+        const strokeOp = _lassoState.op;
+        cancelActiveLassoDrag(e);
+
+        if (finalizeLassoStrokePoints(ptsCopy, arcLen, strokeOp)) {
+          return;
+        }
+        // Never fall through to single-click point placement if user dragged the cursor at all
+        if (arcLen >= 6) return;
+      }
       if (handleGizmoPointerUp(e)) return;
+      if (e.button !== 0) return;
       if (Math.hypot(e.clientX - downPos.x, e.clientY - downPos.y) > 6) return;
       if (STATE.activeView === "studio" && STATE.multiAlign.active && STATE.activeTool === "align_merge") {
         if (handleMultiAlignCanvasClick(e)) return;
       }
       handleStudioCanvasClick(e);
     });
+
     renderer.domElement.addEventListener("pointermove", (e) => {
       if (STATE.activeView !== "studio") return;
+      if (
+        STATE.multiAlign.active &&
+        STATE.activeTool === "align_merge" &&
+        document.pointerLockElement !== renderer.domElement &&
+        !STATE.fpMode.dragLooking
+      ) {
+        if (handleGizmoPointerMove(e)) return;
+      }
+      if (STATE.fpMode.active) {
+        if (document.pointerLockElement === renderer.domElement) {
+          // Handled via document mousemove for raw movementX / movementY
+          return;
+        }
+        const isTrackedTouch = e.pointerType === "touch" && STATE.fpMode.lookPointerId === e.pointerId;
+        const isSamePointer = STATE.fpMode.lookPointerId == null || STATE.fpMode.lookPointerId === e.pointerId;
+        if (STATE.fpMode.dragLooking && isSamePointer && ((e.buttons & 3) !== 0 || isTrackedTouch)) {
+          if ((e.buttons & 2) !== 0) _lastFpRightDragTs = performance.now();
+          const dx = e.clientX - STATE.fpMode.dragLastX;
+          const dy = e.clientY - STATE.fpMode.dragLastY;
+          STATE.fpMode.dragLastX = e.clientX;
+          STATE.fpMode.dragLastY = e.clientY;
+          STATE.fpMode.dragDist += Math.hypot(dx, dy);
+          applyFirstPersonLookDelta(dx, dy, e.pointerType === "touch" ? 0.0034 : 0.0028);
+          return;
+        }
+        if (isSamePointer) {
+          STATE.fpMode.dragLooking = false;
+          STATE.fpMode.lookPointerId = null;
+        }
+      }
+      if (_lassoState.chordOrbitActive) {
+        if ((e.buttons & 4) !== 0) {
+          applyChordedMiddleOrbitDelta(e.clientX - _lassoState.chordLastX, e.clientY - _lassoState.chordLastY);
+          _lassoState.chordLastX = e.clientX;
+          _lassoState.chordLastY = e.clientY;
+          return;
+        }
+        _lassoState.chordOrbitActive = false;
+        if ((e.buttons & 1) === 0) {
+          cancelActiveLassoDrag(e);
+          return;
+        }
+        if (
+          STATE.activeView === "studio" &&
+          (STATE.activeTool === "crop_delete" || STATE.activeTool === "crop") &&
+          STATE.lassoInputMethod !== "polygon"
+        ) {
+          const rect = renderer.domElement.getBoundingClientRect();
+          _lassoState.dragging = true;
+          _lassoState.op = e.altKey ? "sub" : "add";
+          _lassoState.totalArcLen = 0;
+          _lassoState.screenPts = [{ x: e.clientX - rect.left, y: e.clientY - rect.top, cx: e.clientX, cy: e.clientY }];
+          updateLassoSvgVisual();
+          return;
+        }
+      }
       if (_lassoState.dragging) {
+        if (_lassoState.pointerId !== null && e.pointerId !== _lassoState.pointerId) return;
+        // If user presses Middle Mouse Wheel ((e.buttons & 4) !== 0) mid-drag, commit any valid loop & immediately rotate!
+        if (e.pointerType === "mouse" && (e.buttons & 4) !== 0) {
+          const ptsCopy = _lassoState.screenPts.slice();
+          const arcLen = _lassoState.totalArcLen;
+          const strokeOp = _lassoState.op;
+          _lassoState.dragging = false;
+          _lassoState.screenPts = [];
+          _lassoState.totalArcLen = 0;
+          updateLassoSvgVisual();
+          if (ptsCopy.length >= 4 && arcLen >= 24) {
+            finalizeLassoStrokePoints(ptsCopy, arcLen, strokeOp);
+          }
+          _lassoState.chordOrbitActive = true;
+          _lassoState.chordLastX = e.clientX;
+          _lassoState.chordLastY = e.clientY;
+          return;
+        }
+        if (e.pointerType === "mouse" && (e.buttons & 1) === 0) {
+          cancelActiveLassoDrag(e);
+          return;
+        }
         const rect = renderer.domElement.getBoundingClientRect();
         const nx = e.clientX - rect.left;
         const ny = e.clientY - rect.top;
         const last = _lassoState.screenPts[_lassoState.screenPts.length - 1];
-        if (!last || Math.hypot(nx - last.x, ny - last.y) >= 5) {
+        const seg = last ? Math.hypot(nx - last.x, ny - last.y) : 999;
+        if (!last || seg >= 4) {
+          if (last) _lassoState.totalArcLen += seg;
           _lassoState.screenPts.push({ x: nx, y: ny, cx: e.clientX, cy: e.clientY });
           updateLassoSvgVisual();
         }
@@ -3155,12 +3693,26 @@
       if (STATE.multiAlign.active && STATE.activeTool === "align_merge") {
         if (handleGizmoPointerMove(e)) return;
       }
+      // Do not run hover raycasts while orbiting/panning with mouse buttons held down
+      if ((e.buttons & 7) !== 0) return;
+
       if (STATE.activeTool === "laser") {
         handleStudioLaserMove(e);
-      } else if (STATE.activeTool === "distance" && STATE.measurePoints.length === 1) {
+      } else if (STATE.activeTool === "coordinates") {
+        handleStudioCoordinateMove(e);
+      } else if (STATE.activeTool === "angle") {
+        handleStudioAngleMove(e);
+      } else if (STATE.activeTool === "distance") {
         const hoverPt = pickStudio3DPoint(e.clientX, e.clientY);
         if (hoverPt) {
-          renderDistanceVisuals(hoverPt, null);
+          const twd = localToTwd97(hoverPt);
+          const lbl = document.getElementById("lblLastPickedCoord");
+          if (lbl) {
+            lbl.textContent = formatScanCoordReadout(twd, STATE.activeScan);
+          }
+          if (STATE.measurePoints.length === 1) {
+            renderDistanceVisuals(hoverPt, null);
+          }
         }
       } else if (
         (STATE.activeTool === "volume" ||
@@ -3179,17 +3731,32 @@
             const lbl = document.getElementById("lblLastPickedCoord");
             if (lbl) {
               const twd = localToTwd97(hoverPt);
-              lbl.textContent = `SECTION A→B: ${dAB.toFixed(2)}m | E: ${twd.e.toFixed(2)}m, N: ${twd.n.toFixed(2)}m, H: +${twd.h.toFixed(2)}m`;
+              lbl.textContent = `SECTION A→B: ${dAB.toFixed(2)}m | ${formatScanCoordReadout(twd, STATE.activeScan)}`;
             }
           }
         }
       }
     });
 
-    const animate = () => {
+    renderer.domElement.addEventListener("pointerleave", () => {
+      if (STATE.activeView !== "studio") return;
+      if (
+        STATE.activeTool === "coordinates" ||
+        STATE.activeTool === "laser" ||
+        (STATE.activeTool === "angle" && STATE.measurePoints.length === 0)
+      ) {
+        clearTempDistanceVisuals();
+      }
+    });
+
+    const animate = (nowMs) => {
       requestAnimationFrame(animate);
       if (STATE.activeView !== "studio") return;
-      controls.update();
+      if (STATE.fpMode.active) {
+        updateFirstPersonCamera(nowMs || performance.now());
+      } else {
+        controls.update();
+      }
       camera.updateMatrixWorld();
       if (studioThree.tilesRenderer && studioThree.modelPivot.visible) {
         studioThree.tilesRenderer.update();
@@ -3268,6 +3835,9 @@
     const scan = STATE.scans.find((s) => s.scan_id === scanId) || STATE.scans[0];
     if (!scan || !studioThree) return;
 
+    if (STATE.fpMode?.active && typeof exitFirstPersonMode === "function") {
+      exitFirstPersonMode(true);
+    }
     if (STATE.multiAlign?.active && typeof exitMultiScanAlignMode === "function") {
       exitMultiScanAlignMode(false);
     }
@@ -3275,23 +3845,47 @@
     STATE.activeScanId = scan.scan_id;
     STATE.activeScan = scan;
     if (STATE.activeProjectGroup !== "__all__") {
-      STATE.activeProjectGroup = scan.project_group || "QuChi Dam";
+      STATE.activeProjectGroup = scan.project_group || "Unassigned Site";
     }
 
     // Filter active scan dropdown strictly to this project's scans (Fix #4)
-    populateProjectScanDropdowns(scan.project_group || "QuChi Dam", scan.scan_id);
+    populateProjectScanDropdowns(scan.project_group || "Unassigned Site", scan.scan_id);
 
     const sel = document.getElementById("studioScanSelect");
     if (sel) sel.value = scan.scan_id;
 
     const metricsEl = document.getElementById("studioScanMetrics");
     if (metricsEl) {
-      metricsEl.textContent = `TWD97 · TWVD2001 · ${formatCoveredAreaM2(scan)}`;
+      metricsEl.textContent = `${getScanCrsDisplayLabel(scan)} · ${formatCoveredAreaM2(scan)}`;
+    }
+
+    const pickedEl = document.getElementById("lblLastPickedCoord");
+    if (pickedEl) {
+      if (inferActiveScanCrsCode(scan) === "LOCAL_ORIGIN") {
+        pickedEl.textContent = `Local Origin · Click 3D surface to inspect`;
+      } else {
+        pickedEl.textContent = formatScanCoordReadout(
+          {
+            e: Number(scan.twd97_e || 0),
+            n: Number(scan.twd97_n || 0),
+            h: Number(scan.twd97_h || 0),
+          },
+          scan
+        );
+      }
     }
 
     const dlBtn = document.getElementById("btnStudioDownloadObj");
     if (dlBtn) {
       dlBtn.href = scan.download_obj_url || `/api/download?scan_id=${scan.scan_id}&type=obj`;
+    }
+
+    // Clear any stale scan-editing lasso selection & staged preview when loading a scan
+    if (typeof clearLassoSelectionState === "function") {
+      clearLassoSelectionState();
+    }
+    if (typeof resetStagedEditsForScan === "function") {
+      resetStagedEditsForScan(scan);
     }
 
     // Teardown previous tilesRenderer / mesh
@@ -3304,6 +3898,9 @@
       studioThree.modelPivot.remove(studioThree.modelPivot.children[0]);
     }
     studioThree.modelPivot.rotation.set(0, 0, 0);
+    studioThree.modelPivot.updateMatrixWorld(true);
+    studioThree.tilesCenter = [0, 0, 0];
+    studioThree.tileUpMatrix = new THREE.Matrix4();
     if (studioThree.fallbackGroup) studioThree.fallbackGroup.visible = false;
 
     startScanLoader(studioThree, "studio", scan.name);
@@ -3325,7 +3922,9 @@
           box.getBoundingSphere(sphere);
           if (sphere.radius > 0) {
             model.position.set(-sphere.center.x, -sphere.center.y, -sphere.center.z);
+            studioThree.tilesCenter = [sphere.center.x, sphere.center.y, sphere.center.z];
           }
+          studioThree.tileUpMatrix = new THREE.Matrix4();
           if (studioThree.grid) {
             studioThree.grid.position.y = Number.isFinite(box.min.y)
               ? box.min.y - sphere.center.y - 0.3
@@ -3359,13 +3958,7 @@
     } else if (window.TilesRenderer) {
       const tr = new window.TilesRenderer(streamUrl);
       tr.fetchOptions = { mode: "cors" };
-      tr.preprocessURL = (uri) => {
-        let u = uri;
-        if (STATE.shareToken && !u.includes("share=")) {
-          u += (u.includes("?") ? "&" : "?") + `share=${encodeURIComponent(STATE.shareToken)}`;
-        }
-        return u;
-      };
+      tr.preprocessURL = (uri) => preprocessTileStreamUrl(uri, streamUrl);
       tr.setCamera(studioThree.camera);
       tr.setResolutionFromRenderer(studioThree.camera, studioThree.renderer);
 
@@ -3383,6 +3976,8 @@
         const sphere = new THREE.Sphere();
         if (computeTilesetContentSphere(tr, sphere)) {
           tr.group.position.set(-sphere.center.x, -sphere.center.y, -sphere.center.z);
+          studioThree.tilesCenter = [sphere.center.x, sphere.center.y, sphere.center.z];
+          studioThree.tileUpMatrix = tr._upRotationMatrix ? tr._upRotationMatrix.clone() : new THREE.Matrix4();
           // Z-up TWD97 tilesets: rotate -90 deg on X so elevation points +Y
           studioThree.modelPivot.rotation.set(THREE.MathUtils.degToRad(270), 0, 0);
           studioThree.modelPivot.updateMatrixWorld(true);
@@ -3409,8 +4004,21 @@
           });
           studioThree.camera.updateMatrixWorld();
           tr.update();
+          if (typeof applyStagedEditsToStudioMeshes === "function" && hasStagedMeshEditsForActiveScan()) {
+            applyStagedEditsToStudioMeshes(false);
+          }
           studioThree.renderer.render(studioThree.scene, studioThree.camera);
           syncTilesLoaderProgress(studioThree, "studio");
+          if (
+            (Array.isArray(STATE.lassoStrokes) && STATE.lassoStrokes.length > 0) ||
+            (Array.isArray(STATE.pendingCropPolygons) && STATE.pendingCropPolygons.length > 0) ||
+            (Array.isArray(STATE.cropPolygonPoints) && STATE.cropPolygonPoints.length >= 3)
+          ) {
+            clearTimeout(studioThree._lassoHighlightTimer);
+            studioThree._lassoHighlightTimer = setTimeout(() => {
+              rebuildLassoHighlight3D();
+            }, 80);
+          }
         }
       });
 
@@ -3426,29 +4034,186 @@
     renderCommentPins3D();
   }
 
+  function computeStudioEffectiveBoundingRadius() {
+    if (STATE.multiAlign?.active && Array.isArray(STATE.multiAlign.layers) && STATE.multiAlign.layers.length > 0) {
+      let maxExtent = 35;
+      STATE.multiAlign.layers.forEach((l) => {
+        if (!l.visible) return;
+        const offsetDist = Math.hypot(Number(l.tx) || 0, Number(l.ty) || 0, Number(l.tz) || 0);
+        const lr = Number(l._sphereRadius) || 45;
+        if (offsetDist + lr > maxExtent) maxExtent = offsetDist + lr;
+      });
+      return maxExtent;
+    }
+    return Number(studioThree?.boundingSphere?.radius) || 58;
+  }
+
   function frameStudioCamera() {
     if (!studioThree) return;
-    const rawR = Number(studioThree.boundingSphere?.radius) || 58;
-    const r = Math.max(22, Math.min(250, rawR));
-    studioThree.controls.target.set(0, 0, 0);
-    studioThree.camera.position.set(r * 0.7, r * 0.56, r * 0.8);
-    studioThree.camera.lookAt(0, 0, 0);
+    if (STATE.fpMode?.active && typeof exitFirstPersonMode === "function") {
+      exitFirstPersonMode(true);
+    }
+    let cx = 0, cy = 0, cz = 0;
+    let rawR = Number(studioThree?.boundingSphere?.radius) || 58;
+    if (STATE.multiAlign?.active && Array.isArray(STATE.multiAlign.layers)) {
+      const visLayers = STATE.multiAlign.layers.filter((l) => l && l.visible);
+      if (visLayers.length > 0) {
+        visLayers.forEach((l) => {
+          cx += Number(l.tx) || 0;
+          cy += Number(l.ty) || 0;
+          cz += Number(l.tz) || 0;
+        });
+        cx /= visLayers.length;
+        cy /= visLayers.length;
+        cz /= visLayers.length;
+        let maxR = 35;
+        visLayers.forEach((l) => {
+          const d = Math.hypot((Number(l.tx) || 0) - cx, (Number(l.ty) || 0) - cy, (Number(l.tz) || 0) - cz);
+          const lr = Math.min(140, Number(l._sphereRadius) || 48);
+          if (d + lr > maxR) maxR = d + lr;
+        });
+        rawR = maxR;
+      }
+    }
+    const r = Math.max(22, Math.min(280, rawR));
+    studioThree.controls.target.set(cx, cy, cz);
+    studioThree.camera.position.set(cx + r * 0.7, cy + r * 0.56, cz + r * 0.8);
+    studioThree.camera.lookAt(cx, cy, cz);
     studioThree.controls.update();
+    studioThree.camera.updateMatrixWorld(true);
+    if (STATE.multiAlign?.active && typeof updateMultiAlignLayersEachFrame === "function") {
+      updateMultiAlignLayersEachFrame();
+    }
   }
 
   document.getElementById("btnStudioResetCamera")?.addEventListener("click", frameStudioCamera);
 
-  // Convert local Three.js (x, y, z) to TWD97 (121) + TWVD2001 (E, N, H)
-  function localToTwd97(pt) {
-    const s = STATE.activeScan || { twd97_e: 304952.656, twd97_n: 2757084.875, twd97_h: 43.18 };
+  function getScanCrsDisplayLabel(scanObj) {
+    const s = scanObj || STATE.activeScan || {};
+    const code = inferActiveScanCrsCode(s);
+    if (code === "LOCAL_ORIGIN") return "Local Origin (X/Y/Z m)";
+    if (code === "WGS84_UTM50N") return "WGS84 UTM 50N";
+    if (code === "WGS84_UTM51N") return "WGS84 UTM 51N";
+    if (code === "TWD97_119_TWVD2001") return "TWD97 (119) + TWVD2001";
+    const raw = String(s.crs || "").trim();
+    if (raw && !raw.toUpperCase().includes("3826") && !raw.toUpperCase().includes("TWD97")) {
+      return raw;
+    }
+    return "TWD97 (121) + TWVD2001";
+  }
+
+  function formatScanCoordReadout(twd, scanObj = null) {
+    const s = scanObj || STATE.activeScan || {};
+    const isMulti = Boolean(STATE.multiAlign?.active);
+    const code = isMulti ? "TWD97_121_TWVD2001" : inferActiveScanCrsCode(s);
+    const eVal = Number(twd?.e || 0);
+    const nVal = Number(twd?.n || 0);
+    const hVal = Number(twd?.h || 0);
+    const hSign = hVal >= 0 ? "+" : "";
+    if (code === "LOCAL_ORIGIN") {
+      return `X: ${eVal.toFixed(2)}m, Y: ${nVal.toFixed(2)}m, Z: ${hSign}${hVal.toFixed(2)}m`;
+    }
+    if (code.startsWith("WGS84_UTM")) {
+      return `UTM E: ${eVal.toFixed(2)}m, N: ${nVal.toFixed(2)}m, H: ${hSign}${hVal.toFixed(2)}m`;
+    }
+    return `E: ${eVal.toFixed(2)}m, N: ${nVal.toFixed(2)}m, H: ${hSign}${hVal.toFixed(2)}m`;
+  }
+
+  // Analytical 2D conformal Jacobian (rotZ, scaleXY) from srcDef -> tgtDef at (latDeg, lonDeg)
+  function computeConformalJacobianJS(latDeg, lonDeg, srcParams, tgtParams) {
+    if (!Number.isFinite(latDeg) || !Number.isFinite(lonDeg) || (Math.abs(latDeg) < 1e-5 && Math.abs(lonDeg) < 1e-5)) {
+      return { rotZ: 0, scaleXY: 1.0 };
+    }
+    const dLat = 20.0 / 110760.0;
+    const dLon = 20.0 / Math.max(10000.0, 111320.0 * Math.cos((latDeg * Math.PI) / 180.0));
+    const s0 = wgs84ToTransverseMercatorJS(latDeg, lonDeg, srcParams.lon0, srcParams.fe, srcParams.k0, srcParams.fInv);
+    const sE = wgs84ToTransverseMercatorJS(latDeg, lonDeg + dLon, srcParams.lon0, srcParams.fe, srcParams.k0, srcParams.fInv);
+    const sN = wgs84ToTransverseMercatorJS(latDeg + dLat, lonDeg, srcParams.lon0, srcParams.fe, srcParams.k0, srcParams.fInv);
+    const t0 = wgs84ToTransverseMercatorJS(latDeg, lonDeg, tgtParams.lon0, tgtParams.fe, tgtParams.k0, tgtParams.fInv);
+    const tE = wgs84ToTransverseMercatorJS(latDeg, lonDeg + dLon, tgtParams.lon0, tgtParams.fe, tgtParams.k0, tgtParams.fInv);
+    const tN = wgs84ToTransverseMercatorJS(latDeg + dLat, lonDeg, tgtParams.lon0, tgtParams.fe, tgtParams.k0, tgtParams.fInv);
+
+    const dsx1 = sE.e - s0.e, dsy1 = sE.n - s0.n;
+    const dsx2 = sN.e - s0.e, dsy2 = sN.n - s0.n;
+    const dtx1 = tE.e - t0.e, dty1 = tE.n - t0.n;
+    const dtx2 = tN.e - t0.e, dty2 = tN.n - t0.n;
+    const det = dsx1 * dsy2 - dsy1 * dsx2;
+    if (Math.abs(det) < 1e-9) return { rotZ: 0, scaleXY: 1.0 };
+    const j11 = (dtx1 * dsy2 - dtx2 * dsy1) / det;
+    const j21 = (dty1 * dsy2 - dty2 * dsy1) / det;
+    const scaleXY = Math.hypot(j11, j21);
+    const rotZ = Math.atan2(j21, j11);
     return {
-      e: Number((s.twd97_e + pt.x).toFixed(3)),
-      n: Number((s.twd97_n - pt.z).toFixed(3)),
-      h: Number((s.twd97_h + pt.y).toFixed(3)),
+      rotZ: Number.isFinite(rotZ) ? rotZ : 0,
+      scaleXY: Number.isFinite(scaleXY) && scaleXY > 0.5 && scaleXY < 2.0 ? scaleXY : 1.0,
     };
   }
 
-  function pickStudio3DPoint(clientX, clientY) {
+  // Convert local Three.js (x, y, z) to active scan CRS (E/X, N/Y, H/Z) using true tilesCenter
+  function localToTwd97(pt) {
+    if (STATE.multiAlign?.active && STATE.multiAlign?.refCenter) {
+      const rc = STATE.multiAlign.refCenter;
+      return {
+        e: Number((Number(rc.x || 0) + pt.x).toFixed(3)),
+        n: Number((Number(rc.y || 0) - pt.z).toFixed(3)),
+        h: Number((Number(rc.z || 0) + pt.y).toFixed(3)),
+      };
+    }
+    const s = STATE.activeScan || {};
+    const metaE = s.twd97_e !== undefined && s.twd97_e !== null ? Number(s.twd97_e) : 0;
+    const metaN = s.twd97_n !== undefined && s.twd97_n !== null ? Number(s.twd97_n) : 0;
+    const metaH = s.twd97_h !== undefined && s.twd97_h !== null ? Number(s.twd97_h) : 0;
+
+    const tc = studioThree?.tilesCenter;
+    const isTilesetZUp = Boolean(
+      studioThree?.tilesRenderer &&
+        Array.isArray(tc) &&
+        tc.length >= 3 &&
+        Math.abs(studioThree?.modelPivot?.rotation?.x || 0) > 0.1
+    );
+    if (isTilesetZUp) {
+      const tcNorm = Math.hypot(tc[0], tc[1], tc[2]);
+      // Non-ECEF projected or local tileset coordinates
+      if (tcNorm > 1e-5 && tcNorm < 4000000) {
+        const dx = pt.x;
+        const dy = -pt.z;
+        const dz = pt.y;
+        // Unwrapped UTM51N tileset paired with TWD97 scan metadata -> apply analytical conformal Jacobian
+        if (tc[0] > 345000 && tc[0] <= 415000 && metaE >= 150000 && metaE <= 345000) {
+          const jac = computeConformalJacobianJS(
+            Number(s.lat || 25.02),
+            Number(s.lon || 121.54),
+            { lon0: 123.0, fe: 500000.0, k0: 0.9996, fInv: 298.257223563 },
+            { lon0: 121.0, fe: 250000.0, k0: 0.9999, fInv: 298.257222101 }
+          );
+          const cosR = Math.cos(jac.rotZ) * jac.scaleXY;
+          const sinR = Math.sin(jac.rotZ) * jac.scaleXY;
+          const baseZ = tc[2] < -50 && metaH > -50 ? metaH : tc[2];
+          return {
+            e: Number((metaE + cosR * dx - sinR * dy).toFixed(3)),
+            n: Number((metaN + sinR * dx + cosR * dy).toFixed(3)),
+            h: Number((baseZ + dz).toFixed(3)),
+          };
+        }
+        const baseZ = tc[2] < -50 && metaH > -50 ? metaH : tc[2];
+        return {
+          e: Number((tc[0] + dx).toFixed(3)),
+          n: Number((tc[1] + dy).toFixed(3)),
+          h: Number((baseZ + dz).toFixed(3)),
+        };
+      }
+    }
+
+    return {
+      e: Number((metaE + pt.x).toFixed(3)),
+      n: Number((metaN - pt.z).toFixed(3)),
+      h: Number((metaH + pt.y).toFixed(3)),
+    };
+  }
+
+  const _pickNormalMat = new THREE.Matrix3();
+
+  function pickStudio3DHit(clientX, clientY) {
     if (!studioThree) return null;
     const rect = studioThree.renderer.domElement.getBoundingClientRect();
     studioThree.mouse.x = ((clientX - rect.left) / rect.width) * 2 - 1;
@@ -3458,31 +4223,53 @@
     const targets = [];
     if (studioThree.modelPivot && studioThree.modelPivot.visible) {
       studioThree.modelPivot.traverse((c) => {
-        if (c.isMesh && c.visible) targets.push(c);
+        if (c.isMesh && isMeshVisibleUnderRoot(c, studioThree.modelPivot)) targets.push(c);
       });
     }
     if (studioThree.multiAlignGroup && studioThree.multiAlignGroup.visible) {
       studioThree.multiAlignGroup.traverse((c) => {
-        if (c.isMesh && c.visible && !c.userData?.isAlignBoxHelper) targets.push(c);
+        if (c.isMesh && isMeshVisibleUnderRoot(c, studioThree.multiAlignGroup) && !c.userData?.isAlignBoxHelper) {
+          targets.push(c);
+        }
       });
     }
     if (studioThree.fallbackGroup && studioThree.fallbackGroup.visible) {
       studioThree.fallbackGroup.traverse((c) => {
-        if (c.isMesh && c.visible) targets.push(c);
+        if (c.isMesh && isMeshVisibleUnderRoot(c, studioThree.fallbackGroup)) targets.push(c);
       });
     }
 
     const hits = studioThree.raycaster.intersectObjects(targets, true);
     if (hits.length > 0) {
-      const p = hits[0].point.clone();
+      const h0 = hits[0];
+      const rawPoint = h0.point.clone();
+      const p = rawPoint.clone();
       if (STATE.snapEnabled) {
         p.x = Math.round(p.x * 20) / 20;
         p.y = Math.round(p.y * 20) / 20;
         p.z = Math.round(p.z * 20) / 20;
       }
-      return p;
+      const normal = new THREE.Vector3(0, 1, 0);
+      if (h0.face && h0.object) {
+        try {
+          _pickNormalMat.getNormalMatrix(h0.object.matrixWorld);
+          normal.copy(h0.face.normal).applyMatrix3(_pickNormalMat).normalize();
+        } catch (_) {}
+      }
+      return {
+        point: p,
+        rawPoint,
+        normal,
+        distance: h0.distance,
+        object: h0.object,
+      };
     }
     return null;
+  }
+
+  function pickStudio3DPoint(clientX, clientY) {
+    const hit = pickStudio3DHit(clientX, clientY);
+    return hit ? hit.point : null;
   }
 
   const _tmpZoomWorldPos = new THREE.Vector3();
@@ -3546,6 +4333,7 @@
           offsetY: options.offsetY || 0,
           isVolume: !!options.isVolume,
           isArea: !!options.isArea,
+          isLassoHighlight: !!options.isLassoHighlight,
           isProfile: !!options.isProfile,
           isTempDistance: !!options.isTempDistance,
         };
@@ -3565,6 +4353,7 @@
       offsetY: options.offsetY !== undefined ? options.offsetY : -10,
       isVolume: !!options.isVolume,
       isArea: !!options.isArea,
+      isLassoHighlight: !!options.isLassoHighlight,
       isProfile: !!options.isProfile,
       isTempDistance: !!options.isTempDistance,
     };
@@ -3586,7 +4375,11 @@
       }
       const x = (v.x * 0.5 + 0.5) * w + (b.offsetX || 0);
       const y = (-(v.y * 0.5) + 0.5) * h + (b.offsetY || 0);
-      b.el.style.display = b.el.classList.contains("autodesk-delta-badge") ? "flex" : "block";
+      b.el.style.display = b.el.classList.contains("autodesk-delta-badge")
+        ? "flex"
+        : b.el.classList.contains("autodesk-flex-badge")
+        ? "inline-flex"
+        : "block";
       const bw = b.el.offsetWidth || 120;
       const halfW = Math.min(bw * 0.5, w * 0.5 - 8);
       const clampedX = Math.max(halfW + 8, Math.min(w - halfW - 8, x));
@@ -3633,13 +4426,715 @@
     });
   }
 
+  function syncStudioControlsForTool() {
+    if (!studioThree || !studioThree.controls) return;
+    if (STATE.fpMode?.active) {
+      studioThree.controls.enabled = false;
+      if (studioThree.renderer && studioThree.renderer.domElement) {
+        studioThree.renderer.domElement.style.cursor =
+          document.pointerLockElement === studioThree.renderer.domElement ? "none" : "grab";
+      }
+      return;
+    }
+    const isFreehandLasso =
+      (STATE.activeTool === "crop_delete" || STATE.activeTool === "crop") &&
+      STATE.lassoInputMethod !== "polygon";
+    studioThree.controls.enabled = true;
+    studioThree.controls.enableRotate = true;
+    studioThree.controls.enableZoom = true;
+    studioThree.controls.enablePan = true;
+    studioThree.controls.mouseButtons = {
+      LEFT: isFreehandLasso ? -1 : THREE.MOUSE.ROTATE,
+      MIDDLE: THREE.MOUSE.ROTATE,
+      RIGHT: THREE.MOUSE.PAN,
+    };
+    studioThree.controls.touches = {
+      ONE: isFreehandLasso ? -1 : THREE.TOUCH.ROTATE,
+      TWO: THREE.TOUCH.DOLLY_ROTATE,
+    };
+    if (studioThree.renderer && studioThree.renderer.domElement) {
+      studioThree.renderer.domElement.style.cursor =
+        STATE.activeTool === "crop" || STATE.activeTool === "crop_delete" ? "crosshair" : "";
+    }
+  }
+
+  // =========================================================================
+  // VIDEO-GAME FIRST-PERSON CAMERA ENGINE (WASD + Fly / Surface Walk + PointerLock)
+  // =========================================================================
+  const FP_MOVEMENT_CODES = new Set([
+    "KeyW",
+    "KeyA",
+    "KeyS",
+    "KeyD",
+    "ArrowUp",
+    "ArrowDown",
+    "ArrowLeft",
+    "ArrowRight",
+    "Space",
+    "KeyE",
+    "KeyQ",
+    "KeyC",
+    "PageUp",
+    "PageDown",
+    "ShiftLeft",
+    "ShiftRight",
+    "AltLeft",
+    "AltRight",
+    "ControlLeft",
+    "ControlRight",
+  ]);
+
+  function syncFirstPersonHudUI() {
+    const fp = STATE.fpMode;
+    const isActive = Boolean(fp.active && STATE.activeView === "studio");
+    const domEl = studioThree?.renderer?.domElement || null;
+    fp.pointerLocked = Boolean(domEl && document.pointerLockElement === domEl);
+
+    document.getElementById("btnToggleFirstPerson")?.classList.toggle("active", isActive);
+    document.getElementById("btnStudioFirstPerson")?.classList.toggle("active", isActive);
+    document.getElementById("studioFirstPersonHud")?.classList.toggle("active", isActive);
+    document.getElementById("studioFpCrosshair")?.classList.toggle("active", isActive);
+    document.getElementById("fpTouchMovePad")?.classList.toggle("active", isActive);
+
+    if (!isActive) return;
+
+    document.getElementById("btnFpModeFly")?.classList.toggle("active", fp.locomotion === "fly");
+    document.getElementById("btnFpModeWalk")?.classList.toggle("active", fp.locomotion === "walk");
+
+    const lockBtn = document.getElementById("btnFpPointerLock");
+    if (lockBtn) {
+      lockBtn.classList.toggle("locked", fp.pointerLocked);
+      lockBtn.textContent = fp.pointerLocked
+        ? "🔒 準星已鎖定 (Esc 解鎖滑鼠)"
+        : "🎯 點擊畫面鎖定滑鼠 (或拖曳旋轉)";
+    }
+
+    const slider = document.getElementById("fpSpeedSlider");
+    if (slider && document.activeElement !== slider) {
+      slider.value = String(fp.baseSpeed);
+    }
+
+    const lblSpeed = document.getElementById("lblFpSpeed");
+    if (lblSpeed) {
+      const sprint = Boolean(fp.keys.ShiftLeft || fp.keys.ShiftRight);
+      const slow = Boolean(fp.keys.AltLeft || fp.keys.AltRight);
+      const isCrouch = Boolean(fp.keys.KeyC || fp.keys.ControlLeft || fp.keys.ControlRight);
+      const mult = sprint ? 3.0 : slow ? 0.25 : 1.0;
+      const eff =
+        fp.locomotion === "walk"
+          ? Math.min(9.0, Math.max(1.2, Math.min(12.0, fp.baseSpeed * 0.6)) * mult * (isCrouch ? 0.55 : 1.0))
+          : fp.baseSpeed * mult;
+      lblSpeed.textContent = `${eff.toFixed(1)} m/s${sprint ? " ⚡" : slow ? " 🐢" : ""}`;
+    }
+
+    const upKey = document.getElementById("lblFpUpKeyHint");
+    const upAct = document.getElementById("lblFpUpActionHint");
+    const dnKey = document.getElementById("lblFpDownKeyHint");
+    const dnAct = document.getElementById("lblFpDownActionHint");
+    if (fp.locomotion === "walk") {
+      if (upKey) upKey.textContent = "Space";
+      if (upAct) upAct.textContent = "跳躍";
+      if (dnKey) dnKey.textContent = "C";
+      if (dnAct) dnAct.textContent = "蹲下";
+    } else {
+      if (upKey) upKey.textContent = "Space/E";
+      if (upAct) upAct.textContent = "上升";
+      if (dnKey) dnKey.textContent = "C/Q";
+      if (dnAct) dnAct.textContent = "下降";
+    }
+  }
+
+  function requestStudioPointerLock() {
+    const domEl = studioThree?.renderer?.domElement;
+    if (!domEl || !STATE.fpMode.active) return;
+    if (document.pointerLockElement === domEl) return;
+    try {
+      const res = domEl.requestPointerLock();
+      if (res && typeof res.catch === "function") {
+        res.catch(() => {});
+      }
+    } catch (_) {}
+  }
+
+  function updateFirstPersonCrosshairPreview() {
+    if (!STATE.fpMode.active || !studioThree?.renderer?.domElement) return;
+    const tool = STATE.activeTool;
+    if (!["laser", "coordinates", "angle", "distance", "area", "volume", "contours", "profile"].includes(tool)) return;
+    const rect = studioThree.renderer.domElement.getBoundingClientRect();
+    const cx = rect.left + rect.width * 0.5;
+    const cy = rect.top + rect.height * 0.5;
+    if (tool === "laser") {
+      handleStudioLaserMove({ clientX: cx, clientY: cy });
+    } else if (tool === "coordinates") {
+      handleStudioCoordinateMove({ clientX: cx, clientY: cy });
+    } else if (tool === "angle") {
+      handleStudioAngleMove({ clientX: cx, clientY: cy });
+    } else if (tool === "distance") {
+      const hoverPt = pickStudio3DPoint(cx, cy);
+      if (hoverPt) {
+        const twd = localToTwd97(hoverPt);
+        const lbl = document.getElementById("lblLastPickedCoord");
+        if (lbl) lbl.textContent = formatScanCoordReadout(twd, STATE.activeScan);
+        if (STATE.measurePoints.length === 1) renderDistanceVisuals(hoverPt, null);
+      }
+    } else if (
+      (tool === "area" || tool === "volume" || tool === "contours" || (tool === "profile" && STATE.measurePoints.length === 1)) &&
+      STATE.measurePoints.length >= 1
+    ) {
+      const hoverPt = pickStudio3DPoint(cx, cy);
+      if (hoverPt) {
+        renderPolygonRubberband(hoverPt);
+        if (tool === "profile" && STATE.measurePoints.length === 1) {
+          const dAB = STATE.measurePoints[0].distanceTo(hoverPt);
+          const lbl = document.getElementById("lblLastPickedCoord");
+          if (lbl) {
+            const twd = localToTwd97(hoverPt);
+            lbl.textContent = `SECTION A→B: ${dAB.toFixed(2)}m | ${formatScanCoordReadout(twd, STATE.activeScan)}`;
+          }
+        }
+      }
+    }
+  }
+
+  function applyFirstPersonLookDelta(dx, dy, sensitivity = 0.0022) {
+    if (!STATE.fpMode.active || !studioThree?.camera) return;
+    const fp = STATE.fpMode;
+    fp.yaw -= dx * sensitivity;
+    const maxPitch = THREE.MathUtils.degToRad(88.5);
+    fp.pitch = Math.max(-maxPitch, Math.min(maxPitch, fp.pitch - dy * sensitivity));
+    studioThree.camera.rotation.order = "YXZ";
+    studioThree.camera.rotation.set(fp.pitch, fp.yaw, 0);
+    studioThree.camera.updateMatrixWorld(true);
+    if (document.pointerLockElement === studioThree.renderer?.domElement) {
+      updateFirstPersonCrosshairPreview();
+    }
+  }
+
+  function setFirstPersonLocomotion(mode, showFeedback = true) {
+    const fp = STATE.fpMode;
+    const next = mode === "walk" ? "walk" : "fly";
+    fp.locomotion = next;
+    fp.velY = 0;
+
+    if (next === "walk" && studioThree?.camera) {
+      const cam = studioThree.camera;
+      const idx = getLaserSpatialIndex(650);
+      let landed = false;
+      const resolveSafeEyeY = (gx, gy, gz) => {
+        if (!idx) return gy + fp.eyeHeight;
+        const ceilHit = castRayInLaserGrid(idx, gx, gy + 0.15, gz, 0, 1, 0, 0.05, fp.eyeHeight + 0.25, 1.01);
+        if (ceilHit) {
+          return Math.max(gy + 0.65, Math.min(gy + fp.eyeHeight, ceilHit.y - 0.22));
+        }
+        return gy + fp.eyeHeight;
+      };
+      if (idx) {
+        const downHit = castRayInLaserGrid(idx, cam.position.x, cam.position.y + 1.5, cam.position.z, 0, -1, 0, 0.05, 80.0, 1.01);
+        if (downHit && downHit.absNy >= 0.42) {
+          cam.position.y = resolveSafeEyeY(cam.position.x, downHit.y, cam.position.z);
+          landed = true;
+        }
+      }
+      if (!landed && studioThree.renderer?.domElement) {
+        // Camera is high/off-axis from scan: land onto the surface currently at viewport center!
+        const rect = studioThree.renderer.domElement.getBoundingClientRect();
+        const centerHit = pickStudio3DHit(rect.left + rect.width * 0.5, rect.top + rect.height * 0.5);
+        if (centerHit && centerHit.rawPoint) {
+          const gx = centerHit.rawPoint.x;
+          const gy = centerHit.rawPoint.y;
+          const gz = centerHit.rawPoint.z;
+          cam.position.set(gx, resolveSafeEyeY(gx, gy, gz), gz);
+          fp.pitch = Math.max(-0.35, Math.min(0.25, fp.pitch));
+          cam.rotation.order = "YXZ";
+          cam.rotation.set(fp.pitch, fp.yaw, 0);
+          landed = true;
+        }
+      }
+      fp.currentEyeOffset = fp.eyeHeight;
+      fp.onGround = landed;
+      cam.updateMatrixWorld(true);
+    }
+
+    syncFirstPersonHudUI();
+    if (showFeedback) {
+      showToast(
+        next === "walk"
+          ? "🚶 步行模式 (1.68m 人眼視角 · Space 跳躍 · C 蹲下 · G 切換飛行)"
+          : "🚀 自由飛行模式 (WASD 移動 · Space/E 上升 · C/Q 下降 · 滾輪調速)"
+      );
+    }
+  }
+
+  function enterFirstPersonMode(options = {}) {
+    if (STATE.activeView !== "studio") {
+      switchView("studio", STATE.activeScanId);
+    }
+    initStudio3D();
+    if (!studioThree || !studioThree.camera) return;
+
+    const fp = STATE.fpMode;
+    fp.prevTool =
+      STATE.activeTool && STATE.activeTool !== "crop" && STATE.activeTool !== "crop_delete"
+        ? STATE.activeTool
+        : null;
+
+    if (STATE.activeTool === "crop" || STATE.activeTool === "crop_delete") {
+      cancelLassoToolMode(false);
+    } else if (STATE.measurePoints.length === 0) {
+      setActiveStudioTool(STATE.multiAlign?.active ? "align_merge" : "orbit");
+    }
+
+    const cam = studioThree.camera;
+    const fwd = new THREE.Vector3();
+    cam.getWorldDirection(fwd);
+    fwd.normalize();
+
+    fp.pitch = Math.asin(Math.max(-0.992, Math.min(0.992, fwd.y)));
+    const hLen = Math.hypot(fwd.x, fwd.z);
+    if (hLen > 1e-4) {
+      fp.yaw = Math.atan2(-fwd.x, -fwd.z);
+    }
+    fp.velX = 0;
+    fp.velY = 0;
+    fp.velZ = 0;
+    fp.keys = Object.create(null);
+    fp.dragLooking = false;
+    fp.lastFrameTime = performance.now();
+    fp.active = true;
+
+    cam.up.set(0, 1, 0);
+    cam.rotation.order = "YXZ";
+    cam.rotation.set(fp.pitch, fp.yaw, 0);
+    cam.updateMatrixWorld(true);
+
+    if (options.locomotion) {
+      setFirstPersonLocomotion(options.locomotion, false);
+    }
+
+    syncStudioControlsForTool();
+    syncFirstPersonHudUI();
+
+    if (!options.silent) {
+      showToast("🎮 第一人稱漫遊開啟 — WASD 移動 · 滑鼠拖曳或點擊鎖定視角 · 滾輪調速 · G 切換步行/飛行");
+    }
+  }
+
+  function exitFirstPersonMode(silent = false) {
+    const fp = STATE.fpMode;
+    if (!fp.active) return;
+    fp.active = false;
+    fp.keys = Object.create(null);
+    fp.dragLooking = false;
+    fp.velX = 0;
+    fp.velY = 0;
+    fp.velZ = 0;
+
+    if (document.pointerLockElement) {
+      try {
+        document.exitPointerLock();
+      } catch (_) {}
+    }
+
+    if (studioThree && studioThree.camera && studioThree.controls) {
+      const cam = studioThree.camera;
+      const fx = -Math.sin(fp.yaw) * Math.cos(fp.pitch);
+      const fy = Math.sin(fp.pitch);
+      const fz = -Math.cos(fp.yaw) * Math.cos(fp.pitch);
+      const fwd = new THREE.Vector3(fx, fy, fz).normalize();
+
+      let focusDist = 14.0;
+      const idx = studioThree._laserSpatialIndex;
+      if (idx) {
+        const hit = castRayInLaserGrid(idx, cam.position.x, cam.position.y, cam.position.z, fwd.x, fwd.y, fwd.z, 0.5, 65.0, 1.01);
+        if (hit) focusDist = Math.max(2.5, Math.min(45.0, hit.t));
+      } else if (studioThree.renderer?.domElement) {
+        const rect = studioThree.renderer.domElement.getBoundingClientRect();
+        const centerHit = pickStudio3DHit(rect.left + rect.width * 0.5, rect.top + rect.height * 0.5);
+        if (centerHit && centerHit.rawPoint) {
+          focusDist = Math.max(2.5, Math.min(45.0, cam.position.distanceTo(centerHit.rawPoint)));
+        }
+      }
+      studioThree.controls.target.copy(cam.position).addScaledVector(fwd, focusDist);
+      cam.up.set(0, 1, 0);
+      cam.rotation.order = "XYZ";
+      if (
+        !silent &&
+        STATE.activeTool === "orbit" &&
+        fp.prevTool &&
+        fp.prevTool !== "orbit" &&
+        fp.prevTool !== "crop" &&
+        fp.prevTool !== "crop_delete"
+      ) {
+        setActiveStudioTool(fp.prevTool);
+      } else {
+        syncStudioControlsForTool();
+      }
+      fp.prevTool = null;
+      studioThree.controls.update();
+      cam.updateMatrixWorld(true);
+    }
+
+    syncFirstPersonHudUI();
+    if (!silent) {
+      showToast("已離開第一人稱漫遊，返回環繞視角 (Orbit Mode)");
+    }
+  }
+
+  function toggleFirstPersonMode() {
+    if (STATE.fpMode.active) {
+      exitFirstPersonMode(false);
+    } else {
+      enterFirstPersonMode();
+    }
+  }
+
+  function updateFirstPersonCamera(nowMs) {
+    const fp = STATE.fpMode;
+    if (!fp.active || !studioThree?.camera) return;
+    const cam = studioThree.camera;
+    const dt = Math.min(0.06, Math.max(0.001, (nowMs - (fp.lastFrameTime || nowMs)) / 1000));
+    fp.lastFrameTime = nowMs;
+
+    const k = fp.keys;
+    const moveFwd = (k.KeyW || k.ArrowUp ? 1 : 0) - (k.KeyS || k.ArrowDown ? 1 : 0);
+    const moveRight = (k.KeyD || k.ArrowRight ? 1 : 0) - (k.KeyA || k.ArrowLeft ? 1 : 0);
+    const isSprint = Boolean(k.ShiftLeft || k.ShiftRight);
+    const isSlow = Boolean(k.AltLeft || k.AltRight);
+    const speedMult = isSprint ? 3.0 : isSlow ? 0.25 : 1.0;
+
+    if (fp.locomotion === "walk") {
+      // Pressing E / PageUp in Walk mode smoothly lifts off into Fly mode!
+      if (k.KeyE || k.PageUp) {
+        setFirstPersonLocomotion("fly", true);
+      }
+    }
+
+    if (fp.locomotion === "fly") {
+      const moveUp = (k.Space || k.KeyE || k.PageUp ? 1 : 0) - (k.KeyC || k.KeyQ || k.PageDown ? 1 : 0);
+      const targetSpeed = fp.baseSpeed * speedMult;
+
+      const fx = -Math.sin(fp.yaw) * Math.cos(fp.pitch);
+      const fy = Math.sin(fp.pitch);
+      const fz = -Math.cos(fp.yaw) * Math.cos(fp.pitch);
+      const rx = Math.cos(fp.yaw);
+      const rz = -Math.sin(fp.yaw);
+
+      let dx = fx * moveFwd + rx * moveRight;
+      let dy = fy * moveFwd + moveUp;
+      let dz = fz * moveFwd + rz * moveRight;
+      const dLen = Math.hypot(dx, dy, dz);
+      if (dLen > 1.0) {
+        dx /= dLen;
+        dy /= dLen;
+        dz /= dLen;
+      }
+
+      const alpha = 1 - Math.exp(-(dLen > 0.01 ? 14.0 : 11.5) * dt);
+      fp.velX += (dx * targetSpeed - fp.velX) * alpha;
+      fp.velY += (dy * targetSpeed - fp.velY) * alpha;
+      fp.velZ += (dz * targetSpeed - fp.velZ) * alpha;
+
+      cam.position.x += fp.velX * dt;
+      cam.position.y += fp.velY * dt;
+      cam.position.z += fp.velZ * dt;
+    } else {
+      // Walk Mode: Surface terrain following + 1.68m eye height + crouch + ceiling stand-up check + Space jump + multi-ray sub-stepped wall sliding
+      const idx = getLaserSpatialIndex(650);
+      const prevFeetY = cam.position.y - fp.currentEyeOffset;
+      const isCrouchKey = Boolean(k.KeyC || k.ControlLeft || k.ControlRight);
+      let targetEye = isCrouchKey ? 0.95 : fp.eyeHeight;
+      if (!isCrouchKey && idx) {
+        const standCeilHit = castRayInLaserGrid(idx, cam.position.x, prevFeetY + 0.88, cam.position.z, 0, 1, 0, 0.02, fp.eyeHeight - 0.66, 1.01);
+        if (standCeilHit) {
+          targetEye = Math.max(0.95, Math.min(targetEye, 0.88 + standCeilHit.t - 0.16));
+        }
+      }
+      const isCrouch = targetEye < fp.eyeHeight - 0.25;
+      fp.currentEyeOffset += (targetEye - fp.currentEyeOffset) * (1 - Math.exp(-12.0 * dt));
+
+      const walkSpeed = Math.min(9.0, Math.max(1.2, Math.min(12.0, fp.baseSpeed * 0.6)) * speedMult * (isCrouch ? 0.55 : 1.0));
+      const hx = -Math.sin(fp.yaw);
+      const hz = -Math.cos(fp.yaw);
+      const rx = Math.cos(fp.yaw);
+      const rz = -Math.sin(fp.yaw);
+
+      let dx = hx * moveFwd + rx * moveRight;
+      let dz = hz * moveFwd + rz * moveRight;
+      const hLen = Math.hypot(dx, dz);
+      if (hLen > 1.0) {
+        dx /= hLen;
+        dz /= hLen;
+      }
+
+      const alpha = 1 - Math.exp(-(hLen > 0.01 ? 15.0 : 13.0) * dt);
+      fp.velX += (dx * walkSpeed - fp.velX) * alpha;
+      fp.velZ += (dz * walkSpeed - fp.velZ) * alpha;
+
+      const totalStepX = fp.velX * dt;
+      const totalStepZ = fp.velZ * dt;
+      const totalStepDist = Math.hypot(totalStepX, totalStepZ);
+      const feetY = cam.position.y - fp.currentEyeOffset;
+      const bumperR = 0.38;
+
+      if (idx && totalStepDist > 1e-4) {
+        const headProbeH = Math.max(0.75, Math.min(1.52, fp.currentEyeOffset - 0.08));
+        const probeBlocked = (ox, oz, ux, uz, dist) => {
+          const chestHit = castRayInLaserGrid(idx, ox, feetY + 0.82, oz, ux, 0, uz, 0.03, dist + bumperR, 0.54);
+          const headHit = castRayInLaserGrid(idx, ox, feetY + headProbeH, oz, ux, 0, uz, 0.03, dist + bumperR, 0.54);
+          let minT = Infinity;
+          if (chestHit && chestHit.t < minT) minT = chestHit.t;
+          if (headHit && headHit.t < minT) minT = headHit.t;
+          // Whisker feelers at +-28 deg to catch narrow corners & pillars
+          const cosW = 0.88295, sinW = 0.46947;
+          const wL = castRayInLaserGrid(idx, ox, feetY + 0.82, oz, ux * cosW - uz * sinW, 0, ux * sinW + uz * cosW, 0.03, dist + bumperR * 0.92, 0.54);
+          const wR = castRayInLaserGrid(idx, ox, feetY + 0.82, oz, ux * cosW + uz * sinW, 0, -ux * sinW + uz * cosW, 0.03, dist + bumperR * 0.92, 0.54);
+          if (wL && wL.t < minT) minT = wL.t;
+          if (wR && wR.t < minT) minT = wR.t;
+          return minT;
+        };
+
+        const nSub = Math.min(6, Math.max(1, Math.ceil(totalStepDist / 0.34)));
+        const subDx = totalStepX / nSub;
+        const subDz = totalStepZ / nSub;
+        for (let si = 0; si < nSub; si++) {
+          let sx = subDx;
+          let sz = subDz;
+          const sDist = Math.hypot(sx, sz);
+          if (sDist <= 1e-5) break;
+          const ux = sx / sDist;
+          const uz = sz / sDist;
+          const minHitT = probeBlocked(cam.position.x, cam.position.z, ux, uz, sDist);
+          if (minHitT < sDist + bumperR) {
+            const directAllowed = Math.max(0, minHitT - bumperR);
+            const rem = sDist - directAllowed;
+            cam.position.x += ux * directAllowed;
+            cam.position.z += uz * directAllowed;
+            // Smooth wall-tangent slide on remaining step
+            if (rem > 1e-3) {
+              const candXFirst = probeBlocked(cam.position.x, cam.position.z, Math.sign(sx) || 1, 0, Math.abs(sx));
+              const candZFirst = probeBlocked(cam.position.x, cam.position.z, 0, Math.sign(sz) || 1, Math.abs(sz));
+              if (Math.abs(sx) > 1e-4 && candXFirst >= Math.abs(sx) + bumperR) {
+                cam.position.x += sx * (rem / sDist);
+              } else if (Math.abs(sz) > 1e-4 && candZFirst >= Math.abs(sz) + bumperR) {
+                cam.position.z += sz * (rem / sDist);
+              } else {
+                // Arbitrary-angle wall slide: try +-60 deg deflection feelers
+                const cosS = 0.5, sinS = 0.866025;
+                const d1x = ux * cosS - uz * sinS, d1z = ux * sinS + uz * cosS;
+                const d2x = ux * cosS + uz * sinS, d2z = -ux * sinS + uz * cosS;
+                const slideDist = rem * 0.55;
+                const t1 = probeBlocked(cam.position.x, cam.position.z, d1x, d1z, slideDist);
+                const t2 = probeBlocked(cam.position.x, cam.position.z, d2x, d2z, slideDist);
+                if (t1 >= slideDist + bumperR && t1 >= t2) {
+                  cam.position.x += d1x * slideDist;
+                  cam.position.z += d1z * slideDist;
+                } else if (t2 >= slideDist + bumperR) {
+                  cam.position.x += d2x * slideDist;
+                  cam.position.z += d2z * slideDist;
+                }
+              }
+            }
+          } else {
+            cam.position.x += sx;
+            cam.position.z += sz;
+          }
+        }
+      } else {
+        cam.position.x += totalStepX;
+        cam.position.z += totalStepZ;
+      }
+
+      // Clamp downward ground probe start below any low ceiling/overhang so player never snaps up onto a roof
+      let rayStartOffset = 1.25;
+      if (idx) {
+        const lowCeil = castRayInLaserGrid(idx, cam.position.x, feetY + 0.35, cam.position.z, 0, 1, 0, 0.04, 1.05, 1.01);
+        if (lowCeil) {
+          rayStartOffset = Math.max(0.38, Math.min(1.25, 0.35 + lowCeil.t - 0.08));
+        }
+      }
+      const groundHit = idx
+        ? castRayInLaserGrid(idx, cam.position.x, feetY + rayStartOffset, cam.position.z, 0, -1, 0, 0.04, 55.0, 1.01)
+        : null;
+      const minFloorY = Number.isFinite(studioThree?.grid?.position?.y) ? studioThree.grid.position.y : -10.0;
+
+      if (fp.onGround) {
+        if (k.Space) {
+          fp.velY = 4.65;
+          fp.onGround = false;
+          cam.position.y += fp.velY * dt;
+        } else if (groundHit && groundHit.absNy >= 0.38) {
+          const dropDist = feetY - groundHit.y;
+          if (dropDist <= 0.90) {
+            const desiredY = groundHit.y + fp.currentEyeOffset;
+            cam.position.y += (desiredY - cam.position.y) * (1 - Math.exp(-18.0 * dt));
+            fp.velY = 0;
+          } else {
+            // Stepped off a high ledge onto lower scan terrain -> fall smoothly under gravity
+            fp.onGround = false;
+          }
+        } else if (feetY > minFloorY + 0.25) {
+          // Stepped off elevated mesh edge -> fall naturally under gravity down to ground reference grid
+          fp.onGround = false;
+        } else {
+          fp.velY = 0;
+        }
+      }
+
+      if (!fp.onGround) {
+        fp.velY = Math.max(-32.0, fp.velY - 9.81 * dt);
+        if (fp.velY > 0 && idx) {
+          const ceilBump = castRayInLaserGrid(idx, cam.position.x, cam.position.y, cam.position.z, 0, 1, 0, 0.05, fp.velY * dt + 0.22, 1.01);
+          if (ceilBump) fp.velY = 0;
+        }
+        const nextFeetY = feetY + fp.velY * dt;
+        if (groundHit && groundHit.absNy >= 0.38 && nextFeetY <= groundHit.y && feetY >= groundHit.y - 1.35) {
+          cam.position.y = groundHit.y + fp.currentEyeOffset;
+          fp.velY = 0;
+          fp.onGround = true;
+        } else if (nextFeetY <= minFloorY && fp.velY < 0) {
+          // Ground-level safety floor (never hovers mid-air when jumping off roofs, never falls to -Infinity)
+          cam.position.y = minFloorY + fp.currentEyeOffset;
+          fp.velY = 0;
+          fp.onGround = true;
+        } else {
+          cam.position.y = nextFeetY + fp.currentEyeOffset;
+        }
+      }
+    }
+
+    cam.rotation.order = "YXZ";
+    cam.rotation.set(fp.pitch, fp.yaw, 0);
+
+    const linSpeed = Math.hypot(fp.velX, fp.velY, fp.velZ);
+    if (linSpeed > 0.03) {
+      const twd = localToTwd97(cam.position);
+      const lbl = document.getElementById("lblLastPickedCoord");
+      if (lbl && (!STATE.activeTool || STATE.activeTool === "orbit" || STATE.activeTool === "align_merge")) {
+        lbl.textContent = `1ST PERSON -> ${formatScanCoordReadout(twd, STATE.activeScan)}`;
+      }
+      if (document.pointerLockElement === studioThree.renderer?.domElement) {
+        updateFirstPersonCrosshairPreview();
+      }
+    }
+  }
+
+  function cancelLassoToolMode(keepPanelOpen = true) {
+    const wasKeep = STATE.activeTool === "crop" && STATE.cropMode === "keep_inside";
+    STATE.measurePoints = [];
+    STATE.polygonLocked = false;
+    STATE.cropMode = wasKeep ? "keep_inside" : "delete_inside";
+    clearLassoSelectionState();
+    setActiveStudioTool("orbit");
+    const panel = document.getElementById("studioSidePanel");
+    if (keepPanelOpen && panel && panel.classList.contains("active")) {
+      if (wasKeep) {
+        openLassoKeepInspector({ armLasso: false });
+      } else {
+        openLassoDeleteInspector({ armLasso: false });
+      }
+    }
+  }
+
+  const MULTI_ALIGN_DISABLED_TOOLS = new Set([
+    "volume",
+    "contours",
+    "profile",
+    "photos",
+    "rtk",
+    "comments",
+    "crop",
+  ]);
+
+  const MULTI_ALIGN_DISABLED_ELEMENT_IDS = [
+    "btnDockVolume",
+    "btnDockContours",
+    "btnMeasureProfile",
+    "btnMeasurePhotos",
+    "btnDockComments",
+    "btnDockLassoKeep",
+    "btnStudioSurveyReport",
+    "studioProjectSelect",
+    "studioScanSelect",
+    "btnRenameStudioSite",
+    "btnRenameStudioScan",
+    "btnRerunStudioScan",
+    "btnDeleteStudioScan",
+    "btnStudioDownloadObj",
+  ];
+
+  const MULTI_ALIGN_DISABLED_REASON =
+    "Unavailable during Multi-Scan Editing — merge scans first (or exit Multi-Scan mode) / 多掃描合併編輯中暫停使用，請先合併掃描或退出多掃描模式";
+
+  function syncMultiAlignToolAvailability() {
+    const isMulti = Boolean(STATE.multiAlign?.active);
+    const lockSingleScan = Boolean(STATE.shareToken && STATE.shareInfo?.scope_type === "scan");
+
+    MULTI_ALIGN_DISABLED_ELEMENT_IDS.forEach((id) => {
+      const el = document.getElementById(id);
+      if (!el) return;
+      if (isMulti) {
+        if (el.dataset.origTitle === undefined) {
+          el.dataset.origTitle = el.getAttribute("title") || "";
+        }
+        el.setAttribute("title", MULTI_ALIGN_DISABLED_REASON);
+        el.classList.add("multi-align-disabled");
+        el.classList.remove("active");
+        el.setAttribute("aria-disabled", "true");
+        if (el.tagName === "A") {
+          const curHref = el.getAttribute("href");
+          if (curHref) {
+            el.dataset.origHref = curHref;
+            el.removeAttribute("href");
+          }
+        } else {
+          el.disabled = true;
+        }
+      } else {
+        el.classList.remove("multi-align-disabled");
+        el.removeAttribute("aria-disabled");
+        if (el.dataset.origTitle !== undefined) {
+          el.setAttribute("title", el.dataset.origTitle);
+          delete el.dataset.origTitle;
+        }
+        if (el.tagName === "A") {
+          if (el.dataset.origHref && !el.getAttribute("href")) {
+            el.setAttribute("href", el.dataset.origHref);
+          }
+          delete el.dataset.origHref;
+        } else if (id === "studioScanSelect" && lockSingleScan) {
+          el.disabled = true;
+        } else {
+          el.disabled = false;
+        }
+      }
+    });
+
+    const alignBtn = document.getElementById("btnDockAlignMerge");
+    if (alignBtn) {
+      alignBtn.classList.toggle("multi-align-session", Boolean(isMulti && STATE.activeTool !== "align_merge"));
+    }
+  }
+
   function setActiveStudioTool(toolName) {
     if (!toolName) return;
+    if (STATE.multiAlign?.active && MULTI_ALIGN_DISABLED_TOOLS.has(toolName)) {
+      showToast("Unavailable during Multi-Scan Editing — merge scans first (or exit Multi-Scan mode)");
+      return;
+    }
     if (STATE.activeTool === "section" && toolName !== "section") {
       clearSectionBoxClippingIfNotKept();
     }
-    if (STATE.multiAlign?.active && toolName !== "align_merge" && typeof exitMultiScanAlignMode === "function") {
-      exitMultiScanAlignMode(true);
+    if (
+      (STATE.activeTool === "crop" || STATE.activeTool === "crop_delete") &&
+      toolName !== "crop" &&
+      toolName !== "crop_delete" &&
+      studioThree &&
+      typeof studioThree._cancelLassoDrag === "function"
+    ) {
+      studioThree._cancelLassoDrag();
+    }
+    if ((toolName === "crop" || toolName === "crop_delete") && STATE.fpMode?.active) {
+      exitFirstPersonMode(true);
     }
     STATE.activeTool = toolName;
     if (studioThree && studioThree.gizmoGroup) {
@@ -3655,7 +5150,7 @@
     }
     document
       .querySelectorAll(
-        '#bimBottomDock .bim-dock-btn:not([data-tool="snap"]):not(#btnClearMeasurements):not(#btnMeasureClear), #studioEditingDock .bim-dock-btn'
+        '#bimBottomDock .bim-dock-btn:not([data-tool="snap"]):not([data-tool="first_person"]):not(#btnToggleFirstPerson):not(#btnClearMeasurements):not(#btnMeasureClear), #studioEditingDock .bim-dock-btn'
       )
       .forEach((b) => {
         const key = b.dataset.tool || b.dataset.dock || "";
@@ -3663,12 +5158,10 @@
       });
     const lassoSvg = document.getElementById("studioLassoSvg");
     if (lassoSvg && toolName !== "crop" && toolName !== "crop_delete") {
-      lassoSvg.classList.remove("active");
+      lassoSvg.classList.remove("active", "keep-mode", "sub-mode");
     }
-    if (studioThree && studioThree.renderer && studioThree.renderer.domElement) {
-      studioThree.renderer.domElement.style.cursor =
-        toolName === "crop" || toolName === "crop_delete" ? "crosshair" : "";
-    }
+    syncMultiAlignToolAvailability();
+    syncStudioControlsForTool();
   }
 
   function clearTempDistanceVisuals() {
@@ -3742,6 +5235,9 @@
     STATE.measurePoints = [];
     STATE.completedMeasurements = [];
     STATE.polygonLocked = false;
+    if (typeof clearLassoSelectionState === "function") {
+      clearLassoSelectionState();
+    }
     clearTempDistanceVisuals();
     clearAreaVisualsOnly();
     clearVolumeVisualsOnly();
@@ -3903,9 +5399,1810 @@
     updateZoomInvariantElements();
   }
 
-  function drawLassoSelection3D(pts, isDelete = true) {
-    if (!studioThree || !pts || pts.length < 2) return;
-    clearAreaVisualsOnly();
+  // Interactive Dynamic Angle Visuals (3-Point: P1 -> Vertex P2 -> P3 with live legs, 3D sector arc & wedge)
+  function renderAngleVisuals(dynamicPt = null, existingMeas = null) {
+    if (!studioThree) return;
+    const isTemp = !existingMeas;
+    let p1 = null, p2 = null, p3 = null;
+
+    if (existingMeas) {
+      p1 = existingMeas.p1;
+      p2 = existingMeas.p2;
+      p3 = existingMeas.p3;
+    } else {
+      clearTempDistanceVisuals();
+      const pts = STATE.measurePoints || [];
+      if (pts.length === 0) {
+        if (!dynamicPt) return;
+        const addHoverObj = (mesh) => {
+          studioThree.overlayGroup.add(mesh);
+          STATE.tempDistanceObjects.push(mesh);
+        };
+        add3DPinMarker(dynamicPt, 0xf59e0b, studioThree.overlayGroup, addHoverObj);
+        add2DBadge(
+          dynamicPt,
+          `<div class="autodesk-flex-badge autodesk-angle-badge">📐 起點 P1 <span class="autodesk-sub-pill">點擊設定第一邊</span></div>`,
+          "#f59e0b",
+          { rawHtml: true, offsetY: -24, isTempDistance: true }
+        );
+        updateZoomInvariantElements();
+        return;
+      } else if (pts.length === 1) {
+        p1 = pts[0];
+        p2 = dynamicPt;
+      } else {
+        p1 = pts[0];
+        p2 = pts[1];
+        p3 = dynamicPt || (pts.length >= 3 ? pts[2] : null);
+      }
+    }
+
+    if (!p1) return;
+
+    const addObj = (mesh) => {
+      studioThree.overlayGroup.add(mesh);
+      if (isTemp) STATE.tempDistanceObjects.push(mesh);
+    };
+
+    const addLegRod = (start, end, colorHex) => {
+      const lDir = new THREE.Vector3().subVectors(end, start);
+      const lLen = lDir.length();
+      if (lLen > 0.01) {
+        const line = new THREE.Line(
+          new THREE.BufferGeometry().setFromPoints([start, end]),
+          new THREE.LineBasicMaterial({ color: colorHex, linewidth: 2, depthTest: false })
+        );
+        line.renderOrder = 998;
+        addObj(line);
+
+        const rodGeo = new THREE.CylinderGeometry(1, 1, lLen, 8);
+        const rodMat = new THREE.MeshBasicMaterial({
+          color: colorHex,
+          depthTest: false,
+          depthWrite: false,
+          transparent: true,
+          opacity: 0.90,
+        });
+        const rod = new THREE.Mesh(rodGeo, rodMat);
+        rod.position.copy(start).addScaledVector(lDir, 0.5);
+        rod.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), lDir.clone().normalize());
+        rod.userData.isZoomInvariantRod = true;
+        rod.userData.pixelRadius = 1.35;
+        rod.renderOrder = 998;
+        addObj(rod);
+      }
+    };
+
+    // Endpoint P1
+    add3DPinMarker(p1, 0x0084ff, studioThree.overlayGroup, addObj);
+
+    if (!p2) {
+      add2DBadge(
+        p1,
+        `<div class="autodesk-flex-badge autodesk-angle-badge">起點 P1 <span class="autodesk-sub-pill">請點擊角頂點 P2</span></div>`,
+        "#f59e0b",
+        { rawHtml: true, offsetY: -22, isTempDistance: isTemp }
+      );
+      updateZoomInvariantElements();
+      return;
+    }
+
+    // Vertex P2 (Amber highlight) + Leg 1 (P1 <-> P2)
+    add3DPinMarker(p2, 0xf59e0b, studioThree.overlayGroup, addObj);
+    const len1 = p1.distanceTo(p2);
+    addLegRod(p2, p1, 0x0084ff);
+
+    const mid1 = new THREE.Vector3().addVectors(p1, p2).multiplyScalar(0.5);
+    if (len1 > 0.05) {
+      add2DBadge(
+        mid1,
+        `<div class="autodesk-dist-badge">${formatGcDist(len1)}</div>`,
+        "#0084ff",
+        { rawHtml: true, isTempDistance: isTemp }
+      );
+    }
+
+    if (!p3) {
+      const horiz1 = Math.hypot(p2.x - p1.x, p2.z - p1.z);
+      const slopePct = horiz1 > 0.05 ? (Math.abs(p2.y - p1.y) / horiz1) * 100 : 0;
+      const v2Locked = isTemp && (STATE.measurePoints || []).length >= 2;
+      const subPrompt = v2Locked
+        ? `頂點已鎖定 · 移動滑鼠預覽夾角`
+        : `坡度 ${slopePct.toFixed(1)}% · 點擊確認頂點 P2`;
+      add2DBadge(
+        p2,
+        `<div class="autodesk-flex-badge autodesk-angle-badge">頂點 P2 <span class="autodesk-sub-pill">${subPrompt}</span></div>`,
+        "#f59e0b",
+        { rawHtml: true, offsetY: -24, isTempDistance: isTemp }
+      );
+      updateZoomInvariantElements();
+      return;
+    }
+
+    // Endpoint P3 + Leg 2 (P2 <-> P3)
+    add3DPinMarker(p3, 0x0084ff, studioThree.overlayGroup, addObj);
+    const len2 = p3.distanceTo(p2);
+    addLegRod(p2, p3, 0x0084ff);
+
+    const mid2 = new THREE.Vector3().addVectors(p2, p3).multiplyScalar(0.5);
+    if (len2 > 0.05) {
+      add2DBadge(
+        mid2,
+        `<div class="autodesk-dist-badge">${formatGcDist(len2)}</div>`,
+        "#0084ff",
+        { rawHtml: true, isTempDistance: isTemp }
+      );
+    }
+
+    // Compute 3D interior angle and 2D horizontal plan angle at Vertex P2
+    const u1 = p1.clone().sub(p2);
+    const u2 = p3.clone().sub(p2);
+    const l1Safe = Math.max(1e-6, u1.length());
+    const l2Safe = Math.max(1e-6, u2.length());
+    u1.divideScalar(l1Safe);
+    u2.divideScalar(l2Safe);
+
+    const cos3D = Math.max(-1, Math.min(1, u1.dot(u2)));
+    const thetaRad = Math.acos(cos3D);
+    const deg3D = THREE.MathUtils.radToDeg(thetaRad);
+
+    const h1x = p1.x - p2.x, h1z = p1.z - p2.z;
+    const h2x = p3.x - p2.x, h2z = p3.z - p2.z;
+    const hl1 = Math.hypot(h1x, h1z);
+    const hl2 = Math.hypot(h2x, h2z);
+    let degHoriz = deg3D;
+    if (hl1 > 0.02 && hl2 > 0.02) {
+      const cosH = Math.max(-1, Math.min(1, (h1x * h2x + h1z * h2z) / (hl1 * hl2)));
+      degHoriz = THREE.MathUtils.radToDeg(Math.acos(cosH));
+    }
+
+    // Orthonormal basis (u1, wOrtho) in the P1-P2-P3 plane for 3D Sector Arc & Translucent Wedge
+    const wOrtho = u2.clone().addScaledVector(u1, -cos3D);
+    if (wOrtho.lengthSq() < 1e-8) {
+      // Collinear fallback (0° or 180°): choose horizontal perpendicular
+      wOrtho.set(-u1.z, 0, u1.x);
+      if (wOrtho.lengthSq() < 1e-8) wOrtho.set(1, 0, 0);
+    }
+    wOrtho.normalize();
+
+    const arcR = Math.max(0.14, Math.min(6.5, Math.min(l1Safe, l2Safe) * 0.30));
+    const segs = 28;
+    const arcPts = [];
+    const fanPositions = [];
+
+    for (let k = 0; k <= segs; k++) {
+      const a = (k / segs) * thetaRad;
+      const ca = Math.cos(a);
+      const sa = Math.sin(a);
+      const ptArc = new THREE.Vector3(
+        p2.x + arcR * (ca * u1.x + sa * wOrtho.x),
+        p2.y + arcR * (ca * u1.y + sa * wOrtho.y),
+        p2.z + arcR * (ca * u1.z + sa * wOrtho.z)
+      );
+      arcPts.push(ptArc);
+      if (k > 0) {
+        const prev = arcPts[k - 1];
+        fanPositions.push(p2.x, p2.y, p2.z, prev.x, prev.y, prev.z, ptArc.x, ptArc.y, ptArc.z);
+      }
+    }
+
+    const arcLine = new THREE.Line(
+      new THREE.BufferGeometry().setFromPoints(arcPts),
+      new THREE.LineBasicMaterial({ color: 0xf59e0b, linewidth: 2, depthTest: false })
+    );
+    arcLine.renderOrder = 999;
+    addObj(arcLine);
+
+    if (fanPositions.length >= 9) {
+      const wedgeGeom = new THREE.BufferGeometry();
+      wedgeGeom.setAttribute("position", new THREE.Float32BufferAttribute(fanPositions, 3));
+      const wedgeMat = new THREE.MeshBasicMaterial({
+        color: 0xf59e0b,
+        transparent: true,
+        opacity: 0.24,
+        side: THREE.DoubleSide,
+        depthTest: false,
+        depthWrite: false,
+      });
+      const wedgeMesh = new THREE.Mesh(wedgeGeom, wedgeMat);
+      wedgeMesh.renderOrder = 997;
+      addObj(wedgeMesh);
+    }
+
+    const midAng = thetaRad * 0.5;
+    const bisectorPt = new THREE.Vector3(
+      p2.x + arcR * 1.18 * (Math.cos(midAng) * u1.x + Math.sin(midAng) * wOrtho.x),
+      p2.y + arcR * 1.18 * (Math.cos(midAng) * u1.y + Math.sin(midAng) * wOrtho.y),
+      p2.z + arcR * 1.18 * (Math.cos(midAng) * u1.z + Math.sin(midAng) * wOrtho.z)
+    );
+
+    const horizSub = `<span class="autodesk-sub-pill">水平 ${degHoriz.toFixed(1)}°</span>`;
+    add2DBadge(
+      bisectorPt,
+      `<div class="autodesk-flex-badge autodesk-angle-badge"><span>${deg3D.toFixed(1)}°</span>${horizSub}</div>`,
+      "#f59e0b",
+      { rawHtml: true, offsetY: -10, isTempDistance: isTemp }
+    );
+
+    updateZoomInvariantElements();
+  }
+
+  // Interactive Hover & Pinned Coordinate Visuals
+  function renderCoordinateVisuals(pt, existingMeas = null) {
+    if (!studioThree || !pt) return;
+    const isTemp = !existingMeas;
+    if (isTemp) {
+      clearTempDistanceVisuals();
+    }
+    const targetPt = existingMeas ? existingMeas.pt : pt;
+    const twd = existingMeas?.twd || localToTwd97(targetPt);
+    const isLocalCrs = !STATE.multiAlign?.active && inferActiveScanCrsCode(STATE.activeScan) === "LOCAL_ORIGIN";
+    const axX = isLocalCrs ? "X" : "E";
+    const axY = isLocalCrs ? "Y" : "N";
+    const axZ = isLocalCrs ? "Z" : "H";
+    const zSign = twd.h >= 0 ? "+" : "";
+
+    const addObj = (mesh) => {
+      studioThree.overlayGroup.add(mesh);
+      if (isTemp) STATE.tempDistanceObjects.push(mesh);
+    };
+
+    add3DPinMarker(targetPt, isTemp ? 0x0ea5e9 : 0x10b981, studioThree.overlayGroup, addObj);
+
+    const labelPrefix = existingMeas?.label ? `<span style="color:#34d399;font-weight:800;">${escapeHtml(existingMeas.label)}</span>` : `<span style="color:#38bdf8;">📍</span>`;
+    add2DBadge(
+      targetPt,
+      `<div class="autodesk-flex-badge autodesk-coord-badge ${isTemp ? "" : "pinned"}">${labelPrefix}<span>${axX} ${twd.e.toFixed(2)} · ${axY} ${twd.n.toFixed(2)} · ${axZ} ${zSign}${twd.h.toFixed(2)} m</span></div>`,
+      isTemp ? "#38bdf8" : "#10b981",
+      { rawHtml: true, offsetY: -22, isTempDistance: isTemp }
+    );
+
+    updateZoomInvariantElements();
+  }
+
+  // =========================================================================
+  // REAL-TIME 3D LASER WIDTH & CLEARANCE ENGINE (Road Width + Room Width/Height)
+  // =========================================================================
+  function getLaserSpatialIndex(allowStaleMs = 0) {
+    if (!studioThree) return null;
+    const alignSig = STATE.multiAlign?.active
+      ? (STATE.multiAlign.layers || [])
+          .map((l) => `${l.scan_id}:${l.visible ? 1 : 0}:${l.tx}:${l.ty}:${l.tz}:${l.rx_deg}:${l.ry_deg}:${l.rz_deg}`)
+          .join("|")
+      : STATE.activeScanId || "";
+    const stagedRev = STATE.stagedEdits?.rev || 0;
+    const baseSig = `${alignSig}#r=${stagedRev}`;
+
+    if (
+      allowStaleMs > 0 &&
+      studioThree._laserSpatialIndex &&
+      studioThree._laserSpatialIndex.baseSig === baseSig &&
+      performance.now() - (studioThree._laserSpatialIndex.builtAt || 0) < allowStaleMs
+    ) {
+      return studioThree._laserSpatialIndex;
+    }
+
+    const meshes = [];
+    if (STATE.multiAlign?.active && studioThree.multiAlignGroup && studioThree.multiAlignGroup.visible) {
+      studioThree.multiAlignGroup.updateMatrixWorld(true);
+      studioThree.multiAlignGroup.traverse((c) => {
+        if (
+          c.isMesh &&
+          isMeshVisibleUnderRoot(c, studioThree.multiAlignGroup) &&
+          !c.userData?.isAlignBoxHelper &&
+          c.geometry?.attributes?.position
+        ) {
+          meshes.push(c);
+        }
+      });
+    } else if (studioThree.modelPivot && studioThree.modelPivot.visible) {
+      studioThree.modelPivot.updateMatrixWorld(true);
+      studioThree.modelPivot.traverse((c) => {
+        if (c.isMesh && isMeshVisibleUnderRoot(c, studioThree.modelPivot) && c.geometry?.attributes?.position) {
+          meshes.push(c);
+        }
+      });
+    }
+    if (meshes.length === 0 && studioThree.fallbackGroup && studioThree.fallbackGroup.visible) {
+      studioThree.fallbackGroup.updateMatrixWorld(true);
+      studioThree.fallbackGroup.traverse((c) => {
+        if (c.isMesh && c.visible && c.geometry?.attributes?.position) {
+          meshes.push(c);
+        }
+      });
+    }
+    if (meshes.length === 0) return null;
+
+    let totalTris = 0;
+    for (let i = 0; i < meshes.length; i++) {
+      const g = meshes[i].geometry;
+      const idx = g.index;
+      totalTris += idx ? Math.floor(idx.count / 3) : Math.floor(g.attributes.position.count / 3);
+    }
+    if (totalTris === 0) return null;
+
+    const cacheKey = `${baseSig}#m=${meshes.length}#t=${totalTris}`;
+
+    if (studioThree._laserSpatialIndex && studioThree._laserSpatialIndex.key === cacheKey) {
+      return studioThree._laserSpatialIndex;
+    }
+
+    // Cap indexed triangle count smoothly on ultra-dense meshes via deterministic stride=1 (or 2 above 950k tris)
+    const triStride = totalTris > 950000 ? 2 : 1;
+    const maxIndexed = Math.ceil(totalTris / triStride) + 16;
+    const triVerts = new Float32Array(maxIndexed * 9);
+    const triAbsNy = new Float32Array(maxIndexed);
+
+    let minX = 1e30, maxX = -1e30, minZ = 1e30, maxZ = -1e30;
+    let wCount = 0;
+
+    for (let mi = 0; mi < meshes.length; mi++) {
+      const m = meshes[mi];
+      const e = m.matrixWorld.elements;
+      const pos = m.geometry.attributes.position;
+      const idxAttr = m.geometry.index;
+      const nTris = idxAttr ? Math.floor(idxAttr.count / 3) : Math.floor(pos.count / 3);
+
+      for (let t = 0; t < nTris; t += triStride) {
+        const i0 = idxAttr ? idxAttr.getX(t * 3) : t * 3;
+        const i1 = idxAttr ? idxAttr.getX(t * 3 + 1) : t * 3 + 1;
+        const i2 = idxAttr ? idxAttr.getX(t * 3 + 2) : t * 3 + 2;
+
+        const lx0 = pos.getX(i0), ly0 = pos.getY(i0), lz0 = pos.getZ(i0);
+        const lx1 = pos.getX(i1), ly1 = pos.getY(i1), lz1 = pos.getZ(i1);
+        const lx2 = pos.getX(i2), ly2 = pos.getY(i2), lz2 = pos.getZ(i2);
+
+        const x0 = e[0] * lx0 + e[4] * ly0 + e[8] * lz0 + e[12];
+        const y0 = e[1] * lx0 + e[5] * ly0 + e[9] * lz0 + e[13];
+        const z0 = e[2] * lx0 + e[6] * ly0 + e[10] * lz0 + e[14];
+
+        const x1 = e[0] * lx1 + e[4] * ly1 + e[8] * lz1 + e[12];
+        const y1 = e[1] * lx1 + e[5] * ly1 + e[9] * lz1 + e[13];
+        const z1 = e[2] * lx1 + e[6] * ly1 + e[10] * lz1 + e[14];
+
+        const x2 = e[0] * lx2 + e[4] * ly2 + e[8] * lz2 + e[12];
+        const y2 = e[1] * lx2 + e[5] * ly2 + e[9] * lz2 + e[13];
+        const z2 = e[2] * lx2 + e[6] * ly2 + e[10] * lz2 + e[14];
+
+        const ax = x1 - x0, ay = y1 - y0, az = z1 - z0;
+        const bx = x2 - x0, by = y2 - y0, bz = z2 - z0;
+        const nx = ay * bz - az * by;
+        const ny = az * bx - ax * bz;
+        const nz = ax * by - ay * bx;
+        const nLen = Math.hypot(nx, ny, nz);
+        if (nLen < 1e-7) continue;
+
+        const base = wCount * 9;
+        triVerts[base] = x0;
+        triVerts[base + 1] = y0;
+        triVerts[base + 2] = z0;
+        triVerts[base + 3] = x1;
+        triVerts[base + 4] = y1;
+        triVerts[base + 5] = z1;
+        triVerts[base + 6] = x2;
+        triVerts[base + 7] = y2;
+        triVerts[base + 8] = z2;
+        triAbsNy[wCount] = Math.abs(ny) / nLen;
+        wCount++;
+
+        const tMinX = Math.min(x0, x1, x2);
+        const tMaxX = Math.max(x0, x1, x2);
+        const tMinZ = Math.min(z0, z1, z2);
+        const tMaxZ = Math.max(z0, z1, z2);
+        if (tMinX < minX) minX = tMinX;
+        if (tMaxX > maxX) maxX = tMaxX;
+        if (tMinZ < minZ) minZ = tMinZ;
+        if (tMaxZ > maxZ) maxZ = tMaxZ;
+      }
+    }
+
+    if (wCount === 0) return null;
+    minX -= 0.5;
+    minZ -= 0.5;
+    maxX += 0.5;
+    maxZ += 0.5;
+
+    const spanMax = Math.max(10, maxX - minX, maxZ - minZ);
+    const cellSize = Math.max(0.85, Math.min(2.6, spanMax / 165));
+    const invCell = 1.0 / cellSize;
+    const gridW = Math.max(4, Math.min(200, Math.ceil((maxX - minX) * invCell)));
+    const gridH = Math.max(4, Math.min(200, Math.ceil((maxZ - minZ) * invCell)));
+    const numCells = gridW * gridH;
+
+    const cellCounts = new Int32Array(numCells);
+    for (let t = 0; t < wCount; t++) {
+      const b = t * 9;
+      const gx0 = Math.max(0, Math.min(gridW - 1, Math.floor((Math.min(triVerts[b], triVerts[b + 3], triVerts[b + 6]) - minX) * invCell)));
+      const gx1 = Math.max(0, Math.min(gridW - 1, Math.floor((Math.max(triVerts[b], triVerts[b + 3], triVerts[b + 6]) - minX) * invCell)));
+      const gz0 = Math.max(0, Math.min(gridH - 1, Math.floor((Math.min(triVerts[b + 2], triVerts[b + 5], triVerts[b + 8]) - minZ) * invCell)));
+      const gz1 = Math.max(0, Math.min(gridH - 1, Math.floor((Math.max(triVerts[b + 2], triVerts[b + 5], triVerts[b + 8]) - minZ) * invCell)));
+      if ((gx1 - gx0 + 1) * (gz1 - gz0 + 1) > 40000) continue;
+      for (let gz = gz0; gz <= gz1; gz++) {
+        const row = gz * gridW;
+        for (let gx = gx0; gx <= gx1; gx++) {
+          cellCounts[row + gx]++;
+        }
+      }
+    }
+
+    const cellOffsets = new Int32Array(numCells + 1);
+    for (let c = 0; c < numCells; c++) {
+      cellOffsets[c + 1] = cellOffsets[c] + cellCounts[c];
+    }
+    const cellTris = new Int32Array(cellOffsets[numCells]);
+    const writePtr = cellOffsets.slice(0, numCells);
+
+    for (let t = 0; t < wCount; t++) {
+      const b = t * 9;
+      const gx0 = Math.max(0, Math.min(gridW - 1, Math.floor((Math.min(triVerts[b], triVerts[b + 3], triVerts[b + 6]) - minX) * invCell)));
+      const gx1 = Math.max(0, Math.min(gridW - 1, Math.floor((Math.max(triVerts[b], triVerts[b + 3], triVerts[b + 6]) - minX) * invCell)));
+      const gz0 = Math.max(0, Math.min(gridH - 1, Math.floor((Math.min(triVerts[b + 2], triVerts[b + 5], triVerts[b + 8]) - minZ) * invCell)));
+      const gz1 = Math.max(0, Math.min(gridH - 1, Math.floor((Math.max(triVerts[b + 2], triVerts[b + 5], triVerts[b + 8]) - minZ) * invCell)));
+      if ((gx1 - gx0 + 1) * (gz1 - gz0 + 1) > 40000) continue;
+      for (let gz = gz0; gz <= gz1; gz++) {
+        const row = gz * gridW;
+        for (let gx = gx0; gx <= gx1; gx++) {
+          cellTris[writePtr[row + gx]++] = t;
+        }
+      }
+    }
+
+    const built = {
+      key: cacheKey,
+      baseSig,
+      builtAt: performance.now(),
+      triCount: wCount,
+      triVerts,
+      triAbsNy,
+      minX,
+      minZ,
+      cellSize,
+      invCell,
+      gridW,
+      gridH,
+      cellOffsets,
+      cellTris,
+      visitStamp: new Int32Array(wCount),
+      raySeq: 1,
+    };
+    studioThree._laserSpatialIndex = built;
+    return built;
+  }
+
+  // Exact Möller–Trumbore raycast walking CSR grid cells via 2D Amanatides–Woo DDA
+  function castRayInLaserGrid(idx, ox, oy, oz, dx, dy, dz, minT = 0.08, maxT = 70.0, maxAllowedAbsNy = 1.01) {
+    if (!idx) return null;
+    const { triVerts, triAbsNy, minX, minZ, cellSize, invCell, gridW, gridH, cellOffsets, cellTris, visitStamp } = idx;
+    idx.raySeq = (idx.raySeq + 1) | 0;
+    if (idx.raySeq <= 0) {
+      visitStamp.fill(0);
+      idx.raySeq = 1;
+    }
+    const stamp = idx.raySeq;
+
+    let bestT = maxT + 1.0;
+    let bestTri = -1;
+
+    const testCell = (gx, gz) => {
+      const cIdx = gz * gridW + gx;
+      const start = cellOffsets[cIdx];
+      const end = cellOffsets[cIdx + 1];
+      for (let p = start; p < end; p++) {
+        const t = cellTris[p];
+        if (visitStamp[t] === stamp) continue;
+        visitStamp[t] = stamp;
+        if (triAbsNy[t] > maxAllowedAbsNy) continue;
+
+        const b = t * 9;
+        const x0 = triVerts[b], y0 = triVerts[b + 1], z0 = triVerts[b + 2];
+        const e1x = triVerts[b + 3] - x0, e1y = triVerts[b + 4] - y0, e1z = triVerts[b + 5] - z0;
+        const e2x = triVerts[b + 6] - x0, e2y = triVerts[b + 7] - y0, e2z = triVerts[b + 8] - z0;
+
+        const hx = dy * e2z - dz * e2y;
+        const hy = dz * e2x - dx * e2z;
+        const hz = dx * e2y - dy * e2x;
+        const det = e1x * hx + e1y * hy + e1z * hz;
+        if (det > -1e-8 && det < 1e-8) continue;
+        const invDet = 1.0 / det;
+
+        const sx = ox - x0, sy = oy - y0, sz = oz - z0;
+        const u = (sx * hx + sy * hy + sz * hz) * invDet;
+        if (u < 0.0 || u > 1.0) continue;
+
+        const qx = sy * e1z - sz * e1y;
+        const qy = sz * e1x - sx * e1z;
+        const qz = sx * e1y - sy * e1x;
+        const v = (dx * qx + dy * qy + dz * qz) * invDet;
+        if (v < 0.0 || u + v > 1.0) continue;
+
+        const tHit = (e2x * qx + e2y * qy + e2z * qz) * invDet;
+        if (tHit >= minT && tHit <= maxT && tHit < bestT) {
+          bestT = tHit;
+          bestTri = t;
+        }
+      }
+    };
+
+    // Pure vertical ray (+Y or -Y)
+    if (Math.abs(dx) < 1e-6 && Math.abs(dz) < 1e-6) {
+      const gx = Math.floor((ox - minX) * invCell);
+      const gz = Math.floor((oz - minZ) * invCell);
+      if (gx < 0 || gx >= gridW || gz < 0 || gz >= gridH) return null;
+      testCell(gx, gz);
+      if (bestTri < 0) return null;
+      return {
+        t: bestT,
+        x: ox + dx * bestT,
+        y: oy + dy * bestT,
+        z: oz + dz * bestT,
+        absNy: triAbsNy[bestTri],
+      };
+    }
+
+    let gx = Math.floor((ox - minX) * invCell);
+    let gz = Math.floor((oz - minZ) * invCell);
+    const stepX = dx > 0 ? 1 : dx < 0 ? -1 : 0;
+    const stepZ = dz > 0 ? 1 : dz < 0 ? -1 : 0;
+    const tDeltaX = stepX !== 0 ? Math.abs(cellSize / dx) : 1e30;
+    const tDeltaZ = stepZ !== 0 ? Math.abs(cellSize / dz) : 1e30;
+
+    let tMaxX = 1e30;
+    if (stepX > 0) tMaxX = (minX + (gx + 1) * cellSize - ox) / dx;
+    else if (stepX < 0) tMaxX = (minX + gx * cellSize - ox) / dx;
+
+    let tMaxZ = 1e30;
+    if (stepZ > 0) tMaxZ = (minZ + (gz + 1) * cellSize - oz) / dz;
+    else if (stepZ < 0) tMaxZ = (minZ + gz * cellSize - oz) / dz;
+
+    let curT = 0.0;
+    let maxSteps = gridW + gridH + 4;
+    while (maxSteps-- > 0 && curT <= maxT) {
+      if (gx >= 0 && gx < gridW && gz >= 0 && gz < gridH) {
+        testCell(gx, gz);
+      }
+      const nextT = tMaxX < tMaxZ ? tMaxX : tMaxZ;
+      if (bestTri >= 0 && bestT <= nextT + 1e-4) break;
+      curT = nextT;
+      if (tMaxX < tMaxZ) {
+        tMaxX += tDeltaX;
+        gx += stepX;
+      } else {
+        tMaxZ += tDeltaZ;
+        gz += stepZ;
+      }
+    }
+
+    if (bestTri < 0) return null;
+    return {
+      t: bestT,
+      x: ox + dx * bestT,
+      y: oy + dy * bestT,
+      z: oz + dz * bestT,
+      absNy: triAbsNy[bestTri],
+    };
+  }
+
+  // Exact local surface elevation & vertical curb/wall obstacle probe at (qx, qz) near expectedY (ignores tree canopies & ceilings!)
+  function queryRoadSurfaceAtXZ(idx, qx, qz, prevY, expectedY) {
+    const { triVerts, triAbsNy, minX, minZ, invCell, gridW, gridH, cellOffsets, cellTris } = idx;
+    const gx = Math.floor((qx - minX) * invCell);
+    const gz = Math.floor((qz - minZ) * invCell);
+    if (gx < 0 || gx >= gridW || gz < 0 || gz >= gridH) {
+      return { hit: false, y: prevY, absNy: 0, obstacle: false };
+    }
+
+    const cIdx = gz * gridW + gx;
+    const start = cellOffsets[cIdx];
+    const end = cellOffsets[cIdx + 1];
+
+    let bestDiff = 1e30;
+    let bestY = prevY;
+    let bestNy = 0;
+    let found = false;
+    let obstacle = false;
+
+    for (let p = start; p < end; p++) {
+      const t = cellTris[p];
+      const b = t * 9;
+      const x0 = triVerts[b], y0 = triVerts[b + 1], z0 = triVerts[b + 2];
+      const x1 = triVerts[b + 3], y1 = triVerts[b + 4], z1 = triVerts[b + 5];
+      const x2 = triVerts[b + 6], y2 = triVerts[b + 7], z2 = triVerts[b + 8];
+
+      const pad = 0.14;
+      if (
+        qx < Math.min(x0, x1, x2) - pad ||
+        qx > Math.max(x0, x1, x2) + pad ||
+        qz < Math.min(z0, z1, z2) - pad ||
+        qz > Math.max(z0, z1, z2) + pad
+      ) {
+        continue;
+      }
+
+      const absNy = triAbsNy[t];
+      const tMinY = Math.min(y0, y1, y2);
+      const tMaxY = Math.max(y0, y1, y2);
+
+      // Detect vertical curb / barrier / wall face rising right at (qx, qz)
+      if (absNy < 0.62 && tMaxY > prevY + 0.15 && tMinY < prevY + 1.45) {
+        // Point-to-segment distance in XZ for near-vertical faces
+        const checkSeg = (ax, az, bx, bz) => {
+          const vx = bx - ax, vz = bz - az;
+          const len2 = vx * vx + vz * vz;
+          const s = len2 > 1e-8 ? Math.max(0, Math.min(1, ((qx - ax) * vx + (qz - az) * vz) / len2)) : 0;
+          const dx = qx - (ax + s * vx), dz = qz - (az + s * vz);
+          return dx * dx + dz * dz <= 0.025;
+        };
+        if (checkSeg(x0, z0, x1, z1) || checkSeg(x1, z1, x2, z2) || checkSeg(x2, z2, x0, z0)) {
+          obstacle = true;
+        }
+      }
+
+      const denom = (z1 - z2) * (x0 - x2) + (x2 - x1) * (z0 - z2);
+      if (Math.abs(denom) < 1e-8) continue;
+      const invDen = 1.0 / denom;
+      const u = ((z1 - z2) * (qx - x2) + (x2 - x1) * (qz - z2)) * invDen;
+      if (u < -1e-4 || u > 1.0001) continue;
+      const v = ((z2 - z0) * (qx - x2) + (x0 - x2) * (qz - z2)) * invDen;
+      if (v < -1e-4 || u + v > 1.0001) continue;
+      const w = 1.0 - u - v;
+
+      const yHit = u * y0 + v * y1 + w * y2;
+      if (absNy < 0.66 && yHit > prevY + 0.14 && yHit < prevY + 1.6) {
+        obstacle = true;
+        continue;
+      }
+
+      if (yHit < prevY - 0.58 || yHit > prevY + 0.58) continue;
+      const diff = Math.abs(yHit - expectedY);
+      if (diff < bestDiff) {
+        bestDiff = diff;
+        bestY = yHit;
+        bestNy = absNy;
+        found = true;
+      }
+    }
+
+    return { hit: found, y: bestY, absNy: bestNy, obstacle };
+  }
+
+  function traceRoadEdgeAlongRay(idx, ox, oy, oz, ux, uz, maxDist = 26.0) {
+    const step = 0.28;
+    let prevS = 0.0;
+    let prevY = oy;
+    let slopeEst = 0.0;
+    let slopeSamples = 0;
+
+    for (let s = step; s <= maxDist; s += step) {
+      const qx = ox + ux * s;
+      const qz = oz + uz * s;
+      const expY = oy + slopeEst * s;
+      const probe = queryRoadSurfaceAtXZ(idx, qx, qz, prevY, expY);
+
+      const isMissingOrObstacle = !probe.hit || probe.obstacle;
+      const stepJump = probe.hit ? Math.abs(probe.y - prevY) : 999;
+      const planeDev = probe.hit ? Math.abs(probe.y - expY) : 999;
+      const isSteep = probe.hit && probe.absNy < 0.75;
+
+      let edgeTriggered = isMissingOrObstacle || stepJump > 0.135 || planeDev > 0.30;
+      if (!edgeTriggered && isSteep) {
+        // Confirm steepness at s + 0.22m so single noisy photogrammetry asphalt triangles don't false-trigger
+        const cProbe = queryRoadSurfaceAtXZ(idx, ox + ux * (s + 0.22), oz + uz * (s + 0.22), probe.y, oy + slopeEst * (s + 0.22));
+        if (!cProbe.hit || cProbe.obstacle || cProbe.absNy < 0.76 || Math.abs(cProbe.y - expY) > 0.25) {
+          edgeTriggered = true;
+        }
+      }
+
+      if (edgeTriggered) {
+        // 3-step binary refinement between prevS (on-road) and s (off-road) for ~3.5 cm road-edge accuracy
+        let lo = prevS;
+        let hi = s;
+        let edgeY = prevY;
+        for (let b = 0; b < 3; b++) {
+          const mid = 0.5 * (lo + hi);
+          const mProbe = queryRoadSurfaceAtXZ(idx, ox + ux * mid, oz + uz * mid, edgeY, oy + slopeEst * mid);
+          if (
+            mProbe.hit &&
+            !mProbe.obstacle &&
+            mProbe.absNy >= 0.74 &&
+            Math.abs(mProbe.y - edgeY) <= 0.09 &&
+            Math.abs(mProbe.y - (oy + slopeEst * mid)) <= 0.28
+          ) {
+            lo = mid;
+            edgeY = mProbe.y;
+          } else {
+            hi = mid;
+          }
+        }
+        return {
+          bounded: true,
+          dist: lo,
+          pt: new THREE.Vector3(ox + ux * lo, edgeY, oz + uz * lo),
+        };
+      }
+
+      if (s <= 1.4) {
+        const instSlope = Math.max(-0.14, Math.min(0.14, (probe.y - oy) / s));
+        slopeEst = (slopeEst * slopeSamples + instSlope) / (slopeSamples + 1);
+        slopeSamples++;
+      }
+      prevS = s;
+      prevY = probe.y;
+    }
+
+    return {
+      bounded: false,
+      dist: maxDist,
+      pt: new THREE.Vector3(ox + ux * maxDist, prevY, oz + uz * maxDist),
+    };
+  }
+
+  function computeLaserSpanAtPoint(rawPt, surfNormal) {
+    if (!studioThree || !rawPt) return null;
+    const idx = getLaserSpatialIndex();
+    if (!idx) return null;
+
+    const n = surfNormal ? surfNormal.clone().normalize() : new THREE.Vector3(0, 1, 0);
+    const camPos = studioThree.camera ? studioThree.camera.position : new THREE.Vector3(0, 50, 50);
+
+    // Case 1: Hovered directly on a Wall / Facade / Barrier (|ny| < 0.52) -> Shoot horizontal laser across room/street!
+    let sweepPt = rawPt;
+    if (Math.abs(n.y) < 0.52) {
+      let dx = n.x;
+      let dz = n.z;
+      const hLen = Math.hypot(dx, dz);
+      if (hLen > 1e-5) {
+        dx /= hLen;
+        dz /= hLen;
+        if ((camPos.x - rawPt.x) * dx + (camPos.z - rawPt.z) * dz < 0) {
+          dx = -dx;
+          dz = -dz;
+        }
+        const hitOpp = castRayInLaserGrid(idx, rawPt.x + dx * 0.06, rawPt.y, rawPt.z + dz * 0.06, dx, 0, dz, 0.14, 75.0, 0.85);
+        if (hitOpp) {
+          const pB = new THREE.Vector3(hitOpp.x, hitOpp.y, hitOpp.z);
+          const w = rawPt.distanceTo(pB);
+          const mid = new THREE.Vector3().addVectors(rawPt, pB).multiplyScalar(0.5);
+          const ceilRayW = castRayInLaserGrid(idx, mid.x, mid.y, mid.z, 0, 1, 0, 0.20, 22.0, 1.01);
+          const floorRayW = castRayInLaserGrid(idx, mid.x, mid.y, mid.z, 0, -1, 0, 0.10, 22.0, 1.01);
+          const ceilRayW2 = ceilRayW
+            ? castRayInLaserGrid(idx, mid.x + 0.35, mid.y, mid.z + 0.35, 0, 1, 0, 0.20, 22.0, 1.01)
+            : null;
+          const validCeil = Boolean(
+            ceilRayW &&
+              floorRayW &&
+              ceilRayW.absNy >= 0.55 &&
+              (!ceilRayW2 || Math.abs(ceilRayW2.y - ceilRayW.y) <= 0.45)
+          );
+          const ceilHeightW = validCeil ? ceilRayW.y - floorRayW.y : null;
+
+          // Also probe orthogonal room dimension through midpoint
+          const ox = -dz;
+          const oz = dx;
+          const orthoHitP = castRayInLaserGrid(idx, mid.x, mid.y, mid.z, ox, 0, oz, 0.20, 55.0, 0.72);
+          const orthoHitM = castRayInLaserGrid(idx, mid.x, mid.y, mid.z, -ox, 0, -oz, 0.20, 55.0, 0.72);
+          const orthoW = orthoHitP && orthoHitM ? orthoHitP.t + orthoHitM.t : null;
+          const hasOrtho = Boolean(orthoW && orthoW >= 0.85);
+
+          // If indoors (validCeil) OR w is a genuine opposing wall span (<= 30m and not much wider than orthogonal corridor), return directly;
+          // otherwise (e.g. grazed an outdoor sign/bollard pointing 65m down the street), fall through to ground road-width sweep!
+          if (validCeil || (w <= 30.0 && (!hasOrtho || w <= orthoW * 1.45))) {
+            return {
+              kind: validCeil ? "room" : w >= 2.2 ? "road" : "wall_span",
+              originPt: rawPt.clone(),
+              pA: rawPt.clone(),
+              pB,
+              width: w,
+              orthoLength: validCeil && hasOrtho ? orthoW : null,
+              orthoPA: validCeil && hasOrtho ? new THREE.Vector3(mid.x - ox * orthoHitM.t, mid.y, mid.z - oz * orthoHitM.t) : null,
+              orthoPB: validCeil && hasOrtho ? new THREE.Vector3(mid.x + ox * orthoHitP.t, mid.y, mid.z + oz * orthoHitP.t) : null,
+              ceilHeight: ceilHeightW,
+              ceilPt: validCeil ? new THREE.Vector3(ceilRayW.x, ceilRayW.y, ceilRayW.z) : null,
+              floorPt: validCeil ? new THREE.Vector3(floorRayW.x, floorRayW.y, floorRayW.z) : null,
+            };
+          }
+        }
+        // Step slightly off the vertical obstacle and drop to local ground for full 18-azimuth road width sweep
+        const gProbe = castRayInLaserGrid(idx, rawPt.x + dx * 0.22, rawPt.y + 0.35, rawPt.z + dz * 0.22, 0, -1, 0, 0.05, 6.0, 1.01);
+        if (gProbe && gProbe.absNy >= 0.55) {
+          sweepPt = new THREE.Vector3(gProbe.x, gProbe.y, gProbe.z);
+        }
+      }
+    }
+
+    // Case 2: Hovered on Road / Floor / Deck / Ground -> Sweep 18 azimuth diameters (every 10°)
+    const ceilRay = castRayInLaserGrid(idx, sweepPt.x, sweepPt.y + 0.18, sweepPt.z, 0, 1, 0, 0.9, 25.0, 1.01);
+    const ceilRayCheck = ceilRay
+      ? castRayInLaserGrid(idx, sweepPt.x + 0.38, sweepPt.y + 0.18, sweepPt.z + 0.38, 0, 1, 0, 0.9, 25.0, 1.01)
+      : null;
+    const hasCeiling = Boolean(
+      ceilRay &&
+        ceilRay.absNy >= 0.60 &&
+        (!ceilRayCheck || (ceilRayCheck.absNy >= 0.50 && Math.abs(ceilRayCheck.y - ceilRay.y) <= 0.42))
+    );
+    const ceilHeight = hasCeiling ? ceilRay.y - sweepPt.y : null;
+    const ceilPt = hasCeiling ? new THREE.Vector3(ceilRay.x, ceilRay.y, ceilRay.z) : null;
+
+    const N_AZ = 18;
+    const wallSpans = new Array(N_AZ).fill(null);
+    let bestWall = null;
+    let bestRoad = null;
+
+    for (let k = 0; k < N_AZ; k++) {
+      const ang = (k * Math.PI) / N_AZ;
+      const ux = Math.cos(ang);
+      const uz = Math.sin(ang);
+
+      // Pass A: Opposing Walls / Retaining Walls / Guardrails / Tall Curbs (at +0.82m and +0.28m)
+      const hitP_hi = castRayInLaserGrid(idx, sweepPt.x, sweepPt.y + 0.82, sweepPt.z, ux, 0, uz, 0.20, 52.0, 0.72);
+      const hitP_lo = castRayInLaserGrid(idx, sweepPt.x, sweepPt.y + 0.28, sweepPt.z, ux, 0, uz, 0.20, 32.0, 0.65);
+      const hitP = hitP_hi && hitP_lo ? (hitP_lo.t < hitP_hi.t ? hitP_lo : hitP_hi) : hitP_hi || hitP_lo;
+
+      const hitM_hi = castRayInLaserGrid(idx, sweepPt.x, sweepPt.y + 0.82, sweepPt.z, -ux, 0, -uz, 0.20, 52.0, 0.72);
+      const hitM_lo = castRayInLaserGrid(idx, sweepPt.x, sweepPt.y + 0.28, sweepPt.z, -ux, 0, -uz, 0.20, 32.0, 0.65);
+      const hitM = hitM_hi && hitM_lo ? (hitM_lo.t < hitM_hi.t ? hitM_lo : hitM_hi) : hitM_hi || hitM_lo;
+
+      if (hitP && hitM) {
+        const wSpan = hitP.t + hitM.t;
+        if (wSpan >= 0.85) {
+          const beamY = sweepPt.y + 0.14;
+          const entry = {
+            k,
+            width: wSpan,
+            pA: new THREE.Vector3(sweepPt.x - ux * hitM.t, beamY, sweepPt.z - uz * hitM.t),
+            pB: new THREE.Vector3(sweepPt.x + ux * hitP.t, beamY, sweepPt.z + uz * hitP.t),
+          };
+          wallSpans[k] = entry;
+          if (!bestWall || wSpan < bestWall.width) {
+            bestWall = entry;
+          }
+        }
+      }
+
+      // Pass B: Continuous Road / Floor Surface Cross-Section (curbs, ditches, shoulders, embankments)
+      const edgeP = traceRoadEdgeAlongRay(idx, sweepPt.x, sweepPt.y, sweepPt.z, ux, uz, 26.0);
+      const edgeM = traceRoadEdgeAlongRay(idx, sweepPt.x, sweepPt.y, sweepPt.z, -ux, -uz, 26.0);
+      if (edgeP.bounded && edgeM.bounded && edgeP.dist >= 0.42 && edgeM.dist >= 0.42) {
+        const rWidth = edgeM.pt.distanceTo(edgeP.pt);
+        if (rWidth >= 0.95 && (!bestRoad || rWidth < bestRoad.width)) {
+          const horizSpan = Math.max(0.1, Math.hypot(edgeP.pt.x - edgeM.pt.x, edgeP.pt.z - edgeM.pt.z));
+          const crossSlopePct = (Math.abs(edgeP.pt.y - edgeM.pt.y) / horizSpan) * 100;
+          bestRoad = {
+            k,
+            width: rWidth,
+            pA: edgeM.pt,
+            pB: edgeP.pt,
+            crossSlopePct,
+          };
+        }
+      }
+    }
+
+    // Decide between Indoor Room (hasCeiling) vs Road Width vs Narrow Corridor/Clearance:
+    // Never let distant setback walls/trees override a narrower curb/shoulder-bounded road!
+    if (bestWall && (!bestRoad || bestWall.width <= bestRoad.width * 1.28)) {
+      const kPerp = (bestWall.k + 9) % N_AZ;
+      const ortho = wallSpans[kPerp] || null;
+      const isRoom = Boolean(hasCeiling);
+      return {
+        kind: isRoom ? "room" : bestWall.width >= 2.2 ? "road" : "corridor",
+        originPt: rawPt.clone(),
+        pA: bestWall.pA,
+        pB: bestWall.pB,
+        width: bestWall.width,
+        crossSlopePct: bestRoad ? bestRoad.crossSlopePct : undefined,
+        orthoLength: isRoom && ortho ? ortho.width : null,
+        orthoPA: isRoom && ortho ? ortho.pA : null,
+        orthoPB: isRoom && ortho ? ortho.pB : null,
+        ceilHeight,
+        ceilPt,
+        floorPt: sweepPt.clone(),
+      };
+    }
+
+    if (bestRoad) {
+      return {
+        kind: "road",
+        originPt: rawPt.clone(),
+        pA: bestRoad.pA,
+        pB: bestRoad.pB,
+        width: bestRoad.width,
+        crossSlopePct: bestRoad.crossSlopePct,
+        ceilHeight,
+        ceilPt,
+        floorPt: rawPt.clone(),
+      };
+    }
+
+    if (bestWall) {
+      return {
+        kind: "corridor",
+        originPt: rawPt.clone(),
+        pA: bestWall.pA,
+        pB: bestWall.pB,
+        width: bestWall.width,
+        ceilHeight,
+        ceilPt,
+        floorPt: rawPt.clone(),
+      };
+    }
+
+    // Fallback when hovering an isolated irregular boulder/slope with no defined corridor edges
+    return {
+      kind: "point_only",
+      originPt: rawPt.clone(),
+      slopeDeg: THREE.MathUtils.radToDeg(Math.acos(Math.max(-1, Math.min(1, Math.abs(n.y))))),
+    };
+  }
+
+  function renderLaserVisuals(spanInfo, existingMeas = null) {
+    if (!studioThree) return;
+    const isTemp = !existingMeas;
+    const info = existingMeas || spanInfo;
+    if (isTemp) {
+      clearTempDistanceVisuals();
+    }
+    if (!info || !info.originPt) return;
+
+    const addObj = (mesh) => {
+      studioThree.overlayGroup.add(mesh);
+      if (isTemp) STATE.tempDistanceObjects.push(mesh);
+    };
+
+    const addLaserBeam = (start, end, colorHex, pixelRad = 1.65, opacity = 0.94) => {
+      const lDir = new THREE.Vector3().subVectors(end, start);
+      const lLen = lDir.length();
+      if (lLen <= 0.02) return;
+      const coreLine = new THREE.Line(
+        new THREE.BufferGeometry().setFromPoints([start, end]),
+        new THREE.LineBasicMaterial({ color: 0xffffff, linewidth: 1, depthTest: false, transparent: true, opacity: 0.85 })
+      );
+      coreLine.renderOrder = 1000;
+      addObj(coreLine);
+
+      const rodGeo = new THREE.CylinderGeometry(1, 1, lLen, 10);
+      const rodMat = new THREE.MeshBasicMaterial({
+        color: colorHex,
+        depthTest: false,
+        depthWrite: false,
+        transparent: true,
+        opacity,
+      });
+      const rod = new THREE.Mesh(rodGeo, rodMat);
+      rod.position.copy(start).addScaledVector(lDir, 0.5);
+      rod.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), lDir.clone().normalize());
+      rod.userData.isZoomInvariantRod = true;
+      rod.userData.pixelRadius = pixelRad;
+      rod.renderOrder = 999;
+      addObj(rod);
+    };
+
+    // Origin emitter dot
+    add3DPinMarker(info.originPt, 0xff2d55, studioThree.overlayGroup, addObj);
+
+    if (info.kind === "point_only" || !info.pA || !info.pB) {
+      const twd = localToTwd97(info.originPt);
+      add2DBadge(
+        info.originPt,
+        `<div class="autodesk-flex-badge autodesk-laser-badge">🔴 雷射高程 H ${twd.h >= 0 ? "+" : ""}${twd.h.toFixed(2)} m <span class="autodesk-sub-pill">坡度 ${(info.slopeDeg || 0).toFixed(1)}°</span></div>`,
+        "#e11d48",
+        { rawHtml: true, offsetY: -22, isTempDistance: isTemp }
+      );
+      updateZoomInvariantElements();
+      return;
+    }
+
+    // Primary Width Laser Beam (pA <-> pB) + endpoint pins
+    addLaserBeam(info.pA, info.pB, 0xff2d55, 1.75, 0.94);
+    add3DPinMarker(info.pA, 0xff2d55, studioThree.overlayGroup, addObj);
+    add3DPinMarker(info.pB, 0xff2d55, studioThree.overlayGroup, addObj);
+
+    // Optional Secondary Orthogonal Room Length Beam (subtle sky-blue)
+    if (info.orthoPA && info.orthoPB && info.orthoLength) {
+      addLaserBeam(info.orthoPA, info.orthoPB, 0x38bdf8, 1.05, 0.62);
+      add3DPinMarker(info.orthoPA, 0x38bdf8, studioThree.overlayGroup, addObj);
+      add3DPinMarker(info.orthoPB, 0x38bdf8, studioThree.overlayGroup, addObj);
+    }
+
+    // Optional Vertical Ceiling Clearance Laser (floorPt <-> ceilPt)
+    if (info.ceilPt && info.floorPt && info.ceilHeight) {
+      addLaserBeam(info.floorPt, info.ceilPt, 0xf59e0b, 1.05, 0.65);
+      add3DPinMarker(info.ceilPt, 0xf59e0b, studioThree.overlayGroup, addObj);
+    }
+
+    const mid = new THREE.Vector3().addVectors(info.pA, info.pB).multiplyScalar(0.5);
+    const labelAnchor = mid.clone().lerp(info.originPt, 0.35);
+
+    let titlePrefix = "路寬";
+    const subParts = [];
+    if (info.kind === "room") {
+      titlePrefix = "室內淨寬";
+      if (info.orthoLength) subParts.push(`× 長 ${info.orthoLength.toFixed(2)} m`);
+      if (info.ceilHeight) subParts.push(`淨高 ${info.ceilHeight.toFixed(2)} m`);
+    } else if (info.kind === "corridor" || info.kind === "wall_span") {
+      titlePrefix = "淨寬";
+      if (info.ceilHeight) subParts.push(`淨高 ${info.ceilHeight.toFixed(2)} m`);
+    } else {
+      titlePrefix = "路寬";
+      if (Number.isFinite(info.crossSlopePct)) {
+        subParts.push(`橫坡 ${info.crossSlopePct.toFixed(1)}%`);
+      }
+      if (info.ceilHeight) {
+        subParts.push(`淨高 ${info.ceilHeight.toFixed(2)} m`);
+      }
+    }
+
+    const subHtml = subParts.length > 0 ? `<span class="autodesk-sub-pill">${subParts.join(" · ")}</span>` : "";
+    add2DBadge(
+      labelAnchor,
+      `<div class="autodesk-flex-badge autodesk-laser-badge"><span>🔴 ${titlePrefix} ~ ${info.width.toFixed(2)} m</span>${subHtml}</div>`,
+      "#e11d48",
+      { rawHtml: true, offsetY: -18, isTempDistance: isTemp }
+    );
+
+    updateZoomInvariantElements();
+  }
+
+  function isMeshVisibleUnderRoot(mesh, rootStop) {
+    let cur = mesh;
+    while (cur) {
+      if (!cur.visible) return false;
+      if (cur === rootStop) break;
+      cur = cur.parent;
+    }
+    return true;
+  }
+
+  function pointInPoly2D(px, py, poly) {
+    let inside = false;
+    const n = poly.length;
+    for (let i = 0, j = n - 1; i < n; j = i++) {
+      const xi = poly[i][0], yi = poly[i][1];
+      const xj = poly[j][0], yj = poly[j][1];
+      const intersect = (yi > py) !== (yj > py) && px < ((xj - xi) * (py - yi)) / (yj - yi || 1e-12) + xi;
+      if (intersect) inside = !inside;
+    }
+    return inside;
+  }
+
+  function fillEmptyDepthCells3x3JS(grid, G) {
+    const out = new Float32Array(grid.length);
+    for (let y = 0; y < G; y++) {
+      const y0 = Math.max(0, y - 1);
+      const y1 = Math.min(G - 1, y + 1);
+      for (let x = 0; x < G; x++) {
+        const idx = y * G + x;
+        const v = grid[idx];
+        if (v > 0) {
+          out[idx] = v;
+          continue;
+        }
+        let best = 1e30;
+        const x0 = Math.max(0, x - 1);
+        const x1 = Math.min(G - 1, x + 1);
+        for (let yy = y0; yy <= y1; yy++) {
+          const row = yy * G;
+          for (let xx = x0; xx <= x1; xx++) {
+            const nv = grid[row + xx];
+            if (nv > 0 && nv < best) best = nv;
+          }
+        }
+        out[idx] = best < 1e29 ? best : 0;
+      }
+    }
+    return out;
+  }
+
+  function getEffectiveLassoVisibleOnly(mode = null) {
+    const m = mode || (STATE.activeTool === "crop" && STATE.cropMode === "keep_inside" ? "keep_inside" : STATE.cropMode || "delete_inside");
+    return m === "delete_inside" ? Boolean(STATE.lassoVisibleOnlyDelete) : Boolean(STATE.lassoVisibleOnlyKeep);
+  }
+
+  function studioWorldToTilesetNative(worldPt) {
+    if (!worldPt) return [0, 0, 0];
+    if (!studioThree || !studioThree.modelPivot) {
+      const t = localToTwd97(worldPt);
+      return [t.e, t.n, t.h];
+    }
+    studioThree.modelPivot.updateMatrixWorld(true);
+    const invPivot = studioThree.modelPivot.matrixWorld.clone().invert();
+    const local = worldPt.clone().applyMatrix4(invPivot);
+    const tc = studioThree.tilesCenter || [0, 0, 0];
+    return [local.x + tc[0], local.y + tc[1], local.z + tc[2]];
+  }
+
+  function clearLassoHighlight3D() {
+    if (studioThree && studioThree.overlayGroup) {
+      const toRemove = [];
+      studioThree.overlayGroup.children.forEach((c) => {
+        if (c.userData && c.userData.isLassoHighlight) toRemove.push(c);
+      });
+      toRemove.forEach((c) => {
+        if (c.geometry) c.geometry.dispose();
+        if (c.material) c.material.dispose();
+        studioThree.overlayGroup.remove(c);
+      });
+    }
+    STATE.badges2D = STATE.badges2D.filter((b) => {
+      if (b.isLassoHighlight) {
+        b.el?.remove();
+        return false;
+      }
+      return true;
+    });
+    STATE.lassoSelectedTriCount = 0;
+  }
+
+  function clearLassoSelectionState() {
+    if (studioThree && typeof studioThree._cancelLassoDrag === "function") {
+      studioThree._cancelLassoDrag();
+    }
+    STATE.lassoStrokes = [];
+    STATE.pendingCropPolygons = [];
+    STATE.cropPolygonPoints = [];
+    STATE.lassoSelectedTriCount = 0;
+    clearLassoHighlight3D();
+    if (
+      STATE.activeTool === "crop" ||
+      STATE.activeTool === "crop_delete" ||
+      STATE.activeTool === "optimizer" ||
+      STATE.activeTool === "crs" ||
+      STATE.activeTool === "generate_scan"
+    ) {
+      clearAreaVisualsOnly();
+    }
+  }
+
+  function collectVisibleStudioScanMeshes() {
+    const meshes = [];
+    if (!studioThree) return meshes;
+    if (STATE.multiAlign?.active && studioThree.multiAlignGroup && studioThree.multiAlignGroup.visible) {
+      studioThree.multiAlignGroup.updateMatrixWorld(true);
+      (STATE.multiAlign.layers || []).forEach((layer) => {
+        if (!layer || !layer.visible || !layer.zUpGroup) return;
+        layer.zUpGroup.traverse((m) => {
+          if (
+            m &&
+            m.isMesh &&
+            !m.userData?.isAlignBoxHelper &&
+            m.geometry &&
+            m.geometry.attributes &&
+            m.geometry.attributes.position &&
+            isMeshVisibleUnderRoot(m, studioThree.multiAlignGroup)
+          ) {
+            m.userData._alignLayerScanId = layer.scan_id;
+            m.userData._alignZUpGroup = layer.zUpGroup;
+            meshes.push(m);
+          }
+        });
+      });
+      return meshes;
+    }
+    if (!studioThree.modelPivot || !studioThree.modelPivot.visible) return meshes;
+    studioThree.modelPivot.updateMatrixWorld(true);
+    studioThree.modelPivot.traverse((m) => {
+      if (
+        m &&
+        m.isMesh &&
+        m.geometry &&
+        m.geometry.attributes &&
+        m.geometry.attributes.position &&
+        isMeshVisibleUnderRoot(m, studioThree.modelPivot)
+      ) {
+        m.userData._alignLayerScanId = null;
+        m.userData._alignZUpGroup = null;
+        meshes.push(m);
+      }
+    });
+    return meshes;
+  }
+
+  function buildStudioLassoFrustumStroke(screenPts, op = "add") {
+    if (!studioThree || !studioThree.renderer || !studioThree.camera || !screenPts || screenPts.length < 3) {
+      return null;
+    }
+    const rect = studioThree.renderer.domElement.getBoundingClientRect();
+    const w = Math.max(1, rect.width);
+    const h = Math.max(1, rect.height);
+
+    const rawNdc = screenPts.map((p) => [
+      Math.max(-1.05, Math.min(1.05, (p.x / w) * 2 - 1)),
+      Math.max(-1.05, Math.min(1.05, 1 - (p.y / h) * 2)),
+    ]);
+
+    const maxVerts = 96;
+    const ndcPoly = [];
+    if (rawNdc.length <= maxVerts) {
+      for (let i = 0; i < rawNdc.length; i++) ndcPoly.push(rawNdc[i]);
+    } else {
+      const step = (rawNdc.length - 1) / (maxVerts - 1);
+      for (let i = 0; i < maxVerts; i++) {
+        ndcPoly.push(rawNdc[Math.min(rawNdc.length - 1, Math.round(i * step))]);
+      }
+    }
+    if (ndcPoly.length < 3) return null;
+
+    let bMinX = 1e9, bMinY = 1e9, bMaxX = -1e9, bMaxY = -1e9;
+    for (let i = 0; i < ndcPoly.length; i++) {
+      const px = ndcPoly[i][0], py = ndcPoly[i][1];
+      if (px < bMinX) bMinX = px;
+      if (px > bMaxX) bMaxX = px;
+      if (py < bMinY) bMinY = py;
+      if (py > bMaxY) bMaxY = py;
+    }
+    if (bMaxX - bMinX < 0.004 || bMaxY - bMinY < 0.004) return null;
+
+    const cam = studioThree.camera;
+    cam.updateProjectionMatrix();
+    cam.updateMatrixWorld(true);
+    studioThree.modelPivot.updateMatrixWorld(true);
+
+    const viewProjMat = new THREE.Matrix4().multiplyMatrices(cam.projectionMatrix, cam.matrixWorldInverse);
+    const tilesCenter = studioThree.tilesCenter ? studioThree.tilesCenter.slice() : [0, 0, 0];
+    const upMat = studioThree.tileUpMatrix ? studioThree.tileUpMatrix.clone() : new THREE.Matrix4();
+    const pivotMat = studioThree.modelPivot.matrixWorld.clone();
+
+    // Conservative 160x160 frontmost camera-depth grid across all visible Studio scan triangles
+    const G = 160;
+    const infVal = 1e30;
+    const depthRaw = new Float32Array(G * G);
+    depthRaw.fill(infVal);
+    const padMinX = Math.max(-1.05, bMinX - 0.05);
+    const padMaxX = Math.min(1.05, bMaxX + 0.05);
+    const padMinY = Math.max(-1.05, bMinY - 0.05);
+    const padMaxY = Math.min(1.05, bMaxY + 0.05);
+    const cellDiagNdc = 1.42 / G;
+
+    const meshes = collectVisibleStudioScanMeshes();
+    const mvp = new THREE.Matrix4();
+
+    for (let mi = 0; mi < meshes.length; mi++) {
+      const m = meshes[mi];
+      mvp.multiplyMatrices(viewProjMat, m.matrixWorld);
+      const e = mvp.elements;
+      const posAttr = m.geometry.attributes.position;
+      const idxAttr = m.geometry.index;
+      const triCount = idxAttr ? Math.floor(idxAttr.count / 3) : Math.floor(posAttr.count / 3);
+
+      for (let t = 0; t < triCount; t++) {
+        const i0 = idxAttr ? idxAttr.getX(t * 3) : t * 3;
+        const i1 = idxAttr ? idxAttr.getX(t * 3 + 1) : t * 3 + 1;
+        const i2 = idxAttr ? idxAttr.getX(t * 3 + 2) : t * 3 + 2;
+
+        const x0 = posAttr.getX(i0), y0 = posAttr.getY(i0), z0 = posAttr.getZ(i0);
+        const cw0 = e[3] * x0 + e[7] * y0 + e[11] * z0 + e[15];
+        if (cw0 <= 0.05) continue;
+
+        const x1 = posAttr.getX(i1), y1 = posAttr.getY(i1), z1 = posAttr.getZ(i1);
+        const cw1 = e[3] * x1 + e[7] * y1 + e[11] * z1 + e[15];
+        if (cw1 <= 0.05) continue;
+
+        const x2 = posAttr.getX(i2), y2 = posAttr.getY(i2), z2 = posAttr.getZ(i2);
+        const cw2 = e[3] * x2 + e[7] * y2 + e[11] * z2 + e[15];
+        if (cw2 <= 0.05) continue;
+
+        const nx0 = (e[0] * x0 + e[4] * y0 + e[8] * z0 + e[12]) / cw0;
+        const ny0 = (e[1] * x0 + e[5] * y0 + e[9] * z0 + e[13]) / cw0;
+        const nx1 = (e[0] * x1 + e[4] * y1 + e[8] * z1 + e[12]) / cw1;
+        const ny1 = (e[1] * x1 + e[5] * y1 + e[9] * z1 + e[13]) / cw1;
+        const nx2 = (e[0] * x2 + e[4] * y2 + e[8] * z2 + e[12]) / cw2;
+        const ny2 = (e[1] * x2 + e[5] * y2 + e[9] * z2 + e[13]) / cw2;
+
+        const tMinX = Math.min(nx0, nx1, nx2);
+        const tMaxX = Math.max(nx0, nx1, nx2);
+        const tMinY = Math.min(ny0, ny1, ny2);
+        const tMaxY = Math.max(ny0, ny1, ny2);
+        if (tMaxX < padMinX || tMinX > padMaxX || tMaxY < padMinY || tMinY > padMaxY) continue;
+
+        const gx0 = Math.max(0, Math.min(G - 1, Math.floor((tMinX * 0.5 + 0.5) * G)));
+        const gx1 = Math.max(0, Math.min(G - 1, Math.floor((tMaxX * 0.5 + 0.5) * G)));
+        const gy0 = Math.max(0, Math.min(G - 1, Math.floor((tMinY * 0.5 + 0.5) * G)));
+        const gy1 = Math.max(0, Math.min(G - 1, Math.floor((tMaxY * 0.5 + 0.5) * G)));
+
+        const wMin = Math.min(cw0, cw1, cw2);
+        const wMax = Math.max(cw0, cw1, cw2);
+
+        if (gx0 === gx1 && gy0 === gy1) {
+          const gi = gy0 * G + gx0;
+          if (wMin < depthRaw[gi]) depthRaw[gi] = wMin;
+          continue;
+        }
+
+        const denom = (ny1 - ny2) * (nx0 - nx2) + (nx2 - nx1) * (ny0 - ny2);
+        const absDenom = Math.abs(denom);
+        if (absDenom < 1e-9) {
+          for (let gy = gy0; gy <= gy1; gy++) {
+            const row = gy * G;
+            for (let gx = gx0; gx <= gx1; gx++) {
+              if (wMin < depthRaw[row + gx]) depthRaw[row + gx] = wMin;
+            }
+          }
+          continue;
+        }
+
+        const invDenom = 1.0 / denom;
+        const m0 = (cellDiagNdc * Math.hypot(nx2 - nx1, ny2 - ny1)) / absDenom;
+        const m1 = (cellDiagNdc * Math.hypot(nx0 - nx2, ny0 - ny2)) / absDenom;
+        const m2 = (cellDiagNdc * Math.hypot(nx1 - nx0, ny1 - ny0)) / absDenom;
+
+        for (let gy = gy0; gy <= gy1; gy++) {
+          const py = ((gy + 0.5) / G) * 2 - 1;
+          const row = gy * G;
+          for (let gx = gx0; gx <= gx1; gx++) {
+            const px = ((gx + 0.5) / G) * 2 - 1;
+            const l0 = ((ny1 - ny2) * (px - nx2) + (nx2 - nx1) * (py - ny2)) * invDenom;
+            if (l0 < -m0) continue;
+            const l1 = ((ny2 - ny0) * (px - nx2) + (nx0 - nx2) * (py - ny2)) * invDenom;
+            if (l1 < -m1) continue;
+            const l2 = 1.0 - l0 - l1;
+            if (l2 < -m2) continue;
+            const wInterp = Math.max(wMin, Math.min(wMax, l0 * cw0 + l1 * cw1 + l2 * cw2));
+            if (wInterp < depthRaw[row + gx]) depthRaw[row + gx] = wInterp;
+          }
+        }
+      }
+    }
+
+    const depthGridList = new Array(G * G);
+    for (let i = 0; i < G * G; i++) {
+      depthGridList[i] = depthRaw[i] < 1e29 ? Math.round(depthRaw[i] * 1000) / 1000 : 0;
+    }
+
+    let layerZUpToClip = null;
+    if (STATE.multiAlign?.active && Array.isArray(STATE.multiAlign.layers)) {
+      if (studioThree.multiAlignGroup) studioThree.multiAlignGroup.updateMatrixWorld(true);
+      layerZUpToClip = {};
+      STATE.multiAlign.layers.forEach((layer) => {
+        if (!layer || !layer.visible || !layer.zUpGroup) return;
+        const lMat = new THREE.Matrix4().multiplyMatrices(viewProjMat, layer.zUpGroup.matrixWorld);
+        layerZUpToClip[layer.scan_id] = Array.from(lMat.elements);
+      });
+    }
+
+    const strokeObj = {
+      op: op === "sub" ? "sub" : "add",
+      ndc_polygon: ndcPoly.map((p) => [Math.round(p[0] * 100000) / 100000, Math.round(p[1] * 100000) / 100000]),
+      tiles_center: tilesCenter,
+      up_matrix: Array.from(upMat.elements),
+      pivot_matrix: Array.from(pivotMat.elements),
+      view_proj_matrix: Array.from(viewProjMat.elements),
+      visible_only: getEffectiveLassoVisibleOnly(),
+      depth_grid_size: G,
+      depth_grid: depthGridList,
+      depth_tolerance_m: 0.85,
+    };
+    if (layerZUpToClip) {
+      strokeObj.layer_zup_to_clip = layerZUpToClip;
+    }
+    return strokeObj;
+  }
+
+  function prepareStrokeEvalList(rawStrokes, overrideVisibleOnly = null) {
+    if (!Array.isArray(rawStrokes) || rawStrokes.length === 0) return [];
+    return rawStrokes.map((st) => {
+      const visOnly = overrideVisibleOnly !== null ? Boolean(overrideVisibleOnly) : Boolean(st.visible_only);
+      const poly = st.ndc_polygon || [];
+      let bMinX = 1e9, bMinY = 1e9, bMaxX = -1e9, bMaxY = -1e9;
+      for (let i = 0; i < poly.length; i++) {
+        if (poly[i][0] < bMinX) bMinX = poly[i][0];
+        if (poly[i][0] > bMaxX) bMaxX = poly[i][0];
+        if (poly[i][1] < bMinY) bMinY = poly[i][1];
+        if (poly[i][1] > bMaxY) bMaxY = poly[i][1];
+      }
+      const G = Number(st.depth_grid_size) || 0;
+      let dgFilled = null;
+      let maxValidW = 0;
+      if (visOnly && G >= 8 && Array.isArray(st.depth_grid) && st.depth_grid.length === G * G) {
+        const rawArr = Float32Array.from(st.depth_grid);
+        const posVals = [];
+        for (let i = 0; i < rawArr.length; i++) {
+          if (rawArr[i] > 0) posVals.push(rawArr[i]);
+        }
+        if (posVals.length > 0) {
+          posVals.sort((a, b) => a - b);
+          maxValidW = posVals[Math.min(posVals.length - 1, Math.floor(posVals.length * 0.98))];
+          dgFilled = fillEmptyDepthCells3x3JS(rawArr, G);
+        }
+      }
+      const vpMat = new THREE.Matrix4();
+      if (Array.isArray(st.view_proj_matrix) && st.view_proj_matrix.length === 16) {
+        vpMat.fromArray(st.view_proj_matrix);
+      }
+      let layerZUpMap = null;
+      if (st.layer_zup_to_clip && typeof st.layer_zup_to_clip === "object") {
+        layerZUpMap = {};
+        Object.keys(st.layer_zup_to_clip).forEach((lid) => {
+          const arr = st.layer_zup_to_clip[lid];
+          if (Array.isArray(arr) && arr.length === 16) {
+            layerZUpMap[lid] = new THREE.Matrix4().fromArray(arr);
+          }
+        });
+      }
+      return {
+        op: st.op === "sub" ? "sub" : "add",
+        poly,
+        bMinX,
+        bMinY,
+        bMaxX,
+        bMaxY,
+        vpMat,
+        layerZUpMap,
+        visibleOnly: visOnly,
+        dg: dgFilled,
+        G,
+        maxValidW,
+        tolM: Number(st.depth_tolerance_m) || 0.85,
+      };
+    });
+  }
+
+  function prepareNativePolyEvalList(polyList2D) {
+    if (!Array.isArray(polyList2D) || polyList2D.length === 0) return [];
+    const out = [];
+    for (let pi = 0; pi < polyList2D.length; pi++) {
+      const poly = polyList2D[pi];
+      if (!Array.isArray(poly) || poly.length < 3) continue;
+      let bMinX = 1e9, bMinY = 1e9, bMaxX = -1e9, bMaxY = -1e9;
+      for (let i = 0; i < poly.length; i++) {
+        const px = poly[i][0], py = poly[i][1];
+        if (px < bMinX) bMinX = px;
+        if (px > bMaxX) bMaxX = px;
+        if (py < bMinY) bMinY = py;
+        if (py > bMaxY) bMaxY = py;
+      }
+      out.push({ poly, bMinX, bMinY, bMaxX, bMaxY });
+    }
+    return out;
+  }
+
+  function evaluateTrianglesMaskOnMesh(m, posAttr, indexArrayOrAttr, triCount, preparedStrokes, preparedPolys, invPivot, tc) {
+    const selFlags = new Uint8Array(triCount);
+    const isTypedArr = ArrayBuffer.isView(indexArrayOrAttr);
+    const getIdx = indexArrayOrAttr
+      ? isTypedArr
+        ? (k) => indexArrayOrAttr[k]
+        : (k) => indexArrayOrAttr.getX(k)
+      : (k) => k;
+
+    if (preparedStrokes.length > 0) {
+      const mvp = new THREE.Matrix4();
+      const layerId = m.userData?._alignLayerScanId || null;
+      const curZUp = m.userData?._alignZUpGroup || null;
+      const invCurZUp = layerId && curZUp ? curZUp.matrixWorld.clone().invert() : null;
+      for (let si = 0; si < preparedStrokes.length; si++) {
+        const st = preparedStrokes[si];
+        const isSub = st.op === "sub";
+        if (layerId && st.layerZUpMap) {
+          const lMat = st.layerZUpMap[layerId];
+          if (!lMat || !invCurZUp) continue;
+          mvp.multiplyMatrices(lMat, invCurZUp).multiply(m.matrixWorld);
+        } else {
+          mvp.multiplyMatrices(st.vpMat, m.matrixWorld);
+        }
+        const e = mvp.elements;
+
+        for (let t = 0; t < triCount; t++) {
+          if (isSub && !selFlags[t]) continue;
+          if (!isSub && selFlags[t]) continue;
+
+          const i0 = getIdx(t * 3);
+          const i1 = getIdx(t * 3 + 1);
+          const i2 = getIdx(t * 3 + 2);
+
+          const x0 = posAttr.getX(i0), y0 = posAttr.getY(i0), z0 = posAttr.getZ(i0);
+          const cw0 = e[3] * x0 + e[7] * y0 + e[11] * z0 + e[15];
+          if (cw0 <= 0.05) continue;
+
+          const x1 = posAttr.getX(i1), y1 = posAttr.getY(i1), z1 = posAttr.getZ(i1);
+          const cw1 = e[3] * x1 + e[7] * y1 + e[11] * z1 + e[15];
+          if (cw1 <= 0.05) continue;
+
+          const x2 = posAttr.getX(i2), y2 = posAttr.getY(i2), z2 = posAttr.getZ(i2);
+          const cw2 = e[3] * x2 + e[7] * y2 + e[11] * z2 + e[15];
+          if (cw2 <= 0.05) continue;
+
+          const xc = (x0 + x1 + x2) / 3.0, yc = (y0 + y1 + y2) / 3.0, zc = (z0 + z1 + z2) / 3.0;
+          const cwc = (cw0 + cw1 + cw2) / 3.0;
+
+          const nx0 = (e[0] * x0 + e[4] * y0 + e[8] * z0 + e[12]) / cw0;
+          const ny0 = (e[1] * x0 + e[5] * y0 + e[9] * z0 + e[13]) / cw0;
+          const nx1 = (e[0] * x1 + e[4] * y1 + e[8] * z1 + e[12]) / cw1;
+          const ny1 = (e[1] * x1 + e[5] * y1 + e[9] * z1 + e[13]) / cw1;
+          const nx2 = (e[0] * x2 + e[4] * y2 + e[8] * z2 + e[12]) / cw2;
+          const ny2 = (e[1] * x2 + e[5] * y2 + e[9] * z2 + e[13]) / cw2;
+          const nxc = (e[0] * xc + e[4] * yc + e[8] * zc + e[12]) / cwc;
+          const nyc = (e[1] * xc + e[5] * yc + e[9] * zc + e[13]) / cwc;
+
+          if (
+            Math.max(nx0, nx1, nx2, nxc) < st.bMinX ||
+            Math.min(nx0, nx1, nx2, nxc) > st.bMaxX ||
+            Math.max(ny0, ny1, ny2, nyc) < st.bMinY ||
+            Math.min(ny0, ny1, ny2, nyc) > st.bMaxY
+          ) {
+            continue;
+          }
+
+          let hit = pointInPoly2D(nxc, nyc, st.poly);
+          if (!hit) {
+            let vIn = 0;
+            if (pointInPoly2D(nx0, ny0, st.poly)) vIn++;
+            if (pointInPoly2D(nx1, ny1, st.poly)) vIn++;
+            if (vIn < 2 && pointInPoly2D(nx2, ny2, st.poly)) vIn++;
+            hit = vIn >= 2;
+          }
+          if (!hit) continue;
+
+          if (st.visibleOnly && st.dg) {
+            const gx = Math.max(0, Math.min(st.G - 1, Math.floor((nxc * 0.5 + 0.5) * st.G)));
+            const gy = Math.max(0, Math.min(st.G - 1, Math.floor((nyc * 0.5 + 0.5) * st.G)));
+            const cellW = st.dg[gy * st.G + gx];
+            const effFrontW = cellW > 0 ? cellW : st.maxValidW;
+            const tol = Math.max(st.tolM, 0.03 * effFrontW);
+            const triNearW = Math.min(cwc, cw0, cw1, cw2);
+            if (triNearW > effFrontW + tol) continue;
+          }
+
+          selFlags[t] = isSub ? 0 : 1;
+        }
+      }
+    }
+
+    if (preparedPolys.length > 0 && invPivot) {
+      const meshToPivotLocal = new THREE.Matrix4().multiplyMatrices(invPivot, m.matrixWorld);
+      const me = meshToPivotLocal.elements;
+      for (let t = 0; t < triCount; t++) {
+        if (selFlags[t]) continue;
+        const i0 = getIdx(t * 3);
+        const i1 = getIdx(t * 3 + 1);
+        const i2 = getIdx(t * 3 + 2);
+
+        const xc = (posAttr.getX(i0) + posAttr.getX(i1) + posAttr.getX(i2)) / 3.0;
+        const yc = (posAttr.getY(i0) + posAttr.getY(i1) + posAttr.getY(i2)) / 3.0;
+        const zc = (posAttr.getZ(i0) + posAttr.getZ(i1) + posAttr.getZ(i2)) / 3.0;
+
+        const natX = me[0] * xc + me[4] * yc + me[8] * zc + me[12] + tc[0];
+        const natY = me[1] * xc + me[5] * yc + me[9] * zc + me[13] + tc[1];
+
+        for (let pi = 0; pi < preparedPolys.length; pi++) {
+          const pp = preparedPolys[pi];
+          if (natX < pp.bMinX || natX > pp.bMaxX || natY < pp.bMinY || natY > pp.bMaxY) continue;
+          if (pointInPoly2D(natX, natY, pp.poly)) {
+            selFlags[t] = 1;
+            break;
+          }
+        }
+      }
+    }
+
+    return selFlags;
+  }
+
+  function isActiveStudioTilesetEcef() {
+    const tc = studioThree?.tilesCenter;
+    return Array.isArray(tc) && tc.length === 3 && Math.hypot(tc[0], tc[1], tc[2]) > 4e6;
+  }
+
+  function planPolygonToTopDownFrustumStroke(pts) {
+    if (!studioThree || !Array.isArray(pts) || pts.length < 3) return null;
+    let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
+    for (let i = 0; i < pts.length; i++) {
+      const p = pts[i];
+      if (!p) continue;
+      if (p.x < minX) minX = p.x;
+      if (p.x > maxX) maxX = p.x;
+      if (p.z < minZ) minZ = p.z;
+      if (p.z > maxZ) maxZ = p.z;
+    }
+    if (!Number.isFinite(minX) || !Number.isFinite(minZ)) return null;
+    const cx = 0.5 * (minX + maxX);
+    const cz = 0.5 * (minZ + maxZ);
+    const halfSpan = Math.max(5.0, 0.65 * Math.max(maxX - minX, maxZ - minZ) + 4.0);
+    const orthoCam = new THREE.OrthographicCamera(-halfSpan, halfSpan, halfSpan, -halfSpan, 0.1, 20000);
+    orthoCam.position.set(cx, 5000, cz);
+    orthoCam.up.set(0, 0, -1);
+    orthoCam.lookAt(cx, 0, cz);
+    orthoCam.updateProjectionMatrix();
+    orthoCam.updateMatrixWorld(true);
+    studioThree.modelPivot.updateMatrixWorld(true);
+    const viewProjMat = new THREE.Matrix4().multiplyMatrices(orthoCam.projectionMatrix, orthoCam.matrixWorldInverse);
+    const ndcPoly = pts.map((p) => {
+      const v = new THREE.Vector4(p.x, 0, p.z, 1.0).applyMatrix4(viewProjMat);
+      const invW = Math.abs(v.w) > 1e-9 ? 1.0 / v.w : 1.0;
+      return [Math.round(v.x * invW * 100000) / 100000, Math.round(v.y * invW * 100000) / 100000];
+    });
+    const tilesCenter = studioThree.tilesCenter ? studioThree.tilesCenter.slice() : [0, 0, 0];
+    const upMat = studioThree.tileUpMatrix ? studioThree.tileUpMatrix.clone() : new THREE.Matrix4();
+    const pivotMat = studioThree.modelPivot.matrixWorld.clone();
+    return {
+      op: "add",
+      ndc_polygon: ndcPoly,
+      tiles_center: tilesCenter,
+      up_matrix: Array.from(upMat.elements),
+      pivot_matrix: Array.from(pivotMat.elements),
+      view_proj_matrix: Array.from(viewProjMat.elements),
+      visible_only: false,
+      depth_grid_size: 0,
+      depth_grid: [],
+      depth_tolerance_m: 0.85,
+    };
+  }
+
+  function rebuildLassoHighlight3D() {
+    clearLassoHighlight3D();
+    if (!studioThree || !studioThree.overlayGroup) return 0;
+
+    const isDelete = (STATE.cropMode || "delete_inside") === "delete_inside";
+    const visibleOnlyNow = getEffectiveLassoVisibleOnly(isDelete ? "delete_inside" : "keep_inside");
+    const meshes = collectVisibleStudioScanMeshes();
+
+    let preparedStrokes = [];
+    if (Array.isArray(STATE.lassoStrokes) && STATE.lassoStrokes.length > 0) {
+      STATE.lassoStrokes.forEach((st) => {
+        st.visible_only = visibleOnlyNow;
+      });
+      preparedStrokes = prepareStrokeEvalList(STATE.lassoStrokes, visibleOnlyNow);
+    }
+
+    const allWorldPolys = [];
+    if (Array.isArray(STATE.pendingCropPolygons)) {
+      for (let i = 0; i < STATE.pendingCropPolygons.length; i++) {
+        if (Array.isArray(STATE.pendingCropPolygons[i]) && STATE.pendingCropPolygons[i].length >= 3) {
+          allWorldPolys.push(STATE.pendingCropPolygons[i]);
+        }
+      }
+    }
+    if (Array.isArray(STATE.cropPolygonPoints) && STATE.cropPolygonPoints.length >= 3) {
+      allWorldPolys.push(STATE.cropPolygonPoints);
+    }
+
+    drawAllCropPolygons3D(isDelete);
+
+    const isMulti = Boolean(STATE.multiAlign?.active);
+    let preparedPolys = [];
+    const preparedPolysByLayer = {};
+    const invZUpByLayer = {};
+
+    if (isMulti && allWorldPolys.length > 0) {
+      (STATE.multiAlign.layers || []).forEach((layer) => {
+        if (!layer || !layer.visible || !layer.zUpGroup) return;
+        const invZUp = layer.zUpGroup.matrixWorld.clone().invert();
+        invZUpByLayer[layer.scan_id] = invZUp;
+        const layerPolys2D = allWorldPolys.map((pts) =>
+          pts.map((p) => {
+            const loc = p.clone().applyMatrix4(invZUp);
+            return [loc.x, loc.y];
+          })
+        );
+        preparedPolysByLayer[layer.scan_id] = prepareNativePolyEvalList(layerPolys2D);
+      });
+    } else if (allWorldPolys.length > 0 && isActiveStudioTilesetEcef()) {
+      const orthoStrokes = allWorldPolys.map((pts) => planPolygonToTopDownFrustumStroke(pts)).filter(Boolean);
+      if (orthoStrokes.length > 0) {
+        preparedStrokes = preparedStrokes.concat(prepareStrokeEvalList(orthoStrokes, false));
+      }
+    } else {
+      const nativePolyList2D = allWorldPolys.map((pts) =>
+        pts.map((p) => {
+          const n = studioWorldToTilesetNative(p);
+          return [n[0], n[1]];
+        })
+      );
+      preparedPolys = prepareNativePolyEvalList(nativePolyList2D);
+    }
+
+    if (preparedStrokes.length === 0 && allWorldPolys.length === 0) {
+      return 0;
+    }
+    if (meshes.length === 0) return 0;
+
+    const highlightedPositions = [];
+    let sumX = 0, sumY = 0, sumZ = 0;
+    let selectedCount = 0;
+    const maxPreviewTris = 180000;
+    const invPivot = studioThree.modelPivot.matrixWorld.clone().invert();
+    const tc = studioThree.tilesCenter || [0, 0, 0];
+
+    for (let mi = 0; mi < meshes.length; mi++) {
+      const m = meshes[mi];
+      const mw = m.matrixWorld.elements;
+      const posAttr = m.geometry.attributes.position;
+      const idxAttr = m.geometry.index;
+      const triCount = idxAttr ? Math.floor(idxAttr.count / 3) : Math.floor(posAttr.count / 3);
+      if (triCount === 0) continue;
+
+      const lid = m.userData?._alignLayerScanId || null;
+      const meshPolys = isMulti && lid ? preparedPolysByLayer[lid] || [] : preparedPolys;
+      const meshInv = isMulti && lid ? invZUpByLayer[lid] || null : invPivot;
+      const meshTc = isMulti && lid ? [0, 0, 0] : tc;
+
+      const selFlags = evaluateTrianglesMaskOnMesh(
+        m,
+        posAttr,
+        idxAttr,
+        triCount,
+        preparedStrokes,
+        meshPolys,
+        meshInv,
+        meshTc
+      );
+
+      for (let t = 0; t < triCount; t++) {
+        if (!selFlags[t]) continue;
+        selectedCount++;
+        const i0 = idxAttr ? idxAttr.getX(t * 3) : t * 3;
+        const i1 = idxAttr ? idxAttr.getX(t * 3 + 1) : t * 3 + 1;
+        const i2 = idxAttr ? idxAttr.getX(t * 3 + 2) : t * 3 + 2;
+
+        const x0 = posAttr.getX(i0), y0 = posAttr.getY(i0), z0 = posAttr.getZ(i0);
+        const wx0 = mw[0] * x0 + mw[4] * y0 + mw[8] * z0 + mw[12];
+        const wy0 = mw[1] * x0 + mw[5] * y0 + mw[9] * z0 + mw[13];
+        const wz0 = mw[2] * x0 + mw[6] * y0 + mw[10] * z0 + mw[14];
+
+        const x1 = posAttr.getX(i1), y1 = posAttr.getY(i1), z1 = posAttr.getZ(i1);
+        const wx1 = mw[0] * x1 + mw[4] * y1 + mw[8] * z1 + mw[12];
+        const wy1 = mw[1] * x1 + mw[5] * y1 + mw[9] * z1 + mw[13];
+        const wz1 = mw[2] * x1 + mw[6] * y1 + mw[10] * z1 + mw[14];
+
+        const x2 = posAttr.getX(i2), y2 = posAttr.getY(i2), z2 = posAttr.getZ(i2);
+        const wx2 = mw[0] * x2 + mw[4] * y2 + mw[8] * z2 + mw[12];
+        const wy2 = mw[1] * x2 + mw[5] * y2 + mw[9] * z2 + mw[13];
+        const wz2 = mw[2] * x2 + mw[6] * y2 + mw[10] * z2 + mw[14];
+
+        sumX += (wx0 + wx1 + wx2) / 3.0;
+        sumY += (wy0 + wy1 + wy2) / 3.0;
+        sumZ += (wz0 + wz1 + wz2) / 3.0;
+
+        if (highlightedPositions.length < maxPreviewTris * 9) {
+          highlightedPositions.push(wx0, wy0, wz0, wx1, wy1, wz1, wx2, wy2, wz2);
+        }
+      }
+    }
+
+    STATE.lassoSelectedTriCount = selectedCount;
+    const lblTris = document.getElementById("lblLassoSelectedTris");
+    if (lblTris) {
+      lblTris.textContent = selectedCount > 0 ? `${selectedCount.toLocaleString()} tris` : "0 tris";
+    }
+
+    if (highlightedPositions.length >= 9) {
+      const hlGeom = new THREE.BufferGeometry();
+      hlGeom.setAttribute("position", new THREE.Float32BufferAttribute(highlightedPositions, 3));
+      const hlMat = new THREE.MeshBasicMaterial({
+        color: isDelete ? 0xff2b2b : 0x10b981,
+        transparent: true,
+        opacity: 0.48,
+        side: THREE.DoubleSide,
+        depthTest: true,
+        depthWrite: false,
+        polygonOffset: true,
+        polygonOffsetFactor: -3,
+        polygonOffsetUnits: -3,
+      });
+      const hlMesh = new THREE.Mesh(hlGeom, hlMat);
+      hlMesh.renderOrder = 996;
+      hlMesh.userData.isLassoHighlight = true;
+      studioThree.overlayGroup.add(hlMesh);
+
+      if (preparedStrokes.length > 0 && selectedCount > 0) {
+        const centroid = new THREE.Vector3(sumX / selectedCount, sumY / selectedCount, sumZ / selectedCount);
+        add2DBadge(
+          centroid,
+          isDelete
+            ? `🗑️ Marked for Deletion: <b>${selectedCount.toLocaleString()} triangles</b>`
+            : `✂️ Marked to Keep: <b>${selectedCount.toLocaleString()} triangles</b>`,
+          isDelete ? "#ef4444" : "#10b981",
+          { isLassoHighlight: true }
+        );
+      }
+    }
+
+    if (studioThree.renderer && studioThree.scene && studioThree.camera) {
+      studioThree.renderer.render(studioThree.scene, studioThree.camera);
+    }
+    return selectedCount;
+  }
+
+  function renderSingleCropPolyOutline3D(pts, isDelete, labelPrefix, highlightFirstPin) {
+    if (!studioThree || !pts || pts.length < 1) return;
     const colorHex = isDelete ? 0xef4444 : 0x10b981;
     const borderCss = isDelete ? "#ef4444" : "#10b981";
     const addCropObj = (m) => {
@@ -3916,19 +7213,20 @@
     const pinStep = Math.max(1, Math.floor(pts.length / maxPins));
     pts.forEach((p, idx) => {
       if (idx === 0 || idx % pinStep === 0 || pts.length <= maxPins) {
-        add3DPinMarker(p, idx === 0 ? 0xff3b30 : colorHex, studioThree.overlayGroup, addCropObj);
+        add3DPinMarker(p, highlightFirstPin && idx === 0 ? 0xff3b30 : colorHex, studioThree.overlayGroup, addCropObj);
       }
     });
-    const loopPts = pts.length >= 3 ? [...pts, pts[0]] : pts;
-    const lineGeom = new THREE.BufferGeometry().setFromPoints(loopPts);
-    const lineMesh = new THREE.Line(
-      lineGeom,
-      new THREE.LineBasicMaterial({ color: colorHex, depthTest: false, linewidth: 2 })
-    );
-    lineMesh.renderOrder = 1000;
-    addCropObj(lineMesh);
-
-    if (pts.length >= 3) {
+    if (pts.length >= 2) {
+      const loopPts = pts.length >= 3 ? [...pts, pts[0]] : pts;
+      const lineGeom = new THREE.BufferGeometry().setFromPoints(loopPts);
+      const lineMesh = new THREE.Line(
+        lineGeom,
+        new THREE.LineBasicMaterial({ color: colorHex, depthTest: false, linewidth: 2 })
+      );
+      lineMesh.renderOrder = 1000;
+      addCropObj(lineMesh);
+    }
+    if (pts.length >= 3 && labelPrefix) {
       let area2 = 0;
       for (let i = 0; i < pts.length; i++) {
         const a = pts[i];
@@ -3939,13 +7237,288 @@
       const centroid = pts.reduce((acc, p) => acc.add(p.clone()), new THREE.Vector3()).divideScalar(pts.length);
       add2DBadge(
         centroid,
-        isDelete
-          ? `🗑️ Lasso Delete Zone: <b>${areaM2.toFixed(1)} m²</b> (${pts.length} pts)`
-          : `✂️ Lasso Keep Zone: <b>${areaM2.toFixed(1)} m²</b> (${pts.length} pts)`,
+        `${labelPrefix}: <b>${areaM2.toFixed(1)} m²</b> (${pts.length} pts)`,
         borderCss,
         { isArea: true }
       );
     }
+  }
+
+  function drawAllCropPolygons3D(isDelete = true) {
+    if (!studioThree) return;
+    clearAreaVisualsOnly();
+    const lockedList = Array.isArray(STATE.pendingCropPolygons) ? STATE.pendingCropPolygons : [];
+    for (let i = 0; i < lockedList.length; i++) {
+      const pList = lockedList[i];
+      if (Array.isArray(pList) && pList.length >= 3) {
+        renderSingleCropPolyOutline3D(
+          pList,
+          isDelete,
+          isDelete ? `🗑️ Polygon #${i + 1}` : `✂️ Keep Zone #${i + 1}`,
+          false
+        );
+      }
+    }
+    if (
+      (STATE.activeTool === "crop" || STATE.activeTool === "crop_delete") &&
+      STATE.lassoInputMethod === "polygon" &&
+      Array.isArray(STATE.measurePoints) &&
+      STATE.measurePoints.length >= 1
+    ) {
+      renderSingleCropPolyOutline3D(
+        STATE.measurePoints,
+        isDelete,
+        STATE.measurePoints.length >= 3
+          ? isDelete
+            ? `🗑️ New Polygon (click V1 / Enter)`
+            : `✂️ New Keep Zone (click V1 / Enter)`
+          : "",
+        true
+      );
+    }
+  }
+
+  function drawLassoSelection3D(pts, isDelete = true) {
+    drawAllCropPolygons3D(isDelete);
+  }
+
+  // =========================================================================
+  // STAGED SCAN ADJUSTMENTS & REVERSIBLE LIVE 3D TRIANGLE PREVIEW
+  // =========================================================================
+  function getStagedEditsScopeKey(scanObj = null) {
+    if (STATE.multiAlign?.active) return "__multi_align__";
+    const sc = scanObj || STATE.activeScan || {};
+    return sc.scan_id || STATE.activeScanId || "";
+  }
+
+  function resetStagedEditsForScan(scanObj = null) {
+    const sc = scanObj || STATE.activeScan || {};
+    const sid = getStagedEditsScopeKey(sc);
+    const curSite =
+      (STATE.activeProjectGroup && STATE.activeProjectGroup !== "__all__" ? STATE.activeProjectGroup : "") ||
+      sc.project_group ||
+      "Unassigned Site";
+    const todayStr = new Date().toISOString().slice(0, 10);
+    const baseName = STATE.multiAlign?.active
+      ? `${curSite}_Merged_${todayStr}`
+      : `${String(sc.name || sid || "Scan").trim()}_Edited`;
+    STATE.stagedEdits = {
+      scanId: sid,
+      rev: 0,
+      deletions: [],
+      cropKeep: null,
+      compressionPreset: null,
+      crsConfig: null,
+      newScanName: baseName,
+    };
+    syncStagedEditsDockBadge();
+  }
+
+  function ensureStagedEditsForActiveScan() {
+    const sid = getStagedEditsScopeKey();
+    if (!STATE.stagedEdits || STATE.stagedEdits.scanId !== sid) {
+      resetStagedEditsForScan(STATE.activeScan);
+    }
+    return STATE.stagedEdits;
+  }
+
+  function countStagedAdjustments() {
+    const sid = getStagedEditsScopeKey();
+    if (!STATE.stagedEdits || STATE.stagedEdits.scanId !== sid) return 0;
+    const st = STATE.stagedEdits;
+    let cnt = 0;
+    if (STATE.multiAlign?.active && Array.isArray(STATE.multiAlign.layers) && STATE.multiAlign.layers.length >= 2) {
+      cnt++;
+    }
+    if (Array.isArray(st.deletions) && st.deletions.length > 0) cnt++;
+    if (!STATE.multiAlign?.active && st.cropKeep) cnt++;
+    if (st.compressionPreset && st.compressionPreset !== "none") cnt++;
+    if (st.crsConfig) cnt++;
+    return cnt;
+  }
+
+  function hasStagedMeshEditsForActiveScan() {
+    const sid = getStagedEditsScopeKey();
+    if (!STATE.stagedEdits || STATE.stagedEdits.scanId !== sid) return false;
+    return (
+      (Array.isArray(STATE.stagedEdits.deletions) && STATE.stagedEdits.deletions.length > 0) ||
+      Boolean(!STATE.multiAlign?.active && STATE.stagedEdits.cropKeep)
+    );
+  }
+
+  function syncStagedEditsDockBadge() {
+    const cnt = countStagedAdjustments();
+    const badge = document.getElementById("lblStagedEditsBadge");
+    const btn = document.getElementById("btnDockGenerateScan");
+    if (badge) {
+      badge.textContent = String(cnt);
+      badge.style.display = cnt > 0 ? "inline-block" : "none";
+    }
+    if (btn) {
+      btn.classList.toggle("has-staged", cnt > 0);
+    }
+  }
+
+  function restoreOriginalStudioMeshIndices() {
+    if (!studioThree) return;
+    const restoreUnder = (root) => {
+      if (!root) return;
+      root.traverse((m) => {
+        if (m && m.isMesh && m.geometry && m.userData && m.userData._origIndexSaved) {
+          if (m.userData._origHadIndex) {
+            m.geometry.setIndex(new THREE.BufferAttribute(m.userData._origIndexArray.slice(), 1));
+          } else {
+            m.geometry.setIndex(null);
+          }
+          if (typeof m.userData._origVisible === "boolean") {
+            m.visible = m.userData._origVisible;
+          }
+          if ("boundsTree" in m.geometry) m.geometry.boundsTree = null;
+          m.geometry.computeBoundingBox();
+          m.geometry.computeBoundingSphere();
+          m.userData._appliedStagedRev = 0;
+        }
+      });
+    };
+    restoreUnder(studioThree.modelPivot);
+    restoreUnder(studioThree.multiAlignGroup);
+    studioThree._laserSpatialIndex = null;
+    if (studioThree.renderer && studioThree.scene && studioThree.camera) {
+      studioThree.renderer.render(studioThree.scene, studioThree.camera);
+    }
+  }
+
+  function applyStagedEditsToStudioMeshes(forceRecompute = true) {
+    if (!studioThree) return 0;
+    const st = ensureStagedEditsForActiveScan();
+    if (!hasStagedMeshEditsForActiveScan()) {
+      restoreOriginalStudioMeshIndices();
+      return 0;
+    }
+
+    const isMulti = Boolean(STATE.multiAlign?.active && studioThree.multiAlignGroup && studioThree.multiAlignGroup.visible);
+    const allDelStrokes = [];
+    const allDelPolys = [];
+    const delPolysByLayer = {};
+    for (let bi = 0; bi < st.deletions.length; bi++) {
+      const b = st.deletions[bi];
+      if (Array.isArray(b.frustum_strokes)) {
+        for (let i = 0; i < b.frustum_strokes.length; i++) allDelStrokes.push(b.frustum_strokes[i]);
+      }
+      if (isMulti && b.layer_centered_polygons && typeof b.layer_centered_polygons === "object") {
+        Object.keys(b.layer_centered_polygons).forEach((lid) => {
+          const arr = b.layer_centered_polygons[lid];
+          if (Array.isArray(arr) && arr.length > 0) {
+            if (!delPolysByLayer[lid]) delPolysByLayer[lid] = [];
+            for (let i = 0; i < arr.length; i++) delPolysByLayer[lid].push(arr[i]);
+          }
+        });
+      } else if (Array.isArray(b.native_polygons)) {
+        for (let i = 0; i < b.native_polygons.length; i++) allDelPolys.push(b.native_polygons[i]);
+      }
+    }
+    const prepDelStrokes = prepareStrokeEvalList(allDelStrokes, null);
+    const prepDelPolys = prepareNativePolyEvalList(allDelPolys);
+    const prepDelPolysByLayer = {};
+    Object.keys(delPolysByLayer).forEach((lid) => {
+      prepDelPolysByLayer[lid] = prepareNativePolyEvalList(delPolysByLayer[lid]);
+    });
+
+    const hasKeep = Boolean(!isMulti && st.cropKeep);
+    const prepKeepStrokes = hasKeep ? prepareStrokeEvalList(st.cropKeep.frustum_strokes || [], null) : [];
+    const prepKeepPolys = hasKeep ? prepareNativePolyEvalList(st.cropKeep.native_polygons || []) : [];
+
+    let totalHiddenTris = 0;
+    const applyOnMesh = (m, meshDelPolys, meshInv, meshTc) => {
+      if (!m || !m.isMesh || m.userData?.isAlignBoxHelper || !m.geometry?.attributes?.position) return;
+      if (!forceRecompute && m.userData._appliedStagedRev === st.rev) return;
+
+      const posAttr = m.geometry.attributes.position;
+      if (!m.userData._origIndexSaved) {
+        m.userData._origVisible = m.visible;
+        if (m.geometry.index && m.geometry.index.array) {
+          m.userData._origIndexArray = m.geometry.index.array.slice();
+          m.userData._origHadIndex = true;
+        } else {
+          const vCount = posAttr.count;
+          const seq = vCount > 65535 ? new Uint32Array(vCount) : new Uint16Array(vCount);
+          for (let i = 0; i < vCount; i++) seq[i] = i;
+          m.userData._origIndexArray = seq;
+          m.userData._origHadIndex = false;
+        }
+        m.userData._origIndexSaved = true;
+      }
+
+      const origIdx = m.userData._origIndexArray;
+      const triCount = Math.floor(origIdx.length / 3);
+      if (triCount === 0) return;
+
+      const delFlags =
+        prepDelStrokes.length > 0 || meshDelPolys.length > 0
+          ? evaluateTrianglesMaskOnMesh(m, posAttr, origIdx, triCount, prepDelStrokes, meshDelPolys, meshInv, meshTc)
+          : null;
+      const keepFlags =
+        hasKeep && (prepKeepStrokes.length > 0 || prepKeepPolys.length > 0)
+          ? evaluateTrianglesMaskOnMesh(m, posAttr, origIdx, triCount, prepKeepStrokes, prepKeepPolys, meshInv, meshTc)
+          : null;
+
+      let keptTris = 0;
+      for (let t = 0; t < triCount; t++) {
+        if (delFlags && delFlags[t]) continue;
+        if (keepFlags && !keepFlags[t]) continue;
+        keptTris++;
+      }
+      totalHiddenTris += triCount - keptTris;
+
+      const OutArrType = origIdx instanceof Uint32Array ? Uint32Array : Uint16Array;
+      const filteredIdx = new OutArrType(keptTris * 3);
+      let wPtr = 0;
+      for (let t = 0; t < triCount; t++) {
+        if (delFlags && delFlags[t]) continue;
+        if (keepFlags && !keepFlags[t]) continue;
+        filteredIdx[wPtr++] = origIdx[t * 3];
+        filteredIdx[wPtr++] = origIdx[t * 3 + 1];
+        filteredIdx[wPtr++] = origIdx[t * 3 + 2];
+      }
+      m.geometry.setIndex(new THREE.BufferAttribute(filteredIdx, 1));
+      m.visible = keptTris > 0 ? (m.userData._origVisible !== false) : false;
+      if ("boundsTree" in m.geometry) m.geometry.boundsTree = null;
+      m.geometry.computeBoundingBox();
+      m.geometry.computeBoundingSphere();
+      m.userData._appliedStagedRev = st.rev;
+    };
+
+    if (isMulti) {
+      studioThree.multiAlignGroup.updateMatrixWorld(true);
+      (STATE.multiAlign.layers || []).forEach((layer) => {
+        if (!layer || !layer.zUpGroup) return;
+        const invZUp = layer.zUpGroup.matrixWorld.clone().invert();
+        const lPolys = prepDelPolysByLayer[layer.scan_id] || [];
+        layer.zUpGroup.traverse((m) => {
+          if (m && m.isMesh && !m.userData?.isAlignBoxHelper) {
+            m.userData._alignLayerScanId = layer.scan_id;
+            m.userData._alignZUpGroup = layer.zUpGroup;
+            applyOnMesh(m, lPolys, invZUp, [0, 0, 0]);
+          }
+        });
+      });
+    } else if (studioThree.modelPivot) {
+      studioThree.modelPivot.updateMatrixWorld(true);
+      const invPivot = studioThree.modelPivot.matrixWorld.clone().invert();
+      const tc = studioThree.tilesCenter || [0, 0, 0];
+      studioThree.modelPivot.traverse((m) => {
+        if (m && m.isMesh) {
+          m.userData._alignLayerScanId = null;
+          m.userData._alignZUpGroup = null;
+          applyOnMesh(m, prepDelPolys, invPivot, tc);
+        }
+      });
+    }
+
+    if (studioThree.renderer && studioThree.scene && studioThree.camera) {
+      studioThree.renderer.render(studioThree.scene, studioThree.camera);
+    }
+    return totalHiddenTris;
   }
 
   // Live rubberband preview for Area, Cut/Fill Volume & Cross-Section Profile placement
@@ -3971,24 +7544,76 @@
     studioThree.polyPreviewGroup.add(line);
   }
 
+  let _laserMoveRafPending = false;
+  let _lastLaserPointerEvt = null;
+
   function handleStudioLaserMove(e) {
-    const pt = pickStudio3DPoint(e.clientX, e.clientY);
-    if (!pt) return;
+    _lastLaserPointerEvt = { clientX: e.clientX, clientY: e.clientY };
+    if (_laserMoveRafPending) return;
+    _laserMoveRafPending = true;
+    requestAnimationFrame(() => {
+      _laserMoveRafPending = false;
+      if (STATE.activeView !== "studio" || STATE.activeTool !== "laser" || !_lastLaserPointerEvt) return;
+      const hit = pickStudio3DHit(_lastLaserPointerEvt.clientX, _lastLaserPointerEvt.clientY);
+      if (!hit) {
+        STATE._lastLaserSpan = null;
+        clearTempDistanceVisuals();
+        return;
+      }
+      const span = computeLaserSpanAtPoint(hit.rawPoint, hit.normal);
+      STATE._lastLaserSpan = span;
+      renderLaserVisuals(span, null);
+      const twd = localToTwd97(hit.rawPoint);
+      const lbl = document.getElementById("lblLastPickedCoord");
+      if (lbl) {
+        const wTxt = span && span.width ? `Width: ${span.width.toFixed(2)}m | ` : "";
+        lbl.textContent = `LASER -> ${wTxt}${formatScanCoordReadout(twd, STATE.activeScan)}`;
+      }
+    });
+  }
+
+  function handleStudioCoordinateMove(e) {
+    const hit = pickStudio3DHit(e.clientX, e.clientY);
+    if (!hit) {
+      clearTempDistanceVisuals();
+      return;
+    }
+    const pt = hit.point;
     const twd = localToTwd97(pt);
+    renderCoordinateVisuals(pt, null);
     const lbl = document.getElementById("lblLastPickedCoord");
     if (lbl) {
-      lbl.textContent = `LASER -> E: ${twd.e.toFixed(2)}m, N: ${twd.n.toFixed(2)}m, TWVD2001 H: +${twd.h.toFixed(2)}m`;
+      lbl.textContent = formatScanCoordReadout(twd, STATE.activeScan);
     }
   }
 
+  function handleStudioAngleMove(e) {
+    const hoverPt = pickStudio3DPoint(e.clientX, e.clientY);
+    if (!hoverPt) {
+      if (STATE.measurePoints.length === 0) {
+        clearTempDistanceVisuals();
+      } else {
+        renderAngleVisuals(null, null);
+      }
+      return;
+    }
+    const twd = localToTwd97(hoverPt);
+    const lbl = document.getElementById("lblLastPickedCoord");
+    if (lbl) {
+      lbl.textContent = formatScanCoordReadout(twd, STATE.activeScan);
+    }
+    renderAngleVisuals(hoverPt, null);
+  }
+
   function handleStudioCanvasClick(e) {
-    const pt = pickStudio3DPoint(e.clientX, e.clientY);
-    if (!pt) return;
+    const hit = pickStudio3DHit(e.clientX, e.clientY);
+    if (!hit) return;
+    const pt = hit.point;
     const twd = localToTwd97(pt);
 
     const lbl = document.getElementById("lblLastPickedCoord");
     if (lbl) {
-      lbl.textContent = `E: ${twd.e.toFixed(2)}m, N: ${twd.n.toFixed(2)}m, H: +${twd.h.toFixed(2)}m`;
+      lbl.textContent = formatScanCoordReadout(twd, STATE.activeScan);
     }
 
     const tool = STATE.activeTool;
@@ -4001,11 +7626,13 @@
       const h = Math.max(1, domEl?.clientHeight || 1);
       const pClick = clickPt.clone().project(cam);
       const pStart = startPt.clone().project(cam);
-      const sxClick = (pClick.x * 0.5 + 0.5) * w;
-      const syClick = (-pClick.y * 0.5 + 0.5) * h;
-      const sxStart = (pStart.x * 0.5 + 0.5) * w;
-      const syStart = (-pStart.y * 0.5 + 0.5) * h;
-      if (Math.hypot(sxClick - sxStart, syClick - syStart) <= 18) return true;
+      if (Math.abs(pStart.z) <= 1.0 && Math.abs(pClick.z) <= 1.0) {
+        const sxClick = (pClick.x * 0.5 + 0.5) * w;
+        const syClick = (-pClick.y * 0.5 + 0.5) * h;
+        const sxStart = (pStart.x * 0.5 + 0.5) * w;
+        const syStart = (-pStart.y * 0.5 + 0.5) * h;
+        if (Math.hypot(sxClick - sxStart, syClick - syStart) <= 18) return true;
+      }
       const fovRad = THREE.MathUtils.degToRad(cam.fov);
       const dist = cam.position.distanceTo(startPt);
       const worldPerPixel = (2 * Math.tan(fovRad / 2) * dist) / h;
@@ -4014,12 +7641,39 @@
     };
 
     if (tool === "coordinates") {
-      add3DPinMarker(pt, 0x0284c7);
-      add2DBadge(
-        pt,
-        `E:${twd.e.toFixed(2)}m | N:${twd.n.toFixed(2)}m | H:+${twd.h.toFixed(2)}m`,
-        "#cbd5e1"
-      );
+      clearTempDistanceVisuals();
+      const coordIndex = STATE.completedMeasurements.filter((m) => m.type === "coordinates").length + 1;
+      const meas = {
+        id: `coord_${Date.now()}`,
+        type: "coordinates",
+        label: `P${coordIndex}`,
+        pt: pt.clone(),
+        twd,
+      };
+      STATE.completedMeasurements.push(meas);
+      renderCoordinateVisuals(pt, meas);
+      return;
+    }
+
+    if (tool === "laser") {
+      const span = computeLaserSpanAtPoint(hit.rawPoint, hit.normal);
+      if (span) {
+        clearTempDistanceVisuals();
+        const meas = Object.assign(
+          {
+            id: `laser_${Date.now()}`,
+            type: "laser",
+          },
+          span
+        );
+        STATE.completedMeasurements.push(meas);
+        renderLaserVisuals(null, meas);
+        if (span.width) {
+          showToast(
+            `${span.kind === "room" ? "室內淨寬" : span.kind === "road" ? "雷射路寬" : "雷射淨寬"} ~ ${span.width.toFixed(2)} m 已釘選`
+          );
+        }
+      }
       return;
     }
 
@@ -4044,6 +7698,7 @@
         clearTempDistanceVisuals();
         const meas = {
           id: `dist_${Date.now()}`,
+          type: "distance",
           p1: p1.clone(),
           p2: p2.clone(),
           dist: p1.distanceTo(p2),
@@ -4056,16 +7711,25 @@
     }
 
     if (tool === "angle") {
-      STATE.measurePoints.push(pt);
-      add3DPinMarker(pt, 0x0284c7);
-      if (STATE.measurePoints.length === 3) {
+      STATE.measurePoints.push(pt.clone());
+      if (STATE.measurePoints.length < 3) {
+        renderAngleVisuals(null, null);
+      } else {
         const [p1, p2, p3] = STATE.measurePoints;
+        clearTempDistanceVisuals();
         const v1 = p1.clone().sub(p2).normalize();
         const v2 = p3.clone().sub(p2).normalize();
         const deg = THREE.MathUtils.radToDeg(Math.acos(Math.max(-1, Math.min(1, v1.dot(v2)))));
-        const lineGeom = new THREE.BufferGeometry().setFromPoints([p1, p2, p3]);
-        studioThree.overlayGroup.add(new THREE.Line(lineGeom, new THREE.LineBasicMaterial({ color: 0x0284c7, depthTest: false })));
-        add2DBadge(p2, `Angle: <b>${deg.toFixed(1)}°</b>`, "#cbd5e1");
+        const meas = {
+          id: `angle_${Date.now()}`,
+          type: "angle",
+          p1: p1.clone(),
+          p2: p2.clone(),
+          p3: p3.clone(),
+          angleDeg: deg,
+        };
+        STATE.completedMeasurements.push(meas);
+        renderAngleVisuals(null, meas);
         STATE.measurePoints = [];
       }
       return;
@@ -4124,7 +7788,13 @@
     }
 
     if (tool === "crop" || tool === "crop_delete") {
+      if (STATE.lassoInputMethod !== "polygon") {
+        // In Freehand Drag Lasso mode, single-clicking without dragging only updates picked coordinates
+        // without accidentally overwriting or placing stray polygon vertices.
+        return;
+      }
       const isDelete = tool === "crop_delete";
+      if (!Array.isArray(STATE.pendingCropPolygons)) STATE.pendingCropPolygons = [];
       if (STATE.measurePoints.length >= 3 && isNearStartVertex(pt, STATE.measurePoints[0])) {
         if (studioThree && studioThree.polyPreviewGroup) {
           while (studioThree.polyPreviewGroup.children.length > 0) {
@@ -4132,32 +7802,45 @@
           }
         }
         const lockedPts = STATE.measurePoints.map((p) => p.clone());
-        STATE.maskBoundaryPoints = lockedPts;
+        STATE.pendingCropPolygons.push(lockedPts);
+        STATE.cropPolygonPoints = [];
         STATE.measurePoints = [];
         STATE.polygonLocked = true;
         STATE.cropMode = isDelete ? "delete_inside" : "keep_inside";
-        drawLassoSelection3D(lockedPts, isDelete);
+        const selTris = rebuildLassoHighlight3D();
+        const totalMarked =
+          STATE.pendingCropPolygons.length +
+          (Array.isArray(STATE.lassoStrokes) ? STATE.lassoStrokes.filter((s) => s.op !== "sub").length : 0);
         showToast(
           isDelete
-            ? `Lasso Delete polygon locked (${lockedPts.length} vertices)`
-            : `Lasso Crop polygon locked (${lockedPts.length} vertices)`
+            ? `Polygon #${STATE.pendingCropPolygons.length} marked (${totalMarked} region${totalMarked === 1 ? "" : "s"} · ${selTris.toLocaleString()} tris) — mark more or press Delete`
+            : `Keep Polygon #${STATE.pendingCropPolygons.length} marked (${selTris.toLocaleString()} tris)`
         );
-        openOptimizerInspector(STATE.cropMode);
+        if (isDelete) {
+          openLassoDeleteInspector({ armLasso: true });
+        } else {
+          openLassoKeepInspector({ armLasso: true });
+        }
         return;
       }
       STATE.polygonLocked = false;
       STATE.measurePoints.push(pt.clone());
       const pts = STATE.measurePoints.slice();
-      drawLassoSelection3D(pts, isDelete);
+      drawAllCropPolygons3D(isDelete);
       if (pts.length >= 3) {
-        STATE.maskBoundaryPoints = pts.map((p) => p.clone());
-        openOptimizerInspector(isDelete ? "delete_inside" : "keep_inside");
+        STATE.cropPolygonPoints = pts.map((p) => p.clone());
+        rebuildLassoHighlight3D();
+        if (isDelete) {
+          openLassoDeleteInspector({ armLasso: true });
+        } else {
+          openLassoKeepInspector({ armLasso: true });
+        }
         showToast(
-          `${isDelete ? "Lasso Delete" : "Crop"} Polygon: ${pts.length} vertices placed — click red V1 (or press Enter) to lock`
+          `${isDelete ? "Lasso Delete" : "Crop"} Polygon #${STATE.pendingCropPolygons.length + 1}: ${pts.length} vertices — click red V1 (or Enter) to lock`
         );
       } else {
         showToast(
-          `${isDelete ? "Lasso Delete" : "Crop"} Point ${pts.length} placed — drag freehand lasso or click ${3 - pts.length} more point${3 - pts.length === 1 ? "" : "s"}`
+          `${isDelete ? "Lasso Delete" : "Crop"} Polygon #${STATE.pendingCropPolygons.length + 1}: Point ${pts.length} placed — click ${3 - pts.length} more`
         );
       }
       return;
@@ -4278,7 +7961,8 @@
   function sampleStudioMeshElevationAtLocalXZ(lx, lz, fallbackY = 0, cachedTargets = null) {
     const targets = cachedTargets || getStudioRaycastMeshes();
     if (!targets.length) return { y: fallbackY, hit: false };
-    _downRayOrigin.set(lx, 450, lz);
+    const rayTopY = Math.max(450, (Number(studioThree?.boundingSphere?.radius) || 60) * 3 + 200);
+    _downRayOrigin.set(lx, rayTopY, lz);
     _downRaycaster.set(_downRayOrigin, _downRayDir);
     const hits = _downRaycaster.intersectObjects(targets, true);
     if (hits && hits.length > 0) {
@@ -4309,14 +7993,15 @@
     const activeScan = STATE.activeScan || STATE.scans.find((s) => s.scan_id === STATE.activeScanId) || {
       scan_id: STATE.activeScanId || "scan",
       name: STATE.activeScanId || "Active Scan",
-      project_group: STATE.activeProjectGroup || "Project",
-      twd97_e: 304952.656,
-      twd97_n: 2757084.875,
-      twd97_h: 43.18,
+      project_group: STATE.activeProjectGroup || "Unassigned Site",
+      twd97_e: 0,
+      twd97_n: 0,
+      twd97_h: 0,
     };
-    const ce = Number(activeScan.twd97_e || 304952.656);
-    const cn = Number(activeScan.twd97_n || 2757084.875);
-    const ch = Number(activeScan.twd97_h || 43.18);
+    const originTwd = localToTwd97({ x: 0, y: 0, z: 0 });
+    const ce = Number(originTwd.e || 0);
+    const cn = Number(originTwd.n || 0);
+    const ch = Number(originTwd.h || 0);
 
     const pts = ptsLocal && ptsLocal.length >= 3 ? ptsLocal : getDefaultPolygonOnStudioMesh();
     const targets = getStudioRaycastMeshes();
@@ -4655,8 +8340,8 @@
 
     if (pts.length < 3) return;
 
-    const activeScan = STATE.activeScan || STATE.scans.find((s) => s.scan_id === STATE.activeScanId) || {};
-    const ch = Number(activeScan.twd97_h || 43.18);
+    const originTwd = localToTwd97({ x: 0, y: 0, z: 0 });
+    const ch = Number(originTwd.h || 0);
     const minY =
       volumeRes && Number.isFinite(volumeRes.datum_elevation_m)
         ? Number(volumeRes.datum_elevation_m) - ch
@@ -4801,6 +8486,13 @@
 
   document.getElementById("btnCloseSidePanel")?.addEventListener("click", () => {
     clearSectionBoxClippingIfNotKept();
+    if (STATE.activeTool === "crop_delete" || STATE.activeTool === "crop" || STATE.activeTool === "optimizer") {
+      cancelLassoToolMode(false);
+    } else if (
+      ["section", "crs", "generate_scan", "rtk", "photos", "comments"].includes(STATE.activeTool)
+    ) {
+      setActiveStudioTool(STATE.multiAlign?.active ? "align_merge" : "orbit");
+    }
     document.getElementById("studioSidePanel")?.classList.remove("active");
   });
 
@@ -4833,12 +8525,17 @@
       candidatePts.length > 0
         ? candidatePts.reduce((acc, p) => acc + (p.y || 0), 0) / candidatePts.length
         : 0;
-    const defaultDatumZ = Number(((Number(activeScan.twd97_h || 43.18) + meanPtY)).toFixed(2));
+    const defaultDatumZ = Number((Number(localToTwd97({ x: 0, y: meanPtY, z: 0 }).h || 0)).toFixed(2));
 
     const panel = document.getElementById("studioSidePanel");
     const alreadyOpenForVolume = panel?.classList.contains("active") && document.getElementById("volStockpileName");
 
     if (!alreadyOpenForVolume) {
+      const stagedNoticeHtml = hasStagedMeshEditsForActiveScan()
+        ? `<div style="font-size:11px;color:#fbbf24;background:rgba(245,158,11,0.12);border:1px solid rgba(245,158,11,0.35);border-radius:7px;padding:7px 9px;margin-bottom:9px;line-height:1.4;">
+             ⚠️ <b>Staged Mesh Edits Active:</b> Live 3D volume uses your edited mesh preview, while server DSM archival/epoch-diff uses the committed scan on disk until you run <b>Generate Edited Scan</b>.
+           </div>`
+        : "";
       const matOptions = Object.entries(STATE.materials || {
         crushed_stone: { name: "Crushed Stone / 碎石級配", density_t_m3: 1.65 },
         excavated_soil: { name: "Excavated Soil / 一般營建土方", density_t_m3: 1.45 },
@@ -4848,13 +8545,14 @@
       })
         .map(
           ([k, v]) =>
-            `<option value="${k}" data-density="${v.density_t_m3}">${v.name} (${v.density_t_m3} t/m³)</option>`
+            `<option value="${escapeHtml(k)}" data-density="${escapeHtml(String(v.density_t_m3))}">${escapeHtml(v.name)} (${escapeHtml(String(v.density_t_m3))} t/m³)</option>`
         )
         .join("");
 
       showSidePanel(
         `<span>Cut/Fill &amp; Stockpile Volume</span>`,
         `
+        ${stagedNoticeHtml}
         <div style="font-size:11px;color:var(--ui-text-secondary);background:var(--ui-bg-pill);border:1px solid var(--ui-border-strong);border-radius:7px;padding:7px 9px;margin-bottom:9px;line-height:1.4;">
           Step 1: Click <b>3+ points</b> on the 3D scan to draw a Cut/Fill boundary polygon.<br>
           Step 2: Click red start point <b>V1</b> (or press <b>Enter</b> / <b>Lock &amp; Compute</b>) to lock the polygon and calculate volume.
@@ -5090,45 +8788,47 @@
   function renderVolumeResultAnd3D(res, customPts = null) {
     const box = document.getElementById("volResultContainer");
     if (box) {
+      const safeHtmlUrl = escapeHtml(res.report_html_url || "#");
+      const safeCsvUrl = escapeHtml(res.report_csv_url || "#");
       box.innerHTML = `
         <div class="gs-metric-grid">
           <div class="gs-metric-box">
             <div class="lbl">Fill Volume (+)</div>
-            <div class="val" style="color:var(--ui-accent);">+${res.fill_volume_m3} m³</div>
+            <div class="val" style="color:var(--ui-accent);">+${escapeHtml(String(res.fill_volume_m3))} m³</div>
           </div>
           <div class="gs-metric-box">
             <div class="lbl">Cut Volume (-)</div>
-            <div class="val" style="color:#ef4444;">-${res.cut_volume_m3} m³</div>
+            <div class="val" style="color:#ef4444;">-${escapeHtml(String(res.cut_volume_m3))} m³</div>
           </div>
           <div class="gs-metric-box">
             <div class="lbl">Net Volume</div>
-            <div class="val">${res.net_volume_m3 >= 0 ? "+" : ""}${res.net_volume_m3} m³</div>
+            <div class="val">${Number(res.net_volume_m3) >= 0 ? "+" : ""}${escapeHtml(String(res.net_volume_m3))} m³</div>
           </div>
           <div class="gs-metric-box">
             <div class="lbl">Estimated Mass</div>
-            <div class="val">${res.estimated_tonnage_t} t</div>
+            <div class="val">${escapeHtml(String(res.estimated_tonnage_t))} t</div>
           </div>
         </div>
         <div style="font-size:11px;color:var(--ui-text-secondary);background:var(--ui-bg-subtle);padding:9px 10px;border-radius:8px;border:1px solid var(--ui-border);margin-bottom:10px;line-height:1.5;">
-          <div><b>Footprint Area:</b> ${res.planar_area_m2} m² (${res.planar_area_ping} 坪) · <b>Vertices:</b> ${(res.boundary_twd97 || []).length}</div>
-          <div><b>Sloped Area:</b> ${res.surface_area_m2} m² · <b>Perim:</b> ${res.perimeter_m} m</div>
+          <div><b>Footprint Area:</b> ${escapeHtml(String(res.planar_area_m2))} m² (${escapeHtml(String(res.planar_area_ping))} 坪) · <b>Vertices:</b> ${(res.boundary_twd97 || []).length}</div>
+          <div><b>Sloped Area:</b> ${escapeHtml(String(res.surface_area_m2))} m² · <b>Perim:</b> ${escapeHtml(String(res.perimeter_m))} m</div>
           <div><b>Base Surface:</b> ${
             res.base_mode === "custom_plane"
-              ? `Custom Datum Z₀ (+${res.datum_elevation_m} m)`
+              ? `Custom Datum Z₀ (+${escapeHtml(String(res.datum_elevation_m))} m)`
               : res.base_mode === "epoch_diff"
               ? "Multi-Date Epoch Diff"
-              : `Perimeter Fit (Mean +${res.perim_mean_h_m ?? res.datum_elevation_m} m)`
+              : `Perimeter Fit (Mean +${escapeHtml(String(res.perim_mean_h_m ?? res.datum_elevation_m))} m)`
           }</div>
-          <div><b>Material:</b> ${res.material_name} (${res.density_t_m3} t/m³ · Bank: ${res.bank_tonnage_t ?? res.estimated_tonnage_t} t)</div>
+          <div><b>Material:</b> ${escapeHtml(String(res.material_name || ""))} (${escapeHtml(String(res.density_t_m3))} t/m³ · Bank: ${escapeHtml(String(res.bank_tonnage_t ?? res.estimated_tonnage_t))} t)</div>
         </div>
         <div style="display:flex;gap:6px;">
-          <a class="btn-xs primary" style="flex:1;justify-content:center;" href="${res.report_html_url}" target="_blank" title="Open Printable Stockpile Report (PDF/HTML)">
+          <a class="btn-xs primary" style="flex:1;justify-content:center;" href="${safeHtmlUrl}" target="_blank" rel="noopener noreferrer" title="Open Printable Stockpile Report (PDF/HTML)">
             <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8">
               <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>
             </svg>
             <span>Report</span>
           </a>
-          <a class="btn-xs" style="flex:1;justify-content:center;" href="${res.report_csv_url}" download="stockpile_volume_report.csv" title="Export Excel (.CSV)">
+          <a class="btn-xs" style="flex:1;justify-content:center;" href="${safeCsvUrl}" download="stockpile_volume_report.csv" title="Export Excel (.CSV)">
             <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8">
               <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
               <polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
@@ -5166,15 +8866,21 @@
     const alreadyOpenForContours = panel?.classList.contains("active") && document.getElementById("cntDrawingTitle");
 
     if (!alreadyOpenForContours) {
+      const stagedContoursNotice = hasStagedMeshEditsForActiveScan()
+        ? `<div style="font-size:11px;color:#fbbf24;background:rgba(245,158,11,0.12);border:1px solid rgba(245,158,11,0.35);border-radius:7px;padding:7px 9px;margin-bottom:9px;line-height:1.4;">
+             ⚠️ <b>Staged Mesh Edits Active:</b> Server-side <code>.DXF</code> &amp; A3 PDF contours read committed scan geometry on disk. Run <b>Generate Edited Scan</b> first if you want staged deletions baked into the survey report.
+           </div>`
+        : "";
       showSidePanel(
         `<span>Survey Report (Civil3D.dwg &amp; A3 PDF)</span>`,
         `
+        ${stagedContoursNotice}
         <div style="font-size:11px;color:var(--ui-text-secondary);background:var(--ui-bg-pill);border:1px solid var(--ui-border-strong);border-radius:7px;padding:7px 9px;margin-bottom:9px;line-height:1.45;">
-          Uses your active <b>Mask Boundary</b> &amp; <b>Contour Lines</b> to generate <code>Civil3D.dwg</code> (real <b>TWD97 XYZ</b>) and a zoom-to-fit <b>A3 Ready-to-Print PDF</b> with filled engineering frame. Click 3+ points on the scan to customize the mask boundary.
+          Uses your active <b>Mask Boundary</b> &amp; <b>Contour Lines</b> to generate <code>Civil3D.dwg</code> (real <b>${escapeHtml(getScanCrsDisplayLabel(activeScan))}</b>) and a zoom-to-fit <b>A3 Ready-to-Print PDF</b> with filled engineering frame. Click 3+ points on the scan to customize the mask boundary.
         </div>
         <div class="gs-form-group">
           <label>Engineering Frame Title (圖名 / 掃描專案名稱)</label>
-          <input type="text" class="gs-input" id="cntDrawingTitle" value="${defaultTitle}" />
+          <input type="text" class="gs-input" id="cntDrawingTitle" value="${escapeHtml(defaultTitle)}" />
         </div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;" class="gs-form-group">
           <div>
@@ -5198,7 +8904,7 @@
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;" class="gs-form-group">
           <div>
             <label>Surveyor (測量工程師)</label>
-            <input type="text" class="gs-input" id="cntEngineerName" value="${STATE.currentUser?.name || "雲在天"}" />
+            <input type="text" class="gs-input" id="cntEngineerName" value="${escapeHtml(STATE.currentUser?.name || "雲在天")}" />
           </div>
           <div>
             <label>Mask Boundary (邊界遮罩)</label>
@@ -5439,7 +9145,7 @@
     });
 
     ctx.font = "bold 6.5px Inter, sans-serif";
-    ctx.fillText(String(res.project_group || "QuChi Dam").slice(0, 18), tbX + 4, banY + 29);
+    ctx.fillText(String(res.project_group || "Unassigned Site").slice(0, 18), tbX + 4, banY + 29);
     ctx.font = "6px Inter, sans-serif";
     ctx.fillStyle = "#475569";
     ctx.fillText(`Date: ${String(res.survey_date || "").slice(0, 10)}`, tbX + 4, banY + 38);
@@ -5647,13 +9353,14 @@
     const activeScan = STATE.activeScan || STATE.scans.find((s) => s.scan_id === STATE.activeScanId) || {
       scan_id: STATE.activeScanId || "scan",
       name: STATE.activeScanId || "Active Scan",
-      twd97_e: 304952.656,
-      twd97_n: 2757084.875,
-      twd97_h: 43.18,
+      twd97_e: 0,
+      twd97_n: 0,
+      twd97_h: 0,
     };
-    const ce = Number(activeScan.twd97_e || 304952.656);
-    const cn = Number(activeScan.twd97_n || 2757084.875);
-    const ch = Number(activeScan.twd97_h || 43.18);
+    const originTwd = localToTwd97({ x: 0, y: 0, z: 0 });
+    const ce = Number(originTwd.e || 0);
+    const cn = Number(originTwd.n || 0);
+    const ch = Number(originTwd.h || 0);
 
     const [p1, p2] =
       p1Local && p2Local
@@ -5856,10 +9563,12 @@
         ),
       ];
       const blob = new Blob(["\uFEFF" + lines.join("\r\n")], { type: "text/csv;charset=utf-8" });
+      const blobUrl = URL.createObjectURL(blob);
       const a = document.createElement("a");
-      a.href = URL.createObjectURL(blob);
+      a.href = blobUrl;
       a.download = `cross_section_profile_${STATE.activeScanId || "scan"}.csv`;
       a.click();
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 10000);
       showToast("Downloaded Cross-Section Profile CSV");
     });
 
@@ -6085,23 +9794,27 @@
       `<div style="font-size:12px;color:var(--ui-text-secondary);">Querying calibrated PIX4Dcatch RTK camera poses...</div>`
     );
     try {
+      const clickTwd = localToTwd97(pt);
       const res = await apiPost("/api/survey/inspect-photos", {
         scan_id: STATE.activeScanId,
         x: pt.x,
         y: pt.y,
         z: pt.z,
+        twd_e: clickTwd.e,
+        twd_n: clickTwd.n,
+        twd_h: clickTwd.h,
       });
       const photosHtml = (res.photos || [])
         .map(
           (p) => `
           <div style="background:var(--ui-bg-subtle);border:1px solid var(--ui-border);border-radius:8px;padding:8px;margin-top:8px;">
-            <img src="${p.url}" alt="${p.filename}" style="width:100%;height:140px;object-fit:cover;border-radius:6px;background:var(--ui-bg-pill);" onerror="this.style.display='none'" />
+            <img src="${escapeHtml(p.url)}" alt="${escapeHtml(p.filename)}" style="width:100%;height:140px;object-fit:cover;border-radius:6px;background:var(--ui-bg-pill);" onerror="this.style.display='none'" />
             <div style="display:flex;justify-content:space-between;margin-top:6px;font-size:11px;font-weight:700;color:var(--ui-text-primary);">
-              <span>${p.filename}</span>
-              <span style="color:var(--ui-accent);">RTK σ=${p.rtk_h_sigma_cm}cm</span>
+              <span>${escapeHtml(p.filename)}</span>
+              <span style="color:var(--ui-accent);">RTK σ=${escapeHtml(String(p.rtk_h_sigma_cm))}cm</span>
             </div>
             <div style="font-size:10.5px;font-family:monospace;color:var(--ui-text-muted);margin-top:2px;">
-              E:${p.camera_twd97_e}m | N:${p.camera_twd97_n}m | H:+${p.camera_twd97_h}m | Dist:${p.distance_m}m
+              E:${escapeHtml(String(p.camera_twd97_e))}m | N:${escapeHtml(String(p.camera_twd97_n))}m | H:+${escapeHtml(String(p.camera_twd97_h))}m | Dist:${escapeHtml(String(p.distance_m))}m
             </div>
           </div>
         `
@@ -6112,7 +9825,7 @@
         `<span>RTK Camera Inspector</span>`,
         `
         <div style="font-size:11px;font-family:monospace;color:var(--ui-text-secondary);margin-bottom:6px;">
-          Target TWD97: E:${res.target_twd97.e}m, N:${res.target_twd97.n}m, H:+${res.target_twd97.h}m
+          Target: ${escapeHtml(formatScanCoordReadout({ e: Number(res.target_twd97?.e || 0), n: Number(res.target_twd97?.n || 0), h: Number(res.target_twd97?.h || 0) }, STATE.activeScan))}
         </div>
         ${photosHtml || '<div style="font-size:12px;color:var(--ui-text-muted);">No local raw photos found for this point.</div>'}
         `
@@ -6125,7 +9838,7 @@
   // 3E. Section Box Clipping Inspector (Auto-scaled to scan bounds + 6-plane clipping + 3D wireframe box)
   function openSectionBoxInspector() {
     setActiveStudioTool("section");
-    const rawR = Math.max(20, Number(studioThree?.boundingSphere?.radius) || 65);
+    const rawR = Math.max(20, computeStudioEffectiveBoundingRadius());
     const maxHoriz = Math.ceil(rawR * 1.35);
     const initHoriz = Math.ceil(rawR * 1.05);
     const maxElev = Math.max(25, Math.ceil(rawR * 0.75));
@@ -6350,239 +10063,1127 @@
     });
   }
 
-  // 3G. Scan Editing: Lasso Delete, Spatial Crop & GC_ScanOptimizer PC Action Drawer (Requirement 3)
-  function openOptimizerInspector(preferredCropMode = null) {
-    if (preferredCropMode === "delete_inside") {
-      STATE.cropMode = "delete_inside";
-      if (STATE.activeTool !== "crop_delete") setActiveStudioTool("crop_delete");
-    } else if (preferredCropMode === "keep_inside") {
-      STATE.cropMode = "keep_inside";
-      if (STATE.activeTool !== "crop") setActiveStudioTool("crop");
-    } else if (STATE.activeTool !== "crop_delete" && STATE.activeTool !== "crop") {
-      setActiveStudioTool("optimizer");
+  // 3G. Staged Scan Editing Suite:
+  //   1. Lasso Delete (`openLassoDeleteInspector`) — mark multiple polygons/lassos -> press Delete -> instant 3D preview (NO Mesh Optimizer inside!)
+  //   2. Lasso Keep (`openLassoKeepInspector`) — mark keep boundary -> stage crop & instant 3D preview
+  //   3. Mesh Compression (`openMeshCompressionInspector`) — stage compression preset
+  //   4. Coordinate System (`openCoordinateSystemInspector`) — stage CRS & custom datum offset
+  //   5. Generate Scan (`openGenerateScanInspector`) — build a brand-new scan once with all staged adjustments!
+
+  const CRS_UI_CATALOG = [
+    {
+      code: "TWD97_121_TWVD2001",
+      shortLabel: "TWD97 (121) + TWVD2001",
+      fullLabel: "TWD97 / TM2 Zone 121 + TWVD2001 (EPSG:3826+8904)",
+      kind: "tm",
+      lon0: 121.0,
+      fe: 250000.0,
+      k0: 0.9999,
+      fInv: 298.257222101,
+      hOff: 0.0,
+    },
+    {
+      code: "TWD97_119_TWVD2001",
+      shortLabel: "TWD97 (119) + TWVD2001",
+      fullLabel: "TWD97 / TM2 Zone 119 + TWVD2001 (EPSG:3825+8904 · Offshore)",
+      kind: "tm",
+      lon0: 119.0,
+      fe: 250000.0,
+      k0: 0.9999,
+      fInv: 298.257222101,
+      hOff: 0.0,
+    },
+    {
+      code: "WGS84_UTM51N",
+      shortLabel: "WGS84 / UTM 51N",
+      fullLabel: "WGS84 / UTM Zone 51N (EPSG:32651 · International)",
+      kind: "tm",
+      lon0: 123.0,
+      fe: 500000.0,
+      k0: 0.9996,
+      fInv: 298.257223563,
+      hOff: 20.6,
+    },
+    {
+      code: "WGS84_UTM50N",
+      shortLabel: "WGS84 / UTM 50N",
+      fullLabel: "WGS84 / UTM Zone 50N (EPSG:32650)",
+      kind: "tm",
+      lon0: 117.0,
+      fe: 500000.0,
+      k0: 0.9996,
+      fInv: 298.257223563,
+      hOff: 19.8,
+    },
+    {
+      code: "LOCAL_ORIGIN",
+      shortLabel: "Local Origin (0,0,0)",
+      fullLabel: "Local Site Origin (0, 0, 0) Meters (BIM / Revit / Rhino)",
+      kind: "local",
+      hOff: 0.0,
+    },
+  ];
+
+  const COMPRESSION_PRESET_LABELS = {
+    quality: "High Fidelity (75% Tris · 2K JPEG)",
+    balanced: "Balanced Stream (50% Tris · 1.5K JPEG)",
+    web: "Fast Mobile / Field (35% Tris · 1K JPEG)",
+    ultra_light: "Ultra-Light Offline (20% Tris · 768px)",
+  };
+
+  function inferActiveScanCrsCode(scanObj) {
+    const s = scanObj || STATE.activeScan || {};
+    const raw = String(s.crs || "").toUpperCase();
+    const ce = s.twd97_e !== undefined && s.twd97_e !== null ? Number(s.twd97_e) : 0;
+    const cn = s.twd97_n !== undefined && s.twd97_n !== null ? Number(s.twd97_n) : 0;
+    if (raw.includes("LOCAL") || (Math.abs(ce) < 50000 && Math.abs(cn) < 50000)) return "LOCAL_ORIGIN";
+    if (raw.includes("UTM") && raw.includes("50")) return "WGS84_UTM50N";
+    if (raw.includes("UTM") || raw.includes("32651")) return "WGS84_UTM51N";
+    if (raw.includes("119") || raw.includes("3825")) return "TWD97_119_TWVD2001";
+    return "TWD97_121_TWVD2001";
+  }
+
+  function wgs84ToTransverseMercatorJS(latDeg, lonDeg, lon0Deg, fe, k0, fInv) {
+    const a = 6378137.0;
+    const f = 1.0 / fInv;
+    const e2 = 2 * f - f * f;
+    const ep2 = e2 / (1 - e2);
+    const lat = (latDeg * Math.PI) / 180.0;
+    const lon = (lonDeg * Math.PI) / 180.0;
+    const lon0 = (lon0Deg * Math.PI) / 180.0;
+    const sinLat = Math.sin(lat);
+    const cosLat = Math.cos(lat);
+    const tanLat = Math.tan(lat);
+    const n = a / Math.sqrt(1 - e2 * sinLat * sinLat);
+    const t = tanLat * tanLat;
+    const c = ep2 * cosLat * cosLat;
+    const A = cosLat * (lon - lon0);
+    const M =
+      a *
+      ((1 - e2 / 4 - (3 * e2 * e2) / 64 - (5 * e2 * e2 * e2) / 256) * lat -
+        ((3 * e2) / 8 + (3 * e2 * e2) / 32 + (45 * e2 * e2 * e2) / 1024) * Math.sin(2 * lat) +
+        ((15 * e2 * e2) / 256 + (45 * e2 * e2 * e2) / 1024) * Math.sin(4 * lat) -
+        ((35 * e2 * e2 * e2) / 3072) * Math.sin(6 * lat));
+    const easting =
+      fe +
+      k0 *
+        n *
+        (A + ((1 - t + c) * Math.pow(A, 3)) / 6 + ((5 - 18 * t + t * t + 72 * c - 58 * ep2) * Math.pow(A, 5)) / 120);
+    const northing =
+      k0 *
+      (M +
+        n *
+          tanLat *
+          (Math.pow(A, 2) / 2 +
+            ((5 - t + 9 * c + 4 * c * c) * Math.pow(A, 4)) / 24 +
+            ((61 - 58 * t + t * t + 600 * c - 330 * ep2) * Math.pow(A, 6)) / 720));
+    return { e: easting, n: northing };
+  }
+
+  function hasValidGeorefLatLon(scanObj) {
+    const s = scanObj || STATE.activeScan || {};
+    if (s.lat === null || s.lat === undefined || s.lon === null || s.lon === undefined) return false;
+    const lat = Number(s.lat);
+    const lon = Number(s.lon);
+    return (
+      Number.isFinite(lat) &&
+      Number.isFinite(lon) &&
+      (Math.abs(lat) > 1e-5 || Math.abs(lon) > 1e-5) &&
+      Math.abs(lat) <= 90.0 &&
+      Math.abs(lon) <= 180.0
+    );
+  }
+
+  function previewTargetCrsCenterJS(scanObj, targetCode, offX = 0, offY = 0, offZ = 0) {
+    const s = scanObj || STATE.activeScan || {};
+    const srcCode = inferActiveScanCrsCode(s);
+    const srcDef = CRS_UI_CATALOG.find((c) => c.code === srcCode) || CRS_UI_CATALOG[0];
+    const tgtDef = CRS_UI_CATALOG.find((c) => c.code === targetCode) || CRS_UI_CATALOG[0];
+    const ce = s.twd97_e !== undefined && s.twd97_e !== null ? Number(s.twd97_e) : 0;
+    const cn = s.twd97_n !== undefined && s.twd97_n !== null ? Number(s.twd97_n) : 0;
+    const ch = s.twd97_h !== undefined && s.twd97_h !== null ? Number(s.twd97_h) : 0;
+    const twvdH = ch - (srcDef.hOff || 0);
+
+    if (tgtDef.code === srcCode) {
+      return { x: ce + offX, y: cn + offY, z: ch + offZ, crsLabel: tgtDef.shortLabel };
     }
-    const activeCropMode = STATE.cropMode || (STATE.activeTool === "crop_delete" ? "delete_inside" : "keep_inside");
-    const isDeleteMode = activeCropMode === "delete_inside";
+    if (tgtDef.kind === "local") {
+      return { x: 0 + offX, y: 0 + offY, z: 0 + offZ, crsLabel: tgtDef.shortLabel };
+    }
+    if (!hasValidGeorefLatLon(s)) {
+      return {
+        error:
+          "Scan uses Local Origin (0,0,0) with no WGS84/RTK georeference — cannot project to geodetic CRS without georeferencing.",
+        crsLabel: tgtDef.shortLabel,
+      };
+    }
+    const lat = Number(s.lat);
+    const lon = Number(s.lon);
+    const en = wgs84ToTransverseMercatorJS(lat, lon, tgtDef.lon0, tgtDef.fe, tgtDef.k0, tgtDef.fInv);
+    return {
+      x: en.e + offX,
+      y: en.n + offY,
+      z: twvdH + (tgtDef.hOff || 0) + offZ,
+      crsLabel: tgtDef.shortLabel,
+    };
+  }
+
+  function countMarkedRegionsPending() {
+    const addStrokes = Array.isArray(STATE.lassoStrokes)
+      ? STATE.lassoStrokes.filter((s) => s.op !== "sub").length
+      : 0;
+    const lockedPolys = Array.isArray(STATE.pendingCropPolygons) ? STATE.pendingCropPolygons.length : 0;
+    const unclosedPoly = Array.isArray(STATE.measurePoints) && STATE.measurePoints.length >= 3 ? 1 : 0;
+    return addStrokes + lockedPolys + unclosedPoly;
+  }
+
+  function serializeMultiAlignLayersForMerge(forceLockAll = false) {
+    return (STATE.multiAlign?.layers || []).map((l) => {
+      applyLayerTransformTo3D(l);
+      const pos = l.layerGroup
+        ? l.layerGroup.position
+        : { x: Number(l.tx) || 0, y: Number(l.ty) || 0, z: Number(l.tz) || 0 };
+      const quat = l.layerGroup ? l.layerGroup.quaternion : { x: 0, y: 0, z: 0, w: 1 };
+      return {
+        scan_id: l.scan_id,
+        locked: forceLockAll ? true : Boolean(l.locked),
+        tx: Number(l.tx) || 0,
+        ty: Number(l.ty) || 0,
+        tz: Number(l.tz) || 0,
+        rx_deg: Number(l.rx_deg) || 0,
+        ry_deg: Number(l.ry_deg) || 0,
+        rz_deg: Number(l.rz_deg) || 0,
+        raw_center_zup: l.rawCenter ? [Number(l.rawCenter.x), Number(l.rawCenter.y), Number(l.rawCenter.z)] : null,
+        position_three: [Number(pos.x) || 0, Number(pos.y) || 0, Number(pos.z) || 0],
+        quaternion_three: [Number(quat.x) || 0, Number(quat.y) || 0, Number(quat.z) || 0, Number(quat.w ?? 1)],
+        euler_deg_three: [Number(l.rx_deg) || 0, Number(l.ry_deg) || 0, Number(l.rz_deg) || 0],
+      };
+    });
+  }
+
+  function renderStagedAdjustmentsCardHtml(opts = {}) {
+    const st = ensureStagedEditsForActiveScan();
+    const isMulti = Boolean(STATE.multiAlign?.active);
+    const totalAdj = countStagedAdjustments();
+    const alwaysShow = Boolean(opts.alwaysShow);
+    if (!alwaysShow && totalAdj === 0) return "";
+
+    const totalDelRegions = st.deletions.reduce((acc, b) => acc + (Number(b.regionCount) || 1), 0);
+    const totalDelTris = st.deletions.reduce((acc, b) => acc + (Number(b.triCount) || 0), 0);
+    const crsItem = st.crsConfig
+      ? CRS_UI_CATALOG.find((c) => c.code === st.crsConfig.target_crs) || CRS_UI_CATALOG[0]
+      : null;
+    const crsOffText =
+      st.crsConfig &&
+      (Math.abs(st.crsConfig.offset_x || 0) > 1e-4 ||
+        Math.abs(st.crsConfig.offset_y || 0) > 1e-4 ||
+        Math.abs(st.crsConfig.offset_z || 0) > 1e-4)
+        ? ` + Δ(${Number(st.crsConfig.offset_x).toFixed(2)}, ${Number(st.crsConfig.offset_y).toFixed(2)}, ${Number(
+            st.crsConfig.offset_z
+          ).toFixed(2)})m`
+        : "";
+
+    const itemsHtml = [];
+    if (isMulti) {
+      const nLayers = Array.isArray(STATE.multiAlign?.layers) ? STATE.multiAlign.layers.length : 0;
+      itemsHtml.push(`
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;padding:5px 7px;background:var(--ui-bg-surface);border:1px solid var(--ui-border);border-radius:6px;font-size:11px;">
+          <span>🔗 <b>Combine Scans:</b> ${nLayers} scan layer${nLayers === 1 ? "" : "s"} ${
+        nLayers < 2 ? '<span style="color:#f59e0b;">(add 1+ scan in Align &amp; Merge)</span>' : "(aligned)"
+      }</span>
+          <button type="button" class="gs-top-btn" data-jump-edit="align_merge" style="padding:1px 6px;font-size:10px;" title="Open Multi-Scan Align &amp; Merge">Align</button>
+        </div>
+      `);
+    }
+    if (st.deletions.length > 0) {
+      itemsHtml.push(`
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;padding:5px 7px;background:var(--ui-bg-surface);border:1px solid var(--ui-border);border-radius:6px;font-size:11px;">
+          <span>🗑️ <b>Delete:</b> ${totalDelRegions} region${totalDelRegions === 1 ? "" : "s"} (${totalDelTris.toLocaleString()} tris)</span>
+          <button type="button" class="gs-top-btn" data-unstage="deletions" style="padding:1px 6px;font-size:10px;" title="Remove all staged deletions">✕</button>
+        </div>
+      `);
+    }
+    if (!isMulti && st.cropKeep) {
+      itemsHtml.push(`
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;padding:5px 7px;background:var(--ui-bg-surface);border:1px solid var(--ui-border);border-radius:6px;font-size:11px;">
+          <span>✂️ <b>Keep Crop:</b> ${st.cropKeep.regionCount || 1} region(s) (${Number(st.cropKeep.triCount || 0).toLocaleString()} tris)</span>
+          <button type="button" class="gs-top-btn" data-unstage="cropKeep" style="padding:1px 6px;font-size:10px;" title="Remove staged keep crop">✕</button>
+        </div>
+      `);
+    }
+    if (st.compressionPreset && st.compressionPreset !== "none") {
+      itemsHtml.push(`
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;padding:5px 7px;background:var(--ui-bg-surface);border:1px solid var(--ui-border);border-radius:6px;font-size:11px;">
+          <span>⚡ <b>Compression:</b> ${escapeHtml(COMPRESSION_PRESET_LABELS[st.compressionPreset] || st.compressionPreset)}</span>
+          <button type="button" class="gs-top-btn" data-unstage="compression" style="padding:1px 6px;font-size:10px;" title="Remove staged compression">✕</button>
+        </div>
+      `);
+    }
+    if (st.crsConfig) {
+      itemsHtml.push(`
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;padding:5px 7px;background:var(--ui-bg-surface);border:1px solid var(--ui-border);border-radius:6px;font-size:11px;">
+          <span>🌐 <b>CRS:</b> ${escapeHtml((crsItem ? crsItem.shortLabel : st.crsConfig.target_crs) + crsOffText)}</span>
+          <button type="button" class="gs-top-btn" data-unstage="crs" style="padding:1px 6px;font-size:10px;" title="Remove staged CRS change">✕</button>
+        </div>
+      `);
+    }
+
+    const defaultNewName = st.newScanName || `${STATE.activeScan?.name || STATE.activeScanId || "Scan"}_Edited`;
+    const canGenerate = isMulti
+      ? Array.isArray(STATE.multiAlign?.layers) && STATE.multiAlign.layers.length >= 2
+      : totalAdj > 0;
+
+    return `
+      <div style="background:rgba(2,132,199,0.08);border:1px solid rgba(2,132,199,0.35);border-radius:8px;padding:10px;margin-top:10px;">
+        <div style="font-size:12px;font-weight:700;color:var(--ui-accent);display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+          <span>✨ Pending Adjustments (${totalAdj})</span>
+          <span style="font-size:10px;color:var(--ui-text-secondary);">Original scan${isMulti ? "s stay" : " stays"} untouched</span>
+        </div>
+        ${
+          itemsHtml.length > 0
+            ? `<div style="display:flex;flex-direction:column;gap:4px;margin-bottom:8px;">${itemsHtml.join("")}</div>`
+            : `<div style="font-size:11px;color:var(--ui-text-secondary);background:var(--ui-bg-surface);border:1px dashed var(--ui-border-strong);border-radius:6px;padding:8px;margin-bottom:8px;">
+                No adjustments staged yet. Use <b>Lasso Delete (套索刪除)</b>, <b>Mesh Compression (網格優化)</b>, or <b>Coordinate System (座標系統)</b> on the left dock first, then press <b>Generate Scan</b> once!
+              </div>`
+        }
+        <div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:8px;">
+          ${
+            isMulti
+              ? `<button type="button" class="gs-top-btn" data-jump-edit="align_merge" style="font-size:10.5px;padding:3px 7px;">🎯 Align Layers</button>`
+              : ""
+          }
+          <button type="button" class="gs-top-btn" data-jump-edit="crop_delete" style="font-size:10.5px;padding:3px 7px;">+ Delete Regions</button>
+          <button type="button" class="gs-top-btn" data-jump-edit="optimizer" style="font-size:10.5px;padding:3px 7px;">+ Compression</button>
+          <button type="button" class="gs-top-btn" data-jump-edit="crs" style="font-size:10.5px;padding:3px 7px;">+ Coordinate System</button>
+        </div>
+        <div class="gs-form-group" style="margin-bottom:8px;">
+          <label style="font-size:11px;">New Scan Name (新掃描名稱)</label>
+          <input type="text" class="gs-input" id="txtGenerateScanName" value="${escapeHtml(defaultNewName)}" placeholder="Enter new scan name..." />
+        </div>
+        <button type="button" class="gs-top-btn accent" id="btnGenerateStagedScan" style="width:100%;justify-content:center;padding:9px 12px;font-weight:700;${
+          !canGenerate ? "opacity:0.5;pointer-events:none;" : ""
+        }" ${!canGenerate ? "disabled" : ""} title="Generate a brand-new scan with all staged adjustments applied in one pass">
+          <span>✨ ${isMulti ? `Generate Combined Scan (${totalAdj} step${totalAdj === 1 ? "" : "s"} · 合併產生新掃描)` : `Generate Scan (${totalAdj} adjustment${totalAdj === 1 ? "" : "s"} · 產生新掃描)`}</span>
+        </button>
+        <div id="generateScanResultBox" style="margin-top:8px;"></div>
+      </div>
+    `;
+  }
+
+  function bindStagedAdjustmentsCardEvents(rerenderFn) {
+    const st = ensureStagedEditsForActiveScan();
+    const nameInput = document.getElementById("txtGenerateScanName");
+    if (nameInput) {
+      nameInput.addEventListener("input", () => {
+        st.newScanName = nameInput.value;
+      });
+    }
+
+    document.querySelectorAll("[data-unstage]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const kind = btn.getAttribute("data-unstage");
+        if (kind === "deletions") {
+          st.deletions = [];
+          st.rev++;
+          applyStagedEditsToStudioMeshes(true);
+        } else if (kind === "cropKeep") {
+          st.cropKeep = null;
+          st.rev++;
+          applyStagedEditsToStudioMeshes(true);
+        } else if (kind === "compression") {
+          st.compressionPreset = null;
+        } else if (kind === "crs") {
+          st.crsConfig = null;
+        }
+        syncStagedEditsDockBadge();
+        if (typeof rerenderFn === "function") rerenderFn();
+      });
+    });
+
+    document.querySelectorAll("[data-jump-edit]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const target = btn.getAttribute("data-jump-edit");
+        if (target === "align_merge") {
+          setActiveStudioTool("align_merge");
+          openAlignMergeInspector();
+        } else if (target === "crop_delete") {
+          STATE.cropMode = "delete_inside";
+          openLassoDeleteInspector({ armLasso: true });
+        } else if (target === "optimizer") {
+          setActiveStudioTool("optimizer");
+          openMeshCompressionInspector();
+        } else if (target === "crs") {
+          setActiveStudioTool("crs");
+          openCoordinateSystemInspector();
+        }
+      });
+    });
+
+    document.getElementById("btnGenerateStagedScan")?.addEventListener("click", async () => {
+      await executeGenerateStagedScan();
+    });
+  }
+
+  async function executeGenerateStagedScan() {
+    const st = ensureStagedEditsForActiveScan();
+    const isMulti = Boolean(STATE.multiAlign?.active);
+
+    if (isMulti) {
+      if (!Array.isArray(STATE.multiAlign.layers) || STATE.multiAlign.layers.length < 2) {
+        showToast("Please add at least 2 scans in Align & Merge before generating a combined scan.");
+        return;
+      }
+      if (STATE.multiAlign.layers.some((l) => !l.ready)) {
+        showToast("Please wait a moment for all 3D scan layers to finish loading their bounds.");
+        return;
+      }
+    } else if (countStagedAdjustments() === 0) {
+      showToast("Stage at least one adjustment (Delete, Compression, or CRS) before generating a new scan.");
+      return;
+    }
+
+    const nameEl = document.getElementById("txtGenerateScanName");
+    const newScanName = String(nameEl?.value || st.newScanName || `${STATE.activeScan?.name || "Scan"}_Edited`).trim();
+    st.newScanName = newScanName;
+
+    const btnGen = document.getElementById("btnGenerateStagedScan");
+    if (btnGen) {
+      btnGen.disabled = true;
+      btnGen.innerHTML = `<span>⏳ ${isMulti ? "Combining & Generating Scan on PC..." : "Generating New Scan on PC..."}</span>`;
+    }
+    const resBox = document.getElementById("generateScanResultBox");
+    if (resBox) {
+      resBox.innerHTML = `<div style="font-size:11.5px;color:var(--ui-accent);">Building new scan "${escapeHtml(
+        newScanName
+      )}" with all staged adjustments (original scan${isMulti ? "s" : ""} untouched)...</div>`;
+    }
+
+    try {
+      let res = null;
+      if (isMulti) {
+        const curSite =
+          (STATE.activeProjectGroup && STATE.activeProjectGroup !== "__all__" ? STATE.activeProjectGroup : "") ||
+          STATE.multiAlign.layers[0]?.project_group ||
+          STATE.activeScan?.project_group ||
+          "Unassigned Site";
+        const serializedLayers = serializeMultiAlignLayersForMerge(true);
+        const refC = STATE.multiAlign.refCenter || STATE.multiAlign.layers[0]?.rawCenter || null;
+        res = await apiPost("/api/scans/merge", {
+          name: newScanName,
+          new_scan_name: newScanName,
+          project_group: curSite,
+          ref_center_zup: refC ? [Number(refC.x), Number(refC.y), Number(refC.z)] : null,
+          layers: serializedLayers,
+          scans: serializedLayers,
+          deletions: st.deletions,
+          compression_preset: st.compressionPreset || "",
+          crs_config: st.crsConfig || null,
+        });
+        STATE.multiAlign.lastMergedScan = res.scan || {
+          scan_id: res.scan_id,
+          name: newScanName,
+          project_group: curSite,
+        };
+      } else {
+        const payload = {
+          scan_id: STATE.activeScanId,
+          new_scan_name: newScanName,
+          deletions: st.deletions,
+          crop_keep: st.cropKeep || null,
+          compression_preset: st.compressionPreset || "",
+          crs_config: st.crsConfig || null,
+        };
+        res = await apiPost("/api/optimizer/generate-scan", payload);
+      }
+
+      clearLassoSelectionState();
+      restoreOriginalStudioMeshIndices();
+      if (isMulti) {
+        exitMultiScanAlignMode(false);
+      }
+      setActiveStudioTool("orbit");
+
+      if (Array.isArray(res.scans)) {
+        STATE.scans = res.scans;
+      } else {
+        await refreshScansCatalog();
+      }
+      if (Array.isArray(res.projects)) {
+        STATE.projects = res.projects;
+      }
+
+      const createdId = res.scan_id || res.scan?.scan_id;
+      if (createdId) {
+        loadScanIntoStudio(createdId);
+      }
+
+      const outMb = res.output_mb ?? res.glb_size_mb ?? 0;
+      showSidePanel(
+        `<span>✨ New Scan Generated (新掃描已建立)</span>`,
+        `
+        <div style="background:rgba(16,185,129,0.10);border:1px solid rgba(16,185,129,0.38);border-radius:8px;padding:12px;font-size:12px;color:var(--ui-text-primary);">
+          <div style="color:#10b981;font-weight:700;font-size:13px;margin-bottom:6px;">✓ Generated "${escapeHtml(
+            res.scan?.name || newScanName
+          )}" (${res.duration_s}s)</div>
+          <div style="margin-bottom:4px;">Scan ID: <code>${escapeHtml(createdId || "")}</code></div>
+          <div style="margin-bottom:4px;">Coordinate System: <b>${escapeHtml(res.crs || res.scan?.crs || "TWD97 (121) + TWVD2001")}</b></div>
+          <div style="margin-bottom:6px;">Output Size: <b>${outMb} MB</b></div>
+          <div style="font-size:11px;color:var(--ui-text-secondary);border-top:1px solid var(--ui-border);padding-top:6px;">
+            <b>Applied Adjustments:</b>
+            <ul style="margin:4px 0 0 16px;padding:0;">
+              ${(res.applied_adjustments || []).map((a) => `<li>${escapeHtml(a)}</li>`).join("")}
+            </ul>
+          </div>
+        </div>
+        `
+      );
+      showToast(`Generated new scan "${res.scan?.name || newScanName}" (${outMb} MB)!`);
+    } catch (err) {
+      if (resBox) {
+        resBox.innerHTML = `<div style="font-size:11.5px;color:#ef4444;">Generate Scan Error: ${escapeHtml(err.message)}</div>`;
+      }
+      if (btnGen) {
+        btnGen.disabled = false;
+        btnGen.innerHTML = `<span>✨ Generate Scan (產生新掃描)</span>`;
+      }
+      showToast(`Generate Scan Error: ${err.message}`);
+    }
+  }
+
+  function openLassoDeleteInspector(opts = {}) {
+    const armLasso = opts && opts.armLasso !== undefined ? Boolean(opts.armLasso) : true;
+    STATE.cropMode = "delete_inside";
+    if (armLasso) {
+      if (STATE.activeTool !== "crop_delete") setActiveStudioTool("crop_delete");
+    } else if (STATE.activeTool === "crop_delete" || STATE.activeTool === "crop") {
+      setActiveStudioTool("orbit");
+    }
+
+    const st = ensureStagedEditsForActiveScan();
+    const isLassoActive = STATE.activeTool === "crop_delete";
     const inputMethod = STATE.lassoInputMethod || "lasso";
-    const cropPolyCount =
-      STATE.maskBoundaryPoints?.length >= 3
-        ? STATE.maskBoundaryPoints.length
-        : STATE.measurePoints?.length >= 3
-        ? STATE.measurePoints.length
-        : 0;
+    const visibleOnlyChecked = getEffectiveLassoVisibleOnly("delete_inside");
+    const markedCount = countMarkedRegionsPending();
+    const triCountLabel = `${Number(STATE.lassoSelectedTriCount || 0).toLocaleString()} tris`;
+
+    const totalStagedDelRegions = st.deletions.reduce((acc, b) => acc + (Number(b.regionCount) || 1), 0);
+    const totalStagedDelTris = st.deletions.reduce((acc, b) => acc + (Number(b.triCount) || 0), 0);
+
+    const execBtnText = !isLassoActive
+      ? "Select with Lasso — Mark for Deletion (啟用套索標記刪除)"
+      : markedCount > 0
+      ? `🗑️ Delete (${markedCount} region${markedCount === 1 ? "" : "s"} · ${triCountLabel})`
+      : "🗑️ Delete (Mark polygons with Lasso first)";
 
     showSidePanel(
-      `<span>${
-        isDeleteMode
-          ? "Scan Editing: Lasso Delete (套索刪除局部掃描)"
-          : STATE.activeTool === "crop"
-          ? "Scan Editing: Lasso Crop / Keep (框選保留裁切)"
-          : "Scan Editing & GC_ScanOptimizer (掃描編輯與優化)"
-      }</span>`,
+      `<span>Lasso Delete — Mark &amp; Delete (套索標記刪除)</span>`,
       `
-      <div style="background:${
-        isDeleteMode ? "rgba(239,68,68,0.10)" : "rgba(16,185,129,0.10)"
-      };border:1px solid ${
-        isDeleteMode ? "rgba(239,68,68,0.35)" : "rgba(16,185,129,0.35)"
-      };border-radius:8px;padding:10px;margin-bottom:12px;">
-        <div style="font-size:12px;font-weight:700;color:${
-          isDeleteMode ? "#ef4444" : "#10b981"
-        };margin-bottom:4px;display:flex;align-items:center;justify-content:space-between;">
-          <span>${isDeleteMode ? "🗑️ Lasso Delete Part of Scan" : "✂️ Lasso Crop & Keep Inside"}</span>
-          <span style="font-size:10px;padding:1px 6px;border-radius:4px;background:var(--ui-bg-surface);color:var(--ui-text-secondary);">Editor+ Only</span>
+      ${
+        STATE.multiAlign?.active
+          ? `<div style="background:rgba(56,189,248,0.11);border:1px solid rgba(56,189,248,0.4);border-radius:8px;padding:8px 10px;margin-bottom:8px;font-size:11px;color:var(--ui-text-primary);display:flex;align-items:center;justify-content:space-between;gap:8px;">
+              <span>🔗 <b>Multi-Scan Mode:</b> Lasso deletes across all visible scan layers (toggle 👁 in Align &amp; Merge to isolate one scan).</span>
+              <button type="button" class="gs-top-btn" id="btnLassoBackToAlign" style="padding:3px 8px;font-size:10.5px;flex-shrink:0;" title="Return to 3D Gizmo Alignment &amp; Layer Checklist">
+                <span>🎯 Align</span>
+              </button>
+            </div>`
+          : ""
+      }
+      <div style="background:rgba(239,68,68,0.10);border:1px solid rgba(239,68,68,0.35);border-radius:8px;padding:10px;margin-bottom:10px;">
+        <div style="font-size:12px;font-weight:700;color:#ef4444;margin-bottom:5px;display:flex;align-items:center;justify-content:space-between;gap:6px;">
+          <span>🗑️ Mark Polygons for Deletion</span>
+          ${
+            isLassoActive
+              ? `<button type="button" class="gs-top-btn" id="btnCancelLassoMode" style="padding:2px 7px;font-size:10.5px;border-color:rgba(239,68,68,0.45);color:#ef4444;" title="Cancel Lasso Mode &amp; Return to Free Orbit (Esc)">
+                  <span>✖ Cancel (Esc)</span>
+                </button>`
+              : `<span style="font-size:10px;padding:1px 6px;border-radius:4px;background:var(--ui-bg-surface);color:var(--ui-text-secondary);">Lasso Off</span>`
+          }
         </div>
-        <div style="font-size:11px;color:var(--ui-text-secondary);margin-bottom:8px;line-height:1.4;">
-          <b>Drag with Left Mouse Button</b> directly on the 3D scan to draw a freehand lasso around the part to ${
-            isDeleteMode ? "delete (e.g. vehicles, crane, noise, trees)" : "keep"
-          }, or click vertices to form a polygon.
-        </div>
-
-        <div class="gs-form-group" style="margin-bottom:8px;">
-          <label>Editing Action Mode (裁切與刪除模式)</label>
-          <select class="gs-select" id="optCropMode">
-            <option value="delete_inside" ${isDeleteMode ? "selected" : ""}>🗑️ Delete Inside Lasso (刪除套索選取範圍內之局部模型/雜物)</option>
-            <option value="keep_inside" ${!isDeleteMode ? "selected" : ""}>✂️ Keep Only Inside Lasso (僅保留套索選取範圍內之模型)</option>
-          </select>
+        <div style="font-size:11px;color:var(--ui-text-secondary);margin-bottom:8px;line-height:1.45;">
+          ${
+            !isLassoActive
+              ? `Lasso cancelled — rotate freely with <b>Left Mouse</b> or <b>Mouse Wheel</b>. Press the <b>red button below</b> to select with Lasso again.`
+              : inputMethod !== "polygon"
+              ? `<b>1.</b> Drag <b>Left Mouse</b> several times to mark multiple regions in red (rotate anytime by pressing <b>Mouse Wheel</b> · <b>Alt+Drag</b> to unmark).<br/><b>2.</b> Press <b>Delete</b> below to remove all marked regions from the preview · <b>Esc</b> to cancel.`
+              : `<b>1.</b> Click 3+ vertices and click red <b>V1</b> (or <b>Enter</b>) to lock Polygon #1, then draw Polygon #2, #3... (<b>Mouse Wheel</b> to rotate).<br/><b>2.</b> Press <b>Delete</b> below to remove all marked polygons · <b>Esc</b> to cancel.`
+          }
         </div>
 
         <div style="display:flex;gap:5px;margin-bottom:8px;">
-          <button type="button" class="gs-top-btn ${inputMethod !== "polygon" ? "accent" : ""}" id="btnModeFreehandLasso" style="flex:1;justify-content:center;font-size:11px;">
-            <span>✏️ Freehand Drag Lasso (滑鼠拖曳套索)</span>
+          <button type="button" class="gs-top-btn ${isLassoActive && inputMethod !== "polygon" ? "accent" : ""}" id="btnModeFreehandLasso" style="flex:1;justify-content:center;font-size:11px;">
+            <span>✏️ Freehand 3D Lasso</span>
           </button>
-          <button type="button" class="gs-top-btn ${inputMethod === "polygon" ? "accent" : ""}" id="btnModePolygonClick" style="flex:1;justify-content:center;font-size:11px;">
-            <span>📐 Polygon Clicks (多邊形點選)</span>
-          </button>
-        </div>
-
-        <div style="font-size:11px;color:var(--ui-text-secondary);margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;">
-          <span>Selected Boundary: <b>${cropPolyCount >= 3 ? `${cropPolyCount} pts locked` : "Drag lasso on 3D scan"}</b></span>
-          <button type="button" class="gs-top-btn" id="btnDrawCropPolygon" style="padding:2px 8px;font-size:10.5px;">
-            <span>Clear / Redraw</span>
+          <button type="button" class="gs-top-btn ${isLassoActive && inputMethod === "polygon" ? "accent" : ""}" id="btnModePolygonClick" style="flex:1;justify-content:center;font-size:11px;">
+            <span>📐 Plan Polygon</span>
           </button>
         </div>
 
-        <button type="button" class="gs-top-btn accent" style="width:100%;justify-content:center;padding:8px 12px;font-weight:700;${
-          isDeleteMode ? "background:#ef4444;border-color:#dc2626;color:#fff;" : ""
-        }" id="btnExecuteCrop" title="Execute Lasso Delete / SpatialCutter on PC">
-          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
-            <circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><line x1="20" y1="4" x2="8.12" y2="15.88"/><line x1="14.47" y1="14.48" x2="20" y2="20"/>
-          </svg>
-          <span id="lblExecuteCropBtn">${
-            isDeleteMode
-              ? "Delete Selected Part of Scan (執行套索刪除)"
-              : "Crop & Keep Selected Part (執行框選保留)"
-          }</span>
+        ${
+          inputMethod !== "polygon"
+            ? `<label style="display:flex;align-items:flex-start;gap:7px;font-size:11px;color:var(--ui-text-primary);background:var(--ui-bg-surface);border:1px solid var(--ui-border);border-radius:6px;padding:6px 8px;margin-bottom:8px;cursor:pointer;">
+                <input type="checkbox" id="chkLassoVisibleOnly" ${visibleOnlyChecked ? "checked" : ""} style="margin-top:2px;accent-color:var(--ui-accent);" />
+                <span>
+                  <b>Protect Occluded Background (僅選取可見前景表面)</b><br/>
+                  <span style="font-size:10px;color:var(--ui-text-secondary);">Prevents deleting walls, roads, or terrain hidden behind foreground objects.</span>
+                </span>
+              </label>`
+            : ""
+        }
+
+        <div style="font-size:11px;color:var(--ui-text-secondary);background:var(--ui-bg-surface);border:1px solid var(--ui-border);border-radius:6px;padding:6px 8px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;gap:6px;flex-wrap:wrap;">
+          <span>
+            Marked: <b>${markedCount > 0 ? `${markedCount} region${markedCount === 1 ? "" : "s"}` : "None yet"}</b>
+            · <b id="lblLassoSelectedTris" style="color:#ef4444;">${triCountLabel}</b>
+          </span>
+          <div style="display:flex;gap:4px;">
+            <button type="button" class="gs-top-btn" id="btnUndoLastMark" style="padding:2px 7px;font-size:10.5px;${
+              markedCount > 0 ? "" : "opacity:0.45;pointer-events:none;"
+            }" ${markedCount > 0 ? "" : "disabled"} title="Remove the most recently marked polygon/lasso stroke">
+              <span>Undo Mark</span>
+            </button>
+            <button type="button" class="gs-top-btn" id="btnDrawCropPolygon" style="padding:2px 7px;font-size:10.5px;">
+              <span>Clear</span>
+            </button>
+          </div>
+        </div>
+
+        <button type="button" class="gs-top-btn accent" style="width:100%;justify-content:center;padding:9px 12px;font-weight:700;background:#ef4444;border-color:#dc2626;color:#fff;" id="btnExecuteCrop" title="${
+          !isLassoActive
+            ? "Activate 3D Lasso Selection (Mark for Deletion)"
+            : "Delete all marked regions in 3D preview and stage for Generate Scan"
+        }">
+          <span id="lblExecuteCropBtn">${execBtnText}</span>
         </button>
       </div>
 
-      <div style="border-top:1px solid var(--ui-border);padding-top:10px;margin-top:6px;">
-        <div style="font-size:12px;font-weight:700;color:var(--ui-text-primary);margin-bottom:4px;">
-          ⚡ GC_ScanOptimizer Mesh &amp; KTX2 Compression
-        </div>
-        <p style="font-size:11px;color:var(--ui-text-secondary);margin-bottom:8px;">
-          Invokes <code>c:\\Antigravity\\GC_ScanOptimizer</code> on the Windows workstation with a 2K texture limit.
-        </p>
-        <div class="gs-form-group">
-          <label>Optimization Preset (壓縮與串流預設)</label>
-          <select class="gs-select" id="optPresetSelect">
-            <option value="balanced" selected>Balanced Web Stream (50% Tris, 2K KTX2)</option>
-            <option value="quality">High Fidelity Quality (75% Tris, 2K KTX2)</option>
-            <option value="web">Fast Field Tablet (35% Tris, 1K KTX2)</option>
-            <option value="ultra_light">Ultra-Light Browser Offline Cache (20% Tris)</option>
-          </select>
-        </div>
-        <button type="button" class="gs-top-btn accent" style="width:100%;justify-content:center;" id="btnExecuteOptimize" title="Run Preset Optimization on PC">
-          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8">
-            <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
-          </svg>
-          <span>Run Mesh Optimizer (執行網格優化)</span>
-        </button>
-      </div>
-      <div id="optActionResult" style="margin-top:12px;"></div>
+      ${
+        st.deletions.length > 0
+          ? `<div style="background:var(--ui-bg-subtle);border:1px solid var(--ui-border-strong);border-radius:8px;padding:9px 10px;margin-bottom:8px;">
+              <div style="font-size:11.5px;font-weight:700;color:var(--ui-text-primary);display:flex;align-items:center;justify-content:space-between;margin-bottom:5px;">
+                <span>🗑️ Deleted in 3D Preview (${totalStagedDelRegions} region${totalStagedDelRegions === 1 ? "" : "s"})</span>
+                <span style="font-size:10.5px;color:#ef4444;">-${totalStagedDelTris.toLocaleString()} tris</span>
+              </div>
+              <div style="display:flex;gap:6px;">
+                <button type="button" class="gs-top-btn" id="btnUndoStagedDelete" style="flex:1;justify-content:center;font-size:11px;">
+                  <span>↩️ Undo Last Delete</span>
+                </button>
+                <button type="button" class="gs-top-btn" id="btnClearAllStagedDeletes" style="flex:1;justify-content:center;font-size:11px;">
+                  <span>Restore All Deleted</span>
+                </button>
+              </div>
+            </div>`
+          : ""
+      }
+
+      ${renderStagedAdjustmentsCardHtml({ alwaysShow: false })}
       `
     );
 
-    document.getElementById("optCropMode")?.addEventListener("change", (ev) => {
-      const val = ev.target.value;
-      STATE.cropMode = val;
-      setActiveStudioTool(val === "delete_inside" ? "crop_delete" : "crop");
-      if (STATE.maskBoundaryPoints?.length >= 3) {
-        drawLassoSelection3D(STATE.maskBoundaryPoints, val === "delete_inside");
-      }
-      openOptimizerInspector(val);
+    document.getElementById("btnLassoBackToAlign")?.addEventListener("click", () => {
+      cancelLassoToolMode(false);
+      setActiveStudioTool("align_merge");
+      openAlignMergeInspector();
+    });
+
+    document.getElementById("btnCancelLassoMode")?.addEventListener("click", () => {
+      cancelLassoToolMode(true);
+      showToast("Lasso cancelled — press the red button on the right to start Lasso again");
+    });
+
+    document.getElementById("chkLassoVisibleOnly")?.addEventListener("change", (ev) => {
+      STATE.lassoVisibleOnlyDelete = Boolean(ev.target.checked);
+      const selTris = rebuildLassoHighlight3D();
+      openLassoDeleteInspector({ armLasso: isLassoActive });
+      showToast(
+        STATE.lassoVisibleOnlyDelete
+          ? `Occlusion Protection ON — ${selTris.toLocaleString()} visible foreground triangles marked`
+          : `Through-Depth Mode — ${selTris.toLocaleString()} triangles marked across all depths`
+      );
     });
 
     document.getElementById("btnModeFreehandLasso")?.addEventListener("click", () => {
       STATE.lassoInputMethod = "lasso";
-      if (STATE.activeTool !== "crop_delete" && STATE.activeTool !== "crop") {
-        setActiveStudioTool(STATE.cropMode === "delete_inside" ? "crop_delete" : "crop");
-      }
-      openOptimizerInspector(STATE.cropMode);
-      showToast("Freehand Drag Lasso enabled — drag left mouse button over the 3D scan to select a region");
+      STATE.measurePoints = [];
+      STATE.cropPolygonPoints = [];
+      setActiveStudioTool("crop_delete");
+      rebuildLassoHighlight3D();
+      openLassoDeleteInspector({ armLasso: true });
+      showToast("Freehand 3D Lasso active — Left-Drag multiple regions, Mouse Wheel to rotate, then press Delete");
     });
 
     document.getElementById("btnModePolygonClick")?.addEventListener("click", () => {
       STATE.lassoInputMethod = "polygon";
-      if (STATE.activeTool !== "crop_delete" && STATE.activeTool !== "crop") {
-        setActiveStudioTool(STATE.cropMode === "delete_inside" ? "crop_delete" : "crop");
+      STATE.measurePoints = [];
+      STATE.cropPolygonPoints = [];
+      setActiveStudioTool("crop_delete");
+      rebuildLassoHighlight3D();
+      openLassoDeleteInspector({ armLasso: true });
+      showToast("Plan Polygon active — click 3+ vertices & red V1 to mark multiple polygons, then press Delete");
+    });
+
+    document.getElementById("btnUndoLastMark")?.addEventListener("click", () => {
+      if (Array.isArray(STATE.measurePoints) && STATE.measurePoints.length > 0) {
+        STATE.measurePoints = [];
+        STATE.cropPolygonPoints = [];
+      } else if (STATE.lassoInputMethod === "polygon" && Array.isArray(STATE.pendingCropPolygons) && STATE.pendingCropPolygons.length > 0) {
+        STATE.pendingCropPolygons.pop();
+      } else if (Array.isArray(STATE.lassoStrokes) && STATE.lassoStrokes.length > 0) {
+        STATE.lassoStrokes.pop();
+      } else if (Array.isArray(STATE.pendingCropPolygons) && STATE.pendingCropPolygons.length > 0) {
+        STATE.pendingCropPolygons.pop();
       }
-      openOptimizerInspector(STATE.cropMode);
-      showToast("Polygon Click mode enabled — click 3+ vertices on the 3D scan and click red V1 to lock");
+      rebuildLassoHighlight3D();
+      openLassoDeleteInspector({ armLasso: isLassoActive });
+      showToast("Removed last marked region");
     });
 
     document.getElementById("btnDrawCropPolygon")?.addEventListener("click", () => {
-      const targetTool = STATE.cropMode === "delete_inside" ? "crop_delete" : "crop";
-      setActiveStudioTool(targetTool);
       STATE.polygonLocked = false;
       STATE.measurePoints = [];
-      STATE.maskBoundaryPoints = [];
-      clearAreaVisualsOnly();
-      openOptimizerInspector(STATE.cropMode);
+      clearLassoSelectionState();
+      if (isLassoActive) setActiveStudioTool("crop_delete");
+      openLassoDeleteInspector({ armLasso: isLassoActive });
+      showToast("Cleared marked regions");
+    });
+
+    document.getElementById("btnUndoStagedDelete")?.addEventListener("click", () => {
+      if (st.deletions.length > 0) {
+        st.deletions.pop();
+        st.rev++;
+        applyStagedEditsToStudioMeshes(true);
+        syncStagedEditsDockBadge();
+        openLassoDeleteInspector({ armLasso: isLassoActive });
+        showToast("Undid last Delete batch in 3D preview");
+      }
+    });
+
+    document.getElementById("btnClearAllStagedDeletes")?.addEventListener("click", () => {
+      st.deletions = [];
+      st.rev++;
+      applyStagedEditsToStudioMeshes(true);
+      syncStagedEditsDockBadge();
+      openLassoDeleteInspector({ armLasso: isLassoActive });
+      showToast("Restored all deleted regions in 3D preview");
+    });
+
+    document.getElementById("btnExecuteCrop")?.addEventListener("click", () => {
+      if (STATE.activeTool !== "crop_delete") {
+        setActiveStudioTool("crop_delete");
+        openLassoDeleteInspector({ armLasso: true });
+        showToast("Lasso active (Mark for Deletion) — mark multiple regions, then press Delete");
+        return;
+      }
+
+      const effVis = getEffectiveLassoVisibleOnly("delete_inside");
+      const batchStrokes = (STATE.lassoStrokes || []).map((s) => Object.assign({}, s, { visible_only: effVis }));
+      const rawWorldPolys = [];
+      if (Array.isArray(STATE.pendingCropPolygons)) {
+        STATE.pendingCropPolygons.forEach((pts) => {
+          if (Array.isArray(pts) && pts.length >= 3) rawWorldPolys.push(pts);
+        });
+      }
+      if (Array.isArray(STATE.measurePoints) && STATE.measurePoints.length >= 3) {
+        rawWorldPolys.push(STATE.measurePoints);
+      }
+
+      const batchPolys = [];
+      let layerCenteredPolygons = null;
+      if (STATE.multiAlign?.active && rawWorldPolys.length > 0) {
+        if (studioThree?.multiAlignGroup) studioThree.multiAlignGroup.updateMatrixWorld(true);
+        layerCenteredPolygons = {};
+        (STATE.multiAlign.layers || []).forEach((layer) => {
+          if (!layer || !layer.visible || !layer.zUpGroup) return;
+          const invZUp = layer.zUpGroup.matrixWorld.clone().invert();
+          layerCenteredPolygons[layer.scan_id] = rawWorldPolys.map((pts) =>
+            pts.map((p) => {
+              const loc = p.clone().applyMatrix4(invZUp);
+              return [loc.x, loc.y];
+            })
+          );
+        });
+      } else if (rawWorldPolys.length > 0 && isActiveStudioTilesetEcef()) {
+        rawWorldPolys.forEach((pts) => {
+          const orthoSt = planPolygonToTopDownFrustumStroke(pts);
+          if (orthoSt) batchStrokes.push(orthoSt);
+        });
+      } else {
+        rawWorldPolys.forEach((pts) => {
+          batchPolys.push(
+            pts.map((p) => {
+              const n = studioWorldToTilesetNative(p);
+              return [n[0], n[1]];
+            })
+          );
+        });
+      }
+
+      const regionCount = batchStrokes.filter((s) => s.op !== "sub").length + batchPolys.length + (layerCenteredPolygons ? rawWorldPolys.length : 0);
+      if (regionCount === 0) {
+        showToast(
+          STATE.lassoInputMethod === "polygon"
+            ? "Click 3+ polygon vertices on the 3D scan to mark regions first (Mouse Wheel to rotate)"
+            : "Drag Left Mouse on the 3D scan to mark 1 or more regions first (Mouse Wheel to rotate)"
+        );
+        return;
+      }
+
+      const markedTriEstimate = Number(STATE.lassoSelectedTriCount || 0);
+      const delBatch = {
+        id: Date.now(),
+        regionCount,
+        triCount: markedTriEstimate,
+        frustum_strokes: batchStrokes,
+        native_polygons: batchPolys,
+      };
+      if (layerCenteredPolygons) {
+        delBatch.layer_centered_polygons = layerCenteredPolygons;
+      }
+      st.deletions.push(delBatch);
+      st.rev++;
+
+      STATE.measurePoints = [];
+      clearLassoSelectionState();
+      applyStagedEditsToStudioMeshes(true);
+      syncStagedEditsDockBadge();
+      openLassoDeleteInspector({ armLasso: true });
       showToast(
-        STATE.lassoInputMethod === "polygon"
-          ? "Cleared selection — click 3+ points on the 3D scan to draw polygon"
-          : "Cleared selection — drag left mouse button on the 3D scan to lasso region"
+        `Deleted ${regionCount} marked region${regionCount === 1 ? "" : "s"} in 3D preview — mark more, adjust Compression / CRS, or press Generate Scan!`
       );
     });
 
-    document.getElementById("btnExecuteOptimize")?.addEventListener("click", async () => {
-      const preset = document.getElementById("optPresetSelect")?.value || "balanced";
-      const box = document.getElementById("optActionResult");
-      if (box) box.innerHTML = `<div style="font-size:12px;color:var(--ui-accent);">Running GC_ScanOptimizer (${preset}) on real .GLB tiles...</div>`;
-      try {
-        const res = await apiPost("/api/optimizer/optimize", {
-          scan_id: STATE.activeScanId,
-          preset,
-        });
-        if (box) {
-          box.innerHTML = `
-            <div style="background:var(--ui-bg-subtle);border:1px solid var(--ui-border-strong);border-radius:8px;padding:10px;font-size:12px;color:var(--ui-text-primary);">
-              <div style="color:var(--ui-accent);font-weight:700;">GC_ScanOptimizer Completed (${res.duration_s}s)</div>
-              <div style="margin-top:4px;">Preset: <b>${res.preset}</b> (Max Texture: ${res.texture_limit}px · ${res.tiles_processed || 0} tiles)</div>
-              <div>Size: ${res.original_mb} MB → <b>${res.compressed_mb} MB (-${res.reduction_pct}%)</b></div>
-              <div style="font-size:10.5px;color:var(--ui-text-muted);margin-top:3px;">Output: ${res.output_dir || ""}</div>
-            </div>
-          `;
-        }
-        showToast(`GC_ScanOptimizer finished: -${res.reduction_pct}% size reduction`);
-        await refreshScansCatalog();
-        if (STATE.activeScanId) loadScanIntoStudio(STATE.activeScanId);
-      } catch (err) {
-        showToast(`Optimizer Error: ${err.message}`);
-      }
+    bindStagedAdjustmentsCardEvents(() => openLassoDeleteInspector({ armLasso: STATE.activeTool === "crop_delete" }));
+  }
+
+  function openLassoKeepInspector(opts = {}) {
+    const armLasso = opts && opts.armLasso !== undefined ? Boolean(opts.armLasso) : true;
+    STATE.cropMode = "keep_inside";
+    if (armLasso) {
+      if (STATE.activeTool !== "crop") setActiveStudioTool("crop");
+    } else if (STATE.activeTool === "crop" || STATE.activeTool === "crop_delete") {
+      setActiveStudioTool("orbit");
+    }
+
+    const st = ensureStagedEditsForActiveScan();
+    const isLassoActive = STATE.activeTool === "crop";
+    const inputMethod = STATE.lassoInputMethod || "lasso";
+    const markedCount = countMarkedRegionsPending();
+    const triCountLabel = `${Number(STATE.lassoSelectedTriCount || 0).toLocaleString()} tris`;
+
+    const execBtnText = !isLassoActive
+      ? "Select Keep Boundary (啟用框選保留)"
+      : markedCount > 0
+      ? `✂️ Stage Keep Crop (${markedCount} region${markedCount === 1 ? "" : "s"} · ${triCountLabel})`
+      : "✂️ Stage Keep Crop (Mark region to keep first)";
+
+    showSidePanel(
+      `<span>Crop Keep — Keep Selected Region (框選保留)</span>`,
+      `
+      <div style="background:rgba(16,185,129,0.10);border:1px solid rgba(16,185,129,0.35);border-radius:8px;padding:10px;margin-bottom:10px;">
+        <div style="font-size:12px;font-weight:700;color:#10b981;margin-bottom:5px;display:flex;align-items:center;justify-content:space-between;gap:6px;">
+          <span>✂️ Mark Region(s) to Keep</span>
+          ${
+            isLassoActive
+              ? `<button type="button" class="gs-top-btn" id="btnCancelLassoMode" style="padding:2px 7px;font-size:10.5px;" title="Cancel Lasso (Esc)">✖ Cancel (Esc)</button>`
+              : `<span style="font-size:10px;padding:1px 6px;border-radius:4px;background:var(--ui-bg-surface);color:var(--ui-text-secondary);">Off</span>`
+          }
+        </div>
+        <div style="font-size:11px;color:var(--ui-text-secondary);margin-bottom:8px;line-height:1.45;">
+          Mark the boundary you want to <b>keep</b> (everything outside will be cropped out when you press <b>Generate Scan</b>). Rotate anytime with <b>Mouse Wheel</b>.
+        </div>
+
+        <div style="display:flex;gap:5px;margin-bottom:8px;">
+          <button type="button" class="gs-top-btn ${isLassoActive && inputMethod !== "polygon" ? "accent" : ""}" id="btnModeFreehandLasso" style="flex:1;justify-content:center;font-size:11px;">
+            <span>✏️ Freehand 3D Lasso</span>
+          </button>
+          <button type="button" class="gs-top-btn ${isLassoActive && inputMethod === "polygon" ? "accent" : ""}" id="btnModePolygonClick" style="flex:1;justify-content:center;font-size:11px;">
+            <span>📐 Plan Polygon</span>
+          </button>
+        </div>
+
+        <div style="font-size:11px;color:var(--ui-text-secondary);background:var(--ui-bg-surface);border:1px solid var(--ui-border);border-radius:6px;padding:6px 8px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;gap:6px;">
+          <span>
+            Marked: <b>${markedCount > 0 ? `${markedCount} region${markedCount === 1 ? "" : "s"}` : "None yet"}</b>
+            · <b id="lblLassoSelectedTris" style="color:#10b981;">${triCountLabel}</b>
+          </span>
+          <button type="button" class="gs-top-btn" id="btnDrawCropPolygon" style="padding:2px 8px;font-size:10.5px;">Clear</button>
+        </div>
+
+        <button type="button" class="gs-top-btn accent" style="width:100%;justify-content:center;padding:8px 12px;font-weight:700;" id="btnExecuteCrop">
+          <span>${execBtnText}</span>
+        </button>
+      </div>
+
+      ${renderStagedAdjustmentsCardHtml({ alwaysShow: false })}
+      `
+    );
+
+    document.getElementById("btnLassoBackToAlign")?.addEventListener("click", () => {
+      cancelLassoToolMode(false);
+      setActiveStudioTool("align_merge");
+      openAlignMergeInspector();
     });
 
-    document.getElementById("btnExecuteCrop")?.addEventListener("click", async () => {
-      const mode = document.getElementById("optCropMode")?.value || STATE.cropMode || "delete_inside";
-      const activePolyPts =
-        STATE.maskBoundaryPoints && STATE.maskBoundaryPoints.length >= 3
-          ? STATE.maskBoundaryPoints
-          : STATE.measurePoints && STATE.measurePoints.length >= 3
-          ? STATE.measurePoints
-          : null;
-      if (!activePolyPts || activePolyPts.length < 3) {
-        showToast("Please drag a freehand lasso (or click 3+ polygon points) on the 3D scan first.");
+    document.getElementById("btnCancelLassoMode")?.addEventListener("click", () => {
+      cancelLassoToolMode(true);
+    });
+    document.getElementById("btnModeFreehandLasso")?.addEventListener("click", () => {
+      STATE.lassoInputMethod = "lasso";
+      STATE.measurePoints = [];
+      STATE.cropPolygonPoints = [];
+      setActiveStudioTool("crop");
+      rebuildLassoHighlight3D();
+      openLassoKeepInspector({ armLasso: true });
+    });
+    document.getElementById("btnModePolygonClick")?.addEventListener("click", () => {
+      STATE.lassoInputMethod = "polygon";
+      STATE.measurePoints = [];
+      STATE.cropPolygonPoints = [];
+      setActiveStudioTool("crop");
+      rebuildLassoHighlight3D();
+      openLassoKeepInspector({ armLasso: true });
+    });
+    document.getElementById("btnDrawCropPolygon")?.addEventListener("click", () => {
+      STATE.measurePoints = [];
+      clearLassoSelectionState();
+      if (isLassoActive) setActiveStudioTool("crop");
+      openLassoKeepInspector({ armLasso: isLassoActive });
+    });
+    document.getElementById("btnExecuteCrop")?.addEventListener("click", () => {
+      if (STATE.activeTool !== "crop") {
+        setActiveStudioTool("crop");
+        openLassoKeepInspector({ armLasso: true });
         return;
       }
-      const box = document.getElementById("optActionResult");
-      if (box) {
-        box.innerHTML = `<div style="font-size:12px;color:var(--ui-accent);">Running ${
-          mode === "delete_inside" ? "Lasso Delete (removing selected triangles)" : "Lasso Keep Crop"
-        } on real 3D mesh tiles...</div>`;
-      }
-      const polyPayload = activePolyPts.map((p) => {
-        const t = localToTwd97(p);
-        return [t.e, t.n];
+      const effVis = getEffectiveLassoVisibleOnly("keep_inside");
+      const batchStrokes = (STATE.lassoStrokes || []).map((s) => Object.assign({}, s, { visible_only: effVis }));
+      const batchPolys = [];
+      const rawKeepPolys = [];
+      (STATE.pendingCropPolygons || []).forEach((pts) => {
+        if (Array.isArray(pts) && pts.length >= 3) rawKeepPolys.push(pts);
       });
-      try {
-        const res = await apiPost("/api/optimizer/crop", {
-          scan_id: STATE.activeScanId,
-          mode,
-          polygon: polyPayload,
-        });
-        if (box) {
-          box.innerHTML = `
-            <div style="background:var(--ui-bg-subtle);border:1px solid var(--ui-border-strong);border-radius:8px;padding:10px;font-size:12px;color:var(--ui-text-primary);">
-              <div style="color:${mode === "delete_inside" ? "#ef4444" : "#10b981"};font-weight:700;">✓ ${
-            mode === "delete_inside" ? "Lasso Delete Completed" : "Spatial Crop Completed"
-          } (${res.duration_s}s)</div>
-              <div>Action: <b>${res.mode}</b> · Lasso Area: <b>${res.cropped_area_m2} m²</b></div>
-              <div>Tiles Sliced: <b>${res.tiles_sliced || 0}</b> · Pruned: <b>${res.tiles_pruned || 0}</b></div>
-              <div style="font-size:10.5px;color:var(--ui-text-muted);">Output: ${res.output_dir}</div>
-            </div>
-          `;
-        }
-        showToast(
-          mode === "delete_inside"
-            ? "Deleted selected part of scan and reloaded 3D mesh!"
-            : "Cropped scan to selected boundary and reloaded 3D mesh!"
-        );
-        await refreshScansCatalog();
-        if (STATE.activeScanId) loadScanIntoStudio(STATE.activeScanId);
-      } catch (err) {
-        showToast(`Crop Error: ${err.message}`);
+      if (Array.isArray(STATE.measurePoints) && STATE.measurePoints.length >= 3) {
+        rawKeepPolys.push(STATE.measurePoints);
       }
+      if (!STATE.multiAlign?.active && rawKeepPolys.length > 0 && isActiveStudioTilesetEcef()) {
+        rawKeepPolys.forEach((pts) => {
+          const orthoSt = planPolygonToTopDownFrustumStroke(pts);
+          if (orthoSt) batchStrokes.push(orthoSt);
+        });
+      } else {
+        rawKeepPolys.forEach((pts) => {
+          batchPolys.push(pts.map((p) => studioWorldToTilesetNative(p).slice(0, 2)));
+        });
+      }
+      const regionCount = batchStrokes.filter((s) => s.op !== "sub").length + batchPolys.length;
+      if (regionCount === 0) {
+        showToast("Mark at least 1 region to keep first.");
+        return;
+      }
+      st.cropKeep = {
+        regionCount,
+        triCount: Number(STATE.lassoSelectedTriCount || 0),
+        frustum_strokes: batchStrokes,
+        native_polygons: batchPolys,
+      };
+      st.rev++;
+      STATE.measurePoints = [];
+      clearLassoSelectionState();
+      setActiveStudioTool("orbit");
+      applyStagedEditsToStudioMeshes(true);
+      syncStagedEditsDockBadge();
+      openLassoKeepInspector({ armLasso: false });
+      showToast("Staged Keep Crop in 3D preview — adjust Compression / CRS or press Generate Scan!");
     });
+
+    bindStagedAdjustmentsCardEvents(() => openLassoKeepInspector({ armLasso: STATE.activeTool === "crop" }));
+  }
+
+  function openMeshCompressionInspector() {
+    const st = ensureStagedEditsForActiveScan();
+    const curPreset = st.compressionPreset || "balanced";
+
+    showSidePanel(
+      `<span>Mesh &amp; Texture Compression (網格壓縮優化)</span>`,
+      `
+      <div style="background:var(--ui-bg-subtle);border:1px solid var(--ui-border-strong);border-radius:8px;padding:11px;margin-bottom:10px;">
+        <div style="font-size:12px;font-weight:700;color:var(--ui-text-primary);margin-bottom:4px;">
+          ⚡ GC_ScanOptimizer Compression Preset
+        </div>
+        <p style="font-size:11px;color:var(--ui-text-secondary);margin-bottom:9px;line-height:1.45;">
+          Choose mesh decimation &amp; texture optimization to apply when generating your new scan (64-bit coordinate precision preserved).
+        </p>
+        <div class="gs-form-group" style="margin-bottom:10px;">
+          <label>Target Compression Level (壓縮與串流等級)</label>
+          <select class="gs-select" id="optPresetSelect">
+            <option value="none" ${curPreset === "none" ? "selected" : ""}>No Extra Compression (100% Original Mesh &amp; Textures)</option>
+            <option value="quality" ${curPreset === "quality" ? "selected" : ""}>High Fidelity Quality (75% Tris · 2048px JPEG)</option>
+            <option value="balanced" ${curPreset === "balanced" ? "selected" : ""}>Balanced Web Stream (50% Tris · 1536px JPEG)</option>
+            <option value="web" ${curPreset === "web" ? "selected" : ""}>Fast Field Tablet (35% Tris · 1024px JPEG)</option>
+            <option value="ultra_light" ${curPreset === "ultra_light" ? "selected" : ""}>Ultra-Light Offline Cache (20% Tris · 768px JPEG)</option>
+          </select>
+        </div>
+        <button type="button" class="gs-top-btn accent" style="width:100%;justify-content:center;padding:8px 12px;font-weight:700;" id="btnStageCompression">
+          <span>⚡ Stage Compression Adjustment (加入壓縮設定)</span>
+        </button>
+      </div>
+
+      ${renderStagedAdjustmentsCardHtml({ alwaysShow: true })}
+      `
+    );
+
+    document.getElementById("btnStageCompression")?.addEventListener("click", () => {
+      const chosen = document.getElementById("optPresetSelect")?.value || "balanced";
+      if (chosen === "none") {
+        st.compressionPreset = null;
+        showToast("Cleared extra mesh compression (100% original resolution will be kept)");
+      } else {
+        st.compressionPreset = chosen;
+        showToast(`Staged Compression: ${COMPRESSION_PRESET_LABELS[chosen] || chosen}`);
+      }
+      syncStagedEditsDockBadge();
+      openMeshCompressionInspector();
+    });
+
+    bindStagedAdjustmentsCardEvents(() => openMeshCompressionInspector());
+  }
+
+  function openCoordinateSystemInspector() {
+    const st = ensureStagedEditsForActiveScan();
+    const rc = STATE.multiAlign?.active ? STATE.multiAlign?.refCenter : null;
+    const scan = rc
+      ? Object.assign({}, STATE.activeScan || {}, {
+          twd97_e: Number(rc.x || 0),
+          twd97_n: Number(rc.y || 0),
+          twd97_h: Number(rc.z || 0),
+          crs: "TWD97 (121) + TWVD2001",
+        })
+      : STATE.activeScan || {};
+    const curCode = inferActiveScanCrsCode(scan);
+    const selectedCode = st.crsConfig?.target_crs || curCode;
+    const initOffX = Number(st.crsConfig?.offset_x || 0);
+    const initOffY = Number(st.crsConfig?.offset_y || 0);
+    const initOffZ = Number(st.crsConfig?.offset_z || 0);
+
+    const curE = scan.twd97_e !== undefined && scan.twd97_e !== null ? Number(scan.twd97_e) : 0;
+    const curN = scan.twd97_n !== undefined && scan.twd97_n !== null ? Number(scan.twd97_n) : 0;
+    const curH = scan.twd97_h !== undefined && scan.twd97_h !== null ? Number(scan.twd97_h) : 0;
+
+    showSidePanel(
+      `<span>Coordinate System &amp; Datum (座標系統轉換)</span>`,
+      `
+      <div style="background:var(--ui-bg-subtle);border:1px solid var(--ui-border-strong);border-radius:8px;padding:11px;margin-bottom:10px;">
+        <div style="font-size:12px;font-weight:700;color:var(--ui-text-primary);margin-bottom:4px;">
+          🌐 Coordinate Reference System (CRS)
+        </div>
+        <div style="font-size:11px;color:var(--ui-text-secondary);background:var(--ui-bg-surface);border:1px solid var(--ui-border);border-radius:6px;padding:7px 8px;margin-bottom:9px;line-height:1.45;">
+          <div><b>Current Scan CRS:</b> ${escapeHtml(scan.crs || "TWD97 (121) + TWVD2001")}</div>
+          <div><b>Current Center:</b> X/E ${curE.toFixed(3)}m · Y/N ${curN.toFixed(3)}m · Z/H ${curH.toFixed(2)}m</div>
+        </div>
+
+        <div class="gs-form-group" style="margin-bottom:8px;">
+          <label>Target Coordinate System (目標座標系統)</label>
+          <select class="gs-select" id="selTargetCrs">
+            ${CRS_UI_CATALOG.map(
+              (c) => `<option value="${c.code}" ${c.code === selectedCode ? "selected" : ""}>${escapeHtml(c.fullLabel)}</option>`
+            ).join("")}
+          </select>
+        </div>
+
+        <div class="gs-form-group" style="margin-bottom:8px;">
+          <label>Optional Custom Datum Offset ΔX / ΔY / ΔZ (自訂平移量, m)</label>
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;">
+            <input type="number" step="0.001" class="gs-input" id="numCrsOffsetX" value="${initOffX}" title="ΔX / ΔEasting (m)" placeholder="ΔX (m)" />
+            <input type="number" step="0.001" class="gs-input" id="numCrsOffsetY" value="${initOffY}" title="ΔY / ΔNorthing (m)" placeholder="ΔY (m)" />
+            <input type="number" step="0.001" class="gs-input" id="numCrsOffsetZ" value="${initOffZ}" title="ΔZ / ΔElevation (m)" placeholder="ΔZ (m)" />
+          </div>
+        </div>
+
+        <div id="lblCrsTargetPreview" style="font-size:11px;color:var(--ui-accent);background:var(--ui-bg-surface);border:1px solid var(--ui-border);border-radius:6px;padding:7px 8px;margin-bottom:9px;"></div>
+
+        <button type="button" class="gs-top-btn accent" style="width:100%;justify-content:center;padding:8px 12px;font-weight:700;" id="btnStageCrs">
+          <span>🌐 Stage Coordinate System (加入座標系統設定)</span>
+        </button>
+      </div>
+
+      ${renderStagedAdjustmentsCardHtml({ alwaysShow: true })}
+      `
+    );
+
+    const updatePreviewBox = () => {
+      const code = document.getElementById("selTargetCrs")?.value || curCode;
+      const ox = Number(document.getElementById("numCrsOffsetX")?.value || 0);
+      const oy = Number(document.getElementById("numCrsOffsetY")?.value || 0);
+      const oz = Number(document.getElementById("numCrsOffsetZ")?.value || 0);
+      const prev = previewTargetCrsCenterJS(scan, code, ox, oy, oz);
+      const previewEl = document.getElementById("lblCrsTargetPreview");
+      const stageBtn = document.getElementById("btnStageCrs");
+      if (prev.error) {
+        if (previewEl) {
+          previewEl.innerHTML = `<span style="color:#f59e0b;font-weight:700;">⚠️ ${escapeHtml(prev.error)}</span>`;
+        }
+        if (stageBtn) stageBtn.disabled = true;
+        return;
+      }
+      if (stageBtn) stageBtn.disabled = false;
+      if (previewEl) {
+        previewEl.innerHTML = `<b>New Scan Center (${escapeHtml(prev.crsLabel)}):</b><br/>X/E <b>${prev.x.toFixed(
+          3
+        )}m</b> · Y/N <b>${prev.y.toFixed(3)}m</b> · Z/H <b>${prev.z.toFixed(2)}m</b>`;
+      }
+    };
+    updatePreviewBox();
+
+    ["selTargetCrs", "numCrsOffsetX", "numCrsOffsetY", "numCrsOffsetZ"].forEach((id) => {
+      document.getElementById(id)?.addEventListener("input", updatePreviewBox);
+      document.getElementById(id)?.addEventListener("change", updatePreviewBox);
+    });
+
+    document.getElementById("btnStageCrs")?.addEventListener("click", () => {
+      const code = document.getElementById("selTargetCrs")?.value || curCode;
+      const ox = Number(document.getElementById("numCrsOffsetX")?.value || 0);
+      const oy = Number(document.getElementById("numCrsOffsetY")?.value || 0);
+      const oz = Number(document.getElementById("numCrsOffsetZ")?.value || 0);
+      const prev = previewTargetCrsCenterJS(scan, code, ox, oy, oz);
+      if (prev.error) {
+        showToast(prev.error);
+        return;
+      }
+      st.crsConfig = {
+        target_crs: code,
+        offset_x: ox,
+        offset_y: oy,
+        offset_z: oz,
+      };
+      syncStagedEditsDockBadge();
+      const item = CRS_UI_CATALOG.find((c) => c.code === code);
+      openCoordinateSystemInspector();
+      showToast(`Staged Coordinate System: ${item ? item.shortLabel : code}`);
+    });
+
+    bindStagedAdjustmentsCardEvents(() => openCoordinateSystemInspector());
+  }
+
+  function openGenerateScanInspector() {
+    showSidePanel(
+      `<span>Generate Edited Scan (產生新掃描)</span>`,
+      `
+      <div style="font-size:11.5px;color:var(--ui-text-secondary);line-height:1.45;margin-bottom:6px;">
+        Combine multiple <b>Lasso Deletions</b>, <b>Mesh Compression</b>, and <b>Coordinate System</b> changes, then press <b>Generate Scan</b> once to create a new scan while keeping <b>${escapeHtml(
+          STATE.activeScan?.name || STATE.activeScanId || "the original scan"
+        )}</b> 100% untouched.
+      </div>
+      ${renderStagedAdjustmentsCardHtml({ alwaysShow: true })}
+      `
+    );
+    bindStagedAdjustmentsCardEvents(() => openGenerateScanInspector());
+  }
+
+  function openOptimizerInspector(preferredCropMode = null, opts = {}) {
+    if (preferredCropMode === "keep_inside") {
+      openLassoKeepInspector(opts);
+    } else {
+      openLassoDeleteInspector(opts);
+    }
   }
 
   // =========================================================================
@@ -7025,7 +11626,11 @@
 
   function updateMultiAlignLayersEachFrame() {
     if (!studioThree || !STATE.multiAlign.active) return;
+    const showAlignBoxes = STATE.activeTool === "align_merge";
     STATE.multiAlign.layers.forEach((layer) => {
+      if (layer.boxHelper) {
+        layer.boxHelper.visible = Boolean(layer.visible && showAlignBoxes);
+      }
       if (!layer.visible) return;
       if (layer.tilesRenderer) {
         layer.tilesRenderer.update();
@@ -7080,7 +11685,7 @@
     const layer = {
       scan_id: scan.scan_id,
       name: scan.name,
-      project_group: scan.project_group || "QuChi Dam",
+      project_group: scan.project_group || "Unassigned Site",
       color,
       visible: true,
       locked: false,
@@ -7103,17 +11708,71 @@
     STATE.multiAlign.layers.push(layer);
     STATE.multiAlign.selectedScanId = layer.scan_id;
 
+    const syncLayerRelativeOffset = (targetLayer) => {
+      if (!targetLayer || !targetLayer.rawCenter || targetLayer._userMoved || !STATE.multiAlign.refCenter) return;
+      if (STATE.multiAlign.layers[0]?.scan_id === targetLayer.scan_id) return;
+      const ref = STATE.multiAlign.refCenter;
+      const dx = targetLayer.rawCenter.x - ref.x;
+      const dy = targetLayer.rawCenter.z - ref.z;
+      const dz = -(targetLayer.rawCenter.y - ref.y);
+      const dist3D = Math.hypot(dx, dy, dz);
+      if (dist3D > 0.3 && dist3D < 400) {
+        targetLayer.tx = Number(dx.toFixed(2));
+        targetLayer.ty = Number(dy.toFixed(2));
+        targetLayer.tz = Number(dz.toFixed(2));
+      } else if (dist3D >= 400) {
+        const myIdx = STATE.multiAlign.layers.indexOf(targetLayer);
+        targetLayer.tx = Number((Math.max(1, myIdx) * 14).toFixed(2));
+        targetLayer.ty = 0;
+        targetLayer.tz = 0;
+      } else {
+        targetLayer.tx = 0;
+        targetLayer.ty = 0;
+        targetLayer.tz = 0;
+      }
+      applyLayerTransformTo3D(targetLayer);
+      syncAlignLayerInputsInDOM(targetLayer);
+    };
+
+    const finalizeLoadedMultiAlignLayer = (sphere) => {
+      layer.rawCenter = { x: sphere.center.x, y: sphere.center.y, z: sphere.center.z };
+      layer._sphereRadius = sphere.radius || 38;
+      layer.ready = true;
+
+      if (STATE.multiAlign.layers[0]?.scan_id === layer.scan_id || !STATE.multiAlign.refCenter) {
+        STATE.multiAlign.refCenter = { ...layer.rawCenter };
+        STATE.multiAlign.layers.forEach((other) => {
+          if (other !== layer && other.ready) syncLayerRelativeOffset(other);
+        });
+      } else {
+        syncLayerRelativeOffset(layer);
+      }
+
+      if (!layer.boxHelper) {
+        const r = Math.max(4, Math.min(45, (sphere.radius || 20) * 0.45));
+        const boxGeo = new THREE.BoxGeometry(r * 1.4, r * 0.55, r * 1.4);
+        const edges = new THREE.EdgesGeometry(boxGeo);
+        const lineMat = new THREE.LineBasicMaterial({
+          color: new THREE.Color(layer.color),
+          transparent: true,
+          opacity: 0.75,
+        });
+        const boxHelper = new THREE.LineSegments(edges, lineMat);
+        boxHelper.userData.isAlignBoxHelper = true;
+        layerGroup.add(boxHelper);
+        layer.boxHelper = boxHelper;
+      }
+
+      applyLayerTransformTo3D(layer);
+      syncAlignLayerInputsInDOM(layer);
+    };
+
     const streamUrl = scan.stream_url || `/stream/${scan.scan_id}/tileset.json`;
-    if (window.TilesRenderer && !streamUrl.toLowerCase().endsWith(".glb")) {
+    const isGlbStream = scan.stream_type === "glb" || streamUrl.toLowerCase().endsWith(".glb");
+    if (window.TilesRenderer && !isGlbStream) {
       const tr = new window.TilesRenderer(streamUrl);
       tr.fetchOptions = { mode: "cors" };
-      tr.preprocessURL = (uri) => {
-        let u = uri;
-        if (STATE.shareToken && !u.includes("share=")) {
-          u += (u.includes("?") ? "&" : "?") + `share=${encodeURIComponent(STATE.shareToken)}`;
-        }
-        return u;
-      };
+      tr.preprocessURL = (uri) => preprocessTileStreamUrl(uri, streamUrl);
       tr.setCamera(studioThree.camera);
       tr.setResolutionFromRenderer(studioThree.camera, studioThree.renderer);
 
@@ -7127,48 +11786,40 @@
         const sphere = new THREE.Sphere();
         if (computeTilesetContentSphere(tr, sphere)) {
           tr.group.position.set(-sphere.center.x, -sphere.center.y, -sphere.center.z);
-          layer.rawCenter = { x: sphere.center.x, y: sphere.center.y, z: sphere.center.z };
-          layer.ready = true;
-
-          if (STATE.multiAlign.layers[0]?.scan_id === layer.scan_id || !STATE.multiAlign.refCenter) {
-            STATE.multiAlign.refCenter = { ...layer.rawCenter };
-          } else if (!layer._userMoved && STATE.multiAlign.refCenter) {
-            const ref = STATE.multiAlign.refCenter;
-            const dx = layer.rawCenter.x - ref.x;
-            const dy = layer.rawCenter.z - ref.z;
-            const dz = -(layer.rawCenter.y - ref.y);
-            const dist3D = Math.hypot(dx, dy, dz);
-            if (dist3D > 0.3 && dist3D < 400) {
-              layer.tx = Number(dx.toFixed(2));
-              layer.ty = Number(dy.toFixed(2));
-              layer.tz = Number(dz.toFixed(2));
-            } else if (dist3D >= 400) {
-              const myIdx = STATE.multiAlign.layers.indexOf(layer);
-              layer.tx = Number((myIdx * 14).toFixed(2));
-              layer.ty = 0;
-              layer.tz = 0;
-            }
-          }
-
-          // Wireframe selection helper box around layer
-          const r = Math.max(4, Math.min(45, (sphere.radius || 20) * 0.45));
-          const boxGeo = new THREE.BoxGeometry(r * 1.4, r * 0.55, r * 1.4);
-          const edges = new THREE.EdgesGeometry(boxGeo);
-          const lineMat = new THREE.LineBasicMaterial({
-            color: new THREE.Color(layer.color),
-            transparent: true,
-            opacity: 0.75,
-          });
-          const boxHelper = new THREE.LineSegments(edges, lineMat);
-          boxHelper.userData.isAlignBoxHelper = true;
-          layerGroup.add(boxHelper);
-          layer.boxHelper = boxHelper;
-
-          applyLayerTransformTo3D(layer);
-          syncAlignLayerInputsInDOM(layer);
+          finalizeLoadedMultiAlignLayer(sphere);
         }
         studioThree.camera.updateMatrixWorld();
         tr.update();
+      });
+
+      tr.addEventListener("load-model", (ev) => {
+        if (ev && ev.scene) {
+          ev.scene.traverse((c) => {
+            if (c.isMesh && c.material) {
+              const mats = Array.isArray(c.material) ? c.material : [c.material];
+              mats.forEach((m) => applyBrightnessToMaterial(m, STATE.scanBrightness));
+            }
+          });
+          studioThree.camera.updateMatrixWorld();
+          tr.update();
+          if (STATE.multiAlign?.active && hasStagedMeshEditsForActiveScan()) {
+            applyStagedEditsToStudioMeshes(false);
+          }
+          if (studioThree.renderer && studioThree.scene && studioThree.camera) {
+            studioThree.renderer.render(studioThree.scene, studioThree.camera);
+          }
+          if (
+            STATE.multiAlign?.active &&
+            ((Array.isArray(STATE.lassoStrokes) && STATE.lassoStrokes.length > 0) ||
+              (Array.isArray(STATE.pendingCropPolygons) && STATE.pendingCropPolygons.length > 0) ||
+              (Array.isArray(STATE.cropPolygonPoints) && STATE.cropPolygonPoints.length >= 3))
+          ) {
+            if (studioThree._lassoRebuildTimer) clearTimeout(studioThree._lassoRebuildTimer);
+            studioThree._lassoRebuildTimer = setTimeout(() => {
+              rebuildLassoHighlight3D();
+            }, 90);
+          }
+        }
       });
 
       tr.errorTarget = 6.0;
@@ -7176,8 +11827,58 @@
       layer.tilesRenderer = tr;
       studioThree.camera.updateMatrixWorld();
       tr.update();
+    } else if (isGlbStream && THREE.GLTFLoader) {
+      const gltfLoader = new THREE.GLTFLoader();
+      if (window.MeshoptDecoder) gltfLoader.setMeshoptDecoder(window.MeshoptDecoder);
+      const ktx2 = getKTX2Loader(studioThree.renderer);
+      if (ktx2) gltfLoader.setKTX2Loader(ktx2);
+      gltfLoader.load(
+        streamUrl,
+        (gltf) => {
+          const model = gltf.scene;
+          // zUpGroup has rotation.x = 270 deg; rotate Y-up GLB +90 deg X so it renders upright inside zUpGroup
+          model.rotation.x = Math.PI * 0.5;
+          model.updateMatrixWorld(true);
+          const box = new THREE.Box3().setFromObject(model);
+          const sphere = new THREE.Sphere();
+          box.getBoundingSphere(sphere);
+          if (sphere.radius > 0) {
+            model.position.set(-sphere.center.x, -sphere.center.y, -sphere.center.z);
+          }
+          model.traverse((c) => {
+            if (c.isMesh && c.material) {
+              const mats = Array.isArray(c.material) ? c.material : [c.material];
+              mats.forEach((m) => applyBrightnessToMaterial(m, STATE.scanBrightness));
+            }
+          });
+          zUpGroup.add(model);
+          const metaE = Number(scan.twd97_e || 0);
+          const metaN = Number(scan.twd97_n || 0);
+          const metaH = Number(scan.twd97_h || 0);
+          const worldSphere = new THREE.Sphere(
+            new THREE.Vector3(
+              metaE || sphere.center.x,
+              metaN || sphere.center.y,
+              metaH || sphere.center.z
+            ),
+            sphere.radius || 38
+          );
+          finalizeLoadedMultiAlignLayer(worldSphere);
+          if (STATE.multiAlign?.active && hasStagedMeshEditsForActiveScan()) {
+            applyStagedEditsToStudioMeshes(false);
+          }
+          if (studioThree.renderer && studioThree.scene && studioThree.camera) {
+            studioThree.renderer.render(studioThree.scene, studioThree.camera);
+          }
+        },
+        undefined,
+        (err) => {
+          console.warn("[GatheringScans] Multi-Align GLB layer load failed:", err);
+        }
+      );
     }
 
+    syncStagedEditsDockBadge();
     applyLayerTransformTo3D(layer);
     return layer;
   }
@@ -7200,13 +11901,17 @@
     if (STATE.multiAlign.layers.length > 0 && STATE.multiAlign.layers[0].rawCenter) {
       STATE.multiAlign.refCenter = { ...STATE.multiAlign.layers[0].rawCenter };
     }
+    syncStagedEditsDockBadge();
     updateStudioTransformGizmo();
   }
 
   function enterMultiScanAlignMode() {
     initStudio3D();
     if (!studioThree) return;
+    clearLassoSelectionState();
+    restoreOriginalStudioMeshIndices();
     STATE.multiAlign.active = true;
+    resetStagedEditsForScan(STATE.activeScan);
     studioThree.modelPivot.visible = false;
     if (studioThree.fallbackGroup) studioThree.fallbackGroup.visible = false;
     studioThree.multiAlignGroup.visible = true;
@@ -7216,16 +11921,22 @@
       // the user selects which additional scans to import from the checklist in the panel.
       addScanLayerToMultiAlign(STATE.activeScanId);
     }
+    syncMultiAlignToolAvailability();
+    syncStagedEditsDockBadge();
     updateStudioTransformGizmo();
   }
 
   function exitMultiScanAlignMode(reloadActive = true) {
     if (!studioThree) return;
     _gizmoDrag.active = false;
+    clearLassoSelectionState();
+    restoreOriginalStudioMeshIndices();
     STATE.multiAlign.layers.slice().forEach((l) => removeScanLayerFromMultiAlign(l.scan_id));
     STATE.multiAlign.active = false;
     STATE.multiAlign.selectedScanId = null;
     STATE.multiAlign.refCenter = null;
+    resetStagedEditsForScan(STATE.activeScan);
+    syncMultiAlignToolAvailability();
     if (studioThree.multiAlignGroup) studioThree.multiAlignGroup.visible = false;
     if (studioThree.gizmoGroup) studioThree.gizmoGroup.visible = false;
     studioThree.modelPivot.visible = true;
@@ -7243,7 +11954,7 @@
       STATE.activeScan?.project_group ||
       (STATE.activeProjectGroup && STATE.activeProjectGroup !== "__all__" ? STATE.activeProjectGroup : "") ||
       STATE.scans[0]?.project_group ||
-      "QuChi Dam";
+      "Unassigned Site";
     const pickerProject = STATE.multiAlign.pickerProjectGroup || curSite;
     const defaultMergedName = `${curSite} — Unified Merged Scan (${Math.max(2, layers.length)} Scans)`;
 
@@ -7281,7 +11992,7 @@
               : "var(--ui-bg-surface)"
           };border:1px solid ${
             isLoaded
-              ? loadedLayer.color
+              ? escapeHtml(loadedLayer.color)
               : isChecked
               ? "var(--ui-accent)"
               : "var(--ui-border)"
@@ -7524,13 +12235,43 @@
           <div class="gs-form-group" style="margin-bottom:0;">
             <label style="font-size:11px;">Post-Merge Optimizer</label>
             <select class="gs-select" id="alignPostOptPreset" style="font-size:11.5px;">
-              <option value="none" selected>Keep Native Merged Mesh</option>
-              <option value="balanced">Auto-Run Balanced (50% Tris)</option>
-              <option value="quality">Auto-Run High Quality (75% Tris)</option>
-              <option value="web">Auto-Run Fast Tablet (35% Tris)</option>
+              <option value="none" ${!ensureStagedEditsForActiveScan().compressionPreset ? "selected" : ""}>Keep Native Merged Mesh</option>
+              <option value="balanced" ${ensureStagedEditsForActiveScan().compressionPreset === "balanced" ? "selected" : ""}>Auto-Run Balanced (50% Tris)</option>
+              <option value="quality" ${ensureStagedEditsForActiveScan().compressionPreset === "quality" ? "selected" : ""}>Auto-Run High Quality (75% Tris)</option>
+              <option value="web" ${ensureStagedEditsForActiveScan().compressionPreset === "web" ? "selected" : ""}>Auto-Run Fast Tablet (35% Tris)</option>
+              <option value="ultra_light" ${ensureStagedEditsForActiveScan().compressionPreset === "ultra_light" ? "selected" : ""}>Auto-Run Ultra-Light (20% Tris)</option>
             </select>
           </div>
         </div>
+
+        ${(() => {
+          const stMulti = ensureStagedEditsForActiveScan();
+          const delRegs = (stMulti.deletions || []).reduce((acc, b) => acc + (Number(b.regionCount) || 1), 0);
+          const delTris = (stMulti.deletions || []).reduce((acc, b) => acc + (Number(b.triCount) || 0), 0);
+          const crsItem = stMulti.crsConfig
+            ? CRS_UI_CATALOG.find((c) => c.code === stMulti.crsConfig.target_crs)
+            : null;
+          const chips = [];
+          if (delRegs > 0) {
+            chips.push(`🗑️ ${delRegs} deleted region${delRegs === 1 ? "" : "s"} (-${delTris.toLocaleString()} tris)`);
+          }
+          if (crsItem) {
+            chips.push(`🌐 CRS: ${escapeHtml(crsItem.shortLabel)}`);
+          }
+          return `
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:5px;flex-wrap:wrap;margin-bottom:8px;padding:6px 8px;border-radius:7px;background:var(--ui-bg-subtle);border:1px solid var(--ui-border);font-size:10.5px;">
+              <span style="color:var(--ui-text-secondary);">${
+                chips.length > 0
+                  ? `<b>Included in Merge:</b> ${chips.join(" · ")}`
+                  : `Tip: Use <b>Lasso Delete (套索刪除)</b> or <b>CRS (座標系統)</b> before merging!`
+              }</span>
+              <div style="display:flex;gap:4px;">
+                <button type="button" class="gs-top-btn" id="btnAlignOpenLassoDelete" style="padding:2px 7px;font-size:10px;border-color:rgba(239,68,68,0.4);color:#ef4444;">🗑️ Lasso Delete</button>
+                <button type="button" class="gs-top-btn" id="btnAlignOpenCrs" style="padding:2px 7px;font-size:10px;">🌐 CRS</button>
+              </div>
+            </div>
+          `;
+        })()}
 
         <button type="button" class="gs-top-btn accent" id="btnExecuteMergeScans" style="width:100%;justify-content:center;padding:8px 12px;font-weight:700;${
           allLocked ? "" : "opacity:0.85;"
@@ -7772,6 +12513,17 @@
       showToast("Unlocked all scan layers 🔓");
     });
 
+    document.getElementById("btnAlignOpenLassoDelete")?.addEventListener("click", () => {
+      STATE.cropMode = "delete_inside";
+      openLassoDeleteInspector({ armLasso: true });
+      showToast("Lasso active across visible scan layers — mark regions & press Delete, then return to Align & Merge!");
+    });
+
+    document.getElementById("btnAlignOpenCrs")?.addEventListener("click", () => {
+      setActiveStudioTool("crs");
+      openCoordinateSystemInspector();
+    });
+
     document.getElementById("btnExitMultiAlign")?.addEventListener("click", () => {
       exitMultiScanAlignMode(true);
       document.getElementById("studioSidePanel")?.classList.remove("active");
@@ -7795,41 +12547,30 @@
         return;
       }
 
+      const stMulti = ensureStagedEditsForActiveScan();
       const mergedName =
         document.getElementById("alignMergedScanName")?.value?.trim() ||
+        stMulti.newScanName ||
         defaultMergedName;
       const mergedProject =
         document.getElementById("alignMergedProjectGroup")?.value?.trim() ||
         curSite;
-      const postOptPreset =
+      const postOptPresetRaw =
         document.getElementById("alignPostOptPreset")?.value || "none";
+      const effectiveCompression =
+        postOptPresetRaw && postOptPresetRaw !== "none"
+          ? postOptPresetRaw
+          : stMulti.compressionPreset || "";
 
       const resBox = document.getElementById("alignMergeResultBox");
       if (resBox) {
         resBox.innerHTML = `<div style="padding:10px;border-radius:8px;background:var(--ui-bg-subtle);border:1px solid var(--ui-border-strong);font-size:12px;color:var(--ui-accent);">
-          Merging ${STATE.multiAlign.layers.length} locked scans, baking 3D transforms &amp; 4K texture atlas, and building 3D Tileset...
+          Merging ${STATE.multiAlign.layers.length} locked scans, applying staged deletions / CRS / compression, and building unified 3D Tileset...
         </div>`;
       }
 
       try {
-        const serializedLayers = STATE.multiAlign.layers.map((l) => {
-          applyLayerTransformTo3D(l);
-          const pos = l.layerGroup ? l.layerGroup.position : { x: Number(l.tx) || 0, y: Number(l.ty) || 0, z: Number(l.tz) || 0 };
-          const quat = l.layerGroup ? l.layerGroup.quaternion : { x: 0, y: 0, z: 0, w: 1 };
-          return {
-            scan_id: l.scan_id,
-            locked: Boolean(l.locked),
-            tx: Number(l.tx) || 0,
-            ty: Number(l.ty) || 0,
-            tz: Number(l.tz) || 0,
-            rx_deg: Number(l.rx_deg) || 0,
-            ry_deg: Number(l.ry_deg) || 0,
-            rz_deg: Number(l.rz_deg) || 0,
-            position_three: [Number(pos.x) || 0, Number(pos.y) || 0, Number(pos.z) || 0],
-            quaternion_three: [Number(quat.x) || 0, Number(quat.y) || 0, Number(quat.z) || 0, Number(quat.w ?? 1)],
-            euler_deg_three: [Number(l.rx_deg) || 0, Number(l.ry_deg) || 0, Number(l.rz_deg) || 0],
-          };
-        });
+        const serializedLayers = serializeMultiAlignLayersForMerge(false);
         const refC = STATE.multiAlign.refCenter || STATE.multiAlign.layers[0]?.rawCenter || null;
         const payload = {
           name: mergedName,
@@ -7838,23 +12579,12 @@
           ref_center_zup: refC ? [Number(refC.x), Number(refC.y), Number(refC.z)] : null,
           layers: serializedLayers,
           scans: serializedLayers,
+          deletions: stMulti.deletions || [],
+          compression_preset: effectiveCompression,
+          crs_config: stMulti.crsConfig || null,
         };
 
         const res = await apiPost("/api/scans/merge", payload);
-        let optNote = "";
-        if (postOptPreset && postOptPreset !== "none" && res.scan_id) {
-          if (resBox) {
-            resBox.innerHTML = `<div style="padding:10px;border-radius:8px;background:var(--ui-bg-subtle);border:1px solid var(--ui-border-strong);font-size:12px;color:var(--ui-accent);">
-              Merged! Running post-merge GC_ScanOptimizer (${postOptPreset}) on unified scan...
-            </div>`;
-          }
-          const optRes = await apiPost("/api/optimizer/optimize", {
-            scan_id: res.scan_id,
-            preset: postOptPreset,
-            apply_to_scan: true,
-          });
-          optNote = ` · Optimized (${optRes.compressed_mb} MB, -${optRes.reduction_pct}%)`;
-        }
 
         STATE.multiAlign.lastMergedScan = res.scan || {
           scan_id: res.scan_id,
@@ -7869,13 +12599,14 @@
 
         const finalBox = document.getElementById("alignMergeResultBox");
         if (finalBox) {
-          const outMb = res.glb_size_mb ?? res.output_mb ?? 0;
+          const outMb = res.output_mb ?? res.glb_size_mb ?? 0;
           finalBox.innerHTML = `
             <div style="background:var(--ui-bg-subtle);border:1px solid var(--ui-border-strong);border-radius:8px;padding:10px;font-size:12px;color:var(--ui-text-primary);">
               <div style="color:#10b981;font-weight:700;">✓ Unified Scan Created (${res.duration_s}s)</div>
               <div style="margin-top:3px;">Scan ID: <code>${res.scan_id}</code></div>
+              <div>Coordinate System: <b>${escapeHtml(res.crs || res.scan?.crs || "TWD97 (121) + TWVD2001")}</b></div>
               <div>Geometry: <b>${(res.total_vertices || 0).toLocaleString()} verts · ${(res.total_faces || 0).toLocaleString()} faces</b></div>
-              <div>Stream Size: <b>${outMb} MB</b>${optNote}</div>
+              <div>Stream Size: <b>${outMb} MB</b></div>
             </div>
           `;
         }
@@ -7908,9 +12639,10 @@
   }
 
   function openAlignMergeInspector() {
-    if (!STATE.multiAlign.active && !STATE.multiAlign.lastMergedScan) {
+    if (!STATE.multiAlign.active) {
+      STATE.multiAlign.lastMergedScan = null;
       enterMultiScanAlignMode();
-    } else if (STATE.multiAlign.active) {
+    } else {
       updateStudioTransformGizmo();
     }
     renderAlignMergeInspectorContent();
@@ -7918,7 +12650,7 @@
 
   // Unified Bottom Dock (#bimBottomDock) + Separate Left-Side Scan Editing Dock (#studioEditingDock) Button Wiring
   document.querySelectorAll("#bimBottomDock .bim-dock-btn, #studioEditingDock .bim-dock-btn").forEach((btn) => {
-    btn.addEventListener("click", () => {
+    btn.addEventListener("click", (ev) => {
       if (btn.id === "btnClearMeasurements" || btn.id === "btnMeasureClear") {
         clearMeasurements();
         if (studioThree && studioThree.contourGroup) {
@@ -7931,13 +12663,53 @@
       }
 
       const tool = btn.dataset.tool || btn.dataset.dock || "";
+      if (STATE.multiAlign?.active && (MULTI_ALIGN_DISABLED_TOOLS.has(tool) || btn.classList.contains("multi-align-disabled"))) {
+        ev.preventDefault();
+        showToast("Unavailable during Multi-Scan Editing — merge scans first (or exit Multi-Scan mode)");
+        return;
+      }
       if (tool === "snap") {
         STATE.snapEnabled = !STATE.snapEnabled;
         btn.classList.toggle("active", STATE.snapEnabled);
         showToast(`Snapping ${STATE.snapEnabled ? "Enabled" : "Disabled"}`);
         return;
       }
+      if (tool === "first_person" || btn.id === "btnToggleFirstPerson") {
+        toggleFirstPersonMode();
+        return;
+      }
       if (!tool) return;
+
+      // Clicking an already-active Lasso dock button toggles Lasso OFF cleanly
+      if ((tool === "crop_delete" && STATE.activeTool === "crop_delete") || (tool === "crop" && STATE.activeTool === "crop")) {
+        cancelLassoToolMode(true);
+        showToast("Lasso cancelled — press the red button on the right to start Lasso again");
+        return;
+      }
+
+      if (tool === "optimizer") {
+        STATE.measurePoints = [];
+        clearLassoSelectionState();
+        setActiveStudioTool("optimizer");
+        openMeshCompressionInspector();
+        return;
+      }
+
+      if (tool === "crs") {
+        STATE.measurePoints = [];
+        clearLassoSelectionState();
+        setActiveStudioTool("crs");
+        openCoordinateSystemInspector();
+        return;
+      }
+
+      if (tool === "generate_scan") {
+        STATE.measurePoints = [];
+        clearLassoSelectionState();
+        setActiveStudioTool("generate_scan");
+        openGenerateScanInspector();
+        return;
+      }
 
       setActiveStudioTool(tool);
       STATE.measurePoints = [];
@@ -7950,26 +12722,183 @@
       else if (tool === "comments") openCommentsInspector();
       else if (tool === "crop_delete") {
         STATE.cropMode = "delete_inside";
-        openOptimizerInspector("delete_inside");
-        showToast("Lasso Delete active — drag mouse around part of scan to delete");
+        openLassoDeleteInspector({ armLasso: true });
+        showToast("Lasso active (Mark for Deletion) — mark multiple regions, Mouse Wheel to rotate, then press Delete");
       } else if (tool === "crop") {
         STATE.cropMode = "keep_inside";
-        openOptimizerInspector("keep_inside");
-        showToast("Lasso Crop active — drag mouse around part of scan to keep");
-      } else if (tool === "optimizer") {
-        openOptimizerInspector(null);
+        openLassoKeepInspector({ armLasso: true });
+        showToast("Lasso active (Keep Inside) — mark keep boundary, Mouse Wheel to rotate, Esc to cancel");
       } else if (tool === "align_merge") {
         openAlignMergeInspector();
       }
     });
   });
 
-  // Keyboard shortcuts for Esc (cancel active measurement or close top modal), Enter (lock active polygon), and W/E/R/L in Align & Merge mode
+  // First-Person Camera Top Bar & HUD Controls + PointerLock Listeners
+  document.getElementById("btnStudioFirstPerson")?.addEventListener("click", () => {
+    toggleFirstPersonMode();
+  });
+  document.getElementById("btnExitFirstPerson")?.addEventListener("click", () => {
+    exitFirstPersonMode(false);
+  });
+  document.getElementById("btnFpPointerLock")?.addEventListener("click", () => {
+    if (document.pointerLockElement) {
+      try {
+        document.exitPointerLock();
+      } catch (_) {}
+    } else {
+      requestStudioPointerLock();
+    }
+  });
+  document.getElementById("btnFpModeFly")?.addEventListener("click", () => {
+    setFirstPersonLocomotion("fly", true);
+  });
+  document.getElementById("btnFpModeWalk")?.addEventListener("click", () => {
+    setFirstPersonLocomotion("walk", true);
+  });
+  document.getElementById("fpSpeedSlider")?.addEventListener("input", (e) => {
+    const v = parseFloat(e.target.value);
+    if (Number.isFinite(v) && v >= 0.5) {
+      STATE.fpMode.baseSpeed = v;
+      syncFirstPersonHudUI();
+    }
+  });
+
+  // Mobile / Tablet Touch D-Pad for First-Person Navigation (supports continuous thumb sliding across buttons)
+  const fpTouchMovePadEl = document.getElementById("fpTouchMovePad");
+  if (fpTouchMovePadEl) {
+    let activePadPointerId = null;
+    let activePadKey = null;
+    const clearPadKey = () => {
+      if (activePadKey && STATE.fpMode.keys) {
+        delete STATE.fpMode.keys[activePadKey];
+      }
+      activePadKey = null;
+      fpTouchMovePadEl.querySelectorAll("[data-fp-key].active").forEach((el) => el.classList.remove("active"));
+    };
+    const updatePadFromPoint = (clientX, clientY) => {
+      if (!STATE.fpMode.active) {
+        clearPadKey();
+        return;
+      }
+      const hitBtn = document.elementFromPoint(clientX, clientY)?.closest?.("#fpTouchMovePad [data-fp-key]");
+      const nextCode = hitBtn ? hitBtn.getAttribute("data-fp-key") : null;
+      if (nextCode === activePadKey) return;
+      clearPadKey();
+      if (nextCode && hitBtn) {
+        activePadKey = nextCode;
+        STATE.fpMode.keys[nextCode] = true;
+        hitBtn.classList.add("active");
+      }
+    };
+    fpTouchMovePadEl.addEventListener("pointerdown", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      activePadPointerId = e.pointerId;
+      try {
+        fpTouchMovePadEl.setPointerCapture(e.pointerId);
+      } catch (_) {}
+      updatePadFromPoint(e.clientX, e.clientY);
+    });
+    fpTouchMovePadEl.addEventListener("pointermove", (e) => {
+      if (activePadPointerId === null || e.pointerId !== activePadPointerId) return;
+      e.preventDefault();
+      e.stopPropagation();
+      updatePadFromPoint(e.clientX, e.clientY);
+    });
+    const endPadGesture = (e) => {
+      if (activePadPointerId !== null && e.pointerId !== activePadPointerId) return;
+      e.stopPropagation();
+      activePadPointerId = null;
+      clearPadKey();
+    };
+    fpTouchMovePadEl.addEventListener("pointerup", endPadGesture);
+    fpTouchMovePadEl.addEventListener("pointercancel", endPadGesture);
+  }
+
+  document.addEventListener("pointerlockchange", () => {
+    syncStudioControlsForTool();
+    syncFirstPersonHudUI();
+  });
+
+  document.addEventListener("mousemove", (e) => {
+    if (!STATE.fpMode.active || STATE.activeView !== "studio") return;
+    const domEl = studioThree?.renderer?.domElement;
+    if (!domEl || document.pointerLockElement !== domEl) return;
+    const mx = Number(e.movementX) || 0;
+    const my = Number(e.movementY) || 0;
+    if (mx !== 0 || my !== 0) {
+      applyFirstPersonLookDelta(mx, my, 0.0021);
+    }
+  });
+
+  window.addEventListener("keyup", (e) => {
+    if (STATE.fpMode.keys && e.code) {
+      delete STATE.fpMode.keys[e.code];
+      if (e.code === "ShiftLeft" || e.code === "ShiftRight" || e.code === "AltLeft" || e.code === "AltRight") {
+        syncFirstPersonHudUI();
+      }
+    }
+  });
+
+  window.addEventListener("blur", () => {
+    if (STATE.fpMode) {
+      STATE.fpMode.keys = Object.create(null);
+      STATE.fpMode.dragLooking = false;
+    }
+  });
+
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden && STATE.fpMode) {
+      STATE.fpMode.keys = Object.create(null);
+      STATE.fpMode.dragLooking = false;
+    }
+  });
+
+  // Keyboard shortcuts for First-Person WASD, Esc (cancel active lasso / measurement / FP or close top modal), Enter (lock active polygon), and W/E/R/L in Align & Merge mode
   window.addEventListener("keydown", (e) => {
     const tag = (e.target && e.target.tagName) ? e.target.tagName.toLowerCase() : "";
-    if (tag === "input" || tag === "textarea" || tag === "select") return;
+    if (tag === "input" || tag === "textarea" || tag === "select" || e.target?.isContentEditable) return;
 
-    if (STATE.activeView === "studio" && STATE.multiAlign.active && STATE.activeTool === "align_merge") {
+    if ((e.ctrlKey || e.metaKey) && STATE.fpMode?.keys) {
+      STATE.fpMode.keys = Object.create(null);
+    }
+
+    const hasOpenModal = document.querySelectorAll(".gs-modal-backdrop.active").length > 0;
+
+    // Toggle First-Person Mode anytime in Studio with 'F' (without Ctrl/Meta/Alt)
+    if (STATE.activeView === "studio" && !hasOpenModal && !e.ctrlKey && !e.metaKey && !e.altKey && e.code === "KeyF") {
+      e.preventDefault();
+      toggleFirstPersonMode();
+      return;
+    }
+
+    // Active First-Person Video-Game Movement & Mode Controls (takes priority over Gizmo W/E!)
+    if (STATE.activeView === "studio" && !hasOpenModal && STATE.fpMode.active) {
+      if (!e.ctrlKey && !e.metaKey && e.code === "KeyG") {
+        e.preventDefault();
+        setFirstPersonLocomotion(STATE.fpMode.locomotion === "walk" ? "fly" : "walk", true);
+        return;
+      }
+      if (!e.ctrlKey && !e.metaKey && FP_MOVEMENT_CODES.has(e.code)) {
+        e.preventDefault();
+        STATE.fpMode.keys[e.code] = true;
+        if (e.code === "ShiftLeft" || e.code === "ShiftRight" || e.code === "AltLeft" || e.code === "AltRight") {
+          syncFirstPersonHudUI();
+        }
+        return;
+      }
+    }
+
+    if (
+      STATE.activeView === "studio" &&
+      !hasOpenModal &&
+      !e.ctrlKey &&
+      !e.metaKey &&
+      !e.altKey &&
+      STATE.multiAlign.active &&
+      STATE.activeTool === "align_merge"
+    ) {
       const k = e.key.toLowerCase();
       if (k === "w") {
         STATE.multiAlign.gizmoMode = "translate";
@@ -8011,7 +12940,28 @@
           return;
         }
       }
-      // 2. Otherwise cancel any in-progress measurement points
+      // 2. Cancel Lasso completely on Esc (mid-drag, with marked strokes, or while Lasso tool is armed)
+      //    and keep the right panel open so pressing the red button on the right starts Lasso again!
+      if (STATE.activeView === "studio") {
+        const isDraggingLasso = Boolean(studioThree && typeof studioThree._isLassoDragging === "function" && studioThree._isLassoDragging());
+        const hasLassoSelection = Boolean(
+          (STATE.lassoStrokes && STATE.lassoStrokes.length > 0) ||
+            (STATE.pendingCropPolygons && STATE.pendingCropPolygons.length > 0) ||
+            (STATE.cropPolygonPoints && STATE.cropPolygonPoints.length > 0)
+        );
+        if (
+          isDraggingLasso ||
+          STATE.activeTool === "crop_delete" ||
+          STATE.activeTool === "crop" ||
+          hasLassoSelection
+        ) {
+          e.preventDefault();
+          cancelLassoToolMode(true);
+          showToast("Lasso cancelled (Esc) — press the red button on the right to start Lasso again");
+          return;
+        }
+      }
+      // 3. Otherwise cancel any in-progress measurement points, active Studio tool / side panel, or First-Person mode
       if (STATE.activeView === "studio" && STATE.measurePoints.length > 0) {
         STATE.measurePoints = [];
         clearTempDistanceVisuals();
@@ -8025,6 +12975,36 @@
           openCutFillVolumeInspector(null);
         }
         showToast("Cancelled in-progress points (Esc)");
+      } else if (
+        STATE.activeView === "studio" &&
+        [
+          "laser",
+          "coordinates",
+          "angle",
+          "distance",
+          "area",
+          "volume",
+          "contours",
+          "profile",
+          "section",
+          "photos",
+          "rtk",
+          "comments",
+          "optimizer",
+          "crs",
+          "generate_scan",
+        ].includes(STATE.activeTool)
+      ) {
+        if (STATE.activeTool === "section") {
+          clearSectionBoxClippingIfNotKept();
+        }
+        document.getElementById("studioSidePanel")?.classList.remove("active");
+        setActiveStudioTool(STATE.multiAlign?.active ? "align_merge" : "orbit");
+        showToast("Exited active tool (Esc)");
+      } else if (STATE.activeView === "studio" && document.getElementById("studioSidePanel")?.classList.contains("active")) {
+        document.getElementById("studioSidePanel")?.classList.remove("active");
+      } else if (STATE.activeView === "studio" && STATE.fpMode?.active) {
+        exitFirstPersonMode(false);
       }
     } else if (e.key === "Enter" && STATE.activeView === "studio" && STATE.measurePoints.length >= 3) {
       if (studioThree && studioThree.polyPreviewGroup) {
@@ -8035,18 +13015,27 @@
       const lockedPts = STATE.measurePoints.map((p) => p.clone());
       STATE.measurePoints = [];
       STATE.polygonLocked = true;
-      STATE.maskBoundaryPoints = lockedPts.map((p) => p.clone());
       if (STATE.activeTool === "volume") {
+        STATE.maskBoundaryPoints = lockedPts.map((p) => p.clone());
         STATE.cutFillPolygonPoints = lockedPts;
         showToast(`Cut/Fill polygon locked (${lockedPts.length} vertices) — computing volume...`);
         openCutFillVolumeInspector(lockedPts);
       } else if (STATE.activeTool === "crop" || STATE.activeTool === "crop_delete") {
         const isDel = STATE.activeTool === "crop_delete";
         STATE.cropMode = isDel ? "delete_inside" : "keep_inside";
-        drawLassoSelection3D(lockedPts, isDel);
-        showToast(`${isDel ? "Lasso Delete" : "Spatial Crop"} polygon locked (${lockedPts.length} vertices)`);
-        openOptimizerInspector(STATE.cropMode);
+        if (!Array.isArray(STATE.pendingCropPolygons)) STATE.pendingCropPolygons = [];
+        STATE.pendingCropPolygons.push(lockedPts);
+        STATE.cropPolygonPoints = [];
+        const selTris = rebuildLassoHighlight3D();
+        showToast(
+          isDel
+            ? `Polygon #${STATE.pendingCropPolygons.length} marked (${selTris.toLocaleString()} tris) — mark more or press Delete`
+            : `Keep Polygon #${STATE.pendingCropPolygons.length} marked (${selTris.toLocaleString()} tris)`
+        );
+        if (isDel) openLassoDeleteInspector({ armLasso: true });
+        else openLassoKeepInspector({ armLasso: true });
       } else if (STATE.activeTool === "area") {
+        STATE.maskBoundaryPoints = lockedPts.map((p) => p.clone());
         showToast(`Area polygon locked (${lockedPts.length} vertices)`);
       }
     }
@@ -8054,10 +13043,23 @@
 
   document.getElementById("btnOpenOptimizer")?.addEventListener("click", () => {
     if (STATE.activeView !== "studio") switchView("studio", STATE.activeScanId);
-    openOptimizerInspector();
+    setActiveStudioTool("optimizer");
+    openMeshCompressionInspector();
   });
 
-  document.getElementById("btnStudioSurveyReport")?.addEventListener("click", () => {
+  document.getElementById("btnStudioDownloadObj")?.addEventListener("click", (ev) => {
+    if (STATE.multiAlign?.active) {
+      ev.preventDefault();
+      showToast("Unavailable during Multi-Scan Editing — merge scans first to download unified mesh");
+    }
+  });
+
+  document.getElementById("btnStudioSurveyReport")?.addEventListener("click", (ev) => {
+    if (STATE.multiAlign?.active) {
+      ev.preventDefault();
+      showToast("Unavailable during Multi-Scan Editing — merge scans first to generate a Survey Report");
+      return;
+    }
     if (STATE.activeView !== "studio") switchView("studio", STATE.activeScanId);
     openContoursInspector();
   });
@@ -8067,65 +13069,9 @@
   // ============================================================================
   let compareCtx = null;
 
-  // Exact calibrated reference anchors (raw tileset vertex coords -> TWD97 TM2-121 + TWVD2001 world coords)
-  // Verified via 3D KD-tree nearest-neighbor mesh matching across all multi-epoch and dual-export scan pairs
-  const SCAN_COMPARE_CALIBRATION = {
-    catch_QuChi261016: {
-      crs: "TWD97",
-      rawCenter: [304891.922, 2757029.5, 38.194],
-      twdCenter: [304891.922, 2757029.5, 38.194],
-      rotZ: 0,
-      scaleXY: 1.0,
-      radius: 139.64,
-    },
-    QuChi261016_Trees: {
-      crs: "TWD97",
-      rawCenter: [304884.442, 2757008.413, 37.193],
-      twdCenter: [304891.922, 2757029.5, 38.194],
-      rotZ: -0.014989,
-      scaleXY: 0.999862,
-      radius: 139.64,
-    },
-    quchi_20261015_obj_mesh: {
-      crs: "UTM51N",
-      rawCenter: [352915.65, 2756880.45, 38.785],
-      twdCenter: [304891.922, 2757029.5, 38.194],
-      rotZ: 0.01396582,
-      scaleXY: 1.00104762,
-      radius: 139.64,
-    },
-    quchi_20261005_sector3: {
-      crs: "TWD97",
-      rawCenter: [304848.06, 2757112.34, 39.31],
-      twdCenter: [304848.06, 2757112.34, 39.31],
-      rotZ: 0,
-      scaleXY: 1.0,
-      radius: 139.64,
-    },
-    rosepark_20260917_east: {
-      crs: "TWD97",
-      rawCenter: [295979.41, 2768494.23, -112.05],
-      twdCenter: [295979.41, 2768494.23, 28.54],
-      rotZ: 0,
-      scaleXY: 1.0,
-      radius: 90.0,
-    },
-  };
-
+  // Dynamic CRS & world-space classifier for Multi-Date Compare (100% derived from scan bounds & metadata)
   function classifyCompareSideCoords(side) {
     if (!side || !side.rawSphere || !(side.rawSphere.radius > 0)) return null;
-    const scanId = side._loadedScanId || side.scanMeta?.scan_id || "";
-    const cal = SCAN_COMPARE_CALIBRATION[scanId];
-    if (cal) {
-      return {
-        crs: cal.crs,
-        rawCenter: new THREE.Vector3(cal.rawCenter[0], cal.rawCenter[1], cal.rawCenter[2]),
-        twdCenter: new THREE.Vector3(cal.twdCenter[0], cal.twdCenter[1], cal.twdCenter[2]),
-        rotZ: cal.rotZ,
-        scaleXY: cal.scaleXY,
-        radius: cal.radius || Number(side.rawSphere.radius) || 60,
-      };
-    }
 
     const c = side.rawSphere.center;
     const meta = side.scanMeta || {};
@@ -8136,10 +13082,11 @@
 
     // Case 1: Native TWD97 TM2-121 coordinates (150,000 <= E <= 345,000; 2,400,000 <= N <= 2,850,000)
     if (c.x >= 150000 && c.x <= 345000 && c.y >= 2400000 && c.y <= 2850000) {
+      const worldZ = c.z < -50 && metaH > -50 && metaH !== 0 ? metaH : c.z;
       return {
         crs: "TWD97",
         rawCenter: c.clone(),
-        twdCenter: c.clone(),
+        twdCenter: new THREE.Vector3(c.x, c.y, worldZ),
         rotZ: 0,
         scaleXY: 1.0,
         radius,
@@ -8148,12 +13095,20 @@
 
     // Case 2: UTM Zone 51N coordinates (345,000 < E <= 415,000; 2,400,000 <= N <= 2,850,000)
     if (c.x > 345000 && c.x <= 415000 && c.y >= 2400000 && c.y <= 2850000) {
+      const refLat = hasValidGeorefLatLon(meta) ? Number(meta.lat) : c.y / 110760.0;
+      const refLon = hasValidGeorefLatLon(meta) ? Number(meta.lon) : 123.0 + (c.x - 500000.0) / 101750.0;
+      const jac = computeConformalJacobianJS(
+        refLat,
+        refLon,
+        { lon0: 123.0, fe: 500000.0, k0: 0.9996, fInv: 298.257223563 },
+        { lon0: 121.0, fe: 250000.0, k0: 0.9999, fInv: 298.257222101 }
+      );
       return {
         crs: "UTM51N",
         rawCenter: c.clone(),
         twdCenter: new THREE.Vector3(metaE || c.x, metaN || c.y, metaH || c.z),
-        rotZ: 0.01396582, // +0.8002 deg meridian convergence from UTM51N (123E) to TWD97 TM2 (121E)
-        scaleXY: 1.00104762,
+        rotZ: jac.rotZ,
+        scaleXY: jac.scaleXY,
         radius,
       };
     }
@@ -8162,7 +13117,7 @@
     return {
       crs: "LOCAL",
       rawCenter: c.clone(),
-      twdCenter: new THREE.Vector3(metaE, metaN, Number.isFinite(c.z) && Math.abs(c.z) < 5000 ? c.z : metaH),
+      twdCenter: new THREE.Vector3(metaE, metaN, metaH || (Number.isFinite(c.z) && Math.abs(c.z) < 5000 ? c.z : 0)),
       rotZ: 0,
       scaleXY: 1.0,
       radius,
@@ -8298,6 +13253,7 @@
   function buildCompareBaselineHeightMap() {
     if (!compareCtx || !compareCtx.left || !window.THREE) return null;
     const left = compareCtx.left;
+    const right = compareCtx.right;
     const targets = [];
     left.pivot?.traverse((c) => {
       if (c.isMesh && c.visible) targets.push(c);
@@ -8307,41 +13263,160 @@
         if (c.isMesh && c.visible) targets.push(c);
       });
     }
-    const span = Math.max(35, Math.min(140, Number(left.rawSphere?.radius) || 75));
-    const minX = -span,
-      maxX = span,
-      minZ = -span,
+
+    // Derive tight shared bounds from actual loaded left (and right when available) mesh geometry
+    const leftBox = new THREE.Box3();
+    for (let i = 0; i < targets.length; i++) {
+      targets[i].updateMatrixWorld(true);
+      leftBox.expandByObject(targets[i]);
+    }
+    const rightBox = new THREE.Box3();
+    if (right) {
+      const rTargets = [];
+      right.pivot?.traverse((c) => {
+        if (c.isMesh && c.visible) rTargets.push(c);
+      });
+      if (!rTargets.length && right.fallbackGroup?.visible) {
+        right.fallbackGroup.traverse((c) => {
+          if (c.isMesh && c.visible) rTargets.push(c);
+        });
+      }
+      for (let i = 0; i < rTargets.length; i++) {
+        rTargets[i].updateMatrixWorld(true);
+        rightBox.expandByObject(rTargets[i]);
+      }
+    }
+
+    let minX, maxX, minZ, maxZ;
+    if (!leftBox.isEmpty()) {
+      minX = leftBox.min.x;
+      maxX = leftBox.max.x;
+      minZ = leftBox.min.z;
+      maxZ = leftBox.max.z;
+      if (!rightBox.isEmpty()) {
+        const ix0 = Math.max(minX, rightBox.min.x);
+        const ix1 = Math.min(maxX, rightBox.max.x);
+        const iz0 = Math.max(minZ, rightBox.min.z);
+        const iz1 = Math.min(maxZ, rightBox.max.z);
+        if (ix1 - ix0 > 4.0 && iz1 - iz0 > 4.0) {
+          minX = ix0 - 2.0;
+          maxX = ix1 + 2.0;
+          minZ = iz0 - 2.0;
+          maxZ = iz1 + 2.0;
+        }
+      }
+      if (maxX - minX < 4.0) {
+        const cx = 0.5 * (minX + maxX);
+        minX = cx - 10.0;
+        maxX = cx + 10.0;
+      }
+      if (maxZ - minZ < 4.0) {
+        const cz = 0.5 * (minZ + maxZ);
+        minZ = cz - 10.0;
+        maxZ = cz + 10.0;
+      }
+    } else {
+      const span = Math.max(20, Math.min(250, Number(left.rawSphere?.radius) || 65));
+      minX = -span;
+      maxX = span;
+      minZ = -span;
       maxZ = span;
-    const N = 24;
+    }
+
+    const N = 96;
     const heights = new Float32Array(N * N);
+    heights.fill(-1e30);
     const hitsMask = new Uint8Array(N * N);
     let yMin = Infinity,
       yMax = -Infinity,
       ySum = 0,
       hitCount = 0;
 
-    if (targets.length > 0) {
-      const rc = new THREE.Raycaster();
-      const down = new THREE.Vector3(0, -1, 0);
-      const orig = new THREE.Vector3();
-      for (let iz = 0; iz < N; iz++) {
-        const z = minZ + (iz / (N - 1)) * (maxZ - minZ);
-        for (let ix = 0; ix < N; ix++) {
-          const x = minX + (ix / (N - 1)) * (maxX - minX);
-          orig.set(x, 450, z);
-          rc.set(orig, down);
-          const hits = rc.intersectObjects(targets, true);
-          const idx = iz * N + ix;
-          if (hits.length > 0) {
-            const hy = hits[0].point.y;
-            heights[idx] = hy;
-            hitsMask[idx] = 1;
-            if (hy < yMin) yMin = hy;
-            if (hy > yMax) yMax = hy;
-            ySum += hy;
-            hitCount++;
+    // Fast direct world-space triangle top-surface rasterization into N x N grid
+    const spanX = Math.max(1e-4, maxX - minX);
+    const spanZ = Math.max(1e-4, maxZ - minZ);
+    const scaleX = (N - 1) / spanX;
+    const scaleZ = (N - 1) / spanZ;
+
+    for (let mi = 0; mi < targets.length; mi++) {
+      const m = targets[mi];
+      const posAttr = m.geometry?.attributes?.position;
+      if (!posAttr || posAttr.count < 3) continue;
+      const idxAttr = m.geometry.index;
+      const triCount = idxAttr ? Math.floor(idxAttr.count / 3) : Math.floor(posAttr.count / 3);
+      const mw = m.matrixWorld.elements;
+
+      for (let t = 0; t < triCount; t++) {
+        const i0 = idxAttr ? idxAttr.getX(t * 3) : t * 3;
+        const i1 = idxAttr ? idxAttr.getX(t * 3 + 1) : t * 3 + 1;
+        const i2 = idxAttr ? idxAttr.getX(t * 3 + 2) : t * 3 + 2;
+
+        const lx0 = posAttr.getX(i0), ly0 = posAttr.getY(i0), lz0 = posAttr.getZ(i0);
+        const wx0 = mw[0] * lx0 + mw[4] * ly0 + mw[8] * lz0 + mw[12];
+        const wy0 = mw[1] * lx0 + mw[5] * ly0 + mw[9] * lz0 + mw[13];
+        const wz0 = mw[2] * lx0 + mw[6] * ly0 + mw[10] * lz0 + mw[14];
+
+        const lx1 = posAttr.getX(i1), ly1 = posAttr.getY(i1), lz1 = posAttr.getZ(i1);
+        const wx1 = mw[0] * lx1 + mw[4] * ly1 + mw[8] * lz1 + mw[12];
+        const wy1 = mw[1] * lx1 + mw[5] * ly1 + mw[9] * lz1 + mw[13];
+        const wz1 = mw[2] * lx1 + mw[6] * ly1 + mw[10] * lz1 + mw[14];
+
+        const lx2 = posAttr.getX(i2), ly2 = posAttr.getY(i2), lz2 = posAttr.getZ(i2);
+        const wx2 = mw[0] * lx2 + mw[4] * ly2 + mw[8] * lz2 + mw[12];
+        const wy2 = mw[1] * lx2 + mw[5] * ly2 + mw[9] * lz2 + mw[13];
+        const wz2 = mw[2] * lx2 + mw[6] * ly2 + mw[10] * lz2 + mw[14];
+
+        const tMinX = Math.min(wx0, wx1, wx2), tMaxX = Math.max(wx0, wx1, wx2);
+        const tMinZ = Math.min(wz0, wz1, wz2), tMaxZ = Math.max(wz0, wz1, wz2);
+        if (tMaxX < minX || tMinX > maxX || tMaxZ < minZ || tMinZ > maxZ) continue;
+
+        const gx0 = Math.max(0, Math.floor((tMinX - minX) * scaleX));
+        const gx1 = Math.min(N - 1, Math.ceil((tMaxX - minX) * scaleX));
+        const gz0 = Math.max(0, Math.floor((tMinZ - minZ) * scaleZ));
+        const gz1 = Math.min(N - 1, Math.ceil((tMaxZ - minZ) * scaleZ));
+
+        const denom = (wz1 - wz2) * (wx0 - wx2) + (wx2 - wx1) * (wz0 - wz2);
+        if (Math.abs(denom) < 1e-7) {
+          const cxIdx = Math.max(0, Math.min(N - 1, Math.round(((wx0 + wx1 + wx2) / 3.0 - minX) * scaleX)));
+          const czIdx = Math.max(0, Math.min(N - 1, Math.round(((wz0 + wz1 + wz2) / 3.0 - minZ) * scaleZ)));
+          const cCell = czIdx * N + cxIdx;
+          const cy = Math.max(wy0, wy1, wy2);
+          if (cy > heights[cCell]) {
+            heights[cCell] = cy;
+            hitsMask[cCell] = 1;
+          }
+          continue;
+        }
+        const invDenom = 1.0 / denom;
+        for (let iz = gz0; iz <= gz1; iz++) {
+          const pz = minZ + iz / scaleZ;
+          const row = iz * N;
+          for (let ix = gx0; ix <= gx1; ix++) {
+            const px = minX + ix / scaleX;
+            const l0 = ((wz1 - wz2) * (px - wx2) + (wx2 - wx1) * (pz - wz2)) * invDenom;
+            if (l0 < -0.02) continue;
+            const l1 = ((wz2 - wz0) * (px - wx2) + (wx0 - wx2) * (pz - wz2)) * invDenom;
+            if (l1 < -0.02) continue;
+            const l2 = 1.0 - l0 - l1;
+            if (l2 < -0.02) continue;
+            const hy = l0 * wy0 + l1 * wy1 + l2 * wy2;
+            const cell = row + ix;
+            if (hy > heights[cell]) {
+              heights[cell] = hy;
+              hitsMask[cell] = 1;
+            }
           }
         }
+      }
+    }
+
+    for (let i = 0; i < N * N; i++) {
+      if (hitsMask[i]) {
+        const hy = heights[i];
+        if (hy < yMin) yMin = hy;
+        if (hy > yMax) yMax = hy;
+        ySum += hy;
+        hitCount++;
       }
     }
     if (hitCount === 0) {
@@ -8374,12 +13449,15 @@
       } catch (_) {}
     }
     const tex = new THREE.DataTexture(data, N, N, THREE.RGBAFormat, THREE.UnsignedByteType);
-    tex.magFilter = THREE.LinearFilter;
-    tex.minFilter = THREE.LinearFilter;
+    // Use NearestFilter so RG high/low 16-bit bytes are never blended across byte carry boundaries;
+    // the GLSL shader performs exact 4-tap decoded bilinear interpolation using uBaseGridN.
+    tex.magFilter = THREE.NearestFilter;
+    tex.minFilter = THREE.NearestFilter;
     tex.needsUpdate = true;
 
     compareCtx._baselineHeightMap = {
       tex,
+      gridN: N,
       bounds: new THREE.Vector4(minX, minZ, maxX, maxZ),
       yRange: new THREE.Vector2(yMin, yMax),
       meanY,
@@ -8434,6 +13512,7 @@
       m.userData._elevMax = hm?.deltaSpan || 4.0;
       if (hm) {
         m.userData._baseElevTex = hm.tex;
+        m.userData._baseGridN = hm.gridN || 96;
         m.userData._baseBounds = hm.bounds;
         m.userData._baseYRange = hm.yRange;
         m.userData._baseMeanY = hm.meanY;
@@ -8573,13 +13652,7 @@
 
     const tr = new window.TilesRenderer(streamUrl);
     tr.fetchOptions = { mode: "cors" };
-    tr.preprocessURL = (uri) => {
-      let u = uri;
-      if (STATE.shareToken && !u.includes("share=")) {
-        u += (u.includes("?") ? "&" : "?") + `share=${encodeURIComponent(STATE.shareToken)}`;
-      }
-      return u;
-    };
+    tr.preprocessURL = (uri) => preprocessTileStreamUrl(uri, streamUrl);
     tr.setCamera(side.camera);
     tr.setResolutionFromRenderer(side.camera, side.renderer);
 
@@ -8794,6 +13867,17 @@
     const controls = new THREE.OrbitControls(left.camera, stage);
     controls.target.set(0, 0, 0);
     controls.enableDamping = true;
+    controls.mouseButtons = {
+      LEFT: THREE.MOUSE.ROTATE,
+      MIDDLE: THREE.MOUSE.ROTATE,
+      RIGHT: THREE.MOUSE.PAN,
+    };
+    stage?.addEventListener("mousedown", (e) => {
+      if (e.button === 1) e.preventDefault();
+    });
+    stage?.addEventListener("auxclick", (e) => {
+      if (e.button === 1) e.preventDefault();
+    });
     controls.update();
     right.camera.position.copy(left.camera.position);
     right.camera.quaternion.copy(left.camera.quaternion);
@@ -9067,6 +14151,15 @@
   }
 
   function openModal(id) {
+    if (STATE.fpMode) {
+      STATE.fpMode.keys = Object.create(null);
+      STATE.fpMode.dragLooking = false;
+    }
+    if (document.pointerLockElement) {
+      try {
+        document.exitPointerLock();
+      } catch (_) {}
+    }
     document.getElementById(id)?.classList.add("active");
   }
   function closeModal(id) {
@@ -9326,31 +14419,34 @@
         const tr = document.createElement("tr");
         const isProc = s.status === "processing";
         const pct = Math.round(Number(s.progress_pct || (s.status === "completed" ? 100 : 0)));
+        const safeStatus = escapeHtml(String(s.status || "").toUpperCase());
+        const safeStage = escapeHtml(s.stage_label || "Running PIX4Dmatic...");
         const statusHtml = isProc
           ? `<div style="display:flex;flex-direction:column;gap:3px;min-width:130px;">
                <span class="gs-crs-pill" style="background:rgba(2,132,199,0.18);color:var(--ui-accent);">PROCESSING (${pct}%)</span>
                <div style="height:4px;background:var(--ui-border-strong);border-radius:999px;overflow:hidden;">
                  <div style="height:100%;width:${Math.max(5, pct)}%;background:var(--ui-accent);"></div>
                </div>
-               <span style="font-size:10px;color:var(--ui-text-secondary);">${s.stage_label || "Running PIX4Dmatic..."}</span>
+               <span style="font-size:10px;color:var(--ui-text-secondary);">${safeStage}</span>
              </div>`
-          : `<span class="gs-crs-pill">${String(s.status || "").toUpperCase()}</span>`;
+          : `<span class="gs-crs-pill">${safeStatus}</span>`;
 
+        const safeScanId = escapeHtml(s.scan_id || "");
         tr.innerHTML = `
-          <td><b style="color:var(--ui-text-primary);">${s.name}</b><br><span style="font-size:10.5px;color:var(--ui-text-muted);">${s.scan_id}</span></td>
-          <td style="color:var(--ui-text-secondary);">${s.project_group}</td>
-          <td><span style="color:var(--ui-text-primary);font-weight:600;">${s.uploader_name}</span><br><span style="font-size:10.5px;color:var(--ui-text-muted);">${s.uploader_email} · ${s.capture_date}</span></td>
-          <td><span style="color:var(--ui-text-primary);font-weight:600;">${s.image_count} imgs</span><br><span style="font-size:10.5px;color:var(--ui-text-muted);">${formatCoveredAreaM2(s)} · ${Number(s.size_mb || (s.size_bytes || 0) / 1048576).toFixed(1)} MB</span></td>
-          <td><span class="gs-crs-pill">${s.crs} · ${s.texture_resolution}px</span></td>
-          <td style="font-family:monospace;font-weight:700;color:var(--ui-text-primary);">${s.priority_score}</td>
+          <td><b style="color:var(--ui-text-primary);">${escapeHtml(s.name || s.scan_id || "")}</b><br><span style="font-size:10.5px;color:var(--ui-text-muted);">${safeScanId}</span></td>
+          <td style="color:var(--ui-text-secondary);">${escapeHtml(s.project_group || "")}</td>
+          <td><span style="color:var(--ui-text-primary);font-weight:600;">${escapeHtml(s.uploader_name || "")}</span><br><span style="font-size:10.5px;color:var(--ui-text-muted);">${escapeHtml(s.uploader_email || "")} · ${escapeHtml(s.capture_date || "")}</span></td>
+          <td><span style="color:var(--ui-text-primary);font-weight:600;">${Number(s.image_count || 0)} imgs</span><br><span style="font-size:10.5px;color:var(--ui-text-muted);">${escapeHtml(formatCoveredAreaM2(s))} · ${Number(s.size_mb || (s.size_bytes || 0) / 1048576).toFixed(1)} MB</span></td>
+          <td><span class="gs-crs-pill">${escapeHtml(getScanCrsDisplayLabel(s))} · ${Number(s.texture_resolution || 4096)}px</span></td>
+          <td style="font-family:monospace;font-weight:700;color:var(--ui-text-primary);">${escapeHtml(String(s.priority_score ?? ""))}</td>
           <td>${statusHtml}</td>
           <td style="display:flex;gap:4px;">
-            <button type="button" class="btn-xs" data-gst="${s.scan_id}" title="Preview .GST Script">
+            <button type="button" class="btn-xs" data-gst="${safeScanId}" title="Preview .GST Script">
               <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8">
                 <polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/>
               </svg>
             </button>
-            <button type="button" class="btn-xs" data-reprocess="${s.scan_id}" title="Re-run from Original Photos with Custom PIX4Dmatic Settings">
+            <button type="button" class="btn-xs" data-reprocess="${safeScanId}" title="Re-run from Original Photos with Custom PIX4Dmatic Settings">
               <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8">
                 <polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
               </svg>
@@ -9366,7 +14462,7 @@
     } catch (err) {
       const monBox = document.getElementById("livePix4dMonitorBox");
       if (monBox) monBox.style.display = "none";
-      tbody.innerHTML = `<tr><td colspan="8" style="color:var(--ui-text-secondary);">${err.message}</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="8" style="color:var(--ui-text-secondary);">${escapeHtml(err.message || "")}</td></tr>`;
     }
   }
 
@@ -9609,32 +14705,33 @@
         ]
           .filter(Boolean)
           .join(", ");
-        const localUrl = `${window.location.origin}/?share=${l.token}`;
+        const safeToken = escapeHtml(l.token || "");
+        const localUrl = `${window.location.origin}/?share=${encodeURIComponent(l.token || "")}`;
         tr.innerHTML = `
-          <td><b style="color:var(--ui-text-primary);">${l.label}</b></td>
-          <td><span class="gs-crs-pill">${l.scope_type.toUpperCase()}: ${l.target_id}</span></td>
-          <td><code style="color:var(--ui-accent);font-size:11px;">/s/${l.token}</code></td>
-          <td style="font-size:11px;color:var(--ui-text-secondary);">${perms || "View"}</td>
-          <td style="color:var(--ui-text-primary);font-weight:600;">${l.view_count}</td>
+          <td><b style="color:var(--ui-text-primary);">${escapeHtml(l.label || "")}</b></td>
+          <td><span class="gs-crs-pill">${escapeHtml(String(l.scope_type || "").toUpperCase())}: ${escapeHtml(l.target_id || "")}</span></td>
+          <td><code style="color:var(--ui-accent);font-size:11px;">/s/${safeToken}</code></td>
+          <td style="font-size:11px;color:var(--ui-text-secondary);">${escapeHtml(perms || "View")}</td>
+          <td style="color:var(--ui-text-primary);font-weight:600;">${Number(l.view_count || 0)}</td>
           <td>${
             l.revoked
               ? '<span style="color:var(--ui-text-muted);font-weight:700;">REVOKED</span>'
               : '<span class="gs-crs-pill">ACTIVE</span>'
           }</td>
           <td style="display:flex;gap:5px;justify-content:flex-end;">
-            <button type="button" class="btn-xs" data-copy="${localUrl}" title="Copy Link">
+            <button type="button" class="btn-xs" data-copy="${escapeHtml(localUrl)}" title="Copy Link">
               <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8">
                 <rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
               </svg>
             </button>
             ${
               !l.revoked
-                ? `<button type="button" class="btn-xs" data-revoke="${l.token}" title="Revoke Access">
+                ? `<button type="button" class="btn-xs" data-revoke="${safeToken}" title="Revoke Access">
                     <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8">
                       <circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/>
                     </svg>
                   </button>`
-                : `<button type="button" class="btn-xs" data-restore="${l.token}" title="Restore Access">
+                : `<button type="button" class="btn-xs" data-restore="${safeToken}" title="Restore Access">
                     <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8">
                       <polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
                     </svg>
@@ -9659,7 +14756,7 @@
         tbody.appendChild(tr);
       });
     } catch (err) {
-      tbody.innerHTML = `<tr><td colspan="7" style="color:var(--ui-text-secondary);">${err.message}</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="7" style="color:var(--ui-text-secondary);">${escapeHtml(err.message || "")}</td></tr>`;
     }
   }
 
@@ -9707,16 +14804,16 @@
       const isCached = STATE.cachedScanIds.has(s.scan_id);
       const tr = document.createElement("tr");
       tr.innerHTML = `
-        <td><b style="color:var(--ui-text-primary);">${s.name}</b></td>
-        <td style="color:var(--ui-text-secondary);">${s.project_group}</td>
-        <td><span class="gs-crs-pill">${s.crs}</span></td>
+        <td><b style="color:var(--ui-text-primary);">${escapeHtml(s.name || s.scan_id || "")}</b></td>
+        <td style="color:var(--ui-text-secondary);">${escapeHtml(s.project_group || "")}</td>
+        <td><span class="gs-crs-pill">${escapeHtml(getScanCrsDisplayLabel(s))}</span></td>
         <td>${
           isCached
             ? '<span class="gs-crs-pill">Cached</span>'
             : '<span style="color:var(--ui-text-muted);">Uncached</span>'
         }</td>
         <td>
-          <button type="button" class="btn-xs primary" data-cache-scan="${s.scan_id}" title="${isCached ? "Refresh Browser Cache" : "Cache in Browser"}">
+          <button type="button" class="btn-xs primary" data-cache-scan="${escapeHtml(s.scan_id || "")}" title="${isCached ? "Refresh Browser Cache" : "Cache in Browser"}">
             <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8">
               <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
               <polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
@@ -9804,7 +14901,7 @@
     if (btnToggle) btnToggle.disabled = true;
     try {
       const res = await apiPost("/api/admin/pc-daemon", {
-        actor_email: STATE.currentUser?.email || "glibivanov@gatheren.com.tw",
+        actor_email: STATE.currentUser?.email || "",
         action: wantStart ? "start" : "stop",
       });
       await refreshAdminPcDaemonUI(res);
@@ -9828,7 +14925,7 @@
     }
     try {
       const res = await apiPost("/api/admin/pc-daemon", {
-        actor_email: STATE.currentUser?.email || "glibivanov@gatheren.com.tw",
+        actor_email: STATE.currentUser?.email || "",
         action: "sync_now",
       });
       await refreshAdminPcDaemonUI(res);
@@ -10166,16 +15263,17 @@
 
   async function cacheScanInBrowser(scanId) {
     try {
-      const manifest = await apiGet(`/api/cache/manifest/${scanId}`);
+      const manifest = await apiGet(`/api/cache/manifest/${encodeURIComponent(scanId)}`);
       if ("caches" in window) {
-        const cache = await caches.open("gathering-scans-offline-v10");
+        const cache = await caches.open("gathering-scans-tiles-v1");
         for (const u of manifest.asset_urls || []) {
           await cache.add(u).catch(() => {});
         }
       }
       STATE.cachedScanIds.add(scanId);
       localStorage.setItem("gs_cached_scans", JSON.stringify([...STATE.cachedScanIds]));
-      showToast(`Cached ${manifest.scan.name} in local browser CacheStorage (0B on Linux VPS)`);
+      const sName = manifest?.scan?.name || scanId;
+      showToast(`Cached ${sName} in local browser CacheStorage (0B on Linux VPS)`);
       await openOfflineCacheModal();
       renderMapClusters();
     } catch (err) {
@@ -10436,24 +15534,30 @@
         background:${isCurrent ? "var(--ui-accent-soft)" : "var(--ui-bg-surface)"};
         cursor:pointer;text-align:left;width:100%;transition:all 0.14s ease;
       `;
+      const safePicUrl = escapeHtml(picUrl);
+      const safeInitials = escapeHtml(initials);
+      const safeName = escapeHtml(u.name || u.email || "Team Member");
+      const safeEmail = escapeHtml(u.email || "");
+      const safeRoleLbl = escapeHtml(u.role_label || u.role || "Team Member");
       card.innerHTML = `
         ${
-          picUrl
-            ? `<img src="${picUrl}" alt="" style="width:32px;height:32px;border-radius:50%;object-fit:cover;flex-shrink:0;" />`
-            : `<div style="width:32px;height:32px;border-radius:50%;background:${isCurrent ? "var(--ui-accent)" : "#334155"};color:#ffffff;font-size:11.5px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;">${initials}</div>`
+          safePicUrl
+            ? `<img src="${safePicUrl}" alt="" style="width:32px;height:32px;border-radius:50%;object-fit:cover;flex-shrink:0;" />`
+            : `<div style="width:32px;height:32px;border-radius:50%;background:${isCurrent ? "var(--ui-accent)" : "#334155"};color:#ffffff;font-size:11.5px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;">${safeInitials}</div>`
         }
         <div style="overflow:hidden;flex:1;">
-          <div style="font-size:12.5px;font-weight:700;color:var(--ui-text-primary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${u.name}</div>
-          <div style="font-size:10.5px;color:var(--ui-accent);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${u.email}</div>
-          <div style="font-size:10px;color:var(--ui-text-muted);">${u.role_label || u.role || "Team Member"}</div>
+          <div style="font-size:12.5px;font-weight:700;color:var(--ui-text-primary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${safeName}</div>
+          <div style="font-size:10.5px;color:var(--ui-accent);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${safeEmail}</div>
+          <div style="font-size:10px;color:var(--ui-text-muted);">${safeRoleLbl}</div>
         </div>
       `;
-      card.addEventListener("click", async () => {
-        applyUserProfileToUI(u, true);
-        renderTeamProfilesGrid();
-        closeModal("userProfileGateModal");
-        showToast(`Authorized as ${u.name} (${u.email})`);
-        await apiPost("/api/user-profiles", u).catch(() => {});
+      card.addEventListener("click", () => {
+        if (isCurrent && STATE.currentUser?.session_token) {
+          closeModal("userProfileGateModal");
+          return;
+        }
+        promptChooseGoogleAccountOAuth();
+        showToast(`Please sign in with Google (${u.email}) to verify this account`);
       });
       grid.appendChild(card);
     });
@@ -10545,14 +15649,12 @@
         closeModal("userProfileGateModal");
       }, 550);
     } catch (err) {
-      applyUserProfileToUI(profileData, true);
+      const errMsg = err?.message || "Unable to verify Google Sign-In token";
       if (msgEl) {
-        msgEl.innerHTML = `Signed in as <b>${escapeHtml(profileData.name)}</b> (${escapeHtml(profileData.email)})`;
+        msgEl.style.color = "#ef4444";
+        msgEl.textContent = `Google Sign-In verification failed: ${errMsg}`;
       }
-      showToast(`Signed in as ${profileData.name}`);
-      setTimeout(() => {
-        closeModal("userProfileGateModal");
-      }, 550);
+      showToast(`Google Sign-In verification failed: ${errMsg}`);
     }
   }
 
@@ -10713,9 +15815,7 @@
       openSiteTimeline("__all__");
       if (gsMap) {
         gsMap.selectedGroup = null;
-        gsMap.centerLat = 24.976;
-        gsMap.centerLon = 121.522;
-        gsMap.zoom = 11.75;
+        fitMapToAllGeorefGroups();
         gsMap.drawMap();
       }
       return;
@@ -10723,9 +15823,11 @@
     const grp = getProjectGroupsList("").find((g) => g.project_group === val);
     if (grp && gsMap) {
       STATE.activeProjectGroup = grp.project_group;
-      gsMap.centerLat = grp.lat;
-      gsMap.centerLon = grp.lon;
-      gsMap.zoom = 14.5;
+      if (grp.hasGeoref && Number.isFinite(grp.lat) && Number.isFinite(grp.lon)) {
+        gsMap.centerLat = grp.lat;
+        gsMap.centerLon = grp.lon;
+        gsMap.zoom = 14.5;
+      }
       openClusterPopover(grp);
       openSiteTimeline(grp.project_group);
       gsMap.drawMap();
@@ -10747,16 +15849,14 @@
         document.querySelectorAll(".scan-cluster-blob").forEach((b) => b.classList.remove("active-cluster"));
         if (gsMap) {
           gsMap.selectedGroup = null;
-          gsMap.centerLat = 24.976;
-          gsMap.centerLon = 121.522;
-          gsMap.zoom = 11.75;
+          fitMapToAllGeorefGroups();
           gsMap.drawMap();
         }
         openSiteTimeline("__all__");
         return;
       }
       const grp = getProjectGroupsList("").find((g) => g.project_group === val);
-      if (grp && gsMap) {
+      if (grp && gsMap && grp.hasGeoref && Number.isFinite(grp.lat) && Number.isFinite(grp.lon)) {
         gsMap.centerLat = grp.lat;
         gsMap.centerLon = grp.lon;
         gsMap.zoom = Math.max(gsMap.zoom || 12, 13.8);
@@ -10792,6 +15892,9 @@
   });
 
   function switchView(viewName, optionalScanId = null) {
+    if (viewName !== "studio" && STATE.fpMode?.active && typeof exitFirstPersonMode === "function") {
+      exitFirstPersonMode(true);
+    }
     if (viewName !== "studio" && STATE.multiAlign?.active && typeof exitMultiScanAlignMode === "function") {
       exitMultiScanAlignMode(false);
     }
@@ -10881,15 +15984,15 @@
       const data = await apiGet("/api/scans");
       const normalizeScanUploader = (s) => {
         if (!s) return s;
-        if (!s.uploader_name || s.uploader_name === "Glib Ivanov" || s.uploader_name === "Argon") {
+        if (s.uploader_name === "Glib Ivanov" || s.uploader_name === "Argon") {
           s.uploader_name = "雲在天";
+        } else if (!s.uploader_name) {
+          s.uploader_name = "Field Team";
         }
-        if (
-          !s.uploader_email ||
-          s.uploader_email === "glib@gatheren.com.tw" ||
-          s.uploader_email === "argon@gatheren.com.tw"
-        ) {
+        if (s.uploader_email === "glib@gatheren.com.tw" || s.uploader_email === "argon@gatheren.com.tw") {
           s.uploader_email = "glibivanov@gatheren.com.tw";
+        } else if (!s.uploader_email) {
+          s.uploader_email = "";
         }
         return s;
       };
@@ -11117,6 +16220,16 @@
     alignCompareSides,
     refreshScansCatalog,
     drawA3PreviewCanvas,
+    openOptimizerInspector,
+    cancelLassoToolMode,
+    setActiveStudioTool,
+    rebuildLassoHighlight3D,
+    clearLassoSelectionState,
+    buildStudioLassoFrustumStroke,
+    enterFirstPersonMode,
+    exitFirstPersonMode,
+    toggleFirstPersonMode,
+    setFirstPersonLocomotion,
   };
 })();
 

@@ -85,12 +85,12 @@ class ScanQueueDB:
                     rtk_accuracy_cm REAL DEFAULT 1.8,
                     crs TEXT DEFAULT 'TWD97 (121) + TWVD2001',
                     texture_resolution INTEGER DEFAULT 2048,
-                    lat REAL DEFAULT 24.92032,
-                    lon REAL DEFAULT 121.54351,
-                    elev_m REAL DEFAULT 43.2,
-                    twd97_e REAL DEFAULT 304952.6,
-                    twd97_n REAL DEFAULT 2757084.9,
-                    twd97_h REAL DEFAULT 43.2,
+                    lat REAL DEFAULT NULL,
+                    lon REAL DEFAULT NULL,
+                    elev_m REAL DEFAULT 0.0,
+                    twd97_e REAL DEFAULT 0.0,
+                    twd97_n REAL DEFAULT 0.0,
+                    twd97_h REAL DEFAULT 0.0,
                     bounding_box_json TEXT DEFAULT '{}',
                     status TEXT DEFAULT 'queued',
                     progress_pct REAL DEFAULT 0.0,
@@ -138,7 +138,7 @@ class ScanQueueDB:
                     email TEXT PRIMARY KEY,
                     display_name TEXT DEFAULT '',
                     offline_cache_enabled INTEGER DEFAULT 1,
-                    auto_cache_pinned_groups TEXT DEFAULT '["QuChi Dam", "Rose Park"]',
+                    auto_cache_pinned_groups TEXT DEFAULT '[]',
                     theme_preference TEXT DEFAULT 'auto',
                     updated_at TEXT NOT NULL
                 );
@@ -240,12 +240,14 @@ class ScanQueueDB:
             force_next=force_next,
         )
 
+        raw_lat = scan_data.get("lat")
+        raw_lon = scan_data.get("lon")
         record = {
             "scan_id": scan_data["scan_id"],
             "name": scan_data.get("name", scan_data["scan_id"]),
             "user_edited_name": user_edited_name,
-            "project_group": scan_data.get("project_group", "QuChi Dam"),
-            "project_name_zh": scan_data.get("project_name_zh", "屈尺堰工程"),
+            "project_group": scan_data.get("project_group") or "Unassigned Site",
+            "project_name_zh": scan_data.get("project_name_zh") or "",
             "capture_date": scan_data.get("capture_date", datetime.now().strftime("%Y-%m-%d %H:%M")),
             "uploaded_at": uploaded_at,
             "uploader_email": scan_data.get("uploader_email", "engineer@gatheren.cloud"),
@@ -254,6 +256,12 @@ class ScanQueueDB:
             "project_dir": scan_data.get("project_dir", ""),
             "tileset_path": scan_data.get("tileset_path", ""),
             "obj_path": scan_data.get("obj_path", ""),
+            "clear_obj_path": 1
+            if (
+                scan_data.get("_clear_obj_path")
+                or ("obj_path" in scan_data and scan_data.get("status") == "completed" and not scan_data.get("obj_path"))
+            )
+            else 0,
             "report_path": scan_data.get("report_path", ""),
             "cameras_dir": scan_data.get("cameras_dir", ""),
             "image_count": image_count,
@@ -262,12 +270,12 @@ class ScanQueueDB:
             "rtk_accuracy_cm": float(scan_data.get("rtk_accuracy_cm", 1.8)),
             "crs": scan_data.get("crs", TWD97_TWVD2001_SHORT),
             "texture_resolution": int(scan_data.get("texture_resolution", PIX4DMATIC_TEXTURE_SIZE)),
-            "lat": float(scan_data.get("lat", 24.92032)),
-            "lon": float(scan_data.get("lon", 121.54351)),
-            "elev_m": float(scan_data.get("elev_m", 43.2)),
-            "twd97_e": float(scan_data.get("twd97_e", 304952.6)),
-            "twd97_n": float(scan_data.get("twd97_n", 2757084.9)),
-            "twd97_h": float(scan_data.get("twd97_h", 43.2)),
+            "lat": float(raw_lat) if raw_lat is not None else None,
+            "lon": float(raw_lon) if raw_lon is not None else None,
+            "elev_m": float(scan_data["elev_m"]) if scan_data.get("elev_m") is not None else 0.0,
+            "twd97_e": float(scan_data["twd97_e"]) if scan_data.get("twd97_e") is not None else 0.0,
+            "twd97_n": float(scan_data["twd97_n"]) if scan_data.get("twd97_n") is not None else 0.0,
+            "twd97_h": float(scan_data["twd97_h"]) if scan_data.get("twd97_h") is not None else 0.0,
             "bounding_box_json": json.dumps(scan_data.get("bounding_box", {}))
             if isinstance(scan_data.get("bounding_box"), dict)
             else str(scan_data.get("bounding_box_json", "{}")),
@@ -311,7 +319,7 @@ class ScanQueueDB:
                     source_zip_path=CASE WHEN excluded.source_zip_path != '' THEN excluded.source_zip_path ELSE scans.source_zip_path END,
                     project_dir=CASE WHEN excluded.project_dir != '' THEN excluded.project_dir ELSE scans.project_dir END,
                     tileset_path=CASE WHEN excluded.tileset_path != '' THEN excluded.tileset_path ELSE scans.tileset_path END,
-                    obj_path=CASE WHEN excluded.obj_path != '' THEN excluded.obj_path ELSE scans.obj_path END,
+                    obj_path=CASE WHEN :clear_obj_path = 1 THEN '' WHEN excluded.obj_path != '' THEN excluded.obj_path ELSE scans.obj_path END,
                     report_path=CASE WHEN excluded.report_path != '' THEN excluded.report_path ELSE scans.report_path END,
                     cameras_dir=CASE WHEN excluded.cameras_dir != '' THEN excluded.cameras_dir ELSE scans.cameras_dir END,
                     image_count=CASE WHEN excluded.image_count > 0 THEN excluded.image_count ELSE scans.image_count END,
@@ -326,6 +334,7 @@ class ScanQueueDB:
                     twd97_e=excluded.twd97_e,
                     twd97_n=excluded.twd97_n,
                     twd97_h=excluded.twd97_h,
+                    bounding_box_json=CASE WHEN excluded.bounding_box_json != '{}' THEN excluded.bounding_box_json ELSE scans.bounding_box_json END,
                     status=excluded.status,
                     progress_pct=excluded.progress_pct,
                     stage_label=excluded.stage_label,
@@ -1038,6 +1047,11 @@ class ScanQueueDB:
             conn.commit()
         return rec
 
+    def get_comment(self, comment_id: str) -> Optional[Dict[str, Any]]:
+        with DB_LOCK, self._connect() as conn:
+            row = conn.execute("SELECT * FROM scan_comments WHERE comment_id = ?", (comment_id,)).fetchone()
+            return dict(row) if row else None
+
     def delete_comment(self, comment_id: str) -> bool:
         with DB_LOCK, self._connect() as conn:
             cur = conn.execute("DELETE FROM scan_comments WHERE comment_id = ?", (comment_id,))
@@ -1052,7 +1066,7 @@ class ScanQueueDB:
                     "email": email,
                     "display_name": email.split("@")[0],
                     "offline_cache_enabled": True,
-                    "auto_cache_pinned_groups": ["QuChi Dam", "Rose Park"],
+                    "auto_cache_pinned_groups": [],
                     "theme_preference": "auto",
                     "updated_at": datetime.now(timezone.utc).isoformat(),
                 }

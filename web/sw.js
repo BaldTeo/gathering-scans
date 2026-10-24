@@ -5,7 +5,8 @@
  * Strictly zero scan cache is ever stored on the Linux VPS.
  */
 
-const CACHE_NAME = "gathering-scans-offline-v32";
+const CACHE_NAME = "gathering-scans-offline-v41";
+const SCAN_TILES_CACHE = "gathering-scans-tiles-v1";
 const APP_SHELL = [
   "/",
   "/index.html",
@@ -17,24 +18,57 @@ const APP_SHELL = [
   "/lib/KTX2Loader.js",
   "/lib/meshopt_decoder.js",
   "/lib/3d-tiles-renderer.bundle.js",
+  "/lib/basis/basis_transcoder.js",
+  "/lib/basis/basis_transcoder.wasm",
+  "/assets/gathering_cloud_logo.png",
+  "/assets/gathering_cloud_logo_dark.png",
+  "/assets/gathering_construction_logo_dark.png",
 ];
 
 self.addEventListener("install", (event) => {
   self.skipWaiting();
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
-      return cache.addAll(APP_SHELL).catch(() => {});
+      return Promise.all(
+        APP_SHELL.map((u) =>
+          fetch(u, { cache: "no-cache" })
+            .then((resp) => {
+              if (resp && resp.status === 200) {
+                return cache.put(new Request(self.location.origin + u), resp);
+              }
+            })
+            .catch(() => {})
+        )
+      );
     })
   );
 });
 
 self.addEventListener("activate", (event) => {
   event.waitUntil(
-    caches.keys().then((keys) =>
-      Promise.all(keys.filter((k) => k !== CACHE_NAME).map((k) => caches.delete(k)))
-    ).then(() => self.clients.claim())
+    caches
+      .keys()
+      .then((keys) =>
+        Promise.all(
+          keys
+            .filter((k) => k !== CACHE_NAME && k !== SCAN_TILES_CACHE)
+            .map((k) => caches.delete(k))
+        )
+      )
+      .then(() => self.clients.claim())
   );
 });
+
+async function matchStreamCache(req) {
+  const tileCache = await caches.open(SCAN_TILES_CACHE);
+  const exactHit = await tileCache.match(req);
+  if (exactHit) return exactHit;
+  const pathHit = await tileCache.match(req, { ignoreSearch: true });
+  if (pathHit) return pathHit;
+  const fallbackHit = await caches.match(req);
+  if (fallbackHit) return fallbackHit;
+  return caches.match(req, { ignoreSearch: true });
+}
 
 self.addEventListener("fetch", (event) => {
   const req = event.request;
@@ -42,52 +76,61 @@ self.addEventListener("fetch", (event) => {
 
   const url = new URL(req.url);
 
-  // For /stream/ 3D tileset & GLB requests: try network first, fall back to offline browser cache when PC/network is offline
+  // For /stream/ 3D tileset & GLB requests: try network first, refresh any existing offline cache entry, and fall back to offline browser cache when PC/network is offline
   if (url.pathname.startsWith("/stream/")) {
     event.respondWith(
       fetch(req)
-        .then((networkResp) => {
+        .then(async (networkResp) => {
+          if (networkResp && networkResp.status === 200) {
+            const clone = networkResp.clone();
+            caches.open(SCAN_TILES_CACHE).then(async (tileCache) => {
+              const existing = (await tileCache.match(req)) || (await tileCache.match(req, { ignoreSearch: true }));
+              if (existing) {
+                await tileCache.put(req, clone);
+              }
+            }).catch(() => {});
+            return networkResp;
+          }
           if (networkResp && (networkResp.status === 503 || networkResp.status === 502 || networkResp.status === 504)) {
-            return caches.match(req, { ignoreSearch: true }).then((cached) => cached || networkResp);
+            const cached = await matchStreamCache(req);
+            return cached || networkResp;
           }
           return networkResp;
         })
-        .catch(() => {
-          return caches.match(req, { ignoreSearch: true }).then((cached) => {
-            if (cached) return cached;
-            return new Response(
-              JSON.stringify({
-                error: "PC is offline and this 3D tile is not cached in your browser.",
-                pc_online: false,
-              }),
-              { status: 503, headers: { "Content-Type": "application/json" } }
-            );
-          });
+        .catch(async () => {
+          const cached = await matchStreamCache(req);
+          if (cached) return cached;
+          return new Response(
+            JSON.stringify({
+              error: "PC is offline and this 3D tile is not cached in your browser.",
+              pc_online: false,
+            }),
+            { status: 503, headers: { "Content-Type": "application/json" } }
+          );
         })
     );
     return;
   }
 
-  if (
-    url.pathname.startsWith("/api/scans") ||
-    APP_SHELL.includes(url.pathname)
-  ) {
-    const matchOpts = APP_SHELL.includes(url.pathname) ? { ignoreSearch: true } : undefined;
+  const isShellAsset = APP_SHELL.includes(url.pathname);
+  if (url.pathname === "/api/scans" || isShellAsset) {
+    const canonicalKey = isShellAsset ? new Request(url.origin + url.pathname) : req;
+    const matchOpts = isShellAsset ? { ignoreSearch: true } : undefined;
     event.respondWith(
       fetch(req, { cache: "no-cache" })
         .then((networkResp) => {
           if (networkResp && networkResp.status === 200) {
             const clone = networkResp.clone();
-            caches.open(CACHE_NAME).then((cache) => cache.put(req, clone));
+            caches.open(CACHE_NAME).then((cache) => cache.put(canonicalKey, clone));
             return networkResp;
           }
           if (networkResp && networkResp.status === 503) {
-            return caches.match(req, matchOpts).then((cached) => cached || networkResp);
+            return caches.match(canonicalKey, matchOpts).then((cached) => cached || networkResp);
           }
           return networkResp;
         })
         .catch(() => {
-          return caches.match(req, matchOpts).then((cached) => {
+          return caches.match(canonicalKey, matchOpts).then((cached) => {
             if (cached) return cached;
             return new Response(
               JSON.stringify({

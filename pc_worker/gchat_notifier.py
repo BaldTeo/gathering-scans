@@ -82,8 +82,9 @@ class GoogleChatNotifier:
                 if k and v:
                     self.user_gchat_ids[str(k).strip().lower()] = str(v).strip()
         self.bot_bearer_token = str(saved_cfg.get("bot_bearer_token") or "").strip()
-        if self.webhook_url and "glibivanov@gatheren.com.tw" not in self.user_webhooks:
-            self.user_webhooks["glibivanov@gatheren.com.tw"] = self.webhook_url
+        default_admin_email = os.environ.get("GS_DEFAULT_NOTIFY_EMAIL", "").strip().lower()
+        if self.webhook_url and default_admin_email and default_admin_email not in self.user_webhooks:
+            self.user_webhooks[default_admin_email] = self.webhook_url
             self._save_config()
 
     def _load_saved_config(self) -> Dict[str, Any]:
@@ -118,8 +119,6 @@ class GoogleChatNotifier:
             self.user_webhooks[uploader_email.strip().lower()] = clean_url
         else:
             self.webhook_url = clean_url
-            if clean_url:
-                self.user_webhooks["glibivanov@gatheren.com.tw"] = clean_url
         self._save_config()
         return clean_url or self.webhook_url
 
@@ -156,9 +155,9 @@ class GoogleChatNotifier:
         """
         from pc_worker.gdrive_watcher import normalize_gatheren_uploader
 
-        scan_id = scan.get("scan_id", "catch_QuChi261016")
+        scan_id = scan.get("scan_id") or "scan"
         name = scan.get("name", scan_id)
-        project_group = scan.get("project_group", "QuChi Dam")
+        project_group = scan.get("project_group") or "Unassigned Site"
         raw_name = scan.get("uploader_name", "雲在天")
         raw_email = scan.get("uploader_email", "glibivanov@gatheren.com.tw")
         uploader_name, uploader_email = normalize_gatheren_uploader(raw_name, raw_email, scan.get("project_dir") or scan_id)
@@ -172,9 +171,15 @@ class GoogleChatNotifier:
         mb_per_m2 = (stream_mb / covered_area_m2) if covered_area_m2 > 0 else 0.0
         tex_res = int(scan.get("texture_resolution") or PIX4DMATIC_TEXTURE_SIZE)
 
-        twd_e = float(scan.get("twd97_e") or 304952.656)
-        twd_n = float(scan.get("twd97_n") or 2757084.875)
-        twd_h = float(scan.get("twd97_h") or 43.18)
+        twd_e = float(scan.get("twd97_e") or 0.0)
+        twd_n = float(scan.get("twd97_n") or 0.0)
+        twd_h = float(scan.get("twd97_h") or 0.0)
+        scan_crs = str(scan.get("crs") or TWD97_TWVD2001_SHORT)
+        is_local_crs = "LOCAL" in scan_crs.upper() or (scan.get("lat") is None and abs(twd_e) < 50000.0)
+        if is_local_crs:
+            crs_card_text = f"{scan_crs} (X:{twd_e:.2f}m, Y:{twd_n:.2f}m, Z:{twd_h:+.2f}m)"
+        else:
+            crs_card_text = f"{scan_crs} (E:{twd_e:.1f}, N:{twd_n:.1f}, H:{twd_h:+.2f}m)"
         view_url = f"{PUBLIC_BASE_URL}/?scan={urllib.parse.quote(scan_id)}"
         # Use stable PNG URL (also cached locally on VPS /app/data/thumbnails/<scan_id>.png)
         thumb_url = f"{PUBLIC_BASE_URL}/api/scans/{urllib.parse.quote(scan_id)}/thumbnail.png"
@@ -193,7 +198,7 @@ class GoogleChatNotifier:
                     "card": {
                         "header": {
                             "title": f"3D Scan Processing Complete: {name}",
-                            "subtitle": f"Private Notice to {uploader_name} • {project_group} • {TWD97_TWVD2001_SHORT}",
+                            "subtitle": f"Private Notice to {uploader_name} • {project_group} • {scan_crs}",
                         },
                         "sections": [
                             {
@@ -215,7 +220,7 @@ class GoogleChatNotifier:
                                     {
                                         "decoratedText": {
                                             "topLabel": "Coordinate Reference System",
-                                            "text": f"TWD97 (121) [EPSG:3826] + TWVD2001 [EPSG:8904] (E:{twd_e:.1f}, N:{twd_n:.1f}, H:+{twd_h:.2f}m)",
+                                            "text": crs_card_text,
                                         }
                                     },
                                     {
@@ -268,8 +273,6 @@ class GoogleChatNotifier:
             local_thumb,
             os.path.join(thumbs_dir, f"{scan_id.lower()}.png"),
             os.path.join(proj_dir, "thumbnail.png") if proj_dir else "",
-            os.path.join(thumbs_dir, "catch_QuChi261016.png"),
-            os.path.join(thumbs_dir, "quchi_20261005_merged.png"),
         ]
         for cpath in candidates:
             if cpath and os.path.isfile(cpath) and os.path.getsize(cpath) > 512:

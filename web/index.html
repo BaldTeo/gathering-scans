@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>GatheringCloud Scans — 3D Photogrammetry &amp; Civil Surveying Studio (scans.gatheren.cloud)</title>
   <link rel="icon" type="image/png" href="/assets/gathering_cloud_logo.png" />
-  <link rel="stylesheet" href="/app.css?v=20261024_v26" />
+  <link rel="stylesheet" href="/app.css?v=20261024_v41" />
   <script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
 <body>
@@ -165,7 +165,7 @@
             </div>
 
             <div class="gs-map-coords-bar" style="margin-top:8px;padding-top:7px;border-top:1px solid var(--ui-border);font-size:11px;font-family:monospace;color:var(--ui-text-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" id="mapCursorCoords">
-              TWD97(121) E: 304,952.7m | N: 2,757,084.9m | TWVD2001
+              Move cursor over map to inspect coordinates
             </div>
           </div>
         </div>
@@ -228,7 +228,7 @@
                     <span>Rename Site</span>
                   </button>
                   <span class="gs-crs-pill" id="timelineSiteCountPill">0 Scans</span>
-                  <span class="gs-crs-pill gs-timeline-crs-extra">TWD97 (121) + TWVD2001</span>
+                  <span class="gs-crs-pill gs-timeline-crs-extra" id="timelineCrsExtraPill">TWD97 (121) + TWVD2001</span>
                 </div>
                 <div class="gs-timeline-site-sub" id="timelineSiteSubtitle">Select a scan tile to preview below</div>
               </div>
@@ -429,7 +429,15 @@
               <line x1="2" y1="12" x2="5" y2="12"/><line x1="19" y1="12" x2="22" y2="12"/>
             </svg>
           </button>
-          <a class="btn-xs" id="btnStudioDownloadObj" href="/api/download?scan_id=quchi_20261005_merged&type=obj" download title="Download .OBJ">
+          <button type="button" class="btn-xs" id="btnStudioFirstPerson" title="First-Person Camera Mode (WASD + Mouse Look · Press F) / 第一人稱漫遊視角 (WASD 移動)">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8">
+              <circle cx="12" cy="5" r="2.3"/>
+              <path d="M9 20l2-6 3 2v4"/>
+              <path d="M7 13l3-3.5 3.5 1.5 3.5-2"/>
+            </svg>
+            <span>WASD</span>
+          </button>
+          <a class="btn-xs" id="btnStudioDownloadObj" href="#" download title="Download .OBJ">
             <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8">
               <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
               <polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
@@ -446,8 +454,63 @@
 
         <div class="gs-active-scan-pill gs-studio-coord-pill" style="gap:8px;">
           <span style="font-size:11px;font-family:var(--mono);color:var(--ui-text-primary);font-weight:600;" id="lblLastPickedCoord">
-            E: 304952.66m, N: 2757084.88m, H: +43.18m
+            Click 3D surface to inspect coordinates
           </span>
+        </div>
+      </div>
+
+      <!-- First-Person Video-Game Camera HUD & Center Crosshair -->
+      <div class="gs-fp-hud" id="studioFirstPersonHud" aria-live="polite">
+        <div class="gs-fp-seg" role="group" aria-label="First Person Locomotion Mode">
+          <button type="button" class="gs-fp-seg-btn active" id="btnFpModeFly" data-fp-mode="fly" title="Free-Fly Drone/Spectator Mode (G) — 自由飛行模式">
+            🚀 飛行 Fly
+          </button>
+          <button type="button" class="gs-fp-seg-btn" id="btnFpModeWalk" data-fp-mode="walk" title="Walk on 3D Surface at 1.68m Eye Height + Gravity/Jump (G) — 地表步行模式">
+            🚶 步行 Walk
+          </button>
+        </div>
+
+        <button type="button" class="gs-fp-lock-btn" id="btnFpPointerLock" title="Click to Lock Mouse for Full 360° FPS Mouselook (Esc to Unlock)">
+          🎯 點擊畫面鎖定滑鼠 (或拖曳旋轉)
+        </button>
+
+        <div class="gs-fp-speed-wrap" title="Adjust Base Speed with Mouse Wheel or Slider (Shift = 3x Sprint, Alt = 0.25x Precision)">
+          <span class="gs-fp-speed-lbl">速度</span>
+          <input type="range" id="fpSpeedSlider" class="gs-brightness-slider" min="0.5" max="60" step="0.5" value="8.0" style="width:68px;" />
+          <span class="gs-fp-speed-val" id="lblFpSpeed">8.0 m/s</span>
+        </div>
+
+        <div class="gs-fp-keys-hint">
+          <span class="gs-fp-key-chip">WASD</span>移動
+          <span class="gs-fp-key-chip">Shift</span>衝刺
+          <span class="gs-fp-key-chip" id="lblFpUpKeyHint">Space/E</span><span id="lblFpUpActionHint">上升</span>
+          <span class="gs-fp-key-chip" id="lblFpDownKeyHint">C/Q</span><span id="lblFpDownActionHint">下降</span>
+          <span class="gs-fp-key-chip">G</span>切換
+        </div>
+
+        <button type="button" class="gs-fp-exit-btn" id="btnExitFirstPerson" title="Exit First-Person Mode back to Orbit Camera (F or Esc)">
+          ✕ 離開
+        </button>
+      </div>
+
+      <div class="gs-fp-crosshair" id="studioFpCrosshair" aria-hidden="true">
+        <span class="gs-fp-ch-h"></span>
+        <span class="gs-fp-ch-v"></span>
+        <span class="gs-fp-ch-dot"></span>
+      </div>
+
+      <!-- Touch-Only Locomotion Pad for First-Person Mode on Mobile / Tablets -->
+      <div class="gs-fp-touch-pad" id="fpTouchMovePad" aria-label="First-Person Touch Controls">
+        <div class="gs-fp-dpad-grid">
+          <span></span>
+          <button type="button" class="gs-fp-touch-btn" data-fp-key="KeyW" aria-label="Move Forward">▲</button>
+          <button type="button" class="gs-fp-touch-btn gs-fp-touch-vert" data-fp-key="KeyE" aria-label="Up / Jump">↑</button>
+          <button type="button" class="gs-fp-touch-btn" data-fp-key="KeyA" aria-label="Strafe Left">◀</button>
+          <button type="button" class="gs-fp-touch-btn" data-fp-key="KeyS" aria-label="Move Backward">▼</button>
+          <button type="button" class="gs-fp-touch-btn" data-fp-key="KeyD" aria-label="Strafe Right">▶</button>
+          <span></span>
+          <span></span>
+          <button type="button" class="gs-fp-touch-btn gs-fp-touch-vert" data-fp-key="KeyQ" aria-label="Move Down">↓</button>
         </div>
       </div>
 
@@ -518,7 +581,7 @@
         </button>
 
         <!-- 5. Laser -->
-        <button type="button" class="bim-dock-btn autodesk-measure-btn" id="btnMeasureLaser" data-tool="laser" data-dock="laser" title="Laser Grade &amp; Elevation / 雷射高程" aria-label="Laser Elevation">
+        <button type="button" class="bim-dock-btn autodesk-measure-btn" id="btnMeasureLaser" data-tool="laser" data-dock="laser" title="Laser Road / Room Width &amp; Clearance (Hover &amp; Click to Pin) / 雷射路寬與室內淨寬量測" aria-label="Laser Road and Room Width">
           <div class="bim-dock-icon">
             <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8">
               <path d="M5 19l4-4M9 15l7-7 2 2-7 7-2-2z"/>
@@ -599,7 +662,19 @@
 
         <div class="bim-dock-divider"></div>
 
-        <!-- 12. Vertex & Surface Snapping -->
+        <!-- 12. First-Person Walkthrough / Video-Game Camera (WASD) -->
+        <button type="button" class="bim-dock-btn" id="btnToggleFirstPerson" data-tool="first_person" title="First-Person Camera Mode (WASD + Mouse Look · Press F) / 第一人稱漫遊視角" aria-label="First Person Camera">
+          <div class="bim-dock-icon">
+            <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8">
+              <circle cx="12" cy="4.8" r="2.2"/>
+              <path d="M9 20.5l2.1-6.2 3.1 2.1v4.1"/>
+              <path d="M6.8 13l3.2-3.6 3.6 1.6 3.6-2.1"/>
+            </svg>
+          </div>
+          <span class="bim-dock-label">漫遊</span>
+        </button>
+
+        <!-- 13. Vertex & Surface Snapping -->
         <button type="button" class="bim-dock-btn active" id="btnMeasureSnap" data-tool="snap" title="Toggle Vertex &amp; Surface Snapping / 切換幾何捕捉" aria-label="Toggle Snapping">
           <div class="bim-dock-icon">
             <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8">
@@ -653,7 +728,7 @@
         </button>
 
         <!-- Edit 2. Lasso / Polygon Crop Keep (裁切保留選取區域) -->
-        <button type="button" class="bim-dock-btn gs-edit-dock-btn" id="btnDockLassoKeep" data-tool="crop" data-dock="crop" title="Spatial Crop: Keep only the lasso/polygon selected region of the scan / 框選裁切保留" aria-label="Crop and Keep Selected Region">
+        <button type="button" class="bim-dock-btn gs-edit-dock-btn" id="btnDockLassoKeep" data-tool="crop" data-dock="crop" title="Keep Only Inside: Crop outside and keep only the selected part of the scan / 僅保留選取區域" aria-label="Crop and Keep Selected Region">
           <div class="bim-dock-icon">
             <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8">
               <circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/>
@@ -661,7 +736,7 @@
               <line x1="14.47" y1="14.48" x2="20" y2="20"/>
             </svg>
           </div>
-          <span class="bim-dock-label">框選裁切</span>
+          <span class="bim-dock-label">框選保留</span>
         </button>
 
         <!-- Edit 3. Multi-Scan Align & Merge (多掃描對齊與合併) -->
@@ -678,13 +753,37 @@
         </button>
 
         <!-- Edit 4. ScanOptimizer Mesh & Texture Compression (網格優化) -->
-        <button type="button" class="bim-dock-btn gs-edit-dock-btn" id="btnDockOptimizer" data-tool="optimizer" data-dock="optimizer" title="GC_ScanOptimizer: Compress mesh triangles &amp; KTX2 textures / 網格壓縮優化" aria-label="Scan Optimizer">
+        <button type="button" class="bim-dock-btn gs-edit-dock-btn" id="btnDockOptimizer" data-tool="optimizer" data-dock="optimizer" title="Mesh &amp; Texture Compression: Stage compression preset for new scan / 網格壓縮優化設定" aria-label="Scan Optimizer">
           <div class="bim-dock-icon">
             <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8">
               <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
             </svg>
           </div>
           <span class="bim-dock-label">網格優化</span>
+        </button>
+
+        <!-- Edit 5. Coordinate System & Datum Offset (座標系統) -->
+        <button type="button" class="bim-dock-btn gs-edit-dock-btn" id="btnDockCrs" data-tool="crs" data-dock="crs" title="Coordinate System (CRS) &amp; Datum Shift: TWD97, UTM, or Local (0,0,0) / 座標系統與原點轉換" aria-label="Coordinate System">
+          <div class="bim-dock-icon">
+            <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8">
+              <circle cx="12" cy="12" r="9"/>
+              <line x1="3" y1="12" x2="21" y2="12"/>
+              <path d="M12 3a14 14 0 0 1 0 18a14 14 0 0 1 0-18z"/>
+            </svg>
+          </div>
+          <span class="bim-dock-label">座標系統</span>
+        </button>
+
+        <!-- Edit 6. Generate New Scan with All Staged Adjustments (產生新掃描) -->
+        <button type="button" class="bim-dock-btn gs-edit-dock-btn gs-generate-scan-dock-btn" id="btnDockGenerateScan" data-tool="generate_scan" data-dock="generate_scan" title="Generate Scan: Build a brand-new scan with all staged deletions, compression &amp; CRS adjustments / 產生新掃描" aria-label="Generate Scan">
+          <div class="bim-dock-icon" style="position:relative;">
+            <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.9">
+              <path d="M12 3l1.9 4.6L18.5 9.5l-4.6 1.9L12 16l-1.9-4.6L5.5 9.5l4.6-1.9L12 3z"/>
+              <path d="M19 15l.9 2.1L22 18l-2.1.9L19 21l-.9-2.1L16 18l2.1-.9L19 15z"/>
+            </svg>
+            <span class="gs-staged-edits-badge" id="lblStagedEditsBadge" style="display:none;">0</span>
+          </div>
+          <span class="bim-dock-label">產生掃描</span>
         </button>
       </aside>
     </section>
@@ -933,7 +1032,7 @@
           </div>
           <div class="gs-form-group" style="margin-bottom:6px;">
             <label>Recipient Label</label>
-            <input type="text" class="gs-input" id="shareLabelInput" value="External Consultant Review" />
+            <input type="text" class="gs-input" id="shareLabelInput" placeholder="e.g. External Consultant Review" />
           </div>
         </div>
         <div class="gs-share-perms-bar" style="display:flex;justify-content:space-between;align-items:center;margin-top:6px;gap:8px;flex-wrap:wrap;">
@@ -1227,7 +1326,7 @@
 
       <div class="gs-settings-row" style="background:var(--ui-bg-subtle);border:1px solid var(--ui-border);border-radius:10px;padding:12px 14px;margin-bottom:10px;display:flex;justify-content:space-between;align-items:center;gap:12px;">
         <div style="min-width:0;flex:1;">
-          <div style="font-size:12.5px;font-weight:700;color:var(--ui-text-primary);word-break:break-word;" id="lblOfflineCacheUserEmail">Enable Offline Caching in Browser (glibivanov@gatheren.com.tw)</div>
+          <div style="font-size:12.5px;font-weight:700;color:var(--ui-text-primary);word-break:break-word;" id="lblOfflineCacheUserEmail">Enable Offline Caching in Browser</div>
           <div style="font-size:11px;color:var(--ui-text-muted);margin-top:2px;">Automatically caches viewed 3D tilesets locally on this device.</div>
         </div>
         <input type="checkbox" id="chkEnableOfflineCache" checked style="width:18px;height:18px;accent-color:#0284c7;cursor:pointer;flex-shrink:0;" />
@@ -1528,7 +1627,7 @@
             type="text"
             id="renameSiteGroupInput"
             class="gs-input"
-            placeholder="e.g. Office Roof Training"
+            placeholder="e.g. Foundation Progress Inspection"
             style="width:100%;font-size:13.5px;font-weight:600;"
           />
         </div>
@@ -1538,7 +1637,7 @@
             type="text"
             id="renameSiteZhInput"
             class="gs-input"
-            placeholder="e.g. 辦公室屋頂訓練"
+            placeholder="e.g. 基礎開挖進度巡檢"
             style="width:100%;font-size:13px;"
           />
         </div>
@@ -1569,8 +1668,8 @@
       <div class="gs-modal-body" style="padding:16px 20px;display:flex;flex-direction:column;gap:12px;">
         <div style="background:var(--ui-bg-subtle);border:1px solid var(--ui-border);border-radius:8px;padding:10px 12px;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
           <div>
-            <div style="font-size:12.5px;font-weight:700;color:var(--ui-text-primary);" id="rerunScanInfoName">Office Roof Training</div>
-            <div style="font-size:11px;color:var(--ui-text-secondary);font-family:var(--mono);margin-top:2px;" id="rerunScanInfoSource">Source: C:\GatheringScans\catch_2026_09_21_11_39_49\inputs (100 RTK photos)</div>
+            <div style="font-size:12.5px;font-weight:700;color:var(--ui-text-primary);" id="rerunScanInfoName">Selected Scan</div>
+            <div style="font-size:11px;color:var(--ui-text-secondary);font-family:var(--mono);margin-top:2px;" id="rerunScanInfoSource">Source: Detecting input photos...</div>
           </div>
           <span class="gs-crs-pill" id="rerunScanCrsBadge">ExportSrs.Scene + TWD97 Offset (1mm Precision)</span>
         </div>
@@ -1674,13 +1773,13 @@
 
   <!-- Three.js + 3D Tileset / KTX2 / Meshopt Libraries -->
   <script src="/lib/three.min.js"></script>
-  <script src="/lib/OrbitControls.js"></script>
+  <script src="/lib/OrbitControls.js?v=20261024_v41"></script>
   <script src="/lib/GLTFLoader.js"></script>
   <script src="/lib/KTX2Loader.js"></script>
   <script src="/lib/meshopt_decoder.js"></script>
   <script src="/lib/3d-tiles-renderer.bundle.js"></script>
 
   <!-- Main GatheringScans Application Logic -->
-  <script src="/app.js?v=20261024_v32"></script>
+  <script src="/app.js?v=20261024_v41"></script>
 </body>
 </html>

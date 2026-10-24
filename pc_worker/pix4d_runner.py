@@ -15,6 +15,9 @@ import sys
 import glob
 import json
 import time
+import shutil
+import zipfile
+import threading
 import subprocess
 from typing import Dict, Any, Optional, Callable, List, Tuple
 
@@ -490,7 +493,7 @@ def postprocess_obj_to_tileset(
     if progress_callback:
         progress_callback(96.0, "Building Hierarchical 3D Tileset in GC_ScanOptimizer...")
     if GC_SCAN_OPTIMIZER_DIR not in sys.path:
-        sys.path.insert(0, GC_SCAN_OPTIMIZER_DIR)
+        sys.path.append(GC_SCAN_OPTIMIZER_DIR)
     from optimizer.quadtree_tiler import QuadtreeTiler
 
     active_cfg = load_pix4d_settings()
@@ -595,9 +598,20 @@ def postprocess_obj_to_tileset(
         except Exception as e:
             print(f"[PIX4DRunner] Warning building direct gltfpack root.glb: {e}")
 
-        # Remove stale DSM cache so surveying_engine rebuilds DSM from the new mesh
-        dsm_cache = os.path.join(proj_dir, "_dsm_cache_v3.npz")
-        if os.path.isfile(dsm_cache):
+        # Save a pristine backup of the freshly generated tileset so mesh edits can always be undone/restored
+        try:
+            backup_dir = os.path.join(proj_dir, "tileset_backup")
+            prev_dir = os.path.join(proj_dir, "tileset_prev")
+            if os.path.isdir(prev_dir):
+                shutil.rmtree(prev_dir, ignore_errors=True)
+            if os.path.isdir(backup_dir):
+                shutil.rmtree(backup_dir, ignore_errors=True)
+            shutil.copytree(tileset_dir, backup_dir)
+        except Exception as bk_err:
+            print(f"[PIX4DRunner] Warning creating tileset_backup for {scan_id}: {bk_err}")
+
+        # Remove any stale DSM caches so surveying_engine rebuilds DSM from the new mesh
+        for dsm_cache in glob.glob(os.path.join(proj_dir, "_dsm_cache_*.npz")):
             try:
                 os.remove(dsm_cache)
             except OSError:
@@ -652,17 +666,17 @@ def run_pix4dmatic_pipeline(
 
     # Check if per-scan rerun_settings.json was queued by /api/scans/rerun or /api/queue/reprocess
     rerun_cfg_path = os.path.join(proj_dir, "rerun_settings.json")
+    r_data: Dict[str, Any] = {}
     if os.path.isfile(rerun_cfg_path):
         try:
             with open(rerun_cfg_path, "r", encoding="utf-8") as rf:
-                r_data = json.load(rf)
-            if isinstance(r_data, dict):
+                loaded_r = json.load(rf)
+            if isinstance(loaded_r, dict):
+                r_data = loaded_r
                 if r_data.get("force_from_photos", True):
                     force_from_photos = True
                 if isinstance(r_data.get("settings"), dict):
                     custom_settings = r_data["settings"]
-            if not dry_run:
-                os.remove(rerun_cfg_path)
         except Exception as e:
             print(f"[PIX4DRunner] Warning reading {rerun_cfg_path}: {e}")
 
@@ -723,8 +737,14 @@ def run_pix4dmatic_pipeline(
                 except OSError:
                     pass
             old_obj_dir = os.path.join(export_dir, "obj_mesh")
+            prev_obj_dir = os.path.join(export_dir, "obj_mesh_prev")
             if os.path.isdir(old_obj_dir):
-                shutil.rmtree(old_obj_dir, ignore_errors=True)
+                if os.path.isdir(prev_obj_dir):
+                    shutil.rmtree(prev_obj_dir, ignore_errors=True)
+                try:
+                    os.replace(old_obj_dir, prev_obj_dir)
+                except Exception:
+                    shutil.rmtree(old_obj_dir, ignore_errors=True)
 
             if part_paths:
                 for idx, zpath in enumerate(part_paths):
@@ -766,63 +786,88 @@ def run_pix4dmatic_pipeline(
                     elif os.path.isdir(zpath):
                         stem = os.path.basename(zpath.rstrip("/\\"))
                         target_extract = os.path.join(inputs_dir, stem)
-                        if progress_callback:
-                            progress_callback(
-                                6.0 + idx * 0.8,
-                                f"Fast-staging folder {idx + 1}/{len(part_paths)} to local SSD: {stem}...",
-                            )
+                        stage_marker = os.path.join(target_extract, ".staged_ok")
                         os.makedirs(target_extract, exist_ok=True)
                         # Remove any mobile preview meshes directory if previously copied
                         preview_meshes_dir = os.path.join(target_extract, "meshes")
                         if os.path.isdir(preview_meshes_dir):
                             shutil.rmtree(preview_meshes_dir, ignore_errors=True)
 
-                        alt_unredacted_dirs = glob.glob(os.path.join(r"G:\My Drive\Scans", "*", stem, "images")) + glob.glob(os.path.join(r"G:\My Drive\Scans", stem, "images"))
-                        alt_src_dir = alt_unredacted_dirs[0] if alt_unredacted_dirs and os.path.isdir(alt_unredacted_dirs[0]) else ""
+                        already_staged = False
+                        if os.path.isfile(stage_marker):
+                            staged_img_chk = any(
+                                fn.lower().endswith((".jpg", ".jpeg", ".png", ".tiff", ".tif"))
+                                for r_chk, d_chk, f_chk in os.walk(target_extract)
+                                for fn in f_chk
+                            )
+                            if staged_img_chk:
+                                already_staged = True
 
-                        copy_tasks = []
-                        for root, dirs, files in os.walk(zpath):
-                            # Skip mobile preview meshes folder (unneeded by PIX4Dmatic and saves time)
-                            dirs[:] = [d for d in dirs if d.lower() not in {"meshes", ".git", "__pycache__"}]
-                            rel_dir = os.path.relpath(root, zpath)
-                            dst_dir = target_extract if rel_dir == "." else os.path.join(target_extract, rel_dir)
-                            os.makedirs(dst_dir, exist_ok=True)
-                            for fn in files:
-                                if fn.startswith("."):
-                                    continue
-                                copy_tasks.append((os.path.join(root, fn), os.path.join(dst_dir, fn), fn))
-
-                        total_files = max(1, len(copy_tasks))
-                        copied_cnt = 0
-                        copy_lock = threading.Lock()
-
-                        def _copy_one(task_tuple):
-                            nonlocal copied_cnt
-                            s_f, d_f, fn = task_tuple
-                            try:
-                                if not os.path.isfile(d_f) or os.path.getsize(d_f) != os.path.getsize(s_f):
-                                    shutil.copy2(s_f, d_f)
-                                if fn.lower().endswith((".jpg", ".jpeg")) and alt_src_dir:
-                                    alt_f = os.path.join(alt_src_dir, fn)
-                                    if os.path.isfile(alt_f):
-                                        with open(d_f, "rb") as chk_f:
-                                            hdr = chk_f.read(4096)
-                                        if b"\x00\x00\x00\x00\x00\x00\x00\x00" in hdr[200:3500] and b"RTKLatitude" not in hdr:
-                                            shutil.copy2(alt_f, d_f)
-                            except Exception:
-                                pass
-                            with copy_lock:
-                                copied_cnt += 1
-                                cur_c = copied_cnt
-                            if progress_callback and (cur_c % 250 == 0 or cur_c == total_files):
+                        if not already_staged:
+                            if progress_callback:
                                 progress_callback(
-                                    min(9.5, 6.0 + (cur_c / float(total_files)) * 3.5),
-                                    f"Fast-staging {stem} to local SSD ({cur_c}/{total_files} files, 16x parallel)...",
+                                    6.0 + idx * 0.8,
+                                    f"Fast-staging folder {idx + 1}/{len(part_paths)} to local SSD: {stem}...",
                                 )
 
-                        from concurrent.futures import ThreadPoolExecutor
-                        with ThreadPoolExecutor(max_workers=16) as pool:
-                            list(pool.map(_copy_one, copy_tasks))
+                            alt_unredacted_dirs = glob.glob(os.path.join(r"G:\My Drive\Scans", "*", stem, "images")) + glob.glob(os.path.join(r"G:\My Drive\Scans", stem, "images"))
+                            alt_src_dir = alt_unredacted_dirs[0] if alt_unredacted_dirs and os.path.isdir(alt_unredacted_dirs[0]) else ""
+
+                            copy_tasks = []
+                            for root, dirs, files in os.walk(zpath):
+                                # Skip mobile preview meshes folder (unneeded by PIX4Dmatic and saves time)
+                                dirs[:] = [d for d in dirs if d.lower() not in {"meshes", ".git", "__pycache__"}]
+                                rel_dir = os.path.relpath(root, zpath)
+                                dst_dir = target_extract if rel_dir == "." else os.path.join(target_extract, rel_dir)
+                                os.makedirs(dst_dir, exist_ok=True)
+                                for fn in files:
+                                    if fn.startswith("."):
+                                        continue
+                                    copy_tasks.append((os.path.join(root, fn), os.path.join(dst_dir, fn), fn))
+
+                            total_files = max(1, len(copy_tasks))
+                            copied_cnt = 0
+                            copy_lock = threading.Lock()
+
+                            def _copy_one(task_tuple):
+                                nonlocal copied_cnt
+                                s_f, d_f, fn = task_tuple
+                                try:
+                                    if not os.path.isfile(d_f) or os.path.getsize(d_f) != os.path.getsize(s_f):
+                                        shutil.copy2(s_f, d_f)
+                                    if fn.lower().endswith((".jpg", ".jpeg")) and alt_src_dir:
+                                        alt_f = os.path.join(alt_src_dir, fn)
+                                        if os.path.isfile(alt_f):
+                                            with open(d_f, "rb") as chk_f:
+                                                hdr = chk_f.read(4096)
+                                            if b"\x00\x00\x00\x00\x00\x00\x00\x00" in hdr[200:3500] and b"RTKLatitude" not in hdr:
+                                                shutil.copy2(alt_f, d_f)
+                                except Exception:
+                                    pass
+                                with copy_lock:
+                                    copied_cnt += 1
+                                    cur_c = copied_cnt
+                                if progress_callback and (cur_c % 250 == 0 or cur_c == total_files):
+                                    progress_callback(
+                                        min(9.5, 6.0 + (cur_c / float(total_files)) * 3.5),
+                                        f"Fast-staging {stem} to local SSD ({cur_c}/{total_files} files, 16x parallel)...",
+                                    )
+
+                            from concurrent.futures import ThreadPoolExecutor
+                            with ThreadPoolExecutor(max_workers=16) as pool:
+                                list(pool.map(_copy_one, copy_tasks))
+
+                            try:
+                                with open(stage_marker, "w", encoding="utf-8") as mf:
+                                    mf.write(str(int(time.time())))
+                            except Exception:
+                                pass
+                        else:
+                            if progress_callback:
+                                progress_callback(
+                                    9.0,
+                                    f"Using already-staged local SSD inputs for {stem}...",
+                                )
 
                         cand_opf = os.path.join(target_extract, "project.opf")
                         part_imgs = []
@@ -888,28 +933,45 @@ def run_pix4dmatic_pipeline(
         progress_callback(10.0, f"Launching PIX4Dmatic 2.11.0 (CRS: TWD97 + TWVD2001, {active_tex_size}px)...")
 
     startupinfo = None
+    creation_flags = 0
     if os.name == "nt":
         startupinfo = subprocess.STARTUPINFO()
         startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
         startupinfo.wShowWindow = 7  # SW_SHOWMINNOACTIVE
+        creation_flags = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
 
     cmd = [PIX4DMATIC_EXE, "--gst", gst_path]
     t0 = time.time()
+    stdout_log_path = os.path.join(proj_dir, "pix4d_stdout.log")
+    stdout_fh = open(stdout_log_path, "w", encoding="utf-8", errors="replace")
     proc = subprocess.Popen(
         cmd,
-        stdout=subprocess.PIPE,
+        stdout=stdout_fh,
         stderr=subprocess.STDOUT,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
         startupinfo=startupinfo,
+        creationflags=creation_flags,
     )
+    if os.path.isfile(rerun_cfg_path) or r_data:
+        try:
+            r_state = dict(r_data) if isinstance(r_data, dict) else {}
+            r_state.update(
+                {
+                    "scan_id": scan_id,
+                    "force_from_photos": force_from_photos,
+                    "settings": active_cfg,
+                    "started_at": t0,
+                    "pid": proc.pid,
+                }
+            )
+            with open(rerun_cfg_path, "w", encoding="utf-8") as rf:
+                json.dump(r_state, rf, ensure_ascii=False, indent=2)
+        except Exception:
+            pass
 
     appdata_log_dir = os.path.join(os.environ.get("APPDATA", ""), "pix4d", "PIX4Dmatic", "logs")
     proj_log_dirs = [
         os.path.join(proj_dir, scan_id, "logs"),
         os.path.join(proj_dir, "project", "logs"),
-        os.path.join(LOCAL_SCANS_ROOT, "catch_QuChi261016", "catch_QuChi261016", "logs"),
     ]
     if os.path.isdir( appdata_log_dir ):
         proj_log_dirs.append(appdata_log_dir)
@@ -957,10 +1019,24 @@ def run_pix4dmatic_pipeline(
                 last_stage_msg = msg
                 last_pct = pct
 
-    ret = proc.wait()
+    try:
+        ret = proc.wait()
+    finally:
+        try:
+            stdout_fh.close()
+        except Exception:
+            pass
     duration_p4m = round(time.time() - t0, 2)
 
+    prev_obj_dir = os.path.join(export_dir, "obj_mesh_prev")
+    old_obj_dir = os.path.join(export_dir, "obj_mesh")
+
     if fatal_err_msg:
+        if os.path.isdir(prev_obj_dir) and not os.path.isdir(old_obj_dir):
+            try:
+                os.replace(prev_obj_dir, old_obj_dir)
+            except Exception:
+                pass
         return {
             "success": False,
             "return_code": ret or -1,
@@ -970,10 +1046,11 @@ def run_pix4dmatic_pipeline(
             "log_tail": tail_lines,
         }
 
-    # Locate newest exported .obj in export_dir
+    # Locate newest exported .obj in export_dir (excluding obj_mesh_prev backup)
     objs = []
     if os.path.isdir(export_dir):
-        for r_dir, _, r_files in os.walk(export_dir):
+        for r_dir, r_subdirs, r_files in os.walk(export_dir):
+            r_subdirs[:] = [d for d in r_subdirs if d != "obj_mesh_prev"]
             for f in sorted(r_files):
                 if f.lower().endswith(".obj"):
                     fp = os.path.join(r_dir, f)
@@ -983,12 +1060,25 @@ def run_pix4dmatic_pipeline(
 
     tileset_path = ""
     if obj_path and os.path.isfile(obj_path):
+        if os.path.isdir(prev_obj_dir):
+            shutil.rmtree(prev_obj_dir, ignore_errors=True)
         tileset_path = postprocess_obj_to_tileset(
             scan_id=scan_id,
             proj_dir=proj_dir,
             obj_path=obj_path,
             progress_callback=progress_callback,
         )
+    elif os.path.isdir(prev_obj_dir) and not os.path.isdir(old_obj_dir):
+        try:
+            os.replace(prev_obj_dir, old_obj_dir)
+        except Exception:
+            pass
+
+    if tileset_path and os.path.isfile(rerun_cfg_path):
+        try:
+            os.remove(rerun_cfg_path)
+        except OSError:
+            pass
 
     if progress_callback and tileset_path:
         progress_callback(100.0, f"Completed (TWD97 + TWVD2001, {active_tex_size}px Web Tileset)")

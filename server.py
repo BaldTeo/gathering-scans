@@ -70,6 +70,7 @@ from pc_worker.auth_and_sharing import (
     ROLE_LABELS,
     normalize_role,
     get_role_permissions,
+    verify_session_token,
 )
 from pc_worker.gchat_notifier import GoogleChatNotifier
 
@@ -91,6 +92,7 @@ DAEMON_STATE_PATH = os.path.join(DATA_DIR, "daemon_state.json")
 _DAEMON_PROCESS_START_TS = time.time()
 _DAEMON_LAST_POLL_TS = 0.0
 _DAEMON_WAKE_EVENT = threading.Event()
+_PIX4D_WAKE_EVENT = threading.Event()
 
 
 def load_pc_daemon_state() -> Dict[str, Any]:
@@ -926,9 +928,25 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
         pass
 
     def end_headers(self):
-        self.send_header("Access-Control-Allow-Origin", "*")
+        origin = (self.headers.get("Origin") or "").strip()
+        allowed_origin = "https://scans.gatheren.cloud"
+        if origin:
+            o_low = origin.lower()
+            if (
+                o_low in ("https://scans.gatheren.cloud", "https://gatheren.cloud")
+                or (o_low.startswith("https://") and o_low.endswith(".gatheren.cloud"))
+                or o_low.startswith("http://localhost:")
+                or o_low.startswith("http://127.0.0.1:")
+                or o_low in ("http://localhost", "http://127.0.0.1")
+            ):
+                allowed_origin = origin
+        self.send_header("Access-Control-Allow-Origin", allowed_origin)
+        self.send_header("Vary", "Origin")
         self.send_header("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Share-Token, Range")
+        self.send_header(
+            "Access-Control-Allow-Headers",
+            "Content-Type, Authorization, X-Share-Token, X-Session-Token, X-Tunnel-Key, X-User-Email, X-User-Name, Range",
+        )
         self.send_header("Access-Control-Expose-Headers", "Content-Range, Content-Length, Accept-Ranges")
         self.send_header("Alt-Svc", "clear")
         super().end_headers()
@@ -1032,7 +1050,7 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
             self.send_response(200)
             self.send_header("Content-Type", "application/json; charset=utf-8")
             self.send_header("Content-Length", str(len(raw_json)))
-            self.send_header("Cache-Control", "no-cache")
+            self.send_header("Cache-Control", "no-cache, must-revalidate")
             self.end_headers()
             self.wfile.write(raw_json)
         except Exception:
@@ -1293,7 +1311,9 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
                 self.send_header("Content-Type", ctype)
                 self.send_header("Content-Encoding", "gzip")
                 self.send_header("Content-Length", str(len(gz_bytes)))
-                cc_val = "no-cache, must-revalidate" if ext in (".html", ".js", ".css") else "public, max-age=3600"
+                base_fn = os.path.basename(file_path).lower()
+                no_cache_asset = ext in (".html", ".js", ".css") or base_fn in ("tileset.json", "preview_tileset.json")
+                cc_val = "no-cache, must-revalidate" if no_cache_asset else "public, max-age=3600"
                 self.send_header("Cache-Control", cc_val)
                 self.end_headers()
                 try:
@@ -1328,7 +1348,9 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
         if download_name:
             self.send_header("Content-Disposition", f'attachment; filename="{download_name}"')
         else:
-            cc_val = "no-cache, must-revalidate" if ext in (".html", ".js", ".css") else "public, max-age=3600"
+            base_fn = os.path.basename(file_path).lower()
+            no_cache_asset = ext in (".html", ".js", ".css") or base_fn in ("tileset.json", "preview_tileset.json")
+            cc_val = "no-cache, must-revalidate" if no_cache_asset else "public, max-age=3600"
             self.send_header("Cache-Control", cc_val)
         self.end_headers()
 
@@ -1351,18 +1373,48 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
         sid = s["scan_id"]
         ts_path = s.get("tileset_path") or ""
         q_suffix = f"?share={share_token}" if share_token else ""
-        ts_ver = "opt5"
-        prev_ver = "low2"
+        ver_hint = s.get("tileset_version") or ""
+        if not ver_hint:
+            try:
+                pkg_meta = (_load_cloud_manifest().get("packages") or {}).get(sid) or {}
+                pkg_mtime = int(float(pkg_meta.get("mtime") or 0) * 1000)
+                pkg_sz = int(pkg_meta.get("size_bytes") or 0)
+                if pkg_mtime > 0 or pkg_sz > 0:
+                    ver_hint = f"{pkg_mtime}_{pkg_sz}"
+                    s["tileset_version"] = pkg_mtime or pkg_sz
+            except Exception:
+                pass
+        if not ver_hint:
+            ver_hint = str(abs(hash(f"{sid}:{s.get('updated_at') or s.get('capture_date') or ''}:{s.get('twd97_h') or 0}")) % 1000000000)
+        ts_ver = f"opt6_{ver_hint}"
+        prev_ver = f"low3_{ver_hint}"
         if ts_path and ts_path[:2].upper() == "C:" and os.path.isfile(ts_path):
             try:
                 bdir = os.path.dirname(ts_path)
+                proj_dir = s.get("project_dir") or os.path.dirname(bdir)
                 r_glb = os.path.join(bdir, "tiles", "root.glb")
                 p_ts = os.path.join(bdir, "preview_tileset.json")
                 p_glb = os.path.join(bdir, "preview_low", "tiles", "root.glb")
-                m_ts = int(os.path.getmtime(r_glb if os.path.isfile(r_glb) else ts_path))
-                m_prev = int(os.path.getmtime(p_glb if os.path.isfile(p_glb) else (p_ts if os.path.isfile(p_ts) else ts_path)))
-                ts_ver = f"opt5_{m_ts}"
-                prev_ver = f"low2_{m_prev}"
+                m_ts = int(
+                    max(
+                        os.path.getmtime(ts_path),
+                        os.path.getmtime(r_glb) if os.path.isfile(r_glb) else 0.0,
+                    )
+                    * 1000
+                )
+                m_prev = int(
+                    max(
+                        os.path.getmtime(p_ts) if os.path.isfile(p_ts) else 0.0,
+                        os.path.getmtime(p_glb) if os.path.isfile(p_glb) else 0.0,
+                        os.path.getmtime(ts_path),
+                    )
+                    * 1000
+                )
+                ts_ver = f"opt6_{m_ts}"
+                prev_ver = f"low3_{m_prev}"
+                s["tileset_version"] = m_ts
+                s["has_original_backup"] = os.path.isfile(os.path.join(proj_dir, "tileset_backup", "tileset.json"))
+                s["has_undo"] = os.path.isfile(os.path.join(proj_dir, "tileset_prev", "tileset.json"))
             except Exception:
                 pass
         if ts_path.lower().endswith(".glb"):
@@ -1384,6 +1436,7 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
 
     def _build_projects_summary(self, scans: list) -> list:
         projects_map: Dict[str, Dict[str, Any]] = {}
+        georef_accum: Dict[str, List[Tuple[float, float, float, float]]] = {}
         for s in scans:
             grp = s.get("project_group") or "Unassigned Site"
             if grp not in projects_map:
@@ -1391,19 +1444,48 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
                     "project_group": grp,
                     "project_name_zh": s.get("project_name_zh") or "",
                     "scan_count": 0,
-                    "lat": s.get("lat") or 24.92032,
-                    "lon": s.get("lon") or 121.54351,
-                    "twd97_e": s.get("twd97_e") or 304952.6,
-                    "twd97_n": s.get("twd97_n") or 2757084.9,
+                    "lat": None,
+                    "lon": None,
+                    "twd97_e": 0.0,
+                    "twd97_n": 0.0,
+                    "has_georef": False,
                     "latest_date": s.get("capture_date") or "",
                     "scan_ids": [],
                 }
+                georef_accum[grp] = []
             entry = projects_map[grp]
+            if not entry["project_name_zh"] and s.get("project_name_zh"):
+                entry["project_name_zh"] = s.get("project_name_zh")
             entry["scan_count"] += 1
             entry["scan_ids"].append(s.get("scan_id"))
             cdate = str(s.get("capture_date") or "")
             if cdate > str(entry["latest_date"]):
                 entry["latest_date"] = cdate
+
+            crs_str = str(s.get("crs") or "").upper()
+            raw_lat = s.get("lat")
+            raw_lon = s.get("lon")
+            if raw_lat is not None and raw_lon is not None and "LOCAL" not in crs_str:
+                try:
+                    flat = float(raw_lat)
+                    flon = float(raw_lon)
+                    if (abs(flat) > 0.001 or abs(flon) > 0.001) and -90.0 <= flat <= 90.0 and -180.0 <= flon <= 180.0:
+                        fe = float(s.get("twd97_e") or 0.0)
+                        fn = float(s.get("twd97_n") or 0.0)
+                        georef_accum[grp].append((flat, flon, fe, fn))
+                except (TypeError, ValueError):
+                    pass
+
+        for grp, entry in projects_map.items():
+            pts = georef_accum.get(grp) or []
+            if pts:
+                n_pts = len(pts)
+                entry["lat"] = round(sum(p[0] for p in pts) / n_pts, 6)
+                entry["lon"] = round(sum(p[1] for p in pts) / n_pts, 6)
+                entry["twd97_e"] = round(sum(p[2] for p in pts) / n_pts, 3)
+                entry["twd97_n"] = round(sum(p[3] for p in pts) / n_pts, 3)
+                entry["has_georef"] = True
+
         return sorted(projects_map.values(), key=lambda x: (-x["scan_count"], x["project_group"].lower()))
 
     def _resolve_scan_thumbnail_path(self, scan_id: str, scan: Optional[Dict[str, Any]] = None) -> Optional[str]:
@@ -1442,33 +1524,6 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
                 sib_cap = os.path.join(THUMBS_DIR, f"{sib_id}.png")
                 if os.path.isfile(sib_cap) and os.path.getsize(sib_cap) > 512:
                     return sib_cap
-
-        # 4. Fallback for historical/renamed Google Chat message scan_ids so older messages never lose their preview image
-        low_sid = scan_id.lower()
-        fallback_names = []
-        if "rose" in low_sid:
-            fallback_names.extend(["rosepark_20260918_merged.png", "rosepark_20260917_east.png"])
-        elif "ntu" in low_sid or "dorm" in low_sid:
-            fallback_names.extend(["ntudorm_20260917_foundation.png", "ntudorm_20260915_baseline.png"])
-        else:
-            fallback_names.extend(
-                [
-                    "catch_QuChi261016.png",
-                    "quchi_20261005_merged.png",
-                    "quchi261016_trees.png",
-                    "quchi_20261015_obj_mesh.png",
-                ]
-            )
-        for fb in fallback_names:
-            cand = os.path.join(THUMBS_DIR, fb)
-            if os.path.isfile(cand) and os.path.getsize(cand) > 512:
-                return cand
-        if os.path.isdir(THUMBS_DIR):
-            for fn in sorted(os.listdir(THUMBS_DIR)):
-                if fn.lower().endswith(".png"):
-                    cand = os.path.join(THUMBS_DIR, fn)
-                    if os.path.isfile(cand) and os.path.getsize(cand) > 512:
-                        return cand
 
         return None
 
@@ -1623,7 +1678,7 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
         hdrs: Dict[str, str] = {
             "Content-Type": ctype,
             "Content-Length": str(len(data)),
-            "Cache-Control": "public, max-age=3600" if not inner_path.endswith(".json") else "no-cache",
+            "Cache-Control": "public, max-age=3600" if not inner_path.endswith(".json") else "no-cache, must-revalidate",
             "X-Stream-Source": "GoogleDrive-3TZ-Cloud",
         }
         if use_gzip:
@@ -1670,7 +1725,7 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
             for k in list(_VPS_RAM_FALLBACK_CACHE.keys()):
                 if k.startswith(path):
                     _VPS_RAM_FALLBACK_CACHE.pop(k, None)
-        if method == "POST" and ("/rename" in path or "/delete" in path or "/bin" in path or "/rerun" in path or "/admin/users" in path or path in ("/api/scans/rename", "/api/scans/delete")):
+        if method == "POST" and ("/rename" in path or "/delete" in path or "/bin" in path or "/rerun" in path or "/admin/users" in path or path.startswith("/api/optimizer/") or path in ("/api/scans/rename", "/api/scans/delete", "/api/scans/merge")):
             for k in list(_VPS_RAM_FALLBACK_CACHE.keys()):
                 if k.startswith("/api/scans") or k.startswith("/api/projects") or k.startswith("/api/user-profiles") or k.startswith("/api/admin/users") or k.startswith("/stream/"):
                     _VPS_RAM_FALLBACK_CACHE.pop(k, None)
@@ -1717,13 +1772,14 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
             if self._serve_from_gdrive_cloud_if_available(path, share_token=share_token):
                 return True
 
-        # 3. Try up to 4 sockets from the PC reverse tunnel pool
-        for _attempt in range(4):
+        # 3. Try up to 4 sockets from the PC reverse tunnel pool (single 300s pass for long optimizer/merge POSTs)
+        is_long_post = method == "POST" and (path.startswith("/api/optimizer/") or path == "/api/scans/merge")
+        for _attempt in range(1 if is_long_post else 4):
             tun_sock, done_evt, proto_ver = _acquire_vps_tunnel_socket(timeout=5.0)
             if not tun_sock or not done_evt:
                 break
             try:
-                tun_sock.settimeout(45.0)
+                tun_sock.settimeout(300.0 if is_long_post else 45.0)
                 req_headers = {k: v for k, v in self.headers.items()}
                 envelope = json.dumps(
                     {
@@ -2043,21 +2099,34 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
         5. Guest (scoped external share link or guest role)
         """
         if share_token:
-            return ("guest@external", "guest", get_role_permissions("guest"))
-        raw_email = (
-            self.headers.get("X-User-Email")
-            or (payload.get("actor_email") if isinstance(payload, dict) else None)
-            or (payload.get("user_email") if isinstance(payload, dict) else None)
-            or ((query.get("actor_email") or query.get("user_email") or [None])[0] if isinstance(query, dict) else None)
-            or "glibivanov@gatheren.com.tw"
-        )
-        email = str(raw_email).strip().lower()
-        if email == "glibivanov@gatheren.com.tw":
-            return (email, "owner", get_role_permissions("owner"))
+            return ("guest@external", "guest", get_role_permissions("guest", True))
+
+        # Allow trusted internal daemon/sync calls authenticated with TUNNEL_SHARED_KEY
+        if self.headers.get("X-Tunnel-Key", "").strip() == TUNNEL_SHARED_KEY:
+            raw_internal_email = (
+                self.headers.get("X-User-Email")
+                or (payload.get("actor_email") if isinstance(payload, dict) else None)
+                or "glibivanov@gatheren.com.tw"
+            )
+            int_email = str(raw_internal_email).strip().lower()
+            return (int_email, "owner", get_role_permissions("owner"))
+
+        sess_tok = (
+            self.headers.get("X-Session-Token")
+            or (payload.get("session_token") if isinstance(payload, dict) else None)
+            or ((query.get("session_token") or [None])[0] if isinstance(query, dict) else None)
+            or ""
+        ).strip()
+        verified_email = verify_session_token(sess_tok)
+        if not verified_email or verified_email in ("guest", "guest@anonymous", "guest@external"):
+            return ("guest@anonymous", "guest", get_role_permissions("guest"))
+
+        if verified_email in ("glibivanov@gatheren.com.tw", "gleb.ivanov1999@gmail.com"):
+            return (verified_email, "owner", get_role_permissions("owner"))
         profiles = AUTH_SHARE.list_user_profiles()
-        matched = next((p for p in profiles if str(p.get("email", "")).lower() == email), None)
-        role = normalize_role(matched.get("role") if matched else "viewer", email=email)
-        return (email, role, get_role_permissions(role))
+        matched = next((p for p in profiles if str(p.get("email", "")).lower() == verified_email), None)
+        role = normalize_role(matched.get("role") if matched else "viewer", email=verified_email)
+        return (verified_email, role, get_role_permissions(role))
 
     def do_GET(self):
         global PC_SIMULATED_OFFLINE
@@ -2080,8 +2149,9 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
             return
 
         if path == "/api/cloud-manifest/test-sa":
-            if share_token:
-                self.send_json({"error": "Forbidden for guest link"}, status=403)
+            _, _, sa_perms = self._resolve_request_role(None, query, share_token)
+            if share_token or not sa_perms.get("can_manage_users"):
+                self.send_json({"error": "Owner or Admin session required to test Service Account."}, status=403)
                 return
             self.send_json(_test_gdrive_service_account())
             return
@@ -2289,8 +2359,6 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
                     os.path.join(pdir, "project", "logs"),
                     os.path.join(LOCAL_SCANS_ROOT, sid, sid, "logs"),
                 ]
-                if sid == "QuChi261016_Trees" and sid in active_proc_ids:
-                    log_dirs.append(os.path.join(LOCAL_SCANS_ROOT, "catch_QuChi261016", "catch_QuChi261016", "logs"))
                 for candidate_dir in log_dirs:
                     if os.path.isdir(candidate_dir):
                         for f in os.listdir(candidate_dir):
@@ -2375,9 +2443,18 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
             self.send_json({"status": "ok", "settings": load_pix4d_settings()})
             return
 
-        # 6. GC_ScanOptimizer Presets
+        # 6. GC_ScanOptimizer Presets & Backup Status
         if path == "/api/optimizer/presets":
             self.send_json({"status": "ok", "presets": OPTIMIZER.get_presets()})
+            return
+
+        if path == "/api/optimizer/backup-status":
+            scan_id = (query.get("scan_id") or [""])[0].strip()
+            self.send_json({"status": "ok", "scan_id": scan_id, **OPTIMIZER.get_backup_status(scan_id)})
+            return
+
+        if path == "/api/optimizer/crs-catalog":
+            self.send_json({"status": "ok", "crs_catalog": OPTIMIZER.get_crs_catalog()})
             return
 
         # 7. External Share Links Management
@@ -2414,7 +2491,7 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
             email = (
                 (query.get("email") or query.get("user_email") or [None])[0]
                 or self.headers.get("X-User-Email")
-                or "glibivanov@gatheren.com.tw"
+                or "guest@anonymous"
             )
             self.send_json({"status": "ok", "settings": DB.get_user_settings(str(email).strip().lower())})
             return
@@ -2472,12 +2549,30 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
             elif os.path.isfile(ts_path):
                 urls.append(f"/stream/{scan_id}/tileset.json")
                 ts_dir = os.path.dirname(ts_path)
+                prev_json = os.path.join(ts_dir, "preview_tileset.json")
+                if os.path.isfile(prev_json):
+                    urls.append(f"/stream/{scan_id}/preview_tileset.json")
                 tiles_dir = os.path.join(ts_dir, "tiles")
                 if os.path.isdir(tiles_dir):
-                    # Include root and L1 tiles for instant client-side offline cache
                     for fn in sorted(os.listdir(tiles_dir)):
-                        if fn == "root.glb" or fn.startswith("tile_l1_"):
+                        if fn == "root.glb" or fn.startswith("tile_l1_") or fn.startswith("tile_l2_"):
                             urls.append(f"/stream/{scan_id}/tiles/{fn}")
+                subtrees_dir = os.path.join(ts_dir, "subtrees")
+                if os.path.isdir(subtrees_dir):
+                    for r_st, _, st_files in os.walk(subtrees_dir, followlinks=True):
+                        rel_st = os.path.relpath(r_st, ts_dir).replace("\\", "/")
+                        for fn in sorted(st_files)[:64]:
+                            if fn.endswith(".subtree"):
+                                urls.append(f"/stream/{scan_id}/{rel_st}/{fn}")
+                for content_sub in ("preview_low/content", "content"):
+                    c_dir = os.path.join(ts_dir, *content_sub.split("/"))
+                    if os.path.isdir(c_dir):
+                        c_files = sorted(f for f in os.listdir(c_dir) if f.lower().endswith(".glb"))
+                        # For massive Cesium octrees (>200 tiles), cache coarse levels (0..4) + preview_low so offline load succeeds cleanly
+                        if content_sub == "content" and len(c_files) > 200:
+                            c_files = [f for f in c_files if f.split("_", 1)[0] in {"0", "1", "2", "3", "4"}][:200]
+                        for fn in c_files:
+                            urls.append(f"/stream/{scan_id}/{content_sub}/{fn}")
             self.send_json(
                 {
                     "status": "ok",
@@ -2552,7 +2647,10 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
 
         # 12. Download Real Raw .OBJ Mesh or Report from Windows PC
         if path == "/api/download":
-            scan_id = query.get("scan_id", ["quchi_20261005_merged"])[0]
+            scan_id = (query.get("scan_id", [""])[0] or "").strip()
+            if not scan_id:
+                self.send_json({"error": "Missing scan_id parameter"}, status=400)
+                return
             dtype = query.get("type", ["obj"])[0]
             if share_token:
                 ok, reason, link, _ = AUTH_SHARE.validate_share_access(
@@ -2575,53 +2673,126 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
                 self.send_json({"error": "Scan not found"}, status=404)
                 return
 
+            crs_upper = str(scan.get("crs") or "").upper()
+            crs_tag = "LocalOrigin" if "LOCAL" in crs_upper else ("UTM" if "UTM" in crs_upper else "TWD97_TWVD2001")
+            dl_obj_name = f"{scan_id}_{crs_tag}.obj"
+
+            ts_path_check = scan.get("tileset_path") or ""
+            ts_mtime = os.path.getmtime(ts_path_check) if ts_path_check and os.path.isfile(ts_path_check) else 0.0
             obj_path = SURVEY._resolve_scan_obj_path(scan)
             if dtype == "obj" and obj_path and os.path.isfile(obj_path):
-                self._serve_file_with_range(obj_path, download_name=f"{scan_id}_TWD97_TWVD2001.obj")
-                return
+                # Only serve raw obj_path directly if it is already in world coordinates (no non-zero offset.xyz) and not older than tileset edits
+                raw_obj_ok = ts_mtime <= os.path.getmtime(obj_path) + 2.0
+                off_file = os.path.join(os.path.dirname(obj_path), "offset.xyz")
+                if raw_obj_ok and os.path.isfile(off_file):
+                    try:
+                        with open(off_file, "r", encoding="utf-8") as _ofh:
+                            _oparts = [float(x) for x in _ofh.read().strip().split()[:3]]
+                        if len(_oparts) == 3 and any(abs(v) > 1e-3 for v in _oparts):
+                            raw_obj_ok = False
+                    except Exception:
+                        raw_obj_ok = False
+                if raw_obj_ok:
+                    self._serve_file_with_range(obj_path, download_name=dl_obj_name)
+                    return
 
-            # If scan was ingested as a 3D Tileset without a standalone .obj, convert its primary .glb tile(s) to .obj on disk
+            # Convert ALL leaf .glb tiles (with accumulated 4x4 tile transforms) into a world-georeferenced .obj on disk
             proj_dir = scan.get("project_dir") or os.path.join(LOCAL_SCANS_ROOT, scan_id)
+            if os.path.islink(proj_dir) or getattr(os.path, "isjunction", lambda p: False)(proj_dir):
+                proj_dir = os.path.join(LOCAL_SCANS_ROOT, scan_id)
             conv_dir = os.path.join(proj_dir, "exports")
             os.makedirs(conv_dir, exist_ok=True)
-            conv_obj = os.path.join(conv_dir, f"{scan_id}_TWD97_TWVD2001.obj")
-            if not os.path.isfile(conv_obj):
-                glb_files = SURVEY._collect_scan_glb_files(scan)
-                if glb_files:
-                    try:
-                        import trimesh
-                        import subprocess as _sp
-                        from pc_worker.surveying_engine import GLTFPACK_EXE
+            conv_obj = os.path.join(conv_dir, f"{scan_id}_world_export_v3.obj")
+            if not os.path.isfile(conv_obj) or (ts_mtime > 0 and os.path.getmtime(conv_obj) < ts_mtime):
+                try:
+                    import numpy as _np
+                    import trimesh
+                    import subprocess as _sp
+                    from pc_worker.surveying_engine import GLTFPACK_EXE
 
-                        meshes = []
-                        for gf in glb_files[:4]:
-                            load_target = gf
-                            tmp_gf = None
-                            try:
-                                m = trimesh.load(load_target, force="mesh")
-                            except Exception:
-                                if os.path.isfile(GLTFPACK_EXE):
-                                    tmp_gf = os.path.join(conv_dir, f"_tmp_{os.path.basename(gf)}")
-                                    _sp.run([GLTFPACK_EXE, "-i", gf, "-o", tmp_gf], capture_output=True, timeout=30)
-                                    if os.path.isfile(tmp_gf):
-                                        load_target = tmp_gf
-                                m = trimesh.load(load_target, force="mesh")
-                            finally:
-                                if tmp_gf and os.path.isfile(tmp_gf):
-                                    try:
-                                        os.remove(tmp_gf)
-                                    except OSError:
-                                        pass
-                            if hasattr(m, "vertices") and len(m.vertices) > 0:
-                                meshes.append(m)
-                        if meshes:
-                            combined = meshes[0] if len(meshes) == 1 else trimesh.util.concatenate(meshes)
-                            combined.export(conv_obj, file_type="obj")
-                    except Exception as e:
-                        print(f"[GatheringScans] OBJ conversion error for {scan_id}: {e}")
+                    glb_entries = []
+                    has_root_tf = False
+                    up_axis = ""
+                    if ts_path_check and ts_path_check.lower().endswith(".json") and os.path.isfile(ts_path_check):
+                        with open(ts_path_check, "r", encoding="utf-8") as _tfh:
+                            _ts_obj = json.load(_tfh)
+                        up_axis = str((_ts_obj.get("asset") or {}).get("gltfUpAxis") or "").upper().strip()
+                        has_root_tf = bool((_ts_obj.get("root") or {}).get("transform"))
+                        _ts_base = os.path.dirname(ts_path_check)
+                        _r_glb = os.path.join(_ts_base, "tiles", "root.glb")
+
+                        def _walk_dl_leaves(node, p_tf, out_l):
+                            c_tf = p_tf
+                            ntf = node.get("transform")
+                            if isinstance(ntf, list) and len(ntf) == 16:
+                                c_tf = p_tf @ _np.array(ntf, dtype=_np.float64).reshape((4, 4), order="F")
+                            ch_list = [c for c in (node.get("children") or []) if isinstance(c, dict)]
+                            if ch_list:
+                                for ch in ch_list:
+                                    _walk_dl_leaves(ch, c_tf, out_l)
+                            else:
+                                uri = ((node.get("content") or {}).get("uri") or (node.get("content") or {}).get("url") or "")
+                                if uri and "{level}" not in uri:
+                                    cp = os.path.normpath(os.path.join(_ts_base, uri))
+                                    if os.path.isfile(cp):
+                                        out_l.append((cp, c_tf))
+
+                        if os.path.isfile(_r_glb):
+                            _rtf_l = (_ts_obj.get("root") or {}).get("transform")
+                            _rtf_m = _np.array(_rtf_l, dtype=_np.float64).reshape((4, 4), order="F") if (isinstance(_rtf_l, list) and len(_rtf_l) == 16) else _np.eye(4, dtype=_np.float64)
+                            glb_entries = [(_r_glb, _rtf_m)]
+                        elif isinstance(_ts_obj.get("root"), dict):
+                            _walk_dl_leaves(_ts_obj["root"], _np.eye(4, dtype=_np.float64), glb_entries)
+                            if not glb_entries:
+                                _prev_p = os.path.join(_ts_base, "preview_tileset.json")
+                                if os.path.isfile(_prev_p):
+                                    with open(_prev_p, "r", encoding="utf-8") as _pfh:
+                                        _pts = json.load(_pfh)
+                                    if isinstance(_pts.get("root"), dict):
+                                        _walk_dl_leaves(_pts["root"], _np.eye(4, dtype=_np.float64), glb_entries)
+                    if not glb_entries:
+                        for gf_fb in SURVEY._collect_scan_glb_files(scan):
+                            glb_entries.append((gf_fb, _np.eye(4, dtype=_np.float64)))
+
+                    apply_y_to_z = (up_axis == "Y") or (up_axis == "" and has_root_tf)
+                    meshes = []
+                    for gf, tile_tf in glb_entries:
+                        load_target = gf
+                        tmp_gf = None
+                        m = None
+                        try:
+                            loaded = trimesh.load(load_target, process=False)
+                            m = loaded.to_geometry() if hasattr(loaded, "to_geometry") else (loaded.dump(concatenate=True) if isinstance(loaded, trimesh.Scene) else loaded)
+                            if not hasattr(m, "vertices") or len(m.vertices) == 0:
+                                raise ValueError("Empty GLB")
+                        except Exception:
+                            if os.path.isfile(GLTFPACK_EXE):
+                                tmp_gf = os.path.join(conv_dir, f"_tmp_{os.path.basename(gf)}")
+                                _sp.run([GLTFPACK_EXE, "-i", gf, "-o", tmp_gf, "-noq"], capture_output=True, timeout=45)
+                                if os.path.isfile(tmp_gf):
+                                    loaded = trimesh.load(tmp_gf, process=False)
+                                    m = loaded.to_geometry() if hasattr(loaded, "to_geometry") else (loaded.dump(concatenate=True) if isinstance(loaded, trimesh.Scene) else loaded)
+                        finally:
+                            if tmp_gf and os.path.isfile(tmp_gf):
+                                try:
+                                    os.remove(tmp_gf)
+                                except OSError:
+                                    pass
+                        if m is not None and hasattr(m, "vertices") and len(m.vertices) > 0:
+                            verts = _np.asarray(m.vertices, dtype=_np.float64)
+                            if apply_y_to_z:
+                                verts = _np.column_stack([verts[:, 0], -verts[:, 2], verts[:, 1]])
+                            verts = verts @ tile_tf[:3, :3].T + tile_tf[:3, 3]
+                            m.vertices = verts
+                            meshes.append(m)
+                    if meshes:
+                        combined = meshes[0] if len(meshes) == 1 else trimesh.util.concatenate(meshes)
+                        combined.export(conv_obj, file_type="obj")
+                except Exception as e:
+                    print(f"[GatheringScans] OBJ conversion error for {scan_id}: {e}")
 
             if os.path.isfile(conv_obj):
-                self._serve_file_with_range(conv_obj, download_name=f"{scan_id}_TWD97_TWVD2001.obj")
+                self._serve_file_with_range(conv_obj, download_name=dl_obj_name)
                 return
 
             self.send_json({"error": f"No mesh geometry found on disk for scan: {scan_id}"}, status=404)
@@ -2632,10 +2803,10 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
             if path.startswith("/cameras/"):
                 rel_cam = path[len("/cameras/") :].strip("/")
                 parts_cam = rel_cam.split("/", 1)
-                scan_id = parts_cam[0] if len(parts_cam) >= 1 else "catch_QuChi261016"
+                scan_id = parts_cam[0] if len(parts_cam) >= 1 else ""
                 fname = os.path.basename(parts_cam[1]) if len(parts_cam) >= 2 else ""
             else:
-                scan_id = query.get("scan_id", ["catch_QuChi261016"])[0]
+                scan_id = query.get("scan_id", [""])[0]
                 fname = os.path.basename(query.get("file", [""])[0])
             fpath = SURVEY.resolve_camera_photo_path(scan_id, fname) if fname else None
             if fpath and os.path.isfile(fpath):
@@ -2713,8 +2884,7 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
 
         if path == "/api/cloud-manifest/upload-3tz":
             t_key = self.headers.get("X-Tunnel-Key", "")
-            client_ip = (self.client_address[0] if self.client_address else "")
-            if t_key != TUNNEL_SHARED_KEY and client_ip not in ("127.0.0.1", "::1"):
+            if t_key != TUNNEL_SHARED_KEY:
                 self.send_json({"error": "Invalid X-Tunnel-Key"}, status=403)
                 return
             scan_id = re.sub(r"[^a-zA-Z0-9_\-]", "", (query.get("scan_id") or [""])[0].strip())
@@ -2747,8 +2917,7 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
         # 0. Google Drive .3tz Cloud Manifest Sync & Auth (handled directly on both VPS and PC)
         if path == "/api/cloud-manifest/sync":
             t_key = self.headers.get("X-Tunnel-Key", "")
-            client_ip = (self.client_address[0] if self.client_address else "")
-            if t_key != TUNNEL_SHARED_KEY and client_ip not in ("127.0.0.1", "::1"):
+            if t_key != TUNNEL_SHARED_KEY:
                 self.send_json({"error": "Invalid X-Tunnel-Key"}, status=403)
                 return
             missing_vps_pkgs = []
@@ -2785,8 +2954,9 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
             return
 
         if path == "/api/cloud-manifest/auth":
-            if share_token:
-                self.send_json({"error": "External guests cannot modify cloud auth."}, status=403)
+            _, _, auth_perms = self._resolve_request_role(payload, query, share_token)
+            if share_token or not auth_perms.get("can_manage_users"):
+                self.send_json({"error": "Owner or Admin session required to modify cloud auth."}, status=403)
                 return
             auth_update: Dict[str, Any] = {}
             if payload.get("access_token"):
@@ -2827,8 +2997,9 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
             return
 
         if path == "/api/cloud-manifest/test-sa":
-            if share_token:
-                self.send_json({"error": "External guests cannot test cloud service account."}, status=403)
+            _, _, sa_perms = self._resolve_request_role(payload, query, share_token)
+            if share_token or not sa_perms.get("can_manage_users"):
+                self.send_json({"error": "Owner or Admin session required to test cloud service account."}, status=403)
                 return
             custom_sa = None
             if isinstance(payload.get("service_account"), dict):
@@ -2869,10 +3040,12 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
                 return
 
         try:
+            actor_email, actor_role, actor_perms = self._resolve_request_role(payload, query, share_token)
+
             # 0b. Rebuild & Sync .3tz Packages on Google Drive + Push Manifest to VPS
             if path == "/api/cloud-manifest/rebuild":
-                if share_token:
-                    self.send_json({"error": "External guests cannot rebuild cloud packages."}, status=403)
+                if share_token or not actor_perms.get("can_manage_users"):
+                    self.send_json({"error": "Owner or Admin session required to rebuild cloud packages."}, status=403)
                     return
                 from pc_worker.gdrive_cloud_sync import sync_all_scans_to_gdrive_and_vps
 
@@ -2886,10 +3059,11 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
                 self.send_json(status_obj)
                 return
 
-            actor_email, actor_role, actor_perms = self._resolve_request_role(payload, query, share_token)
-
             # 1. Simulate PC Online / Offline Mode (for testing Requirement 5)
             if path == "/api/pc/simulate-offline":
+                if not actor_perms.get("can_manage_users"):
+                    self.send_json({"error": "Owner or Admin session required to toggle offline simulation."}, status=403)
+                    return
                 want_offline = bool(payload.get("offline", False))
                 d_stat = set_pc_daemon_running(not want_offline, actor_email=actor_email)
                 self.send_json({"status": "ok", "pc_online": d_stat["pc_online"], "daemon_running": d_stat["daemon_running"]})
@@ -3211,6 +3385,9 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
                 self._GZIP_FILE_CACHE.clear()
                 self._OPTIMIZED_TILESET_CACHE.clear()
                 _VPS_RAM_FALLBACK_CACHE.clear()
+                for _inv_sid in {res.get("scan_id"), payload.get("scan_id")}:
+                    if _inv_sid:
+                        SURVEY._dsm_mem_cache.pop(str(_inv_sid), None)
                 self.send_json(res)
                 return
 
@@ -3224,6 +3401,37 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
                 _VPS_RAM_FALLBACK_CACHE.clear()
                 if res.get("scan_id"):
                     SURVEY._dsm_mem_cache.pop(res["scan_id"], None)
+                self.send_json(res)
+                return
+
+            if path == "/api/optimizer/restore":
+                if not actor_perms.get("can_run_workflows"):
+                    self.send_json({"error": f"Role '{actor_role}' cannot restore scan backups on the PC (Editor, Admin, or Owner required)."}, status=403)
+                    return
+                res = OPTIMIZER.restore_scan_backup(payload)
+                self._GZIP_FILE_CACHE.clear()
+                self._OPTIMIZED_TILESET_CACHE.clear()
+                _VPS_RAM_FALLBACK_CACHE.clear()
+                if res.get("scan_id"):
+                    SURVEY._dsm_mem_cache.pop(res["scan_id"], None)
+                self.send_json(res)
+                return
+
+            if path == "/api/optimizer/generate-scan":
+                if not actor_perms.get("can_run_workflows"):
+                    self.send_json({"error": f"Role '{actor_role}' cannot generate edited scans on the PC (Editor, Admin, or Owner required)."}, status=403)
+                    return
+                payload["actor_email"] = actor_email
+                payload["actor_name"] = str(payload.get("actor_name") or self.headers.get("X-User-Name") or actor_email or "雲在天").strip()
+                res = OPTIMIZER.run_generate_scan_action(payload)
+                self._GZIP_FILE_CACHE.clear()
+                self._OPTIMIZED_TILESET_CACHE.clear()
+                _VPS_RAM_FALLBACK_CACHE.clear()
+                if isinstance(res.get("scan"), dict):
+                    res["scan"] = self._enrich_scan_urls(res["scan"])
+                all_scans = [self._enrich_scan_urls(s) for s in DB.list_scans()]
+                res["scans"] = all_scans
+                res["projects"] = self._build_projects_summary(all_scans)
                 self.send_json(res)
                 return
 
@@ -3270,6 +3478,7 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
                     return
                 scan_id = payload.get("scan_id", "")
                 updated = DB.set_force_next(scan_id, bool(payload.get("force", True)))
+                _PIX4D_WAKE_EVENT.set()
                 self.send_json({"status": "ok", "scan": updated})
                 return
 
@@ -3327,7 +3536,8 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
                     0.0,
                     f"{label_mode} ({mesh_pipe}/{mesh_qual}, {tex_sz}px, TWD97)",
                 )
-                if force:
+                run_immediately = bool(payload.get("run_immediately", False))
+                if force or run_immediately:
                     DB.set_force_next(scan_id, True)
 
                 in_path = inputs_dir if os.path.isdir(inputs_dir) else (src_zip or proj_dir)
@@ -3339,21 +3549,10 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
                     pipeline_settings=p4d_cfg,
                 )
 
-                run_immediately = bool(payload.get("run_immediately", False))
-                if run_immediately and os.name == "nt":
-                    def _bg_rerun_worker():
-                        try:
-                            run_pix4dmatic_pipeline(
-                                DB.get_scan(scan_id) or scan,
-                                DB,
-                                gchat_notifier=GCHAT,
-                                force_from_photos=force_from_photos,
-                                custom_settings=p4d_cfg,
-                            )
-                        except Exception as e:
-                            print(f"[GatheringScans] Re-run worker error for {scan_id}: {e}")
-
-                    threading.Thread(target=_bg_rerun_worker, daemon=True).start()
+                # Wake both inbox watcher and pix4d_worker_loop immediately so the single
+                # authoritative queue worker picks up this job with proper arguments & progress tracking.
+                _DAEMON_WAKE_EVENT.set()
+                _PIX4D_WAKE_EVENT.set()
 
                 self.send_json(
                     {
@@ -3370,11 +3569,17 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
                 return
 
             if path == "/api/queue/preview-gst":
-                scan_id = payload.get("scan_id", "quchi_20261005_merged")
-                scan = DB.get_scan(scan_id) or {}
+                scan_id = (payload.get("scan_id") or "").strip()
+                if not scan_id:
+                    self.send_json({"error": "Missing required parameter: scan_id"}, status=400)
+                    return
+                scan = DB.get_scan(scan_id)
+                if not scan:
+                    self.send_json({"error": f"Scan not found: {scan_id}"}, status=404)
+                    return
                 proj_dir = scan.get("project_dir") or os.path.join(LOCAL_SCANS_ROOT, scan_id)
                 inputs_dir = os.path.join(proj_dir, "inputs")
-                in_path = inputs_dir if os.path.isdir(inputs_dir) else (scan.get("source_zip_path") or os.path.join(GDRIVE_INBOX_DIR, "2026-10-05-15-37-05.zip"))
+                in_path = inputs_dir if os.path.isdir(inputs_dir) else (scan.get("source_zip_path") or proj_dir)
                 raw_custom = payload.get("settings") if isinstance(payload.get("settings"), dict) else {}
                 custom_cfg = {**load_pix4d_settings(), **raw_custom}
                 gst_script = generate_pix4dmatic_gst_script(
@@ -3448,6 +3653,9 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
 
             # 10. Google Chat Notification Dispatch & Webhook Config
             if path == "/api/gchat/config":
+                if not actor_perms.get("can_manage_users"):
+                    self.send_json({"error": "Owner or Admin session required to configure webhooks."}, status=403)
+                    return
                 webhook = payload.get("webhook_url", "")
                 up_email = payload.get("uploader_email", "")
                 saved = GCHAT.set_webhook_url(webhook, uploader_email=up_email)
@@ -3462,9 +3670,12 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
                 return
 
             if path == "/api/gchat/notify":
-                scan_id = payload.get("scan_id", "catch_QuChi261016")
+                if not actor_perms.get("can_run_workflows"):
+                    self.send_json({"error": "Authenticated Editor, Admin, or Owner session required."}, status=403)
+                    return
+                scan_id = payload.get("scan_id", "")
                 webhook = payload.get("webhook_url", "")
-                if webhook:
+                if webhook and actor_perms.get("can_manage_users"):
                     GCHAT.set_webhook_url(webhook)
                 res = GCHAT.notify_scan_ready(scan_id, custom_webhook_url=webhook)
                 self.send_json(res)
@@ -3476,7 +3687,7 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
                     payload.get("email")
                     or payload.get("user_email")
                     or actor_email
-                    or "glibivanov@gatheren.com.tw"
+                    or "guest@anonymous"
                 ).strip().lower()
                 settings = DB.update_user_settings(email, payload)
                 self.send_json({"status": "ok", "settings": settings})
@@ -3509,7 +3720,19 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
                 return
 
             if path == "/api/user-profiles":
-                saved = AUTH_SHARE.upsert_user_profile(payload)
+                if actor_role == "guest":
+                    self.send_json({"error": "Authenticated Google session required to update user profiles."}, status=403)
+                    return
+                target_em = str(payload.get("email") or "").strip().lower()
+                if not actor_perms.get("can_manage_users") and target_em != actor_email:
+                    self.send_json({"error": "Only Owner or Admin accounts can modify other user profiles."}, status=403)
+                    return
+                safe_payload = dict(payload)
+                if not actor_perms.get("can_manage_users"):
+                    safe_payload.pop("role", None)
+                    safe_payload.pop("isAdmin", None)
+                    safe_payload.pop("isOwner", None)
+                saved = AUTH_SHARE.upsert_user_profile(safe_payload, preserve_existing_role=not actor_perms.get("can_manage_users"))
                 self.send_json(
                     {
                         "status": "ok",
@@ -3534,17 +3757,34 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
                 return
 
             self.send_json({"error": f"Unknown endpoint: {path}"}, status=404)
+        except KeyError as e:
+            msg = e.args[0] if e.args else str(e)
+            self.send_json({"error": str(msg)}, status=404)
+        except ValueError as e:
+            self.send_json({"error": str(e)}, status=400)
         except Exception as e:
             self.send_json({"error": str(e)}, status=500)
 
     def do_DELETE(self):
         parsed = urllib.parse.urlparse(self.path)
         path = urllib.parse.unquote(parsed.path)
+        query = urllib.parse.parse_qs(parsed.query)
+        share_token = self._extract_share_token(query)
         if os.name != "nt" and path.startswith("/api/"):
             self._proxy_via_pc_tunnel_if_vps("DELETE", path)
             return
         if path.startswith("/api/comments/"):
+            actor_email, actor_role, actor_perms = self._resolve_request_role(None, query, share_token)
+            if not actor_perms.get("can_comment") or actor_role == "guest":
+                self.send_json({"error": "Authenticated session required to delete spatial comments."}, status=403)
+                return
             cid = path[len("/api/comments/") :].strip("/")
+            existing_c = DB.get_comment(cid)
+            if existing_c and not actor_perms.get("can_manage_users"):
+                c_author = str(existing_c.get("author_email") or "").strip().lower()
+                if c_author and c_author != actor_email:
+                    self.send_json({"error": "You can only delete your own comments (or sign in as Admin/Owner)."}, status=403)
+                    return
             deleted = DB.delete_comment(cid)
             self.send_json({"status": "ok", "deleted": deleted})
             return

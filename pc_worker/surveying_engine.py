@@ -11,6 +11,7 @@ All calculations and CAD exports operate in TWD97 (121) [EPSG:3826] + TWVD2001 [
 from __future__ import annotations
 
 import os
+import sys
 import csv
 import glob
 import math
@@ -46,6 +47,7 @@ except ImportError:
 
 from pc_worker.config import (
     LOCAL_SCANS_ROOT as SCANS_ROOT_DIR,
+    GC_SCAN_OPTIMIZER_DIR,
     REPORTS_DIR,
     CONTOURS_DIR,
     MATERIAL_CATALOG,
@@ -196,7 +198,10 @@ class SurveyingEngine:
 
     def _resolve_scan_record(self, scan_id: str) -> Dict[str, Any]:
         """Resolves scan metadata from SQLite DB or falls back to gdrive_cloud_manifest.json on Linux VPS."""
-        scan = self.db.get_scan(scan_id)
+        clean_id = (scan_id or "").strip()
+        if not clean_id:
+            raise KeyError("Missing scan_id")
+        scan = self.db.get_scan(clean_id)
         if scan:
             return scan
         base_repo = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -209,23 +214,11 @@ class SurveyingEngine:
                     with open(mp, "r", encoding="utf-8") as mf:
                         mdata = json.load(mf)
                     for s in mdata.get("scans") or []:
-                        if s.get("scan_id") == scan_id:
+                        if str(s.get("scan_id") or "").lower() == clean_id.lower():
                             return s
-                    if mdata.get("scans"):
-                        return mdata["scans"][0]
                 except Exception:
                     pass
-        all_scans = self.db.list_scans()
-        if all_scans:
-            return all_scans[0]
-        return {
-            "scan_id": scan_id,
-            "name": scan_id,
-            "project_group": "QuChi Dam",
-            "twd97_e": 304859.395,
-            "twd97_n": 2757030.65,
-            "twd97_h": 46.63,
-        }
+        raise KeyError(f"Scan not found: {clean_id}")
 
     @staticmethod
     def _resolve_scan_obj_path(scan: Dict[str, Any]) -> Optional[str]:
@@ -237,19 +230,74 @@ class SurveyingEngine:
             d = scan.get(dir_key)
             if d and os.path.isdir(d):
                 candidates.extend(glob.glob(os.path.join(d, "**", "*.obj"), recursive=True))
-        # Special sibling fallback for Cesium mesh uploads paired with OBJ mesh folders
-        sid = str(scan.get("scan_id") or "").lower()
-        if "20261015" in sid:
-            sib = os.path.join(SCANS_ROOT_DIR, "QuChi_20261015-obj_mesh", "mesh.obj")
-            candidates.append(sib)
+                bname = os.path.basename(d.rstrip("\\/"))
+                if "-cesium_mesh" in bname:
+                    sib_dir = os.path.join(os.path.dirname(d.rstrip("\\/")), bname.replace("-cesium_mesh", "-obj_mesh"))
+                    candidates.append(os.path.join(sib_dir, "mesh.obj"))
         for c in candidates:
             if c and os.path.isfile(c) and os.path.getsize(c) > 512:
                 return os.path.abspath(c)
         return None
 
     @staticmethod
+    def _collect_scan_glb_files(scan: Dict[str, Any]) -> List[str]:
+        """Collects active leaf .glb tile paths for a scan (ordered largest-first), excluding backups/previews."""
+        scan_id = str(scan.get("scan_id") or "")
+        proj_dir = scan.get("project_dir") or os.path.join(SCANS_ROOT_DIR, scan_id)
+        ts_path = scan.get("tileset_path") or os.path.join(proj_dir, "tileset", "tileset.json")
+        glb_files: List[str] = []
+        if ts_path and os.path.isfile(ts_path):
+            if ts_path.lower().endswith(".glb"):
+                return [ts_path]
+            if ts_path.lower().endswith(".json"):
+                try:
+                    ts_base_dir = os.path.dirname(ts_path)
+                    with open(ts_path, "r", encoding="utf-8") as tf:
+                        ts_doc = json.load(tf)
+                    leaf_glbs: List[str] = []
+                    all_glbs: List[str] = []
+
+                    def _walk_glbs(nd: Dict[str, Any]) -> None:
+                        cnt = nd.get("content")
+                        uri = (cnt.get("uri") or cnt.get("url") or "") if isinstance(cnt, dict) else ""
+                        uri_clean = uri.split("?")[0]
+                        fp = os.path.join(ts_base_dir, uri_clean.replace("/", os.sep)) if uri_clean else ""
+                        chs = nd.get("children") or []
+                        if fp and os.path.isfile(fp) and fp.lower().endswith(".glb"):
+                            all_glbs.append(fp)
+                            if not chs:
+                                leaf_glbs.append(fp)
+                        for c_nd in chs:
+                            if isinstance(c_nd, dict):
+                                _walk_glbs(c_nd)
+
+                    if isinstance(ts_doc.get("root"), dict):
+                        _walk_glbs(ts_doc["root"])
+                    glb_files = leaf_glbs if leaf_glbs else all_glbs
+                except Exception:
+                    pass
+        if not glb_files:
+            search_dirs = [
+                d
+                for d in (os.path.join(proj_dir, "tileset"), proj_dir, scan.get("src_tileset_dir"))
+                if d and os.path.isdir(d)
+            ]
+            for sd in search_dirs:
+                found = [
+                    g
+                    for g in glob.glob(os.path.join(sd, "**", "*.glb"), recursive=True)
+                    if "preview" not in g.lower() and "tileset_backup" not in g.lower() and "tileset_prev" not in g.lower()
+                ]
+                if found:
+                    glb_files = found
+                    break
+        glb_files = list(dict.fromkeys(glb_files))
+        glb_files.sort(key=lambda p: os.path.getsize(p) if os.path.isfile(p) else 0, reverse=True)
+        return glb_files
+
+    @staticmethod
     def _extract_glb_positions_from_bytes(raw_bytes: bytes) -> Optional[np.ndarray]:
-        """Fast pure-numpy/struct glTF 2.0 binary .glb POSITION attribute reader (works on Windows & Linux VPS)."""
+        """Fast pure-numpy/struct glTF 2.0 binary .glb POSITION reader with full 64-bit scene-graph TRS/matrix support."""
         import struct
 
         try:
@@ -265,28 +313,108 @@ class SurveyingEngine:
             if b_type != b"BIN\x00":
                 return None
             j = json.loads(raw_bytes[20 : 20 + j_len].decode("utf-8"))
+            exts_used = set(j.get("extensionsUsed") or []) | set(j.get("extensionsRequired") or [])
+            if "EXT_meshopt_compression" in exts_used:
+                return None
             acc_list = j.get("accessors") or []
             bv_list = j.get("bufferViews") or []
+            meshes_list = j.get("meshes") or []
+            nodes_list = j.get("nodes") or []
             blob = memoryview(raw_bytes)[b_off + 8 : b_off + 8 + b_len]
-            chunks = []
-            for mesh in j.get("meshes") or []:
-                for prim in mesh.get("primitives") or []:
+
+            def _read_mesh_pos(mesh_idx: int) -> Optional[np.ndarray]:
+                if not (0 <= mesh_idx < len(meshes_list)):
+                    return None
+                m_chunks = []
+                for prim in meshes_list[mesh_idx].get("primitives") or []:
+                    if prim.get("extensions") and "KHR_draco_mesh_compression" in prim["extensions"]:
+                        return None
                     attrs = prim.get("attributes") or {}
                     if "POSITION" not in attrs:
                         continue
                     pos_acc = acc_list[attrs["POSITION"]]
-                    if pos_acc.get("componentType") != 5126 or pos_acc.get("type") != "VEC3":
+                    if pos_acc.get("type") != "VEC3" or "bufferView" not in pos_acc:
                         continue
+                    ctype = pos_acc.get("componentType")
                     pos_bv = bv_list[pos_acc["bufferView"]]
-                    byte_stride = int(pos_bv.get("byteStride") or 12)
-                    byte_offset = int(pos_bv.get("byteOffset", 0)) + int(pos_acc.get("byteOffset", 0))
                     cnt = int(pos_acc["count"])
-                    if byte_stride == 12:
-                        arr = np.frombuffer(blob, dtype=np.float32, count=cnt * 3, offset=byte_offset).reshape(-1, 3)
-                    else:
+                    byte_offset = int(pos_bv.get("byteOffset", 0)) + int(pos_acc.get("byteOffset", 0))
+                    if ctype == 5126:
+                        byte_stride = int(pos_bv.get("byteStride") or 12)
+                        if byte_stride == 12:
+                            arr = np.frombuffer(blob, dtype=np.float32, count=cnt * 3, offset=byte_offset).reshape(-1, 3).astype(np.float64)
+                        else:
+                            raw_u8 = np.frombuffer(blob, dtype=np.uint8, count=cnt * byte_stride, offset=byte_offset).reshape(cnt, byte_stride)
+                            arr = np.frombuffer(raw_u8[:, :12].tobytes(), dtype=np.float32).reshape(-1, 3).astype(np.float64)
+                    elif ctype in (5122, 5123):
+                        dt = np.int16 if ctype == 5122 else np.uint16
+                        byte_stride = int(pos_bv.get("byteStride") or 6)
                         raw_u8 = np.frombuffer(blob, dtype=np.uint8, count=cnt * byte_stride, offset=byte_offset).reshape(cnt, byte_stride)
-                        arr = np.frombuffer(raw_u8[:, :12].tobytes(), dtype=np.float32).reshape(-1, 3)
-                    chunks.append(arr.astype(np.float64))
+                        arr = np.frombuffer(raw_u8[:, :6].tobytes(), dtype=dt).reshape(-1, 3).astype(np.float64)
+                        if pos_acc.get("normalized"):
+                            arr = arr / (32767.0 if ctype == 5122 else 65535.0)
+                    else:
+                        return None
+                    m_chunks.append(arr)
+                return np.vstack(m_chunks) if m_chunks else None
+
+            def _node_mat4(nd: Dict[str, Any]) -> np.ndarray:
+                if isinstance(nd.get("matrix"), list) and len(nd["matrix"]) == 16:
+                    return np.array([float(x) for x in nd["matrix"][:16]], dtype=np.float64).reshape((4, 4), order="F")
+                m = np.eye(4, dtype=np.float64)
+                s = nd.get("scale") or [1.0, 1.0, 1.0]
+                S = np.diag([float(s[0]), float(s[1]), float(s[2])])
+                q = nd.get("rotation")
+                if isinstance(q, list) and len(q) == 4:
+                    qx, qy, qz, qw = float(q[0]), float(q[1]), float(q[2]), float(q[3])
+                    nq = math.sqrt(qx * qx + qy * qy + qz * qz + qw * qw)
+                    if nq > 1e-12:
+                        qx, qy, qz, qw = qx / nq, qy / nq, qz / nq, qw / nq
+                    R = np.array(
+                        [
+                            [1.0 - 2.0 * (qy * qy + qz * qz), 2.0 * (qx * qy - qw * qz), 2.0 * (qx * qz + qw * qy)],
+                            [2.0 * (qx * qy + qw * qz), 1.0 - 2.0 * (qx * qx + qz * qz), 2.0 * (qy * qz - qw * qx)],
+                            [2.0 * (qx * qz - qw * qy), 2.0 * (qy * qz + qw * qx), 1.0 - 2.0 * (qx * qx + qy * qy)],
+                        ],
+                        dtype=np.float64,
+                    )
+                else:
+                    R = np.eye(3, dtype=np.float64)
+                m[:3, :3] = R @ S
+                t = nd.get("translation") or [0.0, 0.0, 0.0]
+                m[:3, 3] = [float(t[0]), float(t[1]), float(t[2])]
+                return m
+
+            chunks = []
+            if nodes_list:
+                scenes = j.get("scenes") or []
+                s_idx = int(j.get("scene", 0)) if scenes else 0
+                root_idxs = (
+                    list(scenes[s_idx].get("nodes") or [])
+                    if (0 <= s_idx < len(scenes) and scenes[s_idx].get("nodes"))
+                    else [0]
+                )
+
+                def _walk_node(n_idx: int, m_parent: np.ndarray) -> None:
+                    if not (0 <= int(n_idx) < len(nodes_list)):
+                        return
+                    nd = nodes_list[int(n_idx)]
+                    m_cur = m_parent @ _node_mat4(nd)
+                    if "mesh" in nd and nd["mesh"] is not None:
+                        mv = _read_mesh_pos(int(nd["mesh"]))
+                        if mv is not None and len(mv) > 0:
+                            chunks.append((mv @ m_cur[:3, :3].T) + m_cur[:3, 3])
+                    for ch_i in nd.get("children") or []:
+                        _walk_node(int(ch_i), m_cur)
+
+                for ri in root_idxs:
+                    _walk_node(int(ri), np.eye(4, dtype=np.float64))
+            else:
+                for mi in range(len(meshes_list)):
+                    mv = _read_mesh_pos(mi)
+                    if mv is not None and len(mv) > 0:
+                        chunks.append(mv)
+
             if chunks:
                 return np.vstack(chunks)
             return None
@@ -308,32 +436,54 @@ class SurveyingEngine:
             return None
         tmp_glb = None
         try:
+            origin_shift = np.zeros(3, dtype=np.float64)
             try:
                 loaded = trimesh.load(glb_path, process=False)
             except Exception:
                 if not os.path.isfile(GLTFPACK_EXE):
                     return None
-                fd, tmp_glb = tempfile.mkstemp(suffix=".glb")
-                os.close(fd)
-                subprocess.run(
-                    [GLTFPACK_EXE, "-i", glb_path, "-o", tmp_glb],
-                    capture_output=True,
-                    timeout=20,
-                    creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000) if os.name == "nt" else 0,
-                )
-                loaded = trimesh.load(tmp_glb, process=False)
+                local_in_path = glb_path
+                tmp_local = None
+                try:
+                    if GC_SCAN_OPTIMIZER_DIR not in sys.path:
+                        sys.path.append(GC_SCAN_OPTIMIZER_DIR)
+                    from optimizer.geometry_optimizer import extract_glb_64bit_origin_to_local
+                    with open(glb_path, "rb") as gf:
+                        loc_bytes, orig_t = extract_glb_64bit_origin_to_local(gf.read())
+                    if orig_t != (0.0, 0.0, 0.0):
+                        origin_shift = np.array(orig_t, dtype=np.float64)
+                        fd_l, tmp_local = tempfile.mkstemp(suffix=".glb")
+                        with os.fdopen(fd_l, "wb") as fl:
+                            fl.write(loc_bytes)
+                        local_in_path = tmp_local
+                    fd, tmp_glb = tempfile.mkstemp(suffix=".glb")
+                    os.close(fd)
+                    subprocess.run(
+                        [GLTFPACK_EXE, "-i", local_in_path, "-o", tmp_glb, "-noq"],
+                        capture_output=True,
+                        timeout=20,
+                        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000) if os.name == "nt" else 0,
+                    )
+                    loaded = trimesh.load(tmp_glb, process=False)
+                finally:
+                    if tmp_local and os.path.exists(tmp_local):
+                        try:
+                            os.remove(tmp_local)
+                        except OSError:
+                            pass
 
             if isinstance(loaded, trimesh.Scene):
+                dumped = loaded.dump()
                 verts_list = [
-                    np.asarray(g.vertices, dtype=np.float64)
-                    for g in loaded.geometry.values()
+                    np.asarray(g.vertices, dtype=np.float64) + origin_shift
+                    for g in dumped
                     if hasattr(g, "vertices") and len(g.vertices) > 0
                 ]
                 if not verts_list:
                     return None
                 return np.vstack(verts_list)
             elif hasattr(loaded, "vertices") and len(loaded.vertices) > 0:
-                return np.asarray(loaded.vertices, dtype=np.float64)
+                return np.asarray(loaded.vertices, dtype=np.float64) + origin_shift
             return None
         except Exception:
             return None
@@ -351,19 +501,26 @@ class SurveyingEngine:
         Caches to <project_dir>/_dsm_cache_v3.npz and in memory for sub-millisecond reuse.
         """
         scan_id = str(scan.get("scan_id") or "unknown")
-        ce = float(scan.get("twd97_e") or 304952.656)
-        cn = float(scan.get("twd97_n") or 2757084.875)
-        ch = float(scan.get("twd97_h") or 43.18)
+        ce = float(scan["twd97_e"]) if scan.get("twd97_e") is not None else 0.0
+        cn = float(scan["twd97_n"]) if scan.get("twd97_n") is not None else 0.0
+        ch = float(scan["twd97_h"]) if scan.get("twd97_h") is not None else 0.0
 
         proj_dir = scan.get("project_dir") or os.path.join(SCANS_ROOT_DIR, scan_id)
         obj_path = self._resolve_scan_obj_path(scan)
-        source_mtime = os.path.getmtime(obj_path) if (obj_path and os.path.isfile(obj_path)) else 0.0
+        ts_path = scan.get("tileset_path") or os.path.join(proj_dir, "tileset", "tileset.json")
+        meta_json_path = os.path.join(proj_dir, "scan_meta.json")
+        obj_mtime = os.path.getmtime(obj_path) if (obj_path and os.path.isfile(obj_path)) else 0.0
+        ts_mtime = os.path.getmtime(ts_path) if (ts_path and os.path.isfile(ts_path)) else 0.0
+        meta_mtime = os.path.getmtime(meta_json_path) if os.path.isfile(meta_json_path) else 0.0
+        source_mtime = max(obj_mtime, ts_mtime, meta_mtime)
+        # Prefer edited tileset over unedited .obj when tileset.json was modified after mesh.obj export
+        tileset_edited_after_obj = bool(ts_mtime > 0.0 and obj_mtime > 0.0 and ts_mtime > obj_mtime + 2.0)
 
         cached = self._dsm_mem_cache.get(scan_id)
         if cached and abs(cached.get("source_mtime", -1.0) - source_mtime) < 1.0:
             return cached
 
-        npz_path = os.path.join(proj_dir, "_dsm_cache_v4.npz") if os.path.isdir(proj_dir) else None
+        npz_path = os.path.join(proj_dir, "_dsm_cache_v5.npz") if os.path.isdir(proj_dir) else None
         if npz_path and os.path.isfile(npz_path):
             try:
                 if source_mtime == 0.0 or os.path.getmtime(npz_path) >= source_mtime:
@@ -390,9 +547,20 @@ class SurveyingEngine:
 
         # 1. Extract raw 3D vertices from .obj, .glb tiles, or .3tz archive
         raw_verts: Optional[np.ndarray] = None
-        is_z_up = True
+        geom_source = "none"
+        obj_offset_xyz = (0.0, 0.0, 0.0)
+        ts_doc_loaded: Optional[Dict[str, Any]] = None
 
-        if obj_path and os.path.isfile(obj_path):
+        if obj_path and os.path.isfile(obj_path) and not tileset_edited_after_obj:
+            off_cand = os.path.join(os.path.dirname(obj_path), "offset.xyz")
+            if os.path.isfile(off_cand):
+                try:
+                    with open(off_cand, "r", encoding="utf-8", errors="ignore") as f_off:
+                        toks = f_off.read().strip().split()
+                    if len(toks) >= 3:
+                        obj_offset_xyz = (float(toks[0]), float(toks[1]), float(toks[2]))
+                except Exception:
+                    pass
             verts_list = []
             with open(obj_path, "r", encoding="utf-8", errors="ignore") as f:
                 for line in f:
@@ -402,23 +570,17 @@ class SurveyingEngine:
                             verts_list.append((float(parts[1]), float(parts[2]), float(parts[3])))
             if verts_list:
                 raw_verts = np.array(verts_list, dtype=np.float64)
-                is_z_up = True
+                geom_source = "obj"
 
         if raw_verts is None or len(raw_verts) == 0:
-            # Fallback to .glb tiles in tileset directory
-            search_dirs = [d for d in (proj_dir, scan.get("src_tileset_dir")) if d and os.path.isdir(d)]
-            glb_files: List[str] = []
-            for sd in search_dirs:
-                found = [
-                    g for g in glob.glob(os.path.join(sd, "**", "*.glb"), recursive=True)
-                    if "preview" not in os.path.basename(g).lower()
-                ]
-                if found:
-                    glb_files = found
-                    break
+            if ts_path and os.path.isfile(ts_path) and ts_path.lower().endswith(".json"):
+                try:
+                    with open(ts_path, "r", encoding="utf-8") as tf:
+                        ts_doc_loaded = json.load(tf)
+                except Exception:
+                    ts_doc_loaded = None
+            glb_files = self._collect_scan_glb_files(scan)
             if glb_files:
-                # Sort by size descending and take up to 24 high-detail tiles so loading stays <1.5s
-                glb_files.sort(key=lambda p: os.path.getsize(p), reverse=True)
                 chunks = []
                 for gp in glb_files[:24]:
                     v_arr = self._load_glb_vertices(gp)
@@ -426,12 +588,7 @@ class SurveyingEngine:
                         chunks.append(v_arr)
                 if chunks:
                     raw_verts = np.vstack(chunks)
-                    spans = raw_verts.max(axis=0) - raw_verts.min(axis=0)
-                    v_max_abs = np.abs(raw_verts).max(axis=0)
-                    if v_max_abs[0] > 100000 or spans[2] < min(spans[0], spans[1]) * 0.85:
-                        is_z_up = True
-                    else:
-                        is_z_up = False
+                    geom_source = "glb"
 
         if raw_verts is None or len(raw_verts) == 0:
             # Fallback to .3tz stream package archive (supports Linux VPS zero-raw-storage mode)
@@ -447,6 +604,11 @@ class SurveyingEngine:
                 if os.path.isfile(zp):
                     try:
                         with zipfile.ZipFile(zp, "r") as zf:
+                            if ts_doc_loaded is None and "tileset.json" in zf.namelist():
+                                try:
+                                    ts_doc_loaded = json.loads(zf.read("tileset.json").decode("utf-8"))
+                                except Exception:
+                                    pass
                             glb_names = [
                                 n for n in zf.namelist()
                                 if n.lower().endswith(".glb") and "preview" not in n.lower()
@@ -461,12 +623,7 @@ class SurveyingEngine:
                                     chunks.append(v_arr)
                             if chunks:
                                 raw_verts = np.vstack(chunks)
-                                spans = raw_verts.max(axis=0) - raw_verts.min(axis=0)
-                                v_max_abs = np.abs(raw_verts).max(axis=0)
-                                if v_max_abs[0] > 100000 or spans[2] < min(spans[0], spans[1]) * 0.85:
-                                    is_z_up = True
-                                else:
-                                    is_z_up = False
+                                geom_source = "glb"
                                 break
                     except Exception:
                         pass
@@ -474,24 +631,103 @@ class SurveyingEngine:
         if raw_verts is None or len(raw_verts) < 3:
             raise RuntimeError(f"No 3D mesh geometry (.obj, .glb, or .3tz) found on disk for scan '{scan_id}'.")
 
-        # 2. Transform vertices to TWD97 (E, N) + TWVD2001 (H) anchored at scan origin (ce, cn, ch)
-        vmin = raw_verts.min(axis=0)
-        vmax = raw_verts.max(axis=0)
-        vcen = 0.5 * (vmin + vmax)
+        def _utm51n_arrays_to_twd97(ux: np.ndarray, uy: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+            from pc_worker.gdrive_watcher import utm51n_to_wgs84
 
-        if is_z_up:
-            de = raw_verts[:, 0] - vcen[0]
-            dn = raw_verts[:, 1] - vcen[1]
-            dh = raw_verts[:, 2] - vcen[2]
+            u0_x = float(ux.mean())
+            u0_y = float(uy.mean())
+            lat_c, lon_c = utm51n_to_wgs84(u0_x, u0_y)
+            e0, n0 = wgs84_to_twd97(lat_c, lon_c)
+            lat_dx, lon_dx = utm51n_to_wgs84(u0_x + 20.0, u0_y)
+            ex_p, nx_p = wgs84_to_twd97(lat_dx, lon_dx)
+            lat_dy, lon_dy = utm51n_to_wgs84(u0_x, u0_y + 20.0)
+            ey_p, ny_p = wgs84_to_twd97(lat_dy, lon_dy)
+            j00, j10 = (ex_p - e0) / 20.0, (nx_p - n0) / 20.0
+            j01, j11 = (ey_p - e0) / 20.0, (ny_p - n0) / 20.0
+            dx_u = ux - u0_x
+            dy_u = uy - u0_y
+            return e0 + j00 * dx_u + j01 * dy_u, n0 + j10 * dx_u + j11 * dy_u
+
+        # 2. Transform vertices to scan CRS (E, N, H) using exact offset.xyz / root.transform
+        crs_upper = str(scan.get("crs") or "").upper()
+        is_local_scan = ("LOCAL" in crs_upper) or (scan.get("lat") is None and abs(ce) < 50000.0 and abs(cn) < 50000.0)
+
+        if geom_source == "obj":
+            vx = raw_verts[:, 0] + obj_offset_xyz[0]
+            vy = raw_verts[:, 1] + obj_offset_xyz[1]
+            vz = raw_verts[:, 2] + obj_offset_xyz[2]
+            mx, my = float(vx.mean()), float(vy.mean())
+            if is_local_scan:
+                pts_e, pts_n, pts_h = vx, vy, vz
+            elif 150000.0 <= mx <= 345000.0 and 2400000.0 <= my <= 2850000.0:
+                pts_e, pts_n, pts_h = vx, vy, vz
+            elif 345000.0 < mx <= 415000.0 and 2500000.0 <= my <= 3000000.0 and 150000.0 <= ce <= 345000.0:
+                pts_e, pts_n = _utm51n_arrays_to_twd97(vx, vy)
+                pts_h = vz
+            elif abs(mx) > 50000.0 or abs(my) > 50000.0:
+                pts_e, pts_n, pts_h = vx, vy, vz
+            else:
+                vcen = 0.5 * (raw_verts.min(axis=0) + raw_verts.max(axis=0))
+                pts_e = ce + (raw_verts[:, 0] - vcen[0])
+                pts_n = cn + (raw_verts[:, 1] - vcen[1])
+                pts_h = ch + (raw_verts[:, 2] - vcen[2])
         else:
-            # glTF Y-up: X=East, Y=Up(H), Z=South(-North)
-            de = raw_verts[:, 0] - vcen[0]
-            dh = raw_verts[:, 1] - vcen[1]
-            dn = -(raw_verts[:, 2] - vcen[2])
+            root_tf = ((ts_doc_loaded or {}).get("root") or {}).get("transform") if isinstance(ts_doc_loaded, dict) else None
+            has_rtf = isinstance(root_tf, list) and len(root_tf) == 16
+            asset_up = str(((ts_doc_loaded or {}).get("asset") or {}).get("gltfUpAxis") or "").upper()
+            v_max_abs = np.abs(raw_verts).max(axis=0)
+            spans = raw_verts.max(axis=0) - raw_verts.min(axis=0)
+            if has_rtf and asset_up != "Z":
+                # 3D Tiles 1.0 default glTF Y-up -> Z-up root-local: (x, y, z) -> (x, -z, y)
+                rx = raw_verts[:, 0]
+                ry = -raw_verts[:, 2]
+                rz = raw_verts[:, 1]
+            elif asset_up == "Z" or v_max_abs[0] > 50000.0 or spans[2] < min(spans[0], spans[1]) * 0.85:
+                rx = raw_verts[:, 0]
+                ry = raw_verts[:, 1]
+                rz = raw_verts[:, 2]
+            else:
+                rx = raw_verts[:, 0]
+                ry = -raw_verts[:, 2]
+                rz = raw_verts[:, 1]
 
-        pts_e = ce + de
-        pts_n = cn + dn
-        pts_h = ch + dh
+            if has_rtf:
+                m_r = np.array([float(x) for x in root_tf[:16]], dtype=np.float64).reshape((4, 4), order="F")  # type: ignore[index]
+                pts_w = (np.column_stack([rx, ry, rz]) @ m_r[:3, :3].T) + m_r[:3, 3]
+                wx, wy, wz = pts_w[:, 0], pts_w[:, 1], pts_w[:, 2]
+            else:
+                wx, wy, wz = rx, ry, rz
+
+            mx, my, mz = float(wx.mean()), float(wy.mean()), float(wz.mean())
+            if abs(mx) > 1000000.0 and abs(my) > 1000000.0:
+                # ECEF world vertices -> local ENU around ECEF centroid + (ce, cn, ch)
+                from pc_worker.gdrive_watcher import _ecef_to_wgs84
+
+                lat0_r_deg, lon0_r_deg, _ = _ecef_to_wgs84(mx, my, mz)
+                lat_r = math.radians(lat0_r_deg)
+                lon_r = math.radians(lon0_r_deg)
+                dx_c = wx - mx
+                dy_c = wy - my
+                dz_c = wz - mz
+                de = -math.sin(lon_r) * dx_c + math.cos(lon_r) * dy_c
+                dn = -math.sin(lat_r) * math.cos(lon_r) * dx_c - math.sin(lat_r) * math.sin(lon_r) * dy_c + math.cos(lat_r) * dz_c
+                dh = math.cos(lat_r) * math.cos(lon_r) * dx_c + math.cos(lat_r) * math.sin(lon_r) * dy_c + math.sin(lat_r) * dz_c
+                pts_e = ce + de
+                pts_n = cn + dn
+                pts_h = ch + dh
+            elif is_local_scan:
+                pts_e, pts_n, pts_h = wx, wy, wz
+            elif 345000.0 < mx <= 415000.0 and 2500000.0 <= my <= 3000000.0 and 150000.0 <= ce <= 345000.0:
+                pts_e, pts_n = _utm51n_arrays_to_twd97(wx, wy)
+                pts_h = wz + (ch - float(np.median(wz))) if (mz < -50.0 and ch > -50.0) else wz
+            elif abs(mx) > 50000.0 or abs(my) > 50000.0:
+                pts_e, pts_n = wx, wy
+                pts_h = wz + (ch - float(np.median(wz))) if (mz < -50.0 and ch > -50.0) else wz
+            else:
+                vcen = 0.5 * (np.array([wx.min(), wy.min(), wz.min()]) + np.array([wx.max(), wy.max(), wz.max()]))
+                pts_e = ce + (wx - vcen[0])
+                pts_n = cn + (wy - vcen[1])
+                pts_h = ch + (wz - vcen[2])
 
         e_min, e_max = float(pts_e.min()), float(pts_e.max())
         n_min, n_max = float(pts_n.min()), float(pts_n.max())
@@ -619,7 +855,7 @@ class SurveyingEngine:
         - 'custom_plane': uses user-specified flat datum elevation Z0 (TWVD2001 m)
         - 'epoch_diff': compares active scan's 3D mesh DSM against a baseline scan's 3D mesh DSM in TWD97 space
         """
-        scan_id = payload.get("scan_id", "QuChi261016_Trees")
+        scan_id = (payload.get("scan_id") or "").strip()
         compare_scan_id = payload.get("compare_scan_id")
         base_mode = payload.get("base_mode", "triangulated_boundary")
         material_key = payload.get("material_type", "crushed_stone")
@@ -817,7 +1053,7 @@ class SurveyingEngine:
             "status": "ok",
             "scan_id": scan_id,
             "scan_name": scan.get("name"),
-            "project_group": scan.get("project_group", "QuChi Dam"),
+            "project_group": scan.get("project_group") or "Unassigned Site",
             "stockpile_name": stockpile_name,
             "crs": TWD97_TWVD2001_LABEL,
             "crs_short": TWD97_TWVD2001_SHORT,
@@ -1333,23 +1569,11 @@ class SurveyingEngine:
         over the scan's actual 3D mesh Digital Surface Model (DSM), clipped to the active mask boundary,
         and exports AutoCAD Civil3D .DXF, .DWG, and A3 .PDF files.
         """
-        scan_id = payload.get("scan_id", "QuChi261016_Trees")
+        scan_id = (payload.get("scan_id") or "").strip()
         minor_interval = max(float(payload.get("minor_interval_m", 0.5)), 0.1)
         major_interval = max(float(payload.get("major_interval_m", minor_interval * 5.0)), minor_interval)
 
-        scan = self.db.get_scan(scan_id)
-        if not scan:
-            all_scans = self.db.list_scans()
-            scan = all_scans[0] if all_scans else {
-                "scan_id": scan_id,
-                "name": scan_id,
-                "project_group": "QuChi Dam",
-                "twd97_e": 304859.395,
-                "twd97_n": 2757030.65,
-                "twd97_h": 46.63,
-                "capture_date": "2026-10-16",
-                "rtk_accuracy_cm": 1.3,
-            }
+        scan = self._resolve_scan_record(scan_id)
 
         dsm_data = self._load_or_build_scan_dsm(scan)
         ce = dsm_data["ce"]
@@ -1438,10 +1662,10 @@ class SurveyingEngine:
         meta = {
             "scan_id": scan_id,
             "scan_name": scan.get("name") or scan_id,
-            "project_group": scan.get("project_group") or "QuChi Dam",
+            "project_group": scan.get("project_group") or "Unassigned Site",
             "capture_date": str(scan.get("capture_date") or datetime.now().strftime("%Y-%m-%d"))[:16],
             "report_date": datetime.now().strftime("%Y-%m-%d %H:%M"),
-            "engineer_name": payload.get("engineer_name") or "Glib Ivanov",
+            "engineer_name": payload.get("engineer_name") or scan.get("uploader_name") or "Survey Engineer",
             "company_name": payload.get("company_name") or "GATHEREN / GatheringScans Engineering",
             "drawing_title": payload.get("drawing_title") or f"{scan.get('name') or scan_id} - Topographic Survey",
             "drawing_no": f"GS-C3D-{scan_id[:12].upper()}-A3",
@@ -1804,13 +2028,13 @@ class SurveyingEngine:
         add_dxf_rect_mm("G-ANNO-TTLB", 310.0, 12.0, 408.0, 95.0, "7")
         add_dxf_text_mm("G-ANNO-LOGO", 331.0, 84.0, 2.75, "GATHERING CONSTRUCTION.,LTD.", "4")
         add_dxf_text_mm("G-ANNO-LOGO", 331.0, 78.2, 2.0, "聚人營造股份有限公司 - 3D CIVIL SURVEYING", "7")
-        add_dxf_text_mm("G-ANNO-TTLB", 314.0, 66.0, 2.6, f"PROJECT: {meta.get('project_group', 'QuChi Dam')}", "7")
+        add_dxf_text_mm("G-ANNO-TTLB", 314.0, 66.0, 2.6, f"PROJECT: {meta.get('project_group') or 'Unassigned Site'}", "7")
         add_dxf_text_mm("G-ANNO-TTLB", 314.0, 59.5, 2.3, f"DRAWING: {str(meta.get('drawing_title', 'Topographic Survey'))[:38]}", "7")
-        add_dxf_text_mm("G-ANNO-TTLB", 314.0, 53.0, 2.1, f"CRS: TWD97 (121) [EPSG:3826] + TWVD2001", "7")
+        add_dxf_text_mm("G-ANNO-TTLB", 314.0, 53.0, 2.1, f"CRS: {meta.get('crs') or TWD97_TWVD2001_LABEL}", "7")
         add_dxf_text_mm("G-ANNO-TTLB", 314.0, 46.5, 2.1, f"CONTOURS: Minor {meta.get('minor_interval_m', 0.5)}m / Major {meta.get('major_interval_m', 2.5)}m", "7")
         add_dxf_text_mm("G-ANNO-TTLB", 314.0, 40.0, 2.1, f"MASK AREA: {meta.get('planar_area_m2', 0.0)} m2 ({meta.get('planar_area_ping', 0.0)} ping)", "7")
-        add_dxf_text_mm("G-ANNO-TTLB", 314.0, 33.5, 2.1, f"SURVEYOR: {meta.get('engineer_name', 'Glib Ivanov')}", "7")
-        add_dxf_text_mm("G-ANNO-TTLB", 314.0, 27.0, 2.1, f"DATE: {meta.get('capture_date', '2026-10-05')} | ISSUED: {meta.get('report_date', '')[:10]}", "7")
+        add_dxf_text_mm("G-ANNO-TTLB", 314.0, 33.5, 2.1, f"SURVEYOR: {meta.get('engineer_name') or 'Survey Engineer'}", "7")
+        add_dxf_text_mm("G-ANNO-TTLB", 314.0, 27.0, 2.1, f"DATE: {meta.get('capture_date') or ''} | ISSUED: {meta.get('report_date', '')[:10]}", "7")
         add_dxf_text_mm("G-ANNO-TTLB", 314.0, 19.5, 2.4, f"SCALE: 1:{scale_denom} (A3 FIT) | DWG: {meta.get('drawing_no', 'GS-C3D-A3')}", "4")
 
         lines.extend(["0", "ENDSEC", "0", "EOF", ""])
@@ -2234,7 +2458,7 @@ class SurveyingEngine:
 
         # Project Site & Scan Name
         draw_text_mm(312.5, 68.0, 5.2, "PROJECT / SITE GROUP:", bold=True, rgb=(0.39, 0.45, 0.55))
-        draw_text_mm(312.5, 61.5, 8.2, str(meta.get("project_group", "QuChi Dam")), bold=True, rgb=(0.06, 0.09, 0.16))
+        draw_text_mm(312.5, 61.5, 8.2, str(meta.get("project_group") or "Unassigned Site"), bold=True, rgb=(0.06, 0.09, 0.16))
 
         draw_text_mm(312.5, 54.2, 5.2, "SURVEY DRAWING TITLE / ACTIVE SCAN SESSION:", bold=True, rgb=(0.39, 0.45, 0.55))
         title_str = str(meta.get("drawing_title", meta.get("scan_name", "Topographic Survey")))
@@ -2243,10 +2467,10 @@ class SurveyingEngine:
 
         # Row: Survey Date & Engineer
         draw_text_mm(312.5, 39.2, 5.0, "SURVEY / CAPTURE DATE:", bold=True, rgb=(0.39, 0.45, 0.55))
-        draw_text_mm(312.5, 33.2, 6.8, str(meta.get("capture_date", "2026-10-05")), bold=True, rgb=(0.06, 0.09, 0.16))
+        draw_text_mm(312.5, 33.2, 6.8, str(meta.get("capture_date") or ""), bold=True, rgb=(0.06, 0.09, 0.16))
 
         draw_text_mm(361.5, 39.2, 5.0, "SURVEYOR / ENGINEER:", bold=True, rgb=(0.39, 0.45, 0.55))
-        draw_text_mm(361.5, 33.2, 6.8, str(meta.get("engineer_name", "Glib Ivanov")), bold=True, rgb=(0.06, 0.09, 0.16))
+        draw_text_mm(361.5, 33.2, 6.8, str(meta.get("engineer_name") or "Survey Engineer"), bold=True, rgb=(0.06, 0.09, 0.16))
 
         # Row: Issue Date & Scale
         draw_text_mm(312.5, 26.8, 5.0, "REPORT ISSUE DATE:", bold=True, rgb=(0.39, 0.45, 0.55))
@@ -2319,7 +2543,7 @@ class SurveyingEngine:
         Computes a real 2D Cross-Section Elevation Profile (Chainage vs. TWVD2001 Elevation H)
         by sampling the active scan's 3D mesh DSM and a comparison epoch scan's 3D mesh DSM.
         """
-        scan_id = payload.get("scan_id", "QuChi261016_Trees")
+        scan_id = (payload.get("scan_id") or "").strip()
         compare_scan_id = payload.get("compare_scan_id")
         scan = self._resolve_scan_record(scan_id)
 
@@ -2451,24 +2675,32 @@ class SurveyingEngine:
             v = scan.get(k)
             if v and os.path.isdir(v) and v not in dirs:
                 dirs.append(v)
-        sid = str(scan.get("scan_id") or "").lower()
-        pgrp = str(scan.get("project_group") or "").lower()
-        if "261016" in sid or "quchi" in sid or "quchi" in pgrp:
-            for extra in (
-                os.path.join(SCANS_ROOT_DIR, "catch_QuChi261016", "inputs"),
-                r"C:\Scans\QuChi\QuChi_20261015\Inputs",
-                r"C:\Scans\QuChi\QuChi_20261005\inputs",
+        # Inspect source_zip_path if any part is an OPF/raw-photo folder on disk
+        for raw_src in str(scan.get("source_zip_path") or "").split(";"):
+            raw_src = raw_src.strip()
+            if raw_src and os.path.isdir(raw_src) and raw_src not in dirs:
+                dirs.append(raw_src)
+        # Dynamically inspect PIX4Dmatic project/configs/opf.json for imported OPF camera/image directories
+        proj_dir = scan.get("project_dir") or ""
+        if proj_dir and os.path.isdir(proj_dir):
+            for opf_cfg in (
+                os.path.join(proj_dir, "project", "configs", "opf.json"),
+                os.path.join(proj_dir, "configs", "opf.json"),
             ):
-                if os.path.isdir(extra) and extra not in dirs:
-                    dirs.append(extra)
-        if "ntu" in sid or "dorm" in pgrp:
-            extra = r"C:\Scans\NTU Dorm\NTU Dorm 260917\ntuDorm 0917\images"
-            if os.path.isdir(extra) and extra not in dirs:
-                dirs.append(extra)
-        if "rose" in sid or "rose" in pgrp:
-            extra = r"C:\Scans\2026-09-17-13-40-52"
-            if os.path.isdir(extra) and extra not in dirs:
-                dirs.append(extra)
+                if os.path.isfile(opf_cfg):
+                    try:
+                        with open(opf_cfg, "r", encoding="utf-8", errors="ignore") as cf:
+                            cfg_obj = json.load(cf)
+                        imp_list = cfg_obj.get("imported-opf") or []
+                        if isinstance(imp_list, dict):
+                            imp_list = [imp_list]
+                        for entry in imp_list:
+                            if isinstance(entry, dict) and entry.get("path"):
+                                opf_root = os.path.dirname(str(entry["path"]))
+                                if os.path.isdir(opf_root) and opf_root not in dirs:
+                                    dirs.append(opf_root)
+                    except Exception:
+                        pass
         return dirs
 
     def _load_or_build_camera_catalog(self, scan: Dict[str, Any]) -> List[Dict[str, Any]]:
@@ -2482,7 +2714,7 @@ class SurveyingEngine:
             return self._camera_mem_cache[scan_id]
 
         proj_dir = scan.get("project_dir") or os.path.join(SCANS_ROOT_DIR, scan_id)
-        cache_json = os.path.join(proj_dir, "_cameras_cache_v2.json") if os.path.isdir(proj_dir) else None
+        cache_json = os.path.join(proj_dir, "_cameras_cache_v3.json") if os.path.isdir(proj_dir) else None
         if cache_json and os.path.isfile(cache_json):
             try:
                 with open(cache_json, "r", encoding="utf-8") as f:
@@ -2495,6 +2727,27 @@ class SurveyingEngine:
 
         search_dirs = self._get_candidate_camera_dirs(scan)
         catalog: List[Dict[str, Any]] = []
+        scan_crs_up = str(scan.get("crs") or "").upper()
+
+        def _cam_xy_to_scan_en(c0: float, c1: float) -> Optional[Tuple[float, float]]:
+            if 150000.0 <= c0 <= 345000.0 and 2400000.0 <= c1 <= 2850000.0:
+                return c0, c1
+            if 100000.0 <= c0 <= 850000.0 and 2500000.0 <= c1 <= 3000000.0:
+                if "UTM" in scan_crs_up:
+                    return c0, c1
+                from pc_worker.gdrive_watcher import utm51n_to_wgs84
+
+                lat_u, lon_u = utm51n_to_wgs84(c0, c1)
+                return wgs84_to_twd97(lat_u, lon_u)
+            if abs(c0) > 180.0 or abs(c1) > 180.0:
+                return c0, c1
+            lat_d, lon_d = (c0, c1) if (-90.0 <= c0 <= 90.0 and -180.0 <= c1 <= 180.0) else (c1, c0)
+            if "UTM" in scan_crs_up and not (20.0 <= lat_d <= 27.0 and 118.0 <= lon_d <= 123.5):
+                from pc_worker.gdrive_watcher import wgs84_to_utm
+
+                ue, un, _, _ = wgs84_to_utm(lat_d, lon_d)
+                return ue, un
+            return wgs84_to_twd97(lat_d, lon_d)
 
         # 1. Try OPF input_cameras.json + camera_list.json first (highest accuracy: RTK sigmas + IMU yaw/pitch/roll)
         for sdir in search_dirs:
@@ -2533,10 +2786,13 @@ class SurveyingEngine:
                         coords = geo.get("coordinates") or []
                         if len(coords) < 2:
                             continue
-                        lat = float(coords[0])
-                        lon = float(coords[1])
-                        h_val = float(coords[2]) if len(coords) >= 3 else float(scan.get("twd97_h") or 43.18)
-                        cam_e, cam_n = wgs84_to_twd97(lat, lon)
+                        c0 = float(coords[0])
+                        c1 = float(coords[1])
+                        h_val = float(coords[2]) if len(coords) >= 3 else float(scan.get("twd97_h") or 0.0)
+                        en_pair = _cam_xy_to_scan_en(c0, c1)
+                        if en_pair is None:
+                            continue
+                        cam_e, cam_n = en_pair
                         sigmas = geo.get("sigmas") or [0.014, 0.014, 0.022]
                         h_sigma_cm = round(math.hypot(float(sigmas[0]), float(sigmas[1])) * 100.0, 2)
                         v_sigma_cm = round(float(sigmas[2]) * 100.0, 2) if len(sigmas) >= 3 else 2.2
@@ -2589,7 +2845,7 @@ class SurveyingEngine:
                         lon = self._dms_to_deg(gps.get("GPSLongitude"), gps.get("GPSLongitudeRef", "E"))
                         if lat is None or lon is None:
                             continue
-                        alt_raw = gps.get("GPSAltitude", scan.get("twd97_h") or 43.18)
+                        alt_raw = gps.get("GPSAltitude", scan.get("twd97_h") or 0.0)
                         if hasattr(alt_raw, "numerator"):
                             h_val = float(alt_raw.numerator) / max(float(alt_raw.denominator), 1e-9)
                         elif isinstance(alt_raw, (tuple, list)) and len(alt_raw) == 2:
@@ -2627,10 +2883,12 @@ class SurveyingEngine:
 
     def resolve_camera_photo_path(self, scan_id: str, file_key: str) -> Optional[str]:
         """Resolves a requested camera photo `file_key` to its verified local `.jpg` path on disk."""
-        scan = self.db.get_scan(scan_id)
+        clean_id = (scan_id or "").strip()
+        if not clean_id:
+            return None
+        scan = self.db.get_scan(clean_id)
         if not scan:
-            all_scans = self.db.list_scans()
-            scan = all_scans[0] if all_scans else {}
+            return None
         catalog = self._load_or_build_camera_catalog(scan)
         norm_key = str(file_key or "").replace("\\", "/").strip("/")
         base_key = os.path.basename(norm_key)
@@ -2658,31 +2916,36 @@ class SurveyingEngine:
         """
         from urllib.parse import quote
 
-        scan_id = payload.get("scan_id", "QuChi261016_Trees")
-        scan = self.db.get_scan(scan_id)
-        if not scan:
-            all_scans = self.db.list_scans()
-            scan = all_scans[0] if all_scans else {}
+        scan_id = (payload.get("scan_id") or "").strip()
+        scan = self._resolve_scan_record(scan_id)
 
-        ce = float(scan.get("twd97_e") or 304859.395)
-        cn = float(scan.get("twd97_n") or 2757030.65)
-        ch = float(scan.get("twd97_h") or 46.63)
+        ce = float(scan.get("twd97_e") or 0.0)
+        cn = float(scan.get("twd97_n") or 0.0)
+        ch = float(scan.get("twd97_h") or 0.0)
 
         click_x = float(payload.get("x", 0.0))
         click_y = float(payload.get("y", 0.0))
         click_z = float(payload.get("z", 0.0))
 
-        target_e = round(ce + click_x if abs(click_x) < 10000 else click_x, 3)
-        target_n = round(cn - click_z if abs(click_z) < 10000 else click_z, 3)
-        if click_x == 0.0 and click_y == 0.0 and click_z == 0.0:
-            try:
-                dsm = self._load_or_build_scan_dsm(scan)
-                sampled_h, _, _, _ = self._sample_dsm_elevation(dsm, target_e, target_n)
-                target_h = round(sampled_h, 3)
-            except Exception:
-                target_h = round(ch, 3)
+        if payload.get("twd_e") is not None and payload.get("twd_n") is not None:
+            target_e = round(float(payload["twd_e"]), 3)
+            target_n = round(float(payload["twd_n"]), 3)
+            if payload.get("twd_h") is not None:
+                target_h = round(float(payload["twd_h"]), 3)
+            else:
+                target_h = round(ch + click_y if abs(click_y) < 1000 else click_y, 3)
         else:
-            target_h = round(ch + click_y if abs(click_y) < 1000 else click_y, 3)
+            target_e = round(ce + click_x if abs(click_x) < 10000 else click_x, 3)
+            target_n = round(cn - click_z if abs(click_z) < 10000 else click_z, 3)
+            if click_x == 0.0 and click_y == 0.0 and click_z == 0.0:
+                try:
+                    dsm = self._load_or_build_scan_dsm(scan)
+                    sampled_h, _, _, _ = self._sample_dsm_elevation(dsm, target_e, target_n)
+                    target_h = round(sampled_h, 3)
+                except Exception:
+                    target_h = round(ch, 3)
+            else:
+                target_h = round(ch + click_y if abs(click_y) < 1000 else click_y, 3)
 
         catalog = self._load_or_build_camera_catalog(scan)
         scored: List[Tuple[float, float, Dict[str, Any]]] = []
