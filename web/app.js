@@ -395,6 +395,9 @@
       "btnDeletePreviewScan",
       "btnDeleteStudioScan",
     ].forEach((id) => setDisp(id, info.canEditNames, "inline-flex"));
+    document.querySelectorAll(".gs-tile-edit-actions").forEach((el) => {
+      el.style.display = info.canEditNames ? "flex" : "none";
+    });
 
     // 2. Re-run Scan & Scan Editing Dock / Lasso Delete / Crop / Align & Merge / Optimizer / Queue buttons (Editor, Admin, Owner only; hidden for Viewer & Guest)
     setDisp("studioEditingDock", info.canRunWorkflows, "flex");
@@ -1988,22 +1991,18 @@
             </div>
             <div style="display:flex;align-items:center;justify-content:space-between;gap:4px;min-width:0;">
               <div class="gs-tile-name" title="${safeName}" style="flex:1;min-width:0;">${safeName}</div>
-              ${
-                roleInfo.canEditNames
-                  ? `<div style="display:flex;align-items:center;gap:2px;flex-shrink:0;">
-                      <button type="button" class="btn-xs" data-rename-tile="${escapeHtml(s.scan_id)}" title="Edit Scan Name" style="height:18px;padding:0 4px;">
-                        <svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" stroke-width="2">
-                          <path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
-                        </svg>
-                      </button>
-                      <button type="button" class="btn-xs" data-delete-tile="${escapeHtml(s.scan_id)}" title="Delete Scan (刪除掃描)" style="height:18px;padding:0 4px;color:#ef4444;">
-                        <svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" stroke-width="2">
-                          <polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
-                        </svg>
-                      </button>
-                    </div>`
-                  : ""
-              }
+              <div class="gs-tile-edit-actions" style="display:${roleInfo.canEditNames ? "flex" : "none"};align-items:center;gap:2px;flex-shrink:0;">
+                <button type="button" class="btn-xs" data-rename-tile="${escapeHtml(s.scan_id)}" title="Edit Scan Name" style="height:18px;padding:0 4px;">
+                  <svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
+                  </svg>
+                </button>
+                <button type="button" class="btn-xs" data-delete-tile="${escapeHtml(s.scan_id)}" title="Delete Scan (刪除掃描)" style="height:18px;padding:0 4px;color:#ef4444;">
+                  <svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                  </svg>
+                </button>
+              </div>
             </div>
           </div>
         `;
