@@ -10687,7 +10687,7 @@
           deletions: st.deletions,
           compression_preset: st.compressionPreset || "",
           crs_config: st.crsConfig || null,
-          archive_originals_to_bin: STATE.multiAlign.archiveOriginals !== false,
+          archive_originals_to_bin: Boolean(STATE.multiAlign.archiveOriginals),
         });
         STATE.multiAlign.lastMergedScan = res.scan || {
           scan_id: res.scan_id,
@@ -12562,11 +12562,11 @@
           `;
         })()}
 
-        <label style="display:flex;align-items:center;gap:7px;margin-bottom:8px;padding:6px 8px;border-radius:7px;background:rgba(16,185,129,0.08);border:1px solid rgba(16,185,129,0.28);font-size:11px;color:var(--ui-text-primary);cursor:pointer;">
+        <label style="display:flex;align-items:center;gap:7px;margin-bottom:8px;padding:6px 8px;border-radius:7px;background:var(--ui-bg-subtle);border:1px solid var(--ui-border);font-size:11px;color:var(--ui-text-secondary);cursor:pointer;">
           <input type="checkbox" id="chkAlignArchiveOriginals" ${
-            STATE.multiAlign.archiveOriginals !== false ? "checked" : ""
+            STATE.multiAlign.archiveOriginals === true ? "checked" : ""
           } style="accent-color:#10b981;width:14px;height:14px;margin:0;cursor:pointer;flex-shrink:0;" />
-          <span>Move original source scans to <b>Trash Bin</b> as backups (原掃描移至回收桶備份，隨時可還原)</span>
+          <span>Optional: move individual source scans to <b>Trash Bin</b> after merge (選填：合併後將個別原掃描移至回收桶；預設保留所有個別掃描)</span>
         </label>
 
         <button type="button" class="gs-top-btn accent" id="btnExecuteMergeScans" style="width:100%;justify-content:center;padding:8px 12px;font-weight:700;${
@@ -12877,7 +12877,7 @@
         postOptPresetRaw && postOptPresetRaw !== "none"
           ? postOptPresetRaw
           : stMulti.compressionPreset || "";
-      const archiveOriginals = STATE.multiAlign.archiveOriginals !== false;
+      const archiveOriginals = STATE.multiAlign.archiveOriginals === true;
 
       const resBox = document.getElementById("alignMergeResultBox");
       if (resBox) {

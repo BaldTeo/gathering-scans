@@ -1854,6 +1854,9 @@ def _discover_folder_scan_item(
         "stage_label": meta.get("stage_label", f"Completed ({crs_val}, 4K Web Tileset)"),
         "notes": meta.get("notes", f"Dynamically loaded from {folder_path}"),
     }
+    for extra_key in ("merged_from", "derived_from_scan_id", "applied_adjustments"):
+        if extra_key in meta:
+            result_item[extra_key] = meta[extra_key]
 
     # Persist scan_meta.json on local disk whenever georeferencing, bounding_box, or metadata changed
     coords_changed = (

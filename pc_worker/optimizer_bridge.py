@@ -1562,7 +1562,13 @@ class OptimizerBridge:
         try:
             num_scans = len(resolved_layers)
             grid_g = max(1, int(math.ceil(math.sqrt(num_scans))))
-            atlas_dim = 4096
+            if has_comp:
+                per_scan_res = tex_res_map.get(raw_preset, 1536)
+                target_tex_res = min(8192, per_scan_res * grid_g)
+                atlas_dim = min(8192, max(4096, target_tex_res))
+            else:
+                atlas_dim = min(8192, PIX4DMATIC_TEXTURE_SIZE * grid_g)
+                target_tex_res = atlas_dim
             cell_px = atlas_dim // grid_g
             atlas_img = Image.new("RGB", (atlas_dim, atlas_dim), (128, 128, 128))
 
@@ -1754,42 +1760,70 @@ class OptimizerBridge:
                         raise FileNotFoundError(f"Could not resolve 3D mesh (.obj or .glb tiles) for scan: {sid}")
 
                     apply_y_to_z = (gltf_up_axis == "Y") or (gltf_up_axis == "" and has_root_tf)
+                    from optimizer.geometry_optimizer import extract_glb_64bit_origin_to_local, parse_glb_chunks
+
                     tile_chunks: List[Tuple[np.ndarray, np.ndarray, np.ndarray, Optional[Image.Image]]] = []
                     for g_idx, (gp, tile_tf) in enumerate(glb_entries):
-                        load_p = gp
+                        tmp_loc = None
                         tmp_dec = None
                         scene_or_mesh = None
+                        origin_64 = (0.0, 0.0, 0.0)
+                        khr_tf_by_mat: List[Optional[Dict[str, Any]]] = []
                         try:
-                            scene_or_mesh = trimesh.load(load_p, process=False)
-                            has_verts = (
-                                (isinstance(scene_or_mesh, trimesh.Trimesh) and len(scene_or_mesh.vertices) > 0)
-                                or (isinstance(scene_or_mesh, trimesh.Scene) and any(len(g.vertices) > 0 for g in scene_or_mesh.geometry.values() if hasattr(g, "vertices")))
-                            )
-                            if not has_verts:
-                                raise ValueError("Empty or meshopt-compressed GLB")
-                        except Exception:
-                            if os.path.isfile(GLTFPACK_EXE):
-                                tmp_dec = os.path.join(work_proj_dir, f"_dec_{idx}_{g_idx}.glb")
-                                _sp.run(
-                                    [GLTFPACK_EXE, "-i", gp, "-o", tmp_dec, "-noq"],
-                                    capture_output=True,
-                                    timeout=45,
-                                    creationflags=getattr(_sp, "CREATE_NO_WINDOW", 0x08000000) if os.name == "nt" else 0,
+                            with open(gp, "rb") as f_gp:
+                                raw_gp_bytes = f_gp.read()
+                            # Strip 64-bit TWD97/ECEF translation BEFORE gltfpack -noq so float32 never truncates to 25cm steps!
+                            loc_gp_bytes, origin_64 = extract_glb_64bit_origin_to_local(raw_gp_bytes)
+                            tmp_loc = os.path.join(work_proj_dir, f"_loc_{idx}_{g_idx}.glb")
+                            with open(tmp_loc, "wb") as f_loc:
+                                f_loc.write(loc_gp_bytes)
+
+                            active_glb_bytes = loc_gp_bytes
+                            try:
+                                scene_or_mesh = trimesh.load(tmp_loc, process=False)
+                                has_verts = (
+                                    (isinstance(scene_or_mesh, trimesh.Trimesh) and len(scene_or_mesh.vertices) > 0)
+                                    or (
+                                        isinstance(scene_or_mesh, trimesh.Scene)
+                                        and any(len(g.vertices) > 0 for g in scene_or_mesh.geometry.values() if hasattr(g, "vertices"))
+                                    )
                                 )
-                                if os.path.isfile(tmp_dec):
-                                    scene_or_mesh = trimesh.load(tmp_dec, process=False)
+                                if not has_verts:
+                                    raise ValueError("Empty or meshopt-compressed GLB")
+                            except Exception:
+                                if os.path.isfile(GLTFPACK_EXE):
+                                    tmp_dec = os.path.join(work_proj_dir, f"_dec_{idx}_{g_idx}.glb")
+                                    _sp.run(
+                                        [GLTFPACK_EXE, "-i", tmp_loc, "-o", tmp_dec, "-noq"],
+                                        capture_output=True,
+                                        timeout=45,
+                                        creationflags=getattr(_sp, "CREATE_NO_WINDOW", 0x08000000) if os.name == "nt" else 0,
+                                    )
+                                    if os.path.isfile(tmp_dec):
+                                        with open(tmp_dec, "rb") as f_dec_b:
+                                            active_glb_bytes = f_dec_b.read()
+                                        scene_or_mesh = trimesh.load(tmp_dec, process=False)
+
+                            try:
+                                j_hdr, _ = parse_glb_chunks(active_glb_bytes)
+                                for m_def in j_hdr.get("materials") or []:
+                                    bct = (m_def.get("pbrMetallicRoughness") or {}).get("baseColorTexture") or {}
+                                    khr_tf_by_mat.append((bct.get("extensions") or {}).get("KHR_texture_transform"))
+                            except Exception:
+                                khr_tf_by_mat = []
                         finally:
-                            if tmp_dec and os.path.isfile(tmp_dec):
-                                try:
-                                    os.remove(tmp_dec)
-                                except OSError:
-                                    pass
+                            for p_rm in (tmp_loc, tmp_dec):
+                                if p_rm and os.path.isfile(p_rm):
+                                    try:
+                                        os.remove(p_rm)
+                                    except OSError:
+                                        pass
                         if scene_or_mesh is None:
                             continue
 
-                        geom_items: List[Tuple[Any, np.ndarray]] = []
+                        geom_items: List[Tuple[Any, np.ndarray, int]] = []
                         if isinstance(scene_or_mesh, trimesh.Scene):
-                            for g_name, geom in scene_or_mesh.geometry.items():
+                            for m_ord, (g_name, geom) in enumerate(scene_or_mesh.geometry.items()):
                                 if not isinstance(geom, trimesh.Trimesh) or len(geom.vertices) == 0 or len(geom.faces) == 0:
                                     continue
                                 xf = np.eye(4, dtype=np.float64)
@@ -1799,12 +1833,13 @@ class OptimizerBridge:
                                         xf, _ = scene_or_mesh.graph.get(nodes_for_g[0])
                                 except Exception:
                                     pass
-                                geom_items.append((geom, xf))
+                                geom_items.append((geom, xf, m_ord))
                         elif isinstance(scene_or_mesh, trimesh.Trimesh) and len(scene_or_mesh.vertices) > 0 and len(scene_or_mesh.faces) > 0:
-                            geom_items.append((scene_or_mesh, np.eye(4, dtype=np.float64)))
+                            geom_items.append((scene_or_mesh, np.eye(4, dtype=np.float64), 0))
 
-                        for geom, xf in geom_items:
-                            gv = np.asarray(geom.vertices, dtype=np.float64) @ xf[:3, :3].T + xf[:3, 3]
+                        origin_vec64 = np.array(origin_64, dtype=np.float64)
+                        for geom, xf, m_ord in geom_items:
+                            gv = (np.asarray(geom.vertices, dtype=np.float64) @ xf[:3, :3].T + xf[:3, 3]) + origin_vec64
                             if apply_y_to_z:
                                 gv = np.column_stack([gv[:, 0], -gv[:, 2], gv[:, 1]])
                             gv = gv @ tile_tf[:3, :3].T + tile_tf[:3, 3]
@@ -1814,6 +1849,26 @@ class OptimizerBridge:
                                 if (hasattr(geom.visual, "uv") and geom.visual.uv is not None and len(geom.visual.uv) == len(gv))
                                 else np.zeros((len(gv), 2), dtype=np.float64)
                             )
+                            # Apply glTF KHR_texture_transform (offset/scale/rotation in top-left UV frame) ignored by trimesh
+                            khr_tf = (
+                                khr_tf_by_mat[m_ord]
+                                if m_ord < len(khr_tf_by_mat)
+                                else (khr_tf_by_mat[0] if khr_tf_by_mat else None)
+                            )
+                            if isinstance(khr_tf, dict) and len(guv) > 0:
+                                off_uv = khr_tf.get("offset") or [0.0, 0.0]
+                                scl_uv = khr_tf.get("scale") or [1.0, 1.0]
+                                rot_uv = float(khr_tf.get("rotation") or 0.0)
+                                ug = guv[:, 0] * float(scl_uv[0])
+                                vg = (1.0 - guv[:, 1]) * float(scl_uv[1])
+                                if abs(rot_uv) > 1e-9:
+                                    c_r, s_r = math.cos(rot_uv), math.sin(rot_uv)
+                                    ug, vg = ug * c_r + vg * s_r, -ug * s_r + vg * c_r
+                                ug += float(off_uv[0])
+                                vg += float(off_uv[1])
+                                guv[:, 0] = ug
+                                guv[:, 1] = 1.0 - vg
+
                             g_img = None
                             if hasattr(geom.visual, "material") and geom.visual.material is not None:
                                 mat_obj = geom.visual.material
@@ -1875,9 +1930,18 @@ class OptimizerBridge:
                             sub_fs.append(np.column_stack([gf1[:, 0], gf1[:, 0], gf1[:, 1], gf1[:, 1], gf1[:, 2], gf1[:, 2]]))
                             sub_v_off += len(gv)
 
-                    v_arr = np.vstack(sub_vs)
+                    v_raw_glb = np.vstack(sub_vs)
                     vt_arr = np.vstack(sub_vts)
                     f_arr = np.vstack(sub_fs)
+                    # Weld coincident 3D vertices (0.5mm grid) across tiles & UV seams while preserving independent per-corner vt indices!
+                    v_quant_glb = np.round(v_raw_glb * 2000.0).astype(np.int64)
+                    _, unique_v_first, inverse_v_map = np.unique(
+                        v_quant_glb, axis=0, return_index=True, return_inverse=True
+                    )
+                    v_arr = v_raw_glb[unique_v_first]
+                    f_arr[:, 0] = inverse_v_map[f_arr[:, 0] - 1] + 1
+                    f_arr[:, 2] = inverse_v_map[f_arr[:, 2] - 1] + 1
+                    f_arr[:, 4] = inverse_v_map[f_arr[:, 4] - 1] + 1
                     obj_offset_xyz = None
 
                 if tex_im is not None:
@@ -2010,12 +2074,12 @@ class OptimizerBridge:
             # Build fast 3D Tileset (tileset/tiles/root.glb + tileset/tileset.json) via gltfpack
             total_faces = len(f_merged)
             root_glb_work = os.path.join(tiles_work_dir, "root.glb")
-            base_ratio = min(1.0, max(0.08, 360000.0 / float(max(total_faces, 1))))
             if has_comp:
+                base_ratio = min(1.0, max(0.08, 480000.0 / float(max(total_faces, 1))))
                 ratio_full = max(0.05, min(0.98, base_ratio * comp_mult_map[raw_preset]))
                 applied_steps.append(f"Optimized ({raw_preset}, {target_tex_res}px)")
             else:
-                ratio_full = base_ratio
+                ratio_full = min(1.0, max(0.12, 720000.0 / float(max(total_faces, 1))))
             tmp_root = root_glb_work + ".tmp.glb"
             subprocess.run(
                 [
@@ -2029,9 +2093,9 @@ class OptimizerBridge:
                     "-slb",
                     "-sv",
                     "-vp",
-                    "14",
+                    "16",
                     "-vt",
-                    "12",
+                    "14",
                     "-cc",
                 ],
                 capture_output=True,
@@ -2136,33 +2200,14 @@ class OptimizerBridge:
                 )
                 applied_steps.append(f"CRS -> {final_crs_label}{off_note}")
 
-            # Atomically publish hidden work_proj_dir -> out_proj_dir
-            if os.path.isdir(out_proj_dir):
-                shutil.rmtree(out_proj_dir, ignore_errors=True)
-            os.replace(work_proj_dir, out_proj_dir)
-            ts_out_path = os.path.join(out_proj_dir, "tileset", "tileset.json")
-            obj_out_path = os.path.join(out_proj_dir, "exports", "obj_mesh", "mesh.obj")
-
-            try:
-                ensure_scan_low_quality_preview(ts_out_path, force=True)
-                ensure_scan_full_quality_thumbnail(ts_out_path, new_scan_id, project_dir=out_proj_dir, force=True)
-            except Exception as e:
-                print(f"[OptimizerBridge] Warning generating preview/thumbnail for merged scan {new_scan_id}: {e}")
-
             # Compute 2D occupied footprint area in m^2 using 2m grid cells on surviving vertices
             gx = np.floor(v_surviving[:, 0] / 2.0).astype(np.int64)
             gy = np.floor(v_surviving[:, 1] / 2.0).astype(np.int64)
             unique_cells = len(np.unique(gx * 1000003 + gy))
             covered_area_m2 = round(max(float(unique_cells) * 4.0, float(bh[0] * bh[1] * 2.2)), 1)
 
-            total_disk_bytes = 0
-            for r_d, _, r_fs in os.walk(out_proj_dir):
-                for fn in r_fs:
-                    try:
-                        total_disk_bytes += os.path.getsize(os.path.join(r_d, fn))
-                    except OSError:
-                        pass
-
+            ts_out_path = os.path.join(out_proj_dir, "tileset", "tileset.json")
+            obj_out_path = os.path.join(out_proj_dir, "exports", "obj_mesh", "mesh.obj")
             now_ts = time.time()
             summary_str = " · ".join(applied_steps)
             scan_record = {
@@ -2181,7 +2226,7 @@ class OptimizerBridge:
                 "obj_path": obj_out_path,
                 "cameras_dir": primary_scan.get("cameras_dir") or "",
                 "image_count": max(total_images, 1),
-                "size_bytes": max(total_disk_bytes, 1024),
+                "size_bytes": 1024,
                 "covered_area_m2": covered_area_m2,
                 "rtk_accuracy_cm": float(primary_scan.get("rtk_accuracy_cm") or 1.5),
                 "crs": final_crs_label,
@@ -2205,13 +2250,37 @@ class OptimizerBridge:
                 "applied_adjustments": applied_steps,
             }
 
+            # Write scan_meta.json BEFORE publishing work_proj_dir so InboxDiscovery never clobbers it!
+            with open(os.path.join(work_proj_dir, "scan_meta.json"), "w", encoding="utf-8") as mf_pre:
+                json.dump(scan_record, mf_pre, indent=2, ensure_ascii=False)
+
+            # Atomically publish hidden work_proj_dir -> out_proj_dir
+            if os.path.isdir(out_proj_dir):
+                shutil.rmtree(out_proj_dir, ignore_errors=True)
+            os.replace(work_proj_dir, out_proj_dir)
+
+            try:
+                ensure_scan_low_quality_preview(ts_out_path, force=True)
+                ensure_scan_full_quality_thumbnail(ts_out_path, new_scan_id, project_dir=out_proj_dir, force=True)
+            except Exception as e:
+                print(f"[OptimizerBridge] Warning generating preview/thumbnail for merged scan {new_scan_id}: {e}")
+
+            total_disk_bytes = 0
+            for r_d, _, r_fs in os.walk(out_proj_dir):
+                for fn in r_fs:
+                    try:
+                        total_disk_bytes += os.path.getsize(os.path.join(r_d, fn))
+                    except OSError:
+                        pass
+
+            scan_record["size_bytes"] = max(total_disk_bytes, 1024)
             meta_file = os.path.join(out_proj_dir, "scan_meta.json")
             with open(meta_file, "w", encoding="utf-8") as mf:
                 json.dump(scan_record, mf, indent=2, ensure_ascii=False)
 
             saved_scan = self.db.upsert_scan(scan_record)
 
-            # Copy 3D geo-comments from source scans to the unified scan before moving originals to Trash Bin
+            # Copy 3D geo-comments from source scans to the unified scan
             seen_src_ids = set()
             for _, src_sc in resolved_layers:
                 src_sid = str(src_sc.get("scan_id") or "").strip()
@@ -2222,9 +2291,10 @@ class OptimizerBridge:
                     except Exception:
                         pass
 
+            # Multi-scan merge NEVER deletes/trashes individual source scans unless explicitly requested (`True`)
             archive_originals = payload.get("archive_originals_to_bin")
             if archive_originals is None:
-                archive_originals = True
+                archive_originals = False
             trashed_backups: List[Dict[str, Any]] = []
             if bool(archive_originals):
                 actor_em = str(payload.get("actor_email") or "")
@@ -2545,15 +2615,8 @@ class OptimizerBridge:
                 )
                 applied_steps.append(f"CRS -> {final_crs_label}{off_note}")
 
-            # Atomically publish hidden work_proj_dir -> out_proj_dir once tileset is 100% ready
-            if os.path.isdir(out_proj_dir):
-                shutil.rmtree(out_proj_dir, ignore_errors=True)
-            os.replace(work_proj_dir, out_proj_dir)
-            tileset_out_dir = os.path.join(out_proj_dir, "tileset")
-            ts_out_path = os.path.join(tileset_out_dir, "tileset.json")
-
-            with open(ts_out_path, "r", encoding="utf-8") as f_ts:
-                final_ts_obj = json.load(f_ts)
+            with open(ts_work_path, "r", encoding="utf-8") as f_ts_pre:
+                final_ts_obj = json.load(f_ts_pre)
             bc_arr, bh_list = _compute_tileset_world_bounds(final_ts_obj)
             if bc_arr is not None and bh_list is not None:
                 bc = [float(bc_arr[0]), float(bc_arr[1]), float(bc_arr[2])]
@@ -2566,27 +2629,8 @@ class OptimizerBridge:
                 ]
                 bh = [60.0, 60.0, 15.0]
 
-            try:
-                ensure_scan_low_quality_preview(ts_out_path, force=True)
-                ensure_scan_full_quality_thumbnail(ts_out_path, new_scan_id, project_dir=out_proj_dir, force=True)
-            except Exception as pe:
-                print(f"[OptimizerBridge] Preview/thumbnail note for generated scan {new_scan_id}: {pe}")
-
-            total_disk_bytes = 0
-            for r_d, _, r_fs in os.walk(out_proj_dir):
-                for fn in r_fs:
-                    try:
-                        total_disk_bytes += os.path.getsize(os.path.join(r_d, fn))
-                    except OSError:
-                        pass
-
-            try:
-                covered_area_m2 = round(float(_compute_scan_covered_area_m2(out_proj_dir, ts_out_path, bh)), 1)
-            except Exception:
-                covered_area_m2 = float(source_scan.get("covered_area_m2") or 1000.0)
-            if covered_area_m2 <= 0.0:
-                covered_area_m2 = float(source_scan.get("covered_area_m2") or 1000.0)
-
+            tileset_out_dir = os.path.join(out_proj_dir, "tileset")
+            ts_out_path = os.path.join(tileset_out_dir, "tileset.json")
             now_ts = time.time()
             summary_str = " · ".join(applied_steps) if applied_steps else "Saved Edited Scan"
             orig_capture_date = str(source_scan.get("capture_date") or "").strip() or datetime.now().strftime("%Y-%m-%d %H:%M")
@@ -2606,8 +2650,8 @@ class OptimizerBridge:
                 "obj_path": "",
                 "cameras_dir": source_scan.get("cameras_dir") or "",
                 "image_count": max(int(source_scan.get("image_count") or 1), 1),
-                "size_bytes": max(int(total_disk_bytes), 1024),
-                "covered_area_m2": covered_area_m2,
+                "size_bytes": 1024,
+                "covered_area_m2": float(source_scan.get("covered_area_m2") or 1000.0),
                 "rtk_accuracy_cm": float(source_scan.get("rtk_accuracy_cm") or 1.5),
                 "crs": final_crs_label,
                 "texture_resolution": target_tex_res,
@@ -2630,6 +2674,37 @@ class OptimizerBridge:
                 "applied_adjustments": applied_steps,
             }
 
+            with open(os.path.join(work_proj_dir, "scan_meta.json"), "w", encoding="utf-8") as mf_pre:
+                json.dump(scan_record, mf_pre, indent=2, ensure_ascii=False)
+
+            # Atomically publish hidden work_proj_dir -> out_proj_dir once tileset + scan_meta.json are 100% ready
+            if os.path.isdir(out_proj_dir):
+                shutil.rmtree(out_proj_dir, ignore_errors=True)
+            os.replace(work_proj_dir, out_proj_dir)
+
+            try:
+                ensure_scan_low_quality_preview(ts_out_path, force=True)
+                ensure_scan_full_quality_thumbnail(ts_out_path, new_scan_id, project_dir=out_proj_dir, force=True)
+            except Exception as pe:
+                print(f"[OptimizerBridge] Preview/thumbnail note for generated scan {new_scan_id}: {pe}")
+
+            total_disk_bytes = 0
+            for r_d, _, r_fs in os.walk(out_proj_dir):
+                for fn in r_fs:
+                    try:
+                        total_disk_bytes += os.path.getsize(os.path.join(r_d, fn))
+                    except OSError:
+                        pass
+
+            try:
+                covered_area_m2 = round(float(_compute_scan_covered_area_m2(out_proj_dir, ts_out_path, bh)), 1)
+            except Exception:
+                covered_area_m2 = float(source_scan.get("covered_area_m2") or 1000.0)
+            if covered_area_m2 <= 0.0:
+                covered_area_m2 = float(source_scan.get("covered_area_m2") or 1000.0)
+
+            scan_record["size_bytes"] = max(int(total_disk_bytes), 1024)
+            scan_record["covered_area_m2"] = covered_area_m2
             meta_file = os.path.join(out_proj_dir, "scan_meta.json")
             with open(meta_file, "w", encoding="utf-8") as mf:
                 json.dump(scan_record, mf, indent=2, ensure_ascii=False)

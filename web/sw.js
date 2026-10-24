@@ -5,7 +5,7 @@
  * Strictly zero scan cache is ever stored on the Linux VPS.
  */
 
-const CACHE_NAME = "gathering-scans-offline-v42";
+const CACHE_NAME = "gathering-scans-offline-v43";
 const SCAN_TILES_CACHE = "gathering-scans-tiles-v1";
 const APP_SHELL = [
   "/",
