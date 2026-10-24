@@ -1670,7 +1670,7 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
             for k in list(_VPS_RAM_FALLBACK_CACHE.keys()):
                 if k.startswith(path):
                     _VPS_RAM_FALLBACK_CACHE.pop(k, None)
-        if method == "POST" and ("/rename" in path or "/delete" in path or "/rerun" in path or "/admin/users" in path or path in ("/api/scans/rename", "/api/scans/delete")):
+        if method == "POST" and ("/rename" in path or "/delete" in path or "/bin" in path or "/rerun" in path or "/admin/users" in path or path in ("/api/scans/rename", "/api/scans/delete")):
             for k in list(_VPS_RAM_FALLBACK_CACHE.keys()):
                 if k.startswith("/api/scans") or k.startswith("/api/projects") or k.startswith("/api/user-profiles") or k.startswith("/api/admin/users") or k.startswith("/stream/"):
                     _VPS_RAM_FALLBACK_CACHE.pop(k, None)
@@ -1931,6 +1931,7 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
             or path.startswith("/api/auth/")
             or path.startswith("/api/user/")
             or path == "/api/scans/delete"
+            or path.startswith("/api/scans/bin")
         ):
             return False
 
@@ -2149,6 +2150,7 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
 
             project_group = query.get("group", [None])[0]
             scans = [self._enrich_scan_urls(s) for s in DB.list_scans(project_group=project_group)]
+            bin_scans = DB.list_trashed_scans()
             d_running = is_pc_daemon_running()
             self.send_json(
                 {
@@ -2159,8 +2161,22 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
                     "crs": TWD97_TWVD2001_LABEL,
                     "scans": scans,
                     "projects": self._build_projects_summary(scans),
+                    "bin_scans_count": len(bin_scans),
                     "materials": MATERIAL_CATALOG,
                     "google_client_id": GOOGLE_OAUTH_CLIENT_ID,
+                }
+            )
+            return
+
+        # 3a-0. Recycle Bin List Endpoint (/api/scans/bin)
+        if path == "/api/scans/bin":
+            bin_scans = DB.list_trashed_scans()
+            self.send_json(
+                {
+                    "status": "ok",
+                    "ok": True,
+                    "count": len(bin_scans),
+                    "bin_scans": bin_scans,
                 }
             )
             return
@@ -2965,50 +2981,137 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
                 self.send_json({"status": "ok", "scan": self._enrich_scan_urls(updated)})
                 return
 
-            # 1c-2. Delete Scan (removes from SQLite, local disk C:\GatheringScans, and Cloud Manifest)
-            if path == "/api/scans/delete" or (path.startswith("/api/scans/") and path.endswith("/delete")):
+            # 1c-2. Move Scan to Recycle Bin (/api/scans/delete or /api/scans/bin/trash)
+            if path in ("/api/scans/delete", "/api/scans/bin/trash") or (path.startswith("/api/scans/") and path.endswith("/delete")):
                 if not actor_perms.get("can_edit_names"):
-                    self.send_json({"error": f"Role '{actor_role}' cannot delete scans (Editor, Admin, or Owner required)."}, status=403)
+                    self.send_json({"error": f"Role '{actor_role}' cannot move scans to the Bin (Editor, Admin, or Owner required)."}, status=403)
                     return
-                if path == "/api/scans/delete":
+                if path in ("/api/scans/delete", "/api/scans/bin/trash"):
                     scan_id = str(payload.get("scan_id") or (query.get("scan_id") or [""])[0]).strip()
                 else:
                     scan_id = re.sub(r"[^a-zA-Z0-9_\-]", "", path[len("/api/scans/") : -len("/delete")].strip("/"))
                 if not scan_id:
                     self.send_json({"error": "scan_id is required"}, status=400)
                     return
-                deleted_scan = DB.delete_scan(scan_id)
-                # Also remove from cloud manifest on disk (both PC and VPS)
-                try:
-                    m_cur = _load_cloud_manifest()
-                    if isinstance(m_cur, dict):
-                        if isinstance(m_cur.get("scans"), list):
-                            m_cur["scans"] = [s for s in m_cur["scans"] if str(s.get("scan_id") or "").lower() != scan_id.lower()]
-                        if isinstance(m_cur.get("packages"), dict):
-                            for pk in list(m_cur["packages"].keys()):
-                                if pk.lower() == scan_id.lower():
-                                    m_cur["packages"].pop(pk, None)
-                        _save_cloud_manifest(m_cur)
-                except Exception as me:
-                    print(f"[GatheringScans] Manifest cleanup warning for {scan_id}: {me}")
+                actor_name = str(payload.get("actor_name") or self.headers.get("X-User-Name") or actor_email or "User").strip()
+                trashed_scan = DB.trash_scan(scan_id, actor_email=actor_email, actor_name=actor_name)
+                if not trashed_scan:
+                    self.send_json({"error": f"Scan not found: {scan_id}"}, status=404)
+                    return
                 _VPS_RAM_FALLBACK_CACHE.clear()
                 if os.name == "nt":
-                    def _bg_sync_after_delete():
+                    def _bg_sync_after_trash():
                         try:
                             from pc_worker.gdrive_cloud_sync import sync_all_scans_to_gdrive_and_vps
                             sync_all_scans_to_gdrive_and_vps(DB, AUTH_SHARE, force=False)
                         except Exception:
                             pass
-                    threading.Thread(target=_bg_sync_after_delete, daemon=True).start()
+                    threading.Thread(target=_bg_sync_after_trash, daemon=True).start()
                 all_scans = [self._enrich_scan_urls(s) for s in DB.list_scans()]
+                bin_scans = DB.list_trashed_scans()
                 self.send_json(
                     {
                         "status": "ok",
                         "ok": True,
                         "deleted_scan_id": scan_id,
-                        "deleted": deleted_scan,
+                        "trashed": trashed_scan,
                         "scans": all_scans,
                         "projects": self._build_projects_summary(all_scans),
+                        "bin_scans": bin_scans,
+                        "bin_scans_count": len(bin_scans),
+                    }
+                )
+                return
+
+            # 1c-3. Admin-Only Recycle Bin Restore (/api/scans/bin/restore)
+            if path == "/api/scans/bin/restore":
+                if not actor_perms.get("can_manage_users"):
+                    self.send_json({"error": f"Role '{actor_role}' cannot restore from the Recycle Bin (Admin or Owner required)."}, status=403)
+                    return
+                raw_ids = payload.get("scan_ids")
+                if not isinstance(raw_ids, list):
+                    single_id = str(payload.get("scan_id") or "").strip()
+                    raw_ids = [single_id] if single_id else []
+                scan_ids = [str(x).strip() for x in raw_ids if str(x).strip()]
+                if not scan_ids:
+                    self.send_json({"error": "scan_ids is required"}, status=400)
+                    return
+                restored = DB.restore_trashed_scans(scan_ids)
+                _VPS_RAM_FALLBACK_CACHE.clear()
+                if os.name == "nt":
+                    def _bg_sync_after_restore():
+                        try:
+                            from pc_worker.gdrive_cloud_sync import sync_all_scans_to_gdrive_and_vps
+                            sync_all_scans_to_gdrive_and_vps(DB, AUTH_SHARE, force=False)
+                        except Exception:
+                            pass
+                    threading.Thread(target=_bg_sync_after_restore, daemon=True).start()
+                all_scans = [self._enrich_scan_urls(s) for s in DB.list_scans()]
+                bin_scans = DB.list_trashed_scans()
+                self.send_json(
+                    {
+                        "status": "ok",
+                        "ok": True,
+                        "restored_count": len(restored),
+                        "restored": restored,
+                        "scans": all_scans,
+                        "projects": self._build_projects_summary(all_scans),
+                        "bin_scans": bin_scans,
+                        "bin_scans_count": len(bin_scans),
+                    }
+                )
+                return
+
+            # 1c-4. Admin-Only Recycle Bin Permanent Delete / Clear Bin (/api/scans/bin/purge, /api/scans/bin/empty, /api/scans/bin/clear)
+            if path in ("/api/scans/bin/purge", "/api/scans/bin/empty", "/api/scans/bin/clear"):
+                if not actor_perms.get("can_manage_users"):
+                    self.send_json({"error": f"Role '{actor_role}' cannot permanently delete or clear the Recycle Bin (Admin or Owner required)."}, status=403)
+                    return
+                clear_all = bool(payload.get("clear_all") or path in ("/api/scans/bin/empty", "/api/scans/bin/clear"))
+                raw_ids = payload.get("scan_ids")
+                if not isinstance(raw_ids, list):
+                    single_id = str(payload.get("scan_id") or "").strip()
+                    raw_ids = [single_id] if single_id else []
+                scan_ids = [str(x).strip() for x in raw_ids if str(x).strip()]
+                if not clear_all and not scan_ids:
+                    self.send_json({"error": "scan_ids or clear_all=true is required"}, status=400)
+                    return
+                purged_ids = DB.purge_trashed_scans(scan_ids=scan_ids, clear_all=clear_all)
+                # Also remove purged scans from cloud manifest
+                if purged_ids:
+                    purged_lower = {p.lower() for p in purged_ids}
+                    try:
+                        m_cur = _load_cloud_manifest()
+                        if isinstance(m_cur, dict):
+                            if isinstance(m_cur.get("scans"), list):
+                                m_cur["scans"] = [s for s in m_cur["scans"] if str(s.get("scan_id") or "").lower() not in purged_lower]
+                            if isinstance(m_cur.get("packages"), dict):
+                                for pk in list(m_cur["packages"].keys()):
+                                    if pk.lower() in purged_lower:
+                                        m_cur["packages"].pop(pk, None)
+                            _save_cloud_manifest(m_cur)
+                    except Exception as me:
+                        print(f"[GatheringScans] Manifest cleanup warning during bin purge: {me}")
+                _VPS_RAM_FALLBACK_CACHE.clear()
+                if os.name == "nt":
+                    def _bg_sync_after_purge():
+                        try:
+                            from pc_worker.gdrive_cloud_sync import sync_all_scans_to_gdrive_and_vps
+                            sync_all_scans_to_gdrive_and_vps(DB, AUTH_SHARE, force=False)
+                        except Exception:
+                            pass
+                    threading.Thread(target=_bg_sync_after_purge, daemon=True).start()
+                all_scans = [self._enrich_scan_urls(s) for s in DB.list_scans()]
+                bin_scans = DB.list_trashed_scans()
+                self.send_json(
+                    {
+                        "status": "ok",
+                        "ok": True,
+                        "purged_scan_ids": purged_ids,
+                        "scans": all_scans,
+                        "projects": self._build_projects_summary(all_scans),
+                        "bin_scans": bin_scans,
+                        "bin_scans_count": len(bin_scans),
                     }
                 )
                 return

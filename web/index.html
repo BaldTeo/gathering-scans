@@ -67,6 +67,13 @@
         </svg>
       </button>
 
+      <button type="button" class="gs-top-btn" id="btnOpenRecycleBin" title="Recycle Bin — Restore or Permanently Delete Scans (Admin Only)" style="position:relative;display:none;">
+        <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8">
+          <polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+        </svg>
+        <span id="topRecycleBinBadge" style="display:none;position:absolute;top:-4px;right:-4px;min-width:15px;height:15px;padding:0 4px;border-radius:999px;background:#ef4444;color:#ffffff;font-size:9.5px;font-weight:700;line-height:15px;text-align:center;">0</span>
+      </button>
+
       <button type="button" class="gs-top-btn" id="btnOpenOfflineCache" title="Settings, Theme Appearance &amp; Client-Side Offline Cache">
         <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8">
           <circle cx="12" cy="12" r="3"/>
@@ -245,6 +252,13 @@
                   <circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/>
                   <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/>
                 </svg>
+              </button>
+              <button type="button" class="btn-xs" id="btnTimelineRecycleBin" title="Open Recycle Bin — Restore or Permanently Clear Deleted Scans (Admin Only)" style="display:none;gap:4px;align-items:center;">
+                <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8">
+                  <polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                </svg>
+                <span>Bin</span>
+                <span id="timelineRecycleBinBadge" style="display:none;padding:0 5px;border-radius:999px;background:#ef4444;color:#ffffff;font-size:10px;font-weight:700;line-height:15px;">0</span>
               </button>
             </div>
           </div>
@@ -1404,14 +1418,14 @@
   </div>
 
   <!-- ========================================================================
-       MODAL 4B: DELETE SCAN CONFIRMATION MODAL
+       MODAL 4B: MOVE SCAN TO BIN CONFIRMATION MODAL
        ======================================================================== -->
   <div class="gs-modal-backdrop" id="deleteScanModal" role="dialog" aria-modal="true" aria-labelledby="deleteScanModalTitle">
-    <div class="gs-modal-window" style="width:450px;max-width:95vw;">
+    <div class="gs-modal-window" style="width:470px;max-width:95vw;">
       <div class="gs-modal-header">
         <div>
-          <div class="gs-modal-title" id="deleteScanModalTitle" style="color:#ef4444;">Delete Scan (刪除掃描)</div>
-          <div class="gs-modal-subtitle" id="deleteScanModalSubtitle">Remove scan from Map catalog &amp; workstation storage</div>
+          <div class="gs-modal-title" id="deleteScanModalTitle" style="color:#ef4444;">Move Scan to Bin (移至回收桶)</div>
+          <div class="gs-modal-subtitle" id="deleteScanModalSubtitle">Moves scan to the Recycle Bin · Only Admin can restore or permanently clear it</div>
         </div>
         <button type="button" class="btn-xs" data-close-modal="deleteScanModal" title="Close" aria-label="Close Delete Scan Modal">
           <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8">
@@ -1421,12 +1435,71 @@
       </div>
       <div class="gs-modal-body" style="padding:18px 20px;display:flex;flex-direction:column;gap:12px;">
         <div style="background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.35);border-radius:8px;padding:11px 13px;font-size:12px;color:var(--ui-text-primary);line-height:1.5;">
-          <div>Are you sure you want to delete <b id="deleteScanTargetName">this scan</b>?</div>
+          <div>Move <b id="deleteScanTargetName">this scan</b> to the Recycle Bin?</div>
           <div style="font-size:11px;color:var(--ui-text-secondary);font-family:var(--mono);margin-top:4px;word-break:break-all;" id="deleteScanTargetMeta"></div>
+          <div style="font-size:11px;color:var(--ui-text-muted);margin-top:6px;">Files remain safely stored in the Bin until an Admin restores them or permanently empties the Bin.</div>
         </div>
-        <div style="display:flex;justify-content:flex-end;align-items:center;gap:8px;margin-top:4px;">
-          <button type="button" class="btn-xs" data-close-modal="deleteScanModal">Cancel</button>
-          <button type="button" class="btn-xs primary" id="btnConfirmDeleteScan" style="background:#ef4444;border-color:#dc2626;color:#ffffff;">Delete Scan (確認刪除)</button>
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:4px;">
+          <button type="button" class="btn-xs" id="btnOpenBinFromDeleteModal" style="display:none;">Open Bin (開啟回收桶)</button>
+          <div style="display:flex;gap:8px;align-items:center;margin-left:auto;">
+            <button type="button" class="btn-xs" data-close-modal="deleteScanModal">Cancel</button>
+            <button type="button" class="btn-xs primary" id="btnConfirmDeleteScan" style="background:#ef4444;border-color:#dc2626;color:#ffffff;">Move to Bin (移至回收桶)</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========================================================================
+       MODAL 4C: RECYCLE BIN MANAGER (ADMIN / OWNER ONLY)
+       ======================================================================== -->
+  <div class="gs-modal-backdrop" id="recycleBinModal" role="dialog" aria-modal="true" aria-labelledby="recycleBinModalTitle">
+    <div class="gs-modal-window" style="width:680px;max-width:96vw;">
+      <div class="gs-modal-header">
+        <div>
+          <div class="gs-modal-title" id="recycleBinModalTitle" style="display:flex;align-items:center;gap:8px;">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="#ef4444" stroke-width="2">
+              <polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+            </svg>
+            <span>Recycle Bin (掃描回收桶)</span>
+            <span class="gs-crs-pill" id="recycleBinModalCountPill">0 Scans</span>
+          </div>
+          <div class="gs-modal-subtitle">Admin-only Bin · Select scans to restore back to Map/Studio or permanently delete from disk</div>
+        </div>
+        <button type="button" class="btn-xs" data-close-modal="recycleBinModal" title="Close" aria-label="Close Recycle Bin Modal">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8">
+            <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+          </svg>
+        </button>
+      </div>
+      <div class="gs-modal-body" style="padding:16px 20px;display:flex;flex-direction:column;gap:12px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;padding:8px 12px;background:var(--ui-bg-subtle);border:1px solid var(--ui-border);border-radius:8px;">
+          <label style="display:flex;align-items:center;gap:6px;font-size:12px;font-weight:600;color:var(--ui-text-primary);cursor:pointer;">
+            <input type="checkbox" id="chkSelectAllBinScans" style="accent-color:#0284c7;" />
+            <span>Select All (<span id="recycleBinSelectedCount">0</span> selected)</span>
+          </label>
+          <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+            <button type="button" class="btn-xs primary" id="btnRestoreSelectedBinScans" disabled title="Restore selected scans back to Map and Studio">
+              ↩ Restore Selected (還原已選)
+            </button>
+            <button type="button" class="btn-xs" id="btnPurgeSelectedBinScans" disabled style="color:#ef4444;border-color:rgba(239,68,68,0.4);" title="Permanently delete selected scans from disk">
+              🗑 Delete Selected (永久刪除已選)
+            </button>
+            <button type="button" class="btn-xs" id="btnClearAllBinScans" style="background:#ef4444;border-color:#dc2626;color:#ffffff;" title="Empty the entire Recycle Bin and free disk space">
+              Empty Bin (清空回收桶)
+            </button>
+          </div>
+        </div>
+
+        <div id="recycleBinListContainer" style="display:flex;flex-direction:column;gap:8px;max-height:380px;overflow-y:auto;padding-right:2px;">
+          <div style="padding:28px 16px;text-align:center;color:var(--ui-text-muted);font-size:12px;">
+            Recycle Bin is empty.
+          </div>
+        </div>
+
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:2px;">
+          <span style="font-size:11px;color:var(--ui-text-muted);" id="recycleBinStatusFooter">Only Admin &amp; Owner accounts can restore or permanently clear the Bin.</span>
+          <button type="button" class="btn-xs" data-close-modal="recycleBinModal">Close</button>
         </div>
       </div>
     </div>
@@ -1608,6 +1681,6 @@
   <script src="/lib/3d-tiles-renderer.bundle.js"></script>
 
   <!-- Main GatheringScans Application Logic -->
-  <script src="/app.js?v=20261024_v30"></script>
+  <script src="/app.js?v=20261024_v31"></script>
 </body>
 </html>

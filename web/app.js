@@ -417,6 +417,11 @@
     setDisp("btnPopoverShareGroup", info.level >= 3, "inline-flex");
     setDisp("btnTimelineShare", info.level >= 3, "inline-flex");
 
+    // 3b. Recycle Bin management buttons (Admin & Owner only: info.canManageUsers)
+    setDisp("btnOpenRecycleBin", info.canManageUsers, "inline-flex");
+    setDisp("btnTimelineRecycleBin", info.canManageUsers, "inline-flex");
+    setDisp("btnOpenBinFromDeleteModal", info.canManageUsers, "inline-flex");
+
     // 4. Single-scan lock applies ONLY to external ?share=<token> links with scope_type="scan".
     // Interactive Guest Mode can freely browse Map, Studio, and Compare across all projects/scans.
     const lockSingleScan = Boolean(info.isSingleScanLock);
@@ -2146,16 +2151,40 @@
   });
 
   let _deletingScanId = "";
+  let _cachedBinScans = [];
+
+  function updateRecycleBinBadges(count) {
+    const n = Math.max(0, Number(count) || 0);
+    const topBadge = document.getElementById("topRecycleBinBadge");
+    if (topBadge) {
+      topBadge.textContent = String(n);
+      topBadge.style.display = n > 0 ? "inline-block" : "none";
+    }
+    const tlBadge = document.getElementById("timelineRecycleBinBadge");
+    if (tlBadge) {
+      tlBadge.textContent = String(n);
+      tlBadge.style.display = n > 0 ? "inline-block" : "none";
+    }
+    const modalPill = document.getElementById("recycleBinModalCountPill");
+    if (modalPill) {
+      modalPill.textContent = `${n} Scan${n === 1 ? "" : "s"}`;
+    }
+    const btnClear = document.getElementById("btnClearAllBinScans");
+    if (btnClear) {
+      btnClear.disabled = n === 0;
+      btnClear.style.opacity = n === 0 ? "0.5" : "1";
+    }
+  }
 
   function openDeleteScanModal(scanId) {
     if (!getCurrentUserRoleInfo().canEditNames) {
-      showToast("Only Editor, Admin, or Owner accounts can delete scans.");
+      showToast("Only Editor, Admin, or Owner accounts can move scans to the Bin.");
       return;
     }
     const targetId = scanId || STATE.selectedTimelineScanId || STATE.activeScanId;
     const scan = STATE.scans.find((s) => s.scan_id === targetId) || STATE.activeScan;
     if (!scan) {
-      showToast("No scan selected to delete.");
+      showToast("No scan selected to move to the Bin.");
       return;
     }
     _deletingScanId = scan.scan_id;
@@ -2169,6 +2198,49 @@
     openModal("deleteScanModal");
   }
 
+  function applyUpdatedCatalogState(res, preferredGroup = "", preferredScanId = "") {
+    if (Array.isArray(res.scans)) {
+      STATE.scans = res.scans;
+    }
+    if (Array.isArray(res.projects)) {
+      STATE.projects = res.projects;
+    }
+    if (typeof res.bin_scans_count === "number") {
+      updateRecycleBinBadges(res.bin_scans_count);
+    } else if (Array.isArray(res.bin_scans)) {
+      updateRecycleBinBadges(res.bin_scans.length);
+    }
+    try {
+      localStorage.setItem(
+        "gs_last_catalog_v1",
+        JSON.stringify({ scans: STATE.scans, projects: STATE.projects })
+      );
+    } catch (_) {}
+
+    const targetGroup = preferredGroup || STATE.activeProjectGroup;
+    const remainingInGroup = STATE.scans.filter((s) => s.project_group === targetGroup);
+    const chosenById = preferredScanId ? STATE.scans.find((s) => s.scan_id === preferredScanId) : null;
+    const nextScan = chosenById || remainingInGroup[0] || STATE.scans[0] || null;
+    const nextGroup = nextScan ? nextScan.project_group : "";
+    const nextId = nextScan ? nextScan.scan_id : "";
+
+    STATE.activeProjectGroup = nextGroup;
+    STATE.activeScanId = nextId;
+    STATE.activeScan = nextScan;
+    STATE.selectedTimelineScanId = nextId;
+
+    populateProjectScanDropdowns(nextGroup, nextId);
+    renderMapClusters();
+    if (nextGroup) {
+      openSiteTimeline(nextGroup, nextId);
+    }
+    if (STATE.activeView === "studio" && nextId) {
+      switchView("studio", nextId);
+    } else if (STATE.activeView === "studio" && !nextId) {
+      switchView("map");
+    }
+  }
+
   async function confirmDeleteScan() {
     const scan = STATE.scans.find((s) => s.scan_id === _deletingScanId);
     if (!scan) {
@@ -2179,56 +2251,179 @@
     const origText = btn ? btn.textContent : "";
     if (btn) {
       btn.disabled = true;
-      btn.textContent = "Deleting...";
+      btn.textContent = "Moving to Bin...";
     }
     try {
       const deletedName = scan.name || scan.scan_id;
       const deletedGroup = scan.project_group;
-      const res = await apiPost("/api/scans/delete", { scan_id: scan.scan_id });
-      if (Array.isArray(res.scans)) {
-        STATE.scans = res.scans;
-      } else {
-        STATE.scans = STATE.scans.filter((s) => s.scan_id !== scan.scan_id);
+      const res = await apiPost("/api/scans/delete", {
+        scan_id: scan.scan_id,
+        actor_name: STATE.currentUser?.name || STATE.currentUser?.email || "User",
+      });
+      if (!Array.isArray(res.scans)) {
+        res.scans = STATE.scans.filter((s) => s.scan_id !== scan.scan_id);
       }
-      if (Array.isArray(res.projects)) {
-        STATE.projects = res.projects;
-      }
-      try {
-        localStorage.setItem(
-          "gs_last_catalog_v1",
-          JSON.stringify({ scans: STATE.scans, projects: STATE.projects })
-        );
-      } catch (_) {}
-
-      const remainingInGroup = STATE.scans.filter((s) => s.project_group === deletedGroup);
-      const nextScan = remainingInGroup[0] || STATE.scans[0] || null;
-      const nextGroup = nextScan ? nextScan.project_group : "";
-      const nextId = nextScan ? nextScan.scan_id : "";
-
-      STATE.activeProjectGroup = nextGroup;
-      STATE.activeScanId = nextId;
-      STATE.activeScan = nextScan;
-      STATE.selectedTimelineScanId = nextId;
-
-      populateProjectScanDropdowns(nextGroup, nextId);
-      renderMapClusters();
-      if (nextGroup) {
-        openSiteTimeline(nextGroup, nextId);
-      }
-      if (STATE.activeView === "studio" && nextId) {
-        switchView("studio", nextId);
-      } else if (STATE.activeView === "studio" && !nextId) {
-        switchView("map");
-      }
+      applyUpdatedCatalogState(res, deletedGroup, "");
       closeModal("deleteScanModal");
-      showToast(`Deleted scan: ${deletedName}`);
+      showToast(`Moved scan to Recycle Bin: ${deletedName}`);
     } catch (err) {
-      showToast(`Failed to delete scan: ${err.message}`);
+      showToast(`Failed to move scan to Bin: ${err.message}`);
     } finally {
       if (btn) {
         btn.disabled = false;
-        btn.textContent = origText || "Delete Scan (確定刪除)";
+        btn.textContent = origText || "Move to Bin (移至回收桶)";
       }
+    }
+  }
+
+  function updateBinSelectionActionState() {
+    const boxes = Array.from(document.querySelectorAll("#recycleBinListContainer .chk-bin-scan-item"));
+    const checked = boxes.filter((b) => b.checked);
+    const countEl = document.getElementById("recycleBinSelectedCount");
+    if (countEl) countEl.textContent = String(checked.length);
+    const allChk = document.getElementById("chkSelectAllBinScans");
+    if (allChk) {
+      allChk.checked = boxes.length > 0 && checked.length === boxes.length;
+      allChk.indeterminate = checked.length > 0 && checked.length < boxes.length;
+      allChk.disabled = boxes.length === 0;
+    }
+    const btnRestore = document.getElementById("btnRestoreSelectedBinScans");
+    const btnPurge = document.getElementById("btnPurgeSelectedBinScans");
+    if (btnRestore) btnRestore.disabled = checked.length === 0;
+    if (btnPurge) btnPurge.disabled = checked.length === 0;
+  }
+
+  function renderRecycleBinItems(items) {
+    _cachedBinScans = Array.isArray(items) ? items : [];
+    updateRecycleBinBadges(_cachedBinScans.length);
+    const listEl = document.getElementById("recycleBinListContainer");
+    if (!listEl) return;
+    if (_cachedBinScans.length === 0) {
+      listEl.innerHTML = `
+        <div style="padding:32px 16px;text-align:center;color:var(--ui-text-muted);font-size:12.5px;border:1px dashed var(--ui-border);border-radius:8px;">
+          Recycle Bin is empty (回收桶目前沒有掃描檔案).
+        </div>
+      `;
+      updateBinSelectionActionState();
+      return;
+    }
+
+    listEl.innerHTML = "";
+    _cachedBinScans.forEach((item) => {
+      const sid = String(item.scan_id || "");
+      const safeName = escapeHtml(item.name || sid);
+      const safeGroup = escapeHtml(item.project_group || "Site");
+      const safeDate = escapeHtml(item.capture_date || "—");
+      const safeActor = escapeHtml(item.trashed_by_name || item.trashed_by_email || "User");
+      const sizeMb = item.size_bytes ? `${(Number(item.size_bytes) / (1024 * 1024)).toFixed(1)} MB` : "—";
+      const trashedTime = item.trashed_at
+        ? new Date(Number(item.trashed_at) * 1000).toLocaleString("zh-TW", { hour12: false })
+        : "";
+      const thumbSrc = item.thumbnail_url || `/api/scans/${encodeURIComponent(sid)}/thumbnail`;
+
+      const row = document.createElement("div");
+      row.className = "gs-bin-item-row";
+      row.style.cssText =
+        "display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 12px;border:1px solid var(--ui-border);border-radius:8px;background:var(--ui-bg-elevated);";
+      row.innerHTML = `
+        <label style="display:flex;align-items:center;gap:10px;flex:1;min-width:0;cursor:pointer;">
+          <input type="checkbox" class="chk-bin-scan-item" data-scan-id="${escapeHtml(sid)}" style="accent-color:#0284c7;width:15px;height:15px;flex-shrink:0;" />
+          <img src="${thumbSrc}" alt="${safeName}" onerror="this.style.display='none'" style="width:52px;height:36px;object-fit:cover;border-radius:5px;border:1px solid var(--ui-border);flex-shrink:0;background:#0f172a;" />
+          <div style="display:flex;flex-direction:column;gap:2px;min-width:0;flex:1;">
+            <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+              <span style="font-size:12.5px;font-weight:700;color:var(--ui-text-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${safeName}</span>
+              <span style="font-size:10px;font-weight:700;padding:1px 6px;border-radius:4px;background:var(--ui-accent-soft);color:var(--ui-accent);">${safeGroup}</span>
+              <span style="font-size:10.5px;color:var(--ui-text-secondary);font-family:var(--mono);">${safeDate} · ${item.image_count || 0} imgs · ${sizeMb}</span>
+            </div>
+            <div style="font-size:10.5px;color:var(--ui-text-muted);">
+              Deleted by ${safeActor}${trashedTime ? ` · ${escapeHtml(trashedTime)}` : ""} · ID: <code>${escapeHtml(sid)}</code>
+            </div>
+          </div>
+        </label>
+        <div style="display:flex;align-items:center;gap:6px;flex-shrink:0;">
+          <button type="button" class="btn-xs primary" data-bin-restore="${escapeHtml(sid)}" title="Restore this scan back to Map & Studio">
+            ↩ Restore (還原)
+          </button>
+          <button type="button" class="btn-xs" data-bin-purge="${escapeHtml(sid)}" style="color:#ef4444;border-color:rgba(239,68,68,0.4);" title="Permanently delete this scan and its files from disk">
+            🗑 Delete Forever
+          </button>
+        </div>
+      `;
+
+      row.querySelector(".chk-bin-scan-item")?.addEventListener("change", updateBinSelectionActionState);
+      row.querySelector("[data-bin-restore]")?.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        restoreBinScans([sid]);
+      });
+      row.querySelector("[data-bin-purge]")?.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        purgeBinScans([sid], false);
+      });
+      listEl.appendChild(row);
+    });
+    updateBinSelectionActionState();
+  }
+
+  async function refreshRecycleBinList() {
+    try {
+      const res = await apiGet("/api/scans/bin");
+      renderRecycleBinItems(res.bin_scans || []);
+    } catch (err) {
+      showToast(`Failed to load Recycle Bin: ${err.message}`);
+    }
+  }
+
+  async function openRecycleBinModal() {
+    if (!getCurrentUserRoleInfo().canManageUsers) {
+      showToast("Only Admin or Owner accounts can access the Recycle Bin.");
+      return;
+    }
+    closeModal("deleteScanModal");
+    openModal("recycleBinModal");
+    await refreshRecycleBinList();
+  }
+
+  async function restoreBinScans(scanIds) {
+    if (!getCurrentUserRoleInfo().canManageUsers) {
+      showToast("Only Admin or Owner accounts can restore scans from the Bin.");
+      return;
+    }
+    if (!Array.isArray(scanIds) || scanIds.length === 0) return;
+    try {
+      const res = await apiPost("/api/scans/bin/restore", { scan_ids: scanIds });
+      renderRecycleBinItems(res.bin_scans || []);
+      const firstRestored = Array.isArray(res.restored) && res.restored[0] ? res.restored[0] : null;
+      applyUpdatedCatalogState(
+        res,
+        firstRestored ? firstRestored.project_group : STATE.activeProjectGroup,
+        firstRestored ? firstRestored.scan_id : STATE.activeScanId
+      );
+      showToast(`Restored ${scanIds.length} scan${scanIds.length === 1 ? "" : "s"} from Recycle Bin`);
+    } catch (err) {
+      showToast(`Failed to restore from Bin: ${err.message}`);
+    }
+  }
+
+  async function purgeBinScans(scanIds, clearAll = false) {
+    if (!getCurrentUserRoleInfo().canManageUsers) {
+      showToast("Only Admin or Owner accounts can permanently delete scans from the Bin.");
+      return;
+    }
+    try {
+      const res = await apiPost("/api/scans/bin/purge", {
+        scan_ids: scanIds || [],
+        clear_all: Boolean(clearAll),
+      });
+      renderRecycleBinItems(res.bin_scans || []);
+      applyUpdatedCatalogState(res, STATE.activeProjectGroup, STATE.activeScanId);
+      const purgedCount = Array.isArray(res.purged_scan_ids) ? res.purged_scan_ids.length : (scanIds || []).length;
+      showToast(
+        clearAll
+          ? `Emptied Recycle Bin (${purgedCount} scan${purgedCount === 1 ? "" : "s"} permanently deleted)`
+          : `Permanently deleted ${purgedCount} scan${purgedCount === 1 ? "" : "s"} from Bin`
+      );
+    } catch (err) {
+      showToast(`Failed to permanently delete from Bin: ${err.message}`);
     }
   }
 
@@ -2239,6 +2434,31 @@
     openDeleteScanModal(STATE.activeScanId);
   });
   document.getElementById("btnConfirmDeleteScan")?.addEventListener("click", confirmDeleteScan);
+  document.getElementById("btnOpenRecycleBin")?.addEventListener("click", openRecycleBinModal);
+  document.getElementById("btnTimelineRecycleBin")?.addEventListener("click", openRecycleBinModal);
+  document.getElementById("btnOpenBinFromDeleteModal")?.addEventListener("click", openRecycleBinModal);
+  document.getElementById("chkSelectAllBinScans")?.addEventListener("change", (ev) => {
+    const checked = Boolean(ev.target.checked);
+    document.querySelectorAll("#recycleBinListContainer .chk-bin-scan-item").forEach((b) => {
+      b.checked = checked;
+    });
+    updateBinSelectionActionState();
+  });
+  document.getElementById("btnRestoreSelectedBinScans")?.addEventListener("click", () => {
+    const ids = Array.from(document.querySelectorAll("#recycleBinListContainer .chk-bin-scan-item:checked"))
+      .map((b) => b.getAttribute("data-scan-id"))
+      .filter(Boolean);
+    restoreBinScans(ids);
+  });
+  document.getElementById("btnPurgeSelectedBinScans")?.addEventListener("click", () => {
+    const ids = Array.from(document.querySelectorAll("#recycleBinListContainer .chk-bin-scan-item:checked"))
+      .map((b) => b.getAttribute("data-scan-id"))
+      .filter(Boolean);
+    purgeBinScans(ids, false);
+  });
+  document.getElementById("btnClearAllBinScans")?.addEventListener("click", () => {
+    purgeBinScans([], true);
+  });
 
   // ============================================================================
   // 1C. RENAME SITE (PROJECT GROUP) MODAL & RE-RUN SCAN FROM ORIGINAL PHOTOS MODAL
@@ -10706,6 +10926,9 @@
       if (typeof data.pc_online === "boolean") {
         STATE.pcOnline = data.pc_online;
         updatePcStatusUI();
+      }
+      if (typeof data.bin_scans_count === "number") {
+        updateRecycleBinBadges(data.bin_scans_count);
       }
       if (data.user_settings && data.user_settings.theme_preference && !localStorage.getItem("gs_theme_pref")) {
         await applyTheme(data.user_settings.theme_preference, false);

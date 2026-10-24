@@ -151,6 +151,22 @@ class ScanQueueDB:
                     card_json TEXT NOT NULL,
                     sent_at TEXT NOT NULL
                 );
+
+                CREATE TABLE IF NOT EXISTS trashed_scans (
+                    scan_id TEXT PRIMARY KEY,
+                    name TEXT DEFAULT '',
+                    project_group TEXT DEFAULT '',
+                    capture_date TEXT DEFAULT '',
+                    project_dir TEXT DEFAULT '',
+                    size_bytes INTEGER DEFAULT 0,
+                    image_count INTEGER DEFAULT 0,
+                    trashed_by_email TEXT DEFAULT '',
+                    trashed_by_name TEXT DEFAULT '',
+                    trashed_at REAL DEFAULT 0.0,
+                    scan_json TEXT DEFAULT '{}',
+                    comments_json TEXT DEFAULT '[]',
+                    tombstone_json TEXT DEFAULT '{}'
+                );
                 """
             )
             try:
@@ -450,65 +466,48 @@ class ScanQueueDB:
             pass
         return default_reg
 
-    def delete_scan(self, scan_id: str) -> Optional[Dict[str, Any]]:
-        """
-        Deletes a scan from SQLite, removes its local folder inside C:\\GatheringScans,
-        removes its cached thumbnail & .3tz stream package, and records a tombstone in
-        data/deleted_scans.json so Google Drive inbox polling does not re-import it.
-        """
-        import shutil
-        from pc_worker.config import LOCAL_SCANS_ROOT
-
-        clean_id = (scan_id or "").strip()
-        if not clean_id:
-            return None
-
-        scan = self.get_scan(clean_id)
-        if not scan:
-            # Case-insensitive fallback lookup
-            for s in self.list_scans():
-                if str(s.get("scan_id") or "").lower() == clean_id.lower():
-                    scan = s
-                    clean_id = s["scan_id"]
-                    break
-
+    def _collect_tombstone_keys_for_scan(self, scan: Optional[Dict[str, Any]], clean_id: str) -> Dict[str, List[str]]:
         proj_dir = (scan or {}).get("project_dir") or ""
         src_zip = (scan or {}).get("source_zip_path") or ""
         folder_name = os.path.basename(proj_dir.rstrip("\\/")) if proj_dir else clean_id
 
-        # 1. Record tombstone in data/deleted_scans.json so GDrive watcher skips it
+        sids = {clean_id.lower()}
+        fnames = set()
+        spaths = set()
+        if folder_name:
+            fnames.add(folder_name.lower())
+            if folder_name.lower().startswith("catch_"):
+                fnames.add(folder_name[6:].lower())
+        if src_zip:
+            for p in src_zip.split(";"):
+                if p.strip():
+                    spaths.add(os.path.normcase(os.path.abspath(p.strip())))
+                    fnames.add(os.path.basename(p.strip().rstrip("\\/")).lower())
+        if proj_dir and os.path.isdir(proj_dir):
+            origin_marker = os.path.join(proj_dir, ".gdrive_inbox_origin.json")
+            if os.path.isfile(origin_marker):
+                try:
+                    with open(origin_marker, "r", encoding="utf-8") as mf:
+                        om = json.load(mf)
+                    if om.get("src_folder"):
+                        spaths.add(os.path.normcase(os.path.abspath(om["src_folder"])))
+                        fnames.add(os.path.basename(om["src_folder"].rstrip("\\/")).lower())
+                except Exception:
+                    pass
+        return {
+            "scan_ids": sorted(sids),
+            "folder_names": sorted(fnames),
+            "source_paths": sorted(spaths),
+        }
+
+    def _save_deleted_scans_registry(self, reg: Dict[str, Any]) -> None:
         try:
-            reg = self.load_deleted_scans_registry()
-            sids = set(reg["scan_ids"])
-            fnames = set(reg["folder_names"])
-            spaths = set(reg["source_paths"])
-            sids.add(clean_id.lower())
-            if folder_name:
-                fnames.add(folder_name.lower())
-                if folder_name.lower().startswith("catch_"):
-                    fnames.add(folder_name[6:].lower())
-            if src_zip:
-                for p in src_zip.split(";"):
-                    if p.strip():
-                        spaths.add(os.path.normcase(os.path.abspath(p.strip())))
-                        fnames.add(os.path.basename(p.strip().rstrip("\\/")).lower())
-            if proj_dir and os.path.isdir(proj_dir):
-                origin_marker = os.path.join(proj_dir, ".gdrive_inbox_origin.json")
-                if os.path.isfile(origin_marker):
-                    try:
-                        with open(origin_marker, "r", encoding="utf-8") as mf:
-                            om = json.load(mf)
-                        if om.get("src_folder"):
-                            spaths.add(os.path.normcase(os.path.abspath(om["src_folder"])))
-                            fnames.add(os.path.basename(om["src_folder"].rstrip("\\/")).lower())
-                    except Exception:
-                        pass
             with open(self.get_deleted_scans_registry_path(), "w", encoding="utf-8") as wf:
                 json.dump(
                     {
-                        "scan_ids": sorted(sids),
-                        "folder_names": sorted(fnames),
-                        "source_paths": sorted(spaths),
+                        "scan_ids": sorted(set(str(x).lower() for x in (reg.get("scan_ids") or []) if x)),
+                        "folder_names": sorted(set(str(x).lower() for x in (reg.get("folder_names") or []) if x)),
+                        "source_paths": sorted(set(str(x).lower() for x in (reg.get("source_paths") or []) if x)),
                     },
                     wf,
                     indent=2,
@@ -517,43 +516,315 @@ class ScanQueueDB:
         except Exception as e:
             print(f"[DB] Warning updating deleted_scans.json: {e}")
 
-        # 2. Delete from SQLite tables
+    def trash_scan(self, scan_id: str, actor_email: str = "", actor_name: str = "") -> Optional[Dict[str, Any]]:
+        """
+        Soft-deletes a scan by moving its metadata and comments into trashed_scans (Recycle Bin)
+        while preserving its local folder in C:\\GatheringScans, .3tz package, and thumbnail on disk.
+        Also records tombstone keys in data/deleted_scans.json so GDrive polling does not re-import
+        the scan while it is sitting in the Bin.
+        """
+        clean_id = (scan_id or "").strip()
+        if not clean_id:
+            return None
+
+        scan = self.get_scan(clean_id)
+        if not scan:
+            for s in self.list_scans():
+                if str(s.get("scan_id") or "").lower() == clean_id.lower():
+                    scan = s
+                    clean_id = s["scan_id"]
+                    break
+        if not scan:
+            return None
+
+        comments = self.list_comments(clean_id)
+        tomb = self._collect_tombstone_keys_for_scan(scan, clean_id)
+
+        # Add to deleted_scans.json so GDrive watcher skips it while in Bin
+        reg = self.load_deleted_scans_registry()
+        reg["scan_ids"] = list(set(reg["scan_ids"]) | set(tomb["scan_ids"]))
+        reg["folder_names"] = list(set(reg["folder_names"]) | set(tomb["folder_names"]))
+        reg["source_paths"] = list(set(reg["source_paths"]) | set(tomb["source_paths"]))
+        self._save_deleted_scans_registry(reg)
+
+        now_ts = time.time()
+        size_bytes = int(scan.get("size_bytes") or 0)
+        proj_dir = scan.get("project_dir") or ""
+        if size_bytes <= 0 and proj_dir and os.path.isdir(proj_dir):
+            try:
+                total_sz = 0
+                for root_d, _, files in os.walk(proj_dir):
+                    for fn in files:
+                        try:
+                            total_sz += os.path.getsize(os.path.join(root_d, fn))
+                        except OSError:
+                            pass
+                size_bytes = total_sz
+                scan["size_bytes"] = size_bytes
+            except Exception:
+                pass
+
         with DB_LOCK, self._connect() as conn:
+            conn.execute(
+                """
+                INSERT OR REPLACE INTO trashed_scans (
+                    scan_id, name, project_group, capture_date, project_dir,
+                    size_bytes, image_count, trashed_by_email, trashed_by_name,
+                    trashed_at, scan_json, comments_json, tombstone_json
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    clean_id,
+                    scan.get("name") or clean_id,
+                    scan.get("project_group") or "",
+                    scan.get("capture_date") or "",
+                    proj_dir,
+                    size_bytes,
+                    int(scan.get("image_count") or 0),
+                    actor_email or "",
+                    actor_name or actor_email or "User",
+                    now_ts,
+                    json.dumps(scan, ensure_ascii=False),
+                    json.dumps(comments, ensure_ascii=False),
+                    json.dumps(tomb, ensure_ascii=False),
+                ),
+            )
             conn.execute("DELETE FROM scans WHERE lower(scan_id) = lower(?)", (clean_id,))
             conn.execute("DELETE FROM scan_comments WHERE lower(scan_id) = lower(?)", (clean_id,))
             conn.commit()
 
-        # 3. Remove local scan folder inside C:\GatheringScans (strictly jailed)
-        candidates_to_remove = []
-        if proj_dir:
-            candidates_to_remove.append(proj_dir)
-        if LOCAL_SCANS_ROOT:
-            candidates_to_remove.append(os.path.join(LOCAL_SCANS_ROOT, clean_id))
-        for cand_dir in candidates_to_remove:
-            try:
-                if cand_dir and os.path.isdir(cand_dir) and LOCAL_SCANS_ROOT:
-                    abs_root = os.path.normcase(os.path.abspath(LOCAL_SCANS_ROOT))
-                    abs_cand = os.path.normcase(os.path.abspath(cand_dir))
-                    if abs_cand.startswith(abs_root + os.sep) and abs_cand != abs_root:
-                        shutil.rmtree(cand_dir, ignore_errors=True)
-            except Exception as e:
-                print(f"[DB] Warning removing folder {cand_dir}: {e}")
+        return {
+            "scan_id": clean_id,
+            "name": scan.get("name") or clean_id,
+            "project_group": scan.get("project_group") or "",
+            "capture_date": scan.get("capture_date") or "",
+            "size_bytes": size_bytes,
+            "image_count": int(scan.get("image_count") or 0),
+            "trashed_by_email": actor_email or "",
+            "trashed_by_name": actor_name or actor_email or "User",
+            "trashed_at": now_ts,
+        }
 
-        # 4. Remove cached thumbnail & .3tz stream package
-        data_dir = os.path.dirname(self.db_path)
-        for rel_rm in (
-            os.path.join(data_dir, "thumbnails", f"{clean_id}.png"),
-            os.path.join(data_dir, "thumbnails", f"{clean_id.lower()}.png"),
-            os.path.join(data_dir, "stream_packages", f"{clean_id}.3tz"),
-            os.path.join(data_dir, "stream_packages", f"{clean_id.lower()}.3tz"),
-        ):
+    def list_trashed_scans(self) -> List[Dict[str, Any]]:
+        with DB_LOCK, self._connect() as conn:
+            rows = conn.execute(
+                "SELECT * FROM trashed_scans ORDER BY trashed_at DESC"
+            ).fetchall()
+        items: List[Dict[str, Any]] = []
+        for r in rows:
+            d = dict(r)
+            sid = d.get("scan_id") or ""
+            proj_dir = d.get("project_dir") or ""
+            d["thumbnail_url"] = f"/api/scans/{sid}/thumbnail"
+            d["has_local_files"] = bool(proj_dir and os.path.isdir(proj_dir))
+            items.append(d)
+        return items
+
+    def restore_trashed_scans(self, scan_ids: List[str]) -> List[Dict[str, Any]]:
+        """
+        Restores one or more scans from trashed_scans back into active scans + scan_comments,
+        and removes their temporary tombstone keys from data/deleted_scans.json.
+        """
+        if not scan_ids:
+            return []
+        target_lower = {str(s).strip().lower() for s in scan_ids if str(s).strip()}
+        if not target_lower:
+            return []
+
+        with DB_LOCK, self._connect() as conn:
+            all_rows = conn.execute("SELECT * FROM trashed_scans").fetchall()
+
+        to_restore = [dict(r) for r in all_rows if str(r["scan_id"]).lower() in target_lower]
+        remaining_trashed = [dict(r) for r in all_rows if str(r["scan_id"]).lower() not in target_lower]
+        if not to_restore:
+            return []
+
+        # Collect tombstone keys still needed by remaining trashed scans
+        keep_sids = set()
+        keep_fnames = set()
+        keep_spaths = set()
+        for rem in remaining_trashed:
             try:
-                if os.path.isfile(rel_rm):
-                    os.remove(rel_rm)
-            except OSError:
+                rt = json.loads(rem.get("tombstone_json") or "{}")
+                keep_sids.update(str(x).lower() for x in (rt.get("scan_ids") or []))
+                keep_fnames.update(str(x).lower() for x in (rt.get("folder_names") or []))
+                keep_spaths.update(str(x).lower() for x in (rt.get("source_paths") or []))
+            except Exception:
                 pass
 
-        return scan or {"scan_id": clean_id, "name": clean_id}
+        reg = self.load_deleted_scans_registry()
+        cur_sids = set(reg["scan_ids"])
+        cur_fnames = set(reg["folder_names"])
+        cur_spaths = set(reg["source_paths"])
+
+        restored_scans: List[Dict[str, Any]] = []
+        for row in to_restore:
+            sid = row["scan_id"]
+            try:
+                tomb = json.loads(row.get("tombstone_json") or "{}")
+            except Exception:
+                tomb = {}
+            for k in (tomb.get("scan_ids") or [sid.lower()]):
+                kl = str(k).lower()
+                if kl not in keep_sids:
+                    cur_sids.discard(kl)
+            for k in (tomb.get("folder_names") or []):
+                kl = str(k).lower()
+                if kl not in keep_fnames:
+                    cur_fnames.discard(kl)
+            for k in (tomb.get("source_paths") or []):
+                kl = str(k).lower()
+                if kl not in keep_spaths:
+                    cur_spaths.discard(kl)
+
+            try:
+                scan_data = json.loads(row.get("scan_json") or "{}")
+            except Exception:
+                scan_data = {}
+            if not scan_data.get("scan_id"):
+                scan_data["scan_id"] = sid
+                scan_data["name"] = row.get("name") or sid
+                scan_data["project_group"] = row.get("project_group") or "Default"
+                scan_data["capture_date"] = row.get("capture_date") or ""
+                scan_data["project_dir"] = row.get("project_dir") or ""
+                scan_data["size_bytes"] = row.get("size_bytes") or 0
+                scan_data["image_count"] = row.get("image_count") or 0
+                scan_data["status"] = "completed"
+
+            restored_item = self.upsert_scan(scan_data)
+            restored_scans.append(restored_item)
+
+            try:
+                comments = json.loads(row.get("comments_json") or "[]")
+            except Exception:
+                comments = []
+            with DB_LOCK, self._connect() as conn:
+                for c in comments:
+                    if isinstance(c, dict) and c.get("comment_id"):
+                        conn.execute(
+                            """
+                            INSERT OR REPLACE INTO scan_comments (
+                                comment_id, scan_id, author_name, author_email, text,
+                                pos_x, pos_y, pos_z, twd97_e, twd97_n, twd97_h, created_at
+                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            """,
+                            (
+                                c.get("comment_id"),
+                                sid,
+                                c.get("author_name") or "User",
+                                c.get("author_email") or "",
+                                c.get("text") or "",
+                                float(c.get("pos_x") or 0.0),
+                                float(c.get("pos_y") or 0.0),
+                                float(c.get("pos_z") or 0.0),
+                                float(c.get("twd97_e") or 0.0),
+                                float(c.get("twd97_n") or 0.0),
+                                float(c.get("twd97_h") or 0.0),
+                                c.get("created_at") or "",
+                            ),
+                        )
+                conn.execute("DELETE FROM trashed_scans WHERE lower(scan_id) = lower(?)", (sid,))
+                conn.commit()
+
+        self._save_deleted_scans_registry(
+            {
+                "scan_ids": list(cur_sids),
+                "folder_names": list(cur_fnames),
+                "source_paths": list(cur_spaths),
+            }
+        )
+        return restored_scans
+
+    def purge_trashed_scans(self, scan_ids: Optional[List[str]] = None, clear_all: bool = False) -> List[str]:
+        """
+        Permanently deletes selected scans (or all scans if clear_all=True) from the Recycle Bin,
+        wiping their local folder in C:\\GatheringScans, cached thumbnail, and .3tz package, while
+        keeping their tombstone in data/deleted_scans.json so GDrive polling never re-imports them.
+        """
+        import shutil
+        from pc_worker.config import LOCAL_SCANS_ROOT
+
+        with DB_LOCK, self._connect() as conn:
+            all_rows = [dict(r) for r in conn.execute("SELECT * FROM trashed_scans").fetchall()]
+
+        if clear_all:
+            targets = all_rows
+        else:
+            target_set = {str(s).strip().lower() for s in (scan_ids or []) if str(s).strip()}
+            targets = [r for r in all_rows if str(r.get("scan_id") or "").lower() in target_set]
+
+        if not targets:
+            return []
+
+        reg = self.load_deleted_scans_registry()
+        sids = set(reg["scan_ids"])
+        fnames = set(reg["folder_names"])
+        spaths = set(reg["source_paths"])
+
+        purged_ids: List[str] = []
+        data_dir = os.path.dirname(self.db_path)
+
+        for row in targets:
+            clean_id = row["scan_id"]
+            purged_ids.append(clean_id)
+            proj_dir = row.get("project_dir") or ""
+            try:
+                scan_dict = json.loads(row.get("scan_json") or "{}")
+            except Exception:
+                scan_dict = {"scan_id": clean_id, "project_dir": proj_dir}
+
+            tomb = self._collect_tombstone_keys_for_scan(scan_dict, clean_id)
+            sids.update(tomb["scan_ids"])
+            fnames.update(tomb["folder_names"])
+            spaths.update(tomb["source_paths"])
+
+            # Delete local folder inside C:\GatheringScans (strictly jailed)
+            candidates_to_remove = []
+            if proj_dir:
+                candidates_to_remove.append(proj_dir)
+            if LOCAL_SCANS_ROOT:
+                candidates_to_remove.append(os.path.join(LOCAL_SCANS_ROOT, clean_id))
+            for cand_dir in candidates_to_remove:
+                try:
+                    if cand_dir and os.path.isdir(cand_dir) and LOCAL_SCANS_ROOT:
+                        abs_root = os.path.normcase(os.path.abspath(LOCAL_SCANS_ROOT))
+                        abs_cand = os.path.normcase(os.path.abspath(cand_dir))
+                        if abs_cand.startswith(abs_root + os.sep) and abs_cand != abs_root:
+                            shutil.rmtree(cand_dir, ignore_errors=True)
+                except Exception as e:
+                    print(f"[DB] Warning removing folder {cand_dir}: {e}")
+
+            # Remove cached thumbnail & .3tz stream package
+            for rel_rm in (
+                os.path.join(data_dir, "thumbnails", f"{clean_id}.png"),
+                os.path.join(data_dir, "thumbnails", f"{clean_id.lower()}.png"),
+                os.path.join(data_dir, "stream_packages", f"{clean_id}.3tz"),
+                os.path.join(data_dir, "stream_packages", f"{clean_id.lower()}.3tz"),
+            ):
+                try:
+                    if os.path.isfile(rel_rm):
+                        os.remove(rel_rm)
+                except OSError:
+                    pass
+
+            with DB_LOCK, self._connect() as conn:
+                conn.execute("DELETE FROM trashed_scans WHERE lower(scan_id) = lower(?)", (clean_id,))
+                conn.execute("DELETE FROM scans WHERE lower(scan_id) = lower(?)", (clean_id,))
+                conn.execute("DELETE FROM scan_comments WHERE lower(scan_id) = lower(?)", (clean_id,))
+                conn.commit()
+
+        self._save_deleted_scans_registry(
+            {"scan_ids": list(sids), "folder_names": list(fnames), "source_paths": list(spaths)}
+        )
+        return purged_ids
+
+    def delete_scan(self, scan_id: str) -> Optional[Dict[str, Any]]:
+        """
+        Permanently deletes a scan immediately (bypassing Bin if called directly, or purges if in Bin).
+        """
+        trashed = self.trash_scan(scan_id, actor_email="system", actor_name="System")
+        self.purge_trashed_scans(scan_ids=[scan_id], clear_all=False)
+        return trashed or {"scan_id": scan_id, "name": scan_id}
 
     def refresh_queue_priorities(self, now: Optional[float] = None) -> List[Dict[str, Any]]:
         """Recalculates dynamic WSJF-Aging priority scores for all queued jobs."""
