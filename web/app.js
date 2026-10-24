@@ -10450,10 +10450,10 @@
       `;
       card.addEventListener("click", async () => {
         applyUserProfileToUI(u, true);
-        await apiPost("/api/user-profiles", u).catch(() => {});
         renderTeamProfilesGrid();
         closeModal("userProfileGateModal");
         showToast(`Authorized as ${u.name} (${u.email})`);
+        await apiPost("/api/user-profiles", u).catch(() => {});
       });
       grid.appendChild(card);
     });
