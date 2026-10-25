@@ -10371,11 +10371,28 @@
     const originTwd = localToTwd97({ x: 0, y: 0, z: 0 });
     const grp = studioThree.categoryGroup;
 
-    // Smart 3D Spatial Separation & Priority Queue for 2D Floating Badges
+    // Smart 3D Spatial Separation & Viewport-Aware Priority Queue for 2D Floating Badges
     const placedBadgeAnchors3D = [];
     const MIN_BADGE_SEPARATION_3D_M = 12.5;
+    const isVec3InSafeViewport = (pt3) => {
+      if (!pt3 || !studioThree?.camera || !studioThree?.renderer) return true;
+      studioThree.camera.updateMatrixWorld();
+      const w = studioThree.renderer.domElement.clientWidth || 1280;
+      const h = studioThree.renderer.domElement.clientHeight || 800;
+      const panelEl = document.getElementById("studioSidePanel");
+      const panelOpen = Boolean(panelEl && (panelEl.classList.contains("open") || panelEl.classList.contains("active")));
+      const rightSafe = w - (panelOpen ? (panelEl.offsetWidth || 380) + 24 : 24);
+      const v = pt3.clone().project(studioThree.camera);
+      if (v.z > 1 || Math.abs(v.x) > 1.05 || Math.abs(v.y) > 1.05) return false;
+      const sx = (v.x * 0.5 + 0.5) * w;
+      const sy = (-(v.y * 0.5) + 0.5) * h;
+      return sx >= 140 && sx <= rightSafe - 70 && sy >= 82 && sy <= h - 96;
+    };
     const tryAddCategorizeBadge = (anchorVec3, html, colorHex, opts = {}) => {
       if (!anchorVec3) return false;
+      if (!opts.isFocused && !isVec3InSafeViewport(anchorVec3)) {
+        return false;
+      }
       for (const prev of placedBadgeAnchors3D) {
         if (anchorVec3.distanceTo(prev) < MIN_BADGE_SEPARATION_3D_M) {
           return false;
