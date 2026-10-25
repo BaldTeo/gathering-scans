@@ -48,3 +48,14 @@ The live production container `gathering_scans_web` on `76.13.197.29` pulls the 
    ssh -i "$env:USERPROFILE\.ssh\id_gathering_vps" -o StrictHostKeyChecking=no root@76.13.197.29 "cd /docker/gathering_scans 2>/dev/null && git pull --ff-only origin main || true; cd /opt/gathering_scans 2>/dev/null && git pull --ff-only origin main || true; docker restart gathering_scans_web"
    ```
 2. Verify that both `http://127.0.0.1:8095/api/status` and `https://scans.gatheren.cloud/api/status` respond with `200 OK` and serve the updated asset version.
+
+---
+
+## 3. 3D Scan Classification & Cache Persistence Rules
+Whenever modifying 3D scan classification logic (`pc_worker/surveying_engine.py`), `/api/survey/categorize*` endpoints (`server.py`), or 3D categorization overlays (`web/app.js`):
+1. **Consult the `scan-classification-tuning` Skill**: Read `.agent/skills/scan-classification-tuning/SKILL.md` before changing tree, wall, road, or water detection heuristics.
+2. **Update & Commit Server Cache Files**: Regenerate and commit `data/categorization_cache/<scan_id>_categorization_v3.json` alongside `<project_dir>/_categorization_cache_v3.json` so both the local PC server and Hostinger VPS serve the updated classifications immediately.
+3. **Preserve Manual Overrides & Hidden-by-Default UX**:
+   - Always preserve existing `manual_overrides` (`added_trees`, `added_walls`, `added_roads`, `added_water`, `removed_ids`) across algorithmic recomputes.
+   - Keep 3D classification overlays hidden by default on scan load (`overlay_visible_default: false` / `STATE.categorizeOverlayVisible = false`) with separate toggles for 3D overlays and 3D labels.
+4. **Multi-Scan Regression Check**: Verify classification changes across `edited_qihu_unified_merged_scan_4_scans__edited_372953`, `rosepark_20260918_merged`, `ntudorm_20260915_baseline`, and `QuChi261016_Trees` to ensure improving one site never degrades another.
