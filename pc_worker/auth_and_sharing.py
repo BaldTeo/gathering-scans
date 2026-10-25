@@ -314,12 +314,17 @@ class AuthAndSharingManager:
                     is_admin INTEGER DEFAULT 0,
                     is_owner INTEGER DEFAULT 0,
                     allowed_projects_json TEXT DEFAULT '["*"]',
+                    language TEXT DEFAULT 'zh-TW',
                     updated_at TEXT NOT NULL
                 )
                 """
             )
             try:
                 conn.execute("ALTER TABLE user_profiles ADD COLUMN zh_name TEXT DEFAULT ''")
+            except Exception:
+                pass
+            try:
+                conn.execute("ALTER TABLE user_profiles ADD COLUMN language TEXT DEFAULT 'zh-TW'")
             except Exception:
                 pass
             conn.execute("DELETE FROM user_profiles WHERE lower(email) LIKE '%vitaly%' OR lower(name) LIKE '%vitaly%'")
@@ -371,6 +376,7 @@ class AuthAndSharingManager:
         return None
 
     def list_user_profiles(self) -> List[Dict[str, Any]]:
+        prefs_map = self.db._load_user_prefs_json() if hasattr(self.db, "_load_user_prefs_json") else {}
         with DB_LOCK, self.db._connect() as conn:
             rows = conn.execute("SELECT * FROM user_profiles ORDER BY is_owner DESC, is_admin DESC, name ASC").fetchall()
             out: List[Dict[str, Any]] = []
@@ -381,13 +387,17 @@ class AuthAndSharingManager:
                 except Exception:
                     allowed = ["*"]
                 pic = d.get("picture", "")
+                em_low = str(d.get("email") or "").strip().lower()
                 norm_r = normalize_role(
                     d.get("role", "editor"),
-                    email=d.get("email", ""),
+                    email=em_low,
                     is_owner=bool(d.get("is_owner", 0)),
                     is_admin=bool(d.get("is_admin", 0)),
                 )
                 perms = get_role_permissions(norm_r, has_share_token=False)
+                json_lang = (prefs_map.get(em_low) or {}).get("language") if isinstance(prefs_map.get(em_low), dict) else None
+                raw_lang = str(json_lang or d.get("language") or "zh-TW").strip()
+                lang_val = "en" if raw_lang.lower() in ("en", "en-us", "en-gb", "english") else "zh-TW"
                 prof = {
                     "id": d["id"],
                     "name": d["name"],
@@ -406,6 +416,7 @@ class AuthAndSharingManager:
                     "isAdmin": norm_r in ("owner", "admin"),
                     "isOwner": norm_r == "owner",
                     "allowedProjects": allowed,
+                    "language": lang_val,
                     "lastUpdatedStr": d.get("updated_at", ""),
                 }
                 out.append(prof)
@@ -447,6 +458,14 @@ class AuthAndSharingManager:
         google_sub = str(profile.get("googleSub") or profile.get("google_sub") or (existing and existing.get("googleSub")) or "")
         is_google = int(bool(profile.get("isGoogleAuthenticated", False) or profile.get("auth_provider") == "google" or (existing and existing.get("isGoogleAuthenticated"))))
         allowed = profile.get("allowedProjects") if isinstance(profile.get("allowedProjects"), list) else ((existing and existing.get("allowedProjects")) or ["*"])
+        raw_lang = str(
+            profile.get("language")
+            or profile.get("lang")
+            or (existing and existing.get("language"))
+            or (self.db.get_user_settings(email).get("language") if hasattr(self.db, "get_user_settings") else "zh-TW")
+            or "zh-TW"
+        ).strip()
+        lang_val = "en" if raw_lang.lower() in ("en", "en-us", "en-gb", "english") else "zh-TW"
         now_str = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
 
         with DB_LOCK, self.db._connect() as conn:
@@ -454,8 +473,8 @@ class AuthAndSharingManager:
                 """
                 INSERT INTO user_profiles (
                     email, id, name, zh_name, role, color, picture, google_sub,
-                    is_google_authenticated, is_admin, is_owner, allowed_projects_json, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    is_google_authenticated, is_admin, is_owner, allowed_projects_json, language, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(email) DO UPDATE SET
                     name=excluded.name,
                     zh_name=CASE WHEN excluded.zh_name != '' THEN excluded.zh_name ELSE user_profiles.zh_name END,
@@ -467,6 +486,7 @@ class AuthAndSharingManager:
                     is_admin=excluded.is_admin,
                     is_owner=excluded.is_owner,
                     allowed_projects_json=excluded.allowed_projects_json,
+                    language=excluded.language,
                     updated_at=excluded.updated_at
                 """,
                 (
@@ -482,10 +502,16 @@ class AuthAndSharingManager:
                     is_admin,
                     is_owner,
                     json.dumps(allowed),
+                    lang_val,
                     now_str,
                 ),
             )
             conn.commit()
+        if "language" in profile or "lang" in profile:
+            try:
+                self.db.update_user_settings(email, {"language": lang_val, "display_name": name})
+            except Exception:
+                pass
         return self.get_user_profile(email) or {
             "id": uid,
             "name": name,
@@ -502,6 +528,7 @@ class AuthAndSharingManager:
             "isAdmin": bool(is_admin),
             "isOwner": bool(is_owner),
             "allowedProjects": allowed,
+            "language": lang_val,
         }
 
     def admin_save_user(
@@ -683,6 +710,7 @@ class AuthAndSharingManager:
             "isAdmin": prof.get("isAdmin", False),
             "isOwner": prof.get("isOwner", False),
             "allowedProjects": prof.get("allowedProjects", ["*"]),
+            "language": prof.get("language", "zh-TW"),
         }
 
     def create_share_link(self, payload: Dict[str, Any]) -> Dict[str, Any]:

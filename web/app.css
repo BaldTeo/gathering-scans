@@ -282,6 +282,20 @@ html[data-theme="light"] .gs-logo-light {
   border-color: var(--ui-accent);
 }
 
+.gs-lang-toggle-btn {
+  font-weight: 800;
+  letter-spacing: 0.4px;
+  color: var(--ui-text-primary);
+  border-color: var(--ui-border-strong);
+  min-width: 36px;
+}
+
+.gs-lang-toggle-btn:hover {
+  background: var(--ui-accent);
+  color: #ffffff;
+  border-color: var(--ui-accent);
+}
+
 /* External Share Guest Scope Banner */
 .gs-share-banner {
   background: var(--ui-bg-subtle);
@@ -3353,9 +3367,13 @@ body.gs-auth-locked .gs-main {
 
   /* 10.4 Compact 2-Row Top Navigation Bar (~68px total height) */
   .gs-topbar {
-    min-height: 68px !important;
-    padding: 4px 8px !important;
-    gap: 4px !important;
+    min-height: 64px !important;
+    padding: 4px 6px !important;
+    gap: 3px !important;
+  }
+
+  .gs-brand-logo-img {
+    height: 22px !important;
   }
 
   #topCrsBadge,
@@ -3365,15 +3383,30 @@ body.gs-auth-locked .gs-main {
   }
 
   .gs-topbar-actions {
-    gap: 4px !important;
+    gap: 3px !important;
   }
 
   .gs-topbar-actions .gs-top-btn,
   .gs-topbar-actions #pcStatusChip {
-    min-width: 34px !important;
-    min-height: 32px !important;
-    height: 32px !important;
-    padding: 0 7px !important;
+    min-width: 28px !important;
+    min-height: 28px !important;
+    height: 28px !important;
+    padding: 0 5px !important;
+    font-size: 10.5px !important;
+  }
+
+  .gs-topbar-actions #pcStatusText {
+    max-width: 48px !important;
+    font-size: 10.5px !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    white-space: nowrap !important;
+  }
+
+  #btnToggleLanguage {
+    font-weight: 800 !important;
+    letter-spacing: 0.2px !important;
+    padding: 0 6px !important;
   }
 
   #mainModeSwitcher {

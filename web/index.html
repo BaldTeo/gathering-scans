@@ -18,7 +18,7 @@
   <meta name="twitter:image" content="https://scans.gatheren.cloud/assets/gathering_cloud_logo.png" />
   <!-- GS_SHARE_OG_END -->
   <link rel="icon" type="image/png" href="/assets/gathering_cloud_logo.png" />
-  <link rel="stylesheet" href="/app.css?v=20261025_v142" />
+  <link rel="stylesheet" href="/app.css?v=20261025_v145" />
   <script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
 <body>
@@ -29,77 +29,81 @@
       <img src="/assets/gathering_cloud_logo_dark.png" alt="聚Gathering 雲Cloud" class="gs-brand-logo-img gs-logo-dark" />
       <img src="/assets/gathering_cloud_logo.png" alt="聚Gathering 雲Cloud" class="gs-brand-logo-img gs-logo-light" />
       <div class="gs-brand-title">
-        <span class="gs-crs-pill" id="topCrsBadge" title="Created by Glib Ivanov, PhD and Gemini 4 Argon">
-          Created by Glib Ivanov, PhD and Gemini 4 Argon
+        <span class="gs-crs-pill" id="topCrsBadge" title="由 Glib Ivanov 博士與 Gemini 4 Argon 共同開發" data-i18n-zh="由 Glib Ivanov 博士與 Gemini 4 Argon 開發" data-i18n-en="Created by Glib Ivanov, PhD and Gemini 4 Argon" data-i18n-title-zh="由 Glib Ivanov 博士與 Gemini 4 Argon 共同開發" data-i18n-title-en="Created by Glib Ivanov, PhD and Gemini 4 Argon">
+          由 Glib Ivanov 博士與 Gemini 4 Argon 開發
         </span>
       </div>
     </div>
 
     <!-- Center Mode Switcher (Clean Segmented Pill — 1 Word per Button) -->
     <div class="segmented-pill" id="mainModeSwitcher">
-      <button type="button" class="btn-seg active" data-view="map" id="btnNavMap" title="Map Overview / 地圖總覽">
+      <button type="button" class="btn-seg active" data-view="map" id="btnNavMap" title="地圖總覽" data-i18n-title-zh="地圖總覽" data-i18n-title-en="Map Overview">
         <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8">
           <polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/>
           <line x1="8" y1="2" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="22"/>
         </svg>
-        <span>Map</span>
+        <span data-i18n-zh="地圖" data-i18n-en="Map">地圖</span>
       </button>
-      <button type="button" class="btn-seg" data-view="studio" id="btnNavStudio" title="3D Scan Studio / 三維量測">
+      <button type="button" class="btn-seg" data-view="studio" id="btnNavStudio" title="3D 掃描工作坊" data-i18n-title-zh="3D 掃描工作坊" data-i18n-title-en="3D Scan Studio">
         <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8">
           <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
           <polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/>
         </svg>
-        <span>Studio</span>
+        <span data-i18n-zh="3D 工作坊" data-i18n-en="Studio">3D 工作坊</span>
       </button>
-      <button type="button" class="btn-seg" data-view="compare" id="btnNavCompare" title="Multi-Date Slider / 跨期比對">
+      <button type="button" class="btn-seg" data-view="compare" id="btnNavCompare" title="跨期掃描比對" data-i18n-title-zh="跨期掃描比對" data-i18n-title-en="Multi-Date Compare">
         <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8">
           <rect x="3" y="3" width="18" height="18" rx="2"/><line x1="12" y1="3" x2="12" y2="21"/>
           <polyline points="9 9 6 12 9 15"/><polyline points="15 9 18 12 15 15"/>
         </svg>
-        <span>Compare</span>
+        <span data-i18n-zh="歷次比對" data-i18n-en="Compare">歷次比對</span>
       </button>
     </div>
 
-    <!-- Right Controls Cluster (Icon-Only / 1-Word Discipline) -->
-    <div class="gs-topbar-actions">
-      <button type="button" class="cloud-sync-chip" id="pcStatusChip" title="PIX4Dmatic Smart Priority Queue &amp; Google Drive Inbox Watcher">
+    <!-- Right Controls Cluster -->
+    <div class="gs-topbar-actions gs-topbar-right">
+      <button type="button" class="cloud-sync-chip" id="pcStatusChip" title="PIX4Dmatic 智慧優先佇列與 Google Drive 收件匣監控" data-i18n-title-zh="PIX4Dmatic 智慧優先佇列與 Google Drive 收件匣監控" data-i18n-title-en="PIX4Dmatic Smart Priority Queue &amp; Google Drive Inbox Watcher">
         <span class="status-dot" id="pcStatusDot"></span>
-        <span id="pcStatusText">Queue</span>
+        <span id="pcStatusText" data-i18n-zh="佇列" data-i18n-en="Queue">佇列</span>
       </button>
 
-      <button type="button" class="gs-top-btn accent" id="btnOpenOptimizer" title="GC_ScanOptimizer PC Actions (Preset Compression &amp; Spatial Crop)">
+      <button type="button" class="gs-top-btn accent" id="btnOpenOptimizer" title="3D 網格壓縮與空間裁切工具" data-i18n-title-zh="3D 網格壓縮與空間裁切工具" data-i18n-title-en="GC_ScanOptimizer PC Actions: Mesh Compression &amp; Spatial Crop">
         <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8">
           <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
         </svg>
       </button>
 
-      <button type="button" class="gs-top-btn" id="btnOpenSharing" title="Scoped External Share Links">
+      <button type="button" class="gs-top-btn" id="btnOpenSharing" title="專屬外部分享連結管理" data-i18n-title-zh="專屬外部分享連結管理" data-i18n-title-en="Scoped External Share Links">
         <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8">
           <circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/>
           <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/>
         </svg>
       </button>
 
-      <button type="button" class="gs-top-btn" id="btnOpenRecycleBin" title="Trash Bin — Restore Original Scan Backups &amp; Deleted Scans (掃描回收桶 · 還原原始備份)" style="position:relative;display:none;">
+      <button type="button" class="gs-top-btn" id="btnOpenRecycleBin" title="掃描回收桶：還原原始掃描備份與已刪除模型" data-i18n-title-zh="掃描回收桶：還原原始掃描備份與已刪除模型" data-i18n-title-en="Recycle Bin: Restore Original Scan Backups &amp; Deleted Scans" style="position:relative;display:none;">
         <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8">
           <polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
         </svg>
         <span id="topRecycleBinBadge" style="display:none;position:absolute;top:0px;right:0px;min-width:14px;height:14px;padding:0 3px;border-radius:999px;background:#ef4444;color:#ffffff;font-size:9px;font-weight:700;line-height:14px;text-align:center;">0</span>
       </button>
 
-      <button type="button" class="gs-top-btn" id="btnOpenOfflineCache" title="Settings, Theme Appearance &amp; Client-Side Offline Cache">
+      <button type="button" class="gs-top-btn" id="btnOpenOfflineCache" title="個人設定、外觀主題與瀏覽器離線快取" data-i18n-title-zh="個人設定、外觀主題與瀏覽器離線快取" data-i18n-title-en="Settings, Theme Appearance &amp; Browser Offline Cache">
         <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8">
           <circle cx="12" cy="12" r="3"/>
           <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
         </svg>
       </button>
 
-      <button type="button" class="gs-top-btn" id="btnGoogleUser" title="Google Workspace OAuth Account (GatheringCloud SSO)">
+      <button type="button" class="gs-top-btn gs-lang-toggle-btn" id="btnToggleLanguage" title="Switch to English" aria-label="Switch Interface Language">
+        <span id="lblToggleLanguage">EN</span>
+      </button>
+
+      <button type="button" class="gs-top-btn" id="btnGoogleUser" title="Google Workspace 帳號登入與切換" data-i18n-title-zh="Google Workspace 帳號登入與切換" data-i18n-title-en="Google Workspace Account Sign-In">
         <img id="imgCurrentUserAvatar" src="" alt="" style="width:18px;height:18px;border-radius:50%;object-fit:cover;display:none;" />
         <svg id="svgCurrentUserIcon" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8">
           <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>
         </svg>
-        <span id="lblCurrentUser" style="display:inline;font-size:11.5px;max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">Sign In</span>
+        <span id="lblCurrentUser" style="display:inline;font-size:11.5px;max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">登入</span>
       </button>
     </div>
   </header>
@@ -110,16 +114,16 @@
       <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" style="flex-shrink:0;">
         <rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>
       </svg>
-      <strong>Scoped Share View:</strong>
-      <span id="lblExternalShareScope" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">Viewing authorized scan scope only. Other system scans are hidden.</span>
+      <strong data-i18n-zh="外部授權檢視：" data-i18n-en="Scoped Share View:">外部授權檢視：</strong>
+      <span id="lblExternalShareScope" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" data-i18n-zh="僅顯示授權範圍內的掃描模型，其餘系統掃描已隱藏。" data-i18n-en="Viewing authorized scan scope only. Other system scans are hidden.">僅顯示授權範圍內的掃描模型，其餘系統掃描已隱藏。</span>
     </div>
-    <div class="gs-share-viewer-tag" id="shareViewerIdentityWrap" title="Optional: Enter your name for spatial review &amp; comments">
+    <div class="gs-share-viewer-tag" id="shareViewerIdentityWrap" title="選填：輸入您的姓名以便進行空間標註與留言" data-i18n-title-zh="選填：輸入您的姓名以便進行空間標註與留言" data-i18n-title-en="Optional: Enter your name for spatial review &amp; comments">
       <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.8" style="flex-shrink:0;">
         <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>
       </svg>
-      <input type="text" id="inpShareViewerName" class="gs-share-viewer-input" placeholder="Your name (optional)" maxlength="60" aria-label="Reviewer Name" />
+      <input type="text" id="inpShareViewerName" class="gs-share-viewer-input" placeholder="輸入您的姓名（選填）" data-i18n-placeholder-zh="輸入您的姓名（選填）" data-i18n-placeholder-en="Your name, optional" maxlength="60" aria-label="Reviewer Name" />
     </div>
-    <button type="button" class="btn-xs" id="btnExitExternalPreview" style="display:none;" title="Exit Guest Preview">Exit</button>
+    <button type="button" class="btn-xs" id="btnExitExternalPreview" style="display:none;" title="離開訪客預覽" data-i18n-zh="離開" data-i18n-en="Exit" data-i18n-title-zh="離開訪客預覽" data-i18n-title-en="Exit Guest Preview">離開</button>
   </div>
 
   <!-- Main Application Workspace -->
@@ -141,12 +145,12 @@
                 <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="var(--ui-accent)" stroke-width="2">
                   <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/>
                 </svg>
-                <span>Scan Clusters (TWD97)</span>
+                <span data-i18n-zh="掃描工區群組 (TWD97)" data-i18n-en="Scan Clusters (TWD97)">掃描工區群組 (TWD97)</span>
               </span>
-              <span class="gs-crs-pill" id="lblMapClusterCount">0 Sites</span>
+              <span class="gs-crs-pill" id="lblMapClusterCount">0 個工區</span>
             </div>
-            <p class="gs-map-desc" style="font-size:11.5px;color:var(--ui-text-secondary);margin-top:6px;line-height:1.45;">
-              Search or select any project site to inspect grouped scans by date, open in 3D Studio, compare dates, or export reports.
+            <p class="gs-map-desc" style="font-size:11.5px;color:var(--ui-text-secondary);margin-top:6px;line-height:1.45;" data-i18n-zh="搜尋或選擇任一工區以依日期檢視掃描、開啟 3D 工作坊、跨期比對或匯出測量報表。" data-i18n-en="Search or select any project site to inspect grouped scans by date, open in 3D Studio, compare dates, or export reports.">
+              搜尋或選擇任一工區以依日期檢視掃描、開啟 3D 工作坊、跨期比對或匯出測量報表。
             </p>
 
             <!-- Scalable Search + Project Dropdown (Supports 100+ Projects) -->
@@ -159,32 +163,34 @@
                   type="search"
                   class="gs-input"
                   id="mapProjectSearchInput"
-                  placeholder="Search projects, sites, or scan names..."
+                  placeholder="搜尋專案、工區或掃描名稱..."
+                  data-i18n-placeholder-zh="搜尋專案、工區或掃描名稱..."
+                  data-i18n-placeholder-en="Search projects, sites, or scan names..."
                   style="padding-left:28px;font-size:11.5px;"
                 />
               </div>
 
               <div class="gs-map-controls-row" style="display:flex;align-items:center;gap:6px;">
-                <select class="gs-select" id="mapProjectSelect" title="Select Project Site (Scalable across 100+ Projects)" style="flex:1;min-width:0;font-weight:600;"></select>
-                <button type="button" class="btn-xs" id="btnRenameMapSite" title="Rename Project Site (工區重新命名)">
+                <select class="gs-select" id="mapProjectSelect" title="選擇專案工區" data-i18n-title-zh="選擇專案工區" data-i18n-title-en="Select Project Site" style="flex:1;min-width:0;font-weight:600;"></select>
+                <button type="button" class="btn-xs" id="btnRenameMapSite" title="重新命名工區" data-i18n-title-zh="重新命名工區" data-i18n-title-en="Rename Project Site">
                   <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2">
                     <path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
                   </svg>
                 </button>
-                <button type="button" class="btn-xs primary" id="btnOpenSelectedProjectTimeline" title="Open Selected Project Timeline &amp; 3D Preview">
+                <button type="button" class="btn-xs primary" id="btnOpenSelectedProjectTimeline" title="開啟所選工區時間軸與 3D 預覽" data-i18n-title-zh="開啟所選工區時間軸與 3D 預覽" data-i18n-title-en="Open Selected Project Timeline &amp; 3D Preview">
                   <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2">
                     <polyline points="9 18 15 12 9 6"/>
                   </svg>
                 </button>
                 <div class="segmented-pill" id="mapLayerSwitcher" style="padding:2px;border-radius:7px;flex-shrink:0;">
-                  <button type="button" class="btn-seg active" data-lyrs="y" style="padding:3px 8px;font-size:11px;" title="Google Satellite Hybrid">Hybrid</button>
-                  <button type="button" class="btn-seg" data-lyrs="m" style="padding:3px 8px;font-size:11px;" title="Google Roadmap">Map</button>
+                  <button type="button" class="btn-seg active" data-lyrs="y" style="padding:3px 8px;font-size:11px;" title="Google 衛星混合圖" data-i18n-zh="衛星" data-i18n-en="Hybrid" data-i18n-title-zh="Google 衛星混合圖" data-i18n-title-en="Google Satellite Hybrid">衛星</button>
+                  <button type="button" class="btn-seg" data-lyrs="m" style="padding:3px 8px;font-size:11px;" title="Google 街道地圖" data-i18n-zh="地圖" data-i18n-en="Map" data-i18n-title-zh="Google 街道地圖" data-i18n-title-en="Google Roadmap">地圖</button>
                 </div>
               </div>
             </div>
 
-            <div class="gs-map-coords-bar" style="margin-top:8px;padding-top:7px;border-top:1px solid var(--ui-border);font-size:11px;font-family:monospace;color:var(--ui-text-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" id="mapCursorCoords">
-              Move cursor over map to inspect coordinates
+            <div class="gs-map-coords-bar" style="margin-top:8px;padding-top:7px;border-top:1px solid var(--ui-border);font-size:11px;font-family:monospace;color:var(--ui-text-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" id="mapCursorCoords" data-i18n-zh="於地圖上移動游標以檢視座標" data-i18n-en="Move cursor over map to inspect coordinates">
+              於地圖上移動游標以檢視座標
             </div>
           </div>
         </div>
@@ -195,8 +201,8 @@
         <div class="gs-map-right-header">
           <div style="min-width:0;flex:1;">
             <div style="display:flex;align-items:center;gap:6px;min-width:0;">
-              <div style="font-size:14.5px;font-weight:700;color:var(--ui-text-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" id="popoverGroupTitle">Project Site</div>
-              <button type="button" class="btn-xs" id="btnRenamePopoverSite" title="Rename Project Site (工區重新命名)" style="height:20px;padding:0 5px;flex-shrink:0;">
+              <div style="font-size:14.5px;font-weight:700;color:var(--ui-text-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" id="popoverGroupTitle">專案工區</div>
+              <button type="button" class="btn-xs" id="btnRenamePopoverSite" title="重新命名工區" data-i18n-title-zh="重新命名工區" data-i18n-title-en="Rename Project Site" style="height:20px;padding:0 5px;flex-shrink:0;">
                 <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2">
                   <path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
                 </svg>
@@ -205,17 +211,17 @@
             <div style="font-size:11px;color:var(--ui-text-muted);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" id="popoverGroupSubtitle">TWD97 (121) + TWVD2001</div>
           </div>
           <div style="display:flex;gap:5px;flex-shrink:0;">
-            <button type="button" class="btn-xs primary" id="btnPopoverOpenTimeline" title="Open Site Timeline &amp; 3D Preview">
+            <button type="button" class="btn-xs primary" id="btnPopoverOpenTimeline" title="開啟工區時間軸與 3D 預覽" data-i18n-title-zh="開啟工區時間軸與 3D 預覽" data-i18n-title-en="Open Site Timeline &amp; 3D Preview">
               <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8">
                 <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
               </svg>
             </button>
-            <button type="button" class="btn-xs" id="btnPopoverCompareGroup" title="Compare Dates in Multi-Date Slider">
+            <button type="button" class="btn-xs" id="btnPopoverCompareGroup" title="於歷次比對模式中比較不同日期" data-i18n-title-zh="於歷次比對模式中比較不同日期" data-i18n-title-en="Compare Dates in Multi-Date Slider">
               <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8">
                 <rect x="3" y="3" width="18" height="18" rx="2"/><line x1="12" y1="3" x2="12" y2="21"/>
               </svg>
             </button>
-            <button type="button" class="btn-xs" id="btnPopoverShareGroup" title="Create Scoped Share Link for Group">
+            <button type="button" class="btn-xs" id="btnPopoverShareGroup" title="建立此工區的專屬外部分享連結" data-i18n-title-zh="建立此工區的專屬外部分享連結" data-i18n-title-en="Create Scoped Share Link for Group">
               <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8">
                 <circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/>
                 <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/>
@@ -232,51 +238,51 @@
         <div class="gs-site-timeline-top" id="siteTimelineTopPane">
           <div class="gs-timeline-header">
             <div class="gs-timeline-header-left">
-              <button type="button" class="btn-xs" id="btnCloseSiteTimeline" title="Back to Map Overview" style="display:none;">
+              <button type="button" class="btn-xs" id="btnCloseSiteTimeline" title="返回地圖總覽" data-i18n-title-zh="返回地圖總覽" data-i18n-title-en="Back to Map Overview" style="display:none;">
                 <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2">
                   <line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/>
                 </svg>
               </button>
               <div style="min-width:0;flex:1;">
                 <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
-                  <span class="gs-timeline-site-title" id="timelineSiteTitle">Project Site</span>
-                  <button type="button" class="btn-xs" id="btnRenameTimelineSite" title="Rename Site / 工區重新命名" style="height:21px;padding:0 6px;font-size:10.5px;">
+                  <span class="gs-timeline-site-title" id="timelineSiteTitle">專案工區</span>
+                  <button type="button" class="btn-xs" id="btnRenameTimelineSite" title="重新命名工區" data-i18n-title-zh="重新命名工區" data-i18n-title-en="Rename Site" style="height:21px;padding:0 6px;font-size:10.5px;">
                     <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2">
                       <path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
                     </svg>
-                    <span>Rename Site</span>
+                    <span data-i18n-zh="重新命名工區" data-i18n-en="Rename Site">重新命名工區</span>
                   </button>
-                  <span class="gs-crs-pill" id="timelineSiteCountPill">0 Scans</span>
+                  <span class="gs-crs-pill" id="timelineSiteCountPill">0 筆掃描</span>
                   <span class="gs-crs-pill gs-timeline-crs-extra" id="timelineCrsExtraPill">TWD97 (121) + TWVD2001</span>
                 </div>
-                <div class="gs-timeline-site-sub" id="timelineSiteSubtitle">Select a scan tile to preview below</div>
+                <div class="gs-timeline-site-sub" id="timelineSiteSubtitle" data-i18n-zh="點選上方掃描卡片以於下方預覽 3D 模型" data-i18n-en="Select a scan tile to preview below">點選上方掃描卡片以於下方預覽 3D 模型</div>
               </div>
             </div>
 
             <div class="gs-timeline-header-right">
-              <select class="gs-scan-select" id="timelineProjectSelect" title="Switch Project Site (Scalable across 100+ Projects)"></select>
-              <button type="button" class="btn-xs" id="btnCapturePreviewScreenshot" title="Capture Live 3D Screenshot for Selected Tile">
+              <select class="gs-scan-select" id="timelineProjectSelect" title="切換專案工區" data-i18n-title-zh="切換專案工區" data-i18n-title-en="Switch Project Site"></select>
+              <button type="button" class="btn-xs" id="btnCapturePreviewScreenshot" title="擷取目前 3D 預覽畫面作為縮圖" data-i18n-title-zh="擷取目前 3D 預覽畫面作為縮圖" data-i18n-title-en="Capture Live 3D Screenshot for Selected Tile">
                 <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8">
                   <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
                   <circle cx="12" cy="13" r="4"/>
                 </svg>
               </button>
-              <button type="button" class="btn-xs" id="btnTimelineCompare" title="Compare Dates in Multi-Date Slider">
+              <button type="button" class="btn-xs" id="btnTimelineCompare" title="於歷次比對模式中比較不同日期" data-i18n-title-zh="於歷次比對模式中比較不同日期" data-i18n-title-en="Compare Dates in Multi-Date Slider">
                 <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8">
                   <rect x="3" y="3" width="18" height="18" rx="2"/><line x1="12" y1="3" x2="12" y2="21"/>
                 </svg>
               </button>
-              <button type="button" class="btn-xs" id="btnTimelineShare" title="Create Scoped Share Link for Site">
+              <button type="button" class="btn-xs" id="btnTimelineShare" title="建立此工區的專屬外部分享連結" data-i18n-title-zh="建立此工區的專屬外部分享連結" data-i18n-title-en="Create Scoped Share Link for Site">
                 <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8">
                   <circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/>
                   <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/>
                 </svg>
               </button>
-              <button type="button" class="btn-xs" id="btnTimelineRecycleBin" title="Open Recycle Bin — Restore or Permanently Clear Deleted Scans (Admin Only)" style="display:none;gap:4px;align-items:center;">
+              <button type="button" class="btn-xs" id="btnTimelineRecycleBin" title="開啟回收桶：還原或永久清除已刪除掃描" data-i18n-title-zh="開啟回收桶：還原或永久清除已刪除掃描" data-i18n-title-en="Open Recycle Bin: Restore or Permanently Clear Deleted Scans" style="display:none;gap:4px;align-items:center;">
                 <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8">
                   <polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
                 </svg>
-                <span>Bin</span>
+                <span data-i18n-zh="回收桶" data-i18n-en="Bin">回收桶</span>
                 <span id="timelineRecycleBinBadge" style="display:none;padding:0 5px;border-radius:999px;background:#ef4444;color:#ffffff;font-size:10px;font-weight:700;line-height:15px;">0</span>
               </button>
             </div>
@@ -300,7 +306,7 @@
                 </svg>
                 <div class="gs-scan-loader-pct" id="previewScanLoaderPct">0%</div>
               </div>
-              <div class="gs-scan-loader-label" id="previewScanLoaderLabel">Loading Interactive 3D Preview...</div>
+              <div class="gs-scan-loader-label" id="previewScanLoaderLabel" data-i18n-zh="正在載入互動式 3D 預覽..." data-i18n-en="Loading Interactive 3D Preview...">正在載入互動式 3D 預覽...</div>
             </div>
           </div>
 
@@ -312,30 +318,30 @@
               </svg>
               <div class="gs-preview-text-wrap">
                 <div style="display:flex;align-items:center;gap:6px;min-width:0;">
-                  <div style="font-size:12.5px;font-weight:700;color:var(--ui-text-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" id="previewScanTitle" title="Click Rename Scan to edit scan name">3D Mesh Preview</div>
-                  <span class="gs-lowres-preview-pill" id="previewQualityBadge" title="Interactive medium-LOD 3D preview loaded for fast browsing. Click Enlarge (bottom-right) for full-resolution 3D Studio.">Interactive Preview</span>
-                  <button type="button" class="btn-xs" id="btnRenamePreviewScan" title="Edit Scan Name / 編輯掃描名稱" style="height:21px;padding:0 6px;font-size:10.5px;flex-shrink:0;">
+                  <div style="font-size:12.5px;font-weight:700;color:var(--ui-text-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" id="previewScanTitle" title="點擊重新命名以編輯掃描名稱" data-i18n-title-zh="點擊重新命名以編輯掃描名稱" data-i18n-title-en="Click Rename to edit scan name">3D 網格預覽</div>
+                  <span class="gs-lowres-preview-pill" id="previewQualityBadge" title="已載入快速互動預覽模型；點擊右下角放大按鈕可進入全解析度 3D 工作坊" data-i18n-zh="互動預覽" data-i18n-en="Interactive Preview" data-i18n-title-zh="已載入快速互動預覽模型；點擊右下角放大按鈕可進入全解析度 3D 工作坊" data-i18n-title-en="Interactive medium-LOD 3D preview loaded for fast browsing. Click Enlarge for full-resolution 3D Studio.">互動預覽</span>
+                  <button type="button" class="btn-xs" id="btnRenamePreviewScan" title="編輯掃描名稱" data-i18n-title-zh="編輯掃描名稱" data-i18n-title-en="Edit Scan Name" style="height:21px;padding:0 6px;font-size:10.5px;flex-shrink:0;">
                     <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2">
                       <path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
                     </svg>
-                    <span>Rename</span>
+                    <span data-i18n-zh="改名" data-i18n-en="Rename">改名</span>
                   </button>
-                  <button type="button" class="btn-xs" id="btnRerunPreviewScan" title="Re-run Scan from Original Photos with Custom PIX4Dmatic Settings" style="height:21px;padding:0 6px;font-size:10.5px;flex-shrink:0;">
+                  <button type="button" class="btn-xs" id="btnRerunPreviewScan" title="使用自訂 PIX4Dmatic 參數從原始照片重新建模" data-i18n-title-zh="使用自訂 PIX4Dmatic 參數從原始照片重新建模" data-i18n-title-en="Re-run Scan from Original Photos with Custom PIX4Dmatic Settings" style="height:21px;padding:0 6px;font-size:10.5px;flex-shrink:0;">
                     <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2">
                       <polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
                     </svg>
-                    <span>Re-run</span>
+                    <span data-i18n-zh="重算" data-i18n-en="Re-run">重算</span>
                   </button>
-                  <button type="button" class="btn-xs" id="btnDeletePreviewScan" title="Delete Scan / 刪除此掃描" style="height:21px;padding:0 6px;font-size:10.5px;flex-shrink:0;color:#ef4444;border-color:rgba(239,68,68,0.35);">
+                  <button type="button" class="btn-xs" id="btnDeletePreviewScan" title="移至回收桶" data-i18n-title-zh="移至回收桶" data-i18n-title-en="Move Scan to Recycle Bin" style="height:21px;padding:0 6px;font-size:10.5px;flex-shrink:0;color:#ef4444;border-color:rgba(239,68,68,0.35);">
                     <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2">
                       <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/>
                     </svg>
-                    <span>Delete</span>
+                    <span data-i18n-zh="刪除" data-i18n-en="Delete">刪除</span>
                   </button>
                 </div>
                 <div style="font-size:11px;color:var(--ui-text-secondary);font-family:monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" id="previewScanMeta">TWD97 (121) + TWVD2001</div>
               </div>
-              <div class="gs-brightness-control" title="Preview Scan Brightness (0.1x – 4.0x)">
+              <div class="gs-brightness-control" title="預覽模型亮度 (0.1x – 4.0x)" data-i18n-title-zh="預覽模型亮度 (0.1x – 4.0x)" data-i18n-title-en="Preview Scan Brightness (0.1x – 4.0x)">
                 <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="var(--ui-text-secondary)" stroke-width="1.8">
                   <circle cx="12" cy="12" r="5"/>
                   <line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/>
@@ -344,24 +350,24 @@
                 <input type="range" id="previewBrightnessSlider" class="gs-brightness-slider" min="0.1" max="4.0" step="0.05" value="1.0" style="width:64px;" />
                 <span class="gs-brightness-val" id="lblPreviewBrightness">1.0x</span>
               </div>
-              <button type="button" class="btn-xs" id="btnPreviewResetCamera" title="Frame Scan to Preview Viewport">
+              <button type="button" class="btn-xs" id="btnPreviewResetCamera" title="重設預覽視角" data-i18n-title-zh="重設預覽視角" data-i18n-title-en="Frame Scan to Preview Viewport">
                 <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8">
                   <circle cx="12" cy="12" r="7"/><line x1="12" y1="2" x2="12" y2="5"/><line x1="12" y1="19" x2="12" y2="22"/>
                   <line x1="2" y1="12" x2="5" y2="12"/><line x1="19" y1="12" x2="22" y2="12"/>
                 </svg>
               </button>
-              <button type="button" class="btn-xs" id="btnPreviewQuickShare" title="Quick Share: Copy Single-Scan View &amp; Comment Only Link" style="gap:4px;">
+              <button type="button" class="btn-xs" id="btnPreviewQuickShare" title="快速分享：複製此掃描的檢視與留言連結" data-i18n-title-zh="快速分享：複製此掃描的檢視與留言連結" data-i18n-title-en="Quick Share: Copy Single-Scan View &amp; Comment Link" style="gap:4px;">
                 <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8">
                   <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>
                   <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
                 </svg>
-                <span>Share</span>
+                <span data-i18n-zh="分享" data-i18n-en="Share">分享</span>
               </button>
             </div>
           </div>
 
           <!-- Icon-Only Enlarge Button (Strictly 0 words, only icon -> opens Full 3D Viewer/Editor Interface) -->
-          <button type="button" class="gs-preview-enlarge-btn" id="btnEnlargePreviewToStudio" title="Enlarge to Full 3D Viewer &amp; Editor" aria-label="Enlarge to Full 3D Viewer &amp; Editor">
+          <button type="button" class="gs-preview-enlarge-btn" id="btnEnlargePreviewToStudio" title="放大進入全螢幕 3D 工作坊" data-i18n-title-zh="放大進入全螢幕 3D 工作坊" data-i18n-title-en="Enlarge to Full 3D Studio" aria-label="Enlarge to Full 3D Studio">
             <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <polyline points="15 3 21 3 21 9"/>
               <polyline points="9 21 3 21 3 15"/>
@@ -389,7 +395,7 @@
             </svg>
             <div class="gs-scan-loader-pct" id="studioScanLoaderPct">0%</div>
           </div>
-          <div class="gs-scan-loader-label" id="studioScanLoaderLabel">Loading 3D Scan...</div>
+          <div class="gs-scan-loader-label" id="studioScanLoaderLabel" data-i18n-zh="正在載入 3D 掃描模型..." data-i18n-en="Loading 3D Scan...">正在載入 3D 掃描模型...</div>
         </div>
       </div>
 
@@ -399,7 +405,7 @@
       <!-- Studio Top Bar -->
       <div class="gs-studio-top-bar">
         <div class="gs-active-scan-pill gs-studio-main-pill">
-          <button type="button" class="btn-xs" id="btnStudioBackToTimeline" title="Back to Site Timeline &amp; Preview">
+          <button type="button" class="btn-xs" id="btnStudioBackToTimeline" title="返回工區時間軸與預覽" data-i18n-title-zh="返回工區時間軸與預覽" data-i18n-title-en="Back to Site Timeline &amp; Preview">
             <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
               <line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/>
             </svg>
@@ -407,30 +413,30 @@
           <svg class="gs-studio-cube-icon" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="var(--ui-accent)" stroke-width="1.8" style="flex-shrink:0;">
             <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
           </svg>
-          <select class="gs-scan-select" id="studioProjectSelect" title="Select Project Site (Scalable across 100+ Projects)"></select>
-          <button type="button" class="btn-xs" id="btnRenameStudioSite" title="Rename Project Site (工區重新命名)">
+          <select class="gs-scan-select" id="studioProjectSelect" title="選擇專案工區" data-i18n-title-zh="選擇專案工區" data-i18n-title-en="Select Project Site"></select>
+          <button type="button" class="btn-xs" id="btnRenameStudioSite" title="重新命名工區" data-i18n-title-zh="重新命名工區" data-i18n-title-en="Rename Project Site">
             <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
             </svg>
           </button>
           <span class="gs-crs-pill" id="studioProjectGroupBadge" style="display:none;"></span>
-          <select class="gs-scan-select" id="studioScanSelect" title="Select Active 3D Scan (Current Project Only)"></select>
-          <button type="button" class="btn-xs" id="btnRenameStudioScan" title="Edit Active Scan Name">
+          <select class="gs-scan-select" id="studioScanSelect" title="選擇目前工區的 3D 掃描模型" data-i18n-title-zh="選擇目前工區的 3D 掃描模型" data-i18n-title-en="Select Active 3D Scan"></select>
+          <button type="button" class="btn-xs" id="btnRenameStudioScan" title="編輯目前掃描名稱" data-i18n-title-zh="編輯目前掃描名稱" data-i18n-title-en="Edit Active Scan Name">
             <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
             </svg>
           </button>
-          <button type="button" class="btn-xs" id="btnRerunStudioScan" title="Re-run Scan from Original Photos with Custom PIX4Dmatic Settings">
+          <button type="button" class="btn-xs" id="btnRerunStudioScan" title="使用自訂 PIX4Dmatic 參數從原始照片重新建模" data-i18n-title-zh="使用自訂 PIX4Dmatic 參數從原始照片重新建模" data-i18n-title-en="Re-run Scan from Original Photos with Custom PIX4Dmatic Settings">
             <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2">
               <polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
             </svg>
           </button>
-          <button type="button" class="btn-xs" id="btnDeleteStudioScan" title="Move Active Scan to Trash Bin / 移至回收桶" style="color:#ef4444;border-color:rgba(239,68,68,0.35);">
+          <button type="button" class="btn-xs" id="btnDeleteStudioScan" title="將目前掃描移至回收桶" data-i18n-title-zh="將目前掃描移至回收桶" data-i18n-title-en="Move Active Scan to Recycle Bin" style="color:#ef4444;border-color:rgba(239,68,68,0.35);">
             <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2">
               <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/>
             </svg>
           </button>
-          <button type="button" class="btn-xs" id="btnStudioRecycleBin" title="Open Trash Bin — Restore Original Scan Backups (開啟回收桶 · 還原原始掃描備份)" style="position:relative;display:none;">
+          <button type="button" class="btn-xs" id="btnStudioRecycleBin" title="開啟回收桶：還原原始掃描備份" data-i18n-title-zh="開啟回收桶：還原原始掃描備份" data-i18n-title-en="Open Recycle Bin: Restore Original Scan Backups" style="position:relative;display:none;">
             <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2">
               <polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/>
             </svg>
@@ -441,8 +447,8 @@
           </div>
 
           <!-- Scan Brightness Control (0.1x – 4.0x, matching Gathering Cloud) -->
-          <div class="gs-brightness-control" title="Scan Brightness (0.1x – 4.0x)">
-            <button type="button" class="gs-brightness-icon-btn" id="btnResetBrightness" title="Reset Scan Brightness (1.0x)">
+          <div class="gs-brightness-control" title="掃描模型亮度 (0.1x – 4.0x)" data-i18n-title-zh="掃描模型亮度 (0.1x – 4.0x)" data-i18n-title-en="Scan Brightness (0.1x – 4.0x)">
+            <button type="button" class="gs-brightness-icon-btn" id="btnResetBrightness" title="重設模型亮度 (1.0x)" data-i18n-title-zh="重設模型亮度 (1.0x)" data-i18n-title-en="Reset Scan Brightness (1.0x)">
               <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8">
                 <circle cx="12" cy="12" r="5"/>
                 <line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/>
@@ -455,13 +461,13 @@
             <span class="gs-brightness-val" id="lblStudioBrightness">1.0x</span>
           </div>
 
-          <button type="button" class="btn-xs" id="btnStudioResetCamera" title="Frame Scan to Viewport">
+          <button type="button" class="btn-xs" id="btnStudioResetCamera" title="重設視角至完整模型" data-i18n-title-zh="重設視角至完整模型" data-i18n-title-en="Frame Scan to Viewport">
             <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8">
               <circle cx="12" cy="12" r="7"/><line x1="12" y1="2" x2="12" y2="5"/><line x1="12" y1="19" x2="12" y2="22"/>
               <line x1="2" y1="12" x2="5" y2="12"/><line x1="19" y1="12" x2="22" y2="12"/>
             </svg>
           </button>
-          <button type="button" class="btn-xs" id="btnStudioFirstPerson" title="First-Person Camera Mode (WASD + Mouse Look · Press F) / 第一人稱漫遊視角 (WASD 移動)">
+          <button type="button" class="btn-xs" id="btnStudioFirstPerson" title="第一人稱漫遊視角：WASD 移動與滑鼠環視" data-i18n-title-zh="第一人稱漫遊視角：WASD 移動與滑鼠環視" data-i18n-title-en="First-Person Camera Mode: WASD &amp; Mouse Look">
             <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8">
               <circle cx="12" cy="5" r="2.3"/>
               <path d="M9 20l2-6 3 2v4"/>
@@ -469,17 +475,17 @@
             </svg>
             <span>WASD</span>
           </button>
-          <button type="button" class="btn-xs" id="btnStudioQuickShare" title="Quick Share: Copy Single-Scan View &amp; Comment Only Link" style="gap:4px;">
+          <button type="button" class="btn-xs" id="btnStudioQuickShare" title="快速分享：複製此掃描的檢視與留言連結" data-i18n-title-zh="快速分享：複製此掃描的檢視與留言連結" data-i18n-title-en="Quick Share: Copy Single-Scan View &amp; Comment Link" style="gap:4px;">
             <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8">
               <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>
               <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
             </svg>
-            <span>Share</span>
+            <span data-i18n-zh="分享" data-i18n-en="Share">分享</span>
             <svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" stroke-width="2.2" style="opacity:0.75;">
               <polyline points="6 9 12 15 18 9"/>
             </svg>
           </button>
-          <a class="btn-xs" id="btnStudioDownloadObj" href="#" title="Download 3D Scan (.3tz, .glb, .obj, .zip)" style="gap:3px;">
+          <a class="btn-xs" id="btnStudioDownloadObj" href="#" title="下載 3D 掃描模型 (.3tz, .glb, .obj, .zip)" data-i18n-title-zh="下載 3D 掃描模型 (.3tz, .glb, .obj, .zip)" data-i18n-title-en="Download 3D Scan (.3tz, .glb, .obj, .zip)" style="gap:3px;">
             <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8">
               <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
               <polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
@@ -488,24 +494,24 @@
               <polyline points="6 9 12 15 18 9"/>
             </svg>
           </a>
-          <button type="button" class="btn-xs" id="btnStudioToggleCategorizeVis" title="AI Classification Saved on Server — Hidden by Default (Click to Toggle 3D Overlays) / AI 地物分類已儲存於伺服器（預設隱藏，點擊切換顯示 3D 圖層）" style="display:none;gap:4px;white-space:nowrap;flex-shrink:0;">
+          <button type="button" class="btn-xs" id="btnStudioToggleCategorizeVis" title="AI 地物分類已儲存於伺服器，點擊切換顯示 3D 圖層" data-i18n-title-zh="AI 地物分類已儲存於伺服器，點擊切換顯示 3D 圖層" data-i18n-title-en="AI Classification Saved on Server: Click to Toggle 3D Overlays" style="display:none;gap:4px;white-space:nowrap;flex-shrink:0;">
             <span id="lblStudioToggleCategorizeVis">👁️‍🗨️ AI 分類: 隱藏</span>
           </button>
-          <button type="button" class="btn-xs" id="btnStudioToggleCategorizeLabels" title="Toggle 2D Floating Classification Labels while keeping 3D Overlays visible / 切換顯示或隱藏 2D 浮動標籤（保留 3D 分類色塊）" style="display:none;gap:4px;white-space:nowrap;flex-shrink:0;">
+          <button type="button" class="btn-xs" id="btnStudioToggleCategorizeLabels" title="切換顯示或隱藏 2D 浮動分類標籤" data-i18n-title-zh="切換顯示或隱藏 2D 浮動分類標籤" data-i18n-title-en="Toggle 2D Floating Classification Labels" style="display:none;gap:4px;white-space:nowrap;flex-shrink:0;">
             <span id="lblStudioToggleCategorizeLabels">🏷️ 標籤: 顯示</span>
           </button>
-          <button type="button" class="btn-xs primary" id="btnStudioSurveyReport" title="Create Survey Report: Civil3D.dxf (AutoCAD / Civil 3D TWD97 XYZ) &amp; A3 Ready-to-Print PDF">
+          <button type="button" class="btn-xs primary" id="btnStudioSurveyReport" title="產製測量成果報告：Civil3D.dxf 與 A3 可列印 PDF" data-i18n-title-zh="產製測量成果報告：Civil3D.dxf 與 A3 可列印 PDF" data-i18n-title-en="Create Survey Report: Civil3D.dxf &amp; A3 Ready-to-Print PDF">
             <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8">
               <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>
               <line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="16" y2="17"/>
             </svg>
-            <span>Report</span>
+            <span data-i18n-zh="測量報告" data-i18n-en="Report">測量報告</span>
           </button>
         </div>
 
         <div class="gs-active-scan-pill gs-studio-coord-pill" style="gap:8px;">
-          <span style="font-size:11px;font-family:var(--mono);color:var(--ui-text-primary);font-weight:600;" id="lblLastPickedCoord">
-            Click 3D surface to inspect coordinates
+          <span style="font-size:11px;font-family:var(--mono);color:var(--ui-text-primary);font-weight:600;" id="lblLastPickedCoord" data-i18n-zh="點擊 3D 表面以檢視座標" data-i18n-en="Click 3D surface to inspect coordinates">
+            點擊 3D 表面以檢視座標
           </span>
         </div>
       </div>
@@ -513,33 +519,33 @@
       <!-- First-Person Video-Game Camera HUD & Center Crosshair -->
       <div class="gs-fp-hud" id="studioFirstPersonHud" aria-live="polite">
         <div class="gs-fp-seg" role="group" aria-label="First Person Locomotion Mode">
-          <button type="button" class="gs-fp-seg-btn active" id="btnFpModeFly" data-fp-mode="fly" title="Free-Fly Drone/Spectator Mode (G) — 自由飛行模式">
-            🚀 飛行 Fly
+          <button type="button" class="gs-fp-seg-btn active" id="btnFpModeFly" data-fp-mode="fly" title="自由飛行模式 (G)" data-i18n-zh="🚀 飛行" data-i18n-en="🚀 Fly" data-i18n-title-zh="自由飛行模式 (G)" data-i18n-title-en="Free-Fly Drone Mode (G)">
+            🚀 飛行
           </button>
-          <button type="button" class="gs-fp-seg-btn" id="btnFpModeWalk" data-fp-mode="walk" title="Walk on 3D Surface at 1.68m Eye Height + Gravity/Jump (G) — 地表步行模式">
-            🚶 步行 Walk
+          <button type="button" class="gs-fp-seg-btn" id="btnFpModeWalk" data-fp-mode="walk" title="地表步行模式：1.68m 視高與重力跳躍 (G)" data-i18n-zh="🚶 步行" data-i18n-en="🚶 Walk" data-i18n-title-zh="地表步行模式：1.68m 視高與重力跳躍 (G)" data-i18n-title-en="Walk on 3D Surface at 1.68m Eye Height (G)">
+            🚶 步行
           </button>
         </div>
 
-        <button type="button" class="gs-fp-lock-btn" id="btnFpPointerLock" title="Click to Lock Mouse for Full 360° FPS Mouselook (Esc to Unlock)">
-          🎯 點擊畫面鎖定滑鼠 (或拖曳旋轉)
+        <button type="button" class="gs-fp-lock-btn" id="btnFpPointerLock" title="點擊鎖定滑鼠以進行 360° 環視（按 Esc 解除）" data-i18n-zh="🎯 點擊畫面鎖定滑鼠或拖曳旋轉" data-i18n-en="🎯 Click to Lock Mouse or Drag to Look" data-i18n-title-zh="點擊鎖定滑鼠以進行 360° 環視（按 Esc 解除）" data-i18n-title-en="Click to Lock Mouse for 360° Look (Esc to Unlock)">
+          🎯 點擊畫面鎖定滑鼠或拖曳旋轉
         </button>
 
-        <div class="gs-fp-speed-wrap" title="Adjust Base Speed with Mouse Wheel or Slider (Shift = 3x Sprint, Alt = 0.25x Precision)">
-          <span class="gs-fp-speed-lbl">速度</span>
+        <div class="gs-fp-speed-wrap" title="使用滑鼠滾輪或滑桿調整移動速度" data-i18n-title-zh="使用滑鼠滾輪或滑桿調整移動速度" data-i18n-title-en="Adjust Base Speed with Mouse Wheel or Slider">
+          <span class="gs-fp-speed-lbl" data-i18n-zh="速度" data-i18n-en="Speed">速度</span>
           <input type="range" id="fpSpeedSlider" class="gs-brightness-slider" min="0.5" max="60" step="0.5" value="8.0" style="width:68px;" />
           <span class="gs-fp-speed-val" id="lblFpSpeed">8.0 m/s</span>
         </div>
 
         <div class="gs-fp-keys-hint">
-          <span class="gs-fp-key-chip">WASD</span>移動
-          <span class="gs-fp-key-chip">Shift</span>衝刺
-          <span class="gs-fp-key-chip" id="lblFpUpKeyHint">Space/E</span><span id="lblFpUpActionHint">上升</span>
-          <span class="gs-fp-key-chip" id="lblFpDownKeyHint">C/Q</span><span id="lblFpDownActionHint">下降</span>
-          <span class="gs-fp-key-chip">G</span>切換
+          <span class="gs-fp-key-chip">WASD</span><span data-i18n-zh="移動" data-i18n-en="Move">移動</span>
+          <span class="gs-fp-key-chip">Shift</span><span data-i18n-zh="衝刺" data-i18n-en="Sprint">衝刺</span>
+          <span class="gs-fp-key-chip" id="lblFpUpKeyHint">Space/E</span><span id="lblFpUpActionHint" data-i18n-zh="上升" data-i18n-en="Up">上升</span>
+          <span class="gs-fp-key-chip" id="lblFpDownKeyHint">C/Q</span><span id="lblFpDownActionHint" data-i18n-zh="下降" data-i18n-en="Down">下降</span>
+          <span class="gs-fp-key-chip">G</span><span data-i18n-zh="切換" data-i18n-en="Mode">切換</span>
         </div>
 
-        <button type="button" class="gs-fp-exit-btn" id="btnExitFirstPerson" title="Exit First-Person Mode back to Orbit Camera (F or Esc)">
+        <button type="button" class="gs-fp-exit-btn" id="btnExitFirstPerson" title="離開第一人稱漫遊返回軌道視角 (F 或 Esc)" data-i18n-zh="✕ 離開" data-i18n-en="✕ Exit" data-i18n-title-zh="離開第一人稱漫遊返回軌道視角 (F 或 Esc)" data-i18n-title-en="Exit First-Person Mode back to Orbit Camera (F or Esc)">
           ✕ 離開
         </button>
       </div>
@@ -568,12 +574,12 @@
       <!-- Right-Side Engineering & Surveying Inspector Panel -->
       <aside class="gs-side-panel" id="studioSidePanel">
         <div class="gs-panel-header">
-          <div class="gs-panel-title" id="sidePanelTitle">Surveying Inspector</div>
+          <div class="gs-panel-title" id="sidePanelTitle" data-i18n-zh="測量檢視面板" data-i18n-en="Surveying Inspector">測量檢視面板</div>
           <div class="gs-panel-header-actions" style="display:flex;align-items:center;gap:4px;flex-shrink:0;">
-            <button type="button" class="btn-xs gs-panel-collapse-btn" id="btnCollapseSidePanel" style="height:24px;padding:0 7px;font-size:11px;font-weight:700;" title="Minimize / Expand Inspector Panel (收合 / 展開面板)" aria-label="Minimize or Expand Inspector Panel">
-              <span id="lblCollapseSidePanel">▾ 收合</span>
+            <button type="button" class="btn-xs gs-panel-collapse-btn" id="btnCollapseSidePanel" style="height:24px;padding:0 7px;font-size:11px;font-weight:700;" title="收合或展開檢視面板" data-i18n-title-zh="收合或展開檢視面板" data-i18n-title-en="Minimize or Expand Inspector Panel" aria-label="Minimize or Expand Inspector Panel">
+              <span id="lblCollapseSidePanel" data-i18n-zh="▾ 收合" data-i18n-en="▾ Collapse">▾ 收合</span>
             </button>
-            <button type="button" class="btn-xs" id="btnCloseSidePanel" title="Close" aria-label="Close Inspector Panel">
+            <button type="button" class="btn-xs" id="btnCloseSidePanel" title="關閉" data-i18n-title-zh="關閉" data-i18n-title-en="Close" aria-label="Close Inspector Panel">
               <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8">
                 <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
               </svg>
@@ -589,7 +595,7 @@
       <!-- Unified Bottom Segmented Dock (All Surveying, Measurement & BIM Tools in One Bar) -->
       <nav class="bim-bottom-dock" id="bimBottomDock" aria-label="GatheringScans 3D Surveying &amp; Measurement Dock">
         <!-- 1. Distance -->
-        <button type="button" class="bim-dock-btn autodesk-measure-btn active" id="btnMeasureDistance" data-tool="distance" data-dock="measure" title="Distance &amp; Elevation Δh / 空間距離與高程差" aria-label="Distance Measurement">
+        <button type="button" class="bim-dock-btn autodesk-measure-btn active" id="btnMeasureDistance" data-tool="distance" data-dock="measure" title="空間距離與高程差量測" data-i18n-title-zh="空間距離與高程差量測" data-i18n-title-en="Distance &amp; Elevation Δh" aria-label="Distance Measurement">
           <div class="bim-dock-icon">
             <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8">
               <line x1="2" y1="4" x2="2" y2="20" stroke-width="2.2"/>
@@ -599,11 +605,11 @@
               <polyline points="18,9 21,12 18,15" stroke-width="1.8"/>
             </svg>
           </div>
-          <span class="bim-dock-label">距離</span>
+          <span class="bim-dock-label" data-i18n-zh="距離" data-i18n-en="Distance">距離</span>
         </button>
 
         <!-- 2. Angle -->
-        <button type="button" class="bim-dock-btn autodesk-measure-btn" id="btnMeasureAngle" data-tool="angle" data-dock="angle" title="Angle &amp; Slope / 角度與坡度" aria-label="Angle Measurement">
+        <button type="button" class="bim-dock-btn autodesk-measure-btn" id="btnMeasureAngle" data-tool="angle" data-dock="angle" title="角度與坡度量測" data-i18n-title-zh="角度與坡度量測" data-i18n-title-en="Angle &amp; Slope" aria-label="Angle Measurement">
           <div class="bim-dock-icon">
             <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8">
               <path d="M4 5v14h16"/>
@@ -611,22 +617,22 @@
               <circle cx="4" cy="19" r="1.5" fill="currentColor"/>
             </svg>
           </div>
-          <span class="bim-dock-label">角度</span>
+          <span class="bim-dock-label" data-i18n-zh="角度" data-i18n-en="Angle">角度</span>
         </button>
 
         <!-- 3. Area -->
-        <button type="button" class="bim-dock-btn autodesk-measure-btn" id="btnMeasureArea" data-tool="area" data-dock="area" title="Area &amp; Perimeter (m² / 坪) / 面積與周長" aria-label="Area Measurement">
+        <button type="button" class="bim-dock-btn autodesk-measure-btn" id="btnMeasureArea" data-tool="area" data-dock="area" title="面積與周長量測" data-i18n-title-zh="面積與周長量測" data-i18n-title-en="Area &amp; Perimeter" aria-label="Area Measurement">
           <div class="bim-dock-icon">
             <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8">
               <polygon points="3,6 15,3 21,9 18,20 6,18"/>
               <polygon points="7,8 14,6 18,10 16,17 8,16" stroke-dasharray="2 2" stroke-width="1.2" opacity="0.6"/>
             </svg>
           </div>
-          <span class="bim-dock-label">面積</span>
+          <span class="bim-dock-label" data-i18n-zh="面積" data-i18n-en="Area">面積</span>
         </button>
 
         <!-- 4. Coordinates -->
-        <button type="button" class="bim-dock-btn autodesk-measure-btn" id="btnMeasureCoordinates" data-tool="coordinates" data-dock="coordinates" title="TWD97 (121) + TWVD2001 Coordinates / 座標點位" aria-label="Coordinate Point">
+        <button type="button" class="bim-dock-btn autodesk-measure-btn" id="btnMeasureCoordinates" data-tool="coordinates" data-dock="coordinates" title="TWD97 (121) + TWVD2001 座標點位" data-i18n-title-zh="TWD97 (121) + TWVD2001 座標點位" data-i18n-title-en="TWD97 (121) + TWVD2001 Coordinates" aria-label="Coordinate Point">
           <div class="bim-dock-icon">
             <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8">
               <circle cx="12" cy="12" r="6"/>
@@ -636,11 +642,11 @@
               <line x1="18" y1="12" x2="22" y2="12"/>
             </svg>
           </div>
-          <span class="bim-dock-label">座標</span>
+          <span class="bim-dock-label" data-i18n-zh="座標" data-i18n-en="Coords">座標</span>
         </button>
 
         <!-- 5. Laser -->
-        <button type="button" class="bim-dock-btn autodesk-measure-btn" id="btnMeasureLaser" data-tool="laser" data-dock="laser" title="Laser Road / Room Width &amp; Clearance (Hover &amp; Click to Pin) / 雷射路寬與室內淨寬量測" aria-label="Laser Road and Room Width">
+        <button type="button" class="bim-dock-btn autodesk-measure-btn" id="btnMeasureLaser" data-tool="laser" data-dock="laser" title="雷射路寬與室內淨寬量測" data-i18n-title-zh="雷射路寬與室內淨寬量測" data-i18n-title-en="Laser Road &amp; Room Clearance Width" aria-label="Laser Road and Room Width">
           <div class="bim-dock-icon">
             <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8">
               <path d="M5 19l4-4M9 15l7-7 2 2-7 7-2-2z"/>
@@ -650,92 +656,92 @@
               <line x1="22" y1="8" x2="23" y2="9"/>
             </svg>
           </div>
-          <span class="bim-dock-label">雷射</span>
+          <span class="bim-dock-label" data-i18n-zh="雷射" data-i18n-en="Laser">雷射</span>
         </button>
 
         <div class="bim-dock-divider"></div>
 
         <!-- 6. Earthwork Volume -->
-        <button type="button" class="bim-dock-btn autodesk-measure-btn" id="btnDockVolume" data-tool="volume" data-dock="volume" title="Cut/Fill &amp; Stockpile Volume Report / 土方挖填體積報表" aria-label="Earthwork Volume">
+        <button type="button" class="bim-dock-btn autodesk-measure-btn" id="btnDockVolume" data-tool="volume" data-dock="volume" title="土方挖填體積報表" data-i18n-title-zh="土方挖填體積報表" data-i18n-title-en="Cut/Fill &amp; Stockpile Volume Report" aria-label="Earthwork Volume">
           <div class="bim-dock-icon">
             <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8">
               <path d="M3 18L9 8l5 6 4-4 3 8H3z"/>
             </svg>
           </div>
-          <span class="bim-dock-label">土方</span>
+          <span class="bim-dock-label" data-i18n-zh="土方" data-i18n-en="Volume">土方</span>
         </button>
 
         <!-- 7. Elevation Contours & Survey Report (.DXF + A3 PDF) -->
-        <button type="button" class="bim-dock-btn autodesk-measure-btn" id="btnDockContours" data-tool="contours" data-dock="contours" title="Survey Report: Contours, Mask, Civil3D.dxf &amp; A3 PDF / 等高線與測量成果圖" aria-label="Contours and Survey Report">
+        <button type="button" class="bim-dock-btn autodesk-measure-btn" id="btnDockContours" data-tool="contours" data-dock="contours" title="等高線與測量成果圖：Civil3D.dxf 與 A3 PDF" data-i18n-title-zh="等高線與測量成果圖：Civil3D.dxf 與 A3 PDF" data-i18n-title-en="Survey Report: Contours, Civil3D.dxf &amp; A3 PDF" aria-label="Contours and Survey Report">
           <div class="bim-dock-icon">
             <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8">
               <ellipse cx="12" cy="12" rx="9" ry="5"/><ellipse cx="12" cy="12" rx="5" ry="2.5"/>
             </svg>
           </div>
-          <span class="bim-dock-label">等高線</span>
+          <span class="bim-dock-label" data-i18n-zh="等高線" data-i18n-en="Contours">等高線</span>
         </button>
 
         <!-- 8. Cross-Section Profile -->
-        <button type="button" class="bim-dock-btn autodesk-measure-btn" id="btnMeasureProfile" data-tool="profile" data-dock="profile" title="Cross-Section Elevation Profile / 縱橫斷面分析" aria-label="Cross-Section Profile">
+        <button type="button" class="bim-dock-btn autodesk-measure-btn" id="btnMeasureProfile" data-tool="profile" data-dock="profile" title="縱橫斷面高程分析" data-i18n-title-zh="縱橫斷面高程分析" data-i18n-title-en="Cross-Section Elevation Profile" aria-label="Cross-Section Profile">
           <div class="bim-dock-icon">
             <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8">
               <polyline points="3 17 8 11 13 14 21 6"/>
               <line x1="3" y1="20" x2="21" y2="20"/>
             </svg>
           </div>
-          <span class="bim-dock-label">斷面</span>
+          <span class="bim-dock-label" data-i18n-zh="斷面" data-i18n-en="Profile">斷面</span>
         </button>
 
         <!-- 9. Section Box Slicer -->
-        <button type="button" class="bim-dock-btn" id="btnDockSection" data-dock="section" title="Section Box Slicer / 剖面盒裁切" aria-label="Section Box Slicer">
+        <button type="button" class="bim-dock-btn" id="btnDockSection" data-dock="section" title="剖面盒三軸裁切" data-i18n-title-zh="剖面盒三軸裁切" data-i18n-title-en="Section Box Slicer" aria-label="Section Box Slicer">
           <div class="bim-dock-icon">
             <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8">
               <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
             </svg>
           </div>
-          <span class="bim-dock-label">剖面</span>
+          <span class="bim-dock-label" data-i18n-zh="剖面" data-i18n-en="Section">剖面</span>
         </button>
 
         <div class="bim-dock-divider"></div>
 
         <!-- 10. RTK Camera Photos -->
-        <button type="button" class="bim-dock-btn autodesk-measure-btn" id="btnMeasurePhotos" data-tool="photos" data-dock="rtk" title="RTK Raw Camera Photo Inspector / 原始 RTK 照片檢視" aria-label="RTK Camera Photos">
+        <button type="button" class="bim-dock-btn autodesk-measure-btn" id="btnMeasurePhotos" data-tool="photos" data-dock="rtk" title="原始 RTK 照片檢視" data-i18n-title-zh="原始 RTK 照片檢視" data-i18n-title-en="RTK Raw Camera Photo Inspector" aria-label="RTK Camera Photos">
           <div class="bim-dock-icon">
             <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8">
               <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
               <circle cx="12" cy="13" r="4"/>
             </svg>
           </div>
-          <span class="bim-dock-label">照片</span>
+          <span class="bim-dock-label" data-i18n-zh="照片" data-i18n-en="Photos">照片</span>
         </button>
 
         <!-- 10b. AI Surface & Object Categorization (Roads, Trees DBH, Water Voids, Walls) -->
-        <button type="button" class="bim-dock-btn autodesk-measure-btn" id="btnDockCategorize" data-tool="categorize" data-dock="categorize" title="AI Surface &amp; Object Categorization (Road, Tree DBH, Water Void, Wall) / AI 地物與表面自動分類" aria-label="AI Surface Categorization">
+        <button type="button" class="bim-dock-btn autodesk-measure-btn" id="btnDockCategorize" data-tool="categorize" data-dock="categorize" title="AI 地物與表面自動分類：道路、樹木胸徑、水體空洞、圍牆" data-i18n-title-zh="AI 地物與表面自動分類：道路、樹木胸徑、水體空洞、圍牆" data-i18n-title-en="AI Surface &amp; Object Categorization: Roads, Trees DBH, Water Voids, Walls" aria-label="AI Surface Categorization">
           <div class="bim-dock-icon" style="position:relative;">
             <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8">
               <polygon points="12 2 2 7 12 12 22 7 12 2"/>
               <polyline points="2 12 12 17 22 12"/>
               <polyline points="2 17 12 22 22 17"/>
             </svg>
-            <span id="lblCategorizeSavedDot" title="AI Classification Saved on Server (Hidden by Default)" style="display:none;position:absolute;top:-3px;right:-4px;width:8px;height:8px;border-radius:50%;background:#10b981;border:1.5px solid var(--ui-bg-surface);"></span>
+            <span id="lblCategorizeSavedDot" title="AI 分類結果已儲存於伺服器" data-i18n-title-zh="AI 分類結果已儲存於伺服器" data-i18n-title-en="AI Classification Saved on Server" style="display:none;position:absolute;top:-3px;right:-4px;width:8px;height:8px;border-radius:50%;background:#10b981;border:1.5px solid var(--ui-bg-surface);"></span>
           </div>
-          <span class="bim-dock-label">分類</span>
+          <span class="bim-dock-label" data-i18n-zh="分類" data-i18n-en="Classify">分類</span>
         </button>
 
         <!-- 11. 3D Geo-Comments -->
-        <button type="button" class="bim-dock-btn" id="btnDockComments" data-dock="comments" title="3D Geo-Comments / 標註" aria-label="3D Geo-Comments">
+        <button type="button" class="bim-dock-btn" id="btnDockComments" data-dock="comments" title="3D 空間標註與留言" data-i18n-title-zh="3D 空間標註與留言" data-i18n-title-en="3D Spatial Annotations &amp; Comments" aria-label="3D Geo-Comments">
           <div class="bim-dock-icon">
             <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8">
               <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
             </svg>
           </div>
-          <span class="bim-dock-label">標註</span>
+          <span class="bim-dock-label" data-i18n-zh="標註" data-i18n-en="Notes">標註</span>
         </button>
 
         <div class="bim-dock-divider"></div>
 
         <!-- 12. First-Person Walkthrough / Video-Game Camera (WASD) -->
-        <button type="button" class="bim-dock-btn" id="btnToggleFirstPerson" data-tool="first_person" title="First-Person Camera Mode (WASD + Mouse Look · Press F) / 第一人稱漫遊視角" aria-label="First Person Camera">
+        <button type="button" class="bim-dock-btn" id="btnToggleFirstPerson" data-tool="first_person" title="第一人稱漫遊視角 (WASD)" data-i18n-title-zh="第一人稱漫遊視角 (WASD)" data-i18n-title-en="First-Person Walkthrough Camera (WASD)" aria-label="First Person Camera">
           <div class="bim-dock-icon">
             <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8">
               <circle cx="12" cy="4.8" r="2.2"/>
@@ -743,11 +749,11 @@
               <path d="M6.8 13l3.2-3.6 3.6 1.6 3.6-2.1"/>
             </svg>
           </div>
-          <span class="bim-dock-label">漫遊</span>
+          <span class="bim-dock-label" data-i18n-zh="漫遊" data-i18n-en="Walk">漫遊</span>
         </button>
 
         <!-- 13. Vertex & Surface Snapping -->
-        <button type="button" class="bim-dock-btn active" id="btnMeasureSnap" data-tool="snap" title="Toggle Vertex &amp; Surface Snapping / 切換幾何捕捉" aria-label="Toggle Snapping">
+        <button type="button" class="bim-dock-btn active" id="btnMeasureSnap" data-tool="snap" title="切換頂點與表面幾何捕捉" data-i18n-title-zh="切換頂點與表面幾何捕捉" data-i18n-title-en="Toggle Vertex &amp; Surface Snapping" aria-label="Toggle Snapping">
           <div class="bim-dock-icon">
             <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8">
               <path d="M6 3v7a6 6 0 0 0 12 0V3"/>
@@ -755,11 +761,11 @@
               <line x1="16" y1="3" x2="20" y2="3"/>
             </svg>
           </div>
-          <span class="bim-dock-label">捕捉</span>
+          <span class="bim-dock-label" data-i18n-zh="捕捉" data-i18n-en="Snap">捕捉</span>
         </button>
 
         <!-- 13. Clear All Measurements -->
-        <button type="button" class="bim-dock-btn" id="btnMeasureClear" title="Clear All Measurements (Esc) / 清除量測" aria-label="Clear Measurements">
+        <button type="button" class="bim-dock-btn" id="btnMeasureClear" title="清除所有量測 (Esc)" data-i18n-title-zh="清除所有量測 (Esc)" data-i18n-title-en="Clear All Measurements (Esc)" aria-label="Clear Measurements">
           <div class="bim-dock-icon">
             <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8">
               <polyline points="3 6 5 6 21 6"/>
@@ -767,7 +773,7 @@
               <line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/>
             </svg>
           </div>
-          <span class="bim-dock-label">清除</span>
+          <span class="bim-dock-label" data-i18n-zh="清除" data-i18n-en="Clear">清除</span>
         </button>
       </nav>
 
@@ -778,16 +784,16 @@
       </svg>
 
       <!-- Separate Permission-Gated Scan Editing Dock (Left Floating Pill — Hidden for Guest / Viewer) -->
-      <aside class="gs-studio-editing-dock" id="studioEditingDock" aria-label="Scan Editing &amp; Unification Tools (Editor/Admin/Owner Only)">
-        <div class="gs-edit-dock-badge" title="Scan Editing &amp; Modification Tools (Requires Edit Permission)">
+      <aside class="gs-studio-editing-dock" id="studioEditingDock" aria-label="Scan Editing &amp; Unification Tools">
+        <div class="gs-edit-dock-badge" title="3D 模型編輯與整合工具" data-i18n-title-zh="3D 模型編輯與整合工具" data-i18n-title-en="Scan Editing &amp; Modification Tools">
           <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.2">
             <path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
           </svg>
-          <span>編輯 EDIT</span>
+          <span data-i18n-zh="編輯" data-i18n-en="EDIT">編輯</span>
         </div>
 
-        <!-- Edit 1. Lasso Delete Part of Scan (移除選取區域) -->
-        <button type="button" class="bim-dock-btn gs-edit-dock-btn" id="btnDockLassoDelete" data-tool="crop_delete" data-dock="crop_delete" title="Lasso Delete: Select part of scan with freehand lasso or polygon and delete it / 套索刪除局部掃描雜物" aria-label="Lasso Delete Part of Scan">
+        <!-- Edit 1. Lasso Delete Part of Scan -->
+        <button type="button" class="bim-dock-btn gs-edit-dock-btn" id="btnDockLassoDelete" data-tool="crop_delete" data-dock="crop_delete" title="套索刪除局部掃描雜物" data-i18n-title-zh="套索刪除局部掃描雜物" data-i18n-title-en="Lasso Delete Part of Scan" aria-label="Lasso Delete Part of Scan">
           <div class="bim-dock-icon">
             <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8">
               <path d="M7 22a5 5 0 0 1-2-4"/>
@@ -796,11 +802,11 @@
               <line x1="9" y1="8" x2="15" y2="12"/><line x1="15" y1="8" x2="9" y2="12"/>
             </svg>
           </div>
-          <span class="bim-dock-label">套索刪除</span>
+          <span class="bim-dock-label" data-i18n-zh="套索刪除" data-i18n-en="Lasso Del">套索刪除</span>
         </button>
 
-        <!-- Edit 2. Lasso / Polygon Crop Keep (裁切保留選取區域) -->
-        <button type="button" class="bim-dock-btn gs-edit-dock-btn" id="btnDockLassoKeep" data-tool="crop" data-dock="crop" title="Keep Only Inside: Crop outside and keep only the selected part of the scan / 僅保留選取區域" aria-label="Crop and Keep Selected Region">
+        <!-- Edit 2. Lasso / Polygon Crop Keep -->
+        <button type="button" class="bim-dock-btn gs-edit-dock-btn" id="btnDockLassoKeep" data-tool="crop" data-dock="crop" title="框選保留：裁切外部並僅保留選取區域" data-i18n-title-zh="框選保留：裁切外部並僅保留選取區域" data-i18n-title-en="Keep Inside: Crop outside and keep selected region" aria-label="Crop and Keep Selected Region">
           <div class="bim-dock-icon">
             <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8">
               <circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/>
@@ -808,11 +814,11 @@
               <line x1="14.47" y1="14.48" x2="20" y2="20"/>
             </svg>
           </div>
-          <span class="bim-dock-label">框選保留</span>
+          <span class="bim-dock-label" data-i18n-zh="框選保留" data-i18n-en="Crop Keep">框選保留</span>
         </button>
 
-        <!-- Edit 3. Multi-Scan Align & Merge (多掃描對齊與合併) -->
-        <button type="button" class="bim-dock-btn gs-edit-dock-btn" id="btnDockAlignMerge" data-tool="align_merge" data-dock="align_merge" title="Multi-Scan 3D Alignment &amp; Merge (Move/Rotate Gizmos + Lock Orientation) / 多掃描對齊與合併" aria-label="Multi-Scan Align and Merge">
+        <!-- Edit 3. Multi-Scan Align & Merge -->
+        <button type="button" class="bim-dock-btn gs-edit-dock-btn" id="btnDockAlignMerge" data-tool="align_merge" data-dock="align_merge" title="多掃描 3D 對齊與合併" data-i18n-title-zh="多掃描 3D 對齊與合併" data-i18n-title-en="Multi-Scan 3D Alignment &amp; Merge" aria-label="Multi-Scan Align and Merge">
           <div class="bim-dock-icon">
             <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8">
               <rect x="2" y="2" width="9" height="9" rx="1.5"/>
@@ -821,21 +827,21 @@
               <path d="M9 20H4v-5"/><line x1="12" y1="12" x2="4" y2="20"/>
             </svg>
           </div>
-          <span class="bim-dock-label">對齊合併</span>
+          <span class="bim-dock-label" data-i18n-zh="對齊合併" data-i18n-en="Align/Merge">對齊合併</span>
         </button>
 
-        <!-- Edit 4. ScanOptimizer Mesh & Texture Compression (網格優化) -->
-        <button type="button" class="bim-dock-btn gs-edit-dock-btn" id="btnDockOptimizer" data-tool="optimizer" data-dock="optimizer" title="Mesh &amp; Texture Compression: Stage compression preset for new scan / 網格壓縮優化設定" aria-label="Scan Optimizer">
+        <!-- Edit 4. ScanOptimizer Mesh & Texture Compression -->
+        <button type="button" class="bim-dock-btn gs-edit-dock-btn" id="btnDockOptimizer" data-tool="optimizer" data-dock="optimizer" title="網格與貼圖壓縮優化設定" data-i18n-title-zh="網格與貼圖壓縮優化設定" data-i18n-title-en="Mesh &amp; Texture Compression Optimizer" aria-label="Scan Optimizer">
           <div class="bim-dock-icon">
             <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8">
               <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
             </svg>
           </div>
-          <span class="bim-dock-label">網格優化</span>
+          <span class="bim-dock-label" data-i18n-zh="網格優化" data-i18n-en="Optimize">網格優化</span>
         </button>
 
-        <!-- Edit 5. Coordinate System & Datum Offset (座標系統) -->
-        <button type="button" class="bim-dock-btn gs-edit-dock-btn" id="btnDockCrs" data-tool="crs" data-dock="crs" title="Coordinate System (CRS) &amp; Datum Shift: TWD97, UTM, or Local (0,0,0) / 座標系統與原點轉換" aria-label="Coordinate System">
+        <!-- Edit 5. Coordinate System & Datum Offset -->
+        <button type="button" class="bim-dock-btn gs-edit-dock-btn" id="btnDockCrs" data-tool="crs" data-dock="crs" title="座標系統與原點位移轉換" data-i18n-title-zh="座標系統與原點位移轉換" data-i18n-title-en="Coordinate System &amp; Datum Shift" aria-label="Coordinate System">
           <div class="bim-dock-icon">
             <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8">
               <circle cx="12" cy="12" r="9"/>
@@ -843,11 +849,11 @@
               <path d="M12 3a14 14 0 0 1 0 18a14 14 0 0 1 0-18z"/>
             </svg>
           </div>
-          <span class="bim-dock-label">座標系統</span>
+          <span class="bim-dock-label" data-i18n-zh="座標系統" data-i18n-en="CRS">座標系統</span>
         </button>
 
-        <!-- Edit 6. Save Scan Edits & Archive Original Backup to Trash Bin (儲存變更) -->
-        <button type="button" class="bim-dock-btn gs-edit-dock-btn gs-generate-scan-dock-btn" id="btnDockGenerateScan" data-tool="generate_scan" data-dock="generate_scan" title="Save Edits: Save all staged deletions, compression &amp; CRS changes (Original scan backup moved to Trash Bin) / 儲存變更（原始備份移至回收桶）" aria-label="Save Edits">
+        <!-- Edit 6. Save Scan Edits & Archive Original Backup to Trash Bin -->
+        <button type="button" class="bim-dock-btn gs-edit-dock-btn gs-generate-scan-dock-btn" id="btnDockGenerateScan" data-tool="generate_scan" data-dock="generate_scan" title="儲存變更：套用所有刪除、壓縮與座標設定，並將原始備份移至回收桶" data-i18n-title-zh="儲存變更：套用所有刪除、壓縮與座標設定，並將原始備份移至回收桶" data-i18n-title-en="Save Edits: Apply staged deletions, compression &amp; CRS changes and archive backup to Recycle Bin" aria-label="Save Edits">
           <div class="bim-dock-icon" style="position:relative;">
             <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.9">
               <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
@@ -856,7 +862,7 @@
             </svg>
             <span class="gs-staged-edits-badge" id="lblStagedEditsBadge" style="display:none;">0</span>
           </div>
-          <span class="bim-dock-label">儲存變更</span>
+          <span class="bim-dock-label" data-i18n-zh="儲存變更" data-i18n-en="Save Edits">儲存變更</span>
         </button>
       </aside>
     </section>
@@ -879,7 +885,7 @@
               </svg>
               <div class="gs-scan-loader-pct" id="compareScanLoaderPct">0%</div>
             </div>
-            <div class="gs-scan-loader-label" id="compareScanLoaderLabel">Loading 3D Scan...</div>
+            <div class="gs-scan-loader-label" id="compareScanLoaderLabel" data-i18n-zh="正在載入 3D 掃描模型..." data-i18n-en="Loading 3D Scan...">正在載入 3D 掃描模型...</div>
           </div>
         </div>
 
@@ -896,55 +902,55 @@
       <!-- Compare Top HUD -->
       <div class="gs-compare-hud">
         <div class="gs-epoch-badge gs-compare-project-badge">
-          <select class="gs-scan-select" id="compareProjectSelect" title="Select Project Site (Scalable across 100+ Projects)"></select>
+          <select class="gs-scan-select" id="compareProjectSelect" title="選擇專案工區" data-i18n-title-zh="選擇專案工區" data-i18n-title-en="Select Project Site"></select>
           <span class="gs-crs-pill" id="compareProjectGroupBadge" style="display:none;"></span>
-          <span style="font-size:11px;font-weight:700;color:var(--ui-text-secondary);white-space:nowrap;">LEFT</span>
+          <span style="font-size:11px;font-weight:700;color:var(--ui-text-secondary);white-space:nowrap;" data-i18n-zh="左側" data-i18n-en="LEFT">左側</span>
           <select class="gs-scan-select" id="compareLeftSelect"></select>
         </div>
 
         <div class="gs-epoch-badge gs-compare-heatmap-badge" style="gap:10px;flex-wrap:wrap;justify-content:center;">
           <!-- Compare Mode Switcher: Slider Mode vs 2-Viewport Mode -->
-          <div class="segmented-pill" id="compareModeSwitcher" style="padding:2px;gap:2px;" title="Switch between Curtain Slider Mode and 2-Viewport Side-by-Side Synced Camera Mode">
+          <div class="segmented-pill" id="compareModeSwitcher" style="padding:2px;gap:2px;" title="切換捲簾滑桿模式或雙視窗同步視角模式" data-i18n-title-zh="切換捲簾滑桿模式或雙視窗同步視角模式" data-i18n-title-en="Switch between Curtain Slider Mode and 2-Viewport Side-by-Side Synced Camera Mode">
             <button type="button" class="btn-seg active" data-compare-mode="slider" id="btnCompareModeSlider" style="padding:4px 10px;font-size:11.5px;">
               <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2">
                 <rect x="3" y="3" width="18" height="18" rx="2"/><line x1="12" y1="3" x2="12" y2="21"/>
                 <polyline points="9 9 6 12 9 15"/><polyline points="15 9 18 12 15 15"/>
               </svg>
-              <span>Slider Mode</span>
+              <span data-i18n-zh="捲簾模式" data-i18n-en="Slider Mode">捲簾模式</span>
             </button>
             <button type="button" class="btn-seg" data-compare-mode="split" id="btnCompareModeSplit" style="padding:4px 10px;font-size:11.5px;">
               <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2">
                 <rect x="2" y="4" width="9" height="16" rx="1.5"/><rect x="13" y="4" width="9" height="16" rx="1.5"/>
               </svg>
-              <span>2 Viewports</span>
+              <span data-i18n-zh="雙視窗" data-i18n-en="2 Viewports">雙視窗</span>
             </button>
           </div>
 
           <label style="display:flex;align-items:center;gap:6px;font-size:12px;font-weight:600;color:var(--ui-text-primary);cursor:pointer;">
             <input type="checkbox" id="chkDeltaZHeatmap" style="accent-color:#0284c7;" />
-            <span>ΔZ Elevation Heatmap</span>
+            <span data-i18n-zh="ΔZ 高程變化熱力圖" data-i18n-en="ΔZ Elevation Heatmap">ΔZ 高程變化熱力圖</span>
           </label>
           <span style="font-size:11px;color:var(--ui-text-muted);font-family:monospace;" id="lblCurtainPct">50%</span>
-          <button type="button" class="btn-xs" id="btnCompareResetCamera" title="Reset & Sync Camera Framing">
+          <button type="button" class="btn-xs" id="btnCompareResetCamera" title="重設並同步雙視角" data-i18n-title-zh="重設並同步雙視角" data-i18n-title-en="Reset &amp; Sync Camera Framing">
             <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2">
               <circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9"/>
             </svg>
-            <span>Reset View</span>
+            <span data-i18n-zh="重設視角" data-i18n-en="Reset View">重設視角</span>
           </button>
         </div>
 
         <div class="gs-epoch-badge gs-compare-latest-badge">
-          <span style="font-size:11px;font-weight:700;color:var(--ui-accent);white-space:nowrap;">RIGHT</span>
+          <span style="font-size:11px;font-weight:700;color:var(--ui-accent);white-space:nowrap;" data-i18n-zh="右側" data-i18n-en="RIGHT">右側</span>
           <select class="gs-scan-select" id="compareRightSelect"></select>
         </div>
       </div>
 
       <!-- Bottom Z / ΔZ Elevation Scale Legend -->
       <div class="gs-compare-legend" id="compareElevationLegend">
-        <span style="color:var(--ui-text-secondary);" id="lblCompareLegendTitle">TWVD2001 Elevation &amp; ΔZ Change:</span>
-        <span id="lblCompareLegendMin">Cut / Low (-5.0m)</span>
+        <span style="color:var(--ui-text-secondary);" id="lblCompareLegendTitle" data-i18n-zh="TWVD2001 高程與 ΔZ 變化：" data-i18n-en="TWVD2001 Elevation &amp; ΔZ Change:">TWVD2001 高程與 ΔZ 變化：</span>
+        <span id="lblCompareLegendMin" data-i18n-zh="挖方 / 低處 (-5.0m)" data-i18n-en="Cut / Low (-5.0m)">挖方 / 低處 (-5.0m)</span>
         <div class="gs-compare-legend-bar" style="width:150px;height:8px;border-radius:999px;background:linear-gradient(90deg, #2563eb 0%, #06b6d4 25%, #10b981 50%, #f59e0b 75%, #ef4444 100%);border:1px solid var(--ui-border-strong);"></div>
-        <span style="color:var(--ui-accent);" id="lblCompareLegendMax">Fill / High (+5.0m · Right ΔZ vs Left)</span>
+        <span style="color:var(--ui-accent);" id="lblCompareLegendMax" data-i18n-zh="填方 / 高處 (+5.0m · 右側減左側 ΔZ)" data-i18n-en="Fill / High (+5.0m · Right ΔZ vs Left)">填方 / 高處 (+5.0m · 右側減左側 ΔZ)</span>
       </div>
     </section>
 
@@ -960,9 +966,9 @@
           <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="var(--ui-accent)" stroke-width="2">
             <rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/>
           </svg>
-          <span>PIX4Dmatic 2.11.0 Processing Queue &amp; Job Monitor</span>
+          <span data-i18n-zh="PIX4Dmatic 2.11.0 智慧優先佇列與建模監控" data-i18n-en="PIX4Dmatic 2.11.0 Processing Queue &amp; Job Monitor">PIX4Dmatic 2.11.0 智慧優先佇列與建模監控</span>
         </div>
-        <button type="button" class="btn-xs" data-close-modal="modalQueue" title="Close" aria-label="Close Queue Modal">
+        <button type="button" class="btn-xs" data-close-modal="modalQueue" title="關閉" data-i18n-title-zh="關閉" data-i18n-title-en="Close" aria-label="Close Queue Modal">
           <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8">
             <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
           </svg>
@@ -971,55 +977,55 @@
 
       <div class="gs-modal-metrics-grid gs-responsive-grid-3" style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:10px;">
         <div class="gs-metric-box">
-          <div class="lbl">Google Drive Inputs Folder</div>
-          <div class="val" style="font-size:12px;word-break:break-all;" id="lblQueueInboxDir">G:\Shared drives\6.軟體\3. GatheringScans\INPUTS</div>
+          <div class="lbl" data-i18n-zh="Google Drive 收件匣資料夾" data-i18n-en="Google Drive Inputs Folder">Google Drive 收件匣資料夾</div>
+          <div class="val" style="font-size:12px;word-break:break-all;" id="lblQueueInboxDir" data-i18n-zh="G:\Shared drives\6.軟體\3. GatheringScans\INPUTS" data-i18n-en="G:\Shared drives\Software\3. GatheringScans\INPUTS">G:\Shared drives\6.軟體\3. GatheringScans\INPUTS</div>
         </div>
         <div class="gs-metric-box">
-          <div class="lbl">Mandatory PIX4Dmatic Output CRS</div>
+          <div class="lbl" data-i18n-zh="強制輸出座標系統 (CRS)" data-i18n-en="Mandatory PIX4Dmatic Output CRS">強制輸出座標系統 (CRS)</div>
           <div class="val" style="font-size:12.5px;color:var(--ui-accent);">TWD97 (121) + TWVD2001</div>
         </div>
         <div class="gs-metric-box" style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
           <div>
-            <div class="lbl">Active Pipeline Defaults</div>
+            <div class="lbl" data-i18n-zh="目前建模流程預設值" data-i18n-en="Active Pipeline Defaults">目前建模流程預設值</div>
             <div class="val" style="font-size:12px;" id="lblQueuePipelineSummary">FixedSize · 4K · SkyMask OFF · 0B VPS</div>
           </div>
-          <button type="button" class="btn-xs" id="btnJumpQueueToSettings" title="Configure Default PIX4Dmatic Pipeline, PC Daemon &amp; Google Cloud Settings">
+          <button type="button" class="btn-xs" id="btnJumpQueueToSettings" title="設定 PIX4Dmatic 預設參數、工作站守護程式與 Google Cloud 設定" data-i18n-title-zh="設定 PIX4Dmatic 預設參數、工作站守護程式與 Google Cloud 設定" data-i18n-title-en="Configure Default PIX4Dmatic Pipeline, PC Daemon &amp; Google Cloud Settings">
             <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8">
               <circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9"/>
             </svg>
-            <span>Settings</span>
+            <span data-i18n-zh="設定" data-i18n-en="Settings">設定</span>
           </button>
         </div>
       </div>
 
       <div class="gs-webhook-bar" style="background:var(--ui-bg-subtle);border:1px solid var(--ui-border);border-radius:8px;padding:8px 12px;margin-bottom:10px;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;">
-        <div style="font-size:11.5px;font-weight:600;color:var(--ui-text-secondary);white-space:nowrap;">Google Chat Space Webhook:</div>
+        <div style="font-size:11.5px;font-weight:600;color:var(--ui-text-secondary);white-space:nowrap;" data-i18n-zh="Google Chat 聊天室 Webhook：" data-i18n-en="Google Chat Space Webhook:">Google Chat 聊天室 Webhook：</div>
         <input type="text" class="gs-input" id="inputGChatWebhookUrl" placeholder="https://chat.googleapis.com/v1/spaces/.../messages?key=...&amp;token=..." style="flex:1;font-family:var(--mono);font-size:11px;min-width:180px;" />
-        <button type="button" class="btn-xs primary" id="btnSaveGChatWebhook" title="Save Google Chat Space Webhook URL">Save</button>
+        <button type="button" class="btn-xs primary" id="btnSaveGChatWebhook" title="儲存 Google Chat 聊天室 Webhook 網址" data-i18n-zh="儲存" data-i18n-en="Save" data-i18n-title-zh="儲存 Google Chat 聊天室 Webhook 網址" data-i18n-title-en="Save Google Chat Space Webhook URL">儲存</button>
       </div>
 
       <div class="gs-queue-actions-bar" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;gap:12px;">
         <div style="font-size:11.5px;color:var(--ui-text-secondary);">
-          Priority formula <code style="color:var(--ui-accent);background:var(--ui-bg-subtle);padding:2px 6px;border-radius:4px;border:1px solid var(--ui-border-strong);">Score = (1000 / N<sub>imgs</sub><sup>0.65</sup>) + (1.5 × t<sub>wait</sub><sup>1.15</sup>)</code> with anti-starvation lock after <b>3 bypasses</b> or <b>90m wait</b>.
+          <span data-i18n-zh="優先權公式" data-i18n-en="Priority formula">優先權公式</span> <code style="color:var(--ui-accent);background:var(--ui-bg-subtle);padding:2px 6px;border-radius:4px;border:1px solid var(--ui-border-strong);">Score = (1000 / N<sub data-i18n-zh="張數" data-i18n-en="imgs">張數</sub><sup>0.65</sup>) + (1.5 × t<sub data-i18n-zh="等待" data-i18n-en="wait">等待</sub><sup>1.15</sup>)</code> <span data-i18n-zh="（被插隊滿 3 次或等待滿 90 分鐘即鎖定最高優先權）。" data-i18n-en="with anti-starvation lock after 3 bypasses or 90m wait.">（被插隊滿 3 次或等待滿 90 分鐘即鎖定最高優先權）。</span>
         </div>
         <div style="display:flex;gap:6px;flex-shrink:0;">
-          <button type="button" class="btn-xs primary" id="btnRescanGDriveInbox" title="Rescan G:\Shared drives\6.軟體\3. GatheringScans\INPUTS">
+          <button type="button" class="btn-xs primary" id="btnRescanGDriveInbox" title="重新掃描 G:\Shared drives\6.軟體\3. GatheringScans\INPUTS" data-i18n-title-zh="重新掃描 G:\Shared drives\6.軟體\3. GatheringScans\INPUTS" data-i18n-title-en="Rescan G:\Shared drives\Software\3. GatheringScans\INPUTS">
             <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8">
               <polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
             </svg>
-            <span>Scan</span>
+            <span data-i18n-zh="掃描" data-i18n-en="Scan">掃描</span>
           </button>
-          <button type="button" class="btn-xs" id="btnPreviewGstScript" title="View PIX4Dmatic .GST Script">
+          <button type="button" class="btn-xs" id="btnPreviewGstScript" title="檢視 PIX4Dmatic .GST 腳本" data-i18n-title-zh="檢視 PIX4Dmatic .GST 腳本" data-i18n-title-en="View PIX4Dmatic .GST Script">
             <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8">
               <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>
             </svg>
-            <span>Script</span>
+            <span data-i18n-zh="腳本" data-i18n-en="Script">腳本</span>
           </button>
-          <button type="button" class="btn-xs" id="btnSendTestGChat" title="Send Google Chat Readiness Card">
+          <button type="button" class="btn-xs" id="btnSendTestGChat" title="發送 Google Chat 完成通知卡片測試" data-i18n-title-zh="發送 Google Chat 完成通知卡片測試" data-i18n-title-en="Send Google Chat Readiness Card">
             <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8">
               <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
             </svg>
-            <span>Notify</span>
+            <span data-i18n-zh="通知" data-i18n-en="Notify">通知</span>
           </button>
         </div>
       </div>
@@ -1028,9 +1034,9 @@
         <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px;">
           <div style="font-size:12px;font-weight:700;color:var(--ui-text-primary);display:flex;align-items:center;gap:6px;">
             <span class="status-dot" style="background:#22c55e;box-shadow:0 0 8px #22c55e;"></span>
-            <span id="livePix4dTitle">Active PIX4Dmatic Pipeline</span>
+            <span id="livePix4dTitle" data-i18n-zh="執行中的 PIX4Dmatic 建模流程" data-i18n-en="Active PIX4Dmatic Pipeline">執行中的 PIX4Dmatic 建模流程</span>
           </div>
-          <span class="gs-crs-pill" id="livePix4dStageBadge">Running</span>
+          <span class="gs-crs-pill" id="livePix4dStageBadge" data-i18n-zh="執行中" data-i18n-en="Running">執行中</span>
         </div>
         <div style="height:6px;background:var(--ui-border-strong);border-radius:999px;overflow:hidden;margin-bottom:6px;">
           <div id="livePix4dProgressBar" style="height:100%;width:10%;background:var(--ui-accent);transition:width 0.3s ease;"></div>
@@ -1040,8 +1046,8 @@
       </div>
 
       <div id="gstScriptPreviewBox" style="display:none;margin-bottom:12px;">
-        <div style="font-size:11px;font-weight:700;color:var(--ui-text-secondary);margin-bottom:4px;" id="gstScriptHeaderTitle">
-          PIX4Dmatic 2.11.0 Headless .GST Script (TWD97 (121) [EPSG:3826] + TWVD2001 [EPSG:8904] · FixedSize · 4096px · SkyMask OFF):
+        <div style="font-size:11px;font-weight:700;color:var(--ui-text-secondary);margin-bottom:4px;" id="gstScriptHeaderTitle" data-i18n-zh="PIX4Dmatic 2.11.0 自動化 .GST 腳本 (TWD97 (121) [EPSG:3826] + TWVD2001 [EPSG:8904] · FixedSize · 4096px · SkyMask OFF)：" data-i18n-en="PIX4Dmatic 2.11.0 Headless .GST Script (TWD97 (121) [EPSG:3826] + TWVD2001 [EPSG:8904] · FixedSize · 4096px · SkyMask OFF):">
+          PIX4Dmatic 2.11.0 自動化 .GST 腳本 (TWD97 (121) [EPSG:3826] + TWVD2001 [EPSG:8904] · FixedSize · 4096px · SkyMask OFF)：
         </div>
         <pre id="gstScriptCode" style="background:var(--ui-bg-subtle);border:1px solid var(--ui-border-strong);padding:10px 12px;border-radius:8px;font-size:10.5px;color:var(--ui-text-primary);max-height:170px;overflow:auto;line-height:1.4;"></pre>
       </div>
@@ -1050,13 +1056,13 @@
         <table class="gs-table">
           <thead>
             <tr>
-              <th>Scan / Archive</th>
-              <th>Project</th>
-              <th>Uploader &amp; Time</th>
-              <th>Photos / Size</th>
-              <th>CRS &amp; Texture</th>
-              <th>Score</th>
-              <th>Status</th>
+              <th data-i18n-zh="掃描 / 檔案" data-i18n-en="Scan / Archive">掃描 / 檔案</th>
+              <th data-i18n-zh="專案工區" data-i18n-en="Project">專案工區</th>
+              <th data-i18n-zh="上傳者與時間" data-i18n-en="Uploader &amp; Time">上傳者與時間</th>
+              <th data-i18n-zh="照片數 / 大小" data-i18n-en="Photos / Size">照片數 / 大小</th>
+              <th data-i18n-zh="座標系與貼圖" data-i18n-en="CRS &amp; Texture">座標系與貼圖</th>
+              <th data-i18n-zh="優先分" data-i18n-en="Score">優先分</th>
+              <th data-i18n-zh="狀態" data-i18n-en="Status">狀態</th>
               <th></th>
             </tr>
           </thead>
@@ -1077,48 +1083,48 @@
             <circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/>
             <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/>
           </svg>
-          <span>Scoped External Sharing Controls</span>
+          <span data-i18n-zh="專屬外部分享連結管理" data-i18n-en="Scoped External Sharing Controls">專屬外部分享連結管理</span>
         </div>
-        <button type="button" class="btn-xs" data-close-modal="modalSharing" title="Close" aria-label="Close Sharing Modal">
+        <button type="button" class="btn-xs" data-close-modal="modalSharing" title="關閉" data-i18n-title-zh="關閉" data-i18n-title-en="Close" aria-label="Close Sharing Modal">
           <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8">
             <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
           </svg>
         </button>
       </div>
 
-      <p style="font-size:12px;color:var(--ui-text-secondary);margin-bottom:12px;">
-        External viewers with a share link can <strong>only</strong> view the specific scan or project group granted below. Access can be revoked immediately at any time.
+      <p style="font-size:12px;color:var(--ui-text-secondary);margin-bottom:12px;" data-i18n-zh="持有分享連結的外部訪客僅能檢視下方授權的特定掃描或專案工區群組，您可隨時撤銷存取權限。" data-i18n-en="External viewers with a share link can only view the specific scan or project group granted below. Access can be revoked immediately at any time.">
+        持有分享連結的外部訪客僅能檢視下方授權的特定掃描或專案工區群組，您可隨時撤銷存取權限。
       </p>
 
       <div style="background:var(--ui-bg-subtle);border:1px solid var(--ui-border);border-radius:10px;padding:12px 14px;margin-bottom:12px;">
         <div class="gs-share-form-grid gs-responsive-grid-3" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;">
           <div class="gs-form-group" style="margin-bottom:6px;">
-            <label>Scope Type</label>
+            <label data-i18n-zh="授權範圍類型" data-i18n-en="Scope Type">授權範圍類型</label>
             <select class="gs-select" id="shareScopeType">
-              <option value="scan">Single Scan (單一掃描)</option>
-              <option value="group">Project Group (工區群組)</option>
+              <option value="scan" data-i18n-zh="單一掃描" data-i18n-en="Single Scan">單一掃描</option>
+              <option value="group" data-i18n-zh="工區群組" data-i18n-en="Project Group">工區群組</option>
             </select>
           </div>
           <div class="gs-form-group" style="margin-bottom:6px;">
-            <label>Target Scan or Group</label>
+            <label data-i18n-zh="目標掃描或工區" data-i18n-en="Target Scan or Group">目標掃描或工區</label>
             <select class="gs-select" id="shareTargetId"></select>
           </div>
           <div class="gs-form-group" style="margin-bottom:6px;">
-            <label>Recipient Label</label>
-            <input type="text" class="gs-input" id="shareLabelInput" placeholder="e.g. External Consultant Review" />
+            <label data-i18n-zh="分享對象備註" data-i18n-en="Recipient Label">分享對象備註</label>
+            <input type="text" class="gs-input" id="shareLabelInput" placeholder="例如：外部顧問審查" data-i18n-placeholder-zh="例如：外部顧問審查" data-i18n-placeholder-en="e.g. External Consultant Review" />
           </div>
         </div>
         <div class="gs-share-perms-bar" style="display:flex;justify-content:space-between;align-items:center;margin-top:6px;gap:8px;flex-wrap:wrap;">
           <div style="display:flex;gap:14px;font-size:11.5px;color:var(--ui-text-secondary);flex-wrap:wrap;">
-            <label style="display:flex;align-items:center;gap:4px;"><input type="checkbox" id="shareAllowMeasure" checked style="accent-color:#0284c7;" /> Measurements</label>
-            <label style="display:flex;align-items:center;gap:4px;"><input type="checkbox" id="shareAllowComments" checked style="accent-color:#0284c7;" /> Comments</label>
-            <label style="display:flex;align-items:center;gap:4px;"><input type="checkbox" id="shareAllowDownload" style="accent-color:#0284c7;" /> .OBJ Download</label>
+            <label style="display:flex;align-items:center;gap:4px;"><input type="checkbox" id="shareAllowMeasure" checked style="accent-color:#0284c7;" /> <span data-i18n-zh="允許量測" data-i18n-en="Measurements">允許量測</span></label>
+            <label style="display:flex;align-items:center;gap:4px;"><input type="checkbox" id="shareAllowComments" checked style="accent-color:#0284c7;" /> <span data-i18n-zh="允許留言" data-i18n-en="Comments">允許留言</span></label>
+            <label style="display:flex;align-items:center;gap:4px;"><input type="checkbox" id="shareAllowDownload" style="accent-color:#0284c7;" /> <span data-i18n-zh="允許下載 .OBJ" data-i18n-en=".OBJ Download">允許下載 .OBJ</span></label>
           </div>
-          <button type="button" class="btn-xs primary" id="btnCreateShareLink" title="Generate &amp; Copy Scoped Share Link">
+          <button type="button" class="btn-xs primary" id="btnCreateShareLink" title="產生並複製專屬分享連結" data-i18n-title-zh="產生並複製專屬分享連結" data-i18n-title-en="Generate &amp; Copy Scoped Share Link">
             <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8">
               <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
             </svg>
-            <span>Create &amp; Copy Link</span>
+            <span data-i18n-zh="建立並複製連結" data-i18n-en="Create &amp; Copy Link">建立並複製連結</span>
           </button>
         </div>
       </div>
@@ -1130,21 +1136,21 @@
             <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>
             <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
           </svg>
-          <span id="shareLatestLabelText">Shareable Link Ready:</span>
+          <span id="shareLatestLabelText" data-i18n-zh="分享連結已就緒：" data-i18n-en="Shareable Link Ready:">分享連結已就緒：</span>
         </div>
         <div class="gs-share-url-group gs-share-url-group-lg">
           <input type="text" class="gs-share-url-input" id="shareLatestUrlInput" readonly value="" aria-label="Shareable URL" />
-          <button type="button" class="btn-xs primary gs-share-copy-btn" id="btnCopyLatestShareUrl" title="Copy Full Link to Clipboard">
+          <button type="button" class="btn-xs primary gs-share-copy-btn" id="btnCopyLatestShareUrl" title="複製完整分享連結" data-i18n-title-zh="複製完整分享連結" data-i18n-title-en="Copy Full Link to Clipboard">
             <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8">
               <rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
             </svg>
-            <span>Copy Link</span>
+            <span data-i18n-zh="複製連結" data-i18n-en="Copy Link">複製連結</span>
           </button>
-          <a href="#" target="_blank" rel="noopener noreferrer" class="btn-xs gs-share-open-btn" id="btnOpenLatestShareUrl" title="Open Link in New Tab">
+          <a href="#" target="_blank" rel="noopener noreferrer" class="btn-xs gs-share-open-btn" id="btnOpenLatestShareUrl" title="於新分頁開啟連結" data-i18n-title-zh="於新分頁開啟連結" data-i18n-title-en="Open Link in New Tab">
             <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8">
               <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/>
             </svg>
-            <span>Open</span>
+            <span data-i18n-zh="開啟" data-i18n-en="Open">開啟</span>
           </a>
         </div>
       </div>
@@ -1153,13 +1159,13 @@
         <table class="gs-table">
           <thead>
             <tr>
-              <th>Label</th>
-              <th>Scope</th>
-              <th>Share Link</th>
-              <th>Permissions</th>
-              <th>Engagement</th>
-              <th>Status</th>
-              <th style="text-align:right;">Actions</th>
+              <th data-i18n-zh="備註標籤" data-i18n-en="Label">備註標籤</th>
+              <th data-i18n-zh="授權範圍" data-i18n-en="Scope">授權範圍</th>
+              <th data-i18n-zh="分享連結" data-i18n-en="Share Link">分享連結</th>
+              <th data-i18n-zh="權限" data-i18n-en="Permissions">權限</th>
+              <th data-i18n-zh="瀏覽統計" data-i18n-en="Engagement">瀏覽統計</th>
+              <th data-i18n-zh="狀態" data-i18n-en="Status">狀態</th>
+              <th style="text-align:right;" data-i18n-zh="操作" data-i18n-en="Actions">操作</th>
             </tr>
           </thead>
           <tbody id="shareLinksTableBody"></tbody>
@@ -1174,18 +1180,18 @@
               <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="var(--ui-accent)" stroke-width="2" style="flex-shrink:0;">
                 <line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/>
               </svg>
-              <span id="lblShareAnalyticsTitle">Link Visitor &amp; Tool Analytics</span>
+              <span id="lblShareAnalyticsTitle" data-i18n-zh="分享連結訪客與工具使用統計" data-i18n-en="Link Visitor &amp; Tool Analytics">分享連結訪客與工具使用統計</span>
             </div>
-            <div class="gs-share-analytics-sub" id="lblShareAnalyticsSub">Real-time session telemetry: visitors, active viewing time, devices, locations &amp; 3D tools used</div>
+            <div class="gs-share-analytics-sub" id="lblShareAnalyticsSub" data-i18n-zh="即時工作階段遙測：訪客數、停留觀看時間、裝置、位置與使用的 3D 工具" data-i18n-en="Real-time session telemetry: visitors, active viewing time, devices, locations &amp; 3D tools used">即時工作階段遙測：訪客數、停留觀看時間、裝置、位置與使用的 3D 工具</div>
           </div>
           <div style="display:flex;align-items:center;gap:6px;flex-shrink:0;">
-            <button type="button" class="btn-xs" id="btnRefreshShareAnalytics" title="Refresh Live Telemetry">
+            <button type="button" class="btn-xs" id="btnRefreshShareAnalytics" title="重新整理即時遙測數據" data-i18n-title-zh="重新整理即時遙測數據" data-i18n-title-en="Refresh Live Telemetry">
               <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2">
                 <polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
               </svg>
-              <span>Refresh</span>
+              <span data-i18n-zh="重新整理" data-i18n-en="Refresh">重新整理</span>
             </button>
-            <button type="button" class="btn-xs" id="btnCloseShareAnalytics" title="Hide Analytics Panel">
+            <button type="button" class="btn-xs" id="btnCloseShareAnalytics" title="隱藏統計面板" data-i18n-title-zh="隱藏統計面板" data-i18n-title-en="Hide Analytics Panel">
               <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2">
                 <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
               </svg>
@@ -1209,9 +1215,9 @@
             <circle cx="12" cy="12" r="3"/>
             <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
           </svg>
-          <span>User Settings, Pipeline Defaults &amp; Offline Browser Cache</span>
+          <span data-i18n-zh="個人設定、建模預設值與瀏覽器離線快取" data-i18n-en="User Settings, Pipeline Defaults &amp; Offline Browser Cache">個人設定、建模預設值與瀏覽器離線快取</span>
         </div>
-        <button type="button" class="btn-xs" data-close-modal="modalOfflineCache" title="Close" aria-label="Close Settings Modal">
+        <button type="button" class="btn-xs" data-close-modal="modalOfflineCache" title="關閉" data-i18n-title-zh="關閉" data-i18n-title-en="Close" aria-label="Close Settings Modal">
           <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8">
             <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
           </svg>
@@ -1228,33 +1234,33 @@
               <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
               <line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/>
             </svg>
-            <span>Interface Theme / 介面外觀主題</span>
+            <span data-i18n-zh="介面外觀主題" data-i18n-en="Interface Theme">介面外觀主題</span>
           </div>
-          <div style="font-size:11px;color:var(--ui-text-muted);margin-top:2px;" id="lblThemeStatusSub">
-            Auto (Time of Day: 06:00–18:00 Light · 18:00–06:00 Dark)
+          <div style="font-size:11px;color:var(--ui-text-muted);margin-top:2px;" id="lblThemeStatusSub" data-i18n-zh="自動（依時段切換：06:00–18:00 淺色 · 18:00–06:00 深色）" data-i18n-en="Auto (Time of Day: 06:00–18:00 Light · 18:00–06:00 Dark)">
+            自動（依時段切換：06:00–18:00 淺色 · 18:00–06:00 深色）
           </div>
         </div>
         <div class="segmented-pill gs-theme-switcher" id="themeModeSwitcher" role="group" aria-label="Theme Mode">
-          <button type="button" class="btn-seg active" data-theme-pref="auto" title="Auto by Time of Day (06:00–18:00 Light, 18:00–06:00 Dark)">
+          <button type="button" class="btn-seg active" data-theme-pref="auto" title="依時段自動切換（06:00–18:00 淺色，18:00–06:00 深色）" data-i18n-title-zh="依時段自動切換（06:00–18:00 淺色，18:00–06:00 深色）" data-i18n-title-en="Auto by Time of Day (06:00–18:00 Light, 18:00–06:00 Dark)">
             <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.9">
               <circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 15"/>
             </svg>
-            <span>Auto</span>
+            <span data-i18n-zh="自動" data-i18n-en="Auto">自動</span>
           </button>
-          <button type="button" class="btn-seg" data-theme-pref="light" title="Always Light Theme">
+          <button type="button" class="btn-seg" data-theme-pref="light" title="固定使用淺色主題" data-i18n-title-zh="固定使用淺色主題" data-i18n-title-en="Always Light Theme">
             <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.9">
               <circle cx="12" cy="12" r="5"/>
               <line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/>
               <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
               <line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/>
             </svg>
-            <span>Light</span>
+            <span data-i18n-zh="淺色" data-i18n-en="Light">淺色</span>
           </button>
-          <button type="button" class="btn-seg" data-theme-pref="dark" title="Always Dark Theme">
+          <button type="button" class="btn-seg" data-theme-pref="dark" title="固定使用深色主題" data-i18n-title-zh="固定使用深色主題" data-i18n-title-en="Always Dark Theme">
             <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.9">
               <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
             </svg>
-            <span>Dark</span>
+            <span data-i18n-zh="深色" data-i18n-en="Dark">深色</span>
           </button>
         </div>
       </div>
@@ -1267,54 +1273,54 @@
               <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="var(--ui-accent)" stroke-width="2">
                 <polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/>
               </svg>
-              <span>PIX4Dmatic 2.11.0 Pipeline Settings &amp; GatheringCloud Optimal Preset</span>
+              <span data-i18n-zh="PIX4Dmatic 2.11.0 建模流程設定與 GatheringCloud 最佳預設組" data-i18n-en="PIX4Dmatic 2.11.0 Pipeline Settings &amp; GatheringCloud Optimal Preset">PIX4Dmatic 2.11.0 建模流程設定與 GatheringCloud 最佳預設組</span>
             </div>
             <div style="font-size:11px;color:var(--ui-text-muted);margin-top:2px;">
-              Optimal: <b>FixedSize</b> + <b>4096px (4K)</b> + <b>Sky Mask OFF</b> (preserves trees) + <b>LOD 13 TWD97 OBJ</b> → <b>Single-Root 4K WebP GLB + .3tz</b>.
+              <span data-i18n-zh="最佳配置：" data-i18n-en="Optimal:">最佳配置：</span><b>FixedSize</b> + <b>4096px (4K)</b> + <b>Sky Mask OFF</b> <span data-i18n-zh="（保留樹木）" data-i18n-en="(preserves trees)">（保留樹木）</span> + <b>LOD 13 TWD97 OBJ</b> → <b>Single-Root 4K WebP GLB + .3tz</b>.
             </div>
           </div>
           <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
-            <select class="gs-select" id="selPix4dPresetUser" style="font-size:11px;padding:3px 8px;height:24px;min-width:255px;font-weight:600;border-color:var(--ui-accent);" title="Select Pipeline Preset">
-              <option value="gatheringcloud" selected>GatheringCloud Optimal (.3tz + 4K WebP GLB + TWD97)</option>
-              <option value="fast_field">Fast Field Preview (2K + Moderate + LOD 12)</option>
-              <option value="archival_8k">Ultra Archival Multi-Tile (8K + Scalable + LOD 15)</option>
-              <option value="custom">Custom Detailed Settings</option>
+            <select class="gs-select" id="selPix4dPresetUser" style="font-size:11px;padding:3px 8px;height:24px;min-width:255px;font-weight:600;border-color:var(--ui-accent);" title="選擇建模預設組" data-i18n-title-zh="選擇建模預設組" data-i18n-title-en="Select Pipeline Preset">
+              <option value="gatheringcloud" selected data-i18n-zh="GatheringCloud 最佳預設 (.3tz + 4K WebP GLB + TWD97)" data-i18n-en="GatheringCloud Optimal (.3tz + 4K WebP GLB + TWD97)">GatheringCloud 最佳預設 (.3tz + 4K WebP GLB + TWD97)</option>
+              <option value="fast_field" data-i18n-zh="快速外業預覽 (2K + 適度簡化 + LOD 12)" data-i18n-en="Fast Field Preview (2K + Moderate + LOD 12)">快速外業預覽 (2K + 適度簡化 + LOD 12)</option>
+              <option value="archival_8k" data-i18n-zh="超高解析度典藏版 (8K + 多分塊 + LOD 15)" data-i18n-en="Ultra Archival Multi-Tile (8K + Scalable + LOD 15)">超高解析度典藏版 (8K + 多分塊 + LOD 15)</option>
+              <option value="custom" data-i18n-zh="自訂詳細參數" data-i18n-en="Custom Detailed Settings">自訂詳細參數</option>
             </select>
-            <button type="button" class="btn-xs" id="btnApplyGatheringCloudPresetUser" title="1-Click Apply GatheringCloud Optimal Preset">Optimal</button>
-            <button type="button" class="btn-xs primary" id="btnSavePix4dSettingsUser" title="Save Default PIX4Dmatic Pipeline Settings">Save</button>
+            <button type="button" class="btn-xs" id="btnApplyGatheringCloudPresetUser" title="一鍵套用 GatheringCloud 最佳預設組" data-i18n-zh="最佳預設" data-i18n-en="Optimal" data-i18n-title-zh="一鍵套用 GatheringCloud 最佳預設組" data-i18n-title-en="1-Click Apply GatheringCloud Optimal Preset">最佳預設</button>
+            <button type="button" class="btn-xs primary" id="btnSavePix4dSettingsUser" title="儲存 PIX4Dmatic 預設建模設定" data-i18n-zh="儲存" data-i18n-en="Save" data-i18n-title-zh="儲存 PIX4Dmatic 預設建模設定" data-i18n-title-en="Save Default PIX4Dmatic Pipeline Settings">儲存</button>
           </div>
         </div>
         <div class="gs-responsive-grid-4" style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:8px;">
           <div class="gs-form-group" style="margin-bottom:0;">
-            <label style="font-size:10.5px;">Mesh Pipeline</label>
+            <label style="font-size:10.5px;" data-i18n-zh="網格管線模式" data-i18n-en="Mesh Pipeline">網格管線模式</label>
             <select class="gs-select" id="selPix4dMeshPipelineUser" style="font-size:11.5px;padding:4px 6px;">
-              <option value="FixedSize" selected>FixedSize (Compact)</option>
-              <option value="Scalable">Scalable (Multi-Tile)</option>
+              <option value="FixedSize" selected data-i18n-zh="單一精簡網格" data-i18n-en="FixedSize · Single Compact Mesh">單一精簡網格</option>
+              <option value="Scalable" data-i18n-zh="多分塊八叉樹網格" data-i18n-en="Scalable · Multi-Tile Octree">多分塊八叉樹網格</option>
             </select>
           </div>
           <div class="gs-form-group" style="margin-bottom:0;">
-            <label style="font-size:10.5px;">Texture Atlas Size</label>
+            <label style="font-size:10.5px;" data-i18n-zh="貼圖集尺寸" data-i18n-en="Texture Atlas Size">貼圖集尺寸</label>
             <select class="gs-select" id="selPix4dTextureSizeUser" style="font-size:11.5px;padding:4px 6px;">
-              <option value="4096" selected>4096 px (4K Default)</option>
-              <option value="2048">2048 px (2K Fast)</option>
-              <option value="8192">8192 px (8K Ultra)</option>
+              <option value="4096" selected data-i18n-zh="4096 px · 4K 預設" data-i18n-en="4096 px · 4K Default">4096 px · 4K 預設</option>
+              <option value="2048" data-i18n-zh="2048 px · 2K 快速" data-i18n-en="2048 px · 2K Fast">2048 px · 2K 快速</option>
+              <option value="8192" data-i18n-zh="8192 px · 8K 超高畫質" data-i18n-en="8192 px · 8K Ultra">8192 px · 8K 超高畫質</option>
             </select>
           </div>
           <div class="gs-form-group" style="margin-bottom:0;">
-            <label style="font-size:10.5px;">Simplification</label>
+            <label style="font-size:10.5px;" data-i18n-zh="網格簡化程度" data-i18n-en="Simplification">網格簡化程度</label>
             <select class="gs-select" id="selPix4dSimplificationUser" style="font-size:11.5px;padding:4px 6px;">
-              <option value="Conservative" selected>Conservative</option>
-              <option value="Moderate">Moderate</option>
-              <option value="Aggressive">Aggressive</option>
+              <option value="Conservative" selected data-i18n-zh="保守 · 保留銳利邊緣" data-i18n-en="Conservative">保守 · 保留銳利邊緣</option>
+              <option value="Moderate" data-i18n-zh="適度" data-i18n-en="Moderate">適度</option>
+              <option value="Aggressive" data-i18n-zh="積極" data-i18n-en="Aggressive">積極</option>
             </select>
           </div>
           <div class="gs-form-group" style="margin-bottom:0;">
-            <label style="font-size:10.5px;">Deghosting &amp; LOD</label>
+            <label style="font-size:10.5px;" data-i18n-zh="去殘影與匯出 LOD" data-i18n-en="Deghosting &amp; LOD">去殘影與匯出 LOD</label>
             <div style="display:flex;gap:4px;">
               <select class="gs-select" id="selPix4dDeghostingUser" style="font-size:11.5px;padding:4px 6px;flex:1;">
-                <option value="Weak" selected>Weak</option>
-                <option value="Strong">Strong</option>
-                <option value="Disabled">Disabled</option>
+                <option value="Weak" selected data-i18n-zh="輕度去殘影" data-i18n-en="Weak">輕度去殘影</option>
+                <option value="Strong" data-i18n-zh="強效去殘影" data-i18n-en="Strong">強效去殘影</option>
+                <option value="Disabled" data-i18n-zh="停用去殘影" data-i18n-en="Disabled">停用去殘影</option>
               </select>
               <input type="number" class="gs-input" id="inpPix4dExportLodUser" value="13" min="0" max="20" style="width:50px;font-size:11.5px;padding:4px 6px;text-align:center;" />
             </div>
@@ -1323,11 +1329,11 @@
         <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;padding-top:6px;border-top:1px solid var(--ui-border);">
           <label style="display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--ui-text-primary);cursor:pointer;">
             <input type="checkbox" id="chkPix4dSkylessUser" style="accent-color:#0284c7;width:14px;height:14px;" />
-            <span><b>Sky Mask (<code>skyless</code>)</b> — <span style="color:var(--ui-accent);font-weight:600;">OFF preserves surrounding trees</span></span>
+            <span><b><span data-i18n-zh="天空遮罩" data-i18n-en="Sky Mask">天空遮罩</span> (<code>skyless</code>)</b> — <span style="color:var(--ui-accent);font-weight:600;" data-i18n-zh="關閉可完整保留周邊樹木" data-i18n-en="OFF preserves surrounding trees">關閉可完整保留周邊樹木</span></span>
           </label>
           <label style="display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--ui-text-primary);cursor:pointer;">
             <input type="checkbox" id="chkPix4dUseRoiUser" style="accent-color:#0284c7;width:14px;height:14px;" />
-            <span><b>OPF ROI Clip (<code>RoiSet</code>)</b> — <span style="color:var(--ui-text-secondary);">OFF keeps full extent</span></span>
+            <span><b><span data-i18n-zh="OPF 興趣區域裁切" data-i18n-en="OPF ROI Clip">OPF 興趣區域裁切</span> (<code>RoiSet</code>)</b> — <span style="color:var(--ui-text-secondary);" data-i18n-zh="關閉可保留完整掃描範圍" data-i18n-en="OFF keeps full extent">關閉可保留完整掃描範圍</span></span>
           </label>
         </div>
       </div>
@@ -1342,32 +1348,32 @@
               <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="var(--ui-accent)" stroke-width="2">
                 <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
               </svg>
-              <span>Admin Control Panel — Workstation Daemon &amp; 5-Level Account Permissions</span>
+              <span data-i18n-zh="管理員控制台 — 工作站守護程式與五級帳號權限管理" data-i18n-en="Admin Control Panel — Workstation Daemon &amp; 5-Level Account Permissions">管理員控制台 — 工作站守護程式與五級帳號權限管理</span>
             </div>
-            <div style="font-size:11px;color:var(--ui-text-muted);margin-top:2px;">
-              1. <b>Owner</b> (<code>glibivanov@gatheren.com.tw</code>) · 2. <b>Admin</b> (Manage lower roles &amp; users) · 3. <b>Editor</b> (Rename sites/scans &amp; run workflows) · 4. <b>Viewer</b> (View all scans &amp; measure; no PC workflows) · 5. <b>Guest</b> (Single shared scan &amp; basic tools: Distance, Area, Coordinates)
+            <div style="font-size:11px;color:var(--ui-text-muted);margin-top:2px;" data-i18n-zh="1. 擁有者 · 2. 管理員：管理人員與權限 · 3. 編輯者：改名與執行建模 · 4. 檢視者：檢視全部掃描與量測 · 5. 訪客：單一分享掃描與基礎量測" data-i18n-en="1. Owner: Full System Control · 2. Admin: Manage Users &amp; Roles · 3. Editor: Rename &amp; Run Workflows · 4. Viewer: View All Scans &amp; Measure · 5. Guest: Single Shared Scan &amp; Basic Tools">
+              1. 擁有者 · 2. 管理員：管理人員與權限 · 3. 編輯者：改名與執行建模 · 4. 檢視者：檢視全部掃描與量測 · 5. 訪客：單一分享掃描與基礎量測
             </div>
           </div>
-          <span class="gs-crs-pill" id="badgeCurrentUserRoleLevel" style="font-weight:700;">Role: Owner (L5)</span>
+          <span class="gs-crs-pill" id="badgeCurrentUserRoleLevel" style="font-weight:700;" data-i18n-zh="權限：擁有者 · L5" data-i18n-en="Role: Owner · L5">權限：擁有者 · L5</span>
         </div>
 
         <!-- Workstation PC Daemon Control Bar (Start / Stop / Sync Inbox Now) -->
         <div id="adminPcDaemonControlCard" style="background:var(--ui-bg-surface);border:1px solid var(--ui-border-strong);border-radius:8px;padding:10px 12px;margin-bottom:10px;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
           <div style="min-width:220px;flex:1;">
             <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
-              <span style="font-size:12px;font-weight:700;color:var(--ui-text-primary);">Windows Workstation Daemon (Inbox Watcher · 3D Tiler · PIX4Dmatic Queue)</span>
-              <span class="gs-crs-pill" id="badgeAdminPcDaemonStatus" style="font-weight:700;">Checking...</span>
+              <span style="font-size:12px;font-weight:700;color:var(--ui-text-primary);" data-i18n-zh="Windows 工作站背景服務 · 收件匣監控 · 3D 切塊 · PIX4Dmatic 佇列" data-i18n-en="Windows Workstation Daemon · Inbox Watcher · 3D Tiler · PIX4Dmatic Queue">Windows 工作站背景服務 · 收件匣監控 · 3D 切塊 · PIX4Dmatic 佇列</span>
+              <span class="gs-crs-pill" id="badgeAdminPcDaemonStatus" style="font-weight:700;" data-i18n-zh="檢查中..." data-i18n-en="Checking...">檢查中...</span>
             </div>
-            <div id="lblAdminPcDaemonDetail" style="font-size:11px;color:var(--ui-text-muted);margin-top:3px;">
-              Polls <code>G:\Shared drives\6.軟體\3. GatheringScans</code> every 10s, tiles meshes in <code>C:\GatheringScans</code>, and syncs <code>.3tz</code> packages to Google Drive &amp; VPS.
+            <div id="lblAdminPcDaemonDetail" style="font-size:11px;color:var(--ui-text-muted);margin-top:3px;" data-i18n-zh="每 10 秒輪詢 Google Drive 收件匣，於本機自動切塊並同步 .3tz 串流封包至雲端與 VPS。" data-i18n-en="Polls G:\Shared drives\Software\3. GatheringScans every 10s, tiles meshes in C:\GatheringScans, and syncs .3tz packages to Google Drive &amp; VPS.">
+              每 10 秒輪詢 Google Drive 收件匣，於本機自動切塊並同步 .3tz 串流封包至雲端與 VPS。
             </div>
           </div>
           <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
-            <button type="button" class="btn-xs" id="btnAdminSyncPcInboxNow" title="Immediately scan Google Drive Inbox, tile new meshes, and push .3tz manifest to VPS" style="height:28px;padding:0 10px;">
-              Sync Inbox Now
+            <button type="button" class="btn-xs" id="btnAdminSyncPcInboxNow" title="立即掃描 Google Drive 收件匣、切塊新模型並推送 .3tz 清單至 VPS" data-i18n-zh="立即同步收件匣" data-i18n-en="Sync Inbox Now" data-i18n-title-zh="立即掃描 Google Drive 收件匣、切塊新模型並推送 .3tz 清單至 VPS" data-i18n-title-en="Immediately scan Google Drive Inbox, tile new meshes, and push .3tz manifest to VPS" style="height:28px;padding:0 10px;">
+              立即同步收件匣
             </button>
-            <button type="button" class="btn-xs primary" id="btnAdminTogglePcDaemon" title="Start or Stop the background daemon on the Windows Workstation" style="height:28px;padding:0 12px;font-weight:700;">
-              Stop Daemon
+            <button type="button" class="btn-xs primary" id="btnAdminTogglePcDaemon" title="啟動或停止 Windows 工作站背景守護程式" data-i18n-zh="停止背景服務" data-i18n-en="Stop Daemon" data-i18n-title-zh="啟動或停止 Windows 工作站背景守護程式" data-i18n-title-en="Start or Stop the background daemon on the Windows Workstation" style="height:28px;padding:0 12px;font-weight:700;">
+              停止背景服務
             </button>
           </div>
         </div>
@@ -1375,27 +1381,27 @@
         <!-- Add / Update User Role Bar (Visible to Owner & Admin) -->
         <div id="adminUserEditorForm" class="gs-admin-editor-grid" style="display:grid;grid-template-columns:1.3fr 1fr 0.9fr 1fr auto;gap:6px;margin-bottom:8px;align-items:end;">
           <div class="gs-form-group" style="margin-bottom:0;">
-            <label style="font-size:10px;">Account Email</label>
+            <label style="font-size:10px;" data-i18n-zh="帳號電子郵件" data-i18n-en="Account Email">帳號電子郵件</label>
             <input type="email" class="gs-input" id="adminInputUserEmail" placeholder="user@gatheren.com.tw" style="font-size:11.5px;padding:4px 8px;" />
           </div>
           <div class="gs-form-group" style="margin-bottom:0;">
-            <label style="font-size:10px;">Display Name</label>
-            <input type="text" class="gs-input" id="adminInputUserName" placeholder="English Name" style="font-size:11.5px;padding:4px 8px;" />
+            <label style="font-size:10px;" data-i18n-zh="英文或顯示名稱" data-i18n-en="Display Name">英文或顯示名稱</label>
+            <input type="text" class="gs-input" id="adminInputUserName" placeholder="英文或顯示名稱" data-i18n-placeholder-zh="英文或顯示名稱" data-i18n-placeholder-en="English Name" style="font-size:11.5px;padding:4px 8px;" />
           </div>
           <div class="gs-form-group" style="margin-bottom:0;">
-            <label style="font-size:10px;">Chinese Name</label>
-            <input type="text" class="gs-input" id="adminInputUserZhName" placeholder="中文姓名" style="font-size:11.5px;padding:4px 8px;" />
+            <label style="font-size:10px;" data-i18n-zh="中文姓名" data-i18n-en="Chinese Name">中文姓名</label>
+            <input type="text" class="gs-input" id="adminInputUserZhName" placeholder="中文姓名" data-i18n-placeholder-zh="中文姓名" data-i18n-placeholder-en="Chinese Name" style="font-size:11.5px;padding:4px 8px;" />
           </div>
           <div class="gs-form-group" style="margin-bottom:0;">
-            <label style="font-size:10px;">Permission Level (L1–L5)</label>
+            <label style="font-size:10px;" data-i18n-zh="權限等級 (L1–L5)" data-i18n-en="Permission Level (L1–L5)">權限等級 (L1–L5)</label>
             <select class="gs-select" id="adminSelectUserRole" style="font-size:11.5px;padding:4px 6px;">
-              <option value="admin">L4 — Admin (Manage Users + Editor)</option>
-              <option value="editor" selected>L3 — Editor (Rename &amp; Run Scans)</option>
-              <option value="viewer">L2 — Viewer (View &amp; Measure Only)</option>
-              <option value="guest">L1 — Guest (Read-Only Basic Tools)</option>
+              <option value="admin" data-i18n-zh="L4 — 管理員 · 管理成員與編輯權限" data-i18n-en="L4 — Admin · Manage Users &amp; Editor">L4 — 管理員 · 管理成員與編輯權限</option>
+              <option value="editor" selected data-i18n-zh="L3 — 編輯者 · 改名與執行建模" data-i18n-en="L3 — Editor · Rename &amp; Run Scans">L3 — 編輯者 · 改名與執行建模</option>
+              <option value="viewer" data-i18n-zh="L2 — 檢視者 · 僅檢視與量測" data-i18n-en="L2 — Viewer · View &amp; Measure Only">L2 — 檢視者 · 僅檢視與量測</option>
+              <option value="guest" data-i18n-zh="L1 — 訪客 · 唯讀基礎工具" data-i18n-en="L1 — Guest · Read-Only Basic Tools">L1 — 訪客 · 唯讀基礎工具</option>
             </select>
           </div>
-          <button type="button" class="btn-xs primary" id="btnAdminSaveUser" style="height:28px;padding:0 10px;">Save</button>
+          <button type="button" class="btn-xs primary" id="btnAdminSaveUser" style="height:28px;padding:0 10px;" data-i18n-zh="儲存" data-i18n-en="Save">儲存</button>
         </div>
 
         <div id="adminActionStatusMsg" style="font-size:11px;color:var(--ui-accent);margin-bottom:6px;min-height:16px;"></div>
@@ -1404,11 +1410,11 @@
           <table class="gs-table">
             <thead>
               <tr>
-                <th>Name</th>
-                <th>Account Email</th>
-                <th>Level &amp; Role</th>
-                <th>Allowed Capabilities</th>
-                <th style="text-align:right;">Actions</th>
+                <th data-i18n-zh="姓名" data-i18n-en="Name">姓名</th>
+                <th data-i18n-zh="帳號信箱" data-i18n-en="Account Email">帳號信箱</th>
+                <th data-i18n-zh="等級與角色" data-i18n-en="Level &amp; Role">等級與角色</th>
+                <th data-i18n-zh="可用權限" data-i18n-en="Allowed Capabilities">可用權限</th>
+                <th style="text-align:right;" data-i18n-zh="操作" data-i18n-en="Actions">操作</th>
               </tr>
             </thead>
             <tbody id="adminUsersTableBody"></tbody>
@@ -1426,57 +1432,57 @@
               <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="var(--ui-accent)" stroke-width="2">
                 <path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/>
               </svg>
-              <span>Google Drive <code>.3tz</code> Cloud Streaming &amp; Service Account</span>
+              <span data-i18n-zh="Google Drive .3tz 雲端串流與服務帳號" data-i18n-en="Google Drive .3tz Cloud Streaming &amp; Service Account">Google Drive .3tz 雲端串流與服務帳號</span>
             </div>
             <div style="font-size:11px;color:var(--ui-text-muted);margin-top:2px;">
-              Identity: <code style="color:var(--ui-accent);font-weight:700;user-select:all;">gcworker@modular-temple-508005-c4.iam.gserviceaccount.com</code> · <span id="lblCloudStreamDetails">Packages each scan into 1 single <code>.3tz</code> archive in <code>StreamPackages</code>.</span>
+              <span data-i18n-zh="服務帳號：" data-i18n-en="Identity:">服務帳號：</span> <code style="color:var(--ui-accent);font-weight:700;user-select:all;">gcworker@modular-temple-508005-c4.iam.gserviceaccount.com</code> · <span id="lblCloudStreamDetails" data-i18n-zh="將每筆掃描封裝為 StreamPackages 資料夾內的單一 .3tz 檔案。" data-i18n-en="Packages each scan into 1 single .3tz archive in StreamPackages.">將每筆掃描封裝為 StreamPackages 資料夾內的單一 .3tz 檔案。</span>
             </div>
           </div>
           <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
-            <span class="gs-crs-pill" id="badgeCloudStreamStatus" style="font-size:10px;">.3tz Ready</span>
-            <span class="gs-crs-pill" id="badgeSettingsSaStatus">Checking...</span>
-            <button type="button" class="btn-xs" id="btnAuthorizeGDriveCloud" title="1-Click Authorize Google Drive Read-Only Token for Direct VPS Cloud Streaming">OAuth</button>
-            <button type="button" class="btn-xs primary" id="btnSyncCloudPackages" title="Build .3tz Packages in Google Drive StreamPackages &amp; Push Byte-Range Manifest to VPS">Sync</button>
-            <label class="btn-xs" for="fileServiceAccountJsonUser" style="cursor:pointer;margin:0;" title="Upload Service Account .json Key File">Key</label>
+            <span class="gs-crs-pill" id="badgeCloudStreamStatus" style="font-size:10px;" data-i18n-zh=".3tz 就緒" data-i18n-en=".3tz Ready">.3tz 就緒</span>
+            <span class="gs-crs-pill" id="badgeSettingsSaStatus" data-i18n-zh="檢查中..." data-i18n-en="Checking...">檢查中...</span>
+            <button type="button" class="btn-xs" id="btnAuthorizeGDriveCloud" title="一鍵授權 Google Drive 唯讀憑證供 VPS 雲端串流使用" data-i18n-zh="OAuth 授權" data-i18n-en="OAuth" data-i18n-title-zh="一鍵授權 Google Drive 唯讀憑證供 VPS 雲端串流使用" data-i18n-title-en="1-Click Authorize Google Drive Read-Only Token for Direct VPS Cloud Streaming">OAuth 授權</button>
+            <button type="button" class="btn-xs primary" id="btnSyncCloudPackages" title="建立 Google Drive StreamPackages .3tz 封包並同步清單至 VPS" data-i18n-zh="同步封包" data-i18n-en="Sync" data-i18n-title-zh="建立 Google Drive StreamPackages .3tz 封包並同步清單至 VPS" data-i18n-title-en="Build .3tz Packages in Google Drive StreamPackages &amp; Push Byte-Range Manifest to VPS">同步封包</button>
+            <label class="btn-xs" for="fileServiceAccountJsonUser" style="cursor:pointer;margin:0;" title="上傳服務帳號 .json 金鑰檔" data-i18n-zh="上傳金鑰" data-i18n-en="Key" data-i18n-title-zh="上傳服務帳號 .json 金鑰檔" data-i18n-title-en="Upload Service Account .json Key File">上傳金鑰</label>
             <input type="file" id="fileServiceAccountJsonUser" accept=".json,application/json" style="display:none;" />
-            <button type="button" class="btn-xs primary" id="btnTestServiceAccountLive" title="Test gcworker@modular-temple-508005-c4.iam.gserviceaccount.com against Google Drive API v3">Test</button>
+            <button type="button" class="btn-xs primary" id="btnTestServiceAccountLive" title="測試服務帳號連線至 Google Drive API v3" data-i18n-zh="測試連線" data-i18n-en="Test" data-i18n-title-zh="測試服務帳號連線至 Google Drive API v3" data-i18n-title-en="Test gcworker@modular-temple-508005-c4.iam.gserviceaccount.com against Google Drive API v3">測試連線</button>
           </div>
         </div>
         <div style="display:flex;gap:6px;align-items:flex-start;margin-top:6px;">
-          <textarea class="gs-input" id="txtServiceAccountJsonUser" rows="2" placeholder='Paste JSON key for gcworker@modular-temple-508005-c4.iam.gserviceaccount.com {"type":"service_account","project_id":"modular-temple-508005-c4","private_key":"-----BEGIN PRIVATE KEY-----...","client_email":"gcworker@modular-temple-508005-c4.iam.gserviceaccount.com"}' style="flex:1;font-family:var(--mono);font-size:10.5px;"></textarea>
-          <button type="button" class="btn-xs primary" id="btnSaveServiceAccountJsonUser" style="height:44px;">Save</button>
+          <textarea class="gs-input" id="txtServiceAccountJsonUser" rows="2" placeholder='貼上 gcworker@modular-temple-508005-c4.iam.gserviceaccount.com 的 JSON 金鑰內容 {"type":"service_account",...}' data-i18n-placeholder-zh='貼上 gcworker@modular-temple-508005-c4.iam.gserviceaccount.com 的 JSON 金鑰內容 {"type":"service_account",...}' data-i18n-placeholder-en='Paste JSON key for gcworker@modular-temple-508005-c4.iam.gserviceaccount.com {"type":"service_account",...}' style="flex:1;font-family:var(--mono);font-size:10.5px;"></textarea>
+          <button type="button" class="btn-xs primary" id="btnSaveServiceAccountJsonUser" style="height:44px;" data-i18n-zh="儲存" data-i18n-en="Save">儲存</button>
         </div>
         <div id="boxServiceAccountTestResult" style="display:none;margin-top:8px;padding:8px 10px;border-radius:6px;background:var(--ui-bg-surface);border:1px solid var(--ui-border-strong);font-size:11px;font-family:var(--mono);line-height:1.45;white-space:pre-wrap;"></div>
       </div>
 
-      <p style="font-size:12px;color:var(--ui-text-secondary);margin-bottom:10px;">
-        Zero raw scans, photos, or 3D caches are stored on the Linux server. Optimized 3D tilesets are cached directly in your local browser (<code>CacheStorage</code> + <code>IndexedDB</code>) for offline inspection when the processing PC is powered off.
+      <p style="font-size:12px;color:var(--ui-text-secondary);margin-bottom:10px;" data-i18n-zh="Linux 雲端伺服器不儲存任何原始掃描、照片或 3D 快取；最佳化後的 3D 圖磚會直接快取於您的本機瀏覽器 (CacheStorage + IndexedDB)，即使工作站關機也能離線檢視。" data-i18n-en="Zero raw scans, photos, or 3D caches are stored on the Linux server. Optimized 3D tilesets are cached directly in your local browser (CacheStorage + IndexedDB) for offline inspection when the processing PC is powered off.">
+        Linux 雲端伺服器不儲存任何原始掃描、照片或 3D 快取；最佳化後的 3D 圖磚會直接快取於您的本機瀏覽器 (CacheStorage + IndexedDB)，即使工作站關機也能離線檢視。
       </p>
 
       <div class="gs-settings-row" style="background:var(--ui-bg-subtle);border:1px solid var(--ui-border);border-radius:10px;padding:12px 14px;margin-bottom:10px;display:flex;justify-content:space-between;align-items:center;gap:12px;">
         <div style="min-width:0;flex:1;">
-          <div style="font-size:12.5px;font-weight:700;color:var(--ui-text-primary);word-break:break-word;" id="lblOfflineCacheUserEmail">Enable Offline Caching in Browser</div>
-          <div style="font-size:11px;color:var(--ui-text-muted);margin-top:2px;">Automatically caches viewed 3D tilesets locally on this device.</div>
+          <div style="font-size:12.5px;font-weight:700;color:var(--ui-text-primary);word-break:break-word;" id="lblOfflineCacheUserEmail" data-i18n-zh="啟用瀏覽器離線快取" data-i18n-en="Enable Offline Caching in Browser">啟用瀏覽器離線快取</div>
+          <div style="font-size:11px;color:var(--ui-text-muted);margin-top:2px;" data-i18n-zh="自動將檢視過的 3D 掃描模型快取於此裝置。" data-i18n-en="Automatically caches viewed 3D tilesets locally on this device.">自動將檢視過的 3D 掃描模型快取於此裝置。</div>
         </div>
         <input type="checkbox" id="chkEnableOfflineCache" checked style="width:18px;height:18px;accent-color:#0284c7;cursor:pointer;flex-shrink:0;" />
       </div>
 
       <div class="gs-settings-row" style="background:var(--ui-bg-subtle);border:1px solid var(--ui-border);border-radius:10px;padding:12px 14px;margin-bottom:14px;display:flex;justify-content:space-between;align-items:center;gap:12px;">
         <div style="min-width:0;flex:1;">
-          <div style="font-size:12.5px;font-weight:700;color:var(--ui-text-primary);">Simulate Processing PC Offline Mode</div>
-          <div style="font-size:11px;color:var(--ui-text-muted);margin-top:2px;">Test viewing cached scans directly from local browser storage.</div>
+          <div style="font-size:12.5px;font-weight:700;color:var(--ui-text-primary);" data-i18n-zh="模擬運算工作站離線模式" data-i18n-en="Simulate Processing PC Offline Mode">模擬運算工作站離線模式</div>
+          <div style="font-size:11px;color:var(--ui-text-muted);margin-top:2px;" data-i18n-zh="測試直接從本機瀏覽器快取讀取並檢視 3D 掃描模型。" data-i18n-en="Test viewing cached scans directly from local browser storage.">測試直接從本機瀏覽器快取讀取並檢視 3D 掃描模型。</div>
         </div>
-        <button type="button" class="btn-xs" id="btnToggleSimulatedOffline" title="Toggle Simulated PC Offline Mode" style="flex-shrink:0;">Offline</button>
+        <button type="button" class="btn-xs" id="btnToggleSimulatedOffline" title="切換模擬工作站離線模式" data-i18n-zh="離線測試" data-i18n-en="Offline" data-i18n-title-zh="切換模擬工作站離線模式" data-i18n-title-en="Toggle Simulated PC Offline Mode" style="flex-shrink:0;">離線測試</button>
       </div>
 
       <div class="gs-table-scroll-wrap" style="border:1px solid var(--ui-border);border-radius:8px;overflow:auto;">
         <table class="gs-table">
           <thead>
             <tr>
-              <th>Scan Name</th>
-              <th>Project</th>
-              <th>CRS</th>
-              <th>Status</th>
+              <th data-i18n-zh="掃描名稱" data-i18n-en="Scan Name">掃描名稱</th>
+              <th data-i18n-zh="專案工區" data-i18n-en="Project">專案工區</th>
+              <th data-i18n-zh="座標系統" data-i18n-en="CRS">座標系統</th>
+              <th data-i18n-zh="快取狀態" data-i18n-en="Status">快取狀態</th>
               <th></th>
             </tr>
           </thead>
@@ -1497,15 +1503,20 @@
         <div style="display:flex;align-items:center;gap:14px;min-width:0;">
           <img src="/assets/gathering_cloud_logo_dark.png" alt="GatheringCloud" style="height:36px;width:auto;object-fit:contain;flex-shrink:0;" />
           <div style="min-width:0;">
-            <h3 id="userProfileGateTitle" style="margin:0;font-size:15.5px;font-weight:700;letter-spacing:0.3px;">GatheringCloud Identity Verification</h3>
-            <p style="margin:3px 0 0;font-size:11.5px;color:#94a3b8;">Authorization required to access GatheringCloud Scans (<code>gatheren.cloud</code>)</p>
+            <h3 id="userProfileGateTitle" style="margin:0;font-size:15.5px;font-weight:700;letter-spacing:0.3px;" data-i18n-zh="GatheringCloud 身分驗證" data-i18n-en="GatheringCloud Identity Verification">GatheringCloud 身分驗證</h3>
+            <p style="margin:3px 0 0;font-size:11.5px;color:#94a3b8;" data-i18n-zh="請登入授權帳號以存取 GatheringCloud 3D 掃描系統 (gatheren.cloud)" data-i18n-en="Authorization required to access GatheringCloud Scans (gatheren.cloud)">請登入授權帳號以存取 GatheringCloud 3D 掃描系統 (gatheren.cloud)</p>
           </div>
         </div>
-        <button type="button" class="btn-xs" id="btnCloseAuthGateModal" title="Close" aria-label="Close Identity Verification Modal" style="display:none;background:rgba(255,255,255,0.1);border-color:rgba(255,255,255,0.2);color:#f8fafc;flex-shrink:0;">
-          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
-            <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
-          </svg>
-        </button>
+        <div style="display:flex;align-items:center;gap:6px;flex-shrink:0;">
+          <button type="button" class="btn-xs gs-lang-toggle-btn" id="btnAuthToggleLanguage" title="Switch to English" aria-label="Switch Interface Language" style="background:rgba(255,255,255,0.12);border-color:rgba(255,255,255,0.25);color:#f8fafc;font-weight:700;height:28px;padding:0 9px;">
+            <span id="lblAuthToggleLanguage">EN</span>
+          </button>
+          <button type="button" class="btn-xs" id="btnCloseAuthGateModal" title="關閉" data-i18n-title-zh="關閉" data-i18n-title-en="Close" aria-label="Close Identity Verification Modal" style="display:none;background:rgba(255,255,255,0.1);border-color:rgba(255,255,255,0.2);color:#f8fafc;flex-shrink:0;">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+            </svg>
+          </button>
+        </div>
       </div>
 
       <!-- Body -->
@@ -1519,7 +1530,7 @@
               <path fill="#FBBC05" d="M5.28 14.24c-.24-.72-.38-1.49-.38-2.24s.14-1.52.38-2.24V6.62H1.29C.47 8.24 0 10.06 0 12s.47 3.76 1.29 5.38l3.99-3.14z"/>
               <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.31 0 3.26 2.7 1.29 6.62l3.99 3.14c.95-2.85 3.6-4.96 6.72-4.96z"/>
             </svg>
-            <span>Google Account Sign-In (GatheringCloud SSO)</span>
+            <span data-i18n-zh="Google 帳號單一簽入 (GatheringCloud SSO)" data-i18n-en="Google Account Sign-In (GatheringCloud SSO)">Google 帳號單一簽入 (GatheringCloud SSO)</span>
           </div>
 
           <div
@@ -1546,30 +1557,32 @@
             id="btnChooseGoogleAccountOAuth"
             class="btn-xs"
             style="height:34px;padding:0 14px;border-radius:8px;font-size:12px;font-weight:700;display:inline-flex;align-items:center;gap:8px;background:var(--ui-bg-surface);border:1.5px solid var(--ui-accent);color:var(--ui-text-primary);cursor:pointer;box-shadow:0 1px 3px rgba(0,0,0,0.08);"
-            title="Open Google's Account Chooser popup to pick which Google account to sign in with">
+            title="開啟 Google 帳號選擇視窗以指定登入帳號"
+            data-i18n-title-zh="開啟 Google 帳號選擇視窗以指定登入帳號"
+            data-i18n-title-en="Open Google's Account Chooser popup to pick which Google account to sign in with">
             <svg width="15" height="15" viewBox="0 0 24 24" style="flex-shrink:0;">
               <path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.665-5.17 3.665-9.17z"/>
               <path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.11-6.72-4.96H1.29v3.14C3.26 21.3 7.31 24 12 24z"/>
               <path fill="#FBBC05" d="M5.28 14.24c-.24-.72-.38-1.49-.38-2.24s.14-1.52.38-2.24V6.62H1.29C.47 8.24 0 10.06 0 12s.47 3.76 1.29 5.38l3.99-3.14z"/>
               <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.31 0 3.26 2.7 1.29 6.62l3.99 3.14c.95-2.85 3.6-4.96 6.72-4.96z"/>
             </svg>
-            <span>Switch / Choose Google Account (選擇 Google 帳號)</span>
+            <span data-i18n-zh="選擇 Google 帳號" data-i18n-en="Switch / Choose Google Account">選擇 Google 帳號</span>
           </button>
 
-          <div id="googleAuthMessage" style="font-size:11.5px;color:var(--ui-accent);">
-            Sign in with your Google account or click &ldquo;Switch / Choose Google Account&rdquo; to pick between accounts.
+          <div id="googleAuthMessage" style="font-size:11.5px;color:var(--ui-accent);" data-i18n-zh="請使用 Google 帳號登入，或點擊「選擇 Google 帳號」切換不同帳號。" data-i18n-en="Sign in with your Google account or click &ldquo;Switch / Choose Google Account&rdquo; to pick between accounts.">
+            請使用 Google 帳號登入，或點擊「選擇 Google 帳號」切換不同帳號。
           </div>
 
           <!-- Unregistered Local Origin Warning (shown automatically when opened via http://127.0.0.1:8095) -->
           <div id="localOriginOAuthWarning" style="display:none;width:100%;padding:8px 11px;background:rgba(245,158,11,0.12);border:1px solid rgba(245,158,11,0.45);border-radius:8px;font-size:11px;color:#f59e0b;text-align:left;line-height:1.45;">
-            <b>Note:</b> <code id="unregisteredOriginLabel">http://127.0.0.1:8095</code> is a local workstation address not listed in Google Cloud Console's Authorised JavaScript Origins. Either select your profile directly from the <b>Team Roster</b> below, or <a href="https://scans.gatheren.cloud" style="color:var(--ui-accent);font-weight:700;text-decoration:underline;">open https://scans.gatheren.cloud</a> for Google OAuth popup sign-in.
+            <b data-i18n-zh="提示：" data-i18n-en="Note:">提示：</b> <code id="unregisteredOriginLabel">http://127.0.0.1:8095</code> <span data-i18n-zh="為本機工作站位址，可直接從下方團隊成員名單點選帳號登入，或前往 " data-i18n-en="is a local workstation address. Select your profile from the Team Roster below, or open ">為本機工作站位址，可直接從下方團隊成員名單點選帳號登入，或前往 </span><a href="https://scans.gatheren.cloud" style="color:var(--ui-accent);font-weight:700;text-decoration:underline;">https://scans.gatheren.cloud</a><span data-i18n-zh=" 使用 Google OAuth 視窗登入。" data-i18n-en=" for Google OAuth popup sign-in."> 使用 Google OAuth 視窗登入。</span>
           </div>
 
           <!-- Origin Helper Notice -->
           <div id="googleAuthOriginNotice" style="width:100%;margin-top:2px;padding:7px 10px;background:var(--ui-bg-surface);border:1px dashed var(--ui-border-strong);border-radius:8px;font-size:11px;color:var(--ui-text-muted);text-align:left;line-height:1.45;">
             <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;">
-              <span style="min-width:0;word-break:break-all;">Authorized JavaScript Origin: <code id="currentOriginCode" style="background:var(--ui-bg-subtle);padding:2px 6px;border-radius:4px;color:var(--ui-text-primary);font-weight:700;user-select:all;">https://scans.gatheren.cloud</code></span>
-              <button type="button" id="btnCopyCurrentOriginGate" class="btn-xs" style="height:22px;font-size:10.5px;">Copy</button>
+              <span style="min-width:0;word-break:break-all;"><span data-i18n-zh="已授權網域：" data-i18n-en="Authorized JavaScript Origin:">已授權網域：</span> <code id="currentOriginCode" style="background:var(--ui-bg-subtle);padding:2px 6px;border-radius:4px;color:var(--ui-text-primary);font-weight:700;user-select:all;">https://scans.gatheren.cloud</code></span>
+              <button type="button" id="btnCopyCurrentOriginGate" class="btn-xs" style="height:22px;font-size:10.5px;" data-i18n-zh="複製" data-i18n-en="Copy">複製</button>
             </div>
           </div>
         </div>
@@ -1578,14 +1591,16 @@
         <div id="gateExistingUsersSection" style="display:flex;flex-direction:column;gap:8px;">
           <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;">
             <div style="display:flex;align-items:center;gap:6px;">
-              <span style="font-size:11.5px;font-weight:700;color:var(--ui-text-secondary);text-transform:uppercase;letter-spacing:0.05em;">Verified GatheringCloud Team Accounts</span>
-              <span id="gateRosterCountBadge" class="gs-crs-pill" style="font-size:10px;padding:1px 7px;">18 Members</span>
+              <span style="font-size:11.5px;font-weight:700;color:var(--ui-text-secondary);text-transform:uppercase;letter-spacing:0.05em;" data-i18n-zh="已驗證之 GatheringCloud 團隊成員帳號" data-i18n-en="Verified GatheringCloud Team Accounts">已驗證之 GatheringCloud 團隊成員帳號</span>
+              <span id="gateRosterCountBadge" class="gs-crs-pill" style="font-size:10px;padding:1px 7px;" data-i18n-zh="18 位成員" data-i18n-en="18 Members">18 位成員</span>
             </div>
             <input
               type="search"
               id="gateUserSearchInput"
               class="input-sm"
-              placeholder="Search name or email..."
+              placeholder="搜尋姓名或信箱..."
+              data-i18n-placeholder-zh="搜尋姓名或信箱..."
+              data-i18n-placeholder-en="Search name or email..."
               style="height:26px;font-size:11.5px;width:185px;padding:0 8px;" />
           </div>
           <div
@@ -1597,11 +1612,11 @@
 
       <!-- Footer -->
       <div style="padding:12px 20px;background:var(--ui-bg-subtle);border-top:1px solid var(--ui-border);display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
-        <span id="gateActiveUserStatusText" style="font-size:12px;color:var(--ui-text-secondary);font-weight:600;">Sign in with Google or browse in Read-Only Guest Mode</span>
+        <span id="gateActiveUserStatusText" style="font-size:12px;color:var(--ui-text-secondary);font-weight:600;" data-i18n-zh="請使用 Google 登入或以唯讀訪客模式瀏覽" data-i18n-en="Sign in with Google or browse in Read-Only Guest Mode">請使用 Google 登入或以唯讀訪客模式瀏覽</span>
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
-          <button type="button" id="btnUserLogout" class="btn-xs" style="display:none;" title="Sign out of current profile">Logout</button>
-          <button type="button" id="btnGateGuestEnter" class="btn-xs" title="Browse all projects &amp; scans in Read-Only Guest Mode">Guest</button>
-          <button type="button" id="btnGateConfirmEnter" class="btn-xs primary" style="display:none;" title="Continue to GatheringScans Studio">Continue</button>
+          <button type="button" id="btnUserLogout" class="btn-xs" style="display:none;" title="登出目前帳號" data-i18n-zh="登出" data-i18n-en="Logout" data-i18n-title-zh="登出目前帳號" data-i18n-title-en="Sign out of current profile">登出</button>
+          <button type="button" id="btnGateGuestEnter" class="btn-xs" title="以唯讀訪客模式瀏覽所有專案與掃描" data-i18n-zh="訪客瀏覽" data-i18n-en="Guest" data-i18n-title-zh="以唯讀訪客模式瀏覽所有專案與掃描" data-i18n-title-en="Browse all projects &amp; scans in Read-Only Guest Mode">訪客瀏覽</button>
+          <button type="button" id="btnGateConfirmEnter" class="btn-xs primary" style="display:none;" title="進入 GatheringScans 3D 工作坊" data-i18n-zh="進入系統" data-i18n-en="Continue" data-i18n-title-zh="進入 GatheringScans 3D 工作坊" data-i18n-title-en="Continue to GatheringScans Studio">進入系統</button>
         </div>
       </div>
     </div>
@@ -1614,10 +1629,10 @@
     <div class="gs-modal-window" style="width:440px;max-width:95vw;">
       <div class="gs-modal-header">
         <div>
-          <div class="gs-modal-title" id="renameScanModalTitle">Edit Scan Name</div>
-          <div class="gs-modal-subtitle" id="renameScanModalFolderInfo">File / Folder Name</div>
+          <div class="gs-modal-title" id="renameScanModalTitle" data-i18n-zh="編輯掃描名稱" data-i18n-en="Edit Scan Name">編輯掃描名稱</div>
+          <div class="gs-modal-subtitle" id="renameScanModalFolderInfo" data-i18n-zh="檔案 / 資料夾名稱" data-i18n-en="File / Folder Name">檔案 / 資料夾名稱</div>
         </div>
-        <button type="button" class="btn-xs" data-close-modal="renameScanModal" title="Close" aria-label="Close Rename Scan Modal">
+        <button type="button" class="btn-xs" data-close-modal="renameScanModal" title="關閉" data-i18n-title-zh="關閉" data-i18n-title-en="Close" aria-label="Close Rename Scan Modal">
           <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8">
             <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
           </svg>
@@ -1625,20 +1640,22 @@
       </div>
       <div class="gs-modal-body" style="padding:18px 20px;display:flex;flex-direction:column;gap:12px;">
         <div>
-          <label for="renameScanInput" style="display:block;font-size:12px;font-weight:700;color:var(--ui-text-secondary);margin-bottom:6px;">Scan Name</label>
+          <label for="renameScanInput" style="display:block;font-size:12px;font-weight:700;color:var(--ui-text-secondary);margin-bottom:6px;" data-i18n-zh="掃描顯示名稱" data-i18n-en="Scan Name">掃描顯示名稱</label>
           <input
             type="text"
             id="renameScanInput"
             class="gs-input"
-            placeholder="Enter scan name..."
+            placeholder="輸入掃描名稱..."
+            data-i18n-placeholder-zh="輸入掃描名稱..."
+            data-i18n-placeholder-en="Enter scan name..."
             style="width:100%;font-size:13.5px;font-weight:600;"
           />
         </div>
         <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-top:4px;">
-          <button type="button" class="btn-xs" id="btnResetScanNameToFile" title="Reset to original file/folder name">Reset</button>
+          <button type="button" class="btn-xs" id="btnResetScanNameToFile" title="還原為原始檔案或資料夾名稱" data-i18n-zh="還原預設" data-i18n-en="Reset" data-i18n-title-zh="還原為原始檔案或資料夾名稱" data-i18n-title-en="Reset to original file/folder name">還原預設</button>
           <div style="display:flex;gap:8px;align-items:center;">
-            <button type="button" class="btn-xs" data-close-modal="renameScanModal">Cancel</button>
-            <button type="button" class="btn-xs primary" id="btnConfirmSaveScanName">Save</button>
+            <button type="button" class="btn-xs" data-close-modal="renameScanModal" data-i18n-zh="取消" data-i18n-en="Cancel">取消</button>
+            <button type="button" class="btn-xs primary" id="btnConfirmSaveScanName" data-i18n-zh="儲存" data-i18n-en="Save">儲存</button>
           </div>
         </div>
       </div>
@@ -1652,10 +1669,10 @@
     <div class="gs-modal-window" style="width:470px;max-width:95vw;">
       <div class="gs-modal-header">
         <div>
-          <div class="gs-modal-title" id="deleteScanModalTitle" style="color:#ef4444;">Move Scan to Bin (移至回收桶)</div>
-          <div class="gs-modal-subtitle" id="deleteScanModalSubtitle">Moves scan to the Trash Bin · Can be restored anytime from the Trash Bin</div>
+          <div class="gs-modal-title" id="deleteScanModalTitle" style="color:#ef4444;" data-i18n-zh="移至回收桶" data-i18n-en="Move Scan to Bin">移至回收桶</div>
+          <div class="gs-modal-subtitle" id="deleteScanModalSubtitle" data-i18n-zh="將掃描移至回收桶 · 隨時可從回收桶還原" data-i18n-en="Moves scan to the Trash Bin · Can be restored anytime from the Trash Bin">將掃描移至回收桶 · 隨時可從回收桶還原</div>
         </div>
-        <button type="button" class="btn-xs" data-close-modal="deleteScanModal" title="Close" aria-label="Close Delete Scan Modal">
+        <button type="button" class="btn-xs" data-close-modal="deleteScanModal" title="關閉" data-i18n-title-zh="關閉" data-i18n-title-en="Close" aria-label="Close Delete Scan Modal">
           <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8">
             <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
           </svg>
@@ -1663,15 +1680,15 @@
       </div>
       <div class="gs-modal-body" style="padding:18px 20px;display:flex;flex-direction:column;gap:12px;">
         <div style="background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.35);border-radius:8px;padding:11px 13px;font-size:12px;color:var(--ui-text-primary);line-height:1.5;">
-          <div>Move <b id="deleteScanTargetName">this scan</b> to the Recycle Bin?</div>
+          <div><span data-i18n-zh="確定要將 " data-i18n-en="Move ">確定要將 </span><b id="deleteScanTargetName" data-i18n-zh="此掃描" data-i18n-en="this scan">此掃描</b><span data-i18n-zh=" 移至回收桶嗎？" data-i18n-en=" to the Recycle Bin?"> 移至回收桶嗎？</span></div>
           <div style="font-size:11px;color:var(--ui-text-secondary);font-family:var(--mono);margin-top:4px;word-break:break-all;" id="deleteScanTargetMeta"></div>
-          <div style="font-size:11px;color:var(--ui-text-muted);margin-top:6px;">Files remain safely stored in the Bin until an Admin restores them or permanently empties the Bin.</div>
+          <div style="font-size:11px;color:var(--ui-text-muted);margin-top:6px;" data-i18n-zh="檔案將安全保留於回收桶內，直到管理員將其還原或永久清空回收桶。" data-i18n-en="Files remain safely stored in the Bin until an Admin restores them or permanently empties the Bin.">檔案將安全保留於回收桶內，直到管理員將其還原或永久清空回收桶。</div>
         </div>
         <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:4px;">
-          <button type="button" class="btn-xs" id="btnOpenBinFromDeleteModal" style="display:none;">Open Bin (開啟回收桶)</button>
+          <button type="button" class="btn-xs" id="btnOpenBinFromDeleteModal" style="display:none;" data-i18n-zh="開啟回收桶" data-i18n-en="Open Bin">開啟回收桶</button>
           <div style="display:flex;gap:8px;align-items:center;margin-left:auto;">
-            <button type="button" class="btn-xs" data-close-modal="deleteScanModal">Cancel</button>
-            <button type="button" class="btn-xs primary" id="btnConfirmDeleteScan" style="background:#ef4444;border-color:#dc2626;color:#ffffff;">Move to Bin (移至回收桶)</button>
+            <button type="button" class="btn-xs" data-close-modal="deleteScanModal" data-i18n-zh="取消" data-i18n-en="Cancel">取消</button>
+            <button type="button" class="btn-xs primary" id="btnConfirmDeleteScan" style="background:#ef4444;border-color:#dc2626;color:#ffffff;" data-i18n-zh="移至回收桶" data-i18n-en="Move to Bin">移至回收桶</button>
           </div>
         </div>
       </div>
@@ -1689,12 +1706,12 @@
             <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="#ef4444" stroke-width="2">
               <polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
             </svg>
-            <span>Recycle Bin (掃描回收桶)</span>
-            <span class="gs-crs-pill" id="recycleBinModalCountPill">0 Scans</span>
+            <span data-i18n-zh="掃描回收桶" data-i18n-en="Recycle Bin">掃描回收桶</span>
+            <span class="gs-crs-pill" id="recycleBinModalCountPill" data-i18n-zh="0 筆掃描" data-i18n-en="0 Scans">0 筆掃描</span>
           </div>
-          <div class="gs-modal-subtitle">Trash Bin &amp; Original Backups · Restore original scans anytime (Permanent delete requires Admin / Owner)</div>
+          <div class="gs-modal-subtitle" data-i18n-zh="回收桶與原始掃描備份 · 可隨時還原原始掃描模型（永久刪除需管理員或擁有者權限）" data-i18n-en="Trash Bin &amp; Original Backups · Restore original scans anytime (Permanent delete requires Admin / Owner)">回收桶與原始掃描備份 · 可隨時還原原始掃描模型（永久刪除需管理員或擁有者權限）</div>
         </div>
-        <button type="button" class="btn-xs" data-close-modal="recycleBinModal" title="Close" aria-label="Close Recycle Bin Modal">
+        <button type="button" class="btn-xs" data-close-modal="recycleBinModal" title="關閉" data-i18n-title-zh="關閉" data-i18n-title-en="Close" aria-label="Close Recycle Bin Modal">
           <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8">
             <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
           </svg>
@@ -1704,30 +1721,30 @@
         <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;padding:8px 12px;background:var(--ui-bg-subtle);border:1px solid var(--ui-border);border-radius:8px;">
           <label style="display:flex;align-items:center;gap:6px;font-size:12px;font-weight:600;color:var(--ui-text-primary);cursor:pointer;">
             <input type="checkbox" id="chkSelectAllBinScans" style="accent-color:#0284c7;" />
-            <span>Select All (<span id="recycleBinSelectedCount">0</span> selected)</span>
+            <span><span data-i18n-zh="全選（已選 " data-i18n-en="Select All (">全選（已選 </span><span id="recycleBinSelectedCount">0</span><span data-i18n-zh=" 項）" data-i18n-en=" selected)"> 項）</span></span>
           </label>
           <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
-            <button type="button" class="btn-xs primary" id="btnRestoreSelectedBinScans" disabled title="Restore selected scans back to Map and Studio">
-              ↩ Restore Selected (還原已選)
+            <button type="button" class="btn-xs primary" id="btnRestoreSelectedBinScans" disabled title="將勾選的掃描還原至地圖與 3D 工作坊" data-i18n-zh="↩ 還原已選" data-i18n-en="↩ Restore Selected" data-i18n-title-zh="將勾選的掃描還原至地圖與 3D 工作坊" data-i18n-title-en="Restore selected scans back to Map and Studio">
+              ↩ 還原已選
             </button>
-            <button type="button" class="btn-xs" id="btnPurgeSelectedBinScans" disabled style="color:#ef4444;border-color:rgba(239,68,68,0.4);" title="Permanently delete selected scans from disk">
-              🗑 Delete Selected (永久刪除已選)
+            <button type="button" class="btn-xs" id="btnPurgeSelectedBinScans" disabled style="color:#ef4444;border-color:rgba(239,68,68,0.4);" title="從磁碟永久刪除勾選的掃描" data-i18n-zh="🗑 永久刪除已選" data-i18n-en="🗑 Delete Selected" data-i18n-title-zh="從磁碟永久刪除勾選的掃描" data-i18n-title-en="Permanently delete selected scans from disk">
+              🗑 永久刪除已選
             </button>
-            <button type="button" class="btn-xs" id="btnClearAllBinScans" style="background:#ef4444;border-color:#dc2626;color:#ffffff;" title="Empty the entire Recycle Bin and free disk space">
-              Empty Bin (清空回收桶)
+            <button type="button" class="btn-xs" id="btnClearAllBinScans" style="background:#ef4444;border-color:#dc2626;color:#ffffff;" title="清空整個回收桶並釋放磁碟空間" data-i18n-zh="清空回收桶" data-i18n-en="Empty Bin" data-i18n-title-zh="清空整個回收桶並釋放磁碟空間" data-i18n-title-en="Empty the entire Recycle Bin and free disk space">
+              清空回收桶
             </button>
           </div>
         </div>
 
         <div id="recycleBinListContainer" style="display:flex;flex-direction:column;gap:8px;max-height:380px;overflow-y:auto;padding-right:2px;">
-          <div style="padding:28px 16px;text-align:center;color:var(--ui-text-muted);font-size:12px;">
-            Recycle Bin is empty.
+          <div style="padding:28px 16px;text-align:center;color:var(--ui-text-muted);font-size:12px;" data-i18n-zh="回收桶目前為空。" data-i18n-en="Recycle Bin is empty.">
+            回收桶目前為空。
           </div>
         </div>
 
         <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:2px;">
-          <span style="font-size:11px;color:var(--ui-text-muted);" id="recycleBinStatusFooter">Original backups &amp; deleted scans can be restored anytime · Permanent delete requires Admin / Owner.</span>
-          <button type="button" class="btn-xs" data-close-modal="recycleBinModal">Close</button>
+          <span style="font-size:11px;color:var(--ui-text-muted);" id="recycleBinStatusFooter" data-i18n-zh="原始備份與已刪除掃描隨時可還原 · 永久刪除需管理員或擁有者權限。" data-i18n-en="Original backups &amp; deleted scans can be restored anytime · Permanent delete requires Admin / Owner.">原始備份與已刪除掃描隨時可還原 · 永久刪除需管理員或擁有者權限。</span>
+          <button type="button" class="btn-xs" data-close-modal="recycleBinModal" data-i18n-zh="關閉" data-i18n-en="Close">關閉</button>
         </div>
       </div>
     </div>
@@ -1740,10 +1757,10 @@
     <div class="gs-modal-window" style="width:460px;max-width:95vw;">
       <div class="gs-modal-header">
         <div>
-          <div class="gs-modal-title" id="renameSiteModalTitle">Rename Project Site / 工區重新命名</div>
-          <div class="gs-modal-subtitle" id="renameSiteModalSub">Updates all scans in this site cluster</div>
+          <div class="gs-modal-title" id="renameSiteModalTitle" data-i18n-zh="重新命名專案工區" data-i18n-en="Rename Project Site">重新命名專案工區</div>
+          <div class="gs-modal-subtitle" id="renameSiteModalSub" data-i18n-zh="更新此工區群組內所有掃描的歸屬名稱" data-i18n-en="Updates all scans in this site cluster">更新此工區群組內所有掃描的歸屬名稱</div>
         </div>
-        <button type="button" class="btn-xs" data-close-modal="renameSiteModal" title="Close" aria-label="Close Rename Site Modal">
+        <button type="button" class="btn-xs" data-close-modal="renameSiteModal" title="關閉" data-i18n-title-zh="關閉" data-i18n-title-en="Close" aria-label="Close Rename Site Modal">
           <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8">
             <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
           </svg>
@@ -1751,28 +1768,32 @@
       </div>
       <div class="gs-modal-body" style="padding:18px 20px;display:flex;flex-direction:column;gap:12px;">
         <div>
-          <label for="renameSiteGroupInput" style="display:block;font-size:12px;font-weight:700;color:var(--ui-text-secondary);margin-bottom:5px;">Site Name (English / Primary Group Name)</label>
+          <label for="renameSiteGroupInput" style="display:block;font-size:12px;font-weight:700;color:var(--ui-text-secondary);margin-bottom:5px;" data-i18n-zh="工區主要名稱（英文或代號）" data-i18n-en="Site Name (Primary Group Name)">工區主要名稱（英文或代號）</label>
           <input
             type="text"
             id="renameSiteGroupInput"
             class="gs-input"
-            placeholder="e.g. Foundation Progress Inspection"
+            placeholder="例如：Foundation Progress Inspection"
+            data-i18n-placeholder-zh="例如：Foundation Progress Inspection"
+            data-i18n-placeholder-en="e.g. Foundation Progress Inspection"
             style="width:100%;font-size:13.5px;font-weight:600;"
           />
         </div>
         <div>
-          <label for="renameSiteZhInput" style="display:block;font-size:12px;font-weight:700;color:var(--ui-text-secondary);margin-bottom:5px;">Site Display Subtitle / 中文工區名稱</label>
+          <label for="renameSiteZhInput" style="display:block;font-size:12px;font-weight:700;color:var(--ui-text-secondary);margin-bottom:5px;" data-i18n-zh="中文工區顯示名稱" data-i18n-en="Site Display Subtitle">中文工區顯示名稱</label>
           <input
             type="text"
             id="renameSiteZhInput"
             class="gs-input"
-            placeholder="e.g. 基礎開挖進度巡檢"
+            placeholder="例如：基礎開挖進度巡檢"
+            data-i18n-placeholder-zh="例如：基礎開挖進度巡檢"
+            data-i18n-placeholder-en="e.g. Foundation Excavation Inspection"
             style="width:100%;font-size:13px;"
           />
         </div>
         <div style="display:flex;justify-content:flex-end;align-items:center;gap:8px;margin-top:4px;">
-          <button type="button" class="btn-xs" data-close-modal="renameSiteModal">Cancel</button>
-          <button type="button" class="btn-xs primary" id="btnConfirmSaveSiteName">Save</button>
+          <button type="button" class="btn-xs" data-close-modal="renameSiteModal" data-i18n-zh="取消" data-i18n-en="Cancel">取消</button>
+          <button type="button" class="btn-xs primary" id="btnConfirmSaveSiteName" data-i18n-zh="儲存" data-i18n-en="Save">儲存</button>
         </div>
       </div>
     </div>
@@ -1785,10 +1806,10 @@
     <div class="gs-modal-window" style="width:660px;max-width:96vw;">
       <div class="gs-modal-header">
         <div>
-          <div class="gs-modal-title" id="rerunScanModalTitle">Re-run Scan from Original Photos (PIX4Dmatic 2.11.0)</div>
-          <div class="gs-modal-subtitle" id="rerunScanModalSub">Rebuilds 3D mesh from raw RTK images with custom settings &amp; ExportSrs.Scene + offset.xyz</div>
+          <div class="gs-modal-title" id="rerunScanModalTitle" data-i18n-zh="從原始照片重新執行 PIX4Dmatic 2.11.0 建模" data-i18n-en="Re-run Scan from Original Photos · PIX4Dmatic 2.11.0">從原始照片重新執行 PIX4Dmatic 2.11.0 建模</div>
+          <div class="gs-modal-subtitle" id="rerunScanModalSub" data-i18n-zh="使用自訂參數與 ExportSrs.Scene + offset.xyz 從原始 RTK 照片重建 3D 網格" data-i18n-en="Rebuilds 3D mesh from raw RTK images with custom settings &amp; ExportSrs.Scene + offset.xyz">使用自訂參數與 ExportSrs.Scene + offset.xyz 從原始 RTK 照片重建 3D 網格</div>
         </div>
-        <button type="button" class="btn-xs" data-close-modal="rerunScanModal" title="Close" aria-label="Close Rerun Scan Modal">
+        <button type="button" class="btn-xs" data-close-modal="rerunScanModal" title="關閉" data-i18n-title-zh="關閉" data-i18n-title-en="Close" aria-label="Close Rerun Scan Modal">
           <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8">
             <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
           </svg>
@@ -1797,61 +1818,61 @@
       <div class="gs-modal-body" style="padding:16px 20px;display:flex;flex-direction:column;gap:12px;">
         <div style="background:var(--ui-bg-subtle);border:1px solid var(--ui-border);border-radius:8px;padding:10px 12px;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
           <div>
-            <div style="font-size:12.5px;font-weight:700;color:var(--ui-text-primary);" id="rerunScanInfoName">Selected Scan</div>
-            <div style="font-size:11px;color:var(--ui-text-secondary);font-family:var(--mono);margin-top:2px;" id="rerunScanInfoSource">Source: Detecting input photos...</div>
+            <div style="font-size:12.5px;font-weight:700;color:var(--ui-text-primary);" id="rerunScanInfoName" data-i18n-zh="所選掃描模型" data-i18n-en="Selected Scan">所選掃描模型</div>
+            <div style="font-size:11px;color:var(--ui-text-secondary);font-family:var(--mono);margin-top:2px;" id="rerunScanInfoSource" data-i18n-zh="來源：正在偵測原始照片路徑..." data-i18n-en="Source: Detecting input photos...">來源：正在偵測原始照片路徑...</div>
           </div>
-          <span class="gs-crs-pill" id="rerunScanCrsBadge">ExportSrs.Scene + TWD97 Offset (1mm Precision)</span>
+          <span class="gs-crs-pill" id="rerunScanCrsBadge" data-i18n-zh="ExportSrs.Scene + TWD97 位移 · 1mm 精度" data-i18n-en="ExportSrs.Scene + TWD97 Offset · 1mm Precision">ExportSrs.Scene + TWD97 位移 · 1mm 精度</span>
         </div>
 
         <div class="gs-responsive-grid-3" style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;">
           <div class="gs-form-group" style="margin-bottom:0;">
-            <label style="font-size:11px;">Mesh Pipeline</label>
+            <label style="font-size:11px;" data-i18n-zh="網格管線模式" data-i18n-en="Mesh Pipeline">網格管線模式</label>
             <select class="gs-select" id="rerunSelMeshPipeline">
-              <option value="FixedSize" selected>FixedSize (Compact Single-Root)</option>
-              <option value="Scalable">Scalable (Multi-Tile Octree)</option>
+              <option value="FixedSize" selected data-i18n-zh="單一精簡網格" data-i18n-en="FixedSize · Single Compact Mesh">單一精簡網格</option>
+              <option value="Scalable" data-i18n-zh="多分塊八叉樹網格" data-i18n-en="Scalable · Multi-Tile Octree">多分塊八叉樹網格</option>
             </select>
           </div>
           <div class="gs-form-group" style="margin-bottom:0;">
-            <label style="font-size:11px;">Mesh Quality &amp; Density</label>
+            <label style="font-size:11px;" data-i18n-zh="網格品質與密度" data-i18n-en="Mesh Quality &amp; Density">網格品質與密度</label>
             <select class="gs-select" id="rerunSelMeshQuality">
-              <option value="High" selected>High Quality (Fine Triangles)</option>
-              <option value="Standard">Standard Quality</option>
-              <option value="Draft">Draft (Fast Preview)</option>
+              <option value="High" selected data-i18n-zh="高品質 · 精細三角網" data-i18n-en="High Quality · Fine Triangles">高品質 · 精細三角網</option>
+              <option value="Standard" data-i18n-zh="標準品質" data-i18n-en="Standard Quality">標準品質</option>
+              <option value="Draft" data-i18n-zh="草稿 · 快速預覽" data-i18n-en="Draft · Fast Preview">草稿 · 快速預覽</option>
             </select>
           </div>
           <div class="gs-form-group" style="margin-bottom:0;">
-            <label style="font-size:11px;">Point Cloud Vertex Density</label>
+            <label style="font-size:11px;" data-i18n-zh="點雲頂點密度" data-i18n-en="Point Cloud Vertex Density">點雲頂點密度</label>
             <select class="gs-select" id="rerunSelVertexDensity">
-              <option value="High" selected>High Density (1/1 Image Scale)</option>
-              <option value="Optimal">Optimal Density (1/2 Scale)</option>
-              <option value="Low">Low Density (Fast)</option>
+              <option value="High" selected data-i18n-zh="高密度 · 1/1 原始影像比例" data-i18n-en="High Density · 1/1 Image Scale">高密度 · 1/1 原始影像比例</option>
+              <option value="Optimal" data-i18n-zh="最佳密度 · 1/2 影像比例" data-i18n-en="Optimal Density · 1/2 Scale">最佳密度 · 1/2 影像比例</option>
+              <option value="Low" data-i18n-zh="低密度 · 快速" data-i18n-en="Low Density · Fast">低密度 · 快速</option>
             </select>
           </div>
           <div class="gs-form-group" style="margin-bottom:0;">
-            <label style="font-size:11px;">Texture Atlas Resolution</label>
+            <label style="font-size:11px;" data-i18n-zh="貼圖集解析度" data-i18n-en="Texture Atlas Resolution">貼圖集解析度</label>
             <select class="gs-select" id="rerunSelTextureSize">
-              <option value="4096" selected>4096 px (4K Sharp)</option>
-              <option value="8192">8192 px (8K Ultra)</option>
-              <option value="2048">2048 px (2K Fast Web)</option>
+              <option value="4096" selected data-i18n-zh="4096 px · 4K 清晰" data-i18n-en="4096 px · 4K Sharp">4096 px · 4K 清晰</option>
+              <option value="8192" data-i18n-zh="8192 px · 8K 超高畫質" data-i18n-en="8192 px · 8K Ultra">8192 px · 8K 超高畫質</option>
+              <option value="2048" data-i18n-zh="2048 px · 2K 快速網頁" data-i18n-en="2048 px · 2K Fast Web">2048 px · 2K 快速網頁</option>
             </select>
           </div>
           <div class="gs-form-group" style="margin-bottom:0;">
-            <label style="font-size:11px;">Model Simplification</label>
+            <label style="font-size:11px;" data-i18n-zh="模型簡化程度" data-i18n-en="Model Simplification">模型簡化程度</label>
             <select class="gs-select" id="rerunSelSimplification">
-              <option value="Conservative" selected>Conservative (Preserve Edges)</option>
-              <option value="Moderate">Moderate</option>
-              <option value="Aggressive">Aggressive</option>
+              <option value="Conservative" selected data-i18n-zh="保守 · 保留銳利邊緣" data-i18n-en="Conservative · Preserve Edges">保守 · 保留銳利邊緣</option>
+              <option value="Moderate" data-i18n-zh="適度" data-i18n-en="Moderate">適度</option>
+              <option value="Aggressive" data-i18n-zh="積極" data-i18n-en="Aggressive">積極</option>
             </select>
           </div>
           <div class="gs-form-group" style="margin-bottom:0;">
-            <label style="font-size:11px;">Deghosting &amp; Export LOD</label>
+            <label style="font-size:11px;" data-i18n-zh="去殘影與匯出 LOD" data-i18n-en="Deghosting &amp; Export LOD">去殘影與匯出 LOD</label>
             <div style="display:flex;gap:6px;">
               <select class="gs-select" id="rerunSelDeghosting" style="flex:1;">
-                <option value="Weak" selected>Weak</option>
-                <option value="Strong">Strong</option>
-                <option value="Disabled">Disabled</option>
+                <option value="Weak" selected data-i18n-zh="輕度去殘影" data-i18n-en="Weak">輕度去殘影</option>
+                <option value="Strong" data-i18n-zh="強效去殘影" data-i18n-en="Strong">強效去殘影</option>
+                <option value="Disabled" data-i18n-zh="停用去殘影" data-i18n-en="Disabled">停用去殘影</option>
               </select>
-              <input type="number" class="gs-input" id="rerunInpExportLod" value="13" min="0" max="20" style="width:54px;text-align:center;" title="Export LOD (13 = Full Detail)" />
+              <input type="number" class="gs-input" id="rerunInpExportLod" value="13" min="0" max="20" style="width:54px;text-align:center;" title="匯出 LOD 等級 · 13 = 完整細節" data-i18n-title-zh="匯出 LOD 等級 · 13 = 完整細節" data-i18n-title-en="Export LOD · 13 = Full Detail" />
             </div>
           </div>
         </div>
@@ -1859,32 +1880,32 @@
         <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;padding:8px 10px;background:var(--ui-bg-subtle);border:1px solid var(--ui-border);border-radius:8px;">
           <label style="display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--ui-text-primary);cursor:pointer;">
             <input type="checkbox" id="rerunChkSkyless" style="accent-color:#0284c7;" />
-            <span>Sky Mask (<code>skyless</code> — leave OFF for trees)</span>
+            <span><span data-i18n-zh="天空遮罩" data-i18n-en="Sky Mask">天空遮罩</span> (<code>skyless</code> — <span data-i18n-zh="保留樹木請勿勾選" data-i18n-en="leave OFF for trees">保留樹木請勿勾選</span>)</span>
           </label>
           <label style="display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--ui-text-primary);cursor:pointer;">
             <input type="checkbox" id="rerunChkUseRoi" style="accent-color:#0284c7;" />
-            <span>OPF ROI Clip (<code>RoiSet</code>)</span>
+            <span><span data-i18n-zh="OPF 興趣區域裁切" data-i18n-en="OPF ROI Clip">OPF 興趣區域裁切</span> (<code>RoiSet</code>)</span>
           </label>
           <label style="display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--ui-text-primary);cursor:pointer;">
             <input type="checkbox" id="rerunChkForceFromPhotos" checked style="accent-color:#0284c7;" />
-            <span><b>Re-run from Original Photos</b> (Clean old mesh &amp; rebuild)</span>
+            <span><b data-i18n-zh="從原始照片完整重算" data-i18n-en="Re-run from Original Photos">從原始照片完整重算</b> · <span data-i18n-zh="清除舊網格並重建" data-i18n-en="Clean old mesh &amp; rebuild">清除舊網格並重建</span></span>
           </label>
           <label style="display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--ui-text-primary);cursor:pointer;">
             <input type="checkbox" id="rerunChkRunImmediately" style="accent-color:#0284c7;" />
-            <span>Launch PIX4Dmatic Immediately</span>
+            <span data-i18n-zh="立即啟動 PIX4Dmatic" data-i18n-en="Launch PIX4Dmatic Immediately">立即啟動 PIX4Dmatic</span>
           </label>
         </div>
 
         <div>
-          <div style="font-size:11px;font-weight:700;color:var(--ui-text-secondary);margin-bottom:4px;">Generated PIX4Dmatic <code>.gst</code> Pipeline Preview:</div>
+          <div style="font-size:11px;font-weight:700;color:var(--ui-text-secondary);margin-bottom:4px;" data-i18n-zh="產生的 PIX4Dmatic .gst 腳本預覽：" data-i18n-en="Generated PIX4Dmatic .gst Pipeline Preview:">產生的 PIX4Dmatic .gst 腳本預覽：</div>
           <pre id="rerunGstPreviewCode" style="background:var(--ui-bg-subtle);border:1px solid var(--ui-border-strong);padding:8px 10px;border-radius:6px;font-size:10px;color:var(--ui-text-primary);max-height:125px;overflow:auto;margin:0;line-height:1.35;"></pre>
         </div>
 
         <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:4px;">
-          <span style="font-size:11px;color:var(--ui-text-muted);" id="rerunModalStatusMsg">Ready to queue or launch PIX4Dmatic 2.11.0</span>
+          <span style="font-size:11px;color:var(--ui-text-muted);" id="rerunModalStatusMsg" data-i18n-zh="已就緒，可排入佇列或立即啟動 PIX4Dmatic 2.11.0" data-i18n-en="Ready to queue or launch PIX4Dmatic 2.11.0">已就緒，可排入佇列或立即啟動 PIX4Dmatic 2.11.0</span>
           <div style="display:flex;gap:8px;align-items:center;">
-            <button type="button" class="btn-xs" data-close-modal="rerunScanModal">Cancel</button>
-            <button type="button" class="btn-xs primary" id="btnConfirmRerunScan">Queue / Re-run Scan</button>
+            <button type="button" class="btn-xs" data-close-modal="rerunScanModal" data-i18n-zh="取消" data-i18n-en="Cancel">取消</button>
+            <button type="button" class="btn-xs primary" id="btnConfirmRerunScan" data-i18n-zh="排入佇列 / 重新建模" data-i18n-en="Queue / Re-run Scan">排入佇列 / 重新建模</button>
           </div>
         </div>
       </div>
@@ -1908,7 +1929,8 @@
   <script src="/lib/meshopt_decoder.js"></script>
   <script src="/lib/3d-tiles-renderer.bundle.js"></script>
 
-  <!-- Main GatheringScans Application Logic -->
-  <script src="/app.js?v=20261025_v142"></script>
+  <!-- Main GatheringScans Bilingual Translation & Application Logic -->
+  <script src="/i18n.js?v=20261025_v145"></script>
+  <script src="/app.js?v=20261025_v145"></script>
 </body>
 </html>

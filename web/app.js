@@ -18,6 +18,8 @@
 (function () {
   "use strict";
 
+  const tr = (zh, en) => (typeof window.tr === "function" ? window.tr(zh, en) : zh);
+
   // Polyfill Object3D.removeFromParent if needed
   if (window.THREE && window.THREE.Object3D && !window.THREE.Object3D.prototype.removeFromParent) {
     window.THREE.Object3D.prototype.removeFromParent = function () {
@@ -170,6 +172,7 @@
       lastFrameTime: 0,
     },
   };
+  window.STATE = STATE;
 
   function resolveThemeFromPreference(pref) {
     const p = String(pref || "auto").toLowerCase();
@@ -290,14 +293,23 @@
       const allOpt = document.createElement("option");
       allOpt.value = "__all__";
       allOpt.textContent = STATE.projectFilterQuery
-        ? `Filtered Projects (${filteredGroups.length} / ${allGroups.length} Sites)`
-        : `All Projects (${allGroups.length} Site${allGroups.length === 1 ? "" : "s"} · ${STATE.scans.length} Scans)`;
+        ? tr(
+            `篩選工區 · ${filteredGroups.length} / ${allGroups.length} 個工區`,
+            `Filtered Projects · ${filteredGroups.length} / ${allGroups.length} Sites`
+          )
+        : tr(
+            `全部工區 · ${allGroups.length} 個工區 · ${STATE.scans.length} 組掃描`,
+            `All Projects · ${allGroups.length} Site${allGroups.length === 1 ? "" : "s"} · ${STATE.scans.length} Scans`
+          );
       mapProjSel.appendChild(allOpt);
 
       filteredGroups.forEach((grp) => {
         const opt = document.createElement("option");
         opt.value = grp.project_group;
-        opt.textContent = `${grp.project_group} (${grp.scans.length} Scan${grp.scans.length === 1 ? "" : "s"})`;
+        opt.textContent = tr(
+          `${grp.project_group} · ${grp.scans.length} 組掃描`,
+          `${grp.project_group} · ${grp.scans.length} Scan${grp.scans.length === 1 ? "" : "s"}`
+        );
         mapProjSel.appendChild(opt);
       });
 
@@ -320,13 +332,16 @@
       if (selId === "timelineProjectSelect") {
         const allOpt = document.createElement("option");
         allOpt.value = "__all__";
-        allOpt.textContent = `All Projects (${allGroups.length} Sites · ${STATE.scans.length})`;
+        allOpt.textContent = tr(
+          `全部工區 · ${allGroups.length} 個工區 · ${STATE.scans.length} 組掃描`,
+          `All Projects · ${allGroups.length} Sites · ${STATE.scans.length} Scans`
+        );
         sel.appendChild(allOpt);
       }
       allGroups.forEach((grp) => {
         const opt = document.createElement("option");
         opt.value = grp.project_group;
-        opt.textContent = `${grp.project_group} (${grp.scans.length})`;
+        opt.textContent = `${grp.project_group} · ${grp.scans.length}`;
         sel.appendChild(opt);
       });
       if (selId === "timelineProjectSelect" && STATE.activeProjectGroup === "__all__") {
@@ -423,7 +438,9 @@
     const el = document.getElementById("gsToast");
     if (!el) return;
     syncMobileToastPosition();
-    el.textContent = msg;
+    const translatedMsg =
+      typeof window.translateDynamicText === "function" ? window.translateDynamicText(String(msg || "")) : String(msg || "");
+    el.textContent = translatedMsg;
     el.style.display = "block";
     el.classList.add("show");
     clearTimeout(el._timer);
@@ -830,12 +847,23 @@
   const ROLE_LEVELS_MAP = { owner: 5, admin: 4, editor: 3, viewer: 2, guest: 1 };
   const OWNER_EMAILS_SET = new Set(["glibivanov@gatheren.com.tw", "gleb.ivanov1999@gmail.com"]);
   const ROLE_LABELS_MAP = {
-    owner: "Owner (System Owner)",
-    admin: "Admin (Manage Users & Workflows)",
-    editor: "Editor (Edit Names & Run Scans)",
-    viewer: "Viewer (View All & Measure)",
-    guest: "Guest (Read-Only · Basic Tools)",
+    owner: "Owner · System Owner",
+    admin: "Admin · Manage Users & Workflows",
+    editor: "Editor · Edit Names & Run Scans",
+    viewer: "Viewer · View All & Measure",
+    guest: "Guest · Read-Only · Basic Tools",
   };
+  function getLocalizedRoleLabel(roleKey) {
+    const k = String(roleKey || "viewer").toLowerCase();
+    const map = {
+      owner: tr("最高管理員 · 系統擁有者", "Owner · System Owner"),
+      admin: tr("管理員 · 成員與排程管理", "Admin · Manage Users & Workflows"),
+      editor: tr("編輯者 · 名稱編輯與掃描處理", "Editor · Edit Names & Run Scans"),
+      viewer: tr("檢視者 · 檢視與測量工具", "Viewer · View All & Measure"),
+      guest: tr("訪客 · 唯讀與基礎測量", "Guest · Read-Only · Basic Tools"),
+    };
+    return map[k] || map.viewer;
+  }
 
   function getCurrentUserRoleInfo() {
     if (STATE.shareToken) {
@@ -1159,9 +1187,9 @@
     const zoomCtrl = document.createElement("div");
     zoomCtrl.className = "gs-map-zoom-controls";
     zoomCtrl.innerHTML = `
-      <button type="button" class="gs-map-zoom-btn" id="btnMapZoomIn" title="Zoom In" aria-label="Zoom In">+</button>
-      <button type="button" class="gs-map-zoom-btn" id="btnMapZoomOut" title="Zoom Out" aria-label="Zoom Out">−</button>
-      <button type="button" class="gs-map-zoom-btn" id="btnMapResetView" title="Fit All Scan Sites" aria-label="Fit All Scan Sites">
+      <button type="button" class="gs-map-zoom-btn" id="btnMapZoomIn" title="${tr("放大", "Zoom In")}" data-i18n-title-zh="放大" data-i18n-title-en="Zoom In" aria-label="Zoom In">+</button>
+      <button type="button" class="gs-map-zoom-btn" id="btnMapZoomOut" title="${tr("縮小", "Zoom Out")}" data-i18n-title-zh="縮小" data-i18n-title-en="Zoom Out" aria-label="Zoom Out">−</button>
+      <button type="button" class="gs-map-zoom-btn" id="btnMapResetView" title="${tr("顯示所有掃描工區", "Fit All Scan Sites")}" data-i18n-title-zh="顯示所有掃描工區" data-i18n-title-en="Fit All Scan Sites" aria-label="Fit All Scan Sites">
         <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
       </button>
     `;
@@ -1658,9 +1686,15 @@
     const countEl = document.getElementById("lblMapClusterCount");
     if (countEl) {
       if (STATE.projectFilterQuery) {
-        countEl.textContent = `${visibleGroups.length}/${allGroups.length} Sites`;
+        countEl.textContent = tr(
+          `${visibleGroups.length}/${allGroups.length} 個工區`,
+          `${visibleGroups.length}/${allGroups.length} Sites`
+        );
       } else {
-        countEl.textContent = `${allGroups.length} Site${allGroups.length === 1 ? "" : "s"} (${STATE.scans.length} Scans)`;
+        countEl.textContent = tr(
+          `${allGroups.length} 個工區 · ${STATE.scans.length} 組掃描`,
+          `${allGroups.length} Site${allGroups.length === 1 ? "" : "s"} · ${STATE.scans.length} Scans`
+        );
       }
     }
 
@@ -1728,14 +1762,15 @@
   }
 
   function formatScanPolyCount(scan, { short = false } = {}) {
-    if (!scan) return "— polys";
+    const unit = tr("面", "polys");
+    if (!scan) return `— ${unit}`;
     const polys = Number(scan._live_poly_count || scan.poly_count || 0);
-    if (!(polys > 0)) return "— polys";
+    if (!(polys > 0)) return `— ${unit}`;
     if (short) {
-      if (polys >= 1000000) return `${(polys / 1000000).toFixed(2)}M polys`;
-      if (polys >= 1000) return `${Math.round(polys / 1000)}K polys`;
+      if (polys >= 1000000) return `${(polys / 1000000).toFixed(2)}M ${unit}`;
+      if (polys >= 1000) return `${Math.round(polys / 1000)}K ${unit}`;
     }
-    return `${Math.round(polys).toLocaleString("en-US")} polys`;
+    return `${Math.round(polys).toLocaleString("en-US")} ${unit}`;
   }
 
   function formatScanTextureSize(scan, { short = false } = {}) {
@@ -1757,7 +1792,7 @@
     const totalMb = Number(scan.size_mb || (Number(scan.size_bytes || 0) / 1048576) || 0);
     const primaryMb = streamMb > 0 ? streamMb : totalMb;
     if (includeTotal && streamMb > 0 && totalMb > streamMb + 1.0) {
-      return `${primaryMb.toFixed(1)} MB (${totalMb.toFixed(1)} MB total)`;
+      return `${primaryMb.toFixed(1)} MB · ${totalMb.toFixed(1)} MB ${tr("總計", "total")}`;
     }
     return `${primaryMb.toFixed(1)} MB`;
   }
@@ -1818,27 +1853,32 @@
     const totalDiskMb = Number(scan.size_mb || (Number(scan.size_bytes || 0) / 1048576) || 0);
     const objMb = Number(scan.obj_size_mb || 0);
     metricsEl.title = [
-      `CRS: ${crsText}`,
-      `Covered Area: ${areaText}`,
-      `Polygon Count: ${polyText}`,
-      `Texture Size: ${texText}`,
-      `3D Scan Size (GLB): ${sizeText}`,
-      objMb > 0 ? `OBJ + Textures Export Size: ${objMb.toFixed(1)} MB` : null,
-      totalDiskMb > 0 ? `Total Project Folder Size: ${totalDiskMb.toFixed(1)} MB` : null,
+      `${tr("座標系統", "CRS")}: ${crsText}`,
+      `${tr("涵蓋面積", "Covered Area")}: ${areaText}`,
+      `${tr("網格面數", "Polygon Count")}: ${polyText}`,
+      `${tr("貼圖尺寸", "Texture Size")}: ${texText}`,
+      `${tr("3D 模型大小", "3D Scan Size")}: ${sizeText}`,
+      objMb > 0 ? `${tr("OBJ 匯出大小", "OBJ Export Size")}: ${objMb.toFixed(1)} MB` : null,
+      totalDiskMb > 0 ? `${tr("專案總大小", "Total Project Size")}: ${totalDiskMb.toFixed(1)} MB` : null,
     ]
       .filter(Boolean)
       .join(" | ");
   }
+
+  let _downloadFormatMenuAnchor = null;
+  let _downloadFormatMenuScan = null;
 
   function closeDownloadFormatMenu() {
     const existing = document.getElementById("gsDownloadFormatPopover");
     if (existing) existing.remove();
   }
 
-  function openDownloadFormatMenu(anchorEl, scan = STATE.activeScan) {
+  function openDownloadFormatMenu(anchorEl, scan = STATE.activeScan, forceRefresh = false) {
     if (!scan || !scan.scan_id) return;
+    _downloadFormatMenuAnchor = anchorEl;
+    _downloadFormatMenuScan = scan;
     const existing = document.getElementById("gsDownloadFormatPopover");
-    if (existing && existing.dataset.scanId === scan.scan_id && existing.dataset.anchorId === (anchorEl?.id || "")) {
+    if (!forceRefresh && existing && existing.dataset.scanId === scan.scan_id && existing.dataset.anchorId === (anchorEl?.id || "")) {
       existing.remove();
       return;
     }
@@ -1852,7 +1892,7 @@
 
     const streamMbStr = formatScanSizeMb(scan);
     const objMb = Number(scan.obj_size_mb || 0);
-    const objMbStr = objMb > 0 ? `${objMb.toFixed(1)} MB` : "Georef Mesh";
+    const objMbStr = objMb > 0 ? `${objMb.toFixed(1)} MB` : tr("空間定位網格", "Georef Mesh");
     const crsLabel = getScanCrsDisplayLabel(scan);
     const safeScanName = escapeHtml(scan.name || scan.scan_id);
 
@@ -1877,33 +1917,33 @@
     const formats = [
       {
         ext: ".3tz",
-        title: "3D Tiles Package (.3tz)",
+        title: tr("3D Tiles 串流封包 · .3tz", "3D Tiles Package · .3tz"),
         badge: streamMbStr,
-        desc: "Complete Cesium / 3D Tileset archive (tileset.json + .glb tiles + preview LOD)",
+        desc: tr("完整 Cesium / 3D Tiles 封裝檔（含 tileset.json、.glb 圖磚與預覽 LOD）", "Complete Cesium / 3D Tileset archive (tileset.json + .glb tiles + preview LOD)"),
         url: url3tz,
         color: "#0284c7",
       },
       {
         ext: ".glb",
-        title: "Binary glTF 2.0 Model (.glb)",
-        badge: `${formatScanTextureSize(scan, { short: true })} Embedded`,
-        desc: "Single self-contained 3D model with embedded JPEG textures (Blender, 3D Viewer, Three.js)",
+        title: tr("二進位 glTF 2.0 模型 · .glb", "Binary glTF 2.0 Model · .glb"),
+        badge: `${formatScanTextureSize(scan, { short: true })} ${tr("內嵌", "Embedded")}`,
+        desc: tr("內嵌貼圖之單一 3D 模型檔（支援 Blender、3D 檢視器與 Three.js）", "Single self-contained 3D model with embedded JPEG textures (Blender, 3D Viewer, Three.js)"),
         url: urlGlb,
         color: "#10b981",
       },
       {
         ext: ".obj",
-        title: "Wavefront .OBJ Mesh (.obj)",
+        title: tr("Wavefront 網格模型 · .obj", "Wavefront .OBJ Mesh · .obj"),
         badge: crsLabel,
-        desc: "Georeferenced world-coordinate .obj geometry for Civil 3D, AutoCAD & CloudCompare",
+        desc: tr("含空間座標之 .obj 三角網格（支援 Civil 3D、AutoCAD 與 CloudCompare）", "Georeferenced world-coordinate .obj geometry for Civil 3D, AutoCAD & CloudCompare"),
         url: urlObj,
         color: "#f59e0b",
       },
       {
         ext: ".zip",
-        title: "Textured .OBJ + .MTL + .JPG (.zip)",
+        title: tr("完整貼圖包 .OBJ + .MTL + .JPG · .zip", "Textured .OBJ + .MTL + .JPG · .zip"),
         badge: objMbStr,
-        desc: "Full Wavefront .obj + .mtl + full-res .jpg texture atlases + offset.xyz in one ZIP",
+        desc: tr("完整 .obj 網格 + .mtl 材質 + 高解析度 .jpg 貼圖集 + offset.xyz 壓縮包", "Full Wavefront .obj + .mtl + full-res .jpg texture atlases + offset.xyz in one ZIP"),
         url: urlZip,
         color: "#8b5cf6",
       },
@@ -1912,10 +1952,10 @@
     pop.innerHTML = `
       <div style="padding:4px 6px 7px;border-bottom:1px solid var(--ui-border);margin-bottom:6px;display:flex;justify-content:space-between;align-items:center;gap:8px;">
         <div style="min-width:0;">
-          <div style="font-size:11.5px;font-weight:700;color:var(--ui-text-primary);">Download 3D Scan (選擇下載格式)</div>
+          <div style="font-size:11.5px;font-weight:700;color:var(--ui-text-primary);" data-i18n-zh="選擇下載格式" data-i18n-en="Download 3D Scan">${tr("選擇下載格式", "Download 3D Scan")}</div>
           <div style="font-size:10px;color:var(--ui-text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${safeScanName}">${safeScanName} · ${escapeHtml(formatScanPolyCount(scan, { short: true }))}</div>
         </div>
-        <button type="button" id="btnCloseDlPopover" style="background:none;border:none;color:var(--ui-text-muted);cursor:pointer;font-size:13px;padding:2px 5px;line-height:1;" title="Close">✕</button>
+        <button type="button" id="btnCloseDlPopover" style="background:none;border:none;color:var(--ui-text-muted);cursor:pointer;font-size:13px;padding:2px 5px;line-height:1;" title="${tr("關閉", "Close")}" data-i18n-title-zh="關閉" data-i18n-title-en="Close">✕</button>
       </div>
       <div style="display:flex;flex-direction:column;gap:5px;">
         ${formats
@@ -2021,9 +2061,14 @@
     populateProjectScanDropdowns(grp.project_group, STATE.activeScanId);
     if (gsMap && gsMap.drawMap) gsMap.drawMap();
 
-    document.getElementById("popoverGroupTitle").textContent = `${grp.project_group} (${grp.scans.length})`;
+    document.getElementById("popoverGroupTitle").textContent = `${grp.project_group} · ${grp.scans.length}`;
+    const rawSubZh = String(grp.project_name_zh || "工程掃描群組");
+    const subGroupLabel =
+      window.getAppLanguage?.() === "en"
+        ? rawSubZh.replace(/工程掃描群組/g, "Engineering Scan Group")
+        : rawSubZh;
     document.getElementById("popoverGroupSubtitle").textContent =
-      `${grp.project_name_zh || "工程掃描群組"} · TWD97 (121) + TWVD2001`;
+      `${subGroupLabel} · TWD97 (121) + TWVD2001`;
 
     // Unified 3-Pane Workbench: keep Top-Right Timeline Cards + Bottom-Right 3D Preview synced when on Map view
     if (STATE.activeView === "map" || !document.getElementById("siteTimelineTilesTrack")?.children.length) {
@@ -2102,14 +2147,14 @@
               </div>
             </div>
           </div>
-          <div style="font-size:10.5px;font-family:monospace;color:var(--ui-text-muted);margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="Polygons: ${escapeHtml(formatScanPolyCount(scan))} | Texture: ${escapeHtml(formatScanTextureSize(scan))} | Scan Size: ${escapeHtml(formatScanSizeMb(scan, { includeTotal: true }))}">
+          <div style="font-size:10.5px;font-family:monospace;color:var(--ui-text-muted);margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${tr("網格面數", "Polygons")}: ${escapeHtml(formatScanPolyCount(scan))} | ${tr("貼圖解析度", "Texture")}: ${escapeHtml(formatScanTextureSize(scan))} | ${tr("掃描大小", "Scan Size")}: ${escapeHtml(formatScanSizeMb(scan, { includeTotal: true }))}">
             ${escapeHtml(formatScanPolyCount(scan))} · ${escapeHtml(formatScanTextureSize(scan))} · ${escapeHtml(sizeShort)}
           </div>
           <div style="font-size:10.5px;font-family:monospace;color:var(--ui-text-muted);margin-top:3px;">
-            ${coordReadout}${isCached ? " · Cached" : ""}
+            ${coordReadout}${isCached ? tr(" · 已快取", " · Cached") : ""}
           </div>
           <div class="gs-scan-item-actions">
-            <button type="button" class="btn-xs primary" data-action="open3d" title="Enlarge Full-Quality 3D Scan in Studio">
+            <button type="button" class="btn-xs primary" data-action="open3d" title="${tr("於 3D 工作台放大檢視全畫質掃描", "Enlarge Full-Quality 3D Scan in Studio")}">
               <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <polyline points="15 3 21 3 21 9"/>
                 <polyline points="9 21 3 21 3 15"/>
@@ -2117,14 +2162,14 @@
                 <line x1="3" y1="21" x2="10" y2="14"/>
               </svg>
             </button>
-            <button type="button" class="btn-xs" data-action="compare" title="Compare Dates in Split Slider">
+            <button type="button" class="btn-xs" data-action="compare" title="${tr("多期別分割捲簾比對", "Compare Dates in Split Slider")}">
               <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8">
                 <rect x="3" y="3" width="18" height="18" rx="2"/><line x1="12" y1="3" x2="12" y2="21"/>
               </svg>
             </button>
             ${
               getCurrentUserRoleInfo().allowDownload
-                ? `<button type="button" class="btn-xs" data-action="download" title="Download 3D Scan (.3tz, .glb, .obj, .zip)" style="gap:2px;">
+                ? `<button type="button" class="btn-xs" data-action="download" title="${tr("下載 3D 掃描 (.3tz, .glb, .obj, .zip)", "Download 3D Scan (.3tz, .glb, .obj, .zip)")}" style="gap:2px;">
                     <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8">
                       <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
                       <polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
@@ -2137,7 +2182,7 @@
             }
             ${
               getCurrentUserRoleInfo().allowComments
-                ? `<button type="button" class="btn-xs" data-action="comments" title="Comments (${scan.comment_count || 0})">
+                ? `<button type="button" class="btn-xs" data-action="comments" title="${tr(`留言標註 · ${scan.comment_count || 0}`, `Comments · ${scan.comment_count || 0}`)}">
                     <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8">
                       <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
                     </svg>
@@ -2146,7 +2191,7 @@
             }
             ${
               !STATE.shareToken && getCurrentUserRoleInfo().level >= 3
-                ? `<button type="button" class="btn-xs" data-action="share" title="Create Scoped Share Link">
+                ? `<button type="button" class="btn-xs" data-action="share" title="${tr("建立限定範圍分享連結", "Create Scoped Share Link")}">
                     <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8">
                       <circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/>
                       <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/>
@@ -2156,12 +2201,12 @@
             }
             ${
               !STATE.shareToken && getCurrentUserRoleInfo().canEditNames
-                ? `<button type="button" class="btn-xs" data-action="rename" title="Edit Scan Name">
+                ? `<button type="button" class="btn-xs" data-action="rename" title="${tr("修改掃描名稱", "Edit Scan Name")}">
                     <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8">
                       <path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
                     </svg>
                   </button>
-                  <button type="button" class="btn-xs" data-action="delete" title="Delete Scan (刪除掃描)" style="color:#ef4444;">
+                  <button type="button" class="btn-xs" data-action="delete" title="${tr("刪除掃描", "Delete Scan")}" style="color:#ef4444;">
                     <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8">
                       <polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
                     </svg>
@@ -2417,10 +2462,10 @@
       ctx._maxPct = 6;
       if (scanId) ctx._loadingScanId = scanId;
     }
-    updateScanLoader(prefix, true, 6, `Loading ${scanName || "3D Scan"}...`);
+    updateScanLoader(prefix, true, 6, tr(`正在載入 ${scanName || "3D 掃描"}...`, `Loading ${scanName || "3D Scan"}...`));
   }
 
-  function finishScanLoader(ctx, prefix, labelText = "Scan Ready") {
+  function finishScanLoader(ctx, prefix, labelText = tr("掃描已就緒", "Scan Ready")) {
     const loadElapsedMs = ctx && ctx._loadingStartMs ? performance.now() - ctx._loadingStartMs : 0;
     SHARE_TELEMETRY.recordLoadProgress(100, true, loadElapsedMs);
     if (ctx) {
@@ -2463,7 +2508,7 @@
         (activeWork === 0 && sinceTileset > 900) ||
         loaded >= Math.max(4, Math.ceil(total * 0.75)));
     if (enoughTilesReady && elapsed > 220) {
-      finishScanLoader(ctx, prefix, `100% · ${loaded} 3D tiles ready`);
+      finishScanLoader(ctx, prefix, tr(`100% · ${loaded} 個 3D 圖磚已就緒`, `100% · ${loaded} 3D tiles ready`));
       return;
     }
 
@@ -2475,7 +2520,7 @@
         return;
       }
       if (sinceTileset > 8000) {
-        finishScanLoader(ctx, prefix, "Scan Ready");
+        finishScanLoader(ctx, prefix, tr("掃描已就緒", "Scan Ready"));
         return;
       }
     }
@@ -2484,20 +2529,25 @@
       const timeBoost = activeWork > 0 ? Math.min(26, Math.floor(elapsed / 220)) : 0;
       const rawPct = Math.round(20 + (loaded / total) * 76) + timeBoost;
       ctx._maxPct = Math.min(96, Math.max(ctx._maxPct || 22, rawPct));
-      updateScanLoader(prefix, true, ctx._maxPct, `Streaming 3D Scan · ${loaded} / ${total} tiles`);
+      updateScanLoader(
+        prefix,
+        true,
+        ctx._maxPct,
+        tr(`正在串流 3D 掃描 · ${loaded} / ${total} 圖磚`, `Streaming 3D Scan · ${loaded} / ${total} tiles`)
+      );
       return;
     }
 
     if (!ctx._tilesetReady) {
       const waitPct = Math.min(20, 6 + Math.floor(elapsed / 120));
       ctx._maxPct = Math.max(ctx._maxPct || 6, waitPct);
-      updateScanLoader(prefix, true, ctx._maxPct, "Fetching 3D tileset...");
+      updateScanLoader(prefix, true, ctx._maxPct, tr("正在讀取 3D 圖磚索引...", "Fetching 3D tileset..."));
     } else if (sinceTileset < 2500) {
       // Tileset just arrived; waiting for first frame traversal to schedule .glb downloads
       ctx._maxPct = Math.max(ctx._maxPct || 22, 22);
-      updateScanLoader(prefix, true, ctx._maxPct, "Streaming 3D tiles...");
+      updateScanLoader(prefix, true, ctx._maxPct, tr("正在串流 3D 圖磚...", "Streaming 3D tiles..."));
     } else if (sinceTileset > 12000) {
-      finishScanLoader(ctx, prefix, "Scan Ready");
+      finishScanLoader(ctx, prefix, tr("掃描已就緒", "Scan Ready"));
     }
   }
 
@@ -2884,27 +2934,41 @@
     // Populate Header
     const titleEl = document.getElementById("timelineSiteTitle");
     if (titleEl) {
-      titleEl.textContent = isAllProjects ? "All Project Sites (全部工區)" : grpName;
+      titleEl.textContent = isAllProjects ? tr("全部工區", "All Project Sites") : grpName;
     }
     const countEl = document.getElementById("timelineSiteCountPill");
     if (countEl) {
       countEl.textContent = isAllProjects
-        ? `${allGroups.length} Site${allGroups.length === 1 ? "" : "s"} · ${siteScans.length} Scan${siteScans.length === 1 ? "" : "s"}`
-        : `${siteScans.length} Scan${siteScans.length === 1 ? "" : "s"}`;
+        ? tr(
+            `${allGroups.length} 個工區 · ${siteScans.length} 組掃描`,
+            `${allGroups.length} Site${allGroups.length === 1 ? "" : "s"} · ${siteScans.length} Scan${siteScans.length === 1 ? "" : "s"}`
+          )
+        : tr(
+            `${siteScans.length} 組掃描`,
+            `${siteScans.length} Scan${siteScans.length === 1 ? "" : "s"}`
+          );
     }
     const crsExtraPill = document.getElementById("timelineCrsExtraPill");
     if (crsExtraPill) {
       const uniqueCrs = new Set(siteScans.map((s) => inferActiveScanCrsCode(s)));
       crsExtraPill.textContent =
         uniqueCrs.size > 1
-          ? `Multi-CRS (${uniqueCrs.size}) · Auto-Aligned`
+          ? tr(`多重座標系 · ${uniqueCrs.size} 組自動對位`, `Multi-CRS · ${uniqueCrs.size} Auto-Aligned`)
           : getScanCrsDisplayLabel(chosenScan || siteScans[0]);
     }
     const subEl = document.getElementById("timelineSiteSubtitle");
     if (subEl && siteScans[0]) {
+      const rawSubZh = String(siteScans[0].project_name_zh || "工程掃描群組");
+      const enSubName = rawSubZh.replace(/工程掃描群組/g, "Engineering Scan Group");
       subEl.textContent = isAllProjects
-        ? "All project sites sorted newest-first · Select any scan tile to preview below"
-        : `${siteScans[0].project_name_zh || "工程掃描群組"} · Select a scan tile on the timeline to preview below`;
+        ? tr(
+            "全部工區依最新日期排序 · 點選任一掃描卡片即可於下方預覽",
+            "All project sites sorted newest-first · Select any scan tile to preview below"
+          )
+        : tr(
+            `${rawSubZh} · 點選時間軸上的掃描卡片即可於下方預覽`,
+            `${enSubName} · Select a scan tile on the timeline to preview below`
+          );
     }
     const timelineProjSel = document.getElementById("timelineProjectSelect");
     if (timelineProjSel && Array.from(timelineProjSel.options).some((o) => o.value === grpName)) {
@@ -2938,7 +3002,7 @@
           <div class="gs-tile-thumb-wrap">
             <img class="gs-tile-thumb" data-scan-thumb="${escapeHtml(s.scan_id)}" src="${thumbSrc}" alt="${safeName}" />
             <div class="gs-tile-badge-row">
-              <span class="gs-tile-chip" title="Polygons: ${escapeHtml(formatScanPolyCount(s))} · Texture: ${escapeHtml(formatScanTextureSize(s))} · Scan Size: ${escapeHtml(sizeShort)}">${escapeHtml(polyShort)} · ${escapeHtml(texLabel)} · ${escapeHtml(sizeShort)}</span>
+              <span class="gs-tile-chip" title="${tr("網格面數", "Polygons")}: ${escapeHtml(formatScanPolyCount(s))} · ${tr("貼圖解析度", "Texture")}: ${escapeHtml(formatScanTextureSize(s))} · ${tr("掃描大小", "Scan Size")}: ${escapeHtml(sizeShort)}">${escapeHtml(polyShort)} · ${escapeHtml(texLabel)} · ${escapeHtml(sizeShort)}</span>
               <span class="gs-tile-chip ${isSelected ? "active-indicator" : ""}" data-rtk-chip="1">${formatCoveredAreaM2(s)}</span>
             </div>
           </div>
@@ -2960,12 +3024,12 @@
             <div style="display:flex;align-items:center;justify-content:space-between;gap:4px;min-width:0;">
               <div class="gs-tile-name" title="${safeName}" style="flex:1;min-width:0;">${safeName}</div>
               <div class="gs-tile-edit-actions" style="display:${roleInfo.canEditNames ? "flex" : "none"};align-items:center;gap:2px;flex-shrink:0;">
-                <button type="button" class="btn-xs" data-rename-tile="${escapeHtml(s.scan_id)}" title="Edit Scan Name" style="height:18px;padding:0 4px;">
+                <button type="button" class="btn-xs" data-rename-tile="${escapeHtml(s.scan_id)}" title="${tr("修改掃描名稱", "Edit Scan Name")}" style="height:18px;padding:0 4px;">
                   <svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" stroke-width="2">
                     <path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
                   </svg>
                 </button>
-                <button type="button" class="btn-xs" data-delete-tile="${escapeHtml(s.scan_id)}" title="Delete Scan (刪除掃描)" style="height:18px;padding:0 4px;color:#ef4444;">
+                <button type="button" class="btn-xs" data-delete-tile="${escapeHtml(s.scan_id)}" title="${tr("刪除掃描", "Delete Scan")}" style="height:18px;padding:0 4px;color:#ef4444;">
                   <svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" stroke-width="2">
                     <polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
                   </svg>
@@ -3028,7 +3092,10 @@
     const fileBase = getScanDefaultFileName(scan);
     const folderInfo = document.getElementById("renameScanModalFolderInfo");
     if (folderInfo) {
-      folderInfo.textContent = `File / Folder: ${fileBase} (${scan.project_group || "Site"})`;
+      folderInfo.textContent = tr(
+        `原始檔案／資料夾：${fileBase} · ${scan.project_group || "工區"}`,
+        `File / Folder: ${fileBase} · ${scan.project_group || "Site"}`
+      );
     }
     const inp = document.getElementById("renameScanInput");
     if (inp) {
@@ -3135,7 +3202,7 @@
     }
     const modalPill = document.getElementById("recycleBinModalCountPill");
     if (modalPill) {
-      modalPill.textContent = `${n} Scan${n === 1 ? "" : "s"}`;
+      modalPill.textContent = tr(`${n} 組掃描`, `${n} Scan${n === 1 ? "" : "s"}`);
     }
     const btnClear = document.getElementById("btnClearAllBinScans");
     if (btnClear) {
@@ -3146,13 +3213,13 @@
 
   function openDeleteScanModal(scanId) {
     if (!getCurrentUserRoleInfo().canEditNames) {
-      showToast("Only Editor, Admin, or Owner accounts can move scans to the Bin.");
+      showToast(tr("僅編輯者、管理員或擁有者可將掃描移至回收桶。", "Only Editor, Admin, or Owner accounts can move scans to the Bin."));
       return;
     }
     const targetId = scanId || STATE.selectedTimelineScanId || STATE.activeScanId;
     const scan = STATE.scans.find((s) => s.scan_id === targetId) || STATE.activeScan;
     if (!scan) {
-      showToast("No scan selected to move to the Bin.");
+      showToast(tr("尚未選取要移至回收桶的掃描。", "No scan selected to move to the Bin."));
       return;
     }
     _deletingScanId = scan.scan_id;
@@ -3161,7 +3228,10 @@
     const fileBase = getScanDefaultFileName(scan);
     if (nameEl) nameEl.textContent = scan.name || fileBase;
     if (metaEl) {
-      metaEl.textContent = `Site: ${scan.project_group || "Site"} · Date: ${scan.capture_date || "—"} · ID: ${scan.scan_id}`;
+      metaEl.textContent = tr(
+        `工區：${scan.project_group || "工區"} · 日期：${scan.capture_date || "—"} · ID: ${scan.scan_id}`,
+        `Site: ${scan.project_group || "Site"} · Date: ${scan.capture_date || "—"} · ID: ${scan.scan_id}`
+      );
     }
     openModal("deleteScanModal");
   }
@@ -3239,7 +3309,7 @@
     } finally {
       if (btn) {
         btn.disabled = false;
-        btn.textContent = origText || "Move to Bin (移至回收桶)";
+        btn.textContent = origText || tr("移至回收桶", "Move to Bin");
       }
     }
   }
@@ -3273,15 +3343,21 @@
     const footerEl = document.getElementById("recycleBinStatusFooter");
     if (footerEl) {
       footerEl.textContent = canPurge
-        ? "Original backups & deleted scans can be restored anytime · Permanent delete removes files from disk."
-        : "Original backups & deleted scans can be restored anytime (Permanent delete requires Admin / Owner).";
+        ? tr(
+            "原始備份與已刪除掃描可隨時還原 · 永久刪除將從磁碟移除檔案。",
+            "Original backups & deleted scans can be restored anytime · Permanent delete removes files from disk."
+          )
+        : tr(
+            "原始備份與已刪除掃描可隨時還原（永久刪除需管理員權限）。",
+            "Original backups & deleted scans can be restored anytime (Permanent delete requires Admin / Owner)."
+          );
     }
     const listEl = document.getElementById("recycleBinListContainer");
     if (!listEl) return;
     if (_cachedBinScans.length === 0) {
       listEl.innerHTML = `
         <div style="padding:32px 16px;text-align:center;color:var(--ui-text-muted);font-size:12.5px;border:1px dashed var(--ui-border);border-radius:8px;">
-          Recycle Bin is empty (回收桶目前沒有掃描備份或檔案).
+          ${tr("回收桶目前沒有掃描備份或檔案。", "Recycle Bin is empty.")}
         </div>
       `;
       updateBinSelectionActionState();
@@ -3315,25 +3391,25 @@
               <span style="font-size:12.5px;font-weight:700;color:var(--ui-text-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${safeName}</span>
               ${
                 isBackup
-                  ? `<span style="font-size:10px;font-weight:700;padding:1px 6px;border-radius:4px;background:rgba(16,185,129,0.14);color:#10b981;">Backup · 原始備份</span>`
+                  ? `<span style="font-size:10px;font-weight:700;padding:1px 6px;border-radius:4px;background:rgba(16,185,129,0.14);color:#10b981;">${tr("原始備份", "Backup")}</span>`
                   : ""
               }
               <span style="font-size:10px;font-weight:700;padding:1px 6px;border-radius:4px;background:var(--ui-accent-soft);color:var(--ui-accent);">${safeGroup}</span>
-              <span style="font-size:10.5px;color:var(--ui-text-secondary);font-family:var(--mono);">${safeDate} · ${item.image_count || 0} imgs · ${sizeMb}</span>
+              <span style="font-size:10.5px;color:var(--ui-text-secondary);font-family:var(--mono);">${safeDate} · ${item.image_count || 0} ${tr("張照片", "imgs")} · ${sizeMb}</span>
             </div>
             <div style="font-size:10.5px;color:var(--ui-text-muted);word-break:break-word;">
-              ${isBackup ? "Archived by" : "Deleted by"} ${safeActor}${trashedTime ? ` · ${escapeHtml(trashedTime)}` : ""} · ID: <code>${escapeHtml(sid)}</code>
+              ${isBackup ? tr("備份者：", "Archived by ") : tr("刪除者：", "Deleted by ")}${safeActor}${trashedTime ? ` · ${escapeHtml(trashedTime)}` : ""} · ID: <code>${escapeHtml(sid)}</code>
             </div>
           </div>
         </label>
         <div class="gs-bin-item-actions recycle-bin-item-actions" style="display:flex;align-items:center;gap:6px;flex-shrink:0;flex-wrap:wrap;">
-          <button type="button" class="btn-xs primary" data-bin-restore="${escapeHtml(sid)}" title="Restore this scan back to Map & Studio">
-            ↩ Restore (還原)
+          <button type="button" class="btn-xs primary" data-bin-restore="${escapeHtml(sid)}" title="${tr("將此掃描還原至地圖與 3D 工作台", "Restore this scan back to Map & Studio")}">
+            ↩ ${tr("還原", "Restore")}
           </button>
           ${
             canPurge
-              ? `<button type="button" class="btn-xs" data-bin-purge="${escapeHtml(sid)}" style="color:#ef4444;border-color:rgba(239,68,68,0.4);" title="Permanently delete this scan and its files from disk">
-                  🗑 Delete Forever
+              ? `<button type="button" class="btn-xs" data-bin-purge="${escapeHtml(sid)}" style="color:#ef4444;border-color:rgba(239,68,68,0.4);" title="${tr("從磁碟永久刪除此掃描與檔案", "Permanently delete this scan and its files from disk")}">
+                  🗑 ${tr("永久刪除", "Delete Forever")}
                 </button>`
               : ""
           }
@@ -3475,7 +3551,10 @@
     const zhName = (siteScans[0] && siteScans[0].project_name_zh) || targetGroup;
     const subEl = document.getElementById("renameSiteModalSub");
     if (subEl) {
-      subEl.textContent = `Current Site: ${targetGroup} (${siteScans.length} Scan${siteScans.length === 1 ? "" : "s"})`;
+      subEl.textContent = tr(
+        `目前工區：${targetGroup} · ${siteScans.length} 組掃描`,
+        `Current Site: ${targetGroup} · ${siteScans.length} Scan${siteScans.length === 1 ? "" : "s"}`
+      );
     }
     const grpInp = document.getElementById("renameSiteGroupInput");
     const zhInp = document.getElementById("renameSiteZhInput");
@@ -3597,12 +3676,15 @@
     if (!scan) return;
     _rerunTargetScanId = scan.scan_id;
     const nameEl = document.getElementById("rerunScanInfoName");
-    if (nameEl) nameEl.textContent = `${scan.name} (${scan.project_group})`;
+    if (nameEl) nameEl.textContent = `${scan.name} · ${scan.project_group}`;
     const srcEl = document.getElementById("rerunScanInfoSource");
     if (srcEl) {
       const pCount = scan.image_count || scan.total_photos || 100;
       const srcPath = scan.source_zip_path || `${scan.project_dir || "C:\\GatheringScans\\" + scan.scan_id}\\inputs`;
-      srcEl.textContent = `Original Photos Source: ${srcPath} (${pCount} RTK photos)`;
+      srcEl.textContent = tr(
+        `原始照片來源：${srcPath} · ${pCount} 張 RTK 照片`,
+        `Original Photos Source: ${srcPath} · ${pCount} RTK photos`
+      );
     }
     openModal("rerunScanModal");
     updateRerunGstPreview();
@@ -4238,7 +4320,7 @@
         STATE.fpMode.velY = 0;
         STATE.fpMode.velZ = 0;
         if (STATE.fpMode.locomotion === "walk") STATE.fpMode.onGround = true;
-        showToast("已瞬移至目標位置 (Teleported)");
+        showToast(tr("已瞬移至目標位置", "Teleported to target position"));
       }
     });
 
@@ -4714,7 +4796,7 @@
     const pickedEl = document.getElementById("lblLastPickedCoord");
     if (pickedEl) {
       if (inferActiveScanCrsCode(scan) === "LOCAL_ORIGIN") {
-        pickedEl.textContent = `Local Origin · Click 3D surface to inspect`;
+        pickedEl.textContent = tr("局部原點 · 點擊 3D 表面以檢視座標", "Local Origin · Click 3D surface to inspect");
       } else {
         pickedEl.textContent = formatScanCoordReadout(
           {
@@ -5223,9 +5305,11 @@
   function add2DBadge(worldPt, htmlText, borderColor = "#cbd5e1", options = {}) {
     const container = document.getElementById("studioOverlay2D");
     if (!container) return null;
+    const translatedHtml =
+      typeof window.translateDynamicHtml === "function" ? window.translateDynamicHtml(String(htmlText || "")) : String(htmlText || "");
     const el = document.createElement("div");
     if (options.rawHtml) {
-      el.innerHTML = htmlText;
+      el.innerHTML = translatedHtml;
       const firstChild = el.firstElementChild;
       if (firstChild) {
         firstChild.style.position = "absolute";
@@ -5259,9 +5343,9 @@
     el.style.position = "absolute";
     el.style.pointerEvents = "none";
     el.style.borderColor = borderColor;
-    let finalHtml = htmlText;
+    let finalHtml = translatedHtml;
     if (options.isCategorize && options.featureId && options.catKey && options.catKey !== "stockpiles") {
-      finalHtml += ` <button type="button" data-cat-badge-del="${escapeHtml(options.featureId)}" data-cat-badge-type="${escapeHtml(options.catKey)}" title="刪除此分類項目 Remove ${escapeHtml(options.featureId)}" style="margin-left:5px;padding:0 4px;border:none;border-radius:4px;background:rgba(239,68,68,0.24);color:#fca5a5;cursor:pointer;font-size:10px;line-height:1.2;pointer-events:auto;">×</button>`;
+      finalHtml += ` <button type="button" data-cat-badge-del="${escapeHtml(options.featureId)}" data-cat-badge-type="${escapeHtml(options.catKey)}" title="${tr("刪除此分類項目", "Remove")} ${escapeHtml(options.featureId)}" style="margin-left:5px;padding:0 4px;border:none;border-radius:4px;background:rgba(239,68,68,0.24);color:#fca5a5;cursor:pointer;font-size:10px;line-height:1.2;pointer-events:auto;">×</button>`;
     }
     el.innerHTML = finalHtml;
     const delBtn = el.querySelector("[data-cat-badge-del]");
@@ -5586,8 +5670,8 @@
     if (lockBtn) {
       lockBtn.classList.toggle("locked", fp.pointerLocked);
       lockBtn.textContent = fp.pointerLocked
-        ? "🔒 準星已鎖定 (Esc 解鎖滑鼠)"
-        : "🎯 點擊畫面鎖定滑鼠 (或拖曳旋轉)";
+        ? tr("🔒 準星已鎖定 (Esc 解鎖滑鼠)", "🔒 Crosshair Locked (Esc to Unlock)")
+        : tr("🎯 點擊畫面鎖定滑鼠 (或拖曳旋轉)", "🎯 Click to Lock Mouse (or Drag to Look)");
     }
 
     const slider = document.getElementById("fpSpeedSlider");
@@ -5614,14 +5698,14 @@
     const dnAct = document.getElementById("lblFpDownActionHint");
     if (fp.locomotion === "walk") {
       if (upKey) upKey.textContent = "Space";
-      if (upAct) upAct.textContent = "跳躍";
+      if (upAct) upAct.textContent = tr("跳躍", "Jump");
       if (dnKey) dnKey.textContent = "C";
-      if (dnAct) dnAct.textContent = "蹲下";
+      if (dnAct) dnAct.textContent = tr("蹲下", "Crouch");
     } else {
       if (upKey) upKey.textContent = "Space/E";
-      if (upAct) upAct.textContent = "上升";
+      if (upAct) upAct.textContent = tr("上升", "Up");
       if (dnKey) dnKey.textContent = "C/Q";
-      if (dnAct) dnAct.textContent = "下降";
+      if (dnAct) dnAct.textContent = tr("下降", "Down");
     }
   }
 
@@ -5740,8 +5824,14 @@
     if (showFeedback) {
       showToast(
         next === "walk"
-          ? "🚶 步行模式 (1.68m 人眼視角 · Space 跳躍 · C 蹲下 · G 切換飛行)"
-          : "🚀 自由飛行模式 (WASD 移動 · Space/E 上升 · C/Q 下降 · 滾輪調速)"
+          ? tr(
+              "🚶 步行模式（1.68m 人眼視角 · Space 跳躍 · C 蹲下 · G 切換飛行）",
+              "🚶 Walk Mode (1.68m eye level · Space Jump · C Crouch · G Toggle Fly)"
+            )
+          : tr(
+              "🚀 自由飛行模式（WASD 移動 · Space/E 上升 · C/Q 下降 · 滾輪調速）",
+              "🚀 Free Fly Mode (WASD Move · Space/E Up · C/Q Down · Wheel Speed)"
+            )
       );
     }
   }
@@ -5815,9 +5905,19 @@
 
     if (!options.silent) {
       if (window.innerWidth <= 768) {
-        showToast("🎮 第一人稱漫遊開啟 — 左下方向鍵移動 · 單指拖曳旋轉視角 · 頂部切換飛行/步行");
+        showToast(
+          tr(
+            "🎮 第一人稱漫遊開啟 — 左下方向鍵移動 · 單指拖曳旋轉視角 · 頂部切換飛行/步行",
+            "🎮 First-Person Roam ON — D-pad to move · 1-finger drag to look · Top bar to switch Fly/Walk"
+          )
+        );
       } else {
-        showToast("🎮 第一人稱漫遊開啟 — WASD 移動 · 滑鼠拖曳或點擊鎖定視角 · 滾輪調速 · G 切換步行/飛行");
+        showToast(
+          tr(
+            "🎮 第一人稱漫遊開啟 — WASD 移動 · 滑鼠拖曳或點擊鎖定視角 · 滾輪調速 · G 切換步行/飛行",
+            "🎮 First-Person Roam ON — WASD Move · Drag or Click to Lock Mouse · Wheel Speed · G Fly/Walk"
+          )
+        );
       }
     }
   }
@@ -5882,7 +5982,7 @@
     applyRolePermissionsToUI();
     if (typeof syncStudioMobileToolHud === "function") syncStudioMobileToolHud();
     if (!silent) {
-      showToast("已離開第一人稱漫遊，返回環繞視角 (Orbit Mode)");
+      showToast(tr("已離開第一人稱漫遊，返回環繞視角", "Exited First-Person Roam — returned to Orbit Mode"));
     }
   }
 
@@ -6207,12 +6307,17 @@
     "btnStudioDownloadObj",
   ];
 
-  const MULTI_ALIGN_DISABLED_REASON =
-    "Unavailable during Multi-Scan Editing — merge scans first (or exit Multi-Scan mode) / 多掃描合併編輯中暫停使用，請先合併掃描或退出多掃描模式";
+  function getMultiAlignDisabledReason() {
+    return tr(
+      "多掃描合併編輯中暫停使用 — 請先合併掃描或退出多掃描模式",
+      "Unavailable during Multi-Scan Editing — merge scans first or exit Multi-Scan mode"
+    );
+  }
 
   function syncMultiAlignToolAvailability() {
     const isMulti = Boolean(STATE.multiAlign?.active);
     const lockSingleScan = Boolean(STATE.shareToken && STATE.shareInfo?.scope_type === "scan");
+    const disabledReason = getMultiAlignDisabledReason();
 
     MULTI_ALIGN_DISABLED_ELEMENT_IDS.forEach((id) => {
       const el = document.getElementById(id);
@@ -6221,7 +6326,7 @@
         if (el.dataset.origTitle === undefined) {
           el.dataset.origTitle = el.getAttribute("title") || "";
         }
-        el.setAttribute("title", MULTI_ALIGN_DISABLED_REASON);
+        el.setAttribute("title", disabledReason);
         el.classList.add("multi-align-disabled");
         el.classList.remove("active");
         el.setAttribute("aria-disabled", "true");
@@ -9314,7 +9419,7 @@
             mean_height_m: 2.5,
           });
         } else {
-          showToast("🔴 牆面起點已標記，請點擊牆面終點 (Point 1/2 placed — click wall end point)");
+          showToast(tr("🔴 牆面起點已標記，請點擊牆面終點", "🔴 Point 1/2 placed — click wall end point"));
           if (STATE.lastCategorizeResult) renderCategorizePanelContent(STATE.lastCategorizeResult);
         }
         syncStudioMobileToolHud();
@@ -10046,9 +10151,9 @@
     const csvUrl = URL.createObjectURL(csvBlob);
     STATE._lastVolCsvBlobUrl = csvUrl;
 
-    const htmlDoc = `<!DOCTYPE html><html lang="zh-Hant"><head><meta charset="utf-8"><title>Stockpile Volume Report — ${escapeHtml(
+    const htmlDoc = `<!DOCTYPE html><html lang="zh-Hant"><head><meta charset="utf-8"><title>${tr("土方體積與堆置量測報告", "Stockpile Volume Report")} — ${escapeHtml(
       opts.stockpile_name || "Stockpile A"
-    )}</title><style>body{font-family:sans-serif;max-width:880px;margin:28px auto;color:#0f172a}table{width:100%;border-collapse:collapse;margin-top:16px}th,td{border:1px solid #cbd5e1;padding:8px 10px;text-align:left}th{background:#f1f5f9}.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:18px 0}.card{border:1px solid #cbd5e1;border-radius:8px;padding:12px;background:#f8fafc}.val{font-size:20px;font-weight:800;margin-top:4px}</style></head><body><h2>土方體積與物料堆置量測報告 (Stockpile &amp; Cut/Fill Report)</h2><div>Project: <b>${escapeHtml(
+    )}</title><style>body{font-family:sans-serif;max-width:880px;margin:28px auto;color:#0f172a}table{width:100%;border-collapse:collapse;margin-top:16px}th,td{border:1px solid #cbd5e1;padding:8px 10px;text-align:left}th{background:#f1f5f9}.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:18px 0}.card{border:1px solid #cbd5e1;border-radius:8px;padding:12px;background:#f8fafc}.val{font-size:20px;font-weight:800;margin-top:4px}</style></head><body><h2>${tr("土方體積與物料堆置量測報告", "Stockpile & Cut/Fill Volume Report")}</h2><div>Project: <b>${escapeHtml(
       activeScan.project_group || ""
     )}</b> | Scan: <b>${escapeHtml(activeScan.name || "")}</b> | Zone: <b>${escapeHtml(
       opts.stockpile_name || "Stockpile A"
@@ -10334,8 +10439,11 @@
     const titleEl = document.getElementById("sidePanelTitle");
     const bodyEl = document.getElementById("sidePanelBody");
     if (!panel || !titleEl || !bodyEl) return;
-    titleEl.innerHTML = title;
-    bodyEl.innerHTML = htmlContent;
+    const tTitle = typeof window.translateDynamicHtml === "function" ? window.translateDynamicHtml(String(title || "")) : String(title || "");
+    const tBody =
+      typeof window.translateDynamicHtml === "function" ? window.translateDynamicHtml(String(htmlContent || "")) : String(htmlContent || "");
+    titleEl.innerHTML = tTitle;
+    bodyEl.innerHTML = tBody;
     panel.setAttribute("data-active-tool", STATE.activeTool || "");
     panel.classList.remove("hidden");
     panel.classList.add("active", "open");
@@ -10343,7 +10451,7 @@
     panel.classList.toggle("gs-panel-minimized", Boolean(STATE.sidePanelMinimized));
     const lblCollapse = document.getElementById("lblCollapseSidePanel");
     if (lblCollapse) {
-      lblCollapse.textContent = STATE.sidePanelMinimized ? "▴ 展開" : "▾ 收合";
+      lblCollapse.textContent = STATE.sidePanelMinimized ? tr("▴ 展開", "▴ Expand") : tr("▾ 收合", "▾ Collapse");
     }
     if (typeof syncStudioMobileToolHud === "function") syncStudioMobileToolHud();
     if (typeof syncMobileToastPosition === "function") syncMobileToastPosition();
@@ -10359,7 +10467,7 @@
     panel.classList.toggle("gs-panel-minimized", STATE.sidePanelMinimized);
     const lblCollapse = document.getElementById("lblCollapseSidePanel");
     if (lblCollapse) {
-      lblCollapse.textContent = STATE.sidePanelMinimized ? "▴ 展開" : "▾ 收合";
+      lblCollapse.textContent = STATE.sidePanelMinimized ? tr("▴ 展開", "▴ Expand") : tr("▾ 收合", "▾ Collapse");
     }
     if (typeof syncStudioMobileToolHud === "function") syncStudioMobileToolHud();
     if (typeof syncMobileToastPosition === "function") syncMobileToastPosition();
@@ -10497,32 +10605,33 @@
       hud.style.display = "flex";
       hud.innerHTML = `
         <button type="button" class="gs-mobile-hud-btn ${isOrbitSub ? "primary" : ""}" data-mobile-hud="toggle_lasso_orbit">
-          ${isOrbitSub ? "🔄 旋轉中 (點此套索)" : "✏️ 套索標記 (點此旋轉)"}
+          ${isOrbitSub ? tr("🔄 旋轉中 (點此套索)", "🔄 Orbiting (Tap to Lasso)") : tr("✏️ 套索標記 (點此旋轉)", "✏️ Lasso (Tap to Orbit)")}
         </button>
         ${
           STATE.lassoInputMethod === "polygon" && ptsCount >= 3
-            ? `<button type="button" class="gs-mobile-hud-btn primary" data-mobile-hud="lock_poly">✓ 鎖定 (${ptsCount}點)</button>`
+            ? `<button type="button" class="gs-mobile-hud-btn primary" data-mobile-hud="lock_poly">✓ ${tr(`鎖定 (${ptsCount}點)`, `Lock (${ptsCount})`)}</button>`
             : ""
         }
         ${
           pendingRegions > 0
             ? `<button type="button" class="gs-mobile-hud-btn primary" data-mobile-hud="commit_lasso">✓ ${
-                isDel ? "執行刪除" : "執行保留"
+                isDel ? tr("執行刪除", "Delete") : tr("執行保留", "Keep")
               } (${pendingRegions})</button>`
             : ""
         }
         ${
           hasAnyMarks
-            ? `<button type="button" class="gs-mobile-hud-btn" data-mobile-hud="undo_lasso">↩ 復原</button>`
+            ? `<button type="button" class="gs-mobile-hud-btn" data-mobile-hud="undo_lasso">↩ ${tr("復原", "Undo")}</button>`
             : ""
         }
         <button type="button" class="gs-mobile-hud-btn" data-mobile-hud="expand_cat_panel">${
-          STATE.sidePanelMinimized ? "▴ 面板" : "▾ 收合"
+          STATE.sidePanelMinimized ? tr("▴ 面板", "▴ Panel") : tr("▾ 收合", "▾ Hide")
         }</button>
-        <button type="button" class="gs-mobile-hud-btn danger" data-mobile-hud="exit_tool">✕ 離開</button>
+        <button type="button" class="gs-mobile-hud-btn danger" data-mobile-hud="exit_tool">✕ ${tr("離開", "Exit")}</button>
       `;
     } else if (tool === "area" || tool === "volume" || tool === "contours") {
-      const toolLabel = tool === "area" ? "面積" : tool === "volume" ? "土方" : "等高線";
+      const toolLabel =
+        tool === "area" ? tr("面積", "Area") : tool === "volume" ? tr("土方", "Volume") : tr("等高線", "Contours");
       const hasPanelToggle = tool === "volume" || tool === "contours";
       if (ptsCount === 0) {
         if (window.innerWidth > 768) {
@@ -10531,11 +10640,11 @@
         }
         hud.style.display = "flex";
         hud.innerHTML = `
-          <span class="gs-mobile-hud-label">📐 ${toolLabel}：請點擊 3+ 點圍成範圍</span>
+          <span class="gs-mobile-hud-label">📐 ${toolLabel}${tr("：請點擊 3+ 點圍成範圍", ": Tap 3+ points")}</span>
           ${
             hasPanelToggle
               ? `<button type="button" class="gs-mobile-hud-btn" data-mobile-hud="expand_cat_panel">${
-                  STATE.sidePanelMinimized ? "▴ 展開面板" : "▾ 收合面板"
+                  STATE.sidePanelMinimized ? tr("▴ 展開面板", "▴ Panel") : tr("▾ 收合面板", "▾ Hide")
                 }</button>`
               : ""
           }
@@ -10543,25 +10652,26 @@
       } else {
         hud.style.display = "flex";
         hud.innerHTML = `
-          <span class="gs-mobile-hud-label">📐 ${toolLabel}：已標記 ${ptsCount} 點</span>
+          <span class="gs-mobile-hud-label">📐 ${toolLabel}：${tr(`已標記 ${ptsCount} 點`, `${ptsCount} pts`)}</span>
           ${
             ptsCount >= 3
-              ? `<button type="button" class="gs-mobile-hud-btn primary" data-mobile-hud="lock_poly">✓ 完成多邊形 (Lock)</button>`
-              : `<span class="gs-mobile-hud-label" style="color:var(--ui-text-secondary);">再點 ${3 - ptsCount} 點可閉合</span>`
+              ? `<button type="button" class="gs-mobile-hud-btn primary" data-mobile-hud="lock_poly">✓ ${tr("完成多邊形", "Lock Polygon")}</button>`
+              : `<span class="gs-mobile-hud-label" style="color:var(--ui-text-secondary);">${tr(`再點 ${3 - ptsCount} 點可閉合`, `${3 - ptsCount} more`)}</span>`
           }
-          <button type="button" class="gs-mobile-hud-btn" data-mobile-hud="undo_pt">↩ 復原點</button>
-          <button type="button" class="gs-mobile-hud-btn danger" data-mobile-hud="clear_pts">✕ 清除</button>
+          <button type="button" class="gs-mobile-hud-btn" data-mobile-hud="undo_pt">↩ ${tr("復原點", "Undo")}</button>
+          <button type="button" class="gs-mobile-hud-btn danger" data-mobile-hud="clear_pts">✕ ${tr("清除", "Clear")}</button>
           ${
             hasPanelToggle
               ? `<button type="button" class="gs-mobile-hud-btn" data-mobile-hud="expand_cat_panel">${
-                  STATE.sidePanelMinimized ? "▴ 面板" : "▾ 收合"
+                  STATE.sidePanelMinimized ? tr("▴ 面板", "▴ Panel") : tr("▾ 收合", "▾ Hide")
                 }</button>`
               : ""
           }
         `;
       }
     } else if (tool === "distance" || tool === "angle" || tool === "profile") {
-      const toolLabel = tool === "distance" ? "距離" : tool === "angle" ? "角度" : "斷面";
+      const toolLabel =
+        tool === "distance" ? tr("距離", "Distance") : tool === "angle" ? tr("角度", "Angle") : tr("斷面", "Profile");
       if (ptsCount === 0) {
         if (window.innerWidth > 768) {
           hud.style.display = "none";
@@ -10569,17 +10679,17 @@
         }
         const promptText =
           tool === "distance"
-            ? "📏 距離：請點擊起點與終點 (0/2)"
+            ? tr("📏 距離：請點擊起點與終點 (0/2)", "📏 Distance: Tap start & end (0/2)")
             : tool === "angle"
-            ? "📐 角度：請點擊 3 點量測夾角 (0/3)"
-            : "📈 斷面：請點擊 A、B 兩點 (0/2)";
+            ? tr("📐 角度：請點擊 3 點量測夾角 (0/3)", "📐 Angle: Tap 3 points (0/3)")
+            : tr("📈 斷面：請點擊 A、B 兩點 (0/2)", "📈 Profile: Tap A & B (0/2)");
         hud.style.display = "flex";
         hud.innerHTML = `
           <span class="gs-mobile-hud-label">${promptText}</span>
           ${
             tool === "profile"
               ? `<button type="button" class="gs-mobile-hud-btn" data-mobile-hud="expand_cat_panel">${
-                  STATE.sidePanelMinimized ? "▴ 展開面板" : "▾ 收合面板"
+                  STATE.sidePanelMinimized ? tr("▴ 展開面板", "▴ Panel") : tr("▾ 收合面板", "▾ Hide")
                 }</button>`
               : ""
           }
@@ -10587,13 +10697,13 @@
       } else {
         hud.style.display = "flex";
         hud.innerHTML = `
-          <span class="gs-mobile-hud-label">📏 ${toolLabel}：已標記 ${ptsCount} 點</span>
-          <button type="button" class="gs-mobile-hud-btn" data-mobile-hud="undo_pt">↩ 復原點</button>
-          <button type="button" class="gs-mobile-hud-btn danger" data-mobile-hud="clear_pts">✕ 取消</button>
+          <span class="gs-mobile-hud-label">📏 ${toolLabel}：${tr(`已標記 ${ptsCount} 點`, `${ptsCount} pts`)}</span>
+          <button type="button" class="gs-mobile-hud-btn" data-mobile-hud="undo_pt">↩ ${tr("復原點", "Undo")}</button>
+          <button type="button" class="gs-mobile-hud-btn danger" data-mobile-hud="clear_pts">✕ ${tr("取消", "Cancel")}</button>
           ${
             tool === "profile"
               ? `<button type="button" class="gs-mobile-hud-btn" data-mobile-hud="expand_cat_panel">${
-                  STATE.sidePanelMinimized ? "▴ 面板" : "▾ 收合"
+                  STATE.sidePanelMinimized ? tr("▴ 面板", "▴ Panel") : tr("▾ 收合", "▾ Hide")
                 }</button>`
               : ""
           }
@@ -10604,38 +10714,40 @@
       hud.style.display = "flex";
       hud.innerHTML = `
         <span class="gs-mobile-hud-label">${
-          isPhoto ? "📷 光達照片：點擊 3D 模型查詢實景照片" : "💬 空間標註：點擊 3D 模型放置標註點"
+          isPhoto
+            ? tr("📷 光達照片：點擊 3D 模型查詢實景照片", "📷 Photos: Tap 3D model to inspect photo")
+            : tr("💬 空間標註：點擊 3D 模型放置標註點", "💬 Comments: Tap 3D model to place pin")
         }</span>
-        <button type="button" class="gs-mobile-hud-btn" data-mobile-hud="expand_cat_panel">▴ 展開面板</button>
+        <button type="button" class="gs-mobile-hud-btn" data-mobile-hud="expand_cat_panel">${tr("▴ 展開面板", "▴ Panel")}</button>
       `;
     } else if (tool === "categorize" && STATE.categorizeEditMode) {
       const mode = STATE.categorizeEditMode;
       const catPts = Array.isArray(STATE.categorizeEditPoints) ? STATE.categorizeEditPoints.length : 0;
       const modeText =
         mode === "add_tree"
-          ? "🟢 點擊 3D 樹木新增"
+          ? tr("🟢 點擊 3D 樹木新增", "🟢 Tap 3D tree to add")
           : mode === "add_wall"
-          ? `🔴 點擊牆面起終點 (${catPts}/2)`
+          ? tr(`🔴 點擊牆面起終點 (${catPts}/2)`, `🔴 Tap wall endpoints (${catPts}/2)`)
           : mode === "add_road"
-          ? `🟠 點擊道路頂點 (${catPts}點)`
-          : "🗑️ 點擊 3D 物件刪除";
+          ? tr(`🟠 點擊道路頂點 (${catPts}點)`, `🟠 Tap road vertices (${catPts})`)
+          : tr("🗑️ 點擊 3D 物件刪除", "🗑️ Tap 3D item to remove");
       hud.style.display = "flex";
       hud.innerHTML = `
         <span class="gs-mobile-hud-label">${modeText}</span>
         ${
           (mode === "add_road" && catPts >= 3) || (mode === "add_wall" && catPts >= 2)
-            ? `<button type="button" class="gs-mobile-hud-btn primary" data-mobile-hud="lock_poly">✓ 完成新增</button>`
+            ? `<button type="button" class="gs-mobile-hud-btn primary" data-mobile-hud="lock_poly">✓ ${tr("完成新增", "Finish")}</button>`
             : ""
         }
         ${
           catPts > 0
-            ? `<button type="button" class="gs-mobile-hud-btn" data-mobile-hud="undo_cat_pt">↩ 復原點</button>`
+            ? `<button type="button" class="gs-mobile-hud-btn" data-mobile-hud="undo_cat_pt">↩ ${tr("復原點", "Undo")}</button>`
             : ""
         }
         <button type="button" class="gs-mobile-hud-btn" data-mobile-hud="expand_cat_panel">${
-          STATE.sidePanelMinimized ? "▴ 面板" : "▾ 收合"
+          STATE.sidePanelMinimized ? tr("▴ 面板", "▴ Panel") : tr("▾ 收合", "▾ Hide")
         }</button>
-        <button type="button" class="gs-mobile-hud-btn danger" data-mobile-hud="exit_cat_edit">✕ 結束編輯</button>
+        <button type="button" class="gs-mobile-hud-btn danger" data-mobile-hud="exit_cat_edit">✕ ${tr("結束編輯", "Exit Edit")}</button>
       `;
     } else {
       hud.style.display = "none";
@@ -10649,8 +10761,8 @@
       syncStudioMobileToolHud();
       showToast(
         STATE.studioLassoOrbitMode
-          ? "🔄 已切換為單指旋轉視角 (1-Finger Orbit Mode)"
-          : "✏️ 已切換為單指套索標記 (1-Finger Lasso Draw Mode)"
+          ? tr("🔄 已切換為單指旋轉視角", "🔄 Switched to 1-Finger Orbit Mode")
+          : tr("✏️ 已切換為單指套索標記", "✏️ Switched to 1-Finger Lasso Draw Mode")
       );
     });
     hud.querySelector('[data-mobile-hud="lock_poly"]')?.addEventListener("click", (ev) => {
@@ -10664,8 +10776,8 @@
       if (res.committed > 0) {
         showToast(
           mode === "keep_inside"
-            ? `已套用保留範圍 (${res.committed} 區) — 點擊 Generate 建立新掃描`
-            : `已刪除選取範圍 (${res.committed} 區) — 點擊 Generate 建立新掃描`
+            ? tr(`已套用保留範圍（${res.committed} 區）— 點擊儲存變更建立新掃描`, `Applied keep region (${res.committed}) — click Save Edits to generate`)
+            : tr(`已刪除選取範圍（${res.committed} 區）— 點擊儲存變更建立新掃描`, `Deleted ${res.committed} region(s) — click Save Edits to generate`)
         );
         if (mode === "keep_inside") openLassoKeepInspector({ armLasso: true });
         else openLassoDeleteInspector({ armLasso: true });
@@ -10813,7 +10925,7 @@
         pEl.classList.toggle("gs-panel-minimized", STATE.sidePanelMinimized);
       }
       const lblCol = document.getElementById("lblCollapseSidePanel");
-      if (lblCol) lblCol.textContent = STATE.sidePanelMinimized ? "▴ 展開" : "▾ 收合";
+      if (lblCol) lblCol.textContent = STATE.sidePanelMinimized ? tr("▴ 展開", "▴ Expand") : tr("▾ 收合", "▾ Collapse");
     }
 
     const activeScan = STATE.activeScan || STATE.scans.find((s) => s.scan_id === STATE.activeScanId) || {};
@@ -10839,6 +10951,13 @@
              ⚠️ <b>Staged Mesh Edits Active:</b> Live 3D volume uses your edited mesh preview, while server DSM archival/epoch-diff uses the committed scan on disk until you run <b>Generate Edited Scan</b>.
            </div>`
         : "";
+      const matNameByKey = {
+        crushed_stone: tr("碎石級配", "Crushed Stone"),
+        excavated_soil: tr("一般營建土方", "Excavated Soil"),
+        sand_gravel: tr("砂石骨材", "River Sand & Gravel"),
+        rockfill_rip_rap: tr("塊石與拋石", "Quarry Rockfill"),
+        concrete_debris: tr("營建剩餘混凝土", "Demolition Concrete"),
+      };
       const matOptions = Object.entries(STATE.materials || {
         crushed_stone: { name: "Crushed Stone / 碎石級配", density_t_m3: 1.65 },
         excavated_soil: { name: "Excavated Soil / 一般營建土方", density_t_m3: 1.45 },
@@ -10846,55 +10965,61 @@
         rockfill_rip_rap: { name: "Quarry Rockfill / 塊石與拋石", density_t_m3: 1.85 },
         concrete_debris: { name: "Demolition Concrete / 營建剩餘混凝土", density_t_m3: 1.55 },
       })
-        .map(
-          ([k, v]) =>
-            `<option value="${escapeHtml(k)}" data-density="${escapeHtml(String(v.density_t_m3))}">${escapeHtml(v.name)} (${escapeHtml(String(v.density_t_m3))} t/m³)</option>`
-        )
+        .map(([k, v]) => {
+          let label = matNameByKey[k];
+          if (!label) {
+            const parts = String(v.name || k).split("/").map((p) => p.trim());
+            label = window.getAppLanguage?.() === "en" ? parts[0] : parts[parts.length - 1] || parts[0];
+          }
+          return `<option value="${escapeHtml(k)}" data-density="${escapeHtml(String(v.density_t_m3))}">${escapeHtml(label)} · ${escapeHtml(String(v.density_t_m3))} t/m³</option>`;
+        })
         .join("");
 
       showSidePanel(
-        `<span>Cut/Fill &amp; Stockpile Volume</span>`,
+        `<span>${tr("土方體積與挖填分析", "Cut/Fill & Stockpile Volume")}</span>`,
         `
         ${stagedNoticeHtml}
         <div style="font-size:11px;color:var(--ui-text-secondary);background:var(--ui-bg-pill);border:1px solid var(--ui-border-strong);border-radius:7px;padding:7px 9px;margin-bottom:9px;line-height:1.4;">
-          Step 1: Click <b>3+ points</b> on the 3D scan to draw a Cut/Fill boundary polygon.<br>
-          Step 2: Click red start point <b>V1</b> (or press <b>Enter</b> / <b>Lock &amp; Compute</b>) to lock the polygon and calculate volume.
+          ${tr(
+            "步驟 1：在 3D 掃描模型上點擊 <b>3 個以上頂點</b>繪製挖填範圍。<br>步驟 2：點擊紅色起點 <b>V1</b>（或按 <b>Enter</b> / <b>鎖定並計算</b>）完成多邊形並計算土方。",
+            "Step 1: Click <b>3+ points</b> on the 3D scan to draw a Cut/Fill boundary polygon.<br>Step 2: Click red start point <b>V1</b> (or press <b>Enter</b> / <b>Lock &amp; Compute</b>) to lock the polygon and calculate volume."
+          )}
         </div>
         <div class="gs-form-group">
-          <label>Zone / Stockpile Name (土方或物料堆名稱)</label>
+          <label>${tr("土方或物料堆名稱", "Zone / Stockpile Name")}</label>
           <input type="text" class="gs-input" id="volStockpileName" value="${escapeHtml(defaultZoneName)}" />
         </div>
         <div class="gs-form-group">
-          <label>Base Reference Surface Mode (基準面計算方式)</label>
+          <label>${tr("基準面計算方式", "Base Reference Surface Mode")}</label>
           <select class="gs-select" id="volBaseMode">
-            <option value="triangulated_boundary">1. Triangulated Boundary Perimeter (獨立土石堆周界擬合面)</option>
-            <option value="custom_plane">2. Custom Datum Elevation Plane Z₀ (指定設計高程基準面 TWVD2001)</option>
-            <option value="epoch_diff">3. Multi-Date Epoch-to-Epoch Diff (跨期掃描進度挖填差額)</option>
+            <option value="triangulated_boundary">${tr("1. 獨立土石堆周界擬合面", "1. Triangulated Boundary Perimeter")}</option>
+            <option value="custom_plane">${tr("2. 指定設計高程基準面 Z₀ (TWVD2001)", "2. Custom Datum Elevation Plane Z₀ (TWVD2001)")}</option>
+            <option value="epoch_diff">${tr("3. 跨期掃描進度挖填差額", "3. Multi-Date Epoch-to-Epoch Diff")}</option>
           </select>
         </div>
         <div class="gs-form-group">
-          <label>Material Classification &amp; Bulk Density (物料種類與比重 t/m³)</label>
+          <label>${tr("物料種類與比重 (t/m³)", "Material Classification & Bulk Density (t/m³)")}</label>
           <select class="gs-select" id="volMaterialSelect">${matOptions}</select>
         </div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;" class="gs-form-group">
           <div>
-            <label>Density (t/m³)</label>
+            <label>${tr("比重 (t/m³)", "Density (t/m³)")}</label>
             <input type="number" step="0.05" class="gs-input" id="volCustomDensity" value="1.65" />
           </div>
           <div>
-            <label>Datum Elev Z₀ (TWVD2001 m)</label>
+            <label>${tr("基準高程 Z₀ (TWVD2001 m)", "Datum Elev Z₀ (TWVD2001 m)")}</label>
             <input type="number" step="0.1" class="gs-input" id="volDatumZ" value="${defaultDatumZ}" />
           </div>
         </div>
         <div style="display:flex;gap:6px;margin-bottom:8px;">
-          <button type="button" class="gs-top-btn accent" style="flex:1.6;justify-content:center;" id="btnRunVolumeCalc" title="Lock Polygon &amp; Compute Cut/Fill Volume">
+          <button type="button" class="gs-top-btn accent" style="flex:1.6;justify-content:center;" id="btnRunVolumeCalc" title="${tr("鎖定多邊形並計算挖填土方體積", "Lock Polygon & Compute Cut/Fill Volume")}">
             <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8">
               <path d="M3 18L9 8l5 6 4-4 3 8H3z"/>
             </svg>
-            <span id="lblRunVolumeCalc">Lock &amp; Compute</span>
+            <span id="lblRunVolumeCalc">${tr("鎖定並計算", "Lock & Compute")}</span>
           </button>
-          <button type="button" class="gs-top-btn" style="flex:1;justify-content:center;" id="btnResetVolumePoly" title="Clear &amp; Draw New Boundary Polygon">
-            <span>Redraw Polygon</span>
+          <button type="button" class="gs-top-btn" style="flex:1;justify-content:center;" id="btnResetVolumePoly" title="${tr("清除並重新繪製範圍多邊形", "Clear & Draw New Boundary Polygon")}">
+            <span>${tr("重新繪製多邊形", "Redraw Polygon")}</span>
           </button>
         </div>
         <div id="volResultContainer"></div>
@@ -10954,27 +11079,39 @@
       const placedCount = STATE.measurePoints?.length || 0;
       const btnLbl = document.getElementById("lblRunVolumeCalc");
       if (btnLbl) {
-        btnLbl.textContent = placedCount >= 3 ? `Lock (${placedCount} pts) & Compute` : "Lock & Compute";
+        btnLbl.textContent =
+          placedCount >= 3
+            ? tr(`鎖定 (${placedCount} 點) 並計算`, `Lock (${placedCount} pts) & Compute`)
+            : tr("鎖定並計算", "Lock & Compute");
       }
       if (placedCount === 0) {
         box.innerHTML = `
           <div style="font-size:11.5px;color:var(--ui-text-secondary);padding:10px;background:var(--ui-bg-subtle);border-radius:8px;border:1px dashed var(--ui-border-strong);line-height:1.5;">
-            <b style="color:var(--ui-accent);">Awaiting Boundary Polygon (尚未繪製範圍)</b><br>
-            Click at least <b>3 points</b> around a stockpile or excavation zone on the 3D scan, then click the red start point <b>V1</b> (or press <b>Enter</b>) to lock the polygon and calculate volume.
+            <b style="color:var(--ui-accent);">${tr("尚未繪製範圍多邊形", "Awaiting Boundary Polygon")}</b><br>
+            ${tr(
+              "請在 3D 掃描模型上的土石堆或開挖區周圍點擊至少 <b>3 個頂點</b>，接著點擊紅色起點 <b>V1</b>（或按 <b>Enter</b>）以鎖定多邊形並計算土方體積。",
+              "Click at least <b>3 points</b> around a stockpile or excavation zone on the 3D scan, then click the red start point <b>V1</b> (or press <b>Enter</b>) to lock the polygon and calculate volume."
+            )}
           </div>
         `;
       } else if (placedCount < 3) {
         box.innerHTML = `
           <div style="font-size:11.5px;color:var(--ui-text-primary);padding:10px;background:var(--ui-bg-subtle);border-radius:8px;border:1px solid var(--ui-accent);line-height:1.5;">
-            <b>Drawing Polygon: ${placedCount} / 3+ vertices placed</b><br>
-            Click <b>${3 - placedCount} more point${3 - placedCount === 1 ? "" : "s"}</b> on the 3D scan to form a valid boundary.
+            <b>${tr(`繪製多邊形中：已放置 ${placedCount} / 3+ 個頂點`, `Drawing Polygon: ${placedCount} / 3+ vertices placed`)}</b><br>
+            ${tr(
+              `請在 3D 掃描模型上再點擊 <b>${3 - placedCount} 個頂點</b>以形成有效範圍。`,
+              `Click <b>${3 - placedCount} more point${3 - placedCount === 1 ? "" : "s"}</b> on the 3D scan to form a valid boundary.`
+            )}
           </div>
         `;
       } else {
         box.innerHTML = `
           <div style="font-size:11.5px;color:var(--ui-text-primary);padding:10px;background:var(--ui-accent-soft);border-radius:8px;border:1px solid var(--ui-accent);line-height:1.5;">
-            <b style="color:var(--ui-accent);">Ready to Lock: ${placedCount} vertices placed</b><br>
-            Click the red start point <b>V1</b> on the 3D scan, press <b>Enter</b>, or click <b>Lock (${placedCount} pts) &amp; Compute</b> above to calculate earthwork volume.
+            <b style="color:var(--ui-accent);">${tr(`可鎖定計算：已放置 ${placedCount} 個頂點`, `Ready to Lock: ${placedCount} vertices placed`)}</b><br>
+            ${tr(
+              `點擊 3D 畫面上的紅色起點 <b>V1</b>、按 <b>Enter</b>，或點擊上方 <b>鎖定 (${placedCount} 點) 並計算</b> 以計算土方體積。`,
+              `Click the red start point <b>V1</b> on the 3D scan, press <b>Enter</b>, or click <b>Lock (${placedCount} pts) &amp; Compute</b> above to calculate earthwork volume.`
+            )}
           </div>
         `;
       }
@@ -11112,42 +11249,42 @@
       box.innerHTML = `
         <div class="gs-metric-grid">
           <div class="gs-metric-box">
-            <div class="lbl">Fill Volume (+)</div>
+            <div class="lbl">${tr("填方體積 (+)", "Fill Volume (+)")}</div>
             <div class="val" style="color:var(--ui-accent);">+${escapeHtml(String(res.fill_volume_m3))} m³</div>
           </div>
           <div class="gs-metric-box">
-            <div class="lbl">Cut Volume (-)</div>
+            <div class="lbl">${tr("挖方體積 (-)", "Cut Volume (-)")}</div>
             <div class="val" style="color:#ef4444;">-${escapeHtml(String(res.cut_volume_m3))} m³</div>
           </div>
           <div class="gs-metric-box">
-            <div class="lbl">Net Volume</div>
+            <div class="lbl">${tr("淨土方量", "Net Volume")}</div>
             <div class="val">${Number(res.net_volume_m3) >= 0 ? "+" : ""}${escapeHtml(String(res.net_volume_m3))} m³</div>
           </div>
           <div class="gs-metric-box">
-            <div class="lbl">Estimated Mass</div>
+            <div class="lbl">${tr("預估總重", "Estimated Mass")}</div>
             <div class="val">${escapeHtml(String(res.estimated_tonnage_t))} t</div>
           </div>
         </div>
         <div style="font-size:11px;color:var(--ui-text-secondary);background:var(--ui-bg-subtle);padding:9px 10px;border-radius:8px;border:1px solid var(--ui-border);margin-bottom:10px;line-height:1.5;">
-          <div><b>Footprint Area:</b> ${escapeHtml(String(res.planar_area_m2))} m² (${escapeHtml(String(res.planar_area_ping))} 坪) · <b>Vertices:</b> ${(res.boundary_twd97 || []).length}</div>
-          <div><b>Sloped Area:</b> ${escapeHtml(String(res.surface_area_m2))} m² · <b>Perim:</b> ${escapeHtml(String(res.perimeter_m))} m</div>
-          <div><b>Base Surface:</b> ${
+          <div><b>${tr("水平投影面積：", "Footprint Area:")}</b> ${escapeHtml(String(res.planar_area_m2))} m² (${escapeHtml(String(res.planar_area_ping))} 坪) · <b>${tr("頂點數：", "Vertices:")}</b> ${(res.boundary_twd97 || []).length}</div>
+          <div><b>${tr("3D 表面積：", "Sloped Area:")}</b> ${escapeHtml(String(res.surface_area_m2))} m² · <b>${tr("周長：", "Perim:")}</b> ${escapeHtml(String(res.perimeter_m))} m</div>
+          <div><b>${tr("基準面：", "Base Surface:")}</b> ${
             res.base_mode === "custom_plane"
-              ? `Custom Datum Z₀ (+${escapeHtml(String(res.datum_elevation_m))} m)`
+              ? `${tr("自訂高程基準 Z₀", "Custom Datum Z₀")} (+${escapeHtml(String(res.datum_elevation_m))} m)`
               : res.base_mode === "epoch_diff"
-              ? "Multi-Date Epoch Diff"
-              : `Perimeter Fit (Mean +${escapeHtml(String(res.perim_mean_h_m ?? res.datum_elevation_m))} m)`
+              ? tr("跨期掃描比對", "Multi-Date Epoch Diff")
+              : `${tr("周界擬合面", "Perimeter Fit")} (Mean +${escapeHtml(String(res.perim_mean_h_m ?? res.datum_elevation_m))} m)`
           }</div>
-          <div><b>Material:</b> ${escapeHtml(String(res.material_name || ""))} (${escapeHtml(String(res.density_t_m3))} t/m³ · Bank: ${escapeHtml(String(res.bank_tonnage_t ?? res.estimated_tonnage_t))} t)</div>
+          <div><b>${tr("物料：", "Material:")}</b> ${escapeHtml(String(res.material_name || ""))} (${escapeHtml(String(res.density_t_m3))} t/m³ · ${tr("實方重：", "Bank:")} ${escapeHtml(String(res.bank_tonnage_t ?? res.estimated_tonnage_t))} t)</div>
         </div>
         <div style="display:flex;gap:6px;">
-          <a class="btn-xs primary" style="flex:1;justify-content:center;" href="${safeHtmlUrl}" target="_blank" rel="noopener noreferrer" title="Open Printable Stockpile Report (PDF/HTML)">
+          <a class="btn-xs primary" style="flex:1;justify-content:center;" href="${safeHtmlUrl}" target="_blank" rel="noopener noreferrer" title="${tr("開啟可列印土方報告 (PDF/HTML)", "Open Printable Stockpile Report (PDF/HTML)")}">
             <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8">
               <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>
             </svg>
-            <span>Report</span>
+            <span>${tr("土方報告", "Report")}</span>
           </a>
-          <a class="btn-xs" style="flex:1;justify-content:center;" href="${safeCsvUrl}" download="stockpile_volume_report.csv" title="Export Excel (.CSV)">
+          <a class="btn-xs" style="flex:1;justify-content:center;" href="${safeCsvUrl}" download="stockpile_volume_report.csv" title="${tr("匯出 Excel (.CSV)", "Export Excel (.CSV)")}">
             <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8">
               <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
               <polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
@@ -11170,7 +11307,7 @@
   }
 
   // 3B. Survey Report: Mask Boundary, 3D Elevation Contours, Civil3D.dwg & A3 Ready-to-Print PDF Exporter
-  async function openContoursInspector() {
+  async function openContoursInspector(forceRebuildPanel = false) {
     setActiveStudioTool("contours");
     if (!STATE.measurePoints || STATE.measurePoints.length === 0) {
       STATE.sidePanelMinimized = false;
@@ -11185,28 +11322,31 @@
         : [];
 
     const panel = document.getElementById("studioSidePanel");
-    const alreadyOpenForContours = panel?.classList.contains("active") && document.getElementById("cntDrawingTitle");
+    const alreadyOpenForContours = !forceRebuildPanel && panel?.classList.contains("active") && document.getElementById("cntDrawingTitle");
 
     if (!alreadyOpenForContours) {
       const stagedContoursNotice = hasStagedMeshEditsForActiveScan()
         ? `<div style="font-size:11px;color:#fbbf24;background:rgba(245,158,11,0.12);border:1px solid rgba(245,158,11,0.35);border-radius:7px;padding:7px 9px;margin-bottom:9px;line-height:1.4;">
-             ⚠️ <b>Staged Mesh Edits Active:</b> Server-side <code>.DXF</code> &amp; A3 PDF contours read committed scan geometry on disk. Run <b>Generate Edited Scan</b> first if you want staged deletions baked into the survey report.
+             ⚠️ ${tr("<b>待儲存網格修改進行中：</b>伺服器端 <code>.DXF</code> 與 A3 PDF 等高線會讀取磁碟上已儲存的模型。若需將暫存刪除套用至測量報告，請先執行<b>儲存變更</b>。", "<b>Staged Mesh Edits Active:</b> Server-side <code>.DXF</code> &amp; A3 PDF contours read committed scan geometry on disk. Run <b>Save Edits</b> first if you want staged deletions baked into the survey report.")}
            </div>`
         : "";
       showSidePanel(
-        `<span>Survey Report (Civil3D.dwg &amp; A3 PDF)</span>`,
+        `<span>${tr("測量圖資報表 · Civil3D.dwg & A3 PDF", "Survey Report · Civil3D.dwg & A3 PDF")}</span>`,
         `
         ${stagedContoursNotice}
         <div style="font-size:11px;color:var(--ui-text-secondary);background:var(--ui-bg-pill);border:1px solid var(--ui-border-strong);border-radius:7px;padding:7px 9px;margin-bottom:9px;line-height:1.45;">
-          Uses your active <b>Mask Boundary</b> &amp; <b>Contour Lines</b> to generate <code>Civil3D.dwg</code> (real <b>${escapeHtml(getScanCrsDisplayLabel(activeScan))}</b>) and a zoom-to-fit <b>A3 Ready-to-Print PDF</b> with filled engineering frame. Click 3+ points on the scan to customize the mask boundary.
+          ${tr(
+            `使用目前之<b>邊界遮罩</b>與<b>等高線</b>自動產製 <code>Civil3D.dwg</code>（真實 <b>${escapeHtml(getScanCrsDisplayLabel(activeScan))}</b> 座標）與 <b>A3 標準工程圖框報告 PDF</b>。可在掃描上點擊 3+ 點自訂遮罩範圍。`,
+            `Uses your active <b>Mask Boundary</b> &amp; <b>Contour Lines</b> to generate <code>Civil3D.dwg</code> (real <b>${escapeHtml(getScanCrsDisplayLabel(activeScan))}</b>) and a zoom-to-fit <b>A3 Ready-to-Print PDF</b> with filled engineering frame. Click 3+ points on the scan to customize the mask boundary.`
+          )}
         </div>
         <div class="gs-form-group">
-          <label>Engineering Frame Title (圖名 / 掃描專案名稱)</label>
+          <label>${tr("圖名 / 掃描專案名稱", "Engineering Frame Title")}</label>
           <input type="text" class="gs-input" id="cntDrawingTitle" value="${escapeHtml(defaultTitle)}" />
         </div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;" class="gs-form-group">
           <div>
-            <label>Minor Interval (次等高線 m)</label>
+            <label>${tr("次等高線間距 (m)", "Minor Interval (m)")}</label>
             <select class="gs-select" id="cntMinorStep">
               <option value="0.25">0.25 m</option>
               <option value="0.5" selected>0.50 m</option>
@@ -11215,7 +11355,7 @@
             </select>
           </div>
           <div>
-            <label>Major Interval (計曲線 m)</label>
+            <label>${tr("計曲線間距 (m)", "Major Interval (m)")}</label>
             <select class="gs-select" id="cntMajorStep">
               <option value="1.0">1.00 m</option>
               <option value="2.5" selected>2.50 m</option>
@@ -11225,28 +11365,28 @@
         </div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;" class="gs-form-group">
           <div>
-            <label>Surveyor (測量工程師)</label>
+            <label>${tr("測量工程師", "Surveyor")}</label>
             <input type="text" class="gs-input" id="cntEngineerName" value="${escapeHtml(STATE.currentUser?.name || "雲在天")}" />
           </div>
           <div>
-            <label>Mask Boundary (邊界遮罩)</label>
+            <label>${tr("邊界遮罩", "Mask Boundary")}</label>
             <div style="display:flex;gap:4px;">
-              <button type="button" class="btn-xs" style="flex:1;justify-content:center;" id="btnDrawCustomMask" title="Click 3+ points on 3D scan to define custom mask boundary">Draw</button>
-              <button type="button" class="btn-xs" style="flex:1;justify-content:center;" id="btnResetCustomMask" title="Reset to default scan footprint boundary">Reset</button>
+              <button type="button" class="btn-xs" style="flex:1;justify-content:center;" id="btnDrawCustomMask" title="${tr("在 3D 掃描上點擊 3+ 點定義自訂遮罩邊界", "Click 3+ points on 3D scan to define custom mask boundary")}">${tr("繪製", "Draw")}</button>
+              <button type="button" class="btn-xs" style="flex:1;justify-content:center;" id="btnResetCustomMask" title="${tr("重設為預設掃描邊界", "Reset to default scan footprint boundary")}">${tr("重設", "Reset")}</button>
             </div>
           </div>
         </div>
         <div class="gs-form-group" style="margin-bottom:8px;">
           <label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer;font-size:11px;font-weight:600;color:var(--ui-text-primary);">
             <input type="checkbox" id="chkBareEarthContours" checked />
-            <span>濾除樹木與建物之純地形等高線 (Bare-Earth DTM Contours)</span>
+            <span>${tr("濾除樹木與建物之純地形等高線", "Bare-Earth DTM Contours")}</span>
           </label>
         </div>
-        <button type="button" class="gs-top-btn accent" style="width:100%;justify-content:center;margin-bottom:8px;" id="btnGenerateContours" title="Generate .DXF (AutoCAD / Civil 3D) &amp; A3 Ready-to-Print PDF Survey Report">
+        <button type="button" class="gs-top-btn accent" style="width:100%;justify-content:center;margin-bottom:8px;" id="btnGenerateContours" title="${tr("產製 AutoCAD / Civil 3D (.DXF) 與 A3 標準圖框工程報告 PDF", "Generate .DXF (AutoCAD / Civil 3D) & A3 Ready-to-Print PDF Survey Report")}">
           <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8">
             <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>
           </svg>
-          <span>Create Survey Report (.DXF + A3 PDF)</span>
+          <span>${tr("產製測量圖資報表 (.DXF + A3 PDF)", "Create Survey Report (.DXF + A3 PDF)")}</span>
         </button>
         <div id="cntResultContainer"></div>
         `
@@ -11260,17 +11400,17 @@
           const pEl = document.getElementById("studioSidePanel");
           pEl?.classList.add("mobile-minimized", "gs-panel-minimized");
           const lblCol = document.getElementById("lblCollapseSidePanel");
-          if (lblCol) lblCol.textContent = "▴ 展開";
+          if (lblCol) lblCol.textContent = tr("▴ 展開", "▴ Expand");
         }
         syncStudioMobileToolHud();
-        showToast("Click 3+ points on the 3D scan to draw a custom Mask Boundary");
+        showToast(tr("請在 3D 掃描上點擊 3+ 點繪製自訂遮罩邊界", "Click 3+ points on the 3D scan to draw a custom Mask Boundary"));
       });
 
       document.getElementById("btnResetCustomMask")?.addEventListener("click", () => {
         STATE.maskBoundaryPoints = [];
         STATE.measurePoints = [];
         runContours();
-        showToast("Reset to default scan survey mask boundary");
+        showToast(tr("已重設為預設掃描邊界遮罩", "Reset to default scan survey mask boundary"));
       });
     }
 
@@ -11500,42 +11640,42 @@
       box.innerHTML = `
         <div style="margin-bottom:8px;">
           <div style="display:flex;justify-content:space-between;align-items:center;font-size:10.5px;font-weight:700;color:var(--ui-text-secondary);margin-bottom:4px;">
-            <span>A3 ENGINEERING SHEET PREVIEW (420×297mm)</span>
-            <span style="color:var(--ui-accent);">SCALE 1:${res.scale_denom || 250}</span>
+            <span>${tr("A3 工程圖紙預覽 · 420×297mm", "A3 ENGINEERING SHEET PREVIEW · 420×297mm")}</span>
+            <span style="color:var(--ui-accent);">${tr("比例尺", "SCALE")} 1:${res.scale_denom || 250}</span>
           </div>
           <canvas id="a3SheetPreviewCanvas" width="336" height="210" style="width:100%;background:#ffffff;border:1px solid var(--ui-border-strong);border-radius:7px;box-shadow:0 1px 3px rgba(15,23,42,0.06);"></canvas>
         </div>
         <div class="gs-metric-grid">
           <div class="gs-metric-box">
-            <div class="lbl">Clipped Contours</div>
-            <div class="val" style="color:var(--ui-accent);">${res.contour_count} lines</div>
+            <div class="lbl">${tr("裁切等高線", "Clipped Contours")}</div>
+            <div class="val" style="color:var(--ui-accent);">${res.contour_count} ${tr("條", "lines")}</div>
           </div>
           <div class="gs-metric-box">
-            <div class="lbl">A3 Fit Scale</div>
+            <div class="lbl">${tr("A3 圖紙比例尺", "A3 Fit Scale")}</div>
             <div class="val">1:${res.scale_denom || 250}</div>
           </div>
           <div class="gs-metric-box">
-            <div class="lbl">Mask Area</div>
+            <div class="lbl">${tr("遮罩面積", "Mask Area")}</div>
             <div class="val">${res.planar_area_m2 || 0} m²</div>
           </div>
           <div class="gs-metric-box">
-            <div class="lbl">TWVD2001 Elev</div>
+            <div class="lbl">${tr("TWVD2001 高程", "TWVD2001 Elev")}</div>
             <div class="val">+${res.elevation_range_m[0]}~+${res.elevation_range_m[1]}m</div>
           </div>
         </div>
         <div style="display:flex;gap:6px;margin-top:8px;">
-          <a class="btn-xs primary" style="flex:1.4;justify-content:center;" href="${escapeHtml(appendAuthToDownloadUrl(res.dxf_url || res.civil3d_dxf_url || res.civil3d_dwg_url || res.dwg_url))}" download="Civil3D.dxf" title="Download .DXF (AutoCAD / Civil 3D — Real TWD97 XYZ + A3 Engineering Frame)">
+          <a class="btn-xs primary" style="flex:1.4;justify-content:center;" href="${escapeHtml(appendAuthToDownloadUrl(res.dxf_url || res.civil3d_dxf_url || res.civil3d_dwg_url || res.dwg_url))}" download="Civil3D.dxf" title="${tr("下載 .DXF · AutoCAD / Civil 3D 實測 TWD97 XYZ 與 A3 工程圖框", "Download .DXF · AutoCAD / Civil 3D Real TWD97 XYZ + A3 Engineering Frame")}">
             <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8">
               <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
               <polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
             </svg>
-            <span>.DXF (AutoCAD / Civil 3D)</span>
+            <span>${tr(".DXF · AutoCAD / Civil 3D", ".DXF · AutoCAD / Civil 3D")}</span>
           </a>
-          <a class="btn-xs primary" style="flex:1;justify-content:center;" href="${escapeHtml(appendAuthToDownloadUrl(res.pdf_url))}" target="_blank" title="Open Ready-to-Print A3 Survey Report (.PDF)">
+          <a class="btn-xs primary" style="flex:1;justify-content:center;" href="${escapeHtml(appendAuthToDownloadUrl(res.pdf_url))}" target="_blank" title="${tr("開啟可列印 A3 測量報告 PDF", "Open Ready-to-Print A3 Survey Report PDF")}">
             <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8">
               <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>
             </svg>
-            <span>A3 PDF</span>
+            <span>${tr("A3 測量報告 PDF", "A3 PDF")}</span>
           </a>
         </div>
       `;
@@ -11575,7 +11715,12 @@
       });
     }
 
-    showToast(`Survey Report ready: .DXF (AutoCAD / Civil 3D) + A3 PDF (${res.contour_count} clipped contours, 1:${res.scale_denom || 250})`);
+    showToast(
+      tr(
+        `測量報告已就緒：.DXF · AutoCAD / Civil 3D + A3 PDF · ${res.contour_count} 條裁切等高線 · 1:${res.scale_denom || 250}`,
+        `Survey Report ready: .DXF · AutoCAD / Civil 3D + A3 PDF · ${res.contour_count} clipped contours · 1:${res.scale_denom || 250}`
+      )
+    );
   }
 
   // 3B-2. AI + 3D Geometric Surface & Object Categorization (Roads, Trees & 1.3m DBH, Water Voids, Walls, Stockpiles)
@@ -11628,7 +11773,7 @@
       topBtn.style.color = vis ? "#34d399" : "";
     }
     if (topLbl) {
-      topLbl.textContent = vis ? "👁️ AI 分類: 顯示" : "👁️‍🗨️ AI 分類: 隱藏";
+      topLbl.textContent = vis ? tr("👁️ AI 分類: 顯示", "👁️ AI Class: On") : tr("👁️‍🗨️ AI 分類: 隱藏", "👁️‍🗨️ AI Class: Off");
     }
 
     const topLblBtn = document.getElementById("btnStudioToggleCategorizeLabels");
@@ -11641,7 +11786,7 @@
       topLblBtn.style.color = lblsVis ? "#38bdf8" : "#94a3b8";
     }
     if (topLblTxt) {
-      topLblTxt.textContent = lblsVis ? "🏷️ 標籤: 顯示" : "🏷️ 標籤: 隱藏";
+      topLblTxt.textContent = lblsVis ? tr("🏷️ 標籤: 顯示", "🏷️ Labels: On") : tr("🏷️ 標籤: 隱藏", "🏷️ Labels: Off");
     }
 
     const chkLbls = document.getElementById("chkCategorizeLabelsVis");
@@ -11654,8 +11799,8 @@
       dockDot.style.display = hasSaved ? "block" : "none";
       dockDot.style.background = vis ? "#10b981" : "#38bdf8";
       dockDot.title = vis
-        ? "AI Classification Saved on Server (3D Overlays Visible)"
-        : "AI Classification Saved on Server (Hidden by Default)";
+        ? tr("AI 分類已儲存於伺服器 · 3D 圖層顯示中", "AI Classification Saved on Server · 3D Overlays Visible")
+        : tr("AI 分類已儲存於伺服器 · 預設隱藏", "AI Classification Saved on Server · Hidden by Default");
     }
 
     const masterChk = document.getElementById("chkCategorizeMasterVis");
@@ -11664,12 +11809,14 @@
     }
     const masterBtn = document.getElementById("btnToggleCategorizeOverlayVis");
     if (masterBtn) {
-      masterBtn.textContent = vis ? "👁️ 顯示中 (點擊隱藏 3D 圖層)" : "👁️‍🗨️ 預設隱藏 (點擊顯示 3D 圖層)";
+      masterBtn.textContent = vis
+        ? tr("👁️ 顯示中 · 點擊隱藏 3D 圖層", "👁️ Visible · Click to Hide 3D Layer")
+        : tr("👁️‍🗨️ 預設隱藏 · 點擊顯示 3D 圖層", "👁️‍🗨️ Hidden by Default · Click to Show 3D Layer");
       masterBtn.classList.toggle("primary", vis);
     }
     const masterBadge = document.getElementById("lblCategorizeVisBadge");
     if (masterBadge) {
-      masterBadge.textContent = vis ? "顯示中 Visible" : "預設隱藏 Hidden by Default";
+      masterBadge.textContent = vis ? tr("顯示中", "Visible") : tr("預設隱藏", "Hidden by Default");
       masterBadge.style.background = vis ? "rgba(16,185,129,0.20)" : "rgba(148,163,184,0.18)";
       masterBadge.style.color = vis ? "#34d399" : "#94a3b8";
     }
@@ -11682,8 +11829,8 @@
     if (!opts.silent) {
       showToast(
         STATE.categorizeLabelsVisible
-          ? "🏷️ AI 分類 2D 浮動標籤：顯示中 (2D Classification Labels Visible)"
-          : "🏷️ AI 分類 2D 浮動標籤：已隱藏 (2D Classification Labels Hidden — 3D 圖層仍保留)"
+          ? tr("🏷️ AI 分類 2D 浮動標籤：顯示中", "🏷️ 2D Classification Labels: Visible")
+          : tr("🏷️ AI 分類 2D 浮動標籤：已隱藏", "🏷️ 2D Classification Labels: Hidden")
       );
     }
   }
@@ -11691,7 +11838,7 @@
   async function submitCategorizeManualEdit(action, category, itemId = null, itemData = null) {
     const sid = STATE.activeScanId || STATE.activeScan?.scan_id || STATE.lastCategorizeResult?.scan_id || "";
     if (!sid) {
-      showToast("請先選擇掃描檔 (No active scan selected)", "warn");
+      showToast(tr("請先選擇掃描檔", "No active scan selected"), "warn");
       return null;
     }
     try {
@@ -11717,16 +11864,26 @@
           renderCategorizePanelContent(updated);
         }
         if (action === "manual_remove") {
-          showToast(`🗑️ 已刪除分類項目 ${itemId || ""} (已儲存於伺服器 · Saved on Server)`);
+          showToast(
+            tr(
+              `🗑️ 已刪除分類項目 ${itemId || ""}（已儲存於伺服器）`,
+              `🗑️ Removed item ${itemId || ""} (Saved on Server)`
+            )
+          );
         } else if (action === "manual_add") {
-          showToast(`➕ 已新增分類項目 (${category}) (已儲存於伺服器 · Saved on Server)`);
+          showToast(
+            tr(
+              `➕ 已新增分類項目 (${category})（已儲存於伺服器）`,
+              `➕ Added item (${category}) (Saved on Server)`
+            )
+          );
         } else if (action === "manual_reset") {
-          showToast("↺ 已還原所有手動新增/刪除變更 (Reset Manual Classification Edits)");
+          showToast(tr("↺ 已還原所有手動新增/刪除變更", "↺ Reset all manual classification edits"));
         }
         return updated;
       }
     } catch (err) {
-      showToast(`手動編輯分類失敗: ${err.message || err}`, "error");
+      showToast(tr(`手動編輯分類失敗: ${err.message || err}`, `Manual classification edit failed: ${err.message || err}`), "error");
     }
     return null;
   }
@@ -11820,8 +11977,8 @@
     if (!opts.silent) {
       showToast(
         nextVis
-          ? "AI 地物分類 3D 圖層：顯示中 (3D Classification Overlays Visible)"
-          : "AI 地物分類 3D 圖層：已隱藏 (預設隱藏 · Hidden by Default)"
+          ? tr("AI 地物分類 3D 圖層：顯示中", "3D Classification Overlays: Visible")
+          : tr("AI 地物分類 3D 圖層：已隱藏（預設隱藏）", "3D Classification Overlays: Hidden (Default)")
       );
     }
   }
@@ -12062,7 +12219,7 @@
           const isVoid = w.detection_mode === "unmodelled_void_shoreline";
           const added = tryAddCategorizeBadge(
             cPt,
-            `<span style="color:#22d3ee;font-weight:800;">💧 ${escapeHtml(w.id)}</span> ${isVoid ? "水域空洞" : "水體"} · <b>TWVD2001 +${waterLevelH.toFixed(2)}m</b> (${Number(w.planar_area_m2 || 0).toFixed(0)} m²)`,
+            `<span style="color:#22d3ee;font-weight:800;">💧 ${escapeHtml(w.id)}</span> ${isVoid ? tr("水域空洞", "Water Void") : tr("水體", "Water")} · <b>TWVD2001 +${waterLevelH.toFixed(2)}m</b> (${Number(w.planar_area_m2 || 0).toFixed(0)} m²)`,
             "#06b6d4",
             { offsetY: -14, priority: 90 - idx, featureId: w.id, catKey: "water" }
           );
@@ -12319,11 +12476,11 @@
           id: r.id,
           catType: "roads",
           badge: `<span style="color:#f59e0b;font-weight:800;">${escapeHtml(r.id)}</span>`,
-          type: r.label_zh ? String(r.label_zh).split(" (")[0] : "道路 Road",
+          type: tr("道路", "Road"),
           metric1: `${Number(r.planar_area_m2 || 0).toFixed(1)} m²`,
           metric2: `W ${Number(r.mean_width_m || 0).toFixed(1)}m · ${Number(r.mean_slope_pct || 0).toFixed(1)}%`,
           fly: toFlyAttr(r.center_twd97, r.center_local),
-          label: `${r.id} (${r.planar_area_m2} m²)`,
+          label: `${r.id} · ${r.planar_area_m2} m²`,
         });
       });
     }
@@ -12333,11 +12490,11 @@
           id: t.id,
           catType: "trees",
           badge: `<span style="color:#10b981;font-weight:800;">${escapeHtml(t.id)}</span>`,
-          type: "喬木 Tree",
+          type: tr("喬木", "Tree"),
           metric1: `DBH ${Number(t.dbh_cm || 0).toFixed(1)} cm`,
           metric2: `H ${Number(t.height_m || 0).toFixed(1)}m · Ø${Number(t.crown_diameter_m || 0).toFixed(1)}m`,
           fly: toFlyAttr(t.trunk_twd97, t.trunk_local),
-          label: `${t.id} (DBH ${t.dbh_cm}cm)`,
+          label: `${t.id} · DBH ${t.dbh_cm}cm`,
         });
       });
     }
@@ -12347,11 +12504,11 @@
           id: w.id,
           catType: "water_bodies",
           badge: `<span style="color:#06b6d4;font-weight:800;">${escapeHtml(w.id)}</span>`,
-          type: w.detection_mode === "unmodelled_void_shoreline" ? "水域空洞 Void" : "水體 Water",
+          type: w.detection_mode === "unmodelled_void_shoreline" ? tr("水域空洞", "Water Void") : tr("水體", "Water"),
           metric1: `${Number(w.planar_area_m2 || 0).toFixed(1)} m²`,
           metric2: `TWVD +${Number(w.water_level_twvd2001_m || 0).toFixed(2)}m`,
           fly: toFlyAttr(w.center_twd97, w.center_local),
-          label: `${w.id} (+${w.water_level_twvd2001_m}m)`,
+          label: `${w.id} · +${w.water_level_twvd2001_m}m`,
         });
       });
     }
@@ -12361,11 +12518,11 @@
           id: wl.id,
           catType: "walls",
           badge: `<span style="color:#f43f5e;font-weight:800;">${escapeHtml(wl.id)}</span>`,
-          type: "擋土牆 Wall",
+          type: tr("擋土牆", "Wall"),
           metric1: `3D ${Number(wl.vertical_area_m2 || 0).toFixed(1)} m²`,
           metric2: `L ${Number(wl.length_m || 0).toFixed(1)}m · H ${Number(wl.mean_height_m || wl.height_m || 0).toFixed(1)}m`,
           fly: toFlyAttr(wl.center_twd97, wl.center_local),
-          label: `${wl.id} (${wl.vertical_area_m2} m²)`,
+          label: `${wl.id} · ${wl.vertical_area_m2} m²`,
         });
       });
     }
@@ -12375,39 +12532,41 @@
           id: sp.id,
           catType: "stockpiles",
           badge: `<span style="color:#d97706;font-weight:800;">${escapeHtml(sp.id)}</span>`,
-          type: "土石堆置 Mound",
+          type: tr("土石堆置", "Stockpile"),
           metric1: `${Number(sp.planar_area_m2 || 0).toFixed(1)} m²`,
           metric2: `~${Number(sp.estimated_volume_m3 || 0).toFixed(1)} m³`,
           fly: toFlyAttr(sp.center_twd97, sp.center_local),
-          label: `${sp.id} (${sp.planar_area_m2} m² · ~${sp.estimated_volume_m3} m³)`,
+          label: `${sp.id} · ${sp.planar_area_m2} m² · ~${sp.estimated_volume_m3} m³`,
         });
       });
     }
 
     const breakdownHtml = (res.categories_breakdown || [])
       .slice(0, 10)
-      .map(
-        (c) => `
+      .map((c) => {
+        const cleanZh = String(c.name_zh || c.name_en || "").replace(/\s*[\(（][^\)）]*[\)）]\s*/g, "").trim();
+        const cleanEn = String(c.name_en || c.name_zh || "").replace(/\s*[\(（][^\)）]*[\)）]\s*/g, "").trim();
+        return `
         <div style="display:flex;align-items:center;justify-content:space-between;font-size:10.5px;padding:2px 0;">
           <span style="display:inline-flex;align-items:center;gap:5px;color:var(--ui-text-primary);font-weight:600;">
             <span style="width:8px;height:8px;border-radius:2px;background:${escapeHtml(c.color || "#38bdf8")};display:inline-block;"></span>
-            ${escapeHtml(c.name_zh || c.name_en)}
+            ${escapeHtml(tr(cleanZh, cleanEn))}
           </span>
-          <span style="font-family:monospace;color:var(--ui-text-secondary);">${Number(c.planar_area_m2 || c.surface_area_3d_m2 || 0).toLocaleString()} m² (${Number(c.site_share_pct || 0).toFixed(1)}%)</span>
-        </div>`
-      )
+          <span style="font-family:monospace;color:var(--ui-text-secondary);">${Number(c.planar_area_m2 || c.surface_area_3d_m2 || 0).toLocaleString()} m² · ${Number(c.site_share_pct || 0).toFixed(1)}%</span>
+        </div>`;
+      })
       .join("");
 
     const exportBarHtml = `
       <div style="display:flex;gap:4px;flex-wrap:nowrap;margin-bottom:8px;">
-        <a class="btn-xs primary" style="flex:1.15;justify-content:center;font-weight:700;white-space:nowrap;font-size:10.5px;padding:5px 6px;" href="${escapeHtml(appendAuthToDownloadUrl(res.dxf_url))}" download="Civil3D_Categorized.dxf" title="Download AutoCAD Civil 3D Categorized .DXF (C-ROAD-BNDY, C-VEG-TREE, C-HYDR-WATR, C-STRC-WALL)">
-          <span>📐 .DXF (Civil 3D)</span>
+        <a class="btn-xs primary" style="flex:1.15;justify-content:center;font-weight:700;white-space:nowrap;font-size:10.5px;padding:5px 6px;" href="${escapeHtml(appendAuthToDownloadUrl(res.dxf_url))}" download="Civil3D_Categorized.dxf" title="${tr("下載 AutoCAD Civil 3D 分類圖層 .DXF", "Download AutoCAD Civil 3D Categorized .DXF")}">
+          <span>${tr("📐 .DXF 圖檔", "📐 .DXF CAD")}</span>
         </a>
-        <a class="btn-xs primary" style="flex:1.15;justify-content:center;font-weight:700;white-space:nowrap;font-size:10.5px;padding:5px 6px;" href="${escapeHtml(appendAuthToDownloadUrl(res.report_html_url))}" target="_blank" title="Open Bilingual Printable Categorization Report (.HTML / Save PDF)">
-          <span>📄 Report (.HTML/PDF)</span>
+        <a class="btn-xs primary" style="flex:1.15;justify-content:center;font-weight:700;white-space:nowrap;font-size:10.5px;padding:5px 6px;" href="${escapeHtml(appendAuthToDownloadUrl(res.report_html_url))}" target="_blank" title="${tr("開啟可列印分類明細報表 · HTML / 另存 PDF", "Open Printable Categorization Report · HTML / Save PDF")}">
+          <span>${tr("📄 報表 · HTML/PDF", "📄 Report · HTML/PDF")}</span>
         </a>
-        <a class="btn-xs" style="flex:0.9;justify-content:center;font-weight:700;white-space:nowrap;font-size:10.5px;padding:5px 6px;" href="${escapeHtml(appendAuthToDownloadUrl(res.report_csv_url))}" download="Categorization_Schedule.csv" title="Download UTF-8 Excel Schedule (.CSV)">
-          <span>📊 Excel (.CSV)</span>
+        <a class="btn-xs" style="flex:0.9;justify-content:center;font-weight:700;white-space:nowrap;font-size:10.5px;padding:5px 6px;" href="${escapeHtml(appendAuthToDownloadUrl(res.report_csv_url))}" download="Categorization_Schedule.csv" title="${tr("下載 UTF-8 Excel 數量明細表 .CSV", "Download UTF-8 Excel Schedule .CSV")}">
+          <span>${tr("📊 明細表 · .CSV", "📊 Schedule · .CSV")}</span>
         </a>
       </div>
     `;
@@ -12415,71 +12574,93 @@
     const isVis = Boolean(STATE.categorizeOverlayVisible);
     const lblsVis = STATE.categorizeLabelsVisible !== false;
     const editMode = STATE.categorizeEditMode || null;
-    const savedAtStr = String(res.saved_at || res.generated_at || "Persisted on Server");
+    const rawSavedAt = String(res.saved_at || res.generated_at || "");
+    const savedAtStr = rawSavedAt ? rawSavedAt : tr("已儲存於伺服器", "Persisted on Server");
 
-    let editStatusMsg = "點選上方按鈕後，直接點擊 3D 場景即可新增或刪除分類項目 (Click mode button, then click 3D scene)";
+    let editStatusMsg = tr(
+      "點選上方按鈕後，直接點擊 3D 場景即可新增或刪除分類項目",
+      "Click a mode button above, then click directly on the 3D scene to add or remove items"
+    );
     if (editMode === "add_tree") {
-      editStatusMsg = "🟢 新增喬木模式：請點擊 3D 場景中的樹木位置 (Click 3D model to add a Tree)";
+      editStatusMsg = tr(
+        "🟢 新增喬木模式：請點擊 3D 場景中的樹木位置",
+        "🟢 Add Tree Mode: Click tree location on the 3D model"
+      );
     } else if (editMode === "add_wall") {
       const nPts = (STATE.categorizeEditPoints || []).length;
-      editStatusMsg = `🔴 新增牆面模式：請依序點擊牆面起點與終點 (${nPts}/2 點 · Click 2 points on 3D wall)`;
+      editStatusMsg = tr(
+        `🔴 新增牆面模式：請依序點擊牆面起點與終點 · ${nPts}/2 點`,
+        `🔴 Add Wall Mode: Click start and end points on 3D wall · ${nPts}/2 pts`
+      );
     } else if (editMode === "add_road") {
       const nPts = (STATE.categorizeEditPoints || []).length;
-      editStatusMsg = `🟠 新增道路模式：點擊多邊形頂點 (${nPts} 點)，點擊起點 V1 或按 Enter 完成 (Click V1 or Enter to finish)`;
+      editStatusMsg = tr(
+        `🟠 新增道路模式：點擊多邊形頂點 · ${nPts} 點 · 點擊起點 V1 或按 Enter 完成`,
+        `🟠 Add Road Mode: Click polygon vertices · ${nPts} pts · click V1 or press Enter to finish`
+      );
     } else if (editMode === "remove_click") {
-      editStatusMsg = "🗑️ 點選刪除模式：點擊 3D 場景中的樹木/牆面/道路，或點擊下方表格 🗑️ 即可刪除";
+      editStatusMsg = tr(
+        "🗑️ 點選刪除模式：點擊 3D 場景中的樹木/牆面/道路，或點擊下方表格 🗑️ 即可刪除",
+        "🗑️ Remove Mode: Click any tree/wall/road in 3D or click 🗑️ in the table below"
+      );
     }
 
-    box.innerHTML = `
+    const rawAiModel = String(res.ai_model || "Gemini 3.6 Flash Multimodal + 3D Geometry");
+    const localizedAiModel = tr(
+      rawAiModel.replace("Multimodal + 3D Geometry", "多模態 + 3D 幾何分析"),
+      rawAiModel
+    );
+
+    const rawCatHtml = `
       ${exportBarHtml}
 
       <div style="background:rgba(14,165,233,0.10);border:1px solid rgba(56,189,248,0.35);border-radius:8px;padding:7px 9px;margin-bottom:8px;">
         <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;flex-wrap:wrap;margin-bottom:5px;">
-          <span style="font-size:10.5px;font-weight:800;color:#38bdf8;">💾 已儲存於伺服器 (Saved on Server)</span>
+          <span style="font-size:10.5px;font-weight:800;color:#38bdf8;">${tr("💾 已儲存於伺服器", "💾 Saved on Server")}</span>
           <span id="lblCategorizeVisBadge" style="font-size:9.5px;padding:1px 7px;border-radius:99px;background:${isVis ? "rgba(16,185,129,0.20)" : "rgba(148,163,184,0.18)"};color:${isVis ? "#34d399" : "#94a3b8"};font-weight:700;">
-            ${isVis ? "顯示中 Visible" : "預設隱藏 Hidden by Default"}
+            ${isVis ? tr("顯示中", "Visible") : tr("預設隱藏", "Hidden by Default")}
           </span>
         </div>
         <div style="font-size:9.5px;color:var(--ui-text-muted);margin-bottom:6px;">
-          Server Cache: <code>_categorization_cache_v3.json</code> · ${escapeHtml(savedAtStr)}
+          ${tr("伺服器快取：", "Server Cache: ")}<code>_categorization_cache_v3.json</code> · ${escapeHtml(savedAtStr)}
         </div>
         <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:5px;">
           <label style="display:inline-flex;align-items:center;gap:5px;cursor:pointer;font-size:11px;font-weight:700;color:var(--ui-text-primary);">
             <input type="checkbox" id="chkCategorizeMasterVis" ${isVis ? "checked" : ""} />
-            顯示 3D 地物分類圖層 (Show 3D Overlays)
+            ${tr("顯示 3D 地物分類圖層", "Show 3D Overlays")}
           </label>
           <button type="button" class="btn-xs ${isVis ? "primary" : ""}" id="btnToggleCategorizeOverlayVis" style="padding:3px 8px;font-weight:700;">
-            ${isVis ? "👁️ 顯示中 (點擊隱藏 3D 圖層)" : "👁️‍🗨️ 預設隱藏 (點擊顯示 3D 圖層)"}
+            ${isVis ? tr("👁️ 顯示中 · 點擊隱藏 3D 圖層", "👁️ Visible · Click to Hide 3D Overlays") : tr("👁️‍🗨️ 預設隱藏 · 點擊顯示 3D 圖層", "👁️‍🗨️ Hidden by Default · Click to Show 3D Overlays")}
           </button>
         </div>
         <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding-top:4px;border-top:1px dashed rgba(56,189,248,0.25);">
           <label style="display:inline-flex;align-items:center;gap:5px;cursor:pointer;font-size:10.5px;font-weight:700;color:#38bdf8;">
             <input type="checkbox" id="chkCategorizeLabelsVis" ${lblsVis ? "checked" : ""} />
-            🏷️ 顯示 2D 浮動標籤 (Show 2D Floating Labels)
+            ${tr("🏷️ 顯示 2D 浮動標籤", "🏷️ Show 2D Floating Labels")}
           </label>
-          <span style="font-size:9.5px;color:var(--ui-text-muted);">${lblsVis ? "標籤開啟" : "僅保留 3D 幾何"}</span>
+          <span style="font-size:9.5px;color:var(--ui-text-muted);">${lblsVis ? tr("標籤開啟", "Labels On") : tr("僅保留 3D 幾何", "3D Geometry Only")}</span>
         </div>
       </div>
 
       <div style="background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.35);border-radius:8px;padding:7px 9px;margin-bottom:8px;">
         <div style="display:flex;align-items:center;justify-content:space-between;gap:4px;margin-bottom:5px;">
-          <span style="font-size:10.5px;font-weight:800;color:#fbbf24;">🛠️ 手動新增 / 刪除分類 (Manual Edit · Saved on Server)</span>
-          <button type="button" class="btn-xs" id="btnResetCategorizeManualEdits" style="padding:1px 6px;font-size:9.5px;" title="還原所有手動新增或刪除的項目 (Reset Manual Overrides)">
-            ↺ 重設手動變更
+          <span style="font-size:10.5px;font-weight:800;color:#fbbf24;">${tr("🛠️ 手動新增 / 刪除分類", "🛠️ Manual Add / Remove Classification")}</span>
+          <button type="button" class="btn-xs" id="btnResetCategorizeManualEdits" style="padding:1px 6px;font-size:9.5px;" title="${tr("還原所有手動新增或刪除的項目", "Reset Manual Overrides")}">
+            ${tr("↺ 重設手動變更", "↺ Reset Edits")}
           </button>
         </div>
         <div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:5px;">
           <button type="button" class="btn-xs ${editMode === "add_tree" ? "primary" : ""}" data-cat-edit-mode="add_tree" style="flex:1;justify-content:center;font-size:10px;border-color:rgba(16,185,129,0.5);">
-            ➕ 喬木 Tree
+            ${tr("➕ 喬木", "➕ Tree")}
           </button>
           <button type="button" class="btn-xs ${editMode === "add_wall" ? "primary" : ""}" data-cat-edit-mode="add_wall" style="flex:1;justify-content:center;font-size:10px;border-color:rgba(244,63,94,0.5);">
-            ➕ 擋土牆 Wall
+            ${tr("➕ 擋土牆", "➕ Wall")}
           </button>
           <button type="button" class="btn-xs ${editMode === "add_road" ? "primary" : ""}" data-cat-edit-mode="add_road" style="flex:1;justify-content:center;font-size:10px;border-color:rgba(245,158,11,0.5);">
-            ➕ 道路 Road
+            ${tr("➕ 道路", "➕ Road")}
           </button>
           <button type="button" class="btn-xs ${editMode === "remove_click" ? "primary" : ""}" data-cat-edit-mode="remove_click" style="flex:1;justify-content:center;font-size:10px;border-color:rgba(239,68,68,0.5);color:#fca5a5;">
-            🗑️ 點選刪除
+            ${tr("🗑️ 點選刪除", "🗑️ Click to Remove")}
           </button>
         </div>
         <div id="categorizeEditStatusHint" style="font-size:9.5px;color:${editMode ? "#fbbf24" : "var(--ui-text-muted)"};line-height:1.35;">
@@ -12489,70 +12670,69 @@
 
       <div style="background:rgba(16,185,129,0.10);border:1px solid rgba(16,185,129,0.35);border-radius:8px;padding:8px 10px;margin-bottom:8px;">
         <div style="display:flex;align-items:center;justify-content:space-between;gap:4px;margin-bottom:4px;">
-          <span style="font-size:10.5px;font-weight:800;color:#34d399;">✨ ${escapeHtml(res.ai_model || "Gemini 3.6 Flash Multimodal + 3D Geometry")}</span>
-          <span style="font-size:9.5px;padding:1px 6px;border-radius:99px;background:rgba(6,182,212,0.18);color:#22d3ee;font-weight:700;">RTK + 3D Verified</span>
+          <span style="font-size:10.5px;font-weight:800;color:#34d399;">✨ ${escapeHtml(localizedAiModel)}</span>
+          <span style="font-size:9.5px;padding:1px 6px;border-radius:99px;background:rgba(6,182,212,0.18);color:#22d3ee;font-weight:700;">${tr("RTK + 3D 幾何驗證", "RTK + 3D Verified")}</span>
         </div>
-        <div style="font-size:11px;color:var(--ui-text-primary);line-height:1.42;margin-bottom:3px;">${escapeHtml(res.ai_summary_zh || "")}</div>
-        <div style="font-size:10px;color:var(--ui-text-secondary);line-height:1.35;">${escapeHtml(res.ai_summary_en || "")}</div>
+        <div style="font-size:11px;color:var(--ui-text-primary);line-height:1.42;margin-bottom:3px;">${escapeHtml(tr(res.ai_summary_zh || res.ai_summary_en || "", res.ai_summary_en || res.ai_summary_zh || ""))}</div>
       </div>
 
       <div class="gs-metric-grid" style="grid-template-columns:1fr 1fr;gap:6px;margin-bottom:8px;">
         <div class="gs-metric-box" style="border-left:3px solid #f59e0b;">
-          <div class="lbl">🛣️ 道路鋪面 Roads (${s.roads_count || 0})</div>
+          <div class="lbl">${tr(`🛣️ 道路鋪面 · ${s.roads_count || 0}`, `🛣️ Roads · ${s.roads_count || 0}`)}</div>
           <div class="val" style="color:#fbbf24;font-size:13px;">${Number(s.roads_planar_area_m2 || 0).toLocaleString()} m²</div>
-          <div style="font-size:9.5px;color:var(--ui-text-muted);">${Number(s.roads_planar_area_ping || 0).toLocaleString()} 坪 · 3D ${Number(s.roads_surface_area_3d_m2 || 0).toLocaleString()} m²</div>
+          <div style="font-size:9.5px;color:var(--ui-text-muted);">${Number(s.roads_planar_area_ping || 0).toLocaleString()} ${tr("坪", "ping")} · 3D ${Number(s.roads_surface_area_3d_m2 || 0).toLocaleString()} m²</div>
         </div>
         <div class="gs-metric-box" style="border-left:3px solid #10b981;">
-          <div class="lbl">🌳 喬木與胸徑 Trees (${s.trees_count || 0} 棵)</div>
+          <div class="lbl">${tr(`🌳 喬木與胸徑 · ${s.trees_count || 0} 棵`, `🌳 Trees & DBH · ${s.trees_count || 0}`)}</div>
           <div class="val" style="color:#34d399;font-size:13px;">DBH ${Number(s.trees_mean_dbh_cm || 0).toFixed(1)} cm</div>
-          <div style="font-size:9.5px;color:var(--ui-text-muted);">Max ${Number(s.trees_max_dbh_cm || 0).toFixed(1)} cm · H ${Number(s.trees_mean_height_m || 0).toFixed(1)} m</div>
+          <div style="font-size:9.5px;color:var(--ui-text-muted);">${tr(`最大 ${Number(s.trees_max_dbh_cm || 0).toFixed(1)} cm · 樹高 ${Number(s.trees_mean_height_m || 0).toFixed(1)} m`, `Max ${Number(s.trees_max_dbh_cm || 0).toFixed(1)} cm · H ${Number(s.trees_mean_height_m || 0).toFixed(1)} m`)}</div>
         </div>
         <div class="gs-metric-box" style="border-left:3px solid #06b6d4;">
-          <div class="lbl">💧 水體與河道空洞 Water (${s.water_count || 0})</div>
-          <div class="val" style="color:#22d3ee;font-size:13px;">${Number(s.water_count || 0) > 0 && s.water_level_twvd2001_m !== null && s.water_level_twvd2001_m !== undefined ? `+${Number(s.water_level_twvd2001_m).toFixed(2)} m` : "無水域 (None)"}</div>
-          <div style="font-size:9.5px;color:var(--ui-text-muted);">${Number(s.water_count || 0) > 0 ? `${Number(s.water_planar_area_m2 || 0).toLocaleString()} m² (岸際等位面)` : "0 m² (乾燥陸域場址)"}</div>
+          <div class="lbl">${tr(`💧 水體與河道空洞 · ${s.water_count || 0}`, `💧 Water & Voids · ${s.water_count || 0}`)}</div>
+          <div class="val" style="color:#22d3ee;font-size:13px;">${Number(s.water_count || 0) > 0 && s.water_level_twvd2001_m !== null && s.water_level_twvd2001_m !== undefined ? `+${Number(s.water_level_twvd2001_m).toFixed(2)} m` : tr("無水域", "None")}</div>
+          <div style="font-size:9.5px;color:var(--ui-text-muted);">${Number(s.water_count || 0) > 0 ? `${Number(s.water_planar_area_m2 || 0).toLocaleString()} m² · ${tr("岸際等位面", "shoreline")}` : `0 m² · ${tr("乾燥陸域場址", "dry site")}`}</div>
         </div>
         <div class="gs-metric-box" style="border-left:3px solid #f43f5e;">
-          <div class="lbl">🧱 擋土牆與垂直面 Walls (${s.walls_count || 0})</div>
+          <div class="lbl">${tr(`🧱 擋土牆與垂直面 · ${s.walls_count || 0}`, `🧱 Retaining Walls · ${s.walls_count || 0}`)}</div>
           <div class="val" style="color:#fb7185;font-size:13px;">3D ${Number(s.walls_vertical_area_m2 || 0).toLocaleString()} m²</div>
-          <div style="font-size:9.5px;color:var(--ui-text-muted);">總長 L ${Number(s.walls_total_length_m || 0).toFixed(1)} m · PCA 共面</div>
+          <div style="font-size:9.5px;color:var(--ui-text-muted);">${tr("總長 L", "Total L")} ${Number(s.walls_total_length_m || 0).toFixed(1)} m · PCA</div>
         </div>
       </div>
 
       <div style="background:var(--ui-bg-pill);border:1px solid var(--ui-border-strong);border-radius:7px;padding:6px 8px;margin-bottom:8px;">
-        <div style="font-size:10px;font-weight:700;color:var(--ui-text-secondary);margin-bottom:4px;">3D SCENE OVERLAY FILTERS (3D 子圖層開關)</div>
+        <div style="font-size:10px;font-weight:700;color:var(--ui-text-secondary);margin-bottom:4px;">${tr("3D 子圖層開關", "3D SCENE OVERLAY FILTERS")}</div>
         <div style="display:flex;flex-wrap:wrap;gap:6px;font-size:10.5px;">
           <label style="display:inline-flex;align-items:center;gap:3px;cursor:pointer;color:#fbbf24;font-weight:600;">
-            <input type="checkbox" data-cat-filter="roads" ${flt.roads ? "checked" : ""} /> 道路 (${(res.roads || []).length})
+            <input type="checkbox" data-cat-filter="roads" ${flt.roads ? "checked" : ""} /> ${tr("道路", "Roads")} · ${(res.roads || []).length}
           </label>
           <label style="display:inline-flex;align-items:center;gap:3px;cursor:pointer;color:#34d399;font-weight:600;">
-            <input type="checkbox" data-cat-filter="trees" ${flt.trees ? "checked" : ""} /> 喬木 DBH (${(res.trees || []).length})
+            <input type="checkbox" data-cat-filter="trees" ${flt.trees ? "checked" : ""} /> ${tr("喬木 DBH", "Trees DBH")} · ${(res.trees || []).length}
           </label>
           <label style="display:inline-flex;align-items:center;gap:3px;cursor:pointer;color:#22d3ee;font-weight:600;">
-            <input type="checkbox" data-cat-filter="water" ${flt.water ? "checked" : ""} /> 水域空洞 (${(res.water_bodies || []).length})
+            <input type="checkbox" data-cat-filter="water" ${flt.water ? "checked" : ""} /> ${tr("水域空洞", "Water Voids")} · ${(res.water_bodies || []).length}
           </label>
           <label style="display:inline-flex;align-items:center;gap:3px;cursor:pointer;color:#fb7185;font-weight:600;">
-            <input type="checkbox" data-cat-filter="walls" ${flt.walls ? "checked" : ""} /> 擋土牆 (${(res.walls || []).length})
+            <input type="checkbox" data-cat-filter="walls" ${flt.walls ? "checked" : ""} /> ${tr("擋土牆", "Walls")} · ${(res.walls || []).length}
           </label>
           <label style="display:inline-flex;align-items:center;gap:3px;cursor:pointer;color:#f59e0b;font-weight:600;">
-            <input type="checkbox" data-cat-filter="stockpiles" ${flt.stockpiles ? "checked" : ""} /> 土石堆置 (${(res.stockpiles || []).length})
+            <input type="checkbox" data-cat-filter="stockpiles" ${flt.stockpiles ? "checked" : ""} /> ${tr("土石堆置", "Stockpiles")} · ${(res.stockpiles || []).length}
           </label>
         </div>
       </div>
 
       <div style="background:var(--ui-bg-pill);border:1px solid var(--ui-border-strong);border-radius:7px;padding:6px 8px;margin-bottom:8px;">
-        <div style="font-size:10px;font-weight:700;color:var(--ui-text-secondary);margin-bottom:3px;">SITE SURFACE BREAKDOWN (全場地物面積組成 · ${(s.triangle_count || 0).toLocaleString()} tris)</div>
+        <div style="font-size:10px;font-weight:700;color:var(--ui-text-secondary);margin-bottom:3px;">${tr("全場地物面積組成", "SITE SURFACE BREAKDOWN")} · ${(s.triangle_count || 0).toLocaleString()} ${tr("三角面", "tris")}</div>
         ${breakdownHtml}
       </div>
 
       <div style="display:flex;gap:3px;margin-bottom:5px;flex-wrap:wrap;">
         ${[
-          ["all", "全部 All"],
-          ["roads", "道路"],
-          ["trees", "喬木 DBH"],
-          ["water", "水域"],
-          ["walls", "擋土牆"],
-          ["stockpiles", "土石"],
+          ["all", tr("全部", "All")],
+          ["roads", tr("道路", "Roads")],
+          ["trees", tr("喬木 DBH", "Trees DBH")],
+          ["water", tr("水域", "Water")],
+          ["walls", tr("擋土牆", "Walls")],
+          ["stockpiles", tr("土石", "Stockpiles")],
         ]
           .map(
             ([k, lbl]) =>
@@ -12566,17 +12746,17 @@
           <thead>
             <tr style="background:var(--ui-bg-pill);color:var(--ui-text-secondary);text-align:left;position:sticky;top:0;">
               <th style="padding:4px 6px;">ID</th>
-              <th style="padding:4px 6px;">類別</th>
-              <th style="padding:4px 6px;">主量測值</th>
-              <th style="padding:4px 6px;">次要參數 (點擊定位)</th>
-              <th style="padding:4px 4px;text-align:center;">刪除</th>
+              <th style="padding:4px 6px;">${tr("類別", "Type")}</th>
+              <th style="padding:4px 6px;">${tr("主量測值", "Primary Metric")}</th>
+              <th style="padding:4px 6px;">${tr("次要參數 · 點擊定位", "Secondary · Click to Fly")}</th>
+              <th style="padding:4px 4px;text-align:center;">${tr("刪除", "Del")}</th>
             </tr>
           </thead>
           <tbody>
             ${rows
               .map(
                 (r) => `
-              <tr data-cat-fly="${escapeHtml(r.fly)}" data-cat-id="${escapeHtml(r.id || "")}" data-cat-label="${escapeHtml(r.label)}" style="cursor:pointer;border-top:1px solid rgba(148,163,184,0.14);" title="Click to fly 3D camera to ${escapeHtml(r.label)}">
+              <tr data-cat-fly="${escapeHtml(r.fly)}" data-cat-id="${escapeHtml(r.id || "")}" data-cat-label="${escapeHtml(r.label)}" style="cursor:pointer;border-top:1px solid rgba(148,163,184,0.14);" title="${tr("點擊將 3D 鏡頭飛至", "Click to fly 3D camera to")} ${escapeHtml(r.label)}">
                 <td style="padding:4px 6px;font-family:monospace;">${r.badge}</td>
                 <td style="padding:4px 6px;">${escapeHtml(r.type)}</td>
                 <td style="padding:4px 6px;font-weight:700;">${escapeHtml(r.metric1)}</td>
@@ -12584,7 +12764,7 @@
                 <td style="padding:3px 4px;text-align:center;">
                   ${
                     r.catType && r.catType !== "stockpiles"
-                      ? `<button type="button" class="btn-xs" data-cat-delete-id="${escapeHtml(r.id || "")}" data-cat-delete-type="${escapeHtml(r.catType)}" title="刪除此分類項目 Remove ${escapeHtml(r.id || "")}" style="padding:1px 5px;font-size:10px;color:#fca5a5;border-color:rgba(239,68,68,0.35);">🗑️</button>`
+                      ? `<button type="button" class="btn-xs" data-cat-delete-id="${escapeHtml(r.id || "")}" data-cat-delete-type="${escapeHtml(r.catType)}" title="${tr("刪除此分類項目", "Remove")} ${escapeHtml(r.id || "")}" style="padding:1px 5px;font-size:10px;color:#fca5a5;border-color:rgba(239,68,68,0.35);">🗑️</button>`
                       : ""
                   }
                 </td>
@@ -12597,6 +12777,7 @@
 
       ${exportBarHtml}
     `;
+    box.innerHTML = typeof window.translateDynamicHtml === "function" ? window.translateDynamicHtml(rawCatHtml) : rawCatHtml;
 
     document.getElementById("chkCategorizeMasterVis")?.addEventListener("change", (ev) => {
       setCategorizeOverlayVisibility(Boolean(ev.target.checked));
@@ -12632,7 +12813,7 @@
             const panel = document.getElementById("studioSidePanel");
             panel?.classList.add("mobile-minimized", "gs-panel-minimized");
             const lblCollapse = document.getElementById("lblCollapseSidePanel");
-            if (lblCollapse) lblCollapse.textContent = "▴ 展開";
+            if (lblCollapse) lblCollapse.textContent = tr("▴ 展開", "▴ Expand");
           }
         }
         STATE.categorizeEditPoints = [];
@@ -12733,22 +12914,28 @@
     };
 
     showSidePanel(
-      `<span>AI Surface &amp; Object Categorization (AI 地物分類)</span>`,
+      `<span>${tr("AI 自動地物分類", "AI Surface & Object Categorization")}</span>`,
       `
       <div style="font-size:11px;color:var(--ui-text-secondary);background:var(--ui-bg-pill);border:1px solid var(--ui-border-strong);border-radius:7px;padding:7px 9px;margin-bottom:8px;line-height:1.42;">
-        Combines <b>3D Mesh Geometry</b> (Bare-Earth DTM, 1.3m Breast-Height Trunk Slicing + Pratt Circle DBH, Un-Modelled Water Void Shoreline Clamping, 3D PCA Wall Coplanarity) with <b>Gemini 3.6 Flash Multimodal</b> verification.
+        ${tr(
+          "結合 <b>3D 網格幾何分析</b>（純地形 DTM、1.3m 胸高樹幹切片與 Pratt 圓擬合 DBH、水域空洞岸際等高線夾取、3D PCA 牆面共面分析）與 <b>Gemini 3.6 Flash 多模態</b>驗證。",
+          "Combines <b>3D Mesh Geometry</b> (Bare-Earth DTM, 1.3m Breast-Height Trunk Slicing + Pratt Circle DBH, Un-Modelled Water Void Shoreline Clamping, 3D PCA Wall Coplanarity) with <b>Gemini 3.6 Flash Multimodal</b> verification."
+        )}
       </div>
       <div style="display:flex;gap:6px;margin-bottom:8px;">
         <button type="button" class="gs-top-btn accent" style="flex:1;justify-content:center;" id="btnRunCategorize">
-          <span>Analyze &amp; Show 3D Overlays (執行/顯示 AI 地物分類)</span>
+          <span>${tr("執行 / 顯示 AI 地物分類", "Analyze & Show 3D Overlays")}</span>
         </button>
-        <button type="button" class="btn-xs" id="btnRecomputeCategorize" title="Force Recompute &amp; Re-run Gemini Multimodal Analysis">
-          <span>↻ Recompute</span>
+        <button type="button" class="btn-xs" id="btnRecomputeCategorize" title="${tr("強制重新計算並執行 Gemini 多模態分析", "Force Recompute & Re-run Gemini Multimodal Analysis")}">
+          <span>${tr("↻ 重新計算", "↻ Recompute")}</span>
         </button>
       </div>
       <div id="catResultContainer">
         <div style="padding:18px 10px;text-align:center;color:var(--ui-text-secondary);font-size:11.5px;">
-          ⏳ Loading saved AI classification from server (or analyzing 3D mesh triangles)...
+          ${tr(
+            "⏳ 正在從伺服器載入已儲存之 AI 分類結果（或分析 3D 網格）...",
+            "⏳ Loading saved AI classification from server (or analyzing 3D mesh triangles)..."
+          )}
         </div>
       </div>
       `
@@ -12759,7 +12946,10 @@
       if (box && (forceRecompute || !STATE.lastCategorizeResult || STATE.lastCategorizeResult.scan_id !== activeScan.scan_id)) {
         box.innerHTML = `
           <div style="padding:18px 10px;text-align:center;color:var(--ui-text-secondary);font-size:11.5px;">
-            ⏳ ${forceRecompute ? "Recomputing" : "Loading / Running"} 3D Geometric + Gemini Multimodal Categorization on <b>${escapeHtml(activeScan.name || activeScan.scan_id)}</b>...
+            ${tr(
+              `⏳ 正在對 <b>${escapeHtml(activeScan.name || activeScan.scan_id)}</b> ${forceRecompute ? "重新計算" : "載入 / 執行"} 3D 幾何與 Gemini 多模態分類分析...`,
+              `⏳ ${forceRecompute ? "Recomputing" : "Loading / Running"} 3D Geometric + Gemini Multimodal Categorization on <b>${escapeHtml(activeScan.name || activeScan.scan_id)}</b>...`
+            )}
           </div>
         `;
       }
@@ -12785,19 +12975,27 @@
         syncCategorizeVisibilityUI();
         renderCategorizePanelContent(res);
         const s = res.summary || {};
-        const waterToastStr =
+        const waterToastZh =
           Number(s.water_count || 0) > 0 && s.water_level_twvd2001_m !== null && s.water_level_twvd2001_m !== undefined
-            ? `${s.water_count} Water Zones (+${Number(s.water_level_twvd2001_m).toFixed(2)}m)`
+            ? `${s.water_count} 處水域 · +${Number(s.water_level_twvd2001_m).toFixed(2)}m`
+            : `0 處水域`;
+        const waterToastEn =
+          Number(s.water_count || 0) > 0 && s.water_level_twvd2001_m !== null && s.water_level_twvd2001_m !== undefined
+            ? `${s.water_count} Water Zones · +${Number(s.water_level_twvd2001_m).toFixed(2)}m`
             : `0 Water Zones`;
-        const visTag = STATE.categorizeOverlayVisible ? "3D Overlays Visible" : "Saved on Server · Hidden by Default";
+        const visTagZh = STATE.categorizeOverlayVisible ? "3D 圖層顯示中" : "已儲存於伺服器 · 預設隱藏";
+        const visTagEn = STATE.categorizeOverlayVisible ? "3D Overlays Visible" : "Saved on Server · Hidden by Default";
         showToast(
-          `Categorized (${visTag}): ${s.roads_count || 0} Roads (${s.roads_planar_area_m2 || 0}m²), ${s.trees_count || 0} Trees (DBH ${s.trees_mean_dbh_cm || 0}cm), ${waterToastStr}, ${s.walls_count || 0} Walls`
+          tr(
+            `AI 分類完成 · ${visTagZh}：道路 ${s.roads_count || 0} 處 · ${s.roads_planar_area_m2 || 0}m²、樹木 ${s.trees_count || 0} 棵 · 平均胸徑 ${s.trees_mean_dbh_cm || 0}cm、${waterToastZh}、牆體 ${s.walls_count || 0} 處`,
+            `Categorized · ${visTagEn}: ${s.roads_count || 0} Roads · ${s.roads_planar_area_m2 || 0}m², ${s.trees_count || 0} Trees · DBH ${s.trees_mean_dbh_cm || 0}cm, ${waterToastEn}, ${s.walls_count || 0} Walls`
+          )
         );
       } catch (err) {
         if (box) {
-          box.innerHTML = `<div style="color:#ef4444;font-size:11.5px;padding:10px;">Categorization Error: ${escapeHtml(err.message)}</div>`;
+          box.innerHTML = `<div style="color:#ef4444;font-size:11.5px;padding:10px;">${tr("AI 分類錯誤：", "Categorization Error: ")}${escapeHtml(err.message)}</div>`;
         }
-        showToast(`Categorization Error: ${err.message}`);
+        showToast(tr(`AI 分類錯誤：${err.message}`, `Categorization Error: ${err.message}`));
       }
     };
 
@@ -12880,7 +13078,7 @@
     };
 
     add3DPinMarker(p1, 0xff3b30, studioThree.overlayGroup, addProfObj);
-    add2DBadge(p1, `Section A`, "#ff3b30", { offsetY: -18, isProfile: true });
+    add2DBadge(p1, tr("剖面 A", "Section A"), "#ff3b30", { offsetY: -18, isProfile: true });
 
     if (!p2) {
       updateZoomInvariantElements();
@@ -12889,7 +13087,7 @@
 
     add3DPinMarker(p2, 0x0284c7, studioThree.overlayGroup, addProfObj);
     const distM = p1.distanceTo(p2);
-    add2DBadge(p2, `Section B (${distM.toFixed(2)}m)`, "#0284c7", { offsetY: -18, isProfile: true });
+    add2DBadge(p2, tr(`剖面 B · ${distM.toFixed(2)}m`, `Section B · ${distM.toFixed(2)}m`), "#0284c7", { offsetY: -18, isProfile: true });
 
     // Draw surface-draped 3D profile polyline + straight chord line
     const chordGeo = new THREE.BufferGeometry().setFromPoints([p1, p2]);
@@ -13032,27 +13230,30 @@
     const isMobProfile = window.innerWidth <= 768;
     const profCanvasH = isMobProfile ? 118 : 196;
     showSidePanel(
-      `<span>Cross-Section Profile</span>`,
+      `<span>${tr("高程縱斷面圖", "Cross-Section Profile")}</span>`,
       `
       <div style="display:${isMobProfile ? "none" : "block"};font-size:11px;color:var(--ui-text-secondary);background:var(--ui-bg-pill);border:1px solid var(--ui-border-strong);border-radius:7px;padding:7px 9px;margin-bottom:8px;line-height:1.4;">
-        Click <b>2 points (Section A &rarr; B)</b> on the 3D scan to sample TWVD2001 elevation &amp; slope along your custom section line. Hover over the chart to inspect any chainage station in 2D &amp; 3D.
+        ${tr(
+          "於 3D 掃描模型上點擊 <b>2 個端點（剖面 A &rarr; B）</b>，即可沿自訂剖面線取樣 TWVD2001 高程與坡度。滑鼠移至圖表上可同步檢視 2D 與 3D 樁號高程。",
+          "Click <b>2 points · Section A &rarr; B</b> on the 3D scan to sample TWVD2001 elevation &amp; slope along your custom section line. Hover over the chart to inspect any chainage station in 2D &amp; 3D."
+        )}
       </div>
       <div style="display:flex;gap:${isMobProfile ? 4 : 6}px;margin-bottom:${isMobProfile ? 4 : 8}px;">
-        <button type="button" class="gs-top-btn accent" style="flex:1.4;justify-content:center;${isMobProfile ? "height:26px;font-size:11px;padding:0 6px;" : ""}" id="btnComputeProfileNow" title="Compute / Resample Cross-Section Profile">
+        <button type="button" class="gs-top-btn accent" style="flex:1.4;justify-content:center;${isMobProfile ? "height:26px;font-size:11px;padding:0 6px;" : ""}" id="btnComputeProfileNow" title="${tr("計算／重新取樣高程縱斷面", "Compute / Resample Cross-Section Profile")}">
           <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8">
             <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
           </svg>
-          <span id="lblComputeProfileBtn">Compute Profile</span>
+          <span id="lblComputeProfileBtn">${tr("計算斷面", "Compute Profile")}</span>
         </button>
-        <button type="button" class="gs-top-btn" style="flex:1;justify-content:center;${isMobProfile ? "height:26px;font-size:11px;padding:0 6px;" : ""}" id="btnNewProfileLine" title="Pick New Section A &rarr; B Line on 3D Scan">
-          <span>New A&ndash;B Line</span>
+        <button type="button" class="gs-top-btn" style="flex:1;justify-content:center;${isMobProfile ? "height:26px;font-size:11px;padding:0 6px;" : ""}" id="btnNewProfileLine" title="${tr("於 3D 模型重新點選剖面 A → B", "Pick New Section A → B Line on 3D Scan")}">
+          <span>${tr("重選 A–B 線", "New A–B Line")}</span>
         </button>
-        <button type="button" class="gs-top-btn" style="flex:0.8;justify-content:center;${isMobProfile ? "height:26px;font-size:11px;padding:0 6px;" : ""}" id="btnExportProfileCsv" title="Export Cross-Section CSV">
+        <button type="button" class="gs-top-btn" style="flex:0.8;justify-content:center;${isMobProfile ? "height:26px;font-size:11px;padding:0 6px;" : ""}" id="btnExportProfileCsv" title="${tr("匯出縱斷面 CSV 報表", "Export Cross-Section CSV")}">
           <span>CSV</span>
         </button>
       </div>
       <div id="profileHoverReadout" style="font-size:${isMobProfile ? "10.5px" : "11px"};font-family:var(--font-mono);color:var(--ui-text-primary);background:var(--ui-bg-subtle);border:1px solid var(--ui-border);border-radius:6px;padding:${isMobProfile ? "3px 6px" : "5px 8px"};margin-bottom:${isMobProfile ? 4 : 6}px;display:flex;justify-content:space-between;">
-        <span>Hover chart to inspect station</span>
+        <span>${tr("滑鼠移至圖表以檢視樁號高程", "Hover chart to inspect station")}</span>
         <span style="color:var(--ui-accent);">TWVD2001 (m)</span>
       </div>
       <canvas id="profileChartCanvas" width="336" height="${profCanvasH}" style="width:100%;height:${profCanvasH}px;background:var(--ui-bg-subtle);border:1px solid var(--ui-border-strong);border-radius:8px;cursor:crosshair;"></canvas>
@@ -13062,7 +13263,7 @@
 
     const runProfileCalc = async () => {
       const btnLbl = document.getElementById("lblComputeProfileBtn");
-      if (btnLbl) btnLbl.textContent = "Sampling...";
+      if (btnLbl) btnLbl.textContent = tr("取樣計算中...", "Sampling...");
       const [ep1, ep2] = resolveEndpoints();
 
       // 1. Immediate client-side 3D mesh raycast profile sampling (anchored 100% to live Three.js mesh)
@@ -13117,14 +13318,20 @@
       } catch (_) {
         // Client-side 3D mesh raycast profile is already drawn
       } finally {
-        if (btnLbl) btnLbl.textContent = "Compute Profile";
+        if (btnLbl) btnLbl.textContent = tr("計算斷面", "Compute Profile");
       }
     };
 
     document.getElementById("btnComputeProfileNow")?.addEventListener("click", () => {
       runProfileCalc().then(() => {
         const r = STATE.lastProfileResult;
-        if (r) showToast(`Sampled Cross-Section Profile (${r.total_length_m} m, Max Grade ${r.max_slope_pct}%)`);
+        if (r)
+          showToast(
+            tr(
+              `已完成縱斷面取樣 · 總長 ${r.total_length_m} m · 最大坡度 ${r.max_slope_pct}%`,
+              `Sampled Cross-Section Profile · ${r.total_length_m} m · Max Grade ${r.max_slope_pct}%`
+            )
+          );
       });
     });
 
@@ -13138,10 +13345,10 @@
         const pEl = document.getElementById("studioSidePanel");
         pEl?.classList.add("mobile-minimized", "gs-panel-minimized");
         const lblCol = document.getElementById("lblCollapseSidePanel");
-        if (lblCol) lblCol.textContent = "▴ 展開";
+        if (lblCol) lblCol.textContent = tr("▴ 展開", "▴ Expand");
       }
       syncStudioMobileToolHud();
-      showToast("Click Start Point A and End Point B on the 3D scan");
+      showToast(tr("請在 3D 掃描模型上點擊起點 A 與終點 B", "Click Start Point A and End Point B on the 3D scan"));
     });
 
     document.getElementById("btnExportProfileCsv")?.addEventListener("click", () => {
@@ -13347,13 +13554,20 @@
     ctx.textAlign = "left";
     ctx.textBaseline = "middle";
     ctx.fillStyle = "#0084ff";
-    ctx.fillText("● Surface (TWVD2001)", padL, 10);
+    ctx.fillText(tr("● 地表高程 TWVD2001", "● Surface TWVD2001"), padL, 10);
     ctx.fillStyle = "#0ea5e9";
-    ctx.fillText("■ Fill", padL + 118, 10);
+    ctx.fillText(tr("■ 填方", "■ Fill"), padL + 118, 10);
     ctx.fillStyle = "#ef4444";
-    ctx.fillText("■ Cut", padL + 152, 10);
+    ctx.fillText(tr("■ 挖方", "■ Cut"), padL + 152, 10);
     ctx.fillStyle = isDark ? "#94a3b8" : "#64748b";
-    ctx.fillText(`--- ${res.compare_scan_name || "Datum"}`, padL + 186, 10);
+    const rawDatumLbl = String(res.compare_scan_name || "Datum");
+    const datumLbl =
+      rawDatumLbl === "Chord Grade Datum (A→B)"
+        ? tr("起終點坡度基準線 A→B", "Chord Grade Datum A→B")
+        : rawDatumLbl === "Datum"
+        ? tr("基準面", "Datum")
+        : rawDatumLbl;
+    ctx.fillText(`--- ${datumLbl}`, padL + 186, 10);
 
     // 8. Interactive Hover Crosshair & Readout
     const readoutEl = document.getElementById("profileHoverReadout");
@@ -13371,7 +13585,7 @@
       ctx.arc(hx, hy, 4.5, 0, Math.PI * 2);
       ctx.fill();
       if (readoutEl) {
-        readoutEl.innerHTML = `<span>Sta <b>${hs.chainage_m.toFixed(2)}m</b> · Grade <b>${hs.slope_pct}%</b></span><span style="color:var(--ui-accent);">H: <b>+${hs.elevation_m.toFixed(2)}m</b> (ΔZ ${hs.delta_z_m >= 0 ? "+" : ""}${hs.delta_z_m.toFixed(2)}m)</span>`;
+        readoutEl.innerHTML = `<span>${tr("樁號", "Sta")} <b>${hs.chainage_m.toFixed(2)}m</b> · ${tr("坡度", "Grade")} <b>${hs.slope_pct}%</b></span><span style="color:var(--ui-accent);">H: <b>+${hs.elevation_m.toFixed(2)}m</b> · ΔZ ${hs.delta_z_m >= 0 ? "+" : ""}${hs.delta_z_m.toFixed(2)}m</span>`;
       }
     } else if (readoutEl) {
       readoutEl.innerHTML = `<span>A: <b>+${samples[0].elevation_m.toFixed(2)}m</b> &rarr; B: <b>+${samples[samples.length - 1].elevation_m.toFixed(2)}m</b></span><span style="color:var(--ui-accent);">ΔH: <b>${(samples[samples.length - 1].elevation_m - samples[0].elevation_m >= 0 ? "+" : "") + (samples[samples.length - 1].elevation_m - samples[0].elevation_m).toFixed(2)}m</b></span>`;
@@ -13383,19 +13597,19 @@
     if (mBox) {
       mBox.innerHTML = `
         <div class="gs-metric-box">
-          <div class="lbl">Section Length</div>
+          <div class="lbl">${tr("斷面總長", "Section Length")}</div>
           <div class="val" style="color:var(--ui-accent);">${res.total_length_m} m</div>
         </div>
         <div class="gs-metric-box">
-          <div class="lbl">Max Local Grade</div>
+          <div class="lbl">${tr("最大局部坡度", "Max Local Grade")}</div>
           <div class="val">${res.max_slope_pct}%</div>
         </div>
         <div class="gs-metric-box">
-          <div class="lbl">Elev Range (H)</div>
+          <div class="lbl">${tr("高程範圍 H", "Elev Range H")}</div>
           <div class="val">+${rawMinZ.toFixed(2)}~+${rawMaxZ.toFixed(2)}m</div>
         </div>
         <div class="gs-metric-box">
-          <div class="lbl">Max Relief ΔZ</div>
+          <div class="lbl">${tr("最大高差 ΔZ", "Max Relief ΔZ")}</div>
           <div class="val">${maxAbsDz.toFixed(2)} m</div>
         </div>
       `;
@@ -13468,45 +13682,48 @@
     const initYBot = Math.floor(minElev * 0.85);
 
     showSidePanel(
-      `<span>Section Box Slicer (3D 剖面盒)</span>`,
+      `<span>${tr("3D 剖面盒裁切器", "Section Box Slicer")}</span>`,
       `
       <div style="font-size:11px;color:var(--ui-text-secondary);background:var(--ui-bg-pill);border:1px solid var(--ui-border-strong);border-radius:7px;padding:7px 9px;margin-bottom:9px;line-height:1.4;">
-        Auto-scaled to scan bounding radius (<b>${Math.round(rawR)} m</b>). Drag sliders to slice the 3D scan along X, Z, Top (+Y), and Bottom (-Y) planes.
+        ${tr(
+          `已自動依掃描邊界半徑 (<b>${Math.round(rawR)} m</b>) 調整比例。拖曳滑桿即可沿 X、Z、頂部 (+Y) 與底部 (-Y) 平面進行 3D 剖面裁切。`,
+          `Auto-scaled to scan bounding radius (<b>${Math.round(rawR)} m</b>). Drag sliders to slice the 3D scan along X, Z, Top (+Y), and Bottom (-Y) planes.`
+        )}
       </div>
       <div class="gs-form-group">
         <div style="display:flex;justify-content:space-between;align-items:center;">
-          <label>East-West Clipping Bound (±X m)</label>
+          <label>${tr("東西向裁切範圍 (±X m)", "East-West Clipping Bound (±X m)")}</label>
           <span id="lblSecClipX" style="font-size:11px;font-family:var(--font-mono);color:var(--ui-accent);">±${initHoriz} m</span>
         </div>
         <input type="range" min="2" max="${maxHoriz}" step="1" value="${initHoriz}" class="gs-input" id="secClipX" />
       </div>
       <div class="gs-form-group">
         <div style="display:flex;justify-content:space-between;align-items:center;">
-          <label>North-South Clipping Bound (±Z m)</label>
+          <label>${tr("南北向裁切範圍 (±Z m)", "North-South Clipping Bound (±Z m)")}</label>
           <span id="lblSecClipZ" style="font-size:11px;font-family:var(--font-mono);color:var(--ui-accent);">±${initHoriz} m</span>
         </div>
         <input type="range" min="2" max="${maxHoriz}" step="1" value="${initHoriz}" class="gs-input" id="secClipZ" />
       </div>
       <div class="gs-form-group">
         <div style="display:flex;justify-content:space-between;align-items:center;">
-          <label>Top Ceiling Bound (+Y Elevation m)</label>
+          <label>${tr("頂部高程裁切上限 (+Y m)", "Top Ceiling Bound (+Y Elevation m)")}</label>
           <span id="lblSecClipY" style="font-size:11px;font-family:var(--font-mono);color:var(--ui-accent);">+${initYTop} m</span>
         </div>
         <input type="range" min="${minElev}" max="${maxElev}" step="0.5" value="${initYTop}" class="gs-input" id="secClipY" />
       </div>
       <div class="gs-form-group">
         <div style="display:flex;justify-content:space-between;align-items:center;">
-          <label>Bottom Floor Bound (-Y Elevation m)</label>
+          <label>${tr("底部高程裁切下限 (-Y m)", "Bottom Floor Bound (-Y Elevation m)")}</label>
           <span id="lblSecClipYMin" style="font-size:11px;font-family:var(--font-mono);color:var(--ui-accent);">${initYBot} m</span>
         </div>
         <input type="range" min="${minElev}" max="${maxElev}" step="0.5" value="${initYBot}" class="gs-input" id="secClipYMin" />
       </div>
       <label style="display:flex;align-items:center;gap:7px;font-size:11.5px;color:var(--ui-text-primary);cursor:pointer;margin:8px 0 10px;">
         <input type="checkbox" id="chkKeepSectionClip" ${STATE.keepSectionBoxClip ? "checked" : ""} />
-        <span>Keep Clipping Active When Panel Closed (關閉面板後保留剖面裁切)</span>
+        <span>${tr("關閉面板後保留剖面裁切", "Keep Clipping Active When Panel Closed")}</span>
       </label>
-      <button type="button" class="gs-top-btn" id="btnResetSectionBox" style="width:100%;justify-content:center;" title="Reset Clipping Planes">
-        <span>Reset Section Box</span>
+      <button type="button" class="gs-top-btn" id="btnResetSectionBox" style="width:100%;justify-content:center;" title="${tr("重設剖面盒裁切面", "Reset Clipping Planes")}">
+        <span>${tr("重設剖面盒", "Reset Section Box")}</span>
       </button>
       `
     );
@@ -13729,8 +13946,8 @@
   const CRS_UI_CATALOG = [
     {
       code: "TWD97_121_TWVD2001",
-      shortLabel: "TWD97 (121) + TWVD2001",
-      fullLabel: "TWD97 / TM2 Zone 121 + TWVD2001 (EPSG:3826+8904)",
+      shortLabel: "TWD97 121 + TWVD2001",
+      fullLabel: "TWD97 / TM2 Zone 121 + TWVD2001 · EPSG:3826+8904",
       kind: "tm",
       lon0: 121.0,
       fe: 250000.0,
@@ -13740,8 +13957,8 @@
     },
     {
       code: "TWD97_119_TWVD2001",
-      shortLabel: "TWD97 (119) + TWVD2001",
-      fullLabel: "TWD97 / TM2 Zone 119 + TWVD2001 (EPSG:3825+8904 · Offshore)",
+      shortLabel: "TWD97 119 + TWVD2001",
+      fullLabel: "TWD97 / TM2 Zone 119 + TWVD2001 · EPSG:3825+8904",
       kind: "tm",
       lon0: 119.0,
       fe: 250000.0,
@@ -13752,7 +13969,7 @@
     {
       code: "WGS84_UTM51N",
       shortLabel: "WGS84 / UTM 51N",
-      fullLabel: "WGS84 / UTM Zone 51N (EPSG:32651 · International)",
+      fullLabel: "WGS84 / UTM Zone 51N · EPSG:32651",
       kind: "tm",
       lon0: 123.0,
       fe: 500000.0,
@@ -13763,7 +13980,7 @@
     {
       code: "WGS84_UTM50N",
       shortLabel: "WGS84 / UTM 50N",
-      fullLabel: "WGS84 / UTM Zone 50N (EPSG:32650)",
+      fullLabel: "WGS84 / UTM Zone 50N · EPSG:32650",
       kind: "tm",
       lon0: 117.0,
       fe: 500000.0,
@@ -13773,18 +13990,42 @@
     },
     {
       code: "LOCAL_ORIGIN",
-      shortLabel: "Local Origin (0,0,0)",
-      fullLabel: "Local Site Origin (0, 0, 0) Meters (BIM / Revit / Rhino)",
+      shortLabel: "Local Origin 0,0,0",
+      fullLabel: "Local Site Origin 0, 0, 0 m · BIM / Revit / Rhino",
       kind: "local",
       hOff: 0.0,
     },
   ];
 
+  function getCrsItemShortLabel(c) {
+    if (!c) return "";
+    if (c.code === "LOCAL_ORIGIN") return tr("局部原點 0,0,0", "Local Origin 0,0,0");
+    return c.shortLabel || c.code || "";
+  }
+
+  function getCrsItemFullLabel(c) {
+    if (!c) return "";
+    if (c.code === "TWD97_121_TWVD2001") return tr("TWD97 / TM2 121 分帶 + TWVD2001 · EPSG:3826+8904", "TWD97 / TM2 Zone 121 + TWVD2001 · EPSG:3826+8904");
+    if (c.code === "TWD97_119_TWVD2001") return tr("TWD97 / TM2 119 離島分帶 + TWVD2001 · EPSG:3825+8904", "TWD97 / TM2 Zone 119 + TWVD2001 · EPSG:3825+8904");
+    if (c.code === "WGS84_UTM51N") return tr("WGS84 / UTM 51N 國際分帶 · EPSG:32651", "WGS84 / UTM Zone 51N · EPSG:32651");
+    if (c.code === "WGS84_UTM50N") return tr("WGS84 / UTM 50N 分帶 · EPSG:32650", "WGS84 / UTM Zone 50N · EPSG:32650");
+    if (c.code === "LOCAL_ORIGIN") return tr("局部工區原點 0, 0, 0 公尺 · BIM / Revit / Rhino", "Local Site Origin 0, 0, 0 m · BIM / Revit / Rhino");
+    return c.fullLabel || c.shortLabel || c.code;
+  }
+
+  function getCompressionPresetLabel(k) {
+    if (k === "quality") return tr("高保真畫質 · 75% 面數 · 2K JPEG", "High Fidelity · 75% Tris · 2K JPEG");
+    if (k === "balanced") return tr("平衡串流 · 50% 面數 · 1.5K JPEG", "Balanced Stream · 50% Tris · 1.5K JPEG");
+    if (k === "web") return tr("高速行動平板 · 35% 面數 · 1K JPEG", "Fast Mobile / Field · 35% Tris · 1K JPEG");
+    if (k === "ultra_light") return tr("極輕量離線快取 · 20% 面數 · 768px", "Ultra-Light Offline · 20% Tris · 768px");
+    return k || "";
+  }
+
   const COMPRESSION_PRESET_LABELS = {
-    quality: "High Fidelity (75% Tris · 2K JPEG)",
-    balanced: "Balanced Stream (50% Tris · 1.5K JPEG)",
-    web: "Fast Mobile / Field (35% Tris · 1K JPEG)",
-    ultra_light: "Ultra-Light Offline (20% Tris · 768px)",
+    quality: "High Fidelity · 75% Tris · 2K JPEG",
+    balanced: "Balanced Stream · 50% Tris · 1.5K JPEG",
+    web: "Fast Mobile / Field · 35% Tris · 1K JPEG",
+    ultra_light: "Ultra-Light Offline · 20% Tris · 768px",
   };
 
   function inferActiveScanCrsCode(scanObj) {
@@ -13861,16 +14102,18 @@
     const twvdH = ch - (srcDef.hOff || 0);
 
     if (tgtDef.code === srcCode) {
-      return { x: ce + offX, y: cn + offY, z: ch + offZ, crsLabel: tgtDef.shortLabel };
+      return { x: ce + offX, y: cn + offY, z: ch + offZ, crsLabel: getCrsItemShortLabel(tgtDef) };
     }
     if (tgtDef.kind === "local") {
-      return { x: 0 + offX, y: 0 + offY, z: 0 + offZ, crsLabel: tgtDef.shortLabel };
+      return { x: 0 + offX, y: 0 + offY, z: 0 + offZ, crsLabel: getCrsItemShortLabel(tgtDef) };
     }
     if (!hasValidGeorefLatLon(s)) {
       return {
-        error:
-          "Scan uses Local Origin (0,0,0) with no WGS84/RTK georeference — cannot project to geodetic CRS without georeferencing.",
-        crsLabel: tgtDef.shortLabel,
+        error: tr(
+          "此掃描使用局部原點 0,0,0 且無 WGS84/RTK 地理參考座標，無法投影至大地座標系統。",
+          "Scan uses Local Origin 0,0,0 with no WGS84/RTK georeference — cannot project to geodetic CRS without georeferencing."
+        ),
+        crsLabel: getCrsItemShortLabel(tgtDef),
       };
     }
     const lat = Number(s.lat);
@@ -13880,7 +14123,7 @@
       x: en.e + offX,
       y: en.n + offY,
       z: twvdH + (tgtDef.hOff || 0) + offZ,
-      crsLabel: tgtDef.shortLabel,
+      crsLabel: getCrsItemShortLabel(tgtDef),
     };
   }
 
@@ -14050,9 +14293,9 @@
       (Math.abs(st.crsConfig.offset_x || 0) > 1e-4 ||
         Math.abs(st.crsConfig.offset_y || 0) > 1e-4 ||
         Math.abs(st.crsConfig.offset_z || 0) > 1e-4)
-        ? ` + Δ(${Number(st.crsConfig.offset_x).toFixed(2)}, ${Number(st.crsConfig.offset_y).toFixed(2)}, ${Number(
+        ? ` + Δ ${Number(st.crsConfig.offset_x).toFixed(2)}, ${Number(st.crsConfig.offset_y).toFixed(2)}, ${Number(
             st.crsConfig.offset_z
-          ).toFixed(2)})m`
+          ).toFixed(2)} m`
         : "";
 
     const itemsHtml = [];
@@ -14060,50 +14303,52 @@
       const nLayers = Array.isArray(STATE.multiAlign?.layers) ? STATE.multiAlign.layers.length : 0;
       itemsHtml.push(`
         <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;padding:5px 7px;background:var(--ui-bg-surface);border:1px solid var(--ui-border);border-radius:6px;font-size:11px;">
-          <span>🔗 <b>Combine Scans:</b> ${nLayers} scan layer${nLayers === 1 ? "" : "s"} ${
-        nLayers < 2 ? '<span style="color:#f59e0b;">(add 1+ scan in Align &amp; Merge)</span>' : "(aligned)"
+          <span>🔗 <b>${tr("合併掃描：", "Combine Scans:")}</b> ${tr(`${nLayers} 個掃描圖層`, `${nLayers} scan layer${nLayers === 1 ? "" : "s"}`)} ${
+        nLayers < 2
+          ? `<span style="color:#f59e0b;">· ${tr("請於對齊面板新增至少 1 組掃描", "add 1+ scan in Align & Merge")}</span>`
+          : `· ${tr("已對齊", "aligned")}`
       }</span>
-          <button type="button" class="gs-top-btn" data-jump-edit="align_merge" style="padding:1px 6px;font-size:10px;" title="Open Multi-Scan Align &amp; Merge">Align</button>
+          <button type="button" class="gs-top-btn" data-jump-edit="align_merge" style="padding:1px 6px;font-size:10px;" title="${tr("開啟多掃描 3D 對齊與合併", "Open Multi-Scan Align & Merge")}">${tr("對齊", "Align")}</button>
         </div>
       `);
     }
     if (st.deletions.length > 0) {
       itemsHtml.push(`
         <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;padding:5px 7px;background:var(--ui-bg-surface);border:1px solid var(--ui-border);border-radius:6px;font-size:11px;">
-          <span>🗑️ <b>Delete:</b> ${totalDelRegions} region${totalDelRegions === 1 ? "" : "s"} (${totalDelTris.toLocaleString()} tris)</span>
-          <button type="button" class="gs-top-btn" data-unstage="deletions" style="padding:1px 6px;font-size:10px;" title="Remove all staged deletions">✕</button>
+          <span>🗑️ <b>${tr("刪除區域：", "Delete:")}</b> ${tr(`${totalDelRegions} 個區域 · ${totalDelTris.toLocaleString()} 面`, `${totalDelRegions} region${totalDelRegions === 1 ? "" : "s"} · ${totalDelTris.toLocaleString()} tris`)}</span>
+          <button type="button" class="gs-top-btn" data-unstage="deletions" style="padding:1px 6px;font-size:10px;" title="${tr("移除所有暫存刪除區域", "Remove all staged deletions")}">✕</button>
         </div>
       `);
     }
     if (pendingMarks > 0) {
       itemsHtml.push(`
         <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;padding:5px 7px;background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.35);border-radius:6px;font-size:11px;">
-          <span>🔴 <b>Selected Polygons:</b> ${pendingMarks} region${pendingMarks === 1 ? "" : "s"} (${pendingMarkTris.toLocaleString()} tris · preserved)</span>
-          <button type="button" class="gs-top-btn" data-stage-pending-marks="1" style="padding:1px 7px;font-size:10px;border-color:rgba(239,68,68,0.45);color:#ef4444;" title="Apply these selected polygons to the 3D delete preview now">Delete Now</button>
+          <span>🔴 <b>${tr("已選取多邊形：", "Selected Polygons:")}</b> ${tr(`${pendingMarks} 個區域 · ${pendingMarkTris.toLocaleString()} 面已保留`, `${pendingMarks} region${pendingMarks === 1 ? "" : "s"} · ${pendingMarkTris.toLocaleString()} tris preserved`)}</span>
+          <button type="button" class="gs-top-btn" data-stage-pending-marks="1" style="padding:1px 7px;font-size:10px;border-color:rgba(239,68,68,0.45);color:#ef4444;" title="${tr("立即將選取的多邊形套用至 3D 刪除預覽", "Apply these selected polygons to the 3D delete preview now")}">${tr("立即刪除", "Delete Now")}</button>
         </div>
       `);
     }
     if (!isMulti && st.cropKeep) {
       itemsHtml.push(`
         <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;padding:5px 7px;background:var(--ui-bg-surface);border:1px solid var(--ui-border);border-radius:6px;font-size:11px;">
-          <span>✂️ <b>Keep Crop:</b> ${st.cropKeep.regionCount || 1} region(s) (${Number(st.cropKeep.triCount || 0).toLocaleString()} tris)</span>
-          <button type="button" class="gs-top-btn" data-unstage="cropKeep" style="padding:1px 6px;font-size:10px;" title="Remove staged keep crop">✕</button>
+          <span>✂️ <b>${tr("保留裁切：", "Keep Crop:")}</b> ${tr(`${st.cropKeep.regionCount || 1} 個區域 · ${Number(st.cropKeep.triCount || 0).toLocaleString()} 面`, `${st.cropKeep.regionCount || 1} region${(st.cropKeep.regionCount || 1) === 1 ? "" : "s"} · ${Number(st.cropKeep.triCount || 0).toLocaleString()} tris`)}</span>
+          <button type="button" class="gs-top-btn" data-unstage="cropKeep" style="padding:1px 6px;font-size:10px;" title="${tr("移除暫存裁切範圍", "Remove staged keep crop")}">✕</button>
         </div>
       `);
     }
     if (st.compressionPreset && st.compressionPreset !== "none") {
       itemsHtml.push(`
         <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;padding:5px 7px;background:var(--ui-bg-surface);border:1px solid var(--ui-border);border-radius:6px;font-size:11px;">
-          <span>⚡ <b>Compression:</b> ${escapeHtml(COMPRESSION_PRESET_LABELS[st.compressionPreset] || st.compressionPreset)}</span>
-          <button type="button" class="gs-top-btn" data-unstage="compression" style="padding:1px 6px;font-size:10px;" title="Remove staged compression">✕</button>
+          <span>⚡ <b>${tr("網格壓縮：", "Compression:")}</b> ${escapeHtml(getCompressionPresetLabel(st.compressionPreset))}</span>
+          <button type="button" class="gs-top-btn" data-unstage="compression" style="padding:1px 6px;font-size:10px;" title="${tr("移除暫存壓縮設定", "Remove staged compression")}">✕</button>
         </div>
       `);
     }
     if (st.crsConfig) {
       itemsHtml.push(`
         <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;padding:5px 7px;background:var(--ui-bg-surface);border:1px solid var(--ui-border);border-radius:6px;font-size:11px;">
-          <span>🌐 <b>CRS:</b> ${escapeHtml((crsItem ? crsItem.shortLabel : st.crsConfig.target_crs) + crsOffText)}</span>
-          <button type="button" class="gs-top-btn" data-unstage="crs" style="padding:1px 6px;font-size:10px;" title="Remove staged CRS change">✕</button>
+          <span>🌐 <b>${tr("座標系：", "CRS:")}</b> ${escapeHtml((crsItem ? getCrsItemShortLabel(crsItem) : st.crsConfig.target_crs) + crsOffText)}</span>
+          <button type="button" class="gs-top-btn" data-unstage="crs" style="padding:1px 6px;font-size:10px;" title="${tr("移除暫存座標系變更", "Remove staged CRS change")}">✕</button>
         </div>
       `);
     }
@@ -14116,34 +14361,41 @@
     return `
       <div style="background:rgba(2,132,199,0.08);border:1px solid rgba(2,132,199,0.35);border-radius:8px;padding:10px;margin-top:10px;">
         <div style="font-size:12px;font-weight:700;color:var(--ui-accent);display:flex;align-items:center;justify-content:space-between;gap:6px;margin-bottom:6px;flex-wrap:wrap;">
-          <span>✨ Pending Adjustments (${totalAdj})</span>
-          <span style="font-size:10px;color:var(--ui-text-secondary);" title="The untouched original scan is safely moved to the Trash Bin where you can restore it anytime">🗑️ Original${isMulti ? "s" : ""} → Trash Bin</span>
+          <span>${tr(`✨ 待套用修改 · ${totalAdj}`, `✨ Pending Adjustments · ${totalAdj}`)}</span>
+          <span style="font-size:10px;color:var(--ui-text-secondary);" title="${tr("未修改之原始掃描將安全移至回收桶，可隨時還原", "The untouched original scan is safely moved to the Trash Bin where you can restore it anytime")}">🗑️ ${isMulti ? tr("原掃描群 → 回收桶", "Originals → Trash Bin") : tr("原掃描 → 回收桶", "Original → Trash Bin")}</span>
         </div>
         ${
           itemsHtml.length > 0
             ? `<div style="display:flex;flex-direction:column;gap:4px;margin-bottom:8px;">${itemsHtml.join("")}</div>`
             : `<div style="font-size:11px;color:var(--ui-text-secondary);background:var(--ui-bg-surface);border:1px dashed var(--ui-border-strong);border-radius:6px;padding:8px;margin-bottom:8px;">
-                No adjustments staged yet. Use <b>Lasso Delete (套索刪除)</b>, <b>Mesh Compression (網格優化)</b>, or <b>Coordinate System (座標系統)</b> on the left dock first, then press <b>Save Edits</b>!
+                ${tr(
+                  "尚未加入任何修改。請先使用左側工具列的<b>套索刪除</b>、<b>網格優化</b>或<b>座標系統</b>，再點擊<b>儲存變更</b>！",
+                  "No adjustments staged yet. Use <b>Lasso Delete</b>, <b>Mesh Compression</b>, or <b>Coordinate System</b> on the left dock first, then press <b>Save Edits</b>!"
+                )}
               </div>`
         }
         <div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:8px;">
           ${
             isMulti
-              ? `<button type="button" class="gs-top-btn" data-jump-edit="align_merge" style="font-size:10.5px;padding:3px 7px;">🎯 Return to Alignment</button>`
+              ? `<button type="button" class="gs-top-btn" data-jump-edit="align_merge" style="font-size:10.5px;padding:3px 7px;">${tr("🎯 返回對齊", "🎯 Return to Alignment")}</button>`
               : ""
           }
-          <button type="button" class="gs-top-btn" data-jump-edit="crop_delete" style="font-size:10.5px;padding:3px 7px;">+ Delete Regions</button>
-          <button type="button" class="gs-top-btn" data-jump-edit="optimizer" style="font-size:10.5px;padding:3px 7px;">+ Compression</button>
-          <button type="button" class="gs-top-btn" data-jump-edit="crs" style="font-size:10.5px;padding:3px 7px;">+ Coordinate System</button>
+          <button type="button" class="gs-top-btn" data-jump-edit="crop_delete" style="font-size:10.5px;padding:3px 7px;">${tr("+ 刪除範圍", "+ Delete Regions")}</button>
+          <button type="button" class="gs-top-btn" data-jump-edit="optimizer" style="font-size:10.5px;padding:3px 7px;">${tr("+ 壓縮優化", "+ Compression")}</button>
+          <button type="button" class="gs-top-btn" data-jump-edit="crs" style="font-size:10.5px;padding:3px 7px;">${tr("+ 座標系統", "+ Coordinate System")}</button>
         </div>
         <div class="gs-form-group" style="margin-bottom:8px;">
-          <label style="font-size:11px;">Scan Name (掃描名稱 · 原掃描將自動備份至回收桶)</label>
-          <input type="text" class="gs-input" id="txtGenerateScanName" value="${escapeHtml(defaultNewName)}" placeholder="Enter scan name..." />
+          <label style="font-size:11px;">${tr("掃描名稱 · 原掃描將自動備份至回收桶", "Scan Name · original scan backed up to Trash Bin")}</label>
+          <input type="text" class="gs-input" id="txtGenerateScanName" value="${escapeHtml(defaultNewName)}" placeholder="${tr("輸入掃描名稱...", "Enter scan name...")}" />
         </div>
         <button type="button" class="gs-top-btn accent" id="btnGenerateStagedScan" style="width:100%;justify-content:center;padding:9px 12px;font-weight:700;${
           !canGenerate ? "opacity:0.5;pointer-events:none;" : ""
-        }" ${!canGenerate ? "disabled" : ""} title="Save edited scan and move untouched original backup to Trash Bin (easily restorable)">
-          <span>💾 ${isMulti ? `Save Merged Scan (${totalAdj} step${totalAdj === 1 ? "" : "s"} · 合併並儲存)` : `Save Edits (${totalAdj} adjustment${totalAdj === 1 ? "" : "s"} · 儲存變更)`}</span>
+        }" ${!canGenerate ? "disabled" : ""} title="${tr("儲存修改後之掃描，並將原始備份移至回收桶 · 可隨時還原", "Save edited scan and move untouched original backup to Trash Bin · easily restorable")}">
+          <span>💾 ${
+            isMulti
+              ? tr(`合併並儲存 · ${totalAdj} 項修改`, `Save Merged Scan · ${totalAdj} step${totalAdj === 1 ? "" : "s"}`)
+              : tr(`儲存變更 · ${totalAdj} 項修改`, `Save Edits · ${totalAdj} adjustment${totalAdj === 1 ? "" : "s"}`)
+          }</span>
         </button>
         <div id="generateScanResultBox" style="margin-top:8px;"></div>
       </div>
@@ -14329,7 +14581,7 @@
         ? `Original scan backup ("${escapeHtml(res.trashed_backup?.name || "Original Backup")}") moved to Trash Bin`
         : "Original scan backup preserved";
       showSidePanel(
-        `<span>✓ Edits Saved · Backup in Trash Bin (變更已儲存)</span>`,
+        `<span>${tr("✓ 變更已儲存 · 原掃描已備份至回收桶", "✓ Edits Saved · Backup in Trash Bin")}</span>`,
         `
         <div style="background:rgba(16,185,129,0.10);border:1px solid rgba(16,185,129,0.38);border-radius:8px;padding:12px;font-size:12px;color:var(--ui-text-primary);">
           <div style="color:#10b981;font-weight:700;font-size:13px;margin-bottom:6px;">✓ Saved "${escapeHtml(
@@ -14342,10 +14594,10 @@
             🗑️ <b>Backup in Trash Bin:</b> ${backupMsg}. Easily restore it anytime from the Trash Bin.
           </div>
           <button type="button" class="gs-top-btn" id="btnOpenBinAfterSaveEdit" style="width:100%;justify-content:center;margin-bottom:8px;font-size:11.5px;">
-            <span>🗑️ Open Trash Bin to View / Restore Backup (開啟回收桶)</span>
+            <span>${tr("🗑️ 開啟回收桶檢視 / 還原備份", "🗑️ Open Trash Bin to View / Restore Backup")}</span>
           </button>
           <div style="font-size:11px;color:var(--ui-text-secondary);border-top:1px solid var(--ui-border);padding-top:6px;">
-            <b>Applied Adjustments:</b>
+            <b>${tr("已套用之修改項目：", "Applied Adjustments:")}</b>
             <ul style="margin:4px 0 0 16px;padding:0;">
               ${(res.applied_adjustments || []).map((a) => `<li>${escapeHtml(a)}</li>`).join("")}
             </ul>
@@ -14363,7 +14615,7 @@
       }
       if (btnGen) {
         btnGen.disabled = false;
-        btnGen.innerHTML = `<span>💾 Save Edits (儲存變更)</span>`;
+        btnGen.innerHTML = `<span>${tr("💾 儲存變更", "💾 Save Edits")}</span>`;
       }
       showToast(`Save Edits Error: ${err.message}`);
     }
@@ -14383,7 +14635,7 @@
     const inputMethod = STATE.lassoInputMethod || "lasso";
     const visibleOnlyChecked = getEffectiveLassoVisibleOnly("delete_inside");
     const markedCount = countMarkedRegionsPending();
-    const triCountLabel = `${Number(STATE.lassoSelectedTriCount || 0).toLocaleString()} tris`;
+    const triCountLabel = `${Number(STATE.lassoSelectedTriCount || 0).toLocaleString()} ${tr("三角面", "tris")}`;
     const isMobView = window.innerWidth <= 768;
     if (isMobView) {
       if (isLassoActive && markedCount === 0 && !opts.keepExpanded) {
@@ -14406,62 +14658,78 @@
 
     const execBtnText = !isLassoActive
       ? markedCount > 0
-        ? `Resume Lasso (${markedCount} selected kept · 繼續套索標記)`
-        : "Select with Lasso — Mark for Deletion (啟用套索標記刪除)"
+        ? tr(`繼續套索標記 · 已保留 ${markedCount} 個選取範圍`, `Resume Lasso · ${markedCount} selected kept`)
+        : tr("啟用套索標記刪除", "Select with Lasso — Mark for Deletion")
       : markedCount > 0
-      ? `🗑️ Delete (${markedCount} region${markedCount === 1 ? "" : "s"} · ${triCountLabel})`
-      : "🗑️ Delete (Mark polygons with Lasso first)";
+      ? tr(`🗑️ 刪除 · ${markedCount} 個範圍 · ${triCountLabel}`, `🗑️ Delete · ${markedCount} region${markedCount === 1 ? "" : "s"} · ${triCountLabel}`)
+      : tr("🗑️ 刪除 · 請先用套索標記範圍", "🗑️ Delete · Mark polygons with Lasso first");
 
     showSidePanel(
-      `<span>Lasso Delete — Mark &amp; Delete (套索標記刪除)</span>`,
+      `<span>${tr("套索標記刪除", "Lasso Delete — Mark & Delete")}</span>`,
       `
       ${
         STATE.multiAlign?.active
           ? `<div style="background:rgba(56,189,248,0.11);border:1px solid rgba(56,189,248,0.4);border-radius:8px;padding:8px 10px;margin-bottom:8px;font-size:11px;color:var(--ui-text-primary);display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;">
-              <span style="flex:1;min-width:140px;">🔗 <b>Multi-Scan Mode:</b> Selected &amp; deleted polygons stay preserved when returning to Alignment.</span>
-              <button type="button" class="gs-top-btn" id="btnLassoBackToAlign" style="padding:4px 9px;font-size:11px;font-weight:700;flex-shrink:0;" title="Return to 3D Gizmo Alignment &amp; Layer Checklist (keeps all selected &amp; deleted polygons)">
-                <span>🎯 Return to Alignment</span>
+              <span style="flex:1;min-width:140px;">${tr("🔗 <b>多掃描模式：</b>返回對齊視窗時將完整保留已選取與已刪除的多邊形範圍。", "🔗 <b>Multi-Scan Mode:</b> Selected &amp; deleted polygons stay preserved when returning to Alignment.")}</span>
+              <button type="button" class="gs-top-btn" id="btnLassoBackToAlign" style="padding:4px 9px;font-size:11px;font-weight:700;flex-shrink:0;" title="${tr("返回 3D 對齊與圖層清單 · 完整保留已選取與已刪除範圍", "Return to 3D Gizmo Alignment & Layer Checklist · keeps all selected & deleted polygons")}">
+                <span>${tr("🎯 返回對齊", "🎯 Return to Alignment")}</span>
               </button>
             </div>`
           : ""
       }
       <div style="background:rgba(239,68,68,0.10);border:1px solid rgba(239,68,68,0.35);border-radius:8px;padding:10px;margin-bottom:10px;">
         <div style="font-size:12px;font-weight:700;color:#ef4444;margin-bottom:5px;display:flex;align-items:center;justify-content:space-between;gap:6px;">
-          <span>🗑️ Mark Polygons for Deletion</span>
+          <span>${tr("🗑️ 標記欲刪除之網格範圍", "🗑️ Mark Polygons for Deletion")}</span>
           ${
             isLassoActive
-              ? `<button type="button" class="gs-top-btn" id="btnCancelLassoMode" style="padding:2px 7px;font-size:10.5px;border-color:rgba(239,68,68,0.45);color:#ef4444;" title="Pause Lasso to Orbit Freely — Selected Polygons Stay Preserved (Esc)">
-                  <span>✋ Orbit (Esc)</span>
+              ? `<button type="button" class="gs-top-btn" id="btnCancelLassoMode" style="padding:2px 7px;font-size:10.5px;border-color:rgba(239,68,68,0.45);color:#ef4444;" title="${tr("暫停套索並切換為自由旋轉視角 · Esc", "Pause Lasso to Orbit Freely · Esc")}">
+                  <span>${tr("✋ 旋轉視角 · Esc", "✋ Orbit · Esc")}</span>
                 </button>`
-              : `<span style="font-size:10px;padding:1px 6px;border-radius:4px;background:var(--ui-bg-surface);color:var(--ui-text-secondary);">Orbit Mode</span>`
+              : `<span style="font-size:10px;padding:1px 6px;border-radius:4px;background:var(--ui-bg-surface);color:var(--ui-text-secondary);">${tr("環繞視角模式", "Orbit Mode")}</span>`
           }
         </div>
         <div style="font-size:11px;color:var(--ui-text-secondary);margin-bottom:8px;line-height:1.45;">
           ${
             !isLassoActive
               ? isMobView
-                ? `單指旋轉模式 — 可自由拖曳旋轉視角${
-                    markedCount > 0 ? ` (已保留 <b>${markedCount}</b> 個標記範圍)` : ""
-                  }。點擊下方按鈕繼續套索標記。`
-                : `Orbit mode active — rotate freely with <b>Left Mouse</b> or <b>Mouse Wheel</b>${
-                    markedCount > 0 ? ` (your <b>${markedCount}</b> selected region${markedCount === 1 ? " is" : "s are"} preserved)` : ""
-                  }. Press the button below to resume Lasso.`
+                ? tr(
+                    `單指旋轉模式 — 可自由拖曳旋轉視角${markedCount > 0 ? ` · 已保留 <b>${markedCount}</b> 個標記範圍` : ""}。點擊下方按鈕繼續套索標記。`,
+                    `Orbit mode active — rotate freely${markedCount > 0 ? ` · <b>${markedCount}</b> selected region${markedCount === 1 ? " is" : "s are"} preserved` : ""}. Press the button below to resume Lasso.`
+                  )
+                : tr(
+                    `環繞視角模式 — 可使用<b>滑鼠左鍵</b>或<b>滾輪中鍵</b>自由旋轉視角${markedCount > 0 ? ` · 已保留 <b>${markedCount}</b> 個選取範圍` : ""}。點擊下方按鈕繼續套索標記。`,
+                    `Orbit mode active — rotate freely with <b>Left Mouse</b> or <b>Mouse Wheel</b>${
+                      markedCount > 0 ? ` · your <b>${markedCount}</b> selected region${markedCount === 1 ? " is" : "s are"} preserved` : ""
+                    }. Press the button below to resume Lasso.`
+                  )
               : inputMethod !== "polygon"
               ? isMobView
-                ? `<b>1.</b> 單指拖曳畫圈標記刪除範圍（雙指縮放平移 · 點擊上方 <b>🔄 旋轉</b> 切換視角）。<br/><b>2.</b> 點擊上方或下方 <b>🗑️ 執行刪除</b> 套用預覽。`
-                : `<b>1.</b> Drag <b>Left Mouse</b> several times to mark multiple regions in red (rotate anytime by pressing <b>Mouse Wheel</b> · <b>Alt+Drag</b> to unmark).<br/><b>2.</b> Press <b>Delete</b> below to remove marked regions from preview · <b>Esc</b> to orbit.`
+                ? tr(
+                    `<b>1.</b> 單指拖曳畫圈標記刪除範圍 · 雙指縮放平移 · 點擊上方 <b>🔄 旋轉</b> 切換視角。<br/><b>2.</b> 點擊上方或下方 <b>🗑️ 執行刪除</b> 套用預覽。`,
+                    `<b>1.</b> Single-finger drag to mark regions for deletion · two-finger zoom/pan · tap <b>🔄 Orbit</b> above to rotate.<br/><b>2.</b> Tap <b>🗑️ Delete</b> to remove from preview.`
+                  )
+                : tr(
+                    `<b>1.</b> 按住<b>滑鼠左鍵</b>拖曳可多次標記紅色刪除範圍 · 隨時按住<b>滑鼠中鍵滾輪</b>旋轉視角 · <b>Alt+拖曳</b>取消標記。<br/><b>2.</b> 點擊下方 <b>刪除</b> 即可從 3D 預覽移除 · 按 <b>Esc</b> 切換旋轉視角。`,
+                    `<b>1.</b> Drag <b>Left Mouse</b> several times to mark multiple regions in red · rotate anytime by pressing <b>Mouse Wheel</b> · <b>Alt+Drag</b> to unmark.<br/><b>2.</b> Press <b>Delete</b> below to remove marked regions from preview · <b>Esc</b> to orbit.`
+                  )
               : isMobView
-              ? `<b>1.</b> 點擊 3+ 頂點並點擊上方 <b>✓ 鎖定</b> 完成多邊形標記（雙指縮放平移）。<br/><b>2.</b> 點擊 <b>🗑️ 執行刪除</b> 套用預覽。`
-              : `<b>1.</b> Click 3+ vertices and click red <b>V1</b> (or <b>Enter</b>) to lock Polygon #1, then draw Polygon #2, #3... (<b>Mouse Wheel</b> to rotate).<br/><b>2.</b> Press <b>Delete</b> below to remove marked polygons · <b>Esc</b> to orbit.`
+              ? tr(
+                  `<b>1.</b> 點擊 3+ 頂點並點擊上方 <b>✓ 鎖定</b> 完成多邊形標記 · 雙指縮放平移。<br/><b>2.</b> 點擊 <b>🗑️ 執行刪除</b> 套用預覽。`,
+                  `<b>1.</b> Tap 3+ vertices and tap <b>✓ Lock</b> above to finish polygon · two-finger zoom/pan.<br/><b>2.</b> Tap <b>🗑️ Delete</b> to remove from preview.`
+                )
+              : tr(
+                  `<b>1.</b> 點擊 3+ 個頂點並點擊紅色起點 <b>V1</b> 或按 <b>Enter</b> 鎖定多邊形 #1，可繼續繪製多邊形 #2、#3... · 按住<b>滑鼠滾輪</b>旋轉視角。<br/><b>2.</b> 點擊下方 <b>刪除</b> 移除標記範圍 · 按 <b>Esc</b> 切換旋轉視角。`,
+                  `<b>1.</b> Click 3+ vertices and click red <b>V1</b> or press <b>Enter</b> to lock Polygon #1, then draw Polygon #2, #3... · <b>Mouse Wheel</b> to rotate.<br/><b>2.</b> Press <b>Delete</b> below to remove marked polygons · <b>Esc</b> to orbit.`
+                )
           }
         </div>
 
         <div style="display:flex;gap:5px;margin-bottom:8px;">
           <button type="button" class="gs-top-btn ${isLassoActive && inputMethod !== "polygon" ? "accent" : ""}" id="btnModeFreehandLasso" style="flex:1;justify-content:center;font-size:11px;">
-            <span>✏️ Freehand 3D Lasso</span>
+            <span>${tr("✏️ 3D 自由套索", "✏️ Freehand 3D Lasso")}</span>
           </button>
           <button type="button" class="gs-top-btn ${isLassoActive && inputMethod === "polygon" ? "accent" : ""}" id="btnModePolygonClick" style="flex:1;justify-content:center;font-size:11px;">
-            <span>📐 Plan Polygon</span>
+            <span>${tr("📐 多邊形點選", "📐 Plan Polygon")}</span>
           </button>
         </div>
 
@@ -14470,8 +14738,8 @@
             ? `<label style="display:flex;align-items:flex-start;gap:7px;font-size:11px;color:var(--ui-text-primary);background:var(--ui-bg-surface);border:1px solid var(--ui-border);border-radius:6px;padding:6px 8px;margin-bottom:8px;cursor:pointer;">
                 <input type="checkbox" id="chkLassoVisibleOnly" ${visibleOnlyChecked ? "checked" : ""} style="margin-top:2px;accent-color:var(--ui-accent);" />
                 <span>
-                  <b>Protect Occluded Background (僅選取可見前景表面)</b><br/>
-                  <span style="font-size:10px;color:var(--ui-text-secondary);">Prevents deleting walls, roads, or terrain hidden behind foreground objects.</span>
+                  <b>${tr("僅選取可見前景表面", "Protect Occluded Background")}</b><br/>
+                  <span style="font-size:10px;color:var(--ui-text-secondary);">${tr("避免誤刪被前景遮蔽之後方牆面、道路或地形。", "Prevents deleting walls, roads, or terrain hidden behind foreground objects.")}</span>
                 </span>
               </label>`
             : ""
@@ -14479,17 +14747,17 @@
 
         <div style="font-size:11px;color:var(--ui-text-secondary);background:var(--ui-bg-surface);border:1px solid var(--ui-border);border-radius:6px;padding:6px 8px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;gap:6px;flex-wrap:wrap;">
           <span>
-            Marked: <b>${markedCount > 0 ? `${markedCount} region${markedCount === 1 ? "" : "s"}` : "None yet"}</b>
+            ${tr("已標記：", "Marked:")} <b>${markedCount > 0 ? tr(`${markedCount} 個範圍`, `${markedCount} region${markedCount === 1 ? "" : "s"}`) : tr("尚未標記", "None yet")}</b>
             · <b id="lblLassoSelectedTris" style="color:#ef4444;">${triCountLabel}</b>
           </span>
           <div style="display:flex;gap:4px;">
             <button type="button" class="gs-top-btn" id="btnUndoLastMark" style="padding:2px 7px;font-size:10.5px;${
               markedCount > 0 ? "" : "opacity:0.45;pointer-events:none;"
-            }" ${markedCount > 0 ? "" : "disabled"} title="Remove the most recently marked polygon/lasso stroke">
-              <span>Undo Mark</span>
+            }" ${markedCount > 0 ? "" : "disabled"} title="${tr("復原最後標記的多邊形或套索筆畫", "Remove the most recently marked polygon/lasso stroke")}">
+              <span>${tr("復原標記", "Undo Mark")}</span>
             </button>
-            <button type="button" class="gs-top-btn" id="btnDrawCropPolygon" style="padding:2px 7px;font-size:10.5px;" title="Clear all currently marked red regions">
-              <span>Clear</span>
+            <button type="button" class="gs-top-btn" id="btnDrawCropPolygon" style="padding:2px 7px;font-size:10.5px;" title="${tr("清除所有目前已標記的紅色區域", "Clear all currently marked red regions")}">
+              <span>${tr("清除", "Clear")}</span>
             </button>
           </div>
         </div>
@@ -14497,15 +14765,15 @@
         <div style="display:flex;gap:6px;">
           <button type="button" class="gs-top-btn accent" style="flex:1;justify-content:center;padding:9px 12px;font-weight:700;background:#ef4444;border-color:#dc2626;color:#fff;" id="btnExecuteCrop" title="${
             !isLassoActive
-              ? "Activate 3D Lasso Selection (Mark for Deletion)"
-              : "Delete all marked regions in 3D preview and stage for Save Edits"
+              ? tr("啟用 3D 套索選取 · 標記刪除範圍", "Activate 3D Lasso Selection · Mark for Deletion")
+              : tr("於 3D 預覽中刪除所有標記範圍並加入待儲存變更", "Delete all marked regions in 3D preview and stage for Save Edits")
           }">
             <span id="lblExecuteCropBtn">${execBtnText}</span>
           </button>
           ${
             !isLassoActive && markedCount > 0
-              ? `<button type="button" class="gs-top-btn" id="btnCommitMarkedWhilePaused" style="justify-content:center;padding:9px 10px;font-weight:700;border-color:#dc2626;color:#ef4444;" title="Delete the ${markedCount} marked region(s) right now">
-                  <span>🗑️ Delete (${markedCount})</span>
+              ? `<button type="button" class="gs-top-btn" id="btnCommitMarkedWhilePaused" style="justify-content:center;padding:9px 10px;font-weight:700;border-color:#dc2626;color:#ef4444;" title="${tr(`立即刪除已標記的 ${markedCount} 個範圍`, `Delete the ${markedCount} marked regions right now`)}">
+                  <span>🗑️ ${tr(`刪除 · ${markedCount}`, `Delete · ${markedCount}`)}</span>
                 </button>`
               : ""
           }
@@ -14516,15 +14784,15 @@
         st.deletions.length > 0
           ? `<div style="background:var(--ui-bg-subtle);border:1px solid var(--ui-border-strong);border-radius:8px;padding:9px 10px;margin-bottom:8px;">
               <div style="font-size:11.5px;font-weight:700;color:var(--ui-text-primary);display:flex;align-items:center;justify-content:space-between;margin-bottom:5px;">
-                <span>🗑️ Deleted in 3D Preview (${totalStagedDelRegions} region${totalStagedDelRegions === 1 ? "" : "s"})</span>
-                <span style="font-size:10.5px;color:#ef4444;">-${totalStagedDelTris.toLocaleString()} tris</span>
+                <span>🗑️ ${tr(`已於 3D 預覽刪除 · ${totalStagedDelRegions} 個範圍`, `Deleted in 3D Preview · ${totalStagedDelRegions} region${totalStagedDelRegions === 1 ? "" : "s"}`)}</span>
+                <span style="font-size:10.5px;color:#ef4444;">-${totalStagedDelTris.toLocaleString()} ${tr("三角面", "tris")}</span>
               </div>
               <div style="display:flex;gap:6px;">
                 <button type="button" class="gs-top-btn" id="btnUndoStagedDelete" style="flex:1;justify-content:center;font-size:11px;">
-                  <span>↩️ Undo Last Delete</span>
+                  <span>↩️ ${tr("復原上一次刪除", "Undo Last Delete")}</span>
                 </button>
                 <button type="button" class="gs-top-btn" id="btnClearAllStagedDeletes" style="flex:1;justify-content:center;font-size:11px;">
-                  <span>Restore All Deleted</span>
+                  <span>${tr("還原全部已刪區域", "Restore All Deleted")}</span>
                 </button>
               </div>
             </div>`
@@ -14535,16 +14803,19 @@
         canRestoreFromOriginal
           ? `<div style="background:rgba(16,185,129,0.09);border:1px solid rgba(16,185,129,0.38);border-radius:8px;padding:10px;margin-bottom:10px;">
               <div style="font-size:12px;font-weight:700;color:#10b981;margin-bottom:4px;display:flex;align-items:center;justify-content:space-between;gap:6px;">
-                <span>🩹 Restore Accidentally Deleted Area (從原始掃描補回缺口)</span>
+                <span>🩹 ${tr("從原始掃描補回缺口", "Restore Accidentally Deleted Area")}</span>
               </div>
               <div style="font-size:11px;color:var(--ui-text-secondary);margin-bottom:7px;line-height:1.45;">
-                Draw a <b>Freehand 3D Lasso</b> or <b>Plan Polygon</b> over any missing gap above, then click below to splice the missing triangles back from the untouched original scan at full 4K quality.
+                ${tr(
+                  "使用上方 <b>3D 自由套索</b> 或 <b>多邊形點選</b> 圈選誤刪缺口，再點擊下方按鈕即可從未修改之原始 4K 掃描將缺失網格補回。",
+                  "Draw a <b>Freehand 3D Lasso</b> or <b>Plan Polygon</b> over any missing gap above, then click below to splice the missing triangles back from the untouched original scan at full 4K quality."
+                )}
               </div>
               <label style="display:flex;align-items:flex-start;gap:7px;font-size:11px;color:var(--ui-text-primary);background:var(--ui-bg-surface);border:1px solid var(--ui-border);border-radius:6px;padding:5px 8px;margin-bottom:8px;cursor:pointer;">
                 <input type="checkbox" id="chkRestoreConnectedOnly" ${restoreConnChecked ? "checked" : ""} style="margin-top:2px;accent-color:#10b981;" />
                 <span>
-                  <b>Boundary-connected surface only (排除懸浮碎塊)</b><br/>
-                  <span style="font-size:10px;color:var(--ui-text-secondary);">Restores surfaces connected to surrounding road/walls while skipping floating sky/tree debris.</span>
+                  <b>${tr("僅補回邊界相連表面 · 排除懸浮碎塊", "Boundary-connected surface only")}</b><br/>
+                  <span style="font-size:10px;color:var(--ui-text-secondary);">${tr("補回與周圍道路或牆面相連的表面，並自動略過懸浮於空中的樹冠或雜訊碎塊。", "Restores surfaces connected to surrounding road/walls while skipping floating sky/tree debris.")}</span>
                 </span>
               </label>
               <button type="button" class="gs-top-btn" id="btnRestoreDeletedRegion" style="width:100%;justify-content:center;padding:8px 12px;font-weight:700;background:${
@@ -14552,10 +14823,10 @@
               };border-color:#059669;color:${markedCount > 0 ? "#fff" : "#10b981"};">
                 <span>${
                   !isLassoActive && markedCount === 0
-                    ? "🩹 Activate Lasso to Mark Gap for Restore (啟用套索圈選缺口)"
+                    ? `🩹 ${tr("啟用套索圈選缺口", "Activate Lasso to Mark Gap for Restore")}`
                     : markedCount > 0
-                    ? `🩹 Restore Deleted Area (${markedCount} marked region${markedCount === 1 ? "" : "s"} · 補回原始模型)`
-                    : "🩹 Restore Deleted Area (Circle missing gap with Lasso first)"
+                    ? `🩹 ${tr(`補回原始模型 · 已圈選 ${markedCount} 處`, `Restore Deleted Area · ${markedCount} marked region${markedCount === 1 ? "" : "s"}`)}`
+                    : `🩹 ${tr("補回誤刪區域 · 請先用套索圈選缺口", "Restore Deleted Area · Circle missing gap with Lasso first")}`
                 }</span>
               </button>
               <div id="restoreDeletedRegionStatus" style="margin-top:5px;"></div>
@@ -14802,7 +15073,7 @@
     const isLassoActive = STATE.activeTool === "crop";
     const inputMethod = STATE.lassoInputMethod || "lasso";
     const markedCount = countMarkedRegionsPending();
-    const triCountLabel = `${Number(STATE.lassoSelectedTriCount || 0).toLocaleString()} tris`;
+    const triCountLabel = `${Number(STATE.lassoSelectedTriCount || 0).toLocaleString()} ${tr("三角面", "tris")}`;
     const isMobKeep = window.innerWidth <= 768;
     if (isMobKeep) {
       if (isLassoActive && markedCount === 0 && !opts.keepExpanded) {
@@ -14816,47 +15087,53 @@
 
     const execBtnText = !isLassoActive
       ? markedCount > 0
-        ? `Resume Keep Selection (${markedCount} kept · 繼續框選)`
-        : "Select Keep Boundary (啟用框選保留)"
+        ? tr(`繼續框選 · 已保留 ${markedCount} 處`, `Resume Keep Selection · ${markedCount} kept`)
+        : tr("啟用框選保留", "Select Keep Boundary")
       : markedCount > 0
-      ? `✂️ Stage Keep Crop (${markedCount} region${markedCount === 1 ? "" : "s"} · ${triCountLabel})`
-      : "✂️ Stage Keep Crop (Mark region to keep first)";
+      ? tr(`✂️ 套用保留裁切 · ${markedCount} 個範圍 · ${triCountLabel}`, `✂️ Stage Keep Crop · ${markedCount} region${markedCount === 1 ? "" : "s"} · ${triCountLabel}`)
+      : tr("✂️ 套用保留裁切 · 請先框選保留範圍", "✂️ Stage Keep Crop · Mark region to keep first");
 
     showSidePanel(
-      `<span>Crop Keep — Keep Selected Region (框選保留)</span>`,
+      `<span>${tr("框選保留區域", "Crop Keep — Keep Selected Region")}</span>`,
       `
       <div style="background:rgba(16,185,129,0.10);border:1px solid rgba(16,185,129,0.35);border-radius:8px;padding:10px;margin-bottom:10px;">
         <div style="font-size:12px;font-weight:700;color:#10b981;margin-bottom:5px;display:flex;align-items:center;justify-content:space-between;gap:6px;">
-          <span>✂️ Mark Region(s) to Keep</span>
+          <span>${tr("✂️ 標記欲保留之範圍", "✂️ Mark Regions to Keep")}</span>
           ${
             isLassoActive
-              ? `<button type="button" class="gs-top-btn" id="btnCancelLassoMode" style="padding:2px 7px;font-size:10.5px;" title="Pause Lasso to Orbit (Esc)">✋ Orbit (Esc)</button>`
-              : `<span style="font-size:10px;padding:1px 6px;border-radius:4px;background:var(--ui-bg-surface);color:var(--ui-text-secondary);">Orbit Mode</span>`
+              ? `<button type="button" class="gs-top-btn" id="btnCancelLassoMode" style="padding:2px 7px;font-size:10.5px;" title="${tr("暫停框選並切換旋轉視角 · Esc", "Pause Lasso to Orbit · Esc")}">${tr("✋ 旋轉視角 · Esc", "✋ Orbit · Esc")}</button>`
+              : `<span style="font-size:10px;padding:1px 6px;border-radius:4px;background:var(--ui-bg-surface);color:var(--ui-text-secondary);">${tr("環繞視角模式", "Orbit Mode")}</span>`
           }
         </div>
         <div style="font-size:11px;color:var(--ui-text-secondary);margin-bottom:8px;line-height:1.45;">
           ${
             isMobKeep
-              ? `單指畫圈或點擊多邊形標記欲<b>保留</b>的範圍（範圍外將於儲存時裁切 · 雙指縮放平移 · 點擊上方 <b>🔄 旋轉</b> 切換視角）。`
-              : `Mark the boundary you want to <b>keep</b> (everything outside will be cropped out when you press <b>Save Edits</b>). Rotate anytime with <b>Mouse Wheel</b>.`
+              ? tr(
+                  `單指畫圈或點擊多邊形標記欲<b>保留</b>的範圍 · 範圍外將於儲存時裁切 · 雙指縮放平移 · 點擊上方 <b>🔄 旋轉</b> 切換視角。`,
+                  `Single-finger draw or click polygon to mark the area to <b>keep</b> · outside cropped on Save · two-finger zoom/pan · tap <b>🔄 Orbit</b> above to rotate.`
+                )
+              : tr(
+                  `標記欲<b>保留</b>的邊界範圍 · 範圍外的網格將於點擊<b>儲存變更</b>時裁切移除 · 可隨時按住<b>滑鼠中鍵滾輪</b>旋轉視角。`,
+                  `Mark the boundary you want to <b>keep</b> · everything outside will be cropped out when you press <b>Save Edits</b> · Rotate anytime with <b>Mouse Wheel</b>.`
+                )
           }
         </div>
 
         <div style="display:flex;gap:5px;margin-bottom:8px;">
           <button type="button" class="gs-top-btn ${isLassoActive && inputMethod !== "polygon" ? "accent" : ""}" id="btnModeFreehandLasso" style="flex:1;justify-content:center;font-size:11px;">
-            <span>✏️ Freehand 3D Lasso</span>
+            <span>${tr("✏️ 3D 自由套索", "✏️ Freehand 3D Lasso")}</span>
           </button>
           <button type="button" class="gs-top-btn ${isLassoActive && inputMethod === "polygon" ? "accent" : ""}" id="btnModePolygonClick" style="flex:1;justify-content:center;font-size:11px;">
-            <span>📐 Plan Polygon</span>
+            <span>${tr("📐 多邊形點選", "📐 Plan Polygon")}</span>
           </button>
         </div>
 
         <div style="font-size:11px;color:var(--ui-text-secondary);background:var(--ui-bg-surface);border:1px solid var(--ui-border);border-radius:6px;padding:6px 8px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;gap:6px;">
           <span>
-            Marked: <b>${markedCount > 0 ? `${markedCount} region${markedCount === 1 ? "" : "s"}` : "None yet"}</b>
+            ${tr("已標記：", "Marked:")} <b>${markedCount > 0 ? tr(`${markedCount} 個範圍`, `${markedCount} region${markedCount === 1 ? "" : "s"}`) : tr("尚未標記", "None yet")}</b>
             · <b id="lblLassoSelectedTris" style="color:#10b981;">${triCountLabel}</b>
           </span>
-          <button type="button" class="gs-top-btn" id="btnDrawCropPolygon" style="padding:2px 8px;font-size:10.5px;">Clear</button>
+          <button type="button" class="gs-top-btn" id="btnDrawCropPolygon" style="padding:2px 8px;font-size:10.5px;">${tr("清除", "Clear")}</button>
         </div>
 
         <button type="button" class="gs-top-btn accent" style="width:100%;justify-content:center;padding:8px 12px;font-weight:700;" id="btnExecuteCrop">
@@ -14927,20 +15204,20 @@
     return `
       <div style="background:var(--ui-bg-subtle);border:1px solid var(--ui-border-strong);border-radius:8px;padding:10px;margin-bottom:10px;">
         <div style="font-size:11px;font-weight:700;color:var(--ui-text-secondary);margin-bottom:6px;display:flex;justify-content:space-between;align-items:center;">
-          <span>📊 Active Scan Metrics (目前掃描規格)</span>
+          <span>📊 ${tr("目前掃描規格", "Active Scan Metrics")}</span>
           <span style="color:var(--ui-accent);font-family:monospace;">${escapeHtml(formatCoveredAreaM2(scan))}</span>
         </div>
         <div class="gs-metric-grid" style="grid-template-columns:repeat(3,1fr);gap:6px;">
           <div class="gs-metric-box" style="padding:6px 7px;">
-            <div class="lbl">Polygon Count</div>
+            <div class="lbl">${tr("網格面數", "Polygon Count")}</div>
             <div class="val" style="font-size:11.5px;">${escapeHtml(polyStr)}</div>
           </div>
           <div class="gs-metric-box" style="padding:6px 7px;">
-            <div class="lbl">Texture Size</div>
+            <div class="lbl">${tr("貼圖解析度", "Texture Size")}</div>
             <div class="val" style="font-size:11.5px;">${escapeHtml(texStr)}</div>
           </div>
           <div class="gs-metric-box" style="padding:6px 7px;">
-            <div class="lbl">Scan Size (MB)</div>
+            <div class="lbl">${tr("模型大小 MB", "Scan Size MB")}</div>
             <div class="val" style="font-size:11.5px;" title="${escapeHtml(sizeStr)}">${escapeHtml(formatScanSizeMb(scan))}</div>
           </div>
         </div>
@@ -14954,28 +15231,31 @@
     const curPreset = st.compressionPreset || "balanced";
 
     showSidePanel(
-      `<span>Mesh &amp; Texture Compression (網格壓縮優化)</span>`,
+      `<span>${tr("網格與貼圖壓縮優化", "Mesh & Texture Compression")}</span>`,
       `
       ${renderActiveScanSpecsCardHtml(STATE.activeScan)}
       <div style="background:var(--ui-bg-subtle);border:1px solid var(--ui-border-strong);border-radius:8px;padding:11px;margin-bottom:10px;">
         <div style="font-size:12px;font-weight:700;color:var(--ui-text-primary);margin-bottom:4px;">
-          ⚡ GC_ScanOptimizer Compression Preset
+          ⚡ ${tr("GC_ScanOptimizer 網格壓縮預設", "GC_ScanOptimizer Compression Preset")}
         </div>
         <p style="font-size:11px;color:var(--ui-text-secondary);margin-bottom:9px;line-height:1.45;">
-          Choose mesh decimation &amp; texture optimization to apply when generating your new scan (64-bit coordinate precision preserved).
+          ${tr(
+            "選擇產製新掃描時套用之網格簡化與貼圖最佳化等級 · 完整保留 64 位元空間座標精度。",
+            "Choose mesh decimation &amp; texture optimization to apply when generating your new scan · 64-bit coordinate precision preserved."
+          )}
         </p>
         <div class="gs-form-group" style="margin-bottom:10px;">
-          <label>Target Compression Level (壓縮與串流等級)</label>
+          <label>${tr("壓縮與串流等級", "Target Compression Level")}</label>
           <select class="gs-select" id="optPresetSelect">
-            <option value="none" ${curPreset === "none" ? "selected" : ""}>No Extra Compression (100% Original Mesh &amp; Textures)</option>
-            <option value="quality" ${curPreset === "quality" ? "selected" : ""}>High Fidelity Quality (75% Tris · 2048px JPEG)</option>
-            <option value="balanced" ${curPreset === "balanced" ? "selected" : ""}>Balanced Web Stream (50% Tris · 1536px JPEG)</option>
-            <option value="web" ${curPreset === "web" ? "selected" : ""}>Fast Field Tablet (35% Tris · 1024px JPEG)</option>
-            <option value="ultra_light" ${curPreset === "ultra_light" ? "selected" : ""}>Ultra-Light Offline Cache (20% Tris · 768px JPEG)</option>
+            <option value="none" ${curPreset === "none" ? "selected" : ""}>${tr("不額外壓縮 · 100% 原始網格與貼圖", "No Extra Compression · 100% Original Mesh & Textures")}</option>
+            <option value="quality" ${curPreset === "quality" ? "selected" : ""}>${tr("高保真品質 · 75% 面數 · 2048px JPEG", "High Fidelity Quality · 75% Tris · 2048px JPEG")}</option>
+            <option value="balanced" ${curPreset === "balanced" ? "selected" : ""}>${tr("平衡串流 · 50% 面數 · 1536px JPEG", "Balanced Web Stream · 50% Tris · 1536px JPEG")}</option>
+            <option value="web" ${curPreset === "web" ? "selected" : ""}>${tr("高速行動平板 · 35% 面數 · 1024px JPEG", "Fast Field Tablet · 35% Tris · 1024px JPEG")}</option>
+            <option value="ultra_light" ${curPreset === "ultra_light" ? "selected" : ""}>${tr("極輕量離線快取 · 20% 面數 · 768px JPEG", "Ultra-Light Offline Cache · 20% Tris · 768px JPEG")}</option>
           </select>
         </div>
         <button type="button" class="gs-top-btn accent" style="width:100%;justify-content:center;padding:8px 12px;font-weight:700;" id="btnStageCompression">
-          <span>⚡ Stage Compression Adjustment (加入壓縮設定)</span>
+          <span>⚡ ${tr("加入壓縮設定", "Stage Compression Adjustment")}</span>
         </button>
       </div>
 
@@ -14987,10 +15267,10 @@
       const chosen = document.getElementById("optPresetSelect")?.value || "balanced";
       if (chosen === "none") {
         st.compressionPreset = null;
-        showToast("Cleared extra mesh compression (100% original resolution will be kept)");
+        showToast(tr("已清除額外網格壓縮 · 將保留 100% 原始解析度", "Cleared extra mesh compression · 100% original resolution will be kept"));
       } else {
         st.compressionPreset = chosen;
-        showToast(`Staged Compression: ${COMPRESSION_PRESET_LABELS[chosen] || chosen}`);
+        showToast(`${tr("已加入壓縮設定：", "Staged Compression: ")}${getCompressionPresetLabel(chosen)}`);
       }
       syncStagedEditsDockBadge();
       openMeshCompressionInspector();
@@ -15008,7 +15288,7 @@
           twd97_e: Number(rc.x || 0),
           twd97_n: Number(rc.y || 0),
           twd97_h: Number(rc.z || 0),
-          crs: "TWD97 (121) + TWVD2001",
+          crs: "TWD97 121 + TWVD2001",
         })
       : STATE.activeScan || {};
     const curCode = inferActiveScanCrsCode(scan);
@@ -15022,39 +15302,39 @@
     const curH = scan.twd97_h !== undefined && scan.twd97_h !== null ? Number(scan.twd97_h) : 0;
 
     showSidePanel(
-      `<span>Coordinate System &amp; Datum (座標系統轉換)</span>`,
+      `<span>${tr("座標系統轉換", "Coordinate System & Datum")}</span>`,
       `
       <div style="background:var(--ui-bg-subtle);border:1px solid var(--ui-border-strong);border-radius:8px;padding:11px;margin-bottom:10px;">
         <div style="font-size:12px;font-weight:700;color:var(--ui-text-primary);margin-bottom:4px;">
-          🌐 Coordinate Reference System (CRS)
+          🌐 ${tr("空間座標參考系統 · CRS", "Coordinate Reference System · CRS")}
         </div>
         <div style="font-size:11px;color:var(--ui-text-secondary);background:var(--ui-bg-surface);border:1px solid var(--ui-border);border-radius:6px;padding:7px 8px;margin-bottom:9px;line-height:1.45;">
-          <div><b>Current Scan CRS:</b> ${escapeHtml(scan.crs || "TWD97 (121) + TWVD2001")}</div>
-          <div><b>Current Center:</b> X/E ${curE.toFixed(3)}m · Y/N ${curN.toFixed(3)}m · Z/H ${curH.toFixed(2)}m</div>
+          <div><b>${tr("目前掃描座標系：", "Current Scan CRS:")}</b> ${escapeHtml(getScanCrsDisplayLabel(scan))}</div>
+          <div><b>${tr("目前中心點：", "Current Center:")}</b> X/E ${curE.toFixed(3)}m · Y/N ${curN.toFixed(3)}m · Z/H ${curH.toFixed(2)}m</div>
         </div>
 
         <div class="gs-form-group" style="margin-bottom:8px;">
-          <label>Target Coordinate System (目標座標系統)</label>
+          <label>${tr("目標座標系統", "Target Coordinate System")}</label>
           <select class="gs-select" id="selTargetCrs">
             ${CRS_UI_CATALOG.map(
-              (c) => `<option value="${c.code}" ${c.code === selectedCode ? "selected" : ""}>${escapeHtml(c.fullLabel)}</option>`
+              (c) => `<option value="${c.code}" ${c.code === selectedCode ? "selected" : ""}>${escapeHtml(getCrsItemFullLabel(c))}</option>`
             ).join("")}
           </select>
         </div>
 
         <div class="gs-form-group" style="margin-bottom:8px;">
-          <label>Optional Custom Datum Offset ΔX / ΔY / ΔZ (自訂平移量, m)</label>
+          <label>${tr("自訂平移量 ΔX / ΔY / ΔZ · 公尺", "Optional Custom Datum Offset ΔX / ΔY / ΔZ · m")}</label>
           <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;">
-            <input type="number" step="0.001" class="gs-input" id="numCrsOffsetX" value="${initOffX}" title="ΔX / ΔEasting (m)" placeholder="ΔX (m)" />
-            <input type="number" step="0.001" class="gs-input" id="numCrsOffsetY" value="${initOffY}" title="ΔY / ΔNorthing (m)" placeholder="ΔY (m)" />
-            <input type="number" step="0.001" class="gs-input" id="numCrsOffsetZ" value="${initOffZ}" title="ΔZ / ΔElevation (m)" placeholder="ΔZ (m)" />
+            <input type="number" step="0.001" class="gs-input" id="numCrsOffsetX" value="${initOffX}" title="${tr("東距平移量 ΔX / ΔE · 公尺", "ΔX / ΔEasting · m")}" placeholder="ΔX m" />
+            <input type="number" step="0.001" class="gs-input" id="numCrsOffsetY" value="${initOffY}" title="${tr("北距平移量 ΔY / ΔN · 公尺", "ΔY / ΔNorthing · m")}" placeholder="ΔY m" />
+            <input type="number" step="0.001" class="gs-input" id="numCrsOffsetZ" value="${initOffZ}" title="${tr("高程平移量 ΔZ / ΔH · 公尺", "ΔZ / ΔElevation · m")}" placeholder="ΔZ m" />
           </div>
         </div>
 
         <div id="lblCrsTargetPreview" style="font-size:11px;color:var(--ui-accent);background:var(--ui-bg-surface);border:1px solid var(--ui-border);border-radius:6px;padding:7px 8px;margin-bottom:9px;"></div>
 
         <button type="button" class="gs-top-btn accent" style="width:100%;justify-content:center;padding:8px 12px;font-weight:700;" id="btnStageCrs">
-          <span>🌐 Stage Coordinate System (加入座標系統設定)</span>
+          <span>🌐 ${tr("加入座標系統設定", "Stage Coordinate System")}</span>
         </button>
       </div>
 
@@ -15079,7 +15359,7 @@
       }
       if (stageBtn) stageBtn.disabled = false;
       if (previewEl) {
-        previewEl.innerHTML = `<b>New Scan Center (${escapeHtml(prev.crsLabel)}):</b><br/>X/E <b>${prev.x.toFixed(
+        previewEl.innerHTML = `<b>${tr("轉換後中心座標", "New Scan Center")} · ${escapeHtml(prev.crsLabel)}:</b><br/>X/E <b>${prev.x.toFixed(
           3
         )}m</b> · Y/N <b>${prev.y.toFixed(3)}m</b> · Z/H <b>${prev.z.toFixed(2)}m</b>`;
       }
@@ -15110,7 +15390,7 @@
       syncStagedEditsDockBadge();
       const item = CRS_UI_CATALOG.find((c) => c.code === code);
       openCoordinateSystemInspector();
-      showToast(`Staged Coordinate System: ${item ? item.shortLabel : code}`);
+      showToast(`${tr("已加入座標系統：", "Staged Coordinate System: ")}${item ? getCrsItemShortLabel(item) : code}`);
     });
 
     bindStagedAdjustmentsCardEvents(() => openCoordinateSystemInspector());
@@ -15119,13 +15399,18 @@
   function openGenerateScanInspector() {
     STATE.sidePanelMinimized = false;
     showSidePanel(
-      `<span>Save Scan Edits (儲存掃描變更)</span>`,
+      `<span>${tr("儲存掃描變更", "Save Scan Edits")}</span>`,
       `
       ${renderActiveScanSpecsCardHtml(STATE.activeScan)}
       <div style="font-size:11.5px;color:var(--ui-text-secondary);line-height:1.45;margin-bottom:6px;">
-        Combine multiple <b>Lasso Deletions</b>, <b>Mesh Compression</b>, and <b>Coordinate System</b> changes, then press <b>Save Edits</b> once — your edited scan is saved and a backup of <b>${escapeHtml(
-          STATE.activeScan?.name || STATE.activeScanId || "the original scan"
-        )}</b> is moved to the <b>Trash Bin</b> (restorable anytime).
+        ${tr(
+          `可同時整合多筆<b>套索刪除</b>、<b>網格壓縮優化</b>與<b>座標系統轉換</b>，完成後點擊一次<b>儲存變更</b>即可產製新掃描，且 <b>${escapeHtml(
+            STATE.activeScan?.name || STATE.activeScanId || "原始掃描"
+          )}</b> 的原始備份將安全移至<b>回收桶</b>，可隨時還原。`,
+          `Combine multiple <b>Lasso Deletions</b>, <b>Mesh Compression</b>, and <b>Coordinate System</b> changes, then press <b>Save Edits</b> once — your edited scan is saved and a backup of <b>${escapeHtml(
+            STATE.activeScan?.name || STATE.activeScanId || "the original scan"
+          )}</b> is moved to the <b>Trash Bin</b> · restorable anytime.`
+        )}
       </div>
       ${renderStagedAdjustmentsCardHtml({ alwaysShow: true })}
       `
@@ -16009,16 +16294,19 @@
       STATE.scans[0]?.project_group ||
       "Unassigned Site";
     const pickerProject = STATE.multiAlign.pickerProjectGroup || curSite;
-    const defaultMergedName = `${curSite} — Unified Merged Scan (${Math.max(2, layers.length)} Scans)`;
+    const defaultMergedName = tr(
+      `${curSite} — 整合合併掃描 · ${Math.max(2, layers.length)} 組掃描`,
+      `${curSite} — Unified Merged Scan · ${Math.max(2, layers.length)} Scans`
+    );
 
     const allProjectNames = Array.from(
       new Set(STATE.scans.map((s) => s.project_group || "Default"))
     ).sort();
     const projectFilterOptionsHtml = [
-      `<option value="__all__" ${pickerProject === "__all__" ? "selected" : ""}>All Projects (${STATE.scans.length} Scans)</option>`,
+      `<option value="__all__" ${pickerProject === "__all__" ? "selected" : ""}>${tr(`全部工區 · ${STATE.scans.length} 組掃描`, `All Projects · ${STATE.scans.length} Scans`)}</option>`,
       ...allProjectNames.map((pg) => {
         const cnt = STATE.scans.filter((s) => (s.project_group || "Default") === pg).length;
-        return `<option value="${escapeHtml(pg)}" ${pickerProject === pg ? "selected" : ""}>${escapeHtml(pg)} (${cnt} Scans)</option>`;
+        return `<option value="${escapeHtml(pg)}" ${pickerProject === pg ? "selected" : ""}>${escapeHtml(pg)} · ${tr(`${cnt} 組掃描`, `${cnt} Scan${cnt === 1 ? "" : "s"}`)}</option>`;
       }),
     ].join("");
 
@@ -16053,7 +16341,7 @@
             <label style="display:flex;align-items:center;gap:7px;min-width:0;flex:1;cursor:pointer;margin:0;">
               ${
                 isLoaded
-                  ? `<span style="width:12px;height:12px;border-radius:50%;background:${loadedLayer.color};display:inline-block;flex-shrink:0;" title="Loaded in 3D View"></span>`
+                  ? `<span style="width:12px;height:12px;border-radius:50%;background:${loadedLayer.color};display:inline-block;flex-shrink:0;" title="${tr("已載入至 3D 視景", "Loaded in 3D View")}"></span>`
                   : `<input type="checkbox" class="chk-align-pick-scan" data-scan-id="${escapeHtml(s.scan_id)}" ${
                       isChecked ? "checked" : ""
                     } style="accent-color:var(--ui-accent);width:14px;height:14px;margin:0;flex-shrink:0;cursor:pointer;" />`
@@ -16071,13 +16359,13 @@
               isLoaded
                 ? `<span style="font-size:10px;font-weight:700;padding:1px 6px;border-radius:4px;background:rgba(16,185,129,0.16);color:#10b981;flex-shrink:0;">#${
                     loadedIdx + 1
-                  }${loadedIdx === 0 ? " Anchor" : " Loaded"}</span>
+                  }${loadedIdx === 0 ? tr(" 基準", " Anchor") : tr(" 已載入", " Loaded")}</span>
                    <button type="button" class="gs-top-btn btn-align-remove" data-scan-id="${escapeHtml(
                      s.scan_id
-                   )}" style="padding:1px 6px;font-size:10px;flex-shrink:0;" title="Remove from 3D alignment view">✕</button>`
+                   )}" style="padding:1px 6px;font-size:10px;flex-shrink:0;" title="${tr("從 3D 對齊檢視移除", "Remove from 3D alignment view")}">✕</button>`
                 : `<button type="button" class="gs-top-btn btn-align-quick-add" data-scan-id="${escapeHtml(
                     s.scan_id
-                  )}" style="padding:2px 7px;font-size:10.5px;flex-shrink:0;" title="Add this scan to 3D alignment view">+ Add</button>`
+                  )}" style="padding:2px 7px;font-size:10.5px;flex-shrink:0;" title="${tr("將此掃描加入 3D 對齊檢視", "Add this scan to 3D alignment view")}">${tr("+ 加入", "+ Add")}</button>`
             }
           </div>
         `;
@@ -16091,7 +16379,7 @@
     const layerCardsHtml =
       layers.length === 0
         ? `<div style="padding:12px;border:1px dashed var(--ui-border-strong);border-radius:8px;text-align:center;font-size:11.5px;color:var(--ui-text-secondary);">
-            No scan layers in 3D view yet. Check scans above and click <b>+ Add Selected Scans</b>.
+            ${tr("目前 3D 檢視尚無掃描圖層。請勾選上方掃描並點擊 <b>+ 加入所選掃描</b>。", "No scan layers in 3D view yet. Check scans above and click <b>+ Add Selected Scans</b>.")}
           </div>`
         : layers
             .map((l, idx) => {
@@ -16104,32 +16392,32 @@
                 isSel ? l.color : "var(--ui-border)"
               };border-radius:8px;padding:9px 10px;margin-bottom:8px;transition:border-color 0.15s;">
                 <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;margin-bottom:6px;">
-                  <div style="display:flex;align-items:center;gap:6px;min-width:0;cursor:pointer;" class="btn-select-align-layer" data-scan-id="${l.scan_id}" title="Click to attach 3D Move/Rotate Gizmo to this scan">
+                  <div style="display:flex;align-items:center;gap:6px;min-width:0;cursor:pointer;" class="btn-select-align-layer" data-scan-id="${l.scan_id}" title="${tr("點擊以將 3D 平移／旋轉控制軸掛載至此掃描", "Click to attach 3D Move/Rotate Gizmo to this scan")}">
                     <span style="width:11px;height:11px;border-radius:50%;background:${l.color};flex-shrink:0;box-shadow:0 0 0 2px rgba(255,255,255,0.15);"></span>
                     <span style="font-size:12px;font-weight:700;color:var(--ui-text-primary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
                       #${idx + 1} ${l.name}
                     </span>
                     ${
                       idx === 0
-                        ? `<span style="font-size:9.5px;padding:1px 5px;border-radius:4px;background:rgba(56,189,248,0.16);color:#38bdf8;font-weight:600;">ANCHOR</span>`
+                        ? `<span style="font-size:9.5px;padding:1px 5px;border-radius:4px;background:rgba(56,189,248,0.16);color:#38bdf8;font-weight:600;">${tr("基準", "ANCHOR")}</span>`
                         : ""
                     }
                   </div>
                   <div style="display:flex;align-items:center;gap:4px;flex-shrink:0;">
-                    <button type="button" class="gs-top-btn btn-align-tint ${l.tintEnabled ? "accent" : ""}" data-scan-id="${l.scan_id}" style="padding:2px 6px;font-size:10px;" title="Toggle false-color tint on this scan to inspect overlap">
+                    <button type="button" class="gs-top-btn btn-align-tint ${l.tintEnabled ? "accent" : ""}" data-scan-id="${l.scan_id}" style="padding:2px 6px;font-size:10px;" title="${tr("切換此掃描的假色渲染以檢視重疊精度", "Toggle false-color tint on this scan to inspect overlap")}">
                       🎨
                     </button>
-                    <button type="button" class="gs-top-btn btn-align-vis" data-scan-id="${l.scan_id}" style="padding:2px 6px;font-size:10px;opacity:${l.visible ? 1 : 0.45};" title="Show/Hide scan layer">
+                    <button type="button" class="gs-top-btn btn-align-vis" data-scan-id="${l.scan_id}" style="padding:2px 6px;font-size:10px;opacity:${l.visible ? 1 : 0.45};" title="${tr("顯示／隱藏掃描圖層", "Show/Hide scan layer")}">
                       ${l.visible ? "👁" : "🚫"}
                     </button>
                     <button type="button" class="gs-top-btn btn-align-lock ${l.locked ? "accent" : ""}" data-scan-id="${l.scan_id}" style="padding:2px 7px;font-size:10.5px;font-weight:700;${
                       l.locked
                         ? "background:#10b981;border-color:#059669;color:#ffffff;"
                         : ""
-                    }" title="${l.locked ? "Orientation Locked (Click to Unlock)" : "Lock Orientation before Merging"}">
-                      ${l.locked ? "🔒 Locked" : "🔓 Lock"}
+                    }" title="${l.locked ? tr("姿態已鎖定 · 點擊解鎖", "Orientation Locked · Click to Unlock") : tr("合併前鎖定姿態", "Lock Orientation before Merging")}">
+                      ${l.locked ? tr("🔒 已鎖定", "🔒 Locked") : tr("🔓 鎖定", "🔓 Lock")}
                     </button>
-                    <button type="button" class="gs-top-btn btn-align-remove" data-scan-id="${l.scan_id}" style="padding:2px 6px;font-size:10px;" title="Remove scan from alignment view">
+                    <button type="button" class="gs-top-btn btn-align-remove" data-scan-id="${l.scan_id}" style="padding:2px 6px;font-size:10px;" title="${tr("從對齊檢視移除此掃描", "Remove scan from alignment view")}">
                       ✕
                     </button>
                   </div>
@@ -16137,39 +16425,39 @@
 
                 <div style="display:grid;grid-template-columns:repeat(3, 1fr);gap:5px;font-size:10.5px;">
                   <div>
-                    <label style="display:block;color:#ef4444;font-weight:600;margin-bottom:2px;">Move X (E m)</label>
+                    <label style="display:block;color:#ef4444;font-weight:600;margin-bottom:2px;">${tr("平移 X · E m", "Move X · E m")}</label>
                     <input type="number" step="0.1" class="gs-input align-num-input" data-scan-id="${l.scan_id}" data-field="tx" value="${Number(l.tx || 0).toFixed(2)}" ${disAttr} style="padding:3px 5px;font-size:11px;width:100%;" />
                   </div>
                   <div>
-                    <label style="display:block;color:#22c55e;font-weight:600;margin-bottom:2px;">Elev Y (H m)</label>
+                    <label style="display:block;color:#22c55e;font-weight:600;margin-bottom:2px;">${tr("高程 Y · H m", "Elev Y · H m")}</label>
                     <input type="number" step="0.1" class="gs-input align-num-input" data-scan-id="${l.scan_id}" data-field="ty" value="${Number(l.ty || 0).toFixed(2)}" ${disAttr} style="padding:3px 5px;font-size:11px;width:100%;" />
                   </div>
                   <div>
-                    <label style="display:block;color:#3b82f6;font-weight:600;margin-bottom:2px;">Move Z (N m)</label>
+                    <label style="display:block;color:#3b82f6;font-weight:600;margin-bottom:2px;">${tr("平移 Z · N m", "Move Z · N m")}</label>
                     <input type="number" step="0.1" class="gs-input align-num-input" data-scan-id="${l.scan_id}" data-field="tz" value="${Number(l.tz || 0).toFixed(2)}" ${disAttr} style="padding:3px 5px;font-size:11px;width:100%;" />
                   </div>
                   <div>
-                    <label style="display:block;color:#10b981;font-weight:600;margin-bottom:2px;">Yaw Ry (°)</label>
+                    <label style="display:block;color:#10b981;font-weight:600;margin-bottom:2px;">${tr("航向角 Ry °", "Yaw Ry °")}</label>
                     <input type="number" step="0.5" class="gs-input align-num-input" data-scan-id="${l.scan_id}" data-field="ry_deg" value="${Number(l.ry_deg || 0).toFixed(1)}" ${disAttr} style="padding:3px 5px;font-size:11px;width:100%;" />
                   </div>
                   <div>
-                    <label style="display:block;color:#f87171;font-weight:600;margin-bottom:2px;">Pitch Rx (°)</label>
+                    <label style="display:block;color:#f87171;font-weight:600;margin-bottom:2px;">${tr("俯仰角 Rx °", "Pitch Rx °")}</label>
                     <input type="number" step="0.5" class="gs-input align-num-input" data-scan-id="${l.scan_id}" data-field="rx_deg" value="${Number(l.rx_deg || 0).toFixed(1)}" ${disAttr} style="padding:3px 5px;font-size:11px;width:100%;" />
                   </div>
                   <div>
-                    <label style="display:block;color:#60a5fa;font-weight:600;margin-bottom:2px;">Roll Rz (°)</label>
+                    <label style="display:block;color:#60a5fa;font-weight:600;margin-bottom:2px;">${tr("橫滾角 Rz °", "Roll Rz °")}</label>
                     <input type="number" step="0.5" class="gs-input align-num-input" data-scan-id="${l.scan_id}" data-field="rz_deg" value="${Number(l.rz_deg || 0).toFixed(1)}" ${disAttr} style="padding:3px 5px;font-size:11px;width:100%;" />
                   </div>
                 </div>
                 <div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px;gap:4px;">
                   <button type="button" class="gs-top-btn btn-select-align-layer ${isSel ? "accent" : ""}" data-scan-id="${l.scan_id}" style="padding:2px 8px;font-size:10.5px;flex:1;justify-content:center;">
-                    <span>${isSel ? "🎯 Gizmo Active" : "Select for 3D Gizmo"}</span>
+                    <span>${isSel ? tr("🎯 控制軸已啟用", "🎯 Gizmo Active") : tr("選取 3D 控制軸", "Select for 3D Gizmo")}</span>
                   </button>
-                  <button type="button" class="gs-top-btn btn-align-rot90" data-scan-id="${l.scan_id}" ${disAttr} style="padding:2px 7px;font-size:10.5px;" title="Rotate Yaw +90°">
+                  <button type="button" class="gs-top-btn btn-align-rot90" data-scan-id="${l.scan_id}" ${disAttr} style="padding:2px 7px;font-size:10.5px;" title="${tr("航向角旋轉 +90°", "Rotate Yaw +90°")}">
                     <span>↻ +90°</span>
                   </button>
-                  <button type="button" class="gs-top-btn btn-align-zero" data-scan-id="${l.scan_id}" ${disAttr} style="padding:2px 7px;font-size:10.5px;" title="Reset this scan to (0,0,0) and 0° rotation">
-                    <span>Reset</span>
+                  <button type="button" class="gs-top-btn btn-align-zero" data-scan-id="${l.scan_id}" ${disAttr} style="padding:2px 7px;font-size:10.5px;" title="${tr("重設此掃描至原點 0,0,0 與 0° 旋轉", "Reset this scan to 0,0,0 and 0° rotation")}">
+                    <span>${tr("重設", "Reset")}</span>
                   </button>
                 </div>
               </div>
@@ -16181,23 +16469,23 @@
       ? `
         <div style="margin-top:10px;padding:10px;border-radius:8px;background:rgba(16,185,129,0.12);border:1px solid rgba(16,185,129,0.4);font-size:11.5px;">
           <div style="font-weight:700;color:#10b981;margin-bottom:4px;">
-            ✓ Merged Scan Ready: ${STATE.multiAlign.lastMergedScan.name}
+            ✓ ${tr("合併掃描已就緒：", "Merged Scan Ready: ")}${escapeHtml(STATE.multiAlign.lastMergedScan.name)}
           </div>
           <div style="color:var(--ui-text-secondary);font-size:11px;margin-bottom:8px;">
-            Loaded as the active Studio scan. Apply existing tools directly to this unified scan:
+            ${tr("已載入為目前 3D 工作台活動掃描，可直接套用以下工程分析工具：", "Loaded as the active Studio scan. Apply existing tools directly to this unified scan:")}
           </div>
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;">
             <button type="button" class="gs-top-btn accent" id="btnPostMergeOptimize" style="justify-content:center;font-size:11px;">
-              <span>⚡ Optimize / Crop</span>
+              <span>⚡ ${tr("壓縮 / 裁切", "Optimize / Crop")}</span>
             </button>
             <button type="button" class="gs-top-btn" id="btnPostMergeVolume" style="justify-content:center;font-size:11px;">
-              <span>📐 Cut/Fill Volume</span>
+              <span>📐 ${tr("挖填方體積", "Cut/Fill Volume")}</span>
             </button>
             <button type="button" class="gs-top-btn" id="btnPostMergeContours" style="justify-content:center;font-size:11px;">
-              <span>🗺️ Contours / DXF</span>
+              <span>🗺️ ${tr("等高線 / DXF", "Contours / DXF")}</span>
             </button>
             <button type="button" class="gs-top-btn" id="btnPostMergeSection" style="justify-content:center;font-size:11px;">
-              <span>🧊 3D Section Box</span>
+              <span>🧊 ${tr("3D 剖面盒", "3D Section Box")}</span>
             </button>
           </div>
         </div>
@@ -16205,20 +16493,20 @@
       : "";
 
     showSidePanel(
-      "Multi-Scan 3D Alignment & Merge (多掃描對齊與合併)",
+      tr("多掃描 3D 對齊與合併", "Multi-Scan 3D Alignment & Merge"),
       `
       <!-- Step 1: User-Controlled Scan Selector Checklist -->
       <div style="background:var(--ui-bg-subtle);border:1px solid var(--ui-border-strong);border-radius:8px;padding:9px 10px;margin-bottom:10px;">
         <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;margin-bottom:6px;">
-          <span style="font-size:11.5px;font-weight:700;color:var(--ui-text-primary);">1. Select Scans to Add (選擇要加入的掃描)</span>
+          <span style="font-size:11.5px;font-weight:700;color:var(--ui-text-primary);">${tr("1. 選擇要加入的掃描", "1. Select Scans to Add")}</span>
           <div style="display:flex;gap:4px;">
-            <button type="button" class="gs-top-btn" id="btnAlignCheckAllCandidates" style="padding:1px 6px;font-size:10px;" title="Check all unloaded scans in this list">Select All</button>
-            <button type="button" class="gs-top-btn" id="btnAlignUncheckAllCandidates" style="padding:1px 6px;font-size:10px;" title="Uncheck all">Clear</button>
+            <button type="button" class="gs-top-btn" id="btnAlignCheckAllCandidates" style="padding:1px 6px;font-size:10px;" title="${tr("勾選清單中所有尚未載入的掃描", "Check all unloaded scans in this list")}">${tr("全選", "Select All")}</button>
+            <button type="button" class="gs-top-btn" id="btnAlignUncheckAllCandidates" style="padding:1px 6px;font-size:10px;" title="${tr("取消勾選全部", "Uncheck all")}">${tr("清除", "Clear")}</button>
           </div>
         </div>
 
         <div style="margin-bottom:6px;">
-          <select class="gs-select" id="alignProjectFilterSelect" style="width:100%;font-size:11.5px;height:28px;" title="Filter scans by project site">
+          <select class="gs-select" id="alignProjectFilterSelect" style="width:100%;font-size:11.5px;height:28px;" title="${tr("依工區篩選掃描", "Filter scans by project site")}">
             ${projectFilterOptionsHtml}
           </select>
         </div>
@@ -16228,34 +16516,34 @@
         </div>
 
         <button type="button" class="gs-top-btn accent" id="btnAlignAddCheckedScans" style="width:100%;justify-content:center;font-size:11.5px;font-weight:700;padding:6px 10px;">
-          <span>+ Add Selected Scans to 3D View (${checkedCount} Checked)</span>
+          <span>${tr(`+ 將勾選掃描加入 3D 檢視 · 已勾選 ${checkedCount}`, `+ Add Selected Scans to 3D View · ${checkedCount} Checked`)}</span>
         </button>
       </div>
 
       <!-- Step 2: 3D Gizmo Mode & Active Layers -->
       <div style="display:flex;align-items:center;justify-content:space-between;gap:4px;margin-bottom:6px;">
-        <span style="font-size:11.5px;font-weight:700;color:var(--ui-text-primary);">2. Active 3D Layers (${layers.length} Loaded)</span>
+        <span style="font-size:11.5px;font-weight:700;color:var(--ui-text-primary);">${tr(`2. 活動中 3D 圖層 · 已載入 ${layers.length}`, `2. Active 3D Layers · ${layers.length} Loaded`)}</span>
         <div style="display:flex;gap:4px;">
-          <button type="button" class="gs-top-btn" id="btnAlignSpreadScans" style="padding:2px 7px;font-size:10.5px;" title="Spread unlocked scans side-by-side along X so you can inspect them individually">
-            <span>Spread</span>
+          <button type="button" class="gs-top-btn" id="btnAlignSpreadScans" style="padding:2px 7px;font-size:10.5px;" title="${tr("沿 X 軸並排展開未鎖定掃描以便個別檢視", "Spread unlocked scans side-by-side along X so you can inspect them individually")}">
+            <span>${tr("並排展開", "Spread")}</span>
           </button>
-          <button type="button" class="gs-top-btn" id="btnAlignStackOrigin" style="padding:2px 7px;font-size:10.5px;" title="Co-locate unlocked scans at (0,0,0)">
-            <span>Co-locate</span>
+          <button type="button" class="gs-top-btn" id="btnAlignStackOrigin" style="padding:2px 7px;font-size:10.5px;" title="${tr("將未鎖定掃描疊合對齊於原點 0,0,0", "Co-locate unlocked scans at 0,0,0")}">
+            <span>${tr("原點疊合", "Co-locate")}</span>
           </button>
         </div>
       </div>
 
       <div style="display:flex;align-items:center;justify-content:space-between;gap:4px;margin-bottom:8px;background:var(--ui-bg-subtle);padding:5px 7px;border-radius:7px;border:1px solid var(--ui-border);">
-        <span style="font-size:11px;font-weight:600;color:var(--ui-text-secondary);">3D Gizmo Mode:</span>
+        <span style="font-size:11px;font-weight:600;color:var(--ui-text-secondary);">${tr("3D 控制軸模式：", "3D Gizmo Mode:")}</span>
         <div style="display:flex;gap:4px;">
           <button type="button" class="gs-top-btn btn-gizmo-mode ${STATE.multiAlign.gizmoMode === "both" ? "accent" : ""}" data-mode="both" style="padding:2px 7px;font-size:10.5px;">
-            <span>Move + Rotate (R)</span>
+            <span>${tr("平移 + 旋轉 · R", "Move + Rotate · R")}</span>
           </button>
           <button type="button" class="gs-top-btn btn-gizmo-mode ${STATE.multiAlign.gizmoMode === "translate" ? "accent" : ""}" data-mode="translate" style="padding:2px 7px;font-size:10.5px;">
-            <span>Move (W)</span>
+            <span>${tr("平移 · W", "Move · W")}</span>
           </button>
           <button type="button" class="gs-top-btn btn-gizmo-mode ${STATE.multiAlign.gizmoMode === "rotate" ? "accent" : ""}" data-mode="rotate" style="padding:2px 7px;font-size:10.5px;">
-            <span>Rotate (E)</span>
+            <span>${tr("旋轉 · E", "Rotate · E")}</span>
           </button>
         </div>
       </div>
@@ -16268,31 +16556,31 @@
         <button type="button" class="gs-top-btn ${allLocked ? "accent" : ""}" id="btnAlignLockAll" style="flex:1;justify-content:center;font-size:11.5px;${
           allLocked ? "background:#10b981;border-color:#059669;color:#fff;" : ""
         }">
-          <span>🔒 Lock All Orientations (${lockedCount}/${layers.length})</span>
+          <span>${tr(`🔒 鎖定全部姿態 · ${lockedCount}/${layers.length}`, `🔒 Lock All Orientations · ${lockedCount}/${layers.length}`)}</span>
         </button>
         <button type="button" class="gs-top-btn" id="btnAlignUnlockAll" style="justify-content:center;font-size:11.5px;">
-          <span>🔓 Unlock All</span>
+          <span>${tr("🔓 全部解鎖", "🔓 Unlock All")}</span>
         </button>
       </div>
 
       <div style="border-top:1px solid var(--ui-border);padding-top:10px;">
         <div class="gs-form-group" style="margin-bottom:7px;">
-          <label style="font-size:11px;">Unified Scan Name (合併後新掃描名稱)</label>
+          <label style="font-size:11px;">${tr("合併後新掃描名稱", "Unified Scan Name")}</label>
           <input type="text" class="gs-input" id="alignMergedScanName" value="${defaultMergedName}" style="font-size:12px;" />
         </div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:8px;">
           <div class="gs-form-group" style="margin-bottom:0;">
-            <label style="font-size:11px;">Target Project Site</label>
+            <label style="font-size:11px;">${tr("目標工區名稱", "Target Project Site")}</label>
             <input type="text" class="gs-input" id="alignMergedProjectGroup" value="${curSite}" style="font-size:11.5px;" />
           </div>
           <div class="gs-form-group" style="margin-bottom:0;">
-            <label style="font-size:11px;">Post-Merge Optimizer</label>
+            <label style="font-size:11px;">${tr("合併後網格最佳化", "Post-Merge Optimizer")}</label>
             <select class="gs-select" id="alignPostOptPreset" style="font-size:11.5px;">
-              <option value="none" ${!ensureStagedEditsForActiveScan().compressionPreset ? "selected" : ""}>Keep Native Merged Mesh</option>
-              <option value="balanced" ${ensureStagedEditsForActiveScan().compressionPreset === "balanced" ? "selected" : ""}>Auto-Run Balanced (50% Tris)</option>
-              <option value="quality" ${ensureStagedEditsForActiveScan().compressionPreset === "quality" ? "selected" : ""}>Auto-Run High Quality (75% Tris)</option>
-              <option value="web" ${ensureStagedEditsForActiveScan().compressionPreset === "web" ? "selected" : ""}>Auto-Run Fast Tablet (35% Tris)</option>
-              <option value="ultra_light" ${ensureStagedEditsForActiveScan().compressionPreset === "ultra_light" ? "selected" : ""}>Auto-Run Ultra-Light (20% Tris)</option>
+              <option value="none" ${!ensureStagedEditsForActiveScan().compressionPreset ? "selected" : ""}>${tr("保留原始合併網格", "Keep Native Merged Mesh")}</option>
+              <option value="balanced" ${ensureStagedEditsForActiveScan().compressionPreset === "balanced" ? "selected" : ""}>${tr("自動執行平衡最佳化 · 50% 面數", "Auto-Run Balanced · 50% Tris")}</option>
+              <option value="quality" ${ensureStagedEditsForActiveScan().compressionPreset === "quality" ? "selected" : ""}>${tr("自動執行高品質最佳化 · 75% 面數", "Auto-Run High Quality · 75% Tris")}</option>
+              <option value="web" ${ensureStagedEditsForActiveScan().compressionPreset === "web" ? "selected" : ""}>${tr("自動執行行動裝置最佳化 · 35% 面數", "Auto-Run Fast Tablet · 35% Tris")}</option>
+              <option value="ultra_light" ${ensureStagedEditsForActiveScan().compressionPreset === "ultra_light" ? "selected" : ""}>${tr("自動執行極輕量最佳化 · 20% 面數", "Auto-Run Ultra-Light · 20% Tris")}</option>
             </select>
           </div>
         </div>
@@ -16309,16 +16597,22 @@
           const chips = [];
           if (pendingRegs > 0) {
             chips.push(
-              `<span style="color:#ef4444;font-weight:700;">🔴 ${pendingRegs} selected polygon${
-                pendingRegs === 1 ? "" : "s"
-              }${pendingTris > 0 ? ` (~${pendingTris.toLocaleString()} tris)` : ""} preserved</span>`
+              `<span style="color:#ef4444;font-weight:700;">🔴 ${tr(
+                `已保留 ${pendingRegs} 個選取多邊形${pendingTris > 0 ? ` · ~${pendingTris.toLocaleString()} 面` : ""}`,
+                `${pendingRegs} selected polygon${pendingRegs === 1 ? "" : "s"}${pendingTris > 0 ? ` · ~${pendingTris.toLocaleString()} tris` : ""} preserved`
+              )}</span>`
             );
           }
           if (delRegs > 0) {
-            chips.push(`🗑️ ${delRegs} deleted region${delRegs === 1 ? "" : "s"} (-${delTris.toLocaleString()} tris)`);
+            chips.push(
+              tr(
+                `🗑️ 已刪除 ${delRegs} 個區域 · -${delTris.toLocaleString()} 面`,
+                `🗑️ ${delRegs} deleted region${delRegs === 1 ? "" : "s"} · -${delTris.toLocaleString()} tris`
+              )
+            );
           }
           if (crsItem) {
-            chips.push(`🌐 CRS: ${escapeHtml(crsItem.shortLabel)}`);
+            chips.push(`🌐 CRS: ${escapeHtml(getCrsItemShortLabel(crsItem))}`);
           }
           return `
             <div style="display:flex;align-items:center;justify-content:space-between;gap:5px;flex-wrap:wrap;margin-bottom:8px;padding:6px 8px;border-radius:7px;background:var(--ui-bg-subtle);border:1px solid ${
@@ -16326,17 +16620,20 @@
             };font-size:10.5px;">
               <span style="color:var(--ui-text-secondary);">${
                 chips.length > 0
-                  ? `<b>Included in Merge:</b> ${chips.join(" · ")}`
-                  : `Tip: Use <b>Lasso Delete (套索刪除)</b> or <b>CRS (座標系統)</b> before merging!`
+                  ? `<b>${tr("合併包含項目：", "Included in Merge:")}</b> ${chips.join(" · ")}`
+                  : tr(
+                      `提示：可先使用 <b>套索刪除</b> 或 <b>座標系統</b> 調整後再合併！`,
+                      `Tip: Use <b>Lasso Delete</b> or <b>CRS</b> before merging!`
+                    )
               }</span>
               <div style="display:flex;gap:4px;flex-wrap:wrap;">
                 ${
                   pendingRegs > 0
-                    ? `<button type="button" class="gs-top-btn accent" id="btnAlignCommitPendingLasso" style="padding:2px 7px;font-size:10px;background:#ef4444;border-color:#dc2626;color:#fff;" title="Apply live 3D deletion to the preserved red polygon(s)">✓ Delete Selected (${pendingRegs})</button>`
+                    ? `<button type="button" class="gs-top-btn accent" id="btnAlignCommitPendingLasso" style="padding:2px 7px;font-size:10px;background:#ef4444;border-color:#dc2626;color:#fff;" title="${tr("套用即時 3D 刪除至保留的紅色多邊形", "Apply live 3D deletion to the preserved red polygons")}">${tr(`✓ 刪除已選取 · ${pendingRegs}`, `✓ Delete Selected · ${pendingRegs}`)}</button>`
                     : ""
                 }
                 <button type="button" class="gs-top-btn" id="btnAlignOpenLassoDelete" style="padding:2px 7px;font-size:10px;border-color:rgba(239,68,68,0.4);color:#ef4444;">🗑️ ${
-                  pendingRegs > 0 ? "Edit Polygons" : "Lasso Delete"
+                  pendingRegs > 0 ? tr("編輯多邊形", "Edit Polygons") : tr("套索刪除", "Lasso Delete")
                 }</button>
                 <button type="button" class="gs-top-btn" id="btnAlignOpenCrs" style="padding:2px 7px;font-size:10px;">🌐 CRS</button>
               </div>
@@ -16348,7 +16645,10 @@
           <input type="checkbox" id="chkAlignArchiveOriginals" ${
             STATE.multiAlign.archiveOriginals === true ? "checked" : ""
           } style="accent-color:#10b981;width:14px;height:14px;margin:0;cursor:pointer;flex-shrink:0;" />
-          <span>Optional: move individual source scans to <b>Trash Bin</b> after merge (選填：合併後將個別原掃描移至回收桶；預設保留所有個別掃描)</span>
+          <span>${tr(
+            "選填：合併後將個別原掃描移至回收桶 · 預設保留所有個別掃描",
+            "Optional: move individual source scans to <b>Trash Bin</b> after merge"
+          )}</span>
         </label>
 
         <button type="button" class="gs-top-btn accent" id="btnExecuteMergeScans" style="width:100%;justify-content:center;padding:8px 12px;font-weight:700;${
@@ -16359,13 +16659,13 @@
           </svg>
           <span>${
             allLocked
-              ? `Merge ${layers.length} Locked Scans into Unified Scan`
-              : `Lock All Scans (🔒) to Merge (${lockedCount}/${layers.length} Locked)`
+              ? tr(`合併 ${layers.length} 組已鎖定掃描為單一掃描`, `Merge ${layers.length} Locked Scans into Unified Scan`)
+              : tr(`請先鎖定所有掃描 🔒 再執行合併 · 已鎖定 ${lockedCount}/${layers.length}`, `Lock All Scans 🔒 to Merge · ${lockedCount}/${layers.length} Locked`)
           }</span>
         </button>
 
         <button type="button" class="gs-top-btn" id="btnExitMultiAlign" style="width:100%;justify-content:center;margin-top:6px;font-size:11px;">
-          <span>Exit Multi-Scan Alignment View</span>
+          <span>${tr("離開多掃描對齊檢視", "Exit Multi-Scan Alignment View")}</span>
         </button>
       </div>
 
@@ -17109,7 +17409,7 @@
         if (STATE.lastCategorizeResult && document.getElementById("catResultContainer")) {
           renderCategorizePanelContent(STATE.lastCategorizeResult);
         }
-        showToast("已取消手動編輯模式 (Cancelled manual edit mode)");
+        showToast(tr("已取消手動編輯模式", "Cancelled manual edit mode"));
         return;
       }
       if (STATE.activeView === "studio" && STATE.measurePoints.length > 0) {
@@ -17520,7 +17820,7 @@
     }
     if (lblPct) {
       lblPct.style.display = resolvedMode === "split" ? "none" : "";
-      lblPct.textContent = `Split: ${Math.round(pct)}%`;
+      lblPct.textContent = tr(`分割：${Math.round(pct)}%`, `Split: ${Math.round(pct)}%`);
     }
     document.querySelectorAll("#compareModeSwitcher .btn-seg").forEach((btn) => {
       btn.classList.toggle("active", btn.dataset.compareMode === resolvedMode);
@@ -18182,7 +18482,7 @@
       divider.style.left = `${pct}%`;
       rightContainer.style.clipPath = `inset(0 0 0 ${pct}%)`;
       const lbl = document.getElementById("lblCurtainPct");
-      if (lbl) lbl.textContent = `Split: ${Math.round(pct)}%`;
+      if (lbl) lbl.textContent = tr(`分割：${Math.round(pct)}%`, `Split: ${Math.round(pct)}%`);
     };
 
     const startCurtainDrag = (e) => {
@@ -18416,11 +18716,16 @@
     if (subEl) {
       if (normalizedPref === "auto") {
         const nowStr = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-        subEl.textContent = `Auto by Time of Day (${nowStr} → Currently ${resolved === "dark" ? "Dark" : "Light"} · 06:00–18:00 Light)`;
+        const curModeZh = resolved === "dark" ? "深色" : "淺色";
+        const curModeEn = resolved === "dark" ? "Dark" : "Light";
+        subEl.textContent = tr(
+          `依時段自動切換 · ${nowStr} → 目前為${curModeZh}模式 · 06:00–18:00 淺色`,
+          `Auto by Time of Day · ${nowStr} → Currently ${curModeEn} · 06:00–18:00 Light`
+        );
       } else if (normalizedPref === "light") {
-        subEl.textContent = "Locked to Light Theme across all views & 3D canvases";
+        subEl.textContent = tr("所有檢視與 3D 畫布已固定為淺色主題", "Locked to Light Theme across all views & 3D canvases");
       } else {
-        subEl.textContent = "Locked to Dark Theme across all views & 3D canvases";
+        subEl.textContent = tr("所有檢視與 3D 畫布已固定為深色主題", "Locked to Dark Theme across all views & 3D canvases");
       }
     }
 
@@ -18691,13 +18996,17 @@
           const lp = qData.live_pix4d;
           monBox.style.display = "block";
           const tEl = document.getElementById("livePix4dTitle");
-          if (tEl) tEl.textContent = `Active PIX4Dmatic Pipeline: ${lp.scan_name} (${Math.round(lp.progress_pct || 0)}%)`;
+          if (tEl)
+            tEl.textContent = tr(
+              `執行中 PIX4Dmatic 管線：${lp.scan_name} · ${Math.round(lp.progress_pct || 0)}%`,
+              `Active PIX4Dmatic Pipeline: ${lp.scan_name} · ${Math.round(lp.progress_pct || 0)}%`
+            );
           const bEl = document.getElementById("livePix4dStageBadge");
           if (bEl) bEl.textContent = `${lp.stage}${lp.cpu_ram ? " · " + lp.cpu_ram : ""}`;
           const pBar = document.getElementById("livePix4dProgressBar");
           if (pBar) pBar.style.width = `${Math.max(5, Math.min(100, Number(lp.progress_pct || 10)))}%`;
           const pathEl = document.getElementById("livePix4dLogPath");
-          if (pathEl) pathEl.textContent = `Log: ${lp.log_path || ""}`;
+          if (pathEl) pathEl.textContent = `${tr("日誌：", "Log: ")}${lp.log_path || ""}`;
           const tailEl = document.getElementById("livePix4dLogTail");
           if (tailEl) tailEl.textContent = (lp.tail_lines || []).join("\n");
         } else {
@@ -18708,14 +19017,23 @@
       const rows = Array.isArray(qData.all_scans) && qData.all_scans.length > 0 ? qData.all_scans : STATE.scans;
       tbody.innerHTML = "";
       rows.forEach((s) => {
-        const tr = document.createElement("tr");
+        const rowEl = document.createElement("tr");
         const isProc = s.status === "processing";
         const pct = Math.round(Number(s.progress_pct || (s.status === "completed" ? 100 : 0)));
-        const safeStatus = escapeHtml(String(s.status || "").toUpperCase());
-        const safeStage = escapeHtml(s.stage_label || "Running PIX4Dmatic...");
+        const rawStatusUpper = String(s.status || "").toUpperCase();
+        const statusDisplay =
+          rawStatusUpper === "COMPLETED"
+            ? tr("已完成", "COMPLETED")
+            : rawStatusUpper === "QUEUED" || rawStatusUpper === "WAITING"
+            ? tr("排隊等待", "QUEUED")
+            : rawStatusUpper === "FAILED" || rawStatusUpper === "ERROR"
+            ? tr("失敗", "FAILED")
+            : rawStatusUpper;
+        const safeStatus = escapeHtml(statusDisplay);
+        const safeStage = escapeHtml(s.stage_label || tr("正在執行 PIX4Dmatic...", "Running PIX4Dmatic..."));
         const statusHtml = isProc
           ? `<div style="display:flex;flex-direction:column;gap:3px;min-width:130px;">
-               <span class="gs-crs-pill" style="background:rgba(2,132,199,0.18);color:var(--ui-accent);">PROCESSING (${pct}%)</span>
+               <span class="gs-crs-pill" style="background:rgba(2,132,199,0.18);color:var(--ui-accent);">${tr(`處理中 · ${pct}%`, `PROCESSING · ${pct}%`)}</span>
                <div style="height:4px;background:var(--ui-border-strong);border-radius:999px;overflow:hidden;">
                  <div style="height:100%;width:${Math.max(5, pct)}%;background:var(--ui-accent);"></div>
                </div>
@@ -18724,32 +19042,32 @@
           : `<span class="gs-crs-pill">${safeStatus}</span>`;
 
         const safeScanId = escapeHtml(s.scan_id || "");
-        tr.innerHTML = `
+        rowEl.innerHTML = `
           <td><b style="color:var(--ui-text-primary);">${escapeHtml(s.name || s.scan_id || "")}</b><br><span style="font-size:10.5px;color:var(--ui-text-muted);">${safeScanId}</span></td>
           <td style="color:var(--ui-text-secondary);">${escapeHtml(s.project_group || "")}</td>
           <td><span style="color:var(--ui-text-primary);font-weight:600;">${escapeHtml(s.uploader_name || "")}</span><br><span style="font-size:10.5px;color:var(--ui-text-muted);">${escapeHtml(s.uploader_email || "")} · ${escapeHtml(s.capture_date || "")}</span></td>
-          <td><span style="color:var(--ui-text-primary);font-weight:600;">${Number(s.image_count || 0)} imgs</span><br><span style="font-size:10.5px;color:var(--ui-text-muted);">${escapeHtml(formatCoveredAreaM2(s))} · ${Number(s.size_mb || (s.size_bytes || 0) / 1048576).toFixed(1)} MB</span></td>
+          <td><span style="color:var(--ui-text-primary);font-weight:600;">${Number(s.image_count || 0)} ${tr("張照片", "imgs")}</span><br><span style="font-size:10.5px;color:var(--ui-text-muted);">${escapeHtml(formatCoveredAreaM2(s))} · ${Number(s.size_mb || (s.size_bytes || 0) / 1048576).toFixed(1)} MB</span></td>
           <td><span class="gs-crs-pill">${escapeHtml(getScanCrsDisplayLabel(s))} · ${Number(s.texture_resolution || 4096)}px</span></td>
           <td style="font-family:monospace;font-weight:700;color:var(--ui-text-primary);">${escapeHtml(String(s.priority_score ?? ""))}</td>
           <td>${statusHtml}</td>
           <td style="display:flex;gap:4px;">
-            <button type="button" class="btn-xs" data-gst="${safeScanId}" title="Preview .GST Script">
+            <button type="button" class="btn-xs" data-gst="${safeScanId}" title="${tr("預覽 .GST 腳本", "Preview .GST Script")}">
               <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8">
                 <polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/>
               </svg>
             </button>
-            <button type="button" class="btn-xs" data-reprocess="${safeScanId}" title="Re-run from Original Photos with Custom PIX4Dmatic Settings">
+            <button type="button" class="btn-xs" data-reprocess="${safeScanId}" title="${tr("以自訂 PIX4Dmatic 參數從原始照片重新計算", "Re-run from Original Photos with Custom PIX4Dmatic Settings")}">
               <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8">
                 <polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
               </svg>
             </button>
           </td>
         `;
-        tr.querySelector("[data-gst]")?.addEventListener("click", () => previewGstForScan(s.scan_id));
-        tr.querySelector("[data-reprocess]")?.addEventListener("click", () => {
+        rowEl.querySelector("[data-gst]")?.addEventListener("click", () => previewGstForScan(s.scan_id));
+        rowEl.querySelector("[data-reprocess]")?.addEventListener("click", () => {
           openRerunScanModal(s.scan_id);
         });
-        tbody.appendChild(tr);
+        tbody.appendChild(rowEl);
       });
     } catch (err) {
       const monBox = document.getElementById("livePix4dMonitorBox");
@@ -18763,7 +19081,7 @@
     _pix4dSettingsDirty = false;
     const tbody = document.getElementById("queueTableBody");
     if (tbody && !tbody.children.length) {
-      tbody.innerHTML = `<tr><td colspan="8" style="color:var(--ui-text-muted);">Loading...</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="8" style="color:var(--ui-text-muted);">${tr("載入中...", "Loading...")}</td></tr>`;
     }
     await refreshQueueModalData();
     refreshCloudManifestUI();
@@ -18851,8 +19169,11 @@
       if (badge) {
         const total = Number(st.total_packages || 0);
         const synced = Math.max(Number(st.synced_shared_drive_count || 0), Number(st.synced_my_drive_count || 0));
-        const authTag = st.auth_configured ? " · Auth Ready" : " · Link/OAuth";
-        badge.textContent = `${synced} / ${total} .3tz Synced (${st.total_size_mb || 0} MB)${authTag}`;
+        const authTag = st.auth_configured ? tr(" · 憑證已就緒", " · Auth Ready") : tr(" · 連結／OAuth", " · Link/OAuth");
+        badge.textContent = tr(
+          `已同步 ${synced} / ${total} 個 .3tz · ${st.total_size_mb || 0} MB${authTag}`,
+          `${synced} / ${total} .3tz Synced · ${st.total_size_mb || 0} MB${authTag}`
+        );
       }
       const lnkSd = document.getElementById("lnkCloudSharedDrive");
       if (lnkSd && st.shared_drive_url) lnkSd.href = st.shared_drive_url;
@@ -19020,7 +19341,7 @@
       <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.2">
         <polyline points="20 6 9 17 4 12"/>
       </svg>
-      <span>Copied!</span>
+      <span>${tr("已複製！", "Copied!")}</span>
     `;
     if (btnEl._copyTimer) clearTimeout(btnEl._copyTimer);
     btnEl._copyTimer = setTimeout(() => {
@@ -19031,7 +19352,7 @@
     }, 2200);
   }
 
-  function showLatestShareLinkBanner(url, statusLabel = "Shareable Link Ready:") {
+  function showLatestShareLinkBanner(url, statusLabel = tr("分享連結已就緒：", "Shareable Link Ready:")) {
     const bar = document.getElementById("shareLatestCreatedBar");
     const inp = document.getElementById("shareLatestUrlInput");
     const openBtn = document.getElementById("btnOpenLatestShareUrl");
@@ -19058,7 +19379,7 @@
       _cachedShareLinksList.find((l) => !l.revoked && l.scope_type === st && l.target_id === tid) ||
       _cachedShareLinksList.find((l) => !l.revoked);
     if (activeMatch && activeMatch.token) {
-      showLatestShareLinkBanner(buildPublicShareUrl(activeMatch.token), "Shareable Link Ready:");
+      showLatestShareLinkBanner(buildPublicShareUrl(activeMatch.token), tr("分享連結已就緒：", "Shareable Link Ready:"));
     } else {
       showLatestShareLinkBanner("");
     }
@@ -19115,9 +19436,32 @@
 
   function formatToolNameFriendly(rawKey) {
     const k = String(rawKey || "").trim();
-    if (!k) return "Tool";
+    if (!k) return tr("工具", "Tool");
+    const zhMap = {
+      orbit: "3D 旋轉／縮放",
+      first_person_fly: "第一人稱飛行",
+      first_person_walk: "第一人稱步行",
+      comments: "3D 空間留言",
+      comment_posted: "發佈留言",
+      distance: "距離測量",
+      area: "多邊形面積",
+      coordinates: "座標點位",
+      angle: "3D 夾角",
+      laser: "雷射跨距",
+      volume: "土方挖填體積",
+      contours: "等高線與 DXF",
+      profile: "高程縱斷面",
+      section: "3D 剖切盒",
+      photos: "RTK 相機點位",
+      compare_slider: "多期別分割比對",
+      download_3tz: "下載 .3TZ",
+      download_glb: "下載 .GLB",
+      download_obj: "下載 .OBJ",
+      download_zip: "下載 .ZIP",
+    };
+    if (window.getAppLanguage?.() !== "en" && zhMap[k]) return zhMap[k];
     if (SHARE_TOOL_LABELS[k]) return SHARE_TOOL_LABELS[k];
-    if (k.startsWith("download_")) return `Download .${k.slice(9).toUpperCase()}`;
+    if (k.startsWith("download_")) return `${tr("下載", "Download")} .${k.slice(9).toUpperCase()}`;
     return k
       .replace(/_/g, " ")
       .replace(/\b\w/g, (c) => c.toUpperCase());
@@ -19144,7 +19488,7 @@
 
     drawer.style.display = "flex";
     kpiGrid.innerHTML = "";
-    listBox.innerHTML = `<div style="font-size:11.5px;color:var(--ui-text-muted);padding:8px 2px;">Loading visitor telemetry &amp; tool engagement...</div>`;
+    listBox.innerHTML = `<div style="font-size:11.5px;color:var(--ui-text-muted);padding:8px 2px;">${tr("正在載入訪客遙測與工具互動紀錄...", "Loading visitor telemetry & tool engagement...")}</div>`;
 
     try {
       const res = await apiGet(`/api/share/analytics?token=${encodeURIComponent(cleanTok)}&limit=150`);
@@ -19156,11 +19500,13 @@
       const scopeKind = String(link.scope_type || "scan").toUpperCase();
       const friendlyTarget = link.target_id ? resolveShareScopeTitle(link.scope_type, link.target_id) : cleanTok;
       if (titleEl) {
-        titleEl.textContent = `${link.label || friendlyTarget} — Visitor & Tool Analytics`;
+        titleEl.textContent = `${link.label || friendlyTarget} — ${tr("訪客與工具使用統計", "Visitor & Tool Analytics")}`;
       }
       if (subEl) {
-        const lastStr = summary.last_viewed_at ? `Last viewed: ${summary.last_viewed_at}` : "No human sessions recorded yet";
-        subEl.textContent = `${scopeKind}: ${friendlyTarget} · Created ${link.created_at || "—"} · ${lastStr}`;
+        const lastStr = summary.last_viewed_at
+          ? tr(`最後瀏覽：${summary.last_viewed_at}`, `Last viewed: ${summary.last_viewed_at}`)
+          : tr("尚無訪客瀏覽紀錄", "No human sessions recorded yet");
+        subEl.textContent = `${scopeKind}: ${friendlyTarget} · ${tr("建立時間", "Created")} ${link.created_at || "—"} · ${lastStr}`;
       }
 
       const humanOpens = Math.max(Number(link.human_views ?? link.view_count ?? 0), Number(summary.recorded_sessions || 0));
@@ -19168,8 +19514,11 @@
       const topToolFirst = topTools[0] || null;
       const topToolLabel = topToolFirst ? formatToolNameFriendly(topToolFirst.tool) : "—";
       const topToolSub = topToolFirst
-        ? `${topToolFirst.seconds >= 1 ? formatDurationCompact(topToolFirst.seconds) + " engaged · " : ""}${topToolFirst.uses || 1}x across ${topToolFirst.sessions || 1} session(s)`
-        : "Waiting for tool activity";
+        ? tr(
+            `${topToolFirst.seconds >= 1 ? formatDurationCompact(topToolFirst.seconds) + " 互動 · " : ""}${topToolFirst.uses || 1} 次 · ${topToolFirst.sessions || 1} 個工作階段`,
+            `${topToolFirst.seconds >= 1 ? formatDurationCompact(topToolFirst.seconds) + " engaged · " : ""}${topToolFirst.uses || 1}x across ${topToolFirst.sessions || 1} session${(topToolFirst.sessions || 1) === 1 ? "" : "s"}`
+          )
+        : tr("等待工具互動紀錄", "Waiting for tool activity");
 
       const totalActions =
         Number(summary.measurements_total || 0) +
@@ -19178,32 +19527,32 @@
 
       kpiGrid.innerHTML = `
         <div class="gs-analytics-kpi-card">
-          <div class="k-lbl">Human Opens</div>
+          <div class="k-lbl">${tr("真人開啟次數", "Human Opens")}</div>
           <div class="k-val">${humanOpens}</div>
-          <div class="k-sub">${Number(summary.recorded_sessions || 0)} tracked session(s)</div>
+          <div class="k-sub">${tr(`已追蹤 ${Number(summary.recorded_sessions || 0)} 個工作階段`, `${Number(summary.recorded_sessions || 0)} tracked sessions`)}</div>
         </div>
         <div class="gs-analytics-kpi-card">
-          <div class="k-lbl">Unique Visitors</div>
+          <div class="k-lbl">${tr("不重複訪客", "Unique Visitors")}</div>
           <div class="k-val">${Number(summary.unique_visitors || 0)}</div>
-          <div class="k-sub">${Number(summary.bot_unfurls || 0)} chat link preview(s)</div>
+          <div class="k-sub">${tr(`${Number(summary.bot_unfurls || 0)} 次連結預覽`, `${Number(summary.bot_unfurls || 0)} chat link previews`)}</div>
         </div>
         <div class="gs-analytics-kpi-card">
-          <div class="k-lbl">Avg Active Time</div>
+          <div class="k-lbl">${tr("平均操作時間", "Avg Active Time")}</div>
           <div class="k-val">${escapeHtml(formatDurationCompact(summary.avg_active_sec || 0))}</div>
-          <div class="k-sub">Total engaged: ${escapeHtml(formatDurationCompact(summary.total_active_sec || 0))}</div>
+          <div class="k-sub">${tr("累計互動：", "Total engaged: ")}${escapeHtml(formatDurationCompact(summary.total_active_sec || 0))}</div>
         </div>
         <div class="gs-analytics-kpi-card">
-          <div class="k-lbl">Total Tab Open</div>
+          <div class="k-lbl">${tr("分頁開啟總時長", "Total Tab Open")}</div>
           <div class="k-val">${escapeHtml(formatDurationCompact(summary.total_open_sec || 0))}</div>
-          <div class="k-sub">Foreground + background</div>
+          <div class="k-sub">${tr("前景 + 背景", "Foreground + background")}</div>
         </div>
         <div class="gs-analytics-kpi-card">
-          <div class="k-lbl">Spatial Actions</div>
+          <div class="k-lbl">${tr("空間操作總數", "Spatial Actions")}</div>
           <div class="k-val">${totalActions}</div>
-          <div class="k-sub">${Number(summary.comments_posted_total || 0)} cmts · ${Number(summary.measurements_total || 0)} meas · ${Number(summary.downloads_total || 0)} dl</div>
+          <div class="k-sub">${tr(`${Number(summary.comments_posted_total || 0)} 留言 · ${Number(summary.measurements_total || 0)} 測量 · ${Number(summary.downloads_total || 0)} 下載`, `${Number(summary.comments_posted_total || 0)} cmts · ${Number(summary.measurements_total || 0)} meas · ${Number(summary.downloads_total || 0)} dl`)}</div>
         </div>
         <div class="gs-analytics-kpi-card">
-          <div class="k-lbl">Most Used Tool</div>
+          <div class="k-lbl">${tr("最常使用工具", "Most Used Tool")}</div>
           <div class="k-val" style="font-size:12.5px;">${escapeHtml(topToolLabel)}</div>
           <div class="k-sub">${escapeHtml(topToolSub)}</div>
         </div>
@@ -19212,7 +19561,7 @@
       if (!sessions.length) {
         listBox.innerHTML = `
           <div style="font-size:11.5px;color:var(--ui-text-muted);padding:10px 12px;border:1px dashed var(--ui-border-strong);border-radius:8px;">
-            No visitor sessions or link previews recorded yet for this link. Share <code>${escapeHtml(buildPublicShareUrl(cleanTok))}</code> to see live viewer telemetry (who opened it, location, device/GPU, duration, and 3D tools used).
+            ${tr("此連結尚無訪客工作階段或預覽紀錄。分享", "No visitor sessions or link previews recorded yet for this link. Share")} <code>${escapeHtml(buildPublicShareUrl(cleanTok))}</code> ${tr("即可即時查看訪客來源、裝置與使用的 3D 工具。", "to see live viewer telemetry.")}
           </div>
         `;
         return;
@@ -19250,21 +19599,21 @@
             ? s.viewer_name
             : s.viewer_email
             ? s.viewer_email
-            : `Visitor #${shortVid || "guest"}`;
+            : tr(`訪客 #${shortVid || "guest"}`, `Visitor #${shortVid || "guest"}`);
           const emailBadge =
             s.viewer_email && s.viewer_email !== displayWho
-              ? `<span style="font-size:10.5px;color:var(--ui-text-muted);font-weight:500;">(${escapeHtml(s.viewer_email)})</span>`
+              ? `<span style="font-size:10.5px;color:var(--ui-text-muted);font-weight:500;">· ${escapeHtml(s.viewer_email)}</span>`
               : "";
           const liveBadge = isLiveNow
-            ? `<span class="gs-crs-pill" style="background:rgba(16,185,129,0.16);color:#10b981;border-color:rgba(16,185,129,0.45);font-size:9.5px;">LIVE NOW</span>`
+            ? `<span class="gs-crs-pill" style="background:rgba(16,185,129,0.16);color:#10b981;border-color:rgba(16,185,129,0.45);font-size:9.5px;">${tr("線上瀏覽中", "LIVE NOW")}</span>`
             : `<span class="gs-crs-pill" style="font-size:9.5px;">#${escapeHtml(shortVid)}</span>`;
 
           const loadSummary =
             Number(s.max_load_pct || 0) > 0
-              ? `${Math.round(Number(s.max_load_pct))}%${Number(s.load_time_ms || 0) > 0 ? ` (${(Number(s.load_time_ms) / 1000).toFixed(1)}s)` : ""}`
+              ? `${Math.round(Number(s.max_load_pct))}%${Number(s.load_time_ms || 0) > 0 ? ` · ${(Number(s.load_time_ms) / 1000).toFixed(1)}s` : ""}`
               : "—";
 
-          const deviceSummary = [s.device_type, s.os, s.browser].filter(Boolean).join(" · ") || "Browser";
+          const deviceSummary = [s.device_type, s.os, s.browser].filter(Boolean).join(" · ") || tr("瀏覽器", "Browser");
           const screenSummary = [s.screen_res, s.viewport_res ? `VP ${s.viewport_res}` : ""].filter(Boolean).join(" · ");
           const localeSummary = [s.language, s.timezone].filter(Boolean).join(" · ");
 
@@ -19282,7 +19631,7 @@
           const scanPillsHtml = scansViewed
             .map((sc) => {
               const nm = typeof sc === "object" ? sc.name || sc.scan_id : String(sc);
-              return `<span class="gs-analytics-tool-pill" style="border-color:var(--ui-accent);color:var(--ui-accent);">Scan: <b>${escapeHtml(nm)}</b></span>`;
+              return `<span class="gs-analytics-tool-pill" style="border-color:var(--ui-accent);color:var(--ui-accent);">${tr("掃描：", "Scan: ")}<b>${escapeHtml(nm)}</b></span>`;
             })
             .join("");
 
@@ -19297,19 +19646,19 @@
 
           const extraActionPills = [
             Number(s.camera_interactions || 0) > 0
-              ? `<span class="gs-analytics-tool-pill">Camera Moves <b>${Number(s.camera_interactions)}</b></span>`
+              ? `<span class="gs-analytics-tool-pill">${tr("視角移動", "Camera Moves")} <b>${Number(s.camera_interactions)}</b></span>`
               : "",
             Number(s.fp_seconds || 0) >= 1
-              ? `<span class="gs-analytics-tool-pill">First-Person <b>${escapeHtml(formatDurationCompact(s.fp_seconds))}</b></span>`
+              ? `<span class="gs-analytics-tool-pill">${tr("第一人稱", "First-Person")} <b>${escapeHtml(formatDurationCompact(s.fp_seconds))}</b></span>`
               : "",
             Number(s.measurements_count || 0) > 0
-              ? `<span class="gs-analytics-tool-pill">Measurements <b>${Number(s.measurements_count)}</b></span>`
+              ? `<span class="gs-analytics-tool-pill">${tr("測量", "Measurements")} <b>${Number(s.measurements_count)}</b></span>`
               : "",
             Number(s.comments_posted || 0) > 0
-              ? `<span class="gs-analytics-tool-pill" style="border-color:#10b981;color:#10b981;">Comments Posted <b>${Number(s.comments_posted)}</b></span>`
+              ? `<span class="gs-analytics-tool-pill" style="border-color:#10b981;color:#10b981;">${tr("發佈留言", "Comments Posted")} <b>${Number(s.comments_posted)}</b></span>`
               : "",
             Number(s.downloads_count || 0) > 0
-              ? `<span class="gs-analytics-tool-pill">Downloads <b>${Number(s.downloads_count)}</b></span>`
+              ? `<span class="gs-analytics-tool-pill">${tr("下載", "Downloads")} <b>${Number(s.downloads_count)}</b></span>`
               : "",
           ]
             .filter(Boolean)
@@ -19319,7 +19668,7 @@
           const timelineHtml = evList.length
             ? `
               <details class="gs-analytics-timeline">
-                <summary>Session Activity Timeline (${evList.length} event${evList.length === 1 ? "" : "s"})</summary>
+                <summary>${tr(`工作階段活動時間軸 · ${evList.length} 筆事件`, `Session Activity Timeline · ${evList.length} event${evList.length === 1 ? "" : "s"}`)}</summary>
                 <div class="gs-analytics-timeline-list">
                   ${evList
                     .map(
@@ -19341,21 +19690,21 @@
                   ${emailBadge}
                 </div>
                 <div style="font-size:11px;color:var(--ui-text-secondary);display:flex;gap:10px;flex-wrap:wrap;">
-                  <span>Active: <b style="color:var(--ui-accent);">${escapeHtml(formatDurationCompact(s.active_duration_sec || 0))}</b></span>
-                  <span>Tab Open: <b style="color:var(--ui-text-primary);">${escapeHtml(formatDurationCompact(s.total_duration_sec || 0))}</b></span>
-                  <span>3D Load: <b style="color:var(--ui-text-primary);">${escapeHtml(loadSummary)}</b></span>
+                  <span>${tr("操作時長：", "Active: ")}<b style="color:var(--ui-accent);">${escapeHtml(formatDurationCompact(s.active_duration_sec || 0))}</b></span>
+                  <span>${tr("分頁開啟：", "Tab Open: ")}<b style="color:var(--ui-text-primary);">${escapeHtml(formatDurationCompact(s.total_duration_sec || 0))}</b></span>
+                  <span>${tr("3D 載入：", "3D Load: ")}<b style="color:var(--ui-text-primary);">${escapeHtml(loadSummary)}</b></span>
                   <span style="color:var(--ui-text-muted);">${escapeHtml(s.started_at || "")}</span>
                 </div>
               </div>
               <div class="gs-analytics-meta-row">
-                <span><b>Location:</b> ${escapeHtml(locStr + ispStr)}</span>
+                <span><b>${tr("位置：", "Location:")}</b> ${escapeHtml(locStr + ispStr)}</span>
                 <span><b>IP:</b> <code>${escapeHtml(ipStr)}</code></span>
-                <span><b>Device:</b> ${escapeHtml(deviceSummary)}</span>
-                ${screenSummary ? `<span><b>Display:</b> ${escapeHtml(screenSummary)}</span>` : ""}
-                ${localeSummary ? `<span><b>Locale:</b> ${escapeHtml(localeSummary)}</span>` : ""}
-                ${s.connection_type ? `<span><b>Net:</b> ${escapeHtml(s.connection_type)}</span>` : ""}
+                <span><b>${tr("裝置：", "Device:")}</b> ${escapeHtml(deviceSummary)}</span>
+                ${screenSummary ? `<span><b>${tr("螢幕：", "Display:")}</b> ${escapeHtml(screenSummary)}</span>` : ""}
+                ${localeSummary ? `<span><b>${tr("語系：", "Locale:")}</b> ${escapeHtml(localeSummary)}</span>` : ""}
+                ${s.connection_type ? `<span><b>${tr("網路：", "Net:")}</b> ${escapeHtml(s.connection_type)}</span>` : ""}
                 ${s.gpu_renderer ? `<span title="${escapeHtml(s.gpu_renderer)}"><b>GPU:</b> ${escapeHtml(String(s.gpu_renderer).slice(0, 56))}</span>` : ""}
-                ${s.referrer ? `<span><b>Referrer:</b> ${escapeHtml(String(s.referrer).slice(0, 64))}</span>` : ""}
+                ${s.referrer ? `<span><b>${tr("來源：", "Referrer:")}</b> ${escapeHtml(String(s.referrer).slice(0, 64))}</span>` : ""}
               </div>
               ${
                 scanPillsHtml || toolPillsHtml || extraActionPills
@@ -19396,14 +19745,14 @@
         ? STATE.activeProjectGroup
         : "");
 
-    const populateTargets = () => {
+      const populateTargets = () => {
       const st = scopeSel.value;
       targetSel.innerHTML = "";
       if (st === "scan") {
         STATE.scans.forEach((s) => {
           const opt = document.createElement("option");
           opt.value = s.scan_id;
-          opt.textContent = `${s.name} (${s.project_group})`;
+          opt.textContent = `${s.name} · ${s.project_group}`;
           targetSel.appendChild(opt);
         });
         if (resolvedDefaultTarget && STATE.scans.some((s) => s.scan_id === resolvedDefaultTarget)) {
@@ -19448,16 +19797,16 @@
       _cachedShareLinksList = links;
       tbody.innerHTML = "";
       if (!links.length) {
-        tbody.innerHTML = `<tr><td colspan="7" style="color:var(--ui-text-muted);">No external share links created yet. Click "Create &amp; Copy Link" above to generate a shareable URL.</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="7" style="color:var(--ui-text-muted);">${tr("尚無對外分享連結。請點擊上方「建立並複製連結」以產生分享網址。", 'No external share links created yet. Click "Create & Copy Link" above to generate a shareable URL.')}</td></tr>`;
         if (!preferredBannerUrl) showLatestShareLinkBanner("");
         return;
       }
       links.forEach((l) => {
-        const tr = document.createElement("tr");
+        const rowEl = document.createElement("tr");
         const perms = [
-          l.allow_measurements ? "Measure" : null,
-          l.allow_comments ? "Comment" : null,
-          l.allow_download ? "Download" : null,
+          l.allow_measurements ? tr("測量", "Measure") : null,
+          l.allow_comments ? tr("留言", "Comment") : null,
+          l.allow_download ? tr("下載", "Download") : null,
         ]
           .filter(Boolean)
           .join(", ");
@@ -19466,21 +19815,21 @@
         const safeFullUrl = escapeHtml(fullShareUrl);
         const scopeKind = String(l.scope_type || "scan").toUpperCase();
         const friendlyTarget = resolveShareScopeTitle(l.scope_type, l.target_id);
-        const fullScopeTooltip = `${scopeKind}: ${friendlyTarget}${friendlyTarget !== l.target_id ? ` (${l.target_id})` : ""}`;
+        const fullScopeTooltip = `${scopeKind}: ${friendlyTarget}${friendlyTarget !== l.target_id ? ` · ${l.target_id}` : ""}`;
 
         const humanViews = Number(l.human_views ?? l.view_count ?? 0);
         const uniqVisitors = Number(l.unique_visitors || 0);
         const avgSec = Number(l.avg_active_sec || 0);
         const botUnfurls = Number(l.bot_unfurls || 0);
         const subStats = [
-          uniqVisitors > 0 ? `${uniqVisitors} visitor${uniqVisitors === 1 ? "" : "s"}` : null,
-          avgSec > 0 ? `Avg ${formatDurationCompact(avgSec)}` : null,
-          botUnfurls > 0 ? `${botUnfurls} preview${botUnfurls === 1 ? "" : "s"}` : null,
+          uniqVisitors > 0 ? tr(`${uniqVisitors} 位訪客`, `${uniqVisitors} visitor${uniqVisitors === 1 ? "" : "s"}`) : null,
+          avgSec > 0 ? `${tr("平均", "Avg")} ${formatDurationCompact(avgSec)}` : null,
+          botUnfurls > 0 ? tr(`${botUnfurls} 次預覽`, `${botUnfurls} preview${botUnfurls === 1 ? "" : "s"}`) : null,
         ]
           .filter(Boolean)
           .join(" · ");
 
-        tr.innerHTML = `
+        rowEl.innerHTML = `
           <td><b style="color:var(--ui-text-primary);">${escapeHtml(l.label || "")}</b></td>
           <td>
             <span class="gs-crs-pill gs-share-scope-pill" title="${escapeHtml(fullScopeTooltip)}">
@@ -19498,46 +19847,46 @@
                 style="${l.revoked ? "text-decoration:line-through;color:var(--ui-text-muted);" : ""}"
                 aria-label="Full Share Link"
               />
-              <button type="button" class="btn-xs primary gs-share-copy-btn" data-copy="${safeFullUrl}" title="Copy Full Share Link">
+              <button type="button" class="btn-xs primary gs-share-copy-btn" data-copy="${safeFullUrl}" title="${tr("複製完整分享連結", "Copy Full Share Link")}">
                 <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8">
                   <rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
                 </svg>
-                <span>Copy</span>
+                <span>${tr("複製", "Copy")}</span>
               </button>
-              <a href="${safeFullUrl}" target="_blank" rel="noopener noreferrer" class="btn-xs gs-share-open-btn" title="Open Share Link in New Tab">
+              <a href="${safeFullUrl}" target="_blank" rel="noopener noreferrer" class="btn-xs gs-share-open-btn" title="${tr("於新分頁開啟分享連結", "Open Share Link in New Tab")}">
                 <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8">
                   <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/>
                 </svg>
               </a>
             </div>
           </td>
-          <td style="font-size:11px;color:var(--ui-text-secondary);white-space:nowrap;">${escapeHtml(perms || "View")}</td>
+          <td style="font-size:11px;color:var(--ui-text-secondary);white-space:nowrap;">${escapeHtml(perms || tr("僅檢視", "View"))}</td>
           <td style="white-space:nowrap;">
-            <div style="font-size:11.5px;font-weight:700;color:var(--ui-text-primary);">${humanViews} view${humanViews === 1 ? "" : "s"}</div>
-            <div style="font-size:10px;color:var(--ui-text-muted);">${escapeHtml(subStats || "No telemetry yet")}</div>
+            <div style="font-size:11.5px;font-weight:700;color:var(--ui-text-primary);">${tr(`${humanViews} 次瀏覽`, `${humanViews} view${humanViews === 1 ? "" : "s"}`)}</div>
+            <div style="font-size:10px;color:var(--ui-text-muted);">${escapeHtml(subStats || tr("尚無遙測紀錄", "No telemetry yet"))}</div>
           </td>
           <td>${
             l.revoked
-              ? '<span style="color:var(--ui-text-muted);font-weight:700;font-size:11px;">REVOKED</span>'
-              : '<span class="gs-crs-pill">ACTIVE</span>'
+              ? `<span style="color:var(--ui-text-muted);font-weight:700;font-size:11px;">${tr("已撤銷", "REVOKED")}</span>`
+              : `<span class="gs-crs-pill">${tr("有效", "ACTIVE")}</span>`
           }</td>
           <td style="display:flex;gap:5px;justify-content:flex-end;align-items:center;">
-            <button type="button" class="btn-xs" data-analytics="${safeToken}" title="Inspect Visitor Sessions, Active Time, Devices &amp; Tools Used">
+            <button type="button" class="btn-xs" data-analytics="${safeToken}" title="${tr("檢視訪客工作階段、停留時間、裝置與使用的 3D 工具", "Inspect Visitor Sessions, Active Time, Devices & Tools Used")}">
               <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.9">
                 <line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/>
               </svg>
-              <span>Analytics</span>
+              <span>${tr("統計", "Analytics")}</span>
             </button>
             ${
               !canManageLinks
                 ? ""
                 : !l.revoked
-                ? `<button type="button" class="btn-xs" data-revoke="${safeToken}" title="Revoke Access Immediately">
+                ? `<button type="button" class="btn-xs" data-revoke="${safeToken}" title="${tr("立即撤銷存取權限", "Revoke Access Immediately")}">
                     <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8">
                       <circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/>
                     </svg>
                   </button>`
-                : `<button type="button" class="btn-xs" data-restore="${safeToken}" title="Restore Access">
+                : `<button type="button" class="btn-xs" data-restore="${safeToken}" title="${tr("恢復存取權限", "Restore Access")}">
                     <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8">
                       <polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
                     </svg>
@@ -19545,33 +19894,33 @@
             }
           </td>
         `;
-        const urlInp = tr.querySelector(".gs-share-url-input");
+        const urlInp = rowEl.querySelector(".gs-share-url-input");
         urlInp?.addEventListener("click", () => {
           urlInp.select();
         });
-        const copyBtn = tr.querySelector("[data-copy]");
+        const copyBtn = rowEl.querySelector("[data-copy]");
         copyBtn?.addEventListener("click", async () => {
           await copyTextToClipboard(fullShareUrl);
           urlInp?.select?.();
           flashCopyButtonState(copyBtn);
-          showLatestShareLinkBanner(fullShareUrl, "Copied to Clipboard:");
-          showToast(`Copied share link: ${fullShareUrl}`);
+          showLatestShareLinkBanner(fullShareUrl, tr("已複製到剪貼簿：", "Copied to Clipboard:"));
+          showToast(tr(`已複製分享連結：${fullShareUrl}`, `Copied share link: ${fullShareUrl}`));
         });
-        tr.querySelector("[data-analytics]")?.addEventListener("click", () => {
+        rowEl.querySelector("[data-analytics]")?.addEventListener("click", () => {
           openShareAnalyticsDrawer(l.token);
         });
-        tr.querySelector("[data-revoke]")?.addEventListener("click", async () => {
+        rowEl.querySelector("[data-revoke]")?.addEventListener("click", async () => {
           await apiPost("/api/share/revoke", { token: l.token });
-          showToast(`Revoked external share link: ${fullShareUrl}`);
+          showToast(tr(`已撤銷外部分享連結：${fullShareUrl}`, `Revoked external share link: ${fullShareUrl}`));
           await renderShareLinksTable();
           syncBannerWithSelectedTarget();
         });
-        tr.querySelector("[data-restore]")?.addEventListener("click", async () => {
+        rowEl.querySelector("[data-restore]")?.addEventListener("click", async () => {
           await apiPost("/api/share/restore", { token: l.token });
-          showToast(`Restored external share link: ${fullShareUrl}`);
-          await renderShareLinksTable(fullShareUrl, "Restored Shareable Link:");
+          showToast(tr(`已恢復外部分享連結：${fullShareUrl}`, `Restored external share link: ${fullShareUrl}`));
+          await renderShareLinksTable(fullShareUrl, tr("已恢復分享連結：", "Restored Shareable Link:"));
         });
-        tbody.appendChild(tr);
+        tbody.appendChild(rowEl);
       });
       if (preferredBannerUrl) {
         showLatestShareLinkBanner(preferredBannerUrl, preferredBannerLabel || "Shareable Link Ready:");
@@ -19696,26 +20045,26 @@
               <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>
               <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
             </svg>
-            <span>Quick Share — Single-Scan View &amp; Comment</span>
+            <span>${tr("快速分享 — 單一掃描檢視與留言", "Quick Share — Single-Scan View & Comment")}</span>
           </div>
           <div style="font-size:10.5px;color:var(--ui-text-muted);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${safeScanName}">
             ${safeScanName}
           </div>
         </div>
-        <button type="button" class="btn-xs" id="btnCloseQuickSharePop" title="Close" aria-label="Close Quick Share" style="height:22px;padding:0 5px;">
+        <button type="button" class="btn-xs" id="btnCloseQuickSharePop" title="${tr("關閉", "Close")}" aria-label="Close Quick Share" style="height:22px;padding:0 5px;">
           <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2">
             <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
           </svg>
         </button>
       </div>
       <div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:8px;">
-        <span class="gs-quick-share-chip" style="color:var(--ui-accent);border-color:var(--ui-accent);">3D View + Comment Only</span>
-        <span class="gs-quick-share-chip">Single Scan Locked</span>
-        <span class="gs-quick-share-chip">No Measurements</span>
-        <span class="gs-quick-share-chip">No Download</span>
+        <span class="gs-quick-share-chip" style="color:var(--ui-accent);border-color:var(--ui-accent);">${tr("僅限 3D 檢視 + 留言", "3D View + Comment Only")}</span>
+        <span class="gs-quick-share-chip">${tr("鎖定單一掃描", "Single Scan Locked")}</span>
+        <span class="gs-quick-share-chip">${tr("不開放測量", "No Measurements")}</span>
+        <span class="gs-quick-share-chip">${tr("不開放下載", "No Download")}</span>
       </div>
       <div id="quickShareBodyArea" style="font-size:11.5px;color:var(--ui-text-secondary);padding:6px 0;">
-        Preparing shareable link...
+        ${tr("正在準備分享連結...", "Preparing shareable link...")}
       </div>
     `;
 
@@ -19770,13 +20119,13 @@
       bodyArea.innerHTML = `
         <div class="gs-share-url-group" style="margin-bottom:8px;">
           <input type="text" class="gs-share-url-input" id="inpStudioQuickShareUrl" readonly value="${safeFullUrl}" title="${safeFullUrl}" aria-label="Single-Scan View and Comment Link" />
-          <button type="button" class="btn-xs primary gs-share-copy-btn" id="btnCopyStudioQuickShareUrl" title="Copy Share Link">
+          <button type="button" class="btn-xs primary gs-share-copy-btn" id="btnCopyStudioQuickShareUrl" title="${tr("複製分享連結", "Copy Share Link")}">
             <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8">
               <rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
             </svg>
-            <span>Copy</span>
+            <span>${tr("複製", "Copy")}</span>
           </button>
-          <a href="${safeFullUrl}" target="_blank" rel="noopener noreferrer" class="btn-xs gs-share-open-btn" title="Open Link in New Tab">
+          <a href="${safeFullUrl}" target="_blank" rel="noopener noreferrer" class="btn-xs gs-share-open-btn" title="${tr("於新分頁開啟連結", "Open Link in New Tab")}">
             <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8">
               <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/>
             </svg>
@@ -19784,22 +20133,22 @@
         </div>
         <div style="display:flex;justify-content:space-between;align-items:center;gap:6px;flex-wrap:wrap;padding-top:6px;border-top:1px solid var(--ui-border);">
           <span style="font-size:10.5px;color:var(--ui-text-muted);">
-            Views: <b style="color:var(--ui-text-primary);">${humanViews}</b>
-            · Visitors: <b style="color:var(--ui-text-primary);">${uniqVisitors}</b>
-            ${avgSec > 0 ? `· Avg: <b style="color:var(--ui-accent);">${escapeHtml(formatDurationCompact(avgSec))}</b>` : ""}
+            ${tr("瀏覽：", "Views: ")}<b style="color:var(--ui-text-primary);">${humanViews}</b>
+            · ${tr("訪客：", "Visitors: ")}<b style="color:var(--ui-text-primary);">${uniqVisitors}</b>
+            ${avgSec > 0 ? `· ${tr("平均：", "Avg: ")}<b style="color:var(--ui-accent);">${escapeHtml(formatDurationCompact(avgSec))}</b>` : ""}
           </span>
           <div style="display:flex;gap:5px;align-items:center;flex-wrap:wrap;">
-            <button type="button" class="btn-xs" id="btnQuickShareAnalytics" title="View who opened this link, for how long &amp; which 3D tools they used" style="font-size:10.5px;">
+            <button type="button" class="btn-xs" id="btnQuickShareAnalytics" title="${tr("查看開啟此連結的訪客、停留時間與使用的 3D 工具", "View who opened this link, for how long & which 3D tools they used")}" style="font-size:10.5px;">
               <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2">
                 <line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/>
               </svg>
-              <span>Analytics</span>
+              <span>${tr("統計", "Analytics")}</span>
             </button>
             ${
               canRevoke
-                ? `<button type="button" class="btn-xs" id="btnRotateQuickShareUrl" title="Revoke current link and generate a new token" style="font-size:10.5px;">Reset Link</button>
-                   <button type="button" class="btn-xs" id="btnRevokeQuickShareUrl" title="Revoke access immediately" style="font-size:10.5px;color:#ef4444;border-color:rgba(239,68,68,0.35);">Revoke</button>
-                   <button type="button" class="btn-xs" id="btnOpenFullShareModalFromQuick" title="Custom permissions (Measurements, Download, Project Group)" style="font-size:10.5px;">More Options...</button>`
+                ? `<button type="button" class="btn-xs" id="btnRotateQuickShareUrl" title="${tr("撤銷目前連結並產生新連結", "Revoke current link and generate a new token")}" style="font-size:10.5px;">${tr("重設連結", "Reset Link")}</button>
+                   <button type="button" class="btn-xs" id="btnRevokeQuickShareUrl" title="${tr("立即撤銷存取權限", "Revoke access immediately")}" style="font-size:10.5px;color:#ef4444;border-color:rgba(239,68,68,0.35);">${tr("撤銷", "Revoke")}</button>
+                   <button type="button" class="btn-xs" id="btnOpenFullShareModalFromQuick" title="${tr("自訂權限 · 測量、下載或工區群組", "Custom permissions · Measurements, Download, Project Group")}" style="font-size:10.5px;">${tr("更多選項...", "More Options...")}</button>`
                 : ""
             }
           </div>
@@ -19909,18 +20258,18 @@
     tbody.innerHTML = "";
     STATE.scans.forEach((s) => {
       const isCached = STATE.cachedScanIds.has(s.scan_id);
-      const tr = document.createElement("tr");
-      tr.innerHTML = `
+      const rowEl = document.createElement("tr");
+      rowEl.innerHTML = `
         <td><b style="color:var(--ui-text-primary);">${escapeHtml(s.name || s.scan_id || "")}</b></td>
         <td style="color:var(--ui-text-secondary);">${escapeHtml(s.project_group || "")}</td>
         <td><span class="gs-crs-pill">${escapeHtml(getScanCrsDisplayLabel(s))}</span></td>
         <td>${
           isCached
-            ? '<span class="gs-crs-pill">Cached</span>'
-            : '<span style="color:var(--ui-text-muted);">Uncached</span>'
+            ? `<span class="gs-crs-pill">${tr("已快取", "Cached")}</span>`
+            : `<span style="color:var(--ui-text-muted);">${tr("未快取", "Uncached")}</span>`
         }</td>
         <td>
-          <button type="button" class="btn-xs primary" data-cache-scan="${escapeHtml(s.scan_id || "")}" title="${isCached ? "Refresh Browser Cache" : "Cache in Browser"}">
+          <button type="button" class="btn-xs primary" data-cache-scan="${escapeHtml(s.scan_id || "")}" title="${isCached ? tr("更新瀏覽器快取", "Refresh Browser Cache") : tr("儲存至瀏覽器快取", "Cache in Browser")}">
             <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8">
               <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
               <polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
@@ -19928,8 +20277,8 @@
           </button>
         </td>
       `;
-      tr.querySelector("[data-cache-scan]")?.addEventListener("click", () => cacheScanInBrowser(s.scan_id));
-      tbody.appendChild(tr);
+      rowEl.querySelector("[data-cache-scan]")?.addEventListener("click", () => cacheScanInBrowser(s.scan_id));
+      tbody.appendChild(rowEl);
     });
   }
 
@@ -19961,50 +20310,66 @@
     updatePcStatusUI();
 
     if (!reachable) {
-      badge.textContent = "PC Unreachable (Tunnel Offline)";
+      badge.textContent = tr("工作站未連線 · 隧道離線", "PC Unreachable · Tunnel Offline");
       badge.style.background = "rgba(239,68,68,0.16)";
       badge.style.color = "#ef4444";
-      btnToggle.textContent = "Start Daemon";
+      btnToggle.textContent = tr("啟動背景服務", "Start Daemon");
       if (detail) {
-        detail.textContent = "Windows Workstation reverse tunnel is not connected. Serving scans from Google Drive .3tz Cloud & Browser Cache.";
+        detail.textContent = tr(
+          "Windows 工作站反向隧道未連線。目前由 Google 雲端硬碟 .3tz 與瀏覽器快取提供掃描串流。",
+          "Windows Workstation reverse tunnel is not connected. Serving scans from Google Drive .3tz Cloud & Browser Cache."
+        );
       }
       return;
     }
 
     if (running) {
-      badge.textContent = `Running (PID ${st.pid || "Active"})`;
+      badge.textContent = tr(`執行中 · PID ${st.pid || "Active"}`, `Running · PID ${st.pid || "Active"}`);
       badge.style.background = "rgba(16,185,129,0.16)";
       badge.style.color = "#10b981";
-      btnToggle.textContent = "Stop Daemon";
+      btnToggle.textContent = tr("停止背景服務", "Stop Daemon");
       btnToggle.style.background = "rgba(239,68,68,0.14)";
       btnToggle.style.color = "#ef4444";
       btnToggle.style.borderColor = "rgba(239,68,68,0.35)";
       const pollNote = st.last_poll_at
-        ? `Last inbox poll: ${new Date(st.last_poll_at * 1000).toLocaleTimeString()}`
-        : "Polling active";
+        ? tr(
+            `最後掃描收件匣：${new Date(st.last_poll_at * 1000).toLocaleTimeString()}`,
+            `Last inbox poll: ${new Date(st.last_poll_at * 1000).toLocaleTimeString()}`
+          )
+        : tr("自動輪詢中", "Polling active");
       const jobNote = st.active_job
-        ? ` · Active: ${st.active_job.name || st.active_job.scan_id} (${Math.round(st.active_job.progress_pct || 0)}%)`
-        : ` · Queue: ${st.queued_count || 0} waiting · Total scans: ${st.total_scans || STATE.scans.length}`;
+        ? tr(
+            ` · 執行中：${st.active_job.name || st.active_job.scan_id} · ${Math.round(st.active_job.progress_pct || 0)}%`,
+            ` · Active: ${st.active_job.name || st.active_job.scan_id} · ${Math.round(st.active_job.progress_pct || 0)}%`
+          )
+        : tr(
+            ` · 佇列等待：${st.queued_count || 0} 組 · 掃描總數：${st.total_scans || STATE.scans.length}`,
+            ` · Queue: ${st.queued_count || 0} waiting · Total scans: ${st.total_scans || STATE.scans.length}`
+          );
       if (detail) {
         detail.textContent = `${pollNote}${jobNote}`;
       }
     } else {
-      badge.textContent = "Stopped (Standby)";
+      badge.textContent = tr("已停止 · 待命", "Stopped · Standby");
       badge.style.background = "rgba(245,158,11,0.16)";
       badge.style.color = "#f59e0b";
-      btnToggle.textContent = "Start Daemon";
+      btnToggle.textContent = tr("啟動背景服務", "Start Daemon");
       btnToggle.style.background = "";
       btnToggle.style.color = "";
       btnToggle.style.borderColor = "";
       if (detail) {
-        detail.textContent = "Background Google Drive Inbox polling & PIX4Dmatic queue are paused on PC. Click 'Start Daemon' to resume.";
+        detail.textContent = tr(
+          "PC 背景 Google 雲端硬碟收件匣輪詢與 PIX4Dmatic 排程已暫停。點擊「啟動背景服務」即可恢復。",
+          "Background Google Drive Inbox polling & PIX4Dmatic queue are paused on PC. Click 'Start Daemon' to resume."
+        );
       }
     }
   }
 
   document.getElementById("btnAdminTogglePcDaemon")?.addEventListener("click", async () => {
     const btnToggle = document.getElementById("btnAdminTogglePcDaemon");
-    const wantStart = btnToggle?.textContent?.toLowerCase().includes("start");
+    const txtLower = String(btnToggle?.textContent || "").toLowerCase();
+    const wantStart = txtLower.includes("start") || txtLower.includes("啟動");
     if (btnToggle) btnToggle.disabled = true;
     try {
       const res = await apiPost("/api/admin/pc-daemon", {
@@ -20012,12 +20377,17 @@
         action: wantStart ? "start" : "stop",
       });
       await refreshAdminPcDaemonUI(res);
-      showToast(res.message || (res.daemon_running ? "Workstation Daemon Started" : "Workstation Daemon Stopped"));
+      showToast(
+        res.message ||
+          (res.daemon_running
+            ? tr("已啟動工作站背景服務", "Workstation Daemon Started")
+            : tr("已停止工作站背景服務", "Workstation Daemon Stopped"))
+      );
       if (res.daemon_running) {
         await refreshScansCatalog(false);
       }
     } catch (err) {
-      showToast(`Daemon Control Error: ${err.message}`);
+      showToast(tr(`背景服務控制錯誤：${err.message}`, `Daemon Control Error: ${err.message}`));
       await refreshAdminPcDaemonUI();
     } finally {
       if (btnToggle) btnToggle.disabled = false;
@@ -20028,7 +20398,7 @@
     const btnSync = document.getElementById("btnAdminSyncPcInboxNow");
     if (btnSync) {
       btnSync.disabled = true;
-      btnSync.textContent = "Syncing...";
+      btnSync.textContent = tr("同步中...", "Syncing...");
     }
     try {
       const res = await apiPost("/api/admin/pc-daemon", {
@@ -20037,13 +20407,13 @@
       });
       await refreshAdminPcDaemonUI(res);
       await refreshScansCatalog(false);
-      showToast(res.message || "Synced Google Drive Inbox & .3tz packages!");
+      showToast(res.message || tr("已同步 Google 雲端硬碟收件匣與 .3tz 套件！", "Synced Google Drive Inbox & .3tz packages!"));
     } catch (err) {
-      showToast(`Inbox Sync Error: ${err.message}`);
+      showToast(tr(`收件匣同步錯誤：${err.message}`, `Inbox Sync Error: ${err.message}`));
     } finally {
       if (btnSync) {
         btnSync.disabled = false;
-        btnSync.textContent = "Sync Inbox Now";
+        btnSync.textContent = tr("立即同步收件匣", "Sync Inbox Now");
       }
     }
   });
@@ -20068,7 +20438,7 @@
 
     const myInfo = getCurrentUserRoleInfo();
     if (rolePill) {
-      rolePill.textContent = `Active Role: L${myInfo.level} — ${myInfo.label}`;
+      rolePill.textContent = `${tr("目前權限", "Active Role")}: L${myInfo.level} — ${getLocalizedRoleLabel(myInfo.role)}`;
     }
     const canManageUsers = Boolean(myInfo.canManageUsers || myInfo.can_manage_users);
     if (saveBtn) saveBtn.disabled = !canManageUsers;
@@ -20090,6 +20460,7 @@
     }
 
     tbody.innerHTML = "";
+    const isEn = window.getAppLanguage?.() === "en";
     users.forEach((u) => {
       const email = String(u.email || "").toLowerCase();
       const isOwner = OWNER_EMAILS_SET.has(email) || u.role === "owner";
@@ -20100,20 +20471,23 @@
         !isOwner &&
         (myInfo.role === "owner" || (myInfo.role === "admin" && uLevel < myInfo.level));
 
-      const tr = document.createElement("tr");
+      const rowEl = document.createElement("tr");
       const roleOptionsHtml = ["owner", "admin", "editor", "viewer", "guest"]
         .map((rk) => {
           const disabledOpt =
             rk === "owner" || (myInfo.role === "admin" && (rk === "admin" || rk === "owner"));
           return `<option value="${rk}" ${uRole === rk ? "selected" : ""} ${
             disabledOpt && uRole !== rk ? "disabled" : ""
-          }>L${ROLE_LEVELS_MAP[rk]} — ${ROLE_LABELS_MAP[rk]}</option>`;
+          }>L${ROLE_LEVELS_MAP[rk]} — ${getLocalizedRoleLabel(rk)}</option>`;
         })
         .join("");
 
-      const displayName = u.zh_name && u.zh_name !== u.name ? `${u.name} (${u.zh_name})` : (u.name || "User");
-      tr.innerHTML = `
-        <td><b style="color:var(--ui-text-primary);">${escapeHtml(displayName)}</b></td>
+      const rawDisplayName = isEn
+        ? (u.name && u.name !== "雲在天" ? u.name : u.zh_name || u.name || "User")
+        : (u.zh_name || u.name || "成員");
+      const cleanDisplayName = String(rawDisplayName).replace(/\s*\([^)]*\)\s*/g, "").trim() || rawDisplayName;
+      rowEl.innerHTML = `
+        <td><b style="color:var(--ui-text-primary);">${escapeHtml(cleanDisplayName)}</b></td>
         <td style="font-family:var(--font-mono);font-size:11.5px;color:var(--ui-accent);">${escapeHtml(
           u.email || ""
         )}</td>
@@ -20125,20 +20499,20 @@
                 )}" style="height:26px;font-size:11.5px;padding:0 8px;">${roleOptionsHtml}</select>`
               : `<span class="gs-crs-pill" style="${
                   isOwner ? "background:rgba(37,99,235,0.16);color:#3b82f6;font-weight:800;" : ""
-                }">L${uLevel} — ${escapeHtml(ROLE_LABELS_MAP[uRole] || u.role_label || uRole)}</span>`
+                }">L${uLevel} — ${escapeHtml(getLocalizedRoleLabel(uRole))}</span>`
           }
         </td>
         <td style="font-size:11px;color:var(--ui-text-secondary);">
           ${
             uRole === "owner"
-              ? "All permissions + System Owner"
+              ? tr("完整系統權限 + 系統擁有者", "All permissions + System Owner")
               : uRole === "admin"
-              ? "Manage Editor/Viewer/Guest users + Editor tools"
+              ? tr("管理編輯者／檢視者／訪客成員 + 編輯工具", "Manage Editor/Viewer/Guest users + Editor tools")
               : uRole === "editor"
-              ? "Rename sites/scans, run PIX4Dmatic & Optimizer"
+              ? tr("修改工區／掃描名稱、執行 PIX4Dmatic 與最佳化", "Rename sites/scans, run PIX4Dmatic & Optimizer")
               : uRole === "viewer"
-              ? "View all scans + Measurement/Surveying tools (No PC jobs)"
-              : "Browse & inspect scans + Distance/Area/Coordinates"
+              ? tr("檢視所有掃描 + 工程測量工具 · 不執行 PC 排程", "View all scans + Measurement/Surveying tools · No PC jobs")
+              : tr("瀏覽與檢視掃描 + 距離／面積／座標測量", "Browse & inspect scans + Distance/Area/Coordinates")
           }
         </td>
         <td>
@@ -20146,15 +20520,15 @@
             canEditRow
               ? `<button type="button" class="btn-xs" data-admin-delete-user="${escapeHtml(
                   u.email
-                )}" style="color:#ef4444;border-color:rgba(239,68,68,0.35);" title="Remove user">Remove</button>`
+                )}" style="color:#ef4444;border-color:rgba(239,68,68,0.35);" title="${tr("移除成員", "Remove user")}">${tr("移除", "Remove")}</button>`
               : `<span style="font-size:10.5px;color:var(--ui-text-muted);">${
-                  isOwner ? "Protected Owner" : "Read-only"
+                  isOwner ? tr("受保護擁有者", "Protected Owner") : tr("唯讀", "Read-only")
                 }</span>`
           }
         </td>
       `;
 
-      const sel = tr.querySelector("[data-admin-role-select]");
+      const sel = rowEl.querySelector("[data-admin-role-select]");
       if (sel) {
         sel.addEventListener("change", async (e) => {
           const newRole = e.target.value;
@@ -20166,18 +20540,18 @@
               zh_name: u.zh_name || "",
               role: newRole,
             });
-            showToast(`Updated ${u.name || u.email} to ${ROLE_LABELS_MAP[newRole] || newRole}`);
+            showToast(tr(`已將 ${cleanDisplayName} 更新為 ${getLocalizedRoleLabel(newRole)}`, `Updated ${cleanDisplayName} to ${getLocalizedRoleLabel(newRole)}`));
             await loadTeamUserProfiles();
             await renderAdminControlPanel();
             renderTeamProfilesGrid();
           } catch (err) {
-            showToast(`Role Update Error: ${err.message}`);
+            showToast(tr(`權限更新錯誤：${err.message}`, `Role Update Error: ${err.message}`));
             await renderAdminControlPanel();
           }
         });
       }
 
-      const delBtn = tr.querySelector("[data-admin-delete-user]");
+      const delBtn = rowEl.querySelector("[data-admin-delete-user]");
       if (delBtn) {
         delBtn.addEventListener("click", async () => {
           try {
@@ -20185,17 +20559,17 @@
               actor_email: STATE.currentUser?.email || "",
               email: u.email,
             });
-            showToast(`Removed user ${u.email}`);
+            showToast(tr(`已移除成員 ${u.email}`, `Removed user ${u.email}`));
             await loadTeamUserProfiles();
             await renderAdminControlPanel();
             renderTeamProfilesGrid();
           } catch (err) {
-            showToast(`Delete User Error: ${err.message}`);
+            showToast(tr(`移除成員錯誤：${err.message}`, `Delete User Error: ${err.message}`));
           }
         });
       }
 
-      tbody.appendChild(tr);
+      tbody.appendChild(rowEl);
     });
   }
 
@@ -20252,11 +20626,11 @@
       const isReady = Boolean(status.auth_configured || status.private_key_loaded || status.has_credentials);
       if (pill) {
         if (isReady) {
-          pill.textContent = "Connected & Verified";
+          pill.textContent = tr("已連線並驗證", "Connected & Verified");
           pill.style.background = "rgba(16,185,129,0.16)";
           pill.style.color = "#10b981";
         } else {
-          pill.textContent = "Key Needed (.json)";
+          pill.textContent = tr("需設定金鑰 .json", "Key Needed · .json");
           pill.style.background = "rgba(245,158,11,0.16)";
           pill.style.color = "#f59e0b";
         }
@@ -20420,12 +20794,12 @@
     if (!chip || !txt) return;
     if (STATE.pcOnline) {
       chip.classList.remove("state-offline");
-      txt.textContent = "Queue";
-      if (btnSim) btnSim.textContent = "Offline";
+      txt.textContent = tr("佇列", "Queue");
+      if (btnSim) btnSim.textContent = tr("切換離線", "Offline");
     } else {
       chip.classList.add("state-offline");
-      txt.textContent = "Offline";
-      if (btnSim) btnSim.textContent = "Online";
+      txt.textContent = tr("離線", "Offline");
+      if (btnSim) btnSim.textContent = tr("切換連線", "Online");
     }
   }
 
@@ -20468,15 +20842,17 @@
         STATE.isAuthorized = false;
         document.body?.classList.add("gs-auth-locked");
       }
-      if (lblUser) lblUser.textContent = "Sign In";
+      if (lblUser) lblUser.textContent = tr("登入", "Sign In");
       if (avatarImg) avatarImg.style.display = "none";
       if (svgIcon) svgIcon.style.display = "inline-block";
       if (closeBtn) closeBtn.style.display = "none";
       if (confirmBtn) confirmBtn.style.display = "none";
       if (btnLogout) btnLogout.style.display = "none";
       if (gateStatus) {
-        gateStatus.textContent =
-          "Authorization required — Sign in with Google or use Guest Mode";
+        gateStatus.textContent = tr(
+          "需要身分授權 — 請使用 Google 登入或以訪客模式進入",
+          "Authorization required — Sign in with Google or use Guest Mode"
+        );
       }
       applyRolePermissionsToUI();
       return;
@@ -20501,6 +20877,34 @@
     }
     STATE.currentUser = Object.assign({ offlineCacheEnabled: true }, STATE.currentUser || {}, normalized);
     syncSessionTokenCookie(STATE.currentUser);
+    if (
+      markAuthorized &&
+      normalized.language &&
+      (normalized.language === "zh-TW" || normalized.language === "en") &&
+      typeof window.setAppLanguage === "function" &&
+      normalized.language !== window.getAppLanguage?.()
+    ) {
+      window.setAppLanguage(normalized.language, { saveToServer: false });
+    }
+    if (markAuthorized && STATE.currentUser.email) {
+      const targetEmail = String(STATE.currentUser.email).trim().toLowerCase();
+      fetch(`/api/user/preferences?email=${encodeURIComponent(targetEmail)}`, { credentials: "same-origin" })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((prefData) => {
+          const srvLang = prefData?.preferences?.language || prefData?.language;
+          if (
+            (srvLang === "zh-TW" || srvLang === "en") &&
+            !window.__gsUserManuallyToggledLang &&
+            typeof window.setAppLanguage === "function"
+          ) {
+            if (STATE.currentUser) STATE.currentUser.language = srvLang;
+            if (srvLang !== window.getAppLanguage?.()) {
+              window.setAppLanguage(srvLang, { saveToServer: false });
+            }
+          }
+        })
+        .catch(() => {});
+    }
     const dlBtn = document.getElementById("btnStudioDownloadObj");
     if (dlBtn && STATE.activeScanId) {
       dlBtn.href = appendAuthToDownloadUrl(
@@ -20515,12 +20919,25 @@
     }
 
     const rInfo = getCurrentUserRoleInfo();
+    const roleShortMap = {
+      owner: tr("最高管理員", "Owner"),
+      admin: tr("管理員", "Admin"),
+      editor: tr("編輯者", "Editor"),
+      viewer: tr("檢視者", "Viewer"),
+      guest: tr("訪客", "Guest"),
+    };
+    const localRoleLabel = roleShortMap[rInfo.role] || rInfo.label;
+    const isEn = window.getAppLanguage?.() === "en";
+    const rawUserName = isEn
+      ? STATE.currentUser.name || STATE.currentUser.zh_name || STATE.currentUser.email || "Guest"
+      : STATE.currentUser.zh_name || STATE.currentUser.name || STATE.currentUser.email || "訪客";
+    const cleanUserName = String(rawUserName).replace(/\s*\([^)]*\)\s*/g, "").trim() || rawUserName;
     if (lblUser) {
-      lblUser.textContent = `${STATE.currentUser.name || STATE.currentUser.email || "Guest"} (${rInfo.label})`;
+      lblUser.textContent = `${cleanUserName} · ${localRoleLabel}`;
     }
     const btnUser = document.getElementById("btnGoogleUser") || document.getElementById("btnCurrentUserProfile");
     if (btnUser) {
-      btnUser.title = `${STATE.currentUser.name || "User"} (${STATE.currentUser.email || ""}) — Role: ${rInfo.level}. ${rInfo.label}`;
+      btnUser.title = `${cleanUserName} · ${STATE.currentUser.email || ""} · L${rInfo.level} ${localRoleLabel}`;
     }
     if (avatarImg && svgIcon) {
       const picUrl = STATE.currentUser.avatar_url || STATE.currentUser.picture;
@@ -20536,14 +20953,20 @@
 
     const offlineLbl = document.getElementById("lblOfflineCacheUserEmail");
     if (offlineLbl) {
-      offlineLbl.textContent = `Enable Offline Caching in Browser (${STATE.currentUser.email || "guest"})`;
+      offlineLbl.textContent = tr(
+        `啟用瀏覽器離線快取 · ${STATE.currentUser.email || "guest"}`,
+        `Enable Offline Caching in Browser · ${STATE.currentUser.email || "guest"}`
+      );
     }
     const engInput = document.getElementById("cntEngineerName");
-    if (engInput && STATE.currentUser.name) {
-      engInput.value = STATE.currentUser.name;
+    if (engInput && cleanUserName) {
+      engInput.value = cleanUserName;
     }
     if (gateStatus) {
-      gateStatus.textContent = `Signed in as: ${STATE.currentUser.name || STATE.currentUser.email} (${STATE.currentUser.email || ""}) — ${rInfo.level}. ${rInfo.label}`;
+      gateStatus.textContent = tr(
+        `目前登入：${cleanUserName} · ${STATE.currentUser.email || ""} · L${rInfo.level} ${localRoleLabel}`,
+        `Signed in as: ${cleanUserName} · ${STATE.currentUser.email || ""} · L${rInfo.level} ${localRoleLabel}`
+      );
     }
     if (closeBtn) {
       closeBtn.style.display = STATE.isAuthorized ? "inline-flex" : "none";
@@ -20589,7 +21012,7 @@
           },
           {
             id: "u_glebivanov",
-            name: "雲在天 (Glib Ivanov)",
+            name: "雲在天",
             email: "gleb.ivanov1999@gmail.com",
             role: "owner",
             role_label: "Owner (System Owner)",
@@ -20625,16 +21048,21 @@
     });
 
     if (countBadge) {
-      countBadge.textContent = `${list.length} Member${list.length === 1 ? "" : "s"}`;
+      countBadge.textContent = tr(`${list.length} 位成員`, `${list.length} Member${list.length === 1 ? "" : "s"}`);
     }
 
     grid.innerHTML = "";
+    const isEn = window.getAppLanguage?.() === "en";
     list.forEach((u) => {
       const isCurrent =
         STATE.isAuthorized &&
         STATE.currentUser &&
         String(STATE.currentUser.email || "").toLowerCase() === String(u.email || "").toLowerCase();
-      const initials = (u.name || u.email || "U")
+      const rawName = isEn
+        ? (u.name && u.name !== "雲在天" ? u.name : u.zh_name || u.name || u.email || "Team Member")
+        : (u.zh_name || u.name || u.email || "團隊成員");
+      const cleanName = String(rawName).replace(/\s*\([^)]*\)\s*/g, "").trim() || rawName;
+      const initials = (cleanName || u.email || "U")
         .split(" ")
         .map((w) => w[0])
         .join("")
@@ -20651,9 +21079,10 @@
       `;
       const safePicUrl = escapeHtml(picUrl);
       const safeInitials = escapeHtml(initials);
-      const safeName = escapeHtml(u.name || u.email || "Team Member");
+      const safeName = escapeHtml(cleanName);
       const safeEmail = escapeHtml(u.email || "");
-      const safeRoleLbl = escapeHtml(u.role_label || u.role || "Team Member");
+      const uRoleKey = String(u.role || "viewer").toLowerCase();
+      const safeRoleLbl = escapeHtml(getLocalizedRoleLabel(uRoleKey));
       card.innerHTML = `
         ${
           safePicUrl
@@ -20672,7 +21101,7 @@
           return;
         }
         promptChooseGoogleAccountOAuth();
-        showToast(`Please sign in with Google (${u.email}) to verify this account`);
+        showToast(tr(`請使用 Google 帳號 ${u.email} 登入以驗證身分`, `Please sign in with Google · ${u.email} to verify this account`));
       });
       grid.appendChild(card);
     });
@@ -21152,6 +21581,17 @@
       if (data.user_settings && data.user_settings.theme_preference && !localStorage.getItem("gs_theme_pref")) {
         await applyTheme(data.user_settings.theme_preference, false);
       }
+      if (
+        data.user_settings &&
+        (data.user_settings.language === "zh-TW" || data.user_settings.language === "en") &&
+        !window.__gsUserManuallyToggledLang &&
+        typeof window.setAppLanguage === "function"
+      ) {
+        if (STATE.currentUser) STATE.currentUser.language = data.user_settings.language;
+        if (data.user_settings.language !== window.getAppLanguage?.()) {
+          window.setAppLanguage(data.user_settings.language, { saveToServer: false });
+        }
+      }
 
       if (data.mode === "external_share" && data.share_link) {
         STATE.shareLinkInfo = data.share_link;
@@ -21161,14 +21601,14 @@
           banner.style.display = "flex";
           const friendlyScope = resolveShareScopeTitle(data.share_link.scope_type, data.share_link.target_id);
           const linkPerms = [
-            "3D View",
-            data.share_link.allow_measurements ? "Measurements" : null,
-            data.share_link.allow_comments ? "3D Comments" : null,
-            data.share_link.allow_download ? "Download" : null,
+            tr("3D 檢視", "3D View"),
+            data.share_link.allow_measurements ? tr("工程測量", "Measurements") : null,
+            data.share_link.allow_comments ? tr("3D 空間留言", "3D Comments") : null,
+            data.share_link.allow_download ? tr("下載", "Download") : null,
           ]
             .filter(Boolean)
             .join(" + ");
-          scopeLbl.textContent = `${data.share_link.label} (${String(data.share_link.scope_type || "scan").toUpperCase()}: ${friendlyScope}) — ${linkPerms}`;
+          scopeLbl.textContent = `${data.share_link.label} · ${String(data.share_link.scope_type || "scan").toUpperCase()}: ${friendlyScope} — ${linkPerms}`;
         }
         const viewerNameInp = document.getElementById("inpShareViewerName");
         if (viewerNameInp && !viewerNameInp.dataset.boundTelemetry) {
@@ -21285,12 +21725,123 @@
     }
   }
 
+  window.onAppLanguageChanged = function (lang) {
+    try {
+      const topBadge = document.getElementById("topCrsBadge");
+      if (topBadge) {
+        topBadge.textContent = tr(
+          "由 Glib Ivanov 博士與 Gemini 4 Argon 開發",
+          "Created by Glib Ivanov, PhD and Gemini 4 Argon"
+        );
+        topBadge.title = tr(
+          "由 Glib Ivanov 博士與 Gemini 4 Argon 共同開發",
+          "Created by Glib Ivanov, PhD and Gemini 4 Argon"
+        );
+      }
+      updatePcStatusUI();
+      applyUserProfileToUI(STATE.currentUser, false);
+      renderTeamProfilesGrid();
+      applyTheme(STATE.themePreference, false);
+      populateProjectScanDropdowns(STATE.activeProjectGroup, STATE.activeScanId);
+      renderMapClusters();
+      if (STATE.siteTimelineOpen && STATE.activeView === "map") {
+        openSiteTimeline(STATE.activeProjectGroup || "__all__", STATE.selectedTimelineScanId, false);
+      }
+      if (document.getElementById("modalQueue")?.classList.contains("active")) {
+        refreshQueueModalData();
+      }
+      if (document.getElementById("modalSharing")?.classList.contains("active")) {
+        renderShareLinksTable();
+        if (_activeAnalyticsToken) openShareAnalyticsDrawer(_activeAnalyticsToken);
+      }
+      if (document.getElementById("modalOfflineCache")?.classList.contains("active")) {
+        openOfflineCacheModal();
+      }
+      if (document.getElementById("recycleBinModal")?.classList.contains("active")) {
+        renderRecycleBinItems(_cachedBinScans || []);
+      }
+      if (document.getElementById("deleteScanModal")?.classList.contains("active") && _deletingScanId) {
+        openDeleteScanModal(_deletingScanId);
+      }
+      if (document.getElementById("renameScanModal")?.classList.contains("active") && _renamingScanId) {
+        openRenameScanModal(_renamingScanId);
+      }
+      if (document.getElementById("renameSiteModal")?.classList.contains("active") && _renamingSiteGroup) {
+        openRenameSiteModal(_renamingSiteGroup);
+      }
+      if (document.getElementById("rerunScanModal")?.classList.contains("active") && _rerunTargetScanId) {
+        openRerunScanModal(_rerunTargetScanId);
+      }
+      const dlPopover = document.getElementById("gsDownloadFormatPopover");
+      if (dlPopover && _downloadFormatMenuAnchor && _downloadFormatMenuScan) {
+        openDownloadFormatMenu(_downloadFormatMenuAnchor, _downloadFormatMenuScan, true);
+      }
+      if (STATE.activeView === "compare") {
+        setCompareMode(STATE.compareMode || "slider");
+      }
+      if (typeof syncCategorizeVisibilityUI === "function") syncCategorizeVisibilityUI();
+      if (typeof syncFirstPersonHudUI === "function") syncFirstPersonHudUI();
+      if (typeof syncStudioMobileToolHud === "function") syncStudioMobileToolHud();
+      if (typeof syncMultiAlignToolAvailability === "function") syncMultiAlignToolAvailability();
+      const lblCol = document.getElementById("lblCollapseSidePanel");
+      if (lblCol) {
+        const isMin = Boolean(STATE.sidePanelMinimized);
+        lblCol.textContent = tr(isMin ? "▴ 展開" : "▾ 收合", isMin ? "▴ Expand" : "▾ Collapse");
+      }
+      if (STATE.activeView === "studio") {
+        if (STATE.activeScan) {
+          updateStudioScanMetricsReadout(STATE.activeScan);
+          const pickedEl = document.getElementById("lblLastPickedCoord");
+          if (pickedEl && inferActiveScanCrsCode(STATE.activeScan) === "LOCAL_ORIGIN") {
+            pickedEl.textContent = tr("局部原點 · 點擊 3D 表面以檢視座標", "Local Origin · Click 3D surface to inspect");
+          }
+        }
+        const panelEl = document.getElementById("studioSidePanel");
+        const isOpen =
+          panelEl &&
+          !panelEl.classList.contains("hidden") &&
+          window.getComputedStyle(panelEl).display !== "none";
+        if (isOpen) {
+          if (STATE.activeTool === "volume") openCutFillVolumeInspector(STATE.lastVolumeResult);
+          else if (STATE.activeTool === "contours") openContoursInspector(true);
+          else if (STATE.activeTool === "profile") openProfileInspector();
+          else if (STATE.activeTool === "section") openSectionBoxInspector();
+          else if (STATE.activeTool === "photos") openRtkPhotoInspector();
+          else if (STATE.activeTool === "categorize") {
+            if (STATE.lastCategorizeResult && STATE.lastCategorizeResult.scan_id === STATE.activeScanId) {
+              openCategorizeInspector();
+            } else {
+              openCategorizeInspector();
+            }
+          } else if (STATE.activeTool === "comments") openCommentsInspector();
+          else if (STATE.activeTool === "crop_delete") openLassoDeleteInspector({ armLasso: true });
+          else if (STATE.activeTool === "crop") openLassoKeepInspector({ armLasso: true });
+          else if (STATE.activeTool === "optimizer") openMeshCompressionInspector();
+          else if (STATE.activeTool === "crs") openCoordinateSystemInspector();
+          else if (STATE.activeTool === "generate_scan") openGenerateScanInspector();
+          else if (STATE.activeTool === "align_merge" || STATE.multiAlign?.active) renderAlignMergeInspectorContent();
+        }
+      }
+    } catch (err) {
+      console.warn("[GatheringScans] onAppLanguageChanged refresh warning:", err);
+    }
+  };
+
   // Bootstrap Application, Theme Engine (Default: Time of Day Auto) & Mandatory Authorization Gate
   window.addEventListener("DOMContentLoaded", async () => {
     const topBadge = document.getElementById("topCrsBadge");
     if (topBadge) {
-      topBadge.textContent = "Created by Glib Ivanov, PhD and Gemini 4 Argon";
-      topBadge.title = "Created by Glib Ivanov, PhD and Gemini 4 Argon";
+      topBadge.textContent = tr(
+        "由 Glib Ivanov 博士與 Gemini 4 Argon 開發",
+        "Created by Glib Ivanov, PhD and Gemini 4 Argon"
+      );
+      topBadge.title = tr(
+        "由 Glib Ivanov 博士與 Gemini 4 Argon 共同開發",
+        "Created by Glib Ivanov, PhD and Gemini 4 Argon"
+      );
+    }
+    if (typeof window.applyStaticDomTranslations === "function") {
+      window.applyStaticDomTranslations(document);
     }
     await applyTheme(STATE.themePreference, false);
     applyUserProfileToUI(STATE.currentUser, false);

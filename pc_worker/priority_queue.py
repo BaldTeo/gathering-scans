@@ -197,6 +197,7 @@ class ScanQueueDB:
                     offline_cache_enabled INTEGER DEFAULT 1,
                     auto_cache_pinned_groups TEXT DEFAULT '[]',
                     theme_preference TEXT DEFAULT 'auto',
+                    language TEXT DEFAULT 'zh-TW',
                     updated_at TEXT NOT NULL
                 );
 
@@ -228,6 +229,10 @@ class ScanQueueDB:
             )
             try:
                 conn.execute("ALTER TABLE user_settings ADD COLUMN theme_preference TEXT DEFAULT 'auto'")
+            except Exception:
+                pass
+            try:
+                conn.execute("ALTER TABLE user_settings ADD COLUMN language TEXT DEFAULT 'zh-TW'")
             except Exception:
                 pass
             try:
@@ -1305,16 +1310,54 @@ class ScanQueueDB:
             conn.commit()
             return cur.rowcount > 0
 
+    def _user_prefs_json_path(self) -> str:
+        return os.path.join(os.path.dirname(self.db_path), "user_preferences.json")
+
+    def _load_user_prefs_json(self) -> Dict[str, Any]:
+        p = self._user_prefs_json_path()
+        if os.path.isfile(p):
+            try:
+                with open(p, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                    if isinstance(data, dict):
+                        return data
+            except Exception:
+                pass
+        return {}
+
+    def _save_user_prefs_json_entry(self, email: str, entry: Dict[str, Any]) -> None:
+        clean = (email or "").strip().lower()
+        if not clean:
+            return
+        p = self._user_prefs_json_path()
+        try:
+            os.makedirs(os.path.dirname(p), exist_ok=True)
+            data = self._load_user_prefs_json()
+            cur = data.get(clean) if isinstance(data.get(clean), dict) else {}
+            cur.update(entry)
+            data[clean] = cur
+            with open(p, "w", encoding="utf-8") as f:
+                json.dump(data, f, ensure_ascii=False, indent=2)
+        except Exception:
+            pass
+
     def get_user_settings(self, email: str) -> Dict[str, Any]:
+        clean = (email or "").strip().lower() or "guest@anonymous"
+        prefs_map = self._load_user_prefs_json()
+        json_pref = prefs_map.get(clean) if isinstance(prefs_map.get(clean), dict) else {}
         with DB_LOCK, self._connect() as conn:
-            row = conn.execute("SELECT * FROM user_settings WHERE email = ?", (email,)).fetchone()
+            row = conn.execute("SELECT * FROM user_settings WHERE lower(email) = ?", (clean,)).fetchone()
             if not row:
+                lang_val = str(json_pref.get("language") or "zh-TW").strip()
+                if lang_val not in ("zh-TW", "en"):
+                    lang_val = "zh-TW"
                 default = {
-                    "email": email,
-                    "display_name": email.split("@")[0],
+                    "email": clean,
+                    "display_name": clean.split("@")[0],
                     "offline_cache_enabled": True,
                     "auto_cache_pinned_groups": [],
-                    "theme_preference": "auto",
+                    "theme_preference": str(json_pref.get("theme_preference") or "auto"),
+                    "language": lang_val,
                     "updated_at": datetime.now(timezone.utc).isoformat(),
                 }
                 return default
@@ -1322,6 +1365,10 @@ class ScanQueueDB:
             d["offline_cache_enabled"] = bool(d.get("offline_cache_enabled", 1))
             if d.get("theme_preference") not in ("auto", "light", "dark"):
                 d["theme_preference"] = "auto"
+            lang_val = str(d.get("language") or json_pref.get("language") or "zh-TW").strip()
+            if lang_val not in ("zh-TW", "en"):
+                lang_val = "zh-TW"
+            d["language"] = lang_val
             try:
                 d["auto_cache_pinned_groups"] = json.loads(d.get("auto_cache_pinned_groups") or "[]")
             except Exception:
@@ -1329,27 +1376,45 @@ class ScanQueueDB:
             return d
 
     def update_user_settings(self, email: str, payload: Dict[str, Any]) -> Dict[str, Any]:
-        current = self.get_user_settings(email)
+        clean = (email or "").strip().lower() or "guest@anonymous"
+        current = self.get_user_settings(clean)
         offline_enabled = 1 if payload.get("offline_cache_enabled", current["offline_cache_enabled"]) else 0
         pinned = payload.get("auto_cache_pinned_groups", current["auto_cache_pinned_groups"])
         display_name = payload.get("display_name", current["display_name"])
         theme_pref = payload.get("theme_preference", current.get("theme_preference", "auto"))
         if theme_pref not in ("auto", "light", "dark"):
             theme_pref = "auto"
+        raw_lang = str(payload.get("language") or payload.get("lang") or current.get("language") or "zh-TW").strip()
+        if raw_lang.lower() in ("en", "en-us", "en-gb", "english"):
+            lang_pref = "en"
+        elif raw_lang.lower() in ("zh", "zh-tw", "zh-hant", "chinese"):
+            lang_pref = "zh-TW"
+        else:
+            lang_pref = current.get("language", "zh-TW") if current.get("language") in ("zh-TW", "en") else "zh-TW"
         now_iso = datetime.now(timezone.utc).isoformat()
         with DB_LOCK, self._connect() as conn:
             conn.execute(
                 """
-                INSERT INTO user_settings (email, display_name, offline_cache_enabled, auto_cache_pinned_groups, theme_preference, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?)
+                INSERT INTO user_settings (email, display_name, offline_cache_enabled, auto_cache_pinned_groups, theme_preference, language, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(email) DO UPDATE SET
                     display_name=excluded.display_name,
                     offline_cache_enabled=excluded.offline_cache_enabled,
                     auto_cache_pinned_groups=excluded.auto_cache_pinned_groups,
                     theme_preference=excluded.theme_preference,
+                    language=excluded.language,
                     updated_at=excluded.updated_at
                 """,
-                (email, display_name, offline_enabled, json.dumps(pinned), theme_pref, now_iso),
+                (clean, display_name, offline_enabled, json.dumps(pinned), theme_pref, lang_pref, now_iso),
             )
             conn.commit()
-        return self.get_user_settings(email)
+        self._save_user_prefs_json_entry(
+            clean,
+            {
+                "email": clean,
+                "language": lang_pref,
+                "theme_preference": theme_pref,
+                "updated_at": now_iso,
+            },
+        )
+        return self.get_user_settings(clean)

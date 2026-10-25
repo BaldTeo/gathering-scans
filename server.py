@@ -2144,9 +2144,9 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
             for k in list(_VPS_RAM_FALLBACK_CACHE.keys()):
                 if k.startswith(path):
                     _VPS_RAM_FALLBACK_CACHE.pop(k, None)
-        if method in ("POST", "DELETE") and ("/rename" in path or "/delete" in path or "/bin" in path or "/rerun" in path or "/admin/users" in path or path == "/api/comments" or path.startswith("/api/comments/") or path.startswith("/api/optimizer/") or path in ("/api/scans/rename", "/api/scans/delete", "/api/scans/merge")):
+        if method in ("POST", "DELETE") and ("/rename" in path or "/delete" in path or "/bin" in path or "/rerun" in path or "/admin/users" in path or "/user/" in path or "/user-profiles" in path or "/auth/" in path or path == "/api/comments" or path.startswith("/api/comments/") or path.startswith("/api/optimizer/") or path in ("/api/scans/rename", "/api/scans/delete", "/api/scans/merge")):
             for k in list(_VPS_RAM_FALLBACK_CACHE.keys()):
-                if k.startswith("/api/scans") or k.startswith("/api/projects") or k.startswith("/api/user-profiles") or k.startswith("/api/admin/users") or k.startswith("/stream/"):
+                if k.startswith("/api/scans") or k.startswith("/api/projects") or k.startswith("/api/user-profiles") or k.startswith("/api/user/") or k.startswith("/api/auth/") or k.startswith("/api/admin/users") or k.startswith("/stream/"):
                     _VPS_RAM_FALLBACK_CACHE.pop(k, None)
         if method == "POST" and path in ("/api/queue/scan-inbox", "/api/queue/rescan", "/api/admin/pc-daemon", "/api/pc/simulate-offline"):
             _VPS_RAM_FALLBACK_CACHE.clear()
@@ -2748,6 +2748,8 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
             scans = [self._enrich_scan_urls(s) for s in DB.list_scans(project_group=project_group)]
             bin_scans = DB.list_trashed_scans()
             d_running = is_pc_daemon_running()
+            actor_em, _, _ = self._resolve_request_role(None, query, share_token)
+            user_settings = DB.get_user_settings(actor_em) if actor_em else None
             self.send_json(
                 {
                     "status": "ok",
@@ -2760,6 +2762,7 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
                     "bin_scans_count": len(bin_scans),
                     "materials": MATERIAL_CATALOG,
                     "google_client_id": GOOGLE_OAUTH_CLIENT_ID,
+                    "user_settings": user_settings,
                 }
             )
             return
@@ -3072,14 +3075,86 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
             self.send_json({"status": "ok", "notifications": GCHAT.list_notifications()})
             return
 
-        # 9. User-Specific Offline Cache Settings & User Profiles (GatheringCloud OAuth Gate)
-        if path == "/api/user/settings":
-            email = (
+        # 9. User-Specific Offline Cache Settings, Language Preferences & User Profiles (GatheringCloud OAuth Gate)
+        if path in ("/api/user/settings", "/api/user/preferences"):
+            email = str(
                 (query.get("email") or query.get("user_email") or [None])[0]
                 or self.headers.get("X-User-Email")
                 or "guest@anonymous"
+            ).strip().lower()
+            settings = DB.get_user_settings(email)
+            prof = AUTH_SHARE.get_user_profile(email) if email != "guest@anonymous" else None
+            lang_val = str(
+                settings.get("language")
+                or (prof and prof.get("language"))
+                or "zh-TW"
+            ).strip()
+            if lang_val not in ("zh-TW", "en"):
+                lang_val = "zh-TW"
+            settings["language"] = lang_val
+            self.send_json(
+                {
+                    "status": "ok",
+                    "ok": True,
+                    "email": email,
+                    "language": lang_val,
+                    "settings": settings,
+                    "preferences": {
+                        "email": email,
+                        "language": lang_val,
+                        "theme_preference": settings.get("theme_preference", "auto"),
+                    },
+                    "profile": prof,
+                }
             )
-            self.send_json({"status": "ok", "settings": DB.get_user_settings(str(email).strip().lower())})
+            return
+
+        if path in ("/api/auth/session", "/api/auth/roster"):
+            actor_em, actor_r, actor_p = self._resolve_request_role(None, query, share_token)
+            req_em = str(
+                (query.get("email") or query.get("user_email") or [None])[0]
+                or self.headers.get("X-User-Email")
+                or actor_em
+                or ""
+            ).strip().lower()
+            profiles = []
+            for p in AUTH_SHARE.list_user_profiles():
+                r_norm = normalize_role(p.get("role"), email=p.get("email", ""))
+                em_p = str(p.get("email") or "").strip().lower()
+                u_set = DB.get_user_settings(em_p) if em_p else {}
+                p_lang = str(u_set.get("language") or p.get("language") or "zh-TW")
+                if p_lang not in ("zh-TW", "en"):
+                    p_lang = "zh-TW"
+                profiles.append(
+                    {
+                        **p,
+                        "role": r_norm,
+                        "role_level": ROLE_LEVELS.get(r_norm, 2),
+                        "role_label": ROLE_LABELS.get(r_norm, "Viewer"),
+                        "permissions": get_role_permissions(r_norm),
+                        "language": p_lang,
+                    }
+                )
+            matched_prof = next((x for x in profiles if str(x.get("email", "")).lower() == req_em), None) if req_em else None
+            u_settings = DB.get_user_settings(req_em) if req_em else {"language": "zh-TW"}
+            active_lang = str((matched_prof and matched_prof.get("language")) or u_settings.get("language") or "zh-TW")
+            if active_lang not in ("zh-TW", "en"):
+                active_lang = "zh-TW"
+            self.send_json(
+                {
+                    "status": "ok",
+                    "authenticated": bool(matched_prof or (actor_em and actor_r != "guest")),
+                    "email": req_em,
+                    "role": (matched_prof and matched_prof.get("role")) or actor_r,
+                    "permissions": (matched_prof and matched_prof.get("permissions")) or actor_p,
+                    "language": active_lang,
+                    "user": matched_prof,
+                    "profile": matched_prof,
+                    "roster": profiles,
+                    "profiles": profiles,
+                    "google_client_id": GOOGLE_OAUTH_CLIENT_ID,
+                }
+            )
             return
 
         if path == "/api/admin/pc-daemon":
@@ -3093,6 +3168,11 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
             profiles = []
             for p in AUTH_SHARE.list_user_profiles():
                 r_norm = normalize_role(p.get("role"), email=p.get("email", ""))
+                em_p = str(p.get("email") or "").strip().lower()
+                u_set = DB.get_user_settings(em_p) if em_p else {}
+                p_lang = str(u_set.get("language") or p.get("language") or "zh-TW")
+                if p_lang not in ("zh-TW", "en"):
+                    p_lang = "zh-TW"
                 profiles.append(
                     {
                         **p,
@@ -3100,6 +3180,7 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
                         "role_level": ROLE_LEVELS.get(r_norm, 2),
                         "role_label": ROLE_LABELS.get(r_norm, "Viewer"),
                         "permissions": get_role_permissions(r_norm),
+                        "language": p_lang,
                     }
                 )
             self.send_json(
@@ -3936,6 +4017,24 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
                             vf2.write(raw_vps)
                 except Exception:
                     pass
+            if path in ("/api/user/settings", "/api/user/preferences"):
+                try:
+                    em_vps = str(
+                        payload.get("email")
+                        or payload.get("user_email")
+                        or self.headers.get("X-User-Email")
+                        or "guest@anonymous"
+                    ).strip().lower()
+                    s_vps = DB.update_user_settings(em_vps, payload)
+                    if em_vps and em_vps != "guest@anonymous":
+                        ex_p = AUTH_SHARE.get_user_profile(em_vps)
+                        if ex_p:
+                            AUTH_SHARE.upsert_user_profile(
+                                {**ex_p, "email": em_vps, "language": s_vps.get("language", "zh-TW")},
+                                preserve_existing_role=True,
+                            )
+                except Exception:
+                    pass
             if self._proxy_via_pc_tunnel_if_vps("POST", path, body):
                 return
 
@@ -4725,16 +4824,81 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
                 self.send_json(res)
                 return
 
-            # 11. User-Specific Offline Cache Settings & User Profiles Update / Admin Control Panel
-            if path == "/api/user/settings":
+            # 11. User-Specific Offline Cache Settings, Language Preferences & User Profiles Update / Admin Control Panel
+            if path in ("/api/user/settings", "/api/user/preferences"):
                 email = str(
                     payload.get("email")
                     or payload.get("user_email")
+                    or self.headers.get("X-User-Email")
                     or actor_email
                     or "guest@anonymous"
                 ).strip().lower()
                 settings = DB.update_user_settings(email, payload)
-                self.send_json({"status": "ok", "settings": settings})
+                lang_saved = settings.get("language", "zh-TW")
+                prof = None
+                if email and email != "guest@anonymous":
+                    existing_p = AUTH_SHARE.get_user_profile(email)
+                    if existing_p:
+                        prof = AUTH_SHARE.upsert_user_profile(
+                            {**existing_p, "email": email, "language": lang_saved},
+                            preserve_existing_role=True,
+                        )
+                _VPS_RAM_FALLBACK_CACHE.clear()
+                self.send_json(
+                    {
+                        "status": "ok",
+                        "ok": True,
+                        "email": email,
+                        "language": lang_saved,
+                        "settings": settings,
+                        "preferences": {
+                            "email": email,
+                            "language": lang_saved,
+                            "theme_preference": settings.get("theme_preference", "auto"),
+                        },
+                        "profile": prof,
+                    }
+                )
+                return
+
+            if path == "/api/auth/roster-login":
+                email = str(
+                    payload.get("email")
+                    or payload.get("user_email")
+                    or self.headers.get("X-User-Email")
+                    or actor_email
+                    or ""
+                ).strip().lower()
+                if not email:
+                    self.send_json({"error": "email is required"}, status=400)
+                    return
+                prof = AUTH_SHARE.get_user_profile(email)
+                if not prof:
+                    prof = AUTH_SHARE.upsert_user_profile(
+                        {
+                            "email": email,
+                            "name": str(payload.get("name") or email.split("@")[0]),
+                            "language": payload.get("language") or "zh-TW",
+                        },
+                        preserve_existing_role=True,
+                    )
+                u_settings = DB.get_user_settings(email)
+                lang_val = str(u_settings.get("language") or prof.get("language") or "zh-TW")
+                if lang_val not in ("zh-TW", "en"):
+                    lang_val = "zh-TW"
+                prof["language"] = lang_val
+                self.send_json(
+                    {
+                        "status": "ok",
+                        "authenticated": True,
+                        "email": email,
+                        "language": lang_val,
+                        "user": prof,
+                        "profile": prof,
+                        "settings": u_settings,
+                        "profiles": AUTH_SHARE.list_user_profiles(),
+                    }
+                )
                 return
 
             if path == "/api/admin/users/save":
@@ -4791,10 +4955,18 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
                 cred = payload.get("credential", "")
                 fallback_profile = payload.get("profile") if isinstance(payload.get("profile"), dict) else None
                 user = AUTH_SHARE.verify_google_oauth_credential(cred, fallback_profile=fallback_profile)
+                u_em = str(user.get("email") or "").strip().lower()
+                if u_em:
+                    u_set = DB.get_user_settings(u_em)
+                    u_lang = str(u_set.get("language") or user.get("language") or "zh-TW")
+                    if u_lang not in ("zh-TW", "en"):
+                        u_lang = "zh-TW"
+                    user["language"] = u_lang
                 self.send_json(
                     {
                         "status": "ok",
                         "user": user,
+                        "language": user.get("language", "zh-TW"),
                         "profiles": AUTH_SHARE.list_user_profiles(),
                     }
                 )
