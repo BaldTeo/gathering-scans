@@ -4530,11 +4530,14 @@ def _pc_cloud_manifest_sync_loop():
 
 
 def run_server(host: str = SERVER_HOST, port: int = SERVER_PORT):
-    if os.name != "nt" and os.path.isdir("/host_opt/gathering_scans/web"):
-        try:
-            shutil.copytree("/host_opt/gathering_scans/web", WEB_DIR, dirs_exist_ok=True)
-        except Exception as e:
-            print(f"[GatheringScans] Web dir sync warning: {e}")
+    if os.name != "nt":
+        # Mirror fresh GitHub-synced WEB_DIR out to host backup directories (never overwrite newer WEB_DIR with stale host files)
+        for host_web_dir in ("/host_opt/gathering_scans/web", "/host_docker/gathering_scans/web"):
+            if os.path.isdir(os.path.dirname(host_web_dir)):
+                try:
+                    shutil.copytree(WEB_DIR, host_web_dir, dirs_exist_ok=True)
+                except Exception as e:
+                    print(f"[GatheringScans] Host web mirror note ({host_web_dir}): {e}")
     _ensure_vps_caddy_route()
     if os.name != "nt":
         t_cw = threading.Thread(target=_vps_caddy_watchdog_loop, daemon=True)
