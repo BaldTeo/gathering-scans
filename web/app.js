@@ -139,6 +139,8 @@
     categorizeLabelsVisible: true,
     categorizeEditMode: null,
     categorizeEditPoints: [],
+    studioLassoOrbitMode: false,
+    sidePanelMinimized: false,
     multiAlign: {
       active: false,
       gizmoMode: "both", // 'both' | 'translate' | 'rotate'
@@ -2263,6 +2265,8 @@
     const controls = new THREE.OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
     controls.dampingFactor = 0.06;
+    controls.enablePan = true;
+    controls.enableZoom = true;
     controls.screenSpacePanning = true;
     controls.mouseButtons = {
       LEFT: THREE.MOUSE.ROTATE,
@@ -2271,7 +2275,7 @@
     };
     controls.touches = {
       ONE: THREE.TOUCH.ROTATE,
-      TWO: THREE.TOUCH.DOLLY_ROTATE,
+      TWO: THREE.TOUCH.DOLLY_PAN,
     };
     controls.addEventListener("end", () => {
       SHARE_TELEMETRY.recordCameraInteraction("preview");
@@ -3272,9 +3276,9 @@
       const isBackup = Boolean(item.is_edit_backup || /\((Original|Pre-Merge) Backup\)/i.test(String(item.name || "")));
 
       const row = document.createElement("div");
-      row.className = "gs-bin-item-row";
+      row.className = "gs-bin-item-row recycle-bin-item";
       row.style.cssText =
-        "display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 12px;border:1px solid var(--ui-border);border-radius:8px;background:var(--ui-bg-elevated);";
+        "display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;padding:9px 12px;border:1px solid var(--ui-border);border-radius:8px;background:var(--ui-bg-elevated);";
       row.innerHTML = `
         <label style="display:flex;align-items:center;gap:10px;flex:1;min-width:0;cursor:pointer;">
           <input type="checkbox" class="chk-bin-scan-item" data-scan-id="${escapeHtml(sid)}" style="accent-color:#0284c7;width:15px;height:15px;flex-shrink:0;" />
@@ -3290,12 +3294,12 @@
               <span style="font-size:10px;font-weight:700;padding:1px 6px;border-radius:4px;background:var(--ui-accent-soft);color:var(--ui-accent);">${safeGroup}</span>
               <span style="font-size:10.5px;color:var(--ui-text-secondary);font-family:var(--mono);">${safeDate} · ${item.image_count || 0} imgs · ${sizeMb}</span>
             </div>
-            <div style="font-size:10.5px;color:var(--ui-text-muted);">
+            <div style="font-size:10.5px;color:var(--ui-text-muted);word-break:break-word;">
               ${isBackup ? "Archived by" : "Deleted by"} ${safeActor}${trashedTime ? ` · ${escapeHtml(trashedTime)}` : ""} · ID: <code>${escapeHtml(sid)}</code>
             </div>
           </div>
         </label>
-        <div style="display:flex;align-items:center;gap:6px;flex-shrink:0;">
+        <div class="gs-bin-item-actions recycle-bin-item-actions" style="display:flex;align-items:center;gap:6px;flex-shrink:0;flex-wrap:wrap;">
           <button type="button" class="btn-xs primary" data-bin-restore="${escapeHtml(sid)}" title="Restore this scan back to Map & Studio">
             ↩ Restore (還原)
           </button>
@@ -3952,6 +3956,8 @@
     const controls = new THREE.OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
     controls.dampingFactor = 0.06;
+    controls.enablePan = true;
+    controls.enableZoom = true;
     controls.screenSpacePanning = true;
     controls.mouseButtons = {
       LEFT: THREE.MOUSE.ROTATE,
@@ -3960,7 +3966,7 @@
     };
     controls.touches = {
       ONE: THREE.TOUCH.ROTATE,
-      TWO: THREE.TOUCH.DOLLY_ROTATE,
+      TWO: THREE.TOUCH.DOLLY_PAN,
     };
     controls.addEventListener("end", () => {
       SHARE_TELEMETRY.recordCameraInteraction("studio");
@@ -4146,6 +4152,7 @@
       } else {
         openLassoKeepInspector({ armLasso: true });
       }
+      if (typeof syncStudioMobileToolHud === "function") syncStudioMobileToolHud();
       return true;
     };
 
@@ -4210,7 +4217,45 @@
 
     // Pointer click & live rubberband preview handler for 3D Measurements & Tools
     let downPos = { x: 0, y: 0 };
+    const activeTouchPointers = new Set();
+    let lastMultiTouchTime = 0;
+
+    renderer.domElement.addEventListener(
+      "touchstart",
+      (te) => {
+        if (te.touches && te.touches.length >= 2) {
+          lastMultiTouchTime = performance.now();
+          if (_lassoState.dragging) {
+            cancelActiveLassoDrag();
+          }
+        }
+      },
+      { passive: true }
+    );
+    renderer.domElement.addEventListener(
+      "touchmove",
+      (te) => {
+        if (te.touches && te.touches.length >= 2) {
+          lastMultiTouchTime = performance.now();
+          if (_lassoState.dragging) {
+            cancelActiveLassoDrag();
+          }
+        }
+      },
+      { passive: true }
+    );
+
     renderer.domElement.addEventListener("pointerdown", (e) => {
+      if (e.pointerType === "touch") {
+        activeTouchPointers.add(e.pointerId);
+        if (activeTouchPointers.size >= 2) {
+          lastMultiTouchTime = performance.now();
+          if (_lassoState.dragging) {
+            cancelActiveLassoDrag(e);
+          }
+          return;
+        }
+      }
       downPos = { x: e.clientX, y: e.clientY };
       if (
         STATE.activeView === "studio" &&
@@ -4239,7 +4284,8 @@
         if (handleGizmoPointerDown(e)) return;
       }
       // Multi-touch safety: if a second finger touches down while lassoing, cancel lasso so pinch-zoom/orbit works
-      if (_lassoState.dragging && e.pointerId !== _lassoState.pointerId) {
+      if (_lassoState.dragging && (e.pointerId !== _lassoState.pointerId || activeTouchPointers.size >= 2)) {
+        lastMultiTouchTime = performance.now();
         cancelActiveLassoDrag(e);
         return;
       }
@@ -4254,6 +4300,8 @@
         e.button === 0 &&
         !e.ctrlKey &&
         !e.metaKey &&
+        !STATE.studioLassoOrbitMode &&
+        activeTouchPointers.size < 2 &&
         STATE.activeView === "studio" &&
         (STATE.activeTool === "crop_delete" || STATE.activeTool === "crop") &&
         STATE.lassoInputMethod !== "polygon"
@@ -4275,6 +4323,9 @@
     });
 
     renderer.domElement.addEventListener("pointercancel", (e) => {
+      if (e.pointerType === "touch") {
+        activeTouchPointers.delete(e.pointerId);
+      }
       if (STATE.fpMode?.dragLooking && (STATE.fpMode.lookPointerId == null || e.pointerId === STATE.fpMode.lookPointerId)) {
         STATE.fpMode.dragLooking = false;
         STATE.fpMode.lookPointerId = null;
@@ -4285,12 +4336,21 @@
     });
 
     renderer.domElement.addEventListener("lostpointercapture", (e) => {
+      if (e.pointerType === "touch") {
+        activeTouchPointers.delete(e.pointerId);
+      }
       if (_lassoState.dragging && (_lassoState.pointerId === null || e.pointerId === _lassoState.pointerId)) {
         cancelActiveLassoDrag(e);
       }
     });
 
     renderer.domElement.addEventListener("pointerup", (e) => {
+      if (e.pointerType === "touch") {
+        if (activeTouchPointers.size >= 2) {
+          lastMultiTouchTime = performance.now();
+        }
+        activeTouchPointers.delete(e.pointerId);
+      }
       if (handleGizmoPointerUp(e)) return;
       if (STATE.activeView === "studio" && STATE.fpMode.active) {
         const wasDragDist = STATE.fpMode.dragDist || 0;
@@ -4304,7 +4364,7 @@
         }
         if (e.button !== 0 && e.pointerType !== "touch") return;
         const isLocked = document.pointerLockElement === renderer.domElement;
-        if (!isLocked && wasDragDist > 5) return;
+        if (!isLocked && (wasDragDist > 5 || performance.now() - lastMultiTouchTime < 280)) return;
         if (isLocked) {
           if (STATE.activeTool && STATE.activeTool !== "orbit" && STATE.activeTool !== "align_merge") {
             const rect = renderer.domElement.getBoundingClientRect();
@@ -4337,6 +4397,10 @@
         }
       }
       if (_lassoState.dragging && e.button === 0 && (_lassoState.pointerId === null || e.pointerId === _lassoState.pointerId)) {
+        if (performance.now() - lastMultiTouchTime < 280 || activeTouchPointers.size >= 1) {
+          cancelActiveLassoDrag(e);
+          return;
+        }
         const ptsCopy = _lassoState.screenPts.slice();
         const arcLen = _lassoState.totalArcLen;
         const strokeOp = _lassoState.op;
@@ -4350,7 +4414,8 @@
       }
       if (handleGizmoPointerUp(e)) return;
       if (e.button !== 0) return;
-      if (Math.hypot(e.clientX - downPos.x, e.clientY - downPos.y) > 6) return;
+      if (performance.now() - lastMultiTouchTime < 280 || activeTouchPointers.size > 0) return;
+      if (Math.hypot(e.clientX - downPos.x, e.clientY - downPos.y) >= 8) return;
       if (STATE.activeView === "studio" && STATE.multiAlign.active && STATE.activeTool === "align_merge") {
         if (handleMultiAlignCanvasClick(e)) return;
       }
@@ -5213,12 +5278,16 @@
     if (!studioThree) return;
     const w = studioThree.renderer.domElement.clientWidth;
     const h = studioThree.renderer.domElement.clientHeight;
+    const isMobile = w <= 768;
     const panelEl = document.getElementById("studioSidePanel");
-    const panelOpen = Boolean(panelEl && (panelEl.classList.contains("open") || panelEl.classList.contains("active")));
-    const rightSafeX = w - (panelOpen ? (panelEl.offsetWidth || 380) + 16 : 14);
-    const leftSafeX = 86;
-    const topSafeY = 68;
-    const bottomSafeY = h - 84;
+    const panelOpen = Boolean(panelEl && (panelEl.classList.contains("open") || panelEl.classList.contains("active")) && !panelEl.classList.contains("hidden"));
+    const panelMinimized = Boolean(panelEl && panelEl.classList.contains("mobile-minimized"));
+    const rightSafeX = isMobile ? w - 8 : w - (panelOpen ? (panelEl.offsetWidth || 380) + 16 : 14);
+    const leftSafeX = isMobile ? 8 : 86;
+    const topSafeY = isMobile ? 74 : 68;
+    const bottomSafeY = isMobile
+      ? h - (panelOpen && !panelMinimized ? Math.min(240, (panelEl.offsetHeight || 180) + 96) : 102)
+      : h - 84;
     const placedRects = [];
     const candidateOffsets = [
       [0, 0],
@@ -5260,8 +5329,12 @@
         const bh = b.el.offsetHeight || 24;
         const halfW = Math.min(bw * 0.5, Math.max(16, w * 0.5 - 8));
         const halfH = bh * 0.5;
-        const clampedX = Math.max(halfW + 8, Math.min(w - halfW - 8, x));
-        const clampedY = h > 160 ? Math.max(58, Math.min(h - 72, y)) : y;
+        const minX = isMobile ? Math.max(24, halfW + 8) : halfW + 8;
+        const maxX = isMobile ? Math.min(w - 24, w - halfW - 8) : w - halfW - 8;
+        const clampedX = Math.max(minX, Math.min(Math.max(minX, maxX), x));
+        const minY = isMobile ? Math.max(76, bh + 66) : 58;
+        const maxY = isMobile ? Math.max(84, h - 104) : h - 72;
+        const clampedY = h > 160 ? Math.max(minY, Math.min(Math.max(minY, maxY), y)) : y;
         b.el.style.left = `${clampedX}px`;
         b.el.style.top = `${clampedY}px`;
         placedRects.push([clampedX - halfW - 4, clampedY - halfH - 4, clampedX + halfW + 4, clampedY + halfH + 4]);
@@ -5396,11 +5469,13 @@
     }
     const isFreehandLasso =
       (STATE.activeTool === "crop_delete" || STATE.activeTool === "crop") &&
-      STATE.lassoInputMethod !== "polygon";
+      STATE.lassoInputMethod !== "polygon" &&
+      !STATE.studioLassoOrbitMode;
     studioThree.controls.enabled = true;
-    studioThree.controls.enableRotate = true;
+    studioThree.controls.enableRotate = !isFreehandLasso;
     studioThree.controls.enableZoom = true;
     studioThree.controls.enablePan = true;
+    studioThree.controls.screenSpacePanning = true;
     studioThree.controls.mouseButtons = {
       LEFT: isFreehandLasso ? -1 : THREE.MOUSE.ROTATE,
       MIDDLE: THREE.MOUSE.ROTATE,
@@ -5408,11 +5483,13 @@
     };
     studioThree.controls.touches = {
       ONE: isFreehandLasso ? -1 : THREE.TOUCH.ROTATE,
-      TWO: THREE.TOUCH.DOLLY_ROTATE,
+      TWO: THREE.TOUCH.DOLLY_PAN,
     };
     if (studioThree.renderer && studioThree.renderer.domElement) {
       studioThree.renderer.domElement.style.cursor =
-        STATE.activeTool === "crop" || STATE.activeTool === "crop_delete" ? "crosshair" : "";
+        (STATE.activeTool === "crop" || STATE.activeTool === "crop_delete") && !STATE.studioLassoOrbitMode
+          ? "crosshair"
+          : "";
     }
   }
 
@@ -5669,6 +5746,18 @@
       setFirstPersonLocomotion(options.locomotion, false);
     }
 
+    if (window.innerWidth <= 768) {
+      const panelEl = document.getElementById("studioSidePanel");
+      if (panelEl) {
+        panelEl.classList.remove("active", "open");
+        panelEl.classList.add("hidden");
+      }
+      const editDockEl = document.getElementById("studioEditingDock");
+      if (editDockEl) editDockEl.style.display = "none";
+      const mobileHudEl = document.getElementById("studioMobileToolHud");
+      if (mobileHudEl) mobileHudEl.style.display = "none";
+    }
+
     syncStudioControlsForTool();
     syncFirstPersonHudUI();
     SHARE_TELEMETRY.recordFirstPersonToggle(true, fp.locomotion || "fly");
@@ -5735,6 +5824,8 @@
     }
 
     syncFirstPersonHudUI();
+    applyRolePermissionsToUI();
+    if (typeof syncStudioMobileToolHud === "function") syncStudioMobileToolHud();
     if (!silent) {
       showToast("已離開第一人稱漫遊，返回環繞視角 (Orbit Mode)");
     }
@@ -6135,8 +6226,19 @@
     if ((toolName === "crop" || toolName === "crop_delete") && STATE.fpMode?.active) {
       exitFirstPersonMode(true);
     }
+    if (toolName !== "crop" && toolName !== "crop_delete") {
+      STATE.studioLassoOrbitMode = false;
+    }
     STATE.activeTool = toolName;
     SHARE_TELEMETRY.recordToolSelected(toolName);
+    const sidePanelEl = document.getElementById("studioSidePanel");
+    if (sidePanelEl) {
+      sidePanelEl.setAttribute("data-active-tool", toolName || "");
+      if (["distance", "angle", "area", "coordinates", "laser", "clear", "orbit"].includes(toolName)) {
+        sidePanelEl.classList.remove("active", "open", "mobile-minimized");
+        sidePanelEl.classList.add("hidden");
+      }
+    }
     if (studioThree && studioThree.gizmoGroup) {
       studioThree.gizmoGroup.visible = Boolean(
         STATE.multiAlign?.active && toolName === "align_merge" && STATE.multiAlign?.selectedScanId
@@ -6162,6 +6264,8 @@
     }
     syncMultiAlignToolAvailability();
     syncStudioControlsForTool();
+    if (typeof syncStudioMobileToolHud === "function") syncStudioMobileToolHud();
+    update2DBadgePositions();
   }
 
   function clearTempDistanceVisuals() {
@@ -9079,17 +9183,18 @@
       const h = Math.max(1, domEl?.clientHeight || 1);
       const pClick = clickPt.clone().project(cam);
       const pStart = startPt.clone().project(cam);
+      const pxThresh = window.innerWidth <= 768 ? 28 : 18;
       if (Math.abs(pStart.z) <= 1.0 && Math.abs(pClick.z) <= 1.0) {
         const sxClick = (pClick.x * 0.5 + 0.5) * w;
         const syClick = (-pClick.y * 0.5 + 0.5) * h;
         const sxStart = (pStart.x * 0.5 + 0.5) * w;
         const syStart = (-pStart.y * 0.5 + 0.5) * h;
-        if (Math.hypot(sxClick - sxStart, syClick - syStart) <= 18) return true;
+        if (Math.hypot(sxClick - sxStart, syClick - syStart) <= pxThresh) return true;
       }
       const fovRad = THREE.MathUtils.degToRad(cam.fov);
       const dist = cam.position.distanceTo(startPt);
       const worldPerPixel = (2 * Math.tan(fovRad / 2) * dist) / h;
-      const snapRadius = Math.max(0.08, 18 * worldPerPixel);
+      const snapRadius = Math.max(0.08, pxThresh * worldPerPixel);
       return clickPt.distanceTo(startPt) < snapRadius;
     };
 
@@ -9135,6 +9240,7 @@
           showToast("🔴 牆面起點已標記，請點擊牆面終點 (Point 1/2 placed — click wall end point)");
           if (STATE.lastCategorizeResult) renderCategorizePanelContent(STATE.lastCategorizeResult);
         }
+        syncStudioMobileToolHud();
         return;
       }
       if (mode === "add_road") {
@@ -9159,6 +9265,7 @@
             boundary_local: boundaryLoc,
             boundary_twd97: boundaryTwd,
           });
+          syncStudioMobileToolHud();
           return;
         }
         STATE.categorizeEditPoints.push({ pt: pt.clone(), twd });
@@ -9183,6 +9290,7 @@
             : `🟠 道路頂點 #${pts.length} 已標記 — 請再標記至少 ${3 - pts.length} 個頂點`
         );
         if (STATE.lastCategorizeResult) renderCategorizePanelContent(STATE.lastCategorizeResult);
+        syncStudioMobileToolHud();
         return;
       }
       if (mode === "remove_click") {
@@ -9366,6 +9474,7 @@
         renderDistanceVisuals(null, meas);
         STATE.measurePoints = [];
       }
+      syncStudioMobileToolHud();
       return;
     }
 
@@ -9391,6 +9500,7 @@
         renderAngleVisuals(null, meas);
         STATE.measurePoints = [];
       }
+      syncStudioMobileToolHud();
       return;
     }
 
@@ -9404,6 +9514,7 @@
         const lockedPts = STATE.measurePoints.map((p) => p.clone());
         STATE.measurePoints = [];
         showToast(`Area polygon closed (${lockedPts.length} vertices)`);
+        syncStudioMobileToolHud();
         return;
       }
 
@@ -9443,6 +9554,7 @@
           { isArea: true }
         );
       }
+      syncStudioMobileToolHud();
       return;
     }
 
@@ -9480,6 +9592,7 @@
         } else {
           openLassoKeepInspector({ armLasso: true });
         }
+        syncStudioMobileToolHud();
         return;
       }
       STATE.polygonLocked = false;
@@ -9502,6 +9615,7 @@
           `${isDelete ? "Lasso Delete" : "Crop"} Polygon #${STATE.pendingCropPolygons.length + 1}: Point ${pts.length} placed — click ${3 - pts.length} more`
         );
       }
+      syncStudioMobileToolHud();
       return;
     }
 
@@ -9524,6 +9638,7 @@
         STATE.polygonLocked = true;
         showToast(`Cut/Fill boundary polygon locked (${lockedPts.length} vertices) — computing volume...`);
         openCutFillVolumeInspector(lockedPts);
+        syncStudioMobileToolHud();
         return;
       }
 
@@ -9543,6 +9658,7 @@
         openCutFillVolumeInspector(null);
         showToast(`Cut/Fill Point ${pts.length} placed — click ${3 - pts.length} more point${3 - pts.length === 1 ? "" : "s"} to form boundary`);
       }
+      syncStudioMobileToolHud();
       return;
     }
 
@@ -9563,6 +9679,7 @@
         drawProfileSectionLine3D(p1, p2);
         openProfileInspector(p1, p2);
       }
+      syncStudioMobileToolHud();
       return;
     }
 
@@ -9577,6 +9694,7 @@
         showToast(`Mask boundary locked (${STATE.maskBoundaryPoints.length} vertices) — updating Civil3D.dwg & A3 PDF`);
         STATE.measurePoints = [];
         openContoursInspector();
+        syncStudioMobileToolHud();
         return;
       }
 
@@ -9590,6 +9708,7 @@
       } else {
         showToast(`Mask Boundary Point ${pts.length} placed — click ${3 - pts.length} more point${3 - pts.length === 1 ? "" : "s"} to clip contours`);
       }
+      syncStudioMobileToolHud();
       return;
     }
   }
@@ -10140,9 +10259,30 @@
     if (!panel || !titleEl || !bodyEl) return;
     titleEl.innerHTML = title;
     bodyEl.innerHTML = htmlContent;
+    panel.setAttribute("data-active-tool", STATE.activeTool || "");
+    panel.classList.remove("hidden");
     panel.classList.add("active", "open");
+    panel.classList.toggle("mobile-minimized", Boolean(STATE.sidePanelMinimized));
+    const lblCollapse = document.getElementById("lblCollapseSidePanel");
+    if (lblCollapse) {
+      lblCollapse.textContent = STATE.sidePanelMinimized ? "▴ 展開" : "▾ 收合";
+    }
+    if (typeof syncStudioMobileToolHud === "function") syncStudioMobileToolHud();
     update2DBadgePositions();
   }
+
+  document.getElementById("btnCollapseSidePanel")?.addEventListener("click", (ev) => {
+    ev.stopPropagation();
+    const panel = document.getElementById("studioSidePanel");
+    if (!panel) return;
+    STATE.sidePanelMinimized = !STATE.sidePanelMinimized;
+    panel.classList.toggle("mobile-minimized", STATE.sidePanelMinimized);
+    const lblCollapse = document.getElementById("lblCollapseSidePanel");
+    if (lblCollapse) {
+      lblCollapse.textContent = STATE.sidePanelMinimized ? "▴ 展開" : "▾ 收合";
+    }
+    update2DBadgePositions();
+  });
 
   document.getElementById("btnCloseSidePanel")?.addEventListener("click", () => {
     clearSectionBoxClippingIfNotKept();
@@ -10154,9 +10294,349 @@
       setActiveStudioTool(STATE.multiAlign?.active ? "align_merge" : "orbit");
     }
     const panel = document.getElementById("studioSidePanel");
-    panel?.classList.remove("active", "open");
+    if (panel) {
+      panel.classList.remove("active", "open", "mobile-minimized");
+      panel.classList.add("hidden");
+    }
+    STATE.sidePanelMinimized = false;
+    if (typeof syncStudioMobileToolHud === "function") syncStudioMobileToolHud();
     update2DBadgePositions();
   });
+
+  function finalizeActiveMobilePolygon() {
+    if (
+      STATE.activeView === "studio" &&
+      STATE.activeTool === "categorize" &&
+      STATE.categorizeEditMode &&
+      Array.isArray(STATE.categorizeEditPoints)
+    ) {
+      if (STATE.categorizeEditMode === "add_road" && STATE.categorizeEditPoints.length >= 3) {
+        const boundaryLoc = STATE.categorizeEditPoints.map((x) => [
+          Number(x.pt.x.toFixed(3)),
+          Number(x.pt.y.toFixed(3)),
+          Number(x.pt.z.toFixed(3)),
+        ]);
+        const boundaryTwd = STATE.categorizeEditPoints.map((x) => [
+          Number(x.twd.e.toFixed(3)),
+          Number(x.twd.n.toFixed(3)),
+          Number(x.twd.h.toFixed(3)),
+        ]);
+        STATE.categorizeEditPoints = [];
+        clearTempDistanceVisuals();
+        submitCategorizeManualEdit("manual_add", "roads", null, {
+          boundary_local: boundaryLoc,
+          boundary_twd97: boundaryTwd,
+        });
+        syncStudioMobileToolHud();
+        return;
+      }
+      if (STATE.categorizeEditMode === "add_wall" && STATE.categorizeEditPoints.length >= 2) {
+        const p0 = STATE.categorizeEditPoints[0];
+        const p1 = STATE.categorizeEditPoints[1];
+        STATE.categorizeEditPoints = [];
+        clearTempDistanceVisuals();
+        submitCategorizeManualEdit("manual_add", "walls", null, {
+          base_polyline_local: [
+            [Number(p0.pt.x.toFixed(3)), Number(p0.pt.y.toFixed(3)), Number(p0.pt.z.toFixed(3))],
+            [Number(p1.pt.x.toFixed(3)), Number(p1.pt.y.toFixed(3)), Number(p1.pt.z.toFixed(3))],
+          ],
+          base_polyline_twd97: [
+            [Number(p0.twd.e.toFixed(3)), Number(p0.twd.n.toFixed(3)), Number(p0.twd.h.toFixed(3))],
+            [Number(p1.twd.e.toFixed(3)), Number(p1.twd.n.toFixed(3)), Number(p1.twd.h.toFixed(3))],
+          ],
+          height_m: 2.5,
+          mean_height_m: 2.5,
+        });
+        syncStudioMobileToolHud();
+        return;
+      }
+    }
+
+    if (STATE.activeView === "studio" && Array.isArray(STATE.measurePoints) && STATE.measurePoints.length >= 3) {
+      if (studioThree && studioThree.polyPreviewGroup) {
+        while (studioThree.polyPreviewGroup.children.length > 0) {
+          studioThree.polyPreviewGroup.remove(studioThree.polyPreviewGroup.children[0]);
+        }
+      }
+      const lockedPts = STATE.measurePoints.map((p) => p.clone());
+      STATE.measurePoints = [];
+      STATE.polygonLocked = true;
+      if (STATE.activeTool === "volume") {
+        STATE.maskBoundaryPoints = lockedPts.map((p) => p.clone());
+        STATE.cutFillPolygonPoints = lockedPts;
+        showToast(`Cut/Fill polygon locked (${lockedPts.length} vertices) — computing volume...`);
+        openCutFillVolumeInspector(lockedPts);
+      } else if (STATE.activeTool === "crop" || STATE.activeTool === "crop_delete") {
+        const isDel = STATE.activeTool === "crop_delete";
+        STATE.cropMode = isDel ? "delete_inside" : "keep_inside";
+        if (!Array.isArray(STATE.pendingCropPolygons)) STATE.pendingCropPolygons = [];
+        STATE.pendingCropPolygons.push(lockedPts);
+        STATE.cropPolygonPoints = [];
+        const selTris = rebuildLassoHighlight3D();
+        showToast(
+          isDel
+            ? `Polygon #${STATE.pendingCropPolygons.length} marked (${selTris.toLocaleString()} tris) — mark more or press Delete`
+            : `Keep Polygon #${STATE.pendingCropPolygons.length} marked (${selTris.toLocaleString()} tris)`
+        );
+        if (isDel) openLassoDeleteInspector({ armLasso: true });
+        else openLassoKeepInspector({ armLasso: true });
+      } else if (STATE.activeTool === "area") {
+        STATE.maskBoundaryPoints = lockedPts.map((p) => p.clone());
+        showToast(`Area polygon locked (${lockedPts.length} vertices)`);
+      } else if (STATE.activeTool === "contours") {
+        STATE.maskBoundaryPoints = lockedPts.map((p) => p.clone());
+        showToast(`Mask boundary locked (${lockedPts.length} vertices) — updating Civil3D.dwg & A3 PDF`);
+        openContoursInspector();
+      }
+      syncStudioMobileToolHud();
+    }
+  }
+
+  function syncStudioMobileToolHud() {
+    const hud = document.getElementById("studioMobileToolHud");
+    if (!hud) return;
+    if (STATE.activeView !== "studio" || STATE.fpMode?.active) {
+      hud.style.display = "none";
+      return;
+    }
+    const tool = STATE.activeTool || "orbit";
+    const ptsCount = Array.isArray(STATE.measurePoints) ? STATE.measurePoints.length : 0;
+
+    if (tool === "crop_delete" || tool === "crop") {
+      const isDel = tool === "crop_delete";
+      const isOrbitSub = Boolean(STATE.studioLassoOrbitMode);
+      const pendingRegions = typeof countMarkedRegionsPending === "function" ? countMarkedRegionsPending() : 0;
+      const hasAnyMarks =
+        pendingRegions > 0 ||
+        ptsCount > 0 ||
+        (Array.isArray(STATE.lassoStrokes) && STATE.lassoStrokes.length > 0) ||
+        (Array.isArray(STATE.pendingCropPolygons) && STATE.pendingCropPolygons.length > 0);
+      hud.style.display = "flex";
+      hud.innerHTML = `
+        <button type="button" class="gs-mobile-hud-btn ${isOrbitSub ? "primary" : ""}" data-mobile-hud="toggle_lasso_orbit">
+          ${isOrbitSub ? "🔄 旋轉中 (點此套索)" : "✏️ 套索標記 (點此旋轉)"}
+        </button>
+        ${
+          STATE.lassoInputMethod === "polygon" && ptsCount >= 3
+            ? `<button type="button" class="gs-mobile-hud-btn primary" data-mobile-hud="lock_poly">✓ 鎖定 (${ptsCount}點)</button>`
+            : ""
+        }
+        ${
+          pendingRegions > 0
+            ? `<button type="button" class="gs-mobile-hud-btn primary" data-mobile-hud="commit_lasso">✓ ${
+                isDel ? "執行刪除" : "執行保留"
+              } (${pendingRegions})</button>`
+            : ""
+        }
+        ${
+          hasAnyMarks
+            ? `<button type="button" class="gs-mobile-hud-btn" data-mobile-hud="undo_lasso">↩ 復原</button>`
+            : ""
+        }
+        <button type="button" class="gs-mobile-hud-btn danger" data-mobile-hud="exit_tool">✕ 離開</button>
+      `;
+    } else if (tool === "area" || tool === "volume" || tool === "contours") {
+      if (ptsCount === 0) {
+        hud.style.display = "none";
+        return;
+      }
+      const toolLabel = tool === "area" ? "面積" : tool === "volume" ? "土方" : "等高線邊界";
+      hud.style.display = "flex";
+      hud.innerHTML = `
+        <span class="gs-mobile-hud-label">📐 ${toolLabel}：已標記 ${ptsCount} 點</span>
+        ${
+          ptsCount >= 3
+            ? `<button type="button" class="gs-mobile-hud-btn primary" data-mobile-hud="lock_poly">✓ 完成多邊形 (Lock)</button>`
+            : `<span class="gs-mobile-hud-label" style="color:var(--ui-text-secondary);">再點 ${3 - ptsCount} 點可閉合</span>`
+        }
+        <button type="button" class="gs-mobile-hud-btn" data-mobile-hud="undo_pt">↩ 復原點</button>
+        <button type="button" class="gs-mobile-hud-btn danger" data-mobile-hud="clear_pts">✕ 清除</button>
+      `;
+    } else if (tool === "distance" || tool === "angle" || tool === "profile") {
+      if (ptsCount === 0) {
+        hud.style.display = "none";
+        return;
+      }
+      const toolLabel = tool === "distance" ? "距離" : tool === "angle" ? "角度" : "剖面";
+      hud.style.display = "flex";
+      hud.innerHTML = `
+        <span class="gs-mobile-hud-label">📏 ${toolLabel}：已標記 ${ptsCount} 點</span>
+        <button type="button" class="gs-mobile-hud-btn" data-mobile-hud="undo_pt">↩ 復原點</button>
+        <button type="button" class="gs-mobile-hud-btn danger" data-mobile-hud="clear_pts">✕ 取消</button>
+      `;
+    } else if (tool === "categorize" && STATE.categorizeEditMode) {
+      const mode = STATE.categorizeEditMode;
+      const catPts = Array.isArray(STATE.categorizeEditPoints) ? STATE.categorizeEditPoints.length : 0;
+      const modeText =
+        mode === "add_tree"
+          ? "🟢 點擊 3D 樹木新增"
+          : mode === "add_wall"
+          ? `🔴 點擊牆面起終點 (${catPts}/2)`
+          : mode === "add_road"
+          ? `🟠 點擊道路頂點 (${catPts}點)`
+          : "🗑️ 點擊 3D 物件刪除";
+      hud.style.display = "flex";
+      hud.innerHTML = `
+        <span class="gs-mobile-hud-label">${modeText}</span>
+        ${
+          (mode === "add_road" && catPts >= 3) || (mode === "add_wall" && catPts >= 2)
+            ? `<button type="button" class="gs-mobile-hud-btn primary" data-mobile-hud="lock_poly">✓ 完成新增</button>`
+            : ""
+        }
+        ${
+          catPts > 0
+            ? `<button type="button" class="gs-mobile-hud-btn" data-mobile-hud="undo_cat_pt">↩ 復原點</button>`
+            : ""
+        }
+        <button type="button" class="gs-mobile-hud-btn" data-mobile-hud="expand_cat_panel">▴ 面板</button>
+        <button type="button" class="gs-mobile-hud-btn danger" data-mobile-hud="exit_cat_edit">✕ 結束編輯</button>
+      `;
+    } else {
+      hud.style.display = "none";
+      return;
+    }
+
+    hud.querySelector('[data-mobile-hud="toggle_lasso_orbit"]')?.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      STATE.studioLassoOrbitMode = !STATE.studioLassoOrbitMode;
+      syncStudioControlsForTool();
+      syncStudioMobileToolHud();
+      showToast(
+        STATE.studioLassoOrbitMode
+          ? "🔄 已切換為單指旋轉視角 (1-Finger Orbit Mode)"
+          : "✏️ 已切換為單指套索標記 (1-Finger Lasso Draw Mode)"
+      );
+    });
+    hud.querySelector('[data-mobile-hud="lock_poly"]')?.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      finalizeActiveMobilePolygon();
+    });
+    hud.querySelector('[data-mobile-hud="commit_lasso"]')?.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      const mode = STATE.activeTool === "crop" ? "keep_inside" : "delete_inside";
+      const res = commitPendingLassoMarksToStagedEdits(mode);
+      if (res.committed > 0) {
+        showToast(
+          mode === "keep_inside"
+            ? `已套用保留範圍 (${res.committed} 區) — 點擊 Generate 建立新掃描`
+            : `已刪除選取範圍 (${res.committed} 區) — 點擊 Generate 建立新掃描`
+        );
+        if (mode === "keep_inside") openLassoKeepInspector({ armLasso: true });
+        else openLassoDeleteInspector({ armLasso: true });
+      }
+      syncStudioMobileToolHud();
+    });
+    hud.querySelector('[data-mobile-hud="undo_lasso"]')?.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      if (Array.isArray(STATE.measurePoints) && STATE.measurePoints.length > 0) {
+        STATE.measurePoints.pop();
+        drawAllCropPolygons3D(STATE.activeTool === "crop_delete");
+      } else if (Array.isArray(STATE.lassoStrokes) && STATE.lassoStrokes.length > 0) {
+        STATE.lassoStrokes.pop();
+        rebuildLassoHighlight3D();
+      } else if (Array.isArray(STATE.pendingCropPolygons) && STATE.pendingCropPolygons.length > 0) {
+        STATE.pendingCropPolygons.pop();
+        drawAllCropPolygons3D(STATE.activeTool === "crop_delete");
+        rebuildLassoHighlight3D();
+      }
+      syncStudioMobileToolHud();
+    });
+    hud.querySelector('[data-mobile-hud="exit_tool"]')?.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      cancelLassoToolMode(true, false);
+      syncStudioMobileToolHud();
+    });
+    hud.querySelector('[data-mobile-hud="undo_pt"]')?.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      if (Array.isArray(STATE.measurePoints) && STATE.measurePoints.length > 0) {
+        STATE.measurePoints.pop();
+        clearTempDistanceVisuals();
+        if (STATE.activeTool === "area") {
+          clearAreaVisualsOnly();
+          const pts = STATE.measurePoints.slice();
+          const addAreaObj = (m) => {
+            m.userData.isAreaVisual = true;
+            studioThree.overlayGroup.add(m);
+          };
+          pts.forEach((p, idx) => add3DPinMarker(p, idx === 0 ? 0xff3b30 : 0x0284c7, studioThree.overlayGroup, addAreaObj));
+          if (pts.length >= 2) {
+            const loopPts = pts.length >= 3 ? [...pts, pts[0]] : pts;
+            const lineGeom = new THREE.BufferGeometry().setFromPoints(loopPts);
+            const lineMesh = new THREE.Line(lineGeom, new THREE.LineBasicMaterial({ color: 0x0284c7, depthTest: false }));
+            addAreaObj(lineMesh);
+          }
+        } else if (STATE.activeTool === "volume") {
+          drawPlacedCutFillPolygon3D(STATE.measurePoints.slice(), null);
+        }
+      }
+      syncStudioMobileToolHud();
+    });
+    hud.querySelector('[data-mobile-hud="clear_pts"]')?.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      STATE.measurePoints = [];
+      clearTempDistanceVisuals();
+      if (studioThree && studioThree.polyPreviewGroup) {
+        while (studioThree.polyPreviewGroup.children.length > 0) {
+          studioThree.polyPreviewGroup.remove(studioThree.polyPreviewGroup.children[0]);
+        }
+      }
+      if (STATE.activeTool === "area") clearAreaVisualsOnly();
+      if (STATE.activeTool === "volume" && !STATE.polygonLocked) clearVolumeVisualsOnly();
+      syncStudioMobileToolHud();
+    });
+    hud.querySelector('[data-mobile-hud="undo_cat_pt"]')?.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      if (Array.isArray(STATE.categorizeEditPoints) && STATE.categorizeEditPoints.length > 0) {
+        STATE.categorizeEditPoints.pop();
+        clearTempDistanceVisuals();
+        const pts = STATE.categorizeEditPoints.map((x) => x.pt);
+        pts.forEach((p, idx) => {
+          add3DPinMarker(p, idx === 0 ? 0xff3b30 : 0xf59e0b, studioThree.overlayGroup, (m) => {
+            m.userData.isTempDistance = true;
+            studioThree.overlayGroup.add(m);
+          });
+        });
+        if (pts.length >= 2) {
+          const loopPts = pts.length >= 3 ? [...pts, pts[0]] : pts;
+          const lGeo = new THREE.BufferGeometry().setFromPoints(loopPts);
+          const lMesh = new THREE.Line(lGeo, new THREE.LineBasicMaterial({ color: 0xf59e0b, depthTest: false }));
+          lMesh.userData.isTempDistance = true;
+          studioThree.overlayGroup.add(lMesh);
+        }
+        if (STATE.lastCategorizeResult) renderCategorizePanelContent(STATE.lastCategorizeResult);
+      }
+      syncStudioMobileToolHud();
+    });
+    hud.querySelector('[data-mobile-hud="expand_cat_panel"]')?.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      const panel = document.getElementById("studioSidePanel");
+      if (panel) {
+        STATE.sidePanelMinimized = !STATE.sidePanelMinimized;
+        panel.classList.remove("hidden");
+        panel.classList.add("active", "open");
+        panel.classList.toggle("mobile-minimized", STATE.sidePanelMinimized);
+        const lblCollapse = document.getElementById("lblCollapseSidePanel");
+        if (lblCollapse) lblCollapse.textContent = STATE.sidePanelMinimized ? "▴ 展開" : "▾ 收合";
+        update2DBadgePositions();
+      }
+    });
+    hud.querySelector('[data-mobile-hud="exit_cat_edit"]')?.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      STATE.categorizeEditMode = null;
+      STATE.categorizeEditPoints = [];
+      clearTempDistanceVisuals();
+      const panel = document.getElementById("studioSidePanel");
+      if (panel) {
+        STATE.sidePanelMinimized = false;
+        panel.classList.remove("mobile-minimized");
+        const lblCollapse = document.getElementById("lblCollapseSidePanel");
+        if (lblCollapse) lblCollapse.textContent = "▾ 收合";
+      }
+      if (STATE.lastCategorizeResult) renderCategorizePanelContent(STATE.lastCategorizeResult);
+      syncStudioMobileToolHud();
+      update2DBadgePositions();
+    });
+  }
 
   // 3A. Cut/Fill & Material Stockpile Report Generator
   async function openCutFillVolumeInspector(customPts = null) {
@@ -11959,10 +12439,19 @@
           if (!STATE.categorizeOverlayVisible) {
             setCategorizeOverlayVisibility(true, { silent: true });
           }
+          if (window.innerWidth <= 768 && mode) {
+            STATE.sidePanelMinimized = true;
+            const panel = document.getElementById("studioSidePanel");
+            panel?.classList.add("mobile-minimized");
+            const lblCollapse = document.getElementById("lblCollapseSidePanel");
+            if (lblCollapse) lblCollapse.textContent = "▴ 展開";
+          }
         }
         STATE.categorizeEditPoints = [];
         clearTempDistanceVisuals();
         renderCategorizePanelContent(res);
+        syncStudioMobileToolHud();
+        update2DBadgePositions();
       });
     });
 
@@ -12469,19 +12958,41 @@
 
     const canvas = document.getElementById("profileChartCanvas");
     if (canvas) {
-      canvas.addEventListener("mousemove", (ev) => {
+      const scrubProfileAtClientX = (clientX) => {
+        if (!Number.isFinite(clientX)) return;
         const r = STATE.lastProfileResult;
         if (!r || !Array.isArray(r.samples) || !r.samples.length) return;
         const rect = canvas.getBoundingClientRect();
         const cssW = Math.max(1, rect.width || 336);
-        const relX = ((ev.clientX - rect.left) / cssW) * 336;
+        const relX = ((clientX - rect.left) / cssW) * 336;
         const padL = 44;
         const padR = 14;
         const frac = Math.max(0, Math.min(1, (relX - padL) / Math.max(1, 336 - padL - padR)));
         const idx = Math.round(frac * (r.samples.length - 1));
         drawProfileCanvas(r, idx);
         setProfileHoverMarker3D(r.samples[idx]);
-      });
+      };
+      canvas.addEventListener("mousemove", (ev) => scrubProfileAtClientX(ev.clientX));
+      canvas.addEventListener("pointermove", (ev) => scrubProfileAtClientX(ev.clientX));
+      canvas.addEventListener(
+        "touchstart",
+        (ev) => {
+          if (ev.touches && ev.touches[0]) {
+            scrubProfileAtClientX(ev.touches[0].clientX);
+          }
+        },
+        { passive: true }
+      );
+      canvas.addEventListener(
+        "touchmove",
+        (ev) => {
+          if (ev.touches && ev.touches[0]) {
+            ev.preventDefault();
+            scrubProfileAtClientX(ev.touches[0].clientX);
+          }
+        },
+        { passive: false }
+      );
       canvas.addEventListener("mouseleave", () => {
         if (STATE.lastProfileResult) drawProfileCanvas(STATE.lastProfileResult, null);
         setProfileHoverMarker3D(null);
@@ -17370,10 +17881,17 @@
     const controls = new THREE.OrbitControls(left.camera, stage);
     controls.target.set(0, 0, 0);
     controls.enableDamping = true;
+    controls.enablePan = true;
+    controls.enableZoom = true;
+    controls.screenSpacePanning = true;
     controls.mouseButtons = {
       LEFT: THREE.MOUSE.ROTATE,
       MIDDLE: THREE.MOUSE.ROTATE,
       RIGHT: THREE.MOUSE.PAN,
+    };
+    controls.touches = {
+      ONE: THREE.TOUCH.ROTATE,
+      TWO: THREE.TOUCH.DOLLY_PAN,
     };
     stage?.addEventListener("mousedown", (e) => {
       if (e.button === 1) e.preventDefault();

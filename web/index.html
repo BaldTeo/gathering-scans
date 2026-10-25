@@ -18,7 +18,7 @@
   <meta name="twitter:image" content="https://scans.gatheren.cloud/assets/gathering_cloud_logo.png" />
   <!-- GS_SHARE_OG_END -->
   <link rel="icon" type="image/png" href="/assets/gathering_cloud_logo.png" />
-  <link rel="stylesheet" href="/app.css?v=20261025_v62" />
+  <link rel="stylesheet" href="/app.css?v=20261025_v63" />
   <script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
 <body>
@@ -569,14 +569,22 @@
       <aside class="gs-side-panel" id="studioSidePanel">
         <div class="gs-panel-header">
           <div class="gs-panel-title" id="sidePanelTitle">Surveying Inspector</div>
-          <button type="button" class="btn-xs" id="btnCloseSidePanel" title="Close" aria-label="Close Inspector Panel">
-            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8">
-              <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
-            </svg>
-          </button>
+          <div class="gs-panel-header-actions" style="display:flex;align-items:center;gap:4px;flex-shrink:0;">
+            <button type="button" class="btn-xs gs-panel-collapse-btn" id="btnCollapseSidePanel" style="height:24px;padding:0 7px;font-size:11px;font-weight:700;" title="Minimize / Expand Inspector Panel (收合 / 展開面板)" aria-label="Minimize or Expand Inspector Panel">
+              <span id="lblCollapseSidePanel">▾ 收合</span>
+            </button>
+            <button type="button" class="btn-xs" id="btnCloseSidePanel" title="Close" aria-label="Close Inspector Panel">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8">
+                <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+              </svg>
+            </button>
+          </div>
         </div>
         <div id="sidePanelBody"></div>
       </aside>
+
+      <!-- Floating Mobile Action Pill (#studioMobileToolHud) for Touch Polygon Lock, Undo, Lasso Orbit/Draw & Categorize Manual Edit -->
+      <div class="gs-mobile-tool-hud" id="studioMobileToolHud" aria-live="polite" style="display: none;"></div>
 
       <!-- Unified Bottom Segmented Dock (All Surveying, Measurement & BIM Tools in One Bar) -->
       <nav class="bim-bottom-dock" id="bimBottomDock" aria-label="GatheringScans 3D Surveying &amp; Measurement Dock">
@@ -1901,6 +1909,6 @@
   <script src="/lib/3d-tiles-renderer.bundle.js"></script>
 
   <!-- Main GatheringScans Application Logic -->
-  <script src="/app.js?v=20261025_v62"></script>
+  <script src="/app.js?v=20261025_v63"></script>
 </body>
 </html>
