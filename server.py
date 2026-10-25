@@ -1577,6 +1577,21 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
                 self._SCAN_MESH_METRICS_CACHE[cache_key] = cached_metrics
 
         s.update(cached_metrics)
+        try:
+            saved_cat = SURVEY.get_saved_categorization(sid, s)
+            if isinstance(saved_cat, dict) and saved_cat.get("status") == "ok":
+                s["has_categorization"] = True
+                s["categorization_overlay_visible_default"] = bool(saved_cat.get("overlay_visible_default", False))
+                cat_sum = dict(saved_cat.get("summary") or {})
+                cat_sum["generated_at"] = saved_cat.get("generated_at", "")
+                cat_sum["overlay_visible_default"] = bool(saved_cat.get("overlay_visible_default", False))
+                s["categorization_summary"] = cat_sum
+            else:
+                s["has_categorization"] = False
+                s["categorization_overlay_visible_default"] = False
+        except Exception:
+            s["has_categorization"] = False
+            s["categorization_overlay_visible_default"] = False
         return s
 
     def _build_projects_summary(self, scans: list) -> list:
@@ -1909,6 +1924,38 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
             if local_vps_thumb and os.path.isfile(local_vps_thumb):
                 self._serve_file_with_range(local_vps_thumb, content_type="image/png")
                 return True
+
+        # 1c. Serve saved AI Surface & Object Categorization directly from local VPS cache if available
+        if path in ("/api/survey/categorize", "/api/surveying/categorize"):
+            req_sid = ""
+            force_rec = False
+            only_upd = False
+            req_filters = None
+            req_vis_def = False
+            if method == "GET":
+                req_sid = (parsed_q.get("scan_id") or [""])[0].strip()
+            elif method == "POST" and body:
+                try:
+                    p_obj = json.loads(body.decode("utf-8"))
+                    req_sid = str(p_obj.get("scan_id") or "").strip()
+                    force_rec = bool(p_obj.get("force_recompute", False))
+                    only_upd = bool(p_obj.get("only_update_filters", False) or p_obj.get("action") == "save_visibility")
+                    if isinstance(p_obj.get("layer_filters"), dict):
+                        req_filters = p_obj["layer_filters"]
+                    req_vis_def = bool(p_obj.get("overlay_visible_default", False))
+                except Exception:
+                    pass
+            if req_sid and not force_rec:
+                if only_upd:
+                    upd_cat = SURVEY.save_categorization_visibility_prefs(req_sid, req_filters, req_vis_def)
+                    if isinstance(upd_cat, dict):
+                        self.send_json(upd_cat)
+                        return True
+                else:
+                    local_cat = SURVEY.get_saved_categorization(req_sid)
+                    if isinstance(local_cat, dict) and local_cat.get("status") == "ok":
+                        self.send_json(local_cat)
+                        return True
 
         # 2. Try Direct Google Drive .3tz Cloud Range Streaming (300+ Mbps, 0% PC Upload) BEFORE using PC tunnel
         if method == "GET" and (
@@ -2612,6 +2659,33 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
             self.send_json({"status": "ok", "crs_catalog": OPTIMIZER.get_crs_catalog()})
             return
 
+        # 6b. Saved AI Surface & Object Categorization Retrieval (GET /api/survey/categorize?scan_id=...)
+        if path in ("/api/survey/categorize", "/api/surveying/categorize"):
+            scan_id = (query.get("scan_id") or [""])[0].strip()
+            if not scan_id:
+                self.send_json({"error": "Missing required parameter: scan_id"}, status=400)
+                return
+            if share_token:
+                ok_s, reason_s, link_s, _ = AUTH_SHARE.validate_share_access(share_token, requested_scan_id=scan_id)
+                if not ok_s or not (link_s and link_s.get("allow_measurements", True)):
+                    self.send_json({"error": "Surface categorization is disabled for this external share link."}, status=403)
+                    return
+            saved_cat = SURVEY.get_saved_categorization(scan_id)
+            if isinstance(saved_cat, dict) and saved_cat.get("status") == "ok":
+                self.send_json(saved_cat)
+            else:
+                self.send_json(
+                    {
+                        "ok": True,
+                        "status": "not_cached",
+                        "has_categorization": False,
+                        "saved_on_server": False,
+                        "overlay_visible_default": False,
+                        "scan_id": scan_id,
+                    }
+                )
+            return
+
         # 7. External Share Links Management
         if path == "/api/share/list":
             if share_token:
@@ -3227,6 +3301,9 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
             fpath = os.path.join(REPORTS_DIR, fname)
             if not os.path.isfile(fpath) and os.path.isfile(os.path.join(CONTOURS_DIR, fname)):
                 fpath = os.path.join(CONTOURS_DIR, fname)
+            if not os.path.isfile(fpath) and fname.startswith("categorization_report_"):
+                base_sid = re.sub(r"_\d{9,}$", "", os.path.splitext(fname[len("categorization_report_") :])[0])
+                SURVEY.get_saved_categorization(base_sid)
             force_dl = query.get("download", ["0"])[0] == "1"
             dl = fname if (fname.endswith((".csv", ".dwg", ".dxf")) or force_dl) else None
             self._serve_file_with_range(fpath, download_name=dl)
@@ -3250,6 +3327,9 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
             fpath = os.path.join(CONTOURS_DIR, fname)
             if not os.path.isfile(fpath) and os.path.isfile(os.path.join(REPORTS_DIR, fname)):
                 fpath = os.path.join(REPORTS_DIR, fname)
+            if not os.path.isfile(fpath) and fname.startswith("Civil3D_Categorized_"):
+                base_sid = re.sub(r"_\d{9,}$", "", os.path.splitext(fname[len("Civil3D_Categorized_") :])[0])
+                SURVEY.get_saved_categorization(base_sid)
             self._serve_file_with_range(fpath, download_name=fname)
             return
 

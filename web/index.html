@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>GatheringCloud Scans — 3D Photogrammetry &amp; Civil Surveying Studio (scans.gatheren.cloud)</title>
   <link rel="icon" type="image/png" href="/assets/gathering_cloud_logo.png" />
-  <link rel="stylesheet" href="/app.css?v=20261025_v55" />
+  <link rel="stylesheet" href="/app.css?v=20261025_v56" />
   <script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
 <body>
@@ -452,6 +452,9 @@
               <polyline points="6 9 12 15 18 9"/>
             </svg>
           </a>
+          <button type="button" class="btn-xs" id="btnStudioToggleCategorizeVis" title="AI Classification Saved on Server — Hidden by Default (Click to Toggle 3D Overlays) / AI 地物分類已儲存於伺服器（預設隱藏，點擊切換顯示 3D 圖層）" style="display:none;gap:4px;">
+            <span id="lblStudioToggleCategorizeVis">👁️‍🗨️ AI 分類: 隱藏</span>
+          </button>
           <button type="button" class="btn-xs primary" id="btnStudioSurveyReport" title="Create Survey Report: Civil3D.dxf (AutoCAD / Civil 3D TWD97 XYZ) &amp; A3 Ready-to-Print PDF">
             <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8">
               <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>
@@ -661,12 +664,13 @@
 
         <!-- 10b. AI Surface & Object Categorization (Roads, Trees DBH, Water Voids, Walls) -->
         <button type="button" class="bim-dock-btn autodesk-measure-btn" id="btnDockCategorize" data-tool="categorize" data-dock="categorize" title="AI Surface &amp; Object Categorization (Road, Tree DBH, Water Void, Wall) / AI 地物與表面自動分類" aria-label="AI Surface Categorization">
-          <div class="bim-dock-icon">
+          <div class="bim-dock-icon" style="position:relative;">
             <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8">
               <polygon points="12 2 2 7 12 12 22 7 12 2"/>
               <polyline points="2 12 12 17 22 12"/>
               <polyline points="2 17 12 22 22 17"/>
             </svg>
+            <span id="lblCategorizeSavedDot" title="AI Classification Saved on Server (Hidden by Default)" style="display:none;position:absolute;top:-3px;right:-4px;width:8px;height:8px;border-radius:50%;background:#10b981;border:1.5px solid var(--ui-bg-surface);"></span>
           </div>
           <span class="bim-dock-label">分類</span>
         </button>
@@ -1802,6 +1806,6 @@
   <script src="/lib/3d-tiles-renderer.bundle.js"></script>
 
   <!-- Main GatheringScans Application Logic -->
-  <script src="/app.js?v=20261025_v55"></script>
+  <script src="/app.js?v=20261025_v56"></script>
 </body>
 </html>

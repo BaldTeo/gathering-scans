@@ -4257,8 +4257,15 @@
     if (typeof clearLassoSelectionState === "function") {
       clearLassoSelectionState();
     }
+    STATE.categorizeOverlayVisible = false;
     if (typeof clearCategorizeVisualsOnly === "function") {
       clearCategorizeVisualsOnly();
+    }
+    if (typeof syncCategorizeVisibilityUI === "function") {
+      syncCategorizeVisibilityUI();
+    }
+    if (typeof preloadSavedCategorizationForScan === "function") {
+      preloadSavedCategorizationForScan(scan.scan_id, scan, { renderWhenLoaded: false });
     }
     if (typeof resetStagedEditsForScan === "function") {
       resetStagedEditsForScan(scan);
@@ -4394,7 +4401,7 @@
             frameStudioCamera();
           }
           if (
-            STATE.activeTool === "categorize" &&
+            STATE.categorizeOverlayVisible &&
             STATE.lastCategorizeResult &&
             STATE.lastCategorizeResult.scan_id === scan.scan_id
           ) {
@@ -5810,8 +5817,12 @@
     clearTempDistanceVisuals();
     clearAreaVisualsOnly();
     clearVolumeVisualsOnly();
+    STATE.categorizeOverlayVisible = false;
     if (typeof clearCategorizeVisualsOnly === "function") {
       clearCategorizeVisualsOnly();
+    }
+    if (typeof syncCategorizeVisibilityUI === "function") {
+      syncCategorizeVisibilityUI();
     }
     if (studioThree) {
       while (studioThree.overlayGroup.children.length > 0) {
@@ -10298,6 +10309,161 @@
     });
   }
 
+  function hasSavedCategorizationForActiveScan() {
+    const sid = STATE.activeScanId || STATE.activeScan?.scan_id || "";
+    if (!sid) return false;
+    if (STATE.lastCategorizeResult && STATE.lastCategorizeResult.scan_id === sid && STATE.lastCategorizeResult.status === "ok") {
+      return true;
+    }
+    if (STATE.activeScan && STATE.activeScan.scan_id === sid && STATE.activeScan.has_categorization) {
+      return true;
+    }
+    const catScan = (STATE.scans || []).find((s) => s.scan_id === sid);
+    return Boolean(catScan && catScan.has_categorization);
+  }
+
+  function syncCategorizeVisibilityUI() {
+    const hasSaved = hasSavedCategorizationForActiveScan();
+    const vis = Boolean(STATE.categorizeOverlayVisible && hasSaved);
+
+    const topBtn = document.getElementById("btnStudioToggleCategorizeVis");
+    const topLbl = document.getElementById("lblStudioToggleCategorizeVis");
+    if (topBtn) {
+      topBtn.style.display = hasSaved ? "inline-flex" : "none";
+      topBtn.setAttribute("aria-pressed", vis ? "true" : "false");
+      topBtn.style.borderColor = vis ? "rgba(16,185,129,0.75)" : "rgba(16,185,129,0.35)";
+      topBtn.style.background = vis ? "rgba(16,185,129,0.18)" : "";
+      topBtn.style.color = vis ? "#34d399" : "";
+    }
+    if (topLbl) {
+      topLbl.textContent = vis ? "👁️ AI 分類: 顯示" : "👁️‍🗨️ AI 分類: 隱藏";
+    }
+
+    const dockDot = document.getElementById("lblCategorizeSavedDot");
+    if (dockDot) {
+      dockDot.style.display = hasSaved ? "block" : "none";
+      dockDot.style.background = vis ? "#10b981" : "#38bdf8";
+      dockDot.title = vis
+        ? "AI Classification Saved on Server (3D Overlays Visible)"
+        : "AI Classification Saved on Server (Hidden by Default)";
+    }
+
+    const masterChk = document.getElementById("chkCategorizeMasterVis");
+    if (masterChk) {
+      masterChk.checked = vis;
+    }
+    const masterBtn = document.getElementById("btnToggleCategorizeOverlayVis");
+    if (masterBtn) {
+      masterBtn.textContent = vis ? "👁️ 顯示中 (點擊隱藏 3D 圖層)" : "👁️‍🗨️ 預設隱藏 (點擊顯示 3D 圖層)";
+      masterBtn.classList.toggle("primary", vis);
+    }
+    const masterBadge = document.getElementById("lblCategorizeVisBadge");
+    if (masterBadge) {
+      masterBadge.textContent = vis ? "顯示中 Visible" : "預設隱藏 Hidden by Default";
+      masterBadge.style.background = vis ? "rgba(16,185,129,0.20)" : "rgba(148,163,184,0.18)";
+      masterBadge.style.color = vis ? "#34d399" : "#94a3b8";
+    }
+  }
+
+  async function preloadSavedCategorizationForScan(scanId, scanObj = null, opts = {}) {
+    if (!scanId) return null;
+    const renderWhenLoaded = Boolean(opts.renderWhenLoaded);
+    if (
+      STATE.lastCategorizeResult &&
+      STATE.lastCategorizeResult.scan_id === scanId &&
+      STATE.lastCategorizeResult.status === "ok"
+    ) {
+      if (STATE.lastCategorizeResult.layer_filters && typeof STATE.lastCategorizeResult.layer_filters === "object") {
+        STATE.categorizeFilters = Object.assign(
+          { roads: true, trees: true, water: true, walls: true, stockpiles: true },
+          STATE.lastCategorizeResult.layer_filters
+        );
+      }
+      if (renderWhenLoaded) {
+        STATE.categorizeOverlayVisible = true;
+        renderCategorize3DOverlays(STATE.lastCategorizeResult);
+      } else if (!STATE.categorizeOverlayVisible) {
+        clearCategorizeVisualsOnly();
+      }
+      syncCategorizeVisibilityUI();
+      return STATE.lastCategorizeResult;
+    }
+
+    try {
+      const res = await apiGet(`/api/survey/categorize?scan_id=${encodeURIComponent(scanId)}`);
+      if (!res || res.status !== "ok" || res.has_categorization === false) {
+        syncCategorizeVisibilityUI();
+        return null;
+      }
+      // Guard against race if user switched scans while request was in flight
+      if (STATE.activeScanId && STATE.activeScanId !== scanId) {
+        return res;
+      }
+      STATE.lastCategorizeResult = res;
+      if (res.layer_filters && typeof res.layer_filters === "object") {
+        STATE.categorizeFilters = Object.assign(
+          { roads: true, trees: true, water: true, walls: true, stockpiles: true },
+          res.layer_filters
+        );
+      }
+      const targetScan = scanObj || STATE.activeScan || (STATE.scans || []).find((s) => s.scan_id === scanId);
+      if (targetScan) {
+        targetScan.has_categorization = true;
+        targetScan.categorization_overlay_visible_default = false;
+        if (res.summary) targetScan.categorization_summary = res.summary;
+      }
+      if (renderWhenLoaded) {
+        STATE.categorizeOverlayVisible = true;
+        renderCategorize3DOverlays(res);
+      } else if (!STATE.categorizeOverlayVisible) {
+        // Hidden by default on scan load!
+        clearCategorizeVisualsOnly();
+      } else {
+        renderCategorize3DOverlays(res);
+      }
+      syncCategorizeVisibilityUI();
+      if (STATE.activeTool === "categorize" && document.getElementById("catResultContainer")) {
+        renderCategorizePanelContent(res);
+      }
+      return res;
+    } catch (_) {
+      syncCategorizeVisibilityUI();
+      return null;
+    }
+  }
+
+  async function setCategorizeOverlayVisibility(visible, opts = {}) {
+    const nextVis = Boolean(visible);
+    STATE.categorizeOverlayVisible = nextVis;
+    const sid = STATE.activeScanId || STATE.activeScan?.scan_id || "";
+
+    if (nextVis) {
+      if (STATE.lastCategorizeResult && STATE.lastCategorizeResult.scan_id === sid) {
+        renderCategorize3DOverlays(STATE.lastCategorizeResult);
+      } else if (sid) {
+        await preloadSavedCategorizationForScan(sid, STATE.activeScan, { renderWhenLoaded: true });
+      }
+    } else {
+      clearCategorizeVisualsOnly();
+      if (studioThree?.renderer && studioThree?.scene && studioThree?.camera) {
+        studioThree.renderer.render(studioThree.scene, studioThree.camera);
+      }
+    }
+
+    syncCategorizeVisibilityUI();
+    if (!opts.silent) {
+      showToast(
+        nextVis
+          ? "AI 地物分類 3D 圖層：顯示中 (3D Classification Overlays Visible)"
+          : "AI 地物分類 3D 圖層：已隱藏 (預設隱藏 · Hidden by Default)"
+      );
+    }
+  }
+
+  document.getElementById("btnStudioToggleCategorizeVis")?.addEventListener("click", () => {
+    setCategorizeOverlayVisibility(!STATE.categorizeOverlayVisible);
+  });
+
   function twd97PointToStudioVec3(twdArr, fallbackLocalArr, originTwd) {
     if (Array.isArray(twdArr) && twdArr.length >= 3 && Math.abs(Number(twdArr[0])) > 50000) {
       const lx = Number(twdArr[0]) - originTwd.e;
@@ -10357,6 +10523,13 @@
   function renderCategorize3DOverlays(res) {
     if (!studioThree || !studioThree.categoryGroup || !res) return;
     clearCategorizeVisualsOnly();
+    if (!STATE.categorizeOverlayVisible) {
+      syncCategorizeVisibilityUI();
+      if (studioThree.renderer && studioThree.scene && studioThree.camera) {
+        studioThree.renderer.render(studioThree.scene, studioThree.camera);
+      }
+      return;
+    }
 
     if (!STATE.categorizeFilters) {
       STATE.categorizeFilters = {
@@ -10864,8 +11037,32 @@
       </div>
     `;
 
+    const isVis = Boolean(STATE.categorizeOverlayVisible);
+    const savedAtStr = String(res.saved_at || res.generated_at || "Persisted on Server");
+
     box.innerHTML = `
       ${exportBarHtml}
+
+      <div style="background:rgba(14,165,233,0.10);border:1px solid rgba(56,189,248,0.35);border-radius:8px;padding:7px 9px;margin-bottom:8px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;flex-wrap:wrap;margin-bottom:5px;">
+          <span style="font-size:10.5px;font-weight:800;color:#38bdf8;">💾 已儲存於伺服器 (Saved on Server)</span>
+          <span id="lblCategorizeVisBadge" style="font-size:9.5px;padding:1px 7px;border-radius:99px;background:${isVis ? "rgba(16,185,129,0.20)" : "rgba(148,163,184,0.18)"};color:${isVis ? "#34d399" : "#94a3b8"};font-weight:700;">
+            ${isVis ? "顯示中 Visible" : "預設隱藏 Hidden by Default"}
+          </span>
+        </div>
+        <div style="font-size:9.5px;color:var(--ui-text-muted);margin-bottom:6px;">
+          Server Cache: <code>_categorization_cache_v3.json</code> · ${escapeHtml(savedAtStr)}
+        </div>
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
+          <label style="display:inline-flex;align-items:center;gap:5px;cursor:pointer;font-size:11px;font-weight:700;color:var(--ui-text-primary);">
+            <input type="checkbox" id="chkCategorizeMasterVis" ${isVis ? "checked" : ""} />
+            顯示 3D 地物分類圖層 (Show 3D Overlays)
+          </label>
+          <button type="button" class="btn-xs ${isVis ? "primary" : ""}" id="btnToggleCategorizeOverlayVis" style="padding:3px 8px;font-weight:700;">
+            ${isVis ? "👁️ 顯示中 (點擊隱藏 3D 圖層)" : "👁️‍🗨️ 預設隱藏 (點擊顯示 3D 圖層)"}
+          </button>
+        </div>
+      </div>
 
       <div style="background:rgba(16,185,129,0.10);border:1px solid rgba(16,185,129,0.35);border-radius:8px;padding:8px 10px;margin-bottom:8px;">
         <div style="display:flex;align-items:center;justify-content:space-between;gap:4px;margin-bottom:4px;">
@@ -10900,7 +11097,7 @@
       </div>
 
       <div style="background:var(--ui-bg-pill);border:1px solid var(--ui-border-strong);border-radius:7px;padding:6px 8px;margin-bottom:8px;">
-        <div style="font-size:10px;font-weight:700;color:var(--ui-text-secondary);margin-bottom:4px;">3D SCENE OVERLAY FILTERS (3D 圖層開關)</div>
+        <div style="font-size:10px;font-weight:700;color:var(--ui-text-secondary);margin-bottom:4px;">3D SCENE OVERLAY FILTERS (3D 子圖層開關)</div>
         <div style="display:flex;flex-wrap:wrap;gap:6px;font-size:10.5px;">
           <label style="display:inline-flex;align-items:center;gap:3px;cursor:pointer;color:#fbbf24;font-weight:600;">
             <input type="checkbox" data-cat-filter="roads" ${flt.roads ? "checked" : ""} /> 道路 (${(res.roads || []).length})
@@ -10970,13 +11167,31 @@
       ${exportBarHtml}
     `;
 
+    document.getElementById("chkCategorizeMasterVis")?.addEventListener("change", (ev) => {
+      setCategorizeOverlayVisibility(Boolean(ev.target.checked));
+      renderCategorizePanelContent(res);
+    });
+    document.getElementById("btnToggleCategorizeOverlayVis")?.addEventListener("click", () => {
+      setCategorizeOverlayVisibility(!STATE.categorizeOverlayVisible);
+      renderCategorizePanelContent(res);
+    });
+
     box.querySelectorAll("[data-cat-filter]").forEach((cb) => {
       cb.addEventListener("change", () => {
         const k = cb.getAttribute("data-cat-filter");
         if (k && STATE.categorizeFilters) {
           STATE.categorizeFilters[k] = cb.checked;
+          if (cb.checked && !STATE.categorizeOverlayVisible) {
+            STATE.categorizeOverlayVisible = true;
+          }
           renderCategorize3DOverlays(res);
+          syncCategorizeVisibilityUI();
           renderCategorizePanelContent(res);
+          apiPost("/api/survey/categorize", {
+            scan_id: res.scan_id || STATE.activeScanId,
+            only_update_filters: true,
+            layer_filters: STATE.categorizeFilters,
+          }).catch(() => {});
         }
       });
     });
@@ -10985,10 +11200,14 @@
       btn.addEventListener("click", () => {
         const tabKey = btn.getAttribute("data-cat-tab") || "all";
         STATE.categorizeActiveTab = tabKey;
+        if (!STATE.categorizeOverlayVisible) {
+          STATE.categorizeOverlayVisible = true;
+        }
         if (tabKey !== "all" && STATE.categorizeFilters && STATE.categorizeFilters[tabKey] === false) {
           STATE.categorizeFilters[tabKey] = true;
         }
         renderCategorize3DOverlays(res);
+        syncCategorizeVisibilityUI();
         const prefixMap = { roads: "R", trees: "T", water: "W", walls: "WL", stockpiles: "S" };
         const pref = prefixMap[tabKey] || "";
         STATE.badges2D.forEach((b) => {
@@ -11014,6 +11233,12 @@
         const fid = tr.getAttribute("data-cat-id") || "";
         const parts = raw.split(",").map(Number);
         if (parts.length >= 3 && Number.isFinite(parts[0])) {
+          if (!STATE.categorizeOverlayVisible) {
+            STATE.categorizeOverlayVisible = true;
+            renderCategorize3DOverlays(res);
+            syncCategorizeVisibilityUI();
+            renderCategorizePanelContent(res);
+          }
           flyToCategorizeFeature(parts[0], parts[1], parts[2], lbl, fid);
         }
       });
@@ -11034,7 +11259,7 @@
       </div>
       <div style="display:flex;gap:6px;margin-bottom:8px;">
         <button type="button" class="gs-top-btn accent" style="flex:1;justify-content:center;" id="btnRunCategorize">
-          <span>Analyze &amp; Categorize 3D Scan (執行 AI 地物分類)</span>
+          <span>Analyze &amp; Show 3D Overlays (執行/顯示 AI 地物分類)</span>
         </button>
         <button type="button" class="btn-xs" id="btnRecomputeCategorize" title="Force Recompute &amp; Re-run Gemini Multimodal Analysis">
           <span>↻ Recompute</span>
@@ -11042,18 +11267,18 @@
       </div>
       <div id="catResultContainer">
         <div style="padding:18px 10px;text-align:center;color:var(--ui-text-secondary);font-size:11.5px;">
-          ⏳ Analyzing 3D mesh triangles, UV ortho texture, 1.3m tree DBH slices, shoreline water voids, and vertical walls...
+          ⏳ Loading saved AI classification from server (or analyzing 3D mesh triangles)...
         </div>
       </div>
       `
     );
 
-    const runCategorize = async (forceRecompute = false) => {
+    const runCategorize = async (forceRecompute = false, explicitShowOverlays = null) => {
       const box = document.getElementById("catResultContainer");
       if (box && (forceRecompute || !STATE.lastCategorizeResult || STATE.lastCategorizeResult.scan_id !== activeScan.scan_id)) {
         box.innerHTML = `
           <div style="padding:18px 10px;text-align:center;color:var(--ui-text-secondary);font-size:11.5px;">
-            ⏳ Running 3D Geometric + Gemini Multimodal Categorization on <b>${escapeHtml(activeScan.name || activeScan.scan_id)}</b>...
+            ⏳ ${forceRecompute ? "Recomputing" : "Loading / Running"} 3D Geometric + Gemini Multimodal Categorization on <b>${escapeHtml(activeScan.name || activeScan.scan_id)}</b>...
           </div>
         `;
       }
@@ -11063,15 +11288,29 @@
           force_recompute: Boolean(forceRecompute),
         });
         STATE.lastCategorizeResult = res;
+        activeScan.has_categorization = true;
+        activeScan.categorization_overlay_visible_default = false;
+        if (res.summary) activeScan.categorization_summary = res.summary;
+        if (res.layer_filters && typeof res.layer_filters === "object") {
+          STATE.categorizeFilters = Object.assign(
+            { roads: true, trees: true, water: true, walls: true, stockpiles: true },
+            res.layer_filters
+          );
+        }
+        if (typeof explicitShowOverlays === "boolean") {
+          STATE.categorizeOverlayVisible = explicitShowOverlays;
+        }
         renderCategorize3DOverlays(res);
+        syncCategorizeVisibilityUI();
         renderCategorizePanelContent(res);
         const s = res.summary || {};
         const waterToastStr =
           Number(s.water_count || 0) > 0 && s.water_level_twvd2001_m !== null && s.water_level_twvd2001_m !== undefined
             ? `${s.water_count} Water Zones (+${Number(s.water_level_twvd2001_m).toFixed(2)}m)`
             : `0 Water Zones`;
+        const visTag = STATE.categorizeOverlayVisible ? "3D Overlays Visible" : "Saved on Server · Hidden by Default";
         showToast(
-          `Categorized: ${s.roads_count || 0} Roads (${s.roads_planar_area_m2 || 0}m²), ${s.trees_count || 0} Trees (DBH ${s.trees_mean_dbh_cm || 0}cm), ${waterToastStr}, ${s.walls_count || 0} Walls`
+          `Categorized (${visTag}): ${s.roads_count || 0} Roads (${s.roads_planar_area_m2 || 0}m²), ${s.trees_count || 0} Trees (DBH ${s.trees_mean_dbh_cm || 0}cm), ${waterToastStr}, ${s.walls_count || 0} Walls`
         );
       } catch (err) {
         if (box) {
@@ -11081,10 +11320,16 @@
       }
     };
 
-    document.getElementById("btnRunCategorize")?.addEventListener("click", () => runCategorize(false));
-    document.getElementById("btnRecomputeCategorize")?.addEventListener("click", () => runCategorize(true));
+    document.getElementById("btnRunCategorize")?.addEventListener("click", () => runCategorize(false, true));
+    document.getElementById("btnRecomputeCategorize")?.addEventListener("click", () => runCategorize(true, true));
 
-    await runCategorize(Boolean(opts.forceRecompute));
+    const initialShow =
+      typeof opts.showOverlays === "boolean"
+        ? opts.showOverlays
+        : opts.forceRecompute
+        ? true
+        : Boolean(STATE.categorizeOverlayVisible);
+    await runCategorize(Boolean(opts.forceRecompute), initialShow);
   }
 
   // 3C. Cross-Section Elevation Profile Graph (Client-Side 3D Mesh Raycaster + Backend Multi-Epoch DSM)
@@ -18626,6 +18871,10 @@
     exitFirstPersonMode,
     toggleFirstPersonMode,
     setFirstPersonLocomotion,
+    openCategorizeInspector,
+    setCategorizeOverlayVisibility,
+    preloadSavedCategorizationForScan,
+    syncCategorizeVisibilityUI,
   };
 })();
 

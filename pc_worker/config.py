@@ -57,8 +57,10 @@ TWD97_TWVD2001_WKT = (
 DB_PATH = os.path.join(DATA_DIR, "gathering_scans.db")
 REPORTS_DIR = os.path.join(DATA_DIR, "reports")
 CONTOURS_DIR = os.path.join(DATA_DIR, "contours")
+CATEGORIZATION_CACHE_DIR = os.path.join(DATA_DIR, "categorization_cache")
 os.makedirs(REPORTS_DIR, exist_ok=True)
 os.makedirs(CONTOURS_DIR, exist_ok=True)
+os.makedirs(CATEGORIZATION_CACHE_DIR, exist_ok=True)
 
 SERVER_HOST = os.environ.get("GATHERING_SCANS_HOST", "0.0.0.0")
 SERVER_PORT = int(os.environ.get("GATHERING_SCANS_PORT", "8095"))

@@ -50,6 +50,7 @@ from pc_worker.config import (
     GC_SCAN_OPTIMIZER_DIR,
     REPORTS_DIR,
     CONTOURS_DIR,
+    CATEGORIZATION_CACHE_DIR,
     MATERIAL_CATALOG,
     TWD97_TWVD2001_LABEL,
     TWD97_TWVD2001_SHORT,
@@ -4077,6 +4078,134 @@ class SurveyingEngine:
             "water_body_label_zh": "河道水域空洞",
         }
 
+    def _get_categorization_cache_paths(
+        self, scan_id: str, scan: Optional[Dict[str, Any]] = None
+    ) -> List[str]:
+        safe_id = "".join(c for c in str(scan_id or "").strip() if c.isalnum() or c in ("_", "-"))
+        if not safe_id:
+            return []
+        paths: List[str] = []
+        s = scan
+        if s is None:
+            try:
+                s = self.db.get_scan(safe_id) or {}
+            except Exception:
+                s = {}
+        proj_dir = (s.get("project_dir") if isinstance(s, dict) else None) or os.path.join(SCANS_ROOT_DIR, safe_id)
+        if proj_dir and os.path.isdir(proj_dir):
+            paths.append(os.path.join(proj_dir, "_categorization_cache_v3.json"))
+        os.makedirs(CATEGORIZATION_CACHE_DIR, exist_ok=True)
+        paths.append(os.path.join(CATEGORIZATION_CACHE_DIR, f"{safe_id}_categorization_v3.json"))
+        for vps_dir in (
+            "/host_docker/gathering_scans/data/categorization_cache",
+            "/host_opt/gathering_scans/data/categorization_cache",
+        ):
+            if os.path.isdir(os.path.dirname(vps_dir)):
+                paths.append(os.path.join(vps_dir, f"{safe_id}_categorization_v3.json"))
+        return paths
+
+    def _ensure_categorization_deliverables_exist(self, result: Dict[str, Any]) -> None:
+        if not isinstance(result, dict):
+            return
+        scan_id = str(result.get("scan_id") or "scan").strip()
+        html_url = str(result.get("report_html_url") or f"/api/reports/categorization_report_{scan_id}.html")
+        csv_url = str(result.get("report_csv_url") or f"/api/reports/categorization_report_{scan_id}.csv")
+        dxf_url = str(result.get("dxf_url") or f"/api/contours/Civil3D_Categorized_{scan_id}.dxf")
+        html_name = os.path.basename(html_url.split("?")[0])
+        csv_name = os.path.basename(csv_url.split("?")[0])
+        dxf_name = os.path.basename(dxf_url.split("?")[0])
+        html_path = os.path.join(REPORTS_DIR, html_name)
+        csv_path = os.path.join(REPORTS_DIR, csv_name)
+        dxf_path = os.path.join(CONTOURS_DIR, dxf_name)
+        if not (os.path.isfile(html_path) and os.path.isfile(csv_path) and os.path.isfile(dxf_path)):
+            try:
+                self._write_categorization_deliverables(result, html_name, csv_name, dxf_name)
+            except Exception:
+                pass
+
+    def _persist_categorization_result(
+        self, scan_id: str, result: Dict[str, Any], scan: Optional[Dict[str, Any]] = None
+    ) -> None:
+        if not isinstance(result, dict) or not scan_id:
+            return
+        result["ok"] = True
+        result["status"] = "ok"
+        result["has_categorization"] = True
+        result["saved_on_server"] = True
+        result.setdefault("overlay_visible_default", False)
+        if not isinstance(result.get("layer_filters"), dict):
+            result["layer_filters"] = {
+                "roads": True,
+                "trees": True,
+                "water": True,
+                "walls": True,
+                "stockpiles": True,
+            }
+        for cpath in self._get_categorization_cache_paths(scan_id, scan):
+            try:
+                os.makedirs(os.path.dirname(cpath), exist_ok=True)
+                with open(cpath, "w", encoding="utf-8") as cf:
+                    json.dump(result, cf, ensure_ascii=False)
+            except Exception:
+                pass
+
+    def get_saved_categorization(
+        self, scan_id: str, scan: Optional[Dict[str, Any]] = None
+    ) -> Optional[Dict[str, Any]]:
+        cpaths = self._get_categorization_cache_paths(scan_id, scan)
+        for idx, cpath in enumerate(cpaths):
+            if cpath and os.path.isfile(cpath):
+                try:
+                    with open(cpath, "r", encoding="utf-8") as cf:
+                        cached_res = json.load(cf)
+                    if isinstance(cached_res, dict) and cached_res.get("status") == "ok":
+                        cached_res["ok"] = True
+                        cached_res["has_categorization"] = True
+                        cached_res["saved_on_server"] = True
+                        cached_res["from_server_cache"] = True
+                        cached_res.setdefault("overlay_visible_default", False)
+                        if not isinstance(cached_res.get("layer_filters"), dict):
+                            cached_res["layer_filters"] = {
+                                "roads": True,
+                                "trees": True,
+                                "water": True,
+                                "walls": True,
+                                "stockpiles": True,
+                            }
+                        self._ensure_categorization_deliverables_exist(cached_res)
+                        # Ensure central data/categorization_cache copy also exists
+                        central_path = os.path.join(CATEGORIZATION_CACHE_DIR, f"{scan_id}_categorization_v3.json")
+                        if not os.path.isfile(central_path):
+                            try:
+                                os.makedirs(CATEGORIZATION_CACHE_DIR, exist_ok=True)
+                                with open(central_path, "w", encoding="utf-8") as out_cf:
+                                    json.dump(cached_res, out_cf, ensure_ascii=False)
+                            except Exception:
+                                pass
+                        return cached_res
+                except Exception:
+                    pass
+        return None
+
+    def save_categorization_visibility_prefs(
+        self,
+        scan_id: str,
+        layer_filters: Optional[Dict[str, Any]] = None,
+        overlay_visible_default: bool = False,
+    ) -> Optional[Dict[str, Any]]:
+        cached_res = self.get_saved_categorization(scan_id)
+        if not isinstance(cached_res, dict):
+            return None
+        if isinstance(layer_filters, dict):
+            cur_flt = dict(cached_res.get("layer_filters") or {})
+            for k in ("roads", "trees", "water", "walls", "stockpiles"):
+                if k in layer_filters:
+                    cur_flt[k] = bool(layer_filters[k])
+            cached_res["layer_filters"] = cur_flt
+        cached_res["overlay_visible_default"] = bool(overlay_visible_default)
+        self._persist_categorization_result(scan_id, cached_res)
+        return cached_res
+
     def categorize_scan_surfaces_and_objects(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         """
         End-to-End Automatic 3D Surface & Object Categorization Engine (3D Geometry + Gemini 3.8 Flash Multimodal AI).
@@ -4104,23 +4233,48 @@ class SurveyingEngine:
 
         scan_id = (payload.get("scan_id") or "").strip()
         force_recompute = bool(payload.get("force_recompute", False))
-        scan = self._resolve_scan_record(scan_id)
+        cached_only = bool(payload.get("cached_only", False))
+        only_update_filters = bool(
+            payload.get("only_update_filters", False) or payload.get("action") == "save_visibility"
+        )
 
+        if only_update_filters:
+            updated = self.save_categorization_visibility_prefs(
+                scan_id,
+                layer_filters=payload.get("layer_filters") if isinstance(payload.get("layer_filters"), dict) else None,
+                overlay_visible_default=bool(payload.get("overlay_visible_default", False)),
+            )
+            if updated:
+                return updated
+            return {
+                "ok": False,
+                "status": "not_cached",
+                "has_categorization": False,
+                "saved_on_server": False,
+                "overlay_visible_default": False,
+                "scan_id": scan_id,
+            }
+
+        scan = self._resolve_scan_record(scan_id) if not cached_only else (self.db.get_scan(scan_id) or {})
+
+        if not force_recompute:
+            cached_res = self.get_saved_categorization(scan_id, scan)
+            if isinstance(cached_res, dict) and cached_res.get("status") == "ok":
+                return cached_res
+            if cached_only:
+                return {
+                    "ok": True,
+                    "status": "not_cached",
+                    "has_categorization": False,
+                    "saved_on_server": False,
+                    "overlay_visible_default": False,
+                    "scan_id": scan_id,
+                }
+
+        scan = self._resolve_scan_record(scan_id)
         ce = float(scan["twd97_e"]) if scan.get("twd97_e") is not None else 0.0
         cn = float(scan["twd97_n"]) if scan.get("twd97_n") is not None else 0.0
         ch = float(scan["twd97_h"]) if scan.get("twd97_h") is not None else 0.0
-
-        proj_dir = scan.get("project_dir") or os.path.join(SCANS_ROOT_DIR, scan_id)
-        cache_json_path = os.path.join(proj_dir, "_categorization_cache_v3.json") if os.path.isdir(proj_dir) else None
-
-        if not force_recompute and cache_json_path and os.path.isfile(cache_json_path):
-            try:
-                with open(cache_json_path, "r", encoding="utf-8") as cf:
-                    cached_res = json.load(cf)
-                if isinstance(cached_res, dict) and cached_res.get("status") == "ok":
-                    return cached_res
-            except Exception:
-                pass
 
         # Stage 0: Load 3D triangles + UV textures in TWD97 (E, N, H)
         mesh_data = self._load_scan_textured_triangles_twd97(scan, ce, cn, ch)
@@ -5795,14 +5949,24 @@ class SurveyingEngine:
                 w_obj["name"] = f"{ai_water_zh} {w_obj['id']} (Un-Modelled Water Void)"
 
         # Stage 4: Write HTML Report, Excel CSV, and AutoCAD Civil3D Categorized .DXF
-        ts_id = int(time.time())
-        html_name = f"categorization_report_{scan_id}_{ts_id}.html"
-        csv_name = f"categorization_report_{scan_id}_{ts_id}.csv"
-        dxf_name = f"Civil3D_Categorized_{scan_id}_{ts_id}.dxf"
+        html_name = f"categorization_report_{scan_id}.html"
+        csv_name = f"categorization_report_{scan_id}.csv"
+        dxf_name = f"Civil3D_Categorized_{scan_id}.dxf"
 
         result = {
             "ok": True,
             "status": "ok",
+            "has_categorization": True,
+            "saved_on_server": True,
+            "from_server_cache": False,
+            "overlay_visible_default": False,
+            "layer_filters": {
+                "roads": True,
+                "trees": True,
+                "water": True,
+                "walls": True,
+                "stockpiles": True,
+            },
             "scan_id": scan_id,
             "scan_name": scan.get("name") or scan_id,
             "project_group": scan.get("project_group") or "Unassigned Site",
@@ -5835,13 +5999,7 @@ class SurveyingEngine:
         }
 
         self._write_categorization_deliverables(result, html_name, csv_name, dxf_name)
-
-        if cache_json_path:
-            try:
-                with open(cache_json_path, "w", encoding="utf-8") as cf:
-                    json.dump(result, cf, ensure_ascii=False)
-            except Exception:
-                pass
+        self._persist_categorization_result(scan_id, result, scan)
 
         return result
 
