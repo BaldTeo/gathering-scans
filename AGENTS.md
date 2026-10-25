@@ -52,10 +52,28 @@ The live production container `gathering_scans_web` on `76.13.197.29` pulls the 
 ---
 
 ## 3. 3D Scan Classification & Cache Persistence Rules
-Whenever modifying 3D scan classification logic (`pc_worker/surveying_engine.py`), `/api/survey/categorize*` endpoints (`server.py`), or 3D categorization overlays (`web/app.js`):
+Whenever modifying 3D scan classification logic (`pc_worker/surveying/categorization_heuristics.py`, `pc_worker/surveying/categorization_io.py`, `pc_worker/surveying_engine.py`), `/api/survey/categorize*` endpoints (`server.py`, `pc_worker/server_api_routes.py`), or 3D categorization overlays (`web/src/05-studio-civil-inspectors.js`):
 1. **Consult the `scan-classification-tuning` Skill**: Read `.agent/skills/scan-classification-tuning/SKILL.md` before changing tree, wall, road, or water detection heuristics.
 2. **Update & Commit Server Cache Files**: Regenerate and commit `data/categorization_cache/<scan_id>_categorization_v3.json` alongside `<project_dir>/_categorization_cache_v3.json` so both the local PC server and Hostinger VPS serve the updated classifications immediately.
 3. **Preserve Manual Overrides & Hidden-by-Default UX**:
    - Always preserve existing `manual_overrides` (`added_trees`, `added_walls`, `added_roads`, `added_water`, `removed_ids`) across algorithmic recomputes.
    - Keep 3D classification overlays hidden by default on scan load (`overlay_visible_default: false` / `STATE.categorizeOverlayVisible = false`) with separate toggles for 3D overlays and 3D labels.
 4. **Multi-Scan Regression Check**: Verify classification changes across `edited_qihu_unified_merged_scan_4_scans__edited_372953`, `rosepark_20260918_merged`, `ntudorm_20260915_baseline`, and `QuChi261016_Trees` to ensure improving one site never degrades another.
+
+---
+
+## 4. Strict 5,000-Line Modular File Ceiling
+Every source file (`.py`, `.js`, `.css`, `.html`) in this repository **MUST remain strictly under 5,000 lines** (enforced by `test_07_modular_architecture_strict_5000_line_ceiling` in `tests/test_gathering_scans_suite.py`):
+- **Frontend (`web/src/*.js` + `web/app.js`)**:
+  - `web/src/01-core-state.js`: Core `STATE`, `SHARE_TELEMETRY`, auth/role helpers, API client, project/scan dropdowns
+  - `web/src/02-map-and-timeline.js`: Google Maps overview, clustering, Site Timeline, `previewThree`, Scan/Site rename/delete/bin/rerun modals
+  - `web/src/03-studio-core.js`: `studioThree` viewer, CRS math, 2D/3D badges, First-Person Walk/Fly engine, distance/angle/coord tools
+  - `web/src/04-studio-lasso-and-edits.js`: 3D Laser Width/Clearance engine, 3D Frustum Lasso engine, staged mesh edits, Studio pointer handlers, client volume raycaster
+  - `web/src/05-studio-civil-inspectors.js`: Side panel manager, Cut/Fill Volume, Contours/A3 CAD preview, AI Categorization 3D overlays & UI, Profile, RTK Photos, Section Box, Comments
+  - `web/src/06-studio-align-and-optimizer.js`: GC_ScanOptimizer panels, Multi-Scan 3D Alignment & Merge engine, Studio dock & hotkeys
+  - `web/src/07-compare-and-queue.js`: Multi-Date Side-by-Side Curtain Slider & Heatmap, Theme switcher, Smart Priority Queue modal
+  - `web/app.js`: Scoped External Sharing & Analytics, Offline/Admin Control Panel modal, Google OAuth Gate, View Navigation & Bootstrap (`window.__GS_API`)
+- **Backend Surveying (`pc_worker/surveying/*.py` + `pc_worker/surveying_engine.py`)**:
+  - `pc_worker/surveying/dsm_and_volume.py`, `pc_worker/surveying/contours_and_cad.py`, `pc_worker/surveying/categorization_io.py`, `pc_worker/surveying/categorization_heuristics.py`, composed by `pc_worker/surveying_engine.py`.
+- **Backend HTTP Server (`pc_worker/server_*.py` + `server.py`)**:
+  - `pc_worker/server_cloud_and_tunnel.py`, `pc_worker/server_api_routes.py`, and `server.py`.
