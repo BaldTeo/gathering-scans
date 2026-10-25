@@ -10371,9 +10371,20 @@
     const originTwd = localToTwd97({ x: 0, y: 0, z: 0 });
     const grp = studioThree.categoryGroup;
 
-    // Smart 3D Spatial Separation & Viewport-Aware Priority Queue for 2D Floating Badges
-    const placedBadgeAnchors3D = [];
-    const MIN_BADGE_SEPARATION_3D_M = 12.5;
+    // Smart Category-Separated 3D Spatial Separation & Viewport-Aware Priority Queue for 2D Floating Badges
+    const placedBadgeAnchorsByCat = {
+      water: [],
+      roads: [],
+      walls: [],
+      trees: [],
+      stockpiles: [],
+      default: [],
+    };
+    const allPlacedBadgeAnchors3D = [];
+    const camDist =
+      studioThree?.camera && studioThree?.controls?.target
+        ? studioThree.camera.position.distanceTo(studioThree.controls.target)
+        : 45.0;
     const isVec3InSafeViewport = (pt3) => {
       if (!pt3 || !studioThree?.camera || !studioThree?.renderer) return true;
       studioThree.camera.updateMatrixWorld();
@@ -10386,19 +10397,32 @@
       if (v.z > 1 || Math.abs(v.x) > 1.05 || Math.abs(v.y) > 1.05) return false;
       const sx = (v.x * 0.5 + 0.5) * w;
       const sy = (-(v.y * 0.5) + 0.5) * h;
-      return sx >= 140 && sx <= rightSafe - 70 && sy >= 82 && sy <= h - 96;
+      return sx >= 110 && sx <= rightSafe - 55 && sy >= 74 && sy <= h - 84;
     };
     const tryAddCategorizeBadge = (anchorVec3, html, colorHex, opts = {}) => {
       if (!anchorVec3) return false;
       if (!opts.isFocused && !isVec3InSafeViewport(anchorVec3)) {
         return false;
       }
-      for (const prev of placedBadgeAnchors3D) {
-        if (anchorVec3.distanceTo(prev) < MIN_BADGE_SEPARATION_3D_M) {
+      const catKey = opts.catKey || "default";
+      const catArr = placedBadgeAnchorsByCat[catKey] || placedBadgeAnchorsByCat.default;
+      const minSameCatSep =
+        opts.minSep ??
+        (catKey === "trees"
+          ? Math.max(3.5, Math.min(7.5, camDist * 0.065))
+          : 11.5);
+      for (const prev of catArr) {
+        if (anchorVec3.distanceTo(prev) < minSameCatSep) {
           return false;
         }
       }
-      placedBadgeAnchors3D.push(anchorVec3.clone());
+      for (const prevAll of allPlacedBadgeAnchors3D) {
+        if (anchorVec3.distanceTo(prevAll) < 2.2) {
+          return false;
+        }
+      }
+      catArr.push(anchorVec3.clone());
+      allPlacedBadgeAnchors3D.push(anchorVec3.clone());
       add2DBadge(anchorVec3, html, colorHex, {
         isCategorize: true,
         offsetY: opts.offsetY ?? -12,
@@ -10409,7 +10433,14 @@
       return true;
     };
 
-    const addPolygonHorizontalMesh = (ptsVec3, fillHex, strokeHex, fillOpacity = 0.34, yLift = 0.22) => {
+    const addPolygonHorizontalMesh = (
+      ptsVec3,
+      fillHex,
+      strokeHex,
+      fillOpacity = 0.34,
+      yLift = 0.22,
+      holesVec3List = []
+    ) => {
       if (!Array.isArray(ptsVec3) || ptsVec3.length < 3) return;
       const meanY = ptsVec3.reduce((acc, p) => acc + p.y, 0) / ptsVec3.length + yLift;
       const shape = new THREE.Shape();
@@ -10418,6 +10449,18 @@
         else shape.lineTo(p.x, -p.z);
       });
       shape.closePath();
+      if (Array.isArray(holesVec3List)) {
+        holesVec3List.forEach((holePts) => {
+          if (!Array.isArray(holePts) || holePts.length < 3) return;
+          const holePath = new THREE.Path();
+          holePts.forEach((hp, hIdx) => {
+            if (hIdx === 0) holePath.moveTo(hp.x, -hp.z);
+            else holePath.lineTo(hp.x, -hp.z);
+          });
+          holePath.closePath();
+          shape.holes.push(holePath);
+        });
+      }
       const sGeo = new THREE.ShapeGeometry(shape);
       sGeo.rotateX(-Math.PI / 2);
       sGeo.translate(0, meanY, 0);
@@ -10443,6 +10486,18 @@
       const line = new THREE.Line(lGeo, lMat);
       line.renderOrder = 996;
       grp.add(line);
+
+      if (Array.isArray(holesVec3List)) {
+        holesVec3List.forEach((holePts) => {
+          if (!Array.isArray(holePts) || holePts.length < 3) return;
+          const hLoopPts = holePts.map((hp) => new THREE.Vector3(hp.x, hp.y + yLift + 0.07, hp.z));
+          hLoopPts.push(hLoopPts[0].clone());
+          const hlGeo = new THREE.BufferGeometry().setFromPoints(hLoopPts);
+          const hlLine = new THREE.Line(hlGeo, lMat);
+          hlLine.renderOrder = 996;
+          grp.add(hlLine);
+        });
+      }
     };
 
     // 1. WATER BODIES & UN-MODELLED WATER VOIDS (Hydrostatic Cyan Plane #06b6d4) — Highest badge priority (Top 2: W1, W2)
@@ -10466,14 +10521,14 @@
             cPt,
             `<span style="color:#22d3ee;font-weight:800;">💧 ${escapeHtml(w.id)}</span> ${isVoid ? "水域空洞" : "水體"} · <b>TWVD2001 +${waterLevelH.toFixed(2)}m</b> (${Number(w.planar_area_m2 || 0).toFixed(0)} m²)`,
             "#06b6d4",
-            { offsetY: -14, priority: 90 - idx, featureId: w.id }
+            { offsetY: -14, priority: 90 - idx, featureId: w.id, catKey: "water" }
           );
           if (added) waterBadgesAdded++;
         }
       });
     }
 
-    // 2. ROADS (Amber #f59e0b) — Top 5 badges (R1..R5)
+    // 2. ROADS (Amber #f59e0b) — Top 5 badges (R1..R5) with interior lawn/planter hole cutouts
     if (flt.roads && Array.isArray(res.roads)) {
       let roadBadgesAdded = 0;
       res.roads.forEach((r, idx) => {
@@ -10482,7 +10537,19 @@
         const pts = (bTwd.length >= 3 ? bTwd : bLoc).map((p, i) =>
           twd97PointToStudioVec3(bTwd[i], bLoc[i], originTwd)
         );
-        addPolygonHorizontalMesh(pts, 0xf59e0b, 0xfbbf24, 0.36, 0.25);
+        const hTwdList = r.holes_twd97 || [];
+        const hLocList = r.holes_local || [];
+        const nHoles = Math.max(hTwdList.length, hLocList.length);
+        const holesPts = [];
+        for (let hi = 0; hi < nHoles; hi++) {
+          const ht = hTwdList[hi] || [];
+          const hl = hLocList[hi] || [];
+          const hRing = (ht.length >= 3 ? ht : hl).map((hp, pi) =>
+            twd97PointToStudioVec3(ht[pi], hl[pi], originTwd)
+          );
+          if (hRing.length >= 3) holesPts.push(hRing);
+        }
+        addPolygonHorizontalMesh(pts, 0xf59e0b, 0xfbbf24, 0.36, 0.25, holesPts);
         const cPt = twd97PointToStudioVec3(r.center_twd97, r.center_local, originTwd);
         cPt.y += 0.6;
         if (roadBadgesAdded < 5) {
@@ -10490,14 +10557,14 @@
             cPt,
             `<span style="color:#fbbf24;font-weight:800;">🛣️ ${escapeHtml(r.id)}</span> · <b>${Number(r.planar_area_m2 || 0).toFixed(1)} m²</b> (${Number(r.mean_width_m || 0).toFixed(1)}m W)`,
             "#f59e0b",
-            { offsetY: -12, priority: 80 - idx, featureId: r.id }
+            { offsetY: -12, priority: 80 - idx, featureId: r.id, catKey: "roads" }
           );
           if (added) roadBadgesAdded++;
         }
       });
     }
 
-    // 3. WALLS (Extruded 3D Vertical Wall Ribbon + Wireframe #f43f5e) — Top 3 badges (WL1..WL3)
+    // 3. WALLS (Extruded 3D Vertical Wall Ribbon + Wireframe #f43f5e) — Top 4 badges (WL1..WL4)
     if (flt.walls && Array.isArray(res.walls)) {
       let wallBadgesAdded = 0;
       res.walls.forEach((wl, idx) => {
@@ -10552,16 +10619,18 @@
             cPt,
             `<span style="color:#fb7185;font-weight:800;">🧱 ${escapeHtml(wl.id)}</span> · L ${Number(wl.length_m || 0).toFixed(1)}m · 3D <b>${Number(wl.vertical_area_m2 || 0).toFixed(1)} m²</b>`,
             "#f43f5e",
-            { offsetY: -12, priority: 70 - idx, featureId: wl.id }
+            { offsetY: -12, priority: 70 - idx, featureId: wl.id, catKey: "walls" }
           );
           if (added) wallBadgesAdded++;
         }
       });
     }
 
-    // 4. TREES & 1.3m BREAST-HEIGHT DBH (3D Trunk Cylinders + 1.3m DBH Ring + Emerald Canopy Domes #10b981) — Top 10 badges
+    // 4. TREES & 1.3m BREAST-HEIGHT DBH (3D Trunk Cylinders + 1.3m DBH Ring + Emerald Canopy Domes + Crown Ring #10b981)
     if (flt.trees && Array.isArray(res.trees)) {
       let treeBadgesAdded = 0;
+      const maxTreeBadges = STATE.categorizeActiveTab === "trees" ? 16 : 12;
+      const treePriorityBase = STATE.categorizeActiveTab === "trees" ? 95 : 68;
       res.trees.forEach((t, idx) => {
         const basePt = twd97PointToStudioVec3(t.trunk_twd97, t.trunk_local, originTwd);
         const treeH = Math.max(2.5, Number(t.height_m || 6.0));
@@ -10582,7 +10651,7 @@
         grp.add(trunkMesh);
 
         // 1.3m Breast-Height (DBH) bright measurement collar ring
-        const dbhRingGeo = new THREE.RingGeometry(rTrunk * 1.05, rTrunk * 1.55, 20);
+        const dbhRingGeo = new THREE.RingGeometry(rTrunk * 1.05, rTrunk * 1.65, 22);
         dbhRingGeo.rotateX(-Math.PI / 2);
         const dbhRingMat = new THREE.MeshBasicMaterial({
           color: 0xfef08a,
@@ -10594,28 +10663,53 @@
         dbhRing.renderOrder = 999;
         grp.add(dbhRing);
 
-        // Translucent 3D Canopy Crown Sphere/Dome
+        // Translucent 3D Canopy Crown Sphere/Dome + Crisp Emerald Crown Equatorial Ring
         const crownR = Math.max(1.2, crownD * 0.46);
-        const crownGeo = new THREE.SphereGeometry(crownR, 12, 10);
+        const crownY = basePt.y + trunkH + crownR * 0.35;
+        const crownGeo = new THREE.SphereGeometry(crownR, 14, 10);
         const crownMat = new THREE.MeshBasicMaterial({
           color: 0x10b981,
           transparent: true,
-          opacity: 0.28,
+          opacity: 0.30,
           depthWrite: false,
         });
         const crownMesh = new THREE.Mesh(crownGeo, crownMat);
-        crownMesh.position.set(basePt.x, basePt.y + trunkH + crownR * 0.35, basePt.z);
+        crownMesh.position.set(basePt.x, crownY, basePt.z);
         crownMesh.scale.set(1.0, Math.max(0.65, (treeH * 0.55) / Math.max(crownR * 1.6, 1.0)), 1.0);
         crownMesh.renderOrder = 994;
         grp.add(crownMesh);
 
-        if (treeBadgesAdded < 10) {
+        const cRingPts = [];
+        for (let s = 0; s <= 24; s++) {
+          const ang = (s / 24) * Math.PI * 2;
+          cRingPts.push(
+            new THREE.Vector3(
+              basePt.x + Math.cos(ang) * crownR,
+              basePt.y + trunkH * 0.92,
+              basePt.z + Math.sin(ang) * crownR
+            )
+          );
+        }
+        const cRingLine = new THREE.Line(
+          new THREE.BufferGeometry().setFromPoints(cRingPts),
+          new THREE.LineBasicMaterial({ color: 0x34d399, linewidth: 2, depthTest: false })
+        );
+        cRingLine.renderOrder = 998;
+        grp.add(cRingLine);
+
+        if (treeBadgesAdded < maxTreeBadges) {
           const topPt = new THREE.Vector3(basePt.x, basePt.y + Math.min(treeH * 0.65, 5.2), basePt.z);
           const added = tryAddCategorizeBadge(
             topPt,
             `<span style="color:#34d399;font-weight:800;">🌳 ${escapeHtml(t.id)}</span> · DBH <b>${dbhCm.toFixed(1)} cm</b> · H ${treeH.toFixed(1)}m`,
             "#10b981",
-            { offsetY: -10, priority: 60 - idx, featureId: t.id }
+            {
+              offsetY: -10,
+              priority: treePriorityBase - idx,
+              featureId: t.id,
+              catKey: "trees",
+              isFocused: STATE.categorizeActiveTab === "trees",
+            }
           );
           if (added) treeBadgesAdded++;
         }
@@ -10639,7 +10733,7 @@
             cPt,
             `<span style="color:#fbbf24;font-weight:800;">⛰️ ${escapeHtml(sp.id)}</span> · <b>${Number(sp.planar_area_m2 || 0).toFixed(0)} m²</b> (~${Number(sp.estimated_volume_m3 || 0).toFixed(0)} m³)`,
             "#d97706",
-            { offsetY: -10, priority: 50 - idx, featureId: sp.id }
+            { offsetY: -10, priority: 50 - idx, featureId: sp.id, catKey: "stockpiles" }
           );
           if (added) spBadgesAdded++;
         }
@@ -10795,8 +10889,8 @@
         </div>
         <div class="gs-metric-box" style="border-left:3px solid #06b6d4;">
           <div class="lbl">💧 水體與河道空洞 Water (${s.water_count || 0})</div>
-          <div class="val" style="color:#22d3ee;font-size:13px;">+${Number(s.water_level_twvd2001_m || 0).toFixed(2)} m</div>
-          <div style="font-size:9.5px;color:var(--ui-text-muted);">${Number(s.water_planar_area_m2 || 0).toLocaleString()} m² (岸際等位面)</div>
+          <div class="val" style="color:#22d3ee;font-size:13px;">${Number(s.water_count || 0) > 0 && s.water_level_twvd2001_m !== null && s.water_level_twvd2001_m !== undefined ? `+${Number(s.water_level_twvd2001_m).toFixed(2)} m` : "無水域 (None)"}</div>
+          <div style="font-size:9.5px;color:var(--ui-text-muted);">${Number(s.water_count || 0) > 0 ? `${Number(s.water_planar_area_m2 || 0).toLocaleString()} m² (岸際等位面)` : "0 m² (乾燥陸域場址)"}</div>
         </div>
         <div class="gs-metric-box" style="border-left:3px solid #f43f5e;">
           <div class="lbl">🧱 擋土牆與垂直面 Walls (${s.walls_count || 0})</div>
@@ -10972,8 +11066,12 @@
         renderCategorize3DOverlays(res);
         renderCategorizePanelContent(res);
         const s = res.summary || {};
+        const waterToastStr =
+          Number(s.water_count || 0) > 0 && s.water_level_twvd2001_m !== null && s.water_level_twvd2001_m !== undefined
+            ? `${s.water_count} Water Zones (+${Number(s.water_level_twvd2001_m).toFixed(2)}m)`
+            : `0 Water Zones`;
         showToast(
-          `Categorized: ${s.roads_count || 0} Roads (${s.roads_planar_area_m2 || 0}m²), ${s.trees_count || 0} Trees (DBH ${s.trees_mean_dbh_cm || 0}cm), ${s.water_count || 0} Water Zones (+${s.water_level_twvd2001_m || 0}m), ${s.walls_count || 0} Walls`
+          `Categorized: ${s.roads_count || 0} Roads (${s.roads_planar_area_m2 || 0}m²), ${s.trees_count || 0} Trees (DBH ${s.trees_mean_dbh_cm || 0}cm), ${waterToastStr}, ${s.walls_count || 0} Walls`
         );
       } catch (err) {
         if (box) {
