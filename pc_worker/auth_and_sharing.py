@@ -108,7 +108,8 @@ def get_role_permissions(role: str, has_share_token: bool = False) -> Dict[str, 
     can_manage_users = lvl >= 4 and not has_share_token
     can_edit_names = lvl >= 3 and not has_share_token
     can_run_workflows = lvl >= 3 and not has_share_token
-    can_share = lvl >= 3 and not has_share_token
+    can_share = lvl >= 2 and not has_share_token
+    can_manage_shares = lvl >= 3 and not has_share_token
     can_download = lvl >= 2 and not has_share_token
     if eff_role == "guest":
         allowed_tools = ["orbit", "distance", "area", "coordinates"]
@@ -130,7 +131,7 @@ def get_role_permissions(role: str, has_share_token: bool = False) -> Dict[str, 
         "can_edit_names": can_edit_names,
         "can_run_workflows": can_run_workflows,
         "can_share": can_share,
-        "can_manage_shares": can_share,
+        "can_manage_shares": can_manage_shares,
         "can_download": can_download,
         "allowed_tools": allowed_tools,
     }

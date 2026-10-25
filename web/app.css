@@ -1432,6 +1432,38 @@ html[data-theme="dark"] .gs-lowres-preview-pill {
   vertical-align: middle;
 }
 
+.gs-quick-share-popover {
+  position: fixed;
+  z-index: 9999;
+  width: min(430px, calc(100vw - 24px));
+  background: var(--ui-bg-window);
+  backdrop-filter: blur(16px);
+  border: 1px solid var(--ui-border-strong);
+  border-radius: 10px;
+  box-shadow: 0 14px 36px rgba(0, 0, 0, 0.34);
+  padding: 10px 12px;
+  color: var(--ui-text-primary);
+  font-family: var(--sans, system-ui, sans-serif);
+}
+
+.gs-quick-share-popover .gs-share-url-input {
+  min-width: 0;
+  font-size: 11px;
+}
+
+.gs-quick-share-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: var(--ui-bg-subtle);
+  border: 1px solid var(--ui-border);
+  color: var(--ui-text-secondary);
+}
+
 .gs-toast {
   position: fixed;
   bottom: 78px;

@@ -219,6 +219,22 @@ class GatheringScansTestSuite(unittest.TestCase):
         self.assertFalse(ok_revoked)
         self.assertIn("revoked", reason_rev)
 
+        # Quick Single-Scan View & Comment Only link
+        quick_link = auth.create_share_link(
+            {
+                "scope_type": "scan",
+                "target_id": "scan_a",
+                "label": "View & Comment — Scan A",
+                "allow_measurements": False,
+                "allow_comments": True,
+                "allow_download": False,
+            }
+        )
+        self.assertFalse(quick_link["allow_measurements"])
+        self.assertTrue(quick_link["allow_comments"])
+        self.assertFalse(quick_link["allow_download"])
+        self.assertTrue(quick_link["share_url"].startswith("https://scans.gatheren.cloud/s/"))
+
 
 if __name__ == "__main__":
     unittest.main()

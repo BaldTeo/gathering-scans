@@ -1897,7 +1897,7 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
             for k in list(_VPS_RAM_FALLBACK_CACHE.keys()):
                 if k.startswith(path):
                     _VPS_RAM_FALLBACK_CACHE.pop(k, None)
-        if method == "POST" and ("/rename" in path or "/delete" in path or "/bin" in path or "/rerun" in path or "/admin/users" in path or path.startswith("/api/optimizer/") or path in ("/api/scans/rename", "/api/scans/delete", "/api/scans/merge")):
+        if method in ("POST", "DELETE") and ("/rename" in path or "/delete" in path or "/bin" in path or "/rerun" in path or "/admin/users" in path or path == "/api/comments" or path.startswith("/api/comments/") or path.startswith("/api/optimizer/") or path in ("/api/scans/rename", "/api/scans/delete", "/api/scans/merge")):
             for k in list(_VPS_RAM_FALLBACK_CACHE.keys()):
                 if k.startswith("/api/scans") or k.startswith("/api/projects") or k.startswith("/api/user-profiles") or k.startswith("/api/admin/users") or k.startswith("/stream/"):
                     _VPS_RAM_FALLBACK_CACHE.pop(k, None)
@@ -2183,7 +2183,27 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
                 }
             )
             return True
-        # 6. Allow surveying (volume, profile, contours/reports), share links, and user/admin routes to execute locally on VPS from .3tz packages when tunnel is unavailable
+        if method == "GET" and path.startswith("/api/scans/") and "/" not in path[len("/api/scans/") :].strip("/"):
+            req_sid = path[len("/api/scans/") :].strip("/")
+            if share_token:
+                ok_c, reason_c, _, _ = self._validate_cloud_share_token(share_token, requested_scan_id=req_sid)
+                if not ok_c:
+                    self.send_json({"error": reason_c, "revoked": True}, status=403)
+                    return True
+            matched_scan = next((dict(s) for s in cloud_scans if str(s.get("scan_id")) == req_sid), None)
+            if not matched_scan:
+                self.send_json({"error": f"Scan not found: {req_sid}"}, status=404)
+                return True
+            by_cid = {str(c.get("comment_id")): c for c in (matched_scan.get("comments") or []) if isinstance(c, dict) and c.get("comment_id")}
+            for vc in DB.list_comments(req_sid):
+                if vc.get("comment_id"):
+                    by_cid[str(vc["comment_id"])] = vc
+            merged_cmts = sorted(by_cid.values(), key=lambda x: str(x.get("created_at") or ""), reverse=True)
+            matched_scan["comments"] = merged_cmts
+            matched_scan["comment_count"] = len(merged_cmts)
+            self.send_json({"status": "ok", "scan": self._enrich_scan_urls(matched_scan, share_token)})
+            return True
+        # 6. Allow surveying (volume, profile, contours/reports), comments, share links, and user/admin routes to execute locally on VPS from .3tz packages when tunnel is unavailable
         if (
             path.startswith("/api/survey/")
             or path.startswith("/api/surveying/")
@@ -2194,6 +2214,8 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
             or path.startswith("/api/auth/")
             or path.startswith("/api/user/")
             or path.startswith("/api/share/")
+            or path == "/api/comments"
+            or path.startswith("/api/comments/")
             or path == "/api/scans/delete"
             or path.startswith("/api/scans/bin")
         ):
@@ -4168,6 +4190,10 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
                     ok_s, reason_s, link_s, _ = AUTH_SHARE.validate_share_access(
                         share_token, requested_scan_id=scan_id
                     )
+                    if not ok_s and os.name != "nt":
+                        ok_s, reason_s, link_s, _ = self._validate_cloud_share_token(
+                            share_token, requested_scan_id=scan_id
+                        )
                     if not ok_s:
                         self.send_json({"error": reason_s}, status=403)
                         return
@@ -4178,6 +4204,7 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
                     self.send_json({"error": "Read-only Guest Mode cannot post comments. Sign in with Google to comment."}, status=403)
                     return
                 cmt = DB.add_comment(payload)
+                _VPS_RAM_FALLBACK_CACHE.clear()
                 self.send_json({"status": "ok", "comment": cmt})
                 return
 
@@ -4210,8 +4237,12 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
                             pass
 
                 if path == "/api/share/create":
-                    if not actor_perms.get("can_manage_shares"):
-                        self.send_json({"error": f"Role '{actor_role}' cannot create external share links."}, status=403)
+                    wants_dl = bool(payload.get("allow_download", False))
+                    can_create = bool(actor_perms.get("can_manage_shares")) or (
+                        bool(actor_perms.get("can_share")) and not wants_dl
+                    )
+                    if not can_create:
+                        self.send_json({"error": f"Role '{actor_role}' cannot create this external share link."}, status=403)
                         return
                     if actor_email and not payload.get("created_by_email") and not payload.get("actor_email"):
                         payload["actor_email"] = actor_email

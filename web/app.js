@@ -545,10 +545,13 @@
       "pcStatusChip",
     ].forEach((id) => setDisp(id, info.canRunWorkflows, "inline-flex"));
 
-    // 3. Sharing & Settings buttons (Hidden for Guest / Viewer)
+    // 3. Sharing & Settings buttons (Full Sharing Modal is Editor+; Quick Single-Scan View & Comment Share is Viewer+)
     setDisp("btnOpenSharing", info.level >= 3, "inline-flex");
     setDisp("btnPopoverShareGroup", info.level >= 3, "inline-flex");
     setDisp("btnTimelineShare", info.level >= 3, "inline-flex");
+    const canQuickShareScan = !STATE.shareToken && info.level >= 2;
+    setDisp("btnStudioQuickShare", canQuickShareScan, "inline-flex");
+    setDisp("btnPreviewQuickShare", canQuickShareScan, "inline-flex");
 
     // 3b. Recycle Bin buttons (Editor, Admin & Owner can view & restore backups; Purge is Admin/Owner)
     const canAccessBin = Boolean(info.canEditNames || info.canManageUsers);
@@ -580,6 +583,13 @@
       "btnMeasureClear",
       "btnClearMeasurements",
     ].forEach((id) => setDisp(id, info.allowMeasurements, "inline-flex"));
+    if (!info.allowMeasurements) {
+      document.getElementById("btnMeasureDistance")?.classList.remove("active");
+    }
+    const coordPillEl = document.querySelector(".gs-studio-coord-pill");
+    if (coordPillEl) {
+      coordPillEl.style.display = info.allowMeasurements ? "" : "none";
+    }
 
     // 6. Advanced surveying tools hidden for Guest role (Viewer+ gets full surveying suite)
     const showAdvancedSurvey = !info.isGuestRole && info.allowMeasurements;
@@ -590,6 +600,7 @@
       "btnMeasureContours",
       "btnMeasureProfile",
       "btnMeasurePhotos",
+      "btnDockCategorize",
       "btnDockVolume",
       "btnDockContours",
       "btnDockSection",
@@ -600,8 +611,16 @@
     setDisp("btnStudioDownloadObj", info.allowDownload, "inline-flex");
     setDisp("btnStudioSurveyReport", showAdvancedSurvey && info.allowDownload, "inline-flex");
 
+    // Hide redundant dock dividers when measurement/surveying groups are hidden (e.g. View & Comment Only links)
+    const dockDividers = document.querySelectorAll("#bimBottomDock > .bim-dock-divider");
+    if (dockDividers.length >= 3) {
+      dockDividers[0].style.display = showAdvancedSurvey ? "" : "none";
+      dockDividers[1].style.display = info.allowMeasurements && (showAdvancedSurvey || info.allowComments) ? "" : "none";
+      dockDividers[2].style.display = info.allowComments || info.allowMeasurements ? "" : "none";
+    }
+
     // 8. If current active Studio tool is no longer permitted after role change, reset cleanly
-    const advTools = new Set(["angle", "laser", "volume", "contours", "profile", "section", "photos"]);
+    const advTools = new Set(["angle", "laser", "volume", "contours", "profile", "section", "photos", "categorize"]);
     const wfTools = new Set(["optimizer", "crs", "generate_scan", "crop", "crop_delete", "align_merge"]);
     if (!info.canRunWorkflows && STATE.multiAlign?.active && typeof exitMultiScanAlignMode === "function") {
       exitMultiScanAlignMode(true);
@@ -4252,6 +4271,9 @@
         scan.download_obj_url || `/api/download?scan_id=${encodeURIComponent(scan.scan_id)}&type=obj`
       );
     }
+    if (typeof closeQuickSingleScanSharePopover === "function") {
+      closeQuickSingleScanSharePopover();
+    }
 
     // Clear any stale scan-editing lasso selection & staged preview when loading a scan
     if (typeof clearLassoSelectionState === "function") {
@@ -5635,6 +5657,7 @@
     "btnRenameStudioScan",
     "btnRerunStudioScan",
     "btnDeleteStudioScan",
+    "btnStudioQuickShare",
     "btnStudioDownloadObj",
   ];
 
@@ -12081,6 +12104,8 @@
 
     const pt = clickedPt || new THREE.Vector3(0, 1.2, 0);
     const twd = clickedTwd || localToTwd97(pt);
+    const isExternalOrGuest = Boolean(STATE.shareToken || !STATE.currentUser?.email || STATE.currentUser.email.startsWith("guest@"));
+    const savedGuestAuthor = localStorage.getItem("gs_guest_comment_author") || "";
 
     const listHtml = comments
       .map(
@@ -12102,6 +12127,17 @@
     showSidePanel(
       `<span>3D Geo-Comments (${comments.length})</span>`,
       `
+      <div style="font-size:11px;color:var(--ui-text-secondary);margin-bottom:8px;">
+        Click anywhere on the 3D scan to place the comment pin, then write your note below.
+      </div>
+      ${
+        isExternalOrGuest
+          ? `<div class="gs-form-group" style="margin-bottom:8px;">
+               <label>Your Name</label>
+               <input type="text" class="gs-input" id="txtGuestAuthorName" value="${escapeHtml(savedGuestAuthor)}" placeholder="e.g. Reviewer Name" />
+             </div>`
+          : ""
+      }
       <div class="gs-form-group">
         <label>Pin Coordinate: E:${twd.e}m, N:${twd.n}m, H:+${twd.h}m</label>
         <textarea class="gs-input" id="txtNewComment" rows="2" placeholder="Leave an engineering observation..."></textarea>
@@ -12119,11 +12155,23 @@
     document.getElementById("btnSubmitComment")?.addEventListener("click", async () => {
       const text = document.getElementById("txtNewComment")?.value.trim();
       if (!text) return;
+      const customGuestName = document.getElementById("txtGuestAuthorName")?.value.trim() || "";
+      if (isExternalOrGuest && customGuestName) {
+        try {
+          localStorage.setItem("gs_guest_comment_author", customGuestName);
+        } catch (_) {}
+      }
+      const resolvedAuthorName = isExternalOrGuest
+        ? customGuestName || STATE.currentUser?.name || "External Reviewer"
+        : STATE.currentUser?.name || "Guest Viewer";
+      const resolvedAuthorEmail = isExternalOrGuest
+        ? "external@gatheren.cloud"
+        : STATE.currentUser?.email || "guest@gatheren.cloud";
       try {
         await apiPost("/api/comments", {
           scan_id: STATE.activeScanId,
-          author_email: STATE.currentUser?.email || "guest@gatheren.cloud",
-          author_name: STATE.currentUser?.name || "Guest Viewer",
+          author_email: resolvedAuthorEmail,
+          author_name: resolvedAuthorName,
           text,
           pos_x: pt.x,
           pos_y: pt.y,
@@ -15457,6 +15505,14 @@
     }
 
     if (e.key === "Escape") {
+      if (document.getElementById("gsStudioQuickSharePopover")) {
+        closeQuickSingleScanSharePopover();
+        return;
+      }
+      if (document.getElementById("gsDownloadFormatPopover") && typeof closeDownloadFormatMenu === "function") {
+        closeDownloadFormatMenu();
+        return;
+      }
       // 1. If a non-locked modal is open, close the topmost open modal
       const openModals = Array.from(document.querySelectorAll(".gs-modal-backdrop.active"));
       if (openModals.length > 0) {
@@ -17593,6 +17649,262 @@
     }
   });
 
+  // 5B-2. Studio Menu Quick Single-Scan "View & Comment Only" Share Link Popover
+  let _quickShareOutsideHandler = null;
+
+  function closeQuickSingleScanSharePopover() {
+    const existing = document.getElementById("gsStudioQuickSharePopover");
+    if (existing) existing.remove();
+    if (_quickShareOutsideHandler) {
+      document.removeEventListener("mousedown", _quickShareOutsideHandler, true);
+      _quickShareOutsideHandler = null;
+    }
+  }
+
+  function isQuickViewCommentOnlyLink(linkObj, scanId) {
+    if (!linkObj || linkObj.revoked) return false;
+    return (
+      String(linkObj.scope_type || "").toLowerCase() === "scan" &&
+      String(linkObj.target_id || "") === String(scanId || "") &&
+      Boolean(linkObj.allow_comments) === true &&
+      Boolean(linkObj.allow_measurements) === false &&
+      Boolean(linkObj.allow_download) === false
+    );
+  }
+
+  async function ensureQuickViewCommentShareLink(scan, forceNew = false) {
+    if (!scan || !scan.scan_id) throw new Error("No active scan selected.");
+    if (!forceNew) {
+      try {
+        const listRes = await apiGet("/api/share/list");
+        const allLinks = listRes.links || [];
+        _cachedShareLinksList = allLinks;
+        const existingMatch = allLinks.find((l) => isQuickViewCommentOnlyLink(l, scan.scan_id));
+        if (existingMatch && existingMatch.token) {
+          return existingMatch;
+        }
+      } catch (_) {}
+    }
+    const created = await apiPost("/api/share/create", {
+      scope_type: "scan",
+      target_id: scan.scan_id,
+      label: `View & Comment — ${scan.name || scan.scan_id}`,
+      allow_measurements: false,
+      allow_comments: true,
+      allow_download: false,
+    });
+    return created.link;
+  }
+
+  async function openQuickSingleScanSharePopover(anchorEl, scan) {
+    if (!scan || !scan.scan_id) {
+      showToast("Select a 3D scan first to generate a quick share link.");
+      return;
+    }
+    const existing = document.getElementById("gsStudioQuickSharePopover");
+    if (existing && existing.dataset.scanId === scan.scan_id && existing.dataset.anchorId === (anchorEl?.id || "")) {
+      closeQuickSingleScanSharePopover();
+      return;
+    }
+    closeQuickSingleScanSharePopover();
+    if (typeof closeDownloadFormatMenu === "function") {
+      closeDownloadFormatMenu();
+    }
+
+    const roleInfo = getCurrentUserRoleInfo();
+    const canRevoke = roleInfo.level >= 3;
+    const safeScanName = escapeHtml(scan.name || scan.scan_id);
+
+    const pop = document.createElement("div");
+    pop.id = "gsStudioQuickSharePopover";
+    pop.className = "gs-quick-share-popover";
+    pop.dataset.scanId = scan.scan_id;
+    pop.dataset.anchorId = anchorEl?.id || "";
+    pop.innerHTML = `
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;padding-bottom:7px;border-bottom:1px solid var(--ui-border);margin-bottom:8px;">
+        <div style="min-width:0;">
+          <div style="font-size:12px;font-weight:700;color:var(--ui-text-primary);display:flex;align-items:center;gap:6px;">
+            <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="var(--ui-accent)" stroke-width="2">
+              <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>
+              <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
+            </svg>
+            <span>Quick Share — Single-Scan View &amp; Comment</span>
+          </div>
+          <div style="font-size:10.5px;color:var(--ui-text-muted);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${safeScanName}">
+            ${safeScanName}
+          </div>
+        </div>
+        <button type="button" class="btn-xs" id="btnCloseQuickSharePop" title="Close" aria-label="Close Quick Share" style="height:22px;padding:0 5px;">
+          <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+          </svg>
+        </button>
+      </div>
+      <div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:8px;">
+        <span class="gs-quick-share-chip" style="color:var(--ui-accent);border-color:var(--ui-accent);">3D View + Comment Only</span>
+        <span class="gs-quick-share-chip">Single Scan Locked</span>
+        <span class="gs-quick-share-chip">No Measurements</span>
+        <span class="gs-quick-share-chip">No Download</span>
+      </div>
+      <div id="quickShareBodyArea" style="font-size:11.5px;color:var(--ui-text-secondary);padding:6px 0;">
+        Preparing shareable link...
+      </div>
+    `;
+
+    document.body.appendChild(pop);
+
+    const positionPopover = () => {
+      if (!anchorEl || typeof anchorEl.getBoundingClientRect !== "function") {
+        pop.style.top = "64px";
+        pop.style.right = "24px";
+        return;
+      }
+      const rect = anchorEl.getBoundingClientRect();
+      const popRect = pop.getBoundingClientRect();
+      let left = rect.left;
+      if (left + popRect.width > window.innerWidth - 12) {
+        left = Math.max(12, window.innerWidth - popRect.width - 12);
+      }
+      let top = rect.bottom + 6;
+      if (top + popRect.height > window.innerHeight - 12) {
+        top = Math.max(12, rect.top - popRect.height - 6);
+      }
+      pop.style.left = `${Math.round(left)}px`;
+      pop.style.top = `${Math.round(top)}px`;
+    };
+    positionPopover();
+
+    pop.querySelector("#btnCloseQuickSharePop")?.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      closeQuickSingleScanSharePopover();
+    });
+
+    _quickShareOutsideHandler = (ev) => {
+      if (!pop.contains(ev.target) && (!anchorEl || !anchorEl.contains(ev.target))) {
+        closeQuickSingleScanSharePopover();
+      }
+    };
+    setTimeout(() => {
+      if (_quickShareOutsideHandler && document.body.contains(pop)) {
+        document.addEventListener("mousedown", _quickShareOutsideHandler, true);
+      }
+    }, 0);
+
+    const renderReadyLink = async (linkObj, autoCopy = true) => {
+      if (!document.body.contains(pop)) return;
+      const fullUrl = buildPublicShareUrl(linkObj.token);
+      const safeFullUrl = escapeHtml(fullUrl);
+      const bodyArea = pop.querySelector("#quickShareBodyArea");
+      if (!bodyArea) return;
+      bodyArea.innerHTML = `
+        <div class="gs-share-url-group" style="margin-bottom:8px;">
+          <input type="text" class="gs-share-url-input" id="inpStudioQuickShareUrl" readonly value="${safeFullUrl}" title="${safeFullUrl}" aria-label="Single-Scan View and Comment Link" />
+          <button type="button" class="btn-xs primary gs-share-copy-btn" id="btnCopyStudioQuickShareUrl" title="Copy Share Link">
+            <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8">
+              <rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+            </svg>
+            <span>Copy</span>
+          </button>
+          <a href="${safeFullUrl}" target="_blank" rel="noopener noreferrer" class="btn-xs gs-share-open-btn" title="Open Link in New Tab">
+            <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8">
+              <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/>
+            </svg>
+          </a>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:6px;flex-wrap:wrap;padding-top:6px;border-top:1px solid var(--ui-border);">
+          <span style="font-size:10.5px;color:var(--ui-text-muted);">Views: <b style="color:var(--ui-text-primary);">${Number(linkObj.view_count || 0)}</b></span>
+          <div style="display:flex;gap:5px;align-items:center;">
+            ${
+              canRevoke
+                ? `<button type="button" class="btn-xs" id="btnRotateQuickShareUrl" title="Revoke current link and generate a new token" style="font-size:10.5px;">Reset Link</button>
+                   <button type="button" class="btn-xs" id="btnRevokeQuickShareUrl" title="Revoke access immediately" style="font-size:10.5px;color:#ef4444;border-color:rgba(239,68,68,0.35);">Revoke</button>
+                   <button type="button" class="btn-xs" id="btnOpenFullShareModalFromQuick" title="Custom permissions (Measurements, Download, Project Group)" style="font-size:10.5px;">More Options...</button>`
+                : ""
+            }
+          </div>
+        </div>
+      `;
+      positionPopover();
+
+      const inpEl = bodyArea.querySelector("#inpStudioQuickShareUrl");
+      const copyBtn = bodyArea.querySelector("#btnCopyStudioQuickShareUrl");
+      inpEl?.addEventListener("click", () => inpEl.select());
+
+      copyBtn?.addEventListener("click", async () => {
+        await copyTextToClipboard(fullUrl);
+        inpEl?.select?.();
+        flashCopyButtonState(copyBtn);
+        showToast(`Copied View & Comment link: ${fullUrl}`);
+      });
+
+      bodyArea.querySelector("#btnRotateQuickShareUrl")?.addEventListener("click", async () => {
+        try {
+          await apiPost("/api/share/revoke", { token: linkObj.token });
+          const nextLink = await ensureQuickViewCommentShareLink(scan, true);
+          await renderReadyLink(nextLink, true);
+        } catch (err) {
+          showToast(`Reset Link Error: ${err.message}`);
+        }
+      });
+
+      bodyArea.querySelector("#btnRevokeQuickShareUrl")?.addEventListener("click", async () => {
+        try {
+          await apiPost("/api/share/revoke", { token: linkObj.token });
+          showToast(`Revoked View & Comment link for ${scan.name || scan.scan_id}`);
+          closeQuickSingleScanSharePopover();
+        } catch (err) {
+          showToast(`Revoke Error: ${err.message}`);
+        }
+      });
+
+      bodyArea.querySelector("#btnOpenFullShareModalFromQuick")?.addEventListener("click", () => {
+        closeQuickSingleScanSharePopover();
+        openSharingModal("scan", scan.scan_id);
+      });
+
+      if (autoCopy) {
+        const copiedOk = await copyTextToClipboard(fullUrl);
+        inpEl?.select?.();
+        if (copiedOk) {
+          flashCopyButtonState(copyBtn);
+          showToast(`Copied View & Comment link: ${fullUrl}`);
+        }
+      }
+    };
+
+    try {
+      const linkObj = await ensureQuickViewCommentShareLink(scan, false);
+      await renderReadyLink(linkObj, true);
+    } catch (err) {
+      const bodyArea = pop.querySelector("#quickShareBodyArea");
+      if (bodyArea) {
+        bodyArea.innerHTML = `<span style="color:#ef4444;font-size:11.5px;">${escapeHtml(err.message || "Failed to generate share link.")}</span>`;
+      }
+    }
+  }
+
+  document.getElementById("btnStudioQuickShare")?.addEventListener("click", (ev) => {
+    ev.preventDefault();
+    ev.stopPropagation();
+    if (STATE.multiAlign?.active) {
+      showToast("Unavailable during Multi-Scan Editing — merge scans first to share unified scan");
+      return;
+    }
+    const activeScan =
+      STATE.activeScan || STATE.scans.find((s) => s.scan_id === STATE.activeScanId) || null;
+    openQuickSingleScanSharePopover(ev.currentTarget, activeScan);
+  });
+
+  document.getElementById("btnPreviewQuickShare")?.addEventListener("click", (ev) => {
+    ev.preventDefault();
+    ev.stopPropagation();
+    const previewScan =
+      STATE.scans.find((s) => s.scan_id === (STATE.selectedTimelineScanId || STATE.activeScanId)) ||
+      STATE.activeScan ||
+      null;
+    openQuickSingleScanSharePopover(ev.currentTarget, previewScan);
+  });
+
   // 5C. Client-Side Offline Cache & User Settings Modal (Requirement 5)
   async function openOfflineCacheModal() {
     openModal("modalOfflineCache");
@@ -18861,7 +19173,15 @@
         if (banner && scopeLbl) {
           banner.style.display = "flex";
           const friendlyScope = resolveShareScopeTitle(data.share_link.scope_type, data.share_link.target_id);
-          scopeLbl.textContent = `${data.share_link.label} (${String(data.share_link.scope_type || "scan").toUpperCase()}: ${friendlyScope}) — Guest Access (Level 5: Distance, Area & Coordinates only).`;
+          const linkPerms = [
+            "3D View",
+            data.share_link.allow_measurements ? "Measurements" : null,
+            data.share_link.allow_comments ? "3D Comments" : null,
+            data.share_link.allow_download ? "Download" : null,
+          ]
+            .filter(Boolean)
+            .join(" + ");
+          scopeLbl.textContent = `${data.share_link.label} (${String(data.share_link.scope_type || "scan").toUpperCase()}: ${friendlyScope}) — Authorized Scope: ${linkPerms} only.`;
         }
         applyRolePermissionsToUI();
       }

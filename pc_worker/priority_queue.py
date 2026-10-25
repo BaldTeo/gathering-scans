@@ -1231,6 +1231,14 @@ class ScanQueueDB:
             conn.commit()
         return rec
 
+    def list_comments(self, scan_id: str) -> List[Dict[str, Any]]:
+        with DB_LOCK, self._connect() as conn:
+            rows = conn.execute(
+                "SELECT * FROM scan_comments WHERE scan_id = ? ORDER BY created_at DESC",
+                (scan_id,),
+            ).fetchall()
+            return [dict(r) for r in rows]
+
     def get_comment(self, comment_id: str) -> Optional[Dict[str, Any]]:
         with DB_LOCK, self._connect() as conn:
             row = conn.execute("SELECT * FROM scan_comments WHERE comment_id = ?", (comment_id,)).fetchone()
