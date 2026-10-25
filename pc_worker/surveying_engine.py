@@ -4959,7 +4959,7 @@ class SurveyingEngine:
             road_grid_closed = binary_closing(road_grid_raw & raw_occ_closed, structure=np.ones((5, 5), dtype=bool))
             road_grid_closed = binary_closing(road_grid_closed, structure=np.ones((3, 3), dtype=bool))
             road_grid = binary_opening(road_grid_closed, structure=np.ones((3, 3), dtype=bool))
-            # Punch out genuine ground-level grass lawns (from ground triangles, NOT overhanging tree canopies!) & circular tree planters (r=0.75m)
+            # Punch out genuine ground-level grass lawns & park turf beds (normalized 9x9 ground window mean + direct green grass) & circular tree planters
             ground_grass_tri = on_ground & (exg >= 0.045)
             if np.any(ground_grass_tri):
                 gg_sp = ground_grass_tri[splat_t_idx]
@@ -4967,7 +4967,22 @@ class SurveyingEngine:
                 ground_grass_grid[in_all[gg_sp], ie_all[gg_sp]] = True
                 ground_grass_grid = binary_opening(ground_grass_grid, structure=np.ones((3, 3), dtype=bool))
                 road_grid = road_grid & (~ground_grass_grid)
-            r_planter_px = max(2, int(round(0.75 / res)))
+            g_cnt = np.zeros((ny, nx), dtype=np.float32)
+            g_exg_sum = np.zeros((ny, nx), dtype=np.float32)
+            g_rb_sum = np.zeros((ny, nx), dtype=np.float32)
+            og_sp = on_ground[splat_t_idx]
+            if np.any(og_sp):
+                t_og = splat_t_idx[og_sp]
+                np.add.at(g_cnt, (in_all[og_sp], ie_all[og_sp]), 1.0)
+                np.add.at(g_exg_sum, (in_all[og_sp], ie_all[og_sp]), exg[t_og].astype(np.float32))
+                np.add.at(g_rb_sum, (in_all[og_sp], ie_all[og_sp]), rb_diff[t_og].astype(np.float32))
+                w_cnt = uniform_filter(g_cnt, size=9)
+                g_exg_m9 = uniform_filter(g_exg_sum, size=9) / np.maximum(w_cnt, 1e-5)
+                g_rb_m9 = uniform_filter(g_rb_sum, size=9) / np.maximum(w_cnt, 1e-5)
+                turf_bed_grid = (w_cnt > 0.05) & (g_exg_m9 >= 0.032) & (g_rb_m9 >= 0.062)
+                turf_bed_grid = binary_closing(turf_bed_grid, structure=np.ones((5, 5), dtype=bool))
+                road_grid = road_grid & (~turf_bed_grid)
+            r_planter_px = max(2, int(round(0.85 / res)))
             yy_grid, xx_grid = np.ogrid[0:ny, 0:nx]
             for t_obj in trees_list:
                 te_p, tn_p, _ = t_obj["trunk_twd97"]
