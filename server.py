@@ -18,11 +18,13 @@ import socket
 import struct
 import base64
 import shutil
+import html
 import hashlib
 import mimetypes
 import threading
 import http.client
 import urllib.parse
+from datetime import datetime, timezone
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from typing import Dict, Any, Optional, Tuple
 
@@ -38,6 +40,7 @@ from pc_worker.config import (
     SERVER_HOST,
     SERVER_PORT,
     VPS_HOST,
+    PUBLIC_BASE_URL,
     TUNNEL_SHARED_KEY,
     LOCAL_SCANS_ROOT,
     REPORTS_DIR,
@@ -71,6 +74,8 @@ from pc_worker.auth_and_sharing import (
     normalize_role,
     get_role_permissions,
     verify_session_token,
+    is_link_preview_bot,
+    parse_user_agent,
 )
 from pc_worker.gchat_notifier import GoogleChatNotifier
 
@@ -951,7 +956,7 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
         self.send_header("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
         self.send_header(
             "Access-Control-Allow-Headers",
-            "Content-Type, Authorization, X-Share-Token, X-Session-Token, X-Tunnel-Key, X-User-Email, X-User-Name, Range",
+            "Content-Type, Authorization, X-Share-Token, X-Session-Token, X-Telemetry-Session, X-Client-IP, X-Tunnel-Key, X-User-Email, X-User-Name, Range",
         )
         self.send_header("Access-Control-Expose-Headers", "Content-Range, Content-Length, Accept-Ranges")
         self.send_header("Alt-Svc", "clear")
@@ -967,8 +972,21 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
         if path.startswith("/s/"):
             tok = path[len("/s/") :].strip("/")
             safe_tok = urllib.parse.quote(tok, safe="-_")
+            ua = self.headers.get("User-Agent", "")
+            if is_link_preview_bot(ua):
+                self.send_response(200)
+                self.send_header("Content-Type", "text/html; charset=utf-8")
+                self.send_header("Cache-Control", "no-cache")
+                self.end_headers()
+                return
             self.send_response(302)
             self.send_header("Location", f"/?share={safe_tok}")
+            self.end_headers()
+            return
+        if path.startswith("/api/scans/") and (path.endswith("/thumbnail") or path.endswith("/thumbnail.png")):
+            self.send_response(200)
+            self.send_header("Content-Type", "image/png")
+            self.send_header("Cache-Control", "public, max-age=3600")
             self.end_headers()
             return
         super().do_HEAD()
@@ -988,6 +1006,217 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
             return header_tok
         q_tok = query_params.get("share", [""])[0].strip()
         return q_tok
+
+    def _extract_client_ip(self) -> str:
+        for hdr in ("CF-Connecting-IP", "True-Client-IP", "X-Real-IP"):
+            val = (self.headers.get(hdr) or "").strip()
+            if val:
+                return val.split(",")[0].strip()
+        xff = (self.headers.get("X-Forwarded-For") or "").strip()
+        if xff:
+            parts = [p.strip() for p in xff.split(",") if p.strip()]
+            for p in parts:
+                if not p.startswith(("127.", "10.", "172.16.", "172.17.", "172.18.", "172.19.", "172.2", "172.30.", "172.31.", "192.168.", "::1")):
+                    return p
+            if parts:
+                return parts[0]
+        xci = (self.headers.get("X-Client-IP") or "").strip()
+        if xci:
+            return xci.split(",")[0].strip()
+        try:
+            return str(self.client_address[0] or "")
+        except Exception:
+            return ""
+
+    def _resolve_public_origin(self) -> str:
+        fwd_proto = (self.headers.get("X-Forwarded-Proto") or "").split(",")[0].strip().lower()
+        host_hdr = (self.headers.get("X-Forwarded-Host") or self.headers.get("Host") or "").split(",")[0].strip()
+        if host_hdr and not host_hdr.startswith(("127.0.0.1", "localhost", "0.0.0.0")):
+            scheme = fwd_proto if fwd_proto in ("http", "https") else "https"
+            return f"{scheme}://{host_hdr}".rstrip("/")
+        return PUBLIC_BASE_URL.rstrip("/")
+
+    def _build_share_preview_meta(self, share_token: str) -> Dict[str, str]:
+        tok = (share_token or "").strip()
+        safe_tok = urllib.parse.quote(tok, safe="-_")
+        origin = self._resolve_public_origin()
+        share_url = f"{origin}/s/{safe_tok}" if safe_tok else origin
+        default_img = f"{origin}/assets/gathering_cloud_logo.png"
+
+        ok, _, link, allowed_scans = AUTH_SHARE.validate_share_access(tok, increment_view=False)
+        if not ok and tok:
+            ok_c, _, link_c, allowed_c = self._validate_cloud_share_token(tok)
+            if ok_c:
+                ok, link, allowed_scans = ok_c, link_c, allowed_c
+            elif link_c and not link:
+                link = link_c
+
+        if not ok or not link:
+            return {
+                "title": "GatheringCloud 3D Scan · Link Inactive",
+                "description": "This shared 3D scan link is inactive or has been revoked.",
+                "image": default_img,
+                "url": share_url,
+                "redirect_url": f"/?share={safe_tok}" if safe_tok else "/",
+            }
+
+        allow_meas = bool(link.get("allow_measurements", False))
+        allow_cmts = bool(link.get("allow_comments", False))
+        allow_dl = bool(link.get("allow_download", False))
+        if allow_meas and allow_cmts and allow_dl:
+            perms_short = "View, Measure, Comment & Download"
+        elif allow_meas and allow_cmts:
+            perms_short = "View, Measure & Comment"
+        elif not allow_meas and allow_cmts and not allow_dl:
+            perms_short = "View & Comment"
+        elif allow_meas and not allow_cmts:
+            perms_short = "View & Measure"
+        else:
+            perms_short = "3D View"
+
+        scope_type = str(link.get("scope_type") or "scan").lower()
+        target_id = str(link.get("target_id") or "")
+
+        # Fallback scan lookup from cloud manifest if PC/VPS DB didn't return scan rows
+        if not allowed_scans:
+            m_scans = (_load_cloud_manifest().get("scans") or [])
+            if scope_type == "scan":
+                allowed_scans = [s for s in m_scans if str(s.get("scan_id")) == target_id]
+            else:
+                allowed_scans = [s for s in m_scans if str(s.get("project_group")) == target_id]
+
+        lead_scan = allowed_scans[0] if allowed_scans else None
+        if lead_scan and lead_scan.get("scan_id"):
+            lead_sid = urllib.parse.quote(str(lead_scan["scan_id"]), safe="-_")
+            img_url = f"{origin}/api/scans/{lead_sid}/thumbnail.png?share={safe_tok}"
+        else:
+            img_url = default_img
+
+        if scope_type == "group":
+            n_scans = len(allowed_scans)
+            count_txt = f"{n_scans} Scans" if n_scans != 1 else "1 Scan"
+            title = f"{target_id} ({count_txt}) · 3D Site"
+            desc = f"Interactive 3D site ({count_txt.lower()}) · {perms_short} · Tap to explore in 3D."
+        else:
+            scan_name = str((lead_scan or {}).get("name") or link.get("label") or target_id).strip()
+            if scan_name.startswith("View & Comment — "):
+                scan_name = scan_name[len("View & Comment — ") :].strip()
+            elif scan_name.startswith("External View — "):
+                scan_name = scan_name[len("External View — ") :].strip()
+            site_grp = str((lead_scan or {}).get("project_group") or "").strip()
+            cap_date = str((lead_scan or {}).get("capture_date") or "").strip()
+            title = f"{scan_name} · 3D Scan"
+            meta_bits = ["Interactive 3D scan"]
+            if site_grp and site_grp.lower() not in scan_name.lower():
+                meta_bits.append(f"Site: {site_grp}")
+            elif cap_date:
+                meta_bits.append(cap_date)
+            meta_bits.append(perms_short)
+            desc = " · ".join(meta_bits) + ". Tap to explore in 3D."
+
+        return {
+            "title": title[:95],
+            "description": desc[:160],
+            "image": img_url,
+            "url": share_url,
+            "redirect_url": f"/?share={safe_tok}",
+        }
+
+    def _render_share_og_tags_block(self, meta: Dict[str, str]) -> str:
+        t = html.escape(meta.get("title") or "GatheringCloud 3D Scans", quote=True)
+        d = html.escape(meta.get("description") or "Interactive 3D site scan on GatheringCloud.", quote=True)
+        im = html.escape(meta.get("image") or "", quote=True)
+        u = html.escape(meta.get("url") or PUBLIC_BASE_URL, quote=True)
+        return (
+            f"  <title>{t}</title>\n"
+            f'  <meta name="description" content="{d}" />\n'
+            f'  <meta property="og:site_name" content="GatheringCloud 3D Scans" />\n'
+            f'  <meta property="og:type" content="website" />\n'
+            f'  <meta property="og:title" content="{t}" />\n'
+            f'  <meta property="og:description" content="{d}" />\n'
+            f'  <meta property="og:url" content="{u}" />\n'
+            f'  <meta property="og:image" content="{im}" />\n'
+            f'  <meta property="og:image:type" content="image/png" />\n'
+            f'  <meta property="og:image:width" content="640" />\n'
+            f'  <meta property="og:image:height" content="360" />\n'
+            f'  <meta name="twitter:card" content="summary_large_image" />\n'
+            f'  <meta name="twitter:title" content="{t}" />\n'
+            f'  <meta name="twitter:description" content="{d}" />\n'
+            f'  <meta name="twitter:image" content="{im}" />'
+        )
+
+    def _record_and_forward_bot_unfurl(self, token: str):
+        tok = (token or "").strip()
+        if not tok:
+            return
+        ip_addr = self._extract_client_ip()
+        ua_str = self.headers.get("User-Agent", "")
+        ref_str = self.headers.get("Referer", "")
+        entry_u = self.path
+        try:
+            AUTH_SHARE.record_bot_unfurl(tok, ip_address=ip_addr, user_agent=ua_str, referrer=ref_str, entry_url=entry_u)
+        except Exception:
+            pass
+        if os.name != "nt":
+            def _bg_fwd():
+                tun_sock, done_evt, proto_ver = _acquire_vps_tunnel_socket(timeout=1.5)
+                if not tun_sock or not done_evt:
+                    return
+                try:
+                    tun_sock.settimeout(5.0)
+                    ua_info = parse_user_agent(ua_str)
+                    ua_browser = ua_info.get("browser") or "Bot"
+                    bucket = int(time.time() // 30)
+                    bot_sid = f"bot_{hashlib.sha1(f'{tok}|{ip_addr}|{ua_str}|{bucket}'.encode('utf-8')).hexdigest()[:16]}"
+                    bot_vid = f"bot_{hashlib.sha1(f'{ip_addr}|{ua_browser}'.encode('utf-8')).hexdigest()[:12]}"
+                    body_bytes = json.dumps(
+                        {
+                            "token": tok,
+                            "session_id": bot_sid,
+                            "visitor_id": bot_vid,
+                            "viewer_name": ua_browser if ua_browser != "Bot" else "Link Preview Bot",
+                            "is_bot": True,
+                            "entry_url": entry_u,
+                            "events": [{"t": 0, "type": "preview_unfurl", "detail": f"Link preview fetched ({ua_browser})"}],
+                        }
+                    ).encode("utf-8")
+                    env = json.dumps(
+                        {
+                            "method": "POST",
+                            "path": "/api/share/telemetry",
+                            "headers": {
+                                "Content-Type": "application/json",
+                                "User-Agent": ua_str,
+                                "Referer": ref_str,
+                                "X-Client-IP": ip_addr,
+                                "X-Share-Token": tok,
+                            },
+                            "body_b64": base64.b64encode(body_bytes).decode("ascii"),
+                        }
+                    ).encode("utf-8")
+                    tun_sock.sendall(struct.pack("!I", len(env)) + env)
+                    lb = _recv_exact(tun_sock, 4)
+                    if lb:
+                        (ml,) = struct.unpack("!I", lb)
+                        mr = _recv_exact(tun_sock, ml)
+                        if mr:
+                            rm = json.loads(mr.decode("utf-8"))
+                            if rm.get("chunked_v2"):
+                                while True:
+                                    cb = _recv_exact(tun_sock, 4)
+                                    if not cb:
+                                        break
+                                    (cl,) = struct.unpack("!I", cb)
+                                    if cl == 0:
+                                        break
+                                    _recv_exact(tun_sock, cl)
+                                VPS_TUNNEL_POOL.put((tun_sock, done_evt, time.time(), proto_ver))
+                                return
+                    done_evt.set()
+                except Exception:
+                    done_evt.set()
+
+            threading.Thread(target=_bg_fwd, daemon=True).start()
 
     _GZIP_FILE_CACHE: Dict[str, Tuple[float, bytes]] = {}
     _OPTIMIZED_TILESET_CACHE: Dict[str, Tuple[float, bytes]] = {}
@@ -1734,9 +1963,21 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
             return False, "Invalid external share link token.", None, []
         if link.get("revoked"):
             return False, "This external share link has been revoked.", link, []
-        exp = float(link.get("expires_at") or 0)
-        if exp > 0 and time.time() > exp:
-            return False, "This external share link has expired.", link, []
+        raw_exp = str(link.get("expires_at") or "").strip()
+        if raw_exp:
+            try:
+                if raw_exp.replace(".", "", 1).isdigit():
+                    if float(raw_exp) > 0 and time.time() > float(raw_exp):
+                        return False, "This external share link has expired.", link, []
+                else:
+                    exp_dt = datetime.fromisoformat(raw_exp.replace("Z", "+00:00"))
+                    if datetime.now(timezone.utc) > exp_dt:
+                        return False, "This external share link has expired.", link, []
+            except Exception:
+                pass
+
+        scope_type = str(link.get("scope_type") or "").strip().lower()
+        target_id = str(link.get("target_id") or "").strip()
         allowed_ids = link.get("allowed_scan_ids") or []
         if isinstance(allowed_ids, str):
             try:
@@ -1744,17 +1985,23 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
             except Exception:
                 allowed_ids = [x.strip() for x in allowed_ids.split(",") if x.strip()]
         scope_grp = link.get("project_group") or ""
+
         allowed_scans = []
         for s in scans:
-            sid = s.get("scan_id")
-            if allowed_ids and sid in allowed_ids:
+            sid = str(s.get("scan_id") or "")
+            sgrp = str(s.get("project_group") or "")
+            if scope_type == "scan" and target_id:
+                if sid == target_id:
+                    allowed_scans.append(s)
+            elif scope_type == "group" and target_id:
+                if sgrp == target_id:
+                    allowed_scans.append(s)
+            elif allowed_ids and sid in allowed_ids:
                 allowed_scans.append(s)
-            elif not allowed_ids and scope_grp and s.get("project_group") == scope_grp:
+            elif not allowed_ids and scope_grp and sgrp == scope_grp:
                 allowed_scans.append(s)
-            elif not allowed_ids and not scope_grp:
-                allowed_scans.append(s)
-        if requested_scan_id and not any(s.get("scan_id") == requested_scan_id for s in allowed_scans):
-            return False, f"Share token is not authorized for scan {requested_scan_id}.", link, []
+        if requested_scan_id and not any(str(s.get("scan_id")) == requested_scan_id for s in allowed_scans):
+            return False, f"Forbidden: Scan '{requested_scan_id}' is outside the authorized scope of this share link.", link, []
         return True, "", link, allowed_scans
 
     def _serve_from_gdrive_cloud_if_available(self, path: str, share_token: str = "") -> bool:
@@ -1988,6 +2235,8 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
             try:
                 tun_sock.settimeout(900.0 if is_long_post else 60.0)
                 req_headers = {k: v for k, v in self.headers.items()}
+                if "X-Client-IP" not in req_headers and "x-client-ip" not in {k.lower() for k in req_headers}:
+                    req_headers["X-Client-IP"] = self._extract_client_ip()
                 envelope = json.dumps(
                     {
                         "method": method,
@@ -2218,6 +2467,8 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
             or path.startswith("/api/comments/")
             or path == "/api/scans/delete"
             or path.startswith("/api/scans/bin")
+            or path.endswith("/thumbnail")
+            or path.endswith("/thumbnail.png")
         ):
             return False
 
@@ -2393,10 +2644,43 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
             self.send_json(_test_gdrive_service_account())
             return
 
-        # 0b. Scoped External Share Link Short URL: /s/<token> (handled directly in <1ms on both VPS and PC)
+        # 0b. Scoped External Share Link Short URL: /s/<token>
+        # Serves rich, short Open Graph / Twitter Card HTML directly to chat link-preview crawlers
+        # (LINE, WhatsApp, Slack, Telegram, Discord, iMessage, etc.) while 302-redirecting browsers in <1ms.
         if path.startswith("/s/"):
             tok = path[len("/s/") :].strip("/")
             safe_tok = urllib.parse.quote(tok, safe="-_")
+            ua_hdr = self.headers.get("User-Agent", "")
+            if is_link_preview_bot(ua_hdr):
+                self._record_and_forward_bot_unfurl(tok)
+                meta = self._build_share_preview_meta(tok)
+                og_block = self._render_share_og_tags_block(meta)
+                redir_u = html.escape(meta.get("redirect_url") or f"/?share={safe_tok}", quote=True)
+                safe_title = html.escape(meta.get("title") or "GatheringCloud 3D Scans")
+                safe_desc = html.escape(meta.get("description") or "")
+                bot_html = (
+                    "<!DOCTYPE html>\n"
+                    '<html lang="zh-Hant">\n'
+                    "<head>\n"
+                    '  <meta charset="UTF-8" />\n'
+                    '  <meta name="viewport" content="width=device-width, initial-scale=1.0" />\n'
+                    f"{og_block}\n"
+                    f'  <meta http-equiv="refresh" content="0;url={redir_u}" />\n'
+                    "</head>\n"
+                    "<body>\n"
+                    f"  <h1>{safe_title}</h1>\n"
+                    f"  <p>{safe_desc}</p>\n"
+                    f'  <script>window.location.replace("{redir_u}");</script>\n'
+                    "</body>\n"
+                    "</html>\n"
+                ).encode("utf-8")
+                self.send_response(200)
+                self.send_header("Content-Type", "text/html; charset=utf-8")
+                self.send_header("Content-Length", str(len(bot_html)))
+                self.send_header("Cache-Control", "no-cache")
+                self.end_headers()
+                self.wfile.write(bot_html)
+                return
             self.send_response(302)
             self.send_header("Location", f"/?share={safe_tok}")
             self.end_headers()
@@ -2436,8 +2720,12 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
         if path == "/api/scans":
             sync_scans_with_filesystem()
             if share_token:
+                is_bg_poll = (query.get("bg", ["0"])[0] == "1")
+                has_telem_hdr = bool(self.headers.get("X-Telemetry-Session", "").strip())
+                ua_scan = self.headers.get("User-Agent", "")
+                inc_view = (not is_bg_poll) and (not has_telem_hdr) and (not is_link_preview_bot(ua_scan))
                 ok, reason, link, allowed_scans = AUTH_SHARE.validate_share_access(
-                    share_token, increment_view=True
+                    share_token, increment_view=inc_view
                 )
                 if not ok:
                     self.send_json({"error": reason, "revoked": True}, status=403)
@@ -2737,6 +3025,28 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
                 self.send_json({"status": "ok", "links": merged_links})
                 return
             self.send_json({"status": "ok", "links": local_links})
+            return
+
+        if path == "/api/share/analytics":
+            if share_token:
+                self.send_json({"error": "Forbidden for external guest token"}, status=403)
+                return
+            _, actor_role_an, actor_perms_an = self._resolve_request_role(None, query, share_token)
+            if not actor_perms_an.get("can_share"):
+                self.send_json({"error": f"Role '{actor_role_an}' cannot inspect share link analytics."}, status=403)
+                return
+            tok_q = (query.get("token") or [""])[0].strip()
+            try:
+                lim_q = max(10, min(500, int((query.get("limit") or ["200"])[0])))
+            except Exception:
+                lim_q = 200
+            analytics_res = AUTH_SHARE.get_share_analytics(token=tok_q or None, limit=lim_q)
+            if os.name != "nt" and tok_q and not analytics_res.get("link"):
+                m_links = _load_cloud_manifest().get("share_links") or []
+                m_match = next((l for l in m_links if l.get("token") == tok_q), None)
+                if m_match:
+                    analytics_res["link"] = m_match
+            self.send_json(analytics_res)
             return
 
         if path == "/api/share/verify":
@@ -3380,13 +3690,50 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
             self._serve_file_with_range(fpath, download_name=fname)
             return
 
-        # 15. Serve Static Frontend Files from web/
+        # 15. Serve Static Frontend Files from web/ (with dynamic Open Graph / Link Preview meta for ?share=<token>)
         if path == "/" or path == "":
             rel_web = "index.html"
         else:
             rel_web = path.lstrip("/")
         web_target = os.path.join(WEB_DIR, os.path.normpath(rel_web))
         if os.path.isfile(web_target) and os.path.abspath(web_target).startswith(os.path.abspath(WEB_DIR)):
+            if rel_web == "index.html" and share_token:
+                ua_idx = self.headers.get("User-Agent", "")
+                if is_link_preview_bot(ua_idx):
+                    self._record_and_forward_bot_unfurl(share_token)
+                try:
+                    with open(web_target, "r", encoding="utf-8") as f_html:
+                        raw_html = f_html.read()
+                    meta = self._build_share_preview_meta(share_token)
+                    og_block = self._render_share_og_tags_block(meta)
+                    if "<!-- GS_SHARE_OG_START -->" in raw_html and "<!-- GS_SHARE_OG_END -->" in raw_html:
+                        s_idx = raw_html.index("<!-- GS_SHARE_OG_START -->")
+                        e_idx = raw_html.index("<!-- GS_SHARE_OG_END -->") + len("<!-- GS_SHARE_OG_END -->")
+                        raw_html = (
+                            raw_html[:s_idx]
+                            + "<!-- GS_SHARE_OG_START -->\n"
+                            + og_block
+                            + "\n  <!-- GS_SHARE_OG_END -->"
+                            + raw_html[e_idx:]
+                        )
+                    else:
+                        raw_html = re.sub(
+                            r"<title>.*?</title>",
+                            og_block,
+                            raw_html,
+                            count=1,
+                            flags=re.DOTALL,
+                        )
+                    html_bytes = raw_html.encode("utf-8")
+                    self.send_response(200)
+                    self.send_header("Content-Type", "text/html; charset=utf-8")
+                    self.send_header("Content-Length", str(len(html_bytes)))
+                    self.send_header("Cache-Control", "no-cache")
+                    self.end_headers()
+                    self.wfile.write(html_bytes)
+                    return
+                except Exception:
+                    pass
             self._serve_file_with_range(web_target)
             return
 
@@ -3453,7 +3800,14 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
                 m_cur["updated_at"] = int(time.time())
                 _save_cloud_manifest(m_cur)
                 _VPS_RAM_FALLBACK_CACHE.clear()
-                self.send_json({"status": "ok", "share_links_count": len(m_cur["share_links"])})
+                vps_sessions = AUTH_SHARE.export_recent_share_sessions(limit=400) if os.name != "nt" else []
+                self.send_json(
+                    {
+                        "status": "ok",
+                        "share_links_count": len(m_cur["share_links"]),
+                        "vps_share_sessions": vps_sessions,
+                    }
+                )
                 return
             missing_vps_pkgs = []
             if isinstance(payload.get("manifest"), dict):
@@ -3494,6 +3848,8 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
                 _save_cloud_auth(payload["auth"])
             st_resp = self._build_cloud_manifest_status()
             st_resp["missing_vps_packages"] = missing_vps_pkgs
+            if os.name != "nt":
+                st_resp["vps_share_sessions"] = AUTH_SHARE.export_recent_share_sessions(limit=400)
             self.send_json(st_resp)
             return
 
@@ -4206,6 +4562,50 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
                 cmt = DB.add_comment(payload)
                 _VPS_RAM_FALLBACK_CACHE.clear()
                 self.send_json({"status": "ok", "comment": cmt})
+                return
+
+            # 9a. Share Link Visitor Session & Tool Telemetry
+            if path == "/api/share/telemetry":
+                tok_tel = str(payload.get("token") or payload.get("share_token") or share_token or "").strip()
+                if not tok_tel:
+                    self.send_json({"error": "Missing share token"}, status=400)
+                    return
+                ok_t, reason_t, link_t, _ = AUTH_SHARE.validate_share_access(tok_tel, increment_view=False)
+                if not ok_t and os.name != "nt":
+                    ok_c, reason_c, link_c, _ = self._validate_cloud_share_token(tok_tel)
+                    if ok_c and link_c:
+                        ok_t, reason_t, link_t = ok_c, reason_c, link_c
+                        try:
+                            if not AUTH_SHARE.get_share_link(tok_tel):
+                                AUTH_SHARE.create_share_link(
+                                    {
+                                        "token": tok_tel,
+                                        "label": link_c.get("label") or f"External View — {link_c.get('target_id', '')}",
+                                        "scope_type": link_c.get("scope_type") or "scan",
+                                        "target_id": link_c.get("target_id") or "",
+                                        "created_by_email": link_c.get("created_by_email") or "system@gatheren.com.tw",
+                                        "created_by_name": link_c.get("created_by_name") or "System",
+                                        "expires_at": link_c.get("expires_at") or "",
+                                        "allow_download": bool(link_c.get("allow_download", False)),
+                                        "allow_measurements": bool(link_c.get("allow_measurements", True)),
+                                        "allow_comments": bool(link_c.get("allow_comments", True)),
+                                    }
+                                )
+                        except Exception:
+                            pass
+                if not ok_t:
+                    self.send_json({"error": reason_t or "Invalid or revoked share link"}, status=403)
+                    return
+                payload["token"] = tok_tel
+                req_meta = {
+                    "share_token": tok_tel,
+                    "ip_address": self._extract_client_ip(),
+                    "user_agent": self.headers.get("User-Agent", ""),
+                    "referrer": self.headers.get("Referer", ""),
+                    "accept_language": self.headers.get("Accept-Language", ""),
+                }
+                tel_res = AUTH_SHARE.record_or_update_share_session(payload, request_meta=req_meta)
+                self.send_json(tel_res)
                 return
 
             # 9. Scoped External Share Link Creation & Revocation

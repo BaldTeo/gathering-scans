@@ -637,6 +637,8 @@ def sync_all_scans_to_gdrive_and_vps(db: Any, auth_share: Any = None, force: boo
             try:
                 rj = json.loads(resp.read().decode("utf-8"))
                 missing_vps_pkgs = rj.get("missing_vps_packages") or []
+                if auth_share and hasattr(auth_share, "merge_share_sessions") and isinstance(rj.get("vps_share_sessions"), list):
+                    auth_share.merge_share_sessions(rj["vps_share_sessions"])
             except Exception:
                 pass
     except Exception as e:
@@ -705,6 +707,12 @@ def sync_share_links_to_vps_manifest(auth_share: Any) -> bool:
             method="POST",
         )
         with urllib.request.urlopen(req, timeout=8) as resp:
+            try:
+                rj = json.loads(resp.read().decode("utf-8"))
+                if hasattr(auth_share, "merge_share_sessions") and isinstance(rj.get("vps_share_sessions"), list):
+                    auth_share.merge_share_sessions(rj["vps_share_sessions"])
+            except Exception:
+                pass
             return resp.status == 200
     except Exception as e:
         print(f"[GDriveCloudSync] Share links fast-sync note: {e}")

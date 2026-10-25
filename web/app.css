@@ -1354,7 +1354,7 @@ html[data-theme="dark"] .gs-lowres-preview-pill {
 }
 
 .gs-sharing-modal {
-  max-width: 980px;
+  max-width: 1060px;
 }
 
 .gs-share-latest-bar {
@@ -1462,6 +1462,190 @@ html[data-theme="dark"] .gs-lowres-preview-pill {
   background: var(--ui-bg-subtle);
   border: 1px solid var(--ui-border);
   color: var(--ui-text-secondary);
+}
+
+.gs-share-viewer-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: rgba(15, 23, 42, 0.16);
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  border-radius: 6px;
+  padding: 2px 7px;
+  flex-shrink: 0;
+}
+
+.gs-share-viewer-input {
+  background: transparent;
+  border: none;
+  outline: none;
+  color: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  width: 138px;
+}
+
+.gs-share-viewer-input::placeholder {
+  color: inherit;
+  opacity: 0.72;
+}
+
+.gs-share-analytics-drawer {
+  margin-top: 12px;
+  border: 1px solid var(--ui-border-strong);
+  border-radius: 10px;
+  background: var(--ui-bg-subtle);
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.gs-share-analytics-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--ui-border);
+}
+
+.gs-share-analytics-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--ui-text-primary);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.gs-share-analytics-sub {
+  font-size: 11px;
+  color: var(--ui-text-muted);
+  margin-top: 2px;
+}
+
+.gs-analytics-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 8px;
+}
+
+.gs-analytics-kpi-card {
+  background: var(--ui-bg-surface);
+  border: 1px solid var(--ui-border);
+  border-radius: 8px;
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.gs-analytics-kpi-label {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--ui-text-muted);
+}
+
+.gs-analytics-kpi-val {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--ui-text-primary);
+}
+
+.gs-analytics-kpi-sub {
+  font-size: 10.5px;
+  color: var(--ui-text-secondary);
+}
+
+.gs-analytics-sessions-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 290px;
+  overflow-y: auto;
+  padding-right: 2px;
+}
+
+.gs-analytics-session-card {
+  background: var(--ui-bg-surface);
+  border: 1px solid var(--ui-border);
+  border-radius: 8px;
+  padding: 9px 11px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.gs-analytics-session-card.is-bot-row {
+  opacity: 0.78;
+  border-style: dashed;
+}
+
+.gs-analytics-session-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.gs-analytics-meta-line {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  font-size: 11px;
+  color: var(--ui-text-secondary);
+}
+
+.gs-analytics-tools-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  align-items: center;
+}
+
+.gs-analytics-tool-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10.5px;
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: var(--ui-bg-subtle);
+  border: 1px solid var(--ui-border-strong);
+  color: var(--ui-text-primary);
+}
+
+.gs-analytics-timeline {
+  margin-top: 2px;
+  font-size: 10.5px;
+  color: var(--ui-text-secondary);
+}
+
+.gs-analytics-timeline summary {
+  cursor: pointer;
+  font-weight: 600;
+  color: var(--ui-accent);
+  user-select: none;
+}
+
+.gs-analytics-timeline-items {
+  margin-top: 5px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: var(--ui-bg-subtle);
+  border: 1px solid var(--ui-border);
+  max-height: 135px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 }
 
 .gs-toast {

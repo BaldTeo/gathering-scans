@@ -401,9 +401,359 @@
     }, durationMs);
   }
 
+  const SHARE_TELEMETRY = (() => {
+    const enabled = Boolean(STATE.shareToken);
+    const randHex = (len = 12) => {
+      try {
+        const arr = new Uint8Array(Math.ceil(len / 2));
+        window.crypto.getRandomValues(arr);
+        return Array.from(arr, (b) => b.toString(16).padStart(2, "0"))
+          .join("")
+          .slice(0, len);
+      } catch (_) {
+        return Math.random().toString(36).slice(2, 2 + len);
+      }
+    };
+    let visitorId = "";
+    try {
+      visitorId = localStorage.getItem("gs_visitor_uid_v1") || "";
+      if (!visitorId) {
+        visitorId = `v_${Date.now().toString(36)}_${randHex(10)}`;
+        localStorage.setItem("gs_visitor_uid_v1", visitorId);
+      }
+    } catch (_) {
+      visitorId = `v_mem_${randHex(10)}`;
+    }
+    const sessionId = `s_${Date.now().toString(36)}_${randHex(8)}`;
+    const openPerfMs = performance.now();
+    const openWallMs = Date.now();
+    let lastInteractionMs = openPerfMs;
+    let totalDurationSec = 0;
+    let activeDurationSec = 0;
+    let fpSeconds = 0;
+    let maxLoadPct = 0;
+    let loadTimeMs = 0;
+    let cameraInteractions = 0;
+    let commentsPosted = 0;
+    let downloadsCount = 0;
+    let measurementsCount = 0;
+    let currentTool = "orbit";
+    let gpuRenderer = "";
+    let flushTimer = null;
+    let eventSeq = 0;
+    const scansMap = new Map();
+    const toolsUsed = Object.create(null);
+    const eventsLog = [];
+
+    const detectGpuRenderer = () => {
+      if (gpuRenderer) return gpuRenderer;
+      try {
+        const c = document.createElement("canvas");
+        const gl = c.getContext("webgl") || c.getContext("experimental-webgl");
+        if (gl) {
+          const dbg = gl.getExtension("WEBGL_debug_renderer_info");
+          gpuRenderer = dbg
+            ? String(gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL) || "")
+            : String(gl.getParameter(gl.RENDERER) || "");
+        }
+      } catch (_) {}
+      return gpuRenderer;
+    };
+
+    const getConnectionSummary = () => {
+      try {
+        const nc = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
+        if (!nc) return "";
+        const parts = [];
+        if (nc.effectiveType) parts.push(String(nc.effectiveType).toUpperCase());
+        if (Number(nc.downlink) > 0) parts.push(`${Number(nc.downlink).toFixed(1)} Mbps`);
+        return parts.join(" · ");
+      } catch (_) {
+        return "";
+      }
+    };
+
+    const getViewerName = () => {
+      try {
+        const savedGuest = (localStorage.getItem("gs_guest_comment_author") || "").trim();
+        if (savedGuest) return savedGuest;
+      } catch (_) {}
+      const uName = String(STATE.currentUser?.name || "").trim();
+      if (uName && !["guest", "guest viewer", "anonymous"].includes(uName.toLowerCase())) {
+        return uName;
+      }
+      return "";
+    };
+
+    const getViewerEmail = () => {
+      const em = String(STATE.currentUser?.email || "").trim();
+      if (em && !em.startsWith("guest@")) return em;
+      return "";
+    };
+
+    const bumpTool = (toolKey, addCount = 1, addSec = 0) => {
+      if (!enabled || !toolKey) return;
+      const k = String(toolKey).replace(/[^a-zA-Z0-9_\-]/g, "").slice(0, 48);
+      if (!k) return;
+      if (!toolsUsed[k]) {
+        toolsUsed[k] = { count: 0, seconds: 0 };
+      }
+      toolsUsed[k].count += addCount;
+      toolsUsed[k].seconds = Math.round((toolsUsed[k].seconds + addSec) * 10) / 10;
+    };
+
+    const pushEvent = (type, detail) => {
+      if (!enabled) return;
+      eventSeq += 1;
+      const tSec = Math.round(((performance.now() - openPerfMs) / 1000) * 10) / 10;
+      eventsLog.push({
+        id: `${sessionId}_${eventSeq}`,
+        t: tSec,
+        type: String(type || "event").slice(0, 40),
+        detail: String(detail || "").slice(0, 180),
+      });
+      if (eventsLog.length > 90) eventsLog.shift();
+    };
+
+    const buildPayload = () => {
+      totalDurationSec = Math.max(totalDurationSec, Math.round(((Date.now() - openWallMs) / 1000) * 10) / 10);
+      const dpr = Number(window.devicePixelRatio || 1);
+      const scr = window.screen
+        ? `${window.screen.width}x${window.screen.height}${dpr > 1 ? ` @${dpr.toFixed(dpr % 1 ? 1 : 0)}x` : ""}`
+        : "";
+      const vp = `${window.innerWidth || 0}x${window.innerHeight || 0}`;
+      let tz = "";
+      try {
+        tz = Intl.DateTimeFormat().resolvedOptions().timeZone || "";
+      } catch (_) {}
+      return {
+        token: STATE.shareToken,
+        session_id: sessionId,
+        visitor_id: visitorId,
+        viewer_name: getViewerName(),
+        viewer_email: getViewerEmail(),
+        language: navigator.language || "",
+        timezone: tz,
+        screen_res: scr,
+        viewport_res: vp,
+        gpu_renderer: detectGpuRenderer(),
+        connection_type: getConnectionSummary(),
+        referrer: document.referrer || "",
+        entry_url: window.location.pathname + window.location.search,
+        total_duration_sec: totalDurationSec,
+        active_duration_sec: Math.round(activeDurationSec * 10) / 10,
+        max_load_pct: Math.round(maxLoadPct * 10) / 10,
+        load_time_ms: loadTimeMs,
+        camera_interactions: cameraInteractions,
+        fp_seconds: Math.round(fpSeconds * 10) / 10,
+        comments_posted: commentsPosted,
+        downloads_count: downloadsCount,
+        measurements_count: measurementsCount,
+        scans_viewed: Array.from(scansMap.values()),
+        tools_used: toolsUsed,
+        events: eventsLog.slice(-80),
+      };
+    };
+
+    const flushNow = (useBeacon = false) => {
+      if (!enabled || !STATE.shareToken) return;
+      if (flushTimer) {
+        clearTimeout(flushTimer);
+        flushTimer = null;
+      }
+      const payload = buildPayload();
+      const url = `/api/share/telemetry?share=${encodeURIComponent(STATE.shareToken)}`;
+      const jsonStr = JSON.stringify(payload);
+      if (useBeacon && navigator.sendBeacon) {
+        try {
+          const blob = new Blob([jsonStr], { type: "application/json" });
+          if (navigator.sendBeacon(url, blob)) return;
+        } catch (_) {}
+      }
+      try {
+        fetch(url, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Share-Token": STATE.shareToken,
+            "X-Telemetry-Session": sessionId,
+          },
+          body: jsonStr,
+          keepalive: Boolean(useBeacon),
+        }).catch(() => {});
+      } catch (_) {}
+    };
+
+    const scheduleFlush = (delayMs = 500) => {
+      if (!enabled) return;
+      if (flushTimer) clearTimeout(flushTimer);
+      flushTimer = setTimeout(() => flushNow(false), delayMs);
+    };
+
+    if (enabled) {
+      pushEvent("session_open", "Opened shared 3D scan link");
+      bumpTool("orbit", 1, 0);
+      const markActive = () => {
+        lastInteractionMs = performance.now();
+      };
+      ["pointerdown", "pointermove", "wheel", "keydown", "touchstart"].forEach((evName) => {
+        window.addEventListener(evName, markActive, { passive: true });
+      });
+
+      // 1-second active engagement + per-tool duration ticker
+      setInterval(() => {
+        const nowP = performance.now();
+        totalDurationSec = Math.round(((Date.now() - openWallMs) / 1000) * 10) / 10;
+        const recentlyEngaged = nowP - lastInteractionMs < 45000;
+        if (document.visibilityState === "visible" && (recentlyEngaged || STATE.fpMode?.active)) {
+          activeDurationSec += 1;
+          if (STATE.fpMode?.active) {
+            fpSeconds += 1;
+            const fpKey = STATE.fpMode.locomotion === "walk" ? "first_person_walk" : "first_person_fly";
+            bumpTool(fpKey, 0, 1);
+          } else if (currentTool) {
+            bumpTool(currentTool, 0, 1);
+          }
+        }
+      }, 1000);
+
+      // 10-second live heartbeat while visible
+      setInterval(() => {
+        if (document.visibilityState === "visible") {
+          flushNow(false);
+        }
+      }, 10000);
+
+      document.addEventListener("visibilitychange", () => {
+        if (document.visibilityState === "hidden") {
+          flushNow(true);
+        } else {
+          lastInteractionMs = performance.now();
+          scheduleFlush(1200);
+        }
+      });
+      window.addEventListener("pagehide", () => flushNow(true));
+      window.addEventListener("beforeunload", () => flushNow(true));
+      setTimeout(() => flushNow(false), 1200);
+    }
+
+    return {
+      enabled,
+      sessionId,
+      visitorId,
+      flushNow,
+      scheduleFlush,
+      setViewerName(name) {
+        if (!enabled) return;
+        const clean = String(name || "").trim();
+        if (clean) {
+          try {
+            localStorage.setItem("gs_guest_comment_author", clean);
+          } catch (_) {}
+          pushEvent("identity", `Viewer name set: ${clean}`);
+          scheduleFlush(400);
+        }
+      },
+      recordScanViewed(scan, viewCtx = "studio") {
+        if (!enabled || !scan || !scan.scan_id) return;
+        const isNew = !scansMap.has(scan.scan_id);
+        scansMap.set(scan.scan_id, {
+          scan_id: scan.scan_id,
+          name: scan.name || scan.scan_id,
+        });
+        if (isNew) {
+          pushEvent("scan_open", `Viewed ${scan.name || scan.scan_id} (${viewCtx})`);
+          scheduleFlush(600);
+        }
+      },
+      recordLoadProgress(pct, isFinished = false, loadElapsedMs = 0) {
+        if (!enabled) return;
+        const p = Math.max(0, Math.min(100, Number(pct || 0)));
+        if (p > maxLoadPct) maxLoadPct = p;
+        if (isFinished && loadTimeMs === 0) {
+          loadTimeMs = Math.max(100, Math.round(loadElapsedMs || performance.now() - openPerfMs));
+          maxLoadPct = 100;
+          pushEvent("scan_loaded", `3D scan loaded 100% in ${(loadTimeMs / 1000).toFixed(1)}s`);
+          scheduleFlush(500);
+        }
+      },
+      recordCameraInteraction(viewCtx = "studio") {
+        if (!enabled) return;
+        lastInteractionMs = performance.now();
+        cameraInteractions += 1;
+        bumpTool("orbit", 1, 0);
+        if (cameraInteractions === 1) {
+          pushEvent("camera", `3D camera orbit/zoom (${viewCtx})`);
+        }
+      },
+      recordToolSelected(toolName) {
+        if (!enabled || !toolName) return;
+        lastInteractionMs = performance.now();
+        const prev = currentTool;
+        currentTool = String(toolName);
+        bumpTool(currentTool, 1, 0);
+        if (prev !== currentTool) {
+          pushEvent("tool", `Selected tool: ${currentTool}`);
+          scheduleFlush(800);
+        }
+      },
+      recordFirstPersonToggle(active, locomotion = "fly") {
+        if (!enabled) return;
+        lastInteractionMs = performance.now();
+        if (active) {
+          const fpKey = locomotion === "walk" ? "first_person_walk" : "first_person_fly";
+          bumpTool(fpKey, 1, 0);
+          pushEvent("first_person", `Entered First-Person (${locomotion})`);
+        } else {
+          pushEvent("first_person", "Exited First-Person mode");
+        }
+        scheduleFlush(600);
+      },
+      recordMeasurement(summaryText) {
+        if (!enabled) return;
+        lastInteractionMs = performance.now();
+        measurementsCount += 1;
+        bumpTool(currentTool || "measurement", 1, 0);
+        const cleanTxt = String(summaryText || "").replace(/\s+/g, " ").trim().slice(0, 110);
+        pushEvent("measurement", `${currentTool || "measure"}: ${cleanTxt || "completed"}`);
+        scheduleFlush(600);
+      },
+      recordCommentPosted(authorName, text) {
+        if (!enabled) return;
+        lastInteractionMs = performance.now();
+        commentsPosted += 1;
+        bumpTool("comment_posted", 1, 0);
+        const snippet = String(text || "").replace(/\s+/g, " ").trim().slice(0, 80);
+        pushEvent("comment", `${authorName || "Reviewer"} posted comment: "${snippet}"`);
+        flushNow(false);
+      },
+      recordDownload(ext, scan) {
+        if (!enabled) return;
+        lastInteractionMs = performance.now();
+        downloadsCount += 1;
+        const cleanExt = String(ext || "file").replace(".", "").toLowerCase();
+        bumpTool(`download_${cleanExt}`, 1, 0);
+        pushEvent("download", `Downloaded .${cleanExt} (${scan?.name || scan?.scan_id || "scan"})`);
+        flushNow(true);
+      },
+      recordViewSwitch(viewName) {
+        if (!enabled || !viewName) return;
+        if (viewName === "compare") {
+          bumpTool("compare_slider", 1, 0);
+        }
+        pushEvent("view", `Switched view: ${viewName}`);
+      },
+    };
+  })();
+
   function apiHeaders(extra = {}) {
     const h = Object.assign({ "Content-Type": "application/json" }, extra);
-    if (STATE.shareToken) h["X-Share-Token"] = STATE.shareToken;
+    if (STATE.shareToken) {
+      h["X-Share-Token"] = STATE.shareToken;
+      if (SHARE_TELEMETRY.sessionId) {
+        h["X-Telemetry-Session"] = SHARE_TELEMETRY.sessionId;
+      }
+    }
     if (STATE.currentUser && STATE.currentUser.email) {
       h["X-User-Email"] = STATE.currentUser.email;
     }
@@ -669,6 +1019,9 @@
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+    if (url.startsWith("/api/survey/") && !body?.only_update_filters) {
+      SHARE_TELEMETRY.recordMeasurement(url.replace("/api/survey/", "survey_"));
+    }
     return data;
   }
 
@@ -1589,6 +1942,7 @@
         const ext = aEl.getAttribute("data-dl-ext") || "";
         // Refresh session_token right on click
         aEl.href = appendAuthToDownloadUrl(aEl.getAttribute("href") || "");
+        SHARE_TELEMETRY.recordDownload(ext, scan);
         showToast(`Preparing ${scan.name || scan.scan_id} (${ext}) download...`);
         setTimeout(() => closeDownloadFormatMenu(), 120);
       });
@@ -1916,6 +2270,9 @@
       ONE: THREE.TOUCH.ROTATE,
       TWO: THREE.TOUCH.DOLLY_ROTATE,
     };
+    controls.addEventListener("end", () => {
+      SHARE_TELEMETRY.recordCameraInteraction("preview");
+    });
     renderer.domElement.addEventListener("mousedown", (e) => {
       if (e.button === 1) e.preventDefault();
     });
@@ -2008,6 +2365,9 @@
       lblEl.textContent = labelText;
     }
     overlayEl.classList.toggle("active", Boolean(visible));
+    if (visible) {
+      SHARE_TELEMETRY.recordLoadProgress(clamped, false);
+    }
   }
 
   function startScanLoader(ctx, prefix, scanName, scanId = null) {
@@ -2027,6 +2387,8 @@
   }
 
   function finishScanLoader(ctx, prefix, labelText = "Scan Ready") {
+    const loadElapsedMs = ctx && ctx._loadingStartMs ? performance.now() - ctx._loadingStartMs : 0;
+    SHARE_TELEMETRY.recordLoadProgress(100, true, loadElapsedMs);
     if (ctx) {
       ctx._loadingDone = true;
       ctx._maxPct = 100;
@@ -2266,6 +2628,7 @@
     STATE.selectedTimelineScanId = scan.scan_id;
     STATE.activeScanId = scan.scan_id;
     STATE.activeScan = scan;
+    SHARE_TELEMETRY.recordScanViewed(scan, "preview");
 
     if (previewThree.tilesRenderer) {
       previewThree.modelPivot.remove(previewThree.tilesRenderer.group);
@@ -3596,6 +3959,9 @@
       ONE: THREE.TOUCH.ROTATE,
       TWO: THREE.TOUCH.DOLLY_ROTATE,
     };
+    controls.addEventListener("end", () => {
+      SHARE_TELEMETRY.recordCameraInteraction("studio");
+    });
     renderer.domElement.addEventListener("mousedown", (e) => {
       if (e.button === 1) e.preventDefault();
     });
@@ -4237,6 +4603,7 @@
 
     STATE.activeScanId = scan.scan_id;
     STATE.activeScan = scan;
+    SHARE_TELEMETRY.recordScanViewed(scan, "studio");
     if (STATE.activeProjectGroup !== "__all__") {
       STATE.activeProjectGroup = scan.project_group || "Unassigned Site";
     }
@@ -4787,6 +5154,9 @@
         };
         STATE.badges2D.push(badgeObj);
         update2DBadgePositions();
+        if (!options.isTempDistance && !options.isCategorize && !options.isLassoHighlight) {
+          SHARE_TELEMETRY.recordMeasurement(firstChild.textContent || "");
+        }
         return badgeObj;
       }
     }
@@ -4813,6 +5183,9 @@
     };
     STATE.badges2D.push(badgeObj);
     update2DBadgePositions();
+    if (!options.isTempDistance && !options.isCategorize && !options.isLassoHighlight) {
+      SHARE_TELEMETRY.recordMeasurement(el.textContent || "");
+    }
     return badgeObj;
   }
 
@@ -5273,6 +5646,7 @@
 
     syncStudioControlsForTool();
     syncFirstPersonHudUI();
+    SHARE_TELEMETRY.recordFirstPersonToggle(true, fp.locomotion || "fly");
 
     if (!options.silent) {
       showToast("🎮 第一人稱漫遊開啟 — WASD 移動 · 滑鼠拖曳或點擊鎖定視角 · 滾輪調速 · G 切換步行/飛行");
@@ -5283,6 +5657,7 @@
     const fp = STATE.fpMode;
     if (!fp.active) return;
     fp.active = false;
+    SHARE_TELEMETRY.recordFirstPersonToggle(false);
     fp.keys = Object.create(null);
     fp.dragLooking = false;
     fp.velX = 0;
@@ -5736,6 +6111,7 @@
       exitFirstPersonMode(true);
     }
     STATE.activeTool = toolName;
+    SHARE_TELEMETRY.recordToolSelected(toolName);
     if (studioThree && studioThree.gizmoGroup) {
       studioThree.gizmoGroup.visible = Boolean(
         STATE.multiAlign?.active && toolName === "align_merge" && STATE.multiAlign?.selectedScanId
@@ -12180,6 +12556,11 @@
           twd97_n: twd.n,
           twd97_h: twd.h,
         });
+        SHARE_TELEMETRY.recordCommentPosted(resolvedAuthorName, text);
+        const bannerNameInp = document.getElementById("inpShareViewerName");
+        if (bannerNameInp && customGuestName) {
+          bannerNameInp.value = customGuestName;
+        }
         showToast("Posted 3D geo-referenced comment");
         await refreshScansCatalog();
         openCommentsInspector(pt, twd);
@@ -17450,8 +17831,314 @@
     showToast(`Copied share link: ${url}`);
   });
 
-  async function openSharingModal(defaultScope = "scan", defaultTarget = "") {
+  function formatDurationCompact(secRaw) {
+    const s = Math.max(0, Math.round(Number(secRaw || 0)));
+    if (s <= 0) return "0s";
+    if (s < 60) return `${s}s`;
+    const m = Math.floor(s / 60);
+    const remS = s % 60;
+    if (m < 60) return remS > 0 ? `${m}m ${remS}s` : `${m}m`;
+    const h = Math.floor(m / 60);
+    const remM = m % 60;
+    return remM > 0 ? `${h}h ${remM}m` : `${h}h`;
+  }
+
+  const SHARE_TOOL_LABELS = {
+    orbit: "3D Orbit / Zoom",
+    first_person_fly: "First-Person Fly",
+    first_person_walk: "First-Person Walk",
+    comments: "Comments Tool",
+    comment_posted: "Posted Comment",
+    distance: "Distance",
+    area: "Polygon Area",
+    coordinates: "Coordinates",
+    angle: "3D Angle",
+    laser: "Laser Span",
+    volume: "Cut/Fill Volume",
+    contours: "Elevation Contours",
+    profile: "Cross-Section Profile",
+    section: "Section Box",
+    photos: "RTK Camera Poses",
+    compare_slider: "Multi-Date Compare",
+    download_3tz: "Download .3TZ",
+    download_glb: "Download .GLB",
+    download_obj: "Download .OBJ",
+    download_zip: "Download .ZIP",
+  };
+
+  function formatToolNameFriendly(rawKey) {
+    const k = String(rawKey || "").trim();
+    if (!k) return "Tool";
+    if (SHARE_TOOL_LABELS[k]) return SHARE_TOOL_LABELS[k];
+    if (k.startsWith("download_")) return `Download .${k.slice(9).toUpperCase()}`;
+    return k
+      .replace(/_/g, " ")
+      .replace(/\b\w/g, (c) => c.toUpperCase());
+  }
+
+  let _activeAnalyticsToken = "";
+
+  function closeShareAnalyticsDrawer() {
+    _activeAnalyticsToken = "";
+    const drawer = document.getElementById("shareAnalyticsDrawer");
+    if (drawer) drawer.style.display = "none";
+  }
+
+  async function openShareAnalyticsDrawer(token) {
+    const cleanTok = String(token || "").trim();
+    if (!cleanTok) return;
+    _activeAnalyticsToken = cleanTok;
+    const drawer = document.getElementById("shareAnalyticsDrawer");
+    const titleEl = document.getElementById("lblShareAnalyticsTitle");
+    const subEl = document.getElementById("lblShareAnalyticsSub");
+    const kpiGrid = document.getElementById("shareAnalyticsKpiGrid");
+    const listBox = document.getElementById("shareAnalyticsSessionsList");
+    if (!drawer || !kpiGrid || !listBox) return;
+
+    drawer.style.display = "flex";
+    kpiGrid.innerHTML = "";
+    listBox.innerHTML = `<div style="font-size:11.5px;color:var(--ui-text-muted);padding:8px 2px;">Loading visitor telemetry &amp; tool engagement...</div>`;
+
+    try {
+      const res = await apiGet(`/api/share/analytics?token=${encodeURIComponent(cleanTok)}&limit=150`);
+      if (_activeAnalyticsToken !== cleanTok) return;
+      const link = res.link || {};
+      const summary = res.summary || {};
+      const sessions = Array.isArray(res.sessions) ? res.sessions : [];
+
+      const scopeKind = String(link.scope_type || "scan").toUpperCase();
+      const friendlyTarget = link.target_id ? resolveShareScopeTitle(link.scope_type, link.target_id) : cleanTok;
+      if (titleEl) {
+        titleEl.textContent = `${link.label || friendlyTarget} — Visitor & Tool Analytics`;
+      }
+      if (subEl) {
+        const lastStr = summary.last_viewed_at ? `Last viewed: ${summary.last_viewed_at}` : "No human sessions recorded yet";
+        subEl.textContent = `${scopeKind}: ${friendlyTarget} · Created ${link.created_at || "—"} · ${lastStr}`;
+      }
+
+      const humanOpens = Math.max(Number(link.human_views ?? link.view_count ?? 0), Number(summary.recorded_sessions || 0));
+      const topTools = Array.isArray(summary.top_tools) ? summary.top_tools : [];
+      const topToolFirst = topTools[0] || null;
+      const topToolLabel = topToolFirst ? formatToolNameFriendly(topToolFirst.tool) : "—";
+      const topToolSub = topToolFirst
+        ? `${topToolFirst.seconds >= 1 ? formatDurationCompact(topToolFirst.seconds) + " engaged · " : ""}${topToolFirst.uses || 1}x across ${topToolFirst.sessions || 1} session(s)`
+        : "Waiting for tool activity";
+
+      const totalActions =
+        Number(summary.measurements_total || 0) +
+        Number(summary.comments_posted_total || 0) +
+        Number(summary.downloads_total || 0);
+
+      kpiGrid.innerHTML = `
+        <div class="gs-analytics-kpi-card">
+          <div class="k-lbl">Human Opens</div>
+          <div class="k-val">${humanOpens}</div>
+          <div class="k-sub">${Number(summary.recorded_sessions || 0)} tracked session(s)</div>
+        </div>
+        <div class="gs-analytics-kpi-card">
+          <div class="k-lbl">Unique Visitors</div>
+          <div class="k-val">${Number(summary.unique_visitors || 0)}</div>
+          <div class="k-sub">${Number(summary.bot_unfurls || 0)} chat link preview(s)</div>
+        </div>
+        <div class="gs-analytics-kpi-card">
+          <div class="k-lbl">Avg Active Time</div>
+          <div class="k-val">${escapeHtml(formatDurationCompact(summary.avg_active_sec || 0))}</div>
+          <div class="k-sub">Total engaged: ${escapeHtml(formatDurationCompact(summary.total_active_sec || 0))}</div>
+        </div>
+        <div class="gs-analytics-kpi-card">
+          <div class="k-lbl">Total Tab Open</div>
+          <div class="k-val">${escapeHtml(formatDurationCompact(summary.total_open_sec || 0))}</div>
+          <div class="k-sub">Foreground + background</div>
+        </div>
+        <div class="gs-analytics-kpi-card">
+          <div class="k-lbl">Spatial Actions</div>
+          <div class="k-val">${totalActions}</div>
+          <div class="k-sub">${Number(summary.comments_posted_total || 0)} cmts · ${Number(summary.measurements_total || 0)} meas · ${Number(summary.downloads_total || 0)} dl</div>
+        </div>
+        <div class="gs-analytics-kpi-card">
+          <div class="k-lbl">Most Used Tool</div>
+          <div class="k-val" style="font-size:12.5px;">${escapeHtml(topToolLabel)}</div>
+          <div class="k-sub">${escapeHtml(topToolSub)}</div>
+        </div>
+      `;
+
+      if (!sessions.length) {
+        listBox.innerHTML = `
+          <div style="font-size:11.5px;color:var(--ui-text-muted);padding:10px 12px;border:1px dashed var(--ui-border-strong);border-radius:8px;">
+            No visitor sessions or link previews recorded yet for this link. Share <code>${escapeHtml(buildPublicShareUrl(cleanTok))}</code> to see live viewer telemetry (who opened it, location, device/GPU, duration, and 3D tools used).
+          </div>
+        `;
+        return;
+      }
+
+      const nowUnixSec = Date.now() / 1000;
+      listBox.innerHTML = sessions
+        .map((s) => {
+          const isBot = Boolean(s.is_bot);
+          const locStr = s.location_label || (s.ip_address ? "Location resolving..." : "Unknown location");
+          const ispStr = s.isp ? ` · ${s.isp}` : "";
+          const ipStr = s.ip_address || "—";
+
+          if (isBot) {
+            return `
+              <div class="gs-analytics-session-card is-bot">
+                <div class="gs-analytics-session-top">
+                  <div class="gs-analytics-who">
+                    <span class="gs-crs-pill" style="font-size:9.5px;opacity:0.85;">LINK PREVIEW UNFURL</span>
+                    <span>${escapeHtml(s.browser || "Preview Crawler")}</span>
+                  </div>
+                  <div class="gs-analytics-meta-row">
+                    <span><b>IP:</b> ${escapeHtml(ipStr)}</span>
+                    <span><b>Origin:</b> ${escapeHtml(locStr + ispStr)}</span>
+                    <span><b>Time:</b> ${escapeHtml(s.started_at || "—")}</span>
+                  </div>
+                </div>
+              </div>
+            `;
+          }
+
+          const isLiveNow = Number(s.last_active_ts || 0) > 0 && nowUnixSec - Number(s.last_active_ts) < 28;
+          const shortVid = String(s.visitor_id || s.session_id || "").slice(-6);
+          const displayWho = s.viewer_name
+            ? s.viewer_name
+            : s.viewer_email
+            ? s.viewer_email
+            : `Visitor #${shortVid || "guest"}`;
+          const emailBadge =
+            s.viewer_email && s.viewer_email !== displayWho
+              ? `<span style="font-size:10.5px;color:var(--ui-text-muted);font-weight:500;">(${escapeHtml(s.viewer_email)})</span>`
+              : "";
+          const liveBadge = isLiveNow
+            ? `<span class="gs-crs-pill" style="background:rgba(16,185,129,0.16);color:#10b981;border-color:rgba(16,185,129,0.45);font-size:9.5px;">LIVE NOW</span>`
+            : `<span class="gs-crs-pill" style="font-size:9.5px;">#${escapeHtml(shortVid)}</span>`;
+
+          const loadSummary =
+            Number(s.max_load_pct || 0) > 0
+              ? `${Math.round(Number(s.max_load_pct))}%${Number(s.load_time_ms || 0) > 0 ? ` (${(Number(s.load_time_ms) / 1000).toFixed(1)}s)` : ""}`
+              : "—";
+
+          const deviceSummary = [s.device_type, s.os, s.browser].filter(Boolean).join(" · ") || "Browser";
+          const screenSummary = [s.screen_res, s.viewport_res ? `VP ${s.viewport_res}` : ""].filter(Boolean).join(" · ");
+          const localeSummary = [s.language, s.timezone].filter(Boolean).join(" · ");
+
+          // Build tool pills sorted by engaged time then count
+          const rawTools = s.tools_used && typeof s.tools_used === "object" ? s.tools_used : {};
+          const toolEntries = Object.entries(rawTools)
+            .map(([tk, tv]) => ({
+              key: tk,
+              count: typeof tv === "object" ? Number(tv.count || 1) : Number(tv || 1),
+              seconds: typeof tv === "object" ? Number(tv.seconds || 0) : 0,
+            }))
+            .sort((a, b) => b.seconds - a.seconds || b.count - a.count);
+
+          const scansViewed = Array.isArray(s.scans_viewed) ? s.scans_viewed : [];
+          const scanPillsHtml = scansViewed
+            .map((sc) => {
+              const nm = typeof sc === "object" ? sc.name || sc.scan_id : String(sc);
+              return `<span class="gs-analytics-tool-pill" style="border-color:var(--ui-accent);color:var(--ui-accent);">Scan: <b>${escapeHtml(nm)}</b></span>`;
+            })
+            .join("");
+
+          const toolPillsHtml = toolEntries
+            .map((te) => {
+              const durPart = te.seconds >= 1 ? formatDurationCompact(te.seconds) : "";
+              const cntPart = te.count > 1 || !durPart ? `${te.count}x` : "";
+              const metaStr = [durPart, cntPart].filter(Boolean).join(" · ");
+              return `<span class="gs-analytics-tool-pill">${escapeHtml(formatToolNameFriendly(te.key))}${metaStr ? ` <b>${escapeHtml(metaStr)}</b>` : ""}</span>`;
+            })
+            .join("");
+
+          const extraActionPills = [
+            Number(s.camera_interactions || 0) > 0
+              ? `<span class="gs-analytics-tool-pill">Camera Moves <b>${Number(s.camera_interactions)}</b></span>`
+              : "",
+            Number(s.fp_seconds || 0) >= 1
+              ? `<span class="gs-analytics-tool-pill">First-Person <b>${escapeHtml(formatDurationCompact(s.fp_seconds))}</b></span>`
+              : "",
+            Number(s.measurements_count || 0) > 0
+              ? `<span class="gs-analytics-tool-pill">Measurements <b>${Number(s.measurements_count)}</b></span>`
+              : "",
+            Number(s.comments_posted || 0) > 0
+              ? `<span class="gs-analytics-tool-pill" style="border-color:#10b981;color:#10b981;">Comments Posted <b>${Number(s.comments_posted)}</b></span>`
+              : "",
+            Number(s.downloads_count || 0) > 0
+              ? `<span class="gs-analytics-tool-pill">Downloads <b>${Number(s.downloads_count)}</b></span>`
+              : "",
+          ]
+            .filter(Boolean)
+            .join("");
+
+          const evList = Array.isArray(s.events) ? s.events : [];
+          const timelineHtml = evList.length
+            ? `
+              <details class="gs-analytics-timeline">
+                <summary>Session Activity Timeline (${evList.length} event${evList.length === 1 ? "" : "s"})</summary>
+                <div class="gs-analytics-timeline-list">
+                  ${evList
+                    .map(
+                      (ev) =>
+                        `<div><code>+${escapeHtml(formatDurationCompact(ev.t || 0))}</code> · <b>${escapeHtml(ev.type || "event")}:</b> ${escapeHtml(ev.detail || "")}</div>`
+                    )
+                    .join("")}
+                </div>
+              </details>
+            `
+            : "";
+
+          return `
+            <div class="gs-analytics-session-card">
+              <div class="gs-analytics-session-top">
+                <div class="gs-analytics-who">
+                  ${liveBadge}
+                  <span>${escapeHtml(displayWho)}</span>
+                  ${emailBadge}
+                </div>
+                <div style="font-size:11px;color:var(--ui-text-secondary);display:flex;gap:10px;flex-wrap:wrap;">
+                  <span>Active: <b style="color:var(--ui-accent);">${escapeHtml(formatDurationCompact(s.active_duration_sec || 0))}</b></span>
+                  <span>Tab Open: <b style="color:var(--ui-text-primary);">${escapeHtml(formatDurationCompact(s.total_duration_sec || 0))}</b></span>
+                  <span>3D Load: <b style="color:var(--ui-text-primary);">${escapeHtml(loadSummary)}</b></span>
+                  <span style="color:var(--ui-text-muted);">${escapeHtml(s.started_at || "")}</span>
+                </div>
+              </div>
+              <div class="gs-analytics-meta-row">
+                <span><b>Location:</b> ${escapeHtml(locStr + ispStr)}</span>
+                <span><b>IP:</b> <code>${escapeHtml(ipStr)}</code></span>
+                <span><b>Device:</b> ${escapeHtml(deviceSummary)}</span>
+                ${screenSummary ? `<span><b>Display:</b> ${escapeHtml(screenSummary)}</span>` : ""}
+                ${localeSummary ? `<span><b>Locale:</b> ${escapeHtml(localeSummary)}</span>` : ""}
+                ${s.connection_type ? `<span><b>Net:</b> ${escapeHtml(s.connection_type)}</span>` : ""}
+                ${s.gpu_renderer ? `<span title="${escapeHtml(s.gpu_renderer)}"><b>GPU:</b> ${escapeHtml(String(s.gpu_renderer).slice(0, 56))}</span>` : ""}
+                ${s.referrer ? `<span><b>Referrer:</b> ${escapeHtml(String(s.referrer).slice(0, 64))}</span>` : ""}
+              </div>
+              ${
+                scanPillsHtml || toolPillsHtml || extraActionPills
+                  ? `<div class="gs-analytics-tools-row">${scanPillsHtml}${toolPillsHtml}${extraActionPills}</div>`
+                  : ""
+              }
+              ${timelineHtml}
+            </div>
+          `;
+        })
+        .join("");
+    } catch (err) {
+      listBox.innerHTML = `<div style="font-size:11.5px;color:#ef4444;padding:6px 2px;">Analytics error: ${escapeHtml(err.message || "Failed to load telemetry.")}</div>`;
+    }
+  }
+
+  document.getElementById("btnRefreshShareAnalytics")?.addEventListener("click", () => {
+    if (_activeAnalyticsToken) {
+      openShareAnalyticsDrawer(_activeAnalyticsToken);
+    }
+  });
+  document.getElementById("btnCloseShareAnalytics")?.addEventListener("click", () => {
+    closeShareAnalyticsDrawer();
+  });
+
+  async function openSharingModal(defaultScope = "scan", defaultTarget = "", autoAnalyticsToken = "") {
     openModal("modalSharing");
+    const roleInfo = getCurrentUserRoleInfo();
+    const createBtn = document.getElementById("btnCreateShareLink");
+    if (createBtn) createBtn.style.display = roleInfo.level >= 3 ? "" : "none";
     const scopeSel = document.getElementById("shareScopeType");
     const targetSel = document.getElementById("shareTargetId");
     const resolvedDefaultTarget =
@@ -17496,11 +18183,18 @@
     populateTargets();
     await renderShareLinksTable();
     syncBannerWithSelectedTarget();
+    if (autoAnalyticsToken) {
+      await openShareAnalyticsDrawer(autoAnalyticsToken);
+    } else if (_activeAnalyticsToken && !_cachedShareLinksList.some((l) => l.token === _activeAnalyticsToken)) {
+      closeShareAnalyticsDrawer();
+    }
   }
 
   async function renderShareLinksTable(preferredBannerUrl = "", preferredBannerLabel = "") {
     const tbody = document.getElementById("shareLinksTableBody");
     if (!tbody) return;
+    const roleInfo = getCurrentUserRoleInfo();
+    const canManageLinks = roleInfo.level >= 3;
     try {
       const res = await apiGet("/api/share/list");
       const links = res.links || [];
@@ -17526,6 +18220,19 @@
         const scopeKind = String(l.scope_type || "scan").toUpperCase();
         const friendlyTarget = resolveShareScopeTitle(l.scope_type, l.target_id);
         const fullScopeTooltip = `${scopeKind}: ${friendlyTarget}${friendlyTarget !== l.target_id ? ` (${l.target_id})` : ""}`;
+
+        const humanViews = Number(l.human_views ?? l.view_count ?? 0);
+        const uniqVisitors = Number(l.unique_visitors || 0);
+        const avgSec = Number(l.avg_active_sec || 0);
+        const botUnfurls = Number(l.bot_unfurls || 0);
+        const subStats = [
+          uniqVisitors > 0 ? `${uniqVisitors} visitor${uniqVisitors === 1 ? "" : "s"}` : null,
+          avgSec > 0 ? `Avg ${formatDurationCompact(avgSec)}` : null,
+          botUnfurls > 0 ? `${botUnfurls} preview${botUnfurls === 1 ? "" : "s"}` : null,
+        ]
+          .filter(Boolean)
+          .join(" · ");
+
         tr.innerHTML = `
           <td><b style="color:var(--ui-text-primary);">${escapeHtml(l.label || "")}</b></td>
           <td>
@@ -17558,15 +18265,26 @@
             </div>
           </td>
           <td style="font-size:11px;color:var(--ui-text-secondary);white-space:nowrap;">${escapeHtml(perms || "View")}</td>
-          <td style="color:var(--ui-text-primary);font-weight:600;text-align:center;">${Number(l.view_count || 0)}</td>
+          <td style="white-space:nowrap;">
+            <div style="font-size:11.5px;font-weight:700;color:var(--ui-text-primary);">${humanViews} view${humanViews === 1 ? "" : "s"}</div>
+            <div style="font-size:10px;color:var(--ui-text-muted);">${escapeHtml(subStats || "No telemetry yet")}</div>
+          </td>
           <td>${
             l.revoked
               ? '<span style="color:var(--ui-text-muted);font-weight:700;font-size:11px;">REVOKED</span>'
               : '<span class="gs-crs-pill">ACTIVE</span>'
           }</td>
-          <td style="display:flex;gap:5px;justify-content:flex-end;">
+          <td style="display:flex;gap:5px;justify-content:flex-end;align-items:center;">
+            <button type="button" class="btn-xs" data-analytics="${safeToken}" title="Inspect Visitor Sessions, Active Time, Devices &amp; Tools Used">
+              <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.9">
+                <line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/>
+              </svg>
+              <span>Analytics</span>
+            </button>
             ${
-              !l.revoked
+              !canManageLinks
+                ? ""
+                : !l.revoked
                 ? `<button type="button" class="btn-xs" data-revoke="${safeToken}" title="Revoke Access Immediately">
                     <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8">
                       <circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/>
@@ -17591,6 +18309,9 @@
           flashCopyButtonState(copyBtn);
           showLatestShareLinkBanner(fullShareUrl, "Copied to Clipboard:");
           showToast(`Copied share link: ${fullShareUrl}`);
+        });
+        tr.querySelector("[data-analytics]")?.addEventListener("click", () => {
+          openShareAnalyticsDrawer(l.token);
         });
         tr.querySelector("[data-revoke]")?.addEventListener("click", async () => {
           await apiPost("/api/share/revoke", { token: l.token });
@@ -17796,6 +18517,9 @@
       const safeFullUrl = escapeHtml(fullUrl);
       const bodyArea = pop.querySelector("#quickShareBodyArea");
       if (!bodyArea) return;
+      const humanViews = Number(linkObj.human_views ?? linkObj.view_count ?? 0);
+      const uniqVisitors = Number(linkObj.unique_visitors || 0);
+      const avgSec = Number(linkObj.avg_active_sec || 0);
       bodyArea.innerHTML = `
         <div class="gs-share-url-group" style="margin-bottom:8px;">
           <input type="text" class="gs-share-url-input" id="inpStudioQuickShareUrl" readonly value="${safeFullUrl}" title="${safeFullUrl}" aria-label="Single-Scan View and Comment Link" />
@@ -17812,8 +18536,18 @@
           </a>
         </div>
         <div style="display:flex;justify-content:space-between;align-items:center;gap:6px;flex-wrap:wrap;padding-top:6px;border-top:1px solid var(--ui-border);">
-          <span style="font-size:10.5px;color:var(--ui-text-muted);">Views: <b style="color:var(--ui-text-primary);">${Number(linkObj.view_count || 0)}</b></span>
-          <div style="display:flex;gap:5px;align-items:center;">
+          <span style="font-size:10.5px;color:var(--ui-text-muted);">
+            Views: <b style="color:var(--ui-text-primary);">${humanViews}</b>
+            · Visitors: <b style="color:var(--ui-text-primary);">${uniqVisitors}</b>
+            ${avgSec > 0 ? `· Avg: <b style="color:var(--ui-accent);">${escapeHtml(formatDurationCompact(avgSec))}</b>` : ""}
+          </span>
+          <div style="display:flex;gap:5px;align-items:center;flex-wrap:wrap;">
+            <button type="button" class="btn-xs" id="btnQuickShareAnalytics" title="View who opened this link, for how long &amp; which 3D tools they used" style="font-size:10.5px;">
+              <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2">
+                <line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/>
+              </svg>
+              <span>Analytics</span>
+            </button>
             ${
               canRevoke
                 ? `<button type="button" class="btn-xs" id="btnRotateQuickShareUrl" title="Revoke current link and generate a new token" style="font-size:10.5px;">Reset Link</button>
@@ -17835,6 +18569,11 @@
         inpEl?.select?.();
         flashCopyButtonState(copyBtn);
         showToast(`Copied View & Comment link: ${fullUrl}`);
+      });
+
+      bodyArea.querySelector("#btnQuickShareAnalytics")?.addEventListener("click", () => {
+        closeQuickSingleScanSharePopover();
+        openSharingModal("scan", scan.scan_id, linkObj.token);
       });
 
       bodyArea.querySelector("#btnRotateQuickShareUrl")?.addEventListener("click", async () => {
@@ -19028,6 +19767,7 @@
       exitMultiScanAlignMode(false);
     }
     STATE.activeView = viewName;
+    SHARE_TELEMETRY.recordViewSwitch(viewName);
     document.querySelectorAll("#mainModeSwitcher .btn-seg").forEach((b) => {
       b.classList.toggle("active", b.dataset.view === viewName);
     });
@@ -19110,7 +19850,7 @@
             `${s.scan_id}:${s.name}:${s.project_group}:${s.status}:${Math.round(s.progress_pct || 0)}:${s.stream_url || ""}:${s.preview_stream_url || ""}`
         )
         .join("|");
-      const data = await apiGet("/api/scans");
+      const data = await apiGet(isBackgroundPoll ? "/api/scans?bg=1" : "/api/scans");
       const normalizeScanUploader = (s) => {
         if (!s) return s;
         if (s.uploader_name === "Glib Ivanov" || s.uploader_name === "Argon") {
@@ -19181,7 +19921,29 @@
           ]
             .filter(Boolean)
             .join(" + ");
-          scopeLbl.textContent = `${data.share_link.label} (${String(data.share_link.scope_type || "scan").toUpperCase()}: ${friendlyScope}) — Authorized Scope: ${linkPerms} only.`;
+          scopeLbl.textContent = `${data.share_link.label} (${String(data.share_link.scope_type || "scan").toUpperCase()}: ${friendlyScope}) — ${linkPerms}`;
+        }
+        const viewerNameInp = document.getElementById("inpShareViewerName");
+        if (viewerNameInp && !viewerNameInp.dataset.boundTelemetry) {
+          viewerNameInp.dataset.boundTelemetry = "1";
+          try {
+            const savedName = (localStorage.getItem("gs_guest_comment_author") || "").trim();
+            if (savedName) viewerNameInp.value = savedName;
+          } catch (_) {}
+          const commitViewerName = () => {
+            const nm = viewerNameInp.value.trim();
+            if (nm) {
+              SHARE_TELEMETRY.setViewerName(nm);
+            }
+          };
+          viewerNameInp.addEventListener("change", commitViewerName);
+          viewerNameInp.addEventListener("blur", commitViewerName);
+          viewerNameInp.addEventListener("keydown", (ev) => {
+            if (ev.key === "Enter") {
+              ev.preventDefault();
+              viewerNameInp.blur();
+            }
+          });
         }
         applyRolePermissionsToUI();
       }

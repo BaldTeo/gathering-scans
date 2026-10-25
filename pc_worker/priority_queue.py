@@ -136,6 +136,61 @@ class ScanQueueDB:
                     view_count INTEGER DEFAULT 0
                 );
 
+                CREATE TABLE IF NOT EXISTS share_access_sessions (
+                    session_id TEXT PRIMARY KEY,
+                    token TEXT NOT NULL,
+                    visitor_id TEXT DEFAULT '',
+                    viewer_name TEXT DEFAULT '',
+                    viewer_email TEXT DEFAULT '',
+                    ip_address TEXT DEFAULT '',
+                    country TEXT DEFAULT '',
+                    region TEXT DEFAULT '',
+                    city TEXT DEFAULT '',
+                    isp TEXT DEFAULT '',
+                    user_agent TEXT DEFAULT '',
+                    browser TEXT DEFAULT '',
+                    os TEXT DEFAULT '',
+                    device_type TEXT DEFAULT '',
+                    is_bot INTEGER DEFAULT 0,
+                    language TEXT DEFAULT '',
+                    timezone TEXT DEFAULT '',
+                    screen_res TEXT DEFAULT '',
+                    viewport_res TEXT DEFAULT '',
+                    gpu_renderer TEXT DEFAULT '',
+                    connection_type TEXT DEFAULT '',
+                    referrer TEXT DEFAULT '',
+                    entry_url TEXT DEFAULT '',
+                    started_at TEXT NOT NULL,
+                    started_ts REAL NOT NULL,
+                    last_active_at TEXT NOT NULL,
+                    last_active_ts REAL NOT NULL,
+                    total_duration_sec REAL DEFAULT 0.0,
+                    active_duration_sec REAL DEFAULT 0.0,
+                    max_load_pct REAL DEFAULT 0.0,
+                    load_time_ms INTEGER DEFAULT 0,
+                    camera_interactions INTEGER DEFAULT 0,
+                    fp_seconds REAL DEFAULT 0.0,
+                    comments_posted INTEGER DEFAULT 0,
+                    downloads_count INTEGER DEFAULT 0,
+                    measurements_count INTEGER DEFAULT 0,
+                    scans_viewed_json TEXT DEFAULT '[]',
+                    tools_used_json TEXT DEFAULT '{}',
+                    events_json TEXT DEFAULT '[]'
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_share_sessions_token
+                ON share_access_sessions(token, started_ts DESC);
+
+                CREATE TABLE IF NOT EXISTS ip_geo_cache (
+                    ip_address TEXT PRIMARY KEY,
+                    country TEXT DEFAULT '',
+                    country_code TEXT DEFAULT '',
+                    region TEXT DEFAULT '',
+                    city TEXT DEFAULT '',
+                    isp TEXT DEFAULT '',
+                    updated_ts REAL DEFAULT 0.0
+                );
+
                 CREATE TABLE IF NOT EXISTS user_settings (
                     email TEXT PRIMARY KEY,
                     display_name TEXT DEFAULT '',

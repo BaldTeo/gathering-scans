@@ -3,9 +3,22 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>GatheringCloud Scans — 3D Photogrammetry &amp; Civil Surveying Studio (scans.gatheren.cloud)</title>
+  <!-- GS_SHARE_OG_START -->
+  <title>GatheringCloud 3D Scans</title>
+  <meta name="description" content="Interactive 3D site scan viewer &amp; spatial review on GatheringCloud." />
+  <meta property="og:site_name" content="GatheringCloud 3D Scans" />
+  <meta property="og:type" content="website" />
+  <meta property="og:title" content="GatheringCloud 3D Scans" />
+  <meta property="og:description" content="Interactive 3D site scan viewer &amp; spatial review on GatheringCloud." />
+  <meta property="og:url" content="https://scans.gatheren.cloud" />
+  <meta property="og:image" content="https://scans.gatheren.cloud/assets/gathering_cloud_logo.png" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="GatheringCloud 3D Scans" />
+  <meta name="twitter:description" content="Interactive 3D site scan viewer &amp; spatial review on GatheringCloud." />
+  <meta name="twitter:image" content="https://scans.gatheren.cloud/assets/gathering_cloud_logo.png" />
+  <!-- GS_SHARE_OG_END -->
   <link rel="icon" type="image/png" href="/assets/gathering_cloud_logo.png" />
-  <link rel="stylesheet" href="/app.css?v=20261025_v58" />
+  <link rel="stylesheet" href="/app.css?v=20261025_v59" />
   <script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
 <body>
@@ -99,6 +112,12 @@
       </svg>
       <strong>Scoped Share View:</strong>
       <span id="lblExternalShareScope" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">Viewing authorized scan scope only. Other system scans are hidden.</span>
+    </div>
+    <div class="gs-share-viewer-tag" id="shareViewerIdentityWrap" title="Optional: Enter your name for spatial review &amp; comments">
+      <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.8" style="flex-shrink:0;">
+        <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>
+      </svg>
+      <input type="text" id="inpShareViewerName" class="gs-share-viewer-input" placeholder="Your name (optional)" maxlength="60" aria-label="Reviewer Name" />
     </div>
     <button type="button" class="btn-xs" id="btnExitExternalPreview" style="display:none;" title="Exit Guest Preview">Exit</button>
   </div>
@@ -1119,7 +1138,7 @@
         </div>
       </div>
 
-      <div class="gs-table-scroll-wrap" style="border:1px solid var(--ui-border);border-radius:8px;overflow:auto;">
+      <div class="gs-table-scroll-wrap" style="border:1px solid var(--ui-border);border-radius:8px;overflow:auto;max-height:260px;">
         <table class="gs-table">
           <thead>
             <tr>
@@ -1127,13 +1146,43 @@
               <th>Scope</th>
               <th>Share Link</th>
               <th>Permissions</th>
-              <th>Views</th>
+              <th>Engagement</th>
               <th>Status</th>
-              <th></th>
+              <th style="text-align:right;">Actions</th>
             </tr>
           </thead>
           <tbody id="shareLinksTableBody"></tbody>
         </table>
+      </div>
+
+      <!-- Share Link Visitor & Tool Analytics Drawer -->
+      <div class="gs-share-analytics-drawer" id="shareAnalyticsDrawer" style="display:none;">
+        <div class="gs-share-analytics-head">
+          <div style="min-width:0;">
+            <div class="gs-share-analytics-title">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="var(--ui-accent)" stroke-width="2" style="flex-shrink:0;">
+                <line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/>
+              </svg>
+              <span id="lblShareAnalyticsTitle">Link Visitor &amp; Tool Analytics</span>
+            </div>
+            <div class="gs-share-analytics-sub" id="lblShareAnalyticsSub">Real-time session telemetry: visitors, active viewing time, devices, locations &amp; 3D tools used</div>
+          </div>
+          <div style="display:flex;align-items:center;gap:6px;flex-shrink:0;">
+            <button type="button" class="btn-xs" id="btnRefreshShareAnalytics" title="Refresh Live Telemetry">
+              <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+              </svg>
+              <span>Refresh</span>
+            </button>
+            <button type="button" class="btn-xs" id="btnCloseShareAnalytics" title="Hide Analytics Panel">
+              <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2">
+                <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+              </svg>
+            </button>
+          </div>
+        </div>
+        <div class="gs-analytics-kpi-grid" id="shareAnalyticsKpiGrid"></div>
+        <div class="gs-analytics-sessions-list" id="shareAnalyticsSessionsList"></div>
       </div>
     </div>
   </div>
@@ -1849,6 +1898,6 @@
   <script src="/lib/3d-tiles-renderer.bundle.js"></script>
 
   <!-- Main GatheringScans Application Logic -->
-  <script src="/app.js?v=20261025_v58"></script>
+  <script src="/app.js?v=20261025_v59"></script>
 </body>
 </html>

@@ -5,7 +5,7 @@
  * Strictly zero scan cache is ever stored on the Linux VPS.
  */
 
-const CACHE_NAME = "gathering-scans-offline-v58";
+const CACHE_NAME = "gathering-scans-offline-v59";
 const SCAN_TILES_CACHE = "gathering-scans-tiles-v2";
 const APP_SHELL = [
   "/",
@@ -121,6 +121,10 @@ self.addEventListener("fetch", (event) => {
   }
 
   const isShellAsset = APP_SHELL.includes(url.pathname);
+  const isDynamicShareHtml =
+    isShellAsset &&
+    (url.pathname === "/" || url.pathname === "/index.html") &&
+    url.search.includes("share=");
   if (url.pathname === "/api/scans" || isShellAsset) {
     const canonicalKey = isShellAsset ? new Request(url.origin + url.pathname) : req;
     const matchOpts = isShellAsset ? { ignoreSearch: true } : undefined;
@@ -128,8 +132,10 @@ self.addEventListener("fetch", (event) => {
       fetch(req, { cache: "no-cache" })
         .then((networkResp) => {
           if (networkResp && networkResp.status === 200) {
-            const clone = networkResp.clone();
-            caches.open(CACHE_NAME).then((cache) => cache.put(canonicalKey, clone));
+            if (!isDynamicShareHtml) {
+              const clone = networkResp.clone();
+              caches.open(CACHE_NAME).then((cache) => cache.put(canonicalKey, clone));
+            }
             return networkResp;
           }
           if (networkResp && networkResp.status === 503) {

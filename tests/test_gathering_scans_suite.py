@@ -29,7 +29,7 @@ from pc_worker.priority_queue import ScanQueueDB, calculate_priority_score
 from pc_worker.gdrive_watcher import extract_opf_zip_metadata, twd97_to_wgs84, wgs84_to_twd97
 from pc_worker.pix4d_runner import generate_pix4dmatic_gst_script
 from pc_worker.surveying_engine import SurveyingEngine
-from pc_worker.auth_and_sharing import AuthAndSharingManager
+from pc_worker.auth_and_sharing import AuthAndSharingManager, parse_user_agent, is_link_preview_bot
 from pc_worker.optimizer_bridge import OptimizerBridge
 from pc_worker.gchat_notifier import GoogleChatNotifier
 
@@ -234,6 +234,115 @@ class GatheringScansTestSuite(unittest.TestCase):
         self.assertTrue(quick_link["allow_comments"])
         self.assertFalse(quick_link["allow_download"])
         self.assertTrue(quick_link["share_url"].startswith("https://scans.gatheren.cloud/s/"))
+
+    def test_06_share_telemetry_analytics_and_preview_bots(self):
+        """Verify LINE/chat bot detection vs LINE In-App human browser, and monotonic telemetry analytics."""
+        # 1. LINE link-preview bot vs LINE In-App human visitor vs Desktop Chrome
+        line_bot = parse_user_agent("facebookexternalhit/1.1;line-poker/1.0")
+        self.assertTrue(line_bot["is_bot"])
+        self.assertEqual(line_bot["browser"], "LINE Preview Bot")
+        self.assertTrue(is_link_preview_bot("facebookexternalhit/1.1;line-poker/1.0"))
+
+        line_human = parse_user_agent(
+            "Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 "
+            "(KHTML, like Gecko) Mobile/15E148 Safari/604.1 Line/14.16.0"
+        )
+        self.assertFalse(line_human["is_bot"])
+        self.assertIn("LINE In-App", line_human["browser"])
+        self.assertEqual(line_human["os"], "iOS 17.5")
+        self.assertEqual(line_human["device_type"], "Mobile")
+
+        # 2. Bot unfurl vs Human session telemetry
+        self.db.upsert_scan(
+            {
+                "scan_id": "scan_qihu",
+                "name": "QiHu — Unified Merged Scan (4 Scans)",
+                "project_group": "QiHu",
+                "capture_date": "2026-10-24",
+                "status": "completed",
+            }
+        )
+        auth = AuthAndSharingManager(self.db)
+        link = auth.create_share_link(
+            {
+                "scope_type": "scan",
+                "target_id": "scan_qihu",
+                "label": "View & Comment — QiHu",
+                "allow_measurements": False,
+                "allow_comments": True,
+                "allow_download": False,
+            }
+        )
+        tok = link["token"]
+
+        # Chat preview unfurl does NOT inflate human view_count
+        auth.record_bot_unfurl(tok, "203.104.140.10", "facebookexternalhit/1.1;line-poker/1.0")
+        after_bot = auth.get_share_link(tok)
+        self.assertEqual(after_bot["view_count"], 0)
+        self.assertEqual(after_bot["bot_unfurls"], 1)
+
+        # Human session #1 initial heartbeat + later monotonic update
+        auth.record_or_update_share_session(
+            {
+                "token": tok,
+                "session_id": "s_test_human_1",
+                "visitor_id": "v_alice_01",
+                "viewer_name": "",
+                "total_duration_sec": 12.0,
+                "active_duration_sec": 10.0,
+                "max_load_pct": 65.0,
+                "camera_interactions": 4,
+                "scans_viewed": [{"scan_id": "scan_qihu", "name": "QiHu — Unified Merged Scan (4 Scans)"}],
+                "tools_used": {"orbit": {"count": 4, "seconds": 10.0}},
+                "events": [{"id": "ev1", "t": 0.0, "type": "session_open", "detail": "Opened link"}],
+            },
+            request_meta={
+                "ip_address": "127.0.0.1",
+                "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/130.0.0.0 Safari/537.36",
+                "accept_language": "zh-TW",
+            },
+        )
+        auth.record_or_update_share_session(
+            {
+                "token": tok,
+                "session_id": "s_test_human_1",
+                "visitor_id": "v_alice_01",
+                "viewer_name": "Alice Chen",
+                "total_duration_sec": 95.0,
+                "active_duration_sec": 74.0,
+                "max_load_pct": 100.0,
+                "load_time_ms": 2850,
+                "camera_interactions": 18,
+                "fp_seconds": 22.0,
+                "comments_posted": 1,
+                "tools_used": {
+                    "orbit": {"count": 18, "seconds": 40.0},
+                    "first_person_fly": {"count": 1, "seconds": 22.0},
+                    "comments": {"count": 1, "seconds": 12.0},
+                    "comment_posted": {"count": 1, "seconds": 0.0},
+                },
+                "events": [
+                    {"id": "ev1", "t": 0.0, "type": "session_open", "detail": "Opened link"},
+                    {"id": "ev2", "t": 2.9, "type": "scan_loaded", "detail": "100%"},
+                    {"id": "ev3", "t": 55.0, "type": "comment", "detail": "Alice Chen posted comment"},
+                ],
+            },
+            request_meta={"ip_address": "127.0.0.1"},
+        )
+
+        analytics = auth.get_share_analytics(token=tok)
+        self.assertEqual(analytics["status"], "ok")
+        summary = analytics["summary"]
+        self.assertEqual(analytics["link"]["view_count"], 1)
+        self.assertEqual(summary["recorded_sessions"], 1)
+        self.assertEqual(summary["unique_visitors"], 1)
+        self.assertEqual(summary["bot_unfurls"], 1)
+        self.assertAlmostEqual(summary["total_active_sec"], 74.0, places=1)
+        self.assertEqual(summary["comments_posted_total"], 1)
+        human_sess = [s for s in analytics["sessions"] if not s["is_bot"]][0]
+        self.assertEqual(human_sess["viewer_name"], "Alice Chen")
+        self.assertEqual(human_sess["load_time_ms"], 2850)
+        self.assertEqual(len(human_sess["events"]), 3)
 
 
 if __name__ == "__main__":
