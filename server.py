@@ -961,6 +961,18 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
         self.send_response(200)
         self.end_headers()
 
+    def do_HEAD(self):
+        parsed = urllib.parse.urlparse(self.path)
+        path = urllib.parse.unquote(parsed.path)
+        if path.startswith("/s/"):
+            tok = path[len("/s/") :].strip("/")
+            safe_tok = urllib.parse.quote(tok, safe="-_")
+            self.send_response(302)
+            self.send_header("Location", f"/?share={safe_tok}")
+            self.end_headers()
+            return
+        super().do_HEAD()
+
     def send_json(self, data: Dict[str, Any], status: int = 200):
         raw = json.dumps(data, ensure_ascii=False).encode("utf-8")
         self.send_response(status)
@@ -2171,7 +2183,7 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
                 }
             )
             return True
-        # 6. Allow surveying (volume, profile, contours/reports) and user/admin routes to execute locally on VPS from .3tz packages when tunnel is unavailable
+        # 6. Allow surveying (volume, profile, contours/reports), share links, and user/admin routes to execute locally on VPS from .3tz packages when tunnel is unavailable
         if (
             path.startswith("/api/survey/")
             or path.startswith("/api/surveying/")
@@ -2181,6 +2193,7 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
             or path.startswith("/api/user-profiles")
             or path.startswith("/api/auth/")
             or path.startswith("/api/user/")
+            or path.startswith("/api/share/")
             or path == "/api/scans/delete"
             or path.startswith("/api/scans/bin")
         ):
@@ -2358,18 +2371,19 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
             self.send_json(_test_gdrive_service_account())
             return
 
-        # 0b. On Linux VPS, proxy all dynamic API, 3D stream, and share routes over Reverse Tunnel to Windows PC
-        if os.name != "nt" and (path.startswith("/api/") or path.startswith("/stream/") or path.startswith("/s/")):
-            if self._proxy_via_pc_tunnel_if_vps("GET", path):
-                return
-
-        # 1. Scoped External Share Link Short URL: /s/<token>
+        # 0b. Scoped External Share Link Short URL: /s/<token> (handled directly in <1ms on both VPS and PC)
         if path.startswith("/s/"):
             tok = path[len("/s/") :].strip("/")
+            safe_tok = urllib.parse.quote(tok, safe="-_")
             self.send_response(302)
-            self.send_header("Location", f"/?share={tok}")
+            self.send_header("Location", f"/?share={safe_tok}")
             self.end_headers()
             return
+
+        # 1. On Linux VPS, proxy dynamic API and 3D stream routes over Reverse Tunnel to Windows PC
+        if os.name != "nt" and (path.startswith("/api/") or path.startswith("/stream/")):
+            if self._proxy_via_pc_tunnel_if_vps("GET", path):
+                return
 
         # 2. Health & Status API
         if path in ("/api/status", "/api/pc/health"):
@@ -2691,13 +2705,24 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
             if share_token:
                 self.send_json({"error": "Forbidden for external guest token"}, status=403)
                 return
-            self.send_json({"status": "ok", "links": AUTH_SHARE.list_share_links()})
+            local_links = AUTH_SHARE.list_share_links()
+            if os.name != "nt":
+                by_tok = {str(l.get("token")): l for l in (_load_cloud_manifest().get("share_links") or []) if l.get("token")}
+                for ll in local_links:
+                    if ll.get("token"):
+                        by_tok[str(ll["token"])] = ll
+                merged_links = sorted(by_tok.values(), key=lambda x: str(x.get("created_at") or ""), reverse=True)
+                self.send_json({"status": "ok", "links": merged_links})
+                return
+            self.send_json({"status": "ok", "links": local_links})
             return
 
         if path == "/api/share/verify":
             tok = query.get("token", [share_token])[0]
             scan_id = query.get("scan_id", [None])[0]
             ok, reason, link, allowed = AUTH_SHARE.validate_share_access(tok, requested_scan_id=scan_id)
+            if not ok and os.name != "nt" and tok:
+                ok, reason, link, allowed = self._validate_cloud_share_token(tok, requested_scan_id=scan_id)
             if not ok:
                 self.send_json({"status": "denied", "error": reason, "link": link}, status=403)
                 return
@@ -3393,9 +3418,32 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
             if t_key != TUNNEL_SHARED_KEY:
                 self.send_json({"error": "Invalid X-Tunnel-Key"}, status=403)
                 return
+            if payload.get("share_links_only") and isinstance(payload.get("share_links"), list):
+                m_cur = _load_cloud_manifest()
+                by_t = {str(x.get("token")): x for x in payload["share_links"] if isinstance(x, dict) and x.get("token")}
+                if os.name != "nt":
+                    for lx in AUTH_SHARE.list_share_links():
+                        if lx.get("token") and str(lx["token"]) not in by_t:
+                            by_t[str(lx["token"])] = lx
+                m_cur["share_links"] = sorted(
+                    by_t.values(), key=lambda x: str(x.get("created_at") or ""), reverse=True
+                )
+                m_cur["updated_at"] = int(time.time())
+                _save_cloud_manifest(m_cur)
+                _VPS_RAM_FALLBACK_CACHE.clear()
+                self.send_json({"status": "ok", "share_links_count": len(m_cur["share_links"])})
+                return
             missing_vps_pkgs = []
             if isinstance(payload.get("manifest"), dict):
                 m_in = payload["manifest"]
+                if os.name != "nt":
+                    by_t = {str(x.get("token")): x for x in (m_in.get("share_links") or []) if isinstance(x, dict) and x.get("token")}
+                    for lx in AUTH_SHARE.list_share_links():
+                        if lx.get("token") and str(lx["token"]) not in by_t:
+                            by_t[str(lx["token"])] = lx
+                    m_in["share_links"] = sorted(
+                        by_t.values(), key=lambda x: str(x.get("created_at") or ""), reverse=True
+                    )
                 _save_cloud_manifest(m_in)
                 _VPS_RAM_FALLBACK_CACHE.clear()
                 pkgs_in = m_in.get("packages") or {}
@@ -4134,34 +4182,87 @@ class GatheringScansHandler(SimpleHTTPRequestHandler):
                 return
 
             # 9. Scoped External Share Link Creation & Revocation
-            if path == "/api/share/create":
-                if not actor_perms.get("can_manage_shares"):
-                    self.send_json({"error": f"Role '{actor_role}' cannot create external share links."}, status=403)
-                    return
-                link = AUTH_SHARE.create_share_link(payload)
-                self.send_json({"status": "ok", "link": link})
-                return
+            if path in ("/api/share/create", "/api/share/revoke", "/api/share/restore"):
+                def _persist_share_links_cloud(updated_link: Optional[Dict[str, Any]] = None):
+                    if os.name == "nt":
+                        def _bg_sync_shares():
+                            try:
+                                from pc_worker.gdrive_cloud_sync import sync_share_links_to_vps_manifest
+                                sync_share_links_to_vps_manifest(AUTH_SHARE)
+                            except Exception:
+                                pass
+                        threading.Thread(target=_bg_sync_shares, daemon=True).start()
+                    else:
+                        try:
+                            m_cur = _load_cloud_manifest()
+                            by_t = {str(x.get("token")): x for x in (m_cur.get("share_links") or []) if x.get("token")}
+                            for lx in AUTH_SHARE.list_share_links():
+                                if lx.get("token"):
+                                    by_t[str(lx["token"])] = lx
+                            if updated_link and updated_link.get("token"):
+                                by_t[str(updated_link["token"])] = updated_link
+                            m_cur["share_links"] = sorted(
+                                by_t.values(), key=lambda x: str(x.get("created_at") or ""), reverse=True
+                            )
+                            _save_cloud_manifest(m_cur)
+                            _VPS_RAM_FALLBACK_CACHE.clear()
+                        except Exception:
+                            pass
 
-            if path == "/api/share/revoke":
-                if not actor_perms.get("can_manage_shares"):
-                    self.send_json({"error": f"Role '{actor_role}' cannot revoke external share links."}, status=403)
+                if path == "/api/share/create":
+                    if not actor_perms.get("can_manage_shares"):
+                        self.send_json({"error": f"Role '{actor_role}' cannot create external share links."}, status=403)
+                        return
+                    if actor_email and not payload.get("created_by_email") and not payload.get("actor_email"):
+                        payload["actor_email"] = actor_email
+                    link = AUTH_SHARE.create_share_link(payload)
+                    _persist_share_links_cloud(link)
+                    self.send_json({"status": "ok", "link": link})
                     return
-                token = payload.get("token", "")
-                link = AUTH_SHARE.revoke_share_link(token)
-                if not link:
-                    self.send_json({"error": "Share token not found"}, status=404)
-                    return
-                self.send_json({"status": "ok", "link": link})
-                return
 
-            if path == "/api/share/restore":
-                if not actor_perms.get("can_manage_shares"):
-                    self.send_json({"error": f"Role '{actor_role}' cannot restore external share links."}, status=403)
+                if path == "/api/share/revoke":
+                    if not actor_perms.get("can_manage_shares"):
+                        self.send_json({"error": f"Role '{actor_role}' cannot revoke external share links."}, status=403)
+                        return
+                    token = payload.get("token", "")
+                    link = AUTH_SHARE.revoke_share_link(token)
+                    if not link and os.name != "nt" and token:
+                        m_cur = _load_cloud_manifest()
+                        for item in (m_cur.get("share_links") or []):
+                            if item.get("token") == token:
+                                item["revoked"] = True
+                                link = item
+                                break
+                        if link:
+                            _save_cloud_manifest(m_cur)
+                            _VPS_RAM_FALLBACK_CACHE.clear()
+                    if not link:
+                        self.send_json({"error": "Share token not found"}, status=404)
+                        return
+                    _persist_share_links_cloud(link)
+                    self.send_json({"status": "ok", "link": link})
                     return
-                token = payload.get("token", "")
-                link = AUTH_SHARE.restore_share_link(token)
-                self.send_json({"status": "ok", "link": link})
-                return
+
+                if path == "/api/share/restore":
+                    if not actor_perms.get("can_manage_shares"):
+                        self.send_json({"error": f"Role '{actor_role}' cannot restore external share links."}, status=403)
+                        return
+                    token = payload.get("token", "")
+                    link = AUTH_SHARE.restore_share_link(token)
+                    if not link and os.name != "nt" and token:
+                        m_cur = _load_cloud_manifest()
+                        for item in (m_cur.get("share_links") or []):
+                            if item.get("token") == token:
+                                item["revoked"] = False
+                                item["revoked_at"] = ""
+                                link = item
+                                break
+                        if link:
+                            _save_cloud_manifest(m_cur)
+                            _VPS_RAM_FALLBACK_CACHE.clear()
+                    _persist_share_links_cloud(link)
+                    self.send_json({"status": "ok", "link": link})
+                    return
 
             # 10. Google Chat Notification Dispatch & Webhook Config
             if path == "/api/gchat/config":

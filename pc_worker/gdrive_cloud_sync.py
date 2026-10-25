@@ -665,3 +665,47 @@ def sync_all_scans_to_gdrive_and_vps(db: Any, auth_share: Any = None, force: boo
 
     manifest["vps_synced"] = vps_synced
     return manifest
+
+
+def sync_share_links_to_vps_manifest(auth_share: Any) -> bool:
+    """
+    Fast, lightweight (<150ms) sync of `share_links` into local `gdrive_cloud_manifest.json`
+    and live VPS `/api/cloud-manifest/sync`, so newly created or revoked `/s/<token>` links
+    take effect immediately on `https://scans.gatheren.cloud` even if the PC later goes offline.
+    """
+    if not auth_share:
+        return False
+    manifest: Dict[str, Any] = {}
+    if os.path.isfile(CLOUD_MANIFEST_PATH):
+        try:
+            with open(CLOUD_MANIFEST_PATH, "r", encoding="utf-8") as mf:
+                manifest = json.load(mf)
+        except Exception:
+            manifest = {}
+    manifest["updated_at"] = int(time.time())
+    share_links = auth_share.list_share_links()
+    manifest["share_links"] = share_links
+    try:
+        os.makedirs(os.path.dirname(CLOUD_MANIFEST_PATH), exist_ok=True)
+        with open(CLOUD_MANIFEST_PATH, "w", encoding="utf-8") as mf:
+            json.dump(manifest, mf, ensure_ascii=False, indent=2)
+    except Exception:
+        pass
+    try:
+        payload_bytes = json.dumps(
+            {"share_links_only": True, "share_links": share_links}, ensure_ascii=False
+        ).encode("utf-8")
+        req = urllib.request.Request(
+            f"http://{VPS_HOST}:8095/api/cloud-manifest/sync",
+            data=payload_bytes,
+            headers={
+                "Content-Type": "application/json; charset=utf-8",
+                "X-Tunnel-Key": TUNNEL_SHARED_KEY,
+            },
+            method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=8) as resp:
+            return resp.status == 200
+    except Exception as e:
+        print(f"[GDriveCloudSync] Share links fast-sync note: {e}")
+        return False

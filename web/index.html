@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>GatheringCloud Scans — 3D Photogrammetry &amp; Civil Surveying Studio (scans.gatheren.cloud)</title>
   <link rel="icon" type="image/png" href="/assets/gathering_cloud_logo.png" />
-  <link rel="stylesheet" href="/app.css?v=20261025_v56" />
+  <link rel="stylesheet" href="/app.css?v=20261025_v57" />
   <script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
 <body>
@@ -60,7 +60,7 @@
         </svg>
       </button>
 
-      <button type="button" class="gs-top-btn" id="btnOpenSharing" title="Scoped External Share Links (/s/token)">
+      <button type="button" class="gs-top-btn" id="btnOpenSharing" title="Scoped External Share Links">
         <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8">
           <circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/>
           <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/>
@@ -1023,14 +1023,14 @@
        MODAL 2: SCOPED EXTERNAL SHARE LINK CONTROLS (Requirement 4.b)
        ======================================================================== -->
   <div class="gs-modal-backdrop" id="modalSharing" role="dialog" aria-modal="true" aria-labelledby="modalSharingTitle">
-    <div class="gs-modal">
+    <div class="gs-modal gs-sharing-modal">
       <div class="gs-panel-header">
         <div class="gs-panel-title" id="modalSharingTitle">
           <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="var(--ui-accent)" stroke-width="2">
             <circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/>
             <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/>
           </svg>
-          <span>Scoped External Sharing Controls (/s/&lt;token&gt;)</span>
+          <span>Scoped External Sharing Controls</span>
         </div>
         <button type="button" class="btn-xs" data-close-modal="modalSharing" title="Close" aria-label="Close Sharing Modal">
           <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8">
@@ -1043,7 +1043,7 @@
         External viewers with a share link can <strong>only</strong> view the specific scan or project group granted below. Access can be revoked immediately at any time.
       </p>
 
-      <div style="background:var(--ui-bg-subtle);border:1px solid var(--ui-border);border-radius:10px;padding:12px 14px;margin-bottom:14px;">
+      <div style="background:var(--ui-bg-subtle);border:1px solid var(--ui-border);border-radius:10px;padding:12px 14px;margin-bottom:12px;">
         <div class="gs-share-form-grid gs-responsive-grid-3" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;">
           <div class="gs-form-group" style="margin-bottom:6px;">
             <label>Scope Type</label>
@@ -1067,12 +1067,38 @@
             <label style="display:flex;align-items:center;gap:4px;"><input type="checkbox" id="shareAllowComments" checked style="accent-color:#0284c7;" /> Comments</label>
             <label style="display:flex;align-items:center;gap:4px;"><input type="checkbox" id="shareAllowDownload" style="accent-color:#0284c7;" /> .OBJ Download</label>
           </div>
-          <button type="button" class="btn-xs primary" id="btnCreateShareLink" title="Generate Scoped Share Link">
+          <button type="button" class="btn-xs primary" id="btnCreateShareLink" title="Generate &amp; Copy Scoped Share Link">
             <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8">
               <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
             </svg>
-            <span>Create</span>
+            <span>Create &amp; Copy Link</span>
           </button>
+        </div>
+      </div>
+
+      <!-- Ready-to-Share Full URL Banner -->
+      <div class="gs-share-latest-bar" id="shareLatestCreatedBar" style="display:none;">
+        <div class="gs-share-latest-meta">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="var(--ui-accent)" stroke-width="2" style="flex-shrink:0;">
+            <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>
+            <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
+          </svg>
+          <span id="shareLatestLabelText">Shareable Link Ready:</span>
+        </div>
+        <div class="gs-share-url-group gs-share-url-group-lg">
+          <input type="text" class="gs-share-url-input" id="shareLatestUrlInput" readonly value="" aria-label="Shareable URL" />
+          <button type="button" class="btn-xs primary gs-share-copy-btn" id="btnCopyLatestShareUrl" title="Copy Full Link to Clipboard">
+            <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8">
+              <rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+            </svg>
+            <span>Copy Link</span>
+          </button>
+          <a href="#" target="_blank" rel="noopener noreferrer" class="btn-xs gs-share-open-btn" id="btnOpenLatestShareUrl" title="Open Link in New Tab">
+            <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8">
+              <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/>
+            </svg>
+            <span>Open</span>
+          </a>
         </div>
       </div>
 
@@ -1082,7 +1108,7 @@
             <tr>
               <th>Label</th>
               <th>Scope</th>
-              <th>Share URL</th>
+              <th>Share Link</th>
               <th>Permissions</th>
               <th>Views</th>
               <th>Status</th>
@@ -1806,6 +1832,6 @@
   <script src="/lib/3d-tiles-renderer.bundle.js"></script>
 
   <!-- Main GatheringScans Application Logic -->
-  <script src="/app.js?v=20261025_v56"></script>
+  <script src="/app.js?v=20261025_v57"></script>
 </body>
 </html>

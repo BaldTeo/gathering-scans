@@ -595,7 +595,9 @@ class AuthAndSharingManager:
         d["allow_measurements"] = bool(d.get("allow_measurements", 1))
         d["allow_comments"] = bool(d.get("allow_comments", 1))
         d["revoked"] = bool(d.get("revoked", 0))
-        d["share_url"] = f"{PUBLIC_BASE_URL}/?share={d['token']}"
+        base = PUBLIC_BASE_URL.rstrip("/")
+        d["share_url"] = f"{base}/s/{d['token']}"
+        d["direct_url"] = f"{base}/?share={d['token']}"
         d["short_path"] = f"/s/{d['token']}"
         return d
 

@@ -199,6 +199,8 @@ class GatheringScansTestSuite(unittest.TestCase):
             }
         )
         tok = link["token"]
+        self.assertEqual(link["share_url"], f"https://scans.gatheren.cloud/s/{tok}")
+        self.assertEqual(link["direct_url"], f"https://scans.gatheren.cloud/?share={tok}")
 
         # Authorized scan_a succeeds
         ok_a, _, _, allowed = auth.validate_share_access(tok, requested_scan_id="scan_a")

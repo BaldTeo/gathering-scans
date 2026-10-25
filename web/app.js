@@ -17260,10 +17260,151 @@
   });
 
   // 5B. Scoped External Sharing Modal (Requirement 4.b)
+  function getPublicShareOrigin() {
+    const loc = window.location;
+    const host = String(loc.hostname || "").toLowerCase();
+    const isLocalOrPrivate =
+      !host ||
+      host === "localhost" ||
+      host === "127.0.0.1" ||
+      host === "::1" ||
+      host === "[::1]" ||
+      host === "0.0.0.0" ||
+      host.endsWith(".local") ||
+      /^10\./.test(host) ||
+      /^192\.168\./.test(host) ||
+      /^172\.(1[6-9]|2\d|3[0-1])\./.test(host);
+    if (isLocalOrPrivate) {
+      return "https://scans.gatheren.cloud";
+    }
+    return loc.origin;
+  }
+
+  function buildPublicShareUrl(token) {
+    const cleanTok = encodeURIComponent(String(token || "").trim());
+    return `${getPublicShareOrigin()}/s/${cleanTok}`;
+  }
+
+  function resolveShareScopeTitle(scopeType, targetId) {
+    const st = String(scopeType || "scan").toLowerCase();
+    const tid = String(targetId || "");
+    if (st === "scan") {
+      const matched = (STATE.scans || []).find((s) => s.scan_id === tid);
+      if (matched && matched.name) {
+        return matched.name;
+      }
+    }
+    return tid;
+  }
+
+  async function copyTextToClipboard(text) {
+    const str = String(text || "");
+    if (!str) return false;
+    if (navigator.clipboard && typeof navigator.clipboard.writeText === "function") {
+      try {
+        await navigator.clipboard.writeText(str);
+        return true;
+      } catch (_) {}
+    }
+    try {
+      const ta = document.createElement("textarea");
+      ta.value = str;
+      ta.setAttribute("readonly", "readonly");
+      ta.style.position = "fixed";
+      ta.style.top = "-9999px";
+      ta.style.left = "-9999px";
+      ta.style.opacity = "0";
+      document.body.appendChild(ta);
+      ta.focus();
+      ta.select();
+      ta.setSelectionRange(0, str.length);
+      const ok = document.execCommand("copy");
+      document.body.removeChild(ta);
+      return Boolean(ok);
+    } catch (_) {
+      return false;
+    }
+  }
+
+  function flashCopyButtonState(btnEl) {
+    if (!btnEl) return;
+    if (!btnEl.dataset.origHtml) {
+      btnEl.dataset.origHtml = btnEl.innerHTML;
+    }
+    btnEl.classList.add("is-copied");
+    btnEl.innerHTML = `
+      <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.2">
+        <polyline points="20 6 9 17 4 12"/>
+      </svg>
+      <span>Copied!</span>
+    `;
+    if (btnEl._copyTimer) clearTimeout(btnEl._copyTimer);
+    btnEl._copyTimer = setTimeout(() => {
+      btnEl.classList.remove("is-copied");
+      if (btnEl.dataset.origHtml) {
+        btnEl.innerHTML = btnEl.dataset.origHtml;
+      }
+    }, 2200);
+  }
+
+  function showLatestShareLinkBanner(url, statusLabel = "Shareable Link Ready:") {
+    const bar = document.getElementById("shareLatestCreatedBar");
+    const inp = document.getElementById("shareLatestUrlInput");
+    const openBtn = document.getElementById("btnOpenLatestShareUrl");
+    const lbl = document.getElementById("shareLatestLabelText");
+    if (!bar || !inp) return;
+    if (!url) {
+      bar.style.display = "none";
+      return;
+    }
+    bar.style.display = "flex";
+    inp.value = url;
+    if (openBtn) openBtn.href = url;
+    if (lbl) lbl.textContent = statusLabel;
+  }
+
+  let _cachedShareLinksList = [];
+
+  function syncBannerWithSelectedTarget() {
+    const scopeSel = document.getElementById("shareScopeType");
+    const targetSel = document.getElementById("shareTargetId");
+    const st = scopeSel?.value || "scan";
+    const tid = targetSel?.value || "";
+    const activeMatch =
+      _cachedShareLinksList.find((l) => !l.revoked && l.scope_type === st && l.target_id === tid) ||
+      _cachedShareLinksList.find((l) => !l.revoked);
+    if (activeMatch && activeMatch.token) {
+      showLatestShareLinkBanner(buildPublicShareUrl(activeMatch.token), "Shareable Link Ready:");
+    } else {
+      showLatestShareLinkBanner("");
+    }
+  }
+
+  document.getElementById("shareLatestUrlInput")?.addEventListener("click", (e) => {
+    e.currentTarget?.select?.();
+  });
+  document.getElementById("btnCopyLatestShareUrl")?.addEventListener("click", async (e) => {
+    const btn = e.currentTarget;
+    const inp = document.getElementById("shareLatestUrlInput");
+    const url = inp?.value || "";
+    if (!url) return;
+    await copyTextToClipboard(url);
+    inp?.select?.();
+    flashCopyButtonState(btn);
+    showToast(`Copied share link: ${url}`);
+  });
+
   async function openSharingModal(defaultScope = "scan", defaultTarget = "") {
     openModal("modalSharing");
     const scopeSel = document.getElementById("shareScopeType");
     const targetSel = document.getElementById("shareTargetId");
+    const resolvedDefaultTarget =
+      defaultTarget ||
+      (defaultScope === "scan"
+        ? STATE.activeScanId
+        : STATE.activeProjectGroup && STATE.activeProjectGroup !== "__all__"
+        ? STATE.activeProjectGroup
+        : "");
 
     const populateTargets = () => {
       const st = scopeSel.value;
@@ -17275,6 +17416,9 @@
           opt.textContent = `${s.name} (${s.project_group})`;
           targetSel.appendChild(opt);
         });
+        if (resolvedDefaultTarget && STATE.scans.some((s) => s.scan_id === resolvedDefaultTarget)) {
+          targetSel.value = resolvedDefaultTarget;
+        }
       } else {
         const groups = [...new Set(STATE.scans.map((s) => s.project_group))];
         groups.forEach((g) => {
@@ -17283,25 +17427,32 @@
           opt.textContent = g;
           targetSel.appendChild(opt);
         });
+        if (resolvedDefaultTarget && groups.includes(resolvedDefaultTarget)) {
+          targetSel.value = resolvedDefaultTarget;
+        }
       }
-      if (defaultTarget) targetSel.value = defaultTarget;
+      syncBannerWithSelectedTarget();
     };
 
     scopeSel.value = defaultScope;
     scopeSel.onchange = populateTargets;
+    targetSel.onchange = syncBannerWithSelectedTarget;
     populateTargets();
     await renderShareLinksTable();
+    syncBannerWithSelectedTarget();
   }
 
-  async function renderShareLinksTable() {
+  async function renderShareLinksTable(preferredBannerUrl = "", preferredBannerLabel = "") {
     const tbody = document.getElementById("shareLinksTableBody");
     if (!tbody) return;
     try {
       const res = await apiGet("/api/share/list");
       const links = res.links || [];
+      _cachedShareLinksList = links;
       tbody.innerHTML = "";
       if (!links.length) {
-        tbody.innerHTML = `<tr><td colspan="7" style="color:var(--ui-text-muted);">No external share links created yet.</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="7" style="color:var(--ui-text-muted);">No external share links created yet. Click "Create &amp; Copy Link" above to generate a shareable URL.</td></tr>`;
+        if (!preferredBannerUrl) showLatestShareLinkBanner("");
         return;
       }
       links.forEach((l) => {
@@ -17314,27 +17465,53 @@
           .filter(Boolean)
           .join(", ");
         const safeToken = escapeHtml(l.token || "");
-        const localUrl = `${window.location.origin}/?share=${encodeURIComponent(l.token || "")}`;
+        const fullShareUrl = buildPublicShareUrl(l.token || "");
+        const safeFullUrl = escapeHtml(fullShareUrl);
+        const scopeKind = String(l.scope_type || "scan").toUpperCase();
+        const friendlyTarget = resolveShareScopeTitle(l.scope_type, l.target_id);
+        const fullScopeTooltip = `${scopeKind}: ${friendlyTarget}${friendlyTarget !== l.target_id ? ` (${l.target_id})` : ""}`;
         tr.innerHTML = `
           <td><b style="color:var(--ui-text-primary);">${escapeHtml(l.label || "")}</b></td>
-          <td><span class="gs-crs-pill">${escapeHtml(String(l.scope_type || "").toUpperCase())}: ${escapeHtml(l.target_id || "")}</span></td>
-          <td><code style="color:var(--ui-accent);font-size:11px;">/s/${safeToken}</code></td>
-          <td style="font-size:11px;color:var(--ui-text-secondary);">${escapeHtml(perms || "View")}</td>
-          <td style="color:var(--ui-text-primary);font-weight:600;">${Number(l.view_count || 0)}</td>
+          <td>
+            <span class="gs-crs-pill gs-share-scope-pill" title="${escapeHtml(fullScopeTooltip)}">
+              ${escapeHtml(scopeKind)}: ${escapeHtml(friendlyTarget)}
+            </span>
+          </td>
+          <td>
+            <div class="gs-share-url-group">
+              <input
+                type="text"
+                class="gs-share-url-input"
+                readonly
+                value="${safeFullUrl}"
+                title="${safeFullUrl}"
+                style="${l.revoked ? "text-decoration:line-through;color:var(--ui-text-muted);" : ""}"
+                aria-label="Full Share Link"
+              />
+              <button type="button" class="btn-xs primary gs-share-copy-btn" data-copy="${safeFullUrl}" title="Copy Full Share Link">
+                <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8">
+                  <rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+                </svg>
+                <span>Copy</span>
+              </button>
+              <a href="${safeFullUrl}" target="_blank" rel="noopener noreferrer" class="btn-xs gs-share-open-btn" title="Open Share Link in New Tab">
+                <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8">
+                  <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/>
+                </svg>
+              </a>
+            </div>
+          </td>
+          <td style="font-size:11px;color:var(--ui-text-secondary);white-space:nowrap;">${escapeHtml(perms || "View")}</td>
+          <td style="color:var(--ui-text-primary);font-weight:600;text-align:center;">${Number(l.view_count || 0)}</td>
           <td>${
             l.revoked
-              ? '<span style="color:var(--ui-text-muted);font-weight:700;">REVOKED</span>'
+              ? '<span style="color:var(--ui-text-muted);font-weight:700;font-size:11px;">REVOKED</span>'
               : '<span class="gs-crs-pill">ACTIVE</span>'
           }</td>
           <td style="display:flex;gap:5px;justify-content:flex-end;">
-            <button type="button" class="btn-xs" data-copy="${escapeHtml(localUrl)}" title="Copy Link">
-              <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8">
-                <rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
-              </svg>
-            </button>
             ${
               !l.revoked
-                ? `<button type="button" class="btn-xs" data-revoke="${safeToken}" title="Revoke Access">
+                ? `<button type="button" class="btn-xs" data-revoke="${safeToken}" title="Revoke Access Immediately">
                     <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8">
                       <circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/>
                     </svg>
@@ -17347,22 +17524,34 @@
             }
           </td>
         `;
-        tr.querySelector("[data-copy]")?.addEventListener("click", () => {
-          navigator.clipboard?.writeText(localUrl);
-          showToast(`Copied share link: ${localUrl}`);
+        const urlInp = tr.querySelector(".gs-share-url-input");
+        urlInp?.addEventListener("click", () => {
+          urlInp.select();
+        });
+        const copyBtn = tr.querySelector("[data-copy]");
+        copyBtn?.addEventListener("click", async () => {
+          await copyTextToClipboard(fullShareUrl);
+          urlInp?.select?.();
+          flashCopyButtonState(copyBtn);
+          showLatestShareLinkBanner(fullShareUrl, "Copied to Clipboard:");
+          showToast(`Copied share link: ${fullShareUrl}`);
         });
         tr.querySelector("[data-revoke]")?.addEventListener("click", async () => {
           await apiPost("/api/share/revoke", { token: l.token });
-          showToast(`Revoked external share link /s/${l.token}`);
+          showToast(`Revoked external share link: ${fullShareUrl}`);
           await renderShareLinksTable();
+          syncBannerWithSelectedTarget();
         });
         tr.querySelector("[data-restore]")?.addEventListener("click", async () => {
           await apiPost("/api/share/restore", { token: l.token });
-          showToast(`Restored external share link /s/${l.token}`);
-          await renderShareLinksTable();
+          showToast(`Restored external share link: ${fullShareUrl}`);
+          await renderShareLinksTable(fullShareUrl, "Restored Shareable Link:");
         });
         tbody.appendChild(tr);
       });
+      if (preferredBannerUrl) {
+        showLatestShareLinkBanner(preferredBannerUrl, preferredBannerLabel || "Shareable Link Ready:");
+      }
     } catch (err) {
       tbody.innerHTML = `<tr><td colspan="7" style="color:var(--ui-text-secondary);">${escapeHtml(err.message || "")}</td></tr>`;
     }
@@ -17385,8 +17574,20 @@
         allow_comments,
         allow_download,
       });
-      showToast(`Created scoped share link: /s/${res.link.token}`);
-      await renderShareLinksTable();
+      const fullShareUrl = buildPublicShareUrl(res.link.token);
+      const copiedOk = await copyTextToClipboard(fullShareUrl);
+      await renderShareLinksTable(
+        fullShareUrl,
+        copiedOk ? "Created & Copied to Clipboard:" : "New Shareable Link Ready:"
+      );
+      const latestInp = document.getElementById("shareLatestUrlInput");
+      latestInp?.select?.();
+      if (copiedOk) {
+        flashCopyButtonState(document.getElementById("btnCopyLatestShareUrl"));
+        showToast(`Created & copied share link: ${fullShareUrl}`);
+      } else {
+        showToast(`Created share link: ${fullShareUrl}`);
+      }
     } catch (err) {
       showToast(`Share Error: ${err.message}`);
     }
@@ -18659,7 +18860,8 @@
         const scopeLbl = document.getElementById("lblExternalShareScope");
         if (banner && scopeLbl) {
           banner.style.display = "flex";
-          scopeLbl.textContent = `${data.share_link.label} (${data.share_link.scope_type.toUpperCase()}: ${data.share_link.target_id}) — Guest Access (Level 5: Distance, Area & Coordinates only).`;
+          const friendlyScope = resolveShareScopeTitle(data.share_link.scope_type, data.share_link.target_id);
+          scopeLbl.textContent = `${data.share_link.label} (${String(data.share_link.scope_type || "scan").toUpperCase()}: ${friendlyScope}) — Guest Access (Level 5: Distance, Area & Coordinates only).`;
         }
         applyRolePermissionsToUI();
       }
@@ -18714,8 +18916,14 @@
         openSiteTimeline(STATE.activeProjectGroup, STATE.selectedTimelineScanId, false);
       }
     } catch (err) {
-      // Try offline cached catalog first before showing any error
-      if (!STATE.scans || STATE.scans.length === 0) {
+      const errMsg = String(err?.message || "");
+      const isRevokedShare =
+        Boolean(STATE.shareToken) &&
+        (errMsg.toLowerCase().includes("revoked") ||
+          errMsg.toLowerCase().includes("invalid") ||
+          errMsg.includes("403"));
+      // Try offline cached catalog only when NOT an invalid/revoked share token
+      if (!isRevokedShare && (!STATE.scans || STATE.scans.length === 0)) {
         try {
           const cached = JSON.parse(localStorage.getItem("gs_last_catalog_v1") || "null");
           if (cached && Array.isArray(cached.scans) && cached.scans.length > 0) {
@@ -18730,12 +18938,6 @@
           }
         } catch (_) {}
       }
-      const errMsg = String(err?.message || "");
-      const isRevokedShare =
-        Boolean(STATE.shareToken) &&
-        (errMsg.toLowerCase().includes("revoked") ||
-          errMsg.toLowerCase().includes("invalid") ||
-          errMsg.includes("403"));
       if (isRevokedShare && (!STATE.scans || STATE.scans.length === 0)) {
         document.body.innerHTML = `
           <div style="display:flex;align-items:center;justify-content:center;height:100vh;background:var(--ui-bg-subtle);color:var(--ui-text-primary);font-family:sans-serif;padding:24px;">
@@ -18773,6 +18975,12 @@
     const urlScan = new URLSearchParams(window.location.search).get("scan");
     if (urlScan) {
       switchView("studio", urlScan);
+    } else if (
+      STATE.shareToken &&
+      String(STATE.shareLinkInfo?.scope_type || "").toLowerCase() === "scan" &&
+      STATE.activeScanId
+    ) {
+      switchView("studio", STATE.activeScanId);
     }
     window.addEventListener("focus", () => {
       refreshScansCatalog(true);
