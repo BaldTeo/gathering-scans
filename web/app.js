@@ -136,6 +136,9 @@
     lastVolumeResult: null,
     lastContoursResult: null,
     lastProfileResult: null,
+    categorizeLabelsVisible: true,
+    categorizeEditMode: null,
+    categorizeEditPoints: [],
     multiAlign: {
       active: false,
       gizmoMode: "both", // 'both' | 'translate' | 'rotate'
@@ -5164,7 +5167,23 @@
     el.style.position = "absolute";
     el.style.pointerEvents = "none";
     el.style.borderColor = borderColor;
-    el.innerHTML = htmlText;
+    let finalHtml = htmlText;
+    if (options.isCategorize && options.featureId && options.catKey && options.catKey !== "stockpiles") {
+      finalHtml += ` <button type="button" data-cat-badge-del="${escapeHtml(options.featureId)}" data-cat-badge-type="${escapeHtml(options.catKey)}" title="刪除此分類項目 Remove ${escapeHtml(options.featureId)}" style="margin-left:5px;padding:0 4px;border:none;border-radius:4px;background:rgba(239,68,68,0.24);color:#fca5a5;cursor:pointer;font-size:10px;line-height:1.2;pointer-events:auto;">×</button>`;
+    }
+    el.innerHTML = finalHtml;
+    const delBtn = el.querySelector("[data-cat-badge-del]");
+    if (delBtn) {
+      delBtn.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        const fid = delBtn.getAttribute("data-cat-badge-del");
+        const ctype = delBtn.getAttribute("data-cat-badge-type");
+        const catMap = { water: "water_bodies", roads: "roads", walls: "walls", trees: "trees" };
+        if (fid && ctype && typeof submitCategorizeManualEdit === "function") {
+          submitCategorizeManualEdit("manual_remove", catMap[ctype] || ctype, fid);
+        }
+      });
+    }
     container.appendChild(el);
     const badgeObj = {
       el,
@@ -5179,6 +5198,7 @@
       isTempDistance: !!options.isTempDistance,
       priority: options.priority !== undefined ? Number(options.priority) : 50,
       featureId: options.featureId || "",
+      catKey: options.catKey || "",
       isFocused: !!options.isFocused,
     };
     STATE.badges2D.push(badgeObj);
@@ -5245,6 +5265,11 @@
         b.el.style.left = `${clampedX}px`;
         b.el.style.top = `${clampedY}px`;
         placedRects.push([clampedX - halfW - 4, clampedY - halfH - 4, clampedX + halfW + 4, clampedY + halfH + 4]);
+        return;
+      }
+
+      if (STATE.categorizeLabelsVisible === false) {
+        b.el.style.display = "none";
         return;
       }
 
@@ -9068,6 +9093,205 @@
       return clickPt.distanceTo(startPt) < snapRadius;
     };
 
+    if (tool === "categorize" && STATE.categorizeEditMode) {
+      const mode = STATE.categorizeEditMode;
+      const originTwd = localToTwd97({ x: 0, y: 0, z: 0 });
+      if (mode === "add_tree") {
+        submitCategorizeManualEdit("manual_add", "trees", null, {
+          trunk_local: [Number(pt.x.toFixed(3)), Number(pt.y.toFixed(3)), Number(pt.z.toFixed(3))],
+          trunk_twd97: [Number(twd.e.toFixed(3)), Number(twd.n.toFixed(3)), Number(twd.h.toFixed(3))],
+          auto_measure: true,
+          dbh_cm: 28.0,
+          height_m: 6.5,
+          crown_diameter_m: 4.2,
+        });
+        return;
+      }
+      if (mode === "add_wall") {
+        if (!Array.isArray(STATE.categorizeEditPoints)) STATE.categorizeEditPoints = [];
+        STATE.categorizeEditPoints.push({ pt: pt.clone(), twd });
+        add3DPinMarker(pt, 0xf43f5e, studioThree.overlayGroup, (m) => {
+          m.userData.isTempDistance = true;
+          studioThree.overlayGroup.add(m);
+        });
+        if (STATE.categorizeEditPoints.length >= 2) {
+          const p0 = STATE.categorizeEditPoints[0];
+          const p1 = STATE.categorizeEditPoints[1];
+          STATE.categorizeEditPoints = [];
+          clearTempDistanceVisuals();
+          submitCategorizeManualEdit("manual_add", "walls", null, {
+            base_polyline_local: [
+              [Number(p0.pt.x.toFixed(3)), Number(p0.pt.y.toFixed(3)), Number(p0.pt.z.toFixed(3))],
+              [Number(p1.pt.x.toFixed(3)), Number(p1.pt.y.toFixed(3)), Number(p1.pt.z.toFixed(3))],
+            ],
+            base_polyline_twd97: [
+              [Number(p0.twd.e.toFixed(3)), Number(p0.twd.n.toFixed(3)), Number(p0.twd.h.toFixed(3))],
+              [Number(p1.twd.e.toFixed(3)), Number(p1.twd.n.toFixed(3)), Number(p1.twd.h.toFixed(3))],
+            ],
+            height_m: 2.5,
+            mean_height_m: 2.5,
+          });
+        } else {
+          showToast("🔴 牆面起點已標記，請點擊牆面終點 (Point 1/2 placed — click wall end point)");
+          if (STATE.lastCategorizeResult) renderCategorizePanelContent(STATE.lastCategorizeResult);
+        }
+        return;
+      }
+      if (mode === "add_road") {
+        if (!Array.isArray(STATE.categorizeEditPoints)) STATE.categorizeEditPoints = [];
+        if (
+          STATE.categorizeEditPoints.length >= 3 &&
+          isNearStartVertex(pt, STATE.categorizeEditPoints[0].pt)
+        ) {
+          const boundaryLoc = STATE.categorizeEditPoints.map((x) => [
+            Number(x.pt.x.toFixed(3)),
+            Number(x.pt.y.toFixed(3)),
+            Number(x.pt.z.toFixed(3)),
+          ]);
+          const boundaryTwd = STATE.categorizeEditPoints.map((x) => [
+            Number(x.twd.e.toFixed(3)),
+            Number(x.twd.n.toFixed(3)),
+            Number(x.twd.h.toFixed(3)),
+          ]);
+          STATE.categorizeEditPoints = [];
+          clearTempDistanceVisuals();
+          submitCategorizeManualEdit("manual_add", "roads", null, {
+            boundary_local: boundaryLoc,
+            boundary_twd97: boundaryTwd,
+          });
+          return;
+        }
+        STATE.categorizeEditPoints.push({ pt: pt.clone(), twd });
+        clearTempDistanceVisuals();
+        const pts = STATE.categorizeEditPoints.map((x) => x.pt);
+        pts.forEach((p, idx) => {
+          add3DPinMarker(p, idx === 0 ? 0xff3b30 : 0xf59e0b, studioThree.overlayGroup, (m) => {
+            m.userData.isTempDistance = true;
+            studioThree.overlayGroup.add(m);
+          });
+        });
+        if (pts.length >= 2) {
+          const loopPts = pts.length >= 3 ? [...pts, pts[0]] : pts;
+          const lGeo = new THREE.BufferGeometry().setFromPoints(loopPts);
+          const lMesh = new THREE.Line(lGeo, new THREE.LineBasicMaterial({ color: 0xf59e0b, depthTest: false }));
+          lMesh.userData.isTempDistance = true;
+          studioThree.overlayGroup.add(lMesh);
+        }
+        showToast(
+          pts.length >= 3
+            ? `🟠 道路頂點 #${pts.length} 已標記 — 點擊紅色起點 V1 或按 Enter 完成新增道路`
+            : `🟠 道路頂點 #${pts.length} 已標記 — 請再標記至少 ${3 - pts.length} 個頂點`
+        );
+        if (STATE.lastCategorizeResult) renderCategorizePanelContent(STATE.lastCategorizeResult);
+        return;
+      }
+      if (mode === "remove_click") {
+        const res = STATE.lastCategorizeResult;
+        if (!res) return;
+        let bestId = null;
+        let bestCat = null;
+        let bestDist = 5.5;
+        (res.trees || []).forEach((t) => {
+          const v = twd97PointToStudioVec3(t.trunk_twd97, t.trunk_local, originTwd);
+          const d = Math.hypot(v.x - pt.x, v.z - pt.z);
+          if (d < bestDist) {
+            bestDist = d;
+            bestId = t.id;
+            bestCat = "trees";
+          }
+        });
+        (res.walls || []).forEach((wl) => {
+          const bTwd = wl.base_polyline_twd97 || [];
+          const bLoc = wl.base_polyline_local || [];
+          const nPts = Math.max(bTwd.length, bLoc.length);
+          for (let i = 0; i < nPts - 1; i++) {
+            const a = twd97PointToStudioVec3(bTwd[i], bLoc[i], originTwd);
+            const b = twd97PointToStudioVec3(bTwd[i + 1], bLoc[i + 1], originTwd);
+            const abx = b.x - a.x;
+            const abz = b.z - a.z;
+            const len2 = abx * abx + abz * abz;
+            const tProj = len2 > 1e-6 ? Math.max(0, Math.min(1, ((pt.x - a.x) * abx + (pt.z - a.z) * abz) / len2)) : 0;
+            const px = a.x + tProj * abx;
+            const pz = a.z + tProj * abz;
+            const d = Math.hypot(pt.x - px, pt.z - pz);
+            if (d < bestDist) {
+              bestDist = d;
+              bestId = wl.id;
+              bestCat = "walls";
+            }
+          }
+        });
+        const checkPolyHit = (polyObj, catName) => {
+          const bTwd = polyObj.boundary_twd97 || [];
+          const bLoc = polyObj.boundary_local || [];
+          const nVerts = Math.max(bTwd.length, bLoc.length);
+          if (nVerts >= 3) {
+            const ringXZ = [];
+            for (let i = 0; i < nVerts; i++) {
+              const v = twd97PointToStudioVec3(bTwd[i], bLoc[i], originTwd);
+              ringXZ.push([v.x, v.z]);
+            }
+            if (pointInPoly2D(pt.x, pt.z, ringXZ)) {
+              const holesTwd = polyObj.holes_twd97 || [];
+              const holesLoc = polyObj.holes_local || [];
+              let inHole = false;
+              const nH = Math.max(holesTwd.length, holesLoc.length);
+              for (let hi = 0; hi < nH; hi++) {
+                const ht = holesTwd[hi] || [];
+                const hl = holesLoc[hi] || [];
+                const nhv = Math.max(ht.length, hl.length);
+                if (nhv >= 3) {
+                  const hXZ = [];
+                  for (let k = 0; k < nhv; k++) {
+                    const hv = twd97PointToStudioVec3(ht[k], hl[k], originTwd);
+                    hXZ.push([hv.x, hv.z]);
+                  }
+                  if (pointInPoly2D(pt.x, pt.z, hXZ)) {
+                    inHole = true;
+                    break;
+                  }
+                }
+              }
+              if (!inHole && 1.8 < bestDist) {
+                bestDist = 1.8;
+                bestId = polyObj.id;
+                bestCat = catName;
+              }
+            }
+            for (let i = 0; i < ringXZ.length; i++) {
+              const a = ringXZ[i];
+              const b = ringXZ[(i + 1) % ringXZ.length];
+              const abx = b[0] - a[0];
+              const abz = b[1] - a[1];
+              const len2 = abx * abx + abz * abz;
+              const tProj = len2 > 1e-6 ? Math.max(0, Math.min(1, ((pt.x - a[0]) * abx + (pt.z - a[1]) * abz) / len2)) : 0;
+              const d = Math.hypot(pt.x - (a[0] + tProj * abx), pt.z - (a[1] + tProj * abz));
+              if (d < bestDist) {
+                bestDist = d;
+                bestId = polyObj.id;
+                bestCat = catName;
+              }
+            }
+          }
+          const vc = twd97PointToStudioVec3(polyObj.center_twd97, polyObj.center_local, originTwd);
+          const dc = Math.hypot(vc.x - pt.x, vc.z - pt.z);
+          if (dc < bestDist) {
+            bestDist = dc;
+            bestId = polyObj.id;
+            bestCat = catName;
+          }
+        };
+        (res.roads || []).forEach((r) => checkPolyHit(r, "roads"));
+        (res.water_bodies || []).forEach((w) => checkPolyHit(w, "water_bodies"));
+        if (bestId && bestCat) {
+          submitCategorizeManualEdit("manual_remove", bestCat, bestId);
+        } else {
+          showToast("附近 5.5m 內未找到可刪除的分類項目，或請直接點擊表格中的 🗑️ 按鈕", "warn");
+        }
+        return;
+      }
+    }
+
     if (tool === "coordinates") {
       clearTempDistanceVisuals();
       const coordIndex = STATE.completedMeasurements.filter((m) => m.type === "coordinates").length + 1;
@@ -10724,6 +10948,7 @@
   function syncCategorizeVisibilityUI() {
     const hasSaved = hasSavedCategorizationForActiveScan();
     const vis = Boolean(STATE.categorizeOverlayVisible && hasSaved);
+    const lblsVis = STATE.categorizeLabelsVisible !== false;
 
     const topBtn = document.getElementById("btnStudioToggleCategorizeVis");
     const topLbl = document.getElementById("lblStudioToggleCategorizeVis");
@@ -10736,6 +10961,24 @@
     }
     if (topLbl) {
       topLbl.textContent = vis ? "👁️ AI 分類: 顯示" : "👁️‍🗨️ AI 分類: 隱藏";
+    }
+
+    const topLblBtn = document.getElementById("btnStudioToggleCategorizeLabels");
+    const topLblTxt = document.getElementById("lblStudioToggleCategorizeLabels");
+    if (topLblBtn) {
+      topLblBtn.style.display = hasSaved ? "inline-flex" : "none";
+      topLblBtn.setAttribute("aria-pressed", lblsVis ? "true" : "false");
+      topLblBtn.style.borderColor = lblsVis ? "rgba(56,189,248,0.75)" : "rgba(148,163,184,0.35)";
+      topLblBtn.style.background = lblsVis ? "rgba(56,189,248,0.16)" : "";
+      topLblBtn.style.color = lblsVis ? "#38bdf8" : "#94a3b8";
+    }
+    if (topLblTxt) {
+      topLblTxt.textContent = lblsVis ? "🏷️ 標籤: 顯示" : "🏷️ 標籤: 隱藏";
+    }
+
+    const chkLbls = document.getElementById("chkCategorizeLabelsVis");
+    if (chkLbls) {
+      chkLbls.checked = lblsVis;
     }
 
     const dockDot = document.getElementById("lblCategorizeSavedDot");
@@ -10762,6 +11005,62 @@
       masterBadge.style.background = vis ? "rgba(16,185,129,0.20)" : "rgba(148,163,184,0.18)";
       masterBadge.style.color = vis ? "#34d399" : "#94a3b8";
     }
+  }
+
+  function setCategorizeLabelsVisibility(visible, opts = {}) {
+    STATE.categorizeLabelsVisible = Boolean(visible);
+    update2DBadgePositions();
+    syncCategorizeVisibilityUI();
+    if (!opts.silent) {
+      showToast(
+        STATE.categorizeLabelsVisible
+          ? "🏷️ AI 分類 2D 浮動標籤：顯示中 (2D Classification Labels Visible)"
+          : "🏷️ AI 分類 2D 浮動標籤：已隱藏 (2D Classification Labels Hidden — 3D 圖層仍保留)"
+      );
+    }
+  }
+
+  async function submitCategorizeManualEdit(action, category, itemId = null, itemData = null) {
+    const sid = STATE.activeScanId || STATE.activeScan?.scan_id || STATE.lastCategorizeResult?.scan_id || "";
+    if (!sid) {
+      showToast("請先選擇掃描檔 (No active scan selected)", "warn");
+      return null;
+    }
+    try {
+      const payload = {
+        scan_id: sid,
+        action,
+        category,
+        item_id: itemId,
+        item: itemData,
+      };
+      const updated = await apiPost("/api/survey/categorize", payload);
+      if (updated && updated.status === "ok") {
+        STATE.lastCategorizeResult = updated;
+        if (STATE.activeScan && STATE.activeScan.scan_id === sid && updated.summary) {
+          STATE.activeScan.categorization_summary = updated.summary;
+        }
+        if (!STATE.categorizeOverlayVisible) {
+          STATE.categorizeOverlayVisible = true;
+        }
+        renderCategorize3DOverlays(updated);
+        syncCategorizeVisibilityUI();
+        if (document.getElementById("catResultContainer")) {
+          renderCategorizePanelContent(updated);
+        }
+        if (action === "manual_remove") {
+          showToast(`🗑️ 已刪除分類項目 ${itemId || ""} (已儲存於伺服器 · Saved on Server)`);
+        } else if (action === "manual_add") {
+          showToast(`➕ 已新增分類項目 (${category}) (已儲存於伺服器 · Saved on Server)`);
+        } else if (action === "manual_reset") {
+          showToast("↺ 已還原所有手動新增/刪除變更 (Reset Manual Classification Edits)");
+        }
+        return updated;
+      }
+    } catch (err) {
+      showToast(`手動編輯分類失敗: ${err.message || err}`, "error");
+    }
+    return null;
   }
 
   async function preloadSavedCategorizationForScan(scanId, scanObj = null, opts = {}) {
@@ -10861,6 +11160,9 @@
 
   document.getElementById("btnStudioToggleCategorizeVis")?.addEventListener("click", () => {
     setCategorizeOverlayVisibility(!STATE.categorizeOverlayVisible);
+  });
+  document.getElementById("btnStudioToggleCategorizeLabels")?.addEventListener("click", () => {
+    setCategorizeLabelsVisibility(STATE.categorizeLabelsVisible === false);
   });
 
   function twd97PointToStudioVec3(twdArr, fallbackLocalArr, originTwd) {
@@ -11000,6 +11302,7 @@
         offsetY: opts.offsetY ?? -12,
         priority: opts.priority ?? 10,
         featureId: opts.featureId || null,
+        catKey: opts.catKey || null,
         isFocused: Boolean(opts.isFocused),
       });
       return true;
@@ -11346,6 +11649,7 @@
       (res.roads || []).forEach((r) => {
         rows.push({
           id: r.id,
+          catType: "roads",
           badge: `<span style="color:#f59e0b;font-weight:800;">${escapeHtml(r.id)}</span>`,
           type: r.label_zh ? String(r.label_zh).split(" (")[0] : "道路 Road",
           metric1: `${Number(r.planar_area_m2 || 0).toFixed(1)} m²`,
@@ -11359,6 +11663,7 @@
       (res.trees || []).slice(0, activeTab === "trees" ? 50 : 12).forEach((t) => {
         rows.push({
           id: t.id,
+          catType: "trees",
           badge: `<span style="color:#10b981;font-weight:800;">${escapeHtml(t.id)}</span>`,
           type: "喬木 Tree",
           metric1: `DBH ${Number(t.dbh_cm || 0).toFixed(1)} cm`,
@@ -11372,6 +11677,7 @@
       (res.water_bodies || []).forEach((w) => {
         rows.push({
           id: w.id,
+          catType: "water_bodies",
           badge: `<span style="color:#06b6d4;font-weight:800;">${escapeHtml(w.id)}</span>`,
           type: w.detection_mode === "unmodelled_void_shoreline" ? "水域空洞 Void" : "水體 Water",
           metric1: `${Number(w.planar_area_m2 || 0).toFixed(1)} m²`,
@@ -11385,6 +11691,7 @@
       (res.walls || []).forEach((wl) => {
         rows.push({
           id: wl.id,
+          catType: "walls",
           badge: `<span style="color:#f43f5e;font-weight:800;">${escapeHtml(wl.id)}</span>`,
           type: "擋土牆 Wall",
           metric1: `3D ${Number(wl.vertical_area_m2 || 0).toFixed(1)} m²`,
@@ -11398,6 +11705,7 @@
       (res.stockpiles || []).forEach((sp) => {
         rows.push({
           id: sp.id,
+          catType: "stockpiles",
           badge: `<span style="color:#d97706;font-weight:800;">${escapeHtml(sp.id)}</span>`,
           type: "土石堆置 Mound",
           metric1: `${Number(sp.planar_area_m2 || 0).toFixed(1)} m²`,
@@ -11437,7 +11745,22 @@
     `;
 
     const isVis = Boolean(STATE.categorizeOverlayVisible);
+    const lblsVis = STATE.categorizeLabelsVisible !== false;
+    const editMode = STATE.categorizeEditMode || null;
     const savedAtStr = String(res.saved_at || res.generated_at || "Persisted on Server");
+
+    let editStatusMsg = "點選上方按鈕後，直接點擊 3D 場景即可新增或刪除分類項目 (Click mode button, then click 3D scene)";
+    if (editMode === "add_tree") {
+      editStatusMsg = "🟢 新增喬木模式：請點擊 3D 場景中的樹木位置 (Click 3D model to add a Tree)";
+    } else if (editMode === "add_wall") {
+      const nPts = (STATE.categorizeEditPoints || []).length;
+      editStatusMsg = `🔴 新增牆面模式：請依序點擊牆面起點與終點 (${nPts}/2 點 · Click 2 points on 3D wall)`;
+    } else if (editMode === "add_road") {
+      const nPts = (STATE.categorizeEditPoints || []).length;
+      editStatusMsg = `🟠 新增道路模式：點擊多邊形頂點 (${nPts} 點)，點擊起點 V1 或按 Enter 完成 (Click V1 or Enter to finish)`;
+    } else if (editMode === "remove_click") {
+      editStatusMsg = "🗑️ 點選刪除模式：點擊 3D 場景中的樹木/牆面/道路，或點擊下方表格 🗑️ 即可刪除";
+    }
 
     box.innerHTML = `
       ${exportBarHtml}
@@ -11452,7 +11775,7 @@
         <div style="font-size:9.5px;color:var(--ui-text-muted);margin-bottom:6px;">
           Server Cache: <code>_categorization_cache_v3.json</code> · ${escapeHtml(savedAtStr)}
         </div>
-        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:5px;">
           <label style="display:inline-flex;align-items:center;gap:5px;cursor:pointer;font-size:11px;font-weight:700;color:var(--ui-text-primary);">
             <input type="checkbox" id="chkCategorizeMasterVis" ${isVis ? "checked" : ""} />
             顯示 3D 地物分類圖層 (Show 3D Overlays)
@@ -11460,6 +11783,39 @@
           <button type="button" class="btn-xs ${isVis ? "primary" : ""}" id="btnToggleCategorizeOverlayVis" style="padding:3px 8px;font-weight:700;">
             ${isVis ? "👁️ 顯示中 (點擊隱藏 3D 圖層)" : "👁️‍🗨️ 預設隱藏 (點擊顯示 3D 圖層)"}
           </button>
+        </div>
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding-top:4px;border-top:1px dashed rgba(56,189,248,0.25);">
+          <label style="display:inline-flex;align-items:center;gap:5px;cursor:pointer;font-size:10.5px;font-weight:700;color:#38bdf8;">
+            <input type="checkbox" id="chkCategorizeLabelsVis" ${lblsVis ? "checked" : ""} />
+            🏷️ 顯示 2D 浮動標籤 (Show 2D Floating Labels)
+          </label>
+          <span style="font-size:9.5px;color:var(--ui-text-muted);">${lblsVis ? "標籤開啟" : "僅保留 3D 幾何"}</span>
+        </div>
+      </div>
+
+      <div style="background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.35);border-radius:8px;padding:7px 9px;margin-bottom:8px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:4px;margin-bottom:5px;">
+          <span style="font-size:10.5px;font-weight:800;color:#fbbf24;">🛠️ 手動新增 / 刪除分類 (Manual Edit · Saved on Server)</span>
+          <button type="button" class="btn-xs" id="btnResetCategorizeManualEdits" style="padding:1px 6px;font-size:9.5px;" title="還原所有手動新增或刪除的項目 (Reset Manual Overrides)">
+            ↺ 重設手動變更
+          </button>
+        </div>
+        <div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:5px;">
+          <button type="button" class="btn-xs ${editMode === "add_tree" ? "primary" : ""}" data-cat-edit-mode="add_tree" style="flex:1;justify-content:center;font-size:10px;border-color:rgba(16,185,129,0.5);">
+            ➕ 喬木 Tree
+          </button>
+          <button type="button" class="btn-xs ${editMode === "add_wall" ? "primary" : ""}" data-cat-edit-mode="add_wall" style="flex:1;justify-content:center;font-size:10px;border-color:rgba(244,63,94,0.5);">
+            ➕ 擋土牆 Wall
+          </button>
+          <button type="button" class="btn-xs ${editMode === "add_road" ? "primary" : ""}" data-cat-edit-mode="add_road" style="flex:1;justify-content:center;font-size:10px;border-color:rgba(245,158,11,0.5);">
+            ➕ 道路 Road
+          </button>
+          <button type="button" class="btn-xs ${editMode === "remove_click" ? "primary" : ""}" data-cat-edit-mode="remove_click" style="flex:1;justify-content:center;font-size:10px;border-color:rgba(239,68,68,0.5);color:#fca5a5;">
+            🗑️ 點選刪除
+          </button>
+        </div>
+        <div id="categorizeEditStatusHint" style="font-size:9.5px;color:${editMode ? "#fbbf24" : "var(--ui-text-muted)"};line-height:1.35;">
+          ${escapeHtml(editStatusMsg)}
         </div>
       </div>
 
@@ -11545,6 +11901,7 @@
               <th style="padding:4px 6px;">類別</th>
               <th style="padding:4px 6px;">主量測值</th>
               <th style="padding:4px 6px;">次要參數 (點擊定位)</th>
+              <th style="padding:4px 4px;text-align:center;">刪除</th>
             </tr>
           </thead>
           <tbody>
@@ -11556,6 +11913,13 @@
                 <td style="padding:4px 6px;">${escapeHtml(r.type)}</td>
                 <td style="padding:4px 6px;font-weight:700;">${escapeHtml(r.metric1)}</td>
                 <td style="padding:4px 6px;color:var(--ui-text-secondary);">${escapeHtml(r.metric2)}</td>
+                <td style="padding:3px 4px;text-align:center;">
+                  ${
+                    r.catType && r.catType !== "stockpiles"
+                      ? `<button type="button" class="btn-xs" data-cat-delete-id="${escapeHtml(r.id || "")}" data-cat-delete-type="${escapeHtml(r.catType)}" title="刪除此分類項目 Remove ${escapeHtml(r.id || "")}" style="padding:1px 5px;font-size:10px;color:#fca5a5;border-color:rgba(239,68,68,0.35);">🗑️</button>`
+                      : ""
+                  }
+                </td>
               </tr>`
               )
               .join("")}
@@ -11573,6 +11937,44 @@
     document.getElementById("btnToggleCategorizeOverlayVis")?.addEventListener("click", () => {
       setCategorizeOverlayVisibility(!STATE.categorizeOverlayVisible);
       renderCategorizePanelContent(res);
+    });
+    document.getElementById("chkCategorizeLabelsVis")?.addEventListener("change", (ev) => {
+      setCategorizeLabelsVisibility(Boolean(ev.target.checked));
+      renderCategorizePanelContent(res);
+    });
+    document.getElementById("btnResetCategorizeManualEdits")?.addEventListener("click", () => {
+      STATE.categorizeEditMode = null;
+      STATE.categorizeEditPoints = [];
+      clearTempDistanceVisuals();
+      submitCategorizeManualEdit("manual_reset", "all");
+    });
+
+    box.querySelectorAll("[data-cat-edit-mode]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const mode = btn.getAttribute("data-cat-edit-mode") || null;
+        if (STATE.categorizeEditMode === mode) {
+          STATE.categorizeEditMode = null;
+        } else {
+          STATE.categorizeEditMode = mode;
+          if (!STATE.categorizeOverlayVisible) {
+            setCategorizeOverlayVisibility(true, { silent: true });
+          }
+        }
+        STATE.categorizeEditPoints = [];
+        clearTempDistanceVisuals();
+        renderCategorizePanelContent(res);
+      });
+    });
+
+    box.querySelectorAll("[data-cat-delete-id]").forEach((delBtn) => {
+      delBtn.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        const itemId = delBtn.getAttribute("data-cat-delete-id");
+        const catType = delBtn.getAttribute("data-cat-delete-type");
+        if (itemId && catType) {
+          submitCategorizeManualEdit("manual_remove", catType, itemId);
+        }
+      });
     });
 
     box.querySelectorAll("[data-cat-filter]").forEach((cb) => {
@@ -15919,7 +16321,21 @@
           return;
         }
       }
-      // 3. Otherwise cancel any in-progress measurement points, active Studio tool / side panel, or First-Person mode
+      // 3. Otherwise cancel any in-progress measurement points, active Categorize edit mode, active Studio tool / side panel, or First-Person mode
+      if (
+        STATE.activeView === "studio" &&
+        STATE.activeTool === "categorize" &&
+        (STATE.categorizeEditMode || (Array.isArray(STATE.categorizeEditPoints) && STATE.categorizeEditPoints.length > 0))
+      ) {
+        STATE.categorizeEditMode = null;
+        STATE.categorizeEditPoints = [];
+        clearTempDistanceVisuals();
+        if (STATE.lastCategorizeResult && document.getElementById("catResultContainer")) {
+          renderCategorizePanelContent(STATE.lastCategorizeResult);
+        }
+        showToast("已取消手動編輯模式 (Cancelled manual edit mode)");
+        return;
+      }
       if (STATE.activeView === "studio" && STATE.measurePoints.length > 0) {
         STATE.measurePoints = [];
         clearTempDistanceVisuals();
@@ -15967,6 +16383,48 @@
         document.getElementById("studioSidePanel")?.classList.remove("active");
       } else if (STATE.activeView === "studio" && STATE.fpMode?.active) {
         exitFirstPersonMode(false);
+      }
+    } else if (
+      e.key === "Enter" &&
+      STATE.activeView === "studio" &&
+      STATE.activeTool === "categorize" &&
+      STATE.categorizeEditMode &&
+      Array.isArray(STATE.categorizeEditPoints)
+    ) {
+      if (STATE.categorizeEditMode === "add_road" && STATE.categorizeEditPoints.length >= 3) {
+        const boundaryLoc = STATE.categorizeEditPoints.map((x) => [
+          Number(x.pt.x.toFixed(3)),
+          Number(x.pt.y.toFixed(3)),
+          Number(x.pt.z.toFixed(3)),
+        ]);
+        const boundaryTwd = STATE.categorizeEditPoints.map((x) => [
+          Number(x.twd.e.toFixed(3)),
+          Number(x.twd.n.toFixed(3)),
+          Number(x.twd.h.toFixed(3)),
+        ]);
+        STATE.categorizeEditPoints = [];
+        clearTempDistanceVisuals();
+        submitCategorizeManualEdit("manual_add", "roads", null, {
+          boundary_local: boundaryLoc,
+          boundary_twd97: boundaryTwd,
+        });
+      } else if (STATE.categorizeEditMode === "add_wall" && STATE.categorizeEditPoints.length >= 2) {
+        const p0 = STATE.categorizeEditPoints[0];
+        const p1 = STATE.categorizeEditPoints[1];
+        STATE.categorizeEditPoints = [];
+        clearTempDistanceVisuals();
+        submitCategorizeManualEdit("manual_add", "walls", null, {
+          base_polyline_local: [
+            [Number(p0.pt.x.toFixed(3)), Number(p0.pt.y.toFixed(3)), Number(p0.pt.z.toFixed(3))],
+            [Number(p1.pt.x.toFixed(3)), Number(p1.pt.y.toFixed(3)), Number(p1.pt.z.toFixed(3))],
+          ],
+          base_polyline_twd97: [
+            [Number(p0.twd.e.toFixed(3)), Number(p0.twd.n.toFixed(3)), Number(p0.twd.h.toFixed(3))],
+            [Number(p1.twd.e.toFixed(3)), Number(p1.twd.n.toFixed(3)), Number(p1.twd.h.toFixed(3))],
+          ],
+          height_m: 2.5,
+          mean_height_m: 2.5,
+        });
       }
     } else if (e.key === "Enter" && STATE.activeView === "studio" && STATE.measurePoints.length >= 3) {
       if (studioThree && studioThree.polyPreviewGroup) {

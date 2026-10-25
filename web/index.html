@@ -18,7 +18,7 @@
   <meta name="twitter:image" content="https://scans.gatheren.cloud/assets/gathering_cloud_logo.png" />
   <!-- GS_SHARE_OG_END -->
   <link rel="icon" type="image/png" href="/assets/gathering_cloud_logo.png" />
-  <link rel="stylesheet" href="/app.css?v=20261025_v59" />
+  <link rel="stylesheet" href="/app.css?v=20261025_v62" />
   <script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
 <body>
@@ -488,8 +488,11 @@
               <polyline points="6 9 12 15 18 9"/>
             </svg>
           </a>
-          <button type="button" class="btn-xs" id="btnStudioToggleCategorizeVis" title="AI Classification Saved on Server — Hidden by Default (Click to Toggle 3D Overlays) / AI 地物分類已儲存於伺服器（預設隱藏，點擊切換顯示 3D 圖層）" style="display:none;gap:4px;">
+          <button type="button" class="btn-xs" id="btnStudioToggleCategorizeVis" title="AI Classification Saved on Server — Hidden by Default (Click to Toggle 3D Overlays) / AI 地物分類已儲存於伺服器（預設隱藏，點擊切換顯示 3D 圖層）" style="display:none;gap:4px;white-space:nowrap;flex-shrink:0;">
             <span id="lblStudioToggleCategorizeVis">👁️‍🗨️ AI 分類: 隱藏</span>
+          </button>
+          <button type="button" class="btn-xs" id="btnStudioToggleCategorizeLabels" title="Toggle 2D Floating Classification Labels while keeping 3D Overlays visible / 切換顯示或隱藏 2D 浮動標籤（保留 3D 分類色塊）" style="display:none;gap:4px;white-space:nowrap;flex-shrink:0;">
+            <span id="lblStudioToggleCategorizeLabels">🏷️ 標籤: 顯示</span>
           </button>
           <button type="button" class="btn-xs primary" id="btnStudioSurveyReport" title="Create Survey Report: Civil3D.dxf (AutoCAD / Civil 3D TWD97 XYZ) &amp; A3 Ready-to-Print PDF">
             <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8">
@@ -1898,6 +1901,6 @@
   <script src="/lib/3d-tiles-renderer.bundle.js"></script>
 
   <!-- Main GatheringScans Application Logic -->
-  <script src="/app.js?v=20261025_v59"></script>
+  <script src="/app.js?v=20261025_v62"></script>
 </body>
 </html>
