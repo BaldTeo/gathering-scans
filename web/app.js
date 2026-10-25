@@ -4810,8 +4810,8 @@
       const aCat = Boolean(a.isCategorize || a.el?.classList?.contains("is-categorize-badge"));
       const bCat = Boolean(b.isCategorize || b.el?.classList?.contains("is-categorize-badge"));
       if (aCat !== bCat) return aCat ? 1 : -1;
-      const aPri = a.isFocused ? -1000 : Number(a.priority ?? 50);
-      const bPri = b.isFocused ? -1000 : Number(b.priority ?? 50);
+      const aPri = a.isFocused ? 1000 : Number(a.priority ?? 50);
+      const bPri = b.isFocused ? 1000 : Number(b.priority ?? 50);
       return bPri - aPri;
     });
 
