@@ -5325,16 +5325,33 @@
       const isCat = Boolean(b.isCategorize || b.el.classList.contains("is-categorize-badge"));
       if (!isCat) {
         b.el.style.display = dispMode;
-        const bw = b.el.offsetWidth || 120;
-        const bh = b.el.offsetHeight || 24;
+        const bw = b.el.offsetWidth || 160;
+        const bh = b.el.offsetHeight || 36;
         const halfW = Math.min(bw * 0.5, Math.max(16, w * 0.5 - 8));
         const halfH = bh * 0.5;
         const minX = isMobile ? Math.max(24, halfW + 8) : halfW + 8;
         const maxX = isMobile ? Math.min(w - 24, w - halfW - 8) : w - halfW - 8;
         const clampedX = Math.max(minX, Math.min(Math.max(minX, maxX), x));
-        const minY = isMobile ? Math.max(76, bh + 66) : 58;
-        const maxY = isMobile ? Math.max(84, h - 104) : h - 72;
-        const clampedY = h > 160 ? Math.max(minY, Math.min(Math.max(minY, maxY), y)) : y;
+        const minY = isMobile ? Math.max(82, bh + 66) : 58;
+        const maxY = isMobile ? Math.max(minY + 12, bottomSafeY - 6) : h - 72;
+        let clampedY = h > 160 ? Math.max(minY, Math.min(Math.max(minY, maxY), y)) : y;
+
+        // Screen-space de-overlapping pass so pinned measurement badges (P1, P2, P3, Laser, Angle) never stack
+        const nudgeStep = Math.max(26, bh + 6);
+        const nudgeCandidates = [0, -nudgeStep, nudgeStep, -2 * nudgeStep, 2 * nudgeStep];
+        for (const dy of nudgeCandidates) {
+          const testY = h > 160 ? Math.max(minY, Math.min(Math.max(minY, maxY), clampedY + dy)) : clampedY + dy;
+          const r0 = clampedX - halfW - 2;
+          const r1 = testY - halfH - 2;
+          const r2 = clampedX + halfW + 2;
+          const r3 = testY + halfH + 2;
+          const hasOverlap = placedRects.some((pr) => !(r2 < pr[0] || r0 > pr[2] || r3 < pr[1] || r1 > pr[3]));
+          if (!hasOverlap) {
+            clampedY = testY;
+            break;
+          }
+        }
+
         b.el.style.left = `${clampedX}px`;
         b.el.style.top = `${clampedY}px`;
         placedRects.push([clampedX - halfW - 4, clampedY - halfH - 4, clampedX + halfW + 4, clampedY + halfH + 4]);
@@ -5749,13 +5766,18 @@
     if (window.innerWidth <= 768) {
       const panelEl = document.getElementById("studioSidePanel");
       if (panelEl) {
-        panelEl.classList.remove("active", "open");
+        panelEl.classList.remove("active", "open", "mobile-minimized", "gs-panel-minimized");
         panelEl.classList.add("hidden");
       }
       const editDockEl = document.getElementById("studioEditingDock");
       if (editDockEl) editDockEl.style.display = "none";
       const mobileHudEl = document.getElementById("studioMobileToolHud");
       if (mobileHudEl) mobileHudEl.style.display = "none";
+      document.getElementById("btnToggleFirstPerson")?.scrollIntoView?.({
+        behavior: "smooth",
+        inline: "center",
+        block: "nearest",
+      });
     }
 
     syncStudioControlsForTool();
@@ -5763,7 +5785,11 @@
     SHARE_TELEMETRY.recordFirstPersonToggle(true, fp.locomotion || "fly");
 
     if (!options.silent) {
-      showToast("🎮 第一人稱漫遊開啟 — WASD 移動 · 滑鼠拖曳或點擊鎖定視角 · 滾輪調速 · G 切換步行/飛行");
+      if (window.innerWidth <= 768) {
+        showToast("🎮 第一人稱漫遊開啟 — 左下方向鍵移動 · 單指拖曳旋轉視角 · 頂部切換飛行/步行");
+      } else {
+        showToast("🎮 第一人稱漫遊開啟 — WASD 移動 · 滑鼠拖曳或點擊鎖定視角 · 滾輪調速 · G 切換步行/飛行");
+      }
     }
   }
 
@@ -6228,6 +6254,16 @@
     }
     if (toolName !== "crop" && toolName !== "crop_delete") {
       STATE.studioLassoOrbitMode = false;
+      if (STATE.lassoEdit) STATE.lassoEdit.active = false;
+      STATE.studioLassoMode = null;
+    }
+    if (toolName !== "categorize") {
+      STATE.categorizeEditMode = null;
+      STATE.categorizeEditPoints = [];
+      STATE.categorizeTempPoints = [];
+    }
+    if (STATE.activeTool !== toolName) {
+      STATE.measurePoints = [];
     }
     STATE.activeTool = toolName;
     SHARE_TELEMETRY.recordToolSelected(toolName);
@@ -6235,7 +6271,7 @@
     if (sidePanelEl) {
       sidePanelEl.setAttribute("data-active-tool", toolName || "");
       if (["distance", "angle", "area", "coordinates", "laser", "clear", "orbit"].includes(toolName)) {
-        sidePanelEl.classList.remove("active", "open", "mobile-minimized");
+        sidePanelEl.classList.remove("active", "open", "mobile-minimized", "gs-panel-minimized");
         sidePanelEl.classList.add("hidden");
       }
     }
@@ -6256,7 +6292,13 @@
       )
       .forEach((b) => {
         const key = b.dataset.tool || b.dataset.dock || "";
-        b.classList.toggle("active", key === toolName);
+        const isActive = key === toolName;
+        b.classList.toggle("active", isActive);
+        if (isActive && window.innerWidth <= 768 && typeof b.scrollIntoView === "function") {
+          try {
+            b.scrollIntoView({ behavior: "smooth", inline: "center", block: "nearest" });
+          } catch (_) {}
+        }
       });
     const lassoSvg = document.getElementById("studioLassoSvg");
     if (lassoSvg && toolName !== "crop" && toolName !== "crop_delete") {
@@ -9446,7 +9488,7 @@
 
     if (tool === "photos") {
       add3DPinMarker(pt, 0x0284c7);
-      openRtkPhotoInspector(pt);
+      openRtkPhotoInspector(pt, true);
       return;
     }
 
@@ -10263,6 +10305,7 @@
     panel.classList.remove("hidden");
     panel.classList.add("active", "open");
     panel.classList.toggle("mobile-minimized", Boolean(STATE.sidePanelMinimized));
+    panel.classList.toggle("gs-panel-minimized", Boolean(STATE.sidePanelMinimized));
     const lblCollapse = document.getElementById("lblCollapseSidePanel");
     if (lblCollapse) {
       lblCollapse.textContent = STATE.sidePanelMinimized ? "▴ 展開" : "▾ 收合";
@@ -10277,6 +10320,7 @@
     if (!panel) return;
     STATE.sidePanelMinimized = !STATE.sidePanelMinimized;
     panel.classList.toggle("mobile-minimized", STATE.sidePanelMinimized);
+    panel.classList.toggle("gs-panel-minimized", STATE.sidePanelMinimized);
     const lblCollapse = document.getElementById("lblCollapseSidePanel");
     if (lblCollapse) {
       lblCollapse.textContent = STATE.sidePanelMinimized ? "▴ 展開" : "▾ 收合";
@@ -10295,7 +10339,7 @@
     }
     const panel = document.getElementById("studioSidePanel");
     if (panel) {
-      panel.classList.remove("active", "open", "mobile-minimized");
+      panel.classList.remove("active", "open", "mobile-minimized", "gs-panel-minimized");
       panel.classList.add("hidden");
     }
     STATE.sidePanelMinimized = false;
@@ -10433,6 +10477,9 @@
             ? `<button type="button" class="gs-mobile-hud-btn" data-mobile-hud="undo_lasso">↩ 復原</button>`
             : ""
         }
+        <button type="button" class="gs-mobile-hud-btn" data-mobile-hud="expand_cat_panel">${
+          STATE.sidePanelMinimized ? "▴ 面板" : "▾ 收合"
+        }</button>
         <button type="button" class="gs-mobile-hud-btn danger" data-mobile-hud="exit_tool">✕ 離開</button>
       `;
     } else if (tool === "area" || tool === "volume" || tool === "contours") {
@@ -10488,7 +10535,9 @@
             ? `<button type="button" class="gs-mobile-hud-btn" data-mobile-hud="undo_cat_pt">↩ 復原點</button>`
             : ""
         }
-        <button type="button" class="gs-mobile-hud-btn" data-mobile-hud="expand_cat_panel">▴ 面板</button>
+        <button type="button" class="gs-mobile-hud-btn" data-mobile-hud="expand_cat_panel">${
+          STATE.sidePanelMinimized ? "▴ 面板" : "▾ 收合"
+        }</button>
         <button type="button" class="gs-mobile-hud-btn danger" data-mobile-hud="exit_cat_edit">✕ 結束編輯</button>
       `;
     } else {
@@ -10615,8 +10664,10 @@
         panel.classList.remove("hidden");
         panel.classList.add("active", "open");
         panel.classList.toggle("mobile-minimized", STATE.sidePanelMinimized);
+        panel.classList.toggle("gs-panel-minimized", STATE.sidePanelMinimized);
         const lblCollapse = document.getElementById("lblCollapseSidePanel");
         if (lblCollapse) lblCollapse.textContent = STATE.sidePanelMinimized ? "▴ 展開" : "▾ 收合";
+        syncStudioMobileToolHud();
         update2DBadgePositions();
       }
     });
@@ -10628,7 +10679,7 @@
       const panel = document.getElementById("studioSidePanel");
       if (panel) {
         STATE.sidePanelMinimized = false;
-        panel.classList.remove("mobile-minimized");
+        panel.classList.remove("mobile-minimized", "gs-panel-minimized");
         const lblCollapse = document.getElementById("lblCollapseSidePanel");
         if (lblCollapse) lblCollapse.textContent = "▾ 收合";
       }
@@ -10654,6 +10705,18 @@
       }
       return [];
     };
+
+    const hasLockedPoly = resolveLockedVolumePts().length >= 3;
+    if (window.innerWidth <= 768) {
+      STATE.sidePanelMinimized = !hasLockedPoly;
+      const pEl = document.getElementById("studioSidePanel");
+      if (pEl) {
+        pEl.classList.toggle("mobile-minimized", STATE.sidePanelMinimized);
+        pEl.classList.toggle("gs-panel-minimized", STATE.sidePanelMinimized);
+      }
+      const lblCol = document.getElementById("lblCollapseSidePanel");
+      if (lblCol) lblCol.textContent = STATE.sidePanelMinimized ? "▴ 展開" : "▾ 收合";
+    }
 
     const activeScan = STATE.activeScan || STATE.scans.find((s) => s.scan_id === STATE.activeScanId) || {};
     const defaultZoneName = `${activeScan.name || STATE.activeScanId || "Site"} — Earthwork / Stockpile Zone A`;
@@ -10775,6 +10838,14 @@
         STATE.lastVolumeResult = null;
         clearVolumeVisualsOnly();
         renderUnlockedVolumePrompt();
+        if (window.innerWidth <= 768) {
+          STATE.sidePanelMinimized = true;
+          const pEl = document.getElementById("studioSidePanel");
+          pEl?.classList.add("mobile-minimized", "gs-panel-minimized");
+          const lblCol = document.getElementById("lblCollapseSidePanel");
+          if (lblCol) lblCol.textContent = "▴ 展開";
+        }
+        syncStudioMobileToolHud();
         showToast("Click 3+ points on the 3D scan and close on V1 to draw a new Cut/Fill polygon");
       });
     }
@@ -10835,6 +10906,14 @@
         renderUnlockedVolumePrompt();
         showToast("Please click at least 3 points on the 3D scan and lock the polygon first.");
         return;
+      }
+
+      if (window.innerWidth <= 768) {
+        STATE.sidePanelMinimized = false;
+        const pEl = document.getElementById("studioSidePanel");
+        pEl?.classList.remove("mobile-minimized", "gs-panel-minimized");
+        const lblCol = document.getElementById("lblCollapseSidePanel");
+        if (lblCol) lblCol.textContent = "▾ 收合";
       }
 
       const btnLbl = document.getElementById("lblRunVolumeCalc");
@@ -10995,6 +11074,9 @@
   // 3B. Survey Report: Mask Boundary, 3D Elevation Contours, Civil3D.dwg & A3 Ready-to-Print PDF Exporter
   async function openContoursInspector() {
     setActiveStudioTool("contours");
+    if (!STATE.measurePoints || STATE.measurePoints.length === 0) {
+      STATE.sidePanelMinimized = false;
+    }
     const activeScan = STATE.activeScan || STATE.scans.find((s) => s.scan_id === STATE.activeScanId) || {};
     const defaultTitle = `${activeScan.name || STATE.activeScanId} — Topographic Survey`;
     const maskPts =
@@ -11075,6 +11157,14 @@
       document.getElementById("btnDrawCustomMask")?.addEventListener("click", () => {
         setActiveStudioTool("contours");
         STATE.measurePoints = [];
+        if (window.innerWidth <= 768) {
+          STATE.sidePanelMinimized = true;
+          const pEl = document.getElementById("studioSidePanel");
+          pEl?.classList.add("mobile-minimized", "gs-panel-minimized");
+          const lblCol = document.getElementById("lblCollapseSidePanel");
+          if (lblCol) lblCol.textContent = "▴ 展開";
+        }
+        syncStudioMobileToolHud();
         showToast("Click 3+ points on the 3D scan to draw a custom Mask Boundary");
       });
 
@@ -12442,7 +12532,7 @@
           if (window.innerWidth <= 768 && mode) {
             STATE.sidePanelMinimized = true;
             const panel = document.getElementById("studioSidePanel");
-            panel?.classList.add("mobile-minimized");
+            panel?.classList.add("mobile-minimized", "gs-panel-minimized");
             const lblCollapse = document.getElementById("lblCollapseSidePanel");
             if (lblCollapse) lblCollapse.textContent = "▴ 展開";
           }
@@ -12536,6 +12626,9 @@
   }
 
   async function openCategorizeInspector(opts = {}) {
+    if (!STATE.categorizeEditMode) {
+      STATE.sidePanelMinimized = false;
+    }
     const activeScan = STATE.activeScan || STATE.scans.find((s) => s.scan_id === STATE.activeScanId) || {
       scan_id: STATE.activeScanId || "scan",
       name: STATE.activeScanId || "Active Scan",
@@ -12823,6 +12916,13 @@
     if (p1 && p2) {
       STATE.profileEndpoints = [p1.clone(), p2.clone()];
     }
+    if (window.innerWidth <= 768) {
+      // Auto-minimize when opened from dock (p1 === null && p2 === null) so user can tap Section A & B on the 3D scan,
+      // and auto-expand once Section A & B are placed (p1 && p2)!
+      STATE.sidePanelMinimized = !(p1 && p2);
+    } else {
+      STATE.sidePanelMinimized = false;
+    }
     const resolveEndpoints = () => {
       if (p1 && p2) return [p1, p2];
       if (STATE.profileEndpoints && STATE.profileEndpoints.length >= 2) return STATE.profileEndpoints;
@@ -12933,6 +13033,14 @@
       STATE.measurePoints = [];
       STATE.profileEndpoints = [];
       clearProfileVisualsOnly();
+      if (window.innerWidth <= 768) {
+        STATE.sidePanelMinimized = true;
+        const pEl = document.getElementById("studioSidePanel");
+        pEl?.classList.add("mobile-minimized", "gs-panel-minimized");
+        const lblCol = document.getElementById("lblCollapseSidePanel");
+        if (lblCol) lblCol.textContent = "▴ 展開";
+      }
+      syncStudioMobileToolHud();
       showToast("Click Start Point A and End Point B on the 3D scan");
     });
 
@@ -12973,6 +13081,7 @@
         setProfileHoverMarker3D(r.samples[idx]);
       };
       canvas.addEventListener("mousemove", (ev) => scrubProfileAtClientX(ev.clientX));
+      canvas.addEventListener("pointerdown", (ev) => scrubProfileAtClientX(ev.clientX));
       canvas.addEventListener("pointermove", (ev) => scrubProfileAtClientX(ev.clientX));
       canvas.addEventListener(
         "touchstart",
@@ -13194,7 +13303,12 @@
   }
 
   // 3D. RTK Raw Camera Photo Inspector
-  async function openRtkPhotoInspector(pt = new THREE.Vector3(0, 0, 0)) {
+  async function openRtkPhotoInspector(pt = new THREE.Vector3(0, 0, 0), fromCanvasClick = false) {
+    if (window.innerWidth <= 768) {
+      STATE.sidePanelMinimized = !fromCanvasClick;
+    } else {
+      STATE.sidePanelMinimized = false;
+    }
     showSidePanel(
       `<span>RTK Camera Inspector</span>`,
       `<div style="font-size:12px;color:var(--ui-text-secondary);">Querying calibrated PIX4Dcatch RTK camera poses...</div>`
@@ -13244,6 +13358,7 @@
   // 3E. Section Box Clipping Inspector (Auto-scaled to scan bounds + 6-plane clipping + 3D wireframe box)
   function openSectionBoxInspector() {
     setActiveStudioTool("section");
+    STATE.sidePanelMinimized = false;
     const rawR = Math.max(20, computeStudioEffectiveBoundingRadius());
     const maxHoriz = Math.ceil(rawR * 1.35);
     const initHoriz = Math.ceil(rawR * 1.05);
@@ -13387,6 +13502,11 @@
   // 3F. 3D Geo-Comments Inspector
   async function openCommentsInspector(clickedPt = null, clickedTwd = null) {
     setActiveStudioTool("comments");
+    if (window.innerWidth <= 768) {
+      STATE.sidePanelMinimized = !clickedPt;
+    } else {
+      STATE.sidePanelMinimized = false;
+    }
     const detail = await apiGet(`/api/scans/${STATE.activeScanId}`);
     const scan = detail.scan;
     const comments = scan.comments || [];
@@ -14164,6 +14284,16 @@
     const visibleOnlyChecked = getEffectiveLassoVisibleOnly("delete_inside");
     const markedCount = countMarkedRegionsPending();
     const triCountLabel = `${Number(STATE.lassoSelectedTriCount || 0).toLocaleString()} tris`;
+    const isMobView = window.innerWidth <= 768;
+    if (isMobView) {
+      if (isLassoActive && markedCount === 0 && !opts.keepExpanded) {
+        STATE.sidePanelMinimized = true;
+      } else if (!isLassoActive) {
+        STATE.sidePanelMinimized = false;
+      }
+    } else {
+      STATE.sidePanelMinimized = false;
+    }
 
     const totalStagedDelRegions = st.deletions.reduce((acc, b) => acc + (Number(b.regionCount) || 1), 0);
     const totalStagedDelTris = st.deletions.reduce((acc, b) => acc + (Number(b.triCount) || 0), 0);
@@ -14209,11 +14339,19 @@
         <div style="font-size:11px;color:var(--ui-text-secondary);margin-bottom:8px;line-height:1.45;">
           ${
             !isLassoActive
-              ? `Orbit mode active — rotate freely with <b>Left Mouse</b> or <b>Mouse Wheel</b>${
-                  markedCount > 0 ? ` (your <b>${markedCount}</b> selected region${markedCount === 1 ? " is" : "s are"} preserved)` : ""
-                }. Press the button below to resume Lasso.`
+              ? isMobView
+                ? `單指旋轉模式 — 可自由拖曳旋轉視角${
+                    markedCount > 0 ? ` (已保留 <b>${markedCount}</b> 個標記範圍)` : ""
+                  }。點擊下方按鈕繼續套索標記。`
+                : `Orbit mode active — rotate freely with <b>Left Mouse</b> or <b>Mouse Wheel</b>${
+                    markedCount > 0 ? ` (your <b>${markedCount}</b> selected region${markedCount === 1 ? " is" : "s are"} preserved)` : ""
+                  }. Press the button below to resume Lasso.`
               : inputMethod !== "polygon"
-              ? `<b>1.</b> Drag <b>Left Mouse</b> several times to mark multiple regions in red (rotate anytime by pressing <b>Mouse Wheel</b> · <b>Alt+Drag</b> to unmark).<br/><b>2.</b> Press <b>Delete</b> below to remove marked regions from preview · <b>Esc</b> to orbit.`
+              ? isMobView
+                ? `<b>1.</b> 單指拖曳畫圈標記刪除範圍（雙指縮放平移 · 點擊上方 <b>🔄 旋轉</b> 切換視角）。<br/><b>2.</b> 點擊上方或下方 <b>🗑️ 執行刪除</b> 套用預覽。`
+                : `<b>1.</b> Drag <b>Left Mouse</b> several times to mark multiple regions in red (rotate anytime by pressing <b>Mouse Wheel</b> · <b>Alt+Drag</b> to unmark).<br/><b>2.</b> Press <b>Delete</b> below to remove marked regions from preview · <b>Esc</b> to orbit.`
+              : isMobView
+              ? `<b>1.</b> 點擊 3+ 頂點並點擊上方 <b>✓ 鎖定</b> 完成多邊形標記（雙指縮放平移）。<br/><b>2.</b> 點擊 <b>🗑️ 執行刪除</b> 套用預覽。`
               : `<b>1.</b> Click 3+ vertices and click red <b>V1</b> (or <b>Enter</b>) to lock Polygon #1, then draw Polygon #2, #3... (<b>Mouse Wheel</b> to rotate).<br/><b>2.</b> Press <b>Delete</b> below to remove marked polygons · <b>Esc</b> to orbit.`
           }
         </div>
@@ -14565,6 +14703,16 @@
     const inputMethod = STATE.lassoInputMethod || "lasso";
     const markedCount = countMarkedRegionsPending();
     const triCountLabel = `${Number(STATE.lassoSelectedTriCount || 0).toLocaleString()} tris`;
+    const isMobKeep = window.innerWidth <= 768;
+    if (isMobKeep) {
+      if (isLassoActive && markedCount === 0 && !opts.keepExpanded) {
+        STATE.sidePanelMinimized = true;
+      } else if (!isLassoActive) {
+        STATE.sidePanelMinimized = false;
+      }
+    } else {
+      STATE.sidePanelMinimized = false;
+    }
 
     const execBtnText = !isLassoActive
       ? markedCount > 0
@@ -14587,7 +14735,11 @@
           }
         </div>
         <div style="font-size:11px;color:var(--ui-text-secondary);margin-bottom:8px;line-height:1.45;">
-          Mark the boundary you want to <b>keep</b> (everything outside will be cropped out when you press <b>Save Edits</b>). Rotate anytime with <b>Mouse Wheel</b>.
+          ${
+            isMobKeep
+              ? `單指畫圈或點擊多邊形標記欲<b>保留</b>的範圍（範圍外將於儲存時裁切 · 雙指縮放平移 · 點擊上方 <b>🔄 旋轉</b> 切換視角）。`
+              : `Mark the boundary you want to <b>keep</b> (everything outside will be cropped out when you press <b>Save Edits</b>). Rotate anytime with <b>Mouse Wheel</b>.`
+          }
         </div>
 
         <div style="display:flex;gap:5px;margin-bottom:8px;">
@@ -14697,6 +14849,7 @@
   }
 
   function openMeshCompressionInspector() {
+    STATE.sidePanelMinimized = false;
     const st = ensureStagedEditsForActiveScan();
     const curPreset = st.compressionPreset || "balanced";
 
@@ -14747,6 +14900,7 @@
   }
 
   function openCoordinateSystemInspector() {
+    STATE.sidePanelMinimized = false;
     const st = ensureStagedEditsForActiveScan();
     const rc = STATE.multiAlign?.active ? STATE.multiAlign?.refCenter : null;
     const scan = rc
@@ -14863,6 +15017,7 @@
   }
 
   function openGenerateScanInspector() {
+    STATE.sidePanelMinimized = false;
     showSidePanel(
       `<span>Save Scan Edits (儲存掃描變更)</span>`,
       `
@@ -16508,6 +16663,7 @@
   }
 
   function openAlignMergeInspector() {
+    STATE.sidePanelMinimized = false;
     if (!STATE.multiAlign.active) {
       STATE.multiAlign.lastMergedScan = null;
       enterMultiScanAlignMode();
@@ -16591,14 +16747,23 @@
       else if (tool === "crop_delete") {
         STATE.cropMode = "delete_inside";
         openLassoDeleteInspector({ armLasso: true });
-        showToast("Lasso active (Mark for Deletion) — mark multiple regions, Mouse Wheel to rotate, then press Delete");
+        showToast(
+          window.innerWidth <= 768
+            ? "✏️ 套索刪除已啟用 — 單指畫圈標記，雙指縮放平移，點擊上方 🔄 切換旋轉"
+            : "Lasso active (Mark for Deletion) — mark multiple regions, Mouse Wheel to rotate, then press Delete"
+        );
       } else if (tool === "crop") {
         STATE.cropMode = "keep_inside";
         openLassoKeepInspector({ armLasso: true });
-        showToast("Lasso active (Keep Inside) — mark keep boundary, Mouse Wheel to rotate, Esc to cancel");
+        showToast(
+          window.innerWidth <= 768
+            ? "✂️ 框選保留已啟用 — 單指畫圈標記保留區，雙指縮放平移，點擊上方 🔄 切換旋轉"
+            : "Lasso active (Keep Inside) — mark keep boundary, Mouse Wheel to rotate, Esc to cancel"
+        );
       } else if (tool === "align_merge") {
         openAlignMergeInspector();
       }
+      if (typeof syncStudioMobileToolHud === "function") syncStudioMobileToolHud();
     });
   });
 

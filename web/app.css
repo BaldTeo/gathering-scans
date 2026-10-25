@@ -3116,7 +3116,7 @@ body.gs-auth-locked .gs-main {
 }
 
 /* ============================================================================
- * 10. Comprehensive Mobile & Touch Engineering Architecture (v63)
+ * 10. Comprehensive Mobile & Touch Engineering Architecture (v64)
  *     Target Viewport: 384 x 694 CSS px (@media (max-width: 768px))
  * ============================================================================ */
 
@@ -3133,11 +3133,23 @@ body.gs-auth-locked .gs-main {
 #compareStage canvas,
 #curtainDivider,
 .gs-curtain-handle,
-#compareSliderHandle {
+#compareSliderHandle,
+#profileChartCanvas {
   touch-action: none !important;
   -webkit-user-select: none !important;
   user-select: none !important;
   -webkit-touch-callout: none !important;
+}
+
+/* Ensure Toast Never Blocks Underlying Touch Controls */
+.gs-toast,
+#gsToast {
+  pointer-events: none !important;
+}
+
+.gs-compare-legend,
+#compareElevationLegend {
+  z-index: 135 !important;
 }
 
 /* 10.2 Floating Mobile Action Pill (#studioMobileToolHud) */
@@ -3146,19 +3158,19 @@ body.gs-auth-locked .gs-main {
   bottom: 96px;
   left: 50%;
   transform: translateX(-50%);
-  z-index: 97;
+  z-index: 98;
   display: none;
   align-items: center;
   justify-content: center;
   gap: 5px;
   flex-wrap: wrap;
-  padding: 5px 9px;
+  padding: 5px 10px;
   border-radius: 999px;
-  background: var(--ui-bg-pill);
+  background: rgba(15, 23, 42, 0.90);
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
-  border: 1.5px solid var(--ui-border-strong);
-  box-shadow: 0 8px 24px rgba(2, 6, 23, 0.38);
+  border: 1.5px solid rgba(148, 163, 184, 0.38);
+  box-shadow: 0 8px 24px rgba(2, 6, 23, 0.45);
   max-width: calc(100vw - 16px);
   width: max-content;
   user-select: none;
@@ -3169,79 +3181,101 @@ body.gs-auth-locked .gs-main {
   display: inline-flex;
 }
 
-.gs-mobile-tool-hud.panel-expanded {
-  bottom: auto;
-  top: 78px;
-}
-
-.gs-mobile-tool-hud .gs-mob-hud-label {
+.gs-mobile-tool-hud .gs-mob-hud-label,
+.gs-mobile-tool-hud .gs-mobile-hud-label {
   font-size: 11px;
   font-weight: 700;
-  color: var(--ui-text-primary);
+  color: #f8fafc;
   padding: 0 4px;
   white-space: nowrap;
 }
 
-.gs-mobile-tool-hud .gs-mob-hud-btn {
+.gs-mobile-tool-hud .gs-mob-hud-btn,
+.gs-mobile-tool-hud .gs-mobile-hud-btn {
+  appearance: none;
+  -webkit-appearance: none;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 4px;
-  min-height: 28px;
-  padding: 3px 9px;
-  font-size: 11px;
-  font-weight: 700;
+  min-height: 30px;
+  padding: 5px 11px;
+  font-size: 11.5px;
+  font-weight: 600;
   border-radius: 999px;
-  border: 1px solid var(--ui-border-strong);
-  background: var(--ui-bg-surface);
-  color: var(--ui-text-primary);
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  background: rgba(30, 41, 59, 0.92);
+  color: #f8fafc;
   cursor: pointer;
   white-space: nowrap;
+  transition: all 0.14s ease;
 }
 
-.gs-mobile-tool-hud .gs-mob-hud-btn.primary {
-  background: var(--ui-accent);
-  border-color: var(--ui-accent);
+.gs-mobile-tool-hud .gs-mob-hud-btn:hover,
+.gs-mobile-tool-hud .gs-mobile-hud-btn:hover,
+.gs-mobile-tool-hud .gs-mob-hud-btn:active,
+.gs-mobile-tool-hud .gs-mobile-hud-btn:active {
+  border-color: #38bdf8;
+  background: rgba(51, 65, 85, 0.96);
+}
+
+.gs-mobile-tool-hud .gs-mob-hud-btn.primary,
+.gs-mobile-tool-hud .gs-mobile-hud-btn.primary {
+  background: linear-gradient(135deg, #0284c7, #0ea5e9);
+  border-color: rgba(56, 189, 248, 0.85);
   color: #ffffff;
 }
 
-.gs-mobile-tool-hud .gs-mob-hud-btn.danger {
-  background: #ef4444;
-  border-color: #dc2626;
-  color: #ffffff;
+.gs-mobile-tool-hud .gs-mob-hud-btn.danger,
+.gs-mobile-tool-hud .gs-mobile-hud-btn.danger {
+  background: rgba(239, 68, 68, 0.22);
+  border-color: rgba(239, 68, 68, 0.65);
+  color: #fca5a5;
 }
 
-.gs-mobile-tool-hud .gs-mob-hud-btn.success {
+.gs-mobile-tool-hud .gs-mob-hud-btn.success,
+.gs-mobile-tool-hud .gs-mobile-hud-btn.success {
   background: #10b981;
   border-color: #059669;
   color: #ffffff;
 }
 
-/* Collapse button hidden on desktop, visible on mobile (or all viewports as a convenient toggle) */
+/* Collapse button visible on all viewports as a convenient toggle */
 .gs-panel-collapse-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
 }
 
-.gs-side-panel.hidden {
+.gs-side-panel.hidden,
+#studioSidePanel.hidden {
   display: none !important;
 }
 
-.gs-side-panel.mobile-minimized {
-  max-height: 40px !important;
-  padding-top: 6px !important;
-  padding-bottom: 6px !important;
+.gs-side-panel.mobile-minimized,
+.gs-side-panel.gs-panel-minimized,
+#studioSidePanel.mobile-minimized,
+#studioSidePanel.gs-panel-minimized {
+  max-height: 38px !important;
+  height: 38px !important;
+  padding-top: 5px !important;
+  padding-bottom: 5px !important;
   overflow: hidden !important;
 }
 
-.gs-side-panel.mobile-minimized .gs-panel-header {
+.gs-side-panel.mobile-minimized .gs-panel-header,
+.gs-side-panel.gs-panel-minimized .gs-panel-header,
+#studioSidePanel.mobile-minimized .gs-panel-header,
+#studioSidePanel.gs-panel-minimized .gs-panel-header {
   margin-bottom: 0 !important;
   padding-bottom: 0 !important;
   border-bottom: none !important;
 }
 
-.gs-side-panel.mobile-minimized #sidePanelBody {
+.gs-side-panel.mobile-minimized #sidePanelBody,
+.gs-side-panel.gs-panel-minimized #sidePanelBody,
+#studioSidePanel.mobile-minimized #sidePanelBody,
+#studioSidePanel.gs-panel-minimized #sidePanelBody {
   display: none !important;
 }
 
@@ -3263,26 +3297,50 @@ body.gs-auth-locked .gs-main {
   max-width: 100% !important;
 }
 
+#gstScriptPreviewBox,
+#gstScriptCode,
+#rerunGstPreviewCode {
+  white-space: pre-wrap !important;
+  word-break: break-all !important;
+  overflow-wrap: anywhere !important;
+  font-size: 10.5px !important;
+}
+
 @media (max-width: 768px) {
-  /* 10.3 Global Toast Fix (Overrides desktop calc(100vw - 440px)) */
+  /* 10.2b Dock #studioMobileToolHud cleanly below 2-row .gs-studio-top-bar so it NEVER overlaps #studioSidePanel or docks */
+  .gs-mobile-tool-hud,
+  #studioMobileToolHud {
+    top: 146px !important;
+    bottom: auto !important;
+    left: 50% !important;
+    transform: translateX(-50%) !important;
+    max-width: calc(100vw - 16px) !important;
+    width: max-content !important;
+    z-index: 98 !important;
+    padding: 4px 9px !important;
+    gap: 4px !important;
+  }
+
+  /* 10.3 Global Toast Fix (Non-interactive, compact, centered above bottom dock) */
   .gs-toast,
   #gsToast {
-    bottom: 112px !important;
+    pointer-events: none !important;
+    bottom: 94px !important;
     right: auto !important;
     left: 50% !important;
     transform: translateX(-50%) !important;
     max-width: calc(100vw - 24px) !important;
     width: max-content !important;
-    min-width: 180px;
+    min-width: 160px;
     white-space: normal !important;
     text-align: center !important;
-    line-height: 1.35 !important;
-    padding: 8px 14px !important;
+    line-height: 1.3 !important;
+    padding: 6px 12px !important;
     font-size: 11.5px !important;
     z-index: 5000 !important;
   }
 
-  /* 10.4 Compact 2-Row Top Navigation Bar (~70px total height) */
+  /* 10.4 Compact 2-Row Top Navigation Bar (~68px total height) */
   .gs-topbar {
     min-height: 68px !important;
     padding: 4px 8px !important;
@@ -3317,7 +3375,7 @@ body.gs-auth-locked .gs-main {
     min-height: 26px !important;
   }
 
-  /* 10.5 Compact 2-Row Studio Top Bar (~64px total height, 0 clipping, Categorize & Labels visible) */
+  /* 10.5 Compact 2-Row Studio Top Bar (~60px total height, 0 clipping, Categorize & Labels visible) */
   .gs-studio-top-bar {
     top: 6px !important;
     left: 6px !important;
@@ -3326,61 +3384,66 @@ body.gs-auth-locked .gs-main {
   }
 
   .gs-studio-main-pill {
-    padding: 5px 6px !important;
-    gap: 4px !important;
+    padding: 4px 6px !important;
+    gap: 3px !important;
     border-radius: 10px !important;
     align-items: center !important;
   }
 
   #btnStudioBackToTimeline {
-    padding: 0 6px !important;
-    min-width: 28px !important;
-    height: 26px !important;
+    padding: 0 5px !important;
+    min-width: 24px !important;
+    height: 24px !important;
     justify-content: center !important;
   }
 
   #btnStudioBackToTimeline span,
   .gs-brightness-control,
-  #btnStudioRecycleBin > span:not(#studioBinCountBadge),
+  #btnStudioRecycleBin,
   #btnStudioFirstPerson span,
   #btnStudioQuickShare span,
+  #btnStudioQuickShare svg:nth-of-type(2),
   #btnStudioDownloadObj span,
+  #btnStudioDownloadObj svg:nth-of-type(2),
   #btnStudioSurveyReport span {
     display: none !important;
   }
 
   #studioProjectSelect {
-    flex: 1 1 88px !important;
-    min-width: 72px !important;
-    max-width: 34% !important;
-    height: 26px !important;
-    font-size: 11px !important;
-    padding: 2px 4px !important;
+    flex: 1 1 64px !important;
+    min-width: 58px !important;
+    max-width: 26% !important;
+    height: 24px !important;
+    font-size: 10.5px !important;
+    padding: 1px 4px !important;
   }
 
   #studioScanSelect {
-    flex: 1 1 112px !important;
-    min-width: 92px !important;
-    max-width: 44% !important;
-    height: 26px !important;
-    font-size: 11px !important;
-    padding: 2px 4px !important;
+    flex: 1 1 84px !important;
+    min-width: 72px !important;
+    max-width: 34% !important;
+    height: 24px !important;
+    font-size: 10.5px !important;
+    padding: 1px 4px !important;
   }
 
   .gs-studio-main-pill .btn-xs {
-    height: 26px !important;
-    min-width: 26px !important;
-    padding: 0 5px !important;
-    font-size: 10.5px !important;
+    height: 24px !important;
+    min-height: 24px !important;
+    min-width: 24px !important;
+    padding: 0 4px !important;
+    font-size: 10px !important;
     border-radius: 6px !important;
     flex-shrink: 0 !important;
   }
 
   #btnStudioToggleCategorizeVis,
   #btnStudioToggleCategorizeLabels {
-    padding: 0 6px !important;
+    padding: 0 5px !important;
     font-size: 10px !important;
-    gap: 3px !important;
+    height: 24px !important;
+    min-height: 24px !important;
+    gap: 2px !important;
   }
 
   #lblStudioCategorizeVis {
@@ -3477,7 +3540,17 @@ body.gs-auth-locked .gs-main {
     display: flex !important;
   }
 
-  .gs-side-panel[data-active-tool="section"] {
+  .gs-side-panel.mobile-minimized,
+  .gs-side-panel.gs-panel-minimized,
+  #studioSidePanel.mobile-minimized,
+  #studioSidePanel.gs-panel-minimized {
+    max-height: 38px !important;
+    height: 38px !important;
+    padding: 5px 10px !important;
+    overflow: hidden !important;
+  }
+
+  .gs-side-panel[data-active-tool="section"]:not(.mobile-minimized):not(.gs-panel-minimized) {
     max-height: 30vh !important;
   }
 
@@ -3499,15 +3572,19 @@ body.gs-auth-locked .gs-main {
     min-height: 0 !important;
   }
 
-  /* 10.8 2D Measurement Badges Mobile Clamping & Wrapping */
+  /* 10.8 2D Measurement Badges Mobile Clamping & Anti-Squishing */
   .autodesk-flex-badge,
   .autodesk-coord-badge,
   .autodesk-laser-badge,
   .autodesk-angle-badge,
   .autodesk-dist-badge,
-  .autodesk-delta-badge {
-    max-width: calc(100vw - 20px) !important;
+  .autodesk-delta-badge,
+  .measure-badge-2d {
+    width: max-content !important;
+    max-width: min(230px, calc(100vw - 20px)) !important;
     white-space: normal !important;
+    word-break: keep-all !important;
+    overflow-wrap: break-word !important;
     flex-wrap: wrap !important;
     justify-content: center !important;
     text-align: center !important;
@@ -3517,10 +3594,10 @@ body.gs-auth-locked .gs-main {
     box-sizing: border-box !important;
   }
 
-  /* 10.9 First-Person HUD Mobile Fit (#btnExitFirstPerson 100% Inside Viewport) */
+  /* 10.9 First-Person HUD Mobile Fit (Below 2-row .gs-studio-main-pill, #btnExitFirstPerson 100% Inside Viewport) */
   .gs-fp-hud,
   #studioFirstPersonHud {
-    top: 74px !important;
+    top: 146px !important;
     left: 6px !important;
     right: 6px !important;
     transform: none !important;
@@ -3572,21 +3649,155 @@ body.gs-auth-locked .gs-main {
     bottom: 54px !important;
   }
 
-  /* 10.10 Map & Site Timeline View Mobile Refinements */
-  .gs-timeline-header-right .btn-xs {
-    min-width: 32px !important;
+  /* 10.10 Map & Site Timeline View Mobile Refinements (0 Overlap, 0 Vertical Card Clipping, 0 Preview Pill Collision) */
+  .gs-site-timeline-top {
+    min-height: 168px !important;
+    max-height: 182px !important;
+    padding: 6px 8px !important;
+  }
+
+  .gs-timeline-header {
+    padding-bottom: 4px !important;
+    gap: 4px !important;
+  }
+
+  .gs-timeline-header > .gs-timeline-header-left,
+  #timelineSiteTitle,
+  #btnRenameTimelineSite,
+  #timelineSiteCountPill {
+    display: none !important;
+  }
+
+  .gs-timeline-header-right {
+    width: 100% !important;
+    display: flex !important;
+    align-items: center !important;
+    gap: 5px !important;
+    flex-wrap: nowrap !important;
+    min-width: 0 !important;
+  }
+
+  #timelineProjectSelect {
+    flex: 1 1 auto !important;
+    min-width: 0 !important;
+    max-width: none !important;
+    height: 30px !important;
+    font-size: 12px !important;
+    padding: 2px 6px !important;
+  }
+
+  .gs-timeline-header-right .btn-xs,
+  #btnCapturePreviewScreenshot,
+  #btnTimelineCompare,
+  #btnTimelineShare,
+  #btnTimelineRecycleBin {
+    min-width: 30px !important;
     min-height: 30px !important;
     height: 30px !important;
-    padding: 0 6px !important;
+    padding: 0 7px !important;
+    flex-shrink: 0 !important;
+    font-size: 11px !important;
+  }
+
+  .gs-timeline-track {
+    padding: 4px 2px 2px 2px !important;
+    gap: 8px !important;
+  }
+
+  .gs-timeline-tile {
+    width: 168px !important;
+    border-radius: 8px !important;
+  }
+
+  .gs-tile-thumb-wrap,
+  .gs-tile-thumb {
+    height: 60px !important;
+  }
+
+  .gs-tile-meta {
+    padding: 4px 6px !important;
+    font-size: 10.5px !important;
+    line-height: 1.22 !important;
+    gap: 1px !important;
   }
 
   .gs-tile-action-btn,
   .gs-timeline-tile .btn-xs {
-    min-width: 32px !important;
-    min-height: 30px !important;
+    min-width: 30px !important;
+    min-height: 28px !important;
   }
 
-  /* 10.11 Multi-Date Compare View Compact Mobile HUD (~88px height) */
+  #sitePreviewHudBadge,
+  .gs-preview-hud-top-left {
+    top: 8px !important;
+    left: 8px !important;
+    right: 50px !important;
+    max-width: calc(100vw - 58px) !important;
+    width: calc(100vw - 58px) !important;
+  }
+
+  .gs-preview-scan-pill {
+    width: 100% !important;
+    max-width: 100% !important;
+    padding: 5px 8px !important;
+    display: flex !important;
+    flex-direction: row !important;
+    align-items: center !important;
+    flex-wrap: nowrap !important;
+    gap: 4px !important;
+    box-sizing: border-box !important;
+    overflow: hidden !important;
+  }
+
+  .gs-preview-scan-pill > div:last-child {
+    position: static !important;
+  }
+
+  .gs-preview-scan-pill > svg,
+  #previewQualityBadge,
+  #btnRenamePreviewScan span,
+  #btnRerunPreviewScan span,
+  #btnDeletePreviewScan span,
+  #btnPreviewQuickShare span {
+    display: none !important;
+  }
+
+  .gs-preview-text-wrap {
+    flex: 1 1 auto !important;
+    min-width: 0 !important;
+    overflow: hidden !important;
+  }
+
+  .gs-preview-text-wrap > div:first-child {
+    display: flex !important;
+    align-items: center !important;
+    gap: 4px !important;
+    min-width: 0 !important;
+    width: 100% !important;
+  }
+
+  #previewScanTitle {
+    flex: 1 1 60px !important;
+    min-width: 60px !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    white-space: nowrap !important;
+    font-size: 11.5px !important;
+  }
+
+  #btnRenamePreviewScan,
+  #btnRerunPreviewScan,
+  #btnDeletePreviewScan,
+  #btnPreviewResetCamera,
+  #btnPreviewQuickShare {
+    height: 24px !important;
+    min-height: 24px !important;
+    min-width: 24px !important;
+    padding: 0 5px !important;
+    flex-shrink: 0 !important;
+  }
+
+  /* 10.11 Multi-Date Compare View Compact Mobile HUD & Curtain Bounds */
   .gs-compare-hud {
     top: 6px !important;
     left: 6px !important;
@@ -3601,6 +3812,11 @@ body.gs-auth-locked .gs-main {
     flex-wrap: nowrap !important;
   }
 
+  .gs-compare-hud .gs-compare-heatmap-badge {
+    flex-wrap: nowrap !important;
+    justify-content: space-between !important;
+  }
+
   .gs-compare-hud .gs-scan-select {
     height: 24px !important;
     font-size: 10.5px !important;
@@ -3609,29 +3825,57 @@ body.gs-auth-locked .gs-main {
     flex: 1 1 80px !important;
   }
 
-  #compareModeSwitcher .btn-seg {
+  #compareModeSwitcher {
+    flex-shrink: 0 !important;
+  }
+
+  #compareModeSwitcher .btn-seg,
+  #btnCompareModeSlider,
+  #btnCompareModeSplit {
+    white-space: nowrap !important;
     padding: 2px 6px !important;
-    font-size: 10px !important;
+    font-size: 10.5px !important;
     gap: 3px !important;
   }
 
   .gs-compare-heatmap-badge label {
-    font-size: 10.5px !important;
-    gap: 4px !important;
+    font-size: 10px !important;
+    gap: 3px !important;
     white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+  }
+
+  #lblCurtainPct,
+  #compareSplitPctLabel {
+    white-space: nowrap !important;
+    font-size: 10px !important;
   }
 
   #btnCompareResetCamera {
     height: 24px !important;
-    min-width: 26px !important;
+    min-width: 24px !important;
     padding: 0 5px !important;
+    flex-shrink: 0 !important;
   }
 
   #btnCompareResetCamera span {
     display: none !important;
   }
 
+  .gs-curtain-divider,
+  #curtainDivider,
+  #compareCurtainDivider {
+    top: 118px !important;
+    bottom: 44px !important;
+  }
+
   /* 10.12 Modals, Tables, Recycle Bin & Multi-Line Buttons on Mobile */
+  #modalQueue .gs-table th:nth-child(6),
+  #modalQueue .gs-table td:nth-child(6) {
+    display: none !important;
+  }
+
   .gs-modal-window {
     width: calc(100vw - 16px) !important;
     max-width: calc(100vw - 16px) !important;
@@ -3655,6 +3899,19 @@ body.gs-auth-locked .gs-main {
     min-height: 28px;
     white-space: normal !important;
     line-height: 1.25;
+  }
+
+  #recycleBinModal #btnRestoreSelectedBinScans,
+  #recycleBinModal #btnPurgeSelectedBinScans,
+  #recycleBinModal #btnClearAllBinScans,
+  #btnRestoreSelectedBin,
+  #btnDeleteSelectedBin,
+  #btnEmptyRecycleBin {
+    flex: 1 1 auto !important;
+    font-size: 11px !important;
+    padding: 5px 8px !important;
+    min-height: 32px !important;
+    justify-content: center !important;
   }
 
   .gs-table-scroll-wrap {
