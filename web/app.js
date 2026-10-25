@@ -393,9 +393,36 @@
       .replace(/'/g, "&#39;");
   }
 
+  function syncMobileToastPosition() {
+    const el = document.getElementById("gsToast");
+    if (!el) return;
+    if (window.innerWidth <= 768) {
+      const panel = document.getElementById("studioSidePanel");
+      const panelExpanded = Boolean(
+        panel &&
+          (panel.classList.contains("active") || panel.classList.contains("open")) &&
+          !panel.classList.contains("hidden") &&
+          !panel.classList.contains("mobile-minimized") &&
+          !panel.classList.contains("gs-panel-minimized")
+      );
+      const fpActive = Boolean(STATE?.fpMode?.active);
+      if (panelExpanded || fpActive) {
+        el.style.setProperty("bottom", "auto", "important");
+        el.style.setProperty("top", "192px", "important");
+      } else {
+        el.style.setProperty("top", "auto", "important");
+        el.style.setProperty("bottom", "142px", "important");
+      }
+    } else {
+      el.style.removeProperty("top");
+      el.style.removeProperty("bottom");
+    }
+  }
+
   function showToast(msg, durationMs = 3400) {
     const el = document.getElementById("gsToast");
     if (!el) return;
+    syncMobileToastPosition();
     el.textContent = msg;
     el.style.display = "block";
     el.classList.add("show");
@@ -5282,9 +5309,11 @@
     const panelEl = document.getElementById("studioSidePanel");
     const panelOpen = Boolean(panelEl && (panelEl.classList.contains("open") || panelEl.classList.contains("active")) && !panelEl.classList.contains("hidden"));
     const panelMinimized = Boolean(panelEl && panelEl.classList.contains("mobile-minimized"));
+    const mobHudEl = document.getElementById("studioMobileToolHud");
+    const mobHudOpen = Boolean(isMobile && mobHudEl && mobHudEl.style.display !== "none" && mobHudEl.offsetHeight > 0);
     const rightSafeX = isMobile ? w - 8 : w - (panelOpen ? (panelEl.offsetWidth || 380) + 16 : 14);
     const leftSafeX = isMobile ? 8 : 86;
-    const topSafeY = isMobile ? 74 : 68;
+    const topSafeY = isMobile ? (mobHudOpen ? 116 : 74) : 68;
     const bottomSafeY = isMobile
       ? h - (panelOpen && !panelMinimized ? Math.min(240, (panelEl.offsetHeight || 180) + 96) : 102)
       : h - 84;
@@ -5332,7 +5361,7 @@
         const minX = isMobile ? Math.max(24, halfW + 8) : halfW + 8;
         const maxX = isMobile ? Math.min(w - 24, w - halfW - 8) : w - halfW - 8;
         const clampedX = Math.max(minX, Math.min(Math.max(minX, maxX), x));
-        const minY = isMobile ? Math.max(82, bh + 66) : 58;
+        const minY = isMobile ? Math.max(mobHudOpen ? 122 : 82, bh + (mobHudOpen ? 108 : 66)) : 58;
         const maxY = isMobile ? Math.max(minY + 12, bottomSafeY - 6) : h - 72;
         let clampedY = h > 160 ? Math.max(minY, Math.min(Math.max(minY, maxY), y)) : y;
 
@@ -6262,6 +6291,9 @@
       STATE.categorizeEditPoints = [];
       STATE.categorizeTempPoints = [];
     }
+    if (toolName !== "profile" && typeof clearProfileVisualsOnly === "function") {
+      clearProfileVisualsOnly();
+    }
     if (STATE.activeTool !== toolName) {
       STATE.measurePoints = [];
     }
@@ -6387,6 +6419,9 @@
     clearTempDistanceVisuals();
     clearAreaVisualsOnly();
     clearVolumeVisualsOnly();
+    if (typeof clearProfileVisualsOnly === "function") {
+      clearProfileVisualsOnly();
+    }
     STATE.categorizeOverlayVisible = false;
     if (typeof clearCategorizeVisualsOnly === "function") {
       clearCategorizeVisualsOnly();
@@ -10311,6 +10346,7 @@
       lblCollapse.textContent = STATE.sidePanelMinimized ? "▴ 展開" : "▾ 收合";
     }
     if (typeof syncStudioMobileToolHud === "function") syncStudioMobileToolHud();
+    if (typeof syncMobileToastPosition === "function") syncMobileToastPosition();
     update2DBadgePositions();
   }
 
@@ -10325,6 +10361,8 @@
     if (lblCollapse) {
       lblCollapse.textContent = STATE.sidePanelMinimized ? "▴ 展開" : "▾ 收合";
     }
+    if (typeof syncStudioMobileToolHud === "function") syncStudioMobileToolHud();
+    if (typeof syncMobileToastPosition === "function") syncMobileToastPosition();
     update2DBadgePositions();
   });
 
@@ -10333,7 +10371,7 @@
     if (STATE.activeTool === "crop_delete" || STATE.activeTool === "crop" || STATE.activeTool === "optimizer") {
       cancelLassoToolMode(false);
     } else if (
-      ["section", "crs", "generate_scan", "rtk", "photos", "comments"].includes(STATE.activeTool)
+      ["section", "profile", "crs", "generate_scan", "rtk", "photos", "comments"].includes(STATE.activeTool)
     ) {
       setActiveStudioTool(STATE.multiAlign?.active ? "align_merge" : "orbit");
     }
@@ -10344,6 +10382,7 @@
     }
     STATE.sidePanelMinimized = false;
     if (typeof syncStudioMobileToolHud === "function") syncStudioMobileToolHud();
+    if (typeof syncMobileToastPosition === "function") syncMobileToastPosition();
     update2DBadgePositions();
   });
 
@@ -10483,33 +10522,91 @@
         <button type="button" class="gs-mobile-hud-btn danger" data-mobile-hud="exit_tool">✕ 離開</button>
       `;
     } else if (tool === "area" || tool === "volume" || tool === "contours") {
+      const toolLabel = tool === "area" ? "面積" : tool === "volume" ? "土方" : "等高線";
+      const hasPanelToggle = tool === "volume" || tool === "contours";
       if (ptsCount === 0) {
-        hud.style.display = "none";
-        return;
-      }
-      const toolLabel = tool === "area" ? "面積" : tool === "volume" ? "土方" : "等高線邊界";
-      hud.style.display = "flex";
-      hud.innerHTML = `
-        <span class="gs-mobile-hud-label">📐 ${toolLabel}：已標記 ${ptsCount} 點</span>
-        ${
-          ptsCount >= 3
-            ? `<button type="button" class="gs-mobile-hud-btn primary" data-mobile-hud="lock_poly">✓ 完成多邊形 (Lock)</button>`
-            : `<span class="gs-mobile-hud-label" style="color:var(--ui-text-secondary);">再點 ${3 - ptsCount} 點可閉合</span>`
+        if (window.innerWidth > 768) {
+          hud.style.display = "none";
+          return;
         }
-        <button type="button" class="gs-mobile-hud-btn" data-mobile-hud="undo_pt">↩ 復原點</button>
-        <button type="button" class="gs-mobile-hud-btn danger" data-mobile-hud="clear_pts">✕ 清除</button>
-      `;
-    } else if (tool === "distance" || tool === "angle" || tool === "profile") {
-      if (ptsCount === 0) {
-        hud.style.display = "none";
-        return;
+        hud.style.display = "flex";
+        hud.innerHTML = `
+          <span class="gs-mobile-hud-label">📐 ${toolLabel}：請點擊 3+ 點圍成範圍</span>
+          ${
+            hasPanelToggle
+              ? `<button type="button" class="gs-mobile-hud-btn" data-mobile-hud="expand_cat_panel">${
+                  STATE.sidePanelMinimized ? "▴ 展開面板" : "▾ 收合面板"
+                }</button>`
+              : ""
+          }
+        `;
+      } else {
+        hud.style.display = "flex";
+        hud.innerHTML = `
+          <span class="gs-mobile-hud-label">📐 ${toolLabel}：已標記 ${ptsCount} 點</span>
+          ${
+            ptsCount >= 3
+              ? `<button type="button" class="gs-mobile-hud-btn primary" data-mobile-hud="lock_poly">✓ 完成多邊形 (Lock)</button>`
+              : `<span class="gs-mobile-hud-label" style="color:var(--ui-text-secondary);">再點 ${3 - ptsCount} 點可閉合</span>`
+          }
+          <button type="button" class="gs-mobile-hud-btn" data-mobile-hud="undo_pt">↩ 復原點</button>
+          <button type="button" class="gs-mobile-hud-btn danger" data-mobile-hud="clear_pts">✕ 清除</button>
+          ${
+            hasPanelToggle
+              ? `<button type="button" class="gs-mobile-hud-btn" data-mobile-hud="expand_cat_panel">${
+                  STATE.sidePanelMinimized ? "▴ 面板" : "▾ 收合"
+                }</button>`
+              : ""
+          }
+        `;
       }
-      const toolLabel = tool === "distance" ? "距離" : tool === "angle" ? "角度" : "剖面";
+    } else if (tool === "distance" || tool === "angle" || tool === "profile") {
+      const toolLabel = tool === "distance" ? "距離" : tool === "angle" ? "角度" : "斷面";
+      if (ptsCount === 0) {
+        if (window.innerWidth > 768) {
+          hud.style.display = "none";
+          return;
+        }
+        const promptText =
+          tool === "distance"
+            ? "📏 距離：請點擊起點與終點 (0/2)"
+            : tool === "angle"
+            ? "📐 角度：請點擊 3 點量測夾角 (0/3)"
+            : "📈 斷面：請點擊 A、B 兩點 (0/2)";
+        hud.style.display = "flex";
+        hud.innerHTML = `
+          <span class="gs-mobile-hud-label">${promptText}</span>
+          ${
+            tool === "profile"
+              ? `<button type="button" class="gs-mobile-hud-btn" data-mobile-hud="expand_cat_panel">${
+                  STATE.sidePanelMinimized ? "▴ 展開面板" : "▾ 收合面板"
+                }</button>`
+              : ""
+          }
+        `;
+      } else {
+        hud.style.display = "flex";
+        hud.innerHTML = `
+          <span class="gs-mobile-hud-label">📏 ${toolLabel}：已標記 ${ptsCount} 點</span>
+          <button type="button" class="gs-mobile-hud-btn" data-mobile-hud="undo_pt">↩ 復原點</button>
+          <button type="button" class="gs-mobile-hud-btn danger" data-mobile-hud="clear_pts">✕ 取消</button>
+          ${
+            tool === "profile"
+              ? `<button type="button" class="gs-mobile-hud-btn" data-mobile-hud="expand_cat_panel">${
+                  STATE.sidePanelMinimized ? "▴ 面板" : "▾ 收合"
+                }</button>`
+              : ""
+          }
+        `;
+      }
+    } else if ((tool === "photos" || tool === "comments") && window.innerWidth <= 768 && STATE.sidePanelMinimized) {
+      const isPhoto = tool === "photos";
       hud.style.display = "flex";
       hud.innerHTML = `
-        <span class="gs-mobile-hud-label">📏 ${toolLabel}：已標記 ${ptsCount} 點</span>
-        <button type="button" class="gs-mobile-hud-btn" data-mobile-hud="undo_pt">↩ 復原點</button>
-        <button type="button" class="gs-mobile-hud-btn danger" data-mobile-hud="clear_pts">✕ 取消</button>
+        <span class="gs-mobile-hud-label">${
+          isPhoto ? "📷 光達照片：點擊 3D 模型查詢實景照片" : "💬 空間標註：點擊 3D 模型放置標註點"
+        }</span>
+        <button type="button" class="gs-mobile-hud-btn" data-mobile-hud="expand_cat_panel">▴ 展開面板</button>
       `;
     } else if (tool === "categorize" && STATE.categorizeEditMode) {
       const mode = STATE.categorizeEditMode;
@@ -10668,6 +10765,7 @@
         const lblCollapse = document.getElementById("lblCollapseSidePanel");
         if (lblCollapse) lblCollapse.textContent = STATE.sidePanelMinimized ? "▴ 展開" : "▾ 收合";
         syncStudioMobileToolHud();
+        if (typeof syncMobileToastPosition === "function") syncMobileToastPosition();
         update2DBadgePositions();
       }
     });
@@ -12301,14 +12399,14 @@
       .join("");
 
     const exportBarHtml = `
-      <div style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:8px;">
-        <a class="btn-xs primary" style="flex:1.25;justify-content:center;font-weight:700;" href="${escapeHtml(appendAuthToDownloadUrl(res.dxf_url))}" download="Civil3D_Categorized.dxf" title="Download AutoCAD Civil 3D Categorized .DXF (C-ROAD-BNDY, C-VEG-TREE, C-HYDR-WATR, C-STRC-WALL)">
+      <div style="display:flex;gap:4px;flex-wrap:nowrap;margin-bottom:8px;">
+        <a class="btn-xs primary" style="flex:1.15;justify-content:center;font-weight:700;white-space:nowrap;font-size:10.5px;padding:5px 6px;" href="${escapeHtml(appendAuthToDownloadUrl(res.dxf_url))}" download="Civil3D_Categorized.dxf" title="Download AutoCAD Civil 3D Categorized .DXF (C-ROAD-BNDY, C-VEG-TREE, C-HYDR-WATR, C-STRC-WALL)">
           <span>📐 .DXF (Civil 3D)</span>
         </a>
-        <a class="btn-xs primary" style="flex:1.1;justify-content:center;font-weight:700;" href="${escapeHtml(appendAuthToDownloadUrl(res.report_html_url))}" target="_blank" title="Open Bilingual Printable Categorization Report (.HTML / Save PDF)">
+        <a class="btn-xs primary" style="flex:1.15;justify-content:center;font-weight:700;white-space:nowrap;font-size:10.5px;padding:5px 6px;" href="${escapeHtml(appendAuthToDownloadUrl(res.report_html_url))}" target="_blank" title="Open Bilingual Printable Categorization Report (.HTML / Save PDF)">
           <span>📄 Report (.HTML/PDF)</span>
         </a>
-        <a class="btn-xs" style="flex:0.95;justify-content:center;font-weight:700;" href="${escapeHtml(appendAuthToDownloadUrl(res.report_csv_url))}" download="Categorization_Schedule.csv" title="Download UTF-8 Excel Schedule (.CSV)">
+        <a class="btn-xs" style="flex:0.9;justify-content:center;font-weight:700;white-space:nowrap;font-size:10.5px;padding:5px 6px;" href="${escapeHtml(appendAuthToDownloadUrl(res.report_csv_url))}" download="Categorization_Schedule.csv" title="Download UTF-8 Excel Schedule (.CSV)">
           <span>📊 Excel (.CSV)</span>
         </a>
       </div>
@@ -12931,32 +13029,34 @@
       return def;
     };
 
+    const isMobProfile = window.innerWidth <= 768;
+    const profCanvasH = isMobProfile ? 118 : 196;
     showSidePanel(
       `<span>Cross-Section Profile</span>`,
       `
-      <div style="font-size:11px;color:var(--ui-text-secondary);background:var(--ui-bg-pill);border:1px solid var(--ui-border-strong);border-radius:7px;padding:7px 9px;margin-bottom:8px;line-height:1.4;">
+      <div style="display:${isMobProfile ? "none" : "block"};font-size:11px;color:var(--ui-text-secondary);background:var(--ui-bg-pill);border:1px solid var(--ui-border-strong);border-radius:7px;padding:7px 9px;margin-bottom:8px;line-height:1.4;">
         Click <b>2 points (Section A &rarr; B)</b> on the 3D scan to sample TWVD2001 elevation &amp; slope along your custom section line. Hover over the chart to inspect any chainage station in 2D &amp; 3D.
       </div>
-      <div style="display:flex;gap:6px;margin-bottom:8px;">
-        <button type="button" class="gs-top-btn accent" style="flex:1.4;justify-content:center;" id="btnComputeProfileNow" title="Compute / Resample Cross-Section Profile">
+      <div style="display:flex;gap:${isMobProfile ? 4 : 6}px;margin-bottom:${isMobProfile ? 4 : 8}px;">
+        <button type="button" class="gs-top-btn accent" style="flex:1.4;justify-content:center;${isMobProfile ? "height:26px;font-size:11px;padding:0 6px;" : ""}" id="btnComputeProfileNow" title="Compute / Resample Cross-Section Profile">
           <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8">
             <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
           </svg>
           <span id="lblComputeProfileBtn">Compute Profile</span>
         </button>
-        <button type="button" class="gs-top-btn" style="flex:1;justify-content:center;" id="btnNewProfileLine" title="Pick New Section A &rarr; B Line on 3D Scan">
+        <button type="button" class="gs-top-btn" style="flex:1;justify-content:center;${isMobProfile ? "height:26px;font-size:11px;padding:0 6px;" : ""}" id="btnNewProfileLine" title="Pick New Section A &rarr; B Line on 3D Scan">
           <span>New A&ndash;B Line</span>
         </button>
-        <button type="button" class="gs-top-btn" style="flex:0.8;justify-content:center;" id="btnExportProfileCsv" title="Export Cross-Section CSV">
+        <button type="button" class="gs-top-btn" style="flex:0.8;justify-content:center;${isMobProfile ? "height:26px;font-size:11px;padding:0 6px;" : ""}" id="btnExportProfileCsv" title="Export Cross-Section CSV">
           <span>CSV</span>
         </button>
       </div>
-      <div id="profileHoverReadout" style="font-size:11px;font-family:var(--font-mono);color:var(--ui-text-primary);background:var(--ui-bg-subtle);border:1px solid var(--ui-border);border-radius:6px;padding:5px 8px;margin-bottom:6px;display:flex;justify-content:space-between;">
+      <div id="profileHoverReadout" style="font-size:${isMobProfile ? "10.5px" : "11px"};font-family:var(--font-mono);color:var(--ui-text-primary);background:var(--ui-bg-subtle);border:1px solid var(--ui-border);border-radius:6px;padding:${isMobProfile ? "3px 6px" : "5px 8px"};margin-bottom:${isMobProfile ? 4 : 6}px;display:flex;justify-content:space-between;">
         <span>Hover chart to inspect station</span>
         <span style="color:var(--ui-accent);">TWVD2001 (m)</span>
       </div>
-      <canvas id="profileChartCanvas" width="336" height="196" style="width:100%;height:196px;background:var(--ui-bg-subtle);border:1px solid var(--ui-border-strong);border-radius:8px;cursor:crosshair;"></canvas>
-      <div class="gs-metric-grid" id="profileMetricsBox" style="margin-top:8px;"></div>
+      <canvas id="profileChartCanvas" width="336" height="${profCanvasH}" style="width:100%;height:${profCanvasH}px;background:var(--ui-bg-subtle);border:1px solid var(--ui-border-strong);border-radius:8px;cursor:crosshair;"></canvas>
+      <div class="gs-metric-grid" id="profileMetricsBox" style="margin-top:${isMobProfile ? 6 : 8}px;"></div>
       `
     );
 
@@ -18345,6 +18445,12 @@
       try {
         document.exitPointerLock();
       } catch (_) {}
+    }
+    const toastEl = document.getElementById("gsToast");
+    if (toastEl) {
+      clearTimeout(toastEl._timer);
+      toastEl.classList.remove("show");
+      toastEl.style.display = "none";
     }
     document.getElementById(id)?.classList.add("active");
   }
