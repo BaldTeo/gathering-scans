@@ -273,7 +273,24 @@ class SurveyingEngine:
 
                     if isinstance(ts_doc.get("root"), dict):
                         _walk_glbs(ts_doc["root"])
-                    glb_files = leaf_glbs if leaf_glbs else all_glbs
+                    if len(leaf_glbs) > 28 and all_glbs:
+                        lod_groups: Dict[int, List[str]] = {}
+                        for g_fp in all_glbs:
+                            b_tok = os.path.basename(g_fp).split("_")[0]
+                            if b_tok.isdigit():
+                                lod_groups.setdefault(int(b_tok), []).append(g_fp)
+                        if lod_groups:
+                            if 2 in lod_groups and 4 <= len(lod_groups[2]) <= 44:
+                                glb_files = lod_groups[2]
+                            else:
+                                valid_lods = [k for k, v in lod_groups.items() if 4 <= len(v) <= 44 and k <= 4]
+                                if valid_lods:
+                                    glb_files = lod_groups[max(valid_lods)]
+                                else:
+                                    best_lod = min(lod_groups.keys(), key=lambda k: abs(len(lod_groups[k]) - 20))
+                                    glb_files = lod_groups[best_lod]
+                    if not glb_files:
+                        glb_files = leaf_glbs if leaf_glbs else all_glbs
                 except Exception:
                     pass
         if not glb_files:
@@ -289,6 +306,22 @@ class SurveyingEngine:
                     if "preview" not in g.lower() and "tileset_backup" not in g.lower() and "tileset_prev" not in g.lower()
                 ]
                 if found:
+                    if len(found) > 28:
+                        lod_groups_f: Dict[int, List[str]] = {}
+                        for g_fp in found:
+                            b_tok = os.path.basename(g_fp).split("_")[0]
+                            if b_tok.isdigit():
+                                lod_groups_f.setdefault(int(b_tok), []).append(g_fp)
+                        if lod_groups_f:
+                            if 2 in lod_groups_f and 4 <= len(lod_groups_f[2]) <= 44:
+                                found = lod_groups_f[2]
+                            else:
+                                valid_lods_f = [k for k, v in lod_groups_f.items() if 4 <= len(v) <= 44 and k <= 4]
+                                if valid_lods_f:
+                                    found = lod_groups_f[max(valid_lods_f)]
+                                else:
+                                    best_lod_f = min(lod_groups_f.keys(), key=lambda k: abs(len(lod_groups_f[k]) - 20))
+                                    found = lod_groups_f[best_lod_f]
                     glb_files = found
                     break
         glb_files = list(dict.fromkeys(glb_files))
@@ -3119,84 +3152,144 @@ class SurveyingEngine:
         rgb_arr = None
         geom_source = "none"
 
-        # 1. Try fast C-backed numpy OBJ + UV + JPEG loader (preferred whenever mesh.obj exists)
+        # 1. Try fast C-backed numpy Multi-Material OBJ + UV + JPEG loader (when mesh.obj is compact and <= 12 textures)
         if obj_path and os.path.isfile(obj_path):
             try:
                 obj_dir = os.path.dirname(obj_path)
-                off_xyz = (0.0, 0.0, 0.0)
-                off_cand = os.path.join(obj_dir, "offset.xyz")
-                if os.path.isfile(off_cand):
-                    with open(off_cand, "r", encoding="utf-8", errors="ignore") as f_off:
-                        toks = f_off.read().strip().split()
-                    if len(toks) >= 3:
-                        off_xyz = (float(toks[0]), float(toks[1]), float(toks[2]))
+                tex_jpgs = sorted(glob.glob(os.path.join(obj_dir, "*.jpg")) + glob.glob(os.path.join(obj_dir, "*.png")))
+                if os.path.getsize(obj_path) <= 350_000_000 and len(tex_jpgs) <= 12:
+                    off_xyz = (0.0, 0.0, 0.0)
+                    off_cand = os.path.join(obj_dir, "offset.xyz")
+                    if os.path.isfile(off_cand):
+                        with open(off_cand, "r", encoding="utf-8", errors="ignore") as f_off:
+                            toks = f_off.read().strip().split()
+                        if len(toks) >= 3:
+                            off_xyz = (float(toks[0]), float(toks[1]), float(toks[2]))
 
-                with open(obj_path, "r", encoding="ascii", errors="ignore") as f_obj:
-                    lines = f_obj.read().splitlines()
+                    mtl_to_tex: Dict[str, str] = {}
+                    for mp in glob.glob(os.path.join(obj_dir, "*.mtl")):
+                        cur_m = None
+                        try:
+                            with open(mp, "r", encoding="utf-8", errors="ignore") as mf:
+                                for ml in mf:
+                                    ms = ml.strip()
+                                    if ms.lower().startswith("newmtl "):
+                                        cur_m = ms.split(None, 1)[1].strip()
+                                    elif ms.lower().startswith("map_kd ") and cur_m:
+                                        tname = ms.split(None, 1)[1].strip()
+                                        tp = os.path.join(obj_dir, tname)
+                                        if os.path.isfile(tp):
+                                            mtl_to_tex[cur_m] = tp
+                        except Exception:
+                            pass
 
-                v_str = "\n".join(l[2:] for l in lines if l.startswith("v "))
-                vt_str = "\n".join(l[3:] for l in lines if l.startswith("vt "))
-                f_lines = [l[2:] for l in lines if l.startswith("f ")]
+                    with open(obj_path, "r", encoding="ascii", errors="ignore") as f_obj:
+                        lines = f_obj.read().splitlines()
 
-                verts = np.fromstring(v_str, dtype=np.float64, sep=" ").reshape(-1, 3)
-                verts[:, 0] += off_xyz[0]
-                verts[:, 1] += off_xyz[1]
-                verts[:, 2] += off_xyz[2]
+                    v_lines: List[str] = []
+                    vt_lines: List[str] = []
+                    mtl_f_groups: Dict[str, List[str]] = {}
+                    cur_mtl = "mesh_0"
+                    for l in lines:
+                        if l.startswith("v "):
+                            v_lines.append(l[2:])
+                        elif l.startswith("vt "):
+                            vt_lines.append(l[3:])
+                        elif l.startswith("f "):
+                            mtl_f_groups.setdefault(cur_mtl, []).append(l[2:])
+                        elif l.startswith("usemtl "):
+                            cur_mtl = l[7:].strip()
 
-                uvs = np.fromstring(vt_str, dtype=np.float32, sep=" ").reshape(-1, 2) if vt_str else None
+                    v_str = "\n".join(v_lines)
+                    vt_str = "\n".join(vt_lines)
+                    verts = np.fromstring(v_str, dtype=np.float64, sep=" ").reshape(-1, 3)
+                    verts[:, 0] += off_xyz[0]
+                    verts[:, 1] += off_xyz[1]
+                    verts[:, 2] += off_xyz[2]
+                    uvs = np.fromstring(vt_str, dtype=np.float32, sep=" ").reshape(-1, 2) if vt_str else None
 
-                sample_f = f_lines[0] if f_lines else ""
-                has_uv_idx = "/" in sample_f and "//" not in sample_f
-                slash_cnt = sample_f.count("/")
-                f_str = "\n".join(l.replace("/", " ") for l in f_lines)
-                f_vals = np.fromstring(f_str, dtype=np.int32, sep=" ")
+                    tex_cache_obj: Dict[str, np.ndarray] = {}
+                    if Image is not None:
+                        for tp in tex_jpgs:
+                            try:
+                                tex_cache_obj[os.path.abspath(tp)] = (
+                                    np.asarray(Image.open(tp).convert("RGB"), dtype=np.float32) / 255.0
+                                )
+                            except Exception:
+                                pass
 
-                if slash_cnt == 3 and has_uv_idx:
-                    f_mat = f_vals.reshape(-1, 6)
-                    vi = np.clip(f_mat[:, [0, 2, 4]] - 1, 0, len(verts) - 1)
-                    ti = np.clip(f_mat[:, [1, 3, 5]] - 1, 0, (len(uvs) - 1) if uvs is not None and len(uvs) > 0 else 0)
-                elif slash_cnt == 6:
-                    f_mat = f_vals.reshape(-1, 9)
-                    vi = np.clip(f_mat[:, [0, 3, 6]] - 1, 0, len(verts) - 1)
-                    ti = np.clip(f_mat[:, [1, 4, 7]] - 1, 0, (len(uvs) - 1) if uvs is not None and len(uvs) > 0 else 0)
-                else:
-                    f_mat = f_vals.reshape(-1, 3)
-                    vi = np.clip(f_mat - 1, 0, len(verts) - 1)
-                    ti = None
-
-                v0_arr = verts[vi[:, 0]]
-                v1_arr = verts[vi[:, 1]]
-                v2_arr = verts[vi[:, 2]]
-                geom_source = "obj"
-
-                # Sample texture image (mesh_0.jpg or any *.jpg in obj_dir) at 4 barycentric points per triangle
-                tex_jpgs = glob.glob(os.path.join(obj_dir, "*.jpg")) + glob.glob(os.path.join(obj_dir, "*.png"))
-                if uvs is not None and len(uvs) > 0 and ti is not None and tex_jpgs and Image is not None:
-                    tex_img = Image.open(tex_jpgs[0]).convert("RGB")
-                    tex_np = np.asarray(tex_img, dtype=np.float32) / 255.0
-                    th, tw, _ = tex_np.shape
-                    uv0 = uvs[ti[:, 0]]
-                    uv1 = uvs[ti[:, 1]]
-                    uv2 = uvs[ti[:, 2]]
-                    # 4-point barycentric UV sampling: centroid + 3 interior points
                     b_weights = [
                         (1.0 / 3.0, 1.0 / 3.0, 1.0 / 3.0),
                         (0.60, 0.20, 0.20),
                         (0.20, 0.60, 0.20),
                         (0.20, 0.20, 0.60),
                     ]
-                    rgb_acc = np.zeros((len(v0_arr), 3), dtype=np.float32)
-                    for w0, w1, w2 in b_weights:
-                        u_s = np.mod(w0 * uv0[:, 0] + w1 * uv1[:, 0] + w2 * uv2[:, 0], 1.0)
-                        v_s = np.mod(w0 * uv0[:, 1] + w1 * uv1[:, 1] + w2 * uv2[:, 1], 1.0)
-                        px = np.clip((u_s * (tw - 1)).astype(np.int32), 0, tw - 1)
-                        py = np.clip(((1.0 - v_s) * (th - 1)).astype(np.int32), 0, th - 1)
-                        rgb_acc += tex_np[py, px]
-                    rgb_arr = rgb_acc * 0.25
+                    v0_grps, v1_grps, v2_grps, rgb_grps = [], [], [], []
+                    for m_name, grp_f in mtl_f_groups.items():
+                        if not grp_f:
+                            continue
+                        sample_f = grp_f[0]
+                        has_uv_idx = "/" in sample_f and "//" not in sample_f
+                        slash_cnt = sample_f.count("/")
+                        f_str = "\n".join(l.replace("/", " ") for l in grp_f)
+                        f_vals = np.fromstring(f_str, dtype=np.int32, sep=" ")
+                        if slash_cnt == 3 and has_uv_idx:
+                            f_mat = f_vals.reshape(-1, 6)
+                            vi = np.clip(f_mat[:, [0, 2, 4]] - 1, 0, len(verts) - 1)
+                            ti = np.clip(f_mat[:, [1, 3, 5]] - 1, 0, (len(uvs) - 1) if uvs is not None and len(uvs) > 0 else 0)
+                        elif slash_cnt == 6:
+                            f_mat = f_vals.reshape(-1, 9)
+                            vi = np.clip(f_mat[:, [0, 3, 6]] - 1, 0, len(verts) - 1)
+                            ti = np.clip(f_mat[:, [1, 4, 7]] - 1, 0, (len(uvs) - 1) if uvs is not None and len(uvs) > 0 else 0)
+                        else:
+                            f_mat = f_vals.reshape(-1, 3)
+                            vi = np.clip(f_mat - 1, 0, len(verts) - 1)
+                            ti = None
+
+                        gv0 = verts[vi[:, 0]]
+                        gv1 = verts[vi[:, 1]]
+                        gv2 = verts[vi[:, 2]]
+                        v0_grps.append(gv0)
+                        v1_grps.append(gv1)
+                        v2_grps.append(gv2)
+
+                        resolved_tp = mtl_to_tex.get(m_name)
+                        if not resolved_tp:
+                            for ext_c in (".jpg", ".png"):
+                                cand_tp = os.path.join(obj_dir, f"{m_name}{ext_c}")
+                                if os.path.isfile(cand_tp):
+                                    resolved_tp = cand_tp
+                                    break
+                        if not resolved_tp and tex_jpgs:
+                            resolved_tp = tex_jpgs[0]
+
+                        tex_np = tex_cache_obj.get(os.path.abspath(resolved_tp)) if resolved_tp else None
+                        if uvs is not None and len(uvs) > 0 and ti is not None and tex_np is not None:
+                            th, tw, _ = tex_np.shape
+                            uv0 = uvs[ti[:, 0]]
+                            uv1 = uvs[ti[:, 1]]
+                            uv2 = uvs[ti[:, 2]]
+                            rgb_acc = np.zeros((len(gv0), 3), dtype=np.float32)
+                            for w0, w1, w2 in b_weights:
+                                u_s = np.mod(w0 * uv0[:, 0] + w1 * uv1[:, 0] + w2 * uv2[:, 0], 1.0)
+                                v_s = np.mod(w0 * uv0[:, 1] + w1 * uv1[:, 1] + w2 * uv2[:, 1], 1.0)
+                                px = np.clip((u_s * (tw - 1)).astype(np.int32), 0, tw - 1)
+                                py = np.clip(((1.0 - v_s) * (th - 1)).astype(np.int32), 0, th - 1)
+                                rgb_acc += tex_np[py, px]
+                            rgb_grps.append(rgb_acc * 0.25)
+                        else:
+                            rgb_grps.append(np.full((len(gv0), 3), 0.52, dtype=np.float32))
+
+                    if v0_grps:
+                        v0_arr = np.vstack(v0_grps)
+                        v1_arr = np.vstack(v1_grps)
+                        v2_arr = np.vstack(v2_grps)
+                        rgb_arr = np.vstack(rgb_grps)
+                        geom_source = "obj"
             except Exception:
                 v0_arr = None
 
-        # 2. Fallback to leaf .glb tiles (or .3tz stream archive) with automatic meshopt decompression
+        # 2. Fallback to leaf/LOD-2 .glb tiles (or .3tz stream archive) with automatic meshopt & KHR_texture_transform support
         if v0_arr is None or len(v0_arr) == 0:
             glb_files = SurveyingEngine._collect_scan_glb_files(scan)
             v0_list, v1_list, v2_list, rgb_list = [], [], [], []
@@ -3208,7 +3301,58 @@ class SurveyingEngine:
                 except Exception:
                     pass
 
-            def _parse_glb_triangles_and_rgb(raw_bytes: bytes, origin_shift: Tuple[float, float, float] = (0.0, 0.0, 0.0)) -> Optional[Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]]:
+            base_repo_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            basis_js_path = os.path.join(base_repo_dir, "web", "lib", "basis", "basis_transcoder.js")
+            basis_wasm_path = os.path.join(base_repo_dir, "web", "lib", "basis", "basis_transcoder.wasm")
+
+            def _decode_ktx2_bytes_to_rgb_np(ktx_bytes: bytes) -> Optional[np.ndarray]:
+                if not os.path.isfile(basis_js_path) or not os.path.isfile(basis_wasm_path):
+                    return None
+                fd_k, tmp_k = tempfile.mkstemp(suffix=".ktx2")
+                fd_r, tmp_r = tempfile.mkstemp(suffix=".bin")
+                os.close(fd_r)
+                try:
+                    with os.fdopen(fd_k, "wb") as fk:
+                        fk.write(ktx_bytes)
+                    js_script = (
+                        "const fs=require('fs');const BASIS=require(process.argv[1]);"
+                        "const wasmBin=fs.readFileSync(process.argv[2]);"
+                        "const ktxBytes=new Uint8Array(fs.readFileSync(process.argv[3]));"
+                        "BASIS({wasmBinary:wasmBin}).then(mod=>{"
+                        "mod.initializeBasis();const k=new mod.KTX2File(ktxBytes);"
+                        "if(!k.isValid()||!k.startTranscoding())process.exit(1);"
+                        "const w=k.getWidth(),h=k.getHeight();"
+                        "const dst=new Uint8Array(k.getImageTranscodedSizeInBytes(0,0,0,13));"
+                        "if(!k.transcodeImage(dst,0,0,0,13,0,-1,-1))process.exit(1);"
+                        "const hdr=Buffer.alloc(8);hdr.writeUInt32LE(w,0);hdr.writeUInt32LE(h,4);"
+                        "fs.writeFileSync(process.argv[4],Buffer.concat([hdr,Buffer.from(dst.buffer)]));"
+                        "k.close();k.delete();}).catch(()=>process.exit(1));"
+                    )
+                    subprocess.run(
+                        ["node", "-e", js_script, basis_js_path, basis_wasm_path, tmp_k, tmp_r],
+                        capture_output=True,
+                        timeout=6,
+                        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000) if os.name == "nt" else 0,
+                    )
+                    if os.path.isfile(tmp_r) and os.path.getsize(tmp_r) > 8:
+                        with open(tmp_r, "rb") as fr:
+                            rb = fr.read()
+                        tw_k, th_k = struct.unpack_from("<2I", rb, 0)
+                        if tw_k > 0 and th_k > 0 and len(rb) >= 8 + tw_k * th_k * 4:
+                            rgba = np.frombuffer(rb, dtype=np.uint8, count=tw_k * th_k * 4, offset=8).reshape(th_k, tw_k, 4)
+                            return rgba[:, :, :3].astype(np.float32) / 255.0
+                except Exception:
+                    return None
+                finally:
+                    for p_clean in (tmp_k, tmp_r):
+                        if p_clean and os.path.exists(p_clean):
+                            try:
+                                os.remove(p_clean)
+                            except OSError:
+                                pass
+                return None
+
+            def _parse_glb_triangles_and_rgb(raw_bytes: bytes, origin_shift: Tuple[float, float, float] = (0.0, 0.0, 0.0), legacy_uv: bool = False) -> Optional[Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]]:
                 if len(raw_bytes) < 28 or raw_bytes[:4] != b"glTF":
                     return None
                 j_len, j_type = struct.unpack_from("<I4s", raw_bytes, 12)
@@ -3226,22 +3370,30 @@ class SurveyingEngine:
                 meshes_list = j.get("meshes") or []
                 nodes_list = j.get("nodes") or []
                 images_list = j.get("images") or []
+                textures_list = j.get("textures") or []
+                materials_list = j.get("materials") or []
                 blob = memoryview(raw_bytes)[b_off + 8 : b_off + 8 + b_len]
 
-                tex_np_g = None
-                if images_list and Image is not None:
-                    for img_meta in images_list:
+                pil_images: Dict[int, np.ndarray] = {}
+                if images_list:
+                    import io
+                    for img_idx, img_meta in enumerate(images_list):
                         if "bufferView" in img_meta:
                             try:
-                                import io
                                 ibv = bv_list[img_meta["bufferView"]]
                                 ioff = int(ibv.get("byteOffset", 0))
                                 ilen = int(ibv["byteLength"])
-                                im = Image.open(io.BytesIO(bytes(blob[ioff : ioff + ilen]))).convert("RGB")
-                                tex_np_g = np.asarray(im, dtype=np.float32) / 255.0
-                                break
+                                raw_img = bytes(blob[ioff : ioff + ilen])
+                                mtype = str(img_meta.get("mimeType") or "").lower()
+                                if mtype == "image/ktx2" or raw_img[:7] == b"\xabKTX 20":
+                                    dec_k = _decode_ktx2_bytes_to_rgb_np(raw_img)
+                                    if dec_k is not None:
+                                        pil_images[img_idx] = dec_k
+                                elif Image is not None:
+                                    im = Image.open(io.BytesIO(raw_img)).convert("RGB")
+                                    pil_images[img_idx] = np.asarray(im, dtype=np.float32) / 255.0
                             except Exception:
-                                tex_np_g = None
+                                pass
 
                 def _node_mat4_g(nd: Dict[str, Any]) -> np.ndarray:
                     if isinstance(nd.get("matrix"), list) and len(nd["matrix"]) == 16:
@@ -3332,8 +3484,36 @@ class SurveyingEngine:
                         if len(idx) == 0:
                             continue
 
+                        # Resolve per-primitive material texture and KHR_texture_transform offset/scale
+                        tex_np_prim = None
+                        uv_offset = np.array([0.0, 0.0], dtype=np.float32)
+                        uv_scale = np.array([1.0, 1.0], dtype=np.float32)
+                        mat_idx = prim.get("material")
+                        if mat_idx is not None and 0 <= int(mat_idx) < len(materials_list):
+                            mat_obj = materials_list[int(mat_idx)]
+                            pbr = mat_obj.get("pbrMetallicRoughness") or {}
+                            bct = pbr.get("baseColorTexture") or mat_obj.get("emissiveTexture") or {}
+                            if isinstance(bct, dict) and "index" in bct:
+                                khr_tf = (bct.get("extensions") or {}).get("KHR_texture_transform")
+                                if isinstance(khr_tf, dict):
+                                    if isinstance(khr_tf.get("offset"), list) and len(khr_tf["offset"]) >= 2:
+                                        uv_offset = np.array([float(khr_tf["offset"][0]), float(khr_tf["offset"][1])], dtype=np.float32)
+                                    if isinstance(khr_tf.get("scale"), list) and len(khr_tf["scale"]) >= 2:
+                                        uv_scale = np.array([float(khr_tf["scale"][0]), float(khr_tf["scale"][1])], dtype=np.float32)
+                                t_idx = int(bct["index"])
+                                if 0 <= t_idx < len(textures_list):
+                                    t_obj = textures_list[t_idx]
+                                    t_ext = t_obj.get("extensions") or {}
+                                    src_idx = t_obj.get("source")
+                                    if src_idx is None:
+                                        src_idx = (t_ext.get("EXT_texture_webp") or t_ext.get("KHR_texture_basisu") or {}).get("source")
+                                    if src_idx is not None and int(src_idx) in pil_images:
+                                        tex_np_prim = pil_images[int(src_idx)]
+                        if tex_np_prim is None and pil_images:
+                            tex_np_prim = next(iter(pil_images.values()))
+
                         uv_g = None
-                        if "TEXCOORD_0" in attrs and tex_np_g is not None:
+                        if "TEXCOORD_0" in attrs and tex_np_prim is not None:
                             uv_acc = acc_list[attrs["TEXCOORD_0"]]
                             if "bufferView" in uv_acc:
                                 uv_bv = bv_list[uv_acc["bufferView"]]
@@ -3353,12 +3533,32 @@ class SurveyingEngine:
                                         uv_g = np.frombuffer(ru8[:, :4].tobytes(), dtype=np.uint16).reshape(-1, 2).astype(np.float32) / 65535.0
 
                         tv0, tv1, tv2 = pos[idx[:, 0]], pos[idx[:, 1]], pos[idx[:, 2]]
-                        if uv_g is not None and tex_np_g is not None:
-                            th, tw, _ = tex_np_g.shape
-                            uvc = (uv_g[idx[:, 0]] + uv_g[idx[:, 1]] + uv_g[idx[:, 2]]) / 3.0
-                            px = np.clip((np.mod(uvc[:, 0], 1.0) * (tw - 1)).astype(np.int32), 0, tw - 1)
-                            py = np.clip((np.mod(uvc[:, 1], 1.0) * (th - 1)).astype(np.int32), 0, th - 1)
-                            trgb = tex_np_g[py, px]
+                        if uv_g is not None and tex_np_prim is not None:
+                            uv_g_tf = uv_g * uv_scale + uv_offset
+                            th, tw, _ = tex_np_prim.shape
+                            uv0 = uv_g_tf[idx[:, 0]]
+                            uv1 = uv_g_tf[idx[:, 1]]
+                            uv2 = uv_g_tf[idx[:, 2]]
+                            if legacy_uv:
+                                uvc = (uv0 + uv1 + uv2) / 3.0
+                                px = np.clip((np.mod(uvc[:, 0], 1.0) * (tw - 1)).astype(np.int32), 0, tw - 1)
+                                py = np.clip(((1.0 - np.mod(uvc[:, 1], 1.0)) * (th - 1)).astype(np.int32), 0, th - 1)
+                                trgb = tex_np_prim[py, px]
+                            else:
+                                b_weights = [
+                                    (1.0 / 3.0, 1.0 / 3.0, 1.0 / 3.0),
+                                    (0.60, 0.20, 0.20),
+                                    (0.20, 0.60, 0.20),
+                                    (0.20, 0.20, 0.60),
+                                ]
+                                rgb_acc = np.zeros((len(tv0), 3), dtype=np.float32)
+                                for w0, w1, w2 in b_weights:
+                                    u_s = np.mod(w0 * uv0[:, 0] + w1 * uv1[:, 0] + w2 * uv2[:, 0], 1.0)
+                                    v_s = np.mod(w0 * uv0[:, 1] + w1 * uv1[:, 1] + w2 * uv2[:, 1], 1.0)
+                                    px = np.clip((u_s * (tw - 1)).astype(np.int32), 0, tw - 1)
+                                    py = np.clip((v_s * (th - 1)).astype(np.int32), 0, th - 1)
+                                    rgb_acc += tex_np_prim[py, px]
+                                trgb = rgb_acc * 0.25
                         else:
                             trgb = np.full((len(tv0), 3), 0.55, dtype=np.float32)
                         mv0.append(tv0)
@@ -3457,11 +3657,13 @@ class SurveyingEngine:
                     return None
                 return None
 
-            for gp in glb_files[:20]:
+            max_glb_cnt = 20 if (glb_files and os.path.basename(glb_files[0]).startswith("tile_l1_")) else 24
+            for gp in glb_files[:max_glb_cnt]:
                 try:
+                    is_legacy_tile = os.path.basename(gp).startswith("tile_l1_")
                     with open(gp, "rb") as gf:
                         raw_b = gf.read()
-                    parsed = _parse_glb_triangles_and_rgb(raw_b)
+                    parsed = _parse_glb_triangles_and_rgb(raw_b, legacy_uv=is_legacy_tile)
                     if parsed is None:
                         parsed = _extract_trimesh_triangles_and_rgb(gp)
                     if parsed is None and os.path.isfile(GLTFPACK_EXE):
@@ -3483,7 +3685,7 @@ class SurveyingEngine:
                             )
                             if os.path.isfile(tmp_out):
                                 with open(tmp_out, "rb") as fo:
-                                    parsed = _parse_glb_triangles_and_rgb(fo.read(), origin_shift=orig_t)
+                                    parsed = _parse_glb_triangles_and_rgb(fo.read(), origin_shift=orig_t, legacy_uv=is_legacy_tile)
                                 if parsed is None:
                                     parsed = _extract_trimesh_triangles_and_rgb(tmp_out, origin_shift=orig_t)
                         finally:
@@ -3899,15 +4101,78 @@ class SurveyingEngine:
         nz_abs = np.abs(normals[:, 2])
 
         # Stage 1: Multi-Scale Progressive Morphological Bare-Earth DTM & True Ortho Raster
-        all_e = np.concatenate([v0[:, 0], v1[:, 0], v2[:, 0], centroids[:, 0]])
-        all_n = np.concatenate([v0[:, 1], v1[:, 1], v2[:, 1], centroids[:, 1]])
-        all_h = np.concatenate([v0[:, 2], v1[:, 2], v2[:, 2], centroids[:, 2]])
-
-        e_min, e_max = float(all_e.min()), float(all_e.max())
-        n_min, n_max = float(all_n.min()), float(all_n.max())
+        n_tris = len(centroids)
+        tri_indices = np.arange(n_tris, dtype=np.int32)
+        base_e = np.concatenate([v0[:, 0], v1[:, 0], v2[:, 0], centroids[:, 0]])
+        base_n = np.concatenate([v0[:, 1], v1[:, 1], v2[:, 1], centroids[:, 1]])
+        e_min, e_max = float(base_e.min()), float(base_e.max())
+        n_min, n_max = float(base_n.min()), float(base_n.max())
         span_e = max(e_max - e_min, 4.0)
         span_n = max(n_max - n_min, 4.0)
         max_span = max(span_e, span_n)
+
+        sp_e_list = [centroids[:, 0], v0[:, 0], v1[:, 0], v2[:, 0]]
+        sp_n_list = [centroids[:, 1], v0[:, 1], v1[:, 1], v2[:, 1]]
+        sp_h_list = [centroids[:, 2], v0[:, 2], v1[:, 2], v2[:, 2]]
+        sp_t_list = [tri_indices, tri_indices, tri_indices, tri_indices]
+        w_base = np.maximum(area_2d * 0.25, 1e-5).astype(np.float32)
+        sp_w_list = [w_base, w_base, w_base, w_base]
+
+        if max_span <= 180.0:
+            med_mask = area_2d >= 0.018
+            if np.any(med_mask):
+                m_idx = tri_indices[med_mask]
+                mv0, mv1, mv2 = v0[med_mask], v1[med_mask], v2[med_mask]
+                mw = np.maximum(area_2d[med_mask] * (1.0 / 12.0), 1e-5).astype(np.float32)
+                for bw0, bw1, bw2 in (
+                    (0.5, 0.5, 0.0),
+                    (0.5, 0.0, 0.5),
+                    (0.0, 0.5, 0.5),
+                    (0.6, 0.2, 0.2),
+                    (0.2, 0.6, 0.2),
+                    (0.2, 0.2, 0.6),
+                    (0.75, 0.125, 0.125),
+                    (0.125, 0.75, 0.125),
+                    (0.125, 0.125, 0.75),
+                    (0.4, 0.4, 0.2),
+                    (0.4, 0.2, 0.4),
+                    (0.2, 0.4, 0.4),
+                ):
+                    pts_m = bw0 * mv0 + bw1 * mv1 + bw2 * mv2
+                    sp_e_list.append(pts_m[:, 0])
+                    sp_n_list.append(pts_m[:, 1])
+                    sp_h_list.append(pts_m[:, 2])
+                    sp_t_list.append(m_idx)
+                    sp_w_list.append(mw)
+
+            lg_mask = area_2d >= 0.12
+            if np.any(lg_mask):
+                l_idx = tri_indices[lg_mask]
+                lv0, lv1, lv2 = v0[lg_mask], v1[lg_mask], v2[lg_mask]
+                lw = np.maximum(area_2d[lg_mask] * (1.0 / 9.0), 1e-5).astype(np.float32)
+                for bw0, bw1, bw2 in (
+                    (0.25, 0.75, 0.0),
+                    (0.75, 0.25, 0.0),
+                    (0.25, 0.0, 0.75),
+                    (0.75, 0.0, 0.25),
+                    (0.0, 0.25, 0.75),
+                    (0.0, 0.75, 0.25),
+                    (0.5, 0.25, 0.25),
+                    (0.25, 0.5, 0.25),
+                    (0.25, 0.25, 0.5),
+                ):
+                    pts_l = bw0 * lv0 + bw1 * lv1 + bw2 * lv2
+                    sp_e_list.append(pts_l[:, 0])
+                    sp_n_list.append(pts_l[:, 1])
+                    sp_h_list.append(pts_l[:, 2])
+                    sp_t_list.append(l_idx)
+                    sp_w_list.append(lw)
+
+        all_e = np.concatenate(sp_e_list)
+        all_n = np.concatenate(sp_n_list)
+        all_h = np.concatenate(sp_h_list)
+        splat_t_idx = np.concatenate(sp_t_list)
+        splat_w = np.concatenate(sp_w_list)
 
         if max_span <= 60.0:
             res = 0.15
@@ -3955,22 +4220,43 @@ class SurveyingEngine:
         # Prevent DTM from floating above actual minimum ground
         h_dtm_grid = np.minimum(h_dtm_grid, gaussian_filter(z_min_filled, sigma=1.0))
 
+        # Terrace-aware local ground DTM (preserves raised sidewalks, plaza decks, and perimeter roads above excavation pits)
+        h_dtm_local = np.minimum(gaussian_filter(dtm_s1, sigma=max(0.8, 0.8 / res)), z_min_filled).astype(np.float32)
+
         hag_grid = np.maximum(0.0, z_max_filled - h_dtm_grid)
+        hag_local_grid = np.maximum(0.0, z_max_filled - h_dtm_local)
         tri_dtm = h_dtm_grid[in_c, ie_c]
         tri_hag = centroids[:, 2] - tri_dtm
+        tri_hag_local = centroids[:, 2] - h_dtm_local[in_c, ie_c]
 
-        # Rasterize Top-Down True Orthophoto RGB & luminance texture standard deviation sigma_L + micro-roughness sigma_H
+        # Rasterize Top-Down True Orthophoto RGB
         ortho_rgb = np.zeros((ny, nx, 3), dtype=np.float32)
         ortho_cnt = np.zeros((ny, nx), dtype=np.float32)
-        for ch_i in range(3):
-            np.add.at(ortho_rgb[:, :, ch_i], (in_c, ie_c), rgb[:, ch_i] * area_2d)
-        np.add.at(ortho_cnt, (in_c, ie_c), area_2d)
-        has_rgb = ortho_cnt > 1e-6
-        for ch_i in range(3):
-            plane = ortho_rgb[:, :, ch_i]
-            plane[has_rgb] /= ortho_cnt[has_rgb]
-            plane[~has_rgb] = plane[nearest_idx[0][~has_rgb], nearest_idx[1][~has_rgb]]
-            ortho_rgb[:, :, ch_i] = np.clip(plane, 0.0, 1.0)
+        if max_span <= 180.0:
+            for ch_i in range(3):
+                np.add.at(ortho_rgb[:, :, ch_i], (in_all, ie_all), rgb[splat_t_idx, ch_i] * splat_w)
+            np.add.at(ortho_cnt, (in_all, ie_all), splat_w)
+            has_rgb = ortho_cnt > 1e-7
+            if np.any(has_rgb) and not np.all(has_rgb):
+                _, nearest_rgb_idx = distance_transform_edt(~has_rgb, return_indices=True)
+            else:
+                nearest_rgb_idx = nearest_idx
+            for ch_i in range(3):
+                plane = ortho_rgb[:, :, ch_i]
+                plane[has_rgb] /= ortho_cnt[has_rgb]
+                if np.any(~has_rgb):
+                    plane[~has_rgb] = plane[nearest_rgb_idx[0][~has_rgb], nearest_rgb_idx[1][~has_rgb]]
+                ortho_rgb[:, :, ch_i] = np.clip(plane, 0.0, 1.0)
+        else:
+            for ch_i in range(3):
+                np.add.at(ortho_rgb[:, :, ch_i], (in_c, ie_c), rgb[:, ch_i] * area_2d)
+            np.add.at(ortho_cnt, (in_c, ie_c), area_2d)
+            has_rgb = ortho_cnt > 1e-6
+            for ch_i in range(3):
+                plane = ortho_rgb[:, :, ch_i]
+                plane[has_rgb] /= ortho_cnt[has_rgb]
+                plane[~has_rgb] = plane[nearest_idx[0][~has_rgb], nearest_idx[1][~has_rgb]]
+                ortho_rgb[:, :, ch_i] = np.clip(plane, 0.0, 1.0)
 
         ortho_rgb_u8 = (ortho_rgb * 255.0).astype(np.uint8)
         ortho_lum = 0.299 * ortho_rgb[:, :, 0] + 0.587 * ortho_rgb[:, :, 1] + 0.114 * ortho_rgb[:, :, 2]
@@ -3998,7 +4284,9 @@ class SurveyingEngine:
             min_area_m2: float = 8.0,
             fixed_z: Optional[float] = None,
             simplify_tol: float = 0.35,
+            z_ref_grid: Optional[np.ndarray] = None,
         ) -> List[Dict[str, Any]]:
+            z_src = z_ref_grid if z_ref_grid is not None else h_dtm_grid
             labeled, n_comp = nd_label(bin_mask)
             out_polys: List[Dict[str, Any]] = []
             if n_comp == 0:
@@ -4046,14 +4334,14 @@ class SurveyingEngine:
                 for ex, ny_v in ring_2d:
                     ix_p = int(np.clip((ex - e_min) / res, 0, nx - 1))
                     iy_p = int(np.clip((ny_v - n_min) / res, 0, ny - 1))
-                    hz = float(fixed_z) if fixed_z is not None else float(h_dtm_grid[iy_p, ix_p])
+                    hz = float(fixed_z) if fixed_z is not None else float(z_src[iy_p, ix_p])
                     b_twd.append([round(ex, 3), round(ny_v, 3), round(hz, 3)])
                     b_loc.append([round(ex - ce, 3), round(hz - ch, 3), round(cn - ny_v, 3)])
 
                 c_js, c_is = np.nonzero(comp)
                 mean_e = float(e_min + (c_is.mean() + 0.5) * res)
                 mean_n = float(n_min + (c_js.mean() + 0.5) * res)
-                mean_h = float(fixed_z) if fixed_z is not None else float(h_dtm_grid[c_js, c_is].mean())
+                mean_h = float(fixed_z) if fixed_z is not None else float(z_src[c_js, c_is].mean())
 
                 # Compute medial axis corridor width estimate
                 dt_in = distance_transform_edt(comp) * res
@@ -4079,74 +4367,158 @@ class SurveyingEngine:
         # CATEGORY 1: ROADS (Road Surface / 道路鋪面)
         # =================================================================================
         # Pre-compute smoothed Bare-Earth DTM longitudinal/cross slope gradient grid (%)
-        dtm_for_slope = gaussian_filter(h_dtm_grid, sigma=max(1.5, 1.8 / res))
+        dtm_for_slope = gaussian_filter(h_dtm_grid if max_span > 180.0 else h_dtm_local, sigma=max(1.5, 1.8 / res))
         grad_n, grad_e = np.gradient(dtm_for_slope, res, res)
         dtm_slope_pct_grid = np.hypot(grad_n, grad_e) * 100.0
 
-        # Distinguish paved asphalt/concrete/compacted road corridors from mottled river cobble bars:
-        # Road triangles sit on bare earth (abs(HAG) <= 0.38m), flat (abs(nz) >= 0.88),
-        # low elevation roughness (sigma_H <= 0.065m), achromatic (ExG < 0.045, S <= 0.22),
-        # and smooth luminance texture (sigma_L <= 0.072, rejecting high-contrast river cobbles!).
-        road_tri_mask = (
-            (np.abs(tri_hag) <= 0.38)
-            & (nz_abs >= 0.88)
-            & (tri_sigma_h <= 0.065)
-            & (exg < 0.045)
-            & (sat <= 0.22)
-            & (lum >= 0.16)
-            & (lum <= 0.82)
-            & (tri_sigma_l <= 0.072)
+        rb_diff = rgb[:, 0] - rgb[:, 2]
+        ortho_rb_diff = ortho_rgb[:, :, 0] - ortho_rgb[:, :, 2]
+
+        # Terrace-aware ground mask: includes main terrain grade and raised road decks/terraces
+        on_ground = (np.abs(tri_hag) <= 0.42) | (
+            (np.abs(tri_hag_local) <= 0.25) & (tri_hag <= 2.4) & (nz_abs >= 0.88)
         )
-        road_grid_raw = np.zeros((ny, nx), dtype=bool)
-        road_grid_raw[in_c[road_tri_mask], ie_c[road_tri_mask]] = True
-        road_grid = binary_closing(
-            binary_opening(road_grid_raw & raw_occ_closed, structure=np.ones((2, 2), dtype=bool)),
-            structure=np.ones((3, 3), dtype=bool),
-        )
-        road_polys_raw = _mask_to_polygons(road_grid, min_area_m2=18.0, simplify_tol=0.35)
+
+        # Stage 1A: Urban Paved Asphalt/Concrete Roads & Crosswalk/Lane Markings (for urban/campus/park scans <= 180m span)
+        # Neutral/cool grey chromaticity (-0.035 <= R-B <= 0.072) separates asphalt/concrete from warm brown soil pits
         roads_list: List[Dict[str, Any]] = []
-        for r_item in road_polys_raw:
-            cmask = r_item.pop("comp_mask")
-            # Elongation & elevation check: reject isolated small low-lying river boulders if below thalweg + 1.5m
-            c_js, c_is = np.nonzero(cmask)
-            pts_rc = np.column_stack([c_is * res, c_js * res])
-            elongation = 1.0
-            if len(pts_rc) >= 6:
-                cov = np.cov(pts_rc.T)
-                evals = np.sort(np.maximum(np.linalg.eigvalsh(cov), 1e-6))
-                elongation = float(math.sqrt(evals[1] / evals[0]))
-            if elongation < 1.35 and r_item["planar_area_m2"] < 45.0:
-                continue
-            # Compute true 3D surface area and smoothed Bare-Earth DTM slope % along the road corridor
-            in_comp_tri = cmask[in_c, ie_c] & (np.abs(tri_hag) <= 0.55)
-            a3d_r = float(area_3d[in_comp_tri].sum()) if np.any(in_comp_tri) else r_item["planar_area_m2"] * 1.015
-            a2d_r = r_item["planar_area_m2"]
-            surf_3d = max(a3d_r, a2d_r * 1.005)
-            eroded_road = binary_erosion(cmask, structure=np.ones((3, 3), dtype=bool))
-            slope_sample_mask = eroded_road if np.count_nonzero(eroded_road) >= 4 else cmask
-            raw_slope_pct = float(np.percentile(dtm_slope_pct_grid[slope_sample_mask], 40.0))
-            mean_slope_pct = round(float(np.clip(raw_slope_pct, 1.2, 18.0)), 1)
-            rid = f"R{len(roads_list) + 1}"
-            roads_list.append(
-                {
-                    "id": rid,
-                    "name": f"道路鋪面 {rid} (Paved Road Corridor)",
-                    "subtype": "paved_asphalt_concrete",
-                    "planar_area_m2": round(a2d_r, 2),
-                    "planar_area_ping": round(a2d_r * 0.3025, 2),
-                    "surface_area_3d_m2": round(surf_3d, 2),
-                    "perimeter_m": r_item["perimeter_m"],
-                    "mean_width_m": r_item["mean_width_m"],
-                    "mean_slope_pct": mean_slope_pct,
-                    "elongation_ratio": round(elongation, 2),
-                    "center_twd97": r_item["center_twd97"],
-                    "center_local": r_item["center_local"],
-                    "boundary_twd97": r_item["boundary_twd97"],
-                    "boundary_local": r_item["boundary_local"],
-                }
+        road_tri_mask = np.zeros(n_tris, dtype=bool)
+        road_grid = np.zeros((ny, nx), dtype=bool)
+        if max_span <= 180.0:
+            paved_tri_mask = (
+                on_ground
+                & (nz_abs >= 0.88)
+                & (tri_sigma_h <= 0.068)
+                & (exg < 0.040)
+                & (rb_diff >= -0.035)
+                & (rb_diff <= 0.072)
+                & (lum >= 0.15)
+                & (lum <= 0.88)
+                & (
+                    ((sat <= 0.20) & (tri_sigma_l <= 0.088))
+                    | ((nz_abs >= 0.92) & (tri_sigma_h <= 0.045) & (tri_sigma_l <= 0.18) & (sat <= 0.45) & (lum >= 0.22))
+                )
             )
-            if len(roads_list) >= 12:
-                break
+            road_tri_mask = paved_tri_mask.copy()
+            road_grid_raw = np.zeros((ny, nx), dtype=bool)
+            road_sp_mask = paved_tri_mask[splat_t_idx]
+            road_grid_raw[in_all[road_sp_mask], ie_all[road_sp_mask]] = True
+            # Close first (5x5 then 3x3) so painted crosswalk stripes and manhole covers merge into contiguous road corridors
+            road_grid_closed = binary_closing(road_grid_raw & raw_occ_closed, structure=np.ones((5, 5), dtype=bool))
+            road_grid_closed = binary_closing(road_grid_closed, structure=np.ones((3, 3), dtype=bool))
+            road_grid = binary_opening(road_grid_closed, structure=np.ones((3, 3), dtype=bool))
+            road_polys_raw = _mask_to_polygons(road_grid, min_area_m2=18.0, simplify_tol=0.35, z_ref_grid=h_dtm_local)
+
+            for r_item in road_polys_raw:
+                cmask = r_item.pop("comp_mask")
+                if r_item["mean_width_m"] > 22.0:
+                    continue
+                med_rb = float(np.median(ortho_rb_diff[cmask]))
+                med_sat = float(np.median(ortho_sat[cmask]))
+                # Reject brown bare-soil excavation pits
+                if med_rb > 0.068 or (med_rb > 0.052 and med_sat > 0.145):
+                    continue
+                c_js, c_is = np.nonzero(cmask)
+                pts_rc = np.column_stack([c_is * res, c_js * res])
+                elongation = 1.0
+                if len(pts_rc) >= 6:
+                    cov = np.cov(pts_rc.T)
+                    evals = np.sort(np.maximum(np.linalg.eigvalsh(cov), 1e-6))
+                    elongation = float(math.sqrt(evals[1] / evals[0]))
+                if elongation < 1.32 and r_item["planar_area_m2"] < 45.0:
+                    continue
+                in_comp_tri = cmask[in_c, ie_c] & on_ground
+                a3d_r = float(area_3d[in_comp_tri].sum()) if np.any(in_comp_tri) else r_item["planar_area_m2"] * 1.015
+                a2d_r = r_item["planar_area_m2"]
+                surf_3d = max(a3d_r, a2d_r * 1.005)
+                eroded_road = binary_erosion(cmask, structure=np.ones((3, 3), dtype=bool))
+                slope_sample_mask = eroded_road if np.count_nonzero(eroded_road) >= 4 else cmask
+                raw_slope_pct = float(np.percentile(dtm_slope_pct_grid[slope_sample_mask], 40.0))
+                mean_slope_pct = round(float(np.clip(raw_slope_pct, 1.2, 18.0)), 1)
+                rid = f"R{len(roads_list) + 1}"
+                roads_list.append(
+                    {
+                        "id": rid,
+                        "name": f"道路鋪面 {rid} (Paved Road Corridor)",
+                        "subtype": "paved_asphalt_concrete",
+                        "planar_area_m2": round(a2d_r, 2),
+                        "planar_area_ping": round(a2d_r * 0.3025, 2),
+                        "surface_area_3d_m2": round(surf_3d, 2),
+                        "perimeter_m": r_item["perimeter_m"],
+                        "mean_width_m": r_item["mean_width_m"],
+                        "mean_slope_pct": mean_slope_pct,
+                        "elongation_ratio": round(elongation, 2),
+                        "center_twd97": r_item["center_twd97"],
+                        "center_local": r_item["center_local"],
+                        "boundary_twd97": r_item["boundary_twd97"],
+                        "boundary_local": r_item["boundary_local"],
+                    }
+                )
+                if len(roads_list) >= 12:
+                    break
+
+        # Stage 1B: Fallback for unpaved rural/mountain compacted access roads (e.g. QuChi Dam) when paved area < 25 m2
+        if sum(r["planar_area_m2"] for r in roads_list) < 25.0:
+            dirt_road_tri_mask = (
+                (np.abs(tri_hag) <= 0.38)
+                & (nz_abs >= 0.88)
+                & (tri_sigma_h <= 0.065)
+                & (exg < 0.045)
+                & (sat <= 0.22)
+                & (lum >= 0.16)
+                & (lum <= 0.82)
+                & (tri_sigma_l <= 0.072)
+            )
+            road_tri_mask = dirt_road_tri_mask
+            road_grid_raw = np.zeros((ny, nx), dtype=bool)
+            road_grid_raw[in_c[dirt_road_tri_mask], ie_c[dirt_road_tri_mask]] = True
+            road_grid = binary_closing(
+                binary_opening(road_grid_raw & raw_occ_closed, structure=np.ones((2, 2), dtype=bool)),
+                structure=np.ones((3, 3), dtype=bool),
+            )
+            road_polys_fallback = _mask_to_polygons(road_grid, min_area_m2=18.0, simplify_tol=0.35)
+            roads_list = []
+            for r_item in road_polys_fallback:
+                cmask = r_item.pop("comp_mask")
+                c_js, c_is = np.nonzero(cmask)
+                pts_rc = np.column_stack([c_is * res, c_js * res])
+                elongation = 1.0
+                if len(pts_rc) >= 6:
+                    cov = np.cov(pts_rc.T)
+                    evals = np.sort(np.maximum(np.linalg.eigvalsh(cov), 1e-6))
+                    elongation = float(math.sqrt(evals[1] / evals[0]))
+                if elongation < 1.35 and r_item["planar_area_m2"] < 45.0:
+                    continue
+                in_comp_tri = cmask[in_c, ie_c] & (np.abs(tri_hag) <= 0.55)
+                a3d_r = float(area_3d[in_comp_tri].sum()) if np.any(in_comp_tri) else r_item["planar_area_m2"] * 1.015
+                a2d_r = r_item["planar_area_m2"]
+                surf_3d = max(a3d_r, a2d_r * 1.005)
+                eroded_road = binary_erosion(cmask, structure=np.ones((3, 3), dtype=bool))
+                slope_sample_mask = eroded_road if np.count_nonzero(eroded_road) >= 4 else cmask
+                raw_slope_pct = float(np.percentile(dtm_slope_pct_grid[slope_sample_mask], 40.0))
+                mean_slope_pct = round(float(np.clip(raw_slope_pct, 1.2, 18.0)), 1)
+                rid = f"R{len(roads_list) + 1}"
+                roads_list.append(
+                    {
+                        "id": rid,
+                        "name": f"道路鋪面 {rid} (Paved Road Corridor)",
+                        "subtype": "paved_asphalt_concrete",
+                        "planar_area_m2": round(a2d_r, 2),
+                        "planar_area_ping": round(a2d_r * 0.3025, 2),
+                        "surface_area_3d_m2": round(surf_3d, 2),
+                        "perimeter_m": r_item["perimeter_m"],
+                        "mean_width_m": r_item["mean_width_m"],
+                        "mean_slope_pct": mean_slope_pct,
+                        "elongation_ratio": round(elongation, 2),
+                        "center_twd97": r_item["center_twd97"],
+                        "center_local": r_item["center_local"],
+                        "boundary_twd97": r_item["boundary_twd97"],
+                        "boundary_local": r_item["boundary_local"],
+                    }
+                )
+                if len(roads_list) >= 12:
+                    break
+
         roads_list.sort(key=lambda x: x["planar_area_m2"], reverse=True)
         roads_list = roads_list[:12]
         for idx_r, r_obj in enumerate(roads_list, 1):
@@ -4156,18 +4528,111 @@ class SurveyingEngine:
         # =================================================================================
         # CATEGORY 2: TREES + TRUNK DBH AT 1.3M (喬木與胸徑 DBH)
         # =================================================================================
-        # Step 2A: Canopy Crown Segmentation from CHM (HAG >= 1.8m, ExG > 0.035)
-        canopy_mask = (hag_grid >= 1.8) & (ortho_exg > 0.032) & raw_occ_closed
-        canopy_mask = binary_opening(canopy_mask, structure=np.ones((2, 2), dtype=bool))
-        chm_smooth = gaussian_filter(np.where(canopy_mask, hag_grid, 0.0), sigma=max(1.2, 1.35 / res))
-        win_pk = max(5, int(round(3.6 / res)) | 1)
-        local_max = (chm_smooth == maximum_filter(chm_smooth, size=(win_pk, win_pk))) & canopy_mask & (chm_smooth >= 2.2)
+        # Compute undiluted Elevated Canopy ExG grid exclusively from elevated triangles (HAG >= 1.15m)
+        # so overhanging tree crowns above grey asphalt roads are never diluted by ground pavement RGB!
+        hag_tree_grid = np.maximum(hag_grid, hag_local_grid)
+        tri_hag_tree = np.maximum(tri_hag, tri_hag_local)
+        elev_tri_mask = tri_hag_tree >= 1.15
+        elev_exg_raw = np.full((ny, nx), -1.0, dtype=np.float32)
+        if np.any(elev_tri_mask):
+            el_sp = elev_tri_mask[splat_t_idx]
+            np.maximum.at(elev_exg_raw, (in_all[el_sp], ie_all[el_sp]), exg[splat_t_idx[el_sp]].astype(np.float32))
+        elev_exg_grid = grey_dilation(elev_exg_raw, size=(3, 3))
+
+        # Pre-compute building roof footprint mask so tree detector never triggers on high-rise building roofs/facades
+        bldg_roof_tri = (tri_hag_tree >= 2.2) & (nz_abs >= 0.78) & (exg < 0.032) & (tri_sigma_h <= 0.12)
+        bldg_occ_grid = np.zeros((ny, nx), dtype=bool)
+        if np.any(bldg_roof_tri):
+            br_sp = bldg_roof_tri[splat_t_idx]
+            bldg_occ_grid[in_all[br_sp], ie_all[br_sp]] = True
+            bldg_occ_grid = binary_closing(bldg_occ_grid, structure=np.ones((5, 5), dtype=bool))
+            bldg_occ_grid = binary_opening(bldg_occ_grid, structure=np.ones((3, 3), dtype=bool))
+            bldg_occ_grid = binary_dilation(bldg_occ_grid, structure=np.ones((5, 5), dtype=bool))
+
+        if max_span > 180.0:
+            # Wide river-valley / forestry scan (e.g. QuChi Dam): preserve exact 3.6m forestry CHM segmentation
+            canopy_mask = (hag_grid >= 1.8) & (ortho_exg > 0.032) & raw_occ_closed
+            canopy_mask = binary_opening(canopy_mask, structure=np.ones((2, 2), dtype=bool))
+            chm_smooth = gaussian_filter(np.where(canopy_mask, hag_grid, 0.0), sigma=max(1.2, 1.35 / res))
+            win_pk = max(5, int(round(3.6 / res)) | 1)
+            local_max = (
+                (chm_smooth == maximum_filter(chm_smooth, size=(win_pk, win_pk)))
+                & canopy_mask
+                & (chm_smooth >= 2.2)
+            )
+            min_tree_dist_px = max(3.0, 3.2 / res)
+            tree_ground_grid = h_dtm_grid
+        else:
+            # Urban / Campus / Park scan: Green Canopy + Pruned/Columnar Urban Park Tree Stems (excluding buildings > 16.5m)
+            green_canopy_mask = (
+                (hag_tree_grid >= 1.8)
+                & (hag_tree_grid <= 16.5)
+                & ((elev_exg_grid > 0.020) | (ortho_exg > 0.025))
+                & (~bldg_occ_grid)
+                & raw_occ_closed
+            )
+            green_canopy_mask = binary_opening(
+                binary_closing(green_canopy_mask, structure=np.ones((3, 3), dtype=bool)),
+                structure=np.ones((2, 2), dtype=bool),
+            )
+
+            pruned_stem_mask = np.zeros((ny, nx), dtype=bool)
+            stem_tri_cand = (
+                (tri_hag_tree >= 0.65)
+                & (tri_hag_tree <= 3.5)
+                & (nz_abs < 0.52)
+                & (exg > -0.025)
+                & (rb_diff >= 0.005)
+                & (sat <= 0.36)
+            )
+            if np.any(stem_tri_cand):
+                st_idx = np.nonzero(stem_tri_cand)[0]
+                st_pts = centroids[st_idx]
+                st_a3d = area_3d[st_idx]
+                st_grid_cnt = np.zeros((ny, nx), dtype=np.int32)
+                st_grid_a3d = np.zeros((ny, nx), dtype=np.float32)
+                np.add.at(st_grid_cnt, (in_c[st_idx], ie_c[st_idx]), 1)
+                np.add.at(st_grid_a3d, (in_c[st_idx], ie_c[st_idx]), st_a3d)
+                st_occ = binary_closing((st_grid_cnt >= 2) | (st_grid_a3d >= 0.08), structure=np.ones((3, 3), dtype=bool))
+                st_occ = st_occ & (~bldg_occ_grid) & (hag_tree_grid >= 2.0) & (hag_tree_grid <= 14.0)
+                st_lbl, n_st = nd_label(st_occ)
+                if n_st > 0:
+                    pt_st_cid = st_lbl[in_c[st_idx], ie_c[st_idx]]
+                    for sc_id in range(1, n_st + 1):
+                        sc_sel = pt_st_cid == sc_id
+                        if np.count_nonzero(sc_sel) < 6:
+                            continue
+                        if float(st_a3d[sc_sel].sum()) < 0.18:
+                            continue
+                        pts_sc = st_pts[sc_sel, :2]
+                        span_sc = float(math.hypot(np.ptp(pts_sc[:, 0]), np.ptp(pts_sc[:, 1])))
+                        if span_sc < 0.08 or span_sc > 2.1:
+                            continue
+                        cov_sc = np.cov(pts_sc.T)
+                        ev_sc = np.sort(np.maximum(np.linalg.eigvalsh(cov_sc), 1e-6))
+                        aspect_sc = float(math.sqrt(ev_sc[1] / ev_sc[0]))
+                        if aspect_sc > 2.5:
+                            continue
+                        pruned_stem_mask |= (st_lbl == sc_id)
+
+            canopy_mask = green_canopy_mask | pruned_stem_mask
+            chm_smooth = gaussian_filter(np.minimum(hag_tree_grid, 16.5), sigma=max(1.0, 0.65 / res))
+            win_pk = max(5, int(round(2.4 / res)) | 1)
+            local_max = (
+                (chm_smooth == maximum_filter(chm_smooth, size=(win_pk, win_pk)))
+                & canopy_mask
+                & (chm_smooth >= 2.0)
+                & (hag_tree_grid >= 2.0)
+                & (hag_tree_grid <= 16.5)
+            )
+            min_tree_dist_px = max(3.0, 2.3 / res)
+            tree_ground_grid = h_dtm_local
+
         pk_js, pk_is = np.nonzero(local_max)
 
-        # Sort candidate tree peaks by height descending and enforce minimum 3.2m crown spacing
+        # Sort candidate tree peaks by height descending and enforce minimum crown spacing
         peak_order = np.argsort(-chm_smooth[pk_js, pk_is])
         kept_peaks: List[Tuple[int, int, float]] = []
-        min_tree_dist_px = max(3.0, 3.2 / res)
         for idx_p in peak_order:
             pj, pi = int(pk_js[idx_p]), int(pk_is[idx_p])
             ph = float(chm_smooth[pj, pi])
@@ -4177,8 +4642,12 @@ class SurveyingEngine:
             if len(kept_peaks) >= 65:
                 break
 
-        # Pre-filter breast-height vertical trunk triangles (HAG in [0.95m, 1.85m], abs(nz) < 0.48)
-        bh_tri_mask = (tri_hag >= 0.95) & (tri_hag <= 1.85) & (nz_abs < 0.48)
+        # Pre-filter breast-height vertical trunk triangles
+        bh_tri_mask = (
+            ((tri_hag >= 0.95) & (tri_hag <= 1.85) & (nz_abs < 0.48))
+            if max_span > 180.0
+            else ((tri_hag_tree >= 0.85) & (tri_hag_tree <= 1.95) & (nz_abs < 0.50))
+        )
         bh_pts = centroids[bh_tri_mask]
         bh_tree = cKDTree(bh_pts[:, :2]) if len(bh_pts) >= 6 else None
 
@@ -4186,17 +4655,20 @@ class SurveyingEngine:
         for t_idx, (pj, pi, ph) in enumerate(kept_peaks):
             te = float(e_min + (pi + 0.5) * res)
             tn = float(n_min + (pj + 0.5) * res)
-            th_ground = float(h_dtm_grid[pj, pi])
+            th_ground = float(tree_ground_grid[pj, pi])
             th_top = float(z_max_filled[pj, pi])
-            tree_h = max(2.2, round(max(ph, th_top - th_ground), 2))
+            tree_h = max(2.2 if max_span > 180.0 else 2.0, round(max(ph, th_top - th_ground if max_span > 180.0 else min(th_top - th_ground, 16.5)), 2))
 
-            # Estimate crown area & crown diameter around local peak where HAG >= 0.55 * tree_h
-            r_search_px = max(3, int(round(min(6.5, max(1.8, tree_h * 0.42)) / res)))
+            # Estimate crown area & crown diameter around local peak
+            r_search_px = max(3, int(round(min(6.5, max(1.8 if max_span > 180.0 else 1.6, tree_h * 0.42)) / res)))
             j0 = max(0, pj - r_search_px)
             j1 = min(ny - 1, pj + r_search_px)
             i0 = max(0, pi - r_search_px)
             i1 = min(nx - 1, pi + r_search_px)
-            sub_can = canopy_mask[j0 : j1 + 1, i0 : i1 + 1] & (hag_grid[j0 : j1 + 1, i0 : i1 + 1] >= max(1.6, tree_h * 0.45))
+            hag_src_c = hag_grid if max_span > 180.0 else hag_tree_grid
+            sub_can = canopy_mask[j0 : j1 + 1, i0 : i1 + 1] & (
+                hag_src_c[j0 : j1 + 1, i0 : i1 + 1] >= max(1.6 if max_span > 180.0 else 1.5, tree_h * 0.45)
+            )
             yy, xx = np.ogrid[j0 : j1 + 1, i0 : i1 + 1]
             disk = ((yy - pj) ** 2 + (xx - pi) ** 2) <= (r_search_px ** 2)
             crown_px = max(4, int(np.count_nonzero(sub_can & disk)))
@@ -4208,13 +4680,14 @@ class SurveyingEngine:
             max_allowed_dbh = min(95.0, tree_h * 4.8)
 
             # Breast-Height (1.3m) Trunk Slicing + 12-Sector Anti-Webbing Inner Radial Filter + Pratt Circle Fit
-            # Only use direct 1.3m slice when tree_h >= 6.5m (avoids low shrub/foliage skirt contamination at 1.3m)
             dbh_cm = 0.0
             dbh_method = "crown_height_allometry"
             trunk_e, trunk_n = te, tn
-            if tree_h >= 6.5 and bh_tree is not None:
+            min_slice_h = 6.5 if max_span > 180.0 else 2.0
+            min_cand_pts = 8 if max_span > 180.0 else 6
+            if tree_h >= min_slice_h and bh_tree is not None:
                 cand_idxs = bh_tree.query_ball_point([te, tn], r=min(2.2, max(1.1, crown_diam_m * 0.42)))
-                if len(cand_idxs) >= 8:
+                if len(cand_idxs) >= min_cand_pts:
                     pts_local_bh = bh_pts[cand_idxs, :2]
                     # Center on median of breast-height stem points
                     med_xy = np.median(pts_local_bh, axis=0)
@@ -4250,18 +4723,18 @@ class SurveyingEngine:
                             rms_r = float(np.sqrt(np.mean((np.hypot(ix_arr - cx_fit, iy_arr - cy_fit) - r_fit) ** 2)))
                             if rms_r / max(r_fit, 0.05) <= 0.22:
                                 raw_diam_cm = 2.0 * r_fit * 100.0 * 0.78
-                                if 10.0 <= raw_diam_cm <= 110.0:
+                                if 8.0 <= raw_diam_cm <= 110.0:
                                     trunk_e, trunk_n = float(cx_fit), float(cy_fit)
                                     if raw_diam_cm > est_dbh * 1.40 or raw_diam_cm < est_dbh * 0.45:
                                         blended_dbh = 0.35 * raw_diam_cm + 0.65 * est_dbh
-                                        dbh_cm = round(float(np.clip(blended_dbh, 11.0, max_allowed_dbh)), 1)
+                                        dbh_cm = round(float(np.clip(blended_dbh, 9.5, max_allowed_dbh)), 1)
                                         dbh_method = "pratt_allometric_hybrid"
                                     else:
-                                        dbh_cm = round(float(np.clip(raw_diam_cm, 11.0, max_allowed_dbh)), 1)
+                                        dbh_cm = round(float(np.clip(raw_diam_cm, 9.5, max_allowed_dbh)), 1)
                                         dbh_method = "pratt_circle_1.3m_slice"
 
             if dbh_cm <= 0.0:
-                dbh_cm = round(float(np.clip(est_dbh, 10.5, max_allowed_dbh)), 1)
+                dbh_cm = round(float(np.clip(est_dbh, 9.5, max_allowed_dbh)), 1)
                 dbh_method = "crown_height_allometry"
 
             tid = f"T{len(trees_list) + 1}"
@@ -4654,40 +5127,107 @@ class SurveyingEngine:
         bare_area_2d = float(area_2d[bare_tri].sum())
         bare_area_3d = float(area_3d[bare_tri].sum())
 
-        # Extract compact elevated Material Stockpile Mounds / Earthwork Pads (S1..S6), excluding wide bare-earth floodplain
-        mound_grid = (
-            raw_occ_closed
-            & (hag_grid >= 0.22)
-            & (hag_grid <= 4.2)
-            & (ortho_exg < 0.042)
-            & (~road_grid)
-        )
-        mound_grid = binary_closing(
-            binary_opening(mound_grid, structure=np.ones((2, 2), dtype=bool)),
-            structure=np.ones((2, 2), dtype=bool),
-        )
+        wall_occ_grid = np.zeros((ny, nx), dtype=bool)
+        if np.any(vert_tri_mask):
+            vt_sp = vert_tri_mask[splat_t_idx]
+            wall_occ_grid[in_all[vt_sp], ie_all[vt_sp]] = True
+            wall_occ_grid = binary_dilation(wall_occ_grid, structure=np.ones((5, 5), dtype=bool))
+
+        # Extract compact elevated Material Stockpile Mounds / Earthwork Pads (S1..S6), excluding terraces, walls, buildings & blue/white tarps
         stockpiles_list: List[Dict[str, Any]] = []
-        for sp_item in _mask_to_polygons(mound_grid, min_area_m2=15.0, simplify_tol=0.40):
-            cm_s = sp_item.pop("comp_mask")
-            if sp_item["planar_area_m2"] < 15.0 or sp_item["planar_area_m2"] > 550.0:
-                continue
-            est_vol = round(float(np.sum(np.clip(hag_grid[cm_s], 0.15, 3.5)) * cell_area * 0.65), 1)
-            sid_s = f"S{len(stockpiles_list) + 1}"
-            stockpiles_list.append(
-                {
-                    "id": sid_s,
-                    "name": f"土石堆置區 {sid_s} (Material Stockpile Mound)",
-                    "planar_area_m2": sp_item["planar_area_m2"],
-                    "planar_area_ping": sp_item["planar_area_ping"],
-                    "estimated_volume_m3": est_vol,
-                    "center_twd97": sp_item["center_twd97"],
-                    "center_local": sp_item["center_local"],
-                    "boundary_twd97": sp_item["boundary_twd97"],
-                    "boundary_local": sp_item["boundary_local"],
-                }
+        if max_span > 180.0:
+            mound_grid = (
+                raw_occ_closed
+                & (hag_grid >= 0.22)
+                & (hag_grid <= 4.2)
+                & (ortho_exg < 0.042)
+                & (~road_grid)
             )
-            if len(stockpiles_list) >= 8:
-                break
+            mound_grid = binary_closing(
+                binary_opening(mound_grid, structure=np.ones((2, 2), dtype=bool)),
+                structure=np.ones((2, 2), dtype=bool),
+            )
+            for sp_item in _mask_to_polygons(mound_grid, min_area_m2=15.0, simplify_tol=0.40):
+                cm_s = sp_item.pop("comp_mask")
+                if sp_item["planar_area_m2"] < 15.0 or sp_item["planar_area_m2"] > 550.0:
+                    continue
+                est_vol = round(float(np.sum(np.clip(hag_grid[cm_s], 0.15, 3.5)) * cell_area * 0.65), 1)
+                sid_s = f"S{len(stockpiles_list) + 1}"
+                stockpiles_list.append(
+                    {
+                        "id": sid_s,
+                        "name": f"土石堆置區 {sid_s} (Material Stockpile Mound)",
+                        "planar_area_m2": sp_item["planar_area_m2"],
+                        "planar_area_ping": sp_item["planar_area_ping"],
+                        "estimated_volume_m3": est_vol,
+                        "center_twd97": sp_item["center_twd97"],
+                        "center_local": sp_item["center_local"],
+                        "boundary_twd97": sp_item["boundary_twd97"],
+                        "boundary_local": sp_item["boundary_local"],
+                    }
+                )
+                if len(stockpiles_list) >= 8:
+                    break
+        else:
+            mound_grid = (
+                raw_occ_closed
+                & (hag_local_grid >= 0.35)
+                & (hag_local_grid <= 3.6)
+                & (ortho_exg < 0.032)
+                & (elev_exg_grid < 0.032)
+                & (ortho_rb_diff >= -0.015)
+                & (~road_grid)
+                & (~canopy_mask)
+                & (~wall_occ_grid)
+                & (~bldg_occ_grid)
+            )
+            mound_grid = binary_closing(
+                binary_opening(mound_grid, structure=np.ones((3, 3), dtype=bool)),
+                structure=np.ones((3, 3), dtype=bool),
+            )
+            for sp_item in _mask_to_polygons(mound_grid, min_area_m2=15.0, simplify_tol=0.40, z_ref_grid=h_dtm_local):
+                cm_s = sp_item.pop("comp_mask")
+                if sp_item["planar_area_m2"] < 15.0 or sp_item["planar_area_m2"] > 280.0:
+                    continue
+                s_js, s_is = np.nonzero(cm_s)
+                if len(s_is) < 8:
+                    continue
+                s_bw = float((int(s_is.max()) - int(s_is.min()) + 1) * res)
+                s_bh = float((int(s_js.max()) - int(s_js.min()) + 1) * res)
+                s_fill = sp_item["planar_area_m2"] / max(s_bw * s_bh, 1.0)
+                if s_fill < 0.28:
+                    continue
+                pts_sc_m = np.column_stack([s_is * res, s_js * res])
+                cov_sm = np.cov(pts_sc_m.T)
+                ev_sm = np.sort(np.maximum(np.linalg.eigvalsh(cov_sm), 1e-6))
+                elong_sm = float(math.sqrt(ev_sm[1] / ev_sm[0]))
+                if elong_sm > 3.6:
+                    continue
+                # Require genuine 3D mound convexity: interior 75th-percentile height must rise >= +0.32m above outer toe rim
+                rim_s = binary_dilation(cm_s, structure=np.ones((5, 5), dtype=bool)) & (~cm_s) & raw_occ_closed
+                if np.count_nonzero(rim_s) < 6:
+                    continue
+                int_p75 = float(np.percentile(z_max_filled[cm_s], 75.0))
+                rim_p35 = float(np.percentile(z_min_filled[rim_s], 35.0))
+                if (int_p75 - rim_p35) < 0.32:
+                    continue
+                est_vol = round(float(np.sum(np.clip(hag_local_grid[cm_s], 0.15, 3.5)) * cell_area * 0.65), 1)
+                sid_s = f"S{len(stockpiles_list) + 1}"
+                stockpiles_list.append(
+                    {
+                        "id": sid_s,
+                        "name": f"土石堆置區 {sid_s} (Material Stockpile Mound)",
+                        "planar_area_m2": sp_item["planar_area_m2"],
+                        "planar_area_ping": sp_item["planar_area_ping"],
+                        "estimated_volume_m3": est_vol,
+                        "center_twd97": sp_item["center_twd97"],
+                        "center_local": sp_item["center_local"],
+                        "boundary_twd97": sp_item["boundary_twd97"],
+                        "boundary_local": sp_item["boundary_local"],
+                    }
+                )
+                if len(stockpiles_list) >= 8:
+                    break
         stockpiles_list.sort(key=lambda x: x["planar_area_m2"], reverse=True)
         stockpiles_list = stockpiles_list[:6]
         for idx_s, sp_obj in enumerate(stockpiles_list, 1):
@@ -4695,7 +5235,11 @@ class SurveyingEngine:
             sp_obj["name"] = f"土石堆置區 S{idx_s} (Material Stockpile Mound)"
 
         # 2. Low Vegetation / Grass / Shrubs (低矮植生與草坡)
-        grass_tri = (tri_hag < 1.8) & (exg >= 0.04) & (nz_abs >= 0.55)
+        grass_tri = (
+            ((tri_hag < 1.8) & (exg >= 0.04) & (nz_abs >= 0.55))
+            if max_span > 180.0
+            else ((tri_hag_tree < 1.8) & (exg >= 0.032) & (nz_abs >= 0.55))
+        )
         grass_area_2d = float(area_2d[grass_tri].sum())
         grass_area_3d = float(area_3d[grass_tri].sum())
 
@@ -4705,19 +5249,20 @@ class SurveyingEngine:
         revet_area_3d = float(area_3d[revet_tri].sum())
 
         # 4. Buildings / Roofs / Pavilions (建築物與棚架屋頂)
-        bldg_tri = (tri_hag >= 2.2) & (nz_abs >= 0.78) & (exg < 0.035) & (tri_sigma_h <= 0.12)
+        bldg_tri = ((tri_hag if max_span > 180.0 else tri_hag_tree) >= 2.2) & (nz_abs >= 0.78) & (exg < 0.035) & (tri_sigma_h <= 0.12)
         bldg_area_2d = float(area_2d[bldg_tri].sum())
         bldg_area_3d = float(area_3d[bldg_tri].sum())
 
         # 5. Drainage Channels & Curbs (排水溝渠與緣石)
-        curb_tri = (tri_hag >= 0.08) & (tri_hag < 0.35) & (nz_abs >= 0.34) & (nz_abs < 0.72) & (exg < 0.04)
+        hag_curb_src = tri_hag if max_span > 180.0 else tri_hag_local
+        curb_tri = (hag_curb_src >= 0.08) & (hag_curb_src < 0.35) & (nz_abs >= 0.34) & (nz_abs < 0.72) & (exg < 0.04)
         curb_area_2d = float(area_2d[curb_tri].sum())
         curb_area_3d = float(area_3d[curb_tri].sum())
 
         # 6. Transient Clutter / Vehicles / Construction Equipment (施工機具/車輛與雜物)
         clutter_tri = (
-            (tri_hag >= 0.45)
-            & (tri_hag <= 3.8)
+            (hag_curb_src >= 0.45)
+            & (hag_curb_src <= 3.8)
             & (exg < 0.035)
             & ((tri_sigma_h > 0.065) | (sat > 0.24))
             & (~road_tri_mask)
@@ -4729,9 +5274,14 @@ class SurveyingEngine:
         clutter_est_cnt = max(1, int(round(clutter_area_2d / 14.0))) if clutter_area_2d >= 2.0 else 0
 
         # 7. High Canopy Trees Total Area
-        canopy_tri = (tri_hag >= 1.8) & (exg >= 0.032)
-        canopy_area_2d = float(area_2d[canopy_tri].sum())
-        canopy_area_3d = float(area_3d[canopy_tri].sum())
+        if max_span > 180.0:
+            canopy_tri = (tri_hag >= 1.8) & (exg >= 0.032)
+            canopy_area_2d = float(area_2d[canopy_tri].sum())
+            canopy_area_3d = float(area_3d[canopy_tri].sum())
+        else:
+            canopy_tri = (tri_hag_tree >= 1.8) & (exg >= 0.024)
+            canopy_area_2d = max(float(area_2d[canopy_tri].sum()), float(sum(t["crown_area_m2"] for t in trees_list)))
+            canopy_area_3d = max(float(area_3d[canopy_tri].sum()), canopy_area_2d * 1.35)
 
         roads_planar_total = round(sum(r["planar_area_m2"] for r in roads_list), 2)
         roads_3d_total = round(sum(r["surface_area_3d_m2"] for r in roads_list), 2)

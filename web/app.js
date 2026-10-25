@@ -10364,7 +10364,7 @@
 
     // Smart 3D Spatial Separation & Priority Queue for 2D Floating Badges
     const placedBadgeAnchors3D = [];
-    const MIN_BADGE_SEPARATION_3D_M = 22.0;
+    const MIN_BADGE_SEPARATION_3D_M = 16.0;
     const tryAddCategorizeBadge = (anchorVec3, html, colorHex, opts = {}) => {
       if (!anchorVec3) return false;
       for (const prev of placedBadgeAnchors3D) {
@@ -10459,7 +10459,7 @@
         addPolygonHorizontalMesh(pts, 0xf59e0b, 0xfbbf24, 0.36, 0.25);
         const cPt = twd97PointToStudioVec3(r.center_twd97, r.center_local, originTwd);
         cPt.y += 0.6;
-        if (roadBadgesAdded < 3) {
+        if (roadBadgesAdded < 4) {
           const added = tryAddCategorizeBadge(
             cPt,
             `<span style="color:#fbbf24;font-weight:800;">🛣️ ${escapeHtml(r.id)}</span> · <b>${Number(r.planar_area_m2 || 0).toFixed(1)} m²</b> (${Number(r.mean_width_m || 0).toFixed(1)}m W)`,
@@ -10583,7 +10583,7 @@
         crownMesh.renderOrder = 994;
         grp.add(crownMesh);
 
-        if (treeBadgesAdded < 3) {
+        if (treeBadgesAdded < 5) {
           const topPt = new THREE.Vector3(basePt.x, basePt.y + treeH + 0.6, basePt.z);
           const added = tryAddCategorizeBadge(
             topPt,
