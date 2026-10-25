@@ -4428,6 +4428,11 @@ class SurveyingEngine:
                 if elongation < 1.32 and r_item["planar_area_m2"] < 45.0:
                     continue
                 in_comp_tri = cmask[in_c, ie_c] & on_ground
+                if np.any(in_comp_tri) and r_item["planar_area_m2"] > 450.0:
+                    tri_med_rb = float(np.median(rb_diff[in_comp_tri]))
+                    tri_med_sat = float(np.median(sat[in_comp_tri]))
+                    if tri_med_rb > 0.048 and tri_med_sat > 0.145:
+                        continue
                 a3d_r = float(area_3d[in_comp_tri].sum()) if np.any(in_comp_tri) else r_item["planar_area_m2"] * 1.015
                 a2d_r = r_item["planar_area_m2"]
                 surf_3d = max(a3d_r, a2d_r * 1.005)

@@ -4812,9 +4812,10 @@
       if (aCat !== bCat) return aCat ? 1 : -1;
       const aPri = a.isFocused ? -1000 : Number(a.priority ?? 50);
       const bPri = b.isFocused ? -1000 : Number(b.priority ?? 50);
-      return aPri - bPri;
+      return bPri - aPri;
     });
 
+    let visibleCatBadges = 0;
     orderedBadges.forEach((b) => {
       if (!b.el || !b.worldPt) return;
       const v = b.worldPt.clone().project(studioThree.camera);
@@ -4845,6 +4846,11 @@
         return;
       }
 
+      if (visibleCatBadges >= 11 && !b.isFocused) {
+        b.el.style.display = "none";
+        return;
+      }
+
       // Measure dimensions for categorize badge
       if (!b._cachedW || !b._cachedH) {
         b.el.style.display = dispMode;
@@ -4856,23 +4862,25 @@
       const halfW = bw * 0.5;
       const halfH = bh * 0.5;
 
-      // Hide categorize badge if its raw projected anchor falls outside the safe viewport (or behind #studioSidePanel / #studioEditingDock)
+      // Hide categorize badge if its raw projected anchor falls far outside the safe viewport (or behind #studioSidePanel)
       if (
-        x < leftSafeX + halfW ||
-        x > rightSafeX - halfW ||
-        y < topSafeY + halfH ||
-        y > bottomSafeY - halfH
+        x < leftSafeX + halfW - 24 ||
+        x > rightSafeX - halfW + 16 ||
+        y < topSafeY + halfH - 28 ||
+        y > bottomSafeY - halfH + 24
       ) {
         b.el.style.display = "none";
         return;
       }
+      const baseClampedX = Math.max(leftSafeX + halfW, Math.min(rightSafeX - halfW, x));
+      const baseClampedY = Math.max(topSafeY + halfH, Math.min(bottomSafeY - halfH, y));
 
       // 2D Screen-Space AABB Collision Avoidance across candidate offsets
       let chosenPos = null;
       let chosenRect = null;
       for (let oi = 0; oi < candidateOffsets.length; oi++) {
-        const cx = x + candidateOffsets[oi][0];
-        const cy = y + candidateOffsets[oi][1];
+        const cx = baseClampedX + candidateOffsets[oi][0];
+        const cy = baseClampedY + candidateOffsets[oi][1];
         if (
           cx - halfW < leftSafeX ||
           cx + halfW > rightSafeX ||
@@ -4902,6 +4910,7 @@
         return;
       }
 
+      visibleCatBadges++;
       placedRects.push(chosenRect);
       b.el.style.display = dispMode;
       b.el.style.left = `${Math.round(chosenPos[0])}px`;
@@ -10364,7 +10373,7 @@
 
     // Smart 3D Spatial Separation & Priority Queue for 2D Floating Badges
     const placedBadgeAnchors3D = [];
-    const MIN_BADGE_SEPARATION_3D_M = 16.0;
+    const MIN_BADGE_SEPARATION_3D_M = 12.5;
     const tryAddCategorizeBadge = (anchorVec3, html, colorHex, opts = {}) => {
       if (!anchorVec3) return false;
       for (const prev of placedBadgeAnchors3D) {
@@ -10434,7 +10443,7 @@
         addPolygonHorizontalMesh(pts, 0x06b6d4, 0x22d3ee, 0.42, 0.16);
         const cPt = twd97PointToStudioVec3(w.center_twd97, w.center_local, originTwd);
         cPt.y = waterLevelH - originTwd.h + 0.5;
-        if (waterBadgesAdded < 2) {
+        if (waterBadgesAdded < 4) {
           const isVoid = w.detection_mode === "unmodelled_void_shoreline";
           const added = tryAddCategorizeBadge(
             cPt,
@@ -10447,7 +10456,7 @@
       });
     }
 
-    // 2. ROADS (Amber #f59e0b) — Top 3 badges (R1..R3)
+    // 2. ROADS (Amber #f59e0b) — Top 5 badges (R1..R5)
     if (flt.roads && Array.isArray(res.roads)) {
       let roadBadgesAdded = 0;
       res.roads.forEach((r, idx) => {
@@ -10459,7 +10468,7 @@
         addPolygonHorizontalMesh(pts, 0xf59e0b, 0xfbbf24, 0.36, 0.25);
         const cPt = twd97PointToStudioVec3(r.center_twd97, r.center_local, originTwd);
         cPt.y += 0.6;
-        if (roadBadgesAdded < 4) {
+        if (roadBadgesAdded < 5) {
           const added = tryAddCategorizeBadge(
             cPt,
             `<span style="color:#fbbf24;font-weight:800;">🛣️ ${escapeHtml(r.id)}</span> · <b>${Number(r.planar_area_m2 || 0).toFixed(1)} m²</b> (${Number(r.mean_width_m || 0).toFixed(1)}m W)`,
@@ -10519,7 +10528,7 @@
         outLine.renderOrder = 999;
         grp.add(outLine);
 
-        if (wallBadgesAdded < 3) {
+        if (wallBadgesAdded < 4) {
           const cPt = twd97PointToStudioVec3(wl.center_twd97, wl.center_local, originTwd);
           cPt.y += Number(wl.mean_height_m || wl.height_m || 2.0) * 0.6 + 0.5;
           const added = tryAddCategorizeBadge(
@@ -10533,7 +10542,7 @@
       });
     }
 
-    // 4. TREES & 1.3m BREAST-HEIGHT DBH (3D Trunk Cylinders + 1.3m DBH Ring + Emerald Canopy Domes #10b981) — Top 3 badges (T1..T3)
+    // 4. TREES & 1.3m BREAST-HEIGHT DBH (3D Trunk Cylinders + 1.3m DBH Ring + Emerald Canopy Domes #10b981) — Top 10 badges
     if (flt.trees && Array.isArray(res.trees)) {
       let treeBadgesAdded = 0;
       res.trees.forEach((t, idx) => {
@@ -10583,8 +10592,8 @@
         crownMesh.renderOrder = 994;
         grp.add(crownMesh);
 
-        if (treeBadgesAdded < 5) {
-          const topPt = new THREE.Vector3(basePt.x, basePt.y + treeH + 0.6, basePt.z);
+        if (treeBadgesAdded < 10) {
+          const topPt = new THREE.Vector3(basePt.x, basePt.y + Math.min(treeH * 0.65, 5.2), basePt.z);
           const added = tryAddCategorizeBadge(
             topPt,
             `<span style="color:#34d399;font-weight:800;">🌳 ${escapeHtml(t.id)}</span> · DBH <b>${dbhCm.toFixed(1)} cm</b> · H ${treeH.toFixed(1)}m`,
