@@ -821,9 +821,19 @@ class GatheringScansTestSuite(unittest.TestCase):
             self.assertEqual(int(arr[0, 0, 3]), 0)
             self.assertTrue(bool(np.any(arr[:, :, 3] == 255)))
 
-        # 3. Verify frontend strictly draws 1 scan per project_group, uses exact bounds, and never loads tilted /thumbnail
+        # 4. Surface Drainage / Stepped 1:N Slope Arrows & Legend (Zero-Freeze)
         with open(os.path.join(BASE_DIR, "web", "src", "08-advanced-surveying-and-qa.js"), "r", encoding="utf-8") as f:
             js08 = f.read()
+        self.assertIn("SLOPE_STEPPED_TIERS", js08)
+        self.assertIn("buildFastStudioSurfaceArrows", js08)
+        self.assertIn("updateStudioDrainageLegendHud", js08)
+        self.assertIn("1:200 – 1:100", js08)
+        self.assertIn("1:100 – 1:50", js08)
+        self.assertIn("1:50 – 1:20", js08)
+        # Ensure renderDrainageAndSlopeVisuals3D NEVER calls sampleStudioMeshElevationAtLocalXZ or fake sine waves
+        self.assertNotIn("0.35 * Math.sin(x * 0.14)", js08)
+
+        # 5. True-Nadir Ortho & Single-Scan-per-Site Map Rule
         with open(os.path.join(BASE_DIR, "web", "src", "02-map-and-timeline.js"), "r", encoding="utf-8") as f:
             js02 = f.read()
         self.assertIn("pickRepresentativeOrthoScanForGroup", js08)

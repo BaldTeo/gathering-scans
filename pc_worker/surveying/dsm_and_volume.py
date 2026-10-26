@@ -1656,16 +1656,17 @@ class DsmAndVolumeMixin:
         }
 
     # =========================================================================
-    # 6. SURFACE DRAINAGE / SLOPE STEEPNESS & RAINWATER RUNOFF ANALYSIS
+    # 6. SURFACE DRAINAGE / SLOPE STEEPNESS & STEPPED 1:N ARROW FIELD ANALYSIS
     # =========================================================================
     def compute_drainage_and_slope(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Computes terrain slope steepness distribution (% Gentle <15°, Moderate 15°-30°, Steep >30°),
-        identifies local ponding / water-accumulation depressions, and traces D8 steepest-descent
-        rainwater runoff flow paths from the scan's DSM.
+        Computes real-surface stepped civil engineering slope ratios (1:N, e.g. <1:200, 1:200-1:100,
+        1:100-1:50, 1:50-1:20, 1:20-1:10, >1:10) and downhill drainage arrow vectors strictly inside
+        the scan's actual hull_mask from the DSM.
         """
         scan_id = str(payload.get("scan_id") or "").strip()
-        grid_size = max(8, min(64, int(payload.get("grid_size") or 24)))
+        grid_size = max(8, min(32, int(payload.get("grid_size") or 14)))
+        exclude_walls = bool(payload.get("exclude_walls", True))
         scan = self.db.get_scan(scan_id) or {}
         try:
             dsm_data = self._load_or_build_scan_dsm(scan)
@@ -1676,33 +1677,61 @@ class DsmAndVolumeMixin:
         ch = float(scan.get("twd97_h") or 124.8)
 
         raw_grid = None
+        hull_mask = None
         if isinstance(dsm_data, dict):
+            ce = float(dsm_data.get("ce", ce))
+            cn = float(dsm_data.get("cn", cn))
+            ch = float(dsm_data.get("ch", ch))
             raw_grid = (
-                dsm_data.get("grid")
-                if dsm_data.get("grid") is not None
+                dsm_data.get("dsm_contour")
+                if dsm_data.get("dsm_contour") is not None
                 else (
-                    dsm_data.get("dsm_contour")
-                    if dsm_data.get("dsm_contour") is not None
+                    dsm_data.get("grid")
+                    if dsm_data.get("grid") is not None
                     else dsm_data.get("dsm_raw")
                 )
             )
+            hull_mask = dsm_data.get("hull_mask")
 
+        tier_defs = [
+            {"id": "flat_200", "label": "< 1:200 (<0.5%)", "ratio_range": "< 1:200", "pct_range": "< 0.5%", "color": "#38bdf8", "min_s": 0.0, "max_s": 0.005, "len_scale": 0.38},
+            {"id": "gentle_100", "label": "1:200 – 1:100 (0.5–1%)", "ratio_range": "1:200 – 1:100", "pct_range": "0.5% – 1.0%", "color": "#10b981", "min_s": 0.005, "max_s": 0.01, "len_scale": 0.52},
+            {"id": "mod_50", "label": "1:100 – 1:50 (1–2%)", "ratio_range": "1:100 – 1:50", "pct_range": "1.0% – 2.0%", "color": "#84cc16", "min_s": 0.01, "max_s": 0.02, "len_scale": 0.66},
+            {"id": "brisk_20", "label": "1:50 – 1:20 (2–5%)", "ratio_range": "1:50 – 1:20", "pct_range": "2.0% – 5.0%", "color": "#eab308", "min_s": 0.02, "max_s": 0.05, "len_scale": 0.80},
+            {"id": "steep_10", "label": "1:20 – 1:10 (5–10%)", "ratio_range": "1:20 – 1:10", "pct_range": "5.0% – 10.0%", "color": "#f97316", "min_s": 0.05, "max_s": 0.10, "len_scale": 0.94},
+            {"id": "vsteep", "label": "> 1:10 (>10%)", "ratio_range": "> 1:10", "pct_range": "> 10.0%", "color": "#ef4444", "min_s": 0.10, "max_s": 999.0, "len_scale": 1.08},
+        ]
+        tier_counts = {t["id"]: 0 for t in tier_defs}
         slope_cells: List[Dict[str, Any]] = []
+        arrows: List[Dict[str, Any]] = []
+
         if raw_grid is not None and np is not None:
-            grid = np.asarray(raw_grid, dtype=float)
-            if grid.shape[0] > grid_size or grid.shape[1] > grid_size:
-                yi = np.linspace(0, grid.shape[0] - 1, grid_size).astype(int)
-                xi = np.linspace(0, grid.shape[1] - 1, grid_size).astype(int)
-                grid = grid[np.ix_(yi, xi)]
+            grid_full = np.asarray(raw_grid, dtype=float)
+            mask_full = (
+                np.asarray(hull_mask, dtype=bool)
+                if hull_mask is not None and np.asarray(hull_mask).shape == grid_full.shape
+                else np.isfinite(grid_full)
+            )
+            yi = np.linspace(0, grid_full.shape[0] - 1, grid_size).astype(int)
+            xi = np.linspace(0, grid_full.shape[1] - 1, grid_size).astype(int)
+            grid = grid_full[np.ix_(yi, xi)]
+            mask = mask_full[np.ix_(yi, xi)]
             ny, nx = grid.shape
             e_min, e_max = float(dsm_data.get("e_min", ce - 25.0)), float(dsm_data.get("e_max", ce + 25.0))
             n_min, n_max = float(dsm_data.get("n_min", cn - 25.0)), float(dsm_data.get("n_max", cn + 25.0))
             dx = max(0.25, (e_max - e_min) / max(1, nx - 1))
             dy = max(0.25, (n_max - n_min) / max(1, ny - 1))
             gy, gx = np.gradient(grid, dy, dx)
-            slope_rad = np.arctan(np.hypot(gx, gy))
+            slope_mag = np.hypot(gx, gy)
+            slope_rad = np.arctan(slope_mag)
             slope_deg = np.degrees(slope_rad)
-            valid = np.isfinite(slope_deg)
+
+            valid = mask & np.isfinite(slope_mag)
+            if exclude_walls:
+                valid = valid & (slope_mag <= 1.0)
+            if not np.any(valid):
+                valid = mask & np.isfinite(slope_mag)
+
             total_valid = max(1, int(np.sum(valid)))
             gentle_pct = round(float(np.sum((slope_deg < 15.0) & valid)) * 100.0 / total_valid, 1)
             moderate_pct = round(
@@ -1710,29 +1739,80 @@ class DsmAndVolumeMixin:
                 1,
             )
             steep_pct = round(max(0.0, 100.0 - gentle_pct - moderate_pct), 1)
-            mean_slope_deg = round(float(np.nanmean(slope_deg)) if np.any(valid) else 0.0, 2)
-            max_slope_deg = round(float(np.nanmax(slope_deg)) if np.any(valid) else 0.0, 2)
+            mean_slope_deg = round(float(np.nanmean(slope_deg[valid])) if np.any(valid) else 0.0, 2)
+            max_slope_deg = round(float(np.nanmax(slope_deg[valid])) if np.any(valid) else 0.0, 2)
+            mean_slope_s = float(np.nanmean(slope_mag[valid])) if np.any(valid) else 0.01
+            mean_ratio_label = f"1:{min(999, max(1, int(round(1.0 / max(mean_slope_s, 1e-4)))))}"
+
             for iy in range(ny):
                 for ix in range(nx):
-                    deg_v = float(slope_deg[iy, ix])
-                    if not math.isfinite(deg_v):
+                    if not valid[iy, ix]:
                         continue
-                    slope_cells.append(
-                        {
-                            "ix": ix,
-                            "iy": iy,
-                            "e": round(e_min + ix * dx, 2),
-                            "n": round(n_min + iy * dy, 2),
-                            "h": round(float(grid[iy, ix]), 2),
-                            "slope_deg": round(deg_v, 1),
-                        }
-                    )
+                    s_val = float(slope_mag[iy, ix])
+                    deg_v = float(slope_deg[iy, ix])
+                    e_pt = round(e_min + ix * dx, 2)
+                    n_pt = round(n_min + iy * dy, 2)
+                    h_pt = round(float(grid[iy, ix]), 2)
+
+                    # Downhill unit vector in TWD97 (+E, +N)
+                    if s_val >= 1e-4:
+                        dir_e = float(-gx[iy, ix] / s_val)
+                        dir_n = float(-gy[iy, ix] / s_val)
+                    else:
+                        dir_e, dir_n = 1.0, 0.0
+
+                    matched_tier = tier_defs[-1]
+                    for td in tier_defs:
+                        if s_val < td["max_s"]:
+                            matched_tier = td
+                            break
+                    tier_counts[matched_tier["id"]] += 1
+                    ratio_n = min(999, max(1, int(round(1.0 / max(s_val, 1e-4)))))
+                    ratio_lbl = "<1:999" if s_val < 0.0005 else f"1:{ratio_n}"
+
+                    cell_obj = {
+                        "ix": ix,
+                        "iy": iy,
+                        "e": e_pt,
+                        "n": n_pt,
+                        "h": h_pt,
+                        "local_x": round(e_pt - ce, 3),
+                        "local_y": round(h_pt - ch, 3),
+                        "local_z": round(cn - n_pt, 3),
+                        "dir_e": round(dir_e, 4),
+                        "dir_n": round(dir_n, 4),
+                        "dir_local_x": round(dir_e, 4),
+                        "dir_local_z": round(-dir_n, 4),
+                        "slope_ratio": round(s_val, 5),
+                        "slope_pct": round(s_val * 100.0, 2),
+                        "slope_deg": round(deg_v, 2),
+                        "ratio_n": ratio_n,
+                        "ratio_label": ratio_lbl,
+                        "tier_id": matched_tier["id"],
+                        "color": matched_tier["color"],
+                        "len_scale": matched_tier["len_scale"],
+                    }
+                    slope_cells.append(cell_obj)
+                    arrows.append(cell_obj)
         else:
-            gentle_pct = 64.5
-            moderate_pct = 24.8
-            steep_pct = 10.7
-            mean_slope_deg = 12.4
-            max_slope_deg = 38.6
+            gentle_pct = 0.0
+            moderate_pct = 0.0
+            steep_pct = 0.0
+            mean_slope_deg = 0.0
+            max_slope_deg = 0.0
+            mean_ratio_label = "—"
+
+        total_arrows = max(1, len(arrows))
+        tiers_summary = []
+        for td in tier_defs:
+            cnt = tier_counts[td["id"]]
+            tiers_summary.append(
+                {
+                    **td,
+                    "count": cnt,
+                    "pct": round(cnt * 100.0 / total_arrows, 1) if arrows else 0.0,
+                }
+            )
 
         return {
             "status": "ok",
@@ -1743,6 +1823,10 @@ class DsmAndVolumeMixin:
             "steep_pct": steep_pct,
             "mean_slope_deg": mean_slope_deg,
             "max_slope_deg": max_slope_deg,
+            "mean_ratio_label": mean_ratio_label,
+            "arrow_count": len(arrows),
+            "tiers": tiers_summary,
+            "arrows": arrows,
             "slope_cells": slope_cells,
             "center_twd97": {"e": round(ce, 3), "n": round(cn, 3), "h": round(ch, 3)},
         }

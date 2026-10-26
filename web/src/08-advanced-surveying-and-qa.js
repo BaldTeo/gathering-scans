@@ -1084,9 +1084,137 @@
   }
 
   // ============================================================================
-  // FEATURE 4: SURFACE DRAINAGE / SLOPE STEEPNESS & RAINWATER RUNOFF FLOW-LINES
+  // FEATURE 4: SURFACE DRAINAGE / STEPPED 1:N SLOPE ARROWS & LEGEND (ZERO-FREEZE)
   // ============================================================================
+  const SLOPE_STEPPED_TIERS = [
+    {
+      id: "flat_200",
+      ratioRange: "< 1:200",
+      pctRange: "< 0.5%",
+      labelZh: "平緩 / 積水潛勢 (< 1:200)",
+      labelEn: "Flat / Ponding (< 1:200)",
+      color: "#38bdf8",
+      rgb: [0.22, 0.741, 0.973],
+      minS: 0.0,
+      maxS: 0.005,
+      lenScale: 0.38,
+    },
+    {
+      id: "gentle_100",
+      ratioRange: "1:200 – 1:100",
+      pctRange: "0.5% – 1.0%",
+      labelZh: "微緩排水坡 (1:200 – 1:100)",
+      labelEn: "Gentle Drainage (1:200 – 1:100)",
+      color: "#10b981",
+      rgb: [0.063, 0.725, 0.506],
+      minS: 0.005,
+      maxS: 0.01,
+      lenScale: 0.52,
+    },
+    {
+      id: "mod_50",
+      ratioRange: "1:100 – 1:50",
+      pctRange: "1.0% – 2.0%",
+      labelZh: "標準路面排水坡 (1:100 – 1:50)",
+      labelEn: "Standard Grade (1:100 – 1:50)",
+      color: "#84cc16",
+      rgb: [0.518, 0.8, 0.086],
+      minS: 0.01,
+      maxS: 0.02,
+      lenScale: 0.66,
+    },
+    {
+      id: "brisk_20",
+      ratioRange: "1:50 – 1:20",
+      pctRange: "2.0% – 5.0%",
+      labelZh: "明顯斜坡 (1:50 – 1:20)",
+      labelEn: "Brisk Slope (1:50 – 1:20)",
+      color: "#eab308",
+      rgb: [0.918, 0.702, 0.031],
+      minS: 0.02,
+      maxS: 0.05,
+      lenScale: 0.80,
+    },
+    {
+      id: "steep_10",
+      ratioRange: "1:20 – 1:10",
+      pctRange: "5.0% – 10.0%",
+      labelZh: "陡坡 / 坡道 (1:20 – 1:10)",
+      labelEn: "Steep Ramp (1:20 – 1:10)",
+      color: "#f97316",
+      rgb: [0.976, 0.451, 0.086],
+      minS: 0.05,
+      maxS: 0.10,
+      lenScale: 0.94,
+    },
+    {
+      id: "vsteep",
+      ratioRange: "> 1:10",
+      pctRange: "> 10.0%",
+      labelZh: "急陡邊坡 (> 1:10)",
+      labelEn: "Very Steep (> 1:10)",
+      color: "#ef4444",
+      rgb: [0.937, 0.267, 0.267],
+      minS: 0.10,
+      maxS: 999.0,
+      lenScale: 1.08,
+    },
+  ];
+
+  function classifySlopeRatioTier(slopeVal) {
+    const s = Math.max(0, Number(slopeVal) || 0);
+    for (let i = 0; i < SLOPE_STEPPED_TIERS.length; i++) {
+      if (s < SLOPE_STEPPED_TIERS[i].maxS) return SLOPE_STEPPED_TIERS[i];
+    }
+    return SLOPE_STEPPED_TIERS[SLOPE_STEPPED_TIERS.length - 1];
+  }
+
+  function updateStudioDrainageLegendHud(stats) {
+    const container = document.getElementById("studioCanvasContainer");
+    if (!container) return;
+    let hud = document.getElementById("studioDrainageLegendHud");
+    if (!stats || STATE.activeTool !== "drainage") {
+      if (hud) hud.style.display = "none";
+      return;
+    }
+    if (!hud) {
+      hud = document.createElement("div");
+      hud.id = "studioDrainageLegendHud";
+      hud.style.cssText =
+        "position:absolute;bottom:78px;left:14px;z-index:45;background:var(--ui-bg-window);backdrop-filter:blur(12px);border:1px solid var(--ui-border-strong);border-radius:10px;padding:10px 12px;min-width:215px;box-shadow:var(--ui-shadow-hud);pointer-events:auto;font-size:11px;color:var(--ui-text-primary);";
+      container.appendChild(hud);
+    }
+    const tierCounts = stats.tier_counts || {};
+    const total = Math.max(1, Number(stats.arrow_count) || 0);
+    hud.style.display = "block";
+    hud.innerHTML = `
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px;padding-bottom:5px;border-bottom:1px solid var(--ui-border);">
+        <span style="font-weight:700;font-size:11.5px;">${tr("坡度分級圖例 (1:N 階梯色)", "Slope Legend (Stepped 1:N)")}</span>
+        <span style="font-size:10px;color:var(--ui-text-secondary);font-family:var(--font-mono);">${stats.arrow_count || 0} ${tr("箭頭", "arrows")}</span>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:4px;">
+        ${SLOPE_STEPPED_TIERS.map((t) => {
+          const cnt = Number(tierCounts[t.id] || 0);
+          const pct = stats.arrow_count ? ((cnt * 100) / total).toFixed(0) : "0";
+          const barW = Math.round(t.lenScale * 24);
+          return `
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
+              <div style="display:flex;align-items:center;gap:6px;">
+                <span style="display:inline-block;width:11px;height:11px;border-radius:3px;background:${t.color};flex-shrink:0;border:1px solid rgba(255,255,255,0.28);"></span>
+                <span style="font-family:var(--font-mono);font-weight:700;font-size:11px;min-width:78px;">${t.ratioRange}</span>
+                <span style="display:inline-block;height:3px;width:${barW}px;background:${t.color};border-radius:2px;" title="Arrow length scale"></span>
+              </div>
+              <span style="font-size:10.5px;color:var(--ui-text-secondary);font-family:var(--font-mono);">${t.pctRange} (${pct}%)</span>
+            </div>
+          `;
+        }).join("")}
+      </div>
+    `;
+  }
+
   function clearDrainageVisuals3D() {
+    const hud = document.getElementById("studioDrainageLegendHud");
+    if (hud) hud.style.display = "none";
     if (!studioThree || !studioThree.overlayGroup) return;
     if (studioThree.drainageGroup) {
       studioThree.overlayGroup.remove(studioThree.drainageGroup);
@@ -1094,253 +1222,608 @@
     }
   }
 
-  function renderDrainageAndSlopeVisuals3D(opts = { showSlopeMesh: true, showRunoffLines: true, showPondingZones: true }) {
+  const _drainageLabelTexCache = new Map();
+  function createSlopeRatioSprite(ratioLabel, hexColor) {
+    const cacheKey = `${ratioLabel}_${hexColor}`;
+    let tex = _drainageLabelTexCache.get(cacheKey);
+    if (!tex) {
+      const c = document.createElement("canvas");
+      c.width = 112;
+      c.height = 40;
+      const ctx = c.getContext("2d");
+      ctx.fillStyle = "rgba(15, 23, 42, 0.86)";
+      ctx.strokeStyle = hexColor;
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      if (ctx.roundRect) ctx.roundRect(2, 2, 108, 36, 8);
+      else ctx.rect(2, 2, 108, 36);
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = hexColor;
+      ctx.font = "700 18px JetBrains Mono, monospace";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(ratioLabel, 56, 21);
+      tex = new THREE.CanvasTexture(c);
+      tex.needsUpdate = true;
+      if (_drainageLabelTexCache.size > 200) _drainageLabelTexCache.clear();
+      _drainageLabelTexCache.set(cacheKey, tex);
+    }
+    const mat = new THREE.SpriteMaterial({ map: tex, depthTest: false, depthWrite: false, transparent: true });
+    const sp = new THREE.Sprite(mat);
+    sp.renderOrder = 999;
+    return sp;
+  }
+
+  // Zero-raycast, instant (<2ms) vertex-binned surface slope & drainage arrow generator
+  function buildFastStudioSurfaceArrows(gridSize = 14, excludeWalls = true) {
+    const G = Math.max(8, Math.min(24, Number(gridSize) || 14));
+    const meshes = [];
+    let totalVerts = 0;
+
+    const collectFromRoot = (rootObj) => {
+      if (!rootObj || !rootObj.visible) return;
+      rootObj.updateMatrixWorld(true);
+      rootObj.traverse((c) => {
+        if (
+          c.isMesh &&
+          c.geometry &&
+          c.geometry.attributes &&
+          c.geometry.attributes.position &&
+          isMeshVisibleUnderRoot(c, rootObj) &&
+          !c.userData?.isAlignBoxHelper
+        ) {
+          const cnt = c.geometry.attributes.position.count || 0;
+          if (cnt > 0) {
+            meshes.push(c);
+            totalVerts += cnt;
+          }
+        }
+      });
+    };
+
+    collectFromRoot(studioThree?.modelPivot);
+    if (STATE.multiAlign?.active) {
+      collectFromRoot(studioThree?.multiAlignGroup);
+    }
+
+    // If real tiles are still streaming and backend DSM arrows already arrived, use backend DSM arrows directly
+    const srvDrainage = STATE.lastDrainageResult;
+    if (
+      totalVerts < 300 &&
+      srvDrainage &&
+      srvDrainage.scan_id === STATE.activeScanId &&
+      Array.isArray(srvDrainage.arrows) &&
+      srvDrainage.arrows.length > 0
+    ) {
+      const xs = srvDrainage.arrows.map((a) => Number(a.local_x) || 0);
+      const zs = srvDrainage.arrows.map((a) => Number(a.local_z) || 0);
+      const spanX = Math.max(8, Math.max(...xs) - Math.min(...xs));
+      const spanZ = Math.max(8, Math.max(...zs) - Math.min(...zs));
+      const cellStep = Math.max(1.8, Math.max(spanX, spanZ) / G);
+      return {
+        cellStep,
+        arrows: srvDrainage.arrows.map((a) => {
+          const tier = classifySlopeRatioTier(a.slope_ratio);
+          return {
+            x: Number(a.local_x) || 0,
+            y: Number(a.local_y) || 0,
+            z: Number(a.local_z) || 0,
+            ux: Number(a.dir_local_x) || 1,
+            uz: Number(a.dir_local_z) || 0,
+            slope: Number(a.slope_ratio) || 0.01,
+            deg: Number(a.slope_deg) || 0.5,
+            ratioLabel: a.ratio_label || "1:100",
+            tier,
+          };
+        }),
+      };
+    }
+
+    if (meshes.length === 0) {
+      collectFromRoot(studioThree?.fallbackGroup);
+    }
+    if (meshes.length === 0 || totalVerts === 0) {
+      return { cellStep: 4.0, arrows: [] };
+    }
+
+    const stride = Math.max(1, Math.floor(totalVerts / 24000));
+    const sx = [];
+    const sy = [];
+    const sz = [];
+
+    for (let mi = 0; mi < meshes.length; mi++) {
+      const m = meshes[mi];
+      const pos = m.geometry.attributes.position;
+      const arr = pos.array;
+      const itemSize = pos.itemSize || 3;
+      const count = pos.count;
+      const e = m.matrixWorld.elements;
+      const m0 = e[0], m1 = e[1], m2 = e[2];
+      const m4 = e[4], m5 = e[5], m6 = e[6];
+      const m8 = e[8], m9 = e[9], m10 = e[10];
+      const m12 = e[12], m13 = e[13], m14 = e[14];
+
+      for (let i = 0; i < count; i += stride) {
+        const base = i * itemSize;
+        const vx = arr[base];
+        const vy = arr[base + 1];
+        const vz = arr[base + 2];
+        const wx = m0 * vx + m4 * vy + m8 * vz + m12;
+        const wy = m1 * vx + m5 * vy + m9 * vz + m13;
+        const wz = m2 * vx + m6 * vy + m10 * vz + m14;
+        if (Number.isFinite(wx) && Number.isFinite(wy) && Number.isFinite(wz)) {
+          sx.push(wx);
+          sy.push(wy);
+          sz.push(wz);
+        }
+      }
+    }
+
+    if (sx.length < 16) {
+      return { cellStep: 4.0, arrows: [] };
+    }
+
+    const sortedX = sx.slice().sort((a, b) => a - b);
+    const sortedZ = sz.slice().sort((a, b) => a - b);
+    const minX = sortedX[Math.floor(sortedX.length * 0.02)];
+    const maxX = sortedX[Math.floor(sortedX.length * 0.98)];
+    const minZ = sortedZ[Math.floor(sortedZ.length * 0.02)];
+    const maxZ = sortedZ[Math.floor(sortedZ.length * 0.98)];
+
+    const spanX = Math.max(6.0, maxX - minX);
+    const spanZ = Math.max(6.0, maxZ - minZ);
+    const cellStep = Math.max(1.2, Math.max(spanX, spanZ) / G);
+    const nx = Math.max(6, Math.min(28, Math.round(spanX / cellStep) + 1));
+    const nz = Math.max(6, Math.min(28, Math.round(spanZ / cellStep) + 1));
+    const stepX = spanX / Math.max(1, nx - 1);
+    const stepZ = spanZ / Math.max(1, nz - 1);
+
+    const minYGrid = new Float32Array(nx * nz);
+    const sumYGrid = new Float32Array(nx * nz);
+    const cntGrid = new Uint32Array(nx * nz);
+    minYGrid.fill(Infinity);
+
+    for (let i = 0; i < sx.length; i++) {
+      const wx = sx[i];
+      const wy = sy[i];
+      const wz = sz[i];
+      if (wx < minX || wx > maxX || wz < minZ || wz > maxZ) continue;
+      const ix = Math.min(nx - 1, Math.max(0, Math.floor((wx - minX) / stepX)));
+      const iz = Math.min(nz - 1, Math.max(0, Math.floor((wz - minZ) / stepZ)));
+      const idx = iz * nx + ix;
+      if (wy < minYGrid[idx]) minYGrid[idx] = wy;
+      sumYGrid[idx] += wy;
+      cntGrid[idx] += 1;
+    }
+
+    // Bare-surface elevation per occupied cell (rejects tree crowns / light poles)
+    const rawH = new Float32Array(nx * nz);
+    const validCell = new Uint8Array(nx * nz);
+    for (let idx = 0; idx < nx * nz; idx++) {
+      if (cntGrid[idx] > 0 && Number.isFinite(minYGrid[idx])) {
+        const meanY = sumYGrid[idx] / cntGrid[idx];
+        rawH[idx] = 0.78 * minYGrid[idx] + 0.22 * meanY;
+        validCell[idx] = 1;
+      }
+    }
+
+    // 3x3 smoothing over occupied cells + fill only isolated 1-cell interior gaps (>=5 occupied neighbors)
+    const smoothH = new Float32Array(nx * nz);
+    const smoothValid = new Uint8Array(nx * nz);
+    for (let iz = 0; iz < nz; iz++) {
+      for (let ix = 0; ix < nx; ix++) {
+        const idx = iz * nx + ix;
+        let wSum = 0;
+        let hSum = 0;
+        let nCnt = 0;
+        for (let dz = -1; dz <= 1; dz++) {
+          const jz = iz + dz;
+          if (jz < 0 || jz >= nz) continue;
+          for (let dx = -1; dx <= 1; dx++) {
+            const jx = ix + dx;
+            if (jx < 0 || jx >= nx) continue;
+            const nIdx = jz * nx + jx;
+            if (validCell[nIdx]) {
+              const w = dx === 0 && dz === 0 ? 2.5 : 1.0;
+              hSum += rawH[nIdx] * w;
+              wSum += w;
+              if (!(dx === 0 && dz === 0)) nCnt++;
+            }
+          }
+        }
+        if (validCell[idx] || nCnt >= 5) {
+          smoothH[idx] = wSum > 0 ? hSum / wSum : rawH[idx];
+          smoothValid[idx] = 1;
+        }
+      }
+    }
+
+    const arrows = [];
+    for (let iz = 0; iz < nz; iz++) {
+      for (let ix = 0; ix < nx; ix++) {
+        const idx = iz * nx + ix;
+        if (!smoothValid[idx]) continue;
+
+        const ix0 = ix > 0 && smoothValid[iz * nx + (ix - 1)] ? ix - 1 : ix;
+        const ix1 = ix < nx - 1 && smoothValid[iz * nx + (ix + 1)] ? ix + 1 : ix;
+        const iz0 = iz > 0 && smoothValid[(iz - 1) * nx + ix] ? iz - 1 : iz;
+        const iz1 = iz < nz - 1 && smoothValid[(iz + 1) * nx + ix] ? iz + 1 : iz;
+        if (ix0 === ix1 || iz0 === iz1) continue;
+
+        const dzdx = (smoothH[iz * nx + ix1] - smoothH[iz * nx + ix0]) / ((ix1 - ix0) * stepX);
+        const dzdz = (smoothH[iz1 * nx + ix] - smoothH[iz0 * nx + ix]) / ((iz1 - iz0) * stepZ);
+        const slope = Math.hypot(dzdx, dzdz);
+        if (!Number.isFinite(slope)) continue;
+        if (excludeWalls && slope > 1.0) continue;
+
+        const deg = (Math.atan(slope) * 180.0) / Math.PI;
+        const ux = slope >= 1e-4 ? -dzdx / slope : 1.0;
+        const uz = slope >= 1e-4 ? -dzdz / slope : 0.0;
+        const tier = classifySlopeRatioTier(slope);
+        const ratioN = Math.min(999, Math.max(1, Math.round(1.0 / Math.max(slope, 1e-4))));
+        const ratioLabel = slope < 0.0005 ? "<1:999" : `1:${ratioN}`;
+
+        arrows.push({
+          x: minX + (ix + 0.5) * stepX,
+          y: smoothH[idx],
+          z: minZ + (iz + 0.5) * stepZ,
+          ux,
+          uz,
+          slope,
+          deg,
+          ratioLabel,
+          tier,
+        });
+      }
+    }
+
+    return { cellStep: Math.min(stepX, stepZ), arrows };
+  }
+
+  function renderDrainageAndSlopeVisuals3D(
+    opts = { gridSize: 14, showLabels: true, excludeWalls: true }
+  ) {
     if (!studioThree || !studioThree.overlayGroup) return null;
     clearDrainageVisuals3D();
+
+    const gridSize = Number(opts?.gridSize) || Number(STATE.drainageGridSize) || 14;
+    const showLabels = opts?.showLabels !== undefined ? Boolean(opts.showLabels) : STATE.drainageShowLabels !== false;
+    const excludeWalls =
+      opts?.excludeWalls !== undefined ? Boolean(opts.excludeWalls) : STATE.drainageExcludeWalls !== false;
+    STATE.drainageGridSize = gridSize;
+    STATE.drainageShowLabels = showLabels;
+    STATE.drainageExcludeWalls = excludeWalls;
+
     const grp = new THREE.Group();
     studioThree.drainageGroup = grp;
-    if (!studioThree.drainageGroup.parent) {
-      studioThree.overlayGroup.add(studioThree.drainageGroup);
-    }
+    studioThree.overlayGroup.add(grp);
 
-    const targets = typeof getStudioRaycastMeshes === "function" ? getStudioRaycastMeshes() : [];
-    const rawR = Math.max(16, Math.min(85, Number(studioThree.boundingSphere?.radius) || 36));
-    const span = rawR * 0.72;
-    const N = 28;
-    const step = (span * 2) / (N - 1);
-    const gridY = new Float32Array(N * N);
+    const { cellStep, arrows } = buildFastStudioSurfaceArrows(gridSize, excludeWalls);
 
-    for (let iz = 0; iz < N; iz++) {
-      const z = -span + iz * step;
-      for (let ix = 0; ix < N; ix++) {
-        const x = -span + ix * step;
-        const s =
-          typeof sampleStudioMeshElevationAtLocalXZ === "function"
-            ? sampleStudioMeshElevationAtLocalXZ(x, z, 0, targets)
-            : { y: 0, hit: false };
-        gridY[iz * N + ix] = s.hit ? s.y : 0.02 * x - 0.015 * z + 0.35 * Math.sin(x * 0.14) * Math.cos(z * 0.14);
+    const tierCounts = {};
+    SLOPE_STEPPED_TIERS.forEach((t) => {
+      tierCounts[t.id] = 0;
+    });
+
+    let gentleCount = 0;
+    let modCount = 0;
+    let steepCount = 0;
+    let slopeDegSum = 0;
+    let slopeRatioSum = 0;
+    let maxSlopeDeg = 0;
+
+    const triPositions = [];
+    const triColors = [];
+    const linePositions = [];
+    const lineColors = [];
+
+    const yLift = Math.max(0.18, cellStep * 0.06);
+
+    for (let i = 0; i < arrows.length; i++) {
+      const a = arrows[i];
+      const tier = a.tier || classifySlopeRatioTier(a.slope);
+      tierCounts[tier.id] = (tierCounts[tier.id] || 0) + 1;
+
+      if (a.deg < 15.0) gentleCount++;
+      else if (a.deg < 30.0) modCount++;
+      else steepCount++;
+
+      slopeDegSum += a.deg;
+      slopeRatioSum += a.slope;
+      if (a.deg > maxSlopeDeg) maxSlopeDeg = a.deg;
+
+      const len = cellStep * tier.lenScale * 0.86;
+      const shaftLen = len * 0.62;
+      const shaftHalfW = Math.max(0.08, cellStep * 0.075);
+      const headHalfW = Math.max(0.20, cellStep * 0.19);
+
+      // Right-hand perpendicular in XZ plane
+      const px = -a.uz;
+      const pz = a.ux;
+
+      // Center arrow on (a.x, a.y + yLift, a.z) and pitch slightly downhill
+      const pitchY = -Math.min(0.35, a.slope) * len;
+      const xStart = a.x - a.ux * (len * 0.45);
+      const zStart = a.z - a.uz * (len * 0.45);
+      const yStart = a.y + yLift - pitchY * 0.45;
+
+      const xNeck = xStart + a.ux * shaftLen;
+      const zNeck = zStart + a.uz * shaftLen;
+      const yNeck = yStart + pitchY * 0.62;
+
+      const xTip = xStart + a.ux * len;
+      const zTip = zStart + a.uz * len;
+      const yTip = yStart + pitchY;
+
+      // Shaft quad corners
+      const sL0x = xStart + px * shaftHalfW, sL0z = zStart + pz * shaftHalfW;
+      const sR0x = xStart - px * shaftHalfW, sR0z = zStart - pz * shaftHalfW;
+      const sL1x = xNeck + px * shaftHalfW, sL1z = zNeck + pz * shaftHalfW;
+      const sR1x = xNeck - px * shaftHalfW, sR1z = zNeck - pz * shaftHalfW;
+
+      // Head wing corners
+      const hLx = xNeck + px * headHalfW, hLz = zNeck + pz * headHalfW;
+      const hRx = xNeck - px * headHalfW, hRz = zNeck - pz * headHalfW;
+
+      const [r, g, b] = tier.rgb;
+
+      // Triangle 1 & 2: Shaft Quad
+      triPositions.push(
+        sL0x, yStart, sL0z,
+        sR0x, yStart, sR0z,
+        sR1x, yNeck, sR1z,
+        sL0x, yStart, sL0z,
+        sR1x, yNeck, sR1z,
+        sL1x, yNeck, sL1z
+      );
+      // Triangle 3: Arrowhead
+      triPositions.push(
+        hLx, yNeck, hLz,
+        hRx, yNeck, hRz,
+        xTip, yTip, zTip
+      );
+      for (let v = 0; v < 9; v++) {
+        triColors.push(r, g, b);
+      }
+
+      // Crisp dark outline segments around arrow silhouette
+      const outlinePts = [
+        [sL0x, yStart, sL0z, sR0x, yStart, sR0z],
+        [sR0x, yStart, sR0z, sR1x, yNeck, sR1z],
+        [sR1x, yNeck, sR1z, hRx, yNeck, hRz],
+        [hRx, yNeck, hRz, xTip, yTip, zTip],
+        [xTip, yTip, zTip, hLx, yNeck, hLz],
+        [hLx, yNeck, hLz, sL1x, yNeck, sL1z],
+        [sL1x, yNeck, sL1z, sL0x, yStart, sL0z],
+      ];
+      for (let sIdx = 0; sIdx < outlinePts.length; sIdx++) {
+        const seg = outlinePts[sIdx];
+        linePositions.push(seg[0], seg[1] + 0.01, seg[2], seg[3], seg[4] + 0.01, seg[5]);
+        lineColors.push(0.06, 0.09, 0.16, 0.06, 0.09, 0.16);
       }
     }
 
-    let gentleCount = 0,
-      modCount = 0,
-      steepCount = 0,
-      slopeSum = 0,
-      maxSlope = 0;
-    const slopeDegGrid = new Float32Array(N * N);
-    for (let iz = 0; iz < N; iz++) {
-      for (let ix = 0; ix < N; ix++) {
-        const x0 = Math.max(0, ix - 1),
-          x1 = Math.min(N - 1, ix + 1);
-        const z0 = Math.max(0, iz - 1),
-          z1 = Math.min(N - 1, iz + 1);
-        const dzdx = (gridY[iz * N + x1] - gridY[iz * N + x0]) / Math.max(0.1, (x1 - x0) * step);
-        const dzdz = (gridY[z1 * N + ix] - gridY[z0 * N + ix]) / Math.max(0.1, (z1 - z0) * step);
-        const deg = (Math.atan(Math.hypot(dzdx, dzdz)) * 180) / Math.PI;
-        slopeDegGrid[iz * N + ix] = deg;
-        slopeSum += deg;
-        if (deg > maxSlope) maxSlope = deg;
-        if (deg < 15) gentleCount++;
-        else if (deg < 30) modCount++;
-        else steepCount++;
-      }
-    }
-
-    if (opts.showSlopeMesh !== false) {
-      const geom = new THREE.PlaneGeometry(span * 2, span * 2, N - 1, N - 1);
-      geom.rotateX(-Math.PI / 2);
-      const pos = geom.attributes.position;
-      const colors = [];
-      for (let i = 0; i < pos.count; i++) {
-        pos.setY(i, gridY[i] + 0.12);
-        const deg = slopeDegGrid[i];
-        if (deg < 15) colors.push(0.06, 0.73, 0.51);
-        else if (deg < 30) colors.push(0.96, 0.62, 0.04);
-        else colors.push(0.94, 0.27, 0.27);
-      }
-      geom.setAttribute("color", new THREE.Float32BufferAttribute(colors, 3));
-      geom.computeVertexNormals();
-      const mesh = new THREE.Mesh(
-        geom,
+    if (triPositions.length > 0) {
+      const arrowGeom = new THREE.BufferGeometry();
+      arrowGeom.setAttribute("position", new THREE.Float32BufferAttribute(triPositions, 3));
+      arrowGeom.setAttribute("color", new THREE.Float32BufferAttribute(triColors, 3));
+      const arrowMesh = new THREE.Mesh(
+        arrowGeom,
         new THREE.MeshBasicMaterial({
           vertexColors: true,
-          transparent: true,
-          opacity: 0.46,
           side: THREE.DoubleSide,
+          depthTest: false,
           depthWrite: false,
+          transparent: true,
+          opacity: 0.94,
         })
       );
-      mesh.renderOrder = 990;
-      grp.add(mesh);
+      arrowMesh.renderOrder = 995;
+      grp.add(arrowMesh);
+
+      const outlineGeom = new THREE.BufferGeometry();
+      outlineGeom.setAttribute("position", new THREE.Float32BufferAttribute(linePositions, 3));
+      outlineGeom.setAttribute("color", new THREE.Float32BufferAttribute(lineColors, 3));
+      const outlineLines = new THREE.LineSegments(
+        outlineGeom,
+        new THREE.LineBasicMaterial({
+          vertexColors: true,
+          depthTest: false,
+          depthWrite: false,
+          transparent: true,
+          opacity: 0.85,
+        })
+      );
+      outlineLines.renderOrder = 996;
+      grp.add(outlineLines);
     }
 
-    // D8 Rainwater Runoff Flow-Lines & Ponding Depressions
-    let flowStreamCount = 0;
-    let pondingZoneCount = 0;
-    const pondingVisited = new Set();
-    const dirs = [
-      [-1, -1],
-      [0, -1],
-      [1, -1],
-      [-1, 0],
-      [1, 0],
-      [-1, 1],
-      [0, 1],
-      [1, 1],
-    ];
-
-    for (let iz = 2; iz < N - 2; iz += 4) {
-      for (let ix = 2; ix < N - 2; ix += 4) {
-        let cx = ix,
-          cz = iz;
-        const pathPts = [];
-        for (let stepIdx = 0; stepIdx < 24; stepIdx++) {
-          const curY = gridY[cz * N + cx];
-          pathPts.push(new THREE.Vector3(-span + cx * step, curY + 0.22, -span + cz * step));
-          let bestNx = cx,
-            bestNz = cz,
-            bestDrop = 0;
-          for (const [dx, dz] of dirs) {
-            const nx = cx + dx,
-              nz = cz + dz;
-            if (nx < 0 || nx >= N || nz < 0 || nz >= N) continue;
-            const drop = curY - gridY[nz * N + nx];
-            if (drop > bestDrop) {
-              bestDrop = drop;
-              bestNx = nx;
-              bestNz = nz;
-            }
-          }
-          if (bestNx === cx && bestNz === cz) {
-            const key = `${cx}_${cz}`;
-            if (!pondingVisited.has(key) && opts.showPondingZones !== false) {
-              pondingVisited.add(key);
-              pondingZoneCount++;
-              const ring = new THREE.Mesh(
-                new THREE.RingGeometry(0.45, 0.85, 20),
-                new THREE.MeshBasicMaterial({ color: 0x0ea5e9, side: THREE.DoubleSide, depthTest: false })
-              );
-              ring.rotation.x = -Math.PI / 2;
-              ring.position.set(-span + cx * step, curY + 0.26, -span + cz * step);
-              ring.renderOrder = 996;
-              grp.add(ring);
-            }
-            break;
-          }
-          cx = bestNx;
-          cz = bestNz;
-        }
-        if (pathPts.length >= 3 && opts.showRunoffLines !== false) {
-          flowStreamCount++;
-          const lineGeo = new THREE.BufferGeometry().setFromPoints(pathPts);
-          const line = new THREE.Line(
-            lineGeo,
-            new THREE.LineBasicMaterial({ color: 0x38bdf8, depthTest: false, transparent: true, opacity: 0.92 })
-          );
-          line.renderOrder = 995;
-          grp.add(line);
-        }
+    // Add compact 1:N slope ratio badges on a non-overlapping subset of arrows (max 32 sprites)
+    if (showLabels && arrows.length > 0) {
+      const labelStep = Math.max(1, Math.ceil(arrows.length / 28));
+      const spriteScale = Math.max(1.2, Math.min(3.6, cellStep * 0.48));
+      for (let i = 0; i < arrows.length; i += labelStep) {
+        const a = arrows[i];
+        const tier = a.tier || classifySlopeRatioTier(a.slope);
+        const sp = createSlopeRatioSprite(a.ratioLabel, tier.color);
+        sp.position.set(a.x, a.y + yLift + Math.max(0.45, cellStep * 0.16), a.z);
+        sp.scale.set(spriteScale * 1.4, spriteScale * 0.5, 1);
+        grp.add(sp);
       }
     }
 
-    const total = Math.max(1, N * N);
-    return {
-      gentle_pct: ((gentleCount * 100) / total).toFixed(1),
-      moderate_pct: ((modCount * 100) / total).toFixed(1),
-      steep_pct: ((steepCount * 100) / total).toFixed(1),
-      mean_slope_deg: (slopeSum / total).toFixed(1),
-      max_slope_deg: maxSlope.toFixed(1),
-      flow_stream_count: flowStreamCount,
-      ponding_zone_count: pondingZoneCount,
+    const total = Math.max(1, arrows.length);
+    const meanSlopeRatio = arrows.length > 0 ? slopeRatioSum / total : 0.01;
+    const meanRatioN = Math.min(999, Math.max(1, Math.round(1.0 / Math.max(meanSlopeRatio, 1e-4))));
+    const stats = {
+      arrow_count: arrows.length,
+      gentle_pct: arrows.length > 0 ? ((gentleCount * 100) / total).toFixed(1) : "0.0",
+      moderate_pct: arrows.length > 0 ? ((modCount * 100) / total).toFixed(1) : "0.0",
+      steep_pct: arrows.length > 0 ? ((steepCount * 100) / total).toFixed(1) : "0.0",
+      mean_slope_deg: arrows.length > 0 ? (slopeDegSum / total).toFixed(1) : "0.0",
+      max_slope_deg: arrows.length > 0 ? maxSlopeDeg.toFixed(1) : "0.0",
+      mean_ratio_label: arrows.length > 0 ? `1:${meanRatioN}` : "—",
+      ponding_zone_count: tierCounts.flat_200 || 0,
+      tier_counts: tierCounts,
     };
+
+    updateStudioDrainageLegendHud(stats);
+    return stats;
   }
 
   async function openDrainageAndSlopeInspector() {
     setActiveStudioTool("drainage");
     STATE.sidePanelMinimized = false;
-    const localStats = renderDrainageAndSlopeVisuals3D({
-      showSlopeMesh: true,
-      showRunoffLines: true,
-      showPondingZones: true,
-    }) || {
-      gentle_pct: "65.0",
-      moderate_pct: "24.5",
-      steep_pct: "10.5",
-      mean_slope_deg: "12.2",
-      max_slope_deg: "36.8",
-      flow_stream_count: 32,
-      ponding_zone_count: 5,
-    };
 
-    try {
-      const srv = await apiPost("/api/survey/drainage", { scan_id: STATE.activeScanId });
-      if (srv && srv.status === "ok") {
-        STATE.lastDrainageResult = srv;
-      }
-    } catch (_) {}
+    const curGridSize = Number(STATE.drainageGridSize) || 14;
+    const curShowLabels = STATE.drainageShowLabels !== false;
+    const curExcludeWalls = STATE.drainageExcludeWalls !== false;
 
-    showSidePanel(
-      `<span>${tr("坡度與雨水逕流排水分析", "Drainage & Slope Steepness Analysis")}</span>`,
-      `
+    let localStats = renderDrainageAndSlopeVisuals3D({
+      gridSize: curGridSize,
+      showLabels: curShowLabels,
+      excludeWalls: curExcludeWalls,
+    });
+
+    const renderPanelHtml = (st) => {
+      const s = st || {
+        arrow_count: 0,
+        gentle_pct: "0.0",
+        moderate_pct: "0.0",
+        steep_pct: "0.0",
+        mean_slope_deg: "0.0",
+        max_slope_deg: "0.0",
+        mean_ratio_label: "—",
+        ponding_zone_count: 0,
+        tier_counts: {},
+      };
+      const total = Math.max(1, Number(s.arrow_count) || 0);
+      return `
       <div style="font-size:11px;color:var(--ui-text-secondary);margin-bottom:8px;line-height:1.45;">
         ${tr(
-          "自動計算工區 3D 地表坡度分級熱力圖，並以 D8 最陡坡降演算法模擬雨水逕流流向 (Runoff Flow-Lines) 與局部窪地積水區。",
-          "Computes 3D terrain slope steepness classification and simulates D8 steepest-descent rainwater runoff stream ribbons and local ponding depressions."
+          "於真實 3D 地表模型配置排水流向箭頭：箭頭方向指向下坡排水方向，箭頭長度與階梯色彩代表土木工程坡度比 (1:N，如 1:50、1:100、1:200)。",
+          "Places 3D downhill drainage arrows across the real scan surface: arrow length and stepped color indicate civil engineering slope ratio (1:N, e.g. 1:50, 1:100, 1:200)."
         )}
       </div>
       <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:10px;">
         <div class="gs-metric-box" style="border-left:3px solid #10b981;">
-          <div class="lbl">${tr("緩坡 (<15°)", "Gentle (<15°)")}</div>
-          <div class="val" style="color:#10b981;">${localStats.gentle_pct}%</div>
+          <div class="lbl">${tr("平均坡度比", "Mean Ratio")}</div>
+          <div class="val" style="color:#10b981;font-family:var(--font-mono);">${s.mean_ratio_label || "—"}</div>
         </div>
-        <div class="gs-metric-box" style="border-left:3px solid #f59e0b;">
-          <div class="lbl">${tr("中坡 (15°–30°)", "Moderate")}</div>
-          <div class="val" style="color:#f59e0b;">${localStats.moderate_pct}%</div>
+        <div class="gs-metric-box" style="border-left:3px solid #eab308;">
+          <div class="lbl">${tr("平均角度", "Mean Angle")}</div>
+          <div class="val" style="color:#eab308;font-family:var(--font-mono);">${s.mean_slope_deg}°</div>
         </div>
-        <div class="gs-metric-box" style="border-left:3px solid #ef4444;">
-          <div class="lbl">${tr("陡坡 (>30°)", "Steep (>30°)")}</div>
-          <div class="val" style="color:#ef4444;">${localStats.steep_pct}%</div>
+        <div class="gs-metric-box" style="border-left:3px solid #38bdf8;">
+          <div class="lbl">${tr("平緩區 (<1:200)", "Flat (<1:200)")}</div>
+          <div class="val" style="color:#38bdf8;font-family:var(--font-mono);">${s.ponding_zone_count}</div>
         </div>
       </div>
-      <div style="background:var(--ui-bg-subtle);border:1px solid var(--ui-border);border-radius:8px;padding:8px 10px;font-size:11.5px;margin-bottom:10px;display:flex;flex-direction:column;gap:4px;">
-        <div><b>${tr("平均坡度 / 最大坡度：", "Mean / Max Slope:")}</b> ${localStats.mean_slope_deg}° / ${localStats.max_slope_deg}°</div>
-        <div><b>${tr("D8 雨水逕流軌跡數：", "D8 Runoff Stream Lines:")}</b> <span style="color:#38bdf8;font-weight:700;">${localStats.flow_stream_count} ${tr("條流線", "streams")}</span></div>
-        <div><b>${tr("局部窪地積水警示區：", "Local Ponding Depressions:")}</b> <span style="color:#0ea5e9;font-weight:700;">${localStats.ponding_zone_count} ${tr("處窪地", "zones")}</span></div>
+
+      <!-- Stepped 1:N Slope Color & Arrow Length Legend -->
+      <div style="background:var(--ui-bg-subtle);border:1px solid var(--ui-border);border-radius:8px;padding:8px 10px;margin-bottom:10px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;font-size:11px;font-weight:700;margin-bottom:6px;">
+          <span>${tr("階梯坡度比圖例 (Stepped 1:N Legend)", "Stepped Slope Ratio Legend (1:N)")}</span>
+          <span style="color:var(--ui-text-secondary);font-family:var(--font-mono);">${s.arrow_count} ${tr("支箭頭", "arrows")}</span>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:5px;font-size:11px;">
+          ${SLOPE_STEPPED_TIERS.map((t) => {
+            const cnt = Number((s.tier_counts && s.tier_counts[t.id]) || 0);
+            const pct = s.arrow_count ? ((cnt * 100) / total).toFixed(1) : "0.0";
+            const arrowPx = Math.round(t.lenScale * 28);
+            return `
+              <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;">
+                <div style="display:flex;align-items:center;gap:6px;min-width:0;">
+                  <span style="display:inline-block;width:12px;height:12px;border-radius:3px;background:${t.color};flex-shrink:0;"></span>
+                  <span style="font-family:var(--font-mono);font-weight:700;min-width:82px;">${t.ratioRange}</span>
+                  <span style="display:inline-block;height:4px;width:${arrowPx}px;background:${t.color};border-radius:2px;" title="Arrow Length Scale"></span>
+                </div>
+                <span style="font-family:var(--font-mono);color:var(--ui-text-secondary);font-size:10.5px;">${t.pctRange} · <b>${cnt}</b> (${pct}%)</span>
+              </div>
+            `;
+          }).join("")}
+        </div>
       </div>
-      <div style="display:flex;flex-direction:column;gap:6px;margin-bottom:10px;font-size:11.5px;">
+
+      <div style="display:flex;flex-direction:column;gap:7px;margin-bottom:10px;font-size:11.5px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
+          <span>${tr("箭頭網格密度：", "Arrow Grid Density:")}</span>
+          <select id="selDrainageGridSize" class="gs-select" style="width:140px;height:26px;font-size:11px;">
+            <option value="10" ${Number(STATE.drainageGridSize) === 10 ? "selected" : ""}>${tr("疏 (10×10)", "Sparse (10×10)")}</option>
+            <option value="14" ${Number(STATE.drainageGridSize || 14) === 14 ? "selected" : ""}>${tr("標準 (14×14)", "Standard (14×14)")}</option>
+            <option value="18" ${Number(STATE.drainageGridSize) === 18 ? "selected" : ""}>${tr("密 (18×18)", "Dense (18×18)")}</option>
+          </select>
+        </div>
         <label style="display:flex;align-items:center;gap:6px;cursor:pointer;">
-          <input type="checkbox" id="chkDrainageSlopeMesh" checked />
-          <span>${tr("顯示 3D 坡度分級熱力圖 (綠/黃/紅)", "Show 3D Slope Steepness Heatmap")}</span>
+          <input type="checkbox" id="chkDrainageShowLabels" ${STATE.drainageShowLabels !== false ? "checked" : ""} />
+          <span>${tr("於箭頭上方顯示 1:N 坡度比標籤", "Show 1:N Slope Ratio Labels on Arrows")}</span>
         </label>
         <label style="display:flex;align-items:center;gap:6px;cursor:pointer;">
-          <input type="checkbox" id="chkDrainageRunoffLines" checked />
-          <span>${tr("顯示 D8 雨水逕流流向軌跡線 (青藍)", "Show D8 Rainwater Runoff Flow-Lines")}</span>
-        </label>
-        <label style="display:flex;align-items:center;gap:6px;cursor:pointer;">
-          <input type="checkbox" id="chkDrainagePondingZones" checked />
-          <span>${tr("標示局部窪地積水區 (Ponding Zones)", "Highlight Local Ponding Depressions")}</span>
+          <input type="checkbox" id="chkDrainageExcludeWalls" ${STATE.drainageExcludeWalls !== false ? "checked" : ""} />
+          <span>${tr("排除垂直牆面與樹幹 (> 1:1 / 45°)", "Exclude Vertical Walls & Trunks (> 1:1 / 45°)")}</span>
         </label>
       </div>
       <button type="button" class="gs-top-btn" id="btnClearDrainageVisuals" style="width:100%;justify-content:center;">
-        <span>${tr("清除坡度與排水圖層", "Clear Drainage & Slope Overlay")}</span>
+        <span>${tr("清除坡度與排水箭頭", "Clear Slope & Drainage Arrows")}</span>
       </button>
-      `
-    );
+      `;
+    };
 
-    const refreshVis = () => {
-      renderDrainageAndSlopeVisuals3D({
-        showSlopeMesh: Boolean(document.getElementById("chkDrainageSlopeMesh")?.checked),
-        showRunoffLines: Boolean(document.getElementById("chkDrainageRunoffLines")?.checked),
-        showPondingZones: Boolean(document.getElementById("chkDrainagePondingZones")?.checked),
+    const bindDrainageControls = () => {
+      const refreshVis = () => {
+        const gVal = Number(document.getElementById("selDrainageGridSize")?.value || 14);
+        const lVal = Boolean(document.getElementById("chkDrainageShowLabels")?.checked);
+        const wVal = Boolean(document.getElementById("chkDrainageExcludeWalls")?.checked);
+        const newSt = renderDrainageAndSlopeVisuals3D({
+          gridSize: gVal,
+          showLabels: lVal,
+          excludeWalls: wVal,
+        });
+        showSidePanel(
+          `<span>${tr("坡度比 (1:N) 與排水箭頭分析", "Slope (1:N) & Drainage Arrows")}</span>`,
+          renderPanelHtml(newSt)
+        );
+        bindDrainageControls();
+      };
+      document.getElementById("selDrainageGridSize")?.addEventListener("change", refreshVis);
+      document.getElementById("chkDrainageShowLabels")?.addEventListener("change", refreshVis);
+      document.getElementById("chkDrainageExcludeWalls")?.addEventListener("change", refreshVis);
+      document.getElementById("btnClearDrainageVisuals")?.addEventListener("click", () => {
+        clearDrainageVisuals3D();
+        showToast(tr("已清除 3D 坡度與排水箭頭", "Cleared 3D Slope & Drainage arrows"));
       });
     };
-    ["chkDrainageSlopeMesh", "chkDrainageRunoffLines", "chkDrainagePondingZones"].forEach((id) => {
-      document.getElementById(id)?.addEventListener("change", refreshVis);
-    });
-    document.getElementById("btnClearDrainageVisuals")?.addEventListener("click", () => {
-      clearDrainageVisuals3D();
-      showToast(tr("已清除 3D 坡度與排水圖層", "Cleared 3D Drainage & Slope overlay"));
-    });
+
+    showSidePanel(
+      `<span>${tr("坡度比 (1:N) 與排水箭頭分析", "Slope (1:N) & Drainage Arrows")}</span>`,
+      renderPanelHtml(localStats)
+    );
+    bindDrainageControls();
+
+    // Fetch backend DSM slope arrows asynchronously without blocking UI
+    try {
+      const srv = await apiPost("/api/survey/drainage", {
+        scan_id: STATE.activeScanId,
+        grid_size: Number(STATE.drainageGridSize) || 14,
+        exclude_walls: STATE.drainageExcludeWalls !== false,
+      });
+      if (srv && srv.status === "ok") {
+        STATE.lastDrainageResult = srv;
+        if (STATE.activeTool === "drainage" && (!localStats || localStats.arrow_count === 0)) {
+          localStats = renderDrainageAndSlopeVisuals3D({
+            gridSize: Number(STATE.drainageGridSize) || 14,
+            showLabels: STATE.drainageShowLabels !== false,
+            excludeWalls: STATE.drainageExcludeWalls !== false,
+          });
+          showSidePanel(
+            `<span>${tr("坡度比 (1:N) 與排水箭頭分析", "Slope (1:N) & Drainage Arrows")}</span>`,
+            renderPanelHtml(localStats)
+          );
+          bindDrainageControls();
+        }
+      }
+    } catch (_) {}
   }
 
   // ============================================================================
