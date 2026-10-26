@@ -1484,9 +1484,9 @@ class GatheringScansTestSuite(unittest.TestCase):
         self.assertIn("studioThree.cameraTrajectoryGroup.visible = false", js08)
         self.assertIn("studioThree.photoFrustumGroup.visible = false", js08)
 
-        # Feature 5: Depth occlusion for slope arrows, 3D pins, and 2D badges
-        self.assertIn("_occludedByScan", js03)
-        self.assertIn("_badgeOcclusionRaycaster.intersectObjects(occMeshes, false)", js03)
+        # Feature 5: Depth occlusion for slope arrows and 3D measurement pins (while keeping comment pins visible through scan)
+        self.assertIn("const isCommentMarker = grp === studioThree.commentPinsGroup;", js03)
+        self.assertIn("depthTest: !isCommentMarker", js03)
         self.assertIn("polygonOffsetFactor: -1", js08)
 
         # Feature 6: Auto-show classification when Classify tab opens & auto-hide when closed

@@ -70,8 +70,9 @@
       return studioThree._laserSpatialIndex;
     }
 
-    // Keep 100% of triangles (triStride = 1) up to 5.0M tris so multi-scan merged models never get swiss-cheese gaps!
-    const triStride = totalTris > 5000000 ? 2 : 1;
+    // Cap synchronous indexing at ~180k triangles so first mouse-move / hover never stalls a 60 FPS frame
+    const targetMaxTris = 180000;
+    const triStride = totalTris > targetMaxTris ? Math.ceil(totalTris / targetMaxTris) : 1;
     const maxIndexed = Math.ceil(totalTris / triStride) + 16;
     const triVerts = new Float32Array(maxIndexed * 9);
     const triAbsNy = new Float32Array(maxIndexed);
@@ -3286,7 +3287,8 @@
       );
 
     let frameStart = performance.now();
-    const triStride = totalTris > 5000000 ? 2 : 1;
+    const targetAsyncTris = 450000;
+    const triStride = totalTris > targetAsyncTris ? Math.ceil(totalTris / targetAsyncTris) : 1;
     const maxIndexed = Math.ceil(totalTris / triStride) + 16;
     const triVerts = new Float32Array(maxIndexed * 9);
     const triAbsNy = new Float32Array(maxIndexed);

@@ -1922,13 +1922,14 @@
     if (!studioThree) return null;
     const grp = targetGroup || studioThree.overlayGroup;
     const emit = typeof onAddMesh === "function" ? onAddMesh : (m) => grp.add(m);
+    const isCommentMarker = grp === studioThree.commentPinsGroup;
 
     const sphereGeo = new THREE.SphereGeometry(1, 16, 16);
     const sphereMat = new THREE.MeshBasicMaterial({
       color: colorHex,
-      depthTest: true,
+      depthTest: !isCommentMarker,
       depthWrite: false,
-      polygonOffset: true,
+      polygonOffset: !isCommentMarker,
       polygonOffsetFactor: -2,
       polygonOffsetUnits: -2,
       transparent: true,
@@ -1945,9 +1946,9 @@
     const ringMat = new THREE.MeshBasicMaterial({
       color: 0xffffff,
       side: THREE.DoubleSide,
-      depthTest: true,
+      depthTest: !isCommentMarker,
       depthWrite: false,
-      polygonOffset: true,
+      polygonOffset: !isCommentMarker,
       polygonOffsetFactor: -2,
       polygonOffsetUnits: -2,
       transparent: true,
@@ -2090,64 +2091,12 @@
       return bPri - aPri;
     });
 
-    // Throttled 3D scan occlusion check (every ~90ms when camera moves or badges/meshes change)
-    const nowMs = performance.now();
-    const camPos = studioThree.camera.position;
-    const camQuat = studioThree.camera.quaternion;
-    const pivotChildCnt = studioThree.modelPivot ? studioThree.modelPivot.children.length : 0;
-    const camSig = `${camPos.x.toFixed(2)},${camPos.y.toFixed(2)},${camPos.z.toFixed(2)}|${camQuat.x.toFixed(2)},${camQuat.y.toFixed(2)},${camQuat.z.toFixed(2)}|${orderedBadges.length}|${pivotChildCnt}`;
-    const needOcclusionPass =
-      (nowMs - _lastBadgeOcclusionCheckMs >= 90 && camSig !== _lastBadgeOcclusionCamSig) ||
-      orderedBadges.some((b) => b._occludedByScan === undefined);
-
-    let occMeshes = null;
-    if (needOcclusionPass && studioThree.modelPivot) {
-      _lastBadgeOcclusionCheckMs = nowMs;
-      _lastBadgeOcclusionCamSig = camSig;
-      occMeshes = [];
-      const collectOccFromRoot = (rootObj) => {
-        if (!rootObj || rootObj.visible === false) return;
-        rootObj.traverse((obj) => {
-          if (obj && obj.isMesh && obj.visible !== false && !obj.userData?.isAlignBoxHelper && obj.name !== "referenceTerrain") {
-            occMeshes.push(obj);
-          }
-        });
-      };
-      collectOccFromRoot(studioThree.modelPivot);
-      if (STATE.multiAlign?.active && studioThree.multiAlignGroup) {
-        collectOccFromRoot(studioThree.multiAlignGroup);
-      }
-    }
-
     let visibleCatBadges = 0;
     orderedBadges.forEach((b) => {
       const anchorPt = b.worldPt || b.worldPos;
       if (!b.el || !anchorPt) return;
       const v = anchorPt.clone().project(studioThree.camera);
       if (v.z > 1 || Math.abs(v.x) > 1.22 || Math.abs(v.y) > 1.22) {
-        b.el.style.display = "none";
-        return;
-      }
-
-      if (needOcclusionPass || b._occludedByScan === undefined) {
-        if (occMeshes && occMeshes.length > 0 && !b.isTempDistance) {
-          _badgeOcclusionDir.set(anchorPt.x - camPos.x, anchorPt.y + 0.25 - camPos.y, anchorPt.z - camPos.z);
-          const camDist = _badgeOcclusionDir.length();
-          if (camDist > 0.9) {
-            _badgeOcclusionDir.divideScalar(camDist);
-            _badgeOcclusionRaycaster.set(camPos, _badgeOcclusionDir);
-            _badgeOcclusionRaycaster.near = 0.3;
-            _badgeOcclusionRaycaster.far = Math.max(0.4, camDist - 0.6);
-            const hits = _badgeOcclusionRaycaster.intersectObjects(occMeshes, false);
-            b._occludedByScan = hits.some((hit) => hit && hit.distance < camDist - 0.6);
-          } else {
-            b._occludedByScan = false;
-          }
-        } else {
-          b._occludedByScan = false;
-        }
-      }
-      if (b._occludedByScan) {
         b.el.style.display = "none";
         return;
       }
