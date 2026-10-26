@@ -3924,7 +3924,52 @@
     });
   }
 
+  function getCurrentCommentActorName() {
+    let savedGuest = "";
+    try {
+      savedGuest = document.getElementById("txtGuestAuthorName")?.value.trim() || localStorage.getItem("gs_guest_comment_author") || "";
+    } catch (_) {}
+    const isExt = Boolean(STATE.shareToken || !STATE.currentUser?.email || STATE.currentUser.email.startsWith("guest@"));
+    return isExt ? savedGuest || STATE.currentUser?.name || "External Reviewer" : STATE.currentUser?.name || "Engineer";
+  }
+
+  function openLocationPhotosForComment(c) {
+    if (!c || !c.comment_id) return;
+    if (typeof canUserEditComment === "function" && !canUserEditComment(c)) {
+      showToast(tr("僅標註建立者或管理員可新增或修改此標註的照片", "Only the comment author or an admin can add or modify photos on this comment."));
+      return;
+    }
+    STATE.targetAttachCommentId = c.comment_id;
+    const cmtTwd = { e: Number(c.twd97_e) || 0, n: Number(c.twd97_n) || 0, h: Number(c.twd97_h) || 0 };
+    const hasTwd = Math.abs(cmtTwd.e) > 100 && Math.abs(cmtTwd.n) > 100;
+    const px = Number(c.pos_x) || 0;
+    const py = Number(c.pos_y) || 0;
+    const pz = Number(c.pos_z) || 0;
+    const cmtPt =
+      px === 0 && py === 0 && pz === 0 && hasTwd && typeof twd97ToStudioLocalVec === "function"
+        ? twd97ToStudioLocalVec(cmtTwd.e, cmtTwd.n, cmtTwd.h, null, null)
+        : new THREE.Vector3(px, py, pz);
+    if (hasTwd) {
+      cmtPt._explicitTwd = cmtTwd;
+    }
+    STATE.lastInspectedPhotoTargetTwd = cmtTwd;
+    STATE.lastInspectedPhotoTargetPt = cmtPt;
+    STATE.activeTool = "photos";
+    STATE.sidePanelMinimized = false;
+    if (typeof updateDockActiveStates === "function") updateDockActiveStates();
+    if (typeof syncStudioControlsForTool === "function") syncStudioControlsForTool();
+    openRtkPhotoInspector(cmtPt, true);
+  }
+  window.openLocationPhotosForComment = openLocationPhotosForComment;
+
   async function uploadLocalFilesToComment(fileList, commentId = null, pt = null, twd = null) {
+    if (commentId && STATE.activeScan && Array.isArray(STATE.activeScan.comments)) {
+      const targetCmt = STATE.activeScan.comments.find((item) => String(item.comment_id) === String(commentId));
+      if (targetCmt && typeof canUserEditComment === "function" && !canUserEditComment(targetCmt)) {
+        showToast(tr("僅標註建立者或管理員可上傳照片至此標註", "Only the comment author or an admin can upload photos to this comment."));
+        return [];
+      }
+    }
     const files = Array.from(fileList || []).filter((f) => {
       if (!f) return false;
       const t = String(f.type || "").toLowerCase();
@@ -3956,7 +4001,8 @@
       const res = await apiPost("/api/comments/upload-photo", {
         scan_id: scanId,
         comment_id: commentId || undefined,
-        author_name: STATE.currentUser?.name || "Engineer",
+        author_email: STATE.currentUser?.email || "",
+        author_name: getCurrentCommentActorName(),
         photos: payloadPhotos,
       });
       const uploaded = Array.isArray(res?.photos) ? res.photos : res?.photo ? [res.photo] : [];
@@ -4061,6 +4107,7 @@
         const cid = escapeHtml(c.comment_id || "");
         const timeStr = escapeHtml((c.created_at || "").slice(0, 16));
         const avatar = getCommentAuthorAvatar(c.author_name || "Reviewer", c.author_email || "");
+        const canEditThis = typeof canUserEditComment === "function" ? canUserEditComment(c) : canModifyComments;
         const attachedPhotos = Array.isArray(c.photos) ? c.photos.filter((p) => p && p.url) : [];
         const photosGridHtml = attachedPhotos.length
           ? `<div class="gs-comment-photos-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(74px,1fr));gap:6px;margin-top:7px;">
@@ -4074,7 +4121,7 @@
                       <div style="display:flex;align-items:center;justify-content:space-between;padding:2px 4px;font-size:9.5px;background:rgba(15,23,42,0.78);color:#e2e8f0;">
                         <a href="${purl}" download="${pfn}" title="${tr("下載照片", "Download")}" style="color:#38bdf8;text-decoration:none;font-weight:700;">⬇</a>
                         ${
-                          canModifyComments && cid
+                          canEditThis && cid
                             ? `<button type="button" data-comment-remove-photo-cid="${cid}" data-comment-remove-photo-url="${purl}" title="${tr("移除附加照片", "Remove attached photo")}" style="background:none;border:none;color:#f87171;cursor:pointer;font-size:10px;padding:0;line-height:1;">✕</button>`
                             : ""
                         }
@@ -4086,7 +4133,7 @@
             </div>`
           : "";
         return `
-        <div class="gs-comment-card" data-comment-id="${cid}" title="${tr("可將 RTK 照片拖曳至此標註卡片附加", "Drag & drop RTK photo(s) onto this comment card to attach")}" style="background:var(--ui-bg-subtle);border:1px solid var(--ui-border);border-radius:8px;padding:9px;margin-top:8px;transition:border-color 0.15s,background 0.15s;">
+        <div class="gs-comment-card" data-comment-id="${cid}" data-comment-editable="${canEditThis ? "1" : "0"}" title="${canEditThis ? tr("可將 RTK 照片或電腦圖片拖曳至此標註卡片附加", "Drag & drop RTK photo(s) or image files onto this comment card to attach") : ""}" style="background:var(--ui-bg-subtle);border:1px solid var(--ui-border);border-radius:8px;padding:9px;margin-top:8px;transition:border-color 0.15s,background 0.15s;">
           <div style="display:flex;justify-content:space-between;align-items:center;gap:6px;font-size:11px;color:var(--ui-accent);font-weight:700;">
             <span style="display:inline-flex;align-items:center;gap:6px;">
               <span class="gs-comment-card-avatar" style="background:${avatar.bg};">${escapeHtml(avatar.chars)}</span>
@@ -4095,8 +4142,9 @@
             <div style="display:flex;align-items:center;gap:4px;">
               <span style="color:var(--ui-text-muted);font-weight:500;font-size:10.5px;">${timeStr}</span>
               ${
-                canModifyComments && cid
-                  ? `<button type="button" class="btn-xs" data-comment-upload-photo="${cid}" title="${tr("上傳照片至 Google Drive 並附加", "Upload photo to Google Drive & attach")}" aria-label="${tr("上傳照片", "Upload Photo")}" style="height:22px;padding:0 5px;justify-content:center;color:var(--ui-accent);">📷+</button>
+                canEditThis && cid
+                  ? `<button type="button" class="btn-xs" data-comment-find-photos="${cid}" title="${tr("檢視此標註位置的 RTK 實景照片並選擇附加", "Find & attach RTK photos at this comment's location")}" aria-label="${tr("選擇位置照片", "Find Location Photos")}" style="height:22px;padding:0 5px;justify-content:center;color:var(--ui-accent);border-color:var(--ui-accent);">📷+</button>
+                     <button type="button" class="btn-xs" data-comment-upload-photo="${cid}" title="${tr("從電腦或手機上傳照片至 Google Drive 並附加", "Upload local photo to Google Drive & attach")}" aria-label="${tr("上傳檔案", "Upload File")}" style="height:22px;padding:0 5px;justify-content:center;">📁</button>
                      <button type="button" class="btn-xs" data-comment-edit="${cid}" title="${tr("編輯標註", "Edit Comment")}" aria-label="${tr("編輯標註", "Edit Comment")}" style="height:22px;width:24px;padding:0;justify-content:center;">
                        <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
                      </button>
@@ -4272,6 +4320,8 @@
               action: "update",
               comment_id: cid,
               scan_id: STATE.activeScanId,
+              author_email: STATE.currentUser?.email || "",
+              author_name: getCurrentCommentActorName(),
               photos: remaining,
             });
             if (Array.isArray(res?.comments) && STATE.activeScan) {
@@ -4281,6 +4331,18 @@
             openCommentsInspector(pt, twd);
           } catch (err) {
             showToast(`Remove Photo Error: ${err.message}`);
+          }
+        });
+      });
+
+      // Open RTK location photos for this comment
+      listBox.querySelectorAll("[data-comment-find-photos]").forEach((btn) => {
+        btn.addEventListener("click", (ev) => {
+          ev.stopPropagation();
+          const cid = btn.getAttribute("data-comment-find-photos");
+          const targetComment = comments.find((item) => String(item.comment_id) === String(cid));
+          if (targetComment) {
+            openLocationPhotosForComment(targetComment);
           }
         });
       });
@@ -4296,8 +4358,8 @@
         });
       });
 
-      // Drag and drop local image file(s) OR RTK photo(s) onto any existing comment card
-      listBox.querySelectorAll(".gs-comment-card[data-comment-id]").forEach((cardEl) => {
+      // Drag and drop local image file(s) OR RTK photo(s) onto any existing editable comment card
+      listBox.querySelectorAll('.gs-comment-card[data-comment-id][data-comment-editable="1"]').forEach((cardEl) => {
         cardEl.addEventListener("dragover", (ev) => {
           ev.preventDefault();
           ev.dataTransfer.dropEffect = "copy";
@@ -4369,6 +4431,8 @@
               action: "update",
               comment_id: cid,
               scan_id: STATE.activeScanId,
+              author_email: STATE.currentUser?.email || "",
+              author_name: getCurrentCommentActorName(),
               text: newText,
             });
             if (Array.isArray(res?.comments) && STATE.activeScan) {
@@ -4393,6 +4457,8 @@
               action: "delete",
               comment_id: cid,
               scan_id: STATE.activeScanId,
+              author_email: STATE.currentUser?.email || "",
+              author_name: getCurrentCommentActorName(),
             });
             if (Array.isArray(res?.comments) && STATE.activeScan) {
               STATE.activeScan.comments = res.comments;
@@ -4525,20 +4591,38 @@
     }
 
     scan.comments.forEach((c) => {
-      const worldPt = new THREE.Vector3(Number(c.pos_x) || 0, (Number(c.pos_y) || 0) + 0.12, Number(c.pos_z) || 0);
+      const px = Number(c.pos_x) || 0;
+      const py = Number(c.pos_y) || 0;
+      const pz = Number(c.pos_z) || 0;
+      const cE = Number(c.twd97_e) || 0;
+      const cN = Number(c.twd97_n) || 0;
+      const cH = Number(c.twd97_h) || 0;
+      const basePt =
+        px === 0 && py === 0 && pz === 0 && Math.abs(cE) > 100 && Math.abs(cN) > 100 && typeof twd97ToStudioLocalVec === "function"
+          ? twd97ToStudioLocalVec(cE, cN, cH, null, null)
+          : new THREE.Vector3(px, py, pz);
+      const worldPt = new THREE.Vector3(basePt.x, basePt.y + 0.12, basePt.z);
       const author = escapeHtml(c.author_name || "Reviewer");
       const timeStr = escapeHtml((c.created_at || "").slice(0, 16));
       const textHtml = escapeHtml(c.text || "");
       const cid = escapeHtml(c.comment_id || "");
       const avatar = getCommentAuthorAvatar(c.author_name || "Reviewer", c.author_email || "");
       const avatarChars = escapeHtml(avatar.chars);
+      const canEditThis = typeof canUserEditComment === "function" ? canUserEditComment(c) : false;
       const cPhotos = Array.isArray(c.photos) ? c.photos.filter((p) => p && p.url) : [];
       const pinPhotosHtml = cPhotos.length
         ? `<div class="gs-comment-pin-photos" style="display:flex;gap:4px;flex-wrap:wrap;margin-top:6px;">
             ${cPhotos
               .map(
                 (p, pIdx) =>
-                  `<img src="${escapeHtml(p.url)}" alt="${escapeHtml(p.filename || "")}" data-pin-photo-idx="${pIdx}" style="width:52px;height:40px;object-fit:cover;border-radius:4px;border:1px solid rgba(56,189,248,0.5);cursor:zoom-in;" />`
+                  `<div style="position:relative;display:inline-flex;">
+                    <img src="${escapeHtml(p.url)}" alt="${escapeHtml(p.filename || "")}" data-pin-photo-idx="${pIdx}" style="width:52px;height:40px;object-fit:cover;border-radius:4px;border:1px solid rgba(56,189,248,0.5);cursor:zoom-in;" />
+                    ${
+                      canEditThis && cid
+                        ? `<button type="button" data-pin-remove-photo-url="${escapeHtml(p.url)}" title="${tr("移除此附加照片", "Remove attached photo")}" style="position:absolute;top:-4px;right:-4px;width:15px;height:15px;border-radius:50%;background:rgba(15,23,42,0.92);color:#f87171;border:1px solid rgba(248,113,113,0.45);font-size:9px;cursor:pointer;line-height:1;padding:0;display:inline-flex;align-items:center;justify-content:center;">✕</button>`
+                        : ""
+                    }
+                  </div>`
               )
               .join("")}
           </div>`
@@ -4556,9 +4640,13 @@
             </div>
             <div class="gs-comment-pin-text">${textHtml}</div>
             ${pinPhotosHtml}
-            <div style="display:flex;justify-content:flex-end;margin-top:5px;">
-              <button type="button" class="btn-xs" data-pin-upload-photo="${cid}" style="height:20px;padding:0 6px;font-size:10px;color:var(--ui-accent);border-color:var(--ui-accent);">📷+ ${tr("上傳照片", "Add Photo")}</button>
-            </div>
+            ${
+              canEditThis && cid
+                ? `<div style="display:flex;justify-content:flex-end;margin-top:6px;">
+                     <button type="button" class="btn-xs" data-pin-upload-photo="${cid}" style="height:22px;padding:0 7px;font-size:10.5px;color:var(--ui-accent);border-color:var(--ui-accent);pointer-events:auto;cursor:pointer;">📷+ ${tr("新增照片", "Add Photo")}</button>
+                   </div>`
+                : ""
+            }
           </div>
         </div>
       `;
@@ -4568,12 +4656,40 @@
         pointerEventsAuto: true,
       });
       if (badge && badge.el) {
-        badge.el.addEventListener("click", (ev) => {
+        badge.el.addEventListener("pointerdown", (ev) => ev.stopPropagation());
+        badge.el.addEventListener("mousedown", (ev) => ev.stopPropagation());
+        badge.el.addEventListener("click", async (ev) => {
+          const rmBtn = ev.target && ev.target.closest ? ev.target.closest("[data-pin-remove-photo-url]") : null;
+          if (rmBtn && canEditThis && c.comment_id) {
+            ev.stopPropagation();
+            const rmUrl = rmBtn.getAttribute("data-pin-remove-photo-url");
+            const remaining = (Array.isArray(c.photos) ? c.photos : []).filter((p) => String(p.url) !== String(rmUrl));
+            try {
+              const res = await apiPost("/api/comments/update", {
+                action: "update",
+                comment_id: c.comment_id,
+                scan_id: STATE.activeScanId,
+                author_email: STATE.currentUser?.email || "",
+                author_name: getCurrentCommentActorName(),
+                photos: remaining,
+              });
+              if (Array.isArray(res?.comments) && STATE.activeScan) {
+                STATE.activeScan.comments = res.comments;
+              }
+              await refreshScansCatalog();
+              renderCommentPins3D();
+              if (STATE.activeTool === "comments" && document.getElementById("commentsListBox")) {
+                openCommentsInspector();
+              }
+            } catch (err) {
+              showToast(`Remove Photo Error: ${err.message}`);
+            }
+            return;
+          }
           const uploadBtn = ev.target && ev.target.closest ? ev.target.closest("[data-pin-upload-photo]") : null;
           if (uploadBtn) {
             ev.stopPropagation();
-            const upCid = uploadBtn.getAttribute("data-pin-upload-photo");
-            if (upCid) triggerCommentPhotoFilePicker(upCid);
+            openLocationPhotosForComment(c);
             return;
           }
           const imgTarget = ev.target && ev.target.closest ? ev.target.closest("[data-pin-photo-idx]") : null;
@@ -4592,39 +4708,42 @@
           }
         });
 
-        // Allow dragging 1 or more local image files OR RTK photos directly onto the 3D comment pin on the scan!
-        badge.el.addEventListener("dragover", (ev) => {
-          ev.preventDefault();
-          ev.dataTransfer.dropEffect = "copy";
-          badge.el.classList.add("drag-over");
-        });
-        badge.el.addEventListener("dragleave", () => {
-          badge.el.classList.remove("drag-over");
-        });
-        badge.el.addEventListener("drop", async (ev) => {
-          ev.preventDefault();
-          ev.stopPropagation();
-          badge.el.classList.remove("drag-over");
-          if (c.comment_id && ev.dataTransfer && ev.dataTransfer.files && ev.dataTransfer.files.length > 0) {
-            await uploadLocalFilesToComment(ev.dataTransfer.files, c.comment_id);
-            return;
-          }
-          let dropped = STATE.draggingRtkPhotos || [];
-          try {
-            const raw =
-              ev.dataTransfer.getData("application/x-gs-rtk-photos") || ev.dataTransfer.getData("text/plain");
-            if (raw) {
-              const parsed = JSON.parse(raw);
-              if (Array.isArray(parsed) && parsed.length) dropped = parsed;
+        // Allow dragging 1 or more local image files OR RTK photos directly onto the 3D comment pin ONLY if user is author or admin!
+        if (canEditThis) {
+          badge.el.addEventListener("dragover", (ev) => {
+            ev.preventDefault();
+            ev.dataTransfer.dropEffect = "copy";
+            badge.el.classList.add("drag-over");
+          });
+          badge.el.addEventListener("dragleave", () => {
+            badge.el.classList.remove("drag-over");
+          });
+          badge.el.addEventListener("drop", async (ev) => {
+            ev.preventDefault();
+            ev.stopPropagation();
+            badge.el.classList.remove("drag-over");
+            if (c.comment_id && ev.dataTransfer && ev.dataTransfer.files && ev.dataTransfer.files.length > 0) {
+              await uploadLocalFilesToComment(ev.dataTransfer.files, c.comment_id);
+              return;
             }
-          } catch (_) {}
-          if (c.comment_id && dropped.length && typeof attachPhotosToCommentById === "function") {
-            await attachPhotosToCommentById(c.comment_id, dropped);
-          }
-        });
+            let dropped = STATE.draggingRtkPhotos || [];
+            try {
+              const raw =
+                ev.dataTransfer.getData("application/x-gs-rtk-photos") || ev.dataTransfer.getData("text/plain");
+              if (raw) {
+                const parsed = JSON.parse(raw);
+                if (Array.isArray(parsed) && parsed.length) dropped = parsed;
+              }
+            } catch (_) {}
+            if (c.comment_id && dropped.length && typeof attachPhotosToCommentById === "function") {
+              await attachPhotosToCommentById(c.comment_id, dropped);
+            }
+          });
+        }
       }
     });
     update2DBadgePositions();
   }
+  window.renderCommentPins3D = renderCommentPins3D;
 
 

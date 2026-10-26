@@ -153,6 +153,7 @@
     },
     gcpPickMode: false,
     pendingCommentDraftPt: null,
+    targetAttachCommentId: null,
     multiAlign: {
       active: false,
       gizmoMode: "both", // 'both' | 'translate' | 'rotate'
@@ -924,6 +925,43 @@
       allowDownload: !isGuest,
     };
   }
+  window.getCurrentUserRoleInfo = getCurrentUserRoleInfo;
+
+  function canUserEditComment(c) {
+    const roleInfo = getCurrentUserRoleInfo();
+    if (roleInfo.role === "admin" || roleInfo.role === "owner" || Number(roleInfo.level) >= 4) {
+      return true;
+    }
+    if (!roleInfo.allowComments || !c) {
+      return false;
+    }
+    const userEmail = String(STATE.currentUser?.email || "").trim().toLowerCase();
+    const userName = String(STATE.currentUser?.name || "").trim().toLowerCase();
+    const cmtEmail = String(c.author_email || "").trim().toLowerCase();
+    const cmtName = String(c.author_name || "").trim().toLowerCase();
+    const ownerAliases = new Set(["glibivanov@gatheren.com.tw", "gleb.ivanov1999@gmail.com"]);
+    if (userEmail && !userEmail.startsWith("guest@") && userEmail !== "external@gatheren.cloud") {
+      return Boolean(
+        (cmtEmail && cmtEmail === userEmail) ||
+          (ownerAliases.has(userEmail) && ownerAliases.has(cmtEmail)) ||
+          ((!cmtEmail || cmtEmail === "guest@gatheren.cloud") && cmtName && userName && cmtName === userName)
+      );
+    }
+    if (STATE.shareToken && roleInfo.allowComments) {
+      let savedGuest = "";
+      try {
+        savedGuest = String(localStorage.getItem("gs_guest_comment_author") || "").trim().toLowerCase();
+      } catch (_) {}
+      return Boolean(
+        savedGuest &&
+          cmtName &&
+          cmtName === savedGuest &&
+          (!cmtEmail || cmtEmail === "external@gatheren.cloud" || cmtEmail.startsWith("guest@"))
+      );
+    }
+    return false;
+  }
+  window.canUserEditComment = canUserEditComment;
 
   function applyRolePermissionsToUI() {
     const info = getCurrentUserRoleInfo();
@@ -1083,6 +1121,9 @@
     const adminForm = document.getElementById("adminUserEditorForm");
     if (adminForm) {
       adminForm.style.display = info.canManageUsers ? "grid" : "none";
+    }
+    if (STATE.activeView === "studio" && typeof window.renderCommentPins3D === "function") {
+      window.renderCommentPins3D();
     }
   }
 

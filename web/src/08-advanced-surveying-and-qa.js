@@ -3229,7 +3229,16 @@
       `<div style="font-size:12px;color:var(--ui-text-secondary);">${tr("正在查詢 Pix4Dmatic 率定相機姿態與 3D 視錐...", "Querying calibrated Pix4Dmatic camera poses & 3D frustums...")}</div>`
     );
     try {
-      const clickTwd = pt ? localToTwd97(pt) : null;
+      const clickTwd =
+        pt && pt._explicitTwd && (Math.abs(Number(pt._explicitTwd.e) || 0) > 100 || Math.abs(Number(pt._explicitTwd.n) || 0) > 100)
+          ? {
+              e: Number(pt._explicitTwd.e) || 0,
+              n: Number(pt._explicitTwd.n) || 0,
+              h: Number(pt._explicitTwd.h) || 0,
+            }
+          : pt
+          ? localToTwd97(pt)
+          : null;
       const reqPayload = {
         scan_id: STATE.activeScanId,
         x: pt ? pt.x : 0,
@@ -3256,8 +3265,33 @@
       placePhotoTargetMarker3D(targetPt);
       renderRtkPhotoFrustums3D(photos, targetTwd, targetPt, 0);
 
-      const existingComments = Array.isArray(STATE.activeScan?.comments) ? STATE.activeScan.comments : [];
+      const allComments = Array.isArray(STATE.activeScan?.comments) ? STATE.activeScan.comments : [];
+      const existingComments = allComments.filter((c) =>
+        typeof canUserEditComment === "function" ? canUserEditComment(c) : true
+      );
+      const targetCmt = STATE.targetAttachCommentId
+        ? existingComments.find((c) => String(c.comment_id) === String(STATE.targetAttachCommentId))
+        : null;
+      if (STATE.targetAttachCommentId && !targetCmt) {
+        STATE.targetAttachCommentId = null;
+      }
+      const targetCommentBannerHtml = targetCmt
+        ? `<div style="background:rgba(2,132,199,0.14);border:1.5px solid var(--ui-accent);border-radius:8px;padding:8px 10px;margin-bottom:8px;">
+             <div style="font-size:11.5px;font-weight:700;color:var(--ui-accent);margin-bottom:5px;line-height:1.35;">
+               🎯 ${tr(`正在為標註「${escapeHtml(String(targetCmt.text || "").slice(0, 32))}」選擇位置照片`, `Selecting location photos for comment "${escapeHtml(String(targetCmt.text || "").slice(0, 32))}"`)}
+             </div>
+             <div style="display:flex;gap:5px;flex-wrap:wrap;">
+               <button type="button" class="btn-xs primary" id="btnTargetCommentUploadLocalPhoto" style="gap:4px;">
+                 📁 ${tr("從電腦上傳檔案", "Upload Local File")}
+               </button>
+               <button type="button" class="btn-xs" id="btnCancelTargetAttachComment">
+                 ✕ ${tr("取消指定", "Clear Target")}
+               </button>
+             </div>
+           </div>`
+        : "";
       const commentDropTargetsHtml = `
+        ${targetCommentBannerHtml}
         <div style="background:var(--ui-bg-pill);border:1px dashed var(--ui-border-strong);border-radius:8px;padding:8px 10px;margin-bottom:8px;">
           <div style="display:flex;justify-content:space-between;align-items:center;font-size:11px;font-weight:700;color:var(--ui-text-primary);margin-bottom:5px;">
             <span>💬 ${tr("拖曳照片至標註以附加 (可多選)", "Drag & Drop Photo(s) onto a Comment")}</span>
@@ -3279,8 +3313,9 @@
                 const cid = escapeHtml(c.comment_id || "");
                 const pCnt = Array.isArray(c.photos) ? c.photos.length : 0;
                 const snippet = escapeHtml(String(c.text || "").slice(0, 34));
+                const isTarget = targetCmt && String(targetCmt.comment_id) === String(c.comment_id);
                 return `
-                  <div class="gs-comment-drop-target" data-drop-comment-id="${cid}" style="padding:5px 8px;border:1px solid var(--ui-border);border-radius:6px;background:var(--ui-bg-subtle);font-size:11px;color:var(--ui-text-primary);display:flex;align-items:center;justify-content:space-between;gap:6px;">
+                  <div class="gs-comment-drop-target" data-drop-comment-id="${cid}" style="padding:5px 8px;border:1px solid ${isTarget ? "var(--ui-accent)" : "var(--ui-border)"};border-radius:6px;background:${isTarget ? "rgba(2,132,199,0.12)" : "var(--ui-bg-subtle)"};font-size:11px;color:var(--ui-text-primary);display:flex;align-items:center;justify-content:space-between;gap:6px;">
                     <span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"><b>${escapeHtml(c.author_name || "Reviewer")}:</b> ${snippet}</span>
                     <span style="font-size:10px;font-family:var(--font-mono);color:var(--ui-accent);flex-shrink:0;">📷 ${pCnt}</span>
                   </div>
@@ -3392,11 +3427,27 @@
       .map((p) => _serializeRtkPhotoForComment(p, STATE.lastInspectedPhotoTargetTwd))
       .filter(Boolean);
     if (!cid || !cleanPhotos.length) return false;
+    if (STATE.activeScan && Array.isArray(STATE.activeScan.comments)) {
+      const targetCmt = STATE.activeScan.comments.find((c) => String(c.comment_id) === cid);
+      if (targetCmt && typeof canUserEditComment === "function" && !canUserEditComment(targetCmt)) {
+        showToast(tr("僅標註建立者或管理員可附加照片至此標註", "Only the comment author or an admin can attach photos to this comment."));
+        return false;
+      }
+    }
+    let resolvedAuthorName = STATE.currentUser?.name || "Engineer";
+    try {
+      const savedGuest = localStorage.getItem("gs_guest_comment_author") || "";
+      if (STATE.shareToken || !STATE.currentUser?.email || STATE.currentUser.email.startsWith("guest@")) {
+        resolvedAuthorName = savedGuest || resolvedAuthorName;
+      }
+    } catch (_) {}
     try {
       const res = await apiPost("/api/comments/update", {
         action: "attach_photos",
         comment_id: cid,
         scan_id: STATE.activeScanId,
+        author_email: STATE.currentUser?.email || "",
+        author_name: resolvedAuthorName,
         append_photos: cleanPhotos,
       });
       if (Array.isArray(res?.comments) && STATE.activeScan) {
@@ -3440,6 +3491,17 @@
     document.getElementById("btnToggleCamTrajectory3D")?.addEventListener("click", async () => {
       STATE.showCameraTrajectory3D = !STATE.showCameraTrajectory3D;
       await loadAndRenderScanCameraTrajectory3D(STATE.activeScanId, false);
+      renderRtkPhotoInspectorPanel(targetLocalPt, true);
+    });
+    document.getElementById("btnTargetCommentUploadLocalPhoto")?.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      if (STATE.targetAttachCommentId && typeof triggerCommentPhotoFilePicker === "function") {
+        triggerCommentPhotoFilePicker(STATE.targetAttachCommentId, targetLocalPt, targetTwd);
+      }
+    });
+    document.getElementById("btnCancelTargetAttachComment")?.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      STATE.targetAttachCommentId = null;
       renderRtkPhotoInspectorPanel(targetLocalPt, true);
     });
 
@@ -3487,7 +3549,7 @@
       });
     });
     document.querySelectorAll("[data-photo-attach-comment-idx]").forEach((btn) => {
-      btn.addEventListener("click", (ev) => {
+      btn.addEventListener("click", async (ev) => {
         ev.stopPropagation();
         const idx = Number(btn.getAttribute("data-photo-attach-comment-idx")) || 0;
         const checkedIdxs = [];
@@ -3503,6 +3565,24 @@
           .map((i) => _serializeRtkPhotoForComment(photos[i], targetTwd || STATE.lastInspectedPhotoTargetTwd))
           .filter(Boolean);
         if (!selectedPhotos.length) return;
+        if (STATE.targetAttachCommentId) {
+          const targetCmt = (Array.isArray(STATE.activeScan?.comments) ? STATE.activeScan.comments : []).find(
+            (c) => String(c.comment_id) === String(STATE.targetAttachCommentId)
+          );
+          if (targetCmt && (typeof canUserEditComment !== "function" || canUserEditComment(targetCmt))) {
+            const ok = await attachPhotosToCommentById(STATE.targetAttachCommentId, selectedPhotos);
+            if (ok) {
+              showToast(
+                tr(
+                  `✓ 已將 ${selectedPhotos.length} 張照片新增至標註「${String(targetCmt.text || "").slice(0, 24)}」`,
+                  `✓ Added ${selectedPhotos.length} photo(s) to "${String(targetCmt.text || "").slice(0, 24)}"`
+                )
+              );
+              renderRtkPhotoInspectorPanel(targetLocalPt || STATE.lastInspectedPhotoTargetPt, true);
+            }
+            return;
+          }
+        }
         STATE.pendingCommentDraftPhotos = selectedPhotos;
         if (typeof openCommentsInspector === "function") {
           openCommentsInspector(

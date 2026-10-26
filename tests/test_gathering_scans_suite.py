@@ -1351,6 +1351,43 @@ class GatheringScansTestSuite(unittest.TestCase):
         self.assertIn("function pickCameraTrajectoryMarkerAtScreenXY(", js08)
         self.assertIn("function selectCalibratedCameraFrom3D(", js08)
         self.assertIn("window.renderPhoto3DFrustums = renderRtkPhotoFrustums3D;", js08)
+        self.assertIn("STATE.targetAttachCommentId", js08)
+
+        # Verify author/admin comment edit permission & 3D pin location photo selector
+        from pc_worker.server_api_routes import ServerWriteRoutesMixin
+
+        sample_cmt = {"author_email": "alice@gatheren.com.tw", "author_name": "Alice"}
+        self.assertTrue(ServerWriteRoutesMixin._can_actor_modify_comment(sample_cmt, "alice@gatheren.com.tw", "viewer", {}))
+        self.assertFalse(ServerWriteRoutesMixin._can_actor_modify_comment(sample_cmt, "bob@gatheren.com.tw", "editor", {}))
+        self.assertTrue(ServerWriteRoutesMixin._can_actor_modify_comment(sample_cmt, "admin@gatheren.com.tw", "admin", {}))
+        self.assertTrue(ServerWriteRoutesMixin._can_actor_modify_comment(sample_cmt, "glibivanov@gatheren.com.tw", "owner", {}))
+        ext_cmt = {"author_email": "external@gatheren.cloud", "author_name": "Reviewer Wang"}
+        self.assertTrue(
+            ServerWriteRoutesMixin._can_actor_modify_comment(
+                ext_cmt, "external@gatheren.cloud", "guest", {"author_name": "Reviewer Wang"}
+            )
+        )
+        self.assertFalse(
+            ServerWriteRoutesMixin._can_actor_modify_comment(
+                ext_cmt, "external@gatheren.cloud", "guest", {"author_name": "Other Guest"}
+            )
+        )
+
+        with open(os.path.join(BASE_DIR, "web", "src", "01-core-state.js"), "r", encoding="utf-8") as f:
+            js01_chk = f.read()
+        with open(os.path.join(BASE_DIR, "web", "src", "05-studio-civil-inspectors.js"), "r", encoding="utf-8") as f:
+            js05_chk = f.read()
+        with open(os.path.join(BASE_DIR, "web", "app.css"), "r", encoding="utf-8") as f:
+            css_chk = f.read()
+        self.assertIn("function canUserEditComment(", js01_chk)
+        self.assertIn("window.renderCommentPins3D()", js01_chk)
+        self.assertIn("function openLocationPhotosForComment(", js05_chk)
+        self.assertIn("cmtPt._explicitTwd = cmtTwd;", js05_chk)
+        self.assertIn("window.renderCommentPins3D = renderCommentPins3D;", js05_chk)
+        self.assertIn("pt._explicitTwd", js08)
+        self.assertIn(".gs-comment-pin-popover::before", css_chk)
+        self.assertIn(".gs-comment-pin-popover:hover", css_chk)
+        self.assertIn("pointer-events: auto !important;", css_chk)
 
 
 if __name__ == "__main__":

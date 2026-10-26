@@ -65,6 +65,29 @@ from pc_worker.server_cloud_and_tunnel import (
 
 
 class ServerWriteRoutesMixin:
+    @staticmethod
+    def _can_actor_modify_comment(
+        existing_cmt: Optional[Dict[str, Any]],
+        actor_email: str,
+        actor_role: str,
+        payload: Optional[Dict[str, Any]] = None,
+    ) -> bool:
+        if actor_role in ("admin", "owner"):
+            return True
+        if not existing_cmt:
+            return True
+        c_email = str(existing_cmt.get("author_email") or "").strip().lower()
+        c_name = str(existing_cmt.get("author_name") or "").strip().lower()
+        a_email = str(actor_email or (payload or {}).get("author_email") or "").strip().lower()
+        a_name = str((payload or {}).get("author_name") or "").strip().lower()
+        owner_aliases = {"glibivanov@gatheren.com.tw", "gleb.ivanov1999@gmail.com"}
+        if a_email and a_email not in ("guest@gatheren.cloud", "external@gatheren.cloud"):
+            if c_email == a_email or (a_email in owner_aliases and c_email in owner_aliases):
+                return True
+        if c_email in ("", "external@gatheren.cloud", "guest@gatheren.cloud") and a_name and c_name == a_name:
+            return True
+        return False
+
     def do_POST(self):
         global PC_SIMULATED_OFFLINE
         parsed = urllib.parse.urlparse(self.path)
@@ -1082,6 +1105,13 @@ class ServerWriteRoutesMixin:
                     )
                     return
 
+                if comment_id and existing_cmt and not self._can_actor_modify_comment(existing_cmt, actor_email, actor_role, payload):
+                    self.send_json(
+                        {"error": "Only the comment author or an admin can edit or modify photos on this comment."},
+                        status=403,
+                    )
+                    return
+
                 raw_items = payload.get("photos") if isinstance(payload.get("photos"), list) else [payload]
                 uploaded_photos = []
                 for item in raw_items:
@@ -1128,10 +1158,11 @@ class ServerWriteRoutesMixin:
 
                 updated_cmt = None
                 if comment_id and existing_cmt:
+                    orig_author = str(existing_cmt.get("author_name") or "").strip()
                     updated_cmt = DB.update_comment(
                         comment_id,
                         None,
-                        author_name=payload.get("author_name"),
+                        author_name=orig_author or payload.get("author_name"),
                         append_photos=uploaded_photos,
                     )
                 _VPS_RAM_FALLBACK_CACHE.clear()
@@ -1186,15 +1217,22 @@ class ServerWriteRoutesMixin:
                     if not existing_cmt:
                         self.send_json({"error": "Comment not found."}, status=404)
                         return
+                    if not self._can_actor_modify_comment(existing_cmt, actor_email, actor_role, payload):
+                        self.send_json(
+                            {"error": "Only the comment author or an admin can edit or modify photos on this comment."},
+                            status=403,
+                        )
+                        return
                     new_text = str(payload.get("text") or "").strip() if payload.get("text") is not None else None
                     has_photo_update = ("photos" in payload) or ("append_photos" in payload)
                     if not new_text and not has_photo_update:
                         self.send_json({"error": "Comment text or photos required."}, status=400)
                         return
+                    orig_author = str(existing_cmt.get("author_name") or "").strip()
                     updated_cmt = DB.update_comment(
                         comment_id,
                         new_text,
-                        author_name=payload.get("author_name"),
+                        author_name=orig_author or payload.get("author_name"),
                         photos=payload.get("photos"),
                         append_photos=payload.get("append_photos"),
                     )
@@ -1206,6 +1244,12 @@ class ServerWriteRoutesMixin:
                 if action == "delete":
                     if not comment_id:
                         self.send_json({"error": "comment_id is required to delete a comment."}, status=400)
+                        return
+                    if existing_cmt and not self._can_actor_modify_comment(existing_cmt, actor_email, actor_role, payload):
+                        self.send_json(
+                            {"error": "Only the comment author or an admin can edit or modify photos on this comment."},
+                            status=403,
+                        )
                         return
                     deleted = DB.delete_comment(comment_id)
                     _VPS_RAM_FALLBACK_CACHE.clear()
@@ -1590,6 +1634,12 @@ class ServerWriteRoutesMixin:
                     return
             elif actor_role == "guest":
                 self.send_json({"error": "Authenticated session required to delete spatial comments."}, status=403)
+                return
+            if existing_c and not self._can_actor_modify_comment(existing_c, actor_email, actor_role, None):
+                self.send_json(
+                    {"error": "Only the comment author or an admin can edit or modify photos on this comment."},
+                    status=403,
+                )
                 return
             deleted = DB.delete_comment(cid)
             _VPS_RAM_FALLBACK_CACHE.clear()

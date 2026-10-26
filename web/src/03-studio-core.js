@@ -1068,8 +1068,12 @@
       exitMultiScanAlignMode(false);
     }
 
+    const prevScanId = STATE.activeScanId;
     STATE.activeScanId = scan.scan_id;
     STATE.activeScan = scan;
+    if (prevScanId && prevScanId !== scan.scan_id) {
+      STATE.targetAttachCommentId = null;
+    }
     SHARE_TELEMETRY.recordScanViewed(scan, "studio");
     if (STATE.activeProjectGroup !== "__all__") {
       STATE.activeProjectGroup = scan.project_group || "Unassigned Site";

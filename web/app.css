@@ -2906,6 +2906,7 @@ body.gs-auth-locked .gs-main {
 }
 
 .gs-scan-comment-pin:hover,
+.gs-scan-comment-pin:focus-within,
 .gs-scan-comment-pin.mobile-open {
   z-index: 160 !important;
 }
@@ -2981,6 +2982,16 @@ body.gs-auth-locked .gs-main {
   transition: opacity 0.15s ease, visibility 0.15s ease;
 }
 
+.gs-comment-pin-popover::before {
+  content: "";
+  position: absolute;
+  top: -12px;
+  bottom: -12px;
+  left: -16px;
+  right: -16px;
+  z-index: -1;
+}
+
 .gs-scan-comment-pin.flip-left .gs-comment-pin-popover {
   left: auto;
   right: calc(100% + 10px);
@@ -2992,9 +3003,12 @@ body.gs-auth-locked .gs-main {
 }
 
 .gs-scan-comment-pin:hover .gs-comment-pin-popover,
+.gs-scan-comment-pin:focus-within .gs-comment-pin-popover,
+.gs-comment-pin-popover:hover,
 .gs-scan-comment-pin.mobile-open .gs-comment-pin-popover {
   opacity: 1;
   visibility: visible;
+  pointer-events: auto !important;
 }
 
 .gs-comment-pin-meta {
