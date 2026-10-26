@@ -952,6 +952,19 @@ class DsmAndVolumeMixin:
         center_e = dsm_curr["ce"]
         center_n = dsm_curr["cn"]
         center_h = dsm_curr["ch"]
+        local_origin = payload.get("local_origin_twd97")
+        if isinstance(local_origin, dict):
+            origin_e = float(local_origin.get("e", center_e) or center_e)
+            origin_n = float(local_origin.get("n", center_n) or center_n)
+            origin_h = float(local_origin.get("h", center_h) or center_h)
+        elif isinstance(local_origin, (list, tuple)) and len(local_origin) >= 3:
+            origin_e = float(local_origin[0] or center_e)
+            origin_n = float(local_origin[1] or center_n)
+            origin_h = float(local_origin[2] or center_h)
+        else:
+            origin_e = center_e
+            origin_n = center_n
+            origin_h = center_h
 
         # Load baseline DSM when epoch_diff is selected
         dsm_cmp = None
@@ -1007,7 +1020,7 @@ class DsmAndVolumeMixin:
             sampled_h, _, _, _ = self._sample_dsm_elevation(dsm_curr, e_val, n_val)
             h_val = round(sampled_h, 3)
             poly_twd.append((e_val, n_val, h_val))
-            poly_local.append([round(e_val - center_e, 3), round(h_val - center_h, 3), round(center_n - n_val, 3)])
+            poly_local.append([round(e_val - origin_e, 3), round(h_val - origin_h, 3), round(origin_n - n_val, 3)])
 
         pts_2d = [(p[0], p[1]) for p in poly_twd]
         planar_area_m2, perimeter_m = polygon_area_and_perimeter_2d(pts_2d)
@@ -1053,9 +1066,9 @@ class DsmAndVolumeMixin:
         inside_cells = 0
         heatmap_cells = []
 
-        # Subsample stride for heatmap_cells so we return <= 300 3D visualization cells
-        total_est_inside = max(1, int(nx_steps * ny_steps * 0.6))
-        vis_stride = max(1, total_est_inside // 240)
+        # Subsample stride for heatmap_cells so we return up to 2500 3D visualization cells covering 100% of the polygon
+        total_est_inside = max(1, int(nx_steps * ny_steps * 0.75))
+        vis_stride = max(1, total_est_inside // 2000)
 
         for ix in range(nx_steps):
             for iy in range(ny_steps):
@@ -1070,6 +1083,8 @@ class DsmAndVolumeMixin:
 
                 if base_mode == "custom_plane":
                     z_base = datum_z
+                elif base_mode == "lowest_point":
+                    z_base = min((p[2] for p in perim_samples), default=datum_z)
                 elif base_mode == "epoch_diff" and dsm_cmp is not None:
                     z_base, _, _, _ = self._sample_dsm_elevation(dsm_cmp, gx, gy)
                 else:
@@ -1095,7 +1110,7 @@ class DsmAndVolumeMixin:
                 # True 3D sloped surface area element dA * sqrt(1 + (dz/de)^2 + (dz/dn)^2)
                 surface_area += cell_area * math.sqrt(1.0 + dz_de * dz_de + dz_dn * dz_dn)
 
-                if (inside_cells - 1) % vis_stride == 0 and len(heatmap_cells) < 300:
+                if (inside_cells - 1) % vis_stride == 0 and len(heatmap_cells) < 2500:
                     heatmap_cells.append(
                         {
                             "e": round(gx, 2),
@@ -1103,10 +1118,12 @@ class DsmAndVolumeMixin:
                             "z_surf": round(z_surf, 3),
                             "z_base": round(z_base, 3),
                             "dz": round(dz, 3),
-                            "lx": round(gx - center_e, 3),
-                            "ly_surf": round(z_surf - center_h, 3),
-                            "ly_base": round(z_base - center_h, 3),
-                            "lz": round(center_n - gy, 3),
+                            "lx": round(gx - origin_e, 3),
+                            "ly_surf": round(z_surf - origin_h, 3),
+                            "ly_base": round(z_base - origin_h, 3),
+                            "lz": round(origin_n - gy, 3),
+                            "step_x": round(dx_step, 4),
+                            "step_z": round(dy_step, 4),
                         }
                     )
 
@@ -1165,6 +1182,8 @@ class DsmAndVolumeMixin:
             ],
             "boundary_local": poly_local,
             "cell_step_m": round(max(dx_step, dy_step), 3),
+            "cell_dx": round(dx_step, 4),
+            "cell_dz": round(dy_step, 4),
             "perim_mean_h_m": round(perim_mean_h, 3),
             "heatmap_cells": heatmap_cells,
             "report_html_url": f"/api/reports/{html_filename}",

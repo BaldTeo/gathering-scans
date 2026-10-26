@@ -565,8 +565,78 @@
   }
 
   // 3A. Cut/Fill & Material Stockpile Report Generator
+  function updateVolumeProgressHudPill(pct = 0, text = "") {
+    let pill = document.getElementById("volViewportProgressPill");
+    if (!pill) {
+      const stage = document.getElementById("studioStage") || document.getElementById("viewStudio") || document.body;
+      pill = document.createElement("div");
+      pill.id = "volViewportProgressPill";
+      pill.style.cssText =
+        "position:fixed;top:62px;left:50%;transform:translateX(-50%);z-index:1200;display:none;align-items:center;gap:10px;padding:7px 14px;border-radius:999px;background:rgba(15,23,42,0.92);border:1px solid rgba(56,189,248,0.65);color:#f8fafc;font-size:12px;font-weight:700;box-shadow:0 4px 16px rgba(0,0,0,0.35);pointer-events:none;backdrop-filter:blur(8px);";
+      stage.appendChild(pill);
+    }
+    const clampedPct = Math.max(0, Math.min(100, Math.round(Number(pct) || 0)));
+    const msg =
+      text ||
+      tr(
+        `⏳ 正在背景計算土方體積... ${clampedPct}% (可自由旋轉檢視 3D 模型)`,
+        `⏳ Computing Volume in background... ${clampedPct}%`
+      );
+    pill.style.display = "flex";
+    pill.innerHTML = `
+      <span>⏳ ${escapeHtml(msg)}</span>
+      <span style="width:72px;height:6px;background:rgba(148,163,184,0.28);border-radius:999px;overflow:hidden;display:inline-block;">
+        <span style="display:block;height:100%;width:${clampedPct}%;background:linear-gradient(90deg,#0284c7,#38bdf8);transition:width 0.12s ease;"></span>
+      </span>
+    `;
+    const box = document.getElementById("volProgressBox");
+    if (box) {
+      box.style.display = "block";
+      box.innerHTML = `
+        <div style="font-size:11.5px;color:var(--ui-text-primary);padding:9px 10px;background:var(--ui-bg-subtle);border:1px solid var(--ui-accent);border-radius:8px;margin-bottom:8px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:6px;margin-bottom:5px;font-weight:700;">
+            <span>⏳ ${escapeHtml(
+              tr(
+                `正在背景計算土方體積... ${clampedPct}% (可自由旋轉檢視 3D 模型)`,
+                `Computing Volume in background... ${clampedPct}%`
+              )
+            )}</span>
+            <span style="color:var(--ui-accent);font-family:var(--font-mono);">${clampedPct}%</span>
+          </div>
+          <div style="height:6px;background:var(--ui-border-strong);border-radius:999px;overflow:hidden;">
+            <div style="height:100%;width:${clampedPct}%;background:var(--ui-accent);transition:width 0.12s ease;"></div>
+          </div>
+        </div>
+      `;
+    }
+  }
+  window.updateVolumeProgressHudPill = updateVolumeProgressHudPill;
+
+  function hideVolumeProgressHudPill() {
+    const pill = document.getElementById("volViewportProgressPill");
+    if (pill) pill.style.display = "none";
+    const box = document.getElementById("volProgressBox");
+    if (box) {
+      box.style.display = "none";
+      box.innerHTML = "";
+    }
+  }
+  window.hideVolumeProgressHudPill = hideVolumeProgressHudPill;
+
+  function clearStaleContourGroupVisuals() {
+    if (studioThree && studioThree.contourGroup) {
+      while (studioThree.contourGroup.children.length > 0) {
+        const c = studioThree.contourGroup.children[0];
+        if (c.geometry) c.geometry.dispose();
+        if (c.material) c.material.dispose();
+        studioThree.contourGroup.remove(c);
+      }
+    }
+  }
+
   async function openCutFillVolumeInspector(customPts = null) {
     setActiveStudioTool("volume");
+    clearStaleContourGroupVisuals();
     if (customPts && customPts.length >= 3) {
       STATE.cutFillPolygonPoints = customPts.map((p) => p.clone());
       STATE.polygonLocked = true;
@@ -655,11 +725,13 @@
           <input type="text" class="gs-input" id="volStockpileName" value="${escapeHtml(defaultZoneName)}" />
         </div>
         <div class="gs-form-group">
-          <label>${tr("基準面計算方式", "Base Reference Surface Mode")}</label>
+          <label>${tr("基準面計算方式 (Bottom Limiting Plane)", "Base Reference Surface Mode (Bottom Limiting Plane)")}</label>
           <select class="gs-select" id="volBaseMode">
             <option value="triangulated_boundary">${tr("1. 獨立土石堆周界擬合面", "1. Triangulated Boundary Perimeter")}</option>
-            <option value="custom_plane">${tr("2. 指定設計高程基準面 Z₀ (TWVD2001)", "2. Custom Datum Elevation Plane Z₀ (TWVD2001)")}</option>
-            <option value="epoch_diff">${tr("3. 跨期掃描進度挖填差額", "3. Multi-Date Epoch-to-Epoch Diff")}</option>
+            <option value="lowest_point">${tr("2. 周界最低點水平基準面 (Lowest Perimeter Point)", "2. Lowest Perimeter Point Horizontal Plane")}</option>
+            <option value="best_fit_plane">${tr("3. 最小平方法最佳擬合傾斜面 (Best-Fit Plane)", "3. Best-Fit Sloped Plane")}</option>
+            <option value="custom_plane">${tr("4. 指定設計高程基準面 Z₀ (TWVD2001)", "4. Custom Datum Elevation Plane Z₀ (TWVD2001)")}</option>
+            <option value="epoch_diff">${tr("5. 跨期掃描進度挖填差額", "5. Multi-Date Epoch-to-Epoch Diff")}</option>
           </select>
         </div>
         <div class="gs-form-group">
@@ -687,6 +759,7 @@
             <span>${tr("重新繪製多邊形", "Redraw Polygon")}</span>
           </button>
         </div>
+        <div id="volProgressBox" style="display:none;"></div>
         <div id="volResultContainer"></div>
         `
       );
@@ -718,6 +791,8 @@
         });
       }
       document.getElementById("btnResetVolumePoly")?.addEventListener("click", () => {
+        STATE._volumeCalcSeq = (STATE._volumeCalcSeq || 0) + 1;
+        hideVolumeProgressHudPill();
         setActiveStudioTool("volume");
         STATE.polygonLocked = false;
         STATE.measurePoints = [];
@@ -725,6 +800,7 @@
         STATE.maskBoundaryPoints = [];
         STATE.lastVolumeResult = null;
         clearVolumeVisualsOnly();
+        clearStaleContourGroupVisuals();
         renderUnlockedVolumePrompt();
         if (window.innerWidth <= 768) {
           STATE.sidePanelMinimized = true;
@@ -783,6 +859,7 @@
     }
 
     async function runCalc(ptsOverride = null) {
+      clearStaleContourGroupVisuals();
       let ptsToUse =
         ptsOverride && ptsOverride.length >= 3
           ? ptsOverride
@@ -816,8 +893,14 @@
         if (lblCol) lblCol.textContent = "▾ 收合";
       }
 
+      const calcSeq = (STATE._volumeCalcSeq = (STATE._volumeCalcSeq || 0) + 1);
+      const cancelToken = {
+        seq: calcSeq,
+        isCancelled: () => STATE._volumeCalcSeq !== calcSeq,
+      };
+
       const btnLbl = document.getElementById("lblRunVolumeCalc");
-      if (btnLbl) btnLbl.textContent = "Computing...";
+      if (btnLbl) btnLbl.textContent = tr("計算中... 0%", "Computing... 0%");
 
       const opts = {
         scan_id: STATE.activeScanId,
@@ -828,28 +911,76 @@
         datum_elevation_m: parseFloat(document.getElementById("volDatumZ")?.value || String(defaultDatumZ)),
       };
 
-      // 1. Immediate client-side Three.js 3D mesh raycast calculation (<30ms, anchored 100% to live 3D mesh)
-      const clientRes = computeClientMeshVolume(ptsToUse, opts);
+      updateVolumeProgressHudPill(2, tr("正在背景計算土方體積... 2% (可自由旋轉檢視 3D 模型)", "Computing Volume in background... 2%"));
+
+      // 1. Time-sliced non-blocking background calculation on Three.js 3D mesh via spatial grid
+      const clientRes =
+        typeof computeClientMeshVolumeAsync === "function"
+          ? await computeClientMeshVolumeAsync(
+              ptsToUse,
+              opts,
+              null,
+              null,
+              (pct, msg) => {
+                if (cancelToken.isCancelled()) return;
+                updateVolumeProgressHudPill(pct, msg);
+                if (btnLbl) btnLbl.textContent = `${tr("計算中", "Computing")} ${pct}%`;
+              },
+              cancelToken
+            )
+          : computeClientMeshVolume(ptsToUse, opts);
+
+      if (!clientRes || cancelToken.isCancelled()) {
+        hideVolumeProgressHudPill();
+        return;
+      }
+
+      hideVolumeProgressHudPill();
       STATE.lastVolumeResult = clientRes;
       renderVolumeResultAnd3D(clientRes, ptsToUse);
+
+      // Capture Figure 1 (3D Perspective Overview) & Figure 2 (Top-Down Nadir View) and embed into client report HTML
+      if (typeof captureVolumeReportFigures === "function" && typeof buildVolumeReportBlobUrls === "function") {
+        const figs = captureVolumeReportFigures(ptsToUse, clientRes);
+        clientRes._perspectiveImgDataUrl = figs.perspectiveImgDataUrl;
+        clientRes._nadirImgDataUrl = figs.nadirImgDataUrl;
+        const updatedBlobs = buildVolumeReportBlobUrls(
+          clientRes,
+          opts,
+          figs.perspectiveImgDataUrl,
+          figs.nadirImgDataUrl
+        );
+        clientRes.report_html_url = updatedBlobs.htmlUrl;
+        clientRes.report_csv_url = updatedBlobs.csvUrl;
+        renderVolumeResultAnd3D(clientRes, ptsToUse);
+      }
 
       // 2. Also query backend DSM engine for multi-epoch comparison & server archival (only once polygon is locked)
       const polyPayload = ptsToUse.map((p) => {
         const t = localToTwd97(p);
         return [t.e, t.n, t.h];
       });
+      const localOriginTwd97 = localToTwd97({ x: 0, y: 0, z: 0 });
       try {
         const srvRes = await apiPost("/api/survey/volume", {
           ...opts,
           polygon: polyPayload,
+          local_origin_twd97: localOriginTwd97,
         });
+        if (cancelToken.isCancelled()) return;
         if (srvRes && srvRes.status === "ok") {
           const useClientMeshExact = clientRes.hit_ratio > 0 && opts.base_mode !== "epoch_diff";
           let mergedRes;
           if (useClientMeshExact) {
+            // Never overwrite client-computed local heatmap_cells or rich screenshot report_html_url!
             mergedRes = {
               ...srvRes,
               ...clientRes,
+              heatmap_cells: clientRes.heatmap_cells,
+              cell_dx: clientRes.cell_dx,
+              cell_dz: clientRes.cell_dz,
+              report_html_url: clientRes.report_html_url,
+              report_csv_url: clientRes.report_csv_url || srvRes.report_csv_url,
               _resolvedPtsLocal: ptsToUse,
             };
           } else {
@@ -868,11 +999,28 @@
             mergedRes = {
               ...clientRes,
               ...srvRes,
-              heatmap_cells: alignedCells.length > 0 ? alignedCells : clientRes.heatmap_cells,
-              report_html_url: srvRes.report_html_url || clientRes.report_html_url,
-              report_csv_url: srvRes.report_csv_url || clientRes.report_csv_url,
+              heatmap_cells:
+                clientRes.heatmap_cells && clientRes.heatmap_cells.length > 0 && opts.base_mode !== "epoch_diff"
+                  ? clientRes.heatmap_cells
+                  : alignedCells.length > 0
+                  ? alignedCells
+                  : clientRes.heatmap_cells,
               _resolvedPtsLocal: ptsToUse,
             };
+            if (typeof captureVolumeReportFigures === "function" && typeof buildVolumeReportBlobUrls === "function") {
+              drawPlacedCutFillPolygon3D(ptsToUse, mergedRes);
+              const figs = captureVolumeReportFigures(ptsToUse, mergedRes);
+              mergedRes._perspectiveImgDataUrl = figs.perspectiveImgDataUrl;
+              mergedRes._nadirImgDataUrl = figs.nadirImgDataUrl;
+              const blobs = buildVolumeReportBlobUrls(
+                mergedRes,
+                opts,
+                figs.perspectiveImgDataUrl,
+                figs.nadirImgDataUrl
+              );
+              mergedRes.report_html_url = blobs.htmlUrl;
+              mergedRes.report_csv_url = blobs.csvUrl;
+            }
           }
           STATE.lastVolumeResult = mergedRes;
           renderVolumeResultAnd3D(mergedRes, ptsToUse);
@@ -880,7 +1028,9 @@
       } catch (_) {
         // Client-side 3D mesh raycast result is already rendered and downloadable
       } finally {
-        if (btnLbl) btnLbl.textContent = "Recompute";
+        if (!cancelToken.isCancelled() && btnLbl) {
+          btnLbl.textContent = tr("重新計算", "Recompute");
+        }
       }
     }
 
@@ -936,6 +1086,10 @@
           <div><b>${tr("基準面：", "Base Surface:")}</b> ${
             res.base_mode === "custom_plane"
               ? `${tr("自訂高程基準 Z₀", "Custom Datum Z₀")} (+${escapeHtml(String(res.datum_elevation_m))} m)`
+              : res.base_mode === "lowest_point"
+              ? tr("周界最低點水平面", "Lowest Perimeter Point")
+              : res.base_mode === "best_fit_plane"
+              ? tr("最佳擬合傾斜面", "Best-Fit Sloped Plane")
               : res.base_mode === "epoch_diff"
               ? tr("跨期掃描比對", "Multi-Date Epoch Diff")
               : `${tr("周界擬合面", "Perimeter Fit")} (Mean +${escapeHtml(String(res.perim_mean_h_m ?? res.datum_elevation_m))} m)`
@@ -943,11 +1097,11 @@
           <div><b>${tr("物料：", "Material:")}</b> ${escapeHtml(String(res.material_name || ""))} (${escapeHtml(String(res.density_t_m3))} t/m³ · ${tr("實方重：", "Bank:")} ${escapeHtml(String(res.bank_tonnage_t ?? res.estimated_tonnage_t))} t)</div>
         </div>
         <div style="display:flex;gap:6px;">
-          <a class="btn-xs primary" style="flex:1;justify-content:center;" href="${safeHtmlUrl}" target="_blank" rel="noopener noreferrer" title="${tr("開啟可列印土方報告 (PDF/HTML)", "Open Printable Stockpile Report (PDF/HTML)")}">
+          <a class="btn-xs primary" id="btnOpenVolReportHtml" style="flex:1;justify-content:center;" href="${safeHtmlUrl}" target="_blank" rel="noopener noreferrer" title="${tr("開啟可列印土方報告 (含 3D 圍束總覽與正射頂點標註圖)", "Open Printable Stockpile Report (with 3D Overview & Nadir Vertex Map)")}">
             <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8">
               <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>
             </svg>
-            <span>${tr("土方報告", "Report")}</span>
+            <span>📄 ${tr("土方報告", "Report")}</span>
           </a>
           <a class="btn-xs" style="flex:1;justify-content:center;" href="${safeCsvUrl}" download="stockpile_volume_report.csv" title="${tr("匯出 Excel (.CSV)", "Export Excel (.CSV)")}">
             <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8">
@@ -969,6 +1123,24 @@
         ? STATE.cutFillPolygonPoints.slice()
         : res._resolvedPtsLocal || null;
     drawPlacedCutFillPolygon3D(ptsToRender, res);
+
+    const btnReport = document.getElementById("btnOpenVolReportHtml");
+    if (btnReport) {
+      btnReport.addEventListener("click", () => {
+        if (
+          (!res._perspectiveImgDataUrl || !res._nadirImgDataUrl) &&
+          typeof captureVolumeReportFigures === "function" &&
+          typeof buildVolumeReportBlobUrls === "function"
+        ) {
+          const figs = captureVolumeReportFigures(ptsToRender, res);
+          res._perspectiveImgDataUrl = figs.perspectiveImgDataUrl;
+          res._nadirImgDataUrl = figs.nadirImgDataUrl;
+          const blobs = buildVolumeReportBlobUrls(res, {}, figs.perspectiveImgDataUrl, figs.nadirImgDataUrl);
+          res.report_html_url = blobs.htmlUrl;
+          btnReport.href = blobs.htmlUrl;
+        }
+      });
+    }
   }
 
   // 3B. Survey Report: Mask Boundary, 3D Elevation Contours, Civil3D.dwg & A3 Ready-to-Print PDF Exporter
@@ -1426,6 +1598,14 @@
       return true;
     });
   }
+
+  function hideCategorizeOverlaysAndLabels() {
+    STATE.categorizeOverlayVisible = false;
+    STATE.categorizeLabelsVisible = false;
+    clearCategorizeVisualsOnly();
+    syncCategorizeVisibilityUI();
+  }
+  window.hideCategorizeOverlaysAndLabels = hideCategorizeOverlaysAndLabels;
 
   function hasSavedCategorizationForActiveScan() {
     const sid = STATE.activeScanId || STATE.activeScan?.scan_id || "";

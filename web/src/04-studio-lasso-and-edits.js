@@ -3179,10 +3179,18 @@
     return targets;
   }
 
-  function sampleStudioMeshElevationAtLocalXZ(lx, lz, fallbackY = 0, cachedTargets = null) {
+  function sampleStudioMeshElevationAtLocalXZ(lx, lz, fallbackY = 0, cachedTargets = null, spatialIdx = null) {
+    const rayTopY = Math.max(450, (Number(studioThree?.boundingSphere?.radius) || 60) * 3 + 200);
+    const rayMaxDist = rayTopY * 2 + 400;
+    const idx = spatialIdx || studioThree?._laserSpatialIndex || null;
+    if (idx) {
+      const gHit = castRayInLaserGrid(idx, lx, rayTopY, lz, 0, -1, 0, 0.05, rayMaxDist, 1.01);
+      if (gHit) {
+        return { y: gHit.y, hit: true };
+      }
+    }
     const targets = cachedTargets || getStudioRaycastMeshes();
     if (!targets.length) return { y: fallbackY, hit: false };
-    const rayTopY = Math.max(450, (Number(studioThree?.boundingSphere?.radius) || 60) * 3 + 200);
     _downRayOrigin.set(lx, rayTopY, lz);
     _downRaycaster.set(_downRayOrigin, _downRayDir);
     const hits = _downRaycaster.intersectObjects(targets, true);
@@ -3191,6 +3199,235 @@
     }
     return { y: fallbackY, hit: false };
   }
+
+  async function getLaserSpatialIndexAsync(onProgress = null, cancelToken = null) {
+    if (!studioThree) return null;
+    const alignSig = STATE.multiAlign?.active
+      ? (STATE.multiAlign.layers || [])
+          .map((l) => `${l.scan_id}:${l.visible ? 1 : 0}:${l.tx}:${l.ty}:${l.tz}:${l.rx_deg}:${l.ry_deg}:${l.rz_deg}`)
+          .join("|")
+      : STATE.activeScanId || "";
+    const stagedRev = STATE.stagedEdits?.rev || 0;
+    const baseSig = `${alignSig}#r=${stagedRev}`;
+
+    const meshes = [];
+    if (STATE.multiAlign?.active && studioThree.multiAlignGroup && studioThree.multiAlignGroup.visible) {
+      studioThree.multiAlignGroup.updateMatrixWorld(true);
+      studioThree.multiAlignGroup.traverse((c) => {
+        if (
+          c.isMesh &&
+          isMeshVisibleUnderRoot(c, studioThree.multiAlignGroup) &&
+          !c.userData?.isAlignBoxHelper &&
+          c.geometry?.attributes?.position
+        ) {
+          meshes.push(c);
+        }
+      });
+    } else if (studioThree.modelPivot && studioThree.modelPivot.visible) {
+      studioThree.modelPivot.updateMatrixWorld(true);
+      studioThree.modelPivot.traverse((c) => {
+        if (c.isMesh && isMeshVisibleUnderRoot(c, studioThree.modelPivot) && c.geometry?.attributes?.position) {
+          meshes.push(c);
+        }
+      });
+    }
+    if (meshes.length === 0 && studioThree.fallbackGroup && studioThree.fallbackGroup.visible) {
+      studioThree.fallbackGroup.updateMatrixWorld(true);
+      studioThree.fallbackGroup.traverse((c) => {
+        if (c.isMesh && c.visible && c.geometry?.attributes?.position) {
+          meshes.push(c);
+        }
+      });
+    }
+    if (meshes.length === 0) return null;
+
+    let totalTris = 0;
+    for (let i = 0; i < meshes.length; i++) {
+      const g = meshes[i].geometry;
+      const idx = g.index;
+      totalTris += idx ? Math.floor(idx.count / 3) : Math.floor(g.attributes.position.count / 3);
+    }
+    if (totalTris === 0) return null;
+
+    const cacheKey = `${baseSig}#m=${meshes.length}#t=${totalTris}`;
+    if (studioThree._laserSpatialIndex && studioThree._laserSpatialIndex.key === cacheKey) {
+      return studioThree._laserSpatialIndex;
+    }
+
+    const isCancelled = () =>
+      Boolean(
+        cancelToken &&
+          ((typeof cancelToken.isCancelled === "function" && cancelToken.isCancelled()) ||
+            (Number.isFinite(cancelToken.seq) && cancelToken.seq !== STATE._volumeCalcSeq))
+      );
+
+    let frameStart = performance.now();
+    const triStride = totalTris > 2800000 ? 2 : 1;
+    const maxIndexed = Math.ceil(totalTris / triStride) + 16;
+    const triVerts = new Float32Array(maxIndexed * 9);
+    const triAbsNy = new Float32Array(maxIndexed);
+
+    let minX = 1e30, maxX = -1e30, minZ = 1e30, maxZ = -1e30;
+    let wCount = 0;
+    let processedTris = 0;
+
+    for (let mi = 0; mi < meshes.length; mi++) {
+      const m = meshes[mi];
+      const e = m.matrixWorld.elements;
+      const pos = m.geometry.attributes.position;
+      const idxAttr = m.geometry.index;
+      const nTris = idxAttr ? Math.floor(idxAttr.count / 3) : Math.floor(pos.count / 3);
+
+      for (let t = 0; t < nTris; t += triStride) {
+        if ((t & 2047) === 0 && performance.now() - frameStart > 8.0) {
+          if (isCancelled()) return null;
+          if (typeof onProgress === "function") {
+            const pct = Math.min(28, Math.max(2, Math.round((processedTris / Math.max(1, totalTris)) * 28)));
+            onProgress(pct, tr("建立 3D 網格空間索引...", "Building 3D spatial grid index..."));
+          }
+          await new Promise((r) => requestAnimationFrame(r));
+          frameStart = performance.now();
+          if (isCancelled()) return null;
+        }
+        processedTris += triStride;
+
+        const i0 = idxAttr ? idxAttr.getX(t * 3) : t * 3;
+        const i1 = idxAttr ? idxAttr.getX(t * 3 + 1) : t * 3 + 1;
+        const i2 = idxAttr ? idxAttr.getX(t * 3 + 2) : t * 3 + 2;
+
+        const lx0 = pos.getX(i0), ly0 = pos.getY(i0), lz0 = pos.getZ(i0);
+        const lx1 = pos.getX(i1), ly1 = pos.getY(i1), lz1 = pos.getZ(i1);
+        const lx2 = pos.getX(i2), ly2 = pos.getY(i2), lz2 = pos.getZ(i2);
+
+        const x0 = e[0] * lx0 + e[4] * ly0 + e[8] * lz0 + e[12];
+        const y0 = e[1] * lx0 + e[5] * ly0 + e[9] * lz0 + e[13];
+        const z0 = e[2] * lx0 + e[6] * ly0 + e[10] * lz0 + e[14];
+
+        const x1 = e[0] * lx1 + e[4] * ly1 + e[8] * lz1 + e[12];
+        const y1 = e[1] * lx1 + e[5] * ly1 + e[9] * lz1 + e[13];
+        const z1 = e[2] * lx1 + e[6] * ly1 + e[10] * lz1 + e[14];
+
+        const x2 = e[0] * lx2 + e[4] * ly2 + e[8] * lz2 + e[12];
+        const y2 = e[1] * lx2 + e[5] * ly2 + e[9] * lz2 + e[13];
+        const z2 = e[2] * lx2 + e[6] * ly2 + e[10] * lz2 + e[14];
+
+        const ax = x1 - x0, ay = y1 - y0, az = z1 - z0;
+        const bx = x2 - x0, by = y2 - y0, bz = z2 - z0;
+        const nx = ay * bz - az * by;
+        const ny = az * bx - ax * bz;
+        const nz = ax * by - ay * bx;
+        const nLen = Math.hypot(nx, ny, nz);
+        if (nLen < 1e-7) continue;
+
+        const base = wCount * 9;
+        triVerts[base] = x0;
+        triVerts[base + 1] = y0;
+        triVerts[base + 2] = z0;
+        triVerts[base + 3] = x1;
+        triVerts[base + 4] = y1;
+        triVerts[base + 5] = z1;
+        triVerts[base + 6] = x2;
+        triVerts[base + 7] = y2;
+        triVerts[base + 8] = z2;
+        triAbsNy[wCount] = Math.abs(ny) / nLen;
+        wCount++;
+
+        const tMinX = Math.min(x0, x1, x2);
+        const tMaxX = Math.max(x0, x1, x2);
+        const tMinZ = Math.min(z0, z1, z2);
+        const tMaxZ = Math.max(z0, z1, z2);
+        if (tMinX < minX) minX = tMinX;
+        if (tMaxX > maxX) maxX = tMaxX;
+        if (tMinZ < minZ) minZ = tMinZ;
+        if (tMaxZ > maxZ) maxZ = tMaxZ;
+      }
+    }
+
+    if (wCount === 0 || isCancelled()) return null;
+    minX -= 0.5;
+    minZ -= 0.5;
+    maxX += 0.5;
+    maxZ += 0.5;
+
+    const spanMax = Math.max(10, maxX - minX, maxZ - minZ);
+    const cellSize = Math.max(0.85, Math.min(2.6, spanMax / 165));
+    const invCell = 1.0 / cellSize;
+    const gridW = Math.max(4, Math.min(200, Math.ceil((maxX - minX) * invCell)));
+    const gridH = Math.max(4, Math.min(200, Math.ceil((maxZ - minZ) * invCell)));
+    const numCells = gridW * gridH;
+
+    const cellCounts = new Int32Array(numCells);
+    for (let t = 0; t < wCount; t++) {
+      if ((t & 4095) === 0 && performance.now() - frameStart > 8.0) {
+        if (isCancelled()) return null;
+        await new Promise((r) => requestAnimationFrame(r));
+        frameStart = performance.now();
+        if (isCancelled()) return null;
+      }
+      const b = t * 9;
+      const gx0 = Math.max(0, Math.min(gridW - 1, Math.floor((Math.min(triVerts[b], triVerts[b + 3], triVerts[b + 6]) - minX) * invCell)));
+      const gx1 = Math.max(0, Math.min(gridW - 1, Math.floor((Math.max(triVerts[b], triVerts[b + 3], triVerts[b + 6]) - minX) * invCell)));
+      const gz0 = Math.max(0, Math.min(gridH - 1, Math.floor((Math.min(triVerts[b + 2], triVerts[b + 5], triVerts[b + 8]) - minZ) * invCell)));
+      const gz1 = Math.max(0, Math.min(gridH - 1, Math.floor((Math.max(triVerts[b + 2], triVerts[b + 5], triVerts[b + 8]) - minZ) * invCell)));
+      if ((gx1 - gx0 + 1) * (gz1 - gz0 + 1) > 40000) continue;
+      for (let gz = gz0; gz <= gz1; gz++) {
+        const row = gz * gridW;
+        for (let gx = gx0; gx <= gx1; gx++) {
+          cellCounts[row + gx]++;
+        }
+      }
+    }
+
+    const cellOffsets = new Int32Array(numCells + 1);
+    for (let c = 0; c < numCells; c++) {
+      cellOffsets[c + 1] = cellOffsets[c] + cellCounts[c];
+    }
+    const cellTris = new Int32Array(cellOffsets[numCells]);
+    const writePtr = cellOffsets.slice(0, numCells);
+
+    for (let t = 0; t < wCount; t++) {
+      if ((t & 4095) === 0 && performance.now() - frameStart > 8.0) {
+        if (isCancelled()) return null;
+        await new Promise((r) => requestAnimationFrame(r));
+        frameStart = performance.now();
+        if (isCancelled()) return null;
+      }
+      const b = t * 9;
+      const gx0 = Math.max(0, Math.min(gridW - 1, Math.floor((Math.min(triVerts[b], triVerts[b + 3], triVerts[b + 6]) - minX) * invCell)));
+      const gx1 = Math.max(0, Math.min(gridW - 1, Math.floor((Math.max(triVerts[b], triVerts[b + 3], triVerts[b + 6]) - minX) * invCell)));
+      const gz0 = Math.max(0, Math.min(gridH - 1, Math.floor((Math.min(triVerts[b + 2], triVerts[b + 5], triVerts[b + 8]) - minZ) * invCell)));
+      const gz1 = Math.max(0, Math.min(gridH - 1, Math.floor((Math.max(triVerts[b + 2], triVerts[b + 5], triVerts[b + 8]) - minZ) * invCell)));
+      if ((gx1 - gx0 + 1) * (gz1 - gz0 + 1) > 40000) continue;
+      for (let gz = gz0; gz <= gz1; gz++) {
+        const row = gz * gridW;
+        for (let gx = gx0; gx <= gx1; gx++) {
+          cellTris[writePtr[row + gx]++] = t;
+        }
+      }
+    }
+
+    const built = {
+      key: cacheKey,
+      baseSig,
+      builtAt: performance.now(),
+      triCount: wCount,
+      triVerts,
+      triAbsNy,
+      minX,
+      minZ,
+      cellSize,
+      invCell,
+      gridW,
+      gridH,
+      cellOffsets,
+      cellTris,
+      visitStamp: new Int32Array(wCount),
+      raySeq: 1,
+    };
+    studioThree._laserSpatialIndex = built;
+    return built;
+  }
+  window.getLaserSpatialIndexAsync = getLaserSpatialIndexAsync;
 
   function getDefaultPolygonOnStudioMesh() {
     const targets = getStudioRaycastMeshes();
@@ -3210,6 +3447,163 @@
     });
   }
 
+  function fitBestFitPlaneToPoints(samples) {
+    if (!samples || samples.length < 3) {
+      const c = samples && samples.length ? samples[0].y || 0 : 0;
+      return { a: 0, b: 0, c };
+    }
+    let sx = 0, sz = 0, sy = 0;
+    const n = samples.length;
+    for (let i = 0; i < n; i++) {
+      sx += samples[i].x;
+      sz += samples[i].z;
+      sy += samples[i].y;
+    }
+    const mx = sx / n, mz = sz / n, my = sy / n;
+    let sxx = 0, szz = 0, sxz = 0, sxy = 0, szy = 0;
+    for (let i = 0; i < n; i++) {
+      const dx = samples[i].x - mx;
+      const dz = samples[i].z - mz;
+      const dy = samples[i].y - my;
+      sxx += dx * dx;
+      szz += dz * dz;
+      sxz += dx * dz;
+      sxy += dx * dy;
+      szy += dz * dy;
+    }
+    const det = sxx * szz - sxz * sxz;
+    if (Math.abs(det) < 1e-8) {
+      return { a: 0, b: 0, c: my };
+    }
+    const a = (sxy * szz - szy * sxz) / det;
+    const b = (szy * sxx - sxy * sxz) / det;
+    const c = my - a * mx - b * mz;
+    return { a, b, c };
+  }
+
+  function buildVolumeReportBlobUrls(volData, opts = {}, perspectiveImgDataUrl = "", nadirImgDataUrl = "") {
+    const activeScan = STATE.activeScan || STATE.scans.find((s) => s.scan_id === STATE.activeScanId) || {
+      scan_id: STATE.activeScanId || "scan",
+      name: STATE.activeScanId || "Active Scan",
+      project_group: STATE.activeProjectGroup || "Unassigned Site",
+    };
+    const boundaryTwd97 = Array.isArray(volData.boundary_twd97) ? volData.boundary_twd97 : [];
+    const csvLines = [
+      "GatheringScans Civil Engineering & Stockpile Volume Report",
+      `Project Group,"${activeScan.project_group || volData.project_group || ""}"`,
+      `Scan Name,"${activeScan.name || volData.scan_name || ""}"`,
+      `Zone / Stockpile Name,"${volData.stockpile_name || opts.stockpile_name || "Stockpile A"}"`,
+      `Base Surface Mode,${volData.base_mode || opts.base_mode || "triangulated_boundary"}`,
+      "",
+      "Metric,Value,Unit",
+      `Fill / Stockpile Volume (+),${Number(volData.fill_volume_m3 || 0).toFixed(2)},m3`,
+      `Cut / Excavation Volume (-),${Number(volData.cut_volume_m3 || 0).toFixed(2)},m3`,
+      `Net Earthwork Volume,${Number(volData.net_volume_m3 || 0).toFixed(2)},m3`,
+      `2D Planar Footprint Area,${Number(volData.planar_area_m2 || 0).toFixed(2)},m2`,
+      `2D Planar Footprint Area (Ping),${Number(volData.planar_area_ping || 0).toFixed(2)},ping`,
+      `3D Sloped Surface Area,${Number(volData.surface_area_m2 || 0).toFixed(2)},m2`,
+      `Boundary Perimeter,${Number(volData.perimeter_m || 0).toFixed(2)},m`,
+      `Material Classification,"${volData.material_name || ""}",`,
+      `Material Bulk Density,${Number(volData.density_t_m3 || 1.65).toFixed(2)},t/m3`,
+      `Estimated Material Mass (Loose),${Number(volData.estimated_tonnage_t || 0).toFixed(2)},t`,
+      `Estimated Bank Mass,${Number(volData.bank_tonnage_t || 0).toFixed(2)},t`,
+      "",
+      "Vertex #,TWD97 Easting E (m),TWD97 Northing N (m),TWVD2001 Elevation H (m)",
+      ...boundaryTwd97.map((v) => `V${v.vertex},${v.easting_m},${v.northing_m},${v.twvd2001_h_m}`),
+    ];
+    if (STATE._lastVolCsvBlobUrl) {
+      try {
+        URL.revokeObjectURL(STATE._lastVolCsvBlobUrl);
+      } catch (_) {}
+    }
+    if (STATE._lastVolHtmlBlobUrl) {
+      try {
+        URL.revokeObjectURL(STATE._lastVolHtmlBlobUrl);
+      } catch (_) {}
+    }
+    const csvBlob = new Blob(["\uFEFF" + csvLines.join("\r\n")], { type: "text/csv;charset=utf-8" });
+    const csvUrl = URL.createObjectURL(csvBlob);
+    STATE._lastVolCsvBlobUrl = csvUrl;
+
+    const pImg = perspectiveImgDataUrl || volData._perspectiveImgDataUrl || "";
+    const nImg = nadirImgDataUrl || volData._nadirImgDataUrl || "";
+    const figuresHtml =
+      pImg || nImg
+        ? `<div style="display:grid;grid-template-columns:1fr;gap:18px;margin:20px 0;">
+            ${
+              pImg
+                ? `<div style="border:1px solid #cbd5e1;border-radius:10px;overflow:hidden;background:#0f172a;page-break-inside:avoid;">
+                     <div style="background:#f1f5f9;color:#0f172a;padding:8px 12px;font-weight:700;font-size:13px;border-bottom:1px solid #cbd5e1;">
+                       Figure 1 — ${tr("3D 土方圍束範圍與基準面立體總覽圖 (3D Volume Enclosure & Limiting Plane Overview)", "3D Volume Enclosure & Bottom Limiting Plane Overview")}
+                     </div>
+                     <img src="${pImg}" alt="3D Volume Enclosure Overview" style="width:100%;display:block;height:auto;" />
+                   </div>`
+                : ""
+            }
+            ${
+              nImg
+                ? `<div style="border:1px solid #cbd5e1;border-radius:10px;overflow:hidden;background:#0f172a;page-break-inside:avoid;">
+                     <div style="background:#f1f5f9;color:#0f172a;padding:8px 12px;font-weight:700;font-size:13px;border-bottom:1px solid #cbd5e1;">
+                       Figure 2 — ${tr("正射俯視圖、加粗範圍邊界與頂點標註 (Top-Down Nadir View with Point Labels V1..Vn & Thick Boundary)", "Top-Down Nadir View with Point Labels (V1..Vn) & Thick Boundary")}
+                     </div>
+                     <img src="${nImg}" alt="Top-Down Nadir View with Vertex Labels" style="width:100%;display:block;height:auto;" />
+                   </div>`
+                : ""
+            }
+          </div>`
+        : "";
+
+    const fillVal = Number(volData.fill_volume_m3 || 0);
+    const cutVal = Number(volData.cut_volume_m3 || 0);
+    const netVal = Number(volData.net_volume_m3 || 0);
+    const tonVal = Number(volData.estimated_tonnage_t || 0);
+    const areaVal = Number(volData.planar_area_m2 || 0);
+    const pingVal = Number(volData.planar_area_ping || 0);
+    const perimVal = Number(volData.perimeter_m || 0);
+    const datumVal = Number(volData.datum_elevation_m || 0);
+    const densVal = Number(volData.density_t_m3 || 1.65);
+
+    const htmlDoc = `<!DOCTYPE html><html lang="zh-Hant"><head><meta charset="utf-8"><title>${tr(
+      "土方體積與堆置量測報告",
+      "Stockpile Volume Report"
+    )} — ${escapeHtml(volData.stockpile_name || opts.stockpile_name || "Stockpile A")}</title><style>body{font-family:sans-serif;max-width:920px;margin:24px auto;padding:0 16px;color:#0f172a}table{width:100%;border-collapse:collapse;margin-top:16px}th,td{border:1px solid #cbd5e1;padding:8px 10px;text-align:left;font-size:13px}th{background:#f1f5f9}.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:18px 0}.card{border:1px solid #cbd5e1;border-radius:8px;padding:12px;background:#f8fafc}.val{font-size:20px;font-weight:800;margin-top:4px}@media print{body{margin:0;max-width:100%}.no-print{display:none}}</style></head><body><div style="display:flex;justify-content:space-between;align-items:center;border-bottom:2px solid #0f172a;padding-bottom:10px;margin-bottom:14px;"><div><h2 style="margin:0;">${tr(
+      "土方體積與物料堆置量測報告",
+      "Stockpile & Cut/Fill Volume Report"
+    )}</h2><div style="font-size:12.5px;color:#475569;margin-top:4px;">Project: <b>${escapeHtml(
+      activeScan.project_group || volData.project_group || ""
+    )}</b> | Scan: <b>${escapeHtml(activeScan.name || volData.scan_name || "")}</b> | Zone: <b>${escapeHtml(
+      volData.stockpile_name || opts.stockpile_name || "Stockpile A"
+    )}</b></div></div><button class="no-print" onclick="window.print()" style="padding:7px 14px;border-radius:6px;border:1px solid #0284c7;background:#0284c7;color:#fff;font-weight:700;cursor:pointer;">🖨️ Print / Save PDF</button></div><div class="grid"><div class="card"><div>Fill Volume (+)</div><div class="val" style="color:#0284c7">+${fillVal.toFixed(
+      2
+    )} m³</div></div><div class="card"><div>Cut Volume (-)</div><div class="val" style="color:#dc2626">-${cutVal.toFixed(
+      2
+    )} m³</div></div><div class="card"><div>Net Volume</div><div class="val">${
+      netVal >= 0 ? "+" : ""
+    }${netVal.toFixed(2)} m³</div></div><div class="card"><div>Estimated Mass</div><div class="val">${tonVal.toFixed(
+      2
+    )} t</div></div></div><table><tr><th>Footprint Area</th><td>${areaVal.toFixed(
+      2
+    )} m² (${pingVal.toFixed(2)} 坪)</td><th>Perimeter</th><td>${perimVal.toFixed(
+      2
+    )} m</td></tr><tr><th>Material</th><td>${escapeHtml(
+      volData.material_name || ""
+    )} (${densVal.toFixed(2)} t/m³)</td><th>Limiting Base Mode / Datum Z₀</th><td>${escapeHtml(
+      String(volData.base_mode || "triangulated_boundary")
+    )} (+${datumVal.toFixed(3)} m)</td></tr></table>${figuresHtml}<table><thead><tr><th>Vertex</th><th>TWD97 E (m)</th><th>TWD97 N (m)</th><th>TWVD2001 H (m)</th></tr></thead><tbody>${boundaryTwd97
+      .map(
+        (v) =>
+          `<tr><td><b>V${v.vertex}</b></td><td>${Number(v.easting_m).toFixed(3)}</td><td>${Number(
+            v.northing_m
+          ).toFixed(3)}</td><td>+${Number(v.twvd2001_h_m).toFixed(3)}</td></tr>`
+      )
+      .join("")}</tbody></table></body></html>`;
+    const htmlBlob = new Blob([htmlDoc], { type: "text/html;charset=utf-8" });
+    const htmlUrl = URL.createObjectURL(htmlBlob);
+    STATE._lastVolHtmlBlobUrl = htmlUrl;
+    return { htmlUrl, csvUrl };
+  }
+  window.buildVolumeReportBlobUrls = buildVolumeReportBlobUrls;
+
   function computeClientMeshVolume(ptsLocal, opts = {}) {
     const activeScan = STATE.activeScan || STATE.scans.find((s) => s.scan_id === STATE.activeScanId) || {
       scan_id: STATE.activeScanId || "scan",
@@ -3225,7 +3619,8 @@
     const ch = Number(originTwd.h || 0);
 
     const pts = ptsLocal && ptsLocal.length >= 3 ? ptsLocal : getDefaultPolygonOnStudioMesh();
-    const targets = getStudioRaycastMeshes();
+    const spatialIdx = studioThree?._laserSpatialIndex || null;
+    const targets = spatialIdx ? null : getStudioRaycastMeshes();
 
     // Planar Shoelace area & 3D perimeter
     let area2 = 0;
@@ -3251,17 +3646,20 @@
         const sx = a.x + t * (b.x - a.x);
         const sz = a.z + t * (b.z - a.z);
         const linY = a.y + t * (b.y - a.y);
-        const sHit = sampleStudioMeshElevationAtLocalXZ(sx, sz, linY, targets);
+        const sHit = sampleStudioMeshElevationAtLocalXZ(sx, sz, linY, targets, spatialIdx);
         perimSamples.push({ x: sx, y: sHit.hit ? sHit.y : linY, z: sz });
       }
     }
 
     const perimMeanLocalY =
       perimSamples.reduce((acc, p) => acc + p.y, 0) / Math.max(1, perimSamples.length);
+    const minPerimLocalY =
+      perimSamples.length > 0 ? Math.min(...perimSamples.map((p) => p.y)) : Math.min(...pts.map((p) => p.y));
     const perimMeanH = ch + perimMeanLocalY;
     const baseMode = opts.base_mode || "triangulated_boundary";
     const datumH = Number.isFinite(opts.datum_elevation_m) ? opts.datum_elevation_m : perimMeanH;
     const datumLocalY = datumH - ch;
+    const planeFit = fitBestFitPlaneToPoints(perimSamples.length >= 3 ? perimSamples : pts);
 
     const minX = Math.min(...pts.map((p) => p.x));
     const maxX = Math.max(...pts.map((p) => p.x));
@@ -3270,8 +3668,8 @@
     const spanX = Math.max(0.2, maxX - minX);
     const spanZ = Math.max(0.2, maxZ - minZ);
 
-    const nx = 26;
-    const nz = 26;
+    const nx = 32;
+    const nz = 32;
     const dx = spanX / nx;
     const dzStep = spanZ / nz;
     const cellArea = dx * dzStep;
@@ -3303,7 +3701,6 @@
         if (!pointInPolyXZ(gx, gz)) continue;
         insideCells++;
 
-        // Interpolate perimeter elevation at (gx, gz)
         let wSum = 0;
         let yInterp = 0;
         for (let k = 0; k < perimSamples.length; k++) {
@@ -3314,13 +3711,17 @@
           yInterp += w * ps.y;
         }
         const yPerimBase = yInterp / Math.max(wSum, 1e-9);
-        const sSurf = sampleStudioMeshElevationAtLocalXZ(gx, gz, yPerimBase, targets);
+        const sSurf = sampleStudioMeshElevationAtLocalXZ(gx, gz, yPerimBase, targets, spatialIdx);
         if (sSurf.hit) hitCells++;
         const ySurf = sSurf.y;
 
         let yBase = yPerimBase;
         if (baseMode === "custom_plane") {
           yBase = datumLocalY;
+        } else if (baseMode === "lowest_point") {
+          yBase = minPerimLocalY;
+        } else if (baseMode === "best_fit_plane") {
+          yBase = planeFit.a * gx + planeFit.b * gz + planeFit.c;
         } else if (baseMode === "epoch_diff") {
           yBase = yPerimBase - 0.18;
         }
@@ -3333,7 +3734,7 @@
         else cutVol += Math.abs(deltaY) * cellArea;
 
         surfaceArea += cellArea * 1.04;
-        if (heatmapCells.length < 260) {
+        if (heatmapCells.length < 2500) {
           heatmapCells.push({
             e: Number((ce + gx).toFixed(2)),
             n: Number((cn - gz).toFixed(2)),
@@ -3344,6 +3745,8 @@
             ly_surf: Number(ySurf.toFixed(3)),
             ly_base: Number(yBase.toFixed(3)),
             lz: Number(gz.toFixed(3)),
+            step_x: Number(dx.toFixed(4)),
+            step_z: Number(dzStep.toFixed(4)),
           });
         }
       }
@@ -3374,79 +3777,7 @@
       return { vertex: i + 1, easting_m: t.e, northing_m: t.n, twvd2001_h_m: t.h };
     });
 
-    // Generate client-side downloadable CSV & HTML Blob URLs so Report/CSV work even offline
-    const csvLines = [
-      "GatheringScans Civil Engineering & Stockpile Volume Report",
-      `Project Group,"${activeScan.project_group || ""}"`,
-      `Scan Name,"${activeScan.name || ""}"`,
-      `Zone / Stockpile Name,"${opts.stockpile_name || "Stockpile A"}"`,
-      `Base Surface Mode,${baseMode}`,
-      "",
-      "Metric,Value,Unit",
-      `Fill / Stockpile Volume (+),${fillVol.toFixed(2)},m3`,
-      `Cut / Excavation Volume (-),${cutVol.toFixed(2)},m3`,
-      `Net Earthwork Volume,${netVol.toFixed(2)},m3`,
-      `2D Planar Footprint Area,${planarAreaM2.toFixed(2)},m2`,
-      `2D Planar Footprint Area (Ping),${planarAreaPing.toFixed(2)},ping`,
-      `3D Sloped Surface Area,${Math.max(surfaceArea, planarAreaM2).toFixed(2)},m2`,
-      `Boundary Perimeter,${perim.toFixed(2)},m`,
-      `Material Classification,"${matObj.name}",`,
-      `Material Bulk Density,${density.toFixed(2)},t/m3`,
-      `Estimated Material Mass (Loose),${tonnageLoose.toFixed(2)},t`,
-      `Estimated Bank Mass,${tonnageBank.toFixed(2)},t`,
-      "",
-      "Vertex #,TWD97 Easting E (m),TWD97 Northing N (m),TWVD2001 Elevation H (m)",
-      ...boundaryTwd97.map((v) => `V${v.vertex},${v.easting_m},${v.northing_m},${v.twvd2001_h_m}`),
-    ];
-    if (STATE._lastVolCsvBlobUrl) {
-      try {
-        URL.revokeObjectURL(STATE._lastVolCsvBlobUrl);
-      } catch (_) {}
-    }
-    if (STATE._lastVolHtmlBlobUrl) {
-      try {
-        URL.revokeObjectURL(STATE._lastVolHtmlBlobUrl);
-      } catch (_) {}
-    }
-    const csvBlob = new Blob(["\uFEFF" + csvLines.join("\r\n")], { type: "text/csv;charset=utf-8" });
-    const csvUrl = URL.createObjectURL(csvBlob);
-    STATE._lastVolCsvBlobUrl = csvUrl;
-
-    const htmlDoc = `<!DOCTYPE html><html lang="zh-Hant"><head><meta charset="utf-8"><title>${tr("土方體積與堆置量測報告", "Stockpile Volume Report")} — ${escapeHtml(
-      opts.stockpile_name || "Stockpile A"
-    )}</title><style>body{font-family:sans-serif;max-width:880px;margin:28px auto;color:#0f172a}table{width:100%;border-collapse:collapse;margin-top:16px}th,td{border:1px solid #cbd5e1;padding:8px 10px;text-align:left}th{background:#f1f5f9}.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:18px 0}.card{border:1px solid #cbd5e1;border-radius:8px;padding:12px;background:#f8fafc}.val{font-size:20px;font-weight:800;margin-top:4px}</style></head><body><h2>${tr("土方體積與物料堆置量測報告", "Stockpile & Cut/Fill Volume Report")}</h2><div>Project: <b>${escapeHtml(
-      activeScan.project_group || ""
-    )}</b> | Scan: <b>${escapeHtml(activeScan.name || "")}</b> | Zone: <b>${escapeHtml(
-      opts.stockpile_name || "Stockpile A"
-    )}</b></div><div class="grid"><div class="card"><div>Fill Volume (+)</div><div class="val" style="color:#0284c7">+${fillVol.toFixed(
-      2
-    )} m³</div></div><div class="card"><div>Cut Volume (-)</div><div class="val" style="color:#dc2626">-${cutVol.toFixed(
-      2
-    )} m³</div></div><div class="card"><div>Net Volume</div><div class="val">${
-      netVol >= 0 ? "+" : ""
-    }${netVol.toFixed(2)} m³</div></div><div class="card"><div>Estimated Mass</div><div class="val">${tonnageLoose.toFixed(
-      2
-    )} t</div></div></div><table><tr><th>Footprint Area</th><td>${planarAreaM2.toFixed(
-      2
-    )} m² (${planarAreaPing.toFixed(2)} 坪)</td><th>Perimeter</th><td>${perim.toFixed(
-      2
-    )} m</td></tr><tr><th>Material</th><td>${escapeHtml(
-      matObj.name
-    )} (${density.toFixed(2)} t/m³)</td><th>Datum Z₀</th><td>+${datumH.toFixed(
-      3
-    )} m</td></tr></table><table><thead><tr><th>Vertex</th><th>TWD97 E (m)</th><th>TWD97 N (m)</th><th>TWVD2001 H (m)</th></tr></thead><tbody>${boundaryTwd97
-      .map(
-        (v) =>
-          `<tr><td>V${v.vertex}</td><td>${v.easting_m.toFixed(3)}</td><td>${v.northing_m.toFixed(
-            3
-          )}</td><td>+${v.twvd2001_h_m.toFixed(3)}</td></tr>`
-      )
-      .join("")}</tbody></table></body></html>`;
-    const htmlBlob = new Blob([htmlDoc], { type: "text/html;charset=utf-8" });
-    const htmlUrl = URL.createObjectURL(htmlBlob);
-    STATE._lastVolHtmlBlobUrl = htmlUrl;
-
-    return {
+    const resObj = {
       status: "ok",
       scan_id: activeScan.scan_id,
       scan_name: activeScan.name,
@@ -3455,6 +3786,9 @@
       crs_short: "TWD97 (121) + TWVD2001",
       base_mode: baseMode,
       datum_elevation_m: Number(datumH.toFixed(3)),
+      datum_local_y: Number(datumLocalY.toFixed(3)),
+      min_perim_y: Number(minPerimLocalY.toFixed(3)),
+      plane_fit: planeFit,
       perim_mean_h_m: Number(perimMeanH.toFixed(3)),
       planar_area_m2: Number(planarAreaM2.toFixed(2)),
       planar_area_ping: Number(planarAreaPing.toFixed(2)),
@@ -3472,18 +3806,313 @@
       bank_tonnage_t: Number(tonnageBank.toFixed(2)),
       boundary_twd97: boundaryTwd97,
       cell_step_m: Number(Math.max(dx, dzStep).toFixed(3)),
+      cell_dx: Number(dx.toFixed(4)),
+      cell_dz: Number(dzStep.toFixed(4)),
       heatmap_cells: heatmapCells,
       hit_ratio: insideCells > 0 ? hitCells / insideCells : 0,
-      report_html_url: htmlUrl,
-      report_csv_url: csvUrl,
       _resolvedPtsLocal: pts,
     };
+
+    const blobs = buildVolumeReportBlobUrls(resObj, opts);
+    resObj.report_html_url = blobs.htmlUrl;
+    resObj.report_csv_url = blobs.csvUrl;
+    return resObj;
   }
 
+  async function computeClientMeshVolumeAsync(
+    ptsLocal,
+    baseModeOrOpts = "triangulated_boundary",
+    densityArg = null,
+    customDatumHArg = null,
+    onProgress = null,
+    cancelToken = null
+  ) {
+    let opts = {};
+    if (baseModeOrOpts && typeof baseModeOrOpts === "object") {
+      opts = { ...baseModeOrOpts };
+      if (typeof densityArg === "function" && !onProgress) {
+        onProgress = densityArg;
+        cancelToken = customDatumHArg;
+      }
+    } else {
+      opts = {
+        base_mode: typeof baseModeOrOpts === "string" ? baseModeOrOpts : "triangulated_boundary",
+        density_t_m3: Number.isFinite(densityArg) ? Number(densityArg) : undefined,
+        datum_elevation_m: Number.isFinite(customDatumHArg) ? Number(customDatumHArg) : undefined,
+      };
+    }
+
+    const isCancelled = () =>
+      Boolean(
+        cancelToken &&
+          ((typeof cancelToken.isCancelled === "function" && cancelToken.isCancelled()) ||
+            (Number.isFinite(cancelToken.seq) && cancelToken.seq !== STATE._volumeCalcSeq))
+      );
+
+    if (typeof onProgress === "function") {
+      onProgress(2, tr("準備 3D 網格空間索引...", "Preparing 3D mesh spatial index..."));
+    }
+
+    const spatialIdx = await getLaserSpatialIndexAsync(onProgress, cancelToken);
+    if (isCancelled()) return null;
+
+    const targets = spatialIdx ? null : getStudioRaycastMeshes();
+    const activeScan = STATE.activeScan || STATE.scans.find((s) => s.scan_id === STATE.activeScanId) || {
+      scan_id: STATE.activeScanId || "scan",
+      name: STATE.activeScanId || "Active Scan",
+      project_group: STATE.activeProjectGroup || "Unassigned Site",
+      twd97_e: 0,
+      twd97_n: 0,
+      twd97_h: 0,
+    };
+    const originTwd = localToTwd97({ x: 0, y: 0, z: 0 });
+    const ce = Number(originTwd.e || 0);
+    const cn = Number(originTwd.n || 0);
+    const ch = Number(originTwd.h || 0);
+
+    const pts = ptsLocal && ptsLocal.length >= 3 ? ptsLocal : getDefaultPolygonOnStudioMesh();
+
+    let area2 = 0;
+    let perim = 0;
+    for (let i = 0; i < pts.length; i++) {
+      const a = pts[i];
+      const b = pts[(i + 1) % pts.length];
+      area2 += a.x * b.z - b.x * a.z;
+      perim += a.distanceTo(b);
+    }
+    const planarAreaM2 = Math.max(0.01, Math.abs(area2) * 0.5);
+    const planarAreaPing = planarAreaM2 * 0.3025;
+
+    let frameStart = performance.now();
+    const perimSamples = [];
+    for (let i = 0; i < pts.length; i++) {
+      const a = pts[i];
+      const b = pts[(i + 1) % pts.length];
+      const segLen = Math.hypot(b.x - a.x, b.z - a.z);
+      const nSub = Math.max(2, Math.min(20, Math.ceil(segLen / 0.35)));
+      for (let k = 0; k < nSub; k++) {
+        if (performance.now() - frameStart > 8.0) {
+          if (isCancelled()) return null;
+          if (typeof onProgress === "function") {
+            const pPct = 28 + Math.round(((i + k / nSub) / Math.max(1, pts.length)) * 12);
+            onProgress(pPct, tr("取樣多邊形周界高程...", "Sampling perimeter elevations..."));
+          }
+          await new Promise((r) => requestAnimationFrame(r));
+          frameStart = performance.now();
+          if (isCancelled()) return null;
+        }
+        const t = k / nSub;
+        const sx = a.x + t * (b.x - a.x);
+        const sz = a.z + t * (b.z - a.z);
+        const linY = a.y + t * (b.y - a.y);
+        const sHit = sampleStudioMeshElevationAtLocalXZ(sx, sz, linY, targets, spatialIdx);
+        perimSamples.push({ x: sx, y: sHit.hit ? sHit.y : linY, z: sz });
+      }
+    }
+
+    const perimMeanLocalY =
+      perimSamples.reduce((acc, p) => acc + p.y, 0) / Math.max(1, perimSamples.length);
+    const minPerimLocalY =
+      perimSamples.length > 0 ? Math.min(...perimSamples.map((p) => p.y)) : Math.min(...pts.map((p) => p.y));
+    const perimMeanH = ch + perimMeanLocalY;
+    const baseMode = opts.base_mode || "triangulated_boundary";
+    const datumH = Number.isFinite(opts.datum_elevation_m) ? opts.datum_elevation_m : perimMeanH;
+    const datumLocalY = datumH - ch;
+    const planeFit = fitBestFitPlaneToPoints(perimSamples.length >= 3 ? perimSamples : pts);
+
+    const minX = Math.min(...pts.map((p) => p.x));
+    const maxX = Math.max(...pts.map((p) => p.x));
+    const minZ = Math.min(...pts.map((p) => p.z));
+    const maxZ = Math.max(...pts.map((p) => p.z));
+    const spanX = Math.max(0.2, maxX - minX);
+    const spanZ = Math.max(0.2, maxZ - minZ);
+
+    const nx = 34;
+    const nz = 34;
+    const dx = spanX / nx;
+    const dzStep = spanZ / nz;
+    const cellArea = dx * dzStep;
+
+    const pointInPolyXZ = (px, pz) => {
+      let inside = false;
+      for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
+        const xi = pts[i].x, zi = pts[i].z;
+        const xj = pts[j].x, zj = pts[j].z;
+        const intersect = zi > pz !== zj > pz && px < ((xj - xi) * (pz - zi)) / (zj - zi + 1e-12) + xi;
+        if (intersect) inside = !inside;
+      }
+      return inside;
+    };
+
+    let fillVol = 0;
+    let cutVol = 0;
+    let surfaceArea = 0;
+    let maxDz = -1e9;
+    let minDz = 1e9;
+    let insideCells = 0;
+    let hitCells = 0;
+    const heatmapCells = [];
+    const totalGridCells = nx * nz;
+    let doneGridCells = 0;
+
+    for (let ix = 0; ix < nx; ix++) {
+      for (let iz = 0; iz < nz; iz++) {
+        doneGridCells++;
+        if (performance.now() - frameStart > 8.0) {
+          if (isCancelled()) return null;
+          if (typeof onProgress === "function") {
+            const pct = Math.min(96, 40 + Math.round((doneGridCells / Math.max(1, totalGridCells)) * 56));
+            onProgress(
+              pct,
+              tr(
+                `正在背景計算土方體積... ${pct}% (可自由旋轉檢視 3D 模型)`,
+                `Computing Volume in background... ${pct}%`
+              )
+            );
+          }
+          await new Promise((r) => requestAnimationFrame(r));
+          frameStart = performance.now();
+          if (isCancelled()) return null;
+        }
+
+        const gx = minX + (ix + 0.5) * dx;
+        const gz = minZ + (iz + 0.5) * dzStep;
+        if (!pointInPolyXZ(gx, gz)) continue;
+        insideCells++;
+
+        let wSum = 0;
+        let yInterp = 0;
+        for (let k = 0; k < perimSamples.length; k++) {
+          const ps = perimSamples[k];
+          const d2 = (gx - ps.x) * (gx - ps.x) + (gz - ps.z) * (gz - ps.z) + 0.02;
+          const w = 1 / d2;
+          wSum += w;
+          yInterp += w * ps.y;
+        }
+        const yPerimBase = yInterp / Math.max(wSum, 1e-9);
+        const sSurf = sampleStudioMeshElevationAtLocalXZ(gx, gz, yPerimBase, targets, spatialIdx);
+        if (sSurf.hit) hitCells++;
+        const ySurf = sSurf.y;
+
+        let yBase = yPerimBase;
+        if (baseMode === "custom_plane") {
+          yBase = datumLocalY;
+        } else if (baseMode === "lowest_point") {
+          yBase = minPerimLocalY;
+        } else if (baseMode === "best_fit_plane") {
+          yBase = planeFit.a * gx + planeFit.b * gz + planeFit.c;
+        } else if (baseMode === "epoch_diff") {
+          yBase = yPerimBase - 0.18;
+        }
+
+        const deltaY = ySurf - yBase;
+        maxDz = Math.max(maxDz, deltaY);
+        minDz = Math.min(minDz, deltaY);
+
+        if (deltaY >= 0) fillVol += deltaY * cellArea;
+        else cutVol += Math.abs(deltaY) * cellArea;
+
+        surfaceArea += cellArea * 1.04;
+        if (heatmapCells.length < 2500) {
+          heatmapCells.push({
+            e: Number((ce + gx).toFixed(2)),
+            n: Number((cn - gz).toFixed(2)),
+            z_surf: Number((ch + ySurf).toFixed(3)),
+            z_base: Number((ch + yBase).toFixed(3)),
+            dz: Number(deltaY.toFixed(3)),
+            lx: Number(gx.toFixed(3)),
+            ly_surf: Number(ySurf.toFixed(3)),
+            ly_base: Number(yBase.toFixed(3)),
+            lz: Number(gz.toFixed(3)),
+            step_x: Number(dx.toFixed(4)),
+            step_z: Number(dzStep.toFixed(4)),
+          });
+        }
+      }
+    }
+
+    if (isCancelled()) return null;
+
+    if (insideCells > 0) {
+      const scale = planarAreaM2 / Math.max(insideCells * cellArea, 1e-6);
+      fillVol *= scale;
+      cutVol *= scale;
+      surfaceArea *= scale;
+    }
+
+    const netVol = fillVol - cutVol;
+    const matKey = opts.material_type || "crushed_stone";
+    const matObj = (STATE.materials && STATE.materials[matKey]) || {
+      name: "Crushed Stone / 碎石級配",
+      density_t_m3: 1.65,
+      swell_factor: 1.18,
+    };
+    const density = Number.isFinite(opts.density_t_m3) ? opts.density_t_m3 : Number(matObj.density_t_m3 || 1.65);
+    const swell = Number(matObj.swell_factor || 1.18);
+    const effectiveM3 = Math.max(fillVol, cutVol);
+    const tonnageLoose = effectiveM3 * density;
+    const tonnageBank = effectiveM3 * density * swell;
+
+    const boundaryTwd97 = pts.map((p, i) => {
+      const t = localToTwd97(p);
+      return { vertex: i + 1, easting_m: t.e, northing_m: t.n, twvd2001_h_m: t.h };
+    });
+
+    const resObj = {
+      status: "ok",
+      scan_id: activeScan.scan_id,
+      scan_name: activeScan.name,
+      project_group: activeScan.project_group,
+      stockpile_name: opts.stockpile_name || "Stockpile A",
+      crs_short: "TWD97 (121) + TWVD2001",
+      base_mode: baseMode,
+      datum_elevation_m: Number(datumH.toFixed(3)),
+      datum_local_y: Number(datumLocalY.toFixed(3)),
+      min_perim_y: Number(minPerimLocalY.toFixed(3)),
+      plane_fit: planeFit,
+      perim_mean_h_m: Number(perimMeanH.toFixed(3)),
+      planar_area_m2: Number(planarAreaM2.toFixed(2)),
+      planar_area_ping: Number(planarAreaPing.toFixed(2)),
+      surface_area_m2: Number(Math.max(surfaceArea, planarAreaM2).toFixed(2)),
+      perimeter_m: Number(perim.toFixed(2)),
+      fill_volume_m3: Number(fillVol.toFixed(2)),
+      cut_volume_m3: Number(cutVol.toFixed(2)),
+      net_volume_m3: Number(netVol.toFixed(2)),
+      max_delta_z_m: Number((maxDz > -1e8 ? maxDz : 0).toFixed(2)),
+      min_delta_z_m: Number((minDz < 1e8 ? minDz : 0).toFixed(2)),
+      material_name: matObj.name,
+      density_t_m3: Number(density.toFixed(2)),
+      swell_factor: Number(swell.toFixed(2)),
+      estimated_tonnage_t: Number(tonnageLoose.toFixed(2)),
+      bank_tonnage_t: Number(tonnageBank.toFixed(2)),
+      boundary_twd97: boundaryTwd97,
+      cell_step_m: Number(Math.max(dx, dzStep).toFixed(3)),
+      cell_dx: Number(dx.toFixed(4)),
+      cell_dz: Number(dzStep.toFixed(4)),
+      heatmap_cells: heatmapCells,
+      hit_ratio: insideCells > 0 ? hitCells / insideCells : 0,
+      _resolvedPtsLocal: pts,
+    };
+
+    const blobs = buildVolumeReportBlobUrls(resObj, opts);
+    resObj.report_html_url = blobs.htmlUrl;
+    resObj.report_csv_url = blobs.csvUrl;
+    if (typeof onProgress === "function") {
+      onProgress(100, tr("土方計算完成 (100%)", "Volume calculation complete (100%)"));
+    }
+    return resObj;
+  }
+  window.computeClientMeshVolumeAsync = computeClientMeshVolumeAsync;
+
   // Helper to push a 3D volumetric box prism (top face + 4 vertical side faces) into a triangle buffer
-  function pushBoxPrismTriangles(arr, x, z, hs, yLow, yHigh) {
-    const x0 = x - hs, x1 = x + hs;
-    const z0 = z - hs, z1 = z + hs;
+  function pushBoxPrismTriangles(arr, x, z, halfX, halfZOrYLow, yLowOrHigh, yHighOpt) {
+    const isRect = yHighOpt !== undefined;
+    const hx = halfX;
+    const hz = isRect ? halfZOrYLow : halfX;
+    const yLow = isRect ? yLowOrHigh : halfZOrYLow;
+    const yHigh = isRect ? yHighOpt : yLowOrHigh;
+    const x0 = x - hx, x1 = x + hx;
+    const z0 = z - hz, z1 = z + hz;
     // Top face (yHigh)
     arr.push(
       x0, yHigh, z0, x1, yHigh, z0, x1, yHigh, z1,
@@ -3511,7 +4140,7 @@
     );
   }
 
-  // Draw the user's placed Cut/Fill vertices, boundary lines, and real DSM 3D cut/fill columns in studioThree.volumeGroup
+  // Draw the user's placed Cut/Fill vertices, boundary lines, Bottom Limiting Plane, and real DSM 3D cut/fill columns in studioThree.volumeGroup
   function drawPlacedCutFillPolygon3D(pts, volumeRes = null) {
     if (!studioThree || !studioThree.volumeGroup) return;
     clearVolumeVisualsOnly();
@@ -3549,7 +4178,7 @@
       return;
     }
 
-    // 2. Boundary Outline
+    // 2. Top Surface Boundary Outline
     const loopPts = pts.length >= 3 ? [...pts, pts[0]] : pts.slice();
     const topLoopGeo = new THREE.BufferGeometry().setFromPoints(loopPts);
     const topLoopLine = new THREE.Line(
@@ -3563,35 +4192,113 @@
 
     const originTwd = localToTwd97({ x: 0, y: 0, z: 0 });
     const ch = Number(originTwd.h || 0);
-    const minY =
-      volumeRes && Number.isFinite(volumeRes.datum_elevation_m)
-        ? Number(volumeRes.datum_elevation_m) - ch
-        : Math.min(...pts.map((p) => p.y)) - 0.1;
+    const minSurfY = Math.min(...pts.map((p) => p.y));
     const maxY = Math.max(...pts.map((p) => p.y));
+    const datumLocalY =
+      volumeRes && Number.isFinite(volumeRes.datum_local_y)
+        ? Number(volumeRes.datum_local_y)
+        : volumeRes && Number.isFinite(volumeRes.datum_elevation_m)
+        ? Number(volumeRes.datum_elevation_m) - ch
+        : minSurfY - 0.1;
+    const minPerimY =
+      volumeRes && Number.isFinite(volumeRes.min_perim_y) ? Number(volumeRes.min_perim_y) : minSurfY;
+    const baseMode = (volumeRes && volumeRes.base_mode) || "triangulated_boundary";
+    const planeFit = (volumeRes && volumeRes.plane_fit) || fitBestFitPlaneToPoints(pts);
     const centroid = pts.reduce((acc, p) => acc.add(p.clone()), new THREE.Vector3()).divideScalar(pts.length);
 
-    // 3. Render real 3D Cut/Fill volumetric prisms when heatmap_cells are returned
+    const evalLimitYAtVertex = (v) => {
+      if (baseMode === "custom_plane") return datumLocalY;
+      if (baseMode === "lowest_point") return minPerimY;
+      if (baseMode === "best_fit_plane") return planeFit.a * v.x + planeFit.b * v.z + planeFit.c;
+      if (baseMode === "epoch_diff") return v.y - 0.18;
+      return v.y;
+    };
+
+    // 3. Render real 3D Cut/Fill volumetric prisms + Translucent Bottom Limiting Plane Surface & Wireframe Grid
     const cells = volumeRes && Array.isArray(volumeRes.heatmap_cells) ? volumeRes.heatmap_cells : [];
+    const cellStep = Number(volumeRes?.cell_step_m) || 0.5;
+    let minBaseY = minPerimY;
+
     if (cells.length > 0) {
       const fillPositions = [];
       const cutPositions = [];
-      const cellStep = Number(volumeRes?.cell_step_m) || 0.45;
-      const halfStep = Math.max(0.03, Math.min(0.32, cellStep * 0.42));
-      cells.forEach((c) => {
-        const x = Number(c.lx || 0);
-        const z = Number(c.lz || 0);
-        const ySurf = Number(c.ly_surf || 0) + 0.015;
-        const yBase = Number(c.ly_base || 0);
-        const dz = Number(c.dz || 0);
+      const limitPlanePositions = [];
+      const limitGridPositions = [];
+
+      cells.forEach((cell) => {
+        const x = Number(cell.lx || 0);
+        const z = Number(cell.lz || 0);
+        const ySurf = Number(cell.ly_surf || 0) + 0.015;
+        const yBase = Number(cell.ly_base || 0);
+        if (yBase < minBaseY) minBaseY = yBase;
+        const dz = Number(cell.dz || 0);
+        const stepX = Number(volumeRes.cell_dx || cell.step_x || cellStep) || 0.5;
+        const stepZ = Number(volumeRes.cell_dz || cell.step_z || cellStep) || 0.5;
+        const halfX = Math.max(0.03, stepX * 0.45);
+        const halfZ = Math.max(0.03, stepZ * 0.45);
+
+        // A. Translucent Limiting Plane Surface & Wireframe Grid across interior cells (cell.lx, cell.ly_base, cell.lz)
+        const gx0 = x - stepX * 0.495, gx1 = x + stepX * 0.495;
+        const gz0 = z - stepZ * 0.495, gz1 = z + stepZ * 0.495;
+        limitPlanePositions.push(
+          gx0, yBase, gz0, gx1, yBase, gz0, gx1, yBase, gz1,
+          gx0, yBase, gz0, gx1, yBase, gz1, gx0, yBase, gz1
+        );
+        limitGridPositions.push(
+          gx0, yBase + 0.004, gz0, gx1, yBase + 0.004, gz0,
+          gx1, yBase + 0.004, gz0, gx1, yBase + 0.004, gz1,
+          gx1, yBase + 0.004, gz1, gx0, yBase + 0.004, gz1,
+          gx0, yBase + 0.004, gz1, gx0, yBase + 0.004, gz0
+        );
+
         if (Math.abs(dz) < 0.006) return;
         const yLow = Math.min(yBase, ySurf);
         const yHigh = Math.max(yBase, ySurf);
         if (dz >= 0) {
-          pushBoxPrismTriangles(fillPositions, x, z, halfStep, yLow, yHigh);
+          pushBoxPrismTriangles(fillPositions, x, z, halfX, halfZ, yLow, yHigh);
         } else {
-          pushBoxPrismTriangles(cutPositions, x, z, halfStep, yLow, yHigh);
+          pushBoxPrismTriangles(cutPositions, x, z, halfX, halfZ, yLow, yHigh);
         }
       });
+
+      if (limitPlanePositions.length > 0) {
+        const limitGeo = new THREE.BufferGeometry();
+        limitGeo.setAttribute("position", new THREE.Float32BufferAttribute(limitPlanePositions, 3));
+        const limitMesh = new THREE.Mesh(
+          limitGeo,
+          new THREE.MeshBasicMaterial({
+            color: 0xf59e0b,
+            transparent: true,
+            opacity: 0.28,
+            side: THREE.DoubleSide,
+            depthTest: true,
+            depthWrite: false,
+            polygonOffset: true,
+            polygonOffsetFactor: 1,
+            polygonOffsetUnits: 1,
+          })
+        );
+        limitMesh.renderOrder = 993;
+        studioThree.volumeGroup.add(limitMesh);
+      }
+
+      if (limitGridPositions.length > 0) {
+        const gridGeo = new THREE.BufferGeometry();
+        gridGeo.setAttribute("position", new THREE.Float32BufferAttribute(limitGridPositions, 3));
+        const gridLines = new THREE.LineSegments(
+          gridGeo,
+          new THREE.LineBasicMaterial({
+            color: 0xfbbf24,
+            transparent: true,
+            opacity: 0.65,
+            depthTest: true,
+            depthWrite: false,
+          })
+        );
+        gridLines.renderOrder = 994;
+        studioThree.volumeGroup.add(gridLines);
+      }
+
       if (fillPositions.length > 0) {
         const fillGeo = new THREE.BufferGeometry();
         fillGeo.setAttribute("position", new THREE.Float32BufferAttribute(fillPositions, 3));
@@ -3625,39 +4332,105 @@
         studioThree.volumeGroup.add(cutMesh);
       }
     } else {
-      // Initial boundary triangulation while awaiting calculation
-      const positions = [];
+      // Triangulated limiting plane preview when heatmap_cells are not yet populated
+      const limitPlanePositions = [];
+      const limitGridPositions = [];
+      const cBaseY = evalLimitYAtVertex(centroid);
       for (let i = 0; i < pts.length; i++) {
         const a = pts[i];
         const b = pts[(i + 1) % pts.length];
-        positions.push(a.x, a.y + 0.03, a.z, b.x, b.y + 0.03, b.z, centroid.x, centroid.y + 0.03, centroid.z);
-        positions.push(a.x, minY, a.z, b.x, minY, b.z, b.x, b.y + 0.03, b.z);
-        positions.push(a.x, minY, a.z, b.x, b.y + 0.03, b.z, a.x, a.y + 0.03, a.z);
+        const ya = evalLimitYAtVertex(a);
+        const yb = evalLimitYAtVertex(b);
+        limitPlanePositions.push(a.x, ya, a.z, b.x, yb, b.z, centroid.x, cBaseY, centroid.z);
+        limitGridPositions.push(a.x, ya + 0.004, a.z, centroid.x, cBaseY + 0.004, centroid.z);
       }
-      const prismGeo = new THREE.BufferGeometry();
-      prismGeo.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
-      const prismMesh = new THREE.Mesh(
-        prismGeo,
+      const limitGeo = new THREE.BufferGeometry();
+      limitGeo.setAttribute("position", new THREE.Float32BufferAttribute(limitPlanePositions, 3));
+      const limitMesh = new THREE.Mesh(
+        limitGeo,
         new THREE.MeshBasicMaterial({
-          color: 0x0ea5e9,
+          color: 0xf59e0b,
           transparent: true,
-          opacity: 0.34,
+          opacity: 0.28,
           side: THREE.DoubleSide,
+          depthTest: true,
+          depthWrite: false,
+          polygonOffset: true,
+          polygonOffsetFactor: 1,
+          polygonOffsetUnits: 1,
+        })
+      );
+      limitMesh.renderOrder = 993;
+      studioThree.volumeGroup.add(limitMesh);
+
+      const gridGeo = new THREE.BufferGeometry();
+      gridGeo.setAttribute("position", new THREE.Float32BufferAttribute(limitGridPositions, 3));
+      const gridLines = new THREE.LineSegments(
+        gridGeo,
+        new THREE.LineBasicMaterial({ color: 0xfbbf24, transparent: true, opacity: 0.65, depthTest: true, depthWrite: false })
+      );
+      gridLines.renderOrder = 994;
+      studioThree.volumeGroup.add(gridLines);
+    }
+
+    // B. Bottom Limiting Plane Perimeter Outline & Vertical Drop-Pillars + Translucent Side-Curtain Walls
+    const yFloor = Math.min(minBaseY, minSurfY);
+    const limitVerts = pts.map((v) => {
+      const yLim = evalLimitYAtVertex(v);
+      return new THREE.Vector3(
+        v.x,
+        baseMode === "triangulated_boundary" && Math.abs(yLim - v.y) < 0.02 ? yFloor : yLim,
+        v.z
+      );
+    });
+    const limitLoopPts = [...limitVerts, limitVerts[0].clone()];
+    const limitOutline = new THREE.Line(
+      new THREE.BufferGeometry().setFromPoints(limitLoopPts),
+      new THREE.LineBasicMaterial({ color: 0xf59e0b, linewidth: 2, depthTest: false, transparent: true, opacity: 0.92 })
+    );
+    limitOutline.renderOrder = 997;
+    studioThree.volumeGroup.add(limitOutline);
+
+    const pillarPositions = [];
+    const curtainPositions = [];
+    for (let i = 0; i < pts.length; i++) {
+      const topA = pts[i];
+      const botA = limitVerts[i];
+      const topB = pts[(i + 1) % pts.length];
+      const botB = limitVerts[(i + 1) % pts.length];
+      pillarPositions.push(topA.x, topA.y, topA.z, botA.x, botA.y, botA.z);
+      curtainPositions.push(
+        topA.x, topA.y, topA.z, botA.x, botA.y, botA.z, botB.x, botB.y, botB.z,
+        topA.x, topA.y, topA.z, botB.x, botB.y, botB.z, topB.x, topB.y, topB.z
+      );
+    }
+    if (pillarPositions.length > 0) {
+      const pillarGeo = new THREE.BufferGeometry();
+      pillarGeo.setAttribute("position", new THREE.Float32BufferAttribute(pillarPositions, 3));
+      const pillarLines = new THREE.LineSegments(
+        pillarGeo,
+        new THREE.LineBasicMaterial({ color: 0xf59e0b, depthTest: false, transparent: true, opacity: 0.88 })
+      );
+      pillarLines.renderOrder = 997;
+      studioThree.volumeGroup.add(pillarLines);
+    }
+    if (curtainPositions.length > 0) {
+      const curtainGeo = new THREE.BufferGeometry();
+      curtainGeo.setAttribute("position", new THREE.Float32BufferAttribute(curtainPositions, 3));
+      const curtainMesh = new THREE.Mesh(
+        curtainGeo,
+        new THREE.MeshBasicMaterial({
+          color: 0xf59e0b,
+          transparent: true,
+          opacity: 0.16,
+          side: THREE.DoubleSide,
+          depthTest: true,
           depthWrite: false,
         })
       );
-      prismMesh.renderOrder = 995;
-      studioThree.volumeGroup.add(prismMesh);
+      curtainMesh.renderOrder = 992;
+      studioThree.volumeGroup.add(curtainMesh);
     }
-
-    // Base datum outline & vertical drop lines at vertices
-    const baseLoopPts = [...pts.map((p) => new THREE.Vector3(p.x, minY, p.z)), new THREE.Vector3(pts[0].x, minY, pts[0].z)];
-    const baseLine = new THREE.Line(
-      new THREE.BufferGeometry().setFromPoints(baseLoopPts),
-      new THREE.LineBasicMaterial({ color: 0x38bdf8, depthTest: false, transparent: true, opacity: 0.78 })
-    );
-    baseLine.renderOrder = 996;
-    studioThree.volumeGroup.add(baseLine);
 
     // 4. 2D Cut/Fill Volume & Tonnage Badge at Polygon Centroid
     const badgePos = new THREE.Vector3(centroid.x, maxY + 0.45, centroid.z);
@@ -3678,5 +4451,334 @@
     }
     updateZoomInvariantElements();
   }
+
+  // Capture Figure 1 (3D Perspective Overview) & Figure 2 (Top-Down Nadir View with V1..Vn & Thick Boundary) for Volume Report
+  function captureVolumeReportFigures(ptsLocal, volumeRes) {
+    if (!studioThree || !studioThree.renderer || !studioThree.scene || !studioThree.camera) {
+      return { perspectiveImgDataUrl: "", nadirImgDataUrl: "" };
+    }
+    const pts =
+      ptsLocal && ptsLocal.length >= 3
+        ? ptsLocal
+        : volumeRes && Array.isArray(volumeRes._resolvedPtsLocal) && volumeRes._resolvedPtsLocal.length >= 3
+        ? volumeRes._resolvedPtsLocal
+        : STATE.cutFillPolygonPoints && STATE.cutFillPolygonPoints.length >= 3
+        ? STATE.cutFillPolygonPoints
+        : [];
+    if (pts.length < 3) {
+      return { perspectiveImgDataUrl: "", nadirImgDataUrl: "" };
+    }
+
+    const minX = Math.min(...pts.map((p) => p.x));
+    const maxX = Math.max(...pts.map((p) => p.x));
+    const minY = Math.min(...pts.map((p) => p.y));
+    const maxY = Math.max(...pts.map((p) => p.y));
+    const minZ = Math.min(...pts.map((p) => p.z));
+    const maxZ = Math.max(...pts.map((p) => p.z));
+    const cx = 0.5 * (minX + maxX);
+    const cy = 0.5 * (minY + maxY);
+    const cz = 0.5 * (minZ + maxZ);
+    const spanX = Math.max(2.0, maxX - minX);
+    const spanZ = Math.max(2.0, maxZ - minZ);
+    const spanMax = Math.max(spanX, spanZ, maxY - minY, 4.0);
+
+    const cam = studioThree.camera;
+    const prevPos = cam.position.clone();
+    const prevQuat = cam.quaternion.clone();
+    const prevUp = cam.up.clone();
+    const prevTarget = studioThree.controls?.target ? studioThree.controls.target.clone() : new THREE.Vector3(cx, cy, cz);
+
+    let perspectiveImgDataUrl = "";
+    let nadirImgDataUrl = "";
+
+    try {
+      // 1. Figure 1 — 3D Perspective Overview Screenshot onto 880x500 canvas
+      const dist = Math.max(8.0, spanMax * 1.35);
+      const centerVec = new THREE.Vector3(cx, cy, cz);
+      cam.up.set(0, 1, 0);
+      cam.position.set(cx + dist * 0.58, cy + dist * 0.72, cz + dist * 0.78);
+      cam.lookAt(centerVec);
+      cam.updateMatrixWorld(true);
+      cam.updateProjectionMatrix();
+      studioThree.renderer.render(studioThree.scene, cam);
+
+      const pCanvas = document.createElement("canvas");
+      pCanvas.width = 880;
+      pCanvas.height = 500;
+      const pCtx = pCanvas.getContext("2d");
+      pCtx.fillStyle = "#0f172a";
+      pCtx.fillRect(0, 0, 880, 500);
+      pCtx.drawImage(studioThree.renderer.domElement, 0, 0, 880, 500);
+
+      // Composite V1..Vn vertex callouts onto 880x500 perspective overview
+      pts.forEach((pt, idx) => {
+        const proj = pt.clone().project(cam);
+        if (proj.z >= -1 && proj.z <= 1) {
+          const sx = (proj.x * 0.5 + 0.5) * 880;
+          const sy = (-proj.y * 0.5 + 0.5) * 500;
+          pCtx.beginPath();
+          pCtx.arc(sx, sy, 6, 0, Math.PI * 2);
+          pCtx.fillStyle = idx === 0 ? "#ff3b30" : "#0084ff";
+          pCtx.fill();
+          pCtx.lineWidth = 2;
+          pCtx.strokeStyle = "#ffffff";
+          pCtx.stroke();
+
+          const lbl = `V${idx + 1}`;
+          pCtx.font = "bold 12px monospace";
+          const tw = pCtx.measureText(lbl).width + 10;
+          pCtx.fillStyle = "rgba(15, 23, 42, 0.88)";
+          pCtx.fillRect(sx - tw * 0.5, sy - 26, tw, 18);
+          pCtx.strokeStyle = idx === 0 ? "#ff3b30" : "#38bdf8";
+          pCtx.lineWidth = 1.2;
+          pCtx.strokeRect(sx - tw * 0.5, sy - 26, tw, 18);
+          pCtx.fillStyle = "#ffffff";
+          pCtx.textAlign = "center";
+          pCtx.textBaseline = "middle";
+          pCtx.fillText(lbl, sx, sy - 17);
+        }
+      });
+
+      // Summary Callout Badge on Figure 1
+      if (volumeRes) {
+        pCtx.fillStyle = "rgba(15, 23, 42, 0.90)";
+        pCtx.fillRect(14, 14, 480, 52);
+        pCtx.strokeStyle = "#38bdf8";
+        pCtx.lineWidth = 1.5;
+        pCtx.strokeRect(14, 14, 480, 52);
+        pCtx.textAlign = "left";
+        pCtx.textBaseline = "top";
+        pCtx.font = "bold 13px sans-serif";
+        pCtx.fillStyle = "#f8fafc";
+        pCtx.fillText(
+          `${volumeRes.stockpile_name || "Volume Enclosure"} · Base: ${volumeRes.base_mode || "triangulated_boundary"}`,
+          24,
+          22
+        );
+        pCtx.font = "bold 12.5px monospace";
+        pCtx.fillStyle = "#38bdf8";
+        pCtx.fillText(
+          `Fill: +${volumeRes.fill_volume_m3} m³   Cut: -${volumeRes.cut_volume_m3} m³   Net: ${
+            Number(volumeRes.net_volume_m3) >= 0 ? "+" : ""
+          }${volumeRes.net_volume_m3} m³ (${volumeRes.estimated_tonnage_t} t)`,
+          24,
+          42
+        );
+      }
+      perspectiveImgDataUrl = pCanvas.toDataURL("image/png");
+
+      // 2. Figure 2 — Top-Down (Nadir) View with All Point Labels (V1..Vn) & Thick Boundary onto 880x560 canvas
+      const nW = 880;
+      const nH = 560;
+      const aspect = nW / nH;
+      const halfSpanZ = Math.max(spanZ * 0.5 * 1.28, (spanX * 0.5 * 1.28) / aspect, 3.0);
+      const halfSpanX = halfSpanZ * aspect;
+      const nadirCam = new THREE.OrthographicCamera(
+        -halfSpanX,
+        halfSpanX,
+        halfSpanZ,
+        -halfSpanZ,
+        0.5,
+        Math.max(600, spanMax * 10 + 300)
+      );
+      nadirCam.position.set(cx, maxY + Math.max(80, spanMax * 3), cz);
+      nadirCam.up.set(0, 0, -1);
+      nadirCam.lookAt(new THREE.Vector3(cx, cy, cz));
+      nadirCam.updateProjectionMatrix();
+      nadirCam.updateMatrixWorld(true);
+
+      // Hide volumeGroup during raw nadir terrain render so our crisp 2D canvas vector overlay + cell shading is ultra-clean
+      const prevVolVis = studioThree.volumeGroup ? studioThree.volumeGroup.visible : true;
+      if (studioThree.volumeGroup) studioThree.volumeGroup.visible = false;
+      studioThree.renderer.render(studioThree.scene, nadirCam);
+      if (studioThree.volumeGroup) studioThree.volumeGroup.visible = prevVolVis;
+
+      const nCanvas = document.createElement("canvas");
+      nCanvas.width = nW;
+      nCanvas.height = nH;
+      const nCtx = nCanvas.getContext("2d");
+      nCtx.fillStyle = "#0f172a";
+      nCtx.fillRect(0, 0, nW, nH);
+      nCtx.drawImage(studioThree.renderer.domElement, 0, 0, nW, nH);
+
+      const toNadirXY = (lx, lz) => [
+        ((lx - cx + halfSpanX) / (2 * halfSpanX)) * nW,
+        ((lz - cz + halfSpanZ) / (2 * halfSpanZ)) * nH,
+      ];
+
+      // Engineering coordinate grid ticks (E, N)
+      const originTwd = localToTwd97({ x: 0, y: 0, z: 0 });
+      const ce = Number(originTwd.e || 0);
+      const cn = Number(originTwd.n || 0);
+      const ch = Number(originTwd.h || 0);
+      nCtx.strokeStyle = "rgba(226, 232, 240, 0.22)";
+      nCtx.lineWidth = 1;
+      nCtx.font = "10.5px monospace";
+      nCtx.fillStyle = "rgba(248, 250, 252, 0.85)";
+      for (let gi = 1; gi <= 4; gi++) {
+        const frac = gi / 5;
+        const gxPx = frac * nW;
+        const gzPx = frac * nH;
+        const lxVal = cx - halfSpanX + frac * 2 * halfSpanX;
+        const lzVal = cz - halfSpanZ + frac * 2 * halfSpanZ;
+        nCtx.beginPath();
+        nCtx.moveTo(gxPx, 0);
+        nCtx.lineTo(gxPx, nH);
+        nCtx.stroke();
+        nCtx.beginPath();
+        nCtx.moveTo(0, gzPx);
+        nCtx.lineTo(nW, gzPx);
+        nCtx.stroke();
+        nCtx.textAlign = "center";
+        nCtx.textBaseline = "top";
+        nCtx.fillText(`E:${(ce + lxVal).toFixed(1)}`, gxPx, 6);
+        nCtx.textAlign = "left";
+        nCtx.textBaseline = "middle";
+        nCtx.fillText(`N:${(cn - lzVal).toFixed(1)}`, 6, gzPx - 8);
+      }
+
+      // Semi-transparent Cut (#ef4444) and Fill (#0ea5e9) cell shading
+      const cells = volumeRes && Array.isArray(volumeRes.heatmap_cells) ? volumeRes.heatmap_cells : [];
+      const pxPerMeterX = nW / (2 * halfSpanX);
+      const pxPerMeterZ = nH / (2 * halfSpanZ);
+      cells.forEach((cell) => {
+        const dz = Number(cell.dz || 0);
+        if (Math.abs(dz) < 0.006) return;
+        const stepX = Number(volumeRes.cell_dx || cell.step_x || volumeRes.cell_step_m || 0.5);
+        const stepZ = Number(volumeRes.cell_dz || cell.step_z || volumeRes.cell_step_m || 0.5);
+        const [cxPx, czPx] = toNadirXY(Number(cell.lx || 0), Number(cell.lz || 0));
+        const cw = Math.max(2, stepX * pxPerMeterX * 0.92);
+        const chPx = Math.max(2, stepZ * pxPerMeterZ * 0.92);
+        nCtx.fillStyle = dz >= 0 ? "rgba(14, 165, 233, 0.36)" : "rgba(239, 68, 68, 0.36)";
+        nCtx.fillRect(cxPx - cw * 0.5, czPx - chPx * 0.5, cw, chPx);
+      });
+
+      // Thick, high-contrast polygon boundary (lineWidth = 4.5, #0ea5e9 over #0f172a halo)
+      nCtx.beginPath();
+      pts.forEach((pt, idx) => {
+        const [px, py] = toNadirXY(pt.x, pt.z);
+        if (idx === 0) nCtx.moveTo(px, py);
+        else nCtx.lineTo(px, py);
+      });
+      nCtx.closePath();
+      nCtx.strokeStyle = "#0f172a";
+      nCtx.lineWidth = 8.0;
+      nCtx.lineJoin = "round";
+      nCtx.stroke();
+      nCtx.strokeStyle = "#0ea5e9";
+      nCtx.lineWidth = 4.5;
+      nCtx.stroke();
+
+      // Edge length labels (m)
+      for (let i = 0; i < pts.length; i++) {
+        const a = pts[i];
+        const b = pts[(i + 1) % pts.length];
+        const segLen = a.distanceTo(b);
+        const [ax, ay] = toNadirXY(a.x, a.z);
+        const [bx, by] = toNadirXY(b.x, b.z);
+        const mx = 0.5 * (ax + bx);
+        const my = 0.5 * (ay + by);
+        const edgeTxt = `${segLen.toFixed(2)}m`;
+        nCtx.font = "bold 11px monospace";
+        const etw = nCtx.measureText(edgeTxt).width + 8;
+        nCtx.fillStyle = "rgba(15, 23, 42, 0.85)";
+        nCtx.fillRect(mx - etw * 0.5, my - 9, etw, 18);
+        nCtx.fillStyle = "#fbbf24";
+        nCtx.textAlign = "center";
+        nCtx.textBaseline = "middle";
+        nCtx.fillText(edgeTxt, mx, my);
+      }
+
+      // All vertex point markers & callout labels V1, V2, ..., Vn with their elevation (H:+XX.XXm)
+      pts.forEach((pt, idx) => {
+        const [px, py] = toNadirXY(pt.x, pt.z);
+        const hVal = ch + pt.y;
+        nCtx.beginPath();
+        nCtx.arc(px, py, 7, 0, Math.PI * 2);
+        nCtx.fillStyle = idx === 0 ? "#ff3b30" : "#0084ff";
+        nCtx.fill();
+        nCtx.lineWidth = 2.2;
+        nCtx.strokeStyle = "#ffffff";
+        nCtx.stroke();
+
+        const vLbl = `V${idx + 1} (H:+${hVal.toFixed(2)}m)`;
+        nCtx.font = "bold 11.5px monospace";
+        const vtw = nCtx.measureText(vLbl).width + 12;
+        const bx = Math.max(6, Math.min(nW - vtw - 6, px - vtw * 0.5));
+        const by = py > 38 ? py - 30 : py + 12;
+        nCtx.fillStyle = "rgba(15, 23, 42, 0.92)";
+        nCtx.fillRect(bx, by, vtw, 20);
+        nCtx.strokeStyle = idx === 0 ? "#ff3b30" : "#38bdf8";
+        nCtx.lineWidth = 1.4;
+        nCtx.strokeRect(bx, by, vtw, 20);
+        nCtx.fillStyle = "#ffffff";
+        nCtx.textAlign = "center";
+        nCtx.textBaseline = "middle";
+        nCtx.fillText(vLbl, bx + vtw * 0.5, by + 10);
+      });
+
+      // North arrow & metric scale bar
+      nCtx.fillStyle = "rgba(15, 23, 42, 0.88)";
+      nCtx.fillRect(nW - 62, 16, 46, 54);
+      nCtx.strokeStyle = "#cbd5e1";
+      nCtx.lineWidth = 1.2;
+      nCtx.strokeRect(nW - 62, 16, 46, 54);
+      nCtx.fillStyle = "#38bdf8";
+      nCtx.beginPath();
+      nCtx.moveTo(nW - 39, 24);
+      nCtx.lineTo(nW - 47, 44);
+      nCtx.lineTo(nW - 39, 39);
+      nCtx.lineTo(nW - 31, 44);
+      nCtx.closePath();
+      nCtx.fill();
+      nCtx.fillStyle = "#ffffff";
+      nCtx.font = "bold 12px sans-serif";
+      nCtx.textAlign = "center";
+      nCtx.fillText("N", nW - 39, 58);
+
+      const rawBarMeters = Math.max(1, Math.round((2 * halfSpanX * 0.18) * 2) / 2);
+      const barPx = rawBarMeters * pxPerMeterX;
+      nCtx.fillStyle = "rgba(15, 23, 42, 0.88)";
+      nCtx.fillRect(16, nH - 42, barPx + 28, 28);
+      nCtx.strokeStyle = "#cbd5e1";
+      nCtx.lineWidth = 1.2;
+      nCtx.strokeRect(16, nH - 42, barPx + 28, 28);
+      nCtx.strokeStyle = "#ffffff";
+      nCtx.lineWidth = 3;
+      nCtx.beginPath();
+      nCtx.moveTo(28, nH - 22);
+      nCtx.lineTo(28 + barPx, nH - 22);
+      nCtx.moveTo(28, nH - 27);
+      nCtx.lineTo(28, nH - 17);
+      nCtx.moveTo(28 + barPx, nH - 27);
+      nCtx.lineTo(28 + barPx, nH - 17);
+      nCtx.stroke();
+      nCtx.font = "bold 11px monospace";
+      nCtx.fillStyle = "#38bdf8";
+      nCtx.textAlign = "center";
+      nCtx.fillText(`${rawBarMeters} m`, 28 + barPx * 0.5, nH - 32);
+
+      nadirImgDataUrl = nCanvas.toDataURL("image/png");
+    } catch (err) {
+      console.warn("[GatheringScans] captureVolumeReportFigures warning:", err);
+    } finally {
+      // Restore camera & controls synchronously
+      cam.position.copy(prevPos);
+      cam.quaternion.copy(prevQuat);
+      cam.up.copy(prevUp);
+      if (studioThree.controls?.target) {
+        studioThree.controls.target.copy(prevTarget);
+        studioThree.controls.update();
+      }
+      cam.updateMatrixWorld(true);
+      cam.updateProjectionMatrix();
+      studioThree.renderer.render(studioThree.scene, cam);
+      updateZoomInvariantElements();
+      update2DBadgePositions();
+    }
+
+    return { perspectiveImgDataUrl, nadirImgDataUrl };
+  }
+  window.captureVolumeReportFigures = captureVolumeReportFigures;
 
 

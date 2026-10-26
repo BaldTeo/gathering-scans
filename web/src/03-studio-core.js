@@ -1059,6 +1059,7 @@
     const scan = STATE.scans.find((s) => s.scan_id === scanId) || STATE.scans[0];
     if (!scan || !studioThree) return;
     const preserveCamera = Boolean(opts && opts.preserveCamera);
+    const preserveTools = Boolean(opts && opts.preserveTools);
     const bustCache = Boolean(opts && opts.bustCache);
 
     if (STATE.fpMode?.active && typeof exitFirstPersonMode === "function") {
@@ -1073,6 +1074,63 @@
     STATE.activeScan = scan;
     if (prevScanId && prevScanId !== scan.scan_id) {
       STATE.targetAttachCommentId = null;
+    }
+
+    // Cancel any running background volume calculation and clean up all tool visuals & panels when switching/loading scans
+    STATE._volumeCalcSeq = (STATE._volumeCalcSeq || 0) + 1;
+    if (typeof hideVolumeProgressHudPill === "function") {
+      hideVolumeProgressHudPill();
+    }
+    if (!preserveTools) {
+      STATE.lastVolumeResult = null;
+      STATE.lastContoursResult = null;
+      STATE.cutFillPolygonPoints = [];
+      STATE.maskBoundaryPoints = [];
+      STATE.profileEndpoints = [];
+      STATE.lastProfileResult = null;
+      STATE.sectionBoxEndpoints = [];
+      STATE.sectionBoxState = null;
+      STATE.keepSectionBoxClip = false;
+      studioThree._laserSpatialIndex = null;
+      if (studioThree.contourGroup) {
+        while (studioThree.contourGroup.children.length > 0) {
+          const c = studioThree.contourGroup.children[0];
+          if (c.geometry) c.geometry.dispose();
+          if (c.material) c.material.dispose();
+          studioThree.contourGroup.remove(c);
+        }
+      }
+      if (typeof clearMeasurements === "function") {
+        clearMeasurements();
+      }
+      if (typeof clearProfileVisualsOnly === "function") {
+        clearProfileVisualsOnly();
+      }
+      if (typeof clearSectionBoxClippingIfNotKept === "function") {
+        clearSectionBoxClippingIfNotKept();
+      }
+      if (typeof clearDrainageVisuals3D === "function") {
+        clearDrainageVisuals3D();
+      }
+      if (typeof clearGcpQaMarkers3D === "function") {
+        clearGcpQaMarkers3D();
+      }
+      if (typeof clearPhotoTargetVisuals3D === "function") {
+        clearPhotoTargetVisuals3D(true);
+      }
+      STATE.categorizeOverlayVisible = false;
+      STATE.categorizeLabelsVisible = false;
+      if (typeof hideCategorizeOverlaysAndLabels === "function") {
+        hideCategorizeOverlaysAndLabels();
+      } else if (typeof clearCategorizeVisualsOnly === "function") {
+        clearCategorizeVisualsOnly();
+      }
+      if (typeof closeSidePanel === "function") {
+        closeSidePanel();
+      }
+      if (typeof setActiveStudioTool === "function") {
+        setActiveStudioTool("orbit");
+      }
     }
     SHARE_TELEMETRY.recordScanViewed(scan, "studio");
     if (STATE.activeProjectGroup !== "__all__") {
@@ -3219,9 +3277,15 @@
   }
 
   function clearMeasurements() {
+    STATE._volumeCalcSeq = (STATE._volumeCalcSeq || 0) + 1;
+    if (typeof hideVolumeProgressHudPill === "function") {
+      hideVolumeProgressHudPill();
+    }
     STATE.movingVertex = null;
     STATE.measurePoints = [];
     STATE.completedMeasurements = [];
+    STATE.cutFillPolygonPoints = [];
+    STATE.maskBoundaryPoints = [];
     STATE.polygonLocked = false;
     if (studioThree) {
       studioThree._snapIndicatorRing = null;
