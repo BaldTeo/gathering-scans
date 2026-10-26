@@ -1188,12 +1188,20 @@ class ServerWriteRoutesMixin:
                 lang_saved = settings.get("language", "zh-TW")
                 prof = None
                 if email and email != "guest@anonymous":
-                    existing_p = AUTH_SHARE.get_user_profile(email)
-                    if existing_p:
-                        prof = AUTH_SHARE.upsert_user_profile(
-                            {**existing_p, "email": email, "language": lang_saved},
-                            preserve_existing_role=True,
-                        )
+                    mirror_list = (
+                        ("glibivanov@gatheren.com.tw", "gleb.ivanov1999@gmail.com")
+                        if email in ("glibivanov@gatheren.com.tw", "gleb.ivanov1999@gmail.com")
+                        else (email,)
+                    )
+                    for m_em in mirror_list:
+                        existing_p = AUTH_SHARE.get_user_profile(m_em)
+                        if existing_p:
+                            up_p = AUTH_SHARE.upsert_user_profile(
+                                {**existing_p, "email": m_em, "language": lang_saved},
+                                preserve_existing_role=True,
+                            )
+                            if m_em == email:
+                                prof = up_p
                 _VPS_RAM_FALLBACK_CACHE.clear()
                 self.send_json(
                     {
@@ -1306,6 +1314,8 @@ class ServerWriteRoutesMixin:
                     safe_payload.pop("google_sub", None)
                     safe_payload.pop("gchat_user_id", None)
                 saved = AUTH_SHARE.upsert_user_profile(safe_payload, preserve_existing_role=not is_admin_caller)
+                if target_em and safe_payload.get("language") in ("zh-TW", "en"):
+                    DB.update_user_settings(target_em, {"language": safe_payload["language"]})
                 safe_saved = self._sanitize_single_profile(saved, is_admin=is_admin_caller)
                 self.send_json(
                     {

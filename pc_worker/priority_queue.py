@@ -1504,12 +1504,24 @@ class ScanQueueDB:
         except Exception:
             pass
 
+    OWNER_MIRROR_EMAILS = ("glibivanov@gatheren.com.tw", "gleb.ivanov1999@gmail.com")
+
     def get_user_settings(self, email: str) -> Dict[str, Any]:
         clean = (email or "").strip().lower() or "guest@anonymous"
         prefs_map = self._load_user_prefs_json()
         json_pref = prefs_map.get(clean) if isinstance(prefs_map.get(clean), dict) else {}
+        if not json_pref and clean in self.OWNER_MIRROR_EMAILS:
+            for alt_em in self.OWNER_MIRROR_EMAILS:
+                if isinstance(prefs_map.get(alt_em), dict):
+                    json_pref = prefs_map[alt_em]
+                    break
         with DB_LOCK, self._connect() as conn:
             row = conn.execute("SELECT * FROM user_settings WHERE lower(email) = ?", (clean,)).fetchone()
+            if not row and clean in self.OWNER_MIRROR_EMAILS:
+                for alt_em in self.OWNER_MIRROR_EMAILS:
+                    row = conn.execute("SELECT * FROM user_settings WHERE lower(email) = ?", (alt_em,)).fetchone()
+                    if row:
+                        break
             if not row:
                 lang_val = str(json_pref.get("language") or "zh-TW").strip()
                 if lang_val not in ("zh-TW", "en"):
@@ -1525,10 +1537,15 @@ class ScanQueueDB:
                 }
                 return default
             d = dict(row)
+            d["email"] = clean
             d["offline_cache_enabled"] = bool(d.get("offline_cache_enabled", 1))
-            if d.get("theme_preference") not in ("auto", "light", "dark"):
+            json_theme = str(json_pref.get("theme_preference") or "").strip()
+            if json_theme in ("auto", "light", "dark"):
+                d["theme_preference"] = json_theme
+            elif d.get("theme_preference") not in ("auto", "light", "dark"):
                 d["theme_preference"] = "auto"
-            lang_val = str(d.get("language") or json_pref.get("language") or "zh-TW").strip()
+            json_lang = str(json_pref.get("language") or "").strip()
+            lang_val = json_lang if json_lang in ("zh-TW", "en") else str(d.get("language") or "zh-TW").strip()
             if lang_val not in ("zh-TW", "en"):
                 lang_val = "zh-TW"
             d["language"] = lang_val
@@ -1555,29 +1572,32 @@ class ScanQueueDB:
         else:
             lang_pref = current.get("language", "zh-TW") if current.get("language") in ("zh-TW", "en") else "zh-TW"
         now_iso = datetime.now(timezone.utc).isoformat()
+        target_emails = list(self.OWNER_MIRROR_EMAILS) if clean in self.OWNER_MIRROR_EMAILS else [clean]
         with DB_LOCK, self._connect() as conn:
-            conn.execute(
-                """
-                INSERT INTO user_settings (email, display_name, offline_cache_enabled, auto_cache_pinned_groups, theme_preference, language, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT(email) DO UPDATE SET
-                    display_name=excluded.display_name,
-                    offline_cache_enabled=excluded.offline_cache_enabled,
-                    auto_cache_pinned_groups=excluded.auto_cache_pinned_groups,
-                    theme_preference=excluded.theme_preference,
-                    language=excluded.language,
-                    updated_at=excluded.updated_at
-                """,
-                (clean, display_name, offline_enabled, json.dumps(pinned), theme_pref, lang_pref, now_iso),
-            )
+            for em_target in target_emails:
+                conn.execute(
+                    """
+                    INSERT INTO user_settings (email, display_name, offline_cache_enabled, auto_cache_pinned_groups, theme_preference, language, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(email) DO UPDATE SET
+                        display_name=excluded.display_name,
+                        offline_cache_enabled=excluded.offline_cache_enabled,
+                        auto_cache_pinned_groups=excluded.auto_cache_pinned_groups,
+                        theme_preference=excluded.theme_preference,
+                        language=excluded.language,
+                        updated_at=excluded.updated_at
+                    """,
+                    (em_target, display_name, offline_enabled, json.dumps(pinned), theme_pref, lang_pref, now_iso),
+                )
             conn.commit()
-        self._save_user_prefs_json_entry(
-            clean,
-            {
-                "email": clean,
-                "language": lang_pref,
-                "theme_preference": theme_pref,
-                "updated_at": now_iso,
-            },
-        )
+        for em_target in target_emails:
+            self._save_user_prefs_json_entry(
+                em_target,
+                {
+                    "email": em_target,
+                    "language": lang_pref,
+                    "theme_preference": theme_pref,
+                    "updated_at": now_iso,
+                },
+            )
         return self.get_user_settings(clean)

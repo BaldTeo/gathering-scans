@@ -758,6 +758,42 @@ class GatheringScansTestSuite(unittest.TestCase):
         self.assertIn(".gs-photo-frustum-overlay", css)
         self.assertIn(".gs-compare-profile-drawer", css)
 
+    def test_11_timeline_wheel_scroll_and_account_language_sync(self):
+        """Verify Site Timeline horizontal mouse-wheel scroll and reliable account language persistence & mirroring."""
+        # 1. Saving language 'en' for glibivanov@gatheren.com.tw persists and mirrors to gleb.ivanov1999@gmail.com
+        saved_s = self.db.update_user_settings(
+            "glibivanov@gatheren.com.tw",
+            {"language": "en", "theme_preference": "light"},
+        )
+        self.assertEqual(saved_s["language"], "en")
+        self.assertEqual(saved_s["theme_preference"], "light")
+
+        s_corp = self.db.get_user_settings("glibivanov@gatheren.com.tw")
+        s_gmail = self.db.get_user_settings("gleb.ivanov1999@gmail.com")
+        self.assertEqual(s_corp["language"], "en")
+        self.assertEqual(s_gmail["language"], "en")
+        self.assertEqual(s_gmail["theme_preference"], "light")
+
+        # 2. Verify frontend wiring for wheel scroll and language hydration without guest overwrite
+        with open(os.path.join(BASE_DIR, "web", "src", "02-map-and-timeline.js"), "r", encoding="utf-8") as f:
+            js02 = f.read()
+        with open(os.path.join(BASE_DIR, "web", "app.js"), "r", encoding="utf-8") as f:
+            app_js = f.read()
+        with open(os.path.join(BASE_DIR, "web", "i18n.js"), "r", encoding="utf-8") as f:
+            i18n_js = f.read()
+        with open(os.path.join(BASE_DIR, "server.py"), "r", encoding="utf-8") as f:
+            srv_py = f.read()
+
+        self.assertIn("bindHorizontalWheelScroll", js02)
+        self.assertIn("ensureTimelineAndDockWheelScroll", js02)
+        self.assertIn("scrollTargetEl.scrollLeft += delta", js02)
+        self.assertIn("STATE._prefsFetchedForEmail !== targetEmail || markAuthorized", app_js)
+        self.assertIn("isSignedInSettingsMatch", app_js)
+        self.assertIn("window.persistLanguageToServer = persistLanguageToServer", i18n_js)
+        self.assertIn('fetch("/api/user-profiles"', i18n_js)
+        self.assertNotIn('fetch("/api/auth/profile"', i18n_js)
+        self.assertIn('pref_em not in ("guest", "guest@anonymous", "guest@external", "guest@gatheren.cloud")', srv_py)
+
 
 if __name__ == "__main__":
     unittest.main()

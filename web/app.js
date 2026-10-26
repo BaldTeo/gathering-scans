@@ -1637,33 +1637,52 @@
     }
     STATE.currentUser = Object.assign({ offlineCacheEnabled: true }, STATE.currentUser || {}, normalized);
     syncSessionTokenCookie(STATE.currentUser);
-    if (
-      markAuthorized &&
-      normalized.language &&
-      (normalized.language === "zh-TW" || normalized.language === "en") &&
-      typeof window.setAppLanguage === "function" &&
-      normalized.language !== window.getAppLanguage?.()
-    ) {
-      window.setAppLanguage(normalized.language, { saveToServer: false });
-    }
-    if (markAuthorized && STATE.currentUser.email) {
-      const targetEmail = String(STATE.currentUser.email).trim().toLowerCase();
-      fetch(`/api/user/preferences?email=${encodeURIComponent(targetEmail)}`, { credentials: "same-origin" })
-        .then((r) => (r.ok ? r.json() : null))
-        .then((prefData) => {
-          const srvLang = prefData?.preferences?.language || prefData?.language;
-          if (
-            (srvLang === "zh-TW" || srvLang === "en") &&
-            !window.__gsUserManuallyToggledLang &&
-            typeof window.setAppLanguage === "function"
-          ) {
-            if (STATE.currentUser) STATE.currentUser.language = srvLang;
-            if (srvLang !== window.getAppLanguage?.()) {
-              window.setAppLanguage(srvLang, { saveToServer: false });
-            }
-          }
-        })
-        .catch(() => {});
+    const targetEmail = String(STATE.currentUser.email || "").trim().toLowerCase();
+    const isGuestEmail = !targetEmail || targetEmail === "guest" || targetEmail.startsWith("guest@");
+    if (!isGuestEmail) {
+      if (markAuthorized && window.__gsUserManuallyToggledLang) {
+        const manualLang = typeof window.getAppLanguage === "function" ? window.getAppLanguage() : "zh-TW";
+        STATE.currentUser.language = manualLang;
+        if (typeof window.persistLanguageToServer === "function") {
+          window.persistLanguageToServer(manualLang);
+        }
+      } else if (!window.__gsUserManuallyToggledLang) {
+        if (
+          (normalized.language === "zh-TW" || normalized.language === "en") &&
+          !STATE._prefsFetchedForEmail &&
+          typeof window.setAppLanguage === "function" &&
+          normalized.language !== window.getAppLanguage?.()
+        ) {
+          window.setAppLanguage(normalized.language, { saveToServer: false });
+        }
+        if (STATE._prefsFetchedForEmail !== targetEmail || markAuthorized) {
+          STATE._prefsFetchedForEmail = targetEmail;
+          fetch(`/api/user/preferences?email=${encodeURIComponent(targetEmail)}`, {
+            credentials: "same-origin",
+            headers: typeof apiHeaders === "function" ? apiHeaders(false) : {},
+          })
+            .then((r) => (r.ok ? r.json() : null))
+            .then((prefData) => {
+              const srvLang = prefData?.preferences?.language || prefData?.language;
+              if (
+                (srvLang === "zh-TW" || srvLang === "en") &&
+                !window.__gsUserManuallyToggledLang &&
+                typeof window.setAppLanguage === "function"
+              ) {
+                if (STATE.currentUser) STATE.currentUser.language = srvLang;
+                try {
+                  localStorage.setItem("gs_ui_language", srvLang);
+                  localStorage.setItem("gathering_user_profile", JSON.stringify(STATE.currentUser));
+                  localStorage.setItem("gs_current_user", JSON.stringify(STATE.currentUser));
+                } catch (_) {}
+                if (srvLang !== window.getAppLanguage?.()) {
+                  window.setAppLanguage(srvLang, { saveToServer: false });
+                }
+              }
+            })
+            .catch(() => {});
+        }
+      }
     }
     const dlBtn = document.getElementById("btnStudioDownloadObj");
     if (dlBtn && STATE.activeScanId) {
@@ -2381,10 +2400,25 @@
       if (typeof data.bin_scans_count === "number") {
         updateRecycleBinBadges(data.bin_scans_count);
       }
-      if (data.user_settings && data.user_settings.theme_preference && !localStorage.getItem("gs_theme_pref")) {
+      const settingsEmail = String(data.user_settings?.email || "").trim().toLowerCase();
+      const curUserEmail = String(STATE.currentUser?.email || "").trim().toLowerCase();
+      const isSignedInSettingsMatch = Boolean(
+        settingsEmail &&
+          settingsEmail !== "guest" &&
+          !settingsEmail.startsWith("guest@") &&
+          curUserEmail &&
+          settingsEmail === curUserEmail
+      );
+      if (
+        isSignedInSettingsMatch &&
+        data.user_settings &&
+        data.user_settings.theme_preference &&
+        !localStorage.getItem("gs_theme_pref")
+      ) {
         await applyTheme(data.user_settings.theme_preference, false);
       }
       if (
+        isSignedInSettingsMatch &&
         data.user_settings &&
         (data.user_settings.language === "zh-TW" || data.user_settings.language === "en") &&
         !window.__gsUserManuallyToggledLang &&

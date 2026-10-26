@@ -1128,7 +1128,15 @@ class CloudAndTunnelHandlerMixin:
             for k in list(_VPS_RAM_FALLBACK_CACHE.keys()):
                 if k.startswith(path):
                     _VPS_RAM_FALLBACK_CACHE.pop(k, None)
-        if method in ("POST", "DELETE") and ("/rename" in path or "/delete" in path or "/bin" in path or "/rerun" in path or "/admin/users" in path or "/user/" in path or "/user-profiles" in path or "/auth/" in path or path == "/api/comments" or path.startswith("/api/comments/") or path.startswith("/api/optimizer/") or path in ("/api/scans/rename", "/api/scans/delete", "/api/scans/merge")):
+        if method in ("POST", "DELETE") and ("/rename" in path or "/delete" in path or "/bin" in path or "/rerun" in path or "/admin/users" in path or "/user/" in path or "/user-profiles" in path or "/auth/" in path or path == "/api/comments" or path.startswith("/api/comments/") or path.startswith("/api/measurements/") or path.startswith("/api/optimizer/") or path in ("/api/scans/rename", "/api/scans/delete", "/api/scans/merge")):
+            if method == "POST" and body and path in ("/api/user/settings", "/api/user/preferences"):
+                try:
+                    p_u = json.loads(body.decode("utf-8"))
+                    u_em = str(p_u.get("email") or p_u.get("user_email") or self.headers.get("X-User-Email") or "").strip().lower()
+                    if u_em and u_em != "guest@anonymous":
+                        DB.update_user_settings(u_em, p_u)
+                except Exception:
+                    pass
             for k in list(_VPS_RAM_FALLBACK_CACHE.keys()):
                 if k.startswith("/api/scans") or k.startswith("/api/projects") or k.startswith("/api/user-profiles") or k.startswith("/api/user/") or k.startswith("/api/auth/") or k.startswith("/api/admin/users") or k.startswith("/stream/"):
                     _VPS_RAM_FALLBACK_CACHE.pop(k, None)
@@ -1337,6 +1345,25 @@ class CloudAndTunnelHandlerMixin:
         # 4. Serve from in-memory fallback cache if available during momentary tunnel reconnect
         if self.path in _VPS_RAM_FALLBACK_CACHE:
             c_status, c_hdrs, c_body = _VPS_RAM_FALLBACK_CACHE[self.path]
+            if path == "/api/scans":
+                try:
+                    c_json = json.loads(c_body.decode("utf-8"))
+                    if isinstance(c_json, dict):
+                        actor_em_c, _, _ = self._resolve_request_role(None, parsed_q, share_token)
+                        pref_em_c = (
+                            actor_em_c
+                            if (actor_em_c and actor_em_c not in ("guest", "guest@anonymous", "guest@external", "guest@gatheren.cloud"))
+                            else str(self.headers.get("X-User-Email") or (parsed_q.get("user_email") or [None])[0] or "").strip().lower()
+                        )
+                        c_json["user_settings"] = (
+                            DB.get_user_settings(pref_em_c)
+                            if (pref_em_c and pref_em_c not in ("guest", "guest@anonymous", "guest@external", "guest@gatheren.cloud"))
+                            else None
+                        )
+                        self.send_json(c_json, status=c_status)
+                        return True
+                except Exception:
+                    pass
             self.send_response(c_status)
             for hk, hv in c_hdrs.items():
                 self.send_header(hk, hv)
@@ -1390,6 +1417,17 @@ class CloudAndTunnelHandlerMixin:
                 )
                 return True
             enriched = [self._enrich_scan_urls(s) for s in cloud_scans]
+            actor_em_fb, _, _ = self._resolve_request_role(None, parsed_q, share_token)
+            pref_em_fb = (
+                actor_em_fb
+                if (actor_em_fb and actor_em_fb not in ("guest", "guest@anonymous", "guest@external", "guest@gatheren.cloud"))
+                else str(self.headers.get("X-User-Email") or (parsed_q.get("user_email") or [None])[0] or "").strip().lower()
+            )
+            fb_user_settings = (
+                DB.get_user_settings(pref_em_fb)
+                if (pref_em_fb and pref_em_fb not in ("guest", "guest@anonymous", "guest@external", "guest@gatheren.cloud"))
+                else None
+            )
             self.send_json(
                 {
                     "status": "ok",
@@ -1401,6 +1439,7 @@ class CloudAndTunnelHandlerMixin:
                     "projects": self._build_projects_summary(enriched),
                     "materials": MATERIAL_CATALOG,
                     "google_client_id": GOOGLE_OAUTH_CLIENT_ID,
+                    "user_settings": fb_user_settings,
                 }
             )
             return True
@@ -1449,6 +1488,7 @@ class CloudAndTunnelHandlerMixin:
             or path.startswith("/api/share/")
             or path == "/api/comments"
             or path.startswith("/api/comments/")
+            or path.startswith("/api/measurements/")
             or path == "/api/scans/delete"
             or path.startswith("/api/scans/bin")
             or path.endswith("/thumbnail")

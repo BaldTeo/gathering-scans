@@ -1355,7 +1355,16 @@ class GatheringScansHandler(CloudAndTunnelHandlerMixin, ServerWriteRoutesMixin, 
             bin_scans = DB.list_trashed_scans()
             d_running = is_pc_daemon_running()
             actor_em, _, _ = self._resolve_request_role(None, query, share_token)
-            user_settings = DB.get_user_settings(actor_em) if actor_em else None
+            pref_em = (
+                actor_em
+                if (actor_em and actor_em not in ("guest", "guest@anonymous", "guest@external", "guest@gatheren.cloud"))
+                else str(self.headers.get("X-User-Email") or (query.get("user_email") or [None])[0] or "").strip().lower()
+            )
+            user_settings = (
+                DB.get_user_settings(pref_em)
+                if (pref_em and pref_em not in ("guest", "guest@anonymous", "guest@external", "guest@gatheren.cloud"))
+                else None
+            )
             self.send_json(
                 {
                     "status": "ok",

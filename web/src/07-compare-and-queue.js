@@ -1292,6 +1292,10 @@
         user_name: STATE.currentUser.name || "Engineer",
         offline_cache_enabled: STATE.currentUser.offlineCacheEnabled !== false,
         theme_preference: normalizedPref,
+        language:
+          (typeof window.getAppLanguage === "function" && window.getAppLanguage()) ||
+          STATE.currentUser?.language ||
+          "zh-TW",
       }).catch(() => {});
     }
   }

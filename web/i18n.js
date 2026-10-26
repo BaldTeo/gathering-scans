@@ -19,13 +19,27 @@
     return DEFAULT_LANG;
   }
 
-  // Initialize from localStorage if valid, else default to zh-TW in memory (do NOT write to localStorage on initial boot if unset so server profile preference can hydrate cleanly)
+  // Initialize from localStorage if valid, else check stored user profile before falling back to DEFAULT_LANG
   try {
     var stored = localStorage.getItem(STORAGE_KEY);
     if (stored === "en" || stored === "zh-TW") {
       currentLang = stored;
     } else {
-      currentLang = DEFAULT_LANG;
+      var profKeysInit = ["gathering_user_profile", "gs_current_user", "gs_user_profile_v1"];
+      var foundProfLang = "";
+      for (var pk = 0; pk < profKeysInit.length; pk++) {
+        try {
+          var rawP = localStorage.getItem(profKeysInit[pk]);
+          if (rawP) {
+            var parsedP = JSON.parse(rawP);
+            if (parsedP && (parsedP.language === "en" || parsedP.language === "zh-TW")) {
+              foundProfLang = parsedP.language;
+              break;
+            }
+          }
+        } catch (eProf) {}
+      }
+      currentLang = foundProfLang || DEFAULT_LANG;
     }
   } catch (e) {
     currentLang = DEFAULT_LANG;
@@ -660,14 +674,18 @@
   }
 
   /**
-   * Persists the selected language to the backend user profile (`POST /api/user/preferences` & `/api/auth/profile`).
+   * Persists the selected language to the backend user profile (`POST /api/user/preferences` & `/api/user-profiles`).
    */
   function persistLanguageToServer(lang) {
     try {
       var email = "";
+      var sessTok = "";
       var userObj = (window.STATE && window.STATE.currentUser) || null;
       if (userObj && userObj.email) {
         email = userObj.email;
+      }
+      if (userObj && userObj.session_token) {
+        sessTok = userObj.session_token;
       }
       var profileKeys = ["gathering_user_profile", "gs_current_user", "gs_user_profile_v1"];
       for (var k = 0; k < profileKeys.length; k++) {
@@ -677,6 +695,7 @@
             var parsed = JSON.parse(raw);
             if (parsed && typeof parsed === "object") {
               if (!email && parsed.email) email = parsed.email;
+              if (!sessTok && parsed.session_token) sessTok = parsed.session_token;
               if (!userObj && parsed.email) userObj = parsed;
               parsed.language = lang;
               localStorage.setItem(profileKeys[k], JSON.stringify(parsed));
@@ -689,19 +708,34 @@
         window.STATE.currentUser.language = lang;
       }
 
+      var hdrs = { "Content-Type": "application/json" };
+      if (email) hdrs["X-User-Email"] = email;
+      if (sessTok) hdrs["X-Session-Token"] = sessTok;
+
       fetch("/api/user/preferences", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: hdrs,
         credentials: "same-origin",
-        body: JSON.stringify({ email: email, language: lang })
+        body: JSON.stringify({
+          email: email,
+          user_email: email,
+          session_token: sessTok,
+          language: lang,
+        }),
       }).catch(function () {});
 
-      if (email && userObj) {
-        fetch("/api/auth/profile", {
+      if (email && sessTok) {
+        fetch("/api/user-profiles", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: hdrs,
           credentials: "same-origin",
-          body: JSON.stringify(Object.assign({}, userObj, { email: email, language: lang }))
+          body: JSON.stringify(
+            Object.assign({}, userObj || {}, {
+              email: email,
+              language: lang,
+              session_token: sessTok,
+            })
+          ),
         }).catch(function () {});
       }
     } catch (err) {
@@ -785,6 +819,7 @@
   window.normalizeLanguageCode = normalizeLanguageCode;
   window.setAppLanguage = setAppLanguage;
   window.toggleAppLanguage = toggleAppLanguage;
+  window.persistLanguageToServer = persistLanguageToServer;
   window.tr = tr;
   window.stripBilingualBrackets = stripBilingualBrackets;
   window.translateDynamicText = translateDynamicText;

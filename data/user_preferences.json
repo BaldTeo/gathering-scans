@@ -1,0 +1,20 @@
+{
+  "guest@anonymous": {
+    "email": "guest@anonymous",
+    "language": "zh-TW",
+    "theme_preference": "auto",
+    "updated_at": "2026-10-25T17:15:50.664680+00:00"
+  },
+  "glibivanov@gatheren.com.tw": {
+    "email": "glibivanov@gatheren.com.tw",
+    "language": "en",
+    "theme_preference": "light",
+    "updated_at": "2026-10-26T03:23:18.027570+00:00"
+  },
+  "gleb.ivanov1999@gmail.com": {
+    "email": "gleb.ivanov1999@gmail.com",
+    "language": "en",
+    "theme_preference": "light",
+    "updated_at": "2026-10-26T03:23:18.027570+00:00"
+  }
+}

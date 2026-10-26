@@ -1898,6 +1898,7 @@
     }
 
     // Populate Horizontal Timeline Tiles Track
+    ensureTimelineAndDockWheelScroll();
     const trackEl = document.getElementById("siteTimelineTilesTrack");
     if (trackEl) {
       trackEl.innerHTML = "";
@@ -1988,6 +1989,41 @@
         }
       }, 30);
     }
+  }
+
+  function bindHorizontalWheelScroll(listenEl, scrollTargetEl = listenEl) {
+    if (!listenEl || !scrollTargetEl || listenEl._gsHorizWheelBound) return;
+    listenEl._gsHorizWheelBound = true;
+    listenEl.addEventListener(
+      "wheel",
+      (e) => {
+        if (e.target && e.target.closest && e.target.closest("select")) return;
+        if (scrollTargetEl.scrollWidth <= scrollTargetEl.clientWidth + 1) return;
+        const delta = Math.abs(e.deltaY) >= Math.abs(e.deltaX) ? e.deltaY : e.deltaX;
+        if (delta !== 0) {
+          e.preventDefault();
+          scrollTargetEl.scrollLeft += delta;
+        }
+      },
+      { passive: false }
+    );
+  }
+
+  function ensureTimelineAndDockWheelScroll() {
+    const trackEl = document.getElementById("siteTimelineTilesTrack");
+    const topPaneEl = document.getElementById("siteTimelineTopPane");
+    if (trackEl) {
+      bindHorizontalWheelScroll(trackEl, trackEl);
+      if (topPaneEl) bindHorizontalWheelScroll(topPaneEl, trackEl);
+    }
+    const bottomDockEl = document.getElementById("bimBottomDock");
+    if (bottomDockEl) {
+      bindHorizontalWheelScroll(bottomDockEl, bottomDockEl);
+    }
+  }
+  ensureTimelineAndDockWheelScroll();
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", ensureTimelineAndDockWheelScroll);
   }
 
   let _renamingScanId = "";
