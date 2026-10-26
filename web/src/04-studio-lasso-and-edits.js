@@ -2555,6 +2555,18 @@
       }
     }
 
+    if (
+      STATE.activeTool === "photos" &&
+      typeof pickCameraTrajectoryMarkerAtScreenXY === "function" &&
+      typeof selectCalibratedCameraFrom3D === "function"
+    ) {
+      const clickedCam = pickCameraTrajectoryMarkerAtScreenXY(e.clientX, e.clientY);
+      if (clickedCam) {
+        selectCalibratedCameraFrom3D(clickedCam);
+        return;
+      }
+    }
+
     const hit = pickStudio3DHit(e.clientX, e.clientY);
     if (!hit) return;
     const pt = hit.point;

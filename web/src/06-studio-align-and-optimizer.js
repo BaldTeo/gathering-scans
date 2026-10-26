@@ -3412,6 +3412,9 @@
       }
 
       preserveLassoSelectionBeforeToolSwitch();
+      if (tool !== "photos" && typeof clearCameraTrajectory3D === "function") {
+        clearCameraTrajectory3D();
+      }
       setActiveStudioTool(tool);
       STATE.measurePoints = [];
 

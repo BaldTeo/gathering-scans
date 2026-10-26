@@ -2417,16 +2417,24 @@ class GatheringScansHandler(CloudAndTunnelHandlerMixin, ServerWriteRoutesMixin, 
             self.send_json({"error": f"No mesh geometry found on disk for scan: {scan_id}"}, status=404)
             return
 
-        # 13. Serve RTK Raw Camera Photo from Windows PC (or /cameras/<scan_id>/<file> route)
-        if path == "/api/camera-photo" or path.startswith("/cameras/"):
-            if path.startswith("/cameras/"):
-                rel_cam = path[len("/cameras/") :].strip("/")
-                parts_cam = rel_cam.split("/", 1)
-                scan_id = parts_cam[0] if len(parts_cam) >= 1 else ""
-                fname = os.path.basename(parts_cam[1]) if len(parts_cam) >= 2 else ""
+        # 13. Serve RTK Raw Camera Photo & Calibrated Camera Catalog
+        if path in ("/api/survey/cameras", "/api/surveying/cameras"):
+            sid_c, fmt_c = query.get("scan_id", [""])[0], query.get("format", ["json"])[0].lower()
+            res_c = SURVEY.get_scan_cameras_response(sid_c, limit=int(query.get("limit", ["10000"])[0] or 10000), fmt=fmt_c)
+            if fmt_c == "csv" and isinstance(res_c, str):
+                raw_csv = res_c.encode("utf-8-sig")
+                self.send_response(200)
+                for hk, hv in (("Content-Type", "text/csv; charset=utf-8"), ("Content-Disposition", f'attachment; filename="{sid_c or "scan"}_calibrated_cameras.csv"'), ("Content-Length", str(len(raw_csv)))):
+                    self.send_header(hk, hv)
+                self.end_headers()
+                self.wfile.write(raw_csv)
             else:
-                scan_id = query.get("scan_id", [""])[0]
-                fname = os.path.basename(query.get("file", [""])[0])
+                self.send_json(res_c)
+            return
+        if path in ("/api/camera-photo", "/api/photo-file") or path.startswith("/cameras/"):
+            parts_cam = path[len("/cameras/") :].strip("/").split("/", 1) if path.startswith("/cameras/") else []
+            scan_id = (parts_cam[0] if parts_cam else "") if path.startswith("/cameras/") else query.get("scan_id", [""])[0]
+            fname = (parts_cam[1] if len(parts_cam) >= 2 else "") if path.startswith("/cameras/") else query.get("file", [""])[0]
             fpath = SURVEY.resolve_camera_photo_path(scan_id, fname) if fname else None
             if fpath and os.path.isfile(fpath):
                 self._serve_file_with_range(fpath, content_type="image/jpeg")

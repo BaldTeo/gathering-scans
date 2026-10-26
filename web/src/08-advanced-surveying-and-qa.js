@@ -2337,8 +2337,10 @@
   }
 
   // ============================================================================
-  // FEATURE 6: DIRECT FIELD-TO-3D PHOTO FRUSTUM PROJECTION & CAMERA ALIGNMENT
+  // FEATURE 6: PIX4DMATIC CALIBRATED CAMERA TRAJECTORY, 3D FRUSTUM & 2D RETICLE
   // ============================================================================
+  const SUB_SCAN_TRAJ_PALETTE = ["#38bdf8", "#10b981", "#f59e0b", "#a855f7", "#f43f5e", "#06b6d4"];
+
   function clearRtkPhotoFrustums3D() {
     if (studioThree && studioThree.overlayGroup && studioThree.photoFrustumGroup) {
       studioThree.overlayGroup.remove(studioThree.photoFrustumGroup);
@@ -2348,8 +2350,20 @@
     if (ov) ov.style.display = "none";
   }
 
+  function clearCameraTrajectory3D() {
+    if (studioThree && studioThree.overlayGroup && studioThree.cameraTrajectoryGroup) {
+      studioThree.overlayGroup.remove(studioThree.cameraTrajectoryGroup);
+      studioThree.cameraTrajectoryGroup = null;
+    }
+  }
+  window.clearCameraTrajectory3D = clearCameraTrajectory3D;
+
   function clearPhotoTargetVisuals3D() {
+    const hideTrajectory = Boolean(arguments[0]);
     clearRtkPhotoFrustums3D();
+    if (hideTrajectory || (STATE.activeTool !== "photos" && STATE.activeTool !== "rtk")) {
+      clearCameraTrajectory3D();
+    }
     if (studioThree && studioThree.overlayGroup) {
       const toRemove = [];
       studioThree.overlayGroup.children.forEach((c) => {
@@ -2363,8 +2377,42 @@
   }
   window.clearPhotoTargetVisuals3D = clearPhotoTargetVisuals3D;
 
-  function twd97ToStudioLocalVec(e, n, h, refTargetTwd, refTargetLocalPt) {
-    if (refTargetTwd && refTargetLocalPt) {
+  function placePhotoTargetMarker3D(targetPt) {
+    if (!studioThree || !studioThree.overlayGroup || !targetPt) return;
+    const toRemove = [];
+    studioThree.overlayGroup.children.forEach((c) => {
+      if (c && c.userData && c.userData.isPhotoTargetPin) {
+        toRemove.push(c);
+      }
+    });
+    toRemove.forEach((c) => studioThree.overlayGroup.remove(c));
+    if (typeof add3DPinMarker === "function") {
+      add3DPinMarker(targetPt, 0x0284c7, studioThree.overlayGroup, (m) => {
+        m.userData.isPhotoTargetPin = true;
+        studioThree.overlayGroup.add(m);
+      });
+    }
+  }
+  window.placePhotoTargetMarker3D = placePhotoTargetMarker3D;
+
+  function twd97ToStudioLocalVec(e, n, h, arg4, arg5) {
+    let refTargetTwd = null;
+    let refTargetLocalPt = null;
+    if (arg4 && typeof arg4 === "object") {
+      if (arg4.e !== undefined && arg4.n !== undefined) {
+        refTargetTwd = arg4;
+      } else if (arg4.x !== undefined && arg4.z !== undefined) {
+        refTargetLocalPt = arg4;
+      }
+    }
+    if (arg5 && typeof arg5 === "object") {
+      if (arg5.e !== undefined && arg5.n !== undefined) {
+        refTargetTwd = arg5;
+      } else if (arg5.x !== undefined && arg5.z !== undefined) {
+        refTargetLocalPt = arg5;
+      }
+    }
+    if (refTargetTwd && refTargetLocalPt && Number.isFinite(refTargetTwd.e) && Number.isFinite(refTargetTwd.n)) {
       const dx = Number(e) - Number(refTargetTwd.e || 0);
       const dn = Number(n) - Number(refTargetTwd.n || 0);
       const dh = Number(h) - Number(refTargetTwd.h || 0);
@@ -2381,8 +2429,271 @@
       Number(originTwd.n || 0) - Number(n)
     );
   }
+  window.twd97ToStudioLocalVec = twd97ToStudioLocalVec;
 
-  function renderRtkPhotoFrustums3D(photos, targetTwd, targetLocalPt) {
+  function _projectWorldPointToPhotoUV(photo, targetTwd) {
+    if (!photo) return { u: 0.5, v: 0.5, inFov: true, zc: 3.0 };
+    if (
+      targetTwd &&
+      Array.isArray(photo.right) &&
+      photo.right.length === 3 &&
+      Array.isArray(photo.down) &&
+      photo.down.length === 3 &&
+      Array.isArray(photo.forward) &&
+      photo.forward.length === 3
+    ) {
+      const camE = Number(photo.camera_twd97_e ?? photo.e ?? 0);
+      const camN = Number(photo.camera_twd97_n ?? photo.n ?? 0);
+      const camH = Number(photo.camera_twd97_h ?? photo.h ?? 0);
+      const dx = Number(targetTwd.e) - camE;
+      const dy = Number(targetTwd.n) - camN;
+      const dz = Number(targetTwd.h) - camH;
+      const r = photo.right;
+      const d = photo.down;
+      const f = photo.forward;
+      const zc = dx * f[0] + dy * f[1] + dz * f[2];
+      if (zc > 0.15) {
+        const xc = dx * r[0] + dy * r[1] + dz * r[2];
+        const yc = dx * d[0] + dy * d[1] + dz * d[2];
+        const fx = Number(photo.fx_norm || 0.92674);
+        const fy = Number(photo.fy_norm || 0.69505);
+        const u = 0.5 + fx * (xc / zc);
+        const v = 0.5 + fy * (yc / zc);
+        return {
+          u: Math.max(0.02, Math.min(0.98, u)),
+          v: Math.max(0.02, Math.min(0.98, v)),
+          rawU: u,
+          rawV: v,
+          inFov: u >= 0.01 && u <= 0.99 && v >= 0.01 && v <= 0.99,
+          zc,
+        };
+      }
+    }
+    if (photo.target_uv && Number.isFinite(Number(photo.target_uv.u)) && Number.isFinite(Number(photo.target_uv.v))) {
+      return {
+        u: Number(photo.target_uv.u),
+        v: Number(photo.target_uv.v),
+        in_fov: photo.target_uv.in_fov !== false,
+        inFov: photo.target_uv.in_fov !== false,
+      };
+    }
+    const uFb = Number.isFinite(Number(photo.proj_u)) ? Number(photo.proj_u) : 0.5;
+    const vFb = Number.isFinite(Number(photo.proj_v)) ? Number(photo.proj_v) : 0.5;
+    return {
+      u: Math.max(0.02, Math.min(0.98, uFb)),
+      v: Math.max(0.02, Math.min(0.98, vFb)),
+      rawU: uFb,
+      rawV: vFb,
+      inFov: photo.in_fov !== false,
+      zc: Number(photo.distance_m || 3.0),
+    };
+  }
+  window._projectWorldPointToPhotoUV = _projectWorldPointToPhotoUV;
+
+  async function loadAndRenderScanCameraTrajectory3D(scanId, forceReanchor = false, forceNetworkReload = false) {
+    const sid = String(scanId || STATE.activeScanId || "").trim();
+    if (!sid || !studioThree || !studioThree.overlayGroup) return null;
+    if (!STATE.scanCameraCatalogCache) STATE.scanCameraCatalogCache = {};
+    if (STATE.showCameraTrajectory3D === undefined) STATE.showCameraTrajectory3D = true;
+
+    let camRes =
+      !forceNetworkReload &&
+      ((STATE.scanCameraCatalogScanId === sid && STATE.scanCameraCatalog) || STATE.scanCameraCatalogCache[sid])
+        ? STATE.scanCameraCatalog || STATE.scanCameraCatalogCache[sid]
+        : null;
+    if (!camRes) {
+      try {
+        camRes = await apiGet(`/api/survey/cameras?scan_id=${encodeURIComponent(sid)}&limit=10000`);
+        if (camRes && Array.isArray(camRes.cameras)) {
+          STATE.scanCameraCatalogCache[sid] = camRes;
+        }
+      } catch (_) {
+        return null;
+      }
+    }
+    if (!camRes || !Array.isArray(camRes.cameras)) return null;
+    STATE.scanCameraCatalog = camRes;
+    STATE.scanCameraCatalogScanId = sid;
+    STATE.activeScanCameras = camRes.cameras;
+    STATE.activeScanCameraMeta = camRes;
+
+    clearCameraTrajectory3D();
+    if (!STATE.showCameraTrajectory3D) return camRes;
+
+    const grp = new THREE.Group();
+    grp.name = "cameraTrajectoryGroup";
+    studioThree.cameraTrajectoryGroup = grp;
+    studioThree.overlayGroup.add(grp);
+
+    const originTwd = typeof localToTwd97 === "function" ? localToTwd97({ x: 0, y: 0, z: 0 }) : camRes.anchor_twd97 || { e: 0, n: 0, h: 0 };
+    const bySubScan = new Map();
+    camRes.cameras.forEach((c) => {
+      const subKey = String(c.sub_scan || sid);
+      if (!bySubScan.has(subKey)) bySubScan.set(subKey, []);
+      const lx = Number(c.e) - Number(originTwd.e || 0);
+      const ly = Number(c.h) - Number(originTwd.h || 0);
+      const lz = Number(originTwd.n || 0) - Number(c.n);
+      c._localPt = new THREE.Vector3(lx, ly, lz);
+      bySubScan.get(subKey).push(c);
+    });
+
+    let subIdx = 0;
+    bySubScan.forEach((camList) => {
+      const hexStr = SUB_SCAN_TRAJ_PALETTE[subIdx % SUB_SCAN_TRAJ_PALETTE.length];
+      const col = new THREE.Color(hexStr);
+      subIdx += 1;
+
+      const linePts = [];
+      const dotPts = [];
+      const tickPts = [];
+      for (let i = 0; i < camList.length; i++) {
+        const c = camList[i];
+        const pt = c._localPt;
+        dotPts.push(pt);
+        if (i > 0) {
+          const prevPt = camList[i - 1]._localPt;
+          if (pt.distanceTo(prevPt) <= 18.0) {
+            linePts.push(prevPt, pt);
+          }
+        }
+        if (Array.isArray(c.forward) && c.forward.length === 3 && i % 3 === 0) {
+          const fVec = new THREE.Vector3(c.forward[0], c.forward[2], -c.forward[1]).normalize();
+          tickPts.push(pt, pt.clone().addScaledVector(fVec, 0.36));
+        }
+      }
+
+      if (linePts.length >= 2) {
+        const lGeo = new THREE.BufferGeometry().setFromPoints(linePts);
+        const lMat = new THREE.LineBasicMaterial({ color: col, transparent: true, opacity: 0.58, depthTest: false });
+        const lMesh = new THREE.LineSegments(lGeo, lMat);
+        lMesh.renderOrder = 992;
+        grp.add(lMesh);
+      }
+      if (tickPts.length >= 2) {
+        const tGeo = new THREE.BufferGeometry().setFromPoints(tickPts);
+        const tMat = new THREE.LineBasicMaterial({ color: col, transparent: true, opacity: 0.42, depthTest: false });
+        const tMesh = new THREE.LineSegments(tGeo, tMat);
+        tMesh.renderOrder = 993;
+        grp.add(tMesh);
+      }
+      if (dotPts.length > 0) {
+        const pGeo = new THREE.BufferGeometry().setFromPoints(dotPts);
+        const pMat = new THREE.PointsMaterial({
+          color: col,
+          size: 4.5,
+          sizeAttenuation: false,
+          transparent: true,
+          opacity: 0.88,
+          depthTest: false,
+        });
+        const pMesh = new THREE.Points(pGeo, pMat);
+        pMesh.renderOrder = 994;
+        grp.add(pMesh);
+      }
+    });
+
+    return camRes;
+  }
+  window.loadAndRenderScanCameraTrajectory3D = loadAndRenderScanCameraTrajectory3D;
+
+  function pickCameraTrajectoryMarkerAtScreenXY(clientX, clientY) {
+    if (!studioThree || !studioThree.camera || !studioThree.renderer) return null;
+    const rect = studioThree.renderer.domElement.getBoundingClientRect();
+    const w = Math.max(1, rect.width);
+    const h = Math.max(1, rect.height);
+    const threshPx = window.innerWidth <= 768 ? 22 : 14;
+
+    const findBestInPool = (pool) => {
+      let bestCam = null;
+      let bestScore = Infinity;
+      for (let i = 0; i < pool.length; i++) {
+        const c = pool[i];
+        const pt =
+          c._localCamPt ||
+          c._localPt ||
+          (c.camera_twd97_e !== undefined || c.e !== undefined
+            ? twd97ToStudioLocalVec(
+                c.camera_twd97_e ?? c.e,
+                c.camera_twd97_n ?? c.n,
+                c.camera_twd97_h ?? c.h,
+                STATE.lastInspectedPhotoTargetTwd,
+                STATE.lastInspectedPhotoTargetPt
+              )
+            : null);
+        if (!pt) continue;
+        const proj = pt.clone().project(studioThree.camera);
+        if (proj.z < -1.0 || proj.z > 1.0) continue;
+        const sx = rect.left + (proj.x * 0.5 + 0.5) * w;
+        const sy = rect.top + (-proj.y * 0.5 + 0.5) * h;
+        const dPx = Math.hypot(clientX - sx, clientY - sy);
+        if (dPx <= threshPx) {
+          const dist3D = studioThree.camera.position.distanceTo(pt);
+          const score = dPx + Math.min(8.0, dist3D * 0.08);
+          if (score < bestScore) {
+            bestScore = score;
+            bestCam = c;
+          }
+        }
+      }
+      return bestCam;
+    };
+
+    // 1. Check active frustum cameras first so active frustum apexes always take priority
+    const activePool = Array.isArray(STATE.lastInspectedPhotos) ? STATE.lastInspectedPhotos : [];
+    const hitActive = findBestInPool(activePool);
+    if (hitActive) return hitActive;
+
+    // 2. Check trajectory markers with 3D depth weighting so foreground cameras win over background cameras
+    if (STATE.showCameraTrajectory3D === false) return null;
+    const trajPool = Array.isArray(STATE.scanCameraCatalog?.cameras)
+      ? STATE.scanCameraCatalog.cameras
+      : Array.isArray(STATE.activeScanCameras)
+      ? STATE.activeScanCameras
+      : Array.isArray(STATE.scanCameraCatalog)
+      ? STATE.scanCameraCatalog
+      : [];
+    return findBestInPool(trajPool);
+  }
+  window.pickCameraTrajectoryMarkerAtScreenXY = pickCameraTrajectoryMarkerAtScreenXY;
+
+  function selectCalibratedCameraFrom3D(cam) {
+    if (!cam || !studioThree) return false;
+    const camPt =
+      cam._localCamPt ||
+      cam._localPt ||
+      twd97ToStudioLocalVec(cam.camera_twd97_e ?? cam.e, cam.camera_twd97_n ?? cam.n, cam.camera_twd97_h ?? cam.h);
+    const fLocal = new THREE.Vector3(0, -0.25, -1).normalize();
+    if (Array.isArray(cam.forward) && cam.forward.length === 3) {
+      fLocal.set(cam.forward[0], cam.forward[2], -cam.forward[1]).normalize();
+    }
+    let targetPt = null;
+    if (studioThree.modelPivot) {
+      try {
+        studioThree.modelPivot.updateMatrixWorld(true);
+        const rc = new THREE.Raycaster(camPt.clone(), fLocal.clone(), 0.25, 65.0);
+        rc.near = 0.25;
+        rc.far = 65.0;
+        const hits = rc.intersectObject(studioThree.modelPivot, true);
+        const meshHits = Array.isArray(hits)
+          ? hits.filter((h) => h && h.object && h.object.isMesh && h.object.visible !== false && !h.object.userData?.isAlignBoxHelper)
+          : [];
+        if (meshHits.length > 0) {
+          targetPt = meshHits[0].point.clone();
+        }
+      } catch (_) {}
+    }
+    clearPhotoTargetVisuals3D(false);
+    if (targetPt) {
+      placePhotoTargetMarker3D(targetPt);
+      renderRtkPhotoInspectorPanel(targetPt, true, cam.filename);
+    } else {
+      renderRtkPhotoInspectorPanel(null, true, cam.filename);
+    }
+    return true;
+  }
+  window.selectCalibratedCameraFrom3D = selectCalibratedCameraFrom3D;
+
+  function renderRtkPhotoFrustums3D(photos, arg2, arg3, highlightIdx = 0) {
     if (!studioThree || !studioThree.overlayGroup || !Array.isArray(photos)) return;
     if (studioThree.photoFrustumGroup) {
       studioThree.overlayGroup.remove(studioThree.photoFrustumGroup);
@@ -2390,58 +2701,163 @@
     }
     const grp = new THREE.Group();
     studioThree.photoFrustumGroup = grp;
-    if (!studioThree.photoFrustumGroup.parent) {
-      studioThree.overlayGroup.add(studioThree.photoFrustumGroup);
-    }
+    studioThree.overlayGroup.add(grp);
 
-    const tgtPt = targetLocalPt ? targetLocalPt.clone() : new THREE.Vector3(0, 0, 0);
+    let targetTwd = null;
+    let targetLocalPt = null;
+    if (arg2 && typeof arg2 === "object") {
+      if (arg2.e !== undefined && arg2.n !== undefined) {
+        targetTwd = arg2;
+      } else if (arg2.x !== undefined && arg2.z !== undefined) {
+        targetLocalPt = arg2;
+      }
+    }
+    if (arg3 && typeof arg3 === "object") {
+      if (arg3.e !== undefined && arg3.n !== undefined) {
+        targetTwd = arg3;
+      } else if (arg3.x !== undefined && arg3.z !== undefined) {
+        targetLocalPt = arg3;
+      }
+    }
+    const tgtPt = targetLocalPt
+      ? targetLocalPt.clone
+        ? targetLocalPt.clone()
+        : new THREE.Vector3(Number(targetLocalPt.x) || 0, Number(targetLocalPt.y) || 0, Number(targetLocalPt.z) || 0)
+      : targetTwd
+      ? twd97ToStudioLocalVec(targetTwd.e, targetTwd.n, targetTwd.h, null, null)
+      : new THREE.Vector3(0, 0, 0);
     photos.forEach((p, idx) => {
-      const camPt = twd97ToStudioLocalVec(p.camera_twd97_e, p.camera_twd97_n, p.camera_twd97_h, targetTwd, tgtPt);
+      const camPt = twd97ToStudioLocalVec(
+        p.camera_twd97_e ?? p.e,
+        p.camera_twd97_n ?? p.n,
+        p.camera_twd97_h ?? p.h,
+        targetTwd,
+        tgtPt
+      );
       p._localCamPt = camPt;
       p._localTargetPt = tgtPt.clone();
 
-      const dir = tgtPt.clone().sub(camPt);
-      const dist = Math.max(1.5, dir.length());
-      dir.normalize();
-      const frustumDepth = Math.min(3.2, dist * 0.45);
-      const halfW = frustumDepth * 0.52;
-      const halfH = frustumDepth * 0.36;
+      const distToTgt = Math.max(1.2, camPt.distanceTo(tgtPt));
+      const frustumDepth = Math.min(2.4, Math.max(0.75, distToTgt * 0.38));
 
-      const right = new THREE.Vector3().crossVectors(dir, new THREE.Vector3(0, 1, 0)).normalize();
-      if (right.lengthSq() < 0.01) right.set(1, 0, 0);
-      const up = new THREE.Vector3().crossVectors(right, dir).normalize();
+      // Use canonical upright Pix4Dmatic basis (right, down, forward) in Three.js local coordinates (X=+E, Y=+H, Z=-N)
+      let dir;
+      let right;
+      let up;
+      if (
+        Array.isArray(p.forward) &&
+        p.forward.length === 3 &&
+        Array.isArray(p.right) &&
+        p.right.length === 3 &&
+        Array.isArray(p.down) &&
+        p.down.length === 3
+      ) {
+        dir = new THREE.Vector3(p.forward[0], p.forward[2], -p.forward[1]).normalize();
+        right = new THREE.Vector3(p.right[0], p.right[2], -p.right[1]).normalize();
+        up = new THREE.Vector3(-p.down[0], -p.down[2], p.down[1]).normalize();
+      } else {
+        dir = tgtPt.clone().sub(camPt).normalize();
+        right = new THREE.Vector3().crossVectors(dir, new THREE.Vector3(0, 1, 0)).normalize();
+        if (right.lengthSq() < 0.01) right.set(1, 0, 0);
+        up = new THREE.Vector3().crossVectors(right, dir).normalize();
+      }
+
+      const fxNorm = Number(p.fx_norm || 0.92674);
+      const fyNorm = Number(p.fy_norm || 0.69505);
+      const halfW = frustumDepth / (2.0 * Math.max(0.35, fxNorm));
+      const halfH = frustumDepth / (2.0 * Math.max(0.35, fyNorm));
+
       const centerPlane = camPt.clone().addScaledVector(dir, frustumDepth);
+      const c0 = centerPlane.clone().addScaledVector(right, -halfW).addScaledVector(up, halfH); // Top-Left
+      const c1 = centerPlane.clone().addScaledVector(right, halfW).addScaledVector(up, halfH); // Top-Right
+      const c2 = centerPlane.clone().addScaledVector(right, halfW).addScaledVector(up, -halfH); // Bottom-Right
+      const c3 = centerPlane.clone().addScaledVector(right, -halfW).addScaledVector(up, -halfH); // Bottom-Left
+      // Top UP-orientation triangle above top edge c0-c1
+      const topMid = centerPlane.clone().addScaledVector(up, halfH * 1.18);
 
-      const c0 = centerPlane.clone().addScaledVector(right, -halfW).addScaledVector(up, halfH);
-      const c1 = centerPlane.clone().addScaledVector(right, halfW).addScaledVector(up, halfH);
-      const c2 = centerPlane.clone().addScaledVector(right, halfW).addScaledVector(up, -halfH);
-      const c3 = centerPlane.clone().addScaledVector(right, -halfW).addScaledVector(up, -halfH);
+      const isPrimary = idx === highlightIdx;
+      const col = isPrimary ? 0x38bdf8 : 0xf59e0b;
 
       const frustumPts = [
         camPt, c0, camPt, c1, camPt, c2, camPt, c3,
         c0, c1, c1, c2, c2, c3, c3, c0,
+        c0, topMid, c1, topMid,
         camPt, tgtPt,
       ];
       const lineGeo = new THREE.BufferGeometry().setFromPoints(frustumPts);
-      const col = idx === 0 ? 0x38bdf8 : 0xf59e0b;
       const line = new THREE.LineSegments(
         lineGeo,
-        new THREE.LineBasicMaterial({ color: col, depthTest: false, transparent: true, opacity: 0.9 })
+        new THREE.LineBasicMaterial({
+          color: col,
+          depthTest: false,
+          transparent: true,
+          opacity: isPrimary ? 0.96 : 0.78,
+        })
       );
-      line.renderOrder = 997;
+      line.renderOrder = isPrimary ? 998 : 997;
       grp.add(line);
+
+      // Semi-transparent image plane quad inside the frustum
+      const quadGeo = new THREE.BufferGeometry();
+      const quadVerts = new Float32Array([
+        c0.x, c0.y, c0.z, c1.x, c1.y, c1.z, c2.x, c2.y, c2.z,
+        c0.x, c0.y, c0.z, c2.x, c2.y, c2.z, c3.x, c3.y, c3.z,
+      ]);
+      quadGeo.setAttribute("position", new THREE.BufferAttribute(quadVerts, 3));
+      const quadMesh = new THREE.Mesh(
+        quadGeo,
+        new THREE.MeshBasicMaterial({
+          color: col,
+          side: THREE.DoubleSide,
+          transparent: true,
+          opacity: isPrimary ? 0.16 : 0.07,
+          depthTest: false,
+        })
+      );
+      quadMesh.renderOrder = 996;
+      grp.add(quadMesh);
+
+      // Camera apex marker sphere
+      const apexMesh = new THREE.Mesh(
+        new THREE.SphereGeometry(isPrimary ? 0.14 : 0.1, 12, 12),
+        new THREE.MeshBasicMaterial({ color: col, depthTest: false })
+      );
+      apexMesh.position.copy(camPt);
+      apexMesh.renderOrder = 999;
+      grp.add(apexMesh);
     });
   }
+  window.renderRtkPhotoFrustums3D = renderRtkPhotoFrustums3D;
+  window.renderPhoto3DFrustums = renderRtkPhotoFrustums3D;
 
   function alignStudioCameraToRtkPhoto(photo, opacityPct = 55) {
     if (!photo || !studioThree) return;
     if (STATE.fpMode?.active && typeof exitFirstPersonMode === "function") {
       exitFirstPersonMode(false);
     }
-    const camPt = photo._localCamPt || new THREE.Vector3(10, 8, 10);
-    const tgtPt = photo._localTargetPt || new THREE.Vector3(0, 0, 0);
+    const tgtPt = photo._localTargetPt || STATE.lastInspectedPhotoTargetPt || null;
+    const camPt =
+      photo._localCamPt ||
+      twd97ToStudioLocalVec(
+        photo.camera_twd97_e ?? photo.e,
+        photo.camera_twd97_n ?? photo.n,
+        photo.camera_twd97_h ?? photo.h,
+        tgtPt,
+        STATE.lastInspectedPhotoTargetTwd
+      );
     studioThree.camera.position.copy(camPt);
-    studioThree.controls.target.copy(tgtPt);
+    if (Array.isArray(photo.forward) && photo.forward.length === 3) {
+      const fDir = new THREE.Vector3(
+        Number(photo.forward[0]) || 0,
+        Number(photo.forward[2]) || 0,
+        -(Number(photo.forward[1]) || 0)
+      ).normalize();
+      studioThree.controls.target
+        .copy(camPt)
+        .addScaledVector(fDir, Math.max(2.0, tgtPt ? camPt.distanceTo(tgtPt) : 5.0));
+    } else {
+      studioThree.controls.target.copy(tgtPt || new THREE.Vector3(0, 0, 0));
+    }
     studioThree.controls.update();
     studioThree.camera.updateMatrixWorld();
 
@@ -2486,11 +2902,18 @@
     }
     const list = Array.isArray(allPhotos) && allPhotos.length > 0 ? allPhotos : [{ url: photoUrl, filename: photoTitle, meta: photoMetaText }];
     let activeIdx = Math.max(0, Math.min(list.length - 1, Number(curIdx) || 0));
+    let showReticle = true;
 
     const renderLightboxContent = () => {
       const item = list[activeIdx] || { url: photoUrl, filename: photoTitle, meta: photoMetaText };
       const url = item.url || photoUrl;
       const fname = item.filename || photoTitle || "RTK_Photo.jpg";
+      const uv = _projectWorldPointToPhotoUV(item, STATE.lastInspectedPhotoTargetTwd);
+      const hasTargetReticle = Boolean(
+        item.proj_u !== undefined ||
+        (item.target_uv && item.target_uv.u !== undefined) ||
+        (Array.isArray(item.forward) && STATE.lastInspectedPhotoTargetTwd)
+      );
       const meta =
         item.meta ||
         photoMetaText ||
@@ -2505,6 +2928,11 @@
           </div>
           <div style="display:flex;align-items:center;gap:8px;flex-shrink:0;">
             ${
+              hasTargetReticle
+                ? `<button type="button" class="gs-top-btn ${showReticle ? "accent" : ""}" id="btnLightboxToggleReticle" style="height:30px;padding:0 10px;" title="${tr("切換 3D 點擊目標準星", "Toggle 3D Target Reticle")}">🎯 ${tr("目標準星", "Target Reticle")}</button>`
+                : ""
+            }
+            ${
               list.length > 1
                 ? `<button type="button" class="gs-top-btn" id="btnLightboxPrev" style="height:30px;padding:0 10px;">◀ ${tr("上一張", "Prev")}</button>
                    <span style="font-size:11.5px;font-family:var(--font-mono);color:#cbd5e1;">${activeIdx + 1} / ${list.length}</span>
@@ -2518,7 +2946,20 @@
           </div>
         </div>
         <div id="photoLightboxViewport" style="position:relative;width:min(1160px,95vw);height:min(78vh,780px);background:#0f172a;border:1px solid rgba(148,163,184,0.28);border-radius:12px;display:flex;align-items:center;justify-content:center;overflow:hidden;box-shadow:0 24px 60px rgba(0,0,0,0.65);user-select:none;touch-action:none;">
-          <img id="imgLightboxMain" src="${escapeHtml(url)}" alt="${escapeHtml(fname)}" draggable="false" style="max-width:100%;max-height:100%;object-fit:contain;transform-origin:center center;will-change:transform;cursor:zoom-in;" />
+          <div id="lightboxZoomCanvas" style="position:relative;display:inline-flex;align-items:center;justify-content:center;max-width:100%;max-height:100%;transform-origin:center center;will-change:transform;">
+            <img id="imgLightboxMain" src="${escapeHtml(url)}" alt="${escapeHtml(fname)}" draggable="false" style="display:block;max-width:min(1140px,93vw);max-height:min(76vh,760px);width:auto;height:auto;object-fit:contain;cursor:zoom-in;" />
+            ${
+              hasTargetReticle
+                ? `<div id="lightboxTargetReticle" style="display:${showReticle ? "block" : "none"};position:absolute;left:${(uv.u * 100).toFixed(2)}%;top:${(uv.v * 100).toFixed(2)}%;transform:translate(-50%,-50%);pointer-events:none;z-index:5;">
+                     <div style="width:28px;height:28px;border:2px solid #38bdf8;border-radius:50%;box-shadow:0 0 0 2px rgba(2,6,23,0.85),0 0 12px #38bdf8;position:relative;">
+                       <span style="position:absolute;left:50%;top:-7px;bottom:-7px;width:1.5px;background:#38bdf8;transform:translateX(-50%);"></span>
+                       <span style="position:absolute;top:50%;left:-7px;right:-7px;height:1.5px;background:#38bdf8;transform:translateY(-50%);"></span>
+                       <span style="position:absolute;left:50%;top:50%;width:5px;height:5px;border-radius:50%;background:#f43f5e;transform:translate(-50%,-50%);"></span>
+                     </div>
+                   </div>`
+                : ""
+            }
+          </div>
           <aside id="photoLightboxZoomSidebar" class="gs-photo-zoom-sidebar" aria-label="Photo Zoom Controls">
             <button type="button" class="gs-photo-zoom-btn" id="btnPhotoZoomIn" title="${tr("放大 (+)", "Zoom In (+)")}">+</button>
             <div class="gs-photo-zoom-slider-wrap">
@@ -2543,6 +2984,7 @@
       let startPanY = 0;
 
       const viewportEl = modal.querySelector("#photoLightboxViewport");
+      const zoomCanvasEl = modal.querySelector("#lightboxZoomCanvas");
       const imgEl = modal.querySelector("#imgLightboxMain");
       const rngEl = modal.querySelector("#rngPhotoLightboxZoom");
       const lblEl = modal.querySelector("#lblPhotoLightboxZoom");
@@ -2554,8 +2996,8 @@
           panY = 0;
           return;
         }
-        const maxPanX = (viewportEl.clientWidth * (zoomFactor - 1)) * 0.55;
-        const maxPanY = (viewportEl.clientHeight * (zoomFactor - 1)) * 0.55;
+        const maxPanX = viewportEl.clientWidth * (zoomFactor - 1) * 0.55;
+        const maxPanY = viewportEl.clientHeight * (zoomFactor - 1) * 0.55;
         panX = Math.max(-maxPanX, Math.min(maxPanX, panX));
         panY = Math.max(-maxPanY, Math.min(maxPanY, panY));
       };
@@ -2563,9 +3005,12 @@
       const applyTransform = (animate = false) => {
         zoomFactor = Math.max(1.0, Math.min(25.0, Number(zoomFactor) || 1.0));
         clampPan();
+        const targetEl = zoomCanvasEl || imgEl;
+        if (targetEl) {
+          targetEl.style.transition = animate ? "transform 0.14s ease-out" : "none";
+          targetEl.style.transform = `translate3d(${panX.toFixed(1)}px, ${panY.toFixed(1)}px, 0) scale(${zoomFactor.toFixed(3)})`;
+        }
         if (imgEl) {
-          imgEl.style.transition = animate ? "transform 0.14s ease-out" : "none";
-          imgEl.style.transform = `translate3d(${panX.toFixed(1)}px, ${panY.toFixed(1)}px, 0) scale(${zoomFactor.toFixed(3)})`;
           imgEl.style.cursor = isDragging ? "grabbing" : zoomFactor > 1.02 ? "grab" : "zoom-in";
         }
         if (rngEl && Math.abs(Number(rngEl.value) - zoomFactor) > 0.02) {
@@ -2595,6 +3040,14 @@
 
       sidebarEl?.addEventListener("pointerdown", (ev) => ev.stopPropagation());
       sidebarEl?.addEventListener("click", (ev) => ev.stopPropagation());
+
+      modal.querySelector("#btnLightboxToggleReticle")?.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        showReticle = !showReticle;
+        const retEl = modal.querySelector("#lightboxTargetReticle");
+        if (retEl) retEl.style.display = showReticle ? "block" : "none";
+        ev.currentTarget.classList.toggle("accent", showReticle);
+      });
 
       modal.querySelector("#btnPhotoZoomIn")?.addEventListener("click", (ev) => {
         ev.stopPropagation();
@@ -2702,19 +3155,242 @@
   }
   window.openPhotoLightboxModal = openPhotoLightboxModal;
 
+  function _buildCameraTrajectoryHeaderHtml(camMeta) {
+    const total = Number(camMeta?.total_cameras || STATE.activeScanCameras?.length || 0);
+    const subScans = camMeta?.sub_scans || {};
+    const subKeys = Object.keys(subScans);
+    const showTraj = STATE.showCameraTrajectory3D !== false;
+    const csvUrl = `/api/survey/cameras?scan_id=${encodeURIComponent(STATE.activeScanId || "")}&format=csv`;
+    const legendHtml =
+      subKeys.length > 1
+        ? `<div style="display:flex;flex-wrap:wrap;gap:5px;margin-top:6px;">
+             ${subKeys
+               .map((k, idx) => {
+                 const col = SUB_SCAN_TRAJ_PALETTE[idx % SUB_SCAN_TRAJ_PALETTE.length];
+                 const shortK = k.replace(/^catch_/, "");
+                 return `<span style="display:inline-flex;align-items:center;gap:4px;font-size:10px;padding:1px 6px;border-radius:4px;background:var(--ui-bg-subtle);border:1px solid var(--ui-border);">
+                           <span style="width:7px;height:7px;border-radius:50%;background:${col};"></span>
+                           <span>${escapeHtml(shortK)} (${subScans[k]})</span>
+                         </span>`;
+               })
+               .join("")}
+           </div>`
+        : "";
+    return `
+      <div style="background:var(--ui-bg-subtle);border:1px solid var(--ui-border);border-radius:8px;padding:8px 10px;margin-bottom:8px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;">
+          <div style="font-size:11px;font-weight:700;color:var(--ui-text-primary);">
+            🛰️ ${tr("Pix4Dmatic 率定相機軌跡", "Pix4Dmatic Calibrated Cameras")}
+            <span style="font-family:var(--font-mono);color:var(--ui-accent);margin-left:4px;">${total.toLocaleString()}</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:4px;">
+            <button type="button" class="btn-xs ${showTraj ? "primary" : ""}" id="btnToggleCamTrajectory3D" title="${tr("顯示或隱藏 3D 相機拍攝軌跡與點位", "Show/Hide 3D Camera Trajectory & Markers")}">
+              ${showTraj ? tr("👁 軌跡顯示中", "👁 Trajectory On") : tr("👁 顯示 3D 軌跡", "👁 Trajectory Off")}
+            </button>
+            <a class="btn-xs" href="${escapeHtml(csvUrl)}" download="${escapeHtml((STATE.activeScanId || "scan") + "_calibrated_cameras.csv")}" style="text-decoration:none;" title="${tr("匯出 Pix4Dmatic 率定相機座標 CSV (TWD97 + TWVD2001)", "Export Calibrated Camera Poses CSV")}">⬇ CSV</a>
+          </div>
+        </div>
+        ${legendHtml}
+      </div>
+    `;
+  }
+
+  async function renderRtkPhotoInspectorPanel(pt = null, fromCanvasClick = false, pinnedCameraFilename = "") {
+    if (window.innerWidth <= 768) {
+      STATE.sidePanelMinimized = !fromCanvasClick;
+    } else {
+      STATE.sidePanelMinimized = false;
+    }
+    const camMetaPromise = loadAndRenderScanCameraTrajectory3D(STATE.activeScanId, false);
+    if (!pt && !pinnedCameraFilename) {
+      clearPhotoTargetVisuals3D(false);
+      const camMeta = await camMetaPromise;
+      showSidePanel(
+        `<span>${tr("RTK 照片與 3D 視錐投影", "RTK Camera & 3D Frustum Inspector")}</span>`,
+        `
+        ${_buildCameraTrajectoryHeaderHtml(camMeta)}
+        <div style="font-size:11.5px;color:var(--ui-text-secondary);background:var(--ui-bg-pill);border:1px solid var(--ui-border-strong);border-radius:8px;padding:10px 12px;line-height:1.5;">
+          📷 ${tr(
+            "請在 <b>3D 掃描模型上點擊任意位置</b>（或直接點擊 <b>3D 相機軌跡點</b>），系統將透過 Pix4Dmatic 率定內外方位參數檢索實際拍攝該處的照片、投射 3D 視錐，並在 2D 照片上標示目標準星。",
+            "Click <b>any point on the 3D scan</b> (or click any <b>3D camera marker</b>) to retrieve the calibrated Pix4Dmatic photos observing that location, project 3D camera frustums, and mark the exact 2D target crosshair."
+          )}
+        </div>
+        `
+      );
+      document.getElementById("btnToggleCamTrajectory3D")?.addEventListener("click", async () => {
+        STATE.showCameraTrajectory3D = !STATE.showCameraTrajectory3D;
+        await loadAndRenderScanCameraTrajectory3D(STATE.activeScanId, false);
+        renderRtkPhotoInspectorPanel(null, false);
+      });
+      return;
+    }
+    showSidePanel(
+      `<span>${tr("RTK 照片與 3D 視錐投影", "RTK Camera & 3D Frustum Inspector")}</span>`,
+      `<div style="font-size:12px;color:var(--ui-text-secondary);">${tr("正在查詢 Pix4Dmatic 率定相機姿態與 3D 視錐...", "Querying calibrated Pix4Dmatic camera poses & 3D frustums...")}</div>`
+    );
+    try {
+      const clickTwd = pt ? localToTwd97(pt) : null;
+      const reqPayload = {
+        scan_id: STATE.activeScanId,
+        x: pt ? pt.x : 0,
+        y: pt ? pt.y : 0,
+        z: pt ? pt.z : 0,
+      };
+      if (clickTwd) {
+        reqPayload.twd_e = clickTwd.e;
+        reqPayload.twd_n = clickTwd.n;
+        reqPayload.twd_h = clickTwd.h;
+      } else if (pinnedCameraFilename) {
+        reqPayload.use_camera_ray_dsm = true;
+      }
+      if (pinnedCameraFilename) {
+        reqPayload.camera_filename = pinnedCameraFilename;
+      }
+      const [res, camMeta] = await Promise.all([apiPost("/api/survey/inspect-photos", reqPayload), camMetaPromise]);
+      const photos = Array.isArray(res.photos) ? res.photos : [];
+      const targetTwd = res.target_twd97 || clickTwd || { e: 0, n: 0, h: 0 };
+      const targetPt = pt ? pt.clone() : twd97ToStudioLocalVec(targetTwd.e, targetTwd.n, targetTwd.h, null, null);
+      STATE.lastInspectedPhotos = photos;
+      STATE.lastInspectedPhotoTargetPt = targetPt.clone();
+      STATE.lastInspectedPhotoTargetTwd = targetTwd;
+      placePhotoTargetMarker3D(targetPt);
+      renderRtkPhotoFrustums3D(photos, targetTwd, targetPt, 0);
+
+      const existingComments = Array.isArray(STATE.activeScan?.comments) ? STATE.activeScan.comments : [];
+      const commentDropTargetsHtml = `
+        <div style="background:var(--ui-bg-pill);border:1px dashed var(--ui-border-strong);border-radius:8px;padding:8px 10px;margin-bottom:8px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;font-size:11px;font-weight:700;color:var(--ui-text-primary);margin-bottom:5px;">
+            <span>💬 ${tr("拖曳照片至標註以附加 (可多選)", "Drag & Drop Photo(s) onto a Comment")}</span>
+            <span id="lblRtkSelectedPhotosCount" style="font-size:10.5px;color:var(--ui-accent);font-family:var(--font-mono);">${tr("可多選拖曳", "Multi-select drag")}</span>
+          </div>
+          <div style="font-size:10.5px;color:var(--ui-text-secondary);margin-bottom:6px;line-height:1.35;">
+            ${tr(
+              "可勾選多張照片，直接拖曳至 3D 畫面上的標註圖釘，或拖曳至下方標註卡片附加：",
+              "Check 1 or more photos and drag them onto any 3D comment pin on the scan or onto a comment below:"
+            )}
+          </div>
+          <div style="display:flex;flex-direction:column;gap:5px;max-height:125px;overflow-y:auto;">
+            <div class="gs-comment-drop-target" data-drop-comment-id="__new__" style="padding:6px 8px;border:1px dashed var(--ui-accent);border-radius:6px;background:rgba(56,189,248,0.08);font-size:11px;font-weight:700;color:var(--ui-accent);cursor:copy;display:flex;align-items:center;justify-content:space-between;">
+              <span>➕ ${tr("拖曳至此建立含照片的新標註", "Drop Here to Create New Comment with Photo(s)")}</span>
+              <span style="font-size:10px;opacity:0.85;">Drop</span>
+            </div>
+            ${existingComments
+              .map((c) => {
+                const cid = escapeHtml(c.comment_id || "");
+                const pCnt = Array.isArray(c.photos) ? c.photos.length : 0;
+                const snippet = escapeHtml(String(c.text || "").slice(0, 34));
+                return `
+                  <div class="gs-comment-drop-target" data-drop-comment-id="${cid}" style="padding:5px 8px;border:1px solid var(--ui-border);border-radius:6px;background:var(--ui-bg-subtle);font-size:11px;color:var(--ui-text-primary);display:flex;align-items:center;justify-content:space-between;gap:6px;">
+                    <span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"><b>${escapeHtml(c.author_name || "Reviewer")}:</b> ${snippet}</span>
+                    <span style="font-size:10px;font-family:var(--font-mono);color:var(--ui-accent);flex-shrink:0;">📷 ${pCnt}</span>
+                  </div>
+                `;
+              })
+              .join("")}
+          </div>
+        </div>
+      `;
+
+      const photosHtml = photos
+        .map((p, idx) => {
+          const uv = _projectWorldPointToPhotoUV(p, targetTwd);
+          return `
+          <div class="gs-rtk-photo-card" draggable="true" data-rtk-photo-idx="${idx}" style="background:var(--ui-bg-subtle);border:1px solid ${idx === 0 ? "var(--ui-accent)" : "var(--ui-border)"};border-radius:8px;padding:8px;margin-top:8px;cursor:grab;">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:5px;font-size:11px;gap:4px;">
+              <label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer;font-weight:700;color:var(--ui-text-primary);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
+                <input type="checkbox" data-rtk-photo-check="${idx}" data-photo-select-cb="${idx}" />
+                <span style="overflow:hidden;text-overflow:ellipsis;">${escapeHtml(p.filename)}</span>
+              </label>
+              <span style="color:var(--ui-accent);font-weight:700;font-size:10px;flex-shrink:0;">${p.calibrated ? "P4M" : "RTK"} σ=${escapeHtml(String(p.rtk_h_sigma_cm))}cm</span>
+            </div>
+            <div data-photo-enlarge-img="${idx}" title="${tr("點擊放大檢視照片與目標準星", "Click to enlarge photo with target reticle")}" style="width:100%;background:#090d16;border-radius:6px;display:flex;align-items:center;justify-content:center;overflow:hidden;cursor:zoom-in;">
+              <div style="position:relative;display:inline-flex;max-width:100%;max-height:240px;line-height:0;">
+                <img src="${escapeHtml(p.url)}" alt="${escapeHtml(p.filename)}" style="max-width:100%;max-height:240px;width:auto;height:auto;display:block;object-fit:contain;" onerror="this.closest('[data-photo-enlarge-img]').style.display='none'" />
+                <div class="gs-photo-target-reticle" style="position:absolute;left:${(uv.u * 100).toFixed(2)}%;top:${(uv.v * 100).toFixed(2)}%;transform:translate(-50%,-50%);pointer-events:none;">
+                  <div style="width:20px;height:20px;border:2px solid #38bdf8;border-radius:50%;box-shadow:0 0 0 1.5px rgba(2,6,23,0.85),0 0 8px #38bdf8;position:relative;">
+                    <span style="position:absolute;left:50%;top:50%;width:4px;height:4px;border-radius:50%;background:#f43f5e;transform:translate(-50%,-50%);"></span>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div style="font-size:10px;font-family:monospace;color:var(--ui-text-muted);margin-top:5px;">
+              E:${escapeHtml(String(p.camera_twd97_e))}m | N:${escapeHtml(String(p.camera_twd97_n))}m | H:+${escapeHtml(String(p.camera_twd97_h))}m | Dist:${escapeHtml(String(p.distance_m))}m
+            </div>
+            <div style="display:flex;gap:5px;margin-top:6px;">
+              <button type="button" class="btn-xs primary" data-photo-enlarge-idx="${idx}" style="flex:1;justify-content:center;gap:4px;">
+                <span>🔍 ${tr("放大檢視", "Enlarge")}</span>
+              </button>
+              <button type="button" class="btn-xs" data-photo-align-idx="${idx}" style="flex:1;justify-content:center;gap:4px;" title="${tr("將 3D 相機對齊至此照片拍攝位置與視角", "Align 3D camera to this photo viewpoint")}">
+                <span>🎯 ${tr("對齊視角", "Align 3D")}</span>
+              </button>
+              <button type="button" class="btn-xs" data-photo-attach-comment-idx="${idx}" title="${tr("將此照片附加至新標註或選取標註", "Attach this photo to a new or existing comment")}">📎 ${tr("附加標註", "Attach Note")}</button>
+              <a class="btn-xs" href="${escapeHtml(p.url)}" download="${escapeHtml(p.filename)}" style="padding:0 8px;justify-content:center;text-decoration:none;display:inline-flex;align-items:center;" title="${tr("下載原始 RTK 照片", "Download Original RTK Photo")}">⬇</a>
+            </div>
+          </div>
+        `;
+        })
+        .join("");
+
+      showSidePanel(
+        `<span>${tr("RTK 照片檢視與標註附加", "RTK Photos & Comment Attachment")}</span>`,
+        `
+        ${_buildCameraTrajectoryHeaderHtml(camMeta)}
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;margin-bottom:6px;">
+          <div style="font-size:10.5px;font-family:monospace;color:var(--ui-text-secondary);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
+            Target: ${escapeHtml(formatScanCoordReadout({ e: Number(targetTwd.e || 0), n: Number(targetTwd.n || 0), h: Number(targetTwd.h || 0) }, STATE.activeScan))}
+          </div>
+          <div style="display:flex;gap:4px;flex-shrink:0;">
+            <button type="button" class="btn-xs" id="btnRtkSelectAllPhotos" title="${tr("全選 / 取消全選照片", "Select / Deselect All Photos")}">${tr("全選", "Select All")}</button>
+            <button type="button" class="btn-xs" id="btnClearPhotoFrustums" title="${tr("清除 3D 視錐", "Clear 3D Camera Frustums")}">${tr("清除視錐", "Clear")}</button>
+          </div>
+        </div>
+        ${commentDropTargetsHtml}
+        ${photosHtml || `<div style="font-size:12px;color:var(--ui-text-muted);">${tr("此點位附近無原始 RTK 照片。", "No local raw photos found for this point.")}</div>`}
+        `
+      );
+      bindRtkPhotoInspectorActions(photos, targetTwd, targetPt);
+    } catch (err) {
+      showToast(`Photo Inspector Error: ${err.message}`);
+    }
+  }
+  window.renderRtkPhotoInspectorPanel = renderRtkPhotoInspectorPanel;
+
+  function _serializeRtkPhotoForComment(p, targetTwd = null) {
+    if (!p || !p.url) return null;
+    const uv = _projectWorldPointToPhotoUV(p, targetTwd || STATE.lastInspectedPhotoTargetTwd);
+    const projU = Number.isFinite(Number(p.proj_u)) ? Number(p.proj_u) : Number(uv.u.toFixed(4));
+    const projV = Number.isFinite(Number(p.proj_v)) ? Number(p.proj_v) : Number(uv.v.toFixed(4));
+    const targetUv =
+      p.target_uv && Number.isFinite(Number(p.target_uv.u)) && Number.isFinite(Number(p.target_uv.v))
+        ? {
+            u: Number(p.target_uv.u),
+            v: Number(p.target_uv.v),
+            in_fov: p.target_uv.in_fov !== false,
+          }
+        : {
+            u: projU,
+            v: projV,
+            in_fov: uv.inFov !== false,
+          };
+    return {
+      id: String(p.id || p.filename || ""),
+      filename: String(p.filename || "RTK_Photo.jpg"),
+      url: String(p.url || ""),
+      camera_twd97_e: Number(p.camera_twd97_e || 0),
+      camera_twd97_n: Number(p.camera_twd97_n || 0),
+      camera_twd97_h: Number(p.camera_twd97_h || 0),
+      rtk_h_sigma_cm: Number(p.rtk_h_sigma_cm || 1.2),
+      proj_u: projU,
+      proj_v: projV,
+      target_uv: targetUv,
+    };
+  }
+
   async function attachPhotosToCommentById(commentId, photosToAttach) {
     const cid = String(commentId || "").trim();
     const cleanPhotos = (Array.isArray(photosToAttach) ? photosToAttach : [])
-      .filter((p) => p && p.url)
-      .map((p) => ({
-        id: String(p.id || p.filename || ""),
-        filename: String(p.filename || "RTK_Photo.jpg"),
-        url: String(p.url || ""),
-        camera_twd97_e: Number(p.camera_twd97_e || 0),
-        camera_twd97_n: Number(p.camera_twd97_n || 0),
-        camera_twd97_h: Number(p.camera_twd97_h || 0),
-        rtk_h_sigma_cm: Number(p.rtk_h_sigma_cm || 1.2),
-      }));
+      .map((p) => _serializeRtkPhotoForComment(p, STATE.lastInspectedPhotoTargetTwd))
+      .filter(Boolean);
     if (!cid || !cleanPhotos.length) return false;
     try {
       const res = await apiPost("/api/comments/update", {
@@ -2744,19 +3420,29 @@
   }
   window.attachPhotosToCommentById = attachPhotosToCommentById;
 
-  function getSelectedOrDraggedRtkPhotos(photos, fallbackIdx = 0) {
+  function getSelectedOrDraggedRtkPhotos(photos, fallbackIdx = 0, targetTwd = null) {
     const checkedIdxs = [];
-    document.querySelectorAll("[data-rtk-photo-check]:checked").forEach((chk) => {
-      const idx = Number(chk.getAttribute("data-rtk-photo-check"));
-      if (Number.isFinite(idx) && photos[idx]) checkedIdxs.push(idx);
+    document.querySelectorAll("[data-rtk-photo-check]:checked, [data-photo-select-cb]:checked").forEach((chk) => {
+      const rawIdx = chk.getAttribute("data-rtk-photo-check") ?? chk.getAttribute("data-photo-select-cb");
+      const idx = Number(rawIdx);
+      if (Number.isFinite(idx) && photos[idx] && !checkedIdxs.includes(idx)) checkedIdxs.push(idx);
     });
-    if (checkedIdxs.length > 0 && checkedIdxs.includes(fallbackIdx)) {
-      return checkedIdxs.map((i) => photos[i]);
-    }
-    return photos[fallbackIdx] ? [photos[fallbackIdx]] : [];
+    const rawList =
+      checkedIdxs.length > 0 && checkedIdxs.includes(fallbackIdx)
+        ? checkedIdxs.map((i) => photos[i])
+        : photos[fallbackIdx]
+        ? [photos[fallbackIdx]]
+        : [];
+    return rawList.map((p) => _serializeRtkPhotoForComment(p, targetTwd) || p);
   }
 
   function bindRtkPhotoInspectorActions(photos, targetTwd, targetLocalPt) {
+    document.getElementById("btnToggleCamTrajectory3D")?.addEventListener("click", async () => {
+      STATE.showCameraTrajectory3D = !STATE.showCameraTrajectory3D;
+      await loadAndRenderScanCameraTrajectory3D(STATE.activeScanId, false);
+      renderRtkPhotoInspectorPanel(targetLocalPt, true);
+    });
+
     document.querySelectorAll("[data-photo-enlarge-idx]").forEach((btn) => {
       btn.addEventListener("click", (ev) => {
         ev.stopPropagation();
@@ -2789,6 +3475,55 @@
         }
       });
     });
+    document.querySelectorAll("[data-photo-align-idx]").forEach((btn) => {
+      btn.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        const idx = Number(btn.getAttribute("data-photo-align-idx")) || 0;
+        const p = photos[idx];
+        if (p) {
+          renderRtkPhotoFrustums3D(photos, targetTwd, targetLocalPt, idx);
+          alignStudioCameraToRtkPhoto(p, 0);
+        }
+      });
+    });
+    document.querySelectorAll("[data-photo-attach-comment-idx]").forEach((btn) => {
+      btn.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        const idx = Number(btn.getAttribute("data-photo-attach-comment-idx")) || 0;
+        const checkedIdxs = [];
+        document.querySelectorAll("[data-rtk-photo-check]:checked, [data-photo-select-cb]:checked").forEach((chk) => {
+          const rawIdx = chk.getAttribute("data-rtk-photo-check") ?? chk.getAttribute("data-photo-select-cb");
+          const cIdx = Number(rawIdx);
+          if (Number.isFinite(cIdx) && photos[cIdx] && !checkedIdxs.includes(cIdx)) checkedIdxs.push(cIdx);
+        });
+        if (!checkedIdxs.includes(idx) && photos[idx]) {
+          checkedIdxs.push(idx);
+        }
+        const selectedPhotos = checkedIdxs
+          .map((i) => _serializeRtkPhotoForComment(photos[i], targetTwd || STATE.lastInspectedPhotoTargetTwd))
+          .filter(Boolean);
+        if (!selectedPhotos.length) return;
+        STATE.pendingCommentDraftPhotos = selectedPhotos;
+        if (typeof openCommentsInspector === "function") {
+          openCommentsInspector(
+            targetLocalPt || STATE.lastInspectedPhotoTargetPt,
+            targetTwd || STATE.lastInspectedPhotoTargetTwd
+          );
+        }
+        showToast(
+          tr(
+            `已選取 ${selectedPhotos.length} 張 RTK 照片準備附加至空間標註`,
+            `Prepared ${selectedPhotos.length} RTK photo(s) to attach to comment`
+          )
+        );
+      });
+    });
+    document.querySelectorAll(".gs-rtk-photo-card").forEach((card) => {
+      card.addEventListener("mouseenter", () => {
+        const idx = Number(card.getAttribute("data-rtk-photo-idx")) || 0;
+        renderRtkPhotoFrustums3D(photos, targetTwd, targetLocalPt, idx);
+      });
+    });
 
     const updateSelectionCountLabel = () => {
       const cnt = document.querySelectorAll("[data-rtk-photo-check]:checked").length;
@@ -2813,7 +3548,7 @@
     document.querySelectorAll(".gs-rtk-photo-card[draggable='true']").forEach((card) => {
       card.addEventListener("dragstart", (ev) => {
         const idx = Number(card.getAttribute("data-rtk-photo-idx")) || 0;
-        const batch = getSelectedOrDraggedRtkPhotos(photos, idx);
+        const batch = getSelectedOrDraggedRtkPhotos(photos, idx, targetTwd);
         STATE.draggingRtkPhotos = batch;
         card.classList.add("dragging");
         try {

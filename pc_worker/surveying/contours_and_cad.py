@@ -12,6 +12,7 @@ import glob
 import math
 import json
 import time
+import struct
 import tempfile
 import subprocess
 from datetime import datetime
@@ -51,6 +52,9 @@ from pc_worker.config import (
     TWD97_TWVD2001_LABEL,
     TWD97_TWVD2001_SHORT,
 )
+
+CAMERAS_CACHE_DIR = os.path.join(BASE_DIR, "data", "cameras_cache")
+os.makedirs(CAMERAS_CACHE_DIR, exist_ok=True)
 from pc_worker.priority_queue import ScanQueueDB
 
 from pc_worker.surveying.dsm_and_volume import (
@@ -1563,21 +1567,117 @@ class ContoursAndCadMixin:
                         dirs.append(fallback_d)
         return dirs
 
+    @staticmethod
+    def _decode_cbor_bytes(data: bytes) -> Any:
+        """Pure-Python RFC 8949 CBOR decoder for Pix4Dmatic `root.p4m` payloads."""
+        pos = 0
+        n_len = len(data)
+
+        def _read() -> Any:
+            nonlocal pos
+            if pos >= n_len:
+                return None
+            ib = data[pos]
+            pos += 1
+            mt = ib >> 5
+            ai = ib & 0x1F
+            if ai < 24:
+                val: Optional[int] = ai
+            elif ai == 24:
+                val = data[pos]
+                pos += 1
+            elif ai == 25:
+                val = struct.unpack(">H", data[pos : pos + 2])[0]
+                pos += 2
+            elif ai == 26:
+                val = struct.unpack(">I", data[pos : pos + 4])[0]
+                pos += 4
+            elif ai == 27:
+                val = struct.unpack(">Q", data[pos : pos + 8])[0]
+                pos += 8
+            elif ai == 31:
+                val = None
+            else:
+                val = 0
+            if mt == 0:
+                return val or 0
+            if mt == 1:
+                return -1 - (val or 0)
+            if mt == 2:
+                ln = val or 0
+                b = data[pos : pos + ln]
+                pos += ln
+                return b
+            if mt == 3:
+                ln = val or 0
+                b = data[pos : pos + ln]
+                pos += ln
+                return b.decode("utf-8", errors="replace")
+            if mt == 4:
+                if val is None:
+                    arr = []
+                    while pos < n_len and data[pos] != 0xFF:
+                        arr.append(_read())
+                    pos += 1
+                    return arr
+                return [_read() for _ in range(val)]
+            if mt == 5:
+                if val is None:
+                    d = {}
+                    while pos < n_len and data[pos] != 0xFF:
+                        k = _read()
+                        d[k] = _read()
+                    pos += 1
+                    return d
+                d = {}
+                for _ in range(val):
+                    k = _read()
+                    d[k] = _read()
+                return d
+            if mt == 6:
+                return _read()
+            if mt == 7:
+                if ai == 20:
+                    return False
+                if ai == 21:
+                    return True
+                if ai in (22, 23):
+                    return None
+                if ai == 25:
+                    return struct.unpack(">e", struct.pack(">H", val or 0))[0]
+                if ai == 26:
+                    return struct.unpack(">f", struct.pack(">I", val or 0))[0]
+                if ai == 27:
+                    return struct.unpack(">d", struct.pack(">Q", val or 0))[0]
+                return val
+            return None
+
+        return _read()
+
+    @staticmethod
+    def _norm3(v: List[float]) -> List[float]:
+        ln = math.sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2])
+        if ln <= 1e-12:
+            return [0.0, 1.0, 0.0]
+        return [v[0] / ln, v[1] / ln, v[2] / ln]
+
     def _load_or_build_camera_catalog(self, scan: Dict[str, Any]) -> List[Dict[str, Any]]:
         """
-        Loads or builds the real RTK camera pose catalog for a scan (including all sub-scans
-        in `merged_from` with their 3D similarity/rigid alignment transforms applied) by parsing
-        Pix4DCatch OPF (`opf_files/camera_list.json` + `opf_files/input_cameras.json`)
-        or extracting EXIF GPS coordinates from raw `.jpg` frames on disk.
+        Loads or builds the calibrated Pix4Dmatic (`root.p4m`) / OPF (`input_cameras.json`)
+        camera pose catalog (`_cameras_cache_v6.json`, superseding `_cameras_cache_v4.json`)
+        for a scan in exact TWD97 + TWVD2001 coordinates, including canonical
+        upright image basis (`right`, `down`, `forward`) and normalized focal lengths (`fx_norm`, `fy_norm`).
         """
         scan_id = str(scan.get("scan_id") or "unknown")
         if scan_id in self._camera_mem_cache:
             return self._camera_mem_cache[scan_id]
 
         proj_dir = scan.get("project_dir") or os.path.join(SCANS_ROOT_DIR, scan_id)
-        if os.path.isdir(proj_dir):
-            cache_cand = os.path.join(proj_dir, "_cameras_cache_v4.json")
-            if os.path.isfile(cache_cand):
+        portable_cache = os.path.join(CAMERAS_CACHE_DIR, f"{scan_id}_cameras_v6.json")
+        proj_cache = os.path.join(proj_dir, "_cameras_cache_v6.json") if os.path.isdir(proj_dir) else None
+
+        for cache_cand in (proj_cache, portable_cache):
+            if cache_cand and os.path.isfile(cache_cand):
                 try:
                     with open(cache_cand, "r", encoding="utf-8") as f:
                         cams = json.load(f)
@@ -1586,7 +1686,6 @@ class ContoursAndCadMixin:
                         return cams
                 except Exception:
                     pass
-        cache_json = os.path.join(proj_dir, "_cameras_cache_v4.json") if os.path.isdir(proj_dir) else None
 
         merged_from_list = self._extract_merged_from_list(scan)
         source_specs: List[Tuple[str, List[str], Optional[Dict[str, Any]]]] = []
@@ -1594,6 +1693,7 @@ class ContoursAndCadMixin:
             for idx_m, mf in enumerate(merged_from_list):
                 sub_sid = str(mf.get("scan_id") or "").strip()
                 base_sid = str(mf.get("derived_from_scan_id") or "").strip()
+                nested_sid = ""
                 sub_dirs: List[str] = []
                 for sid in (sub_sid, base_sid):
                     if not sid:
@@ -1615,28 +1715,34 @@ class ContoursAndCadMixin:
                             s_extra_d = {}
                         nested_deriv = str(s_rec.get("derived_from_scan_id") or s_extra_d.get("derived_from_scan_id") or "").strip()
                         if nested_deriv:
+                            if not nested_sid:
+                                nested_sid = nested_deriv
                             nd_rec = self.db.get_scan(nested_deriv)
                             if nd_rec:
                                 for d in self._get_single_scan_camera_dirs(nd_rec):
                                     if d not in sub_dirs:
                                         sub_dirs.append(d)
+                            for fb_nd in (os.path.join(SCANS_ROOT_DIR, nested_deriv), os.path.join(SCANS_ROOT_DIR, nested_deriv, "inputs")):
+                                if os.path.isdir(fb_nd) and fb_nd not in sub_dirs:
+                                    sub_dirs.append(fb_nd)
                     for fb_d in (os.path.join(SCANS_ROOT_DIR, sid), os.path.join(SCANS_ROOT_DIR, sid, "inputs")):
                         if os.path.isdir(fb_d) and fb_d not in sub_dirs:
                             sub_dirs.append(fb_d)
-                tag = base_sid or sub_sid or f"part_{idx_m + 1}"
+                tag = base_sid or nested_sid or sub_sid or f"part_{idx_m + 1}"
                 if sub_dirs:
                     source_specs.append((tag, sub_dirs, mf))
         if not source_specs:
             source_specs.append(("", self._get_candidate_camera_dirs(scan), None))
 
         catalog: List[Dict[str, Any]] = []
-        seen_abs_paths: set = set()
+        seen_source_keys: set = set()
         scan_crs_up = str(scan.get("crs") or "").upper()
+        scan_h_ref = float(scan.get("twd97_h") or 0.0)
 
-        def _cam_xy_to_scan_en(c0: float, c1: float) -> Optional[Tuple[float, float]]:
-            if 150000.0 <= c0 <= 345000.0 and 2400000.0 <= c1 <= 2850000.0:
+        def _cam_xy_to_scan_en(c0: float, c1: float, force_utm51n: bool = False) -> Optional[Tuple[float, float]]:
+            if not force_utm51n and 150000.0 <= c0 <= 335000.0 and 2400000.0 <= c1 <= 2850000.0:
                 return c0, c1
-            if 100000.0 <= c0 <= 850000.0 and 2500000.0 <= c1 <= 3000000.0:
+            if force_utm51n or (100000.0 <= c0 <= 850000.0 and 2500000.0 <= c1 <= 3000000.0):
                 if "UTM" in scan_crs_up:
                     return c0, c1
                 from pc_worker.gdrive_watcher import utm51n_to_wgs84
@@ -1653,36 +1759,335 @@ class ContoursAndCadMixin:
                 return ue, un
             return wgs84_to_twd97(lat_d, lon_d)
 
-        def _apply_subscan_transform(
-            cam_e: float, cam_n: float, h_val: float, yaw_deg: float, mf_spec: Optional[Dict[str, Any]]
-        ) -> Tuple[float, float, float, float]:
+        def _apply_subscan_pose_transform(
+            cam_e: float,
+            cam_n: float,
+            h_val: float,
+            u_right: List[float],
+            v_down: List[float],
+            f_vec: List[float],
+            mf_spec: Optional[Dict[str, Any]],
+        ) -> Tuple[float, float, float, List[float], List[float], List[float]]:
             if not isinstance(mf_spec, dict):
-                return cam_e, cam_n, h_val, yaw_deg
+                return cam_e, cam_n, h_val, u_right, v_down, f_vec
             na = mf_spec.get("native_anchor_zup")
             ma = mf_spec.get("merged_anchor_zup")
             rm = mf_spec.get("r_zup_rowmajor")
-            if isinstance(na, (list, tuple)) and len(na) >= 3 and isinstance(ma, (list, tuple)) and len(ma) >= 3 and isinstance(rm, (list, tuple)) and len(rm) >= 9:
+            if (
+                isinstance(na, (list, tuple))
+                and len(na) >= 3
+                and isinstance(ma, (list, tuple))
+                and len(ma) >= 3
+                and isinstance(rm, (list, tuple))
+                and len(rm) >= 9
+            ):
+                r00, r01, r02 = float(rm[0]), float(rm[1]), float(rm[2])
+                r10, r11, r12 = float(rm[3]), float(rm[4]), float(rm[5])
+                r20, r21, r22 = float(rm[6]), float(rm[7]), float(rm[8])
                 dx = cam_e - float(na[0])
                 dy = cam_n - float(na[1])
                 dz = h_val - float(na[2])
-                te = float(ma[0]) + float(rm[0]) * dx + float(rm[1]) * dy + float(rm[2]) * dz
-                tn = float(ma[1]) + float(rm[3]) * dx + float(rm[4]) * dy + float(rm[5]) * dz
-                th = float(ma[2]) + float(rm[6]) * dx + float(rm[7]) * dy + float(rm[8]) * dz
-                yaw_rad = math.radians(yaw_deg)
-                vx = math.sin(yaw_rad)
-                vy = math.cos(yaw_rad)
-                tvx = float(rm[0]) * vx + float(rm[1]) * vy
-                tvy = float(rm[3]) * vx + float(rm[4]) * vy
-                tyaw = (math.degrees(math.atan2(tvx, tvy)) + 360.0) % 360.0 if (abs(tvx) > 1e-6 or abs(tvy) > 1e-6) else yaw_deg
-                return te, tn, th, tyaw
+                te = float(ma[0]) + r00 * dx + r01 * dy + r02 * dz
+                tn = float(ma[1]) + r10 * dx + r11 * dy + r12 * dz
+                th = float(ma[2]) + r20 * dx + r21 * dy + r22 * dz
+
+                def _rot(v: List[float]) -> List[float]:
+                    return self._norm3(
+                        [
+                            r00 * v[0] + r01 * v[1] + r02 * v[2],
+                            r10 * v[0] + r11 * v[1] + r12 * v[2],
+                            r20 * v[0] + r21 * v[1] + r22 * v[2],
+                        ]
+                    )
+
+                return te, tn, th, _rot(u_right), _rot(v_down), _rot(f_vec)
             zs = mf_spec.get("zup_shift")
             if isinstance(zs, (list, tuple)) and len(zs) >= 3:
-                return cam_e + float(zs[0]), cam_n + float(zs[1]), h_val + float(zs[2]), yaw_deg
-            return cam_e, cam_n, h_val, yaw_deg
+                return cam_e + float(zs[0]), cam_n + float(zs[1]), h_val + float(zs[2]), u_right, v_down, f_vec
+            return cam_e, cam_n, h_val, u_right, v_down, f_vec
 
-        # 1. Try OPF input_cameras.json + camera_list.json across all source_specs (highest accuracy: RTK sigmas + IMU yaw/pitch/roll)
+        def _canonicalize_p4m_basis(
+            r0: List[float], r1: List[float], f_vec: List[float], f_long: float, f_short: float
+        ) -> Tuple[List[float], List[float], List[float], float, float, float]:
+            r0_n = self._norm3(r0)
+            r1_n = self._norm3(r1)
+            f_n = self._norm3(f_vec)
+            if abs(r0_n[2]) > abs(r1_n[2]):
+                # Portrait capture (displayed 3:4 upright image)
+                fx_norm = f_short
+                fy_norm = f_long
+                aspect = 0.75
+                if r0_n[2] < 0.0:
+                    # EXIF Orientation 6 (90 deg CW): displayed right = -r1, displayed down = +r0
+                    u_right = [-r1_n[0], -r1_n[1], -r1_n[2]]
+                    v_down = [r0_n[0], r0_n[1], r0_n[2]]
+                else:
+                    # EXIF Orientation 8 (90 deg CCW): displayed right = +r1, displayed down = -r0
+                    u_right = [r1_n[0], r1_n[1], r1_n[2]]
+                    v_down = [-r0_n[0], -r0_n[1], -r0_n[2]]
+            else:
+                # Landscape capture (displayed 4:3 upright image)
+                fx_norm = f_long
+                fy_norm = f_short
+                aspect = round(4.0 / 3.0, 4)
+                if r1_n[2] < 0.0:
+                    u_right = [r0_n[0], r0_n[1], r0_n[2]]
+                    v_down = [r1_n[0], r1_n[1], r1_n[2]]
+                else:
+                    u_right = [-r0_n[0], -r0_n[1], -r0_n[2]]
+                    v_down = [-r1_n[0], -r1_n[1], -r1_n[2]]
+            return u_right, v_down, f_n, round(fx_norm, 5), round(fy_norm, 5), aspect
+
+        def _basis_from_euler(yaw_deg: float, pitch_deg: float) -> Tuple[List[float], List[float], List[float]]:
+            yr = math.radians(yaw_deg)
+            pr = math.radians(pitch_deg)
+            cp = math.cos(pr)
+            sp = math.sin(pr)
+            sy = math.sin(yr)
+            cy = math.cos(yr)
+            f_vec = self._norm3([sy * cp, cy * cp, sp])
+            u_right = self._norm3([cy, -sy, 0.0])
+            # v_down = f x u_right so (u_right, v_down, f) is right-handed with v_down pointing -Z
+            v_down = self._norm3(
+                [
+                    f_vec[1] * u_right[2] - f_vec[2] * u_right[1],
+                    f_vec[2] * u_right[0] - f_vec[0] * u_right[2],
+                    f_vec[0] * u_right[1] - f_vec[1] * u_right[0],
+                ]
+            )
+            if v_down[2] > 0.0:
+                v_down = [-v_down[0], -v_down[1], -v_down[2]]
+            return u_right, v_down, f_vec
+
+        # Iterate over each source_spec: Priority 1 = Pix4Dmatic root.p4m calibratedCameras; Priority 2 = OPF input_cameras.json; Priority 3 = EXIF
         for src_tag, sdirs, mf_spec in source_specs:
+            src_found_p4m = False
+            p4m_candidates: List[str] = []
+            ordered_sdirs = ([proj_dir] if (not merged_from_list and proj_dir and os.path.isdir(proj_dir)) else []) + list(sdirs)
+            for sdir in ordered_sdirs:
+                for root_cand in (sdir, os.path.dirname(sdir.rstrip("\\/")) if os.path.basename(sdir.rstrip("\\/")).lower() == "inputs" else sdir):
+                    if not root_cand or not os.path.isdir(root_cand):
+                        continue
+                    base_rc = os.path.basename(root_cand.rstrip("\\/"))
+                    for direct_p4m in (
+                        os.path.join(root_cand, "project", "root.p4m"),
+                        os.path.join(root_cand, base_rc, "root.p4m"),
+                        os.path.join(root_cand, "root.p4m"),
+                    ):
+                        if os.path.isfile(direct_p4m) and direct_p4m not in p4m_candidates:
+                            p4m_candidates.append(direct_p4m)
+                    if not p4m_candidates:
+                        for gp in glob.glob(os.path.join(root_cand, "*", "root.p4m")):
+                            if os.path.isfile(gp) and gp not in p4m_candidates:
+                                p4m_candidates.append(gp)
+
+            # Build a fast basename -> abs_path lookup inside sdirs in case root.p4m references moved image paths
+            local_jpg_map: Dict[str, str] = {}
+            for sdir in sdirs:
+                if not os.path.isdir(sdir):
+                    continue
+                for jp in glob.glob(os.path.join(sdir, "**", "*.jp*g"), recursive=True):
+                    bname = os.path.basename(jp)
+                    if bname not in local_jpg_map:
+                        local_jpg_map[bname] = os.path.normpath(jp)
+
+            for p4m_path in p4m_candidates:
+                try:
+                    with open(p4m_path, "rb") as pf:
+                        raw_p4m = pf.read()
+                    cbor_idx = raw_p4m.find(b"creationSoftwareVersion")
+                    if cbor_idx < 2:
+                        continue
+                    p4m_obj = self._decode_cbor_bytes(raw_p4m[cbor_idx - 2 :])
+                    if not isinstance(p4m_obj, dict):
+                        continue
+                    state = p4m_obj.get("state") or {}
+                    buckets = state.get("buckets") or []
+                    if not buckets:
+                        continue
+                    cal_node = (((buckets[0].get("bucket") or {}).get("calibratedCameras") or {}).get("data") or {}).get("data")
+                    if not isinstance(cal_node, dict):
+                        continue
+                    cam_array = cal_node.get("cameraArray") or {}
+                    p4m_cams = cam_array.get("cameras") or []
+                    if not p4m_cams:
+                        continue
+
+                    # Extract intrinsics (fpx, width, height)
+                    f_long = round(1334.5 / 1920.0, 5)
+                    f_short = round(1334.5 / 1440.0, 5)
+                    params_list = cam_array.get("parameters") or []
+                    if not params_list:
+                        src_models = cal_node.get("sourceInputCameraModels") or []
+                        if src_models and isinstance(src_models[0], (list, tuple)) and len(src_models[0]) >= 2:
+                            params_list = [src_models[0][1]]
+                    if params_list and isinstance(params_list[0], dict):
+                        intr = params_list[0].get("intrinsicParameters") or {}
+                        w_px = float(intr.get("width") or 1920.0)
+                        h_px = float(intr.get("height") or 1440.0)
+                        persp = (intr.get("modelSpecificParameters") or {}).get("perspectiveParameters") or {}
+                        f_px = float(persp.get("fpx") or 1334.5)
+                        long_side = max(w_px, h_px, 1.0)
+                        short_side = max(min(w_px, h_px), 1.0)
+                        f_long = f_px / long_side
+                        f_short = f_px / short_side
+
+                    # Determine scene -> TWD97 + TWVD2001 transformation for this p4m project
+                    p4m_proj_root = os.path.dirname(os.path.dirname(os.path.abspath(p4m_path)))
+                    tile_transform_twd: Optional[List[float]] = None
+                    for ts_cand in (
+                        os.path.join(p4m_proj_root, "tileset", "tileset.json"),
+                        os.path.join(proj_dir, "tileset", "tileset.json") if not merged_from_list else "",
+                    ):
+                        if ts_cand and os.path.isfile(ts_cand):
+                            try:
+                                with open(ts_cand, "r", encoding="utf-8") as tf:
+                                    ts_obj = json.load(tf)
+                                tr_m = (ts_obj.get("root") or {}).get("transform")
+                                if (
+                                    isinstance(tr_m, list)
+                                    and len(tr_m) == 16
+                                    and 150000.0 <= float(tr_m[12]) <= 400000.0
+                                    and 2400000.0 <= float(tr_m[13]) <= 2900000.0
+                                ):
+                                    tile_transform_twd = [float(x) for x in tr_m]
+                                    break
+                            except Exception:
+                                pass
+
+                    ref_frame = state.get("refFrame") or {}
+                    rf_wkt2 = str(ref_frame.get("wkt2") or "").upper()
+                    is_p4m_utm = "UTM" in rf_wkt2
+                    rf_shift = ref_frame.get("shift") or [0.0, 0.0, 0.0]
+                    ox, oy, oz = -float(rf_shift[0]), -float(rf_shift[1]), -float(rf_shift[2])
+                    for off_cand in (
+                        os.path.join(p4m_proj_root, "tileset", "offset.xyz"),
+                        os.path.join(p4m_proj_root, "exports", "obj_mesh", "offset.xyz"),
+                    ):
+                        if os.path.isfile(off_cand):
+                            try:
+                                parts_off = open(off_cand, "r", encoding="utf-8").read().strip().split()
+                                if len(parts_off) >= 3 and abs(float(parts_off[0])) > 100.0 and abs(float(parts_off[1])) > 100.0:
+                                    ox, oy, oz = float(parts_off[0]), float(parts_off[1]), float(parts_off[2])
+                                    is_p4m_utm = ox > 335000.0
+                                    break
+                            except Exception:
+                                pass
+
+                    p4m_entries: List[Dict[str, Any]] = []
+                    for c_rec in p4m_cams:
+                        if not isinstance(c_rec, (list, tuple)) or len(c_rec) < 6:
+                            continue
+                        pos_dict = c_rec[4]
+                        rot_dict = c_rec[5]
+                        if not isinstance(pos_dict, dict) or not isinstance(rot_dict, dict):
+                            continue
+                        coords_s = pos_dict.get("coordinates")
+                        mat_s = rot_dict.get("matrix")
+                        if not isinstance(coords_s, (list, tuple)) or len(coords_s) < 3 or not isinstance(mat_s, (list, tuple)) or len(mat_s) < 9:
+                            continue
+                        raw_img_str = str(c_rec[1] or "").strip()
+                        if not raw_img_str:
+                            continue
+                        fname = os.path.basename(raw_img_str.replace("\\", "/"))
+                        abs_img = os.path.normpath(raw_img_str)
+                        if not os.path.isfile(abs_img) and fname in local_jpg_map:
+                            abs_img = local_jpg_map[fname]
+                        dedup_key = f"{src_tag}:{fname}" if src_tag else os.path.normcase(abs_img)
+                        if dedup_key in seen_source_keys:
+                            continue
+                        seen_source_keys.add(dedup_key)
+
+                        xs, ys, zs = float(coords_s[0]), float(coords_s[1]), float(coords_s[2])
+                        r0 = [float(mat_s[0]), float(mat_s[1]), float(mat_s[2])]
+                        r1 = [float(mat_s[3]), float(mat_s[4]), float(mat_s[5])]
+                        f_vec = [float(mat_s[6]), float(mat_s[7]), float(mat_s[8])]
+
+                        if tile_transform_twd is not None:
+                            m = tile_transform_twd
+                            cam_e = m[0] * xs + m[4] * ys + m[8] * zs + m[12]
+                            cam_n = m[1] * xs + m[5] * ys + m[9] * zs + m[13]
+                            cam_h = m[2] * xs + m[6] * ys + m[10] * zs + m[14]
+
+                            def _rot_tile(v: List[float]) -> List[float]:
+                                return [
+                                    m[0] * v[0] + m[4] * v[1] + m[8] * v[2],
+                                    m[1] * v[0] + m[5] * v[1] + m[9] * v[2],
+                                    m[2] * v[0] + m[6] * v[1] + m[10] * v[2],
+                                ]
+
+                            r0 = _rot_tile(r0)
+                            r1 = _rot_tile(r1)
+                            f_vec = _rot_tile(f_vec)
+                        else:
+                            raw_x = ox + xs
+                            raw_y = oy + ys
+                            cam_h = oz + zs
+                            en_pair = _cam_xy_to_scan_en(raw_x, raw_y, force_utm51n=is_p4m_utm)
+                            if en_pair is None:
+                                continue
+                            cam_e, cam_n = en_pair
+
+                        u_right, v_down, f_n, fx_norm, fy_norm, aspect = _canonicalize_p4m_basis(r0, r1, f_vec, f_long, f_short)
+                        cam_e, cam_n, cam_h, u_right, v_down, f_n = _apply_subscan_pose_transform(
+                            cam_e, cam_n, cam_h, u_right, v_down, f_n, mf_spec
+                        )
+
+                        yaw_deg = (math.degrees(math.atan2(f_n[0], f_n[1])) + 360.0) % 360.0
+                        pitch_deg = math.degrees(math.asin(max(-1.0, min(1.0, f_n[2]))))
+                        roll_deg = math.degrees(math.atan2(u_right[2], -v_down[2]))
+
+                        acc = pos_dict.get("accuracies") or [0.012, 0.012, 0.018]
+                        if (not isinstance(acc, (list, tuple)) or len(acc) < 3) and isinstance(c_rec[2], (list, tuple)) and len(c_rec[2]) >= 2:
+                            acc = c_rec[2][1]
+                        h_sigma_cm = round(math.hypot(float(acc[0]), float(acc[1])) * 100.0, 2) if isinstance(acc, (list, tuple)) and len(acc) >= 2 else 1.4
+                        v_sigma_cm = round(float(acc[2]) * 100.0, 2) if isinstance(acc, (list, tuple)) and len(acc) >= 3 else 2.0
+
+                        display_name = f"{src_tag}/{fname}" if src_tag else fname
+                        p4m_entries.append(
+                            {
+                                "filename": display_name,
+                                "sub_scan": src_tag or scan_id,
+                                "abs_path": abs_img,
+                                "e": round(cam_e, 3),
+                                "n": round(cam_n, 3),
+                                "h": round(cam_h, 3),
+                                "rtk_h_sigma_cm": h_sigma_cm,
+                                "rtk_v_sigma_cm": v_sigma_cm,
+                                "yaw_deg": round(yaw_deg, 2),
+                                "pitch_deg": round(pitch_deg, 2),
+                                "roll_deg": round(roll_deg, 2),
+                                "right": [round(x, 6) for x in u_right],
+                                "down": [round(x, 6) for x in v_down],
+                                "forward": [round(x, 6) for x in f_n],
+                                "fx_norm": fx_norm,
+                                "fy_norm": fy_norm,
+                                "aspect": aspect,
+                                "calibrated": True,
+                                "pose_source": "pix4dmatic_p4m",
+                            }
+                        )
+                    if p4m_entries:
+                        # If a non-merged scan had ellipsoidal vertical shift in root.p4m without tileset.json transform, align to scan.twd97_h
+                        if not mf_spec and tile_transform_twd is None and scan_h_ref > 0.0:
+                            hs_sorted = sorted(e["h"] for e in p4m_entries)
+                            med_h = hs_sorted[len(hs_sorted) // 2]
+                            if med_h - scan_h_ref > 12.0:
+                                h_corr = (scan_h_ref + 1.5) - med_h
+                                for e in p4m_entries:
+                                    e["h"] = round(e["h"] + h_corr, 3)
+                        catalog.extend(p4m_entries)
+                        src_found_p4m = True
+                        break
+                except Exception:
+                    continue
+
+            if src_found_p4m:
+                continue
+
+            # 2. Fallback: OPF input_cameras.json + camera_list.json across sdirs
             src_found_opf = False
+            opf_entries: List[Dict[str, Any]] = []
             for sdir in sdirs:
                 opf_inputs = glob.glob(os.path.join(sdir, "**", "input_cameras.json"), recursive=True)
                 for in_cam_path in opf_inputs:
@@ -1715,17 +2120,19 @@ class ContoursAndCadMixin:
                             abs_img = os.path.normpath(os.path.join(opf_dir, rel_uri))
                             if not os.path.isfile(abs_img):
                                 continue
-                            norm_abs = os.path.normcase(os.path.abspath(abs_img))
-                            if norm_abs in seen_abs_paths:
+                            fname = os.path.basename(abs_img)
+                            prefix_tag = src_tag or (part_tag if part_tag and part_tag not in ("inputs", "opf_files") else "")
+                            dedup_key = f"{prefix_tag}:{fname}" if prefix_tag else os.path.normcase(os.path.abspath(abs_img))
+                            if dedup_key in seen_source_keys:
                                 continue
-                            seen_abs_paths.add(norm_abs)
+                            seen_source_keys.add(dedup_key)
                             geo = cap.get("geolocation") or {}
                             coords = geo.get("coordinates") or []
                             if len(coords) < 2:
                                 continue
                             c0 = float(coords[0])
                             c1 = float(coords[1])
-                            h_val = float(coords[2]) if len(coords) >= 3 else float(scan.get("twd97_h") or 0.0)
+                            h_val = float(coords[2]) if len(coords) >= 3 else scan_h_ref
                             en_pair = _cam_xy_to_scan_en(c0, c1)
                             if en_pair is None:
                                 continue
@@ -1735,32 +2142,58 @@ class ContoursAndCadMixin:
                             v_sigma_cm = round(float(sigmas[2]) * 100.0, 2) if len(sigmas) >= 3 else 2.2
                             ori = cap.get("orientation") or {}
                             angles = ori.get("angles_deg") or [0.0, -20.0, 0.0]
-                            raw_yaw = float(angles[0]) % 360.0 if len(angles) >= 1 else 0.0
-                            cam_e, cam_n, h_val, adj_yaw = _apply_subscan_transform(cam_e, cam_n, h_val, raw_yaw, mf_spec)
-                            fname = os.path.basename(abs_img)
-                            prefix_tag = src_tag or (part_tag if part_tag and part_tag not in ("inputs", "opf_files") else "")
+                            raw_yaw = (float(angles[0]) - 90.0) % 360.0 if len(angles) >= 1 else 0.0
+                            raw_pitch = float(angles[1]) if len(angles) >= 2 and -89.0 <= float(angles[1]) <= 89.0 else -15.0
+                            u_right, v_down, f_n = _basis_from_euler(raw_yaw, raw_pitch)
+                            cam_e, cam_n, h_val, u_right, v_down, f_n = _apply_subscan_pose_transform(
+                                cam_e, cam_n, h_val, u_right, v_down, f_n, mf_spec
+                            )
+                            adj_yaw = (math.degrees(math.atan2(f_n[0], f_n[1])) + 360.0) % 360.0
+                            adj_pitch = math.degrees(math.asin(max(-1.0, min(1.0, f_n[2]))))
                             display_name = f"{prefix_tag}/{fname}" if prefix_tag else fname
-                            catalog.append(
+                            opf_entries.append(
                                 {
                                     "filename": display_name,
+                                    "sub_scan": prefix_tag or scan_id,
                                     "abs_path": abs_img,
                                     "e": round(cam_e, 3),
                                     "n": round(cam_n, 3),
                                     "h": round(h_val, 3),
                                     "rtk_h_sigma_cm": h_sigma_cm,
                                     "rtk_v_sigma_cm": v_sigma_cm,
-                                    "yaw_deg": round(adj_yaw, 1),
-                                    "pitch_deg": round(float(angles[1]), 1) if len(angles) >= 2 else -20.0,
+                                    "yaw_deg": round(adj_yaw, 2),
+                                    "pitch_deg": round(adj_pitch, 2),
+                                    "roll_deg": 0.0,
+                                    "right": [round(x, 6) for x in u_right],
+                                    "down": [round(x, 6) for x in v_down],
+                                    "forward": [round(x, 6) for x in f_n],
+                                    "fx_norm": 0.92674,
+                                    "fy_norm": 0.69505,
+                                    "aspect": 0.75,
+                                    "calibrated": False,
+                                    "pose_source": "opf_input_cameras",
                                 }
                             )
                             src_found_opf = True
                     except Exception:
                         continue
-            # 2. Per-source fallback to EXIF GPS extraction from raw .jpg files if no OPF camera files were present for this source
+            if opf_entries:
+                if scan_h_ref > 0.0:
+                    hs_sorted = sorted(e["h"] for e in opf_entries)
+                    med_h = hs_sorted[len(hs_sorted) // 2]
+                    if med_h - scan_h_ref > 10.0:
+                        h_corr = (scan_h_ref + 1.5) - med_h
+                        for e in opf_entries:
+                            e["h"] = round(e["h"] + h_corr, 3)
+                catalog.extend(opf_entries)
+
+            # 3. Per-source fallback to EXIF GPS extraction from raw .jpg files if no p4m or OPF camera files were present
             if not src_found_opf:
+                exif_entries: List[Dict[str, Any]] = []
                 for sdir in sdirs:
                     jpgs = [
-                        p for p in (
+                        p
+                        for p in (
                             glob.glob(os.path.join(sdir, "**", "*.jpg"), recursive=True)
                             + glob.glob(os.path.join(sdir, "**", "*.jpeg"), recursive=True)
                         )
@@ -1772,8 +2205,9 @@ class ContoursAndCadMixin:
                     stride = max(1, len(jpgs) // 600)
                     for jp in jpgs[::stride]:
                         try:
-                            norm_abs = os.path.normcase(os.path.abspath(jp))
-                            if norm_abs in seen_abs_paths:
+                            fname = os.path.basename(jp)
+                            dedup_key = f"{src_tag}:{fname}" if src_tag else os.path.normcase(os.path.abspath(jp))
+                            if dedup_key in seen_source_keys:
                                 continue
                             with Image.open(jp) as im:
                                 exif = im._getexif() or {}
@@ -1785,8 +2219,8 @@ class ContoursAndCadMixin:
                             lon = self._dms_to_deg(gps.get("GPSLongitude"), gps.get("GPSLongitudeRef", "E"))
                             if lat is None or lon is None:
                                 continue
-                            seen_abs_paths.add(norm_abs)
-                            alt_raw = gps.get("GPSAltitude", scan.get("twd97_h") or 0.0)
+                            seen_source_keys.add(dedup_key)
+                            alt_raw = gps.get("GPSAltitude", scan_h_ref)
                             if hasattr(alt_raw, "numerator"):
                                 h_val = float(alt_raw.numerator) / max(float(alt_raw.denominator), 1e-9)
                             elif isinstance(alt_raw, (tuple, list)) and len(alt_raw) == 2:
@@ -1794,37 +2228,60 @@ class ContoursAndCadMixin:
                             else:
                                 h_val = float(alt_raw)
                             cam_e, cam_n = wgs84_to_twd97(lat, lon)
-                            cam_e, cam_n, h_val, adj_yaw = _apply_subscan_transform(cam_e, cam_n, h_val, 0.0, mf_spec)
-                            fname = os.path.basename(jp)
+                            u_right, v_down, f_n = _basis_from_euler(0.0, -18.0)
+                            cam_e, cam_n, h_val, u_right, v_down, f_n = _apply_subscan_pose_transform(
+                                cam_e, cam_n, h_val, u_right, v_down, f_n, mf_spec
+                            )
+                            adj_yaw = (math.degrees(math.atan2(f_n[0], f_n[1])) + 360.0) % 360.0
                             display_name = f"{src_tag}/{fname}" if src_tag else fname
-                            catalog.append(
+                            exif_entries.append(
                                 {
                                     "filename": display_name,
+                                    "sub_scan": src_tag or scan_id,
                                     "abs_path": os.path.abspath(jp),
                                     "e": round(cam_e, 3),
                                     "n": round(cam_n, 3),
                                     "h": round(h_val, 3),
                                     "rtk_h_sigma_cm": float(scan.get("rtk_accuracy_cm") or 1.4),
                                     "rtk_v_sigma_cm": round(float(scan.get("rtk_accuracy_cm") or 1.4) * 1.4, 2),
-                                    "yaw_deg": round(adj_yaw, 1),
-                                    "pitch_deg": -22.0,
+                                    "yaw_deg": round(adj_yaw, 2),
+                                    "pitch_deg": -18.0,
+                                    "roll_deg": 0.0,
+                                    "right": [round(x, 6) for x in u_right],
+                                    "down": [round(x, 6) for x in v_down],
+                                    "forward": [round(x, 6) for x in f_n],
+                                    "fx_norm": 0.92674,
+                                    "fy_norm": 0.69505,
+                                    "aspect": 0.75,
+                                    "calibrated": False,
+                                    "pose_source": "exif_gps",
                                 }
                             )
                         except Exception:
                             continue
+                if exif_entries:
+                    if scan_h_ref > 0.0:
+                        hs_sorted = sorted(e["h"] for e in exif_entries)
+                        med_h = hs_sorted[len(hs_sorted) // 2]
+                        if med_h - scan_h_ref > 10.0:
+                            h_corr = (scan_h_ref + 1.5) - med_h
+                            for e in exif_entries:
+                                e["h"] = round(e["h"] + h_corr, 3)
+                    catalog.extend(exif_entries)
 
         if catalog:
             self._camera_mem_cache[scan_id] = catalog
-            if cache_json:
-                try:
-                    with open(cache_json, "w", encoding="utf-8") as f:
-                        json.dump(catalog, f)
-                except Exception:
-                    pass
+            for save_path in (proj_cache, portable_cache):
+                if save_path:
+                    try:
+                        with open(save_path, "w", encoding="utf-8") as f:
+                            json.dump(catalog, f)
+                    except Exception:
+                        pass
         return catalog
 
     def resolve_camera_photo_path(self, scan_id: str, file_key: str) -> Optional[str]:
-        """Resolves a requested camera photo `file_key` to its verified local `.jpg` path on disk."""
+        """Resolves a requested camera photo `file_key` (including `<sub_scan>/Image_XXXXXX.jpg`) to its verified `.jpg` path on disk."""
         clean_id = (scan_id or "").strip()
         if not clean_id:
             return None
@@ -1834,11 +2291,32 @@ class ContoursAndCadMixin:
         catalog = self._load_or_build_camera_catalog(scan)
         norm_key = str(file_key or "").replace("\\", "/").strip("/")
         base_key = os.path.basename(norm_key)
+        sub_prefix = os.path.dirname(norm_key).strip("/") if "/" in norm_key else ""
+
+        # 1. Exact filename match in catalog (e.g. "catch_QiHuTender_4/Image_001068.jpg")
         for cam in catalog:
-            if cam.get("filename") == norm_key and os.path.isfile(cam["abs_path"]):
+            if cam.get("filename") == norm_key and os.path.isfile(cam.get("abs_path", "")):
                 return cam["abs_path"]
+
+        # 2. If sub_prefix was specified (e.g. "edited_qihutender_1_edited_346774" or "catch_QiHuTender_4"), match sub_scan or abs_path containing sub_prefix
+        if sub_prefix:
+            sub_low = sub_prefix.lower()
+            for cam in catalog:
+                if os.path.basename(cam.get("filename", "")) != base_key:
+                    continue
+                c_sub = str(cam.get("sub_scan") or "").lower()
+                c_abs = str(cam.get("abs_path") or "").replace("\\", "/").lower()
+                if (c_sub == sub_low or sub_low in c_abs or ("qihutender_1" in sub_low and "qihutender_1" in c_sub)) and os.path.isfile(cam.get("abs_path", "")):
+                    return cam["abs_path"]
+            for sdir in self._get_candidate_camera_dirs(scan):
+                if sub_low in sdir.replace("\\", "/").lower():
+                    matches = glob.glob(os.path.join(sdir, "**", base_key), recursive=True)
+                    if matches and os.path.isfile(matches[0]):
+                        return matches[0]
+
+        # 3. Fallback to basename match only when no sub_prefix was provided (or sub_prefix wasn't found)
         for cam in catalog:
-            if os.path.basename(cam.get("abs_path", "")) == base_key and os.path.isfile(cam["abs_path"]):
+            if os.path.basename(cam.get("abs_path", "")) == base_key and os.path.isfile(cam.get("abs_path", "")):
                 return cam["abs_path"]
         for sdir in self._get_candidate_camera_dirs(scan):
             abs_sdir = os.path.abspath(sdir)
@@ -1853,8 +2331,9 @@ class ContoursAndCadMixin:
 
     def inspect_rtk_camera_photos(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Finds the closest real Pix4DCatch RTK smartphone photographs on the PC
-        capturing the clicked 3D surface coordinate (TWD97 E, N, TWVD2001 H).
+        Finds the calibrated Pix4Dmatic / RTK smartphone photographs whose 3D camera frustum
+        actually observes the clicked 3D surface coordinate (TWD97 E, N, TWVD2001 H), projecting
+        the 3D point onto each upright image plane `(proj_u, proj_v)`.
         """
         from urllib.parse import quote
 
@@ -1865,17 +2344,65 @@ class ContoursAndCadMixin:
         cn = float(scan.get("twd97_n") or 0.0)
         ch = float(scan.get("twd97_h") or 0.0)
 
+        catalog = self._load_or_build_camera_catalog(scan)
+        pinned_filename = str(payload.get("camera_filename") or "").replace("\\", "/").strip("/")
+        pinned_cam: Optional[Dict[str, Any]] = None
+        if pinned_filename:
+            for c in catalog:
+                if c.get("filename") == pinned_filename or os.path.basename(c.get("filename", "")) == pinned_filename:
+                    pinned_cam = c
+                    break
+
         click_x = float(payload.get("x", 0.0))
         click_y = float(payload.get("y", 0.0))
         click_z = float(payload.get("z", 0.0))
 
-        if payload.get("twd_e") is not None and payload.get("twd_n") is not None:
+        use_camera_ray_dsm = bool(payload.get("use_camera_ray_dsm"))
+        if not use_camera_ray_dsm and payload.get("twd_e") is not None and payload.get("twd_n") is not None:
             target_e = round(float(payload["twd_e"]), 3)
             target_n = round(float(payload["twd_n"]), 3)
             if payload.get("twd_h") is not None:
                 target_h = round(float(payload["twd_h"]), 3)
             else:
                 target_h = round(ch + click_y if abs(click_y) < 1000 else click_y, 3)
+        elif pinned_cam is not None and (
+            use_camera_ray_dsm
+            or (payload.get("twd_e") is None and click_x == 0.0 and click_y == 0.0 and click_z == 0.0)
+        ):
+            # Raycast along the pinned camera's calibrated optical axis against the scan DSM surface
+            f_vec = pinned_cam.get("forward") or [0.0, 1.0, -0.25]
+            cam_e = float(pinned_cam["e"])
+            cam_n = float(pinned_cam["n"])
+            cam_h = float(pinned_cam["h"])
+            est_dist = 4.5
+            if f_vec[2] < -0.08:
+                est_dist = max(1.5, min(18.0, 1.55 / (-f_vec[2])))
+            target_e = round(cam_e + f_vec[0] * est_dist, 3)
+            target_n = round(cam_n + f_vec[1] * est_dist, 3)
+            target_h = round(cam_h + f_vec[2] * est_dist, 3)
+            try:
+                dsm = self._load_or_build_scan_dsm(scan)
+                hit_found = False
+                step_m = 0.35
+                dist_m = 0.5
+                while dist_m <= 35.0:
+                    ray_e = cam_e + f_vec[0] * dist_m
+                    ray_n = cam_n + f_vec[1] * dist_m
+                    ray_h = cam_h + f_vec[2] * dist_m
+                    dsm_z, _, _, is_valid = self._sample_dsm_elevation(dsm, ray_e, ray_n)
+                    if is_valid and math.isfinite(dsm_z) and ray_h <= dsm_z:
+                        target_e = round(ray_e, 3)
+                        target_n = round(ray_n, 3)
+                        target_h = round(float(dsm_z), 3)
+                        hit_found = True
+                        break
+                    dist_m += step_m
+                if not hit_found:
+                    sampled_h, _, _, _ = self._sample_dsm_elevation(dsm, target_e, target_n)
+                    if math.isfinite(sampled_h):
+                        target_h = round(float(sampled_h), 3)
+            except Exception:
+                pass
         else:
             target_e = round(ce + click_x if abs(click_x) < 10000 else click_x, 3)
             target_n = round(cn - click_z if abs(click_z) < 10000 else click_z, 3)
@@ -1889,52 +2416,117 @@ class ContoursAndCadMixin:
             else:
                 target_h = round(ch + click_y if abs(click_y) < 1000 else click_y, 3)
 
-        catalog = self._load_or_build_camera_catalog(scan)
-        scored: List[Tuple[float, float, Dict[str, Any]]] = []
+        max_radius_m = float(payload.get("max_radius_m") or 45.0)
+        limit_photos = max(1, min(24, int(payload.get("limit") or 6)))
+
+        fov_candidates: List[Tuple[float, float, float, float, bool, Dict[str, Any]]] = []
+        near_fallback: List[Tuple[float, float, float, float, bool, Dict[str, Any]]] = []
+
         for cam in catalog:
-            dx = target_e - cam["e"]
-            dy = target_n - cam["n"]
-            dz = target_h - cam["h"]
-            dist_2d = math.hypot(dx, dy)
+            dx = target_e - float(cam["e"])
+            dy = target_n - float(cam["n"])
+            dz = target_h - float(cam["h"])
             dist_3d = math.sqrt(dx * dx + dy * dy + dz * dz)
-            # Ideal close-range terrestrial photogrammetry distance is 1.5m - 35m
-            dist_penalty = dist_3d if dist_3d >= 1.2 else (1.2 - dist_3d) * 4.0 + 1.2
-            # Bearing from camera to clicked 3D point (0 deg = North, 90 deg = East)
-            bearing_deg = (math.degrees(math.atan2(dx, dy)) + 360.0) % 360.0
-            cam_yaw = float(cam.get("yaw_deg") or 0.0)
-            ang_diff = abs((bearing_deg - cam_yaw + 180.0) % 360.0 - 180.0)
-            score = dist_penalty + (ang_diff / 180.0) * 3.5 if dist_2d > 0.5 else dist_penalty
-            scored.append((score, dist_3d, cam))
+            if dist_3d > max_radius_m or dist_3d < 0.2:
+                continue
 
-        scored.sort(key=lambda item: item[0])
+            r_vec = cam.get("right")
+            d_vec = cam.get("down")
+            f_vec = cam.get("forward")
+            if not (isinstance(r_vec, list) and isinstance(d_vec, list) and isinstance(f_vec, list) and len(f_vec) == 3):
+                yr = math.radians(float(cam.get("yaw_deg") or 0.0))
+                pr = math.radians(float(cam.get("pitch_deg") or -18.0))
+                f_vec = [math.sin(yr) * math.cos(pr), math.cos(yr) * math.cos(pr), math.sin(pr)]
+                r_vec = [math.cos(yr), -math.sin(yr), 0.0]
+                d_vec = [
+                    f_vec[1] * r_vec[2] - f_vec[2] * r_vec[1],
+                    f_vec[2] * r_vec[0] - f_vec[0] * r_vec[2],
+                    f_vec[0] * r_vec[1] - f_vec[1] * r_vec[0],
+                ]
 
-        # Select up to 6 distinct camera viewpoints (> 0.65m apart so burst duplicates are skipped)
-        selected_photos = []
+            zc = dx * f_vec[0] + dy * f_vec[1] + dz * f_vec[2]
+            if zc <= 0.25:
+                continue
+            xc = dx * r_vec[0] + dy * r_vec[1] + dz * r_vec[2]
+            yc = dx * d_vec[0] + dy * d_vec[1] + dz * d_vec[2]
+            fx_n = float(cam.get("fx_norm") or 0.92674)
+            fy_n = float(cam.get("fy_norm") or 0.69505)
+            u = 0.5 + fx_n * (xc / zc)
+            v = 0.5 + fy_n * (yc / zc)
+            off_center = math.hypot(u - 0.5, v - 0.5)
+            dist_eff = dist_3d if dist_3d >= 1.1 else 1.1 + (1.1 - dist_3d) * 3.0
+            in_fov = 0.02 <= u <= 0.98 and 0.02 <= v <= 0.98
+            if in_fov:
+                score = dist_eff * (1.0 + 1.8 * off_center)
+                fov_candidates.append((score, dist_3d, u, v, True, cam))
+            elif -0.35 <= u <= 1.35 and -0.35 <= v <= 1.35:
+                score = dist_eff * (2.5 + 3.0 * off_center) + 15.0
+                near_fallback.append((score, dist_3d, max(0.02, min(0.98, u)), max(0.02, min(0.98, v)), False, cam))
+
+        fov_candidates.sort(key=lambda item: item[0])
+        near_fallback.sort(key=lambda item: item[0])
+        ranked = fov_candidates + near_fallback
+
+        def _format_photo_item(dist_3d: float, u: float, v: float, in_fov: bool, cam: Dict[str, Any]) -> Dict[str, Any]:
+            fk = str(cam["filename"])
+            return {
+                "filename": fk,
+                "sub_scan": cam.get("sub_scan") or "",
+                "url": f"/api/camera-photo?scan_id={quote(str(scan_id))}&file={quote(fk)}",
+                "distance_m": round(dist_3d, 2),
+                "rtk_h_sigma_cm": cam.get("rtk_h_sigma_cm", 1.4),
+                "rtk_v_sigma_cm": cam.get("rtk_v_sigma_cm", 2.0),
+                "camera_twd97_e": cam["e"],
+                "camera_twd97_n": cam["n"],
+                "camera_twd97_h": cam["h"],
+                "camera_local_x": round(cam["e"] - ce, 3),
+                "camera_local_y": round(cam["h"] - ch, 3),
+                "camera_local_z": round(cn - cam["n"], 3),
+                "yaw_deg": cam.get("yaw_deg", 0.0),
+                "pitch_deg": cam.get("pitch_deg", -15.0),
+                "roll_deg": cam.get("roll_deg", 0.0),
+                "right": cam.get("right"),
+                "down": cam.get("down"),
+                "forward": cam.get("forward"),
+                "fx_norm": cam.get("fx_norm", 0.92674),
+                "fy_norm": cam.get("fy_norm", 0.69505),
+                "aspect": cam.get("aspect", 0.75),
+                "proj_u": round(float(u), 4),
+                "proj_v": round(float(v), 4),
+                "in_fov": bool(in_fov),
+                "calibrated": bool(cam.get("calibrated", False)),
+                "pose_source": cam.get("pose_source", "pix4dmatic_p4m"),
+            }
+
+        selected_photos: List[Dict[str, Any]] = []
         used_positions: List[Tuple[float, float, float]] = []
-        for _, dist_3d, cam in scored:
+        used_filenames: set = set()
+
+        if pinned_cam is not None:
+            dx = target_e - float(pinned_cam["e"])
+            dy = target_n - float(pinned_cam["n"])
+            dz = target_h - float(pinned_cam["h"])
+            d3 = math.sqrt(dx * dx + dy * dy + dz * dz)
+            r_v = pinned_cam.get("right") or [1.0, 0.0, 0.0]
+            d_v = pinned_cam.get("down") or [0.0, 0.0, -1.0]
+            f_v = pinned_cam.get("forward") or [0.0, 1.0, 0.0]
+            zc = max(0.25, dx * f_v[0] + dy * f_v[1] + dz * f_v[2])
+            u_p = max(0.02, min(0.98, 0.5 + float(pinned_cam.get("fx_norm") or 0.92674) * ((dx * r_v[0] + dy * r_v[1] + dz * r_v[2]) / zc)))
+            v_p = max(0.02, min(0.98, 0.5 + float(pinned_cam.get("fy_norm") or 0.69505) * ((dx * d_v[0] + dy * d_v[1] + dz * d_v[2]) / zc)))
+            selected_photos.append(_format_photo_item(d3, u_p, v_p, True, pinned_cam))
+            used_positions.append((pinned_cam["e"], pinned_cam["n"], pinned_cam["h"]))
+            used_filenames.add(pinned_cam["filename"])
+
+        for _, dist_3d, u, v, in_fov, cam in ranked:
+            if cam["filename"] in used_filenames:
+                continue
             pos = (cam["e"], cam["n"], cam["h"])
-            if any(math.hypot(pos[0] - u[0], pos[1] - u[1]) < 0.65 for u in used_positions):
+            if any(math.hypot(pos[0] - up[0], pos[1] - up[1]) < 0.65 for up in used_positions):
                 continue
             used_positions.append(pos)
-            fk = cam["filename"]
-            selected_photos.append(
-                {
-                    "filename": fk,
-                    "url": f"/api/camera-photo?scan_id={quote(str(scan_id))}&file={quote(fk)}",
-                    "distance_m": round(dist_3d, 2),
-                    "rtk_h_sigma_cm": cam["rtk_h_sigma_cm"],
-                    "rtk_v_sigma_cm": cam["rtk_v_sigma_cm"],
-                    "camera_twd97_e": cam["e"],
-                    "camera_twd97_n": cam["n"],
-                    "camera_twd97_h": cam["h"],
-                    "camera_local_x": round(cam["e"] - ce, 3),
-                    "camera_local_y": round(cam["h"] - ch, 3),
-                    "camera_local_z": round(cn - cam["n"], 3),
-                    "yaw_deg": cam["yaw_deg"],
-                    "pitch_deg": cam["pitch_deg"],
-                }
-            )
-            if len(selected_photos) >= 6:
+            used_filenames.add(cam["filename"])
+            selected_photos.append(_format_photo_item(dist_3d, u, v, in_fov, cam))
+            if len(selected_photos) >= limit_photos:
                 break
 
         return {
@@ -1943,7 +2535,85 @@ class ContoursAndCadMixin:
             "target_twd97": {"e": target_e, "n": target_n, "h": target_h},
             "crs": TWD97_TWVD2001_SHORT,
             "total_catalog_cameras": len(catalog),
+            "fov_match_count": len(fov_candidates),
             "photo_count": len(selected_photos),
             "photos": selected_photos,
+        }
+
+    inspect_photos_at_point = inspect_rtk_camera_photos
+
+    def get_scan_cameras_response(self, scan_id: str, limit: int = 10000, fmt: str = "json") -> Any:
+        """
+        Returns all calibrated camera positions and orientations for a scan in TWD97 + TWVD2001
+        (for 3D trajectory rendering, clickable 3D camera markers, and CSV/JSON export).
+        """
+        from urllib.parse import quote
+
+        scan = self._resolve_scan_record(scan_id)
+        resolved_id = str(scan.get("scan_id") or scan_id)
+        ce = float(scan.get("twd97_e") or 0.0)
+        cn = float(scan.get("twd97_n") or 0.0)
+        ch = float(scan.get("twd97_h") or 0.0)
+        catalog = self._load_or_build_camera_catalog(scan)
+        total = len(catalog)
+
+        if str(fmt or "").lower() == "csv":
+            lines = ["filename,sub_scan,twd97_e,twd97_n,twd2001_h,yaw_deg,pitch_deg,roll_deg,rtk_h_sigma_cm,rtk_v_sigma_cm,calibrated,pose_source"]
+            for c in catalog:
+                lines.append(
+                    f"\"{c.get('filename','')}\",\"{c.get('sub_scan','')}\",{c.get('e',0):.3f},{c.get('n',0):.3f},{c.get('h',0):.3f},"
+                    f"{c.get('yaw_deg',0):.2f},{c.get('pitch_deg',0):.2f},{c.get('roll_deg',0):.2f},"
+                    f"{c.get('rtk_h_sigma_cm',1.4)},{c.get('rtk_v_sigma_cm',2.0)},{bool(c.get('calibrated',False))},{c.get('pose_source','')}"
+                )
+            return "\n".join(lines) + "\n"
+
+        max_items = max(1, min(25000, int(limit or 10000)))
+        stride = max(1, math.ceil(total / max_items)) if total > max_items else 1
+        sampled = catalog[::stride][:max_items]
+        sub_scans_counts: Dict[str, int] = {}
+        for c in catalog:
+            st = str(c.get("sub_scan") or resolved_id)
+            sub_scans_counts[st] = sub_scans_counts.get(st, 0) + 1
+
+        cameras_out = []
+        for c in sampled:
+            fk = str(c.get("filename") or "")
+            cameras_out.append(
+                {
+                    "filename": fk,
+                    "sub_scan": c.get("sub_scan") or resolved_id,
+                    "url": f"/api/camera-photo?scan_id={quote(resolved_id)}&file={quote(fk)}",
+                    "e": c["e"],
+                    "n": c["n"],
+                    "h": c["h"],
+                    "local_x": round(c["e"] - ce, 3),
+                    "local_y": round(c["h"] - ch, 3),
+                    "local_z": round(cn - c["n"], 3),
+                    "yaw_deg": c.get("yaw_deg", 0.0),
+                    "pitch_deg": c.get("pitch_deg", -15.0),
+                    "roll_deg": c.get("roll_deg", 0.0),
+                    "right": c.get("right"),
+                    "down": c.get("down"),
+                    "forward": c.get("forward"),
+                    "fx_norm": c.get("fx_norm", 0.92674),
+                    "fy_norm": c.get("fy_norm", 0.69505),
+                    "aspect": c.get("aspect", 0.75),
+                    "rtk_h_sigma_cm": c.get("rtk_h_sigma_cm", 1.4),
+                    "rtk_v_sigma_cm": c.get("rtk_v_sigma_cm", 2.0),
+                    "calibrated": bool(c.get("calibrated", False)),
+                    "pose_source": c.get("pose_source", "pix4dmatic_p4m"),
+                }
+            )
+
+        return {
+            "status": "ok",
+            "scan_id": resolved_id,
+            "crs": TWD97_TWVD2001_SHORT,
+            "anchor_twd97": {"e": ce, "n": cn, "h": ch},
+            "total_cameras": total,
+            "returned_cameras": len(cameras_out),
+            "stride": stride,
+            "sub_scans": sub_scans_counts,
+            "cameras": cameras_out,
         }
 

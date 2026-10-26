@@ -1125,6 +1125,9 @@ class CloudAndTunnelHandlerMixin:
             or path.endswith(".glb")
             or path == "/api/comment-photo"
             or path.startswith("/api/comments/photo/")
+            or path.startswith("/api/survey/cameras")
+            or path in ("/api/camera-photo", "/api/photo-file")
+            or path.startswith("/cameras/")
         )
         is_comment_photo_upload = method == "POST" and path in ("/api/comments/upload-photo", "/api/comments/upload_photo")
         if method == "POST" and path.endswith("/thumbnail"):

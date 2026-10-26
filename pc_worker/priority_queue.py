@@ -1282,12 +1282,22 @@ class ScanQueueDB:
                     p_obj: Dict[str, Any] = {"url": u, "filename": fn}
                     if item.get("id") is not None:
                         p_obj["id"] = str(item.get("id"))
-                    for coord_key in ("camera_twd97_e", "camera_twd97_n", "camera_twd97_h", "distance_m"):
+                    for coord_key in ("camera_twd97_e", "camera_twd97_n", "camera_twd97_h", "distance_m", "proj_u", "proj_v"):
                         if item.get(coord_key) is not None:
                             try:
                                 p_obj[coord_key] = float(item.get(coord_key))
                             except (TypeError, ValueError):
                                 pass
+                    if isinstance(item.get("target_uv"), dict):
+                        tu = item.get("target_uv") or {}
+                        try:
+                            p_obj["target_uv"] = {
+                                "u": float(tu.get("u", 0.5)),
+                                "v": float(tu.get("v", 0.5)),
+                                "in_fov": bool(tu.get("in_fov", True)),
+                            }
+                        except (TypeError, ValueError):
+                            pass
                     if item.get("rtk_h_sigma_cm") is not None:
                         p_obj["rtk_h_sigma_cm"] = item.get("rtk_h_sigma_cm")
                     elif item.get("rtk_sigma_cm") is not None:

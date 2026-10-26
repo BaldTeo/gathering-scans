@@ -1113,6 +1113,12 @@
     if (typeof clearLassoSelectionState === "function") {
       clearLassoSelectionState();
     }
+    if (typeof clearPhotoTargetVisuals3D === "function") {
+      clearPhotoTargetVisuals3D(true);
+    }
+    STATE.lastInspectedPhotos = [];
+    STATE.lastInspectedPhotoTargetPt = null;
+    STATE.lastInspectedPhotoTargetTwd = null;
     STATE.categorizeOverlayVisible = false;
     if (typeof clearCategorizeVisualsOnly === "function") {
       clearCategorizeVisualsOnly();
@@ -1197,6 +1203,35 @@
           } else {
             frameStudioCamera();
           }
+          if (
+            (STATE.activeTool === "photos" || STATE.activeTool === "rtk" || studioThree.cameraTrajectoryGroup) &&
+            typeof loadAndRenderScanCameraTrajectory3D === "function"
+          ) {
+            loadAndRenderScanCameraTrajectory3D(scan.scan_id, true);
+          }
+          if (
+            STATE.lastInspectedPhotoTargetTwd &&
+            STATE.lastInspectedPhotos?.length &&
+            typeof twd97ToStudioLocalVec === "function"
+          ) {
+            STATE.lastInspectedPhotoTargetPt = twd97ToStudioLocalVec(
+              STATE.lastInspectedPhotoTargetTwd.e,
+              STATE.lastInspectedPhotoTargetTwd.n,
+              STATE.lastInspectedPhotoTargetTwd.h,
+              null,
+              null
+            );
+            if (typeof placePhotoTargetMarker3D === "function") {
+              placePhotoTargetMarker3D(STATE.lastInspectedPhotoTargetPt);
+            }
+            if (typeof renderRtkPhotoFrustums3D === "function") {
+              renderRtkPhotoFrustums3D(
+                STATE.lastInspectedPhotos,
+                STATE.lastInspectedPhotoTargetPt,
+                STATE.lastInspectedPhotoTargetTwd
+              );
+            }
+          }
           finishScanLoader(studioThree, "studio", "100% · 3D Mesh Ready");
         },
         (xhr) => {
@@ -1262,6 +1297,35 @@
             STATE.lastCategorizeResult.scan_id === scan.scan_id
           ) {
             renderCategorize3DOverlays(STATE.lastCategorizeResult);
+          }
+          if (
+            (STATE.activeTool === "photos" || STATE.activeTool === "rtk" || studioThree.cameraTrajectoryGroup) &&
+            typeof loadAndRenderScanCameraTrajectory3D === "function"
+          ) {
+            loadAndRenderScanCameraTrajectory3D(scan.scan_id, true);
+          }
+          if (
+            STATE.lastInspectedPhotoTargetTwd &&
+            STATE.lastInspectedPhotos?.length &&
+            typeof twd97ToStudioLocalVec === "function"
+          ) {
+            STATE.lastInspectedPhotoTargetPt = twd97ToStudioLocalVec(
+              STATE.lastInspectedPhotoTargetTwd.e,
+              STATE.lastInspectedPhotoTargetTwd.n,
+              STATE.lastInspectedPhotoTargetTwd.h,
+              null,
+              null
+            );
+            if (typeof placePhotoTargetMarker3D === "function") {
+              placePhotoTargetMarker3D(STATE.lastInspectedPhotoTargetPt);
+            }
+            if (typeof renderRtkPhotoFrustums3D === "function") {
+              renderRtkPhotoFrustums3D(
+                STATE.lastInspectedPhotos,
+                STATE.lastInspectedPhotoTargetPt,
+                STATE.lastInspectedPhotoTargetTwd
+              );
+            }
           }
         }
         studioThree.camera.updateMatrixWorld();

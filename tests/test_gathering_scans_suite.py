@@ -1209,6 +1209,149 @@ class GatheringScansTestSuite(unittest.TestCase):
         self.assertIn('/ m²', js08)
         self.assertIn("const len = 0.85 * tier.lenScale * arrowScale;", js08)
 
+    def test_17_pix4dmatic_calibrated_cameras_frustums_and_subscan_photo_resolution(self):
+        """Verify Loop 1: Pix4Dmatic calibrated camera extraction (_cameras_cache_v6.json), canonical upright basis,
+        FOV pinhole photo selection + 2D target reticle (proj_u, proj_v), sub-scan photo collision fix, and 3D trajectory."""
+        import json
+        from pc_worker.surveying_engine import SurveyingEngine
+
+        s_eng = SurveyingEngine(self.db)
+        qihu_sid = "edited_qihu_unified_merged_scan_4_scans__edited_372953"
+        cam_res = s_eng.get_scan_cameras_response(qihu_sid, limit=10000, fmt="json")
+        self.assertEqual(cam_res.get("status"), "ok")
+        self.assertEqual(int(cam_res.get("total_cameras", 0)), 6000)
+        sub_scans = cam_res.get("sub_scans") or {}
+        self.assertEqual(len(sub_scans), 4)
+        for k, cnt in sub_scans.items():
+            self.assertEqual(int(cnt), 1500)
+
+        c0 = cam_res["cameras"][0]
+        self.assertTrue(c0.get("calibrated"))
+        self.assertEqual(c0.get("pose_source"), "pix4dmatic_p4m")
+        self.assertEqual(len(c0.get("right", [])), 3)
+        self.assertEqual(len(c0.get("down", [])), 3)
+        self.assertEqual(len(c0.get("forward", [])), 3)
+        # Upright camera down vector points toward -Z (gravity)
+        self.assertLess(float(c0["down"][2]), -0.2)
+
+        csv_str = s_eng.get_scan_cameras_response(qihu_sid, fmt="csv")
+        self.assertTrue(isinstance(csv_str, str) and "twd97_e,twd97_n,twd2001_h" in csv_str)
+
+        # Verify FOV photo selection on west vs east side of unified QiHu
+        west_res = s_eng.inspect_rtk_camera_photos(
+            {"scan_id": qihu_sid, "twd_e": 300519.0, "twd_n": 2781009.0, "twd_h": 13.6}
+        )
+        east_res = s_eng.inspect_rtk_camera_photos(
+            {"scan_id": qihu_sid, "twd_e": 300583.0, "twd_n": 2780947.0, "twd_h": 9.3}
+        )
+        self.assertGreater(len(west_res.get("photos", [])), 0)
+        self.assertGreater(len(east_res.get("photos", [])), 0)
+        wp0 = west_res["photos"][0]
+        ep0 = east_res["photos"][0]
+        self.assertTrue(wp0.get("in_fov"))
+        self.assertTrue(ep0.get("in_fov"))
+        self.assertTrue(wp0.get("calibrated"))
+        self.assertTrue(ep0.get("calibrated"))
+        self.assertTrue(0.02 <= float(wp0.get("proj_u", 0.5)) <= 0.98)
+        self.assertTrue(0.02 <= float(wp0.get("proj_v", 0.5)) <= 0.98)
+        self.assertIn("QiHuTender_1", wp0["filename"])
+        self.assertIn("QiHuTender_4", ep0["filename"])
+
+        # Verify user screenshot coordinates on QiHu unified and NTU Dorm (260917 & 260915) + orthometric TWVD2001 heights (~1.4m-1.7m above ground, NOT +30m ellipsoidal)
+        for cache_sid, expected_ground_h_min, expected_ground_h_max in (
+            ("edited_qihu_unified_merged_scan_4_scans__edited_372953", 6.0, 22.0),
+            ("ntudorm_20260917_foundation", 10.0, 26.0),
+            ("ntudorm_20260915_baseline", 10.0, 26.0),
+            ("rosepark_20260918_merged", 4.0, 24.0),
+            ("QuChi261016_Trees", 35.0, 58.0),
+        ):
+            cache_fp = os.path.join(BASE_DIR, "data", "cameras_cache", f"{cache_sid}_cameras_v6.json")
+            self.assertTrue(os.path.isfile(cache_fp), f"Missing camera cache: {cache_fp}")
+            with open(cache_fp, "r", encoding="utf-8") as cf:
+                cams_cached = json.load(cf)
+            self.assertGreater(len(cams_cached), 50)
+            med_cam_h = sorted(float(c["h"]) for c in cams_cached)[len(cams_cached) // 2]
+            self.assertTrue(
+                expected_ground_h_min <= med_cam_h <= expected_ground_h_max,
+                f"{cache_sid} median cam_h={med_cam_h} outside orthometric TWVD2001 range [{expected_ground_h_min}, {expected_ground_h_max}]",
+            )
+
+        ntu_res = s_eng.inspect_rtk_camera_photos(
+            {"scan_id": "ntudorm_20260917_foundation", "twd_e": 303025.0, "twd_n": 2770015.0, "twd_h": 8.6}
+        )
+        self.assertGreater(len(ntu_res.get("photos", [])), 0)
+        np0 = ntu_res["photos"][0]
+        self.assertTrue(np0.get("in_fov"))
+        self.assertTrue(np0.get("calibrated"))
+        self.assertTrue(0.02 <= float(np0.get("proj_u", 0.5)) <= 0.98)
+        self.assertTrue(0.02 <= float(np0.get("proj_v", 0.5)) <= 0.98)
+        # Camera height at NTU Dorm (~10.0m-10.3m TWVD2001) is ~1.4m-1.8m above the 8.6m ground target, NEVER +40m ellipsoidal
+        self.assertTrue(0.8 <= (float(np0["camera_twd97_h"]) - 8.6) <= 3.0)
+
+        # Verify sub-scan photo resolution never collides between catch_QiHuTender_1 and catch_QiHuTender_4
+        p1 = s_eng.resolve_camera_photo_path(qihu_sid, "catch_QiHuTender_1/Image_001068.jpg")
+        p4 = s_eng.resolve_camera_photo_path(qihu_sid, "catch_QiHuTender_4/Image_001068.jpg")
+        if p1 and p4:
+            self.assertNotEqual(os.path.normcase(p1), os.path.normcase(p4))
+            self.assertIn("qihutender_1", p1.lower())
+            self.assertIn("qihutender_4", p4.lower())
+
+        # Verify Loop 2 fixes: (1) VPS tunnel cacheability for /api/survey/cameras and /api/camera-photo,
+        # (2) proj_u / proj_v / target_uv persistence on comment photos in ScanQueueDB,
+        # (3) hasTargetReticle guard and one-click [data-photo-attach-comment-idx] button in 08-advanced-surveying-and-qa.js
+        with open(os.path.join(BASE_DIR, "pc_worker", "server_cloud_and_tunnel.py"), "r", encoding="utf-8") as f:
+            tunnel_py = f.read()
+        self.assertIn('path.startswith("/api/survey/cameras")', tunnel_py)
+        self.assertIn('path in ("/api/camera-photo", "/api/photo-file")', tunnel_py)
+
+        cmt_reticle = self.db.add_comment(
+            {
+                "scan_id": qihu_sid,
+                "author_email": "qa@gatheren.cloud",
+                "author_name": "Loop 3 QA",
+                "text": "Reticle UV persistence check",
+                "pos_x": 0.0,
+                "pos_y": 0.0,
+                "pos_z": 0.0,
+                "twd97_e": 300583.0,
+                "twd97_n": 2780947.0,
+                "twd97_h": 9.3,
+                "photos": [
+                    {
+                        "id": ep0["filename"],
+                        "filename": ep0["filename"],
+                        "url": ep0["url"],
+                        "camera_twd97_e": ep0["camera_twd97_e"],
+                        "camera_twd97_n": ep0["camera_twd97_n"],
+                        "camera_twd97_h": ep0["camera_twd97_h"],
+                        "proj_u": ep0["proj_u"],
+                        "proj_v": ep0["proj_v"],
+                        "target_uv": {"u": ep0["proj_u"], "v": ep0["proj_v"], "in_fov": True},
+                    }
+                ],
+            }
+        )
+        saved_ret = self.db.get_comment(cmt_reticle["comment_id"])
+        self.assertIsNotNone(saved_ret)
+        sp0 = saved_ret["photos"][0]
+        self.assertAlmostEqual(float(sp0["proj_u"]), float(ep0["proj_u"]), places=4)
+        self.assertAlmostEqual(float(sp0["proj_v"]), float(ep0["proj_v"]), places=4)
+        self.assertIsInstance(sp0.get("target_uv"), dict)
+        self.assertAlmostEqual(float(sp0["target_uv"]["u"]), float(ep0["proj_u"]), places=4)
+        self.assertTrue(sp0["target_uv"]["in_fov"])
+        self.db.delete_comment(cmt_reticle["comment_id"])
+
+        with open(os.path.join(BASE_DIR, "web", "src", "08-advanced-surveying-and-qa.js"), "r", encoding="utf-8") as f:
+            js08 = f.read()
+        self.assertIn("function _projectWorldPointToPhotoUV(", js08)
+        self.assertIn("function _serializeRtkPhotoForComment(", js08)
+        self.assertIn("const hasTargetReticle = Boolean(", js08)
+        self.assertIn("data-photo-attach-comment-idx", js08)
+        self.assertIn("function loadAndRenderScanCameraTrajectory3D(", js08)
+        self.assertIn("function pickCameraTrajectoryMarkerAtScreenXY(", js08)
+        self.assertIn("function selectCalibratedCameraFrom3D(", js08)
+        self.assertIn("window.renderPhoto3DFrustums = renderRtkPhotoFrustums3D;", js08)
+
 
 if __name__ == "__main__":
     unittest.main()

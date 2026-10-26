@@ -678,8 +678,8 @@ class ServerWriteRoutesMixin:
                 self.send_json(res)
                 return
 
-            # 5. Civil Surveying: RTK Raw Camera Photo Pin Inspector
-            if path == "/api/survey/inspect-photos":
+            # 5. Civil Surveying: RTK Raw Camera Photo Pin Inspector & Calibrated Camera Catalog
+            if path in ("/api/survey/inspect-photos", "/api/survey/photos-at-point", "/api/surveying/inspect-photos"):
                 if share_token:
                     ok_s, reason_s, link_s, _ = AUTH_SHARE.validate_share_access(
                         share_token, requested_scan_id=payload.get("scan_id")
@@ -689,6 +689,14 @@ class ServerWriteRoutesMixin:
                         return
                 res = SURVEY.inspect_rtk_camera_photos(payload)
                 self.send_json(res)
+                return
+
+            if path in ("/api/survey/cameras", "/api/surveying/cameras"):
+                sid_c = str(payload.get("scan_id") or "").strip()
+                lim_c = int(payload.get("limit") or 10000)
+                fmt_c = str(payload.get("format") or "json").lower()
+                res = SURVEY.get_scan_cameras_response(sid_c, limit=lim_c, fmt=fmt_c)
+                self.send_json(res if isinstance(res, dict) else {"status": "ok", "csv": res})
                 return
 
             # 5b. Civil Surveying: AI + 3D Geometric Surface & Object Categorization
