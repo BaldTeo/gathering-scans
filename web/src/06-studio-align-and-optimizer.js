@@ -3266,13 +3266,16 @@
         clearSectionBoxClippingIfNotKept();
       }
       if (STATE.activeTool === "categorize") {
+        STATE.categorizeOverlayVisible = false;
+        STATE.categorizeLabelsVisible = false;
         clearCategorizeVisualsOnly();
+        if (typeof syncCategorizeVisibilityUI === "function") syncCategorizeVisibilityUI();
       }
       if (STATE.activeTool === "drainage" && typeof clearDrainageVisuals3D === "function") {
         clearDrainageVisuals3D();
       }
       if ((STATE.activeTool === "photos" || STATE.activeTool === "rtk") && typeof clearPhotoTargetVisuals3D === "function") {
-        clearPhotoTargetVisuals3D();
+        clearPhotoTargetVisuals3D(true);
       }
       const panelEl = document.getElementById("studioSidePanel");
       if (panelEl) {
@@ -3285,9 +3288,13 @@
       return true;
     }
     if (STATE.activeView === "studio" && document.getElementById("studioSidePanel")?.classList.contains("active")) {
-      const panelEl = document.getElementById("studioSidePanel");
-      panelEl.classList.remove("active", "open");
-      panelEl.classList.add("hidden");
+      if (typeof closeSidePanel === "function") {
+        closeSidePanel();
+      } else {
+        const panelEl = document.getElementById("studioSidePanel");
+        panelEl.classList.remove("active", "open");
+        panelEl.classList.add("hidden");
+      }
       return true;
     }
     if (STATE.activeView === "studio" && STATE.fpMode?.active) {
@@ -3412,8 +3419,8 @@
       }
 
       preserveLassoSelectionBeforeToolSwitch();
-      if (tool !== "photos" && typeof clearCameraTrajectory3D === "function") {
-        clearCameraTrajectory3D();
+      if (tool !== "photos" && tool !== "rtk" && typeof clearPhotoTargetVisuals3D === "function") {
+        clearPhotoTargetVisuals3D(true);
       }
       setActiveStudioTool(tool);
       STATE.measurePoints = [];

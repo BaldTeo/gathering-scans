@@ -1123,7 +1123,8 @@
     STATE.lastInspectedPhotos = [];
     STATE.lastInspectedPhotoTargetPt = null;
     STATE.lastInspectedPhotoTargetTwd = null;
-    STATE.categorizeOverlayVisible = false;
+    STATE.categorizeOverlayVisible = STATE.activeTool === "categorize";
+    STATE.categorizeLabelsVisible = STATE.activeTool === "categorize";
     if (typeof clearCategorizeVisualsOnly === "function") {
       clearCategorizeVisualsOnly();
     }
@@ -1131,7 +1132,7 @@
       syncCategorizeVisibilityUI();
     }
     if (typeof preloadSavedCategorizationForScan === "function") {
-      preloadSavedCategorizationForScan(scan.scan_id, scan, { renderWhenLoaded: false });
+      preloadSavedCategorizationForScan(scan.scan_id, scan, { renderWhenLoaded: STATE.activeTool === "categorize" });
     }
     if (typeof resetStagedEditsForScan === "function") {
       resetStagedEditsForScan(scan);
@@ -1208,12 +1209,13 @@
             frameStudioCamera();
           }
           if (
-            (STATE.activeTool === "photos" || STATE.activeTool === "rtk" || studioThree.cameraTrajectoryGroup) &&
+            (STATE.activeTool === "photos" || STATE.activeTool === "rtk") &&
             typeof loadAndRenderScanCameraTrajectory3D === "function"
           ) {
             loadAndRenderScanCameraTrajectory3D(scan.scan_id, true);
           }
           if (
+            (STATE.activeTool === "photos" || STATE.activeTool === "rtk") &&
             STATE.lastInspectedPhotoTargetTwd &&
             STATE.lastInspectedPhotos?.length &&
             typeof twd97ToStudioLocalVec === "function"
@@ -1236,6 +1238,7 @@
               );
             }
           }
+          _lastBadgeOcclusionCamSig = "";
           finishScanLoader(studioThree, "studio", "100% · 3D Mesh Ready");
         },
         (xhr) => {
@@ -1303,12 +1306,13 @@
             renderCategorize3DOverlays(STATE.lastCategorizeResult);
           }
           if (
-            (STATE.activeTool === "photos" || STATE.activeTool === "rtk" || studioThree.cameraTrajectoryGroup) &&
+            (STATE.activeTool === "photos" || STATE.activeTool === "rtk") &&
             typeof loadAndRenderScanCameraTrajectory3D === "function"
           ) {
             loadAndRenderScanCameraTrajectory3D(scan.scan_id, true);
           }
           if (
+            (STATE.activeTool === "photos" || STATE.activeTool === "rtk") &&
             STATE.lastInspectedPhotoTargetTwd &&
             STATE.lastInspectedPhotos?.length &&
             typeof twd97ToStudioLocalVec === "function"
@@ -1338,6 +1342,7 @@
 
       tr.addEventListener("load-model", (ev) => {
         if (ev && ev.scene) {
+          _lastBadgeOcclusionCamSig = "";
           if (studioThree.fallbackGroup) studioThree.fallbackGroup.visible = false;
           ev.scene.traverse((c) => {
             if (c.isMesh && c.material) {
@@ -1849,6 +1854,10 @@
   }
 
   const _tmpZoomWorldPos = new THREE.Vector3();
+  const _badgeOcclusionRaycaster = new THREE.Raycaster();
+  const _badgeOcclusionDir = new THREE.Vector3();
+  let _lastBadgeOcclusionCheckMs = 0;
+  let _lastBadgeOcclusionCamSig = "";
 
   function add3DPinMarker(pt, colorHex = 0x0084ff, targetGroup = null, onAddMesh = null) {
     if (!studioThree) return null;
@@ -1858,13 +1867,16 @@
     const sphereGeo = new THREE.SphereGeometry(1, 16, 16);
     const sphereMat = new THREE.MeshBasicMaterial({
       color: colorHex,
-      depthTest: false,
+      depthTest: true,
       depthWrite: false,
+      polygonOffset: true,
+      polygonOffsetFactor: -2,
+      polygonOffsetUnits: -2,
       transparent: true,
       opacity: 0.95,
     });
     const innerMesh = new THREE.Mesh(sphereGeo, sphereMat);
-    innerMesh.position.copy(pt);
+    innerMesh.position.set(pt.x, pt.y + 0.03, pt.z);
     innerMesh.userData.isZoomInvariantMarker = true;
     innerMesh.userData.pixelRadius = 5.5;
     innerMesh.renderOrder = 1002;
@@ -1874,13 +1886,16 @@
     const ringMat = new THREE.MeshBasicMaterial({
       color: 0xffffff,
       side: THREE.DoubleSide,
-      depthTest: false,
+      depthTest: true,
       depthWrite: false,
+      polygonOffset: true,
+      polygonOffsetFactor: -2,
+      polygonOffsetUnits: -2,
       transparent: true,
       opacity: 0.95,
     });
     const outerRing = new THREE.Mesh(ringGeo, ringMat);
-    outerRing.position.copy(pt);
+    outerRing.position.set(pt.x, pt.y + 0.03, pt.z);
     outerRing.userData.isZoomInvariantRing = true;
     outerRing.userData.pixelRadius = 8.5;
     if (studioThree.camera) {
@@ -1899,6 +1914,7 @@
     const translatedHtml =
       typeof window.translateDynamicHtml === "function" ? window.translateDynamicHtml(String(htmlText || "")) : String(htmlText || "");
     const el = document.createElement("div");
+    const clonedPt = worldPt.clone();
     if (options.rawHtml) {
       el.innerHTML = translatedHtml;
       const firstChild = el.firstElementChild;
@@ -1909,7 +1925,8 @@
         container.appendChild(firstChild);
         const badgeObj = {
           el: firstChild,
-          worldPt: worldPt.clone(),
+          worldPt: clonedPt,
+          worldPos: clonedPt,
           offsetX: options.offsetX || 0,
           offsetY: options.offsetY || 0,
           isVolume: !!options.isVolume,
@@ -1918,6 +1935,7 @@
           isProfile: !!options.isProfile,
           isCategorize: !!options.isCategorize,
           isCommentPin: !!options.isCommentPin,
+          folderKey: options.folderKey || "",
           isTempDistance: !!options.isTempDistance,
           priority: options.priority !== undefined ? Number(options.priority) : 50,
           featureId: options.featureId || "",
@@ -1955,7 +1973,8 @@
     container.appendChild(el);
     const badgeObj = {
       el,
-      worldPt: worldPt.clone(),
+      worldPt: clonedPt,
+      worldPos: clonedPt,
       offsetX: options.offsetX || 0,
       offsetY: options.offsetY !== undefined ? options.offsetY : -10,
       isVolume: !!options.isVolume,
@@ -1963,6 +1982,7 @@
       isLassoHighlight: !!options.isLassoHighlight,
       isProfile: !!options.isProfile,
       isCategorize: !!options.isCategorize,
+      folderKey: options.folderKey || "",
       isTempDistance: !!options.isTempDistance,
       priority: options.priority !== undefined ? Number(options.priority) : 50,
       featureId: options.featureId || "",
@@ -1978,7 +1998,7 @@
   }
 
   function update2DBadgePositions() {
-    if (!studioThree) return;
+    if (!studioThree || !studioThree.camera || !studioThree.renderer) return;
     const w = studioThree.renderer.domElement.clientWidth;
     const h = studioThree.renderer.domElement.clientHeight;
     const isMobile = w <= 768;
@@ -2011,14 +2031,68 @@
       return bPri - aPri;
     });
 
+    // Throttled 3D scan occlusion check (every ~90ms when camera moves or badges/meshes change)
+    const nowMs = performance.now();
+    const camPos = studioThree.camera.position;
+    const camQuat = studioThree.camera.quaternion;
+    const pivotChildCnt = studioThree.modelPivot ? studioThree.modelPivot.children.length : 0;
+    const camSig = `${camPos.x.toFixed(2)},${camPos.y.toFixed(2)},${camPos.z.toFixed(2)}|${camQuat.x.toFixed(2)},${camQuat.y.toFixed(2)},${camQuat.z.toFixed(2)}|${orderedBadges.length}|${pivotChildCnt}`;
+    const needOcclusionPass =
+      (nowMs - _lastBadgeOcclusionCheckMs >= 90 && camSig !== _lastBadgeOcclusionCamSig) ||
+      orderedBadges.some((b) => b._occludedByScan === undefined);
+
+    let occMeshes = null;
+    if (needOcclusionPass && studioThree.modelPivot) {
+      _lastBadgeOcclusionCheckMs = nowMs;
+      _lastBadgeOcclusionCamSig = camSig;
+      occMeshes = [];
+      const collectOccFromRoot = (rootObj) => {
+        if (!rootObj || rootObj.visible === false) return;
+        rootObj.traverse((obj) => {
+          if (obj && obj.isMesh && obj.visible !== false && !obj.userData?.isAlignBoxHelper && obj.name !== "referenceTerrain") {
+            occMeshes.push(obj);
+          }
+        });
+      };
+      collectOccFromRoot(studioThree.modelPivot);
+      if (STATE.multiAlign?.active && studioThree.multiAlignGroup) {
+        collectOccFromRoot(studioThree.multiAlignGroup);
+      }
+    }
+
     let visibleCatBadges = 0;
     orderedBadges.forEach((b) => {
-      if (!b.el || !b.worldPt) return;
-      const v = b.worldPt.clone().project(studioThree.camera);
+      const anchorPt = b.worldPt || b.worldPos;
+      if (!b.el || !anchorPt) return;
+      const v = anchorPt.clone().project(studioThree.camera);
       if (v.z > 1 || Math.abs(v.x) > 1.22 || Math.abs(v.y) > 1.22) {
         b.el.style.display = "none";
         return;
       }
+
+      if (needOcclusionPass || b._occludedByScan === undefined) {
+        if (occMeshes && occMeshes.length > 0 && !b.isTempDistance) {
+          _badgeOcclusionDir.set(anchorPt.x - camPos.x, anchorPt.y + 0.25 - camPos.y, anchorPt.z - camPos.z);
+          const camDist = _badgeOcclusionDir.length();
+          if (camDist > 0.9) {
+            _badgeOcclusionDir.divideScalar(camDist);
+            _badgeOcclusionRaycaster.set(camPos, _badgeOcclusionDir);
+            _badgeOcclusionRaycaster.near = 0.3;
+            _badgeOcclusionRaycaster.far = Math.max(0.4, camDist - 0.6);
+            const hits = _badgeOcclusionRaycaster.intersectObjects(occMeshes, false);
+            b._occludedByScan = hits.some((hit) => hit && hit.distance < camDist - 0.6);
+          } else {
+            b._occludedByScan = false;
+          }
+        } else {
+          b._occludedByScan = false;
+        }
+      }
+      if (b._occludedByScan) {
+        b.el.style.display = "none";
+        return;
+      }
+
       const x = (v.x * 0.5 + 0.5) * w + (b.offsetX || 0);
       const y = (-(v.y * 0.5) + 0.5) * h + (b.offsetY || 0);
       const dispMode = b.el.classList.contains("autodesk-delta-badge")
@@ -2029,7 +2103,7 @@
 
       const isCat = Boolean(b.isCategorize || b.el.classList.contains("is-categorize-badge"));
       if (b.isCommentPin) {
-        if (STATE.categorizeLabelsVisible === false) {
+        if (b.folderKey && STATE.hiddenCommentFolders && STATE.hiddenCommentFolders[b.folderKey]) {
           b.el.style.display = "none";
           return;
         }
@@ -3006,12 +3080,28 @@
       STATE.categorizeEditMode = null;
       STATE.categorizeEditPoints = [];
       STATE.categorizeTempPoints = [];
+      STATE.categorizeOverlayVisible = false;
+      STATE.categorizeLabelsVisible = false;
+      if (typeof clearCategorizeVisualsOnly === "function") {
+        clearCategorizeVisualsOnly();
+      }
+      if (typeof syncCategorizeVisibilityUI === "function") {
+        syncCategorizeVisibilityUI();
+      }
     }
     if (toolName !== "profile" && typeof clearProfileVisualsOnly === "function") {
       clearProfileVisualsOnly();
     }
     if (STATE.activeTool === "photos" && toolName !== "photos" && typeof clearPhotoTargetVisuals3D === "function") {
-      clearPhotoTargetVisuals3D();
+      clearPhotoTargetVisuals3D(true);
+    }
+    if (toolName !== "photos" && toolName !== "rtk") {
+      if (typeof clearPhotoTargetVisuals3D === "function") {
+        clearPhotoTargetVisuals3D(true);
+      }
+      if (studioThree?.cameraTrajectoryGroup) studioThree.cameraTrajectoryGroup.visible = false;
+      if (studioThree?.photoFrustumGroup) studioThree.photoFrustumGroup.visible = false;
+      if (studioThree?.photoTargetGroup) studioThree.photoTargetGroup.visible = false;
     }
     if (STATE.activeTool !== toolName) {
       STATE.measurePoints = [];
@@ -3253,7 +3343,7 @@
         });
         if (pts.length >= 2) {
           const lineGeom = new THREE.BufferGeometry().setFromPoints(pts);
-          const lineMesh = new THREE.Line(lineGeom, new THREE.LineBasicMaterial({ color: 0x0284c7, depthTest: false }));
+          const lineMesh = new THREE.Line(lineGeom, new THREE.LineBasicMaterial({ color: 0x0284c7, depthTest: true }));
           addAreaObj(lineMesh);
         }
       } else if (STATE.activeTool === "volume" && typeof drawPlacedCutFillPolygon3D === "function") {
@@ -3458,7 +3548,7 @@
         const rodGeo = new THREE.CylinderGeometry(1, 1, lLen, 8);
         const rodMat = new THREE.MeshBasicMaterial({
           color: colorHex,
-          depthTest: false,
+          depthTest: true,
           depthWrite: false,
           transparent: true,
           opacity: 0.90,
@@ -3493,7 +3583,7 @@
     // Direct 3D Dimension Line (#0084ff)
     const d3d = p1.distanceTo(p2);
     const lineGeo = new THREE.BufferGeometry().setFromPoints([p1, p2]);
-    const lineMat = new THREE.LineBasicMaterial({ color: 0x0084ff, linewidth: 2, depthTest: false });
+    const lineMat = new THREE.LineBasicMaterial({ color: 0x0084ff, linewidth: 2, depthTest: true });
     const directLine = new THREE.Line(lineGeo, lineMat);
     directLine.renderOrder = 998;
     addObj(directLine);
@@ -3519,7 +3609,7 @@
     // 1. X Delta leg (Red #ef4444)
     const lineX = new THREE.Line(
       new THREE.BufferGeometry().setFromPoints([p1, c1]),
-      new THREE.LineBasicMaterial({ color: 0xef4444, linewidth: 2, depthTest: false })
+      new THREE.LineBasicMaterial({ color: 0xef4444, linewidth: 2, depthTest: true })
     );
     lineX.renderOrder = 998;
     addObj(lineX);
@@ -3536,7 +3626,7 @@
     // 2. Y Delta leg (Green #10b981, Northing / Plan Depth along Three.js Z: c1 -> c2)
     const lineY = new THREE.Line(
       new THREE.BufferGeometry().setFromPoints([c1, c2]),
-      new THREE.LineBasicMaterial({ color: 0x10b981, linewidth: 2, depthTest: false })
+      new THREE.LineBasicMaterial({ color: 0x10b981, linewidth: 2, depthTest: true })
     );
     lineY.renderOrder = 998;
     addObj(lineY);
@@ -3553,7 +3643,7 @@
     // 3. Z Delta leg (Blue #3b82f6, Vertical Elevation difference along Three.js Y: c2 -> p2)
     const lineZ = new THREE.Line(
       new THREE.BufferGeometry().setFromPoints([c2, p2]),
-      new THREE.LineBasicMaterial({ color: 0x3b82f6, linewidth: 2, depthTest: false })
+      new THREE.LineBasicMaterial({ color: 0x3b82f6, linewidth: 2, depthTest: true })
     );
     lineZ.renderOrder = 998;
     addObj(lineZ);

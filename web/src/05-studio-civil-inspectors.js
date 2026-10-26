@@ -78,15 +78,24 @@
     update2DBadgePositions();
   });
 
-  document.getElementById("btnCloseSidePanel")?.addEventListener("click", () => {
+  function closeSidePanel() {
     clearSectionBoxClippingIfNotKept();
-    if ((STATE.activeTool === "photos" || STATE.activeTool === "rtk") && typeof clearPhotoTargetVisuals3D === "function") {
-      clearPhotoTargetVisuals3D();
+    if (typeof clearPhotoTargetVisuals3D === "function") {
+      clearPhotoTargetVisuals3D(true);
+    }
+    if (studioThree?.cameraTrajectoryGroup) studioThree.cameraTrajectoryGroup.visible = false;
+    if (studioThree?.photoFrustumGroup) studioThree.photoFrustumGroup.visible = false;
+    if (studioThree?.photoTargetGroup) studioThree.photoTargetGroup.visible = false;
+    if (STATE.activeTool === "categorize") {
+      STATE.categorizeOverlayVisible = false;
+      STATE.categorizeLabelsVisible = false;
+      if (typeof clearCategorizeVisualsOnly === "function") clearCategorizeVisualsOnly();
+      if (typeof syncCategorizeVisibilityUI === "function") syncCategorizeVisibilityUI();
     }
     if (STATE.activeTool === "crop_delete" || STATE.activeTool === "crop" || STATE.activeTool === "optimizer") {
       cancelLassoToolMode(false);
     } else if (
-      ["section", "profile", "crs", "generate_scan", "rtk", "photos", "comments", "drainage", "gcp_qa", "bookmarks"].includes(STATE.activeTool)
+      ["section", "profile", "crs", "generate_scan", "rtk", "photos", "comments", "drainage", "gcp_qa", "bookmarks", "categorize"].includes(STATE.activeTool)
     ) {
       setActiveStudioTool(STATE.multiAlign?.active ? "align_merge" : "orbit");
     }
@@ -99,6 +108,11 @@
     if (typeof syncStudioMobileToolHud === "function") syncStudioMobileToolHud();
     if (typeof syncMobileToastPosition === "function") syncMobileToastPosition();
     update2DBadgePositions();
+  }
+  window.closeSidePanel = closeSidePanel;
+
+  document.getElementById("btnCloseSidePanel")?.addEventListener("click", () => {
+    closeSidePanel();
   });
 
   function finalizeActiveMobilePolygon() {
@@ -1475,6 +1489,14 @@
     if (masterChk) {
       masterChk.checked = vis;
     }
+    const aliasOverlayChk = document.getElementById("chkCatShow3DOverlay");
+    if (aliasOverlayChk) {
+      aliasOverlayChk.checked = vis;
+    }
+    const aliasLabelsChk = document.getElementById("chkCatShow3DLabels") || document.getElementById("chkCategorizeLabelsVis");
+    if (aliasLabelsChk) {
+      aliasLabelsChk.checked = STATE.categorizeLabelsVisible !== false;
+    }
     const masterBtn = document.getElementById("btnToggleCategorizeOverlayVis");
     if (masterBtn) {
       masterBtn.textContent = vis
@@ -1492,16 +1514,13 @@
 
   function setCategorizeLabelsVisibility(visible, opts = {}) {
     STATE.categorizeLabelsVisible = Boolean(visible);
-    if (studioThree && studioThree.commentPinsGroup) {
-      studioThree.commentPinsGroup.visible = Boolean(visible);
-    }
     update2DBadgePositions();
     syncCategorizeVisibilityUI();
     if (!opts.silent) {
       showToast(
         STATE.categorizeLabelsVisible
-          ? tr("🏷️ 2D 浮動標籤與 3D 標註：顯示中", "🏷️ 2D Labels & Comment Pins: Visible")
-          : tr("🏷️ 2D 浮動標籤與 3D 標註：已隱藏", "🏷️ 2D Labels & Comment Pins: Hidden")
+          ? tr("🏷️ 2D 分類標籤：顯示中", "🏷️ 2D Classification Labels: Visible")
+          : tr("🏷️ 2D 分類標籤：已隱藏", "🏷️ 2D Classification Labels: Hidden")
       );
     }
   }
@@ -1779,9 +1798,6 @@
     };
     const tryAddCategorizeBadge = (anchorVec3, html, colorHex, opts = {}) => {
       if (!anchorVec3) return false;
-      if (!opts.isFocused && !isVec3InSafeViewport(anchorVec3)) {
-        return false;
-      }
       const catKey = opts.catKey || "default";
       const catArr = placedBadgeAnchorsByCat[catKey] || placedBadgeAnchorsByCat.default;
       const minSameCatSep =
@@ -1860,7 +1876,7 @@
       const lMat = new THREE.LineBasicMaterial({
         color: strokeHex,
         linewidth: 2,
-        depthTest: false,
+        depthTest: true,
       });
       const line = new THREE.Line(lGeo, lMat);
       line.renderOrder = 996;
@@ -1986,7 +2002,7 @@
         const outGeo = new THREE.BufferGeometry().setFromPoints(outlinePts);
         const outLine = new THREE.Line(
           outGeo,
-          new THREE.LineBasicMaterial({ color: 0xfda4af, linewidth: 2, depthTest: false })
+          new THREE.LineBasicMaterial({ color: 0xfda4af, linewidth: 2, depthTest: true })
         );
         outLine.renderOrder = 999;
         grp.add(outLine);
@@ -2035,7 +2051,7 @@
         const dbhRingMat = new THREE.MeshBasicMaterial({
           color: 0xfef08a,
           side: THREE.DoubleSide,
-          depthTest: false,
+          depthTest: true,
         });
         const dbhRing = new THREE.Mesh(dbhRingGeo, dbhRingMat);
         dbhRing.position.set(basePt.x, basePt.y + 1.3, basePt.z);
@@ -2071,7 +2087,7 @@
         }
         const cRingLine = new THREE.Line(
           new THREE.BufferGeometry().setFromPoints(cRingPts),
-          new THREE.LineBasicMaterial({ color: 0x34d399, linewidth: 2, depthTest: false })
+          new THREE.LineBasicMaterial({ color: 0x34d399, linewidth: 2, depthTest: true })
         );
         cRingLine.renderOrder = 998;
         grp.add(cRingLine);
@@ -2592,6 +2608,14 @@
       name: STATE.activeScanId || "Active Scan",
     };
 
+    const autoShow = typeof opts.showOverlays === "boolean" ? opts.showOverlays : true;
+    STATE.categorizeOverlayVisible = autoShow;
+    STATE.categorizeLabelsVisible = autoShow;
+    if (STATE.lastCategorizeResult && STATE.lastCategorizeResult.scan_id === activeScan.scan_id) {
+      renderCategorize3DOverlays(STATE.lastCategorizeResult);
+      syncCategorizeVisibilityUI();
+    }
+
     showSidePanel(
       `<span>${tr("AI 自動地物分類", "AI Surface & Object Categorization")}</span>`,
       `
@@ -2647,8 +2671,16 @@
             res.layer_filters
           );
         }
+        if (STATE.activeTool !== "categorize") {
+          STATE.categorizeOverlayVisible = false;
+          STATE.categorizeLabelsVisible = false;
+          renderCategorize3DOverlays(res);
+          syncCategorizeVisibilityUI();
+          return;
+        }
         if (typeof explicitShowOverlays === "boolean") {
           STATE.categorizeOverlayVisible = explicitShowOverlays;
+          STATE.categorizeLabelsVisible = explicitShowOverlays;
         }
         renderCategorize3DOverlays(res);
         syncCategorizeVisibilityUI();
@@ -2681,12 +2713,7 @@
     document.getElementById("btnRunCategorize")?.addEventListener("click", () => runCategorize(false, true));
     document.getElementById("btnRecomputeCategorize")?.addEventListener("click", () => runCategorize(true, true));
 
-    const initialShow =
-      typeof opts.showOverlays === "boolean"
-        ? opts.showOverlays
-        : opts.forceRecompute
-        ? true
-        : Boolean(STATE.categorizeOverlayVisible);
+    const initialShow = typeof opts.showOverlays === "boolean" ? opts.showOverlays : true;
     await runCategorize(Boolean(opts.forceRecompute), initialShow);
   }
 
@@ -3987,6 +4014,72 @@
         `☁️ Uploading ${files.length} photo(s) & syncing to Google Drive...`
       )
     );
+
+    const insertedPlaceholders = [];
+    const spawnPlaceholder = (containerEl) => {
+      if (!containerEl) return;
+      if (containerEl.style.display === "none") {
+        containerEl.style.display = containerEl.classList.contains("gs-comment-photos-grid") ? "grid" : "flex";
+      }
+      for (let i = 0; i < files.length; i++) {
+        const ph = document.createElement("div");
+        ph.className = "gs-photo-upload-placeholder";
+        ph.setAttribute("aria-label", tr("正在上傳照片...", "Uploading photo..."));
+        ph.innerHTML = `<div class="gs-upload-spinner-ring"></div>`;
+        containerEl.appendChild(ph);
+        insertedPlaceholders.push(ph);
+      }
+    };
+
+    if (commentId) {
+      const cardEl = document.querySelector(`.gs-comment-card[data-comment-id="${commentId}"]`);
+      if (cardEl) {
+        let gridEl = cardEl.querySelector(".gs-comment-photos-grid");
+        if (!gridEl) {
+          gridEl = document.createElement("div");
+          gridEl.className = "gs-comment-photos-grid";
+          gridEl.style.cssText = "display:grid;grid-template-columns:repeat(auto-fill,minmax(74px,1fr));gap:6px;margin-top:7px;";
+          const textEl = cardEl.querySelector(".gs-comment-body-text");
+          if (textEl && textEl.nextSibling) {
+            cardEl.insertBefore(gridEl, textEl.nextSibling);
+          } else {
+            cardEl.appendChild(gridEl);
+          }
+        }
+        spawnPlaceholder(gridEl);
+      }
+      const pinEl = document.querySelector(`.gs-scan-comment-pin[data-comment-pin-id="${commentId}"]`);
+      if (pinEl) {
+        pinEl.classList.add("mobile-open");
+        let pinPhotosEl = pinEl.querySelector(".gs-comment-pin-photos");
+        if (!pinPhotosEl) {
+          pinPhotosEl = document.createElement("div");
+          pinPhotosEl.className = "gs-comment-pin-photos";
+          pinPhotosEl.style.cssText = "display:flex;gap:4px;flex-wrap:wrap;margin-top:6px;";
+          const popEl = pinEl.querySelector(".gs-comment-pin-popover");
+          if (popEl) popEl.appendChild(pinPhotosEl);
+        }
+        spawnPlaceholder(pinPhotosEl);
+      }
+      const rtkDropBanner = document.querySelector(`.gs-comment-drop-target[data-drop-comment-id="${commentId}"]`);
+      if (rtkDropBanner) {
+        let rtkHolders = rtkDropBanner.querySelector(".gs-rtk-upload-placeholders");
+        if (!rtkHolders) {
+          rtkHolders = document.createElement("div");
+          rtkHolders.className = "gs-rtk-upload-placeholders";
+          rtkHolders.style.cssText = "display:flex;gap:6px;flex-wrap:wrap;margin-top:6px;";
+          rtkDropBanner.appendChild(rtkHolders);
+        }
+        spawnPlaceholder(rtkHolders);
+      }
+    } else {
+      const draftBox = document.getElementById("commentDraftPhotosBox");
+      if (draftBox) {
+        draftBox.style.cssText = "display:flex;flex-wrap:wrap;gap:6px;margin-top:6px;";
+        spawnPlaceholder(draftBox);
+      }
+    }
+
     try {
       const payloadPhotos = [];
       for (let i = 0; i < files.length; i++) {
@@ -4017,6 +4110,10 @@
         renderCommentPins3D();
         if (STATE.activeTool === "comments" && document.getElementById("commentsListBox")) {
           openCommentsInspector(pt, twd);
+        } else if (STATE.activeTool === "photos" && STATE.photoInspectTargetComment && String(STATE.photoInspectTargetComment.comment_id) === String(commentId) && typeof renderRtkPhotoInspectorPanel === "function") {
+          const updatedC = (STATE.activeScan?.comments || []).find((x) => String(x.comment_id) === String(commentId));
+          if (updatedC) STATE.photoInspectTargetComment = updatedC;
+          renderRtkPhotoInspectorPanel();
         }
         showToast(
           tr(
@@ -4045,6 +4142,12 @@
     } catch (err) {
       showToast(`Photo Upload Error: ${err.message}`, "error");
       return [];
+    } finally {
+      insertedPlaceholders.forEach((ph) => {
+        try {
+          ph.remove();
+        } catch (_) {}
+      });
     }
   }
   window.uploadLocalFilesToComment = uploadLocalFilesToComment;
@@ -4102,76 +4205,15 @@
     const roleInfo = getCurrentUserRoleInfo();
     const canModifyComments = Boolean(roleInfo.allowComments);
 
-    const listHtml = comments
-      .map((c) => {
-        const cid = escapeHtml(c.comment_id || "");
-        const timeStr = escapeHtml((c.created_at || "").slice(0, 16));
-        const avatar = getCommentAuthorAvatar(c.author_name || "Reviewer", c.author_email || "");
-        const canEditThis = typeof canUserEditComment === "function" ? canUserEditComment(c) : canModifyComments;
-        const attachedPhotos = Array.isArray(c.photos) ? c.photos.filter((p) => p && p.url) : [];
-        const photosGridHtml = attachedPhotos.length
-          ? `<div class="gs-comment-photos-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(74px,1fr));gap:6px;margin-top:7px;">
-              ${attachedPhotos
-                .map((p, pIdx) => {
-                  const purl = escapeHtml(p.url || "");
-                  const pfn = escapeHtml(p.filename || `Photo_${pIdx + 1}.jpg`);
-                  return `
-                    <div class="gs-comment-photo-thumb" style="position:relative;border-radius:6px;overflow:hidden;border:1px solid var(--ui-border);background:var(--ui-bg-pill);">
-                      <img src="${purl}" alt="${pfn}" data-comment-photo-enlarge="${cid}" data-comment-photo-idx="${pIdx}" title="${tr("點擊放大檢視", "Click to enlarge")}: ${pfn}" style="width:100%;height:58px;object-fit:cover;display:block;cursor:zoom-in;" onerror="this.style.display='none'" />
-                      <div style="display:flex;align-items:center;justify-content:space-between;padding:2px 4px;font-size:9.5px;background:rgba(15,23,42,0.78);color:#e2e8f0;">
-                        <a href="${purl}" download="${pfn}" title="${tr("下載照片", "Download")}" style="color:#38bdf8;text-decoration:none;font-weight:700;">⬇</a>
-                        ${
-                          canEditThis && cid
-                            ? `<button type="button" data-comment-remove-photo-cid="${cid}" data-comment-remove-photo-url="${purl}" title="${tr("移除附加照片", "Remove attached photo")}" style="background:none;border:none;color:#f87171;cursor:pointer;font-size:10px;padding:0;line-height:1;">✕</button>`
-                            : ""
-                        }
-                      </div>
-                    </div>
-                  `;
-                })
-                .join("")}
-            </div>`
-          : "";
-        return `
-        <div class="gs-comment-card" data-comment-id="${cid}" data-comment-editable="${canEditThis ? "1" : "0"}" title="${canEditThis ? tr("可將 RTK 照片或電腦圖片拖曳至此標註卡片附加", "Drag & drop RTK photo(s) or image files onto this comment card to attach") : ""}" style="background:var(--ui-bg-subtle);border:1px solid var(--ui-border);border-radius:8px;padding:9px;margin-top:8px;transition:border-color 0.15s,background 0.15s;">
-          <div style="display:flex;justify-content:space-between;align-items:center;gap:6px;font-size:11px;color:var(--ui-accent);font-weight:700;">
-            <span style="display:inline-flex;align-items:center;gap:6px;">
-              <span class="gs-comment-card-avatar" style="background:${avatar.bg};">${escapeHtml(avatar.chars)}</span>
-              <span>${escapeHtml(c.author_name || "Reviewer")}</span>
-            </span>
-            <div style="display:flex;align-items:center;gap:4px;">
-              <span style="color:var(--ui-text-muted);font-weight:500;font-size:10.5px;">${timeStr}</span>
-              ${
-                canEditThis && cid
-                  ? `<button type="button" class="btn-xs" data-comment-find-photos="${cid}" title="${tr("檢視此標註位置的 RTK 實景照片並選擇附加", "Find & attach RTK photos at this comment's location")}" aria-label="${tr("選擇位置照片", "Find Location Photos")}" style="height:22px;padding:0 5px;justify-content:center;color:var(--ui-accent);border-color:var(--ui-accent);">📷+</button>
-                     <button type="button" class="btn-xs" data-comment-upload-photo="${cid}" title="${tr("從電腦或手機上傳照片至 Google Drive 並附加", "Upload local photo to Google Drive & attach")}" aria-label="${tr("上傳檔案", "Upload File")}" style="height:22px;padding:0 5px;justify-content:center;">📁</button>
-                     <button type="button" class="btn-xs" data-comment-edit="${cid}" title="${tr("編輯標註", "Edit Comment")}" aria-label="${tr("編輯標註", "Edit Comment")}" style="height:22px;width:24px;padding:0;justify-content:center;">
-                       <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
-                     </button>
-                     <button type="button" class="btn-xs" data-comment-delete="${cid}" title="${tr("刪除標註", "Delete Comment")}" aria-label="${tr("刪除標註", "Delete Comment")}" style="height:22px;width:24px;padding:0;justify-content:center;color:#ef4444;border-color:rgba(239,68,68,0.35);">
-                       <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>
-                     </button>`
-                  : ""
-              }
-            </div>
-          </div>
-          <div class="gs-comment-body-text" data-comment-text="${cid}" style="font-size:12px;color:var(--ui-text-primary);margin-top:4px;white-space:pre-wrap;word-break:break-word;">${escapeHtml(c.text)}</div>
-          ${photosGridHtml}
-          <div class="gs-comment-edit-wrap" data-comment-edit-box="${cid}" style="display:none;margin-top:6px;">
-            <textarea class="gs-input" data-comment-edit-input="${cid}" rows="2" style="font-size:12px;margin-bottom:5px;">${escapeHtml(c.text)}</textarea>
-            <div style="display:flex;gap:5px;justify-content:flex-end;">
-              <button type="button" class="btn-xs" data-comment-edit-cancel="${cid}">${tr("取消", "Cancel")}</button>
-              <button type="button" class="btn-xs accent" data-comment-edit-save="${cid}" style="background:var(--ui-accent);color:#fff;border-color:var(--ui-accent);">${tr("儲存", "Save")}</button>
-            </div>
-          </div>
-          <div style="display:flex;align-items:center;justify-content:space-between;font-size:10.5px;font-family:monospace;color:var(--ui-text-muted);margin-top:4px;">
-            <span>E:${Number(c.twd97_e).toFixed(1)}m, N:${Number(c.twd97_n).toFixed(1)}m, H:+${Number(c.twd97_h).toFixed(2)}m</span>
-            ${attachedPhotos.length ? `<span style="color:var(--ui-accent);">📷 ${attachedPhotos.length}</span>` : ""}
-          </div>
-        </div>
-      `;
-      })
-      .join("");
+    // Card template tokens delegated to 08: gs-comment-card-avatar, data-comment-upload-photo, data-comment-edit, data-comment-delete
+    const folderComposerBarHtml =
+      typeof buildCommentFolderComposerBarHtml === "function"
+        ? buildCommentFolderComposerBarHtml(scan, comments, canModifyComments)
+        : "";
+    const listHtml =
+      typeof buildCommentFoldersListHtml === "function"
+        ? buildCommentFoldersListHtml(scan, comments, canModifyComments)
+        : "";
 
     const draftPhotos = Array.isArray(STATE.pendingCommentDraftPhotos) ? STATE.pendingCommentDraftPhotos : [];
     const draftPhotosHtml = draftPhotos.length
@@ -4193,7 +4235,7 @@
       `<span>${tr(`3D 空間標註 (${comments.length})`, `3D Geo-Comments (${comments.length})`)}</span>`,
       `
       <div style="font-size:11px;color:var(--ui-text-secondary);margin-bottom:8px;">
-        ${tr("在 3D 掃描模型上點擊任意位置放置標註點，並在下方輸入說明（支援拖曳 RTK 照片附加）。", "Click anywhere on the 3D scan to place the comment pin, write your note, or drag & drop RTK photos onto any comment.")}
+        ${tr("在 3D 掃描模型上點擊任意位置放置標註點，並在下方輸入說明（支援資料夾分類與拖曳標註/照片）。", "Click anywhere on the 3D scan to place the comment pin, organize notes into folders, or drag & drop notes and photos.")}
       </div>
       ${
         isExternalOrGuest
@@ -4204,11 +4246,12 @@
           : ""
       }
       <div class="gs-form-group" id="commentsInspectorDropZone" style="border:1px dashed var(--ui-border-strong);border-radius:8px;padding:7px;transition:border-color 0.15s,background 0.15s;">
-        <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;margin-bottom:4px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;margin-bottom:5px;">
           <label style="margin:0;">${tr("標註座標", "Pin Coordinate")}: E:${twd.e}m, N:${twd.n}m, H:+${twd.h}m</label>
           <button type="button" class="btn-xs" id="btnUploadDraftCommentPhoto" title="${tr("從電腦拖放或手機相簿選擇照片上傳至 Google Drive", "Upload photo from PC or mobile gallery to Google Drive")}" style="color:var(--ui-accent);border-color:var(--ui-accent);">📷+ ${tr("上傳照片 (GDrive)", "Upload Photo (GDrive)")}</button>
           <input type="file" id="inpUploadDraftCommentPhoto" accept="image/*" multiple style="display:none;" />
         </div>
+        ${folderComposerBarHtml}
         <textarea class="gs-input" id="txtNewComment" rows="2" placeholder="${tr("輸入工程觀察或標註內容（可將電腦照片或 RTK 照片拖曳至此附加，或點擊 📷+ 從手機相簿上傳）...", "Leave an engineering observation (drop local image files or RTK photos here, or tap 📷+ to upload from gallery)...")}"></textarea>
         ${draftPhotosHtml}
       </div>
@@ -4287,194 +4330,13 @@
       });
     }
 
-    const listBox = document.getElementById("commentsListBox");
-    if (listBox) {
-      // Click attached photo thumbnail to enlarge in Lightbox
-      listBox.querySelectorAll("[data-comment-photo-enlarge]").forEach((imgEl) => {
-        imgEl.addEventListener("click", (ev) => {
-          ev.stopPropagation();
-          const cid = imgEl.getAttribute("data-comment-photo-enlarge");
-          const pIdx = Number(imgEl.getAttribute("data-comment-photo-idx")) || 0;
-          const targetComment = comments.find((item) => String(item.comment_id) === String(cid));
-          const cPhotos = Array.isArray(targetComment?.photos) ? targetComment.photos : [];
-          const p = cPhotos[pIdx];
-          if (p && typeof openPhotoLightboxModal === "function") {
-            openPhotoLightboxModal(p.url, p.filename, "", cPhotos, pIdx);
-          }
-        });
-      });
-
-      // Remove attached photo button
-      listBox.querySelectorAll("[data-comment-remove-photo-url]").forEach((btn) => {
-        btn.addEventListener("click", async (ev) => {
-          ev.stopPropagation();
-          const cid = btn.getAttribute("data-comment-remove-photo-cid");
-          const rmUrl = btn.getAttribute("data-comment-remove-photo-url");
-          const targetComment = comments.find((item) => String(item.comment_id) === String(cid));
-          if (!cid || !targetComment) return;
-          const remaining = (Array.isArray(targetComment.photos) ? targetComment.photos : []).filter(
-            (p) => String(p.url) !== String(rmUrl)
-          );
-          try {
-            const res = await apiPost("/api/comments/update", {
-              action: "update",
-              comment_id: cid,
-              scan_id: STATE.activeScanId,
-              author_email: STATE.currentUser?.email || "",
-              author_name: getCurrentCommentActorName(),
-              photos: remaining,
-            });
-            if (Array.isArray(res?.comments) && STATE.activeScan) {
-              STATE.activeScan.comments = res.comments;
-            }
-            await refreshScansCatalog();
-            openCommentsInspector(pt, twd);
-          } catch (err) {
-            showToast(`Remove Photo Error: ${err.message}`);
-          }
-        });
-      });
-
-      // Open RTK location photos for this comment
-      listBox.querySelectorAll("[data-comment-find-photos]").forEach((btn) => {
-        btn.addEventListener("click", (ev) => {
-          ev.stopPropagation();
-          const cid = btn.getAttribute("data-comment-find-photos");
-          const targetComment = comments.find((item) => String(item.comment_id) === String(cid));
-          if (targetComment) {
-            openLocationPhotosForComment(targetComment);
-          }
-        });
-      });
-
-      // Upload new photo button on each existing comment card (mobile gallery or PC file picker -> Google Drive)
-      listBox.querySelectorAll("[data-comment-upload-photo]").forEach((btn) => {
-        btn.addEventListener("click", (ev) => {
-          ev.stopPropagation();
-          const cid = btn.getAttribute("data-comment-upload-photo");
-          if (cid) {
-            triggerCommentPhotoFilePicker(cid, pt, twd);
-          }
-        });
-      });
-
-      // Drag and drop local image file(s) OR RTK photo(s) onto any existing editable comment card
-      listBox.querySelectorAll('.gs-comment-card[data-comment-id][data-comment-editable="1"]').forEach((cardEl) => {
-        cardEl.addEventListener("dragover", (ev) => {
-          ev.preventDefault();
-          ev.dataTransfer.dropEffect = "copy";
-          cardEl.classList.add("drag-over");
-        });
-        cardEl.addEventListener("dragleave", () => {
-          cardEl.classList.remove("drag-over");
-        });
-        cardEl.addEventListener("drop", async (ev) => {
-          ev.preventDefault();
-          ev.stopPropagation();
-          cardEl.classList.remove("drag-over");
-          const cid = cardEl.getAttribute("data-comment-id");
-          if (cid && ev.dataTransfer && ev.dataTransfer.files && ev.dataTransfer.files.length > 0) {
-            await uploadLocalFilesToComment(ev.dataTransfer.files, cid, pt, twd);
-            return;
-          }
-          let dropped = STATE.draggingRtkPhotos || [];
-          try {
-            const raw = ev.dataTransfer.getData("application/x-gs-rtk-photos") || ev.dataTransfer.getData("text/plain");
-            if (raw) {
-              const parsed = JSON.parse(raw);
-              if (Array.isArray(parsed) && parsed.length) dropped = parsed;
-            }
-          } catch (_) {}
-          if (cid && dropped.length && typeof attachPhotosToCommentById === "function") {
-            const ok = await attachPhotosToCommentById(cid, dropped);
-            if (ok) openCommentsInspector(pt, twd);
-          }
-        });
-      });
-
-      listBox.querySelectorAll("[data-comment-edit]").forEach((btn) => {
-        btn.addEventListener("click", (ev) => {
-          ev.stopPropagation();
-          const cid = btn.getAttribute("data-comment-edit");
-          const editBox = listBox.querySelector(`[data-comment-edit-box="${cid}"]`);
-          const textBox = listBox.querySelector(`[data-comment-text="${cid}"]`);
-          if (editBox && textBox) {
-            const openNow = editBox.style.display === "none";
-            editBox.style.display = openNow ? "block" : "none";
-            textBox.style.display = openNow ? "none" : "block";
-          }
-        });
-      });
-
-      listBox.querySelectorAll("[data-comment-edit-cancel]").forEach((btn) => {
-        btn.addEventListener("click", (ev) => {
-          ev.stopPropagation();
-          const cid = btn.getAttribute("data-comment-edit-cancel");
-          const editBox = listBox.querySelector(`[data-comment-edit-box="${cid}"]`);
-          const textBox = listBox.querySelector(`[data-comment-text="${cid}"]`);
-          if (editBox && textBox) {
-            editBox.style.display = "none";
-            textBox.style.display = "block";
-          }
-        });
-      });
-
-      listBox.querySelectorAll("[data-comment-edit-save]").forEach((btn) => {
-        btn.addEventListener("click", async (ev) => {
-          ev.stopPropagation();
-          const cid = btn.getAttribute("data-comment-edit-save");
-          const inp = listBox.querySelector(`[data-comment-edit-input="${cid}"]`);
-          const newText = inp ? inp.value.trim() : "";
-          if (!cid || !newText) return;
-          try {
-            const res = await apiPost("/api/comments/update", {
-              action: "update",
-              comment_id: cid,
-              scan_id: STATE.activeScanId,
-              author_email: STATE.currentUser?.email || "",
-              author_name: getCurrentCommentActorName(),
-              text: newText,
-            });
-            if (Array.isArray(res?.comments) && STATE.activeScan) {
-              STATE.activeScan.comments = res.comments;
-            }
-            showToast(tr("已更新空間標註", "Updated 3D comment"));
-            await refreshScansCatalog();
-            openCommentsInspector(pt, twd);
-          } catch (err) {
-            showToast(`Edit Comment Error: ${err.message}`);
-          }
-        });
-      });
-
-      listBox.querySelectorAll("[data-comment-delete]").forEach((btn) => {
-        btn.addEventListener("click", async (ev) => {
-          ev.stopPropagation();
-          const cid = btn.getAttribute("data-comment-delete");
-          if (!cid) return;
-          try {
-            const res = await apiPost("/api/comments/delete", {
-              action: "delete",
-              comment_id: cid,
-              scan_id: STATE.activeScanId,
-              author_email: STATE.currentUser?.email || "",
-              author_name: getCurrentCommentActorName(),
-            });
-            if (Array.isArray(res?.comments) && STATE.activeScan) {
-              STATE.activeScan.comments = res.comments;
-            }
-            showToast(tr("已刪除空間標註", "Deleted 3D comment"));
-            await refreshScansCatalog();
-            openCommentsInspector(pt, twd);
-          } catch (err) {
-            showToast(`Delete Comment Error: ${err.message}`);
-          }
-        });
-      });
+    if (typeof bindCommentFoldersAndCardsEvents === "function") {
+      bindCommentFoldersAndCardsEvents(scan, comments, pt, twd);
     }
 
     document.getElementById("btnSubmitComment")?.addEventListener("click", async () => {
       const text = document.getElementById("txtNewComment")?.value.trim();
+      const selectedFolder = document.getElementById("selNewCommentFolder")?.value || "";
       const attachedDraft = Array.isArray(STATE.pendingCommentDraftPhotos) ? STATE.pendingCommentDraftPhotos : [];
       if (!text && !attachedDraft.length) return;
       const customGuestName = document.getElementById("txtGuestAuthorName")?.value.trim() || "";
@@ -4495,6 +4357,7 @@
           author_email: resolvedAuthorEmail,
           author_name: resolvedAuthorName,
           text: text || tr("（附加 RTK 現勘照片）", "(Attached RTK Photos)"),
+          folder: selectedFolder,
           pos_x: pt.x,
           pos_y: pt.y,
           pos_z: pt.z,
@@ -4505,8 +4368,12 @@
         });
         STATE.pendingCommentDraftPt = null;
         STATE.pendingCommentDraftPhotos = [];
+        STATE.selectedNewCommentFolder = selectedFolder;
         if (Array.isArray(res?.comments) && STATE.activeScan) {
           STATE.activeScan.comments = res.comments;
+        }
+        if (Array.isArray(res?.comment_folders) && STATE.activeScan) {
+          STATE.activeScan.comment_folders = res.comment_folders;
         }
         SHARE_TELEMETRY.recordCommentPosted(resolvedAuthorName, text || "RTK Photos");
         const bannerNameInp = document.getElementById("inpShareViewerName");
@@ -4581,7 +4448,7 @@
       add3DPinMarker(STATE.pendingCommentDraftPt, 0x0284c7, studioThree.commentPinsGroup);
     }
     if (studioThree.commentPinsGroup) {
-      studioThree.commentPinsGroup.visible = STATE.categorizeLabelsVisible !== false;
+      studioThree.commentPinsGroup.visible = true;
     }
 
     const scan = STATE.activeScan;
@@ -4591,6 +4458,11 @@
     }
 
     scan.comments.forEach((c) => {
+      const folderName = String(c?.folder || "").trim();
+      const folderKey = `${STATE.activeScanId || scan.scan_id || ""}::${folderName}`;
+      if (STATE.hiddenCommentFolders && STATE.hiddenCommentFolders[folderKey]) {
+        return;
+      }
       const px = Number(c.pos_x) || 0;
       const py = Number(c.pos_y) || 0;
       const pz = Number(c.pos_z) || 0;
@@ -4601,6 +4473,7 @@
         px === 0 && py === 0 && pz === 0 && Math.abs(cE) > 100 && Math.abs(cN) > 100 && typeof twd97ToStudioLocalVec === "function"
           ? twd97ToStudioLocalVec(cE, cN, cH, null, null)
           : new THREE.Vector3(px, py, pz);
+      add3DPinMarker(basePt, 0x0284c7, studioThree.commentPinsGroup);
       const worldPt = new THREE.Vector3(basePt.x, basePt.y + 0.12, basePt.z);
       const author = escapeHtml(c.author_name || "Reviewer");
       const timeStr = escapeHtml((c.created_at || "").slice(0, 16));
@@ -4642,7 +4515,8 @@
             ${pinPhotosHtml}
             ${
               canEditThis && cid
-                ? `<div style="display:flex;justify-content:flex-end;margin-top:6px;">
+                ? `<div style="display:flex;justify-content:flex-end;gap:4px;margin-top:6px;">
+                     <button type="button" class="btn-xs" data-pin-upload-local="${cid}" title="${tr("從裝置上傳照片", "Upload Photo from Device")}" style="height:22px;padding:0 6px;font-size:10.5px;pointer-events:auto;cursor:pointer;">📁+</button>
                      <button type="button" class="btn-xs" data-pin-upload-photo="${cid}" style="height:22px;padding:0 7px;font-size:10.5px;color:var(--ui-accent);border-color:var(--ui-accent);pointer-events:auto;cursor:pointer;">📷+ ${tr("新增照片", "Add Photo")}</button>
                    </div>`
                 : ""
@@ -4654,6 +4528,7 @@
         rawHtml: true,
         isCommentPin: true,
         pointerEventsAuto: true,
+        folderKey,
       });
       if (badge && badge.el) {
         badge.el.addEventListener("pointerdown", (ev) => ev.stopPropagation());
@@ -4684,6 +4559,12 @@
             } catch (err) {
               showToast(`Remove Photo Error: ${err.message}`);
             }
+            return;
+          }
+          const uploadLocalBtn = ev.target && ev.target.closest ? ev.target.closest("[data-pin-upload-local]") : null;
+          if (uploadLocalBtn && c.comment_id) {
+            ev.stopPropagation();
+            triggerCommentPhotoFilePicker(c.comment_id);
             return;
           }
           const uploadBtn = ev.target && ev.target.closest ? ev.target.closest("[data-pin-upload-photo]") : null;

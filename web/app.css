@@ -4684,12 +4684,178 @@ body.theme-light .gs-fp-touch-btn {
   min-width: 36px;
 }
 
+/* Bright / Light Theme Overrides for Photo Lightbox & Zoom Sidebar */
+html[data-theme="light"] .gs-lightbox-backdrop,
+html[data-theme="bright"] .gs-lightbox-backdrop,
+body.theme-light .gs-lightbox-backdrop,
+.gs-lightbox-backdrop.is-light-theme {
+  background: rgba(241, 245, 249, 0.86) !important;
+  backdrop-filter: blur(10px);
+}
 
+html[data-theme="light"] .gs-lightbox-card,
+html[data-theme="bright"] .gs-lightbox-card,
+body.theme-light .gs-lightbox-card,
+.gs-lightbox-backdrop.is-light-theme .gs-lightbox-card {
+  background: #ffffff !important;
+  border: 1px solid rgba(15, 23, 42, 0.14) !important;
+  box-shadow: 0 20px 50px rgba(15, 23, 42, 0.18) !important;
+  color: #0f172a !important;
+}
 
+html[data-theme="light"] .gs-lightbox-header,
+html[data-theme="bright"] .gs-lightbox-header,
+body.theme-light .gs-lightbox-header,
+.gs-lightbox-backdrop.is-light-theme .gs-lightbox-header,
+html[data-theme="light"] .gs-lightbox-filmstrip,
+html[data-theme="bright"] .gs-lightbox-filmstrip,
+body.theme-light .gs-lightbox-filmstrip,
+.gs-lightbox-backdrop.is-light-theme .gs-lightbox-filmstrip {
+  background: #f8fafc !important;
+  color: #0f172a !important;
+  border-color: rgba(15, 23, 42, 0.10) !important;
+}
 
+html[data-theme="light"] .gs-lightbox-stage,
+html[data-theme="bright"] .gs-lightbox-stage,
+body.theme-light .gs-lightbox-stage,
+.gs-lightbox-backdrop.is-light-theme .gs-lightbox-stage {
+  background: #f1f5f9 !important;
+  border-color: rgba(15, 23, 42, 0.12) !important;
+}
 
+html[data-theme="light"] .gs-lightbox-meta,
+html[data-theme="bright"] .gs-lightbox-meta,
+body.theme-light .gs-lightbox-meta,
+.gs-lightbox-backdrop.is-light-theme .gs-lightbox-meta {
+  color: #475569 !important;
+}
 
+html[data-theme="light"] .gs-lightbox-btn:not(.accent),
+html[data-theme="bright"] .gs-lightbox-btn:not(.accent),
+body.theme-light .gs-lightbox-btn:not(.accent),
+.gs-lightbox-backdrop.is-light-theme .gs-lightbox-btn:not(.accent) {
+  background: #ffffff !important;
+  color: #0f172a !important;
+  border: 1px solid rgba(15, 23, 42, 0.16) !important;
+}
 
+html[data-theme="light"] .gs-lightbox-btn:not(.accent):hover,
+html[data-theme="bright"] .gs-lightbox-btn:not(.accent):hover,
+body.theme-light .gs-lightbox-btn:not(.accent):hover,
+.gs-lightbox-backdrop.is-light-theme .gs-lightbox-btn:not(.accent):hover {
+  background: #e2e8f0 !important;
+}
 
+html[data-theme="light"] .gs-photo-zoom-sidebar,
+html[data-theme="bright"] .gs-photo-zoom-sidebar,
+body.theme-light .gs-photo-zoom-sidebar,
+.gs-lightbox-backdrop.is-light-theme .gs-photo-zoom-sidebar {
+  background: rgba(255, 255, 255, 0.92) !important;
+  border-color: rgba(15, 23, 42, 0.14) !important;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.14) !important;
+}
 
+html[data-theme="light"] .gs-photo-zoom-btn,
+html[data-theme="bright"] .gs-photo-zoom-btn,
+body.theme-light .gs-photo-zoom-btn,
+.gs-lightbox-backdrop.is-light-theme .gs-photo-zoom-btn,
+html[data-theme="light"] .gs-photo-zoom-reset,
+html[data-theme="bright"] .gs-photo-zoom-reset,
+body.theme-light .gs-photo-zoom-reset,
+.gs-lightbox-backdrop.is-light-theme .gs-photo-zoom-reset {
+  background: #ffffff !important;
+  color: #0f172a !important;
+  border-color: rgba(15, 23, 42, 0.16) !important;
+}
+
+html[data-theme="light"] .gs-photo-zoom-badge,
+html[data-theme="bright"] .gs-photo-zoom-badge,
+body.theme-light .gs-photo-zoom-badge,
+.gs-lightbox-backdrop.is-light-theme .gs-photo-zoom-badge {
+  color: #0284c7 !important;
+}
+
+/* Immediate Photo Upload Placeholder Square & Rotating Ring */
+.gs-photo-upload-placeholder {
+  width: 68px;
+  height: 56px;
+  border-radius: 6px;
+  border: 1px dashed var(--ui-accent);
+  background: var(--ui-bg-subtle);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  flex-shrink: 0;
+}
+
+.gs-upload-spinner-ring {
+  width: 20px;
+  height: 20px;
+  border: 2.5px solid rgba(56, 189, 248, 0.25);
+  border-top-color: var(--ui-accent);
+  border-radius: 50%;
+  animation: gsSpin 0.75s linear infinite;
+}
+
+@keyframes gsSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Comment Folders & Icon-Only Controls */
+.gs-comment-folder-section {
+  border: 1px solid var(--ui-border);
+  border-radius: 8px;
+  background: rgba(15, 23, 42, 0.18);
+  padding: 6px 7px;
+  margin-top: 8px;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+html[data-theme="light"] .gs-comment-folder-section,
+body.theme-light .gs-comment-folder-section {
+  background: rgba(241, 245, 249, 0.65);
+}
+
+.gs-comment-folder-section.drag-over {
+  border-color: var(--ui-accent);
+  background: rgba(56, 189, 248, 0.10);
+}
+
+.gs-comment-folder-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 2px 3px;
+}
+
+.gs-comment-folder-icon-btn {
+  width: 24px;
+  height: 22px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 5px;
+  flex-shrink: 0;
+}
+
+.gs-comment-folder-icon-btn.is-visible-3d {
+  color: var(--ui-accent);
+  border-color: rgba(56, 189, 248, 0.45);
+}
+
+.gs-comment-folder-icon-btn.is-hidden-3d {
+  color: var(--ui-text-muted);
+  opacity: 0.65;
+}
+
+.gs-comment-folder-icon-btn.danger {
+  color: #ef4444;
+  border-color: rgba(239, 68, 68, 0.35);
+}
 

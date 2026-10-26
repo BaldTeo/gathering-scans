@@ -1210,6 +1210,137 @@ class ServerWriteRoutesMixin:
                     self.send_json({"error": "Read-only Guest Mode cannot post or edit comments. Sign in with Google to comment."}, status=403)
                     return
 
+                if action == "create_folder":
+                    if not scan_id:
+                        self.send_json({"error": "scan_id is required to create a comment folder."}, status=400)
+                        return
+                    fname_new = str(payload.get("folder") or payload.get("folder_name") or "").strip()
+                    folders_out = DB.create_comment_folder(scan_id, fname_new)
+                    _VPS_RAM_FALLBACK_CACHE.clear()
+                    cmts_list = DB.list_comments(scan_id)
+                    self.send_json(
+                        {
+                            "status": "ok",
+                            "scan_id": scan_id,
+                            "folder": fname_new,
+                            "comment_folders": folders_out,
+                            "comments": cmts_list,
+                        }
+                    )
+                    return
+
+                if action == "rename_folder":
+                    if not scan_id:
+                        self.send_json({"error": "scan_id is required to rename a comment folder."}, status=400)
+                        return
+                    old_f = str(payload.get("old_folder") or payload.get("old_name") or "").strip()
+                    new_f = str(payload.get("new_folder") or payload.get("new_name") or payload.get("folder") or "").strip()
+                    folders_out = DB.rename_comment_folder(scan_id, old_f, new_f)
+                    _VPS_RAM_FALLBACK_CACHE.clear()
+                    cmts_list = DB.list_comments(scan_id)
+                    self.send_json(
+                        {
+                            "status": "ok",
+                            "scan_id": scan_id,
+                            "old_folder": old_f,
+                            "folder": new_f,
+                            "comment_folders": folders_out,
+                            "comments": cmts_list,
+                        }
+                    )
+                    return
+
+                if action == "delete_folder":
+                    if not scan_id:
+                        self.send_json({"error": "scan_id is required to delete a comment folder."}, status=400)
+                        return
+                    del_f = str(payload.get("folder") or payload.get("folder_name") or "").strip()
+                    folders_out = DB.delete_comment_folder(scan_id, del_f)
+                    _VPS_RAM_FALLBACK_CACHE.clear()
+                    cmts_list = DB.list_comments(scan_id)
+                    self.send_json(
+                        {
+                            "status": "ok",
+                            "scan_id": scan_id,
+                            "deleted_folder": del_f,
+                            "comment_folders": folders_out,
+                            "comments": cmts_list,
+                        }
+                    )
+                    return
+
+                if action == "move_photo":
+                    src_cid = str(payload.get("source_comment_id") or "").strip()
+                    tgt_cid = str(payload.get("target_comment_id") or "").strip()
+                    tgt_folder = payload.get("target_folder")
+                    src_cmt = DB.get_comment(src_cid) if src_cid else None
+                    if not src_cmt:
+                        self.send_json({"error": "Source comment not found."}, status=404)
+                        return
+                    if not scan_id:
+                        scan_id = str(src_cmt.get("scan_id") or "").strip()
+                    if not self._can_actor_modify_comment(src_cmt, actor_email, actor_role, payload):
+                        self.send_json(
+                            {"error": "Only the comment author or an admin can move photos from this comment."},
+                            status=403,
+                        )
+                        return
+                    raw_photo = payload.get("photo") if isinstance(payload.get("photo"), dict) else {}
+                    photo_url = str(payload.get("photo_url") or raw_photo.get("url") or "").strip()
+                    src_photos = list(src_cmt.get("photos") or [])
+                    matched_photo = next((p for p in src_photos if str(p.get("url") or "") == photo_url), None) or raw_photo
+                    if not matched_photo or not matched_photo.get("url"):
+                        self.send_json({"error": "Photo to move not found."}, status=400)
+                        return
+                    remaining_src = [p for p in src_photos if str(p.get("url") or "") != str(matched_photo.get("url"))]
+                    DB.update_comment(
+                        src_cid,
+                        None,
+                        author_name=src_cmt.get("author_name"),
+                        photos=remaining_src,
+                    )
+                    target_updated = None
+                    if tgt_cid and tgt_cid != src_cid:
+                        tgt_cmt = DB.get_comment(tgt_cid)
+                        if tgt_cmt:
+                            target_updated = DB.update_comment(
+                                tgt_cid,
+                                None,
+                                author_name=tgt_cmt.get("author_name"),
+                                append_photos=[matched_photo],
+                            )
+                    elif tgt_folder is not None:
+                        clean_tf = str(tgt_folder or "").strip()
+                        target_updated = DB.add_comment(
+                            {
+                                "scan_id": scan_id,
+                                "author_email": src_cmt.get("author_email") or actor_email or "glibivanov@gatheren.com.tw",
+                                "author_name": src_cmt.get("author_name") or payload.get("author_name") or "雲在天",
+                                "text": str(matched_photo.get("filename") or src_cmt.get("text") or "Photo Note"),
+                                "pos_x": src_cmt.get("pos_x", 0.0),
+                                "pos_y": src_cmt.get("pos_y", 0.0),
+                                "pos_z": src_cmt.get("pos_z", 0.0),
+                                "twd97_e": src_cmt.get("twd97_e", 0.0),
+                                "twd97_n": src_cmt.get("twd97_n", 0.0),
+                                "twd97_h": src_cmt.get("twd97_h", 0.0),
+                                "photos": [matched_photo],
+                                "folder": clean_tf,
+                            }
+                        )
+                    _VPS_RAM_FALLBACK_CACHE.clear()
+                    cmts_list = DB.list_comments(scan_id) if scan_id else []
+                    folders_out = DB.list_comment_folders(scan_id) if scan_id else []
+                    self.send_json(
+                        {
+                            "status": "ok",
+                            "scan_id": scan_id,
+                            "comment": target_updated,
+                            "comment_folders": folders_out,
+                            "comments": cmts_list,
+                        }
+                    )
+                    return
+
                 if action in ("update", "attach_photos"):
                     if not comment_id:
                         self.send_json({"error": "comment_id is required to update a comment."}, status=400)
@@ -1225,8 +1356,9 @@ class ServerWriteRoutesMixin:
                         return
                     new_text = str(payload.get("text") or "").strip() if payload.get("text") is not None else None
                     has_photo_update = ("photos" in payload) or ("append_photos" in payload)
-                    if not new_text and not has_photo_update:
-                        self.send_json({"error": "Comment text or photos required."}, status=400)
+                    has_folder_update = "folder" in payload
+                    if not new_text and not has_photo_update and not has_folder_update:
+                        self.send_json({"error": "Comment text, photos, or folder required."}, status=400)
                         return
                     orig_author = str(existing_cmt.get("author_name") or "").strip()
                     updated_cmt = DB.update_comment(
@@ -1235,10 +1367,19 @@ class ServerWriteRoutesMixin:
                         author_name=orig_author or payload.get("author_name"),
                         photos=payload.get("photos"),
                         append_photos=payload.get("append_photos"),
+                        folder=payload.get("folder") if has_folder_update else None,
                     )
                     _VPS_RAM_FALLBACK_CACHE.clear()
                     cmts_list = DB.list_comments(scan_id) if scan_id else []
-                    self.send_json({"status": "ok", "comment": updated_cmt, "comments": cmts_list})
+                    folders_out = DB.list_comment_folders(scan_id) if scan_id else []
+                    self.send_json(
+                        {
+                            "status": "ok",
+                            "comment": updated_cmt,
+                            "comment_folders": folders_out,
+                            "comments": cmts_list,
+                        }
+                    )
                     return
 
                 if action == "delete":
@@ -1254,13 +1395,30 @@ class ServerWriteRoutesMixin:
                     deleted = DB.delete_comment(comment_id)
                     _VPS_RAM_FALLBACK_CACHE.clear()
                     cmts_list = DB.list_comments(scan_id) if scan_id else []
-                    self.send_json({"status": "ok", "deleted": deleted, "comment_id": comment_id, "comments": cmts_list})
+                    folders_out = DB.list_comment_folders(scan_id) if scan_id else []
+                    self.send_json(
+                        {
+                            "status": "ok",
+                            "deleted": deleted,
+                            "comment_id": comment_id,
+                            "comment_folders": folders_out,
+                            "comments": cmts_list,
+                        }
+                    )
                     return
 
                 cmt = DB.add_comment(payload)
                 _VPS_RAM_FALLBACK_CACHE.clear()
                 cmts_list = DB.list_comments(scan_id) if scan_id else [cmt]
-                self.send_json({"status": "ok", "comment": cmt, "comments": cmts_list})
+                folders_out = DB.list_comment_folders(scan_id) if scan_id else []
+                self.send_json(
+                    {
+                        "status": "ok",
+                        "comment": cmt,
+                        "comment_folders": folders_out,
+                        "comments": cmts_list,
+                    }
+                )
                 return
 
             # 9a. Share Link Visitor Session & Tool Telemetry

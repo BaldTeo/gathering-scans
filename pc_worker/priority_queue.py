@@ -116,6 +116,8 @@ class ScanQueueDB:
                     twd97_n REAL DEFAULT 0.0,
                     twd97_h REAL DEFAULT 0.0,
                     camera_json TEXT DEFAULT '{}',
+                    photos_json TEXT DEFAULT '[]',
+                    folder TEXT DEFAULT '',
                     created_at TEXT NOT NULL
                 );
 
@@ -266,6 +268,10 @@ class ScanQueueDB:
                 pass
             try:
                 conn.execute("ALTER TABLE scan_comments ADD COLUMN photos_json TEXT DEFAULT '[]'")
+            except Exception:
+                pass
+            try:
+                conn.execute("ALTER TABLE scan_comments ADD COLUMN folder TEXT DEFAULT ''")
             except Exception:
                 pass
             conn.executescript(
@@ -1228,6 +1234,11 @@ class ScanQueueDB:
         for ex_k in ("merged_from", "derived_from_scan_id", "applied_adjustments"):
             if ex_k in extra_dict:
                 d[ex_k] = extra_dict[ex_k]
+        raw_folders = extra_dict.get("comment_folders")
+        if isinstance(raw_folders, list):
+            d["comment_folders"] = [str(f).strip() for f in raw_folders if str(f).strip()]
+        else:
+            d["comment_folders"] = []
         d["size_mb"] = round(float(d.get("size_bytes", 0)) / (1024 * 1024), 2)
         wait_m = max(0.0, (time.time() - float(d.get("uploaded_at", time.time()))) / 60.0)
         d["wait_minutes"] = round(wait_m, 1)
@@ -1330,7 +1341,24 @@ class ScanQueueDB:
                 pass
         d["photos"] = photos
         d["photos_json"] = json.dumps(photos, ensure_ascii=False)
+        d["folder"] = str(d.get("folder") or "").strip()
         return d
+
+    @staticmethod
+    def _merge_comment_folder_names(existing_folders: Any, comments: List[Dict[str, Any]]) -> List[str]:
+        merged: List[str] = []
+        seen = set()
+        for f in (existing_folders if isinstance(existing_folders, list) else []):
+            fn = str(f or "").strip()
+            if fn and fn not in seen:
+                seen.add(fn)
+                merged.append(fn)
+        for c in (comments or []):
+            fn = str((c or {}).get("folder") or "").strip()
+            if fn and fn not in seen:
+                seen.add(fn)
+                merged.append(fn)
+        return merged
 
     def get_scan(self, scan_id: str) -> Optional[Dict[str, Any]]:
         with DB_LOCK, self._connect() as conn:
@@ -1344,6 +1372,7 @@ class ScanQueueDB:
             ).fetchall()
             res["comments"] = [self._comment_row_to_dict(c) for c in comments]
             res["comment_count"] = len(res["comments"])
+            res["comment_folders"] = self._merge_comment_folder_names(res.get("comment_folders"), res["comments"])
             bms = conn.execute(
                 "SELECT * FROM scan_measurement_bookmarks WHERE scan_id = ? ORDER BY created_at DESC",
                 (scan_id,),
@@ -1388,6 +1417,7 @@ class ScanQueueDB:
                 cmts = comments_by_scan.get(sid_item, [])
                 item["comments"] = cmts
                 item["comment_count"] = len(cmts)
+                item["comment_folders"] = self._merge_comment_folder_names(item.get("comment_folders"), cmts)
                 bms = bms_by_scan.get(sid_item, [])
                 item["measurement_bookmarks"] = bms
                 item["bookmark_count"] = len(bms)
@@ -1483,10 +1513,115 @@ class ScanQueueDB:
             conn.commit()
             return cur.rowcount > 0
 
+    def _get_scan_extra_dict(self, conn: sqlite3.Connection, scan_id: str) -> Dict[str, Any]:
+        row = conn.execute("SELECT extra_json FROM scans WHERE scan_id = ?", (scan_id,)).fetchone()
+        if not row:
+            return {}
+        raw = row["extra_json"] or "{}"
+        try:
+            d = json.loads(raw)
+            return d if isinstance(d, dict) else {}
+        except Exception:
+            return {}
+
+    def _save_scan_extra_dict(self, conn: sqlite3.Connection, scan_id: str, extra_dict: Dict[str, Any]) -> None:
+        raw_json = json.dumps(extra_dict, ensure_ascii=False)
+        cur = conn.execute(
+            "UPDATE scans SET extra_json = ? WHERE scan_id = ?",
+            (raw_json, scan_id),
+        )
+        if cur.rowcount == 0:
+            conn.execute(
+                """
+                INSERT OR IGNORE INTO scans (
+                    scan_id, name, project_group, capture_date, uploaded_at, uploader_email, uploader_name, status, extra_json
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, 'completed', ?)
+                """,
+                (scan_id, scan_id, scan_id, "2026-10-26", time.time(), "system@gatheren.cloud", "System", raw_json),
+            )
+
+    def list_comment_folders(self, scan_id: str) -> List[str]:
+        clean_sid = str(scan_id or "").strip()
+        if not clean_sid:
+            return []
+        with DB_LOCK, self._connect() as conn:
+            ex = self._get_scan_extra_dict(conn, clean_sid)
+            rows = conn.execute(
+                "SELECT folder FROM scan_comments WHERE scan_id = ? ORDER BY created_at DESC",
+                (clean_sid,),
+            ).fetchall()
+            cmts = [{"folder": r["folder"]} for r in rows]
+            return self._merge_comment_folder_names(ex.get("comment_folders"), cmts)
+
+    def create_comment_folder(self, scan_id: str, folder_name: str) -> List[str]:
+        clean_sid = str(scan_id or "").strip()
+        clean_name = str(folder_name or "").strip()
+        if not clean_sid:
+            return []
+        if not clean_name:
+            return self.list_comment_folders(clean_sid)
+        with DB_LOCK, self._connect() as conn:
+            ex = self._get_scan_extra_dict(conn, clean_sid)
+            cur = [str(f).strip() for f in (ex.get("comment_folders") or []) if str(f).strip()]
+            if clean_name not in cur:
+                cur.append(clean_name)
+                ex["comment_folders"] = cur
+                self._save_scan_extra_dict(conn, clean_sid, ex)
+                conn.commit()
+        return self.list_comment_folders(clean_sid)
+
+    def rename_comment_folder(self, scan_id: str, old_name: str, new_name: str) -> List[str]:
+        clean_sid = str(scan_id or "").strip()
+        clean_old = str(old_name or "").strip()
+        clean_new = str(new_name or "").strip()
+        if not clean_sid or not clean_old or not clean_new or clean_old == clean_new:
+            return self.list_comment_folders(clean_sid)
+        with DB_LOCK, self._connect() as conn:
+            conn.execute(
+                "UPDATE scan_comments SET folder = ? WHERE scan_id = ? AND folder = ?",
+                (clean_new, clean_sid, clean_old),
+            )
+            ex = self._get_scan_extra_dict(conn, clean_sid)
+            cur = [str(f).strip() for f in (ex.get("comment_folders") or []) if str(f).strip()]
+            updated = []
+            seen = set()
+            replaced = False
+            for f in cur:
+                val = clean_new if f == clean_old else f
+                if val == clean_new:
+                    replaced = True
+                if val not in seen:
+                    seen.add(val)
+                    updated.append(val)
+            if not replaced and clean_new not in seen:
+                updated.append(clean_new)
+            ex["comment_folders"] = updated
+            self._save_scan_extra_dict(conn, clean_sid, ex)
+            conn.commit()
+        return self.list_comment_folders(clean_sid)
+
+    def delete_comment_folder(self, scan_id: str, folder_name: str) -> List[str]:
+        clean_sid = str(scan_id or "").strip()
+        clean_name = str(folder_name or "").strip()
+        if not clean_sid or not clean_name:
+            return self.list_comment_folders(clean_sid)
+        with DB_LOCK, self._connect() as conn:
+            conn.execute(
+                "UPDATE scan_comments SET folder = '' WHERE scan_id = ? AND folder = ?",
+                (clean_sid, clean_name),
+            )
+            ex = self._get_scan_extra_dict(conn, clean_sid)
+            cur = [str(f).strip() for f in (ex.get("comment_folders") or []) if str(f).strip()]
+            ex["comment_folders"] = [f for f in cur if f != clean_name]
+            self._save_scan_extra_dict(conn, clean_sid, ex)
+            conn.commit()
+        return self.list_comment_folders(clean_sid)
+
     def add_comment(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         comment_id = payload.get("comment_id") or f"cmt_{int(time.time()*1000)}"
         created_at = payload.get("created_at") or datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
         photos = self._normalize_comment_photos(payload.get("photos") or payload.get("photos_json"))
+        folder_val = str(payload.get("folder") or "").strip()
         rec = {
             "comment_id": comment_id,
             "scan_id": payload["scan_id"],
@@ -1501,6 +1636,7 @@ class ScanQueueDB:
             "twd97_h": float(payload.get("twd97_h", 0.0)),
             "camera_json": json.dumps(payload.get("camera", {})),
             "photos_json": json.dumps(photos, ensure_ascii=False),
+            "folder": folder_val,
             "created_at": created_at,
         }
         with DB_LOCK, self._connect() as conn:
@@ -1508,14 +1644,21 @@ class ScanQueueDB:
                 """
                 INSERT INTO scan_comments (
                     comment_id, scan_id, author_email, author_name, text,
-                    pos_x, pos_y, pos_z, twd97_e, twd97_n, twd97_h, camera_json, photos_json, created_at
+                    pos_x, pos_y, pos_z, twd97_e, twd97_n, twd97_h, camera_json, photos_json, folder, created_at
                 ) VALUES (
                     :comment_id, :scan_id, :author_email, :author_name, :text,
-                    :pos_x, :pos_y, :pos_z, :twd97_e, :twd97_n, :twd97_h, :camera_json, :photos_json, :created_at
+                    :pos_x, :pos_y, :pos_z, :twd97_e, :twd97_n, :twd97_h, :camera_json, :photos_json, :folder, :created_at
                 )
                 """,
                 rec,
             )
+            if folder_val:
+                ex = self._get_scan_extra_dict(conn, str(payload["scan_id"]))
+                cur_f = [str(f).strip() for f in (ex.get("comment_folders") or []) if str(f).strip()]
+                if folder_val not in cur_f:
+                    cur_f.append(folder_val)
+                    ex["comment_folders"] = cur_f
+                    self._save_scan_extra_dict(conn, str(payload["scan_id"]), ex)
             conn.commit()
         return self._comment_row_to_dict(rec)
 
@@ -1539,6 +1682,7 @@ class ScanQueueDB:
         author_name: Optional[str] = None,
         photos: Optional[Any] = None,
         append_photos: Optional[Any] = None,
+        folder: Optional[str] = None,
     ) -> Optional[Dict[str, Any]]:
         if not comment_id:
             return None
@@ -1551,7 +1695,7 @@ class ScanQueueDB:
             existing_dict = self._comment_row_to_dict(existing_row)
             clean_text = (text or "").strip() if text is not None else ""
             final_text = clean_text if clean_text else str(existing_dict.get("text") or "").strip()
-            if not final_text and photos is None and append_photos is None:
+            if not final_text and photos is None and append_photos is None and folder is None:
                 return None
             final_author = (
                 author_name.strip()
@@ -1565,10 +1709,23 @@ class ScanQueueDB:
                 extra_photos = self._normalize_comment_photos(append_photos)
                 cur_photos = self._normalize_comment_photos(cur_photos + extra_photos)
             photos_json_str = json.dumps(cur_photos, ensure_ascii=False)
-            conn.execute(
-                "UPDATE scan_comments SET text = ?, author_name = ?, photos_json = ? WHERE comment_id = ?",
-                (final_text, final_author, photos_json_str, comment_id),
+            final_folder = (
+                str(folder).strip()
+                if folder is not None
+                else str(existing_dict.get("folder") or "").strip()
             )
+            conn.execute(
+                "UPDATE scan_comments SET text = ?, author_name = ?, photos_json = ?, folder = ? WHERE comment_id = ?",
+                (final_text, final_author, photos_json_str, final_folder, comment_id),
+            )
+            if final_folder and existing_dict.get("scan_id"):
+                sid_u = str(existing_dict["scan_id"])
+                ex = self._get_scan_extra_dict(conn, sid_u)
+                cur_f = [str(f).strip() for f in (ex.get("comment_folders") or []) if str(f).strip()]
+                if final_folder not in cur_f:
+                    cur_f.append(final_folder)
+                    ex["comment_folders"] = cur_f
+                    self._save_scan_extra_dict(conn, sid_u, ex)
             conn.commit()
             row = conn.execute("SELECT * FROM scan_comments WHERE comment_id = ?", (comment_id,)).fetchone()
             return self._comment_row_to_dict(row) if row else None

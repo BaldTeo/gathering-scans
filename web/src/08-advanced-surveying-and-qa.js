@@ -1250,7 +1250,7 @@
       if (_drainageLabelTexCache.size > 200) _drainageLabelTexCache.clear();
       _drainageLabelTexCache.set(cacheKey, tex);
     }
-    const mat = new THREE.SpriteMaterial({ map: tex, depthTest: false, depthWrite: false, transparent: true });
+    const mat = new THREE.SpriteMaterial({ map: tex, depthTest: true, depthWrite: false, transparent: true });
     const sp = new THREE.Sprite(mat);
     sp.renderOrder = 999;
     return sp;
@@ -1790,7 +1790,7 @@
     const lineColors = [];
 
     // Arrow physical length is decoupled from cellStep so changing Density (arrows/m²) never changes arrow length!
-    const yLift = 0.09;
+    const yLift = 0.11;
 
     for (let i = 0; i < arrows.length; i++) {
       const a = arrows[i];
@@ -1885,8 +1885,11 @@
         new THREE.MeshBasicMaterial({
           vertexColors: true,
           side: THREE.DoubleSide,
-          depthTest: false,
+          depthTest: true,
           depthWrite: false,
+          polygonOffset: true,
+          polygonOffsetFactor: -1,
+          polygonOffsetUnits: -1,
           transparent: true,
           opacity: 0.94,
         })
@@ -1901,8 +1904,11 @@
         outlineGeom,
         new THREE.LineBasicMaterial({
           vertexColors: true,
-          depthTest: false,
+          depthTest: true,
           depthWrite: false,
+          polygonOffset: true,
+          polygonOffsetFactor: -1,
+          polygonOffsetUnits: -1,
           transparent: true,
           opacity: 0.85,
         })
@@ -1943,6 +1949,8 @@
     updateStudioDrainageLegendHud(stats);
     return stats;
   }
+  window.renderDrainageAndSlopeVisuals3D = renderDrainageAndSlopeVisuals3D;
+  window.renderDrainageOverlay3D = renderDrainageAndSlopeVisuals3D;
 
   async function openDrainageAndSlopeInspector() {
     setActiveStudioTool("drainage");
@@ -2342,8 +2350,11 @@
   const SUB_SCAN_TRAJ_PALETTE = ["#38bdf8", "#10b981", "#f59e0b", "#a855f7", "#f43f5e", "#06b6d4"];
 
   function clearRtkPhotoFrustums3D() {
-    if (studioThree && studioThree.overlayGroup && studioThree.photoFrustumGroup) {
-      studioThree.overlayGroup.remove(studioThree.photoFrustumGroup);
+    if (studioThree && studioThree.photoFrustumGroup) {
+      studioThree.photoFrustumGroup.visible = false;
+      if (studioThree.overlayGroup) {
+        studioThree.overlayGroup.remove(studioThree.photoFrustumGroup);
+      }
       studioThree.photoFrustumGroup = null;
     }
     const ov = document.getElementById("studioPhotoFrustumOverlay");
@@ -2351,8 +2362,11 @@
   }
 
   function clearCameraTrajectory3D() {
-    if (studioThree && studioThree.overlayGroup && studioThree.cameraTrajectoryGroup) {
-      studioThree.overlayGroup.remove(studioThree.cameraTrajectoryGroup);
+    if (studioThree && studioThree.cameraTrajectoryGroup) {
+      studioThree.cameraTrajectoryGroup.visible = false;
+      if (studioThree.overlayGroup) {
+        studioThree.overlayGroup.remove(studioThree.cameraTrajectoryGroup);
+      }
       studioThree.cameraTrajectoryGroup = null;
     }
   }
@@ -2363,6 +2377,19 @@
     clearRtkPhotoFrustums3D();
     if (hideTrajectory || (STATE.activeTool !== "photos" && STATE.activeTool !== "rtk")) {
       clearCameraTrajectory3D();
+      if (studioThree && studioThree.cameraTrajectoryGroup) {
+        studioThree.cameraTrajectoryGroup.visible = false;
+      }
+    }
+    if (studioThree && studioThree.photoFrustumGroup) {
+      studioThree.photoFrustumGroup.visible = false;
+    }
+    if (studioThree && studioThree.photoTargetGroup) {
+      studioThree.photoTargetGroup.visible = false;
+      if (studioThree.overlayGroup) {
+        studioThree.overlayGroup.remove(studioThree.photoTargetGroup);
+      }
+      studioThree.photoTargetGroup = null;
     }
     if (studioThree && studioThree.overlayGroup) {
       const toRemove = [];
@@ -2379,6 +2406,11 @@
 
   function placePhotoTargetMarker3D(targetPt) {
     if (!studioThree || !studioThree.overlayGroup || !targetPt) return;
+    if (studioThree.photoTargetGroup) {
+      studioThree.photoTargetGroup.visible = false;
+      studioThree.overlayGroup.remove(studioThree.photoTargetGroup);
+      studioThree.photoTargetGroup = null;
+    }
     const toRemove = [];
     studioThree.overlayGroup.children.forEach((c) => {
       if (c && c.userData && c.userData.isPhotoTargetPin) {
@@ -2386,10 +2418,16 @@
       }
     });
     toRemove.forEach((c) => studioThree.overlayGroup.remove(c));
+    const targetGrp = new THREE.Group();
+    targetGrp.name = "photoTargetGroup";
+    targetGrp.visible = Boolean(STATE.activeTool === "photos" || STATE.activeTool === "rtk");
+    targetGrp.userData.isPhotoTargetPin = true;
+    studioThree.photoTargetGroup = targetGrp;
+    studioThree.overlayGroup.add(targetGrp);
     if (typeof add3DPinMarker === "function") {
-      add3DPinMarker(targetPt, 0x0284c7, studioThree.overlayGroup, (m) => {
+      add3DPinMarker(targetPt, 0x0284c7, targetGrp, (m) => {
         m.userData.isPhotoTargetPin = true;
-        studioThree.overlayGroup.add(m);
+        targetGrp.add(m);
       });
     }
   }
@@ -2522,6 +2560,9 @@
 
     const grp = new THREE.Group();
     grp.name = "cameraTrajectoryGroup";
+    grp.visible = Boolean(
+      STATE.showCameraTrajectory3D !== false && (STATE.activeTool === "photos" || STATE.activeTool === "rtk")
+    );
     studioThree.cameraTrajectoryGroup = grp;
     studioThree.overlayGroup.add(grp);
 
@@ -2700,6 +2741,7 @@
       studioThree.photoFrustumGroup = null;
     }
     const grp = new THREE.Group();
+    grp.visible = Boolean(STATE.activeTool === "photos" || STATE.activeTool === "rtk");
     studioThree.photoFrustumGroup = grp;
     studioThree.overlayGroup.add(grp);
 
@@ -2896,15 +2938,25 @@
     if (!modal) {
       modal = document.createElement("div");
       modal.id = "gsPhotoLightboxModal";
-      modal.style.cssText =
-        "position:fixed;inset:0;z-index:9999;background:rgba(2,6,23,0.92);backdrop-filter:blur(10px);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px;";
       document.body.appendChild(modal);
     }
+    modal.className = "gs-lightbox-backdrop";
     const list = Array.isArray(allPhotos) && allPhotos.length > 0 ? allPhotos : [{ url: photoUrl, filename: photoTitle, meta: photoMetaText }];
     let activeIdx = Math.max(0, Math.min(list.length - 1, Number(curIdx) || 0));
     let showReticle = true;
 
     const renderLightboxContent = () => {
+      const isLight =
+        document.documentElement.getAttribute("data-theme") === "light" ||
+        document.documentElement.getAttribute("data-theme") === "bright" ||
+        document.body.classList.contains("theme-light") ||
+        document.body.classList.contains("theme-bright") ||
+        STATE.resolvedTheme === "light";
+      modal.classList.toggle("is-light-theme", isLight);
+      modal.style.cssText = `position:fixed;inset:0;z-index:9999;background:${
+        isLight ? "rgba(241, 245, 249, 0.86)" : "rgba(2, 6, 23, 0.92)"
+      };backdrop-filter:blur(10px);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:20px;`;
+
       const item = list[activeIdx] || { url: photoUrl, filename: photoTitle, meta: photoMetaText };
       const url = item.url || photoUrl;
       const fname = item.filename || photoTitle || "RTK_Photo.jpg";
@@ -2921,54 +2973,100 @@
           ? `E:${item.camera_twd97_e}m | N:${item.camera_twd97_n}m | H:+${item.camera_twd97_h}m | RTK σ=${item.rtk_h_sigma_cm || 1.2}cm`
           : "");
       modal.innerHTML = `
-        <div style="width:min(1160px,95vw);display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:10px;color:#f8fafc;">
-          <div style="min-width:0;">
-            <div style="font-size:14px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">📷 ${escapeHtml(fname)}</div>
-            <div style="font-size:11.5px;color:#94a3b8;font-family:var(--font-mono);">${escapeHtml(meta)}</div>
-          </div>
-          <div style="display:flex;align-items:center;gap:8px;flex-shrink:0;">
-            ${
-              hasTargetReticle
-                ? `<button type="button" class="gs-top-btn ${showReticle ? "accent" : ""}" id="btnLightboxToggleReticle" style="height:30px;padding:0 10px;" title="${tr("切換 3D 點擊目標準星", "Toggle 3D Target Reticle")}">🎯 ${tr("目標準星", "Target Reticle")}</button>`
-                : ""
-            }
-            ${
-              list.length > 1
-                ? `<button type="button" class="gs-top-btn" id="btnLightboxPrev" style="height:30px;padding:0 10px;">◀ ${tr("上一張", "Prev")}</button>
-                   <span style="font-size:11.5px;font-family:var(--font-mono);color:#cbd5e1;">${activeIdx + 1} / ${list.length}</span>
-                   <button type="button" class="gs-top-btn" id="btnLightboxNext" style="height:30px;padding:0 10px;">${tr("下一張", "Next")} ▶</button>`
-                : ""
-            }
-            <a class="gs-top-btn accent" href="${escapeHtml(url)}" download="${escapeHtml(fname)}" style="height:30px;padding:0 12px;text-decoration:none;display:inline-flex;align-items:center;gap:5px;">
-              <span>⬇ ${tr("下載照片", "Download")}</span>
-            </a>
-            <button type="button" class="gs-top-btn" id="btnLightboxClose" style="height:30px;padding:0 12px;">✕ ${tr("關閉", "Close")}</button>
-          </div>
-        </div>
-        <div id="photoLightboxViewport" style="position:relative;width:min(1160px,95vw);height:min(78vh,780px);background:#0f172a;border:1px solid rgba(148,163,184,0.28);border-radius:12px;display:flex;align-items:center;justify-content:center;overflow:hidden;box-shadow:0 24px 60px rgba(0,0,0,0.65);user-select:none;touch-action:none;">
-          <div id="lightboxZoomCanvas" style="position:relative;display:inline-flex;align-items:center;justify-content:center;max-width:100%;max-height:100%;transform-origin:center center;will-change:transform;">
-            <img id="imgLightboxMain" src="${escapeHtml(url)}" alt="${escapeHtml(fname)}" draggable="false" style="display:block;max-width:min(1140px,93vw);max-height:min(76vh,760px);width:auto;height:auto;object-fit:contain;cursor:zoom-in;" />
-            ${
-              hasTargetReticle
-                ? `<div id="lightboxTargetReticle" style="display:${showReticle ? "block" : "none"};position:absolute;left:${(uv.u * 100).toFixed(2)}%;top:${(uv.v * 100).toFixed(2)}%;transform:translate(-50%,-50%);pointer-events:none;z-index:5;">
-                     <div style="width:28px;height:28px;border:2px solid #38bdf8;border-radius:50%;box-shadow:0 0 0 2px rgba(2,6,23,0.85),0 0 12px #38bdf8;position:relative;">
-                       <span style="position:absolute;left:50%;top:-7px;bottom:-7px;width:1.5px;background:#38bdf8;transform:translateX(-50%);"></span>
-                       <span style="position:absolute;top:50%;left:-7px;right:-7px;height:1.5px;background:#38bdf8;transform:translateY(-50%);"></span>
-                       <span style="position:absolute;left:50%;top:50%;width:5px;height:5px;border-radius:50%;background:#f43f5e;transform:translate(-50%,-50%);"></span>
-                     </div>
-                   </div>`
-                : ""
-            }
-          </div>
-          <aside id="photoLightboxZoomSidebar" class="gs-photo-zoom-sidebar" aria-label="Photo Zoom Controls">
-            <button type="button" class="gs-photo-zoom-btn" id="btnPhotoZoomIn" title="${tr("放大 (+)", "Zoom In (+)")}">+</button>
-            <div class="gs-photo-zoom-slider-wrap">
-              <input type="range" id="rngPhotoLightboxZoom" class="gs-photo-zoom-slider" min="1" max="25" step="0.1" value="1" orient="vertical" aria-label="Zoom Factor (1x to 25x)" />
+        <div class="gs-lightbox-card" style="width:min(1180px,96vw);display:flex;flex-direction:column;border-radius:14px;overflow:hidden;background:${
+          isLight ? "#ffffff" : "#0b1120"
+        };border:1px solid ${
+          isLight ? "rgba(15, 23, 42, 0.14)" : "rgba(148, 163, 184, 0.26)"
+        };box-shadow:${
+          isLight ? "0 20px 50px rgba(15, 23, 42, 0.18)" : "0 24px 60px rgba(0, 0, 0, 0.65)"
+        };">
+          <div class="gs-lightbox-header" style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 14px;background:${
+            isLight ? "#f8fafc" : "rgba(15, 23, 42, 0.92)"
+          };border-bottom:1px solid ${
+            isLight ? "rgba(15, 23, 42, 0.10)" : "rgba(148, 163, 184, 0.18)"
+          };color:${isLight ? "#0f172a" : "#f8fafc"};">
+            <div style="min-width:0;">
+              <div style="font-size:13.5px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:${
+                isLight ? "#0f172a" : "#f8fafc"
+              };">📷 ${escapeHtml(fname)}</div>
+              <div class="gs-lightbox-meta" style="font-size:11px;color:${
+                isLight ? "#475569" : "#94a3b8"
+              };font-family:var(--font-mono);">${escapeHtml(meta)}</div>
             </div>
-            <button type="button" class="gs-photo-zoom-btn" id="btnPhotoZoomOut" title="${tr("縮小 (−)", "Zoom Out (−)")}">−</button>
-            <div class="gs-photo-zoom-badge" id="lblPhotoLightboxZoom">1.0×</div>
-            <button type="button" class="gs-photo-zoom-reset" id="btnPhotoZoomReset" title="${tr("重設 1:1 比例", "Reset 1:1 Zoom")}">1:1</button>
-          </aside>
+            <div style="display:flex;align-items:center;gap:6px;flex-shrink:0;">
+              ${
+                hasTargetReticle
+                  ? `<button type="button" class="gs-top-btn gs-lightbox-btn ${showReticle ? "accent" : ""}" id="btnLightboxToggleReticle" style="height:30px;padding:0 10px;" title="${tr("切換 3D 點擊目標準星", "Toggle 3D Target Reticle")}">🎯 ${tr("目標準星", "Target Reticle")}</button>`
+                  : ""
+              }
+              ${
+                list.length > 1
+                  ? `<button type="button" class="gs-top-btn gs-lightbox-btn" id="btnLightboxPrev" style="height:30px;padding:0 10px;">◀ ${tr("上一張", "Prev")}</button>
+                     <span class="gs-lightbox-meta" style="font-size:11.5px;font-family:var(--font-mono);color:${
+                       isLight ? "#475569" : "#cbd5e1"
+                     };">${activeIdx + 1} / ${list.length}</span>
+                     <button type="button" class="gs-top-btn gs-lightbox-btn" id="btnLightboxNext" style="height:30px;padding:0 10px;">${tr("下一張", "Next")} ▶</button>`
+                  : ""
+              }
+              <a class="gs-top-btn gs-lightbox-btn accent" href="${escapeHtml(url)}" download="${escapeHtml(fname)}" style="height:30px;padding:0 12px;text-decoration:none;display:inline-flex;align-items:center;gap:5px;">
+                <span>⬇ ${tr("下載照片", "Download")}</span>
+              </a>
+              <button type="button" class="gs-top-btn gs-lightbox-btn" id="btnLightboxClose" style="height:30px;padding:0 12px;">✕ ${tr("關閉", "Close")}</button>
+            </div>
+          </div>
+          <div id="photoLightboxViewport" class="gs-lightbox-stage" style="position:relative;width:100%;height:min(74vh,740px);background:${
+            isLight ? "#f1f5f9" : "#0f172a"
+          };display:flex;align-items:center;justify-content:center;overflow:hidden;user-select:none;touch-action:none;">
+            <div id="lightboxZoomCanvas" style="position:relative;display:inline-flex;align-items:center;justify-content:center;max-width:100%;max-height:100%;transform-origin:center center;will-change:transform;">
+              <img id="imgLightboxMain" src="${escapeHtml(url)}" alt="${escapeHtml(fname)}" draggable="false" style="display:block;max-width:min(1140px,93vw);max-height:min(72vh,720px);width:auto;height:auto;object-fit:contain;cursor:zoom-in;" />
+              ${
+                hasTargetReticle
+                  ? `<div id="lightboxTargetReticle" style="display:${showReticle ? "block" : "none"};position:absolute;left:${(uv.u * 100).toFixed(2)}%;top:${(uv.v * 100).toFixed(2)}%;transform:translate(-50%,-50%);pointer-events:none;z-index:5;">
+                       <div style="width:28px;height:28px;border:2px solid #0284c7;border-radius:50%;box-shadow:0 0 0 2px ${
+                         isLight ? "rgba(255,255,255,0.92)" : "rgba(2,6,23,0.85)"
+                       },0 0 12px #38bdf8;position:relative;">
+                         <span style="position:absolute;left:50%;top:-7px;bottom:-7px;width:1.5px;background:#0284c7;transform:translateX(-50%);"></span>
+                         <span style="position:absolute;top:50%;left:-7px;right:-7px;height:1.5px;background:#0284c7;transform:translateY(-50%);"></span>
+                         <span style="position:absolute;left:50%;top:50%;width:5px;height:5px;border-radius:50%;background:#f43f5e;transform:translate(-50%,-50%);"></span>
+                       </div>
+                     </div>`
+                  : ""
+              }
+            </div>
+            <aside id="photoLightboxZoomSidebar" class="gs-photo-zoom-sidebar" aria-label="Photo Zoom Controls">
+              <button type="button" class="gs-photo-zoom-btn gs-lightbox-btn" id="btnPhotoZoomIn" title="${tr("放大 (+)", "Zoom In (+)")}">+</button>
+              <div class="gs-photo-zoom-slider-wrap">
+                <input type="range" id="rngPhotoLightboxZoom" class="gs-photo-zoom-slider" min="1" max="25" step="0.1" value="1" orient="vertical" aria-label="Zoom Factor (1x to 25x)" />
+              </div>
+              <button type="button" class="gs-photo-zoom-btn gs-lightbox-btn" id="btnPhotoZoomOut" title="${tr("縮小 (−)", "Zoom Out (−)")}">−</button>
+              <div class="gs-photo-zoom-badge gs-lightbox-meta" id="lblPhotoLightboxZoom">1.0×</div>
+              <button type="button" class="gs-photo-zoom-reset gs-lightbox-btn" id="btnPhotoZoomReset" title="${tr("重設 1:1 比例", "Reset 1:1 Zoom")}">1:1</button>
+            </aside>
+          </div>
+          ${
+            list.length > 1
+              ? `<div class="gs-lightbox-filmstrip" style="display:flex;align-items:center;gap:6px;padding:8px 12px;overflow-x:auto;background:${
+                  isLight ? "#f8fafc" : "rgba(15, 23, 42, 0.92)"
+                };border-top:1px solid ${
+                  isLight ? "rgba(15, 23, 42, 0.10)" : "rgba(148, 163, 184, 0.18)"
+                };">
+                  ${list
+                    .map(
+                      (pItem, pIdx) => `
+                    <button type="button" data-lightbox-thumb-idx="${pIdx}" class="gs-lightbox-btn" style="padding:2px;border-radius:6px;border:2px solid ${
+                        pIdx === activeIdx
+                          ? "#0284c7"
+                          : isLight
+                          ? "rgba(15,23,42,0.15)"
+                          : "rgba(148,163,184,0.22)"
+                      };background:${isLight ? "#ffffff" : "#0f172a"};cursor:pointer;flex-shrink:0;">
+                      <img src="${escapeHtml(pItem.url || "")}" alt="${escapeHtml(pItem.filename || "")}" style="width:46px;height:34px;object-fit:cover;display:block;border-radius:4px;" />
+                    </button>`
+                    )
+                    .join("")}
+                </div>`
+              : ""
+          }
         </div>
       `;
       modal.style.display = "flex";
@@ -3146,6 +3244,16 @@
         activeIdx = (activeIdx + 1) % list.length;
         renderLightboxContent();
       });
+      modal.querySelectorAll("[data-lightbox-thumb-idx]").forEach((tBtn) => {
+        tBtn.addEventListener("click", (ev) => {
+          ev.stopPropagation();
+          const tIdx = Number(tBtn.getAttribute("data-lightbox-thumb-idx"));
+          if (Number.isFinite(tIdx) && tIdx >= 0 && tIdx < list.length) {
+            activeIdx = tIdx;
+            renderLightboxContent();
+          }
+        });
+      });
     };
 
     modal.onclick = (e) => {
@@ -3205,6 +3313,10 @@
     if (!pt && !pinnedCameraFilename) {
       clearPhotoTargetVisuals3D(false);
       const camMeta = await camMetaPromise;
+      if (STATE.activeTool !== "photos" && STATE.activeTool !== "rtk") {
+        clearPhotoTargetVisuals3D(true);
+        return;
+      }
       showSidePanel(
         `<span>${tr("RTK 照片與 3D 視錐投影", "RTK Camera & 3D Frustum Inspector")}</span>`,
         `
@@ -3256,6 +3368,10 @@
         reqPayload.camera_filename = pinnedCameraFilename;
       }
       const [res, camMeta] = await Promise.all([apiPost("/api/survey/inspect-photos", reqPayload), camMetaPromise]);
+      if (STATE.activeTool !== "photos" && STATE.activeTool !== "rtk") {
+        clearPhotoTargetVisuals3D(true);
+        return;
+      }
       const photos = Array.isArray(res.photos) ? res.photos : [];
       const targetTwd = res.target_twd97 || clickTwd || { e: 0, n: 0, h: 0 };
       const targetPt = pt ? pt.clone() : twd97ToStudioLocalVec(targetTwd.e, targetTwd.n, targetTwd.h, null, null);
@@ -3687,6 +3803,755 @@
       showToast(tr("已清除 3D 相機視錐", "Cleared 3D camera frustums"));
     });
   }
+
+  // ============================================================================
+  // FEATURE 7: 3D COMMENTS FOLDER ORGANIZATION, VISIBILITY & DRAG-AND-DROP
+  // ============================================================================
+  function getOrderedScanCommentFolders(scan, comments) {
+    const seen = new Set();
+    const named = [];
+    const scanFolders = Array.isArray(scan?.comment_folders) ? scan.comment_folders : [];
+    scanFolders.forEach((f) => {
+      const fn = String(f || "").trim();
+      if (fn && !seen.has(fn)) {
+        seen.add(fn);
+        named.push(fn);
+      }
+    });
+    (Array.isArray(comments) ? comments : []).forEach((c) => {
+      const fn = String(c?.folder || "").trim();
+      if (fn && !seen.has(fn)) {
+        seen.add(fn);
+        named.push(fn);
+      }
+    });
+    return [...named, ""];
+  }
+  window.getOrderedScanCommentFolders = getOrderedScanCommentFolders;
+
+  function buildCommentFolderComposerBarHtml(scan, comments, canModifyComments) {
+    const folders = getOrderedScanCommentFolders(scan, comments);
+    const activeDefaultFolder = String(STATE.selectedNewCommentFolder || "").trim();
+    const optionsHtml = folders
+      .map((fName) => {
+        const label = fName ? `📁 ${escapeHtml(fName)}` : `📂 ${tr("未分類 (Unclassified)", "Unclassified")}`;
+        const sel = fName === activeDefaultFolder ? "selected" : "";
+        return `<option value="${escapeHtml(fName)}" ${sel}>${label}</option>`;
+      })
+      .join("");
+    return `
+      <div style="display:flex;align-items:center;gap:5px;margin-bottom:6px;">
+        <select id="selNewCommentFolder" class="gs-input" style="flex:1;height:28px;padding:2px 8px;font-size:11.5px;" title="${tr("選擇標註資料夾", "Select Note Folder")}" aria-label="${tr("選擇標註資料夾", "Select Note Folder")}">
+          ${optionsHtml}
+        </select>
+        ${
+          canModifyComments
+            ? `<button type="button" class="btn-xs gs-comment-folder-icon-btn" id="btnCreateCommentFolder" title="${tr("新增標註資料夾", "Create New Note Folder")}" aria-label="${tr("新增標註資料夾", "Create New Note Folder")}" style="height:28px;padding:0 8px;font-weight:700;color:var(--ui-accent);border-color:var(--ui-accent);">+📁</button>`
+            : ""
+        }
+      </div>
+    `;
+  }
+  window.buildCommentFolderComposerBarHtml = buildCommentFolderComposerBarHtml;
+
+  function buildCommentFoldersListHtml(scan, comments, canModifyComments) {
+    if (!STATE.collapsedCommentFolders) STATE.collapsedCommentFolders = {};
+    if (!STATE.hiddenCommentFolders) STATE.hiddenCommentFolders = {};
+    const scanId = STATE.activeScanId || scan?.scan_id || "";
+    const folders = getOrderedScanCommentFolders(scan, comments);
+    const allComments = Array.isArray(comments) ? comments : [];
+
+    const renderSingleCardHtml = (c) => {
+      const cid = escapeHtml(c.comment_id || "");
+      const folderStr = escapeHtml(String(c.folder || "").trim());
+      const timeStr = escapeHtml((c.created_at || "").slice(0, 16));
+      const avatar =
+        typeof getCommentAuthorAvatar === "function"
+          ? getCommentAuthorAvatar(c.author_name || "Reviewer", c.author_email || "")
+          : { chars: "RV", bg: "#0284c7" };
+      const canEditThis = typeof canUserEditComment === "function" ? canUserEditComment(c) : canModifyComments;
+      const attachedPhotos = Array.isArray(c.photos) ? c.photos.filter((p) => p && p.url) : [];
+      const photosGridHtml = attachedPhotos.length
+        ? `<div class="gs-comment-photos-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(74px,1fr));gap:6px;margin-top:7px;">
+            ${attachedPhotos
+              .map((p, pIdx) => {
+                const purl = escapeHtml(p.url || "");
+                const pfn = escapeHtml(p.filename || `Photo_${pIdx + 1}.jpg`);
+                return `
+                  <div class="gs-comment-photo-thumb" draggable="${canEditThis ? "true" : "false"}" data-comment-photo-drag-cid="${cid}" data-comment-photo-drag-idx="${pIdx}" style="position:relative;border-radius:6px;overflow:hidden;border:1px solid var(--ui-border);background:var(--ui-bg-pill);cursor:${canEditThis ? "grab" : "pointer"};">
+                    <img src="${purl}" alt="${pfn}" draggable="false" data-comment-photo-enlarge="${cid}" data-comment-photo-idx="${pIdx}" title="${tr("點擊放大檢視（可拖曳照片至其他標註或資料夾）", "Click to enlarge (or drag photo to another note/folder)")}: ${pfn}" style="width:100%;height:58px;object-fit:cover;display:block;cursor:zoom-in;" onerror="this.style.display='none'" />
+                    <div style="display:flex;align-items:center;justify-content:space-between;padding:2px 4px;font-size:9.5px;background:rgba(15,23,42,0.78);color:#e2e8f0;">
+                      <a href="${purl}" download="${pfn}" title="${tr("下載照片", "Download")}" aria-label="${tr("下載照片", "Download")}" style="color:#38bdf8;text-decoration:none;font-weight:700;">⬇</a>
+                      ${
+                        canEditThis && cid
+                          ? `<button type="button" data-comment-remove-photo-cid="${cid}" data-comment-remove-photo-url="${purl}" title="${tr("移除附加照片", "Remove attached photo")}" aria-label="${tr("移除附加照片", "Remove attached photo")}" style="background:none;border:none;color:#f87171;cursor:pointer;font-size:10px;padding:0;line-height:1;">✕</button>`
+                          : ""
+                      }
+                    </div>
+                  </div>
+                `;
+              })
+              .join("")}
+          </div>`
+        : `<div class="gs-comment-photos-grid" style="display:none;grid-template-columns:repeat(auto-fill,minmax(74px,1fr));gap:6px;margin-top:7px;"></div>`;
+      return `
+        <div class="gs-comment-card" draggable="${canEditThis ? "true" : "false"}" data-comment-id="${cid}" data-comment-folder="${folderStr}" data-comment-editable="${canEditThis ? "1" : "0"}" title="${canEditThis ? tr("可拖曳此標註至其他資料夾，或將照片拖曳至此標註附加", "Drag note to a folder, or drop photos here to attach") : ""}" style="background:var(--ui-bg-subtle);border:1px solid var(--ui-border);border-radius:8px;padding:8px 9px;margin-top:6px;transition:border-color 0.15s,background 0.15s;cursor:${canEditThis ? "grab" : "default"};">
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:6px;font-size:11px;color:var(--ui-accent);font-weight:700;">
+            <span style="display:inline-flex;align-items:center;gap:6px;min-width:0;">
+              <span class="gs-comment-card-avatar" style="background:${avatar.bg};">${escapeHtml(avatar.chars)}</span>
+              <span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(c.author_name || "Reviewer")}</span>
+            </span>
+            <div style="display:flex;align-items:center;gap:3px;flex-shrink:0;">
+              <span style="color:var(--ui-text-muted);font-weight:500;font-size:10px;margin-right:2px;">${timeStr}</span>
+              ${
+                canEditThis && cid
+                  ? `<button type="button" class="btn-xs gs-comment-folder-icon-btn" data-comment-find-photos="${cid}" title="${tr("檢視此標註位置的 RTK 實景照片並選擇附加", "Find & attach RTK photos at this comment's location")}" aria-label="${tr("選擇位置照片", "Find Location Photos")}" style="color:var(--ui-accent);border-color:var(--ui-accent);">📷+</button>
+                     <button type="button" class="btn-xs gs-comment-folder-icon-btn" data-comment-upload-photo="${cid}" title="${tr("從電腦或手機上傳照片至 Google Drive 並附加", "Upload local photo to Google Drive & attach")}" aria-label="${tr("上傳檔案", "Upload File")}">📁</button>
+                     <button type="button" class="btn-xs gs-comment-folder-icon-btn" data-comment-edit="${cid}" title="${tr("編輯標註", "Edit Comment")}" aria-label="${tr("編輯標註", "Edit Comment")}">
+                       <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+                     </button>
+                     <button type="button" class="btn-xs gs-comment-folder-icon-btn danger" data-comment-delete="${cid}" title="${tr("刪除標註", "Delete Comment")}" aria-label="${tr("刪除標註", "Delete Comment")}">
+                       <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>
+                     </button>`
+                  : ""
+              }
+            </div>
+          </div>
+          <div class="gs-comment-body-text" data-comment-text="${cid}" style="font-size:12px;color:var(--ui-text-primary);margin-top:4px;white-space:pre-wrap;word-break:break-word;">${escapeHtml(c.text)}</div>
+          ${photosGridHtml}
+          <div class="gs-comment-edit-wrap" data-comment-edit-box="${cid}" style="display:none;margin-top:6px;">
+            <textarea class="gs-input" data-comment-edit-input="${cid}" rows="2" style="font-size:12px;margin-bottom:5px;">${escapeHtml(c.text)}</textarea>
+            <div style="display:flex;gap:5px;justify-content:flex-end;">
+              <button type="button" class="btn-xs" data-comment-edit-cancel="${cid}">${tr("取消", "Cancel")}</button>
+              <button type="button" class="btn-xs accent" data-comment-edit-save="${cid}" style="background:var(--ui-accent);color:#fff;border-color:var(--ui-accent);">${tr("儲存", "Save")}</button>
+            </div>
+          </div>
+          <div style="display:flex;align-items:center;justify-content:space-between;font-size:10px;font-family:monospace;color:var(--ui-text-muted);margin-top:4px;">
+            <span>E:${Number(c.twd97_e).toFixed(1)}m, N:${Number(c.twd97_n).toFixed(1)}m, H:+${Number(c.twd97_h).toFixed(2)}m</span>
+            ${attachedPhotos.length ? `<span style="color:var(--ui-accent);">📷 ${attachedPhotos.length}</span>` : ""}
+          </div>
+        </div>
+      `;
+    };
+
+    return folders
+      .map((fName) => {
+        const folderComments = allComments.filter((c) => String(c?.folder || "").trim() === fName);
+        const folderKey = `${scanId}::${fName}`;
+        const isCollapsed = Boolean(STATE.collapsedCommentFolders[folderKey]);
+        if (STATE.hiddenCommentFolders[folderKey] === undefined) {
+          STATE.hiddenCommentFolders[folderKey] = false; // Visible by default
+        }
+        const isHidden3D = Boolean(STATE.hiddenCommentFolders[folderKey]);
+        const fEsc = escapeHtml(fName);
+        const fTitle = fName ? escapeHtml(fName) : tr("未分類 (Unclassified)", "Unclassified");
+        const eyeSvg = isHidden3D
+          ? `<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/></svg>`
+          : `<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>`;
+
+        return `
+          <div class="gs-comment-folder-section" data-comment-folder-drop="${fEsc}">
+            <div class="gs-comment-folder-header" data-comment-folder-header="${fEsc}">
+              <div style="display:flex;align-items:center;gap:5px;min-width:0;flex:1;">
+                <button type="button" class="btn-xs gs-comment-folder-icon-btn" data-folder-collapse="${fEsc}" title="${isCollapsed ? tr("展開資料夾", "Expand Folder") : tr("收合資料夾", "Collapse Folder")}" aria-label="${isCollapsed ? tr("展開資料夾", "Expand Folder") : tr("收合資料夾", "Collapse Folder")}">
+                  ${isCollapsed ? "▸" : "▾"}
+                </button>
+                <span style="font-size:11.5px;font-weight:700;color:var(--ui-text-primary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+                  ${fName ? "📁" : "📂"} ${fTitle}
+                </span>
+                <span style="font-size:10.5px;font-family:var(--font-mono);color:var(--ui-accent);flex-shrink:0;">(${folderComments.length})</span>
+              </div>
+              <div style="display:flex;align-items:center;gap:3px;flex-shrink:0;">
+                <button type="button" class="btn-xs gs-comment-folder-icon-btn ${isHidden3D ? "is-hidden-3d" : "is-visible-3d"}" data-folder-toggle-vis="${fEsc}" title="${isHidden3D ? tr("顯示此資料夾的 3D 標註圖釘", "Show 3D Note Pins in this Folder") : tr("隱藏此資料夾的 3D 標註圖釘", "Hide 3D Note Pins in this Folder")}" aria-label="${isHidden3D ? tr("顯示此資料夾的 3D 標註圖釘", "Show 3D Note Pins in this Folder") : tr("隱藏此資料夾的 3D 標註圖釘", "Hide 3D Note Pins in this Folder")}">
+                  ${eyeSvg}
+                </button>
+                ${
+                  fName && canModifyComments
+                    ? `<button type="button" class="btn-xs gs-comment-folder-icon-btn" data-folder-rename="${fEsc}" title="${tr("重新命名資料夾", "Rename Folder")}" aria-label="${tr("重新命名資料夾", "Rename Folder")}">
+                         <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+                       </button>
+                       <button type="button" class="btn-xs gs-comment-folder-icon-btn danger" data-folder-delete="${fEsc}" title="${tr("刪除資料夾（標註移至未分類）", "Delete Folder (Move notes to Unclassified)")}" aria-label="${tr("刪除資料夾", "Delete Folder")}">
+                         <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>
+                       </button>`
+                    : ""
+                }
+              </div>
+            </div>
+            <div class="gs-comment-folder-body" style="display:${isCollapsed ? "none" : "block"};">
+              ${
+                folderComments.length
+                  ? folderComments.map(renderSingleCardHtml).join("")
+                  : `<div style="font-size:10.5px;color:var(--ui-text-muted);padding:6px 8px;text-align:center;border:1px dashed var(--ui-border);border-radius:6px;margin-top:5px;">${tr("可將標註或照片拖曳至此資料夾", "Drop notes or photos into this folder")}</div>`
+              }
+            </div>
+          </div>
+        `;
+      })
+      .join("");
+  }
+  window.buildCommentFoldersListHtml = buildCommentFoldersListHtml;
+
+  function bindCommentFoldersAndCardsEvents(scan, comments, pt, twd) {
+    const scanId = STATE.activeScanId || scan?.scan_id || "";
+    const listBox = document.getElementById("commentsListBox");
+    const selFolder = document.getElementById("selNewCommentFolder");
+    if (selFolder) {
+      selFolder.addEventListener("change", () => {
+        STATE.selectedNewCommentFolder = selFolder.value || "";
+      });
+    }
+
+    document.getElementById("btnCreateCommentFolder")?.addEventListener("click", async (ev) => {
+      ev.stopPropagation();
+      const rawName = window.prompt(tr("請輸入新標註資料夾名稱：", "Enter new note folder name:"), "");
+      const folderName = String(rawName || "").trim();
+      if (!folderName) return;
+      try {
+        const res = await apiPost("/api/comments", {
+          action: "create_folder",
+          scan_id: scanId,
+          folder_name: folderName,
+        });
+        if (STATE.activeScan) {
+          if (Array.isArray(res?.comment_folders)) STATE.activeScan.comment_folders = res.comment_folders;
+          if (Array.isArray(res?.comments)) STATE.activeScan.comments = res.comments;
+        }
+        STATE.selectedNewCommentFolder = folderName;
+        await refreshScansCatalog();
+        if (typeof openCommentsInspector === "function") openCommentsInspector(pt, twd);
+      } catch (err) {
+        showToast(`Create Folder Error: ${err.message}`, "error");
+      }
+    });
+
+    if (!listBox) return;
+
+    // 1. Collapse / Expand folder
+    listBox.querySelectorAll("[data-folder-collapse]").forEach((btn) => {
+      btn.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        const fName = btn.getAttribute("data-folder-collapse") || "";
+        const folderKey = `${scanId}::${fName}`;
+        STATE.collapsedCommentFolders[folderKey] = !STATE.collapsedCommentFolders[folderKey];
+        const sec = btn.closest(".gs-comment-folder-section");
+        const body = sec?.querySelector(".gs-comment-folder-body");
+        if (body) {
+          body.style.display = STATE.collapsedCommentFolders[folderKey] ? "none" : "block";
+        }
+        const isCol = Boolean(STATE.collapsedCommentFolders[folderKey]);
+        btn.textContent = isCol ? "▸" : "▾";
+        btn.title = isCol ? tr("展開資料夾", "Expand folder") : tr("收合資料夾", "Collapse folder");
+        btn.setAttribute("aria-label", btn.title);
+      });
+    });
+
+    // 2. Folder 3D visibility toggle (visible by default)
+    listBox.querySelectorAll("[data-folder-toggle-vis]").forEach((btn) => {
+      btn.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        const fName = btn.getAttribute("data-folder-toggle-vis") || "";
+        const folderKey = `${scanId}::${fName}`;
+        STATE.hiddenCommentFolders[folderKey] = !STATE.hiddenCommentFolders[folderKey];
+        const isHidden = Boolean(STATE.hiddenCommentFolders[folderKey]);
+        btn.classList.toggle("is-hidden-3d", isHidden);
+        btn.classList.toggle("is-visible-3d", !isHidden);
+        btn.title = isHidden ? tr("在 3D 顯示此資料夾標註", "Show folder notes in 3D") : tr("在 3D 隱藏此資料夾標註", "Hide folder notes in 3D");
+        btn.setAttribute("aria-label", btn.title);
+        btn.innerHTML = isHidden
+          ? `<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/></svg>`
+          : `<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>`;
+        if (typeof renderCommentPins3D === "function") {
+          renderCommentPins3D();
+        }
+      });
+    });
+
+    // 3. Rename folder
+    listBox.querySelectorAll("[data-folder-rename]").forEach((btn) => {
+      btn.addEventListener("click", async (ev) => {
+        ev.stopPropagation();
+        const oldName = btn.getAttribute("data-folder-rename") || "";
+        if (!oldName) return;
+        const rawNew = window.prompt(tr("重新命名標註資料夾：", "Rename note folder:"), oldName);
+        const newName = String(rawNew || "").trim();
+        if (!newName || newName === oldName) return;
+        try {
+          const res = await apiPost("/api/comments/update", {
+            action: "rename_folder",
+            scan_id: scanId,
+            old_name: oldName,
+            new_name: newName,
+            author_email: STATE.currentUser?.email || "",
+            author_name: typeof getCurrentCommentActorName === "function" ? getCurrentCommentActorName() : "Engineer",
+          });
+          const oldKey = `${scanId}::${oldName}`;
+          const newKey = `${scanId}::${newName}`;
+          if (STATE.collapsedCommentFolders && oldKey in STATE.collapsedCommentFolders) {
+            STATE.collapsedCommentFolders[newKey] = STATE.collapsedCommentFolders[oldKey];
+            delete STATE.collapsedCommentFolders[oldKey];
+          }
+          if (STATE.hiddenCommentFolders && oldKey in STATE.hiddenCommentFolders) {
+            STATE.hiddenCommentFolders[newKey] = STATE.hiddenCommentFolders[oldKey];
+            delete STATE.hiddenCommentFolders[oldKey];
+          }
+          if (STATE.activeScan) {
+            if (Array.isArray(res?.comment_folders)) STATE.activeScan.comment_folders = res.comment_folders;
+            if (Array.isArray(res?.comments)) STATE.activeScan.comments = res.comments;
+          }
+          await refreshScansCatalog();
+          if (typeof renderCommentPins3D === "function") renderCommentPins3D();
+          if (typeof openCommentsInspector === "function") openCommentsInspector(pt, twd);
+        } catch (err) {
+          showToast(`Rename Folder Error: ${err.message}`, "error");
+        }
+      });
+    });
+
+    // 4. Delete folder
+    listBox.querySelectorAll("[data-folder-delete]").forEach((btn) => {
+      btn.addEventListener("click", async (ev) => {
+        ev.stopPropagation();
+        const fName = btn.getAttribute("data-folder-delete") || "";
+        if (!fName) return;
+        try {
+          const res = await apiPost("/api/comments/delete", {
+            action: "delete_folder",
+            scan_id: scanId,
+            folder_name: fName,
+            author_email: STATE.currentUser?.email || "",
+            author_name: typeof getCurrentCommentActorName === "function" ? getCurrentCommentActorName() : "Engineer",
+          });
+          if (STATE.activeScan) {
+            if (Array.isArray(res?.comment_folders)) STATE.activeScan.comment_folders = res.comment_folders;
+            if (Array.isArray(res?.comments)) STATE.activeScan.comments = res.comments;
+          }
+          await refreshScansCatalog();
+          if (typeof renderCommentPins3D === "function") renderCommentPins3D();
+          if (typeof openCommentsInspector === "function") openCommentsInspector(pt, twd);
+        } catch (err) {
+          showToast(`Delete Folder Error: ${err.message}`, "error");
+        }
+      });
+    });
+
+    // 5. Drag start on individual comment photo thumbnails (application/x-gs-comment-photo)
+    listBox.querySelectorAll(".gs-comment-photo-thumb[draggable='true']").forEach((thumbEl) => {
+      thumbEl.addEventListener("dragstart", (ev) => {
+        ev.stopPropagation();
+        const cid = thumbEl.getAttribute("data-comment-photo-drag-cid") || "";
+        const pIdx = Number(thumbEl.getAttribute("data-comment-photo-drag-idx")) || 0;
+        const srcCmt = (Array.isArray(comments) ? comments : []).find((item) => String(item.comment_id) === String(cid));
+        const photoObj = Array.isArray(srcCmt?.photos) ? srcCmt.photos[pIdx] : null;
+        if (!cid || !photoObj) return;
+        const payload = { source_comment_id: cid, photo: photoObj };
+        STATE.draggingCommentPhoto = payload;
+        thumbEl.classList.add("dragging");
+        try {
+          ev.dataTransfer.effectAllowed = "move";
+          ev.dataTransfer.setData("application/x-gs-comment-photo", JSON.stringify(payload));
+        } catch (_) {}
+      });
+      thumbEl.addEventListener("dragend", () => {
+        thumbEl.classList.remove("dragging");
+        STATE.draggingCommentPhoto = null;
+      });
+    });
+
+    // 6. Drag start on comment cards (application/x-gs-comment-card)
+    listBox.querySelectorAll(".gs-comment-card[data-comment-id][draggable='true']").forEach((cardEl) => {
+      cardEl.addEventListener("dragstart", (ev) => {
+        if (ev.target && ev.target.closest && ev.target.closest(".gs-comment-photo-thumb")) return;
+        const cid = cardEl.getAttribute("data-comment-id") || "";
+        const srcFolder = cardEl.getAttribute("data-comment-folder") || "";
+        if (!cid) return;
+        const payload = { comment_id: cid, source_folder: srcFolder };
+        STATE.draggingCommentCard = payload;
+        cardEl.classList.add("dragging");
+        try {
+          ev.dataTransfer.effectAllowed = "move";
+          ev.dataTransfer.setData("application/x-gs-comment-card", JSON.stringify(payload));
+        } catch (_) {}
+      });
+      cardEl.addEventListener("dragend", () => {
+        cardEl.classList.remove("dragging");
+        STATE.draggingCommentCard = null;
+      });
+    });
+
+    // 7. Drop onto comment cards (move photo between notes, or upload/attach RTK photos)
+    listBox.querySelectorAll('.gs-comment-card[data-comment-id][data-comment-editable="1"]').forEach((cardEl) => {
+      cardEl.addEventListener("dragover", (ev) => {
+        ev.preventDefault();
+        cardEl.classList.add("drag-over");
+      });
+      cardEl.addEventListener("dragleave", () => {
+        cardEl.classList.remove("drag-over");
+      });
+      cardEl.addEventListener("drop", async (ev) => {
+        const targetCid = cardEl.getAttribute("data-comment-id") || "";
+        let movedPhotoPayload = STATE.draggingCommentPhoto || null;
+        try {
+          const rawPhoto = ev.dataTransfer?.getData("application/x-gs-comment-photo");
+          if (rawPhoto) movedPhotoPayload = JSON.parse(rawPhoto);
+        } catch (_) {}
+        if (movedPhotoPayload && movedPhotoPayload.source_comment_id && movedPhotoPayload.photo) {
+          ev.preventDefault();
+          ev.stopPropagation();
+          cardEl.classList.remove("drag-over");
+          STATE.draggingCommentPhoto = null;
+          if (String(movedPhotoPayload.source_comment_id) === String(targetCid)) return;
+          try {
+            const res = await apiPost("/api/comments/update", {
+              action: "move_photo",
+              scan_id: scanId,
+              source_comment_id: movedPhotoPayload.source_comment_id,
+              target_comment_id: targetCid,
+              photo: movedPhotoPayload.photo,
+              author_email: STATE.currentUser?.email || "",
+              author_name: typeof getCurrentCommentActorName === "function" ? getCurrentCommentActorName() : "Engineer",
+            });
+            if (Array.isArray(res?.comments) && STATE.activeScan) {
+              STATE.activeScan.comments = res.comments;
+            }
+            await refreshScansCatalog();
+            if (typeof renderCommentPins3D === "function") renderCommentPins3D();
+            if (typeof openCommentsInspector === "function") openCommentsInspector(pt, twd);
+            showToast(tr("✓ 已移動照片至目標標註", "✓ Moved photo to target note"));
+          } catch (err) {
+            showToast(`Move Photo Error: ${err.message}`, "error");
+          }
+          return;
+        }
+
+        // If dragging a whole comment card, let the parent folder section handle the drop!
+        let cardPayload = STATE.draggingCommentCard || null;
+        try {
+          const rawCard = ev.dataTransfer?.getData("application/x-gs-comment-card");
+          if (rawCard) cardPayload = JSON.parse(rawCard);
+        } catch (_) {}
+        if (cardPayload && cardPayload.comment_id) {
+          cardEl.classList.remove("drag-over");
+          return;
+        }
+
+        ev.preventDefault();
+        ev.stopPropagation();
+        cardEl.classList.remove("drag-over");
+        if (targetCid && ev.dataTransfer && ev.dataTransfer.files && ev.dataTransfer.files.length > 0) {
+          if (typeof uploadLocalFilesToComment === "function") {
+            await uploadLocalFilesToComment(ev.dataTransfer.files, targetCid, pt, twd);
+          }
+          return;
+        }
+        let dropped = STATE.draggingRtkPhotos || [];
+        try {
+          const raw = ev.dataTransfer.getData("application/x-gs-rtk-photos") || ev.dataTransfer.getData("text/plain");
+          if (raw) {
+            const parsed = JSON.parse(raw);
+            if (Array.isArray(parsed) && parsed.length) dropped = parsed;
+          }
+        } catch (_) {}
+        if (targetCid && dropped.length && typeof attachPhotosToCommentById === "function") {
+          const ok = await attachPhotosToCommentById(targetCid, dropped);
+          if (ok && typeof openCommentsInspector === "function") openCommentsInspector(pt, twd);
+        }
+      });
+    });
+
+    // 8. Drop onto folder sections ([data-comment-folder-drop])
+    listBox.querySelectorAll("[data-comment-folder-drop]").forEach((folderEl) => {
+      folderEl.addEventListener("dragover", (ev) => {
+        ev.preventDefault();
+        folderEl.classList.add("drag-over");
+      });
+      folderEl.addEventListener("dragleave", (ev) => {
+        if (!folderEl.contains(ev.relatedTarget)) {
+          folderEl.classList.remove("drag-over");
+        }
+      });
+      folderEl.addEventListener("drop", async (ev) => {
+        ev.preventDefault();
+        ev.stopPropagation();
+        folderEl.classList.remove("drag-over");
+        const targetFolder = folderEl.getAttribute("data-comment-folder-drop") || "";
+        const actorName = typeof getCurrentCommentActorName === "function" ? getCurrentCommentActorName() : "Engineer";
+        const actorEmail = STATE.currentUser?.email || "engineer@gatheren.cloud";
+
+        // Case A: Dropped a comment card onto this folder
+        let cardPayload = STATE.draggingCommentCard || null;
+        try {
+          const rawCard = ev.dataTransfer?.getData("application/x-gs-comment-card");
+          if (rawCard) cardPayload = JSON.parse(rawCard);
+        } catch (_) {}
+        if (cardPayload && cardPayload.comment_id) {
+          STATE.draggingCommentCard = null;
+          if (String(cardPayload.source_folder || "") === String(targetFolder)) return;
+          try {
+            const res = await apiPost("/api/comments/update", {
+              action: "update",
+              scan_id: scanId,
+              comment_id: cardPayload.comment_id,
+              folder: targetFolder,
+              author_email: actorEmail,
+              author_name: actorName,
+            });
+            if (Array.isArray(res?.comments) && STATE.activeScan) {
+              STATE.activeScan.comments = res.comments;
+            }
+            await refreshScansCatalog();
+            if (typeof renderCommentPins3D === "function") renderCommentPins3D();
+            if (typeof openCommentsInspector === "function") openCommentsInspector(pt, twd);
+            showToast(
+              tr(
+                `✓ 已將標註移至資料夾「${targetFolder || "未分類"}」`,
+                `✓ Moved note to folder "${targetFolder || "Unclassified"}"`
+              )
+            );
+          } catch (err) {
+            showToast(`Move Note Error: ${err.message}`, "error");
+          }
+          return;
+        }
+
+        // Case B: Dropped a comment photo onto this folder
+        let movedPhotoPayload = STATE.draggingCommentPhoto || null;
+        try {
+          const rawPhoto = ev.dataTransfer?.getData("application/x-gs-comment-photo");
+          if (rawPhoto) movedPhotoPayload = JSON.parse(rawPhoto);
+        } catch (_) {}
+        if (movedPhotoPayload && movedPhotoPayload.source_comment_id && movedPhotoPayload.photo) {
+          STATE.draggingCommentPhoto = null;
+          const folderNotes = (Array.isArray(comments) ? comments : []).filter(
+            (c) => String(c?.folder || "").trim() === targetFolder && String(c.comment_id) !== String(movedPhotoPayload.source_comment_id)
+          );
+          try {
+            if (folderNotes.length > 0) {
+              const res = await apiPost("/api/comments/update", {
+                action: "move_photo",
+                scan_id: scanId,
+                source_comment_id: movedPhotoPayload.source_comment_id,
+                target_comment_id: folderNotes[0].comment_id,
+                photo: movedPhotoPayload.photo,
+                author_email: actorEmail,
+                author_name: actorName,
+              });
+              if (Array.isArray(res?.comments) && STATE.activeScan) STATE.activeScan.comments = res.comments;
+            } else {
+              const created = await apiPost("/api/comments", {
+                scan_id: scanId,
+                author_email: actorEmail,
+                author_name: actorName,
+                text: tr("（從其他標註移入照片）", "(Moved Photo)"),
+                folder: targetFolder,
+                pos_x: pt.x,
+                pos_y: pt.y,
+                pos_z: pt.z,
+                twd97_e: twd.e,
+                twd97_n: twd.n,
+                twd97_h: twd.h,
+                photos: [movedPhotoPayload.photo],
+              });
+              const srcCmt = (Array.isArray(comments) ? comments : []).find(
+                (c) => String(c.comment_id) === String(movedPhotoPayload.source_comment_id)
+              );
+              if (srcCmt) {
+                const rem = (Array.isArray(srcCmt.photos) ? srcCmt.photos : []).filter(
+                  (p) => String(p.url) !== String(movedPhotoPayload.photo.url)
+                );
+                const upd = await apiPost("/api/comments/update", {
+                  action: "update",
+                  scan_id: scanId,
+                  comment_id: srcCmt.comment_id,
+                  photos: rem,
+                  author_email: actorEmail,
+                  author_name: actorName,
+                });
+                if (Array.isArray(upd?.comments) && STATE.activeScan) STATE.activeScan.comments = upd.comments;
+              } else if (Array.isArray(created?.comments) && STATE.activeScan) {
+                STATE.activeScan.comments = created.comments;
+              }
+            }
+            await refreshScansCatalog();
+            if (typeof renderCommentPins3D === "function") renderCommentPins3D();
+            if (typeof openCommentsInspector === "function") openCommentsInspector(pt, twd);
+            showToast(tr("✓ 已移動照片至資料夾", "✓ Moved photo to folder"));
+          } catch (err) {
+            showToast(`Move Photo to Folder Error: ${err.message}`, "error");
+          }
+          return;
+        }
+
+        // Case C: Dropped RTK photo(s) onto this folder
+        let droppedRtk = STATE.draggingRtkPhotos || [];
+        try {
+          const rawRtk = ev.dataTransfer?.getData("application/x-gs-rtk-photos") || ev.dataTransfer?.getData("text/plain");
+          if (rawRtk) {
+            const parsed = JSON.parse(rawRtk);
+            if (Array.isArray(parsed) && parsed.length) droppedRtk = parsed;
+          }
+        } catch (_) {}
+        if (droppedRtk.length) {
+          STATE.pendingCommentDraftPhotos = droppedRtk.slice();
+          STATE.selectedNewCommentFolder = targetFolder;
+          if (typeof openCommentsInspector === "function") openCommentsInspector(pt, twd);
+          return;
+        }
+        if (ev.dataTransfer && ev.dataTransfer.files && ev.dataTransfer.files.length > 0) {
+          STATE.selectedNewCommentFolder = targetFolder;
+          if (typeof uploadLocalFilesToComment === "function") {
+            await uploadLocalFilesToComment(ev.dataTransfer.files, null, pt, twd);
+          }
+        }
+      });
+    });
+
+    // 9. Existing comment card actions (enlarge photo, remove photo, find location photos, upload photo, edit, delete)
+    listBox.querySelectorAll("[data-comment-photo-enlarge]").forEach((imgEl) => {
+      imgEl.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        const cid = imgEl.getAttribute("data-comment-photo-enlarge");
+        const pIdx = Number(imgEl.getAttribute("data-comment-photo-idx")) || 0;
+        const targetComment = comments.find((item) => String(item.comment_id) === String(cid));
+        const cPhotos = Array.isArray(targetComment?.photos) ? targetComment.photos : [];
+        const p = cPhotos[pIdx];
+        if (p && typeof openPhotoLightboxModal === "function") {
+          openPhotoLightboxModal(p.url, p.filename, "", cPhotos, pIdx);
+        }
+      });
+    });
+
+    listBox.querySelectorAll("[data-comment-remove-photo-url]").forEach((btn) => {
+      btn.addEventListener("click", async (ev) => {
+        ev.stopPropagation();
+        const cid = btn.getAttribute("data-comment-remove-photo-cid");
+        const rmUrl = btn.getAttribute("data-comment-remove-photo-url");
+        const targetComment = comments.find((item) => String(item.comment_id) === String(cid));
+        if (!cid || !targetComment) return;
+        const remaining = (Array.isArray(targetComment.photos) ? targetComment.photos : []).filter(
+          (p) => String(p.url) !== String(rmUrl)
+        );
+        try {
+          const res = await apiPost("/api/comments/update", {
+            action: "update",
+            comment_id: cid,
+            scan_id: scanId,
+            author_email: STATE.currentUser?.email || "",
+            author_name: typeof getCurrentCommentActorName === "function" ? getCurrentCommentActorName() : "Engineer",
+            photos: remaining,
+          });
+          if (Array.isArray(res?.comments) && STATE.activeScan) {
+            STATE.activeScan.comments = res.comments;
+          }
+          await refreshScansCatalog();
+          if (typeof openCommentsInspector === "function") openCommentsInspector(pt, twd);
+        } catch (err) {
+          showToast(`Remove Photo Error: ${err.message}`);
+        }
+      });
+    });
+
+    listBox.querySelectorAll("[data-comment-find-photos]").forEach((btn) => {
+      btn.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        const cid = btn.getAttribute("data-comment-find-photos");
+        const targetComment = comments.find((item) => String(item.comment_id) === String(cid));
+        if (targetComment && typeof openLocationPhotosForComment === "function") {
+          openLocationPhotosForComment(targetComment);
+        }
+      });
+    });
+
+    listBox.querySelectorAll("[data-comment-upload-photo]").forEach((btn) => {
+      btn.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        const cid = btn.getAttribute("data-comment-upload-photo");
+        if (cid && typeof triggerCommentPhotoFilePicker === "function") {
+          triggerCommentPhotoFilePicker(cid, pt, twd);
+        }
+      });
+    });
+
+    listBox.querySelectorAll("[data-comment-edit]").forEach((btn) => {
+      btn.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        const cid = btn.getAttribute("data-comment-edit");
+        const editBox = listBox.querySelector(`[data-comment-edit-box="${cid}"]`);
+        const textBox = listBox.querySelector(`[data-comment-text="${cid}"]`);
+        if (editBox && textBox) {
+          const openNow = editBox.style.display === "none";
+          editBox.style.display = openNow ? "block" : "none";
+          textBox.style.display = openNow ? "none" : "block";
+        }
+      });
+    });
+
+    listBox.querySelectorAll("[data-comment-edit-cancel]").forEach((btn) => {
+      btn.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        const cid = btn.getAttribute("data-comment-edit-cancel");
+        const editBox = listBox.querySelector(`[data-comment-edit-box="${cid}"]`);
+        const textBox = listBox.querySelector(`[data-comment-text="${cid}"]`);
+        if (editBox && textBox) {
+          editBox.style.display = "none";
+          textBox.style.display = "block";
+        }
+      });
+    });
+
+    listBox.querySelectorAll("[data-comment-edit-save]").forEach((btn) => {
+      btn.addEventListener("click", async (ev) => {
+        ev.stopPropagation();
+        const cid = btn.getAttribute("data-comment-edit-save");
+        const inp = listBox.querySelector(`[data-comment-edit-input="${cid}"]`);
+        const newText = inp ? inp.value.trim() : "";
+        if (!cid || !newText) return;
+        try {
+          const res = await apiPost("/api/comments/update", {
+            action: "update",
+            comment_id: cid,
+            scan_id: scanId,
+            author_email: STATE.currentUser?.email || "",
+            author_name: typeof getCurrentCommentActorName === "function" ? getCurrentCommentActorName() : "Engineer",
+            text: newText,
+          });
+          if (Array.isArray(res?.comments) && STATE.activeScan) {
+            STATE.activeScan.comments = res.comments;
+          }
+          showToast(tr("已更新空間標註", "Updated 3D comment"));
+          await refreshScansCatalog();
+          if (typeof openCommentsInspector === "function") openCommentsInspector(pt, twd);
+        } catch (err) {
+          showToast(`Edit Comment Error: ${err.message}`);
+        }
+      });
+    });
+
+    listBox.querySelectorAll("[data-comment-delete]").forEach((btn) => {
+      btn.addEventListener("click", async (ev) => {
+        ev.stopPropagation();
+        const cid = btn.getAttribute("data-comment-delete");
+        if (!cid) return;
+        try {
+          const res = await apiPost("/api/comments/delete", {
+            action: "delete",
+            comment_id: cid,
+            scan_id: scanId,
+            author_email: STATE.currentUser?.email || "",
+            author_name: typeof getCurrentCommentActorName === "function" ? getCurrentCommentActorName() : "Engineer",
+          });
+          if (Array.isArray(res?.comments) && STATE.activeScan) {
+            STATE.activeScan.comments = res.comments;
+          }
+          showToast(tr("已刪除空間標註", "Deleted 3D comment"));
+          await refreshScansCatalog();
+          if (typeof openCommentsInspector === "function") openCommentsInspector(pt, twd);
+        } catch (err) {
+          showToast(`Delete Comment Error: ${err.message}`);
+        }
+      });
+    });
+  }
+  window.bindCommentFoldersAndCardsEvents = bindCommentFoldersAndCardsEvents;
 
   // ============================================================================
   // GLOBAL EVENT BINDINGS FOR NEW MAP, STUDIO & COMPARE SURVEYING CONTROLS

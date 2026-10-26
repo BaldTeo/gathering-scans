@@ -856,10 +856,10 @@ class GatheringScansTestSuite(unittest.TestCase):
         with open(os.path.join(BASE_DIR, "web", "src", "08-advanced-surveying-and-qa.js"), "r", encoding="utf-8") as f:
             js08 = f.read()
 
-        # 1. Labels on/off also hides comment pins & #btnStudioToggleCategorizeLabels always visible
-        self.assertIn('if (b.isCommentPin) {\n        if (STATE.categorizeLabelsVisible === false) {\n          b.el.style.display = "none";\n          return;\n        }', js03)
+        # 1. Comment pins decoupled from categorizeLabelsVisible (controlled by folder visibility STATE.hiddenCommentFolders) & #btnStudioToggleCategorizeLabels always visible
+        self.assertIn("if (b.isCommentPin) {\n        if (b.folderKey && STATE.hiddenCommentFolders && STATE.hiddenCommentFolders[b.folderKey]) {", js03)
         self.assertIn('topLblBtn.style.display = "inline-flex";', js05)
-        self.assertIn("studioThree.commentPinsGroup.visible = Boolean(visible);", js05)
+        self.assertIn("studioThree.commentPinsGroup.visible = true;", js05)
 
         # 2. Bright/light theme support for .gs-comment-pin-popover
         self.assertIn('html[data-theme="light"] .gs-comment-pin-popover', css)
@@ -1389,6 +1389,112 @@ class GatheringScansTestSuite(unittest.TestCase):
         self.assertIn(".gs-comment-pin-popover:hover", css_chk)
         self.assertIn("pointer-events: auto !important;", css_chk)
 
+    def test_18_six_v162_features_upload_spinner_lightbox_theme_comment_folders_camera_hide_occlusion_and_auto_classify(self):
+        """Verify all 6 v162 features:
+        1. Immediate upload placeholder square (.gs-photo-upload-placeholder + .gs-upload-spinner-ring)
+        2. Bright / Light Theme for Image Zoom Window (openPhotoLightboxModal)
+        3. Comment Folders CRUD + Dragging Notes & Photos Between Folders + Folder Visibility Toggle + Icon-only controls
+        4. Hide 3D camera objects when Photos menu is closed
+        5. Depth occlusion for slope arrows, comment pins, and 2D badges behind scan geometry
+        6. Auto-show classification when Classify tab opens & auto-hide when closed (decoupled from comment pins)
+        """
+        with open(os.path.join(BASE_DIR, "web", "src", "03-studio-core.js"), "r", encoding="utf-8") as f:
+            js03 = f.read()
+        with open(os.path.join(BASE_DIR, "web", "src", "05-studio-civil-inspectors.js"), "r", encoding="utf-8") as f:
+            js05 = f.read()
+        with open(os.path.join(BASE_DIR, "web", "src", "08-advanced-surveying-and-qa.js"), "r", encoding="utf-8") as f:
+            js08 = f.read()
+        with open(os.path.join(BASE_DIR, "web", "app.css"), "r", encoding="utf-8") as f:
+            app_css = f.read()
+
+        # Feature 1: Immediate upload placeholder square & spinner
+        self.assertIn("gs-photo-upload-placeholder", js05)
+        self.assertIn("gs-upload-spinner-ring", js05)
+        self.assertIn(".gs-photo-upload-placeholder", app_css)
+        self.assertIn(".gs-upload-spinner-ring", app_css)
+        self.assertIn("@keyframes gsSpin", app_css)
+
+        # Feature 2: Bright / Light Theme for Image Zoom Window
+        self.assertIn("gs-lightbox-backdrop", js08)
+        self.assertIn("gs-lightbox-card", js08)
+        self.assertIn("gs-lightbox-header", js08)
+        self.assertIn("gs-lightbox-stage", js08)
+        self.assertIn('html[data-theme="light"] .gs-lightbox-card', app_css)
+        self.assertIn('html[data-theme="light"] .gs-lightbox-stage', app_css)
+
+        # Feature 3: Comment Folders CRUD + Photo Move in ScanQueueDB & UI
+        sid = "ntudorm_20260915_baseline"
+        folders_after_create = self.db.create_comment_folder(sid, "Structural Cracks")
+        self.assertIn("Structural Cracks", folders_after_create)
+
+        c1 = self.db.add_comment(
+            {
+                "scan_id": sid,
+                "author_email": "eng@gatheren.cloud",
+                "author_name": "Engineer A",
+                "text": "North wall crack",
+                "folder": "Structural Cracks",
+                "pos_x": 1.0,
+                "pos_y": 2.0,
+                "pos_z": 3.0,
+                "photos": [{"id": "P_MOVE", "filename": "crack1.jpg", "url": "/api/comments/photo/test/crack1.jpg"}],
+            }
+        )
+        c2 = self.db.add_comment(
+            {
+                "scan_id": sid,
+                "author_email": "eng@gatheren.cloud",
+                "author_name": "Engineer A",
+                "text": "Drainage note",
+                "folder": "",
+                "pos_x": 4.0,
+                "pos_y": 2.0,
+                "pos_z": 1.0,
+                "photos": [],
+            }
+        )
+        self.assertEqual(c1.get("folder"), "Structural Cracks")
+        self.assertEqual(c2.get("folder"), "")
+
+        # Rename folder updates both scan folder list and comment.folder
+        renamed_list = self.db.rename_comment_folder(sid, "Structural Cracks", "Wall Defects")
+        self.assertIn("Wall Defects", renamed_list)
+        self.assertNotIn("Structural Cracks", renamed_list)
+        c1_reloaded = self.db.get_comment(c1["comment_id"])
+        self.assertEqual(c1_reloaded.get("folder"), "Wall Defects")
+
+        # Delete folder moves notes back to Unclassified ('')
+        after_del = self.db.delete_comment_folder(sid, "Wall Defects")
+        self.assertNotIn("Wall Defects", after_del)
+        c1_unclass = self.db.get_comment(c1["comment_id"])
+        self.assertEqual(c1_unclass.get("folder"), "")
+
+        self.db.delete_comment(c1["comment_id"])
+        self.db.delete_comment(c2["comment_id"])
+
+        self.assertIn("data-comment-folder-header", js08)
+        self.assertIn("data-comment-folder-drop", js08)
+        self.assertIn("application/x-gs-comment-photo", js08)
+        self.assertIn("application/x-gs-comment-card", js08)
+        self.assertIn("STATE.hiddenCommentFolders", js08)
+
+        # Feature 4: Hide 3D camera objects when Photos menu is closed
+        self.assertIn("clearPhotoTargetVisuals3D(true)", js03)
+        self.assertIn("clearPhotoTargetVisuals3D(true)", js05)
+        self.assertIn("studioThree.cameraTrajectoryGroup.visible = false", js08)
+        self.assertIn("studioThree.photoFrustumGroup.visible = false", js08)
+
+        # Feature 5: Depth occlusion for slope arrows, 3D pins, and 2D badges
+        self.assertIn("_occludedByScan", js03)
+        self.assertIn("_badgeOcclusionRaycaster.intersectObjects(occMeshes, false)", js03)
+        self.assertIn("polygonOffsetFactor: -1", js08)
+
+        # Feature 6: Auto-show classification when Classify tab opens & auto-hide when closed
+        self.assertIn('STATE.categorizeOverlayVisible = STATE.activeTool === "categorize";', js03)
+        self.assertIn("STATE.categorizeOverlayVisible = false;\n      STATE.categorizeLabelsVisible = false;", js03)
+        self.assertIn("STATE.categorizeOverlayVisible = autoShow;\n    STATE.categorizeLabelsVisible = autoShow;", js05)
+
 
 if __name__ == "__main__":
     unittest.main()
+
