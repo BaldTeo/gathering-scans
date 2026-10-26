@@ -72,6 +72,7 @@ Every source file (`.py`, `.js`, `.css`, `.html`) in this repository **MUST rema
   - `web/src/05-studio-civil-inspectors.js`: Side panel manager, Cut/Fill Volume, Contours/A3 CAD preview, AI Categorization 3D overlays & UI, Profile, RTK Photos, Section Box, Comments
   - `web/src/06-studio-align-and-optimizer.js`: GC_ScanOptimizer panels, Multi-Scan 3D Alignment & Merge engine, Studio dock & hotkeys
   - `web/src/07-compare-and-queue.js`: Multi-Date Side-by-Side Curtain Slider & Heatmap, Theme switcher, Smart Priority Queue modal
+  - `web/src/08-advanced-surveying-and-qa.js`: Saved Survey Views/Bookmarks, Map Nadir Orthomosaic Overlay, Multi-Epoch Compare `ΔZ` Probe & Cross-Section Profile, Surface Drainage/Slope & Runoff Flow-Lines, Automated GCP Accuracy QA Report, and RTK Photo Frustum Projection
   - `web/app.js`: Scoped External Sharing & Analytics, Offline/Admin Control Panel modal, Google OAuth Gate, View Navigation & Bootstrap (`window.__GS_API`)
 - **Backend Surveying (`pc_worker/surveying/*.py` + `pc_worker/surveying_engine.py`)**:
   - `pc_worker/surveying/dsm_and_volume.py`, `pc_worker/surveying/contours_and_cad.py`, `pc_worker/surveying/categorization_io.py`, `pc_worker/surveying/categorization_heuristics.py`, composed by `pc_worker/surveying_engine.py`.

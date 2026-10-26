@@ -64,7 +64,7 @@
     if (STATE.activeTool === "crop_delete" || STATE.activeTool === "crop" || STATE.activeTool === "optimizer") {
       cancelLassoToolMode(false);
     } else if (
-      ["section", "profile", "crs", "generate_scan", "rtk", "photos", "comments"].includes(STATE.activeTool)
+      ["section", "profile", "crs", "generate_scan", "rtk", "photos", "comments", "drainage", "gcp_qa", "bookmarks"].includes(STATE.activeTool)
     ) {
       setActiveStudioTool(STATE.multiAlign?.active ? "align_merge" : "orbit");
     }
@@ -160,6 +160,11 @@
         if (typeof renderClosedAreaPolygon === "function") {
           renderClosedAreaPolygon(lockedPts);
         }
+        STATE.completedMeasurements.push({
+          id: `area_${Date.now()}`,
+          type: "area",
+          points: lockedPts.map((p) => p.clone()),
+        });
         showToast(`Area polygon locked (${lockedPts.length} vertices)`);
       } else if (STATE.activeTool === "contours") {
         STATE.maskBoundaryPoints = lockedPts.map((p) => p.clone());
@@ -3277,7 +3282,7 @@
     }
   }
 
-  // 3D. RTK Raw Camera Photo Inspector
+  // 3D. RTK Raw Camera Photo Inspector + 3D Camera Frustum Projection & Alignment
   async function openRtkPhotoInspector(pt = new THREE.Vector3(0, 0, 0), fromCanvasClick = false) {
     if (window.innerWidth <= 768) {
       STATE.sidePanelMinimized = !fromCanvasClick;
@@ -3285,8 +3290,8 @@
       STATE.sidePanelMinimized = false;
     }
     showSidePanel(
-      `<span>RTK Camera Inspector</span>`,
-      `<div style="font-size:12px;color:var(--ui-text-secondary);">Querying calibrated PIX4Dcatch RTK camera poses...</div>`
+      `<span>${tr("RTK 照片與 3D 視錐投影", "RTK Camera & 3D Frustum Inspector")}</span>`,
+      `<div style="font-size:12px;color:var(--ui-text-secondary);">${tr("正在查詢 PIX4Dcatch RTK 相機姿態與視錐...", "Querying calibrated PIX4Dcatch RTK camera poses & frustums...")}</div>`
     );
     try {
       const clickTwd = localToTwd97(pt);
@@ -3299,10 +3304,17 @@
         twd_n: clickTwd.n,
         twd_h: clickTwd.h,
       });
-      const photosHtml = (res.photos || [])
+      const photos = Array.isArray(res.photos) ? res.photos : [];
+      STATE.lastInspectedPhotos = photos;
+      STATE.lastInspectedPhotoTargetPt = pt.clone();
+      if (typeof renderRtkPhotoFrustums3D === "function") {
+        renderRtkPhotoFrustums3D(photos, res.target_twd97, pt);
+      }
+      const curOverlayPct = Math.round((Number(STATE.photoOverlayOpacity) || 0) * 100);
+      const photosHtml = photos
         .map(
-          (p) => `
-          <div style="background:var(--ui-bg-subtle);border:1px solid var(--ui-border);border-radius:8px;padding:8px;margin-top:8px;">
+          (p, idx) => `
+          <div class="gs-rtk-photo-card" style="background:var(--ui-bg-subtle);border:1px solid var(--ui-border);border-radius:8px;padding:8px;margin-top:8px;">
             <img src="${escapeHtml(p.url)}" alt="${escapeHtml(p.filename)}" style="width:100%;height:140px;object-fit:cover;border-radius:6px;background:var(--ui-bg-pill);" onerror="this.style.display='none'" />
             <div style="display:flex;justify-content:space-between;margin-top:6px;font-size:11px;font-weight:700;color:var(--ui-text-primary);">
               <span>${escapeHtml(p.filename)}</span>
@@ -3311,20 +3323,44 @@
             <div style="font-size:10.5px;font-family:monospace;color:var(--ui-text-muted);margin-top:2px;">
               E:${escapeHtml(String(p.camera_twd97_e))}m | N:${escapeHtml(String(p.camera_twd97_n))}m | H:+${escapeHtml(String(p.camera_twd97_h))}m | Dist:${escapeHtml(String(p.distance_m))}m
             </div>
+            <div style="display:flex;gap:6px;margin-top:7px;">
+              <button type="button" class="btn-xs primary" data-photo-align-idx="${idx}" style="flex:1;justify-content:center;gap:5px;">
+                <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/>
+                </svg>
+                <span>${tr("對齊照片視角", "Match Photo View")}</span>
+              </button>
+              <button type="button" class="btn-xs" data-photo-project-idx="${idx}" title="${tr("將原始照片半透明疊合於 3D 畫面", "Superimpose raw photo over 3D viewport")}">
+                <span>${tr("視錐疊圖", "Project 55%")}</span>
+              </button>
+            </div>
           </div>
         `
         )
         .join("");
 
       showSidePanel(
-        `<span>RTK Camera Inspector</span>`,
+        `<span>${tr("RTK 照片與 3D 視錐投影", "RTK Camera & 3D Frustum Inspector")}</span>`,
         `
         <div style="font-size:11px;font-family:monospace;color:var(--ui-text-secondary);margin-bottom:6px;">
           Target: ${escapeHtml(formatScanCoordReadout({ e: Number(res.target_twd97?.e || 0), n: Number(res.target_twd97?.n || 0), h: Number(res.target_twd97?.h || 0) }, STATE.activeScan))}
         </div>
-        ${photosHtml || '<div style="font-size:12px;color:var(--ui-text-muted);">No local raw photos found for this point.</div>'}
+        <div style="background:var(--ui-bg-pill);border:1px solid var(--ui-border-strong);border-radius:8px;padding:8px 10px;margin-bottom:8px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;font-size:11px;font-weight:700;color:var(--ui-text-primary);margin-bottom:5px;">
+            <span>${tr("照片疊合透明度 (Photo Overlay)", "Photo Overlay Opacity")}</span>
+            <span id="lblRtkPhotoOverlayOpacity" style="font-family:monospace;color:var(--ui-accent);">${curOverlayPct}%</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;">
+            <input type="range" id="rtkPhotoOverlayOpacitySlider" class="gs-input" min="0" max="90" step="5" value="${curOverlayPct}" style="flex:1;" />
+            <button type="button" class="btn-xs" id="btnClearPhotoFrustums" title="${tr("清除 3D 視錐與照片疊圖", "Clear 3D Camera Frustums & Photo Overlay")}">${tr("清除視錐", "Clear")}</button>
+          </div>
+        </div>
+        ${photosHtml || `<div style="font-size:12px;color:var(--ui-text-muted);">${tr("此點位附近無原始 RTK 照片。", "No local raw photos found for this point.")}</div>`}
         `
       );
+      if (typeof bindRtkPhotoInspectorActions === "function") {
+        bindRtkPhotoInspectorActions(photos, res.target_twd97, pt);
+      }
     } catch (err) {
       showToast(`Photo Inspector Error: ${err.message}`);
     }

@@ -3235,6 +3235,9 @@
       } else if (tool === "photos") openRtkPhotoInspector();
       else if (tool === "categorize") openCategorizeInspector();
       else if (tool === "comments") openCommentsInspector();
+      else if (tool === "drainage" && typeof openDrainageAndSlopeInspector === "function") openDrainageAndSlopeInspector();
+      else if (tool === "gcp_qa" && typeof openGcpAccuracyQaInspector === "function") openGcpAccuracyQaInspector();
+      else if (tool === "bookmarks" && typeof openSavedMeasurementsInspector === "function") openSavedMeasurementsInspector();
       else if (tool === "crop_delete") {
         STATE.cropMode = "delete_inside";
         openLassoDeleteInspector({ armLasso: true });
@@ -3543,6 +3546,9 @@
           "photos",
           "rtk",
           "categorize",
+          "drainage",
+          "gcp_qa",
+          "bookmarks",
           "comments",
           "optimizer",
           "crs",
@@ -3554,6 +3560,9 @@
         }
         if (STATE.activeTool === "categorize") {
           clearCategorizeVisualsOnly();
+        }
+        if (STATE.activeTool === "drainage" && typeof clearDrainageVisuals3D === "function") {
+          clearDrainageVisuals3D();
         }
         document.getElementById("studioSidePanel")?.classList.remove("active");
         setActiveStudioTool(STATE.multiAlign?.active ? "align_merge" : "orbit");
@@ -3637,6 +3646,11 @@
         if (typeof renderClosedAreaPolygon === "function") {
           renderClosedAreaPolygon(lockedPts);
         }
+        STATE.completedMeasurements.push({
+          id: `area_${Date.now()}`,
+          type: "area",
+          points: lockedPts.map((p) => p.clone()),
+        });
         showToast(`Area polygon locked (${lockedPts.length} vertices)`);
       } else if (STATE.activeTool === "contours") {
         STATE.maskBoundaryPoints = lockedPts.map((p) => p.clone());

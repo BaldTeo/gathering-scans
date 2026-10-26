@@ -2554,6 +2554,9 @@
     "photos",
     "rtk",
     "categorize",
+    "drainage",
+    "gcp_qa",
+    "bookmarks",
     "comments",
     "crop",
   ]);
@@ -2564,6 +2567,10 @@
     "btnMeasureProfile",
     "btnMeasurePhotos",
     "btnDockCategorize",
+    "btnDockDrainage",
+    "btnDockGcpQa",
+    "btnDockBookmarks",
+    "btnStudioSavedViews",
     "btnDockComments",
     "btnDockLassoKeep",
     "btnStudioSurveyReport",
@@ -2803,6 +2810,15 @@
     }
     if (typeof syncCategorizeVisibilityUI === "function") {
       syncCategorizeVisibilityUI();
+    }
+    if (typeof clearDrainageVisuals3D === "function") {
+      clearDrainageVisuals3D();
+    }
+    if (typeof clearGcpQaMarkers3D === "function") {
+      clearGcpQaMarkers3D();
+    }
+    if (typeof clearRtkPhotoFrustums3D === "function") {
+      clearRtkPhotoFrustums3D();
     }
     if (studioThree) {
       while (studioThree.overlayGroup.children.length > 0) {

@@ -1181,6 +1181,9 @@
     setCompareScanCount(STATE.compareScanCount || 2);
     setCompareMode(STATE.compareMode || "slider");
     syncCompareScansFromDropdowns();
+    if (typeof initCompareSurveyingTools === "function") {
+      initCompareSurveyingTools(compareCtx);
+    }
     return compareCtx;
   }
 

@@ -1625,6 +1625,21 @@ class GatheringScansHandler(CloudAndTunnelHandlerMixin, ServerWriteRoutesMixin, 
                 )
             return
 
+        # 6c. Saved Measurement Bookmarks Retrieval (GET /api/measurements/bookmarks?scan_id=...)
+        if path == "/api/measurements/bookmarks":
+            scan_id = (query.get("scan_id") or [""])[0].strip()
+            if not scan_id:
+                self.send_json({"error": "Missing required parameter: scan_id"}, status=400)
+                return
+            if share_token:
+                ok_s, reason_s, link_s, _ = AUTH_SHARE.validate_share_access(share_token, requested_scan_id=scan_id)
+                if not ok_s or not (link_s and link_s.get("allow_measurements", True)):
+                    self.send_json({"error": "Measurements are disabled for this external share link."}, status=403)
+                    return
+            bms = DB.list_measurement_bookmarks(scan_id)
+            self.send_json({"status": "ok", "scan_id": scan_id, "bookmarks": bms})
+            return
+
         # 7. External Share Links Management
         if path == "/api/share/list":
             if share_token:
@@ -2352,7 +2367,7 @@ class GatheringScansHandler(CloudAndTunnelHandlerMixin, ServerWriteRoutesMixin, 
             return
 
         # 14. Serve Generated Reports & Contours (.html, .csv, .pdf, .dxf, .dwg)
-        if path.startswith("/api/reports/"):
+        if path.startswith("/api/reports/") or path.startswith("/exports/reports/"):
             if share_token:
                 ok_s, reason_s, link_s, _ = AUTH_SHARE.validate_share_access(share_token)
                 if not ok_s:
@@ -2366,7 +2381,8 @@ class GatheringScansHandler(CloudAndTunnelHandlerMixin, ServerWriteRoutesMixin, 
                 if not actor_perms_rep.get("can_download", False):
                     self.send_json({"error": "Report downloads are disabled in Guest Mode."}, status=403)
                     return
-            fname = os.path.basename(path[len("/api/reports/") :])
+            prefix_len = len("/exports/reports/") if path.startswith("/exports/reports/") else len("/api/reports/")
+            fname = os.path.basename(path[prefix_len:])
             fpath = os.path.join(REPORTS_DIR, fname)
             if not os.path.isfile(fpath) and os.path.isfile(os.path.join(CONTOURS_DIR, fname)):
                 fpath = os.path.join(CONTOURS_DIR, fname)

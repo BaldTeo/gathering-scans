@@ -556,6 +556,208 @@ class GatheringScansTestSuite(unittest.TestCase):
         self.assertIn('setDisp("gateExistingUsersSection", info.canManageUsers', js01)
         self.assertIn("_filter_profiles_for_caller", srv_py)
 
+    def test_10_six_new_surveying_compare_and_qa_features(self):
+        """Verify all 6 new civil surveying, compare & QA features:
+        1. Persistent Measurement Bookmarks (SQLite + REST + Studio restore)
+        2. True Orthomosaic 2D Nadir Plan Overlay on Map
+        3. Compare Mode ΔZ Probe & Multi-Epoch Cross-Section Profile (A→B)
+        4. Surface Drainage / Slope Steepness Heatmap & Rainwater Runoff Flow-Lines
+        5. Automated GCP / Check-Point Accuracy QA Report (RMSE_E/N/Z/3D + ASPRS grade)
+        6. Direct Field-to-3D Photo Frustum Projection & Camera Alignment
+        """
+        scan_id = "quchi_20261005_merged"
+        self.db.upsert_scan(
+            {
+                "scan_id": scan_id,
+                "name": "QuChi Dam Merged Scan",
+                "project_group": "QuChi Dam",
+                "status": "completed",
+            }
+        )
+
+        # 1. Persistent Measurement Bookmarks CRUD in ScanQueueDB
+        saved_bm = self.db.save_measurement_bookmark(
+            {
+                "scan_id": scan_id,
+                "title": "Dam Crest Cut/Fill & Profile Check",
+                "author_email": "glibivanov@gatheren.com.tw",
+                "author_name": "Dr. Glib Ivanov",
+                "active_tool": "volume",
+                "camera_state": {
+                    "pos": [12.5, 45.0, 18.2],
+                    "target": [0.0, 2.0, -5.0],
+                    "view_mode": "3d",
+                },
+                "measurements_state": {
+                    "measure_points": [{"x": 1.0, "y": 2.0, "z": -3.0, "twd97": {"E": 304950.0, "N": 2757080.0, "H": 125.4}}],
+                    "volume_points": [{"x": 0.0, "y": 1.0, "z": 0.0}, {"x": 5.0, "y": 1.2, "z": 0.0}, {"x": 5.0, "y": 1.1, "z": -5.0}],
+                    "profile_points": [{"x": -4.0, "y": 1.0, "z": 2.0}, {"x": 6.0, "y": 2.5, "z": -3.0}],
+                    "section_box": {"enabled": True, "minX": -25, "maxX": 25, "minY": -10, "maxY": 25, "minZ": -25, "maxZ": 25},
+                },
+            }
+        )
+        self.assertIn("bookmark_id", saved_bm)
+        self.assertEqual(saved_bm["title"], "Dam Crest Cut/Fill & Profile Check")
+        self.assertEqual(saved_bm["camera_state"]["view_mode"], "3d")
+        self.assertEqual(len(saved_bm["measurements_state"]["volume_points"]), 3)
+
+        bms = self.db.list_measurement_bookmarks(scan_id)
+        self.assertTrue(any(b["bookmark_id"] == saved_bm["bookmark_id"] for b in bms))
+
+        scans = self.db.list_scans()
+        target_scan = [s for s in scans if s["scan_id"] == scan_id][0]
+        self.assertIn("measurement_bookmarks", target_scan)
+        self.assertGreaterEqual(target_scan["bookmark_count"], 1)
+
+        deleted_bm = self.db.delete_measurement_bookmark(saved_bm["bookmark_id"], scan_id)
+        self.assertTrue(deleted_bm)
+        self.assertEqual(len(self.db.list_measurement_bookmarks(scan_id)), 0)
+
+        # 4. Surface Drainage / Slope Steepness Heatmap & Runoff Flow-Lines engine
+        survey = SurveyingEngine(self.db)
+        drain_res = survey.compute_drainage_and_slope(
+            {
+                "scan_id": scan_id,
+                "grid_size": 16,
+                "num_droplets": 18,
+                "pond_slope_threshold_deg": 2.0,
+            }
+        )
+        self.assertEqual(drain_res["status"], "ok")
+        self.assertIn("gentle_pct", drain_res)
+        self.assertIn("moderate_pct", drain_res)
+        self.assertIn("steep_pct", drain_res)
+        self.assertIn("mean_slope_deg", drain_res)
+        self.assertIn("max_slope_deg", drain_res)
+
+        # Also test compute_drainage_and_slope when _load_or_build_scan_dsm returns a 220x220 dsm_contour / dsm_raw dict
+        import numpy as np
+        orig_loader = survey._load_or_build_scan_dsm
+        try:
+            yy, xx = np.mgrid[0:220, 0:220]
+            synth_dsm = 120.0 + 0.12 * xx - 0.08 * yy
+            survey._load_or_build_scan_dsm = lambda sc: {
+                "dsm_raw": synth_dsm,
+                "dsm_contour": synth_dsm,
+                "e_min": 304900.0,
+                "e_max": 305010.0,
+                "n_min": 2757020.0,
+                "n_max": 2757130.0,
+                "h_median": 125.0,
+            }
+            drain_real = survey.compute_drainage_and_slope({"scan_id": scan_id, "grid_size": 16})
+            self.assertEqual(drain_real["status"], "ok")
+            self.assertGreater(len(drain_real["slope_cells"]), 0)
+            self.assertLessEqual(len(drain_real["slope_cells"]), 16 * 16)
+        finally:
+            survey._load_or_build_scan_dsm = orig_loader
+
+        # 5. Automated GCP / Check-Point Accuracy QA Report engine
+        gcp_res = survey.compute_gcp_accuracy_qa(
+            {
+                "scan_id": scan_id,
+                "tolerance_3d_m": 0.05,
+                "gcps": [
+                    {
+                        "id": "GCP-01",
+                        "e": 304950.000,
+                        "n": 2757080.000,
+                        "h": 125.400,
+                        "mesh_e": 304950.012,
+                        "mesh_n": 2757079.989,
+                        "mesh_h": 125.418,
+                    },
+                    {
+                        "id": "GCP-02",
+                        "e": 304985.000,
+                        "n": 2757110.000,
+                        "h": 126.850,
+                        "mesh_e": 304984.991,
+                        "mesh_n": 2757110.014,
+                        "mesh_h": 126.835,
+                    },
+                ],
+            }
+        )
+        self.assertEqual(gcp_res["status"], "ok")
+        self.assertEqual(gcp_res["point_count"], 2)
+        self.assertLess(gcp_res["rmse_z_m"], 0.05)
+        self.assertEqual(gcp_res["qa_grade"], "A")
+        self.assertIn("Grade A", gcp_res["qa_grade_label"])
+        self.assertTrue(gcp_res["csv_url"].startswith("/api/reports/"))
+        self.assertTrue(gcp_res["html_url"].startswith("/api/reports/"))
+
+        # Verify all frontend & backend wiring across files + JS syntax check via node --check
+        import subprocess
+        import shutil
+        node_bin = shutil.which("node")
+        if node_bin:
+            js_files = [
+                os.path.join(BASE_DIR, "web", "app.js"),
+                os.path.join(BASE_DIR, "web", "sw.js"),
+            ]
+            src_dir = os.path.join(BASE_DIR, "web", "src")
+            for fn in sorted(os.listdir(src_dir)):
+                if fn.endswith(".js"):
+                    js_files.append(os.path.join(src_dir, fn))
+            for jf in js_files:
+                proc = subprocess.run([node_bin, "--check", jf], capture_output=True, text=True)
+                self.assertEqual(proc.returncode, 0, f"JS syntax error in {jf}: {proc.stderr}")
+
+        with open(os.path.join(BASE_DIR, "web", "index.html"), "r", encoding="utf-8") as f:
+            html = f.read()
+        with open(os.path.join(BASE_DIR, "web", "sw.js"), "r", encoding="utf-8") as f:
+            sw_js = f.read()
+        with open(os.path.join(BASE_DIR, "web", "app.css"), "r", encoding="utf-8") as f:
+            css = f.read()
+        with open(os.path.join(BASE_DIR, "web", "src", "02-map-and-timeline.js"), "r", encoding="utf-8") as f:
+            js02 = f.read()
+        with open(os.path.join(BASE_DIR, "web", "src", "03-studio-core.js"), "r", encoding="utf-8") as f:
+            js03 = f.read()
+        with open(os.path.join(BASE_DIR, "web", "src", "05-studio-civil-inspectors.js"), "r", encoding="utf-8") as f:
+            js05 = f.read()
+        with open(os.path.join(BASE_DIR, "web", "src", "06-studio-align-and-optimizer.js"), "r", encoding="utf-8") as f:
+            js06 = f.read()
+        with open(os.path.join(BASE_DIR, "web", "src", "07-compare-and-queue.js"), "r", encoding="utf-8") as f:
+            js07 = f.read()
+        with open(os.path.join(BASE_DIR, "web", "src", "08-advanced-surveying-and-qa.js"), "r", encoding="utf-8") as f:
+            js08 = f.read()
+        with open(os.path.join(BASE_DIR, "pc_worker", "server_api_routes.py"), "r", encoding="utf-8") as f:
+            routes_py = f.read()
+
+        self.assertIn("/src/08-advanced-surveying-and-qa.js", html)
+        self.assertIn("/src/08-advanced-surveying-and-qa.js", sw_js)
+        self.assertIn('id="btnMapToggleOrthoOverlay"', html)
+        self.assertIn('id="btnStudioSavedViews"', html)
+        self.assertIn('id="btnDockDrainage"', html)
+        self.assertIn('id="btnDockGcpQa"', html)
+        self.assertIn('id="btnDockBookmarks"', html)
+        self.assertIn('id="btnCompareDeltaZProbe"', html)
+        self.assertIn('id="btnCompareMultiProfile"', html)
+        self.assertIn('id="compareProfileDrawer"', html)
+        self.assertIn('id="studioPhotoFrustumOverlay"', html)
+        self.assertIn("drawMapTrueOrthoOverlays", js02)
+        self.assertIn("clearDrainageVisuals3D()", js03)
+        self.assertIn("clearGcpQaMarkers3D()", js03)
+        self.assertIn("clearRtkPhotoFrustums3D()", js03)
+        self.assertIn("renderRtkPhotoFrustums3D", js05)
+        self.assertIn('tool === "drainage"', js06)
+        self.assertIn('tool === "gcp_qa"', js06)
+        self.assertIn('tool === "bookmarks"', js06)
+        self.assertIn("initCompareSurveyingTools", js07)
+        self.assertIn("openDrainageAndSlopeInspector", js08)
+        self.assertIn("openGcpAccuracyQaInspector", js08)
+        self.assertIn("openSavedMeasurementsInspector", js08)
+        self.assertIn("alignStudioCameraToRtkPhoto", js08)
+        self.assertIn("clearMeasurements()", js08)
+        self.assertIn("renderDistanceVisuals(null, measObj)", js08)
+        self.assertIn("renderAngleVisuals(null, measObj)", js08)
+        self.assertIn("renderCoordinateVisuals(pt, measObj)", js08)
+        self.assertIn("renderLaserVisuals(null, measObj)", js08)
+        self.assertIn("Read-only Guest cannot modify saved measurement bookmarks.", routes_py)
+        self.assertIn(".gs-photo-frustum-overlay", css)
+        self.assertIn(".gs-compare-profile-drawer", css)
+
 
 if __name__ == "__main__":
     unittest.main()

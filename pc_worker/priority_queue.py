@@ -225,6 +225,19 @@ class ScanQueueDB:
                     comments_json TEXT DEFAULT '[]',
                     tombstone_json TEXT DEFAULT '{}'
                 );
+
+                CREATE TABLE IF NOT EXISTS scan_measurement_bookmarks (
+                    bookmark_id TEXT PRIMARY KEY,
+                    scan_id TEXT NOT NULL,
+                    title TEXT NOT NULL,
+                    author_email TEXT DEFAULT '',
+                    author_name TEXT DEFAULT '',
+                    state_json TEXT NOT NULL,
+                    created_at TEXT NOT NULL
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_measurement_bookmarks_scan
+                ON scan_measurement_bookmarks(scan_id, created_at DESC);
                 """
             )
             try:
@@ -1222,6 +1235,19 @@ class ScanQueueDB:
             )
         return d
 
+    def _bookmark_row_to_dict(self, row: Any) -> Dict[str, Any]:
+        d = dict(row)
+        raw_st = d.get("state_json") or "{}"
+        try:
+            parsed_st = json.loads(raw_st) if isinstance(raw_st, str) else raw_st
+            d["state"] = parsed_st if isinstance(parsed_st, dict) else {}
+        except Exception:
+            d["state"] = {}
+        st = d["state"]
+        d["camera_state"] = st.get("camera_state") or st.get("camera") or {}
+        d["measurements_state"] = st.get("measurements_state") or st
+        return d
+
     def get_scan(self, scan_id: str) -> Optional[Dict[str, Any]]:
         with DB_LOCK, self._connect() as conn:
             row = conn.execute("SELECT * FROM scans WHERE scan_id = ?", (scan_id,)).fetchone()
@@ -1234,6 +1260,12 @@ class ScanQueueDB:
             ).fetchall()
             res["comments"] = [dict(c) for c in comments]
             res["comment_count"] = len(res["comments"])
+            bms = conn.execute(
+                "SELECT * FROM scan_measurement_bookmarks WHERE scan_id = ? ORDER BY created_at DESC",
+                (scan_id,),
+            ).fetchall()
+            res["measurement_bookmarks"] = [self._bookmark_row_to_dict(b) for b in bms]
+            res["bookmark_count"] = len(res["measurement_bookmarks"])
             return res
 
     def list_scans(self, project_group: Optional[str] = None) -> List[Dict[str, Any]]:
@@ -1255,6 +1287,16 @@ class ScanQueueDB:
                 c_dict = dict(c_row)
                 sid_c = str(c_dict.get("scan_id") or "")
                 comments_by_scan.setdefault(sid_c, []).append(c_dict)
+
+            all_bms = conn.execute(
+                "SELECT * FROM scan_measurement_bookmarks ORDER BY created_at DESC"
+            ).fetchall()
+            bms_by_scan: Dict[str, List[Dict[str, Any]]] = {}
+            for b_row in all_bms:
+                b_dict = self._bookmark_row_to_dict(b_row)
+                sid_b = str(b_dict.get("scan_id") or "")
+                bms_by_scan.setdefault(sid_b, []).append(b_dict)
+
             out = []
             for r in rows:
                 item = self._row_to_dict(r)
@@ -1262,8 +1304,100 @@ class ScanQueueDB:
                 cmts = comments_by_scan.get(sid_item, [])
                 item["comments"] = cmts
                 item["comment_count"] = len(cmts)
+                bms = bms_by_scan.get(sid_item, [])
+                item["measurement_bookmarks"] = bms
+                item["bookmark_count"] = len(bms)
                 out.append(item)
             return out
+
+    def list_measurement_bookmarks(self, scan_id: str) -> List[Dict[str, Any]]:
+        clean_id = (scan_id or "").strip()
+        if not clean_id:
+            return []
+        with DB_LOCK, self._connect() as conn:
+            rows = conn.execute(
+                "SELECT * FROM scan_measurement_bookmarks WHERE scan_id = ? ORDER BY created_at DESC",
+                (clean_id,),
+            ).fetchall()
+            return [self._bookmark_row_to_dict(r) for r in rows]
+
+    def save_measurement_bookmark(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        scan_id = str(payload.get("scan_id") or "").strip()
+        if not scan_id:
+            raise ValueError("scan_id is required")
+        bookmark_id = str(payload.get("bookmark_id") or f"bmk_{int(time.time() * 1000)}").strip()
+        title = str(payload.get("title") or payload.get("name") or "Saved Survey View").strip()
+        author_email = str(payload.get("author_email") or "glibivanov@gatheren.com.tw").strip()
+        author_name = str(payload.get("author_name") or "雲在天").strip()
+        created_at = str(payload.get("created_at") or datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC"))
+
+        raw_state = payload.get("state")
+        if not isinstance(raw_state, dict):
+            raw_json = payload.get("state_json")
+            if isinstance(raw_json, str) and raw_json.strip():
+                try:
+                    raw_state = json.loads(raw_json)
+                except Exception:
+                    raw_state = {}
+            else:
+                raw_state = {
+                    "completed_measurements": payload.get("completed_measurements") or [],
+                    "last_volume_result": payload.get("last_volume_result"),
+                    "cut_fill_polygon_points": payload.get("cut_fill_polygon_points") or [],
+                    "last_profile_result": payload.get("last_profile_result"),
+                    "profile_endpoints": payload.get("profile_endpoints") or [],
+                    "camera": payload.get("camera") or payload.get("camera_state") or {},
+                    "camera_state": payload.get("camera_state") or payload.get("camera") or {},
+                    "measurements_state": payload.get("measurements_state") or {},
+                    "active_tool": payload.get("active_tool") or "distance",
+                }
+        state_json = json.dumps(raw_state, ensure_ascii=False)
+        rec = {
+            "bookmark_id": bookmark_id,
+            "scan_id": scan_id,
+            "title": title,
+            "author_email": author_email,
+            "author_name": author_name,
+            "state_json": state_json,
+            "created_at": created_at,
+        }
+        with DB_LOCK, self._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO scan_measurement_bookmarks (
+                    bookmark_id, scan_id, title, author_email, author_name, state_json, created_at
+                ) VALUES (
+                    :bookmark_id, :scan_id, :title, :author_email, :author_name, :state_json, :created_at
+                )
+                ON CONFLICT(bookmark_id) DO UPDATE SET
+                    title = excluded.title,
+                    author_email = excluded.author_email,
+                    author_name = excluded.author_name,
+                    state_json = excluded.state_json,
+                    created_at = excluded.created_at
+                """,
+                rec,
+            )
+            conn.commit()
+        return self._bookmark_row_to_dict(rec)
+
+    def delete_measurement_bookmark(self, bookmark_id: str, scan_id: Optional[str] = None) -> bool:
+        clean_id = (bookmark_id or "").strip()
+        if not clean_id:
+            return False
+        with DB_LOCK, self._connect() as conn:
+            if scan_id:
+                cur = conn.execute(
+                    "DELETE FROM scan_measurement_bookmarks WHERE bookmark_id = ? AND scan_id = ?",
+                    (clean_id, scan_id.strip()),
+                )
+            else:
+                cur = conn.execute(
+                    "DELETE FROM scan_measurement_bookmarks WHERE bookmark_id = ?",
+                    (clean_id,),
+                )
+            conn.commit()
+            return cur.rowcount > 0
 
     def add_comment(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         comment_id = payload.get("comment_id") or f"cmt_{int(time.time()*1000)}"

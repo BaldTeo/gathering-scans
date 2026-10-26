@@ -335,6 +335,11 @@
         ctx.fillText(lbl, 14, p.y - 4);
       }
 
+      // Draw 2D True Orthomosaic Nadir Plan Overlays for Georeferenced Scans when enabled
+      if (typeof drawMapTrueOrthoOverlays === "function") {
+        drawMapTrueOrthoOverlays(ctx, gsMap);
+      }
+
       // Draw Scan Geofence Rings & Position Cluster Blobs (Strictly Georeferenced Sites Only)
       gsMap.groups.forEach((grp) => {
         if (!grp.hasGeoref || !Number.isFinite(grp.lat) || !Number.isFinite(grp.lon)) return;

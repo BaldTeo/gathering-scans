@@ -633,6 +633,70 @@ class ServerWriteRoutesMixin:
                 self.send_json(res)
                 return
 
+            # 5c. Civil Surveying: Automated GCP / Check-Point Accuracy QA Report
+            if path in ("/api/survey/gcp-qa", "/api/surveying/gcp-qa"):
+                if share_token:
+                    ok_s, reason_s, link_s, _ = AUTH_SHARE.validate_share_access(
+                        share_token, requested_scan_id=payload.get("scan_id")
+                    )
+                    if not ok_s or not (link_s and link_s.get("allow_measurements", True)):
+                        self.send_json({"error": "GCP QA is disabled for this external share link."}, status=403)
+                        return
+                res = SURVEY.compute_gcp_accuracy_qa(payload)
+                self.send_json(res)
+                return
+
+            # 5d. Civil Surveying: Surface Drainage / Slope Steepness & Rainwater Runoff Analysis
+            if path in ("/api/survey/drainage", "/api/surveying/drainage"):
+                if share_token:
+                    ok_s, reason_s, link_s, _ = AUTH_SHARE.validate_share_access(
+                        share_token, requested_scan_id=payload.get("scan_id")
+                    )
+                    if not ok_s or not (link_s and link_s.get("allow_measurements", True)):
+                        self.send_json({"error": "Drainage analysis is disabled for this external share link."}, status=403)
+                        return
+                res = SURVEY.compute_drainage_and_slope(payload)
+                self.send_json(res)
+                return
+
+            # 5e. Persistent Measurement Sets ("Saved Survey Views" / Bookmarks)
+            if path in ("/api/measurements/bookmarks", "/api/measurements/bookmarks/delete"):
+                action = str(
+                    payload.get("action")
+                    or ("delete" if path.endswith("/delete") else "save")
+                ).strip().lower()
+                scan_id = str(payload.get("scan_id") or "").strip()
+                bookmark_id = str(payload.get("bookmark_id") or "").strip()
+                if share_token:
+                    ok_s, reason_s, link_s, _ = AUTH_SHARE.validate_share_access(
+                        share_token, requested_scan_id=scan_id or None
+                    )
+                    if not ok_s or not (link_s and link_s.get("allow_measurements", True)):
+                        self.send_json({"error": "Measurements are disabled for this external share link."}, status=403)
+                        return
+                elif actor_role == "guest":
+                    self.send_json({"error": "Read-only Guest cannot modify saved measurement bookmarks."}, status=403)
+                    return
+                if action == "delete":
+                    if not bookmark_id:
+                        self.send_json({"error": "bookmark_id is required to delete a bookmark."}, status=400)
+                        return
+                    deleted = DB.delete_measurement_bookmark(bookmark_id, scan_id or None)
+                    _VPS_RAM_FALLBACK_CACHE.clear()
+                    bms_list = DB.list_measurement_bookmarks(scan_id) if scan_id else []
+                    self.send_json({"status": "ok", "deleted": deleted, "bookmark_id": bookmark_id, "bookmarks": bms_list})
+                    return
+                if not scan_id:
+                    self.send_json({"error": "scan_id is required to save a measurement bookmark."}, status=400)
+                    return
+                if not payload.get("author_email") and actor_email:
+                    payload["author_email"] = actor_email
+                saved_bmk = DB.save_measurement_bookmark(payload)
+                _VPS_RAM_FALLBACK_CACHE.clear()
+                bms_list = DB.list_measurement_bookmarks(scan_id)
+                self.send_json({"status": "ok", "bookmark": saved_bmk, "bookmarks": bms_list})
+                return
+
             # 6. GC_ScanOptimizer PC Actions & Multi-Scan Alignment Merge
             if path == "/api/optimizer/optimize":
                 if not actor_perms.get("can_run_workflows"):

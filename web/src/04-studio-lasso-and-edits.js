@@ -2806,6 +2806,11 @@
         const lockedPts = STATE.measurePoints.map((p) => p.clone());
         STATE.measurePoints = [];
         renderClosedAreaPolygon(lockedPts);
+        STATE.completedMeasurements.push({
+          id: `area_${Date.now()}`,
+          type: "area",
+          points: lockedPts.map((p) => p.clone()),
+        });
         showToast(`Area polygon closed (${lockedPts.length} vertices)`);
         syncStudioMobileToolHud();
         return;
@@ -3009,6 +3014,11 @@
         showToast(`Mask Boundary Point ${pts.length} placed — click ${3 - pts.length} more point${3 - pts.length === 1 ? "" : "s"} to form boundary`);
       }
       syncStudioMobileToolHud();
+      return;
+    }
+
+    if (tool === "gcp_qa" && typeof handleGcpQa3DPick === "function") {
+      handleGcpQa3DPick(pt, twd);
       return;
     }
   }
