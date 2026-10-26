@@ -184,7 +184,7 @@ def get_pc_daemon_status() -> Dict[str, Any]:
 
 def _compute_scans_dir_fingerprint() -> Tuple[str, ...]:
     entries = []
-    for root_label, root_dir in (("local", LOCAL_SCANS_ROOT), ("gdrive_inputs", GDRIVE_INPUTS_DIR), ("gdrive", GDRIVE_INBOX_DIR)):
+    for root_label, root_dir in (("local", LOCAL_SCANS_ROOT), ("gdrive_inputs", GDRIVE_INPUTS_DIR)):
         if not root_dir or not os.path.isdir(root_dir):
             continue
         try:

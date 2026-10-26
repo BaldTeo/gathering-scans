@@ -2063,9 +2063,8 @@ def _seed_and_discover_scans_locked(db: ScanQueueDB) -> List[Dict[str, Any]]:
             os.makedirs(GDRIVE_INPUTS_DIR, exist_ok=True)
         except Exception:
             pass
-        if os.path.isdir(GDRIVE_INPUTS_DIR):
-            inbox_dirs.append(GDRIVE_INPUTS_DIR)
-        inbox_dirs.append(GDRIVE_INBOX_DIR)
+    if GDRIVE_INPUTS_DIR and os.path.isdir(GDRIVE_INPUTS_DIR):
+        inbox_dirs.append(GDRIVE_INPUTS_DIR)
 
     # 0. Sync any completed scan folders from Google Drive (input-only) into C:\GatheringScans (local disk storage)
     #    and collect .zip raw-photo archives AND raw-photo folders for the PIX4Dmatic queue.
