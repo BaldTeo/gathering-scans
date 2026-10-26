@@ -313,7 +313,7 @@ def pix4d_worker_loop():
                             print(f"[InboxWatcher] Google Chat notify note for {fin_sid}: {ge}")
                         print(f"[InboxWatcher] Adopted PIX4Dmatic job {fin_sid} completed -> {ts_path}")
                     else:
-                        DB.update_job_progress(fin_sid, "queued", 0.0, "Queued (Awaiting PIX4Dmatic pipeline)")
+                        DB.update_job_progress(fin_sid, "failed", 0.0, "PIX4Dmatic exited without producing 3D mesh")
 
             next_job = DB.pop_next_job()
             if next_job:

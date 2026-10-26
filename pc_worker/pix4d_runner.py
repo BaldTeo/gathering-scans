@@ -929,6 +929,14 @@ def run_pix4dmatic_pipeline(
             "texture_size": active_tex_size,
         }
 
+    if "commentphoto" in scan_id.lower() or (not existing_project_only and not primary_opf_path and len(extracted_files) < 10):
+        return {
+            "success": False,
+            "return_code": -2,
+            "error": f"Skipped non-scan or insufficient image count ({len(extracted_files)} images) for {scan_id}",
+            "gst_path": gst_path,
+        }
+
     if progress_callback:
         progress_callback(10.0, f"Launching PIX4Dmatic 2.11.0 (CRS: TWD97 + TWVD2001, {active_tex_size}px)...")
 

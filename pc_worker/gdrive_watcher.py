@@ -1436,6 +1436,13 @@ INTERNAL_ASSET_DIRS = {
     "geolocations",
     "metadata",
     "reports",
+    "commentphotos",
+    "comment_photos",
+    "gdrive_comment_photos",
+    "cameras_cache",
+    "categorization_cache",
+    "thumbnails",
+    "streampackages",
 }
 
 
@@ -1998,6 +2005,8 @@ def _inspect_raw_photo_scan_folder(folder_path: str) -> Tuple[bool, bool, int, i
 
     if jpg_count == 0 and tiff_count == 0:
         return False, False, 0, 0
+    if not _is_raw_pix4dcatch_opf_folder(folder_path) and jpg_count < 10 and tiff_count < 10:
+        return False, False, 0, 0
 
     expected_jpgs = (tiff_count // 2) if tiff_count >= 2 else 1
     has_all_expected_jpgs = jpg_count >= max(1, expected_jpgs)
@@ -2065,7 +2074,7 @@ def _seed_and_discover_scans_locked(db: ScanQueueDB) -> List[Dict[str, Any]]:
 
     for idir in inbox_dirs:
         for entry in sorted(os.listdir(idir)):
-            if entry.startswith(("_", ".")) or entry.lower() in ("streampackages", "inputs"):
+            if entry.startswith(("_", ".")) or entry.lower() in INTERNAL_ASSET_DIRS or entry.lower() in ("streampackages", "inputs"):
                 continue
             epath = os.path.join(idir, entry)
             if not is_safe_jailed_path(epath, idir) or _is_entry_deleted(entry, epath):
@@ -2261,7 +2270,7 @@ def _seed_and_discover_scans_locked(db: ScanQueueDB) -> List[Dict[str, Any]]:
 
         cand_processed_dir = os.path.join(LOCAL_SCANS_ROOT, scan_id)
         cand_processed_ts = os.path.join(cand_processed_dir, "tileset", "tileset.json")
-        if existing.get("status") in ("processing", "queued"):
+        if existing.get("status") in ("processing", "queued", "failed"):
             primary_meta["status"] = existing["status"]
             primary_meta["progress_pct"] = float(existing.get("progress_pct", 0.0))
             primary_meta["stage_label"] = existing.get("stage_label", "Queued")
@@ -2360,6 +2369,11 @@ def _seed_and_discover_scans_locked(db: ScanQueueDB) -> List[Dict[str, Any]]:
         existing_rows = conn.execute("SELECT scan_id, status, project_dir, source_zip_path FROM scans").fetchall()
         for row in existing_rows:
             sid = row["scan_id"]
+            sid_clean = sid[6:].lower() if sid.lower().startswith("catch_") else sid.lower()
+            if sid_clean in INTERNAL_ASSET_DIRS:
+                conn.execute("DELETE FROM scans WHERE scan_id = ?", (sid,))
+                conn.execute("DELETE FROM scan_comments WHERE scan_id = ?", (sid,))
+                continue
             if sid not in discovered_ids:
                 st = row["status"]
                 pdir = row["project_dir"] or ""
