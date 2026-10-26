@@ -294,11 +294,11 @@
               ${tr(`${mCount} 筆量測${vTag}${pTag}`, `${mCount} measurement(s)${vTag}${pTag}`)} · ${escapeHtml(b.author_name || "Engineer")}
             </div>
             <div style="display:flex;gap:6px;margin-top:7px;">
-              <button type="button" class="btn-xs primary" data-bookmark-load="${bid}" style="flex:1;justify-content:center;">
-                ${tr("載入視角與量測", "Restore View & Measurements")}
+              <button type="button" class="btn-xs primary" data-bookmark-load="${bid}" title="${tr("載入視角與量測", "Restore View & Measurements")}" style="flex:1;justify-content:center;">
+                ${tr("載入", "Load")}
               </button>
-              <button type="button" class="btn-xs" data-bookmark-delete="${bid}" style="color:#ef4444;border-color:rgba(239,68,68,0.35);">
-                ${tr("刪除", "Delete")}
+              <button type="button" class="btn-xs" data-bookmark-delete="${bid}" title="${tr("刪除書籤", "Delete Bookmark")}" aria-label="${tr("刪除書籤", "Delete Bookmark")}" style="width:28px;padding:0;justify-content:center;color:#ef4444;border-color:rgba(239,68,68,0.35);">
+                <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>
               </button>
             </div>
           </div>
@@ -325,8 +325,8 @@
         <label>${tr("視角書籤名稱", "Bookmark Title")}</label>
         <input type="text" class="gs-input" id="txtNewBookmarkTitle" placeholder="${tr("例如：北側擋土牆淨寬與土方驗收", "e.g. North Retaining Wall & Stockpile Check")}" />
       </div>
-      <button type="button" class="gs-top-btn accent" id="btnSaveMeasurementBookmark" style="width:100%;justify-content:center;margin-bottom:8px;">
-        <span>${tr("💾 儲存目前測量視角", "💾 Save Current Survey View")}</span>
+      <button type="button" class="gs-top-btn accent" id="btnSaveMeasurementBookmark" title="${tr("儲存目前測量視角", "Save Current Survey View")}" style="width:100%;justify-content:center;margin-bottom:8px;">
+        <span>${tr("💾 儲存", "💾 Save")}</span>
       </button>
       <div id="measurementBookmarksListBox">
         ${listHtml || `<div style="font-size:11.5px;color:var(--ui-text-muted);margin-top:6px;">${tr("尚無已儲存的測量視角書籤。", "No saved survey views yet for this scan.")}</div>`}

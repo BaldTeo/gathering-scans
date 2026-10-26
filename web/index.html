@@ -18,7 +18,7 @@
   <meta name="twitter:image" content="https://scans.gatheren.cloud/assets/gathering_cloud_logo.png" />
   <!-- GS_SHARE_OG_END -->
   <link rel="icon" type="image/png" href="/assets/gathering_cloud_logo.png" />
-  <link rel="stylesheet" href="/app.css?v=20261026_v152" />
+  <link rel="stylesheet" href="/app.css?v=20261026_v153" />
   <script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
 <body>
@@ -49,14 +49,14 @@
           <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
           <polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/>
         </svg>
-        <span data-i18n-zh="3D 工作坊" data-i18n-en="Studio">3D 工作坊</span>
+        <span data-i18n-zh="工作坊" data-i18n-en="Studio">工作坊</span>
       </button>
       <button type="button" class="btn-seg" data-view="compare" id="btnNavCompare" title="跨期掃描比對" data-i18n-title-zh="跨期掃描比對" data-i18n-title-en="Multi-Date Compare">
         <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8">
           <rect x="3" y="3" width="18" height="18" rx="2"/><line x1="12" y1="3" x2="12" y2="21"/>
           <polyline points="9 9 6 12 9 15"/><polyline points="15 9 18 12 15 15"/>
         </svg>
-        <span data-i18n-zh="歷次比對" data-i18n-en="Compare">歷次比對</span>
+        <span data-i18n-zh="比對" data-i18n-en="Compare">比對</span>
       </button>
     </div>
 
@@ -208,7 +208,7 @@
                   <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2">
                     <polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/>
                   </svg>
-                  <span data-i18n-zh="正射影像疊圖" data-i18n-en="2D Ortho Overlay">正射影像疊圖</span>
+                  <span data-i18n-zh="正射" data-i18n-en="Ortho">正射</span>
                 </button>
                 <div style="display:flex;align-items:center;gap:4px;flex-shrink:0;" title="正射疊圖透明度" data-i18n-title-zh="正射疊圖透明度" data-i18n-title-en="Ortho Overlay Opacity">
                   <input type="range" id="mapOrthoOpacitySlider" class="gs-brightness-slider" min="0.15" max="1.0" step="0.05" value="0.78" style="width:54px;" />
@@ -274,11 +274,10 @@
               <div style="min-width:0;flex:1;">
                 <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
                   <span class="gs-timeline-site-title" id="timelineSiteTitle">專案工區</span>
-                  <button type="button" class="btn-xs" id="btnRenameTimelineSite" title="重新命名工區" data-i18n-title-zh="重新命名工區" data-i18n-title-en="Rename Site" style="height:21px;padding:0 6px;font-size:10.5px;">
-                    <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2">
+                  <button type="button" class="btn-xs" id="btnRenameTimelineSite" title="重新命名工區" data-i18n-title-zh="重新命名工區" data-i18n-title-en="Rename Site" aria-label="Rename Site" style="height:22px;width:24px;padding:0;justify-content:center;">
+                    <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2">
                       <path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
                     </svg>
-                    <span data-i18n-zh="重新命名工區" data-i18n-en="Rename Site">重新命名工區</span>
                   </button>
                   <span class="gs-crs-pill" id="timelineSiteCountPill">0 筆掃描</span>
                   <span class="gs-crs-pill gs-timeline-crs-extra" id="timelineCrsExtraPill" style="display:none;"></span>
@@ -306,11 +305,10 @@
                   <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/>
                 </svg>
               </button>
-              <button type="button" class="btn-xs" id="btnTimelineRecycleBin" title="開啟回收桶：還原或永久清除已刪除掃描" data-i18n-title-zh="開啟回收桶：還原或永久清除已刪除掃描" data-i18n-title-en="Open Recycle Bin: Restore or Permanently Clear Deleted Scans" style="display:none;gap:4px;align-items:center;">
+              <button type="button" class="btn-xs" id="btnTimelineRecycleBin" title="開啟回收桶：還原或永久清除已刪除掃描" data-i18n-title-zh="開啟回收桶：還原或永久清除已刪除掃描" data-i18n-title-en="Open Recycle Bin: Restore or Permanently Clear Deleted Scans" aria-label="Recycle Bin" style="display:none;gap:4px;align-items:center;">
                 <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8">
                   <polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
                 </svg>
-                <span data-i18n-zh="回收桶" data-i18n-en="Bin">回收桶</span>
                 <span id="timelineRecycleBinBadge" style="display:none;padding:0 5px;border-radius:999px;background:#ef4444;color:#ffffff;font-size:10px;font-weight:700;line-height:15px;">0</span>
               </button>
             </div>
@@ -347,24 +345,21 @@
               <div class="gs-preview-text-wrap">
                 <div style="display:flex;align-items:center;gap:6px;min-width:0;">
                   <div style="font-size:12.5px;font-weight:700;color:var(--ui-text-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" id="previewScanTitle" title="點擊重新命名以編輯掃描名稱" data-i18n-title-zh="點擊重新命名以編輯掃描名稱" data-i18n-title-en="Click Rename to edit scan name">3D 網格預覽</div>
-                  <span class="gs-lowres-preview-pill" id="previewQualityBadge" title="已載入快速互動預覽模型；點擊右下角放大按鈕可進入全解析度 3D 工作坊" data-i18n-zh="互動預覽" data-i18n-en="Interactive Preview" data-i18n-title-zh="已載入快速互動預覽模型；點擊右下角放大按鈕可進入全解析度 3D 工作坊" data-i18n-title-en="Interactive medium-LOD 3D preview loaded for fast browsing. Click Enlarge for full-resolution 3D Studio.">互動預覽</span>
-                  <button type="button" class="btn-xs" id="btnRenamePreviewScan" title="編輯掃描名稱" data-i18n-title-zh="編輯掃描名稱" data-i18n-title-en="Edit Scan Name" style="height:21px;padding:0 6px;font-size:10.5px;flex-shrink:0;">
-                    <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2">
+                  <span class="gs-lowres-preview-pill" id="previewQualityBadge" title="已載入快速互動預覽模型；點擊右下角放大按鈕可進入全解析度 3D 工作坊" data-i18n-zh="預覽" data-i18n-en="Preview" data-i18n-title-zh="已載入快速互動預覽模型；點擊右下角放大按鈕可進入全解析度 3D 工作坊" data-i18n-title-en="Interactive medium-LOD 3D preview loaded for fast browsing. Click Enlarge for full-resolution 3D Studio.">預覽</span>
+                  <button type="button" class="btn-xs" id="btnRenamePreviewScan" title="編輯掃描名稱" data-i18n-title-zh="編輯掃描名稱" data-i18n-title-en="Edit Scan Name" aria-label="Edit Scan Name" style="height:22px;width:24px;padding:0;justify-content:center;flex-shrink:0;">
+                    <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2">
                       <path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
                     </svg>
-                    <span data-i18n-zh="改名" data-i18n-en="Rename">改名</span>
                   </button>
-                  <button type="button" class="btn-xs" id="btnRerunPreviewScan" title="使用自訂 PIX4Dmatic 參數從原始照片重新建模" data-i18n-title-zh="使用自訂 PIX4Dmatic 參數從原始照片重新建模" data-i18n-title-en="Re-run Scan from Original Photos with Custom PIX4Dmatic Settings" style="height:21px;padding:0 6px;font-size:10.5px;flex-shrink:0;">
-                    <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2">
+                  <button type="button" class="btn-xs" id="btnRerunPreviewScan" title="使用自訂 PIX4Dmatic 參數從原始照片重新建模" data-i18n-title-zh="使用自訂 PIX4Dmatic 參數從原始照片重新建模" data-i18n-title-en="Re-run Scan from Original Photos with Custom PIX4Dmatic Settings" aria-label="Re-run Scan" style="height:22px;width:24px;padding:0;justify-content:center;flex-shrink:0;">
+                    <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2">
                       <polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
                     </svg>
-                    <span data-i18n-zh="重算" data-i18n-en="Re-run">重算</span>
                   </button>
-                  <button type="button" class="btn-xs" id="btnDeletePreviewScan" title="移至回收桶" data-i18n-title-zh="移至回收桶" data-i18n-title-en="Move Scan to Recycle Bin" style="height:21px;padding:0 6px;font-size:10.5px;flex-shrink:0;color:#ef4444;border-color:rgba(239,68,68,0.35);">
-                    <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2">
+                  <button type="button" class="btn-xs" id="btnDeletePreviewScan" title="移至回收桶" data-i18n-title-zh="移至回收桶" data-i18n-title-en="Move Scan to Recycle Bin" aria-label="Delete Scan" style="height:22px;width:24px;padding:0;justify-content:center;flex-shrink:0;color:#ef4444;border-color:rgba(239,68,68,0.35);">
+                    <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2">
                       <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/>
                     </svg>
-                    <span data-i18n-zh="刪除" data-i18n-en="Delete">刪除</span>
                   </button>
                 </div>
                 <div style="font-size:11px;color:var(--ui-text-secondary);font-family:monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" id="previewScanMeta">TWD97 (121) + TWVD2001</div>
@@ -388,14 +383,13 @@
                 <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8">
                   <polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/>
                 </svg>
-                <span data-i18n-zh="正射疊圖" data-i18n-en="Update Ortho">正射疊圖</span>
+                <span data-i18n-zh="正射" data-i18n-en="Ortho">正射</span>
               </button>
-              <button type="button" class="btn-xs" id="btnPreviewQuickShare" title="快速分享：複製此掃描的檢視與留言連結" data-i18n-title-zh="快速分享：複製此掃描的檢視與留言連結" data-i18n-title-en="Quick Share: Copy Single-Scan View &amp; Comment Link" style="gap:4px;">
+              <button type="button" class="btn-xs" id="btnPreviewQuickShare" title="快速分享：複製此掃描的檢視與留言連結" data-i18n-title-zh="快速分享：複製此掃描的檢視與留言連結" data-i18n-title-en="Quick Share: Copy Single-Scan View &amp; Comment Link" aria-label="Quick Share" style="width:26px;padding:0;justify-content:center;">
                 <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8">
                   <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>
                   <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
                 </svg>
-                <span data-i18n-zh="分享" data-i18n-en="Share">分享</span>
               </button>
             </div>
           </div>
@@ -513,12 +507,11 @@
             </svg>
             <span>WASD</span>
           </button>
-          <button type="button" class="btn-xs" id="btnStudioQuickShare" title="快速分享：複製此掃描的檢視與留言連結" data-i18n-title-zh="快速分享：複製此掃描的檢視與留言連結" data-i18n-title-en="Quick Share: Copy Single-Scan View &amp; Comment Link" style="gap:4px;">
+          <button type="button" class="btn-xs" id="btnStudioQuickShare" title="快速分享：複製此掃描的檢視與留言連結" data-i18n-title-zh="快速分享：複製此掃描的檢視與留言連結" data-i18n-title-en="Quick Share: Copy Single-Scan View &amp; Comment Link" aria-label="Quick Share" style="gap:3px;">
             <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8">
               <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>
               <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
             </svg>
-            <span data-i18n-zh="分享" data-i18n-en="Share">分享</span>
             <svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" stroke-width="2.2" style="opacity:0.75;">
               <polyline points="6 9 12 15 18 9"/>
             </svg>
@@ -533,29 +526,29 @@
             </svg>
           </a>
           <button type="button" class="btn-xs" id="btnStudioToggleCategorizeVis" title="AI 地物分類已儲存於伺服器，點擊切換顯示 3D 圖層" data-i18n-title-zh="AI 地物分類已儲存於伺服器，點擊切換顯示 3D 圖層" data-i18n-title-en="AI Classification Saved on Server: Click to Toggle 3D Overlays" style="display:none;gap:4px;white-space:nowrap;flex-shrink:0;">
-            <span id="lblStudioToggleCategorizeVis">👁️‍🗨️ AI 分類: 隱藏</span>
+            <span id="lblStudioToggleCategorizeVis">👁️‍🗨️ 分類</span>
           </button>
-          <button type="button" class="btn-xs" id="btnStudioToggleCategorizeLabels" title="切換顯示或隱藏 2D 浮動分類標籤" data-i18n-title-zh="切換顯示或隱藏 2D 浮動分類標籤" data-i18n-title-en="Toggle 2D Floating Classification Labels" style="display:none;gap:4px;white-space:nowrap;flex-shrink:0;">
-            <span id="lblStudioToggleCategorizeLabels">🏷️ 標籤: 顯示</span>
+          <button type="button" class="btn-xs" id="btnStudioToggleCategorizeLabels" title="切換顯示或隱藏 2D 浮動標籤與 3D 標註" data-i18n-title-zh="切換顯示或隱藏 2D 浮動標籤與 3D 標註" data-i18n-title-en="Toggle 2D Floating Labels &amp; 3D Comment Pins" style="display:inline-flex;gap:4px;white-space:nowrap;flex-shrink:0;">
+            <span id="lblStudioToggleCategorizeLabels">🏷️ 標籤</span>
           </button>
           <button type="button" class="btn-xs" id="btnStudioCaptureOrtho" title="擷取正射俯視影像並更新地圖 2D 疊圖" data-i18n-title-zh="擷取正射俯視影像並更新地圖 2D 疊圖" data-i18n-title-en="Capture Nadir Ortho Snapshot &amp; Update Map 2D Overlay" style="gap:4px;">
             <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8">
               <polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/>
             </svg>
-            <span data-i18n-zh="正射疊圖" data-i18n-en="Map Ortho">正射疊圖</span>
+            <span data-i18n-zh="正射" data-i18n-en="Ortho">正射</span>
           </button>
           <button type="button" class="btn-xs" id="btnStudioSavedViews" title="儲存與載入測量視角書籤" data-i18n-title-zh="儲存與載入測量視角書籤" data-i18n-title-en="Save &amp; Restore Survey Measurement Bookmarks" style="gap:4px;">
             <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8">
               <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/>
             </svg>
-            <span data-i18n-zh="測量書籤" data-i18n-en="Saved Views">測量書籤</span>
+            <span data-i18n-zh="書籤" data-i18n-en="Views">書籤</span>
           </button>
           <button type="button" class="btn-xs primary" id="btnStudioSurveyReport" title="產製測量成果報告：Civil3D.dxf 與 A3 可列印 PDF" data-i18n-title-zh="產製測量成果報告：Civil3D.dxf 與 A3 可列印 PDF" data-i18n-title-en="Create Survey Report: Civil3D.dxf &amp; A3 Ready-to-Print PDF">
             <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8">
               <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>
               <line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="16" y2="17"/>
             </svg>
-            <span data-i18n-zh="測量報告" data-i18n-en="Report">測量報告</span>
+            <span data-i18n-zh="報告" data-i18n-en="Report">報告</span>
           </button>
         </div>
 
@@ -626,8 +619,8 @@
         <div class="gs-panel-header">
           <div class="gs-panel-title" id="sidePanelTitle" data-i18n-zh="測量檢視面板" data-i18n-en="Surveying Inspector">測量檢視面板</div>
           <div class="gs-panel-header-actions" style="display:flex;align-items:center;gap:4px;flex-shrink:0;">
-            <button type="button" class="btn-xs gs-panel-collapse-btn" id="btnCollapseSidePanel" style="height:24px;padding:0 7px;font-size:11px;font-weight:700;" title="收合或展開檢視面板" data-i18n-title-zh="收合或展開檢視面板" data-i18n-title-en="Minimize or Expand Inspector Panel" aria-label="Minimize or Expand Inspector Panel">
-              <span id="lblCollapseSidePanel" data-i18n-zh="▾ 收合" data-i18n-en="▾ Collapse">▾ 收合</span>
+            <button type="button" class="btn-xs gs-panel-collapse-btn" id="btnCollapseSidePanel" style="height:24px;width:26px;padding:0;justify-content:center;font-size:12px;font-weight:700;" title="收合或展開檢視面板" data-i18n-title-zh="收合或展開檢視面板" data-i18n-title-en="Minimize or Expand Inspector Panel" aria-label="Minimize or Expand Inspector Panel">
+              <span id="lblCollapseSidePanel">▾</span>
             </button>
             <button type="button" class="btn-xs" id="btnCloseSidePanel" title="關閉" data-i18n-title-zh="關閉" data-i18n-title-en="Close" aria-label="Close Inspector Panel">
               <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8">
@@ -808,7 +801,7 @@
               <path d="M9 12l2 2 4-4"/>
             </svg>
           </div>
-          <span class="bim-dock-label" data-i18n-zh="精度檢核" data-i18n-en="GCP QA">精度檢核</span>
+          <span class="bim-dock-label" data-i18n-zh="檢核" data-i18n-en="QA">檢核</span>
         </button>
 
         <!-- 10e. Persistent Measurement Bookmarks / Saved Survey Views -->
@@ -892,7 +885,7 @@
               <line x1="9" y1="8" x2="15" y2="12"/><line x1="15" y1="8" x2="9" y2="12"/>
             </svg>
           </div>
-          <span class="bim-dock-label" data-i18n-zh="套索刪除" data-i18n-en="Lasso Del">套索刪除</span>
+          <span class="bim-dock-label" data-i18n-zh="刪除" data-i18n-en="Erase">刪除</span>
         </button>
 
         <!-- Edit 2. Lasso / Polygon Crop Keep -->
@@ -904,7 +897,7 @@
               <line x1="14.47" y1="14.48" x2="20" y2="20"/>
             </svg>
           </div>
-          <span class="bim-dock-label" data-i18n-zh="框選保留" data-i18n-en="Crop Keep">框選保留</span>
+          <span class="bim-dock-label" data-i18n-zh="裁切" data-i18n-en="Crop">裁切</span>
         </button>
 
         <!-- Edit 3. Multi-Scan Align & Merge -->
@@ -917,7 +910,7 @@
               <path d="M9 20H4v-5"/><line x1="12" y1="12" x2="4" y2="20"/>
             </svg>
           </div>
-          <span class="bim-dock-label" data-i18n-zh="對齊合併" data-i18n-en="Align/Merge">對齊合併</span>
+          <span class="bim-dock-label" data-i18n-zh="合併" data-i18n-en="Merge">合併</span>
         </button>
 
         <!-- Edit 4. ScanOptimizer Mesh & Texture Compression -->
@@ -927,7 +920,7 @@
               <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
             </svg>
           </div>
-          <span class="bim-dock-label" data-i18n-zh="網格優化" data-i18n-en="Optimize">網格優化</span>
+          <span class="bim-dock-label" data-i18n-zh="優化" data-i18n-en="Optimize">優化</span>
         </button>
 
         <!-- Edit 5. Coordinate System & Datum Offset -->
@@ -939,7 +932,7 @@
               <path d="M12 3a14 14 0 0 1 0 18a14 14 0 0 1 0-18z"/>
             </svg>
           </div>
-          <span class="bim-dock-label" data-i18n-zh="座標系統" data-i18n-en="CRS">座標系統</span>
+          <span class="bim-dock-label" data-i18n-zh="座標" data-i18n-en="CRS">座標</span>
         </button>
 
         <!-- Edit 6. Save Scan Edits & Archive Original Backup to Trash Bin -->
@@ -952,7 +945,7 @@
             </svg>
             <span class="gs-staged-edits-badge" id="lblStagedEditsBadge" style="display:none;">0</span>
           </div>
-          <span class="bim-dock-label" data-i18n-zh="儲存變更" data-i18n-en="Save Edits">儲存變更</span>
+          <span class="bim-dock-label" data-i18n-zh="儲存" data-i18n-en="Save">儲存</span>
         </button>
       </aside>
     </section>
@@ -1008,45 +1001,44 @@
                 <rect x="3" y="3" width="18" height="18" rx="2"/><line x1="12" y1="3" x2="12" y2="21"/>
                 <polyline points="9 9 6 12 9 15"/><polyline points="15 9 18 12 15 15"/>
               </svg>
-              <span data-i18n-zh="捲簾模式" data-i18n-en="Slider Mode">捲簾模式</span>
+              <span data-i18n-zh="捲簾" data-i18n-en="Slider">捲簾</span>
             </button>
             <button type="button" class="btn-seg" data-compare-mode="split" id="btnCompareModeSplit" style="padding:4px 10px;font-size:11.5px;">
               <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2">
                 <rect x="2" y="4" width="9" height="16" rx="1.5"/><rect x="13" y="4" width="9" height="16" rx="1.5"/>
               </svg>
-              <span data-i18n-zh="多視窗" data-i18n-en="Multi-Viewport">多視窗</span>
+              <span data-i18n-zh="分割" data-i18n-en="Split">分割</span>
             </button>
           </div>
 
           <!-- Scan Count Switcher: 2 / 3 / 4 Scans -->
           <div class="segmented-pill" id="compareScanCountSwitcher" style="padding:2px;gap:2px;" title="選擇同時比對 2、3 或 4 筆掃描" data-i18n-title-zh="選擇同時比對 2、3 或 4 筆掃描" data-i18n-title-en="Select 2, 3, or 4 scans to compare">
-            <button type="button" class="btn-seg active" data-compare-count="2" id="btnCompareCount2" style="padding:4px 8px;font-size:11px;" data-i18n-zh="2 筆" data-i18n-en="2 Scans">2 筆</button>
-            <button type="button" class="btn-seg" data-compare-count="3" id="btnCompareCount3" style="padding:4px 8px;font-size:11px;" data-i18n-zh="3 筆" data-i18n-en="3 Scans">3 筆</button>
-            <button type="button" class="btn-seg" data-compare-count="4" id="btnCompareCount4" style="padding:4px 8px;font-size:11px;" data-i18n-zh="4 筆" data-i18n-en="4 Scans">4 筆</button>
+            <button type="button" class="btn-seg active" data-compare-count="2" id="btnCompareCount2" style="padding:4px 8px;font-size:11px;" data-i18n-zh="2" data-i18n-en="2">2</button>
+            <button type="button" class="btn-seg" data-compare-count="3" id="btnCompareCount3" style="padding:4px 8px;font-size:11px;" data-i18n-zh="3" data-i18n-en="3">3</button>
+            <button type="button" class="btn-seg" data-compare-count="4" id="btnCompareCount4" style="padding:4px 8px;font-size:11px;" data-i18n-zh="4" data-i18n-en="4">4</button>
           </div>
 
           <label style="display:flex;align-items:center;gap:6px;font-size:12px;font-weight:600;color:var(--ui-text-primary);cursor:pointer;">
             <input type="checkbox" id="chkDeltaZHeatmap" style="accent-color:#0284c7;" />
-            <span data-i18n-zh="ΔZ 高程變化熱力圖" data-i18n-en="ΔZ Elevation Heatmap">ΔZ 高程變化熱力圖</span>
+            <span data-i18n-zh="熱力圖" data-i18n-en="Heatmap">熱力圖</span>
           </label>
           <span style="font-size:11px;color:var(--ui-text-muted);font-family:monospace;" id="lblCurtainPct">50%</span>
           <button type="button" class="btn-xs" id="btnCompareDeltaZProbe" title="高程差探針 ΔZ：點擊或滑過模型即時比對各期高程差" data-i18n-title-zh="高程差探針 ΔZ：點擊或滑過模型即時比對各期高程差" data-i18n-title-en="ΔZ Elevation Probe: Click or hover on 3D surface to compare Z₁/Z₂/Z₃/Z₄ and ΔZ" style="gap:4px;">
             <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2">
               <circle cx="12" cy="12" r="7"/><line x1="12" y1="2" x2="12" y2="6"/><line x1="12" y1="18" x2="12" y2="22"/>
             </svg>
-            <span data-i18n-zh="高程差探針 ΔZ" data-i18n-en="ΔZ Probe">高程差探針 ΔZ</span>
+            <span data-i18n-zh="探針" data-i18n-en="Probe">探針</span>
           </button>
           <button type="button" class="btn-xs" id="btnCompareMultiProfile" title="跨期斷面比較 A→B：於不同日期掃描間繪製疊合斷面曲線" data-i18n-title-zh="跨期斷面比較 A→B：於不同日期掃描間繪製疊合斷面曲線" data-i18n-title-en="Multi-Epoch Cross-Section Profile A→B: Plot superimposed elevation profiles across dates" style="gap:4px;">
             <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2">
               <polyline points="3 17 8 11 13 14 21 6"/><polyline points="3 20 9 16 15 18 21 12" stroke-dasharray="2 2"/>
             </svg>
-            <span data-i18n-zh="跨期斷面 A→B" data-i18n-en="Multi-Epoch Profile">跨期斷面 A→B</span>
+            <span data-i18n-zh="斷面" data-i18n-en="Profile">斷面</span>
           </button>
-          <button type="button" class="btn-xs" id="btnCompareResetCamera" title="重設並同步視角" data-i18n-title-zh="重設並同步視角" data-i18n-title-en="Reset &amp; Sync Camera Framing">
+          <button type="button" class="btn-xs" id="btnCompareResetCamera" title="重設並同步視角" data-i18n-title-zh="重設並同步視角" data-i18n-title-en="Reset &amp; Sync Camera Framing" aria-label="Reset View">
             <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2">
               <circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9"/>
             </svg>
-            <span data-i18n-zh="重設視角" data-i18n-en="Reset View">重設視角</span>
           </button>
         </div>
 
@@ -1076,10 +1068,10 @@
           </div>
           <div style="display:flex;align-items:center;gap:6px;">
             <button type="button" class="btn-xs" id="btnExportCompareProfileCsv" title="匯出跨期斷面 CSV 報表" data-i18n-title-zh="匯出跨期斷面 CSV 報表" data-i18n-title-en="Export Multi-Epoch Profile CSV">
-              <span data-i18n-zh="匯出 CSV" data-i18n-en="Export CSV">匯出 CSV</span>
+              <span data-i18n-zh="CSV" data-i18n-en="CSV">CSV</span>
             </button>
             <button type="button" class="btn-xs" id="btnClearCompareProfile" title="重新點選斷面起點 A 與終點 B" data-i18n-title-zh="重新點選斷面起點 A 與終點 B" data-i18n-title-en="Pick New A→B Section Points">
-              <span data-i18n-zh="重選 A→B" data-i18n-en="Re-pick A→B">重選 A→B</span>
+              <span data-i18n-zh="重選" data-i18n-en="Reset">重選</span>
             </button>
             <button type="button" class="btn-xs" id="btnCloseCompareProfileDrawer" title="關閉斷面圖" data-i18n-title-zh="關閉斷面圖" data-i18n-title-en="Close Profile Drawer">✕</button>
           </div>
@@ -2075,15 +2067,15 @@
   <script src="/lib/3d-tiles-renderer.bundle.js"></script>
 
   <!-- Main GatheringScans Bilingual Translation & Modular Application Logic (< 5,000 lines per module) -->
-  <script src="/i18n.js?v=20261026_v152"></script>
-  <script src="/src/01-core-state.js?v=20261026_v152"></script>
-  <script src="/src/02-map-and-timeline.js?v=20261026_v152"></script>
-  <script src="/src/03-studio-core.js?v=20261026_v152"></script>
-  <script src="/src/04-studio-lasso-and-edits.js?v=20261026_v152"></script>
-  <script src="/src/05-studio-civil-inspectors.js?v=20261026_v152"></script>
-  <script src="/src/06-studio-align-and-optimizer.js?v=20261026_v152"></script>
-  <script src="/src/07-compare-and-queue.js?v=20261026_v152"></script>
-  <script src="/src/08-advanced-surveying-and-qa.js?v=20261026_v152"></script>
-  <script src="/app.js?v=20261026_v152"></script>
+  <script src="/i18n.js?v=20261026_v153"></script>
+  <script src="/src/01-core-state.js?v=20261026_v153"></script>
+  <script src="/src/02-map-and-timeline.js?v=20261026_v153"></script>
+  <script src="/src/03-studio-core.js?v=20261026_v153"></script>
+  <script src="/src/04-studio-lasso-and-edits.js?v=20261026_v153"></script>
+  <script src="/src/05-studio-civil-inspectors.js?v=20261026_v153"></script>
+  <script src="/src/06-studio-align-and-optimizer.js?v=20261026_v153"></script>
+  <script src="/src/07-compare-and-queue.js?v=20261026_v153"></script>
+  <script src="/src/08-advanced-surveying-and-qa.js?v=20261026_v153"></script>
+  <script src="/app.js?v=20261026_v153"></script>
 </body>
 </html>

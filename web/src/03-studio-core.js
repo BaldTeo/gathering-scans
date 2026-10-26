@@ -1699,6 +1699,10 @@
 
       const isCat = Boolean(b.isCategorize || b.el.classList.contains("is-categorize-badge"));
       if (b.isCommentPin) {
+        if (STATE.categorizeLabelsVisible === false) {
+          b.el.style.display = "none";
+          return;
+        }
         b.el.style.display = "inline-flex";
         b.el.style.left = `${Math.round(x)}px`;
         b.el.style.top = `${Math.round(y)}px`;

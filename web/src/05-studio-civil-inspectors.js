@@ -36,7 +36,7 @@
     panel.classList.toggle("gs-panel-minimized", Boolean(STATE.sidePanelMinimized));
     const lblCollapse = document.getElementById("lblCollapseSidePanel");
     if (lblCollapse) {
-      lblCollapse.textContent = STATE.sidePanelMinimized ? tr("▴ 展開", "▴ Expand") : tr("▾ 收合", "▾ Collapse");
+      lblCollapse.textContent = STATE.sidePanelMinimized ? "▴" : "▾";
     }
     if (typeof syncStudioMobileToolHud === "function") syncStudioMobileToolHud();
     if (typeof syncMobileToastPosition === "function") syncMobileToastPosition();
@@ -52,7 +52,7 @@
     panel.classList.toggle("gs-panel-minimized", STATE.sidePanelMinimized);
     const lblCollapse = document.getElementById("lblCollapseSidePanel");
     if (lblCollapse) {
-      lblCollapse.textContent = STATE.sidePanelMinimized ? tr("▴ 展開", "▴ Expand") : tr("▾ 收合", "▾ Collapse");
+      lblCollapse.textContent = STATE.sidePanelMinimized ? "▴" : "▾";
     }
     if (typeof syncStudioMobileToolHud === "function") syncStudioMobileToolHud();
     if (typeof syncMobileToastPosition === "function") syncMobileToastPosition();
@@ -1390,20 +1390,20 @@
       topBtn.style.color = vis ? "#34d399" : "";
     }
     if (topLbl) {
-      topLbl.textContent = vis ? tr("👁️ AI 分類: 顯示", "👁️ AI Class: On") : tr("👁️‍🗨️ AI 分類: 隱藏", "👁️‍🗨️ AI Class: Off");
+      topLbl.textContent = vis ? tr("👁️ 分類", "👁️ AI") : tr("👁️‍🗨️ 分類", "👁️‍🗨️ AI");
     }
 
     const topLblBtn = document.getElementById("btnStudioToggleCategorizeLabels");
     const topLblTxt = document.getElementById("lblStudioToggleCategorizeLabels");
     if (topLblBtn) {
-      topLblBtn.style.display = hasSaved ? "inline-flex" : "none";
+      topLblBtn.style.display = "inline-flex";
       topLblBtn.setAttribute("aria-pressed", lblsVis ? "true" : "false");
       topLblBtn.style.borderColor = lblsVis ? "rgba(56,189,248,0.75)" : "rgba(148,163,184,0.35)";
       topLblBtn.style.background = lblsVis ? "rgba(56,189,248,0.16)" : "";
       topLblBtn.style.color = lblsVis ? "#38bdf8" : "#94a3b8";
     }
     if (topLblTxt) {
-      topLblTxt.textContent = lblsVis ? tr("🏷️ 標籤: 顯示", "🏷️ Labels: On") : tr("🏷️ 標籤: 隱藏", "🏷️ Labels: Off");
+      topLblTxt.textContent = tr("🏷️ 標籤", "🏷️ Labels");
     }
 
     const chkLbls = document.getElementById("chkCategorizeLabelsVis");
@@ -1441,13 +1441,16 @@
 
   function setCategorizeLabelsVisibility(visible, opts = {}) {
     STATE.categorizeLabelsVisible = Boolean(visible);
+    if (studioThree && studioThree.commentPinsGroup) {
+      studioThree.commentPinsGroup.visible = Boolean(visible);
+    }
     update2DBadgePositions();
     syncCategorizeVisibilityUI();
     if (!opts.silent) {
       showToast(
         STATE.categorizeLabelsVisible
-          ? tr("🏷️ AI 分類 2D 浮動標籤：顯示中", "🏷️ 2D Classification Labels: Visible")
-          : tr("🏷️ AI 分類 2D 浮動標籤：已隱藏", "🏷️ 2D Classification Labels: Hidden")
+          ? tr("🏷️ 2D 浮動標籤與 3D 標註：顯示中", "🏷️ 2D Labels & Comment Pins: Visible")
+          : tr("🏷️ 2D 浮動標籤與 3D 標註：已隱藏", "🏷️ 2D Labels & Comment Pins: Hidden")
       );
     }
   }
@@ -2430,7 +2433,7 @@
             const panel = document.getElementById("studioSidePanel");
             panel?.classList.add("mobile-minimized", "gs-panel-minimized");
             const lblCollapse = document.getElementById("lblCollapseSidePanel");
-            if (lblCollapse) lblCollapse.textContent = tr("▴ 展開", "▴ Expand");
+            if (lblCollapse) lblCollapse.textContent = "▴";
           }
         }
         STATE.categorizeEditPoints = [];
@@ -3589,16 +3592,24 @@
       .map((c) => {
         const cid = escapeHtml(c.comment_id || "");
         const timeStr = escapeHtml((c.created_at || "").slice(0, 16));
+        const avatar = getCommentAuthorAvatar(c.author_name || "Reviewer", c.author_email || "");
         return `
         <div class="gs-comment-card" data-comment-id="${cid}" style="background:var(--ui-bg-subtle);border:1px solid var(--ui-border);border-radius:8px;padding:9px;margin-top:8px;">
           <div style="display:flex;justify-content:space-between;align-items:center;gap:6px;font-size:11px;color:var(--ui-accent);font-weight:700;">
-            <span>${escapeHtml(c.author_name || "Reviewer")}</span>
+            <span style="display:inline-flex;align-items:center;gap:6px;">
+              <span class="gs-comment-card-avatar" style="background:${avatar.bg};">${escapeHtml(avatar.chars)}</span>
+              <span>${escapeHtml(c.author_name || "Reviewer")}</span>
+            </span>
             <div style="display:flex;align-items:center;gap:4px;">
               <span style="color:var(--ui-text-muted);font-weight:500;font-size:10.5px;">${timeStr}</span>
               ${
                 canModifyComments && cid
-                  ? `<button type="button" class="btn-xs" data-comment-edit="${cid}" title="${tr("編輯標註", "Edit Comment")}" style="height:20px;padding:0 6px;font-size:10.5px;">${tr("編輯", "Edit")}</button>
-                     <button type="button" class="btn-xs" data-comment-delete="${cid}" title="${tr("刪除標註", "Delete Comment")}" style="height:20px;padding:0 6px;font-size:10.5px;color:#ef4444;border-color:rgba(239,68,68,0.35);">${tr("刪除", "Delete")}</button>`
+                  ? `<button type="button" class="btn-xs" data-comment-edit="${cid}" title="${tr("編輯標註", "Edit Comment")}" aria-label="${tr("編輯標註", "Edit Comment")}" style="height:22px;width:24px;padding:0;justify-content:center;">
+                       <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+                     </button>
+                     <button type="button" class="btn-xs" data-comment-delete="${cid}" title="${tr("刪除標註", "Delete Comment")}" aria-label="${tr("刪除標註", "Delete Comment")}" style="height:22px;width:24px;padding:0;justify-content:center;color:#ef4444;border-color:rgba(239,68,68,0.35);">
+                       <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>
+                     </button>`
                   : ""
               }
             </div>
@@ -3641,7 +3652,7 @@
         <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8">
           <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
         </svg>
-        <span>${tr("新增標註", "Post")}</span>
+        <span>${tr("張貼", "Post")}</span>
       </button>
       <div id="commentsListBox">${listHtml}</div>
       `
@@ -3772,6 +3783,48 @@
     });
   }
 
+  function getCommentAuthorAvatar(authorName, authorEmail = "") {
+    const raw = String(authorName || "Reviewer")
+      .replace(/\s*(博士|教授|先生|小姐|Dr\.|Dr|PhD|Prof\.)\s*/gi, " ")
+      .replace(/\(.*?\)/g, "")
+      .trim();
+    const cjkMatch = raw.match(/[\u4e00-\u9fff]+/g);
+    let chars = "RV";
+    if (cjkMatch && cjkMatch.join("").length > 0) {
+      const cjk = cjkMatch.join("");
+      chars = cjk.length >= 2 ? cjk.slice(-2) : cjk;
+    } else {
+      const parts = raw.split(/\s+/).filter(Boolean);
+      if (parts.length >= 2) {
+        chars = (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+      } else if (raw.length >= 2) {
+        chars = raw.slice(0, 2).toUpperCase();
+      } else if (raw.length === 1) {
+        chars = raw.toUpperCase();
+      }
+    }
+    const palette = [
+      "#6b4226", // warm brown (雲在天 / 在天 avatar tone)
+      "#0284c7",
+      "#0f766e",
+      "#4f46e5",
+      "#b45309",
+      "#9333ea",
+      "#be123c",
+    ];
+    const seedStr = `${raw}|${String(authorEmail || "").toLowerCase()}`;
+    let bg = palette[0];
+    if (!/雲在天|在天|glib|ivanov/i.test(seedStr)) {
+      let hash = 0;
+      for (let i = 0; i < seedStr.length; i++) {
+        hash = (hash * 31 + seedStr.charCodeAt(i)) | 0;
+      }
+      bg = palette[Math.abs(hash) % palette.length];
+    }
+    return { chars, bg };
+  }
+  window.getCommentAuthorAvatar = getCommentAuthorAvatar;
+
   function renderCommentPins3D() {
     if (!studioThree) return;
     while (studioThree.commentPinsGroup.children.length > 0) {
@@ -3788,6 +3841,9 @@
     if (STATE.activeTool === "comments" && STATE.pendingCommentDraftPt) {
       add3DPinMarker(STATE.pendingCommentDraftPt, 0x0284c7, studioThree.commentPinsGroup);
     }
+    if (studioThree.commentPinsGroup) {
+      studioThree.commentPinsGroup.visible = STATE.categorizeLabelsVisible !== false;
+    }
 
     const scan = STATE.activeScan;
     if (!scan || !Array.isArray(scan.comments) || !scan.comments.length) {
@@ -3801,12 +3857,12 @@
       const timeStr = escapeHtml((c.created_at || "").slice(0, 16));
       const textHtml = escapeHtml(c.text || "");
       const cid = escapeHtml(c.comment_id || "");
+      const avatar = getCommentAuthorAvatar(c.author_name || "Reviewer", c.author_email || "");
+      const avatarChars = escapeHtml(avatar.chars);
       const pinHtml = `
         <div class="gs-scan-comment-pin" data-comment-pin-id="${cid}" style="transform:translate(-50%,-50%);">
-          <div class="gs-comment-pin-icon" title="${author}: ${textHtml}">
-            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
-            </svg>
+          <div class="gs-comment-pin-icon" style="--pin-avatar-bg:${avatar.bg};">
+            <span class="gs-comment-pin-avatar-char">${avatarChars}</span>
           </div>
           <div class="gs-comment-pin-popover">
             <div class="gs-comment-pin-meta">

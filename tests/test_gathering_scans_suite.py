@@ -843,6 +843,45 @@ class GatheringScansTestSuite(unittest.TestCase):
         self.assertNotIn("ctx.strokeRect(x0, y0, boxW, boxH)", js08)
         self.assertIn("gsMap.drawMap()", js02)
 
+    def test_13_comment_pins_labels_bright_theme_avatar_and_concise_buttons(self):
+        """Verify all 5 comment pin, labels toggle, bright theme, author avatar, and concise button fixes."""
+        with open(os.path.join(BASE_DIR, "web", "index.html"), "r", encoding="utf-8") as f:
+            html = f.read()
+        with open(os.path.join(BASE_DIR, "web", "app.css"), "r", encoding="utf-8") as f:
+            css = f.read()
+        with open(os.path.join(BASE_DIR, "web", "src", "03-studio-core.js"), "r", encoding="utf-8") as f:
+            js03 = f.read()
+        with open(os.path.join(BASE_DIR, "web", "src", "05-studio-civil-inspectors.js"), "r", encoding="utf-8") as f:
+            js05 = f.read()
+        with open(os.path.join(BASE_DIR, "web", "src", "08-advanced-surveying-and-qa.js"), "r", encoding="utf-8") as f:
+            js08 = f.read()
+
+        # 1. Labels on/off also hides comment pins & #btnStudioToggleCategorizeLabels always visible
+        self.assertIn('if (b.isCommentPin) {\n        if (STATE.categorizeLabelsVisible === false) {\n          b.el.style.display = "none";\n          return;\n        }', js03)
+        self.assertIn('topLblBtn.style.display = "inline-flex";', js05)
+        self.assertIn("studioThree.commentPinsGroup.visible = Boolean(visible);", js05)
+
+        # 2. Bright/light theme support for .gs-comment-pin-popover
+        self.assertIn('html[data-theme="light"] .gs-comment-pin-popover', css)
+        self.assertIn("body.theme-light .gs-comment-pin-popover", css)
+        self.assertIn('html[data-theme="light"] .gs-comment-pin-author', css)
+        self.assertIn('html[data-theme="light"] .gs-comment-pin-text', css)
+
+        # 3. No native browser title attribute on .gs-comment-pin-icon (eliminates double hover tooltip)
+        self.assertNotIn('class="gs-comment-pin-icon" title=', js05)
+
+        # 4. Circular character avatar of comment author inside comment pin and comment card
+        self.assertIn("function getCommentAuthorAvatar(", js05)
+        self.assertIn("gs-comment-pin-avatar-char", js05)
+        self.assertIn("gs-comment-card-avatar", js05)
+        self.assertIn(".gs-comment-pin-avatar-char", css)
+
+        # 5. Concise 1-word / icon-only buttons
+        self.assertNotIn("重新命名工區</span>", html)
+        self.assertNotIn("正射影像疊圖</span>", html)
+        self.assertIn('${tr("載入", "Load")}', js08)
+        self.assertIn('${tr("💾 儲存", "💾 Save")}', js08)
+
 
 if __name__ == "__main__":
     unittest.main()

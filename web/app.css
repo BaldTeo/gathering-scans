@@ -2914,8 +2914,8 @@ body.gs-auth-locked .gs-main {
   width: 30px;
   height: 30px;
   border-radius: 50%;
-  background: rgba(2, 132, 199, 0.68);
-  border: 1.5px solid rgba(255, 255, 255, 0.85);
+  background: var(--pin-avatar-bg, rgba(107, 66, 38, 0.88));
+  border: 1.5px solid rgba(255, 255, 255, 0.90);
   color: #ffffff;
   display: inline-flex;
   align-items: center;
@@ -2923,12 +2923,35 @@ body.gs-auth-locked .gs-main {
   box-shadow: 0 3px 10px rgba(0, 0, 0, 0.45);
   backdrop-filter: blur(4px);
   -webkit-backdrop-filter: blur(4px);
-  transition: transform 0.14s ease, background 0.14s ease;
+  transition: transform 0.14s ease, filter 0.14s ease;
+}
+
+.gs-comment-pin-avatar-char {
+  font-size: 10.5px;
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: -0.02em;
+  color: #ffffff;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
+}
+
+.gs-comment-card-avatar {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  color: #ffffff;
+  font-size: 9px;
+  font-weight: 800;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  border: 1px solid rgba(255, 255, 255, 0.45);
 }
 
 .gs-scan-comment-pin:hover .gs-comment-pin-icon,
 .gs-scan-comment-pin.mobile-open .gs-comment-pin-icon {
-  background: rgba(2, 132, 199, 0.92);
+  filter: brightness(1.12);
   transform: scale(1.12);
 }
 
@@ -2941,7 +2964,7 @@ body.gs-auth-locked .gs-main {
   max-width: 250px;
   padding: 7px 10px;
   border-radius: 9px;
-  background: rgba(15, 23, 42, 0.80);
+  background: rgba(15, 23, 42, 0.84);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
   border: 1px solid rgba(56, 189, 248, 0.55);
@@ -3000,6 +3023,41 @@ body.gs-auth-locked .gs-main {
   color: #f8fafc;
   font-size: 11px;
   line-height: 1.35;
+}
+
+/* Bright / Light Theme Support for 3D Comment Pin Popover & Avatar */
+html[data-theme="light"] .gs-comment-pin-icon,
+body.theme-light .gs-comment-pin-icon {
+  border-color: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 3px 10px rgba(15, 23, 42, 0.25);
+}
+
+html[data-theme="light"] .gs-comment-pin-popover,
+body.theme-light .gs-comment-pin-popover {
+  background: rgba(255, 255, 255, 0.94);
+  border-color: rgba(2, 132, 199, 0.45);
+  box-shadow: 0 8px 22px rgba(15, 23, 42, 0.16);
+  color: #0f172a;
+}
+
+html[data-theme="light"] .gs-comment-pin-meta,
+body.theme-light .gs-comment-pin-meta {
+  border-bottom-color: rgba(15, 23, 42, 0.12);
+}
+
+html[data-theme="light"] .gs-comment-pin-author,
+body.theme-light .gs-comment-pin-author {
+  color: #0284c7;
+}
+
+html[data-theme="light"] .gs-comment-pin-time,
+body.theme-light .gs-comment-pin-time {
+  color: #64748b;
+}
+
+html[data-theme="light"] .gs-comment-pin-text,
+body.theme-light .gs-comment-pin-text {
+  color: #1e293b;
 }
 
 /* Mobile Editing Umbrella Button (Hidden on Desktop; Visible on Mobile) */
