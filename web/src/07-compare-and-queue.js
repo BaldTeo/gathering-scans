@@ -126,15 +126,27 @@
     return { compSide, nativeAnchor, mergedAnchor, mat4Zup, qZup };
   }
 
+  function getActiveCompareSides() {
+    if (!compareCtx) return [];
+    const cnt = Math.max(2, Math.min(4, Number(STATE.compareScanCount) || 2));
+    const list = [compareCtx.left, compareCtx.right];
+    if (cnt >= 3 && compareCtx.third) list.push(compareCtx.third);
+    if (cnt >= 4 && compareCtx.fourth) list.push(compareCtx.fourth);
+    return list.filter(Boolean);
+  }
+
   function alignCompareSides() {
     if (!compareCtx) return;
     const left = compareCtx.left;
     const right = compareCtx.right;
+    const third = compareCtx.third;
+    const fourth = compareCtx.fourth;
     const lInfo = classifyCompareSideCoords(left);
     const rInfo = classifyCompareSideCoords(right);
+    const tInfo = classifyCompareSideCoords(third);
+    const fInfo = classifyCompareSideCoords(fourth);
 
-    // Choose a single shared TWD97 reference anchor so both scans lock 1:1 in world space.
-    // Prefer the scan with the tighter bounding radius so the camera orbits the overlapping core site area.
+    // Choose a single shared TWD97 reference anchor so all active scans lock 1:1 in world space.
     let sharedAnchor = null;
     let sameVerticalDatum = true;
     const mergedLink =
@@ -156,11 +168,15 @@
         sharedAnchor = (rInfo.radius <= lInfo.radius ? rInfo.twdCenter : lInfo.twdCenter).clone();
         sameVerticalDatum = Math.abs(lInfo.twdCenter.z - rInfo.twdCenter.z) <= 25.0;
       }
+    } else if (lInfo && (lInfo.crs === "TWD97" || lInfo.crs === "UTM51N")) {
+      sharedAnchor = lInfo.twdCenter.clone();
     }
 
     [
       [left, lInfo],
       [right, rInfo],
+      [third, tInfo],
+      [fourth, fInfo],
     ].forEach(([side, info]) => {
       if (!side || !info) return;
       const rootObj = side.tilesRenderer?.group || side.loadedMesh;
@@ -169,12 +185,17 @@
       rootObj.position.set(-info.rawCenter.x, -info.rawCenter.y, -info.rawCenter.z);
       rootObj.updateMatrix();
 
+      const sideMergedLink =
+        (mergedLink && mergedLink.compSide === side ? mergedLink : null) ||
+        findMergedComponentAlignment(side, info, left) ||
+        findMergedComponentAlignment(side, info, right);
+
       // 2. Apply exact Multi-Scan co-registration (when comparing source vs merged) or CRS alignment offset
-      if (mergedLink && mergedLink.compSide === side && sharedAnchor) {
-        const deltaRaw = info.rawCenter.clone().sub(mergedLink.nativeAnchor).applyMatrix4(mergedLink.mat4Zup);
-        const tAlign = mergedLink.mergedAnchor.clone().sub(sharedAnchor).add(deltaRaw);
+      if (sideMergedLink && sideMergedLink.compSide === side && sharedAnchor) {
+        const deltaRaw = info.rawCenter.clone().sub(sideMergedLink.nativeAnchor).applyMatrix4(sideMergedLink.mat4Zup);
+        const tAlign = sideMergedLink.mergedAnchor.clone().sub(sharedAnchor).add(deltaRaw);
         side.alignGroup.position.copy(tAlign);
-        side.alignGroup.quaternion.copy(mergedLink.qZup);
+        side.alignGroup.quaternion.copy(sideMergedLink.qZup);
         side.alignGroup.scale.set(1.0, 1.0, 1.0);
       } else if (sharedAnchor && (info.crs === "TWD97" || info.crs === "UTM51N")) {
         const dx = info.twdCenter.x - sharedAnchor.x;
@@ -202,8 +223,9 @@
       Number(left?.rawSphere?._groundOffsetY) || -8.0,
       Number(right?.rawSphere?._groundOffsetY) || -8.0
     );
-    if (left?.grid) left.grid.position.y = groundY;
-    if (right?.grid) right.grid.position.y = groundY;
+    [left, right, third, fourth].forEach((s) => {
+      if (s?.grid) s.grid.position.y = groundY;
+    });
 
     // Auto-frame camera when a new scan pair finishes loading tilesets
     const pairKey = `${left._loadedScanId || ""}|${right._loadedScanId || ""}`;
@@ -215,7 +237,7 @@
 
   function frameCompareCamera(showMsg = false) {
     if (!compareCtx) return;
-    const { left, right, controls } = compareCtx;
+    const { left, right, third, fourth, controls } = compareCtx;
     const lInfo = classifyCompareSideCoords(left);
     const rInfo = classifyCompareSideCoords(right);
     const lR = lInfo?.radius || left?.rawSphere?.radius || 0;
@@ -226,26 +248,66 @@
     controls.target.set(0, 0, 0);
     controls.update();
     left.camera.updateMatrixWorld();
-    right.camera.position.copy(left.camera.position);
-    right.camera.quaternion.copy(left.camera.quaternion);
-    right.camera.updateProjectionMatrix();
-    right.camera.updateMatrixWorld();
+    [right, third, fourth].forEach((s) => {
+      if (!s) return;
+      s.camera.position.copy(left.camera.position);
+      s.camera.quaternion.copy(left.camera.quaternion);
+      s.camera.updateProjectionMatrix();
+      s.camera.updateMatrixWorld();
+    });
     if (showMsg) {
       showToast("Reset & Synced Compare Camera Framing");
     }
   }
 
-  function setCompareMode(mode) {
-    const resolvedMode = mode === "split" ? "split" : "slider";
-    STATE.compareMode = resolvedMode;
+  function setCompareScanCount(count) {
+    const resolvedCount = Math.max(2, Math.min(4, Number(count) || 2));
+    STATE.compareScanCount = resolvedCount;
+    const stage = document.getElementById("compareStage");
+    if (stage) {
+      stage.setAttribute("data-compare-count", String(resolvedCount));
+    }
+    const thirdWrap = document.getElementById("compareThirdWrap");
+    const fourthWrap = document.getElementById("compareFourthWrap");
+    if (thirdWrap) thirdWrap.style.display = resolvedCount >= 3 ? "inline-flex" : "none";
+    if (fourthWrap) fourthWrap.style.display = resolvedCount >= 4 ? "inline-flex" : "none";
+
+    document.querySelectorAll("#compareScanCountSwitcher .btn-seg").forEach((btn) => {
+      btn.classList.toggle("active", Number(btn.dataset.compareCount) === resolvedCount);
+    });
+
+    if (resolvedCount >= 3 && STATE.compareMode !== "split") {
+      setCompareMode("split");
+      return;
+    }
+    updateCompareLayersLayout();
+    syncCompareScansFromDropdowns();
+    handleResize();
+    requestAnimationFrame(() => handleResize());
+  }
+
+  function updateCompareLayersLayout() {
+    const resolvedMode = STATE.compareMode === "split" ? "split" : "slider";
+    const cnt = Math.max(2, Math.min(4, Number(STATE.compareScanCount) || 2));
     const stage = document.getElementById("compareStage");
     const rightContainer = document.getElementById("compareRightLayer");
+    const thirdContainer = document.getElementById("compareThirdLayer");
+    const fourthContainer = document.getElementById("compareFourthLayer");
     const divider = document.getElementById("curtainDivider");
     const lblPct = document.getElementById("lblCurtainPct");
     const pct = (compareCtx && compareCtx._curtainPct) || 50;
 
     if (stage) {
       stage.classList.toggle("mode-split", resolvedMode === "split");
+      stage.setAttribute("data-compare-count", String(cnt));
+    }
+    if (thirdContainer) {
+      thirdContainer.style.display = cnt >= 3 ? "block" : "none";
+      thirdContainer.style.clipPath = "none";
+    }
+    if (fourthContainer) {
+      fourthContainer.style.display = cnt >= 4 ? "block" : "none";
+      fourthContainer.style.clipPath = "none";
     }
     if (rightContainer) {
       rightContainer.style.clipPath = resolvedMode === "split" ? "none" : `inset(0 0 0 ${pct}%)`;
@@ -257,6 +319,22 @@
       lblPct.style.display = resolvedMode === "split" ? "none" : "";
       lblPct.textContent = tr(`分割：${Math.round(pct)}%`, `Split: ${Math.round(pct)}%`);
     }
+  }
+
+  function setCompareMode(mode) {
+    let resolvedMode = mode === "split" ? "split" : "slider";
+    if (resolvedMode === "slider" && Number(STATE.compareScanCount) > 2) {
+      STATE.compareScanCount = 2;
+      const thirdWrap = document.getElementById("compareThirdWrap");
+      const fourthWrap = document.getElementById("compareFourthWrap");
+      if (thirdWrap) thirdWrap.style.display = "none";
+      if (fourthWrap) fourthWrap.style.display = "none";
+      document.querySelectorAll("#compareScanCountSwitcher .btn-seg").forEach((btn) => {
+        btn.classList.toggle("active", Number(btn.dataset.compareCount) === 2);
+      });
+    }
+    STATE.compareMode = resolvedMode;
+    updateCompareLayersLayout();
     document.querySelectorAll("#compareModeSwitcher .btn-seg").forEach((btn) => {
       btn.classList.toggle("active", btn.dataset.compareMode === resolvedMode);
     });
@@ -561,8 +639,9 @@
     if (active) {
       buildCompareBaselineHeightMap();
     }
-    applyCompareElevationHeatmapToSide(compareCtx.left, active);
-    applyCompareElevationHeatmapToSide(compareCtx.right, active);
+    [compareCtx.left, compareCtx.right, compareCtx.third, compareCtx.fourth].forEach((s) => {
+      if (s) applyCompareElevationHeatmapToSide(s, active);
+    });
     updateCompareHeatmapLegendUI(active);
   }
 
@@ -724,46 +803,49 @@
 
   function syncCompareScansFromDropdowns() {
     if (!compareCtx) return;
+    const cnt = Math.max(2, Math.min(4, Number(STATE.compareScanCount) || 2));
     const lSel = document.getElementById("compareLeftSelect");
     const rSel = document.getElementById("compareRightSelect");
+    const tSel = document.getElementById("compareThirdSelect");
+    const fSel = document.getElementById("compareFourthSelect");
     const leftId = lSel?.value || STATE.scans[Math.min(1, STATE.scans.length - 1)]?.scan_id;
     const rightId = rSel?.value || STATE.scans[0]?.scan_id;
+    const thirdId = tSel?.value || STATE.scans[Math.min(2, STATE.scans.length - 1)]?.scan_id;
+    const fourthId = fSel?.value || STATE.scans[Math.min(3, STATE.scans.length - 1)]?.scan_id;
     if (leftId) loadScanIntoCompareSide(compareCtx.left, leftId);
     if (rightId) loadScanIntoCompareSide(compareCtx.right, rightId);
+    if (cnt >= 3 && thirdId && compareCtx.third) loadScanIntoCompareSide(compareCtx.third, thirdId);
+    if (cnt >= 4 && fourthId && compareCtx.fourth) loadScanIntoCompareSide(compareCtx.fourth, fourthId);
     alignCompareSides();
   }
 
   function syncCompareLoaderProgress() {
     if (!compareCtx || compareCtx._loadingDone) return;
-    const lSide = compareCtx.left;
-    const rSide = compareCtx.right;
-    const lStats = lSide?.tilesRenderer?.stats || {};
-    const rStats = rSide?.tilesRenderer?.stats || {};
-    const lReady = Boolean(lSide?._glbLoaded || lSide?._fallbackLoaded || Number(lStats.loaded || 0) > 0);
-    const rReady = Boolean(rSide?._glbLoaded || rSide?._fallbackLoaded || Number(rStats.loaded || 0) > 0);
-    const loaded =
-      Number(lStats.loaded || 0) +
-      Number(rStats.loaded || 0) +
-      (lSide?._glbLoaded ? 1 : 0) +
-      (rSide?._glbLoaded ? 1 : 0);
-    const activeWork =
-      Number(lStats.downloading || 0) +
-      Number(lStats.parsing || 0) +
-      Number(rStats.downloading || 0) +
-      Number(rStats.parsing || 0);
-    const queued = Number(lStats.queued || 0) + Number(rStats.queued || 0);
+    const activeSides = getActiveCompareSides();
+    if (!activeSides.length) return;
+    let allSidesReady = true;
+    let loaded = 0;
+    let activeWork = 0;
+    let queued = 0;
+    activeSides.forEach((side) => {
+      const stats = side?.tilesRenderer?.stats || {};
+      const sideReady = Boolean(side?._glbLoaded || side?._fallbackLoaded || Number(stats.loaded || 0) > 0);
+      if (!sideReady) allSidesReady = false;
+      loaded += Number(stats.loaded || 0) + (side?._glbLoaded ? 1 : 0);
+      activeWork += Number(stats.downloading || 0) + Number(stats.parsing || 0);
+      queued += Number(stats.queued || 0);
+    });
     const pending = activeWork + queued;
     const total = Math.max(1, loaded + pending);
     const now = performance.now();
     const elapsed = now - (compareCtx._loadingStartMs || 0);
     const sinceTileset = compareCtx._tilesetReadyMs ? now - compareCtx._tilesetReadyMs : 0;
 
-    const bothSidesHaveMesh =
-      lReady &&
-      rReady &&
-      (pending === 0 || (activeWork === 0 && sinceTileset > 900) || loaded >= Math.max(2, Math.ceil(total * 0.75)));
+    const allSidesHaveMesh =
+      allSidesReady &&
+      (pending === 0 || (activeWork === 0 && sinceTileset > 900) || loaded >= Math.max(activeSides.length, Math.ceil(total * 0.75)));
 
-    if (bothSidesHaveMesh && elapsed > 180) {
+    if (allSidesHaveMesh && elapsed > 180) {
       if (document.getElementById("chkDeltaZHeatmap")?.checked) {
         setCompareElevationHeatmap(true);
       }
@@ -785,6 +867,8 @@
     if (compareCtx) return compareCtx;
     const leftContainer = document.getElementById("compareLeftLayer");
     const rightContainer = document.getElementById("compareRightLayer");
+    const thirdContainer = document.getElementById("compareThirdLayer");
+    const fourthContainer = document.getElementById("compareFourthLayer");
     if (!leftContainer || !rightContainer) return null;
 
     const createEpochScene = (container, tintColor, isLatest) => {
@@ -875,6 +959,8 @@
 
     const left = createEpochScene(leftContainer, 0x38bdf8, false);
     const right = createEpochScene(rightContainer, 0x10b981, true);
+    const third = thirdContainer ? createEpochScene(thirdContainer, 0xf59e0b, true) : null;
+    const fourth = fourthContainer ? createEpochScene(fourthContainer, 0xa855f7, true) : null;
 
     // Synchronized OrbitControls on the stage
     const stage = document.getElementById("compareStage");
@@ -984,15 +1070,26 @@
       { passive: false }
     );
 
-    // Compare Mode Switcher (Slider Mode vs 2-Viewport Synced Camera Mode)
+    // Compare Mode Switcher (Slider Mode vs Multi-Viewport Synced Camera Mode)
     document.querySelectorAll("#compareModeSwitcher .btn-seg").forEach((btn) => {
       btn.addEventListener("click", () => {
         const mode = btn.dataset.compareMode || "slider";
         setCompareMode(mode);
         showToast(
           mode === "split"
-            ? "2-Viewport Mode: Full Side-by-Side Scans with Synced Camera"
-            : "Slider Mode: Interactive Split Curtain Comparison"
+            ? tr("多視窗並排比較模式：同步相機視角", "Multi-Viewport Mode: Side-by-Side Scans with Synced Camera")
+            : tr("拉簾滑桿模式：雙期掃描疊合比對", "Slider Mode: Interactive Split Curtain Comparison")
+        );
+      });
+    });
+
+    // Compare Scan Count Switcher (2 / 3 / 4 Scans)
+    document.querySelectorAll("#compareScanCountSwitcher .btn-seg").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const cnt = Number(btn.dataset.compareCount) || 2;
+        setCompareScanCount(cnt);
+        showToast(
+          tr(`已切換為 ${cnt} 筆掃描同步對比`, `Comparing ${cnt} scans simultaneously with synced camera`)
         );
       });
     });
@@ -1001,7 +1098,7 @@
       frameCompareCamera(true);
     });
 
-    // Left / Right Scan Dropdown Listeners
+    // Left / Right / Third / Fourth Scan Dropdown Listeners
     document.getElementById("compareLeftSelect")?.addEventListener("change", (e) => {
       if (e.target.value && compareCtx) {
         loadScanIntoCompareSide(compareCtx.left, e.target.value);
@@ -1010,6 +1107,16 @@
     document.getElementById("compareRightSelect")?.addEventListener("change", (e) => {
       if (e.target.value && compareCtx) {
         loadScanIntoCompareSide(compareCtx.right, e.target.value);
+      }
+    });
+    document.getElementById("compareThirdSelect")?.addEventListener("change", (e) => {
+      if (e.target.value && compareCtx?.third) {
+        loadScanIntoCompareSide(compareCtx.third, e.target.value);
+      }
+    });
+    document.getElementById("compareFourthSelect")?.addEventListener("change", (e) => {
+      if (e.target.value && compareCtx?.fourth) {
+        loadScanIntoCompareSide(compareCtx.fourth, e.target.value);
       }
     });
 
@@ -1031,11 +1138,16 @@
         controls.update();
       }
       left.camera.updateMatrixWorld();
-      right.camera.position.copy(left.camera.position);
-      right.camera.quaternion.copy(left.camera.quaternion);
-      right.camera.updateMatrixWorld();
+      const activeSides = getActiveCompareSides();
+      activeSides.forEach((s) => {
+        if (s && s !== left) {
+          s.camera.position.copy(left.camera.position);
+          s.camera.quaternion.copy(left.camera.quaternion);
+          s.camera.updateMatrixWorld();
+        }
+      });
       const heatmapOn = Boolean(document.getElementById("chkDeltaZHeatmap")?.checked);
-      [left, right].forEach((side) => {
+      activeSides.forEach((side) => {
         if (side.tilesRenderer) {
           side.tilesRenderer.update();
           side.tilesRenderer.group.traverse((child) => {
@@ -1058,13 +1170,15 @@
         updateNorthArrowCompass(left.camera);
       }
       syncCompareLoaderProgress();
-      left.renderer.render(left.scene, left.camera);
-      right.renderer.render(right.scene, right.camera);
+      activeSides.forEach((s) => {
+        s.renderer.render(s.scene, s.camera);
+      });
     };
     requestAnimationFrame(loop);
 
-    compareCtx = { left, right, controls, _curtainPct: 50, _framedPairKey: "" };
+    compareCtx = { left, right, third, fourth, controls, _curtainPct: 50, _framedPairKey: "" };
     window.__gsCompareCtx = compareCtx;
+    setCompareScanCount(STATE.compareScanCount || 2);
     setCompareMode(STATE.compareMode || "slider");
     syncCompareScansFromDropdowns();
     return compareCtx;
@@ -1120,10 +1234,10 @@
     }
 
     if (compareCtx) {
-      if (compareCtx.left?.scene) compareCtx.left.scene.background = new THREE.Color(cmpLeftHex);
-      if (compareCtx.right?.scene) compareCtx.right.scene.background = new THREE.Color(cmpRightHex);
-      [compareCtx.left, compareCtx.right].forEach((side) => {
-        if (side?.grid && side.grid.material) {
+      [compareCtx.left, compareCtx.right, compareCtx.third, compareCtx.fourth].forEach((side) => {
+        if (!side) return;
+        if (side.scene) side.scene.background = new THREE.Color(cmpLeftHex);
+        if (side.grid && side.grid.material) {
           const mats = Array.isArray(side.grid.material) ? side.grid.material : [side.grid.material];
           if (mats[0]?.color) mats[0].color.setHex(gridMain);
           if (mats[1]?.color) mats[1].color.setHex(gridSub);

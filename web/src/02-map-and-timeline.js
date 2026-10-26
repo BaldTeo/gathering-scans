@@ -91,7 +91,7 @@
     const gAttr = document.createElement("div");
     gAttr.style.cssText =
       "position:absolute;bottom:10px;left:14px;background:var(--ui-bg-window);border:1px solid var(--ui-border-strong);border-radius:6px;padding:3px 9px;font-size:11px;font-weight:600;color:var(--ui-text-primary);z-index:400;pointer-events:none;box-shadow:var(--ui-shadow-hud);";
-    gAttr.textContent = "Google Maps · TWD97 (121) + TWVD2001";
+    gAttr.textContent = "Google Maps";
     container.appendChild(gAttr);
 
     // Touch-friendly Map Zoom & Reset Controls (bottom-right)
@@ -186,19 +186,19 @@
       if (!coordEl) return;
       if (lat >= 21.5 && lat <= 26.5 && lon >= 119.8 && lon <= 122.3) {
         const tm = wgs84ToTransverseMercatorJS(lat, lon, 121.0, 250000.0, 0.9999, 298.257222101);
-        coordEl.textContent = `TWD97(121) E: ${tm.e.toFixed(1)}m | N: ${tm.n.toFixed(1)}m | WGS84: ${lat.toFixed(5)}°N, ${lon.toFixed(5)}°E`;
+        coordEl.innerHTML = `<div style="white-space:nowrap;">TWD97(121) E: ${tm.e.toFixed(1)}m | N: ${tm.n.toFixed(1)}m</div><div style="white-space:nowrap;">WGS84: ${lat.toFixed(5)}°N, ${lon.toFixed(5)}°E</div>`;
       } else if (lat >= 21.5 && lat <= 26.5 && lon >= 118.0 && lon < 119.8) {
         const tm = wgs84ToTransverseMercatorJS(lat, lon, 119.0, 250000.0, 0.9999, 298.257222101);
-        coordEl.textContent = `TWD97(119) E: ${tm.e.toFixed(1)}m | N: ${tm.n.toFixed(1)}m | WGS84: ${lat.toFixed(5)}°N, ${lon.toFixed(5)}°E`;
+        coordEl.innerHTML = `<div style="white-space:nowrap;">TWD97(119) E: ${tm.e.toFixed(1)}m | N: ${tm.n.toFixed(1)}m</div><div style="white-space:nowrap;">WGS84: ${lat.toFixed(5)}°N, ${lon.toFixed(5)}°E</div>`;
       } else if (Math.abs(lat) <= 84.0) {
         const zone = Math.max(1, Math.min(60, Math.floor((lon + 180.0) / 6.0) + 1));
         const lon0 = (zone - 1) * 6.0 - 180.0 + 3.0;
         const utm = wgs84ToTransverseMercatorJS(lat, lon, lon0, 500000.0, 0.9996, 298.257223563);
         const uN = lat < 0 ? utm.n + 10000000.0 : utm.n;
         const hemi = lat >= 0 ? "N" : "S";
-        coordEl.textContent = `UTM ${zone}${hemi} E: ${utm.e.toFixed(1)}m | N: ${uN.toFixed(1)}m | WGS84: ${lat.toFixed(5)}°, ${lon.toFixed(5)}°`;
+        coordEl.innerHTML = `<div style="white-space:nowrap;">UTM ${zone}${hemi} E: ${utm.e.toFixed(1)}m | N: ${uN.toFixed(1)}m</div><div style="white-space:nowrap;">WGS84: ${lat.toFixed(5)}°, ${lon.toFixed(5)}°</div>`;
       } else {
-        coordEl.textContent = `WGS84: ${lat.toFixed(5)}°, ${lon.toFixed(5)}°`;
+        coordEl.innerHTML = `<div style="white-space:nowrap;">WGS84: ${lat.toFixed(5)}°, ${lon.toFixed(5)}°</div>`;
       }
     };
 
@@ -978,8 +978,7 @@
       window.getAppLanguage?.() === "en"
         ? rawSubZh.replace(/工程掃描群組/g, "Engineering Scan Group")
         : rawSubZh;
-    document.getElementById("popoverGroupSubtitle").textContent =
-      `${subGroupLabel} · TWD97 (121) + TWVD2001`;
+    document.getElementById("popoverGroupSubtitle").textContent = subGroupLabel;
 
     // Unified 3-Pane Workbench on Desktop; on Mobile (<=768px), keep first page map-only until a site is explicitly chosen
     const isMobileViewport = typeof window !== "undefined" && window.innerWidth <= 768;
@@ -1779,10 +1778,9 @@
       STATE._timelineInitTimer = null;
     }
     STATE.selectedTimelineScanId = scanId;
-    const selScan = STATE.scans.find((s) => s.scan_id === scanId);
     const crsPill = document.getElementById("timelineCrsExtraPill");
-    if (crsPill && selScan) {
-      crsPill.textContent = getScanCrsDisplayLabel(selScan);
+    if (crsPill) {
+      crsPill.style.display = "none";
     }
     document.querySelectorAll("#siteTimelineTilesTrack .gs-timeline-tile").forEach((tile) => {
       const isAct = tile.dataset.scanId === scanId;
@@ -1869,11 +1867,7 @@
     }
     const crsExtraPill = document.getElementById("timelineCrsExtraPill");
     if (crsExtraPill) {
-      const uniqueCrs = new Set(siteScans.map((s) => inferActiveScanCrsCode(s)));
-      crsExtraPill.textContent =
-        uniqueCrs.size > 1
-          ? tr(`多重座標系 · ${uniqueCrs.size} 組自動對位`, `Multi-CRS · ${uniqueCrs.size} Auto-Aligned`)
-          : getScanCrsDisplayLabel(chosenScan || siteScans[0]);
+      crsExtraPill.style.display = "none";
     }
     const subEl = document.getElementById("timelineSiteSubtitle");
     if (subEl && siteScans[0]) {

@@ -1187,6 +1187,38 @@ class GatheringScansHandler(CloudAndTunnelHandlerMixin, ServerWriteRoutesMixin, 
         role = normalize_role(matched.get("role") if matched else "viewer", email=verified_email)
         return (verified_email, role, get_role_permissions(role))
 
+    def _sanitize_single_profile(
+        self, prof: Optional[Dict[str, Any]], is_admin: bool = False
+    ) -> Optional[Dict[str, Any]]:
+        if not isinstance(prof, dict):
+            return None
+        out = dict(prof)
+        if not is_admin:
+            out.pop("googleSub", None)
+            out.pop("google_sub", None)
+            out.pop("gchat_user_id", None)
+            out.pop("allowedProjects", None)
+        return out
+
+    def _filter_profiles_for_caller(
+        self,
+        profiles_list: List[Dict[str, Any]],
+        actor_email: str,
+        is_admin: bool = False,
+    ) -> List[Dict[str, Any]]:
+        if is_admin:
+            return list(profiles_list or [])
+        clean_em = (actor_email or "").strip().lower()
+        if not clean_em or clean_em in ("guest", "guest@anonymous", "guest@external"):
+            return []
+        out = []
+        for p in profiles_list or []:
+            if str(p.get("email") or "").strip().lower() == clean_em:
+                san = self._sanitize_single_profile(p, is_admin=False)
+                if san:
+                    out.append(san)
+        return out
+
     def do_GET(self):
         parsed = urllib.parse.urlparse(self.path)
         path = urllib.parse.unquote(parsed.path)
@@ -1200,6 +1232,10 @@ class GatheringScansHandler(CloudAndTunnelHandlerMixin, ServerWriteRoutesMixin, 
 
         # 0a. Google Drive .3tz Cloud Manifest Status & Service Account Live Test (served directly on both VPS and PC)
         if path == "/api/cloud-manifest/status":
+            _, _, cm_perms = self._resolve_request_role(None, query, share_token)
+            if share_token or not cm_perms.get("can_manage_users"):
+                self.send_json({"error": "Owner or Admin session required to inspect Cloud Service Account status."}, status=403)
+                return
             if os.name != "nt" and not (_load_cloud_manifest().get("packages")):
                 self._proxy_via_pc_tunnel_if_vps("GET", path)
                 return
@@ -1521,10 +1557,12 @@ class GatheringScansHandler(CloudAndTunnelHandlerMixin, ServerWriteRoutesMixin, 
             processing = [s for s in all_scans if s["status"] == "processing"]
             completed = [s for s in all_scans if s["status"] == "completed"]
             p4d_cfg = load_pix4d_settings()
+            _, _, q_perms = self._resolve_request_role(None, query, share_token)
+            is_q_admin = bool(q_perms.get("can_manage_users"))
             self.send_json(
                 {
                     "status": "ok",
-                    "inbox_dir": GDRIVE_INPUTS_DIR,
+                    "inbox_dir": GDRIVE_INPUTS_DIR if is_q_admin else "",
                     "crs_enforced": TWD97_TWVD2001_LABEL,
                     "texture_size_enforced": p4d_cfg.get("texture_size", PIX4DMATIC_TEXTURE_SIZE),
                     "pix4d_settings": p4d_cfg,
@@ -1533,12 +1571,16 @@ class GatheringScansHandler(CloudAndTunnelHandlerMixin, ServerWriteRoutesMixin, 
                     "all_scans": all_scans,
                     "live_pix4d": live_log_info,
                     "completed_count": len(completed),
-                    "gchat_webhook_url": GCHAT.get_webhook_url(),
+                    "gchat_webhook_url": GCHAT.get_webhook_url() if is_q_admin else "",
                 }
             )
             return
 
         if path == "/api/pix4d/settings":
+            _, _, p4d_perms = self._resolve_request_role(None, query, share_token)
+            if share_token or not (p4d_perms.get("can_manage_users") or p4d_perms.get("can_run_workflows")):
+                self.send_json({"error": "Editor, Admin, or Owner session required to inspect pipeline settings."}, status=403)
+                return
             self.send_json({"status": "ok", "settings": load_pix4d_settings()})
             return
 
@@ -1640,20 +1682,28 @@ class GatheringScansHandler(CloudAndTunnelHandlerMixin, ServerWriteRoutesMixin, 
             )
             return
 
-        # 8. Google Chat Notification History
+        # 8. Google Chat Notification History (Admin/Owner Only)
         if path == "/api/gchat/history":
+            _, _, gc_perms = self._resolve_request_role(None, query, share_token)
+            if share_token or not gc_perms.get("can_manage_users"):
+                self.send_json({"error": "Owner or Admin session required to view Google Chat notification history."}, status=403)
+                return
             self.send_json({"status": "ok", "notifications": GCHAT.list_notifications()})
             return
 
         # 9. User-Specific Offline Cache Settings, Language Preferences & User Profiles (GatheringCloud OAuth Gate)
         if path in ("/api/user/settings", "/api/user/preferences"):
+            actor_em_s, _, actor_p_s = self._resolve_request_role(None, query, share_token)
+            is_admin_s = bool(actor_p_s.get("can_manage_users"))
             email = str(
                 (query.get("email") or query.get("user_email") or [None])[0]
                 or self.headers.get("X-User-Email")
+                or actor_em_s
                 or "guest@anonymous"
             ).strip().lower()
             settings = DB.get_user_settings(email)
-            prof = AUTH_SHARE.get_user_profile(email) if email != "guest@anonymous" else None
+            prof = AUTH_SHARE.get_user_profile(email) if (email != "guest@anonymous" and (is_admin_s or email == actor_em_s)) else None
+            safe_prof = self._sanitize_single_profile(prof, is_admin=is_admin_s)
             lang_val = str(
                 settings.get("language")
                 or (prof and prof.get("language"))
@@ -1674,18 +1724,16 @@ class GatheringScansHandler(CloudAndTunnelHandlerMixin, ServerWriteRoutesMixin, 
                         "language": lang_val,
                         "theme_preference": settings.get("theme_preference", "auto"),
                     },
-                    "profile": prof,
+                    "profile": safe_prof,
                 }
             )
             return
 
         if path in ("/api/auth/session", "/api/auth/roster"):
             actor_em, actor_r, actor_p = self._resolve_request_role(None, query, share_token)
+            is_admin_sess = bool(actor_p.get("can_manage_users"))
             req_em = str(
-                (query.get("email") or query.get("user_email") or [None])[0]
-                or self.headers.get("X-User-Email")
-                or actor_em
-                or ""
+                actor_em if (actor_em and actor_r != "guest") else ""
             ).strip().lower()
             profiles = []
             for p in AUTH_SHARE.list_user_profiles():
@@ -1706,6 +1754,8 @@ class GatheringScansHandler(CloudAndTunnelHandlerMixin, ServerWriteRoutesMixin, 
                     }
                 )
             matched_prof = next((x for x in profiles if str(x.get("email", "")).lower() == req_em), None) if req_em else None
+            safe_matched = self._sanitize_single_profile(matched_prof, is_admin=is_admin_sess)
+            visible_profiles = self._filter_profiles_for_caller(profiles, req_em, is_admin=is_admin_sess)
             u_settings = DB.get_user_settings(req_em) if req_em else {"language": "zh-TW"}
             active_lang = str((matched_prof and matched_prof.get("language")) or u_settings.get("language") or "zh-TW")
             if active_lang not in ("zh-TW", "en"):
@@ -1718,23 +1768,29 @@ class GatheringScansHandler(CloudAndTunnelHandlerMixin, ServerWriteRoutesMixin, 
                     "role": (matched_prof and matched_prof.get("role")) or actor_r,
                     "permissions": (matched_prof and matched_prof.get("permissions")) or actor_p,
                     "language": active_lang,
-                    "user": matched_prof,
-                    "profile": matched_prof,
-                    "roster": profiles,
-                    "profiles": profiles,
+                    "user": safe_matched,
+                    "profile": safe_matched,
+                    "roster": visible_profiles,
+                    "profiles": visible_profiles,
                     "google_client_id": GOOGLE_OAUTH_CLIENT_ID,
                 }
             )
             return
 
         if path == "/api/admin/pc-daemon":
-            if share_token:
-                self.send_json({"error": "Forbidden for external guest link"}, status=403)
+            _, _, pd_perms = self._resolve_request_role(None, query, share_token)
+            if share_token or not pd_perms.get("can_manage_users"):
+                self.send_json({"error": "Owner or Admin session required to inspect PC daemon status."}, status=403)
                 return
             self.send_json(get_pc_daemon_status())
             return
 
         if path in ("/api/user-profiles", "/api/admin/users"):
+            actor_em_u, _, actor_p_u = self._resolve_request_role(None, query, share_token)
+            is_admin_u = bool(actor_p_u.get("can_manage_users"))
+            if path == "/api/admin/users" and (share_token or not is_admin_u):
+                self.send_json({"error": "Owner or Admin session required to access user roles & permissions."}, status=403)
+                return
             profiles = []
             for p in AUTH_SHARE.list_user_profiles():
                 r_norm = normalize_role(p.get("role"), email=p.get("email", ""))
@@ -1753,15 +1809,20 @@ class GatheringScansHandler(CloudAndTunnelHandlerMixin, ServerWriteRoutesMixin, 
                         "language": p_lang,
                     }
                 )
+            visible_profiles = self._filter_profiles_for_caller(profiles, actor_em_u, is_admin=is_admin_u)
             self.send_json(
                 {
                     "status": "ok",
-                    "profiles": profiles,
-                    "users": profiles,
-                    "roles_catalog": [
-                        {"role": k, "level": v, "label": ROLE_LABELS[k], "permissions": get_role_permissions(k)}
-                        for k, v in sorted(ROLE_LEVELS.items(), key=lambda x: -x[1])
-                    ],
+                    "profiles": visible_profiles,
+                    "users": visible_profiles,
+                    "roles_catalog": (
+                        [
+                            {"role": k, "level": v, "label": ROLE_LABELS[k], "permissions": get_role_permissions(k)}
+                            for k, v in sorted(ROLE_LEVELS.items(), key=lambda x: -x[1])
+                        ]
+                        if is_admin_u
+                        else []
+                    ),
                     "google_client_id": GOOGLE_OAUTH_CLIENT_ID,
                 }
             )

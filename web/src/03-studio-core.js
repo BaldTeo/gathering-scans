@@ -1574,7 +1574,7 @@
       const firstChild = el.firstElementChild;
       if (firstChild) {
         firstChild.style.position = "absolute";
-        firstChild.style.pointerEvents = "none";
+        firstChild.style.pointerEvents = options.pointerEventsAuto ? "auto" : "none";
         if (options.isCategorize) firstChild.classList.add("is-categorize-badge");
         container.appendChild(firstChild);
         const badgeObj = {
@@ -1587,6 +1587,7 @@
           isLassoHighlight: !!options.isLassoHighlight,
           isProfile: !!options.isProfile,
           isCategorize: !!options.isCategorize,
+          isCommentPin: !!options.isCommentPin,
           isTempDistance: !!options.isTempDistance,
           priority: options.priority !== undefined ? Number(options.priority) : 50,
           featureId: options.featureId || "",
@@ -1594,7 +1595,7 @@
         };
         STATE.badges2D.push(badgeObj);
         update2DBadgePositions();
-        if (!options.isTempDistance && !options.isCategorize && !options.isLassoHighlight) {
+        if (!options.isTempDistance && !options.isCategorize && !options.isLassoHighlight && !options.isCommentPin) {
           SHARE_TELEMETRY.recordMeasurement(firstChild.textContent || "");
         }
         return badgeObj;
@@ -1697,6 +1698,14 @@
         : "block";
 
       const isCat = Boolean(b.isCategorize || b.el.classList.contains("is-categorize-badge"));
+      if (b.isCommentPin) {
+        b.el.style.display = "inline-flex";
+        b.el.style.left = `${Math.round(x)}px`;
+        b.el.style.top = `${Math.round(y)}px`;
+        b.el.classList.toggle("flip-left", x > w - 245);
+        b.el.classList.toggle("flip-down", y < 95);
+        return;
+      }
       if (!isCat) {
         b.el.style.display = dispMode;
         const bw = b.el.offsetWidth || 160;
@@ -2800,9 +2809,14 @@
         studioThree.overlayGroup.remove(studioThree.overlayGroup.children[0]);
       }
     }
-    const container = document.getElementById("studioOverlay2D");
-    if (container) container.innerHTML = "";
-    STATE.badges2D = [];
+    STATE.badges2D = STATE.badges2D.filter((b) => {
+      if (b.isCommentPin) return true;
+      b.el?.remove();
+      return false;
+    });
+    if (typeof renderCommentPins3D === "function") {
+      renderCommentPins3D();
+    }
   }
 
   // Exact Gathering Cloud Distance Measurement Visuals with Orthogonal X, Y, Z Delta Breakdown (Fix #5)

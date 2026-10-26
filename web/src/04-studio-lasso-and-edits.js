@@ -2747,7 +2747,8 @@
     }
 
     if (tool === "comments") {
-      add3DPinMarker(pt, 0x0284c7);
+      STATE.pendingCommentDraftPt = pt.clone();
+      if (typeof renderCommentPins3D === "function") renderCommentPins3D();
       openCommentsInspector(pt, twd);
       return;
     }

@@ -131,6 +131,8 @@
     categorizeEditPoints: [],
     studioLassoOrbitMode: false,
     sidePanelMinimized: false,
+    compareScanCount: 2,
+    pendingCommentDraftPt: null,
     multiAlign: {
       active: false,
       gizmoMode: "both", // 'both' | 'translate' | 'rotate'
@@ -361,8 +363,10 @@
     const studioSel = document.getElementById("studioScanSelect");
     const cmpLeft = document.getElementById("compareLeftSelect");
     const cmpRight = document.getElementById("compareRightSelect");
+    const cmpThird = document.getElementById("compareThirdSelect");
+    const cmpFourth = document.getElementById("compareFourthSelect");
 
-    [studioSel, cmpLeft, cmpRight].forEach((sel) => {
+    [studioSel, cmpLeft, cmpRight, cmpThird, cmpFourth].forEach((sel, idx) => {
       if (!sel) return;
       const prevVal = sel.value;
       sel.innerHTML = "";
@@ -372,18 +376,25 @@
         opt.textContent = `${s.name} (${s.capture_date || ""})`;
         sel.appendChild(opt);
       });
-      if (preferredScanId && projectScans.some((s) => s.scan_id === preferredScanId)) {
+      if (idx === 0 && preferredScanId && projectScans.some((s) => s.scan_id === preferredScanId)) {
         sel.value = preferredScanId;
       } else if (prevVal && projectScans.some((s) => s.scan_id === prevVal)) {
         sel.value = prevVal;
       } else if (projectScans.length > 0) {
-        sel.value = projectScans[0].scan_id;
+        const defaultIdx = idx === 0 ? 0 : Math.min(idx - 1, projectScans.length - 1);
+        sel.value = projectScans[defaultIdx].scan_id;
       }
     });
 
     if (cmpLeft && cmpRight && projectScans.length >= 2 && cmpLeft.value === cmpRight.value) {
       cmpLeft.value = projectScans[1].scan_id;
       cmpRight.value = projectScans[0].scan_id;
+    }
+    if (cmpThird && projectScans.length >= 3 && (cmpThird.value === cmpLeft?.value || cmpThird.value === cmpRight?.value)) {
+      cmpThird.value = projectScans[2].scan_id;
+    }
+    if (cmpFourth && projectScans.length >= 4 && (cmpFourth.value === cmpLeft?.value || cmpFourth.value === cmpRight?.value || cmpFourth.value === cmpThird?.value)) {
+      cmpFourth.value = projectScans[3].scan_id;
     }
   }
 
@@ -1044,6 +1055,13 @@
     if (typeof syncMultiAlignToolAvailability === "function") {
       syncMultiAlignToolAvailability();
     }
+
+    // 9. Critical/Secret/Internal Settings (Admin/Owner ONLY: API keys, GChat webhooks/handles, User Roles & Permissions, PC Daemon, Pix4D Pipeline)
+    setDisp("adminControlPanelSection", info.canManageUsers, "block");
+    setDisp("settingsServiceAccountCard", info.canManageUsers, "block");
+    setDisp("settingsPix4dPipelineSection", info.canManageUsers, "block");
+    setDisp("gateExistingUsersSection", info.canManageUsers, "block");
+    setDisp("btnJumpQueueToSettings", info.canManageUsers, "inline-flex");
 
     // Role badge in Settings Admin Control Panel
     const badgeRole = document.getElementById("badgeCurrentUserRoleLevel") || document.getElementById("adminCurrentUserRolePill");

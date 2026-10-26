@@ -1247,13 +1247,21 @@ class ScanQueueDB:
                 rows = conn.execute(
                     "SELECT * FROM scans ORDER BY CASE WHEN status='processing' THEN 0 WHEN status='queued' THEN 1 ELSE 2 END, capture_date DESC"
                 ).fetchall()
-            comment_counts = dict(
-                conn.execute("SELECT scan_id, COUNT(*) FROM scan_comments GROUP BY scan_id").fetchall()
-            )
+            all_comments = conn.execute(
+                "SELECT * FROM scan_comments ORDER BY created_at DESC"
+            ).fetchall()
+            comments_by_scan: Dict[str, List[Dict[str, Any]]] = {}
+            for c_row in all_comments:
+                c_dict = dict(c_row)
+                sid_c = str(c_dict.get("scan_id") or "")
+                comments_by_scan.setdefault(sid_c, []).append(c_dict)
             out = []
             for r in rows:
                 item = self._row_to_dict(r)
-                item["comment_count"] = comment_counts.get(item["scan_id"], 0)
+                sid_item = item["scan_id"]
+                cmts = comments_by_scan.get(sid_item, [])
+                item["comments"] = cmts
+                item["comment_count"] = len(cmts)
                 out.append(item)
             return out
 
@@ -1301,6 +1309,27 @@ class ScanQueueDB:
 
     def get_comment(self, comment_id: str) -> Optional[Dict[str, Any]]:
         with DB_LOCK, self._connect() as conn:
+            row = conn.execute("SELECT * FROM scan_comments WHERE comment_id = ?", (comment_id,)).fetchone()
+            return dict(row) if row else None
+
+    def update_comment(
+        self, comment_id: str, text: str, author_name: Optional[str] = None
+    ) -> Optional[Dict[str, Any]]:
+        clean_text = (text or "").strip()
+        if not comment_id or not clean_text:
+            return None
+        with DB_LOCK, self._connect() as conn:
+            if author_name and author_name.strip():
+                conn.execute(
+                    "UPDATE scan_comments SET text = ?, author_name = ? WHERE comment_id = ?",
+                    (clean_text, author_name.strip(), comment_id),
+                )
+            else:
+                conn.execute(
+                    "UPDATE scan_comments SET text = ? WHERE comment_id = ?",
+                    (clean_text, comment_id),
+                )
+            conn.commit()
             row = conn.execute("SELECT * FROM scan_comments WHERE comment_id = ?", (comment_id,)).fetchone()
             return dict(row) if row else None
 

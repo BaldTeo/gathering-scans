@@ -1117,7 +1117,7 @@ class CloudAndTunnelHandlerMixin:
         share_token = self._extract_share_token(parsed_q)
 
         cacheable = method == "GET" and (
-            path in ("/api/scans", "/api/projects", "/api/status", "/api/pc/health", "/api/user-profiles")
+            path in ("/api/scans", "/api/projects", "/api/status", "/api/pc/health")
             or path.endswith("/thumbnail")
             or path.endswith("/thumbnail.png")
             or path.endswith("/tileset.json")

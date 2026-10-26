@@ -986,13 +986,16 @@
     _pix4dSettingsDirty = false;
     await applyTheme(STATE.themePreference, false);
     applyRolePermissionsToUI();
-    await renderAdminControlPanel();
-    await refreshSettingsServiceAccountUI();
-    apiGet("/api/pix4d/settings")
-      .then((res) => {
-        if (res && res.settings) applyPix4dSettingsToUI(res.settings, true);
-      })
-      .catch(() => {});
+    const roleInfo = getCurrentUserRoleInfo();
+    if (roleInfo.canManageUsers) {
+      await renderAdminControlPanel();
+      await refreshSettingsServiceAccountUI();
+      apiGet("/api/pix4d/settings")
+        .then((res) => {
+          if (res && res.settings) applyPix4dSettingsToUI(res.settings, true);
+        })
+        .catch(() => {});
+    }
     const tbody = document.getElementById("offlineCacheTableBody");
     if (!tbody) return;
     tbody.innerHTML = "";
@@ -1165,6 +1168,9 @@
 
   // Admin Control Panel (5-Level Permissions & User Management)
   async function renderAdminControlPanel() {
+    const myInfo = getCurrentUserRoleInfo();
+    const canManageUsers = Boolean(myInfo.canManageUsers || myInfo.can_manage_users);
+    if (!canManageUsers) return;
     refreshAdminPcDaemonUI();
     const tbody = document.getElementById("adminUsersTableBody");
     const rolePill =
@@ -1176,11 +1182,9 @@
     const emailIn = document.getElementById("adminInputUserEmail") || document.getElementById("adminNewUserEmail");
     const roleSel = document.getElementById("adminSelectUserRole") || document.getElementById("adminNewUserRole");
 
-    const myInfo = getCurrentUserRoleInfo();
     if (rolePill) {
       rolePill.textContent = `${tr("目前權限", "Active Role")}: L${myInfo.level} — ${getLocalizedRoleLabel(myInfo.role)}`;
     }
-    const canManageUsers = Boolean(myInfo.canManageUsers || myInfo.can_manage_users);
     if (saveBtn) saveBtn.disabled = !canManageUsers;
     if (nameIn) nameIn.disabled = !canManageUsers;
     if (zhNameIn) zhNameIn.disabled = !canManageUsers;
@@ -2273,13 +2277,35 @@
       const stage = document.getElementById("compareStage");
       const stageW = Math.max(2, Number(stage?.clientWidth) || Number(compareCtx.left?.container?.clientWidth) || window.innerWidth);
       const stageH = Math.max(1, Number(stage?.clientHeight) || Number(compareCtx.left?.container?.clientHeight) || window.innerHeight - 52);
-      const w = STATE.compareMode === "split" ? Math.max(1, Math.floor(stageW / 2)) : stageW;
-      const h = stageH;
-      [compareCtx.left, compareCtx.right].forEach((side) => {
+      const cnt = Math.max(2, Math.min(4, Number(STATE.compareScanCount) || 2));
+      const isSplit = STATE.compareMode === "split";
+      const isMobile = window.innerWidth <= 768;
+      let w = stageW;
+      let h = stageH;
+      if (isSplit) {
+        if (cnt === 4) {
+          w = Math.max(1, Math.floor(stageW / 2));
+          h = Math.max(1, Math.floor(stageH / 2));
+        } else if (cnt === 3) {
+          if (isMobile) {
+            w = stageW;
+            h = Math.max(1, Math.floor(stageH / 3));
+          } else {
+            w = Math.max(1, Math.floor(stageW / 3));
+            h = stageH;
+          }
+        } else {
+          w = Math.max(1, Math.floor(stageW / 2));
+          h = stageH;
+        }
+      }
+      [compareCtx.left, compareCtx.right, compareCtx.third, compareCtx.fourth].forEach((side) => {
         if (!side) return;
-        side.camera.aspect = w / h;
+        const cw = Math.max(1, Number(side.container?.clientWidth) || w);
+        const ch = Math.max(1, Number(side.container?.clientHeight) || h);
+        side.camera.aspect = cw / ch;
         side.camera.updateProjectionMatrix();
-        side.renderer.setSize(w, h);
+        side.renderer.setSize(cw, ch);
         if (side.tilesRenderer) {
           side.tilesRenderer.setResolutionFromRenderer(side.camera, side.renderer);
         }
@@ -2507,11 +2533,11 @@
       const topBadge = document.getElementById("topCrsBadge");
       if (topBadge) {
         topBadge.textContent = tr(
-          "由 Glib Ivanov 博士與 Gemini 4 Argon 開發",
+          "由 雲在天 博士與 Gemini 4 Argon 開發",
           "Created by Glib Ivanov, PhD and Gemini 4 Argon"
         );
         topBadge.title = tr(
-          "由 Glib Ivanov 博士與 Gemini 4 Argon 共同開發",
+          "由 雲在天 博士與 Gemini 4 Argon 共同開發",
           "Created by Glib Ivanov, PhD and Gemini 4 Argon"
         );
       }
@@ -2609,11 +2635,11 @@
     const topBadge = document.getElementById("topCrsBadge");
     if (topBadge) {
       topBadge.textContent = tr(
-        "由 Glib Ivanov 博士與 Gemini 4 Argon 開發",
+        "由 雲在天 博士與 Gemini 4 Argon 開發",
         "Created by Glib Ivanov, PhD and Gemini 4 Argon"
       );
       topBadge.title = tr(
-        "由 Glib Ivanov 博士與 Gemini 4 Argon 共同開發",
+        "由 雲在天 博士與 Gemini 4 Argon 共同開發",
         "Created by Glib Ivanov, PhD and Gemini 4 Argon"
       );
     }
@@ -2669,8 +2695,8 @@
         }
         if (STATE.activeView === "compare" && compareCtx && !compareCtx._loadingDone) {
           let needsRender = false;
-          ["left", "right"].forEach((k) => {
-            const side = compareCtx[k];
+          const activeSides = typeof getActiveCompareSides === "function" ? getActiveCompareSides() : [compareCtx.left, compareCtx.right].filter(Boolean);
+          activeSides.forEach((side) => {
             if (side && side.tilesRenderer) {
               side.camera.updateMatrixWorld();
               side.tilesRenderer.update();
@@ -2678,9 +2704,10 @@
             }
           });
           syncCompareLoaderProgress();
-          if (needsRender && compareCtx.left && compareCtx.right) {
-            compareCtx.left.renderer.render(compareCtx.left.scene, compareCtx.left.camera);
-            compareCtx.right.renderer.render(compareCtx.right.scene, compareCtx.right.camera);
+          if (needsRender) {
+            activeSides.forEach((side) => {
+              if (side && side.renderer) side.renderer.render(side.scene, side.camera);
+            });
           }
         }
       } catch (_) {}

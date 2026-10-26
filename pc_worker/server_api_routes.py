@@ -747,8 +747,8 @@ class ServerWriteRoutesMixin:
                 return
 
             if path == "/api/pix4d/settings":
-                if not actor_perms.get("can_run_workflows"):
-                    self.send_json({"error": f"Role '{actor_role}' cannot modify PIX4Dmatic settings."}, status=403)
+                if not actor_perms.get("can_manage_users"):
+                    self.send_json({"error": f"Role '{actor_role}' cannot modify global PIX4Dmatic settings (Admin/Owner required)."}, status=403)
                     return
                 saved = save_pix4d_settings(payload.get("settings", payload) if isinstance(payload, dict) else {})
                 self.send_json({"status": "ok", "settings": saved})
@@ -883,16 +883,25 @@ class ServerWriteRoutesMixin:
                 )
                 return
 
-            # 8. Comments API
-            if path == "/api/comments":
-                scan_id = payload.get("scan_id", "")
+            # 8. Comments API (Create, Edit/Update, Delete)
+            if path in ("/api/comments", "/api/comments/update", "/api/comments/delete"):
+                action = str(
+                    payload.get("action")
+                    or ("update" if path.endswith("/update") else "delete" if path.endswith("/delete") else "create")
+                ).strip().lower()
+                scan_id = str(payload.get("scan_id") or "").strip()
+                comment_id = str(payload.get("comment_id") or "").strip()
+                existing_cmt = DB.get_comment(comment_id) if comment_id else None
+                if not scan_id and existing_cmt:
+                    scan_id = str(existing_cmt.get("scan_id") or "").strip()
+
                 if share_token:
                     ok_s, reason_s, link_s, _ = AUTH_SHARE.validate_share_access(
-                        share_token, requested_scan_id=scan_id
+                        share_token, requested_scan_id=scan_id or None
                     )
                     if not ok_s and os.name != "nt":
                         ok_s, reason_s, link_s, _ = self._validate_cloud_share_token(
-                            share_token, requested_scan_id=scan_id
+                            share_token, requested_scan_id=scan_id or None
                         )
                     if not ok_s:
                         self.send_json({"error": reason_s}, status=403)
@@ -901,11 +910,44 @@ class ServerWriteRoutesMixin:
                         self.send_json({"error": "Comments are disabled for this external share link."}, status=403)
                         return
                 elif actor_role == "guest":
-                    self.send_json({"error": "Read-only Guest Mode cannot post comments. Sign in with Google to comment."}, status=403)
+                    self.send_json({"error": "Read-only Guest Mode cannot post or edit comments. Sign in with Google to comment."}, status=403)
                     return
+
+                if action == "update":
+                    if not comment_id:
+                        self.send_json({"error": "comment_id is required to update a comment."}, status=400)
+                        return
+                    if not existing_cmt:
+                        self.send_json({"error": "Comment not found."}, status=404)
+                        return
+                    new_text = str(payload.get("text") or "").strip()
+                    if not new_text:
+                        self.send_json({"error": "Comment text cannot be empty."}, status=400)
+                        return
+                    updated_cmt = DB.update_comment(
+                        comment_id,
+                        new_text,
+                        author_name=payload.get("author_name"),
+                    )
+                    _VPS_RAM_FALLBACK_CACHE.clear()
+                    cmts_list = DB.list_comments(scan_id) if scan_id else []
+                    self.send_json({"status": "ok", "comment": updated_cmt, "comments": cmts_list})
+                    return
+
+                if action == "delete":
+                    if not comment_id:
+                        self.send_json({"error": "comment_id is required to delete a comment."}, status=400)
+                        return
+                    deleted = DB.delete_comment(comment_id)
+                    _VPS_RAM_FALLBACK_CACHE.clear()
+                    cmts_list = DB.list_comments(scan_id) if scan_id else []
+                    self.send_json({"status": "ok", "deleted": deleted, "comment_id": comment_id, "comments": cmts_list})
+                    return
+
                 cmt = DB.add_comment(payload)
                 _VPS_RAM_FALLBACK_CACHE.clear()
-                self.send_json({"status": "ok", "comment": cmt})
+                cmts_list = DB.list_comments(scan_id) if scan_id else [cmt]
+                self.send_json({"status": "ok", "comment": cmt, "comments": cmts_list})
                 return
 
             # 9a. Share Link Visitor Session & Tool Telemetry
@@ -1132,21 +1174,28 @@ class ServerWriteRoutesMixin:
                 if lang_val not in ("zh-TW", "en"):
                     lang_val = "zh-TW"
                 prof["language"] = lang_val
+                is_admin_caller = bool(actor_perms.get("can_manage_users"))
+                safe_self = self._sanitize_single_profile(prof, is_admin=is_admin_caller)
                 self.send_json(
                     {
                         "status": "ok",
                         "authenticated": True,
                         "email": email,
                         "language": lang_val,
-                        "user": prof,
-                        "profile": prof,
+                        "user": safe_self,
+                        "profile": safe_self,
                         "settings": u_settings,
-                        "profiles": AUTH_SHARE.list_user_profiles(),
+                        "profiles": self._filter_profiles_for_caller(
+                            AUTH_SHARE.list_user_profiles(), email, is_admin_caller
+                        ),
                     }
                 )
                 return
 
             if path == "/api/admin/users/save":
+                if not actor_perms.get("can_manage_users"):
+                    self.send_json({"error": "Owner or Admin session required to manage user roles."}, status=403)
+                    return
                 res_admin = AUTH_SHARE.admin_save_user(
                     actor_email=actor_email,
                     target_email=str(payload.get("email") or payload.get("target_email") or ""),
@@ -1162,6 +1211,9 @@ class ServerWriteRoutesMixin:
                 return
 
             if path == "/api/admin/users/delete":
+                if not actor_perms.get("can_manage_users"):
+                    self.send_json({"error": "Owner or Admin session required to remove users."}, status=403)
+                    return
                 res_del = AUTH_SHARE.admin_delete_user(
                     actor_email=actor_email,
                     target_email=str(payload.get("email") or payload.get("target_email") or ""),
@@ -1177,20 +1229,27 @@ class ServerWriteRoutesMixin:
                     self.send_json({"error": "Authenticated Google session required to update user profiles."}, status=403)
                     return
                 target_em = str(payload.get("email") or "").strip().lower()
-                if not actor_perms.get("can_manage_users") and target_em != actor_email:
+                is_admin_caller = bool(actor_perms.get("can_manage_users"))
+                if not is_admin_caller and target_em != actor_email:
                     self.send_json({"error": "Only Owner or Admin accounts can modify other user profiles."}, status=403)
                     return
                 safe_payload = dict(payload)
-                if not actor_perms.get("can_manage_users"):
+                if not is_admin_caller:
                     safe_payload.pop("role", None)
                     safe_payload.pop("isAdmin", None)
                     safe_payload.pop("isOwner", None)
-                saved = AUTH_SHARE.upsert_user_profile(safe_payload, preserve_existing_role=not actor_perms.get("can_manage_users"))
+                    safe_payload.pop("googleSub", None)
+                    safe_payload.pop("google_sub", None)
+                    safe_payload.pop("gchat_user_id", None)
+                saved = AUTH_SHARE.upsert_user_profile(safe_payload, preserve_existing_role=not is_admin_caller)
+                safe_saved = self._sanitize_single_profile(saved, is_admin=is_admin_caller)
                 self.send_json(
                     {
                         "status": "ok",
-                        "profile": saved,
-                        "profiles": AUTH_SHARE.list_user_profiles(),
+                        "profile": safe_saved,
+                        "profiles": self._filter_profiles_for_caller(
+                            AUTH_SHARE.list_user_profiles(), actor_email, is_admin_caller
+                        ),
                     }
                 )
                 return
@@ -1207,12 +1266,16 @@ class ServerWriteRoutesMixin:
                     if u_lang not in ("zh-TW", "en"):
                         u_lang = "zh-TW"
                     user["language"] = u_lang
+                user_is_admin = bool((user.get("permissions") or {}).get("can_manage_users") or user.get("role") in ("owner", "admin"))
+                safe_user = self._sanitize_single_profile(user, is_admin=user_is_admin)
                 self.send_json(
                     {
                         "status": "ok",
-                        "user": user,
+                        "user": safe_user,
                         "language": user.get("language", "zh-TW"),
-                        "profiles": AUTH_SHARE.list_user_profiles(),
+                        "profiles": self._filter_profiles_for_caller(
+                            AUTH_SHARE.list_user_profiles(), u_em, user_is_admin
+                        ),
                     }
                 )
                 return
@@ -1236,18 +1299,29 @@ class ServerWriteRoutesMixin:
             return
         if path.startswith("/api/comments/"):
             actor_email, actor_role, actor_perms = self._resolve_request_role(None, query, share_token)
-            if not actor_perms.get("can_comment") or actor_role == "guest":
-                self.send_json({"error": "Authenticated session required to delete spatial comments."}, status=403)
-                return
             cid = path[len("/api/comments/") :].strip("/")
             existing_c = DB.get_comment(cid)
-            if existing_c and not actor_perms.get("can_manage_users"):
-                c_author = str(existing_c.get("author_email") or "").strip().lower()
-                if c_author and c_author != actor_email:
-                    self.send_json({"error": "You can only delete your own comments (or sign in as Admin/Owner)."}, status=403)
+            scan_id_c = str(existing_c.get("scan_id") or "") if existing_c else ""
+            if share_token:
+                ok_s, reason_s, link_s, _ = AUTH_SHARE.validate_share_access(
+                    share_token, requested_scan_id=scan_id_c or None
+                )
+                if not ok_s or not (link_s and link_s.get("allow_comments", False)):
+                    self.send_json({"error": "Comments are disabled for this external share link."}, status=403)
                     return
+            elif actor_role == "guest":
+                self.send_json({"error": "Authenticated session required to delete spatial comments."}, status=403)
+                return
             deleted = DB.delete_comment(cid)
-            self.send_json({"status": "ok", "deleted": deleted})
+            _VPS_RAM_FALLBACK_CACHE.clear()
+            self.send_json(
+                {
+                    "status": "ok",
+                    "deleted": deleted,
+                    "comment_id": cid,
+                    "comments": DB.list_comments(scan_id_c) if scan_id_c else [],
+                }
+            )
             return
         self.send_json({"error": "Unknown DELETE endpoint"}, status=404)
 

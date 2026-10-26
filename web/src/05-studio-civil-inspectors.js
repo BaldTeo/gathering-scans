@@ -3517,7 +3517,7 @@
     }
   }
 
-  // 3F. 3D Geo-Comments Inspector
+  // 3F. 3D Geo-Comments Inspector (with Edit & Delete buttons and persistent 3D semi-transparent comment icons)
   async function openCommentsInspector(clickedPt = null, clickedTwd = null) {
     setActiveStudioTool("comments");
     if (window.innerWidth <= 768) {
@@ -3526,58 +3526,169 @@
       STATE.sidePanelMinimized = false;
     }
     const detail = await apiGet(`/api/scans/${STATE.activeScanId}`);
-    const scan = detail.scan;
-    const comments = scan.comments || [];
+    const scan = detail.scan || STATE.activeScan || {};
+    const comments = Array.isArray(scan.comments) ? scan.comments : [];
+    if (STATE.activeScan && STATE.activeScan.scan_id === STATE.activeScanId) {
+      STATE.activeScan.comments = comments;
+      STATE.activeScan.comment_count = comments.length;
+    }
+    const catScan = STATE.scans.find((s) => s.scan_id === STATE.activeScanId);
+    if (catScan) {
+      catScan.comments = comments;
+      catScan.comment_count = comments.length;
+    }
+    if (clickedPt) {
+      STATE.pendingCommentDraftPt = clickedPt.clone();
+    }
+    renderCommentPins3D();
 
-    const pt = clickedPt || new THREE.Vector3(0, 1.2, 0);
+    const pt = clickedPt || STATE.pendingCommentDraftPt || new THREE.Vector3(0, 1.2, 0);
     const twd = clickedTwd || localToTwd97(pt);
     const isExternalOrGuest = Boolean(STATE.shareToken || !STATE.currentUser?.email || STATE.currentUser.email.startsWith("guest@"));
     const savedGuestAuthor = localStorage.getItem("gs_guest_comment_author") || "";
+    const roleInfo = getCurrentUserRoleInfo();
+    const canModifyComments = Boolean(roleInfo.allowComments);
 
     const listHtml = comments
-      .map(
-        (c) => `
-        <div style="background:var(--ui-bg-subtle);border:1px solid var(--ui-border);border-radius:8px;padding:9px;margin-top:8px;">
-          <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--ui-accent);font-weight:700;">
-            <span>${escapeHtml(c.author_name)}</span>
-            <span style="color:var(--ui-text-muted);font-weight:500;">${escapeHtml((c.created_at || "").slice(0, 16))}</span>
+      .map((c) => {
+        const cid = escapeHtml(c.comment_id || "");
+        const timeStr = escapeHtml((c.created_at || "").slice(0, 16));
+        return `
+        <div class="gs-comment-card" data-comment-id="${cid}" style="background:var(--ui-bg-subtle);border:1px solid var(--ui-border);border-radius:8px;padding:9px;margin-top:8px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:6px;font-size:11px;color:var(--ui-accent);font-weight:700;">
+            <span>${escapeHtml(c.author_name || "Reviewer")}</span>
+            <div style="display:flex;align-items:center;gap:4px;">
+              <span style="color:var(--ui-text-muted);font-weight:500;font-size:10.5px;">${timeStr}</span>
+              ${
+                canModifyComments && cid
+                  ? `<button type="button" class="btn-xs" data-comment-edit="${cid}" title="${tr("編輯標註", "Edit Comment")}" style="height:20px;padding:0 6px;font-size:10.5px;">${tr("編輯", "Edit")}</button>
+                     <button type="button" class="btn-xs" data-comment-delete="${cid}" title="${tr("刪除標註", "Delete Comment")}" style="height:20px;padding:0 6px;font-size:10.5px;color:#ef4444;border-color:rgba(239,68,68,0.35);">${tr("刪除", "Delete")}</button>`
+                  : ""
+              }
+            </div>
           </div>
-          <div style="font-size:12px;color:var(--ui-text-primary);margin-top:4px;">${escapeHtml(c.text)}</div>
+          <div class="gs-comment-body-text" data-comment-text="${cid}" style="font-size:12px;color:var(--ui-text-primary);margin-top:4px;white-space:pre-wrap;word-break:break-word;">${escapeHtml(c.text)}</div>
+          <div class="gs-comment-edit-wrap" data-comment-edit-box="${cid}" style="display:none;margin-top:6px;">
+            <textarea class="gs-input" data-comment-edit-input="${cid}" rows="2" style="font-size:12px;margin-bottom:5px;">${escapeHtml(c.text)}</textarea>
+            <div style="display:flex;gap:5px;justify-content:flex-end;">
+              <button type="button" class="btn-xs" data-comment-edit-cancel="${cid}">${tr("取消", "Cancel")}</button>
+              <button type="button" class="btn-xs accent" data-comment-edit-save="${cid}" style="background:var(--ui-accent);color:#fff;border-color:var(--ui-accent);">${tr("儲存", "Save")}</button>
+            </div>
+          </div>
           <div style="font-size:10.5px;font-family:monospace;color:var(--ui-text-muted);margin-top:4px;">
-            TWD97 E:${Number(c.twd97_e).toFixed(1)}m, N:${Number(c.twd97_n).toFixed(1)}m, H:+${Number(c.twd97_h).toFixed(2)}m
+            E:${Number(c.twd97_e).toFixed(1)}m, N:${Number(c.twd97_n).toFixed(1)}m, H:+${Number(c.twd97_h).toFixed(2)}m
           </div>
         </div>
-      `
-      )
+      `;
+      })
       .join("");
 
     showSidePanel(
-      `<span>3D Geo-Comments (${comments.length})</span>`,
+      `<span>${tr(`3D 空間標註 (${comments.length})`, `3D Geo-Comments (${comments.length})`)}</span>`,
       `
       <div style="font-size:11px;color:var(--ui-text-secondary);margin-bottom:8px;">
-        Click anywhere on the 3D scan to place the comment pin, then write your note below.
+        ${tr("在 3D 掃描模型上點擊任意位置放置標註點，並在下方輸入說明。", "Click anywhere on the 3D scan to place the comment pin, then write your note below.")}
       </div>
       ${
         isExternalOrGuest
           ? `<div class="gs-form-group" style="margin-bottom:8px;">
-               <label>Your Name</label>
-               <input type="text" class="gs-input" id="txtGuestAuthorName" value="${escapeHtml(savedGuestAuthor)}" placeholder="e.g. Reviewer Name" />
+               <label>${tr("您的姓名", "Your Name")}</label>
+               <input type="text" class="gs-input" id="txtGuestAuthorName" value="${escapeHtml(savedGuestAuthor)}" placeholder="${tr("例如：審查工程師", "e.g. Reviewer Name")}" />
              </div>`
           : ""
       }
       <div class="gs-form-group">
-        <label>Pin Coordinate: E:${twd.e}m, N:${twd.n}m, H:+${twd.h}m</label>
-        <textarea class="gs-input" id="txtNewComment" rows="2" placeholder="Leave an engineering observation..."></textarea>
+        <label>${tr("標註座標", "Pin Coordinate")}: E:${twd.e}m, N:${twd.n}m, H:+${twd.h}m</label>
+        <textarea class="gs-input" id="txtNewComment" rows="2" placeholder="${tr("輸入工程觀察或標註內容...", "Leave an engineering observation...")}"></textarea>
       </div>
-      <button type="button" class="gs-top-btn accent" style="width:100%;justify-content:center;margin-bottom:8px;" id="btnSubmitComment" title="Post 3D Comment Pin">
+      <button type="button" class="gs-top-btn accent" style="width:100%;justify-content:center;margin-bottom:8px;" id="btnSubmitComment" title="${tr("張貼 3D 空間標註", "Post 3D Comment Pin")}">
         <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8">
           <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
         </svg>
-        <span>Post</span>
+        <span>${tr("新增標註", "Post")}</span>
       </button>
       <div id="commentsListBox">${listHtml}</div>
       `
     );
+
+    const listBox = document.getElementById("commentsListBox");
+    if (listBox) {
+      listBox.querySelectorAll("[data-comment-edit]").forEach((btn) => {
+        btn.addEventListener("click", (ev) => {
+          ev.stopPropagation();
+          const cid = btn.getAttribute("data-comment-edit");
+          const editBox = listBox.querySelector(`[data-comment-edit-box="${cid}"]`);
+          const textBox = listBox.querySelector(`[data-comment-text="${cid}"]`);
+          if (editBox && textBox) {
+            const openNow = editBox.style.display === "none";
+            editBox.style.display = openNow ? "block" : "none";
+            textBox.style.display = openNow ? "none" : "block";
+          }
+        });
+      });
+
+      listBox.querySelectorAll("[data-comment-edit-cancel]").forEach((btn) => {
+        btn.addEventListener("click", (ev) => {
+          ev.stopPropagation();
+          const cid = btn.getAttribute("data-comment-edit-cancel");
+          const editBox = listBox.querySelector(`[data-comment-edit-box="${cid}"]`);
+          const textBox = listBox.querySelector(`[data-comment-text="${cid}"]`);
+          if (editBox && textBox) {
+            editBox.style.display = "none";
+            textBox.style.display = "block";
+          }
+        });
+      });
+
+      listBox.querySelectorAll("[data-comment-edit-save]").forEach((btn) => {
+        btn.addEventListener("click", async (ev) => {
+          ev.stopPropagation();
+          const cid = btn.getAttribute("data-comment-edit-save");
+          const inp = listBox.querySelector(`[data-comment-edit-input="${cid}"]`);
+          const newText = inp ? inp.value.trim() : "";
+          if (!cid || !newText) return;
+          try {
+            const res = await apiPost("/api/comments/update", {
+              action: "update",
+              comment_id: cid,
+              scan_id: STATE.activeScanId,
+              text: newText,
+            });
+            if (Array.isArray(res?.comments) && STATE.activeScan) {
+              STATE.activeScan.comments = res.comments;
+            }
+            showToast(tr("已更新空間標註", "Updated 3D comment"));
+            await refreshScansCatalog();
+            openCommentsInspector(pt, twd);
+          } catch (err) {
+            showToast(`Edit Comment Error: ${err.message}`);
+          }
+        });
+      });
+
+      listBox.querySelectorAll("[data-comment-delete]").forEach((btn) => {
+        btn.addEventListener("click", async (ev) => {
+          ev.stopPropagation();
+          const cid = btn.getAttribute("data-comment-delete");
+          if (!cid) return;
+          try {
+            const res = await apiPost("/api/comments/delete", {
+              action: "delete",
+              comment_id: cid,
+              scan_id: STATE.activeScanId,
+            });
+            if (Array.isArray(res?.comments) && STATE.activeScan) {
+              STATE.activeScan.comments = res.comments;
+            }
+            showToast(tr("已刪除空間標註", "Deleted 3D comment"));
+            await refreshScansCatalog();
+            openCommentsInspector(pt, twd);
+          } catch (err) {
+            showToast(`Delete Comment Error: ${err.message}`);
+          }
+        });
+      });
+    }
 
     document.getElementById("btnSubmitComment")?.addEventListener("click", async () => {
       const text = document.getElementById("txtNewComment")?.value.trim();
@@ -3595,7 +3706,7 @@
         ? "external@gatheren.cloud"
         : STATE.currentUser?.email || "guest@gatheren.cloud";
       try {
-        await apiPost("/api/comments", {
+        const res = await apiPost("/api/comments", {
           scan_id: STATE.activeScanId,
           author_email: resolvedAuthorEmail,
           author_name: resolvedAuthorName,
@@ -3607,12 +3718,16 @@
           twd97_n: twd.n,
           twd97_h: twd.h,
         });
+        STATE.pendingCommentDraftPt = null;
+        if (Array.isArray(res?.comments) && STATE.activeScan) {
+          STATE.activeScan.comments = res.comments;
+        }
         SHARE_TELEMETRY.recordCommentPosted(resolvedAuthorName, text);
         const bannerNameInp = document.getElementById("inpShareViewerName");
         if (bannerNameInp && customGuestName) {
           bannerNameInp.value = customGuestName;
         }
-        showToast("Posted 3D geo-referenced comment");
+        showToast(tr("已新增 3D 空間標註", "Posted 3D geo-referenced comment"));
         await refreshScansCatalog();
         openCommentsInspector(pt, twd);
       } catch (err) {
@@ -3626,15 +3741,63 @@
     while (studioThree.commentPinsGroup.children.length > 0) {
       studioThree.commentPinsGroup.remove(studioThree.commentPinsGroup.children[0]);
     }
-    const scan = STATE.activeScan;
-    if (!scan || !scan.comments) return;
-    scan.comments.forEach((c) => {
-      add3DPinMarker(
-        new THREE.Vector3(c.pos_x || 0, (c.pos_y || 0) + 0.15, c.pos_z || 0),
-        0x0284c7,
-        studioThree.commentPinsGroup
-      );
+    STATE.badges2D = STATE.badges2D.filter((b) => {
+      if (b.isCommentPin) {
+        b.el?.remove();
+        return false;
+      }
+      return true;
     });
+
+    if (STATE.activeTool === "comments" && STATE.pendingCommentDraftPt) {
+      add3DPinMarker(STATE.pendingCommentDraftPt, 0x0284c7, studioThree.commentPinsGroup);
+    }
+
+    const scan = STATE.activeScan;
+    if (!scan || !Array.isArray(scan.comments) || !scan.comments.length) {
+      update2DBadgePositions();
+      return;
+    }
+
+    scan.comments.forEach((c) => {
+      const worldPt = new THREE.Vector3(Number(c.pos_x) || 0, (Number(c.pos_y) || 0) + 0.12, Number(c.pos_z) || 0);
+      const author = escapeHtml(c.author_name || "Reviewer");
+      const timeStr = escapeHtml((c.created_at || "").slice(0, 16));
+      const textHtml = escapeHtml(c.text || "");
+      const cid = escapeHtml(c.comment_id || "");
+      const pinHtml = `
+        <div class="gs-scan-comment-pin" data-comment-pin-id="${cid}" style="transform:translate(-50%,-50%);">
+          <div class="gs-comment-pin-icon" title="${author}: ${textHtml}">
+            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+            </svg>
+          </div>
+          <div class="gs-comment-pin-popover">
+            <div class="gs-comment-pin-meta">
+              <span class="gs-comment-pin-author">${author}</span>
+              <span class="gs-comment-pin-time">${timeStr}</span>
+            </div>
+            <div class="gs-comment-pin-text">${textHtml}</div>
+          </div>
+        </div>
+      `;
+      const badge = add2DBadge(worldPt, pinHtml, "#0284c7", {
+        rawHtml: true,
+        isCommentPin: true,
+        pointerEventsAuto: true,
+      });
+      if (badge && badge.el) {
+        badge.el.addEventListener("click", (ev) => {
+          ev.stopPropagation();
+          const wasOpen = badge.el.classList.contains("mobile-open");
+          document.querySelectorAll(".gs-scan-comment-pin.mobile-open").forEach((el) => el.classList.remove("mobile-open"));
+          if (!wasOpen) {
+            badge.el.classList.add("mobile-open");
+          }
+        });
+      }
+    });
+    update2DBadgePositions();
   }
 
 

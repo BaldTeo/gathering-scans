@@ -449,6 +449,113 @@ class GatheringScansTestSuite(unittest.TestCase):
         self.assertGreater(webhook_idx, offline_start)
         self.assertNotIn('id="inputGChatWebhookUrl"', html[queue_start:offline_start])
 
+    def test_09_six_additional_ux_security_and_compare_fixes(self):
+        """Verify all 6 additional fixes: Comments persistence & CRUD, 3x North Arrow without background, 2-row TWD97/WGS84, 雲在天 博士, 3/4-scan Multi-Viewport Compare, and Admin-only settings security."""
+        # 1a & 1b: Comments returned in list_scans(), update_comment(), and delete_comment()
+        scan_id = "quchi_20261005_merged"
+        self.db.upsert_scan(
+            {
+                "scan_id": scan_id,
+                "name": "QuChi Dam Merged Scan",
+                "project_group": "QuChi Dam",
+                "status": "completed",
+            }
+        )
+        created = self.db.add_comment(
+            {
+                "scan_id": scan_id,
+                "author_email": "glibivanov@gatheren.com.tw",
+                "author_name": "雲在天",
+                "text": "Initial test comment on scan",
+                "pos_x": 1.5,
+                "pos_y": 2.0,
+                "pos_z": -3.5,
+                "twd97_e": 304950.0,
+                "twd97_n": 2757080.0,
+                "twd97_h": 125.4,
+            }
+        )
+        cid = created["comment_id"]
+        scans = self.db.list_scans()
+        target_scan = [s for s in scans if s["scan_id"] == scan_id][0]
+        self.assertIn("comments", target_scan)
+        self.assertTrue(any(c["comment_id"] == cid for c in target_scan["comments"]))
+
+        updated = self.db.update_comment(cid, "Edited test comment text", "雲在天")
+        self.assertIsNotNone(updated)
+        self.assertEqual(updated["text"], "Edited test comment text")
+
+        deleted_ok = self.db.delete_comment(cid)
+        self.assertTrue(deleted_ok)
+        scans_after = self.db.list_scans()
+        target_after = [s for s in scans_after if s["scan_id"] == scan_id][0]
+        self.assertFalse(any(c["comment_id"] == cid for c in target_after["comments"]))
+
+        with open(os.path.join(BASE_DIR, "web", "index.html"), "r", encoding="utf-8") as f:
+            html = f.read()
+        with open(os.path.join(BASE_DIR, "web", "app.css"), "r", encoding="utf-8") as f:
+            css = f.read()
+        with open(os.path.join(BASE_DIR, "web", "src", "01-core-state.js"), "r", encoding="utf-8") as f:
+            js01 = f.read()
+        with open(os.path.join(BASE_DIR, "web", "src", "02-map-and-timeline.js"), "r", encoding="utf-8") as f:
+            js02 = f.read()
+        with open(os.path.join(BASE_DIR, "web", "src", "03-studio-core.js"), "r", encoding="utf-8") as f:
+            js03 = f.read()
+        with open(os.path.join(BASE_DIR, "web", "src", "04-studio-lasso-and-edits.js"), "r", encoding="utf-8") as f:
+            js04 = f.read()
+        with open(os.path.join(BASE_DIR, "web", "src", "05-studio-civil-inspectors.js"), "r", encoding="utf-8") as f:
+            js05 = f.read()
+        with open(os.path.join(BASE_DIR, "web", "src", "07-compare-and-queue.js"), "r", encoding="utf-8") as f:
+            js07 = f.read()
+        with open(os.path.join(BASE_DIR, "web", "app.js"), "r", encoding="utf-8") as f:
+            app_js = f.read()
+        with open(os.path.join(BASE_DIR, "server.py"), "r", encoding="utf-8") as f:
+            srv_py = f.read()
+
+        # 1a/1b/1c: Comment pins preserved on clear, edit/delete buttons, semi-transparent comment icon + hover/tap popover
+        self.assertIn("isCommentPin", js03)
+        self.assertIn("STATE.pendingCommentDraftPt", js04)
+        self.assertNotIn('if (tool === "comments") {\n      add3DPinMarker', js04)
+        self.assertIn("data-comment-edit", js05)
+        self.assertIn("data-comment-delete", js05)
+        self.assertIn("gs-scan-comment-pin", js05)
+        self.assertIn("gs-comment-pin-popover", js05)
+        self.assertIn(".gs-scan-comment-pin", css)
+
+        # 2. North arrow compass ~3x bigger (84x84 SVG, 92x92 container), no circular background, mobile top: 76px
+        self.assertIn('width="84" height="84"', html)
+        self.assertIn("background: transparent !important;", css)
+        self.assertIn("top: 76px !important;", css)
+
+        # 3. Removed redundant TWD97 labels and 2-row TWD97 + WGS84 in Scan Clusters modal
+        self.assertNotIn("Scan Clusters (TWD97)", html)
+        self.assertNotIn("掃描工區群組 (TWD97)", html)
+        self.assertIn('coordEl.innerHTML = `<div style="white-space:nowrap;">TWD97(121)', js02)
+        self.assertNotIn("Google Maps · TWD97 (121) + TWVD2001", js02)
+
+        # 4. In Chinese Dr. Glib Ivanov is 雲在天 博士
+        self.assertIn("由 雲在天 博士與 Gemini 4 Argon 開發", html)
+        self.assertIn("由 雲在天 博士與 Gemini 4 Argon 開發", app_js)
+        self.assertNotIn("由 Glib Ivanov 博士", html)
+        self.assertNotIn("由 Glib Ivanov 博士", app_js)
+
+        # 5. Compare 2, 3, or 4 scans in Multi-Viewport
+        self.assertIn('id="compareScanCountSwitcher"', html)
+        self.assertIn('id="compareThirdLayer"', html)
+        self.assertIn('id="compareFourthLayer"', html)
+        self.assertIn('id="compareThirdSelect"', html)
+        self.assertIn('id="compareFourthSelect"', html)
+        self.assertIn("setCompareScanCount", js07)
+        self.assertIn('data-compare-count="3"', css)
+        self.assertIn('data-compare-count="4"', css)
+
+        # 6. Critical/secret/internal settings accessible only by Admin
+        self.assertIn('setDisp("adminControlPanelSection", info.canManageUsers', js01)
+        self.assertIn('setDisp("settingsServiceAccountCard", info.canManageUsers', js01)
+        self.assertIn('setDisp("settingsPix4dPipelineSection", info.canManageUsers', js01)
+        self.assertIn('setDisp("gateExistingUsersSection", info.canManageUsers', js01)
+        self.assertIn("_filter_profiles_for_caller", srv_py)
+
 
 if __name__ == "__main__":
     unittest.main()
