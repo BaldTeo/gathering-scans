@@ -4490,6 +4490,119 @@ body.theme-light .gs-comment-pin-text {
   box-shadow: 0 0 0 4px rgba(56, 189, 248, 0.75);
 }
 
+/* ============================================================================
+   BRIGHT THEME ([data-theme="light"]) OVERRIDES FOR ALL TOOLTIPS, AZIMUTH PILLS & FLOATING DRAW HUD
+   ============================================================================ */
+html[data-theme="light"] .gs-mobile-tool-hud,
+html[data-theme="light"] #studioMobileToolHud,
+body.theme-light .gs-mobile-tool-hud,
+body.theme-light #studioMobileToolHud {
+  background: rgba(255, 255, 255, 0.95);
+  border-color: rgba(15, 23, 42, 0.16);
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.14);
+  color: #0f172a;
+}
+
+html[data-theme="light"] .gs-mob-hud-label,
+html[data-theme="light"] .gs-mobile-hud-label,
+body.theme-light .gs-mob-hud-label,
+body.theme-light .gs-mobile-hud-label {
+  color: #0f172a;
+}
+
+html[data-theme="light"] .gs-mob-hud-btn,
+html[data-theme="light"] .gs-mobile-hud-btn,
+body.theme-light .gs-mob-hud-btn,
+body.theme-light .gs-mobile-hud-btn {
+  background: rgba(241, 245, 249, 0.96);
+  border-color: rgba(100, 116, 139, 0.35);
+  color: #0f172a;
+}
+
+html[data-theme="light"] .gs-mob-hud-btn.danger,
+html[data-theme="light"] .gs-mobile-hud-btn.danger,
+body.theme-light .gs-mob-hud-btn.danger,
+body.theme-light .gs-mobile-hud-btn.danger {
+  background: rgba(254, 226, 226, 0.95);
+  border-color: rgba(239, 68, 68, 0.55);
+  color: #b91c1c;
+}
+
+html[data-theme="light"] .autodesk-azimuth-badge,
+body.theme-light .autodesk-azimuth-badge {
+  background: rgba(255, 251, 235, 0.96);
+  color: #b45309;
+  border-color: rgba(245, 158, 11, 0.75);
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.12);
+}
+
+html[data-theme="light"] .autodesk-coord-badge,
+body.theme-light .autodesk-coord-badge {
+  background: rgba(255, 255, 255, 0.95);
+  color: #0f172a;
+  border-color: rgba(2, 132, 199, 0.65);
+  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.14);
+}
+
+html[data-theme="light"] .autodesk-coord-badge.pinned,
+body.theme-light .autodesk-coord-badge.pinned {
+  border-color: rgba(16, 185, 129, 0.78);
+}
+
+html[data-theme="light"] .autodesk-coord-badge .coord-row-name,
+body.theme-light .autodesk-coord-badge .coord-row-name {
+  color: #0284c7;
+  border-bottom-color: rgba(15, 23, 42, 0.12);
+}
+
+html[data-theme="light"] .autodesk-coord-badge.pinned .coord-row-name,
+body.theme-light .autodesk-coord-badge.pinned .coord-row-name {
+  color: #059669;
+}
+
+html[data-theme="light"] .laser-bubble-w,
+body.theme-light .laser-bubble-w {
+  background: rgba(255, 241, 242, 0.96);
+  color: #be123c;
+  border-color: rgba(225, 29, 72, 0.65);
+}
+
+html[data-theme="light"] .laser-bubble-l,
+body.theme-light .laser-bubble-l {
+  background: rgba(240, 249, 255, 0.96);
+  color: #0369a1;
+  border-color: rgba(2, 132, 199, 0.65);
+}
+
+html[data-theme="light"] .laser-bubble-slope,
+body.theme-light .laser-bubble-slope {
+  background: rgba(255, 251, 235, 0.96);
+  color: #b45309;
+  border-color: rgba(217, 119, 6, 0.55);
+}
+
+html[data-theme="light"] .gs-photo-frustum-badge,
+body.theme-light .gs-photo-frustum-badge {
+  background: rgba(255, 255, 255, 0.95);
+  color: #0284c7;
+  border-color: rgba(2, 132, 199, 0.55);
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.12);
+}
+
+html[data-theme="light"] .gs-fp-dpad-grid,
+body.theme-light .gs-fp-dpad-grid {
+  background: rgba(255, 255, 255, 0.88);
+  border-color: rgba(15, 23, 42, 0.16);
+}
+
+html[data-theme="light"] .gs-fp-touch-btn,
+body.theme-light .gs-fp-touch-btn {
+  background: rgba(241, 245, 249, 0.92);
+  color: #0f172a;
+  border-color: rgba(100, 116, 139, 0.35);
+}
+
+
 
 
 

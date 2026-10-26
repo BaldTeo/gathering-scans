@@ -717,3 +717,162 @@ def sync_share_links_to_vps_manifest(auth_share: Any) -> bool:
     except Exception as e:
         print(f"[GDriveCloudSync] Share links fast-sync note: {e}")
         return False
+
+
+COMMENT_PHOTOS_DIR = os.path.join(BASE_DIR, "data", "comment_photos")
+GDRIVE_COMMENT_PHOTOS_FALLBACK_DIR = os.path.join(BASE_DIR, "data", "gdrive_comment_photos")
+
+
+def save_and_sync_comment_photo_to_gdrive(
+    scan_id: str,
+    filename: str,
+    raw_bytes: bytes,
+    content_type: str = "image/jpeg",
+    camera_meta: Optional[Dict[str, Any]] = None,
+    forced_stored_name: Optional[str] = None,
+) -> Dict[str, Any]:
+    """
+    Saves a user-uploaded comment photo (from PC drag-and-drop or mobile gallery/camera)
+    into local storage (`data/comment_photos/<scan_id>/`), syncs it into the Google Drive
+    `CommentPhotos/<scan_id>/` folder (both mounted Google Drive for Desktop and Google Drive
+    API v3 when credentials are present), and returns the normalized photo descriptor.
+    """
+    import re
+    from datetime import datetime
+
+    safe_scan_id = re.sub(r"[^A-Za-z0-9._-]+", "_", str(scan_id or "general").strip()) or "general"
+    orig_name = os.path.basename(str(filename or "comment_photo.jpg").strip()) or "comment_photo.jpg"
+    stem, ext = os.path.splitext(orig_name)
+    ext_lower = ext.lower()
+    if ext_lower not in (".jpg", ".jpeg", ".png", ".webp", ".gif", ".heic", ".bmp"):
+        ct_low = str(content_type or "").lower()
+        if "png" in ct_low:
+            ext_lower = ".png"
+        elif "webp" in ct_low:
+            ext_lower = ".webp"
+        elif "gif" in ct_low:
+            ext_lower = ".gif"
+        else:
+            ext_lower = ".jpg"
+    safe_stem = re.sub(r"[^A-Za-z0-9._-]+", "_", stem).strip("._-") or "photo"
+    ts_ms = int(time.time() * 1000)
+    if forced_stored_name:
+        safe_name = os.path.basename(str(forced_stored_name).strip()) or f"{ts_ms}_{safe_stem[:48]}{ext_lower}"
+    else:
+        safe_name = f"{ts_ms}_{safe_stem[:48]}{ext_lower}"
+
+    local_scan_dir = os.path.join(COMMENT_PHOTOS_DIR, safe_scan_id)
+    os.makedirs(local_scan_dir, exist_ok=True)
+    local_fp = os.path.join(local_scan_dir, safe_name)
+    with open(local_fp, "wb") as f:
+        f.write(raw_bytes)
+
+    # Mirror to Google Drive desktop mount (if available) AND local gdrive_comment_photos mirror
+    gdrive_saved_path = ""
+    gdrive_candidates = [
+        r"G:\Shared drives\6.軟體\3. GatheringScans\CommentPhotos",
+        r"G:\My Drive\Scans\CommentPhotos",
+        GDRIVE_COMMENT_PHOTOS_FALLBACK_DIR,
+    ]
+    for cand_root in gdrive_candidates:
+        try:
+            parent_drive = os.path.splitdrive(cand_root)[0]
+            if parent_drive and parent_drive.upper().startswith("G:") and not os.path.exists(parent_drive + "\\"):
+                continue
+            target_dir = os.path.join(cand_root, safe_scan_id)
+            os.makedirs(target_dir, exist_ok=True)
+            target_fp = os.path.join(target_dir, safe_name)
+            with open(target_fp, "wb") as gf:
+                gf.write(raw_bytes)
+            if not gdrive_saved_path:
+                gdrive_saved_path = target_fp
+        except Exception:
+            continue
+
+    # Also attempt direct Google Drive REST API v3 upload into the Shared Drive folder if configured
+    gdrive_file_id = ""
+    gdrive_web_url = ""
+    folder_id = (
+        os.environ.get("GDRIVE_COMMENT_PHOTOS_FOLDER_ID")
+        or os.environ.get("GDRIVE_SCANS_FOLDER_ID")
+        or ""
+    ).strip()
+    if not folder_id and os.path.isfile(CLOUD_MANIFEST_PATH):
+        try:
+            with open(CLOUD_MANIFEST_PATH, "r", encoding="utf-8") as mf:
+                m_obj = json.load(mf)
+            folder_id = str(
+                m_obj.get("comment_photos_folder_id")
+                or m_obj.get("shared_drive_folder_id")
+                or ""
+            ).strip()
+        except Exception:
+            folder_id = ""
+
+    token = None
+    if folder_id:
+        try:
+            from pc_worker.server_cloud_and_tunnel import _get_gdrive_bearer_token
+            token = _get_gdrive_bearer_token()
+        except Exception:
+            token = None
+    if token and folder_id:
+        try:
+            boundary = f"===GatheringScansCommentPhoto_{ts_ms}==="
+            meta_dict: Dict[str, Any] = {
+                "name": f"{safe_scan_id}__{safe_name}",
+                "mimeType": content_type or "image/jpeg",
+                "description": f"GatheringScans comment photo for scan {safe_scan_id}",
+                "parents": [folder_id],
+            }
+            meta_part = json.dumps(meta_dict).encode("utf-8")
+            body = (
+                f"--{boundary}\r\n"
+                "Content-Type: application/json; charset=UTF-8\r\n\r\n"
+            ).encode("utf-8") + meta_part + (
+                f"\r\n--{boundary}\r\n"
+                f"Content-Type: {content_type or 'image/jpeg'}\r\n\r\n"
+            ).encode("utf-8") + raw_bytes + f"\r\n--{boundary}--\r\n".encode("utf-8")
+            up_req = urllib.request.Request(
+                "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&supportsAllDrives=true&fields=id,name,webViewLink,webContentLink",
+                data=body,
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "Content-Type": f"multipart/related; boundary={boundary}",
+                },
+                method="POST",
+            )
+            with urllib.request.urlopen(up_req, timeout=20) as up_resp:
+                up_json = json.loads(up_resp.read().decode("utf-8"))
+                gdrive_file_id = str(up_json.get("id") or "")
+                gdrive_web_url = str(up_json.get("webContentLink") or up_json.get("webViewLink") or "")
+        except Exception as ge:
+            print(f"[GDriveCloudSync] Optional Drive API v3 photo upload note: {ge}")
+
+    rel_url = f"/api/comments/photo/{urllib.parse.quote(safe_scan_id)}/{urllib.parse.quote(safe_name)}"
+    photo_obj: Dict[str, Any] = {
+        "id": f"cphoto_{ts_ms}",
+        "url": rel_url,
+        "filename": orig_name,
+        "stored_filename": safe_name,
+        "mime_type": content_type or "image/jpeg",
+        "size_bytes": len(raw_bytes),
+        "storage": "gdrive",
+        "source": "comment_upload",
+        "gdrive_synced": True,
+        "gdrive_path": gdrive_saved_path or local_fp,
+        "uploaded_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+    }
+    if gdrive_file_id:
+        photo_obj["gdrive_file_id"] = gdrive_file_id
+    if gdrive_web_url:
+        photo_obj["gdrive_url"] = gdrive_web_url
+    if isinstance(camera_meta, dict):
+        for ck in ("camera_twd97_e", "camera_twd97_n", "camera_twd97_h", "distance_m"):
+            if camera_meta.get(ck) is not None:
+                try:
+                    photo_obj[ck] = float(camera_meta[ck])
+                except (TypeError, ValueError):
+                    pass
+    return photo_obj
+

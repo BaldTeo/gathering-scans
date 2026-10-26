@@ -832,6 +832,19 @@
       // Do not run hover raycasts while orbiting/panning with mouse buttons held down
       if ((e.buttons & 7) !== 0) return;
 
+      if (STATE.movingVertex && typeof updateStudioVertexMove === "function") {
+        const moveHit = pickStudio3DHit(e.clientX, e.clientY);
+        if (moveHit && moveHit.point) {
+          updateStudioVertexMove(moveHit.point);
+          const twd = localToTwd97(moveHit.point);
+          const lbl = document.getElementById("lblLastPickedCoord");
+          if (lbl) {
+            lbl.textContent = formatScanCoordReadout(twd, STATE.activeScan);
+          }
+        }
+        return;
+      }
+
       if (STATE.activeTool === "laser") {
         handleStudioLaserMove(e);
       } else if (STATE.activeTool === "coordinates") {
@@ -1486,14 +1499,31 @@
     }
 
     const hits = studioThree.raycaster.intersectObjects(targets, true);
+    const snappedVertex =
+      STATE.snapEnabled && typeof findNearestSnappableToolVertex === "function"
+        ? findNearestSnappableToolVertex(clientX, clientY, window.innerWidth <= 768 ? 28 : 24, STATE.movingVertex)
+        : null;
+
+    if (snappedVertex && snappedVertex.point) {
+      updateStudioSnapIndicator(snappedVertex.point, true);
+    } else {
+      updateStudioSnapIndicator(null, false);
+    }
+
     if (hits.length > 0) {
       const h0 = hits[0];
       const rawPoint = h0.point.clone();
       const p = rawPoint.clone();
+      let snappedToToolVertex = false;
       if (STATE.snapEnabled) {
-        p.x = Math.round(p.x * 20) / 20;
-        p.y = Math.round(p.y * 20) / 20;
-        p.z = Math.round(p.z * 20) / 20;
+        if (snappedVertex && snappedVertex.point) {
+          p.copy(snappedVertex.point);
+          snappedToToolVertex = true;
+        } else {
+          p.x = Math.round(p.x * 20) / 20;
+          p.y = Math.round(p.y * 20) / 20;
+          p.z = Math.round(p.z * 20) / 20;
+        }
       }
       const normal = new THREE.Vector3(0, 1, 0);
       if (h0.face && h0.object) {
@@ -1508,10 +1538,226 @@
         normal,
         distance: h0.distance,
         object: h0.object,
+        snappedToToolVertex,
+        snappedVertex: snappedVertex || null,
+      };
+    }
+
+    if (STATE.snapEnabled && snappedVertex && snappedVertex.point) {
+      const sp = snappedVertex.point.clone();
+      return {
+        point: sp,
+        rawPoint: sp.clone(),
+        normal: new THREE.Vector3(0, 1, 0),
+        distance: studioThree.camera ? studioThree.camera.position.distanceTo(sp) : 0,
+        object: null,
+        snappedToToolVertex: true,
+        snappedVertex,
       };
     }
     return null;
   }
+
+  function getAllSnappableToolVertices(excludeMovingVertex = null) {
+    const list = [];
+    const pushV = (pt, meta) => {
+      if (!pt || !Number.isFinite(pt.x) || !Number.isFinite(pt.y) || !Number.isFinite(pt.z)) return;
+      if (excludeMovingVertex) {
+        if (excludeMovingVertex.point === pt) return;
+        if (
+          excludeMovingVertex.source === meta.source &&
+          excludeMovingVertex.measId &&
+          excludeMovingVertex.measId === meta.measId &&
+          excludeMovingVertex.pointKey === meta.pointKey &&
+          excludeMovingVertex.pointIndex === meta.pointIndex
+        ) {
+          return;
+        }
+      }
+      list.push(Object.assign({ point: pt, editable: meta.editable !== false }, meta));
+    };
+
+    (STATE.completedMeasurements || []).forEach((m) => {
+      if (!m || typeof m !== "object") return;
+      if (m.type === "distance") {
+        pushV(m.p1, { source: "completed", measId: m.id, measType: "distance", pointKey: "p1", label: "Distance P1" });
+        pushV(m.p2, { source: "completed", measId: m.id, measType: "distance", pointKey: "p2", label: "Distance P2" });
+      } else if (m.type === "angle") {
+        pushV(m.p1, { source: "completed", measId: m.id, measType: "angle", pointKey: "p1", label: "Angle P1" });
+        pushV(m.p2, { source: "completed", measId: m.id, measType: "angle", pointKey: "p2", label: "Angle Vertex P2" });
+        pushV(m.p3, { source: "completed", measId: m.id, measType: "angle", pointKey: "p3", label: "Angle P3" });
+      } else if (m.type === "coordinates") {
+        pushV(m.pt, { source: "completed", measId: m.id, measType: "coordinates", pointKey: "pt", label: m.label || "Coord" });
+      } else if (m.type === "area" && Array.isArray(m.points)) {
+        m.points.forEach((pt, idx) => {
+          pushV(pt, { source: "completed", measId: m.id, measType: "area", pointIndex: idx, label: `Area V${idx + 1}` });
+        });
+      } else if (m.type === "laser") {
+        pushV(m.originPt, { source: "completed", measId: m.id, measType: "laser", pointKey: "originPt", editable: false });
+        pushV(m.pA, { source: "completed", measId: m.id, measType: "laser", pointKey: "pA", editable: false });
+        pushV(m.pB, { source: "completed", measId: m.id, measType: "laser", pointKey: "pB", editable: false });
+        pushV(m.orthoPA, { source: "completed", measId: m.id, measType: "laser", pointKey: "orthoPA", editable: false });
+        pushV(m.orthoPB, { source: "completed", measId: m.id, measType: "laser", pointKey: "orthoPB", editable: false });
+      }
+    });
+
+    if (Array.isArray(STATE.measurePoints)) {
+      STATE.measurePoints.forEach((pt, idx) => {
+        pushV(pt, {
+          source: "measurePoints",
+          measId: "__in_progress__",
+          measType: STATE.activeTool || "measure",
+          pointIndex: idx,
+          label: `Point #${idx + 1}`,
+        });
+      });
+    }
+
+    if (Array.isArray(STATE.cutFillPolygonPoints) && STATE.cutFillPolygonPoints.length > 0 && STATE.measurePoints.length === 0) {
+      STATE.cutFillPolygonPoints.forEach((pt, idx) => {
+        pushV(pt, {
+          source: "cutFillPolygonPoints",
+          measId: "__cut_fill__",
+          measType: "volume",
+          pointIndex: idx,
+          label: `Volume V${idx + 1}`,
+        });
+      });
+    }
+
+    if (Array.isArray(STATE.profileEndpoints) && STATE.profileEndpoints.length >= 2) {
+      STATE.profileEndpoints.forEach((pt, idx) => {
+        pushV(pt, {
+          source: "profileEndpoints",
+          measId: "__profile__",
+          measType: "profile",
+          pointIndex: idx,
+          label: idx === 0 ? "Profile A" : "Profile B",
+        });
+      });
+    }
+
+    if (Array.isArray(STATE.sectionBoxEndpoints) && STATE.sectionBoxEndpoints.length >= 2) {
+      STATE.sectionBoxEndpoints.forEach((pt, idx) => {
+        pushV(pt, {
+          source: "sectionBoxEndpoints",
+          measId: "__section__",
+          measType: "section",
+          pointIndex: idx,
+          label: idx === 0 ? "Section P1" : "Section P2",
+        });
+      });
+    }
+
+    return list;
+  }
+  window.getAllSnappableToolVertices = getAllSnappableToolVertices;
+
+  function findNearestSnappableToolVertex(clientX, clientY, maxPx = 24, excludeMovingVertex = STATE.movingVertex, onlyEditable = false) {
+    if (!studioThree || !studioThree.camera || !studioThree.renderer?.domElement) return null;
+    const rect = studioThree.renderer.domElement.getBoundingClientRect();
+    const w = Math.max(1, rect.width);
+    const h = Math.max(1, rect.height);
+    const localX = clientX - rect.left;
+    const localY = clientY - rect.top;
+    const cam = studioThree.camera;
+    const candidates = getAllSnappableToolVertices(excludeMovingVertex);
+    let best = null;
+    let bestDistPx = maxPx;
+
+    for (let i = 0; i < candidates.length; i++) {
+      const c = candidates[i];
+      if (onlyEditable && !c.editable) continue;
+      const proj = c.point.clone().project(cam);
+      if (proj.z < -1.0 || proj.z > 1.0) continue;
+      const sx = (proj.x * 0.5 + 0.5) * w;
+      const sy = (-proj.y * 0.5 + 0.5) * h;
+      const dPx = Math.hypot(localX - sx, localY - sy);
+      if (dPx <= bestDistPx) {
+        bestDistPx = dPx;
+        best = Object.assign({}, c, { screenDistPx: dPx, screenX: sx, screenY: sy });
+      }
+    }
+    return best;
+  }
+  window.findNearestSnappableToolVertex = findNearestSnappableToolVertex;
+
+  function findNearestEditableVertexAtScreenXY(clientX, clientY, maxPx = 26) {
+    return findNearestSnappableToolVertex(clientX, clientY, maxPx, STATE.movingVertex, true);
+  }
+  window.findNearestEditableVertexAtScreenXY = findNearestEditableVertexAtScreenXY;
+
+  function updateStudioSnapIndicator(worldPt, isToolVertex = false) {
+    if (!studioThree || !studioThree.overlayGroup) return;
+    let ring = studioThree._snapIndicatorRing;
+    if (!worldPt || !isToolVertex) {
+      if (ring) ring.visible = false;
+      return;
+    }
+    if (!ring) {
+      const rGeo = new THREE.RingGeometry(0.95, 1.42, 32);
+      const rMat = new THREE.MeshBasicMaterial({
+        color: 0x10b981,
+        side: THREE.DoubleSide,
+        depthTest: false,
+        depthWrite: false,
+        transparent: true,
+        opacity: 0.96,
+      });
+      ring = new THREE.Mesh(rGeo, rMat);
+      ring.userData.isZoomInvariantRing = true;
+      ring.userData.isSnapIndicator = true;
+      ring.userData.pixelRadius = 11.5;
+      ring.renderOrder = 1005;
+      studioThree._snapIndicatorRing = ring;
+    }
+    if (!ring.parent) {
+      studioThree.overlayGroup.add(ring);
+    }
+    ring.visible = true;
+    ring.position.copy(worldPt);
+    if (studioThree.camera) {
+      ring.quaternion.copy(studioThree.camera.quaternion);
+    }
+    updateZoomInvariantElements();
+  }
+  window.updateStudioSnapIndicator = updateStudioSnapIndicator;
+
+  function updateStudioMovingVertexIndicator(worldPt) {
+    if (!studioThree || !studioThree.overlayGroup) return;
+    let ring = studioThree._movingVertexRing;
+    if (!worldPt) {
+      if (ring) ring.visible = false;
+      return;
+    }
+    if (!ring) {
+      const rGeo = new THREE.RingGeometry(1.05, 1.58, 32);
+      const rMat = new THREE.MeshBasicMaterial({
+        color: 0xf59e0b,
+        side: THREE.DoubleSide,
+        depthTest: false,
+        depthWrite: false,
+        transparent: true,
+        opacity: 0.98,
+      });
+      ring = new THREE.Mesh(rGeo, rMat);
+      ring.userData.isZoomInvariantRing = true;
+      ring.userData.isMovingVertexIndicator = true;
+      ring.userData.pixelRadius = 13.0;
+      ring.renderOrder = 1006;
+      studioThree._movingVertexRing = ring;
+    }
+    if (!ring.parent) {
+      studioThree.overlayGroup.add(ring);
+    }
+    ring.visible = true;
+    ring.position.copy(worldPt);
+    if (studioThree.camera) {
+      ring.quaternion.copy(studioThree.camera.quaternion);
+    }
+    updateZoomInvariantElements();
+  }
+  window.updateStudioMovingVertexIndicator = updateStudioMovingVertexIndicator;
 
   function pickStudio3DPoint(clientX, clientY) {
     const hit = pickStudio3DHit(clientX, clientY);
@@ -2796,9 +3042,14 @@
   }
 
   function clearMeasurements() {
+    STATE.movingVertex = null;
     STATE.measurePoints = [];
     STATE.completedMeasurements = [];
     STATE.polygonLocked = false;
+    if (studioThree) {
+      studioThree._snapIndicatorRing = null;
+      studioThree._movingVertexRing = null;
+    }
     if (typeof clearLassoSelectionState === "function") {
       clearLassoSelectionState();
     }
@@ -2838,6 +3089,242 @@
       renderCommentPins3D();
     }
   }
+
+  function rebuildAllCompletedMeasurements3D() {
+    if (!studioThree || !studioThree.overlayGroup) return;
+    clearTempDistanceVisuals();
+    const toRemove = [];
+    studioThree.overlayGroup.children.forEach((c) => {
+      if (!c) return;
+      if (
+        c.userData?.isLassoHighlight ||
+        c.userData?.isSnapIndicator ||
+        c.userData?.isMovingVertexIndicator ||
+        c === studioThree._sectionBoxHelper ||
+        c === studioThree.drainageGroup ||
+        c === studioThree.gcpQaGroup ||
+        c === studioThree.photoFrustumGroup
+      ) {
+        return;
+      }
+      toRemove.push(c);
+    });
+    toRemove.forEach((c) => {
+      if (c.geometry) c.geometry.dispose();
+      if (c.material) c.material.dispose();
+      studioThree.overlayGroup.remove(c);
+    });
+
+    STATE.badges2D = STATE.badges2D.filter((b) => {
+      if (b.isCommentPin || b.isCategorize || b.isVolume || b.isLassoHighlight || b.isProfile) {
+        return true;
+      }
+      b.el?.remove();
+      return false;
+    });
+
+    (STATE.completedMeasurements || []).forEach((m) => {
+      if (!m || typeof m !== "object") return;
+      if (m.type === "distance" && m.p1 && m.p2) {
+        m.dist = m.p1.distanceTo(m.p2);
+        renderDistanceVisuals(null, m);
+      } else if (m.type === "angle" && m.p1 && m.p2 && m.p3) {
+        renderAngleVisuals(null, m);
+      } else if (m.type === "coordinates" && m.pt) {
+        m.twd = localToTwd97(m.pt);
+        renderCoordinateVisuals(m.pt, m);
+      } else if (m.type === "area" && Array.isArray(m.points) && m.points.length >= 3) {
+        if (typeof renderClosedAreaPolygon === "function") {
+          renderClosedAreaPolygon(m.points, { preserveExistingAreas: true });
+        }
+      } else if (m.type === "laser") {
+        if (typeof renderLaserVisuals === "function") {
+          renderLaserVisuals(null, m);
+        }
+      }
+    });
+
+    const pts = Array.isArray(STATE.measurePoints) ? STATE.measurePoints : [];
+    if (pts.length > 0) {
+      if (STATE.activeTool === "distance") {
+        renderDistanceVisuals(null, null);
+      } else if (STATE.activeTool === "angle") {
+        renderAngleVisuals(null, null);
+      } else if (STATE.activeTool === "area") {
+        const addAreaObj = (m) => {
+          m.userData.isAreaVisual = true;
+          studioThree.overlayGroup.add(m);
+        };
+        pts.forEach((p, idx) => {
+          add3DPinMarker(p, idx === 0 ? 0xff3b30 : 0x0284c7, studioThree.overlayGroup, addAreaObj);
+        });
+        if (pts.length >= 2) {
+          const lineGeom = new THREE.BufferGeometry().setFromPoints(pts);
+          const lineMesh = new THREE.Line(lineGeom, new THREE.LineBasicMaterial({ color: 0x0284c7, depthTest: false }));
+          addAreaObj(lineMesh);
+        }
+      } else if (STATE.activeTool === "volume" && typeof drawPlacedCutFillPolygon3D === "function") {
+        drawPlacedCutFillPolygon3D(pts.slice(), null);
+      } else if (STATE.activeTool === "contours") {
+        pts.forEach((p, idx) => {
+          add3DPinMarker(p, idx === 0 ? 0xff3b30 : 0x0284c7);
+        });
+      }
+    }
+
+    if (
+      STATE.movingVertex?.source === "cutFillPolygonPoints" &&
+      Array.isArray(STATE.cutFillPolygonPoints) &&
+      STATE.cutFillPolygonPoints.length >= 2 &&
+      typeof drawPlacedCutFillPolygon3D === "function"
+    ) {
+      drawPlacedCutFillPolygon3D(STATE.cutFillPolygonPoints, null);
+    }
+
+    if (
+      Array.isArray(STATE.profileEndpoints) &&
+      STATE.profileEndpoints.length >= 2 &&
+      typeof drawProfileSectionLine3D === "function"
+    ) {
+      drawProfileSectionLine3D(
+        STATE.profileEndpoints[0],
+        STATE.profileEndpoints[1],
+        STATE.movingVertex?.source === "profileEndpoints" ? null : STATE.lastProfileResult?.samples || null
+      );
+    }
+
+    if (STATE.movingVertex && STATE.movingVertex.point) {
+      updateStudioMovingVertexIndicator(STATE.movingVertex.point);
+    }
+    updateZoomInvariantElements();
+    update2DBadgePositions();
+  }
+  window.rebuildAllCompletedMeasurements3D = rebuildAllCompletedMeasurements3D;
+
+  function startStudioVertexMove(vDesc) {
+    if (!vDesc || !vDesc.point) return false;
+    if (STATE.movingVertex) {
+      cancelStudioVertexMove(false);
+    }
+    STATE.movingVertex = {
+      point: vDesc.point,
+      source: vDesc.source || "completed",
+      measId: vDesc.measId || "",
+      measType: vDesc.measType || "distance",
+      pointKey: vDesc.pointKey || null,
+      pointIndex: Number.isFinite(vDesc.pointIndex) ? vDesc.pointIndex : null,
+      label: vDesc.label || "Point",
+      originalPoint: vDesc.point.clone(),
+      startedAt: performance.now(),
+    };
+    updateStudioMovingVertexIndicator(vDesc.point);
+    if (typeof syncStudioMobileToolHud === "function") syncStudioMobileToolHud();
+    showToast(
+      tr(
+        `🎯 移動點位 (${STATE.movingVertex.label}) — 移動滑鼠預覽，點擊新位置放置，按 ESC 取消`,
+        `🎯 Moving ${STATE.movingVertex.label} — Move cursor to preview, click to place, press ESC to cancel`
+      )
+    );
+    return true;
+  }
+  window.startStudioVertexMove = startStudioVertexMove;
+
+  function updateStudioVertexMove(newPt) {
+    if (!STATE.movingVertex || !STATE.movingVertex.point || !newPt) return false;
+    STATE.movingVertex.point.copy(newPt);
+    if (
+      STATE.movingVertex.source === "cutFillPolygonPoints" &&
+      Number.isFinite(STATE.movingVertex.pointIndex) &&
+      Array.isArray(STATE.maskBoundaryPoints) &&
+      STATE.maskBoundaryPoints[STATE.movingVertex.pointIndex]
+    ) {
+      STATE.maskBoundaryPoints[STATE.movingVertex.pointIndex].copy(newPt);
+    }
+    rebuildAllCompletedMeasurements3D();
+    return true;
+  }
+  window.updateStudioVertexMove = updateStudioVertexMove;
+
+  function commitStudioVertexMove(finalPt = null) {
+    if (!STATE.movingVertex || !STATE.movingVertex.point) return false;
+    if (finalPt) {
+      STATE.movingVertex.point.copy(finalPt);
+      if (
+        STATE.movingVertex.source === "cutFillPolygonPoints" &&
+        Number.isFinite(STATE.movingVertex.pointIndex) &&
+        Array.isArray(STATE.maskBoundaryPoints) &&
+        STATE.maskBoundaryPoints[STATE.movingVertex.pointIndex]
+      ) {
+        STATE.maskBoundaryPoints[STATE.movingVertex.pointIndex].copy(finalPt);
+      }
+    }
+    const moved = STATE.movingVertex;
+    STATE.movingVertex = null;
+    updateStudioMovingVertexIndicator(null);
+    rebuildAllCompletedMeasurements3D();
+    if (
+      moved.source === "cutFillPolygonPoints" &&
+      Array.isArray(STATE.cutFillPolygonPoints) &&
+      STATE.cutFillPolygonPoints.length >= 3 &&
+      typeof openCutFillVolumeInspector === "function"
+    ) {
+      openCutFillVolumeInspector(STATE.cutFillPolygonPoints);
+    } else if (
+      moved.source === "profileEndpoints" &&
+      Array.isArray(STATE.profileEndpoints) &&
+      STATE.profileEndpoints.length >= 2 &&
+      typeof openProfileInspector === "function"
+    ) {
+      if (typeof drawProfileSectionLine3D === "function") {
+        drawProfileSectionLine3D(STATE.profileEndpoints[0], STATE.profileEndpoints[1]);
+      }
+      openProfileInspector(STATE.profileEndpoints[0], STATE.profileEndpoints[1]);
+    } else if (
+      moved.source === "sectionBoxEndpoints" &&
+      Array.isArray(STATE.sectionBoxEndpoints) &&
+      STATE.sectionBoxEndpoints.length >= 2 &&
+      typeof openSectionBoxInspector === "function"
+    ) {
+      openSectionBoxInspector(STATE.sectionBoxEndpoints[0], STATE.sectionBoxEndpoints[1]);
+    }
+    if (typeof syncStudioMobileToolHud === "function") syncStudioMobileToolHud();
+    showToast(tr(`✓ 已更新點位位置 (${moved.label})`, `✓ Updated ${moved.label} position`));
+    return true;
+  }
+  window.commitStudioVertexMove = commitStudioVertexMove;
+
+  function cancelStudioVertexMove(showMsg = true) {
+    if (!STATE.movingVertex) return false;
+    const moved = STATE.movingVertex;
+    if (moved.point && moved.originalPoint) {
+      moved.point.copy(moved.originalPoint);
+      if (
+        moved.source === "cutFillPolygonPoints" &&
+        Number.isFinite(moved.pointIndex) &&
+        Array.isArray(STATE.maskBoundaryPoints) &&
+        STATE.maskBoundaryPoints[moved.pointIndex]
+      ) {
+        STATE.maskBoundaryPoints[moved.pointIndex].copy(moved.originalPoint);
+      }
+    }
+    STATE.movingVertex = null;
+    updateStudioMovingVertexIndicator(null);
+    rebuildAllCompletedMeasurements3D();
+    if (
+      moved.source === "cutFillPolygonPoints" &&
+      Array.isArray(STATE.cutFillPolygonPoints) &&
+      STATE.cutFillPolygonPoints.length >= 3 &&
+      typeof drawPlacedCutFillPolygon3D === "function"
+    ) {
+      drawPlacedCutFillPolygon3D(STATE.cutFillPolygonPoints, STATE.lastVolumeResult);
+    }
+    if (typeof syncStudioMobileToolHud === "function") syncStudioMobileToolHud();
+    if (showMsg) {
+      showToast(tr("已取消移動點位（恢復原位置）", "Canceled point move (restored original position)"));
+    }
+    return true;
+  }
+  window.cancelStudioVertexMove = cancelStudioVertexMove;
 
   // Exact Gathering Cloud Distance Measurement Visuals with Orthogonal X, Y, Z Delta Breakdown (Fix #5)
   function formatGcDist(meters) {
@@ -3147,6 +3634,9 @@
     const cos3D = Math.max(-1, Math.min(1, u1.dot(u2)));
     const thetaRad = Math.acos(cos3D);
     const deg3D = THREE.MathUtils.radToDeg(thetaRad);
+    if (existingMeas) {
+      existingMeas.angleDeg = deg3D;
+    }
 
     // Orthonormal basis (u1, wOrtho) in the P1-P2-P3 plane for 3D Sector Arc & Translucent Wedge
     const wOrtho = u2.clone().addScaledVector(u1, -cos3D);
@@ -3239,7 +3729,10 @@
       clearTempDistanceVisuals();
     }
     const targetPt = existingMeas ? existingMeas.pt : pt;
-    const twd = existingMeas?.twd || localToTwd97(targetPt);
+    const twd = localToTwd97(targetPt);
+    if (existingMeas) {
+      existingMeas.twd = twd;
+    }
     const isLocalCrs = !STATE.multiAlign?.active && inferActiveScanCrsCode(STATE.activeScan) === "LOCAL_ORIGIN";
     const axX = isLocalCrs ? "X" : "E";
     const axY = isLocalCrs ? "Y" : "N";

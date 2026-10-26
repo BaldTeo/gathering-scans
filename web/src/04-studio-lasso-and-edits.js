@@ -2418,14 +2418,16 @@
     renderAngleVisuals(hoverPt, null);
   }
 
-  function renderClosedAreaPolygon(lockedPts) {
+  function renderClosedAreaPolygon(lockedPts, opts = {}) {
     if (!studioThree || !Array.isArray(lockedPts) || lockedPts.length < 3) return;
     if (studioThree.polyPreviewGroup) {
       while (studioThree.polyPreviewGroup.children.length > 0) {
         studioThree.polyPreviewGroup.remove(studioThree.polyPreviewGroup.children[0]);
       }
     }
-    clearAreaVisualsOnly();
+    if (!opts || !opts.preserveExistingAreas) {
+      clearAreaVisualsOnly();
+    }
     const addAreaObj = (m) => {
       m.userData.isAreaVisual = true;
       studioThree.overlayGroup.add(m);
@@ -2458,7 +2460,101 @@
   }
   window.renderClosedAreaPolygon = renderClosedAreaPolygon;
 
+  let _lastCanvasVertexClick = null;
+
+  document.getElementById("studioCanvasContainer")?.addEventListener("dblclick", (e) => {
+    if (STATE.activeView !== "studio" || STATE.fpMode?.active) return;
+    if (e.target && e.target.closest && e.target.closest("#studioSidePanel, .gs-comment-pin-popover, .gs-scan-comment-pin, #studioMobileToolHud")) {
+      return;
+    }
+    if (STATE.movingVertex) return;
+    if (typeof findNearestEditableVertexAtScreenXY !== "function" || typeof startStudioVertexMove !== "function") return;
+    if (
+      _lastCanvasVertexClick &&
+      performance.now() - _lastCanvasVertexClick.ts <= 500 &&
+      _lastCanvasVertexClick.vDesc
+    ) {
+      if (Array.isArray(STATE.measurePoints) && STATE.measurePoints.length > _lastCanvasVertexClick.preMeasureLen) {
+        STATE.measurePoints.length = _lastCanvasVertexClick.preMeasureLen;
+      }
+      if (
+        Array.isArray(STATE.completedMeasurements) &&
+        STATE.completedMeasurements.length > _lastCanvasVertexClick.preCompletedLen
+      ) {
+        STATE.completedMeasurements.length = _lastCanvasVertexClick.preCompletedLen;
+      }
+      if (typeof rebuildAllCompletedMeasurements3D === "function") {
+        rebuildAllCompletedMeasurements3D();
+      }
+      const targetV = _lastCanvasVertexClick.vDesc;
+      _lastCanvasVertexClick = null;
+      startStudioVertexMove(targetV);
+      return;
+    }
+    const nearV = findNearestEditableVertexAtScreenXY(e.clientX, e.clientY, window.innerWidth <= 768 ? 34 : 28);
+    if (nearV) {
+      startStudioVertexMove(nearV);
+    }
+  });
+
   function handleStudioCanvasClick(e) {
+    const nowMs = performance.now();
+
+    // 1. If currently moving an existing vertex, single click commits the new vertex position
+    if (STATE.movingVertex && typeof commitStudioVertexMove === "function") {
+      if (nowMs - (STATE.movingVertex.startedAt || 0) < 260) {
+        return;
+      }
+      const moveHit = pickStudio3DHit(e.clientX, e.clientY);
+      commitStudioVertexMove(moveHit ? moveHit.point : null);
+      _lastCanvasVertexClick = null;
+      return;
+    }
+
+    // 2. Rapid double-click detection on any existing measurement, area, coordinate, or angle vertex to pick & move it
+    if (typeof findNearestEditableVertexAtScreenXY === "function" && typeof startStudioVertexMove === "function") {
+      if (
+        _lastCanvasVertexClick &&
+        nowMs - _lastCanvasVertexClick.ts <= 380 &&
+        Math.hypot(e.clientX - _lastCanvasVertexClick.clientX, e.clientY - _lastCanvasVertexClick.clientY) <= 22 &&
+        _lastCanvasVertexClick.vDesc
+      ) {
+        if (Array.isArray(STATE.measurePoints) && STATE.measurePoints.length > _lastCanvasVertexClick.preMeasureLen) {
+          STATE.measurePoints.length = _lastCanvasVertexClick.preMeasureLen;
+        }
+        if (
+          Array.isArray(STATE.completedMeasurements) &&
+          STATE.completedMeasurements.length > _lastCanvasVertexClick.preCompletedLen
+        ) {
+          STATE.completedMeasurements.length = _lastCanvasVertexClick.preCompletedLen;
+        }
+        if (typeof rebuildAllCompletedMeasurements3D === "function") {
+          rebuildAllCompletedMeasurements3D();
+        }
+        const targetV = _lastCanvasVertexClick.vDesc;
+        _lastCanvasVertexClick = null;
+        startStudioVertexMove(targetV);
+        return;
+      }
+      const nearEditable = findNearestEditableVertexAtScreenXY(
+        e.clientX,
+        e.clientY,
+        window.innerWidth <= 768 ? 30 : 26
+      );
+      if (nearEditable) {
+        _lastCanvasVertexClick = {
+          ts: nowMs,
+          clientX: e.clientX,
+          clientY: e.clientY,
+          preMeasureLen: Array.isArray(STATE.measurePoints) ? STATE.measurePoints.length : 0,
+          preCompletedLen: Array.isArray(STATE.completedMeasurements) ? STATE.completedMeasurements.length : 0,
+          vDesc: nearEditable,
+        };
+      } else {
+        _lastCanvasVertexClick = null;
+      }
+    }
+
     const hit = pickStudio3DHit(e.clientX, e.clientY);
     if (!hit) return;
     const pt = hit.point;
@@ -2741,12 +2837,18 @@
     }
 
     if (tool === "photos") {
+      if (_lastCanvasVertexClick && _lastCanvasVertexClick.vDesc) {
+        return;
+      }
       add3DPinMarker(pt, 0x0284c7);
       openRtkPhotoInspector(pt, true);
       return;
     }
 
     if (tool === "comments") {
+      if (_lastCanvasVertexClick && _lastCanvasVertexClick.vDesc) {
+        return;
+      }
       STATE.pendingCommentDraftPt = pt.clone();
       if (typeof renderCommentPins3D === "function") renderCommentPins3D();
       openCommentsInspector(pt, twd);
@@ -2805,12 +2907,16 @@
       if (STATE.measurePoints.length >= 3 && isNearStartVertex(pt, STATE.measurePoints[0])) {
         const lockedPts = STATE.measurePoints.map((p) => p.clone());
         STATE.measurePoints = [];
-        renderClosedAreaPolygon(lockedPts);
         STATE.completedMeasurements.push({
           id: `area_${Date.now()}`,
           type: "area",
           points: lockedPts.map((p) => p.clone()),
         });
+        if (typeof rebuildAllCompletedMeasurements3D === "function") {
+          rebuildAllCompletedMeasurements3D();
+        } else {
+          renderClosedAreaPolygon(lockedPts, { preserveExistingAreas: true });
+        }
         showToast(`Area polygon closed (${lockedPts.length} vertices)`);
         syncStudioMobileToolHud();
         return;
@@ -2820,6 +2926,9 @@
       STATE.measurePoints.push(pt.clone());
       const pts = STATE.measurePoints.slice();
       clearAreaVisualsOnly();
+      (STATE.completedMeasurements || [])
+        .filter((m) => m && m.type === "area" && Array.isArray(m.points) && m.points.length >= 3)
+        .forEach((m) => renderClosedAreaPolygon(m.points, { preserveExistingAreas: true }));
       const addAreaObj = (m) => {
         m.userData.isAreaVisual = true;
         studioThree.overlayGroup.add(m);
@@ -2903,6 +3012,9 @@
 
     if (tool === "volume") {
       if (STATE.polygonLocked && STATE.measurePoints.length === 0) {
+        if (_lastCanvasVertexClick && _lastCanvasVertexClick.vDesc) {
+          return;
+        }
         showToast("Cut/Fill boundary is locked — click 'Redraw Polygon' in the Cut/Fill panel to draw a new zone");
         return;
       }

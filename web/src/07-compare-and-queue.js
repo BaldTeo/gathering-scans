@@ -1285,6 +1285,13 @@
     }
 
     syncThreeSceneThemes(resolved);
+    if (
+      STATE.activeView === "studio" &&
+      STATE.activeTool === "drainage" &&
+      typeof renderDrainageAndSlopeVisuals3D === "function"
+    ) {
+      renderDrainageAndSlopeVisuals3D();
+    }
 
     if (persistToServer && STATE.currentUser?.email) {
       await apiPost("/api/user/settings", {

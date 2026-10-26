@@ -157,14 +157,16 @@
         if (isDel) openLassoDeleteInspector({ armLasso: true });
         else openLassoKeepInspector({ armLasso: true });
       } else if (STATE.activeTool === "area") {
-        if (typeof renderClosedAreaPolygon === "function") {
-          renderClosedAreaPolygon(lockedPts);
-        }
         STATE.completedMeasurements.push({
           id: `area_${Date.now()}`,
           type: "area",
           points: lockedPts.map((p) => p.clone()),
         });
+        if (typeof rebuildAllCompletedMeasurements3D === "function") {
+          rebuildAllCompletedMeasurements3D();
+        } else if (typeof renderClosedAreaPolygon === "function") {
+          renderClosedAreaPolygon(lockedPts, { preserveExistingAreas: true });
+        }
         showToast(`Area polygon locked (${lockedPts.length} vertices)`);
       } else if (STATE.activeTool === "contours") {
         STATE.maskBoundaryPoints = lockedPts.map((p) => p.clone());
@@ -186,7 +188,16 @@
     const tool = STATE.activeTool || "orbit";
     const ptsCount = Array.isArray(STATE.measurePoints) ? STATE.measurePoints.length : 0;
 
-    if (tool === "crop_delete" || tool === "crop") {
+    if (STATE.movingVertex) {
+      hud.style.display = "flex";
+      hud.innerHTML = `
+        <span class="gs-mobile-hud-label">🎯 ${tr(
+          `移動點位中 (${STATE.movingVertex.label || "Point"}) — 點擊新位置放置 · 按 ESC 取消`,
+          `Moving ${STATE.movingVertex.label || "Point"} — Click to place · ESC to cancel`
+        )}</span>
+        <button type="button" class="gs-mobile-hud-btn danger" data-mobile-hud="cancel_vertex_move">✕ ${tr("取消移動", "Cancel Move")}</button>
+      `;
+    } else if (tool === "crop_delete" || tool === "crop") {
       const isDel = tool === "crop_delete";
       const isOrbitSub = Boolean(STATE.studioLassoOrbitMode);
       const pendingRegions = typeof countMarkedRegionsPending === "function" ? countMarkedRegionsPending() : 0;
@@ -355,6 +366,12 @@
       return;
     }
 
+    hud.querySelector('[data-mobile-hud="cancel_vertex_move"]')?.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      if (typeof cancelStudioVertexMove === "function") {
+        cancelStudioVertexMove(true);
+      }
+    });
     hud.querySelector('[data-mobile-hud="toggle_lasso_orbit"]')?.addEventListener("click", (ev) => {
       ev.stopPropagation();
       STATE.studioLassoOrbitMode = !STATE.studioLassoOrbitMode;
@@ -412,6 +429,11 @@
         clearTempDistanceVisuals();
         if (STATE.activeTool === "area") {
           clearAreaVisualsOnly();
+          if (typeof renderClosedAreaPolygon === "function") {
+            (STATE.completedMeasurements || [])
+              .filter((m) => m && m.type === "area" && Array.isArray(m.points) && m.points.length >= 3)
+              .forEach((m) => renderClosedAreaPolygon(m.points, { preserveExistingAreas: true }));
+          }
           const pts = STATE.measurePoints.slice();
           const addAreaObj = (m) => {
             m.userData.isAreaVisual = true;
@@ -438,7 +460,14 @@
           studioThree.polyPreviewGroup.remove(studioThree.polyPreviewGroup.children[0]);
         }
       }
-      if (STATE.activeTool === "area") clearAreaVisualsOnly();
+      if (STATE.activeTool === "area") {
+        clearAreaVisualsOnly();
+        if (typeof renderClosedAreaPolygon === "function") {
+          (STATE.completedMeasurements || [])
+            .filter((m) => m && m.type === "area" && Array.isArray(m.points) && m.points.length >= 3)
+            .forEach((m) => renderClosedAreaPolygon(m.points, { preserveExistingAreas: true }));
+        }
+      }
       if (STATE.activeTool === "volume" && !STATE.polygonLocked) clearVolumeVisualsOnly();
       syncStudioMobileToolHud();
     });
@@ -3601,6 +3630,115 @@
     }
   }
 
+  function readFileAsDataUrl(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result || ""));
+      reader.onerror = () => reject(reader.error || new Error("Failed to read image file"));
+      reader.readAsDataURL(file);
+    });
+  }
+
+  async function uploadLocalFilesToComment(fileList, commentId = null, pt = null, twd = null) {
+    const files = Array.from(fileList || []).filter((f) => {
+      if (!f) return false;
+      const t = String(f.type || "").toLowerCase();
+      const n = String(f.name || "").toLowerCase();
+      return t.startsWith("image/") || /\.(jpg|jpeg|png|webp|gif|heic|bmp)$/i.test(n);
+    });
+    if (!files.length) {
+      showToast(tr("請選擇圖片檔案 (.jpg / .png / .webp)", "Please select an image file (.jpg / .png / .webp)"), "warn");
+      return [];
+    }
+    const scanId = STATE.activeScanId || STATE.activeScan?.scan_id || "general";
+    showToast(
+      tr(
+        `☁️ 正在上傳 ${files.length} 張照片並同步至 Google Drive...`,
+        `☁️ Uploading ${files.length} photo(s) & syncing to Google Drive...`
+      )
+    );
+    try {
+      const payloadPhotos = [];
+      for (let i = 0; i < files.length; i++) {
+        const f = files[i];
+        const dataUrl = await readFileAsDataUrl(f);
+        payloadPhotos.push({
+          filename: f.name || `photo_${i + 1}.jpg`,
+          content_type: f.type || "image/jpeg",
+          data_url: dataUrl,
+        });
+      }
+      const res = await apiPost("/api/comments/upload-photo", {
+        scan_id: scanId,
+        comment_id: commentId || undefined,
+        author_name: STATE.currentUser?.name || "Engineer",
+        photos: payloadPhotos,
+      });
+      const uploaded = Array.isArray(res?.photos) ? res.photos : res?.photo ? [res.photo] : [];
+      if (!uploaded.length) {
+        throw new Error(res?.error || "Upload returned no photos");
+      }
+      if (commentId) {
+        if (Array.isArray(res?.comments) && STATE.activeScan) {
+          STATE.activeScan.comments = res.comments;
+        }
+        await refreshScansCatalog();
+        renderCommentPins3D();
+        if (STATE.activeTool === "comments" && document.getElementById("commentsListBox")) {
+          openCommentsInspector(pt, twd);
+        }
+        showToast(
+          tr(
+            `✓ 已上傳 ${uploaded.length} 張照片至 Google Drive 並附加至標註`,
+            `✓ Uploaded ${uploaded.length} photo(s) to Google Drive & attached to comment`
+          )
+        );
+      } else {
+        if (!Array.isArray(STATE.pendingCommentDraftPhotos)) STATE.pendingCommentDraftPhotos = [];
+        uploaded.forEach((p) => {
+          if (p && p.url && !STATE.pendingCommentDraftPhotos.some((x) => x.url === p.url)) {
+            STATE.pendingCommentDraftPhotos.push(p);
+          }
+        });
+        if (STATE.activeTool === "comments" && document.getElementById("commentsInspectorDropZone")) {
+          openCommentsInspector(pt, twd);
+        }
+        showToast(
+          tr(
+            `✓ 已上傳 ${uploaded.length} 張照片至 Google Drive 草稿區`,
+            `✓ Uploaded ${uploaded.length} photo(s) to Google Drive draft tray`
+          )
+        );
+      }
+      return uploaded;
+    } catch (err) {
+      showToast(`Photo Upload Error: ${err.message}`, "error");
+      return [];
+    }
+  }
+  window.uploadLocalFilesToComment = uploadLocalFilesToComment;
+
+  function triggerCommentPhotoFilePicker(commentId = null, pt = null, twd = null) {
+    let picker = document.getElementById("gsGlobalCommentPhotoInput");
+    if (!picker) {
+      picker = document.createElement("input");
+      picker.type = "file";
+      picker.id = "gsGlobalCommentPhotoInput";
+      picker.accept = "image/*";
+      picker.multiple = true;
+      picker.style.display = "none";
+      document.body.appendChild(picker);
+    }
+    picker.value = "";
+    picker.onchange = async () => {
+      if (picker.files && picker.files.length > 0) {
+        await uploadLocalFilesToComment(picker.files, commentId, pt, twd);
+      }
+    };
+    picker.click();
+  }
+  window.triggerCommentPhotoFilePicker = triggerCommentPhotoFilePicker;
+
   // 3F. 3D Geo-Comments Inspector (with Edit & Delete buttons and persistent 3D semi-transparent comment icons)
   async function openCommentsInspector(clickedPt = null, clickedTwd = null) {
     setActiveStudioTool("comments");
@@ -3673,7 +3811,8 @@
               <span style="color:var(--ui-text-muted);font-weight:500;font-size:10.5px;">${timeStr}</span>
               ${
                 canModifyComments && cid
-                  ? `<button type="button" class="btn-xs" data-comment-edit="${cid}" title="${tr("編輯標註", "Edit Comment")}" aria-label="${tr("編輯標註", "Edit Comment")}" style="height:22px;width:24px;padding:0;justify-content:center;">
+                  ? `<button type="button" class="btn-xs" data-comment-upload-photo="${cid}" title="${tr("上傳照片至 Google Drive 並附加", "Upload photo to Google Drive & attach")}" aria-label="${tr("上傳照片", "Upload Photo")}" style="height:22px;padding:0 5px;justify-content:center;color:var(--ui-accent);">📷+</button>
+                     <button type="button" class="btn-xs" data-comment-edit="${cid}" title="${tr("編輯標註", "Edit Comment")}" aria-label="${tr("編輯標註", "Edit Comment")}" style="height:22px;width:24px;padding:0;justify-content:center;">
                        <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
                      </button>
                      <button type="button" class="btn-xs" data-comment-delete="${cid}" title="${tr("刪除標註", "Delete Comment")}" aria-label="${tr("刪除標註", "Delete Comment")}" style="height:22px;width:24px;padding:0;justify-content:center;color:#ef4444;border-color:rgba(239,68,68,0.35);">
@@ -3732,8 +3871,12 @@
           : ""
       }
       <div class="gs-form-group" id="commentsInspectorDropZone" style="border:1px dashed var(--ui-border-strong);border-radius:8px;padding:7px;transition:border-color 0.15s,background 0.15s;">
-        <label>${tr("標註座標", "Pin Coordinate")}: E:${twd.e}m, N:${twd.n}m, H:+${twd.h}m</label>
-        <textarea class="gs-input" id="txtNewComment" rows="2" placeholder="${tr("輸入工程觀察或標註內容（可將 RTK 照片拖曳至此附加）...", "Leave an engineering observation (or drop RTK photos here)...")}"></textarea>
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;margin-bottom:4px;">
+          <label style="margin:0;">${tr("標註座標", "Pin Coordinate")}: E:${twd.e}m, N:${twd.n}m, H:+${twd.h}m</label>
+          <button type="button" class="btn-xs" id="btnUploadDraftCommentPhoto" title="${tr("從電腦拖放或手機相簿選擇照片上傳至 Google Drive", "Upload photo from PC or mobile gallery to Google Drive")}" style="color:var(--ui-accent);border-color:var(--ui-accent);">📷+ ${tr("上傳照片 (GDrive)", "Upload Photo (GDrive)")}</button>
+          <input type="file" id="inpUploadDraftCommentPhoto" accept="image/*" multiple style="display:none;" />
+        </div>
+        <textarea class="gs-input" id="txtNewComment" rows="2" placeholder="${tr("輸入工程觀察或標註內容（可將電腦照片或 RTK 照片拖曳至此附加，或點擊 📷+ 從手機相簿上傳）...", "Leave an engineering observation (drop local image files or RTK photos here, or tap 📷+ to upload from gallery)...")}"></textarea>
         ${draftPhotosHtml}
       </div>
       <button type="button" class="gs-top-btn accent" style="width:100%;justify-content:center;margin-bottom:8px;" id="btnSubmitComment" title="${tr("張貼 3D 空間標註", "Post 3D Comment Pin")}">
@@ -3757,6 +3900,23 @@
       });
     });
 
+    document.getElementById("btnUploadDraftCommentPhoto")?.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      const inp = document.getElementById("inpUploadDraftCommentPhoto");
+      if (inp) {
+        inp.value = "";
+        inp.click();
+      } else {
+        triggerCommentPhotoFilePicker(null, pt, twd);
+      }
+    });
+    document.getElementById("inpUploadDraftCommentPhoto")?.addEventListener("change", async (ev) => {
+      const files = ev.target?.files;
+      if (files && files.length > 0) {
+        await uploadLocalFilesToComment(files, null, pt, twd);
+      }
+    });
+
     const composerDropZone = document.getElementById("commentsInspectorDropZone");
     if (composerDropZone) {
       composerDropZone.addEventListener("dragover", (ev) => {
@@ -3767,10 +3927,14 @@
       composerDropZone.addEventListener("dragleave", () => {
         composerDropZone.classList.remove("drag-over");
       });
-      composerDropZone.addEventListener("drop", (ev) => {
+      composerDropZone.addEventListener("drop", async (ev) => {
         ev.preventDefault();
         ev.stopPropagation();
         composerDropZone.classList.remove("drag-over");
+        if (ev.dataTransfer && ev.dataTransfer.files && ev.dataTransfer.files.length > 0) {
+          await uploadLocalFilesToComment(ev.dataTransfer.files, null, pt, twd);
+          return;
+        }
         let dropped = STATE.draggingRtkPhotos || [];
         try {
           const raw = ev.dataTransfer.getData("application/x-gs-rtk-photos") || ev.dataTransfer.getData("text/plain");
@@ -3836,7 +4000,18 @@
         });
       });
 
-      // Drag and drop RTK photo(s) onto any existing comment card
+      // Upload new photo button on each existing comment card (mobile gallery or PC file picker -> Google Drive)
+      listBox.querySelectorAll("[data-comment-upload-photo]").forEach((btn) => {
+        btn.addEventListener("click", (ev) => {
+          ev.stopPropagation();
+          const cid = btn.getAttribute("data-comment-upload-photo");
+          if (cid) {
+            triggerCommentPhotoFilePicker(cid, pt, twd);
+          }
+        });
+      });
+
+      // Drag and drop local image file(s) OR RTK photo(s) onto any existing comment card
       listBox.querySelectorAll(".gs-comment-card[data-comment-id]").forEach((cardEl) => {
         cardEl.addEventListener("dragover", (ev) => {
           ev.preventDefault();
@@ -3851,6 +4026,10 @@
           ev.stopPropagation();
           cardEl.classList.remove("drag-over");
           const cid = cardEl.getAttribute("data-comment-id");
+          if (cid && ev.dataTransfer && ev.dataTransfer.files && ev.dataTransfer.files.length > 0) {
+            await uploadLocalFilesToComment(ev.dataTransfer.files, cid, pt, twd);
+            return;
+          }
           let dropped = STATE.draggingRtkPhotos || [];
           try {
             const raw = ev.dataTransfer.getData("application/x-gs-rtk-photos") || ev.dataTransfer.getData("text/plain");
@@ -4092,6 +4271,9 @@
             </div>
             <div class="gs-comment-pin-text">${textHtml}</div>
             ${pinPhotosHtml}
+            <div style="display:flex;justify-content:flex-end;margin-top:5px;">
+              <button type="button" class="btn-xs" data-pin-upload-photo="${cid}" style="height:20px;padding:0 6px;font-size:10px;color:var(--ui-accent);border-color:var(--ui-accent);">📷+ ${tr("上傳照片", "Add Photo")}</button>
+            </div>
           </div>
         </div>
       `;
@@ -4102,6 +4284,13 @@
       });
       if (badge && badge.el) {
         badge.el.addEventListener("click", (ev) => {
+          const uploadBtn = ev.target && ev.target.closest ? ev.target.closest("[data-pin-upload-photo]") : null;
+          if (uploadBtn) {
+            ev.stopPropagation();
+            const upCid = uploadBtn.getAttribute("data-pin-upload-photo");
+            if (upCid) triggerCommentPhotoFilePicker(upCid);
+            return;
+          }
           const imgTarget = ev.target && ev.target.closest ? ev.target.closest("[data-pin-photo-idx]") : null;
           if (imgTarget && typeof openPhotoLightboxModal === "function") {
             ev.stopPropagation();
@@ -4118,7 +4307,7 @@
           }
         });
 
-        // Allow dragging 1 or more RTK photos directly onto the 3D comment pin on the scan!
+        // Allow dragging 1 or more local image files OR RTK photos directly onto the 3D comment pin on the scan!
         badge.el.addEventListener("dragover", (ev) => {
           ev.preventDefault();
           ev.dataTransfer.dropEffect = "copy";
@@ -4131,6 +4320,10 @@
           ev.preventDefault();
           ev.stopPropagation();
           badge.el.classList.remove("drag-over");
+          if (c.comment_id && ev.dataTransfer && ev.dataTransfer.files && ev.dataTransfer.files.length > 0) {
+            await uploadLocalFilesToComment(ev.dataTransfer.files, c.comment_id);
+            return;
+          }
           let dropped = STATE.draggingRtkPhotos || [];
           try {
             const raw =

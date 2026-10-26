@@ -1018,7 +1018,107 @@ class ServerWriteRoutesMixin:
                 )
                 return
 
-            # 8. Comments API (Create, Edit/Update, Delete)
+            # 8. Comments API (Upload Photo to Google Drive, Create, Edit/Update, Delete)
+            if path in ("/api/comments/upload-photo", "/api/comments/upload_photo"):
+                from pc_worker.gdrive_cloud_sync import save_and_sync_comment_photo_to_gdrive
+
+                scan_id = str(payload.get("scan_id") or "").strip()
+                comment_id = str(payload.get("comment_id") or "").strip()
+                existing_cmt = DB.get_comment(comment_id) if comment_id else None
+                if not scan_id and existing_cmt:
+                    scan_id = str(existing_cmt.get("scan_id") or "").strip()
+                if not scan_id:
+                    scan_id = "general"
+
+                if share_token:
+                    ok_s, reason_s, link_s, _ = AUTH_SHARE.validate_share_access(
+                        share_token, requested_scan_id=scan_id if scan_id != "general" else None
+                    )
+                    if not ok_s and os.name != "nt":
+                        ok_s, reason_s, link_s, _ = self._validate_cloud_share_token(
+                            share_token, requested_scan_id=scan_id if scan_id != "general" else None
+                        )
+                    if not ok_s:
+                        self.send_json({"error": reason_s}, status=403)
+                        return
+                    if not (link_s and link_s.get("allow_comments", False)):
+                        self.send_json({"error": "Comments are disabled for this external share link."}, status=403)
+                        return
+                elif actor_role == "guest":
+                    self.send_json(
+                        {"error": "Read-only Guest Mode cannot upload comment photos. Sign in with Google to comment."},
+                        status=403,
+                    )
+                    return
+
+                raw_items = payload.get("photos") if isinstance(payload.get("photos"), list) else [payload]
+                uploaded_photos = []
+                for item in raw_items:
+                    if not isinstance(item, dict):
+                        continue
+                    b64_str = str(
+                        item.get("data_base64")
+                        or item.get("data_url")
+                        or item.get("base64")
+                        or item.get("content_base64")
+                        or ""
+                    ).strip()
+                    if not b64_str:
+                        continue
+                    inferred_ct = str(item.get("content_type") or item.get("mime_type") or "").strip()
+                    if b64_str.startswith("data:"):
+                        header_part, _, b64_payload = b64_str.partition(",")
+                        if not inferred_ct and ";" in header_part:
+                            inferred_ct = header_part[5:].split(";", 1)[0].strip()
+                        b64_str = b64_payload.strip()
+                    try:
+                        raw_bytes = base64.b64decode(b64_str)
+                    except Exception as de:
+                        self.send_json({"error": f"Invalid base64 image data: {de}"}, status=400)
+                        return
+                    if not raw_bytes:
+                        continue
+                    if len(raw_bytes) > 25 * 1024 * 1024:
+                        self.send_json({"error": "Image exceeds 25 MB limit."}, status=400)
+                        return
+                    fname = str(item.get("filename") or item.get("name") or payload.get("filename") or "comment_photo.jpg").strip()
+                    photo_meta = save_and_sync_comment_photo_to_gdrive(
+                        scan_id=scan_id,
+                        filename=fname,
+                        raw_bytes=raw_bytes,
+                        content_type=inferred_ct or "image/jpeg",
+                        camera_meta=item,
+                    )
+                    uploaded_photos.append(photo_meta)
+
+                if not uploaded_photos:
+                    self.send_json({"error": "No valid image payload provided (expected data_base64 or data_url)."}, status=400)
+                    return
+
+                updated_cmt = None
+                if comment_id and existing_cmt:
+                    updated_cmt = DB.update_comment(
+                        comment_id,
+                        None,
+                        author_name=payload.get("author_name"),
+                        append_photos=uploaded_photos,
+                    )
+                _VPS_RAM_FALLBACK_CACHE.clear()
+                cmts_list = DB.list_comments(scan_id) if scan_id and scan_id != "general" else []
+                self.send_json(
+                    {
+                        "status": "ok",
+                        "ok": True,
+                        "scan_id": scan_id,
+                        "comment_id": comment_id or None,
+                        "photo": uploaded_photos[0],
+                        "photos": uploaded_photos,
+                        "comment": updated_cmt,
+                        "comments": cmts_list,
+                    }
+                )
+                return
+
             if path in ("/api/comments", "/api/comments/update", "/api/comments/delete"):
                 action = str(
                     payload.get("action")

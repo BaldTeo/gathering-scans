@@ -2434,6 +2434,82 @@ class GatheringScansHandler(CloudAndTunnelHandlerMixin, ServerWriteRoutesMixin, 
             self.send_json({"error": f"Camera photo not found on PC: {fname}"}, status=404)
             return
 
+        # 13b. Serve Uploaded Comment Photo (from local data/comment_photos or Google Drive CommentPhotos mirror)
+        if path == "/api/comment-photo" or path.startswith("/api/comments/photo/"):
+            if path.startswith("/api/comments/photo/"):
+                rel_cp = path[len("/api/comments/photo/") :].strip("/")
+                parts_cp = rel_cp.split("/", 1)
+                scan_id = re.sub(r"[^A-Za-z0-9._-]+", "_", parts_cp[0]) if len(parts_cp) >= 1 else "general"
+                fname = os.path.basename(parts_cp[1]) if len(parts_cp) >= 2 else ""
+            else:
+                scan_id = re.sub(r"[^A-Za-z0-9._-]+", "_", (query.get("scan_id", ["general"])[0] or "general"))
+                fname = os.path.basename(query.get("file", [""])[0])
+            if not fname:
+                self.send_json({"error": "Missing comment photo filename"}, status=400)
+                return
+            cand_roots = [
+                os.path.join(DATA_DIR, "comment_photos"),
+                os.path.join(DATA_DIR, "gdrive_comment_photos"),
+                r"G:\Shared drives\6.軟體\3. GatheringScans\CommentPhotos",
+                r"G:\My Drive\Scans\CommentPhotos",
+            ]
+            for c_root in cand_roots:
+                try:
+                    cand_fp = os.path.join(c_root, scan_id, fname)
+                    if os.path.isfile(cand_fp):
+                        ext_low = os.path.splitext(fname)[1].lower()
+                        c_mime = (
+                            "image/png"
+                            if ext_low == ".png"
+                            else "image/webp"
+                            if ext_low == ".webp"
+                            else "image/gif"
+                            if ext_low == ".gif"
+                            else "image/jpeg"
+                        )
+                        self._serve_file_with_range(cand_fp, content_type=c_mime)
+                        return
+                except Exception:
+                    continue
+
+            # Fallback: fetch directly from Google Drive API v3 if gdrive_file_id is available
+            gdrive_fid = (query.get("gdrive_file_id", [""])[0] or "").strip()
+            expected_sz = 0
+            if not gdrive_fid and scan_id:
+                try:
+                    for c_row in DB.list_comments(scan_id):
+                        for p_row in (c_row.get("photos") or []):
+                            if not isinstance(p_row, dict):
+                                continue
+                            if p_row.get("stored_filename") == fname or str(p_row.get("url") or "").endswith("/" + fname):
+                                gdrive_fid = str(p_row.get("gdrive_file_id") or "").strip()
+                                expected_sz = int(p_row.get("size_bytes") or 0)
+                                break
+                        if gdrive_fid:
+                            break
+                except Exception:
+                    pass
+            if gdrive_fid:
+                try:
+                    from pc_worker.server_cloud_and_tunnel import _fetch_gdrive_byte_slice
+
+                    raw_gd = _fetch_gdrive_byte_slice([gdrive_fid], 0, expected_sz if expected_sz > 0 else 15 * 1024 * 1024)
+                    if raw_gd:
+                        cache_dir = os.path.join(DATA_DIR, "comment_photos", scan_id)
+                        os.makedirs(cache_dir, exist_ok=True)
+                        cache_fp = os.path.join(cache_dir, fname)
+                        with open(cache_fp, "wb") as cf:
+                            cf.write(raw_gd)
+                        ext_low = os.path.splitext(fname)[1].lower()
+                        c_mime = "image/png" if ext_low == ".png" else "image/webp" if ext_low == ".webp" else "image/gif" if ext_low == ".gif" else "image/jpeg"
+                        self._serve_file_with_range(cache_fp, content_type=c_mime)
+                        return
+                except Exception:
+                    pass
+
+            self.send_json({"error": f"Comment photo not found: {fname}"}, status=404)
+            return
+
         # 14. Serve Generated Reports & Contours (.html, .csv, .pdf, .dxf, .dwg)
         if path.startswith("/api/reports/") or path.startswith("/exports/reports/"):
             if share_token:

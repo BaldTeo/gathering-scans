@@ -1123,7 +1123,10 @@ class CloudAndTunnelHandlerMixin:
             or path.endswith("/tileset.json")
             or path.endswith("/preview_tileset.json")
             or path.endswith(".glb")
+            or path == "/api/comment-photo"
+            or path.startswith("/api/comments/photo/")
         )
+        is_comment_photo_upload = method == "POST" and path in ("/api/comments/upload-photo", "/api/comments/upload_photo")
         if method == "POST" and path.endswith("/thumbnail"):
             for k in list(_VPS_RAM_FALLBACK_CACHE.keys()):
                 if k.startswith(path):
@@ -1232,6 +1235,33 @@ class CloudAndTunnelHandlerMixin:
                         self.send_json(local_cat)
                         return True
 
+        # 1d. Serve uploaded comment photos directly from local VPS disk if already mirrored
+        if method == "GET" and (path == "/api/comment-photo" or path.startswith("/api/comments/photo/")):
+            if path.startswith("/api/comments/photo/"):
+                rel_cp = path[len("/api/comments/photo/") :].strip("/")
+                parts_cp = rel_cp.split("/", 1)
+                cp_sid = re.sub(r"[^A-Za-z0-9._-]+", "_", parts_cp[0]) if len(parts_cp) >= 1 else "general"
+                cp_fname = os.path.basename(parts_cp[1]) if len(parts_cp) >= 2 else ""
+            else:
+                cp_sid = re.sub(r"[^A-Za-z0-9._-]+", "_", (parsed_q.get("scan_id", ["general"])[0] or "general"))
+                cp_fname = os.path.basename((parsed_q.get("file", [""])[0] or ""))
+            if cp_fname:
+                for cp_root in (os.path.join(DATA_DIR, "comment_photos"), os.path.join(DATA_DIR, "gdrive_comment_photos")):
+                    cp_fp = os.path.join(cp_root, cp_sid, cp_fname)
+                    if os.path.isfile(cp_fp):
+                        ext_low = os.path.splitext(cp_fname)[1].lower()
+                        cp_mime = (
+                            "image/png"
+                            if ext_low == ".png"
+                            else "image/webp"
+                            if ext_low == ".webp"
+                            else "image/gif"
+                            if ext_low == ".gif"
+                            else "image/jpeg"
+                        )
+                        self._serve_file_with_range(cp_fp, content_type=cp_mime)
+                        return True
+
         # 2. Try Direct Google Drive .3tz Cloud Range Streaming (300+ Mbps, 0% PC Upload) BEFORE using PC tunnel
         if method == "GET" and (
             path.startswith("/stream/") or path.endswith("/thumbnail") or path.endswith("/thumbnail.png")
@@ -1295,7 +1325,7 @@ class CloudAndTunnelHandlerMixin:
                         filtered_hdrs[hk] = hv
                 self.end_headers()
 
-                buf_for_cache = bytearray() if (cacheable and status_code == 200) else None
+                buf_for_cache = bytearray() if ((cacheable or is_comment_photo_upload) and status_code == 200) else None
                 client_Write_ok = True
                 stream_clean = True
 
@@ -1344,9 +1374,61 @@ class CloudAndTunnelHandlerMixin:
                     done_evt.set()
 
                 if buf_for_cache is not None and stream_clean:
-                    if len(_VPS_RAM_FALLBACK_CACHE) > 2000:
-                        _VPS_RAM_FALLBACK_CACHE.clear()
-                    _VPS_RAM_FALLBACK_CACHE[self.path] = (status_code, filtered_hdrs, bytes(buf_for_cache))
+                    if is_comment_photo_upload and body:
+                        try:
+                            from pc_worker.gdrive_cloud_sync import save_and_sync_comment_photo_to_gdrive
+
+                            req_json = json.loads(body.decode("utf-8"))
+                            raw_resp = bytes(buf_for_cache)
+                            if filtered_hdrs.get("Content-Encoding", "").lower() == "gzip" or filtered_hdrs.get("content-encoding", "").lower() == "gzip":
+                                raw_resp = gzip.decompress(raw_resp)
+                            resp_json = json.loads(raw_resp.decode("utf-8"))
+                            resp_photos = resp_json.get("photos") if isinstance(resp_json.get("photos"), list) else ([resp_json["photo"]] if isinstance(resp_json.get("photo"), dict) else [])
+                            req_items = req_json.get("photos") if isinstance(req_json.get("photos"), list) else [req_json]
+                            up_sid = str(resp_json.get("scan_id") or req_json.get("scan_id") or "general").strip() or "general"
+                            for idx_p, item_p in enumerate(req_items):
+                                if not isinstance(item_p, dict):
+                                    continue
+                                b64_s = str(item_p.get("data_base64") or item_p.get("data_url") or item_p.get("base64") or item_p.get("content_base64") or "").strip()
+                                if b64_s.startswith("data:"):
+                                    _, _, b64_s = b64_s.partition(",")
+                                if not b64_s:
+                                    continue
+                                raw_img = base64.b64decode(b64_s.strip())
+                                rp_meta = resp_photos[idx_p] if idx_p < len(resp_photos) and isinstance(resp_photos[idx_p], dict) else {}
+                                stored_fn = str(rp_meta.get("stored_filename") or os.path.basename(str(rp_meta.get("url") or "")) or "").strip()
+                                save_and_sync_comment_photo_to_gdrive(
+                                    scan_id=up_sid,
+                                    filename=str(item_p.get("filename") or rp_meta.get("filename") or "comment_photo.jpg"),
+                                    raw_bytes=raw_img,
+                                    content_type=str(item_p.get("content_type") or rp_meta.get("mime_type") or "image/jpeg"),
+                                    camera_meta=item_p,
+                                    forced_stored_name=stored_fn or None,
+                                )
+                        except Exception as vps_up_err:
+                            print(f"[GatheringScans] VPS comment photo mirror note: {vps_up_err}")
+                    elif method == "GET" and (path == "/api/comment-photo" or path.startswith("/api/comments/photo/")):
+                        try:
+                            if path.startswith("/api/comments/photo/"):
+                                rel_cp = path[len("/api/comments/photo/") :].strip("/")
+                                parts_cp = rel_cp.split("/", 1)
+                                cp_sid = re.sub(r"[^A-Za-z0-9._-]+", "_", parts_cp[0]) if len(parts_cp) >= 1 else "general"
+                                cp_fname = os.path.basename(parts_cp[1]) if len(parts_cp) >= 2 else ""
+                            else:
+                                cp_sid = re.sub(r"[^A-Za-z0-9._-]+", "_", (parsed_q.get("scan_id", ["general"])[0] or "general"))
+                                cp_fname = os.path.basename((parsed_q.get("file", [""])[0] or ""))
+                            if cp_fname and len(buf_for_cache) > 0:
+                                for cp_root in (os.path.join(DATA_DIR, "comment_photos"), os.path.join(DATA_DIR, "gdrive_comment_photos")):
+                                    cp_dir = os.path.join(cp_root, cp_sid)
+                                    os.makedirs(cp_dir, exist_ok=True)
+                                    with open(os.path.join(cp_dir, cp_fname), "wb") as cpf:
+                                        cpf.write(bytes(buf_for_cache))
+                        except Exception:
+                            pass
+                    if cacheable:
+                        if len(_VPS_RAM_FALLBACK_CACHE) > 2000:
+                            _VPS_RAM_FALLBACK_CACHE.clear()
+                        _VPS_RAM_FALLBACK_CACHE[self.path] = (status_code, filtered_hdrs, bytes(buf_for_cache))
                     if path == "/api/scans":
                         try:
                             raw_payload = bytes(buf_for_cache)

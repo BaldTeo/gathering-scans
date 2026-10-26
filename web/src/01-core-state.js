@@ -119,6 +119,7 @@
       newScanName: "",
     },
     completedMeasurements: [],
+    movingVertex: null,
     tempDistanceObjects: [],
     tempDistanceBadges: [],
     badges2D: [],

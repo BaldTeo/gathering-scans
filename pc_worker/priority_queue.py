@@ -1292,6 +1292,19 @@ class ScanQueueDB:
                         p_obj["rtk_h_sigma_cm"] = item.get("rtk_h_sigma_cm")
                     elif item.get("rtk_sigma_cm") is not None:
                         p_obj["rtk_h_sigma_cm"] = item.get("rtk_sigma_cm")
+                    for meta_key in (
+                        "gdrive_file_id",
+                        "gdrive_url",
+                        "gdrive_path",
+                        "gdrive_synced",
+                        "storage",
+                        "source",
+                        "mime_type",
+                        "size_bytes",
+                        "uploaded_at",
+                    ):
+                        if item.get(meta_key) is not None:
+                            p_obj[meta_key] = item.get(meta_key)
                     out.append(p_obj)
         return out
 

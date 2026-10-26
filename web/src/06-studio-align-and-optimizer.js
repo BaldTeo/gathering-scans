@@ -3150,8 +3150,158 @@
     renderAlignMergeInspectorContent();
   }
 
+  function triggerStudioEscapeAction(ev = null) {
+    if (document.getElementById("gsStudioQuickSharePopover")) {
+      closeQuickSingleScanSharePopover();
+      return true;
+    }
+    if (document.getElementById("gsDownloadFormatPopover") && typeof closeDownloadFormatMenu === "function") {
+      closeDownloadFormatMenu();
+      return true;
+    }
+    // 1. If a non-locked modal is open, close the topmost open modal
+    const openModals = Array.from(document.querySelectorAll(".gs-modal-backdrop.active"));
+    if (openModals.length > 0) {
+      const topModal = openModals[openModals.length - 1];
+      if (topModal.id !== "userProfileGateModal" || STATE.isAuthorized || STATE.shareToken) {
+        closeModal(topModal.id);
+        return true;
+      }
+    }
+    // 2. If moving an existing measurement/area/coord/angle vertex, cancel the move and restore original position
+    if (STATE.activeView === "studio" && STATE.movingVertex && typeof cancelStudioVertexMove === "function") {
+      if (ev && typeof ev.preventDefault === "function") ev.preventDefault();
+      cancelStudioVertexMove(true);
+      return true;
+    }
+    // 3. Pause Lasso on Esc (if mid-drag, cancel only the in-progress drag; if armed, switch to orbit mode while keeping all selected polygons!)
+    if (STATE.activeView === "studio") {
+      const isDraggingLasso = Boolean(
+        studioThree && typeof studioThree._isLassoDragging === "function" && studioThree._isLassoDragging()
+      );
+      if (isDraggingLasso) {
+        if (ev && typeof ev.preventDefault === "function") ev.preventDefault();
+        if (typeof studioThree._cancelLassoDrag === "function") studioThree._cancelLassoDrag();
+        showToast("Cancelled current Lasso drag (Esc) — previous polygons preserved");
+        return true;
+      }
+      if (STATE.activeTool === "crop_delete" || STATE.activeTool === "crop") {
+        if (ev && typeof ev.preventDefault === "function") ev.preventDefault();
+        cancelLassoToolMode(true, false);
+        showToast("Lasso paused (Esc) — selected polygons preserved");
+        return true;
+      }
+    }
+    // 4. Cancel in-progress measurement points, active Categorize edit mode, active Studio tool / side panel, or First-Person mode
+    if (
+      STATE.activeView === "studio" &&
+      STATE.activeTool === "categorize" &&
+      (STATE.categorizeEditMode || (Array.isArray(STATE.categorizeEditPoints) && STATE.categorizeEditPoints.length > 0))
+    ) {
+      STATE.categorizeEditMode = null;
+      STATE.categorizeEditPoints = [];
+      clearTempDistanceVisuals();
+      if (STATE.lastCategorizeResult && document.getElementById("catResultContainer")) {
+        renderCategorizePanelContent(STATE.lastCategorizeResult);
+      }
+      if (typeof syncStudioMobileToolHud === "function") syncStudioMobileToolHud();
+      showToast(tr("已取消手動編輯模式", "Cancelled manual edit mode"));
+      return true;
+    }
+    if (STATE.activeView === "studio" && STATE.measurePoints.length > 0) {
+      STATE.measurePoints = [];
+      clearTempDistanceVisuals();
+      if (studioThree && studioThree.polyPreviewGroup) {
+        while (studioThree.polyPreviewGroup.children.length > 0) {
+          studioThree.polyPreviewGroup.remove(studioThree.polyPreviewGroup.children[0]);
+        }
+      }
+      if (STATE.activeTool === "area" && typeof rebuildAllCompletedMeasurements3D === "function") {
+        rebuildAllCompletedMeasurements3D();
+      } else if (STATE.activeTool === "volume" && !STATE.polygonLocked) {
+        clearVolumeVisualsOnly();
+        openCutFillVolumeInspector(null);
+      }
+      if (typeof syncStudioMobileToolHud === "function") syncStudioMobileToolHud();
+      showToast("Cancelled in-progress points (Esc)");
+      return true;
+    }
+    if (
+      STATE.activeView === "studio" &&
+      [
+        "laser",
+        "coordinates",
+        "angle",
+        "distance",
+        "area",
+        "volume",
+        "contours",
+        "profile",
+        "section",
+        "photos",
+        "rtk",
+        "categorize",
+        "drainage",
+        "gcp_qa",
+        "bookmarks",
+        "comments",
+        "optimizer",
+        "crs",
+        "generate_scan",
+      ].includes(STATE.activeTool)
+    ) {
+      clearTempDistanceVisuals();
+      if (STATE.activeTool === "section") {
+        clearSectionBoxClippingIfNotKept();
+      }
+      if (STATE.activeTool === "categorize") {
+        clearCategorizeVisualsOnly();
+      }
+      if (STATE.activeTool === "drainage" && typeof clearDrainageVisuals3D === "function") {
+        clearDrainageVisuals3D();
+      }
+      const panelEl = document.getElementById("studioSidePanel");
+      if (panelEl) {
+        panelEl.classList.remove("active", "open");
+        panelEl.classList.add("hidden");
+      }
+      setActiveStudioTool(STATE.multiAlign?.active ? "align_merge" : "orbit");
+      if (typeof syncStudioMobileToolHud === "function") syncStudioMobileToolHud();
+      showToast("Exited active tool (Esc)");
+      return true;
+    }
+    if (STATE.activeView === "studio" && document.getElementById("studioSidePanel")?.classList.contains("active")) {
+      const panelEl = document.getElementById("studioSidePanel");
+      panelEl.classList.remove("active", "open");
+      panelEl.classList.add("hidden");
+      return true;
+    }
+    if (STATE.activeView === "studio" && STATE.fpMode?.active) {
+      exitFirstPersonMode(false);
+      return true;
+    }
+    return false;
+  }
+  window.triggerStudioEscapeAction = triggerStudioEscapeAction;
+
   // Unified Bottom Dock (#bimBottomDock) + Separate Left-Side Scan Editing Dock (#studioEditingDock) Button Wiring
+  let _lastToolBtnClick = { tool: "", ts: 0 };
+  let _lastDockEscapeTriggeredMs = 0;
   document.querySelectorAll("#bimBottomDock .bim-dock-btn, #studioEditingDock .bim-dock-btn").forEach((btn) => {
+    btn.addEventListener("dblclick", (ev) => {
+      const tool = btn.dataset.tool || btn.dataset.dock || "";
+      if (!tool || tool === "snap" || tool === "first_person" || tool === "orbit") return;
+      ev.preventDefault();
+      ev.stopPropagation();
+      const nowMs = performance.now();
+      _lastToolBtnClick = { tool: "", ts: 0 };
+      if (nowMs - _lastDockEscapeTriggeredMs <= 280) {
+        return;
+      }
+      _lastDockEscapeTriggeredMs = nowMs;
+      triggerStudioEscapeAction(ev);
+    });
+
     btn.addEventListener("click", (ev) => {
       if (btn.id === "btnClearMeasurements" || btn.id === "btnMeasureClear") {
         clearMeasurements();
@@ -3173,6 +3323,9 @@
       if (tool === "snap") {
         STATE.snapEnabled = !STATE.snapEnabled;
         btn.classList.toggle("active", STATE.snapEnabled);
+        if (!STATE.snapEnabled && typeof updateStudioSnapIndicator === "function") {
+          updateStudioSnapIndicator(null, false);
+        }
         showToast(`Snapping ${STATE.snapEnabled ? "Enabled" : "Disabled"}`);
         return;
       }
@@ -3182,11 +3335,45 @@
       }
       if (!tool) return;
 
+      const nowMs = performance.now();
+      const wasAlreadyActive = STATE.activeTool === tool;
+      if (
+        wasAlreadyActive &&
+        tool !== "orbit" &&
+        _lastToolBtnClick.tool === tool &&
+        nowMs - _lastToolBtnClick.ts <= 420
+      ) {
+        _lastToolBtnClick = { tool: "", ts: 0 };
+        if (nowMs - _lastDockEscapeTriggeredMs > 280) {
+          _lastDockEscapeTriggeredMs = nowMs;
+          triggerStudioEscapeAction(ev);
+        }
+        return;
+      }
+      _lastToolBtnClick = { tool, ts: nowMs };
+
       // Clicking an already-active Lasso dock button pauses Lasso cleanly WITHOUT discarding selected polygons
       if ((tool === "crop_delete" && STATE.activeTool === "crop_delete") || (tool === "crop" && STATE.activeTool === "crop")) {
         cancelLassoToolMode(true, false);
         showToast("Lasso paused (orbit mode) — selected polygons preserved");
         return;
+      }
+
+      // If clicking an already-selected measurement/surveying tool button once (Click #1), preserve all active/locked
+      // tool state (measurePoints, cutFillPolygonPoints, maskBoundaryPoints, categorizeEditMode, profileEndpoints,
+      // sectionBoxEndpoints) so a subsequent second click (double-click on selected tool) triggers Escape cleanly!
+      if (wasAlreadyActive) {
+        const panelEl = document.getElementById("studioSidePanel");
+        const isPanelOpen = Boolean(
+          panelEl && !panelEl.classList.contains("hidden") && panelEl.classList.contains("active")
+        );
+        if (
+          STATE.measurePoints.length > 0 ||
+          ["distance", "area", "angle", "coordinates", "laser"].includes(tool) ||
+          isPanelOpen
+        ) {
+          return;
+        }
       }
 
       if (tool === "optimizer") {
@@ -3470,108 +3657,8 @@
     }
 
     if (e.key === "Escape") {
-      if (document.getElementById("gsStudioQuickSharePopover")) {
-        closeQuickSingleScanSharePopover();
-        return;
-      }
-      if (document.getElementById("gsDownloadFormatPopover") && typeof closeDownloadFormatMenu === "function") {
-        closeDownloadFormatMenu();
-        return;
-      }
-      // 1. If a non-locked modal is open, close the topmost open modal
-      const openModals = Array.from(document.querySelectorAll(".gs-modal-backdrop.active"));
-      if (openModals.length > 0) {
-        const topModal = openModals[openModals.length - 1];
-        if (topModal.id !== "userProfileGateModal" || STATE.isAuthorized || STATE.shareToken) {
-          closeModal(topModal.id);
-          return;
-        }
-      }
-      // 2. Pause Lasso on Esc (if mid-drag, cancel only the in-progress drag; if armed, switch to orbit mode while keeping all selected polygons!)
-      if (STATE.activeView === "studio") {
-        const isDraggingLasso = Boolean(studioThree && typeof studioThree._isLassoDragging === "function" && studioThree._isLassoDragging());
-        if (isDraggingLasso) {
-          e.preventDefault();
-          if (typeof studioThree._cancelLassoDrag === "function") studioThree._cancelLassoDrag();
-          showToast("Cancelled current Lasso drag (Esc) — previous polygons preserved");
-          return;
-        }
-        if (STATE.activeTool === "crop_delete" || STATE.activeTool === "crop") {
-          e.preventDefault();
-          cancelLassoToolMode(true, false);
-          showToast("Lasso paused (Esc) — selected polygons preserved");
-          return;
-        }
-      }
-      // 3. Otherwise cancel any in-progress measurement points, active Categorize edit mode, active Studio tool / side panel, or First-Person mode
-      if (
-        STATE.activeView === "studio" &&
-        STATE.activeTool === "categorize" &&
-        (STATE.categorizeEditMode || (Array.isArray(STATE.categorizeEditPoints) && STATE.categorizeEditPoints.length > 0))
-      ) {
-        STATE.categorizeEditMode = null;
-        STATE.categorizeEditPoints = [];
-        clearTempDistanceVisuals();
-        if (STATE.lastCategorizeResult && document.getElementById("catResultContainer")) {
-          renderCategorizePanelContent(STATE.lastCategorizeResult);
-        }
-        showToast(tr("已取消手動編輯模式", "Cancelled manual edit mode"));
-        return;
-      }
-      if (STATE.activeView === "studio" && STATE.measurePoints.length > 0) {
-        STATE.measurePoints = [];
-        clearTempDistanceVisuals();
-        if (studioThree && studioThree.polyPreviewGroup) {
-          while (studioThree.polyPreviewGroup.children.length > 0) {
-            studioThree.polyPreviewGroup.remove(studioThree.polyPreviewGroup.children[0]);
-          }
-        }
-        if (STATE.activeTool === "volume" && !STATE.polygonLocked) {
-          clearVolumeVisualsOnly();
-          openCutFillVolumeInspector(null);
-        }
-        showToast("Cancelled in-progress points (Esc)");
-      } else if (
-        STATE.activeView === "studio" &&
-        [
-          "laser",
-          "coordinates",
-          "angle",
-          "distance",
-          "area",
-          "volume",
-          "contours",
-          "profile",
-          "section",
-          "photos",
-          "rtk",
-          "categorize",
-          "drainage",
-          "gcp_qa",
-          "bookmarks",
-          "comments",
-          "optimizer",
-          "crs",
-          "generate_scan",
-        ].includes(STATE.activeTool)
-      ) {
-        if (STATE.activeTool === "section") {
-          clearSectionBoxClippingIfNotKept();
-        }
-        if (STATE.activeTool === "categorize") {
-          clearCategorizeVisualsOnly();
-        }
-        if (STATE.activeTool === "drainage" && typeof clearDrainageVisuals3D === "function") {
-          clearDrainageVisuals3D();
-        }
-        document.getElementById("studioSidePanel")?.classList.remove("active");
-        setActiveStudioTool(STATE.multiAlign?.active ? "align_merge" : "orbit");
-        showToast("Exited active tool (Esc)");
-      } else if (STATE.activeView === "studio" && document.getElementById("studioSidePanel")?.classList.contains("active")) {
-        document.getElementById("studioSidePanel")?.classList.remove("active");
-      } else if (STATE.activeView === "studio" && STATE.fpMode?.active) {
-        exitFirstPersonMode(false);
-      }
+      triggerStudioEscapeAction(e);
+      return;
     } else if (
       e.key === "Enter" &&
       STATE.activeView === "studio" &&
@@ -3643,14 +3730,16 @@
         if (isDel) openLassoDeleteInspector({ armLasso: true });
         else openLassoKeepInspector({ armLasso: true });
       } else if (STATE.activeTool === "area") {
-        if (typeof renderClosedAreaPolygon === "function") {
-          renderClosedAreaPolygon(lockedPts);
-        }
         STATE.completedMeasurements.push({
           id: `area_${Date.now()}`,
           type: "area",
           points: lockedPts.map((p) => p.clone()),
         });
+        if (typeof rebuildAllCompletedMeasurements3D === "function") {
+          rebuildAllCompletedMeasurements3D();
+        } else if (typeof renderClosedAreaPolygon === "function") {
+          renderClosedAreaPolygon(lockedPts, { preserveExistingAreas: true });
+        }
         showToast(`Area polygon locked (${lockedPts.length} vertices)`);
       } else if (STATE.activeTool === "contours") {
         STATE.maskBoundaryPoints = lockedPts.map((p) => p.clone());

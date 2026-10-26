@@ -797,7 +797,11 @@
     if (!pill || samples.length < 2) return;
     const dz21 = Number((samples[1].y - samples[0].y).toFixed(3));
     const dzCm = (dz21 * 100).toFixed(1);
-    const dzColor = dz21 >= 0 ? "#10b981" : "#38bdf8";
+    const isLight =
+      document.documentElement.getAttribute("data-theme") === "light" ||
+      document.body.classList.contains("theme-light");
+    const dzColor = dz21 >= 0 ? (isLight ? "#059669" : "#10b981") : isLight ? "#0284c7" : "#38bdf8";
+    const dzPillBg = isLight ? "rgba(241, 245, 249, 0.96)" : "rgba(15, 23, 42, 0.85)";
     const itemsHtml = samples
       .map(
         (s) =>
@@ -808,7 +812,7 @@
     pill.innerHTML = `
       <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:11.5px;font-family:var(--font-mono);">
         ${itemsHtml}
-        <span style="padding:2px 8px;border-radius:999px;background:rgba(15,23,42,0.85);color:${dzColor};font-weight:800;">
+        <span style="padding:2px 8px;border-radius:999px;background:${dzPillBg};color:${dzColor};font-weight:800;border:1px solid ${dzColor};">
           ΔZ (Scan 2 − Scan 1) = ${dz21 >= 0 ? "+" : ""}${dz21.toFixed(3)} m (${dz21 >= 0 ? "+" : ""}${dzCm} cm · ${dz21 >= 0 ? tr("填方/堆高", "FILL") : tr("挖方/沉陷", "CUT")})
         </span>
       </div>
@@ -1224,14 +1228,18 @@
 
   const _drainageLabelTexCache = new Map();
   function createSlopeRatioSprite(ratioLabel, hexColor) {
-    const cacheKey = `${ratioLabel}_${hexColor}`;
+    const isLight =
+      document.documentElement.getAttribute("data-theme") === "light" ||
+      document.body.classList.contains("theme-light");
+    const themeTag = isLight ? "light" : "dark";
+    const cacheKey = `${ratioLabel}_${hexColor}_${themeTag}`;
     let tex = _drainageLabelTexCache.get(cacheKey);
     if (!tex) {
       const c = document.createElement("canvas");
       c.width = 112;
       c.height = 40;
       const ctx = c.getContext("2d");
-      ctx.fillStyle = "rgba(15, 23, 42, 0.86)";
+      ctx.fillStyle = isLight ? "rgba(255, 255, 255, 0.94)" : "rgba(15, 23, 42, 0.86)";
       ctx.strokeStyle = hexColor;
       ctx.lineWidth = 3;
       ctx.beginPath();
@@ -1239,7 +1247,7 @@
       else ctx.rect(2, 2, 108, 36);
       ctx.fill();
       ctx.stroke();
-      ctx.fillStyle = hexColor;
+      ctx.fillStyle = isLight ? "#0f172a" : hexColor;
       ctx.font = "700 18px JetBrains Mono, monospace";
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";

@@ -2801,5 +2801,15 @@
     setCategorizeOverlayVisibility,
     preloadSavedCategorizationForScan,
     syncCategorizeVisibilityUI,
+    triggerStudioEscapeAction: (...args) => window.triggerStudioEscapeAction?.(...args),
+    getAllSnappableToolVertices,
+    findNearestSnappableToolVertex,
+    findNearestEditableVertexAtScreenXY,
+    startStudioVertexMove,
+    updateStudioVertexMove,
+    commitStudioVertexMove,
+    cancelStudioVertexMove,
+    rebuildAllCompletedMeasurements3D,
+    uploadLocalFilesToComment: (...args) => window.uploadLocalFilesToComment?.(...args),
   };
 

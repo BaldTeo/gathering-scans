@@ -983,6 +983,129 @@ class GatheringScansTestSuite(unittest.TestCase):
         self.assertEqual(len(updated.get("photos", [])), 3)
         self.db.delete_comment(cid)
 
+    def test_15_tool_dblclick_esc_vertex_move_point_snap_bright_tooltips_and_gdrive_comment_photo(self):
+        """Verify v155 features: (1) Tool dblclick = ESC, (2) Dblclick vertex to move measurement/area/coord/angle points,
+        (3) Snapping to existing measurement/area/coord/angle points, (4) Bright-theme tooltips/HUD/azimuth pills,
+        (5) Uploading new local/gallery photo to a comment saved on Google Drive (gdrive)."""
+        import base64
+        from pc_worker.gdrive_cloud_sync import save_and_sync_comment_photo_to_gdrive
+
+        with open(os.path.join(BASE_DIR, "web", "src", "01-core-state.js"), "r", encoding="utf-8") as f:
+            js01 = f.read()
+        with open(os.path.join(BASE_DIR, "web", "src", "03-studio-core.js"), "r", encoding="utf-8") as f:
+            js03 = f.read()
+        with open(os.path.join(BASE_DIR, "web", "src", "04-studio-lasso-and-edits.js"), "r", encoding="utf-8") as f:
+            js04 = f.read()
+        with open(os.path.join(BASE_DIR, "web", "src", "05-studio-civil-inspectors.js"), "r", encoding="utf-8") as f:
+            js05 = f.read()
+        with open(os.path.join(BASE_DIR, "web", "src", "06-studio-align-and-optimizer.js"), "r", encoding="utf-8") as f:
+            js06 = f.read()
+        with open(os.path.join(BASE_DIR, "web", "src", "08-advanced-surveying-and-qa.js"), "r", encoding="utf-8") as f:
+            js08 = f.read()
+        with open(os.path.join(BASE_DIR, "web", "app.css"), "r", encoding="utf-8") as f:
+            app_css = f.read()
+        with open(os.path.join(BASE_DIR, "pc_worker", "server_api_routes.py"), "r", encoding="utf-8") as f:
+            routes_py = f.read()
+        with open(os.path.join(BASE_DIR, "server.py"), "r", encoding="utf-8") as f:
+            server_py = f.read()
+
+        # 1. Double-clicking on a selected tool button = pressing ESC (with 280ms debounce & Click #1 state preservation)
+        self.assertIn("function triggerStudioEscapeAction(", js06)
+        self.assertIn("window.triggerStudioEscapeAction = triggerStudioEscapeAction;", js06)
+        self.assertIn('btn.addEventListener("dblclick"', js06)
+        self.assertIn("nowMs - _lastToolBtnClick.ts <= 420", js06)
+        self.assertIn("_lastDockEscapeTriggeredMs", js06)
+
+        # 2. Double-clicking an existing measurement, area, coordinate, or angle point allows moving it
+        self.assertIn("movingVertex: null", js01)
+        self.assertIn("function findNearestEditableVertexAtScreenXY(", js03)
+        self.assertIn("function startStudioVertexMove(", js03)
+        self.assertIn("function updateStudioVertexMove(", js03)
+        self.assertIn("function commitStudioVertexMove(", js03)
+        self.assertIn("function cancelStudioVertexMove(", js03)
+        self.assertIn("function rebuildAllCompletedMeasurements3D(", js03)
+        self.assertIn("c === studioThree.drainageGroup", js03)
+        self.assertIn('document.getElementById("studioCanvasContainer")?.addEventListener("dblclick"', js04)
+        self.assertIn("commitStudioVertexMove(moveHit ? moveHit.point : null)", js04)
+
+        # 3. Snapping (STATE.snapEnabled) snaps to existing measurement, area, coordinate, and angle points
+        self.assertIn("function getAllSnappableToolVertices(", js03)
+        self.assertIn("function findNearestSnappableToolVertex(", js03)
+        self.assertIn("snappedToToolVertex: true", js03)
+        self.assertIn("function updateStudioSnapIndicator(", js03)
+
+        # 4. Bright theme ([data-theme="light"]) for tooltips, azimuth pills, floating draw HUD, slope sprites, and Compare ΔZ probe
+        self.assertIn('html[data-theme="light"] .gs-mobile-tool-hud', app_css)
+        self.assertIn('html[data-theme="light"] .autodesk-azimuth-badge', app_css)
+        self.assertIn('html[data-theme="light"] .autodesk-coord-badge', app_css)
+        self.assertIn('html[data-theme="light"] .laser-bubble-w', app_css)
+        self.assertIn('html[data-theme="light"] .laser-bubble-slope', app_css)
+        self.assertIn('document.documentElement.getAttribute("data-theme") === "light"', js08)
+        self.assertNotIn("title=", [line for line in js05.splitlines() if "gs-scan-comment-pin" in line or "gs-comment-pin-icon" in line][0] if any("gs-scan-comment-pin" in line for line in js05.splitlines()) else "")
+
+        # 5. Upload a new photo (drag-and-drop on PC; gallery on mobile) to a comment, saved on Google Drive (gdrive)
+        self.assertIn('if path in ("/api/comments/upload-photo", "/api/comments/upload_photo"):', routes_py)
+        self.assertIn('path.startswith("/api/comments/photo/")', server_py)
+        self.assertIn("async function uploadLocalFilesToComment(", js05)
+        self.assertIn("function triggerCommentPhotoFilePicker(", js05)
+        self.assertIn("btnUploadDraftCommentPhoto", js05)
+        self.assertIn("data-comment-upload-photo", js05)
+        self.assertIn("data-pin-upload-photo", js05)
+
+        # End-to-end test of save_and_sync_comment_photo_to_gdrive + ScanQueueDB gdrive metadata persistence
+        png_1x1 = base64.b64decode(
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+X2ZkAAAAASUVORK5CYII="
+        )
+        photo_obj = save_and_sync_comment_photo_to_gdrive(
+            scan_id="ntudorm_20260915_baseline",
+            filename="field_defect_mobile.png",
+            raw_bytes=png_1x1,
+            content_type="image/png",
+            camera_meta={"camera_twd97_e": 304128.4, "camera_twd97_n": 2767822.1, "camera_twd97_h": 19.2},
+        )
+        self.assertEqual(photo_obj.get("storage"), "gdrive")
+        self.assertTrue(photo_obj.get("gdrive_synced"))
+        self.assertTrue(photo_obj.get("url", "").startswith("/api/comments/photo/ntudorm_20260915_baseline/"))
+        self.assertGreater(int(photo_obj.get("size_bytes", 0)), 0)
+
+        saved_c = self.db.add_comment(
+            {
+                "scan_id": "ntudorm_20260915_baseline",
+                "author_email": "field@gatheren.cloud",
+                "author_name": "Mobile Field Engineer",
+                "text": "Uploaded field inspection photo to GDrive",
+                "pos_x": 2.5,
+                "pos_y": 1.2,
+                "pos_z": -3.4,
+                "photos": [photo_obj],
+            }
+        )
+        cid = saved_c["comment_id"]
+        fetched_c = self.db.get_comment(cid)
+        self.assertIsNotNone(fetched_c)
+        self.assertEqual(len(fetched_c.get("photos", [])), 1)
+        p0 = fetched_c["photos"][0]
+        self.assertEqual(p0.get("storage"), "gdrive")
+        self.assertTrue(p0.get("gdrive_synced"))
+        self.assertEqual(p0.get("source"), "comment_upload")
+        self.assertEqual(p0.get("mime_type"), "image/png")
+        self.db.delete_comment(cid)
+
+        # Clean up test photo files created on disk
+        for root_dir in ("comment_photos", "gdrive_comment_photos"):
+            cand = os.path.join(BASE_DIR, "data", root_dir, "ntudorm_20260915_baseline", os.path.basename(photo_obj["url"]))
+            if os.path.isfile(cand):
+                try:
+                    os.remove(cand)
+                except OSError:
+                    pass
+        g_cand = photo_obj.get("gdrive_path") or ""
+        if g_cand and os.path.isfile(g_cand):
+            try:
+                os.remove(g_cand)
+            except OSError:
+                pass
+
 
 if __name__ == "__main__":
     unittest.main()
