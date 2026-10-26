@@ -1756,6 +1756,7 @@
           measType: STATE.activeTool || "measure",
           pointIndex: idx,
           label: `Point #${idx + 1}`,
+          editable: false,
         });
       });
     }

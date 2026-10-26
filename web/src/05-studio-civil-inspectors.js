@@ -966,6 +966,8 @@
           ...opts,
           polygon: polyPayload,
           local_origin_twd97: localOriginTwd97,
+          perspective_img_data_url: clientRes._perspectiveImgDataUrl || "",
+          nadir_img_data_url: clientRes._nadirImgDataUrl || "",
         });
         if (cancelToken.isCancelled()) return;
         if (srvRes && srvRes.status === "ok") {
@@ -1096,6 +1098,28 @@
           }</div>
           <div><b>${tr("物料：", "Material:")}</b> ${escapeHtml(String(res.material_name || ""))} (${escapeHtml(String(res.density_t_m3))} t/m³ · ${tr("實方重：", "Bank:")} ${escapeHtml(String(res.bank_tonnage_t ?? res.estimated_tonnage_t))} t)</div>
         </div>
+        ${
+          res._perspectiveImgDataUrl || res._nadirImgDataUrl
+            ? `<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:10px;">
+                 ${
+                   res._perspectiveImgDataUrl
+                     ? `<a href="${safeHtmlUrl}" target="_blank" rel="noopener noreferrer" style="display:block;text-decoration:none;border:1px solid var(--ui-border);border-radius:7px;overflow:hidden;background:#0f172a;" title="${tr("圖 1：3D 體積柱體與底部限制基準面總覽 (點擊開啟報告)", "Figure 1: 3D Volume Enclosure & Bottom Limiting Plane Overview (Click to open report)")}">
+                          <img src="${res._perspectiveImgDataUrl}" alt="Figure 1: 3D Enclosure Overview" style="width:100%;height:88px;object-fit:cover;display:block;" />
+                          <div style="font-size:10px;color:#e2e8f0;padding:3px 6px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${tr("圖 1：3D 圍束與底面總覽", "Fig 1: 3D Enclosure Overview")}</div>
+                        </a>`
+                     : ""
+                 }
+                 ${
+                   res._nadirImgDataUrl
+                     ? `<a href="${safeHtmlUrl}" target="_blank" rel="noopener noreferrer" style="display:block;text-decoration:none;border:1px solid var(--ui-border);border-radius:7px;overflow:hidden;background:#0f172a;" title="${tr("圖 2：正射俯視圖與全頂點 (V1..Vn) 標註 (點擊開啟報告)", "Figure 2: Top-Down Nadir View with Point Labels V1..Vn & Thick Boundary (Click to open report)")}">
+                          <img src="${res._nadirImgDataUrl}" alt="Figure 2: Top-Down Nadir View" style="width:100%;height:88px;object-fit:cover;display:block;" />
+                          <div style="font-size:10px;color:#38bdf8;padding:3px 6px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${tr("圖 2：正射頂點 V1..Vn 標註圖", "Fig 2: Nadir View (V1..Vn)")}</div>
+                        </a>`
+                     : ""
+                 }
+               </div>`
+            : ""
+        }
         <div style="display:flex;gap:6px;">
           <a class="btn-xs primary" id="btnOpenVolReportHtml" style="flex:1;justify-content:center;" href="${safeHtmlUrl}" target="_blank" rel="noopener noreferrer" title="${tr("開啟可列印土方報告 (含 3D 圍束總覽與正射頂點標註圖)", "Open Printable Stockpile Report (with 3D Overview & Nadir Vertex Map)")}">
             <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8">

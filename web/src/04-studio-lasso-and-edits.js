@@ -70,8 +70,8 @@
       return studioThree._laserSpatialIndex;
     }
 
-    // Keep 100% of triangles (triStride = 1) up to 2.8M tris so multi-scan merged models never get swiss-cheese gaps!
-    const triStride = totalTris > 2800000 ? 2 : 1;
+    // Keep 100% of triangles (triStride = 1) up to 5.0M tris so multi-scan merged models never get swiss-cheese gaps!
+    const triStride = totalTris > 5000000 ? 2 : 1;
     const maxIndexed = Math.ceil(totalTris / triStride) + 16;
     const triVerts = new Float32Array(maxIndexed * 9);
     const triAbsNy = new Float32Array(maxIndexed);
@@ -146,10 +146,10 @@
     maxZ += 0.5;
 
     const spanMax = Math.max(10, maxX - minX, maxZ - minZ);
-    const cellSize = Math.max(0.85, Math.min(2.6, spanMax / 165));
+    const cellSize = Math.max(0.85, spanMax / 180);
     const invCell = 1.0 / cellSize;
-    const gridW = Math.max(4, Math.min(200, Math.ceil((maxX - minX) * invCell)));
-    const gridH = Math.max(4, Math.min(200, Math.ceil((maxZ - minZ) * invCell)));
+    const gridW = Math.max(4, Math.ceil((maxX - minX) * invCell) + 1);
+    const gridH = Math.max(4, Math.ceil((maxZ - minZ) * invCell) + 1);
     const numCells = gridW * gridH;
 
     const cellCounts = new Int32Array(numCells);
@@ -3179,6 +3179,21 @@
     return targets;
   }
 
+  const _spatialFallbackOffsets = [
+    [0.14, 0],
+    [-0.14, 0],
+    [0, 0.14],
+    [0, -0.14],
+    [0.42, 0.42],
+    [-0.42, 0.42],
+    [0.42, -0.42],
+    [-0.42, -0.42],
+    [0.95, 0],
+    [-0.95, 0],
+    [0, 0.95],
+    [0, -0.95],
+  ];
+
   function sampleStudioMeshElevationAtLocalXZ(lx, lz, fallbackY = 0, cachedTargets = null, spatialIdx = null) {
     const rayTopY = Math.max(450, (Number(studioThree?.boundingSphere?.radius) || 60) * 3 + 200);
     const rayMaxDist = rayTopY * 2 + 400;
@@ -3188,6 +3203,15 @@
       if (gHit) {
         return { y: gHit.y, hit: true };
       }
+      // Fast micro-seam/gap bridging in O(1) spatial grid (never falls back to slow unindexed raycast when idx exists)
+      for (let i = 0; i < _spatialFallbackOffsets.length; i++) {
+        const off = _spatialFallbackOffsets[i];
+        const nHit = castRayInLaserGrid(idx, lx + off[0], rayTopY, lz + off[1], 0, -1, 0, 0.05, rayMaxDist, 1.01);
+        if (nHit) {
+          return { y: nHit.y, hit: true };
+        }
+      }
+      return { y: fallbackY, hit: false };
     }
     const targets = cachedTargets || getStudioRaycastMeshes();
     if (!targets.length) return { y: fallbackY, hit: false };
@@ -3262,7 +3286,7 @@
       );
 
     let frameStart = performance.now();
-    const triStride = totalTris > 2800000 ? 2 : 1;
+    const triStride = totalTris > 5000000 ? 2 : 1;
     const maxIndexed = Math.ceil(totalTris / triStride) + 16;
     const triVerts = new Float32Array(maxIndexed * 9);
     const triAbsNy = new Float32Array(maxIndexed);
@@ -3350,10 +3374,10 @@
     maxZ += 0.5;
 
     const spanMax = Math.max(10, maxX - minX, maxZ - minZ);
-    const cellSize = Math.max(0.85, Math.min(2.6, spanMax / 165));
+    const cellSize = Math.max(0.85, spanMax / 180);
     const invCell = 1.0 / cellSize;
-    const gridW = Math.max(4, Math.min(200, Math.ceil((maxX - minX) * invCell)));
-    const gridH = Math.max(4, Math.min(200, Math.ceil((maxZ - minZ) * invCell)));
+    const gridW = Math.max(4, Math.ceil((maxX - minX) * invCell) + 1);
+    const gridH = Math.max(4, Math.ceil((maxZ - minZ) * invCell) + 1);
     const numCells = gridW * gridH;
 
     const cellCounts = new Int32Array(numCells);
@@ -3668,8 +3692,8 @@
     const spanX = Math.max(0.2, maxX - minX);
     const spanZ = Math.max(0.2, maxZ - minZ);
 
-    const nx = 32;
-    const nz = 32;
+    const nx = 42;
+    const nz = 42;
     const dx = spanX / nx;
     const dzStep = spanZ / nz;
     const cellArea = dx * dzStep;
@@ -3734,7 +3758,7 @@
         else cutVol += Math.abs(deltaY) * cellArea;
 
         surfaceArea += cellArea * 1.04;
-        if (heatmapCells.length < 2500) {
+        if (heatmapCells.length < 4096) {
           heatmapCells.push({
             e: Number((ce + gx).toFixed(2)),
             n: Number((cn - gz).toFixed(2)),
@@ -3927,8 +3951,8 @@
     const spanX = Math.max(0.2, maxX - minX);
     const spanZ = Math.max(0.2, maxZ - minZ);
 
-    const nx = 34;
-    const nz = 34;
+    const nx = 42;
+    const nz = 42;
     const dx = spanX / nx;
     const dzStep = spanZ / nz;
     const cellArea = dx * dzStep;
@@ -4013,7 +4037,7 @@
         else cutVol += Math.abs(deltaY) * cellArea;
 
         surfaceArea += cellArea * 1.04;
-        if (heatmapCells.length < 2500) {
+        if (heatmapCells.length < 4096) {
           heatmapCells.push({
             e: Number((ce + gx).toFixed(2)),
             n: Number((cn - gz).toFixed(2)),
@@ -4218,86 +4242,101 @@
     const cells = volumeRes && Array.isArray(volumeRes.heatmap_cells) ? volumeRes.heatmap_cells : [];
     const cellStep = Number(volumeRes?.cell_step_m) || 0.5;
     let minBaseY = minPerimY;
+    let minCellLowY = Math.min(minBaseY, minSurfY);
+    cells.forEach((c) => {
+      const yb = Number(c.ly_base ?? minPerimY);
+      const ys = Number(c.ly_surf ?? minSurfY);
+      if (yb < minBaseY) minBaseY = yb;
+      if (yb < minCellLowY) minCellLowY = yb;
+      if (ys < minCellLowY) minCellLowY = ys;
+    });
+    const yFloor = Math.min(minBaseY, minSurfY, minCellLowY);
+
+    const limitVerts = pts.map((v) => {
+      const yLim = evalLimitYAtVertex(v);
+      return new THREE.Vector3(
+        v.x,
+        baseMode === "triangulated_boundary" || baseMode === "lowest_point" || baseMode === "epoch_diff"
+          ? yFloor
+          : Math.min(yLim, v.y - 0.02),
+        v.z
+      );
+    });
+
+    const limitPlanePositions = [];
+    const limitGridPositions = [];
+
+    // Always triangulate the exact polygon footprint on the Bottom Limiting Plane (limitVerts) so 100% of the bottom is closed
+    const cLimY = limitVerts.reduce((acc, v) => acc + v.y, 0) / Math.max(1, limitVerts.length);
+    if (THREE.ShapeUtils && typeof THREE.ShapeUtils.triangulateShape === "function") {
+      const contour2D = limitVerts.map((v) => new THREE.Vector2(v.x, v.z));
+      const tris = THREE.ShapeUtils.triangulateShape(contour2D, []);
+      if (Array.isArray(tris) && tris.length > 0) {
+        tris.forEach(([ia, ib, ic]) => {
+          const va = limitVerts[ia], vb = limitVerts[ib], vc = limitVerts[ic];
+          if (va && vb && vc) {
+            limitPlanePositions.push(va.x, va.y, va.z, vb.x, vb.y, vb.z, vc.x, vc.y, vc.z);
+          }
+        });
+      }
+    }
+    if (limitPlanePositions.length === 0) {
+      for (let i = 0; i < limitVerts.length; i++) {
+        const a = limitVerts[i];
+        const b = limitVerts[(i + 1) % limitVerts.length];
+        limitPlanePositions.push(a.x, a.y, a.z, b.x, b.y, b.z, centroid.x, cLimY, centroid.z);
+      }
+    }
 
     if (cells.length > 0) {
       const fillPositions = [];
       const cutPositions = [];
-      const limitPlanePositions = [];
-      const limitGridPositions = [];
+      const topCellWirePositions = [];
 
       cells.forEach((cell) => {
         const x = Number(cell.lx || 0);
         const z = Number(cell.lz || 0);
-        const ySurf = Number(cell.ly_surf || 0) + 0.015;
+        const ySurf = Number(cell.ly_surf || 0) + 0.02;
         const yBase = Number(cell.ly_base || 0);
-        if (yBase < minBaseY) minBaseY = yBase;
         const dz = Number(cell.dz || 0);
         const stepX = Number(volumeRes.cell_dx || cell.step_x || cellStep) || 0.5;
         const stepZ = Number(volumeRes.cell_dz || cell.step_z || cellStep) || 0.5;
-        const halfX = Math.max(0.03, stepX * 0.45);
-        const halfZ = Math.max(0.03, stepZ * 0.45);
+        const halfX = Math.max(0.03, stepX * 0.485);
+        const halfZ = Math.max(0.03, stepZ * 0.485);
 
-        // A. Translucent Limiting Plane Surface & Wireframe Grid across interior cells (cell.lx, cell.ly_base, cell.lz)
         const gx0 = x - stepX * 0.495, gx1 = x + stepX * 0.495;
         const gz0 = z - stepZ * 0.495, gz1 = z + stepZ * 0.495;
+        const yGrid =
+          baseMode === "triangulated_boundary" || baseMode === "lowest_point" || baseMode === "epoch_diff"
+            ? yFloor + 0.005
+            : yBase + 0.005;
         limitPlanePositions.push(
-          gx0, yBase, gz0, gx1, yBase, gz0, gx1, yBase, gz1,
-          gx0, yBase, gz0, gx1, yBase, gz1, gx0, yBase, gz1
+          gx0, yGrid - 0.005, gz0, gx1, yGrid - 0.005, gz0, gx1, yGrid - 0.005, gz1,
+          gx0, yGrid - 0.005, gz0, gx1, yGrid - 0.005, gz1, gx0, yGrid - 0.005, gz1
         );
         limitGridPositions.push(
-          gx0, yBase + 0.004, gz0, gx1, yBase + 0.004, gz0,
-          gx1, yBase + 0.004, gz0, gx1, yBase + 0.004, gz1,
-          gx1, yBase + 0.004, gz1, gx0, yBase + 0.004, gz1,
-          gx0, yBase + 0.004, gz1, gx0, yBase + 0.004, gz0
+          gx0, yGrid, gz0, gx1, yGrid, gz0,
+          gx1, yGrid, gz0, gx1, yGrid, gz1,
+          gx1, yGrid, gz1, gx0, yGrid, gz1,
+          gx0, yGrid, gz1, gx0, yGrid, gz0
         );
 
-        if (Math.abs(dz) < 0.006) return;
-        const yLow = Math.min(yBase, ySurf);
-        const yHigh = Math.max(yBase, ySurf);
+        const rawLow = Math.min(yBase, ySurf);
+        const rawHigh = Math.max(yBase, ySurf);
+        const yLow = rawHigh - rawLow < 0.025 ? rawHigh - 0.025 : rawLow;
+        const yHigh = rawHigh;
         if (dz >= 0) {
           pushBoxPrismTriangles(fillPositions, x, z, halfX, halfZ, yLow, yHigh);
         } else {
           pushBoxPrismTriangles(cutPositions, x, z, halfX, halfZ, yLow, yHigh);
         }
+        topCellWirePositions.push(
+          x - halfX, yHigh + 0.004, z - halfZ, x + halfX, yHigh + 0.004, z - halfZ,
+          x + halfX, yHigh + 0.004, z - halfZ, x + halfX, yHigh + 0.004, z + halfZ,
+          x + halfX, yHigh + 0.004, z + halfZ, x - halfX, yHigh + 0.004, z + halfZ,
+          x - halfX, yHigh + 0.004, z + halfZ, x - halfX, yHigh + 0.004, z - halfZ
+        );
       });
-
-      if (limitPlanePositions.length > 0) {
-        const limitGeo = new THREE.BufferGeometry();
-        limitGeo.setAttribute("position", new THREE.Float32BufferAttribute(limitPlanePositions, 3));
-        const limitMesh = new THREE.Mesh(
-          limitGeo,
-          new THREE.MeshBasicMaterial({
-            color: 0xf59e0b,
-            transparent: true,
-            opacity: 0.28,
-            side: THREE.DoubleSide,
-            depthTest: true,
-            depthWrite: false,
-            polygonOffset: true,
-            polygonOffsetFactor: 1,
-            polygonOffsetUnits: 1,
-          })
-        );
-        limitMesh.renderOrder = 993;
-        studioThree.volumeGroup.add(limitMesh);
-      }
-
-      if (limitGridPositions.length > 0) {
-        const gridGeo = new THREE.BufferGeometry();
-        gridGeo.setAttribute("position", new THREE.Float32BufferAttribute(limitGridPositions, 3));
-        const gridLines = new THREE.LineSegments(
-          gridGeo,
-          new THREE.LineBasicMaterial({
-            color: 0xfbbf24,
-            transparent: true,
-            opacity: 0.65,
-            depthTest: true,
-            depthWrite: false,
-          })
-        );
-        gridLines.renderOrder = 994;
-        studioThree.volumeGroup.add(gridLines);
-      }
 
       if (fillPositions.length > 0) {
         const fillGeo = new THREE.BufferGeometry();
@@ -4307,8 +4346,9 @@
           new THREE.MeshBasicMaterial({
             color: 0x0ea5e9,
             transparent: true,
-            opacity: 0.44,
+            opacity: 0.42,
             side: THREE.DoubleSide,
+            depthTest: false,
             depthWrite: false,
           })
         );
@@ -4323,27 +4363,39 @@
           new THREE.MeshBasicMaterial({
             color: 0xef4444,
             transparent: true,
-            opacity: 0.44,
+            opacity: 0.42,
             side: THREE.DoubleSide,
+            depthTest: false,
             depthWrite: false,
           })
         );
         cutMesh.renderOrder = 995;
         studioThree.volumeGroup.add(cutMesh);
       }
-    } else {
-      // Triangulated limiting plane preview when heatmap_cells are not yet populated
-      const limitPlanePositions = [];
-      const limitGridPositions = [];
-      const cBaseY = evalLimitYAtVertex(centroid);
-      for (let i = 0; i < pts.length; i++) {
-        const a = pts[i];
-        const b = pts[(i + 1) % pts.length];
-        const ya = evalLimitYAtVertex(a);
-        const yb = evalLimitYAtVertex(b);
-        limitPlanePositions.push(a.x, ya, a.z, b.x, yb, b.z, centroid.x, cBaseY, centroid.z);
-        limitGridPositions.push(a.x, ya + 0.004, a.z, centroid.x, cBaseY + 0.004, centroid.z);
+      if (topCellWirePositions.length > 0) {
+        const topWireGeo = new THREE.BufferGeometry();
+        topWireGeo.setAttribute("position", new THREE.Float32BufferAttribute(topCellWirePositions, 3));
+        const topWireLines = new THREE.LineSegments(
+          topWireGeo,
+          new THREE.LineBasicMaterial({
+            color: 0xe2e8f0,
+            transparent: true,
+            opacity: 0.26,
+            depthTest: false,
+            depthWrite: false,
+          })
+        );
+        topWireLines.renderOrder = 996;
+        studioThree.volumeGroup.add(topWireLines);
       }
+    } else {
+      for (let i = 0; i < limitVerts.length; i++) {
+        const a = limitVerts[i];
+        limitGridPositions.push(a.x, a.y + 0.004, a.z, centroid.x, cLimY + 0.004, centroid.z);
+      }
+    }
+
+    if (limitPlanePositions.length > 0) {
       const limitGeo = new THREE.BufferGeometry();
       limitGeo.setAttribute("position", new THREE.Float32BufferAttribute(limitPlanePositions, 3));
       const limitMesh = new THREE.Mesh(
@@ -4351,42 +4403,38 @@
         new THREE.MeshBasicMaterial({
           color: 0xf59e0b,
           transparent: true,
-          opacity: 0.28,
+          opacity: 0.30,
           side: THREE.DoubleSide,
-          depthTest: true,
+          depthTest: false,
           depthWrite: false,
-          polygonOffset: true,
-          polygonOffsetFactor: 1,
-          polygonOffsetUnits: 1,
         })
       );
-      limitMesh.renderOrder = 993;
+      limitMesh.renderOrder = 990;
       studioThree.volumeGroup.add(limitMesh);
+    }
 
+    if (limitGridPositions.length > 0) {
       const gridGeo = new THREE.BufferGeometry();
       gridGeo.setAttribute("position", new THREE.Float32BufferAttribute(limitGridPositions, 3));
       const gridLines = new THREE.LineSegments(
         gridGeo,
-        new THREE.LineBasicMaterial({ color: 0xfbbf24, transparent: true, opacity: 0.65, depthTest: true, depthWrite: false })
+        new THREE.LineBasicMaterial({
+          color: 0xfbbf24,
+          transparent: true,
+          opacity: 0.72,
+          depthTest: false,
+          depthWrite: false,
+        })
       );
-      gridLines.renderOrder = 994;
+      gridLines.renderOrder = 991;
       studioThree.volumeGroup.add(gridLines);
     }
 
     // B. Bottom Limiting Plane Perimeter Outline & Vertical Drop-Pillars + Translucent Side-Curtain Walls
-    const yFloor = Math.min(minBaseY, minSurfY);
-    const limitVerts = pts.map((v) => {
-      const yLim = evalLimitYAtVertex(v);
-      return new THREE.Vector3(
-        v.x,
-        baseMode === "triangulated_boundary" && Math.abs(yLim - v.y) < 0.02 ? yFloor : yLim,
-        v.z
-      );
-    });
     const limitLoopPts = [...limitVerts, limitVerts[0].clone()];
     const limitOutline = new THREE.Line(
       new THREE.BufferGeometry().setFromPoints(limitLoopPts),
-      new THREE.LineBasicMaterial({ color: 0xf59e0b, linewidth: 2, depthTest: false, transparent: true, opacity: 0.92 })
+      new THREE.LineBasicMaterial({ color: 0xf59e0b, linewidth: 2, depthTest: false, transparent: true, opacity: 0.96 })
     );
     limitOutline.renderOrder = 997;
     studioThree.volumeGroup.add(limitOutline);
@@ -4409,7 +4457,7 @@
       pillarGeo.setAttribute("position", new THREE.Float32BufferAttribute(pillarPositions, 3));
       const pillarLines = new THREE.LineSegments(
         pillarGeo,
-        new THREE.LineBasicMaterial({ color: 0xf59e0b, depthTest: false, transparent: true, opacity: 0.88 })
+        new THREE.LineBasicMaterial({ color: 0xf59e0b, depthTest: false, transparent: true, opacity: 0.92 })
       );
       pillarLines.renderOrder = 997;
       studioThree.volumeGroup.add(pillarLines);
@@ -4422,9 +4470,9 @@
         new THREE.MeshBasicMaterial({
           color: 0xf59e0b,
           transparent: true,
-          opacity: 0.16,
+          opacity: 0.20,
           side: THREE.DoubleSide,
-          depthTest: true,
+          depthTest: false,
           depthWrite: false,
         })
       );
@@ -4432,7 +4480,7 @@
       studioThree.volumeGroup.add(curtainMesh);
     }
 
-    // 4. 2D Cut/Fill Volume & Tonnage Badge at Polygon Centroid
+    // 4. 2D Cut/Fill Volume & Tonnage Badge at Polygon Centroid + Bottom Limiting Plane Elevation Badge
     const badgePos = new THREE.Vector3(centroid.x, maxY + 0.45, centroid.z);
     if (volumeRes) {
       add2DBadge(
@@ -4440,6 +4488,15 @@
         `Fill: <b style="color:#0284c7;">+${volumeRes.fill_volume_m3} m³</b> · Cut: <b style="color:#ef4444;">-${volumeRes.cut_volume_m3} m³</b> · Net: <b>${volumeRes.net_volume_m3 >= 0 ? "+" : ""}${volumeRes.net_volume_m3} m³</b> (${volumeRes.estimated_tonnage_t} t)`,
         "#0284c7",
         { isVolume: true }
+      );
+      const bottomElevH = (ch + cLimY).toFixed(2);
+      const botBadgeAnchor = limitVerts[0] ? limitVerts[0].clone().lerp(centroid, 0.35) : new THREE.Vector3(centroid.x, cLimY, centroid.z);
+      botBadgeAnchor.y = cLimY;
+      add2DBadge(
+        botBadgeAnchor,
+        `Bottom Limiting Plane: <b style="color:#fbbf24;">H +${bottomElevH} m</b>`,
+        "#f59e0b",
+        { offsetY: 18, isVolume: true }
       );
     } else {
       add2DBadge(
@@ -4471,8 +4528,23 @@
 
     const minX = Math.min(...pts.map((p) => p.x));
     const maxX = Math.max(...pts.map((p) => p.x));
-    const minY = Math.min(...pts.map((p) => p.y));
-    const maxY = Math.max(...pts.map((p) => p.y));
+    let minY = Math.min(...pts.map((p) => p.y));
+    let maxY = Math.max(...pts.map((p) => p.y));
+    if (volumeRes && Array.isArray(volumeRes.heatmap_cells)) {
+      for (let i = 0; i < volumeRes.heatmap_cells.length; i++) {
+        const c = volumeRes.heatmap_cells[i];
+        const ys = Number(c.ly_surf);
+        const yb = Number(c.ly_base);
+        if (Number.isFinite(ys)) {
+          if (ys < minY) minY = ys;
+          if (ys > maxY) maxY = ys;
+        }
+        if (Number.isFinite(yb)) {
+          if (yb < minY) minY = yb;
+          if (yb > maxY) maxY = yb;
+        }
+      }
+    }
     const minZ = Math.min(...pts.map((p) => p.z));
     const maxZ = Math.max(...pts.map((p) => p.z));
     const cx = 0.5 * (minX + maxX);
@@ -4480,7 +4552,7 @@
     const cz = 0.5 * (minZ + maxZ);
     const spanX = Math.max(2.0, maxX - minX);
     const spanZ = Math.max(2.0, maxZ - minZ);
-    const spanMax = Math.max(spanX, spanZ, maxY - minY, 4.0);
+    const spanMax = Math.max(spanX, spanZ, (maxY - minY) * 1.35, 4.0);
 
     const cam = studioThree.camera;
     const prevPos = cam.position.clone();
@@ -4493,13 +4565,14 @@
 
     try {
       // 1. Figure 1 — 3D Perspective Overview Screenshot onto 880x500 canvas
-      const dist = Math.max(8.0, spanMax * 1.35);
+      const dist = Math.max(8.0, spanMax * 1.42);
       const centerVec = new THREE.Vector3(cx, cy, cz);
       cam.up.set(0, 1, 0);
-      cam.position.set(cx + dist * 0.58, cy + dist * 0.72, cz + dist * 0.78);
+      cam.position.set(cx + dist * 0.56, cy + dist * 0.68, cz + dist * 0.80);
       cam.lookAt(centerVec);
       cam.updateMatrixWorld(true);
       cam.updateProjectionMatrix();
+      updateZoomInvariantElements();
       studioThree.renderer.render(studioThree.scene, cam);
 
       const pCanvas = document.createElement("canvas");
@@ -4571,7 +4644,7 @@
       const nW = 880;
       const nH = 560;
       const aspect = nW / nH;
-      const halfSpanZ = Math.max(spanZ * 0.5 * 1.28, (spanX * 0.5 * 1.28) / aspect, 3.0);
+      const halfSpanZ = Math.max(spanZ * 0.5 * 1.42, (spanX * 0.5 * 1.42) / aspect, 3.0);
       const halfSpanX = halfSpanZ * aspect;
       const nadirCam = new THREE.OrthographicCamera(
         -halfSpanX,
@@ -4579,9 +4652,9 @@
         halfSpanZ,
         -halfSpanZ,
         0.5,
-        Math.max(600, spanMax * 10 + 300)
+        Math.max(800, spanMax * 12 + 400)
       );
-      nadirCam.position.set(cx, maxY + Math.max(80, spanMax * 3), cz);
+      nadirCam.position.set(cx, maxY + Math.max(100, spanMax * 4), cz);
       nadirCam.up.set(0, 0, -1);
       nadirCam.lookAt(new THREE.Vector3(cx, cy, cz));
       nadirCam.updateProjectionMatrix();
@@ -4637,18 +4710,17 @@
         nCtx.fillText(`N:${(cn - lzVal).toFixed(1)}`, 6, gzPx - 8);
       }
 
-      // Semi-transparent Cut (#ef4444) and Fill (#0ea5e9) cell shading
+      // Semi-transparent Cut (#ef4444) and Fill (#0ea5e9) cell shading across 100% of interior cells
       const cells = volumeRes && Array.isArray(volumeRes.heatmap_cells) ? volumeRes.heatmap_cells : [];
       const pxPerMeterX = nW / (2 * halfSpanX);
       const pxPerMeterZ = nH / (2 * halfSpanZ);
       cells.forEach((cell) => {
         const dz = Number(cell.dz || 0);
-        if (Math.abs(dz) < 0.006) return;
         const stepX = Number(volumeRes.cell_dx || cell.step_x || volumeRes.cell_step_m || 0.5);
         const stepZ = Number(volumeRes.cell_dz || cell.step_z || volumeRes.cell_step_m || 0.5);
         const [cxPx, czPx] = toNadirXY(Number(cell.lx || 0), Number(cell.lz || 0));
-        const cw = Math.max(2, stepX * pxPerMeterX * 0.92);
-        const chPx = Math.max(2, stepZ * pxPerMeterZ * 0.92);
+        const cw = Math.max(2, stepX * pxPerMeterX * 0.96);
+        const chPx = Math.max(2, stepZ * pxPerMeterZ * 0.96);
         nCtx.fillStyle = dz >= 0 ? "rgba(14, 165, 233, 0.36)" : "rgba(239, 68, 68, 0.36)";
         nCtx.fillRect(cxPx - cw * 0.5, czPx - chPx * 0.5, cw, chPx);
       });
@@ -4689,7 +4761,8 @@
         nCtx.fillText(edgeTxt, mx, my);
       }
 
-      // All vertex point markers & callout labels V1, V2, ..., Vn with their elevation (H:+XX.XXm)
+      // All vertex point markers & callout labels V1, V2, ..., Vn with their elevation (H:+XX.XXm) and collision avoidance
+      const placedBoxes = [];
       pts.forEach((pt, idx) => {
         const [px, py] = toNadirXY(pt.x, pt.z);
         const hVal = ch + pt.y;
@@ -4704,8 +4777,16 @@
         const vLbl = `V${idx + 1} (H:+${hVal.toFixed(2)}m)`;
         nCtx.font = "bold 11.5px monospace";
         const vtw = nCtx.measureText(vLbl).width + 12;
-        const bx = Math.max(6, Math.min(nW - vtw - 6, px - vtw * 0.5));
-        const by = py > 38 ? py - 30 : py + 12;
+        let bx = Math.max(6, Math.min(nW - vtw - 6, px - vtw * 0.5));
+        let by = py > 44 ? py - 30 : py + 12;
+        for (let pass = 0; pass < 4; pass++) {
+          const hit = placedBoxes.find(
+            (b) => !(bx + vtw < b.x - 3 || bx > b.x + b.w + 3 || by + 20 < b.y - 2 || by > b.y + b.h + 2)
+          );
+          if (!hit) break;
+          by = hit.y > py ? Math.max(6, hit.y - 24) : Math.min(nH - 26, hit.y + hit.h + 4);
+        }
+        placedBoxes.push({ x: bx, y: by, w: vtw, h: 20 });
         nCtx.fillStyle = "rgba(15, 23, 42, 0.92)";
         nCtx.fillRect(bx, by, vtw, 20);
         nCtx.strokeStyle = idx === 0 ? "#ff3b30" : "#38bdf8";

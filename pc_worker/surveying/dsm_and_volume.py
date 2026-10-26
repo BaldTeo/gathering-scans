@@ -1186,12 +1186,16 @@ class DsmAndVolumeMixin:
             "cell_dz": round(dy_step, 4),
             "perim_mean_h_m": round(perim_mean_h, 3),
             "heatmap_cells": heatmap_cells,
+            "perspective_img_data_url": str(payload.get("perspective_img_data_url") or ""),
+            "nadir_img_data_url": str(payload.get("nadir_img_data_url") or ""),
             "report_html_url": f"/api/reports/{html_filename}",
             "report_csv_url": f"/api/reports/{csv_filename}",
             "generated_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         }
 
         self._write_stockpile_reports(result, html_filename, csv_filename)
+        result.pop("perspective_img_data_url", None)
+        result.pop("nadir_img_data_url", None)
         return result
 
     def _write_stockpile_reports(self, data: Dict[str, Any], html_filename: str, csv_filename: str):
@@ -1227,11 +1231,89 @@ class DsmAndVolumeMixin:
             for v in data["boundary_twd97"]:
                 writer.writerow([v["vertex"], v["easting_m"], v["northing_m"], v["twvd2001_h_m"]])
 
-        # 2. Write Printable Engineering HTML Report (with Print-to-PDF button)
+        # 2. Write Printable Engineering HTML Report (with Print-to-PDF button, Figure 1 & Figure 2)
         rows_html = "".join(
-            f"<tr><td>V{v['vertex']}</td><td>{v['easting_m']:.3f}</td><td>{v['northing_m']:.3f}</td><td>{v['twvd2001_h_m']:.3f}</td></tr>"
+            f"<tr><td><b>V{v['vertex']}</b></td><td>{v['easting_m']:.3f}</td><td>{v['northing_m']:.3f}</td><td>{v['twvd2001_h_m']:.3f}</td></tr>"
             for v in data["boundary_twd97"]
         )
+
+        verts = data.get("boundary_twd97") or []
+        es = [float(v["easting_m"]) for v in verts] or [0.0, 10.0]
+        ns = [float(v["northing_m"]) for v in verts] or [0.0, 10.0]
+        hs = [float(v["twvd2001_h_m"]) for v in verts] or [0.0, 1.0]
+        e_min, e_max = min(es), max(es)
+        n_min, n_max = min(ns), max(ns)
+        h_min, h_max = min(hs), max(hs)
+        datum_h = float(data.get("datum_elevation_m", h_min))
+        h_floor = min(h_min, datum_h)
+        span_e = max(2.0, e_max - e_min)
+        span_n = max(2.0, n_max - n_min)
+        span_h = max(0.5, max(h_max, datum_h) - h_floor)
+
+        persp_url = str(data.get("perspective_img_data_url") or "")
+        nadir_url = str(data.get("nadir_img_data_url") or "")
+
+        if persp_url.startswith("data:image/"):
+            fig1_inner = f'<img src="{persp_url}" alt="Figure 1: 3D Volume Enclosure & Bottom Limiting Plane Overview" style="width:100%;height:auto;display:block;" />'
+        else:
+            # Deterministic Isometric 3D Volume Enclosure & Bottom Limiting Plane SVG
+            iso_top_pts = []
+            iso_bot_pts = []
+            iso_pillars = []
+            iso_labels = []
+            for idx_v, v in enumerate(verts):
+                u = (float(v["easting_m"]) - e_min) / span_e - 0.5
+                w = (float(v["northing_m"]) - n_min) / span_n - 0.5
+                zh = (float(v["twvd2001_h_m"]) - h_floor) / span_h
+                ix = 440.0 + (u - w) * 250.0
+                iy_bot = 310.0 + (u + w) * 110.0
+                iy_top = iy_bot - 28.0 - zh * 115.0
+                iso_top_pts.append(f"{ix:.1f},{iy_top:.1f}")
+                iso_bot_pts.append(f"{ix:.1f},{iy_bot:.1f}")
+                col = "#ff3b30" if idx_v == 0 else "#38bdf8"
+                iso_pillars.append(
+                    f'<line x1="{ix:.1f}" y1="{iy_bot:.1f}" x2="{ix:.1f}" y2="{iy_top:.1f}" stroke="#fbbf24" stroke-width="2" stroke-dasharray="4,3"/>'
+                )
+                iso_labels.append(
+                    f'<circle cx="{ix:.1f}" cy="{iy_top:.1f}" r="5.5" fill="{col}" stroke="#fff" stroke-width="1.8"/>'
+                    f'<rect x="{ix - 22:.1f}" y="{iy_top - 24:.1f}" width="44" height="17" rx="3" fill="#0f172a" stroke="{col}" stroke-width="1.2"/>'
+                    f'<text x="{ix:.1f}" y="{iy_top - 12:.1f}" fill="#fff" font-size="11" font-family="monospace" font-weight="bold" text-anchor="middle">V{v["vertex"]}</text>'
+                )
+            fig1_inner = (
+                f'<svg viewBox="0 0 880 420" width="100%" style="display:block;background:#0f172a;">'
+                f'<polygon points="{" ".join(iso_bot_pts)}" fill="rgba(16,185,129,0.28)" stroke="#10b981" stroke-width="3"/>'
+                f'<polygon points="{" ".join(iso_top_pts)}" fill="rgba(14,165,233,0.40)" stroke="#38bdf8" stroke-width="3.5"/>'
+                f'{"".join(iso_pillars)}{"".join(iso_labels)}'
+                f'<text x="20" y="28" fill="#f8fafc" font-size="13" font-weight="bold" font-family="sans-serif">{data["stockpile_name"]} · Bottom Limiting Plane H = +{datum_h:.2f} m</text>'
+                f'<text x="20" y="48" fill="#38bdf8" font-size="12" font-family="monospace" font-weight="bold">Fill: +{data["fill_volume_m3"]:,.2f} m³ | Cut: -{data["cut_volume_m3"]:,.2f} m³ | Net: {data["net_volume_m3"]:+,.2f} m³</text>'
+                f'</svg>'
+            )
+
+        if nadir_url.startswith("data:image/"):
+            fig2_inner = f'<img src="{nadir_url}" alt="Figure 2: Top-Down Nadir View with Point Labels V1..Vn & Thick Boundary" style="width:100%;height:auto;display:block;" />'
+        else:
+            pad_e = span_e * 0.22
+            pad_n = span_n * 0.22
+            n_pts_svg = []
+            n_labels_svg = []
+            for idx_v, v in enumerate(verts):
+                px = ((float(v["easting_m"]) - (e_min - pad_e)) / (span_e + 2 * pad_e)) * 880.0
+                py = ((n_max + pad_n - float(v["northing_m"])) / (span_n + 2 * pad_n)) * 480.0
+                n_pts_svg.append(f"{px:.1f},{py:.1f}")
+                col = "#ff3b30" if idx_v == 0 else "#38bdf8"
+                lbl_txt = f"V{v['vertex']} (H:+{float(v['twvd2001_h_m']):.2f}m)"
+                n_labels_svg.append(
+                    f'<circle cx="{px:.1f}" cy="{py:.1f}" r="6.5" fill="{col}" stroke="#fff" stroke-width="2"/>'
+                    f'<rect x="{px - 58:.1f}" y="{py - 28:.1f}" width="116" height="19" rx="3" fill="#0f172a" stroke="{col}" stroke-width="1.3"/>'
+                    f'<text x="{px:.1f}" y="{py - 15:.1f}" fill="#fff" font-size="11" font-family="monospace" font-weight="bold" text-anchor="middle">{lbl_txt}</text>'
+                )
+            fig2_inner = (
+                f'<svg viewBox="0 0 880 480" width="100%" style="display:block;background:#0f172a;">'
+                f'<polygon points="{" ".join(n_pts_svg)}" fill="rgba(14,165,233,0.28)" stroke="#0f172a" stroke-width="8" stroke-linejoin="round"/>'
+                f'<polygon points="{" ".join(n_pts_svg)}" fill="none" stroke="#0ea5e9" stroke-width="4.5" stroke-linejoin="round"/>'
+                f'{"".join(n_labels_svg)}'
+                f'</svg>'
+            )
 
         html_doc = f"""<!DOCTYPE html>
 <html lang="zh-Hant">
@@ -1251,6 +1333,8 @@ class DsmAndVolumeMixin:
   .kpi-val.fill {{ color: #059669; }}
   .kpi-val.cut {{ color: #dc2626; }}
   .kpi-val.ton {{ color: #0284c7; }}
+  .fig-card {{ border: 1px solid #cbd5e1; border-radius: 10px; overflow: hidden; margin-bottom: 22px; background: #0f172a; page-break-inside: avoid; }}
+  .fig-cap {{ background: #f8fafc; color: #0f172a; padding: 10px 14px; font-size: 13px; font-weight: 700; border-top: 1px solid #cbd5e1; }}
   table {{ width: 100%; border-collapse: collapse; margin-bottom: 24px; font-size: 13px; }}
   th, td {{ border: 1px solid #cbd5e1; padding: 9px 12px; text-align: left; }}
   th {{ background: #f1f5f9; font-weight: 700; color: #334155; }}
@@ -1293,6 +1377,16 @@ class DsmAndVolumeMixin:
       <div class="kpi-label">Estimated Mass (預估物料噸數)</div>
       <div class="kpi-val ton">{data['estimated_tonnage_t']:,.2f} t</div>
     </div>
+  </div>
+
+  <div class="fig-card">
+    {fig1_inner}
+    <div class="fig-cap">圖 1 — 3D 土方圍束柱體與底部限制基準面總覽 (Figure 1: 3D Volume Enclosure &amp; Bottom Limiting Plane Overview)</div>
+  </div>
+
+  <div class="fig-card">
+    {fig2_inner}
+    <div class="fig-cap">圖 2 — 正射俯視圖與全頂點 (V1..V{len(verts)}) 編號及加粗範圍邊界 (Figure 2: Top-Down Nadir View with Point Labels V1..V{len(verts)} &amp; Thick Boundary)</div>
   </div>
 
   <table>
