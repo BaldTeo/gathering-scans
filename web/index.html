@@ -18,7 +18,7 @@
   <meta name="twitter:image" content="https://scans.gatheren.cloud/assets/gathering_cloud_logo.png" />
   <!-- GS_SHARE_OG_END -->
   <link rel="icon" type="image/png" href="/assets/gathering_cloud_logo.png" />
-  <link rel="stylesheet" href="/app.css?v=20261026_v156" />
+  <link rel="stylesheet" href="/app.css?v=20261026_v157" />
   <script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
 <body>
@@ -204,7 +204,7 @@
 
               <!-- True Orthomosaic 2D Nadir Plan Overlay Toggle & Opacity Control -->
               <div class="gs-map-ortho-row" style="display:flex;align-items:center;justify-content:space-between;gap:6px;padding-top:2px;">
-                <button type="button" class="btn-xs active" id="btnMapToggleOrthoOverlay" title="於地圖工區範圍疊合 2D 正射俯視影像" data-i18n-title-zh="於地圖工區範圍疊合 2D 正射俯視影像" data-i18n-title-en="Toggle 2D Nadir Orthomosaic Plan Overlay on Map" style="gap:5px;flex:1;justify-content:center;">
+                <button type="button" class="btn-xs active" id="btnMapToggleOrthoOverlay" title="於地圖工區範圍疊合 2D 正射俯視影像" data-i18n-title-zh="於地圖工區範圍疊合 2D 正射俯視影像" data-i18n-title-en="Toggle 2D Nadir Orthomosaic Plan Overlay on Map" style="display:none !important;gap:5px;flex:1;justify-content:center;">
                   <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2">
                     <polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/>
                   </svg>
@@ -379,7 +379,7 @@
                   <line x1="2" y1="12" x2="5" y2="12"/><line x1="19" y1="12" x2="22" y2="12"/>
                 </svg>
               </button>
-              <button type="button" class="btn-xs" id="btnCaptureNadirOrtho" title="擷取正射俯視影像並更新地圖 2D 疊圖" data-i18n-title-zh="擷取正射俯視影像並更新地圖 2D 疊圖" data-i18n-title-en="Capture Nadir Ortho Snapshot &amp; Update Map 2D Overlay" style="gap:4px;">
+              <button type="button" class="btn-xs" id="btnCaptureNadirOrtho" title="擷取正射俯視影像並更新地圖 2D 疊圖" data-i18n-title-zh="擷取正射俯視影像並更新地圖 2D 疊圖" data-i18n-title-en="Capture Nadir Ortho Snapshot &amp; Update Map 2D Overlay" style="display:none !important;gap:4px;">
                 <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8">
                   <polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/>
                 </svg>
@@ -531,7 +531,7 @@
           <button type="button" class="btn-xs" id="btnStudioToggleCategorizeLabels" title="切換顯示或隱藏 2D 浮動標籤與 3D 標註" data-i18n-title-zh="切換顯示或隱藏 2D 浮動標籤與 3D 標註" data-i18n-title-en="Toggle 2D Floating Labels &amp; 3D Comment Pins" style="display:inline-flex;gap:4px;white-space:nowrap;flex-shrink:0;">
             <span id="lblStudioToggleCategorizeLabels">🏷️ 標籤</span>
           </button>
-          <button type="button" class="btn-xs" id="btnStudioCaptureOrtho" title="擷取正射俯視影像並更新地圖 2D 疊圖" data-i18n-title-zh="擷取正射俯視影像並更新地圖 2D 疊圖" data-i18n-title-en="Capture Nadir Ortho Snapshot &amp; Update Map 2D Overlay" style="gap:4px;">
+          <button type="button" class="btn-xs" id="btnStudioCaptureOrtho" title="擷取正射俯視影像並更新地圖 2D 疊圖" data-i18n-title-zh="擷取正射俯視影像並更新地圖 2D 疊圖" data-i18n-title-en="Capture Nadir Ortho Snapshot &amp; Update Map 2D Overlay" style="display:none !important;gap:4px;">
             <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8">
               <polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/>
             </svg>
@@ -2067,15 +2067,15 @@
   <script src="/lib/3d-tiles-renderer.bundle.js"></script>
 
   <!-- Main GatheringScans Bilingual Translation & Modular Application Logic (< 5,000 lines per module) -->
-  <script src="/i18n.js?v=20261026_v156"></script>
-  <script src="/src/01-core-state.js?v=20261026_v156"></script>
-  <script src="/src/02-map-and-timeline.js?v=20261026_v156"></script>
-  <script src="/src/03-studio-core.js?v=20261026_v156"></script>
-  <script src="/src/04-studio-lasso-and-edits.js?v=20261026_v156"></script>
-  <script src="/src/05-studio-civil-inspectors.js?v=20261026_v156"></script>
-  <script src="/src/06-studio-align-and-optimizer.js?v=20261026_v156"></script>
-  <script src="/src/07-compare-and-queue.js?v=20261026_v156"></script>
-  <script src="/src/08-advanced-surveying-and-qa.js?v=20261026_v156"></script>
-  <script src="/app.js?v=20261026_v156"></script>
+  <script src="/i18n.js?v=20261026_v157"></script>
+  <script src="/src/01-core-state.js?v=20261026_v157"></script>
+  <script src="/src/02-map-and-timeline.js?v=20261026_v157"></script>
+  <script src="/src/03-studio-core.js?v=20261026_v157"></script>
+  <script src="/src/04-studio-lasso-and-edits.js?v=20261026_v157"></script>
+  <script src="/src/05-studio-civil-inspectors.js?v=20261026_v157"></script>
+  <script src="/src/06-studio-align-and-optimizer.js?v=20261026_v157"></script>
+  <script src="/src/07-compare-and-queue.js?v=20261026_v157"></script>
+  <script src="/src/08-advanced-surveying-and-qa.js?v=20261026_v157"></script>
+  <script src="/app.js?v=20261026_v157"></script>
 </body>
 </html>

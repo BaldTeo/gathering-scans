@@ -594,6 +594,9 @@
       if (STATE.activeView === "studio" && STATE.multiAlign.active && STATE.activeTool === "align_merge") {
         if (handleGizmoPointerDown(e)) return;
       }
+      if (STATE.activeView === "studio" && STATE.activeTool === "section" && e.button === 0) {
+        if (typeof handleSectionBoxGizmoPointerDown === "function" && handleSectionBoxGizmoPointerDown(e)) return;
+      }
       // Multi-touch safety: if a second finger touches down while lassoing, cancel lasso so pinch-zoom/orbit works
       if (_lassoState.dragging && (e.pointerId !== _lassoState.pointerId || activeTouchPointers.size >= 2)) {
         lastMultiTouchTime = performance.now();
@@ -663,6 +666,7 @@
         activeTouchPointers.delete(e.pointerId);
       }
       if (handleGizmoPointerUp(e)) return;
+      if (typeof handleSectionBoxGizmoPointerUp === "function" && handleSectionBoxGizmoPointerUp(e)) return;
       if (STATE.activeView === "studio" && STATE.fpMode.active) {
         const wasDragDist = STATE.fpMode.dragDist || 0;
         if (e.button === 2) _lastFpRightDragTs = performance.now();
@@ -724,6 +728,7 @@
         if (arcLen >= 6) return;
       }
       if (handleGizmoPointerUp(e)) return;
+      if (typeof handleSectionBoxGizmoPointerUp === "function" && handleSectionBoxGizmoPointerUp(e)) return;
       if (e.button !== 0) return;
       if (performance.now() - lastMultiTouchTime < 280 || activeTouchPointers.size > 0) return;
       if (Math.hypot(e.clientX - downPos.x, e.clientY - downPos.y) >= 8) return;
@@ -742,6 +747,14 @@
         !STATE.fpMode.dragLooking
       ) {
         if (handleGizmoPointerMove(e)) return;
+      }
+      if (
+        STATE.activeTool === "section" &&
+        document.pointerLockElement !== renderer.domElement &&
+        !STATE.fpMode.dragLooking &&
+        typeof handleSectionBoxGizmoPointerMove === "function"
+      ) {
+        if (handleSectionBoxGizmoPointerMove(e)) return;
       }
       if (STATE.fpMode.active) {
         if (document.pointerLockElement === renderer.domElement) {
@@ -828,6 +841,9 @@
       }
       if (STATE.multiAlign.active && STATE.activeTool === "align_merge") {
         if (handleGizmoPointerMove(e)) return;
+      }
+      if (STATE.activeTool === "section" && typeof handleSectionBoxGizmoPointerMove === "function") {
+        if (handleSectionBoxGizmoPointerMove(e)) return;
       }
       // Do not run hover raycasts while orbiting/panning with mouse buttons held down
       if ((e.buttons & 7) !== 0) return;
@@ -2926,6 +2942,9 @@
     if (toolName !== "profile" && typeof clearProfileVisualsOnly === "function") {
       clearProfileVisualsOnly();
     }
+    if (STATE.activeTool === "photos" && toolName !== "photos" && typeof clearPhotoTargetVisuals3D === "function") {
+      clearPhotoTargetVisuals3D();
+    }
     if (STATE.activeTool !== toolName) {
       STATE.measurePoints = [];
     }
@@ -3075,6 +3094,9 @@
     if (typeof clearRtkPhotoFrustums3D === "function") {
       clearRtkPhotoFrustums3D();
     }
+    if (typeof clearPhotoTargetVisuals3D === "function") {
+      clearPhotoTargetVisuals3D();
+    }
     if (studioThree) {
       while (studioThree.overlayGroup.children.length > 0) {
         studioThree.overlayGroup.remove(studioThree.overlayGroup.children[0]);
@@ -3100,7 +3122,10 @@
         c.userData?.isLassoHighlight ||
         c.userData?.isSnapIndicator ||
         c.userData?.isMovingVertexIndicator ||
+        c.userData?.isPhotoTargetPin ||
+        c.userData?.isSectionTempPin ||
         c === studioThree._sectionBoxHelper ||
+        c === studioThree.sectionBoxGizmoGroup ||
         c === studioThree.drainageGroup ||
         c === studioThree.gcpQaGroup ||
         c === studioThree.photoFrustumGroup
@@ -3286,6 +3311,9 @@
       typeof openSectionBoxInspector === "function"
     ) {
       openSectionBoxInspector(STATE.sectionBoxEndpoints[0], STATE.sectionBoxEndpoints[1]);
+      if (typeof applySectionBoxStateToClippingAndUI === "function") {
+        applySectionBoxStateToClippingAndUI(false);
+      }
     }
     if (typeof syncStudioMobileToolHud === "function") syncStudioMobileToolHud();
     showToast(tr(`✓ 已更新點位位置 (${moved.label})`, `✓ Updated ${moved.label} position`));

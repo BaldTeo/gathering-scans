@@ -3211,6 +3211,17 @@
     if (STATE.activeView === "studio" && STATE.measurePoints.length > 0) {
       STATE.measurePoints = [];
       clearTempDistanceVisuals();
+      if (studioThree && studioThree.overlayGroup) {
+        const tempPins = [];
+        studioThree.overlayGroup.children.forEach((c) => {
+          if (c && c.userData && c.userData.isSectionTempPin) tempPins.push(c);
+        });
+        tempPins.forEach((c) => {
+          if (c.geometry) c.geometry.dispose();
+          if (c.material) c.material.dispose();
+          studioThree.overlayGroup.remove(c);
+        });
+      }
       if (studioThree && studioThree.polyPreviewGroup) {
         while (studioThree.polyPreviewGroup.children.length > 0) {
           studioThree.polyPreviewGroup.remove(studioThree.polyPreviewGroup.children[0]);
@@ -3259,6 +3270,9 @@
       }
       if (STATE.activeTool === "drainage" && typeof clearDrainageVisuals3D === "function") {
         clearDrainageVisuals3D();
+      }
+      if ((STATE.activeTool === "photos" || STATE.activeTool === "rtk") && typeof clearPhotoTargetVisuals3D === "function") {
+        clearPhotoTargetVisuals3D();
       }
       const panelEl = document.getElementById("studioSidePanel");
       if (panelEl) {
@@ -3419,8 +3433,12 @@
       } else if (tool === "section") {
         STATE.sectionBoxEndpoints = [];
         openSectionBoxInspector(null, null);
-      } else if (tool === "photos") openRtkPhotoInspector();
-      else if (tool === "categorize") openCategorizeInspector();
+      } else if (tool === "photos") {
+        if (typeof clearPhotoTargetVisuals3D === "function") {
+          clearPhotoTargetVisuals3D();
+        }
+        openRtkPhotoInspector(null, false);
+      } else if (tool === "categorize") openCategorizeInspector();
       else if (tool === "comments") openCommentsInspector();
       else if (tool === "drainage" && typeof openDrainageAndSlopeInspector === "function") openDrainageAndSlopeInspector();
       else if (tool === "gcp_qa" && typeof openGcpAccuracyQaInspector === "function") openGcpAccuracyQaInspector();

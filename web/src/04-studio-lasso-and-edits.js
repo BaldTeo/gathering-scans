@@ -2840,7 +2840,13 @@
       if (_lastCanvasVertexClick && _lastCanvasVertexClick.vDesc) {
         return;
       }
-      add3DPinMarker(pt, 0x0284c7);
+      if (typeof clearPhotoTargetVisuals3D === "function") {
+        clearPhotoTargetVisuals3D();
+      }
+      add3DPinMarker(pt, 0x0284c7, studioThree.overlayGroup, (m) => {
+        m.userData.isPhotoTargetPin = true;
+        studioThree.overlayGroup.add(m);
+      });
       openRtkPhotoInspector(pt, true);
       return;
     }
@@ -3080,7 +3086,10 @@
     if (tool === "section") {
       STATE.measurePoints.push(pt.clone());
       if (STATE.measurePoints.length === 1) {
-        add3DPinMarker(STATE.measurePoints[0], 0xff3b30);
+        add3DPinMarker(STATE.measurePoints[0], 0xff3b30, studioThree.overlayGroup, (m) => {
+          m.userData.isSectionTempPin = true;
+          studioThree.overlayGroup.add(m);
+        });
         showToast(tr("已設定剖面盒起點 P1 — 請點擊第二點 P2 建立剖面範圍", "Section Pt 1 placed — click 2nd point P2 on the 3D scan to create section box"));
       } else if (STATE.measurePoints.length >= 2) {
         const [p1, p2] = STATE.measurePoints;

@@ -892,10 +892,10 @@ class GatheringScansTestSuite(unittest.TestCase):
         with open(os.path.join(BASE_DIR, "web", "src", "08-advanced-surveying-and-qa.js"), "r", encoding="utf-8") as f:
             js08 = f.read()
 
-        # 1. Drainage arrows default to 1/5 (0.20x) size (`0.172 * arrowScale`, `0.015 * arrowScale`, `0.038 * arrowScale`) + Density & Arrow Size sliders
-        self.assertIn("const len = cellStep * tier.lenScale * 0.172 * arrowScale;", js08)
-        self.assertIn("const shaftHalfW = Math.max(0.02, cellStep * 0.015 * arrowScale);", js08)
-        self.assertIn("const headHalfW = Math.max(0.045, cellStep * 0.038 * arrowScale);", js08)
+        # 1. Drainage arrows default to 1/5 (0.20x) size (`0.85 * tier.lenScale * arrowScale`, `0.055 * arrowScale`, `0.135 * arrowScale`) + Density & Arrow Size sliders
+        self.assertIn("const len = 0.85 * tier.lenScale * arrowScale;", js08)
+        self.assertIn("const shaftHalfW = Math.max(0.02, 0.055 * arrowScale);", js08)
+        self.assertIn("const headHalfW = Math.max(0.045, 0.135 * arrowScale);", js08)
         self.assertIn('id="rngDrainageDensity"', js08)
         self.assertIn('id="rngDrainageArrowSize"', js08)
 
@@ -1105,6 +1105,109 @@ class GatheringScansTestSuite(unittest.TestCase):
                 os.remove(g_cand)
             except OSError:
                 pass
+
+    def test_16_photo_zoom_sidebar_merged_rtk_photos_auto_ortho_section_gizmos_and_mesh_drainage_density(self):
+        """Verify v157 features: (1) 1x-25x photo lightbox zoom with vertical zoom sidebar, (2) Merged/edited scan RTK photo spatial matching + pin cleanup,
+        (3) Hidden manual Ortho capture buttons, auto ortho regen, map zoom 23, and clean dropdown labels, (4) Interactive 3D section box gizmos & yaw rotation,
+        (5) Mesh triangle rasterization for drainage arrows (including InterleavedBufferAttribute) + arrows/m2 density slider decoupled from arrow length."""
+        from pc_worker.surveying_engine import SurveyingEngine
+
+        with open(os.path.join(BASE_DIR, "web", "index.html"), "r", encoding="utf-8") as f:
+            html = f.read()
+        with open(os.path.join(BASE_DIR, "web", "app.css"), "r", encoding="utf-8") as f:
+            app_css = f.read()
+        with open(os.path.join(BASE_DIR, "web", "src", "01-core-state.js"), "r", encoding="utf-8") as f:
+            js01 = f.read()
+        with open(os.path.join(BASE_DIR, "web", "src", "02-map-and-timeline.js"), "r", encoding="utf-8") as f:
+            js02 = f.read()
+        with open(os.path.join(BASE_DIR, "web", "src", "03-studio-core.js"), "r", encoding="utf-8") as f:
+            js03 = f.read()
+        with open(os.path.join(BASE_DIR, "web", "src", "04-studio-lasso-and-edits.js"), "r", encoding="utf-8") as f:
+            js04 = f.read()
+        with open(os.path.join(BASE_DIR, "web", "src", "05-studio-civil-inspectors.js"), "r", encoding="utf-8") as f:
+            js05 = f.read()
+        with open(os.path.join(BASE_DIR, "web", "src", "08-advanced-surveying-and-qa.js"), "r", encoding="utf-8") as f:
+            js08 = f.read()
+        with open(os.path.join(BASE_DIR, "pc_worker", "surveying", "contours_and_cad.py"), "r", encoding="utf-8") as f:
+            cad_py = f.read()
+        with open(os.path.join(BASE_DIR, "pc_worker", "server_api_routes.py"), "r", encoding="utf-8") as f:
+            routes_py = f.read()
+
+        # 1. Requirement 1: 1x-25x Zoom & Vertical Zoom Sidebar in Picture View Mode (openPhotoLightboxModal)
+        self.assertIn("Math.max(1.0, Math.min(25.0, Number(nextZoom) || 1.0))", js08)
+        self.assertIn('id="photoLightboxZoomSidebar"', js08)
+        self.assertIn('id="btnPhotoZoomIn"', js08)
+        self.assertIn('id="rngPhotoLightboxZoom"', js08)
+        self.assertIn('min="1" max="25" step="0.1"', js08)
+        self.assertIn('id="btnPhotoZoomOut"', js08)
+        self.assertIn('id="lblPhotoLightboxZoom"', js08)
+        self.assertIn('id="btnPhotoZoomReset"', js08)
+        self.assertIn(".gs-photo-zoom-sidebar", app_css)
+
+        # 2. Requirement 2: Merged/Edited Scan RTK Photos + Photo Target Pin Cleanup
+        self.assertIn("_cameras_cache_v4.json", cad_py)
+        self.assertIn("merged_from", cad_py)
+        self.assertIn("derived_from_scan_id", cad_py)
+        self.assertIn("r_zup_rowmajor", cad_py)
+        self.assertIn("function clearPhotoTargetVisuals3D()", js08)
+        self.assertIn("m.userData.isPhotoTargetPin = true;", js04)
+        self.assertIn("openRtkPhotoInspector(pt, true);", js04)
+        self.assertIn("if (!pt)", js05)
+        self.assertIn('if (STATE.activeTool === "photos" && toolName !== "photos" && typeof clearPhotoTargetVisuals3D === "function")', js03)
+
+        eng = SurveyingEngine(os.path.join(BASE_DIR, "scans"))
+        qihu_dir = os.path.join(BASE_DIR, "scans", "edited_qihu_unified_merged_scan_4_scans__edited_372953")
+        if os.path.isdir(qihu_dir):
+            r_west = eng.query_cameras_for_point("edited_qihu_unified_merged_scan_4_scans__edited_372953", 300525.0, 2780995.0, 12.0, top_k=4)
+            r_east = eng.query_cameras_for_point("edited_qihu_unified_merged_scan_4_scans__edited_372953", 300590.0, 2780950.0, 12.0, top_k=4)
+            west_files = [m["filename"] for m in r_west.get("matched_photos", [])]
+            east_files = [m["filename"] for m in r_east.get("matched_photos", [])]
+            self.assertGreater(len(west_files), 0)
+            self.assertGreater(len(east_files), 0)
+            self.assertNotEqual(west_files, east_files)
+
+        # 3. Requirement 3: Hidden Ortho Capture Buttons, Auto Ortho Regen, Map Zoom 23, Clean Dropdown Names
+        self.assertIn('id="btnCaptureNadirOrtho"', html)
+        self.assertIn('id="btnStudioCaptureOrtho"', html)
+        self.assertIn('id="btnMapToggleOrthoOverlay"', html)
+        for btn_id in ("btnCaptureNadirOrtho", "btnStudioCaptureOrtho", "btnMapToggleOrthoOverlay"):
+            idx = html.find(f'id="{btn_id}"')
+            self.assertGreater(idx, 0)
+            snippet = html[max(0, idx - 180) : idx + 260]
+            self.assertIn("display:none !important", snippet)
+        self.assertNotIn("localStorage.getItem('gs_nadir_ortho_v2_' + sid)", js08)
+        self.assertIn("def _trigger_auto_ortho_regen(target_sid: Optional[str]):", routes_py)
+        self.assertIn("Math.max(2.0, Math.min(23.0, nextZoom))", js02)
+        self.assertIn("Math.min(23.0, gsMap.zoom + 0.75)", js02)
+        self.assertIn("const zInt = Math.max(2, Math.min(19, Math.floor(gsMap.zoom)));", js02)
+        self.assertIn("opt.textContent = grp.project_group;", js01)
+        self.assertIn("opt.textContent = s.name;", js01)
+        self.assertNotIn("`${s.name} (${s.scan_date})`", js01)
+
+        # 4. Requirement 4: Interactive 3D Section Box Gizmos (Move, Resize Faces, Rotate Yaw)
+        self.assertIn("sectionBoxState:", js01)
+        self.assertIn("function rebuildSectionBox3DGizmos()", js05)
+        self.assertIn("function applySectionBoxStateToClippingAndUI(", js05)
+        self.assertIn("function handleSectionBoxGizmoPointerDown(", js05)
+        self.assertIn("function handleSectionBoxGizmoPointerMove(", js05)
+        self.assertIn("function handleSectionBoxGizmoPointerUp(", js05)
+        self.assertIn('id="secClipYaw"', js05)
+        self.assertIn("setFromNormalAndCoplanarPoint", js05)
+        self.assertIn("handleSectionBoxGizmoPointerDown(e)", js03)
+        self.assertIn("c === studioThree.sectionBoxGizmoGroup", js03)
+        self.assertIn("c.userData?.isPhotoTargetPin", js03)
+        self.assertIn("c.userData?.isSectionTempPin", js03)
+        self.assertIn("m.userData.isSectionTempPin = true;", js04)
+        self.assertIn("} else if (!st.active) {\n      st.active = true;", js05)
+
+        # 5. Requirement 5: Drainage Mesh Triangle Rasterization (InterleavedBufferAttribute safe) + Density (arrows/m2) vs Length Sliders
+        self.assertIn("pos.getX(i)", js08)
+        self.assertIn("idxAttr.getX(ti * 3 + 2)", js08)
+        self.assertNotIn("pos.array[i * itemSize]", js08)
+        self.assertIn("drainageDensityPerM2: 0.25", js01)
+        self.assertIn('min="0.04" max="2.00" step="0.02"', js08)
+        self.assertIn('/ m²', js08)
+        self.assertIn("const len = 0.85 * tier.lenScale * arrowScale;", js08)
 
 
 if __name__ == "__main__":

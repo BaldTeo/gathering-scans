@@ -6,10 +6,29 @@
   // ============================================================================
   // 3. CIVIL ENGINEERING INSPECTOR PANELS (Volume, Contours, Profile, Photos, Optimizer)
   // ============================================================================
+  function clearSectionBoxGizmos3D() {
+    if (!studioThree || !studioThree.overlayGroup) return;
+    if (studioThree.sectionBoxGizmoGroup) {
+      studioThree.overlayGroup.remove(studioThree.sectionBoxGizmoGroup);
+      studioThree.sectionBoxGizmoGroup = null;
+    }
+    const tempPins = [];
+    studioThree.overlayGroup.children.forEach((c) => {
+      if (c && c.userData && c.userData.isSectionTempPin) tempPins.push(c);
+    });
+    tempPins.forEach((c) => {
+      if (c.geometry) c.geometry.dispose();
+      if (c.material) c.material.dispose();
+      studioThree.overlayGroup.remove(c);
+    });
+  }
+
   function clearSectionBoxClippingIfNotKept() {
     if (!studioThree || !studioThree.renderer) return;
+    clearSectionBoxGizmos3D();
     if (!STATE.keepSectionBoxClip) {
       studioThree.renderer.clippingPlanes = [];
+      if (STATE.sectionBoxState) STATE.sectionBoxState.active = false;
       if (studioThree._sectionBoxHelper) {
         studioThree.overlayGroup?.remove(studioThree._sectionBoxHelper);
         if (studioThree._sectionBoxHelper.geometry) studioThree._sectionBoxHelper.geometry.dispose();
@@ -61,6 +80,9 @@
 
   document.getElementById("btnCloseSidePanel")?.addEventListener("click", () => {
     clearSectionBoxClippingIfNotKept();
+    if ((STATE.activeTool === "photos" || STATE.activeTool === "rtk") && typeof clearPhotoTargetVisuals3D === "function") {
+      clearPhotoTargetVisuals3D();
+    }
     if (STATE.activeTool === "crop_delete" || STATE.activeTool === "crop" || STATE.activeTool === "optimizer") {
       cancelLassoToolMode(false);
     } else if (
@@ -3323,11 +3345,28 @@
   }
 
   // 3D. RTK Raw Camera Photo Inspector + 3D Camera Frustum Projection & Alignment
-  async function openRtkPhotoInspector(pt = new THREE.Vector3(0, 0, 0), fromCanvasClick = false) {
+  async function openRtkPhotoInspector(pt = null, fromCanvasClick = false) {
     if (window.innerWidth <= 768) {
       STATE.sidePanelMinimized = !fromCanvasClick;
     } else {
       STATE.sidePanelMinimized = false;
+    }
+    if (!pt) {
+      if (typeof clearPhotoTargetVisuals3D === "function") {
+        clearPhotoTargetVisuals3D();
+      }
+      showSidePanel(
+        `<span>${tr("RTK 照片與 3D 視錐投影", "RTK Camera & 3D Frustum Inspector")}</span>`,
+        `
+        <div style="font-size:11.5px;color:var(--ui-text-secondary);background:var(--ui-bg-pill);border:1px solid var(--ui-border-strong);border-radius:8px;padding:10px 12px;line-height:1.5;">
+          📷 ${tr(
+            "請在 <b>3D 掃描模型上點擊任意位置</b>，系統將自動檢索拍攝該座標點最近的實拍 RTK 照片與 3D 相機視錐。",
+            "Click <b>any point on the 3D scan</b> to inspect the closest georeferenced RTK camera photos and 3D frustums for that exact location."
+          )}
+        </div>
+        `
+      );
+      return;
     }
     showSidePanel(
       `<span>${tr("RTK 照片與 3D 視錐投影", "RTK Camera & 3D Frustum Inspector")}</span>`,
@@ -3443,7 +3482,389 @@
     }
   }
 
-  // 3E. Section Box Clipping Inspector (Waits for 2 user clicks P1->P2 before creating section box; no random initial section)
+  // 3E. Section Box Clipping Inspector + Interactive 3D Gizmos (Translate, 6-Face Push/Pull Resize, Yaw Rotate)
+  const _secGizmoRaycaster = new THREE.Raycaster();
+  const _secGizmoDrag = {
+    active: false,
+    action: "",
+    pointerId: null,
+    plane: new THREE.Plane(),
+    startHit: new THREE.Vector3(),
+    axisWorld: new THREE.Vector3(),
+    startState: null,
+    startAngle: 0,
+  };
+
+  function getOrInitSectionBoxState() {
+    if (!STATE.sectionBoxState) {
+      STATE.sectionBoxState = {
+        active: false,
+        centerX: 0,
+        centerY: 0,
+        centerZ: 0,
+        halfX: 25,
+        halfY: 15,
+        halfZ: 25,
+        yawRad: 0,
+      };
+    }
+    return STATE.sectionBoxState;
+  }
+
+  function rebuildSectionBox3DGizmos() {
+    if (!studioThree || !studioThree.overlayGroup) return;
+    clearSectionBoxGizmos3D();
+    const st = getOrInitSectionBoxState();
+    if (!st.active || STATE.activeTool !== "section") return;
+
+    const grp = new THREE.Group();
+    grp.position.set(st.centerX, st.centerY, st.centerZ);
+    grp.rotation.set(0, st.yawRad || 0, 0);
+    studioThree.sectionBoxGizmoGroup = grp;
+    studioThree.overlayGroup.add(grp);
+
+    const hx = Math.max(0.5, st.halfX);
+    const hy = Math.max(0.5, st.halfY);
+    const hz = Math.max(0.5, st.halfZ);
+    const hScale = Math.max(0.8, Math.min(3.2, Math.max(hx, hy, hz) * 0.08));
+
+    const addGizmoHandleMesh = (mesh, action, cursor = "grab") => {
+      mesh.userData.sectionGizmoAction = action;
+      mesh.userData.sectionGizmoCursor = cursor;
+      mesh.renderOrder = 1004;
+      grp.add(mesh);
+    };
+
+    // 1. Six Face Push/Pull Resize Handles (+X, -X, +Y, -Y, +Z, -Z)
+    const faceSpecs = [
+      { action: "face_px", pos: [hx, 0, 0], dir: [1, 0, 0], col: 0xef4444 },
+      { action: "face_nx", pos: [-hx, 0, 0], dir: [-1, 0, 0], col: 0xef4444 },
+      { action: "face_py", pos: [0, hy, 0], dir: [0, 1, 0], col: 0x10b981 },
+      { action: "face_ny", pos: [0, -hy, 0], dir: [0, -1, 0], col: 0x10b981 },
+      { action: "face_pz", pos: [0, 0, hz], dir: [0, 0, 1], col: 0x3b82f6 },
+      { action: "face_nz", pos: [0, 0, -hz], dir: [0, 0, -1], col: 0x3b82f6 },
+    ];
+    const coneGeo = new THREE.ConeGeometry(hScale * 0.34, hScale * 0.9, 16);
+    const hitSphereGeo = new THREE.SphereGeometry(hScale * 0.72, 12, 12);
+    const hitMat = new THREE.MeshBasicMaterial({ visible: false });
+
+    faceSpecs.forEach((fs) => {
+      const mat = new THREE.MeshBasicMaterial({
+        color: fs.col,
+        depthTest: false,
+        transparent: true,
+        opacity: 0.94,
+      });
+      const outCone = new THREE.Mesh(coneGeo, mat);
+      const dirVec = new THREE.Vector3(fs.dir[0], fs.dir[1], fs.dir[2]);
+      outCone.position.set(
+        fs.pos[0] + fs.dir[0] * hScale * 0.45,
+        fs.pos[1] + fs.dir[1] * hScale * 0.45,
+        fs.pos[2] + fs.dir[2] * hScale * 0.45
+      );
+      outCone.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dirVec);
+      addGizmoHandleMesh(outCone, fs.action, "ew-resize");
+
+      const inCone = new THREE.Mesh(coneGeo, mat);
+      inCone.position.set(
+        fs.pos[0] - fs.dir[0] * hScale * 0.45,
+        fs.pos[1] - fs.dir[1] * hScale * 0.45,
+        fs.pos[2] - fs.dir[2] * hScale * 0.45
+      );
+      inCone.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dirVec.clone().negate());
+      addGizmoHandleMesh(inCone, fs.action, "ew-resize");
+
+      const hit = new THREE.Mesh(hitSphereGeo, hitMat);
+      hit.position.set(fs.pos[0], fs.pos[1], fs.pos[2]);
+      addGizmoHandleMesh(hit, fs.action, "ew-resize");
+    });
+
+    // 2. Center 3D Move / Translate Gizmo Triad (translate_x, translate_y, translate_z, translate_xz)
+    const arrowLen = hScale * 2.2;
+    const shaftGeo = new THREE.CylinderGeometry(hScale * 0.09, hScale * 0.09, arrowLen, 12);
+    const tipGeo = new THREE.ConeGeometry(hScale * 0.28, hScale * 0.72, 14);
+    const moveAxes = [
+      { action: "translate_x", dir: new THREE.Vector3(1, 0, 0), col: 0xf87171 },
+      { action: "translate_y", dir: new THREE.Vector3(0, 1, 0), col: 0x34d399 },
+      { action: "translate_z", dir: new THREE.Vector3(0, 0, 1), col: 0x60a5fa },
+    ];
+    moveAxes.forEach((ax) => {
+      const m = new THREE.MeshBasicMaterial({ color: ax.col, depthTest: false, transparent: true, opacity: 0.95 });
+      const q = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), ax.dir);
+      const shaft = new THREE.Mesh(shaftGeo, m);
+      shaft.position.copy(ax.dir).multiplyScalar(arrowLen * 0.5);
+      shaft.quaternion.copy(q);
+      addGizmoHandleMesh(shaft, ax.action, "move");
+
+      const tip = new THREE.Mesh(tipGeo, m);
+      tip.position.copy(ax.dir).multiplyScalar(arrowLen + hScale * 0.32);
+      tip.quaternion.copy(q);
+      addGizmoHandleMesh(tip, ax.action, "move");
+    });
+
+    const centerPad = new THREE.Mesh(
+      new THREE.BoxGeometry(hScale * 0.78, hScale * 0.28, hScale * 0.78),
+      new THREE.MeshBasicMaterial({ color: 0x38bdf8, depthTest: false, transparent: true, opacity: 0.9 })
+    );
+    addGizmoHandleMesh(centerPad, "translate_xz", "move");
+
+    // 3. Yaw Rotation Ring & Knob at Top of Section Box (rotate_yaw)
+    const rotRadius = Math.max(hScale * 2.4, Math.min(hx, hz) * 0.55);
+    const ringMesh = new THREE.Mesh(
+      new THREE.TorusGeometry(rotRadius, hScale * 0.08, 12, 48),
+      new THREE.MeshBasicMaterial({ color: 0xf59e0b, depthTest: false, transparent: true, opacity: 0.92 })
+    );
+    ringMesh.rotation.x = Math.PI * 0.5;
+    ringMesh.position.set(0, hy, 0);
+    addGizmoHandleMesh(ringMesh, "rotate_yaw", "grab");
+
+    const rotKnob = new THREE.Mesh(
+      new THREE.SphereGeometry(hScale * 0.38, 16, 16),
+      new THREE.MeshBasicMaterial({ color: 0xfbbf24, depthTest: false })
+    );
+    rotKnob.position.set(0, hy, rotRadius);
+    addGizmoHandleMesh(rotKnob, "rotate_yaw", "grab");
+  }
+
+  function applySectionBoxStateToClippingAndUI(syncSliders = true) {
+    if (!studioThree || !studioThree.renderer) return;
+    const st = getOrInitSectionBoxState();
+    if (!st.active) {
+      studioThree.renderer.clippingPlanes = [];
+      if (studioThree._sectionBoxHelper) {
+        studioThree.overlayGroup?.remove(studioThree._sectionBoxHelper);
+        studioThree._sectionBoxHelper = null;
+      }
+      clearSectionBoxGizmos3D();
+      return;
+    }
+
+    const hx = Math.max(0.5, Number(st.halfX) || 10);
+    const hy = Math.max(0.25, Number(st.halfY) || 10);
+    const hz = Math.max(0.5, Number(st.halfZ) || 10);
+    const yaw = Number(st.yawRad) || 0;
+    const cosY = Math.cos(yaw);
+    const sinY = Math.sin(yaw);
+
+    const axisX = new THREE.Vector3(cosY, 0, -sinY);
+    const axisY = new THREE.Vector3(0, 1, 0);
+    const axisZ = new THREE.Vector3(sinY, 0, cosY);
+    const center = new THREE.Vector3(st.centerX, st.centerY, st.centerZ);
+
+    const makePlane = (inwardNormal, facePt) => new THREE.Plane().setFromNormalAndCoplanarPoint(inwardNormal, facePt);
+    studioThree.renderer.clippingPlanes = [
+      makePlane(axisX.clone().negate(), center.clone().addScaledVector(axisX, hx)),
+      makePlane(axisX.clone(), center.clone().addScaledVector(axisX, -hx)),
+      makePlane(axisY.clone().negate(), center.clone().addScaledVector(axisY, hy)),
+      makePlane(axisY.clone(), center.clone().addScaledVector(axisY, -hy)),
+      makePlane(axisZ.clone().negate(), center.clone().addScaledVector(axisZ, hz)),
+      makePlane(axisZ.clone(), center.clone().addScaledVector(axisZ, -hz)),
+    ];
+
+    if (studioThree._sectionBoxHelper) {
+      studioThree.overlayGroup?.remove(studioThree._sectionBoxHelper);
+      if (studioThree._sectionBoxHelper.geometry) studioThree._sectionBoxHelper.geometry.dispose();
+      if (studioThree._sectionBoxHelper.material) studioThree._sectionBoxHelper.material.dispose();
+      studioThree._sectionBoxHelper = null;
+    }
+    const boxGeo = new THREE.BoxGeometry(hx * 2, hy * 2, hz * 2);
+    const edgesGeo = new THREE.EdgesGeometry(boxGeo);
+    boxGeo.dispose();
+    const wireframe = new THREE.LineSegments(
+      edgesGeo,
+      new THREE.LineBasicMaterial({ color: 0x38bdf8, depthTest: false, transparent: true, opacity: 0.88 })
+    );
+    wireframe.position.copy(center);
+    wireframe.rotation.set(0, yaw, 0);
+    wireframe.renderOrder = 997;
+    studioThree.overlayGroup.add(wireframe);
+    studioThree._sectionBoxHelper = wireframe;
+
+    rebuildSectionBox3DGizmos();
+
+    const yTop = st.centerY + hy;
+    const yBot = st.centerY - hy;
+    const yawDeg = Math.round((yaw * 180) / Math.PI);
+    const lblX = document.getElementById("lblSecClipX");
+    if (lblX) lblX.textContent = `±${hx.toFixed(1)} m`;
+    const lblZ = document.getElementById("lblSecClipZ");
+    if (lblZ) lblZ.textContent = `±${hz.toFixed(1)} m`;
+    const lblY = document.getElementById("lblSecClipY");
+    if (lblY) lblY.textContent = `${yTop >= 0 ? "+" : ""}${yTop.toFixed(1)} m`;
+    const lblYMin = document.getElementById("lblSecClipYMin");
+    if (lblYMin) lblYMin.textContent = `${yBot >= 0 ? "+" : ""}${yBot.toFixed(1)} m`;
+    const lblYaw = document.getElementById("lblSecClipYaw");
+    if (lblYaw) lblYaw.textContent = `${yawDeg >= 0 ? "+" : ""}${yawDeg}°`;
+
+    if (syncSliders) {
+      const elX = document.getElementById("secClipX");
+      if (elX) elX.value = String(Math.round(hx));
+      const elZ = document.getElementById("secClipZ");
+      if (elZ) elZ.value = String(Math.round(hz));
+      const elY = document.getElementById("secClipY");
+      if (elY) elY.value = String(yTop.toFixed(1));
+      const elYMin = document.getElementById("secClipYMin");
+      if (elYMin) elYMin.value = String(yBot.toFixed(1));
+      const elYaw = document.getElementById("secClipYaw");
+      if (elYaw) elYaw.value = String(yawDeg);
+    }
+  }
+
+  function unprojectPointerToSectionGizmoRay(e) {
+    if (!studioThree || !studioThree.renderer || !studioThree.camera) return null;
+    const rect = studioThree.renderer.domElement.getBoundingClientRect();
+    if (!rect || rect.width <= 0 || rect.height <= 0) return null;
+    const ndc = new THREE.Vector2(
+      ((e.clientX - rect.left) / rect.width) * 2 - 1,
+      -((e.clientY - rect.top) / rect.height) * 2 + 1
+    );
+    _secGizmoRaycaster.setFromCamera(ndc, studioThree.camera);
+    return _secGizmoRaycaster.ray;
+  }
+
+  function handleSectionBoxGizmoPointerDown(e) {
+    if (STATE.activeView !== "studio" || STATE.activeTool !== "section") return false;
+    const st = STATE.sectionBoxState;
+    if (!st || !st.active || !studioThree?.sectionBoxGizmoGroup) return false;
+    const ray = unprojectPointerToSectionGizmoRay(e);
+    if (!ray) return false;
+    studioThree.sectionBoxGizmoGroup.updateMatrixWorld(true);
+    const hits = _secGizmoRaycaster.intersectObjects(studioThree.sectionBoxGizmoGroup.children, true);
+    const hit = hits.find((h) => h.object?.userData?.sectionGizmoAction);
+    if (!hit) return false;
+
+    const action = hit.object.userData.sectionGizmoAction;
+    _secGizmoDrag.active = true;
+    _secGizmoDrag.action = action;
+    _secGizmoDrag.pointerId = e.pointerId;
+    _secGizmoDrag.startState = { ...st };
+
+    const yaw = st.yawRad || 0;
+    const cosY = Math.cos(yaw);
+    const sinY = Math.sin(yaw);
+    const axisX = new THREE.Vector3(cosY, 0, -sinY);
+    const axisY = new THREE.Vector3(0, 1, 0);
+    const axisZ = new THREE.Vector3(sinY, 0, cosY);
+    const center = new THREE.Vector3(st.centerX, st.centerY, st.centerZ);
+
+    if (action === "rotate_yaw" || action === "translate_xz") {
+      _secGizmoDrag.plane.setFromNormalAndCoplanarPoint(axisY, hit.point);
+    } else {
+      let axis = axisY;
+      if (action === "translate_x" || action === "face_px" || action === "face_nx") axis = axisX;
+      else if (action === "translate_z" || action === "face_pz" || action === "face_nz") axis = axisZ;
+      _secGizmoDrag.axisWorld.copy(axis);
+      const camDir = new THREE.Vector3();
+      studioThree.camera.getWorldDirection(camDir);
+      let planeNorm = camDir.clone().sub(axis.clone().multiplyScalar(camDir.dot(axis)));
+      if (planeNorm.lengthSq() < 1e-4) planeNorm.set(0, 1, 0);
+      planeNorm.normalize();
+      _secGizmoDrag.plane.setFromNormalAndCoplanarPoint(planeNorm, hit.point);
+    }
+
+    if (!ray.intersectPlane(_secGizmoDrag.plane, _secGizmoDrag.startHit)) {
+      _secGizmoDrag.startHit.copy(hit.point);
+    }
+    if (action === "rotate_yaw") {
+      _secGizmoDrag.startAngle = Math.atan2(
+        _secGizmoDrag.startHit.x - center.x,
+        _secGizmoDrag.startHit.z - center.z
+      );
+    }
+    if (studioThree.controls) studioThree.controls.enabled = false;
+    try {
+      studioThree.renderer.domElement.setPointerCapture(e.pointerId);
+    } catch (_) {}
+    return true;
+  }
+  window.handleSectionBoxGizmoPointerDown = handleSectionBoxGizmoPointerDown;
+
+  function handleSectionBoxGizmoPointerMove(e) {
+    if (STATE.activeView !== "studio" || STATE.activeTool !== "section") return false;
+    const st = STATE.sectionBoxState;
+    if (!st || !st.active || !studioThree?.sectionBoxGizmoGroup) return false;
+    const ray = unprojectPointerToSectionGizmoRay(e);
+    if (!ray) return false;
+
+    if (!_secGizmoDrag.active) {
+      if ((e.buttons & 7) !== 0) return false;
+      const hits = _secGizmoRaycaster.intersectObjects(studioThree.sectionBoxGizmoGroup.children, true);
+      const hit = hits.find((h) => h.object?.userData?.sectionGizmoAction);
+      if (studioThree.renderer?.domElement) {
+        studioThree.renderer.domElement.style.cursor = hit
+          ? hit.object.userData.sectionGizmoCursor || "grab"
+          : "";
+      }
+      return false;
+    }
+
+    const curPt = new THREE.Vector3();
+    if (!ray.intersectPlane(_secGizmoDrag.plane, curPt)) return true;
+    const delta = curPt.clone().sub(_secGizmoDrag.startHit);
+    const s0 = _secGizmoDrag.startState;
+    const act = _secGizmoDrag.action;
+    const yaw = s0.yawRad || 0;
+    const axisX = new THREE.Vector3(Math.cos(yaw), 0, -Math.sin(yaw));
+    const axisZ = new THREE.Vector3(Math.sin(yaw), 0, Math.cos(yaw));
+
+    if (act === "translate_xz") {
+      st.centerX = s0.centerX + delta.x;
+      st.centerZ = s0.centerZ + delta.z;
+    } else if (act === "translate_x" || act === "translate_y" || act === "translate_z") {
+      const d = delta.dot(_secGizmoDrag.axisWorld);
+      st.centerX = s0.centerX + _secGizmoDrag.axisWorld.x * d;
+      st.centerY = s0.centerY + _secGizmoDrag.axisWorld.y * d;
+      st.centerZ = s0.centerZ + _secGizmoDrag.axisWorld.z * d;
+    } else if (act === "rotate_yaw") {
+      const curAngle = Math.atan2(curPt.x - s0.centerX, curPt.z - s0.centerZ);
+      let nextYaw = s0.yawRad + (curAngle - _secGizmoDrag.startAngle);
+      while (nextYaw > Math.PI) nextYaw -= Math.PI * 2;
+      while (nextYaw < -Math.PI) nextYaw += Math.PI * 2;
+      st.yawRad = nextYaw;
+    } else if (act === "face_px" || act === "face_nx") {
+      const sign = act === "face_px" ? 1 : -1;
+      const d = delta.dot(axisX) * sign;
+      const newFull = Math.max(1.5, s0.halfX * 2 + d);
+      const actualDelta = newFull - s0.halfX * 2;
+      st.halfX = newFull * 0.5;
+      st.centerX = s0.centerX + axisX.x * (actualDelta * 0.5 * sign);
+      st.centerZ = s0.centerZ + axisX.z * (actualDelta * 0.5 * sign);
+    } else if (act === "face_pz" || act === "face_nz") {
+      const sign = act === "face_pz" ? 1 : -1;
+      const d = delta.dot(axisZ) * sign;
+      const newFull = Math.max(1.5, s0.halfZ * 2 + d);
+      const actualDelta = newFull - s0.halfZ * 2;
+      st.halfZ = newFull * 0.5;
+      st.centerX = s0.centerX + axisZ.x * (actualDelta * 0.5 * sign);
+      st.centerZ = s0.centerZ + axisZ.z * (actualDelta * 0.5 * sign);
+    } else if (act === "face_py" || act === "face_ny") {
+      const sign = act === "face_py" ? 1 : -1;
+      const d = delta.y * sign;
+      const newFull = Math.max(1.0, s0.halfY * 2 + d);
+      const actualDelta = newFull - s0.halfY * 2;
+      st.halfY = newFull * 0.5;
+      st.centerY = s0.centerY + actualDelta * 0.5 * sign;
+    }
+
+    applySectionBoxStateToClippingAndUI(true);
+    return true;
+  }
+  window.handleSectionBoxGizmoPointerMove = handleSectionBoxGizmoPointerMove;
+
+  function handleSectionBoxGizmoPointerUp(e) {
+    if (!_secGizmoDrag.active) return false;
+    _secGizmoDrag.active = false;
+    _secGizmoDrag.action = "";
+    try {
+      studioThree?.renderer?.domElement?.releasePointerCapture(e.pointerId);
+    } catch (_) {}
+    if (typeof syncStudioControlsForTool === "function") {
+      syncStudioControlsForTool();
+    }
+    return true;
+  }
+  window.handleSectionBoxGizmoPointerUp = handleSectionBoxGizmoPointerUp;
+
   function openSectionBoxInspector(p1 = null, p2 = null) {
     setActiveStudioTool("section");
     if (p1 && p2) {
@@ -3467,58 +3888,90 @@
     const centerZ = hasTwoPoints ? 0.5 * (eps[0].z + eps[1].z) : 0;
     const initHorizX = hasTwoPoints
       ? Math.max(2, Math.min(maxHoriz, Math.ceil(Math.abs(eps[1].x - eps[0].x) * 0.5 + 1)))
-      : Math.ceil(rawR * 1.05);
+      : Math.ceil(rawR * 0.85);
     const initHorizZ = hasTwoPoints
       ? Math.max(2, Math.min(maxHoriz, Math.ceil(Math.abs(eps[1].z - eps[0].z) * 0.5 + 1)))
-      : Math.ceil(rawR * 1.05);
+      : Math.ceil(rawR * 0.85);
     const maxElev = Math.max(25, Math.ceil(rawR * 0.75));
     const minElev = -Math.max(20, Math.ceil(rawR * 0.55));
     const initYTop = Math.ceil(maxElev * 0.85);
     const initYBot = Math.floor(minElev * 0.85);
+
+    const st = getOrInitSectionBoxState();
+    if (p1 && p2) {
+      st.active = true;
+      st.centerX = centerX;
+      st.centerY = 0.5 * (initYTop + initYBot);
+      st.centerZ = centerZ;
+      st.halfX = initHorizX;
+      st.halfY = Math.max(1.0, 0.5 * (initYTop - initYBot));
+      st.halfZ = initHorizZ;
+      st.yawRad = 0;
+    } else if (!st.active) {
+      st.active = true;
+      st.centerX = centerX;
+      st.centerY = 0.5 * (initYTop + initYBot);
+      st.centerZ = centerZ;
+      st.halfX = initHorizX;
+      st.halfY = Math.max(1.0, 0.5 * (initYTop - initYBot));
+      st.halfZ = initHorizZ;
+      st.yawRad = 0;
+    }
+
+    const curYawDeg = Math.round(((st.yawRad || 0) * 180) / Math.PI);
+    const curYTop = (st.centerY + st.halfY).toFixed(1);
+    const curYBot = (st.centerY - st.halfY).toFixed(1);
 
     showSidePanel(
       `<span>${tr("3D 剖面盒裁切器", "Section Box Slicer")}</span>`,
       `
       <div style="font-size:11px;color:var(--ui-text-secondary);background:var(--ui-bg-pill);border:1px solid var(--ui-border-strong);border-radius:7px;padding:7px 9px;margin-bottom:9px;line-height:1.4;">
         ${
-          hasTwoPoints
+          hasTwoPoints || st.active
             ? tr(
-                `已根據您點選的 2 點建立剖面盒。拖曳滑桿可微調 X、Z、頂部 (+Y) 與底部 (-Y) 裁切平面。`,
-                `Section box created from your 2 selected points. Drag sliders below to adjust X, Z, Top (+Y), and Bottom (-Y) planes.`
+                `可直接於 3D 畫面上拖曳剖面盒的 <b>移動軸、6 個面縮放控制點或頂部旋轉環</b>，或使用下方滑桿微調。`,
+                `Drag the <b>3D Move triad, 6 face resize cones, or top rotation ring</b> directly in 3D, or adjust sliders below.`
               )
             : tr(
-                `請先在 3D 掃描模型上點擊 <b>2 個端點 (P1 &rarr; P2)</b> 建立剖面裁切範圍（或直接拖曳下方滑桿）。`,
-                `Click <b>2 points (P1 &rarr; P2)</b> on the 3D scan to create a section box (or drag any slider below).`
+                `請在 3D 掃描模型上點擊 <b>2 個端點 (P1 &rarr; P2)</b> 建立剖面盒（或直接拖曳下方滑桿啟用 3D 控制項）。`,
+                `Click <b>2 points (P1 &rarr; P2)</b> on the 3D scan to create a section box (or drag any slider below to spawn 3D gizmos).`
               )
         }
       </div>
       <div class="gs-form-group">
         <div style="display:flex;justify-content:space-between;align-items:center;">
           <label>${tr("東西向裁切範圍 (±X m)", "East-West Clipping Bound (±X m)")}</label>
-          <span id="lblSecClipX" style="font-size:11px;font-family:var(--font-mono);color:var(--ui-accent);">±${initHorizX} m</span>
+          <span id="lblSecClipX" style="font-size:11px;font-family:var(--font-mono);color:var(--ui-accent);">±${Math.round(st.halfX)} m</span>
         </div>
-        <input type="range" min="2" max="${maxHoriz}" step="1" value="${initHorizX}" class="gs-input" id="secClipX" />
+        <input type="range" min="2" max="${maxHoriz}" step="1" value="${Math.round(st.halfX)}" class="gs-input" id="secClipX" />
       </div>
       <div class="gs-form-group">
         <div style="display:flex;justify-content:space-between;align-items:center;">
           <label>${tr("南北向裁切範圍 (±Z m)", "North-South Clipping Bound (±Z m)")}</label>
-          <span id="lblSecClipZ" style="font-size:11px;font-family:var(--font-mono);color:var(--ui-accent);">±${initHorizZ} m</span>
+          <span id="lblSecClipZ" style="font-size:11px;font-family:var(--font-mono);color:var(--ui-accent);">±${Math.round(st.halfZ)} m</span>
         </div>
-        <input type="range" min="2" max="${maxHoriz}" step="1" value="${initHorizZ}" class="gs-input" id="secClipZ" />
+        <input type="range" min="2" max="${maxHoriz}" step="1" value="${Math.round(st.halfZ)}" class="gs-input" id="secClipZ" />
       </div>
       <div class="gs-form-group">
         <div style="display:flex;justify-content:space-between;align-items:center;">
           <label>${tr("頂部高程裁切上限 (+Y m)", "Top Ceiling Bound (+Y Elevation m)")}</label>
-          <span id="lblSecClipY" style="font-size:11px;font-family:var(--font-mono);color:var(--ui-accent);">+${initYTop} m</span>
+          <span id="lblSecClipY" style="font-size:11px;font-family:var(--font-mono);color:var(--ui-accent);">+${curYTop} m</span>
         </div>
-        <input type="range" min="${minElev}" max="${maxElev}" step="0.5" value="${initYTop}" class="gs-input" id="secClipY" />
+        <input type="range" min="${minElev}" max="${maxElev}" step="0.5" value="${curYTop}" class="gs-input" id="secClipY" />
       </div>
       <div class="gs-form-group">
         <div style="display:flex;justify-content:space-between;align-items:center;">
           <label>${tr("底部高程裁切下限 (-Y m)", "Bottom Floor Bound (-Y Elevation m)")}</label>
-          <span id="lblSecClipYMin" style="font-size:11px;font-family:var(--font-mono);color:var(--ui-accent);">${initYBot} m</span>
+          <span id="lblSecClipYMin" style="font-size:11px;font-family:var(--font-mono);color:var(--ui-accent);">${curYBot} m</span>
         </div>
-        <input type="range" min="${minElev}" max="${maxElev}" step="0.5" value="${initYBot}" class="gs-input" id="secClipYMin" />
+        <input type="range" min="${minElev}" max="${maxElev}" step="0.5" value="${curYBot}" class="gs-input" id="secClipYMin" />
+      </div>
+      <div class="gs-form-group">
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+          <label>${tr("水平旋轉角度 (Yaw °)", "Horizontal Rotation (Yaw °)")}</label>
+          <span id="lblSecClipYaw" style="font-size:11px;font-family:var(--font-mono);color:#f59e0b;">${curYawDeg >= 0 ? "+" : ""}${curYawDeg}°</span>
+        </div>
+        <input type="range" min="-180" max="180" step="1" value="${curYawDeg}" class="gs-input" id="secClipYaw" />
       </div>
       <label style="display:flex;align-items:center;gap:7px;font-size:11.5px;color:var(--ui-text-primary);cursor:pointer;margin:8px 0 10px;">
         <input type="checkbox" id="chkKeepSectionClip" ${STATE.keepSectionBoxClip ? "checked" : ""} />
@@ -3530,66 +3983,29 @@
       `
     );
 
-    const updateWireframeBox = (cx, cz, yMin, yMax) => {
-      if (!studioThree || !studioThree.overlayGroup) return;
-      if (studioThree._sectionBoxHelper) {
-        studioThree.overlayGroup.remove(studioThree._sectionBoxHelper);
-        if (studioThree._sectionBoxHelper.geometry) studioThree._sectionBoxHelper.geometry.dispose();
-        if (studioThree._sectionBoxHelper.material) studioThree._sectionBoxHelper.material.dispose();
-        studioThree._sectionBoxHelper = null;
-      }
-      const w = Math.max(0.5, cx * 2);
-      const h = Math.max(0.5, yMax - yMin);
-      const d = Math.max(0.5, cz * 2);
-      const boxGeo = new THREE.BoxGeometry(w, h, d);
-      const edgesGeo = new THREE.EdgesGeometry(boxGeo);
-      boxGeo.dispose();
-      const lineMat = new THREE.LineBasicMaterial({
-        color: 0x38bdf8,
-        depthTest: false,
-        transparent: true,
-        opacity: 0.85,
-      });
-      const wireframe = new THREE.LineSegments(edgesGeo, lineMat);
-      wireframe.position.set(centerX, 0.5 * (yMin + yMax), centerZ);
-      wireframe.renderOrder = 997;
-      studioThree.overlayGroup.add(wireframe);
-      studioThree._sectionBoxHelper = wireframe;
-    };
-
-    const updateClip = () => {
+    const updateClipFromSliders = () => {
       if (!studioThree) return;
+      st.active = true;
       const cx = parseFloat(document.getElementById("secClipX")?.value || String(initHorizX));
       const cz = parseFloat(document.getElementById("secClipZ")?.value || String(initHorizZ));
       let cyTop = parseFloat(document.getElementById("secClipY")?.value || String(initYTop));
       let cyBot = parseFloat(document.getElementById("secClipYMin")?.value || String(initYBot));
+      const yawDeg = parseFloat(document.getElementById("secClipYaw")?.value || "0");
       if (cyBot >= cyTop - 0.5) {
         cyBot = cyTop - 0.5;
         const botEl = document.getElementById("secClipYMin");
         if (botEl) botEl.value = String(cyBot);
       }
-      const lblX = document.getElementById("lblSecClipX");
-      if (lblX) lblX.textContent = `±${cx} m`;
-      const lblZ = document.getElementById("lblSecClipZ");
-      if (lblZ) lblZ.textContent = `±${cz} m`;
-      const lblY = document.getElementById("lblSecClipY");
-      if (lblY) lblY.textContent = `${cyTop >= 0 ? "+" : ""}${cyTop} m`;
-      const lblYMin = document.getElementById("lblSecClipYMin");
-      if (lblYMin) lblYMin.textContent = `${cyBot >= 0 ? "+" : ""}${cyBot} m`;
-
-      studioThree.renderer.clippingPlanes = [
-        new THREE.Plane(new THREE.Vector3(-1, 0, 0), centerX + cx),
-        new THREE.Plane(new THREE.Vector3(1, 0, 0), cx - centerX),
-        new THREE.Plane(new THREE.Vector3(0, -1, 0), cyTop),
-        new THREE.Plane(new THREE.Vector3(0, 1, 0), -cyBot),
-        new THREE.Plane(new THREE.Vector3(0, 0, -1), centerZ + cz),
-        new THREE.Plane(new THREE.Vector3(0, 0, 1), cz - centerZ),
-      ];
-      updateWireframeBox(cx, cz, cyBot, cyTop);
+      st.halfX = Math.max(0.5, cx);
+      st.halfZ = Math.max(0.5, cz);
+      st.centerY = 0.5 * (cyTop + cyBot);
+      st.halfY = Math.max(0.25, 0.5 * (cyTop - cyBot));
+      st.yawRad = (yawDeg * Math.PI) / 180.0;
+      applySectionBoxStateToClippingAndUI(false);
     };
 
-    ["secClipX", "secClipZ", "secClipY", "secClipYMin"].forEach((id) => {
-      document.getElementById(id)?.addEventListener("input", updateClip);
+    ["secClipX", "secClipZ", "secClipY", "secClipYMin", "secClipYaw"].forEach((id) => {
+      document.getElementById(id)?.addEventListener("input", updateClipFromSliders);
     });
     document.getElementById("chkKeepSectionClip")?.addEventListener("change", (e) => {
       STATE.keepSectionBoxClip = Boolean(e.target.checked);
@@ -3597,36 +4013,33 @@
     document.getElementById("btnResetSectionBox")?.addEventListener("click", () => {
       STATE.sectionBoxEndpoints = [];
       STATE.measurePoints = [];
+      st.active = false;
+      st.centerX = 0;
+      st.centerY = 0.5 * (initYTop + initYBot);
+      st.centerZ = 0;
+      st.halfX = maxHoriz;
+      st.halfZ = maxHoriz;
+      st.halfY = 0.5 * (maxElev - minElev);
+      st.yawRad = 0;
       const elX = document.getElementById("secClipX");
       const elZ = document.getElementById("secClipZ");
       const elY = document.getElementById("secClipY");
       const elYMin = document.getElementById("secClipYMin");
+      const elYaw = document.getElementById("secClipYaw");
       if (elX) elX.value = String(maxHoriz);
       if (elZ) elZ.value = String(maxHoriz);
       if (elY) elY.value = String(maxElev);
       if (elYMin) elYMin.value = String(minElev);
-      if (studioThree) {
-        studioThree.renderer.clippingPlanes = [];
-        if (studioThree._sectionBoxHelper) {
-          studioThree.overlayGroup?.remove(studioThree._sectionBoxHelper);
-          if (studioThree._sectionBoxHelper.geometry) studioThree._sectionBoxHelper.geometry.dispose();
-          if (studioThree._sectionBoxHelper.material) studioThree._sectionBoxHelper.material.dispose();
-          studioThree._sectionBoxHelper = null;
-        }
-      }
+      if (elYaw) elYaw.value = "0";
+      applySectionBoxStateToClippingAndUI(false);
       showToast("Section Box clipping reset — click 2 points on scan to create new section box");
     });
 
-    if (hasTwoPoints) {
-      updateClip();
+    if (hasTwoPoints || st.active) {
+      st.active = true;
+      applySectionBoxStateToClippingAndUI(false);
     } else if (studioThree) {
-      studioThree.renderer.clippingPlanes = [];
-      if (studioThree._sectionBoxHelper) {
-        studioThree.overlayGroup?.remove(studioThree._sectionBoxHelper);
-        if (studioThree._sectionBoxHelper.geometry) studioThree._sectionBoxHelper.geometry.dispose();
-        if (studioThree._sectionBoxHelper.material) studioThree._sectionBoxHelper.material.dispose();
-        studioThree._sectionBoxHelper = null;
-      }
+      applySectionBoxStateToClippingAndUI(false);
     }
   }
 

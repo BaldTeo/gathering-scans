@@ -1446,8 +1446,10 @@ class ContoursAndCadMixin:
         except Exception:
             return None
 
-    def _get_candidate_camera_dirs(self, scan: Dict[str, Any]) -> List[str]:
+    def _get_single_scan_camera_dirs(self, scan: Dict[str, Any]) -> List[str]:
         dirs: List[str] = []
+        if not isinstance(scan, dict):
+            return dirs
         for k in ("cameras_dir", "project_dir", "src_project_dir"):
             v = scan.get(k)
             if v and os.path.isdir(v) and v not in dirs:
@@ -1500,9 +1502,71 @@ class ContoursAndCadMixin:
                             pass
         return dirs
 
+    def _extract_merged_from_list(self, scan: Dict[str, Any]) -> List[Dict[str, Any]]:
+        if not isinstance(scan, dict):
+            return []
+        mf = scan.get("merged_from")
+        if isinstance(mf, list) and mf:
+            return [x for x in mf if isinstance(x, dict)]
+        extra_raw = scan.get("extra_json")
+        extra_obj: Dict[str, Any] = {}
+        if isinstance(extra_raw, dict):
+            extra_obj = extra_raw
+        elif isinstance(extra_raw, str) and extra_raw.strip():
+            try:
+                extra_obj = json.loads(extra_raw)
+            except Exception:
+                extra_obj = {}
+        mf_extra = extra_obj.get("merged_from")
+        if isinstance(mf_extra, list) and mf_extra:
+            return [x for x in mf_extra if isinstance(x, dict)]
+        parent_id = str(scan.get("derived_from_scan_id") or extra_obj.get("derived_from_scan_id") or "").strip()
+        if parent_id and parent_id != str(scan.get("scan_id") or ""):
+            parent_scan = self.db.get_scan(parent_id)
+            if parent_scan:
+                return self._extract_merged_from_list(parent_scan)
+        return []
+
+    def _get_candidate_camera_dirs(self, scan: Dict[str, Any]) -> List[str]:
+        dirs: List[str] = []
+        for d in self._get_single_scan_camera_dirs(scan):
+            if d not in dirs:
+                dirs.append(d)
+        extra_raw = scan.get("extra_json")
+        extra_obj: Dict[str, Any] = {}
+        if isinstance(extra_raw, dict):
+            extra_obj = extra_raw
+        elif isinstance(extra_raw, str) and extra_raw.strip():
+            try:
+                extra_obj = json.loads(extra_raw)
+            except Exception:
+                extra_obj = {}
+        deriv_id = str(scan.get("derived_from_scan_id") or extra_obj.get("derived_from_scan_id") or "").strip()
+        if deriv_id:
+            d_scan = self.db.get_scan(deriv_id)
+            if d_scan:
+                for d in self._get_single_scan_camera_dirs(d_scan):
+                    if d not in dirs:
+                        dirs.append(d)
+        for mf in self._extract_merged_from_list(scan):
+            for sid_key in ("scan_id", "derived_from_scan_id"):
+                sid = str(mf.get(sid_key) or "").strip()
+                if not sid:
+                    continue
+                sub_scan = self.db.get_scan(sid)
+                if sub_scan:
+                    for d in self._get_single_scan_camera_dirs(sub_scan):
+                        if d not in dirs:
+                            dirs.append(d)
+                for fallback_d in (os.path.join(SCANS_ROOT_DIR, sid), os.path.join(SCANS_ROOT_DIR, sid, "inputs")):
+                    if os.path.isdir(fallback_d) and fallback_d not in dirs:
+                        dirs.append(fallback_d)
+        return dirs
+
     def _load_or_build_camera_catalog(self, scan: Dict[str, Any]) -> List[Dict[str, Any]]:
         """
-        Loads or builds the real RTK camera pose catalog for a scan by parsing
+        Loads or builds the real RTK camera pose catalog for a scan (including all sub-scans
+        in `merged_from` with their 3D similarity/rigid alignment transforms applied) by parsing
         Pix4DCatch OPF (`opf_files/camera_list.json` + `opf_files/input_cameras.json`)
         or extracting EXIF GPS coordinates from raw `.jpg` frames on disk.
         """
@@ -1512,21 +1576,61 @@ class ContoursAndCadMixin:
 
         proj_dir = scan.get("project_dir") or os.path.join(SCANS_ROOT_DIR, scan_id)
         if os.path.isdir(proj_dir):
-            for cache_name in ("_cameras_cache_v3.json", "_cameras_cache_v2.json"):
-                cache_cand = os.path.join(proj_dir, cache_name)
-                if os.path.isfile(cache_cand):
-                    try:
-                        with open(cache_cand, "r", encoding="utf-8") as f:
-                            cams = json.load(f)
-                        if isinstance(cams, list) and len(cams) > 0:
-                            self._camera_mem_cache[scan_id] = cams
-                            return cams
-                    except Exception:
-                        pass
-        cache_json = os.path.join(proj_dir, "_cameras_cache_v3.json") if os.path.isdir(proj_dir) else None
+            cache_cand = os.path.join(proj_dir, "_cameras_cache_v4.json")
+            if os.path.isfile(cache_cand):
+                try:
+                    with open(cache_cand, "r", encoding="utf-8") as f:
+                        cams = json.load(f)
+                    if isinstance(cams, list) and len(cams) > 0:
+                        self._camera_mem_cache[scan_id] = cams
+                        return cams
+                except Exception:
+                    pass
+        cache_json = os.path.join(proj_dir, "_cameras_cache_v4.json") if os.path.isdir(proj_dir) else None
 
-        search_dirs = self._get_candidate_camera_dirs(scan)
+        merged_from_list = self._extract_merged_from_list(scan)
+        source_specs: List[Tuple[str, List[str], Optional[Dict[str, Any]]]] = []
+        if merged_from_list:
+            for idx_m, mf in enumerate(merged_from_list):
+                sub_sid = str(mf.get("scan_id") or "").strip()
+                base_sid = str(mf.get("derived_from_scan_id") or "").strip()
+                sub_dirs: List[str] = []
+                for sid in (sub_sid, base_sid):
+                    if not sid:
+                        continue
+                    s_rec = self.db.get_scan(sid)
+                    if s_rec:
+                        for d in self._get_single_scan_camera_dirs(s_rec):
+                            if d not in sub_dirs:
+                                sub_dirs.append(d)
+                        s_extra = s_rec.get("extra_json")
+                        if isinstance(s_extra, str) and s_extra.strip():
+                            try:
+                                s_extra_d = json.loads(s_extra)
+                            except Exception:
+                                s_extra_d = {}
+                        elif isinstance(s_extra, dict):
+                            s_extra_d = s_extra
+                        else:
+                            s_extra_d = {}
+                        nested_deriv = str(s_rec.get("derived_from_scan_id") or s_extra_d.get("derived_from_scan_id") or "").strip()
+                        if nested_deriv:
+                            nd_rec = self.db.get_scan(nested_deriv)
+                            if nd_rec:
+                                for d in self._get_single_scan_camera_dirs(nd_rec):
+                                    if d not in sub_dirs:
+                                        sub_dirs.append(d)
+                    for fb_d in (os.path.join(SCANS_ROOT_DIR, sid), os.path.join(SCANS_ROOT_DIR, sid, "inputs")):
+                        if os.path.isdir(fb_d) and fb_d not in sub_dirs:
+                            sub_dirs.append(fb_d)
+                tag = base_sid or sub_sid or f"part_{idx_m + 1}"
+                if sub_dirs:
+                    source_specs.append((tag, sub_dirs, mf))
+        if not source_specs:
+            source_specs.append(("", self._get_candidate_camera_dirs(scan), None))
+
         catalog: List[Dict[str, Any]] = []
+        seen_abs_paths: set = set()
         scan_crs_up = str(scan.get("crs") or "").upper()
 
         def _cam_xy_to_scan_en(c0: float, c1: float) -> Optional[Tuple[float, float]]:
@@ -1549,127 +1653,165 @@ class ContoursAndCadMixin:
                 return ue, un
             return wgs84_to_twd97(lat_d, lon_d)
 
-        # 1. Try OPF input_cameras.json + camera_list.json first (highest accuracy: RTK sigmas + IMU yaw/pitch/roll)
-        for sdir in search_dirs:
-            opf_inputs = glob.glob(os.path.join(sdir, "**", "input_cameras.json"), recursive=True)
-            for in_cam_path in opf_inputs:
-                opf_dir = os.path.dirname(in_cam_path)
-                cam_list_path = os.path.join(opf_dir, "camera_list.json")
-                if not os.path.isfile(cam_list_path):
-                    continue
-                try:
-                    with open(cam_list_path, "r", encoding="utf-8") as f:
-                        clist_data = json.load(f)
-                    id_to_uri = {
-                        int(c["id"]): str(c["uri"])
-                        for c in clist_data.get("cameras", [])
-                        if "id" in c and "uri" in c and str(c["uri"]).lower().endswith((".jpg", ".jpeg", ".png"))
-                    }
-                    with open(in_cam_path, "r", encoding="utf-8") as f:
-                        icams_data = json.load(f)
-                    part_tag = os.path.basename(os.path.dirname(opf_dir))
-                    for cap in icams_data.get("captures", []):
-                        cam_id = int(cap.get("reference_camera_id") or cap.get("id") or 0)
-                        rel_uri = id_to_uri.get(cam_id)
-                        if not rel_uri:
-                            for sub_c in cap.get("cameras", []):
-                                cid = int(sub_c.get("id") or 0)
-                                if cid in id_to_uri:
-                                    rel_uri = id_to_uri[cid]
-                                    break
-                        if not rel_uri:
-                            continue
-                        abs_img = os.path.normpath(os.path.join(opf_dir, rel_uri))
-                        if not os.path.isfile(abs_img):
-                            continue
-                        geo = cap.get("geolocation") or {}
-                        coords = geo.get("coordinates") or []
-                        if len(coords) < 2:
-                            continue
-                        c0 = float(coords[0])
-                        c1 = float(coords[1])
-                        h_val = float(coords[2]) if len(coords) >= 3 else float(scan.get("twd97_h") or 0.0)
-                        en_pair = _cam_xy_to_scan_en(c0, c1)
-                        if en_pair is None:
-                            continue
-                        cam_e, cam_n = en_pair
-                        sigmas = geo.get("sigmas") or [0.014, 0.014, 0.022]
-                        h_sigma_cm = round(math.hypot(float(sigmas[0]), float(sigmas[1])) * 100.0, 2)
-                        v_sigma_cm = round(float(sigmas[2]) * 100.0, 2) if len(sigmas) >= 3 else 2.2
-                        ori = cap.get("orientation") or {}
-                        angles = ori.get("angles_deg") or [0.0, -20.0, 0.0]
-                        fname = os.path.basename(abs_img)
-                        display_name = f"{part_tag}/{fname}" if part_tag and part_tag not in ("inputs", "opf_files") else fname
-                        catalog.append(
-                            {
-                                "filename": display_name,
-                                "abs_path": abs_img,
-                                "e": round(cam_e, 3),
-                                "n": round(cam_n, 3),
-                                "h": round(h_val, 3),
-                                "rtk_h_sigma_cm": h_sigma_cm,
-                                "rtk_v_sigma_cm": v_sigma_cm,
-                                "yaw_deg": round(float(angles[0]) % 360.0, 1) if len(angles) >= 1 else 0.0,
-                                "pitch_deg": round(float(angles[1]), 1) if len(angles) >= 2 else -20.0,
-                            }
-                        )
-                except Exception:
-                    continue
-            if catalog:
-                break
+        def _apply_subscan_transform(
+            cam_e: float, cam_n: float, h_val: float, yaw_deg: float, mf_spec: Optional[Dict[str, Any]]
+        ) -> Tuple[float, float, float, float]:
+            if not isinstance(mf_spec, dict):
+                return cam_e, cam_n, h_val, yaw_deg
+            na = mf_spec.get("native_anchor_zup")
+            ma = mf_spec.get("merged_anchor_zup")
+            rm = mf_spec.get("r_zup_rowmajor")
+            if isinstance(na, (list, tuple)) and len(na) >= 3 and isinstance(ma, (list, tuple)) and len(ma) >= 3 and isinstance(rm, (list, tuple)) and len(rm) >= 9:
+                dx = cam_e - float(na[0])
+                dy = cam_n - float(na[1])
+                dz = h_val - float(na[2])
+                te = float(ma[0]) + float(rm[0]) * dx + float(rm[1]) * dy + float(rm[2]) * dz
+                tn = float(ma[1]) + float(rm[3]) * dx + float(rm[4]) * dy + float(rm[5]) * dz
+                th = float(ma[2]) + float(rm[6]) * dx + float(rm[7]) * dy + float(rm[8]) * dz
+                yaw_rad = math.radians(yaw_deg)
+                vx = math.sin(yaw_rad)
+                vy = math.cos(yaw_rad)
+                tvx = float(rm[0]) * vx + float(rm[1]) * vy
+                tvy = float(rm[3]) * vx + float(rm[4]) * vy
+                tyaw = (math.degrees(math.atan2(tvx, tvy)) + 360.0) % 360.0 if (abs(tvx) > 1e-6 or abs(tvy) > 1e-6) else yaw_deg
+                return te, tn, th, tyaw
+            zs = mf_spec.get("zup_shift")
+            if isinstance(zs, (list, tuple)) and len(zs) >= 3:
+                return cam_e + float(zs[0]), cam_n + float(zs[1]), h_val + float(zs[2]), yaw_deg
+            return cam_e, cam_n, h_val, yaw_deg
 
-        # 2. Fallback to EXIF GPS extraction from raw .jpg files if no OPF camera files were present
-        if not catalog:
-            for sdir in search_dirs:
-                jpgs = [
-                    p for p in (
-                        glob.glob(os.path.join(sdir, "**", "*.jpg"), recursive=True)
-                        + glob.glob(os.path.join(sdir, "**", "*.jpeg"), recursive=True)
-                    )
-                    if not os.path.basename(p).lower().startswith(("mesh", "thumb"))
-                ]
-                if not jpgs:
-                    continue
-                jpgs.sort()
-                # Sample up to 600 frames evenly across the capture sequence
-                stride = max(1, len(jpgs) // 600)
-                for jp in jpgs[::stride]:
+        # 1. Try OPF input_cameras.json + camera_list.json across all source_specs (highest accuracy: RTK sigmas + IMU yaw/pitch/roll)
+        for src_tag, sdirs, mf_spec in source_specs:
+            src_found_opf = False
+            for sdir in sdirs:
+                opf_inputs = glob.glob(os.path.join(sdir, "**", "input_cameras.json"), recursive=True)
+                for in_cam_path in opf_inputs:
+                    opf_dir = os.path.dirname(in_cam_path)
+                    cam_list_path = os.path.join(opf_dir, "camera_list.json")
+                    if not os.path.isfile(cam_list_path):
+                        continue
                     try:
-                        with Image.open(jp) as im:
-                            exif = im._getexif() or {}
-                        gps_raw = exif.get(34853)
-                        if not gps_raw:
-                            continue
-                        gps = {GPSTAGS.get(k, k): v for k, v in gps_raw.items()}
-                        lat = self._dms_to_deg(gps.get("GPSLatitude"), gps.get("GPSLatitudeRef", "N"))
-                        lon = self._dms_to_deg(gps.get("GPSLongitude"), gps.get("GPSLongitudeRef", "E"))
-                        if lat is None or lon is None:
-                            continue
-                        alt_raw = gps.get("GPSAltitude", scan.get("twd97_h") or 0.0)
-                        if hasattr(alt_raw, "numerator"):
-                            h_val = float(alt_raw.numerator) / max(float(alt_raw.denominator), 1e-9)
-                        elif isinstance(alt_raw, (tuple, list)) and len(alt_raw) == 2:
-                            h_val = float(alt_raw[0]) / max(float(alt_raw[1]), 1e-9)
-                        else:
-                            h_val = float(alt_raw)
-                        cam_e, cam_n = wgs84_to_twd97(lat, lon)
-                        catalog.append(
-                            {
-                                "filename": os.path.basename(jp),
-                                "abs_path": os.path.abspath(jp),
-                                "e": round(cam_e, 3),
-                                "n": round(cam_n, 3),
-                                "h": round(h_val, 3),
-                                "rtk_h_sigma_cm": float(scan.get("rtk_accuracy_cm") or 1.4),
-                                "rtk_v_sigma_cm": round(float(scan.get("rtk_accuracy_cm") or 1.4) * 1.4, 2),
-                                "yaw_deg": 0.0,
-                                "pitch_deg": -22.0,
-                            }
-                        )
+                        with open(cam_list_path, "r", encoding="utf-8") as f:
+                            clist_data = json.load(f)
+                        id_to_uri = {
+                            int(c["id"]): str(c["uri"])
+                            for c in clist_data.get("cameras", [])
+                            if "id" in c and "uri" in c and str(c["uri"]).lower().endswith((".jpg", ".jpeg", ".png"))
+                        }
+                        with open(in_cam_path, "r", encoding="utf-8") as f:
+                            icams_data = json.load(f)
+                        part_tag = os.path.basename(os.path.dirname(opf_dir))
+                        for cap in icams_data.get("captures", []):
+                            cam_id = int(cap.get("reference_camera_id") or cap.get("id") or 0)
+                            rel_uri = id_to_uri.get(cam_id)
+                            if not rel_uri:
+                                for sub_c in cap.get("cameras", []):
+                                    cid = int(sub_c.get("id") or 0)
+                                    if cid in id_to_uri:
+                                        rel_uri = id_to_uri[cid]
+                                        break
+                            if not rel_uri:
+                                continue
+                            abs_img = os.path.normpath(os.path.join(opf_dir, rel_uri))
+                            if not os.path.isfile(abs_img):
+                                continue
+                            norm_abs = os.path.normcase(os.path.abspath(abs_img))
+                            if norm_abs in seen_abs_paths:
+                                continue
+                            seen_abs_paths.add(norm_abs)
+                            geo = cap.get("geolocation") or {}
+                            coords = geo.get("coordinates") or []
+                            if len(coords) < 2:
+                                continue
+                            c0 = float(coords[0])
+                            c1 = float(coords[1])
+                            h_val = float(coords[2]) if len(coords) >= 3 else float(scan.get("twd97_h") or 0.0)
+                            en_pair = _cam_xy_to_scan_en(c0, c1)
+                            if en_pair is None:
+                                continue
+                            cam_e, cam_n = en_pair
+                            sigmas = geo.get("sigmas") or [0.014, 0.014, 0.022]
+                            h_sigma_cm = round(math.hypot(float(sigmas[0]), float(sigmas[1])) * 100.0, 2)
+                            v_sigma_cm = round(float(sigmas[2]) * 100.0, 2) if len(sigmas) >= 3 else 2.2
+                            ori = cap.get("orientation") or {}
+                            angles = ori.get("angles_deg") or [0.0, -20.0, 0.0]
+                            raw_yaw = float(angles[0]) % 360.0 if len(angles) >= 1 else 0.0
+                            cam_e, cam_n, h_val, adj_yaw = _apply_subscan_transform(cam_e, cam_n, h_val, raw_yaw, mf_spec)
+                            fname = os.path.basename(abs_img)
+                            prefix_tag = src_tag or (part_tag if part_tag and part_tag not in ("inputs", "opf_files") else "")
+                            display_name = f"{prefix_tag}/{fname}" if prefix_tag else fname
+                            catalog.append(
+                                {
+                                    "filename": display_name,
+                                    "abs_path": abs_img,
+                                    "e": round(cam_e, 3),
+                                    "n": round(cam_n, 3),
+                                    "h": round(h_val, 3),
+                                    "rtk_h_sigma_cm": h_sigma_cm,
+                                    "rtk_v_sigma_cm": v_sigma_cm,
+                                    "yaw_deg": round(adj_yaw, 1),
+                                    "pitch_deg": round(float(angles[1]), 1) if len(angles) >= 2 else -20.0,
+                                }
+                            )
+                            src_found_opf = True
                     except Exception:
                         continue
-                if catalog:
-                    break
+            # 2. Per-source fallback to EXIF GPS extraction from raw .jpg files if no OPF camera files were present for this source
+            if not src_found_opf:
+                for sdir in sdirs:
+                    jpgs = [
+                        p for p in (
+                            glob.glob(os.path.join(sdir, "**", "*.jpg"), recursive=True)
+                            + glob.glob(os.path.join(sdir, "**", "*.jpeg"), recursive=True)
+                        )
+                        if not os.path.basename(p).lower().startswith(("mesh", "thumb", "ortho"))
+                    ]
+                    if not jpgs:
+                        continue
+                    jpgs.sort()
+                    stride = max(1, len(jpgs) // 600)
+                    for jp in jpgs[::stride]:
+                        try:
+                            norm_abs = os.path.normcase(os.path.abspath(jp))
+                            if norm_abs in seen_abs_paths:
+                                continue
+                            with Image.open(jp) as im:
+                                exif = im._getexif() or {}
+                            gps_raw = exif.get(34853)
+                            if not gps_raw:
+                                continue
+                            gps = {GPSTAGS.get(k, k): v for k, v in gps_raw.items()}
+                            lat = self._dms_to_deg(gps.get("GPSLatitude"), gps.get("GPSLatitudeRef", "N"))
+                            lon = self._dms_to_deg(gps.get("GPSLongitude"), gps.get("GPSLongitudeRef", "E"))
+                            if lat is None or lon is None:
+                                continue
+                            seen_abs_paths.add(norm_abs)
+                            alt_raw = gps.get("GPSAltitude", scan.get("twd97_h") or 0.0)
+                            if hasattr(alt_raw, "numerator"):
+                                h_val = float(alt_raw.numerator) / max(float(alt_raw.denominator), 1e-9)
+                            elif isinstance(alt_raw, (tuple, list)) and len(alt_raw) == 2:
+                                h_val = float(alt_raw[0]) / max(float(alt_raw[1]), 1e-9)
+                            else:
+                                h_val = float(alt_raw)
+                            cam_e, cam_n = wgs84_to_twd97(lat, lon)
+                            cam_e, cam_n, h_val, adj_yaw = _apply_subscan_transform(cam_e, cam_n, h_val, 0.0, mf_spec)
+                            fname = os.path.basename(jp)
+                            display_name = f"{src_tag}/{fname}" if src_tag else fname
+                            catalog.append(
+                                {
+                                    "filename": display_name,
+                                    "abs_path": os.path.abspath(jp),
+                                    "e": round(cam_e, 3),
+                                    "n": round(cam_n, 3),
+                                    "h": round(h_val, 3),
+                                    "rtk_h_sigma_cm": float(scan.get("rtk_accuracy_cm") or 1.4),
+                                    "rtk_v_sigma_cm": round(float(scan.get("rtk_accuracy_cm") or 1.4) * 1.4, 2),
+                                    "yaw_deg": round(adj_yaw, 1),
+                                    "pitch_deg": -22.0,
+                                }
+                            )
+                        except Exception:
+                            continue
 
         if catalog:
             self._camera_mem_cache[scan_id] = catalog

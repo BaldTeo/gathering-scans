@@ -213,7 +213,7 @@
     };
 
     const zoomAroundClientPoint = (nextZoom, clientX, clientY) => {
-      const clampedZoom = Math.max(2.0, Math.min(19.0, nextZoom));
+      const clampedZoom = Math.max(2.0, Math.min(23.0, nextZoom));
       if (Math.abs(clampedZoom - gsMap.zoom) < 1e-4) return;
       const rect = canvas.getBoundingClientRect();
       const px = clientX - rect.left;
@@ -249,7 +249,7 @@
       ctx.fillRect(0, 0, w, h);
 
       // Render Web Mercator Google Maps Tiles (Satellite Hybrid 'y' or Roadmap 'm')
-      const zInt = Math.max(2, Math.min(19, Math.round(gsMap.zoom)));
+      const zInt = Math.max(2, Math.min(19, Math.floor(gsMap.zoom)));
       const numTiles = 1 << zInt;
       const tileScale = 256 * Math.pow(2, gsMap.zoom - zInt);
       const cNorm = latLonToNormMercator(gsMap.centerLat, gsMap.centerLon);
@@ -378,7 +378,7 @@
     // Map Zoom Buttons
     document.getElementById("btnMapZoomIn")?.addEventListener("click", (e) => {
       e.stopPropagation();
-      gsMap.zoom = Math.min(19.0, gsMap.zoom + 0.75);
+      gsMap.zoom = Math.min(23.0, gsMap.zoom + 0.75);
       drawMap();
     });
     document.getElementById("btnMapZoomOut")?.addEventListener("click", (e) => {

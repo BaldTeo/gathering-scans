@@ -4602,6 +4602,75 @@ body.theme-light .gs-fp-touch-btn {
   border-color: rgba(100, 116, 139, 0.35);
 }
 
+/* Vertical Zoom Sidebar inside Picture Lightbox Modal (1x - 25x) */
+.gs-photo-zoom-sidebar {
+  position: absolute;
+  right: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 25;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 8px;
+  border-radius: 12px;
+  background: rgba(15, 23, 42, 0.86);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(148, 163, 184, 0.32);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.45);
+}
+
+.gs-photo-zoom-btn,
+.gs-photo-zoom-reset {
+  width: 30px;
+  height: 28px;
+  border-radius: 7px;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  background: rgba(30, 41, 59, 0.92);
+  color: #f8fafc;
+  font-size: 13px;
+  font-weight: 800;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.gs-photo-zoom-btn:hover,
+.gs-photo-zoom-reset:hover {
+  background: rgba(56, 189, 248, 0.24);
+  border-color: #38bdf8;
+}
+
+.gs-photo-zoom-slider-wrap {
+  height: 150px;
+  width: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.gs-photo-zoom-slider {
+  width: 140px;
+  height: 6px;
+  transform: rotate(-90deg);
+  accent-color: #38bdf8;
+  cursor: pointer;
+}
+
+.gs-photo-zoom-badge {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 800;
+  color: #38bdf8;
+  padding: 2px 4px;
+  text-align: center;
+  min-width: 36px;
+}
+
+
 
 
 

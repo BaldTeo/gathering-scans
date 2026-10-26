@@ -769,6 +769,15 @@ class ServerWriteRoutesMixin:
                 return
 
             # 6. GC_ScanOptimizer PC Actions & Multi-Scan Alignment Merge
+            def _trigger_auto_ortho_regen(target_sid: Optional[str]):
+                sid_clean = str(target_sid or "").strip()
+                if not sid_clean:
+                    return
+                try:
+                    SURVEY.get_or_generate_true_nadir_ortho(sid_clean, force=True)
+                except Exception:
+                    pass
+
             if path == "/api/optimizer/optimize":
                 if not actor_perms.get("can_run_workflows"):
                     self.send_json({"error": f"Role '{actor_role}' cannot run PC optimization workflows (Editor, Admin, or Owner required)."}, status=403)
@@ -780,6 +789,7 @@ class ServerWriteRoutesMixin:
                 for _inv_sid in {res.get("scan_id"), payload.get("scan_id")}:
                     if _inv_sid:
                         SURVEY._dsm_mem_cache.pop(str(_inv_sid), None)
+                        _trigger_auto_ortho_regen(str(_inv_sid))
                 self.send_json(res)
                 return
 
@@ -793,6 +803,7 @@ class ServerWriteRoutesMixin:
                 _VPS_RAM_FALLBACK_CACHE.clear()
                 if res.get("scan_id"):
                     SURVEY._dsm_mem_cache.pop(res["scan_id"], None)
+                    _trigger_auto_ortho_regen(res["scan_id"])
                 self.send_json(res)
                 return
 
@@ -806,6 +817,7 @@ class ServerWriteRoutesMixin:
                 _VPS_RAM_FALLBACK_CACHE.clear()
                 if res.get("scan_id"):
                     SURVEY._dsm_mem_cache.pop(res["scan_id"], None)
+                    _trigger_auto_ortho_regen(res["scan_id"])
                 self.send_json(res)
                 return
 
@@ -819,6 +831,7 @@ class ServerWriteRoutesMixin:
                 _VPS_RAM_FALLBACK_CACHE.clear()
                 if res.get("scan_id"):
                     SURVEY._dsm_mem_cache.pop(res["scan_id"], None)
+                    _trigger_auto_ortho_regen(res["scan_id"])
                 if isinstance(res.get("scan"), dict):
                     res["scan"] = self._enrich_scan_urls(res["scan"])
                 all_scans = [self._enrich_scan_urls(s) for s in DB.list_scans()]
@@ -837,6 +850,9 @@ class ServerWriteRoutesMixin:
                 self._GZIP_FILE_CACHE.clear()
                 self._OPTIMIZED_TILESET_CACHE.clear()
                 _VPS_RAM_FALLBACK_CACHE.clear()
+                new_sid_gen = res.get("scan_id") or (res.get("scan") or {}).get("scan_id")
+                if new_sid_gen:
+                    _trigger_auto_ortho_regen(new_sid_gen)
                 if isinstance(res.get("scan"), dict):
                     res["scan"] = self._enrich_scan_urls(res["scan"])
                 all_scans = [self._enrich_scan_urls(s) for s in DB.list_scans()]
@@ -858,6 +874,9 @@ class ServerWriteRoutesMixin:
                 self._GZIP_FILE_CACHE.clear()
                 self._OPTIMIZED_TILESET_CACHE.clear()
                 _VPS_RAM_FALLBACK_CACHE.clear()
+                merged_sid_gen = res.get("scan_id") or (res.get("scan") or {}).get("scan_id")
+                if merged_sid_gen:
+                    _trigger_auto_ortho_regen(merged_sid_gen)
                 if isinstance(res.get("scan"), dict):
                     res["scan"] = self._enrich_scan_urls(res["scan"])
                 all_scans = [self._enrich_scan_urls(s) for s in DB.list_scans()]
@@ -878,6 +897,10 @@ class ServerWriteRoutesMixin:
                 self._OPTIMIZED_TILESET_CACHE.clear()
                 _VPS_RAM_FALLBACK_CACHE.clear()
                 scans = seed_and_discover_scans(DB)
+                for _s_item in scans:
+                    _sid_i = _s_item.get("scan_id") if isinstance(_s_item, dict) else None
+                    if _sid_i and not SURVEY.get_saved_ortho_meta(_sid_i, _s_item):
+                        _trigger_auto_ortho_regen(_sid_i)
                 self.send_json({"status": "ok", "inbox_dir": GDRIVE_INPUTS_DIR, "total_scans": len(scans)})
                 return
 

@@ -1808,4 +1808,6 @@ class CategorizationIoMixin:
             print(f"[GatheringScans] True-nadir ortho generation warning for {scan_id}: {e}")
             return None
 
+    generate_scan_nadir_ortho = get_or_generate_true_nadir_ortho
+
 

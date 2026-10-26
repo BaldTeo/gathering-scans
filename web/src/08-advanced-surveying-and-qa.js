@@ -404,13 +404,6 @@
       }
       return STATE.mapOrthoImageCache[sid];
     }
-    let customDataUrl = null;
-    let customBounds = null;
-    try {
-      customDataUrl = localStorage.getItem(`gs_nadir_ortho_v2_${sid}`);
-      const rawB = localStorage.getItem(`gs_nadir_ortho_bounds_v2_${sid}`);
-      if (rawB) customBounds = JSON.parse(rawB);
-    } catch (_) {}
     const img = new Image();
     img.crossOrigin = "anonymous";
     const entry = {
@@ -418,7 +411,7 @@
       loaded: false,
       failed: false,
       isNadir: true,
-      bounds: scan.ortho_bounds || customBounds || null,
+      bounds: scan.ortho_bounds || null,
       fetchingMeta: false,
     };
     STATE.mapOrthoImageCache[sid] = entry;
@@ -452,7 +445,7 @@
       entry.failed = true;
     };
     const qSuffix = STATE.shareToken ? `?share=${encodeURIComponent(STATE.shareToken)}` : "";
-    img.src = customDataUrl || scan.ortho_url || `/api/scans/${encodeURIComponent(sid)}/ortho${qSuffix}`;
+    img.src = scan.ortho_url || `/api/scans/${encodeURIComponent(sid)}/ortho${qSuffix}`;
     return entry;
   }
 
@@ -1305,8 +1298,13 @@
     return false;
   }
 
-  function buildFastStudioSurfaceArrows(gridSize = 20, excludeWalls = true) {
+  function buildFastStudioSurfaceArrows(gridSize = 20, excludeWalls = true, densityPerM2 = null) {
     const G = Math.max(8, Math.min(40, Number(gridSize) || 20));
+    const densityVal = Math.max(
+      0.04,
+      Math.min(2.0, Number(densityPerM2 ?? STATE.drainageDensityPerM2) || 0.25)
+    );
+    const targetStepM = Math.max(0.65, 1.0 / Math.sqrt(Math.max(0.02, densityVal)));
     const meshes = [];
     let totalVerts = 0;
 
@@ -1356,7 +1354,7 @@
       const zs = filteredSrvArrows.map((a) => Number(a.local_z) || 0);
       const spanX = xs.length ? Math.max(8, Math.max(...xs) - Math.min(...xs)) : 20;
       const spanZ = zs.length ? Math.max(8, Math.max(...zs) - Math.min(...zs)) : 20;
-      const cellStep = Math.max(1.2, Math.max(spanX, spanZ) / G);
+      const cellStep = Math.max(0.65, targetStepM || Math.max(spanX, spanZ) / G);
       return {
         cellStep,
         arrows: filteredSrvArrows.map((a) => {
@@ -1380,10 +1378,10 @@
       collectFromRoot(studioThree?.fallbackGroup);
     }
     if (meshes.length === 0 || totalVerts === 0) {
-      return { cellStep: 4.0, arrows: [] };
+      return { cellStep: targetStepM, arrows: [] };
     }
 
-    const stride = Math.max(1, Math.floor(totalVerts / 48000));
+    const stride = Math.max(1, Math.floor(totalVerts / 64000));
     const sx = [];
     const sy = [];
     const sz = [];
@@ -1391,8 +1389,6 @@
     for (let mi = 0; mi < meshes.length; mi++) {
       const m = meshes[mi];
       const pos = m.geometry.attributes.position;
-      const arr = pos.array;
-      const itemSize = pos.itemSize || 3;
       const count = pos.count;
       const e = m.matrixWorld.elements;
       const m0 = e[0], m1 = e[1], m2 = e[2];
@@ -1401,10 +1397,9 @@
       const m12 = e[12], m13 = e[13], m14 = e[14];
 
       for (let i = 0; i < count; i += stride) {
-        const base = i * itemSize;
-        const vx = arr[base];
-        const vy = arr[base + 1];
-        const vz = arr[base + 2];
+        const vx = pos.getX(i);
+        const vy = pos.getY(i);
+        const vz = pos.getZ(i);
         const wx = m0 * vx + m4 * vy + m8 * vz + m12;
         const wy = m1 * vx + m5 * vy + m9 * vz + m13;
         const wz = m2 * vx + m6 * vy + m10 * vz + m14;
@@ -1419,27 +1414,27 @@
     }
 
     if (sx.length < 16) {
-      return { cellStep: 4.0, arrows: [] };
+      return { cellStep: targetStepM, arrows: [] };
     }
 
     const sortedX = sx.slice().sort((a, b) => a - b);
     const sortedZ = sz.slice().sort((a, b) => a - b);
-    const minX = sortedX[Math.floor(sortedX.length * 0.01)];
-    const maxX = sortedX[Math.floor(sortedX.length * 0.99)];
-    const minZ = sortedZ[Math.floor(sortedZ.length * 0.01)];
-    const maxZ = sortedZ[Math.floor(sortedZ.length * 0.99)];
+    const minX = sortedX[Math.floor(sortedX.length * 0.005)];
+    const maxX = sortedX[Math.floor(sortedX.length * 0.995)];
+    const minZ = sortedZ[Math.floor(sortedZ.length * 0.005)];
+    const maxZ = sortedZ[Math.floor(sortedZ.length * 0.995)];
 
     const spanX = Math.max(6.0, maxX - minX);
     const spanZ = Math.max(6.0, maxZ - minZ);
-    const cellStep = Math.max(1.0, Math.max(spanX, spanZ) / G);
-    const nx = Math.max(6, Math.min(44, Math.round(spanX / cellStep) + 1));
-    const nz = Math.max(6, Math.min(44, Math.round(spanZ / cellStep) + 1));
+    const cellStep = Math.max(0.65, targetStepM);
+    const nx = Math.max(6, Math.min(180, Math.round(spanX / cellStep) + 1));
+    const nz = Math.max(6, Math.min(180, Math.round(spanZ / cellStep) + 1));
     const stepX = spanX / Math.max(1, nx - 1);
     const stepZ = spanZ / Math.max(1, nz - 1);
 
-    // Build a fine 2D mesh surface occupancy grid (128x128) using both vertices and triangle centroids/midpoints
+    // Build a fine 2D mesh surface occupancy grid (160x160) using both vertices and rasterized mesh triangles
     // so un-scanned voids / water channels / outer bounding-box corners remain 0 (unoccupied)
-    const fineN = 128;
+    const fineN = 160;
     const fineStepX = spanX / fineN;
     const fineStepZ = spanZ / fineN;
     const fineOcc = new Uint8Array(fineN * fineN);
@@ -1452,45 +1447,141 @@
     for (let i = 0; i < sx.length; i++) {
       markFineOcc(sx[i], sz[i]);
     }
-    // Sample triangle centroids and edge midpoints across meshes to ensure genuine mesh triangles are marked occupied
-    // while large empty un-scanned areas (where no triangles exist) stay strictly 0
+
+    const minYGrid = new Float32Array(nx * nz);
+    const sumYGrid = new Float32Array(nx * nz);
+    const sumXGrid = new Float32Array(nx * nz);
+    const sumZGrid = new Float32Array(nx * nz);
+    const cntGrid = new Uint32Array(nx * nz);
+    minYGrid.fill(Infinity);
+
+    const accumGridSample = (wx, wy, wz) => {
+      if (wx < minX || wx > maxX || wz < minZ || wz > maxZ) return;
+      if (isPointInsideAnyWaterPolyXZ(wx, wz, waterPolys2D)) return;
+      const ix = Math.min(nx - 1, Math.max(0, Math.floor((wx - minX) / stepX)));
+      const iz = Math.min(nz - 1, Math.max(0, Math.floor((wz - minZ) / stepZ)));
+      const idx = iz * nx + ix;
+      if (wy < minYGrid[idx]) minYGrid[idx] = wy;
+      sumYGrid[idx] += wy;
+      sumXGrid[idx] += wx;
+      sumZGrid[idx] += wz;
+      cntGrid[idx] += 1;
+    };
+
+    for (let i = 0; i < sx.length; i++) {
+      accumGridSample(sx[i], sy[i], sz[i]);
+    }
+
+    // Rasterize real mesh triangles across both the fine occupancy grid and the (nx x nz) elevation grid
+    // using pos.getX/getY/getZ so quantized InterleavedBufferAttribute GLBs work with 100% fidelity
+    const maxAllowedTriEdgeSq = Math.pow(Math.max(14.0, Math.max(spanX, spanZ) * 0.18), 2);
     for (let mi = 0; mi < meshes.length; mi++) {
       const m = meshes[mi];
       const pos = m.geometry.attributes.position;
-      const arr = pos.array;
-      const itemSize = pos.itemSize || 3;
       const idxAttr = m.geometry.index;
       const e = m.matrixWorld.elements;
-      const m0 = e[0], m4 = e[4], m8 = e[8], m12 = e[12];
-      const m2 = e[2], m6 = e[6], m10 = e[10], m14 = e[14];
+      const m0 = e[0], m1 = e[1], m2 = e[2];
+      const m4 = e[4], m5 = e[5], m6 = e[6];
+      const m8 = e[8], m9 = e[9], m10 = e[10];
+      const m12 = e[12], m13 = e[13], m14 = e[14];
       const triCount = idxAttr ? Math.floor(idxAttr.count / 3) : Math.floor(pos.count / 3);
-      const triStride = Math.max(1, Math.floor(triCount / 28000));
-      const idxArr = idxAttr ? idxAttr.array : null;
-      const maxEdgeSq = Math.pow(Math.max(4.5, Math.min(stepX, stepZ) * 1.35), 2);
+      const triStride = Math.max(1, Math.floor(triCount / 55000));
+
       for (let ti = 0; ti < triCount; ti += triStride) {
-        const i0 = (idxArr ? idxArr[ti * 3] : ti * 3) * itemSize;
-        const i1 = (idxArr ? idxArr[ti * 3 + 1] : ti * 3 + 1) * itemSize;
-        const i2 = (idxArr ? idxArr[ti * 3 + 2] : ti * 3 + 2) * itemSize;
-        const x0 = m0 * arr[i0] + m4 * arr[i0 + 1] + m8 * arr[i0 + 2] + m12;
-        const z0 = m2 * arr[i0] + m6 * arr[i0 + 1] + m10 * arr[i0 + 2] + m14;
-        const x1 = m0 * arr[i1] + m4 * arr[i1 + 1] + m8 * arr[i1 + 2] + m12;
-        const z1 = m2 * arr[i1] + m6 * arr[i1 + 1] + m10 * arr[i1 + 2] + m14;
-        const x2 = m0 * arr[i2] + m4 * arr[i2 + 1] + m8 * arr[i2 + 2] + m12;
-        const z2 = m2 * arr[i2] + m6 * arr[i2 + 1] + m10 * arr[i2 + 2] + m14;
+        const i0 = idxAttr ? idxAttr.getX(ti * 3) : ti * 3;
+        const i1 = idxAttr ? idxAttr.getX(ti * 3 + 1) : ti * 3 + 1;
+        const i2 = idxAttr ? idxAttr.getX(ti * 3 + 2) : ti * 3 + 2;
+        const vx0 = pos.getX(i0), vy0 = pos.getY(i0), vz0 = pos.getZ(i0);
+        const vx1 = pos.getX(i1), vy1 = pos.getY(i1), vz1 = pos.getZ(i1);
+        const vx2 = pos.getX(i2), vy2 = pos.getY(i2), vz2 = pos.getZ(i2);
+
+        const x0 = m0 * vx0 + m4 * vy0 + m8 * vz0 + m12;
+        const y0 = m1 * vx0 + m5 * vy0 + m9 * vz0 + m13;
+        const z0 = m2 * vx0 + m6 * vy0 + m10 * vz0 + m14;
+
+        const x1 = m0 * vx1 + m4 * vy1 + m8 * vz1 + m12;
+        const y1 = m1 * vx1 + m5 * vy1 + m9 * vz1 + m13;
+        const z1 = m2 * vx1 + m6 * vy1 + m10 * vz1 + m14;
+
+        const x2 = m0 * vx2 + m4 * vy2 + m8 * vz2 + m12;
+        const y2 = m1 * vx2 + m5 * vy2 + m9 * vz2 + m13;
+        const z2 = m2 * vx2 + m6 * vy2 + m10 * vz2 + m14;
+
         const d01 = (x1 - x0) * (x1 - x0) + (z1 - z0) * (z1 - z0);
         const d12 = (x2 - x1) * (x2 - x1) + (z2 - z1) * (z2 - z1);
         const d20 = (x0 - x2) * (x0 - x2) + (z0 - z2) * (z0 - z2);
-        if (d01 <= maxEdgeSq && d12 <= maxEdgeSq && d20 <= maxEdgeSq) {
-          const cx = (x0 + x1 + x2) / 3.0;
-          const cz = (z0 + z1 + z2) / 3.0;
-          markFineOcc(cx, cz);
-          markFineOcc(0.5 * (x0 + x1), 0.5 * (z0 + z1));
-          markFineOcc(0.5 * (x1 + x2), 0.5 * (z1 + z2));
-          markFineOcc(0.5 * (x2 + x0), 0.5 * (z2 + z0));
+        if (d01 > maxAllowedTriEdgeSq || d12 > maxAllowedTriEdgeSq || d20 > maxAllowedTriEdgeSq) continue;
+
+        // Check surface normal Y component to skip vertical walls/trunks during ground rasterization
+        const ux = x1 - x0, uy = y1 - y0, uz = z1 - z0;
+        const wx = x2 - x0, wy = y2 - y0, wz = z2 - z0;
+        const nxTri = uy * wz - uz * wy;
+        const nyTri = uz * wx - ux * wz;
+        const nzTri = ux * wy - uy * wx;
+        const nLen = Math.hypot(nxTri, nyTri, nzTri);
+        if (nLen < 1e-6) continue;
+        if (excludeWalls && Math.abs(nyTri) / nLen < 0.35) continue;
+
+        const cx = (x0 + x1 + x2) / 3.0;
+        const cy = (y0 + y1 + y2) / 3.0;
+        const cz = (z0 + z1 + z2) / 3.0;
+        markFineOcc(cx, cz);
+        markFineOcc(0.5 * (x0 + x1), 0.5 * (z0 + z1));
+        markFineOcc(0.5 * (x1 + x2), 0.5 * (z1 + z2));
+        markFineOcc(0.5 * (x2 + x0), 0.5 * (z2 + z0));
+        accumGridSample(cx, cy, cz);
+
+        // Barycentric rasterization over covered drainage grid cells & fine occupancy cells
+        const denom = (z1 - z2) * (x0 - x2) + (x2 - x1) * (z0 - z2);
+        if (Math.abs(denom) > 1e-5) {
+          const invDenom = 1.0 / denom;
+          const tMinX = Math.max(minX, Math.min(x0, x1, x2));
+          const tMaxX = Math.min(maxX, Math.max(x0, x1, x2));
+          const tMinZ = Math.max(minZ, Math.min(z0, z1, z2));
+          const tMaxZ = Math.min(maxZ, Math.max(z0, z1, z2));
+
+          const ix0 = Math.max(0, Math.floor((tMinX - minX) / stepX));
+          const ix1 = Math.min(nx - 1, Math.floor((tMaxX - minX) / stepX));
+          const iz0 = Math.max(0, Math.floor((tMinZ - minZ) / stepZ));
+          const iz1 = Math.min(nz - 1, Math.floor((tMaxZ - minZ) / stepZ));
+          for (let iz = iz0; iz <= iz1; iz++) {
+            const pz = minZ + (iz + 0.5) * stepZ;
+            for (let ix = ix0; ix <= ix1; ix++) {
+              const px = minX + (ix + 0.5) * stepX;
+              const w0 = ((z1 - z2) * (px - x2) + (x2 - x1) * (pz - z2)) * invDenom;
+              const w1 = ((z2 - z0) * (px - x2) + (x0 - x2) * (pz - z2)) * invDenom;
+              const w2 = 1.0 - w0 - w1;
+              if (w0 >= -0.05 && w1 >= -0.05 && w2 >= -0.05) {
+                const py = w0 * y0 + w1 * y1 + w2 * y2;
+                accumGridSample(px, py, pz);
+                markFineOcc(px, pz);
+              }
+            }
+          }
+
+          const fx0 = Math.max(0, Math.floor((tMinX - minX) / fineStepX));
+          const fx1 = Math.min(fineN - 1, Math.floor((tMaxX - minX) / fineStepX));
+          const fz0 = Math.max(0, Math.floor((tMinZ - minZ) / fineStepZ));
+          const fz1 = Math.min(fineN - 1, Math.floor((tMaxZ - minZ) / fineStepZ));
+          if ((fx1 - fx0 + 1) * (fz1 - fz0 + 1) <= 256) {
+            for (let fz = fz0; fz <= fz1; fz++) {
+              const pz = minZ + (fz + 0.5) * fineStepZ;
+              for (let fx = fx0; fx <= fx1; fx++) {
+                const px = minX + (fx + 0.5) * fineStepX;
+                const w0 = ((z1 - z2) * (px - x2) + (x2 - x1) * (pz - z2)) * invDenom;
+                const w1 = ((z2 - z0) * (px - x2) + (x0 - x2) * (pz - z2)) * invDenom;
+                const w2 = 1.0 - w0 - w1;
+                if (w0 >= -0.04 && w1 >= -0.04 && w2 >= -0.04) {
+                  fineOcc[fz * fineN + fx] = 1;
+                }
+              }
+            }
+          }
         }
       }
     }
-    // Close only 1-pixel micro-gaps surrounded by >= 6 of 8 occupied fine cells (never bridges real voids)
+
+    // Close 1-pixel micro-gaps surrounded by >= 5 of 8 occupied fine cells (never bridges real voids)
     const fineOccClosed = new Uint8Array(fineN * fineN);
     for (let fz = 0; fz < fineN; fz++) {
       for (let fx = 0; fx < fineN; fx++) {
@@ -1510,7 +1601,7 @@
             if (fineOcc[jz * fineN + jx]) nOcc++;
           }
         }
-        if (nOcc >= 6) fineOccClosed[fIdx] = 1;
+        if (nOcc >= 5) fineOccClosed[fIdx] = 1;
       }
     }
 
@@ -1520,7 +1611,6 @@
       const fx = Math.min(fineN - 1, Math.max(0, Math.floor((wx - minX) / fineStepX)));
       const fz = Math.min(fineN - 1, Math.max(0, Math.floor((wz - minZ) / fineStepZ)));
       if (!fineOccClosed[fz * fineN + fx]) return false;
-      // Also require at least 7 of 9 cells in the 3x3 fine neighborhood to be occupied so arrows never sit on void rims
       let localOcc = 0;
       for (let dz = -1; dz <= 1; dz++) {
         const jz = fz + dz;
@@ -1531,36 +1621,14 @@
           if (fineOccClosed[jz * fineN + jx]) localOcc++;
         }
       }
-      return localOcc >= 7;
+      return localOcc >= 4;
     };
 
-    const minYGrid = new Float32Array(nx * nz);
-    const sumYGrid = new Float32Array(nx * nz);
-    const sumXGrid = new Float32Array(nx * nz);
-    const sumZGrid = new Float32Array(nx * nz);
-    const cntGrid = new Uint32Array(nx * nz);
-    minYGrid.fill(Infinity);
-
-    for (let i = 0; i < sx.length; i++) {
-      const wx = sx[i];
-      const wy = sy[i];
-      const wz = sz[i];
-      if (wx < minX || wx > maxX || wz < minZ || wz > maxZ) continue;
-      const ix = Math.min(nx - 1, Math.max(0, Math.floor((wx - minX) / stepX)));
-      const iz = Math.min(nz - 1, Math.max(0, Math.floor((wz - minZ) / stepZ)));
-      const idx = iz * nx + ix;
-      if (wy < minYGrid[idx]) minYGrid[idx] = wy;
-      sumYGrid[idx] += wy;
-      sumXGrid[idx] += wx;
-      sumZGrid[idx] += wz;
-      cntGrid[idx] += 1;
-    }
-
-    // Bare-surface elevation per occupied cell (requires >= 3 real mesh vertices; never extrapolates into voids)
+    // Bare-surface elevation per occupied cell (requires >= 1 real mesh sample; never extrapolates into voids)
     const rawH = new Float32Array(nx * nz);
     const validCell = new Uint8Array(nx * nz);
     for (let idx = 0; idx < nx * nz; idx++) {
-      if (cntGrid[idx] >= 3 && Number.isFinite(minYGrid[idx])) {
+      if (cntGrid[idx] >= 1 && Number.isFinite(minYGrid[idx])) {
         const meanY = sumYGrid[idx] / cntGrid[idx];
         rawH[idx] = 0.78 * minYGrid[idx] + 0.22 * meanY;
         validCell[idx] = 1;
@@ -1596,25 +1664,34 @@
     }
 
     const arrows = [];
-    const maxStepJump = Math.max(1.8, cellStep * 0.85);
+    const maxStepJump = Math.max(2.2, cellStep * 1.15);
     for (let iz = 1; iz < nz - 1; iz++) {
       for (let ix = 1; ix < nx - 1; ix++) {
         const idx = iz * nx + ix;
         if (!smoothValid[idx]) continue;
 
-        // Require all 4 cardinal neighbors to be valid occupied cells so arrows never overhang void edges
         const idxL = iz * nx + (ix - 1);
         const idxR = iz * nx + (ix + 1);
         const idxD = (iz - 1) * nx + ix;
         const idxU = (iz + 1) * nx + ix;
-        if (!smoothValid[idxL] || !smoothValid[idxR] || !smoothValid[idxD] || !smoothValid[idxU]) continue;
+        const hasHoriz = smoothValid[idxL] || smoothValid[idxR];
+        const hasVert = smoothValid[idxD] || smoothValid[idxU];
+        if (!hasHoriz || !hasVert) continue;
 
         const hC = smoothH[idx];
+        const hL = smoothValid[idxL] ? smoothH[idxL] : hC;
+        const hR = smoothValid[idxR] ? smoothH[idxR] : hC;
+        const hD = smoothValid[idxD] ? smoothH[idxD] : hC;
+        const hU = smoothValid[idxU] ? smoothH[idxU] : hC;
+        const spanDx = (smoothValid[idxR] ? 1.0 : 0.0) + (smoothValid[idxL] ? 1.0 : 0.0);
+        const spanDz = (smoothValid[idxU] ? 1.0 : 0.0) + (smoothValid[idxD] ? 1.0 : 0.0);
+        if (spanDx < 1.0 || spanDz < 1.0) continue;
+
         if (
-          Math.abs(smoothH[idxR] - hC) > maxStepJump ||
-          Math.abs(smoothH[idxL] - hC) > maxStepJump ||
-          Math.abs(smoothH[idxU] - hC) > maxStepJump ||
-          Math.abs(smoothH[idxD] - hC) > maxStepJump
+          Math.abs(hR - hC) > maxStepJump ||
+          Math.abs(hL - hC) > maxStepJump ||
+          Math.abs(hU - hC) > maxStepJump ||
+          Math.abs(hD - hC) > maxStepJump
         ) {
           continue;
         }
@@ -1635,8 +1712,8 @@
           }
         }
 
-        const dzdx = (smoothH[idxR] - smoothH[idxL]) / (2.0 * stepX);
-        const dzdz = (smoothH[idxU] - smoothH[idxD]) / (2.0 * stepZ);
+        const dzdx = (hR - hL) / (spanDx * stepX);
+        const dzdz = (hU - hD) / (spanDz * stepZ);
         const slope = Math.hypot(dzdx, dzdz);
         if (!Number.isFinite(slope)) continue;
         if (excludeWalls && slope > 1.0) continue;
@@ -1666,12 +1743,16 @@
   }
 
   function renderDrainageAndSlopeVisuals3D(
-    opts = { gridSize: 20, arrowScale: 1.0, showLabels: true, excludeWalls: true }
+    opts = { gridSize: 20, densityPerM2: 0.25, arrowScale: 1.0, showLabels: true, excludeWalls: true }
   ) {
     if (!studioThree || !studioThree.overlayGroup) return null;
     clearDrainageVisuals3D();
 
     const gridSize = Math.max(8, Math.min(40, Number(opts?.gridSize) || Number(STATE.drainageGridSize) || 20));
+    const densityPerM2 = Math.max(
+      0.04,
+      Math.min(2.0, Number(opts?.densityPerM2 ?? STATE.drainageDensityPerM2) || 0.25)
+    );
     const arrowScale = Math.max(
       0.2,
       Math.min(3.0, Number(opts?.arrowScale) || Number(STATE.drainageArrowScale) || 1.0)
@@ -1680,6 +1761,7 @@
     const excludeWalls =
       opts?.excludeWalls !== undefined ? Boolean(opts.excludeWalls) : STATE.drainageExcludeWalls !== false;
     STATE.drainageGridSize = gridSize;
+    STATE.drainageDensityPerM2 = densityPerM2;
     STATE.drainageArrowScale = arrowScale;
     STATE.drainageShowLabels = showLabels;
     STATE.drainageExcludeWalls = excludeWalls;
@@ -1688,7 +1770,7 @@
     studioThree.drainageGroup = grp;
     studioThree.overlayGroup.add(grp);
 
-    const { cellStep, arrows } = buildFastStudioSurfaceArrows(gridSize, excludeWalls);
+    const { cellStep, arrows } = buildFastStudioSurfaceArrows(gridSize, excludeWalls, densityPerM2);
 
     const tierCounts = {};
     SLOPE_STEPPED_TIERS.forEach((t) => {
@@ -1707,8 +1789,8 @@
     const linePositions = [];
     const lineColors = [];
 
-    // Default arrow size (arrowScale = 1.0) is 1/5 (0.20x) of the legacy oversized arrows
-    const yLift = Math.max(0.08, cellStep * 0.025);
+    // Arrow physical length is decoupled from cellStep so changing Density (arrows/m²) never changes arrow length!
+    const yLift = 0.09;
 
     for (let i = 0; i < arrows.length; i++) {
       const a = arrows[i];
@@ -1723,10 +1805,10 @@
       slopeRatioSum += a.slope;
       if (a.deg > maxSlopeDeg) maxSlopeDeg = a.deg;
 
-      const len = cellStep * tier.lenScale * 0.172 * arrowScale;
+      const len = 0.85 * tier.lenScale * arrowScale;
       const shaftLen = len * 0.62;
-      const shaftHalfW = Math.max(0.02, cellStep * 0.015 * arrowScale);
-      const headHalfW = Math.max(0.045, cellStep * 0.038 * arrowScale);
+      const shaftHalfW = Math.max(0.02, 0.055 * arrowScale);
+      const headHalfW = Math.max(0.045, 0.135 * arrowScale);
 
       // Right-hand perpendicular in XZ plane
       const px = -a.uz;
@@ -1867,12 +1949,14 @@
     STATE.sidePanelMinimized = false;
 
     const curGridSize = Math.max(8, Math.min(40, Number(STATE.drainageGridSize) || 20));
+    const curDensityPerM2 = Math.max(0.04, Math.min(2.0, Number(STATE.drainageDensityPerM2) || 0.25));
     const curArrowScale = Math.max(0.2, Math.min(3.0, Number(STATE.drainageArrowScale) || 1.0));
     const curShowLabels = STATE.drainageShowLabels !== false;
     const curExcludeWalls = STATE.drainageExcludeWalls !== false;
 
     let localStats = renderDrainageAndSlopeVisuals3D({
       gridSize: curGridSize,
+      densityPerM2: curDensityPerM2,
       arrowScale: curArrowScale,
       showLabels: curShowLabels,
       excludeWalls: curExcludeWalls,
@@ -1891,7 +1975,7 @@
         tier_counts: {},
       };
       const total = Math.max(1, Number(s.arrow_count) || 0);
-      const gVal = Math.max(8, Math.min(40, Number(STATE.drainageGridSize) || 20));
+      const dVal = Math.max(0.04, Math.min(2.0, Number(STATE.drainageDensityPerM2) || 0.25));
       const aScale = Math.max(0.2, Math.min(3.0, Number(STATE.drainageArrowScale) || 1.0));
       return `
       <div style="font-size:11px;color:var(--ui-text-secondary);margin-bottom:8px;line-height:1.45;">
@@ -1943,22 +2027,23 @@
       <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:10px;font-size:11.5px;background:var(--ui-bg-pill);border:1px solid var(--ui-border-strong);border-radius:8px;padding:8px 10px;">
         <div>
           <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:4px;">
-            <span style="font-weight:700;">${tr("箭頭網格密度 (Density)", "Arrow Grid Density")}</span>
-            <span id="lblDrainageDensityVal" style="font-family:var(--font-mono);color:var(--ui-accent);font-weight:700;">${gVal}×${gVal}</span>
+            <span style="font-weight:700;">${tr("箭頭分佈密度 (arrows / m²)", "Arrow Density (arrows / m²)")}</span>
+            <span id="lblDrainageDensityVal" style="font-family:var(--font-mono);color:var(--ui-accent);font-weight:700;">${dVal.toFixed(2)} / m²</span>
           </div>
           <div style="display:flex;align-items:center;gap:8px;">
-            <input type="range" id="rngDrainageDensity" class="gs-input" min="8" max="36" step="2" value="${gVal}" style="flex:1;" />
-            <select id="selDrainageGridSize" class="gs-select" style="width:94px;height:24px;font-size:10.5px;">
-              <option value="12" ${gVal <= 12 ? "selected" : ""}>12×12</option>
-              <option value="20" ${gVal > 12 && gVal <= 22 ? "selected" : ""}>20×20</option>
-              <option value="28" ${gVal > 22 && gVal <= 30 ? "selected" : ""}>28×28</option>
-              <option value="36" ${gVal > 30 ? "selected" : ""}>36×36</option>
+            <input type="range" id="rngDrainageDensity" class="gs-input" min="0.04" max="2.00" step="0.02" value="${dVal.toFixed(2)}" style="flex:1;" />
+            <select id="selDrainageGridSize" class="gs-select" style="width:104px;height:24px;font-size:10.5px;">
+              <option value="0.10" ${dVal <= 0.14 ? "selected" : ""}>0.10 / m²</option>
+              <option value="0.25" ${dVal > 0.14 && dVal <= 0.36 ? "selected" : ""}>0.25 / m²</option>
+              <option value="0.50" ${dVal > 0.36 && dVal <= 0.75 ? "selected" : ""}>0.50 / m²</option>
+              <option value="1.00" ${dVal > 0.75 && dVal <= 1.50 ? "selected" : ""}>1.00 / m²</option>
+              <option value="2.00" ${dVal > 1.50 ? "selected" : ""}>2.00 / m²</option>
             </select>
           </div>
         </div>
         <div>
           <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:4px;">
-            <span style="font-weight:700;">${tr("箭頭尺寸比例 (Arrow Size)", "Arrow Size Scale")}</span>
+            <span style="font-weight:700;">${tr("箭頭長度比例 (Arrow Length)", "Arrow Length Scale")}</span>
             <span id="lblDrainageArrowSizeVal" style="font-family:var(--font-mono);color:var(--ui-accent);font-weight:700;">${aScale.toFixed(1)}x</span>
           </div>
           <input type="range" id="rngDrainageArrowSize" class="gs-input" min="0.2" max="3.0" step="0.1" value="${aScale.toFixed(1)}" style="width:100%;" />
@@ -2000,27 +2085,28 @@
     };
 
     const bindDrainageControls = () => {
-      const refreshVisInPlace = (overrideGrid = null) => {
-        const rngG = document.getElementById("rngDrainageDensity");
-        const selG = document.getElementById("selDrainageGridSize");
-        const gVal = Math.max(
-          8,
-          Math.min(40, Number(overrideGrid || rngG?.value || selG?.value || STATE.drainageGridSize || 20))
+      const refreshVisInPlace = (overrideDensity = null) => {
+        const rngD = document.getElementById("rngDrainageDensity");
+        const selD = document.getElementById("selDrainageGridSize");
+        const dVal = Math.max(
+          0.04,
+          Math.min(2.0, Number(overrideDensity || rngD?.value || selD?.value || STATE.drainageDensityPerM2 || 0.25))
         );
-        if (rngG && Number(rngG.value) !== gVal) rngG.value = String(gVal);
-        if (selG && overrideGrid) selG.value = String(gVal);
+        if (rngD && Math.abs(Number(rngD.value) - dVal) > 1e-3) rngD.value = dVal.toFixed(2);
+        if (selD && overrideDensity) selD.value = dVal.toFixed(2);
         const aScale = Math.max(
           0.2,
           Math.min(3.0, Number(document.getElementById("rngDrainageArrowSize")?.value || STATE.drainageArrowScale || 1.0))
         );
         const lVal = Boolean(document.getElementById("chkDrainageShowLabels")?.checked);
         const wVal = Boolean(document.getElementById("chkDrainageExcludeWalls")?.checked);
-        const lblG = document.getElementById("lblDrainageDensityVal");
-        if (lblG) lblG.textContent = `${gVal}×${gVal}`;
+        const lblD = document.getElementById("lblDrainageDensityVal");
+        if (lblD) lblD.textContent = `${dVal.toFixed(2)} / m²`;
         const lblS = document.getElementById("lblDrainageArrowSizeVal");
         if (lblS) lblS.textContent = `${aScale.toFixed(1)}x`;
         const newSt = renderDrainageAndSlopeVisuals3D({
-          gridSize: gVal,
+          gridSize: STATE.drainageGridSize || 20,
+          densityPerM2: dVal,
           arrowScale: aScale,
           showLabels: lVal,
           excludeWalls: wVal,
@@ -2062,6 +2148,7 @@
         if (STATE.activeTool === "drainage" && (!localStats || localStats.arrow_count === 0)) {
           localStats = renderDrainageAndSlopeVisuals3D({
             gridSize: Number(STATE.drainageGridSize) || 20,
+            densityPerM2: Number(STATE.drainageDensityPerM2) || 0.25,
             arrowScale: Number(STATE.drainageArrowScale) || 1.0,
             showLabels: STATE.drainageShowLabels !== false,
             excludeWalls: STATE.drainageExcludeWalls !== false,
@@ -2261,6 +2348,21 @@
     if (ov) ov.style.display = "none";
   }
 
+  function clearPhotoTargetVisuals3D() {
+    clearRtkPhotoFrustums3D();
+    if (studioThree && studioThree.overlayGroup) {
+      const toRemove = [];
+      studioThree.overlayGroup.children.forEach((c) => {
+        if (c && c.userData && c.userData.isPhotoTargetPin) {
+          toRemove.push(c);
+        }
+      });
+      toRemove.forEach((c) => studioThree.overlayGroup.remove(c));
+    }
+    STATE.lastInspectedPhotoTargetPt = null;
+  }
+  window.clearPhotoTargetVisuals3D = clearPhotoTargetVisuals3D;
+
   function twd97ToStudioLocalVec(e, n, h, refTargetTwd, refTargetLocalPt) {
     if (refTargetTwd && refTargetLocalPt) {
       const dx = Number(e) - Number(refTargetTwd.e || 0);
@@ -2396,7 +2498,7 @@
           ? `E:${item.camera_twd97_e}m | N:${item.camera_twd97_n}m | H:+${item.camera_twd97_h}m | RTK σ=${item.rtk_h_sigma_cm || 1.2}cm`
           : "");
       modal.innerHTML = `
-        <div style="width:min(1120px,95vw);display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:10px;color:#f8fafc;">
+        <div style="width:min(1160px,95vw);display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:10px;color:#f8fafc;">
           <div style="min-width:0;">
             <div style="font-size:14px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">📷 ${escapeHtml(fname)}</div>
             <div style="font-size:11.5px;color:#94a3b8;font-family:var(--font-mono);">${escapeHtml(meta)}</div>
@@ -2415,20 +2517,169 @@
             <button type="button" class="gs-top-btn" id="btnLightboxClose" style="height:30px;padding:0 12px;">✕ ${tr("關閉", "Close")}</button>
           </div>
         </div>
-        <div style="position:relative;width:min(1120px,95vw);height:min(76vh,760px);background:#0f172a;border:1px solid rgba(148,163,184,0.28);border-radius:12px;display:flex;align-items:center;justify-content:center;overflow:hidden;box-shadow:0 24px 60px rgba(0,0,0,0.65);">
-          <img id="imgLightboxMain" src="${escapeHtml(url)}" alt="${escapeHtml(fname)}" style="max-width:100%;max-height:100%;object-fit:contain;transition:transform 0.18s ease;cursor:zoom-in;" />
+        <div id="photoLightboxViewport" style="position:relative;width:min(1160px,95vw);height:min(78vh,780px);background:#0f172a;border:1px solid rgba(148,163,184,0.28);border-radius:12px;display:flex;align-items:center;justify-content:center;overflow:hidden;box-shadow:0 24px 60px rgba(0,0,0,0.65);user-select:none;touch-action:none;">
+          <img id="imgLightboxMain" src="${escapeHtml(url)}" alt="${escapeHtml(fname)}" draggable="false" style="max-width:100%;max-height:100%;object-fit:contain;transform-origin:center center;will-change:transform;cursor:zoom-in;" />
+          <aside id="photoLightboxZoomSidebar" class="gs-photo-zoom-sidebar" aria-label="Photo Zoom Controls">
+            <button type="button" class="gs-photo-zoom-btn" id="btnPhotoZoomIn" title="${tr("放大 (+)", "Zoom In (+)")}">+</button>
+            <div class="gs-photo-zoom-slider-wrap">
+              <input type="range" id="rngPhotoLightboxZoom" class="gs-photo-zoom-slider" min="1" max="25" step="0.1" value="1" orient="vertical" aria-label="Zoom Factor (1x to 25x)" />
+            </div>
+            <button type="button" class="gs-photo-zoom-btn" id="btnPhotoZoomOut" title="${tr("縮小 (−)", "Zoom Out (−)")}">−</button>
+            <div class="gs-photo-zoom-badge" id="lblPhotoLightboxZoom">1.0×</div>
+            <button type="button" class="gs-photo-zoom-reset" id="btnPhotoZoomReset" title="${tr("重設 1:1 比例", "Reset 1:1 Zoom")}">1:1</button>
+          </aside>
         </div>
       `;
       modal.style.display = "flex";
 
-      let zoomed = false;
+      let zoomFactor = 1.0;
+      let panX = 0;
+      let panY = 0;
+      let isDragging = false;
+      let dragMoved = false;
+      let dragStartX = 0;
+      let dragStartY = 0;
+      let startPanX = 0;
+      let startPanY = 0;
+
+      const viewportEl = modal.querySelector("#photoLightboxViewport");
       const imgEl = modal.querySelector("#imgLightboxMain");
+      const rngEl = modal.querySelector("#rngPhotoLightboxZoom");
+      const lblEl = modal.querySelector("#lblPhotoLightboxZoom");
+      const sidebarEl = modal.querySelector("#photoLightboxZoomSidebar");
+
+      const clampPan = () => {
+        if (!viewportEl || zoomFactor <= 1.001) {
+          panX = 0;
+          panY = 0;
+          return;
+        }
+        const maxPanX = (viewportEl.clientWidth * (zoomFactor - 1)) * 0.55;
+        const maxPanY = (viewportEl.clientHeight * (zoomFactor - 1)) * 0.55;
+        panX = Math.max(-maxPanX, Math.min(maxPanX, panX));
+        panY = Math.max(-maxPanY, Math.min(maxPanY, panY));
+      };
+
+      const applyTransform = (animate = false) => {
+        zoomFactor = Math.max(1.0, Math.min(25.0, Number(zoomFactor) || 1.0));
+        clampPan();
+        if (imgEl) {
+          imgEl.style.transition = animate ? "transform 0.14s ease-out" : "none";
+          imgEl.style.transform = `translate3d(${panX.toFixed(1)}px, ${panY.toFixed(1)}px, 0) scale(${zoomFactor.toFixed(3)})`;
+          imgEl.style.cursor = isDragging ? "grabbing" : zoomFactor > 1.02 ? "grab" : "zoom-in";
+        }
+        if (rngEl && Math.abs(Number(rngEl.value) - zoomFactor) > 0.02) {
+          rngEl.value = zoomFactor.toFixed(1);
+        }
+        if (lblEl) {
+          lblEl.textContent = `${zoomFactor.toFixed(1)}×`;
+        }
+      };
+
+      const setZoomAroundPoint = (nextZoom, clientX = null, clientY = null, animate = false) => {
+        const clamped = Math.max(1.0, Math.min(25.0, Number(nextZoom) || 1.0));
+        if (viewportEl && clientX !== null && clientY !== null && clamped > 1.001) {
+          const rect = viewportEl.getBoundingClientRect();
+          const cx = clientX - (rect.left + rect.width * 0.5);
+          const cy = clientY - (rect.top + rect.height * 0.5);
+          const ratio = clamped / Math.max(1.0, zoomFactor);
+          panX = cx - (cx - panX) * ratio;
+          panY = cy - (cy - panY) * ratio;
+        } else if (clamped <= 1.001) {
+          panX = 0;
+          panY = 0;
+        }
+        zoomFactor = clamped;
+        applyTransform(animate);
+      };
+
+      sidebarEl?.addEventListener("pointerdown", (ev) => ev.stopPropagation());
+      sidebarEl?.addEventListener("click", (ev) => ev.stopPropagation());
+
+      modal.querySelector("#btnPhotoZoomIn")?.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        const step = zoomFactor < 3 ? 0.5 : zoomFactor < 10 ? 1.5 : 2.5;
+        setZoomAroundPoint(zoomFactor + step, null, null, true);
+      });
+      modal.querySelector("#btnPhotoZoomOut")?.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        const step = zoomFactor <= 3 ? 0.5 : zoomFactor <= 10 ? 1.5 : 2.5;
+        setZoomAroundPoint(zoomFactor - step, null, null, true);
+      });
+      modal.querySelector("#btnPhotoZoomReset")?.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        panX = 0;
+        panY = 0;
+        setZoomAroundPoint(1.0, null, null, true);
+      });
+      rngEl?.addEventListener("input", (ev) => {
+        ev.stopPropagation();
+        setZoomAroundPoint(parseFloat(ev.target.value) || 1.0, null, null, false);
+      });
+
+      viewportEl?.addEventListener(
+        "wheel",
+        (ev) => {
+          ev.preventDefault();
+          ev.stopPropagation();
+          const factor = ev.deltaY < 0 ? 1.18 : 1 / 1.18;
+          setZoomAroundPoint(zoomFactor * factor, ev.clientX, ev.clientY, false);
+        },
+        { passive: false }
+      );
+
+      viewportEl?.addEventListener("pointerdown", (ev) => {
+        if (ev.target && ev.target.closest && ev.target.closest("#photoLightboxZoomSidebar")) return;
+        if (ev.button !== 0) return;
+        isDragging = true;
+        dragMoved = false;
+        dragStartX = ev.clientX;
+        dragStartY = ev.clientY;
+        startPanX = panX;
+        startPanY = panY;
+        try {
+          viewportEl.setPointerCapture(ev.pointerId);
+        } catch (_) {}
+        applyTransform(false);
+      });
+
+      viewportEl?.addEventListener("pointermove", (ev) => {
+        if (!isDragging) return;
+        const dx = ev.clientX - dragStartX;
+        const dy = ev.clientY - dragStartY;
+        if (Math.hypot(dx, dy) > 4) dragMoved = true;
+        if (zoomFactor > 1.01) {
+          panX = startPanX + dx;
+          panY = startPanY + dy;
+          applyTransform(false);
+        }
+      });
+
+      const endDrag = (ev) => {
+        if (!isDragging) return;
+        isDragging = false;
+        try {
+          viewportEl?.releasePointerCapture(ev.pointerId);
+        } catch (_) {}
+        applyTransform(false);
+      };
+      viewportEl?.addEventListener("pointerup", endDrag);
+      viewportEl?.addEventListener("pointercancel", endDrag);
+
+      imgEl?.addEventListener("dblclick", (ev) => {
+        ev.stopPropagation();
+        const nextZ = zoomFactor < 3.5 ? 4.0 : zoomFactor < 10.0 ? 12.0 : 1.0;
+        setZoomAroundPoint(nextZ, ev.clientX, ev.clientY, true);
+      });
+
       imgEl?.addEventListener("click", (ev) => {
         ev.stopPropagation();
-        zoomed = !zoomed;
-        imgEl.style.transform = zoomed ? "scale(1.85)" : "scale(1)";
-        imgEl.style.cursor = zoomed ? "zoom-out" : "zoom-in";
+        if (dragMoved) return;
+        if (zoomFactor <= 1.02) {
+          setZoomAroundPoint(3.0, ev.clientX, ev.clientY, true);
+        }
       });
+
       modal.querySelector("#btnLightboxClose")?.addEventListener("click", () => {
         modal.style.display = "none";
       });

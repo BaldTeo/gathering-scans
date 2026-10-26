@@ -140,6 +140,17 @@
     mapOrthoImageCache: {},
     lastGcpQaResult: null,
     lastDrainageResult: null,
+    drainageDensityPerM2: 0.25,
+    sectionBoxState: {
+      active: false,
+      centerX: 0,
+      centerY: 0,
+      centerZ: 0,
+      halfX: 25,
+      halfY: 15,
+      halfZ: 25,
+      yawRad: 0,
+    },
     gcpPickMode: false,
     pendingCommentDraftPt: null,
     multiAlign: {
@@ -292,23 +303,14 @@
       const allOpt = document.createElement("option");
       allOpt.value = "__all__";
       allOpt.textContent = STATE.projectFilterQuery
-        ? tr(
-            `篩選工區 · ${filteredGroups.length} / ${allGroups.length} 個工區`,
-            `Filtered Projects · ${filteredGroups.length} / ${allGroups.length} Sites`
-          )
-        : tr(
-            `全部工區 · ${allGroups.length} 個工區 · ${STATE.scans.length} 組掃描`,
-            `All Projects · ${allGroups.length} Site${allGroups.length === 1 ? "" : "s"} · ${STATE.scans.length} Scans`
-          );
+        ? tr("篩選工區", "Filtered Projects")
+        : tr("全部工區", "All Projects");
       mapProjSel.appendChild(allOpt);
 
       filteredGroups.forEach((grp) => {
         const opt = document.createElement("option");
         opt.value = grp.project_group;
-        opt.textContent = tr(
-          `${grp.project_group} · ${grp.scans.length} 組掃描`,
-          `${grp.project_group} · ${grp.scans.length} Scan${grp.scans.length === 1 ? "" : "s"}`
-        );
+        opt.textContent = grp.project_group;
         mapProjSel.appendChild(opt);
       });
 
@@ -331,16 +333,13 @@
       if (selId === "timelineProjectSelect") {
         const allOpt = document.createElement("option");
         allOpt.value = "__all__";
-        allOpt.textContent = tr(
-          `全部工區 · ${allGroups.length} 個工區 · ${STATE.scans.length} 組掃描`,
-          `All Projects · ${allGroups.length} Sites · ${STATE.scans.length} Scans`
-        );
+        allOpt.textContent = tr("全部工區", "All Projects");
         sel.appendChild(allOpt);
       }
       allGroups.forEach((grp) => {
         const opt = document.createElement("option");
         opt.value = grp.project_group;
-        opt.textContent = `${grp.project_group} · ${grp.scans.length}`;
+        opt.textContent = grp.project_group;
         sel.appendChild(opt);
       });
       if (selId === "timelineProjectSelect" && STATE.activeProjectGroup === "__all__") {
@@ -382,7 +381,7 @@
       projectScans.forEach((s) => {
         const opt = document.createElement("option");
         opt.value = s.scan_id;
-        opt.textContent = `${s.name} (${s.capture_date || ""})`;
+        opt.textContent = s.name;
         sel.appendChild(opt);
       });
       if (idx === 0 && preferredScanId && projectScans.some((s) => s.scan_id === preferredScanId)) {
