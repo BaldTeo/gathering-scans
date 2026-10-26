@@ -1568,6 +1568,14 @@
       if (STATE.activeTool === "categorize" && document.getElementById("catResultContainer")) {
         renderCategorizePanelContent(res);
       }
+      if (STATE.activeTool === "drainage" && typeof renderDrainageAndSlopeVisuals3D === "function") {
+        renderDrainageAndSlopeVisuals3D({
+          gridSize: Number(STATE.drainageGridSize) || 20,
+          arrowScale: Number(STATE.drainageArrowScale) || 1.0,
+          showLabels: STATE.drainageShowLabels !== false,
+          excludeWalls: STATE.drainageExcludeWalls !== false,
+        });
+      }
       return res;
     } catch (_) {
       syncCategorizeVisibilityUI();
@@ -3313,29 +3321,69 @@
       if (typeof renderRtkPhotoFrustums3D === "function") {
         renderRtkPhotoFrustums3D(photos, res.target_twd97, pt);
       }
-      const curOverlayPct = Math.round((Number(STATE.photoOverlayOpacity) || 0) * 100);
+      const existingComments = Array.isArray(STATE.activeScan?.comments) ? STATE.activeScan.comments : [];
+      const commentDropTargetsHtml = `
+        <div style="background:var(--ui-bg-pill);border:1px dashed var(--ui-border-strong);border-radius:8px;padding:8px 10px;margin-bottom:8px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;font-size:11px;font-weight:700;color:var(--ui-text-primary);margin-bottom:5px;">
+            <span>💬 ${tr("拖曳照片至標註以附加 (可多選)", "Drag & Drop Photo(s) onto a Comment")}</span>
+            <span id="lblRtkSelectedPhotosCount" style="font-size:10.5px;color:var(--ui-accent);font-family:var(--font-mono);">${tr("可多選拖曳", "Multi-select drag")}</span>
+          </div>
+          <div style="font-size:10.5px;color:var(--ui-text-secondary);margin-bottom:6px;line-height:1.35;">
+            ${tr(
+              "可勾選多張照片，直接拖曳至 3D 畫面上的標註圖釘，或拖曳至下方標註卡片附加：",
+              "Check 1 or more photos and drag them onto any 3D comment pin on the scan or onto a comment below:"
+            )}
+          </div>
+          <div style="display:flex;flex-direction:column;gap:5px;max-height:125px;overflow-y:auto;">
+            <div class="gs-comment-drop-target" data-drop-comment-id="__new__" style="padding:6px 8px;border:1px dashed var(--ui-accent);border-radius:6px;background:rgba(56,189,248,0.08);font-size:11px;font-weight:700;color:var(--ui-accent);cursor:copy;display:flex;align-items:center;justify-content:space-between;">
+              <span>➕ ${tr("拖曳至此建立含照片的新標註", "Drop Here to Create New Comment with Photo(s)")}</span>
+              <span style="font-size:10px;opacity:0.85;">Drop</span>
+            </div>
+            ${existingComments
+              .map((c) => {
+                const cid = escapeHtml(c.comment_id || "");
+                const pCnt = Array.isArray(c.photos) ? c.photos.length : 0;
+                const snippet = escapeHtml(String(c.text || "").slice(0, 34));
+                return `
+                  <div class="gs-comment-drop-target" data-drop-comment-id="${cid}" style="padding:5px 8px;border:1px solid var(--ui-border);border-radius:6px;background:var(--ui-bg-subtle);font-size:11px;color:var(--ui-text-primary);display:flex;align-items:center;justify-content:space-between;gap:6px;">
+                    <span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"><b>${escapeHtml(c.author_name || "Reviewer")}:</b> ${snippet}</span>
+                    <span style="font-size:10px;font-family:var(--font-mono);color:var(--ui-accent);flex-shrink:0;">📷 ${pCnt}</span>
+                  </div>
+                `;
+              })
+              .join("")}
+          </div>
+        </div>
+      `;
+
       const photosHtml = photos
         .map(
           (p, idx) => `
-          <div class="gs-rtk-photo-card" style="background:var(--ui-bg-subtle);border:1px solid var(--ui-border);border-radius:8px;padding:8px;margin-top:8px;">
-            <img src="${escapeHtml(p.url)}" alt="${escapeHtml(p.filename)}" style="width:100%;height:140px;object-fit:cover;border-radius:6px;background:var(--ui-bg-pill);" onerror="this.style.display='none'" />
-            <div style="display:flex;justify-content:space-between;margin-top:6px;font-size:11px;font-weight:700;color:var(--ui-text-primary);">
-              <span>${escapeHtml(p.filename)}</span>
-              <span style="color:var(--ui-accent);">RTK σ=${escapeHtml(String(p.rtk_h_sigma_cm))}cm</span>
+          <div class="gs-rtk-photo-card" draggable="true" data-rtk-photo-idx="${idx}" style="background:var(--ui-bg-subtle);border:1px solid var(--ui-border);border-radius:8px;padding:8px;margin-top:8px;cursor:grab;">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:5px;font-size:11px;">
+              <label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer;font-weight:700;color:var(--ui-text-primary);">
+                <input type="checkbox" data-rtk-photo-check="${idx}" />
+                <span>${escapeHtml(p.filename)}</span>
+              </label>
+              <span style="color:var(--ui-accent);font-weight:700;font-size:10.5px;">RTK σ=${escapeHtml(String(p.rtk_h_sigma_cm))}cm</span>
             </div>
-            <div style="font-size:10.5px;font-family:monospace;color:var(--ui-text-muted);margin-top:2px;">
+            <img src="${escapeHtml(p.url)}" alt="${escapeHtml(p.filename)}" data-photo-enlarge-img="${idx}" title="${tr("點擊放大檢視照片", "Click to enlarge photo")}" style="width:100%;height:148px;object-fit:cover;border-radius:6px;background:var(--ui-bg-pill);cursor:zoom-in;" onerror="this.style.display='none'" />
+            <div style="font-size:10.5px;font-family:monospace;color:var(--ui-text-muted);margin-top:5px;">
               E:${escapeHtml(String(p.camera_twd97_e))}m | N:${escapeHtml(String(p.camera_twd97_n))}m | H:+${escapeHtml(String(p.camera_twd97_h))}m | Dist:${escapeHtml(String(p.distance_m))}m
             </div>
             <div style="display:flex;gap:6px;margin-top:7px;">
-              <button type="button" class="btn-xs primary" data-photo-align-idx="${idx}" style="flex:1;justify-content:center;gap:5px;">
+              <button type="button" class="btn-xs primary" data-photo-enlarge-idx="${idx}" style="flex:1;justify-content:center;gap:5px;">
                 <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/>
+                  <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/>
                 </svg>
-                <span>${tr("對齊照片視角", "Match Photo View")}</span>
+                <span>${tr("放大檢視", "Enlarge")}</span>
               </button>
-              <button type="button" class="btn-xs" data-photo-project-idx="${idx}" title="${tr("將原始照片半透明疊合於 3D 畫面", "Superimpose raw photo over 3D viewport")}">
-                <span>${tr("視錐疊圖", "Project 55%")}</span>
-              </button>
+              <a class="btn-xs" href="${escapeHtml(p.url)}" download="${escapeHtml(p.filename)}" style="flex:1;justify-content:center;gap:5px;text-decoration:none;display:inline-flex;align-items:center;" title="${tr("下載原始 RTK 照片", "Download Original RTK Photo")}">
+                <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+                </svg>
+                <span>${tr("下載照片", "Download")}</span>
+              </a>
             </div>
           </div>
         `
@@ -3343,21 +3391,18 @@
         .join("");
 
       showSidePanel(
-        `<span>${tr("RTK 照片與 3D 視錐投影", "RTK Camera & 3D Frustum Inspector")}</span>`,
+        `<span>${tr("RTK 照片檢視與標註附加", "RTK Photos & Comment Attachment")}</span>`,
         `
-        <div style="font-size:11px;font-family:monospace;color:var(--ui-text-secondary);margin-bottom:6px;">
-          Target: ${escapeHtml(formatScanCoordReadout({ e: Number(res.target_twd97?.e || 0), n: Number(res.target_twd97?.n || 0), h: Number(res.target_twd97?.h || 0) }, STATE.activeScan))}
-        </div>
-        <div style="background:var(--ui-bg-pill);border:1px solid var(--ui-border-strong);border-radius:8px;padding:8px 10px;margin-bottom:8px;">
-          <div style="display:flex;justify-content:space-between;align-items:center;font-size:11px;font-weight:700;color:var(--ui-text-primary);margin-bottom:5px;">
-            <span>${tr("照片疊合透明度 (Photo Overlay)", "Photo Overlay Opacity")}</span>
-            <span id="lblRtkPhotoOverlayOpacity" style="font-family:monospace;color:var(--ui-accent);">${curOverlayPct}%</span>
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;margin-bottom:6px;">
+          <div style="font-size:10.5px;font-family:monospace;color:var(--ui-text-secondary);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
+            Target: ${escapeHtml(formatScanCoordReadout({ e: Number(res.target_twd97?.e || 0), n: Number(res.target_twd97?.n || 0), h: Number(res.target_twd97?.h || 0) }, STATE.activeScan))}
           </div>
-          <div style="display:flex;align-items:center;gap:8px;">
-            <input type="range" id="rtkPhotoOverlayOpacitySlider" class="gs-input" min="0" max="90" step="5" value="${curOverlayPct}" style="flex:1;" />
-            <button type="button" class="btn-xs" id="btnClearPhotoFrustums" title="${tr("清除 3D 視錐與照片疊圖", "Clear 3D Camera Frustums & Photo Overlay")}">${tr("清除視錐", "Clear")}</button>
+          <div style="display:flex;gap:4px;flex-shrink:0;">
+            <button type="button" class="btn-xs" id="btnRtkSelectAllPhotos" title="${tr("全選 / 取消全選照片", "Select / Deselect All Photos")}">${tr("全選", "Select All")}</button>
+            <button type="button" class="btn-xs" id="btnClearPhotoFrustums" title="${tr("清除 3D 視錐", "Clear 3D Camera Frustums")}">${tr("清除視錐", "Clear")}</button>
           </div>
         </div>
+        ${commentDropTargetsHtml}
         ${photosHtml || `<div style="font-size:12px;color:var(--ui-text-muted);">${tr("此點位附近無原始 RTK 照片。", "No local raw photos found for this point.")}</div>`}
         `
       );
@@ -3593,8 +3638,32 @@
         const cid = escapeHtml(c.comment_id || "");
         const timeStr = escapeHtml((c.created_at || "").slice(0, 16));
         const avatar = getCommentAuthorAvatar(c.author_name || "Reviewer", c.author_email || "");
+        const attachedPhotos = Array.isArray(c.photos) ? c.photos.filter((p) => p && p.url) : [];
+        const photosGridHtml = attachedPhotos.length
+          ? `<div class="gs-comment-photos-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(74px,1fr));gap:6px;margin-top:7px;">
+              ${attachedPhotos
+                .map((p, pIdx) => {
+                  const purl = escapeHtml(p.url || "");
+                  const pfn = escapeHtml(p.filename || `Photo_${pIdx + 1}.jpg`);
+                  return `
+                    <div class="gs-comment-photo-thumb" style="position:relative;border-radius:6px;overflow:hidden;border:1px solid var(--ui-border);background:var(--ui-bg-pill);">
+                      <img src="${purl}" alt="${pfn}" data-comment-photo-enlarge="${cid}" data-comment-photo-idx="${pIdx}" title="${tr("點擊放大檢視", "Click to enlarge")}: ${pfn}" style="width:100%;height:58px;object-fit:cover;display:block;cursor:zoom-in;" onerror="this.style.display='none'" />
+                      <div style="display:flex;align-items:center;justify-content:space-between;padding:2px 4px;font-size:9.5px;background:rgba(15,23,42,0.78);color:#e2e8f0;">
+                        <a href="${purl}" download="${pfn}" title="${tr("下載照片", "Download")}" style="color:#38bdf8;text-decoration:none;font-weight:700;">⬇</a>
+                        ${
+                          canModifyComments && cid
+                            ? `<button type="button" data-comment-remove-photo-cid="${cid}" data-comment-remove-photo-url="${purl}" title="${tr("移除附加照片", "Remove attached photo")}" style="background:none;border:none;color:#f87171;cursor:pointer;font-size:10px;padding:0;line-height:1;">✕</button>`
+                            : ""
+                        }
+                      </div>
+                    </div>
+                  `;
+                })
+                .join("")}
+            </div>`
+          : "";
         return `
-        <div class="gs-comment-card" data-comment-id="${cid}" style="background:var(--ui-bg-subtle);border:1px solid var(--ui-border);border-radius:8px;padding:9px;margin-top:8px;">
+        <div class="gs-comment-card" data-comment-id="${cid}" title="${tr("可將 RTK 照片拖曳至此標註卡片附加", "Drag & drop RTK photo(s) onto this comment card to attach")}" style="background:var(--ui-bg-subtle);border:1px solid var(--ui-border);border-radius:8px;padding:9px;margin-top:8px;transition:border-color 0.15s,background 0.15s;">
           <div style="display:flex;justify-content:space-between;align-items:center;gap:6px;font-size:11px;color:var(--ui-accent);font-weight:700;">
             <span style="display:inline-flex;align-items:center;gap:6px;">
               <span class="gs-comment-card-avatar" style="background:${avatar.bg};">${escapeHtml(avatar.chars)}</span>
@@ -3615,6 +3684,7 @@
             </div>
           </div>
           <div class="gs-comment-body-text" data-comment-text="${cid}" style="font-size:12px;color:var(--ui-text-primary);margin-top:4px;white-space:pre-wrap;word-break:break-word;">${escapeHtml(c.text)}</div>
+          ${photosGridHtml}
           <div class="gs-comment-edit-wrap" data-comment-edit-box="${cid}" style="display:none;margin-top:6px;">
             <textarea class="gs-input" data-comment-edit-input="${cid}" rows="2" style="font-size:12px;margin-bottom:5px;">${escapeHtml(c.text)}</textarea>
             <div style="display:flex;gap:5px;justify-content:flex-end;">
@@ -3622,19 +3692,36 @@
               <button type="button" class="btn-xs accent" data-comment-edit-save="${cid}" style="background:var(--ui-accent);color:#fff;border-color:var(--ui-accent);">${tr("儲存", "Save")}</button>
             </div>
           </div>
-          <div style="font-size:10.5px;font-family:monospace;color:var(--ui-text-muted);margin-top:4px;">
-            E:${Number(c.twd97_e).toFixed(1)}m, N:${Number(c.twd97_n).toFixed(1)}m, H:+${Number(c.twd97_h).toFixed(2)}m
+          <div style="display:flex;align-items:center;justify-content:space-between;font-size:10.5px;font-family:monospace;color:var(--ui-text-muted);margin-top:4px;">
+            <span>E:${Number(c.twd97_e).toFixed(1)}m, N:${Number(c.twd97_n).toFixed(1)}m, H:+${Number(c.twd97_h).toFixed(2)}m</span>
+            ${attachedPhotos.length ? `<span style="color:var(--ui-accent);">📷 ${attachedPhotos.length}</span>` : ""}
           </div>
         </div>
       `;
       })
       .join("");
 
+    const draftPhotos = Array.isArray(STATE.pendingCommentDraftPhotos) ? STATE.pendingCommentDraftPhotos : [];
+    const draftPhotosHtml = draftPhotos.length
+      ? `<div id="commentDraftPhotosBox" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:6px;">
+          ${draftPhotos
+            .map(
+              (p, idx) => `
+              <div style="position:relative;width:58px;height:44px;border-radius:5px;overflow:hidden;border:1px solid var(--ui-accent);">
+                <img src="${escapeHtml(p.url)}" alt="${escapeHtml(p.filename || "")}" style="width:100%;height:100%;object-fit:cover;" />
+                <button type="button" data-remove-draft-photo-idx="${idx}" style="position:absolute;top:1px;right:1px;width:15px;height:15px;border-radius:50%;background:rgba(15,23,42,0.85);color:#f87171;border:none;font-size:10px;cursor:pointer;line-height:1;padding:0;">✕</button>
+              </div>
+            `
+            )
+            .join("")}
+        </div>`
+      : `<div id="commentDraftPhotosBox"></div>`;
+
     showSidePanel(
       `<span>${tr(`3D 空間標註 (${comments.length})`, `3D Geo-Comments (${comments.length})`)}</span>`,
       `
       <div style="font-size:11px;color:var(--ui-text-secondary);margin-bottom:8px;">
-        ${tr("在 3D 掃描模型上點擊任意位置放置標註點，並在下方輸入說明。", "Click anywhere on the 3D scan to place the comment pin, then write your note below.")}
+        ${tr("在 3D 掃描模型上點擊任意位置放置標註點，並在下方輸入說明（支援拖曳 RTK 照片附加）。", "Click anywhere on the 3D scan to place the comment pin, write your note, or drag & drop RTK photos onto any comment.")}
       </div>
       ${
         isExternalOrGuest
@@ -3644,9 +3731,10 @@
              </div>`
           : ""
       }
-      <div class="gs-form-group">
+      <div class="gs-form-group" id="commentsInspectorDropZone" style="border:1px dashed var(--ui-border-strong);border-radius:8px;padding:7px;transition:border-color 0.15s,background 0.15s;">
         <label>${tr("標註座標", "Pin Coordinate")}: E:${twd.e}m, N:${twd.n}m, H:+${twd.h}m</label>
-        <textarea class="gs-input" id="txtNewComment" rows="2" placeholder="${tr("輸入工程觀察或標註內容...", "Leave an engineering observation...")}"></textarea>
+        <textarea class="gs-input" id="txtNewComment" rows="2" placeholder="${tr("輸入工程觀察或標註內容（可將 RTK 照片拖曳至此附加）...", "Leave an engineering observation (or drop RTK photos here)...")}"></textarea>
+        ${draftPhotosHtml}
       </div>
       <button type="button" class="gs-top-btn accent" style="width:100%;justify-content:center;margin-bottom:8px;" id="btnSubmitComment" title="${tr("張貼 3D 空間標註", "Post 3D Comment Pin")}">
         <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8">
@@ -3658,8 +3746,126 @@
       `
     );
 
+    document.querySelectorAll("[data-remove-draft-photo-idx]").forEach((btn) => {
+      btn.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        const idx = Number(btn.getAttribute("data-remove-draft-photo-idx"));
+        if (Array.isArray(STATE.pendingCommentDraftPhotos) && Number.isFinite(idx)) {
+          STATE.pendingCommentDraftPhotos.splice(idx, 1);
+          openCommentsInspector(pt, twd);
+        }
+      });
+    });
+
+    const composerDropZone = document.getElementById("commentsInspectorDropZone");
+    if (composerDropZone) {
+      composerDropZone.addEventListener("dragover", (ev) => {
+        ev.preventDefault();
+        ev.dataTransfer.dropEffect = "copy";
+        composerDropZone.classList.add("drag-over");
+      });
+      composerDropZone.addEventListener("dragleave", () => {
+        composerDropZone.classList.remove("drag-over");
+      });
+      composerDropZone.addEventListener("drop", (ev) => {
+        ev.preventDefault();
+        ev.stopPropagation();
+        composerDropZone.classList.remove("drag-over");
+        let dropped = STATE.draggingRtkPhotos || [];
+        try {
+          const raw = ev.dataTransfer.getData("application/x-gs-rtk-photos") || ev.dataTransfer.getData("text/plain");
+          if (raw) {
+            const parsed = JSON.parse(raw);
+            if (Array.isArray(parsed) && parsed.length) dropped = parsed;
+          }
+        } catch (_) {}
+        if (!dropped.length) return;
+        if (!Array.isArray(STATE.pendingCommentDraftPhotos)) STATE.pendingCommentDraftPhotos = [];
+        dropped.forEach((p) => {
+          if (p && p.url && !STATE.pendingCommentDraftPhotos.some((x) => x.url === p.url)) {
+            STATE.pendingCommentDraftPhotos.push(p);
+          }
+        });
+        openCommentsInspector(pt, twd);
+      });
+    }
+
     const listBox = document.getElementById("commentsListBox");
     if (listBox) {
+      // Click attached photo thumbnail to enlarge in Lightbox
+      listBox.querySelectorAll("[data-comment-photo-enlarge]").forEach((imgEl) => {
+        imgEl.addEventListener("click", (ev) => {
+          ev.stopPropagation();
+          const cid = imgEl.getAttribute("data-comment-photo-enlarge");
+          const pIdx = Number(imgEl.getAttribute("data-comment-photo-idx")) || 0;
+          const targetComment = comments.find((item) => String(item.comment_id) === String(cid));
+          const cPhotos = Array.isArray(targetComment?.photos) ? targetComment.photos : [];
+          const p = cPhotos[pIdx];
+          if (p && typeof openPhotoLightboxModal === "function") {
+            openPhotoLightboxModal(p.url, p.filename, "", cPhotos, pIdx);
+          }
+        });
+      });
+
+      // Remove attached photo button
+      listBox.querySelectorAll("[data-comment-remove-photo-url]").forEach((btn) => {
+        btn.addEventListener("click", async (ev) => {
+          ev.stopPropagation();
+          const cid = btn.getAttribute("data-comment-remove-photo-cid");
+          const rmUrl = btn.getAttribute("data-comment-remove-photo-url");
+          const targetComment = comments.find((item) => String(item.comment_id) === String(cid));
+          if (!cid || !targetComment) return;
+          const remaining = (Array.isArray(targetComment.photos) ? targetComment.photos : []).filter(
+            (p) => String(p.url) !== String(rmUrl)
+          );
+          try {
+            const res = await apiPost("/api/comments/update", {
+              action: "update",
+              comment_id: cid,
+              scan_id: STATE.activeScanId,
+              photos: remaining,
+            });
+            if (Array.isArray(res?.comments) && STATE.activeScan) {
+              STATE.activeScan.comments = res.comments;
+            }
+            await refreshScansCatalog();
+            openCommentsInspector(pt, twd);
+          } catch (err) {
+            showToast(`Remove Photo Error: ${err.message}`);
+          }
+        });
+      });
+
+      // Drag and drop RTK photo(s) onto any existing comment card
+      listBox.querySelectorAll(".gs-comment-card[data-comment-id]").forEach((cardEl) => {
+        cardEl.addEventListener("dragover", (ev) => {
+          ev.preventDefault();
+          ev.dataTransfer.dropEffect = "copy";
+          cardEl.classList.add("drag-over");
+        });
+        cardEl.addEventListener("dragleave", () => {
+          cardEl.classList.remove("drag-over");
+        });
+        cardEl.addEventListener("drop", async (ev) => {
+          ev.preventDefault();
+          ev.stopPropagation();
+          cardEl.classList.remove("drag-over");
+          const cid = cardEl.getAttribute("data-comment-id");
+          let dropped = STATE.draggingRtkPhotos || [];
+          try {
+            const raw = ev.dataTransfer.getData("application/x-gs-rtk-photos") || ev.dataTransfer.getData("text/plain");
+            if (raw) {
+              const parsed = JSON.parse(raw);
+              if (Array.isArray(parsed) && parsed.length) dropped = parsed;
+            }
+          } catch (_) {}
+          if (cid && dropped.length && typeof attachPhotosToCommentById === "function") {
+            const ok = await attachPhotosToCommentById(cid, dropped);
+            if (ok) openCommentsInspector(pt, twd);
+          }
+        });
+      });
+
       listBox.querySelectorAll("[data-comment-edit]").forEach((btn) => {
         btn.addEventListener("click", (ev) => {
           ev.stopPropagation();
@@ -3739,7 +3945,8 @@
 
     document.getElementById("btnSubmitComment")?.addEventListener("click", async () => {
       const text = document.getElementById("txtNewComment")?.value.trim();
-      if (!text) return;
+      const attachedDraft = Array.isArray(STATE.pendingCommentDraftPhotos) ? STATE.pendingCommentDraftPhotos : [];
+      if (!text && !attachedDraft.length) return;
       const customGuestName = document.getElementById("txtGuestAuthorName")?.value.trim() || "";
       if (isExternalOrGuest && customGuestName) {
         try {
@@ -3757,19 +3964,21 @@
           scan_id: STATE.activeScanId,
           author_email: resolvedAuthorEmail,
           author_name: resolvedAuthorName,
-          text,
+          text: text || tr("（附加 RTK 現勘照片）", "(Attached RTK Photos)"),
           pos_x: pt.x,
           pos_y: pt.y,
           pos_z: pt.z,
           twd97_e: twd.e,
           twd97_n: twd.n,
           twd97_h: twd.h,
+          photos: attachedDraft,
         });
         STATE.pendingCommentDraftPt = null;
+        STATE.pendingCommentDraftPhotos = [];
         if (Array.isArray(res?.comments) && STATE.activeScan) {
           STATE.activeScan.comments = res.comments;
         }
-        SHARE_TELEMETRY.recordCommentPosted(resolvedAuthorName, text);
+        SHARE_TELEMETRY.recordCommentPosted(resolvedAuthorName, text || "RTK Photos");
         const bannerNameInp = document.getElementById("inpShareViewerName");
         if (bannerNameInp && customGuestName) {
           bannerNameInp.value = customGuestName;
@@ -3859,10 +4068,22 @@
       const cid = escapeHtml(c.comment_id || "");
       const avatar = getCommentAuthorAvatar(c.author_name || "Reviewer", c.author_email || "");
       const avatarChars = escapeHtml(avatar.chars);
+      const cPhotos = Array.isArray(c.photos) ? c.photos.filter((p) => p && p.url) : [];
+      const pinPhotosHtml = cPhotos.length
+        ? `<div class="gs-comment-pin-photos" style="display:flex;gap:4px;flex-wrap:wrap;margin-top:6px;">
+            ${cPhotos
+              .map(
+                (p, pIdx) =>
+                  `<img src="${escapeHtml(p.url)}" alt="${escapeHtml(p.filename || "")}" data-pin-photo-idx="${pIdx}" style="width:52px;height:40px;object-fit:cover;border-radius:4px;border:1px solid rgba(56,189,248,0.5);cursor:zoom-in;" />`
+              )
+              .join("")}
+          </div>`
+        : "";
       const pinHtml = `
         <div class="gs-scan-comment-pin" data-comment-pin-id="${cid}" style="transform:translate(-50%,-50%);">
           <div class="gs-comment-pin-icon" style="--pin-avatar-bg:${avatar.bg};">
             <span class="gs-comment-pin-avatar-char">${avatarChars}</span>
+            ${cPhotos.length ? `<span style="position:absolute;bottom:-3px;right:-5px;background:#0284c7;color:#fff;font-size:8.5px;font-weight:800;padding:0 3px;border-radius:999px;border:1px solid #0f172a;">📷${cPhotos.length}</span>` : ""}
           </div>
           <div class="gs-comment-pin-popover">
             <div class="gs-comment-pin-meta">
@@ -3870,6 +4091,7 @@
               <span class="gs-comment-pin-time">${timeStr}</span>
             </div>
             <div class="gs-comment-pin-text">${textHtml}</div>
+            ${pinPhotosHtml}
           </div>
         </div>
       `;
@@ -3880,11 +4102,46 @@
       });
       if (badge && badge.el) {
         badge.el.addEventListener("click", (ev) => {
+          const imgTarget = ev.target && ev.target.closest ? ev.target.closest("[data-pin-photo-idx]") : null;
+          if (imgTarget && typeof openPhotoLightboxModal === "function") {
+            ev.stopPropagation();
+            const pIdx = Number(imgTarget.getAttribute("data-pin-photo-idx")) || 0;
+            const p = cPhotos[pIdx];
+            if (p) openPhotoLightboxModal(p.url, p.filename, "", cPhotos, pIdx);
+            return;
+          }
           ev.stopPropagation();
           const wasOpen = badge.el.classList.contains("mobile-open");
           document.querySelectorAll(".gs-scan-comment-pin.mobile-open").forEach((el) => el.classList.remove("mobile-open"));
           if (!wasOpen) {
             badge.el.classList.add("mobile-open");
+          }
+        });
+
+        // Allow dragging 1 or more RTK photos directly onto the 3D comment pin on the scan!
+        badge.el.addEventListener("dragover", (ev) => {
+          ev.preventDefault();
+          ev.dataTransfer.dropEffect = "copy";
+          badge.el.classList.add("drag-over");
+        });
+        badge.el.addEventListener("dragleave", () => {
+          badge.el.classList.remove("drag-over");
+        });
+        badge.el.addEventListener("drop", async (ev) => {
+          ev.preventDefault();
+          ev.stopPropagation();
+          badge.el.classList.remove("drag-over");
+          let dropped = STATE.draggingRtkPhotos || [];
+          try {
+            const raw =
+              ev.dataTransfer.getData("application/x-gs-rtk-photos") || ev.dataTransfer.getData("text/plain");
+            if (raw) {
+              const parsed = JSON.parse(raw);
+              if (Array.isArray(parsed) && parsed.length) dropped = parsed;
+            }
+          } catch (_) {}
+          if (c.comment_id && dropped.length && typeof attachPhotosToCommentById === "function") {
+            await attachPhotosToCommentById(c.comment_id, dropped);
           }
         });
       }

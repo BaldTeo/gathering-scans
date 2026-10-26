@@ -1048,21 +1048,24 @@ class ServerWriteRoutesMixin:
                     self.send_json({"error": "Read-only Guest Mode cannot post or edit comments. Sign in with Google to comment."}, status=403)
                     return
 
-                if action == "update":
+                if action in ("update", "attach_photos"):
                     if not comment_id:
                         self.send_json({"error": "comment_id is required to update a comment."}, status=400)
                         return
                     if not existing_cmt:
                         self.send_json({"error": "Comment not found."}, status=404)
                         return
-                    new_text = str(payload.get("text") or "").strip()
-                    if not new_text:
-                        self.send_json({"error": "Comment text cannot be empty."}, status=400)
+                    new_text = str(payload.get("text") or "").strip() if payload.get("text") is not None else None
+                    has_photo_update = ("photos" in payload) or ("append_photos" in payload)
+                    if not new_text and not has_photo_update:
+                        self.send_json({"error": "Comment text or photos required."}, status=400)
                         return
                     updated_cmt = DB.update_comment(
                         comment_id,
                         new_text,
                         author_name=payload.get("author_name"),
+                        photos=payload.get("photos"),
+                        append_photos=payload.get("append_photos"),
                     )
                     _VPS_RAM_FALLBACK_CACHE.clear()
                     cmts_list = DB.list_comments(scan_id) if scan_id else []

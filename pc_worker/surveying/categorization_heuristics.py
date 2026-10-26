@@ -1713,8 +1713,9 @@ class CategorizationHeuristicsMixin:
         # =================================================================================
         water_list: List[Dict[str, Any]] = []
         # 3A: Detect Un-Modelled Water Voids (~raw_occ_closed) on wide river-valley / hydraulic dam scans (max_span > 180.0m)
-        # Gated out on compact urban/campus/park scans (max_span <= 180.0m) so building/canopy shadow holes are never misclassified as river voids!
-        if max_span > 180.0:
+        # and depressed pond/moat water channels on medium-span terrain scans (120.0m < max_span <= 180.0m, e.g. QiHu moat)
+        if max_span > 120.0:
+            is_midspan_moat_scan = max_span <= 180.0
             occ_js, occ_is = np.nonzero(raw_occ_closed)
             hull_2d_mask = np.zeros((ny, nx), dtype=bool)
             if len(occ_is) >= 12:
@@ -1780,20 +1781,27 @@ class CategorizationHeuristicsMixin:
             margin_px = max(3, int(round(3.0 / res)))
             inner_box = np.zeros_like(raw_occ_closed, dtype=bool)
             inner_box[margin_px : ny - margin_px, margin_px : nx - margin_px] = True
+            max_void_dist_m = 8.5 if is_midspan_moat_scan else 5.5
             void_candidate = (
                 (~raw_occ_closed)
                 & inner_box
                 & enclosed_void_cell
-                & (dist_cells * res <= 5.5)
+                & (dist_cells * res <= max_void_dist_m)
                 & (dist_cells * res >= 0.35)
                 & (h_dtm_grid <= p18_site_h + 1.40)
             )
             void_labeled, n_voids = nd_label(void_candidate)
             occ_dilated_3 = binary_dilation(raw_occ_closed, structure=np.ones((3, 3), dtype=bool))
+            min_v_area = 45.0 if is_midspan_moat_scan else 25.0
+            max_v_area = 1600.0 if is_midspan_moat_scan else 1250.0
+            max_diag_span = 125.0 if is_midspan_moat_scan else 68.0
+            min_fill_ratio = 0.16 if is_midspan_moat_scan else 0.22
+            min_touch_ratio = 0.85 if is_midspan_moat_scan else 0.55
+            max_rim_iqr = 3.35 if is_midspan_moat_scan else 1.75
             for vid in range(1, n_voids + 1):
                 vmask = void_labeled == vid
                 v_area = float(np.count_nonzero(vmask) * cell_area)
-                if v_area < 25.0 or v_area > 1250.0:
+                if v_area < min_v_area or v_area > max_v_area:
                     continue
                 v_js, v_is = np.nonzero(vmask)
                 if len(v_is) < 8:
@@ -1802,7 +1810,7 @@ class CategorizationHeuristicsMixin:
                 bbox_h = float((int(v_js.max()) - int(v_js.min()) + 1) * res)
                 diag_span = math.hypot(bbox_w, bbox_h)
                 fill_ratio = v_area / max(bbox_w * bbox_h, 1.0)
-                if diag_span > 68.0 or fill_ratio < 0.22:
+                if diag_span > max_diag_span or fill_ratio < min_fill_ratio:
                     continue
 
                 b_mask = binary_dilation(vmask, structure=np.ones((3, 3), dtype=bool)) & (~vmask)
@@ -1810,7 +1818,7 @@ class CategorizationHeuristicsMixin:
                 if b_cnt < 8:
                     continue
                 touch_cnt = int(np.count_nonzero(b_mask & occ_dilated_3))
-                if (float(touch_cnt) / float(b_cnt)) < 0.55:
+                if (float(touch_cnt) / float(b_cnt)) < min_touch_ratio:
                     continue
 
                 rim_mask = binary_dilation(vmask, structure=np.ones((5, 5), dtype=bool)) & raw_occ_closed
@@ -1818,32 +1826,43 @@ class CategorizationHeuristicsMixin:
                     continue
                 rim_h = h_dtm_grid[rim_mask]
                 rim_iqr = float(np.percentile(rim_h, 75.0) - np.percentile(rim_h, 15.0))
-                if rim_iqr > 1.75:
+                if rim_iqr > max_rim_iqr:
+                    continue
+                if is_midspan_moat_scan and float(np.median(hag_grid[rim_mask])) > 0.60:
                     continue
                 shoreline_h_p20 = float(np.percentile(rim_h, 20.0))
                 shoreline_h_med = float(np.percentile(rim_h, 45.0))
-                if shoreline_h_p20 <= p25_site_h + 0.85:
-                    low_void_mask = vmask & (h_dtm_grid <= shoreline_h_med + 1.5) & (dist_cells * res <= 7.5)
+                shoreline_elev_ok = (
+                    (shoreline_h_p20 <= p18_site_h - 1.10)
+                    if is_midspan_moat_scan
+                    else (shoreline_h_p20 <= p25_site_h + 0.85)
+                )
+                if shoreline_elev_ok:
+                    h_margin = 2.2 if is_midspan_moat_scan else 1.5
+                    dist_cap = 8.5 if is_midspan_moat_scan else 7.5
+                    min_poly_area = 35.0 if is_midspan_moat_scan else 22.0
+                    min_poly_fill = 0.15 if is_midspan_moat_scan else 0.22
+                    low_void_mask = vmask & (h_dtm_grid <= shoreline_h_med + h_margin) & (dist_cells * res <= dist_cap)
                     low_void_mask = binary_closing(low_void_mask, structure=np.ones((3, 3), dtype=bool)) & (~raw_occ_closed)
                     eroded_v = binary_erosion(low_void_mask, structure=np.ones((2, 2), dtype=bool))
-                    if np.count_nonzero(eroded_v) * cell_area >= 22.0:
+                    if np.count_nonzero(eroded_v) * cell_area >= min_poly_area:
                         low_void_mask = eroded_v
                     v_polys = _mask_to_polygons(
                         low_void_mask,
-                        min_area_m2=22.0,
+                        min_area_m2=min_poly_area,
                         fixed_z=round(shoreline_h_p20, 3),
                         simplify_tol=0.38,
                     )
                     for vp in v_polys:
                         vp_cm = vp.pop("comp_mask", None)
-                        if vp["planar_area_m2"] > 1250.0:
+                        if vp["planar_area_m2"] > max_v_area:
                             continue
                         if vp_cm is not None:
                             pj, pi = np.nonzero(vp_cm)
                             if len(pi) >= 4:
                                 pw = float((int(pi.max()) - int(pi.min()) + 1) * res)
                                 ph = float((int(pj.max()) - int(pj.min()) + 1) * res)
-                                if math.hypot(pw, ph) > 68.0 or (vp["planar_area_m2"] / max(pw * ph, 1.0)) < 0.22:
+                                if math.hypot(pw, ph) > max_diag_span or (vp["planar_area_m2"] / max(pw * ph, 1.0)) < min_poly_fill:
                                     continue
                         wid = f"W{len(water_list) + 1}"
                         water_list.append(

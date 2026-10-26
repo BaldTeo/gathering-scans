@@ -4472,6 +4472,25 @@ body.theme-light .gs-comment-pin-text {
   flex-wrap: wrap;
 }
 
+.gs-rtk-photo-card.dragging {
+  opacity: 0.55;
+  border-color: var(--ui-accent) !important;
+}
+
+.gs-comment-drop-target.drag-over,
+.gs-comment-card.drag-over,
+#commentsInspectorDropZone.drag-over {
+  border-color: #38bdf8 !important;
+  background: rgba(56, 189, 248, 0.16) !important;
+  box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.35);
+}
+
+.gs-scan-comment-pin.drag-over .gs-comment-pin-icon {
+  transform: scale(1.28);
+  box-shadow: 0 0 0 4px rgba(56, 189, 248, 0.75);
+}
+
+
 
 
 

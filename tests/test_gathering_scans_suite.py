@@ -867,8 +867,9 @@ class GatheringScansTestSuite(unittest.TestCase):
         self.assertIn('html[data-theme="light"] .gs-comment-pin-author', css)
         self.assertIn('html[data-theme="light"] .gs-comment-pin-text', css)
 
-        # 3. No native browser title attribute on .gs-comment-pin-icon (eliminates double hover tooltip)
+        # 3. No native browser title attribute on .gs-comment-pin-icon or .gs-scan-comment-pin (eliminates double hover tooltip)
         self.assertNotIn('class="gs-comment-pin-icon" title=', js05)
+        self.assertNotIn('class="gs-scan-comment-pin" data-comment-pin-id="${cid}" title=', js05)
 
         # 4. Circular character avatar of comment author inside comment pin and comment card
         self.assertIn("function getCommentAuthorAvatar(", js05)
@@ -881,6 +882,106 @@ class GatheringScansTestSuite(unittest.TestCase):
         self.assertNotIn("正射影像疊圖</span>", html)
         self.assertIn('${tr("載入", "Load")}', js08)
         self.assertIn('${tr("💾 儲存", "💾 Save")}', js08)
+
+    def test_14_drainage_arrow_scale_void_filtering_qihu_water_and_photo_comment_attachments(self):
+        """Verify 1/5 drainage arrow default size + sliders, strict void/water filtering, QiHu water void classification, and RTK photo enlarge/download/drag-to-comment attachment."""
+        import json
+
+        with open(os.path.join(BASE_DIR, "web", "src", "05-studio-civil-inspectors.js"), "r", encoding="utf-8") as f:
+            js05 = f.read()
+        with open(os.path.join(BASE_DIR, "web", "src", "08-advanced-surveying-and-qa.js"), "r", encoding="utf-8") as f:
+            js08 = f.read()
+
+        # 1. Drainage arrows default to 1/5 (0.20x) size (`0.172 * arrowScale`, `0.015 * arrowScale`, `0.038 * arrowScale`) + Density & Arrow Size sliders
+        self.assertIn("const len = cellStep * tier.lenScale * 0.172 * arrowScale;", js08)
+        self.assertIn("const shaftHalfW = Math.max(0.02, cellStep * 0.015 * arrowScale);", js08)
+        self.assertIn("const headHalfW = Math.max(0.045, cellStep * 0.038 * arrowScale);", js08)
+        self.assertIn('id="rngDrainageDensity"', js08)
+        self.assertIn('id="rngDrainageArrowSize"', js08)
+
+        # 2. Drainage arrows strictly filter out un-scanned empty voids & water polygons (no extrapolation into empty cells)
+        self.assertIn("isFineSurfaceOccupied", js08)
+        self.assertIn("isPointInsideAnyWaterPolyXZ", js08)
+        self.assertNotIn("if (validCell[idx] || nCnt >= 5)", js08)
+        self.assertIn("if (!validCell[idx]) continue;", js08)
+
+        # 3. QiHu unified merged scan classifies depressed moat/pond empty area as water (`unmodelled_void_shoreline`) with zero regressions on Rose Park, NTU Dorm, and QuChi
+        qihu_cache_path = os.path.join(
+            BASE_DIR,
+            "data",
+            "categorization_cache",
+            "edited_qihu_unified_merged_scan_4_scans__edited_372953_categorization_v3.json",
+        )
+        self.assertTrue(os.path.isfile(qihu_cache_path))
+        with open(qihu_cache_path, "r", encoding="utf-8") as f:
+            qihu_cat = json.load(f)
+        self.assertGreaterEqual(int(qihu_cat.get("summary", {}).get("water_count", 0)), 2)
+        self.assertGreaterEqual(float(qihu_cat.get("summary", {}).get("water_planar_area_m2", 0.0)), 1400.0)
+        qihu_modes = [w.get("detection_mode") for w in qihu_cat.get("water_bodies", [])]
+        self.assertIn("unmodelled_void_shoreline", qihu_modes)
+
+        for zero_water_sid in ("rosepark_20260918_merged", "ntudorm_20260915_baseline"):
+            p = os.path.join(BASE_DIR, "data", "categorization_cache", f"{zero_water_sid}_categorization_v3.json")
+            with open(p, "r", encoding="utf-8") as f:
+                cat = json.load(f)
+            self.assertEqual(int(cat.get("summary", {}).get("water_count", 0)), 0)
+
+        quchi_path = os.path.join(BASE_DIR, "data", "categorization_cache", "QuChi261016_Trees_categorization_v3.json")
+        with open(quchi_path, "r", encoding="utf-8") as f:
+            quchi_cat = json.load(f)
+        self.assertEqual(int(quchi_cat.get("summary", {}).get("water_count", 0)), 8)
+
+        # 4. RTK Photo Inspector replaces Match Photo View with Enlarge, Download, and Drag-and-Drop onto Comments (including multi-photo attachment)
+        self.assertNotIn("Match Photo View", js05)
+        self.assertNotIn("Project 55%", js05)
+        self.assertIn("data-photo-enlarge-idx", js05)
+        self.assertIn("data-rtk-photo-check", js05)
+        self.assertIn("openPhotoLightboxModal", js08)
+        self.assertIn("attachPhotosToCommentById", js08)
+
+        # Verify backend comment DB supports attaching multiple photos (`photos` / `append_photos`) and preserves RTK coordinates
+        created = self.db.add_comment(
+            {
+                "scan_id": "ntudorm_20260915_baseline",
+                "author_email": "tester@gatheren.cloud",
+                "author_name": "Photo Attachment Tester",
+                "text": "Initial field comment",
+                "pos_x": 1.0,
+                "pos_y": 2.0,
+                "pos_z": 3.0,
+                "twd97_e": 304125.0,
+                "twd97_n": 2767820.0,
+                "twd97_h": 18.5,
+                "photos": [
+                    {
+                        "id": "P1",
+                        "filename": "DJI_0001.JPG",
+                        "url": "/api/survey/photo-preview?scan_id=test&idx=0",
+                        "camera_twd97_e": 304120.5,
+                        "camera_twd97_n": 2767815.2,
+                        "camera_twd97_h": 35.8,
+                        "distance_m": 18.4,
+                    }
+                ],
+            }
+        )
+        cid = created["comment_id"]
+        c_rec = self.db.get_comment(cid)
+        self.assertIsNotNone(c_rec)
+        self.assertEqual(len(c_rec.get("photos", [])), 1)
+        self.assertAlmostEqual(float(c_rec["photos"][0].get("camera_twd97_e", 0.0)), 304120.5, places=1)
+        self.assertAlmostEqual(float(c_rec["photos"][0].get("camera_twd97_h", 0.0)), 35.8, places=1)
+
+        updated = self.db.update_comment(
+            cid,
+            append_photos=[
+                {"id": "P2", "filename": "DJI_0002.JPG", "url": "/api/survey/photo-preview?scan_id=test&idx=1"},
+                {"id": "P3", "filename": "DJI_0003.JPG", "url": "/api/survey/photo-preview?scan_id=test&idx=2"},
+            ],
+        )
+        self.assertIsNotNone(updated)
+        self.assertEqual(len(updated.get("photos", [])), 3)
+        self.db.delete_comment(cid)
 
 
 if __name__ == "__main__":

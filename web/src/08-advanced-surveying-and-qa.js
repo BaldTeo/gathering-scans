@@ -1256,8 +1256,49 @@
   }
 
   // Zero-raycast, instant (<2ms) vertex-binned surface slope & drainage arrow generator
-  function buildFastStudioSurfaceArrows(gridSize = 14, excludeWalls = true) {
-    const G = Math.max(8, Math.min(24, Number(gridSize) || 14));
+  // Strictly restricted to actual scanned mesh surfaces (never spawns arrows in empty voids or water bodies)
+  function isPointInPolygon2D(px, pz, polyXZ) {
+    if (!Array.isArray(polyXZ) || polyXZ.length < 3) return false;
+    let inside = false;
+    for (let i = 0, j = polyXZ.length - 1; i < polyXZ.length; j = i++) {
+      const xi = Number(polyXZ[i][0]) || 0;
+      const zi = Number(polyXZ[i][1]) || 0;
+      const xj = Number(polyXZ[j][0]) || 0;
+      const zj = Number(polyXZ[j][1]) || 0;
+      const intersect = zi > pz !== zj > pz && px < ((xj - xi) * (pz - zi)) / (zj - zi + 1e-12) + xi;
+      if (intersect) inside = !inside;
+    }
+    return inside;
+  }
+
+  function getActiveScanWaterPolysLocalXZ() {
+    const polys = [];
+    const cat =
+      (STATE.lastCategorizeResult && STATE.lastCategorizeResult.scan_id === STATE.activeScanId
+        ? STATE.lastCategorizeResult
+        : null) ||
+      STATE.activeScan?.categorization ||
+      null;
+    const waterList = Array.isArray(cat?.water_bodies) ? cat.water_bodies : [];
+    for (let i = 0; i < waterList.length; i++) {
+      const wb = waterList[i];
+      const bLocal = Array.isArray(wb?.boundary_local) ? wb.boundary_local : [];
+      if (bLocal.length >= 3) {
+        polys.push(bLocal.map((pt) => [Number(pt[0]) || 0, Number(pt[2] !== undefined ? pt[2] : pt[1]) || 0]));
+      }
+    }
+    return polys;
+  }
+
+  function isPointInsideAnyWaterPolyXZ(px, pz, waterPolys) {
+    for (let i = 0; i < waterPolys.length; i++) {
+      if (isPointInPolygon2D(px, pz, waterPolys[i])) return true;
+    }
+    return false;
+  }
+
+  function buildFastStudioSurfaceArrows(gridSize = 20, excludeWalls = true) {
+    const G = Math.max(8, Math.min(40, Number(gridSize) || 20));
     const meshes = [];
     let totalVerts = 0;
 
@@ -1287,7 +1328,9 @@
       collectFromRoot(studioThree?.multiAlignGroup);
     }
 
-    // If real tiles are still streaming and backend DSM arrows already arrived, use backend DSM arrows directly
+    const waterPolys2D = getActiveScanWaterPolysLocalXZ();
+
+    // If real tiles are still streaming and backend DSM arrows already arrived, use backend DSM arrows directly (filtered against water voids)
     const srvDrainage = STATE.lastDrainageResult;
     if (
       totalVerts < 300 &&
@@ -1296,14 +1339,19 @@
       Array.isArray(srvDrainage.arrows) &&
       srvDrainage.arrows.length > 0
     ) {
-      const xs = srvDrainage.arrows.map((a) => Number(a.local_x) || 0);
-      const zs = srvDrainage.arrows.map((a) => Number(a.local_z) || 0);
-      const spanX = Math.max(8, Math.max(...xs) - Math.min(...xs));
-      const spanZ = Math.max(8, Math.max(...zs) - Math.min(...zs));
-      const cellStep = Math.max(1.8, Math.max(spanX, spanZ) / G);
+      const filteredSrvArrows = srvDrainage.arrows.filter((a) => {
+        const ax = Number(a.local_x) || 0;
+        const az = Number(a.local_z) || 0;
+        return !isPointInsideAnyWaterPolyXZ(ax, az, waterPolys2D);
+      });
+      const xs = filteredSrvArrows.map((a) => Number(a.local_x) || 0);
+      const zs = filteredSrvArrows.map((a) => Number(a.local_z) || 0);
+      const spanX = xs.length ? Math.max(8, Math.max(...xs) - Math.min(...xs)) : 20;
+      const spanZ = zs.length ? Math.max(8, Math.max(...zs) - Math.min(...zs)) : 20;
+      const cellStep = Math.max(1.2, Math.max(spanX, spanZ) / G);
       return {
         cellStep,
-        arrows: srvDrainage.arrows.map((a) => {
+        arrows: filteredSrvArrows.map((a) => {
           const tier = classifySlopeRatioTier(a.slope_ratio);
           return {
             x: Number(a.local_x) || 0,
@@ -1327,7 +1375,7 @@
       return { cellStep: 4.0, arrows: [] };
     }
 
-    const stride = Math.max(1, Math.floor(totalVerts / 24000));
+    const stride = Math.max(1, Math.floor(totalVerts / 48000));
     const sx = [];
     const sy = [];
     const sz = [];
@@ -1353,9 +1401,11 @@
         const wy = m1 * vx + m5 * vy + m9 * vz + m13;
         const wz = m2 * vx + m6 * vy + m10 * vz + m14;
         if (Number.isFinite(wx) && Number.isFinite(wy) && Number.isFinite(wz)) {
-          sx.push(wx);
-          sy.push(wy);
-          sz.push(wz);
+          if (!isPointInsideAnyWaterPolyXZ(wx, wz, waterPolys2D)) {
+            sx.push(wx);
+            sy.push(wy);
+            sz.push(wz);
+          }
         }
       }
     }
@@ -1366,21 +1416,120 @@
 
     const sortedX = sx.slice().sort((a, b) => a - b);
     const sortedZ = sz.slice().sort((a, b) => a - b);
-    const minX = sortedX[Math.floor(sortedX.length * 0.02)];
-    const maxX = sortedX[Math.floor(sortedX.length * 0.98)];
-    const minZ = sortedZ[Math.floor(sortedZ.length * 0.02)];
-    const maxZ = sortedZ[Math.floor(sortedZ.length * 0.98)];
+    const minX = sortedX[Math.floor(sortedX.length * 0.01)];
+    const maxX = sortedX[Math.floor(sortedX.length * 0.99)];
+    const minZ = sortedZ[Math.floor(sortedZ.length * 0.01)];
+    const maxZ = sortedZ[Math.floor(sortedZ.length * 0.99)];
 
     const spanX = Math.max(6.0, maxX - minX);
     const spanZ = Math.max(6.0, maxZ - minZ);
-    const cellStep = Math.max(1.2, Math.max(spanX, spanZ) / G);
-    const nx = Math.max(6, Math.min(28, Math.round(spanX / cellStep) + 1));
-    const nz = Math.max(6, Math.min(28, Math.round(spanZ / cellStep) + 1));
+    const cellStep = Math.max(1.0, Math.max(spanX, spanZ) / G);
+    const nx = Math.max(6, Math.min(44, Math.round(spanX / cellStep) + 1));
+    const nz = Math.max(6, Math.min(44, Math.round(spanZ / cellStep) + 1));
     const stepX = spanX / Math.max(1, nx - 1);
     const stepZ = spanZ / Math.max(1, nz - 1);
 
+    // Build a fine 2D mesh surface occupancy grid (128x128) using both vertices and triangle centroids/midpoints
+    // so un-scanned voids / water channels / outer bounding-box corners remain 0 (unoccupied)
+    const fineN = 128;
+    const fineStepX = spanX / fineN;
+    const fineStepZ = spanZ / fineN;
+    const fineOcc = new Uint8Array(fineN * fineN);
+    const markFineOcc = (wx, wz) => {
+      if (wx < minX || wx > maxX || wz < minZ || wz > maxZ) return;
+      const fx = Math.min(fineN - 1, Math.max(0, Math.floor((wx - minX) / fineStepX)));
+      const fz = Math.min(fineN - 1, Math.max(0, Math.floor((wz - minZ) / fineStepZ)));
+      fineOcc[fz * fineN + fx] = 1;
+    };
+    for (let i = 0; i < sx.length; i++) {
+      markFineOcc(sx[i], sz[i]);
+    }
+    // Sample triangle centroids and edge midpoints across meshes to ensure genuine mesh triangles are marked occupied
+    // while large empty un-scanned areas (where no triangles exist) stay strictly 0
+    for (let mi = 0; mi < meshes.length; mi++) {
+      const m = meshes[mi];
+      const pos = m.geometry.attributes.position;
+      const arr = pos.array;
+      const itemSize = pos.itemSize || 3;
+      const idxAttr = m.geometry.index;
+      const e = m.matrixWorld.elements;
+      const m0 = e[0], m4 = e[4], m8 = e[8], m12 = e[12];
+      const m2 = e[2], m6 = e[6], m10 = e[10], m14 = e[14];
+      const triCount = idxAttr ? Math.floor(idxAttr.count / 3) : Math.floor(pos.count / 3);
+      const triStride = Math.max(1, Math.floor(triCount / 28000));
+      const idxArr = idxAttr ? idxAttr.array : null;
+      const maxEdgeSq = Math.pow(Math.max(4.5, Math.min(stepX, stepZ) * 1.35), 2);
+      for (let ti = 0; ti < triCount; ti += triStride) {
+        const i0 = (idxArr ? idxArr[ti * 3] : ti * 3) * itemSize;
+        const i1 = (idxArr ? idxArr[ti * 3 + 1] : ti * 3 + 1) * itemSize;
+        const i2 = (idxArr ? idxArr[ti * 3 + 2] : ti * 3 + 2) * itemSize;
+        const x0 = m0 * arr[i0] + m4 * arr[i0 + 1] + m8 * arr[i0 + 2] + m12;
+        const z0 = m2 * arr[i0] + m6 * arr[i0 + 1] + m10 * arr[i0 + 2] + m14;
+        const x1 = m0 * arr[i1] + m4 * arr[i1 + 1] + m8 * arr[i1 + 2] + m12;
+        const z1 = m2 * arr[i1] + m6 * arr[i1 + 1] + m10 * arr[i1 + 2] + m14;
+        const x2 = m0 * arr[i2] + m4 * arr[i2 + 1] + m8 * arr[i2 + 2] + m12;
+        const z2 = m2 * arr[i2] + m6 * arr[i2 + 1] + m10 * arr[i2 + 2] + m14;
+        const d01 = (x1 - x0) * (x1 - x0) + (z1 - z0) * (z1 - z0);
+        const d12 = (x2 - x1) * (x2 - x1) + (z2 - z1) * (z2 - z1);
+        const d20 = (x0 - x2) * (x0 - x2) + (z0 - z2) * (z0 - z2);
+        if (d01 <= maxEdgeSq && d12 <= maxEdgeSq && d20 <= maxEdgeSq) {
+          const cx = (x0 + x1 + x2) / 3.0;
+          const cz = (z0 + z1 + z2) / 3.0;
+          markFineOcc(cx, cz);
+          markFineOcc(0.5 * (x0 + x1), 0.5 * (z0 + z1));
+          markFineOcc(0.5 * (x1 + x2), 0.5 * (z1 + z2));
+          markFineOcc(0.5 * (x2 + x0), 0.5 * (z2 + z0));
+        }
+      }
+    }
+    // Close only 1-pixel micro-gaps surrounded by >= 6 of 8 occupied fine cells (never bridges real voids)
+    const fineOccClosed = new Uint8Array(fineN * fineN);
+    for (let fz = 0; fz < fineN; fz++) {
+      for (let fx = 0; fx < fineN; fx++) {
+        const fIdx = fz * fineN + fx;
+        if (fineOcc[fIdx]) {
+          fineOccClosed[fIdx] = 1;
+          continue;
+        }
+        let nOcc = 0;
+        for (let dz = -1; dz <= 1; dz++) {
+          const jz = fz + dz;
+          if (jz < 0 || jz >= fineN) continue;
+          for (let dx = -1; dx <= 1; dx++) {
+            if (dx === 0 && dz === 0) continue;
+            const jx = fx + dx;
+            if (jx < 0 || jx >= fineN) continue;
+            if (fineOcc[jz * fineN + jx]) nOcc++;
+          }
+        }
+        if (nOcc >= 6) fineOccClosed[fIdx] = 1;
+      }
+    }
+
+    const isFineSurfaceOccupied = (wx, wz) => {
+      if (wx < minX || wx > maxX || wz < minZ || wz > maxZ) return false;
+      if (isPointInsideAnyWaterPolyXZ(wx, wz, waterPolys2D)) return false;
+      const fx = Math.min(fineN - 1, Math.max(0, Math.floor((wx - minX) / fineStepX)));
+      const fz = Math.min(fineN - 1, Math.max(0, Math.floor((wz - minZ) / fineStepZ)));
+      if (!fineOccClosed[fz * fineN + fx]) return false;
+      // Also require at least 7 of 9 cells in the 3x3 fine neighborhood to be occupied so arrows never sit on void rims
+      let localOcc = 0;
+      for (let dz = -1; dz <= 1; dz++) {
+        const jz = fz + dz;
+        if (jz < 0 || jz >= fineN) continue;
+        for (let dx = -1; dx <= 1; dx++) {
+          const jx = fx + dx;
+          if (jx < 0 || jx >= fineN) continue;
+          if (fineOccClosed[jz * fineN + jx]) localOcc++;
+        }
+      }
+      return localOcc >= 7;
+    };
+
     const minYGrid = new Float32Array(nx * nz);
     const sumYGrid = new Float32Array(nx * nz);
+    const sumXGrid = new Float32Array(nx * nz);
+    const sumZGrid = new Float32Array(nx * nz);
     const cntGrid = new Uint32Array(nx * nz);
     minYGrid.fill(Infinity);
 
@@ -1394,29 +1543,31 @@
       const idx = iz * nx + ix;
       if (wy < minYGrid[idx]) minYGrid[idx] = wy;
       sumYGrid[idx] += wy;
+      sumXGrid[idx] += wx;
+      sumZGrid[idx] += wz;
       cntGrid[idx] += 1;
     }
 
-    // Bare-surface elevation per occupied cell (rejects tree crowns / light poles)
+    // Bare-surface elevation per occupied cell (requires >= 3 real mesh vertices; never extrapolates into voids)
     const rawH = new Float32Array(nx * nz);
     const validCell = new Uint8Array(nx * nz);
     for (let idx = 0; idx < nx * nz; idx++) {
-      if (cntGrid[idx] > 0 && Number.isFinite(minYGrid[idx])) {
+      if (cntGrid[idx] >= 3 && Number.isFinite(minYGrid[idx])) {
         const meanY = sumYGrid[idx] / cntGrid[idx];
         rawH[idx] = 0.78 * minYGrid[idx] + 0.22 * meanY;
         validCell[idx] = 1;
       }
     }
 
-    // 3x3 smoothing over occupied cells + fill only isolated 1-cell interior gaps (>=5 occupied neighbors)
+    // 3x3 smoothing strictly over occupied cells ONLY (never fills empty/un-scanned cells!)
     const smoothH = new Float32Array(nx * nz);
     const smoothValid = new Uint8Array(nx * nz);
     for (let iz = 0; iz < nz; iz++) {
       for (let ix = 0; ix < nx; ix++) {
         const idx = iz * nx + ix;
+        if (!validCell[idx]) continue;
         let wSum = 0;
         let hSum = 0;
-        let nCnt = 0;
         for (let dz = -1; dz <= 1; dz++) {
           const jz = iz + dz;
           if (jz < 0 || jz >= nz) continue;
@@ -1428,31 +1579,56 @@
               const w = dx === 0 && dz === 0 ? 2.5 : 1.0;
               hSum += rawH[nIdx] * w;
               wSum += w;
-              if (!(dx === 0 && dz === 0)) nCnt++;
             }
           }
         }
-        if (validCell[idx] || nCnt >= 5) {
-          smoothH[idx] = wSum > 0 ? hSum / wSum : rawH[idx];
-          smoothValid[idx] = 1;
-        }
+        smoothH[idx] = wSum > 0 ? hSum / wSum : rawH[idx];
+        smoothValid[idx] = 1;
       }
     }
 
     const arrows = [];
-    for (let iz = 0; iz < nz; iz++) {
-      for (let ix = 0; ix < nx; ix++) {
+    const maxStepJump = Math.max(1.8, cellStep * 0.85);
+    for (let iz = 1; iz < nz - 1; iz++) {
+      for (let ix = 1; ix < nx - 1; ix++) {
         const idx = iz * nx + ix;
         if (!smoothValid[idx]) continue;
 
-        const ix0 = ix > 0 && smoothValid[iz * nx + (ix - 1)] ? ix - 1 : ix;
-        const ix1 = ix < nx - 1 && smoothValid[iz * nx + (ix + 1)] ? ix + 1 : ix;
-        const iz0 = iz > 0 && smoothValid[(iz - 1) * nx + ix] ? iz - 1 : iz;
-        const iz1 = iz < nz - 1 && smoothValid[(iz + 1) * nx + ix] ? iz + 1 : iz;
-        if (ix0 === ix1 || iz0 === iz1) continue;
+        // Require all 4 cardinal neighbors to be valid occupied cells so arrows never overhang void edges
+        const idxL = iz * nx + (ix - 1);
+        const idxR = iz * nx + (ix + 1);
+        const idxD = (iz - 1) * nx + ix;
+        const idxU = (iz + 1) * nx + ix;
+        if (!smoothValid[idxL] || !smoothValid[idxR] || !smoothValid[idxD] || !smoothValid[idxU]) continue;
 
-        const dzdx = (smoothH[iz * nx + ix1] - smoothH[iz * nx + ix0]) / ((ix1 - ix0) * stepX);
-        const dzdz = (smoothH[iz1 * nx + ix] - smoothH[iz0 * nx + ix]) / ((iz1 - iz0) * stepZ);
+        const hC = smoothH[idx];
+        if (
+          Math.abs(smoothH[idxR] - hC) > maxStepJump ||
+          Math.abs(smoothH[idxL] - hC) > maxStepJump ||
+          Math.abs(smoothH[idxU] - hC) > maxStepJump ||
+          Math.abs(smoothH[idxD] - hC) > maxStepJump
+        ) {
+          continue;
+        }
+
+        // Verify exact arrow placement lies on occupied mesh surface (not over an empty hole inside the cell)
+        const cx0 = minX + (ix + 0.5) * stepX;
+        const cz0 = minZ + (iz + 0.5) * stepZ;
+        const meanX = sumXGrid[idx] / cntGrid[idx];
+        const meanZ = sumZGrid[idx] / cntGrid[idx];
+        let ax = cx0;
+        let az = cz0;
+        if (!isFineSurfaceOccupied(ax, az)) {
+          if (isFineSurfaceOccupied(meanX, meanZ)) {
+            ax = meanX;
+            az = meanZ;
+          } else {
+            continue;
+          }
+        }
+
+        const dzdx = (smoothH[idxR] - smoothH[idxL]) / (2.0 * stepX);
+        const dzdz = (smoothH[idxU] - smoothH[idxD]) / (2.0 * stepZ);
         const slope = Math.hypot(dzdx, dzdz);
         if (!Number.isFinite(slope)) continue;
         if (excludeWalls && slope > 1.0) continue;
@@ -1465,9 +1641,9 @@
         const ratioLabel = slope < 0.0005 ? "<1:999" : `1:${ratioN}`;
 
         arrows.push({
-          x: minX + (ix + 0.5) * stepX,
-          y: smoothH[idx],
-          z: minZ + (iz + 0.5) * stepZ,
+          x: ax,
+          y: hC,
+          z: az,
           ux,
           uz,
           slope,
@@ -1482,16 +1658,21 @@
   }
 
   function renderDrainageAndSlopeVisuals3D(
-    opts = { gridSize: 14, showLabels: true, excludeWalls: true }
+    opts = { gridSize: 20, arrowScale: 1.0, showLabels: true, excludeWalls: true }
   ) {
     if (!studioThree || !studioThree.overlayGroup) return null;
     clearDrainageVisuals3D();
 
-    const gridSize = Number(opts?.gridSize) || Number(STATE.drainageGridSize) || 14;
+    const gridSize = Math.max(8, Math.min(40, Number(opts?.gridSize) || Number(STATE.drainageGridSize) || 20));
+    const arrowScale = Math.max(
+      0.2,
+      Math.min(3.0, Number(opts?.arrowScale) || Number(STATE.drainageArrowScale) || 1.0)
+    );
     const showLabels = opts?.showLabels !== undefined ? Boolean(opts.showLabels) : STATE.drainageShowLabels !== false;
     const excludeWalls =
       opts?.excludeWalls !== undefined ? Boolean(opts.excludeWalls) : STATE.drainageExcludeWalls !== false;
     STATE.drainageGridSize = gridSize;
+    STATE.drainageArrowScale = arrowScale;
     STATE.drainageShowLabels = showLabels;
     STATE.drainageExcludeWalls = excludeWalls;
 
@@ -1518,7 +1699,8 @@
     const linePositions = [];
     const lineColors = [];
 
-    const yLift = Math.max(0.18, cellStep * 0.06);
+    // Default arrow size (arrowScale = 1.0) is 1/5 (0.20x) of the legacy oversized arrows
+    const yLift = Math.max(0.08, cellStep * 0.025);
 
     for (let i = 0; i < arrows.length; i++) {
       const a = arrows[i];
@@ -1533,10 +1715,10 @@
       slopeRatioSum += a.slope;
       if (a.deg > maxSlopeDeg) maxSlopeDeg = a.deg;
 
-      const len = cellStep * tier.lenScale * 0.86;
+      const len = cellStep * tier.lenScale * 0.172 * arrowScale;
       const shaftLen = len * 0.62;
-      const shaftHalfW = Math.max(0.08, cellStep * 0.075);
-      const headHalfW = Math.max(0.20, cellStep * 0.19);
+      const shaftHalfW = Math.max(0.02, cellStep * 0.015 * arrowScale);
+      const headHalfW = Math.max(0.045, cellStep * 0.038 * arrowScale);
 
       // Right-hand perpendicular in XZ plane
       const px = -a.uz;
@@ -1599,7 +1781,7 @@
       ];
       for (let sIdx = 0; sIdx < outlinePts.length; sIdx++) {
         const seg = outlinePts[sIdx];
-        linePositions.push(seg[0], seg[1] + 0.01, seg[2], seg[3], seg[4] + 0.01, seg[5]);
+        linePositions.push(seg[0], seg[1] + 0.005, seg[2], seg[3], seg[4] + 0.005, seg[5]);
         lineColors.push(0.06, 0.09, 0.16, 0.06, 0.09, 0.16);
       }
     }
@@ -1639,15 +1821,15 @@
       grp.add(outlineLines);
     }
 
-    // Add compact 1:N slope ratio badges on a non-overlapping subset of arrows (max 32 sprites)
+    // Add compact 1:N slope ratio badges on a non-overlapping subset of arrows (max 28 sprites)
     if (showLabels && arrows.length > 0) {
       const labelStep = Math.max(1, Math.ceil(arrows.length / 28));
-      const spriteScale = Math.max(1.2, Math.min(3.6, cellStep * 0.48));
+      const spriteScale = Math.max(0.45, Math.min(1.4, cellStep * 0.12 * arrowScale));
       for (let i = 0; i < arrows.length; i += labelStep) {
         const a = arrows[i];
         const tier = a.tier || classifySlopeRatioTier(a.slope);
         const sp = createSlopeRatioSprite(a.ratioLabel, tier.color);
-        sp.position.set(a.x, a.y + yLift + Math.max(0.45, cellStep * 0.16), a.z);
+        sp.position.set(a.x, a.y + yLift + Math.max(0.18, cellStep * 0.05 * arrowScale), a.z);
         sp.scale.set(spriteScale * 1.4, spriteScale * 0.5, 1);
         grp.add(sp);
       }
@@ -1676,12 +1858,14 @@
     setActiveStudioTool("drainage");
     STATE.sidePanelMinimized = false;
 
-    const curGridSize = Number(STATE.drainageGridSize) || 14;
+    const curGridSize = Math.max(8, Math.min(40, Number(STATE.drainageGridSize) || 20));
+    const curArrowScale = Math.max(0.2, Math.min(3.0, Number(STATE.drainageArrowScale) || 1.0));
     const curShowLabels = STATE.drainageShowLabels !== false;
     const curExcludeWalls = STATE.drainageExcludeWalls !== false;
 
     let localStats = renderDrainageAndSlopeVisuals3D({
       gridSize: curGridSize,
+      arrowScale: curArrowScale,
       showLabels: curShowLabels,
       excludeWalls: curExcludeWalls,
     });
@@ -1699,25 +1883,27 @@
         tier_counts: {},
       };
       const total = Math.max(1, Number(s.arrow_count) || 0);
+      const gVal = Math.max(8, Math.min(40, Number(STATE.drainageGridSize) || 20));
+      const aScale = Math.max(0.2, Math.min(3.0, Number(STATE.drainageArrowScale) || 1.0));
       return `
       <div style="font-size:11px;color:var(--ui-text-secondary);margin-bottom:8px;line-height:1.45;">
         ${tr(
-          "於真實 3D 地表模型配置排水流向箭頭：箭頭方向指向下坡排水方向，箭頭長度與階梯色彩代表土木工程坡度比 (1:N，如 1:50、1:100、1:200)。",
-          "Places 3D downhill drainage arrows across the real scan surface: arrow length and stepped color indicate civil engineering slope ratio (1:N, e.g. 1:50, 1:100, 1:200)."
+          "於真實 3D 掃描地表配置排水流向箭頭（自動排除未建模空洞與水域）：箭頭指向下坡方向，長度與階梯色彩代表坡度比 (1:N)。",
+          "Places 3D downhill drainage arrows strictly on scanned terrain (automatically excludes un-scanned voids & water bodies)."
         )}
       </div>
       <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:10px;">
         <div class="gs-metric-box" style="border-left:3px solid #10b981;">
           <div class="lbl">${tr("平均坡度比", "Mean Ratio")}</div>
-          <div class="val" style="color:#10b981;font-family:var(--font-mono);">${s.mean_ratio_label || "—"}</div>
+          <div class="val" id="valDrainageMeanRatio" style="color:#10b981;font-family:var(--font-mono);">${s.mean_ratio_label || "—"}</div>
         </div>
         <div class="gs-metric-box" style="border-left:3px solid #eab308;">
           <div class="lbl">${tr("平均角度", "Mean Angle")}</div>
-          <div class="val" style="color:#eab308;font-family:var(--font-mono);">${s.mean_slope_deg}°</div>
+          <div class="val" id="valDrainageMeanDeg" style="color:#eab308;font-family:var(--font-mono);">${s.mean_slope_deg}°</div>
         </div>
         <div class="gs-metric-box" style="border-left:3px solid #38bdf8;">
           <div class="lbl">${tr("平緩區 (<1:200)", "Flat (<1:200)")}</div>
-          <div class="val" style="color:#38bdf8;font-family:var(--font-mono);">${s.ponding_zone_count}</div>
+          <div class="val" id="valDrainagePondingCnt" style="color:#38bdf8;font-family:var(--font-mono);">${s.ponding_zone_count}</div>
         </div>
       </div>
 
@@ -1725,9 +1911,9 @@
       <div style="background:var(--ui-bg-subtle);border:1px solid var(--ui-border);border-radius:8px;padding:8px 10px;margin-bottom:10px;">
         <div style="display:flex;align-items:center;justify-content:space-between;font-size:11px;font-weight:700;margin-bottom:6px;">
           <span>${tr("階梯坡度比圖例 (Stepped 1:N Legend)", "Stepped Slope Ratio Legend (1:N)")}</span>
-          <span style="color:var(--ui-text-secondary);font-family:var(--font-mono);">${s.arrow_count} ${tr("支箭頭", "arrows")}</span>
+          <span id="lblDrainageArrowTotalCount" style="color:var(--ui-text-secondary);font-family:var(--font-mono);">${s.arrow_count} ${tr("支箭頭", "arrows")}</span>
         </div>
-        <div style="display:flex;flex-direction:column;gap:5px;font-size:11px;">
+        <div id="boxDrainageTierRows" style="display:flex;flex-direction:column;gap:5px;font-size:11px;">
           ${SLOPE_STEPPED_TIERS.map((t) => {
             const cnt = Number((s.tier_counts && s.tier_counts[t.id]) || 0);
             const pct = s.arrow_count ? ((cnt * 100) / total).toFixed(1) : "0.0";
@@ -1739,21 +1925,35 @@
                   <span style="font-family:var(--font-mono);font-weight:700;min-width:82px;">${t.ratioRange}</span>
                   <span style="display:inline-block;height:4px;width:${arrowPx}px;background:${t.color};border-radius:2px;" title="Arrow Length Scale"></span>
                 </div>
-                <span style="font-family:var(--font-mono);color:var(--ui-text-secondary);font-size:10.5px;">${t.pctRange} · <b>${cnt}</b> (${pct}%)</span>
+                <span data-drainage-tier-stat="${t.id}" style="font-family:var(--font-mono);color:var(--ui-text-secondary);font-size:10.5px;">${t.pctRange} · <b>${cnt}</b> (${pct}%)</span>
               </div>
             `;
           }).join("")}
         </div>
       </div>
 
-      <div style="display:flex;flex-direction:column;gap:7px;margin-bottom:10px;font-size:11.5px;">
-        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
-          <span>${tr("箭頭網格密度：", "Arrow Grid Density:")}</span>
-          <select id="selDrainageGridSize" class="gs-select" style="width:140px;height:26px;font-size:11px;">
-            <option value="10" ${Number(STATE.drainageGridSize) === 10 ? "selected" : ""}>${tr("疏 (10×10)", "Sparse (10×10)")}</option>
-            <option value="14" ${Number(STATE.drainageGridSize || 14) === 14 ? "selected" : ""}>${tr("標準 (14×14)", "Standard (14×14)")}</option>
-            <option value="18" ${Number(STATE.drainageGridSize) === 18 ? "selected" : ""}>${tr("密 (18×18)", "Dense (18×18)")}</option>
-          </select>
+      <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:10px;font-size:11.5px;background:var(--ui-bg-pill);border:1px solid var(--ui-border-strong);border-radius:8px;padding:8px 10px;">
+        <div>
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:4px;">
+            <span style="font-weight:700;">${tr("箭頭網格密度 (Density)", "Arrow Grid Density")}</span>
+            <span id="lblDrainageDensityVal" style="font-family:var(--font-mono);color:var(--ui-accent);font-weight:700;">${gVal}×${gVal}</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;">
+            <input type="range" id="rngDrainageDensity" class="gs-input" min="8" max="36" step="2" value="${gVal}" style="flex:1;" />
+            <select id="selDrainageGridSize" class="gs-select" style="width:94px;height:24px;font-size:10.5px;">
+              <option value="12" ${gVal <= 12 ? "selected" : ""}>12×12</option>
+              <option value="20" ${gVal > 12 && gVal <= 22 ? "selected" : ""}>20×20</option>
+              <option value="28" ${gVal > 22 && gVal <= 30 ? "selected" : ""}>28×28</option>
+              <option value="36" ${gVal > 30 ? "selected" : ""}>36×36</option>
+            </select>
+          </div>
+        </div>
+        <div>
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:4px;">
+            <span style="font-weight:700;">${tr("箭頭尺寸比例 (Arrow Size)", "Arrow Size Scale")}</span>
+            <span id="lblDrainageArrowSizeVal" style="font-family:var(--font-mono);color:var(--ui-accent);font-weight:700;">${aScale.toFixed(1)}x</span>
+          </div>
+          <input type="range" id="rngDrainageArrowSize" class="gs-input" min="0.2" max="3.0" step="0.1" value="${aScale.toFixed(1)}" style="width:100%;" />
         </div>
         <label style="display:flex;align-items:center;gap:6px;cursor:pointer;">
           <input type="checkbox" id="chkDrainageShowLabels" ${STATE.drainageShowLabels !== false ? "checked" : ""} />
@@ -1770,25 +1970,66 @@
       `;
     };
 
+    const updateDrainagePanelStatsInPlace = (st) => {
+      if (!st) return;
+      const total = Math.max(1, Number(st.arrow_count) || 0);
+      const elMeanR = document.getElementById("valDrainageMeanRatio");
+      if (elMeanR) elMeanR.textContent = st.mean_ratio_label || "—";
+      const elMeanD = document.getElementById("valDrainageMeanDeg");
+      if (elMeanD) elMeanD.textContent = `${st.mean_slope_deg}°`;
+      const elPond = document.getElementById("valDrainagePondingCnt");
+      if (elPond) elPond.textContent = String(st.ponding_zone_count ?? 0);
+      const elTot = document.getElementById("lblDrainageArrowTotalCount");
+      if (elTot) elTot.textContent = `${st.arrow_count} ${tr("支箭頭", "arrows")}`;
+      SLOPE_STEPPED_TIERS.forEach((t) => {
+        const rowEl = document.querySelector(`[data-drainage-tier-stat="${t.id}"]`);
+        if (rowEl) {
+          const cnt = Number((st.tier_counts && st.tier_counts[t.id]) || 0);
+          const pct = st.arrow_count ? ((cnt * 100) / total).toFixed(1) : "0.0";
+          rowEl.innerHTML = `${t.pctRange} · <b>${cnt}</b> (${pct}%)`;
+        }
+      });
+    };
+
     const bindDrainageControls = () => {
-      const refreshVis = () => {
-        const gVal = Number(document.getElementById("selDrainageGridSize")?.value || 14);
+      const refreshVisInPlace = (overrideGrid = null) => {
+        const rngG = document.getElementById("rngDrainageDensity");
+        const selG = document.getElementById("selDrainageGridSize");
+        const gVal = Math.max(
+          8,
+          Math.min(40, Number(overrideGrid || rngG?.value || selG?.value || STATE.drainageGridSize || 20))
+        );
+        if (rngG && Number(rngG.value) !== gVal) rngG.value = String(gVal);
+        if (selG && overrideGrid) selG.value = String(gVal);
+        const aScale = Math.max(
+          0.2,
+          Math.min(3.0, Number(document.getElementById("rngDrainageArrowSize")?.value || STATE.drainageArrowScale || 1.0))
+        );
         const lVal = Boolean(document.getElementById("chkDrainageShowLabels")?.checked);
         const wVal = Boolean(document.getElementById("chkDrainageExcludeWalls")?.checked);
+        const lblG = document.getElementById("lblDrainageDensityVal");
+        if (lblG) lblG.textContent = `${gVal}×${gVal}`;
+        const lblS = document.getElementById("lblDrainageArrowSizeVal");
+        if (lblS) lblS.textContent = `${aScale.toFixed(1)}x`;
         const newSt = renderDrainageAndSlopeVisuals3D({
           gridSize: gVal,
+          arrowScale: aScale,
           showLabels: lVal,
           excludeWalls: wVal,
         });
-        showSidePanel(
-          `<span>${tr("坡度比 (1:N) 與排水箭頭分析", "Slope (1:N) & Drainage Arrows")}</span>`,
-          renderPanelHtml(newSt)
-        );
-        bindDrainageControls();
+        updateDrainagePanelStatsInPlace(newSt);
       };
-      document.getElementById("selDrainageGridSize")?.addEventListener("change", refreshVis);
-      document.getElementById("chkDrainageShowLabels")?.addEventListener("change", refreshVis);
-      document.getElementById("chkDrainageExcludeWalls")?.addEventListener("change", refreshVis);
+      document.getElementById("rngDrainageDensity")?.addEventListener("input", (e) => {
+        refreshVisInPlace(Number(e.target.value));
+      });
+      document.getElementById("selDrainageGridSize")?.addEventListener("change", (e) => {
+        refreshVisInPlace(Number(e.target.value));
+      });
+      document.getElementById("rngDrainageArrowSize")?.addEventListener("input", () => {
+        refreshVisInPlace(null);
+      });
+      document.getElementById("chkDrainageShowLabels")?.addEventListener("change", () => refreshVisInPlace(null));
+      document.getElementById("chkDrainageExcludeWalls")?.addEventListener("change", () => refreshVisInPlace(null));
       document.getElementById("btnClearDrainageVisuals")?.addEventListener("click", () => {
         clearDrainageVisuals3D();
         showToast(tr("已清除 3D 坡度與排水箭頭", "Cleared 3D Slope & Drainage arrows"));
@@ -1805,22 +2046,19 @@
     try {
       const srv = await apiPost("/api/survey/drainage", {
         scan_id: STATE.activeScanId,
-        grid_size: Number(STATE.drainageGridSize) || 14,
+        grid_size: Number(STATE.drainageGridSize) || 20,
         exclude_walls: STATE.drainageExcludeWalls !== false,
       });
       if (srv && srv.status === "ok") {
         STATE.lastDrainageResult = srv;
         if (STATE.activeTool === "drainage" && (!localStats || localStats.arrow_count === 0)) {
           localStats = renderDrainageAndSlopeVisuals3D({
-            gridSize: Number(STATE.drainageGridSize) || 14,
+            gridSize: Number(STATE.drainageGridSize) || 20,
+            arrowScale: Number(STATE.drainageArrowScale) || 1.0,
             showLabels: STATE.drainageShowLabels !== false,
             excludeWalls: STATE.drainageExcludeWalls !== false,
           });
-          showSidePanel(
-            `<span>${tr("坡度比 (1:N) 與排水箭頭分析", "Slope (1:N) & Drainage Arrows")}</span>`,
-            renderPanelHtml(localStats)
-          );
-          bindDrainageControls();
+          updateDrainagePanelStatsInPlace(localStats);
         }
       }
     } catch (_) {}
@@ -2126,47 +2364,253 @@
     );
   }
 
-  function bindRtkPhotoInspectorActions(photos, targetTwd, targetLocalPt) {
-    document.querySelectorAll("[data-photo-align-idx]").forEach((btn) => {
-      btn.addEventListener("click", () => {
-        const idx = Number(btn.getAttribute("data-photo-align-idx")) || 0;
-        const p = photos[idx];
-        const curSlider = Number(document.getElementById("rtkPhotoOverlayOpacitySlider")?.value) || 35;
-        if (p) alignStudioCameraToRtkPhoto(p, curSlider);
+  function openPhotoLightboxModal(photoUrl, photoTitle = "", photoMetaText = "", allPhotos = [], curIdx = 0) {
+    if (!photoUrl) return;
+    let modal = document.getElementById("gsPhotoLightboxModal");
+    if (!modal) {
+      modal = document.createElement("div");
+      modal.id = "gsPhotoLightboxModal";
+      modal.style.cssText =
+        "position:fixed;inset:0;z-index:9999;background:rgba(2,6,23,0.92);backdrop-filter:blur(10px);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px;";
+      document.body.appendChild(modal);
+    }
+    const list = Array.isArray(allPhotos) && allPhotos.length > 0 ? allPhotos : [{ url: photoUrl, filename: photoTitle, meta: photoMetaText }];
+    let activeIdx = Math.max(0, Math.min(list.length - 1, Number(curIdx) || 0));
+
+    const renderLightboxContent = () => {
+      const item = list[activeIdx] || { url: photoUrl, filename: photoTitle, meta: photoMetaText };
+      const url = item.url || photoUrl;
+      const fname = item.filename || photoTitle || "RTK_Photo.jpg";
+      const meta =
+        item.meta ||
+        photoMetaText ||
+        (item.camera_twd97_e !== undefined
+          ? `E:${item.camera_twd97_e}m | N:${item.camera_twd97_n}m | H:+${item.camera_twd97_h}m | RTK σ=${item.rtk_h_sigma_cm || 1.2}cm`
+          : "");
+      modal.innerHTML = `
+        <div style="width:min(1120px,95vw);display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:10px;color:#f8fafc;">
+          <div style="min-width:0;">
+            <div style="font-size:14px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">📷 ${escapeHtml(fname)}</div>
+            <div style="font-size:11.5px;color:#94a3b8;font-family:var(--font-mono);">${escapeHtml(meta)}</div>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;flex-shrink:0;">
+            ${
+              list.length > 1
+                ? `<button type="button" class="gs-top-btn" id="btnLightboxPrev" style="height:30px;padding:0 10px;">◀ ${tr("上一張", "Prev")}</button>
+                   <span style="font-size:11.5px;font-family:var(--font-mono);color:#cbd5e1;">${activeIdx + 1} / ${list.length}</span>
+                   <button type="button" class="gs-top-btn" id="btnLightboxNext" style="height:30px;padding:0 10px;">${tr("下一張", "Next")} ▶</button>`
+                : ""
+            }
+            <a class="gs-top-btn accent" href="${escapeHtml(url)}" download="${escapeHtml(fname)}" style="height:30px;padding:0 12px;text-decoration:none;display:inline-flex;align-items:center;gap:5px;">
+              <span>⬇ ${tr("下載照片", "Download")}</span>
+            </a>
+            <button type="button" class="gs-top-btn" id="btnLightboxClose" style="height:30px;padding:0 12px;">✕ ${tr("關閉", "Close")}</button>
+          </div>
+        </div>
+        <div style="position:relative;width:min(1120px,95vw);height:min(76vh,760px);background:#0f172a;border:1px solid rgba(148,163,184,0.28);border-radius:12px;display:flex;align-items:center;justify-content:center;overflow:hidden;box-shadow:0 24px 60px rgba(0,0,0,0.65);">
+          <img id="imgLightboxMain" src="${escapeHtml(url)}" alt="${escapeHtml(fname)}" style="max-width:100%;max-height:100%;object-fit:contain;transition:transform 0.18s ease;cursor:zoom-in;" />
+        </div>
+      `;
+      modal.style.display = "flex";
+
+      let zoomed = false;
+      const imgEl = modal.querySelector("#imgLightboxMain");
+      imgEl?.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        zoomed = !zoomed;
+        imgEl.style.transform = zoomed ? "scale(1.85)" : "scale(1)";
+        imgEl.style.cursor = zoomed ? "zoom-out" : "zoom-in";
       });
-    });
-    document.querySelectorAll("[data-photo-project-idx]").forEach((btn) => {
-      btn.addEventListener("click", () => {
-        const idx = Number(btn.getAttribute("data-photo-project-idx")) || 0;
-        const p = photos[idx];
-        if (p) alignStudioCameraToRtkPhoto(p, 55);
+      modal.querySelector("#btnLightboxClose")?.addEventListener("click", () => {
+        modal.style.display = "none";
       });
-    });
-    document.getElementById("rtkPhotoOverlayOpacitySlider")?.addEventListener("input", (e) => {
-      const pct = Math.max(0, Math.min(90, Number(e.target.value) || 0));
-      STATE.photoOverlayOpacity = pct / 100.0;
-      const lbl = document.getElementById("lblRtkPhotoOverlayOpacity");
-      if (lbl) lbl.textContent = `${pct}%`;
-      const ov = document.getElementById("studioPhotoFrustumOverlay");
-      const img = document.getElementById("studioPhotoFrustumImg");
-      if (ov && img) {
-        if (pct > 0 && photos[0]?.url) {
-          if (!img.getAttribute("src")) img.src = photos[0].url;
-          ov.style.display = "flex";
-          ov.style.opacity = String(STATE.photoOverlayOpacity);
-        } else {
-          ov.style.display = "none";
-        }
+      modal.querySelector("#btnLightboxPrev")?.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        activeIdx = (activeIdx - 1 + list.length) % list.length;
+        renderLightboxContent();
+      });
+      modal.querySelector("#btnLightboxNext")?.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        activeIdx = (activeIdx + 1) % list.length;
+        renderLightboxContent();
+      });
+    };
+
+    modal.onclick = (e) => {
+      if (e.target === modal) modal.style.display = "none";
+    };
+    renderLightboxContent();
+  }
+  window.openPhotoLightboxModal = openPhotoLightboxModal;
+
+  async function attachPhotosToCommentById(commentId, photosToAttach) {
+    const cid = String(commentId || "").trim();
+    const cleanPhotos = (Array.isArray(photosToAttach) ? photosToAttach : [])
+      .filter((p) => p && p.url)
+      .map((p) => ({
+        id: String(p.id || p.filename || ""),
+        filename: String(p.filename || "RTK_Photo.jpg"),
+        url: String(p.url || ""),
+        camera_twd97_e: Number(p.camera_twd97_e || 0),
+        camera_twd97_n: Number(p.camera_twd97_n || 0),
+        camera_twd97_h: Number(p.camera_twd97_h || 0),
+        rtk_h_sigma_cm: Number(p.rtk_h_sigma_cm || 1.2),
+      }));
+    if (!cid || !cleanPhotos.length) return false;
+    try {
+      const res = await apiPost("/api/comments/update", {
+        action: "attach_photos",
+        comment_id: cid,
+        scan_id: STATE.activeScanId,
+        append_photos: cleanPhotos,
+      });
+      if (Array.isArray(res?.comments) && STATE.activeScan) {
+        STATE.activeScan.comments = res.comments;
       }
+      await refreshScansCatalog();
+      if (typeof renderCommentPins3D === "function") {
+        renderCommentPins3D();
+      }
+      showToast(
+        tr(
+          `已將 ${cleanPhotos.length} 張 RTK 照片附加至 3D 標註！`,
+          `Attached ${cleanPhotos.length} RTK photo(s) to 3D comment!`
+        )
+      );
+      return true;
+    } catch (err) {
+      showToast(`Attach Photo Error: ${err.message}`);
+      return false;
+    }
+  }
+  window.attachPhotosToCommentById = attachPhotosToCommentById;
+
+  function getSelectedOrDraggedRtkPhotos(photos, fallbackIdx = 0) {
+    const checkedIdxs = [];
+    document.querySelectorAll("[data-rtk-photo-check]:checked").forEach((chk) => {
+      const idx = Number(chk.getAttribute("data-rtk-photo-check"));
+      if (Number.isFinite(idx) && photos[idx]) checkedIdxs.push(idx);
     });
+    if (checkedIdxs.length > 0 && checkedIdxs.includes(fallbackIdx)) {
+      return checkedIdxs.map((i) => photos[i]);
+    }
+    return photos[fallbackIdx] ? [photos[fallbackIdx]] : [];
+  }
+
+  function bindRtkPhotoInspectorActions(photos, targetTwd, targetLocalPt) {
+    document.querySelectorAll("[data-photo-enlarge-idx]").forEach((btn) => {
+      btn.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        const idx = Number(btn.getAttribute("data-photo-enlarge-idx")) || 0;
+        const p = photos[idx];
+        if (p) {
+          openPhotoLightboxModal(
+            p.url,
+            p.filename,
+            `E:${p.camera_twd97_e}m | N:${p.camera_twd97_n}m | H:+${p.camera_twd97_h}m | RTK σ=${p.rtk_h_sigma_cm}cm`,
+            photos,
+            idx
+          );
+        }
+      });
+    });
+    document.querySelectorAll("[data-photo-enlarge-img]").forEach((img) => {
+      img.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        const idx = Number(img.getAttribute("data-photo-enlarge-img")) || 0;
+        const p = photos[idx];
+        if (p) {
+          openPhotoLightboxModal(
+            p.url,
+            p.filename,
+            `E:${p.camera_twd97_e}m | N:${p.camera_twd97_n}m | H:+${p.camera_twd97_h}m | RTK σ=${p.rtk_h_sigma_cm}cm`,
+            photos,
+            idx
+          );
+        }
+      });
+    });
+
+    const updateSelectionCountLabel = () => {
+      const cnt = document.querySelectorAll("[data-rtk-photo-check]:checked").length;
+      const lbl = document.getElementById("lblRtkSelectedPhotosCount");
+      if (lbl) {
+        lbl.textContent = cnt > 0 ? tr(`已選取 ${cnt} 張`, `${cnt} selected`) : tr("可多選拖曳", "Multi-select drag");
+      }
+    };
+    document.querySelectorAll("[data-rtk-photo-check]").forEach((chk) => {
+      chk.addEventListener("change", updateSelectionCountLabel);
+    });
+    document.getElementById("btnRtkSelectAllPhotos")?.addEventListener("click", () => {
+      const allChecks = Array.from(document.querySelectorAll("[data-rtk-photo-check]"));
+      const allChecked = allChecks.length > 0 && allChecks.every((c) => c.checked);
+      allChecks.forEach((c) => {
+        c.checked = !allChecked;
+      });
+      updateSelectionCountLabel();
+    });
+
+    // HTML5 Drag start on each RTK photo card (supports dragging 1 or multiple checked photos onto any comment card or 3D comment pin)
+    document.querySelectorAll(".gs-rtk-photo-card[draggable='true']").forEach((card) => {
+      card.addEventListener("dragstart", (ev) => {
+        const idx = Number(card.getAttribute("data-rtk-photo-idx")) || 0;
+        const batch = getSelectedOrDraggedRtkPhotos(photos, idx);
+        STATE.draggingRtkPhotos = batch;
+        card.classList.add("dragging");
+        try {
+          ev.dataTransfer.effectAllowed = "copy";
+          ev.dataTransfer.setData("application/x-gs-rtk-photos", JSON.stringify(batch));
+          ev.dataTransfer.setData("text/plain", JSON.stringify(batch));
+        } catch (_) {}
+      });
+      card.addEventListener("dragend", () => {
+        card.classList.remove("dragging");
+      });
+    });
+
+    // Drop targets inside the RTK Photo Inspector (existing comments + "New Comment with Photo(s)" drop zone)
+    document.querySelectorAll(".gs-comment-drop-target").forEach((dropEl) => {
+      dropEl.addEventListener("dragover", (ev) => {
+        ev.preventDefault();
+        ev.dataTransfer.dropEffect = "copy";
+        dropEl.classList.add("drag-over");
+      });
+      dropEl.addEventListener("dragleave", () => {
+        dropEl.classList.remove("drag-over");
+      });
+      dropEl.addEventListener("drop", async (ev) => {
+        ev.preventDefault();
+        ev.stopPropagation();
+        dropEl.classList.remove("drag-over");
+        let dropped = STATE.draggingRtkPhotos || [];
+        try {
+          const raw =
+            ev.dataTransfer.getData("application/x-gs-rtk-photos") || ev.dataTransfer.getData("text/plain");
+          if (raw) {
+            const parsed = JSON.parse(raw);
+            if (Array.isArray(parsed) && parsed.length) dropped = parsed;
+          }
+        } catch (_) {}
+        if (!dropped.length) return;
+        const cid = dropEl.getAttribute("data-drop-comment-id");
+        if (cid === "__new__") {
+          STATE.pendingCommentDraftPhotos = dropped.slice();
+          if (typeof openCommentsInspector === "function") {
+            openCommentsInspector(targetLocalPt || STATE.lastInspectedPhotoTargetPt, targetTwd);
+          }
+        } else if (cid) {
+          const ok = await attachPhotosToCommentById(cid, dropped);
+          if (ok && typeof openRtkPhotoInspector === "function" && (targetLocalPt || STATE.lastInspectedPhotoTargetPt)) {
+            openRtkPhotoInspector(targetLocalPt || STATE.lastInspectedPhotoTargetPt);
+          }
+        }
+      });
+    });
+
     document.getElementById("btnClearPhotoFrustums")?.addEventListener("click", () => {
       clearRtkPhotoFrustums3D();
       STATE.photoOverlayOpacity = 0;
-      const slider = document.getElementById("rtkPhotoOverlayOpacitySlider");
-      if (slider) slider.value = "0";
-      const lbl = document.getElementById("lblRtkPhotoOverlayOpacity");
-      if (lbl) lbl.textContent = "0%";
-      showToast(tr("已清除 3D 相機視錐與照片疊圖", "Cleared 3D camera frustums & photo overlay"));
+      showToast(tr("已清除 3D 相機視錐", "Cleared 3D camera frustums"));
     });
   }
 

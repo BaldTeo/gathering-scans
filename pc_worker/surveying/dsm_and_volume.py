@@ -1712,6 +1712,12 @@ class DsmAndVolumeMixin:
                 if hull_mask is not None and np.asarray(hull_mask).shape == grid_full.shape
                 else np.isfinite(grid_full)
             )
+            raw_occ_arr = dsm_data.get("raw_occ")
+            if raw_occ_arr is not None and np.asarray(raw_occ_arr).shape == grid_full.shape:
+                occ_bool = np.asarray(raw_occ_arr, dtype=bool)
+                if binary_erosion is not None:
+                    occ_bool = binary_erosion(occ_bool, structure=np.ones((3, 3), dtype=bool))
+                mask_full = mask_full & occ_bool
             yi = np.linspace(0, grid_full.shape[0] - 1, grid_size).astype(int)
             xi = np.linspace(0, grid_full.shape[1] - 1, grid_size).astype(int)
             grid = grid_full[np.ix_(yi, xi)]

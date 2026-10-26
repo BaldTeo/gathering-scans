@@ -264,6 +264,10 @@ class ScanQueueDB:
                 conn.execute("ALTER TABLE scans ADD COLUMN extra_json TEXT DEFAULT '{}'")
             except Exception:
                 pass
+            try:
+                conn.execute("ALTER TABLE scan_comments ADD COLUMN photos_json TEXT DEFAULT '[]'")
+            except Exception:
+                pass
             conn.executescript(
                 """
                 DROP TRIGGER IF EXISTS trg_preserve_user_scan_name;
@@ -780,8 +784,8 @@ class ScanQueueDB:
                     """
                     INSERT OR REPLACE INTO scan_comments (
                         comment_id, scan_id, author_email, author_name, text,
-                        pos_x, pos_y, pos_z, twd97_e, twd97_n, twd97_h, camera_json, created_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        pos_x, pos_y, pos_z, twd97_e, twd97_n, twd97_h, camera_json, photos_json, created_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         new_cid,
@@ -796,6 +800,7 @@ class ScanQueueDB:
                         float(c.get("twd97_n") or 0.0),
                         float(c.get("twd97_h") or 0.0),
                         c.get("camera_json") or "{}",
+                        c.get("photos_json") or json.dumps(c.get("photos") or [], ensure_ascii=False),
                         c.get("created_at") or "",
                     ),
                 )
@@ -928,8 +933,8 @@ class ScanQueueDB:
                             """
                             INSERT OR REPLACE INTO scan_comments (
                                 comment_id, scan_id, author_name, author_email, text,
-                                pos_x, pos_y, pos_z, twd97_e, twd97_n, twd97_h, camera_json, created_at
-                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                pos_x, pos_y, pos_z, twd97_e, twd97_n, twd97_h, camera_json, photos_json, created_at
+                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                             """,
                             (
                                 c.get("comment_id"),
@@ -944,6 +949,7 @@ class ScanQueueDB:
                                 float(c.get("twd97_n") or 0.0),
                                 float(c.get("twd97_h") or 0.0),
                                 c.get("camera_json") or "{}",
+                                c.get("photos_json") or json.dumps(c.get("photos") or [], ensure_ascii=False),
                                 c.get("created_at") or "",
                             ),
                         )
@@ -1248,6 +1254,61 @@ class ScanQueueDB:
         d["measurements_state"] = st.get("measurements_state") or st
         return d
 
+    @staticmethod
+    def _normalize_comment_photos(raw_photos: Any) -> List[Dict[str, Any]]:
+        if not raw_photos:
+            return []
+        if isinstance(raw_photos, str):
+            try:
+                raw_photos = json.loads(raw_photos)
+            except Exception:
+                return []
+        if not isinstance(raw_photos, list):
+            return []
+        out: List[Dict[str, Any]] = []
+        seen_urls = set()
+        for item in raw_photos:
+            if isinstance(item, str) and item.strip():
+                u = item.strip()
+                if u not in seen_urls:
+                    seen_urls.add(u)
+                    fn = u.split("/")[-1].split("?")[0] or "photo.jpg"
+                    out.append({"url": u, "filename": fn})
+            elif isinstance(item, dict):
+                u = str(item.get("url") or item.get("src") or item.get("data_url") or "").strip()
+                if u and u not in seen_urls:
+                    seen_urls.add(u)
+                    fn = str(item.get("filename") or item.get("name") or u.split("/")[-1].split("?")[0] or "photo.jpg").strip()
+                    p_obj: Dict[str, Any] = {"url": u, "filename": fn}
+                    if item.get("id") is not None:
+                        p_obj["id"] = str(item.get("id"))
+                    for coord_key in ("camera_twd97_e", "camera_twd97_n", "camera_twd97_h", "distance_m"):
+                        if item.get(coord_key) is not None:
+                            try:
+                                p_obj[coord_key] = float(item.get(coord_key))
+                            except (TypeError, ValueError):
+                                pass
+                    if item.get("rtk_h_sigma_cm") is not None:
+                        p_obj["rtk_h_sigma_cm"] = item.get("rtk_h_sigma_cm")
+                    elif item.get("rtk_sigma_cm") is not None:
+                        p_obj["rtk_h_sigma_cm"] = item.get("rtk_sigma_cm")
+                    out.append(p_obj)
+        return out
+
+    def _comment_row_to_dict(self, row: Any) -> Dict[str, Any]:
+        d = dict(row)
+        photos = self._normalize_comment_photos(d.get("photos_json"))
+        if not photos and d.get("camera_json"):
+            try:
+                cam_obj = json.loads(d["camera_json"]) if isinstance(d["camera_json"], str) else d["camera_json"]
+                if isinstance(cam_obj, dict) and cam_obj.get("photos"):
+                    photos = self._normalize_comment_photos(cam_obj.get("photos"))
+            except Exception:
+                pass
+        d["photos"] = photos
+        d["photos_json"] = json.dumps(photos, ensure_ascii=False)
+        return d
+
     def get_scan(self, scan_id: str) -> Optional[Dict[str, Any]]:
         with DB_LOCK, self._connect() as conn:
             row = conn.execute("SELECT * FROM scans WHERE scan_id = ?", (scan_id,)).fetchone()
@@ -1258,7 +1319,7 @@ class ScanQueueDB:
                 "SELECT * FROM scan_comments WHERE scan_id = ? ORDER BY created_at DESC",
                 (scan_id,),
             ).fetchall()
-            res["comments"] = [dict(c) for c in comments]
+            res["comments"] = [self._comment_row_to_dict(c) for c in comments]
             res["comment_count"] = len(res["comments"])
             bms = conn.execute(
                 "SELECT * FROM scan_measurement_bookmarks WHERE scan_id = ? ORDER BY created_at DESC",
@@ -1284,7 +1345,7 @@ class ScanQueueDB:
             ).fetchall()
             comments_by_scan: Dict[str, List[Dict[str, Any]]] = {}
             for c_row in all_comments:
-                c_dict = dict(c_row)
+                c_dict = self._comment_row_to_dict(c_row)
                 sid_c = str(c_dict.get("scan_id") or "")
                 comments_by_scan.setdefault(sid_c, []).append(c_dict)
 
@@ -1402,6 +1463,7 @@ class ScanQueueDB:
     def add_comment(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         comment_id = payload.get("comment_id") or f"cmt_{int(time.time()*1000)}"
         created_at = payload.get("created_at") or datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+        photos = self._normalize_comment_photos(payload.get("photos") or payload.get("photos_json"))
         rec = {
             "comment_id": comment_id,
             "scan_id": payload["scan_id"],
@@ -1415,6 +1477,7 @@ class ScanQueueDB:
             "twd97_n": float(payload.get("twd97_n", 0.0)),
             "twd97_h": float(payload.get("twd97_h", 0.0)),
             "camera_json": json.dumps(payload.get("camera", {})),
+            "photos_json": json.dumps(photos, ensure_ascii=False),
             "created_at": created_at,
         }
         with DB_LOCK, self._connect() as conn:
@@ -1422,16 +1485,16 @@ class ScanQueueDB:
                 """
                 INSERT INTO scan_comments (
                     comment_id, scan_id, author_email, author_name, text,
-                    pos_x, pos_y, pos_z, twd97_e, twd97_n, twd97_h, camera_json, created_at
+                    pos_x, pos_y, pos_z, twd97_e, twd97_n, twd97_h, camera_json, photos_json, created_at
                 ) VALUES (
                     :comment_id, :scan_id, :author_email, :author_name, :text,
-                    :pos_x, :pos_y, :pos_z, :twd97_e, :twd97_n, :twd97_h, :camera_json, :created_at
+                    :pos_x, :pos_y, :pos_z, :twd97_e, :twd97_n, :twd97_h, :camera_json, :photos_json, :created_at
                 )
                 """,
                 rec,
             )
             conn.commit()
-        return rec
+        return self._comment_row_to_dict(rec)
 
     def list_comments(self, scan_id: str) -> List[Dict[str, Any]]:
         with DB_LOCK, self._connect() as conn:
@@ -1439,33 +1502,53 @@ class ScanQueueDB:
                 "SELECT * FROM scan_comments WHERE scan_id = ? ORDER BY created_at DESC",
                 (scan_id,),
             ).fetchall()
-            return [dict(r) for r in rows]
+            return [self._comment_row_to_dict(r) for r in rows]
 
     def get_comment(self, comment_id: str) -> Optional[Dict[str, Any]]:
         with DB_LOCK, self._connect() as conn:
             row = conn.execute("SELECT * FROM scan_comments WHERE comment_id = ?", (comment_id,)).fetchone()
-            return dict(row) if row else None
+            return self._comment_row_to_dict(row) if row else None
 
     def update_comment(
-        self, comment_id: str, text: str, author_name: Optional[str] = None
+        self,
+        comment_id: str,
+        text: Optional[str] = None,
+        author_name: Optional[str] = None,
+        photos: Optional[Any] = None,
+        append_photos: Optional[Any] = None,
     ) -> Optional[Dict[str, Any]]:
-        clean_text = (text or "").strip()
-        if not comment_id or not clean_text:
+        if not comment_id:
             return None
         with DB_LOCK, self._connect() as conn:
-            if author_name and author_name.strip():
-                conn.execute(
-                    "UPDATE scan_comments SET text = ?, author_name = ? WHERE comment_id = ?",
-                    (clean_text, author_name.strip(), comment_id),
-                )
-            else:
-                conn.execute(
-                    "UPDATE scan_comments SET text = ? WHERE comment_id = ?",
-                    (clean_text, comment_id),
-                )
+            existing_row = conn.execute(
+                "SELECT * FROM scan_comments WHERE comment_id = ?", (comment_id,)
+            ).fetchone()
+            if not existing_row:
+                return None
+            existing_dict = self._comment_row_to_dict(existing_row)
+            clean_text = (text or "").strip() if text is not None else ""
+            final_text = clean_text if clean_text else str(existing_dict.get("text") or "").strip()
+            if not final_text and photos is None and append_photos is None:
+                return None
+            final_author = (
+                author_name.strip()
+                if author_name and author_name.strip()
+                else str(existing_dict.get("author_name") or "雲在天")
+            )
+            cur_photos = list(existing_dict.get("photos") or [])
+            if photos is not None:
+                cur_photos = self._normalize_comment_photos(photos)
+            if append_photos is not None:
+                extra_photos = self._normalize_comment_photos(append_photos)
+                cur_photos = self._normalize_comment_photos(cur_photos + extra_photos)
+            photos_json_str = json.dumps(cur_photos, ensure_ascii=False)
+            conn.execute(
+                "UPDATE scan_comments SET text = ?, author_name = ?, photos_json = ? WHERE comment_id = ?",
+                (final_text, final_author, photos_json_str, comment_id),
+            )
             conn.commit()
             row = conn.execute("SELECT * FROM scan_comments WHERE comment_id = ?", (comment_id,)).fetchone()
-            return dict(row) if row else None
+            return self._comment_row_to_dict(row) if row else None
 
     def delete_comment(self, comment_id: str) -> bool:
         with DB_LOCK, self._connect() as conn:
