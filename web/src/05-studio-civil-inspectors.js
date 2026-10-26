@@ -157,12 +157,15 @@
         if (isDel) openLassoDeleteInspector({ armLasso: true });
         else openLassoKeepInspector({ armLasso: true });
       } else if (STATE.activeTool === "area") {
-        STATE.maskBoundaryPoints = lockedPts.map((p) => p.clone());
+        if (typeof renderClosedAreaPolygon === "function") {
+          renderClosedAreaPolygon(lockedPts);
+        }
         showToast(`Area polygon locked (${lockedPts.length} vertices)`);
       } else if (STATE.activeTool === "contours") {
         STATE.maskBoundaryPoints = lockedPts.map((p) => p.clone());
+        STATE.polygonLocked = true;
         showToast(`Mask boundary locked (${lockedPts.length} vertices) — updating Civil3D.dwg & A3 PDF`);
-        openContoursInspector();
+        openContoursInspector(lockedPts);
       }
       syncStudioMobileToolHud();
     }
@@ -254,9 +257,15 @@
           }
         `;
       }
-    } else if (tool === "distance" || tool === "angle" || tool === "profile") {
+    } else if (tool === "distance" || tool === "angle" || tool === "profile" || tool === "section") {
       const toolLabel =
-        tool === "distance" ? tr("距離", "Distance") : tool === "angle" ? tr("角度", "Angle") : tr("斷面", "Profile");
+        tool === "distance"
+          ? tr("距離", "Distance")
+          : tool === "angle"
+          ? tr("角度", "Angle")
+          : tool === "section"
+          ? tr("剖面盒", "Section Box")
+          : tr("斷面", "Profile");
       if (ptsCount === 0) {
         if (window.innerWidth > 768) {
           hud.style.display = "none";
@@ -267,12 +276,14 @@
             ? tr("📏 距離：請點擊起點與終點 (0/2)", "📏 Distance: Tap start & end (0/2)")
             : tool === "angle"
             ? tr("📐 角度：請點擊 3 點量測夾角 (0/3)", "📐 Angle: Tap 3 points (0/3)")
+            : tool === "section"
+            ? tr("📦 剖面盒：請點擊 P1、P2 兩點 (0/2)", "📦 Section Box: Tap P1 & P2 (0/2)")
             : tr("📈 斷面：請點擊 A、B 兩點 (0/2)", "📈 Profile: Tap A & B (0/2)");
         hud.style.display = "flex";
         hud.innerHTML = `
           <span class="gs-mobile-hud-label">${promptText}</span>
           ${
-            tool === "profile"
+            tool === "profile" || tool === "section"
               ? `<button type="button" class="gs-mobile-hud-btn" data-mobile-hud="expand_cat_panel">${
                   STATE.sidePanelMinimized ? tr("▴ 展開面板", "▴ Panel") : tr("▾ 收合面板", "▾ Hide")
                 }</button>`
@@ -286,7 +297,7 @@
           <button type="button" class="gs-mobile-hud-btn" data-mobile-hud="undo_pt">↩ ${tr("復原點", "Undo")}</button>
           <button type="button" class="gs-mobile-hud-btn danger" data-mobile-hud="clear_pts">✕ ${tr("取消", "Cancel")}</button>
           ${
-            tool === "profile"
+            tool === "profile" || tool === "section"
               ? `<button type="button" class="gs-mobile-hud-btn" data-mobile-hud="expand_cat_panel">${
                   STATE.sidePanelMinimized ? tr("▴ 面板", "▴ Panel") : tr("▾ 收合", "▾ Hide")
                 }</button>`
@@ -403,8 +414,7 @@
           };
           pts.forEach((p, idx) => add3DPinMarker(p, idx === 0 ? 0xff3b30 : 0x0284c7, studioThree.overlayGroup, addAreaObj));
           if (pts.length >= 2) {
-            const loopPts = pts.length >= 3 ? [...pts, pts[0]] : pts;
-            const lineGeom = new THREE.BufferGeometry().setFromPoints(loopPts);
+            const lineGeom = new THREE.BufferGeometry().setFromPoints(pts);
             const lineMesh = new THREE.Line(lineGeom, new THREE.LineBasicMaterial({ color: 0x0284c7, depthTest: false }));
             addAreaObj(lineMesh);
           }
@@ -892,22 +902,27 @@
   }
 
   // 3B. Survey Report: Mask Boundary, 3D Elevation Contours, Civil3D.dwg & A3 Ready-to-Print PDF Exporter
-  async function openContoursInspector(forceRebuildPanel = false) {
+  async function openContoursInspector(lockedPts = null) {
     setActiveStudioTool("contours");
-    if (!STATE.measurePoints || STATE.measurePoints.length === 0) {
+    const hasLockedPolygon =
+      (Array.isArray(lockedPts) && lockedPts.length >= 3) ||
+      Boolean(STATE.polygonLocked && Array.isArray(STATE.maskBoundaryPoints) && STATE.maskBoundaryPoints.length >= 3);
+    if (window.innerWidth <= 768) {
+      STATE.sidePanelMinimized = !hasLockedPolygon;
+    } else if (!STATE.measurePoints || STATE.measurePoints.length === 0) {
       STATE.sidePanelMinimized = false;
     }
     const activeScan = STATE.activeScan || STATE.scans.find((s) => s.scan_id === STATE.activeScanId) || {};
     const defaultTitle = `${activeScan.name || STATE.activeScanId} — Topographic Survey`;
     const maskPts =
-      STATE.maskBoundaryPoints && STATE.maskBoundaryPoints.length >= 3
+      Array.isArray(lockedPts) && lockedPts.length >= 3
+        ? lockedPts
+        : STATE.maskBoundaryPoints && STATE.maskBoundaryPoints.length >= 3
         ? STATE.maskBoundaryPoints
-        : STATE.measurePoints && STATE.measurePoints.length >= 3
-        ? STATE.measurePoints
         : [];
 
     const panel = document.getElementById("studioSidePanel");
-    const alreadyOpenForContours = !forceRebuildPanel && panel?.classList.contains("active") && document.getElementById("cntDrawingTitle");
+    const alreadyOpenForContours = panel?.classList.contains("active") && document.getElementById("cntDrawingTitle");
 
     if (!alreadyOpenForContours) {
       const stagedContoursNotice = hasStagedMeshEditsForActiveScan()
@@ -1042,7 +1057,19 @@
 
     const btnGen = document.getElementById("btnGenerateContours");
     if (btnGen) btnGen.onclick = runContours;
-    await runContours();
+    if (hasLockedPolygon) {
+      await runContours();
+    } else {
+      const cntBox = document.getElementById("cntResultContainer");
+      if (cntBox) {
+        cntBox.innerHTML = `<div style="font-size:11.5px;color:var(--ui-text-secondary);background:var(--ui-bg-subtle);border:1px dashed var(--ui-border-strong);border-radius:8px;padding:10px 12px;text-align:center;line-height:1.45;">
+          📐 ${tr(
+            "請在 3D 掃描模型上依序點擊 <b>3 個以上頂點</b> 並點擊紅色起點 <b>V1</b> 閉合範圍以產生等高線（或直接點擊上方按鈕產製全區報告）。",
+            "Click <b>3+ points</b> on the 3D scan and close on red start vertex <b>V1</b> to generate contours (or click Create Survey Report above)."
+          )}
+        </div>`;
+      }
+    }
   }
 
   function drawA3PreviewCanvas(canvas, res) {
@@ -2672,7 +2699,22 @@
 
     add3DPinMarker(p2, 0x0284c7, studioThree.overlayGroup, addProfObj);
     const distM = p1.distanceTo(p2);
-    add2DBadge(p2, tr(`剖面 B · ${distM.toFixed(2)}m`, `Section B · ${distM.toFixed(2)}m`), "#0284c7", { offsetY: -18, isProfile: true });
+    const horizDist = Math.max(0.01, Math.hypot(p2.x - p1.x, p2.z - p1.z));
+    const dh =
+      Array.isArray(samples) && samples.length >= 2
+        ? samples[samples.length - 1].elevation_m - samples[0].elevation_m
+        : p2.y - p1.y;
+    const slopePctStr = ((Math.abs(dh) / horizDist) * 100).toFixed(1);
+    const slopeDhLStr = typeof formatSlopeDhL === "function" ? formatSlopeDhL(dh, horizDist) : "0:1";
+    add2DBadge(
+      p2,
+      tr(
+        `剖面 B · ${distM.toFixed(2)}m · ${slopePctStr}% (${slopeDhLStr})`,
+        `Section B · ${distM.toFixed(2)}m · ${slopePctStr}% (${slopeDhLStr})`
+      ),
+      "#0284c7",
+      { offsetY: -18, isProfile: true }
+    );
 
     // Draw surface-draped 3D profile polyline + straight chord line
     const chordGeo = new THREE.BufferGeometry().setFromPoints([p1, p2]);
@@ -2776,6 +2818,10 @@
       });
     }
 
+    const overallDh = samples.length >= 2 ? Number((samples[samples.length - 1].elevation_m - samples[0].elevation_m).toFixed(3)) : 0;
+    const overallSlopePct = Number(((Math.abs(overallDh) / Math.max(0.01, totalLen)) * 100).toFixed(1));
+    const overallSlopeDhL = typeof formatSlopeDhL === "function" ? formatSlopeDhL(overallDh, totalLen) : "0:1";
+
     return {
       status: "ok",
       scan_id: activeScan.scan_id,
@@ -2783,6 +2829,9 @@
       crs: "TWD97 (121) + TWVD2001",
       total_length_m: Number(totalLen.toFixed(2)),
       max_slope_pct: Number(maxSlopePct.toFixed(1)),
+      overall_dh_m: overallDh,
+      overall_slope_pct: overallSlopePct,
+      overall_slope_dhl: overallSlopeDhL,
       start_twd97: [Number((ce + p1.x).toFixed(3)), Number((cn - p1.z).toFixed(3)), Number((ch + yStart).toFixed(3))],
       end_twd97: [Number((ce + p2.x).toFixed(3)), Number((cn - p2.z).toFixed(3)), Number((ch + yEnd).toFixed(3))],
       samples,
@@ -2797,19 +2846,18 @@
     if (p1 && p2) {
       STATE.profileEndpoints = [p1.clone(), p2.clone()];
     }
+    const hasUserEndpoints = Boolean(
+      (p1 && p2) || (Array.isArray(STATE.profileEndpoints) && STATE.profileEndpoints.length >= 2)
+    );
     if (window.innerWidth <= 768) {
-      // Auto-minimize when opened from dock (p1 === null && p2 === null) so user can tap Section A & B on the 3D scan,
-      // and auto-expand once Section A & B are placed (p1 && p2)!
-      STATE.sidePanelMinimized = !(p1 && p2);
+      STATE.sidePanelMinimized = !hasUserEndpoints;
     } else {
       STATE.sidePanelMinimized = false;
     }
     const resolveEndpoints = () => {
       if (p1 && p2) return [p1, p2];
       if (STATE.profileEndpoints && STATE.profileEndpoints.length >= 2) return STATE.profileEndpoints;
-      const def = getDefaultProfileEndpointsOnStudioMesh();
-      STATE.profileEndpoints = def;
-      return def;
+      return null;
     };
 
     const isMobProfile = window.innerWidth <= 768;
@@ -2847,9 +2895,14 @@
     );
 
     const runProfileCalc = async () => {
+      const eps = resolveEndpoints();
+      if (!eps || eps.length < 2) {
+        showToast(tr("請先在 3D 掃描模型上點擊起點 A 與終點 B", "Please click Start Point A and End Point B on the 3D scan first"));
+        return;
+      }
+      const [ep1, ep2] = eps;
       const btnLbl = document.getElementById("lblComputeProfileBtn");
       if (btnLbl) btnLbl.textContent = tr("取樣計算中...", "Sampling...");
-      const [ep1, ep2] = resolveEndpoints();
 
       // 1. Immediate client-side 3D mesh raycast profile sampling (anchored 100% to live Three.js mesh)
       const clientRes = computeClientMeshProfile(ep1, ep2);
@@ -3000,7 +3053,20 @@
       });
     }
 
-    await runProfileCalc();
+    if (hasUserEndpoints) {
+      await runProfileCalc();
+    } else {
+      const readoutEl = document.getElementById("profileHoverReadout");
+      if (readoutEl) {
+        readoutEl.innerHTML = `<span style="color:var(--ui-accent);font-weight:700;">⏳ ${tr("等待點選 2 個端點（剖面 A → B）...", "Waiting for 2 points (Section A → B) on 3D scan...")}</span><span>TWVD2001</span>`;
+      }
+      const mBox = document.getElementById("profileMetricsBox");
+      if (mBox) {
+        mBox.innerHTML = `<div style="grid-column:1 / -1;font-size:11.5px;color:var(--ui-text-secondary);background:var(--ui-bg-subtle);border:1px dashed var(--ui-border-strong);border-radius:8px;padding:10px 12px;text-align:center;">
+          📐 ${tr("請在 3D 掃描模型上點擊 <b>起點 A</b> 與 <b>終點 B</b> 建立縱橫斷面", "Click <b>Start Point A</b> and <b>End Point B</b> on the 3D scan to generate the cross-section profile")}
+        </div>`;
+      }
+    }
   }
 
   function drawProfileCanvas(res, hoverIdx = null) {
@@ -3154,6 +3220,16 @@
         : rawDatumLbl;
     ctx.fillText(`--- ${datumLbl}`, padL + 186, 10);
 
+    const overallDh = samples[samples.length - 1].elevation_m - samples[0].elevation_m;
+    const horizLen = Math.max(0.01, Number(res.total_length_m) || 0.01);
+    const overallSlopePct =
+      res.overall_slope_pct !== undefined
+        ? Number(res.overall_slope_pct).toFixed(1)
+        : ((Math.abs(overallDh) / horizLen) * 100).toFixed(1);
+    const overallSlopeDhL =
+      res.overall_slope_dhl ||
+      (typeof formatSlopeDhL === "function" ? formatSlopeDhL(overallDh, horizLen) : "0:1");
+
     // 8. Interactive Hover Crosshair & Readout
     const readoutEl = document.getElementById("profileHoverReadout");
     if (hoverIdx !== null && samples[hoverIdx]) {
@@ -3173,7 +3249,7 @@
         readoutEl.innerHTML = `<span>${tr("樁號", "Sta")} <b>${hs.chainage_m.toFixed(2)}m</b> · ${tr("坡度", "Grade")} <b>${hs.slope_pct}%</b></span><span style="color:var(--ui-accent);">H: <b>+${hs.elevation_m.toFixed(2)}m</b> · ΔZ ${hs.delta_z_m >= 0 ? "+" : ""}${hs.delta_z_m.toFixed(2)}m</span>`;
       }
     } else if (readoutEl) {
-      readoutEl.innerHTML = `<span>A: <b>+${samples[0].elevation_m.toFixed(2)}m</b> &rarr; B: <b>+${samples[samples.length - 1].elevation_m.toFixed(2)}m</b></span><span style="color:var(--ui-accent);">ΔH: <b>${(samples[samples.length - 1].elevation_m - samples[0].elevation_m >= 0 ? "+" : "") + (samples[samples.length - 1].elevation_m - samples[0].elevation_m).toFixed(2)}m</b></span>`;
+      readoutEl.innerHTML = `<span>A→B: <b>${overallSlopePct}% (${overallSlopeDhL})</b></span><span style="color:var(--ui-accent);">ΔH: <b>${(overallDh >= 0 ? "+" : "") + overallDh.toFixed(2)}m</b> · L: <b>${res.total_length_m}m</b></span>`;
     }
     ctx.restore();
 
@@ -3186,16 +3262,16 @@
           <div class="val" style="color:var(--ui-accent);">${res.total_length_m} m</div>
         </div>
         <div class="gs-metric-box">
+          <div class="lbl">${tr("起終點坡度 A→B", "Slope A→B (% & dh:L)")}</div>
+          <div class="val" style="color:#f59e0b;">${overallSlopePct}% (${overallSlopeDhL})</div>
+        </div>
+        <div class="gs-metric-box">
           <div class="lbl">${tr("最大局部坡度", "Max Local Grade")}</div>
           <div class="val">${res.max_slope_pct}%</div>
         </div>
         <div class="gs-metric-box">
           <div class="lbl">${tr("高程範圍 H", "Elev Range H")}</div>
-          <div class="val">+${rawMinZ.toFixed(2)}~+${rawMaxZ.toFixed(2)}m</div>
-        </div>
-        <div class="gs-metric-box">
-          <div class="lbl">${tr("最大高差 ΔZ", "Max Relief ΔZ")}</div>
-          <div class="val">${maxAbsDz.toFixed(2)} m</div>
+          <div class="val">+${rawMinZ.toFixed(2)}~+${rawMaxZ.toFixed(2)}m (ΔZ ${maxAbsDz.toFixed(2)}m)</div>
         </div>
       `;
     }
@@ -3254,13 +3330,34 @@
     }
   }
 
-  // 3E. Section Box Clipping Inspector (Auto-scaled to scan bounds + 6-plane clipping + 3D wireframe box)
-  function openSectionBoxInspector() {
+  // 3E. Section Box Clipping Inspector (Waits for 2 user clicks P1->P2 before creating section box; no random initial section)
+  function openSectionBoxInspector(p1 = null, p2 = null) {
     setActiveStudioTool("section");
-    STATE.sidePanelMinimized = false;
+    if (p1 && p2) {
+      STATE.sectionBoxEndpoints = [p1.clone(), p2.clone()];
+    }
+    const eps =
+      p1 && p2
+        ? [p1, p2]
+        : Array.isArray(STATE.sectionBoxEndpoints) && STATE.sectionBoxEndpoints.length >= 2
+        ? STATE.sectionBoxEndpoints
+        : null;
+    const hasTwoPoints = Boolean(eps && eps.length >= 2);
+    if (window.innerWidth <= 768) {
+      STATE.sidePanelMinimized = !hasTwoPoints;
+    } else {
+      STATE.sidePanelMinimized = false;
+    }
     const rawR = Math.max(20, computeStudioEffectiveBoundingRadius());
     const maxHoriz = Math.ceil(rawR * 1.35);
-    const initHoriz = Math.ceil(rawR * 1.05);
+    const centerX = hasTwoPoints ? 0.5 * (eps[0].x + eps[1].x) : 0;
+    const centerZ = hasTwoPoints ? 0.5 * (eps[0].z + eps[1].z) : 0;
+    const initHorizX = hasTwoPoints
+      ? Math.max(2, Math.min(maxHoriz, Math.ceil(Math.abs(eps[1].x - eps[0].x) * 0.5 + 1)))
+      : Math.ceil(rawR * 1.05);
+    const initHorizZ = hasTwoPoints
+      ? Math.max(2, Math.min(maxHoriz, Math.ceil(Math.abs(eps[1].z - eps[0].z) * 0.5 + 1)))
+      : Math.ceil(rawR * 1.05);
     const maxElev = Math.max(25, Math.ceil(rawR * 0.75));
     const minElev = -Math.max(20, Math.ceil(rawR * 0.55));
     const initYTop = Math.ceil(maxElev * 0.85);
@@ -3270,24 +3367,31 @@
       `<span>${tr("3D 剖面盒裁切器", "Section Box Slicer")}</span>`,
       `
       <div style="font-size:11px;color:var(--ui-text-secondary);background:var(--ui-bg-pill);border:1px solid var(--ui-border-strong);border-radius:7px;padding:7px 9px;margin-bottom:9px;line-height:1.4;">
-        ${tr(
-          `已自動依掃描邊界半徑 (<b>${Math.round(rawR)} m</b>) 調整比例。拖曳滑桿即可沿 X、Z、頂部 (+Y) 與底部 (-Y) 平面進行 3D 剖面裁切。`,
-          `Auto-scaled to scan bounding radius (<b>${Math.round(rawR)} m</b>). Drag sliders to slice the 3D scan along X, Z, Top (+Y), and Bottom (-Y) planes.`
-        )}
+        ${
+          hasTwoPoints
+            ? tr(
+                `已根據您點選的 2 點建立剖面盒。拖曳滑桿可微調 X、Z、頂部 (+Y) 與底部 (-Y) 裁切平面。`,
+                `Section box created from your 2 selected points. Drag sliders below to adjust X, Z, Top (+Y), and Bottom (-Y) planes.`
+              )
+            : tr(
+                `請先在 3D 掃描模型上點擊 <b>2 個端點 (P1 &rarr; P2)</b> 建立剖面裁切範圍（或直接拖曳下方滑桿）。`,
+                `Click <b>2 points (P1 &rarr; P2)</b> on the 3D scan to create a section box (or drag any slider below).`
+              )
+        }
       </div>
       <div class="gs-form-group">
         <div style="display:flex;justify-content:space-between;align-items:center;">
           <label>${tr("東西向裁切範圍 (±X m)", "East-West Clipping Bound (±X m)")}</label>
-          <span id="lblSecClipX" style="font-size:11px;font-family:var(--font-mono);color:var(--ui-accent);">±${initHoriz} m</span>
+          <span id="lblSecClipX" style="font-size:11px;font-family:var(--font-mono);color:var(--ui-accent);">±${initHorizX} m</span>
         </div>
-        <input type="range" min="2" max="${maxHoriz}" step="1" value="${initHoriz}" class="gs-input" id="secClipX" />
+        <input type="range" min="2" max="${maxHoriz}" step="1" value="${initHorizX}" class="gs-input" id="secClipX" />
       </div>
       <div class="gs-form-group">
         <div style="display:flex;justify-content:space-between;align-items:center;">
           <label>${tr("南北向裁切範圍 (±Z m)", "North-South Clipping Bound (±Z m)")}</label>
-          <span id="lblSecClipZ" style="font-size:11px;font-family:var(--font-mono);color:var(--ui-accent);">±${initHoriz} m</span>
+          <span id="lblSecClipZ" style="font-size:11px;font-family:var(--font-mono);color:var(--ui-accent);">±${initHorizZ} m</span>
         </div>
-        <input type="range" min="2" max="${maxHoriz}" step="1" value="${initHoriz}" class="gs-input" id="secClipZ" />
+        <input type="range" min="2" max="${maxHoriz}" step="1" value="${initHorizZ}" class="gs-input" id="secClipZ" />
       </div>
       <div class="gs-form-group">
         <div style="display:flex;justify-content:space-between;align-items:center;">
@@ -3334,7 +3438,7 @@
         opacity: 0.85,
       });
       const wireframe = new THREE.LineSegments(edgesGeo, lineMat);
-      wireframe.position.set(0, 0.5 * (yMin + yMax), 0);
+      wireframe.position.set(centerX, 0.5 * (yMin + yMax), centerZ);
       wireframe.renderOrder = 997;
       studioThree.overlayGroup.add(wireframe);
       studioThree._sectionBoxHelper = wireframe;
@@ -3342,8 +3446,8 @@
 
     const updateClip = () => {
       if (!studioThree) return;
-      const cx = parseFloat(document.getElementById("secClipX")?.value || String(initHoriz));
-      const cz = parseFloat(document.getElementById("secClipZ")?.value || String(initHoriz));
+      const cx = parseFloat(document.getElementById("secClipX")?.value || String(initHorizX));
+      const cz = parseFloat(document.getElementById("secClipZ")?.value || String(initHorizZ));
       let cyTop = parseFloat(document.getElementById("secClipY")?.value || String(initYTop));
       let cyBot = parseFloat(document.getElementById("secClipYMin")?.value || String(initYBot));
       if (cyBot >= cyTop - 0.5) {
@@ -3361,12 +3465,12 @@
       if (lblYMin) lblYMin.textContent = `${cyBot >= 0 ? "+" : ""}${cyBot} m`;
 
       studioThree.renderer.clippingPlanes = [
-        new THREE.Plane(new THREE.Vector3(-1, 0, 0), cx),
-        new THREE.Plane(new THREE.Vector3(1, 0, 0), cx),
+        new THREE.Plane(new THREE.Vector3(-1, 0, 0), centerX + cx),
+        new THREE.Plane(new THREE.Vector3(1, 0, 0), cx - centerX),
         new THREE.Plane(new THREE.Vector3(0, -1, 0), cyTop),
         new THREE.Plane(new THREE.Vector3(0, 1, 0), -cyBot),
-        new THREE.Plane(new THREE.Vector3(0, 0, -1), cz),
-        new THREE.Plane(new THREE.Vector3(0, 0, 1), cz),
+        new THREE.Plane(new THREE.Vector3(0, 0, -1), centerZ + cz),
+        new THREE.Plane(new THREE.Vector3(0, 0, 1), cz - centerZ),
       ];
       updateWireframeBox(cx, cz, cyBot, cyTop);
     };
@@ -3378,6 +3482,8 @@
       STATE.keepSectionBoxClip = Boolean(e.target.checked);
     });
     document.getElementById("btnResetSectionBox")?.addEventListener("click", () => {
+      STATE.sectionBoxEndpoints = [];
+      STATE.measurePoints = [];
       const elX = document.getElementById("secClipX");
       const elZ = document.getElementById("secClipZ");
       const elY = document.getElementById("secClipY");
@@ -3395,10 +3501,20 @@
           studioThree._sectionBoxHelper = null;
         }
       }
-      showToast("Section Box clipping reset");
+      showToast("Section Box clipping reset — click 2 points on scan to create new section box");
     });
 
-    updateClip();
+    if (hasTwoPoints) {
+      updateClip();
+    } else if (studioThree) {
+      studioThree.renderer.clippingPlanes = [];
+      if (studioThree._sectionBoxHelper) {
+        studioThree.overlayGroup?.remove(studioThree._sectionBoxHelper);
+        if (studioThree._sectionBoxHelper.geometry) studioThree._sectionBoxHelper.geometry.dispose();
+        if (studioThree._sectionBoxHelper.material) studioThree._sectionBoxHelper.material.dispose();
+        studioThree._sectionBoxHelper = null;
+      }
+    }
   }
 
   // 3F. 3D Geo-Comments Inspector

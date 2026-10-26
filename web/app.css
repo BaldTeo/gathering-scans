@@ -2749,59 +2749,141 @@ body.gs-auth-locked .gs-main {
   border: 1px solid rgba(255, 255, 255, 0.28);
 }
 
+.autodesk-azimuth-badge {
+  background: rgba(15, 23, 42, 0.88);
+  color: #fde68a;
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 10.5px;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 999px;
+  border: 1px solid rgba(245, 158, 11, 0.72);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.42);
+}
+
 .autodesk-coord-badge {
-  background: rgba(15, 23, 42, 0.90);
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  padding: 3px 7px;
+  border-radius: 7px;
+  background: rgba(15, 23, 42, 0.88);
   color: #f8fafc;
   font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
-  font-size: 11.5px;
+  font-size: 10px;
+  line-height: 1.2;
   font-weight: 600;
   border: 1px solid rgba(56, 189, 248, 0.65);
-  box-shadow: 0 3px 12px rgba(2, 132, 199, 0.35);
-  backdrop-filter: blur(8px);
+  box-shadow: 0 2px 8px rgba(2, 132, 199, 0.3);
+  backdrop-filter: blur(6px);
+}
+
+.autodesk-coord-badge .coord-row {
+  white-space: nowrap;
+}
+
+.autodesk-coord-badge .coord-row-name {
+  color: #38bdf8;
+  font-weight: 800;
+  font-size: 10px;
+  letter-spacing: 0.02em;
 }
 
 .autodesk-coord-badge.pinned {
-  border-color: rgba(16, 185, 129, 0.75);
-  box-shadow: 0 3px 10px rgba(16, 185, 129, 0.3);
+  border-color: rgba(16, 185, 129, 0.78);
+  box-shadow: 0 2px 8px rgba(16, 185, 129, 0.28);
 }
 
-.autodesk-laser-badge {
-  background: linear-gradient(135deg, rgba(15, 23, 42, 0.92), rgba(30, 41, 59, 0.92));
-  color: #ffffff;
-  box-shadow: 0 4px 16px rgba(2, 6, 23, 0.55), 0 0 0 1px rgba(244, 63, 94, 0.45);
-  border: 1.5px solid rgba(251, 113, 133, 0.85);
-  backdrop-filter: blur(8px);
+.autodesk-coord-badge.pinned .coord-row-name {
+  color: #34d399;
 }
 
-.autodesk-laser-badge.pinned {
-  background: linear-gradient(135deg, #be123c, #e11d48);
-  border-color: rgba(255, 255, 255, 0.75);
-  box-shadow: 0 4px 16px rgba(225, 29, 72, 0.58), 0 1px 3px rgba(0, 0, 0, 0.45);
+/* Compact 2-Bubble Laser Labels (Width & Length separate, each with [W/L] [dh:L]) */
+.autodesk-laser-pair {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  transform: translate(-50%, -50%);
+  white-space: nowrap;
+  user-select: none;
+  pointer-events: none;
 }
 
-.autodesk-laser-len-chip {
-  font-size: 11.5px;
-  font-weight: 700;
-  padding: 1px 7px;
-  border-radius: 9px;
-  background: rgba(56, 189, 248, 0.22);
-  border: 1px solid rgba(125, 211, 252, 0.55);
-  color: #e0f2fe;
-}
-
-.autodesk-laser-badge.pinned .autodesk-laser-len-chip {
-  background: rgba(15, 23, 42, 0.36);
-  border-color: rgba(125, 211, 252, 0.75);
-  color: #7dd3fc;
-}
-
-.autodesk-sub-pill {
+.laser-bubble {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 6px;
+  border-radius: 999px;
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
   font-size: 10.5px;
-  font-weight: 600;
-  padding: 1px 6px;
-  border-radius: 8px;
-  background: rgba(0, 0, 0, 0.24);
-  color: rgba(255, 255, 255, 0.95);
+  font-weight: 700;
+  line-height: 1.2;
+  box-shadow: 0 2px 6px rgba(2, 6, 23, 0.48);
+  backdrop-filter: blur(6px);
+}
+
+.laser-bubble-w {
+  background: rgba(15, 23, 42, 0.9);
+  color: #fda4af;
+  border: 1px solid rgba(251, 113, 133, 0.85);
+}
+
+.autodesk-laser-pair.pinned .laser-bubble-w {
+  background: #be123c;
+  color: #ffffff;
+  border-color: rgba(255, 255, 255, 0.75);
+}
+
+.laser-bubble-l {
+  background: rgba(15, 23, 42, 0.9);
+  color: #7dd3fc;
+  border: 1px solid rgba(56, 189, 248, 0.85);
+}
+
+.autodesk-laser-pair.pinned .laser-bubble-l {
+  background: #0369a1;
+  color: #ffffff;
+  border-color: rgba(255, 255, 255, 0.75);
+}
+
+.laser-bubble-slope {
+  background: rgba(15, 23, 42, 0.86);
+  color: #f8fafc;
+  border: 1px solid rgba(148, 163, 184, 0.65);
+  font-size: 10px;
+}
+
+/* Top-Left Semi-Transparent Red-Blue Small North Arrow */
+.gs-north-arrow-compass {
+  position: absolute;
+  top: 62px;
+  left: 16px;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border-radius: 50%;
+  background: rgba(15, 23, 42, 0.46);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.28);
+  backdrop-filter: blur(6px);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  opacity: 0.78;
+  z-index: 88;
+  transition: opacity 0.15s ease, transform 0.15s ease;
+}
+
+.gs-north-arrow-compass:hover {
+  opacity: 0.96;
+  transform: scale(1.06);
+}
+
+/* Mobile Editing Umbrella Button (Hidden on Desktop; Visible on Mobile) */
+.gs-mobile-editing-umbrella-btn {
+  display: none;
 }
 
 .gs-studio-lasso-svg {
@@ -3523,14 +3605,54 @@ body.gs-auth-locked .gs-main {
     display: none;
   }
 
-  .gs-studio-editing-dock,
-  #studioEditingDock {
+  .gs-north-arrow-compass {
+    top: 44px !important;
+    left: 8px !important;
+    width: 30px !important;
+    height: 30px !important;
+  }
+
+  .gs-mobile-editing-umbrella-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    position: absolute;
+    bottom: 52px;
+    left: 6px;
+    height: 36px;
+    padding: 0 10px;
+    border-radius: 999px;
+    background: var(--ui-bg-window);
+    border: 1px solid var(--ui-border-strong);
+    color: var(--ui-text-primary);
+    font-size: 11px;
+    font-weight: 700;
+    box-shadow: var(--ui-shadow-window);
+    backdrop-filter: blur(10px);
+    z-index: 94;
+    cursor: pointer;
+  }
+
+  .gs-mobile-editing-umbrella-btn.active {
+    background: var(--ui-accent);
+    border-color: var(--ui-accent);
+    color: #ffffff;
+  }
+
+  .gs-studio-editing-dock:not(.mobile-expanded),
+  #studioEditingDock:not(.mobile-expanded) {
+    display: none !important;
+  }
+
+  .gs-studio-editing-dock.mobile-expanded,
+  #studioEditingDock.mobile-expanded {
+    display: flex !important;
     top: auto !important;
     bottom: 50px !important;
-    left: 6px !important;
+    left: 74px !important;
     right: 6px !important;
     width: auto !important;
-    max-width: calc(100vw - 12px) !important;
+    max-width: calc(100vw - 80px) !important;
     transform: none !important;
     flex-direction: row !important;
     flex-wrap: nowrap !important;
@@ -3618,7 +3740,6 @@ body.gs-auth-locked .gs-main {
 
   /* 10.8 2D Measurement Badges Mobile Clamping & Anti-Squishing */
   .autodesk-flex-badge,
-  .autodesk-coord-badge,
   .autodesk-laser-badge,
   .autodesk-angle-badge,
   .autodesk-dist-badge,
@@ -3636,6 +3757,18 @@ body.gs-auth-locked .gs-main {
     line-height: 1.3 !important;
     padding: 4px 8px !important;
     box-sizing: border-box !important;
+  }
+
+  .autodesk-coord-badge {
+    width: max-content !important;
+    max-width: min(190px, calc(100vw - 20px)) !important;
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    text-align: left !important;
+    font-size: 9.5px !important;
+    line-height: 1.2 !important;
+    padding: 3px 7px !important;
+    gap: 1px !important;
   }
 
   /* 10.9 First-Person HUD Mobile Fit (Below 2-row .gs-studio-main-pill inside #viewStudio, #btnExitFirstPerson 100% Inside Viewport) */
@@ -3694,7 +3827,30 @@ body.gs-auth-locked .gs-main {
     bottom: 54px !important;
   }
 
-  /* 10.10 Map & Site Timeline View Mobile Refinements (0 Overlap, 0 Vertical Card Clipping, 0 Preview Pill Collision) */
+  /* 10.10 Map & Site Timeline View Mobile Refinements (Map-Only Initial Screen; Timeline+Preview When Site Chosen) */
+  #viewMap:not(.mobile-site-open) .gs-map-left-pane {
+    display: flex !important;
+    flex: 1 1 100% !important;
+    height: 100% !important;
+    width: 100% !important;
+  }
+
+  #viewMap:not(.mobile-site-open) #siteTimelineSplitView {
+    display: none !important;
+  }
+
+  #viewMap.mobile-site-open .gs-map-left-pane {
+    display: none !important;
+  }
+
+  #viewMap.mobile-site-open #siteTimelineSplitView {
+    display: flex !important;
+    flex: 1 1 100% !important;
+    height: 100% !important;
+    width: 100% !important;
+    border-top: none !important;
+  }
+
   .gs-site-timeline-top {
     min-height: 168px !important;
     max-height: 182px !important;
@@ -3703,18 +3859,37 @@ body.gs-auth-locked .gs-main {
 
   .gs-timeline-header {
     padding-bottom: 4px !important;
-    gap: 4px !important;
+    gap: 5px !important;
+    display: flex !important;
+    align-items: center !important;
   }
 
-  .gs-timeline-header > .gs-timeline-header-left,
+  .gs-timeline-header > .gs-timeline-header-left {
+    display: flex !important;
+    flex: 0 0 auto !important;
+    align-items: center !important;
+    gap: 0 !important;
+  }
+
+  .gs-timeline-header-left > div,
   #timelineSiteTitle,
   #btnRenameTimelineSite,
   #timelineSiteCountPill {
     display: none !important;
   }
 
+  #btnCloseSiteTimeline {
+    display: inline-flex !important;
+    min-width: 30px !important;
+    min-height: 30px !important;
+    height: 30px !important;
+    padding: 0 7px !important;
+    flex-shrink: 0 !important;
+  }
+
   .gs-timeline-header-right {
-    width: 100% !important;
+    flex: 1 1 auto !important;
+    width: auto !important;
     display: flex !important;
     align-items: center !important;
     gap: 5px !important;

@@ -18,7 +18,7 @@
   <meta name="twitter:image" content="https://scans.gatheren.cloud/assets/gathering_cloud_logo.png" />
   <!-- GS_SHARE_OG_END -->
   <link rel="icon" type="image/png" href="/assets/gathering_cloud_logo.png" />
-  <link rel="stylesheet" href="/app.css?v=20261026_v146" />
+  <link rel="stylesheet" href="/app.css?v=20261026_v147" />
   <script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
 <body>
@@ -128,6 +128,20 @@
 
   <!-- Main Application Workspace -->
   <main class="gs-main">
+
+    <!-- Top-Left Semi-Transparent Red-Blue Small North Arrow Compass -->
+    <button type="button" class="gs-north-arrow-compass" id="gsNorthArrowCompass" title="指北針（紅＝北 N / 藍＝南 S）— 點擊對齊正北" data-i18n-title-zh="指北針（紅＝北 N / 藍＝南 S）— 點擊對齊正北" data-i18n-title-en="North Arrow (Red = North / Blue = South) — Click to Reset North" aria-label="North Compass">
+      <svg viewBox="0 0 36 36" width="28" height="28" aria-hidden="true">
+        <g id="gsNorthArrowRotor" transform="rotate(0 18 18)">
+          <text x="18" y="6.8" text-anchor="middle" fill="#ef4444" font-size="6.2" font-weight="800" font-family="sans-serif">N</text>
+          <!-- Red North Needle -->
+          <polygon points="18,8 22,18 18,16.2 14,18" fill="#ef4444" />
+          <!-- Blue South Needle -->
+          <polygon points="18,28 22,18 18,19.8 14,18" fill="#3b82f6" />
+          <circle cx="18" cy="18" r="1.6" fill="#f8fafc" />
+        </g>
+      </svg>
+    </button>
 
     <!-- ======================================================================
          VIEW 1: INTERACTIVE GEOSPATIAL MAP OVERVIEW (Requirement 4.a)
@@ -659,6 +673,18 @@
           <span class="bim-dock-label" data-i18n-zh="雷射" data-i18n-en="Laser">雷射</span>
         </button>
 
+        <!-- 5b. Clear All Measurements (Placed right after Laser for immediate mobile accessibility without swiping) -->
+        <button type="button" class="bim-dock-btn" id="btnMeasureClear" title="清除所有量測 (Esc)" data-i18n-title-zh="清除所有量測 (Esc)" data-i18n-title-en="Clear All Measurements (Esc)" aria-label="Clear Measurements">
+          <div class="bim-dock-icon">
+            <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8">
+              <polyline points="3 6 5 6 21 6"/>
+              <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
+              <line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/>
+            </svg>
+          </div>
+          <span class="bim-dock-label" data-i18n-zh="清除" data-i18n-en="Clear">清除</span>
+        </button>
+
         <div class="bim-dock-divider"></div>
 
         <!-- 6. Earthwork Volume -->
@@ -763,18 +789,6 @@
           </div>
           <span class="bim-dock-label" data-i18n-zh="捕捉" data-i18n-en="Snap">捕捉</span>
         </button>
-
-        <!-- 13. Clear All Measurements -->
-        <button type="button" class="bim-dock-btn" id="btnMeasureClear" title="清除所有量測 (Esc)" data-i18n-title-zh="清除所有量測 (Esc)" data-i18n-title-en="Clear All Measurements (Esc)" aria-label="Clear Measurements">
-          <div class="bim-dock-icon">
-            <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8">
-              <polyline points="3 6 5 6 21 6"/>
-              <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
-              <line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/>
-            </svg>
-          </div>
-          <span class="bim-dock-label" data-i18n-zh="清除" data-i18n-en="Clear">清除</span>
-        </button>
       </nav>
 
       <!-- Freehand 2D/3D Lasso Selection SVG Overlay -->
@@ -782,6 +796,15 @@
         <polygon id="studioLassoPoly" class="gs-studio-lasso-poly" points="" />
         <polyline id="studioLassoLine" class="gs-studio-lasso-line" points="" />
       </svg>
+
+      <!-- Mobile Umbrella Toggle Button for Scan Editing Dock (Hidden on Desktop; Collapsed by Default on Mobile) -->
+      <button type="button" class="gs-mobile-editing-umbrella-btn" id="btnMobileEditingUmbrella" title="展開/收合 3D 編輯工具列" data-i18n-title-zh="展開/收合 3D 編輯工具列" data-i18n-title-en="Toggle 3D Scan Editing Tools" aria-expanded="false" aria-controls="studioEditingDock">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M23 12a11.05 11.05 0 0 0-22 0zm-5 7a3 3 0 0 1-6 0v-7"/>
+        </svg>
+        <span class="gs-umbrella-label" data-i18n-zh="編輯" data-i18n-en="Edit">編輯</span>
+        <span class="gs-staged-edits-badge" id="lblMobileUmbrellaStagedBadge" style="display:none;">0</span>
+      </button>
 
       <!-- Separate Permission-Gated Scan Editing Dock (Left Floating Pill — Hidden for Guest / Viewer) -->
       <aside class="gs-studio-editing-dock" id="studioEditingDock" aria-label="Scan Editing &amp; Unification Tools">
@@ -998,12 +1021,6 @@
         </div>
       </div>
 
-      <div class="gs-webhook-bar" style="background:var(--ui-bg-subtle);border:1px solid var(--ui-border);border-radius:8px;padding:8px 12px;margin-bottom:10px;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;">
-        <div style="font-size:11.5px;font-weight:600;color:var(--ui-text-secondary);white-space:nowrap;" data-i18n-zh="Google Chat 聊天室 Webhook：" data-i18n-en="Google Chat Space Webhook:">Google Chat 聊天室 Webhook：</div>
-        <input type="text" class="gs-input" id="inputGChatWebhookUrl" placeholder="https://chat.googleapis.com/v1/spaces/.../messages?key=...&amp;token=..." style="flex:1;font-family:var(--mono);font-size:11px;min-width:180px;" />
-        <button type="button" class="btn-xs primary" id="btnSaveGChatWebhook" title="儲存 Google Chat 聊天室 Webhook 網址" data-i18n-zh="儲存" data-i18n-en="Save" data-i18n-title-zh="儲存 Google Chat 聊天室 Webhook 網址" data-i18n-title-en="Save Google Chat Space Webhook URL">儲存</button>
-      </div>
-
       <div class="gs-queue-actions-bar" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;gap:12px;">
         <div style="font-size:11.5px;color:var(--ui-text-secondary);">
           <span data-i18n-zh="優先權公式" data-i18n-en="Priority formula">優先權公式</span> <code style="color:var(--ui-accent);background:var(--ui-bg-subtle);padding:2px 6px;border-radius:4px;border:1px solid var(--ui-border-strong);">Score = (1000 / N<sub data-i18n-zh="張數" data-i18n-en="imgs">張數</sub><sup>0.65</sup>) + (1.5 × t<sub data-i18n-zh="等待" data-i18n-en="wait">等待</sub><sup>1.15</sup>)</code> <span data-i18n-zh="（被插隊滿 3 次或等待滿 90 分鐘即鎖定最高優先權）。" data-i18n-en="with anti-starvation lock after 3 bypasses or 90m wait.">（被插隊滿 3 次或等待滿 90 分鐘即鎖定最高優先權）。</span>
@@ -1020,12 +1037,6 @@
               <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>
             </svg>
             <span data-i18n-zh="腳本" data-i18n-en="Script">腳本</span>
-          </button>
-          <button type="button" class="btn-xs" id="btnSendTestGChat" title="發送 Google Chat 完成通知卡片測試" data-i18n-title-zh="發送 Google Chat 完成通知卡片測試" data-i18n-title-en="Send Google Chat Readiness Card">
-            <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8">
-              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
-            </svg>
-            <span data-i18n-zh="通知" data-i18n-en="Notify">通知</span>
           </button>
         </div>
       </div>
@@ -1374,6 +1385,21 @@
             </button>
             <button type="button" class="btn-xs primary" id="btnAdminTogglePcDaemon" title="啟動或停止 Windows 工作站背景守護程式" data-i18n-zh="停止背景服務" data-i18n-en="Stop Daemon" data-i18n-title-zh="啟動或停止 Windows 工作站背景守護程式" data-i18n-title-en="Start or Stop the background daemon on the Windows Workstation" style="height:28px;padding:0 12px;font-weight:700;">
               停止背景服務
+            </button>
+          </div>
+        </div>
+
+        <!-- Google Chat Space Webhook Bar (Moved from Queue Modal to Admin Settings) -->
+        <div class="gs-webhook-bar" id="adminGChatWebhookCard" style="background:var(--ui-bg-surface);border:1px solid var(--ui-border-strong);border-radius:8px;padding:8px 12px;margin-bottom:10px;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;">
+          <div style="font-size:11.5px;font-weight:600;color:var(--ui-text-secondary);white-space:nowrap;" data-i18n-zh="Google Chat 聊天室 Webhook：" data-i18n-en="Google Chat Space Webhook:">Google Chat 聊天室 Webhook：</div>
+          <input type="text" class="gs-input" id="inputGChatWebhookUrl" placeholder="https://chat.googleapis.com/v1/spaces/.../messages?key=...&amp;token=..." style="flex:1;font-family:var(--mono);font-size:11px;min-width:180px;" />
+          <div style="display:flex;gap:6px;flex-shrink:0;">
+            <button type="button" class="btn-xs primary" id="btnSaveGChatWebhook" title="儲存 Google Chat 聊天室 Webhook 網址" data-i18n-zh="儲存" data-i18n-en="Save" data-i18n-title-zh="儲存 Google Chat 聊天室 Webhook 網址" data-i18n-title-en="Save Google Chat Space Webhook URL">儲存</button>
+            <button type="button" class="btn-xs" id="btnSendTestGChat" title="發送 Google Chat 完成通知卡片測試" data-i18n-title-zh="發送 Google Chat 完成通知卡片測試" data-i18n-title-en="Send Google Chat Readiness Card">
+              <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8">
+                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+              </svg>
+              <span data-i18n-zh="通知測試" data-i18n-en="Test Notify">通知測試</span>
             </button>
           </div>
         </div>
@@ -1930,14 +1956,14 @@
   <script src="/lib/3d-tiles-renderer.bundle.js"></script>
 
   <!-- Main GatheringScans Bilingual Translation & Modular Application Logic (< 5,000 lines per module) -->
-  <script src="/i18n.js?v=20261026_v146"></script>
-  <script src="/src/01-core-state.js?v=20261026_v146"></script>
-  <script src="/src/02-map-and-timeline.js?v=20261026_v146"></script>
-  <script src="/src/03-studio-core.js?v=20261026_v146"></script>
-  <script src="/src/04-studio-lasso-and-edits.js?v=20261026_v146"></script>
-  <script src="/src/05-studio-civil-inspectors.js?v=20261026_v146"></script>
-  <script src="/src/06-studio-align-and-optimizer.js?v=20261026_v146"></script>
-  <script src="/src/07-compare-and-queue.js?v=20261026_v146"></script>
-  <script src="/app.js?v=20261026_v146"></script>
+  <script src="/i18n.js?v=20261026_v147"></script>
+  <script src="/src/01-core-state.js?v=20261026_v147"></script>
+  <script src="/src/02-map-and-timeline.js?v=20261026_v147"></script>
+  <script src="/src/03-studio-core.js?v=20261026_v147"></script>
+  <script src="/src/04-studio-lasso-and-edits.js?v=20261026_v147"></script>
+  <script src="/src/05-studio-civil-inspectors.js?v=20261026_v147"></script>
+  <script src="/src/06-studio-align-and-optimizer.js?v=20261026_v147"></script>
+  <script src="/src/07-compare-and-queue.js?v=20261026_v147"></script>
+  <script src="/app.js?v=20261026_v147"></script>
 </body>
 </html>

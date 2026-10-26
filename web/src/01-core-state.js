@@ -930,6 +930,14 @@
 
     // 2. Re-run Scan & Scan Editing Dock / Lasso Delete / Crop / Align & Merge / Optimizer / Queue buttons (Editor, Admin, Owner only; hidden for Viewer & Guest)
     setDisp("studioEditingDock", info.canRunWorkflows, "flex");
+    const umbrellaBtn = document.getElementById("btnMobileEditingUmbrella");
+    if (umbrellaBtn) {
+      umbrellaBtn.style.display = info.canRunWorkflows ? "" : "none";
+      if (!info.canRunWorkflows) {
+        umbrellaBtn.classList.remove("active");
+        document.getElementById("studioEditingDock")?.classList.remove("mobile-expanded");
+      }
+    }
     [
       "btnRerunPreviewScan",
       "btnRerunStudioScan",
@@ -970,12 +978,15 @@
     const studioScanSel = document.getElementById("studioScanSelect");
     if (studioScanSel) studioScanSel.disabled = lockSingleScan || Boolean(STATE.multiAlign?.active);
 
-    // 5. Basic measurement tools (Distance, Area, Coordinates, Snap, Clear) honor allowMeasurements
+    // 5. Basic & Guest measurement tools (Distance, Area, Coordinates, Laser, Volume, Snap, Clear) honor allowMeasurements
     [
       "btnMeasureDistance",
       "btnMeasureArea",
       "btnMeasureCoordinates",
       "btnMeasureCoords",
+      "btnMeasureLaser",
+      "btnMeasureVolume",
+      "btnDockVolume",
       "btnMeasureSnap",
       "btnSnapToggle",
       "btnMeasureClear",
@@ -989,17 +1000,14 @@
       coordPillEl.style.display = info.allowMeasurements ? "" : "none";
     }
 
-    // 6. Advanced surveying tools hidden for Guest role (Viewer+ gets full surveying suite)
+    // 6. Advanced surveying tools hidden for Guest role (Viewer+ gets full surveying suite; Guest gets Distance, Area, Coords, Laser & Volume)
     const showAdvancedSurvey = !info.isGuestRole && info.allowMeasurements;
     [
       "btnMeasureAngle",
-      "btnMeasureLaser",
-      "btnMeasureVolume",
       "btnMeasureContours",
       "btnMeasureProfile",
       "btnMeasurePhotos",
       "btnDockCategorize",
-      "btnDockVolume",
       "btnDockContours",
       "btnDockSection",
     ].forEach((id) => setDisp(id, showAdvancedSurvey, "inline-flex"));
@@ -1012,13 +1020,13 @@
     // Hide redundant dock dividers when measurement/surveying groups are hidden (e.g. View & Comment Only links)
     const dockDividers = document.querySelectorAll("#bimBottomDock > .bim-dock-divider");
     if (dockDividers.length >= 3) {
-      dockDividers[0].style.display = showAdvancedSurvey ? "" : "none";
+      dockDividers[0].style.display = info.allowMeasurements ? "" : "none";
       dockDividers[1].style.display = info.allowMeasurements && (showAdvancedSurvey || info.allowComments) ? "" : "none";
       dockDividers[2].style.display = info.allowComments || info.allowMeasurements ? "" : "none";
     }
 
     // 8. If current active Studio tool is no longer permitted after role change, reset cleanly
-    const advTools = new Set(["angle", "laser", "volume", "contours", "profile", "section", "photos", "categorize"]);
+    const advTools = new Set(["angle", "contours", "profile", "section", "photos", "categorize"]);
     const wfTools = new Set(["optimizer", "crs", "generate_scan", "crop", "crop_delete", "align_merge"]);
     if (!info.canRunWorkflows && STATE.multiAlign?.active && typeof exitMultiScanAlignMode === "function") {
       exitMultiScanAlignMode(true);
@@ -1027,7 +1035,7 @@
       (!showAdvancedSurvey && advTools.has(STATE.activeTool)) ||
       (!info.canRunWorkflows && wfTools.has(STATE.activeTool)) ||
       (!info.allowComments && STATE.activeTool === "comments") ||
-      (!info.allowMeasurements && ["distance", "area", "coordinates"].includes(STATE.activeTool))
+      (!info.allowMeasurements && ["distance", "area", "coordinates", "laser", "volume"].includes(STATE.activeTool))
     ) {
       STATE.activeTool = info.allowMeasurements ? "distance" : "orbit";
       document.getElementById("studioSidePanel")?.classList.remove("active");

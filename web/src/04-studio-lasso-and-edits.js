@@ -1088,6 +1088,16 @@
     };
   }
 
+  function formatSlopeDhL(dh, horizLen) {
+    const absDh = Math.abs(Number(dh) || 0);
+    const L = Math.max(0.001, Number(horizLen) || 0);
+    if (absDh < 1e-3) return "0:1";
+    const ratio = L / absDh;
+    const ratioStr = ratio >= 10 ? String(Math.round(ratio)) : ratio.toFixed(1).replace(/\.0$/, "");
+    return `1:${ratioStr}`;
+  }
+  window.formatSlopeDhL = formatSlopeDhL;
+
   function renderLaserVisuals(spanInfo, existingMeas = null) {
     if (!studioThree) return;
     const isTemp = !existingMeas;
@@ -1135,11 +1145,16 @@
 
     if (info.kind === "point_only" || !info.pA || !info.pB) {
       const twd = localToTwd97(info.originPt);
+      const slopeRad = ((Number(info.slopeDeg) || 0) * Math.PI) / 180;
+      const ptDhL = formatSlopeDhL(Math.tan(slopeRad), 1.0);
       add2DBadge(
         info.originPt,
-        `<div class="autodesk-flex-badge autodesk-laser-badge ${isTemp ? "" : "pinned"}">🔴 雷射高程 H ${twd.h >= 0 ? "+" : ""}${twd.h.toFixed(2)} m <span class="autodesk-sub-pill">坡度 ${(info.slopeDeg || 0).toFixed(1)}°</span></div>`,
+        `<div class="autodesk-laser-pair ${isTemp ? "" : "pinned"}">` +
+          `<span class="laser-bubble laser-bubble-w">H ${twd.h >= 0 ? "+" : ""}${twd.h.toFixed(2)} m</span>` +
+          `<span class="laser-bubble laser-bubble-slope">${ptDhL}</span>` +
+        `</div>`,
         "#e11d48",
-        { rawHtml: true, offsetY: isTemp ? -24 : -18, isTempDistance: isTemp }
+        { rawHtml: true, offsetY: isTemp ? -20 : -14, isTempDistance: isTemp }
       );
       updateZoomInvariantElements();
       return;
@@ -1150,6 +1165,8 @@
     add3DPinMarker(info.pA, 0xff2d55, studioThree.overlayGroup, addObj);
     add3DPinMarker(info.pB, 0xff2d55, studioThree.overlayGroup, addObj);
 
+    const crossC = info.crossPt || info.originPt || new THREE.Vector3().addVectors(info.pA, info.pB).multiplyScalar(0.5);
+
     // Secondary Orthogonal Length Laser Beam (orthoPA <-> orthoPB, vivid sky-blue) + 90° intersection tick
     if (info.orthoPA && info.orthoPB && info.orthoLength) {
       addLaserBeam(info.orthoPA, info.orthoPB, 0x38bdf8, 1.40, 0.88);
@@ -1157,7 +1174,6 @@
       add3DPinMarker(info.orthoPB, 0x38bdf8, studioThree.overlayGroup, addObj);
 
       // Draw crisp 90° right-angle symbol at intersection of Width & Length axes
-      const crossC = info.crossPt || new THREE.Vector3().addVectors(info.pA, info.pB).multiplyScalar(0.5);
       const uW = new THREE.Vector3().subVectors(info.pB, info.pA).setY(0);
       const uL = new THREE.Vector3().subVectors(info.orthoPB, info.orthoPA).setY(0);
       if (uW.lengthSq() > 1e-4 && uL.lengthSq() > 1e-4) {
@@ -1187,43 +1203,45 @@
       add3DPinMarker(info.ceilPt, 0xf59e0b, studioThree.overlayGroup, addObj);
     }
 
-    const mid = new THREE.Vector3().addVectors(info.pA, info.pB).multiplyScalar(0.5);
-    const labelAnchor = mid.clone().lerp(info.originPt, 0.55);
-
-    let titlePrefix = "路寬";
-    const subParts = [];
-    if (info.kind === "room") {
-      titlePrefix = "室內 寬";
-      if (info.areaM2) subParts.push(`面積 ${info.areaM2.toFixed(1)} m²`);
-      if (info.ceilHeight) subParts.push(`淨高 ${info.ceilHeight.toFixed(2)} m`);
-    } else if (info.kind === "pool") {
-      titlePrefix = "寬";
-      if (info.areaM2) subParts.push(`面積 ${info.areaM2.toFixed(1)} m²`);
-      if (info.pitDepth) subParts.push(`深 ${info.pitDepth.toFixed(2)} m`);
-    } else if (info.kind === "corridor" || info.kind === "wall_span") {
-      titlePrefix = "淨寬";
-      if (info.ceilHeight) subParts.push(`淨高 ${info.ceilHeight.toFixed(2)} m`);
-    } else {
-      titlePrefix = "路寬";
-      if (Number.isFinite(info.crossSlopePct)) {
-        subParts.push(`橫坡 ${info.crossSlopePct.toFixed(1)}%`);
-      }
-      if (info.ceilHeight) {
-        subParts.push(`淨高 ${info.ceilHeight.toFixed(2)} m`);
-      }
-    }
-
-    const lenChipHtml = info.orthoLength
-      ? `<span class="autodesk-laser-len-chip">× 長 ${info.orthoLength.toFixed(2)} m</span>`
-      : "";
-    const subHtml = subParts.length > 0 ? `<span class="autodesk-sub-pill">${subParts.join(" · ")}</span>` : "";
+    // 1. Width Label: placed on the Width beam away from the cross-section intersection point, with [W ... m] [dh:L] bubbles
+    const dWA = crossC.distanceTo(info.pA);
+    const dWB = crossC.distanceTo(info.pB);
+    const widthFarEnd = dWA >= dWB ? info.pA : info.pB;
+    const widthLabelAnchor = crossC.clone().lerp(widthFarEnd, 0.56);
+    const wDh = Math.abs(info.pB.y - info.pA.y);
+    const wHoriz = Math.max(0.05, Math.hypot(info.pB.x - info.pA.x, info.pB.z - info.pA.z));
+    const wSlopeDhL = formatSlopeDhL(wDh, wHoriz);
 
     add2DBadge(
-      labelAnchor,
-      `<div class="autodesk-flex-badge autodesk-laser-badge ${isTemp ? "" : "pinned"}"><span>🔴 ${titlePrefix} ${info.width.toFixed(2)} m</span>${lenChipHtml}${subHtml}</div>`,
+      widthLabelAnchor,
+      `<div class="autodesk-laser-pair ${isTemp ? "" : "pinned"}">` +
+        `<span class="laser-bubble laser-bubble-w">W ${info.width.toFixed(2)} m</span>` +
+        `<span class="laser-bubble laser-bubble-slope">${wSlopeDhL}</span>` +
+      `</div>`,
       "#e11d48",
-      { rawHtml: true, offsetY: isTemp ? -26 : -16, isTempDistance: isTemp }
+      { rawHtml: true, offsetY: -12, isTempDistance: isTemp }
     );
+
+    // 2. Length Label: separate label placed on the Length beam away from the cross-section intersection point, with [L ... m] [dh:L] bubbles
+    if (info.orthoPA && info.orthoPB && info.orthoLength) {
+      const dLA = crossC.distanceTo(info.orthoPA);
+      const dLB = crossC.distanceTo(info.orthoPB);
+      const lengthFarEnd = dLA >= dLB ? info.orthoPA : info.orthoPB;
+      const lengthLabelAnchor = crossC.clone().lerp(lengthFarEnd, 0.56);
+      const lDh = Math.abs(info.orthoPB.y - info.orthoPA.y);
+      const lHoriz = Math.max(0.05, Math.hypot(info.orthoPB.x - info.orthoPA.x, info.orthoPB.z - info.orthoPA.z));
+      const lSlopeDhL = formatSlopeDhL(lDh, lHoriz);
+
+      add2DBadge(
+        lengthLabelAnchor,
+        `<div class="autodesk-laser-pair ${isTemp ? "" : "pinned"}">` +
+          `<span class="laser-bubble laser-bubble-l">L ${info.orthoLength.toFixed(2)} m</span>` +
+          `<span class="laser-bubble laser-bubble-slope">${lSlopeDhL}</span>` +
+        `</div>`,
+        "#38bdf8",
+        { rawHtml: true, offsetY: -12, isTempDistance: isTemp }
+      );
+    }
 
     updateZoomInvariantElements();
   }
@@ -2136,10 +2154,15 @@
   function syncStagedEditsDockBadge() {
     const cnt = countStagedAdjustments();
     const badge = document.getElementById("lblStagedEditsBadge");
+    const mobBadge = document.getElementById("lblMobileUmbrellaStagedBadge");
     const btn = document.getElementById("btnDockGenerateScan");
     if (badge) {
       badge.textContent = String(cnt);
       badge.style.display = cnt > 0 ? "inline-block" : "none";
+    }
+    if (mobBadge) {
+      mobBadge.textContent = String(cnt);
+      mobBadge.style.display = cnt > 0 ? "inline-block" : "none";
     }
     if (btn) {
       btn.classList.toggle("has-staged", cnt > 0);
@@ -2394,6 +2417,46 @@
     }
     renderAngleVisuals(hoverPt, null);
   }
+
+  function renderClosedAreaPolygon(lockedPts) {
+    if (!studioThree || !Array.isArray(lockedPts) || lockedPts.length < 3) return;
+    if (studioThree.polyPreviewGroup) {
+      while (studioThree.polyPreviewGroup.children.length > 0) {
+        studioThree.polyPreviewGroup.remove(studioThree.polyPreviewGroup.children[0]);
+      }
+    }
+    clearAreaVisualsOnly();
+    const addAreaObj = (m) => {
+      m.userData.isAreaVisual = true;
+      studioThree.overlayGroup.add(m);
+    };
+    lockedPts.forEach((p, idx) => {
+      add3DPinMarker(p, idx === 0 ? 0xff3b30 : 0x0284c7, studioThree.overlayGroup, addAreaObj);
+    });
+    const loopPts = [...lockedPts, lockedPts[0]];
+    const lineGeom = new THREE.BufferGeometry().setFromPoints(loopPts);
+    const lineMesh = new THREE.Line(lineGeom, new THREE.LineBasicMaterial({ color: 0x0284c7, depthTest: false }));
+    addAreaObj(lineMesh);
+
+    let area2 = 0;
+    let perim = 0;
+    for (let i = 0; i < lockedPts.length; i++) {
+      const a = lockedPts[i];
+      const b = lockedPts[(i + 1) % lockedPts.length];
+      area2 += a.x * b.z - b.x * a.z;
+      perim += a.distanceTo(b);
+    }
+    const areaM2 = Math.abs(area2) * 0.5;
+    const areaPing = areaM2 * 0.3025;
+    const centroid = lockedPts.reduce((acc, p) => acc.add(p.clone()), new THREE.Vector3()).divideScalar(lockedPts.length);
+    add2DBadge(
+      centroid,
+      `Area: <b>${areaM2.toFixed(2)} m²</b> (${areaPing.toFixed(2)} 坪) · Perim: ${perim.toFixed(2)}m`,
+      "#cbd5e1",
+      { isArea: true }
+    );
+  }
+  window.renderClosedAreaPolygon = renderClosedAreaPolygon;
 
   function handleStudioCanvasClick(e) {
     const hit = pickStudio3DHit(e.clientX, e.clientY);
@@ -2739,18 +2802,15 @@
 
     if (tool === "area") {
       if (STATE.measurePoints.length >= 3 && isNearStartVertex(pt, STATE.measurePoints[0])) {
-        if (studioThree && studioThree.polyPreviewGroup) {
-          while (studioThree.polyPreviewGroup.children.length > 0) {
-            studioThree.polyPreviewGroup.remove(studioThree.polyPreviewGroup.children[0]);
-          }
-        }
         const lockedPts = STATE.measurePoints.map((p) => p.clone());
         STATE.measurePoints = [];
+        renderClosedAreaPolygon(lockedPts);
         showToast(`Area polygon closed (${lockedPts.length} vertices)`);
         syncStudioMobileToolHud();
         return;
       }
 
+      STATE.polygonLocked = false;
       STATE.measurePoints.push(pt.clone());
       const pts = STATE.measurePoints.slice();
       clearAreaVisualsOnly();
@@ -2762,30 +2822,13 @@
         add3DPinMarker(p, idx === 0 ? 0xff3b30 : 0x0284c7, studioThree.overlayGroup, addAreaObj);
       });
       if (pts.length >= 2) {
-        const loopPts = pts.length >= 3 ? [...pts, pts[0]] : pts;
-        const lineGeom = new THREE.BufferGeometry().setFromPoints(loopPts);
+        // Draw only the open polyline while placing vertices; do not close loop or show Area badge until polygon is closed!
+        const lineGeom = new THREE.BufferGeometry().setFromPoints(pts);
         const lineMesh = new THREE.Line(lineGeom, new THREE.LineBasicMaterial({ color: 0x0284c7, depthTest: false }));
         addAreaObj(lineMesh);
       }
       if (pts.length >= 3) {
-        STATE.maskBoundaryPoints = pts.map((p) => p.clone());
-        let area2 = 0;
-        let perim = 0;
-        for (let i = 0; i < pts.length; i++) {
-          const a = pts[i];
-          const b = pts[(i + 1) % pts.length];
-          area2 += a.x * b.z - b.x * a.z;
-          perim += a.distanceTo(b);
-        }
-        const areaM2 = Math.abs(area2) * 0.5;
-        const areaPing = areaM2 * 0.3025;
-        const centroid = pts.reduce((acc, p) => acc.add(p.clone()), new THREE.Vector3()).divideScalar(pts.length);
-        add2DBadge(
-          centroid,
-          `Area: <b>${areaM2.toFixed(2)} m²</b> (${areaPing.toFixed(2)} 坪) · Perim: ${perim.toFixed(2)}m`,
-          "#cbd5e1",
-          { isArea: true }
-        );
+        showToast(`Area: ${pts.length} vertices placed — click red start point V1 (or press Enter) to close polygon & compute area`);
       }
       syncStudioMobileToolHud();
       return;
@@ -2916,6 +2959,26 @@
       return;
     }
 
+    if (tool === "section") {
+      STATE.measurePoints.push(pt.clone());
+      if (STATE.measurePoints.length === 1) {
+        add3DPinMarker(STATE.measurePoints[0], 0xff3b30);
+        showToast(tr("已設定剖面盒起點 P1 — 請點擊第二點 P2 建立剖面範圍", "Section Pt 1 placed — click 2nd point P2 on the 3D scan to create section box"));
+      } else if (STATE.measurePoints.length >= 2) {
+        const [p1, p2] = STATE.measurePoints;
+        STATE.sectionBoxEndpoints = [p1.clone(), p2.clone()];
+        STATE.measurePoints = [];
+        if (studioThree && studioThree.polyPreviewGroup) {
+          while (studioThree.polyPreviewGroup.children.length > 0) {
+            studioThree.polyPreviewGroup.remove(studioThree.polyPreviewGroup.children[0]);
+          }
+        }
+        openSectionBoxInspector(p1, p2);
+      }
+      syncStudioMobileToolHud();
+      return;
+    }
+
     if (tool === "contours") {
       if (STATE.measurePoints.length >= 3 && isNearStartVertex(pt, STATE.measurePoints[0])) {
         if (studioThree && studioThree.polyPreviewGroup) {
@@ -2923,23 +2986,26 @@
             studioThree.polyPreviewGroup.remove(studioThree.polyPreviewGroup.children[0]);
           }
         }
-        STATE.maskBoundaryPoints = STATE.measurePoints.map((p) => p.clone());
-        showToast(`Mask boundary locked (${STATE.maskBoundaryPoints.length} vertices) — updating Civil3D.dwg & A3 PDF`);
+        const lockedPts = STATE.measurePoints.map((p) => p.clone());
+        STATE.maskBoundaryPoints = lockedPts;
+        STATE.polygonLocked = true;
         STATE.measurePoints = [];
-        openContoursInspector();
+        showToast(`Mask boundary locked (${lockedPts.length} vertices) — generating Contours, Civil3D.dxf & A3 PDF`);
+        openContoursInspector(lockedPts);
         syncStudioMobileToolHud();
         return;
       }
 
+      STATE.polygonLocked = false;
       STATE.measurePoints.push(pt.clone());
       const pts = STATE.measurePoints.slice();
       add3DPinMarker(pt, pts.length === 1 ? 0xff3b30 : 0x0284c7);
 
       if (pts.length >= 3) {
         STATE.maskBoundaryPoints = pts.map((p) => p.clone());
-        openContoursInspector();
+        showToast(`Contours Boundary: ${pts.length} vertices placed — click red start point V1 (or press Enter) to lock & generate contours`);
       } else {
-        showToast(`Mask Boundary Point ${pts.length} placed — click ${3 - pts.length} more point${3 - pts.length === 1 ? "" : "s"} to clip contours`);
+        showToast(`Mask Boundary Point ${pts.length} placed — click ${3 - pts.length} more point${3 - pts.length === 1 ? "" : "s"} to form boundary`);
       }
       syncStudioMobileToolHud();
       return;

@@ -1054,6 +1054,9 @@
           });
         }
       });
+      if (typeof updateNorthArrowCompass === "function") {
+        updateNorthArrowCompass(left.camera);
+      }
       syncCompareLoaderProgress();
       left.renderer.render(left.scene, left.camera);
       right.renderer.render(right.scene, right.camera);

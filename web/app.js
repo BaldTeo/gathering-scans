@@ -1187,6 +1187,22 @@
     if (emailIn) emailIn.disabled = !canManageUsers;
     if (roleSel) roleSel.disabled = !canManageUsers;
 
+    const gchatInp = document.getElementById("inputGChatWebhookUrl");
+    const gchatSaveBtn = document.getElementById("btnSaveGChatWebhook");
+    const gchatTestBtn = document.getElementById("btnSendTestGChat");
+    if (gchatInp) gchatInp.disabled = !canManageUsers;
+    if (gchatSaveBtn) gchatSaveBtn.disabled = !canManageUsers;
+    if (gchatTestBtn) gchatTestBtn.disabled = !canManageUsers;
+    if (gchatInp && (canManageUsers || myInfo.canRunWorkflows)) {
+      apiGet("/api/queue/status")
+        .then((qRes) => {
+          if (qRes && qRes.gchat_webhook_url !== undefined) {
+            gchatInp.value = qRes.gchat_webhook_url;
+          }
+        })
+        .catch(() => {});
+    }
+
     if (!tbody) return;
     let users = [];
     try {
@@ -2192,7 +2208,17 @@
     document.getElementById("viewCompare")?.classList.toggle("active", viewName === "compare");
 
     if (viewName === "map") {
-      document.getElementById("siteTimelineSplitView")?.classList.add("active");
+      const isMobile = typeof window !== "undefined" && window.innerWidth <= 768;
+      if (!isMobile || STATE.siteTimelineOpen) {
+        document.getElementById("siteTimelineSplitView")?.classList.add("active");
+        if (STATE.siteTimelineOpen) {
+          document.getElementById("viewMap")?.classList.add("mobile-site-open");
+        }
+      } else {
+        document.getElementById("viewMap")?.classList.remove("mobile-site-open");
+        document.getElementById("siteTimelineSplitView")?.classList.remove("active");
+      }
+      if (typeof updateNorthArrowCompass === "function") updateNorthArrowCompass(null);
       setTimeout(() => {
         if (gsMap && gsMap.drawMap) gsMap.drawMap();
         syncPreviewRendererContainer();
@@ -2211,6 +2237,17 @@
 
   document.querySelectorAll("#mainModeSwitcher .btn-seg").forEach((btn) => {
     btn.addEventListener("click", () => {
+      if (
+        btn.dataset.view === "map" &&
+        typeof window !== "undefined" &&
+        window.innerWidth <= 768 &&
+        STATE.activeView === "map" &&
+        STATE.siteTimelineOpen &&
+        typeof closeSiteTimeline === "function"
+      ) {
+        closeSiteTimeline();
+        return;
+      }
       switchView(btn.dataset.view);
     });
   });

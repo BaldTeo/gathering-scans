@@ -638,7 +638,7 @@
         gsMap.centerLat = grp.lat;
         gsMap.centerLon = grp.lon;
         gsMap.zoom = Math.max(gsMap.zoom || 12, 13.8);
-        openClusterPopover(grp);
+        openClusterPopover(grp, true);
         gsMap.drawMap();
       });
 
@@ -653,7 +653,7 @@
     } else if (visibleGroups.length > 0) {
       const activeGrp =
         visibleGroups.find((g) => g.project_group === STATE.activeProjectGroup) || visibleGroups[0];
-      openClusterPopover(activeGrp);
+      openClusterPopover(activeGrp, false);
     }
   }
 
@@ -947,7 +947,7 @@
     }, 10);
   }
 
-  function openClusterPopover(grp) {
+  function openClusterPopover(grp, userExplicit = false) {
     const pop = document.getElementById("clusterHoverPopover");
     if (!pop || !grp) return;
     pop.classList.add("active");
@@ -981,8 +981,12 @@
     document.getElementById("popoverGroupSubtitle").textContent =
       `${subGroupLabel} · TWD97 (121) + TWVD2001`;
 
-    // Unified 3-Pane Workbench: keep Top-Right Timeline Cards + Bottom-Right 3D Preview synced when on Map view
-    if (STATE.activeView === "map" || !document.getElementById("siteTimelineTilesTrack")?.children.length) {
+    // Unified 3-Pane Workbench on Desktop; on Mobile (<=768px), keep first page map-only until a site is explicitly chosen
+    const isMobileViewport = typeof window !== "undefined" && window.innerWidth <= 768;
+    const shouldOpenTimeline = isMobileViewport
+      ? Boolean(userExplicit || STATE.siteTimelineOpen)
+      : (STATE.activeView === "map" || !document.getElementById("siteTimelineTilesTrack")?.children.length);
+    if (shouldOpenTimeline) {
       openSiteTimeline(
         grp.project_group,
         STATE.selectedTimelineScanId || STATE.activeScanId || (sortedScans[0] ? sortedScans[0].scan_id : null),
@@ -1325,6 +1329,9 @@
             });
           }
         });
+      }
+      if (typeof updateNorthArrowCompass === "function" && STATE.siteTimelineOpen) {
+        updateNorthArrowCompass(camera);
       }
       renderer.render(scene, camera);
     };
@@ -1806,6 +1813,7 @@
     const isAllProjects = grpName === "__all__";
     STATE.activeProjectGroup = grpName;
     STATE.siteTimelineOpen = true;
+    document.getElementById("viewMap")?.classList.add("mobile-site-open");
 
     // Only switch back to Map view if explicitly requested by user navigation
     if (forceSwitchToMap && STATE.activeView !== "map") {
@@ -2654,10 +2662,14 @@
 
   function closeSiteTimeline() {
     STATE.siteTimelineOpen = false;
+    document.getElementById("viewMap")?.classList.remove("mobile-site-open");
     document.getElementById("siteTimelineSplitView")?.classList.remove("active");
     syncPreviewRendererContainer();
-    if (gsMap && gsMap.drawMap) gsMap.drawMap();
+    setTimeout(() => {
+      if (gsMap && gsMap.drawMap) gsMap.drawMap();
+    }, 30);
   }
+  window.closeSiteTimeline = closeSiteTimeline;
 
   document.getElementById("btnCloseSiteTimeline")?.addEventListener("click", closeSiteTimeline);
 

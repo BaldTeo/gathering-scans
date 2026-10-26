@@ -366,6 +366,89 @@ class GatheringScansTestSuite(unittest.TestCase):
                     checked += 1
         self.assertGreaterEqual(checked, 35)
 
+    def test_08_eleven_ux_and_surveying_fixes(self):
+        """Verify all 11 UX, mobile, surveying, and admin layout fixes."""
+        survey = SurveyingEngine(self.db)
+
+        # 1. Profile slope in % and dh:L
+        prof = survey.compute_cross_section_profile(
+            {
+                "scan_id": "quchi_20261005_merged",
+                "start_point": [304945.0, 2757078.0],
+                "end_point": [304960.0, 2757090.0],
+            }
+        )
+        self.assertEqual(prof["status"], "ok")
+        self.assertIn("overall_dh_m", prof)
+        self.assertIn("overall_slope_pct", prof)
+        self.assertIn("overall_slope_dhl", prof)
+        self.assertTrue(prof["overall_slope_dhl"].startswith(("1:", "0:")))
+
+        with open(os.path.join(BASE_DIR, "web", "index.html"), "r", encoding="utf-8") as f:
+            html = f.read()
+        with open(os.path.join(BASE_DIR, "web", "app.css"), "r", encoding="utf-8") as f:
+            css = f.read()
+        with open(os.path.join(BASE_DIR, "web", "src", "01-core-state.js"), "r", encoding="utf-8") as f:
+            js01 = f.read()
+        with open(os.path.join(BASE_DIR, "web", "src", "02-map-and-timeline.js"), "r", encoding="utf-8") as f:
+            js02 = f.read()
+        with open(os.path.join(BASE_DIR, "web", "src", "03-studio-core.js"), "r", encoding="utf-8") as f:
+            js03 = f.read()
+        with open(os.path.join(BASE_DIR, "web", "src", "04-studio-lasso-and-edits.js"), "r", encoding="utf-8") as f:
+            js04 = f.read()
+        with open(os.path.join(BASE_DIR, "web", "src", "05-studio-civil-inspectors.js"), "r", encoding="utf-8") as f:
+            js05 = f.read()
+
+        # 2. Guest mode includes laser and volume tools
+        self.assertIn('"btnMeasureLaser"', js01)
+        self.assertIn('"btnMeasureVolume"', js01)
+        self.assertIn('"btnDockVolume"', js01)
+
+        # 3. Mobile view first page map-only until site chosen
+        self.assertIn("mobile-site-open", css)
+        self.assertIn("mobile-site-open", js02)
+
+        # 4. Mobile Studio editing dock umbrella button & Clear right after Laser
+        self.assertIn('id="btnMobileEditingUmbrella"', html)
+        laser_idx = html.index('id="btnMeasureLaser"')
+        clear_idx = html.index('id="btnMeasureClear"')
+        vol_idx = html.index('id="btnDockVolume"')
+        self.assertLess(laser_idx, clear_idx)
+        self.assertLess(clear_idx, vol_idx)
+
+        # 5. Laser 2 independent bubble pairs (width & length) with dh:L and no origin label
+        self.assertIn("formatSlopeDhL", js04)
+        self.assertIn("autodesk-laser-pair", js04)
+        self.assertIn("laser-bubble-w", js04)
+        self.assertIn("laser-bubble-l", js04)
+
+        # 6. Top-left semi-transparent red-blue small north arrow
+        self.assertIn('id="gsNorthArrowCompass"', html)
+        self.assertIn("updateNorthArrowCompass", js03)
+
+        # 7. Angle tool: angle once at P2 + azimuths at P1 & P3
+        self.assertIn("autodesk-azimuth-badge", js03)
+        self.assertIn("Az ${az1.toFixed(1)}°", js03)
+        self.assertIn("Az ${az3.toFixed(1)}°", js03)
+
+        # 8. Compact 4-row point coordinate badge (Name; E; N; H)
+        self.assertIn("coord-row coord-row-name", js03)
+
+        # 9. Area tool waits until polygon is closed
+        self.assertIn("renderClosedAreaPolygon", js04)
+
+        # 10. Section, Profile, Volume, Contours wait for user input
+        self.assertIn('tool === "section"', js04)
+        self.assertIn("STATE.sectionBoxEndpoints", js05)
+        self.assertIn("Slope A→B (% & dh:L)", js05)
+
+        # 11. GChat webhook inside Admin Settings modal (#modalOfflineCache) and NOT in #modalQueue
+        queue_start = html.index('id="modalQueue"')
+        offline_start = html.index('id="modalOfflineCache"')
+        webhook_idx = html.index('id="inputGChatWebhookUrl"')
+        self.assertGreater(webhook_idx, offline_start)
+        self.assertNotIn('id="inputGChatWebhookUrl"', html[queue_start:offline_start])
+
 
 if __name__ == "__main__":
     unittest.main()

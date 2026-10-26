@@ -3116,14 +3116,24 @@
       openOptimizerInspector();
     });
     document.getElementById("btnPostMergeVolume")?.addEventListener("click", () => {
+      STATE.measurePoints = [];
+      STATE.polygonLocked = false;
+      STATE.maskBoundaryPoints = [];
+      STATE.cutFillPolygonPoints = [];
+      clearVolumeVisualsOnly();
       setActiveStudioTool("volume");
       openCutFillVolumeInspector();
     });
     document.getElementById("btnPostMergeContours")?.addEventListener("click", () => {
+      STATE.measurePoints = [];
+      STATE.polygonLocked = false;
+      STATE.maskBoundaryPoints = [];
       setActiveStudioTool("contours");
       openContoursInspector();
     });
     document.getElementById("btnPostMergeSection")?.addEventListener("click", () => {
+      STATE.measurePoints = [];
+      STATE.sectionBoxEndpoints = [];
       setActiveStudioTool("section");
       openSectionBoxInspector();
     });
@@ -3204,11 +3214,25 @@
       setActiveStudioTool(tool);
       STATE.measurePoints = [];
 
-      if (tool === "volume") openCutFillVolumeInspector();
-      else if (tool === "contours") openContoursInspector();
-      else if (tool === "profile") openProfileInspector();
-      else if (tool === "section") openSectionBoxInspector();
-      else if (tool === "photos") openRtkPhotoInspector();
+      if (tool === "volume") {
+        STATE.polygonLocked = false;
+        STATE.cutFillPolygonPoints = [];
+        STATE.maskBoundaryPoints = [];
+        clearVolumeVisualsOnly();
+        openCutFillVolumeInspector(null);
+      } else if (tool === "contours") {
+        STATE.polygonLocked = false;
+        STATE.maskBoundaryPoints = [];
+        clearContoursVisualsOnly();
+        openContoursInspector(null);
+      } else if (tool === "profile") {
+        STATE.profileEndpoints = [];
+        clearProfileVisualsOnly();
+        openProfileInspector(null, null);
+      } else if (tool === "section") {
+        STATE.sectionBoxEndpoints = [];
+        openSectionBoxInspector(null, null);
+      } else if (tool === "photos") openRtkPhotoInspector();
       else if (tool === "categorize") openCategorizeInspector();
       else if (tool === "comments") openCommentsInspector();
       else if (tool === "crop_delete") {
@@ -3232,6 +3256,18 @@
       }
       if (typeof syncStudioMobileToolHud === "function") syncStudioMobileToolHud();
     });
+  });
+
+  // Mobile Editing Umbrella Button Toggle (#btnMobileEditingUmbrella -> #studioEditingDock.mobile-expanded)
+  document.getElementById("btnMobileEditingUmbrella")?.addEventListener("click", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const dock = document.getElementById("studioEditingDock");
+    const btn = document.getElementById("btnMobileEditingUmbrella");
+    if (!dock || !btn) return;
+    const expanded = dock.classList.toggle("mobile-expanded");
+    btn.classList.toggle("active", expanded);
+    btn.setAttribute("aria-expanded", expanded ? "true" : "false");
   });
 
   // First-Person Camera Top Bar & HUD Controls + PointerLock Listeners
@@ -3598,8 +3634,14 @@
         if (isDel) openLassoDeleteInspector({ armLasso: true });
         else openLassoKeepInspector({ armLasso: true });
       } else if (STATE.activeTool === "area") {
-        STATE.maskBoundaryPoints = lockedPts.map((p) => p.clone());
+        if (typeof renderClosedAreaPolygon === "function") {
+          renderClosedAreaPolygon(lockedPts);
+        }
         showToast(`Area polygon locked (${lockedPts.length} vertices)`);
+      } else if (STATE.activeTool === "contours") {
+        STATE.maskBoundaryPoints = lockedPts.map((p) => p.clone());
+        showToast(`Mask boundary locked (${lockedPts.length} vertices) — generating Contours, Civil3D.dxf & A3 PDF`);
+        openContoursInspector(lockedPts);
       }
     }
   });
@@ -3632,6 +3674,10 @@
       return;
     }
     if (STATE.activeView !== "studio") switchView("studio", STATE.activeScanId);
+    STATE.measurePoints = [];
+    STATE.polygonLocked = false;
+    STATE.maskBoundaryPoints = [];
+    setActiveStudioTool("contours");
     openContoursInspector();
   });
 

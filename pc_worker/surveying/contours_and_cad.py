@@ -1401,6 +1401,15 @@ class ContoursAndCadMixin:
                 }
             )
 
+        overall_dh = round(float(z_end - z_start), 3)
+        overall_slope_pct = round(abs(overall_dh) / max(total_len, 0.01) * 100.0, 1)
+        if abs(overall_dh) < 1e-3:
+            overall_slope_dhl = "0:1"
+        else:
+            ratio = max(total_len, 0.001) / abs(overall_dh)
+            ratio_str = str(int(round(ratio))) if ratio >= 10.0 else f"{ratio:.1f}".rstrip("0").rstrip(".")
+            overall_slope_dhl = f"1:{ratio_str}"
+
         return {
             "status": "ok",
             "scan_id": scan_id,
@@ -1409,6 +1418,9 @@ class ContoursAndCadMixin:
             "crs": TWD97_TWVD2001_SHORT,
             "total_length_m": round(total_len, 2),
             "max_slope_pct": round(max_slope_pct, 1),
+            "overall_dh_m": overall_dh,
+            "overall_slope_pct": overall_slope_pct,
+            "overall_slope_dhl": overall_slope_dhl,
             "start_twd97": [round(x1, 3), round(y1, 3), round(z_start, 3)],
             "end_twd97": [round(x2, 3), round(y2, 3), round(z_end, 3)],
             "samples": samples,

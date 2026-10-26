@@ -856,7 +856,8 @@
           STATE.activeTool === "contours" ||
           STATE.activeTool === "crop" ||
           STATE.activeTool === "crop_delete" ||
-          (STATE.activeTool === "profile" && STATE.measurePoints.length === 1)) &&
+          (STATE.activeTool === "profile" && STATE.measurePoints.length === 1) ||
+          (STATE.activeTool === "section" && STATE.measurePoints.length === 1)) &&
         STATE.measurePoints.length >= 1
       ) {
         const hoverPt = pickStudio3DPoint(e.clientX, e.clientY);
@@ -919,6 +920,7 @@
       }
       updateStudioTransformGizmo();
       updateZoomInvariantElements();
+      updateNorthArrowCompass(camera);
       renderer.render(scene, camera);
       update2DBadgePositions();
     };
@@ -926,6 +928,63 @@
 
     return studioThree;
   }
+
+  const _northCompassDir = new THREE.Vector3();
+  function updateNorthArrowCompass(overrideCam = null) {
+    const rotor = document.getElementById("gsNorthArrowRotor");
+    if (!rotor) return;
+    let cam = overrideCam;
+    if (!cam) {
+      if (STATE.activeView === "studio" && studioThree?.camera) {
+        cam = studioThree.camera;
+      } else if (STATE.activeView === "compare" && typeof compareCtx !== "undefined" && compareCtx?.left?.camera) {
+        cam = compareCtx.left.camera;
+      } else if (STATE.activeView === "map" && STATE.siteTimelineOpen && typeof previewThree !== "undefined" && previewThree?.camera) {
+        cam = previewThree.camera;
+      }
+    }
+    if (!cam) {
+      rotor.setAttribute("transform", "rotate(0 18 18)");
+      return;
+    }
+    cam.getWorldDirection(_northCompassDir);
+    const camAzDeg = (Math.atan2(_northCompassDir.x, -_northCompassDir.z) * 180) / Math.PI;
+    if (Number.isFinite(camAzDeg)) {
+      rotor.setAttribute("transform", `rotate(${(-camAzDeg).toFixed(1)} 18 18)`);
+    }
+  }
+  window.updateNorthArrowCompass = updateNorthArrowCompass;
+
+  function alignActiveCameraToNorth() {
+    let ctx = null;
+    if (STATE.activeView === "studio" && studioThree) {
+      ctx = studioThree;
+    } else if (STATE.activeView === "map" && typeof previewThree !== "undefined" && previewThree) {
+      ctx = previewThree;
+    } else if (STATE.activeView === "compare" && typeof compareCtx !== "undefined" && compareCtx?.left) {
+      ctx = compareCtx.left;
+    }
+    if (!ctx || !ctx.camera) return;
+    if (STATE.activeView === "studio" && STATE.fpMode?.active) {
+      STATE.fpMode.yaw = 0;
+      return;
+    }
+    if (ctx.controls && ctx.controls.target) {
+      const tgt = ctx.controls.target;
+      const offset = ctx.camera.position.clone().sub(tgt);
+      const horizDist = Math.max(0.5, Math.hypot(offset.x, offset.z));
+      ctx.camera.position.set(tgt.x, tgt.y + offset.y, tgt.z + horizDist);
+      ctx.camera.lookAt(tgt);
+      ctx.controls.update();
+      updateNorthArrowCompass(ctx.camera);
+    }
+  }
+
+  document.getElementById("gsNorthArrowCompass")?.addEventListener("click", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    alignActiveCameraToNorth();
+  });
 
   function buildReferenceTerrainMesh(ctx) {
     while (ctx.fallbackGroup.children.length > 0) {
@@ -2997,6 +3056,11 @@
       );
     }
 
+    // Compute true horizontal azimuths (0°-360° clockwise from North) at P1 and P3 from vertex P2
+    const twd1 = localToTwd97(p1);
+    const twd2 = localToTwd97(p2);
+    const az1 = ((Math.atan2(twd1.e - twd2.e, twd1.n - twd2.n) * 180) / Math.PI + 360) % 360;
+
     if (!p3) {
       const horiz1 = Math.hypot(p2.x - p1.x, p2.z - p1.z);
       const slopePct = horiz1 > 0.05 ? (Math.abs(p2.y - p1.y) / horiz1) * 100 : 0;
@@ -3004,6 +3068,12 @@
       const subPrompt = v2Locked
         ? `頂點已鎖定 · 移動滑鼠預覽夾角`
         : `坡度 ${slopePct.toFixed(1)}% · 點擊確認頂點 P2`;
+      add2DBadge(
+        p1,
+        `<div class="autodesk-azimuth-badge">Az ${az1.toFixed(1)}°</div>`,
+        "#f59e0b",
+        { rawHtml: true, offsetY: -20, isTempDistance: isTemp }
+      );
       add2DBadge(
         p2,
         `<div class="autodesk-flex-badge autodesk-angle-badge">頂點 P2 <span class="autodesk-sub-pill">${subPrompt}</span></div>`,
@@ -3029,7 +3099,10 @@
       );
     }
 
-    // Compute 3D interior angle and 2D horizontal plan angle at Vertex P2
+    const twd3 = localToTwd97(p3);
+    const az3 = ((Math.atan2(twd3.e - twd2.e, twd3.n - twd2.n) * 180) / Math.PI + 360) % 360;
+
+    // Compute 3D interior angle at Vertex P2
     const u1 = p1.clone().sub(p2);
     const u2 = p3.clone().sub(p2);
     const l1Safe = Math.max(1e-6, u1.length());
@@ -3040,16 +3113,6 @@
     const cos3D = Math.max(-1, Math.min(1, u1.dot(u2)));
     const thetaRad = Math.acos(cos3D);
     const deg3D = THREE.MathUtils.radToDeg(thetaRad);
-
-    const h1x = p1.x - p2.x, h1z = p1.z - p2.z;
-    const h2x = p3.x - p2.x, h2z = p3.z - p2.z;
-    const hl1 = Math.hypot(h1x, h1z);
-    const hl2 = Math.hypot(h2x, h2z);
-    let degHoriz = deg3D;
-    if (hl1 > 0.02 && hl2 > 0.02) {
-      const cosH = Math.max(-1, Math.min(1, (h1x * h2x + h1z * h2z) / (hl1 * hl2)));
-      degHoriz = THREE.MathUtils.radToDeg(Math.acos(cosH));
-    }
 
     // Orthonormal basis (u1, wOrtho) in the P1-P2-P3 plane for 3D Sector Arc & Translucent Wedge
     const wOrtho = u2.clone().addScaledVector(u1, -cos3D);
@@ -3111,18 +3174,30 @@
       p2.z + arcR * 1.18 * (Math.cos(midAng) * u1.z + Math.sin(midAng) * wOrtho.z)
     );
 
-    const horizSub = `<span class="autodesk-sub-pill">水平 ${degHoriz.toFixed(1)}°</span>`;
+    // Show interior angle once at center point P2, and show azimuths at P1 and P3
     add2DBadge(
       bisectorPt,
-      `<div class="autodesk-flex-badge autodesk-angle-badge"><span>${deg3D.toFixed(1)}°</span>${horizSub}</div>`,
+      `<div class="autodesk-flex-badge autodesk-angle-badge"><span>${deg3D.toFixed(1)}°</span></div>`,
       "#f59e0b",
       { rawHtml: true, offsetY: -10, isTempDistance: isTemp }
+    );
+    add2DBadge(
+      p1,
+      `<div class="autodesk-azimuth-badge">Az ${az1.toFixed(1)}°</div>`,
+      "#f59e0b",
+      { rawHtml: true, offsetY: -20, isTempDistance: isTemp }
+    );
+    add2DBadge(
+      p3,
+      `<div class="autodesk-azimuth-badge">Az ${az3.toFixed(1)}°</div>`,
+      "#f59e0b",
+      { rawHtml: true, offsetY: -20, isTempDistance: isTemp }
     );
 
     updateZoomInvariantElements();
   }
 
-  // Interactive Hover & Pinned Coordinate Visuals
+  // Interactive Hover & Pinned Coordinate Visuals (Compact 4-Row Format: Name; E; N; H)
   function renderCoordinateVisuals(pt, existingMeas = null) {
     if (!studioThree || !pt) return;
     const isTemp = !existingMeas;
@@ -3144,12 +3219,18 @@
 
     add3DPinMarker(targetPt, isTemp ? 0x0ea5e9 : 0x10b981, studioThree.overlayGroup, addObj);
 
-    const labelPrefix = existingMeas?.label ? `<span style="color:#34d399;font-weight:800;">${escapeHtml(existingMeas.label)}</span>` : `<span style="color:#38bdf8;">📍</span>`;
+    const nextIdx = (STATE.completedMeasurements || []).filter((m) => m.type === "coordinates").length + 1;
+    const ptName = existingMeas?.label || `P${nextIdx}`;
     add2DBadge(
       targetPt,
-      `<div class="autodesk-flex-badge autodesk-coord-badge ${isTemp ? "" : "pinned"}">${labelPrefix}<span>${axX} ${twd.e.toFixed(2)} · ${axY} ${twd.n.toFixed(2)} · ${axZ} ${zSign}${twd.h.toFixed(2)} m</span></div>`,
+      `<div class="autodesk-flex-badge autodesk-coord-badge ${isTemp ? "" : "pinned"}">` +
+        `<div class="coord-row coord-row-name">${escapeHtml(ptName)}</div>` +
+        `<div class="coord-row">${axX} ${twd.e.toFixed(2)}</div>` +
+        `<div class="coord-row">${axY} ${twd.n.toFixed(2)}</div>` +
+        `<div class="coord-row">${axZ} ${zSign}${twd.h.toFixed(2)} m</div>` +
+      `</div>`,
       isTemp ? "#38bdf8" : "#10b981",
-      { rawHtml: true, offsetY: -22, isTempDistance: isTemp }
+      { rawHtml: true, offsetY: -26, isTempDistance: isTemp }
     );
 
     updateZoomInvariantElements();
