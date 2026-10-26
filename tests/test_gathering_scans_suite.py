@@ -794,6 +794,45 @@ class GatheringScansTestSuite(unittest.TestCase):
         self.assertNotIn('fetch("/api/auth/profile"', i18n_js)
         self.assertIn('pref_em not in ("guest", "guest@anonymous", "guest@external", "guest@gatheren.cloud")', srv_py)
 
+    def test_12_map_true_nadir_rgba_ortho_and_single_scan_per_group(self):
+        """Verify true-nadir transparent RGBA orthomosaic generation, exact TWD97->WGS84 bounds, and 1-scan-per-site Map rule."""
+        from PIL import Image
+        import numpy as np
+        from pc_worker.surveying_engine import SurveyingEngine, wgs84_to_twd97, twd97_to_wgs84
+
+        # 1. Exact inverse GRS80 TWD97 -> WGS84 projection round-trip
+        e, n = wgs84_to_twd97(25.13635757, 121.50137316)
+        lat_rt, lon_rt = twd97_to_wgs84(e, n)
+        self.assertAlmostEqual(lat_rt, 25.13635757, places=6)
+        self.assertAlmostEqual(lon_rt, 121.50137316, places=6)
+
+        # 2. Verify pre-generated true-nadir RGBA orthomosaic PNG + JSON bounds for QiHu merged scan
+        s_eng = SurveyingEngine(self.db)
+        sid = "edited_qihu_unified_merged_scan_4_scans__edited_372953"
+        meta = s_eng.get_saved_ortho_meta(sid)
+        self.assertIsNotNone(meta)
+        self.assertGreater(meta["north_lat"], meta["south_lat"])
+        self.assertGreater(meta["east_lon"], meta["west_lon"])
+        self.assertTrue(os.path.isfile(meta["png_path"]))
+        with Image.open(meta["png_path"]) as im:
+            self.assertEqual(im.mode, "RGBA")
+            arr = np.asarray(im)
+            # Exterior corners must be 100% transparent (alpha == 0), while interior scan footprint has opaque pixels (alpha == 255)
+            self.assertEqual(int(arr[0, 0, 3]), 0)
+            self.assertTrue(bool(np.any(arr[:, :, 3] == 255)))
+
+        # 3. Verify frontend strictly draws 1 scan per project_group, uses exact bounds, and never loads tilted /thumbnail
+        with open(os.path.join(BASE_DIR, "web", "src", "08-advanced-surveying-and-qa.js"), "r", encoding="utf-8") as f:
+            js08 = f.read()
+        with open(os.path.join(BASE_DIR, "web", "src", "02-map-and-timeline.js"), "r", encoding="utf-8") as f:
+            js02 = f.read()
+        self.assertIn("pickRepresentativeOrthoScanForGroup", js08)
+        self.assertIn("mapInst.projectLatLon(Number(bounds.north_lat), Number(bounds.west_lon))", js08)
+        self.assertIn("mapInst.projectLatLon(Number(bounds.south_lat), Number(bounds.east_lon))", js08)
+        self.assertNotIn("scan.thumbnail_url || `/api/scans/${encodeURIComponent(sid)}/thumbnail`", js08)
+        self.assertNotIn("ctx.strokeRect(x0, y0, boxW, boxH)", js08)
+        self.assertIn("gsMap.drawMap()", js02)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -376,6 +376,77 @@ class ServerWriteRoutesMixin:
                 )
                 return
 
+            # 1b-2. Save or Regenerate True-Nadir Transparent RGBA Orthomosaic + Geographic Bounds
+            if path.startswith("/api/scans/") and path.endswith("/ortho"):
+                scan_id = re.sub(r"[^a-zA-Z0-9_\-]", "", path[len("/api/scans/") : -len("/ortho")].strip("/"))
+                if not scan_id:
+                    self.send_json({"error": "Invalid scan_id"}, status=400)
+                    return
+                if payload.get("regenerate") or not payload.get("data_url"):
+                    meta = SURVEY.get_or_generate_true_nadir_ortho(scan_id, force=bool(payload.get("force", True)))
+                    if not meta:
+                        self.send_json({"error": f"Failed to generate true-nadir orthomosaic for {scan_id}"}, status=404)
+                        return
+                    clean_bounds = {k: v for k, v in meta.items() if k not in ("png_path", "json_path")}
+                    for ck in list(_VPS_RAM_FALLBACK_CACHE.keys()):
+                        if ck.startswith(f"/api/scans/{scan_id}") or ck.startswith("/api/scans?"):
+                            _VPS_RAM_FALLBACK_CACHE.pop(ck, None)
+                    self.send_json(
+                        {
+                            "status": "ok",
+                            "ok": True,
+                            "scan_id": scan_id,
+                            "ortho_bounds": clean_bounds,
+                            "ortho_url": f"/api/scans/{scan_id}/ortho?t={int(time.time())}",
+                        }
+                    )
+                    return
+
+                data_url = str(payload.get("data_url", "")).strip()
+                if "," not in data_url:
+                    self.send_json({"error": "Invalid data_url"}, status=400)
+                    return
+                raw_bytes = base64.b64decode(data_url.split(",", 1)[1])
+                os.makedirs(THUMBS_DIR, exist_ok=True)
+                out_png = os.path.join(THUMBS_DIR, f"{scan_id}_ortho.png")
+                with open(out_png, "wb") as f:
+                    f.write(raw_bytes)
+                bounds_in = payload.get("ortho_bounds") or {}
+                meta_existing = SURVEY.get_saved_ortho_meta(scan_id) or {}
+                merged_bounds = {
+                    "scan_id": scan_id,
+                    "north_lat": float(bounds_in.get("north_lat") or meta_existing.get("north_lat") or 0.0),
+                    "south_lat": float(bounds_in.get("south_lat") or meta_existing.get("south_lat") or 0.0),
+                    "west_lon": float(bounds_in.get("west_lon") or meta_existing.get("west_lon") or 0.0),
+                    "east_lon": float(bounds_in.get("east_lon") or meta_existing.get("east_lon") or 0.0),
+                    "min_e": float(bounds_in.get("min_e") or meta_existing.get("min_e") or 0.0),
+                    "max_e": float(bounds_in.get("max_e") or meta_existing.get("max_e") or 0.0),
+                    "min_n": float(bounds_in.get("min_n") or meta_existing.get("min_n") or 0.0),
+                    "max_n": float(bounds_in.get("max_n") or meta_existing.get("max_n") or 0.0),
+                    "width": int(bounds_in.get("width") or meta_existing.get("width") or 720),
+                    "height": int(bounds_in.get("height") or meta_existing.get("height") or 720),
+                    "resolution_m": float(bounds_in.get("resolution_m") or meta_existing.get("resolution_m") or 0.2),
+                    "generated_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                }
+                if abs(merged_bounds["north_lat"]) > 0.001 and abs(merged_bounds["west_lon"]) > 0.001:
+                    out_json = os.path.join(THUMBS_DIR, f"{scan_id}_ortho.json")
+                    with open(out_json, "w", encoding="utf-8") as jf:
+                        json.dump(merged_bounds, jf, ensure_ascii=False, indent=2)
+                for ck in list(_VPS_RAM_FALLBACK_CACHE.keys()):
+                    if ck.startswith(f"/api/scans/{scan_id}") or ck.startswith("/api/scans?"):
+                        _VPS_RAM_FALLBACK_CACHE.pop(ck, None)
+                self.send_json(
+                    {
+                        "status": "ok",
+                        "ok": True,
+                        "scan_id": scan_id,
+                        "bytes": len(raw_bytes),
+                        "ortho_bounds": merged_bounds,
+                        "ortho_url": f"/api/scans/{scan_id}/ortho?t={int(time.time())}",
+                    }
+                )
+                return
+
             # 1c. Edit and Save Scan Display Name (persists to SQLite + scan_meta.json on local disk)
             if path == "/api/scans/rename" or (path.startswith("/api/scans/") and path.endswith("/rename")):
                 if not actor_perms.get("can_edit_names"):

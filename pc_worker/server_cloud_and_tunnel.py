@@ -1167,13 +1167,37 @@ class CloudAndTunnelHandlerMixin:
                 pass
             return True
 
-        # 1b. Serve scan thumbnails directly from local VPS /app/data/thumbnails/ if available (24/7 instant PNG for Google Chat)
+        # 1b. Serve scan thumbnails and true-nadir orthomosaics directly from local VPS /app/data/thumbnails/ if available
         if method == "GET" and path.startswith("/api/scans/") and (path.endswith("/thumbnail") or path.endswith("/thumbnail.png")):
             suffix = "/thumbnail.png" if path.endswith("/thumbnail.png") else "/thumbnail"
             req_sid = path[len("/api/scans/") : -len(suffix)].strip("/")
             local_vps_thumb = self._resolve_scan_thumbnail_path(req_sid)
             if local_vps_thumb and os.path.isfile(local_vps_thumb):
                 self._serve_file_with_range(local_vps_thumb, content_type="image/png")
+                return True
+
+        if method == "GET" and path.startswith("/api/scans/") and path.endswith("/ortho-meta"):
+            req_sid = path[len("/api/scans/") : -len("/ortho-meta")].strip("/")
+            saved_ortho = SURVEY.get_saved_ortho_meta(req_sid)
+            if isinstance(saved_ortho, dict) and saved_ortho.get("north_lat") is not None:
+                clean_bounds = {k: v for k, v in saved_ortho.items() if k not in ("png_path", "json_path")}
+                self.send_json(
+                    {
+                        "status": "ok",
+                        "ok": True,
+                        "scan_id": req_sid,
+                        "ortho_bounds": clean_bounds,
+                        "ortho_url": f"/api/scans/{req_sid}/ortho",
+                    }
+                )
+                return True
+
+        if method == "GET" and path.startswith("/api/scans/") and (path.endswith("/ortho") or path.endswith("/ortho.png")):
+            suffix = "/ortho.png" if path.endswith("/ortho.png") else "/ortho"
+            req_sid = path[len("/api/scans/") : -len(suffix)].strip("/")
+            saved_ortho = SURVEY.get_saved_ortho_meta(req_sid)
+            if isinstance(saved_ortho, dict) and saved_ortho.get("png_path") and os.path.isfile(saved_ortho["png_path"]):
+                self._serve_file_with_range(saved_ortho["png_path"], content_type="image/png")
                 return True
 
         # 1c. Serve saved AI Surface & Object Categorization directly from local VPS cache if available
@@ -1493,6 +1517,9 @@ class CloudAndTunnelHandlerMixin:
             or path.startswith("/api/scans/bin")
             or path.endswith("/thumbnail")
             or path.endswith("/thumbnail.png")
+            or path.endswith("/ortho")
+            or path.endswith("/ortho.png")
+            or path.endswith("/ortho-meta")
         ):
             return False
 

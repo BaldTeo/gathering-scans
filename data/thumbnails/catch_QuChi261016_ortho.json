@@ -1,0 +1,15 @@
+{
+  "scan_id": "catch_QuChi261016",
+  "north_lat": 24.92121952,
+  "south_lat": 24.91883721,
+  "west_lon": 121.54205675,
+  "east_lon": 121.54484513,
+  "min_e": 304751.625,
+  "max_e": 305032.219,
+  "min_n": 2756897.0,
+  "max_n": 2757162.0,
+  "width": 721,
+  "height": 681,
+  "resolution_m": 0.3897,
+  "generated_at": "2026-10-26T03:44:00Z"
+}

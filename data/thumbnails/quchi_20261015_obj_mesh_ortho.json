@@ -1,0 +1,15 @@
+{
+  "scan_id": "quchi_20261015_obj_mesh",
+  "north_lat": 24.92107958,
+  "south_lat": 24.9188403,
+  "west_lon": 121.54205901,
+  "east_lon": 121.5458885,
+  "min_e": 304751.852,
+  "max_e": 305137.669,
+  "min_n": 2756897.344,
+  "max_n": 2757146.922,
+  "width": 859,
+  "height": 556,
+  "resolution_m": 0.45,
+  "generated_at": "2026-10-26T03:44:09Z"
+}

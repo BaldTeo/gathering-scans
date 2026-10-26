@@ -1025,6 +1025,25 @@ class GatheringScansHandler(CloudAndTunnelHandlerMixin, ServerWriteRoutesMixin, 
                 self._SCAN_MESH_METRICS_CACHE[cache_key] = cached_metrics
 
         s.update(cached_metrics)
+        s["ortho_url"] = f"/api/scans/{sid}/ortho{thumb_q}"
+        try:
+            saved_ortho = SURVEY.get_saved_ortho_meta(sid, s)
+            if isinstance(saved_ortho, dict) and saved_ortho.get("north_lat") is not None:
+                s["ortho_bounds"] = {
+                    "north_lat": saved_ortho["north_lat"],
+                    "south_lat": saved_ortho["south_lat"],
+                    "west_lon": saved_ortho["west_lon"],
+                    "east_lon": saved_ortho["east_lon"],
+                    "min_e": saved_ortho.get("min_e"),
+                    "max_e": saved_ortho.get("max_e"),
+                    "min_n": saved_ortho.get("min_n"),
+                    "max_n": saved_ortho.get("max_n"),
+                    "width": saved_ortho.get("width"),
+                    "height": saved_ortho.get("height"),
+                    "resolution_m": saved_ortho.get("resolution_m"),
+                }
+        except Exception:
+            pass
         try:
             saved_cat = SURVEY.get_saved_categorization(sid, s)
             if isinstance(saved_cat, dict) and saved_cat.get("status") == "ok":
@@ -1450,6 +1469,46 @@ class GatheringScansHandler(CloudAndTunnelHandlerMixin, ServerWriteRoutesMixin, 
             self.send_header("Content-Length", str(len(png_bytes)))
             self.end_headers()
             self.wfile.write(png_bytes)
+            return
+
+        # 3c. True-Nadir Transparent RGBA Orthomosaic & Geographic Bounds Endpoints:
+        # GET /api/scans/<scan_id>/ortho-meta and GET /api/scans/<scan_id>/ortho(.png)
+        if path.startswith("/api/scans/") and path.endswith("/ortho-meta"):
+            scan_id = path[len("/api/scans/") : -len("/ortho-meta")].strip("/")
+            if share_token:
+                ok, reason, _, _ = AUTH_SHARE.validate_share_access(share_token, requested_scan_id=scan_id)
+                if not ok:
+                    self.send_json({"error": reason}, status=403)
+                    return
+            meta = SURVEY.get_or_generate_true_nadir_ortho(scan_id, force=False)
+            if isinstance(meta, dict) and meta.get("north_lat") is not None:
+                clean_bounds = {k: v for k, v in meta.items() if k not in ("png_path", "json_path")}
+                self.send_json(
+                    {
+                        "status": "ok",
+                        "ok": True,
+                        "scan_id": scan_id,
+                        "ortho_bounds": clean_bounds,
+                        "ortho_url": f"/api/scans/{scan_id}/ortho",
+                    }
+                )
+            else:
+                self.send_json({"error": f"True-nadir orthomosaic not available for scan: {scan_id}"}, status=404)
+            return
+
+        if path.startswith("/api/scans/") and (path.endswith("/ortho") or path.endswith("/ortho.png")):
+            suffix = "/ortho.png" if path.endswith("/ortho.png") else "/ortho"
+            scan_id = path[len("/api/scans/") : -len(suffix)].strip("/")
+            if share_token:
+                ok, reason, _, _ = AUTH_SHARE.validate_share_access(share_token, requested_scan_id=scan_id)
+                if not ok:
+                    self.send_json({"error": reason}, status=403)
+                    return
+            meta = SURVEY.get_or_generate_true_nadir_ortho(scan_id, force=False)
+            if isinstance(meta, dict) and meta.get("png_path") and os.path.isfile(meta["png_path"]):
+                self._serve_file_with_range(meta["png_path"], content_type="image/png")
+                return
+            self.send_json({"error": f"True-nadir orthomosaic PNG not available for scan: {scan_id}"}, status=404)
             return
 
         # 4. Single Scan Details (Enforces External Share Token if present)

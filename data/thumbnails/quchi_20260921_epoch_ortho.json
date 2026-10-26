@@ -1,0 +1,15 @@
+{
+  "scan_id": "quchi_20260921_epoch",
+  "north_lat": 24.9199955,
+  "south_lat": 24.91953114,
+  "west_lon": 121.54469859,
+  "east_lon": 121.54763113,
+  "min_e": 305018.167,
+  "max_e": 305314.172,
+  "min_n": 2756974.929,
+  "max_n": 2757027.553,
+  "width": 721,
+  "height": 130,
+  "resolution_m": 0.4111,
+  "generated_at": "2026-10-26T03:44:53Z"
+}

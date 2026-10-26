@@ -1,0 +1,15 @@
+{
+  "scan_id": "catch_QiHuTender_3",
+  "north_lat": 25.13701011,
+  "south_lat": 25.13585301,
+  "west_lon": 121.50063938,
+  "east_lon": 121.50191482,
+  "min_e": 300479.242,
+  "max_e": 300607.369,
+  "min_n": 2780918.705,
+  "max_n": 2781047.351,
+  "width": 719,
+  "height": 721,
+  "resolution_m": 0.1787,
+  "generated_at": "2026-10-26T03:43:32Z"
+}

@@ -1,0 +1,15 @@
+{
+  "scan_id": "ntudorm_20260917_foundation",
+  "north_lat": 25.03771616,
+  "south_lat": 25.03710267,
+  "west_lon": 121.5248018,
+  "east_lon": 121.5257887,
+  "min_e": 302958.051,
+  "max_e": 303057.377,
+  "min_n": 2769989.777,
+  "max_n": 2770058.117,
+  "width": 721,
+  "height": 497,
+  "resolution_m": 0.138,
+  "generated_at": "2026-10-26T03:45:01Z"
+}

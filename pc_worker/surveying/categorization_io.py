@@ -1533,3 +1533,279 @@ class CategorizationIoMixin:
         self._persist_categorization_result(scan_id, cached_res, scan)
         return cached_res
 
+    def get_saved_ortho_meta(
+        self, scan_id: str, scan: Optional[Dict[str, Any]] = None
+    ) -> Optional[Dict[str, Any]]:
+        """Returns cached true-nadir orthomosaic metadata and file paths if present on disk."""
+        if not scan_id:
+            return None
+        thumbs_dir = os.path.join(BASE_DIR, "data", "thumbnails")
+        os.makedirs(thumbs_dir, exist_ok=True)
+        png_path = os.path.join(thumbs_dir, f"{scan_id}_ortho.png")
+        json_path = os.path.join(thumbs_dir, f"{scan_id}_ortho.json")
+        if os.path.isfile(png_path) and os.path.getsize(png_path) > 512 and os.path.isfile(json_path):
+            try:
+                with open(json_path, "r", encoding="utf-8") as f:
+                    meta = json.load(f)
+                if (
+                    isinstance(meta, dict)
+                    and meta.get("north_lat") is not None
+                    and meta.get("south_lat") is not None
+                    and meta.get("west_lon") is not None
+                    and meta.get("east_lon") is not None
+                ):
+                    meta["png_path"] = png_path
+                    meta["json_path"] = json_path
+                    return meta
+            except Exception:
+                pass
+        s = scan or self.db.get_scan(scan_id) or {}
+        pdir = s.get("project_dir") or ""
+        if pdir and os.path.isdir(pdir):
+            p_png = os.path.join(pdir, "ortho_nadir.png")
+            p_json = os.path.join(pdir, "ortho_nadir.json")
+            if os.path.isfile(p_png) and os.path.getsize(p_png) > 512 and os.path.isfile(p_json):
+                try:
+                    with open(p_json, "r", encoding="utf-8") as f:
+                        meta = json.load(f)
+                    if isinstance(meta, dict) and meta.get("north_lat") is not None:
+                        meta["png_path"] = p_png
+                        meta["json_path"] = p_json
+                        return meta
+                except Exception:
+                    pass
+        return None
+
+    def get_or_generate_true_nadir_ortho(
+        self, scan_id: str, force: bool = False
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Generates and caches a true-nadir North-Up (+E Right, +N Up) transparent RGBA orthomosaic PNG
+        and exact TWD97 -> WGS84 geographic bounding box for the given scan.
+        Never falls back to tilted 3D perspective thumbnails.
+        """
+        if not scan_id:
+            return None
+        if not force:
+            cached = self.get_saved_ortho_meta(scan_id)
+            if cached:
+                return cached
+
+        scan = self.db.get_scan(scan_id)
+        if not scan:
+            return None
+        crs_str = str(scan.get("crs") or "").upper()
+        if "LOCAL" in crs_str:
+            return None
+        raw_lat = scan.get("lat")
+        raw_lon = scan.get("lon")
+        if raw_lat is None or raw_lon is None:
+            return None
+        try:
+            s_lat = float(raw_lat)
+            s_lon = float(raw_lon)
+        except (TypeError, ValueError):
+            return None
+        if abs(s_lat) < 0.001 and abs(s_lon) < 0.001:
+            return None
+
+        ce = float(scan.get("twd97_e") or 0.0)
+        cn = float(scan.get("twd97_n") or 0.0)
+        ch = float(scan.get("twd97_h") or 0.0)
+
+        try:
+            from scipy.ndimage import binary_closing, binary_erosion
+            from PIL import ImageDraw
+            from pc_worker.surveying.dsm_and_volume import twd97_to_wgs84
+
+            mesh_data = self._load_scan_textured_triangles_twd97(scan, ce, cn, ch)
+            v0 = mesh_data["v0"]
+            v1 = mesh_data["v1"]
+            v2 = mesh_data["v2"]
+            centroids = mesh_data["centroids"]
+            area_2d = mesh_data["area_2d"]
+            rgb = mesh_data["rgb"]
+
+            if len(centroids) == 0:
+                return None
+
+            base_e = np.concatenate([v0[:, 0], v1[:, 0], v2[:, 0], centroids[:, 0]])
+            base_n = np.concatenate([v0[:, 1], v1[:, 1], v2[:, 1], centroids[:, 1]])
+            e_min, e_max = float(base_e.min()), float(base_e.max())
+            n_min, n_max = float(base_n.min()), float(base_n.max())
+            span_e = max(e_max - e_min, 4.0)
+            span_n = max(n_max - n_min, 4.0)
+            max_span = max(span_e, span_n)
+
+            res = float(np.clip(max_span / 720.0, 0.08, 0.45))
+            nx = int(np.clip(math.ceil(span_e / res) + 1, 32, 960))
+            ny = int(np.clip(math.ceil(span_n / res) + 1, 32, 960))
+            res_e = span_e / max(1, nx - 1)
+            res_n = span_n / max(1, ny - 1)
+
+            # 1. Base polygon pass for medium/large triangles so coarse triangles have zero internal gaps
+            poly_img = Image.new("RGBA", (nx, ny), (0, 0, 0, 0))
+            tri_span_e = np.maximum(np.maximum(v0[:, 0], v1[:, 0]), v2[:, 0]) - np.minimum(np.minimum(v0[:, 0], v1[:, 0]), v2[:, 0])
+            tri_span_n = np.maximum(np.maximum(v0[:, 1], v1[:, 1]), v2[:, 1]) - np.minimum(np.minimum(v0[:, 1], v1[:, 1]), v2[:, 1])
+            coarse_mask = (tri_span_e >= res_e * 1.35) | (tri_span_n >= res_n * 1.35)
+            if np.any(coarse_mask):
+                c_idx = np.where(coarse_mask)[0]
+                if len(c_idx) > 85000:
+                    # Keep the largest / highest-priority coarse triangles if mesh is huge
+                    top_k = np.argsort(area_2d[c_idx])[-85000:]
+                    c_idx = c_idx[top_k]
+                c_order = c_idx[np.argsort(centroids[c_idx, 2])]
+                drw = ImageDraw.Draw(poly_img)
+                x0_arr = ((v0[c_order, 0] - e_min) / res_e).astype(np.float32)
+                y0_arr = ((v0[c_order, 1] - n_min) / res_n).astype(np.float32)
+                x1_arr = ((v1[c_order, 0] - e_min) / res_e).astype(np.float32)
+                y1_arr = ((v1[c_order, 1] - n_min) / res_n).astype(np.float32)
+                x2_arr = ((v2[c_order, 0] - e_min) / res_e).astype(np.float32)
+                y2_arr = ((v2[c_order, 1] - n_min) / res_n).astype(np.float32)
+                rgb_u8_c = np.clip(rgb[c_order] * 255.0, 0, 255).astype(np.uint8)
+                for i in range(len(c_order)):
+                    r_c, g_c, b_c = int(rgb_u8_c[i, 0]), int(rgb_u8_c[i, 1]), int(rgb_u8_c[i, 2])
+                    drw.polygon(
+                        [
+                            (float(x0_arr[i]), float(y0_arr[i])),
+                            (float(x1_arr[i]), float(y1_arr[i])),
+                            (float(x2_arr[i]), float(y2_arr[i])),
+                        ],
+                        fill=(r_c, g_c, b_c, 255),
+                    )
+            poly_rgba = np.asarray(poly_img, dtype=np.uint8)
+
+            # 2. High-density barycentric vertex/centroid splatting pass for crisp fine detail
+            n_tris = len(centroids)
+            tri_indices = np.arange(n_tris, dtype=np.int32)
+            sp_e_list = [centroids[:, 0], v0[:, 0], v1[:, 0], v2[:, 0]]
+            sp_n_list = [centroids[:, 1], v0[:, 1], v1[:, 1], v2[:, 1]]
+            sp_t_list = [tri_indices, tri_indices, tri_indices, tri_indices]
+            w_base = np.maximum(area_2d * 0.25, 1e-5).astype(np.float32)
+            sp_w_list = [w_base, w_base, w_base, w_base]
+
+            med_mask = area_2d >= (res * res * 0.65)
+            if np.any(med_mask):
+                m_idx = tri_indices[med_mask]
+                mv0, mv1, mv2 = v0[med_mask], v1[med_mask], v2[med_mask]
+                mw = np.maximum(area_2d[med_mask] * (1.0 / 9.0), 1e-5).astype(np.float32)
+                for bw0, bw1, bw2 in (
+                    (0.5, 0.5, 0.0),
+                    (0.5, 0.0, 0.5),
+                    (0.0, 0.5, 0.5),
+                    (0.6, 0.2, 0.2),
+                    (0.2, 0.6, 0.2),
+                    (0.2, 0.2, 0.6),
+                ):
+                    pts_m = bw0 * mv0 + bw1 * mv1 + bw2 * mv2
+                    sp_e_list.append(pts_m[:, 0])
+                    sp_n_list.append(pts_m[:, 1])
+                    sp_t_list.append(m_idx)
+                    sp_w_list.append(mw)
+
+            all_e = np.concatenate(sp_e_list)
+            all_n = np.concatenate(sp_n_list)
+            splat_t_idx = np.concatenate(sp_t_list)
+            splat_w = np.concatenate(sp_w_list)
+
+            ie_all = np.clip(((all_e - e_min) / res_e).astype(np.int32), 0, nx - 1)
+            in_all = np.clip(((all_n - n_min) / res_n).astype(np.int32), 0, ny - 1)
+
+            ortho_rgb = np.zeros((ny, nx, 3), dtype=np.float32)
+            ortho_cnt = np.zeros((ny, nx), dtype=np.float32)
+            for ch_i in range(3):
+                np.add.at(ortho_rgb[:, :, ch_i], (in_all, ie_all), rgb[splat_t_idx, ch_i] * splat_w)
+            np.add.at(ortho_cnt, (in_all, ie_all), splat_w)
+
+            has_splat = ortho_cnt > 1e-7
+            has_poly = poly_rgba[:, :, 3] > 0
+            raw_occ = has_splat | has_poly
+            occ_closed = binary_closing(raw_occ, structure=np.ones((3, 3), dtype=bool))
+
+            if np.any(has_splat) and not np.all(has_splat):
+                _, nearest_idx = distance_transform_edt(~has_splat, return_indices=True)
+            else:
+                nearest_idx = None
+
+            final_rgba = np.zeros((ny, nx, 4), dtype=np.uint8)
+            for ch_i in range(3):
+                plane = ortho_rgb[:, :, ch_i]
+                plane[has_splat] /= ortho_cnt[has_splat]
+                splat_u8 = np.clip(plane * 255.0, 0, 255).astype(np.uint8)
+                out_ch = np.zeros((ny, nx), dtype=np.uint8)
+                out_ch[has_splat] = splat_u8[has_splat]
+                only_poly = (~has_splat) & has_poly
+                out_ch[only_poly] = poly_rgba[:, :, ch_i][only_poly]
+                pinhole = (~has_splat) & (~has_poly) & occ_closed
+                if np.any(pinhole) and nearest_idx is not None:
+                    out_ch[pinhole] = splat_u8[nearest_idx[0][pinhole], nearest_idx[1][pinhole]]
+                final_rgba[:, :, ch_i] = out_ch
+
+            alpha = np.where(occ_closed, 255, 0).astype(np.uint8)
+            inner_occ = binary_erosion(occ_closed, structure=np.ones((3, 3), dtype=bool))
+            edge_ring = occ_closed & (~inner_occ)
+            alpha[edge_ring] = 210
+            final_rgba[:, :, 3] = alpha
+
+            # Flip vertically so Row 0 is North (n_max) and Row ny-1 is South (n_min)
+            final_rgba = np.flipud(final_rgba)
+
+            lon0_deg = 119.0 if (s_lon < 120.0 or "119" in crs_str) else 121.0
+            south_lat, west_lon = twd97_to_wgs84(e_min, n_min, lon0_deg=lon0_deg)
+            north_lat, east_lon = twd97_to_wgs84(e_max, n_max, lon0_deg=lon0_deg)
+
+            # Verify center alignment against scan.lat / scan.lon (handles custom shifted origins cleanly)
+            mid_e = 0.5 * (e_min + e_max)
+            mid_n = 0.5 * (n_min + n_max)
+            c_lat, c_lon = twd97_to_wgs84(ce if abs(ce) > 1000 else mid_e, cn if abs(cn) > 1000 else mid_n, lon0_deg=lon0_deg)
+            if abs(c_lat - s_lat) > 0.02 or abs(c_lon - s_lon) > 0.02:
+                d_lat = s_lat - c_lat
+                d_lon = s_lon - c_lon
+                south_lat = round(south_lat + d_lat, 8)
+                north_lat = round(north_lat + d_lat, 8)
+                west_lon = round(west_lon + d_lon, 8)
+                east_lon = round(east_lon + d_lon, 8)
+
+            thumbs_dir = os.path.join(BASE_DIR, "data", "thumbnails")
+            os.makedirs(thumbs_dir, exist_ok=True)
+            png_path = os.path.join(thumbs_dir, f"{scan_id}_ortho.png")
+            json_path = os.path.join(thumbs_dir, f"{scan_id}_ortho.json")
+
+            out_pil = Image.fromarray(final_rgba, mode="RGBA")
+            out_pil.save(png_path, format="PNG", optimize=True)
+
+            meta = {
+                "scan_id": scan_id,
+                "north_lat": round(float(north_lat), 8),
+                "south_lat": round(float(south_lat), 8),
+                "west_lon": round(float(west_lon), 8),
+                "east_lon": round(float(east_lon), 8),
+                "min_e": round(float(e_min), 3),
+                "max_e": round(float(e_max), 3),
+                "min_n": round(float(n_min), 3),
+                "max_n": round(float(n_max), 3),
+                "width": int(nx),
+                "height": int(ny),
+                "resolution_m": round(float(res), 4),
+                "generated_at": datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
+            }
+            with open(json_path, "w", encoding="utf-8") as f:
+                json.dump(meta, f, ensure_ascii=False, indent=2)
+
+            pdir = scan.get("project_dir") or ""
+            if pdir and os.path.isdir(pdir):
+                try:
+                    out_pil.save(os.path.join(pdir, "ortho_nadir.png"), format="PNG")
+                    with open(os.path.join(pdir, "ortho_nadir.json"), "w", encoding="utf-8") as pf:
+                        json.dump(meta, pf, ensure_ascii=False, indent=2)
+                except Exception:
+                    pass
+
+            meta["png_path"] = png_path
+            meta["json_path"] = json_path
+            return meta
+        except Exception as e:
+            print(f"[GatheringScans] True-nadir ortho generation warning for {scan_id}: {e}")
+            return None
+
+

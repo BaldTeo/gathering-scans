@@ -399,24 +399,97 @@
     const sid = scan.scan_id;
     if (!STATE.mapOrthoImageCache) STATE.mapOrthoImageCache = {};
     if (STATE.mapOrthoImageCache[sid]) {
+      if (scan.ortho_bounds && !STATE.mapOrthoImageCache[sid].bounds) {
+        STATE.mapOrthoImageCache[sid].bounds = scan.ortho_bounds;
+      }
       return STATE.mapOrthoImageCache[sid];
     }
     let customDataUrl = null;
+    let customBounds = null;
     try {
-      customDataUrl = localStorage.getItem(`gs_nadir_ortho_${sid}`);
+      customDataUrl = localStorage.getItem(`gs_nadir_ortho_v2_${sid}`);
+      const rawB = localStorage.getItem(`gs_nadir_ortho_bounds_v2_${sid}`);
+      if (rawB) customBounds = JSON.parse(rawB);
     } catch (_) {}
     const img = new Image();
     img.crossOrigin = "anonymous";
-    const entry = { img, loaded: false, isNadir: Boolean(customDataUrl) };
+    const entry = {
+      img,
+      loaded: false,
+      failed: false,
+      isNadir: true,
+      bounds: scan.ortho_bounds || customBounds || null,
+      fetchingMeta: false,
+    };
     STATE.mapOrthoImageCache[sid] = entry;
+
+    if (!entry.bounds && !entry.fetchingMeta) {
+      entry.fetchingMeta = true;
+      apiGet(`/api/scans/${encodeURIComponent(sid)}/ortho-meta`)
+        .then((res) => {
+          if (res && res.ortho_bounds) {
+            entry.bounds = res.ortho_bounds;
+            scan.ortho_bounds = res.ortho_bounds;
+            if (typeof gsMap !== "undefined" && gsMap && typeof gsMap.drawMap === "function") {
+              gsMap.drawMap();
+            }
+          }
+        })
+        .catch(() => {})
+        .finally(() => {
+          entry.fetchingMeta = false;
+        });
+    }
+
     img.onload = () => {
       entry.loaded = true;
+      entry.failed = false;
       if (typeof gsMap !== "undefined" && gsMap && typeof gsMap.drawMap === "function") {
         gsMap.drawMap();
       }
     };
-    img.src = customDataUrl || scan.thumbnail_url || `/api/scans/${encodeURIComponent(sid)}/thumbnail`;
+    img.onerror = () => {
+      entry.failed = true;
+    };
+    const qSuffix = STATE.shareToken ? `?share=${encodeURIComponent(STATE.shareToken)}` : "";
+    img.src = customDataUrl || scan.ortho_url || `/api/scans/${encodeURIComponent(sid)}/ortho${qSuffix}`;
     return entry;
+  }
+
+  function pickRepresentativeOrthoScanForGroup(grp, groupScans) {
+    if (!Array.isArray(groupScans) || !groupScans.length) return null;
+    if (STATE.activeProjectGroup && STATE.activeProjectGroup !== "__all__" && grp === STATE.activeProjectGroup) {
+      if (STATE.selectedTimelineScanId) {
+        const sel = groupScans.find((s) => s.scan_id === STATE.selectedTimelineScanId);
+        if (sel) return sel;
+      }
+      if (STATE.activeScanId) {
+        const act = groupScans.find((s) => s.scan_id === STATE.activeScanId);
+        if (act) return act;
+      }
+    }
+    const rtkPool = groupScans.filter(
+      (s) =>
+        !String(s.scan_id || "").toLowerCase().includes("nortk") &&
+        !String(s.name || "").toLowerCase().includes("nortk")
+    );
+    const pool = rtkPool.length > 0 ? rtkPool : groupScans;
+    const scored = pool.slice().sort((a, b) => {
+      const aMerged =
+        /merged|unified|整合/i.test(String(a.scan_id || "")) || /merged|unified|整合/i.test(String(a.name || ""))
+          ? 1
+          : 0;
+      const bMerged =
+        /merged|unified|整合/i.test(String(b.scan_id || "")) || /merged|unified|整合/i.test(String(b.name || ""))
+          ? 1
+          : 0;
+      if (aMerged !== bMerged) return bMerged - aMerged;
+      const aDate = String(a.capture_date || "");
+      const bDate = String(b.capture_date || "");
+      if (aDate !== bDate) return bDate.localeCompare(aDate);
+      return (Number(b.covered_area_m2) || 0) - (Number(a.covered_area_m2) || 0);
+    });
+    return scored[0] || groupScans[0];
   }
 
   function drawMapTrueOrthoOverlays(ctx, mapInst) {
@@ -432,80 +505,99 @@
     );
     if (!georefScans.length) return;
 
-    // Pick representative scan per site (or all scans in the active site when zoomed in)
-    const scansToDraw = [];
-    const seenGroups = new Set();
+    // Group georeferenced scans by project_group and draw strictly at most ONE (1) scan per site
+    const byGroup = new Map();
     georefScans.forEach((s) => {
       const grp = s.project_group || s.scan_id;
-      if (STATE.activeProjectGroup && STATE.activeProjectGroup !== "__all__" && grp === STATE.activeProjectGroup) {
-        if (!seenGroups.has(grp) || mapInst.zoom >= 15.5) {
-          scansToDraw.push(s);
-          seenGroups.add(grp);
-        }
-      } else if (!seenGroups.has(grp)) {
-        scansToDraw.push(s);
-        seenGroups.add(grp);
-      }
+      if (!byGroup.has(grp)) byGroup.set(grp, []);
+      byGroup.get(grp).push(s);
+    });
+
+    const scansToDraw = [];
+    byGroup.forEach((groupScans, grp) => {
+      const rep = pickRepresentativeOrthoScanForGroup(grp, groupScans);
+      if (rep) scansToDraw.push(rep);
     });
 
     scansToDraw.forEach((scan) => {
-      const lat = Number(scan.lat);
-      const lon = Number(scan.lon);
-      const areaM2 = Math.max(400, Number(scan.covered_area_m2) || 3600);
-      const halfSpanM = Math.max(18, Math.min(180, Math.sqrt(areaM2) * 0.58));
-      const dLat = halfSpanM / 111111.0;
-      const dLon = halfSpanM / (111111.0 * Math.max(0.25, Math.cos((lat * Math.PI) / 180.0)));
+      const orthoEntry = getOrLoadMapOrthoImage(scan);
+      if (!orthoEntry || !orthoEntry.loaded || orthoEntry.failed) return;
+      const bounds = scan.ortho_bounds || orthoEntry.bounds;
+      if (
+        !bounds ||
+        !Number.isFinite(Number(bounds.north_lat)) ||
+        !Number.isFinite(Number(bounds.south_lat)) ||
+        !Number.isFinite(Number(bounds.west_lon)) ||
+        !Number.isFinite(Number(bounds.east_lon))
+      ) {
+        return;
+      }
 
-      const nwPx = mapInst.projectLatLon(lat + dLat, lon - dLon);
-      const sePx = mapInst.projectLatLon(lat - dLat, lon + dLon);
-      const boxW = Math.max(28, Math.abs(sePx.x - nwPx.x));
-      const boxH = Math.max(28, Math.abs(sePx.y - nwPx.y));
-      const x0 = 0.5 * (nwPx.x + sePx.x) - boxW * 0.5;
-      const y0 = 0.5 * (nwPx.y + sePx.y) - boxH * 0.5;
+      const nwPx = mapInst.projectLatLon(Number(bounds.north_lat), Number(bounds.west_lon));
+      const sePx = mapInst.projectLatLon(Number(bounds.south_lat), Number(bounds.east_lon));
+      const x0 = Math.min(nwPx.x, sePx.x);
+      const y0 = Math.min(nwPx.y, sePx.y);
+      const boxW = Math.abs(sePx.x - nwPx.x);
+      const boxH = Math.abs(sePx.y - nwPx.y);
 
+      if (boxW < 6 || boxH < 6) return;
       if (x0 + boxW < 0 || x0 > mapInst.canvas.width || y0 + boxH < 0 || y0 > mapInst.canvas.height) {
         return;
       }
 
-      const orthoEntry = getOrLoadMapOrthoImage(scan);
       ctx.save();
-      if (orthoEntry && orthoEntry.loaded) {
-        ctx.globalAlpha = opacity;
-        ctx.beginPath();
-        ctx.roundRect(x0, y0, boxW, boxH, 6);
-        ctx.clip();
-        ctx.drawImage(orthoEntry.img, x0, y0, boxW, boxH);
-      } else {
-        ctx.fillStyle = "rgba(14, 165, 233, 0.18)";
-        ctx.fillRect(x0, y0, boxW, boxH);
-      }
-      ctx.restore();
-
-      // Crisp TWD97 True-Ortho Footprint Border + Corner Registration Ticks
-      ctx.save();
-      ctx.strokeStyle = "#38bdf8";
-      ctx.lineWidth = 1.8;
-      ctx.strokeRect(x0, y0, boxW, boxH);
-      if (boxW >= 48) {
-        ctx.fillStyle = "rgba(15, 23, 42, 0.82)";
-        const lblText = `ORTHO · ${(scan.name || scan.scan_id).slice(0, 18)}`;
-        ctx.font = "700 10px Inter, system-ui, sans-serif";
-        const tw = Math.min(boxW - 4, ctx.measureText(lblText).width + 10);
-        ctx.fillRect(x0 + 2, y0 + 2, tw, 16);
-        ctx.fillStyle = "#38bdf8";
-        ctx.fillText(lblText, x0 + 6, y0 + 13);
-      }
+      ctx.globalAlpha = opacity;
+      ctx.imageSmoothingEnabled = true;
+      ctx.drawImage(orthoEntry.img, x0, y0, boxW, boxH);
       ctx.restore();
     });
   }
 
   async function captureNadirOrthoSnapshotForActiveScan(preferPreview = false) {
-    const viewer = preferPreview && typeof previewThree !== "undefined" && previewThree ? previewThree : studioThree;
     const scanId =
       (preferPreview && STATE.selectedTimelineScanId) ||
       STATE.activeScanId ||
       (STATE.scans && STATE.scans[0]?.scan_id);
-    if (!viewer || !viewer.renderer || !viewer.scene || !scanId) {
+    if (!scanId) {
+      showToast(tr("請先選擇 3D 掃描模型再更新正射疊圖", "Select a 3D scan first before updating Nadir Ortho"));
+      return;
+    }
+
+    try {
+      const res = await apiPost(`/api/scans/${encodeURIComponent(scanId)}/ortho`, {
+        regenerate: true,
+        force: true,
+      });
+      if (res && res.ortho_bounds) {
+        const targetScan = (STATE.scans || []).find((s) => s.scan_id === scanId);
+        if (targetScan) {
+          targetScan.ortho_bounds = res.ortho_bounds;
+          if (res.ortho_url) targetScan.ortho_url = res.ortho_url;
+        }
+        try {
+          localStorage.removeItem(`gs_nadir_ortho_v2_${scanId}`);
+          localStorage.setItem(`gs_nadir_ortho_bounds_v2_${scanId}`, JSON.stringify(res.ortho_bounds));
+        } catch (_) {}
+        if (!STATE.mapOrthoImageCache) STATE.mapOrthoImageCache = {};
+        delete STATE.mapOrthoImageCache[scanId];
+        if (targetScan) getOrLoadMapOrthoImage(targetScan);
+        STATE.mapOrthoOverlayEnabled = true;
+        document.getElementById("btnMapToggleOrthoOverlay")?.classList.add("active");
+        if (typeof gsMap !== "undefined" && gsMap && typeof gsMap.drawMap === "function") {
+          gsMap.drawMap();
+        }
+        showToast(
+          tr(
+            "已重新產製 TWD97 真實正射透明疊圖 (True-Nadir RGBA Ortho) 並對齊至地圖！",
+            "Regenerated TWD97 True-Nadir transparent RGBA orthomosaic and aligned on Map!"
+          )
+        );
+        return;
+      }
+    } catch (_) {}
+
+    const viewer = preferPreview && typeof previewThree !== "undefined" && previewThree ? previewThree : studioThree;
+    if (!viewer || !viewer.renderer || !viewer.scene) {
       showToast(tr("請先載入 3D 掃描模型再擷取正射疊圖", "Load a 3D scan first before capturing Nadir Ortho"));
       return;
     }
@@ -518,16 +610,35 @@
     orthoCam.updateProjectionMatrix();
     orthoCam.updateMatrixWorld();
 
+    const prevBg = viewer.scene.background;
+    const prevClearAlpha = viewer.renderer.getClearAlpha ? viewer.renderer.getClearAlpha() : 1.0;
+    viewer.scene.background = null;
+    if (viewer.renderer.setClearColor) viewer.renderer.setClearColor(0x000000, 0);
     viewer.renderer.render(viewer.scene, orthoCam);
     const dataUrl = viewer.renderer.domElement.toDataURL("image/png");
+    viewer.scene.background = prevBg;
+    if (viewer.renderer.setClearAlpha) viewer.renderer.setClearAlpha(prevClearAlpha);
     viewer.renderer.render(viewer.scene, viewer.camera);
 
+    const targetScan = (STATE.scans || []).find((s) => s.scan_id === scanId);
+    const lat = Number(targetScan?.lat || 25.03);
+    const lon = Number(targetScan?.lon || 121.52);
+    const dLat = r / 110750.0;
+    const dLon = r / (111320.0 * Math.max(0.25, Math.cos((lat * Math.PI) / 180.0)));
+    const fallbackBounds = targetScan?.ortho_bounds || {
+      north_lat: lat + dLat,
+      south_lat: lat - dLat,
+      west_lon: lon - dLon,
+      east_lon: lon + dLon,
+    };
+
     try {
-      localStorage.setItem(`gs_nadir_ortho_${scanId}`, dataUrl);
+      localStorage.setItem(`gs_nadir_ortho_v2_${scanId}`, dataUrl);
+      localStorage.setItem(`gs_nadir_ortho_bounds_v2_${scanId}`, JSON.stringify(fallbackBounds));
     } catch (_) {}
     if (!STATE.mapOrthoImageCache) STATE.mapOrthoImageCache = {};
     const img = new Image();
-    const entry = { img, loaded: false, isNadir: true };
+    const entry = { img, loaded: false, failed: false, isNadir: true, bounds: fallbackBounds };
     STATE.mapOrthoImageCache[scanId] = entry;
     img.onload = () => {
       entry.loaded = true;
@@ -538,7 +649,10 @@
     img.src = dataUrl;
 
     try {
-      await apiPost(`/api/scans/${encodeURIComponent(scanId)}/thumbnail`, { data_url: dataUrl });
+      await apiPost(`/api/scans/${encodeURIComponent(scanId)}/ortho`, {
+        data_url: dataUrl,
+        ortho_bounds: fallbackBounds,
+      });
     } catch (_) {}
 
     STATE.mapOrthoOverlayEnabled = true;

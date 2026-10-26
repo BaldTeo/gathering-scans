@@ -100,6 +100,54 @@ def wgs84_to_twd97(lat_deg: float, lon_deg: float) -> Tuple[float, float]:
     )
     return round(easting, 3), round(northing, 3)
 
+
+def twd97_to_wgs84(easting: float, northing: float, lon0_deg: float = 121.0) -> Tuple[float, float]:
+    """Converts TWD97 TM2 (Easting, Northing) in meters to WGS84 (lat, lon) in degrees."""
+    a = 6378137.0
+    f = 1.0 / 298.257222101
+    b = a * (1.0 - f)
+    e2 = (a * a - b * b) / (a * a)
+    ep2 = (a * a - b * b) / (b * b)
+    k0 = 0.9999
+    dx = 250000.0
+
+    x = float(easting) - dx
+    y = float(northing)
+    M = y / k0
+    mu = M / (a * (1.0 - e2 / 4.0 - 3.0 * (e2 ** 2) / 64.0 - 5.0 * (e2 ** 3) / 256.0))
+    e1 = (1.0 - math.sqrt(1.0 - e2)) / (1.0 + math.sqrt(1.0 - e2))
+    j1 = 3.0 * e1 / 2.0 - 27.0 * (e1 ** 3) / 32.0
+    j2 = 21.0 * (e1 ** 2) / 16.0 - 55.0 * (e1 ** 4) / 32.0
+    j3 = 151.0 * (e1 ** 3) / 96.0
+    j4 = 1097.0 * (e1 ** 4) / 512.0
+    fp = (
+        mu
+        + j1 * math.sin(2.0 * mu)
+        + j2 * math.sin(4.0 * mu)
+        + j3 * math.sin(6.0 * mu)
+        + j4 * math.sin(8.0 * mu)
+    )
+    sin_fp = math.sin(fp)
+    cos_fp = max(1e-9, math.cos(fp))
+    tan_fp = math.tan(fp)
+    c1 = ep2 * (cos_fp ** 2)
+    t1 = tan_fp ** 2
+    r1 = a * (1.0 - e2) / ((1.0 - e2 * (sin_fp ** 2)) ** 1.5)
+    n1 = a / math.sqrt(1.0 - e2 * (sin_fp ** 2))
+    d = x / (n1 * k0)
+
+    q1 = n1 * tan_fp / r1
+    q2 = (d ** 2) / 2.0
+    q3 = (5.0 + 3.0 * t1 + 10.0 * c1 - 4.0 * (c1 ** 2) - 9.0 * ep2) * (d ** 4) / 24.0
+    q4 = (61.0 + 90.0 * t1 + 298.0 * c1 + 45.0 * (t1 ** 2) - 3.0 * (c1 ** 2) - 252.0 * ep2) * (d ** 6) / 720.0
+    lat = fp - q1 * (q2 - q3 + q4)
+
+    q5 = d
+    q6 = (1.0 + 2.0 * t1 + c1) * (d ** 3) / 6.0
+    q7 = (5.0 - 2.0 * c1 + 28.0 * t1 - 3.0 * (c1 ** 2) + 8.0 * ep2 + 24.0 * (t1 ** 2)) * (d ** 5) / 120.0
+    lon = math.radians(lon0_deg) + (q5 - q6 + q7) / cos_fp
+    return round(math.degrees(lat), 8), round(math.degrees(lon), 8)
+
 GLTFPACK_EXE = r"C:\Antigravity\GC_ScanOptimizer\bin\gltfpack.exe"
 
 # Standard 16-case Marching Squares lookup table

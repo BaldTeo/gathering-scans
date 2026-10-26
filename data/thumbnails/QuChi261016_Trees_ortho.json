@@ -1,0 +1,15 @@
+{
+  "scan_id": "QuChi261016_Trees",
+  "north_lat": 24.9214273,
+  "south_lat": 24.91865874,
+  "west_lon": 121.54141298,
+  "east_lon": 121.54488499,
+  "min_e": 304686.677,
+  "max_e": 305036.153,
+  "min_n": 2756876.973,
+  "max_n": 2757185.03,
+  "width": 778,
+  "height": 686,
+  "resolution_m": 0.45,
+  "generated_at": "2026-10-26T03:44:05Z"
+}

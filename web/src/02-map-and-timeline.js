@@ -1797,6 +1797,9 @@
       c.classList.toggle("active", c.dataset.scanId === scanId);
     });
     loadScanIntoPreview(scanId);
+    if (typeof gsMap !== "undefined" && gsMap && typeof gsMap.drawMap === "function") {
+      gsMap.drawMap();
+    }
   }
 
   function openSiteTimeline(projectGroup, preferredScanId = null, forceSwitchToMap = false) {

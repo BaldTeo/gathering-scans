@@ -1,0 +1,15 @@
+{
+  "scan_id": "quchi_20261005_sector3",
+  "north_lat": 24.92209299,
+  "south_lat": 24.91899089,
+  "west_lon": 121.54198599,
+  "east_lon": 121.54649208,
+  "min_e": 304744.41,
+  "max_e": 305198.185,
+  "min_n": 2756913.994,
+  "max_n": 2757259.417,
+  "width": 960,
+  "height": 769,
+  "resolution_m": 0.45,
+  "generated_at": "2026-10-26T03:44:51Z"
+}

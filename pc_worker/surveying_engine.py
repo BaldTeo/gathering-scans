@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from pc_worker.surveying import (
     wgs84_to_twd97,
+    twd97_to_wgs84,
     GLTFPACK_EXE,
     MS_CASES,
     polygon_area_and_perimeter_2d,
@@ -38,6 +39,7 @@ class SurveyingEngine(
 __all__ = [
     "SurveyingEngine",
     "wgs84_to_twd97",
+    "twd97_to_wgs84",
     "GLTFPACK_EXE",
     "MS_CASES",
     "polygon_area_and_perimeter_2d",

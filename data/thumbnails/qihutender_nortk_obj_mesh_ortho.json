@@ -1,0 +1,15 @@
+{
+  "scan_id": "qihutender_nortk_obj_mesh",
+  "north_lat": 25.13705104,
+  "south_lat": 25.13563404,
+  "west_lon": 121.50049447,
+  "east_lon": 121.50218065,
+  "min_e": 300464.72,
+  "max_e": 300634.156,
+  "min_n": 2780894.397,
+  "max_n": 2781051.985,
+  "width": 721,
+  "height": 671,
+  "resolution_m": 0.2353,
+  "generated_at": "2026-10-26T03:43:56Z"
+}

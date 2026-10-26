@@ -1,0 +1,15 @@
+{
+  "scan_id": "edited_qihu_unified_merged_scan_4_scans__edited_372953",
+  "north_lat": 25.13702322,
+  "south_lat": 25.13570417,
+  "west_lon": 121.50062203,
+  "east_lon": 121.5020786,
+  "min_e": 300477.554,
+  "max_e": 300623.878,
+  "min_n": 2780902.212,
+  "max_n": 2781048.865,
+  "width": 720,
+  "height": 721,
+  "resolution_m": 0.2037,
+  "generated_at": "2026-10-26T03:43:20Z"
+}

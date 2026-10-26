@@ -5,6 +5,7 @@ GatheringScans Surveying Subpackage
 
 from pc_worker.surveying.dsm_and_volume import (
     wgs84_to_twd97,
+    twd97_to_wgs84,
     GLTFPACK_EXE,
     MS_CASES,
     polygon_area_and_perimeter_2d,
@@ -18,6 +19,7 @@ from pc_worker.surveying.categorization_heuristics import CategorizationHeuristi
 
 __all__ = [
     "wgs84_to_twd97",
+    "twd97_to_wgs84",
     "GLTFPACK_EXE",
     "MS_CASES",
     "polygon_area_and_perimeter_2d",
