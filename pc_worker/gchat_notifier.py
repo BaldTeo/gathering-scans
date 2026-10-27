@@ -71,6 +71,8 @@ class GoogleChatNotifier:
         self.user_webhooks: Dict[str, str] = {}
         self.user_gchat_ids: Dict[str, str] = _discover_drivefs_google_user_ids()
         self.bot_bearer_token: str = ""
+        self._sa_chat_token: str = ""
+        self._sa_chat_token_exp: float = 0.0
         saved_cfg = self._load_saved_config()
         self.webhook_url = (webhook_url or saved_cfg.get("webhook_url") or "").strip()
         if isinstance(saved_cfg.get("user_webhooks"), dict):
@@ -296,38 +298,174 @@ class GoogleChatNotifier:
                     pass
                 break
 
+    def _get_chat_bot_bearer_token(self, force_refresh: bool = False) -> str:
+        """
+        Acquires an OAuth2 Bearer token with scope `https://www.googleapis.com/auth/chat.bot`
+        using the configured Google Cloud Service Account (`gcworker@modular-temple-508005-c4.iam.gserviceaccount.com`)
+        from `data/gcp_service_account.json` or `data/gdrive_cloud_auth.json`.
+        Falls back to manual `self.bot_bearer_token` if present.
+        """
+        now = time.time()
+        if not force_refresh and self._sa_chat_token and self._sa_chat_token_exp > now + 90:
+            return self._sa_chat_token
+        try:
+            from pc_worker.gdrive_cloud_sync import discover_service_account_json_on_disk
+            from pc_worker.server_cloud_and_tunnel import _sign_rs256_jwt_assertion
+
+            sa = discover_service_account_json_on_disk()
+            if isinstance(sa, dict) and sa.get("client_email") and sa.get("private_key"):
+                jwt_assertion = _sign_rs256_jwt_assertion(sa, scope="https://www.googleapis.com/auth/chat.bot")
+                if jwt_assertion:
+                    token_uri = str(sa.get("token_uri") or "https://oauth2.googleapis.com/token")
+                    body = urllib.parse.urlencode(
+                        {
+                            "grant_type": "urn:ietf:params:oauth:grant-type:jwt-bearer",
+                            "assertion": jwt_assertion,
+                        }
+                    ).encode("ascii")
+                    req = urllib.request.Request(
+                        token_uri,
+                        data=body,
+                        headers={"Content-Type": "application/x-www-form-urlencoded"},
+                        method="POST",
+                    )
+                    with urllib.request.urlopen(req, timeout=8) as r:
+                        resp = json.loads(r.read().decode("utf-8"))
+                    tok = str(resp.get("access_token") or "").strip()
+                    if tok:
+                        self._sa_chat_token = tok
+                        self._sa_chat_token_exp = now + float(resp.get("expires_in", 3500))
+                        return tok
+        except Exception as e:
+            print(f"[GChatNotifier] Service account chat.bot token note: {e}")
+        return self.bot_bearer_token
+
     def _try_send_chat_api_direct_message(
         self, uploader_email: str, gchat_uid: str, card_payload: Dict[str, Any]
     ) -> Optional[str]:
         """
-        If a Google Chat App Bearer token is configured, sends a 1:1 Direct Message
-        (or privateMessageViewer card) directly to the uploader via the Google Chat v1 REST API.
+        Uses the Google Cloud Service Account (`chat.bot` scope) to send a 1:1 Direct Message
+        (or a privateMessageViewer card in a shared space where the bot is a member) directly
+        to the uploader via the Google Chat v1 REST API.
         """
-        if not self.bot_bearer_token:
+        token = self._get_chat_bot_bearer_token()
+        if not token:
             return None
         headers = {
-            "Authorization": f"Bearer {self.bot_bearer_token}",
+            "Authorization": f"Bearer {token}",
             "Content-Type": "application/json; charset=UTF-8",
         }
-        user_ref = f"users/{gchat_uid}" if gchat_uid else f"users/{uploader_email}"
+        # 1. Try 1:1 Direct Message (`spaces:findDirectMessage`) by email and numeric user ID
+        user_candidates = []
+        if uploader_email:
+            user_candidates.append(f"users/{uploader_email.strip().lower()}")
+        if gchat_uid:
+            u_clean = gchat_uid if str(gchat_uid).startswith("users/") else f"users/{gchat_uid}"
+            if u_clean not in user_candidates:
+                user_candidates.append(u_clean)
+
+        for user_ref in user_candidates:
+            try:
+                find_url = f"https://chat.googleapis.com/v1/spaces:findDirectMessage?name={urllib.parse.quote(user_ref)}"
+                req = urllib.request.Request(find_url, headers=headers, method="GET")
+                with urllib.request.urlopen(req, timeout=8) as resp:
+                    dm_space = json.loads(resp.read().decode("utf-8")).get("name", "")
+                if dm_space:
+                    msg_url = f"https://chat.googleapis.com/v1/{dm_space}/messages"
+                    mreq = urllib.request.Request(
+                        msg_url,
+                        data=json.dumps(card_payload).encode("utf-8"),
+                        headers=headers,
+                        method="POST",
+                    )
+                    with urllib.request.urlopen(mreq, timeout=8) as mresp:
+                        return f"delivered_dm_http_{mresp.status}"
+            except Exception:
+                continue
+
+        # 2. Fallback: If the Chat App is in a shared Space (e.g. AAQA_oh-3w8) and we know the
+        #    recipient's user resource (`users/<id>` or `users/<email>`), post with `privateMessageViewer`
+        #    so ONLY that specific uploader can see the card inside the group space!
         try:
-            find_url = f"https://chat.googleapis.com/v1/spaces:findDirectMessage?name={urllib.parse.quote(user_ref)}"
-            req = urllib.request.Request(find_url, headers=headers, method="GET")
-            with urllib.request.urlopen(req, timeout=8) as resp:
-                dm_space = json.loads(resp.read().decode("utf-8")).get("name", "")
-            if dm_space:
-                msg_url = f"https://chat.googleapis.com/v1/{dm_space}/messages"
-                mreq = urllib.request.Request(
-                    msg_url,
-                    data=json.dumps(card_payload).encode("utf-8"),
-                    headers=headers,
-                    method="POST",
-                )
-                with urllib.request.urlopen(mreq, timeout=8) as mresp:
-                    return f"delivered_dm_http_{mresp.status}"
+            sreq = urllib.request.Request("https://chat.googleapis.com/v1/spaces", headers=headers, method="GET")
+            with urllib.request.urlopen(sreq, timeout=8) as sresp:
+                spaces_list = json.loads(sresp.read().decode("utf-8")).get("spaces") or []
+            for sp in spaces_list:
+                sp_name = str(sp.get("name") or "")
+                sp_type = str(sp.get("spaceType") or sp.get("type") or "")
+                if not sp_name or sp_type == "DIRECT_MESSAGE":
+                    continue
+                for viewer_ref in user_candidates:
+                    try:
+                        priv_body = dict(card_payload)
+                        priv_body["privateMessageViewer"] = {"name": viewer_ref}
+                        mreq = urllib.request.Request(
+                            f"https://chat.googleapis.com/v1/{sp_name}/messages",
+                            data=json.dumps(priv_body).encode("utf-8"),
+                            headers=headers,
+                            method="POST",
+                        )
+                        with urllib.request.urlopen(mreq, timeout=8) as mresp:
+                            return f"delivered_private_card_http_{mresp.status}"
+                    except Exception:
+                        continue
         except Exception:
             pass
         return None
+
+    def test_chat_app_connection(self, test_email: str = "") -> Dict[str, Any]:
+        """
+        Tests the Google Chat API Service Account (`chat.bot`) connection and checks whether
+         the Google Cloud Console 'Configuration' tab has been saved yet.
+        """
+        import urllib.error
+
+        token = self._get_chat_bot_bearer_token(force_refresh=True)
+        result: Dict[str, Any] = {
+            "token_acquired": bool(token),
+            "chat_app_configured": False,
+            "spaces": [],
+            "dm_test": None,
+        }
+        if not token:
+            result["status"] = "missing_token"
+            result["message"] = "Could not acquire chat.bot OAuth2 token from Service Account."
+            return result
+        headers = {"Authorization": f"Bearer {token}"}
+        try:
+            req = urllib.request.Request("https://chat.googleapis.com/v1/spaces", headers=headers, method="GET")
+            with urllib.request.urlopen(req, timeout=8) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+            result["chat_app_configured"] = True
+            result["spaces"] = data.get("spaces") or []
+            result["status"] = "ok"
+            result["message"] = f"Google Chat App is active and visible in {len(result['spaces'])} space(s)."
+        except urllib.error.HTTPError as e:
+            err_raw = e.read().decode("utf-8", errors="ignore")
+            result["http_status"] = e.code
+            result["error_detail"] = err_raw
+            if e.code == 404 and "Google Chat app not found" in err_raw:
+                result["status"] = "needs_console_configuration_tab"
+                result["message"] = (
+                    "Chat API is enabled and Service Account token works, but the 'Configuration' tab "
+                    "in Google Cloud Console -> Google Chat API has not been saved yet."
+                )
+            else:
+                result["status"] = f"http_{e.code}"
+        except Exception as e:
+            result["status"] = "error"
+            result["message"] = str(e)
+
+        if result["chat_app_configured"] and test_email:
+            try:
+                u_ref = f"users/{test_email.strip().lower()}"
+                f_url = f"https://chat.googleapis.com/v1/spaces:findDirectMessage?name={urllib.parse.quote(u_ref)}"
+                freq = urllib.request.Request(f_url, headers=headers, method="GET")
+                with urllib.request.urlopen(freq, timeout=8) as fresp:
+                    result["dm_test"] = json.loads(fresp.read().decode("utf-8"))
+            except urllib.error.HTTPError as e:
+                result["dm_test"] = {"http_status": e.code, "body": e.read().decode("utf-8", errors="ignore")}
+        return result
 
     def has_recent_notification(self, scan_id: str, within_seconds: float = 300.0) -> bool:
         """Checks whether a delivered_http_200 notification was already sent for scan_id recently."""

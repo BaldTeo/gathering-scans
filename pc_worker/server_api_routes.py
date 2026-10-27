@@ -1552,7 +1552,50 @@ class ServerWriteRoutesMixin:
                     self.send_json({"status": "ok", "link": link})
                     return
 
-            # 10. Google Chat Notification Dispatch & Webhook Config
+            # 10. Google Chat Notification Dispatch, Interactive App Endpoint & Webhook Config
+            if path == "/api/gchat/webhook":
+                # Interactive Google Chat HTTP Endpoint (handles ADDED_TO_SPACE, MESSAGE, CARD_CLICKED)
+                evt_type = str(payload.get("type") or "").upper()
+                user_obj = payload.get("user") if isinstance(payload.get("user"), dict) else {}
+                u_email = str(user_obj.get("email") or "").strip().lower()
+                u_name_res = str(user_obj.get("name") or "").strip()  # e.g. "users/107639887113416939995"
+                if u_email and u_name_res.startswith("users/"):
+                    uid_num = u_name_res.split("/", 1)[1].strip()
+                    if uid_num:
+                        GCHAT.user_gchat_ids[u_email] = uid_num
+                        GCHAT._save_config()
+                if evt_type == "ADDED_TO_SPACE":
+                    self.send_json(
+                        {
+                            "text": (
+                                "✅ *GatheringScans 3D Survey Bot* is connected! "
+                                "When your uploaded PIX4Dcatch scan finishes processing in PIX4Dmatic, "
+                                "I will send your private completion card and 3D Studio link directly."
+                            )
+                        }
+                    )
+                    return
+                if evt_type == "MESSAGE":
+                    self.send_json(
+                        {
+                            "text": (
+                                f"👋 Hi {user_obj.get('displayName') or u_email or 'there'}! "
+                                f"Your Google Chat ID (`{u_name_res or 'linked'}`) is registered with GatheringScans (`https://scans.gatheren.cloud`)."
+                            )
+                        }
+                    )
+                    return
+                self.send_json({"text": "GatheringScans Bot received event."})
+                return
+
+            if path == "/api/gchat/test-app":
+                if not actor_perms.get("can_manage_users") and not actor_perms.get("can_run_workflows"):
+                    self.send_json({"error": "Authenticated Editor, Admin, or Owner session required."}, status=403)
+                    return
+                test_em = str(payload.get("email") or actor_email or "").strip()
+                self.send_json(GCHAT.test_chat_app_connection(test_email=test_em))
+                return
+
             if path == "/api/gchat/config":
                 if not actor_perms.get("can_manage_users"):
                     self.send_json({"error": "Owner or Admin session required to configure webhooks."}, status=403)

@@ -1765,7 +1765,16 @@ class GatheringScansHandler(CloudAndTunnelHandlerMixin, ServerWriteRoutesMixin, 
             )
             return
 
-        # 8. Google Chat Notification History (Admin/Owner Only)
+        # 8. Google Chat Notification History & App Connection Status (Admin/Owner Only)
+        if path == "/api/gchat/test-app":
+            actor_em_g, _, gc_perms = self._resolve_request_role(None, query, share_token)
+            if share_token or not gc_perms.get("can_manage_users"):
+                self.send_json({"error": "Owner or Admin session required to test Google Chat app."}, status=403)
+                return
+            test_em = str((query.get("email") or [actor_em_g])[0] or "").strip()
+            self.send_json(GCHAT.test_chat_app_connection(test_email=test_em))
+            return
+
         if path == "/api/gchat/history":
             _, _, gc_perms = self._resolve_request_role(None, query, share_token)
             if share_token or not gc_perms.get("can_manage_users"):
