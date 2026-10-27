@@ -586,7 +586,7 @@
     );
   }
 
-  function renderMapClusters() {
+  function renderMapClusters(opts = {}) {
     initMap();
     if (!gsMap) return;
 
@@ -658,7 +658,20 @@
     } else if (visibleGroups.length > 0) {
       const activeGrp =
         visibleGroups.find((g) => g.project_group === STATE.activeProjectGroup) || visibleGroups[0];
-      openClusterPopover(activeGrp, false);
+      const isSingleScanShare =
+        Boolean(STATE.shareToken) &&
+        (STATE.scans.length === 1 || String(STATE.shareLinkInfo?.scope_type || "").toLowerCase() === "scan");
+      if (STATE.activeView === "map" && !isSingleScanShare) {
+        if (
+          opts &&
+          opts.preservePopover &&
+          document.getElementById("clusterHoverPopover")?.classList.contains("active") &&
+          STATE.activeProjectGroup === activeGrp.project_group
+        ) {
+          return;
+        }
+        openClusterPopover(activeGrp, false);
+      }
     }
   }
 
@@ -985,11 +998,13 @@
         : rawSubZh;
     document.getElementById("popoverGroupSubtitle").textContent = subGroupLabel;
 
-    // Unified 3-Pane Workbench on Desktop; on Mobile (<=768px), keep first page map-only until a site is explicitly chosen
-    const isMobileViewport = typeof window !== "undefined" && window.innerWidth <= 768;
-    const shouldOpenTimeline = isMobileViewport
-      ? Boolean(userExplicit || STATE.siteTimelineOpen)
-      : (STATE.activeView === "map" || !document.getElementById("siteTimelineTilesTrack")?.children.length);
+    // Unified 3-Pane Workbench on Desktop/Tablet; on Phone (<=767px), keep first page map-only until a site is explicitly chosen
+    const isMobileViewport = typeof window !== "undefined" && window.innerWidth <= 767;
+    const shouldOpenTimeline =
+      STATE.activeView === "map" &&
+      (isMobileViewport
+        ? Boolean(userExplicit || STATE.siteTimelineOpen)
+        : true);
     if (shouldOpenTimeline) {
       openSiteTimeline(
         grp.project_group,
@@ -1222,6 +1237,35 @@
     }
   }
 
+  function suspendPreview3DResources() {
+    if (STATE._timelineInitTimer) {
+      clearTimeout(STATE._timelineInitTimer);
+      STATE._timelineInitTimer = null;
+    }
+    if (!previewThree) return;
+    if (previewThree._loaderHideTimer) {
+      clearTimeout(previewThree._loaderHideTimer);
+      previewThree._loaderHideTimer = null;
+    }
+    if (previewThree.tilesRenderer) {
+      try {
+        previewThree.modelPivot.remove(previewThree.tilesRenderer.group);
+        previewThree.tilesRenderer.dispose();
+      } catch (_) {}
+      previewThree.tilesRenderer = null;
+    }
+    if (previewThree.modelPivot) {
+      disposeObject3DResources(previewThree.modelPivot);
+      while (previewThree.modelPivot.children.length > 0) {
+        previewThree.modelPivot.remove(previewThree.modelPivot.children[0]);
+      }
+    }
+    previewThree._loadingScanId = null;
+    previewThree._loadingDone = true;
+    updateScanLoader("preview", false, 100, "");
+  }
+  window.suspendPreview3DResources = suspendPreview3DResources;
+
   function initPreview3D() {
     if (previewThree) {
       syncPreviewRendererContainer();
@@ -1242,16 +1286,41 @@
     );
     camera.position.set(42, 34, 48);
 
+    const isIOS = typeof isIOSOrIPadDevice === "function" && isIOSOrIPadDevice();
     const renderer = new THREE.WebGLRenderer({
-      antialias: true,
-      preserveDrawingBuffer: true,
-      powerPreference: "high-performance",
+      antialias: !isIOS,
+      preserveDrawingBuffer: !isIOS,
+      powerPreference: isIOS ? "default" : "high-performance",
     });
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, isIOS ? 1.35 : 2));
     renderer.setSize(Math.max(1, container.clientWidth), Math.max(1, container.clientHeight));
     renderer.toneMapping = THREE.NoToneMapping;
     renderer.toneMappingExposure = 1.0;
     container.appendChild(renderer.domElement);
+
+    renderer.domElement.addEventListener(
+      "webglcontextlost",
+      (ev) => {
+        ev.preventDefault();
+        if (previewThree) {
+          previewThree._contextLost = true;
+          renderer.setPixelRatio(1);
+        }
+      },
+      false
+    );
+    renderer.domElement.addEventListener(
+      "webglcontextrestored",
+      () => {
+        if (previewThree) {
+          previewThree._contextLost = false;
+          if (STATE.activeView === "map" && STATE.selectedTimelineScanId) {
+            loadScanIntoPreview(STATE.selectedTimelineScanId, true);
+          }
+        }
+      },
+      false
+    );
 
     const controls = new THREE.OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
@@ -1607,10 +1676,15 @@
   }
 
   function loadScanIntoPreview(scanId, forceReload = false) {
+    const scan = STATE.scans.find((s) => s.scan_id === scanId) || STATE.scans[0];
+    if (!scan) return;
+    if (STATE.activeView !== "map") {
+      STATE.selectedTimelineScanId = scan.scan_id;
+      return;
+    }
     initPreview3D();
     syncPreviewRendererContainer();
-    const scan = STATE.scans.find((s) => s.scan_id === scanId) || STATE.scans[0];
-    if (!scan || !previewThree) return;
+    if (!previewThree) return;
 
     const titleEl = document.getElementById("previewScanTitle");
     if (titleEl) titleEl.textContent = scan.name;
@@ -1619,12 +1693,12 @@
       metaEl.textContent = `${scan.capture_date} · ${scan.uploader_name} · ${formatCoveredAreaM2(scan)} · E ${Number(scan.twd97_e).toFixed(1)} N ${Number(scan.twd97_n).toFixed(1)} H +${Number(scan.twd97_h).toFixed(2)}m`;
     }
 
-    if (
-      !forceReload &&
-      previewThree._loadingScanId === scan.scan_id &&
-      previewThree.tilesRenderer &&
-      Number(previewThree.tilesRenderer.stats?.failed || 0) === 0
-    ) {
+    const hasLoadedPreviewContent =
+      (previewThree.tilesRenderer && Number(previewThree.tilesRenderer.stats?.failed || 0) === 0) ||
+      (!previewThree.tilesRenderer && previewThree.modelPivot && previewThree.modelPivot.children.length > 0) ||
+      !previewThree._loadingDone;
+
+    if (!forceReload && previewThree._loadingScanId === scan.scan_id && hasLoadedPreviewContent) {
       STATE.selectedTimelineScanId = scan.scan_id;
       STATE.activeScanId = scan.scan_id;
       STATE.activeScan = scan;
@@ -1641,6 +1715,7 @@
       previewThree.tilesRenderer.dispose();
       previewThree.tilesRenderer = null;
     }
+    disposeObject3DResources(previewThree.modelPivot);
     while (previewThree.modelPivot.children.length > 0) {
       previewThree.modelPivot.remove(previewThree.modelPivot.children[0]);
     }
@@ -1691,7 +1766,16 @@
           model.traverse((c) => {
             if (c.isMesh && c.material) {
               const mats = Array.isArray(c.material) ? c.material : [c.material];
-              mats.forEach((m) => applyBrightnessToMaterial(m, STATE.scanBrightness));
+              mats.forEach((m) => {
+                if (m && typeof m.metalness === "number" && m.metalness > 0) {
+                  m.metalness = 0.0;
+                  m.roughness = 1.0;
+                }
+                if (m && m.side !== THREE.DoubleSide) {
+                  m.side = THREE.DoubleSide;
+                }
+                applyBrightnessToMaterial(m, STATE.scanBrightness);
+              });
             }
           });
           previewThree.modelPivot.add(model);
@@ -1753,7 +1837,16 @@
           ev.scene.traverse((c) => {
             if (c.isMesh && c.material) {
               const mats = Array.isArray(c.material) ? c.material : [c.material];
-              mats.forEach((m) => applyBrightnessToMaterial(m, STATE.scanBrightness));
+              mats.forEach((m) => {
+                if (m && typeof m.metalness === "number" && m.metalness > 0) {
+                  m.metalness = 0.0;
+                  m.roughness = 1.0;
+                }
+                if (m && m.side !== THREE.DoubleSide) {
+                  m.side = THREE.DoubleSide;
+                }
+                applyBrightnessToMaterial(m, STATE.scanBrightness);
+              });
             }
           });
           previewThree.camera.updateMatrixWorld();
@@ -1763,9 +1856,14 @@
         }
       });
 
-      tr.errorTarget = 16.0;
-      if (tr.downloadQueue) tr.downloadQueue.maxJobs = 12;
-      if (tr.parseQueue) tr.parseQueue.maxJobs = 6;
+      const isMobileOrTab = typeof isMobileOrTabletDevice === "function" && isMobileOrTabletDevice();
+      tr.errorTarget = isMobileOrTab ? 24.0 : 16.0;
+      if (tr.downloadQueue) tr.downloadQueue.maxJobs = isMobileOrTab ? 4 : 12;
+      if (tr.parseQueue) tr.parseQueue.maxJobs = isMobileOrTab ? 2 : 6;
+      if (isMobileOrTab && tr.lruCache) {
+        tr.lruCache.maxSize = 48;
+        tr.lruCache.minSize = 16;
+      }
       previewThree.modelPivot.add(tr.group);
       previewThree.tilesRenderer = tr;
       framePreviewCamera();

@@ -1496,6 +1496,51 @@ class GatheringScansTestSuite(unittest.TestCase):
         self.assertIn("STATE.categorizeOverlayVisible = false;\n      STATE.categorizeLabelsVisible = false;", js03)
         self.assertIn("STATE.categorizeOverlayVisible = autoShow;\n    STATE.categorizeLabelsVisible = autoShow;", js05)
 
+    def test_19_ipad_webgl_memory_and_view_lifecycle_protection(self):
+        """Verify iPadOS/iOS WebGL Jetsam crash prevention, single-context lifecycle, and preview_tileset LOD streaming."""
+        with open(os.path.join(BASE_DIR, "web", "src", "01-core-state.js"), "r", encoding="utf-8") as f:
+            js01 = f.read()
+        with open(os.path.join(BASE_DIR, "web", "src", "02-map-and-timeline.js"), "r", encoding="utf-8") as f:
+            js02 = f.read()
+        with open(os.path.join(BASE_DIR, "web", "src", "03-studio-core.js"), "r", encoding="utf-8") as f:
+            js03 = f.read()
+        with open(os.path.join(BASE_DIR, "web", "src", "07-compare-and-queue.js"), "r", encoding="utf-8") as f:
+            js07 = f.read()
+        with open(os.path.join(BASE_DIR, "web", "app.js"), "r", encoding="utf-8") as f:
+            app_js = f.read()
+        with open(os.path.join(BASE_DIR, "web", "app.css"), "r", encoding="utf-8") as f:
+            app_css = f.read()
+        with open(os.path.join(BASE_DIR, "web", "sw.js"), "r", encoding="utf-8") as f:
+            sw_js = f.read()
+
+        # 1. iPadOS Safari desktop-mode detection + temporary WebGL context release + deep GPU resource disposal
+        self.assertIn("function isIOSOrIPadDevice()", js01)
+        self.assertIn("Number(navigator.maxTouchPoints || 0) > 1", js01)
+        self.assertIn("function disposeObject3DResources(", js01)
+        self.assertIn('gl.getExtension("WEBGL_lose_context")', js01)
+
+        # 2. Prevent hidden Map previewThree initialization when opening Studio or single-scan share link
+        self.assertIn("function suspendPreview3DResources()", js02)
+        self.assertIn('STATE.activeView === "map"', js02)
+        self.assertIn("opts.preservePopover", js02)
+        self.assertIn("window.innerWidth <= 767", js02)
+
+        # 3. Studio 3D WebGL memory budget on iPad/mobile: preview_tileset.json LOD, mipmap/MSAA suppression, context restoration
+        self.assertIn("preview_tileset.json", js03)
+        self.assertIn("mat.map.generateMipmaps = false", js03)
+        self.assertIn("webglcontextlost", js03)
+        self.assertIn("webglcontextrestored", js03)
+        self.assertIn("suspendPreview3DResources()", js03)
+
+        # 4. Compare view memory protection + view switching suspension
+        self.assertIn("suspendCompare3DResources", js07)
+        self.assertIn("suspendPreview3DResources()", app_js)
+        self.assertIn('@media (max-width: 767px)', app_css)
+
+        # 5. Service worker avoids cloning uncached multi-megabyte .glb stream buffers in RAM
+        self.assertIn("caches.open(SCAN_TILES_CACHE)", sw_js)
+        self.assertIn("if (existingCached && tileCache) {", sw_js)
+
 
 if __name__ == "__main__":
     unittest.main()

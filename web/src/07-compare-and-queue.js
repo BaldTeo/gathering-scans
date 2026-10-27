@@ -663,6 +663,7 @@
       side.tilesRenderer = null;
     }
     side.loadedMesh = null;
+    disposeObject3DResources(side.alignGroup);
     while (side.alignGroup.children.length > 0) {
       side.alignGroup.remove(side.alignGroup.children[0]);
     }
@@ -676,7 +677,13 @@
       updateScanLoader("compare", true, 12, `Loading ${scan.name}...`);
     }
 
+    const isMobOrIOS =
+      (typeof isIOSOrIPadDevice === "function" && isIOSOrIPadDevice()) ||
+      (typeof isMobileOrTabletDevice === "function" && isMobileOrTabletDevice());
     let streamUrl = scan.stream_url || "";
+    if (isMobOrIOS && scan.stream_type !== "glb" && !streamUrl.toLowerCase().endsWith(".glb")) {
+      streamUrl = scan.preview_stream_url || streamUrl.replace("/tileset.json", "/preview_tileset.json");
+    }
     if (!streamUrl) {
       if (side.fallbackGroup) side.fallbackGroup.visible = true;
       side._fallbackLoaded = true;
@@ -792,14 +799,43 @@
       }
     });
 
-    tr.errorTarget = 6.0;
-    if (tr.downloadQueue) tr.downloadQueue.maxJobs = 12;
-    if (tr.parseQueue) tr.parseQueue.maxJobs = 6;
+    tr.errorTarget = isMobOrIOS ? 16.0 : 6.0;
+    if (tr.downloadQueue) tr.downloadQueue.maxJobs = isMobOrIOS ? 4 : 12;
+    if (tr.parseQueue) tr.parseQueue.maxJobs = isMobOrIOS ? 2 : 6;
+    if (isMobOrIOS && tr.lruCache) {
+      tr.lruCache.maxSize = 48;
+      tr.lruCache.minSize = 16;
+    }
     side.alignGroup.add(tr.group);
     side.tilesRenderer = tr;
     side.camera.updateMatrixWorld();
     tr.update();
   }
+
+  function suspendCompare3DResources() {
+    if (!compareCtx) return;
+    [compareCtx.left, compareCtx.right, compareCtx.third, compareCtx.fourth].forEach((side) => {
+      if (!side) return;
+      if (side.tilesRenderer) {
+        try {
+          side.alignGroup.remove(side.tilesRenderer.group);
+          side.tilesRenderer.dispose();
+        } catch (_) {}
+        side.tilesRenderer = null;
+      }
+      side.loadedMesh = null;
+      if (side.alignGroup) {
+        disposeObject3DResources(side.alignGroup);
+        while (side.alignGroup.children.length > 0) {
+          side.alignGroup.remove(side.alignGroup.children[0]);
+        }
+      }
+      side._loadedScanId = null;
+    });
+    compareCtx._loadingDone = true;
+    updateScanLoader("compare", false, 100, "");
+  }
+  window.suspendCompare3DResources = suspendCompare3DResources;
 
   function syncCompareScansFromDropdowns() {
     if (!compareCtx) return;
@@ -884,8 +920,12 @@
       camera.position.set(68, 54, 78);
       camera.lookAt(0, 0, 0);
 
-      const renderer = new THREE.WebGLRenderer({ antialias: true });
-      renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+      const isIOS = typeof isIOSOrIPadDevice === "function" && isIOSOrIPadDevice();
+      const renderer = new THREE.WebGLRenderer({
+        antialias: !isIOS,
+        powerPreference: isIOS ? "default" : "high-performance",
+      });
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, isIOS ? 1.25 : 2));
       renderer.setSize(Math.max(1, container.clientWidth), Math.max(1, container.clientHeight));
       renderer.toneMapping = THREE.NoToneMapping;
       renderer.toneMappingExposure = 1.0;

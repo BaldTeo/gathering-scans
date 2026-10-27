@@ -5,7 +5,7 @@
  * Strictly zero scan cache is ever stored on the Linux VPS.
  */
 
-const CACHE_NAME = "gathering-scans-offline-v165";
+const CACHE_NAME = "gathering-scans-offline-v166";
 const SCAN_TILES_CACHE = "gathering-scans-tiles-v2";
 const APP_SHELL = [
   "/",
@@ -85,37 +85,43 @@ self.addEventListener("fetch", (event) => {
 
   const url = new URL(req.url);
 
-  // For /stream/ 3D tileset & GLB requests: try network first, refresh any existing offline cache entry, and fall back to offline browser cache when PC/network is offline
+  // For /stream/ 3D tileset & GLB requests: try network first, refresh any existing offline cache entry without cloning uncached tiles in RAM, and fall back to offline browser cache when PC/network is offline
   if (url.pathname.startsWith("/stream/")) {
     event.respondWith(
-      fetch(req)
-        .then(async (networkResp) => {
+      (async () => {
+        let tileCache = null;
+        let existingCached = null;
+        try {
+          tileCache = await caches.open(SCAN_TILES_CACHE);
+          existingCached = (await tileCache.match(req)) || (await tileCache.match(req, { ignoreSearch: true }));
+        } catch (_) {}
+        try {
+          const networkResp = await fetch(req);
           if (networkResp && networkResp.status === 200) {
-            const clone = networkResp.clone();
-            caches.open(SCAN_TILES_CACHE).then(async (tileCache) => {
-              const existing = (await tileCache.match(req)) || (await tileCache.match(req, { ignoreSearch: true }));
-              if (existing) {
-                const allKeys = await tileCache.keys();
-                for (const k of allKeys) {
-                  try {
-                    if (new URL(k.url).pathname === url.pathname && k.url !== req.url) {
-                      await tileCache.delete(k);
-                    }
-                  } catch (_) {}
-                }
-                await tileCache.put(req, clone);
-              }
-            }).catch(() => {});
+            if (existingCached && tileCache) {
+              const clone = networkResp.clone();
+              tileCache
+                .keys()
+                .then(async (allKeys) => {
+                  for (const k of allKeys) {
+                    try {
+                      if (new URL(k.url).pathname === url.pathname && k.url !== req.url) {
+                        await tileCache.delete(k);
+                      }
+                    } catch (_) {}
+                  }
+                  await tileCache.put(req, clone);
+                })
+                .catch(() => {});
+            }
             return networkResp;
           }
           if (networkResp && (networkResp.status === 503 || networkResp.status === 502 || networkResp.status === 504)) {
-            const cached = await matchStreamCache(req);
-            return cached || networkResp;
+            return existingCached || (await matchStreamCache(req)) || networkResp;
           }
           return networkResp;
-        })
-        .catch(async () => {
-          const cached = await matchStreamCache(req);
+        } catch (_) {
+          const cached = existingCached || (await matchStreamCache(req));
           if (cached) return cached;
           return new Response(
             JSON.stringify({
@@ -124,7 +130,8 @@ self.addEventListener("fetch", (event) => {
             }),
             { status: 503, headers: { "Content-Type": "application/json" } }
           );
-        })
+        }
+      })()
     );
     return;
   }

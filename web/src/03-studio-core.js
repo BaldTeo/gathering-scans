@@ -35,7 +35,17 @@
     mat.userData._lastBrightness = b;
     if (mat.map && mat.color) {
       mat.color.setRGB(1, 1, 1);
-      if (!mat.map.anisotropy || mat.map.anisotropy < 8) {
+      const isMobOrIOS =
+        (typeof isIOSOrIPadDevice === "function" && isIOSOrIPadDevice()) ||
+        (typeof isMobileOrTabletDevice === "function" && isMobileOrTabletDevice());
+      if (isMobOrIOS) {
+        if (mat.map.anisotropy !== 1 || mat.map.generateMipmaps !== false) {
+          mat.map.anisotropy = 1;
+          mat.map.generateMipmaps = false;
+          mat.map.minFilter = THREE.LinearFilter;
+          mat.map.needsUpdate = true;
+        }
+      } else if (!mat.map.anisotropy || mat.map.anisotropy < 8) {
         mat.map.anisotropy = 8;
         mat.map.needsUpdate = true;
       }
@@ -256,13 +266,42 @@
     );
     camera.position.set(45, 38, 55);
 
-    const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    const isIOS = typeof isIOSOrIPadDevice === "function" && isIOSOrIPadDevice();
+    const renderer = new THREE.WebGLRenderer({
+      antialias: !isIOS,
+      powerPreference: isIOS ? "default" : "high-performance",
+    });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, isIOS ? 1.35 : 2));
     renderer.setSize(Math.max(1, container.clientWidth), Math.max(1, container.clientHeight));
     renderer.toneMapping = THREE.NoToneMapping;
     renderer.toneMappingExposure = 1.0;
     renderer.localClippingEnabled = true;
     container.appendChild(renderer.domElement);
+
+    renderer.domElement.addEventListener(
+      "webglcontextlost",
+      (ev) => {
+        ev.preventDefault();
+        if (studioThree) {
+          studioThree._contextLost = true;
+          studioThree._forceLowMemStream = true;
+          renderer.setPixelRatio(1);
+        }
+      },
+      false
+    );
+    renderer.domElement.addEventListener(
+      "webglcontextrestored",
+      () => {
+        if (studioThree) {
+          studioThree._contextLost = false;
+          if (STATE.activeView === "studio" && STATE.activeScanId) {
+            loadScanIntoStudio(STATE.activeScanId, { preserveCamera: true, preserveTools: true });
+          }
+        }
+      },
+      false
+    );
 
     const controls = new THREE.OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
@@ -1202,12 +1241,16 @@
     const prevCamPos = preserveCamera && studioThree.camera ? studioThree.camera.position.clone() : null;
     const prevCamTarget = preserveCamera && studioThree.controls ? studioThree.controls.target.clone() : null;
 
-    // Teardown previous tilesRenderer / mesh
+    // Teardown previous tilesRenderer / mesh and free GPU VRAM before loading next scan
+    if (typeof suspendPreview3DResources === "function" && STATE.activeView === "studio") {
+      suspendPreview3DResources();
+    }
     if (studioThree.tilesRenderer) {
       studioThree.modelPivot.remove(studioThree.tilesRenderer.group);
       studioThree.tilesRenderer.dispose();
       studioThree.tilesRenderer = null;
     }
+    disposeObject3DResources(studioThree.modelPivot);
     while (studioThree.modelPivot.children.length > 0) {
       studioThree.modelPivot.remove(studioThree.modelPivot.children[0]);
     }
@@ -1217,12 +1260,31 @@
     studioThree.tileUpMatrix = new THREE.Matrix4();
     if (studioThree.fallbackGroup) studioThree.fallbackGroup.visible = false;
 
-    startScanLoader(studioThree, "studio", scan.name);
+    startScanLoader(studioThree, "studio", scan.name, scan.scan_id);
+
+    const isIOS = typeof isIOSOrIPadDevice === "function" && isIOSOrIPadDevice();
+    const isMobOrTab = isIOS || (typeof isMobileOrTabletDevice === "function" && isMobileOrTabletDevice());
+    const useLowMemTileset =
+      !opts.forceFullRes &&
+      (isIOS ||
+        Boolean(studioThree._forceLowMemStream) ||
+        (isMobOrTab &&
+          (Number(scan.texture_count || 1) > 1 ||
+            Number(scan.poly_count || 0) > 450000 ||
+            Number(scan.stream_size_mb || 0) > 12)));
 
     let streamUrl = scan.stream_url || `/stream/${scan.scan_id}/tileset.json`;
+    if (useLowMemTileset && scan.stream_type !== "glb" && !streamUrl.toLowerCase().endsWith(".glb")) {
+      streamUrl =
+        scan.preview_stream_url ||
+        streamUrl.replace("/tileset.json", "/preview_tileset.json");
+    }
     if (bustCache) {
       const baseNoQ = streamUrl.split("?")[0];
       streamUrl = `${baseNoQ}?v=${scan.tileset_version || Date.now()}`;
+      if (STATE.shareToken && !streamUrl.includes("share=")) {
+        streamUrl += `&share=${encodeURIComponent(STATE.shareToken)}`;
+      }
     }
 
     if (scan.stream_type === "glb" || streamUrl.toLowerCase().endsWith(".glb")) {
@@ -1251,7 +1313,16 @@
           model.traverse((c) => {
             if (c.isMesh && c.material) {
               const mats = Array.isArray(c.material) ? c.material : [c.material];
-              mats.forEach((m) => applyBrightnessToMaterial(m, STATE.scanBrightness));
+              mats.forEach((m) => {
+                if (m && typeof m.metalness === "number" && m.metalness > 0) {
+                  m.metalness = 0.0;
+                  m.roughness = 1.0;
+                }
+                if (m && m.side !== THREE.DoubleSide) {
+                  m.side = THREE.DoubleSide;
+                }
+                applyBrightnessToMaterial(m, STATE.scanBrightness);
+              });
             }
           });
           studioThree.modelPivot.add(model);
@@ -1406,7 +1477,16 @@
           ev.scene.traverse((c) => {
             if (c.isMesh && c.material) {
               const mats = Array.isArray(c.material) ? c.material : [c.material];
-              mats.forEach((m) => applyBrightnessToMaterial(m, STATE.scanBrightness));
+              mats.forEach((m) => {
+                if (m && typeof m.metalness === "number" && m.metalness > 0) {
+                  m.metalness = 0.0;
+                  m.roughness = 1.0;
+                }
+                if (m && m.side !== THREE.DoubleSide) {
+                  m.side = THREE.DoubleSide;
+                }
+                applyBrightnessToMaterial(m, STATE.scanBrightness);
+              });
             }
           });
           studioThree.camera.updateMatrixWorld();
@@ -1429,9 +1509,13 @@
         }
       });
 
-      tr.errorTarget = 6.0;
-      if (tr.downloadQueue) tr.downloadQueue.maxJobs = 12;
-      if (tr.parseQueue) tr.parseQueue.maxJobs = 6;
+      tr.errorTarget = isMobOrTab ? 12.0 : 6.0;
+      if (tr.downloadQueue) tr.downloadQueue.maxJobs = isMobOrTab ? 4 : 12;
+      if (tr.parseQueue) tr.parseQueue.maxJobs = isMobOrTab ? 2 : 6;
+      if (isMobOrTab && tr.lruCache) {
+        tr.lruCache.maxSize = 64;
+        tr.lruCache.minSize = 24;
+      }
       studioThree.modelPivot.add(tr.group);
       studioThree.tilesRenderer = tr;
       studioThree.camera.updateMatrixWorld();
@@ -1440,6 +1524,30 @@
 
     renderCommentPins3D();
   }
+
+  function suspendStudio3DResources() {
+    if (!studioThree) return;
+    if (studioThree._loaderHideTimer) {
+      clearTimeout(studioThree._loaderHideTimer);
+      studioThree._loaderHideTimer = null;
+    }
+    if (studioThree.tilesRenderer) {
+      try {
+        studioThree.modelPivot.remove(studioThree.tilesRenderer.group);
+        studioThree.tilesRenderer.dispose();
+      } catch (_) {}
+      studioThree.tilesRenderer = null;
+    }
+    if (studioThree.modelPivot) {
+      disposeObject3DResources(studioThree.modelPivot);
+      while (studioThree.modelPivot.children.length > 0) {
+        studioThree.modelPivot.remove(studioThree.modelPivot.children[0]);
+      }
+    }
+    studioThree._loadingDone = true;
+    updateScanLoader("studio", false, 100, "");
+  }
+  window.suspendStudio3DResources = suspendStudio3DResources;
 
   function computeStudioEffectiveBoundingRadius() {
     if (STATE.multiAlign?.active && Array.isArray(STATE.multiAlign.layers) && STATE.multiAlign.layers.length > 0) {

@@ -2072,10 +2072,10 @@ select.gs-input,
 }
 
 /* ============================================================================
- * 9. Mobile & Small-Viewport Responsive Architecture (<= 768px)
+ * 9. Mobile & Small-Viewport Responsive Architecture (<= 767px)
  *    Ensures all buttons fit and zero text overflows across every view & modal
  * ============================================================================ */
-@media (max-width: 768px) {
+@media (max-width: 767px) {
   /* 9.1 Top Navigation Bar (2-Row Compact Layout) */
   .gs-topbar {
     height: auto;
@@ -3650,7 +3650,7 @@ body.theme-light .gs-comment-pin-close-btn:hover {
   font-size: 10.5px !important;
 }
 
-@media (max-width: 768px) {
+@media (max-width: 767px) {
   /* 10.2b Dock #studioMobileToolHud cleanly below 2-row .gs-studio-top-bar (inside #viewStudio) so it NEVER overlaps #studioSidePanel or docks */
   .gs-mobile-tool-hud,
   #studioMobileToolHud {

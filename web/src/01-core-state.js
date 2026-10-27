@@ -185,6 +185,78 @@
   };
   window.STATE = STATE;
 
+  function isIOSOrIPadDevice() {
+    if (typeof navigator === "undefined") return false;
+    const ua = String(navigator.userAgent || "");
+    if (/iPad|iPhone|iPod/i.test(ua)) return true;
+    const maxTouch = Number(navigator.maxTouchPoints || 0);
+    if (maxTouch > 1 && (/Macintosh|Mac OS X/i.test(ua) || navigator.platform === "MacIntel")) {
+      return true;
+    }
+    return false;
+  }
+  window.isIOSOrIPadDevice = isIOSOrIPadDevice;
+
+  function isMobileOrTabletDevice() {
+    if (isIOSOrIPadDevice()) return true;
+    if (typeof navigator !== "undefined" && /Android|webOS|BlackBerry|IEMobile|Opera Mini/i.test(String(navigator.userAgent || ""))) {
+      return true;
+    }
+    if (typeof window !== "undefined" && window.innerWidth <= 1024 && Number(navigator?.maxTouchPoints || 0) > 0) {
+      return true;
+    }
+    return false;
+  }
+  window.isMobileOrTabletDevice = isMobileOrTabletDevice;
+
+  function disposeObject3DResources(rootObj) {
+    if (!rootObj || typeof rootObj.traverse !== "function") return;
+    const texProps = [
+      "map",
+      "lightMap",
+      "bumpMap",
+      "normalMap",
+      "specularMap",
+      "envMap",
+      "alphaMap",
+      "aoMap",
+      "displacementMap",
+      "emissiveMap",
+      "gradientMap",
+      "metalnessMap",
+      "roughnessMap",
+    ];
+    try {
+      rootObj.traverse((node) => {
+        if (!node) return;
+        if (node.geometry && typeof node.geometry.dispose === "function") {
+          try {
+            node.geometry.dispose();
+          } catch (_) {}
+        }
+        if (node.material) {
+          const mats = Array.isArray(node.material) ? node.material : [node.material];
+          mats.forEach((m) => {
+            if (!m) return;
+            texProps.forEach((tp) => {
+              if (m[tp] && typeof m[tp].dispose === "function") {
+                try {
+                  m[tp].dispose();
+                } catch (_) {}
+              }
+            });
+            if (typeof m.dispose === "function") {
+              try {
+                m.dispose();
+              } catch (_) {}
+            }
+          });
+        }
+      });
+    } catch (_) {}
+  }
+  window.disposeObject3DResources = disposeObject3DResources;
+
   function resolveThemeFromPreference(pref) {
     const p = String(pref || "auto").toLowerCase();
     if (p === "light" || p === "dark") return p;
@@ -506,12 +578,17 @@
       if (gpuRenderer) return gpuRenderer;
       try {
         const c = document.createElement("canvas");
+        c.width = 1;
+        c.height = 1;
         const gl = c.getContext("webgl") || c.getContext("experimental-webgl");
         if (gl) {
           const dbg = gl.getExtension("WEBGL_debug_renderer_info");
           gpuRenderer = dbg
             ? String(gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL) || "")
             : String(gl.getParameter(gl.RENDERER) || "");
+          try {
+            gl.getExtension("WEBGL_lose_context")?.loseContext();
+          } catch (_) {}
         }
       } catch (_) {}
       return gpuRenderer;
@@ -583,12 +660,17 @@
       try {
         tz = Intl.DateTimeFormat().resolvedOptions().timeZone || "";
       } catch (_) {}
+      const isIpadDesktopMode =
+        typeof navigator !== "undefined" &&
+        Number(navigator.maxTouchPoints || 0) > 1 &&
+        (/Macintosh|Mac OS X/i.test(String(navigator.userAgent || "")) || navigator.platform === "MacIntel");
       return {
         token: STATE.shareToken,
         session_id: sessionId,
         visitor_id: visitorId,
         viewer_name: getViewerName(),
         viewer_email: getViewerEmail(),
+        ...(isIpadDesktopMode ? { device_type: "Tablet", os: "iPadOS" } : {}),
         language: navigator.language || "",
         timezone: tz,
         screen_res: scr,

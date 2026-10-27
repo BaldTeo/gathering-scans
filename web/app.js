@@ -2231,7 +2231,13 @@
     document.getElementById("viewCompare")?.classList.toggle("active", viewName === "compare");
 
     if (viewName === "map") {
-      const isMobile = typeof window !== "undefined" && window.innerWidth <= 768;
+      if (typeof suspendCompare3DResources === "function" && typeof isMobileOrTabletDevice === "function" && isMobileOrTabletDevice()) {
+        suspendCompare3DResources();
+      }
+      if (typeof suspendStudio3DResources === "function" && typeof isIOSOrIPadDevice === "function" && isIOSOrIPadDevice()) {
+        suspendStudio3DResources();
+      }
+      const isMobile = typeof window !== "undefined" && window.innerWidth <= 767;
       if (!isMobile || STATE.siteTimelineOpen) {
         document.getElementById("siteTimelineSplitView")?.classList.add("active");
         if (STATE.siteTimelineOpen) {
@@ -2245,12 +2251,31 @@
       setTimeout(() => {
         if (gsMap && gsMap.drawMap) gsMap.drawMap();
         syncPreviewRendererContainer();
+        if (
+          (!isMobile || STATE.siteTimelineOpen) &&
+          (STATE.selectedTimelineScanId || STATE.activeScanId) &&
+          typeof loadScanIntoPreview === "function"
+        ) {
+          loadScanIntoPreview(STATE.selectedTimelineScanId || STATE.activeScanId);
+        }
       }, 60);
     } else if (viewName === "studio") {
+      if (typeof suspendPreview3DResources === "function") {
+        suspendPreview3DResources();
+      }
+      if (typeof suspendCompare3DResources === "function" && typeof isMobileOrTabletDevice === "function" && isMobileOrTabletDevice()) {
+        suspendCompare3DResources();
+      }
       initStudio3D();
       handleResize();
       loadScanIntoStudio(optionalScanId || STATE.activeScanId);
     } else if (viewName === "compare") {
+      if (typeof suspendPreview3DResources === "function") {
+        suspendPreview3DResources();
+      }
+      if (typeof suspendStudio3DResources === "function" && typeof isMobileOrTabletDevice === "function" && isMobileOrTabletDevice()) {
+        suspendStudio3DResources();
+      }
       populateProjectScanDropdowns(STATE.activeProjectGroup, STATE.activeScanId);
       initCompareView();
       handleResize();
@@ -2515,8 +2540,15 @@
           STATE.activeProjectGroup = activeScanObj.project_group;
         }
       }
+      if (
+        !isBackgroundPoll &&
+        (urlScan ||
+          (STATE.shareToken && String(STATE.shareLinkInfo?.scope_type || "").toLowerCase() === "scan"))
+      ) {
+        STATE.activeView = "studio";
+      }
       populateProjectScanDropdowns(STATE.activeProjectGroup, STATE.activeScanId);
-      renderMapClusters();
+      renderMapClusters({ preservePopover: Boolean(isBackgroundPoll) });
 
       if (prevCatalogSig !== nextCatalogSig && STATE.siteTimelineOpen && STATE.activeView === "map" && STATE.scans.length > 0) {
         openSiteTimeline(STATE.activeProjectGroup, STATE.selectedTimelineScanId, false);
