@@ -1915,6 +1915,9 @@
     );
     layer.layerGroup.updateMatrixWorld(true);
     updateStudioTransformGizmo();
+    if (!_gizmoDrag.active && studioThree && typeof scheduleScanGoogleMapCoverageUpdate === "function") {
+      scheduleScanGoogleMapCoverageUpdate(studioThree, STATE.activeScan, 120);
+    }
     if (!_gizmoDrag.active && studioThree && countMarkedRegionsPending() > 0) {
       if (studioThree._lassoRebuildTimer) clearTimeout(studioThree._lassoRebuildTimer);
       studioThree._lassoRebuildTimer = setTimeout(() => {
@@ -2121,6 +2124,9 @@
           if (STATE.multiAlign?.active && hasStagedMeshEditsForActiveScan()) {
             applyStagedEditsToStudioMeshes(false);
           }
+          if (typeof scheduleScanGoogleMapCoverageUpdate === "function") {
+            scheduleScanGoogleMapCoverageUpdate(studioThree, STATE.activeScan, 120);
+          }
           if (studioThree.renderer && studioThree.scene && studioThree.camera) {
             studioThree.renderer.render(studioThree.scene, studioThree.camera);
           }
@@ -2182,6 +2188,9 @@
           finalizeLoadedMultiAlignLayer(worldSphere);
           if (STATE.multiAlign?.active && hasStagedMeshEditsForActiveScan()) {
             applyStagedEditsToStudioMeshes(false);
+          }
+          if (typeof scheduleScanGoogleMapCoverageUpdate === "function") {
+            scheduleScanGoogleMapCoverageUpdate(studioThree, STATE.activeScan, 120);
           }
           if (studioThree.renderer && studioThree.scene && studioThree.camera) {
             studioThree.renderer.render(studioThree.scene, studioThree.camera);

@@ -7,13 +7,60 @@
   // 1. GOOGLE MAPS OVERVIEW & SPATIAL CLUSTERING (Requirement 4.a & Fix #3)
   // ============================================================================
   let gsMap = null;
+  const _sharedGoogleTileCache = new Map();
 
   function latLonToNormMercator(lat, lon) {
     const u = (lon + 180) / 360;
     const sinLat = Math.sin((Math.max(-85.05, Math.min(85.05, lat)) * Math.PI) / 180);
     const v = 0.5 - Math.log((1 + sinLat) / (1 - sinLat)) / (4 * Math.PI);
-    return { u, v };
+    return { u, v, x: u, y: v };
   }
+
+  function getGoogleTileImage(lyrs, z, tx, ty, onLoad) {
+    if (!Number.isFinite(z) || !Number.isFinite(tx) || !Number.isFinite(ty)) return null;
+    const maxTile = 1 << z;
+    if (ty < 0 || ty >= maxTile) return null;
+    const wrappedTx = ((tx % maxTile) + maxTile) % maxTile;
+    const cacheKey = `${lyrs}_${z}_${wrappedTx}_${ty}`;
+    if (_sharedGoogleTileCache.has(cacheKey)) {
+      const existing = _sharedGoogleTileCache.get(cacheKey);
+      if (existing.loaded) return existing;
+      if (!existing.failed && typeof onLoad === "function" && !existing.callbacks.includes(onLoad)) {
+        existing.callbacks.push(onLoad);
+      }
+      return existing;
+    }
+    const sub = (wrappedTx + ty) & 3;
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    const callbacks = typeof onLoad === "function" ? [onLoad] : [];
+    const entry = { img, loaded: false, failed: false, callbacks, _retriedBackupSub: false };
+    _sharedGoogleTileCache.set(cacheKey, entry);
+    img.onload = () => {
+      entry.loaded = true;
+      entry.failed = false;
+      if (gsMap && typeof gsMap.drawMap === "function") gsMap.drawMap();
+      const cbs = entry.callbacks.splice(0, entry.callbacks.length);
+      for (let i = 0; i < cbs.length; i++) {
+        try {
+          cbs[i](entry);
+        } catch (_) {}
+      }
+    };
+    img.onerror = () => {
+      if (!entry._retriedBackupSub) {
+        entry._retriedBackupSub = true;
+        const backupSub = (sub + 1) & 3;
+        img.src = `https://mt${backupSub}.google.com/vt/lyrs=${lyrs}&hl=zh-TW&x=${wrappedTx}&y=${ty}&z=${z}`;
+        return;
+      }
+      entry.failed = true;
+      entry.callbacks.length = 0;
+    };
+    img.src = `https://mt${sub}.google.com/vt/lyrs=${lyrs}&hl=zh-TW&x=${wrappedTx}&y=${ty}&z=${z}`;
+    return entry;
+  }
+  window.getGoogleTileImage = getGoogleTileImage;
 
   function normMercatorToLatLon(u, v) {
     const lon = u * 360 - 180;
@@ -116,7 +163,7 @@
       zoom: 2.0,
       _initialFitDone: false,
       groups: [],
-      tileCache: new Map(),
+      tileCache: _sharedGoogleTileCache,
       dragging: false,
       dragMovedPx: 0,
       lastX: 0,
@@ -150,34 +197,6 @@
 
     gsMap.projectLatLon = projectLatLon;
     gsMap.unprojectXY = unprojectXY;
-
-    const getGoogleTileImage = (lyrs, z, tx, ty) => {
-      const maxTile = 1 << z;
-      if (ty < 0 || ty >= maxTile) return null;
-      const wrappedTx = ((tx % maxTile) + maxTile) % maxTile;
-      const cacheKey = `${lyrs}_${z}_${wrappedTx}_${ty}`;
-      if (gsMap.tileCache.has(cacheKey)) {
-        return gsMap.tileCache.get(cacheKey);
-      }
-      const sub = (wrappedTx + ty) & 3;
-      const apiKey = encodeURIComponent(DEFAULT_GOOGLE_MAPS_API_KEY);
-      const img = new Image();
-      img.crossOrigin = "anonymous";
-      const entry = { img, loaded: false };
-      gsMap.tileCache.set(cacheKey, entry);
-      img.onload = () => {
-        entry.loaded = true;
-        if (gsMap && gsMap.drawMap) gsMap.drawMap();
-      };
-      img.onerror = () => {
-        if (!entry._retriedKeyless) {
-          entry._retriedKeyless = true;
-          img.src = `https://mt${sub}.google.com/vt/lyrs=${lyrs}&hl=zh-TW&x=${wrappedTx}&y=${ty}&z=${z}`;
-        }
-      };
-      img.src = `https://mt${sub}.google.com/vt/lyrs=${lyrs}&hl=zh-TW&x=${wrappedTx}&y=${ty}&z=${z}&key=${apiKey}`;
-      return entry;
-    };
 
     const updateCursorCoordsHud = (clientX, clientY) => {
       const rect = canvas.getBoundingClientRect();
@@ -1466,6 +1485,9 @@
       updateScanLoader(prefix, true, 100, labelText);
       ctx._loaderHideTimer = setTimeout(() => {
         updateScanLoader(prefix, false, 100, labelText);
+        if (typeof scheduleScanGoogleMapCoverageUpdate === "function") {
+          scheduleScanGoogleMapCoverageUpdate(ctx, STATE.activeScan, 120);
+        }
         if (prefix === "preview") {
           autoCaptureSiteTimelineScreenshots();
         } else if (prefix === "studio") {
@@ -3002,11 +3024,6 @@
 
     const MASK_N = 512;
     const maskData = new Uint8Array(MASK_N * MASK_N * 4);
-    // Initialize mask to 255 (covered) until first coverage calculation completes so map never flashes inside scan
-    for (let i = 0; i < MASK_N * MASK_N; i++) {
-      maskData[i * 4] = 255;
-      maskData[i * 4 + 3] = 255;
-    }
     const maskTex = new THREE.DataTexture(maskData, MASK_N, MASK_N, THREE.RGBAFormat, THREE.UnsignedByteType);
     maskTex.magFilter = THREE.LinearFilter;
     maskTex.minFilter = THREE.LinearFilter;
@@ -3017,12 +3034,12 @@
 
     const canvas = document.createElement("canvas");
     const isMob = typeof isMobileOrTabletDevice === "function" && isMobileOrTabletDevice();
-    canvas.width = isMob ? 1024 : 1536;
-    canvas.height = isMob ? 1024 : 1536;
+    canvas.width = isMob ? 1024 : 2048;
+    canvas.height = isMob ? 1024 : 2048;
     const mapTex = new THREE.CanvasTexture(canvas);
     mapTex.magFilter = THREE.LinearFilter;
     mapTex.minFilter = THREE.LinearMipmapLinearFilter;
-    mapTex.anisotropy = isMob ? 2 : 8;
+    mapTex.anisotropy = isMob ? 4 : 8;
     mapTex.wrapS = THREE.ClampToEdgeWrapping;
     mapTex.wrapT = THREE.ClampToEdgeWrapping;
 
@@ -3032,6 +3049,7 @@
 
     const uniforms = {
       uMapTex: { value: mapTex },
+      uCoverageMask: { value: maskTex },
       uCoverageTex: { value: maskTex },
       uOpacity: { value: Math.max(0.05, Math.min(1.0, Number(STATE.scanGoogleMapOpacity) || 0.5)) },
       uHalfSpan: { value: halfSpan },
@@ -3042,12 +3060,9 @@
       vertexShader: `
         uniform float uHalfSpan;
         varying vec2 vUv;
-        varying vec2 vMaskUv;
         #include <clipping_planes_pars_vertex>
         void main() {
           vUv = uv;
-          float span = max(1.0, uHalfSpan * 2.0);
-          vMaskUv = vec2((position.x + uHalfSpan) / span, (position.z + uHalfSpan) / span);
           vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
           gl_Position = projectionMatrix * mvPosition;
           #include <clipping_planes_vertex>
@@ -3055,24 +3070,22 @@
       `,
       fragmentShader: `
         uniform sampler2D uMapTex;
-        uniform sampler2D uCoverageTex;
+        uniform sampler2D uCoverageMask;
         uniform float uOpacity;
         varying vec2 vUv;
-        varying vec2 vMaskUv;
         #include <clipping_planes_pars_fragment>
         void main() {
           #include <clipping_planes_fragment>
-          if (vMaskUv.x >= 0.0 && vMaskUv.x <= 1.0 && vMaskUv.y >= 0.0 && vMaskUv.y <= 1.0) {
-            float cov = texture2D(uCoverageTex, vMaskUv).r;
-            if (cov > 0.12) discard;
-          }
-          float covVal = texture2D(uCoverageTex, clamp(vMaskUv, 0.0, 1.0)).r;
-          float scanEdgeAlpha = 1.0 - smoothstep(0.02, 0.12, covVal);
+          float cov = texture2D(uCoverageMask, vUv).a;
+          if (cov > 0.88) discard;
+          float scanMaskAlpha = 1.0 - smoothstep(0.15, 0.88, cov);
           vec4 mapCol = texture2D(uMapTex, vUv);
           if (mapCol.a < 0.01) discard;
           vec2 dEdge = abs(vUv - vec2(0.5)) * 2.0;
           float outerFade = 1.0 - smoothstep(0.92, 1.0, max(dEdge.x, dEdge.y));
-          gl_FragColor = vec4(mapCol.rgb, mapCol.a * uOpacity * scanEdgeAlpha * outerFade);
+          float finalAlpha = mapCol.a * uOpacity * outerFade * scanMaskAlpha;
+          if (finalAlpha < 0.005) discard;
+          gl_FragColor = vec4(mapCol.rgb, finalAlpha);
         }
       `,
       transparent: true,
@@ -3108,6 +3121,9 @@
       maskTex,
       rawOcc: new Uint8Array(MASK_N * MASK_N),
       tmpOcc: new Uint8Array(MASK_N * MASK_N),
+      closedOcc: new Uint8Array(MASK_N * MASK_N),
+      blurA: new Float32Array(MASK_N * MASK_N),
+      blurB: new Float32Array(MASK_N * MASK_N),
       halfSpan,
       originTwd: null,
       tileSig: "",
@@ -3138,21 +3154,21 @@
     let zoom = 18;
     for (let z = 19; z >= 15; z--) {
       const zPow = Math.pow(2, z);
-      const tx0 = Math.floor(nwMerc.x * zPow);
-      const tx1 = Math.floor(seMerc.x * zPow);
-      const ty0 = Math.floor(nwMerc.y * zPow);
-      const ty1 = Math.floor(seMerc.y * zPow);
-      if (Math.abs(tx1 - tx0) + 1 <= 7 && Math.abs(ty1 - ty0) + 1 <= 7) {
+      const tx0 = Math.floor(nwMerc.u * zPow);
+      const tx1 = Math.floor(seMerc.u * zPow);
+      const ty0 = Math.floor(nwMerc.v * zPow);
+      const ty1 = Math.floor(seMerc.v * zPow);
+      if (Math.abs(tx1 - tx0) + 1 <= 9 && Math.abs(ty1 - ty0) + 1 <= 9) {
         zoom = z;
         break;
       }
     }
 
     const zPow = Math.pow(2, zoom);
-    const minTx = Math.floor(Math.min(nwMerc.x, seMerc.x) * zPow) - 1;
-    const maxTx = Math.floor(Math.max(nwMerc.x, seMerc.x) * zPow) + 1;
-    const minTy = Math.floor(Math.min(nwMerc.y, seMerc.y) * zPow) - 1;
-    const maxTy = Math.floor(Math.max(nwMerc.y, seMerc.y) * zPow) + 1;
+    const minTx = Math.floor(Math.min(nwMerc.u, seMerc.u) * zPow) - 1;
+    const maxTx = Math.floor(Math.max(nwMerc.u, seMerc.u) * zPow) + 1;
+    const minTy = Math.floor(Math.min(nwMerc.v, seMerc.v) * zPow) - 1;
+    const maxTy = Math.floor(Math.max(nwMerc.v, seMerc.v) * zPow) + 1;
 
     const canvas = layer.canvas;
     const cW = canvas.width;
@@ -3203,11 +3219,9 @@
       }
     }
     ctx2d.setTransform(1, 0, 0, 1, 0, 0);
-    if (drawnCount > 0) {
-      layer.mapTex.needsUpdate = true;
-      if (ctx.renderer && ctx.scene && ctx.camera) {
-        ctx.renderer.render(ctx.scene, ctx.camera);
-      }
+    layer.mapTex.needsUpdate = true;
+    if (ctx.renderer && ctx.scene && ctx.camera) {
+      ctx.renderer.render(ctx.scene, ctx.camera);
     }
   }
 
@@ -3221,6 +3235,9 @@
     const invCell = N / span;
     const rawOcc = layer.rawOcc;
     const tmpOcc = layer.tmpOcc;
+    const closedOcc = layer.closedOcc || (layer.closedOcc = new Uint8Array(N * N));
+    const blurA = layer.blurA || (layer.blurA = new Float32Array(N * N));
+    const blurB = layer.blurB || (layer.blurB = new Float32Array(N * N));
     rawOcc.fill(0);
 
     const isStudio = typeof studioThree !== "undefined" && ctx === studioThree;
@@ -3363,9 +3380,8 @@
       }
     }
 
-    // Also union True-Nadir RGBA Ortho footprint when no staged mesh deletions/crops are active
-    let usedOrtho = false;
-    if (!isMulti && !hasStagedEdits && scan && scan.scan_id && typeof getOrLoadMapOrthoImage === "function") {
+    // ONLY fall back to True-Nadir RGBA Ortho footprint when 3D mesh triangles have not streamed in yet (rasterizedTris === 0)
+    if (rasterizedTris === 0 && !isMulti && !hasStagedEdits && scan && scan.scan_id && typeof getOrLoadMapOrthoImage === "function") {
       const orthoEntry = getOrLoadMapOrthoImage(scan);
       if (orthoEntry && !orthoEntry._gmapHooked) {
         orthoEntry._gmapHooked = true;
@@ -3436,7 +3452,6 @@
               const u = Math.floor(((wx - minX) / spanOX) * aN);
               if (u >= 0 && u < aN && aGrid[aRow + u]) {
                 rawOcc[row + gx] = 1;
-                usedOrtho = true;
               }
             }
           }
@@ -3454,33 +3469,18 @@
       layer.mesh.position.y = ctx.grid.position.y + 0.04;
     }
 
-    // If neither triangles nor ortho are loaded yet (initial streaming), keep mask closed inside scan radius
-    if (rasterizedTris === 0 && !usedOrtho) {
-      const rGuard = Math.max(20, Number(ctx.boundingSphere?.radius) || 48) * 0.85;
-      const rCells = rGuard * invCell;
-      const r2 = rCells * rCells;
-      const cMid = N * 0.5;
-      for (let gz = 0; gz < N; gz++) {
-        const dz = gz - cMid;
-        const row = gz * N;
-        for (let gx = 0; gx < N; gx++) {
-          const dx = gx - cMid;
-          if (dx * dx + dz * dz <= r2) rawOcc[row + gx] = 1;
-        }
-      }
-    }
-
-    // Morphological closing: dilate by radius 2 -> erode by radius 1 (seals tile seams + 1-cell safety margin)
-    const R_DIL = 2;
+    // Morphological closing: dilate rawOcc by R = 2 into tmpOcc, then erode tmpOcc by R = 2 into closedOcc
+    // (seals internal 1-4m mesh holes/seams inside the scan without expanding the outer boundary)
+    const R_CLOSE = 2;
     tmpOcc.fill(0);
     for (let gz = 0; gz < N; gz++) {
       const row = gz * N;
       for (let gx = 0; gx < N; gx++) {
         if (!rawOcc[row + gx]) continue;
-        const z0 = Math.max(0, gz - R_DIL);
-        const z1 = Math.min(N - 1, gz + R_DIL);
-        const x0 = Math.max(0, gx - R_DIL);
-        const x1 = Math.min(N - 1, gx + R_DIL);
+        const z0 = Math.max(0, gz - R_CLOSE);
+        const z1 = Math.min(N - 1, gz + R_CLOSE);
+        const x0 = Math.max(0, gx - R_CLOSE);
+        const x1 = Math.min(N - 1, gx + R_CLOSE);
         for (let zz = z0; zz <= z1; zz++) {
           const r2 = zz * N;
           for (let xx = x0; xx <= x1; xx++) {
@@ -3490,28 +3490,70 @@
       }
     }
 
-    const maskData = layer.maskData;
+    closedOcc.fill(0);
     for (let gz = 0; gz < N; gz++) {
       const row = gz * N;
+      const z0 = Math.max(0, gz - R_CLOSE);
+      const z1 = Math.min(N - 1, gz + R_CLOSE);
       for (let gx = 0; gx < N; gx++) {
-        let cov = tmpOcc[row + gx];
-        if (cov && gz > 0 && gz < N - 1 && gx > 0 && gx < N - 1) {
-          if (
-            !tmpOcc[(gz - 1) * N + gx] ||
-            !tmpOcc[(gz + 1) * N + gx] ||
-            !tmpOcc[row + gx - 1] ||
-            !tmpOcc[row + gx + 1]
-          ) {
-            // Erode outermost r=2 ring back to r=1 safety rim while keeping interior seams closed
-            cov = rawOcc[row + gx] ? 1 : 0;
+        if (!tmpOcc[row + gx]) continue;
+        const x0 = Math.max(0, gx - R_CLOSE);
+        const x1 = Math.min(N - 1, gx + R_CLOSE);
+        let allOne = true;
+        for (let zz = z0; zz <= z1 && allOne; zz++) {
+          const r2 = zz * N;
+          for (let xx = x0; xx <= x1; xx++) {
+            if (!tmpOcc[r2 + xx]) {
+              allOne = false;
+              break;
+            }
           }
         }
-        const idx = (row + gx) * 4;
-        const val = cov ? 255 : 0;
+        if (allOne || rawOcc[row + gx]) {
+          closedOcc[row + gx] = 1;
+        }
+      }
+    }
+
+    // Smooth feathering: 2 passes of 3x3 box blur on 0..255 coverage values
+    for (let i = 0; i < N * N; i++) {
+      blurA[i] = closedOcc[i] ? 255.0 : 0.0;
+    }
+    const runBoxBlur3x3 = (src, dst) => {
+      for (let gz = 0; gz < N; gz++) {
+        const z0 = Math.max(0, gz - 1);
+        const z1 = Math.min(N - 1, gz + 1);
+        const row = gz * N;
+        for (let gx = 0; gx < N; gx++) {
+          const x0 = Math.max(0, gx - 1);
+          const x1 = Math.min(N - 1, gx + 1);
+          let sum = 0.0;
+          let cnt = 0;
+          for (let zz = z0; zz <= z1; zz++) {
+            const r2 = zz * N;
+            for (let xx = x0; xx <= x1; xx++) {
+              sum += src[r2 + xx];
+              cnt++;
+            }
+          }
+          dst[row + gx] = sum / cnt;
+        }
+      }
+    };
+    runBoxBlur3x3(blurA, blurB);
+    runBoxBlur3x3(blurB, blurA);
+
+    const maskData = layer.maskData;
+    for (let gz = 0; gz < N; gz++) {
+      const srcRow = gz * N;
+      const dstRow = (N - 1 - gz) * N;
+      for (let gx = 0; gx < N; gx++) {
+        const val = Math.max(0, Math.min(255, Math.round(blurA[srcRow + gx])));
+        const idx = (dstRow + gx) * 4;
         maskData[idx] = val;
         maskData[idx + 1] = val;
         maskData[idx + 2] = val;
-        maskData[idx + 3] = 255;
+        maskData[idx + 3] = val;
       }
     }
     layer.maskTex.needsUpdate = true;

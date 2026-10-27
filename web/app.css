@@ -649,6 +649,8 @@ html[data-theme="dark"] .gs-lowres-preview-pill {
   align-items: center;
   justify-content: center;
   gap: 4px;
+  white-space: nowrap;
+  flex-shrink: 0;
   transition: all 0.14s ease;
 }
 
@@ -694,6 +696,7 @@ html[data-theme="dark"] .gs-lowres-preview-pill {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
+  gap: 8px;
   pointer-events: none;
   z-index: 80;
 }
@@ -707,13 +710,27 @@ html[data-theme="dark"] .gs-lowres-preview-pill {
   backdrop-filter: blur(12px);
   border: 1px solid var(--ui-border-strong);
   border-radius: 10px;
-  padding: 7px 12px;
+  padding: 6px 9px;
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 5px;
   box-shadow: var(--ui-shadow-window);
   color: var(--ui-text-primary);
 }
+
+.gs-studio-main-pill {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: calc(100vw - 235px);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.gs-studio-main-pill::-webkit-scrollbar { display: none; }
+.gs-studio-main-pill .btn-xs { height: 26px; min-width: 26px; padding: 0 6px; font-size: 11px; gap: 3px; }
+.gs-studio-main-pill #studioProjectSelect { max-width: 118px; font-size: 11.5px; padding: 3px 22px 3px 7px !important; }
+.gs-studio-main-pill #studioScanSelect { max-width: 155px; font-size: 11.5px; padding: 3px 22px 3px 7px !important; }
+.gs-studio-main-pill #studioScanMetrics { max-width: 112px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-left: 6px !important; font-size: 10.5px !important; flex-shrink: 1; }
+.gs-studio-coord-pill { flex-shrink: 0; white-space: nowrap; }
 
 .gs-scan-select {
   background: var(--ui-bg-pill);
@@ -730,9 +747,11 @@ html[data-theme="dark"] .gs-lowres-preview-pill {
 .gs-brightness-control {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
   border-left: 1px solid var(--ui-border-strong);
-  padding-left: 10px;
+  padding-left: 6px;
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 
 .gs-brightness-icon-btn {
@@ -754,18 +773,18 @@ html[data-theme="dark"] .gs-lowres-preview-pill {
 }
 
 .gs-brightness-slider {
-  width: 78px;
+  width: 52px;
   height: 4px;
   accent-color: var(--ui-accent);
   cursor: pointer;
 }
 
 .gs-brightness-val {
-  font-size: 11px;
+  font-size: 10.5px;
   font-weight: 700;
   font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
   color: var(--ui-text-primary);
-  min-width: 32px;
+  min-width: 28px;
   text-align: right;
 }
 
