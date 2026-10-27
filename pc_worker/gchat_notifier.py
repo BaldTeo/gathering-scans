@@ -34,6 +34,12 @@ MANIFEST_PATH = os.path.join(DATA_DIR, "gdrive_cloud_manifest.json")
 DEFAULT_UPLOADER_GCHAT_USER_IDS: Dict[str, str] = {
     "glibivanov@gatheren.com.tw": "107639887113416939995",
     "gleb.ivanov1999@gmail.com": "110772246686332466252",
+    "kentyu@gatheren.com.tw": "104324004082669082985",
+    "frankchao@gatheren.com.tw": "113563863225856947636",
+    "feiwenhsueh@gatheren.com.tw": "103768730904451087495",
+    "tengtewang@gatheren.com.tw": "103254235603034005707",
+    "public@gatheren.com.tw": "111667799374014791533",
+    "leo7164@gmail.com": "112616399687407417489",
 }
 
 
@@ -83,11 +89,27 @@ class GoogleChatNotifier:
             for k, v in saved_cfg["user_gchat_ids"].items():
                 if k and v:
                     self.user_gchat_ids[str(k).strip().lower()] = str(v).strip()
+        self._sync_user_ids_from_db()
         self.bot_bearer_token = str(saved_cfg.get("bot_bearer_token") or "").strip()
         default_admin_email = os.environ.get("GS_DEFAULT_NOTIFY_EMAIL", "").strip().lower()
         if self.webhook_url and default_admin_email and default_admin_email not in self.user_webhooks:
             self.user_webhooks[default_admin_email] = self.webhook_url
             self._save_config()
+
+    def _sync_user_ids_from_db(self) -> None:
+        """Automatically populates `email -> 21-digit Google User ID` (`google_sub`) from `user_profiles`."""
+        try:
+            with DB_LOCK, self.db._connect() as conn:
+                rows = conn.execute(
+                    "SELECT email, google_sub FROM user_profiles WHERE google_sub IS NOT NULL AND google_sub != ''"
+                ).fetchall()
+                for r in rows:
+                    em = str(r["email"] or "").strip().lower()
+                    sub = str(r["google_sub"] or "").strip()
+                    if em and sub and sub.isdigit():
+                        self.user_gchat_ids[em] = sub
+        except Exception:
+            pass
 
     def _load_saved_config(self) -> Dict[str, Any]:
         if os.path.isfile(GCHAT_CONFIG_PATH):
@@ -355,14 +377,17 @@ class GoogleChatNotifier:
             "Authorization": f"Bearer {token}",
             "Content-Type": "application/json; charset=UTF-8",
         }
-        # 1. Try 1:1 Direct Message (`spaces:findDirectMessage`) by email and numeric user ID
+        # 1. Try 1:1 Direct Message (`spaces:findDirectMessage`) prioritizing numeric user ID (`users/<21-digit-id>`)
+        self._sync_user_ids_from_db()
+        eff_uid = gchat_uid or self.user_gchat_ids.get((uploader_email or "").strip().lower(), "")
         user_candidates = []
+        if eff_uid:
+            u_clean = eff_uid if str(eff_uid).startswith("users/") else f"users/{eff_uid}"
+            user_candidates.append(u_clean)
         if uploader_email:
-            user_candidates.append(f"users/{uploader_email.strip().lower()}")
-        if gchat_uid:
-            u_clean = gchat_uid if str(gchat_uid).startswith("users/") else f"users/{gchat_uid}"
-            if u_clean not in user_candidates:
-                user_candidates.append(u_clean)
+            u_em = f"users/{uploader_email.strip().lower()}"
+            if u_em not in user_candidates:
+                user_candidates.append(u_em)
 
         for user_ref in user_candidates:
             try:
@@ -457,8 +482,11 @@ class GoogleChatNotifier:
             result["message"] = str(e)
 
         if result["chat_app_configured"] and test_email:
+            self._sync_user_ids_from_db()
+            uid_t = self.user_gchat_ids.get(test_email.strip().lower(), "")
+            u_ref = f"users/{uid_t}" if uid_t else f"users/{test_email.strip().lower()}"
+            result["resolved_user_resource"] = u_ref
             try:
-                u_ref = f"users/{test_email.strip().lower()}"
                 f_url = f"https://chat.googleapis.com/v1/spaces:findDirectMessage?name={urllib.parse.quote(u_ref)}"
                 freq = urllib.request.Request(f_url, headers=headers, method="GET")
                 with urllib.request.urlopen(freq, timeout=8) as fresp:
