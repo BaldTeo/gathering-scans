@@ -4706,14 +4706,17 @@
         : "";
       const pinHtml = `
         <div class="gs-scan-comment-pin" data-comment-pin-id="${cid}" style="transform:translate(-50%,-50%);">
-          <div class="gs-comment-pin-icon" style="--pin-avatar-bg:${avatar.bg};">
+          <div class="gs-comment-pin-icon" data-pin-toggle-icon="1" style="--pin-avatar-bg:${avatar.bg};">
             <span class="gs-comment-pin-avatar-char">${avatarChars}</span>
             ${cPhotos.length ? `<span style="position:absolute;bottom:-3px;right:-5px;background:#0284c7;color:#fff;font-size:8.5px;font-weight:800;padding:0 3px;border-radius:999px;border:1px solid #0f172a;">📷${cPhotos.length}</span>` : ""}
           </div>
           <div class="gs-comment-pin-popover">
             <div class="gs-comment-pin-meta">
               <span class="gs-comment-pin-author">${author}</span>
-              <span class="gs-comment-pin-time">${timeStr}</span>
+              <div style="display:inline-flex;align-items:center;gap:6px;">
+                <span class="gs-comment-pin-time">${timeStr}</span>
+                <button type="button" class="gs-comment-pin-close-btn" data-pin-close="1" title="${tr("關閉標註標籤", "Close note label")}" aria-label="${tr("關閉標註標籤", "Close note label")}">✕</button>
+              </div>
             </div>
             <div class="gs-comment-pin-text">${textHtml}</div>
             ${pinPhotosHtml}
@@ -4737,7 +4740,28 @@
       if (badge && badge.el) {
         badge.el.addEventListener("pointerdown", (ev) => ev.stopPropagation());
         badge.el.addEventListener("mousedown", (ev) => ev.stopPropagation());
+        badge.el.addEventListener("mouseleave", () => {
+          badge.el.classList.remove("force-closed");
+        });
+        badge.el.addEventListener("dblclick", (ev) => {
+          ev.stopPropagation();
+          badge.el.classList.remove("mobile-open");
+          badge.el.classList.add("force-closed");
+          if (document.activeElement && badge.el.contains(document.activeElement)) {
+            document.activeElement.blur();
+          }
+        });
         badge.el.addEventListener("click", async (ev) => {
+          const closeBtn = ev.target && ev.target.closest ? ev.target.closest("[data-pin-close]") : null;
+          if (closeBtn) {
+            ev.stopPropagation();
+            badge.el.classList.remove("mobile-open");
+            badge.el.classList.add("force-closed");
+            if (document.activeElement && badge.el.contains(document.activeElement)) {
+              document.activeElement.blur();
+            }
+            return;
+          }
           const rmBtn = ev.target && ev.target.closest ? ev.target.closest("[data-pin-remove-photo-url]") : null;
           if (rmBtn && canEditThis && c.comment_id) {
             ev.stopPropagation();
@@ -4785,12 +4809,28 @@
             if (p) openPhotoLightboxModal(p.url, p.filename, "", cPhotos, pIdx);
             return;
           }
-          ev.stopPropagation();
-          const wasOpen = badge.el.classList.contains("mobile-open");
-          document.querySelectorAll(".gs-scan-comment-pin.mobile-open").forEach((el) => el.classList.remove("mobile-open"));
-          if (!wasOpen) {
-            badge.el.classList.add("mobile-open");
+          const inPopover = ev.target && ev.target.closest ? ev.target.closest(".gs-comment-pin-popover") : null;
+          if (inPopover) {
+            ev.stopPropagation();
+            return;
           }
+          ev.stopPropagation();
+          const nowTs = performance.now();
+          const lastTapTs = Number(badge.el._lastIconTapTs) || 0;
+          badge.el._lastIconTapTs = nowTs;
+          const wasOpen = badge.el.classList.contains("mobile-open");
+          // Double-tap / second tap on the icon closes the note label immediately on PC & mobile
+          if (nowTs - lastTapTs < 380 || wasOpen) {
+            badge.el.classList.remove("mobile-open");
+            badge.el.classList.add("force-closed");
+            if (document.activeElement && badge.el.contains(document.activeElement)) {
+              document.activeElement.blur();
+            }
+            return;
+          }
+          badge.el.classList.remove("force-closed");
+          document.querySelectorAll(".gs-scan-comment-pin.mobile-open").forEach((el) => el.classList.remove("mobile-open"));
+          badge.el.classList.add("mobile-open");
         });
 
         // Allow dragging 1 or more local image files OR RTK photos directly onto the 3D comment pin ONLY if user is author or admin!

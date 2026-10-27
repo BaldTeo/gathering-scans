@@ -3002,13 +3002,44 @@ body.gs-auth-locked .gs-main {
   transform: none;
 }
 
-.gs-scan-comment-pin:hover .gs-comment-pin-popover,
-.gs-scan-comment-pin:focus-within .gs-comment-pin-popover,
-.gs-comment-pin-popover:hover,
-.gs-scan-comment-pin.mobile-open .gs-comment-pin-popover {
+.gs-scan-comment-pin:not(.force-closed):hover .gs-comment-pin-popover,
+.gs-scan-comment-pin:not(.force-closed):focus-within .gs-comment-pin-popover,
+.gs-scan-comment-pin:not(.force-closed) .gs-comment-pin-popover:hover,
+.gs-scan-comment-pin.mobile-open:not(.force-closed) .gs-comment-pin-popover {
   opacity: 1;
   visibility: visible;
   pointer-events: auto !important;
+}
+
+.gs-scan-comment-pin.force-closed .gs-comment-pin-popover {
+  opacity: 0 !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+}
+
+.gs-comment-pin-close-btn {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  background: rgba(15, 23, 42, 0.65);
+  color: #cbd5e1;
+  font-size: 10px;
+  line-height: 1;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  pointer-events: auto;
+  flex-shrink: 0;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.gs-comment-pin-close-btn:hover {
+  background: rgba(239, 68, 68, 0.85);
+  border-color: rgba(248, 113, 113, 0.9);
+  color: #ffffff;
 }
 
 .gs-comment-pin-meta {
@@ -3072,6 +3103,20 @@ body.theme-light .gs-comment-pin-time {
 html[data-theme="light"] .gs-comment-pin-text,
 body.theme-light .gs-comment-pin-text {
   color: #1e293b;
+}
+
+html[data-theme="light"] .gs-comment-pin-close-btn,
+body.theme-light .gs-comment-pin-close-btn {
+  background: rgba(241, 245, 249, 0.9);
+  border-color: rgba(15, 23, 42, 0.18);
+  color: #475569;
+}
+
+html[data-theme="light"] .gs-comment-pin-close-btn:hover,
+body.theme-light .gs-comment-pin-close-btn:hover {
+  background: #ef4444;
+  border-color: #ef4444;
+  color: #ffffff;
 }
 
 /* Mobile Editing Umbrella Button (Hidden on Desktop; Visible on Mobile) */

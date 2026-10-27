@@ -557,6 +557,7 @@
     );
 
     renderer.domElement.addEventListener("pointerdown", (e) => {
+      document.querySelectorAll(".gs-scan-comment-pin.mobile-open").forEach((el) => el.classList.remove("mobile-open"));
       if (e.pointerType === "touch") {
         activeTouchPointers.add(e.pointerId);
         if (activeTouchPointers.size >= 2) {

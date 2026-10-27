@@ -1387,6 +1387,8 @@ class GatheringScansTestSuite(unittest.TestCase):
         self.assertIn("pt._explicitTwd", js08)
         self.assertIn(".gs-comment-pin-popover::before", css_chk)
         self.assertIn(".gs-comment-pin-popover:hover", css_chk)
+        self.assertIn(".gs-comment-pin-close-btn", css_chk)
+        self.assertIn("data-pin-close", js05_chk)
         self.assertIn("pointer-events: auto !important;", css_chk)
 
     def test_18_six_v162_features_upload_spinner_lightbox_theme_comment_folders_camera_hide_occlusion_and_auto_classify(self):
