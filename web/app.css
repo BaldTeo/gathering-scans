@@ -4233,6 +4233,11 @@ body.theme-light .gs-comment-folder-section { background: rgba(241, 245, 249, 0.
   #topCrsBadge { display: none !important; }
 }
 @media (max-width: 1200px) {
+  .gs-timeline-header { flex-wrap: wrap !important; gap: 6px !important; }
+  .gs-timeline-header-left, .gs-timeline-title-wrap { display: flex !important; align-items: center !important; gap: 6px !important; width: auto !important; flex: 1 1 auto !important; min-width: 150px !important; }
+  .gs-timeline-site-sub, #timelineSiteSubtitle, .gs-timeline-subtitle, .gs-timeline-crs-extra { display: none !important; }
+  .gs-timeline-header-right { flex-wrap: wrap !important; gap: 4px !important; max-width: 100% !important; }
+  #timelineProjectSelect { max-width: 145px !important; }
   #previewSelectScan { max-width: 135px !important; }
   .gs-preview-scan-pill input[type="range"] { width: 44px !important; }
   .gs-preview-scan-pill { padding: 5px 8px !important; column-gap: 4px !important; row-gap: 3px !important; max-width: 100% !important; box-sizing: border-box !important; }
@@ -4255,9 +4260,10 @@ body.theme-light .gs-comment-folder-section { background: rgba(241, 245, 249, 0.
   .gs-studio-coord-pill { display: none !important; }
   #studioDrainageLegendHud, #drainageFloatingLegend { display: none !important; }
   #compareProfileDrawer, .gs-compare-profile-drawer { bottom: 96px !important; }
-  #bimBottomDock, .bim-bottom-dock { max-width: calc(100vw - 20px) !important; left: 10px !important; right: 10px !important; transform: none !important; width: fit-content !important; margin: 0 auto !important; overflow-x: auto !important; justify-content: flex-start !important; padding: 4px 6px !important; gap: 2px !important; }
-  #bimBottomDock .bim-dock-btn { min-width: 40px !important; width: auto !important; height: 42px !important; padding: 3px 5px !important; font-size: 9.5px !important; flex-shrink: 0 !important; }
-  #bimBottomDock .bim-dock-label { font-size: 9.5px !important; }
+  #bimBottomDock, .bim-bottom-dock { max-width: calc(100vw - 16px) !important; left: 8px !important; right: 8px !important; transform: none !important; width: fit-content !important; margin: 0 auto !important; overflow-x: auto !important; justify-content: flex-start !important; padding: 3px 5px !important; gap: 1px !important; }
+  #bimBottomDock .bim-dock-btn { min-width: 34px !important; width: auto !important; height: 40px !important; padding: 2px 3.5px !important; font-size: 8.5px !important; flex-shrink: 0 !important; }
+  #bimBottomDock .bim-dock-label { font-size: 8.5px !important; letter-spacing: -0.2px !important; }
+  #bimBottomDock .bim-dock-divider { margin: 0 1px !important; }
 }
 #sidePanelBody b { white-space: nowrap; display: inline-block; }
 @media (min-width: 768px) and (max-width: 980px) {
@@ -4266,12 +4272,19 @@ body.theme-light .gs-comment-folder-section { background: rgba(241, 245, 249, 0.
 @media (max-width: 768px) {
   #compareLeftSelect, #compareRightSelect, #compareThirdSelect, #compareFourthSelect,
   #compareLeftScan, #compareRightScan, #compareThirdScan, #compareFourthScan { max-width: 112px !important; }
-  #bimBottomDock .bim-dock-btn { min-width: 38px !important; width: auto !important; padding: 2px 5px !important; }
+  #bimBottomDock .bim-dock-btn { min-width: 30px !important; width: auto !important; padding: 2px 2.5px !important; }
+  #bimBottomDock .bim-dock-label { font-size: 8px !important; letter-spacing: -0.25px !important; }
 }
 @media (max-width: 767px) {
-  #bimBottomDock, .bim-bottom-dock { bottom: 6px !important; left: 6px !important; right: 6px !important; padding: 2px 4px !important; }
-  #bimBottomDock .bim-dock-btn { height: 34px !important; min-width: 38px !important; padding: 2px 4px !important; }
+  #bimBottomDock, .bim-bottom-dock { bottom: 6px !important; left: 6px !important; right: 6px !important; padding: 2px 4px !important; justify-content: flex-start !important; }
+  #bimBottomDock .bim-dock-btn { height: 34px !important; min-width: 34px !important; padding: 2px 3px !important; }
   .gs-mobile-editing-umbrella-btn, #btnMobileEditingUmbrella { bottom: 48px !important; height: 34px !important; }
   .gs-side-panel, #studioSidePanel { top: auto !important; bottom: 88px !important; left: 6px !important; right: 6px !important; width: auto !important; max-height: min(36vh, calc(100dvh - 242px)) !important; }
   .gs-north-arrow-compass, #gsNorthArrowCompass { top: auto !important; bottom: 48px !important; right: 8px !important; left: auto !important; }
+}
+@media (max-width: 520px) {
+  #modalSharing .gs-table-wrap, #modalSharing div:has(> table) { overflow-x: auto !important; max-width: 100% !important; }
+  #modalSharing .gs-share-url-input, #modalSharing input[readonly], #shareLinksTableBody input { max-width: 78px !important; min-width: 54px !important; width: 78px !important; font-size: 9.5px !important; padding: 2px 4px !important; }
+  #modalSharing .gs-share-url-group { gap: 3px !important; flex-wrap: nowrap !important; }
+  #modalSharing .gs-share-copy-btn, #modalSharing .gs-share-open-btn { padding: 2px 5px !important; font-size: 9.5px !important; }
 }

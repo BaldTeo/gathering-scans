@@ -3276,12 +3276,11 @@
         const key = b.dataset.tool || b.dataset.dock || "";
         const isActive = key === toolName;
         b.classList.toggle("active", isActive);
-        if (isActive && window.innerWidth <= 768 && typeof b.scrollIntoView === "function") {
-          try {
-            b.scrollIntoView({ behavior: "smooth", inline: "center", block: "nearest" });
-          } catch (_) {}
-        }
       });
+    const bottomDock = document.getElementById("bimBottomDock");
+    if (bottomDock && (toolName === "orbit" || window.innerWidth >= 560)) {
+      bottomDock.scrollLeft = 0;
+    }
     const lassoSvg = document.getElementById("studioLassoSvg");
     if (lassoSvg && toolName !== "crop" && toolName !== "crop_delete") {
       lassoSvg.classList.remove("active", "keep-mode", "sub-mode");

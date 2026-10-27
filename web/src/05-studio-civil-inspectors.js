@@ -1704,8 +1704,8 @@
     const masterBtn = document.getElementById("btnToggleCategorizeOverlayVis");
     if (masterBtn) {
       masterBtn.textContent = vis
-        ? tr("👁️ 顯示中 · 點擊隱藏 3D 圖層", "👁️ Visible · Click to Hide 3D Layer")
-        : tr("👁️‍🗨️ 預設隱藏 · 點擊顯示 3D 圖層", "👁️‍🗨️ Hidden by Default · Click to Show 3D Layer");
+        ? tr("👁️ 顯示中 · 隱藏圖層", "👁️ Visible · Hide Overlays")
+        : tr("👁️‍🗨️ 已隱藏 · 顯示圖層", "👁️‍🗨️ Hidden · Show Overlays");
       masterBtn.classList.toggle("primary", vis);
     }
     const masterBadge = document.getElementById("lblCategorizeVisBadge");
@@ -2523,21 +2523,21 @@
         <div style="font-size:9.5px;color:var(--ui-text-muted);margin-bottom:6px;">
           ${tr("伺服器快取：", "Server Cache: ")}<code>_categorization_cache_v3.json</code> · ${escapeHtml(savedAtStr)}
         </div>
-        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:5px;">
-          <label style="display:inline-flex;align-items:center;gap:5px;cursor:pointer;font-size:11px;font-weight:700;color:var(--ui-text-primary);">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;flex-wrap:wrap;margin-bottom:5px;">
+          <label style="display:inline-flex;align-items:center;gap:5px;cursor:pointer;font-size:11px;font-weight:700;color:var(--ui-text-primary);white-space:nowrap;">
             <input type="checkbox" id="chkCategorizeMasterVis" ${isVis ? "checked" : ""} />
             ${tr("顯示 3D 地物分類圖層", "Show 3D Overlays")}
           </label>
-          <button type="button" class="btn-xs ${isVis ? "primary" : ""}" id="btnToggleCategorizeOverlayVis" style="padding:3px 8px;font-weight:700;">
-            ${isVis ? tr("👁️ 顯示中 · 點擊隱藏 3D 圖層", "👁️ Visible · Click to Hide 3D Overlays") : tr("👁️‍🗨️ 預設隱藏 · 點擊顯示 3D 圖層", "👁️‍🗨️ Hidden by Default · Click to Show 3D Overlays")}
+          <button type="button" class="btn-xs ${isVis ? "primary" : ""}" id="btnToggleCategorizeOverlayVis" style="padding:3px 8px;font-weight:700;white-space:nowrap;">
+            ${isVis ? tr("👁️ 顯示中 · 隱藏圖層", "👁️ Visible · Hide Overlays") : tr("👁️‍🗨️ 已隱藏 · 顯示圖層", "👁️‍🗨️ Hidden · Show Overlays")}
           </button>
         </div>
-        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding-top:4px;border-top:1px dashed rgba(56,189,248,0.25);">
-          <label style="display:inline-flex;align-items:center;gap:5px;cursor:pointer;font-size:10.5px;font-weight:700;color:#38bdf8;">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;flex-wrap:wrap;padding-top:4px;border-top:1px dashed rgba(56,189,248,0.25);">
+          <label style="display:inline-flex;align-items:center;gap:5px;cursor:pointer;font-size:10.5px;font-weight:700;color:#38bdf8;white-space:nowrap;">
             <input type="checkbox" id="chkCategorizeLabelsVis" ${lblsVis ? "checked" : ""} />
             ${tr("🏷️ 顯示 2D 浮動標籤", "🏷️ Show 2D Floating Labels")}
           </label>
-          <span style="font-size:9.5px;color:var(--ui-text-muted);">${lblsVis ? tr("標籤開啟", "Labels On") : tr("僅保留 3D 幾何", "3D Geometry Only")}</span>
+          <span style="font-size:9.5px;color:var(--ui-text-muted);white-space:nowrap;">${lblsVis ? tr("標籤開啟", "Labels On") : tr("僅保留 3D 幾何", "3D Geometry Only")}</span>
         </div>
       </div>
 

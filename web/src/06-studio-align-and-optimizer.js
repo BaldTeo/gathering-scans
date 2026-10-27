@@ -2467,15 +2467,15 @@
               };border:1.5px solid ${
                 isSel ? l.color : "var(--ui-border)"
               };border-radius:8px;padding:9px 10px;margin-bottom:8px;transition:border-color 0.15s;">
-                <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;margin-bottom:6px;">
-                  <div style="display:flex;align-items:center;gap:6px;min-width:0;cursor:pointer;" class="btn-select-align-layer" data-scan-id="${l.scan_id}" title="${tr("點擊以將 3D 平移／旋轉控制軸掛載至此掃描", "Click to attach 3D Move/Rotate Gizmo to this scan")}">
+                <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;flex-wrap:wrap;margin-bottom:6px;">
+                  <div style="display:flex;align-items:center;gap:6px;min-width:110px;flex:1 1 auto;cursor:pointer;" class="btn-select-align-layer" data-scan-id="${l.scan_id}" title="${tr("點擊以將 3D 平移／旋轉控制軸掛載至此掃描", "Click to attach 3D Move/Rotate Gizmo to this scan")}">
                     <span style="width:11px;height:11px;border-radius:50%;background:${l.color};flex-shrink:0;box-shadow:0 0 0 2px rgba(255,255,255,0.15);"></span>
-                    <span style="font-size:12px;font-weight:700;color:var(--ui-text-primary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+                    <span style="font-size:12px;font-weight:700;color:var(--ui-text-primary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:80px;flex:1 1 auto;">
                       #${idx + 1} ${l.name}
                     </span>
                     ${
                       idx === 0
-                        ? `<span style="font-size:9.5px;padding:1px 5px;border-radius:4px;background:rgba(56,189,248,0.16);color:#38bdf8;font-weight:600;">${tr("基準", "ANCHOR")}</span>`
+                        ? `<span style="font-size:9.5px;padding:1px 5px;border-radius:4px;background:rgba(56,189,248,0.16);color:#38bdf8;font-weight:600;white-space:nowrap;flex-shrink:0;">${tr("基準", "ANCHOR")}</span>`
                         : ""
                     }
                   </div>
@@ -2597,9 +2597,9 @@
       </div>
 
       <!-- Step 2: 3D Gizmo Mode & Active Layers -->
-      <div style="display:flex;align-items:center;justify-content:space-between;gap:4px;margin-bottom:6px;">
-        <span style="font-size:11.5px;font-weight:700;color:var(--ui-text-primary);">${tr(`2. 活動中 3D 圖層 · 已載入 ${layers.length}`, `2. Active 3D Layers · ${layers.length} Loaded`)}</span>
-        <div style="display:flex;gap:4px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:4px;flex-wrap:wrap;margin-bottom:6px;">
+        <span style="font-size:11.5px;font-weight:700;color:var(--ui-text-primary);white-space:nowrap;">${tr(`2. 活動中 3D 圖層 · 已載入 ${layers.length}`, `2. Active 3D Layers · ${layers.length} Loaded`)}</span>
+        <div style="display:flex;gap:4px;flex-wrap:wrap;">
           <button type="button" class="gs-top-btn" id="btnAlignSpreadScans" style="padding:2px 7px;font-size:10.5px;" title="${tr("沿 X 軸並排展開未鎖定掃描以便個別檢視", "Spread unlocked scans side-by-side along X so you can inspect them individually")}">
             <span>${tr("並排展開", "Spread")}</span>
           </button>
@@ -2609,9 +2609,9 @@
         </div>
       </div>
 
-      <div style="display:flex;align-items:center;justify-content:space-between;gap:4px;margin-bottom:8px;background:var(--ui-bg-subtle);padding:5px 7px;border-radius:7px;border:1px solid var(--ui-border);">
-        <span style="font-size:11px;font-weight:600;color:var(--ui-text-secondary);">${tr("3D 控制軸模式：", "3D Gizmo Mode:")}</span>
-        <div style="display:flex;gap:4px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:4px;flex-wrap:wrap;margin-bottom:8px;background:var(--ui-bg-subtle);padding:5px 7px;border-radius:7px;border:1px solid var(--ui-border);">
+        <span style="font-size:11px;font-weight:600;color:var(--ui-text-secondary);white-space:nowrap;">${tr("3D 控制軸模式：", "3D Gizmo Mode:")}</span>
+        <div style="display:flex;gap:4px;flex-wrap:wrap;">
           <button type="button" class="gs-top-btn btn-gizmo-mode ${STATE.multiAlign.gizmoMode === "both" ? "accent" : ""}" data-mode="both" style="padding:2px 7px;font-size:10.5px;">
             <span>${tr("平移 + 旋轉 · R", "Move + Rotate · R")}</span>
           </button>
