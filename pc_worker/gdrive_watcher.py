@@ -354,6 +354,7 @@ GATHEREN_DRIVEFS_USER_MAP: Dict[str, Tuple[str, str, str, str]] = {
     "0BzHb4wJMZJa4": ("蘇容德", "litasu@gatheren.com.tw", "成控/採購", "#a855f7"),
     "0B1JR5X9StbPX": ("楊斯顯", "szhsienyang@gatheren.com.tw", "工務/品管", "#f97316"),
     "0B2Yj38NHCSUd": ("黃聖文", "shengwenhuang@gatheren.com.tw", "工務工程師", "#eab308"),
+    "0BxxwiCzAZ_Zh": ("黃聖文", "shengwenhuang@gatheren.com.tw", "工務工程師", "#eab308"),
     "0B34fkGa3yIcF": ("鄭宇翔", "leocheng@gatheren.com.tw", "工務工程師", "#06b6d4"),
     "0B52Y9wroxqHr": ("駱介正", "JasonLo@gatheren.com.tw", "財務經理", "#6366f1"),
     "0B8PgVwzUHnRd": ("游忠偉", "kentyu@gatheren.com.tw", "工務/訪價", "#10b981"),
@@ -363,6 +364,8 @@ GATHEREN_DRIVEFS_USER_MAP: Dict[str, Tuple[str, str, str, str]] = {
     "0B5fGwAtfvOyh": ("李振嘉", "edwardli@gatheren.com.tw", "工務工程師", "#8b5cf6"),
     "0B6EWVm5brWwN": ("孫暐岑", "neilsun@gatheren.com.tw", "工務工程師", "#22c55e"),
     "0Bx93O1IxaYa5": ("陳冠羽", "kevinchen@gatheren.com.tw", "機電/工務", "#d946ef"),
+    "0B9dBuM-XDr0c": ("陳錦鴻", "jimmy.gimi@gmail.com", "機電經理", "#ec4899"),
+    "0B0M_NvlPG_fF": ("鄭諭謙", "yuchien@gatheren.com.tw", "工務工程師", "#06b6d4"),
 }
 
 GATHEREN_EMAIL_TO_NAME: Dict[str, str] = {
@@ -372,10 +375,69 @@ GATHEREN_EMAIL_TO_NAME: Dict[str, str] = {
 _DRIVEFS_CACHE: Dict[str, Any] = {"ts": 0.0, "by_title": {}}
 
 
+def _pick_best_user_from_proto(proto: bytes) -> Optional[Tuple[str, str]]:
+    """
+    Extracts the uploader's (display_name_zh, email) from DriveFS protobuf bytes.
+    Prefers any non-default uploader token over the shared-folder/daemon owner (0B9iDvpnqzFdI).
+    """
+    if not proto:
+        return None
+    m = re.findall(b"0B[A-Za-z0-9_-]{11}", proto)
+    if not m:
+        return None
+    tokens = [tok.decode("ascii", errors="ignore") for tok in m]
+    for tok in reversed(tokens):
+        if tok != "0B9iDvpnqzFdI" and tok in GATHEREN_DRIVEFS_USER_MAP:
+            u_info = GATHEREN_DRIVEFS_USER_MAP[tok]
+            return (u_info[0], u_info[1])
+    for tok in reversed(tokens):
+        if tok in GATHEREN_DRIVEFS_USER_MAP:
+            u_info = GATHEREN_DRIVEFS_USER_MAP[tok]
+            return (u_info[0], u_info[1])
+    return None
+
+
+def _register_drivefs_title_keys(
+    by_title: Dict[str, Tuple[str, str]],
+    raw_title: str,
+    u_pair: Tuple[str, str],
+    is_priority: bool = False,
+) -> None:
+    """
+    Indexes a file/folder title, its stem, and (for scan inbox items) its ASCII scan_id slug
+    (e.g. '屈尺取石塊1021.zip' -> '1021', 'catch_1021').
+    Excludes daemon-generated .3tz archives so they never overwrite the real scan uploader.
+    """
+    t_str = (raw_title or "").strip().lower()
+    if not t_str or t_str.endswith(".3tz"):
+        return
+    stem = os.path.splitext(t_str)[0]
+    keys = [t_str, stem]
+    if is_priority:
+        clean_slug = re.sub(r"[^a-zA-Z0-9_]", "_", stem).strip("_").lower()
+        if len(clean_slug) >= 3:
+            keys.extend([clean_slug, f"catch_{clean_slug}"])
+    is_non_default = u_pair[1].lower() != "glibivanov@gatheren.com.tw"
+    for k in keys:
+        if not k:
+            continue
+        existing = by_title.get(k)
+        if (
+            existing is None
+            or (is_priority and (is_non_default or existing[1].lower() == "glibivanov@gatheren.com.tw"))
+            or (is_non_default and existing[1].lower() == "glibivanov@gatheren.com.tw")
+        ):
+            by_title[k] = u_pair
+
+
 def _resolve_drivefs_uploader(name_or_path: str) -> Tuple[str, str]:
     """
     Procedurally reads Google Drive for Desktop local metadata_sqlite_db to resolve
     the actual Google Account display name (Chinese name) and email for a scan file/folder.
+    Handles:
+    1. Direct .zip archives (including Chinese filenames whose ASCII slug becomes catch_<slug>).
+    2. Raw or completed folders uploaded to INPUTS (resolving uploader from child files via stable_parents).
+    3. Multi-user proto records (preferring the actual uploader over the shared folder/daemon owner).
     """
     now = time.time()
     if now - _DRIVEFS_CACHE["ts"] > 45.0 or not _DRIVEFS_CACHE["by_title"]:
@@ -396,16 +458,52 @@ def _resolve_drivefs_uploader(name_or_path: str) -> Tuple[str, str]:
                     for title_b, proto in cur.fetchall():
                         if not title_b or not proto:
                             continue
-                        m = re.findall(b"0B[A-Za-z0-9_-]{11}", proto)
-                        if not m:
+                        t_raw = title_b.decode("utf-8", errors="ignore").strip()
+                        if t_raw.lower().endswith(".3tz"):
                             continue
-                        u_pref = m[-1].decode("ascii", errors="ignore")
-                        u_info = GATHEREN_DRIVEFS_USER_MAP.get(u_pref)
-                        if u_info:
-                            t_str = title_b.decode("utf-8", errors="ignore").strip().lower()
-                            by_title[t_str] = (u_info[0], u_info[1])
-                            stem = os.path.splitext(t_str)[0]
-                            by_title[stem] = (u_info[0], u_info[1])
+                        u_pair = _pick_best_user_from_proto(proto)
+                        if u_pair:
+                            _register_drivefs_title_keys(by_title, t_raw, u_pair, is_priority=False)
+
+                    # Priority pass: inspect items and folders inside '3. GatheringScans', 'INPUTS', 'SCANS TEST'
+                    cur.execute(
+                        "SELECT stable_id FROM items WHERE trashed=0 AND local_title IN ('3. GatheringScans', 'INPUTS', 'SCANS TEST')"
+                    )
+                    root_ids = [int(r[0]) for r in cur.fetchall() if r and r[0] is not None]
+                    if root_ids:
+                        placeholders = ",".join("?" for _ in root_ids)
+                        cur.execute(
+                            f"""
+                            WITH RECURSIVE inbox_tree(id, top_title, depth) AS (
+                                SELECT i.stable_id, i.local_title, 0
+                                FROM items i
+                                JOIN stable_parents sp ON i.stable_id = sp.item_stable_id
+                                WHERE sp.parent_stable_id IN ({placeholders})
+                                  AND i.trashed = 0
+                                  AND i.local_title NOT IN ('StreamPackages', 'CommentPhotos', 'INPUTS')
+                                UNION ALL
+                                SELECT i.stable_id, inbox_tree.top_title, inbox_tree.depth + 1
+                                FROM items i
+                                JOIN stable_parents sp ON i.stable_id = sp.item_stable_id
+                                JOIN inbox_tree ON sp.parent_stable_id = inbox_tree.id
+                                WHERE inbox_tree.depth < 3 AND i.trashed = 0
+                            )
+                            SELECT inbox_tree.top_title, i.local_title, i.is_folder, i.proto
+                            FROM inbox_tree
+                            JOIN items i ON i.stable_id = inbox_tree.id
+                            """,
+                            root_ids,
+                        )
+                        for top_b, item_b, is_f, proto in cur.fetchall():
+                            u_pair = _pick_best_user_from_proto(proto)
+                            if not u_pair:
+                                continue
+                            if item_b:
+                                item_str = item_b.decode("utf-8", errors="ignore").strip()
+                                _register_drivefs_title_keys(by_title, item_str, u_pair, is_priority=True)
+                            if top_b:
+                                top_str = top_b.decode("utf-8", errors="ignore").strip()
+                                _register_drivefs_title_keys(by_title, top_str, u_pair, is_priority=True)
                     con.close()
         except Exception:
             pass
@@ -413,10 +511,24 @@ def _resolve_drivefs_uploader(name_or_path: str) -> Tuple[str, str]:
         _DRIVEFS_CACHE["by_title"] = by_title
 
     by_title = _DRIVEFS_CACHE.get("by_title") or {}
-    base = os.path.basename(name_or_path.rstrip("/\\")).strip().lower()
+    first_part = (name_or_path or "").split(";")[0].strip()
+    base = os.path.basename(first_part.rstrip("/\\")).strip().lower()
     stem = os.path.splitext(base)[0]
-    for candidate in (base, stem, f"{stem}.3tz", f"{stem}.zip", stem.replace("catch_", "")):
-        if candidate in by_title:
+    clean_slug = re.sub(r"[^a-zA-Z0-9_]", "_", stem).strip("_").lower()
+    no_catch = stem[6:] if stem.startswith("catch_") else stem
+    edited_base = re.sub(r"^edited_(.+?)_\d{4,7}$", r"\1", stem)
+    for candidate in (
+        base,
+        stem,
+        f"{stem}.zip",
+        no_catch,
+        f"{no_catch}.zip",
+        edited_base,
+        f"catch_{edited_base}",
+        clean_slug,
+        f"catch_{clean_slug}",
+    ):
+        if candidate and candidate in by_title:
             return by_title[candidate]
     return ("雲在天", "glibivanov@gatheren.com.tw")
 
@@ -424,17 +536,23 @@ def _resolve_drivefs_uploader(name_or_path: str) -> Tuple[str, str]:
 def normalize_gatheren_uploader(uploader_name: str, uploader_email: str, hint_path: str = "") -> Tuple[str, str]:
     """
     Ensures uploader metadata uses the real Google Account Chinese display name
-    rather than legacy hardcoded English placeholders ('Glib Ivanov', 'Argon').
+    and automatically resolves non-default uploaders from DriveFS when hint_path is provided.
     """
     email = (uploader_email or "").strip() or "glibivanov@gatheren.com.tw"
-    if email.lower() in ("glib@gatheren.com.tw", "argon@gatheren.com.tw"):
+    if email.lower() in ("glib@gatheren.com.tw", "argon@gatheren.com.tw", "engineer@gatheren.cloud"):
         email = "glibivanov@gatheren.com.tw"
     name = (uploader_name or "").strip()
-    if hint_path and (not name or name.lower() in ("glib ivanov", "glibivanov", "argon", "admin", "system")):
+    is_default_account = (
+        not name
+        or name.lower() in ("glib ivanov", "glibivanov", "argon", "admin", "system", "雲在天")
+        or email.lower() == "glibivanov@gatheren.com.tw"
+    )
+    if hint_path and is_default_account:
         dfs_name, dfs_email = _resolve_drivefs_uploader(hint_path)
-        return dfs_name, dfs_email
+        if dfs_email.lower() != "glibivanov@gatheren.com.tw" or not name or name.lower() in ("glib ivanov", "glibivanov", "argon", "admin", "system"):
+            return dfs_name, dfs_email
     mapped_zh = GATHEREN_EMAIL_TO_NAME.get(email.lower())
-    if mapped_zh and (not name or name.lower() in ("glib ivanov", "glibivanov", "argon")):
+    if mapped_zh and (not name or name.lower() in ("glib ivanov", "glibivanov", "argon") or (email.lower() != "glibivanov@gatheren.com.tw" and name == "雲在天")):
         return mapped_zh, email
     if not name or name.lower() in ("glib ivanov", "glibivanov", "argon"):
         return "雲在天", email
@@ -1807,6 +1925,11 @@ def _discover_folder_scan_item(
 
     user_edited = bool(meta.get("user_edited_name"))
     default_display_name = folder_name[6:] if folder_name.lower().startswith("catch_") and len(folder_name) > 6 else folder_name
+    src_zip_first = (meta.get("source_zip_path") or "").split(";")[0].strip()
+    if src_zip_first and not user_edited:
+        zip_base, _, _ = parse_multipart_zip_filename(os.path.basename(src_zip_first))
+        if zip_base:
+            default_display_name = zip_base
     resolved_name = (meta.get("name") or "").strip() if user_edited else default_display_name
     if not resolved_name:
         resolved_name = default_display_name
@@ -1814,7 +1937,7 @@ def _discover_folder_scan_item(
     resolved_uploader_name, resolved_uploader_email = normalize_gatheren_uploader(
         meta.get("uploader_name", ""),
         meta.get("uploader_email", "glibivanov@gatheren.com.tw"),
-        meta.get("source_zip_path") or folder_name,
+        meta.get("source_zip_path") or meta.get("name") or meta.get("derived_from_scan_id") or folder_name,
     )
 
     bbox_center = [twd_e, twd_n, twd_h] if lat is not None else (ts_georef.get("local_center") or [0.0, 0.0, 0.0])
@@ -1884,6 +2007,7 @@ def _discover_folder_scan_item(
         or not meta.get("bounding_box")
         or (not user_edited and meta.get("name") != resolved_name)
         or meta.get("uploader_name") != resolved_uploader_name
+        or meta.get("uploader_email") != resolved_uploader_email
     )
     if need_write_meta and is_safe_jailed_path(folder_path, LOCAL_SCANS_ROOT):
         try:
@@ -2280,11 +2404,20 @@ def _seed_and_discover_scans_locked(db: ScanQueueDB) -> List[Dict[str, Any]]:
             primary_meta["bypass_count"] = int(existing.get("bypass_count", 0))
         elif all_parts_ready and not folder_syncing and os.path.isfile(cand_processed_ts):
             true_img_cnt = sum(int(m.get("image_count", 0)) for m in part_metas)
+            zip_up_name = part_metas[0].get("uploader_name") or ""
+            zip_up_email = part_metas[0].get("uploader_email") or ""
             if existing and existing.get("tileset_path"):
                 primary_meta = dict(existing)
                 primary_meta["source_zip_path"] = ";".join(parts_map[p] for p in present_parts)
                 if not existing.get("user_edited_name"):
                     primary_meta["name"] = base_name
+                if zip_up_email and (
+                    not primary_meta.get("uploader_email")
+                    or primary_meta.get("uploader_email", "").lower() == "glibivanov@gatheren.com.tw"
+                    or zip_up_email.lower() != "glibivanov@gatheren.com.tw"
+                ):
+                    primary_meta["uploader_email"] = zip_up_email
+                    primary_meta["uploader_name"] = zip_up_name or primary_meta.get("uploader_name", "雲在天")
             primary_meta["project_group"] = proj_group
             primary_meta["project_name_zh"] = proj_zh
             if true_img_cnt > 0:
@@ -2297,7 +2430,7 @@ def _seed_and_discover_scans_locked(db: ScanQueueDB) -> List[Dict[str, Any]]:
             primary_meta["status"] = "completed"
             primary_meta["progress_pct"] = 100.0
             primary_meta["stage_label"] = f"Processed -> {scan_id} (TWD97 + TWVD2001, 4K)"
-            # Keep scan_meta.json on disk in sync with parent_proj and true_img_cnt
+            # Keep scan_meta.json on disk in sync with parent_proj, uploader, and true_img_cnt
             meta_on_disk = os.path.join(cand_processed_dir, "scan_meta.json")
             if os.path.isfile(meta_on_disk):
                 try:
@@ -2310,11 +2443,24 @@ def _seed_and_discover_scans_locked(db: ScanQueueDB) -> List[Dict[str, Any]]:
                     for coord_k in ("twd97_e", "twd97_n", "twd97_h", "elev_m", "lat", "lon"):
                         if m_disk.get(coord_k) is not None and not primary_meta.get(coord_k):
                             primary_meta[coord_k] = m_disk[coord_k]
-                    if m_disk.get("project_group") != proj_group or m_disk.get("image_count") != primary_meta["image_count"] or (cand_obj and os.path.isfile(cand_obj) and m_disk.get("obj_path") != cand_obj):
+                    disk_needs_sync = (
+                        m_disk.get("project_group") != proj_group
+                        or m_disk.get("image_count") != primary_meta["image_count"]
+                        or m_disk.get("uploader_email") != primary_meta.get("uploader_email")
+                        or m_disk.get("uploader_name") != primary_meta.get("uploader_name")
+                        or m_disk.get("source_zip_path") != primary_meta.get("source_zip_path")
+                        or (not existing.get("user_edited_name") and m_disk.get("name") != primary_meta.get("name"))
+                        or (cand_obj and os.path.isfile(cand_obj) and m_disk.get("obj_path") != cand_obj)
+                    )
+                    if disk_needs_sync:
                         m_disk["project_group"] = proj_group
                         m_disk["project_name_zh"] = proj_zh
                         m_disk["image_count"] = primary_meta["image_count"]
                         m_disk["source_zip_path"] = primary_meta["source_zip_path"]
+                        m_disk["uploader_email"] = primary_meta.get("uploader_email", "glibivanov@gatheren.com.tw")
+                        m_disk["uploader_name"] = primary_meta.get("uploader_name", "雲在天")
+                        if not existing.get("user_edited_name") and primary_meta.get("name"):
+                            m_disk["name"] = primary_meta["name"]
                         if cand_obj and os.path.isfile(cand_obj):
                             m_disk["obj_path"] = cand_obj
                         with open(meta_on_disk, "w", encoding="utf-8") as wf:

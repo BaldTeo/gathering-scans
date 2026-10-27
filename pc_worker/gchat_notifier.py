@@ -160,10 +160,11 @@ class GoogleChatNotifier:
         project_group = scan.get("project_group") or "Unassigned Site"
         raw_name = scan.get("uploader_name", "雲在天")
         raw_email = scan.get("uploader_email", "glibivanov@gatheren.com.tw")
-        uploader_name, uploader_email = normalize_gatheren_uploader(raw_name, raw_email, scan.get("project_dir") or scan_id)
+        hint_ref = scan.get("source_zip_path") or scan.get("project_dir") or scan_id
+        uploader_name, uploader_email = normalize_gatheren_uploader(raw_name, raw_email, hint_ref)
 
         gchat_uid = private_viewer_uid or self.user_gchat_ids.get(uploader_email.lower(), "")
-        mention_tag = f"<users/{gchat_uid}>" if gchat_uid else f"*{uploader_name}*"
+        mention_tag = f"<users/{gchat_uid}>" if gchat_uid else f"*{uploader_name} ({uploader_email})*"
 
         image_count = int(scan.get("image_count") or 0)
         covered_area_m2 = float(scan.get("covered_area_m2") or 0.0)
@@ -354,13 +355,22 @@ class GoogleChatNotifier:
         if not scan:
             raise ValueError(f"Scan not found: {scan_id}")
 
+        hint_ref = scan.get("source_zip_path") or scan.get("project_dir") or scan_id
         uploader_name, uploader_email = normalize_gatheren_uploader(
             scan.get("uploader_name", ""),
             scan.get("uploader_email", "glibivanov@gatheren.com.tw"),
-            scan.get("project_dir") or scan_id,
+            hint_ref,
         )
-        scan["uploader_name"] = uploader_name
-        scan["uploader_email"] = uploader_email
+        if scan.get("uploader_name") != uploader_name or scan.get("uploader_email") != uploader_email:
+            scan["uploader_name"] = uploader_name
+            scan["uploader_email"] = uploader_email
+            try:
+                self.db.upsert_scan(scan)
+            except Exception:
+                pass
+        else:
+            scan["uploader_name"] = uploader_name
+            scan["uploader_email"] = uploader_email
 
         self._ensure_and_sync_thumbnail_to_public_url(scan_id, scan)
         gchat_uid = self.user_gchat_ids.get(uploader_email.lower(), "")

@@ -3134,6 +3134,12 @@ class OptimizerBridge:
             now_ts = time.time()
             summary_str = " · ".join(applied_steps) if applied_steps else "Saved Edited Scan"
             orig_capture_date = str(source_scan.get("capture_date") or "").strip() or datetime.now().strftime("%Y-%m-%d %H:%M")
+            from pc_worker.gdrive_watcher import normalize_gatheren_uploader
+            orig_up_name, orig_up_email = normalize_gatheren_uploader(
+                str(source_scan.get("uploader_name") or ""),
+                str(source_scan.get("uploader_email") or payload.get("actor_email") or "glibivanov@gatheren.com.tw"),
+                str(source_scan.get("source_zip_path") or source_scan.get("name") or source_scan_id),
+            )
             scan_record = {
                 "scan_id": new_scan_id,
                 "name": raw_name,
@@ -3142,9 +3148,9 @@ class OptimizerBridge:
                 "project_name_zh": proj_zh,
                 "capture_date": orig_capture_date,
                 "uploaded_at": now_ts,
-                "uploader_email": str(payload.get("actor_email") or source_scan.get("uploader_email") or "engineer@gatheren.cloud"),
-                "uploader_name": str(payload.get("actor_name") or source_scan.get("uploader_name") or "Survey Engineer"),
-                "source_zip_path": "",
+                "uploader_email": orig_up_email,
+                "uploader_name": orig_up_name,
+                "source_zip_path": str(source_scan.get("source_zip_path") or ""),
                 "project_dir": out_proj_dir,
                 "tileset_path": ts_out_path,
                 "obj_path": "",

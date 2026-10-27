@@ -1,10 +1,596 @@
 {
-  "updated_at": 1792833698,
+  "updated_at": 1793091357,
   "shared_drive_dir": "G:\\Shared drives\\6.軟體\\3. GatheringScans\\StreamPackages",
   "my_drive_dir": "G:\\My Drive\\Scans\\StreamPackages",
   "shared_drive_folder_id": "1scUD9IQWsAJjg296pecxFYqhoVm4mpjs",
   "my_drive_folder_id": "1oBf6wYz3mRaM9kktDQJxcf_JZ2QduICW",
   "scans": [
+    {
+      "scan_id": "edited_1021_911189",
+      "name": "屈尺取石塊1021",
+      "project_group": "Site (24.9001N, 121.5524E)",
+      "project_name_zh": "新增工區掃描點",
+      "capture_date": "2026-10-27 16:32",
+      "uploaded_at": 1793091139.9115129,
+      "uploader_email": "kentyu@gatheren.com.tw",
+      "uploader_name": "游忠偉",
+      "source_zip_path": "G:\\Shared drives\\6.軟體\\3. GatheringScans\\INPUTS\\屈尺取石塊1021.zip",
+      "project_dir": "C:\\GatheringScans\\edited_1021_911189",
+      "tileset_path": "C:\\GatheringScans\\edited_1021_911189\\tileset\\tileset.json",
+      "obj_path": "",
+      "report_path": "",
+      "cameras_dir": "C:\\GatheringScans\\catch_1021\\inputs",
+      "image_count": 1480,
+      "size_bytes": 1024,
+      "rtk_accuracy_cm": 1.5,
+      "crs": "TWD97 (121) + TWVD2001",
+      "texture_resolution": 4096,
+      "lat": 24.899666091,
+      "lon": 121.551849724,
+      "elev_m": 67.04,
+      "twd97_e": 305749.42,
+      "twd97_n": 2754777.513,
+      "twd97_h": 67.04,
+      "bounding_box_json": "{\"center\": [305749.42, 2754777.513, 67.04], \"half_extents\": [202.68, 174.9, 45.66]}",
+      "status": "completed",
+      "progress_pct": 100.0,
+      "stage_label": "Edited (Deleted 27 region(s) (124,916 tris))",
+      "bypass_count": 0,
+      "force_next": 0,
+      "priority_score": 14.957,
+      "notes": "Edited from edited_1021_908819 (backup moved to Trash Bin): Deleted 27 region(s) (124,916 tris)",
+      "user_edited_name": 1,
+      "covered_area_m2": 227674.2,
+      "tileset_version": 1793091139815,
+      "extra_json": "{\"derived_from_scan_id\": \"edited_1021_908819\", \"applied_adjustments\": [\"Deleted 27 region(s) (124,916 tris)\"]}",
+      "bounding_box": {
+        "center": [
+          305749.42,
+          2754777.513,
+          67.04
+        ],
+        "half_extents": [
+          202.68,
+          174.9,
+          45.66
+        ]
+      },
+      "derived_from_scan_id": "edited_1021_908819",
+      "applied_adjustments": [
+        "Deleted 27 region(s) (124,916 tris)"
+      ],
+      "comment_folders": [],
+      "size_mb": 0.0,
+      "wait_minutes": 3.6,
+      "comments": [],
+      "comment_count": 0,
+      "measurement_bookmarks": [],
+      "bookmark_count": 0
+    },
+    {
+      "scan_id": "edited_qihu_unified_merged_scan_4_scans__edited_372953",
+      "name": "QiHu — Unified Merged Scan (4 Scans)",
+      "project_group": "QiHu",
+      "project_name_zh": "QiHu 工程掃描群組",
+      "capture_date": "2026-10-24 18:20",
+      "uploaded_at": 1792837298.5865462,
+      "uploader_email": "glibivanov@gatheren.com.tw",
+      "uploader_name": "雲在天",
+      "source_zip_path": "",
+      "project_dir": "C:\\GatheringScans\\edited_qihu_unified_merged_scan_4_scans__edited_372953",
+      "tileset_path": "C:\\GatheringScans\\edited_qihu_unified_merged_scan_4_scans__edited_372953\\tileset\\tileset.json",
+      "obj_path": "C:\\GatheringScans\\edited_qihu_unified_merged_scan_4_scans__edited_372953\\exports\\obj_mesh\\mesh.obj",
+      "report_path": "",
+      "cameras_dir": "C:\\GatheringScans\\catch_QiHuTender_1\\inputs",
+      "image_count": 6000,
+      "size_bytes": 206168426,
+      "rtk_accuracy_cm": 1.5,
+      "crs": "TWD97 (121) + TWVD2001",
+      "texture_resolution": 4096,
+      "lat": 25.136357571,
+      "lon": 121.501373158,
+      "elev_m": 13.22,
+      "twd97_e": 300553.022,
+      "twd97_n": 2780974.869,
+      "twd97_h": 13.22,
+      "bounding_box_json": "{\"center\": [300553.022, 2780974.869, 13.22], \"half_extents\": [73.16, 73.33, 8.29]}",
+      "status": "completed",
+      "progress_pct": 100.0,
+      "stage_label": "Unified (4 Scans · Native 4K×4 Zero-Loss Multi-Tile)",
+      "bypass_count": 0,
+      "force_next": 0,
+      "priority_score": 1000004086.397,
+      "notes": "Unified scan merged from edited_qihutender_1_edited_346774, catch_QiHuTender_2, catch_QiHuTender_3, catch_QiHuTender_4 (Zero-Loss 4K per-scan multi-tile)",
+      "user_edited_name": 1,
+      "covered_area_m2": 11802.3,
+      "tileset_version": 1792845151508,
+      "extra_json": "{\"merged_from\": [{\"scan_id\": \"edited_qihutender_1_edited_346774\", \"derived_from_scan_id\": \"catch_QiHuTender_1\", \"name\": \"QiHuTender_1_Edited\", \"native_anchor_zup\": [300524.2572, 2781008.4541, 10.8289], \"merged_anchor_zup\": [300524.2572, 2781008.4541, 13.5789], \"zup_shift\": [0.0, -0.0, 2.75], \"r_zup_rowmajor\": [1.0, -0.0, -1e-08, 0.0, 1.0, -2e-08, 1e-08, 2e-08, 1.0]}, {\"scan_id\": \"catch_QiHuTender_2\", \"derived_from_scan_id\": \"\", \"name\": \"QiHuTender_2\", \"native_anchor_zup\": [300550.7568, 2780994.9421, 11.6407], \"merged_anchor_zup\": [300549.5555, 2780991.6952, 11.7861], \"zup_shift\": [-1.2013, -3.2469, 0.1454], \"r_zup_rowmajor\": [1.0, 0.0, -0.0, -0.0, 1.0, -0.0, 0.0, 0.0, 1.0]}, {\"scan_id\": \"catch_QiHuTender_3\", \"derived_from_scan_id\": \"\", \"name\": \"QiHuTender_3\", \"native_anchor_zup\": [300557.0989, 2780980.5229, 16.5457], \"merged_anchor_zup\": [300554.3898, 2780975.1149, 12.2436], \"zup_shift\": [-2.7091, -5.408, -4.3021], \"r_zup_rowmajor\": [0.99756405, 0.06975648, -0.0, -0.06975648, 0.99756405, -0.0, 0.0, 0.0, 1.0]}, {\"scan_id\": \"catch_QiHuTender_4\", \"derived_from_scan_id\": \"\", \"name\": \"QiHuTender_4\", \"native_anchor_zup\": [300586.6135, 2780953.5755, 18.827], \"merged_anchor_zup\": [300582.9612, 2780947.4766, 10.8319], \"zup_shift\": [-3.6523, -6.0989, -7.9951], \"r_zup_rowmajor\": [1.0, -0.0, 0.0, 0.0, 1.0, -0.0, -0.0, 0.0, 1.0]}], \"applied_adjustments\": [\"Aligned & merged 4 scans\", \"Native 4096×4096 Gen-0 JPEG per scan (0% decimation)\", \"Trimmed 16,902 noisy overlap skirt tris\", \"Restored WEGO School Sign (3,319 tris)\"]}",
+      "bounding_box": {
+        "center": [
+          300553.022,
+          2780974.869,
+          13.22
+        ],
+        "half_extents": [
+          73.16,
+          73.33,
+          8.29
+        ]
+      },
+      "merged_from": [
+        {
+          "scan_id": "edited_qihutender_1_edited_346774",
+          "derived_from_scan_id": "catch_QiHuTender_1",
+          "name": "QiHuTender_1_Edited",
+          "native_anchor_zup": [
+            300524.2572,
+            2781008.4541,
+            10.8289
+          ],
+          "merged_anchor_zup": [
+            300524.2572,
+            2781008.4541,
+            13.5789
+          ],
+          "zup_shift": [
+            0.0,
+            -0.0,
+            2.75
+          ],
+          "r_zup_rowmajor": [
+            1.0,
+            -0.0,
+            -1e-08,
+            0.0,
+            1.0,
+            -2e-08,
+            1e-08,
+            2e-08,
+            1.0
+          ]
+        },
+        {
+          "scan_id": "catch_QiHuTender_2",
+          "derived_from_scan_id": "",
+          "name": "QiHuTender_2",
+          "native_anchor_zup": [
+            300550.7568,
+            2780994.9421,
+            11.6407
+          ],
+          "merged_anchor_zup": [
+            300549.5555,
+            2780991.6952,
+            11.7861
+          ],
+          "zup_shift": [
+            -1.2013,
+            -3.2469,
+            0.1454
+          ],
+          "r_zup_rowmajor": [
+            1.0,
+            0.0,
+            -0.0,
+            -0.0,
+            1.0,
+            -0.0,
+            0.0,
+            0.0,
+            1.0
+          ]
+        },
+        {
+          "scan_id": "catch_QiHuTender_3",
+          "derived_from_scan_id": "",
+          "name": "QiHuTender_3",
+          "native_anchor_zup": [
+            300557.0989,
+            2780980.5229,
+            16.5457
+          ],
+          "merged_anchor_zup": [
+            300554.3898,
+            2780975.1149,
+            12.2436
+          ],
+          "zup_shift": [
+            -2.7091,
+            -5.408,
+            -4.3021
+          ],
+          "r_zup_rowmajor": [
+            0.99756405,
+            0.06975648,
+            -0.0,
+            -0.06975648,
+            0.99756405,
+            -0.0,
+            0.0,
+            0.0,
+            1.0
+          ]
+        },
+        {
+          "scan_id": "catch_QiHuTender_4",
+          "derived_from_scan_id": "",
+          "name": "QiHuTender_4",
+          "native_anchor_zup": [
+            300586.6135,
+            2780953.5755,
+            18.827
+          ],
+          "merged_anchor_zup": [
+            300582.9612,
+            2780947.4766,
+            10.8319
+          ],
+          "zup_shift": [
+            -3.6523,
+            -6.0989,
+            -7.9951
+          ],
+          "r_zup_rowmajor": [
+            1.0,
+            -0.0,
+            0.0,
+            0.0,
+            1.0,
+            -0.0,
+            -0.0,
+            0.0,
+            1.0
+          ]
+        }
+      ],
+      "applied_adjustments": [
+        "Aligned & merged 4 scans",
+        "Native 4096×4096 Gen-0 JPEG per scan (0% decimation)",
+        "Trimmed 16,902 noisy overlap skirt tris",
+        "Restored WEGO School Sign (3,319 tris)"
+      ],
+      "comment_folders": [],
+      "size_mb": 196.62,
+      "wait_minutes": 4234.3,
+      "comments": [
+        {
+          "comment_id": "cmt_1793017532792",
+          "scan_id": "edited_qihu_unified_merged_scan_4_scans__edited_372953",
+          "author_email": "glibivanov@gatheren.com.tw",
+          "author_name": "雲在天",
+          "text": "編號28棵樹",
+          "pos_x": 32.65,
+          "pos_y": -3.95,
+          "pos_z": 7.1,
+          "twd97_e": 300583.366,
+          "twd97_n": 2780968.438,
+          "twd97_h": 10.297,
+          "camera_json": "{}",
+          "created_at": "2026-10-26 12:25:32 UTC",
+          "photos_json": "[{\"url\": \"/api/comments/photo/edited_qihu_unified_merged_scan_4_scans__edited_372953/1793017507595_Image_E8E6250E-0627-4609-9C21-7501D91A7648.jpeg\", \"filename\": \"Image_E8E6250E-0627-4609-9C21-7501D91A7648.jpeg\", \"id\": \"cphoto_1793017507595\", \"gdrive_path\": \"G:\\\\Shared drives\\\\6.軟體\\\\3. GatheringScans\\\\CommentPhotos\\\\edited_qihu_unified_merged_scan_4_scans__edited_372953\\\\1793017507595_Image_E8E6250E-0627-4609-9C21-7501D91A7648.jpeg\", \"gdrive_synced\": true, \"storage\": \"gdrive\", \"source\": \"comment_upload\", \"mime_type\": \"image/jpeg\", \"size_bytes\": 1442369, \"uploaded_at\": \"2026-10-26 20:25:08\"}, {\"url\": \"/api/comments/photo/edited_qihu_unified_merged_scan_4_scans__edited_372953/1793017508425_Image_5C00908D-6EF1-442D-92A4-444D86D775BD.jpeg\", \"filename\": \"Image_5C00908D-6EF1-442D-92A4-444D86D775BD.jpeg\", \"id\": \"cphoto_1793017508425\", \"gdrive_path\": \"G:\\\\Shared drives\\\\6.軟體\\\\3. GatheringScans\\\\CommentPhotos\\\\edited_qihu_unified_merged_scan_4_scans__edited_372953\\\\1793017508425_Image_5C00908D-6EF1-442D-92A4-444D86D775BD.jpeg\", \"gdrive_synced\": true, \"storage\": \"gdrive\", \"source\": \"comment_upload\", \"mime_type\": \"image/jpeg\", \"size_bytes\": 3394265, \"uploaded_at\": \"2026-10-26 20:25:09\"}]",
+          "folder": "",
+          "photos": [
+            {
+              "url": "/api/comments/photo/edited_qihu_unified_merged_scan_4_scans__edited_372953/1793017507595_Image_E8E6250E-0627-4609-9C21-7501D91A7648.jpeg",
+              "filename": "Image_E8E6250E-0627-4609-9C21-7501D91A7648.jpeg",
+              "id": "cphoto_1793017507595",
+              "gdrive_path": "G:\\Shared drives\\6.軟體\\3. GatheringScans\\CommentPhotos\\edited_qihu_unified_merged_scan_4_scans__edited_372953\\1793017507595_Image_E8E6250E-0627-4609-9C21-7501D91A7648.jpeg",
+              "gdrive_synced": true,
+              "storage": "gdrive",
+              "source": "comment_upload",
+              "mime_type": "image/jpeg",
+              "size_bytes": 1442369,
+              "uploaded_at": "2026-10-26 20:25:08"
+            },
+            {
+              "url": "/api/comments/photo/edited_qihu_unified_merged_scan_4_scans__edited_372953/1793017508425_Image_5C00908D-6EF1-442D-92A4-444D86D775BD.jpeg",
+              "filename": "Image_5C00908D-6EF1-442D-92A4-444D86D775BD.jpeg",
+              "id": "cphoto_1793017508425",
+              "gdrive_path": "G:\\Shared drives\\6.軟體\\3. GatheringScans\\CommentPhotos\\edited_qihu_unified_merged_scan_4_scans__edited_372953\\1793017508425_Image_5C00908D-6EF1-442D-92A4-444D86D775BD.jpeg",
+              "gdrive_synced": true,
+              "storage": "gdrive",
+              "source": "comment_upload",
+              "mime_type": "image/jpeg",
+              "size_bytes": 3394265,
+              "uploaded_at": "2026-10-26 20:25:09"
+            }
+          ]
+        },
+        {
+          "comment_id": "cmt_1793017346023",
+          "scan_id": "edited_qihu_unified_merged_scan_4_scans__edited_372953",
+          "author_email": "glibivanov@gatheren.com.tw",
+          "author_name": "雲在天",
+          "text": "編號27樹。(需要移植最大顆)",
+          "pos_x": 29.5,
+          "pos_y": -3.6,
+          "pos_z": 7.05,
+          "twd97_e": 300580.216,
+          "twd97_n": 2780968.488,
+          "twd97_h": 10.647,
+          "camera_json": "{}",
+          "created_at": "2026-10-26 12:22:26 UTC",
+          "photos_json": "[{\"url\": \"/api/comments/photo/edited_qihu_unified_merged_scan_4_scans__edited_372953/1793017315800_Image_8DB8DEC7-9C95-4E46-AC9F-49191261C3EC.jpeg\", \"filename\": \"Image_8DB8DEC7-9C95-4E46-AC9F-49191261C3EC.jpeg\", \"id\": \"cphoto_1793017315800\", \"gdrive_path\": \"G:\\\\Shared drives\\\\6.軟體\\\\3. GatheringScans\\\\CommentPhotos\\\\edited_qihu_unified_merged_scan_4_scans__edited_372953\\\\1793017315800_Image_8DB8DEC7-9C95-4E46-AC9F-49191261C3EC.jpeg\", \"gdrive_synced\": true, \"storage\": \"gdrive\", \"source\": \"comment_upload\", \"mime_type\": \"image/jpeg\", \"size_bytes\": 2215161, \"uploaded_at\": \"2026-10-26 20:21:56\"}, {\"url\": \"/api/comments/photo/edited_qihu_unified_merged_scan_4_scans__edited_372953/1793017316382_Image_744DC5B5-CFAC-479D-AEF5-052EA36A1FCB.jpeg\", \"filename\": \"Image_744DC5B5-CFAC-479D-AEF5-052EA36A1FCB.jpeg\", \"id\": \"cphoto_1793017316382\", \"gdrive_path\": \"G:\\\\Shared drives\\\\6.軟體\\\\3. GatheringScans\\\\CommentPhotos\\\\edited_qihu_unified_merged_scan_4_scans__edited_372953\\\\1793017316382_Image_744DC5B5-CFAC-479D-AEF5-052EA36A1FCB.jpeg\", \"gdrive_synced\": true, \"storage\": \"gdrive\", \"source\": \"comment_upload\", \"mime_type\": \"image/jpeg\", \"size_bytes\": 4058121, \"uploaded_at\": \"2026-10-26 20:21:56\"}, {\"url\": \"/api/comments/photo/edited_qihu_unified_merged_scan_4_scans__edited_372953/1793017316954_Image_42D94EE8-5206-482A-B3B5-BBB5C1BC2390.jpeg\", \"filename\": \"Image_42D94EE8-5206-482A-B3B5-BBB5C1BC2390.jpeg\", \"id\": \"cphoto_1793017316954\", \"gdrive_path\": \"G:\\\\Shared drives\\\\6.軟體\\\\3. GatheringScans\\\\CommentPhotos\\\\edited_qihu_unified_merged_scan_4_scans__edited_372953\\\\1793017316954_Image_42D94EE8-5206-482A-B3B5-BBB5C1BC2390.jpeg\", \"gdrive_synced\": true, \"storage\": \"gdrive\", \"source\": \"comment_upload\", \"mime_type\": \"image/jpeg\", \"size_bytes\": 1695785, \"uploaded_at\": \"2026-10-26 20:21:57\"}]",
+          "folder": "",
+          "photos": [
+            {
+              "url": "/api/comments/photo/edited_qihu_unified_merged_scan_4_scans__edited_372953/1793017315800_Image_8DB8DEC7-9C95-4E46-AC9F-49191261C3EC.jpeg",
+              "filename": "Image_8DB8DEC7-9C95-4E46-AC9F-49191261C3EC.jpeg",
+              "id": "cphoto_1793017315800",
+              "gdrive_path": "G:\\Shared drives\\6.軟體\\3. GatheringScans\\CommentPhotos\\edited_qihu_unified_merged_scan_4_scans__edited_372953\\1793017315800_Image_8DB8DEC7-9C95-4E46-AC9F-49191261C3EC.jpeg",
+              "gdrive_synced": true,
+              "storage": "gdrive",
+              "source": "comment_upload",
+              "mime_type": "image/jpeg",
+              "size_bytes": 2215161,
+              "uploaded_at": "2026-10-26 20:21:56"
+            },
+            {
+              "url": "/api/comments/photo/edited_qihu_unified_merged_scan_4_scans__edited_372953/1793017316382_Image_744DC5B5-CFAC-479D-AEF5-052EA36A1FCB.jpeg",
+              "filename": "Image_744DC5B5-CFAC-479D-AEF5-052EA36A1FCB.jpeg",
+              "id": "cphoto_1793017316382",
+              "gdrive_path": "G:\\Shared drives\\6.軟體\\3. GatheringScans\\CommentPhotos\\edited_qihu_unified_merged_scan_4_scans__edited_372953\\1793017316382_Image_744DC5B5-CFAC-479D-AEF5-052EA36A1FCB.jpeg",
+              "gdrive_synced": true,
+              "storage": "gdrive",
+              "source": "comment_upload",
+              "mime_type": "image/jpeg",
+              "size_bytes": 4058121,
+              "uploaded_at": "2026-10-26 20:21:56"
+            },
+            {
+              "url": "/api/comments/photo/edited_qihu_unified_merged_scan_4_scans__edited_372953/1793017316954_Image_42D94EE8-5206-482A-B3B5-BBB5C1BC2390.jpeg",
+              "filename": "Image_42D94EE8-5206-482A-B3B5-BBB5C1BC2390.jpeg",
+              "id": "cphoto_1793017316954",
+              "gdrive_path": "G:\\Shared drives\\6.軟體\\3. GatheringScans\\CommentPhotos\\edited_qihu_unified_merged_scan_4_scans__edited_372953\\1793017316954_Image_42D94EE8-5206-482A-B3B5-BBB5C1BC2390.jpeg",
+              "gdrive_synced": true,
+              "storage": "gdrive",
+              "source": "comment_upload",
+              "mime_type": "image/jpeg",
+              "size_bytes": 1695785,
+              "uploaded_at": "2026-10-26 20:21:57"
+            }
+          ]
+        },
+        {
+          "comment_id": "cmt_1793017027354",
+          "scan_id": "edited_qihu_unified_merged_scan_4_scans__edited_372953",
+          "author_email": "glibivanov@gatheren.com.tw",
+          "author_name": "雲在天",
+          "text": "交通管制",
+          "pos_x": -26.3,
+          "pos_y": -1.1,
+          "pos_z": -34.05,
+          "twd97_e": 300524.416,
+          "twd97_n": 2781009.588,
+          "twd97_h": 13.147,
+          "camera_json": "{}",
+          "created_at": "2026-10-26 12:17:07 UTC",
+          "photos_json": "[{\"url\": \"/api/camera-photo?scan_id=edited_qihu_unified_merged_scan_4_scans__edited_372953&file=catch_QiHuTender_1/Image_000735.jpg\", \"filename\": \"catch_QiHuTender_1/Image_000735.jpg\", \"id\": \"catch_QiHuTender_1/Image_000735.jpg\", \"camera_twd97_e\": 300525.624, \"camera_twd97_n\": 2781010.835, \"camera_twd97_h\": 14.178, \"proj_u\": 0.6039, \"proj_v\": 0.479, \"target_uv\": {\"u\": 0.6039, \"v\": 0.479, \"in_fov\": true}, \"rtk_h_sigma_cm\": 143.25}]",
+          "folder": "",
+          "photos": [
+            {
+              "url": "/api/camera-photo?scan_id=edited_qihu_unified_merged_scan_4_scans__edited_372953&file=catch_QiHuTender_1/Image_000735.jpg",
+              "filename": "catch_QiHuTender_1/Image_000735.jpg",
+              "id": "catch_QiHuTender_1/Image_000735.jpg",
+              "camera_twd97_e": 300525.624,
+              "camera_twd97_n": 2781010.835,
+              "camera_twd97_h": 14.178,
+              "proj_u": 0.6039,
+              "proj_v": 0.479,
+              "target_uv": {
+                "u": 0.6039,
+                "v": 0.479,
+                "in_fov": true
+              },
+              "rtk_h_sigma_cm": 143.25
+            }
+          ]
+        },
+        {
+          "comment_id": "cmt_1792984792161",
+          "scan_id": "edited_qihu_unified_merged_scan_4_scans__edited_372953",
+          "author_email": "glibivanov@gatheren.com.tw",
+          "author_name": "雲在天",
+          "text": "公園公共廁所",
+          "pos_x": 64.2,
+          "pos_y": -3.9,
+          "pos_z": 28.0,
+          "twd97_e": 300614.916,
+          "twd97_n": 2780947.538,
+          "twd97_h": 10.347,
+          "camera_json": "{}",
+          "created_at": "2026-10-26 03:19:52 UTC",
+          "photos_json": "[{\"url\": \"/api/comments/photo/edited_qihu_unified_merged_scan_4_scans__edited_372953/1793016989845_camera-photo.jpg\", \"filename\": \"camera-photo.jpg\", \"id\": \"cphoto_1793016989845\", \"gdrive_path\": \"G:\\\\Shared drives\\\\6.軟體\\\\3. GatheringScans\\\\CommentPhotos\\\\edited_qihu_unified_merged_scan_4_scans__edited_372953\\\\1793016989845_camera-photo.jpg\", \"gdrive_synced\": true, \"storage\": \"gdrive\", \"source\": \"comment_upload\", \"mime_type\": \"image/jpeg\", \"size_bytes\": 1270728, \"uploaded_at\": \"2026-10-26 20:16:30\"}]",
+          "folder": "",
+          "photos": [
+            {
+              "url": "/api/comments/photo/edited_qihu_unified_merged_scan_4_scans__edited_372953/1793016989845_camera-photo.jpg",
+              "filename": "camera-photo.jpg",
+              "id": "cphoto_1793016989845",
+              "gdrive_path": "G:\\Shared drives\\6.軟體\\3. GatheringScans\\CommentPhotos\\edited_qihu_unified_merged_scan_4_scans__edited_372953\\1793016989845_camera-photo.jpg",
+              "gdrive_synced": true,
+              "storage": "gdrive",
+              "source": "comment_upload",
+              "mime_type": "image/jpeg",
+              "size_bytes": 1270728,
+              "uploaded_at": "2026-10-26 20:16:30"
+            }
+          ]
+        },
+        {
+          "comment_id": "cmt_1792984494802",
+          "scan_id": "edited_qihu_unified_merged_scan_4_scans__edited_372953",
+          "author_email": "glibivanov@gatheren.com.tw",
+          "author_name": "雲在天",
+          "text": "既有汙水井",
+          "pos_x": 27.45,
+          "pos_y": -3.5,
+          "pos_z": 1.75,
+          "twd97_e": 300578.166,
+          "twd97_n": 2780973.788,
+          "twd97_h": 10.747,
+          "camera_json": "{}",
+          "created_at": "2026-10-26 03:14:54 UTC",
+          "photos_json": "[{\"url\": \"/api/comments/photo/edited_qihu_unified_merged_scan_4_scans__edited_372953/1793016970332_camera-photo.jpg\", \"filename\": \"camera-photo.jpg\", \"id\": \"cphoto_1793016970332\", \"gdrive_path\": \"G:\\\\Shared drives\\\\6.軟體\\\\3. GatheringScans\\\\CommentPhotos\\\\edited_qihu_unified_merged_scan_4_scans__edited_372953\\\\1793016970332_camera-photo.jpg\", \"gdrive_synced\": true, \"storage\": \"gdrive\", \"source\": \"comment_upload\", \"mime_type\": \"image/jpeg\", \"size_bytes\": 1392537, \"uploaded_at\": \"2026-10-26 20:16:11\"}, {\"url\": \"/api/comments/photo/edited_qihu_unified_merged_scan_4_scans__edited_372953/1793016974997_camera-photo.jpg\", \"filename\": \"camera-photo.jpg\", \"id\": \"cphoto_1793016974997\", \"gdrive_path\": \"G:\\\\Shared drives\\\\6.軟體\\\\3. GatheringScans\\\\CommentPhotos\\\\edited_qihu_unified_merged_scan_4_scans__edited_372953\\\\1793016974997_camera-photo.jpg\", \"gdrive_synced\": true, \"storage\": \"gdrive\", \"source\": \"comment_upload\", \"mime_type\": \"image/jpeg\", \"size_bytes\": 1676248, \"uploaded_at\": \"2026-10-26 20:16:15\"}, {\"url\": \"/api/comments/photo/edited_qihu_unified_merged_scan_4_scans__edited_372953/1793016975761_camera-photo.jpg\", \"filename\": \"camera-photo.jpg\", \"id\": \"cphoto_1793016975761\", \"gdrive_path\": \"G:\\\\Shared drives\\\\6.軟體\\\\3. GatheringScans\\\\CommentPhotos\\\\edited_qihu_unified_merged_scan_4_scans__edited_372953\\\\1793016975761_camera-photo.jpg\", \"gdrive_synced\": true, \"storage\": \"gdrive\", \"source\": \"comment_upload\", \"mime_type\": \"image/jpeg\", \"size_bytes\": 1180439, \"uploaded_at\": \"2026-10-26 20:16:16\"}]",
+          "folder": "",
+          "photos": [
+            {
+              "url": "/api/comments/photo/edited_qihu_unified_merged_scan_4_scans__edited_372953/1793016970332_camera-photo.jpg",
+              "filename": "camera-photo.jpg",
+              "id": "cphoto_1793016970332",
+              "gdrive_path": "G:\\Shared drives\\6.軟體\\3. GatheringScans\\CommentPhotos\\edited_qihu_unified_merged_scan_4_scans__edited_372953\\1793016970332_camera-photo.jpg",
+              "gdrive_synced": true,
+              "storage": "gdrive",
+              "source": "comment_upload",
+              "mime_type": "image/jpeg",
+              "size_bytes": 1392537,
+              "uploaded_at": "2026-10-26 20:16:11"
+            },
+            {
+              "url": "/api/comments/photo/edited_qihu_unified_merged_scan_4_scans__edited_372953/1793016974997_camera-photo.jpg",
+              "filename": "camera-photo.jpg",
+              "id": "cphoto_1793016974997",
+              "gdrive_path": "G:\\Shared drives\\6.軟體\\3. GatheringScans\\CommentPhotos\\edited_qihu_unified_merged_scan_4_scans__edited_372953\\1793016974997_camera-photo.jpg",
+              "gdrive_synced": true,
+              "storage": "gdrive",
+              "source": "comment_upload",
+              "mime_type": "image/jpeg",
+              "size_bytes": 1676248,
+              "uploaded_at": "2026-10-26 20:16:15"
+            },
+            {
+              "url": "/api/comments/photo/edited_qihu_unified_merged_scan_4_scans__edited_372953/1793016975761_camera-photo.jpg",
+              "filename": "camera-photo.jpg",
+              "id": "cphoto_1793016975761",
+              "gdrive_path": "G:\\Shared drives\\6.軟體\\3. GatheringScans\\CommentPhotos\\edited_qihu_unified_merged_scan_4_scans__edited_372953\\1793016975761_camera-photo.jpg",
+              "gdrive_synced": true,
+              "storage": "gdrive",
+              "source": "comment_upload",
+              "mime_type": "image/jpeg",
+              "size_bytes": 1180439,
+              "uploaded_at": "2026-10-26 20:16:16"
+            }
+          ]
+        },
+        {
+          "comment_id": "cmt_1792977659623",
+          "scan_id": "edited_qihu_unified_merged_scan_4_scans__edited_372953",
+          "author_email": "glibivanov@gatheren.com.tw",
+          "author_name": "雲在天",
+          "text": "排水管",
+          "pos_x": 15.95,
+          "pos_y": -5.8,
+          "pos_z": 37.65,
+          "twd97_e": 300566.666,
+          "twd97_n": 2780937.888,
+          "twd97_h": 8.447,
+          "camera_json": "{}",
+          "created_at": "2026-10-26 01:20:59 UTC",
+          "photos_json": "[{\"url\": \"/api/comments/photo/edited_qihu_unified_merged_scan_4_scans__edited_372953/1793016921358_camera-photo.jpg\", \"filename\": \"camera-photo.jpg\", \"id\": \"cphoto_1793016921358\", \"gdrive_path\": \"G:\\\\Shared drives\\\\6.軟體\\\\3. GatheringScans\\\\CommentPhotos\\\\edited_qihu_unified_merged_scan_4_scans__edited_372953\\\\1793016921358_camera-photo.jpg\", \"gdrive_synced\": true, \"storage\": \"gdrive\", \"source\": \"comment_upload\", \"mime_type\": \"image/jpeg\", \"size_bytes\": 1507016, \"uploaded_at\": \"2026-10-26 20:15:22\"}, {\"url\": \"/api/comments/photo/edited_qihu_unified_merged_scan_4_scans__edited_372953/1793016925872_camera-photo.jpg\", \"filename\": \"camera-photo.jpg\", \"id\": \"cphoto_1793016925872\", \"gdrive_path\": \"G:\\\\Shared drives\\\\6.軟體\\\\3. GatheringScans\\\\CommentPhotos\\\\edited_qihu_unified_merged_scan_4_scans__edited_372953\\\\1793016925872_camera-photo.jpg\", \"gdrive_synced\": true, \"storage\": \"gdrive\", \"source\": \"comment_upload\", \"mime_type\": \"image/jpeg\", \"size_bytes\": 1430352, \"uploaded_at\": \"2026-10-26 20:15:26\"}, {\"url\": \"/api/comments/photo/edited_qihu_unified_merged_scan_4_scans__edited_372953/1793016934087_camera-photo.jpg\", \"filename\": \"camera-photo.jpg\", \"id\": \"cphoto_1793016934087\", \"gdrive_path\": \"G:\\\\Shared drives\\\\6.軟體\\\\3. GatheringScans\\\\CommentPhotos\\\\edited_qihu_unified_merged_scan_4_scans__edited_372953\\\\1793016934087_camera-photo.jpg\", \"gdrive_synced\": true, \"storage\": \"gdrive\", \"source\": \"comment_upload\", \"mime_type\": \"image/jpeg\", \"size_bytes\": 1546122, \"uploaded_at\": \"2026-10-26 20:15:34\"}]",
+          "folder": "",
+          "photos": [
+            {
+              "url": "/api/comments/photo/edited_qihu_unified_merged_scan_4_scans__edited_372953/1793016921358_camera-photo.jpg",
+              "filename": "camera-photo.jpg",
+              "id": "cphoto_1793016921358",
+              "gdrive_path": "G:\\Shared drives\\6.軟體\\3. GatheringScans\\CommentPhotos\\edited_qihu_unified_merged_scan_4_scans__edited_372953\\1793016921358_camera-photo.jpg",
+              "gdrive_synced": true,
+              "storage": "gdrive",
+              "source": "comment_upload",
+              "mime_type": "image/jpeg",
+              "size_bytes": 1507016,
+              "uploaded_at": "2026-10-26 20:15:22"
+            },
+            {
+              "url": "/api/comments/photo/edited_qihu_unified_merged_scan_4_scans__edited_372953/1793016925872_camera-photo.jpg",
+              "filename": "camera-photo.jpg",
+              "id": "cphoto_1793016925872",
+              "gdrive_path": "G:\\Shared drives\\6.軟體\\3. GatheringScans\\CommentPhotos\\edited_qihu_unified_merged_scan_4_scans__edited_372953\\1793016925872_camera-photo.jpg",
+              "gdrive_synced": true,
+              "storage": "gdrive",
+              "source": "comment_upload",
+              "mime_type": "image/jpeg",
+              "size_bytes": 1430352,
+              "uploaded_at": "2026-10-26 20:15:26"
+            },
+            {
+              "url": "/api/comments/photo/edited_qihu_unified_merged_scan_4_scans__edited_372953/1793016934087_camera-photo.jpg",
+              "filename": "camera-photo.jpg",
+              "id": "cphoto_1793016934087",
+              "gdrive_path": "G:\\Shared drives\\6.軟體\\3. GatheringScans\\CommentPhotos\\edited_qihu_unified_merged_scan_4_scans__edited_372953\\1793016934087_camera-photo.jpg",
+              "gdrive_synced": true,
+              "storage": "gdrive",
+              "source": "comment_upload",
+              "mime_type": "image/jpeg",
+              "size_bytes": 1546122,
+              "uploaded_at": "2026-10-26 20:15:34"
+            }
+          ]
+        }
+      ],
+      "comment_count": 6,
+      "measurement_bookmarks": [],
+      "bookmark_count": 0
+    },
+    {
+      "scan_id": "edited_qihutender_1_edited_346774",
+      "name": "QiHuTender_1_Edited",
+      "project_group": "QiHu",
+      "project_name_zh": "QiHu 工程掃描群組",
+      "capture_date": "2026-10-24 17:38",
+      "uploaded_at": 1792834689.3664134,
+      "uploader_email": "glibivanov@gatheren.com.tw",
+      "uploader_name": "雲在天",
+      "source_zip_path": "",
+      "project_dir": "C:\\GatheringScans\\edited_qihutender_1_edited_346774",
+      "tileset_path": "C:\\GatheringScans\\edited_qihutender_1_edited_346774\\tileset\\tileset.json",
+      "obj_path": "",
+      "report_path": "",
+      "cameras_dir": "C:\\GatheringScans\\catch_QiHuTender_1\\inputs",
+      "image_count": 1500,
+      "size_bytes": 117229702,
+      "rtk_accuracy_cm": 1.5,
+      "crs": "TWD97 (121) + TWVD2001",
+      "texture_resolution": 4096,
+      "lat": 25.136604489,
+      "lon": 121.501135521,
+      "elev_m": 11.55,
+      "twd97_e": 300528.96,
+      "twd97_n": 2781002.13,
+      "twd97_h": 11.55,
+      "bounding_box_json": "{\"center\": [300528.96, 2781002.13, 11.55], \"half_extents\": [52.72, 42.43, 6.24]}",
+      "status": "completed",
+      "progress_pct": 100.0,
+      "stage_label": "Completed (TWD97 (121) + TWVD2001, 4K Web Tileset)",
+      "bypass_count": 0,
+      "force_next": 0,
+      "priority_score": 1000004277.694,
+      "notes": "Dynamically loaded from C:\\GatheringScans\\edited_qihutender_1_edited_346774",
+      "user_edited_name": 1,
+      "covered_area_m2": 6084.4,
+      "tileset_version": 1792834686076,
+      "extra_json": "{\"derived_from_scan_id\": \"catch_QiHuTender_1\"}",
+      "bounding_box": {
+        "center": [
+          300528.96,
+          2781002.13,
+          11.55
+        ],
+        "half_extents": [
+          52.72,
+          42.43,
+          6.24
+        ]
+      },
+      "derived_from_scan_id": "catch_QiHuTender_1",
+      "comment_folders": [],
+      "size_mb": 111.8,
+      "wait_minutes": 4277.8,
+      "comments": [],
+      "comment_count": 0,
+      "measurement_bookmarks": [],
+      "bookmark_count": 0
+    },
     {
       "scan_id": "catch_QiHuTender_4",
       "name": "QiHuTender_4",
@@ -37,10 +623,12 @@
       "stage_label": "Processed -> catch_QiHuTender_4 (TWD97 + TWVD2001, 4K)",
       "bypass_count": 0,
       "force_next": 0,
-      "priority_score": 1000001198.115,
+      "priority_score": 1000005492.423,
       "notes": "Dynamically loaded from C:\\GatheringScans\\catch_QiHuTender_4",
       "user_edited_name": 0,
       "covered_area_m2": 8835.7,
+      "tileset_version": 1792768935136,
+      "extra_json": "{}",
       "bounding_box": {
         "center": [
           300594.115,
@@ -53,9 +641,13 @@
           7.84
         ]
       },
+      "comment_folders": [],
       "size_mb": 6721.29,
-      "wait_minutes": 1198.2,
-      "comment_count": 0
+      "wait_minutes": 5492.5,
+      "comments": [],
+      "comment_count": 0,
+      "measurement_bookmarks": [],
+      "bookmark_count": 0
     },
     {
       "scan_id": "catch_QiHuTender_3",
@@ -89,10 +681,12 @@
       "stage_label": "Processed -> catch_QiHuTender_3 (TWD97 + TWVD2001, 4K)",
       "bypass_count": 0,
       "force_next": 0,
-      "priority_score": 1000001199.9,
+      "priority_score": 1000005494.208,
       "notes": "Dynamically loaded from C:\\GatheringScans\\catch_QiHuTender_3",
       "user_edited_name": 0,
       "covered_area_m2": 11207.3,
+      "tileset_version": 1792767767789,
+      "extra_json": "{}",
       "bounding_box": {
         "center": [
           300559.031,
@@ -105,9 +699,13 @@
           9.97
         ]
       },
+      "comment_folders": [],
       "size_mb": 7192.61,
-      "wait_minutes": 1200.0,
-      "comment_count": 0
+      "wait_minutes": 5494.3,
+      "comments": [],
+      "comment_count": 0,
+      "measurement_bookmarks": [],
+      "bookmark_count": 0
     },
     {
       "scan_id": "catch_QiHuTender_2",
@@ -115,7 +713,7 @@
       "project_group": "QiHu",
       "project_name_zh": "QiHu 工程掃描群組",
       "capture_date": "2026-10-23 22:41",
-      "uploaded_at": 1792761508.629,
+      "uploaded_at": 1792766498.7131724,
       "uploader_email": "glibivanov@gatheren.com.tw",
       "uploader_name": "雲在天",
       "source_zip_path": "G:\\Shared drives\\6.軟體\\3. GatheringScans\\INPUTS\\QiHu\\QiHuTender_2.zip",
@@ -141,10 +739,12 @@
       "stage_label": "Processed -> catch_QiHuTender_2 (TWD97 + TWVD2001, 4K)",
       "bypass_count": 0,
       "force_next": 0,
-      "priority_score": 1000001203.015,
+      "priority_score": 1000005414.155,
       "notes": "Dynamically loaded from C:\\GatheringScans\\catch_QiHuTender_2",
       "user_edited_name": 0,
       "covered_area_m2": 4926.9,
+      "tileset_version": 1792766498930,
+      "extra_json": "{}",
       "bounding_box": {
         "center": [
           300544.802,
@@ -157,9 +757,13 @@
           7.8
         ]
       },
+      "comment_folders": [],
       "size_mb": 7661.95,
-      "wait_minutes": 1203.2,
-      "comment_count": 0
+      "wait_minutes": 5414.3,
+      "comments": [],
+      "comment_count": 0,
+      "measurement_bookmarks": [],
+      "bookmark_count": 0
     },
     {
       "scan_id": "catch_QiHuTender_1",
@@ -193,10 +797,12 @@
       "stage_label": "Completed (TWD97 + TWVD2001, 4K Web Tileset)",
       "bypass_count": 0,
       "force_next": 1,
-      "priority_score": 1000001190.069,
+      "priority_score": 1000005484.376,
       "notes": "Dynamically loaded from C:\\GatheringScans\\catch_QiHuTender_1",
       "user_edited_name": 0,
       "covered_area_m2": 14118.6,
+      "tileset_version": 1792812784128,
+      "extra_json": "{}",
       "bounding_box": {
         "center": [
           300526.284,
@@ -209,9 +815,13 @@
           9.77
         ]
       },
+      "comment_folders": [],
       "size_mb": 6878.16,
-      "wait_minutes": 2934.6,
-      "comment_count": 0
+      "wait_minutes": 7228.9,
+      "comments": [],
+      "comment_count": 0,
+      "measurement_bookmarks": [],
+      "bookmark_count": 0
     },
     {
       "scan_id": "qihutender_nortk_obj_mesh",
@@ -245,10 +855,12 @@
       "stage_label": "Completed (TWD97 + TWVD2001, 4K Web Tileset)",
       "bypass_count": 0,
       "force_next": 0,
-      "priority_score": 1000001369.81,
+      "priority_score": 1000005664.261,
       "notes": "Dynamically loaded from C:\\GatheringScans\\QiHu\\QiHuTender_NoRTK-obj_mesh",
       "user_edited_name": 0,
       "covered_area_m2": 18165.1,
+      "tileset_version": 1792751568505,
+      "extra_json": "{}",
       "bounding_box": {
         "center": [
           300551.982,
@@ -261,9 +873,13 @@
           26.72
         ]
       },
+      "comment_folders": [],
       "size_mb": 621.13,
-      "wait_minutes": 1370.0,
-      "comment_count": 0
+      "wait_minutes": 5664.3,
+      "comments": [],
+      "comment_count": 0,
+      "measurement_bookmarks": [],
+      "bookmark_count": 0
     },
     {
       "scan_id": "catch_QuChi261016",
@@ -297,10 +913,12 @@
       "stage_label": "Processed -> catch_QuChi261016 (TWD97 + TWVD2001, 4K)",
       "bypass_count": 0,
       "force_next": 0,
-      "priority_score": 1000011717.057,
+      "priority_score": 1000016011.365,
       "notes": "Dynamically loaded from C:\\GatheringScans\\catch_QuChi261016",
       "user_edited_name": 0,
       "covered_area_m2": 36259.4,
+      "tileset_version": 1792158102948,
+      "extra_json": "{}",
       "bounding_box": {
         "center": [
           304891.961,
@@ -313,9 +931,13 @@
           19.34
         ]
       },
+      "comment_folders": [],
       "size_mb": 34268.27,
-      "wait_minutes": 11717.2,
-      "comment_count": 0
+      "wait_minutes": 16011.5,
+      "comments": [],
+      "comment_count": 0,
+      "measurement_bookmarks": [],
+      "bookmark_count": 0
     },
     {
       "scan_id": "QuChi261016_Trees",
@@ -349,10 +971,12 @@
       "stage_label": "Completed (TWD97 + TWVD2001, 4K Web Tileset)",
       "bypass_count": 0,
       "force_next": 0,
-      "priority_score": 1000010132.253,
+      "priority_score": 1000014426.704,
       "notes": "Dynamically loaded from C:\\GatheringScans\\QuChi261016_Trees",
       "user_edited_name": 1,
       "covered_area_m2": 49671.9,
+      "tileset_version": 1792249486706,
+      "extra_json": "{}",
       "bounding_box": {
         "center": [
           304863.395,
@@ -365,9 +989,13 @@
           27.86
         ]
       },
+      "comment_folders": [],
       "size_mb": 506.77,
-      "wait_minutes": 10493.4,
-      "comment_count": 0
+      "wait_minutes": 14787.7,
+      "comments": [],
+      "comment_count": 0,
+      "measurement_bookmarks": [],
+      "bookmark_count": 0
     },
     {
       "scan_id": "quchi_20261015_obj_mesh",
@@ -401,10 +1029,12 @@
       "stage_label": "Completed (TWD97 + TWVD2001, 4K Web Tileset)",
       "bypass_count": 0,
       "force_next": 0,
-      "priority_score": 1000011609.047,
+      "priority_score": 1000015903.355,
       "notes": "Dynamically loaded from C:\\GatheringScans\\QuChi_20261015-obj_mesh",
       "user_edited_name": 1,
       "covered_area_m2": 45203.2,
+      "tileset_version": 1792136900467,
+      "extra_json": "{}",
       "bounding_box": {
         "center": [
           304945.3019,
@@ -417,9 +1047,13 @@
           15.3
         ]
       },
+      "comment_folders": [],
       "size_mb": 128.83,
-      "wait_minutes": 11613.5,
-      "comment_count": 0
+      "wait_minutes": 15907.8,
+      "comments": [],
+      "comment_count": 0,
+      "measurement_bookmarks": [],
+      "bookmark_count": 0
     },
     {
       "scan_id": "quchi_20261015_cesium_mesh",
@@ -453,10 +1087,12 @@
       "stage_label": "Completed (TWD97 + TWVD2001, 4K Web Tileset)",
       "bypass_count": 0,
       "force_next": 0,
-      "priority_score": 1000011609.043,
+      "priority_score": 1000015903.351,
       "notes": "Dynamically loaded from C:\\GatheringScans\\QuChi_20261015-cesium_mesh",
       "user_edited_name": 0,
       "covered_area_m2": 45203.2,
+      "tileset_version": 1792129128893,
+      "extra_json": "{}",
       "bounding_box": {
         "center": [
           304896.0405,
@@ -469,13 +1105,17 @@
           17.58
         ]
       },
+      "comment_folders": [],
       "size_mb": 55.11,
-      "wait_minutes": 11609.2,
-      "comment_count": 0
+      "wait_minutes": 15903.5,
+      "comments": [],
+      "comment_count": 0,
+      "measurement_bookmarks": [],
+      "bookmark_count": 0
     },
     {
       "scan_id": "quchi_20261005_merged",
-      "name": "QuChi_20261005_Compressed",
+      "name": "2026-10-05-15-43-55",
       "project_group": "QuChi Dam",
       "project_name_zh": "屈尺堰壩體與護岸工程",
       "capture_date": "2026-10-05 15:45",
@@ -505,10 +1145,12 @@
       "stage_label": "Completed (TWD97 + TWVD2001, 4K Web Tileset)",
       "bypass_count": 0,
       "force_next": 0,
-      "priority_score": 1000012715.651,
+      "priority_score": 1000017009.959,
       "notes": "Merged from 3 PIX4Dcatch RTK walks in G:\\My Drive\\SCANS TEST (15-19-27, 15-37-05, 15-43-55). Converted to TWD97 (121) + TWVD2001 with 2K textures.",
       "user_edited_name": 0,
       "covered_area_m2": 149594.3,
+      "tileset_version": 1792078549802,
+      "extra_json": "{}",
       "bounding_box": {
         "center": [
           304941.664,
@@ -521,9 +1163,50 @@
           52.64
         ]
       },
+      "comment_folders": [],
       "size_mb": 109.91,
-      "wait_minutes": 17853.7,
-      "comment_count": 2
+      "wait_minutes": 22148.0,
+      "comments": [
+        {
+          "comment_id": "cmt_1792021676855",
+          "scan_id": "quchi_20261005_merged",
+          "author_email": "glibivanov@gatheren.com.tw",
+          "author_name": "雲在天",
+          "text": "North spillway aggregate stockpile measured at 412.6 m³ (TWD97 E:304958.2, N:2757091.4, H:+44.8m).",
+          "pos_x": 5.5,
+          "pos_y": 1.6,
+          "pos_z": -6.5,
+          "twd97_e": 304958.2,
+          "twd97_n": 2757091.4,
+          "twd97_h": 44.8,
+          "camera_json": "{}",
+          "created_at": "2026-10-14 23:47:56 UTC",
+          "photos_json": "[]",
+          "folder": "",
+          "photos": []
+        },
+        {
+          "comment_id": "cmt_1792021676857",
+          "scan_id": "quchi_20261005_merged",
+          "author_email": "argon@gatheren.com.tw",
+          "author_name": "Argon",
+          "text": "Verified TWVD2001 crest elevation against benchmark BM-04 (+43.18m, Δh = 0.012m within tolerance).",
+          "pos_x": -12.0,
+          "pos_y": 0.4,
+          "pos_z": 8.2,
+          "twd97_e": 304940.6,
+          "twd97_n": 2757076.7,
+          "twd97_h": 43.18,
+          "camera_json": "{}",
+          "created_at": "2026-10-14 23:47:56 UTC",
+          "photos_json": "[]",
+          "folder": "",
+          "photos": []
+        }
+      ],
+      "comment_count": 2,
+      "measurement_bookmarks": [],
+      "bookmark_count": 0
     },
     {
       "scan_id": "quchi_20261005_sector3",
@@ -557,10 +1240,12 @@
       "stage_label": "Completed (TWD97 + TWVD2001, 4K Web Tileset)",
       "bypass_count": 0,
       "force_next": 0,
-      "priority_score": 1000012715.663,
+      "priority_score": 1000017009.969,
       "notes": "High-density sector 3 photogrammetry mesh of QuChi Dam spillway.",
       "user_edited_name": 0,
       "covered_area_m2": 136580.4,
+      "tileset_version": 1792826882554,
+      "extra_json": "{}",
       "bounding_box": {
         "center": [
           304940.073,
@@ -573,9 +1258,13 @@
           23.04
         ]
       },
+      "comment_folders": [],
       "size_mb": 70.76,
-      "wait_minutes": 12715.8,
-      "comment_count": 0
+      "wait_minutes": 17010.1,
+      "comments": [],
+      "comment_count": 0,
+      "measurement_bookmarks": [],
+      "bookmark_count": 0
     },
     {
       "scan_id": "quchi_20260921_epoch",
@@ -609,10 +1298,12 @@
       "stage_label": "Completed (TWD97 + TWVD2001, 4K Web Tileset)",
       "bypass_count": 0,
       "force_next": 0,
-      "priority_score": 1000012715.649,
+      "priority_score": 1000017009.958,
       "notes": "Baseline epoch prior to October earthwork and revetment concrete pour.",
       "user_edited_name": 0,
       "covered_area_m2": 47792.8,
+      "tileset_version": 1792078549796,
+      "extra_json": "{}",
       "bounding_box": {
         "center": [
           305165.9193,
@@ -625,9 +1316,13 @@
           13.26
         ]
       },
+      "comment_folders": [],
       "size_mb": 91.93,
-      "wait_minutes": 38013.7,
-      "comment_count": 0
+      "wait_minutes": 42308.0,
+      "comments": [],
+      "comment_count": 0,
+      "measurement_bookmarks": [],
+      "bookmark_count": 0
     },
     {
       "scan_id": "catch_2026_09_21_11_39_49",
@@ -661,10 +1356,12 @@
       "stage_label": "Processed -> catch_2026_09_21_11_39_49 (TWD97 + TWVD2001, 4K)",
       "bypass_count": 0,
       "force_next": 0,
-      "priority_score": 1000008533.742,
+      "priority_score": 1000012828.05,
       "notes": "Dynamically loaded from C:\\GatheringScans\\catch_2026_09_21_11_39_49",
       "user_edited_name": 1,
       "covered_area_m2": 272.0,
+      "tileset_version": 1792508703227,
+      "extra_json": "{}",
       "bounding_box": {
         "center": [
           302629.28,
@@ -677,9 +1374,13 @@
           1.54
         ]
       },
+      "comment_folders": [],
       "size_mb": 752.36,
-      "wait_minutes": 8533.9,
-      "comment_count": 0
+      "wait_minutes": 12828.2,
+      "comments": [],
+      "comment_count": 0,
+      "measurement_bookmarks": [],
+      "bookmark_count": 0
     },
     {
       "scan_id": "rosepark_20260918_merged",
@@ -713,10 +1414,12 @@
       "stage_label": "Completed (TWD97 + TWVD2001, 4K Web Tileset)",
       "bypass_count": 0,
       "force_next": 0,
-      "priority_score": 1000012715.665,
+      "priority_score": 1000017009.971,
       "notes": "Merged scan of Rose Park landscape grading and drainage trenching.",
       "user_edited_name": 0,
       "covered_area_m2": 6684.2,
+      "tileset_version": 1792829605351,
+      "extra_json": "{}",
       "bounding_box": {
         "center": [
           295982.7,
@@ -729,9 +1432,32 @@
           3.19
         ]
       },
+      "comment_folders": [],
       "size_mb": 65.23,
-      "wait_minutes": 42333.7,
-      "comment_count": 1
+      "wait_minutes": 46628.0,
+      "comments": [
+        {
+          "comment_id": "cmt_1792021676860",
+          "scan_id": "rosepark_20260918_merged",
+          "author_email": "argon@gatheren.com.tw",
+          "author_name": "Argon",
+          "text": "Drainage sub-base slope confirmed at 1.8% grade toward south retention basin.",
+          "pos_x": 3.2,
+          "pos_y": -0.5,
+          "pos_z": 4.1,
+          "twd97_e": 296048.3,
+          "twd97_n": 2768527.3,
+          "twd97_h": 9.35,
+          "camera_json": "{}",
+          "created_at": "2026-10-14 23:47:56 UTC",
+          "photos_json": "[]",
+          "folder": "",
+          "photos": []
+        }
+      ],
+      "comment_count": 1,
+      "measurement_bookmarks": [],
+      "bookmark_count": 0
     },
     {
       "scan_id": "rosepark_20260917_east",
@@ -765,10 +1491,12 @@
       "stage_label": "Completed (TWD97 + TWVD2001, 4K Web Tileset)",
       "bypass_count": 0,
       "force_next": 0,
-      "priority_score": 1000012715.663,
+      "priority_score": 1000017009.969,
       "notes": "Initial excavation trench scan at Rose Park East sector.",
       "user_edited_name": 0,
       "covered_area_m2": 8410.0,
+      "tileset_version": 1792829605202,
+      "extra_json": "{}",
       "bounding_box": {
         "center": [
           295990.583,
@@ -781,9 +1509,13 @@
           4.17
         ]
       },
+      "comment_folders": [],
       "size_mb": 42.06,
-      "wait_minutes": 43773.7,
-      "comment_count": 0
+      "wait_minutes": 48068.0,
+      "comments": [],
+      "comment_count": 0,
+      "measurement_bookmarks": [],
+      "bookmark_count": 0
     },
     {
       "scan_id": "ntudorm_20260917_foundation",
@@ -817,10 +1549,12 @@
       "stage_label": "Completed (TWD97 + TWVD2001, 4K Web Tileset)",
       "bypass_count": 0,
       "force_next": 0,
-      "priority_score": 1000012715.644,
+      "priority_score": 1000017010.095,
       "notes": "Excavation progress and soldier pile wall survey at NTU Dorm site.",
       "user_edited_name": 0,
       "covered_area_m2": 5781.2,
+      "tileset_version": 1792826879489,
+      "extra_json": "{}",
       "bounding_box": {
         "center": [
           303004.363,
@@ -833,9 +1567,13 @@
           4.46
         ]
       },
+      "comment_folders": [],
       "size_mb": 56.17,
-      "wait_minutes": 44493.7,
-      "comment_count": 0
+      "wait_minutes": 48788.0,
+      "comments": [],
+      "comment_count": 0,
+      "measurement_bookmarks": [],
+      "bookmark_count": 0
     },
     {
       "scan_id": "ntudorm_20260915_baseline",
@@ -869,10 +1607,12 @@
       "stage_label": "Completed (TWD97 + TWVD2001, 4K Web Tileset)",
       "bypass_count": 0,
       "force_next": 0,
-      "priority_score": 1000012715.643,
+      "priority_score": 1000017010.093,
       "notes": "Baseline perimeter survey prior to retaining wall excavation.",
       "user_edited_name": 0,
       "covered_area_m2": 10905.3,
+      "tileset_version": 1792832020533,
+      "extra_json": "{}",
       "bounding_box": {
         "center": [
           303010.604,
@@ -885,12 +1625,92 @@
           25.43
         ]
       },
+      "comment_folders": [],
       "size_mb": 40.82,
-      "wait_minutes": 46822.2,
-      "comment_count": 0
+      "wait_minutes": 51116.5,
+      "comments": [],
+      "comment_count": 0,
+      "measurement_bookmarks": [],
+      "bookmark_count": 0
     }
   ],
+  "trashed_scan_ids": [
+    "edited_1021_908819",
+    "catch_1021",
+    "merged_qihu_unified_merged_scan_4_scans_37215"
+  ],
   "share_links": [
+    {
+      "token": "yYrezdPGDoiBKqX9",
+      "label": "View & Comment — QiHu — Unified Merged Scan (4 Scans)",
+      "scope_type": "scan",
+      "target_id": "edited_qihu_unified_merged_scan_4_scans__edited_372953",
+      "created_by_email": "glibivanov@gatheren.com.tw",
+      "created_by_name": "glibivanov",
+      "created_at": "2026-10-26 05:58:40 UTC",
+      "expires_at": "",
+      "allow_download": false,
+      "allow_measurements": false,
+      "allow_comments": true,
+      "revoked": false,
+      "revoked_at": "",
+      "view_count": 0,
+      "share_url": "https://scans.gatheren.cloud/s/yYrezdPGDoiBKqX9",
+      "direct_url": "https://scans.gatheren.cloud/?share=yYrezdPGDoiBKqX9",
+      "short_path": "/s/yYrezdPGDoiBKqX9",
+      "human_views": 0,
+      "recorded_sessions": 0,
+      "unique_visitors": 0,
+      "bot_unfurls": 0,
+      "total_active_sec": 0.0,
+      "avg_active_sec": 0.0,
+      "total_open_sec": 0.0,
+      "last_viewed_at": "",
+      "comments_posted_total": 0,
+      "downloads_total": 0,
+      "measurements_total": 0,
+      "top_tools": []
+    },
+    {
+      "token": "-5AGTobxCnqIK8SJ",
+      "label": "External View Link",
+      "scope_type": "scan",
+      "target_id": "edited_qihu_unified_merged_scan_4_scans__edited_372953",
+      "created_by_email": "system@gatheren.com.tw",
+      "created_by_name": "system",
+      "created_at": "2026-10-25 08:35:47 UTC",
+      "expires_at": "",
+      "allow_download": false,
+      "allow_measurements": true,
+      "allow_comments": true,
+      "revoked": false,
+      "revoked_at": "",
+      "view_count": 72,
+      "share_url": "https://scans.gatheren.cloud/s/-5AGTobxCnqIK8SJ",
+      "direct_url": "https://scans.gatheren.cloud/?share=-5AGTobxCnqIK8SJ",
+      "short_path": "/s/-5AGTobxCnqIK8SJ",
+      "human_views": 15,
+      "recorded_sessions": 15,
+      "unique_visitors": 6,
+      "bot_unfurls": 10,
+      "total_active_sec": 934.0,
+      "avg_active_sec": 62.3,
+      "total_open_sec": 7972.1,
+      "last_viewed_at": "2026-10-27 02:42:57 UTC",
+      "comments_posted_total": 0,
+      "downloads_total": 0,
+      "measurements_total": 1,
+      "top_tools": [
+        {
+          "tool": "orbit",
+          "count": 398
+        },
+        {
+          "tool": "area",
+          "count": 2
+        }
+      ]
+    },
     {
       "token": "WLBrUeJ7C1xbEDxe",
       "label": "External Consultant Review",
@@ -906,8 +1726,21 @@
       "revoked": false,
       "revoked_at": "",
       "view_count": 0,
-      "share_url": "https://scans.gatheren.cloud/?share=WLBrUeJ7C1xbEDxe",
-      "short_path": "/s/WLBrUeJ7C1xbEDxe"
+      "share_url": "https://scans.gatheren.cloud/s/WLBrUeJ7C1xbEDxe",
+      "direct_url": "https://scans.gatheren.cloud/?share=WLBrUeJ7C1xbEDxe",
+      "short_path": "/s/WLBrUeJ7C1xbEDxe",
+      "human_views": 0,
+      "recorded_sessions": 0,
+      "unique_visitors": 0,
+      "bot_unfurls": 0,
+      "total_active_sec": 0.0,
+      "avg_active_sec": 0.0,
+      "total_open_sec": 0.0,
+      "last_viewed_at": "",
+      "comments_posted_total": 0,
+      "downloads_total": 0,
+      "measurements_total": 0,
+      "top_tools": []
     },
     {
       "token": "Np4l3Z0IOQj2WRx2",
@@ -924,8 +1757,21 @@
       "revoked": false,
       "revoked_at": "",
       "view_count": 0,
-      "share_url": "https://scans.gatheren.cloud/?share=Np4l3Z0IOQj2WRx2",
-      "short_path": "/s/Np4l3Z0IOQj2WRx2"
+      "share_url": "https://scans.gatheren.cloud/s/Np4l3Z0IOQj2WRx2",
+      "direct_url": "https://scans.gatheren.cloud/?share=Np4l3Z0IOQj2WRx2",
+      "short_path": "/s/Np4l3Z0IOQj2WRx2",
+      "human_views": 0,
+      "recorded_sessions": 0,
+      "unique_visitors": 0,
+      "bot_unfurls": 0,
+      "total_active_sec": 0.0,
+      "avg_active_sec": 0.0,
+      "total_open_sec": 0.0,
+      "last_viewed_at": "",
+      "comments_posted_total": 0,
+      "downloads_total": 0,
+      "measurements_total": 0,
+      "top_tools": []
     },
     {
       "token": "5Mqyqd4xxXmsPhm4",
@@ -942,8 +1788,21 @@
       "revoked": false,
       "revoked_at": "",
       "view_count": 0,
-      "share_url": "https://scans.gatheren.cloud/?share=5Mqyqd4xxXmsPhm4",
-      "short_path": "/s/5Mqyqd4xxXmsPhm4"
+      "share_url": "https://scans.gatheren.cloud/s/5Mqyqd4xxXmsPhm4",
+      "direct_url": "https://scans.gatheren.cloud/?share=5Mqyqd4xxXmsPhm4",
+      "short_path": "/s/5Mqyqd4xxXmsPhm4",
+      "human_views": 0,
+      "recorded_sessions": 0,
+      "unique_visitors": 0,
+      "bot_unfurls": 0,
+      "total_active_sec": 0.0,
+      "avg_active_sec": 0.0,
+      "total_open_sec": 0.0,
+      "last_viewed_at": "",
+      "comments_posted_total": 0,
+      "downloads_total": 0,
+      "measurements_total": 0,
+      "top_tools": []
     },
     {
       "token": "MDYpL6AvXvBnGikT",
@@ -960,8 +1819,21 @@
       "revoked": false,
       "revoked_at": "",
       "view_count": 0,
-      "share_url": "https://scans.gatheren.cloud/?share=MDYpL6AvXvBnGikT",
-      "short_path": "/s/MDYpL6AvXvBnGikT"
+      "share_url": "https://scans.gatheren.cloud/s/MDYpL6AvXvBnGikT",
+      "direct_url": "https://scans.gatheren.cloud/?share=MDYpL6AvXvBnGikT",
+      "short_path": "/s/MDYpL6AvXvBnGikT",
+      "human_views": 0,
+      "recorded_sessions": 0,
+      "unique_visitors": 0,
+      "bot_unfurls": 0,
+      "total_active_sec": 0.0,
+      "avg_active_sec": 0.0,
+      "total_open_sec": 0.0,
+      "last_viewed_at": "",
+      "comments_posted_total": 0,
+      "downloads_total": 0,
+      "measurements_total": 0,
+      "top_tools": []
     },
     {
       "token": "bm3zqQF9sZf2P-lP",
@@ -978,8 +1850,21 @@
       "revoked": false,
       "revoked_at": "",
       "view_count": 0,
-      "share_url": "https://scans.gatheren.cloud/?share=bm3zqQF9sZf2P-lP",
-      "short_path": "/s/bm3zqQF9sZf2P-lP"
+      "share_url": "https://scans.gatheren.cloud/s/bm3zqQF9sZf2P-lP",
+      "direct_url": "https://scans.gatheren.cloud/?share=bm3zqQF9sZf2P-lP",
+      "short_path": "/s/bm3zqQF9sZf2P-lP",
+      "human_views": 0,
+      "recorded_sessions": 0,
+      "unique_visitors": 0,
+      "bot_unfurls": 0,
+      "total_active_sec": 0.0,
+      "avg_active_sec": 0.0,
+      "total_open_sec": 0.0,
+      "last_viewed_at": "",
+      "comments_posted_total": 0,
+      "downloads_total": 0,
+      "measurements_total": 0,
+      "top_tools": []
     },
     {
       "token": "UaOz-PDavBsu9McK",
@@ -996,8 +1881,21 @@
       "revoked": false,
       "revoked_at": "",
       "view_count": 0,
-      "share_url": "https://scans.gatheren.cloud/?share=UaOz-PDavBsu9McK",
-      "short_path": "/s/UaOz-PDavBsu9McK"
+      "share_url": "https://scans.gatheren.cloud/s/UaOz-PDavBsu9McK",
+      "direct_url": "https://scans.gatheren.cloud/?share=UaOz-PDavBsu9McK",
+      "short_path": "/s/UaOz-PDavBsu9McK",
+      "human_views": 0,
+      "recorded_sessions": 0,
+      "unique_visitors": 0,
+      "bot_unfurls": 0,
+      "total_active_sec": 0.0,
+      "avg_active_sec": 0.0,
+      "total_open_sec": 0.0,
+      "last_viewed_at": "",
+      "comments_posted_total": 0,
+      "downloads_total": 0,
+      "measurements_total": 0,
+      "top_tools": []
     },
     {
       "token": "-g_6dQzOV-MjciaL",
@@ -1014,8 +1912,21 @@
       "revoked": false,
       "revoked_at": "",
       "view_count": 0,
-      "share_url": "https://scans.gatheren.cloud/?share=-g_6dQzOV-MjciaL",
-      "short_path": "/s/-g_6dQzOV-MjciaL"
+      "share_url": "https://scans.gatheren.cloud/s/-g_6dQzOV-MjciaL",
+      "direct_url": "https://scans.gatheren.cloud/?share=-g_6dQzOV-MjciaL",
+      "short_path": "/s/-g_6dQzOV-MjciaL",
+      "human_views": 0,
+      "recorded_sessions": 0,
+      "unique_visitors": 0,
+      "bot_unfurls": 0,
+      "total_active_sec": 0.0,
+      "avg_active_sec": 0.0,
+      "total_open_sec": 0.0,
+      "last_viewed_at": "",
+      "comments_posted_total": 0,
+      "downloads_total": 0,
+      "measurements_total": 0,
+      "top_tools": []
     },
     {
       "token": "NCmOFwZ0sfFxuvTC",
@@ -1032,8 +1943,21 @@
       "revoked": false,
       "revoked_at": "",
       "view_count": 1,
-      "share_url": "https://scans.gatheren.cloud/?share=NCmOFwZ0sfFxuvTC",
-      "short_path": "/s/NCmOFwZ0sfFxuvTC"
+      "share_url": "https://scans.gatheren.cloud/s/NCmOFwZ0sfFxuvTC",
+      "direct_url": "https://scans.gatheren.cloud/?share=NCmOFwZ0sfFxuvTC",
+      "short_path": "/s/NCmOFwZ0sfFxuvTC",
+      "human_views": 1,
+      "recorded_sessions": 0,
+      "unique_visitors": 0,
+      "bot_unfurls": 0,
+      "total_active_sec": 0.0,
+      "avg_active_sec": 0.0,
+      "total_open_sec": 0.0,
+      "last_viewed_at": "",
+      "comments_posted_total": 0,
+      "downloads_total": 0,
+      "measurements_total": 0,
+      "top_tools": []
     },
     {
       "token": "hqktqw5Vs1VWOYGA",
@@ -1050,8 +1974,21 @@
       "revoked": false,
       "revoked_at": "",
       "view_count": 0,
-      "share_url": "https://scans.gatheren.cloud/?share=hqktqw5Vs1VWOYGA",
-      "short_path": "/s/hqktqw5Vs1VWOYGA"
+      "share_url": "https://scans.gatheren.cloud/s/hqktqw5Vs1VWOYGA",
+      "direct_url": "https://scans.gatheren.cloud/?share=hqktqw5Vs1VWOYGA",
+      "short_path": "/s/hqktqw5Vs1VWOYGA",
+      "human_views": 0,
+      "recorded_sessions": 0,
+      "unique_visitors": 0,
+      "bot_unfurls": 0,
+      "total_active_sec": 0.0,
+      "avg_active_sec": 0.0,
+      "total_open_sec": 0.0,
+      "last_viewed_at": "",
+      "comments_posted_total": 0,
+      "downloads_total": 0,
+      "measurements_total": 0,
+      "top_tools": []
     },
     {
       "token": "Uolc-q2JP0DcINgN",
@@ -1068,8 +2005,21 @@
       "revoked": false,
       "revoked_at": "",
       "view_count": 0,
-      "share_url": "https://scans.gatheren.cloud/?share=Uolc-q2JP0DcINgN",
-      "short_path": "/s/Uolc-q2JP0DcINgN"
+      "share_url": "https://scans.gatheren.cloud/s/Uolc-q2JP0DcINgN",
+      "direct_url": "https://scans.gatheren.cloud/?share=Uolc-q2JP0DcINgN",
+      "short_path": "/s/Uolc-q2JP0DcINgN",
+      "human_views": 0,
+      "recorded_sessions": 0,
+      "unique_visitors": 0,
+      "bot_unfurls": 0,
+      "total_active_sec": 0.0,
+      "avg_active_sec": 0.0,
+      "total_open_sec": 0.0,
+      "last_viewed_at": "",
+      "comments_posted_total": 0,
+      "downloads_total": 0,
+      "measurements_total": 0,
+      "top_tools": []
     },
     {
       "token": "a12DbhKzAstyI028",
@@ -1086,11 +2036,138 @@
       "revoked": false,
       "revoked_at": "",
       "view_count": 1,
-      "share_url": "https://scans.gatheren.cloud/?share=a12DbhKzAstyI028",
-      "short_path": "/s/a12DbhKzAstyI028"
+      "share_url": "https://scans.gatheren.cloud/s/a12DbhKzAstyI028",
+      "direct_url": "https://scans.gatheren.cloud/?share=a12DbhKzAstyI028",
+      "short_path": "/s/a12DbhKzAstyI028",
+      "human_views": 1,
+      "recorded_sessions": 0,
+      "unique_visitors": 0,
+      "bot_unfurls": 0,
+      "total_active_sec": 0.0,
+      "avg_active_sec": 0.0,
+      "total_open_sec": 0.0,
+      "last_viewed_at": "",
+      "comments_posted_total": 0,
+      "downloads_total": 0,
+      "measurements_total": 0,
+      "top_tools": []
     }
   ],
   "packages": {
+    "edited_1021_911189": {
+      "scan_id": "edited_1021_911189",
+      "pkg_path": "G:\\Shared drives\\6.軟體\\3. GatheringScans\\StreamPackages\\edited_1021_911189.3tz",
+      "size_bytes": 10233422,
+      "mtime": 1793091292,
+      "toc": {
+        "tileset.json": {
+          "offset": 42,
+          "size": 410
+        },
+        "tiles/root.glb": {
+          "offset": 496,
+          "size": 7661220
+        },
+        "preview_tileset.json": {
+          "offset": 7661766,
+          "size": 422
+        },
+        "preview_low/tiles/root.glb": {
+          "offset": 7662244,
+          "size": 2270004
+        },
+        "thumbnail.png": {
+          "offset": 9932291,
+          "size": 300794
+        }
+      },
+      "file_id": "1g0GwSkhMpUU-cbT056wrPf8tY4-ifIxO",
+      "my_drive_file_id": "1peFZKpJZJSoQHhYN6Tz-nmE3Aop_ywtJ"
+    },
+    "edited_qihu_unified_merged_scan_4_scans__edited_372953": {
+      "scan_id": "edited_qihu_unified_merged_scan_4_scans__edited_372953",
+      "pkg_path": "G:\\Shared drives\\6.軟體\\3. GatheringScans\\StreamPackages\\edited_qihu_unified_merged_scan_4_scans__edited_372953.3tz",
+      "size_bytes": 41074404,
+      "mtime": 1792846184,
+      "toc": {
+        "tileset.json": {
+          "offset": 42,
+          "size": 1173
+        },
+        "tiles/tile_s0.glb": {
+          "offset": 1262,
+          "size": 6830584
+        },
+        "tiles/tile_s1.glb": {
+          "offset": 6831893,
+          "size": 8361836
+        },
+        "tiles/tile_s2.glb": {
+          "offset": 15193776,
+          "size": 8167632
+        },
+        "tiles/tile_s3.glb": {
+          "offset": 23361455,
+          "size": 9354300
+        },
+        "preview_tileset.json": {
+          "offset": 32715805,
+          "size": 1221
+        },
+        "preview_low/tiles/tile_s0.glb": {
+          "offset": 32717085,
+          "size": 1775344
+        },
+        "preview_low/tiles/tile_s1.glb": {
+          "offset": 34492488,
+          "size": 1963332
+        },
+        "preview_low/tiles/tile_s2.glb": {
+          "offset": 36455879,
+          "size": 2050872
+        },
+        "preview_low/tiles/tile_s3.glb": {
+          "offset": 38506810,
+          "size": 2274896
+        },
+        "thumbnail.png": {
+          "offset": 40781749,
+          "size": 291898
+        }
+      },
+      "file_id": "1UepMxZDwnOkEicA_do4VwhUT6SwDU9Tp",
+      "my_drive_file_id": "1m6IT_2kS9w4R5EYymrA95JPT_stdGjSC"
+    },
+    "edited_qihutender_1_edited_346774": {
+      "scan_id": "edited_qihutender_1_edited_346774",
+      "pkg_path": "G:\\Shared drives\\6.軟體\\3. GatheringScans\\StreamPackages\\edited_qihutender_1_edited_346774.3tz",
+      "size_bytes": 8686686,
+      "mtime": 1792843835,
+      "toc": {
+        "tileset.json": {
+          "offset": 42,
+          "size": 412
+        },
+        "tiles/root.glb": {
+          "offset": 498,
+          "size": 6472328
+        },
+        "preview_tileset.json": {
+          "offset": 6472876,
+          "size": 424
+        },
+        "preview_low/tiles/root.glb": {
+          "offset": 6473356,
+          "size": 1944080
+        },
+        "thumbnail.png": {
+          "offset": 8417479,
+          "size": 268870
+        }
+      },
+      "file_id": "178zuFQuqBorIJtES6DN27sbuMGhAIk21",
+      "my_drive_file_id": "1aDiPUoQUIpwwgOABj-CwvU5vjNEgmBug"
+    },
     "catch_QiHuTender_4": {
       "scan_id": "catch_QiHuTender_4",
       "pkg_path": "G:\\Shared drives\\6.軟體\\3. GatheringScans\\StreamPackages\\catch_QiHuTender_4.3tz",
@@ -1245,7 +2322,7 @@
       "scan_id": "catch_QuChi261016",
       "pkg_path": "G:\\Shared drives\\6.軟體\\3. GatheringScans\\StreamPackages\\catch_QuChi261016.3tz",
       "size_bytes": 6175367,
-      "mtime": 1792833371,
+      "mtime": 1793091140,
       "toc": {
         "tileset.json": {
           "offset": 42,
@@ -1365,7 +2442,7 @@
       "scan_id": "quchi_20261005_merged",
       "pkg_path": "G:\\Shared drives\\6.軟體\\3. GatheringScans\\StreamPackages\\quchi_20261005_merged.3tz",
       "size_bytes": 9269864,
-      "mtime": 1792833372,
+      "mtime": 1793091355,
       "toc": {
         "tileset.json": {
           "offset": 42,
@@ -1775,7 +2852,7 @@
       "scan_id": "catch_2026_09_21_11_39_49",
       "pkg_path": "G:\\Shared drives\\6.軟體\\3. GatheringScans\\StreamPackages\\catch_2026_09_21_11_39_49.3tz",
       "size_bytes": 6931856,
-      "mtime": 1792833374,
+      "mtime": 1793091140,
       "toc": {
         "tileset.json": {
           "offset": 42,
@@ -2217,5 +3294,6 @@
       "file_id": "1yL4EDLdYMxwo9-d28MbzMW1T3NlRYGml",
       "my_drive_file_id": "1Ou-pqZhTR5VsRzgYE6vlf5EdSPU8-87E"
     }
-  }
+  },
+  "vps_synced": true
 }

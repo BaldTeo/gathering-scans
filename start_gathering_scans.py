@@ -286,7 +286,7 @@ def pix4d_worker_loop():
                             obj_path=newest_obj if os.path.isfile(newest_obj) else None,
                         )
                         try:
-                            from pc_worker.gdrive_watcher import _discover_folder_scan_item
+                            from pc_worker.gdrive_watcher import _discover_folder_scan_item, normalize_gatheren_uploader
                             disc = _discover_folder_scan_item(proj_dir)
                             if disc:
                                 cur_row = DB.get_scan(fin_sid) or {}
@@ -297,6 +297,15 @@ def pix4d_worker_loop():
                                 merged["progress_pct"] = 100.0
                                 if cur_row.get("source_zip_path"):
                                     merged["source_zip_path"] = cur_row["source_zip_path"]
+                                if cur_row.get("name"):
+                                    merged["name"] = cur_row["name"]
+                                up_name, up_email = normalize_gatheren_uploader(
+                                    cur_row.get("uploader_name") or merged.get("uploader_name", ""),
+                                    cur_row.get("uploader_email") or merged.get("uploader_email", "glibivanov@gatheren.com.tw"),
+                                    merged.get("source_zip_path") or proj_dir,
+                                )
+                                merged["uploader_name"] = up_name
+                                merged["uploader_email"] = up_email
                                 if cur_row.get("project_group") and cur_row["project_group"] != "General / Unassigned":
                                     merged["project_group"] = cur_row["project_group"]
                                 if cur_row.get("project_name_zh"):
@@ -354,7 +363,7 @@ def pix4d_worker_loop():
                         obj_path=res.get("obj_path"),
                     )
                     try:
-                        from pc_worker.gdrive_watcher import _discover_folder_scan_item
+                        from pc_worker.gdrive_watcher import _discover_folder_scan_item, normalize_gatheren_uploader
                         disc = _discover_folder_scan_item(out_dir)
                         if disc:
                             cur_row = DB.get_scan(sid) or {}
@@ -366,6 +375,15 @@ def pix4d_worker_loop():
                             merged["stage_label"] = f"Completed (TWD97 + TWVD2001, {res.get('texture_size', 4096)}px Web Tileset)"
                             if cur_row.get("source_zip_path"):
                                 merged["source_zip_path"] = cur_row["source_zip_path"]
+                            if cur_row.get("name"):
+                                merged["name"] = cur_row["name"]
+                            up_name, up_email = normalize_gatheren_uploader(
+                                cur_row.get("uploader_name") or merged.get("uploader_name", ""),
+                                cur_row.get("uploader_email") or merged.get("uploader_email", "glibivanov@gatheren.com.tw"),
+                                merged.get("source_zip_path") or out_dir,
+                            )
+                            merged["uploader_name"] = up_name
+                            merged["uploader_email"] = up_email
                             if cur_row.get("rtk_accuracy_cm"):
                                 merged["rtk_accuracy_cm"] = cur_row["rtk_accuracy_cm"]
                             if cur_row.get("project_group") and cur_row["project_group"] != "General / Unassigned":
