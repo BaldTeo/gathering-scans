@@ -174,91 +174,70 @@ class GoogleChatNotifier:
 
     def build_completion_card(self, scan: Dict[str, Any], private_viewer_uid: str = "") -> Dict[str, Any]:
         """
-        Builds a Google Chat API v2 Rich Card addressed privately to the photos uploader
-        with a verified raster PNG 3D scan preview, covered area (m²), and MB/m² density.
+        Builds a concise Traditional Chinese Google Chat API v2 Rich Card tagging the photos uploader
+        with a verified raster PNG 3D scan preview and direct Studio link button.
         """
         from pc_worker.gdrive_watcher import normalize_gatheren_uploader
 
         scan_id = scan.get("scan_id") or "scan"
         name = scan.get("name", scan_id)
-        project_group = scan.get("project_group") or "Unassigned Site"
+        project_group = scan.get("project_group_zh") or scan.get("project_group") or "未分類工區"
         raw_name = scan.get("uploader_name", "雲在天")
         raw_email = scan.get("uploader_email", "glibivanov@gatheren.com.tw")
         hint_ref = scan.get("source_zip_path") or scan.get("project_dir") or scan_id
         uploader_name, uploader_email = normalize_gatheren_uploader(raw_name, raw_email, hint_ref)
 
         gchat_uid = private_viewer_uid or self.user_gchat_ids.get(uploader_email.lower(), "")
-        mention_tag = f"<users/{gchat_uid}>" if gchat_uid else f"*{uploader_name} ({uploader_email})*"
+        mention_tag = f"<users/{gchat_uid}>" if gchat_uid else f"*{uploader_name}*"
 
         image_count = int(scan.get("image_count") or 0)
         covered_area_m2 = float(scan.get("covered_area_m2") or 0.0)
         stream_mb = self._resolve_stream_size_mb(scan_id, scan)
-        mb_per_m2 = (stream_mb / covered_area_m2) if covered_area_m2 > 0 else 0.0
-        tex_res = int(scan.get("texture_resolution") or PIX4DMATIC_TEXTURE_SIZE)
 
-        twd_e = float(scan.get("twd97_e") or 0.0)
-        twd_n = float(scan.get("twd97_n") or 0.0)
-        twd_h = float(scan.get("twd97_h") or 0.0)
-        scan_crs = str(scan.get("crs") or TWD97_TWVD2001_SHORT)
-        is_local_crs = "LOCAL" in scan_crs.upper() or (scan.get("lat") is None and abs(twd_e) < 50000.0)
-        if is_local_crs:
-            crs_card_text = f"{scan_crs} (X:{twd_e:.2f}m, Y:{twd_n:.2f}m, Z:{twd_h:+.2f}m)"
-        else:
-            crs_card_text = f"{scan_crs} (E:{twd_e:.1f}, N:{twd_n:.1f}, H:{twd_h:+.2f}m)"
         view_url = f"{PUBLIC_BASE_URL}/?scan={urllib.parse.quote(scan_id)}"
         # Use stable PNG URL (also cached locally on VPS /app/data/thumbnails/<scan_id>.png)
         thumb_url = f"{PUBLIC_BASE_URL}/api/scans/{urllib.parse.quote(scan_id)}/thumbnail.png"
 
-        area_str = f"{covered_area_m2:,.1f} m²" if covered_area_m2 > 0 else "N/A"
-        density_str = f"{mb_per_m2:.4f} MB/m² ({stream_mb:.2f} MB .3tz)" if covered_area_m2 > 0 else f"{stream_mb:.2f} MB .3tz"
+        stats_parts = []
+        if covered_area_m2 > 0:
+            stats_parts.append(f"面積 {covered_area_m2:,.1f} m²")
+        if image_count > 0:
+            stats_parts.append(f"{image_count:,} 張照片")
+        if stream_mb > 0:
+            stats_parts.append(f"{stream_mb:.1f} MB")
+        summary_line = " • ".join(stats_parts) if stats_parts else f"工區：{project_group}"
 
         card_payload: Dict[str, Any] = {
-            "text": (
-                f"🔒 *Private Completion Notice for {mention_tag} ({uploader_name})*\n"
-                f"Your uploaded 3D scan *{name}* has finished processing on GatheringScans and is ready for inspection!"
-            ),
+            "text": f"✅ {mention_tag} 您上傳的 3D 掃描 *{name}* 已處理完成！",
             "cardsV2": [
                 {
                     "cardId": f"scan_ready_{scan_id}",
                     "card": {
                         "header": {
-                            "title": f"3D Scan Processing Complete: {name}",
-                            "subtitle": f"Private Notice to {uploader_name} • {project_group} • {scan_crs}",
+                            "title": f"3D 掃描完成：{name}",
+                            "subtitle": f"{project_group} • 上傳者：{uploader_name}",
                         },
                         "sections": [
                             {
-                                "header": "3D Scan Preview & Survey Summary",
                                 "widgets": [
                                     {
                                         "image": {
                                             "imageUrl": thumb_url,
-                                            "altText": f"3D Scan Preview: {name}",
+                                            "altText": f"3D 掃描預覽：{name}",
                                             "onClick": {"openLink": {"url": view_url}},
                                         }
                                     },
                                     {
                                         "decoratedText": {
-                                            "topLabel": "Photos Uploader (Direct Recipient)",
-                                            "text": f"{uploader_name} ({uploader_email})",
-                                        }
-                                    },
-                                    {
-                                        "decoratedText": {
-                                            "topLabel": "Coordinate Reference System",
-                                            "text": crs_card_text,
-                                        }
-                                    },
-                                    {
-                                        "decoratedText": {
-                                            "topLabel": "Total Covered Area & Stream Density",
-                                            "text": f"{area_str} • {density_str} • {image_count:,} Photos ({tex_res}px WebP)",
+                                            "topLabel": "掃描資訊",
+                                            "text": summary_line,
                                         }
                                     },
                                     {
                                         "buttonList": {
                                             "buttons": [
                                                 {
-                                                    "text": "Open 3D Scan Studio & Measure",
+                                                    "text": "開啟 3D 掃描與量測",
                                                     "onClick": {"openLink": {"url": view_url}},
                                                 }
                                             ]
