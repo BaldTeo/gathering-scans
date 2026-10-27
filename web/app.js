@@ -573,7 +573,7 @@
           <td><b style="color:var(--ui-text-primary);">${escapeHtml(l.label || "")}</b></td>
           <td>
             <span class="gs-crs-pill gs-share-scope-pill" title="${escapeHtml(fullScopeTooltip)}">
-              ${escapeHtml(scopeKind)}: ${escapeHtml(friendlyTarget)}
+              <span class="gs-share-scope-pill-text">${escapeHtml(scopeKind)}: ${escapeHtml(friendlyTarget)}</span>
             </span>
           </td>
           <td>

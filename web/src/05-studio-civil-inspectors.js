@@ -2457,14 +2457,14 @@
       .join("");
 
     const exportBarHtml = `
-      <div style="display:flex;gap:4px;flex-wrap:nowrap;margin-bottom:8px;">
-        <a class="btn-xs primary" style="flex:1.15;justify-content:center;font-weight:700;white-space:nowrap;font-size:10.5px;padding:5px 6px;" href="${escapeHtml(appendAuthToDownloadUrl(res.dxf_url))}" download="Civil3D_Categorized.dxf" title="${tr("下載 AutoCAD Civil 3D 分類圖層 .DXF", "Download AutoCAD Civil 3D Categorized .DXF")}">
+      <div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:8px;">
+        <a class="btn-xs primary" style="flex:1 1 auto;justify-content:center;font-weight:700;white-space:nowrap;font-size:10px;padding:4px 5px;" href="${escapeHtml(appendAuthToDownloadUrl(res.dxf_url))}" download="Civil3D_Categorized.dxf" title="${tr("下載 AutoCAD Civil 3D 分類圖層 .DXF", "Download AutoCAD Civil 3D Categorized .DXF")}">
           <span>${tr("📐 .DXF 圖檔", "📐 .DXF CAD")}</span>
         </a>
-        <a class="btn-xs primary" style="flex:1.15;justify-content:center;font-weight:700;white-space:nowrap;font-size:10.5px;padding:5px 6px;" href="${escapeHtml(appendAuthToDownloadUrl(res.report_html_url))}" target="_blank" title="${tr("開啟可列印分類明細報表 · HTML / 另存 PDF", "Open Printable Categorization Report · HTML / Save PDF")}">
+        <a class="btn-xs primary" style="flex:1 1 auto;justify-content:center;font-weight:700;white-space:nowrap;font-size:10px;padding:4px 5px;" href="${escapeHtml(appendAuthToDownloadUrl(res.report_html_url))}" target="_blank" title="${tr("開啟可列印分類明細報表 · HTML / 另存 PDF", "Open Printable Categorization Report · HTML / Save PDF")}">
           <span>${tr("📄 報表 · HTML/PDF", "📄 Report · HTML/PDF")}</span>
         </a>
-        <a class="btn-xs" style="flex:0.9;justify-content:center;font-weight:700;white-space:nowrap;font-size:10.5px;padding:5px 6px;" href="${escapeHtml(appendAuthToDownloadUrl(res.report_csv_url))}" download="Categorization_Schedule.csv" title="${tr("下載 UTF-8 Excel 數量明細表 .CSV", "Download UTF-8 Excel Schedule .CSV")}">
+        <a class="btn-xs" style="flex:1 1 auto;justify-content:center;font-weight:700;white-space:nowrap;font-size:10px;padding:4px 5px;" href="${escapeHtml(appendAuthToDownloadUrl(res.report_csv_url))}" download="Categorization_Schedule.csv" title="${tr("下載 UTF-8 Excel 數量明細表 .CSV", "Download UTF-8 Excel Schedule .CSV")}">
           <span>${tr("📊 明細表 · .CSV", "📊 Schedule · .CSV")}</span>
         </a>
       </div>
@@ -2548,18 +2548,18 @@
             ${tr("↺ 重設手動變更", "↺ Reset Edits")}
           </button>
         </div>
-        <div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:5px;">
-          <button type="button" class="btn-xs ${editMode === "add_tree" ? "primary" : ""}" data-cat-edit-mode="add_tree" style="flex:1;justify-content:center;font-size:10px;border-color:rgba(16,185,129,0.5);">
+        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:5px;">
+          <button type="button" class="btn-xs ${editMode === "add_tree" ? "primary" : ""}" data-cat-edit-mode="add_tree" style="flex:1 1 auto;justify-content:center;font-size:10px;white-space:nowrap;border-color:rgba(16,185,129,0.5);">
             ${tr("➕ 喬木", "➕ Tree")}
           </button>
-          <button type="button" class="btn-xs ${editMode === "add_wall" ? "primary" : ""}" data-cat-edit-mode="add_wall" style="flex:1;justify-content:center;font-size:10px;border-color:rgba(244,63,94,0.5);">
+          <button type="button" class="btn-xs ${editMode === "add_wall" ? "primary" : ""}" data-cat-edit-mode="add_wall" style="flex:1 1 auto;justify-content:center;font-size:10px;white-space:nowrap;border-color:rgba(244,63,94,0.5);">
             ${tr("➕ 擋土牆", "➕ Wall")}
           </button>
-          <button type="button" class="btn-xs ${editMode === "add_road" ? "primary" : ""}" data-cat-edit-mode="add_road" style="flex:1;justify-content:center;font-size:10px;border-color:rgba(245,158,11,0.5);">
+          <button type="button" class="btn-xs ${editMode === "add_road" ? "primary" : ""}" data-cat-edit-mode="add_road" style="flex:1 1 auto;justify-content:center;font-size:10px;white-space:nowrap;border-color:rgba(245,158,11,0.5);">
             ${tr("➕ 道路", "➕ Road")}
           </button>
-          <button type="button" class="btn-xs ${editMode === "remove_click" ? "primary" : ""}" data-cat-edit-mode="remove_click" style="flex:1;justify-content:center;font-size:10px;border-color:rgba(239,68,68,0.5);color:#fca5a5;">
-            ${tr("🗑️ 點選刪除", "🗑️ Click to Remove")}
+          <button type="button" class="btn-xs ${editMode === "remove_click" ? "primary" : ""}" data-cat-edit-mode="remove_click" style="flex:1 1 auto;justify-content:center;font-size:10px;white-space:nowrap;border-color:rgba(239,68,68,0.5);color:#fca5a5;">
+            ${tr("🗑️ 刪除", "🗑️ Remove")}
           </button>
         </div>
         <div id="categorizeEditStatusHint" style="font-size:9.5px;color:${editMode ? "#fbbf24" : "var(--ui-text-muted)"};line-height:1.35;">

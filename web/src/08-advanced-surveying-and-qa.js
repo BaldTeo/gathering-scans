@@ -1177,6 +1177,7 @@
     if (!hud) {
       hud = document.createElement("div");
       hud.id = "studioDrainageLegendHud";
+      hud.className = "gs-drainage-floating-legend";
       hud.style.cssText =
         "position:absolute;bottom:78px;left:14px;z-index:45;background:var(--ui-bg-window);backdrop-filter:blur(12px);border:1px solid var(--ui-border-strong);border-radius:10px;padding:10px 12px;min-width:215px;box-shadow:var(--ui-shadow-hud);pointer-events:auto;font-size:11px;color:var(--ui-text-primary);";
       container.appendChild(hud);
