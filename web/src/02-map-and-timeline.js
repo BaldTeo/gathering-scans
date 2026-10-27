@@ -1757,6 +1757,7 @@
           box.getBoundingSphere(sphere);
           if (sphere.radius > 0) {
             model.position.set(-sphere.center.x, -sphere.center.y, -sphere.center.z);
+            previewThree.tilesCenter = [sphere.center.x, sphere.center.y, sphere.center.z];
           }
           if (previewThree.grid) {
             previewThree.grid.position.y = Number.isFinite(box.min.y)
@@ -1780,6 +1781,8 @@
           });
           previewThree.modelPivot.add(model);
           previewThree.boundingSphere = sphere;
+          updateScanGoogleMap3DLayer(previewThree, scan);
+          scheduleScanGoogleMapCoverageUpdate(previewThree, scan, 30);
           framePreviewCamera();
           finishScanLoader(previewThree, "preview", "100% · Interactive Preview Ready");
         },
@@ -1817,6 +1820,7 @@
         const sphere = new THREE.Sphere();
         if (computeTilesetContentSphere(tr, sphere)) {
           tr.group.position.set(-sphere.center.x, -sphere.center.y, -sphere.center.z);
+          previewThree.tilesCenter = [sphere.center.x, sphere.center.y, sphere.center.z];
           previewThree.modelPivot.rotation.set(THREE.MathUtils.degToRad(270), 0, 0);
           previewThree.modelPivot.updateMatrixWorld(true);
           previewThree.boundingSphere = sphere;
@@ -1825,6 +1829,7 @@
               ? sphere._groundOffsetY
               : -8.0;
           }
+          updateScanGoogleMap3DLayer(previewThree, scan);
           framePreviewCamera();
         }
         previewThree.camera.updateMatrixWorld();
@@ -1851,6 +1856,7 @@
           });
           previewThree.camera.updateMatrixWorld();
           tr.update();
+          scheduleScanGoogleMapCoverageUpdate(previewThree, scan, 90);
           previewThree.renderer.render(previewThree.scene, previewThree.camera);
           syncTilesLoaderProgress(previewThree, "preview");
         }
@@ -2859,5 +2865,843 @@
   document.getElementById("btnTimelineShare")?.addEventListener("click", () => {
     openSharingModal("group", STATE.activeProjectGroup);
   });
+
+  // ============================================================================
+  // TWD97-ALIGNED 3D GOOGLE MAP SURROUNDINGS LAYER WITH SCANNED-AREA MASKING
+  // ============================================================================
+  function twd97ToWgs84JS(
+    easting,
+    northing,
+    lon0Deg = 121.0,
+    fe = 250000.0,
+    k0 = 0.9999,
+    fInv = 298.257222101
+  ) {
+    const a = 6378137.0;
+    const f = 1.0 / fInv;
+    const b = a * (1.0 - f);
+    const e2 = (a * a - b * b) / (a * a);
+    const ep2 = (a * a - b * b) / (b * b);
+
+    const x = Number(easting) - fe;
+    const y = Number(northing);
+    const M = y / k0;
+    const mu = M / (a * (1.0 - e2 / 4.0 - (3.0 * e2 * e2) / 64.0 - (5.0 * e2 * e2 * e2) / 256.0));
+    const e1 = (1.0 - Math.sqrt(1.0 - e2)) / (1.0 + Math.sqrt(1.0 - e2));
+    const j1 = (3.0 * e1) / 2.0 - (27.0 * Math.pow(e1, 3)) / 32.0;
+    const j2 = (21.0 * e1 * e1) / 16.0 - (55.0 * Math.pow(e1, 4)) / 32.0;
+    const j3 = (151.0 * Math.pow(e1, 3)) / 96.0;
+    const j4 = (1097.0 * Math.pow(e1, 4)) / 512.0;
+    const fp =
+      mu +
+      j1 * Math.sin(2.0 * mu) +
+      j2 * Math.sin(4.0 * mu) +
+      j3 * Math.sin(6.0 * mu) +
+      j4 * Math.sin(8.0 * mu);
+    const sinFp = Math.sin(fp);
+    const cosFp = Math.max(1e-9, Math.cos(fp));
+    const tanFp = Math.tan(fp);
+    const c1 = ep2 * cosFp * cosFp;
+    const t1 = tanFp * tanFp;
+    const r1 = (a * (1.0 - e2)) / Math.pow(1.0 - e2 * sinFp * sinFp, 1.5);
+    const n1 = a / Math.sqrt(1.0 - e2 * sinFp * sinFp);
+    const d = x / (n1 * k0);
+
+    const q1 = (n1 * tanFp) / r1;
+    const q2 = (d * d) / 2.0;
+    const q3 = ((5.0 + 3.0 * t1 + 10.0 * c1 - 4.0 * c1 * c1 - 9.0 * ep2) * Math.pow(d, 4)) / 24.0;
+    const q4 =
+      ((61.0 + 90.0 * t1 + 298.0 * c1 + 45.0 * t1 * t1 - 3.0 * c1 * c1 - 252.0 * ep2) * Math.pow(d, 6)) / 720.0;
+    const latRad = fp - q1 * (q2 - q3 + q4);
+
+    const q5 = d;
+    const q6 = ((1.0 + 2.0 * t1 + c1) * Math.pow(d, 3)) / 6.0;
+    const q7 =
+      ((5.0 - 2.0 * c1 + 28.0 * t1 - 3.0 * c1 * c1 + 8.0 * ep2 + 24.0 * t1 * t1) * Math.pow(d, 5)) / 120.0;
+    const lonRad = (lon0Deg * Math.PI) / 180.0 + (q5 - q6 + q7) / cosFp;
+    return {
+      lat: (latRad * 180.0) / Math.PI,
+      lon: (lonRad * 180.0) / Math.PI,
+    };
+  }
+  window.twd97ToWgs84JS = twd97ToWgs84JS;
+
+  function resolveViewerOriginTwd97(ctx, scanObj) {
+    const s = scanObj || STATE.activeScan || {};
+    const crsCode = typeof inferActiveScanCrsCode === "function" ? inferActiveScanCrsCode(s) : "TWD97_121_TWVD2001";
+    const crsList = typeof CRS_UI_CATALOG !== "undefined" ? CRS_UI_CATALOG : [];
+    const crsDef = crsList.find((c) => c.code === crsCode) || {
+      lon0: 121.0,
+      fe: 250000.0,
+      k0: 0.9999,
+      fInv: 298.257222101,
+    };
+    const lon0 = Number(crsDef.lon0) || 121.0;
+    const fe = Number(crsDef.fe) || 250000.0;
+    const k0 = Number(crsDef.k0) || 0.9999;
+    const fInv = Number(crsDef.fInv) || 298.257222101;
+
+    let e0 = 0;
+    let n0 = 0;
+    let h0 = 0;
+    if (typeof studioThree !== "undefined" && ctx === studioThree && typeof localToTwd97 === "function") {
+      const orig = localToTwd97({ x: 0, y: 0, z: 0 });
+      e0 = Number(orig.e) || 0;
+      n0 = Number(orig.n) || 0;
+      h0 = Number(orig.h) || 0;
+    } else {
+      const metaE = s.twd97_e !== undefined && s.twd97_e !== null ? Number(s.twd97_e) : 0;
+      const metaN = s.twd97_n !== undefined && s.twd97_n !== null ? Number(s.twd97_n) : 0;
+      const metaH = s.twd97_h !== undefined && s.twd97_h !== null ? Number(s.twd97_h) : 0;
+      const tc = ctx?.tilesCenter;
+      const isZUp = Boolean(
+        ctx?.tilesRenderer &&
+          Array.isArray(tc) &&
+          tc.length >= 3 &&
+          Math.abs(ctx?.modelPivot?.rotation?.x || 0) > 0.1
+      );
+      if (isZUp) {
+        const tcNorm = Math.hypot(tc[0], tc[1], tc[2]);
+        if (tcNorm > 50000 && tcNorm < 4000000) {
+          if (tc[0] > 345000 && tc[0] <= 415000 && metaE >= 150000 && metaE <= 345000) {
+            e0 = metaE;
+            n0 = metaN;
+            h0 = tc[2] < -50 && metaH > -50 ? metaH : tc[2];
+          } else {
+            e0 = tc[0];
+            n0 = tc[1];
+            h0 = tc[2] < -50 && metaH > -50 ? metaH : tc[2];
+          }
+        } else {
+          e0 = metaE;
+          n0 = metaN;
+          h0 = metaH;
+        }
+      } else {
+        e0 = metaE;
+        n0 = metaN;
+        h0 = metaH;
+      }
+    }
+
+    let valid = Math.abs(e0) >= 50000 && Math.abs(n0) >= 50000;
+    if (!valid && typeof hasValidGeorefLatLon === "function" && hasValidGeorefLatLon(s) && typeof wgs84ToTransverseMercatorJS === "function") {
+      const proj = wgs84ToTransverseMercatorJS(Number(s.lat), Number(s.lon), 121.0, 250000.0, 0.9999, 298.257222101);
+      if (Number.isFinite(proj.e) && Number.isFinite(proj.n)) {
+        e0 = proj.e;
+        n0 = proj.n;
+        valid = true;
+      }
+    }
+    return { e: e0, n: n0, h: h0, lon0, fe, k0, fInv, valid };
+  }
+
+  function ensureScanGoogleMap3DLayer(ctx) {
+    if (!ctx || !ctx.scene || !window.THREE) return null;
+    if (ctx.googleMapLayer) return ctx.googleMapLayer;
+
+    const MASK_N = 512;
+    const maskData = new Uint8Array(MASK_N * MASK_N * 4);
+    // Initialize mask to 255 (covered) until first coverage calculation completes so map never flashes inside scan
+    for (let i = 0; i < MASK_N * MASK_N; i++) {
+      maskData[i * 4] = 255;
+      maskData[i * 4 + 3] = 255;
+    }
+    const maskTex = new THREE.DataTexture(maskData, MASK_N, MASK_N, THREE.RGBAFormat, THREE.UnsignedByteType);
+    maskTex.magFilter = THREE.LinearFilter;
+    maskTex.minFilter = THREE.LinearFilter;
+    maskTex.wrapS = THREE.ClampToEdgeWrapping;
+    maskTex.wrapT = THREE.ClampToEdgeWrapping;
+    maskTex.flipY = false;
+    maskTex.needsUpdate = true;
+
+    const canvas = document.createElement("canvas");
+    const isMob = typeof isMobileOrTabletDevice === "function" && isMobileOrTabletDevice();
+    canvas.width = isMob ? 1024 : 1536;
+    canvas.height = isMob ? 1024 : 1536;
+    const mapTex = new THREE.CanvasTexture(canvas);
+    mapTex.magFilter = THREE.LinearFilter;
+    mapTex.minFilter = THREE.LinearMipmapLinearFilter;
+    mapTex.anisotropy = isMob ? 2 : 8;
+    mapTex.wrapS = THREE.ClampToEdgeWrapping;
+    mapTex.wrapT = THREE.ClampToEdgeWrapping;
+
+    const halfSpan = 320;
+    const geom = new THREE.PlaneGeometry(halfSpan * 2, halfSpan * 2, 1, 1);
+    geom.rotateX(-Math.PI / 2);
+
+    const uniforms = {
+      uMapTex: { value: mapTex },
+      uCoverageTex: { value: maskTex },
+      uOpacity: { value: Math.max(0.05, Math.min(1.0, Number(STATE.scanGoogleMapOpacity) || 0.5)) },
+      uHalfSpan: { value: halfSpan },
+    };
+
+    const mat = new THREE.ShaderMaterial({
+      uniforms,
+      vertexShader: `
+        uniform float uHalfSpan;
+        varying vec2 vUv;
+        varying vec2 vMaskUv;
+        #include <clipping_planes_pars_vertex>
+        void main() {
+          vUv = uv;
+          float span = max(1.0, uHalfSpan * 2.0);
+          vMaskUv = vec2((position.x + uHalfSpan) / span, (position.z + uHalfSpan) / span);
+          vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+          gl_Position = projectionMatrix * mvPosition;
+          #include <clipping_planes_vertex>
+        }
+      `,
+      fragmentShader: `
+        uniform sampler2D uMapTex;
+        uniform sampler2D uCoverageTex;
+        uniform float uOpacity;
+        varying vec2 vUv;
+        varying vec2 vMaskUv;
+        #include <clipping_planes_pars_fragment>
+        void main() {
+          #include <clipping_planes_fragment>
+          if (vMaskUv.x >= 0.0 && vMaskUv.x <= 1.0 && vMaskUv.y >= 0.0 && vMaskUv.y <= 1.0) {
+            float cov = texture2D(uCoverageTex, vMaskUv).r;
+            if (cov > 0.12) discard;
+          }
+          float covVal = texture2D(uCoverageTex, clamp(vMaskUv, 0.0, 1.0)).r;
+          float scanEdgeAlpha = 1.0 - smoothstep(0.02, 0.12, covVal);
+          vec4 mapCol = texture2D(uMapTex, vUv);
+          if (mapCol.a < 0.01) discard;
+          vec2 dEdge = abs(vUv - vec2(0.5)) * 2.0;
+          float outerFade = 1.0 - smoothstep(0.92, 1.0, max(dEdge.x, dEdge.y));
+          gl_FragColor = vec4(mapCol.rgb, mapCol.a * uOpacity * scanEdgeAlpha * outerFade);
+        }
+      `,
+      transparent: true,
+      depthTest: true,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+      clipping: true,
+      polygonOffset: true,
+      polygonOffsetFactor: 2,
+      polygonOffsetUnits: 2,
+    });
+
+    const mesh = new THREE.Mesh(geom, mat);
+    mesh.name = "scanGoogleMapGroundPlane";
+    mesh.renderOrder = -4;
+    mesh.frustumCulled = false;
+
+    const group = new THREE.Group();
+    group.name = "scanGoogleMapGroup";
+    group.add(mesh);
+    ctx.scene.add(group);
+
+    const layer = {
+      group,
+      mesh,
+      geom,
+      mat,
+      uniforms,
+      canvas,
+      mapTex,
+      maskN: MASK_N,
+      maskData,
+      maskTex,
+      rawOcc: new Uint8Array(MASK_N * MASK_N),
+      tmpOcc: new Uint8Array(MASK_N * MASK_N),
+      halfSpan,
+      originTwd: null,
+      tileSig: "",
+      covTimer: null,
+      tileDrawTimer: null,
+      scanId: "",
+    };
+    ctx.googleMapLayer = layer;
+    return layer;
+  }
+
+  function stitchScanGoogleMapTilesToCanvas(ctx) {
+    const layer = ctx?.googleMapLayer;
+    if (!layer || !layer.originTwd || !layer.originTwd.valid) return;
+    const { e: e0, n: n0, lon0, fe, k0, fInv } = layer.originTwd;
+    const halfSpan = layer.halfSpan;
+    const minE = e0 - halfSpan;
+    const maxE = e0 + halfSpan;
+    const minN = n0 - halfSpan;
+    const maxN = n0 + halfSpan;
+    const lyrs = STATE.scanGoogleMapLyrs === "m" ? "m" : "y";
+
+    const sw = twd97ToWgs84JS(minE, minN, lon0, fe, k0, fInv);
+    const ne = twd97ToWgs84JS(maxE, maxN, lon0, fe, k0, fInv);
+    const nwMerc = latLonToNormMercator(ne.lat, sw.lon);
+    const seMerc = latLonToNormMercator(sw.lat, ne.lon);
+
+    let zoom = 18;
+    for (let z = 19; z >= 15; z--) {
+      const zPow = Math.pow(2, z);
+      const tx0 = Math.floor(nwMerc.x * zPow);
+      const tx1 = Math.floor(seMerc.x * zPow);
+      const ty0 = Math.floor(nwMerc.y * zPow);
+      const ty1 = Math.floor(seMerc.y * zPow);
+      if (Math.abs(tx1 - tx0) + 1 <= 7 && Math.abs(ty1 - ty0) + 1 <= 7) {
+        zoom = z;
+        break;
+      }
+    }
+
+    const zPow = Math.pow(2, zoom);
+    const minTx = Math.floor(Math.min(nwMerc.x, seMerc.x) * zPow) - 1;
+    const maxTx = Math.floor(Math.max(nwMerc.x, seMerc.x) * zPow) + 1;
+    const minTy = Math.floor(Math.min(nwMerc.y, seMerc.y) * zPow) - 1;
+    const maxTy = Math.floor(Math.max(nwMerc.y, seMerc.y) * zPow) + 1;
+
+    const canvas = layer.canvas;
+    const cW = canvas.width;
+    const cH = canvas.height;
+    const spanE = Math.max(1.0, maxE - minE);
+    const spanN = Math.max(1.0, maxN - minN);
+    const ctx2d = canvas.getContext("2d");
+    ctx2d.setTransform(1, 0, 0, 1, 0, 0);
+    ctx2d.fillStyle = lyrs === "m" ? "#e2e8f0" : "#0f172a";
+    ctx2d.fillRect(0, 0, cW, cH);
+
+    const scheduleRedraw = () => {
+      if (layer.tileDrawTimer) return;
+      layer.tileDrawTimer = setTimeout(() => {
+        layer.tileDrawTimer = null;
+        stitchScanGoogleMapTilesToCanvas(ctx);
+      }, 65);
+    };
+
+    const projectMercToTwdCanvas = (mx, my) => {
+      const ll = normMercatorToLatLon(mx, my);
+      const en =
+        typeof wgs84ToTransverseMercatorJS === "function"
+          ? wgs84ToTransverseMercatorJS(ll.lat, ll.lon, lon0, fe, k0, fInv)
+          : { e: e0, n: n0 };
+      return {
+        px: ((en.e - minE) / spanE) * cW,
+        py: ((maxN - en.n) / spanN) * cH,
+      };
+    };
+
+    let drawnCount = 0;
+    for (let ty = minTy; ty <= maxTy; ty++) {
+      for (let tx = minTx; tx <= maxTx; tx++) {
+        const tileObj = getGoogleTileImage(lyrs, zoom, tx, ty, scheduleRedraw);
+        if (tileObj && tileObj.loaded && !tileObj.failed) {
+          const pNW = projectMercToTwdCanvas(tx / zPow, ty / zPow);
+          const pNE = projectMercToTwdCanvas((tx + 1) / zPow, ty / zPow);
+          const pSW = projectMercToTwdCanvas(tx / zPow, (ty + 1) / zPow);
+          const a = (pNE.px - pNW.px) / 256.0;
+          const b = (pNE.py - pNW.py) / 256.0;
+          const c = (pSW.px - pNW.px) / 256.0;
+          const d = (pSW.py - pNW.py) / 256.0;
+          ctx2d.setTransform(a, b, c, d, pNW.px, pNW.py);
+          ctx2d.drawImage(tileObj.img, -0.45, -0.45, 256.9, 256.9);
+          drawnCount++;
+        }
+      }
+    }
+    ctx2d.setTransform(1, 0, 0, 1, 0, 0);
+    if (drawnCount > 0) {
+      layer.mapTex.needsUpdate = true;
+      if (ctx.renderer && ctx.scene && ctx.camera) {
+        ctx.renderer.render(ctx.scene, ctx.camera);
+      }
+    }
+  }
+
+  function rebuildScanGoogleMapCoverageMask(ctx, scanObj = null) {
+    const layer = ctx?.googleMapLayer;
+    if (!layer || !layer.originTwd || !layer.originTwd.valid) return;
+    const scan = scanObj || STATE.activeScan || {};
+    const N = layer.maskN;
+    const halfSpan = layer.halfSpan;
+    const span = halfSpan * 2.0;
+    const invCell = N / span;
+    const rawOcc = layer.rawOcc;
+    const tmpOcc = layer.tmpOcc;
+    rawOcc.fill(0);
+
+    const isStudio = typeof studioThree !== "undefined" && ctx === studioThree;
+    const isMulti = Boolean(isStudio && STATE.multiAlign?.active && ctx.multiAlignGroup && ctx.multiAlignGroup.visible);
+    const hasStagedEdits = Boolean(
+      isStudio && typeof hasStagedMeshEditsForActiveScan === "function" && hasStagedMeshEditsForActiveScan()
+    );
+
+    const meshes = [];
+    if (isMulti) {
+      ctx.multiAlignGroup.updateMatrixWorld(true);
+      ctx.multiAlignGroup.traverse((c) => {
+        if (c.isMesh && c.visible && !c.userData?.isAlignBoxHelper && c.geometry?.attributes?.position) {
+          let vis = true;
+          let p = c.parent;
+          while (p && p !== ctx.multiAlignGroup) {
+            if (!p.visible) {
+              vis = false;
+              break;
+            }
+            p = p.parent;
+          }
+          if (vis) meshes.push(c);
+        }
+      });
+    } else if (ctx.modelPivot && ctx.modelPivot.visible) {
+      ctx.modelPivot.updateMatrixWorld(true);
+      ctx.modelPivot.traverse((c) => {
+        if (c.isMesh && c.visible && c.geometry?.attributes?.position) {
+          let vis = true;
+          let p = c.parent;
+          while (p && p !== ctx.modelPivot) {
+            if (!p.visible) {
+              vis = false;
+              break;
+            }
+            p = p.parent;
+          }
+          if (vis) meshes.push(c);
+        }
+      });
+    }
+
+    let totalTris = 0;
+    for (let i = 0; i < meshes.length; i++) {
+      const g = meshes[i].geometry;
+      totalTris += g.index ? Math.floor(g.index.count / 3) : Math.floor(g.attributes.position.count / 3);
+    }
+
+    const triStride = totalTris > 240000 ? Math.ceil(totalTris / 240000) : 1;
+    let rasterizedTris = 0;
+    const ySamples = [];
+    const ySampleStride = Math.max(1, Math.floor(Math.max(1, totalTris / triStride) / 600));
+
+    for (let mi = 0; mi < meshes.length; mi++) {
+      const m = meshes[mi];
+      const e = m.matrixWorld.elements;
+      const pos = m.geometry.attributes.position;
+      const idxAttr = m.geometry.index;
+      const nTris = idxAttr ? Math.floor(idxAttr.count / 3) : Math.floor(pos.count / 3);
+
+      for (let t = 0; t < nTris; t += triStride) {
+        const i0 = idxAttr ? idxAttr.getX(t * 3) : t * 3;
+        const i1 = idxAttr ? idxAttr.getX(t * 3 + 1) : t * 3 + 1;
+        const i2 = idxAttr ? idxAttr.getX(t * 3 + 2) : t * 3 + 2;
+
+        const lx0 = pos.getX(i0), ly0 = pos.getY(i0), lz0 = pos.getZ(i0);
+        const lx1 = pos.getX(i1), ly1 = pos.getY(i1), lz1 = pos.getZ(i1);
+        const lx2 = pos.getX(i2), ly2 = pos.getY(i2), lz2 = pos.getZ(i2);
+
+        const wx0 = e[0] * lx0 + e[4] * ly0 + e[8] * lz0 + e[12];
+        const wy0 = e[1] * lx0 + e[5] * ly0 + e[9] * lz0 + e[13];
+        const wz0 = e[2] * lx0 + e[6] * ly0 + e[10] * lz0 + e[14];
+
+        const wx1 = e[0] * lx1 + e[4] * ly1 + e[8] * lz1 + e[12];
+        const wz1 = e[2] * lx1 + e[6] * ly1 + e[10] * lz1 + e[14];
+
+        const wx2 = e[0] * lx2 + e[4] * ly2 + e[8] * lz2 + e[12];
+        const wz2 = e[2] * lx2 + e[6] * ly2 + e[10] * lz2 + e[14];
+
+        rasterizedTris++;
+        if (rasterizedTris % ySampleStride === 0 && Number.isFinite(wy0)) {
+          ySamples.push(wy0);
+        }
+
+        const gx0 = (wx0 + halfSpan) * invCell;
+        const gz0 = (wz0 + halfSpan) * invCell;
+        const gx1 = (wx1 + halfSpan) * invCell;
+        const gz1 = (wz1 + halfSpan) * invCell;
+        const gx2 = (wx2 + halfSpan) * invCell;
+        const gz2 = (wz2 + halfSpan) * invCell;
+
+        const xMin = Math.max(0, Math.floor(Math.min(gx0, gx1, gx2)));
+        const xMax = Math.min(N - 1, Math.floor(Math.max(gx0, gx1, gx2)));
+        const zMin = Math.max(0, Math.floor(Math.min(gz0, gz1, gz2)));
+        const zMax = Math.min(N - 1, Math.floor(Math.max(gz0, gz1, gz2)));
+        if (xMin > xMax || zMin > zMax) continue;
+
+        if (xMax - xMin <= 1 && zMax - zMin <= 1) {
+          for (let gz = zMin; gz <= zMax; gz++) {
+            const row = gz * N;
+            for (let gx = xMin; gx <= xMax; gx++) {
+              rawOcc[row + gx] = 1;
+            }
+          }
+          continue;
+        }
+
+        if ((xMax - xMin + 1) * (zMax - zMin + 1) > 6400) continue;
+
+        const area2 = (gx1 - gx0) * (gz2 - gz0) - (gz1 - gz0) * (gx2 - gx0);
+        if (Math.abs(area2) < 1e-5) {
+          rawOcc[zMin * N + xMin] = 1;
+          rawOcc[zMax * N + xMax] = 1;
+          continue;
+        }
+        const sgn = area2 > 0 ? 1 : -1;
+        const e01Len = Math.hypot(gx1 - gx0, gz1 - gz0);
+        const e12Len = Math.hypot(gx2 - gx1, gz2 - gz1);
+        const e20Len = Math.hypot(gx0 - gx2, gz0 - gz2);
+        const tol01 = -0.65 * e01Len;
+        const tol12 = -0.65 * e12Len;
+        const tol20 = -0.65 * e20Len;
+
+        for (let gz = zMin; gz <= zMax; gz++) {
+          const py = gz + 0.5;
+          const row = gz * N;
+          for (let gx = xMin; gx <= xMax; gx++) {
+            if (rawOcc[row + gx]) continue;
+            const px = gx + 0.5;
+            const w0 = ((gx1 - gx0) * (py - gz0) - (gz1 - gz0) * (px - gx0)) * sgn;
+            if (w0 < tol01) continue;
+            const w1 = ((gx2 - gx1) * (py - gz1) - (gz2 - gz1) * (px - gx1)) * sgn;
+            if (w1 < tol12) continue;
+            const w2 = ((gx0 - gx2) * (py - gz2) - (gz0 - gz2) * (px - gx2)) * sgn;
+            if (w2 < tol20) continue;
+            rawOcc[row + gx] = 1;
+          }
+        }
+      }
+    }
+
+    // Also union True-Nadir RGBA Ortho footprint when no staged mesh deletions/crops are active
+    let usedOrtho = false;
+    if (!isMulti && !hasStagedEdits && scan && scan.scan_id && typeof getOrLoadMapOrthoImage === "function") {
+      const orthoEntry = getOrLoadMapOrthoImage(scan);
+      if (orthoEntry && !orthoEntry._gmapHooked) {
+        orthoEntry._gmapHooked = true;
+        orthoEntry.img.addEventListener("load", () => {
+          scheduleScanGoogleMapCoverageUpdate(ctx, scan, 40);
+        });
+      }
+      const b = scan.ortho_bounds || orthoEntry?.bounds;
+      if (
+        orthoEntry &&
+        orthoEntry.loaded &&
+        !orthoEntry.failed &&
+        b &&
+        Number.isFinite(Number(b.north_lat)) &&
+        Number.isFinite(Number(b.south_lat)) &&
+        Number.isFinite(Number(b.west_lon)) &&
+        Number.isFinite(Number(b.east_lon)) &&
+        typeof wgs84ToTransverseMercatorJS === "function"
+      ) {
+        if (!orthoEntry._alphaGrid) {
+          try {
+            const aN = 256;
+            const aCanvas = document.createElement("canvas");
+            aCanvas.width = aN;
+            aCanvas.height = aN;
+            const aCtx = aCanvas.getContext("2d");
+            aCtx.drawImage(orthoEntry.img, 0, 0, aN, aN);
+            const imgData = aCtx.getImageData(0, 0, aN, aN).data;
+            const alphaArr = new Uint8Array(aN * aN);
+            let nonZero = 0;
+            for (let i = 0; i < aN * aN; i++) {
+              const aVal = imgData[i * 4 + 3];
+              if (aVal > 20) {
+                alphaArr[i] = 1;
+                nonZero++;
+              }
+            }
+            if (nonZero > 0 && nonZero < aN * aN * 0.98) {
+              orthoEntry._alphaGrid = alphaArr;
+              orthoEntry._alphaN = aN;
+            }
+          } catch (_) {}
+        }
+        if (orthoEntry._alphaGrid) {
+          const { e: e0, n: n0, lon0, fe, k0, fInv } = layer.originTwd;
+          const nwEN = wgs84ToTransverseMercatorJS(Number(b.north_lat), Number(b.west_lon), lon0, fe, k0, fInv);
+          const seEN = wgs84ToTransverseMercatorJS(Number(b.south_lat), Number(b.east_lon), lon0, fe, k0, fInv);
+          const minX = Math.min(nwEN.e - e0, seEN.e - e0);
+          const maxX = Math.max(nwEN.e - e0, seEN.e - e0);
+          const minZ = Math.min(n0 - nwEN.n, n0 - seEN.n);
+          const maxZ = Math.max(n0 - nwEN.n, n0 - seEN.n);
+          const spanOX = Math.max(0.5, maxX - minX);
+          const spanOZ = Math.max(0.5, maxZ - minZ);
+          const gx0 = Math.max(0, Math.floor((minX + halfSpan) * invCell));
+          const gx1 = Math.min(N - 1, Math.ceil((maxX + halfSpan) * invCell));
+          const gz0 = Math.max(0, Math.floor((minZ + halfSpan) * invCell));
+          const gz1 = Math.min(N - 1, Math.ceil((maxZ + halfSpan) * invCell));
+          const aN = orthoEntry._alphaN;
+          const aGrid = orthoEntry._alphaGrid;
+          for (let gz = gz0; gz <= gz1; gz++) {
+            const wz = (gz + 0.5) / invCell - halfSpan;
+            const v = Math.floor(((wz - minZ) / spanOZ) * aN);
+            if (v < 0 || v >= aN) continue;
+            const row = gz * N;
+            const aRow = v * aN;
+            for (let gx = gx0; gx <= gx1; gx++) {
+              const wx = (gx + 0.5) / invCell - halfSpan;
+              const u = Math.floor(((wx - minX) / spanOX) * aN);
+              if (u >= 0 && u < aN && aGrid[aRow + u]) {
+                rawOcc[row + gx] = 1;
+                usedOrtho = true;
+              }
+            }
+          }
+        }
+      }
+    }
+
+    if (ySamples.length >= 16) {
+      ySamples.sort((a, b) => a - b);
+      const p15 = ySamples[Math.floor(ySamples.length * 0.15)];
+      if (Number.isFinite(p15)) {
+        layer.mesh.position.y = p15 - 0.15;
+      }
+    } else if (ctx.grid) {
+      layer.mesh.position.y = ctx.grid.position.y + 0.04;
+    }
+
+    // If neither triangles nor ortho are loaded yet (initial streaming), keep mask closed inside scan radius
+    if (rasterizedTris === 0 && !usedOrtho) {
+      const rGuard = Math.max(20, Number(ctx.boundingSphere?.radius) || 48) * 0.85;
+      const rCells = rGuard * invCell;
+      const r2 = rCells * rCells;
+      const cMid = N * 0.5;
+      for (let gz = 0; gz < N; gz++) {
+        const dz = gz - cMid;
+        const row = gz * N;
+        for (let gx = 0; gx < N; gx++) {
+          const dx = gx - cMid;
+          if (dx * dx + dz * dz <= r2) rawOcc[row + gx] = 1;
+        }
+      }
+    }
+
+    // Morphological closing: dilate by radius 2 -> erode by radius 1 (seals tile seams + 1-cell safety margin)
+    const R_DIL = 2;
+    tmpOcc.fill(0);
+    for (let gz = 0; gz < N; gz++) {
+      const row = gz * N;
+      for (let gx = 0; gx < N; gx++) {
+        if (!rawOcc[row + gx]) continue;
+        const z0 = Math.max(0, gz - R_DIL);
+        const z1 = Math.min(N - 1, gz + R_DIL);
+        const x0 = Math.max(0, gx - R_DIL);
+        const x1 = Math.min(N - 1, gx + R_DIL);
+        for (let zz = z0; zz <= z1; zz++) {
+          const r2 = zz * N;
+          for (let xx = x0; xx <= x1; xx++) {
+            tmpOcc[r2 + xx] = 1;
+          }
+        }
+      }
+    }
+
+    const maskData = layer.maskData;
+    for (let gz = 0; gz < N; gz++) {
+      const row = gz * N;
+      for (let gx = 0; gx < N; gx++) {
+        let cov = tmpOcc[row + gx];
+        if (cov && gz > 0 && gz < N - 1 && gx > 0 && gx < N - 1) {
+          if (
+            !tmpOcc[(gz - 1) * N + gx] ||
+            !tmpOcc[(gz + 1) * N + gx] ||
+            !tmpOcc[row + gx - 1] ||
+            !tmpOcc[row + gx + 1]
+          ) {
+            // Erode outermost r=2 ring back to r=1 safety rim while keeping interior seams closed
+            cov = rawOcc[row + gx] ? 1 : 0;
+          }
+        }
+        const idx = (row + gx) * 4;
+        const val = cov ? 255 : 0;
+        maskData[idx] = val;
+        maskData[idx + 1] = val;
+        maskData[idx + 2] = val;
+        maskData[idx + 3] = 255;
+      }
+    }
+    layer.maskTex.needsUpdate = true;
+    if (ctx.renderer && ctx.scene && ctx.camera) {
+      ctx.renderer.render(ctx.scene, ctx.camera);
+    }
+  }
+
+  function scheduleScanGoogleMapCoverageUpdate(ctx, scanObj = null, delayMs = 80) {
+    if (!ctx) return;
+    const layer = ensureScanGoogleMap3DLayer(ctx);
+    if (!layer) return;
+    if (layer.covTimer) clearTimeout(layer.covTimer);
+    layer.covTimer = setTimeout(() => {
+      layer.covTimer = null;
+      rebuildScanGoogleMapCoverageMask(ctx, scanObj || STATE.activeScan);
+    }, Math.max(16, delayMs));
+  }
+  window.scheduleScanGoogleMapCoverageUpdate = scheduleScanGoogleMapCoverageUpdate;
+
+  function updateScanGoogleMap3DLayer(ctx, scanObj = null) {
+    if (!ctx || !ctx.scene) return;
+    const scan = scanObj || STATE.activeScan || {};
+    const layer = ensureScanGoogleMap3DLayer(ctx);
+    if (!layer) return;
+
+    const originTwd = resolveViewerOriginTwd97(ctx, scan);
+    layer.originTwd = originTwd;
+    layer.scanId = scan.scan_id || "";
+
+    if (!STATE.scanGoogleMapEnabled || !originTwd.valid) {
+      layer.group.visible = false;
+      if (ctx.renderer && ctx.scene && ctx.camera) {
+        ctx.renderer.render(ctx.scene, ctx.camera);
+      }
+      return;
+    }
+
+    layer.group.visible = true;
+    const rawR = Math.max(25, Number(ctx.boundingSphere?.radius) || 60);
+    const nextHalfSpan = Math.max(240, Math.min(840, Math.ceil((rawR * 3.0) / 20) * 20));
+    if (Math.abs(nextHalfSpan - layer.halfSpan) > 10) {
+      layer.halfSpan = nextHalfSpan;
+      layer.uniforms.uHalfSpan.value = nextHalfSpan;
+      const newGeom = new THREE.PlaneGeometry(nextHalfSpan * 2, nextHalfSpan * 2, 1, 1);
+      newGeom.rotateX(-Math.PI / 2);
+      layer.mesh.geometry.dispose();
+      layer.mesh.geometry = newGeom;
+      layer.geom = newGeom;
+      layer.tileSig = "";
+    }
+
+    layer.uniforms.uOpacity.value = Math.max(0.05, Math.min(1.0, Number(STATE.scanGoogleMapOpacity) || 0.5));
+    if (ctx.grid) {
+      layer.mesh.position.y = ctx.grid.position.y + 0.04;
+    }
+
+    const lyrs = STATE.scanGoogleMapLyrs === "m" ? "m" : "y";
+    const nextSig = `${originTwd.e.toFixed(1)}_${originTwd.n.toFixed(1)}_${layer.halfSpan}_${lyrs}`;
+    if (layer.tileSig !== nextSig) {
+      layer.tileSig = nextSig;
+      stitchScanGoogleMapTilesToCanvas(ctx);
+    }
+
+    rebuildScanGoogleMapCoverageMask(ctx, scan);
+  }
+  window.updateScanGoogleMap3DLayer = updateScanGoogleMap3DLayer;
+
+  function syncScanGoogleMapControlsUI() {
+    const enabled = Boolean(STATE.scanGoogleMapEnabled);
+    const lyrs = STATE.scanGoogleMapLyrs === "m" ? "m" : "y";
+    const op = Math.max(0.05, Math.min(1.0, Number(STATE.scanGoogleMapOpacity) || 0.5));
+    const pctTxt = `${Math.round(op * 100)}%`;
+
+    ["btnStudioToggleGoogleMap", "btnPreviewToggleGoogleMap"].forEach((id) => {
+      const btn = document.getElementById(id);
+      if (btn) {
+        btn.classList.toggle("active", enabled);
+        btn.classList.toggle("primary", enabled);
+        btn.setAttribute("aria-pressed", enabled ? "true" : "false");
+      }
+    });
+
+    ["studioGoogleMapTypeSwitcher", "previewGoogleMapTypeSwitcher"].forEach((id) => {
+      const sw = document.getElementById(id);
+      if (sw) {
+        sw.querySelectorAll("[data-gmap-lyrs]").forEach((b) => {
+          b.classList.toggle("active", b.getAttribute("data-gmap-lyrs") === lyrs);
+        });
+      }
+    });
+
+    ["studioGoogleMapOpacitySlider", "previewGoogleMapOpacitySlider"].forEach((id) => {
+      const sl = document.getElementById(id);
+      if (sl && Math.abs(parseFloat(sl.value) - op) > 0.005) {
+        sl.value = String(op);
+      }
+    });
+
+    ["lblStudioGoogleMapOpacity", "lblPreviewGoogleMapOpacity"].forEach((id) => {
+      const lbl = document.getElementById(id);
+      if (lbl) lbl.textContent = pctTxt;
+    });
+  }
+  window.syncScanGoogleMapControlsUI = syncScanGoogleMapControlsUI;
+
+  function setScanGoogleMapEnabled(enabled) {
+    STATE.scanGoogleMapEnabled = Boolean(enabled);
+    syncScanGoogleMapControlsUI();
+    if (typeof studioThree !== "undefined" && studioThree) {
+      updateScanGoogleMap3DLayer(studioThree, STATE.activeScan);
+    }
+    if (typeof previewThree !== "undefined" && previewThree) {
+      const pScan = STATE.scans.find((s) => s.scan_id === STATE.selectedTimelineScanId) || STATE.activeScan;
+      updateScanGoogleMap3DLayer(previewThree, pScan);
+    }
+  }
+  window.setScanGoogleMapEnabled = setScanGoogleMapEnabled;
+
+  function setScanGoogleMapLyrs(lyrs) {
+    STATE.scanGoogleMapLyrs = lyrs === "m" ? "m" : "y";
+    if (!STATE.scanGoogleMapEnabled) {
+      STATE.scanGoogleMapEnabled = true;
+    }
+    syncScanGoogleMapControlsUI();
+    if (typeof studioThree !== "undefined" && studioThree) {
+      updateScanGoogleMap3DLayer(studioThree, STATE.activeScan);
+    }
+    if (typeof previewThree !== "undefined" && previewThree) {
+      const pScan = STATE.scans.find((s) => s.scan_id === STATE.selectedTimelineScanId) || STATE.activeScan;
+      updateScanGoogleMap3DLayer(previewThree, pScan);
+    }
+  }
+  window.setScanGoogleMapLyrs = setScanGoogleMapLyrs;
+
+  function setScanGoogleMapOpacity(val) {
+    const op = Math.max(0.05, Math.min(1.0, parseFloat(val) || 0.5));
+    STATE.scanGoogleMapOpacity = op;
+    syncScanGoogleMapControlsUI();
+    [typeof studioThree !== "undefined" ? studioThree : null, previewThree].forEach((ctx) => {
+      if (ctx && ctx.googleMapLayer) {
+        ctx.googleMapLayer.uniforms.uOpacity.value = op;
+        if (ctx.renderer && ctx.scene && ctx.camera) {
+          ctx.renderer.render(ctx.scene, ctx.camera);
+        }
+      }
+    });
+  }
+  window.setScanGoogleMapOpacity = setScanGoogleMapOpacity;
+
+  function bindScanGoogleMapControlsEvents() {
+    ["btnStudioToggleGoogleMap", "btnPreviewToggleGoogleMap"].forEach((id) => {
+      const btn = document.getElementById(id);
+      if (btn && !btn._gsGmapBound) {
+        btn._gsGmapBound = true;
+        btn.addEventListener("click", () => {
+          setScanGoogleMapEnabled(!STATE.scanGoogleMapEnabled);
+        });
+      }
+    });
+
+    ["studioGoogleMapTypeSwitcher", "previewGoogleMapTypeSwitcher"].forEach((id) => {
+      const sw = document.getElementById(id);
+      if (sw && !sw._gsGmapBound) {
+        sw._gsGmapBound = true;
+        sw.querySelectorAll("[data-gmap-lyrs]").forEach((btn) => {
+          btn.addEventListener("click", () => {
+            const lyrs = btn.getAttribute("data-gmap-lyrs") || "y";
+            setScanGoogleMapLyrs(lyrs);
+          });
+        });
+      }
+    });
+
+    ["studioGoogleMapOpacitySlider", "previewGoogleMapOpacitySlider"].forEach((id) => {
+      const sl = document.getElementById(id);
+      if (sl && !sl._gsGmapBound) {
+        sl._gsGmapBound = true;
+        sl.addEventListener("input", (e) => {
+          setScanGoogleMapOpacity(e.target.value);
+        });
+      }
+    });
+
+    syncScanGoogleMapControlsUI();
+  }
+  bindScanGoogleMapControlsEvents();
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", bindScanGoogleMapControlsEvents);
+  }
+
 
 

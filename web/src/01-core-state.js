@@ -87,6 +87,9 @@
     capturedThumbs: new Set(),
     scanBrightness: 1.0,
     mapLyrs: "y", // 'y' = Google Satellite Hybrid, 'm' = Google Roadmap
+    scanGoogleMapEnabled: true,
+    scanGoogleMapLyrs: "y", // 'y' = Satellite, 'm' = Map (Roadmap)
+    scanGoogleMapOpacity: 0.5,
     activeTool: "distance",
     snapEnabled: true,
     pcOnline: true,

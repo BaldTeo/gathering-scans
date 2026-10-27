@@ -1327,6 +1327,12 @@
           });
           studioThree.modelPivot.add(model);
           studioThree.boundingSphere = sphere;
+          if (typeof updateScanGoogleMap3DLayer === "function") {
+            updateScanGoogleMap3DLayer(studioThree, scan);
+          }
+          if (typeof scheduleScanGoogleMapCoverageUpdate === "function") {
+            scheduleScanGoogleMapCoverageUpdate(studioThree, scan, 30);
+          }
           if (preserveCamera && prevCamPos && prevCamTarget) {
             const dx = prevTilesCenter ? sphere.center.x - prevTilesCenter[0] : 0;
             const dy = prevTilesCenter ? sphere.center.y - prevTilesCenter[1] : 0;
@@ -1417,6 +1423,9 @@
               ? sphere._groundOffsetY
               : -8.0;
           }
+          if (typeof updateScanGoogleMap3DLayer === "function") {
+            updateScanGoogleMap3DLayer(studioThree, scan);
+          }
           if (preserveCamera && prevCamPos && prevCamTarget) {
             const dx = prevTilesCenter ? sphere.center.x - prevTilesCenter[0] : 0;
             const dy = prevTilesCenter ? sphere.center.y - prevTilesCenter[1] : 0;
@@ -1493,6 +1502,9 @@
           tr.update();
           if (typeof applyStagedEditsToStudioMeshes === "function" && hasStagedMeshEditsForActiveScan()) {
             applyStagedEditsToStudioMeshes(false);
+          }
+          if (typeof scheduleScanGoogleMapCoverageUpdate === "function") {
+            scheduleScanGoogleMapCoverageUpdate(studioThree, scan, 90);
           }
           studioThree.renderer.render(studioThree.scene, studioThree.camera);
           syncTilesLoaderProgress(studioThree, "studio");

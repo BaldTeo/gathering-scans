@@ -2194,6 +2194,9 @@
     restoreUnder(studioThree.modelPivot);
     restoreUnder(studioThree.multiAlignGroup);
     studioThree._laserSpatialIndex = null;
+    if (typeof scheduleScanGoogleMapCoverageUpdate === "function") {
+      scheduleScanGoogleMapCoverageUpdate(studioThree, STATE.activeScan, 35);
+    }
     if (studioThree.renderer && studioThree.scene && studioThree.camera) {
       studioThree.renderer.render(studioThree.scene, studioThree.camera);
     }
@@ -2326,6 +2329,9 @@
       });
     }
 
+    if (typeof scheduleScanGoogleMapCoverageUpdate === "function") {
+      scheduleScanGoogleMapCoverageUpdate(studioThree, STATE.activeScan, 35);
+    }
     if (studioThree.renderer && studioThree.scene && studioThree.camera) {
       studioThree.renderer.render(studioThree.scene, studioThree.camera);
     }
