@@ -1031,6 +1031,8 @@ class CloudAndTunnelHandlerMixin:
             return False
         toc = pkg.get("toc") or {}
         toc_entry = toc.get(inner_path)
+        if not isinstance(toc_entry, dict) and inner_path == "preview_tileset.json":
+            toc_entry = toc.get("tileset.json")
         if not isinstance(toc_entry, dict):
             return False
 

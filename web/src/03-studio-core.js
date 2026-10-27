@@ -1509,6 +1509,18 @@
         }
       });
 
+      tr.addEventListener("load-error", () => {
+        if (
+          useLowMemTileset &&
+          !opts.forceFullRes &&
+          studioThree.tilesRenderer === tr &&
+          Number(tr.stats?.loaded || 0) === 0
+        ) {
+          console.warn("[GatheringScans] Studio preview_tileset.json failed to load; falling back to full tileset.json");
+          loadScanIntoStudio(scan.scan_id, Object.assign({}, opts, { forceFullRes: true }));
+        }
+      });
+
       tr.errorTarget = isMobOrTab ? 12.0 : 6.0;
       if (tr.downloadQueue) tr.downloadQueue.maxJobs = isMobOrTab ? 4 : 12;
       if (tr.parseQueue) tr.parseQueue.maxJobs = isMobOrTab ? 2 : 6;

@@ -931,6 +931,33 @@
       renderer.toneMappingExposure = 1.0;
       container.appendChild(renderer.domElement);
 
+      renderer.domElement.addEventListener(
+        "webglcontextlost",
+        (ev) => {
+          ev.preventDefault();
+          console.warn("[GatheringScans] Compare WebGL context lost; scheduling recovery.");
+        },
+        false
+      );
+      renderer.domElement.addEventListener(
+        "webglcontextrestored",
+        () => {
+          try {
+            renderer.setPixelRatio(1);
+            if (STATE.activeView === "compare") {
+              ["left", "right", "third", "fourth"].forEach((sKey) => {
+                const sid = compareThree?.[sKey]?._loadedScanId;
+                if (sid && typeof loadScanIntoCompareSide === "function") {
+                  compareThree[sKey]._loadedScanId = null;
+                  loadScanIntoCompareSide(sKey, sid);
+                }
+              });
+            }
+          } catch (_) {}
+        },
+        false
+      );
+
       scene.add(new THREE.AmbientLight(0xffffff, 1.35));
       const dirLight = new THREE.DirectionalLight(0xffffff, 1.15);
       dirLight.position.set(45, 80, 50);
