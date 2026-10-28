@@ -1799,17 +1799,21 @@ class GatheringScansTestSuite(unittest.TestCase):
         with open(os.path.join(BASE_DIR, "web", "src", "05-studio-civil-inspectors.js"), "r", encoding="utf-8") as f:
             js05 = f.read()
 
-        # 1. Verify 280.0m merge-invariant span threshold, area_scale proportional budgets, and hydrostatic void floor
-        self.assertIn("if max_span <= 280.0:", heur_py)
-        self.assertIn("area_scale = max(1.0, min(3.5, (span_e * span_n) / 14000.0))", heur_py)
-        self.assertIn("void_ref_h_grid =", heur_py)
+        # 1. Verify intrinsic regime detection (is_wide_valley_forestry_scan), occupied_2d_m2 scaling, local neighborhood datum grids, and rejected_false_positive_tags hookup
+        self.assertIn("is_wide_valley_forestry_scan = (max_span > 280.0) and (base_h_p90_p10 > 6.0) and (not is_merged_or_derived)", heur_py)
+        self.assertIn("area_scale = max(1.0, min(2.5, occupied_2d_m2 / 12500.0))", heur_py)
+        self.assertIn("local_dtm_p25_grid = grey_erosion(", heur_py)
+        self.assertIn("rej_tags = set(str(x).strip() for x in (ai_info.get(\"rejected_false_positive_tags\") or [])", heur_py)
+        self.assertIn('"anchor_twd97": {"e": round(ce, 3), "n": round(cn, 3), "h": round(ch, 3)},', heur_py)
 
-        # 2. Verify Ground-Level Mobile Phone Photo Referee & fast RTK photo frustum matcher
+        # 2. Verify Ground-Level Mobile Phone Photo Referee, unified fast RTK photo frustum matcher, and interactive 📸 photo lightbox badge
         self.assertIn("def _crop_rtk_photo_for_3d_feature(", io_py)
         self.assertIn("def _match_feature_to_rtk_photo_fast(", io_py)
-        self.assertIn("fmtCatBadge", js05)
+        self.assertIn("cal_bonus = 0.0 if cam.get(\"calibrated\", True) else 4.0", io_py)
+        self.assertIn("data-cat-photo-file", js05)
+        self.assertIn("window.openPhotoLightboxModal(photoUrl, fname, meta", js05)
 
-        # 3. Verify QiHu_Merged (edited_qihu_merged_2026_10_28_858499) preserves QiHu_Unified trees, roads, and water voids
+        # 3. Verify QiHu_Merged (edited_qihu_merged_2026_10_28_858499) preserves QiHu_Unified trees, road planter holes, and water voids
         uni_path = os.path.join(BASE_DIR, "data", "categorization_cache", "edited_qihu_unified_merged_scan_4_scans__edited_372953_categorization_v3.json")
         mrg_path = os.path.join(BASE_DIR, "data", "categorization_cache", "edited_qihu_merged_2026_10_28_858499_categorization_v3.json")
         self.assertTrue(os.path.isfile(uni_path))
@@ -1820,8 +1824,10 @@ class GatheringScansTestSuite(unittest.TestCase):
             mrg_cat = json.load(f)
 
         self.assertEqual(float(mrg_cat["summary"]["grid_resolution_m"]), 0.25)
+        self.assertIn("anchor_twd97", mrg_cat)
         self.assertGreaterEqual(int(mrg_cat["summary"]["trees_count"]), int(uni_cat["summary"]["trees_count"]) + 50)
         self.assertGreaterEqual(float(mrg_cat["summary"]["roads_planar_area_m2"]), float(uni_cat["summary"]["roads_planar_area_m2"]))
+        self.assertTrue(any(len(r.get("holes_twd97") or []) > 0 for r in mrg_cat.get("roads", [])))
         self.assertGreaterEqual(int(mrg_cat["summary"]["water_count"]), 2)
         self.assertGreaterEqual(float(mrg_cat["summary"]["water_planar_area_m2"]), 1300.0)
         self.assertTrue(any(t.get("verified_photo") for t in mrg_cat.get("trees", [])))

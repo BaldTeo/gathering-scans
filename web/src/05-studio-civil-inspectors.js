@@ -2370,7 +2370,11 @@
       return `${v.x.toFixed(2)},${v.y.toFixed(2)},${v.z.toFixed(2)}`;
     };
 
-    const fmtCatBadge = (id, col, item) => `<span style="color:${col};font-weight:800;" title="${escapeHtml(item.verified_photo ? `RTK Photo: ${item.verified_photo}` : "")}">${escapeHtml(id)}${item.verified_photo ? " 📸" : ""}</span>`;
+    const fmtCatBadge = (id, col, item) => {
+      if (!item || !item.verified_photo) return `<span style="color:${col};font-weight:800;">${escapeHtml(id)}</span>`;
+      const uv = Array.isArray(item.verified_photo_uv) ? item.verified_photo_uv : [0.5, 0.5];
+      return `<span style="color:${col};font-weight:800;">${escapeHtml(id)} <button type="button" class="btn-xs" data-cat-photo-file="${escapeHtml(item.verified_photo)}" data-cat-photo-u="${Number(uv[0] || 0.5)}" data-cat-photo-v="${Number(uv[1] || 0.5)}" data-cat-photo-dist="${Number(item.verified_photo_dist_m || 0)}" data-cat-photo-id="${escapeHtml(id)}" style="padding:0 3px;font-size:9.5px;border:none;background:transparent;cursor:pointer;" title="${escapeHtml(`Inspect RTK Mobile Photo: ${item.verified_photo} (${item.verified_photo_dist_m || 0}m)`)}">📸</button></span>`;
+    };
     const rows = [];
     if ((activeTab === "all" || activeTab === "roads") && flt.roads) {
       (res.roads || []).forEach((r) => {
@@ -2784,6 +2788,26 @@
         });
         update2DBadgePositions();
         renderCategorizePanelContent(res);
+      });
+    });
+
+    box.querySelectorAll("[data-cat-photo-file]").forEach((pBtn) => {
+      pBtn.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        const fname = pBtn.getAttribute("data-cat-photo-file") || "";
+        if (!fname) return;
+        const u = Number(pBtn.getAttribute("data-cat-photo-u") || 0.5);
+        const v = Number(pBtn.getAttribute("data-cat-photo-v") || 0.5);
+        const dist = Number(pBtn.getAttribute("data-cat-photo-dist") || 0);
+        const fid = pBtn.getAttribute("data-cat-photo-id") || "";
+        const sid = res.scan_id || STATE.activeScanId || "";
+        const photoUrl = appendAuthToDownloadUrl(`/api/camera-photo?scan_id=${encodeURIComponent(sid)}&file=${encodeURIComponent(fname)}`);
+        const meta = `${fid} · Verified Mobile Photo (${dist.toFixed(2)}m) · UV (${u.toFixed(2)}, ${v.toFixed(2)})`;
+        if (typeof window.openPhotoLightboxModal === "function") {
+          window.openPhotoLightboxModal(photoUrl, fname, meta, [{ url: photoUrl, filename: fname, meta, proj_u: u, proj_v: v }], 0);
+        } else {
+          window.open(photoUrl, "_blank");
+        }
       });
     });
 
@@ -4738,7 +4762,7 @@
             ${
               canEditThis && cid
                 ? `<div style="display:flex;justify-content:flex-end;gap:4px;margin-top:6px;">
-                     <button type="button" class="btn-xs btn-move-comment ${isMovingThisPin ? "active" : ""}" data-cid="${cid}" data-pin-move="${cid}" title="${tr("移動標記位置 (點擊 3D 模型新位置)", "Move Note Pin in 3D")}" style="height:22px;padding:0 6px;font-size:10.5px;pointer-events:auto;cursor:pointer;${isMovingThisPin ? "background:#f59e0b;color:#111;border-color:#f59e0b;font-weight:700;" : ""}">${isMovingThisPin ? tr("🎯 點擊3D...", "🎯 Click 3D...") : `📍 ${tr("移動位置", "Move Pin")}`}</button>
+                     <button type="button" class="btn-xs btn-move-comment ${isMovingThisPin ? "active" : ""}" data-cid="${cid}" data-pin-move="${cid}" title="${tr("移動標記位置 (點擊 3D 模型新位置)", "Move Note in 3D")}" style="height:22px;padding:0 6px;font-size:10.5px;pointer-events:auto;cursor:pointer;${isMovingThisPin ? "background:#f59e0b;color:#111;border-color:#f59e0b;font-weight:700;" : ""}">${isMovingThisPin ? tr("🎯 點擊3D...", "🎯 Click 3D...") : `📍 ${tr("移動", "Move")}`}</button>
                      <button type="button" class="btn-xs" data-pin-upload-local="${cid}" title="${tr("從裝置上傳照片", "Upload Photo from Device")}" style="height:22px;padding:0 6px;font-size:10.5px;pointer-events:auto;cursor:pointer;">📁+</button>
                      <button type="button" class="btn-xs" data-pin-upload-photo="${cid}" style="height:22px;padding:0 7px;font-size:10.5px;color:var(--ui-accent);border-color:var(--ui-accent);pointer-events:auto;cursor:pointer;">📷+ ${tr("新增照片", "Add Photo")}</button>
                    </div>`
@@ -4808,6 +4832,10 @@
           const movePinBtn = ev.target && ev.target.closest ? ev.target.closest("[data-pin-move]") : null;
           if (movePinBtn && c.comment_id) {
             ev.stopPropagation();
+            if (!canEditThis) {
+              showToast(tr("僅標註作者或管理員可移動此標註", "Only the comment author or an admin can move this comment."), "error");
+              return;
+            }
             STATE.movingCommentId = STATE.movingCommentId === c.comment_id ? null : c.comment_id;
             const canvasEl = document.getElementById("studioCanvas");
             if (canvasEl) canvasEl.style.cursor = STATE.movingCommentId ? "crosshair" : "";
@@ -4819,13 +4847,13 @@
             return;
           }
           const uploadLocalBtn = ev.target && ev.target.closest ? ev.target.closest("[data-pin-upload-local]") : null;
-          if (uploadLocalBtn && c.comment_id) {
+          if (uploadLocalBtn && canEditThis && c.comment_id) {
             ev.stopPropagation();
             triggerCommentPhotoFilePicker(c.comment_id);
             return;
           }
           const uploadBtn = ev.target && ev.target.closest ? ev.target.closest("[data-pin-upload-photo]") : null;
-          if (uploadBtn) {
+          if (uploadBtn && canEditThis) {
             ev.stopPropagation();
             openLocationPhotosForComment(c);
             return;

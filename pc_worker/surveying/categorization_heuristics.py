@@ -172,7 +172,12 @@ class CategorizationHeuristicsMixin:
         span_e = max(e_max - e_min, 4.0)
         span_n = max(n_max - n_min, 4.0)
         max_span = max(span_e, span_n)
-        area_scale = max(1.0, min(3.5, (span_e * span_n) / 14000.0))
+        occupied_2d_m2 = float(area_2d.sum())
+        area_scale = max(1.0, min(2.5, occupied_2d_m2 / 12500.0))
+        base_h_vals = np.concatenate([v0[:, 2], v1[:, 2], v2[:, 2], centroids[:, 2]])
+        base_h_p90_p10 = float(np.percentile(base_h_vals, 90.0) - np.percentile(base_h_vals, 10.0))
+        is_merged_or_derived = bool(scan.get("merged_from") or scan.get("derived_from_scan_id"))
+        is_wide_valley_forestry_scan = (max_span > 280.0) and (base_h_p90_p10 > 6.0) and (not is_merged_or_derived)
 
         sp_e_list = [centroids[:, 0], v0[:, 0], v1[:, 0], v2[:, 0]]
         sp_n_list = [centroids[:, 1], v0[:, 1], v1[:, 1], v2[:, 1]]
@@ -181,7 +186,7 @@ class CategorizationHeuristicsMixin:
         w_base = np.maximum(area_2d * 0.25, 1e-5).astype(np.float32)
         sp_w_list = [w_base, w_base, w_base, w_base]
 
-        if max_span <= 280.0:
+        if not is_wide_valley_forestry_scan:
             med_mask = area_2d >= 0.018
             if np.any(med_mask):
                 m_idx = tri_indices[med_mask]
@@ -237,9 +242,9 @@ class CategorizationHeuristicsMixin:
         splat_t_idx = np.concatenate(sp_t_list)
         splat_w = np.concatenate(sp_w_list)
 
-        if max_span <= 60.0:
+        if max_span <= 60.0 and not is_wide_valley_forestry_scan:
             res = 0.15
-        elif max_span <= 280.0:
+        elif not is_wide_valley_forestry_scan:
             res = 0.25
         else:
             res = 0.35
@@ -295,7 +300,7 @@ class CategorizationHeuristicsMixin:
         # Rasterize Top-Down True Orthophoto RGB
         ortho_rgb = np.zeros((ny, nx, 3), dtype=np.float32)
         ortho_cnt = np.zeros((ny, nx), dtype=np.float32)
-        if max_span <= 280.0:
+        if not is_wide_valley_forestry_scan:
             for ch_i in range(3):
                 np.add.at(ortho_rgb[:, :, ch_i], (in_all, ie_all), rgb[splat_t_idx, ch_i] * splat_w)
             np.add.at(ortho_cnt, (in_all, ie_all), splat_w)
@@ -387,8 +392,8 @@ class CategorizationHeuristicsMixin:
                         continue
 
                 p_area, p_perim = polygon_area_and_perimeter_2d(ring_2d)
-                # On urban/park scans (max_span <= 180m), use exact occupied pixel area so interior lawn/planter holes are never over-counted
-                if max_span <= 180.0:
+                # On urban/park/mobile scans, use exact occupied pixel area for surface masks so interior lawn/planter holes are never over-counted, while shoreline water polygons (fixed_z is not None) preserve full enclosed basin area
+                if (not is_wide_valley_forestry_scan) and (fixed_z is None):
                     true_area = float(px_cnt * cell_area)
                 else:
                     true_area = max(p_area, float(px_cnt * cell_area * 0.92))
@@ -407,7 +412,7 @@ class CategorizationHeuristicsMixin:
                 # Extract interior hole rings (e.g. circular tree planters & central park lawns inside road/walkway networks)
                 holes_twd_list: List[List[List[float]]] = []
                 holes_loc_list: List[List[List[float]]] = []
-                if max_span <= 180.0:
+                if (not is_wide_valley_forestry_scan) and (fixed_z is None):
                     filled_comp = binary_fill_holes(comp)
                     holes_mask = filled_comp & (~comp)
                     if np.any(holes_mask):
@@ -478,13 +483,19 @@ class CategorizationHeuristicsMixin:
             out_polys.sort(key=lambda x: x["planar_area_m2"], reverse=True)
             return out_polys
 
-        # Pre-compute site elevation percentiles, slope grid, elevated canopy ExG, and building footprint mask
+        # Pre-compute site elevation percentiles, local neighborhood datum grids, slope grid, elevated canopy ExG, and building footprint mask
         occ_valid_h = h_dtm_grid[raw_occ_closed]
         p25_site_h = float(np.percentile(occ_valid_h, 25.0)) if len(occ_valid_h) > 0 else ch
         p45_site_h = float(np.percentile(occ_valid_h, 45.0)) if len(occ_valid_h) > 0 else ch + 3.0
         p18_site_h = float(np.percentile(occ_valid_h, 18.0)) if len(occ_valid_h) > 0 else ch - 1.5
+        loc_win_px = max(9, int(round(28.0 / res)) | 1)
+        local_dtm_p25_grid = grey_erosion(
+            gaussian_filter(h_dtm_grid, sigma=max(2.0, 3.0 / res)),
+            size=(loc_win_px, loc_win_px),
+        ).astype(np.float32)
+        local_dtm_mean_grid = uniform_filter(h_dtm_grid, size=(loc_win_px, loc_win_px)).astype(np.float32)
 
-        dtm_for_slope = gaussian_filter(h_dtm_grid if max_span > 280.0 else h_dtm_local, sigma=max(1.5, 1.8 / res))
+        dtm_for_slope = gaussian_filter(h_dtm_grid if is_wide_valley_forestry_scan else h_dtm_local, sigma=max(1.5, 1.8 / res))
         grad_n, grad_e = np.gradient(dtm_for_slope, res, res)
         dtm_slope_pct_grid = np.hypot(grad_n, grad_e) * 100.0
 
@@ -557,7 +568,7 @@ class CategorizationHeuristicsMixin:
         is_bright_white_wall = (sat < 0.082) & (lum > 0.52) & (exg < 0.058) & (rb_diff >= -0.085) & (rb_diff <= 0.050)
         is_achromatic_wall = ((sat < 0.138) & (exg < 0.026) & (rb_diff >= -0.115) & (rb_diff <= 0.048)) | is_bright_white_wall
         is_tall_facade = (tri_hag_tree >= 2.8) & (exg < 0.024) & (sat < 0.175)
-        is_riverbank_wall = (max_span > 280.0) & (tri_hag_tree <= 6.5) & (exg < 0.028) & (sat < 0.20)
+        is_riverbank_wall = is_wide_valley_forestry_scan & (tri_hag_tree <= 6.5) & (exg < 0.028) & (sat < 0.20)
         steep_grn_c = steep_grn_frac_grid[in_c, ie_c]
         canopy_safe_achrom = (steep_grn_c < 0.26) | ((exg < 0.018) & (sat < 0.125)) | is_bright_white_wall
         vert_tri_mask = (
@@ -801,12 +812,15 @@ class CategorizationHeuristicsMixin:
                             mean_nz_w = float(np.mean(np.abs(norms_w[:, 2])))
                             tilt_deg = round(90.0 - math.degrees(math.acos(min(1.0, mean_nz_w))), 1)
                             az_deg = round((math.degrees(math.atan2(strike_vec[0], strike_vec[1])) + 360.0) % 180.0, 1)
+                            w_ix = int(np.clip((c_e - e_min) / res, 0, nx - 1))
+                            w_iy = int(np.clip((c_n - n_min) / res, 0, ny - 1))
+                            loc_wall_ref_h = max(p45_site_h, float(local_dtm_mean_grid[w_iy, w_ix]))
 
                             raw_wall_candidates.append(
                                 {
                                     "id": "WL0",
                                     "name": "擋土牆/垂直牆面 WL0",
-                                    "subtype": "retaining_wall" if (z_base < p45_site_h + 4.0 and max_h <= 4.5) else "structural_wall",
+                                    "subtype": "retaining_wall" if (z_base < loc_wall_ref_h + 4.0 and max_h <= 4.5) else "structural_wall",
                                     "length_m": round(wall_len_m, 2),
                                     "height_m": round(mean_h, 2),
                                     "mean_height_m": round(mean_h, 2),
@@ -889,7 +903,7 @@ class CategorizationHeuristicsMixin:
             wall_occ_grid = binary_dilation(wall_occ_grid, structure=np.ones((5, 5), dtype=bool))
         # Rasterize PCA-confirmed retaining & building walls into coplanar_wall_grid with 1.4m buffer
         coplanar_wall_grid = np.zeros((ny, nx), dtype=bool)
-        for wl_o in walls_list:
+        for wl_o in walls_list[:38]:
             b_pts_w = wl_o.get("base_polyline_twd97") or []
             for k_w in range(len(b_pts_w) - 1):
                 p0_w, p1_w = b_pts_w[k_w], b_pts_w[k_w + 1]
@@ -911,7 +925,7 @@ class CategorizationHeuristicsMixin:
         road_tri_mask = np.zeros(n_tris, dtype=bool)
         road_grid_base = np.zeros((ny, nx), dtype=bool)
         road_near_12m_grid = np.zeros((ny, nx), dtype=bool)
-        if max_span <= 280.0:
+        if not is_wide_valley_forestry_scan:
             paved_tri_mask = (
                 on_ground
                 & (nz_abs >= 0.88)
@@ -958,7 +972,7 @@ class CategorizationHeuristicsMixin:
         # =================================================================================
         # CATEGORY 2: TREES + TRUNK DBH AT 1.3M (喬木與胸徑 DBH)
         # =================================================================================
-        all_xy_tree = cKDTree(centroids[:, :2]) if max_span <= 280.0 else None
+        all_xy_tree = cKDTree(centroids[:, :2]) if not is_wide_valley_forestry_scan else None
 
         def _has_neck_gap_bollard_at(cx_q: float, cy_q: float, th_g_q: float, idx_arr_q: np.ndarray, c_q: np.ndarray) -> bool:
             dt_q = np.hypot(c_q[:, 0] - cx_q, c_q[:, 1] - cy_q)
@@ -969,7 +983,7 @@ class CategorizationHeuristicsMixin:
                 return True
             return False
 
-        if max_span > 280.0:
+        if is_wide_valley_forestry_scan:
             # Wide river-valley / forestry scan (e.g. QuChi Dam): preserve exact 3.6m forestry CHM segmentation
             canopy_mask = (hag_grid >= 1.8) & (ortho_exg > 0.032) & raw_occ_closed
             canopy_mask = binary_opening(canopy_mask, structure=np.ones((2, 2), dtype=bool))
@@ -1112,7 +1126,7 @@ class CategorizationHeuristicsMixin:
         # Sort candidate tree peaks by height descending and enforce minimum crown spacing
         peak_order = np.argsort(-chm_smooth[pk_js, pk_is])
         kept_peaks: List[Tuple[int, int, float]] = []
-        max_cand_peaks = 95 if max_span > 280.0 else int(round(280 * area_scale))
+        max_cand_peaks = 95 if is_wide_valley_forestry_scan else int(round(280 * area_scale))
         for idx_p in peak_order:
             pj, pi = int(pk_js[idx_p]), int(pk_is[idx_p])
             ph = float(chm_smooth[pj, pi])
@@ -1125,7 +1139,7 @@ class CategorizationHeuristicsMixin:
         # Pre-filter breast-height vertical trunk triangles
         bh_tri_mask = (
             ((tri_hag >= 0.95) & (tri_hag <= 1.85) & (nz_abs < 0.48))
-            if max_span > 280.0
+            if is_wide_valley_forestry_scan
             else ((tri_hag_tree >= 0.65) & (tri_hag_tree <= 1.95) & (nz_abs < 0.50))
         )
         bh_pts = centroids[bh_tri_mask]
@@ -1137,7 +1151,7 @@ class CategorizationHeuristicsMixin:
             tn = float(n_min + (pj + 0.5) * res)
             th_ground = float(tree_ground_grid[pj, pi])
             th_top = float(z_max_filled[pj, pi])
-            tree_h = max(2.2 if max_span > 280.0 else 1.60, round(max(min(ph, 16.5), th_top - th_ground if max_span > 280.0 else min(th_top - th_ground, 16.5)), 2))
+            tree_h = max(2.2 if is_wide_valley_forestry_scan else 1.60, round(max(min(ph, 16.5), th_top - th_ground if is_wide_valley_forestry_scan else min(th_top - th_ground, 16.5)), 2))
 
             # Urban 3D geometry, annular ground datum & stem centering (eliminates terrace steps, lamp posts, pillars & retaining walls)
             pre_stem_xy: Optional[Tuple[float, float]] = None
@@ -1149,7 +1163,7 @@ class CategorizationHeuristicsMixin:
             med_ts_exg = 0.0
             n_trunk_steep = 0
             r2_ts = 1.0
-            if max_span <= 280.0 and all_xy_tree is not None:
+            if not is_wide_valley_forestry_scan and all_xy_tree is not None:
                 near26_idx = all_xy_tree.query_ball_point([te, tn], r=2.65)
                 if len(near26_idx) < 25:
                     continue
@@ -1344,7 +1358,7 @@ class CategorizationHeuristicsMixin:
                     # Allow dormant/pruned woody park tree when verified cylindrical or warm brown cylindrical stem
                     med_rb_el = float(np.median(rb_diff[steep_idx]))
                     min_w_d = min(
-                        (math.hypot(t_cx - bp[0], t_cy - bp[1]) for wl_o in walls_list for bp in (wl_o.get("base_polyline_twd97") or [])),
+                        (math.hypot(t_cx - bp[0], t_cy - bp[1]) for wl_o in walls_list[:38] for bp in (wl_o.get("base_polyline_twd97") or [])),
                         default=999.0,
                     )
                     is_warm_cyl_stem = is_verified_cyl or (n_trunk_steep >= 8 and med_ts_rb >= 0.045 and r2_ts <= 0.22)
@@ -1375,21 +1389,21 @@ class CategorizationHeuristicsMixin:
                         continue
 
             # Estimate crown area & crown diameter around local peak
-            r_search_px = max(3, int(round(min(6.5, max(1.8 if max_span > 280.0 else 1.5, tree_h * 0.42)) / res)))
+            r_search_px = max(3, int(round(min(6.5, max(1.8 if is_wide_valley_forestry_scan else 1.5, tree_h * 0.42)) / res)))
             j0 = max(0, pj - r_search_px)
             j1 = min(ny - 1, pj + r_search_px)
             i0 = max(0, pi - r_search_px)
             i1 = min(nx - 1, pi + r_search_px)
-            hag_src_c = hag_grid if max_span > 280.0 else hag_tree_grid
+            hag_src_c = hag_grid if is_wide_valley_forestry_scan else hag_tree_grid
             sub_can = canopy_mask[j0 : j1 + 1, i0 : i1 + 1] & (
-                hag_src_c[j0 : j1 + 1, i0 : i1 + 1] >= max(1.6 if max_span > 280.0 else 1.35, tree_h * 0.45)
+                hag_src_c[j0 : j1 + 1, i0 : i1 + 1] >= max(1.6 if is_wide_valley_forestry_scan else 1.35, tree_h * 0.45)
             )
             yy, xx = np.ogrid[j0 : j1 + 1, i0 : i1 + 1]
             disk = ((yy - pj) ** 2 + (xx - pi) ** 2) <= (r_search_px ** 2)
             crown_px = max(4, int(np.count_nonzero(sub_can & disk)))
             crown_area_m2 = round(crown_px * cell_area, 2)
             crown_diam_m = round(2.0 * math.sqrt(crown_area_m2 / math.pi), 2)
-            if max_span <= 280.0:
+            if not is_wide_valley_forestry_scan:
                 ref_cx, ref_cy = pre_stem_xy if pre_stem_xy is not None else (te, tn)
                 el_crown_pts = c26[((c26[:, 2] - th_ground) >= max(1.05, tree_h * 0.38)) & (d26 <= 2.4)]
                 if len(el_crown_pts) >= 6:
@@ -1409,10 +1423,10 @@ class CategorizationHeuristicsMixin:
             dbh_cm = 0.0
             dbh_method = "crown_height_allometry"
             trunk_e, trunk_n = pre_stem_xy if pre_stem_xy is not None else (te, tn)
-            min_slice_h = 6.5 if max_span > 280.0 else 1.65
-            min_cand_pts = 8 if max_span > 280.0 else 6
+            min_slice_h = 6.5 if is_wide_valley_forestry_scan else 1.65
+            min_cand_pts = 8 if is_wide_valley_forestry_scan else 6
             if tree_h >= min_slice_h and bh_tree is not None:
-                r_bh_q = 0.78 if (max_span <= 280.0 and pre_stem_xy is not None) else min(2.2, max(1.05, crown_diam_m * 0.42))
+                r_bh_q = 0.78 if (not is_wide_valley_forestry_scan and pre_stem_xy is not None) else min(2.2, max(1.05, crown_diam_m * 0.42))
                 cand_idxs = bh_tree.query_ball_point([trunk_e, trunk_n], r=r_bh_q)
                 if len(cand_idxs) >= min_cand_pts:
                     pts_local_bh = bh_pts[cand_idxs, :2]
@@ -1424,7 +1438,7 @@ class CategorizationHeuristicsMixin:
                     if np.count_nonzero(tight_mask) >= 6:
                         pts_stem = pts_local_bh[tight_mask]
                         med_xy = np.median(pts_stem, axis=0)
-                        if max_span <= 280.0:
+                        if not is_wide_valley_forestry_scan:
                             trunk_e, trunk_n = float(med_xy[0]), float(med_xy[1])
                         dx_s = pts_stem[:, 0] - med_xy[0]
                         dy_s = pts_stem[:, 1] - med_xy[1]
@@ -1462,15 +1476,15 @@ class CategorizationHeuristicsMixin:
                                         dbh_cm = round(float(np.clip(raw_diam_cm, 7.5, max_allowed_dbh)), 1)
                                         dbh_method = "pratt_circle_1.3m_slice"
 
-            if max_span <= 280.0 and bh_tree is not None and len(bh_tree.query_ball_point([trunk_e, trunk_n], r=0.95)) > 2200:
+            if not is_wide_valley_forestry_scan and bh_tree is not None and len(bh_tree.query_ball_point([trunk_e, trunk_n], r=0.95)) > 2200:
                 continue
             # Ensure refined trunk_e, trunk_n is not inside a building or retaining wall
             ti_chk = int(np.clip((trunk_e - e_min) / res, 0, nx - 1))
             tj_chk = int(np.clip((trunk_n - n_min) / res, 0, ny - 1))
-            if max_span <= 280.0 and (bldg_occ_grid[tj_chk, ti_chk] or coplanar_wall_grid[tj_chk, ti_chk]):
+            if not is_wide_valley_forestry_scan and (bldg_occ_grid[tj_chk, ti_chk] or coplanar_wall_grid[tj_chk, ti_chk]):
                 continue
             # Post-Pratt verification on final (trunk_e, trunk_n): re-verify neck continuity, Rule 2, Rule 4, and paved plaza filter
-            if max_span <= 280.0 and all_xy_tree is not None:
+            if not is_wide_valley_forestry_scan and all_xy_tree is not None:
                 if _has_neck_gap_bollard_at(trunk_e, trunk_n, th_ground, idx_arr26, c26):
                     continue
                 dt_fin = np.hypot(c26[:, 0] - trunk_e, c26[:, 1] - trunk_n)
@@ -1524,8 +1538,8 @@ class CategorizationHeuristicsMixin:
                         ):
                             continue
 
-            nms_dist_m = 1.35 if (max_span <= 280.0 and pre_stem_xy is not None) else 1.85
-            if max_span <= 280.0 and any(
+            nms_dist_m = 1.35 if (not is_wide_valley_forestry_scan and (pre_stem_xy is not None or tree_h >= 6.0)) else 1.85
+            if not is_wide_valley_forestry_scan and any(
                 math.hypot(trunk_e - k["trunk_twd97"][0], trunk_n - k["trunk_twd97"][1]) < nms_dist_m for k in trees_list
             ):
                 continue
@@ -1561,9 +1575,9 @@ class CategorizationHeuristicsMixin:
         # CATEGORY 1: ROADS (Road Surface / 道路鋪面)
         # =================================================================================
         roads_list: List[Dict[str, Any]] = []
-        max_roads_cap = 12 if max_span > 280.0 else int(round(12 * area_scale))
+        max_roads_cap = 12 if is_wide_valley_forestry_scan else int(round(12 * area_scale))
         road_grid = road_grid_base.copy()
-        if max_span <= 280.0:
+        if not is_wide_valley_forestry_scan:
             r_planter_px = max(2, int(round(0.90 / res)))
             yy_grid, xx_grid = np.ogrid[0:ny, 0:nx]
             for t_obj in trees_list:
@@ -1714,10 +1728,10 @@ class CategorizationHeuristicsMixin:
         # CATEGORY 3: WATER BODIES & UN-MODELLED WATER VOIDS (水體與未建模水域空洞)
         # =================================================================================
         water_list: List[Dict[str, Any]] = []
-        # 3A: Detect Un-Modelled Water Voids (~raw_occ_closed) on wide river-valley / hydraulic dam scans (max_span > 280.0m)
-        # and depressed pond/moat water channels on medium-span terrain scans (120.0m < max_span <= 280.0m, e.g. QiHu moat)
+        # 3A: Detect Un-Modelled Water Voids (~raw_occ_closed) on wide river-valley / hydraulic dam scans
+        # and depressed pond/moat water channels on medium/large terrain scans (max_span > 120.0m, e.g. QiHu moat)
         if max_span > 120.0:
-            is_midspan_moat_scan = max_span <= 280.0
+            is_midspan_moat_scan = not is_wide_valley_forestry_scan
             occ_js, occ_is = np.nonzero(raw_occ_closed)
             hull_2d_mask = np.zeros((ny, nx), dtype=bool)
             if len(occ_is) >= 12:
@@ -1795,7 +1809,14 @@ class CategorizationHeuristicsMixin:
                 & enclosed_void_cell
                 & (dist_cells * res <= max_void_dist_m)
                 & (dist_cells * res >= 0.35)
-                & (void_ref_h_grid <= p18_site_h + 1.40)
+                & (
+                    void_ref_h_grid
+                    <= (
+                        np.maximum(p18_site_h + 1.40, local_dtm_p25_grid + 1.40)
+                        if is_midspan_moat_scan
+                        else (p18_site_h + 1.40)
+                    )
+                )
             )
             void_labeled, n_voids = nd_label(void_candidate)
             occ_dilated_3 = binary_dilation(raw_occ_closed, structure=np.ones((3, 3), dtype=bool))
@@ -1839,8 +1860,9 @@ class CategorizationHeuristicsMixin:
                     continue
                 shoreline_h_p20 = float(np.percentile(rim_h, 20.0))
                 shoreline_h_med = float(np.percentile(rim_h, 45.0))
+                loc_rim_ref_h = float(np.median(local_dtm_mean_grid[rim_mask]))
                 shoreline_elev_ok = (
-                    (shoreline_h_p20 <= p18_site_h - 1.10)
+                    (shoreline_h_p20 <= max(p18_site_h - 1.10, loc_rim_ref_h - 1.05))
                     if is_midspan_moat_scan
                     else (shoreline_h_p20 <= p25_site_h + 0.85)
                 )
@@ -1900,7 +1922,14 @@ class CategorizationHeuristicsMixin:
             & (ortho_exg < 0.03)
             & (ortho_lum <= 0.48)
             & (~road_grid)
-            & (h_dtm_grid <= p25_site_h + 2.0)
+            & (
+                h_dtm_grid
+                <= (
+                    (p25_site_h + 2.0)
+                    if is_wide_valley_forestry_scan
+                    else np.maximum(p25_site_h + 2.0, local_dtm_p25_grid + 2.0)
+                )
+            )
         )
         spec_water_mask = binary_opening(spec_water_mask, structure=np.ones((2, 2), dtype=bool))
         for sp in _mask_to_polygons(spec_water_mask, min_area_m2=35.0, simplify_tol=0.40):
@@ -1946,7 +1975,7 @@ class CategorizationHeuristicsMixin:
 
         # Extract compact elevated Material Stockpile Mounds / Earthwork Pads (S1..S6), excluding terraces, walls, buildings & blue/white tarps
         stockpiles_list: List[Dict[str, Any]] = []
-        if max_span > 280.0:
+        if is_wide_valley_forestry_scan:
             mound_grid = (
                 raw_occ_closed
                 & (hag_grid >= 0.22)
@@ -2048,7 +2077,7 @@ class CategorizationHeuristicsMixin:
         # 2. Low Vegetation / Grass / Shrubs (低矮植生與草坡)
         grass_tri = (
             ((tri_hag < 1.8) & (exg >= 0.04) & (nz_abs >= 0.55))
-            if max_span > 280.0
+            if is_wide_valley_forestry_scan
             else ((tri_hag_tree < 1.8) & (exg >= 0.032) & (nz_abs >= 0.55))
         )
         grass_area_2d = float(area_2d[grass_tri].sum())
@@ -2060,12 +2089,12 @@ class CategorizationHeuristicsMixin:
         revet_area_3d = float(area_3d[revet_tri].sum())
 
         # 4. Buildings / Roofs / Pavilions (建築物與棚架屋頂)
-        bldg_tri = ((tri_hag if max_span > 280.0 else tri_hag_tree) >= 2.2) & (nz_abs >= 0.78) & (exg < 0.035) & (tri_sigma_h <= 0.12)
+        bldg_tri = ((tri_hag if is_wide_valley_forestry_scan else tri_hag_tree) >= 2.2) & (nz_abs >= 0.78) & (exg < 0.035) & (tri_sigma_h <= 0.12)
         bldg_area_2d = float(area_2d[bldg_tri].sum())
         bldg_area_3d = float(area_3d[bldg_tri].sum())
 
         # 5. Drainage Channels & Curbs (排水溝渠與緣石)
-        hag_curb_src = tri_hag if max_span > 280.0 else tri_hag_local
+        hag_curb_src = tri_hag if is_wide_valley_forestry_scan else tri_hag_local
         curb_tri = (hag_curb_src >= 0.08) & (hag_curb_src < 0.35) & (nz_abs >= 0.34) & (nz_abs < 0.72) & (exg < 0.04)
         curb_area_2d = float(area_2d[curb_tri].sum())
         curb_area_3d = float(area_3d[curb_tri].sum())
@@ -2085,7 +2114,7 @@ class CategorizationHeuristicsMixin:
         clutter_est_cnt = max(1, int(round(clutter_area_2d / 14.0))) if clutter_area_2d >= 2.0 else 0
 
         # 7. High Canopy Trees Total Area
-        if max_span > 280.0:
+        if is_wide_valley_forestry_scan:
             canopy_tri = (tri_hag >= 1.8) & (exg >= 0.032)
             canopy_area_2d = float(area_2d[canopy_tri].sum())
             canopy_area_3d = float(area_3d[canopy_tri].sum())
@@ -2253,17 +2282,42 @@ class CategorizationHeuristicsMixin:
         # Stage 3: Gemini Multimodal Ground-Level Photo Referee & Active Per-Region Semantic Labeling
         cam_catalog = self._load_or_build_camera_catalog(scan)
         cand_tags: List[Dict[str, Any]] = []
-        for r in roads_list[:3]:
+        seen_cands: set = set()
+        for r in roads_list[:2]:
+            seen_cands.add(r["id"])
             cand_tags.append({"tag": r["id"], "category": "roads", "e": r["center_twd97"][0], "n": r["center_twd97"][1], "h": r["center_twd97"][2], "color": (245, 158, 11), "ambiguous": False})
         for w in water_list[:2]:
+            seen_cands.add(w["id"])
             cand_tags.append({"tag": w["id"], "category": "water", "e": w["center_twd97"][0], "n": w["center_twd97"][1], "h": w["center_twd97"][2], "color": (6, 182, 212), "ambiguous": False})
-        for wl in walls_list[:3]:
+        for wl in walls_list[:2]:
+            seen_cands.add(wl["id"])
             cand_tags.append({"tag": wl["id"], "category": "walls", "e": wl["center_twd97"][0], "n": wl["center_twd97"][1], "h": wl["center_twd97"][2], "color": (244, 63, 94), "ambiguous": False})
-        for tr in trees_list[:6]:
-            is_ambig_tr = tr.get("dbh_method") == "crown_height_allometry" and float(tr.get("height_m", 5.0)) < 3.5
-            cand_tags.append({"tag": tr["id"], "category": "trees", "e": tr["trunk_twd97"][0], "n": tr["trunk_twd97"][1], "h": tr["trunk_twd97"][2] + 1.3, "color": (16, 185, 129), "ambiguous": is_ambig_tr})
-        for sp_o in stockpiles_list[:2]:
+        for tr in trees_list[:4]:
+            seen_cands.add(tr["id"])
+            cand_tags.append({"tag": tr["id"], "category": "trees", "e": tr["trunk_twd97"][0], "n": tr["trunk_twd97"][1], "h": tr["trunk_twd97"][2] + 1.3, "color": (16, 185, 129), "ambiguous": False})
+        for sp_o in stockpiles_list[:1]:
+            seen_cands.add(sp_o["id"])
             cand_tags.append({"tag": sp_o["id"], "category": "stockpiles", "e": sp_o["center_twd97"][0], "n": sp_o["center_twd97"][1], "h": sp_o["center_twd97"][2], "color": (217, 119, 6), "ambiguous": False})
+
+        # Select genuine borderline / ambiguous candidates across full lists for Ground-Level Mobile Photo Referee
+        borderline_trees = [
+            tr for tr in trees_list
+            if tr["id"] not in seen_cands
+            and tr.get("dbh_method") == "crown_height_allometry"
+            and float(tr.get("height_m", 5.0)) < 1.85
+            and float(tr.get("crown_diameter_m", 2.0)) < 1.25
+        ]
+        for tr in borderline_trees[:3]:
+            seen_cands.add(tr["id"])
+            cand_tags.append({"tag": tr["id"], "category": "trees", "e": tr["trunk_twd97"][0], "n": tr["trunk_twd97"][1], "h": tr["trunk_twd97"][2] + 1.3, "color": (16, 185, 129), "ambiguous": True})
+        if len(roads_list) > 2 and roads_list[-1]["id"] not in seen_cands and float(roads_list[-1].get("planar_area_m2", 99.0)) < 24.0:
+            r_amb = roads_list[-1]
+            seen_cands.add(r_amb["id"])
+            cand_tags.append({"tag": r_amb["id"], "category": "roads", "e": r_amb["center_twd97"][0], "n": r_amb["center_twd97"][1], "h": r_amb["center_twd97"][2], "color": (245, 158, 11), "ambiguous": True})
+        if len(walls_list) > 2 and walls_list[-1]["id"] not in seen_cands and float(walls_list[-1].get("vertical_area_m2", 99.0)) < 3.0:
+            w_amb = walls_list[-1]
+            seen_cands.add(w_amb["id"])
+            cand_tags.append({"tag": w_amb["id"], "category": "walls", "e": w_amb["center_twd97"][0], "n": w_amb["center_twd97"][1], "h": w_amb["center_twd97"][2], "color": (244, 63, 94), "ambiguous": True})
 
         ai_info = self._refine_categorization_with_gemini_multimodal(
             scan,
@@ -2276,6 +2330,60 @@ class CategorizationHeuristicsMixin:
             cam_catalog,
         )
         photo_matches = ai_info.get("photo_matches") if isinstance(ai_info.get("photo_matches"), dict) else {}
+
+        # Apply Gemini Vision Referee false-positive rejections (if any) and recompute KPIs
+        rej_tags = set(str(x).strip() for x in (ai_info.get("rejected_false_positive_tags") or []) if str(x).strip())
+        if rej_tags:
+            roads_list = [r for r in roads_list if r["id"] not in rej_tags]
+            trees_list = [t for t in trees_list if t["id"] not in rej_tags]
+            water_list = [w for w in water_list if w["id"] not in rej_tags]
+            walls_list = [wl for wl in walls_list if wl["id"] not in rej_tags]
+            stockpiles_list = [sp_o for sp_o in stockpiles_list if sp_o["id"] not in rej_tags]
+            for idx_r, r_obj in enumerate(roads_list, 1):
+                r_obj["id"] = f"R{idx_r}"
+            for idx_t, t_obj in enumerate(trees_list, 1):
+                t_obj["id"] = f"T{idx_t}"
+                t_obj["name"] = f"喬木 T{idx_t}"
+            for idx_w, w_obj in enumerate(water_list, 1):
+                w_obj["id"] = f"W{idx_w}"
+            for idx_wl, wl_obj in enumerate(walls_list, 1):
+                wl_obj["id"] = f"WL{idx_wl}"
+                wl_obj["name"] = f"擋土牆/垂直牆面 WL{idx_wl}"
+            for idx_s, sp_obj in enumerate(stockpiles_list, 1):
+                sp_obj["id"] = f"S{idx_s}"
+                sp_obj["name"] = f"土石堆置區 S{idx_s} (Material Stockpile Mound)"
+            summary_kpi["roads_count"] = len(roads_list)
+            summary_kpi["roads_planar_area_m2"] = round(sum(r["planar_area_m2"] for r in roads_list), 2)
+            summary_kpi["roads_planar_area_ping"] = round(summary_kpi["roads_planar_area_m2"] * 0.3025, 2)
+            summary_kpi["roads_surface_area_3d_m2"] = round(sum(r["surface_area_3d_m2"] for r in roads_list), 2)
+            summary_kpi["trees_count"] = len(trees_list)
+            summary_kpi["trees_mean_dbh_cm"] = round(float(np.mean([t["dbh_cm"] for t in trees_list])), 1) if trees_list else 0.0
+            summary_kpi["trees_max_dbh_cm"] = round(float(np.max([t["dbh_cm"] for t in trees_list])), 1) if trees_list else 0.0
+            summary_kpi["trees_mean_height_m"] = round(float(np.mean([t["height_m"] for t in trees_list])), 2) if trees_list else 0.0
+            summary_kpi["water_count"] = len(water_list)
+            summary_kpi["water_planar_area_m2"] = round(sum(w["planar_area_m2"] for w in water_list), 2)
+            summary_kpi["water_planar_area_ping"] = round(summary_kpi["water_planar_area_m2"] * 0.3025, 2)
+            summary_kpi["walls_count"] = len(walls_list)
+            summary_kpi["walls_total_length_m"] = round(sum(w["length_m"] for w in walls_list), 2)
+            summary_kpi["walls_vertical_area_m2"] = round(sum(w["vertical_area_m2"] for w in walls_list), 2)
+            summary_kpi["stockpiles_count"] = len(stockpiles_list)
+            for ec in extended_categories:
+                if ec["key"] == "roads":
+                    ec["count"] = len(roads_list)
+                    ec["planar_area_m2"] = summary_kpi["roads_planar_area_m2"]
+                    ec["planar_area_ping"] = summary_kpi["roads_planar_area_ping"]
+                    ec["surface_area_3d_m2"] = summary_kpi["roads_surface_area_3d_m2"]
+                elif ec["key"] == "trees":
+                    ec["count"] = len(trees_list)
+                elif ec["key"] == "water_bodies":
+                    ec["count"] = len(water_list)
+                    ec["planar_area_m2"] = summary_kpi["water_planar_area_m2"]
+                    ec["planar_area_ping"] = summary_kpi["water_planar_area_ping"]
+                elif ec["key"] == "walls":
+                    ec["count"] = len(walls_list)
+                    ec["surface_area_3d_m2"] = summary_kpi["walls_vertical_area_m2"]
+                elif ec["key"] == "bare_earth_stockpiles":
+                    ec["count"] = len(stockpiles_list)
 
         # Link every detected 3D feature to its best calibrated mobile phone photo via frustum projection
         if cam_catalog and hasattr(self, "_match_feature_to_rtk_photo_fast"):
@@ -2298,6 +2406,10 @@ class CategorizationHeuristicsMixin:
         ai_road_subtype = str(ai_info.get("road_corridor_subtype") or "paved_asphalt_concrete").strip()
         ai_road_zh = str(ai_info.get("road_corridor_label_zh") or "").strip() or "道路鋪面"
         ai_road_en = str(ai_info.get("road_corridor_label_en") or "").strip() or "Paved Road Corridor"
+        if ai_road_zh.startswith("R1") or len(ai_road_zh) < 2:
+            ai_road_zh = "道路鋪面"
+        if ai_road_en.startswith("R1") or len(ai_road_en) < 3:
+            ai_road_en = "Paved Road Corridor"
         ai_water_zh = str(ai_info.get("water_body_label_zh") or "").strip() or "河道水域空洞"
 
         for r_obj in roads_list:
@@ -2337,6 +2449,7 @@ class CategorizationHeuristicsMixin:
             "project_group": scan.get("project_group") or "Unassigned Site",
             "crs": TWD97_TWVD2001_LABEL,
             "crs_short": TWD97_TWVD2001_SHORT,
+            "anchor_twd97": {"e": round(ce, 3), "n": round(cn, 3), "h": round(ch, 3)},
             "generated_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             "ai_verified": ai_info.get("ai_verified", True),
             "ai_model": ai_info.get("ai_model", "Gemini 3.6 Flash Multimodal + 3D Geometry"),
@@ -2413,31 +2526,31 @@ class CategorizationHeuristicsMixin:
             w.writerow([])
 
             w.writerow(["=== 2. ROADS SCHEDULE (道路鋪面清單) ==="])
-            w.writerow(["ID", "Name", "2D Planar Area (m²)", "Area (坪)", "3D Surface Area (m²)", "Mean Width (m)", "Perimeter (m)", "Mean Slope (%)", "Center E (m)", "Center N (m)", "Elev H (m)"])
+            w.writerow(["ID", "Name", "2D Planar Area (m²)", "Area (坪)", "3D Surface Area (m²)", "Mean Width (m)", "Perimeter (m)", "Mean Slope (%)", "Center E (m)", "Center N (m)", "Elev H (m)", "Verified RTK Photo"])
             for r in data["roads"]:
                 c_twd = r["center_twd97"]
-                w.writerow([r["id"], r["name"], r["planar_area_m2"], r["planar_area_ping"], r["surface_area_3d_m2"], r["mean_width_m"], r["perimeter_m"], r["mean_slope_pct"], c_twd[0], c_twd[1], c_twd[2]])
+                w.writerow([r["id"], r["name"], r["planar_area_m2"], r["planar_area_ping"], r["surface_area_3d_m2"], r["mean_width_m"], r["perimeter_m"], r["mean_slope_pct"], c_twd[0], c_twd[1], c_twd[2], r.get("verified_photo") or "—"])
             w.writerow([])
 
             w.writerow(["=== 3. TREES & 1.3M TRUNK DBH SCHEDULE (喬木與胸高直徑 DBH 清冊) ==="])
-            w.writerow(["Tree ID", "Height (m)", "Trunk DBH at 1.3m (cm)", "DBH Method", "Crown Diameter (m)", "Crown Area (m²)", "Trunk Easting E (m)", "Trunk Northing N (m)", "Ground Elev H (m)"])
+            w.writerow(["Tree ID", "Height (m)", "Trunk DBH at 1.3m (cm)", "DBH Method", "Crown Diameter (m)", "Crown Area (m²)", "Trunk Easting E (m)", "Trunk Northing N (m)", "Ground Elev H (m)", "Verified RTK Photo"])
             for t in data["trees"]:
                 tr_twd = t["trunk_twd97"]
-                w.writerow([t["id"], t["height_m"], t["dbh_cm"], t["dbh_method"], t["crown_diameter_m"], t["crown_area_m2"], tr_twd[0], tr_twd[1], tr_twd[2]])
+                w.writerow([t["id"], t["height_m"], t["dbh_cm"], t["dbh_method"], t["crown_diameter_m"], t["crown_area_m2"], tr_twd[0], tr_twd[1], tr_twd[2], t.get("verified_photo") or "—"])
             w.writerow([])
 
             w.writerow(["=== 4. WATER BODIES & UN-MODELLED WATER VOIDS (水體與未建模河道水域空洞) ==="])
-            w.writerow(["Water ID", "Name", "Detection Mode", "Shoreline Water Level TWVD2001 (m)", "Planar Area (m²)", "Area (坪)", "Perimeter (m)", "Mean Width (m)", "Center E (m)", "Center N (m)"])
+            w.writerow(["Water ID", "Name", "Detection Mode", "Shoreline Water Level TWVD2001 (m)", "Planar Area (m²)", "Area (坪)", "Perimeter (m)", "Mean Width (m)", "Center E (m)", "Center N (m)", "Verified RTK Photo"])
             for wb in data["water_bodies"]:
                 c_twd = wb["center_twd97"]
-                w.writerow([wb["id"], wb["name"], wb["detection_label_zh"], wb["water_level_twvd2001_m"], wb["planar_area_m2"], wb["planar_area_ping"], wb["perimeter_m"], wb["mean_width_m"], c_twd[0], c_twd[1]])
+                w.writerow([wb["id"], wb["name"], wb["detection_label_zh"], wb["water_level_twvd2001_m"], wb["planar_area_m2"], wb["planar_area_ping"], wb["perimeter_m"], wb["mean_width_m"], c_twd[0], c_twd[1], wb.get("verified_photo") or "—"])
             w.writerow([])
 
             w.writerow(["=== 5. RETAINING & BUILDING WALLS (擋土牆與垂直結構牆面) ==="])
-            w.writerow(["Wall ID", "Name", "Length (m)", "Mean Height (m)", "Max Height (m)", "3D Vertical Area (m²)", "Azimuth (°)", "Tilt (°)", "Center E (m)", "Center N (m)", "Center H (m)"])
+            w.writerow(["Wall ID", "Name", "Length (m)", "Mean Height (m)", "Max Height (m)", "3D Vertical Area (m²)", "Azimuth (°)", "Tilt (°)", "Center E (m)", "Center N (m)", "Center H (m)", "Verified RTK Photo"])
             for wl in data["walls"]:
                 c_twd = wl["center_twd97"]
-                w.writerow([wl["id"], wl["name"], wl["length_m"], wl["mean_height_m"], wl["max_height_m"], wl["vertical_area_m2"], wl["azimuth_deg"], wl["tilt_deg"], c_twd[0], c_twd[1], c_twd[2]])
+                w.writerow([wl["id"], wl["name"], wl["length_m"], wl["mean_height_m"], wl["max_height_m"], wl["vertical_area_m2"], wl["azimuth_deg"], wl["tilt_deg"], c_twd[0], c_twd[1], c_twd[2], wl.get("verified_photo") or "—"])
 
         # 2. Write Printable Engineering HTML Report
         cat_rows = "".join(
@@ -2449,25 +2562,25 @@ class CategorizationHeuristicsMixin:
         road_rows = "".join(
             f"<tr><td><b>{r['id']}</b></td><td>{r['name']}</td><td>{r['planar_area_m2']:,.2f} m² ({r['planar_area_ping']:,.2f} 坪)</td>"
             f"<td>{r['surface_area_3d_m2']:,.2f} m²</td><td>{r['mean_width_m']:.2f} m</td><td>{r['mean_slope_pct']}%</td>"
-            f"<td>E:{r['center_twd97'][0]:.2f}, N:{r['center_twd97'][1]:.2f}, H:+{r['center_twd97'][2]:.2f}m</td></tr>"
+            f"<td>E:{r['center_twd97'][0]:.2f}, N:{r['center_twd97'][1]:.2f}, H:+{r['center_twd97'][2]:.2f}m</td><td>{r.get('verified_photo') or '—'}</td></tr>"
             for r in data["roads"]
         )
         tree_rows = "".join(
             f"<tr><td><b>{t['id']}</b></td><td><b>{t['dbh_cm']:.1f} cm</b></td><td>{t['height_m']:.2f} m</td>"
             f"<td>{t['crown_diameter_m']:.2f} m ({t['crown_area_m2']:.1f} m²)</td><td>{t['dbh_method']}</td>"
-            f"<td>E:{t['trunk_twd97'][0]:.2f}, N:{t['trunk_twd97'][1]:.2f}, H:+{t['trunk_twd97'][2]:.2f}m</td></tr>"
+            f"<td>E:{t['trunk_twd97'][0]:.2f}, N:{t['trunk_twd97'][1]:.2f}, H:+{t['trunk_twd97'][2]:.2f}m</td><td>{t.get('verified_photo') or '—'}</td></tr>"
             for t in data["trees"]
         )
         water_rows = "".join(
             f"<tr><td><b>{wb['id']}</b></td><td>{wb['name']}</td><td>{wb['detection_label_zh']}</td>"
             f"<td><b>+{wb['water_level_twvd2001_m']:.2f} m</b></td><td>{wb['planar_area_m2']:,.2f} m² ({wb['planar_area_ping']:,.2f} 坪)</td>"
-            f"<td>{wb['perimeter_m']:.1f} m</td></tr>"
+            f"<td>{wb['perimeter_m']:.1f} m</td><td>{wb.get('verified_photo') or '—'}</td></tr>"
             for wb in data["water_bodies"]
         )
         wall_rows = "".join(
             f"<tr><td><b>{wl['id']}</b></td><td>{wl['name']}</td><td>{wl['length_m']:.2f} m</td>"
             f"<td>{wl['mean_height_m']:.2f} m (Max {wl['max_height_m']:.2f} m)</td><td><b>{wl['vertical_area_m2']:,.2f} m²</b></td>"
-            f"<td>{wl['azimuth_deg']}° / {wl['tilt_deg']}°</td><td>E:{wl['center_twd97'][0]:.2f}, N:{wl['center_twd97'][1]:.2f}</td></tr>"
+            f"<td>{wl['azimuth_deg']}° / {wl['tilt_deg']}°</td><td>E:{wl['center_twd97'][0]:.2f}, N:{wl['center_twd97'][1]:.2f}</td><td>{wl.get('verified_photo') or '—'}</td></tr>"
             for wl in data["walls"]
         )
 
@@ -2548,23 +2661,23 @@ class CategorizationHeuristicsMixin:
     <tbody>{cat_rows}</tbody>
   </table>
   <table>
-    <thead><tr><th colspan="7">2. Paved Road Corridors Schedule (道路鋪面清單)</th></tr>
-    <tr><th>ID</th><th>Name</th><th>2D Planar Area</th><th>3D Surface Area</th><th>Mean Width</th><th>Mean Grade</th><th>Centroid (TWD97)</th></tr></thead>
+    <thead><tr><th colspan="8">2. Paved Road Corridors Schedule (道路鋪面清單)</th></tr>
+    <tr><th>ID</th><th>Name</th><th>2D Planar Area</th><th>3D Surface Area</th><th>Mean Width</th><th>Mean Grade</th><th>Centroid (TWD97)</th><th>Verified RTK Photo</th></tr></thead>
     <tbody>{road_rows}</tbody>
   </table>
   <table>
-    <thead><tr><th colspan="6">3. Water Bodies & Un-Modelled Water Voids Schedule (水域與未建模河道空洞清單)</th></tr>
-    <tr><th>ID</th><th>Name</th><th>Detection Mode</th><th>Water Level (TWVD2001)</th><th>Planar Area</th><th>Perimeter</th></tr></thead>
+    <thead><tr><th colspan="7">3. Water Bodies & Un-Modelled Water Voids Schedule (水域與未建模河道空洞清單)</th></tr>
+    <tr><th>ID</th><th>Name</th><th>Detection Mode</th><th>Water Level (TWVD2001)</th><th>Planar Area</th><th>Perimeter</th><th>Verified RTK Photo</th></tr></thead>
     <tbody>{water_rows}</tbody>
   </table>
   <table>
-    <thead><tr><th colspan="7">4. Retaining & Structural Walls Schedule (擋土牆與垂直牆面清單)</th></tr>
-    <tr><th>ID</th><th>Name</th><th>Length</th><th>Height (Mean / Max)</th><th>3D Vertical Area</th><th>Azimuth / Tilt</th><th>Centroid (TWD97)</th></tr></thead>
+    <thead><tr><th colspan="8">4. Retaining & Structural Walls Schedule (擋土牆與垂直牆面清單)</th></tr>
+    <tr><th>ID</th><th>Name</th><th>Length</th><th>Height (Mean / Max)</th><th>3D Vertical Area</th><th>Azimuth / Tilt</th><th>Centroid (TWD97)</th><th>Verified RTK Photo</th></tr></thead>
     <tbody>{wall_rows}</tbody>
   </table>
   <table>
-    <thead><tr><th colspan="6">5. Individual Trees & 1.3m Breast-Height Trunk DBH Schedule (喬木樹高、冠幅與 1.3m 胸徑 DBH 清冊)</th></tr>
-    <tr><th>Tree ID</th><th>1.3m Trunk DBH (胸徑)</th><th>Tree Height (樹高)</th><th>Crown Diam & Area (冠幅)</th><th>DBH Fit Method</th><th>Trunk Base (TWD97 E, N, H)</th></tr></thead>
+    <thead><tr><th colspan="7">5. Individual Trees & 1.3m Breast-Height Trunk DBH Schedule (喬木樹高、冠幅與 1.3m 胸徑 DBH 清冊)</th></tr>
+    <tr><th>Tree ID</th><th>1.3m Trunk DBH (胸徑)</th><th>Tree Height (樹高)</th><th>Crown Diam & Area (冠幅)</th><th>DBH Fit Method</th><th>Trunk Base (TWD97 E, N, H)</th><th>Verified RTK Photo</th></tr></thead>
     <tbody>{tree_rows}</tbody>
   </table>
 </body>

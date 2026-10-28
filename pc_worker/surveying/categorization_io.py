@@ -821,7 +821,15 @@ class CategorizationIoMixin:
             d_vec = cam.get("down")
             f_vec = cam.get("forward")
             if not (isinstance(r_vec, list) and isinstance(d_vec, list) and isinstance(f_vec, list) and len(f_vec) == 3):
-                continue
+                yr = math.radians(float(cam.get("yaw_deg") or 0.0))
+                pr = math.radians(float(cam.get("pitch_deg") or -18.0))
+                f_vec = [math.sin(yr) * math.cos(pr), math.cos(yr) * math.cos(pr), math.sin(pr)]
+                r_vec = [math.cos(yr), -math.sin(yr), 0.0]
+                d_vec = [
+                    f_vec[1] * r_vec[2] - f_vec[2] * r_vec[1],
+                    f_vec[2] * r_vec[0] - f_vec[0] * r_vec[2],
+                    f_vec[0] * r_vec[1] - f_vec[1] * r_vec[0],
+                ]
             zc = dx * f_vec[0] + dy * f_vec[1] + dz * f_vec[2]
             if zc <= 0.45:
                 continue
@@ -833,8 +841,13 @@ class CategorizationIoMixin:
             v = 0.5 + fy_n * (yc / zc)
             if not (0.08 <= u <= 0.92 and 0.08 <= v <= 0.92):
                 continue
+            abs_p = str(cam.get("abs_path") or "")
+            if abs_p and not os.path.isfile(abs_p):
+                continue
             off_center = math.hypot(u - 0.5, v - 0.5)
-            score = abs(dist_3d - 4.8) * 0.45 + (3.5 if dist_3d < 1.6 else 0.0) + off_center * 6.5
+            dist_penalty = abs(dist_3d - 4.8) * 0.45 + (3.5 if dist_3d < 1.6 else 0.0)
+            cal_bonus = 0.0 if cam.get("calibrated", True) else 4.0
+            score = dist_penalty + off_center * 6.5 + cal_bonus
             if score < best_score:
                 best_score = score
                 best_info = {
@@ -1555,6 +1568,16 @@ class CategorizationIoMixin:
         ce_a = float(anc.get("e") or 0.0)
         cn_a = float(anc.get("n") or 0.0)
         ch_a = float(anc.get("h") or 0.0)
+        if abs(ce_a) <= 100.0 or abs(cn_a) <= 100.0:
+            try:
+                scan_rec = self._resolve_scan_record(scan_id)
+                ce_a = float(scan_rec.get("twd97_e") or ce_a)
+                cn_a = float(scan_rec.get("twd97_n") or cn_a)
+                ch_a = float(scan_rec.get("twd97_h") or ch_a)
+                if abs(ce_a) > 100.0 and abs(cn_a) > 100.0:
+                    res["anchor_twd97"] = {"e": round(ce_a, 3), "n": round(cn_a, 3), "h": round(ch_a, 3)}
+            except Exception:
+                pass
         if abs(ce_a) > 100.0 and abs(cn_a) > 100.0:
             for t_o in added_trees:
                 tw = t_o.get("trunk_twd97")
