@@ -867,10 +867,11 @@ class CategorizationIoMixin:
         target_h: float,
         tag_label: str,
         color_rgb: Tuple[int, int, int] = (16, 185, 129),
+        photo_cache: Optional[Dict[str, Any]] = None,
     ) -> Optional[Dict[str, Any]]:
         """
         Projects a 3D feature (TWD97 E, N, TWVD2001 H) onto calibrated mobile phone photos in `camera_catalog`,
-        selects the clearest ground-level view, applies EXIF orientation, and returns a 320x320 annotated PIL crop
+        selects the clearest ground-level view, applies EXIF orientation, and returns a 240x240 annotated PIL crop
         plus camera metadata (`filename`, `u`, `v`, `distance_m`).
         """
         if not camera_catalog or Image is None:
@@ -878,7 +879,6 @@ class CategorizationIoMixin:
         from PIL import ImageDraw, ImageOps
 
         best_cand: Optional[Tuple[float, float, float, float, Dict[str, Any], str]] = None
-        scan_id = str(scan.get("scan_id") or "")
         for cam in camera_catalog:
             try:
                 dx = target_e - float(cam["e"])
@@ -929,35 +929,42 @@ class CategorizationIoMixin:
 
         _, dist_3d, u, v, cam, abs_p = best_cand
         try:
-            with Image.open(abs_p) as raw_im:
-                im = ImageOps.exif_transpose(raw_im).convert("RGB")
-                w_im, h_im = im.size
-                cx = int(np.clip(u * w_im, 0, w_im - 1))
-                cy = int(np.clip(v * h_im, 0, h_im - 1))
-                half_box = int(max(120, min(w_im, h_im) * 0.30))
-                x0 = max(0, min(w_im - 2 * half_box, cx - half_box))
-                y0 = max(0, min(h_im - 2 * half_box, cy - half_box))
-                x1 = min(w_im, x0 + 2 * half_box)
-                y1 = min(h_im, y0 + 2 * half_box)
-                crop = im.crop((x0, y0, x1, y1)).resize((320, 320), Image.Resampling.LANCZOS)
-                rx = int(np.clip((cx - x0) * 320.0 / max(1, x1 - x0), 16, 304))
-                ry = int(np.clip((cy - y0) * 320.0 / max(1, y1 - y0), 16, 304))
-                cdraw = ImageDraw.Draw(crop)
-                cdraw.ellipse([rx - 18, ry - 18, rx + 18, ry + 18], outline=color_rgb, width=3)
-                cdraw.line([rx - 26, ry, rx - 8, ry], fill=color_rgb, width=2)
-                cdraw.line([rx + 8, ry, rx + 26, ry], fill=color_rgb, width=2)
-                cdraw.line([rx, ry - 26, rx, ry - 8], fill=color_rgb, width=2)
-                cdraw.line([rx, ry + 8, rx, ry + 26], fill=color_rgb, width=2)
-                hdr = f"{tag_label} ({dist_3d:.1f}m)"
-                cdraw.rectangle([4, 4, 12 + len(hdr) * 7, 24], fill=(15, 23, 42))
-                cdraw.text((8, 7), hdr, fill=color_rgb)
-                return {
-                    "crop_img": crop,
-                    "filename": str(cam.get("filename") or os.path.basename(abs_p)),
-                    "u": round(float(u), 4),
-                    "v": round(float(v), 4),
-                    "distance_m": round(float(dist_3d), 2),
-                }
+            im = photo_cache.get(abs_p) if isinstance(photo_cache, dict) else None
+            if im is None:
+                with Image.open(abs_p) as raw_im:
+                    im = ImageOps.exif_transpose(raw_im).convert("RGB")
+                if isinstance(photo_cache, dict):
+                    if len(photo_cache) >= 28:
+                        photo_cache.pop(next(iter(photo_cache)), None)
+                    photo_cache[abs_p] = im
+            w_im, h_im = im.size
+            cx = int(np.clip(u * w_im, 0, w_im - 1))
+            cy = int(np.clip(v * h_im, 0, h_im - 1))
+            half_box = int(max(120, min(w_im, h_im) * 0.30))
+            x0 = max(0, min(w_im - 2 * half_box, cx - half_box))
+            y0 = max(0, min(h_im - 2 * half_box, cy - half_box))
+            x1 = min(w_im, x0 + 2 * half_box)
+            y1 = min(h_im, y0 + 2 * half_box)
+            tile_sz = 240
+            crop = im.crop((x0, y0, x1, y1)).resize((tile_sz, tile_sz), Image.Resampling.BILINEAR)
+            rx = int(np.clip((cx - x0) * float(tile_sz) / max(1, x1 - x0), 14, tile_sz - 14))
+            ry = int(np.clip((cy - y0) * float(tile_sz) / max(1, y1 - y0), 14, tile_sz - 14))
+            cdraw = ImageDraw.Draw(crop)
+            cdraw.ellipse([rx - 15, ry - 15, rx + 15, ry + 15], outline=color_rgb, width=3)
+            cdraw.line([rx - 22, ry, rx - 7, ry], fill=color_rgb, width=2)
+            cdraw.line([rx + 7, ry, rx + 22, ry], fill=color_rgb, width=2)
+            cdraw.line([rx, ry - 22, rx, ry - 7], fill=color_rgb, width=2)
+            cdraw.line([rx, ry + 7, rx, ry + 22], fill=color_rgb, width=2)
+            hdr = f"{tag_label} ({dist_3d:.1f}m)"
+            cdraw.rectangle([4, 4, 12 + len(hdr) * 7, 22], fill=(15, 23, 42))
+            cdraw.text((8, 6), hdr, fill=color_rgb)
+            return {
+                "crop_img": crop,
+                "filename": str(cam.get("filename") or os.path.basename(abs_p)),
+                "u": round(float(u), 4),
+                "v": round(float(v), 4),
+                "distance_m": round(float(dist_3d), 2),
+            }
         except Exception:
             return None
 
@@ -974,9 +981,9 @@ class CategorizationIoMixin:
     ) -> Dict[str, Any]:
         """
         Stage 3: Gemini Multimodal Vision AI Verification & Ground-Level Mobile Photo Referee.
-        Projects 3D candidate detections (Trees, Roads, Water Voids, Walls, Stockpiles) onto calibrated
-        PIX4Dcatch mobile phone photos to build a multi-crop Ground-Level Contact Sheet alongside the
-        Top-Down True Orthophoto, calls Gemini Vision (`gemini-2.5-flash` / `gemini-3.6-flash`), and
+        Projects ALL 3D candidate detections (every prospective Tree T1..TN + Roads, Water Voids, Walls, Stockpiles)
+        onto calibrated PIX4Dcatch mobile phone photos to build multi-crop Ground-Level Contact Sheet(s) alongside
+        the Top-Down True Orthophoto, calls Gemini Vision (`gemini-2.5-flash` / `gemini-3.6-flash`), and
         returns verified photo citations + bilingual assessment + false-positive pruning tags.
         """
         import base64
@@ -997,11 +1004,12 @@ class CategorizationIoMixin:
         walls_cnt = summary_data.get("walls_count", 0)
         walls_area = summary_data.get("walls_vertical_area_m2", 0.0)
 
-        # Project candidate 3D coordinates onto calibrated ground-level mobile phone photos
+        # Project ALL candidate 3D coordinates (every prospective tree + key regions) onto calibrated mobile phone photos
         photo_matches: Dict[str, Dict[str, Any]] = {}
         crop_tiles: List[Tuple[str, Any]] = []
+        photo_cache: Dict[str, Any] = {}
         if camera_catalog and Image is not None:
-            for c_info in candidates_info[:16]:
+            for c_info in candidates_info[:125]:
                 tag = str(c_info.get("tag") or "")
                 if not tag:
                     continue
@@ -1009,7 +1017,9 @@ class CategorizationIoMixin:
                 cn_i = float(c_info.get("n") or 0.0)
                 ch_i = float(c_info.get("h") or scan.get("twd97_h") or 0.0)
                 col = tuple(c_info.get("color") or (16, 185, 129))
-                crop_res = self._crop_rtk_photo_for_3d_feature(scan, camera_catalog, ce_i, cn_i, ch_i, tag, col)
+                crop_res = self._crop_rtk_photo_for_3d_feature(
+                    scan, camera_catalog, ce_i, cn_i, ch_i, tag, col, photo_cache=photo_cache
+                )
                 if crop_res is not None:
                     photo_matches[tag] = {
                         "verified_photo": crop_res["filename"],
@@ -1018,47 +1028,49 @@ class CategorizationIoMixin:
                         "ai_photo_verified": True,
                     }
                     crop_tiles.append((tag, crop_res["crop_img"]))
+        photo_cache.clear()
 
         n_photo_verified = len(photo_matches)
         if water_cnt > 0:
             default_zh = (
-                f"【AI 3D 幾何與地面實景照片多模態判釋】本測區（{scan_name}）經 TWD97 局部地形視窗裸地 DTM 分離、3D 法向量/UV 光譜與 {n_photo_verified} 張行動裝置 RTK 實景照片投影驗證："
+                f"【AI 3D 幾何與地面實景照片多模態判釋】本測區（{scan_name}）經 TWD97 局部地形視窗裸地 DTM 分離、3D 樹幹圓柱斷面驗證（No Trunk = No Tree）與 {n_photo_verified} 張行動裝置 RTK 實景照片投影驗證："
                 f"共識別出道路鋪面 {roads_cnt} 處（平面面積 {road_area:,.1f} m²）、"
-                f"喬木 {trees_cnt} 株（1.3m 胸高斷面 Pratt 圓擬合平均胸徑 DBH {mean_dbh:.1f} cm）、"
+                f"具實體樹幹之喬木 {trees_cnt} 株（1.3m 胸高斷面 Pratt 圓擬合平均胸徑 DBH {mean_dbh:.1f} cm）、"
                 f"水域與未建模水面空洞 {water_cnt} 處（面積 {water_area:,.1f} m²，靜水岸際基準高程 TWVD2001 +{water_lvl:.2f} m）、"
                 f"以及垂直擋土牆/護岸結構 {walls_cnt} 段（3D 垂直立面面積 {walls_area:,.1f} m²）。"
             )
             default_en = (
-                f"[Gemini Vision + 3D Geometry & Ground Photo Referee] Multi-scale local DTM, 3D surface normal/UV analysis, and {n_photo_verified} calibrated mobile phone photo projection(s) on '{scan_name}' "
+                f"[Gemini Vision + 3D Trunk Cylinder & Ground Photo Referee] Multi-scale local DTM, strict 3D trunk cylinder slicing ('No Trunk = No Tree'), and {n_photo_verified} calibrated mobile phone photo projection(s) on '{scan_name}' "
                 f"verified {roads_cnt} paved road corridor(s) ({road_area:,.1f} m² planar), "
-                f"{trees_cnt} canopy tree(s) (mean 1.3m breast-height DBH {mean_dbh:.1f} cm via anti-webbing Pratt circle fit), "
+                f"{trees_cnt} trunk-verified tree(s) (mean 1.3m breast-height DBH {mean_dbh:.1f} cm via anti-webbing Pratt circle fit), "
                 f"{water_cnt} water basin / un-modelled canal void zone(s) ({water_area:,.1f} m² at hydrostatic shoreline TWVD2001 +{water_lvl:.2f} m), "
                 f"and {walls_cnt} retaining/structural wall segment(s) ({walls_area:,.1f} m² true 3D vertical face area)."
             )
         else:
             default_zh = (
-                f"【AI 3D 幾何與地面實景照片多模態判釋】本測區（{scan_name}）經 TWD97 局部地形視窗裸地 DTM 分離、3D 法向量/UV 光譜與 {n_photo_verified} 張行動裝置 RTK 實景照片投影驗證："
+                f"【AI 3D 幾何與地面實景照片多模態判釋】本測區（{scan_name}）經 TWD97 局部地形視窗裸地 DTM 分離、3D 樹幹圓柱斷面驗證（No Trunk = No Tree）與 {n_photo_verified} 張行動裝置 RTK 實景照片投影驗證："
                 f"共識別出道路與人行步道鋪面 {roads_cnt} 處（平面面積 {road_area:,.1f} m²，已精確扣除草坪與圓形樹穴範圍）、"
-                f"公園與行道喬木 {trees_cnt} 株（1.3m 胸高斷面 Pratt 圓擬合平均胸徑 DBH {mean_dbh:.1f} cm）、"
+                f"具實體樹幹之公園與行道喬木 {trees_cnt} 株（1.3m 胸高斷面 Pratt 圓擬合平均胸徑 DBH {mean_dbh:.1f} cm）、"
                 f"場區內無水域或河道空洞（0 處），以及垂直擋土牆與建築結構立面 {walls_cnt} 段（3D 垂直立面面積 {walls_area:,.1f} m²）。"
             )
             default_en = (
-                f"[Gemini Vision + 3D Geometry & Ground Photo Referee] Multi-scale local DTM, 3D surface normal/UV analysis, and {n_photo_verified} calibrated mobile phone photo projection(s) on '{scan_name}' "
+                f"[Gemini Vision + 3D Trunk Cylinder & Ground Photo Referee] Multi-scale local DTM, strict 3D trunk cylinder slicing ('No Trunk = No Tree'), and {n_photo_verified} calibrated mobile phone photo projection(s) on '{scan_name}' "
                 f"verified {roads_cnt} paved road & walkway corridor(s) ({road_area:,.1f} m² planar, excluding turf lawns & tree planters), "
-                f"{trees_cnt} urban & park tree(s) (mean 1.3m breast-height DBH {mean_dbh:.1f} cm via anti-webbing Pratt circle fit), "
+                f"{trees_cnt} trunk-verified urban & park tree(s) (mean 1.3m breast-height DBH {mean_dbh:.1f} cm via anti-webbing Pratt circle fit), "
                 f"0 water bodies (dry urban/campus/park terrain), and {walls_cnt} retaining/structural wall segment(s) ({walls_area:,.1f} m² true 3D vertical face area)."
             )
 
         # Check persistent AI Vision referee cache first for deterministic repeat/merge speed
         sig_payload = json.dumps(
             {
+                "v": "no_trunk_no_tree_v2",
                 "roads_cnt": roads_cnt,
                 "trees_cnt": trees_cnt,
                 "water_cnt": water_cnt,
                 "walls_cnt": walls_cnt,
                 "tags": [
                     (c.get("tag"), round(float(c.get("e") or 0.0), 1), round(float(c.get("n") or 0.0), 1))
-                    for c in candidates_info[:16]
+                    for c in candidates_info[:125]
                 ],
             },
             sort_keys=True,
@@ -1098,15 +1110,15 @@ class CategorizationIoMixin:
             pil_img = Image.fromarray(ortho_north_up, mode="RGB")
             draw = ImageDraw.Draw(pil_img)
 
-            for c_info in candidates_info[:18]:
+            for c_info in candidates_info[:60]:
                 ce_i, cn_i = c_info.get("e", 0.0), c_info.get("n", 0.0)
                 px = int(np.clip((ce_i - e_min) / res, 4, nx - 5))
                 py = int(np.clip((ny - 1) - (cn_i - n_min) / res, 4, ny - 5))
                 col = c_info.get("color", (255, 215, 0))
                 tag = str(c_info.get("tag", ""))
-                draw.ellipse([px - 7, py - 7, px + 7, py + 7], outline=col, width=2)
-                draw.rectangle([px + 8, py - 8, px + 8 + max(24, len(tag) * 6), py + 6], fill=(15, 23, 42))
-                draw.text((px + 10, py - 7), tag, fill=col)
+                draw.ellipse([px - 6, py - 6, px + 6, py + 6], outline=col, width=2)
+                draw.rectangle([px + 7, py - 7, px + 7 + max(20, len(tag) * 6), py + 6], fill=(15, 23, 42))
+                draw.text((px + 9, py - 6), tag, fill=col)
 
             pil_img.thumbnail((800, 800), Image.Resampling.LANCZOS)
             buf = io.BytesIO()
@@ -1122,26 +1134,30 @@ class CategorizationIoMixin:
                 }
             ]
 
-            # Image 2: Ground-Level Mobile Phone Photo Contact Sheet (up to 16 320x320 crops in a 4x4 grid)
+            # Images 2..K: Ground-Level Mobile Phone Photo Contact Sheets covering EVERY prospective tree (up to 25 240x240 crops per 5x5 sheet)
             if crop_tiles:
-                n_tiles = min(16, len(crop_tiles))
-                n_cols = min(4, n_tiles)
-                n_rows = int(math.ceil(n_tiles / float(n_cols)))
-                sheet = Image.new("RGB", (n_cols * 320, n_rows * 320), (15, 23, 42))
-                for idx_t, (_, tile_im) in enumerate(crop_tiles[:16]):
-                    r_i = idx_t // n_cols
-                    c_i = idx_t % n_cols
-                    sheet.paste(tile_im, (c_i * 320, r_i * 320))
-                sbuf = io.BytesIO()
-                sheet.save(sbuf, format="JPEG", quality=80)
-                parts.append(
-                    {
-                        "inline_data": {
-                            "mime_type": "image/jpeg",
-                            "data": base64.b64encode(sbuf.getvalue()).decode("ascii"),
+                tile_sz = 240
+                batch_sz = 25
+                for b_start in range(0, min(len(crop_tiles), 125), batch_sz):
+                    sub_tiles = crop_tiles[b_start : b_start + batch_sz]
+                    n_tiles = len(sub_tiles)
+                    n_cols = min(5, n_tiles)
+                    n_rows = int(math.ceil(n_tiles / float(n_cols)))
+                    sheet = Image.new("RGB", (n_cols * tile_sz, n_rows * tile_sz), (15, 23, 42))
+                    for idx_t, (_, tile_im) in enumerate(sub_tiles):
+                        r_i = idx_t // n_cols
+                        c_i = idx_t % n_cols
+                        sheet.paste(tile_im, (c_i * tile_sz, r_i * tile_sz))
+                    sbuf = io.BytesIO()
+                    sheet.save(sbuf, format="JPEG", quality=78)
+                    parts.append(
+                        {
+                            "inline_data": {
+                                "mime_type": "image/jpeg",
+                                "data": base64.b64encode(sbuf.getvalue()).decode("ascii"),
+                            }
                         }
-                    }
-                )
+                    )
 
             ambiguous_tags = [str(c.get("tag")) for c in candidates_info if c.get("ambiguous") and c.get("tag")]
             if water_cnt > 0:
@@ -1149,12 +1165,13 @@ class CategorizationIoMixin:
                     "You are an expert Taiwan Civil & Geomatics Engineering AI inspecting a ground-level mobile phone 3D photogrammetry/LiDAR scan "
                     f"('{scan_name}', CRS: TWD97 EPSG:3826 + TWVD2001). "
                     "Image 1 is the Top-Down True Orthophoto with labeled candidate regions (R=Road, W=Water/Un-modelled Water Void, WL=Retaining Wall, T=Tree, S=Stockpile). "
-                    "Image 2 is a contact sheet of calibrated ground-level smartphone photos projected directly onto those 3D candidates with a crosshair reticle. "
-                    f"3D Geometry Metrics: Roads={roads_cnt} ({road_area:.1f} m2), Trees={trees_cnt} (Mean DBH={mean_dbh:.1f} cm at 1.3m breast height), "
+                    "Subsequent image(s) are Ground-Level Contact Sheet(s) of calibrated smartphone photos showing EVERY prospective tree (T1..TN) at its 1.3m trunk breast-height crosshair reticle. "
+                    f"3D Geometry Metrics: Roads={roads_cnt} ({road_area:.1f} m2), Prospective Trunk-Verified Trees={trees_cnt} (Mean DBH={mean_dbh:.1f} cm at 1.3m breast height), "
                     f"Water Bodies/Un-modelled Canal Voids={water_cnt} ({water_area:.1f} m2, shoreline TWVD2001 +{water_lvl:.2f}m), "
                     f"Retaining/Building Walls={walls_cnt} (3D vertical area={walls_area:.1f} m2). "
-                    f"Borderline candidate tags to double-check in Image 2: {ambiguous_tags}. "
-                    "If any borderline tag in `Borderline candidate tags` is clearly a metal lamp post, utility pole, traffic sign, or vehicle instead of a true tree/wall/road, list its tag in `rejected_false_positive_tags` (otherwise return []). "
+                    f"Prospective candidate tags to verify in the Contact Sheet(s): {ambiguous_tags}. "
+                    "Enforce the strict 'No Trunk = No Tree' principle: KEEP all genuine trees (even if foliage or a nearby branch partially obscures the trunk from that specific camera angle), "
+                    "and ONLY list a tag in `rejected_false_positive_tags` if the crosshair clearly points to a non-tree false positive (such as a metal lamp post, utility pole, traffic sign, concrete column, building wall, vehicle, or empty sky/leaves in the air with no tree trunk beneath). "
                     "Provide a concise, professional Bilingual Engineering Assessment in Traditional Chinese (ai_summary_zh, 2-3 sentences) "
                     "and English (ai_summary_en, 2-3 sentences), classify `road_corridor_subtype`, and provide semantic labels."
                 )
@@ -1163,12 +1180,13 @@ class CategorizationIoMixin:
                     "You are an expert Taiwan Civil & Geomatics Engineering AI inspecting an urban/campus/park ground-level mobile phone 3D photogrammetry/LiDAR scan "
                     f"('{scan_name}', CRS: TWD97 EPSG:3826 + TWVD2001). "
                     "Image 1 is the Top-Down True Orthophoto with labeled candidate regions (R=Road/Walkway, WL=Retaining/Building Wall, T=Urban/Park Tree, S=Stockpile). "
-                    "Image 2 is a contact sheet of calibrated ground-level smartphone photos projected directly onto those 3D candidates with a crosshair reticle. "
-                    f"3D Geometry Metrics: Paved Roads/Walkways={roads_cnt} ({road_area:.1f} m2), Urban/Park Trees={trees_cnt} (Mean DBH={mean_dbh:.1f} cm at 1.3m breast height), "
+                    "Subsequent image(s) are Ground-Level Contact Sheet(s) of calibrated smartphone photos showing EVERY prospective tree (T1..TN) at its 1.3m trunk breast-height crosshair reticle. "
+                    f"3D Geometry Metrics: Paved Roads/Walkways={roads_cnt} ({road_area:.1f} m2), Prospective Trunk-Verified Trees={trees_cnt} (Mean DBH={mean_dbh:.1f} cm at 1.3m breast height), "
                     f"Water Bodies=0 (0.0 m2 — dry urban/park/campus site with NO water bodies or river voids), "
                     f"Retaining/Building Walls={walls_cnt} (3D vertical area={walls_area:.1f} m2). "
-                    f"Borderline candidate tags to double-check in Image 2: {ambiguous_tags}. "
-                    "If any borderline tag in `Borderline candidate tags` is clearly a metal lamp post, utility pole, traffic sign, or bollard instead of a true tree/wall/road, list its tag in `rejected_false_positive_tags` (otherwise return []). "
+                    f"Prospective candidate tags to verify in the Contact Sheet(s): {ambiguous_tags}. "
+                    "Enforce the strict 'No Trunk = No Tree' principle: KEEP all genuine trees (even if foliage or a nearby branch partially obscures the trunk from that specific camera angle), "
+                    "and ONLY list a tag in `rejected_false_positive_tags` if the crosshair clearly points to a non-tree false positive (such as a metal lamp post, utility pole, traffic sign, bollard, concrete column, building wall, or empty sky/leaves in the air with no tree trunk beneath). "
                     "Provide a concise, professional Bilingual Engineering Assessment in Traditional Chinese (ai_summary_zh, 2-3 sentences) "
                     "and English (ai_summary_en, 2-3 sentences). Explicitly note that there are NO water bodies on site (場區無水域)."
                 )

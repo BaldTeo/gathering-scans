@@ -18,15 +18,18 @@ Photogrammetric meshes (`textured_model.glb`) reconstruct solid surfaces well (t
 - Always snap `(e_min, n_min)` to the global `0.25 m` TWD97 coordinate grid (`e_min = math.floor(float(base_e.min()) / res) * res`, `n_min = math.floor(float(base_n.min()) / res) * res`) so that any 3D point `(E, N)` lands in the exact same grid cell before and after merging.
 - Scale candidate caps by actual occupied 2D surface area (`occupied_2d_m2 = float(area_2d.sum())`, `area_scale = max(1.0, min(2.5, occupied_2d_m2 / 12500.0))`) and evaluate local terrain relief against 28 m sliding-window neighborhood datum grids (`local_dtm_p25_grid`, `local_dtm_mean_grid`).
 
-### A. Trees vs. Lamp Posts, Utility Poles, Bollards & Shrubs
-1. **Trees Can Never Be Square or Planar (`R2` / `R4` Azimuthal Harmonics)**:
+### A. Trees vs. Airborne Canopy Leaves, Lamp Posts, Utility Poles, Bollards & Shrubs ("No Trunk = No Tree")
+1. **Strict "No Trunk = No Tree" Principle (Zero `is_occluded_giant_canopy` or `crown_height_allometry` Fallbacks)**:
+   - Never detect a tree from canopy leaves in the air without a verified physical 3D trunk cylinder beneath it.
+   - `is_occluded_giant_canopy` and `crown_height_allometry` are permanently banned. Every accepted tree must have a tight 3D trunk cylinder (`r <= 0.58 m`, `z_rel in [0.35 m, 1.85 m]`, `nz_abs < 0.48`, `>= 8` steep triangles) with **both** a lower-trunk base (`z_rel in [0.25 m, 1.25 m]`, `>= 3` steep triangles, rejecting airborne branches/leaves) and a breast-height trunk (`z_rel in [0.95 m, 1.85 m]`, `>= 3` steep triangles, rejecting low shrubs/rocks under overhanging branches), plus a measured 3D trunk slice DBH (`pratt_circle_1.3m_slice`, `pratt_allometric_hybrid`, or `trunk_slice_1.3m_hybrid` across `>= 3` angular sectors).
+   - Every prospective tree (`T1..TN`) must be projected onto its clearest calibrated ground-level mobile phone photo and verified via multi-sheet `5x5` Ground-Level Contact Sheets in `_refine_categorization_with_gemini_multimodal` (`trunk_verified_3d: True`, `ai_vision_verified: True`).
+2. **Trees Can Never Be Square or Planar (`R2` / `R4` Azimuthal Harmonics)**:
    - Compute 2-fold ($R_2 = |\langle e^{i 2\theta_n} \rangle|$) and 4-fold ($R_4 = |\langle e^{i 4\theta_n} \rangle|$) horizontal normal concentration on breast-height (`0.55m..1.85m`) trunk triangles.
    - Square pillars, flat fence posts, and building corners have high $R_2 > 0.30$ or $R_4 > 0.30$.
    - *Low-Poly Thin Stem Exception*: Genuine slender brown tree trunks (`med_rb >= 0.042`, < 50 triangles) may exhibit noisy $R_4$ up to `0.38`, provided 2-fold planarity stays low ($R_2 \le 0.23$) and radial normal dispersion exceeds `0.38`.
-2. **Brown Bark Trunk + Green Canopy Core Directly Overhead**:
+3. **Brown Bark Trunk + Green Canopy Core Directly Overhead**:
    - Real trees have **warm brown bark** at breast height (`R - B >= 0.038`, `sat >= 0.118`) and/or **green canopy foliage directly above their own stem axis** (`r <= 0.95m`, `z_rel >= 1.30m`, elevated `ExG >= 0.025`).
    - Lamp posts, utility poles, and playground posts have **achromatic grey/silver stems** (`sat < 0.118`, `R - B < 0.038`, `ExG < 0.025`) and only touch neighboring tree canopies at wide radii (`r = 1.2m..2.4m`).
-   - **Rule**: Never allow an "occluded giant canopy" exemption (`tree_h_m >= 5.0m`) to bypass achromatic trunk rejection if `>= 65` bare grey trunk triangles are visible at breast height without a tight overhead green core (`r <= 0.85m`).
 3. **Neck Continuity (`0.78m..1.18m`) Against Shrubs & Bollards Under Overhanging Branches**:
    - Low shrubs, boulders, or bollards sitting beneath an overhanging tree canopy have a wide base (`0.18m..0.75m`, `>= 180` triangles) with a vertical gap (`< 12` steep triangles or `< 3.5%` of base count) in the `0.78m..1.18m` neck zone. Reject candidates with this neck gap.
 4. **Small Saplings (`1.65m..2.5m`) & Young Grove Trees**:

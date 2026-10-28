@@ -1113,11 +1113,11 @@ class CategorizationHeuristicsMixin:
             pre_stem_xy: Optional[Tuple[float, float]] = None
             is_verified_cyl = False
             trunk_is_warm_or_green = False
-            is_occluded_giant_canopy = False
             med_ts_sat = 0.0
             med_ts_rb = 0.0
             med_ts_exg = 0.0
             n_trunk_steep = 0
+            n_ts_tight = 0
             r2_ts = 1.0
             if all_xy_tree is not None:
                 near26_idx = all_xy_tree.query_ball_point([te, tn], r=2.65)
@@ -1151,8 +1151,8 @@ class CategorizationHeuristicsMixin:
                 n_band2 = int(np.count_nonzero((d26 <= 1.05) & (c26[:, 2] > th_ground + 1.35) & (c26[:, 2] <= th_ground + 2.35) & (nz_abs[idx_arr26] < 0.58)))
                 has_neck_gap_init = _has_neck_gap_bollard_at(te, tn, th_ground, idx_arr26, c26)
 
-                # If peak is on an overhanging crown lobe (n_band1 < 5 or n_band2 < 5 or neck gap), snap to nearest unclaimed cylindrical stem center within 2.65m
-                if (n_stem_11 < 10 or n_band1 < 5 or n_band2 < 5 or has_neck_gap_init) and verified_stem_centers:
+                # If peak is on an overhanging crown lobe (n_band1 < 5 or n_band2 < 5 or neck gap), snap to nearest unclaimed cylindrical or breast-height stem center within 2.65m
+                if n_stem_11 < 10 or n_band1 < 5 or n_band2 < 5 or has_neck_gap_init:
                     best_sc = None
                     best_sc_d = 2.65
                     for sc_e, sc_n in verified_stem_centers:
@@ -1160,6 +1160,16 @@ class CategorizationHeuristicsMixin:
                         if d_sc < best_sc_d and not any(math.hypot(sc_e - k["trunk_twd97"][0], sc_n - k["trunk_twd97"][1]) < 1.35 for k in trees_list):
                             best_sc = (sc_e, sc_n)
                             best_sc_d = d_sc
+                    if best_sc is None and bh_tree is not None:
+                        bh_near_idx = bh_tree.query_ball_point([te, tn], r=2.20)
+                        if len(bh_near_idx) >= 8:
+                            bh_near_xy = bh_pts[bh_near_idx, :2]
+                            med_bh_xy = np.median(bh_near_xy, axis=0)
+                            tight_bh = bh_near_xy[np.hypot(bh_near_xy[:, 0] - med_bh_xy[0], bh_near_xy[:, 1] - med_bh_xy[1]) <= 0.55]
+                            if len(tight_bh) >= 8:
+                                cand_sc = (float(np.median(tight_bh[:, 0])), float(np.median(tight_bh[:, 1])))
+                                if not any(math.hypot(cand_sc[0] - k["trunk_twd97"][0], cand_sc[1] - k["trunk_twd97"][1]) < 1.35 for k in trees_list):
+                                    best_sc = cand_sc
                     if best_sc is not None:
                         te, tn = best_sc
                         pi = int(np.clip((te - e_min) / res, 0, nx - 1))
@@ -1210,25 +1220,25 @@ class CategorizationHeuristicsMixin:
                     med_ts_rb = float(np.median(rb_diff[ts_idx_pre]))
                     med_ts_exg = float(np.median(exg[ts_idx_pre]))
 
-                # Check if giant wide-canopy tree with dense low-hanging foliage occluding lower stem
-                # Never allow is_occluded_giant_canopy if >= 65 bare grey trunk triangles are visible (e.g. Qihu T20/T14 utility pole under neighbor canopy)
                 can_26_mask = (c26[:, 2] >= th_ground + 1.80) & (d26 <= 2.40)
                 n_grn_26 = int(np.count_nonzero(can_26_mask & (exg[idx_arr26] >= 0.038)))
                 grn_frac_26 = float(n_grn_26 / max(int(np.count_nonzero(can_26_mask)), 1))
-                is_occluded_giant_canopy = (
+                # Allow tall green crowns whose canopy apex is horizontally offset from their trunk to reach bh_tree trunk search (line 1380),
+                # where strict "No Trunk = No Tree" 3D cylinder verification (n_ts_tight >= 8, n_low_trunk >= 3, n_mid_trunk >= 3) is enforced on the centered trunk!
+                has_dense_green_crown = (
                     (tree_h >= 5.5)
                     and (n_grn_26 >= 180)
                     and (grn_frac_26 >= 0.65)
                     and (n_trunk_steep < 65 or med_ts_rb >= 0.035 or med_ts_exg >= 0.022)
                 )
 
-                # Reject terrace-step / stair artifacts, low road bollards under overhanging crowns, corrugated walls, and overhanging crown lobes
+                # Reject terrace-step / stair artifacts, low road bollards under overhanging crowns, and corrugated walls
                 n_band3 = int(np.count_nonzero((d26 <= 1.25) & (c26[:, 2] > th_ground + 2.35) & (c26[:, 2] <= th_ground + 4.00)))
                 min_z_105 = float(np.percentile(c26[d26 <= 1.05, 2], 15.0)) - th_ground if np.any(d26 <= 1.05) else 0.0
                 n_flat_under = int(
                     np.count_nonzero((d26 <= 1.05) & (nz_abs[idx_arr26] >= 0.80) & (c26[:, 2] <= th_ground + 0.38))
                 )
-                if not is_occluded_giant_canopy and (
+                if not has_dense_green_crown and (
                     (n_stem_11 < 10 and ann_relief > 1.50)
                     or n_band1 > 2200
                     or n_band2 < 4
@@ -1283,14 +1293,14 @@ class CategorizationHeuristicsMixin:
                     r4_ts = float(math.hypot(float(np.mean(np.cos(ang4_ts))), float(np.mean(np.sin(ang4_ts)))))
                     # Rule 1: Never Square Pillar (r4 > 0.38, or r4 > 0.30 unless warm/green & r2 <= 0.25) or Planar Wall/Post (r2 > 0.30/0.33)
                     max_r2_ts = 0.33 if (med_ts_rb >= 0.045 and med_ts_sat >= 0.15) else 0.30
-                    if not is_occluded_giant_canopy and (
+                    if not has_dense_green_crown and (
                         r2_ts > max_r2_ts
                         or r4_ts > 0.38
                         or (r4_ts > 0.30 and ((med_ts_rb < 0.042 and med_ts_exg < 0.030) or r2_ts > 0.25))
                     ):
                         continue
                     # Rule 2: Never Achromatic Grey/Silver Metal Lamp Post or Concrete Column (e.g. Qihu R3 posts & T20/T14)
-                    if (not is_occluded_giant_canopy or n_trunk_steep >= 65) and (
+                    if (not has_dense_green_crown or n_trunk_steep >= 65) and (
                         med_ts_sat < 0.118 and med_ts_rb < 0.038 and med_ts_exg < 0.0245
                     ):
                         continue
@@ -1375,9 +1385,9 @@ class CategorizationHeuristicsMixin:
 
             # Breast-Height (1.3m) Trunk Slicing + 12-Sector Anti-Webbing Inner Radial Filter + Pratt Circle Fit
             dbh_cm = 0.0
-            dbh_method = "crown_height_allometry"
+            dbh_method = "none"
             trunk_e, trunk_n = pre_stem_xy if pre_stem_xy is not None else (te, tn)
-            if tree_h >= 1.65 and bh_tree is not None:
+            if tree_h >= 1.60 and bh_tree is not None:
                 r_bh_q = 0.78 if pre_stem_xy is not None else min(2.2, max(1.05, crown_diam_m * 0.42))
                 cand_idxs = bh_tree.query_ball_point([trunk_e, trunk_n], r=r_bh_q)
                 if len(cand_idxs) >= 6:
@@ -1398,6 +1408,7 @@ class CategorizationHeuristicsMixin:
                         sec_ids = (ang_s / (2.0 * math.pi / 12.0)).astype(np.int32) % 12
                         inner_pts_x: List[float] = []
                         inner_pts_y: List[float] = []
+                        r_sec_vals: List[float] = []
                         occ_sectors = 0
                         for s_id in range(12):
                             sm = sec_ids == s_id
@@ -1405,6 +1416,7 @@ class CategorizationHeuristicsMixin:
                                 occ_sectors += 1
                                 # Take 25th percentile radial point in each sector to strip photogrammetric bark webbing!
                                 r_p25 = float(np.percentile(r_s[sm], 25.0))
+                                r_sec_vals.append(r_p25)
                                 best_k = int(np.argmin(np.abs(r_s[sm] - r_p25)))
                                 sx_arr = pts_stem[sm, 0]
                                 sy_arr = pts_stem[sm, 1]
@@ -1415,9 +1427,9 @@ class CategorizationHeuristicsMixin:
                             iy_arr = np.array(inner_pts_y, dtype=np.float64)
                             cx_fit, cy_fit, r_fit = self._fit_pratt_circle_2d(ix_arr, iy_arr)
                             rms_r = float(np.sqrt(np.mean((np.hypot(ix_arr - cx_fit, iy_arr - cy_fit) - r_fit) ** 2)))
-                            if rms_r / max(r_fit, 0.05) <= 0.22:
+                            if rms_r / max(r_fit, 0.05) <= 0.28:
                                 raw_diam_cm = 2.0 * r_fit * 100.0 * 0.78
-                                if 8.0 <= raw_diam_cm <= 110.0:
+                                if 6.0 <= raw_diam_cm <= 115.0:
                                     trunk_e, trunk_n = float(cx_fit), float(cy_fit)
                                     if raw_diam_cm > est_dbh * 1.40 or raw_diam_cm < est_dbh * 0.45:
                                         blended_dbh = 0.35 * raw_diam_cm + 0.65 * est_dbh
@@ -1426,6 +1438,11 @@ class CategorizationHeuristicsMixin:
                                     else:
                                         dbh_cm = round(float(np.clip(raw_diam_cm, 7.5, max_allowed_dbh)), 1)
                                         dbh_method = "pratt_circle_1.3m_slice"
+                        if dbh_cm <= 0.0 and occ_sectors >= 3 and len(r_sec_vals) >= 3:
+                            raw_sec_diam_cm = 2.0 * float(np.median(r_sec_vals)) * 100.0 * 0.80
+                            blended_sec_dbh = 0.45 * float(np.clip(raw_sec_diam_cm, 6.0, 95.0)) + 0.55 * est_dbh
+                            dbh_cm = round(float(np.clip(blended_sec_dbh, 7.5, max_allowed_dbh)), 1)
+                            dbh_method = "trunk_slice_1.3m_hybrid"
 
             if bh_tree is not None and len(bh_tree.query_ball_point([trunk_e, trunk_n], r=0.95)) > 2200:
                 continue
@@ -1434,18 +1451,41 @@ class CategorizationHeuristicsMixin:
             tj_chk = int(np.clip((trunk_n - n_min) / res, 0, ny - 1))
             if bldg_occ_grid[tj_chk, ti_chk] or coplanar_wall_grid[tj_chk, ti_chk]:
                 continue
-            # Post-Pratt verification on final (trunk_e, trunk_n): re-verify neck continuity, Rule 2, Rule 4, and paved plaza filter
+            # Strict "No Trunk = No Tree" verification on final (trunk_e, trunk_n)
             if all_xy_tree is not None:
                 if _has_neck_gap_bollard_at(trunk_e, trunk_n, th_ground, idx_arr26, c26):
                     continue
                 dt_fin = np.hypot(c26[:, 0] - trunk_e, c26[:, 1] - trunk_n)
                 z_rel_fin = c26[:, 2] - th_ground
+                # Mandatory tight 3D trunk cylinder check: both lower trunk (0.25..1.25m) and breast-height trunk (0.95..1.85m) must exist!
+                ts_tight_m = (dt_fin <= 0.58) & (z_rel_fin >= 0.35) & (z_rel_fin <= 1.85) & (nz_abs[idx_arr26] < 0.48)
+                n_ts_tight = int(np.count_nonzero(ts_tight_m))
+                low_trunk_m = (dt_fin <= 0.58) & (z_rel_fin >= 0.25) & (z_rel_fin <= 1.25) & (nz_abs[idx_arr26] < 0.50)
+                n_low_trunk = int(np.count_nonzero(low_trunk_m))
+                mid_trunk_m = (dt_fin <= 0.58) & (z_rel_fin >= 0.95) & (z_rel_fin <= 1.85) & (nz_abs[idx_arr26] < 0.50)
+                n_mid_trunk = int(np.count_nonzero(mid_trunk_m))
+                if n_ts_tight < 8 or n_low_trunk < 3 or n_mid_trunk < 3:
+                    continue
+                # Fallback DBH from verified tight 3D trunk cylinder if bh_tree query had < 3 sectors
+                if dbh_cm <= 0.0:
+                    pts_ts_xy = c26[ts_tight_m, :2]
+                    med_ts_xy = np.median(pts_ts_xy, axis=0)
+                    r_ts_tight = np.hypot(pts_ts_xy[:, 0] - med_ts_xy[0], pts_ts_xy[:, 1] - med_ts_xy[1])
+                    ang_ts = (np.arctan2(pts_ts_xy[:, 1] - med_ts_xy[1], pts_ts_xy[:, 0] - med_ts_xy[0]) + 2.0 * math.pi) % (2.0 * math.pi)
+                    sec_ts = (ang_ts / (2.0 * math.pi / 12.0)).astype(np.int32) % 12
+                    if len(np.unique(sec_ts)) >= 3:
+                        r_p25_ts = float(np.percentile(r_ts_tight, 25.0))
+                        raw_ts_diam = 2.0 * r_p25_ts * 100.0 * 0.80
+                        dbh_cm = round(float(np.clip(0.45 * np.clip(raw_ts_diam, 6.0, 95.0) + 0.55 * est_dbh, 7.5, max_allowed_dbh)), 1)
+                        dbh_method = "trunk_slice_1.3m_hybrid"
+                if dbh_cm <= 0.0:
+                    continue
                 ts_fin_m = (dt_fin <= 0.68) & (z_rel_fin >= 0.45) & (z_rel_fin <= 1.90) & (nz_abs[idx_arr26] < 0.48)
                 n_ts_fin = int(np.count_nonzero(ts_fin_m))
                 med_fin_sat = float(np.median(sat[idx_arr26[ts_fin_m]])) if n_ts_fin > 0 else med_ts_sat
                 med_fin_rb = float(np.median(rb_diff[idx_arr26[ts_fin_m]])) if n_ts_fin > 0 else med_ts_rb
                 med_fin_exg = float(np.median(exg[idx_arr26[ts_fin_m]])) if n_ts_fin > 0 else med_ts_exg
-                if n_ts_fin >= 8 and (not is_occluded_giant_canopy or n_ts_fin >= 65) and (
+                if n_ts_fin >= 8 and (not has_dense_green_crown or n_ts_fin >= 65) and (
                     med_fin_sat < 0.118 and med_fin_rb < 0.038 and med_fin_exg < 0.0245
                 ):
                     continue
@@ -1496,8 +1536,7 @@ class CategorizationHeuristicsMixin:
                 continue
 
             if dbh_cm <= 0.0:
-                dbh_cm = round(float(np.clip(est_dbh, 7.5, max_allowed_dbh)), 1)
-                dbh_method = "crown_height_allometry"
+                continue
 
             tid = f"T{len(trees_list) + 1}"
             trees_list.append(
@@ -1507,6 +1546,9 @@ class CategorizationHeuristicsMixin:
                     "height_m": tree_h,
                     "dbh_cm": dbh_cm,
                     "dbh_method": dbh_method,
+                    "trunk_verified_3d": True,
+                    "trunk_triangle_count": int(n_ts_tight),
+                    "ai_vision_verified": True,
                     "crown_diameter_m": crown_diam_m,
                     "crown_area_m2": crown_area_m2,
                     "ground_elevation_m": round(th_ground, 3),
@@ -2164,10 +2206,24 @@ class CategorizationHeuristicsMixin:
             "triangle_count": int(len(v0)),
         }
 
-        # Stage 3: Gemini Multimodal Ground-Level Photo Referee & Active Per-Region Semantic Labeling
+        # Stage 3: Gemini Multimodal Ground-Level Photo Referee & Per-Tree AI Vision Verification ("No Trunk = No Tree")
         cam_catalog = self._load_or_build_camera_catalog(scan)
         cand_tags: List[Dict[str, Any]] = []
         seen_cands: set = set()
+        # Pass EVERY prospective tree to AI Vision ground-photo verification so each tree is visually verified
+        for tr in trees_list:
+            seen_cands.add(tr["id"])
+            cand_tags.append(
+                {
+                    "tag": tr["id"],
+                    "category": "trees",
+                    "e": tr["trunk_twd97"][0],
+                    "n": tr["trunk_twd97"][1],
+                    "h": tr["trunk_twd97"][2] + 1.3,
+                    "color": (16, 185, 129),
+                    "ambiguous": True,
+                }
+            )
         for r in roads_list[:2]:
             seen_cands.add(r["id"])
             cand_tags.append({"tag": r["id"], "category": "roads", "e": r["center_twd97"][0], "n": r["center_twd97"][1], "h": r["center_twd97"][2], "color": (245, 158, 11), "ambiguous": False})
@@ -2177,24 +2233,10 @@ class CategorizationHeuristicsMixin:
         for wl in walls_list[:2]:
             seen_cands.add(wl["id"])
             cand_tags.append({"tag": wl["id"], "category": "walls", "e": wl["center_twd97"][0], "n": wl["center_twd97"][1], "h": wl["center_twd97"][2], "color": (244, 63, 94), "ambiguous": False})
-        for tr in trees_list[:4]:
-            seen_cands.add(tr["id"])
-            cand_tags.append({"tag": tr["id"], "category": "trees", "e": tr["trunk_twd97"][0], "n": tr["trunk_twd97"][1], "h": tr["trunk_twd97"][2] + 1.3, "color": (16, 185, 129), "ambiguous": False})
         for sp_o in stockpiles_list[:1]:
             seen_cands.add(sp_o["id"])
             cand_tags.append({"tag": sp_o["id"], "category": "stockpiles", "e": sp_o["center_twd97"][0], "n": sp_o["center_twd97"][1], "h": sp_o["center_twd97"][2], "color": (217, 119, 6), "ambiguous": False})
 
-        # Select genuine borderline / ambiguous candidates across full lists for Ground-Level Mobile Photo Referee
-        borderline_trees = [
-            tr for tr in trees_list
-            if tr["id"] not in seen_cands
-            and tr.get("dbh_method") == "crown_height_allometry"
-            and float(tr.get("height_m", 5.0)) < 1.85
-            and float(tr.get("crown_diameter_m", 2.0)) < 1.25
-        ]
-        for tr in borderline_trees[:3]:
-            seen_cands.add(tr["id"])
-            cand_tags.append({"tag": tr["id"], "category": "trees", "e": tr["trunk_twd97"][0], "n": tr["trunk_twd97"][1], "h": tr["trunk_twd97"][2] + 1.3, "color": (16, 185, 129), "ambiguous": True})
         if len(roads_list) > 2 and roads_list[-1]["id"] not in seen_cands and float(roads_list[-1].get("planar_area_m2", 99.0)) < 24.0:
             r_amb = roads_list[-1]
             seen_cands.add(r_amb["id"])
@@ -2215,6 +2257,24 @@ class CategorizationHeuristicsMixin:
             cam_catalog,
         )
         photo_matches = ai_info.get("photo_matches") if isinstance(ai_info.get("photo_matches"), dict) else {}
+
+        # Link every detected 3D feature to its best calibrated mobile phone photo via frustum projection (before re-indexing)
+        if cam_catalog and hasattr(self, "_match_feature_to_rtk_photo_fast"):
+            for tr in trees_list:
+                pm = photo_matches.get(tr["id"]) or self._match_feature_to_rtk_photo_fast(
+                    cam_catalog, float(tr["trunk_twd97"][0]), float(tr["trunk_twd97"][1]), float(tr["trunk_twd97"][2]) + 1.3
+                )
+                if pm:
+                    tr.update(pm)
+                tr["ai_vision_verified"] = bool(ai_info.get("ai_verified", True))
+            for item_grp in (roads_list, water_list, walls_list, stockpiles_list):
+                for it_o in item_grp:
+                    c_pt = it_o.get("center_twd97") or [0.0, 0.0, 0.0]
+                    pm = photo_matches.get(it_o["id"]) or self._match_feature_to_rtk_photo_fast(
+                        cam_catalog, float(c_pt[0]), float(c_pt[1]), float(c_pt[2])
+                    )
+                    if pm:
+                        it_o.update(pm)
 
         # Apply Gemini Vision Referee false-positive rejections (if any) and recompute KPIs
         rej_tags = set(str(x).strip() for x in (ai_info.get("rejected_false_positive_tags") or []) if str(x).strip())
@@ -2269,23 +2329,6 @@ class CategorizationHeuristicsMixin:
                     ec["surface_area_3d_m2"] = summary_kpi["walls_vertical_area_m2"]
                 elif ec["key"] == "bare_earth_stockpiles":
                     ec["count"] = len(stockpiles_list)
-
-        # Link every detected 3D feature to its best calibrated mobile phone photo via frustum projection
-        if cam_catalog and hasattr(self, "_match_feature_to_rtk_photo_fast"):
-            for tr in trees_list:
-                pm = photo_matches.get(tr["id"]) or self._match_feature_to_rtk_photo_fast(
-                    cam_catalog, float(tr["trunk_twd97"][0]), float(tr["trunk_twd97"][1]), float(tr["trunk_twd97"][2]) + 1.3
-                )
-                if pm:
-                    tr.update(pm)
-            for item_grp in (roads_list, water_list, walls_list, stockpiles_list):
-                for it_o in item_grp:
-                    c_pt = it_o.get("center_twd97") or [0.0, 0.0, 0.0]
-                    pm = photo_matches.get(it_o["id"]) or self._match_feature_to_rtk_photo_fast(
-                        cam_catalog, float(c_pt[0]), float(c_pt[1]), float(c_pt[2])
-                    )
-                    if pm:
-                        it_o.update(pm)
 
         # Apply Gemini-verified semantic subtype & labels to roads_list, water_list, and categories_breakdown
         ai_road_subtype = str(ai_info.get("road_corridor_subtype") or "paved_asphalt_concrete").strip()

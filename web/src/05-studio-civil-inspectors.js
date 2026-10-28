@@ -2392,11 +2392,12 @@
     }
     if ((activeTab === "all" || activeTab === "trees") && flt.trees) {
       (res.trees || []).slice(0, activeTab === "trees" ? 200 : 12).forEach((t) => {
+        const trunkTag = t.trunk_verified_3d ? tr("喬木 ✓樹幹", "Tree ✓Trunk") : tr("喬木", "Tree");
         rows.push({
           id: t.id,
           catType: "trees",
           badge: fmtCatBadge(t.id, "#10b981", t),
-          type: tr("喬木", "Tree"),
+          type: trunkTag,
           metric1: `DBH ${Number(t.dbh_cm || 0).toFixed(1)} cm`,
           metric2: `H ${Number(t.height_m || 0).toFixed(1)}m · Ø${Number(t.crown_diameter_m || 0).toFixed(1)}m`,
           fly: toFlyAttr(t.trunk_twd97, t.trunk_local),

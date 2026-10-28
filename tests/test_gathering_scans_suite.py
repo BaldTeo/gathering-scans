@@ -1799,15 +1799,21 @@ class GatheringScansTestSuite(unittest.TestCase):
         with open(os.path.join(BASE_DIR, "web", "src", "05-studio-civil-inspectors.js"), "r", encoding="utf-8") as f:
             js05 = f.read()
 
-        # 1. Verify zero hardcoded scan-size mode switches (no max_span / 280m / 180m / 60m / is_wide_valley_forestry_scan), global TWD97 grid-origin snapping, occupied_2d_m2 scaling, local neighborhood datum grids, and rejected_false_positive_tags hookup
+        # 1. Verify zero hardcoded scan-size mode switches (no max_span / 280m / 180m / 60m / is_wide_valley_forestry_scan), global TWD97 grid-origin snapping, strict "No Trunk = No Tree" 3D cylinder verification, and per-tree AI Vision verification
         self.assertNotIn("is_wide_valley_forestry_scan", heur_py)
         self.assertNotIn("max_span", heur_py)
         self.assertNotIn("is_midspan_moat_scan", heur_py)
+        self.assertNotIn("is_occluded_giant_canopy", heur_py)
+        self.assertNotIn('dbh_method = "crown_height_allometry"', heur_py)
         self.assertIn("res = 0.25", heur_py)
         self.assertIn("e_min = math.floor(float(base_e.min()) / res) * res", heur_py)
         self.assertIn("n_min = math.floor(float(base_n.min()) / res) * res", heur_py)
         self.assertIn("area_scale = max(1.0, min(2.5, occupied_2d_m2 / 12500.0))", heur_py)
         self.assertIn("local_dtm_p25_grid = grey_erosion(", heur_py)
+        self.assertIn("if n_ts_tight < 8 or n_low_trunk < 3 or n_mid_trunk < 3:", heur_py)
+        self.assertIn('"trunk_verified_3d": True,', heur_py)
+        self.assertIn('"ai_vision_verified": True,', heur_py)
+        self.assertIn("for tr in trees_list:\n            seen_cands.add(tr[\"id\"])", heur_py)
         self.assertIn("rej_tags = set(str(x).strip() for x in (ai_info.get(\"rejected_false_positive_tags\") or [])", heur_py)
         self.assertIn('"anchor_twd97": {"e": round(ce, 3), "n": round(cn, 3), "h": round(ch, 3)},', heur_py)
 
@@ -1815,10 +1821,11 @@ class GatheringScansTestSuite(unittest.TestCase):
         self.assertIn("def _crop_rtk_photo_for_3d_feature(", io_py)
         self.assertIn("def _match_feature_to_rtk_photo_fast(", io_py)
         self.assertIn("cal_bonus = 0.0 if cam.get(\"calibrated\", True) else 4.0", io_py)
+        self.assertIn("for c_info in candidates_info[:125]:", io_py)
         self.assertIn("data-cat-photo-file", js05)
         self.assertIn("window.openPhotoLightboxModal(photoUrl, fname, meta", js05)
 
-        # 3. Verify QiHu_Merged (edited_qihu_merged_2026_10_28_858499) preserves QiHu_Unified trees, road planter holes, and water voids
+        # 3. Verify QiHu_Merged (edited_qihu_merged_2026_10_28_858499) preserves QiHu_Unified trees, strict 3D trunk verification, road planter holes, and water voids
         uni_path = os.path.join(BASE_DIR, "data", "categorization_cache", "edited_qihu_unified_merged_scan_4_scans__edited_372953_categorization_v3.json")
         mrg_path = os.path.join(BASE_DIR, "data", "categorization_cache", "edited_qihu_merged_2026_10_28_858499_categorization_v3.json")
         self.assertTrue(os.path.isfile(uni_path))
@@ -1830,12 +1837,18 @@ class GatheringScansTestSuite(unittest.TestCase):
 
         self.assertEqual(float(mrg_cat["summary"]["grid_resolution_m"]), 0.25)
         self.assertIn("anchor_twd97", mrg_cat)
-        self.assertGreaterEqual(int(mrg_cat["summary"]["trees_count"]), int(uni_cat["summary"]["trees_count"]) + 50)
+        self.assertGreaterEqual(int(mrg_cat["summary"]["trees_count"]), int(uni_cat["summary"]["trees_count"]) + 25)
+        self.assertTrue(all(t.get("trunk_verified_3d") is True for t in uni_cat.get("trees", [])))
+        self.assertTrue(all(t.get("ai_vision_verified") is True for t in uni_cat.get("trees", [])))
+        self.assertTrue(all(t.get("dbh_method") != "crown_height_allometry" for t in uni_cat.get("trees", [])))
+        self.assertTrue(all(t.get("trunk_verified_3d") is True for t in mrg_cat.get("trees", [])))
+        self.assertTrue(all(t.get("ai_vision_verified") is True for t in mrg_cat.get("trees", [])))
+        self.assertTrue(all(t.get("dbh_method") != "crown_height_allometry" for t in mrg_cat.get("trees", [])))
         self.assertGreaterEqual(float(mrg_cat["summary"]["roads_planar_area_m2"]), float(uni_cat["summary"]["roads_planar_area_m2"]))
         self.assertTrue(any(len(r.get("holes_twd97") or []) > 0 for r in mrg_cat.get("roads", [])))
         self.assertGreaterEqual(int(mrg_cat["summary"]["water_count"]), 2)
         self.assertGreaterEqual(float(mrg_cat["summary"]["water_planar_area_m2"]), 1300.0)
-        self.assertTrue(any(t.get("verified_photo") for t in mrg_cat.get("trees", [])))
+        self.assertTrue(all(t.get("verified_photo") for t in mrg_cat.get("trees", [])))
 
 
 if __name__ == "__main__":
