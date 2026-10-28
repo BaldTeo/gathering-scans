@@ -1083,6 +1083,16 @@ def _extract_tileset_georef_and_fix_axis(tileset_path: str, geoid_sep_m: float =
         region = bv.get("region")
 
         lx, ly, lz, tight_he = _walk_tight_leaf_center_and_extents(root)
+        root_box = bv.get("box")
+        if (
+            isinstance(root_box, list)
+            and len(root_box) >= 12
+            and (
+                abs(float(root_box[3] or 0.0) - float(root_box[11] or 0.0)) > 0.5
+                or "gatheringcloud" in str(asset.get("generator") or "").lower()
+            )
+        ):
+            lx, ly, lz = float(root_box[0] or 0.0), float(root_box[1] or 0.0), float(root_box[2] or 0.0)
         if tight_he:
             out["half_extents"] = tight_he
 

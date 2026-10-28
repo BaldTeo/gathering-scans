@@ -1321,6 +1321,7 @@
       ? String(pref).toLowerCase()
       : "auto";
     STATE.themePreference = normalizedPref;
+    const prevTheme = document.documentElement.getAttribute("data-theme");
     const resolved = resolveThemeFromPreference(normalizedPref);
     STATE.resolvedTheme = resolved;
 
@@ -1353,6 +1354,8 @@
 
     syncThreeSceneThemes(resolved);
     if (
+      prevTheme &&
+      prevTheme !== resolved &&
       STATE.activeView === "studio" &&
       STATE.activeTool === "drainage" &&
       typeof renderDrainageAndSlopeVisuals3D === "function"

@@ -1303,6 +1303,10 @@
           if (sphere.radius > 0) {
             model.position.set(-sphere.center.x, -sphere.center.y, -sphere.center.z);
             studioThree.tilesCenter = [sphere.center.x, sphere.center.y, sphere.center.z];
+        if (typeof renderCommentPins3D === "function") renderCommentPins3D();
+        if (typeof loadAndRenderScanCameraTrajectory3D === "function" && scan && scan.scan_id) {
+          loadAndRenderScanCameraTrajectory3D(scan.scan_id, true);
+        }
           }
           studioThree.tileUpMatrix = new THREE.Matrix4();
           if (studioThree.grid) {
@@ -1413,6 +1417,10 @@
         if (computeTilesetContentSphere(tr, sphere)) {
           tr.group.position.set(-sphere.center.x, -sphere.center.y, -sphere.center.z);
           studioThree.tilesCenter = [sphere.center.x, sphere.center.y, sphere.center.z];
+        if (typeof renderCommentPins3D === "function") renderCommentPins3D();
+        if (typeof loadAndRenderScanCameraTrajectory3D === "function" && scan && scan.scan_id) {
+          loadAndRenderScanCameraTrajectory3D(scan.scan_id, true);
+        }
           studioThree.tileUpMatrix = tr._upRotationMatrix ? tr._upRotationMatrix.clone() : new THREE.Matrix4();
           // Z-up TWD97 tilesets: rotate -90 deg on X so elevation points +Y
           studioThree.modelPivot.rotation.set(THREE.MathUtils.degToRad(270), 0, 0);

@@ -4674,7 +4674,12 @@
       const cN = Number(c.twd97_n) || 0;
       const cH = Number(c.twd97_h) || 0;
       const basePt =
-        px === 0 && py === 0 && pz === 0 && Math.abs(cE) > 100 && Math.abs(cN) > 100 && typeof twd97ToStudioLocalVec === "function"
+        Math.abs(cE) > 100 &&
+        Math.abs(cN) > 100 &&
+        typeof twd97ToStudioLocalVec === "function" &&
+        ((px === 0 && py === 0 && pz === 0) ||
+          (Array.isArray(studioThree?.tilesCenter) &&
+            Math.hypot(studioThree.tilesCenter[0] || 0, studioThree.tilesCenter[1] || 0) > 100))
           ? twd97ToStudioLocalVec(cE, cN, cH, null, null)
           : new THREE.Vector3(px, py, pz);
       add3DPinMarker(basePt, 0x0284c7, studioThree.commentPinsGroup);

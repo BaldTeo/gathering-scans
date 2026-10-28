@@ -1312,13 +1312,14 @@
     const collectFromRoot = (rootObj) => {
       if (!rootObj || !rootObj.visible) return;
       rootObj.updateMatrixWorld(true);
+      const isTilesGrp = Boolean(studioThree?.tilesRenderer?.group && rootObj === studioThree.modelPivot);
       rootObj.traverse((c) => {
         if (
           c.isMesh &&
           c.geometry &&
           c.geometry.attributes &&
           c.geometry.attributes.position &&
-          isMeshVisibleUnderRoot(c, rootObj) &&
+          (isTilesGrp || isMeshVisibleUnderRoot(c, rootObj)) &&
           !c.userData?.isAlignBoxHelper
         ) {
           const cnt = c.geometry.attributes.position.count || 0;
@@ -1428,8 +1429,8 @@
     const spanX = Math.max(6.0, maxX - minX);
     const spanZ = Math.max(6.0, maxZ - minZ);
     const cellStep = Math.max(0.65, targetStepM);
-    const nx = Math.max(6, Math.min(180, Math.round(spanX / cellStep) + 1));
-    const nz = Math.max(6, Math.min(180, Math.round(spanZ / cellStep) + 1));
+    const nx = Math.max(6, Math.min(300, Math.round(spanX / cellStep) + 1));
+    const nz = Math.max(6, Math.min(300, Math.round(spanZ / cellStep) + 1));
     const stepX = spanX / Math.max(1, nx - 1);
     const stepZ = spanZ / Math.max(1, nz - 1);
 
@@ -1486,7 +1487,7 @@
       const m8 = e[8], m9 = e[9], m10 = e[10];
       const m12 = e[12], m13 = e[13], m14 = e[14];
       const triCount = idxAttr ? Math.floor(idxAttr.count / 3) : Math.floor(pos.count / 3);
-      const triStride = Math.max(1, Math.floor(triCount / 55000));
+      const triStride = 1;
 
       for (let ti = 0; ti < triCount; ti += triStride) {
         const i0 = idxAttr ? idxAttr.getX(ti * 3) : ti * 3;
@@ -1555,7 +1556,6 @@
               if (w0 >= -0.05 && w1 >= -0.05 && w2 >= -0.05) {
                 const py = w0 * y0 + w1 * y1 + w2 * y2;
                 accumGridSample(px, py, pz);
-                markFineOcc(px, pz);
               }
             }
           }
@@ -1743,9 +1743,7 @@
     return { cellStep: Math.min(stepX, stepZ), arrows };
   }
 
-  function renderDrainageAndSlopeVisuals3D(
-    opts = { gridSize: 20, densityPerM2: 0.25, arrowScale: 1.0, showLabels: true, excludeWalls: true }
-  ) {
+  function renderDrainageAndSlopeVisuals3D(opts = {}) {
     if (!studioThree || !studioThree.overlayGroup) return null;
     clearDrainageVisuals3D();
 
@@ -2154,7 +2152,9 @@
       });
       if (srv && srv.status === "ok") {
         STATE.lastDrainageResult = srv;
-        if (STATE.activeTool === "drainage" && (!localStats || localStats.arrow_count === 0)) {
+        const hasClientArrows =
+          (localStats && localStats.arrow_count > 0) || (studioThree?.drainageGroup?.children?.length || 0) > 0;
+        if (STATE.activeTool === "drainage" && !hasClientArrows) {
           localStats = renderDrainageAndSlopeVisuals3D({
             gridSize: Number(STATE.drainageGridSize) || 20,
             densityPerM2: Number(STATE.drainageDensityPerM2) || 0.25,
@@ -2556,6 +2556,20 @@
     STATE.activeScanCameras = camRes.cameras;
     STATE.activeScanCameraMeta = camRes;
 
+    const originTwd = typeof localToTwd97 === "function" ? localToTwd97({ x: 0, y: 0, z: 0 }) : camRes.anchor_twd97 || { e: 0, n: 0, h: 0 };
+    if (
+      !forceReanchor &&
+      !forceNetworkReload &&
+      studioThree.cameraTrajectoryGroup &&
+      studioThree.cameraTrajectoryScanId === sid &&
+      Math.abs((studioThree.cameraTrajectoryOriginH || 0) - Number(originTwd.h || 0)) <= 0.01
+    ) {
+      studioThree.cameraTrajectoryGroup.visible = Boolean(
+        STATE.showCameraTrajectory3D !== false && (STATE.activeTool === "photos" || STATE.activeTool === "rtk")
+      );
+      return camRes;
+    }
+
     clearCameraTrajectory3D();
     if (!STATE.showCameraTrajectory3D) return camRes;
 
@@ -2565,9 +2579,10 @@
       STATE.showCameraTrajectory3D !== false && (STATE.activeTool === "photos" || STATE.activeTool === "rtk")
     );
     studioThree.cameraTrajectoryGroup = grp;
+    studioThree.cameraTrajectoryScanId = sid;
+    studioThree.cameraTrajectoryOriginH = Number(originTwd.h || 0);
     studioThree.overlayGroup.add(grp);
 
-    const originTwd = typeof localToTwd97 === "function" ? localToTwd97({ x: 0, y: 0, z: 0 }) : camRes.anchor_twd97 || { e: 0, n: 0, h: 0 };
     const bySubScan = new Map();
     camRes.cameras.forEach((c) => {
       const subKey = String(c.sub_scan || sid);
@@ -2588,6 +2603,8 @@
       const linePts = [];
       const dotPts = [];
       const tickPts = [];
+      const frustumPts = [];
+      const frustumStride = Math.max(1, Math.ceil(camList.length / 36));
       for (let i = 0; i < camList.length; i++) {
         const c = camList[i];
         const pt = c._localPt;
@@ -2602,6 +2619,48 @@
           const fVec = new THREE.Vector3(c.forward[0], c.forward[2], -c.forward[1]).normalize();
           tickPts.push(pt, pt.clone().addScaledVector(fVec, 0.36));
         }
+        if (i % frustumStride === 0) {
+          let dir;
+          let right;
+          let up;
+          if (
+            Array.isArray(c.forward) &&
+            c.forward.length === 3 &&
+            Array.isArray(c.right) &&
+            c.right.length === 3 &&
+            Array.isArray(c.down) &&
+            c.down.length === 3
+          ) {
+            dir = new THREE.Vector3(c.forward[0], c.forward[2], -c.forward[1]).normalize();
+            right = new THREE.Vector3(c.right[0], c.right[2], -c.right[1]).normalize();
+            up = new THREE.Vector3(-c.down[0], -c.down[2], c.down[1]).normalize();
+          } else if (Array.isArray(c.forward) && c.forward.length === 3) {
+            dir = new THREE.Vector3(c.forward[0], c.forward[2], -c.forward[1]).normalize();
+            right = new THREE.Vector3().crossVectors(dir, new THREE.Vector3(0, 1, 0)).normalize();
+            if (right.lengthSq() < 0.01) right.set(1, 0, 0);
+            up = new THREE.Vector3().crossVectors(right, dir).normalize();
+          } else {
+            const yawRad = THREE.MathUtils.degToRad(Number(c.yaw_deg) || 0);
+            const pitchRad = THREE.MathUtils.degToRad(Number(c.pitch_deg) || -15);
+            dir = new THREE.Vector3(
+              Math.sin(yawRad) * Math.cos(pitchRad),
+              Math.sin(pitchRad),
+              -Math.cos(yawRad) * Math.cos(pitchRad)
+            ).normalize();
+            right = new THREE.Vector3().crossVectors(dir, new THREE.Vector3(0, 1, 0)).normalize();
+            if (right.lengthSq() < 0.01) right.set(1, 0, 0);
+            up = new THREE.Vector3().crossVectors(right, dir).normalize();
+          }
+          const fDepth = 1.4;
+          const halfW = 0.65;
+          const halfH = 0.45;
+          const centerPlane = pt.clone().addScaledVector(dir, fDepth);
+          const c0 = centerPlane.clone().addScaledVector(right, -halfW).addScaledVector(up, halfH);
+          const c1 = centerPlane.clone().addScaledVector(right, halfW).addScaledVector(up, halfH);
+          const c2 = centerPlane.clone().addScaledVector(right, halfW).addScaledVector(up, -halfH);
+          const c3 = centerPlane.clone().addScaledVector(right, -halfW).addScaledVector(up, -halfH);
+          frustumPts.push(pt, c0, pt, c1, pt, c2, pt, c3, c0, c1, c1, c2, c2, c3, c3, c0);
+        }
       }
 
       if (linePts.length >= 2) {
@@ -2610,6 +2669,13 @@
         const lMesh = new THREE.LineSegments(lGeo, lMat);
         lMesh.renderOrder = 992;
         grp.add(lMesh);
+      }
+      if (frustumPts.length >= 2) {
+        const fGeo = new THREE.BufferGeometry().setFromPoints(frustumPts);
+        const fMat = new THREE.LineBasicMaterial({ color: col, transparent: true, opacity: 0.75, depthTest: false });
+        const fMesh = new THREE.LineSegments(fGeo, fMat);
+        fMesh.renderOrder = 993;
+        grp.add(fMesh);
       }
       if (tickPts.length >= 2) {
         const tGeo = new THREE.BufferGeometry().setFromPoints(tickPts);
@@ -3316,6 +3382,19 @@
     const camMetaPromise = loadAndRenderScanCameraTrajectory3D(STATE.activeScanId, false);
     if (!pt && !pinnedCameraFilename) {
       clearPhotoTargetVisuals3D(false);
+      const cachedMeta =
+        (STATE.scanCameraCatalogScanId === STATE.activeScanId && STATE.scanCameraCatalog) ||
+        (STATE.scanCameraCatalogCache && STATE.scanCameraCatalogCache[STATE.activeScanId]) ||
+        null;
+      if (!cachedMeta) {
+        showSidePanel(
+          `<span>${tr("RTK 照片與 3D 視錐投影", "RTK Camera & 3D Frustum Inspector")}</span>`,
+          `<div style="font-size:12px;color:var(--ui-text-secondary);padding:8px 0;">⏳ ${tr(
+            "正在載入 Pix4Dmatic 率定相機軌跡與 3D 視錐...",
+            "Loading calibrated Pix4Dmatic camera trajectory & 3D frustums..."
+          )}</div>`
+        );
+      }
       const camMeta = await camMetaPromise;
       if (STATE.activeTool !== "photos" && STATE.activeTool !== "rtk") {
         clearPhotoTargetVisuals3D(true);

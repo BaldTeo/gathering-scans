@@ -1725,7 +1725,7 @@ class GatheringScansTestSuite(unittest.TestCase):
                 },
             )
 
-        # 5. Verify presence of btn-move-comment and STATE.movingCommentId in frontend
+        # 5. Verify presence of btn-move-comment, STATE.movingCommentId, v173 drainage stability & immediate frustum pyramids in frontend
         with open(os.path.join(BASE_DIR, "web", "src", "04-studio-lasso-and-edits.js"), "r", encoding="utf-8") as f:
             js04 = f.read()
         with open(os.path.join(BASE_DIR, "web", "src", "05-studio-civil-inspectors.js"), "r", encoding="utf-8") as f:
@@ -1737,6 +1737,10 @@ class GatheringScansTestSuite(unittest.TestCase):
         self.assertIn("data-pin-move", js05)
         self.assertIn("btn-move-comment", js08)
         self.assertIn("STATE.movingCommentId", js08)
+        self.assertIn("function renderDrainageAndSlopeVisuals3D(opts = {})", js08)
+        self.assertIn("cameraTrajectoryOriginH", js08)
+        self.assertIn("const frustumPts = [];", js08)
+        self.assertIn("const frustumStride = Math.max(1, Math.ceil(camList.length / 36));", js08)
 
 
 if __name__ == "__main__":
