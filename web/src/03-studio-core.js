@@ -292,64 +292,63 @@
         if (opts.isStudio && (STATE.fpMode?.active || STATE.activeView !== "studio")) return;
         if (e.deltaY >= 0) return; // Zoom-out works normally
 
-        const rect = domEl.getBoundingClientRect();
-        if (rect.width <= 0 || rect.height <= 0) return;
-        ndc.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
-        ndc.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
-        if (!Number.isFinite(ndc.x) || Math.abs(ndc.x) > 1.05 || Math.abs(ndc.y) > 1.05) {
-          ndc.set(0, 0);
+        const viewDir = new THREE.Vector3().subVectors(ctrls.target, cam.position);
+        const curTargetDist = viewDir.length();
+        if (curTargetDist > 1e-6) {
+          viewDir.divideScalar(curTargetDist);
+        } else {
+          cam.getWorldDirection(viewDir);
         }
 
         const meshes = collectTargetMeshes(v);
         if (!meshes.length) return;
-        ray.setFromCamera(ndc, cam);
+        ray.set(cam.position, viewDir);
         let hits = ray.intersectObjects(meshes, false);
-        if (!hits.length && (ndc.x !== 0 || ndc.y !== 0)) {
-          ray.setFromCamera(new THREE.Vector2(0, 0), cam);
-          hits = ray.intersectObjects(meshes, false);
-        }
-
-        let hitPt = hits.length ? hits[0].point : null;
         let surfDist = hits.length ? hits[0].distance : null;
-        if (!hitPt) {
-          // Off-mesh fallback: intersect view ray with scan ground plane so high mid-air targets never stall
-          const groundY = Number.isFinite(v?.grid?.position?.y) ? v.grid.position.y : -7.0;
-          const viewDir0 = new THREE.Vector3();
-          cam.getWorldDirection(viewDir0);
-          if (viewDir0.y < -0.04 && cam.position.y > groundY + 0.2) {
-            const tGround = (groundY - cam.position.y) / viewDir0.y;
-            if (tGround > 0.1 && tGround < 400) {
-              surfDist = tGround;
-              hitPt = cam.position.clone().addScaledVector(viewDir0, tGround);
+
+        if (!Number.isFinite(surfDist)) {
+          const rect = domEl.getBoundingClientRect();
+          if (rect.width > 0 && rect.height > 0) {
+            ndc.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+            ndc.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+            if (Number.isFinite(ndc.x) && Math.abs(ndc.x) <= 1.05 && Math.abs(ndc.y) <= 1.05) {
+              ray.setFromCamera(ndc, cam);
+              const cursorHits = ray.intersectObjects(meshes, false);
+              if (cursorHits.length) {
+                const proj = new THREE.Vector3().subVectors(cursorHits[0].point, cam.position).dot(viewDir);
+                if (proj > 0.1) surfDist = proj;
+              }
             }
           }
         }
-        if (!hitPt || !Number.isFinite(surfDist)) return;
+        if (!Number.isFinite(surfDist)) {
+          // Off-mesh fallback: intersect camera view ray with scan ground plane so high mid-air targets never stall
+          const groundY = Number.isFinite(v?.grid?.position?.y) ? v.grid.position.y : -7.0;
+          if (viewDir.y < -0.04 && cam.position.y > groundY + 0.2) {
+            const tGround = (groundY - cam.position.y) / viewDir.y;
+            if (tGround > 0.1 && tGround < 400) {
+              surfDist = tGround;
+            }
+          }
+        }
+        if (!Number.isFinite(surfDist)) return;
 
-        // Prevent subsurface punch-through when already within 18 cm of the surface
+        // Prevent subsurface punch-through when already within 18 cm of the surface (zero rotation!)
         if (surfDist <= 0.18) {
-          const viewDir = new THREE.Vector3().subVectors(hitPt, cam.position).normalize();
-          ctrls.target.copy(cam.position).addScaledVector(viewDir, Math.max(0.09, surfDist * 0.92));
-          ctrls.update();
-          syncExtraCams(v);
           e.stopImmediatePropagation();
           e.preventDefault();
           return;
         }
 
-        const viewDir = new THREE.Vector3().subVectors(ctrls.target, cam.position);
-        if (viewDir.lengthSq() < 1e-6) cam.getWorldDirection(viewDir);
-        else viewDir.normalize();
-
-        const cursorDir = new THREE.Vector3().subVectors(hitPt, cam.position).normalize();
-        const blendDir = viewDir.clone().lerp(cursorDir, 0.32).normalize();
+        // Move camera and target strictly along the existing look axis `viewDir` so the camera NEVER rotates when zooming!
+        const savedQuat = cam.quaternion.clone();
         const stepAdvance = Math.min(surfDist - 0.15, Math.max(0.18, surfDist * 0.085));
         if (stepAdvance > 0) {
-          cam.position.addScaledVector(blendDir, stepAdvance);
+          cam.position.addScaledVector(viewDir, stepAdvance);
         }
         const remDist = Math.max(0.14, surfDist - Math.max(0, stepAdvance));
-        ctrls.target.copy(cam.position).addScaledVector(blendDir, Math.max(0.12, remDist * 0.88));
-        ctrls.update();
+        ctrls.target.copy(cam.position).addScaledVector(viewDir, Math.max(0.12, remDist * 0.88));
+        cam.quaternion.copy(savedQuat);
         syncExtraCams(v);
       },
       { passive: false, capture: true }

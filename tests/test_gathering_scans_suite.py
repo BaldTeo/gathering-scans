@@ -1761,8 +1761,10 @@ class GatheringScansTestSuite(unittest.TestCase):
         with open(os.path.join(BASE_DIR, "web", "src", "08-advanced-surveying-and-qa.js"), "r", encoding="utf-8") as f:
             js08 = f.read()
 
-        # 1. Surface-aware OrbitControls zoom near Earth across Studio, Preview, and Compare
+        # 1. Surface-aware OrbitControls zoom near Earth across Studio, Preview, and Compare (with strictly zero rotation)
         self.assertIn("function installSurfaceAwareOrbitZoom(", js03)
+        self.assertIn("const savedQuat = cam.quaternion.clone();", js03)
+        self.assertNotIn("lerp(cursorDir", js03)
         self.assertIn("controls.minDistance = 0.08;", js03)
         self.assertIn("controls.minDistance = 0.08;", js02)
         self.assertIn("controls.minDistance = 0.08;", js07)
