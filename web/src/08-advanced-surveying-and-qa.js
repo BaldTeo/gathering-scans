@@ -1308,9 +1308,12 @@
     const targetStepM = Math.max(0.65, 1.0 / Math.sqrt(Math.max(0.02, densityVal)));
     const meshes = [];
     let totalVerts = 0;
+    const seenGeoms = new Set();
 
-    const collectFromRoot = (rootObj) => {
-      if (!rootObj || !rootObj.visible) return;
+    const collectFromSceneRoot = (rootObj, isFallback = false, parentGroupWorldMat = null) => {
+      if (!rootObj) return;
+      const isDetached = Boolean(parentGroupWorldMat && rootObj.parent === null);
+      if (!isDetached && !rootObj.visible) return;
       rootObj.updateMatrixWorld(true);
       rootObj.traverse((c) => {
         if (
@@ -1318,21 +1321,67 @@
           c.geometry &&
           c.geometry.attributes &&
           c.geometry.attributes.position &&
+          !seenGeoms.has(c.geometry) &&
           isMeshVisibleUnderRoot(c, rootObj) &&
           !c.userData?.isAlignBoxHelper
         ) {
           const cnt = c.geometry.attributes.position.count || 0;
           if (cnt > 0) {
-            meshes.push(c);
+            seenGeoms.add(c.geometry);
+            let worldElements = c.matrixWorld.elements;
+            if (isDetached) {
+              const wm = new THREE.Matrix4().multiplyMatrices(parentGroupWorldMat, c.matrixWorld);
+              worldElements = wm.elements.slice();
+            }
+            meshes.push({ mesh: c, worldElements, isFallback: Boolean(isFallback) });
             totalVerts += cnt;
           }
         }
       });
     };
 
-    collectFromRoot(studioThree?.modelPivot);
+    const tr = studioThree?.tilesRenderer;
+    if (tr && tr.root && studioThree?.modelPivot?.visible) {
+      studioThree.modelPivot.updateMatrixWorld(true);
+      const grpMat = tr.group ? tr.group.matrixWorld : studioThree.modelPivot.matrixWorld;
+      const hasAnyLoadedScene = (node) => {
+        if (!node) return false;
+        if (node.engineData?.scene) return true;
+        const ch = node.children;
+        if (Array.isArray(ch)) {
+          for (let i = 0; i < ch.length; i++) {
+            if (hasAnyLoadedScene(ch[i])) return true;
+          }
+        }
+        return false;
+      };
+      const hasFullCoverageScene = (node) => {
+        if (!node) return false;
+        if (node.engineData?.scene) return true;
+        const ch = node.children;
+        return Array.isArray(ch) && ch.length > 0 && ch.every((c) => hasFullCoverageScene(c));
+      };
+      const walkTileNode = (node) => {
+        if (!node) return;
+        const ch = Array.isArray(node.children) ? node.children : [];
+        const loadedChildren = ch.filter((c) => hasAnyLoadedScene(c));
+        if (loadedChildren.length > 0) {
+          for (let i = 0; i < loadedChildren.length; i++) {
+            walkTileNode(loadedChildren[i]);
+          }
+          if (!ch.every((c) => hasFullCoverageScene(c)) && node.engineData?.scene) {
+            collectFromSceneRoot(node.engineData.scene, true, grpMat);
+          }
+        } else if (node.engineData?.scene) {
+          collectFromSceneRoot(node.engineData.scene, false, grpMat);
+        }
+      };
+      walkTileNode(tr.root);
+    }
+
+    collectFromSceneRoot(studioThree?.modelPivot, false, null);
     if (STATE.multiAlign?.active) {
-      collectFromRoot(studioThree?.multiAlignGroup);
+      collectFromSceneRoot(studioThree?.multiAlignGroup, false, null);
     }
 
     const waterPolys2D = getActiveScanWaterPolysLocalXZ();
@@ -1376,7 +1425,7 @@
     }
 
     if (meshes.length === 0) {
-      collectFromRoot(studioThree?.fallbackGroup);
+      collectFromSceneRoot(studioThree?.fallbackGroup, false, null);
     }
     if (meshes.length === 0 || totalVerts === 0) {
       return { cellStep: targetStepM, arrows: [] };
@@ -1388,10 +1437,11 @@
     const sz = [];
 
     for (let mi = 0; mi < meshes.length; mi++) {
-      const m = meshes[mi];
+      const entry = meshes[mi];
+      const m = entry.mesh;
       const pos = m.geometry.attributes.position;
       const count = pos.count;
-      const e = m.matrixWorld.elements;
+      const e = entry.worldElements || m.matrixWorld.elements;
       const m0 = e[0], m1 = e[1], m2 = e[2];
       const m4 = e[4], m5 = e[5], m6 = e[6];
       const m8 = e[8], m9 = e[9], m10 = e[10];
@@ -1454,6 +1504,7 @@
     const sumXGrid = new Float32Array(nx * nz);
     const sumZGrid = new Float32Array(nx * nz);
     const cntGrid = new Uint32Array(nx * nz);
+    let primaryCovered = null;
     minYGrid.fill(Infinity);
 
     const accumGridSample = (wx, wy, wz) => {
@@ -1462,6 +1513,7 @@
       const ix = Math.min(nx - 1, Math.max(0, Math.floor((wx - minX) / stepX)));
       const iz = Math.min(nz - 1, Math.max(0, Math.floor((wz - minZ) / stepZ)));
       const idx = iz * nx + ix;
+      if (primaryCovered && primaryCovered[idx]) return;
       if (wy < minYGrid[idx]) minYGrid[idx] = wy;
       sumYGrid[idx] += wy;
       sumXGrid[idx] += wx;
@@ -1471,110 +1523,133 @@
 
     let triAccumTotal = 0;
 
-    // Rasterize real mesh triangles across both the fine occupancy grid and the (nx x nz) elevation grid
-    // using pos.getX/getY/getZ so quantized InterleavedBufferAttribute GLBs work with 100% fidelity
+    // Rasterize real mesh triangles across both the fine occupancy grid and the (nx x nz) elevation grid:
+    // Pass 0 rasterizes finest loaded tiles (!isFallback); Pass 1 rasterizes parent fallback tiles into uncovered quadrants.
     const maxAllowedTriEdgeSq = Math.pow(Math.max(14.0, Math.max(spanX, spanZ) * 0.18), 2);
-    for (let mi = 0; mi < meshes.length; mi++) {
-      const m = meshes[mi];
-      const pos = m.geometry.attributes.position;
-      const idxAttr = m.geometry.index;
-      const e = m.matrixWorld.elements;
-      const m0 = e[0], m1 = e[1], m2 = e[2];
-      const m4 = e[4], m5 = e[5], m6 = e[6];
-      const m8 = e[8], m9 = e[9], m10 = e[10];
-      const m12 = e[12], m13 = e[13], m14 = e[14];
-      const triCount = idxAttr ? Math.floor(idxAttr.count / 3) : Math.floor(pos.count / 3);
-      const triStride = 1;
-
-      for (let ti = 0; ti < triCount; ti += triStride) {
-        const i0 = idxAttr ? idxAttr.getX(ti * 3) : ti * 3;
-        const i1 = idxAttr ? idxAttr.getX(ti * 3 + 1) : ti * 3 + 1;
-        const i2 = idxAttr ? idxAttr.getX(ti * 3 + 2) : ti * 3 + 2;
-        const vx0 = pos.getX(i0), vy0 = pos.getY(i0), vz0 = pos.getZ(i0);
-        const vx1 = pos.getX(i1), vy1 = pos.getY(i1), vz1 = pos.getZ(i1);
-        const vx2 = pos.getX(i2), vy2 = pos.getY(i2), vz2 = pos.getZ(i2);
-
-        const x0 = m0 * vx0 + m4 * vy0 + m8 * vz0 + m12;
-        const y0 = m1 * vx0 + m5 * vy0 + m9 * vz0 + m13;
-        const z0 = m2 * vx0 + m6 * vy0 + m10 * vz0 + m14;
-
-        const x1 = m0 * vx1 + m4 * vy1 + m8 * vz1 + m12;
-        const y1 = m1 * vx1 + m5 * vy1 + m9 * vz1 + m13;
-        const z1 = m2 * vx1 + m6 * vy1 + m10 * vz1 + m14;
-
-        const x2 = m0 * vx2 + m4 * vy2 + m8 * vz2 + m12;
-        const y2 = m1 * vx2 + m5 * vy2 + m9 * vz2 + m13;
-        const z2 = m2 * vx2 + m6 * vy2 + m10 * vz2 + m14;
-
-        const d01 = (x1 - x0) * (x1 - x0) + (z1 - z0) * (z1 - z0);
-        const d12 = (x2 - x1) * (x2 - x1) + (z2 - z1) * (z2 - z1);
-        const d20 = (x0 - x2) * (x0 - x2) + (z0 - z2) * (z0 - z2);
-        if (d01 > maxAllowedTriEdgeSq || d12 > maxAllowedTriEdgeSq || d20 > maxAllowedTriEdgeSq) continue;
-
-        // Check surface normal Y component to skip vertical walls/trunks/noise spikes during ground rasterization
-        const ux = x1 - x0, uy = y1 - y0, uz = z1 - z0;
-        const wx = x2 - x0, wy = y2 - y0, wz = z2 - z0;
-        const nxTri = uy * wz - uz * wy;
-        const nyTri = uz * wx - ux * wz;
-        const nzTri = ux * wy - uy * wx;
-        const nLen = Math.hypot(nxTri, nyTri, nzTri);
-        if (nLen < 1e-6) continue;
-        if (excludeWalls && Math.abs(nyTri) / nLen < 0.66) continue;
-
-        const cx = (x0 + x1 + x2) / 3.0;
-        const cy = (y0 + y1 + y2) / 3.0;
-        const cz = (z0 + z1 + z2) / 3.0;
-        markFineOcc(cx, cz);
-        markFineOcc(0.5 * (x0 + x1), 0.5 * (z0 + z1));
-        markFineOcc(0.5 * (x1 + x2), 0.5 * (z1 + z2));
-        markFineOcc(0.5 * (x2 + x0), 0.5 * (z2 + z0));
-        accumGridSample(x0, y0, z0);
-        accumGridSample(x1, y1, z1);
-        accumGridSample(x2, y2, z2);
-        accumGridSample(cx, cy, cz);
-        triAccumTotal++;
-
-        // Barycentric rasterization over covered drainage grid cells & fine occupancy cells
-        const denom = (z1 - z2) * (x0 - x2) + (x2 - x1) * (z0 - z2);
-        if (Math.abs(denom) > 1e-5) {
-          const invDenom = 1.0 / denom;
-          const tMinX = Math.max(minX, Math.min(x0, x1, x2));
-          const tMaxX = Math.min(maxX, Math.max(x0, x1, x2));
-          const tMinZ = Math.max(minZ, Math.min(z0, z1, z2));
-          const tMaxZ = Math.min(maxZ, Math.max(z0, z1, z2));
-
-          const ix0 = Math.max(0, Math.floor((tMinX - minX) / stepX));
-          const ix1 = Math.min(nx - 1, Math.floor((tMaxX - minX) / stepX));
-          const iz0 = Math.max(0, Math.floor((tMinZ - minZ) / stepZ));
-          const iz1 = Math.min(nz - 1, Math.floor((tMaxZ - minZ) / stepZ));
-          for (let iz = iz0; iz <= iz1; iz++) {
-            const pz = minZ + (iz + 0.5) * stepZ;
-            for (let ix = ix0; ix <= ix1; ix++) {
-              const px = minX + (ix + 0.5) * stepX;
-              const w0 = ((z1 - z2) * (px - x2) + (x2 - x1) * (pz - z2)) * invDenom;
-              const w1 = ((z2 - z0) * (px - x2) + (x0 - x2) * (pz - z2)) * invDenom;
-              const w2 = 1.0 - w0 - w1;
-              if (w0 >= -0.05 && w1 >= -0.05 && w2 >= -0.05) {
-                const py = w0 * y0 + w1 * y1 + w2 * y2;
-                accumGridSample(px, py, pz);
+    for (let pass = 0; pass < 2; pass++) {
+      const wantFallback = pass === 1;
+      if (wantFallback) {
+        if (!meshes.some((ent) => ent.isFallback)) break;
+        primaryCovered = new Uint8Array(nx * nz);
+        for (let iz = 0; iz < nz; iz++) {
+          for (let ix = 0; ix < nx; ix++) {
+            if (cntGrid[iz * nx + ix] > 0) {
+              for (let dz = -1; dz <= 1; dz++) {
+                const jz = iz + dz;
+                if (jz < 0 || jz >= nz) continue;
+                for (let dx = -1; dx <= 1; dx++) {
+                  const jx = ix + dx;
+                  if (jx >= 0 && jx < nx) primaryCovered[jz * nx + jx] = 1;
+                }
               }
             }
           }
+        }
+      }
+      for (let mi = 0; mi < meshes.length; mi++) {
+        const entry = meshes[mi];
+        if (Boolean(entry.isFallback) !== wantFallback) continue;
+        const m = entry.mesh;
+        const pos = m.geometry.attributes.position;
+        const idxAttr = m.geometry.index;
+        const e = entry.worldElements || m.matrixWorld.elements;
+        const m0 = e[0], m1 = e[1], m2 = e[2];
+        const m4 = e[4], m5 = e[5], m6 = e[6];
+        const m8 = e[8], m9 = e[9], m10 = e[10];
+        const m12 = e[12], m13 = e[13], m14 = e[14];
+        const triCount = idxAttr ? Math.floor(idxAttr.count / 3) : Math.floor(pos.count / 3);
+        const triStride = 1;
 
-          const fx0 = Math.max(0, Math.floor((tMinX - minX) / fineStepX));
-          const fx1 = Math.min(fineN - 1, Math.floor((tMaxX - minX) / fineStepX));
-          const fz0 = Math.max(0, Math.floor((tMinZ - minZ) / fineStepZ));
-          const fz1 = Math.min(fineN - 1, Math.floor((tMaxZ - minZ) / fineStepZ));
-          if ((fx1 - fx0 + 1) * (fz1 - fz0 + 1) <= 256) {
-            for (let fz = fz0; fz <= fz1; fz++) {
-              const pz = minZ + (fz + 0.5) * fineStepZ;
-              for (let fx = fx0; fx <= fx1; fx++) {
-                const px = minX + (fx + 0.5) * fineStepX;
+        for (let ti = 0; ti < triCount; ti += triStride) {
+          const i0 = idxAttr ? idxAttr.getX(ti * 3) : ti * 3;
+          const i1 = idxAttr ? idxAttr.getX(ti * 3 + 1) : ti * 3 + 1;
+          const i2 = idxAttr ? idxAttr.getX(ti * 3 + 2) : ti * 3 + 2;
+          const vx0 = pos.getX(i0), vy0 = pos.getY(i0), vz0 = pos.getZ(i0);
+          const vx1 = pos.getX(i1), vy1 = pos.getY(i1), vz1 = pos.getZ(i1);
+          const vx2 = pos.getX(i2), vy2 = pos.getY(i2), vz2 = pos.getZ(i2);
+
+          const x0 = m0 * vx0 + m4 * vy0 + m8 * vz0 + m12;
+          const y0 = m1 * vx0 + m5 * vy0 + m9 * vz0 + m13;
+          const z0 = m2 * vx0 + m6 * vy0 + m10 * vz0 + m14;
+
+          const x1 = m0 * vx1 + m4 * vy1 + m8 * vz1 + m12;
+          const y1 = m1 * vx1 + m5 * vy1 + m9 * vz1 + m13;
+          const z1 = m2 * vx1 + m6 * vy1 + m10 * vz1 + m14;
+
+          const x2 = m0 * vx2 + m4 * vy2 + m8 * vz2 + m12;
+          const y2 = m1 * vx2 + m5 * vy2 + m9 * vz2 + m13;
+          const z2 = m2 * vx2 + m6 * vy2 + m10 * vz2 + m14;
+
+          const d01 = (x1 - x0) * (x1 - x0) + (z1 - z0) * (z1 - z0);
+          const d12 = (x2 - x1) * (x2 - x1) + (z2 - z1) * (z2 - z1);
+          const d20 = (x0 - x2) * (x0 - x2) + (z0 - z2) * (z0 - z2);
+          if (d01 > maxAllowedTriEdgeSq || d12 > maxAllowedTriEdgeSq || d20 > maxAllowedTriEdgeSq) continue;
+
+          // Check surface normal Y component to skip vertical walls/trunks/noise spikes during ground rasterization
+          const ux = x1 - x0, uy = y1 - y0, uz = z1 - z0;
+          const wx = x2 - x0, wy = y2 - y0, wz = z2 - z0;
+          const nxTri = uy * wz - uz * wy;
+          const nyTri = uz * wx - ux * wz;
+          const nzTri = ux * wy - uy * wx;
+          const nLen = Math.hypot(nxTri, nyTri, nzTri);
+          if (nLen < 1e-6) continue;
+          if (excludeWalls && Math.abs(nyTri) / nLen < 0.66) continue;
+
+          const cx = (x0 + x1 + x2) / 3.0;
+          const cy = (y0 + y1 + y2) / 3.0;
+          const cz = (z0 + z1 + z2) / 3.0;
+          markFineOcc(cx, cz);
+          markFineOcc(0.5 * (x0 + x1), 0.5 * (z0 + z1));
+          markFineOcc(0.5 * (x1 + x2), 0.5 * (z1 + z2));
+          markFineOcc(0.5 * (x2 + x0), 0.5 * (z2 + z0));
+          accumGridSample(x0, y0, z0);
+          accumGridSample(x1, y1, z1);
+          accumGridSample(x2, y2, z2);
+          accumGridSample(cx, cy, cz);
+          triAccumTotal++;
+
+          // Barycentric rasterization over covered drainage grid cells & fine occupancy cells
+          const denom = (z1 - z2) * (x0 - x2) + (x2 - x1) * (z0 - z2);
+          if (Math.abs(denom) > 1e-5) {
+            const invDenom = 1.0 / denom;
+            const tMinX = Math.max(minX, Math.min(x0, x1, x2));
+            const tMaxX = Math.min(maxX, Math.max(x0, x1, x2));
+            const tMinZ = Math.max(minZ, Math.min(z0, z1, z2));
+            const tMaxZ = Math.min(maxZ, Math.max(z0, z1, z2));
+
+            const ix0 = Math.max(0, Math.floor((tMinX - minX) / stepX));
+            const ix1 = Math.min(nx - 1, Math.floor((tMaxX - minX) / stepX));
+            const iz0 = Math.max(0, Math.floor((tMinZ - minZ) / stepZ));
+            const iz1 = Math.min(nz - 1, Math.floor((tMaxZ - minZ) / stepZ));
+            for (let iz = iz0; iz <= iz1; iz++) {
+              const pz = minZ + (iz + 0.5) * stepZ;
+              for (let ix = ix0; ix <= ix1; ix++) {
+                const px = minX + (ix + 0.5) * stepX;
                 const w0 = ((z1 - z2) * (px - x2) + (x2 - x1) * (pz - z2)) * invDenom;
                 const w1 = ((z2 - z0) * (px - x2) + (x0 - x2) * (pz - z2)) * invDenom;
                 const w2 = 1.0 - w0 - w1;
-                if (w0 >= -0.04 && w1 >= -0.04 && w2 >= -0.04) {
-                  fineOcc[fz * fineN + fx] = 1;
+                if (w0 >= -0.05 && w1 >= -0.05 && w2 >= -0.05) {
+                  const py = w0 * y0 + w1 * y1 + w2 * y2;
+                  accumGridSample(px, py, pz);
+                }
+              }
+            }
+
+            const fx0 = Math.max(0, Math.floor((tMinX - minX) / fineStepX));
+            const fx1 = Math.min(fineN - 1, Math.floor((tMaxX - minX) / fineStepX));
+            const fz0 = Math.max(0, Math.floor((tMinZ - minZ) / fineStepZ));
+            const fz1 = Math.min(fineN - 1, Math.floor((tMaxZ - minZ) / fineStepZ));
+            if ((fx1 - fx0 + 1) * (fz1 - fz0 + 1) <= 256) {
+              for (let fz = fz0; fz <= fz1; fz++) {
+                const pz = minZ + (fz + 0.5) * fineStepZ;
+                for (let fx = fx0; fx <= fx1; fx++) {
+                  const px = minX + (fx + 0.5) * fineStepX;
+                  const w0 = ((z1 - z2) * (px - x2) + (x2 - x1) * (pz - z2)) * invDenom;
+                  const w1 = ((z2 - z0) * (px - x2) + (x0 - x2) * (pz - z2)) * invDenom;
+                  const w2 = 1.0 - w0 - w1;
+                  if (w0 >= -0.04 && w1 >= -0.04 && w2 >= -0.04) {
+                    fineOcc[fz * fineN + fx] = 1;
+                  }
                 }
               }
             }
@@ -1768,9 +1843,13 @@
         const ratioN = Math.min(999, Math.max(1, Math.round(1.0 / Math.max(slope, 1e-4))));
         const ratioLabel = slope < 0.0005 ? "<1:999" : `1:${ratioN}`;
 
+        const rawMinY = minYGrid[idx];
+        const arrowBaseY =
+          Number.isFinite(rawMinY) && rawMinY > hC && rawMinY - hC <= 0.85 ? rawMinY : hC;
+
         arrows.push({
           x: ax,
-          y: hC,
+          y: arrowBaseY,
           z: az,
           ux,
           uz,
@@ -1783,6 +1862,27 @@
     }
 
     return { cellStep: Math.min(stepX, stepZ), arrows };
+  }
+
+  function updateDrainagePanelStatsInPlace(st) {
+    if (!st) return;
+    const total = Math.max(1, Number(st.arrow_count) || 0);
+    const elMeanR = document.getElementById("valDrainageMeanRatio");
+    if (elMeanR) elMeanR.textContent = st.mean_ratio_label || "—";
+    const elMeanD = document.getElementById("valDrainageMeanDeg");
+    if (elMeanD) elMeanD.textContent = `${st.mean_slope_deg}°`;
+    const elPond = document.getElementById("valDrainagePondingCnt");
+    if (elPond) elPond.textContent = String(st.ponding_zone_count ?? 0);
+    const elTot = document.getElementById("lblDrainageArrowTotalCount");
+    if (elTot) elTot.textContent = `${st.arrow_count} ${tr("支箭頭", "arrows")}`;
+    SLOPE_STEPPED_TIERS.forEach((t) => {
+      const rowEl = document.querySelector(`[data-drainage-tier-stat="${t.id}"]`);
+      if (rowEl) {
+        const cnt = Number((st.tier_counts && st.tier_counts[t.id]) || 0);
+        const pct = st.arrow_count ? ((cnt * 100) / total).toFixed(1) : "0.0";
+        rowEl.innerHTML = `${t.pctRange} · <b>${cnt}</b> (${pct}%)`;
+      }
+    });
   }
 
   function renderDrainageAndSlopeVisuals3D(opts = {}) {
@@ -1831,7 +1931,7 @@
     const lineColors = [];
 
     // Arrow physical length is decoupled from cellStep so changing Density (arrows/m²) never changes arrow length!
-    const yLift = 0.11;
+    const yLift = 0.16;
 
     for (let i = 0; i < arrows.length; i++) {
       const a = arrows[i];
@@ -1988,6 +2088,7 @@
     };
 
     updateStudioDrainageLegendHud(stats);
+    updateDrainagePanelStatsInPlace(stats);
     return stats;
   }
   window.renderDrainageAndSlopeVisuals3D = renderDrainageAndSlopeVisuals3D;
@@ -2110,27 +2211,6 @@
         <span>${tr("清除坡度與排水箭頭", "Clear Slope & Drainage Arrows")}</span>
       </button>
       `;
-    };
-
-    const updateDrainagePanelStatsInPlace = (st) => {
-      if (!st) return;
-      const total = Math.max(1, Number(st.arrow_count) || 0);
-      const elMeanR = document.getElementById("valDrainageMeanRatio");
-      if (elMeanR) elMeanR.textContent = st.mean_ratio_label || "—";
-      const elMeanD = document.getElementById("valDrainageMeanDeg");
-      if (elMeanD) elMeanD.textContent = `${st.mean_slope_deg}°`;
-      const elPond = document.getElementById("valDrainagePondingCnt");
-      if (elPond) elPond.textContent = String(st.ponding_zone_count ?? 0);
-      const elTot = document.getElementById("lblDrainageArrowTotalCount");
-      if (elTot) elTot.textContent = `${st.arrow_count} ${tr("支箭頭", "arrows")}`;
-      SLOPE_STEPPED_TIERS.forEach((t) => {
-        const rowEl = document.querySelector(`[data-drainage-tier-stat="${t.id}"]`);
-        if (rowEl) {
-          const cnt = Number((st.tier_counts && st.tier_counts[t.id]) || 0);
-          const pct = st.arrow_count ? ((cnt * 100) / total).toFixed(1) : "0.0";
-          rowEl.innerHTML = `${t.pctRange} · <b>${cnt}</b> (${pct}%)`;
-        }
-      });
     };
 
     const bindDrainageControls = () => {

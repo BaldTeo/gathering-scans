@@ -3339,6 +3339,7 @@
       });
     } else if (ctx.modelPivot && ctx.modelPivot.visible) {
       ctx.modelPivot.updateMatrixWorld(true);
+      const seenGeoms = new Set();
       ctx.modelPivot.traverse((c) => {
         if (c.isMesh && c.visible && c.geometry?.attributes?.position) {
           let vis = true;
@@ -3350,9 +3351,27 @@
             }
             p = p.parent;
           }
-          if (vis) meshes.push(c);
+          if (vis) {
+            if (c.userData && c.userData._detachedWorldElements) delete c.userData._detachedWorldElements;
+            seenGeoms.add(c.geometry);
+            meshes.push(c);
+          }
         }
       });
+      const rootScene = ctx.tilesRenderer?.root?.engineData?.scene;
+      const grpMat = ctx.tilesRenderer?.group?.matrixWorld || ctx.modelPivot.matrixWorld;
+      if (rootScene && rootScene.parent === null && grpMat) {
+        rootScene.updateMatrixWorld(true);
+        rootScene.traverse((c) => {
+          if (c.isMesh && c.visible && c.geometry?.attributes?.position && !seenGeoms.has(c.geometry)) {
+            seenGeoms.add(c.geometry);
+            const wm = new THREE.Matrix4().multiplyMatrices(grpMat, c.matrixWorld);
+            c.userData = c.userData || {};
+            c.userData._detachedWorldElements = wm.elements.slice();
+            meshes.push(c);
+          }
+        });
+      }
     }
 
     let totalTris = 0;
@@ -3373,7 +3392,9 @@
 
     for (let mi = 0; mi < meshes.length; mi++) {
       const m = meshes[mi];
-      const e = m.matrixWorld.elements;
+      const e = (m.parent === null || !m.matrixWorld) && m.userData?._detachedWorldElements
+        ? m.userData._detachedWorldElements
+        : (m.userData?._detachedWorldElements || m.matrixWorld.elements);
       const pos = m.geometry.attributes.position;
       const idxAttr = m.geometry.index;
       const nTris = idxAttr ? Math.floor(idxAttr.count / 3) : Math.floor(pos.count / 3);
