@@ -260,7 +260,13 @@
       roots.forEach((r) => {
         if (!r || !r.visible) return;
         r.traverse((c) => {
-          if (c.isMesh && c.visible && !c.userData?.isAlignBoxHelper) list.push(c);
+          if (
+            c.isMesh &&
+            (typeof isMeshVisibleUnderRoot === "function" ? isMeshVisibleUnderRoot(c, r) : c.visible) &&
+            !c.userData?.isAlignBoxHelper
+          ) {
+            list.push(c);
+          }
         });
       });
       return list;
@@ -302,33 +308,51 @@
           ray.setFromCamera(new THREE.Vector2(0, 0), cam);
           hits = ray.intersectObjects(meshes, false);
         }
-        if (!hits.length) return;
 
-        const hitPt = hits[0].point;
-        const surfDist = hits[0].distance;
-        const targetDist = cam.position.distanceTo(ctrls.target);
-
-        // If OrbitControls target is floating in mid-air closer than the surface (or getting close to camera),
-        // push target onto/through the surface and advance the camera smoothly so zoom NEVER stalls near Earth!
-        if (targetDist < Math.max(4.5, surfDist * 0.58) || surfDist < 8.0) {
-          const viewDir = new THREE.Vector3().subVectors(ctrls.target, cam.position);
-          if (viewDir.lengthSq() < 1e-6) cam.getWorldDirection(viewDir);
-          else viewDir.normalize();
-
-          const cursorDir = new THREE.Vector3().subVectors(hitPt, cam.position).normalize();
-          const blendDir = viewDir.clone().lerp(cursorDir, 0.28).normalize();
-          const desiredTargetDist = Math.max(0.35, surfDist);
-          const stepAdvance = surfDist > 0.14 ? Math.min(surfDist * 0.12, Math.max(0.16, surfDist * 0.08)) : 0;
-
-          if (targetDist < surfDist * 0.72 || targetDist < 2.8) {
-            cam.position.addScaledVector(blendDir, stepAdvance);
+        let hitPt = hits.length ? hits[0].point : null;
+        let surfDist = hits.length ? hits[0].distance : null;
+        if (!hitPt) {
+          // Off-mesh fallback: intersect view ray with scan ground plane so high mid-air targets never stall
+          const groundY = Number.isFinite(v?.grid?.position?.y) ? v.grid.position.y : -7.0;
+          const viewDir0 = new THREE.Vector3();
+          cam.getWorldDirection(viewDir0);
+          if (viewDir0.y < -0.04 && cam.position.y > groundY + 0.2) {
+            const tGround = (groundY - cam.position.y) / viewDir0.y;
+            if (tGround > 0.1 && tGround < 400) {
+              surfDist = tGround;
+              hitPt = cam.position.clone().addScaledVector(viewDir0, tGround);
+            }
           }
-          ctrls.target.copy(cam.position).addScaledVector(blendDir, desiredTargetDist);
+        }
+        if (!hitPt || !Number.isFinite(surfDist)) return;
+
+        // Prevent subsurface punch-through when already within 18 cm of the surface
+        if (surfDist <= 0.18) {
+          const viewDir = new THREE.Vector3().subVectors(hitPt, cam.position).normalize();
+          ctrls.target.copy(cam.position).addScaledVector(viewDir, Math.max(0.09, surfDist * 0.92));
           ctrls.update();
           syncExtraCams(v);
+          e.stopImmediatePropagation();
+          e.preventDefault();
+          return;
         }
+
+        const viewDir = new THREE.Vector3().subVectors(ctrls.target, cam.position);
+        if (viewDir.lengthSq() < 1e-6) cam.getWorldDirection(viewDir);
+        else viewDir.normalize();
+
+        const cursorDir = new THREE.Vector3().subVectors(hitPt, cam.position).normalize();
+        const blendDir = viewDir.clone().lerp(cursorDir, 0.32).normalize();
+        const stepAdvance = Math.min(surfDist - 0.15, Math.max(0.18, surfDist * 0.085));
+        if (stepAdvance > 0) {
+          cam.position.addScaledVector(blendDir, stepAdvance);
+        }
+        const remDist = Math.max(0.14, surfDist - Math.max(0, stepAdvance));
+        ctrls.target.copy(cam.position).addScaledVector(blendDir, Math.max(0.12, remDist * 0.88));
+        ctrls.update();
+        syncExtraCams(v);
       },
-      { passive: true, capture: true }
+      { passive: false, capture: true }
     );
   }
   window.installSurfaceAwareOrbitZoom = installSurfaceAwareOrbitZoom;
@@ -1245,7 +1269,7 @@
         clearPhotoTargetVisuals3D(true);
       }
       STATE.categorizeOverlayVisible = false;
-      STATE.categorizeLabelsVisible = false;
+      STATE.categorizeLabelsVisible = true;
       if (typeof hideCategorizeOverlaysAndLabels === "function") {
         hideCategorizeOverlaysAndLabels();
       } else if (typeof clearCategorizeVisualsOnly === "function") {
@@ -1308,7 +1332,9 @@
     STATE.lastInspectedPhotoTargetPt = null;
     STATE.lastInspectedPhotoTargetTwd = null;
     STATE.categorizeOverlayVisible = STATE.activeTool === "categorize";
-    STATE.categorizeLabelsVisible = STATE.activeTool === "categorize";
+    if (STATE.categorizeLabelsVisible === undefined || STATE.categorizeLabelsVisible === null) {
+      STATE.categorizeLabelsVisible = true;
+    }
     if (typeof clearCategorizeVisualsOnly === "function") {
       clearCategorizeVisualsOnly();
     }
@@ -2358,6 +2384,10 @@
         return;
       }
       if (!isCat) {
+        if (STATE.categorizeLabelsVisible === false && !b.isTempDistance && !b.isLassoHighlight) {
+          b.el.style.display = "none";
+          return;
+        }
         b.el.style.display = dispMode;
         const bw = b.el.offsetWidth || 160;
         const bh = b.el.offsetHeight || 36;
@@ -3324,7 +3354,6 @@
       STATE.categorizeEditPoints = [];
       STATE.categorizeTempPoints = [];
       STATE.categorizeOverlayVisible = false;
-      STATE.categorizeLabelsVisible = false;
       if (typeof clearCategorizeVisualsOnly === "function") {
         clearCategorizeVisualsOnly();
       }

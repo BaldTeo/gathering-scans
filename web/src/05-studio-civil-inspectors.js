@@ -1625,7 +1625,6 @@
 
   function hideCategorizeOverlaysAndLabels() {
     STATE.categorizeOverlayVisible = false;
-    STATE.categorizeLabelsVisible = false;
     clearCategorizeVisualsOnly();
     syncCategorizeVisibilityUI();
   }
@@ -4383,6 +4382,9 @@
   // 3F. 3D Geo-Comments Inspector (with Edit & Delete buttons and persistent 3D semi-transparent comment icons)
   async function openCommentsInspector(clickedPt = null, clickedTwd = null) {
     setActiveStudioTool("comments");
+    if (STATE.categorizeLabelsVisible === false) {
+      setCategorizeLabelsVisibility(true, { silent: true });
+    }
     if (window.innerWidth <= 768) {
       STATE.sidePanelMinimized = !clickedPt;
     } else {

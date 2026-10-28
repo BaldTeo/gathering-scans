@@ -117,22 +117,14 @@
         if (nLen < 1e-7) continue;
 
         const base = wCount * 9;
-        triVerts[base] = x0;
-        triVerts[base + 1] = y0;
-        triVerts[base + 2] = z0;
-        triVerts[base + 3] = x1;
-        triVerts[base + 4] = y1;
-        triVerts[base + 5] = z1;
-        triVerts[base + 6] = x2;
-        triVerts[base + 7] = y2;
-        triVerts[base + 8] = z2;
+        triVerts[base] = x0; triVerts[base + 1] = y0; triVerts[base + 2] = z0;
+        triVerts[base + 3] = x1; triVerts[base + 4] = y1; triVerts[base + 5] = z1;
+        triVerts[base + 6] = x2; triVerts[base + 7] = y2; triVerts[base + 8] = z2;
         triAbsNy[wCount] = Math.abs(ny) / nLen;
         wCount++;
 
-        const tMinX = Math.min(x0, x1, x2);
-        const tMaxX = Math.max(x0, x1, x2);
-        const tMinZ = Math.min(z0, z1, z2);
-        const tMaxZ = Math.max(z0, z1, z2);
+        const tMinX = Math.min(x0, x1, x2), tMaxX = Math.max(x0, x1, x2);
+        const tMinZ = Math.min(z0, z1, z2), tMaxZ = Math.max(z0, z1, z2);
         if (tMinX < minX) minX = tMinX;
         if (tMaxX > maxX) maxX = tMaxX;
         if (tMinZ < minZ) minZ = tMinZ;
@@ -141,10 +133,7 @@
     }
 
     if (wCount === 0) return null;
-    minX -= 0.5;
-    minZ -= 0.5;
-    maxX += 0.5;
-    maxZ += 0.5;
+    minX -= 0.5; minZ -= 0.5; maxX += 0.5; maxZ += 0.5;
 
     const spanMax = Math.max(10, maxX - minX, maxZ - minZ);
     const cellSize = Math.max(0.85, spanMax / 180);
@@ -163,16 +152,12 @@
       if ((gx1 - gx0 + 1) * (gz1 - gz0 + 1) > 40000) continue;
       for (let gz = gz0; gz <= gz1; gz++) {
         const row = gz * gridW;
-        for (let gx = gx0; gx <= gx1; gx++) {
-          cellCounts[row + gx]++;
-        }
+        for (let gx = gx0; gx <= gx1; gx++) cellCounts[row + gx]++;
       }
     }
 
     const cellOffsets = new Int32Array(numCells + 1);
-    for (let c = 0; c < numCells; c++) {
-      cellOffsets[c + 1] = cellOffsets[c] + cellCounts[c];
-    }
+    for (let c = 0; c < numCells; c++) cellOffsets[c + 1] = cellOffsets[c] + cellCounts[c];
     const cellTris = new Int32Array(cellOffsets[numCells]);
     const writePtr = cellOffsets.slice(0, numCells);
 
@@ -185,29 +170,14 @@
       if ((gx1 - gx0 + 1) * (gz1 - gz0 + 1) > 40000) continue;
       for (let gz = gz0; gz <= gz1; gz++) {
         const row = gz * gridW;
-        for (let gx = gx0; gx <= gx1; gx++) {
-          cellTris[writePtr[row + gx]++] = t;
-        }
+        for (let gx = gx0; gx <= gx1; gx++) cellTris[writePtr[row + gx]++] = t;
       }
     }
 
     const built = {
-      key: cacheKey,
-      baseSig,
-      builtAt: performance.now(),
-      triCount: wCount,
-      triVerts,
-      triAbsNy,
-      minX,
-      minZ,
-      cellSize,
-      invCell,
-      gridW,
-      gridH,
-      cellOffsets,
-      cellTris,
-      visitStamp: new Int32Array(wCount),
-      raySeq: 1,
+      key: cacheKey, baseSig, builtAt: performance.now(), triCount: wCount,
+      triVerts, triAbsNy, minX, minZ, cellSize, invCell, gridW, gridH,
+      cellOffsets, cellTris, visitStamp: new Int32Array(wCount), raySeq: 1,
     };
     studioThree._laserSpatialIndex = built;
     return built;
@@ -339,12 +309,7 @@
     const start = cellOffsets[cIdx];
     const end = cellOffsets[cIdx + 1];
 
-    let bestDiff = 1e30;
-    let bestY = prevY;
-    let bestNy = 0;
-    let found = false;
-    let obstacle = false;
-
+    let bestDiff = 1e30, bestY = prevY, bestNy = 0, found = false, obstacle = false, maxObsTopY = -1e30;
     for (let p = start; p < end; p++) {
       const t = cellTris[p];
       const b = t * 9;
@@ -377,6 +342,7 @@
         };
         if (checkSeg(x0, z0, x1, z1) || checkSeg(x1, z1, x2, z2) || checkSeg(x2, z2, x0, z0)) {
           obstacle = true;
+          if (tMaxY > maxObsTopY) maxObsTopY = tMaxY;
         }
       }
 
@@ -392,10 +358,11 @@
       const yHit = u * y0 + v * y1 + w * y2;
       if (absNy < 0.58 && yHit > prevY + 0.16 && yHit < prevY + 1.65) {
         obstacle = true;
+        if (yHit > maxObsTopY) maxObsTopY = yHit;
         continue;
       }
 
-      if (yHit < prevY - 0.95 || yHit > prevY + 0.95) continue;
+      if (yHit < prevY - 1.15 || yHit > prevY + 1.15) continue;
       const diff = Math.abs(yHit - expectedY);
       if (diff < bestDiff) {
         bestDiff = diff;
@@ -403,6 +370,9 @@
         bestNy = absNy;
         found = true;
       }
+    }
+    if (found && bestNy >= 0.72 && Math.abs(bestY - expectedY) <= 0.14 && maxObsTopY <= bestY + 0.28) {
+      obstacle = false;
     }
 
     if (!found && !obstacle) {
@@ -442,8 +412,8 @@
     const step = 0.24;
     let prevS = 0.0;
     let prevY = oy;
-    let localSlope = Number.isFinite(initSlope) ? Math.max(-0.36, Math.min(0.36, initSlope)) : 0.0;
-    let hasSlope = Number.isFinite(initSlope);
+    let localSlope = Number.isFinite(initSlope) ? Math.max(-0.08, Math.min(0.08, initSlope)) : 0.0;
+    let hasSlope = Number.isFinite(initSlope) && Math.abs(initSlope) > 0.01;
     const histS = [0.0];
     const histY = [oy];
 
@@ -457,10 +427,10 @@
       const stepDelta = probe.hit ? probe.y - prevY : 999;
       const stepJump = Math.abs(stepDelta);
 
-      // Multi-scale local trailing windows (0.48m and 0.96m) detect beveled 13–24 cm curbs & pool walls
-      // while allowing smooth rolling grades on hill streets (westRoad 4.2%) and sloped pool floors (bigPool 2.2%)!
       const idx2 = Math.max(0, histY.length - 2);
       const idx4 = Math.max(0, histY.length - 4);
+      const raw2Jump = probe.hit ? Math.abs(probe.y - histY[idx2]) : 999;
+      const raw4Jump = probe.hit ? Math.abs(probe.y - histY[idx4]) : 999;
       const win2Rise = probe.hit ? probe.y - histY[idx2] - localSlope * (s - histS[idx2]) : 999;
       const win4Rise = probe.hit ? probe.y - histY[idx4] - localSlope * (s - histS[idx4]) : 999;
       const isSteep = probe.hit && probe.absNy < 0.72;
@@ -468,10 +438,8 @@
       let edgeTriggered =
         isMissingOrObstacle ||
         stepJump > 0.135 ||
-        win2Rise > 0.115 ||
-        win2Rise < -0.145 ||
-        win4Rise > 0.135 ||
-        win4Rise < -0.175;
+        (raw2Jump > 0.085 && (win2Rise > 0.115 || win2Rise < -0.145)) ||
+        (raw4Jump > 0.105 && (win4Rise > 0.135 || win4Rise < -0.175));
 
       if (!edgeTriggered && isSteep) {
         const cS = s + 0.24;
@@ -800,7 +768,7 @@
       const ang = (k * Math.PI) / N_AZ;
       const ux = Math.cos(ang);
       const uz = Math.sin(ang);
-      const slopeSeed = Math.abs(n.y) >= 0.55 ? Math.max(-0.34, Math.min(0.34, -(n.x * ux + n.z * uz) / n.y)) : null;
+      const slopeSeed = Math.abs(n.y) >= 0.55 ? Math.max(-0.08, Math.min(0.08, (-(n.x * ux + n.z * uz) / n.y) * 0.28)) : null;
       const bP = findDirectionalBoundary(idx, sweepPt.x, sweepPt.y, sweepPt.z, ux, uz, MAX_WIDTH_SCAN, hasCeiling, slopeSeed);
       const bM = findDirectionalBoundary(
         idx,
@@ -843,10 +811,40 @@
     }
     if (validList.length === 0) {
       if (fallbackWallSpan) return fallbackWallSpan;
+      // Sloped terrain bank / embankment fallback: trace contour & fall-line spans up to 10 m so Laser never degrades to a single dot
+      const hNorm = Math.hypot(n.x, n.z);
+      const ux0 = hNorm > 1e-4 ? -n.z / hNorm : 1.0;
+      const uz0 = hNorm > 1e-4 ? n.x / hNorm : 0.0;
+      const lx0 = -uz0, lz0 = ux0;
+      const traceBankDir = (dx, dz, maxD) => {
+        let lastX = sweepPt.x, lastY = sweepPt.y, lastZ = sweepPt.z, lastD = 0;
+        for (let d = 0.35; d <= maxD; d += 0.35) {
+          const p = queryRoadSurfaceAtXZ(idx, sweepPt.x + dx * d, sweepPt.z + dz * d, lastY, lastY);
+          if (!p.hit) break;
+          lastX = sweepPt.x + dx * d;
+          lastY = p.y;
+          lastZ = sweepPt.z + dz * d;
+          lastD = d;
+        }
+        return lastD >= 0.35 ? new THREE.Vector3(lastX, lastY, lastZ) : new THREE.Vector3(sweepPt.x + dx * 1.2, sweepPt.y, sweepPt.z + dz * 1.2);
+      };
+      const pA0 = traceBankDir(-ux0, -uz0, 7.5);
+      const pB0 = traceBankDir(ux0, uz0, 7.5);
+      const oA0 = traceBankDir(-lx0, -lz0, 14.0);
+      const oB0 = traceBankDir(lx0, lz0, 14.0);
+      const wBank = pA0.distanceTo(pB0);
+      const lBank = oA0.distanceTo(oB0);
       return {
-        kind: "point_only",
+        kind: "road",
         originPt: rawPt.clone(),
-        slopeDeg: THREE.MathUtils.radToDeg(Math.acos(Math.max(-1, Math.min(1, Math.abs(n.y))))),
+        pA: pA0,
+        pB: pB0,
+        width: wBank,
+        orthoLength: lBank,
+        orthoPA: oA0,
+        orthoPB: oB0,
+        crossPt: sweepPt.clone(),
+        crossSlopePct: (Math.abs(pB0.y - pA0.y) / Math.max(0.1, Math.hypot(pB0.x - pA0.x, pB0.z - pA0.z))) * 100,
       };
     }
 
@@ -1929,7 +1927,12 @@
     const preparedPolysByLayer = {};
     const invZUpByLayer = {};
 
-    if (isMulti && allWorldPolys.length > 0) {
+    if (visibleOnlyNow && allWorldPolys.length > 0 && typeof worldPolygonToCameraFrustumStroke === "function") {
+      const camStrokes = allWorldPolys.map((pts) => worldPolygonToCameraFrustumStroke(pts, true)).filter(Boolean);
+      if (camStrokes.length > 0) {
+        preparedStrokes = preparedStrokes.concat(prepareStrokeEvalList(camStrokes, true));
+      }
+    } else if (isMulti && allWorldPolys.length > 0) {
       (STATE.multiAlign.layers || []).forEach((layer) => {
         if (!layer || !layer.visible || !layer.zUpGroup) return;
         const invZUp = layer.zUpGroup.matrixWorld.clone().invert();

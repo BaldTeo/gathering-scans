@@ -869,7 +869,7 @@ def _eval_multiscan_layer_delete_mask(
             if len(hit_local) == 0:
                 continue
 
-            vis_only = bool(st.get("visible_only", True))
+            vis_only = bool(st.get("visible_only", False))
             g_sz = int(st.get("depth_grid_size") or 0)
             raw_dg = st.get("depth_grid")
             if vis_only and g_sz >= 8 and isinstance(raw_dg, list) and len(raw_dg) == g_sz * g_sz:

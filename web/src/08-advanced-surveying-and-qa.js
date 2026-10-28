@@ -1642,18 +1642,20 @@
       }
     }
 
-    // 5x5 Bare-Earth Lower-Envelope Despike Pass: removes "invisible hills" from overhanging trees, bollards, or vertical noise spikes
+    // Wide-Radius (in physical meters) Bare-Earth Lower-Envelope Despike Pass:
+    // removes "invisible hills" from wide overhanging tree crowns, bollards, or vertical noise spikes across all arrow densities!
     const despikedH = new Float32Array(rawH);
     const nbVals = [];
+    const wideR = Math.max(3, Math.min(7, Math.ceil(4.2 / Math.max(0.25, Math.min(stepX, stepZ)))));
     for (let iz = 0; iz < nz; iz++) {
       for (let ix = 0; ix < nx; ix++) {
         const idx = iz * nx + ix;
         if (!validCell[idx]) continue;
         nbVals.length = 0;
-        for (let dz = -2; dz <= 2; dz++) {
+        for (let dz = -wideR; dz <= wideR; dz++) {
           const jz = iz + dz;
           if (jz < 0 || jz >= nz) continue;
-          for (let dx = -2; dx <= 2; dx++) {
+          for (let dx = -wideR; dx <= wideR; dx++) {
             const jx = ix + dx;
             if (jx < 0 || jx >= nx) continue;
             const nIdx = jz * nx + jx;
@@ -1662,26 +1664,29 @@
         }
         if (nbVals.length >= 4) {
           nbVals.sort((a, b) => a - b);
-          const q25 = nbVals[Math.floor(nbVals.length * 0.25)];
+          const q20 = nbVals[Math.floor(nbVals.length * 0.20)];
           const q50 = nbVals[Math.floor(nbVals.length * 0.50)];
-          const maxGroundRise = Math.max(0.28, (q50 - q25) * 1.65);
-          if (rawH[idx] > q25 + maxGroundRise) {
-            despikedH[idx] = q25 + 0.35 * (q50 - q25);
+          const localRelief = Math.max(0.0, q50 - q20);
+          const maxGroundRise = Math.max(0.24, Math.min(0.85, localRelief * 1.45));
+          if (rawH[idx] > q20 + maxGroundRise) {
+            despikedH[idx] = q20 + 0.25 * Math.min(0.45, localRelief);
           }
         }
       }
     }
     rawH.set(despikedH);
 
-    // 3x3 smoothing strictly over occupied cells ONLY (never fills empty/un-scanned cells!)
+    // 3x3 Bilateral Edge-Preserving Smoothing strictly over occupied cells ONLY (never bleeds elevated walls/crowns onto roads!)
     const smoothH = new Float32Array(nx * nz);
     const smoothValid = new Uint8Array(nx * nz);
+    const maxSmoothDiff = Math.max(0.42, cellStep * 0.45);
     for (let iz = 0; iz < nz; iz++) {
       for (let ix = 0; ix < nx; ix++) {
         const idx = iz * nx + ix;
         if (!validCell[idx]) continue;
         let wSum = 0;
         let hSum = 0;
+        const cH = rawH[idx];
         for (let dz = -1; dz <= 1; dz++) {
           const jz = iz + dz;
           if (jz < 0 || jz >= nz) continue;
@@ -1689,20 +1694,20 @@
             const jx = ix + dx;
             if (jx < 0 || jx >= nx) continue;
             const nIdx = jz * nx + jx;
-            if (validCell[nIdx]) {
+            if (validCell[nIdx] && Math.abs(rawH[nIdx] - cH) <= maxSmoothDiff) {
               const w = dx === 0 && dz === 0 ? 2.5 : 1.0;
               hSum += rawH[nIdx] * w;
               wSum += w;
             }
           }
         }
-        smoothH[idx] = wSum > 0 ? hSum / wSum : rawH[idx];
+        smoothH[idx] = wSum > 0 ? hSum / wSum : cH;
         smoothValid[idx] = 1;
       }
     }
 
     const arrows = [];
-    const maxStepJump = Math.max(2.2, cellStep * 1.15);
+    const maxStepJump = Math.max(0.55, cellStep * 0.50);
     for (let iz = 1; iz < nz - 1; iz++) {
       for (let ix = 1; ix < nx - 1; ix++) {
         const idx = iz * nx + ix;

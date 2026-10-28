@@ -227,6 +227,22 @@
     });
   }
 
+  function worldPolygonToCameraFrustumStroke(pts, visibleOnly = true) {
+    if (!studioThree?.camera || !studioThree?.renderer?.domElement || !Array.isArray(pts) || pts.length < 3) return null;
+    const domEl = studioThree.renderer.domElement;
+    const w = Math.max(1, domEl.clientWidth || 1);
+    const h = Math.max(1, domEl.clientHeight || 1);
+    studioThree.camera.updateMatrixWorld(true);
+    const screenPts = pts.map((p) => {
+      const v = p.clone().project(studioThree.camera);
+      return { x: (v.x * 0.5 + 0.5) * w, y: (-v.y * 0.5 + 0.5) * h };
+    });
+    const st = buildStudioLassoFrustumStroke(screenPts, "add");
+    if (st) st.visible_only = Boolean(visibleOnly);
+    return st;
+  }
+  window.worldPolygonToCameraFrustumStroke = worldPolygonToCameraFrustumStroke;
+
   function commitPendingLassoMarksToStagedEdits(modeOverride = null) {
     const mode =
       modeOverride ||
@@ -285,7 +301,12 @@
 
     const batchPolys = [];
     let layerCenteredPolygons = null;
-    if (STATE.multiAlign?.active && rawWorldPolys.length > 0) {
+    if (effVis && rawWorldPolys.length > 0) {
+      rawWorldPolys.forEach((pts) => {
+        const camSt = worldPolygonToCameraFrustumStroke(pts, true);
+        if (camSt) batchStrokes.push(camSt);
+      });
+    } else if (STATE.multiAlign?.active && rawWorldPolys.length > 0) {
       if (studioThree?.multiAlignGroup) studioThree.multiAlignGroup.updateMatrixWorld(true);
       layerCenteredPolygons = {};
       (STATE.multiAlign.layers || []).forEach((layer) => {
@@ -3303,7 +3324,6 @@
       }
       if (STATE.activeTool === "categorize") {
         STATE.categorizeOverlayVisible = false;
-        STATE.categorizeLabelsVisible = false;
         clearCategorizeVisualsOnly();
         if (typeof syncCategorizeVisibilityUI === "function") syncCategorizeVisibilityUI();
       }

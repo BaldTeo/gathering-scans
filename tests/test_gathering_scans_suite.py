@@ -1491,9 +1491,9 @@ class GatheringScansTestSuite(unittest.TestCase):
         self.assertIn("depthTest: !isCommentMarker", js03)
         self.assertIn("polygonOffsetFactor: -1", js08)
 
-        # Feature 6: Auto-show classification when Classify tab opens & auto-hide when closed
+        # Feature 6: Auto-show classification when Classify tab opens & auto-hide when closed (while keeping comment/measurement Labels visible by default)
         self.assertIn('STATE.categorizeOverlayVisible = STATE.activeTool === "categorize";', js03)
-        self.assertIn("STATE.categorizeOverlayVisible = false;\n      STATE.categorizeLabelsVisible = false;", js03)
+        self.assertIn("STATE.categorizeOverlayVisible = false;\n      STATE.categorizeLabelsVisible = true;", js03)
         self.assertIn("STATE.categorizeOverlayVisible = autoShow;\n    STATE.categorizeLabelsVisible = autoShow;", js05)
 
     def test_19_ipad_webgl_memory_and_view_lifecycle_protection(self):
