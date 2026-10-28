@@ -457,28 +457,42 @@ class GatheringScansHandler(CloudAndTunnelHandlerMixin, ServerWriteRoutesMixin, 
                     r_file = os.path.join(base_dir, clean_r_uri)
                     if os.path.isfile(r_file):
                         r_content["uri"] = f"{clean_r_uri}?v={int(os.path.getmtime(r_file))}"
-                    if os.path.isfile(r_file) and os.path.getsize(r_file) >= 800_000:
-                        # Root .glb already contains the full-site mesh (~300k+ triangles)
+                    valid_c1 = []
+                    for c1 in root.get("children") or []:
+                        if not isinstance(c1, dict):
+                            continue
+                        c1_c = c1.get("content") or {}
+                        if isinstance(c1_c, dict) and c1_c.get("uri"):
+                            u1 = c1_c["uri"].split("?")[0]
+                            f1 = os.path.join(base_dir, u1)
+                            if os.path.isfile(f1):
+                                c1_c["uri"] = f"{u1}?v={int(os.path.getmtime(f1))}"
+                        valid_c2 = []
+                        for c2 in c1.get("children") or []:
+                            if not isinstance(c2, dict):
+                                continue
+                            c2_c = c2.get("content") or {}
+                            if isinstance(c2_c, dict) and c2_c.get("uri"):
+                                u2 = c2_c["uri"].split("?")[0]
+                                f2 = os.path.join(base_dir, u2)
+                                if os.path.isfile(f2):
+                                    c2_c["uri"] = f"{u2}?v={int(os.path.getmtime(f2))}"
+                            c2["geometricError"] = 0.0
+                            c2["children"] = []
+                            valid_c2.append(c2)
+                        c1["children"] = valid_c2
+                        if valid_c2:
+                            c1["geometricError"] = max(float(c1.get("geometricError") or 0.0), 8.0)
+                        else:
+                            c1["geometricError"] = 0.0
+                        valid_c1.append(c1)
+                    if valid_c1:
+                        root["children"] = valid_c1
+                        root["geometricError"] = max(float(root.get("geometricError") or 0.0), 24.0)
+                        ts["geometricError"] = max(float(ts.get("geometricError") or 0.0), float(root["geometricError"]))
+                    else:
                         root["geometricError"] = 0.0
                         root["children"] = []
-                    else:
-                        # Small root .glb (e.g. QuChi_1_20260921): cap at Depth 2
-                        for c1 in root.get("children") or []:
-                            c1_c = c1.get("content") or {}
-                            if isinstance(c1_c, dict) and c1_c.get("uri"):
-                                u1 = c1_c["uri"].split("?")[0]
-                                f1 = os.path.join(base_dir, u1)
-                                if os.path.isfile(f1):
-                                    c1_c["uri"] = f"{u1}?v={int(os.path.getmtime(f1))}"
-                            for c2 in c1.get("children") or []:
-                                c2_c = c2.get("content") or {}
-                                if isinstance(c2_c, dict) and c2_c.get("uri"):
-                                    u2 = c2_c["uri"].split("?")[0]
-                                    f2 = os.path.join(base_dir, u2)
-                                    if os.path.isfile(f2):
-                                        c2_c["uri"] = f"{u2}?v={int(os.path.getmtime(f2))}"
-                                c2["geometricError"] = 0.0
-                                c2["children"] = []
                 else:
                     # PIX4Dmatic Cesium octree: prune each octant branch at its first content node (100k-300k triangles per tile)
                     def _prune_branch(node: dict, depth: int = 0) -> bool:
@@ -924,21 +938,23 @@ class GatheringScansHandler(CloudAndTunnelHandlerMixin, ServerWriteRoutesMixin, 
                         _root = _tso.get("root") or {}
                         _rc = ((_root.get("content") or {}).get("uri") or "").split("?")[0]
                         _rf = os.path.join(bdir_m, _rc) if _rc else ""
-                        if _rf and os.path.isfile(_rf) and os.path.getsize(_rf) >= 800_000:
+                        if not (_root.get("children")) and _rf and os.path.isfile(_rf):
                             leaf_glbs = [_rf]
                         else:
                             def _walk_m(node: dict, depth: int = 0):
+                                _chs = [c for c in (node.get("children") or []) if isinstance(c, dict)]
+                                if _chs and depth < 2:
+                                    for _ch in _chs:
+                                        _walk_m(_ch, depth + 1)
+                                    return
                                 _cu = ((node.get("content") or {}).get("uri") or "").split("?")[0]
                                 if _cu:
                                     _cf = os.path.join(bdir_m, _cu)
                                     if os.path.isfile(_cf):
                                         leaf_glbs.append(_cf)
-                                        return
-                                if depth < 3:
-                                    for _ch in node.get("children") or []:
-                                        if isinstance(_ch, dict):
-                                            _walk_m(_ch, depth + 1)
                             _walk_m(_root, 0)
+                            if not leaf_glbs and _rf and os.path.isfile(_rf):
+                                leaf_glbs = [_rf]
 
                     tris_sum = 0
                     glb_bytes_sum = 0
@@ -2176,21 +2192,23 @@ class GatheringScansHandler(CloudAndTunnelHandlerMixin, ServerWriteRoutesMixin, 
                             _groot = _gtso.get("root") or {}
                             _grc = ((_groot.get("content") or {}).get("uri") or "").split("?")[0]
                             _grf = os.path.join(_bdir_g, _grc) if _grc else ""
-                            if _grf and os.path.isfile(_grf) and os.path.getsize(_grf) >= 800_000:
+                            if not (_groot.get("children")) and _grf and os.path.isfile(_grf):
                                 leaf_glbs_dl = [_grf]
                             else:
                                 def _walk_g_dl(node: dict, depth: int = 0):
+                                    _chs = [c for c in (node.get("children") or []) if isinstance(c, dict)]
+                                    if _chs and depth < 2:
+                                        for _ch in _chs:
+                                            _walk_g_dl(_ch, depth + 1)
+                                        return
                                     _cu = ((node.get("content") or {}).get("uri") or "").split("?")[0]
                                     if _cu:
                                         _cf = os.path.join(_bdir_g, _cu)
                                         if os.path.isfile(_cf):
                                             leaf_glbs_dl.append(_cf)
-                                            return
-                                    if depth < 3:
-                                        for _ch in node.get("children") or []:
-                                            if isinstance(_ch, dict):
-                                                _walk_g_dl(_ch, depth + 1)
                                 _walk_g_dl(_groot, 0)
+                                if not leaf_glbs_dl and _grf and os.path.isfile(_grf):
+                                    leaf_glbs_dl = [_grf]
                         if not leaf_glbs_dl:
                             leaf_glbs_dl = SURVEY._collect_scan_glb_files(scan)[:8]
 

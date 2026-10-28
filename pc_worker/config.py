@@ -26,8 +26,8 @@ GATHERING_CLOUD_DEV_DIR = os.environ.get("GATHERING_CLOUD_DEV_DIR", r"C:\Antigra
 # 2. PIX4Dmatic 2.11.0 Automated Engine Settings
 PIX4DMATIC_EXE = os.environ.get("PIX4DMATIC_EXE", r"C:\Program Files\PIX4Dmatic\PIX4Dmatic.exe")
 
-# Default 4K (4096) texture size for PIX4Dmatic and GC_ScanOptimizer
-PIX4DMATIC_TEXTURE_SIZE = 4096
+# Default 16K (16384) texture size for PIX4Dmatic (QuadtreeTiler repacks per-quadrant into <=4096px WebGL tiles)
+PIX4DMATIC_TEXTURE_SIZE = 16384
 
 # Mandatory Coordinate Reference System: TWD97 / TM2 zone 121 (EPSG:3826) + TWVD 2001 height (EPSG:8904 [TWGEOID2018h])
 TWD97_TWVD2001_LABEL = "TWD97 / TM2 zone 121 + TWVD 2001 height - EPSG:3826+8904 [TWGEOID2018h]"
@@ -89,7 +89,7 @@ GDRIVE_SERVICE_ACCOUNT_PROJECT_ID = os.environ.get(
 ALLOWED_WORKSPACE_DOMAINS = ["gatheren.com.tw", "gatheren.cloud", "gathering.cloud", "gmail.com"]
 GCHAT_WEBHOOK_URL = os.environ.get(
     "GCHAT_WEBHOOK_URL",
-    "https://chat.googleapis.com/v1/spaces/AAQA_oh-3w8/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=zCavjGk6CkJ6Dkn8HFqOCR9xP9we8c_Ml2Icq6aWbdM",
+    "",
 )
 
 # 6. Standard Engineering Material Densities (tonnes / m^3) & Swell Factors
@@ -105,14 +105,17 @@ MATERIAL_CATALOG = {
 }
 
 # 7. Default PIX4Dmatic 2.11.0 Mesh & Photogrammetry Pipeline Settings
-# Matches QuChi_20261005_Compressed: FixedSize mesh pipeline (compact file size) + Sky Mask OFF (skyless: false)
-# + ROI clipping OFF (use_roi: false) + 4096px texture atlas + Conservative simplification + Export LOD 13
+# Scalable mesh pipeline + Sky Mask OFF (skyless: false) + ROI clipping OFF (use_roi: false)
+# + 16384px 16K texture atlas + Full dense image scale + Medium depth confidence + Conservative simplification + Export LOD 13
 PIX4D_SETTINGS_PATH = os.path.join(DATA_DIR, "pix4d_settings.json")
 DEFAULT_PIX4D_SETTINGS = {
-    "mesh_pipeline": "FixedSize",           # "FixedSize" (compact file size) or "Scalable"
+    "mesh_pipeline": "Scalable",            # "Scalable" or "FixedSize"
     "skyless": False,                       # False = Sky Mask Disabled (preserves surrounding trees & canopy)
     "use_roi": False,                       # False = Exclude restrictive OPF RoiSet clipping
-    "texture_size": 4096,                   # 2048, 4096, or 8192
+    "texture_size": 16384,                  # 1024, 2048, 4096, 8192, or 16384
+    "dense_image_scale": "Full",            # "Full", "Half", or "Quarter" (1x full resolution to fill surface gaps)
+    "depth_min_confidence": "Medium",       # "High", "Medium", or "Low"
+    "depth_agreement_m": 0.01,              # Depth filter agreement threshold in meters
     "model_simplification": "Conservative", # "Conservative", "Moderate", or "Aggressive"
     "deghosting": "Weak",                   # "Weak", "Strong", or "Disabled"
     "export_lod": 13,                       # 13 = Full detail LOD export
@@ -130,14 +133,22 @@ def load_pix4d_settings() -> dict:
                 cfg.update(saved)
         except Exception:
             pass
-    cfg["mesh_pipeline"] = "Scalable" if str(cfg.get("mesh_pipeline")) == "Scalable" else "FixedSize"
+    cfg["mesh_pipeline"] = "FixedSize" if str(cfg.get("mesh_pipeline")) == "FixedSize" else "Scalable"
     cfg["skyless"] = bool(cfg.get("skyless", False))
     cfg["use_roi"] = bool(cfg.get("use_roi", False))
     try:
-        ts = int(cfg.get("texture_size", 4096))
-        cfg["texture_size"] = ts if ts in (1024, 2048, 4096, 8192) else 4096
+        ts = int(cfg.get("texture_size", 16384))
+        cfg["texture_size"] = ts if ts in (1024, 2048, 4096, 8192, 16384) else 16384
     except Exception:
-        cfg["texture_size"] = 4096
+        cfg["texture_size"] = 16384
+    dense_scale = str(cfg.get("dense_image_scale", "Full"))
+    cfg["dense_image_scale"] = dense_scale if dense_scale in ("Full", "Half", "Quarter") else "Full"
+    depth_conf = str(cfg.get("depth_min_confidence", "Medium"))
+    cfg["depth_min_confidence"] = depth_conf if depth_conf in ("High", "Medium", "Low") else "Medium"
+    try:
+        cfg["depth_agreement_m"] = max(0.0005, min(0.5, float(cfg.get("depth_agreement_m", 0.01))))
+    except Exception:
+        cfg["depth_agreement_m"] = 0.01
     simp = str(cfg.get("model_simplification", "Conservative"))
     cfg["model_simplification"] = simp if simp in ("Conservative", "Moderate", "Aggressive") else "Conservative"
     degh = str(cfg.get("deghosting", "Weak"))
@@ -167,14 +178,22 @@ def load_pix4d_settings_from_dict(raw: dict) -> dict:
     cfg = dict(DEFAULT_PIX4D_SETTINGS)
     if isinstance(raw, dict):
         cfg.update(raw)
-    cfg["mesh_pipeline"] = "Scalable" if str(cfg.get("mesh_pipeline")) == "Scalable" else "FixedSize"
+    cfg["mesh_pipeline"] = "FixedSize" if str(cfg.get("mesh_pipeline")) == "FixedSize" else "Scalable"
     cfg["skyless"] = bool(cfg.get("skyless", False))
     cfg["use_roi"] = bool(cfg.get("use_roi", False))
     try:
-        ts = int(cfg.get("texture_size", 4096))
-        cfg["texture_size"] = ts if ts in (1024, 2048, 4096, 8192) else 4096
+        ts = int(cfg.get("texture_size", 16384))
+        cfg["texture_size"] = ts if ts in (1024, 2048, 4096, 8192, 16384) else 16384
     except Exception:
-        cfg["texture_size"] = 4096
+        cfg["texture_size"] = 16384
+    dense_scale = str(cfg.get("dense_image_scale", "Full"))
+    cfg["dense_image_scale"] = dense_scale if dense_scale in ("Full", "Half", "Quarter") else "Full"
+    depth_conf = str(cfg.get("depth_min_confidence", "Medium"))
+    cfg["depth_min_confidence"] = depth_conf if depth_conf in ("High", "Medium", "Low") else "Medium"
+    try:
+        cfg["depth_agreement_m"] = max(0.0005, min(0.5, float(cfg.get("depth_agreement_m", 0.01))))
+    except Exception:
+        cfg["depth_agreement_m"] = 0.01
     simp = str(cfg.get("model_simplification", "Conservative"))
     cfg["model_simplification"] = simp if simp in ("Conservative", "Moderate", "Aggressive") else "Conservative"
     degh = str(cfg.get("deghosting", "Weak"))

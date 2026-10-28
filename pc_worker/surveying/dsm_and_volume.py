@@ -324,17 +324,17 @@ class DsmAndVolumeMixin:
 
                     if isinstance(ts_doc.get("root"), dict):
                         _walk_glbs(ts_doc["root"])
-                    if len(leaf_glbs) > 28 and all_glbs:
+                    if len(leaf_glbs) > 64 and all_glbs:
                         lod_groups: Dict[int, List[str]] = {}
                         for g_fp in all_glbs:
                             b_tok = os.path.basename(g_fp).split("_")[0]
                             if b_tok.isdigit():
                                 lod_groups.setdefault(int(b_tok), []).append(g_fp)
                         if lod_groups:
-                            if 2 in lod_groups and 4 <= len(lod_groups[2]) <= 44:
+                            if 2 in lod_groups and 4 <= len(lod_groups[2]) <= 64:
                                 glb_files = lod_groups[2]
                             else:
-                                valid_lods = [k for k, v in lod_groups.items() if 4 <= len(v) <= 44 and k <= 4]
+                                valid_lods = [k for k, v in lod_groups.items() if 4 <= len(v) <= 64 and k <= 4]
                                 if valid_lods:
                                     glb_files = lod_groups[max(valid_lods)]
                                 else:
@@ -357,17 +357,17 @@ class DsmAndVolumeMixin:
                     if "preview" not in g.lower() and "tileset_backup" not in g.lower() and "tileset_prev" not in g.lower()
                 ]
                 if found:
-                    if len(found) > 28:
+                    if len(found) > 64:
                         lod_groups_f: Dict[int, List[str]] = {}
                         for g_fp in found:
                             b_tok = os.path.basename(g_fp).split("_")[0]
                             if b_tok.isdigit():
                                 lod_groups_f.setdefault(int(b_tok), []).append(g_fp)
                         if lod_groups_f:
-                            if 2 in lod_groups_f and 4 <= len(lod_groups_f[2]) <= 44:
+                            if 2 in lod_groups_f and 4 <= len(lod_groups_f[2]) <= 64:
                                 found = lod_groups_f[2]
                             else:
-                                valid_lods_f = [k for k, v in lod_groups_f.items() if 4 <= len(v) <= 44 and k <= 4]
+                                valid_lods_f = [k for k, v in lod_groups_f.items() if 4 <= len(v) <= 64 and k <= 4]
                                 if valid_lods_f:
                                     found = lod_groups_f[max(valid_lods_f)]
                                 else:
@@ -597,8 +597,11 @@ class DsmAndVolumeMixin:
         ts_mtime = os.path.getmtime(ts_path) if (ts_path and os.path.isfile(ts_path)) else 0.0
         meta_mtime = os.path.getmtime(meta_json_path) if os.path.isfile(meta_json_path) else 0.0
         source_mtime = max(obj_mtime, ts_mtime, meta_mtime)
-        # Prefer edited tileset over unedited .obj when tileset.json was modified after mesh.obj export
-        tileset_edited_after_obj = bool(ts_mtime > 0.0 and obj_mtime > 0.0 and ts_mtime > obj_mtime + 2.0)
+        # Only prefer edited tileset over full-resolution mesh.obj when the scan actually has applied mesh edits
+        is_edited_scan = bool(scan.get("applied_adjustments")) or (
+            str(scan.get("scan_id") or "").startswith("edited_") and ts_mtime > obj_mtime + 60.0
+        )
+        tileset_edited_after_obj = bool(ts_mtime > 0.0 and obj_mtime > 0.0 and is_edited_scan and ts_mtime > obj_mtime + 2.0)
 
         cached = self._dsm_mem_cache.get(scan_id)
         if cached and abs(cached.get("source_mtime", -1.0) - source_mtime) < 1.0:
@@ -666,7 +669,7 @@ class DsmAndVolumeMixin:
             glb_files = self._collect_scan_glb_files(scan)
             if glb_files:
                 chunks = []
-                for gp in glb_files[:24]:
+                for gp in glb_files[:64]:
                     v_arr = self._load_glb_vertices(gp)
                     if v_arr is not None and len(v_arr) > 0:
                         chunks.append(v_arr)

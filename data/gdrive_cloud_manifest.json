@@ -1,10 +1,1074 @@
 {
-  "updated_at": 1793091357,
+  "updated_at": 1793208482,
   "shared_drive_dir": "G:\\Shared drives\\6.軟體\\3. GatheringScans\\StreamPackages",
   "my_drive_dir": "G:\\My Drive\\Scans\\StreamPackages",
   "shared_drive_folder_id": "1scUD9IQWsAJjg296pecxFYqhoVm4mpjs",
   "my_drive_folder_id": "1oBf6wYz3mRaM9kktDQJxcf_JZ2QduICW",
   "scans": [
+    {
+      "scan_id": "catch_LishanFinal_HQ",
+      "name": "LishanFinal (16K HQ)",
+      "project_group": "Lishan",
+      "project_name_zh": "Lishan 工程掃描群組",
+      "capture_date": "2026-10-29 00:07",
+      "uploaded_at": 1793205542.209161,
+      "uploader_email": "glibivanov@gatheren.com.tw",
+      "uploader_name": "雲在天",
+      "source_zip_path": "",
+      "project_dir": "C:\\GatheringScans\\catch_LishanFinal_HQ",
+      "tileset_path": "C:\\GatheringScans\\catch_LishanFinal_HQ\\tileset\\tileset.json",
+      "obj_path": "C:\\GatheringScans\\catch_LishanFinal_HQ\\exports\\obj_mesh\\mesh.obj",
+      "report_path": "",
+      "cameras_dir": "C:\\GatheringScans\\catch_LishanFinal_HQ\\inputs",
+      "image_count": 4247,
+      "size_bytes": 29576528590,
+      "rtk_accuracy_cm": 1.5,
+      "crs": "TWD97 (121) + TWVD2001",
+      "texture_resolution": 16384,
+      "lat": 25.081971483,
+      "lon": 121.576178776,
+      "elev_m": 4.87,
+      "twd97_e": 308121.469,
+      "twd97_n": 2774980.811,
+      "twd97_h": 4.87,
+      "bounding_box_json": "{\"center\": [308121.469, 2774980.811, 4.87], \"half_extents\": [91.88, 126.18, 40.14]}",
+      "status": "completed",
+      "progress_pct": 100.0,
+      "stage_label": "Completed (TWD97 (121) + TWVD2001, 16K HQ Web Tileset)",
+      "bypass_count": 0,
+      "force_next": 0,
+      "priority_score": 236.224,
+      "notes": "Dynamically loaded from C:\\GatheringScans\\catch_LishanFinal_HQ",
+      "user_edited_name": 1,
+      "covered_area_m2": 31534.1,
+      "tileset_version": 1793208161892,
+      "extra_json": "{}",
+      "bounding_box": {
+        "center": [
+          308121.469,
+          2774980.811,
+          4.87
+        ],
+        "half_extents": [
+          91.88,
+          126.18,
+          40.14
+        ]
+      },
+      "comment_folders": [],
+      "size_mb": 28206.38,
+      "wait_minutes": 48.9,
+      "comments": [],
+      "comment_count": 0,
+      "measurement_bookmarks": [],
+      "bookmark_count": 0
+    },
+    {
+      "scan_id": "catch_QihuPark_20261028",
+      "name": "QihuPark_20261028",
+      "project_group": "QiHu",
+      "project_name_zh": "QiHu 工程掃描群組",
+      "capture_date": "2026-10-28 23:11",
+      "uploaded_at": 1793200088.782,
+      "uploader_email": "glibivanov@gatheren.com.tw",
+      "uploader_name": "雲在天",
+      "source_zip_path": "G:\\Shared drives\\6.軟體\\3. GatheringScans\\INPUTS\\QiHu\\QihuPark_20261028.zip",
+      "project_dir": "C:\\GatheringScans\\catch_QihuPark_20261028",
+      "tileset_path": "C:\\GatheringScans\\catch_QihuPark_20261028\\tileset\\tileset.json",
+      "obj_path": "C:\\GatheringScans\\catch_QihuPark_20261028\\exports\\obj_mesh\\mesh.obj",
+      "report_path": "",
+      "cameras_dir": "C:\\GatheringScans\\catch_QihuPark_20261028\\inputs",
+      "image_count": 219,
+      "size_bytes": 1191864492,
+      "rtk_accuracy_cm": 1.5,
+      "crs": "TWD97 (121) + TWVD2001",
+      "texture_resolution": 4096,
+      "lat": 25.136573544,
+      "lon": 121.502343986,
+      "elev_m": 17.46,
+      "twd97_e": 300650.823,
+      "twd97_n": 2780999.155,
+      "twd97_h": 17.46,
+      "bounding_box_json": "{\"center\": [300650.823, 2780999.155, 17.46], \"half_extents\": [5.21, 4.72, 4.0]}",
+      "status": "completed",
+      "progress_pct": 100.0,
+      "stage_label": "Processed -> catch_QihuPark_20261028 (TWD97 + TWVD2001, 4K)",
+      "bypass_count": 0,
+      "force_next": 0,
+      "priority_score": 1000000139.646,
+      "notes": "Dynamically loaded from C:\\GatheringScans\\catch_QihuPark_20261028",
+      "user_edited_name": 0,
+      "covered_area_m2": 148.6,
+      "tileset_version": 1793205709172,
+      "extra_json": "{}",
+      "bounding_box": {
+        "center": [
+          300650.823,
+          2780999.155,
+          17.46
+        ],
+        "half_extents": [
+          5.21,
+          4.72,
+          4.0
+        ]
+      },
+      "comment_folders": [],
+      "size_mb": 1136.65,
+      "wait_minutes": 139.7,
+      "comments": [],
+      "comment_count": 0,
+      "measurement_bookmarks": [],
+      "bookmark_count": 0
+    },
+    {
+      "scan_id": "catch_QihuPark_20261028_HQ",
+      "name": "QihuPark_20261028 (16K HQ)",
+      "project_group": "QiHu",
+      "project_name_zh": "QiHu 工程掃描群組",
+      "capture_date": "2026-10-28 23:11",
+      "uploaded_at": 1793204991.0119462,
+      "uploader_email": "glibivanov@gatheren.com.tw",
+      "uploader_name": "雲在天",
+      "source_zip_path": "G:\\Shared drives\\6.軟體\\3. GatheringScans\\INPUTS\\QiHu\\QihuPark_20261028.zip",
+      "project_dir": "C:\\GatheringScans\\catch_QihuPark_20261028_HQ",
+      "tileset_path": "C:\\GatheringScans\\catch_QihuPark_20261028_HQ\\tileset\\tileset.json",
+      "obj_path": "C:\\GatheringScans\\catch_QihuPark_20261028_HQ\\exports\\obj_mesh\\mesh.obj",
+      "report_path": "",
+      "cameras_dir": "C:\\GatheringScans\\catch_QihuPark_20261028_HQ\\inputs",
+      "image_count": 219,
+      "size_bytes": 1191864492,
+      "rtk_accuracy_cm": 1.5,
+      "crs": "TWD97 (121) + TWVD2001",
+      "texture_resolution": 16384,
+      "lat": 25.13659828,
+      "lon": 121.502352215,
+      "elev_m": 17.63,
+      "twd97_e": 300651.642,
+      "twd97_n": 2781001.899,
+      "twd97_h": 17.63,
+      "bounding_box_json": "{\"center\": [300651.642, 2781001.899, 17.63], \"half_extents\": [19.23, 20.76, 6.55]}",
+      "status": "completed",
+      "progress_pct": 100.0,
+      "stage_label": "Completed (TWD97 (121) + TWVD2001, 16K HQ Web Tileset)",
+      "bypass_count": 0,
+      "force_next": 0,
+      "priority_score": 1000000136.534,
+      "notes": "Dynamically loaded from C:\\GatheringScans\\catch_QihuPark_20261028",
+      "user_edited_name": 1,
+      "covered_area_m2": 148.6,
+      "tileset_version": 1793208125095,
+      "extra_json": "{}",
+      "bounding_box": {
+        "center": [
+          300651.642,
+          2781001.899,
+          17.63
+        ],
+        "half_extents": [
+          19.23,
+          20.76,
+          6.55
+        ]
+      },
+      "comment_folders": [],
+      "size_mb": 1136.65,
+      "wait_minutes": 58.0,
+      "comments": [],
+      "comment_count": 0,
+      "measurement_bookmarks": [],
+      "bookmark_count": 0
+    },
+    {
+      "scan_id": "catch_LishanFinal",
+      "name": "LishanFinal",
+      "project_group": "Lishan",
+      "project_name_zh": "Lishan 工程掃描群組",
+      "capture_date": "2026-10-28 21:18",
+      "uploaded_at": 1793171217.331,
+      "uploader_email": "glibivanov@gatheren.com.tw",
+      "uploader_name": "雲在天",
+      "source_zip_path": "G:\\Shared drives\\6.軟體\\3. GatheringScans\\INPUTS\\Lishan\\LishanFinal_1of3.zip;G:\\Shared drives\\6.軟體\\3. GatheringScans\\INPUTS\\Lishan\\LishanFinal_2of3.zip;G:\\Shared drives\\6.軟體\\3. GatheringScans\\INPUTS\\Lishan\\LishanFinal_3of3.zip",
+      "project_dir": "C:\\GatheringScans\\catch_LishanFinal",
+      "tileset_path": "C:\\GatheringScans\\catch_LishanFinal\\tileset\\tileset.json",
+      "obj_path": "C:\\GatheringScans\\catch_LishanFinal\\exports\\obj_mesh\\mesh.obj",
+      "report_path": "",
+      "cameras_dir": "C:\\GatheringScans\\catch_LishanFinal\\inputs",
+      "image_count": 4247,
+      "size_bytes": 20095531688,
+      "rtk_accuracy_cm": 1.5,
+      "crs": "TWD97 (121) + TWVD2001",
+      "texture_resolution": 4096,
+      "lat": 25.081971483,
+      "lon": 121.576178776,
+      "elev_m": 4.87,
+      "twd97_e": 308121.469,
+      "twd97_n": 2774980.811,
+      "twd97_h": 4.87,
+      "bounding_box_json": "{\"center\": [308121.469, 2774980.811, 4.87], \"half_extents\": [84.59, 83.34, 32.86]}",
+      "status": "completed",
+      "progress_pct": 100.0,
+      "stage_label": "Processed -> catch_LishanFinal (TWD97 + TWVD2001, 4K)",
+      "bypass_count": 0,
+      "force_next": 0,
+      "priority_score": 1000000620.834,
+      "notes": "Dynamically loaded from C:\\GatheringScans\\catch_LishanFinal",
+      "user_edited_name": 0,
+      "covered_area_m2": 71753.2,
+      "tileset_version": 1793200112577,
+      "extra_json": "{}",
+      "bounding_box": {
+        "center": [
+          308121.469,
+          2774980.811,
+          4.87
+        ],
+        "half_extents": [
+          84.59,
+          83.34,
+          32.86
+        ]
+      },
+      "comment_folders": [],
+      "size_mb": 19164.59,
+      "wait_minutes": 620.9,
+      "comments": [],
+      "comment_count": 0,
+      "measurement_bookmarks": [],
+      "bookmark_count": 0
+    },
+    {
+      "scan_id": "edited_qihu_merged_2026_10_28_858499",
+      "name": "QiHu_Merged_2026-10-28",
+      "project_group": "QiHu",
+      "project_name_zh": "QiHu 工程掃描群組",
+      "capture_date": "2026-10-28 16:56",
+      "uploaded_at": 1793185851.717729,
+      "uploader_email": "glibivanov@gatheren.com.tw",
+      "uploader_name": "glibivanov@gatheren.com.tw",
+      "source_zip_path": "",
+      "project_dir": "C:\\GatheringScans\\edited_qihu_merged_2026_10_28_858499",
+      "tileset_path": "C:\\GatheringScans\\edited_qihu_merged_2026_10_28_858499\\tileset\\tileset.json",
+      "obj_path": "",
+      "report_path": "",
+      "cameras_dir": "C:\\GatheringScans\\catch_QiHuTender_1\\inputs",
+      "image_count": 8640,
+      "size_bytes": 1024,
+      "rtk_accuracy_cm": 1.5,
+      "crs": "TWD97 (121) + TWVD2001",
+      "texture_resolution": 4096,
+      "lat": 25.13632154,
+      "lon": 121.501602691,
+      "elev_m": 17.63,
+      "twd97_e": 300576.181,
+      "twd97_n": 2780970.964,
+      "twd97_h": 17.63,
+      "bounding_box_json": "{\"center\": [300576.181, 2780970.964, 17.63], \"half_extents\": [97.24, 73.92, 11.67]}",
+      "status": "completed",
+      "progress_pct": 100.0,
+      "stage_label": "Edited (Deleted 3 region(s) (1,280 tris))",
+      "bypass_count": 0,
+      "force_next": 0,
+      "priority_score": 1000000376.922,
+      "notes": "Edited from merged_qihu_merged_2026_10_28_77753 (backup moved to Trash Bin): Deleted 3 region(s) (1,280 tris)",
+      "user_edited_name": 1,
+      "covered_area_m2": 15814.2,
+      "tileset_version": 1793185851688,
+      "extra_json": "{\"merged_from\": [{\"scan_id\": \"edited_qihutender_1_edited_346774\", \"derived_from_scan_id\": \"catch_QiHuTender_1\", \"name\": \"QiHuTender_1_Edited\", \"native_anchor_zup\": [300524.2572, 2781008.4541, 10.8289], \"merged_anchor_zup\": [300526.1357, 2781004.4109, 13.5789], \"zup_shift\": [1.8785, -4.0432, 2.75], \"r_zup_rowmajor\": [0.9998477, 0.01745241, -1e-08, -0.01745241, 0.9998477, -2e-08, 1e-08, 2e-08, 1.0]}, {\"scan_id\": \"catch_QiHuTender_2\", \"derived_from_scan_id\": \"\", \"name\": \"QiHuTender_2\", \"native_anchor_zup\": [300550.7568, 2780994.9421, 11.6407], \"merged_anchor_zup\": [300551.1377, 2780987.213, 11.7861], \"zup_shift\": [0.3809, -7.7291, 0.1454], \"r_zup_rowmajor\": [0.9998477, 0.01745241, 0.0, -0.01745241, 0.9998477, 0.0, 0.0, 0.0, 1.0]}, {\"scan_id\": \"catch_QiHuTender_3\", \"derived_from_scan_id\": \"\", \"name\": \"QiHuTender_3\", \"native_anchor_zup\": [300557.0989, 2780980.5229, 16.5457], \"merged_anchor_zup\": [300555.6818, 2780970.5508, 12.2436], \"zup_shift\": [-1.4171, -9.9721, -4.3021], \"r_zup_rowmajor\": [0.9961947, 0.08715575, 0.0, -0.08715575, 0.9961947, 0.0, 0.0, 0.0, 1.0]}, {\"scan_id\": \"catch_QiHuTender_4\", \"derived_from_scan_id\": \"\", \"name\": \"QiHuTender_4\", \"native_anchor_zup\": [300586.6135, 2780953.5755, 18.827], \"merged_anchor_zup\": [300583.7665, 2780942.4181, 10.8319], \"zup_shift\": [-2.847, -11.1574, -7.9951], \"r_zup_rowmajor\": [0.9998477, 0.01745241, 0.0, -0.01745241, 0.9998477, 0.0, 0.0, 0.0, 1.0]}, {\"scan_id\": \"catch_QihuSide\", \"derived_from_scan_id\": \"\", \"name\": \"QihuSide\", \"position_three\": [66.73, 3.78, -9.69], \"quaternion_three\": [0.0, 0.0, 0.0, 1.0], \"euler_deg_three\": [0.0, 0.0, 0.0], \"native_anchor_zup\": [300617.4505, 2780985.2245, 18.024], \"merged_anchor_zup\": [300617.4459, 2780985.2285, 18.027], \"zup_shift\": [-0.0046, 0.004, 0.003], \"r_zup_rowmajor\": [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0]}], \"derived_from_scan_id\": \"merged_qihu_merged_2026_10_28_77753\", \"applied_adjustments\": [\"Deleted 3 region(s) (1,280 tris)\"]}",
+      "bounding_box": {
+        "center": [
+          300576.181,
+          2780970.964,
+          17.63
+        ],
+        "half_extents": [
+          97.24,
+          73.92,
+          11.67
+        ]
+      },
+      "merged_from": [
+        {
+          "scan_id": "edited_qihutender_1_edited_346774",
+          "derived_from_scan_id": "catch_QiHuTender_1",
+          "name": "QiHuTender_1_Edited",
+          "native_anchor_zup": [
+            300524.2572,
+            2781008.4541,
+            10.8289
+          ],
+          "merged_anchor_zup": [
+            300526.1357,
+            2781004.4109,
+            13.5789
+          ],
+          "zup_shift": [
+            1.8785,
+            -4.0432,
+            2.75
+          ],
+          "r_zup_rowmajor": [
+            0.9998477,
+            0.01745241,
+            -1e-08,
+            -0.01745241,
+            0.9998477,
+            -2e-08,
+            1e-08,
+            2e-08,
+            1.0
+          ]
+        },
+        {
+          "scan_id": "catch_QiHuTender_2",
+          "derived_from_scan_id": "",
+          "name": "QiHuTender_2",
+          "native_anchor_zup": [
+            300550.7568,
+            2780994.9421,
+            11.6407
+          ],
+          "merged_anchor_zup": [
+            300551.1377,
+            2780987.213,
+            11.7861
+          ],
+          "zup_shift": [
+            0.3809,
+            -7.7291,
+            0.1454
+          ],
+          "r_zup_rowmajor": [
+            0.9998477,
+            0.01745241,
+            0.0,
+            -0.01745241,
+            0.9998477,
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ]
+        },
+        {
+          "scan_id": "catch_QiHuTender_3",
+          "derived_from_scan_id": "",
+          "name": "QiHuTender_3",
+          "native_anchor_zup": [
+            300557.0989,
+            2780980.5229,
+            16.5457
+          ],
+          "merged_anchor_zup": [
+            300555.6818,
+            2780970.5508,
+            12.2436
+          ],
+          "zup_shift": [
+            -1.4171,
+            -9.9721,
+            -4.3021
+          ],
+          "r_zup_rowmajor": [
+            0.9961947,
+            0.08715575,
+            0.0,
+            -0.08715575,
+            0.9961947,
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ]
+        },
+        {
+          "scan_id": "catch_QiHuTender_4",
+          "derived_from_scan_id": "",
+          "name": "QiHuTender_4",
+          "native_anchor_zup": [
+            300586.6135,
+            2780953.5755,
+            18.827
+          ],
+          "merged_anchor_zup": [
+            300583.7665,
+            2780942.4181,
+            10.8319
+          ],
+          "zup_shift": [
+            -2.847,
+            -11.1574,
+            -7.9951
+          ],
+          "r_zup_rowmajor": [
+            0.9998477,
+            0.01745241,
+            0.0,
+            -0.01745241,
+            0.9998477,
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ]
+        },
+        {
+          "scan_id": "catch_QihuSide",
+          "derived_from_scan_id": "",
+          "name": "QihuSide",
+          "position_three": [
+            66.73,
+            3.78,
+            -9.69
+          ],
+          "quaternion_three": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "euler_deg_three": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "native_anchor_zup": [
+            300617.4505,
+            2780985.2245,
+            18.024
+          ],
+          "merged_anchor_zup": [
+            300617.4459,
+            2780985.2285,
+            18.027
+          ],
+          "zup_shift": [
+            -0.0046,
+            0.004,
+            0.003
+          ],
+          "r_zup_rowmajor": [
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ]
+        }
+      ],
+      "derived_from_scan_id": "merged_qihu_merged_2026_10_28_77753",
+      "applied_adjustments": [
+        "Deleted 3 region(s) (1,280 tris)"
+      ],
+      "comment_folders": [
+        "一般備註"
+      ],
+      "size_mb": 0.0,
+      "wait_minutes": 377.0,
+      "comments": [
+        {
+          "comment_id": "cmt_1793017532792_2026_10_28_77753_026_10_28_858499",
+          "scan_id": "edited_qihu_merged_2026_10_28_858499",
+          "author_email": "glibivanov@gatheren.com.tw",
+          "author_name": "雲在天",
+          "text": "編號28棵樹",
+          "pos_x": 8.356,
+          "pos_y": -7.334,
+          "pos_z": 7.595,
+          "twd97_e": 300584.537,
+          "twd97_n": 2780963.369,
+          "twd97_h": 10.297,
+          "camera_json": "{}",
+          "created_at": "2026-10-26 12:25:32 UTC",
+          "photos_json": "[{\"url\": \"/api/comments/photo/edited_qihu_unified_merged_scan_4_scans__edited_372953/1793017507595_Image_E8E6250E-0627-4609-9C21-7501D91A7648.jpeg\", \"filename\": \"Image_E8E6250E-0627-4609-9C21-7501D91A7648.jpeg\", \"id\": \"cphoto_1793017507595\", \"gdrive_path\": \"G:\\\\Shared drives\\\\6.軟體\\\\3. GatheringScans\\\\CommentPhotos\\\\edited_qihu_unified_merged_scan_4_scans__edited_372953\\\\1793017507595_Image_E8E6250E-0627-4609-9C21-7501D91A7648.jpeg\", \"gdrive_synced\": true, \"storage\": \"gdrive\", \"source\": \"comment_upload\", \"mime_type\": \"image/jpeg\", \"size_bytes\": 1442369, \"uploaded_at\": \"2026-10-26 20:25:08\"}, {\"url\": \"/api/comments/photo/edited_qihu_unified_merged_scan_4_scans__edited_372953/1793017508425_Image_5C00908D-6EF1-442D-92A4-444D86D775BD.jpeg\", \"filename\": \"Image_5C00908D-6EF1-442D-92A4-444D86D775BD.jpeg\", \"id\": \"cphoto_1793017508425\", \"gdrive_path\": \"G:\\\\Shared drives\\\\6.軟體\\\\3. GatheringScans\\\\CommentPhotos\\\\edited_qihu_unified_merged_scan_4_scans__edited_372953\\\\1793017508425_Image_5C00908D-6EF1-442D-92A4-444D86D775BD.jpeg\", \"gdrive_synced\": true, \"storage\": \"gdrive\", \"source\": \"comment_upload\", \"mime_type\": \"image/jpeg\", \"size_bytes\": 3394265, \"uploaded_at\": \"2026-10-26 20:25:09\"}]",
+          "folder": "一般備註",
+          "photos": [
+            {
+              "url": "/api/comments/photo/edited_qihu_unified_merged_scan_4_scans__edited_372953/1793017507595_Image_E8E6250E-0627-4609-9C21-7501D91A7648.jpeg",
+              "filename": "Image_E8E6250E-0627-4609-9C21-7501D91A7648.jpeg",
+              "id": "cphoto_1793017507595",
+              "gdrive_path": "G:\\Shared drives\\6.軟體\\3. GatheringScans\\CommentPhotos\\edited_qihu_unified_merged_scan_4_scans__edited_372953\\1793017507595_Image_E8E6250E-0627-4609-9C21-7501D91A7648.jpeg",
+              "gdrive_synced": true,
+              "storage": "gdrive",
+              "source": "comment_upload",
+              "mime_type": "image/jpeg",
+              "size_bytes": 1442369,
+              "uploaded_at": "2026-10-26 20:25:08"
+            },
+            {
+              "url": "/api/comments/photo/edited_qihu_unified_merged_scan_4_scans__edited_372953/1793017508425_Image_5C00908D-6EF1-442D-92A4-444D86D775BD.jpeg",
+              "filename": "Image_5C00908D-6EF1-442D-92A4-444D86D775BD.jpeg",
+              "id": "cphoto_1793017508425",
+              "gdrive_path": "G:\\Shared drives\\6.軟體\\3. GatheringScans\\CommentPhotos\\edited_qihu_unified_merged_scan_4_scans__edited_372953\\1793017508425_Image_5C00908D-6EF1-442D-92A4-444D86D775BD.jpeg",
+              "gdrive_synced": true,
+              "storage": "gdrive",
+              "source": "comment_upload",
+              "mime_type": "image/jpeg",
+              "size_bytes": 3394265,
+              "uploaded_at": "2026-10-26 20:25:09"
+            }
+          ]
+        },
+        {
+          "comment_id": "cmt_1793017346023_2026_10_28_77753_026_10_28_858499",
+          "scan_id": "edited_qihu_merged_2026_10_28_858499",
+          "author_email": "glibivanov@gatheren.com.tw",
+          "author_name": "雲在天",
+          "text": "編號27樹。(需要移植最大顆)",
+          "pos_x": 5.207,
+          "pos_y": -6.984,
+          "pos_z": 7.49,
+          "twd97_e": 300581.388,
+          "twd97_n": 2780963.474,
+          "twd97_h": 10.647,
+          "camera_json": "{}",
+          "created_at": "2026-10-26 12:22:26 UTC",
+          "photos_json": "[{\"url\": \"/api/comments/photo/edited_qihu_unified_merged_scan_4_scans__edited_372953/1793017315800_Image_8DB8DEC7-9C95-4E46-AC9F-49191261C3EC.jpeg\", \"filename\": \"Image_8DB8DEC7-9C95-4E46-AC9F-49191261C3EC.jpeg\", \"id\": \"cphoto_1793017315800\", \"gdrive_path\": \"G:\\\\Shared drives\\\\6.軟體\\\\3. GatheringScans\\\\CommentPhotos\\\\edited_qihu_unified_merged_scan_4_scans__edited_372953\\\\1793017315800_Image_8DB8DEC7-9C95-4E46-AC9F-49191261C3EC.jpeg\", \"gdrive_synced\": true, \"storage\": \"gdrive\", \"source\": \"comment_upload\", \"mime_type\": \"image/jpeg\", \"size_bytes\": 2215161, \"uploaded_at\": \"2026-10-26 20:21:56\"}, {\"url\": \"/api/comments/photo/edited_qihu_unified_merged_scan_4_scans__edited_372953/1793017316382_Image_744DC5B5-CFAC-479D-AEF5-052EA36A1FCB.jpeg\", \"filename\": \"Image_744DC5B5-CFAC-479D-AEF5-052EA36A1FCB.jpeg\", \"id\": \"cphoto_1793017316382\", \"gdrive_path\": \"G:\\\\Shared drives\\\\6.軟體\\\\3. GatheringScans\\\\CommentPhotos\\\\edited_qihu_unified_merged_scan_4_scans__edited_372953\\\\1793017316382_Image_744DC5B5-CFAC-479D-AEF5-052EA36A1FCB.jpeg\", \"gdrive_synced\": true, \"storage\": \"gdrive\", \"source\": \"comment_upload\", \"mime_type\": \"image/jpeg\", \"size_bytes\": 4058121, \"uploaded_at\": \"2026-10-26 20:21:56\"}, {\"url\": \"/api/comments/photo/edited_qihu_unified_merged_scan_4_scans__edited_372953/1793017316954_Image_42D94EE8-5206-482A-B3B5-BBB5C1BC2390.jpeg\", \"filename\": \"Image_42D94EE8-5206-482A-B3B5-BBB5C1BC2390.jpeg\", \"id\": \"cphoto_1793017316954\", \"gdrive_path\": \"G:\\\\Shared drives\\\\6.軟體\\\\3. GatheringScans\\\\CommentPhotos\\\\edited_qihu_unified_merged_scan_4_scans__edited_372953\\\\1793017316954_Image_42D94EE8-5206-482A-B3B5-BBB5C1BC2390.jpeg\", \"gdrive_synced\": true, \"storage\": \"gdrive\", \"source\": \"comment_upload\", \"mime_type\": \"image/jpeg\", \"size_bytes\": 1695785, \"uploaded_at\": \"2026-10-26 20:21:57\"}]",
+          "folder": "一般備註",
+          "photos": [
+            {
+              "url": "/api/comments/photo/edited_qihu_unified_merged_scan_4_scans__edited_372953/1793017315800_Image_8DB8DEC7-9C95-4E46-AC9F-49191261C3EC.jpeg",
+              "filename": "Image_8DB8DEC7-9C95-4E46-AC9F-49191261C3EC.jpeg",
+              "id": "cphoto_1793017315800",
+              "gdrive_path": "G:\\Shared drives\\6.軟體\\3. GatheringScans\\CommentPhotos\\edited_qihu_unified_merged_scan_4_scans__edited_372953\\1793017315800_Image_8DB8DEC7-9C95-4E46-AC9F-49191261C3EC.jpeg",
+              "gdrive_synced": true,
+              "storage": "gdrive",
+              "source": "comment_upload",
+              "mime_type": "image/jpeg",
+              "size_bytes": 2215161,
+              "uploaded_at": "2026-10-26 20:21:56"
+            },
+            {
+              "url": "/api/comments/photo/edited_qihu_unified_merged_scan_4_scans__edited_372953/1793017316382_Image_744DC5B5-CFAC-479D-AEF5-052EA36A1FCB.jpeg",
+              "filename": "Image_744DC5B5-CFAC-479D-AEF5-052EA36A1FCB.jpeg",
+              "id": "cphoto_1793017316382",
+              "gdrive_path": "G:\\Shared drives\\6.軟體\\3. GatheringScans\\CommentPhotos\\edited_qihu_unified_merged_scan_4_scans__edited_372953\\1793017316382_Image_744DC5B5-CFAC-479D-AEF5-052EA36A1FCB.jpeg",
+              "gdrive_synced": true,
+              "storage": "gdrive",
+              "source": "comment_upload",
+              "mime_type": "image/jpeg",
+              "size_bytes": 4058121,
+              "uploaded_at": "2026-10-26 20:21:56"
+            },
+            {
+              "url": "/api/comments/photo/edited_qihu_unified_merged_scan_4_scans__edited_372953/1793017316954_Image_42D94EE8-5206-482A-B3B5-BBB5C1BC2390.jpeg",
+              "filename": "Image_42D94EE8-5206-482A-B3B5-BBB5C1BC2390.jpeg",
+              "id": "cphoto_1793017316954",
+              "gdrive_path": "G:\\Shared drives\\6.軟體\\3. GatheringScans\\CommentPhotos\\edited_qihu_unified_merged_scan_4_scans__edited_372953\\1793017316954_Image_42D94EE8-5206-482A-B3B5-BBB5C1BC2390.jpeg",
+              "gdrive_synced": true,
+              "storage": "gdrive",
+              "source": "comment_upload",
+              "mime_type": "image/jpeg",
+              "size_bytes": 1695785,
+              "uploaded_at": "2026-10-26 20:21:57"
+            }
+          ]
+        },
+        {
+          "comment_id": "cmt_1793017027354_2026_10_28_77753_026_10_28_858499",
+          "scan_id": "edited_qihu_merged_2026_10_28_858499",
+          "author_email": "glibivanov@gatheren.com.tw",
+          "author_name": "雲在天",
+          "text": "交通管制",
+          "pos_x": -49.8,
+          "pos_y": -5.107,
+          "pos_z": -34.6,
+          "twd97_e": 300526.381,
+          "twd97_n": 2781005.564,
+          "twd97_h": 12.524,
+          "camera_json": "{}",
+          "created_at": "2026-10-26 12:17:07 UTC",
+          "photos_json": "[{\"url\": \"/api/camera-photo?scan_id=edited_qihu_unified_merged_scan_4_scans__edited_372953&file=catch_QiHuTender_1/Image_000735.jpg\", \"filename\": \"catch_QiHuTender_1/Image_000735.jpg\", \"id\": \"catch_QiHuTender_1/Image_000735.jpg\", \"camera_twd97_e\": 300525.624, \"camera_twd97_n\": 2781010.835, \"camera_twd97_h\": 14.178, \"proj_u\": 0.6039, \"proj_v\": 0.479, \"target_uv\": {\"u\": 0.6039, \"v\": 0.479, \"in_fov\": true}, \"rtk_h_sigma_cm\": 143.25}]",
+          "folder": "一般備註",
+          "photos": [
+            {
+              "url": "/api/camera-photo?scan_id=edited_qihu_unified_merged_scan_4_scans__edited_372953&file=catch_QiHuTender_1/Image_000735.jpg",
+              "filename": "catch_QiHuTender_1/Image_000735.jpg",
+              "id": "catch_QiHuTender_1/Image_000735.jpg",
+              "camera_twd97_e": 300525.624,
+              "camera_twd97_n": 2781010.835,
+              "camera_twd97_h": 14.178,
+              "proj_u": 0.6039,
+              "proj_v": 0.479,
+              "target_uv": {
+                "u": 0.6039,
+                "v": 0.479,
+                "in_fov": true
+              },
+              "rtk_h_sigma_cm": 143.25
+            }
+          ]
+        },
+        {
+          "comment_id": "cmt_1792984792161_2026_10_28_77753_026_10_28_858499",
+          "scan_id": "edited_qihu_merged_2026_10_28_858499",
+          "author_email": "glibivanov@gatheren.com.tw",
+          "author_name": "雲在天",
+          "text": "公園公共廁所",
+          "pos_x": 39.537,
+          "pos_y": -7.31,
+          "pos_z": 29.042,
+          "twd97_e": 300615.718,
+          "twd97_n": 2780941.922,
+          "twd97_h": 10.321,
+          "camera_json": "{}",
+          "created_at": "2026-10-26 03:19:52 UTC",
+          "photos_json": "[{\"url\": \"/api/comments/photo/edited_qihu_unified_merged_scan_4_scans__edited_372953/1793016989845_camera-photo.jpg\", \"filename\": \"camera-photo.jpg\", \"id\": \"cphoto_1793016989845\", \"gdrive_path\": \"G:\\\\Shared drives\\\\6.軟體\\\\3. GatheringScans\\\\CommentPhotos\\\\edited_qihu_unified_merged_scan_4_scans__edited_372953\\\\1793016989845_camera-photo.jpg\", \"gdrive_synced\": true, \"storage\": \"gdrive\", \"source\": \"comment_upload\", \"mime_type\": \"image/jpeg\", \"size_bytes\": 1270728, \"uploaded_at\": \"2026-10-26 20:16:30\"}]",
+          "folder": "一般備註",
+          "photos": [
+            {
+              "url": "/api/comments/photo/edited_qihu_unified_merged_scan_4_scans__edited_372953/1793016989845_camera-photo.jpg",
+              "filename": "camera-photo.jpg",
+              "id": "cphoto_1793016989845",
+              "gdrive_path": "G:\\Shared drives\\6.軟體\\3. GatheringScans\\CommentPhotos\\edited_qihu_unified_merged_scan_4_scans__edited_372953\\1793016989845_camera-photo.jpg",
+              "gdrive_synced": true,
+              "storage": "gdrive",
+              "source": "comment_upload",
+              "mime_type": "image/jpeg",
+              "size_bytes": 1270728,
+              "uploaded_at": "2026-10-26 20:16:30"
+            }
+          ]
+        },
+        {
+          "comment_id": "cmt_1792984494802_2026_10_28_77753_026_10_28_858499",
+          "scan_id": "edited_qihu_merged_2026_10_28_858499",
+          "author_email": "glibivanov@gatheren.com.tw",
+          "author_name": "雲在天",
+          "text": "既有汙水井",
+          "pos_x": 3.25,
+          "pos_y": -6.926,
+          "pos_z": 2.155,
+          "twd97_e": 300579.431,
+          "twd97_n": 2780968.809,
+          "twd97_h": 10.705,
+          "camera_json": "{}",
+          "created_at": "2026-10-26 03:14:54 UTC",
+          "photos_json": "[{\"url\": \"/api/comments/photo/edited_qihu_unified_merged_scan_4_scans__edited_372953/1793016970332_camera-photo.jpg\", \"filename\": \"camera-photo.jpg\", \"id\": \"cphoto_1793016970332\", \"gdrive_path\": \"G:\\\\Shared drives\\\\6.軟體\\\\3. GatheringScans\\\\CommentPhotos\\\\edited_qihu_unified_merged_scan_4_scans__edited_372953\\\\1793016970332_camera-photo.jpg\", \"gdrive_synced\": true, \"storage\": \"gdrive\", \"source\": \"comment_upload\", \"mime_type\": \"image/jpeg\", \"size_bytes\": 1392537, \"uploaded_at\": \"2026-10-26 20:16:11\"}, {\"url\": \"/api/comments/photo/edited_qihu_unified_merged_scan_4_scans__edited_372953/1793016974997_camera-photo.jpg\", \"filename\": \"camera-photo.jpg\", \"id\": \"cphoto_1793016974997\", \"gdrive_path\": \"G:\\\\Shared drives\\\\6.軟體\\\\3. GatheringScans\\\\CommentPhotos\\\\edited_qihu_unified_merged_scan_4_scans__edited_372953\\\\1793016974997_camera-photo.jpg\", \"gdrive_synced\": true, \"storage\": \"gdrive\", \"source\": \"comment_upload\", \"mime_type\": \"image/jpeg\", \"size_bytes\": 1676248, \"uploaded_at\": \"2026-10-26 20:16:15\"}, {\"url\": \"/api/comments/photo/edited_qihu_unified_merged_scan_4_scans__edited_372953/1793016975761_camera-photo.jpg\", \"filename\": \"camera-photo.jpg\", \"id\": \"cphoto_1793016975761\", \"gdrive_path\": \"G:\\\\Shared drives\\\\6.軟體\\\\3. GatheringScans\\\\CommentPhotos\\\\edited_qihu_unified_merged_scan_4_scans__edited_372953\\\\1793016975761_camera-photo.jpg\", \"gdrive_synced\": true, \"storage\": \"gdrive\", \"source\": \"comment_upload\", \"mime_type\": \"image/jpeg\", \"size_bytes\": 1180439, \"uploaded_at\": \"2026-10-26 20:16:16\"}]",
+          "folder": "一般備註",
+          "photos": [
+            {
+              "url": "/api/comments/photo/edited_qihu_unified_merged_scan_4_scans__edited_372953/1793016970332_camera-photo.jpg",
+              "filename": "camera-photo.jpg",
+              "id": "cphoto_1793016970332",
+              "gdrive_path": "G:\\Shared drives\\6.軟體\\3. GatheringScans\\CommentPhotos\\edited_qihu_unified_merged_scan_4_scans__edited_372953\\1793016970332_camera-photo.jpg",
+              "gdrive_synced": true,
+              "storage": "gdrive",
+              "source": "comment_upload",
+              "mime_type": "image/jpeg",
+              "size_bytes": 1392537,
+              "uploaded_at": "2026-10-26 20:16:11"
+            },
+            {
+              "url": "/api/comments/photo/edited_qihu_unified_merged_scan_4_scans__edited_372953/1793016974997_camera-photo.jpg",
+              "filename": "camera-photo.jpg",
+              "id": "cphoto_1793016974997",
+              "gdrive_path": "G:\\Shared drives\\6.軟體\\3. GatheringScans\\CommentPhotos\\edited_qihu_unified_merged_scan_4_scans__edited_372953\\1793016974997_camera-photo.jpg",
+              "gdrive_synced": true,
+              "storage": "gdrive",
+              "source": "comment_upload",
+              "mime_type": "image/jpeg",
+              "size_bytes": 1676248,
+              "uploaded_at": "2026-10-26 20:16:15"
+            },
+            {
+              "url": "/api/comments/photo/edited_qihu_unified_merged_scan_4_scans__edited_372953/1793016975761_camera-photo.jpg",
+              "filename": "camera-photo.jpg",
+              "id": "cphoto_1793016975761",
+              "gdrive_path": "G:\\Shared drives\\6.軟體\\3. GatheringScans\\CommentPhotos\\edited_qihu_unified_merged_scan_4_scans__edited_372953\\1793016975761_camera-photo.jpg",
+              "gdrive_synced": true,
+              "storage": "gdrive",
+              "source": "comment_upload",
+              "mime_type": "image/jpeg",
+              "size_bytes": 1180439,
+              "uploaded_at": "2026-10-26 20:16:16"
+            }
+          ]
+        },
+        {
+          "comment_id": "cmt_1792977659623_2026_10_28_77753_026_10_28_858499",
+          "scan_id": "edited_qihu_merged_2026_10_28_858499",
+          "author_email": "glibivanov@gatheren.com.tw",
+          "author_name": "雲在天",
+          "text": "排水管",
+          "pos_x": -8.875,
+          "pos_y": -9.522,
+          "pos_z": 37.849,
+          "twd97_e": 300567.306,
+          "twd97_n": 2780933.115,
+          "twd97_h": 8.109,
+          "camera_json": "{}",
+          "created_at": "2026-10-26 01:20:59 UTC",
+          "photos_json": "[{\"url\": \"/api/comments/photo/edited_qihu_unified_merged_scan_4_scans__edited_372953/1793016921358_camera-photo.jpg\", \"filename\": \"camera-photo.jpg\", \"id\": \"cphoto_1793016921358\", \"gdrive_path\": \"G:\\\\Shared drives\\\\6.軟體\\\\3. GatheringScans\\\\CommentPhotos\\\\edited_qihu_unified_merged_scan_4_scans__edited_372953\\\\1793016921358_camera-photo.jpg\", \"gdrive_synced\": true, \"storage\": \"gdrive\", \"source\": \"comment_upload\", \"mime_type\": \"image/jpeg\", \"size_bytes\": 1507016, \"uploaded_at\": \"2026-10-26 20:15:22\"}, {\"url\": \"/api/comments/photo/edited_qihu_unified_merged_scan_4_scans__edited_372953/1793016925872_camera-photo.jpg\", \"filename\": \"camera-photo.jpg\", \"id\": \"cphoto_1793016925872\", \"gdrive_path\": \"G:\\\\Shared drives\\\\6.軟體\\\\3. GatheringScans\\\\CommentPhotos\\\\edited_qihu_unified_merged_scan_4_scans__edited_372953\\\\1793016925872_camera-photo.jpg\", \"gdrive_synced\": true, \"storage\": \"gdrive\", \"source\": \"comment_upload\", \"mime_type\": \"image/jpeg\", \"size_bytes\": 1430352, \"uploaded_at\": \"2026-10-26 20:15:26\"}, {\"url\": \"/api/comments/photo/edited_qihu_unified_merged_scan_4_scans__edited_372953/1793016934087_camera-photo.jpg\", \"filename\": \"camera-photo.jpg\", \"id\": \"cphoto_1793016934087\", \"gdrive_path\": \"G:\\\\Shared drives\\\\6.軟體\\\\3. GatheringScans\\\\CommentPhotos\\\\edited_qihu_unified_merged_scan_4_scans__edited_372953\\\\1793016934087_camera-photo.jpg\", \"gdrive_synced\": true, \"storage\": \"gdrive\", \"source\": \"comment_upload\", \"mime_type\": \"image/jpeg\", \"size_bytes\": 1546122, \"uploaded_at\": \"2026-10-26 20:15:34\"}]",
+          "folder": "一般備註",
+          "photos": [
+            {
+              "url": "/api/comments/photo/edited_qihu_unified_merged_scan_4_scans__edited_372953/1793016921358_camera-photo.jpg",
+              "filename": "camera-photo.jpg",
+              "id": "cphoto_1793016921358",
+              "gdrive_path": "G:\\Shared drives\\6.軟體\\3. GatheringScans\\CommentPhotos\\edited_qihu_unified_merged_scan_4_scans__edited_372953\\1793016921358_camera-photo.jpg",
+              "gdrive_synced": true,
+              "storage": "gdrive",
+              "source": "comment_upload",
+              "mime_type": "image/jpeg",
+              "size_bytes": 1507016,
+              "uploaded_at": "2026-10-26 20:15:22"
+            },
+            {
+              "url": "/api/comments/photo/edited_qihu_unified_merged_scan_4_scans__edited_372953/1793016925872_camera-photo.jpg",
+              "filename": "camera-photo.jpg",
+              "id": "cphoto_1793016925872",
+              "gdrive_path": "G:\\Shared drives\\6.軟體\\3. GatheringScans\\CommentPhotos\\edited_qihu_unified_merged_scan_4_scans__edited_372953\\1793016925872_camera-photo.jpg",
+              "gdrive_synced": true,
+              "storage": "gdrive",
+              "source": "comment_upload",
+              "mime_type": "image/jpeg",
+              "size_bytes": 1430352,
+              "uploaded_at": "2026-10-26 20:15:26"
+            },
+            {
+              "url": "/api/comments/photo/edited_qihu_unified_merged_scan_4_scans__edited_372953/1793016934087_camera-photo.jpg",
+              "filename": "camera-photo.jpg",
+              "id": "cphoto_1793016934087",
+              "gdrive_path": "G:\\Shared drives\\6.軟體\\3. GatheringScans\\CommentPhotos\\edited_qihu_unified_merged_scan_4_scans__edited_372953\\1793016934087_camera-photo.jpg",
+              "gdrive_synced": true,
+              "storage": "gdrive",
+              "source": "comment_upload",
+              "mime_type": "image/jpeg",
+              "size_bytes": 1546122,
+              "uploaded_at": "2026-10-26 20:15:34"
+            }
+          ]
+        }
+      ],
+      "comment_count": 6,
+      "measurement_bookmarks": [],
+      "bookmark_count": 0
+    },
+    {
+      "scan_id": "catch_QihuSide",
+      "name": "QihuSide",
+      "project_group": "QiHu",
+      "project_name_zh": "QiHu 工程掃描群組",
+      "capture_date": "2026-10-28 16:12",
+      "uploaded_at": 1793170208.536,
+      "uploader_email": "glibivanov@gatheren.com.tw",
+      "uploader_name": "雲在天",
+      "source_zip_path": "G:\\Shared drives\\6.軟體\\3. GatheringScans\\INPUTS\\QiHu\\QihuSide_1of2.zip;G:\\Shared drives\\6.軟體\\3. GatheringScans\\INPUTS\\QiHu\\QihuSide_2of2.zip",
+      "project_dir": "C:\\GatheringScans\\catch_QihuSide",
+      "tileset_path": "C:\\GatheringScans\\catch_QihuSide\\tileset\\tileset.json",
+      "obj_path": "C:\\GatheringScans\\catch_QihuSide\\exports\\obj_mesh\\mesh.obj",
+      "report_path": "",
+      "cameras_dir": "C:\\GatheringScans\\catch_QihuSide\\inputs",
+      "image_count": 2640,
+      "size_bytes": 13846119917,
+      "rtk_accuracy_cm": 1.5,
+      "crs": "TWD97 (121) + TWVD2001",
+      "texture_resolution": 4096,
+      "lat": 25.136448898,
+      "lon": 121.502012505,
+      "elev_m": 18.02,
+      "twd97_e": 300617.45,
+      "twd97_n": 2780985.225,
+      "twd97_h": 18.02,
+      "bounding_box_json": "{\"center\": [300617.45, 2780985.225, 18.02], \"half_extents\": [53.73, 52.06, 11.27]}",
+      "status": "completed",
+      "progress_pct": 100.0,
+      "stage_label": "Processed -> catch_QihuSide (TWD97 + TWVD2001, 4K)",
+      "bypass_count": 0,
+      "force_next": 0,
+      "priority_score": 1000000637.651,
+      "notes": "Dynamically loaded from C:\\GatheringScans\\catch_QihuSide",
+      "user_edited_name": 0,
+      "covered_area_m2": 7608.3,
+      "tileset_version": 1793175169324,
+      "extra_json": "{}",
+      "bounding_box": {
+        "center": [
+          300617.45,
+          2780985.225,
+          18.02
+        ],
+        "half_extents": [
+          53.73,
+          52.06,
+          11.27
+        ]
+      },
+      "comment_folders": [],
+      "size_mb": 13204.69,
+      "wait_minutes": 637.7,
+      "comments": [],
+      "comment_count": 0,
+      "measurement_bookmarks": [],
+      "bookmark_count": 0
+    },
+    {
+      "scan_id": "merged_qihu_full_20261028",
+      "name": "QiHu_Merged_Full_2026-10-28",
+      "project_group": "QiHu",
+      "project_name_zh": "QiHu 工程掃描群組",
+      "capture_date": "2026-10-28 00:34",
+      "uploaded_at": 1793205294.3594196,
+      "uploader_email": "glibivanov@gatheren.com.tw",
+      "uploader_name": "雲在天",
+      "source_zip_path": "",
+      "project_dir": "C:\\GatheringScans\\merged_qihu_full_20261028",
+      "tileset_path": "C:\\GatheringScans\\merged_qihu_full_20261028\\tileset\\tileset.json",
+      "obj_path": "C:\\GatheringScans\\merged_qihu_full_20261028\\exports\\obj_mesh\\mesh.obj",
+      "report_path": "",
+      "cameras_dir": "",
+      "image_count": 8859,
+      "size_bytes": 2340033167,
+      "rtk_accuracy_cm": 1.5,
+      "crs": "TWD97 (121) + TWVD2001",
+      "texture_resolution": 16384,
+      "lat": 25.136321541,
+      "lon": 121.501602691,
+      "elev_m": 17.63,
+      "twd97_e": 300576.181,
+      "twd97_n": 2780970.964,
+      "twd97_h": 17.63,
+      "bounding_box_json": "{\"center\": [300576.181, 2780970.964, 17.63], \"half_extents\": [97.24, 73.92, 11.67]}",
+      "status": "completed",
+      "progress_pct": 100.0,
+      "stage_label": "Unified 6-Scan Full Merge (4K+16K multi-tile · Z-leveled dz=-0.097m · Trimmed 67,247 overlap skirt tris)",
+      "bypass_count": 0,
+      "force_next": 0,
+      "priority_score": 146.551,
+      "notes": "Unified QiHu scan glueing merged_qihu_merged_2026_10_28_77753 + catch_QihuPark_20261028_HQ (dz=-0.097m)",
+      "user_edited_name": 1,
+      "covered_area_m2": 19551.3,
+      "tileset_version": 1793208249668,
+      "extra_json": "{\"merged_from\": [{\"scan_id\": \"edited_qihutender_1_edited_346774\", \"derived_from_scan_id\": \"catch_QiHuTender_1\", \"name\": \"QiHuTender_1_Edited\", \"native_anchor_zup\": [300524.2572, 2781008.4541, 10.8289], \"merged_anchor_zup\": [300526.1357, 2781004.4109, 13.5789], \"zup_shift\": [1.8785, -4.0432, 2.75], \"r_zup_rowmajor\": [0.9998477, 0.01745241, -1e-08, -0.01745241, 0.9998477, -2e-08, 1e-08, 2e-08, 1.0]}, {\"scan_id\": \"catch_QiHuTender_2\", \"derived_from_scan_id\": \"\", \"name\": \"QiHuTender_2\", \"native_anchor_zup\": [300550.7568, 2780994.9421, 11.6407], \"merged_anchor_zup\": [300551.1377, 2780987.213, 11.7861], \"zup_shift\": [0.3809, -7.7291, 0.1454], \"r_zup_rowmajor\": [0.9998477, 0.01745241, 0.0, -0.01745241, 0.9998477, 0.0, 0.0, 0.0, 1.0]}, {\"scan_id\": \"catch_QiHuTender_3\", \"derived_from_scan_id\": \"\", \"name\": \"QiHuTender_3\", \"native_anchor_zup\": [300557.0989, 2780980.5229, 16.5457], \"merged_anchor_zup\": [300555.6818, 2780970.5508, 12.2436], \"zup_shift\": [-1.4171, -9.9721, -4.3021], \"r_zup_rowmajor\": [0.9961947, 0.08715575, 0.0, -0.08715575, 0.9961947, 0.0, 0.0, 0.0, 1.0]}, {\"scan_id\": \"catch_QiHuTender_4\", \"derived_from_scan_id\": \"\", \"name\": \"QiHuTender_4\", \"native_anchor_zup\": [300586.6135, 2780953.5755, 18.827], \"merged_anchor_zup\": [300583.7665, 2780942.4181, 10.8319], \"zup_shift\": [-2.847, -11.1574, -7.9951], \"r_zup_rowmajor\": [0.9998477, 0.01745241, 0.0, -0.01745241, 0.9998477, 0.0, 0.0, 0.0, 1.0]}, {\"scan_id\": \"catch_QihuSide\", \"derived_from_scan_id\": \"\", \"name\": \"QihuSide\", \"position_three\": [66.73, 3.78, -9.69], \"quaternion_three\": [0.0, 0.0, 0.0, 1.0], \"euler_deg_three\": [0.0, 0.0, 0.0], \"native_anchor_zup\": [300617.4505, 2780985.2245, 18.024], \"merged_anchor_zup\": [300617.4459, 2780985.2285, 18.027], \"zup_shift\": [-0.0046, 0.004, 0.003], \"r_zup_rowmajor\": [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0]}, {\"scan_id\": \"catch_QihuPark_20261028_HQ\", \"derived_from_scan_id\": \"catch_QihuPark_20261028\", \"name\": \"QihuPark_20261028 (16K HQ)\", \"native_anchor_zup\": [300651.642, 2781001.899, 17.626], \"merged_anchor_zup\": [300651.642, 2781001.899, 17.5294], \"zup_shift\": [0.0, 0.0, -0.0966], \"r_zup_rowmajor\": [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0]}]}",
+      "bounding_box": {
+        "center": [
+          300576.181,
+          2780970.964,
+          17.63
+        ],
+        "half_extents": [
+          97.24,
+          73.92,
+          11.67
+        ]
+      },
+      "merged_from": [
+        {
+          "scan_id": "edited_qihutender_1_edited_346774",
+          "derived_from_scan_id": "catch_QiHuTender_1",
+          "name": "QiHuTender_1_Edited",
+          "native_anchor_zup": [
+            300524.2572,
+            2781008.4541,
+            10.8289
+          ],
+          "merged_anchor_zup": [
+            300526.1357,
+            2781004.4109,
+            13.5789
+          ],
+          "zup_shift": [
+            1.8785,
+            -4.0432,
+            2.75
+          ],
+          "r_zup_rowmajor": [
+            0.9998477,
+            0.01745241,
+            -1e-08,
+            -0.01745241,
+            0.9998477,
+            -2e-08,
+            1e-08,
+            2e-08,
+            1.0
+          ]
+        },
+        {
+          "scan_id": "catch_QiHuTender_2",
+          "derived_from_scan_id": "",
+          "name": "QiHuTender_2",
+          "native_anchor_zup": [
+            300550.7568,
+            2780994.9421,
+            11.6407
+          ],
+          "merged_anchor_zup": [
+            300551.1377,
+            2780987.213,
+            11.7861
+          ],
+          "zup_shift": [
+            0.3809,
+            -7.7291,
+            0.1454
+          ],
+          "r_zup_rowmajor": [
+            0.9998477,
+            0.01745241,
+            0.0,
+            -0.01745241,
+            0.9998477,
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ]
+        },
+        {
+          "scan_id": "catch_QiHuTender_3",
+          "derived_from_scan_id": "",
+          "name": "QiHuTender_3",
+          "native_anchor_zup": [
+            300557.0989,
+            2780980.5229,
+            16.5457
+          ],
+          "merged_anchor_zup": [
+            300555.6818,
+            2780970.5508,
+            12.2436
+          ],
+          "zup_shift": [
+            -1.4171,
+            -9.9721,
+            -4.3021
+          ],
+          "r_zup_rowmajor": [
+            0.9961947,
+            0.08715575,
+            0.0,
+            -0.08715575,
+            0.9961947,
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ]
+        },
+        {
+          "scan_id": "catch_QiHuTender_4",
+          "derived_from_scan_id": "",
+          "name": "QiHuTender_4",
+          "native_anchor_zup": [
+            300586.6135,
+            2780953.5755,
+            18.827
+          ],
+          "merged_anchor_zup": [
+            300583.7665,
+            2780942.4181,
+            10.8319
+          ],
+          "zup_shift": [
+            -2.847,
+            -11.1574,
+            -7.9951
+          ],
+          "r_zup_rowmajor": [
+            0.9998477,
+            0.01745241,
+            0.0,
+            -0.01745241,
+            0.9998477,
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ]
+        },
+        {
+          "scan_id": "catch_QihuSide",
+          "derived_from_scan_id": "",
+          "name": "QihuSide",
+          "position_three": [
+            66.73,
+            3.78,
+            -9.69
+          ],
+          "quaternion_three": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "euler_deg_three": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "native_anchor_zup": [
+            300617.4505,
+            2780985.2245,
+            18.024
+          ],
+          "merged_anchor_zup": [
+            300617.4459,
+            2780985.2285,
+            18.027
+          ],
+          "zup_shift": [
+            -0.0046,
+            0.004,
+            0.003
+          ],
+          "r_zup_rowmajor": [
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ]
+        },
+        {
+          "scan_id": "catch_QihuPark_20261028_HQ",
+          "derived_from_scan_id": "catch_QihuPark_20261028",
+          "name": "QihuPark_20261028 (16K HQ)",
+          "native_anchor_zup": [
+            300651.642,
+            2781001.899,
+            17.626
+          ],
+          "merged_anchor_zup": [
+            300651.642,
+            2781001.899,
+            17.5294
+          ],
+          "zup_shift": [
+            0.0,
+            0.0,
+            -0.0966
+          ],
+          "r_zup_rowmajor": [
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ]
+        }
+      ],
+      "comment_folders": [],
+      "size_mb": 2231.63,
+      "wait_minutes": 53.0,
+      "comments": [],
+      "comment_count": 0,
+      "measurement_bookmarks": [],
+      "bookmark_count": 0
+    },
     {
       "scan_id": "edited_1021_911189",
       "name": "屈尺取石塊1021",
@@ -25,19 +1089,19 @@
       "rtk_accuracy_cm": 1.5,
       "crs": "TWD97 (121) + TWVD2001",
       "texture_resolution": 4096,
-      "lat": 24.899666091,
-      "lon": 121.551849724,
-      "elev_m": 67.04,
-      "twd97_e": 305749.42,
-      "twd97_n": 2754777.513,
-      "twd97_h": 67.04,
-      "bounding_box_json": "{\"center\": [305749.42, 2754777.513, 67.04], \"half_extents\": [202.68, 174.9, 45.66]}",
+      "lat": 24.899585103,
+      "lon": 121.551450534,
+      "elev_m": 62.79,
+      "twd97_e": 305709.128,
+      "twd97_n": 2754768.379,
+      "twd97_h": 62.79,
+      "bounding_box_json": "{\"center\": [305709.128, 2754768.379, 62.79], \"half_extents\": [202.68, 174.9, 45.66]}",
       "status": "completed",
       "progress_pct": 100.0,
       "stage_label": "Edited (Deleted 27 region(s) (124,916 tris))",
       "bypass_count": 0,
       "force_next": 0,
-      "priority_score": 14.957,
+      "priority_score": 1000001955.452,
       "notes": "Edited from edited_1021_908819 (backup moved to Trash Bin): Deleted 27 region(s) (124,916 tris)",
       "user_edited_name": 1,
       "covered_area_m2": 227674.2,
@@ -45,9 +1109,9 @@
       "extra_json": "{\"derived_from_scan_id\": \"edited_1021_908819\", \"applied_adjustments\": [\"Deleted 27 region(s) (124,916 tris)\"]}",
       "bounding_box": {
         "center": [
-          305749.42,
-          2754777.513,
-          67.04
+          305709.128,
+          2754768.379,
+          62.79
         ],
         "half_extents": [
           202.68,
@@ -61,7 +1125,7 @@
       ],
       "comment_folders": [],
       "size_mb": 0.0,
-      "wait_minutes": 3.6,
+      "wait_minutes": 1955.6,
       "comments": [],
       "comment_count": 0,
       "measurement_bookmarks": [],
@@ -87,19 +1151,19 @@
       "rtk_accuracy_cm": 1.5,
       "crs": "TWD97 (121) + TWVD2001",
       "texture_resolution": 4096,
-      "lat": 25.136357571,
-      "lon": 121.501373158,
-      "elev_m": 13.22,
-      "twd97_e": 300553.022,
-      "twd97_n": 2780974.869,
-      "twd97_h": 13.22,
-      "bounding_box_json": "{\"center\": [300553.022, 2780974.869, 13.22], \"half_extents\": [73.16, 73.33, 8.29]}",
+      "lat": 25.136363695,
+      "lon": 121.50135031,
+      "elev_m": 14.25,
+      "twd97_e": 300550.716,
+      "twd97_n": 2780975.538,
+      "twd97_h": 14.25,
+      "bounding_box_json": "{\"center\": [300550.716, 2780975.538, 14.25], \"half_extents\": [73.16, 73.33, 8.29]}",
       "status": "completed",
       "progress_pct": 100.0,
       "stage_label": "Unified (4 Scans · Native 4K×4 Zero-Loss Multi-Tile)",
       "bypass_count": 0,
       "force_next": 0,
-      "priority_score": 1000004086.397,
+      "priority_score": 1000006038.385,
       "notes": "Unified scan merged from edited_qihutender_1_edited_346774, catch_QiHuTender_2, catch_QiHuTender_3, catch_QiHuTender_4 (Zero-Loss 4K per-scan multi-tile)",
       "user_edited_name": 1,
       "covered_area_m2": 11802.3,
@@ -107,9 +1171,9 @@
       "extra_json": "{\"merged_from\": [{\"scan_id\": \"edited_qihutender_1_edited_346774\", \"derived_from_scan_id\": \"catch_QiHuTender_1\", \"name\": \"QiHuTender_1_Edited\", \"native_anchor_zup\": [300524.2572, 2781008.4541, 10.8289], \"merged_anchor_zup\": [300524.2572, 2781008.4541, 13.5789], \"zup_shift\": [0.0, -0.0, 2.75], \"r_zup_rowmajor\": [1.0, -0.0, -1e-08, 0.0, 1.0, -2e-08, 1e-08, 2e-08, 1.0]}, {\"scan_id\": \"catch_QiHuTender_2\", \"derived_from_scan_id\": \"\", \"name\": \"QiHuTender_2\", \"native_anchor_zup\": [300550.7568, 2780994.9421, 11.6407], \"merged_anchor_zup\": [300549.5555, 2780991.6952, 11.7861], \"zup_shift\": [-1.2013, -3.2469, 0.1454], \"r_zup_rowmajor\": [1.0, 0.0, -0.0, -0.0, 1.0, -0.0, 0.0, 0.0, 1.0]}, {\"scan_id\": \"catch_QiHuTender_3\", \"derived_from_scan_id\": \"\", \"name\": \"QiHuTender_3\", \"native_anchor_zup\": [300557.0989, 2780980.5229, 16.5457], \"merged_anchor_zup\": [300554.3898, 2780975.1149, 12.2436], \"zup_shift\": [-2.7091, -5.408, -4.3021], \"r_zup_rowmajor\": [0.99756405, 0.06975648, -0.0, -0.06975648, 0.99756405, -0.0, 0.0, 0.0, 1.0]}, {\"scan_id\": \"catch_QiHuTender_4\", \"derived_from_scan_id\": \"\", \"name\": \"QiHuTender_4\", \"native_anchor_zup\": [300586.6135, 2780953.5755, 18.827], \"merged_anchor_zup\": [300582.9612, 2780947.4766, 10.8319], \"zup_shift\": [-3.6523, -6.0989, -7.9951], \"r_zup_rowmajor\": [1.0, -0.0, 0.0, 0.0, 1.0, -0.0, -0.0, 0.0, 1.0]}], \"applied_adjustments\": [\"Aligned & merged 4 scans\", \"Native 4096×4096 Gen-0 JPEG per scan (0% decimation)\", \"Trimmed 16,902 noisy overlap skirt tris\", \"Restored WEGO School Sign (3,319 tris)\"]}",
       "bounding_box": {
         "center": [
-          300553.022,
-          2780974.869,
-          13.22
+          300550.716,
+          2780975.538,
+          14.25
         ],
         "half_extents": [
           73.16,
@@ -251,7 +1315,7 @@
       ],
       "comment_folders": [],
       "size_mb": 196.62,
-      "wait_minutes": 4234.3,
+      "wait_minutes": 6186.2,
       "comments": [
         {
           "comment_id": "cmt_1793017532792",
@@ -552,19 +1616,19 @@
       "rtk_accuracy_cm": 1.5,
       "crs": "TWD97 (121) + TWVD2001",
       "texture_resolution": 4096,
-      "lat": 25.136604489,
-      "lon": 121.501135521,
-      "elev_m": 11.55,
-      "twd97_e": 300528.96,
-      "twd97_n": 2781002.13,
-      "twd97_h": 11.55,
-      "bounding_box_json": "{\"center\": [300528.96, 2781002.13, 11.55], \"half_extents\": [52.72, 42.43, 6.24]}",
+      "lat": 25.136611554,
+      "lon": 121.501225257,
+      "elev_m": 12.7,
+      "twd97_e": 300538.005,
+      "twd97_n": 2781002.946,
+      "twd97_h": 12.7,
+      "bounding_box_json": "{\"center\": [300538.005, 2781002.946, 12.7], \"half_extents\": [52.72, 42.43, 6.24]}",
       "status": "completed",
       "progress_pct": 100.0,
       "stage_label": "Completed (TWD97 (121) + TWVD2001, 4K Web Tileset)",
       "bypass_count": 0,
       "force_next": 0,
-      "priority_score": 1000004277.694,
+      "priority_score": 1000006229.682,
       "notes": "Dynamically loaded from C:\\GatheringScans\\edited_qihutender_1_edited_346774",
       "user_edited_name": 1,
       "covered_area_m2": 6084.4,
@@ -572,9 +1636,9 @@
       "extra_json": "{\"derived_from_scan_id\": \"catch_QiHuTender_1\"}",
       "bounding_box": {
         "center": [
-          300528.96,
-          2781002.13,
-          11.55
+          300538.005,
+          2781002.946,
+          12.7
         ],
         "half_extents": [
           52.72,
@@ -585,7 +1649,7 @@
       "derived_from_scan_id": "catch_QiHuTender_1",
       "comment_folders": [],
       "size_mb": 111.8,
-      "wait_minutes": 4277.8,
+      "wait_minutes": 6229.7,
       "comments": [],
       "comment_count": 0,
       "measurement_bookmarks": [],
@@ -611,19 +1675,19 @@
       "rtk_accuracy_cm": 1.5,
       "crs": "TWD97 (121) + TWVD2001",
       "texture_resolution": 4096,
-      "lat": 25.136138941,
-      "lon": 121.501779809,
-      "elev_m": 20.44,
-      "twd97_e": 300594.115,
-      "twd97_n": 2780950.804,
-      "twd97_h": 20.44,
-      "bounding_box_json": "{\"center\": [300594.115, 2780950.804, 20.44], \"half_extents\": [47.09, 26.16, 7.84]}",
+      "lat": 25.136139471,
+      "lon": 121.501625015,
+      "elev_m": 21.39,
+      "twd97_e": 300578.507,
+      "twd97_n": 2780950.805,
+      "twd97_h": 21.39,
+      "bounding_box_json": "{\"center\": [300578.507, 2780950.805, 21.39], \"half_extents\": [47.09, 26.16, 7.84]}",
       "status": "completed",
       "progress_pct": 100.0,
       "stage_label": "Processed -> catch_QiHuTender_4 (TWD97 + TWVD2001, 4K)",
       "bypass_count": 0,
       "force_next": 0,
-      "priority_score": 1000005492.423,
+      "priority_score": 1000007444.414,
       "notes": "Dynamically loaded from C:\\GatheringScans\\catch_QiHuTender_4",
       "user_edited_name": 0,
       "covered_area_m2": 8835.7,
@@ -631,9 +1695,9 @@
       "extra_json": "{}",
       "bounding_box": {
         "center": [
-          300594.115,
-          2780950.804,
-          20.44
+          300578.507,
+          2780950.805,
+          21.39
         ],
         "half_extents": [
           47.09,
@@ -643,7 +1707,7 @@
       },
       "comment_folders": [],
       "size_mb": 6721.29,
-      "wait_minutes": 5492.5,
+      "wait_minutes": 7444.5,
       "comments": [],
       "comment_count": 0,
       "measurement_bookmarks": [],
@@ -669,19 +1733,19 @@
       "rtk_accuracy_cm": 1.5,
       "crs": "TWD97 (121) + TWVD2001",
       "texture_resolution": 4096,
-      "lat": 25.136430529,
-      "lon": 121.501433051,
-      "elev_m": 16.33,
-      "twd97_e": 300559.031,
-      "twd97_n": 2780982.973,
-      "twd97_h": 16.33,
-      "bounding_box_json": "{\"center\": [300559.031, 2780982.973, 16.33], \"half_extents\": [47.47, 32.38, 9.97]}",
+      "lat": 25.136431558,
+      "lon": 121.501277093,
+      "elev_m": 20.37,
+      "twd97_e": 300543.306,
+      "twd97_n": 2780983.028,
+      "twd97_h": 20.37,
+      "bounding_box_json": "{\"center\": [300543.306, 2780983.028, 20.37], \"half_extents\": [47.47, 32.38, 9.97]}",
       "status": "completed",
       "progress_pct": 100.0,
       "stage_label": "Processed -> catch_QiHuTender_3 (TWD97 + TWVD2001, 4K)",
       "bypass_count": 0,
       "force_next": 0,
-      "priority_score": 1000005494.208,
+      "priority_score": 1000007446.198,
       "notes": "Dynamically loaded from C:\\GatheringScans\\catch_QiHuTender_3",
       "user_edited_name": 0,
       "covered_area_m2": 11207.3,
@@ -689,9 +1753,9 @@
       "extra_json": "{}",
       "bounding_box": {
         "center": [
-          300559.031,
-          2780982.973,
-          16.33
+          300543.306,
+          2780983.028,
+          20.37
         ],
         "half_extents": [
           47.47,
@@ -701,7 +1765,7 @@
       },
       "comment_folders": [],
       "size_mb": 7192.61,
-      "wait_minutes": 5494.3,
+      "wait_minutes": 7446.3,
       "comments": [],
       "comment_count": 0,
       "measurement_bookmarks": [],
@@ -727,19 +1791,19 @@
       "rtk_accuracy_cm": 1.5,
       "crs": "TWD97 (121) + TWVD2001",
       "texture_resolution": 4096,
-      "lat": 25.13657134,
-      "lon": 121.501292501,
-      "elev_m": 11.94,
-      "twd97_e": 300544.802,
-      "twd97_n": 2780998.517,
-      "twd97_h": 11.94,
-      "bounding_box_json": "{\"center\": [300544.802, 2780998.517, 11.94], \"half_extents\": [41.45, 32.05, 7.8]}",
+      "lat": 25.136456646,
+      "lon": 121.501319945,
+      "elev_m": 16.08,
+      "twd97_e": 300547.616,
+      "twd97_n": 2780985.823,
+      "twd97_h": 16.08,
+      "bounding_box_json": "{\"center\": [300547.616, 2780985.823, 16.08], \"half_extents\": [41.45, 32.05, 7.8]}",
       "status": "completed",
       "progress_pct": 100.0,
       "stage_label": "Processed -> catch_QiHuTender_2 (TWD97 + TWVD2001, 4K)",
       "bypass_count": 0,
       "force_next": 0,
-      "priority_score": 1000005414.155,
+      "priority_score": 1000007366.145,
       "notes": "Dynamically loaded from C:\\GatheringScans\\catch_QiHuTender_2",
       "user_edited_name": 0,
       "covered_area_m2": 4926.9,
@@ -747,9 +1811,9 @@
       "extra_json": "{}",
       "bounding_box": {
         "center": [
-          300544.802,
-          2780998.517,
-          11.94
+          300547.616,
+          2780985.823,
+          16.08
         ],
         "half_extents": [
           41.45,
@@ -759,7 +1823,7 @@
       },
       "comment_folders": [],
       "size_mb": 7661.95,
-      "wait_minutes": 5414.3,
+      "wait_minutes": 7366.2,
       "comments": [],
       "comment_count": 0,
       "measurement_bookmarks": [],
@@ -785,19 +1849,19 @@
       "rtk_accuracy_cm": 1.5,
       "crs": "TWD97 (121) + TWVD2001",
       "texture_resolution": 4096,
-      "lat": 25.136526378,
-      "lon": 121.50110867,
-      "elev_m": 13.85,
-      "twd97_e": 300526.284,
-      "twd97_n": 2780993.468,
-      "twd97_h": 13.85,
-      "bounding_box_json": "{\"center\": [300526.284, 2780993.468, 13.85], \"half_extents\": [58.16, 51.17, 9.77]}",
+      "lat": 25.136679032,
+      "lon": 121.501297373,
+      "elev_m": 8.49,
+      "twd97_e": 300545.248,
+      "twd97_n": 2781010.447,
+      "twd97_h": 8.49,
+      "bounding_box_json": "{\"center\": [300545.248, 2781010.447, 8.49], \"half_extents\": [58.16, 51.17, 9.77]}",
       "status": "completed",
       "progress_pct": 100.0,
       "stage_label": "Completed (TWD97 + TWVD2001, 4K Web Tileset)",
       "bypass_count": 0,
       "force_next": 1,
-      "priority_score": 1000005484.376,
+      "priority_score": 1000007436.363,
       "notes": "Dynamically loaded from C:\\GatheringScans\\catch_QiHuTender_1",
       "user_edited_name": 0,
       "covered_area_m2": 14118.6,
@@ -805,9 +1869,9 @@
       "extra_json": "{}",
       "bounding_box": {
         "center": [
-          300526.284,
-          2780993.468,
-          13.85
+          300545.248,
+          2781010.447,
+          8.49
         ],
         "half_extents": [
           58.16,
@@ -817,7 +1881,7 @@
       },
       "comment_folders": [],
       "size_mb": 6878.16,
-      "wait_minutes": 7228.9,
+      "wait_minutes": 9180.9,
       "comments": [],
       "comment_count": 0,
       "measurement_bookmarks": [],
@@ -843,19 +1907,19 @@
       "rtk_accuracy_cm": 1.5,
       "crs": "TWD97 (121) + TWVD2001",
       "texture_resolution": 4096,
-      "lat": 25.136330722,
-      "lon": 121.501362731,
-      "elev_m": 16.67,
-      "twd97_e": 300551.982,
-      "twd97_n": 2780971.891,
-      "twd97_h": 16.67,
-      "bounding_box_json": "{\"center\": [300551.982, 2780971.891, 16.67], \"half_extents\": [84.74, 78.81, 26.72]}",
+      "lat": 25.136342449,
+      "lon": 121.501337162,
+      "elev_m": 8.11,
+      "twd97_e": 300549.399,
+      "twd97_n": 2780973.18,
+      "twd97_h": 8.11,
+      "bounding_box_json": "{\"center\": [300549.399, 2780973.18, 8.11], \"half_extents\": [84.74, 78.81, 26.72]}",
       "status": "completed",
       "progress_pct": 100.0,
       "stage_label": "Completed (TWD97 + TWVD2001, 4K Web Tileset)",
       "bypass_count": 0,
       "force_next": 0,
-      "priority_score": 1000005664.261,
+      "priority_score": 1000007616.214,
       "notes": "Dynamically loaded from C:\\GatheringScans\\QiHu\\QiHuTender_NoRTK-obj_mesh",
       "user_edited_name": 0,
       "covered_area_m2": 18165.1,
@@ -863,9 +1927,9 @@
       "extra_json": "{}",
       "bounding_box": {
         "center": [
-          300551.982,
-          2780971.891,
-          16.67
+          300549.399,
+          2780973.18,
+          8.11
         ],
         "half_extents": [
           84.74,
@@ -875,7 +1939,7 @@
       },
       "comment_folders": [],
       "size_mb": 621.13,
-      "wait_minutes": 5664.3,
+      "wait_minutes": 7616.2,
       "comments": [],
       "comment_count": 0,
       "measurement_bookmarks": [],
@@ -901,19 +1965,19 @@
       "rtk_accuracy_cm": 1.5,
       "crs": "TWD97 (121) + TWVD2001",
       "texture_resolution": 4096,
-      "lat": 24.919990001,
-      "lon": 121.543451144,
-      "elev_m": 45.03,
-      "twd97_e": 304891.961,
-      "twd97_n": 2757025.25,
-      "twd97_h": 45.03,
-      "bounding_box_json": "{\"center\": [304891.961, 2757025.25, 45.03], \"half_extents\": [140.3, 124.0, 19.34]}",
+      "lat": 24.920028372,
+      "lon": 121.543450926,
+      "elev_m": 38.19,
+      "twd97_e": 304891.922,
+      "twd97_n": 2757029.5,
+      "twd97_h": 38.19,
+      "bounding_box_json": "{\"center\": [304891.922, 2757029.5, 38.19], \"half_extents\": [140.3, 124.0, 19.34]}",
       "status": "completed",
       "progress_pct": 100.0,
       "stage_label": "Processed -> catch_QuChi261016 (TWD97 + TWVD2001, 4K)",
       "bypass_count": 0,
       "force_next": 0,
-      "priority_score": 1000016011.365,
+      "priority_score": 1000017963.358,
       "notes": "Dynamically loaded from C:\\GatheringScans\\catch_QuChi261016",
       "user_edited_name": 0,
       "covered_area_m2": 36259.4,
@@ -921,9 +1985,9 @@
       "extra_json": "{}",
       "bounding_box": {
         "center": [
-          304891.961,
-          2757025.25,
-          45.03
+          304891.922,
+          2757029.5,
+          38.19
         ],
         "half_extents": [
           140.3,
@@ -933,7 +1997,7 @@
       },
       "comment_folders": [],
       "size_mb": 34268.27,
-      "wait_minutes": 16011.5,
+      "wait_minutes": 17963.4,
       "comments": [],
       "comment_count": 0,
       "measurement_bookmarks": [],
@@ -959,19 +2023,19 @@
       "rtk_accuracy_cm": 1.3,
       "crs": "TWD97 (121) + TWVD2001",
       "texture_resolution": 4096,
-      "lat": 24.920043162,
-      "lon": 121.543168574,
-      "elev_m": 44.35,
-      "twd97_e": 304863.395,
-      "twd97_n": 2757031.024,
-      "twd97_h": 44.35,
-      "bounding_box_json": "{\"center\": [304863.395, 2757031.024, 44.35], \"half_extents\": [169.11, 154.03, 27.86]}",
+      "lat": 24.920028372,
+      "lon": 121.543450926,
+      "elev_m": 38.19,
+      "twd97_e": 304891.922,
+      "twd97_n": 2757029.5,
+      "twd97_h": 38.19,
+      "bounding_box_json": "{\"center\": [304891.922, 2757029.5, 38.19], \"half_extents\": [169.11, 154.03, 27.86]}",
       "status": "completed",
       "progress_pct": 100.0,
       "stage_label": "Completed (TWD97 + TWVD2001, 4K Web Tileset)",
       "bypass_count": 0,
       "force_next": 0,
-      "priority_score": 1000014426.704,
+      "priority_score": 1000016378.657,
       "notes": "Dynamically loaded from C:\\GatheringScans\\QuChi261016_Trees",
       "user_edited_name": 1,
       "covered_area_m2": 49671.9,
@@ -979,9 +2043,9 @@
       "extra_json": "{}",
       "bounding_box": {
         "center": [
-          304863.395,
-          2757031.024,
-          44.35
+          304891.922,
+          2757029.5,
+          38.19
         ],
         "half_extents": [
           169.11,
@@ -991,7 +2055,7 @@
       },
       "comment_folders": [],
       "size_mb": 506.77,
-      "wait_minutes": 14787.7,
+      "wait_minutes": 16739.7,
       "comments": [],
       "comment_count": 0,
       "measurement_bookmarks": [],
@@ -1017,19 +2081,19 @@
       "rtk_accuracy_cm": 1.5,
       "crs": "TWD97 (121) + TWVD2001",
       "texture_resolution": 4096,
-      "lat": 24.919967393,
-      "lon": 121.54397913,
-      "elev_m": 45.467,
-      "twd97_e": 304945.3019,
-      "twd97_n": 2757022.9591,
-      "twd97_h": 45.467,
-      "bounding_box_json": "{\"center\": [304945.3019, 2757022.9591, 45.467], \"half_extents\": [192.52, 125.62, 15.3]}",
+      "lat": 24.919966831,
+      "lon": 121.543979446,
+      "elev_m": 51.302,
+      "twd97_e": 304945.3341,
+      "twd97_n": 2757022.897,
+      "twd97_h": 51.302,
+      "bounding_box_json": "{\"center\": [304945.3341, 2757022.897, 51.302], \"half_extents\": [192.52, 125.62, 15.3]}",
       "status": "completed",
       "progress_pct": 100.0,
       "stage_label": "Completed (TWD97 + TWVD2001, 4K Web Tileset)",
       "bypass_count": 0,
       "force_next": 0,
-      "priority_score": 1000015903.355,
+      "priority_score": 1000017855.451,
       "notes": "Dynamically loaded from C:\\GatheringScans\\QuChi_20261015-obj_mesh",
       "user_edited_name": 1,
       "covered_area_m2": 45203.2,
@@ -1037,9 +2101,9 @@
       "extra_json": "{}",
       "bounding_box": {
         "center": [
-          304945.3019,
-          2757022.9591,
-          45.467
+          304945.3341,
+          2757022.897,
+          51.302
         ],
         "half_extents": [
           192.52,
@@ -1049,7 +2113,7 @@
       },
       "comment_folders": [],
       "size_mb": 128.83,
-      "wait_minutes": 15907.8,
+      "wait_minutes": 17859.8,
       "comments": [],
       "comment_count": 0,
       "measurement_bookmarks": [],
@@ -1087,7 +2151,7 @@
       "stage_label": "Completed (TWD97 + TWVD2001, 4K Web Tileset)",
       "bypass_count": 0,
       "force_next": 0,
-      "priority_score": 1000015903.351,
+      "priority_score": 1000017855.447,
       "notes": "Dynamically loaded from C:\\GatheringScans\\QuChi_20261015-cesium_mesh",
       "user_edited_name": 0,
       "covered_area_m2": 45203.2,
@@ -1107,7 +2171,7 @@
       },
       "comment_folders": [],
       "size_mb": 55.11,
-      "wait_minutes": 15903.5,
+      "wait_minutes": 17855.5,
       "comments": [],
       "comment_count": 0,
       "measurement_bookmarks": [],
@@ -1133,19 +2197,19 @@
       "rtk_accuracy_cm": 1.4,
       "crs": "TWD97 (121) + TWVD2001",
       "texture_resolution": 4096,
-      "lat": 24.920523684,
-      "lon": 121.543945555,
-      "elev_m": 41.65,
-      "twd97_e": 304941.664,
-      "twd97_n": 2757084.562,
-      "twd97_h": 41.65,
-      "bounding_box_json": "{\"center\": [304941.664, 2757084.562, 41.65], \"half_extents\": [297.91, 182.62, 52.64]}",
+      "lat": 24.920526108,
+      "lon": 121.544054391,
+      "elev_m": 43.18,
+      "twd97_e": 304952.656,
+      "twd97_n": 2757084.875,
+      "twd97_h": 43.18,
+      "bounding_box_json": "{\"center\": [304952.656, 2757084.875, 43.18], \"half_extents\": [297.91, 182.62, 52.64]}",
       "status": "completed",
       "progress_pct": 100.0,
       "stage_label": "Completed (TWD97 + TWVD2001, 4K Web Tileset)",
       "bypass_count": 0,
       "force_next": 0,
-      "priority_score": 1000017009.959,
+      "priority_score": 1000018962.055,
       "notes": "Merged from 3 PIX4Dcatch RTK walks in G:\\My Drive\\SCANS TEST (15-19-27, 15-37-05, 15-43-55). Converted to TWD97 (121) + TWVD2001 with 2K textures.",
       "user_edited_name": 0,
       "covered_area_m2": 149594.3,
@@ -1153,9 +2217,9 @@
       "extra_json": "{}",
       "bounding_box": {
         "center": [
-          304941.664,
-          2757084.562,
-          41.65
+          304952.656,
+          2757084.875,
+          43.18
         ],
         "half_extents": [
           297.91,
@@ -1165,7 +2229,7 @@
       },
       "comment_folders": [],
       "size_mb": 109.91,
-      "wait_minutes": 22148.0,
+      "wait_minutes": 24099.9,
       "comments": [
         {
           "comment_id": "cmt_1792021676855",
@@ -1228,19 +2292,19 @@
       "rtk_accuracy_cm": 1.5,
       "crs": "TWD97 (121) + TWVD2001",
       "texture_resolution": 4096,
-      "lat": 24.920597247,
-      "lon": 121.543930128,
-      "elev_m": 49.85,
-      "twd97_e": 304940.073,
-      "twd97_n": 2757092.704,
-      "twd97_h": 49.85,
-      "bounding_box_json": "{\"center\": [304940.073, 2757092.704, 49.85], \"half_extents\": [264.99, 112.91, 23.04]}",
+      "lat": 24.92109496,
+      "lon": 121.545266069,
+      "elev_m": 55.99,
+      "twd97_e": 305074.792,
+      "twd97_n": 2757148.374,
+      "twd97_h": 55.99,
+      "bounding_box_json": "{\"center\": [305074.792, 2757148.374, 55.99], \"half_extents\": [264.99, 112.91, 23.04]}",
       "status": "completed",
       "progress_pct": 100.0,
       "stage_label": "Completed (TWD97 + TWVD2001, 4K Web Tileset)",
       "bypass_count": 0,
       "force_next": 0,
-      "priority_score": 1000017009.969,
+      "priority_score": 1000018961.956,
       "notes": "High-density sector 3 photogrammetry mesh of QuChi Dam spillway.",
       "user_edited_name": 0,
       "covered_area_m2": 136580.4,
@@ -1248,9 +2312,9 @@
       "extra_json": "{}",
       "bounding_box": {
         "center": [
-          304940.073,
-          2757092.704,
-          49.85
+          305074.792,
+          2757148.374,
+          55.99
         ],
         "half_extents": [
           264.99,
@@ -1260,7 +2324,7 @@
       },
       "comment_folders": [],
       "size_mb": 70.76,
-      "wait_minutes": 17010.1,
+      "wait_minutes": 18962.1,
       "comments": [],
       "comment_count": 0,
       "measurement_bookmarks": [],
@@ -1298,7 +2362,7 @@
       "stage_label": "Completed (TWD97 + TWVD2001, 4K Web Tileset)",
       "bypass_count": 0,
       "force_next": 0,
-      "priority_score": 1000017009.958,
+      "priority_score": 1000018962.054,
       "notes": "Baseline epoch prior to October earthwork and revetment concrete pour.",
       "user_edited_name": 0,
       "covered_area_m2": 47792.8,
@@ -1318,7 +2382,7 @@
       },
       "comment_folders": [],
       "size_mb": 91.93,
-      "wait_minutes": 42308.0,
+      "wait_minutes": 44259.9,
       "comments": [],
       "comment_count": 0,
       "measurement_bookmarks": [],
@@ -1344,19 +2408,19 @@
       "rtk_accuracy_cm": 1.5,
       "crs": "TWD97 (121) + TWVD2001",
       "texture_resolution": 4096,
-      "lat": 25.088011718,
-      "lon": 121.521759381,
-      "elev_m": 36.76,
-      "twd97_e": 302629.28,
-      "twd97_n": 2775627.567,
-      "twd97_h": 36.76,
-      "bounding_box_json": "{\"center\": [302629.28, 2775627.567, 36.76], \"half_extents\": [5.95, 4.28, 1.54]}",
+      "lat": 25.088012805,
+      "lon": 121.521758942,
+      "elev_m": 37.56,
+      "twd97_e": 302629.235,
+      "twd97_n": 2775627.687,
+      "twd97_h": 37.56,
+      "bounding_box_json": "{\"center\": [302629.235, 2775627.687, 37.56], \"half_extents\": [5.95, 4.28, 1.54]}",
       "status": "completed",
       "progress_pct": 100.0,
       "stage_label": "Processed -> catch_2026_09_21_11_39_49 (TWD97 + TWVD2001, 4K)",
       "bypass_count": 0,
       "force_next": 0,
-      "priority_score": 1000012828.05,
+      "priority_score": 1000014780.038,
       "notes": "Dynamically loaded from C:\\GatheringScans\\catch_2026_09_21_11_39_49",
       "user_edited_name": 1,
       "covered_area_m2": 272.0,
@@ -1364,9 +2428,9 @@
       "extra_json": "{}",
       "bounding_box": {
         "center": [
-          302629.28,
-          2775627.567,
-          36.76
+          302629.235,
+          2775627.687,
+          37.56
         ],
         "half_extents": [
           5.95,
@@ -1376,7 +2440,7 @@
       },
       "comment_folders": [],
       "size_mb": 752.36,
-      "wait_minutes": 12828.2,
+      "wait_minutes": 14780.1,
       "comments": [],
       "comment_count": 0,
       "measurement_bookmarks": [],
@@ -1402,19 +2466,19 @@
       "rtk_accuracy_cm": 1.5,
       "crs": "TWD97 (121) + TWVD2001",
       "texture_resolution": 4096,
-      "lat": 25.023903896,
-      "lon": 121.455629985,
-      "elev_m": 9.09,
-      "twd97_e": 295982.7,
-      "twd97_n": 2768502.545,
-      "twd97_h": 9.09,
-      "bounding_box_json": "{\"center\": [295982.7, 2768502.545, 9.09], \"half_extents\": [37.24, 42.56, 3.19]}",
+      "lat": 25.024236863,
+      "lon": 121.455472685,
+      "elev_m": 11.34,
+      "twd97_e": 295966.701,
+      "twd97_n": 2768539.373,
+      "twd97_h": 11.34,
+      "bounding_box_json": "{\"center\": [295966.701, 2768539.373, 11.34], \"half_extents\": [37.24, 42.56, 3.19]}",
       "status": "completed",
       "progress_pct": 100.0,
       "stage_label": "Completed (TWD97 + TWVD2001, 4K Web Tileset)",
       "bypass_count": 0,
       "force_next": 0,
-      "priority_score": 1000017009.971,
+      "priority_score": 1000018961.958,
       "notes": "Merged scan of Rose Park landscape grading and drainage trenching.",
       "user_edited_name": 0,
       "covered_area_m2": 6684.2,
@@ -1422,9 +2486,9 @@
       "extra_json": "{}",
       "bounding_box": {
         "center": [
-          295982.7,
-          2768502.545,
-          9.09
+          295966.701,
+          2768539.373,
+          11.34
         ],
         "half_extents": [
           37.24,
@@ -1434,7 +2498,7 @@
       },
       "comment_folders": [],
       "size_mb": 65.23,
-      "wait_minutes": 46628.0,
+      "wait_minutes": 48579.9,
       "comments": [
         {
           "comment_id": "cmt_1792021676860",
@@ -1479,19 +2543,19 @@
       "rtk_accuracy_cm": 1.6,
       "crs": "TWD97 (121) + TWVD2001",
       "texture_resolution": 4096,
-      "lat": 25.023908094,
-      "lon": 121.455708111,
-      "elev_m": 11.08,
-      "twd97_e": 295990.583,
-      "twd97_n": 2768503.037,
-      "twd97_h": 11.08,
-      "bounding_box_json": "{\"center\": [295990.583, 2768503.037, 11.08], \"half_extents\": [29.21, 36.16, 4.17]}",
+      "lat": 25.023828924,
+      "lon": 121.45559712,
+      "elev_m": 15.15,
+      "twd97_e": 295979.411,
+      "twd97_n": 2768494.23,
+      "twd97_h": 15.15,
+      "bounding_box_json": "{\"center\": [295979.411, 2768494.23, 15.15], \"half_extents\": [29.21, 36.16, 4.17]}",
       "status": "completed",
       "progress_pct": 100.0,
       "stage_label": "Completed (TWD97 + TWVD2001, 4K Web Tileset)",
       "bypass_count": 0,
       "force_next": 0,
-      "priority_score": 1000017009.969,
+      "priority_score": 1000018961.956,
       "notes": "Initial excavation trench scan at Rose Park East sector.",
       "user_edited_name": 0,
       "covered_area_m2": 8410.0,
@@ -1499,9 +2563,9 @@
       "extra_json": "{}",
       "bounding_box": {
         "center": [
-          295990.583,
-          2768503.037,
-          11.08
+          295979.411,
+          2768494.23,
+          15.15
         ],
         "half_extents": [
           29.21,
@@ -1511,7 +2575,7 @@
       },
       "comment_folders": [],
       "size_mb": 42.06,
-      "wait_minutes": 48068.0,
+      "wait_minutes": 50019.9,
       "comments": [],
       "comment_count": 0,
       "measurement_bookmarks": [],
@@ -1537,19 +2601,19 @@
       "rtk_accuracy_cm": 1.9,
       "crs": "TWD97 (121) + TWVD2001",
       "texture_resolution": 4096,
-      "lat": 25.037366598,
-      "lon": 121.525261864,
-      "elev_m": 9.79,
-      "twd97_e": 303004.363,
-      "twd97_n": 2770019.191,
-      "twd97_h": 9.79,
-      "bounding_box_json": "{\"center\": [303004.363, 2770019.191, 9.79], \"half_extents\": [23.77, 13.8, 4.46]}",
+      "lat": 25.037415078,
+      "lon": 121.525297831,
+      "elev_m": 16.98,
+      "twd97_e": 303007.972,
+      "twd97_n": 2770024.575,
+      "twd97_h": 16.98,
+      "bounding_box_json": "{\"center\": [303007.972, 2770024.575, 16.98], \"half_extents\": [23.77, 13.8, 4.46]}",
       "status": "completed",
       "progress_pct": 100.0,
       "stage_label": "Completed (TWD97 + TWVD2001, 4K Web Tileset)",
       "bypass_count": 0,
       "force_next": 0,
-      "priority_score": 1000017010.095,
+      "priority_score": 1000018962.048,
       "notes": "Excavation progress and soldier pile wall survey at NTU Dorm site.",
       "user_edited_name": 0,
       "covered_area_m2": 5781.2,
@@ -1557,9 +2621,9 @@
       "extra_json": "{}",
       "bounding_box": {
         "center": [
-          303004.363,
-          2770019.191,
-          9.79
+          303007.972,
+          2770024.575,
+          16.98
         ],
         "half_extents": [
           23.77,
@@ -1569,7 +2633,7 @@
       },
       "comment_folders": [],
       "size_mb": 56.17,
-      "wait_minutes": 48788.0,
+      "wait_minutes": 50739.9,
       "comments": [],
       "comment_count": 0,
       "measurement_bookmarks": [],
@@ -1595,19 +2659,19 @@
       "rtk_accuracy_cm": 1.8,
       "crs": "TWD97 (121) + TWVD2001",
       "texture_resolution": 4096,
-      "lat": 25.037339381,
-      "lon": 121.52532359,
-      "elev_m": 15.2,
-      "twd97_e": 303010.604,
-      "twd97_n": 2770016.2,
-      "twd97_h": 15.2,
-      "bounding_box_json": "{\"center\": [303010.604, 2770016.2, 15.2], \"half_extents\": [69.38, 53.55, 25.43]}",
+      "lat": 25.037346345,
+      "lon": 121.525317244,
+      "elev_m": 4.29,
+      "twd97_e": 303009.961,
+      "twd97_n": 2770016.969,
+      "twd97_h": 4.29,
+      "bounding_box_json": "{\"center\": [303009.961, 2770016.969, 4.29], \"half_extents\": [69.38, 53.55, 25.43]}",
       "status": "completed",
       "progress_pct": 100.0,
       "stage_label": "Completed (TWD97 + TWVD2001, 4K Web Tileset)",
       "bypass_count": 0,
       "force_next": 0,
-      "priority_score": 1000017010.093,
+      "priority_score": 1000018962.046,
       "notes": "Baseline perimeter survey prior to retaining wall excavation.",
       "user_edited_name": 0,
       "covered_area_m2": 10905.3,
@@ -1615,9 +2679,9 @@
       "extra_json": "{}",
       "bounding_box": {
         "center": [
-          303010.604,
-          2770016.2,
-          15.2
+          303009.961,
+          2770016.969,
+          4.29
         ],
         "half_extents": [
           69.38,
@@ -1627,7 +2691,7 @@
       },
       "comment_folders": [],
       "size_mb": 40.82,
-      "wait_minutes": 51116.5,
+      "wait_minutes": 53068.4,
       "comments": [],
       "comment_count": 0,
       "measurement_bookmarks": [],
@@ -1635,11 +2699,43 @@
     }
   ],
   "trashed_scan_ids": [
+    "merged_qihu_merged_2026_10_28_77753",
     "edited_1021_908819",
     "catch_1021",
     "merged_qihu_unified_merged_scan_4_scans_37215"
   ],
   "share_links": [
+    {
+      "token": "3WI5TF3C5rui02C4",
+      "label": "View & Comment — 屈尺取石塊1021",
+      "scope_type": "scan",
+      "target_id": "edited_1021_911189",
+      "created_by_email": "glibivanov@gatheren.com.tw",
+      "created_by_name": "glibivanov",
+      "created_at": "2026-10-27 09:16:34 UTC",
+      "expires_at": "",
+      "allow_download": false,
+      "allow_measurements": false,
+      "allow_comments": true,
+      "revoked": false,
+      "revoked_at": "",
+      "view_count": 0,
+      "share_url": "https://scans.gatheren.cloud/s/3WI5TF3C5rui02C4",
+      "direct_url": "https://scans.gatheren.cloud/?share=3WI5TF3C5rui02C4",
+      "short_path": "/s/3WI5TF3C5rui02C4",
+      "human_views": 0,
+      "recorded_sessions": 0,
+      "unique_visitors": 0,
+      "bot_unfurls": 0,
+      "total_active_sec": 0.0,
+      "avg_active_sec": 0.0,
+      "total_open_sec": 0.0,
+      "last_viewed_at": "",
+      "comments_posted_total": 0,
+      "downloads_total": 0,
+      "measurements_total": 0,
+      "top_tools": []
+    },
     {
       "token": "yYrezdPGDoiBKqX9",
       "label": "View & Comment — QiHu — Unified Merged Scan (4 Scans)",
@@ -1692,7 +2788,7 @@
       "human_views": 15,
       "recorded_sessions": 15,
       "unique_visitors": 6,
-      "bot_unfurls": 10,
+      "bot_unfurls": 12,
       "total_active_sec": 934.0,
       "avg_active_sec": 62.3,
       "total_open_sec": 7972.1,
@@ -2054,11 +3150,473 @@
     }
   ],
   "packages": {
+    "catch_LishanFinal_HQ": {
+      "scan_id": "catch_LishanFinal_HQ",
+      "pkg_path": "G:\\Shared drives\\6.軟體\\3. GatheringScans\\StreamPackages\\catch_LishanFinal_HQ.3tz",
+      "size_bytes": 43244807,
+      "mtime": 1793208469,
+      "toc": {
+        "tileset.json": {
+          "offset": 42,
+          "size": 5025
+        },
+        "tiles/root.glb": {
+          "offset": 5111,
+          "size": 3094036
+        },
+        "tiles/tile_l1_q0.glb": {
+          "offset": 3099197,
+          "size": 1709588
+        },
+        "tiles/tile_l1_q0_l2_q0.glb": {
+          "offset": 4808841,
+          "size": 861576
+        },
+        "tiles/tile_l1_q0_l2_q1.glb": {
+          "offset": 5670473,
+          "size": 1158336
+        },
+        "tiles/tile_l1_q0_l2_q2.glb": {
+          "offset": 6828865,
+          "size": 1820152
+        },
+        "tiles/tile_l1_q0_l2_q3.glb": {
+          "offset": 8649073,
+          "size": 4132824
+        },
+        "tiles/tile_l1_q1.glb": {
+          "offset": 12781947,
+          "size": 1115296
+        },
+        "tiles/tile_l1_q1_l2_q0.glb": {
+          "offset": 13897299,
+          "size": 1256892
+        },
+        "tiles/tile_l1_q1_l2_q1.glb": {
+          "offset": 15154247,
+          "size": 1032952
+        },
+        "tiles/tile_l1_q1_l2_q2.glb": {
+          "offset": 16187255,
+          "size": 2491180
+        },
+        "tiles/tile_l1_q1_l2_q3.glb": {
+          "offset": 18678491,
+          "size": 1180716
+        },
+        "tiles/tile_l1_q2.glb": {
+          "offset": 19859257,
+          "size": 1712340
+        },
+        "tiles/tile_l1_q2_l2_q0.glb": {
+          "offset": 21571653,
+          "size": 1752996
+        },
+        "tiles/tile_l1_q2_l2_q1.glb": {
+          "offset": 23324705,
+          "size": 2532648
+        },
+        "tiles/tile_l1_q2_l2_q2.glb": {
+          "offset": 25857409,
+          "size": 939800
+        },
+        "tiles/tile_l1_q2_l2_q3.glb": {
+          "offset": 26797265,
+          "size": 4075228
+        },
+        "tiles/tile_l1_q3.glb": {
+          "offset": 30872543,
+          "size": 1449308
+        },
+        "tiles/tile_l1_q3_l2_q0.glb": {
+          "offset": 32321907,
+          "size": 2753908
+        },
+        "tiles/tile_l1_q3_l2_q1.glb": {
+          "offset": 35075871,
+          "size": 983328
+        },
+        "tiles/tile_l1_q3_l2_q2.glb": {
+          "offset": 36059255,
+          "size": 2961100
+        },
+        "tiles/tile_l1_q3_l2_q3.glb": {
+          "offset": 39020411,
+          "size": 879336
+        },
+        "preview_tileset.json": {
+          "offset": 39899797,
+          "size": 365
+        },
+        "preview_low/tiles/root.glb": {
+          "offset": 39900218,
+          "size": 2886964
+        },
+        "thumbnail.png": {
+          "offset": 42787225,
+          "size": 455829
+        }
+      },
+      "file_id": "1qHwa9HJZxJPDSyQAqGJBa5cK8bxsuNOk",
+      "my_drive_file_id": "1lcBP08Hn4fvHWzBZyQ_u4l6sKB5Fj36C"
+    },
+    "catch_QihuPark_20261028": {
+      "scan_id": "catch_QihuPark_20261028",
+      "pkg_path": "G:\\Shared drives\\6.軟體\\3. GatheringScans\\StreamPackages\\catch_QihuPark_20261028.3tz",
+      "size_bytes": 8556738,
+      "mtime": 1793205718,
+      "toc": {
+        "tileset.json": {
+          "offset": 42,
+          "size": 378
+        },
+        "tiles/root.glb": {
+          "offset": 464,
+          "size": 6080384
+        },
+        "preview_tileset.json": {
+          "offset": 6080898,
+          "size": 390
+        },
+        "preview_low/tiles/root.glb": {
+          "offset": 6081344,
+          "size": 1987856
+        },
+        "thumbnail.png": {
+          "offset": 8069243,
+          "size": 487158
+        }
+      },
+      "file_id": "1TSspk5mY0EXdLQjXAzRL7QBYDwR91pga",
+      "my_drive_file_id": "1AMDpxUXoBrmKpEPjOMeyi2ylOOcKmqBU"
+    },
+    "catch_QihuPark_20261028_HQ": {
+      "scan_id": "catch_QihuPark_20261028_HQ",
+      "pkg_path": "G:\\Shared drives\\6.軟體\\3. GatheringScans\\StreamPackages\\catch_QihuPark_20261028_HQ.3tz",
+      "size_bytes": 29894058,
+      "mtime": 1793208469,
+      "toc": {
+        "tileset.json": {
+          "offset": 42,
+          "size": 4076
+        },
+        "tiles/root.glb": {
+          "offset": 4162,
+          "size": 2048424
+        },
+        "tiles/tile_l1_q0.glb": {
+          "offset": 2052636,
+          "size": 1423244
+        },
+        "tiles/tile_l1_q0_l2_q0.glb": {
+          "offset": 3475936,
+          "size": 209832
+        },
+        "tiles/tile_l1_q0_l2_q1.glb": {
+          "offset": 3685824,
+          "size": 2211236
+        },
+        "tiles/tile_l1_q0_l2_q2.glb": {
+          "offset": 5897116,
+          "size": 1309232
+        },
+        "tiles/tile_l1_q0_l2_q3.glb": {
+          "offset": 7206404,
+          "size": 2909176
+        },
+        "tiles/tile_l1_q1.glb": {
+          "offset": 10115630,
+          "size": 928708
+        },
+        "tiles/tile_l1_q1_l2_q0.glb": {
+          "offset": 11044394,
+          "size": 1690516
+        },
+        "tiles/tile_l1_q1_l2_q1.glb": {
+          "offset": 12734966,
+          "size": 860700
+        },
+        "tiles/tile_l1_q1_l2_q2.glb": {
+          "offset": 13595722,
+          "size": 2411348
+        },
+        "tiles/tile_l1_q1_l2_q3.glb": {
+          "offset": 16007126,
+          "size": 1514736
+        },
+        "tiles/tile_l1_q2.glb": {
+          "offset": 17521912,
+          "size": 1147676
+        },
+        "tiles/tile_l1_q2_l2_q0.glb": {
+          "offset": 18669644,
+          "size": 589088
+        },
+        "tiles/tile_l1_q2_l2_q1.glb": {
+          "offset": 19258788,
+          "size": 2767036
+        },
+        "tiles/tile_l1_q2_l2_q2.glb": {
+          "offset": 22025880,
+          "size": 816800
+        },
+        "tiles/tile_l1_q2_l2_q3.glb": {
+          "offset": 22842736,
+          "size": 2037356
+        },
+        "tiles/tile_l1_q3.glb": {
+          "offset": 24880142,
+          "size": 2560480
+        },
+        "preview_tileset.json": {
+          "offset": 27440672,
+          "size": 363
+        },
+        "preview_low/tiles/root.glb": {
+          "offset": 27441091,
+          "size": 2048424
+        },
+        "thumbnail.png": {
+          "offset": 29489558,
+          "size": 403035
+        }
+      },
+      "file_id": "19uYkRPxH1HX7kMpT1VbO8_EMxUPzSnpl",
+      "my_drive_file_id": "11CYByMaXqb1us88XGcFBzcD1UOTL2OGH"
+    },
+    "catch_LishanFinal": {
+      "scan_id": "catch_LishanFinal",
+      "pkg_path": "G:\\Shared drives\\6.軟體\\3. GatheringScans\\StreamPackages\\catch_LishanFinal.3tz",
+      "size_bytes": 11210660,
+      "mtime": 1793200126,
+      "toc": {
+        "tileset.json": {
+          "offset": 42,
+          "size": 354
+        },
+        "tiles/root.glb": {
+          "offset": 440,
+          "size": 7775144
+        },
+        "preview_tileset.json": {
+          "offset": 7775634,
+          "size": 366
+        },
+        "preview_low/tiles/root.glb": {
+          "offset": 7776056,
+          "size": 2951392
+        },
+        "thumbnail.png": {
+          "offset": 10727491,
+          "size": 482832
+        }
+      },
+      "file_id": "140psfghyxt95yEs6PpjbcvUGoYOkWecI",
+      "my_drive_file_id": "10IfQWQcHiq61TNc61EVXUWpy7PEzPoSe"
+    },
+    "edited_qihu_merged_2026_10_28_858499": {
+      "scan_id": "edited_qihu_merged_2026_10_28_858499",
+      "pkg_path": "G:\\Shared drives\\6.軟體\\3. GatheringScans\\StreamPackages\\edited_qihu_merged_2026_10_28_858499.3tz",
+      "size_bytes": 56320888,
+      "mtime": 1793186450,
+      "toc": {
+        "tileset.json": {
+          "offset": 42,
+          "size": 1440
+        },
+        "tiles/tile_s0.glb": {
+          "offset": 1529,
+          "size": 6813632
+        },
+        "tiles/tile_s1.glb": {
+          "offset": 6815208,
+          "size": 8220148
+        },
+        "tiles/tile_s2.glb": {
+          "offset": 15035403,
+          "size": 8162920
+        },
+        "tiles/tile_s3.glb": {
+          "offset": 23198370,
+          "size": 9301440
+        },
+        "tiles/tile_s4.glb": {
+          "offset": 32499857,
+          "size": 12143456
+        },
+        "preview_tileset.json": {
+          "offset": 44643363,
+          "size": 1500
+        },
+        "preview_low/tiles/tile_s0.glb": {
+          "offset": 44644922,
+          "size": 1774100
+        },
+        "preview_low/tiles/tile_s1.glb": {
+          "offset": 46419081,
+          "size": 1944160
+        },
+        "preview_low/tiles/tile_s2.glb": {
+          "offset": 48363300,
+          "size": 2050796
+        },
+        "preview_low/tiles/tile_s3.glb": {
+          "offset": 50414155,
+          "size": 2257700
+        },
+        "preview_low/tiles/tile_s4.glb": {
+          "offset": 52671914,
+          "size": 3186604
+        },
+        "thumbnail.png": {
+          "offset": 55858561,
+          "size": 461432
+        }
+      },
+      "file_id": "1mFr_E78E_axvjK3ilkrZAEI_UEk41hOF",
+      "my_drive_file_id": "1cpmlghr_22jOvkrPYSc9k7nARR2g2ioi"
+    },
+    "catch_QihuSide": {
+      "scan_id": "catch_QihuSide",
+      "pkg_path": "G:\\Shared drives\\6.軟體\\3. GatheringScans\\StreamPackages\\catch_QihuSide.3tz",
+      "size_bytes": 13433216,
+      "mtime": 1793186450,
+      "toc": {
+        "tileset.json": {
+          "offset": 42,
+          "size": 367
+        },
+        "tiles/root.glb": {
+          "offset": 453,
+          "size": 9748264
+        },
+        "preview_tileset.json": {
+          "offset": 9748767,
+          "size": 379
+        },
+        "preview_low/tiles/root.glb": {
+          "offset": 9749202,
+          "size": 3252028
+        },
+        "thumbnail.png": {
+          "offset": 13001273,
+          "size": 431606
+        }
+      },
+      "file_id": "1r3_rrx37EQTPHPBPBJloL8Xt5rHiKXeL",
+      "my_drive_file_id": "1F49vY3p_KSEMjmnYA94QDMSkoBoaZNZw"
+    },
+    "merged_qihu_full_20261028": {
+      "scan_id": "merged_qihu_full_20261028",
+      "pkg_path": "G:\\Shared drives\\6.軟體\\3. GatheringScans\\StreamPackages\\merged_qihu_full_20261028.3tz",
+      "size_bytes": 107609436,
+      "mtime": 1793208469,
+      "toc": {
+        "tileset.json": {
+          "offset": 42,
+          "size": 4842
+        },
+        "tiles/root.glb": {
+          "offset": 4928,
+          "size": 12283008
+        },
+        "tiles/tile_l1_q0.glb": {
+          "offset": 12287986,
+          "size": 5479176
+        },
+        "tiles/tile_l1_q0_l2_q1.glb": {
+          "offset": 17767218,
+          "size": 1784920
+        },
+        "tiles/tile_l1_q0_l2_q2.glb": {
+          "offset": 19552194,
+          "size": 3350140
+        },
+        "tiles/tile_l1_q0_l2_q3.glb": {
+          "offset": 22902390,
+          "size": 6465280
+        },
+        "tiles/tile_l1_q1.glb": {
+          "offset": 29367720,
+          "size": 4509996
+        },
+        "tiles/tile_l1_q1_l2_q0.glb": {
+          "offset": 33877772,
+          "size": 2950156
+        },
+        "tiles/tile_l1_q1_l2_q1.glb": {
+          "offset": 36827984,
+          "size": 3342736
+        },
+        "tiles/tile_l1_q1_l2_q2.glb": {
+          "offset": 40170776,
+          "size": 6153640
+        },
+        "tiles/tile_l1_q1_l2_q3.glb": {
+          "offset": 46324472,
+          "size": 2613644
+        },
+        "tiles/tile_l1_q2.glb": {
+          "offset": 48938166,
+          "size": 4121528
+        },
+        "tiles/tile_l1_q2_l2_q0.glb": {
+          "offset": 53059750,
+          "size": 4387492
+        },
+        "tiles/tile_l1_q2_l2_q1.glb": {
+          "offset": 57447298,
+          "size": 6408160
+        },
+        "tiles/tile_l1_q2_l2_q2.glb": {
+          "offset": 63855514,
+          "size": 1719052
+        },
+        "tiles/tile_l1_q2_l2_q3.glb": {
+          "offset": 65574622,
+          "size": 1042316
+        },
+        "tiles/tile_l1_q3.glb": {
+          "offset": 66616988,
+          "size": 7837964
+        },
+        "tiles/tile_l1_q3_l2_q0.glb": {
+          "offset": 74455008,
+          "size": 7079940
+        },
+        "tiles/tile_l1_q3_l2_q1.glb": {
+          "offset": 81535004,
+          "size": 5320144
+        },
+        "tiles/tile_l1_q3_l2_q2.glb": {
+          "offset": 86855204,
+          "size": 4165096
+        },
+        "tiles/tile_l1_q3_l2_q3.glb": {
+          "offset": 91020356,
+          "size": 4381528
+        },
+        "preview_tileset.json": {
+          "offset": 95401934,
+          "size": 372
+        },
+        "preview_low/tiles/root.glb": {
+          "offset": 95402362,
+          "size": 11715776
+        },
+        "thumbnail.png": {
+          "offset": 107118181,
+          "size": 489574
+        }
+      },
+      "file_id": "1PQi44n_h5oXfg_6J30CnOuqmiKN7EFIo",
+      "my_drive_file_id": "1xaMDaxiJ5jL2uygOzNlO39NzjG82Y5MN"
+    },
     "edited_1021_911189": {
       "scan_id": "edited_1021_911189",
       "pkg_path": "G:\\Shared drives\\6.軟體\\3. GatheringScans\\StreamPackages\\edited_1021_911189.3tz",
       "size_bytes": 10233422,
-      "mtime": 1793091292,
+      "mtime": 1793186450,
       "toc": {
         "tileset.json": {
           "offset": 42,
@@ -2087,8 +3645,8 @@
     "edited_qihu_unified_merged_scan_4_scans__edited_372953": {
       "scan_id": "edited_qihu_unified_merged_scan_4_scans__edited_372953",
       "pkg_path": "G:\\Shared drives\\6.軟體\\3. GatheringScans\\StreamPackages\\edited_qihu_unified_merged_scan_4_scans__edited_372953.3tz",
-      "size_bytes": 41074404,
-      "mtime": 1792846184,
+      "size_bytes": 47407638,
+      "mtime": 1793186450,
       "toc": {
         "tileset.json": {
           "offset": 42,
@@ -2132,7 +3690,7 @@
         },
         "thumbnail.png": {
           "offset": 40781749,
-          "size": 291898
+          "size": 6625132
         }
       },
       "file_id": "1UepMxZDwnOkEicA_do4VwhUT6SwDU9Tp",
@@ -2142,7 +3700,7 @@
       "scan_id": "edited_qihutender_1_edited_346774",
       "pkg_path": "G:\\Shared drives\\6.軟體\\3. GatheringScans\\StreamPackages\\edited_qihutender_1_edited_346774.3tz",
       "size_bytes": 8686686,
-      "mtime": 1792843835,
+      "mtime": 1793186450,
       "toc": {
         "tileset.json": {
           "offset": 42,
@@ -2172,7 +3730,7 @@
       "scan_id": "catch_QiHuTender_4",
       "pkg_path": "G:\\Shared drives\\6.軟體\\3. GatheringScans\\StreamPackages\\catch_QiHuTender_4.3tz",
       "size_bytes": 11169607,
-      "mtime": 1792833371,
+      "mtime": 1793186450,
       "toc": {
         "tileset.json": {
           "offset": 42,
@@ -2202,7 +3760,7 @@
       "scan_id": "catch_QiHuTender_3",
       "pkg_path": "G:\\Shared drives\\6.軟體\\3. GatheringScans\\StreamPackages\\catch_QiHuTender_3.3tz",
       "size_bytes": 10863036,
-      "mtime": 1792833371,
+      "mtime": 1793186451,
       "toc": {
         "tileset.json": {
           "offset": 42,
@@ -2232,7 +3790,7 @@
       "scan_id": "catch_QiHuTender_2",
       "pkg_path": "G:\\Shared drives\\6.軟體\\3. GatheringScans\\StreamPackages\\catch_QiHuTender_2.3tz",
       "size_bytes": 10290974,
-      "mtime": 1792833371,
+      "mtime": 1793186451,
       "toc": {
         "tileset.json": {
           "offset": 42,
@@ -2262,7 +3820,7 @@
       "scan_id": "catch_QiHuTender_1",
       "pkg_path": "G:\\Shared drives\\6.軟體\\3. GatheringScans\\StreamPackages\\catch_QiHuTender_1.3tz",
       "size_bytes": 9407512,
-      "mtime": 1792833371,
+      "mtime": 1793186451,
       "toc": {
         "tileset.json": {
           "offset": 42,
@@ -2292,7 +3850,7 @@
       "scan_id": "qihutender_nortk_obj_mesh",
       "pkg_path": "G:\\Shared drives\\6.軟體\\3. GatheringScans\\StreamPackages\\qihutender_nortk_obj_mesh.3tz",
       "size_bytes": 15114804,
-      "mtime": 1792833371,
+      "mtime": 1793186451,
       "toc": {
         "tileset.json": {
           "offset": 42,
@@ -2322,7 +3880,7 @@
       "scan_id": "catch_QuChi261016",
       "pkg_path": "G:\\Shared drives\\6.軟體\\3. GatheringScans\\StreamPackages\\catch_QuChi261016.3tz",
       "size_bytes": 6175367,
-      "mtime": 1793091140,
+      "mtime": 1793186451,
       "toc": {
         "tileset.json": {
           "offset": 42,
@@ -2352,7 +3910,7 @@
       "scan_id": "QuChi261016_Trees",
       "pkg_path": "G:\\Shared drives\\6.軟體\\3. GatheringScans\\StreamPackages\\QuChi261016_Trees.3tz",
       "size_bytes": 11395133,
-      "mtime": 1792833426,
+      "mtime": 1793186451,
       "toc": {
         "tileset.json": {
           "offset": 42,
@@ -2382,7 +3940,7 @@
       "scan_id": "quchi_20261015_obj_mesh",
       "pkg_path": "G:\\Shared drives\\6.軟體\\3. GatheringScans\\StreamPackages\\quchi_20261015_obj_mesh.3tz",
       "size_bytes": 3840836,
-      "mtime": 1792833372,
+      "mtime": 1793186451,
       "toc": {
         "tileset.json": {
           "offset": 42,
@@ -2442,7 +4000,7 @@
       "scan_id": "quchi_20261005_merged",
       "pkg_path": "G:\\Shared drives\\6.軟體\\3. GatheringScans\\StreamPackages\\quchi_20261005_merged.3tz",
       "size_bytes": 9269864,
-      "mtime": 1793091355,
+      "mtime": 1793186451,
       "toc": {
         "tileset.json": {
           "offset": 42,
@@ -2472,7 +4030,7 @@
       "scan_id": "quchi_20261005_sector3",
       "pkg_path": "G:\\Shared drives\\6.軟體\\3. GatheringScans\\StreamPackages\\quchi_20261005_sector3.3tz",
       "size_bytes": 52553059,
-      "mtime": 1792833374,
+      "mtime": 1793186452,
       "toc": {
         "tileset.json": {
           "offset": 42,
@@ -2852,7 +4410,7 @@
       "scan_id": "catch_2026_09_21_11_39_49",
       "pkg_path": "G:\\Shared drives\\6.軟體\\3. GatheringScans\\StreamPackages\\catch_2026_09_21_11_39_49.3tz",
       "size_bytes": 6931856,
-      "mtime": 1793091140,
+      "mtime": 1793186452,
       "toc": {
         "tileset.json": {
           "offset": 42,
@@ -2882,7 +4440,7 @@
       "scan_id": "rosepark_20260918_merged",
       "pkg_path": "G:\\Shared drives\\6.軟體\\3. GatheringScans\\StreamPackages\\rosepark_20260918_merged.3tz",
       "size_bytes": 20493967,
-      "mtime": 1792833440,
+      "mtime": 1793186453,
       "toc": {
         "tileset.json": {
           "offset": 42,
@@ -2984,7 +4542,7 @@
       "scan_id": "rosepark_20260917_east",
       "pkg_path": "G:\\Shared drives\\6.軟體\\3. GatheringScans\\StreamPackages\\rosepark_20260917_east.3tz",
       "size_bytes": 13075373,
-      "mtime": 1792833440,
+      "mtime": 1793186453,
       "toc": {
         "tileset.json": {
           "offset": 42,
@@ -3053,8 +4611,8 @@
     "ntudorm_20260917_foundation": {
       "scan_id": "ntudorm_20260917_foundation",
       "pkg_path": "G:\\Shared drives\\6.軟體\\3. GatheringScans\\StreamPackages\\ntudorm_20260917_foundation.3tz",
-      "size_bytes": 13824302,
-      "mtime": 1792833430,
+      "size_bytes": 13824214,
+      "mtime": 1793186453,
       "toc": {
         "tileset.json": {
           "offset": 42,
@@ -3130,7 +4688,7 @@
         },
         "thumbnail.png": {
           "offset": 13309801,
-          "size": 513160
+          "size": 513072
         }
       },
       "file_id": "1Lra6yRBNZU-zGycOsIilT7U_njsLSEXs",
@@ -3140,7 +4698,7 @@
       "scan_id": "ntudorm_20260915_baseline",
       "pkg_path": "G:\\Shared drives\\6.軟體\\3. GatheringScans\\StreamPackages\\ntudorm_20260915_baseline.3tz",
       "size_bytes": 23362398,
-      "mtime": 1792833427,
+      "mtime": 1793186453,
       "toc": {
         "tileset.json": {
           "offset": 42,

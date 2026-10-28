@@ -31,7 +31,7 @@
   }
 
   const DEFAULT_GOOGLE_MAPS_API_KEY =
-    window.DEFAULT_GOOGLE_MAPS_API_KEY || "AIzaSyBhHW138sGKgzKHDOTvv4RePukr_q2VbqQ";
+    window.DEFAULT_GOOGLE_MAPS_API_KEY || localStorage.getItem("GC_GOOGLE_MAPS_API_KEY") || "";
 
   const GOOGLE_OAUTH_CLIENT_ID =
     window.GOOGLE_OAUTH_CLIENT_ID ||
@@ -185,8 +185,25 @@
       dragDist: 0,
       lastFrameTime: 0,
     },
+    scanLodMode: (function () {
+      try {
+        const saved = localStorage.getItem("gs_scan_lod_mode");
+        if (saved === "rough" || saved === "auto" || saved === "max") return saved;
+      } catch (_e) {}
+      if (typeof window !== "undefined" && (window.innerWidth <= 767 || /iPhone|iPod|Android.*Mobile/i.test(String(navigator?.userAgent || "")))) {
+        return "rough";
+      }
+      return "auto";
+    })(),
   };
   window.STATE = STATE;
+
+  function isIPhoneOrMobilePhone() {
+    if (typeof window !== "undefined" && window.innerWidth <= 767) return true;
+    if (typeof navigator !== "undefined" && /iPhone|iPod|Android.*Mobile/i.test(String(navigator.userAgent || ""))) return true;
+    return false;
+  }
+  window.isIPhoneOrMobilePhone = isIPhoneOrMobilePhone;
 
   function isIOSOrIPadDevice() {
     if (typeof navigator === "undefined") return false;

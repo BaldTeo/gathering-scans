@@ -194,6 +194,16 @@ def generate_pix4dmatic_gst_script(
     skyless = bool(cfg["skyless"])
     use_roi = bool(cfg["use_roi"])
     tex_size = int(cfg["texture_size"])
+    dense_image_scale = str(cfg.get("dense_image_scale", "Full"))
+    if dense_image_scale not in ("Full", "Half", "Quarter"):
+        dense_image_scale = "Full"
+    depth_min_confidence = str(cfg.get("depth_min_confidence", "Medium"))
+    if depth_min_confidence not in ("High", "Medium", "Low"):
+        depth_min_confidence = "Medium"
+    try:
+        depth_agreement_m = max(0.0005, min(0.5, float(cfg.get("depth_agreement_m", 0.01))))
+    except Exception:
+        depth_agreement_m = 0.01
     simplification = cfg["model_simplification"]
     deghosting = cfg["deghosting"]
     export_lod = int(cfg["export_lod"])
@@ -316,7 +326,7 @@ def generate_pix4dmatic_gst_script(
 {calib_step}{sky_masks_step}            GenerateGaPmvsDensePointCloud {{
                 settings.sensorType : SensorType.Rgb
                 settings.denoise : true
-                settings.imageScale : ImageScale.Half
+                settings.imageScale : ImageScale.{dense_image_scale}
                 settings.maskAware : false
                 settings.minNbrOfMatches : 3
                 settings.multiScale : true
@@ -327,9 +337,9 @@ def generate_pix4dmatic_gst_script(
                 outputs : [DensePointCloud{{ }}]
             }}
             GenerateDepthPointCloud {{
-                settings.depthFilterAgreementThresholdMeters : 0.001
+                settings.depthFilterAgreementThresholdMeters : {depth_agreement_m}
                 settings.filter : true
-                settings.minConfidenceLevel : ConfidenceLevel.High
+                settings.minConfidenceLevel : ConfidenceLevel.{depth_min_confidence}
                 settings.normalEstimationNeighborCount : 10
                 inputs : [CalibratedCameras{{ }},SparsePointCloud{{ }}]
                 outputs : [DepthPointCloud{{ }}]
@@ -586,7 +596,7 @@ def postprocess_obj_to_tileset(
             with open(mtl_file, "r", encoding="utf-8", errors="ignore") as mf:
                 m_txt = mf.read()
             if "Kd " not in m_txt and "newmtl" in m_txt:
-                m_txt = m_txt.replace("newmtl material_0", "newmtl material_0\nKd 1.000000 1.000000 1.000000")
+                m_txt = re.sub(r"(newmtl\s+\S+)", r"\1\nKd 1.000000 1.000000 1.000000", m_txt)
                 if "Kd " not in m_txt:
                     m_txt += "\nKd 1.000000 1.000000 1.000000\n"
                 with open(mtl_file, "w", encoding="utf-8") as mf:
@@ -601,13 +611,19 @@ def postprocess_obj_to_tileset(
     from optimizer.quadtree_tiler import QuadtreeTiler
 
     active_cfg = load_pix4d_settings()
-    active_tex_limit = int(active_cfg.get("texture_size", PIX4DMATIC_TEXTURE_SIZE))
+    active_tex_limit = min(4096, int(active_cfg.get("texture_size", PIX4DMATIC_TEXTURE_SIZE)))
     tileset_dir = os.path.join(proj_dir, "tileset")
     tiler = QuadtreeTiler(
         input_path=obj_path,
         output_dir=tileset_dir,
-        max_levels=3,
-        texture_quality=7,
+        max_levels=2,
+        root_triangles=120000,
+        root_texture_limit=2048,
+        level1_triangles=90000,
+        level1_texture_limit=2048,
+        level2_triangles=250000,
+        leaf_max_triangles=250000,
+        texture_quality=8,
         texture_limit=active_tex_limit,
         high_compression=True,
         verbose=False,
@@ -615,25 +631,26 @@ def postprocess_obj_to_tileset(
     tiler.run()
     ts_candidate = os.path.join(tileset_dir, "tileset.json")
     if os.path.isfile(ts_candidate):
-        # Build high-precision (-vp 14 -vt 12) root.glb directly from local-coordinate obj_path via gltfpack
+        # Build high-precision (-vp 14 -vt 12) L0 overview root.glb (~180k tris, 2048px) via gltfpack
         try:
             from pc_worker.preview_generator import (
                 GLTFPACK_EXE,
                 _downscale_glb_textures,
+                extract_glb_large_offset,
                 shift_glb_node_translation,
                 ensure_scan_low_quality_preview,
                 ensure_scan_full_quality_thumbnail,
             )
 
-            if os.path.isfile(GLTFPACK_EXE):
+            root_glb = os.path.join(tileset_dir, "tiles", "root.glb")
+            if os.path.isfile(GLTFPACK_EXE) and (not os.path.isfile(root_glb) or os.path.getsize(root_glb) < 1024):
                 face_count = 0
                 with open(obj_path, "r", encoding="utf-8", errors="ignore") as f_obj:
                     for ln in f_obj:
                         if ln.startswith("f "):
                             face_count += 1
-                root_glb = os.path.join(tileset_dir, "tiles", "root.glb")
                 os.makedirs(os.path.dirname(root_glb), exist_ok=True)
-                ratio_full = min(1.0, max(0.08, 320000.0 / float(max(face_count, 1))))
+                ratio_full = min(1.0, max(0.08, 180000.0 / float(max(face_count, 1))))
                 tmp_root = root_glb + ".tmp.glb"
                 r_res = subprocess.run(
                     [
@@ -660,7 +677,7 @@ def postprocess_obj_to_tileset(
                     with open(tmp_root, "rb") as tf:
                         raw_r = tf.read()
                     os.remove(tmp_root)
-                    opt_r = _downscale_glb_textures(raw_r, max_dim=active_tex_limit, jpeg_quality=88)
+                    opt_r = _downscale_glb_textures(raw_r, max_dim=2048, jpeg_quality=86)
                     with open(root_glb, "wb") as wf:
                         wf.write(opt_r)
 
@@ -670,10 +687,12 @@ def postprocess_obj_to_tileset(
                     try:
                         with open(glb_fp, "rb") as gf:
                             g_bytes = gf.read()
-                        shifted_bytes = shift_glb_node_translation(g_bytes, ox, oy, oz)
-                        if shifted_bytes is not g_bytes:
-                            with open(glb_fp, "wb") as gf:
-                                gf.write(shifted_bytes)
+                        cur_ox, cur_oy, _ = extract_glb_large_offset(g_bytes)
+                        if abs(cur_ox) < 10000.0 and abs(cur_oy) < 10000.0:
+                            shifted_bytes = shift_glb_node_translation(g_bytes, ox, oy, oz)
+                            if shifted_bytes is not g_bytes:
+                                with open(glb_fp, "wb") as gf:
+                                    gf.write(shifted_bytes)
                     except Exception as ge:
                         print(f"[PIX4DRunner] Warning shifting GLB translation {glb_fp}: {ge}")
 
@@ -684,9 +703,10 @@ def postprocess_obj_to_tileset(
                     def _shift_ts_node_boxes(node: Dict[str, Any]) -> None:
                         bv = node.get("boundingVolume")
                         if isinstance(bv, dict) and isinstance(bv.get("box"), list) and len(bv["box"]) >= 3:
-                            bv["box"][0] = round(float(bv["box"][0]) + ox, 4)
-                            bv["box"][1] = round(float(bv["box"][1]) + oy, 4)
-                            bv["box"][2] = round(float(bv["box"][2]) + oz, 4)
+                            if abs(float(bv["box"][0])) < 10000.0 and abs(float(bv["box"][1])) < 10000.0:
+                                bv["box"][0] = round(float(bv["box"][0]) + ox, 4)
+                                bv["box"][1] = round(float(bv["box"][1]) + oy, 4)
+                                bv["box"][2] = round(float(bv["box"][2]) + oz, 4)
                         for ch in node.get("children") or []:
                             if isinstance(ch, dict):
                                 _shift_ts_node_boxes(ch)

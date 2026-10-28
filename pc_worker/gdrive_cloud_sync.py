@@ -238,26 +238,42 @@ def _build_optimized_tileset_dict(ts_path: str) -> Dict[str, Any]:
         r_file = os.path.join(base_dir, clean_r_uri)
         if os.path.isfile(r_file):
             r_content["uri"] = f"{clean_r_uri}?v={int(os.path.getmtime(r_file))}"
-        if os.path.isfile(r_file) and os.path.getsize(r_file) >= 800_000:
+        valid_c1 = []
+        for c1 in root.get("children") or []:
+            if not isinstance(c1, dict):
+                continue
+            c1_c = c1.get("content") or {}
+            if isinstance(c1_c, dict) and c1_c.get("uri"):
+                u1 = c1_c["uri"].split("?")[0]
+                f1 = os.path.join(base_dir, u1)
+                if os.path.isfile(f1):
+                    c1_c["uri"] = f"{u1}?v={int(os.path.getmtime(f1))}"
+            valid_c2 = []
+            for c2 in c1.get("children") or []:
+                if not isinstance(c2, dict):
+                    continue
+                c2_c = c2.get("content") or {}
+                if isinstance(c2_c, dict) and c2_c.get("uri"):
+                    u2 = c2_c["uri"].split("?")[0]
+                    f2 = os.path.join(base_dir, u2)
+                    if os.path.isfile(f2):
+                        c2_c["uri"] = f"{u2}?v={int(os.path.getmtime(f2))}"
+                c2["geometricError"] = 0.0
+                c2["children"] = []
+                valid_c2.append(c2)
+            c1["children"] = valid_c2
+            if valid_c2:
+                c1["geometricError"] = max(float(c1.get("geometricError") or 0.0), 8.0)
+            else:
+                c1["geometricError"] = 0.0
+            valid_c1.append(c1)
+        if valid_c1:
+            root["children"] = valid_c1
+            root["geometricError"] = max(float(root.get("geometricError") or 0.0), 24.0)
+            ts["geometricError"] = max(float(ts.get("geometricError") or 0.0), float(root["geometricError"]))
+        else:
             root["geometricError"] = 0.0
             root["children"] = []
-        else:
-            for c1 in root.get("children") or []:
-                c1_c = c1.get("content") or {}
-                if isinstance(c1_c, dict) and c1_c.get("uri"):
-                    u1 = c1_c["uri"].split("?")[0]
-                    f1 = os.path.join(base_dir, u1)
-                    if os.path.isfile(f1):
-                        c1_c["uri"] = f"{u1}?v={int(os.path.getmtime(f1))}"
-                for c2 in c1.get("children") or []:
-                    c2_c = c2.get("content") or {}
-                    if isinstance(c2_c, dict) and c2_c.get("uri"):
-                        u2 = c2_c["uri"].split("?")[0]
-                        f2 = os.path.join(base_dir, u2)
-                        if os.path.isfile(f2):
-                            c2_c["uri"] = f"{u2}?v={int(os.path.getmtime(f2))}"
-                    c2["geometricError"] = 0.0
-                    c2["children"] = []
     else:
         def _prune_branch(node: dict, depth: int = 0) -> bool:
             c = node.get("content") or {}

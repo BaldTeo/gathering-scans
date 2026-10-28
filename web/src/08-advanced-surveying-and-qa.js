@@ -2194,9 +2194,7 @@
       });
       if (srv && srv.status === "ok") {
         STATE.lastDrainageResult = srv;
-        const hasClientArrows =
-          (localStats && localStats.arrow_count > 0) || (studioThree?.drainageGroup?.children?.length || 0) > 0;
-        if (STATE.activeTool === "drainage" && !hasClientArrows) {
+        if (STATE.activeTool === "drainage") {
           localStats = renderDrainageAndSlopeVisuals3D({
             gridSize: Number(STATE.drainageGridSize) || 20,
             densityPerM2: Number(STATE.drainageDensityPerM2) || 0.25,

@@ -2252,7 +2252,7 @@
           if ("boundsTree" in m.geometry) m.geometry.boundsTree = null;
           m.geometry.computeBoundingBox();
           m.geometry.computeBoundingSphere();
-          m.userData._appliedStagedRev = 0;
+          m.userData._appliedStagedRev = 0; m.userData._appliedEditSig = "";
         }
       });
     };
@@ -2306,11 +2306,13 @@
     const hasKeep = Boolean(!isMulti && st.cropKeep);
     const prepKeepStrokes = hasKeep ? prepareStrokeEvalList(st.cropKeep.frustum_strokes || [], null) : [];
     const prepKeepPolys = hasKeep ? prepareNativePolyEvalList(st.cropKeep.native_polygons || []) : [];
+    const editSig = `${st.rev}:${st.deletions.length}:${allDelStrokes.length}:${allDelPolys.length}:${hasKeep ? 1 : 0}`;
 
     let totalHiddenTris = 0;
     const applyOnMesh = (m, meshDelPolys, meshInv, meshTc) => {
       if (!m || !m.isMesh || m.userData?.isAlignBoxHelper || !m.geometry?.attributes?.position) return;
-      if (!forceRecompute && m.userData._appliedStagedRev === st.rev) return;
+      if (!forceRecompute && m.userData._appliedStagedRev === st.rev && m.userData._appliedEditSig === editSig) return;
+      m.updateMatrixWorld(true);
 
       const posAttr = m.geometry.attributes.position;
       if (!m.userData._origIndexSaved) {
@@ -2332,19 +2334,14 @@
       const triCount = Math.floor(origIdx.length / 3);
       if (triCount === 0) return;
 
-      const delFlags =
-        prepDelStrokes.length > 0 || meshDelPolys.length > 0
-          ? evaluateTrianglesMaskOnMesh(m, posAttr, origIdx, triCount, prepDelStrokes, meshDelPolys, meshInv, meshTc)
-          : null;
-      const keepFlags =
-        hasKeep && (prepKeepStrokes.length > 0 || prepKeepPolys.length > 0)
-          ? evaluateTrianglesMaskOnMesh(m, posAttr, origIdx, triCount, prepKeepStrokes, prepKeepPolys, meshInv, meshTc)
-          : null;
+      const delFlags = (prepDelStrokes.length > 0 || meshDelPolys.length > 0)
+        ? evaluateTrianglesMaskOnMesh(m, posAttr, origIdx, triCount, prepDelStrokes, meshDelPolys, meshInv, meshTc) : null;
+      const keepFlags = (hasKeep && (prepKeepStrokes.length > 0 || prepKeepPolys.length > 0))
+        ? evaluateTrianglesMaskOnMesh(m, posAttr, origIdx, triCount, prepKeepStrokes, prepKeepPolys, meshInv, meshTc) : null;
 
       let keptTris = 0;
       for (let t = 0; t < triCount; t++) {
-        if (delFlags && delFlags[t]) continue;
-        if (keepFlags && !keepFlags[t]) continue;
+        if ((delFlags && delFlags[t]) || (keepFlags && !keepFlags[t])) continue;
         keptTris++;
       }
       totalHiddenTris += triCount - keptTris;
@@ -2353,8 +2350,7 @@
       const filteredIdx = new OutArrType(keptTris * 3);
       let wPtr = 0;
       for (let t = 0; t < triCount; t++) {
-        if (delFlags && delFlags[t]) continue;
-        if (keepFlags && !keepFlags[t]) continue;
+        if ((delFlags && delFlags[t]) || (keepFlags && !keepFlags[t])) continue;
         filteredIdx[wPtr++] = origIdx[t * 3];
         filteredIdx[wPtr++] = origIdx[t * 3 + 1];
         filteredIdx[wPtr++] = origIdx[t * 3 + 2];
@@ -2365,6 +2361,7 @@
       m.geometry.computeBoundingBox();
       m.geometry.computeBoundingSphere();
       m.userData._appliedStagedRev = st.rev;
+      m.userData._appliedEditSig = editSig;
     };
 
     if (isMulti) {

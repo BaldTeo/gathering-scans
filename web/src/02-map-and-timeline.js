@@ -1517,14 +1517,10 @@
     const elapsed = now - (ctx._loadingStartMs || 0);
     const sinceTileset = ctx._tilesetReadyMs ? now - ctx._tilesetReadyMs : 0;
 
-    // Complete as soon as primary 3D tiles are rendered or all active downloads/parses finish
+    // Complete as soon as the coarse L0 root tile (loaded >= 1) is rendered so L1/L2 stream silently in background
     const total = Math.max(1, loaded + pending);
-    const enoughTilesReady =
-      loaded > 0 &&
-      (pending === 0 ||
-        (activeWork === 0 && sinceTileset > 900) ||
-        loaded >= Math.max(4, Math.ceil(total * 0.75)));
-    if (enoughTilesReady && elapsed > 220) {
+    const enoughTilesReady = loaded >= 1;
+    if (enoughTilesReady && elapsed > 180) {
       finishScanLoader(ctx, prefix, tr(`100% · ${loaded} 個 3D 圖磚已就緒`, `100% · ${loaded} 3D tiles ready`));
       return;
     }
@@ -1616,11 +1612,14 @@
     if (typeof tr.getBoundingSphere === "function") {
       tr.getBoundingSphere(outSphere);
     }
-    const rootGe = Number(tr.root.geometricError || 0);
-    if (rootGe > 1000) {
-      tr.errorTarget = 16.0;
-    } else if (tr.root.content && tr.root.content.uri) {
-      tr.errorTarget = 380.0;
+    const isMobileOrTab = typeof isMobileOrTabletDevice === "function" && isMobileOrTabletDevice();
+    const lodMode = STATE.scanLodMode || "auto";
+    if (lodMode === "rough") {
+      tr.errorTarget = 1e9;
+    } else if (lodMode === "max") {
+      tr.errorTarget = 0.5;
+    } else {
+      tr.errorTarget = isMobileOrTab ? 10.0 : 5.0;
     }
     // If root has no direct content URI (e.g. PIX4Dmatic cubic octree where root box is in the sky),
     // or if root box spans > 1,500m horizontally (Safeguard C: multi-island scan), walk content nodes and center on the dominant island.
@@ -1804,12 +1803,23 @@
     }
     startScanLoader(previewThree, "preview", `${scan.name} (Interactive Preview)`, scan.scan_id);
 
-    const streamUrl =
-      scan.preview_stream_url ||
-      (scan.stream_url
-        ? scan.stream_url.replace("/tileset.json", "/preview_tileset.json")
-        : `/stream/${scan.scan_id}/preview_tileset.json`);
-    const streamType = scan.preview_stream_type || scan.stream_type;
+    const isMobileOrTab = typeof isMobileOrTabletDevice === "function" && isMobileOrTabletDevice();
+    const isIOS = typeof isIOSOrIPadDevice === "function" && isIOSOrIPadDevice();
+    const lodMode = STATE.scanLodMode || "auto";
+    const useRoughTilesetOnly = lodMode === "rough" && isIOS;
+    const streamUrl = useRoughTilesetOnly
+      ? scan.preview_stream_url ||
+        (scan.stream_url
+          ? scan.stream_url.replace("/tileset.json", "/preview_tileset.json")
+          : `/stream/${scan.scan_id}/preview_tileset.json`)
+      : scan.stream_url ||
+        scan.preview_stream_url ||
+        `/stream/${scan.scan_id}/tileset.json`;
+    const streamType = useRoughTilesetOnly ? scan.preview_stream_type || scan.stream_type : scan.stream_type || scan.preview_stream_type;
+    previewThree._loadedTilesetUrl = streamUrl;
+    document.querySelectorAll("#previewLodModeSwitcher [data-lod-mode]").forEach((btn) => {
+      btn.classList.toggle("active", btn.dataset.lodMode === lodMode);
+    });
 
     if (streamType === "glb" || streamUrl.toLowerCase().endsWith(".glb")) {
       const loader = new THREE.GLTFLoader();
@@ -1939,13 +1949,18 @@
         }
       });
 
-      const isMobileOrTab = typeof isMobileOrTabletDevice === "function" && isMobileOrTabletDevice();
-      tr.errorTarget = isMobileOrTab ? 24.0 : 16.0;
-      if (tr.downloadQueue) tr.downloadQueue.maxJobs = isMobileOrTab ? 4 : 12;
-      if (tr.parseQueue) tr.parseQueue.maxJobs = isMobileOrTab ? 2 : 6;
+      if (lodMode === "rough") {
+        tr.errorTarget = 1e9;
+      } else if (lodMode === "max") {
+        tr.errorTarget = 0.5;
+      } else {
+        tr.errorTarget = isMobileOrTab ? 10.0 : 5.0;
+      }
+      if (tr.downloadQueue) tr.downloadQueue.maxJobs = isIOS ? 3 : isMobileOrTab ? 4 : 12;
+      if (tr.parseQueue) tr.parseQueue.maxJobs = isIOS ? 1 : isMobileOrTab ? 2 : 6;
       if (isMobileOrTab && tr.lruCache) {
-        tr.lruCache.maxSize = 48;
-        tr.lruCache.minSize = 16;
+        tr.lruCache.maxSize = isIOS ? 24 : 48;
+        tr.lruCache.minSize = isIOS ? 10 : 16;
       }
       previewThree.modelPivot.add(tr.group);
       previewThree.tilesRenderer = tr;

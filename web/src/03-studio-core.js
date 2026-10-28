@@ -378,7 +378,7 @@
       antialias: !isIOS,
       powerPreference: isIOS ? "default" : "high-performance",
     });
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, isIOS ? 1.35 : 2));
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, isIOS ? 1.5 : 2));
     renderer.setSize(Math.max(1, container.clientWidth), Math.max(1, container.clientHeight));
     renderer.toneMapping = THREE.NoToneMapping;
     renderer.toneMappingExposure = 1.0;
@@ -1383,14 +1383,11 @@
 
     const isIOS = typeof isIOSOrIPadDevice === "function" && isIOSOrIPadDevice();
     const isMobOrTab = isIOS || (typeof isMobileOrTabletDevice === "function" && isMobileOrTabletDevice());
+    const lodMode = STATE.scanLodMode || "auto";
     const useLowMemTileset =
       !opts.forceFullRes &&
-      (isIOS ||
-        Boolean(studioThree._forceLowMemStream) ||
-        (isMobOrTab &&
-          (Number(scan.texture_count || 1) > 1 ||
-            Number(scan.poly_count || 0) > 450000 ||
-            Number(scan.stream_size_mb || 0) > 12)));
+      (Boolean(studioThree._forceLowMemStream) ||
+        (isIOS && lodMode === "rough"));
 
     let streamUrl = scan.stream_url || `/stream/${scan.scan_id}/tileset.json`;
     if (useLowMemTileset && scan.stream_type !== "glb" && !streamUrl.toLowerCase().endsWith(".glb")) {
@@ -1398,6 +1395,11 @@
         scan.preview_stream_url ||
         streamUrl.replace("/tileset.json", "/preview_tileset.json");
     }
+    studioThree._loadedLowMemTileset = Boolean(useLowMemTileset);
+    studioThree._loadedTilesetUrl = streamUrl;
+    document.querySelectorAll("#studioLodModeSwitcher [data-lod-mode]").forEach((btn) => {
+      btn.classList.toggle("active", btn.dataset.lodMode === lodMode);
+    });
     if (bustCache) {
       const baseNoQ = streamUrl.split("?")[0];
       streamUrl = `${baseNoQ}?v=${scan.tileset_version || Date.now()}`;
@@ -1653,6 +1655,23 @@
               rebuildLassoHighlight3D();
             }, 80);
           }
+          if (
+            STATE.activeTool === "drainage" &&
+            typeof renderDrainageAndSlopeVisuals3D === "function"
+          ) {
+            clearTimeout(studioThree._drainageLodRefreshTimer);
+            studioThree._drainageLodRefreshTimer = setTimeout(() => {
+              if (STATE.activeTool === "drainage") {
+                renderDrainageAndSlopeVisuals3D({
+                  gridSize: Number(STATE.drainageGridSize) || 20,
+                  densityPerM2: Number(STATE.drainageDensityPerM2) || 0.25,
+                  arrowScale: Number(STATE.drainageArrowScale) || 1.0,
+                  showLabels: STATE.drainageShowLabels !== false,
+                  excludeWalls: STATE.drainageExcludeWalls !== false,
+                });
+              }
+            }, 350);
+          }
         }
       });
 
@@ -1668,12 +1687,18 @@
         }
       });
 
-      tr.errorTarget = isMobOrTab ? 12.0 : 6.0;
-      if (tr.downloadQueue) tr.downloadQueue.maxJobs = isMobOrTab ? 4 : 12;
-      if (tr.parseQueue) tr.parseQueue.maxJobs = isMobOrTab ? 2 : 6;
+      if (lodMode === "rough") {
+        tr.errorTarget = 1e9;
+      } else if (lodMode === "max") {
+        tr.errorTarget = 0.5;
+      } else {
+        tr.errorTarget = isMobOrTab ? 10.0 : 5.0;
+      }
+      if (tr.downloadQueue) tr.downloadQueue.maxJobs = isIOS ? 3 : isMobOrTab ? 4 : 12;
+      if (tr.parseQueue) tr.parseQueue.maxJobs = isIOS ? 1 : isMobOrTab ? 2 : 6;
       if (isMobOrTab && tr.lruCache) {
-        tr.lruCache.maxSize = 64;
-        tr.lruCache.minSize = 24;
+        tr.lruCache.maxSize = isIOS ? 24 : 64;
+        tr.lruCache.minSize = isIOS ? 10 : 24;
       }
       studioThree.modelPivot.add(tr.group);
       studioThree.tilesRenderer = tr;
@@ -3338,11 +3363,98 @@
     }
   }
 
+  function applyScanLodMode(mode, silent = false) {
+    const validMode = mode === "rough" || mode === "auto" || mode === "max" ? mode : "auto";
+    STATE.scanLodMode = validMode;
+    try {
+      localStorage.setItem("gs_scan_lod_mode", validMode);
+    } catch (_e) {}
+
+    document.querySelectorAll("#studioLodModeSwitcher [data-lod-mode], #previewLodModeSwitcher [data-lod-mode]").forEach((btn) => {
+      btn.classList.toggle("active", btn.dataset.lodMode === validMode);
+    });
+    const selStudio = document.getElementById("selStudioLodMode");
+    if (selStudio && selStudio.value !== validMode) selStudio.value = validMode;
+    const selPreview = document.getElementById("selPreviewLodMode");
+    if (selPreview && selPreview.value !== validMode) selPreview.value = validMode;
+
+    const isMobOrTab = typeof isMobileOrTabletDevice === "function" && isMobileOrTabletDevice();
+    const targetErr = validMode === "rough" ? 1e9 : validMode === "max" ? 0.5 : isMobOrTab ? 10.0 : 5.0;
+
+    if (studioThree) {
+      if (
+        validMode !== "rough" &&
+        studioThree._loadedLowMemTileset &&
+        STATE.activeView === "studio" &&
+        STATE.activeScanId
+      ) {
+        loadScanIntoStudio(STATE.activeScanId, {
+          preserveCamera: true,
+          preserveTools: true,
+          forceFullRes: true,
+        });
+      } else if (studioThree.tilesRenderer) {
+        studioThree.tilesRenderer.errorTarget = targetErr;
+        studioThree.camera?.updateMatrixWorld();
+        studioThree.tilesRenderer.update();
+        if (studioThree.renderer && studioThree.scene && studioThree.camera) {
+          studioThree.renderer.render(studioThree.scene, studioThree.camera);
+        }
+      }
+    }
+
+    if (typeof previewThree !== "undefined" && previewThree) {
+      if (
+        validMode !== "rough" &&
+        String(previewThree._loadedTilesetUrl || "").includes("preview_tileset.json") &&
+        STATE.activeView === "map" &&
+        STATE.activeScanId &&
+        typeof loadScanIntoPreview === "function"
+      ) {
+        loadScanIntoPreview(STATE.activeScanId, true);
+      } else if (previewThree.tilesRenderer) {
+        previewThree.tilesRenderer.errorTarget = targetErr;
+        previewThree.camera?.updateMatrixWorld();
+        previewThree.tilesRenderer.update();
+        if (previewThree.renderer && previewThree.scene && previewThree.camera) {
+          previewThree.renderer.render(previewThree.scene, previewThree.camera);
+        }
+      }
+    }
+
+    if (!silent && typeof showToast === "function") {
+      const labelZh = validMode === "rough" ? "粗模 (L0 極速)" : validMode === "max" ? "精細 (L2 高清)" : "自動 (L0→L1→L2 漸進)";
+      const labelEn = validMode === "rough" ? "Rough (L0 Fast)" : validMode === "max" ? "Max Detail (L2)" : "Auto Progressive (L0→L1→L2)";
+      showToast(tr(`3D 畫質已切換至：${labelZh}`, `3D Quality set to: ${labelEn}`));
+    }
+  }
+  window.applyScanLodMode = applyScanLodMode;
+
+  if (typeof document !== "undefined" && !window.__gsLodSwitcherBound) {
+    window.__gsLodSwitcherBound = true;
+    document.addEventListener("click", (ev) => {
+      const btn = ev.target && typeof ev.target.closest === "function"
+        ? ev.target.closest("#studioLodModeSwitcher [data-lod-mode], #previewLodModeSwitcher [data-lod-mode]")
+        : null;
+      if (!btn) return;
+      ev.preventDefault();
+      ev.stopPropagation();
+      const mode = btn.getAttribute("data-lod-mode");
+      if (mode) applyScanLodMode(mode, false);
+    });
+  }
+
   function setActiveStudioTool(toolName) {
     if (!toolName) return;
     if (STATE.multiAlign?.active && MULTI_ALIGN_DISABLED_TOOLS.has(toolName)) {
       showToast("Unavailable during Multi-Scan Editing — merge scans first (or exit Multi-Scan mode)");
       return;
+    }
+    if ((toolName === "crop" || toolName === "crop_delete" || toolName === "lasso") && STATE.scanLodMode !== "max") {
+      applyScanLodMode("max", true);
+      if (typeof showToast === "function") {
+        showToast(tr("已自動鎖定「精細 (L2)」畫質以確保套索裁切跨圖層精準同步", "Locked to Max Detail (L2) for multi-LOD accurate Lasso editing"));
+      }
     }
     if (STATE.activeTool === "section" && toolName !== "section") {
       clearSectionBoxClippingIfNotKept();

@@ -4288,3 +4288,9 @@ body.theme-light .gs-comment-folder-section { background: rgba(241, 245, 249, 0.
   #modalSharing .gs-share-url-group { gap: 3px !important; flex-wrap: nowrap !important; }
   #modalSharing .gs-share-copy-btn, #modalSharing .gs-share-open-btn { padding: 2px 5px !important; font-size: 9.5px !important; }
 }
+
+.gs-lod-mode-switcher { display: inline-flex; align-items: center; padding: 1px; border-radius: 6px; flex-shrink: 0; gap: 1px; }
+.gs-lod-mode-switcher .btn-seg { padding: 2px 6px; font-size: 10.5px; line-height: 1.25; white-space: nowrap; }
+@media (max-width: 767px) {
+  .gs-lod-mode-switcher .btn-seg { padding: 2px 4.5px; font-size: 9.5px; }
+}
