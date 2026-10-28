@@ -1562,6 +1562,19 @@ class ServerWriteRoutesMixin:
                     return
 
             # 10. Google Chat Notification Dispatch, Interactive App Endpoint & Webhook Config
+            if path == "/api/gchat/island-decision":
+                from pc_worker.pix4d_runner import apply_mesh_island_decision
+
+                sid = str(payload.get("scan_id") or (query.get("scan_id") or [""])[0] or "").strip()
+                dec = str(payload.get("decision") or (query.get("decision") or [""])[0] or "").strip()
+                tok = str(payload.get("token") or (query.get("token") or [""])[0] or "").strip()
+                if not sid or not dec:
+                    self.send_json({"error": "scan_id and decision ('split' or 'combine') required"}, status=400)
+                    return
+                res_dec = apply_mesh_island_decision(sid, dec, token=tok)
+                self.send_json(res_dec)
+                return
+
             if path == "/api/gchat/webhook":
                 # Interactive Google Chat HTTP Endpoint (handles ADDED_TO_SPACE, MESSAGE, CARD_CLICKED)
                 evt_type = str(payload.get("type") or "").upper()
@@ -1573,6 +1586,27 @@ class ServerWriteRoutesMixin:
                     if uid_num:
                         GCHAT.user_gchat_ids[u_email] = uid_num
                         GCHAT._save_config()
+                if evt_type == "CARD_CLICKED":
+                    action = payload.get("action") if isinstance(payload.get("action"), dict) else {}
+                    params = {
+                        str(p.get("key") or ""): str(p.get("value") or "")
+                        for p in (action.get("parameters") or [])
+                        if isinstance(p, dict)
+                    }
+                    if action.get("actionMethodName") == "island_decision" or "decision" in params:
+                        from pc_worker.pix4d_runner import apply_mesh_island_decision
+
+                        sid = params.get("scan_id", "")
+                        dec = params.get("decision", "")
+                        tok = params.get("token", "")
+                        res_dec = apply_mesh_island_decision(sid, dec, token=tok)
+                        label_zh = "拆分為 2 個獨立掃描 (Yes)" if res_dec.get("decision") == "split" else "保留為 1 個合併掃描 (No)"
+                        self.send_json(
+                            {
+                                "text": f"✅ 已收到確認（*{label_zh}*），正在背景處理 `{sid}`..."
+                            }
+                        )
+                        return
                 if evt_type == "ADDED_TO_SPACE":
                     self.send_json(
                         {
@@ -1585,6 +1619,27 @@ class ServerWriteRoutesMixin:
                     )
                     return
                 if evt_type == "MESSAGE":
+                    msg_obj = payload.get("message") if isinstance(payload.get("message"), dict) else {}
+                    msg_txt = str(msg_obj.get("argumentText") or msg_obj.get("text") or "").strip().lower()
+                    if msg_txt in ("yes", "no", "y", "n", "是", "否", "split", "combine"):
+                        pend_dir = os.path.join(DATA_DIR, "pending_island_decisions")
+                        if os.path.isdir(pend_dir):
+                            pend_files = sorted(
+                                [os.path.join(pend_dir, f) for f in os.listdir(pend_dir) if f.endswith(".json")],
+                                key=os.path.getmtime,
+                                reverse=True,
+                            )
+                            if pend_files:
+                                from pc_worker.pix4d_runner import apply_mesh_island_decision
+
+                                latest_sid = os.path.splitext(os.path.basename(pend_files[0]))[0]
+                                dec_val = "split" if msg_txt in ("yes", "y", "是", "split") else "combine"
+                                apply_mesh_island_decision(latest_sid, dec_val)
+                                label_zh = "拆分為 2 個獨立掃描 (Yes)" if dec_val == "split" else "保留為 1 個合併掃描 (No)"
+                                self.send_json(
+                                    {"text": f"✅ 已收到您的回覆（*{label_zh}*），正在背景處理 `{latest_sid}`！"}
+                                )
+                                return
                     self.send_json(
                         {
                             "text": (

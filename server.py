@@ -1765,7 +1765,47 @@ class GatheringScansHandler(CloudAndTunnelHandlerMixin, ServerWriteRoutesMixin, 
             )
             return
 
-        # 8. Google Chat Notification History & App Connection Status (Admin/Owner Only)
+        # 8. Google Chat Notification History, Interactive Mesh Island Decision & App Connection Status
+        if path == "/api/gchat/island-decision":
+            from pc_worker.pix4d_runner import apply_mesh_island_decision
+
+            sid = str((query.get("scan_id") or [""])[0] or "").strip()
+            dec = str((query.get("decision") or [""])[0] or "").strip()
+            tok = str((query.get("token") or [""])[0] or "").strip()
+            fmt = str((query.get("format") or [""])[0] or "").strip().lower()
+            if not sid or not dec:
+                self.send_json({"error": "scan_id and decision ('split' or 'combine') required"}, status=400)
+                return
+            try:
+                res_dec = apply_mesh_island_decision(sid, dec, token=tok)
+                if fmt == "json" or "application/json" in str(self.headers.get("Accept") or ""):
+                    self.send_json(res_dec)
+                    return
+                label_zh = "拆分為 2 個獨立掃描 (Yes — Create 2 Separate Scans)" if res_dec.get("decision") == "split" else "保留為 1 個合併掃描 (No — Keep 1 Combined Scan)"
+                html_body = (
+                    "<!DOCTYPE html><html><head><meta charset='utf-8'>"
+                    "<meta name='viewport' content='width=device-width,initial-scale=1'>"
+                    "<title>GatheringScans — 網格區塊處理確認</title>"
+                    "<style>body{background:#0f172a;color:#f8fafc;font-family:system-ui,-apple-system,sans-serif;display:flex;align-items:center;justify-content:center;min-height:92vh;margin:0;padding:16px}"
+                    ".card{background:#1e293b;border:1px solid #334155;border-radius:14px;max-width:480px;padding:28px;box-shadow:0 12px 32px rgba(0,0,0,0.4)}"
+                    "h2{margin:0 0 12px;color:#38bdf8;font-size:20px}p{line-height:1.6;color:#cbd5e1;font-size:15px}"
+                    ".badge{display:inline-block;background:#0284c7;color:#fff;padding:6px 12px;border-radius:8px;font-weight:600;margin:8px 0}"
+                    "a.btn{display:inline-block;margin-top:16px;padding:10px 18px;background:#38bdf8;color:#0f172a;text-decoration:none;border-radius:8px;font-weight:600}</style>"
+                    f"</head><body><div class='card'><h2>✅ 已收到您的確認！</h2>"
+                    f"<p>掃描 ID：<b>{sid}</b></p>"
+                    f"<div class='badge'>{label_zh}</div>"
+                    "<p>系統正在背景執行您選擇的網格處理方式，完成後將於 Google Chat 發送通知。</p>"
+                    "<a class='btn' href='/'>開啟 GatheringScans 平台</a></div></body></html>"
+                ).encode("utf-8")
+                self.send_response(200)
+                self.send_header("Content-Type", "text/html; charset=utf-8")
+                self.send_header("Content-Length", str(len(html_body)))
+                self.end_headers()
+                self.wfile.write(html_body)
+            except Exception as e:
+                self.send_json({"error": str(e)}, status=400)
+            return
+
         if path == "/api/gchat/test-app":
             actor_em_g, _, gc_perms = self._resolve_request_role(None, query, share_token)
             if share_token or not gc_perms.get("can_manage_users"):

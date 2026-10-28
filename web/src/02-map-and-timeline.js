@@ -1623,9 +1623,14 @@
       tr.errorTarget = 380.0;
     }
     // If root has no direct content URI (e.g. PIX4Dmatic cubic octree where root box is in the sky),
-    // check first if root.boundingVolume.box is already tightened (hx != hz). Otherwise walk content nodes up to depth 6.
+    // or if root box spans > 1,500m horizontally (Safeguard C: multi-island scan), walk content nodes and center on the dominant island.
     const rootBox = tr.root.boundingVolume && Array.isArray(tr.root.boundingVolume.box) ? tr.root.boundingVolume.box : null;
-    const isTightRootBox = rootBox && rootBox.length >= 12 && Math.abs(Math.abs(Number(rootBox[3])) - Math.abs(Number(rootBox[11]))) > 0.5;
+    const rootSpanHalfXY = rootBox && rootBox.length >= 12 ? Math.max(Math.abs(Number(rootBox[3]) || 0), Math.abs(Number(rootBox[7]) || 0)) : 0;
+    const isTightRootBox =
+      rootBox &&
+      rootBox.length >= 12 &&
+      Math.abs(Math.abs(Number(rootBox[3])) - Math.abs(Number(rootBox[11]))) > 0.5 &&
+      rootSpanHalfXY < 750;
     if ((!tr.root.content || !tr.root.content.uri) && !isTightRootBox) {
       const rootMat = (tr.root.engineData && tr.root.engineData.transform) || new THREE.Matrix4();
       const byDepth = new Map();
@@ -1660,7 +1665,45 @@
       walk(tr.root, 0);
       if (byDepth.size > 0) {
         const maxDepth = Math.max(...byDepth.keys());
-        const pts = byDepth.get(maxDepth) || [];
+        let pts = byDepth.get(maxDepth) || [];
+        // Safeguard C: If leaf nodes span > 1,000m across disconnected islands, cluster and frame the dominant island
+        if (pts.length > 2) {
+          let spanMinX = Infinity, spanMaxX = -Infinity, spanMinY = Infinity, spanMaxY = -Infinity;
+          for (const p of pts) {
+            if (p.x < spanMinX) spanMinX = p.x;
+            if (p.x > spanMaxX) spanMaxX = p.x;
+            if (p.y < spanMinY) spanMinY = p.y;
+            if (p.y > spanMaxY) spanMaxY = p.y;
+          }
+          if (Math.hypot(spanMaxX - spanMinX, spanMaxY - spanMinY) > 1000) {
+            const visited = new Uint8Array(pts.length);
+            let bestCluster = pts;
+            for (let i = 0; i < pts.length; i++) {
+              if (visited[i]) continue;
+              visited[i] = 1;
+              const cluster = [pts[i]];
+              const queue = [i];
+              while (queue.length > 0) {
+                const cur = queue.pop();
+                const cp = pts[cur];
+                for (let j = 0; j < pts.length; j++) {
+                  if (visited[j]) continue;
+                  if (Math.hypot(pts[j].x - cp.x, pts[j].y - cp.y) <= 1000) {
+                    visited[j] = 1;
+                    cluster.push(pts[j]);
+                    queue.push(j);
+                  }
+                }
+              }
+              if (cluster === pts || cluster.length > bestCluster.length || bestCluster === pts) {
+                if (bestCluster === pts || cluster.length > bestCluster.length) {
+                  bestCluster = cluster;
+                }
+              }
+            }
+            if (bestCluster.length > 0) pts = bestCluster;
+          }
+        }
         let minX = Infinity,
           minY = Infinity,
           minZ = Infinity,

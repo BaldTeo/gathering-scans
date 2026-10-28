@@ -582,6 +582,288 @@ class GoogleChatNotifier:
             "card": card_payload,
         }
 
+    def _dispatch_card_to_uploader(
+        self,
+        scan_id: str,
+        uploader_email: str,
+        uploader_name: str,
+        card_payload: Dict[str, Any],
+        thread_suffix: str = "",
+    ) -> Dict[str, Any]:
+        """Internal helper to send a warning or interactive question card to an uploader via DM or Webhook."""
+        from pc_worker.gdrive_watcher import normalize_gatheren_uploader
+
+        uploader_name, uploader_email = normalize_gatheren_uploader(uploader_name, uploader_email, scan_id)
+        self._sync_user_ids_from_db()
+        gchat_uid = self.user_gchat_ids.get(uploader_email.lower(), "")
+        target_webhook = (
+            self.get_webhook_url(uploader_email=uploader_email)
+            or self.webhook_url
+            or ""
+        ).strip()
+        sent_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+
+        webhook_status = "logged_ready"
+        dm_status = self._try_send_chat_api_direct_message(uploader_email, gchat_uid, card_payload)
+        if dm_status:
+            webhook_status = dm_status
+        elif target_webhook.startswith("https://chat.googleapis.com/"):
+            try:
+                sep = "&" if "?" in target_webhook else "?"
+                threaded_url = target_webhook
+                if "messageReplyOption=" not in threaded_url:
+                    threaded_url = f"{threaded_url}{sep}messageReplyOption=REPLY_MESSAGE_FALLBACK_TO_NEW_THREAD"
+                send_body = dict(card_payload)
+                t_key = f"private_{uploader_email}_{scan_id}"
+                if thread_suffix:
+                    t_key = f"{t_key}_{thread_suffix}"
+                send_body["thread"] = {"threadKey": t_key}
+                req = urllib.request.Request(
+                    threaded_url,
+                    data=json.dumps(send_body).encode("utf-8"),
+                    headers={"Content-Type": "application/json; charset=UTF-8"},
+                    method="POST",
+                )
+                with urllib.request.urlopen(req, timeout=10) as resp:
+                    webhook_status = f"delivered_http_{resp.status}"
+            except Exception as e:
+                webhook_status = f"webhook_error: {e}"
+
+        try:
+            with DB_LOCK, self.db._connect() as conn:
+                conn.execute(
+                    """
+                    INSERT INTO gchat_notifications (scan_id, uploader_email, webhook_status, card_json, sent_at)
+                    VALUES (?, ?, ?, ?, ?)
+                    """,
+                    (
+                        scan_id,
+                        uploader_email,
+                        webhook_status,
+                        json.dumps(card_payload, ensure_ascii=False),
+                        sent_at,
+                    ),
+                )
+                conn.commit()
+        except Exception:
+            pass
+
+        return {
+            "status": "ok",
+            "scan_id": scan_id,
+            "uploader_email": uploader_email,
+            "uploader_name": uploader_name,
+            "uploader_gchat_user_id": gchat_uid,
+            "webhook_status": webhook_status,
+            "sent_at": sent_at,
+            "card": card_payload,
+        }
+
+    def notify_subscan_outlier_warning(
+        self,
+        scan_id: str,
+        uploader_email: str,
+        uploader_name: str,
+        primary_info: Dict[str, Any],
+        outlier_info: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        """
+        Safeguard A: Sends a Google Chat warning notification tagging the user when a multi-part
+        sub-scan archive (`1ofN .. NofN`) contains a geographic outlier (`> 1,500 m` away).
+        """
+        from pc_worker.gdrive_watcher import normalize_gatheren_uploader
+
+        uploader_name, uploader_email = normalize_gatheren_uploader(uploader_name, uploader_email, scan_id)
+        self._sync_user_ids_from_db()
+        gchat_uid = self.user_gchat_ids.get(uploader_email.lower(), "")
+        mention_tag = f"<users/{gchat_uid}>" if gchat_uid else f"*{uploader_name}*"
+
+        dist_m = float(outlier_info.get("distance_m") or 0.0)
+        part_name = str(outlier_info.get("part_name") or "子掃描")
+        outlier_site = str(outlier_info.get("site_name") or "其他工區")
+        primary_site = str(primary_info.get("site_name") or "主要工區")
+        primary_parts = ", ".join(primary_info.get("part_names") or []) or scan_id
+        split_scan_id = str(outlier_info.get("split_scan_id") or "")
+
+        card_payload: Dict[str, Any] = {
+            "text": (
+                f"⚠️ {mention_tag} 系統在處理多部分掃描 *{scan_id}* 時，偵測到子壓縮檔 *{part_name}* "
+                f"距離主工區（*{primary_site}*）達 *{dist_m:,.0f} 公尺*（位於 *{outlier_site}*）！"
+                f"為避免跨區合併導致 3D 網格嚴重變形與定位偏移，系統已自動將 *{part_name}* 分離為獨立掃描"
+                + (f"（`{split_scan_id}`）" if split_scan_id else "")
+                + "。"
+            ),
+            "cardsV2": [
+                {
+                    "cardId": f"subscan_outlier_{scan_id}_{int(time.time())}",
+                    "card": {
+                        "header": {
+                            "title": f"⚠️ 跨工區子掃描自動分離警告：{scan_id}",
+                            "subtitle": f"主工區：{primary_site} • 異常子檔：{part_name}（相距 {dist_m:,.0f} m）",
+                        },
+                        "sections": [
+                            {
+                                "widgets": [
+                                    {
+                                        "decoratedText": {
+                                            "topLabel": "保留於主掃描的子檔案",
+                                            "text": f"{primary_parts}（工區：{primary_site}）",
+                                        }
+                                    },
+                                    {
+                                        "decoratedText": {
+                                            "topLabel": "自動分離的遠距子檔案",
+                                            "text": (
+                                                f"{part_name} → 位於 {outlier_site}（相距 {dist_m:,.0f} 公尺）"
+                                                + (f"\n已獨立排程為：{split_scan_id}" if split_scan_id else "")
+                                            ),
+                                        }
+                                    },
+                                ]
+                            }
+                        ],
+                    },
+                }
+            ],
+        }
+        return self._dispatch_card_to_uploader(
+            scan_id=scan_id,
+            uploader_email=uploader_email,
+            uploader_name=uploader_name,
+            card_payload=card_payload,
+            thread_suffix="outlier_warn",
+        )
+
+    def notify_mesh_island_question(
+        self,
+        scan_id: str,
+        uploader_email: str,
+        uploader_name: str,
+        island_1: Dict[str, Any],
+        island_2: Dict[str, Any],
+        distance_m: float,
+        decision_token: str,
+    ) -> Dict[str, Any]:
+        """
+        Safeguard B: Tags the user in Google Chat when disconnected mesh islands > 1,000 m apart
+        are detected in `mesh.obj`, asking the user to click Yes (create 2 separate scans) or
+        No (keep 1 combined scan with two mesh islands).
+        """
+        from pc_worker.gdrive_watcher import normalize_gatheren_uploader
+
+        uploader_name, uploader_email = normalize_gatheren_uploader(uploader_name, uploader_email, scan_id)
+        self._sync_user_ids_from_db()
+        gchat_uid = self.user_gchat_ids.get(uploader_email.lower(), "")
+        mention_tag = f"<users/{gchat_uid}>" if gchat_uid else f"*{uploader_name}*"
+
+        site1 = str(island_1.get("site_name") or "區塊 1")
+        site2 = str(island_2.get("site_name") or "區塊 2")
+        v1 = int(island_1.get("vertex_count") or 0)
+        v2 = int(island_2.get("vertex_count") or 0)
+
+        q_params_yes = urllib.parse.urlencode(
+            {"scan_id": scan_id, "decision": "split", "token": decision_token}
+        )
+        q_params_no = urllib.parse.urlencode(
+            {"scan_id": scan_id, "decision": "combine", "token": decision_token}
+        )
+        yes_url = f"{PUBLIC_BASE_URL}/api/gchat/island-decision?{q_params_yes}"
+        no_url = f"{PUBLIC_BASE_URL}/api/gchat/island-decision?{q_params_no}"
+
+        card_payload: Dict[str, Any] = {
+            "text": (
+                f"❓ {mention_tag} 系統在掃描 *{scan_id}* 中偵測到 2 個相距 *{distance_m:,.0f} 公尺* 的獨立 3D 網格區塊"
+                f"（分別位於 *{site1}* 與 *{site2}*）。\n"
+                f"請問這兩個區塊是否屬於**不同工區的獨立掃描**？請點擊下方 **Yes / No** 按鈕以繼續處理："
+            ),
+            "cardsV2": [
+                {
+                    "cardId": f"island_confirm_{scan_id}",
+                    "card": {
+                        "header": {
+                            "title": f"❓ 偵測到遠距雙網格區塊：{scan_id}",
+                            "subtitle": f"兩區塊相距 {distance_m:,.0f} 公尺 • 請確認處理方式",
+                        },
+                        "sections": [
+                            {
+                                "widgets": [
+                                    {
+                                        "decoratedText": {
+                                            "topLabel": "網格區塊 A（主要工區）",
+                                            "text": f"{site1}（{v1:,} 頂點 • E:{island_1.get('twd97_x', 0):,.0f}, N:{island_1.get('twd97_y', 0):,.0f}）",
+                                        }
+                                    },
+                                    {
+                                        "decoratedText": {
+                                            "topLabel": "網格區塊 B（遠距區塊）",
+                                            "text": f"{site2}（{v2:,} 頂點 • E:{island_2.get('twd97_x', 0):,.0f}, N:{island_2.get('twd97_y', 0):,.0f}）",
+                                        }
+                                    },
+                                    {
+                                        "textParagraph": {
+                                            "text": (
+                                                "<b>請問這是兩個不同工區的掃描嗎？</b><br>"
+                                                "• 點擊 <b>「Yes（是）」</b>：拆分為 2 個獨立掃描並分別歸入正確工區<br>"
+                                                "• 點擊 <b>「No（否）」</b>：保留為 1 個合併掃描（自動將視角與定位錨定於主區塊）"
+                                            )
+                                        }
+                                    },
+                                    {
+                                        "buttonList": {
+                                            "buttons": [
+                                                {
+                                                    "text": "✅ Yes — 拆分為 2 個獨立掃描",
+                                                    "onClick": {"openLink": {"url": yes_url}},
+                                                },
+                                                {
+                                                    "text": "🔗 No — 保留為 1 個合併掃描",
+                                                    "onClick": {"openLink": {"url": no_url}},
+                                                },
+                                            ]
+                                        }
+                                    },
+                                ]
+                            }
+                        ],
+                    },
+                }
+            ],
+        }
+        return self._dispatch_card_to_uploader(
+            scan_id=scan_id,
+            uploader_email=uploader_email,
+            uploader_name=uploader_name,
+            card_payload=card_payload,
+            thread_suffix="island_confirm",
+        )
+
+    def notify_island_decision_result(
+        self,
+        scan_id: str,
+        uploader_email: str,
+        uploader_name: str,
+        decision: str,
+        summary_text: str,
+    ) -> Dict[str, Any]:
+        """Sends a follow-up confirmation message in Google Chat after the user clicks Yes or No."""
+        from pc_worker.gdrive_watcher import normalize_gatheren_uploader
+
+        uploader_name, uploader_email = normalize_gatheren_uploader(uploader_name, uploader_email, scan_id)
+        self._sync_user_ids_from_db()
+        gchat_uid = self.user_gchat_ids.get(uploader_email.lower(), "")
+        mention_tag = f"<users/{gchat_uid}>" if gchat_uid else f"*{uploader_name}*"
+        label = "拆分為 2 個獨立掃描 (Yes)" if decision == "split" else "保留為 1 個合併掃描 (No)"
+        card_payload: Dict[str, Any] = {
+            "text": f"✅ {mention_tag} 已收到您的確認（*{label}*）：{summary_text}",
+        }
+        return self._dispatch_card_to_uploader(
+            scan_id=scan_id,
+            uploader_email=uploader_email,
+            uploader_name=uploader_name,
+            card_payload=card_payload,
+            thread_suffix="island_confirm",
+        )
+
     def list_notifications(self, limit: int = 20) -> List[Dict[str, Any]]:
         with DB_LOCK, self.db._connect() as conn:
             rows = conn.execute(

@@ -1024,6 +1024,22 @@ def _walk_tight_leaf_center_and_extents(root: Dict[str, Any]) -> Tuple[float, fl
     if by_depth:
         max_d = max(by_depth.keys())
         boxes = by_depth[max_d]
+        xs_all = [b[0] for b in boxes]
+        ys_all = [b[1] for b in boxes]
+        if len(boxes) >= 2 and (max(xs_all) - min(xs_all) > 1000.0 or max(ys_all) - min(ys_all) > 1000.0):
+            # Safeguard C: Multi-island tileset (>1,000m span) -> select the dominant leaf cluster
+            best_cluster = boxes
+            best_cnt = -1
+            for anchor in boxes:
+                cluster = [
+                    b
+                    for b in boxes
+                    if math.hypot(b[0] - anchor[0], b[1] - anchor[1]) <= 1000.0
+                ]
+                if len(cluster) > best_cnt:
+                    best_cnt = len(cluster)
+                    best_cluster = cluster
+            boxes = best_cluster
         xs = [b[0] for b in boxes]
         ys = [b[1] for b in boxes]
         zs = sorted(b[2] for b in boxes)
@@ -1083,8 +1099,11 @@ def _extract_tileset_georef_and_fix_axis(tileset_path: str, geoid_sep_m: float =
         region = bv.get("region")
 
         lx, ly, lz, tight_he = _walk_tight_leaf_center_and_extents(root)
+        dom_center = (ts.get("extras") or {}).get("dominantIslandCenter")
         root_box = bv.get("box")
-        if (
+        if isinstance(dom_center, list) and len(dom_center) >= 3:
+            lx, ly, lz = float(dom_center[0]), float(dom_center[1]), float(dom_center[2])
+        elif (
             isinstance(root_box, list)
             and len(root_box) >= 12
             and (
@@ -1092,7 +1111,11 @@ def _extract_tileset_georef_and_fix_axis(tileset_path: str, geoid_sep_m: float =
                 or "gatheringcloud" in str(asset.get("generator") or "").lower()
             )
         ):
-            lx, ly, lz = float(root_box[0] or 0.0), float(root_box[1] or 0.0), float(root_box[2] or 0.0)
+            r_hx = abs(float(root_box[3] or 0.0)) + abs(float(root_box[6] or 0.0)) + abs(float(root_box[9] or 0.0))
+            r_hy = abs(float(root_box[4] or 0.0)) + abs(float(root_box[7] or 0.0)) + abs(float(root_box[10] or 0.0))
+            # Only use root_box center if it is not a huge multi-island midpoint (>1,000m half-extent)
+            if max(r_hx, r_hy) <= 1000.0 or not tight_he:
+                lx, ly, lz = float(root_box[0] or 0.0), float(root_box[1] or 0.0), float(root_box[2] or 0.0)
         if tight_he:
             out["half_extents"] = tight_he
 
