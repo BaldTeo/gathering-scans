@@ -4704,9 +4704,10 @@
               .join("")}
           </div>`
         : "";
+      const isMovingThisPin = STATE.movingCommentId && String(STATE.movingCommentId) === String(c.comment_id);
       const pinHtml = `
-        <div class="gs-scan-comment-pin" data-comment-pin-id="${cid}" style="transform:translate(-50%,-50%);">
-          <div class="gs-comment-pin-icon" data-pin-toggle-icon="1" style="--pin-avatar-bg:${avatar.bg};">
+        <div class="gs-scan-comment-pin ${isMovingThisPin ? "is-moving-pin" : ""}" data-comment-pin-id="${cid}" style="transform:translate(-50%,-50%);">
+          <div class="gs-comment-pin-icon" data-pin-toggle-icon="1" style="--pin-avatar-bg:${isMovingThisPin ? "#f59e0b" : avatar.bg};${isMovingThisPin ? "box-shadow:0 0 0 3px #fde047,0 4px 12px rgba(245,158,11,0.7);" : ""}">
             <span class="gs-comment-pin-avatar-char">${avatarChars}</span>
             ${cPhotos.length ? `<span style="position:absolute;bottom:-3px;right:-5px;background:#0284c7;color:#fff;font-size:8.5px;font-weight:800;padding:0 3px;border-radius:999px;border:1px solid #0f172a;">📷${cPhotos.length}</span>` : ""}
           </div>
@@ -4723,6 +4724,7 @@
             ${
               canEditThis && cid
                 ? `<div style="display:flex;justify-content:flex-end;gap:4px;margin-top:6px;">
+                     <button type="button" class="btn-xs btn-move-comment ${isMovingThisPin ? "active" : ""}" data-cid="${cid}" data-pin-move="${cid}" title="${tr("移動標記位置 (點擊 3D 模型新位置)", "Move Note Pin in 3D")}" style="height:22px;padding:0 6px;font-size:10.5px;pointer-events:auto;cursor:pointer;${isMovingThisPin ? "background:#f59e0b;color:#111;border-color:#f59e0b;font-weight:700;" : ""}">${isMovingThisPin ? tr("🎯 點擊3D...", "🎯 Click 3D...") : `📍 ${tr("移動位置", "Move Pin")}`}</button>
                      <button type="button" class="btn-xs" data-pin-upload-local="${cid}" title="${tr("從裝置上傳照片", "Upload Photo from Device")}" style="height:22px;padding:0 6px;font-size:10.5px;pointer-events:auto;cursor:pointer;">📁+</button>
                      <button type="button" class="btn-xs" data-pin-upload-photo="${cid}" style="height:22px;padding:0 7px;font-size:10.5px;color:var(--ui-accent);border-color:var(--ui-accent);pointer-events:auto;cursor:pointer;">📷+ ${tr("新增照片", "Add Photo")}</button>
                    </div>`
@@ -4787,6 +4789,19 @@
             } catch (err) {
               showToast(`Remove Photo Error: ${err.message}`);
             }
+            return;
+          }
+          const movePinBtn = ev.target && ev.target.closest ? ev.target.closest("[data-pin-move]") : null;
+          if (movePinBtn && c.comment_id) {
+            ev.stopPropagation();
+            STATE.movingCommentId = STATE.movingCommentId === c.comment_id ? null : c.comment_id;
+            const canvasEl = document.getElementById("studioCanvas");
+            if (canvasEl) canvasEl.style.cursor = STATE.movingCommentId ? "crosshair" : "";
+            if (STATE.movingCommentId) {
+              showToast(tr("📍 請在 3D 模型上點擊新的標記位置 (按 Esc 取消)", "📍 Click new 3D point on scan to move note (Esc to cancel)"));
+            }
+            renderCommentPins3D();
+            if (STATE.activeTool === "comments" && document.getElementById("commentsListBox")) openCommentsInspector();
             return;
           }
           const uploadLocalBtn = ev.target && ev.target.closest ? ev.target.closest("[data-pin-upload-local]") : null;

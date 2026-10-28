@@ -1531,6 +1531,99 @@ class ContoursAndCadMixin:
                 return self._extract_merged_from_list(parent_scan)
         return []
 
+    def _flatten_merged_from_leaves(
+        self, merged_from_list: List[Dict[str, Any]], _visited: Optional[set] = None
+    ) -> List[Dict[str, Any]]:
+        if not isinstance(merged_from_list, list) or not merged_from_list:
+            return []
+        visited = set(_visited) if _visited else set()
+
+        def _mat3_mul(a: List[float], b: List[float]) -> List[float]:
+            return [
+                round(a[0] * b[0] + a[1] * b[3] + a[2] * b[6], 8),
+                round(a[0] * b[1] + a[1] * b[4] + a[2] * b[7], 8),
+                round(a[0] * b[2] + a[1] * b[5] + a[2] * b[8], 8),
+                round(a[3] * b[0] + a[4] * b[3] + a[5] * b[6], 8),
+                round(a[3] * b[1] + a[4] * b[4] + a[5] * b[7], 8),
+                round(a[3] * b[2] + a[4] * b[5] + a[5] * b[8], 8),
+                round(a[6] * b[0] + a[7] * b[3] + a[8] * b[6], 8),
+                round(a[6] * b[1] + a[7] * b[4] + a[8] * b[7], 8),
+                round(a[6] * b[2] + a[7] * b[5] + a[8] * b[8], 8),
+            ]
+
+        leaves: List[Dict[str, Any]] = []
+        for mf in merged_from_list:
+            if not isinstance(mf, dict):
+                continue
+            sub_sid = str(mf.get("scan_id") or "").strip()
+            base_sid = str(mf.get("derived_from_scan_id") or "").strip()
+            child_mf_list: List[Dict[str, Any]] = []
+            for check_sid in (sub_sid, base_sid):
+                if not check_sid or check_sid in visited:
+                    continue
+                s_rec = self.db.get_scan(check_sid)
+                if s_rec:
+                    extracted = self._extract_merged_from_list(s_rec)
+                    if extracted:
+                        visited.add(check_sid)
+                        child_mf_list = self._flatten_merged_from_leaves(extracted, visited)
+                        break
+            if child_mf_list:
+                na_2 = mf.get("native_anchor_zup")
+                ma_2 = mf.get("merged_anchor_zup")
+                rm_2 = [
+                    float(x)
+                    for x in (
+                        mf.get("r_zup_rowmajor")
+                        if isinstance(mf.get("r_zup_rowmajor"), (list, tuple)) and len(mf.get("r_zup_rowmajor")) >= 9
+                        else [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0]
+                    )[:9]
+                ]
+                for c_mf in child_mf_list:
+                    comp = dict(c_mf)
+                    na_1 = c_mf.get("native_anchor_zup")
+                    ma_1 = c_mf.get("merged_anchor_zup")
+                    rm_1 = [
+                        float(x)
+                        for x in (
+                            c_mf.get("r_zup_rowmajor")
+                            if isinstance(c_mf.get("r_zup_rowmajor"), (list, tuple)) and len(c_mf.get("r_zup_rowmajor")) >= 9
+                            else [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0]
+                        )[:9]
+                    ]
+                    if (
+                        isinstance(na_1, (list, tuple))
+                        and len(na_1) >= 3
+                        and isinstance(ma_1, (list, tuple))
+                        and len(ma_1) >= 3
+                        and isinstance(na_2, (list, tuple))
+                        and len(na_2) >= 3
+                        and isinstance(ma_2, (list, tuple))
+                        and len(ma_2) >= 3
+                    ):
+                        dx = float(ma_1[0]) - float(na_2[0])
+                        dy = float(ma_1[1]) - float(na_2[1])
+                        dz = float(ma_1[2]) - float(na_2[2])
+                        ma_comp = [
+                            round(float(ma_2[0]) + rm_2[0] * dx + rm_2[1] * dy + rm_2[2] * dz, 4),
+                            round(float(ma_2[1]) + rm_2[3] * dx + rm_2[4] * dy + rm_2[5] * dz, 4),
+                            round(float(ma_2[2]) + rm_2[6] * dx + rm_2[7] * dy + rm_2[8] * dz, 4),
+                        ]
+                        na_comp = [round(float(na_1[0]), 4), round(float(na_1[1]), 4), round(float(na_1[2]), 4)]
+                        rm_comp = _mat3_mul(rm_2, rm_1)
+                        comp["native_anchor_zup"] = na_comp
+                        comp["merged_anchor_zup"] = ma_comp
+                        comp["r_zup_rowmajor"] = rm_comp
+                        comp["zup_shift"] = [
+                            round(ma_comp[0] - na_comp[0], 4),
+                            round(ma_comp[1] - na_comp[1], 4),
+                            round(ma_comp[2] - na_comp[2], 4),
+                        ]
+                    leaves.append(comp)
+            else:
+                leaves.append(dict(mf))
+        return leaves
+
     def _get_candidate_camera_dirs(self, scan: Dict[str, Any]) -> List[str]:
         dirs: List[str] = []
         for d in self._get_single_scan_camera_dirs(scan):
@@ -1552,7 +1645,7 @@ class ContoursAndCadMixin:
                 for d in self._get_single_scan_camera_dirs(d_scan):
                     if d not in dirs:
                         dirs.append(d)
-        for mf in self._extract_merged_from_list(scan):
+        for mf in self._flatten_merged_from_leaves(self._extract_merged_from_list(scan)):
             for sid_key in ("scan_id", "derived_from_scan_id"):
                 sid = str(mf.get(sid_key) or "").strip()
                 if not sid:
@@ -1673,8 +1766,8 @@ class ContoursAndCadMixin:
             return self._camera_mem_cache[scan_id]
 
         proj_dir = scan.get("project_dir") or os.path.join(SCANS_ROOT_DIR, scan_id)
-        portable_cache = os.path.join(CAMERAS_CACHE_DIR, f"{scan_id}_cameras_v6.json")
-        proj_cache = os.path.join(proj_dir, "_cameras_cache_v6.json") if os.path.isdir(proj_dir) else None
+        portable_cache = os.path.join(CAMERAS_CACHE_DIR, f"{scan_id}_cameras_v7.json")
+        proj_cache = os.path.join(proj_dir, "_cameras_cache_v7.json") if os.path.isdir(proj_dir) else None
 
         for cache_cand in (proj_cache, portable_cache):
             if cache_cand and os.path.isfile(cache_cand):
@@ -1687,19 +1780,23 @@ class ContoursAndCadMixin:
                 except Exception:
                     pass
 
-        merged_from_list = self._extract_merged_from_list(scan)
+        merged_from_list = self._flatten_merged_from_leaves(self._extract_merged_from_list(scan))
         source_specs: List[Tuple[str, List[str], Optional[Dict[str, Any]]]] = []
+        source_name_map: Dict[str, str] = {}
         if merged_from_list:
             for idx_m, mf in enumerate(merged_from_list):
                 sub_sid = str(mf.get("scan_id") or "").strip()
                 base_sid = str(mf.get("derived_from_scan_id") or "").strip()
                 nested_sid = ""
                 sub_dirs: List[str] = []
+                resolved_name = ""
                 for sid in (sub_sid, base_sid):
                     if not sid:
                         continue
                     s_rec = self.db.get_scan(sid)
                     if s_rec:
+                        if not resolved_name and s_rec.get("name"):
+                            resolved_name = str(s_rec.get("name")).strip()
                         for d in self._get_single_scan_camera_dirs(s_rec):
                             if d not in sub_dirs:
                                 sub_dirs.append(d)
@@ -1719,6 +1816,8 @@ class ContoursAndCadMixin:
                                 nested_sid = nested_deriv
                             nd_rec = self.db.get_scan(nested_deriv)
                             if nd_rec:
+                                if nd_rec.get("name"):
+                                    resolved_name = str(nd_rec.get("name")).strip()
                                 for d in self._get_single_scan_camera_dirs(nd_rec):
                                     if d not in sub_dirs:
                                         sub_dirs.append(d)
@@ -1729,9 +1828,14 @@ class ContoursAndCadMixin:
                         if os.path.isdir(fb_d) and fb_d not in sub_dirs:
                             sub_dirs.append(fb_d)
                 tag = base_sid or nested_sid or sub_sid or f"part_{idx_m + 1}"
+                clean_nm = resolved_name or str(mf.get("name") or tag).strip()
+                if clean_nm.endswith("_Edited"):
+                    clean_nm = clean_nm[:-7]
+                source_name_map[tag] = clean_nm
                 if sub_dirs:
                     source_specs.append((tag, sub_dirs, mf))
         if not source_specs:
+            source_name_map[scan_id] = str(scan.get("name") or scan_id).strip()
             source_specs.append(("", self._get_candidate_camera_dirs(scan), None))
 
         catalog: List[Dict[str, Any]] = []
@@ -1989,11 +2093,15 @@ class ContoursAndCadMixin:
                         raw_img_str = str(c_rec[1] or "").strip()
                         if not raw_img_str:
                             continue
-                        fname = os.path.basename(raw_img_str.replace("\\", "/"))
+                        norm_raw_img = raw_img_str.replace("\\", "/")
+                        fname = os.path.basename(norm_raw_img)
+                        parent_2 = os.path.basename(os.path.dirname(os.path.dirname(norm_raw_img)))
+                        has_multipart_sub = ("of" in parent_2.lower()) and (parent_2.lower() not in ("inputs", "images", "opf_files", src_tag.lower()))
+                        rel_fname = f"{parent_2}/{fname}" if has_multipart_sub else fname
                         abs_img = os.path.normpath(raw_img_str)
                         if not os.path.isfile(abs_img) and fname in local_jpg_map:
                             abs_img = local_jpg_map[fname]
-                        dedup_key = f"{src_tag}:{fname}" if src_tag else os.path.normcase(abs_img)
+                        dedup_key = f"{src_tag}:{rel_fname}" if src_tag else os.path.normcase(abs_img)
                         if dedup_key in seen_source_keys:
                             continue
                         seen_source_keys.add(dedup_key)
@@ -2043,11 +2151,14 @@ class ContoursAndCadMixin:
                         h_sigma_cm = round(math.hypot(float(acc[0]), float(acc[1])) * 100.0, 2) if isinstance(acc, (list, tuple)) and len(acc) >= 2 else 1.4
                         v_sigma_cm = round(float(acc[2]) * 100.0, 2) if isinstance(acc, (list, tuple)) and len(acc) >= 3 else 2.0
 
-                        display_name = f"{src_tag}/{fname}" if src_tag else fname
+                        display_name = f"{src_tag}/{rel_fname}" if src_tag else rel_fname
+                        eff_sub = src_tag or scan_id
                         p4m_entries.append(
                             {
                                 "filename": display_name,
-                                "sub_scan": src_tag or scan_id,
+                                "sub_scan": eff_sub,
+                                "source_scan_id": eff_sub,
+                                "source_scan_name": source_name_map.get(eff_sub) or eff_sub,
                                 "abs_path": abs_img,
                                 "e": round(cam_e, 3),
                                 "n": round(cam_n, 3),
@@ -2151,10 +2262,13 @@ class ContoursAndCadMixin:
                             adj_yaw = (math.degrees(math.atan2(f_n[0], f_n[1])) + 360.0) % 360.0
                             adj_pitch = math.degrees(math.asin(max(-1.0, min(1.0, f_n[2]))))
                             display_name = f"{prefix_tag}/{fname}" if prefix_tag else fname
+                            eff_sub = prefix_tag or scan_id
                             opf_entries.append(
                                 {
                                     "filename": display_name,
-                                    "sub_scan": prefix_tag or scan_id,
+                                    "sub_scan": eff_sub,
+                                    "source_scan_id": eff_sub,
+                                    "source_scan_name": source_name_map.get(eff_sub) or eff_sub,
                                     "abs_path": abs_img,
                                     "e": round(cam_e, 3),
                                     "n": round(cam_n, 3),
@@ -2234,10 +2348,13 @@ class ContoursAndCadMixin:
                             )
                             adj_yaw = (math.degrees(math.atan2(f_n[0], f_n[1])) + 360.0) % 360.0
                             display_name = f"{src_tag}/{fname}" if src_tag else fname
+                            eff_sub = src_tag or scan_id
                             exif_entries.append(
                                 {
                                     "filename": display_name,
-                                    "sub_scan": src_tag or scan_id,
+                                    "sub_scan": eff_sub,
+                                    "source_scan_id": eff_sub,
+                                    "source_scan_name": source_name_map.get(eff_sub) or eff_sub,
                                     "abs_path": os.path.abspath(jp),
                                     "e": round(cam_e, 3),
                                     "n": round(cam_n, 3),
@@ -2571,17 +2688,23 @@ class ContoursAndCadMixin:
         stride = max(1, math.ceil(total / max_items)) if total > max_items else 1
         sampled = catalog[::stride][:max_items]
         sub_scans_counts: Dict[str, int] = {}
+        sub_scan_names: Dict[str, str] = {}
         for c in catalog:
             st = str(c.get("sub_scan") or resolved_id)
             sub_scans_counts[st] = sub_scans_counts.get(st, 0) + 1
+            if st not in sub_scan_names and c.get("source_scan_name"):
+                sub_scan_names[st] = str(c["source_scan_name"])
 
         cameras_out = []
         for c in sampled:
             fk = str(c.get("filename") or "")
+            st = str(c.get("sub_scan") or resolved_id)
             cameras_out.append(
                 {
                     "filename": fk,
-                    "sub_scan": c.get("sub_scan") or resolved_id,
+                    "sub_scan": st,
+                    "source_scan_id": c.get("source_scan_id") or st,
+                    "source_scan_name": c.get("source_scan_name") or sub_scan_names.get(st) or st,
                     "url": f"/api/camera-photo?scan_id={quote(resolved_id)}&file={quote(fk)}",
                     "e": c["e"],
                     "n": c["n"],

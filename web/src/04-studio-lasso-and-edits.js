@@ -2811,6 +2811,42 @@
       }
     }
 
+    if (STATE.movingCommentId) {
+      const movingCid = STATE.movingCommentId;
+      STATE.movingCommentId = null;
+      const canvasEl = document.getElementById("studioCanvas");
+      if (canvasEl) canvasEl.style.cursor = "";
+      const pos_x = Number(pt.x.toFixed(3));
+      const pos_y = Number(pt.y.toFixed(3));
+      const pos_z = Number(pt.z.toFixed(3));
+      apiPost("/api/comments/update", {
+        action: "update",
+        scan_id: STATE.activeScanId,
+        comment_id: movingCid,
+        pos_x,
+        pos_y,
+        pos_z,
+        twd97_e: Number(twd.e.toFixed(3)),
+        twd97_n: Number(twd.n.toFixed(3)),
+        twd97_h: Number(twd.h.toFixed(3)),
+        author_email: STATE.currentUser?.email || "",
+        author_name: typeof getCurrentCommentActorName === "function" ? getCurrentCommentActorName() : "Engineer",
+      })
+        .then(async (res) => {
+          if (Array.isArray(res?.comments) && STATE.activeScan) {
+            STATE.activeScan.comments = res.comments;
+          }
+          await refreshScansCatalog();
+          if (typeof renderCommentPins3D === "function") renderCommentPins3D();
+          if (STATE.activeTool === "comments" && typeof openCommentsInspector === "function") {
+            openCommentsInspector(pt, twd);
+          }
+          showToast(tr("✅ 已更新標記位置", "✅ Note position updated"));
+        })
+        .catch((err) => showToast(`Move Note Error: ${err.message}`, "error"));
+      return;
+    }
+
     if (tool === "coordinates") {
       clearTempDistanceVisuals();
       const coordIndex = STATE.completedMeasurements.filter((m) => m.type === "coordinates").length + 1;

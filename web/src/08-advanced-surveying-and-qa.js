@@ -3276,7 +3276,10 @@
              ${subKeys
                .map((k, idx) => {
                  const col = SUB_SCAN_TRAJ_PALETTE[idx % SUB_SCAN_TRAJ_PALETTE.length];
-                 const shortK = k.replace(/^catch_/, "");
+                 const matchCam = Array.isArray(camMeta?.cameras)
+                   ? camMeta.cameras.find((c) => String(c.sub_scan || c.source_scan_id || "") === k)
+                   : null;
+                 const shortK = String(matchCam?.source_scan_name || k).replace(/^catch_/, "");
                  return `<span style="display:inline-flex;align-items:center;gap:4px;font-size:10px;padding:1px 6px;border-radius:4px;background:var(--ui-bg-subtle);border:1px solid var(--ui-border);">
                            <span style="width:7px;height:7px;border-radius:50%;background:${col};"></span>
                            <span>${escapeHtml(shortK)} (${subScans[k]})</span>
@@ -3908,6 +3911,7 @@
                 canEditThis && cid
                   ? `<button type="button" class="btn-xs gs-comment-folder-icon-btn" data-comment-find-photos="${cid}" title="${tr("檢視此標註位置的 RTK 實景照片並選擇附加", "Find & attach RTK photos at this comment's location")}" aria-label="${tr("選擇位置照片", "Find Location Photos")}" style="color:var(--ui-accent);border-color:var(--ui-accent);">📷+</button>
                      <button type="button" class="btn-xs gs-comment-folder-icon-btn" data-comment-upload-photo="${cid}" title="${tr("從電腦或手機上傳照片至 Google Drive 並附加", "Upload local photo to Google Drive & attach")}" aria-label="${tr("上傳檔案", "Upload File")}">📁</button>
+                     <button type="button" class="btn-xs gs-comment-folder-icon-btn btn-move-comment ${STATE.movingCommentId === cid ? "active" : ""}" data-cid="${cid}" data-comment-move="${cid}" title="${tr("移動標記位置 (點擊 3D 模型新位置)", "Move Note Pin in 3D")}" aria-label="${tr("移動標記位置", "Move Note Pin")}" style="${STATE.movingCommentId === cid ? "background:#f59e0b;color:#111;border-color:#f59e0b;font-weight:700;" : ""}">${STATE.movingCommentId === cid ? tr("🎯 點擊 3D...", "🎯 Click 3D...") : "📍"}</button>
                      <button type="button" class="btn-xs gs-comment-folder-icon-btn" data-comment-edit="${cid}" title="${tr("編輯標註", "Edit Comment")}" aria-label="${tr("編輯標註", "Edit Comment")}">
                        <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
                      </button>
@@ -4472,6 +4476,27 @@
       });
     });
 
+    listBox.querySelectorAll(".btn-move-comment").forEach((btn) => {
+      btn.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        const cid = btn.getAttribute("data-cid") || btn.getAttribute("data-comment-move") || "";
+        if (!cid) return;
+        STATE.movingCommentId = STATE.movingCommentId === cid ? null : cid;
+        const canvasEl = document.getElementById("studioCanvas");
+        if (canvasEl) canvasEl.style.cursor = STATE.movingCommentId ? "crosshair" : "";
+        if (STATE.movingCommentId) {
+          showToast(
+            tr(
+              "📍 請在 3D 模型上點擊新的標記位置 (按 Esc 取消)",
+              "📍 Click new 3D point on scan to move note (Esc to cancel)"
+            )
+          );
+        }
+        if (typeof renderCommentPins3D === "function") renderCommentPins3D();
+        if (typeof openCommentsInspector === "function") openCommentsInspector(pt, twd);
+      });
+    });
+
     listBox.querySelectorAll("[data-comment-edit]").forEach((btn) => {
       btn.addEventListener("click", (ev) => {
         ev.stopPropagation();
@@ -4590,6 +4615,19 @@
 
     document.getElementById("btnStudioSavedViews")?.addEventListener("click", () => {
       openSavedMeasurementsInspector();
+    });
+
+    document.addEventListener("keydown", (ev) => {
+      if (ev.key === "Escape" && STATE.movingCommentId) {
+        STATE.movingCommentId = null;
+        const canvasEl = document.getElementById("studioCanvas");
+        if (canvasEl) canvasEl.style.cursor = "";
+        if (typeof renderCommentPins3D === "function") renderCommentPins3D();
+        if (STATE.activeTool === "comments" && typeof openCommentsInspector === "function") {
+          openCommentsInspector();
+        }
+        showToast(tr("已取消移動標記位置", "Cancelled moving note pin"));
+      }
     });
   }
 

@@ -123,8 +123,8 @@ class CategorizationHeuristicsMixin:
         scan = self._resolve_scan_record(scan_id) if not cached_only else (self.db.get_scan(scan_id) or {})
         prev_cached = self.get_saved_categorization(scan_id, scan) if (not cached_only or not force_recompute) else None
         preserved_overrides = (
-            dict(prev_cached.get("manual_overrides"))
-            if isinstance(prev_cached, dict) and isinstance(prev_cached.get("manual_overrides"), dict) and not reset_manual_overrides
+            self._load_existing_manual_overrides(scan_id, scan)
+            if not reset_manual_overrides
             else None
         )
 

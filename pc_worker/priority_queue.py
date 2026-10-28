@@ -9,6 +9,7 @@ import os
 import json
 import time
 import math
+import shutil
 import sqlite3
 import threading
 from datetime import datetime, timezone
@@ -769,7 +770,7 @@ class ScanQueueDB:
         sc.setdefault("project_dir", d.get("project_dir") or "")
         return sc
 
-    def clone_comments_to_scan(self, source_scan_id: str, target_scan_id: str) -> int:
+    def clone_comments_to_scan(self, source_scan_id: str, target_scan_id: str, transform_fn=None) -> int:
         src_id = (source_scan_id or "").strip()
         dst_id = (target_scan_id or "").strip()
         if not src_id or not dst_id or src_id.lower() == dst_id.lower():
@@ -782,16 +783,61 @@ class ScanQueueDB:
                     (src_id,),
                 ).fetchall()
             ]
+            src_row = conn.execute(
+                "SELECT project_dir, extra_json FROM scans WHERE lower(scan_id) = lower(?)", (src_id,)
+            ).fetchone()
+            dst_row = conn.execute(
+                "SELECT project_dir, extra_json FROM scans WHERE lower(scan_id) = lower(?)", (dst_id,)
+            ).fetchone()
+
+            src_extra = {}
+            dst_extra = {}
+            if src_row and src_row["extra_json"]:
+                try:
+                    src_extra = json.loads(src_row["extra_json"])
+                except Exception:
+                    pass
+            if dst_row and dst_row["extra_json"]:
+                try:
+                    dst_extra = json.loads(dst_row["extra_json"])
+                except Exception:
+                    pass
+
+            src_folders = [str(f).strip() for f in (src_extra.get("comment_folders") or []) if str(f).strip()]
+            dst_folders = [str(f).strip() for f in (dst_extra.get("comment_folders") or []) if str(f).strip()]
+            for f in src_folders:
+                if f not in dst_folders:
+                    dst_folders.append(f)
+
             copied = 0
             for idx, c in enumerate(rows):
                 orig_cid = str(c.get("comment_id") or f"cmt_{idx}")
                 new_cid = f"{orig_cid}_{dst_id[-16:]}"
+                px = float(c.get("pos_x") or 0.0)
+                py = float(c.get("pos_y") or 0.0)
+                pz = float(c.get("pos_z") or 0.0)
+                ce = float(c.get("twd97_e") or 0.0)
+                cn = float(c.get("twd97_n") or 0.0)
+                ch = float(c.get("twd97_h") or 0.0)
+                if callable(transform_fn):
+                    try:
+                        px, py, pz, ce, cn, ch = transform_fn(px, py, pz, ce, cn, ch)
+                    except Exception:
+                        pass
+
+                folder_val = str(c.get("folder") or "").strip()
+                if not folder_val and src_folders:
+                    folder_val = src_folders[0]
+                if folder_val and folder_val not in dst_folders:
+                    dst_folders.append(folder_val)
+
                 conn.execute(
                     """
                     INSERT OR REPLACE INTO scan_comments (
                         comment_id, scan_id, author_email, author_name, text,
-                        pos_x, pos_y, pos_z, twd97_e, twd97_n, twd97_h, camera_json, photos_json, created_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        pos_x, pos_y, pos_z, twd97_e, twd97_n, twd97_h,
+                        camera_json, photos_json, folder, created_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         new_cid,
@@ -799,15 +845,124 @@ class ScanQueueDB:
                         c.get("author_email") or "",
                         c.get("author_name") or "User",
                         c.get("text") or "",
-                        float(c.get("pos_x") or 0.0),
-                        float(c.get("pos_y") or 0.0),
-                        float(c.get("pos_z") or 0.0),
-                        float(c.get("twd97_e") or 0.0),
-                        float(c.get("twd97_n") or 0.0),
-                        float(c.get("twd97_h") or 0.0),
+                        px,
+                        py,
+                        pz,
+                        ce,
+                        cn,
+                        ch,
                         c.get("camera_json") or "{}",
                         c.get("photos_json") or json.dumps(c.get("photos") or [], ensure_ascii=False),
+                        folder_val,
                         c.get("created_at") or "",
+                    ),
+                )
+                copied += 1
+
+            if dst_row is not None and dst_folders:
+                dst_extra["comment_folders"] = dst_folders
+                conn.execute(
+                    "UPDATE scans SET extra_json = ? WHERE lower(scan_id) = lower(?)",
+                    (json.dumps(dst_extra, ensure_ascii=False), dst_id),
+                )
+
+            if src_row and dst_row and src_row["project_dir"] and dst_row["project_dir"]:
+                src_pdir = os.path.join(str(src_row["project_dir"]), "comment_photos")
+                dst_pdir = os.path.join(str(dst_row["project_dir"]), "comment_photos")
+                if os.path.isdir(src_pdir):
+                    os.makedirs(dst_pdir, exist_ok=True)
+                    for fn in os.listdir(src_pdir):
+                        sp = os.path.join(src_pdir, fn)
+                        dp = os.path.join(dst_pdir, fn)
+                        if os.path.isfile(sp) and not os.path.exists(dp):
+                            try:
+                                shutil.copy2(sp, dp)
+                            except Exception:
+                                pass
+
+            if copied or dst_folders:
+                conn.commit()
+        return copied
+
+    def clone_measurement_bookmarks_to_scan(self, source_scan_id: str, target_scan_id: str, transform_fn=None) -> int:
+        src_id = (source_scan_id or "").strip()
+        dst_id = (target_scan_id or "").strip()
+        if not src_id or not dst_id or src_id.lower() == dst_id.lower():
+            return 0
+
+        def _tx_pt(pt_obj):
+            if not callable(transform_fn) or not isinstance(pt_obj, dict):
+                return pt_obj
+            if "x" in pt_obj and "y" in pt_obj and "z" in pt_obj:
+                try:
+                    nx, ny, nz, ne, nn, nh = transform_fn(
+                        float(pt_obj.get("x") or 0.0),
+                        float(pt_obj.get("y") or 0.0),
+                        float(pt_obj.get("z") or 0.0),
+                        float(pt_obj.get("twd97_e") or pt_obj.get("e") or 0.0),
+                        float(pt_obj.get("twd97_n") or pt_obj.get("n") or 0.0),
+                        float(pt_obj.get("twd97_h") or pt_obj.get("h") or 0.0),
+                    )
+                    pt_obj["x"], pt_obj["y"], pt_obj["z"] = nx, ny, nz
+                    if "twd97_e" in pt_obj:
+                        pt_obj["twd97_e"], pt_obj["twd97_n"], pt_obj["twd97_h"] = ne, nn, nh
+                    if "e" in pt_obj:
+                        pt_obj["e"], pt_obj["n"], pt_obj["h"] = ne, nn, nh
+                except Exception:
+                    pass
+            return pt_obj
+
+        def _tx_walk(node):
+            if not callable(transform_fn):
+                return node
+            if isinstance(node, dict):
+                _tx_pt(node)
+                for k, v in list(node.items()):
+                    if isinstance(v, (dict, list)):
+                        _tx_walk(v)
+            elif isinstance(node, list):
+                for item in node:
+                    if isinstance(item, (dict, list)):
+                        _tx_walk(item)
+            return node
+
+        with DB_LOCK, self._connect() as conn:
+            try:
+                rows = [
+                    dict(r)
+                    for r in conn.execute(
+                        "SELECT * FROM scan_measurement_bookmarks WHERE lower(scan_id) = lower(?)",
+                        (src_id,),
+                    ).fetchall()
+                ]
+            except Exception:
+                return 0
+            copied = 0
+            for idx, r in enumerate(rows):
+                orig_bid = str(r.get("bookmark_id") or f"bm_{idx}")
+                new_bid = f"{orig_bid}_{dst_id[-16:]}"
+                state_str = r.get("state_json") or "{}"
+                if callable(transform_fn):
+                    try:
+                        st_obj = json.loads(state_str)
+                        _tx_walk(st_obj)
+                        state_str = json.dumps(st_obj, ensure_ascii=False)
+                    except Exception:
+                        pass
+                conn.execute(
+                    """
+                    INSERT OR REPLACE INTO scan_measurement_bookmarks (
+                        bookmark_id, scan_id, title, author_email, author_name, state_json, created_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        new_bid,
+                        dst_id,
+                        r.get("title") or "Saved Survey View",
+                        r.get("author_email") or "",
+                        r.get("author_name") or "User",
+                        state_str,
+                        r.get("created_at") or "",
                     ),
                 )
                 copied += 1
@@ -1683,6 +1838,12 @@ class ScanQueueDB:
         photos: Optional[Any] = None,
         append_photos: Optional[Any] = None,
         folder: Optional[str] = None,
+        pos_x: Optional[float] = None,
+        pos_y: Optional[float] = None,
+        pos_z: Optional[float] = None,
+        twd97_e: Optional[float] = None,
+        twd97_n: Optional[float] = None,
+        twd97_h: Optional[float] = None,
     ) -> Optional[Dict[str, Any]]:
         if not comment_id:
             return None
@@ -1695,7 +1856,8 @@ class ScanQueueDB:
             existing_dict = self._comment_row_to_dict(existing_row)
             clean_text = (text or "").strip() if text is not None else ""
             final_text = clean_text if clean_text else str(existing_dict.get("text") or "").strip()
-            if not final_text and photos is None and append_photos is None and folder is None:
+            has_pos = any(v is not None for v in (pos_x, pos_y, pos_z, twd97_e, twd97_n, twd97_h))
+            if not final_text and photos is None and append_photos is None and folder is None and not has_pos:
                 return None
             final_author = (
                 author_name.strip()
@@ -1714,9 +1876,32 @@ class ScanQueueDB:
                 if folder is not None
                 else str(existing_dict.get("folder") or "").strip()
             )
+            final_px = float(pos_x) if pos_x is not None else float(existing_dict.get("pos_x") or 0.0)
+            final_py = float(pos_y) if pos_y is not None else float(existing_dict.get("pos_y") or 0.0)
+            final_pz = float(pos_z) if pos_z is not None else float(existing_dict.get("pos_z") or 0.0)
+            final_e = float(twd97_e) if twd97_e is not None else float(existing_dict.get("twd97_e") or 0.0)
+            final_n = float(twd97_n) if twd97_n is not None else float(existing_dict.get("twd97_n") or 0.0)
+            final_h = float(twd97_h) if twd97_h is not None else float(existing_dict.get("twd97_h") or 0.0)
             conn.execute(
-                "UPDATE scan_comments SET text = ?, author_name = ?, photos_json = ?, folder = ? WHERE comment_id = ?",
-                (final_text, final_author, photos_json_str, final_folder, comment_id),
+                """
+                UPDATE scan_comments
+                SET text = ?, author_name = ?, photos_json = ?, folder = ?,
+                    pos_x = ?, pos_y = ?, pos_z = ?, twd97_e = ?, twd97_n = ?, twd97_h = ?
+                WHERE comment_id = ?
+                """,
+                (
+                    final_text,
+                    final_author,
+                    photos_json_str,
+                    final_folder,
+                    final_px,
+                    final_py,
+                    final_pz,
+                    final_e,
+                    final_n,
+                    final_h,
+                    comment_id,
+                ),
             )
             if final_folder and existing_dict.get("scan_id"):
                 sid_u = str(existing_dict["scan_id"])

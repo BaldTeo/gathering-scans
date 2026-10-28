@@ -1740,6 +1740,7 @@ class OptimizerBridge:
             total_images = 0
             total_deleted_faces = 0
             merged_from_meta: List[Dict[str, Any]] = []
+            layer_transforms_by_sid: Dict[str, Dict[str, Any]] = {}
             applied_steps: List[str] = [f"Aligned & merged {num_scans} scans (4K multi-tile)"]
             merged_parts: List[Dict[str, Any]] = []
 
@@ -2398,20 +2399,84 @@ class OptimizerBridge:
                     scan_kept_any = True
 
                 if scan_kept_any:
-                    merged_from_meta.append(
-                        {
-                            "scan_id": sid,
-                            "derived_from_scan_id": str(sc.get("derived_from_scan_id") or ""),
-                            "name": sc.get("name") or sid,
-                            "position_three": [round(tx, 4), round(ty, 4), round(tz, 4)],
-                            "quaternion_three": [round(float(x), 6) for x in quat_three[:4]],
-                            "euler_deg_three": [round(rx_deg, 2), round(ry_deg, 2), round(rz_deg, 2)],
-                            "native_anchor_zup": [round(float(x), 4) for x in native_anchor_twd],
-                            "merged_anchor_zup": [round(float(x), 4) for x in merged_anchor_twd],
-                            "zup_shift": [round(float(x), 4) for x in (merged_anchor_twd - native_anchor_twd)],
-                            "r_zup_rowmajor": [round(float(x), 8) for x in r_zup.ravel()],
-                        }
-                    )
+                    layer_transforms_by_sid[sid] = {
+                        "na": native_anchor_twd.copy(),
+                        "ma": merged_anchor_twd.copy(),
+                        "R": r_zup.copy(),
+                        "sc": sc,
+                    }
+
+                    def _extract_sc_merged_from(s_obj: Dict[str, Any], _seen: Optional[set] = None) -> List[Dict[str, Any]]:
+                        if not isinstance(s_obj, dict):
+                            return []
+                        seen_s = set(_seen) if _seen else set()
+                        mf_l = s_obj.get("merged_from")
+                        if isinstance(mf_l, list) and mf_l:
+                            return [x for x in mf_l if isinstance(x, dict)]
+                        ex_r = s_obj.get("extra_json")
+                        ex_d = json.loads(ex_r) if isinstance(ex_r, str) and ex_r.strip() else (ex_r if isinstance(ex_r, dict) else {})
+                        if isinstance(ex_d.get("merged_from"), list) and ex_d["merged_from"]:
+                            return [x for x in ex_d["merged_from"] if isinstance(x, dict)]
+                        p_id = str(s_obj.get("derived_from_scan_id") or ex_d.get("derived_from_scan_id") or "").strip()
+                        if p_id and p_id not in seen_s:
+                            seen_s.add(p_id)
+                            p_sc = self.db.get_scan(p_id)
+                            if p_sc:
+                                return _extract_sc_merged_from(p_sc, seen_s)
+                        return []
+
+                    sub_mf_list = _extract_sc_merged_from(sc)
+                    if sub_mf_list:
+                        for sub_mf in sub_mf_list:
+                            na_1 = np.array(
+                                sub_mf.get("native_anchor_zup")
+                                if isinstance(sub_mf.get("native_anchor_zup"), (list, tuple)) and len(sub_mf["native_anchor_zup"]) >= 3
+                                else native_anchor_twd,
+                                dtype=np.float64,
+                            )
+                            ma_1 = np.array(
+                                sub_mf.get("merged_anchor_zup")
+                                if isinstance(sub_mf.get("merged_anchor_zup"), (list, tuple)) and len(sub_mf["merged_anchor_zup"]) >= 3
+                                else native_anchor_twd,
+                                dtype=np.float64,
+                            )
+                            rm_1_raw = sub_mf.get("r_zup_rowmajor")
+                            R_1 = (
+                                np.array(rm_1_raw[:9], dtype=np.float64).reshape(3, 3)
+                                if isinstance(rm_1_raw, (list, tuple)) and len(rm_1_raw) >= 9
+                                else np.eye(3, dtype=np.float64)
+                            )
+                            ma_comp = merged_anchor_twd + (r_zup @ (ma_1 - native_anchor_twd))
+                            R_comp = r_zup @ R_1
+                            merged_from_meta.append(
+                                {
+                                    "scan_id": str(sub_mf.get("scan_id") or ""),
+                                    "derived_from_scan_id": str(sub_mf.get("derived_from_scan_id") or ""),
+                                    "name": sub_mf.get("name") or sub_mf.get("scan_id") or sid,
+                                    "position_three": [round(tx, 4), round(ty, 4), round(tz, 4)],
+                                    "quaternion_three": [round(float(x), 6) for x in quat_three[:4]],
+                                    "euler_deg_three": [round(rx_deg, 2), round(ry_deg, 2), round(rz_deg, 2)],
+                                    "native_anchor_zup": [round(float(x), 4) for x in na_1],
+                                    "merged_anchor_zup": [round(float(x), 4) for x in ma_comp],
+                                    "zup_shift": [round(float(x), 4) for x in (ma_comp - na_1)],
+                                    "r_zup_rowmajor": [round(float(x), 8) for x in R_comp.ravel()],
+                                }
+                            )
+                    else:
+                        merged_from_meta.append(
+                            {
+                                "scan_id": sid,
+                                "derived_from_scan_id": str(sc.get("derived_from_scan_id") or ""),
+                                "name": sc.get("name") or sid,
+                                "position_three": [round(tx, 4), round(ty, 4), round(tz, 4)],
+                                "quaternion_three": [round(float(x), 6) for x in quat_three[:4]],
+                                "euler_deg_three": [round(rx_deg, 2), round(ry_deg, 2), round(rz_deg, 2)],
+                                "native_anchor_zup": [round(float(x), 4) for x in native_anchor_twd],
+                                "merged_anchor_zup": [round(float(x), 4) for x in merged_anchor_twd],
+                                "zup_shift": [round(float(x), 4) for x in (merged_anchor_twd - native_anchor_twd)],
+                                "r_zup_rowmajor": [round(float(x), 8) for x in r_zup.ravel()],
+                            }
+                        )
 
             if not merged_parts:
                 raise ValueError("Lasso deletions removed 100% of triangles across all combined scans. Undo or adjust your marked regions.")
@@ -2780,16 +2845,109 @@ class OptimizerBridge:
 
             saved_scan = self.db.upsert_scan(scan_record)
 
-            # Copy 3D geo-comments from source scans to the unified scan
+            # Copy 3D geo-comments, measurement bookmarks, and categorization manual_overrides from source scans to the unified scan
             seen_src_ids = set()
+            merged_cat_overrides: Dict[str, Any] = {
+                "removed_ids": [],
+                "removed_centers": [],
+                "added_trees": [],
+                "added_walls": [],
+                "added_roads": [],
+                "added_water": [],
+            }
+            has_any_cat_override = False
+            new_ce, new_cn, new_ch = float(bc[0]), float(bc[1]), float(bc[2])
+
             for _, src_sc in resolved_layers:
                 src_sid = str(src_sc.get("scan_id") or "").strip()
                 if src_sid and src_sid.lower() not in seen_src_ids:
                     seen_src_ids.add(src_sid.lower())
+                    ltf = layer_transforms_by_sid.get(src_sid)
+                    src_e = float(src_sc.get("twd97_e") or 0.0)
+                    src_n = float(src_sc.get("twd97_n") or 0.0)
+                    src_h = float(src_sc.get("twd97_h") or 0.0)
+
+                    def _make_layer_tx(ltf_info, se, sn, sh):
+                        def _tx(px: float, py: float, pz: float, ce_in: float, cn_in: float, ch_in: float):
+                            old_e = float(ce_in) if abs(float(ce_in)) > 100.0 else (se + float(px))
+                            old_n = float(cn_in) if abs(float(cn_in)) > 100.0 else (sn - float(pz))
+                            old_h = float(ch_in) if abs(float(ch_in)) > 0.001 or abs(sh) < 0.001 else (sh + float(py))
+                            if ltf_info is not None:
+                                na_v = ltf_info["na"]
+                                ma_v = ltf_info["ma"]
+                                R_v = ltf_info["R"]
+                                d_v = np.array([old_e - float(na_v[0]), old_n - float(na_v[1]), old_h - float(na_v[2])], dtype=np.float64)
+                                rot_v = R_v @ d_v
+                                te = float(ma_v[0] + rot_v[0])
+                                tn = float(ma_v[1] + rot_v[1])
+                                th = float(ma_v[2] + rot_v[2])
+                            else:
+                                te, tn, th = old_e, old_n, old_h
+                            if has_crs:
+                                te += crs_off_x
+                                tn += crs_off_y
+                                th += crs_off_z
+                            npx = round(te - new_ce, 3)
+                            npy = round(th - new_ch, 3)
+                            npz = round(new_cn - tn, 3)
+                            return npx, npy, npz, round(te, 3), round(tn, 3), round(th, 3)
+                        return _tx
+
+                    tx_fn = _make_layer_tx(ltf, src_e, src_n, src_h)
                     try:
-                        self.db.clone_comments_to_scan(src_sid, new_scan_id)
+                        self.db.clone_comments_to_scan(src_sid, new_scan_id, transform_fn=tx_fn)
                     except Exception:
                         pass
+                    try:
+                        self.db.clone_measurement_bookmarks_to_scan(src_sid, new_scan_id, transform_fn=tx_fn)
+                    except Exception:
+                        pass
+                    try:
+                        if surveying_engine and hasattr(surveying_engine, "_load_existing_manual_overrides"):
+                            ov = surveying_engine._load_existing_manual_overrides(src_sid, src_sc)
+                            if isinstance(ov, dict):
+                                for rid in ov.get("removed_ids") or []:
+                                    if rid not in merged_cat_overrides["removed_ids"]:
+                                        merged_cat_overrides["removed_ids"].append(rid)
+                                        has_any_cat_override = True
+                                for rc in ov.get("removed_centers") or []:
+                                    if isinstance(rc, dict) and "e" in rc and "n" in rc:
+                                        _, _, _, te_r, tn_r, _ = tx_fn(0.0, 0.0, 0.0, float(rc["e"]), float(rc["n"]), src_h)
+                                        rc_c = dict(rc)
+                                        rc_c["e"], rc_c["n"] = te_r, tn_r
+                                        merged_cat_overrides["removed_centers"].append(rc_c)
+                                        has_any_cat_override = True
+                                for k_add in ("added_trees", "added_walls", "added_roads", "added_water"):
+                                    for item_a in ov.get(k_add) or []:
+                                        if not isinstance(item_a, dict):
+                                            continue
+                                        it_c = dict(item_a)
+                                        for pt_k, loc_k in (("trunk_twd97", "trunk_local"), ("center_twd97", "center_local")):
+                                            pt_v = it_c.get(pt_k)
+                                            if isinstance(pt_v, (list, tuple)) and len(pt_v) >= 3:
+                                                lx, ly, lz, te_p, tn_p, th_p = tx_fn(0.0, 0.0, 0.0, float(pt_v[0]), float(pt_v[1]), float(pt_v[2]))
+                                                it_c[pt_k] = [te_p, tn_p, th_p]
+                                                it_c[loc_k] = [lx, ly, lz]
+                                        for poly_k, ploc_k in (("base_polyline_twd97", "base_polyline_local"), ("top_polyline_twd97", "top_polyline_local"), ("boundary_twd97", "boundary_local")):
+                                            if isinstance(it_c.get(poly_k), list):
+                                                new_twd_l, new_loc_l = [], []
+                                                for p_i in it_c[poly_k]:
+                                                    if isinstance(p_i, (list, tuple)) and len(p_i) >= 3:
+                                                        lx, ly, lz, te_p, tn_p, th_p = tx_fn(0.0, 0.0, 0.0, float(p_i[0]), float(p_i[1]), float(p_i[2]))
+                                                        new_twd_l.append([te_p, tn_p, th_p])
+                                                        new_loc_l.append([lx, ly, lz])
+                                                it_c[poly_k] = new_twd_l
+                                                it_c[ploc_k] = new_loc_l
+                                        merged_cat_overrides[k_add].append(it_c)
+                                        has_any_cat_override = True
+                    except Exception:
+                        pass
+
+            if has_any_cat_override:
+                scan_record["categorization_manual_overrides"] = merged_cat_overrides
+                with open(meta_file, "w", encoding="utf-8") as mf:
+                    json.dump(scan_record, mf, indent=2, ensure_ascii=False)
+            saved_scan = self.db.get_scan(new_scan_id) or saved_scan
 
             # Multi-scan merge NEVER deletes/trashes individual source scans unless explicitly requested (`True`)
             archive_originals = payload.get("archive_originals_to_bin")
@@ -3218,11 +3376,27 @@ class OptimizerBridge:
 
             saved_scan = self.db.upsert_scan(scan_record)
 
-            # Copy 3D geo-comments onto the saved edited scan before moving the original scan to Trash Bin
+            # Copy 3D geo-comments and measurement bookmarks onto the saved edited scan before moving the original scan to Trash Bin
+            src_e = float(source_scan.get("twd97_e") or 0.0)
+            src_n = float(source_scan.get("twd97_n") or 0.0)
+            src_h = float(source_scan.get("twd97_h") or 0.0)
+            new_ce, new_cn, new_ch = float(bc[0]), float(bc[1]), float(bc[2])
+
+            def _tx_edited_coords(px: float, py: float, pz: float, ce_in: float, cn_in: float, ch_in: float):
+                te = (float(ce_in) if abs(float(ce_in)) > 100.0 else (src_e + float(px))) + (off_x if has_crs else 0.0)
+                tn = (float(cn_in) if abs(float(cn_in)) > 100.0 else (src_n - float(pz))) + (off_y if has_crs else 0.0)
+                th = (float(ch_in) if abs(float(ch_in)) > 0.001 or abs(src_h) < 0.001 else (src_h + float(py))) + (off_z if has_crs else 0.0)
+                return round(te - new_ce, 3), round(th - new_ch, 3), round(new_cn - tn, 3), round(te, 3), round(tn, 3), round(th, 3)
+
             try:
-                self.db.clone_comments_to_scan(source_scan_id, new_scan_id)
+                self.db.clone_comments_to_scan(source_scan_id, new_scan_id, transform_fn=_tx_edited_coords)
             except Exception as ce:
                 print(f"[OptimizerBridge] Note cloning comments from {source_scan_id} to {new_scan_id}: {ce}")
+            try:
+                self.db.clone_measurement_bookmarks_to_scan(source_scan_id, new_scan_id, transform_fn=_tx_edited_coords)
+            except Exception:
+                pass
+            saved_scan = self.db.get_scan(new_scan_id) or saved_scan
 
             archive_original = payload.get("archive_original_to_bin")
             if archive_original is None:

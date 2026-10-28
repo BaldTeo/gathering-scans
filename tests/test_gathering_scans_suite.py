@@ -1541,7 +1541,205 @@ class GatheringScansTestSuite(unittest.TestCase):
         self.assertIn("caches.open(SCAN_TILES_CACHE)", sw_js)
         self.assertIn("if (existingCached && tileCache) {", sw_js)
 
+    def test_20_recursive_merge_5_paths_and_move_notes(self):
+        """Verify recursive merge provenance (_flatten_merged_from_leaves), 5 separate photo paths on
+        merged_qihu_merged_2026_10_28_77753, DB.update_comment position updates, DB.clone_comments_to_scan
+        with transform_fn & folder preservation, DB.clone_measurement_bookmarks_to_scan with transform_fn,
+        and frontend interactive Move Note (btn-move-comment / STATE.movingCommentId)."""
+        import json
+        from pc_worker.surveying_engine import SurveyingEngine
+
+        # 1. Verify DB.update_comment position updates (pos_x, pos_y, pos_z, twd97_e, twd97_n, twd97_h)
+        sid_src = "test_merge_src_scan"
+        sid_dst = "test_merge_dst_scan"
+        self.db.upsert_scan(
+            {
+                "scan_id": sid_src,
+                "name": "Test Merge Source",
+                "project_group": "QiHu",
+                "project_dir": os.path.join(BASE_DIR, "scans", sid_src),
+                "extra_json": json.dumps({"comment_folders": ["一般備註", "樹木移植"]}, ensure_ascii=False),
+            }
+        )
+        self.db.upsert_scan(
+            {
+                "scan_id": sid_dst,
+                "name": "Test Merge Target",
+                "project_group": "QiHu",
+                "project_dir": os.path.join(BASE_DIR, "scans", sid_dst),
+                "extra_json": json.dumps({"comment_folders": []}, ensure_ascii=False),
+            }
+        )
+
+        cmt = self.db.add_comment(
+            {
+                "scan_id": sid_src,
+                "author_email": "glibivanov@gatheren.com.tw",
+                "author_name": "Glib Ivanov",
+                "text": "編號27樹。(需要移植最大顆)",
+                "folder": "一般備註",
+                "pos_x": 10.0,
+                "pos_y": 2.5,
+                "pos_z": -5.0,
+                "twd97_e": 300580.0,
+                "twd97_n": 2780960.0,
+                "twd97_h": 10.5,
+                "photos": [{"id": "P1", "filename": "tree27.jpg", "url": "/api/comments/photo/test/tree27.jpg"}],
+            }
+        )
+        cid = cmt["comment_id"]
+        moved_cmt = self.db.update_comment(
+            cid,
+            pos_x=13.5,
+            pos_y=3.2,
+            pos_z=-7.25,
+            twd97_e=300583.5,
+            twd97_n=2780962.25,
+            twd97_h=11.2,
+        )
+        self.assertIsNotNone(moved_cmt)
+        self.assertAlmostEqual(float(moved_cmt["pos_x"]), 13.5, places=3)
+        self.assertAlmostEqual(float(moved_cmt["pos_y"]), 3.2, places=3)
+        self.assertAlmostEqual(float(moved_cmt["pos_z"]), -7.25, places=3)
+        self.assertAlmostEqual(float(moved_cmt["twd97_e"]), 300583.5, places=3)
+        self.assertAlmostEqual(float(moved_cmt["twd97_n"]), 2780962.25, places=3)
+        self.assertAlmostEqual(float(moved_cmt["twd97_h"]), 11.2, places=3)
+        self.assertEqual(moved_cmt.get("folder"), "一般備註")
+
+        # 2. Verify DB.clone_comments_to_scan with transform_fn and folder preservation
+        def _tx_fn(px, py, pz, ce, cn, ch):
+            return (px + 5.0, py - 1.0, pz + 2.0, ce + 5.0, cn - 2.0, ch - 1.0)
+
+        cloned_cnt = self.db.clone_comments_to_scan(sid_src, sid_dst, transform_fn=_tx_fn)
+        self.assertEqual(cloned_cnt, 1)
+        dst_cmts = self.db.list_comments(sid_dst)
+        self.assertEqual(len(dst_cmts), 1)
+        dc0 = dst_cmts[0]
+        self.assertEqual(dc0.get("folder"), "一般備註")
+        self.assertAlmostEqual(float(dc0["pos_x"]), 18.5, places=3)
+        self.assertAlmostEqual(float(dc0["pos_y"]), 2.2, places=3)
+        self.assertAlmostEqual(float(dc0["pos_z"]), -5.25, places=3)
+        self.assertAlmostEqual(float(dc0["twd97_e"]), 300588.5, places=3)
+        self.assertAlmostEqual(float(dc0["twd97_n"]), 2780960.25, places=3)
+        self.assertAlmostEqual(float(dc0["twd97_h"]), 10.2, places=3)
+        dst_folders = self.db.list_comment_folders(sid_dst)
+        self.assertIn("一般備註", dst_folders)
+        self.assertIn("樹木移植", dst_folders)
+
+        # 3. Verify DB.clone_measurement_bookmarks_to_scan with transform_fn
+        self.db.save_measurement_bookmark(
+            {
+                "scan_id": sid_src,
+                "title": "Tree Clearance Check",
+                "author_email": "glibivanov@gatheren.com.tw",
+                "author_name": "Glib Ivanov",
+                "camera_state": {"view_mode": "3d", "pos": [0, 20, 20]},
+                "measurements_state": {
+                    "distance_points": [
+                        {"x": 10.0, "y": 2.0, "z": -4.0, "twd97_e": 300580.0, "twd97_n": 2780960.0, "twd97_h": 10.0}
+                    ]
+                },
+            }
+        )
+        bm_cloned = self.db.clone_measurement_bookmarks_to_scan(sid_src, sid_dst, transform_fn=_tx_fn)
+        self.assertEqual(bm_cloned, 1)
+        dst_bms = self.db.list_measurement_bookmarks(sid_dst)
+        self.assertEqual(len(dst_bms), 1)
+        pt0 = dst_bms[0]["measurements_state"]["distance_points"][0]
+        self.assertAlmostEqual(float(pt0["x"]), 15.0, places=3)
+        self.assertAlmostEqual(float(pt0["y"]), 1.0, places=3)
+        self.assertAlmostEqual(float(pt0["z"]), -2.0, places=3)
+        self.assertAlmostEqual(float(pt0["twd97_e"]), 300585.0, places=3)
+        self.assertAlmostEqual(float(pt0["twd97_n"]), 2780958.0, places=3)
+        self.assertAlmostEqual(float(pt0["twd97_h"]), 9.0, places=3)
+
+        # 4. Verify _flatten_merged_from_leaves recursive 6-DOF composition
+        sid_parent_merge = "test_parent_merged_4scans"
+        self.db.upsert_scan(
+            {
+                "scan_id": sid_parent_merge,
+                "name": "Parent Merged 4 Scans",
+                "project_group": "QiHu",
+                "project_dir": os.path.join(BASE_DIR, "scans", sid_parent_merge),
+                "extra_json": json.dumps(
+                    {
+                        "merged_from": [
+                            {
+                                "scan_id": "leaf_scan_1",
+                                "native_anchor_zup": [300500.0, 2780900.0, 10.0],
+                                "merged_anchor_zup": [300510.0, 2780920.0, 12.0],
+                                "r_zup_rowmajor": [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0],
+                            },
+                            {
+                                "scan_id": "leaf_scan_2",
+                                "native_anchor_zup": [300550.0, 2780950.0, 11.0],
+                                "merged_anchor_zup": [300560.0, 2780970.0, 13.0],
+                                "r_zup_rowmajor": [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0],
+                            },
+                        ]
+                    }
+                ),
+            }
+        )
+        eng = SurveyingEngine(self.db)
+        top_mf = [
+            {
+                "scan_id": sid_parent_merge,
+                "native_anchor_zup": [300535.0, 2780945.0, 12.5],
+                "merged_anchor_zup": [300540.0, 2780955.0, 14.5],
+                "r_zup_rowmajor": [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0],
+            },
+            {
+                "scan_id": "leaf_scan_side",
+                "native_anchor_zup": [300600.0, 2781000.0, 15.0],
+                "merged_anchor_zup": [300605.0, 2781010.0, 16.0],
+                "r_zup_rowmajor": [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0],
+            },
+        ]
+        flattened = eng._flatten_merged_from_leaves(top_mf)
+        self.assertEqual([m["scan_id"] for m in flattened], ["leaf_scan_1", "leaf_scan_2", "leaf_scan_side"])
+        # leaf_scan_1 had ma_1 = [300510, 2780920, 12]; parent shifted from na_2=[300535,2780945,12.5] to ma_2=[300540,2780955,14.5] (+5, +10, +2)
+        self.assertAlmostEqual(float(flattened[0]["merged_anchor_zup"][0]), 300515.0, places=3)
+        self.assertAlmostEqual(float(flattened[0]["merged_anchor_zup"][1]), 2780930.0, places=3)
+        self.assertAlmostEqual(float(flattened[0]["merged_anchor_zup"][2]), 14.0, places=3)
+
+        # Also verify real QiHu_Merged_2026-10-28 (merged_qihu_merged_2026_10_28_77753) 8,640 cameras across 5 paths
+        real_qihu_merged = "merged_qihu_merged_2026_10_28_77753"
+        qihu_cam_cache = os.path.join(BASE_DIR, "data", "cameras_cache", f"{real_qihu_merged}_cameras_v6.json")
+        if os.path.isfile(qihu_cam_cache):
+            with open(qihu_cam_cache, "r", encoding="utf-8") as cf:
+                cams_8640 = json.load(cf)
+            self.assertEqual(len(cams_8640), 8640)
+            by_sub = {}
+            for c in cams_8640:
+                sk = c.get("sub_scan") or "root"
+                by_sub[sk] = by_sub.get(sk, 0) + 1
+            self.assertEqual(
+                by_sub,
+                {
+                    "catch_QiHuTender_1": 1500,
+                    "catch_QiHuTender_2": 1500,
+                    "catch_QiHuTender_3": 1500,
+                    "catch_QiHuTender_4": 1500,
+                    "catch_QihuSide": 2640,
+                },
+            )
+
+        # 5. Verify presence of btn-move-comment and STATE.movingCommentId in frontend
+        with open(os.path.join(BASE_DIR, "web", "src", "04-studio-lasso-and-edits.js"), "r", encoding="utf-8") as f:
+            js04 = f.read()
+        with open(os.path.join(BASE_DIR, "web", "src", "05-studio-civil-inspectors.js"), "r", encoding="utf-8") as f:
+            js05 = f.read()
+        with open(os.path.join(BASE_DIR, "web", "src", "08-advanced-surveying-and-qa.js"), "r", encoding="utf-8") as f:
+            js08 = f.read()
+        self.assertIn("STATE.movingCommentId", js04)
+        self.assertIn("btn-move-comment", js05)
+        self.assertIn("data-pin-move", js05)
+        self.assertIn("btn-move-comment", js08)
+        self.assertIn("STATE.movingCommentId", js08)
+
 
 if __name__ == "__main__":
     unittest.main()
+
 

@@ -1357,8 +1357,9 @@ class ServerWriteRoutesMixin:
                     new_text = str(payload.get("text") or "").strip() if payload.get("text") is not None else None
                     has_photo_update = ("photos" in payload) or ("append_photos" in payload)
                     has_folder_update = "folder" in payload
-                    if not new_text and not has_photo_update and not has_folder_update:
-                        self.send_json({"error": "Comment text, photos, or folder required."}, status=400)
+                    has_pos_update = any(k in payload for k in ("pos_x", "pos_y", "pos_z", "twd97_e", "twd97_n", "twd97_h"))
+                    if not new_text and not has_photo_update and not has_folder_update and not has_pos_update:
+                        self.send_json({"error": "Comment text, photos, folder, or position required."}, status=400)
                         return
                     orig_author = str(existing_cmt.get("author_name") or "").strip()
                     updated_cmt = DB.update_comment(
@@ -1368,6 +1369,12 @@ class ServerWriteRoutesMixin:
                         photos=payload.get("photos"),
                         append_photos=payload.get("append_photos"),
                         folder=payload.get("folder") if has_folder_update else None,
+                        pos_x=payload.get("pos_x"),
+                        pos_y=payload.get("pos_y"),
+                        pos_z=payload.get("pos_z"),
+                        twd97_e=payload.get("twd97_e"),
+                        twd97_n=payload.get("twd97_n"),
+                        twd97_h=payload.get("twd97_h"),
                     )
                     _VPS_RAM_FALLBACK_CACHE.clear()
                     cmts_list = DB.list_comments(scan_id) if scan_id else []

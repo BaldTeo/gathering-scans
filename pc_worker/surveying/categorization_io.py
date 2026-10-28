@@ -1174,6 +1174,33 @@ class CategorizationIoMixin:
                     pass
         return None
 
+    def _load_existing_manual_overrides(
+        self, scan_id: str, scan: Optional[Dict[str, Any]] = None
+    ) -> Optional[Dict[str, Any]]:
+        for cpath in self._get_categorization_cache_paths(scan_id, scan):
+            if cpath and os.path.isfile(cpath):
+                try:
+                    with open(cpath, "r", encoding="utf-8") as cf:
+                        d = json.load(cf)
+                    if isinstance(d, dict) and isinstance(d.get("manual_overrides"), dict):
+                        return dict(d["manual_overrides"])
+                except Exception:
+                    pass
+        sc_obj = scan or (self.db.get_scan(scan_id) if hasattr(self, "db") and self.db else None) or {}
+        if isinstance(sc_obj.get("categorization_manual_overrides"), dict):
+            return dict(sc_obj["categorization_manual_overrides"])
+        ex_raw = sc_obj.get("extra_json")
+        if isinstance(ex_raw, str) and ex_raw.strip():
+            try:
+                ex_d = json.loads(ex_raw)
+                if isinstance(ex_d.get("categorization_manual_overrides"), dict):
+                    return dict(ex_d["categorization_manual_overrides"])
+            except Exception:
+                pass
+        elif isinstance(ex_raw, dict) and isinstance(ex_raw.get("categorization_manual_overrides"), dict):
+            return dict(ex_raw["categorization_manual_overrides"])
+        return None
+
     def save_categorization_visibility_prefs(
         self,
         scan_id: str,
@@ -1208,6 +1235,29 @@ class CategorizationIoMixin:
         added_walls = [dict(w) for w in (overrides.get("added_walls") or []) if isinstance(w, dict)]
         added_roads = [dict(r) for r in (overrides.get("added_roads") or []) if isinstance(r, dict)]
         added_water = [dict(w) for w in (overrides.get("added_water") or []) if isinstance(w, dict)]
+
+        anc = res.get("anchor_twd97") if isinstance(res.get("anchor_twd97"), dict) else {}
+        ce_a = float(anc.get("e") or 0.0)
+        cn_a = float(anc.get("n") or 0.0)
+        ch_a = float(anc.get("h") or 0.0)
+        if abs(ce_a) > 100.0 and abs(cn_a) > 100.0:
+            for t_o in added_trees:
+                tw = t_o.get("trunk_twd97")
+                if isinstance(tw, list) and len(tw) >= 3:
+                    t_o["trunk_local"] = [round(float(tw[0]) - ce_a, 3), round(float(tw[2]) - ch_a, 3), round(cn_a - float(tw[1]), 3)]
+            for w_o in added_walls:
+                cw = w_o.get("center_twd97")
+                if isinstance(cw, list) and len(cw) >= 3:
+                    w_o["center_local"] = [round(float(cw[0]) - ce_a, 3), round(float(cw[2]) - ch_a, 3), round(cn_a - float(cw[1]), 3)]
+                for tk, lk in (("base_polyline_twd97", "base_polyline_local"), ("top_polyline_twd97", "top_polyline_local")):
+                    if isinstance(w_o.get(tk), list):
+                        w_o[lk] = [[round(float(p[0]) - ce_a, 3), round(float(p[2]) - ch_a, 3), round(cn_a - float(p[1]), 3)] for p in w_o[tk] if isinstance(p, (list, tuple)) and len(p) >= 3]
+            for r_o in added_roads + added_water:
+                cw = r_o.get("center_twd97")
+                if isinstance(cw, list) and len(cw) >= 3:
+                    r_o["center_local"] = [round(float(cw[0]) - ce_a, 3), round(float(cw[2]) - ch_a, 3), round(cn_a - float(cw[1]), 3)]
+                if isinstance(r_o.get("boundary_twd97"), list):
+                    r_o["boundary_local"] = [[round(float(p[0]) - ce_a, 3), round(float(p[2]) - ch_a, 3), round(cn_a - float(p[1]), 3)] for p in r_o["boundary_twd97"] if isinstance(p, (list, tuple)) and len(p) >= 3]
 
         def _is_removed(item: Dict[str, Any], cat_type: str) -> bool:
             iid = str(item.get("id") or "").strip()
