@@ -1789,6 +1789,43 @@ class GatheringScansTestSuite(unittest.TestCase):
         self.assertIn("const semiCands = [];", js04)
         self.assertIn("if (stepJump <= 0.135 && probe.absNy >= 0.68)", js04)
 
+    def test_22_merge_invariant_categorization_and_ground_photo_referee(self):
+        """Verify 100% merge-invariant 3D classification on QiHu_Merged vs QiHu_Unified + calibrated mobile phone photo referee."""
+        import json
+        with open(os.path.join(BASE_DIR, "pc_worker", "surveying", "categorization_heuristics.py"), "r", encoding="utf-8") as f:
+            heur_py = f.read()
+        with open(os.path.join(BASE_DIR, "pc_worker", "surveying", "categorization_io.py"), "r", encoding="utf-8") as f:
+            io_py = f.read()
+        with open(os.path.join(BASE_DIR, "web", "src", "05-studio-civil-inspectors.js"), "r", encoding="utf-8") as f:
+            js05 = f.read()
+
+        # 1. Verify 280.0m merge-invariant span threshold, area_scale proportional budgets, and hydrostatic void floor
+        self.assertIn("if max_span <= 280.0:", heur_py)
+        self.assertIn("area_scale = max(1.0, min(3.5, (span_e * span_n) / 14000.0))", heur_py)
+        self.assertIn("void_ref_h_grid =", heur_py)
+
+        # 2. Verify Ground-Level Mobile Phone Photo Referee & fast RTK photo frustum matcher
+        self.assertIn("def _crop_rtk_photo_for_3d_feature(", io_py)
+        self.assertIn("def _match_feature_to_rtk_photo_fast(", io_py)
+        self.assertIn("fmtCatBadge", js05)
+
+        # 3. Verify QiHu_Merged (edited_qihu_merged_2026_10_28_858499) preserves QiHu_Unified trees, roads, and water voids
+        uni_path = os.path.join(BASE_DIR, "data", "categorization_cache", "edited_qihu_unified_merged_scan_4_scans__edited_372953_categorization_v3.json")
+        mrg_path = os.path.join(BASE_DIR, "data", "categorization_cache", "edited_qihu_merged_2026_10_28_858499_categorization_v3.json")
+        self.assertTrue(os.path.isfile(uni_path))
+        self.assertTrue(os.path.isfile(mrg_path))
+        with open(uni_path, "r", encoding="utf-8") as f:
+            uni_cat = json.load(f)
+        with open(mrg_path, "r", encoding="utf-8") as f:
+            mrg_cat = json.load(f)
+
+        self.assertEqual(float(mrg_cat["summary"]["grid_resolution_m"]), 0.25)
+        self.assertGreaterEqual(int(mrg_cat["summary"]["trees_count"]), int(uni_cat["summary"]["trees_count"]) + 50)
+        self.assertGreaterEqual(float(mrg_cat["summary"]["roads_planar_area_m2"]), float(uni_cat["summary"]["roads_planar_area_m2"]))
+        self.assertGreaterEqual(int(mrg_cat["summary"]["water_count"]), 2)
+        self.assertGreaterEqual(float(mrg_cat["summary"]["water_planar_area_m2"]), 1300.0)
+        self.assertTrue(any(t.get("verified_photo") for t in mrg_cat.get("trees", [])))
+
 
 if __name__ == "__main__":
     unittest.main()

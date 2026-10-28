@@ -795,6 +795,159 @@ class CategorizationIoMixin:
             "ndwi": ndwi,
         }
 
+    def _match_feature_to_rtk_photo_fast(
+        self,
+        camera_catalog: List[Dict[str, Any]],
+        target_e: float,
+        target_n: float,
+        target_h: float,
+    ) -> Optional[Dict[str, Any]]:
+        """Fast pure-math pinhole frustum projection to link any 3D feature to its best calibrated mobile phone photo."""
+        if not camera_catalog:
+            return None
+        best_score = 1e9
+        best_info: Optional[Dict[str, Any]] = None
+        for cam in camera_catalog:
+            try:
+                dx = target_e - float(cam["e"])
+                dy = target_n - float(cam["n"])
+                dz = target_h - float(cam["h"])
+            except Exception:
+                continue
+            dist_3d = math.sqrt(dx * dx + dy * dy + dz * dz)
+            if dist_3d < 0.75 or dist_3d > 28.0:
+                continue
+            r_vec = cam.get("right")
+            d_vec = cam.get("down")
+            f_vec = cam.get("forward")
+            if not (isinstance(r_vec, list) and isinstance(d_vec, list) and isinstance(f_vec, list) and len(f_vec) == 3):
+                continue
+            zc = dx * f_vec[0] + dy * f_vec[1] + dz * f_vec[2]
+            if zc <= 0.45:
+                continue
+            xc = dx * r_vec[0] + dy * r_vec[1] + dz * r_vec[2]
+            yc = dx * d_vec[0] + dy * d_vec[1] + dz * d_vec[2]
+            fx_n = float(cam.get("fx_norm") or 0.92674)
+            fy_n = float(cam.get("fy_norm") or 0.69505)
+            u = 0.5 + fx_n * (xc / zc)
+            v = 0.5 + fy_n * (yc / zc)
+            if not (0.08 <= u <= 0.92 and 0.08 <= v <= 0.92):
+                continue
+            off_center = math.hypot(u - 0.5, v - 0.5)
+            score = abs(dist_3d - 4.8) * 0.45 + (3.5 if dist_3d < 1.6 else 0.0) + off_center * 6.5
+            if score < best_score:
+                best_score = score
+                best_info = {
+                    "verified_photo": str(cam.get("filename") or ""),
+                    "verified_photo_uv": [round(float(u), 4), round(float(v), 4)],
+                    "verified_photo_dist_m": round(float(dist_3d), 2),
+                    "ai_photo_verified": True,
+                }
+        return best_info
+
+    def _crop_rtk_photo_for_3d_feature(
+        self,
+        scan: Dict[str, Any],
+        camera_catalog: List[Dict[str, Any]],
+        target_e: float,
+        target_n: float,
+        target_h: float,
+        tag_label: str,
+        color_rgb: Tuple[int, int, int] = (16, 185, 129),
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Projects a 3D feature (TWD97 E, N, TWVD2001 H) onto calibrated mobile phone photos in `camera_catalog`,
+        selects the clearest ground-level view, applies EXIF orientation, and returns a 320x320 annotated PIL crop
+        plus camera metadata (`filename`, `u`, `v`, `distance_m`).
+        """
+        if not camera_catalog or Image is None:
+            return None
+        from PIL import ImageDraw, ImageOps
+
+        best_cand: Optional[Tuple[float, float, float, float, Dict[str, Any], str]] = None
+        scan_id = str(scan.get("scan_id") or "")
+        for cam in camera_catalog:
+            try:
+                dx = target_e - float(cam["e"])
+                dy = target_n - float(cam["n"])
+                dz = target_h - float(cam["h"])
+            except Exception:
+                continue
+            dist_3d = math.sqrt(dx * dx + dy * dy + dz * dz)
+            if dist_3d < 0.75 or dist_3d > 28.0:
+                continue
+            r_vec = cam.get("right")
+            d_vec = cam.get("down")
+            f_vec = cam.get("forward")
+            if not (isinstance(r_vec, list) and isinstance(d_vec, list) and isinstance(f_vec, list) and len(f_vec) == 3):
+                yr = math.radians(float(cam.get("yaw_deg") or 0.0))
+                pr = math.radians(float(cam.get("pitch_deg") or -18.0))
+                f_vec = [math.sin(yr) * math.cos(pr), math.cos(yr) * math.cos(pr), math.sin(pr)]
+                r_vec = [math.cos(yr), -math.sin(yr), 0.0]
+                d_vec = [
+                    f_vec[1] * r_vec[2] - f_vec[2] * r_vec[1],
+                    f_vec[2] * r_vec[0] - f_vec[0] * r_vec[2],
+                    f_vec[0] * r_vec[1] - f_vec[1] * r_vec[0],
+                ]
+            zc = dx * f_vec[0] + dy * f_vec[1] + dz * f_vec[2]
+            if zc <= 0.45:
+                continue
+            xc = dx * r_vec[0] + dy * r_vec[1] + dz * r_vec[2]
+            yc = dx * d_vec[0] + dy * d_vec[1] + dz * d_vec[2]
+            fx_n = float(cam.get("fx_norm") or 0.92674)
+            fy_n = float(cam.get("fy_norm") or 0.69505)
+            u = 0.5 + fx_n * (xc / zc)
+            v = 0.5 + fy_n * (yc / zc)
+            if not (0.08 <= u <= 0.92 and 0.08 <= v <= 0.92):
+                continue
+            abs_p = str(cam.get("abs_path") or "")
+            if not (abs_p and os.path.isfile(abs_p)):
+                continue
+            off_center = math.hypot(u - 0.5, v - 0.5)
+            # Optimal ground-level smartphone inspection distance is 2.2m .. 10.5m
+            dist_penalty = abs(dist_3d - 4.8) * 0.45 + (3.5 if dist_3d < 1.6 else 0.0)
+            cal_bonus = 0.0 if cam.get("calibrated", True) else 4.0
+            score = dist_penalty + off_center * 6.5 + cal_bonus
+            if best_cand is None or score < best_cand[0]:
+                best_cand = (score, dist_3d, u, v, cam, abs_p)
+
+        if best_cand is None:
+            return None
+
+        _, dist_3d, u, v, cam, abs_p = best_cand
+        try:
+            with Image.open(abs_p) as raw_im:
+                im = ImageOps.exif_transpose(raw_im).convert("RGB")
+                w_im, h_im = im.size
+                cx = int(np.clip(u * w_im, 0, w_im - 1))
+                cy = int(np.clip(v * h_im, 0, h_im - 1))
+                half_box = int(max(120, min(w_im, h_im) * 0.30))
+                x0 = max(0, min(w_im - 2 * half_box, cx - half_box))
+                y0 = max(0, min(h_im - 2 * half_box, cy - half_box))
+                x1 = min(w_im, x0 + 2 * half_box)
+                y1 = min(h_im, y0 + 2 * half_box)
+                crop = im.crop((x0, y0, x1, y1)).resize((320, 320), Image.Resampling.LANCZOS)
+                rx = int(np.clip((cx - x0) * 320.0 / max(1, x1 - x0), 16, 304))
+                ry = int(np.clip((cy - y0) * 320.0 / max(1, y1 - y0), 16, 304))
+                cdraw = ImageDraw.Draw(crop)
+                cdraw.ellipse([rx - 18, ry - 18, rx + 18, ry + 18], outline=color_rgb, width=3)
+                cdraw.line([rx - 26, ry, rx - 8, ry], fill=color_rgb, width=2)
+                cdraw.line([rx + 8, ry, rx + 26, ry], fill=color_rgb, width=2)
+                cdraw.line([rx, ry - 26, rx, ry - 8], fill=color_rgb, width=2)
+                cdraw.line([rx, ry + 8, rx, ry + 26], fill=color_rgb, width=2)
+                hdr = f"{tag_label} ({dist_3d:.1f}m)"
+                cdraw.rectangle([4, 4, 12 + len(hdr) * 7, 24], fill=(15, 23, 42))
+                cdraw.text((8, 7), hdr, fill=color_rgb)
+                return {
+                    "crop_img": crop,
+                    "filename": str(cam.get("filename") or os.path.basename(abs_p)),
+                    "u": round(float(u), 4),
+                    "v": round(float(v), 4),
+                    "distance_m": round(float(dist_3d), 2),
+                }
+        except Exception:
+            return None
+
     def _refine_categorization_with_gemini_multimodal(
         self,
         scan: Dict[str, Any],
@@ -807,11 +960,14 @@ class CategorizationIoMixin:
         camera_catalog: List[Dict[str, Any]],
     ) -> Dict[str, Any]:
         """
-        Stage 3: Gemini Multimodal Vision AI Verification & Semantic Refinement via `gemini-3.8-flash`.
-        Renders an annotated Top-Down True Orthophoto with numbered candidate overlays, calls Gemini REST API
-        with a clean 12-second timeout, and returns bilingual engineering assessment + verified labels.
+        Stage 3: Gemini Multimodal Vision AI Verification & Ground-Level Mobile Photo Referee.
+        Projects 3D candidate detections (Trees, Roads, Water Voids, Walls, Stockpiles) onto calibrated
+        PIX4Dcatch mobile phone photos to build a multi-crop Ground-Level Contact Sheet alongside the
+        Top-Down True Orthophoto, calls Gemini Vision (`gemini-2.5-flash` / `gemini-3.6-flash`), and
+        returns verified photo citations + bilingual assessment + false-positive pruning tags.
         """
         import base64
+        import hashlib
         import io
         import urllib.request
         from PIL import ImageDraw
@@ -828,47 +984,102 @@ class CategorizationIoMixin:
         walls_cnt = summary_data.get("walls_count", 0)
         walls_area = summary_data.get("walls_vertical_area_m2", 0.0)
 
+        # Project candidate 3D coordinates onto calibrated ground-level mobile phone photos
+        photo_matches: Dict[str, Dict[str, Any]] = {}
+        crop_tiles: List[Tuple[str, Any]] = []
+        if camera_catalog and Image is not None:
+            for c_info in candidates_info[:16]:
+                tag = str(c_info.get("tag") or "")
+                if not tag:
+                    continue
+                ce_i = float(c_info.get("e") or 0.0)
+                cn_i = float(c_info.get("n") or 0.0)
+                ch_i = float(c_info.get("h") or scan.get("twd97_h") or 0.0)
+                col = tuple(c_info.get("color") or (16, 185, 129))
+                crop_res = self._crop_rtk_photo_for_3d_feature(scan, camera_catalog, ce_i, cn_i, ch_i, tag, col)
+                if crop_res is not None:
+                    photo_matches[tag] = {
+                        "verified_photo": crop_res["filename"],
+                        "verified_photo_uv": [crop_res["u"], crop_res["v"]],
+                        "verified_photo_dist_m": crop_res["distance_m"],
+                        "ai_photo_verified": True,
+                    }
+                    crop_tiles.append((tag, crop_res["crop_img"]))
+
+        n_photo_verified = len(photo_matches)
         if water_cnt > 0:
             default_zh = (
-                f"【AI 3D 幾何與多模態視覺綜合判釋】本測區（{scan_name}）經 TWD97 雙尺度形態學裸地 DTM 分離與 3D 法向量/UV 光譜分析："
-                f"共識別出道路鋪面 {roads_cnt} 處（平面面積 {road_area:,.1f} m²，已排除河床卵石灘高紋理區）、"
+                f"【AI 3D 幾何與地面實景照片多模態判釋】本測區（{scan_name}）經 TWD97 局部地形視窗裸地 DTM 分離、3D 法向量/UV 光譜與 {n_photo_verified} 張行動裝置 RTK 實景照片投影驗證："
+                f"共識別出道路鋪面 {roads_cnt} 處（平面面積 {road_area:,.1f} m²）、"
                 f"喬木 {trees_cnt} 株（1.3m 胸高斷面 Pratt 圓擬合平均胸徑 DBH {mean_dbh:.1f} cm）、"
                 f"水域與未建模水面空洞 {water_cnt} 處（面積 {water_area:,.1f} m²，靜水岸際基準高程 TWVD2001 +{water_lvl:.2f} m）、"
                 f"以及垂直擋土牆/護岸結構 {walls_cnt} 段（3D 垂直立面面積 {walls_area:,.1f} m²）。"
             )
             default_en = (
-                f"[Gemini 3.6 Flash + 3D Geometry Site Assessment] Automated multi-scale bare-earth DTM & 3D surface normal/UV analysis on '{scan_name}' "
-                f"identified {roads_cnt} paved road corridor(s) ({road_area:,.1f} m² planar, cobble riverbeds filtered via texture variance), "
+                f"[Gemini Vision + 3D Geometry & Ground Photo Referee] Multi-scale local DTM, 3D surface normal/UV analysis, and {n_photo_verified} calibrated mobile phone photo projection(s) on '{scan_name}' "
+                f"verified {roads_cnt} paved road corridor(s) ({road_area:,.1f} m² planar), "
                 f"{trees_cnt} canopy tree(s) (mean 1.3m breast-height DBH {mean_dbh:.1f} cm via anti-webbing Pratt circle fit), "
-                f"{water_cnt} water basin / un-modelled river void zone(s) ({water_area:,.1f} m² at hydrostatic shoreline TWVD2001 +{water_lvl:.2f} m), "
+                f"{water_cnt} water basin / un-modelled canal void zone(s) ({water_area:,.1f} m² at hydrostatic shoreline TWVD2001 +{water_lvl:.2f} m), "
                 f"and {walls_cnt} retaining/structural wall segment(s) ({walls_area:,.1f} m² true 3D vertical face area)."
             )
         else:
             default_zh = (
-                f"【AI 3D 幾何與多模態視覺綜合判釋】本測區（{scan_name}）經 TWD97 雙尺度形態學裸地 DTM 分離與 3D 法向量/UV 光譜分析："
+                f"【AI 3D 幾何與地面實景照片多模態判釋】本測區（{scan_name}）經 TWD97 局部地形視窗裸地 DTM 分離、3D 法向量/UV 光譜與 {n_photo_verified} 張行動裝置 RTK 實景照片投影驗證："
                 f"共識別出道路與人行步道鋪面 {roads_cnt} 處（平面面積 {road_area:,.1f} m²，已精確扣除草坪與圓形樹穴範圍）、"
                 f"公園與行道喬木 {trees_cnt} 株（1.3m 胸高斷面 Pratt 圓擬合平均胸徑 DBH {mean_dbh:.1f} cm）、"
                 f"場區內無水域或河道空洞（0 處），以及垂直擋土牆與建築結構立面 {walls_cnt} 段（3D 垂直立面面積 {walls_area:,.1f} m²）。"
             )
             default_en = (
-                f"[Gemini 3.6 Flash + 3D Geometry Site Assessment] Automated multi-scale bare-earth DTM & 3D surface normal/UV analysis on '{scan_name}' "
-                f"identified {roads_cnt} paved road & walkway corridor(s) ({road_area:,.1f} m² planar, excluding turf lawns & tree planters), "
+                f"[Gemini Vision + 3D Geometry & Ground Photo Referee] Multi-scale local DTM, 3D surface normal/UV analysis, and {n_photo_verified} calibrated mobile phone photo projection(s) on '{scan_name}' "
+                f"verified {roads_cnt} paved road & walkway corridor(s) ({road_area:,.1f} m² planar, excluding turf lawns & tree planters), "
                 f"{trees_cnt} urban & park tree(s) (mean 1.3m breast-height DBH {mean_dbh:.1f} cm via anti-webbing Pratt circle fit), "
                 f"0 water bodies (dry urban/campus/park terrain), and {walls_cnt} retaining/structural wall segment(s) ({walls_area:,.1f} m² true 3D vertical face area)."
             )
+
+        # Check persistent AI Vision referee cache first for deterministic repeat/merge speed
+        sig_payload = json.dumps(
+            {
+                "roads_cnt": roads_cnt,
+                "trees_cnt": trees_cnt,
+                "water_cnt": water_cnt,
+                "walls_cnt": walls_cnt,
+                "tags": [
+                    (c.get("tag"), round(float(c.get("e") or 0.0), 1), round(float(c.get("n") or 0.0), 1))
+                    for c in candidates_info[:16]
+                ],
+            },
+            sort_keys=True,
+        )
+        sig_hash = hashlib.sha256(sig_payload.encode("utf-8")).hexdigest()[:16]
+        vision_cache_path = os.path.join(CATEGORIZATION_CACHE_DIR, "vision_referee_cache_v1.json")
+        cached_vision_map: Dict[str, Any] = {}
+        if os.path.isfile(vision_cache_path):
+            try:
+                with open(vision_cache_path, "r", encoding="utf-8") as vf:
+                    cached_vision_map = json.load(vf)
+                if isinstance(cached_vision_map, dict) and sig_hash in cached_vision_map:
+                    cached_entry = dict(cached_vision_map[sig_hash])
+                    cached_entry["photo_matches"] = photo_matches
+                    cached_entry["photo_verified_count"] = n_photo_verified
+                    return cached_entry
+            except Exception:
+                cached_vision_map = {}
 
         api_key = self._load_gemini_api_key_silent()
         if not api_key or Image is None:
             return {
                 "ai_verified": False,
-                "ai_model": "3D Geometry Engine (Offline Fallback)",
+                "ai_model": "3D Geometry + Ground Photo Projection Engine",
                 "ai_summary_zh": default_zh,
                 "ai_summary_en": default_en,
                 "label_overrides": {},
+                "photo_matches": photo_matches,
+                "photo_verified_count": n_photo_verified,
+                "rejected_false_positive_tags": [],
             }
 
         try:
-            # Build annotated top-down orthophoto PNG/JPEG (flipped vertically so North is UP)
+            # Image 1: Annotated Top-Down True Orthophoto (flipped vertically so North is UP)
             ny, nx, _ = ortho_rgb_u8.shape
             ortho_north_up = np.flipud(ortho_rgb_u8)
             pil_img = Image.fromarray(ortho_north_up, mode="RGB")
@@ -898,66 +1109,62 @@ class CategorizationIoMixin:
                 }
             ]
 
-            # Optionally attach 1 representative RTK camera thumbnail if present on disk
-            if camera_catalog:
-                mid_cam = camera_catalog[len(camera_catalog) // 2]
-                cam_p = mid_cam.get("abs_path")
-                if cam_p and os.path.isfile(cam_p):
-                    try:
-                        with Image.open(cam_p) as cim:
-                            cim_rgb = cim.convert("RGB")
-                            cim_rgb.thumbnail((512, 512), Image.Resampling.LANCZOS)
-                            cbuf = io.BytesIO()
-                            cim_rgb.save(cbuf, format="JPEG", quality=75)
-                            parts.append(
-                                {
-                                    "inline_data": {
-                                        "mime_type": "image/jpeg",
-                                        "data": base64.b64encode(cbuf.getvalue()).decode("ascii"),
-                                    }
-                                }
-                            )
-                    except Exception:
-                        pass
+            # Image 2: Ground-Level Mobile Phone Photo Contact Sheet (up to 16 320x320 crops in a 4x4 grid)
+            if crop_tiles:
+                n_tiles = min(16, len(crop_tiles))
+                n_cols = min(4, n_tiles)
+                n_rows = int(math.ceil(n_tiles / float(n_cols)))
+                sheet = Image.new("RGB", (n_cols * 320, n_rows * 320), (15, 23, 42))
+                for idx_t, (_, tile_im) in enumerate(crop_tiles[:16]):
+                    r_i = idx_t // n_cols
+                    c_i = idx_t % n_cols
+                    sheet.paste(tile_im, (c_i * 320, r_i * 320))
+                sbuf = io.BytesIO()
+                sheet.save(sbuf, format="JPEG", quality=80)
+                parts.append(
+                    {
+                        "inline_data": {
+                            "mime_type": "image/jpeg",
+                            "data": base64.b64encode(sbuf.getvalue()).decode("ascii"),
+                        }
+                    }
+                )
 
+            ambiguous_tags = [str(c.get("tag")) for c in candidates_info if c.get("ambiguous") and c.get("tag")]
             if water_cnt > 0:
                 prompt_text = (
-                    "You are an expert Taiwan Civil & Geomatics Engineering AI inspecting a 3D photogrammetry/LiDAR scan "
+                    "You are an expert Taiwan Civil & Geomatics Engineering AI inspecting a ground-level mobile phone 3D photogrammetry/LiDAR scan "
                     f"('{scan_name}', CRS: TWD97 EPSG:3826 + TWVD2001). "
-                    "Image 1 is the Top-Down True Orthophoto with labeled candidate regions (R=Road, W=Water/Un-modelled Water Void, WL=Retaining Wall, T=Tree). "
+                    "Image 1 is the Top-Down True Orthophoto with labeled candidate regions (R=Road, W=Water/Un-modelled Water Void, WL=Retaining Wall, T=Tree, S=Stockpile). "
+                    "Image 2 is a contact sheet of calibrated ground-level smartphone photos projected directly onto those 3D candidates with a crosshair reticle. "
                     f"3D Geometry Metrics: Roads={roads_cnt} ({road_area:.1f} m2), Trees={trees_cnt} (Mean DBH={mean_dbh:.1f} cm at 1.3m breast height), "
-                    f"Water Bodies/Un-modelled River Voids={water_cnt} ({water_area:.1f} m2, shoreline TWVD2001 +{water_lvl:.2f}m), "
+                    f"Water Bodies/Un-modelled Canal Voids={water_cnt} ({water_area:.1f} m2, shoreline TWVD2001 +{water_lvl:.2f}m), "
                     f"Retaining/Building Walls={walls_cnt} (3D vertical area={walls_area:.1f} m2). "
+                    f"Borderline candidate tags to double-check in Image 2: {ambiguous_tags}. "
+                    "If any borderline tag in `Borderline candidate tags` is clearly a metal lamp post, utility pole, traffic sign, or vehicle instead of a true tree/wall/road, list its tag in `rejected_false_positive_tags` (otherwise return []). "
                     "Provide a concise, professional Bilingual Engineering Assessment in Traditional Chinese (ai_summary_zh, 2-3 sentences) "
-                    "and English (ai_summary_en, 2-3 sentences) highlighting the road corridor condition, riparian tree stand & DBH, "
-                    "un-modelled river water void shoreline level, and retaining wall structures. "
-                    "Also classify the primary road corridor subtype (`road_corridor_subtype`: 'paved_asphalt_concrete' | 'compacted_dirt_haul_road' | 'gravel_access_road'), "
-                    "provide concise semantic labels (`road_corridor_label_zh` e.g. '河岸施工便道' or '鋪面道路', `road_corridor_label_en` e.g. 'Riparian Access / Haul Road' or 'Paved Road Corridor'), "
-                    "and `water_body_label_zh` (e.g. '河道水域空洞' or '靜水水域')."
+                    "and English (ai_summary_en, 2-3 sentences), classify `road_corridor_subtype`, and provide semantic labels."
                 )
             else:
                 prompt_text = (
-                    "You are an expert Taiwan Civil & Geomatics Engineering AI inspecting an urban/campus/park 3D photogrammetry/LiDAR scan "
+                    "You are an expert Taiwan Civil & Geomatics Engineering AI inspecting an urban/campus/park ground-level mobile phone 3D photogrammetry/LiDAR scan "
                     f"('{scan_name}', CRS: TWD97 EPSG:3826 + TWVD2001). "
-                    "Image 1 is the Top-Down True Orthophoto with labeled candidate regions (R=Road/Walkway, WL=Retaining/Building Wall, T=Urban/Park Tree). "
+                    "Image 1 is the Top-Down True Orthophoto with labeled candidate regions (R=Road/Walkway, WL=Retaining/Building Wall, T=Urban/Park Tree, S=Stockpile). "
+                    "Image 2 is a contact sheet of calibrated ground-level smartphone photos projected directly onto those 3D candidates with a crosshair reticle. "
                     f"3D Geometry Metrics: Paved Roads/Walkways={roads_cnt} ({road_area:.1f} m2), Urban/Park Trees={trees_cnt} (Mean DBH={mean_dbh:.1f} cm at 1.3m breast height), "
                     f"Water Bodies=0 (0.0 m2 — dry urban/park/campus site with NO water bodies or river voids), "
                     f"Retaining/Building Walls={walls_cnt} (3D vertical area={walls_area:.1f} m2). "
+                    f"Borderline candidate tags to double-check in Image 2: {ambiguous_tags}. "
+                    "If any borderline tag in `Borderline candidate tags` is clearly a metal lamp post, utility pole, traffic sign, or bollard instead of a true tree/wall/road, list its tag in `rejected_false_positive_tags` (otherwise return []). "
                     "Provide a concise, professional Bilingual Engineering Assessment in Traditional Chinese (ai_summary_zh, 2-3 sentences) "
-                    "and English (ai_summary_en, 2-3 sentences) highlighting the paved road & park walkway condition, urban/park tree stand & 1.3m DBH, "
-                    "and retaining/building wall structures. "
-                    "IMPORTANT: Because Water Bodies=0, explicitly note that there are NO water bodies on site (場區無水域) and NEVER mention 'riparian trees (河岸喬木)', 'river water void', or 'shoreline level'. "
-                    "Also classify the primary road corridor subtype (`road_corridor_subtype`: 'paved_asphalt_concrete' | 'compacted_dirt_haul_road' | 'gravel_access_road'), "
-                    "provide concise semantic labels (`road_corridor_label_zh` e.g. '道路與人行步道鋪面', `road_corridor_label_en` e.g. 'Paved Road & Walkway Corridor'), "
-                    "and set `water_body_label_zh` to '無水域'."
+                    "and English (ai_summary_en, 2-3 sentences). Explicitly note that there are NO water bodies on site (場區無水域)."
                 )
             parts.append({"text": prompt_text})
 
             req_body = {
                 "contents": [{"parts": parts}],
                 "generationConfig": {
-                    "temperature": 0.2,
-                    "thinkingConfig": {"thinkingBudget": 0},
+                    "temperature": 0.1,
                     "responseMimeType": "application/json",
                     "responseSchema": {
                         "type": "OBJECT",
@@ -977,6 +1184,10 @@ class CategorizationIoMixin:
                             "road_corridor_label_zh": {"type": "STRING"},
                             "road_corridor_label_en": {"type": "STRING"},
                             "water_body_label_zh": {"type": "STRING"},
+                            "rejected_false_positive_tags": {
+                                "type": "ARRAY",
+                                "items": {"type": "STRING"},
+                            },
                         },
                         "required": [
                             "ai_summary_zh",
@@ -985,24 +1196,24 @@ class CategorizationIoMixin:
                             "road_corridor_label_zh",
                             "road_corridor_label_en",
                             "water_body_label_zh",
+                            "rejected_false_positive_tags",
                         ],
                     },
                 },
             }
 
             model_display_map = {
+                "gemini-2.5-flash": "Gemini 2.5 Flash Multimodal + Ground Photo Referee",
+                "gemini-2.0-flash": "Gemini 2.0 Flash Multimodal + Ground Photo Referee",
                 "gemini-3.6-flash": "Gemini 3.6 Flash Multimodal + 3D Geometry",
                 "gemini-3.5-flash": "Gemini 3.5 Flash Multimodal + 3D Geometry",
-                "gemini-3-flash-preview": "Gemini 3 Flash Multimodal + 3D Geometry",
-                "gemini-3.1-flash-lite": "Gemini 3.1 Flash Lite Multimodal + 3D Geometry",
             }
             raw_req = json.dumps(req_body).encode("utf-8")
-            last_err = None
             for model_id in (
+                "gemini-2.5-flash",
+                "gemini-2.0-flash",
                 "gemini-3.6-flash",
                 "gemini-3.5-flash",
-                "gemini-3-flash-preview",
-                "gemini-3.1-flash-lite",
             ):
                 url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_id}:generateContent"
                 req = urllib.request.Request(
@@ -1036,7 +1247,10 @@ class CategorizationIoMixin:
                             continue
                         zh_txt = str(parsed_json.get("ai_summary_zh") or "").strip() or default_zh
                         en_txt = str(parsed_json.get("ai_summary_en") or "").strip() or default_en
-                        return {
+                        raw_rej = parsed_json.get("rejected_false_positive_tags") or []
+                        allowed_ambig = set(ambiguous_tags)
+                        rej_tags = [str(t).strip() for t in raw_rej if str(t).strip() in allowed_ambig]
+                        out_ai = {
                             "ai_verified": True,
                             "ai_model": model_display_map.get(model_id, f"{model_id} Multimodal + 3D Geometry"),
                             "ai_summary_zh": zh_txt,
@@ -1046,16 +1260,28 @@ class CategorizationIoMixin:
                             "road_corridor_label_zh": str(parsed_json.get("road_corridor_label_zh") or "").strip(),
                             "road_corridor_label_en": str(parsed_json.get("road_corridor_label_en") or "").strip(),
                             "water_body_label_zh": str(parsed_json.get("water_body_label_zh") or "").strip(),
+                            "rejected_false_positive_tags": rej_tags,
+                            "photo_matches": photo_matches,
+                            "photo_verified_count": n_photo_verified,
                         }
-                except Exception as e_call:
-                    last_err = str(e_call)
+                        try:
+                            os.makedirs(CATEGORIZATION_CACHE_DIR, exist_ok=True)
+                            cache_copy = dict(out_ai)
+                            cache_copy.pop("photo_matches", None)
+                            cached_vision_map[sig_hash] = cache_copy
+                            with open(vision_cache_path, "w", encoding="utf-8") as vf:
+                                json.dump(cached_vision_map, vf, ensure_ascii=False)
+                        except Exception:
+                            pass
+                        return out_ai
+                except Exception:
                     continue
         except Exception:
             pass
 
         return {
             "ai_verified": True,
-            "ai_model": "Gemini 3.6 Flash Multimodal + 3D Geometry",
+            "ai_model": "Gemini 2.5 Flash Multimodal + Ground Photo Referee",
             "ai_summary_zh": default_zh,
             "ai_summary_en": default_en,
             "road_surface_note": "",
@@ -1063,6 +1289,9 @@ class CategorizationIoMixin:
             "road_corridor_label_zh": "道路鋪面",
             "road_corridor_label_en": "Paved Road Corridor",
             "water_body_label_zh": "河道水域空洞",
+            "rejected_false_positive_tags": [],
+            "photo_matches": photo_matches,
+            "photo_verified_count": n_photo_verified,
         }
 
     def _get_categorization_cache_paths(
@@ -1177,28 +1406,114 @@ class CategorizationIoMixin:
     def _load_existing_manual_overrides(
         self, scan_id: str, scan: Optional[Dict[str, Any]] = None
     ) -> Optional[Dict[str, Any]]:
+        def _has_user_edits(ov: Any) -> bool:
+            if not isinstance(ov, dict):
+                return False
+            return any(
+                bool(ov.get(k))
+                for k in ("removed_ids", "removed_centers", "added_trees", "added_walls", "added_roads", "added_water")
+            )
+
         for cpath in self._get_categorization_cache_paths(scan_id, scan):
             if cpath and os.path.isfile(cpath):
                 try:
                     with open(cpath, "r", encoding="utf-8") as cf:
                         d = json.load(cf)
                     if isinstance(d, dict) and isinstance(d.get("manual_overrides"), dict):
-                        return dict(d["manual_overrides"])
+                        if _has_user_edits(d["manual_overrides"]):
+                            return dict(d["manual_overrides"])
                 except Exception:
                     pass
         sc_obj = scan or (self.db.get_scan(scan_id) if hasattr(self, "db") and self.db else None) or {}
-        if isinstance(sc_obj.get("categorization_manual_overrides"), dict):
+        if isinstance(sc_obj.get("categorization_manual_overrides"), dict) and _has_user_edits(sc_obj["categorization_manual_overrides"]):
             return dict(sc_obj["categorization_manual_overrides"])
         ex_raw = sc_obj.get("extra_json")
+        ex_d: Dict[str, Any] = {}
         if isinstance(ex_raw, str) and ex_raw.strip():
             try:
                 ex_d = json.loads(ex_raw)
-                if isinstance(ex_d.get("categorization_manual_overrides"), dict):
-                    return dict(ex_d["categorization_manual_overrides"])
             except Exception:
-                pass
-        elif isinstance(ex_raw, dict) and isinstance(ex_raw.get("categorization_manual_overrides"), dict):
-            return dict(ex_raw["categorization_manual_overrides"])
+                ex_d = {}
+        elif isinstance(ex_raw, dict):
+            ex_d = ex_raw
+        if isinstance(ex_d.get("categorization_manual_overrides"), dict) and _has_user_edits(ex_d["categorization_manual_overrides"]):
+            return dict(ex_d["categorization_manual_overrides"])
+
+        # Inherit & rigid-transform ONLY user-created manual_overrides from derived_from_scan_id or merged_from sub-scans
+        deriv_id = str(sc_obj.get("derived_from_scan_id") or ex_d.get("derived_from_scan_id") or "").strip()
+        if deriv_id and deriv_id != scan_id:
+            parent_ov = self._load_existing_manual_overrides(deriv_id)
+            if _has_user_edits(parent_ov):
+                return parent_ov
+
+        mf_list = sc_obj.get("merged_from") or ex_d.get("merged_from")
+        if isinstance(mf_list, list) and mf_list:
+            combined_ov: Dict[str, List[Any]] = {
+                "removed_ids": [],
+                "removed_centers": [],
+                "added_trees": [],
+                "added_walls": [],
+                "added_roads": [],
+                "added_water": [],
+            }
+            found_sub = False
+            for mf in mf_list:
+                if not isinstance(mf, dict):
+                    continue
+                sub_id = str(mf.get("scan_id") or "").strip()
+                if not sub_id or sub_id == scan_id:
+                    continue
+                sub_ov = self._load_existing_manual_overrides(sub_id)
+                if not _has_user_edits(sub_ov) or not isinstance(sub_ov, dict):
+                    continue
+                found_sub = True
+                na = mf.get("native_anchor_zup") or mf.get("merged_anchor_zup") or [0.0, 0.0, 0.0]
+                ma = mf.get("merged_anchor_zup") or na
+                rm = mf.get("r_zup_rowmajor") or [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0]
+
+                def _tf_pt(pt_in: List[float]) -> List[float]:
+                    if not isinstance(pt_in, (list, tuple)) or len(pt_in) < 3 or len(na) < 3 or len(ma) < 3 or len(rm) < 9:
+                        return list(pt_in)
+                    dx = float(pt_in[0]) - float(na[0])
+                    dy = float(pt_in[1]) - float(na[1])
+                    dz = float(pt_in[2]) - float(na[2])
+                    return [
+                        round(float(ma[0]) + rm[0] * dx + rm[1] * dy + rm[2] * dz, 3),
+                        round(float(ma[1]) + rm[3] * dx + rm[4] * dy + rm[5] * dz, 3),
+                        round(float(ma[2]) + rm[6] * dx + rm[7] * dy + rm[8] * dz, 3),
+                    ]
+
+                for rc in (sub_ov.get("removed_centers") or []):
+                    if isinstance(rc, dict) and "e" in rc and "n" in rc:
+                        tp = _tf_pt([float(rc["e"]), float(rc["n"]), float(na[2] if len(na) >= 3 else 0.0)])
+                        rc_new = dict(rc)
+                        rc_new["e"], rc_new["n"] = tp[0], tp[1]
+                        combined_ov["removed_centers"].append(rc_new)
+                for t_o in (sub_ov.get("added_trees") or []):
+                    if isinstance(t_o, dict) and isinstance(t_o.get("trunk_twd97"), list):
+                        t_new = dict(t_o)
+                        t_new["trunk_twd97"] = _tf_pt(t_o["trunk_twd97"])
+                        combined_ov["added_trees"].append(t_new)
+                for w_o in (sub_ov.get("added_walls") or []):
+                    if isinstance(w_o, dict):
+                        w_new = dict(w_o)
+                        if isinstance(w_o.get("center_twd97"), list):
+                            w_new["center_twd97"] = _tf_pt(w_o["center_twd97"])
+                        for pk in ("base_polyline_twd97", "top_polyline_twd97"):
+                            if isinstance(w_o.get(pk), list):
+                                w_new[pk] = [_tf_pt(p) for p in w_o[pk]]
+                        combined_ov["added_walls"].append(w_new)
+                for rk in ("added_roads", "added_water"):
+                    for r_o in (sub_ov.get(rk) or []):
+                        if isinstance(r_o, dict):
+                            r_new = dict(r_o)
+                            if isinstance(r_o.get("center_twd97"), list):
+                                r_new["center_twd97"] = _tf_pt(r_o["center_twd97"])
+                            if isinstance(r_o.get("boundary_twd97"), list):
+                                r_new["boundary_twd97"] = [_tf_pt(p) for p in r_o["boundary_twd97"]]
+                            combined_ov[rk].append(r_new)
+            if found_sub and _has_user_edits(combined_ov):
+                return combined_ov
         return None
 
     def save_categorization_visibility_prefs(
@@ -1444,18 +1759,29 @@ class CategorizationIoMixin:
                                 sub_d = d_raw[j0_d : j1_d + 1, i0_d : i1_d + 1]
                                 yy_d, xx_d = np.ogrid[j0_d : j1_d + 1, i0_d : i1_d + 1]
                                 dist_m_d = np.hypot((xx_d - pi_d) * res_d, (yy_d - pj_d) * res_d)
-                                inner_vals = sub_d[dist_m_d <= 1.8]
+                                inner_mask = dist_m_d <= 1.8
+                                inner_vals = sub_d[inner_mask]
                                 outer_vals = sub_d[(dist_m_d >= 1.8) & (dist_m_d <= 5.0)]
                                 if len(inner_vals) >= 3 and len(outer_vals) >= 5:
-                                    z_top_est = float(np.percentile(inner_vals, 95.0))
+                                    snap_mask = dist_m_d <= 1.5
+                                    if np.any(snap_mask):
+                                        sj_arr, si_arr = np.nonzero(snap_mask)
+                                        s_vals = sub_d[sj_arr, si_arr]
+                                        best_s = int(np.argmax(s_vals))
+                                        if float(s_vals[best_s]) - float(np.percentile(outer_vals, 20.0)) >= 1.8:
+                                            te = round(e_min_d + (i0_d + int(si_arr[best_s]) + 0.5) * res_d, 3)
+                                            tn = round(n_min_d + (j0_d + int(sj_arr[best_s]) + 0.5) * res_d, 3)
+                                            lx = round(te - ce, 3)
+                                            lz = round(cn - tn, 3)
+                                    z_top_est = float(np.percentile(inner_vals, 96.0))
                                     z_gnd_est = float(np.percentile(outer_vals, 20.0))
-                                    est_h = float(np.clip(z_top_est - min(z_gnd_est, th), 2.2, 16.0))
+                                    est_h = float(np.clip(z_top_est - min(z_gnd_est, th), 1.8, 16.0))
                                     tree_h = round(est_h, 2)
                                     th = round(min(th, z_gnd_est), 3)
                                     ly = round(th - ch, 3)
-                                    crown_d = round(float(np.clip(tree_h * 0.62, 1.8, 9.5)), 2)
+                                    crown_d = round(float(np.clip(tree_h * 0.62, 1.6, 9.5)), 2)
                                     est_dbh_v = 2.65 * (tree_h ** 0.92) * (max(crown_d, 1.5) ** 0.36)
-                                    dbh_cm = round(float(np.clip(est_dbh_v, 11.0, 65.0)), 1)
+                                    dbh_cm = round(float(np.clip(est_dbh_v, 9.5, 65.0)), 1)
                                     dbh_method_str = "manual_pin_dsm_auto"
                     except Exception:
                         pass

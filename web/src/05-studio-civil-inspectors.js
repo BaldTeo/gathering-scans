@@ -2370,13 +2370,14 @@
       return `${v.x.toFixed(2)},${v.y.toFixed(2)},${v.z.toFixed(2)}`;
     };
 
+    const fmtCatBadge = (id, col, item) => `<span style="color:${col};font-weight:800;" title="${escapeHtml(item.verified_photo ? `RTK Photo: ${item.verified_photo}` : "")}">${escapeHtml(id)}${item.verified_photo ? " 📸" : ""}</span>`;
     const rows = [];
     if ((activeTab === "all" || activeTab === "roads") && flt.roads) {
       (res.roads || []).forEach((r) => {
         rows.push({
           id: r.id,
           catType: "roads",
-          badge: `<span style="color:#f59e0b;font-weight:800;">${escapeHtml(r.id)}</span>`,
+          badge: fmtCatBadge(r.id, "#f59e0b", r),
           type: tr("道路", "Road"),
           metric1: `${Number(r.planar_area_m2 || 0).toFixed(1)} m²`,
           metric2: `W ${Number(r.mean_width_m || 0).toFixed(1)}m · ${Number(r.mean_slope_pct || 0).toFixed(1)}%`,
@@ -2386,11 +2387,11 @@
       });
     }
     if ((activeTab === "all" || activeTab === "trees") && flt.trees) {
-      (res.trees || []).slice(0, activeTab === "trees" ? 50 : 12).forEach((t) => {
+      (res.trees || []).slice(0, activeTab === "trees" ? 200 : 12).forEach((t) => {
         rows.push({
           id: t.id,
           catType: "trees",
-          badge: `<span style="color:#10b981;font-weight:800;">${escapeHtml(t.id)}</span>`,
+          badge: fmtCatBadge(t.id, "#10b981", t),
           type: tr("喬木", "Tree"),
           metric1: `DBH ${Number(t.dbh_cm || 0).toFixed(1)} cm`,
           metric2: `H ${Number(t.height_m || 0).toFixed(1)}m · Ø${Number(t.crown_diameter_m || 0).toFixed(1)}m`,
@@ -2404,7 +2405,7 @@
         rows.push({
           id: w.id,
           catType: "water_bodies",
-          badge: `<span style="color:#06b6d4;font-weight:800;">${escapeHtml(w.id)}</span>`,
+          badge: fmtCatBadge(w.id, "#06b6d4", w),
           type: w.detection_mode === "unmodelled_void_shoreline" ? tr("水域空洞", "Water Void") : tr("水體", "Water"),
           metric1: `${Number(w.planar_area_m2 || 0).toFixed(1)} m²`,
           metric2: `TWVD +${Number(w.water_level_twvd2001_m || 0).toFixed(2)}m`,
@@ -2418,7 +2419,7 @@
         rows.push({
           id: wl.id,
           catType: "walls",
-          badge: `<span style="color:#f43f5e;font-weight:800;">${escapeHtml(wl.id)}</span>`,
+          badge: fmtCatBadge(wl.id, "#f43f5e", wl),
           type: tr("擋土牆", "Wall"),
           metric1: `3D ${Number(wl.vertical_area_m2 || 0).toFixed(1)} m²`,
           metric2: `L ${Number(wl.length_m || 0).toFixed(1)}m · H ${Number(wl.mean_height_m || wl.height_m || 0).toFixed(1)}m`,
@@ -2432,7 +2433,7 @@
         rows.push({
           id: sp.id,
           catType: "stockpiles",
-          badge: `<span style="color:#d97706;font-weight:800;">${escapeHtml(sp.id)}</span>`,
+          badge: fmtCatBadge(sp.id, "#d97706", sp),
           type: tr("土石堆置", "Stockpile"),
           metric1: `${Number(sp.planar_area_m2 || 0).toFixed(1)} m²`,
           metric2: `~${Number(sp.estimated_volume_m3 || 0).toFixed(1)} m³`,

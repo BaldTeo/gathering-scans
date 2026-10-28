@@ -172,6 +172,7 @@ class CategorizationHeuristicsMixin:
         span_e = max(e_max - e_min, 4.0)
         span_n = max(n_max - n_min, 4.0)
         max_span = max(span_e, span_n)
+        area_scale = max(1.0, min(3.5, (span_e * span_n) / 14000.0))
 
         sp_e_list = [centroids[:, 0], v0[:, 0], v1[:, 0], v2[:, 0]]
         sp_n_list = [centroids[:, 1], v0[:, 1], v1[:, 1], v2[:, 1]]
@@ -180,7 +181,7 @@ class CategorizationHeuristicsMixin:
         w_base = np.maximum(area_2d * 0.25, 1e-5).astype(np.float32)
         sp_w_list = [w_base, w_base, w_base, w_base]
 
-        if max_span <= 180.0:
+        if max_span <= 280.0:
             med_mask = area_2d >= 0.018
             if np.any(med_mask):
                 m_idx = tri_indices[med_mask]
@@ -238,7 +239,7 @@ class CategorizationHeuristicsMixin:
 
         if max_span <= 60.0:
             res = 0.15
-        elif max_span <= 180.0:
+        elif max_span <= 280.0:
             res = 0.25
         else:
             res = 0.35
@@ -294,7 +295,7 @@ class CategorizationHeuristicsMixin:
         # Rasterize Top-Down True Orthophoto RGB
         ortho_rgb = np.zeros((ny, nx, 3), dtype=np.float32)
         ortho_cnt = np.zeros((ny, nx), dtype=np.float32)
-        if max_span <= 180.0:
+        if max_span <= 280.0:
             for ch_i in range(3):
                 np.add.at(ortho_rgb[:, :, ch_i], (in_all, ie_all), rgb[splat_t_idx, ch_i] * splat_w)
             np.add.at(ortho_cnt, (in_all, ie_all), splat_w)
@@ -483,7 +484,7 @@ class CategorizationHeuristicsMixin:
         p45_site_h = float(np.percentile(occ_valid_h, 45.0)) if len(occ_valid_h) > 0 else ch + 3.0
         p18_site_h = float(np.percentile(occ_valid_h, 18.0)) if len(occ_valid_h) > 0 else ch - 1.5
 
-        dtm_for_slope = gaussian_filter(h_dtm_grid if max_span > 180.0 else h_dtm_local, sigma=max(1.5, 1.8 / res))
+        dtm_for_slope = gaussian_filter(h_dtm_grid if max_span > 280.0 else h_dtm_local, sigma=max(1.5, 1.8 / res))
         grad_n, grad_e = np.gradient(dtm_for_slope, res, res)
         dtm_slope_pct_grid = np.hypot(grad_n, grad_e) * 100.0
 
@@ -556,7 +557,7 @@ class CategorizationHeuristicsMixin:
         is_bright_white_wall = (sat < 0.082) & (lum > 0.52) & (exg < 0.058) & (rb_diff >= -0.085) & (rb_diff <= 0.050)
         is_achromatic_wall = ((sat < 0.138) & (exg < 0.026) & (rb_diff >= -0.115) & (rb_diff <= 0.048)) | is_bright_white_wall
         is_tall_facade = (tri_hag_tree >= 2.8) & (exg < 0.024) & (sat < 0.175)
-        is_riverbank_wall = (max_span > 180.0) & (tri_hag_tree <= 6.5) & (exg < 0.028) & (sat < 0.20)
+        is_riverbank_wall = (max_span > 280.0) & (tri_hag_tree <= 6.5) & (exg < 0.028) & (sat < 0.20)
         steep_grn_c = steep_grn_frac_grid[in_c, ie_c]
         canopy_safe_achrom = (steep_grn_c < 0.26) | ((exg < 0.018) & (sat < 0.125)) | is_bright_white_wall
         vert_tri_mask = (
@@ -711,7 +712,7 @@ class CategorizationHeuristicsMixin:
                 if not has_bldg:
                     is_bright_white_seg = (med_w_sat < 0.078 and med_w_lum > 0.54 and med_w_exg < 0.055 and hag_p15 <= 0.90 and sigma_n <= 0.22 and tot_a_c >= 8.0)
                     is_ground_retaining = (
-                        (max_span > 180.0 and hag_p90 <= 6.5 and sigma_n <= 0.32)
+                        (max_span > 280.0 and hag_p90 <= 6.5 and sigma_n <= 0.32)
                         or (hag_p90 >= 7.5 and sigma_n <= 0.25 and tot_a_c >= 5.0 and med_cgrn < 0.38 and med_w_exg <= 0.015)
                         or is_bright_white_seg
                     )
@@ -874,7 +875,7 @@ class CategorizationHeuristicsMixin:
                     is_dup = True
                 if not is_dup:
                     walls_list.append(rw)
-                    if len(walls_list) >= 38:
+                    if len(walls_list) >= int(round(38 * area_scale)):
                         break
 
         for idx_wl, wl_obj in enumerate(walls_list, 1):
@@ -910,7 +911,7 @@ class CategorizationHeuristicsMixin:
         road_tri_mask = np.zeros(n_tris, dtype=bool)
         road_grid_base = np.zeros((ny, nx), dtype=bool)
         road_near_12m_grid = np.zeros((ny, nx), dtype=bool)
-        if max_span <= 180.0:
+        if max_span <= 280.0:
             paved_tri_mask = (
                 on_ground
                 & (nz_abs >= 0.88)
@@ -957,7 +958,7 @@ class CategorizationHeuristicsMixin:
         # =================================================================================
         # CATEGORY 2: TREES + TRUNK DBH AT 1.3M (喬木與胸徑 DBH)
         # =================================================================================
-        all_xy_tree = cKDTree(centroids[:, :2]) if max_span <= 180.0 else None
+        all_xy_tree = cKDTree(centroids[:, :2]) if max_span <= 280.0 else None
 
         def _has_neck_gap_bollard_at(cx_q: float, cy_q: float, th_g_q: float, idx_arr_q: np.ndarray, c_q: np.ndarray) -> bool:
             dt_q = np.hypot(c_q[:, 0] - cx_q, c_q[:, 1] - cy_q)
@@ -968,7 +969,7 @@ class CategorizationHeuristicsMixin:
                 return True
             return False
 
-        if max_span > 180.0:
+        if max_span > 280.0:
             # Wide river-valley / forestry scan (e.g. QuChi Dam): preserve exact 3.6m forestry CHM segmentation
             canopy_mask = (hag_grid >= 1.8) & (ortho_exg > 0.032) & raw_occ_closed
             canopy_mask = binary_opening(canopy_mask, structure=np.ones((2, 2), dtype=bool))
@@ -1044,7 +1045,7 @@ class CategorizationHeuristicsMixin:
                         if span_sc < 0.06 or span_sc > 3.60:
                             continue
                         # Reject achromatic grey metal/concrete poles
-                        if med_sc_sat < 0.118 and med_sc_rb < 0.038 and med_sc_exg < 0.025:
+                        if med_sc_sat < 0.118 and med_sc_rb < 0.038 and med_sc_exg < 0.0245:
                             continue
                         # Verify radial normal dispersion: reject 2-fold planar walls and 4-fold square pillars
                         nxy_sc = st_norms[sc_sel, :2]
@@ -1111,7 +1112,7 @@ class CategorizationHeuristicsMixin:
         # Sort candidate tree peaks by height descending and enforce minimum crown spacing
         peak_order = np.argsort(-chm_smooth[pk_js, pk_is])
         kept_peaks: List[Tuple[int, int, float]] = []
-        max_cand_peaks = 95 if max_span > 180.0 else 280
+        max_cand_peaks = 95 if max_span > 280.0 else int(round(280 * area_scale))
         for idx_p in peak_order:
             pj, pi = int(pk_js[idx_p]), int(pk_is[idx_p])
             ph = float(chm_smooth[pj, pi])
@@ -1124,7 +1125,7 @@ class CategorizationHeuristicsMixin:
         # Pre-filter breast-height vertical trunk triangles
         bh_tri_mask = (
             ((tri_hag >= 0.95) & (tri_hag <= 1.85) & (nz_abs < 0.48))
-            if max_span > 180.0
+            if max_span > 280.0
             else ((tri_hag_tree >= 0.65) & (tri_hag_tree <= 1.95) & (nz_abs < 0.50))
         )
         bh_pts = centroids[bh_tri_mask]
@@ -1136,7 +1137,7 @@ class CategorizationHeuristicsMixin:
             tn = float(n_min + (pj + 0.5) * res)
             th_ground = float(tree_ground_grid[pj, pi])
             th_top = float(z_max_filled[pj, pi])
-            tree_h = max(2.2 if max_span > 180.0 else 1.60, round(max(min(ph, 16.5), th_top - th_ground if max_span > 180.0 else min(th_top - th_ground, 16.5)), 2))
+            tree_h = max(2.2 if max_span > 280.0 else 1.60, round(max(min(ph, 16.5), th_top - th_ground if max_span > 280.0 else min(th_top - th_ground, 16.5)), 2))
 
             # Urban 3D geometry, annular ground datum & stem centering (eliminates terrace steps, lamp posts, pillars & retaining walls)
             pre_stem_xy: Optional[Tuple[float, float]] = None
@@ -1148,7 +1149,7 @@ class CategorizationHeuristicsMixin:
             med_ts_exg = 0.0
             n_trunk_steep = 0
             r2_ts = 1.0
-            if max_span <= 180.0 and all_xy_tree is not None:
+            if max_span <= 280.0 and all_xy_tree is not None:
                 near26_idx = all_xy_tree.query_ball_point([te, tn], r=2.65)
                 if len(near26_idx) < 25:
                     continue
@@ -1320,7 +1321,7 @@ class CategorizationHeuristicsMixin:
                         continue
                     # Rule 2: Never Achromatic Grey/Silver Metal Lamp Post or Concrete Column (e.g. Qihu R3 posts & T20/T14)
                     if (not is_occluded_giant_canopy or n_trunk_steep >= 65) and (
-                        med_ts_sat < 0.118 and med_ts_rb < 0.038 and med_ts_exg < 0.025
+                        med_ts_sat < 0.118 and med_ts_rb < 0.038 and med_ts_exg < 0.0245
                     ):
                         continue
                     if (med_ts_rb >= 0.038 and med_ts_sat >= 0.118) or med_ts_exg >= 0.028:
@@ -1374,21 +1375,21 @@ class CategorizationHeuristicsMixin:
                         continue
 
             # Estimate crown area & crown diameter around local peak
-            r_search_px = max(3, int(round(min(6.5, max(1.8 if max_span > 180.0 else 1.5, tree_h * 0.42)) / res)))
+            r_search_px = max(3, int(round(min(6.5, max(1.8 if max_span > 280.0 else 1.5, tree_h * 0.42)) / res)))
             j0 = max(0, pj - r_search_px)
             j1 = min(ny - 1, pj + r_search_px)
             i0 = max(0, pi - r_search_px)
             i1 = min(nx - 1, pi + r_search_px)
-            hag_src_c = hag_grid if max_span > 180.0 else hag_tree_grid
+            hag_src_c = hag_grid if max_span > 280.0 else hag_tree_grid
             sub_can = canopy_mask[j0 : j1 + 1, i0 : i1 + 1] & (
-                hag_src_c[j0 : j1 + 1, i0 : i1 + 1] >= max(1.6 if max_span > 180.0 else 1.35, tree_h * 0.45)
+                hag_src_c[j0 : j1 + 1, i0 : i1 + 1] >= max(1.6 if max_span > 280.0 else 1.35, tree_h * 0.45)
             )
             yy, xx = np.ogrid[j0 : j1 + 1, i0 : i1 + 1]
             disk = ((yy - pj) ** 2 + (xx - pi) ** 2) <= (r_search_px ** 2)
             crown_px = max(4, int(np.count_nonzero(sub_can & disk)))
             crown_area_m2 = round(crown_px * cell_area, 2)
             crown_diam_m = round(2.0 * math.sqrt(crown_area_m2 / math.pi), 2)
-            if max_span <= 180.0:
+            if max_span <= 280.0:
                 ref_cx, ref_cy = pre_stem_xy if pre_stem_xy is not None else (te, tn)
                 el_crown_pts = c26[((c26[:, 2] - th_ground) >= max(1.05, tree_h * 0.38)) & (d26 <= 2.4)]
                 if len(el_crown_pts) >= 6:
@@ -1408,10 +1409,10 @@ class CategorizationHeuristicsMixin:
             dbh_cm = 0.0
             dbh_method = "crown_height_allometry"
             trunk_e, trunk_n = pre_stem_xy if pre_stem_xy is not None else (te, tn)
-            min_slice_h = 6.5 if max_span > 180.0 else 1.65
-            min_cand_pts = 8 if max_span > 180.0 else 6
+            min_slice_h = 6.5 if max_span > 280.0 else 1.65
+            min_cand_pts = 8 if max_span > 280.0 else 6
             if tree_h >= min_slice_h and bh_tree is not None:
-                r_bh_q = 0.78 if (max_span <= 180.0 and pre_stem_xy is not None) else min(2.2, max(1.05, crown_diam_m * 0.42))
+                r_bh_q = 0.78 if (max_span <= 280.0 and pre_stem_xy is not None) else min(2.2, max(1.05, crown_diam_m * 0.42))
                 cand_idxs = bh_tree.query_ball_point([trunk_e, trunk_n], r=r_bh_q)
                 if len(cand_idxs) >= min_cand_pts:
                     pts_local_bh = bh_pts[cand_idxs, :2]
@@ -1423,7 +1424,7 @@ class CategorizationHeuristicsMixin:
                     if np.count_nonzero(tight_mask) >= 6:
                         pts_stem = pts_local_bh[tight_mask]
                         med_xy = np.median(pts_stem, axis=0)
-                        if max_span <= 180.0:
+                        if max_span <= 280.0:
                             trunk_e, trunk_n = float(med_xy[0]), float(med_xy[1])
                         dx_s = pts_stem[:, 0] - med_xy[0]
                         dy_s = pts_stem[:, 1] - med_xy[1]
@@ -1461,15 +1462,15 @@ class CategorizationHeuristicsMixin:
                                         dbh_cm = round(float(np.clip(raw_diam_cm, 7.5, max_allowed_dbh)), 1)
                                         dbh_method = "pratt_circle_1.3m_slice"
 
-            if max_span <= 180.0 and bh_tree is not None and len(bh_tree.query_ball_point([trunk_e, trunk_n], r=0.95)) > 2200:
+            if max_span <= 280.0 and bh_tree is not None and len(bh_tree.query_ball_point([trunk_e, trunk_n], r=0.95)) > 2200:
                 continue
             # Ensure refined trunk_e, trunk_n is not inside a building or retaining wall
             ti_chk = int(np.clip((trunk_e - e_min) / res, 0, nx - 1))
             tj_chk = int(np.clip((trunk_n - n_min) / res, 0, ny - 1))
-            if max_span <= 180.0 and (bldg_occ_grid[tj_chk, ti_chk] or coplanar_wall_grid[tj_chk, ti_chk]):
+            if max_span <= 280.0 and (bldg_occ_grid[tj_chk, ti_chk] or coplanar_wall_grid[tj_chk, ti_chk]):
                 continue
             # Post-Pratt verification on final (trunk_e, trunk_n): re-verify neck continuity, Rule 2, Rule 4, and paved plaza filter
-            if max_span <= 180.0 and all_xy_tree is not None:
+            if max_span <= 280.0 and all_xy_tree is not None:
                 if _has_neck_gap_bollard_at(trunk_e, trunk_n, th_ground, idx_arr26, c26):
                     continue
                 dt_fin = np.hypot(c26[:, 0] - trunk_e, c26[:, 1] - trunk_n)
@@ -1480,7 +1481,7 @@ class CategorizationHeuristicsMixin:
                 med_fin_rb = float(np.median(rb_diff[idx_arr26[ts_fin_m]])) if n_ts_fin > 0 else med_ts_rb
                 med_fin_exg = float(np.median(exg[idx_arr26[ts_fin_m]])) if n_ts_fin > 0 else med_ts_exg
                 if n_ts_fin >= 8 and (not is_occluded_giant_canopy or n_ts_fin >= 65) and (
-                    med_fin_sat < 0.118 and med_fin_rb < 0.038 and med_fin_exg < 0.025
+                    med_fin_sat < 0.118 and med_fin_rb < 0.038 and med_fin_exg < 0.0245
                 ):
                     continue
                 base_fin_m = (dt_fin <= 1.05) & (z_rel_fin >= 0.20) & (z_rel_fin <= 0.85)
@@ -1523,8 +1524,8 @@ class CategorizationHeuristicsMixin:
                         ):
                             continue
 
-            nms_dist_m = 1.35 if (max_span <= 180.0 and pre_stem_xy is not None) else 1.85
-            if max_span <= 180.0 and any(
+            nms_dist_m = 1.35 if (max_span <= 280.0 and pre_stem_xy is not None) else 1.85
+            if max_span <= 280.0 and any(
                 math.hypot(trunk_e - k["trunk_twd97"][0], trunk_n - k["trunk_twd97"][1]) < nms_dist_m for k in trees_list
             ):
                 continue
@@ -1549,7 +1550,7 @@ class CategorizationHeuristicsMixin:
                     "trunk_local": [round(trunk_e - ce, 3), round(th_ground - ch, 3), round(cn - trunk_n, 3)],
                 }
             )
-            if len(trees_list) >= 145:
+            if len(trees_list) >= int(round(145 * area_scale)):
                 break
         trees_list.sort(key=lambda x: (x["height_m"], x["dbh_cm"]), reverse=True)
         for idx_t, t_obj in enumerate(trees_list, 1):
@@ -1560,8 +1561,9 @@ class CategorizationHeuristicsMixin:
         # CATEGORY 1: ROADS (Road Surface / 道路鋪面)
         # =================================================================================
         roads_list: List[Dict[str, Any]] = []
+        max_roads_cap = 12 if max_span > 280.0 else int(round(12 * area_scale))
         road_grid = road_grid_base.copy()
-        if max_span <= 180.0:
+        if max_span <= 280.0:
             r_planter_px = max(2, int(round(0.90 / res)))
             yy_grid, xx_grid = np.ogrid[0:ny, 0:nx]
             for t_obj in trees_list:
@@ -1635,7 +1637,7 @@ class CategorizationHeuristicsMixin:
                         "holes_local": r_item.get("holes_local", []),
                     }
                 )
-                if len(roads_list) >= 12:
+                if len(roads_list) >= max_roads_cap:
                     break
 
         # Stage 1B: Fallback for unpaved rural/mountain compacted access roads (e.g. QuChi Dam) when paved area < 25 m2
@@ -1699,11 +1701,11 @@ class CategorizationHeuristicsMixin:
                         "holes_local": r_item.get("holes_local", []),
                     }
                 )
-                if len(roads_list) >= 12:
+                if len(roads_list) >= max_roads_cap:
                     break
 
         roads_list.sort(key=lambda x: x["planar_area_m2"], reverse=True)
-        roads_list = roads_list[:12]
+        roads_list = roads_list[:max_roads_cap]
         for idx_r, r_obj in enumerate(roads_list, 1):
             r_obj["id"] = f"R{idx_r}"
             r_obj["name"] = f"道路鋪面 R{idx_r} (Paved Road Corridor)"
@@ -1712,10 +1714,10 @@ class CategorizationHeuristicsMixin:
         # CATEGORY 3: WATER BODIES & UN-MODELLED WATER VOIDS (水體與未建模水域空洞)
         # =================================================================================
         water_list: List[Dict[str, Any]] = []
-        # 3A: Detect Un-Modelled Water Voids (~raw_occ_closed) on wide river-valley / hydraulic dam scans (max_span > 180.0m)
-        # and depressed pond/moat water channels on medium-span terrain scans (120.0m < max_span <= 180.0m, e.g. QiHu moat)
+        # 3A: Detect Un-Modelled Water Voids (~raw_occ_closed) on wide river-valley / hydraulic dam scans (max_span > 280.0m)
+        # and depressed pond/moat water channels on medium-span terrain scans (120.0m < max_span <= 280.0m, e.g. QiHu moat)
         if max_span > 120.0:
-            is_midspan_moat_scan = max_span <= 180.0
+            is_midspan_moat_scan = max_span <= 280.0
             occ_js, occ_is = np.nonzero(raw_occ_closed)
             hull_2d_mask = np.zeros((ny, nx), dtype=bool)
             if len(occ_is) >= 12:
@@ -1782,13 +1784,18 @@ class CategorizationHeuristicsMixin:
             inner_box = np.zeros_like(raw_occ_closed, dtype=bool)
             inner_box[margin_px : ny - margin_px, margin_px : nx - margin_px] = True
             max_void_dist_m = 8.5 if is_midspan_moat_scan else 5.5
+            void_ref_h_grid = (
+                grey_erosion(h_dtm_grid, size=(max(5, int(round(7.5 / res)) | 1), max(5, int(round(7.5 / res)) | 1)))
+                if is_midspan_moat_scan
+                else h_dtm_grid
+            )
             void_candidate = (
                 (~raw_occ_closed)
                 & inner_box
                 & enclosed_void_cell
                 & (dist_cells * res <= max_void_dist_m)
                 & (dist_cells * res >= 0.35)
-                & (h_dtm_grid <= p18_site_h + 1.40)
+                & (void_ref_h_grid <= p18_site_h + 1.40)
             )
             void_labeled, n_voids = nd_label(void_candidate)
             occ_dilated_3 = binary_dilation(raw_occ_closed, structure=np.ones((3, 3), dtype=bool))
@@ -1842,7 +1849,7 @@ class CategorizationHeuristicsMixin:
                     dist_cap = 8.5 if is_midspan_moat_scan else 7.5
                     min_poly_area = 35.0 if is_midspan_moat_scan else 22.0
                     min_poly_fill = 0.15 if is_midspan_moat_scan else 0.22
-                    low_void_mask = vmask & (h_dtm_grid <= shoreline_h_med + h_margin) & (dist_cells * res <= dist_cap)
+                    low_void_mask = vmask & (void_ref_h_grid <= shoreline_h_med + h_margin) & (dist_cells * res <= dist_cap)
                     low_void_mask = binary_closing(low_void_mask, structure=np.ones((3, 3), dtype=bool)) & (~raw_occ_closed)
                     eroded_v = binary_erosion(low_void_mask, structure=np.ones((2, 2), dtype=bool))
                     if np.count_nonzero(eroded_v) * cell_area >= min_poly_area:
@@ -1939,7 +1946,7 @@ class CategorizationHeuristicsMixin:
 
         # Extract compact elevated Material Stockpile Mounds / Earthwork Pads (S1..S6), excluding terraces, walls, buildings & blue/white tarps
         stockpiles_list: List[Dict[str, Any]] = []
-        if max_span > 180.0:
+        if max_span > 280.0:
             mound_grid = (
                 raw_occ_closed
                 & (hag_grid >= 0.22)
@@ -2041,7 +2048,7 @@ class CategorizationHeuristicsMixin:
         # 2. Low Vegetation / Grass / Shrubs (低矮植生與草坡)
         grass_tri = (
             ((tri_hag < 1.8) & (exg >= 0.04) & (nz_abs >= 0.55))
-            if max_span > 180.0
+            if max_span > 280.0
             else ((tri_hag_tree < 1.8) & (exg >= 0.032) & (nz_abs >= 0.55))
         )
         grass_area_2d = float(area_2d[grass_tri].sum())
@@ -2053,12 +2060,12 @@ class CategorizationHeuristicsMixin:
         revet_area_3d = float(area_3d[revet_tri].sum())
 
         # 4. Buildings / Roofs / Pavilions (建築物與棚架屋頂)
-        bldg_tri = ((tri_hag if max_span > 180.0 else tri_hag_tree) >= 2.2) & (nz_abs >= 0.78) & (exg < 0.035) & (tri_sigma_h <= 0.12)
+        bldg_tri = ((tri_hag if max_span > 280.0 else tri_hag_tree) >= 2.2) & (nz_abs >= 0.78) & (exg < 0.035) & (tri_sigma_h <= 0.12)
         bldg_area_2d = float(area_2d[bldg_tri].sum())
         bldg_area_3d = float(area_3d[bldg_tri].sum())
 
         # 5. Drainage Channels & Curbs (排水溝渠與緣石)
-        hag_curb_src = tri_hag if max_span > 180.0 else tri_hag_local
+        hag_curb_src = tri_hag if max_span > 280.0 else tri_hag_local
         curb_tri = (hag_curb_src >= 0.08) & (hag_curb_src < 0.35) & (nz_abs >= 0.34) & (nz_abs < 0.72) & (exg < 0.04)
         curb_area_2d = float(area_2d[curb_tri].sum())
         curb_area_3d = float(area_3d[curb_tri].sum())
@@ -2078,7 +2085,7 @@ class CategorizationHeuristicsMixin:
         clutter_est_cnt = max(1, int(round(clutter_area_2d / 14.0))) if clutter_area_2d >= 2.0 else 0
 
         # 7. High Canopy Trees Total Area
-        if max_span > 180.0:
+        if max_span > 280.0:
             canopy_tri = (tri_hag >= 1.8) & (exg >= 0.032)
             canopy_area_2d = float(area_2d[canopy_tri].sum())
             canopy_area_3d = float(area_3d[canopy_tri].sum())
@@ -2243,18 +2250,21 @@ class CategorizationHeuristicsMixin:
             "triangle_count": int(len(v0)),
         }
 
-        # Stage 3: Gemini 3.6 Flash Multimodal Verification & Active Per-Region Semantic Labeling
-        cand_tags: List[Dict[str, Any]] = []
-        for r in roads_list[:4]:
-            cand_tags.append({"tag": r["id"], "e": r["center_twd97"][0], "n": r["center_twd97"][1], "color": (245, 158, 11)})
-        for w in water_list[:3]:
-            cand_tags.append({"tag": w["id"], "e": w["center_twd97"][0], "n": w["center_twd97"][1], "color": (6, 182, 212)})
-        for wl in walls_list[:4]:
-            cand_tags.append({"tag": wl["id"], "e": wl["center_twd97"][0], "n": wl["center_twd97"][1], "color": (244, 63, 94)})
-        for tr in trees_list[:5]:
-            cand_tags.append({"tag": tr["id"], "e": tr["trunk_twd97"][0], "n": tr["trunk_twd97"][1], "color": (16, 185, 129)})
-
+        # Stage 3: Gemini Multimodal Ground-Level Photo Referee & Active Per-Region Semantic Labeling
         cam_catalog = self._load_or_build_camera_catalog(scan)
+        cand_tags: List[Dict[str, Any]] = []
+        for r in roads_list[:3]:
+            cand_tags.append({"tag": r["id"], "category": "roads", "e": r["center_twd97"][0], "n": r["center_twd97"][1], "h": r["center_twd97"][2], "color": (245, 158, 11), "ambiguous": False})
+        for w in water_list[:2]:
+            cand_tags.append({"tag": w["id"], "category": "water", "e": w["center_twd97"][0], "n": w["center_twd97"][1], "h": w["center_twd97"][2], "color": (6, 182, 212), "ambiguous": False})
+        for wl in walls_list[:3]:
+            cand_tags.append({"tag": wl["id"], "category": "walls", "e": wl["center_twd97"][0], "n": wl["center_twd97"][1], "h": wl["center_twd97"][2], "color": (244, 63, 94), "ambiguous": False})
+        for tr in trees_list[:6]:
+            is_ambig_tr = tr.get("dbh_method") == "crown_height_allometry" and float(tr.get("height_m", 5.0)) < 3.5
+            cand_tags.append({"tag": tr["id"], "category": "trees", "e": tr["trunk_twd97"][0], "n": tr["trunk_twd97"][1], "h": tr["trunk_twd97"][2] + 1.3, "color": (16, 185, 129), "ambiguous": is_ambig_tr})
+        for sp_o in stockpiles_list[:2]:
+            cand_tags.append({"tag": sp_o["id"], "category": "stockpiles", "e": sp_o["center_twd97"][0], "n": sp_o["center_twd97"][1], "h": sp_o["center_twd97"][2], "color": (217, 119, 6), "ambiguous": False})
+
         ai_info = self._refine_categorization_with_gemini_multimodal(
             scan,
             ortho_rgb_u8,
@@ -2265,6 +2275,24 @@ class CategorizationHeuristicsMixin:
             cand_tags,
             cam_catalog,
         )
+        photo_matches = ai_info.get("photo_matches") if isinstance(ai_info.get("photo_matches"), dict) else {}
+
+        # Link every detected 3D feature to its best calibrated mobile phone photo via frustum projection
+        if cam_catalog and hasattr(self, "_match_feature_to_rtk_photo_fast"):
+            for tr in trees_list:
+                pm = photo_matches.get(tr["id"]) or self._match_feature_to_rtk_photo_fast(
+                    cam_catalog, float(tr["trunk_twd97"][0]), float(tr["trunk_twd97"][1]), float(tr["trunk_twd97"][2]) + 1.3
+                )
+                if pm:
+                    tr.update(pm)
+            for item_grp in (roads_list, water_list, walls_list, stockpiles_list):
+                for it_o in item_grp:
+                    c_pt = it_o.get("center_twd97") or [0.0, 0.0, 0.0]
+                    pm = photo_matches.get(it_o["id"]) or self._match_feature_to_rtk_photo_fast(
+                        cam_catalog, float(c_pt[0]), float(c_pt[1]), float(c_pt[2])
+                    )
+                    if pm:
+                        it_o.update(pm)
 
         # Apply Gemini-verified semantic subtype & labels to roads_list, water_list, and categories_breakdown
         ai_road_subtype = str(ai_info.get("road_corridor_subtype") or "paved_asphalt_concrete").strip()
