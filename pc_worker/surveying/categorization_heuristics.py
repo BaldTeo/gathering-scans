@@ -163,21 +163,21 @@ class CategorizationHeuristicsMixin:
         nz_abs = np.abs(normals[:, 2])
 
         # Stage 1: Multi-Scale Progressive Morphological Bare-Earth DTM & True Ortho Raster
+        # Unified 0.25m mobile phone classification grid with global TWD97 grid-origin snapping for 100% merge invariance
+        res = 0.25
+        cell_area = res * res
         n_tris = len(centroids)
         tri_indices = np.arange(n_tris, dtype=np.int32)
         base_e = np.concatenate([v0[:, 0], v1[:, 0], v2[:, 0], centroids[:, 0]])
         base_n = np.concatenate([v0[:, 1], v1[:, 1], v2[:, 1], centroids[:, 1]])
-        e_min, e_max = float(base_e.min()), float(base_e.max())
-        n_min, n_max = float(base_n.min()), float(base_n.max())
+        e_min = math.floor(float(base_e.min()) / res) * res
+        e_max = math.ceil(float(base_e.max()) / res) * res
+        n_min = math.floor(float(base_n.min()) / res) * res
+        n_max = math.ceil(float(base_n.max()) / res) * res
         span_e = max(e_max - e_min, 4.0)
         span_n = max(n_max - n_min, 4.0)
-        max_span = max(span_e, span_n)
         occupied_2d_m2 = float(area_2d.sum())
         area_scale = max(1.0, min(2.5, occupied_2d_m2 / 12500.0))
-        base_h_vals = np.concatenate([v0[:, 2], v1[:, 2], v2[:, 2], centroids[:, 2]])
-        base_h_p90_p10 = float(np.percentile(base_h_vals, 90.0) - np.percentile(base_h_vals, 10.0))
-        is_merged_or_derived = bool(scan.get("merged_from") or scan.get("derived_from_scan_id"))
-        is_wide_valley_forestry_scan = (max_span > 280.0) and (base_h_p90_p10 > 6.0) and (not is_merged_or_derived)
 
         sp_e_list = [centroids[:, 0], v0[:, 0], v1[:, 0], v2[:, 0]]
         sp_n_list = [centroids[:, 1], v0[:, 1], v1[:, 1], v2[:, 1]]
@@ -186,69 +186,60 @@ class CategorizationHeuristicsMixin:
         w_base = np.maximum(area_2d * 0.25, 1e-5).astype(np.float32)
         sp_w_list = [w_base, w_base, w_base, w_base]
 
-        if not is_wide_valley_forestry_scan:
-            med_mask = area_2d >= 0.018
-            if np.any(med_mask):
-                m_idx = tri_indices[med_mask]
-                mv0, mv1, mv2 = v0[med_mask], v1[med_mask], v2[med_mask]
-                mw = np.maximum(area_2d[med_mask] * (1.0 / 12.0), 1e-5).astype(np.float32)
-                for bw0, bw1, bw2 in (
-                    (0.5, 0.5, 0.0),
-                    (0.5, 0.0, 0.5),
-                    (0.0, 0.5, 0.5),
-                    (0.6, 0.2, 0.2),
-                    (0.2, 0.6, 0.2),
-                    (0.2, 0.2, 0.6),
-                    (0.75, 0.125, 0.125),
-                    (0.125, 0.75, 0.125),
-                    (0.125, 0.125, 0.75),
-                    (0.4, 0.4, 0.2),
-                    (0.4, 0.2, 0.4),
-                    (0.2, 0.4, 0.4),
-                ):
-                    pts_m = bw0 * mv0 + bw1 * mv1 + bw2 * mv2
-                    sp_e_list.append(pts_m[:, 0])
-                    sp_n_list.append(pts_m[:, 1])
-                    sp_h_list.append(pts_m[:, 2])
-                    sp_t_list.append(m_idx)
-                    sp_w_list.append(mw)
+        med_mask = area_2d >= 0.018
+        if np.any(med_mask):
+            m_idx = tri_indices[med_mask]
+            mv0, mv1, mv2 = v0[med_mask], v1[med_mask], v2[med_mask]
+            mw = np.maximum(area_2d[med_mask] * (1.0 / 12.0), 1e-5).astype(np.float32)
+            for bw0, bw1, bw2 in (
+                (0.5, 0.5, 0.0),
+                (0.5, 0.0, 0.5),
+                (0.0, 0.5, 0.5),
+                (0.6, 0.2, 0.2),
+                (0.2, 0.6, 0.2),
+                (0.2, 0.2, 0.6),
+                (0.75, 0.125, 0.125),
+                (0.125, 0.75, 0.125),
+                (0.125, 0.125, 0.75),
+                (0.4, 0.4, 0.2),
+                (0.4, 0.2, 0.4),
+                (0.2, 0.4, 0.4),
+            ):
+                pts_m = bw0 * mv0 + bw1 * mv1 + bw2 * mv2
+                sp_e_list.append(pts_m[:, 0])
+                sp_n_list.append(pts_m[:, 1])
+                sp_h_list.append(pts_m[:, 2])
+                sp_t_list.append(m_idx)
+                sp_w_list.append(mw)
 
-            lg_mask = area_2d >= 0.12
-            if np.any(lg_mask):
-                l_idx = tri_indices[lg_mask]
-                lv0, lv1, lv2 = v0[lg_mask], v1[lg_mask], v2[lg_mask]
-                lw = np.maximum(area_2d[lg_mask] * (1.0 / 9.0), 1e-5).astype(np.float32)
-                for bw0, bw1, bw2 in (
-                    (0.25, 0.75, 0.0),
-                    (0.75, 0.25, 0.0),
-                    (0.25, 0.0, 0.75),
-                    (0.75, 0.0, 0.25),
-                    (0.0, 0.25, 0.75),
-                    (0.0, 0.75, 0.25),
-                    (0.5, 0.25, 0.25),
-                    (0.25, 0.5, 0.25),
-                    (0.25, 0.25, 0.5),
-                ):
-                    pts_l = bw0 * lv0 + bw1 * lv1 + bw2 * lv2
-                    sp_e_list.append(pts_l[:, 0])
-                    sp_n_list.append(pts_l[:, 1])
-                    sp_h_list.append(pts_l[:, 2])
-                    sp_t_list.append(l_idx)
-                    sp_w_list.append(lw)
+        lg_mask = area_2d >= 0.12
+        if np.any(lg_mask):
+            l_idx = tri_indices[lg_mask]
+            lv0, lv1, lv2 = v0[lg_mask], v1[lg_mask], v2[lg_mask]
+            lw = np.maximum(area_2d[lg_mask] * (1.0 / 9.0), 1e-5).astype(np.float32)
+            for bw0, bw1, bw2 in (
+                (0.25, 0.75, 0.0),
+                (0.75, 0.25, 0.0),
+                (0.25, 0.0, 0.75),
+                (0.75, 0.0, 0.25),
+                (0.0, 0.25, 0.75),
+                (0.0, 0.75, 0.25),
+                (0.5, 0.25, 0.25),
+                (0.25, 0.5, 0.25),
+                (0.25, 0.25, 0.5),
+            ):
+                pts_l = bw0 * lv0 + bw1 * lv1 + bw2 * lv2
+                sp_e_list.append(pts_l[:, 0])
+                sp_n_list.append(pts_l[:, 1])
+                sp_h_list.append(pts_l[:, 2])
+                sp_t_list.append(l_idx)
+                sp_w_list.append(lw)
 
         all_e = np.concatenate(sp_e_list)
         all_n = np.concatenate(sp_n_list)
         all_h = np.concatenate(sp_h_list)
         splat_t_idx = np.concatenate(sp_t_list)
         splat_w = np.concatenate(sp_w_list)
-
-        if max_span <= 60.0 and not is_wide_valley_forestry_scan:
-            res = 0.15
-        elif not is_wide_valley_forestry_scan:
-            res = 0.25
-        else:
-            res = 0.35
-        cell_area = res * res
 
         nx = max(int(math.ceil(span_e / res)) + 1, 16)
         ny = max(int(math.ceil(span_n / res)) + 1, 16)
@@ -300,31 +291,20 @@ class CategorizationHeuristicsMixin:
         # Rasterize Top-Down True Orthophoto RGB
         ortho_rgb = np.zeros((ny, nx, 3), dtype=np.float32)
         ortho_cnt = np.zeros((ny, nx), dtype=np.float32)
-        if not is_wide_valley_forestry_scan:
-            for ch_i in range(3):
-                np.add.at(ortho_rgb[:, :, ch_i], (in_all, ie_all), rgb[splat_t_idx, ch_i] * splat_w)
-            np.add.at(ortho_cnt, (in_all, ie_all), splat_w)
-            has_rgb = ortho_cnt > 1e-7
-            if np.any(has_rgb) and not np.all(has_rgb):
-                _, nearest_rgb_idx = distance_transform_edt(~has_rgb, return_indices=True)
-            else:
-                nearest_rgb_idx = nearest_idx
-            for ch_i in range(3):
-                plane = ortho_rgb[:, :, ch_i]
-                plane[has_rgb] /= ortho_cnt[has_rgb]
-                if np.any(~has_rgb):
-                    plane[~has_rgb] = plane[nearest_rgb_idx[0][~has_rgb], nearest_rgb_idx[1][~has_rgb]]
-                ortho_rgb[:, :, ch_i] = np.clip(plane, 0.0, 1.0)
+        for ch_i in range(3):
+            np.add.at(ortho_rgb[:, :, ch_i], (in_all, ie_all), rgb[splat_t_idx, ch_i] * splat_w)
+        np.add.at(ortho_cnt, (in_all, ie_all), splat_w)
+        has_rgb = ortho_cnt > 1e-7
+        if np.any(has_rgb) and not np.all(has_rgb):
+            _, nearest_rgb_idx = distance_transform_edt(~has_rgb, return_indices=True)
         else:
-            for ch_i in range(3):
-                np.add.at(ortho_rgb[:, :, ch_i], (in_c, ie_c), rgb[:, ch_i] * area_2d)
-            np.add.at(ortho_cnt, (in_c, ie_c), area_2d)
-            has_rgb = ortho_cnt > 1e-6
-            for ch_i in range(3):
-                plane = ortho_rgb[:, :, ch_i]
-                plane[has_rgb] /= ortho_cnt[has_rgb]
-                plane[~has_rgb] = plane[nearest_idx[0][~has_rgb], nearest_idx[1][~has_rgb]]
-                ortho_rgb[:, :, ch_i] = np.clip(plane, 0.0, 1.0)
+            nearest_rgb_idx = nearest_idx
+        for ch_i in range(3):
+            plane = ortho_rgb[:, :, ch_i]
+            plane[has_rgb] /= ortho_cnt[has_rgb]
+            if np.any(~has_rgb):
+                plane[~has_rgb] = plane[nearest_rgb_idx[0][~has_rgb], nearest_rgb_idx[1][~has_rgb]]
+            ortho_rgb[:, :, ch_i] = np.clip(plane, 0.0, 1.0)
 
         ortho_rgb_u8 = (ortho_rgb * 255.0).astype(np.uint8)
         ortho_lum = 0.299 * ortho_rgb[:, :, 0] + 0.587 * ortho_rgb[:, :, 1] + 0.114 * ortho_rgb[:, :, 2]
@@ -392,8 +372,8 @@ class CategorizationHeuristicsMixin:
                         continue
 
                 p_area, p_perim = polygon_area_and_perimeter_2d(ring_2d)
-                # On urban/park/mobile scans, use exact occupied pixel area for surface masks so interior lawn/planter holes are never over-counted, while shoreline water polygons (fixed_z is not None) preserve full enclosed basin area
-                if (not is_wide_valley_forestry_scan) and (fixed_z is None):
+                # Use exact occupied pixel area for surface masks so interior lawn/planter holes are never over-counted, while shoreline water polygons (fixed_z is not None) preserve full enclosed basin area
+                if fixed_z is None:
                     true_area = float(px_cnt * cell_area)
                 else:
                     true_area = max(p_area, float(px_cnt * cell_area * 0.92))
@@ -412,7 +392,7 @@ class CategorizationHeuristicsMixin:
                 # Extract interior hole rings (e.g. circular tree planters & central park lawns inside road/walkway networks)
                 holes_twd_list: List[List[List[float]]] = []
                 holes_loc_list: List[List[List[float]]] = []
-                if (not is_wide_valley_forestry_scan) and (fixed_z is None):
+                if fixed_z is None:
                     filled_comp = binary_fill_holes(comp)
                     holes_mask = filled_comp & (~comp)
                     if np.any(holes_mask):
@@ -495,7 +475,7 @@ class CategorizationHeuristicsMixin:
         ).astype(np.float32)
         local_dtm_mean_grid = uniform_filter(h_dtm_grid, size=(loc_win_px, loc_win_px)).astype(np.float32)
 
-        dtm_for_slope = gaussian_filter(h_dtm_grid if is_wide_valley_forestry_scan else h_dtm_local, sigma=max(1.5, 1.8 / res))
+        dtm_for_slope = gaussian_filter(h_dtm_local, sigma=max(1.5, 1.8 / res))
         grad_n, grad_e = np.gradient(dtm_for_slope, res, res)
         dtm_slope_pct_grid = np.hypot(grad_n, grad_e) * 100.0
 
@@ -568,7 +548,6 @@ class CategorizationHeuristicsMixin:
         is_bright_white_wall = (sat < 0.082) & (lum > 0.52) & (exg < 0.058) & (rb_diff >= -0.085) & (rb_diff <= 0.050)
         is_achromatic_wall = ((sat < 0.138) & (exg < 0.026) & (rb_diff >= -0.115) & (rb_diff <= 0.048)) | is_bright_white_wall
         is_tall_facade = (tri_hag_tree >= 2.8) & (exg < 0.024) & (sat < 0.175)
-        is_riverbank_wall = is_wide_valley_forestry_scan & (tri_hag_tree <= 6.5) & (exg < 0.028) & (sat < 0.20)
         steep_grn_c = steep_grn_frac_grid[in_c, ie_c]
         canopy_safe_achrom = (steep_grn_c < 0.26) | ((exg < 0.018) & (sat < 0.125)) | is_bright_white_wall
         vert_tri_mask = (
@@ -576,8 +555,8 @@ class CategorizationHeuristicsMixin:
             & (tri_hag_tree <= 32.0)
             & (nz_abs < 0.38)
             & ((exg < 0.034) | is_bright_white_wall)
-            & ((elev_exg_grid[in_c, ie_c] <= 0.052) | ((is_achromatic_wall | is_tall_facade) & canopy_safe_achrom) | in_bldg_c | is_riverbank_wall)
-            & ((steep_grn_c < 0.26) | ((is_achromatic_wall | is_tall_facade) & canopy_safe_achrom) | in_bldg_c | is_riverbank_wall)
+            & ((elev_exg_grid[in_c, ie_c] <= 0.052) | ((is_achromatic_wall | is_tall_facade) & canopy_safe_achrom) | in_bldg_c)
+            & ((steep_grn_c < 0.26) | ((is_achromatic_wall | is_tall_facade) & canopy_safe_achrom) | in_bldg_c)
             & (area_3d >= 0.004)
         )
         vert_idx = np.nonzero(vert_tri_mask)[0]
@@ -723,8 +702,7 @@ class CategorizationHeuristicsMixin:
                 if not has_bldg:
                     is_bright_white_seg = (med_w_sat < 0.078 and med_w_lum > 0.54 and med_w_exg < 0.055 and hag_p15 <= 0.90 and sigma_n <= 0.22 and tot_a_c >= 8.0)
                     is_ground_retaining = (
-                        (max_span > 280.0 and hag_p90 <= 6.5 and sigma_n <= 0.32)
-                        or (hag_p90 >= 7.5 and sigma_n <= 0.25 and tot_a_c >= 5.0 and med_cgrn < 0.38 and med_w_exg <= 0.015)
+                        (hag_p90 >= 7.5 and sigma_n <= 0.25 and tot_a_c >= 5.0 and med_cgrn < 0.38 and med_w_exg <= 0.015)
                         or is_bright_white_seg
                     )
                     if not is_ground_retaining:
@@ -922,57 +900,54 @@ class CategorizationHeuristicsMixin:
         on_ground = (np.abs(tri_hag) <= 0.42) | (
             (np.abs(tri_hag_local) <= 0.25) & (tri_hag <= 2.4) & (nz_abs >= 0.88)
         )
-        road_tri_mask = np.zeros(n_tris, dtype=bool)
-        road_grid_base = np.zeros((ny, nx), dtype=bool)
         road_near_12m_grid = np.zeros((ny, nx), dtype=bool)
-        if not is_wide_valley_forestry_scan:
-            paved_tri_mask = (
-                on_ground
-                & (nz_abs >= 0.88)
-                & (tri_sigma_h <= 0.068)
-                & (exg < 0.040)
-                & (rb_diff >= -0.035)
-                & (rb_diff <= 0.076)
-                & (lum >= 0.15)
-                & (lum <= 0.88)
-                & (
-                    ((sat <= 0.20) & (tri_sigma_l <= 0.088))
-                    | ((nz_abs >= 0.92) & (tri_sigma_h <= 0.045) & (tri_sigma_l <= 0.18) & (sat <= 0.45) & (lum >= 0.22))
-                )
+        paved_tri_mask = (
+            on_ground
+            & (nz_abs >= 0.88)
+            & (tri_sigma_h <= 0.068)
+            & (exg < 0.040)
+            & (rb_diff >= -0.035)
+            & (rb_diff <= 0.076)
+            & (lum >= 0.15)
+            & (lum <= 0.88)
+            & (
+                ((sat <= 0.20) & (tri_sigma_l <= 0.088))
+                | ((nz_abs >= 0.92) & (tri_sigma_h <= 0.045) & (tri_sigma_l <= 0.18) & (sat <= 0.45) & (lum >= 0.22))
             )
-            road_tri_mask = paved_tri_mask.copy()
-            road_grid_raw = np.zeros((ny, nx), dtype=bool)
-            road_sp_mask = paved_tri_mask[splat_t_idx]
-            road_grid_raw[in_all[road_sp_mask], ie_all[road_sp_mask]] = True
-            road_grid_closed = binary_closing(road_grid_raw & raw_occ_closed, structure=np.ones((5, 5), dtype=bool))
-            road_grid_closed = binary_closing(road_grid_closed, structure=np.ones((3, 3), dtype=bool))
-            road_grid_base = binary_opening(road_grid_closed, structure=np.ones((3, 3), dtype=bool))
-            g_cnt = np.zeros((ny, nx), dtype=np.float32)
-            g_exg_sum = np.zeros((ny, nx), dtype=np.float32)
-            g_rb_sum = np.zeros((ny, nx), dtype=np.float32)
-            g_lum_sum = np.zeros((ny, nx), dtype=np.float32)
-            og_sp = on_ground[splat_t_idx]
-            if np.any(og_sp):
-                t_og = splat_t_idx[og_sp]
-                np.add.at(g_cnt, (in_all[og_sp], ie_all[og_sp]), 1.0)
-                np.add.at(g_exg_sum, (in_all[og_sp], ie_all[og_sp]), exg[t_og].astype(np.float32))
-                np.add.at(g_rb_sum, (in_all[og_sp], ie_all[og_sp]), rb_diff[t_og].astype(np.float32))
-                np.add.at(g_lum_sum, (in_all[og_sp], ie_all[og_sp]), lum[t_og].astype(np.float32))
-                w_cnt = uniform_filter(g_cnt, size=9)
-                g_exg_m9 = uniform_filter(g_exg_sum, size=9) / np.maximum(w_cnt, 1e-5)
-                g_rb_m9 = uniform_filter(g_rb_sum, size=9) / np.maximum(w_cnt, 1e-5)
-                g_lum_m9 = uniform_filter(g_lum_sum, size=9) / np.maximum(w_cnt, 1e-5)
-                turf_bed_grid = (w_cnt > 0.05) & (g_rb_m9 >= 0.052) & (g_exg_m9 >= 0.004) & (g_lum_m9 <= 0.568)
-                turf_bed_grid = binary_closing(turf_bed_grid, structure=np.ones((5, 5), dtype=bool))
-                road_grid_base = road_grid_base & (~turf_bed_grid)
-            if np.any(road_grid_base):
-                r_dil_12 = max(3, int(round(1.2 / res)) * 2 + 1)
-                road_near_12m_grid = binary_dilation(road_grid_base, structure=np.ones((r_dil_12, r_dil_12), dtype=bool))
+        )
+        road_tri_mask = paved_tri_mask.copy()
+        road_grid_raw = np.zeros((ny, nx), dtype=bool)
+        road_sp_mask = paved_tri_mask[splat_t_idx]
+        road_grid_raw[in_all[road_sp_mask], ie_all[road_sp_mask]] = True
+        road_grid_closed = binary_closing(road_grid_raw & raw_occ_closed, structure=np.ones((5, 5), dtype=bool))
+        road_grid_closed = binary_closing(road_grid_closed, structure=np.ones((3, 3), dtype=bool))
+        road_grid_base = binary_opening(road_grid_closed, structure=np.ones((3, 3), dtype=bool))
+        g_cnt = np.zeros((ny, nx), dtype=np.float32)
+        g_exg_sum = np.zeros((ny, nx), dtype=np.float32)
+        g_rb_sum = np.zeros((ny, nx), dtype=np.float32)
+        g_lum_sum = np.zeros((ny, nx), dtype=np.float32)
+        og_sp = on_ground[splat_t_idx]
+        if np.any(og_sp):
+            t_og = splat_t_idx[og_sp]
+            np.add.at(g_cnt, (in_all[og_sp], ie_all[og_sp]), 1.0)
+            np.add.at(g_exg_sum, (in_all[og_sp], ie_all[og_sp]), exg[t_og].astype(np.float32))
+            np.add.at(g_rb_sum, (in_all[og_sp], ie_all[og_sp]), rb_diff[t_og].astype(np.float32))
+            np.add.at(g_lum_sum, (in_all[og_sp], ie_all[og_sp]), lum[t_og].astype(np.float32))
+            w_cnt = uniform_filter(g_cnt, size=9)
+            g_exg_m9 = uniform_filter(g_exg_sum, size=9) / np.maximum(w_cnt, 1e-5)
+            g_rb_m9 = uniform_filter(g_rb_sum, size=9) / np.maximum(w_cnt, 1e-5)
+            g_lum_m9 = uniform_filter(g_lum_sum, size=9) / np.maximum(w_cnt, 1e-5)
+            turf_bed_grid = (w_cnt > 0.05) & (g_rb_m9 >= 0.052) & (g_exg_m9 >= 0.004) & (g_lum_m9 <= 0.568)
+            turf_bed_grid = binary_closing(turf_bed_grid, structure=np.ones((5, 5), dtype=bool))
+            road_grid_base = road_grid_base & (~turf_bed_grid)
+        if np.any(road_grid_base):
+            r_dil_12 = max(3, int(round(1.2 / res)) * 2 + 1)
+            road_near_12m_grid = binary_dilation(road_grid_base, structure=np.ones((r_dil_12, r_dil_12), dtype=bool))
 
         # =================================================================================
         # CATEGORY 2: TREES + TRUNK DBH AT 1.3M (喬木與胸徑 DBH)
         # =================================================================================
-        all_xy_tree = cKDTree(centroids[:, :2]) if not is_wide_valley_forestry_scan else None
+        all_xy_tree = cKDTree(centroids[:, :2])
 
         def _has_neck_gap_bollard_at(cx_q: float, cy_q: float, th_g_q: float, idx_arr_q: np.ndarray, c_q: np.ndarray) -> bool:
             dt_q = np.hypot(c_q[:, 0] - cx_q, c_q[:, 1] - cy_q)
@@ -983,150 +958,135 @@ class CategorizationHeuristicsMixin:
                 return True
             return False
 
-        if is_wide_valley_forestry_scan:
-            # Wide river-valley / forestry scan (e.g. QuChi Dam): preserve exact 3.6m forestry CHM segmentation
-            canopy_mask = (hag_grid >= 1.8) & (ortho_exg > 0.032) & raw_occ_closed
-            canopy_mask = binary_opening(canopy_mask, structure=np.ones((2, 2), dtype=bool))
-            chm_smooth = gaussian_filter(np.where(canopy_mask, hag_grid, 0.0), sigma=max(1.2, 1.35 / res))
-            win_pk = max(5, int(round(3.6 / res)) | 1)
-            local_max = (
-                (chm_smooth == maximum_filter(chm_smooth, size=(win_pk, win_pk)))
-                & canopy_mask
-                & (chm_smooth >= 2.2)
+        # Green Canopy + Pruned/Columnar Tree Stems (excluding buildings & retaining walls)
+        green_canopy_mask = (
+            (
+                (hag_tree_grid >= 1.8)
+                | ((hag_tree_grid >= 1.55) & ((elev_exg_grid >= 0.038) | (ortho_exg >= 0.038)))
             )
-            min_tree_dist_px = max(3.0, 3.2 / res)
-            tree_ground_grid = h_dtm_grid
-        else:
-            # Urban / Campus / Park scan: Green Canopy + Pruned/Columnar Urban Park Tree Stems (excluding buildings & retaining walls)
-            green_canopy_mask = (
-                (
-                    (hag_tree_grid >= 1.8)
-                    | ((hag_tree_grid >= 1.55) & ((elev_exg_grid >= 0.038) | (ortho_exg >= 0.038)))
-                )
-                & (hag_tree_grid <= 16.5)
-                & ((elev_exg_grid > 0.022) | (ortho_exg > 0.025))
-                & (~bldg_occ_grid)
-                & (~coplanar_wall_grid)
-                & raw_occ_closed
-            )
-            green_canopy_mask = binary_opening(
-                binary_closing(green_canopy_mask, structure=np.ones((3, 3), dtype=bool)),
-                structure=np.ones((2, 2), dtype=bool),
-            )
+            & (hag_tree_grid <= 16.5)
+            & ((elev_exg_grid > 0.022) | (ortho_exg > 0.025))
+            & (~bldg_occ_grid)
+            & (~coplanar_wall_grid)
+            & raw_occ_closed
+        )
+        green_canopy_mask = binary_opening(
+            binary_closing(green_canopy_mask, structure=np.ones((3, 3), dtype=bool)),
+            structure=np.ones((2, 2), dtype=bool),
+        )
 
-            pruned_stem_mask = np.zeros((ny, nx), dtype=bool)
-            verified_stem_centers: List[Tuple[float, float]] = []
-            stem_tri_cand = (
-                (((tri_hag >= 0.45) & (tri_hag <= 1.95)) | ((tri_hag_local >= 0.45) & (tri_hag_local <= 1.95)))
-                & (nz_abs < 0.48)
-                & (exg > -0.095)
-                & (exg < 0.260)
-                & ((rb_diff >= 0.024) | (exg >= 0.028))
-            )
-            if np.any(stem_tri_cand):
-                st_idx = np.nonzero(stem_tri_cand)[0]
-                st_pts = centroids[st_idx]
-                st_norms = normals[st_idx]
-                st_a3d = area_3d[st_idx]
-                st_sat = sat[st_idx]
-                st_rb = rb_diff[st_idx]
-                st_exg = exg[st_idx]
-                st_grid_cnt = np.zeros((ny, nx), dtype=np.int32)
-                st_grid_a3d = np.zeros((ny, nx), dtype=np.float32)
-                np.add.at(st_grid_cnt, (in_c[st_idx], ie_c[st_idx]), 1)
-                np.add.at(st_grid_a3d, (in_c[st_idx], ie_c[st_idx]), st_a3d)
-                st_occ = binary_closing((st_grid_cnt >= 3) | (st_grid_a3d >= 0.07), structure=np.ones((2, 2), dtype=bool))
-                st_occ = st_occ & (~bldg_occ_grid) & (~coplanar_wall_grid) & (hag_tree_grid >= 1.55) & (hag_tree_grid <= 16.5)
-                st_lbl, n_st = nd_label(st_occ)
-                if n_st > 0:
-                    pt_st_cid = st_lbl[in_c[st_idx], ie_c[st_idx]]
-                    for sc_id in range(1, n_st + 1):
-                        sc_sel = pt_st_cid == sc_id
-                        n_sc_pts = int(np.count_nonzero(sc_sel))
-                        pts_sc = st_pts[sc_sel, :2]
-                        span_sc = float(math.hypot(np.ptp(pts_sc[:, 0]), np.ptp(pts_sc[:, 1]))) if n_sc_pts >= 2 else 0.0
-                        med_sc_sat = float(np.median(st_sat[sc_sel])) if n_sc_pts > 0 else 0.0
-                        med_sc_rb = float(np.median(st_rb[sc_sel])) if n_sc_pts > 0 else 0.0
-                        med_sc_exg = float(np.median(st_exg[sc_sel])) if n_sc_pts > 0 else 0.0
-                        is_warm_or_grn_sc = (med_sc_rb >= 0.042) or (med_sc_exg >= 0.032)
-                        min_sc_pts = 8 if (span_sc <= 1.25 and is_warm_or_grn_sc) else 12
-                        if n_sc_pts < min_sc_pts or n_sc_pts > 2500:
+        pruned_stem_mask = np.zeros((ny, nx), dtype=bool)
+        verified_stem_centers: List[Tuple[float, float]] = []
+        stem_tri_cand = (
+            (((tri_hag >= 0.45) & (tri_hag <= 1.95)) | ((tri_hag_local >= 0.45) & (tri_hag_local <= 1.95)))
+            & (nz_abs < 0.48)
+            & (exg > -0.095)
+            & (exg < 0.260)
+            & ((rb_diff >= 0.024) | (exg >= 0.028))
+        )
+        if np.any(stem_tri_cand):
+            st_idx = np.nonzero(stem_tri_cand)[0]
+            st_pts = centroids[st_idx]
+            st_norms = normals[st_idx]
+            st_a3d = area_3d[st_idx]
+            st_sat = sat[st_idx]
+            st_rb = rb_diff[st_idx]
+            st_exg = exg[st_idx]
+            st_grid_cnt = np.zeros((ny, nx), dtype=np.int32)
+            st_grid_a3d = np.zeros((ny, nx), dtype=np.float32)
+            np.add.at(st_grid_cnt, (in_c[st_idx], ie_c[st_idx]), 1)
+            np.add.at(st_grid_a3d, (in_c[st_idx], ie_c[st_idx]), st_a3d)
+            st_occ = binary_closing((st_grid_cnt >= 3) | (st_grid_a3d >= 0.07), structure=np.ones((2, 2), dtype=bool))
+            st_occ = st_occ & (~bldg_occ_grid) & (~coplanar_wall_grid) & (hag_tree_grid >= 1.55) & (hag_tree_grid <= 16.5)
+            st_lbl, n_st = nd_label(st_occ)
+            if n_st > 0:
+                pt_st_cid = st_lbl[in_c[st_idx], ie_c[st_idx]]
+                for sc_id in range(1, n_st + 1):
+                    sc_sel = pt_st_cid == sc_id
+                    n_sc_pts = int(np.count_nonzero(sc_sel))
+                    pts_sc = st_pts[sc_sel, :2]
+                    span_sc = float(math.hypot(np.ptp(pts_sc[:, 0]), np.ptp(pts_sc[:, 1]))) if n_sc_pts >= 2 else 0.0
+                    med_sc_sat = float(np.median(st_sat[sc_sel])) if n_sc_pts > 0 else 0.0
+                    med_sc_rb = float(np.median(st_rb[sc_sel])) if n_sc_pts > 0 else 0.0
+                    med_sc_exg = float(np.median(st_exg[sc_sel])) if n_sc_pts > 0 else 0.0
+                    is_warm_or_grn_sc = (med_sc_rb >= 0.042) or (med_sc_exg >= 0.032)
+                    min_sc_pts = 8 if (span_sc <= 1.25 and is_warm_or_grn_sc) else 12
+                    if n_sc_pts < min_sc_pts or n_sc_pts > 2500:
+                        continue
+                    sc_a3d_sum = float(st_a3d[sc_sel].sum())
+                    min_sc_a3d = 0.09 if (span_sc <= 1.25 and is_warm_or_grn_sc) else 0.16
+                    if sc_a3d_sum < min_sc_a3d or sc_a3d_sum > 14.0:
+                        continue
+                    if span_sc < 0.06 or span_sc > 3.60:
+                        continue
+                    # Reject achromatic grey metal/concrete poles
+                    if med_sc_sat < 0.118 and med_sc_rb < 0.038 and med_sc_exg < 0.0245:
+                        continue
+                    # Verify radial normal dispersion: reject 2-fold planar walls and 4-fold square pillars
+                    nxy_sc = st_norms[sc_sel, :2]
+                    ang2_sc = np.arctan2(nxy_sc[:, 1], nxy_sc[:, 0]) * 2.0
+                    ang4_sc = ang2_sc * 2.0
+                    r2_sc = float(math.hypot(float(np.mean(np.cos(ang2_sc))), float(np.mean(np.sin(ang2_sc)))))
+                    r4_sc = float(math.hypot(float(np.mean(np.cos(ang4_sc))), float(np.mean(np.sin(ang4_sc)))))
+                    cov_sc = np.cov(pts_sc.T)
+                    ev_sc = np.sort(np.maximum(np.linalg.eigvalsh(cov_sc), 1e-6))
+                    aspect_sc = float(math.sqrt(ev_sc[1] / ev_sc[0]))
+                    max_aspect_sc = 4.6 if (span_sc <= 1.65 and r2_sc <= 0.26 and is_warm_or_grn_sc) else 2.55
+                    if aspect_sc > max_aspect_sc:
+                        continue
+                    max_r2_sc = 0.33 if (is_warm_or_grn_sc and med_sc_sat >= 0.14) else 0.30
+                    max_r4_sc = 0.38 if (r2_sc <= 0.23 and is_warm_or_grn_sc) else 0.30
+                    if r2_sc > max_r2_sc or r4_sc > max_r4_sc:
+                        continue
+                    med_sc_xy = np.median(pts_sc, axis=0)
+                    sc_e, sc_n = float(med_sc_xy[0]), float(med_sc_xy[1])
+                    near_sc = all_xy_tree.query_ball_point([sc_e, sc_n], r=2.65)
+                    if len(near_sc) >= 20:
+                        idx_sc = np.array(near_sc, dtype=np.int32)
+                        c_sc = centroids[idx_sc]
+                        d_sc = np.hypot(c_sc[:, 0] - sc_e, c_sc[:, 1] - sc_n)
+                        pi_sc = int(np.clip((sc_e - e_min) / res, 0, nx - 1))
+                        pj_sc = int(np.clip((sc_n - n_min) / res, 0, ny - 1))
+                        ann_sc = (d_sc >= 1.15) & (d_sc <= 2.65) & (nz_abs[idx_sc] >= 0.78) & ((tri_hag[idx_sc] <= 1.80) | (tri_hag_local[idx_sc] <= 0.45))
+                        if np.count_nonzero(ann_sc) < 5:
+                            ann_sc = (d_sc >= 1.15) & (d_sc <= 2.65) & (nz_abs[idx_sc] >= 0.78)
+                        z_ann_sc = c_sc[ann_sc, 2] if np.count_nonzero(ann_sc) >= 5 else c_sc[:, 2]
+                        p15_sc, p30_sc, p85_sc = np.percentile(z_ann_sc, [15.0, 30.0, 85.0])
+                        th_g_sc = min(float(h_dtm_local[pj_sc, pi_sc]), float(p30_sc)) if (p85_sc - p15_sc) <= 1.55 else float(np.percentile(z_ann_sc, 65.0))
+                        if _has_neck_gap_bollard_at(sc_e, sc_n, th_g_sc, idx_sc, c_sc):
                             continue
-                        sc_a3d_sum = float(st_a3d[sc_sel].sum())
-                        min_sc_a3d = 0.09 if (span_sc <= 1.25 and is_warm_or_grn_sc) else 0.16
-                        if sc_a3d_sum < min_sc_a3d or sc_a3d_sum > 14.0:
-                            continue
-                        if span_sc < 0.06 or span_sc > 3.60:
-                            continue
-                        # Reject achromatic grey metal/concrete poles
-                        if med_sc_sat < 0.118 and med_sc_rb < 0.038 and med_sc_exg < 0.0245:
-                            continue
-                        # Verify radial normal dispersion: reject 2-fold planar walls and 4-fold square pillars
-                        nxy_sc = st_norms[sc_sel, :2]
-                        ang2_sc = np.arctan2(nxy_sc[:, 1], nxy_sc[:, 0]) * 2.0
-                        ang4_sc = ang2_sc * 2.0
-                        r2_sc = float(math.hypot(float(np.mean(np.cos(ang2_sc))), float(np.mean(np.sin(ang2_sc)))))
-                        r4_sc = float(math.hypot(float(np.mean(np.cos(ang4_sc))), float(np.mean(np.sin(ang4_sc)))))
-                        cov_sc = np.cov(pts_sc.T)
-                        ev_sc = np.sort(np.maximum(np.linalg.eigvalsh(cov_sc), 1e-6))
-                        aspect_sc = float(math.sqrt(ev_sc[1] / ev_sc[0]))
-                        max_aspect_sc = 4.6 if (span_sc <= 1.65 and r2_sc <= 0.26 and is_warm_or_grn_sc) else 2.55
-                        if aspect_sc > max_aspect_sc:
-                            continue
-                        max_r2_sc = 0.33 if (is_warm_or_grn_sc and med_sc_sat >= 0.14) else 0.30
-                        max_r4_sc = 0.38 if (r2_sc <= 0.23 and is_warm_or_grn_sc) else 0.30
-                        if r2_sc > max_r2_sc or r4_sc > max_r4_sc:
-                            continue
-                        med_sc_xy = np.median(pts_sc, axis=0)
-                        sc_e, sc_n = float(med_sc_xy[0]), float(med_sc_xy[1])
-                        if all_xy_tree is not None:
-                            near_sc = all_xy_tree.query_ball_point([sc_e, sc_n], r=2.65)
-                            if len(near_sc) >= 20:
-                                idx_sc = np.array(near_sc, dtype=np.int32)
-                                c_sc = centroids[idx_sc]
-                                d_sc = np.hypot(c_sc[:, 0] - sc_e, c_sc[:, 1] - sc_n)
-                                pi_sc = int(np.clip((sc_e - e_min) / res, 0, nx - 1))
-                                pj_sc = int(np.clip((sc_n - n_min) / res, 0, ny - 1))
-                                ann_sc = (d_sc >= 1.15) & (d_sc <= 2.65) & (nz_abs[idx_sc] >= 0.78) & ((tri_hag[idx_sc] <= 1.80) | (tri_hag_local[idx_sc] <= 0.45))
-                                if np.count_nonzero(ann_sc) < 5:
-                                    ann_sc = (d_sc >= 1.15) & (d_sc <= 2.65) & (nz_abs[idx_sc] >= 0.78)
-                                z_ann_sc = c_sc[ann_sc, 2] if np.count_nonzero(ann_sc) >= 5 else c_sc[:, 2]
-                                p15_sc, p30_sc, p85_sc = np.percentile(z_ann_sc, [15.0, 30.0, 85.0])
-                                th_g_sc = min(float(h_dtm_local[pj_sc, pi_sc]), float(p30_sc)) if (p85_sc - p15_sc) <= 1.55 else float(np.percentile(z_ann_sc, 65.0))
-                                if _has_neck_gap_bollard_at(sc_e, sc_n, th_g_sc, idx_sc, c_sc):
-                                    continue
-                        pruned_stem_mask |= (st_lbl == sc_id)
-                        verified_stem_centers.append((sc_e, sc_n))
+                    pruned_stem_mask |= (st_lbl == sc_id)
+                    verified_stem_centers.append((sc_e, sc_n))
 
-            canopy_mask = green_canopy_mask | pruned_stem_mask
-            chm_smooth = gaussian_filter(np.minimum(hag_tree_grid, 16.5), sigma=max(0.85, 0.55 / res))
-            win_pk = max(3, int(round(1.65 / res)) | 1)
-            local_max = (
-                (chm_smooth == maximum_filter(chm_smooth, size=(win_pk, win_pk)))
-                & canopy_mask
-                & (chm_smooth >= 1.55)
-                & (hag_tree_grid >= 1.55)
-                & (hag_tree_grid <= 16.5)
-            )
-            # Ensure every verified cylindrical stem cluster contributes its local height apex and is never suppressed by Gaussian smoothing
-            if np.any(pruned_stem_mask):
-                ps_lbl, n_ps = nd_label(pruned_stem_mask)
-                for ps_id in range(1, n_ps + 1):
-                    ps_js, ps_is = np.nonzero(ps_lbl == ps_id)
-                    if len(ps_js) > 0:
-                        best_p = int(np.argmax(hag_tree_grid[ps_js, ps_is]))
-                        bj, bi = int(ps_js[best_p]), int(ps_is[best_p])
-                        local_max[bj, bi] = True
-                        chm_smooth[bj, bi] = max(float(chm_smooth[bj, bi]), float(np.max(hag_tree_grid[ps_js, ps_is])) + 2.5)
-            min_tree_dist_px = max(2.5, 1.35 / res)
-            tree_ground_grid = h_dtm_local
+        canopy_mask = green_canopy_mask | pruned_stem_mask
+        chm_smooth = gaussian_filter(np.minimum(hag_tree_grid, 16.5), sigma=max(0.85, 0.55 / res))
+        win_pk = max(3, int(round(1.65 / res)) | 1)
+        local_max = (
+            (chm_smooth == maximum_filter(chm_smooth, size=(win_pk, win_pk)))
+            & canopy_mask
+            & (chm_smooth >= 1.55)
+            & (hag_tree_grid >= 1.55)
+            & (hag_tree_grid <= 16.5)
+        )
+        # Ensure every verified cylindrical stem cluster contributes its local height apex and is never suppressed by Gaussian smoothing
+        if np.any(pruned_stem_mask):
+            ps_lbl, n_ps = nd_label(pruned_stem_mask)
+            for ps_id in range(1, n_ps + 1):
+                ps_js, ps_is = np.nonzero(ps_lbl == ps_id)
+                if len(ps_js) > 0:
+                    best_p = int(np.argmax(hag_tree_grid[ps_js, ps_is]))
+                    bj, bi = int(ps_js[best_p]), int(ps_is[best_p])
+                    local_max[bj, bi] = True
+                    chm_smooth[bj, bi] = max(float(chm_smooth[bj, bi]), float(np.max(hag_tree_grid[ps_js, ps_is])) + 2.5)
+        min_tree_dist_px = max(2.5, 1.35 / res)
+        tree_ground_grid = h_dtm_local
 
         pk_js, pk_is = np.nonzero(local_max)
 
         # Sort candidate tree peaks by height descending and enforce minimum crown spacing
         peak_order = np.argsort(-chm_smooth[pk_js, pk_is])
         kept_peaks: List[Tuple[int, int, float]] = []
-        max_cand_peaks = 95 if is_wide_valley_forestry_scan else int(round(280 * area_scale))
+        max_cand_peaks = int(round(280 * area_scale))
         for idx_p in peak_order:
             pj, pi = int(pk_js[idx_p]), int(pk_is[idx_p])
             ph = float(chm_smooth[pj, pi])
@@ -1137,11 +1097,7 @@ class CategorizationHeuristicsMixin:
                 break
 
         # Pre-filter breast-height vertical trunk triangles
-        bh_tri_mask = (
-            ((tri_hag >= 0.95) & (tri_hag <= 1.85) & (nz_abs < 0.48))
-            if is_wide_valley_forestry_scan
-            else ((tri_hag_tree >= 0.65) & (tri_hag_tree <= 1.95) & (nz_abs < 0.50))
-        )
+        bh_tri_mask = (tri_hag_tree >= 0.65) & (tri_hag_tree <= 1.95) & (nz_abs < 0.50)
         bh_pts = centroids[bh_tri_mask]
         bh_tree = cKDTree(bh_pts[:, :2]) if len(bh_pts) >= 6 else None
 
@@ -1151,9 +1107,9 @@ class CategorizationHeuristicsMixin:
             tn = float(n_min + (pj + 0.5) * res)
             th_ground = float(tree_ground_grid[pj, pi])
             th_top = float(z_max_filled[pj, pi])
-            tree_h = max(2.2 if is_wide_valley_forestry_scan else 1.60, round(max(min(ph, 16.5), th_top - th_ground if is_wide_valley_forestry_scan else min(th_top - th_ground, 16.5)), 2))
+            tree_h = max(1.60, round(max(min(ph, 16.5), min(th_top - th_ground, 16.5)), 2))
 
-            # Urban 3D geometry, annular ground datum & stem centering (eliminates terrace steps, lamp posts, pillars & retaining walls)
+            # 3D geometry, annular ground datum & stem centering (eliminates terrace steps, lamp posts, pillars & retaining walls)
             pre_stem_xy: Optional[Tuple[float, float]] = None
             is_verified_cyl = False
             trunk_is_warm_or_green = False
@@ -1163,7 +1119,7 @@ class CategorizationHeuristicsMixin:
             med_ts_exg = 0.0
             n_trunk_steep = 0
             r2_ts = 1.0
-            if not is_wide_valley_forestry_scan and all_xy_tree is not None:
+            if all_xy_tree is not None:
                 near26_idx = all_xy_tree.query_ball_point([te, tn], r=2.65)
                 if len(near26_idx) < 25:
                     continue
@@ -1389,31 +1345,29 @@ class CategorizationHeuristicsMixin:
                         continue
 
             # Estimate crown area & crown diameter around local peak
-            r_search_px = max(3, int(round(min(6.5, max(1.8 if is_wide_valley_forestry_scan else 1.5, tree_h * 0.42)) / res)))
+            r_search_px = max(3, int(round(min(6.5, max(1.5, tree_h * 0.42)) / res)))
             j0 = max(0, pj - r_search_px)
             j1 = min(ny - 1, pj + r_search_px)
             i0 = max(0, pi - r_search_px)
             i1 = min(nx - 1, pi + r_search_px)
-            hag_src_c = hag_grid if is_wide_valley_forestry_scan else hag_tree_grid
             sub_can = canopy_mask[j0 : j1 + 1, i0 : i1 + 1] & (
-                hag_src_c[j0 : j1 + 1, i0 : i1 + 1] >= max(1.6 if is_wide_valley_forestry_scan else 1.35, tree_h * 0.45)
+                hag_tree_grid[j0 : j1 + 1, i0 : i1 + 1] >= max(1.35, tree_h * 0.45)
             )
             yy, xx = np.ogrid[j0 : j1 + 1, i0 : i1 + 1]
             disk = ((yy - pj) ** 2 + (xx - pi) ** 2) <= (r_search_px ** 2)
             crown_px = max(4, int(np.count_nonzero(sub_can & disk)))
             crown_area_m2 = round(crown_px * cell_area, 2)
             crown_diam_m = round(2.0 * math.sqrt(crown_area_m2 / math.pi), 2)
-            if not is_wide_valley_forestry_scan:
-                ref_cx, ref_cy = pre_stem_xy if pre_stem_xy is not None else (te, tn)
-                el_crown_pts = c26[((c26[:, 2] - th_ground) >= max(1.05, tree_h * 0.38)) & (d26 <= 2.4)]
-                if len(el_crown_pts) >= 6:
-                    span_3d_crown = float(
-                        np.percentile(np.hypot(el_crown_pts[:, 0] - ref_cx, el_crown_pts[:, 1] - ref_cy), 88.0) * 2.0
-                    )
-                    crown_diam_m = round(max(crown_diam_m, min(tree_h * 0.85, max(1.15, span_3d_crown))), 2)
-                    crown_area_m2 = round(max(crown_area_m2, math.pi * ((crown_diam_m * 0.5) ** 2)), 2)
-                if crown_diam_m < 0.75 and not is_verified_cyl and not trunk_is_warm_or_green:
-                    continue
+            ref_cx, ref_cy = pre_stem_xy if pre_stem_xy is not None else (te, tn)
+            el_crown_pts = c26[((c26[:, 2] - th_ground) >= max(1.05, tree_h * 0.38)) & (d26 <= 2.4)]
+            if len(el_crown_pts) >= 6:
+                span_3d_crown = float(
+                    np.percentile(np.hypot(el_crown_pts[:, 0] - ref_cx, el_crown_pts[:, 1] - ref_cy), 88.0) * 2.0
+                )
+                crown_diam_m = round(max(crown_diam_m, min(tree_h * 0.85, max(1.15, span_3d_crown))), 2)
+                crown_area_m2 = round(max(crown_area_m2, math.pi * ((crown_diam_m * 0.5) ** 2)), 2)
+            if crown_diam_m < 0.75 and not is_verified_cyl and not trunk_is_warm_or_green:
+                continue
 
             # Taiwan subtropical broadleaf allometric baseline from tree height & crown diameter
             est_dbh = 2.65 * (tree_h ** 0.92) * (max(crown_diam_m, 1.5) ** 0.36)
@@ -1423,12 +1377,10 @@ class CategorizationHeuristicsMixin:
             dbh_cm = 0.0
             dbh_method = "crown_height_allometry"
             trunk_e, trunk_n = pre_stem_xy if pre_stem_xy is not None else (te, tn)
-            min_slice_h = 6.5 if is_wide_valley_forestry_scan else 1.65
-            min_cand_pts = 8 if is_wide_valley_forestry_scan else 6
-            if tree_h >= min_slice_h and bh_tree is not None:
-                r_bh_q = 0.78 if (not is_wide_valley_forestry_scan and pre_stem_xy is not None) else min(2.2, max(1.05, crown_diam_m * 0.42))
+            if tree_h >= 1.65 and bh_tree is not None:
+                r_bh_q = 0.78 if pre_stem_xy is not None else min(2.2, max(1.05, crown_diam_m * 0.42))
                 cand_idxs = bh_tree.query_ball_point([trunk_e, trunk_n], r=r_bh_q)
-                if len(cand_idxs) >= min_cand_pts:
+                if len(cand_idxs) >= 6:
                     pts_local_bh = bh_pts[cand_idxs, :2]
                     # Center on median of breast-height stem points
                     med_xy = np.median(pts_local_bh, axis=0)
@@ -1438,8 +1390,7 @@ class CategorizationHeuristicsMixin:
                     if np.count_nonzero(tight_mask) >= 6:
                         pts_stem = pts_local_bh[tight_mask]
                         med_xy = np.median(pts_stem, axis=0)
-                        if not is_wide_valley_forestry_scan:
-                            trunk_e, trunk_n = float(med_xy[0]), float(med_xy[1])
+                        trunk_e, trunk_n = float(med_xy[0]), float(med_xy[1])
                         dx_s = pts_stem[:, 0] - med_xy[0]
                         dy_s = pts_stem[:, 1] - med_xy[1]
                         r_s = np.hypot(dx_s, dy_s)
@@ -1476,15 +1427,15 @@ class CategorizationHeuristicsMixin:
                                         dbh_cm = round(float(np.clip(raw_diam_cm, 7.5, max_allowed_dbh)), 1)
                                         dbh_method = "pratt_circle_1.3m_slice"
 
-            if not is_wide_valley_forestry_scan and bh_tree is not None and len(bh_tree.query_ball_point([trunk_e, trunk_n], r=0.95)) > 2200:
+            if bh_tree is not None and len(bh_tree.query_ball_point([trunk_e, trunk_n], r=0.95)) > 2200:
                 continue
             # Ensure refined trunk_e, trunk_n is not inside a building or retaining wall
             ti_chk = int(np.clip((trunk_e - e_min) / res, 0, nx - 1))
             tj_chk = int(np.clip((trunk_n - n_min) / res, 0, ny - 1))
-            if not is_wide_valley_forestry_scan and (bldg_occ_grid[tj_chk, ti_chk] or coplanar_wall_grid[tj_chk, ti_chk]):
+            if bldg_occ_grid[tj_chk, ti_chk] or coplanar_wall_grid[tj_chk, ti_chk]:
                 continue
             # Post-Pratt verification on final (trunk_e, trunk_n): re-verify neck continuity, Rule 2, Rule 4, and paved plaza filter
-            if not is_wide_valley_forestry_scan and all_xy_tree is not None:
+            if all_xy_tree is not None:
                 if _has_neck_gap_bollard_at(trunk_e, trunk_n, th_ground, idx_arr26, c26):
                     continue
                 dt_fin = np.hypot(c26[:, 0] - trunk_e, c26[:, 1] - trunk_n)
@@ -1538,8 +1489,8 @@ class CategorizationHeuristicsMixin:
                         ):
                             continue
 
-            nms_dist_m = 1.35 if (not is_wide_valley_forestry_scan and (pre_stem_xy is not None or tree_h >= 6.0)) else 1.85
-            if not is_wide_valley_forestry_scan and any(
+            nms_dist_m = 1.35 if (pre_stem_xy is not None or tree_h >= 6.0) else 1.85
+            if any(
                 math.hypot(trunk_e - k["trunk_twd97"][0], trunk_n - k["trunk_twd97"][1]) < nms_dist_m for k in trees_list
             ):
                 continue
@@ -1575,86 +1526,85 @@ class CategorizationHeuristicsMixin:
         # CATEGORY 1: ROADS (Road Surface / 道路鋪面)
         # =================================================================================
         roads_list: List[Dict[str, Any]] = []
-        max_roads_cap = 12 if is_wide_valley_forestry_scan else int(round(12 * area_scale))
+        max_roads_cap = int(round(12 * area_scale))
         road_grid = road_grid_base.copy()
-        if not is_wide_valley_forestry_scan:
-            r_planter_px = max(2, int(round(0.90 / res)))
-            yy_grid, xx_grid = np.ogrid[0:ny, 0:nx]
-            for t_obj in trees_list:
-                te_p, tn_p, _ = t_obj["trunk_twd97"]
-                pi_t = int(np.clip((te_p - e_min) / res, 0, nx - 1))
-                pj_t = int(np.clip((tn_p - n_min) / res, 0, ny - 1))
-                planter_disk = ((yy_grid - pj_t) ** 2 + (xx_grid - pi_t) ** 2) <= (r_planter_px ** 2)
-                road_grid[planter_disk] = False
-            road_polys_raw = _mask_to_polygons(road_grid, min_area_m2=18.0, simplify_tol=0.35, z_ref_grid=h_dtm_local)
+        r_planter_px = max(2, int(round(0.90 / res)))
+        yy_grid, xx_grid = np.ogrid[0:ny, 0:nx]
+        for t_obj in trees_list:
+            te_p, tn_p, _ = t_obj["trunk_twd97"]
+            pi_t = int(np.clip((te_p - e_min) / res, 0, nx - 1))
+            pj_t = int(np.clip((tn_p - n_min) / res, 0, ny - 1))
+            planter_disk = ((yy_grid - pj_t) ** 2 + (xx_grid - pi_t) ** 2) <= (r_planter_px ** 2)
+            road_grid[planter_disk] = False
+        road_polys_raw = _mask_to_polygons(road_grid, min_area_m2=18.0, simplify_tol=0.35, z_ref_grid=h_dtm_local)
 
-            for r_item in road_polys_raw:
-                cmask = r_item.pop("comp_mask")
-                if r_item["mean_width_m"] > 22.0:
+        for r_item in road_polys_raw:
+            cmask = r_item.pop("comp_mask")
+            if r_item["mean_width_m"] > 22.0:
+                continue
+            # Reject narrow wall-base/fence-footing artifacts (e.g. Qihu R4 18.12m2 / 1.2m W along bottom construction fence)
+            if r_item["mean_width_m"] < 1.55 and r_item["planar_area_m2"] < 28.0:
+                continue
+            med_rb = float(np.median(ortho_rb_diff[cmask]))
+            med_sat = float(np.median(ortho_sat[cmask]))
+            med_lum = float(np.median(ortho_lum[cmask]))
+            # Reject brown bare-soil excavation pits AND bright/bluish waterproofing tarps inside fenced pits (e.g. R4/R6 in QiHu)
+            if med_rb > 0.064 or med_rb < -0.015 or med_lum > 0.65:
+                continue
+            c_js, c_is = np.nonzero(cmask)
+            pts_rc = np.column_stack([c_is * res, c_js * res])
+            elongation = 1.0
+            if len(pts_rc) >= 6:
+                cov = np.cov(pts_rc.T)
+                evals = np.sort(np.maximum(np.linalg.eigvalsh(cov), 1e-6))
+                elongation = float(math.sqrt(evals[1] / evals[0]))
+            if elongation < 1.32 and r_item["planar_area_m2"] < 45.0:
+                continue
+            if med_rb >= 0.052 and med_lum <= 0.568 and elongation < 2.2:
+                continue
+            sample_cmask = binary_dilation(cmask, structure=np.ones((5, 5), dtype=bool)) if r_item["planar_area_m2"] < 65.0 else cmask
+            in_comp_tri = sample_cmask[in_c, ie_c] & on_ground & (exg < 0.040)
+            if np.any(in_comp_tri):
+                tri_med_rb = float(np.median(rb_diff[in_comp_tri]))
+                tri_med_sat = float(np.median(sat[in_comp_tri]))
+                tri_med_lum = float(np.median(lum[in_comp_tri]))
+                # Reject shaded brown dirt/mulch beds under tree groves (e.g. RosePark R2/R5) while preserving bright pebble-wash park plazas (QiHu R2)
+                if (tri_med_rb >= 0.050 and tri_med_lum <= 0.575) or (tri_med_rb > 0.062 and tri_med_sat > 0.160):
                     continue
-                # Reject narrow wall-base/fence-footing artifacts (e.g. Qihu R4 18.12m2 / 1.2m W along bottom construction fence)
-                if r_item["mean_width_m"] < 1.55 and r_item["planar_area_m2"] < 28.0:
+                if r_item["planar_area_m2"] > 450.0 and tri_med_rb > 0.048 and tri_med_sat > 0.145:
                     continue
-                med_rb = float(np.median(ortho_rb_diff[cmask]))
-                med_sat = float(np.median(ortho_sat[cmask]))
-                med_lum = float(np.median(ortho_lum[cmask]))
-                # Reject brown bare-soil excavation pits AND bright/bluish waterproofing tarps inside fenced pits (e.g. R4/R6 in QiHu)
-                if med_rb > 0.064 or med_rb < -0.015 or med_lum > 0.65:
-                    continue
-                c_js, c_is = np.nonzero(cmask)
-                pts_rc = np.column_stack([c_is * res, c_js * res])
-                elongation = 1.0
-                if len(pts_rc) >= 6:
-                    cov = np.cov(pts_rc.T)
-                    evals = np.sort(np.maximum(np.linalg.eigvalsh(cov), 1e-6))
-                    elongation = float(math.sqrt(evals[1] / evals[0]))
-                if elongation < 1.32 and r_item["planar_area_m2"] < 45.0:
-                    continue
-                if med_rb >= 0.052 and med_lum <= 0.568 and elongation < 2.2:
-                    continue
-                sample_cmask = binary_dilation(cmask, structure=np.ones((5, 5), dtype=bool)) if r_item["planar_area_m2"] < 65.0 else cmask
-                in_comp_tri = sample_cmask[in_c, ie_c] & on_ground & (exg < 0.040)
-                if np.any(in_comp_tri):
-                    tri_med_rb = float(np.median(rb_diff[in_comp_tri]))
-                    tri_med_sat = float(np.median(sat[in_comp_tri]))
-                    tri_med_lum = float(np.median(lum[in_comp_tri]))
-                    # Reject shaded brown dirt/mulch beds under tree groves (e.g. RosePark R2/R5) while preserving bright pebble-wash park plazas (QiHu R2)
-                    if (tri_med_rb >= 0.050 and tri_med_lum <= 0.575) or (tri_med_rb > 0.062 and tri_med_sat > 0.160):
-                        continue
-                    if r_item["planar_area_m2"] > 450.0 and tri_med_rb > 0.048 and tri_med_sat > 0.145:
-                        continue
-                a3d_r = float(area_3d[in_comp_tri].sum()) if np.any(in_comp_tri) else r_item["planar_area_m2"] * 1.015
-                a2d_r = r_item["planar_area_m2"]
-                surf_3d = max(a3d_r, a2d_r * 1.005)
-                eroded_road = binary_erosion(cmask, structure=np.ones((3, 3), dtype=bool))
-                slope_sample_mask = eroded_road if np.count_nonzero(eroded_road) >= 4 else cmask
-                raw_slope_pct = float(np.percentile(dtm_slope_pct_grid[slope_sample_mask], 40.0))
-                mean_slope_pct = round(float(np.clip(raw_slope_pct, 1.2, 18.0)), 1)
-                rid = f"R{len(roads_list) + 1}"
-                roads_list.append(
-                    {
-                        "id": rid,
-                        "name": f"道路鋪面 {rid} (Paved Road Corridor)",
-                        "subtype": "paved_asphalt_concrete",
-                        "planar_area_m2": round(a2d_r, 2),
-                        "planar_area_ping": round(a2d_r * 0.3025, 2),
-                        "surface_area_3d_m2": round(surf_3d, 2),
-                        "perimeter_m": r_item["perimeter_m"],
-                        "mean_width_m": r_item["mean_width_m"],
-                        "mean_slope_pct": mean_slope_pct,
-                        "elongation_ratio": round(elongation, 2),
-                        "center_twd97": r_item["center_twd97"],
-                        "center_local": r_item["center_local"],
-                        "boundary_twd97": r_item["boundary_twd97"],
-                        "boundary_local": r_item["boundary_local"],
-                        "holes_twd97": r_item.get("holes_twd97", []),
-                        "holes_local": r_item.get("holes_local", []),
-                    }
-                )
-                if len(roads_list) >= max_roads_cap:
-                    break
+            a3d_r = float(area_3d[in_comp_tri].sum()) if np.any(in_comp_tri) else r_item["planar_area_m2"] * 1.015
+            a2d_r = r_item["planar_area_m2"]
+            surf_3d = max(a3d_r, a2d_r * 1.005)
+            eroded_road = binary_erosion(cmask, structure=np.ones((3, 3), dtype=bool))
+            slope_sample_mask = eroded_road if np.count_nonzero(eroded_road) >= 4 else cmask
+            raw_slope_pct = float(np.percentile(dtm_slope_pct_grid[slope_sample_mask], 40.0))
+            mean_slope_pct = round(float(np.clip(raw_slope_pct, 1.2, 18.0)), 1)
+            rid = f"R{len(roads_list) + 1}"
+            roads_list.append(
+                {
+                    "id": rid,
+                    "name": f"道路鋪面 {rid} (Paved Road Corridor)",
+                    "subtype": "paved_asphalt_concrete",
+                    "planar_area_m2": round(a2d_r, 2),
+                    "planar_area_ping": round(a2d_r * 0.3025, 2),
+                    "surface_area_3d_m2": round(surf_3d, 2),
+                    "perimeter_m": r_item["perimeter_m"],
+                    "mean_width_m": r_item["mean_width_m"],
+                    "mean_slope_pct": mean_slope_pct,
+                    "elongation_ratio": round(elongation, 2),
+                    "center_twd97": r_item["center_twd97"],
+                    "center_local": r_item["center_local"],
+                    "boundary_twd97": r_item["boundary_twd97"],
+                    "boundary_local": r_item["boundary_local"],
+                    "holes_twd97": r_item.get("holes_twd97", []),
+                    "holes_local": r_item.get("holes_local", []),
+                }
+            )
+            if len(roads_list) >= max_roads_cap:
+                break
 
-        # Stage 1B: Fallback for unpaved rural/mountain compacted access roads (e.g. QuChi Dam) when paved area < 25 m2
+        # Stage 1B: Fallback for unpaved rural/mountain compacted access roads when paved area < 25 m2
         if sum(r["planar_area_m2"] for r in roads_list) < 25.0:
             dirt_road_tri_mask = (
                 (np.abs(tri_hag) <= 0.38)
@@ -1728,189 +1678,174 @@ class CategorizationHeuristicsMixin:
         # CATEGORY 3: WATER BODIES & UN-MODELLED WATER VOIDS (水體與未建模水域空洞)
         # =================================================================================
         water_list: List[Dict[str, Any]] = []
-        # 3A: Detect Un-Modelled Water Voids (~raw_occ_closed) on wide river-valley / hydraulic dam scans
-        # and depressed pond/moat water channels on medium/large terrain scans (max_span > 120.0m, e.g. QiHu moat)
-        if max_span > 120.0:
-            is_midspan_moat_scan = not is_wide_valley_forestry_scan
-            occ_js, occ_is = np.nonzero(raw_occ_closed)
-            hull_2d_mask = np.zeros((ny, nx), dtype=bool)
-            if len(occ_is) >= 12:
-                try:
-                    stride_h = max(1, len(occ_is) // 6000)
-                    pts_occ_px = np.column_stack([occ_is[::stride_h], occ_js[::stride_h]]).astype(np.float64)
-                    chull_occ = ConvexHull(pts_occ_px)
-                    eqs = chull_occ.equations
-                    grid_yy, grid_xx = np.mgrid[0:ny, 0:nx]
-                    coords_flat = np.vstack([grid_xx.ravel(), grid_yy.ravel()]).astype(np.float64)
-                    inside_flat = np.all((eqs[:, :2] @ coords_flat) + eqs[:, 2:3] <= -1.5, axis=0)
-                    hull_2d_mask = inside_flat.reshape((ny, nx))
-                except Exception:
-                    hull_2d_mask = site_hull.copy()
+        # 3A: Detect Un-Modelled Water Voids (~raw_occ_closed) enclosed within site geometry
+        occ_js, occ_is = np.nonzero(raw_occ_closed)
+        hull_2d_mask = np.zeros((ny, nx), dtype=bool)
+        if len(occ_is) >= 12:
+            try:
+                stride_h = max(1, len(occ_is) // 6000)
+                pts_occ_px = np.column_stack([occ_is[::stride_h], occ_js[::stride_h]]).astype(np.float64)
+                chull_occ = ConvexHull(pts_occ_px)
+                eqs = chull_occ.equations
+                grid_yy, grid_xx = np.mgrid[0:ny, 0:nx]
+                coords_flat = np.vstack([grid_xx.ravel(), grid_yy.ravel()]).astype(np.float64)
+                inside_flat = np.all((eqs[:, :2] @ coords_flat) + eqs[:, 2:3] <= -1.5, axis=0)
+                hull_2d_mask = inside_flat.reshape((ny, nx))
+            except Exception:
+                hull_2d_mask = site_hull.copy()
 
-            max_steps_35m = max(6, int(round(35.0 / res)))
-            max_steps_26m = max(4, int(round(26.0 / res)))
-            step_stride = 2 if res <= 0.30 else 1
-            compass_pairs = [
-                ((1, 0), (-1, 0)),
-                ((0, 1), (0, -1)),
-                ((1, 1), (-1, -1)),
-                ((1, -1), (-1, 1)),
-            ]
-            dir_count_35m = np.zeros((ny, nx), dtype=np.int16)
-            opp_pair_26m = np.zeros((ny, nx), dtype=np.int16)
+        max_steps_35m = max(6, int(round(35.0 / res)))
+        max_steps_26m = max(4, int(round(26.0 / res)))
+        step_stride = 2 if res <= 0.30 else 1
+        compass_pairs = [
+            ((1, 0), (-1, 0)),
+            ((0, 1), (0, -1)),
+            ((1, 1), (-1, -1)),
+            ((1, -1), (-1, 1)),
+        ]
+        dir_count_35m = np.zeros((ny, nx), dtype=np.int16)
+        opp_pair_26m = np.zeros((ny, nx), dtype=np.int16)
 
-            def _ray_hits_occupied(di: int, dj: int) -> Tuple[np.ndarray, np.ndarray]:
-                hit26 = np.zeros((ny, nx), dtype=bool)
-                hit35 = np.zeros((ny, nx), dtype=bool)
-                diag_scale = 1.4142 if (di != 0 and dj != 0) else 1.0
-                n_max_s = max(4, int(round(max_steps_35m / diag_scale)))
-                n_26_s = max(3, int(round(max_steps_26m / diag_scale)))
-                for s_px in range(step_stride, n_max_s + 1, step_stride):
-                    sh_j = dj * s_px
-                    sh_i = di * s_px
-                    if abs(sh_j) >= ny or abs(sh_i) >= nx:
-                        break
-                    dst_j0 = max(0, -sh_j)
-                    dst_j1 = min(ny, ny - sh_j)
-                    src_j0 = max(0, sh_j)
-                    src_j1 = min(ny, ny + sh_j)
-                    dst_i0 = max(0, -sh_i)
-                    dst_i1 = min(nx, nx - sh_i)
-                    src_i0 = max(0, sh_i)
-                    src_i1 = min(nx, nx + sh_i)
-                    sub_occ = raw_occ_closed[src_j0:src_j1, src_i0:src_i1]
-                    hit35[dst_j0:dst_j1, dst_i0:dst_i1] |= sub_occ
-                    if s_px <= n_26_s:
-                        hit26[dst_j0:dst_j1, dst_i0:dst_i1] |= sub_occ
-                return hit26, hit35
+        def _ray_hits_occupied(di: int, dj: int) -> Tuple[np.ndarray, np.ndarray]:
+            hit26 = np.zeros((ny, nx), dtype=bool)
+            hit35 = np.zeros((ny, nx), dtype=bool)
+            diag_scale = 1.4142 if (di != 0 and dj != 0) else 1.0
+            n_max_s = max(4, int(round(max_steps_35m / diag_scale)))
+            n_26_s = max(3, int(round(max_steps_26m / diag_scale)))
+            for s_px in range(step_stride, n_max_s + 1, step_stride):
+                sh_j = dj * s_px
+                sh_i = di * s_px
+                if abs(sh_j) >= ny or abs(sh_i) >= nx:
+                    break
+                dst_j0 = max(0, -sh_j)
+                dst_j1 = min(ny, ny - sh_j)
+                src_j0 = max(0, sh_j)
+                src_j1 = min(ny, ny + sh_j)
+                dst_i0 = max(0, -sh_i)
+                dst_i1 = min(nx, nx - sh_i)
+                src_i0 = max(0, sh_i)
+                src_i1 = min(nx, nx + sh_i)
+                sub_occ = raw_occ_closed[src_j0:src_j1, src_i0:src_i1]
+                hit35[dst_j0:dst_j1, dst_i0:dst_i1] |= sub_occ
+                if s_px <= n_26_s:
+                    hit26[dst_j0:dst_j1, dst_i0:dst_i1] |= sub_occ
+            return hit26, hit35
 
-            for (di1, dj1), (di2, dj2) in compass_pairs:
-                h26_1, h35_1 = _ray_hits_occupied(di1, dj1)
-                h26_2, h35_2 = _ray_hits_occupied(di2, dj2)
-                dir_count_35m += h35_1.astype(np.int16) + h35_2.astype(np.int16)
-                opp_pair_26m += (h26_1 & h26_2).astype(np.int16)
+        for (di1, dj1), (di2, dj2) in compass_pairs:
+            h26_1, h35_1 = _ray_hits_occupied(di1, dj1)
+            h26_2, h35_2 = _ray_hits_occupied(di2, dj2)
+            dir_count_35m += h35_1.astype(np.int16) + h35_2.astype(np.int16)
+            opp_pair_26m += (h26_1 & h26_2).astype(np.int16)
 
-            enclosed_void_cell = hull_2d_mask & (
-                (dir_count_35m >= 6) & (opp_pair_26m >= 2)
-            )
+        enclosed_void_cell = hull_2d_mask & (
+            (dir_count_35m >= 6) & (opp_pair_26m >= 2)
+        )
 
-            margin_px = max(3, int(round(3.0 / res)))
-            inner_box = np.zeros_like(raw_occ_closed, dtype=bool)
-            inner_box[margin_px : ny - margin_px, margin_px : nx - margin_px] = True
-            max_void_dist_m = 8.5 if is_midspan_moat_scan else 5.5
-            void_ref_h_grid = (
-                grey_erosion(h_dtm_grid, size=(max(5, int(round(7.5 / res)) | 1), max(5, int(round(7.5 / res)) | 1)))
-                if is_midspan_moat_scan
-                else h_dtm_grid
-            )
-            void_candidate = (
-                (~raw_occ_closed)
-                & inner_box
-                & enclosed_void_cell
-                & (dist_cells * res <= max_void_dist_m)
-                & (dist_cells * res >= 0.35)
-                & (
-                    void_ref_h_grid
-                    <= (
-                        np.maximum(p18_site_h + 1.40, local_dtm_p25_grid + 1.40)
-                        if is_midspan_moat_scan
-                        else (p18_site_h + 1.40)
-                    )
+        margin_px = max(3, int(round(3.0 / res)))
+        inner_box = np.zeros_like(raw_occ_closed, dtype=bool)
+        inner_box[margin_px : ny - margin_px, margin_px : nx - margin_px] = True
+        max_void_dist_m = 8.5
+        void_ref_h_grid = grey_erosion(
+            h_dtm_grid,
+            size=(max(5, int(round(7.5 / res)) | 1), max(5, int(round(7.5 / res)) | 1)),
+        )
+        void_candidate = (
+            (~raw_occ_closed)
+            & inner_box
+            & enclosed_void_cell
+            & (dist_cells * res <= max_void_dist_m)
+            & (dist_cells * res >= 0.35)
+            & (void_ref_h_grid <= np.maximum(p18_site_h + 1.40, local_dtm_p25_grid + 1.40))
+        )
+        void_labeled, n_voids = nd_label(void_candidate)
+        occ_dilated_3 = binary_dilation(raw_occ_closed, structure=np.ones((3, 3), dtype=bool))
+        min_v_area = 45.0
+        max_v_area = 1600.0
+        max_diag_span = 125.0
+        min_fill_ratio = 0.16
+        min_touch_ratio = 0.80
+        max_rim_iqr = 3.35
+        for vid in range(1, n_voids + 1):
+            vmask = void_labeled == vid
+            v_area = float(np.count_nonzero(vmask) * cell_area)
+            if v_area < min_v_area or v_area > max_v_area:
+                continue
+            v_js, v_is = np.nonzero(vmask)
+            if len(v_is) < 8:
+                continue
+            bbox_w = float((int(v_is.max()) - int(v_is.min()) + 1) * res)
+            bbox_h = float((int(v_js.max()) - int(v_js.min()) + 1) * res)
+            diag_span = math.hypot(bbox_w, bbox_h)
+            fill_ratio = v_area / max(bbox_w * bbox_h, 1.0)
+            if diag_span > max_diag_span or fill_ratio < min_fill_ratio:
+                continue
+
+            b_mask = binary_dilation(vmask, structure=np.ones((3, 3), dtype=bool)) & (~vmask)
+            b_cnt = int(np.count_nonzero(b_mask))
+            if b_cnt < 8:
+                continue
+            touch_cnt = int(np.count_nonzero(b_mask & occ_dilated_3))
+            if (float(touch_cnt) / float(b_cnt)) < min_touch_ratio:
+                continue
+
+            rim_mask = binary_dilation(vmask, structure=np.ones((5, 5), dtype=bool)) & raw_occ_closed
+            if np.count_nonzero(rim_mask) < 8:
+                continue
+            rim_h = h_dtm_grid[rim_mask]
+            rim_iqr = float(np.percentile(rim_h, 75.0) - np.percentile(rim_h, 15.0))
+            if rim_iqr > max_rim_iqr:
+                continue
+            if float(np.median(hag_grid[rim_mask])) > 0.60:
+                continue
+            shoreline_h_p20 = float(np.percentile(rim_h, 20.0))
+            shoreline_h_med = float(np.percentile(rim_h, 45.0))
+            loc_rim_ref_h = float(np.median(local_dtm_mean_grid[rim_mask]))
+            shoreline_elev_ok = shoreline_h_p20 <= max(p18_site_h - 1.10, loc_rim_ref_h - 1.05)
+            if shoreline_elev_ok:
+                h_margin = 2.2
+                dist_cap = 8.5
+                min_poly_area = 35.0
+                min_poly_fill = 0.15
+                low_void_mask = vmask & (void_ref_h_grid <= shoreline_h_med + h_margin) & (dist_cells * res <= dist_cap)
+                low_void_mask = binary_closing(low_void_mask, structure=np.ones((3, 3), dtype=bool)) & (~raw_occ_closed)
+                eroded_v = binary_erosion(low_void_mask, structure=np.ones((2, 2), dtype=bool))
+                if np.count_nonzero(eroded_v) * cell_area >= min_poly_area:
+                    low_void_mask = eroded_v
+                v_polys = _mask_to_polygons(
+                    low_void_mask,
+                    min_area_m2=min_poly_area,
+                    fixed_z=round(shoreline_h_p20, 3),
+                    simplify_tol=0.38,
                 )
-            )
-            void_labeled, n_voids = nd_label(void_candidate)
-            occ_dilated_3 = binary_dilation(raw_occ_closed, structure=np.ones((3, 3), dtype=bool))
-            min_v_area = 45.0 if is_midspan_moat_scan else 25.0
-            max_v_area = 1600.0 if is_midspan_moat_scan else 1250.0
-            max_diag_span = 125.0 if is_midspan_moat_scan else 68.0
-            min_fill_ratio = 0.16 if is_midspan_moat_scan else 0.22
-            min_touch_ratio = 0.85 if is_midspan_moat_scan else 0.55
-            max_rim_iqr = 3.35 if is_midspan_moat_scan else 1.75
-            for vid in range(1, n_voids + 1):
-                vmask = void_labeled == vid
-                v_area = float(np.count_nonzero(vmask) * cell_area)
-                if v_area < min_v_area or v_area > max_v_area:
-                    continue
-                v_js, v_is = np.nonzero(vmask)
-                if len(v_is) < 8:
-                    continue
-                bbox_w = float((int(v_is.max()) - int(v_is.min()) + 1) * res)
-                bbox_h = float((int(v_js.max()) - int(v_js.min()) + 1) * res)
-                diag_span = math.hypot(bbox_w, bbox_h)
-                fill_ratio = v_area / max(bbox_w * bbox_h, 1.0)
-                if diag_span > max_diag_span or fill_ratio < min_fill_ratio:
-                    continue
-
-                b_mask = binary_dilation(vmask, structure=np.ones((3, 3), dtype=bool)) & (~vmask)
-                b_cnt = int(np.count_nonzero(b_mask))
-                if b_cnt < 8:
-                    continue
-                touch_cnt = int(np.count_nonzero(b_mask & occ_dilated_3))
-                if (float(touch_cnt) / float(b_cnt)) < min_touch_ratio:
-                    continue
-
-                rim_mask = binary_dilation(vmask, structure=np.ones((5, 5), dtype=bool)) & raw_occ_closed
-                if np.count_nonzero(rim_mask) < 8:
-                    continue
-                rim_h = h_dtm_grid[rim_mask]
-                rim_iqr = float(np.percentile(rim_h, 75.0) - np.percentile(rim_h, 15.0))
-                if rim_iqr > max_rim_iqr:
-                    continue
-                if is_midspan_moat_scan and float(np.median(hag_grid[rim_mask])) > 0.60:
-                    continue
-                shoreline_h_p20 = float(np.percentile(rim_h, 20.0))
-                shoreline_h_med = float(np.percentile(rim_h, 45.0))
-                loc_rim_ref_h = float(np.median(local_dtm_mean_grid[rim_mask]))
-                shoreline_elev_ok = (
-                    (shoreline_h_p20 <= max(p18_site_h - 1.10, loc_rim_ref_h - 1.05))
-                    if is_midspan_moat_scan
-                    else (shoreline_h_p20 <= p25_site_h + 0.85)
-                )
-                if shoreline_elev_ok:
-                    h_margin = 2.2 if is_midspan_moat_scan else 1.5
-                    dist_cap = 8.5 if is_midspan_moat_scan else 7.5
-                    min_poly_area = 35.0 if is_midspan_moat_scan else 22.0
-                    min_poly_fill = 0.15 if is_midspan_moat_scan else 0.22
-                    low_void_mask = vmask & (void_ref_h_grid <= shoreline_h_med + h_margin) & (dist_cells * res <= dist_cap)
-                    low_void_mask = binary_closing(low_void_mask, structure=np.ones((3, 3), dtype=bool)) & (~raw_occ_closed)
-                    eroded_v = binary_erosion(low_void_mask, structure=np.ones((2, 2), dtype=bool))
-                    if np.count_nonzero(eroded_v) * cell_area >= min_poly_area:
-                        low_void_mask = eroded_v
-                    v_polys = _mask_to_polygons(
-                        low_void_mask,
-                        min_area_m2=min_poly_area,
-                        fixed_z=round(shoreline_h_p20, 3),
-                        simplify_tol=0.38,
+                for vp in v_polys:
+                    vp_cm = vp.pop("comp_mask", None)
+                    if vp["planar_area_m2"] > max_v_area:
+                        continue
+                    if vp_cm is not None:
+                        pj, pi = np.nonzero(vp_cm)
+                        if len(pi) >= 4:
+                            pw = float((int(pi.max()) - int(pi.min()) + 1) * res)
+                            ph = float((int(pj.max()) - int(pj.min()) + 1) * res)
+                            if math.hypot(pw, ph) > max_diag_span or (vp["planar_area_m2"] / max(pw * ph, 1.0)) < min_poly_fill:
+                                continue
+                    wid = f"W{len(water_list) + 1}"
+                    water_list.append(
+                        {
+                            "id": wid,
+                            "name": f"河道水域空洞 {wid} (Un-Modelled Water Void)",
+                            "detection_mode": "unmodelled_void_shoreline",
+                            "detection_label_zh": "未建模水域空洞 + 岸際等位高程擬合",
+                            "water_level_twvd2001_m": round(shoreline_h_p20, 3),
+                            "planar_area_m2": vp["planar_area_m2"],
+                            "planar_area_ping": vp["planar_area_ping"],
+                            "perimeter_m": vp["perimeter_m"],
+                            "mean_width_m": vp["mean_width_m"],
+                            "center_twd97": vp["center_twd97"],
+                            "center_local": vp["center_local"],
+                            "boundary_twd97": vp["boundary_twd97"],
+                            "boundary_local": vp["boundary_local"],
+                        }
                     )
-                    for vp in v_polys:
-                        vp_cm = vp.pop("comp_mask", None)
-                        if vp["planar_area_m2"] > max_v_area:
-                            continue
-                        if vp_cm is not None:
-                            pj, pi = np.nonzero(vp_cm)
-                            if len(pi) >= 4:
-                                pw = float((int(pi.max()) - int(pi.min()) + 1) * res)
-                                ph = float((int(pj.max()) - int(pj.min()) + 1) * res)
-                                if math.hypot(pw, ph) > max_diag_span or (vp["planar_area_m2"] / max(pw * ph, 1.0)) < min_poly_fill:
-                                    continue
-                        wid = f"W{len(water_list) + 1}"
-                        water_list.append(
-                            {
-                                "id": wid,
-                                "name": f"河道水域空洞 {wid} (Un-Modelled Water Void)",
-                                "detection_mode": "unmodelled_void_shoreline",
-                                "detection_label_zh": "未建模水域空洞 + 岸際等位高程擬合",
-                                "water_level_twvd2001_m": round(shoreline_h_p20, 3),
-                                "planar_area_m2": vp["planar_area_m2"],
-                                "planar_area_ping": vp["planar_area_ping"],
-                                "perimeter_m": vp["perimeter_m"],
-                                "mean_width_m": vp["mean_width_m"],
-                                "center_twd97": vp["center_twd97"],
-                                "center_local": vp["center_local"],
-                                "boundary_twd97": vp["boundary_twd97"],
-                                "boundary_local": vp["boundary_local"],
-                            }
-                        )
 
         # 3B: Detect Modelled Flat Spectral Water Basins (genuine cyan/blue water NDWI > 0.11, B > R, hydrostatically flat, non-road)
         spec_water_mask = (
@@ -1922,14 +1857,7 @@ class CategorizationHeuristicsMixin:
             & (ortho_exg < 0.03)
             & (ortho_lum <= 0.48)
             & (~road_grid)
-            & (
-                h_dtm_grid
-                <= (
-                    (p25_site_h + 2.0)
-                    if is_wide_valley_forestry_scan
-                    else np.maximum(p25_site_h + 2.0, local_dtm_p25_grid + 2.0)
-                )
-            )
+            & (h_dtm_grid <= np.maximum(p25_site_h + 2.0, local_dtm_p25_grid + 2.0))
         )
         spec_water_mask = binary_opening(spec_water_mask, structure=np.ones((2, 2), dtype=bool))
         for sp in _mask_to_polygons(spec_water_mask, min_area_m2=35.0, simplify_tol=0.40):
@@ -1975,99 +1903,65 @@ class CategorizationHeuristicsMixin:
 
         # Extract compact elevated Material Stockpile Mounds / Earthwork Pads (S1..S6), excluding terraces, walls, buildings & blue/white tarps
         stockpiles_list: List[Dict[str, Any]] = []
-        if is_wide_valley_forestry_scan:
-            mound_grid = (
-                raw_occ_closed
-                & (hag_grid >= 0.22)
-                & (hag_grid <= 4.2)
-                & (ortho_exg < 0.042)
-                & (~road_grid)
+        mound_grid = (
+            raw_occ_closed
+            & (hag_local_grid >= 0.35)
+            & (hag_local_grid <= 3.6)
+            & (ortho_exg < 0.032)
+            & (elev_exg_grid < 0.032)
+            & (ortho_rb_diff >= -0.015)
+            & (~road_grid)
+            & (~canopy_mask)
+            & (~wall_occ_grid)
+            & (~bldg_occ_grid)
+        )
+        mound_grid = binary_closing(
+            binary_opening(mound_grid, structure=np.ones((3, 3), dtype=bool)),
+            structure=np.ones((3, 3), dtype=bool),
+        )
+        for sp_item in _mask_to_polygons(mound_grid, min_area_m2=15.0, simplify_tol=0.40, z_ref_grid=h_dtm_local):
+            cm_s = sp_item.pop("comp_mask")
+            if sp_item["planar_area_m2"] < 15.0 or sp_item["planar_area_m2"] > 280.0:
+                continue
+            s_js, s_is = np.nonzero(cm_s)
+            if len(s_is) < 8:
+                continue
+            s_bw = float((int(s_is.max()) - int(s_is.min()) + 1) * res)
+            s_bh = float((int(s_js.max()) - int(s_js.min()) + 1) * res)
+            s_fill = sp_item["planar_area_m2"] / max(s_bw * s_bh, 1.0)
+            if s_fill < 0.28:
+                continue
+            pts_sc_m = np.column_stack([s_is * res, s_js * res])
+            cov_sm = np.cov(pts_sc_m.T)
+            ev_sm = np.sort(np.maximum(np.linalg.eigvalsh(cov_sm), 1e-6))
+            elong_sm = float(math.sqrt(ev_sm[1] / ev_sm[0]))
+            if elong_sm > 3.6:
+                continue
+            # Require genuine 3D mound convexity: interior 75th-percentile height must rise >= +0.32m above outer toe rim
+            rim_s = binary_dilation(cm_s, structure=np.ones((5, 5), dtype=bool)) & (~cm_s) & raw_occ_closed
+            if np.count_nonzero(rim_s) < 6:
+                continue
+            int_p75 = float(np.percentile(z_max_filled[cm_s], 75.0))
+            rim_p35 = float(np.percentile(z_min_filled[rim_s], 35.0))
+            if (int_p75 - rim_p35) < 0.32:
+                continue
+            est_vol = round(float(np.sum(np.clip(hag_local_grid[cm_s], 0.15, 3.5)) * cell_area * 0.65), 1)
+            sid_s = f"S{len(stockpiles_list) + 1}"
+            stockpiles_list.append(
+                {
+                    "id": sid_s,
+                    "name": f"土石堆置區 {sid_s} (Material Stockpile Mound)",
+                    "planar_area_m2": sp_item["planar_area_m2"],
+                    "planar_area_ping": sp_item["planar_area_ping"],
+                    "estimated_volume_m3": est_vol,
+                    "center_twd97": sp_item["center_twd97"],
+                    "center_local": sp_item["center_local"],
+                    "boundary_twd97": sp_item["boundary_twd97"],
+                    "boundary_local": sp_item["boundary_local"],
+                }
             )
-            mound_grid = binary_closing(
-                binary_opening(mound_grid, structure=np.ones((2, 2), dtype=bool)),
-                structure=np.ones((2, 2), dtype=bool),
-            )
-            for sp_item in _mask_to_polygons(mound_grid, min_area_m2=15.0, simplify_tol=0.40):
-                cm_s = sp_item.pop("comp_mask")
-                if sp_item["planar_area_m2"] < 15.0 or sp_item["planar_area_m2"] > 550.0:
-                    continue
-                est_vol = round(float(np.sum(np.clip(hag_grid[cm_s], 0.15, 3.5)) * cell_area * 0.65), 1)
-                sid_s = f"S{len(stockpiles_list) + 1}"
-                stockpiles_list.append(
-                    {
-                        "id": sid_s,
-                        "name": f"土石堆置區 {sid_s} (Material Stockpile Mound)",
-                        "planar_area_m2": sp_item["planar_area_m2"],
-                        "planar_area_ping": sp_item["planar_area_ping"],
-                        "estimated_volume_m3": est_vol,
-                        "center_twd97": sp_item["center_twd97"],
-                        "center_local": sp_item["center_local"],
-                        "boundary_twd97": sp_item["boundary_twd97"],
-                        "boundary_local": sp_item["boundary_local"],
-                    }
-                )
-                if len(stockpiles_list) >= 8:
-                    break
-        else:
-            mound_grid = (
-                raw_occ_closed
-                & (hag_local_grid >= 0.35)
-                & (hag_local_grid <= 3.6)
-                & (ortho_exg < 0.032)
-                & (elev_exg_grid < 0.032)
-                & (ortho_rb_diff >= -0.015)
-                & (~road_grid)
-                & (~canopy_mask)
-                & (~wall_occ_grid)
-                & (~bldg_occ_grid)
-            )
-            mound_grid = binary_closing(
-                binary_opening(mound_grid, structure=np.ones((3, 3), dtype=bool)),
-                structure=np.ones((3, 3), dtype=bool),
-            )
-            for sp_item in _mask_to_polygons(mound_grid, min_area_m2=15.0, simplify_tol=0.40, z_ref_grid=h_dtm_local):
-                cm_s = sp_item.pop("comp_mask")
-                if sp_item["planar_area_m2"] < 15.0 or sp_item["planar_area_m2"] > 280.0:
-                    continue
-                s_js, s_is = np.nonzero(cm_s)
-                if len(s_is) < 8:
-                    continue
-                s_bw = float((int(s_is.max()) - int(s_is.min()) + 1) * res)
-                s_bh = float((int(s_js.max()) - int(s_js.min()) + 1) * res)
-                s_fill = sp_item["planar_area_m2"] / max(s_bw * s_bh, 1.0)
-                if s_fill < 0.28:
-                    continue
-                pts_sc_m = np.column_stack([s_is * res, s_js * res])
-                cov_sm = np.cov(pts_sc_m.T)
-                ev_sm = np.sort(np.maximum(np.linalg.eigvalsh(cov_sm), 1e-6))
-                elong_sm = float(math.sqrt(ev_sm[1] / ev_sm[0]))
-                if elong_sm > 3.6:
-                    continue
-                # Require genuine 3D mound convexity: interior 75th-percentile height must rise >= +0.32m above outer toe rim
-                rim_s = binary_dilation(cm_s, structure=np.ones((5, 5), dtype=bool)) & (~cm_s) & raw_occ_closed
-                if np.count_nonzero(rim_s) < 6:
-                    continue
-                int_p75 = float(np.percentile(z_max_filled[cm_s], 75.0))
-                rim_p35 = float(np.percentile(z_min_filled[rim_s], 35.0))
-                if (int_p75 - rim_p35) < 0.32:
-                    continue
-                est_vol = round(float(np.sum(np.clip(hag_local_grid[cm_s], 0.15, 3.5)) * cell_area * 0.65), 1)
-                sid_s = f"S{len(stockpiles_list) + 1}"
-                stockpiles_list.append(
-                    {
-                        "id": sid_s,
-                        "name": f"土石堆置區 {sid_s} (Material Stockpile Mound)",
-                        "planar_area_m2": sp_item["planar_area_m2"],
-                        "planar_area_ping": sp_item["planar_area_ping"],
-                        "estimated_volume_m3": est_vol,
-                        "center_twd97": sp_item["center_twd97"],
-                        "center_local": sp_item["center_local"],
-                        "boundary_twd97": sp_item["boundary_twd97"],
-                        "boundary_local": sp_item["boundary_local"],
-                    }
-                )
-                if len(stockpiles_list) >= 8:
-                    break
+            if len(stockpiles_list) >= 8:
+                break
         stockpiles_list.sort(key=lambda x: x["planar_area_m2"], reverse=True)
         stockpiles_list = stockpiles_list[:6]
         for idx_s, sp_obj in enumerate(stockpiles_list, 1):
@@ -2075,11 +1969,7 @@ class CategorizationHeuristicsMixin:
             sp_obj["name"] = f"土石堆置區 S{idx_s} (Material Stockpile Mound)"
 
         # 2. Low Vegetation / Grass / Shrubs (低矮植生與草坡)
-        grass_tri = (
-            ((tri_hag < 1.8) & (exg >= 0.04) & (nz_abs >= 0.55))
-            if is_wide_valley_forestry_scan
-            else ((tri_hag_tree < 1.8) & (exg >= 0.032) & (nz_abs >= 0.55))
-        )
+        grass_tri = (tri_hag_tree < 1.8) & (exg >= 0.032) & (nz_abs >= 0.55)
         grass_area_2d = float(area_2d[grass_tri].sum())
         grass_area_3d = float(area_3d[grass_tri].sum())
 
@@ -2089,12 +1979,12 @@ class CategorizationHeuristicsMixin:
         revet_area_3d = float(area_3d[revet_tri].sum())
 
         # 4. Buildings / Roofs / Pavilions (建築物與棚架屋頂)
-        bldg_tri = ((tri_hag if is_wide_valley_forestry_scan else tri_hag_tree) >= 2.2) & (nz_abs >= 0.78) & (exg < 0.035) & (tri_sigma_h <= 0.12)
+        bldg_tri = (tri_hag_tree >= 2.2) & (nz_abs >= 0.78) & (exg < 0.035) & (tri_sigma_h <= 0.12)
         bldg_area_2d = float(area_2d[bldg_tri].sum())
         bldg_area_3d = float(area_3d[bldg_tri].sum())
 
         # 5. Drainage Channels & Curbs (排水溝渠與緣石)
-        hag_curb_src = tri_hag if is_wide_valley_forestry_scan else tri_hag_local
+        hag_curb_src = tri_hag_local
         curb_tri = (hag_curb_src >= 0.08) & (hag_curb_src < 0.35) & (nz_abs >= 0.34) & (nz_abs < 0.72) & (exg < 0.04)
         curb_area_2d = float(area_2d[curb_tri].sum())
         curb_area_3d = float(area_3d[curb_tri].sum())
@@ -2114,14 +2004,9 @@ class CategorizationHeuristicsMixin:
         clutter_est_cnt = max(1, int(round(clutter_area_2d / 14.0))) if clutter_area_2d >= 2.0 else 0
 
         # 7. High Canopy Trees Total Area
-        if is_wide_valley_forestry_scan:
-            canopy_tri = (tri_hag >= 1.8) & (exg >= 0.032)
-            canopy_area_2d = float(area_2d[canopy_tri].sum())
-            canopy_area_3d = float(area_3d[canopy_tri].sum())
-        else:
-            canopy_tri = (tri_hag_tree >= 1.8) & (exg >= 0.024)
-            canopy_area_2d = max(float(area_2d[canopy_tri].sum()), float(sum(t["crown_area_m2"] for t in trees_list)))
-            canopy_area_3d = max(float(area_3d[canopy_tri].sum()), canopy_area_2d * 1.35)
+        canopy_tri = (tri_hag_tree >= 1.8) & (exg >= 0.024)
+        canopy_area_2d = max(float(area_2d[canopy_tri].sum()), float(sum(t["crown_area_m2"] for t in trees_list)))
+        canopy_area_3d = max(float(area_3d[canopy_tri].sum()), canopy_area_2d * 1.35)
 
         roads_planar_total = round(sum(r["planar_area_m2"] for r in roads_list), 2)
         roads_3d_total = round(sum(r["surface_area_3d_m2"] for r in roads_list), 2)

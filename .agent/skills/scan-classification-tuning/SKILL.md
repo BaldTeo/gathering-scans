@@ -13,6 +13,11 @@ Use this skill whenever modifying `SurveyingEngine.categorize_scan_surfaces_and_
 
 Photogrammetric meshes (`textured_model.glb`) reconstruct solid surfaces well (trunks, walls, roads) but often leave thin foliage patchy and sky-lit metal/concrete slightly blue-tinted. Apply these physical invariants:
 
+### 0. 100% Merge-Invariant Unified `0.25 m` Mobile Phone Pipeline (Zero Bounding-Box Mode Switches)
+- **Never** branch classification algorithms or grid resolution on `max_span` (`60 m`, `120 m`, `180 m`, `280 m`) or `is_wide_valley_forestry_scan`. Every scan is captured by mobile phone and must run through the **exact same `res = 0.25 m` pipeline** regardless of standalone vs. merged bounding-box span.
+- Always snap `(e_min, n_min)` to the global `0.25 m` TWD97 coordinate grid (`e_min = math.floor(float(base_e.min()) / res) * res`, `n_min = math.floor(float(base_n.min()) / res) * res`) so that any 3D point `(E, N)` lands in the exact same grid cell before and after merging.
+- Scale candidate caps by actual occupied 2D surface area (`occupied_2d_m2 = float(area_2d.sum())`, `area_scale = max(1.0, min(2.5, occupied_2d_m2 / 12500.0))`) and evaluate local terrain relief against 28 m sliding-window neighborhood datum grids (`local_dtm_p25_grid`, `local_dtm_mean_grid`).
+
 ### A. Trees vs. Lamp Posts, Utility Poles, Bollards & Shrubs
 1. **Trees Can Never Be Square or Planar (`R2` / `R4` Azimuthal Harmonics)**:
    - Compute 2-fold ($R_2 = |\langle e^{i 2\theta_n} \rangle|$) and 4-fold ($R_4 = |\langle e^{i 4\theta_n} \rangle|$) horizontal normal concentration on breast-height (`0.55m..1.85m`) trunk triangles.
