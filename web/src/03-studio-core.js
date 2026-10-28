@@ -1690,7 +1690,7 @@
       if (lodMode === "rough") {
         tr.errorTarget = 1e9;
       } else if (lodMode === "max") {
-        tr.errorTarget = 0.5;
+        tr.errorTarget = 0.0;
       } else {
         tr.errorTarget = isMobOrTab ? 10.0 : 5.0;
       }
@@ -3370,7 +3370,7 @@
       localStorage.setItem("gs_scan_lod_mode", validMode);
     } catch (_e) {}
 
-    document.querySelectorAll("#studioLodModeSwitcher [data-lod-mode], #previewLodModeSwitcher [data-lod-mode]").forEach((btn) => {
+    document.querySelectorAll("#studioLodModeSwitcher [data-lod-mode], #previewLodModeSwitcher [data-lod-mode], #settingsLodModeSwitcher [data-lod-mode]").forEach((btn) => {
       btn.classList.toggle("active", btn.dataset.lodMode === validMode);
     });
     const selStudio = document.getElementById("selStudioLodMode");
@@ -3379,7 +3379,7 @@
     if (selPreview && selPreview.value !== validMode) selPreview.value = validMode;
 
     const isMobOrTab = typeof isMobileOrTabletDevice === "function" && isMobileOrTabletDevice();
-    const targetErr = validMode === "rough" ? 1e9 : validMode === "max" ? 0.5 : isMobOrTab ? 10.0 : 5.0;
+    const targetErr = validMode === "rough" ? 1e9 : validMode === "max" ? 0.0 : isMobOrTab ? 10.0 : 5.0;
 
     if (studioThree) {
       if (
@@ -3434,7 +3434,7 @@
     window.__gsLodSwitcherBound = true;
     document.addEventListener("click", (ev) => {
       const btn = ev.target && typeof ev.target.closest === "function"
-        ? ev.target.closest("#studioLodModeSwitcher [data-lod-mode], #previewLodModeSwitcher [data-lod-mode]")
+        ? ev.target.closest("#studioLodModeSwitcher [data-lod-mode], #previewLodModeSwitcher [data-lod-mode], #settingsLodModeSwitcher [data-lod-mode]")
         : null;
       if (!btn) return;
       ev.preventDefault();

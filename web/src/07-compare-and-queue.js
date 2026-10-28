@@ -1436,8 +1436,23 @@
 
   const PIX4D_PRESETS = {
     gatheringcloud: {
+      mesh_pipeline: "Scalable",
+      texture_size: 16384,
+      dense_image_scale: "Full",
+      depth_min_confidence: "Medium",
+      depth_agreement_m: 0.01,
+      model_simplification: "Conservative",
+      deghosting: "Weak",
+      export_lod: 13,
+      skyless: false,
+      use_roi: false,
+    },
+    compact_4k: {
       mesh_pipeline: "FixedSize",
       texture_size: 4096,
+      dense_image_scale: "Half",
+      depth_min_confidence: "High",
+      depth_agreement_m: 0.02,
       model_simplification: "Conservative",
       deghosting: "Weak",
       export_lod: 13,
@@ -1447,6 +1462,9 @@
     fast_field: {
       mesh_pipeline: "FixedSize",
       texture_size: 2048,
+      dense_image_scale: "Half",
+      depth_min_confidence: "High",
+      depth_agreement_m: 0.02,
       model_simplification: "Moderate",
       deghosting: "Weak",
       export_lod: 12,
@@ -1456,6 +1474,9 @@
     archival_8k: {
       mesh_pipeline: "Scalable",
       texture_size: 8192,
+      dense_image_scale: "Full",
+      depth_min_confidence: "Medium",
+      depth_agreement_m: 0.01,
       model_simplification: "Conservative",
       deghosting: "Weak",
       export_lod: 15,
@@ -1468,8 +1489,8 @@
     if (!cfg) return "gatheringcloud";
     for (const [k, p] of Object.entries(PIX4D_PRESETS)) {
       if (
-        String(cfg.mesh_pipeline || "FixedSize") === p.mesh_pipeline &&
-        Number(cfg.texture_size || 4096) === p.texture_size &&
+        String(cfg.mesh_pipeline || "Scalable") === p.mesh_pipeline &&
+        Number(cfg.texture_size || 16384) === p.texture_size &&
         String(cfg.model_simplification || "Conservative") === p.model_simplification &&
         String(cfg.deghosting || "Weak") === p.deghosting &&
         Number(cfg.export_lod ?? 13) === p.export_lod &&
@@ -1483,11 +1504,11 @@
   }
 
   function formatPix4dSummaryBadge(cfg) {
-    if (!cfg) return "GatheringCloud Optimal · 4K · SkyMask OFF · .3tz";
+    if (!cfg) return "GatheringCloud Optimal · Scalable · 16K · SkyMask OFF · .3tz";
     const presetKey = detectPix4dPresetKey(cfg);
-    const mp = cfg.mesh_pipeline || "FixedSize";
-    const tex = Number(cfg.texture_size || 4096);
-    const texLabel = tex >= 8192 ? "8K" : tex >= 4096 ? "4K" : "2K";
+    const mp = cfg.mesh_pipeline || "Scalable";
+    const tex = Number(cfg.texture_size || 16384);
+    const texLabel = tex >= 16384 ? "16K" : tex >= 8192 ? "8K" : tex >= 4096 ? "4K" : "2K";
     const skyLabel = cfg.skyless ? "SkyMask ON" : "SkyMask OFF";
     const prefix = presetKey === "gatheringcloud" ? "GatheringCloud Optimal · " : "";
     return `${prefix}${mp} · ${texLabel} · ${skyLabel} · .3tz`;
@@ -1497,10 +1518,13 @@
     if (!cfg) return;
     STATE.pix4dSettings = Object.assign(
       {
-        mesh_pipeline: "FixedSize",
+        mesh_pipeline: "Scalable",
         skyless: false,
         use_roi: false,
-        texture_size: 4096,
+        texture_size: 16384,
+        dense_image_scale: "Full",
+        depth_min_confidence: "Medium",
+        depth_agreement_m: 0.01,
         model_simplification: "Conservative",
         deghosting: "Weak",
         export_lod: 13,
@@ -1524,8 +1548,8 @@
     });
 
     const pairs = [
-      ["selPix4dMeshPipeline", "selPix4dMeshPipelineUser", String(c.mesh_pipeline || "FixedSize")],
-      ["selPix4dTextureSize", "selPix4dTextureSizeUser", String(c.texture_size || 4096)],
+      ["selPix4dMeshPipeline", "selPix4dMeshPipelineUser", String(c.mesh_pipeline || "Scalable")],
+      ["selPix4dTextureSize", "selPix4dTextureSizeUser", String(c.texture_size || 16384)],
       ["selPix4dSimplification", "selPix4dSimplificationUser", String(c.model_simplification || "Conservative")],
       ["selPix4dDeghosting", "selPix4dDeghostingUser", String(c.deghosting || "Weak")],
       ["inpPix4dExportLod", "inpPix4dExportLodUser", String(c.export_lod ?? 13)],
@@ -1563,7 +1587,9 @@
       }
       const label =
         presetKey === "gatheringcloud"
-          ? "GatheringCloud Optimal (.3tz + Single-Root 4K WebP GLB + TWD97 + SkyMask OFF)"
+          ? "GatheringCloud Optimal (Scalable + 16K + 1x Full Dense + Progressive L0/L1/L2 .3tz)"
+          : presetKey === "compact_4k"
+          ? "Compact 4K Single-Mesh (FixedSize + 4K + LOD 13)"
           : presetKey === "fast_field"
           ? "Fast Field Preview (2K + Moderate + LOD 12)"
           : "Ultra Archival Multi-Tile (8K + Scalable + LOD 15)";
@@ -1593,9 +1619,14 @@
       if (saved[stateKey] !== undefined && saved[stateKey] !== null) return Boolean(saved[stateKey]);
       return fallback;
     };
+    const mp = String(getVal("selPix4dMeshPipeline", "mesh_pipeline", "Scalable"));
+    const tex = Number(getVal("selPix4dTextureSize", "texture_size", 16384)) || 16384;
     return {
-      mesh_pipeline: String(getVal("selPix4dMeshPipeline", "mesh_pipeline", "FixedSize")),
-      texture_size: Number(getVal("selPix4dTextureSize", "texture_size", 4096)) || 4096,
+      mesh_pipeline: mp,
+      texture_size: tex,
+      dense_image_scale: mp === "Scalable" || tex >= 8192 ? "Full" : String(saved.dense_image_scale || "Full"),
+      depth_min_confidence: mp === "Scalable" || tex >= 8192 ? "Medium" : String(saved.depth_min_confidence || "Medium"),
+      depth_agreement_m: mp === "Scalable" || tex >= 8192 ? 0.01 : Number(saved.depth_agreement_m || 0.01),
       model_simplification: String(getVal("selPix4dSimplification", "model_simplification", "Conservative")),
       deghosting: String(getVal("selPix4dDeghosting", "deghosting", "Weak")),
       export_lod: Math.max(0, Math.min(20, Number(getVal("inpPix4dExportLod", "export_lod", 13)) || 13)),

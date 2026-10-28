@@ -1617,7 +1617,7 @@
     if (lodMode === "rough") {
       tr.errorTarget = 1e9;
     } else if (lodMode === "max") {
-      tr.errorTarget = 0.5;
+      tr.errorTarget = 0.0;
     } else {
       tr.errorTarget = isMobileOrTab ? 10.0 : 5.0;
     }
@@ -2788,11 +2788,15 @@
   let _rerunTargetScanId = "";
 
   function readRerunModalSettings() {
+    const vd = document.getElementById("rerunSelVertexDensity")?.value || "High";
     return {
-      mesh_pipeline: document.getElementById("rerunSelMeshPipeline")?.value || "FixedSize",
+      mesh_pipeline: document.getElementById("rerunSelMeshPipeline")?.value || "Scalable",
       mesh_quality: document.getElementById("rerunSelMeshQuality")?.value || "High",
-      vertex_density: document.getElementById("rerunSelVertexDensity")?.value || "High",
-      texture_size: Number(document.getElementById("rerunSelTextureSize")?.value || 4096),
+      vertex_density: vd,
+      dense_image_scale: vd === "High" ? "Full" : vd === "Low" ? "Quarter" : "Half",
+      depth_min_confidence: vd === "High" ? "Medium" : "High",
+      depth_agreement_m: vd === "High" ? 0.01 : 0.02,
+      texture_size: Number(document.getElementById("rerunSelTextureSize")?.value || 16384),
       model_simplification: document.getElementById("rerunSelSimplification")?.value || "Conservative",
       deghosting: document.getElementById("rerunSelDeghosting")?.value || "Weak",
       export_lod: Number(document.getElementById("rerunInpExportLod")?.value || 13),

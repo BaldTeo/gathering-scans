@@ -18,7 +18,7 @@
   <meta name="twitter:image" content="https://scans.gatheren.cloud/assets/gathering_cloud_logo.png" />
   <!-- GS_SHARE_OG_END -->
   <link rel="icon" type="image/png" href="/assets/gathering_cloud_logo.png" />
-  <link rel="stylesheet" href="/app.css?v=20261028_v183" />
+  <link rel="stylesheet" href="/app.css?v=20261029_v184" />
   <script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
 <body>
@@ -1428,6 +1428,26 @@
         </div>
       </div>
 
+      <!-- 3D Display Quality / Progressive LOD Mode Card in User Settings -->
+      <div class="gs-settings-row" style="background:var(--ui-bg-subtle);border:1px solid var(--ui-border);border-radius:10px;padding:12px 14px;margin-bottom:10px;display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;">
+        <div style="min-width:180px;flex:1;">
+          <div style="font-size:12.5px;font-weight:700;color:var(--ui-text-primary);display:flex;align-items:center;gap:6px;">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="var(--ui-accent)" stroke-width="2">
+              <polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/>
+            </svg>
+            <span data-i18n-zh="3D 模型顯示畫質與漸進式 LOD 串流" data-i18n-en="3D Display Quality &amp; Progressive LOD Mode">3D 模型顯示畫質與漸進式 LOD 串流</span>
+          </div>
+          <div style="font-size:11px;color:var(--ui-text-muted);margin-top:2px;" data-i18n-zh="粗模 (L0 極速省電) · 自動漸進 (L0→L1→L2 依鏡頭距離自動細化) · 精細 (強制載入 L2 最高畫質圖磚)" data-i18n-en="Rough (L0 Fast / Mobile Safe) · Auto Progressive (L0→L1→L2 by Camera Distance) · Max Detail (Force L2 High-Res Tiles)">
+            粗模 (L0 極速省電) · 自動漸進 (L0→L1→L2 依鏡頭距離自動細化) · 精細 (強制載入 L2 最高畫質圖磚)
+          </div>
+        </div>
+        <div class="segmented-pill gs-lod-mode-switcher" id="settingsLodModeSwitcher" role="group" aria-label="3D Display Quality Mode">
+          <button type="button" class="btn-seg" data-lod-mode="rough" title="粗模 (L0 極速省電)" data-i18n-zh="粗模 (L0)" data-i18n-en="Rough (L0)" data-i18n-title-zh="粗模 (L0 極速省電)" data-i18n-title-en="Rough (L0 Fast / Low Memory)">粗模 (L0)</button>
+          <button type="button" class="btn-seg active" data-lod-mode="auto" title="自動漸進 (L0→L1→L2 依鏡頭距離自動細化)" data-i18n-zh="自動 (Auto)" data-i18n-en="Auto (L0→L2)" data-i18n-title-zh="自動漸進 (L0→L1→L2 依鏡頭距離自動細化)" data-i18n-title-en="Auto Progressive (L0→L1→L2 by Camera Distance)">自動 (Auto)</button>
+          <button type="button" class="btn-seg" data-lod-mode="max" title="精細 (強制載入 L2 最高解析度圖磚)" data-i18n-zh="精細 (Max)" data-i18n-en="Max (L2)" data-i18n-title-zh="精細 (強制載入 L2 最高解析度圖磚)" data-i18n-title-en="Max Detail (Force L2 High-Res Tiles)">精細 (Max)</button>
+        </div>
+      </div>
+
       <!-- PIX4Dmatic 2.11.0 Default Pipeline Settings in User Settings -->
       <div class="gs-settings-row" id="settingsPix4dPipelineSection" style="display:none;background:var(--ui-bg-subtle);border:1px solid var(--ui-border);border-radius:10px;padding:12px 14px;margin-bottom:10px;">
         <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap;">
@@ -1439,12 +1459,13 @@
               <span data-i18n-zh="PIX4Dmatic 2.11.0 建模流程設定與 GatheringCloud 最佳預設組" data-i18n-en="PIX4Dmatic 2.11.0 Pipeline Settings &amp; GatheringCloud Optimal Preset">PIX4Dmatic 2.11.0 建模流程設定與 GatheringCloud 最佳預設組</span>
             </div>
             <div style="font-size:11px;color:var(--ui-text-muted);margin-top:2px;">
-              <span data-i18n-zh="最佳配置：" data-i18n-en="Optimal:">最佳配置：</span><b>FixedSize</b> + <b>4096px (4K)</b> + <b>Sky Mask OFF</b> <span data-i18n-zh="（保留樹木）" data-i18n-en="(preserves trees)">（保留樹木）</span> + <b>LOD 13 TWD97 OBJ</b> → <b>Single-Root 4K WebP GLB + .3tz</b>.
+              <span data-i18n-zh="最佳配置：" data-i18n-en="Optimal:">最佳配置：</span><b>Scalable</b> + <b>16384px (16K)</b> + <b>1x Full Dense</b> + <b>Sky Mask OFF</b> <span data-i18n-zh="（保留樹木）" data-i18n-en="(preserves trees)">（保留樹木）</span> + <b>LOD 13 TWD97 OBJ</b> → <b>Progressive L0/L1/L2 Quadtree GLB + .3tz</b>.
             </div>
           </div>
           <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
             <select class="gs-select" id="selPix4dPresetUser" style="font-size:11px;padding:3px 8px;height:24px;min-width:255px;font-weight:600;border-color:var(--ui-accent);" title="選擇建模預設組" data-i18n-title-zh="選擇建模預設組" data-i18n-title-en="Select Pipeline Preset">
-              <option value="gatheringcloud" selected data-i18n-zh="GatheringCloud 最佳預設 (.3tz + 4K WebP GLB + TWD97)" data-i18n-en="GatheringCloud Optimal (.3tz + 4K WebP GLB + TWD97)">GatheringCloud 最佳預設 (.3tz + 4K WebP GLB + TWD97)</option>
+              <option value="gatheringcloud" selected data-i18n-zh="GatheringCloud 最佳預設 (Scalable + 16K + 1x 原圖點雲 + L0/L1/L2 .3tz)" data-i18n-en="GatheringCloud Optimal (Scalable + 16K + 1x Full Dense + L0/L1/L2 .3tz)">GatheringCloud 最佳預設 (Scalable + 16K + 1x 原圖點雲 + L0/L1/L2 .3tz)</option>
+              <option value="compact_4k" data-i18n-zh="精簡 4K 單一網格 (FixedSize + 4K + LOD 13)" data-i18n-en="Compact 4K Single-Mesh (FixedSize + 4K + LOD 13)">精簡 4K 單一網格 (FixedSize + 4K + LOD 13)</option>
               <option value="fast_field" data-i18n-zh="快速外業預覽 (2K + 適度簡化 + LOD 12)" data-i18n-en="Fast Field Preview (2K + Moderate + LOD 12)">快速外業預覽 (2K + 適度簡化 + LOD 12)</option>
               <option value="archival_8k" data-i18n-zh="超高解析度典藏版 (8K + 多分塊 + LOD 15)" data-i18n-en="Ultra Archival Multi-Tile (8K + Scalable + LOD 15)">超高解析度典藏版 (8K + 多分塊 + LOD 15)</option>
               <option value="custom" data-i18n-zh="自訂詳細參數" data-i18n-en="Custom Detailed Settings">自訂詳細參數</option>
@@ -1457,16 +1478,17 @@
           <div class="gs-form-group" style="margin-bottom:0;">
             <label style="font-size:10.5px;" data-i18n-zh="網格管線模式" data-i18n-en="Mesh Pipeline">網格管線模式</label>
             <select class="gs-select" id="selPix4dMeshPipelineUser" style="font-size:11.5px;padding:4px 6px;">
-              <option value="FixedSize" selected data-i18n-zh="單一精簡網格" data-i18n-en="FixedSize · Single Compact Mesh">單一精簡網格</option>
-              <option value="Scalable" data-i18n-zh="多分塊八叉樹網格" data-i18n-en="Scalable · Multi-Tile Octree">多分塊八叉樹網格</option>
+              <option value="Scalable" selected data-i18n-zh="多分塊八叉樹網格 (預設)" data-i18n-en="Scalable · Multi-Tile Octree (Default)">多分塊八叉樹網格 (預設)</option>
+              <option value="FixedSize" data-i18n-zh="單一精簡網格" data-i18n-en="FixedSize · Single Compact Mesh">單一精簡網格</option>
             </select>
           </div>
           <div class="gs-form-group" style="margin-bottom:0;">
             <label style="font-size:10.5px;" data-i18n-zh="貼圖集尺寸" data-i18n-en="Texture Atlas Size">貼圖集尺寸</label>
             <select class="gs-select" id="selPix4dTextureSizeUser" style="font-size:11.5px;padding:4px 6px;">
-              <option value="4096" selected data-i18n-zh="4096 px · 4K 預設" data-i18n-en="4096 px · 4K Default">4096 px · 4K 預設</option>
+              <option value="16384" selected data-i18n-zh="16384 px · 16K 預設超高畫質" data-i18n-en="16384 px · 16K Default Ultra">16384 px · 16K 預設超高畫質</option>
+              <option value="8192" data-i18n-zh="8192 px · 8K 高畫質" data-i18n-en="8192 px · 8K High">8192 px · 8K 高畫質</option>
+              <option value="4096" data-i18n-zh="4096 px · 4K 精簡" data-i18n-en="4096 px · 4K Compact">4096 px · 4K 精簡</option>
               <option value="2048" data-i18n-zh="2048 px · 2K 快速" data-i18n-en="2048 px · 2K Fast">2048 px · 2K 快速</option>
-              <option value="8192" data-i18n-zh="8192 px · 8K 超高畫質" data-i18n-en="8192 px · 8K Ultra">8192 px · 8K 超高畫質</option>
             </select>
           </div>
           <div class="gs-form-group" style="margin-bottom:0;">
@@ -2006,8 +2028,8 @@
           <div class="gs-form-group" style="margin-bottom:0;">
             <label style="font-size:11px;" data-i18n-zh="網格管線模式" data-i18n-en="Mesh Pipeline">網格管線模式</label>
             <select class="gs-select" id="rerunSelMeshPipeline">
-              <option value="FixedSize" selected data-i18n-zh="單一精簡網格" data-i18n-en="FixedSize · Single Compact Mesh">單一精簡網格</option>
-              <option value="Scalable" data-i18n-zh="多分塊八叉樹網格" data-i18n-en="Scalable · Multi-Tile Octree">多分塊八叉樹網格</option>
+              <option value="Scalable" selected data-i18n-zh="多分塊八叉樹網格 (預設)" data-i18n-en="Scalable · Multi-Tile Octree (Default)">多分塊八叉樹網格 (預設)</option>
+              <option value="FixedSize" data-i18n-zh="單一精簡網格" data-i18n-en="FixedSize · Single Compact Mesh">單一精簡網格</option>
             </select>
           </div>
           <div class="gs-form-group" style="margin-bottom:0;">
@@ -2029,8 +2051,9 @@
           <div class="gs-form-group" style="margin-bottom:0;">
             <label style="font-size:11px;" data-i18n-zh="貼圖集解析度" data-i18n-en="Texture Atlas Resolution">貼圖集解析度</label>
             <select class="gs-select" id="rerunSelTextureSize">
-              <option value="4096" selected data-i18n-zh="4096 px · 4K 清晰" data-i18n-en="4096 px · 4K Sharp">4096 px · 4K 清晰</option>
-              <option value="8192" data-i18n-zh="8192 px · 8K 超高畫質" data-i18n-en="8192 px · 8K Ultra">8192 px · 8K 超高畫質</option>
+              <option value="16384" selected data-i18n-zh="16384 px · 16K 預設超高畫質" data-i18n-en="16384 px · 16K Default Ultra">16384 px · 16K 預設超高畫質</option>
+              <option value="8192" data-i18n-zh="8192 px · 8K 高畫質" data-i18n-en="8192 px · 8K High">8192 px · 8K 高畫質</option>
+              <option value="4096" data-i18n-zh="4096 px · 4K 精簡" data-i18n-en="4096 px · 4K Compact">4096 px · 4K 精簡</option>
               <option value="2048" data-i18n-zh="2048 px · 2K 快速網頁" data-i18n-en="2048 px · 2K Fast Web">2048 px · 2K 快速網頁</option>
             </select>
           </div>
@@ -2108,15 +2131,15 @@
   <script src="/lib/3d-tiles-renderer.bundle.js"></script>
 
   <!-- Main GatheringScans Bilingual Translation & Modular Application Logic (< 5,000 lines per module) -->
-  <script src="/i18n.js?v=20261028_v183"></script>
-  <script src="/src/01-core-state.js?v=20261028_v183"></script>
-  <script src="/src/02-map-and-timeline.js?v=20261028_v183"></script>
-  <script src="/src/03-studio-core.js?v=20261028_v183"></script>
-  <script src="/src/04-studio-lasso-and-edits.js?v=20261028_v183"></script>
-  <script src="/src/05-studio-civil-inspectors.js?v=20261028_v183"></script>
-  <script src="/src/06-studio-align-and-optimizer.js?v=20261028_v183"></script>
-  <script src="/src/07-compare-and-queue.js?v=20261028_v183"></script>
-  <script src="/src/08-advanced-surveying-and-qa.js?v=20261028_v183"></script>
-  <script src="/app.js?v=20261028_v183"></script>
+  <script src="/i18n.js?v=20261029_v184"></script>
+  <script src="/src/01-core-state.js?v=20261029_v184"></script>
+  <script src="/src/02-map-and-timeline.js?v=20261029_v184"></script>
+  <script src="/src/03-studio-core.js?v=20261029_v184"></script>
+  <script src="/src/04-studio-lasso-and-edits.js?v=20261029_v184"></script>
+  <script src="/src/05-studio-civil-inspectors.js?v=20261029_v184"></script>
+  <script src="/src/06-studio-align-and-optimizer.js?v=20261029_v184"></script>
+  <script src="/src/07-compare-and-queue.js?v=20261029_v184"></script>
+  <script src="/src/08-advanced-surveying-and-qa.js?v=20261029_v184"></script>
+  <script src="/app.js?v=20261029_v184"></script>
 </body>
 </html>

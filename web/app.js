@@ -985,6 +985,9 @@
     openModal("modalOfflineCache");
     _pix4dSettingsDirty = false;
     await applyTheme(STATE.themePreference, false);
+    if (typeof applyScanLodMode === "function") {
+      applyScanLodMode(STATE.scanLodMode || "auto", true);
+    }
     applyRolePermissionsToUI();
     const roleInfo = getCurrentUserRoleInfo();
     if (roleInfo.canManageUsers) {
