@@ -1347,10 +1347,18 @@
       resetStagedEditsForScan(scan);
     }
 
-    const prevTilesCenter =
-      preserveCamera && Array.isArray(studioThree.tilesCenter) ? studioThree.tilesCenter.slice() : null;
-    const prevCamPos = preserveCamera && studioThree.camera ? studioThree.camera.position.clone() : null;
-    const prevCamTarget = preserveCamera && studioThree.controls ? studioThree.controls.target.clone() : null;
+    const hasValidPrevCenter =
+      preserveCamera &&
+      prevScanId === scan.scan_id &&
+      Array.isArray(studioThree.tilesCenter) &&
+      Math.hypot(
+        Number(studioThree.tilesCenter[0]) || 0,
+        Number(studioThree.tilesCenter[1]) || 0,
+        Number(studioThree.tilesCenter[2]) || 0
+      ) > 1e-3;
+    const prevTilesCenter = hasValidPrevCenter ? studioThree.tilesCenter.slice() : null;
+    const prevCamPos = hasValidPrevCenter && studioThree.camera ? studioThree.camera.position.clone() : null;
+    const prevCamTarget = hasValidPrevCenter && studioThree.controls ? studioThree.controls.target.clone() : null;
 
     // Teardown previous tilesRenderer / mesh and free GPU VRAM before loading next scan
     if (typeof suspendPreview3DResources === "function" && STATE.activeView === "studio") {
@@ -1520,6 +1528,9 @@
       tr.manager.addHandler(/\.(gltf|glb)(\?.*)?$/i, gltfLoader);
 
       tr.addEventListener("load-tileset", () => {
+        if (studioThree.tilesRenderer !== tr) return;
+        if (tr._rootCentered) return;
+        tr._rootCentered = true;
         studioThree._tilesetReady = true;
         studioThree._tilesetReadyMs = performance.now();
         studioThree._maxPct = Math.max(studioThree._maxPct || 0, 22);
@@ -1538,9 +1549,13 @@
           studioThree.modelPivot.updateMatrixWorld(true);
           studioThree.boundingSphere = sphere;
           if (studioThree.grid) {
-            studioThree.grid.position.y = Number.isFinite(sphere._groundOffsetY)
-              ? sphere._groundOffsetY
-              : -8.0;
+            if (Number.isFinite(scan._resolvedGroundH)) {
+              studioThree.grid.position.y = scan._resolvedGroundH - sphere.center.z - 0.19;
+            } else {
+              studioThree.grid.position.y = Number.isFinite(sphere._groundOffsetY)
+                ? sphere._groundOffsetY
+                : -8.0;
+            }
           }
           if (typeof updateScanGoogleMap3DLayer === "function") {
             updateScanGoogleMap3DLayer(studioThree, scan);
@@ -1599,6 +1614,7 @@
       });
 
       tr.addEventListener("load-model", (ev) => {
+        if (studioThree.tilesRenderer !== tr) return;
         if (ev && ev.scene) {
           _lastBadgeOcclusionCamSig = "";
           if (studioThree.fallbackGroup) studioThree.fallbackGroup.visible = false;

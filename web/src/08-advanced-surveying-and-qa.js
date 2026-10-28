@@ -4602,6 +4602,17 @@
         ev.stopPropagation();
         const cid = btn.getAttribute("data-cid") || btn.getAttribute("data-comment-move") || "";
         if (!cid) return;
+        const targetCmt = (Array.isArray(STATE.activeScan?.comments) ? STATE.activeScan.comments : []).find(
+          (item) => String(item.comment_id) === String(cid)
+        );
+        const canMove = targetCmt && typeof canUserEditComment === "function" ? canUserEditComment(targetCmt) : false;
+        if (!canMove) {
+          showToast(
+            tr("僅標註作者或管理員可移動此標註", "Only the comment author or an admin can move this comment."),
+            "error"
+          );
+          return;
+        }
         STATE.movingCommentId = STATE.movingCommentId === cid ? null : cid;
         const canvasEl = document.getElementById("studioCanvas");
         if (canvasEl) canvasEl.style.cursor = STATE.movingCommentId ? "crosshair" : "";

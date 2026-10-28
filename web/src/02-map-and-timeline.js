@@ -1693,9 +1693,9 @@
           Math.abs(Number(rootBox[5]) || 0) +
           Math.abs(Number(rootBox[8]) || 0) +
           Math.abs(Number(rootBox[11]) || 0);
-        outSphere._groundOffsetY = hz > 0 ? -(hz + 0.3) : -Math.max(4.0, outSphere.radius * 0.25);
+        outSphere._groundOffsetY = hz > 0 ? -Math.min(hz + 0.3, 24.0) : -Math.max(4.0, Math.min(20.0, outSphere.radius * 0.25));
       } else {
-        outSphere._groundOffsetY = -Math.max(4.0, outSphere.radius * 0.25);
+        outSphere._groundOffsetY = -Math.max(4.0, Math.min(20.0, outSphere.radius * 0.25));
       }
     }
     return outSphere.radius > 0;
@@ -1839,6 +1839,9 @@
       tr.manager.addHandler(/\.(gltf|glb)(\?.*)?$/i, gltfLoader);
 
       tr.addEventListener("load-tileset", () => {
+        if (previewThree.tilesRenderer !== tr) return;
+        if (tr._rootCentered) return;
+        tr._rootCentered = true;
         previewThree._tilesetReady = true;
         previewThree._tilesetReadyMs = performance.now();
         previewThree._maxPct = Math.max(previewThree._maxPct || 0, 22);
@@ -1851,9 +1854,13 @@
           previewThree.modelPivot.updateMatrixWorld(true);
           previewThree.boundingSphere = sphere;
           if (previewThree.grid) {
-            previewThree.grid.position.y = Number.isFinite(sphere._groundOffsetY)
-              ? sphere._groundOffsetY
-              : -8.0;
+            if (Number.isFinite(scan._resolvedGroundH)) {
+              previewThree.grid.position.y = scan._resolvedGroundH - sphere.center.z - 0.19;
+            } else {
+              previewThree.grid.position.y = Number.isFinite(sphere._groundOffsetY)
+                ? sphere._groundOffsetY
+                : -8.0;
+            }
           }
           updateScanGoogleMap3DLayer(previewThree, scan);
           framePreviewCamera();
@@ -1863,6 +1870,7 @@
       });
 
       tr.addEventListener("load-model", (ev) => {
+        if (previewThree.tilesRenderer !== tr) return;
         if (ev && ev.scene) {
           if (previewThree.fallbackGroup) previewThree.fallbackGroup.visible = false;
           ev.scene.traverse((c) => {
@@ -3293,8 +3301,13 @@
 
     const triStride = totalTris > 240000 ? Math.ceil(totalTris / 240000) : 1;
     let rasterizedTris = 0;
-    const ySamples = [];
-    const ySampleStride = Math.max(1, Math.floor(Math.max(1, totalTris / triStride) / 600));
+    const G_N = 64;
+    const groundCellMinY = layer.groundCellMinY || (layer.groundCellMinY = new Float32Array(G_N * G_N));
+    groundCellMinY.fill(Infinity);
+    const maxSampleRadius = Math.min(
+      halfSpan,
+      Math.max(45, Math.min(360, (Number(ctx.boundingSphere?.radius) || 90) * 1.4))
+    );
 
     for (let mi = 0; mi < meshes.length; mi++) {
       const m = meshes[mi];
@@ -3323,9 +3336,6 @@
         const wz2 = e[2] * lx2 + e[6] * ly2 + e[10] * lz2 + e[14];
 
         rasterizedTris++;
-        if (rasterizedTris % ySampleStride === 0 && Number.isFinite(wy0)) {
-          ySamples.push(wy0);
-        }
 
         const gx0 = (wx0 + halfSpan) * invCell;
         const gz0 = (wz0 + halfSpan) * invCell;
@@ -3339,6 +3349,21 @@
         const zMin = Math.max(0, Math.floor(Math.min(gz0, gz1, gz2)));
         const zMax = Math.min(N - 1, Math.floor(Math.max(gz0, gz1, gz2)));
         if (xMin > xMax || zMin > zMax) continue;
+
+        if (
+          Number.isFinite(wy0) &&
+          Math.abs(wx0) <= maxSampleRadius &&
+          Math.abs(wz0) <= maxSampleRadius &&
+          wy0 >= -65.0 &&
+          wy0 <= 120.0
+        ) {
+          const bx = Math.max(0, Math.min(G_N - 1, Math.floor(((wx0 + halfSpan) / span) * G_N)));
+          const bz = Math.max(0, Math.min(G_N - 1, Math.floor(((wz0 + halfSpan) / span) * G_N)));
+          const bIdx = bz * G_N + bx;
+          if (wy0 < groundCellMinY[bIdx]) {
+            groundCellMinY[bIdx] = wy0;
+          }
+        }
 
         if (xMax - xMin <= 1 && zMax - zMin <= 1) {
           for (let gz = zMin; gz <= zMax; gz++) {
@@ -3463,12 +3488,42 @@
       }
     }
 
-    if (ySamples.length >= 16) {
-      ySamples.sort((a, b) => a - b);
-      const p15 = ySamples[Math.floor(ySamples.length * 0.15)];
-      if (Number.isFinite(p15)) {
-        layer.mesh.position.y = p15 - 0.15;
+    const cellYs = [];
+    for (let i = 0; i < G_N * G_N; i++) {
+      if (Number.isFinite(groundCellMinY[i])) {
+        cellYs.push(groundCellMinY[i]);
       }
+    }
+    const refZ = isMulti
+      ? Number(STATE.multiAlign?.refCenter?.z) || 0
+      : Array.isArray(ctx.tilesCenter)
+      ? Number(ctx.tilesCenter[2]) || 0
+      : 0;
+    const hasValidRefZ =
+      Math.abs(refZ) > 1e-4 ||
+      (Array.isArray(ctx.tilesCenter) && Math.hypot(ctx.tilesCenter[0] || 0, ctx.tilesCenter[1] || 0) > 1);
+
+    if (cellYs.length >= 4) {
+      cellYs.sort((a, b) => a - b);
+      const p20 = cellYs[Math.floor(cellYs.length * 0.2)];
+      if (Number.isFinite(p20)) {
+        if (!isMulti && !hasStagedEdits && scan && hasValidRefZ) {
+          if (!Number.isFinite(scan._resolvedGroundH) || cellYs.length >= (scan._resolvedGroundCells || 0)) {
+            scan._resolvedGroundH = refZ + p20;
+            scan._resolvedGroundCells = cellYs.length;
+          }
+          const lockedGroundY = scan._resolvedGroundH - refZ;
+          layer.mesh.position.y = lockedGroundY - 0.15;
+          if (ctx.grid) ctx.grid.position.y = lockedGroundY - 0.19;
+        } else {
+          layer.mesh.position.y = p20 - 0.15;
+          if (ctx.grid) ctx.grid.position.y = p20 - 0.19;
+        }
+      }
+    } else if (!isMulti && scan && Number.isFinite(scan._resolvedGroundH) && hasValidRefZ) {
+      const lockedGroundY = scan._resolvedGroundH - refZ;
+      layer.mesh.position.y = lockedGroundY - 0.15;
+      if (ctx.grid) ctx.grid.position.y = lockedGroundY - 0.19;
     } else if (ctx.grid) {
       layer.mesh.position.y = ctx.grid.position.y + 0.04;
     }
@@ -3611,7 +3666,20 @@
     }
 
     layer.uniforms.uOpacity.value = Math.max(0.05, Math.min(1.0, Number(STATE.scanGoogleMapOpacity) || 0.5));
-    if (ctx.grid) {
+    const isMulti = Boolean(typeof studioThree !== "undefined" && ctx === studioThree && STATE.multiAlign?.active);
+    const refZ = isMulti
+      ? Number(STATE.multiAlign?.refCenter?.z) || 0
+      : Array.isArray(ctx.tilesCenter)
+      ? Number(ctx.tilesCenter[2]) || 0
+      : 0;
+    const hasValidRefZ =
+      Math.abs(refZ) > 1e-4 ||
+      (Array.isArray(ctx.tilesCenter) && Math.hypot(ctx.tilesCenter[0] || 0, ctx.tilesCenter[1] || 0) > 1);
+    if (!isMulti && scan && Number.isFinite(scan._resolvedGroundH) && hasValidRefZ) {
+      const lockedGroundY = scan._resolvedGroundH - refZ;
+      if (ctx.grid) ctx.grid.position.y = lockedGroundY - 0.19;
+      layer.mesh.position.y = lockedGroundY - 0.15;
+    } else if (ctx.grid) {
       layer.mesh.position.y = ctx.grid.position.y + 0.04;
     }
 

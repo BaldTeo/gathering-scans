@@ -2887,6 +2887,17 @@
       STATE.movingCommentId = null;
       const canvasEl = document.getElementById("studioCanvas");
       if (canvasEl) canvasEl.style.cursor = "";
+      const targetCmt = (Array.isArray(STATE.activeScan?.comments) ? STATE.activeScan.comments : []).find(
+        (item) => String(item.comment_id) === String(movingCid)
+      );
+      if (targetCmt && typeof canUserEditComment === "function" && !canUserEditComment(targetCmt)) {
+        if (typeof renderCommentPins3D === "function") renderCommentPins3D();
+        showToast(
+          tr("僅標註作者或管理員可移動此標註", "Only the comment author or an admin can move this comment."),
+          "error"
+        );
+        return;
+      }
       const pos_x = Number(pt.x.toFixed(3));
       const pos_y = Number(pt.y.toFixed(3));
       const pos_z = Number(pt.z.toFixed(3));

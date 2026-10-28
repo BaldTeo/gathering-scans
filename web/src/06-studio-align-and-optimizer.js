@@ -657,8 +657,17 @@
       populateProjectScanDropdowns(res.scan?.project_group || STATE.activeProjectGroup, res.scan_id || res.scan?.scan_id || "");
       renderMapClusters();
 
+      const prevResolvedGroundH = Number.isFinite(STATE.activeScan?._resolvedGroundH)
+        ? STATE.activeScan._resolvedGroundH
+        : null;
       const createdId = res.scan_id || res.scan?.scan_id;
       if (createdId) {
+        if (prevResolvedGroundH !== null) {
+          const createdObj = STATE.scans.find((s) => s.scan_id === createdId);
+          if (createdObj && !Number.isFinite(createdObj._resolvedGroundH)) {
+            createdObj._resolvedGroundH = prevResolvedGroundH;
+          }
+        }
         loadScanIntoStudio(createdId);
       }
 
@@ -2150,6 +2159,9 @@
       tr.manager.addHandler(/\.(gltf|glb)(\?.*)?$/i, gltfLoader);
 
       tr.addEventListener("load-tileset", () => {
+        if (layer.tilesRenderer !== tr) return;
+        if (tr._rootCentered) return;
+        tr._rootCentered = true;
         const sphere = new THREE.Sphere();
         if (computeTilesetContentSphere(tr, sphere)) {
           tr.group.position.set(-sphere.center.x, -sphere.center.y, -sphere.center.z);
@@ -2160,6 +2172,7 @@
       });
 
       tr.addEventListener("load-model", (ev) => {
+        if (layer.tilesRenderer !== tr) return;
         if (ev && ev.scene) {
           ev.scene.traverse((c) => {
             if (c.isMesh && c.material) {

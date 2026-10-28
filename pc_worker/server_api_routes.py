@@ -75,7 +75,7 @@ class ServerWriteRoutesMixin:
         if actor_role in ("admin", "owner"):
             return True
         if not existing_cmt:
-            return True
+            return False
         c_email = str(existing_cmt.get("author_email") or "").strip().lower()
         c_name = str(existing_cmt.get("author_name") or "").strip().lower()
         a_email = str(actor_email or (payload or {}).get("author_email") or "").strip().lower()
@@ -84,6 +84,8 @@ class ServerWriteRoutesMixin:
         if a_email and a_email not in ("guest@gatheren.cloud", "external@gatheren.cloud"):
             if c_email == a_email or (a_email in owner_aliases and c_email in owner_aliases):
                 return True
+            if c_email and c_email not in ("guest@gatheren.cloud", "external@gatheren.cloud"):
+                return False
         if c_email in ("", "external@gatheren.cloud", "guest@gatheren.cloud") and a_name and c_name == a_name:
             return True
         return False
@@ -1350,7 +1352,7 @@ class ServerWriteRoutesMixin:
                         return
                     if not self._can_actor_modify_comment(existing_cmt, actor_email, actor_role, payload):
                         self.send_json(
-                            {"error": "Only the comment author or an admin can edit or modify photos on this comment."},
+                            {"error": "Only the comment author or an admin can edit, move, or modify photos on this comment."},
                             status=403,
                         )
                         return
