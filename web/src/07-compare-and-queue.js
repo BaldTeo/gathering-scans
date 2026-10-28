@@ -1036,7 +1036,18 @@
     controls.enableDamping = true;
     controls.enablePan = true;
     controls.enableZoom = true;
+    controls.minDistance = 0.08;
     controls.screenSpacePanning = true;
+    if (typeof installSurfaceAwareOrbitZoom === "function") {
+      installSurfaceAwareOrbitZoom(stage, () => ({
+        camera: left.camera,
+        controls,
+        left: { camera: left.camera, modelPivot: left.pivot },
+        right: { camera: right.camera, modelPivot: right.pivot },
+        third: third ? { camera: third.camera, modelPivot: third.pivot } : null,
+        fourth: fourth ? { camera: fourth.camera, modelPivot: fourth.pivot } : null,
+      }));
+    }
     controls.mouseButtons = {
       LEFT: THREE.MOUSE.ROTATE,
       MIDDLE: THREE.MOUSE.ROTATE,

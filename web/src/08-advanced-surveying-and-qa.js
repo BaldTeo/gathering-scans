@@ -1312,14 +1312,13 @@
     const collectFromRoot = (rootObj) => {
       if (!rootObj || !rootObj.visible) return;
       rootObj.updateMatrixWorld(true);
-      const isTilesGrp = Boolean(studioThree?.tilesRenderer?.group && rootObj === studioThree.modelPivot);
       rootObj.traverse((c) => {
         if (
           c.isMesh &&
           c.geometry &&
           c.geometry.attributes &&
           c.geometry.attributes.position &&
-          (isTilesGrp || isMeshVisibleUnderRoot(c, rootObj)) &&
+          isMeshVisibleUnderRoot(c, rootObj) &&
           !c.userData?.isAlignBoxHelper
         ) {
           const cnt = c.geometry.attributes.position.count || 0;
@@ -1470,9 +1469,7 @@
       cntGrid[idx] += 1;
     };
 
-    for (let i = 0; i < sx.length; i++) {
-      accumGridSample(sx[i], sy[i], sz[i]);
-    }
+    let triAccumTotal = 0;
 
     // Rasterize real mesh triangles across both the fine occupancy grid and the (nx x nz) elevation grid
     // using pos.getX/getY/getZ so quantized InterleavedBufferAttribute GLBs work with 100% fidelity
@@ -1514,7 +1511,7 @@
         const d20 = (x0 - x2) * (x0 - x2) + (z0 - z2) * (z0 - z2);
         if (d01 > maxAllowedTriEdgeSq || d12 > maxAllowedTriEdgeSq || d20 > maxAllowedTriEdgeSq) continue;
 
-        // Check surface normal Y component to skip vertical walls/trunks during ground rasterization
+        // Check surface normal Y component to skip vertical walls/trunks/noise spikes during ground rasterization
         const ux = x1 - x0, uy = y1 - y0, uz = z1 - z0;
         const wx = x2 - x0, wy = y2 - y0, wz = z2 - z0;
         const nxTri = uy * wz - uz * wy;
@@ -1522,7 +1519,7 @@
         const nzTri = ux * wy - uy * wx;
         const nLen = Math.hypot(nxTri, nyTri, nzTri);
         if (nLen < 1e-6) continue;
-        if (excludeWalls && Math.abs(nyTri) / nLen < 0.35) continue;
+        if (excludeWalls && Math.abs(nyTri) / nLen < 0.66) continue;
 
         const cx = (x0 + x1 + x2) / 3.0;
         const cy = (y0 + y1 + y2) / 3.0;
@@ -1531,7 +1528,11 @@
         markFineOcc(0.5 * (x0 + x1), 0.5 * (z0 + z1));
         markFineOcc(0.5 * (x1 + x2), 0.5 * (z1 + z2));
         markFineOcc(0.5 * (x2 + x0), 0.5 * (z2 + z0));
+        accumGridSample(x0, y0, z0);
+        accumGridSample(x1, y1, z1);
+        accumGridSample(x2, y2, z2);
         accumGridSample(cx, cy, cz);
+        triAccumTotal++;
 
         // Barycentric rasterization over covered drainage grid cells & fine occupancy cells
         const denom = (z1 - z2) * (x0 - x2) + (x2 - x1) * (z0 - z2);
@@ -1625,16 +1626,52 @@
       return localOcc >= 4;
     };
 
-    // Bare-surface elevation per occupied cell (requires >= 1 real mesh sample; never extrapolates into voids)
+    if (triAccumTotal === 0) {
+      for (let i = 0; i < sx.length; i++) {
+        accumGridSample(sx[i], sy[i], sz[i]);
+      }
+    }
+
+    // Bare-surface elevation per occupied cell (uses pure lowest ground surface minYGrid, never polluted by canopy meanY!)
     const rawH = new Float32Array(nx * nz);
     const validCell = new Uint8Array(nx * nz);
     for (let idx = 0; idx < nx * nz; idx++) {
       if (cntGrid[idx] >= 1 && Number.isFinite(minYGrid[idx])) {
-        const meanY = sumYGrid[idx] / cntGrid[idx];
-        rawH[idx] = 0.78 * minYGrid[idx] + 0.22 * meanY;
+        rawH[idx] = minYGrid[idx];
         validCell[idx] = 1;
       }
     }
+
+    // 5x5 Bare-Earth Lower-Envelope Despike Pass: removes "invisible hills" from overhanging trees, bollards, or vertical noise spikes
+    const despikedH = new Float32Array(rawH);
+    const nbVals = [];
+    for (let iz = 0; iz < nz; iz++) {
+      for (let ix = 0; ix < nx; ix++) {
+        const idx = iz * nx + ix;
+        if (!validCell[idx]) continue;
+        nbVals.length = 0;
+        for (let dz = -2; dz <= 2; dz++) {
+          const jz = iz + dz;
+          if (jz < 0 || jz >= nz) continue;
+          for (let dx = -2; dx <= 2; dx++) {
+            const jx = ix + dx;
+            if (jx < 0 || jx >= nx) continue;
+            const nIdx = jz * nx + jx;
+            if (validCell[nIdx]) nbVals.push(rawH[nIdx]);
+          }
+        }
+        if (nbVals.length >= 4) {
+          nbVals.sort((a, b) => a - b);
+          const q25 = nbVals[Math.floor(nbVals.length * 0.25)];
+          const q50 = nbVals[Math.floor(nbVals.length * 0.50)];
+          const maxGroundRise = Math.max(0.28, (q50 - q25) * 1.65);
+          if (rawH[idx] > q25 + maxGroundRise) {
+            despikedH[idx] = q25 + 0.35 * (q50 - q25);
+          }
+        }
+      }
+    }
+    rawH.set(despikedH);
 
     // 3x3 smoothing strictly over occupied cells ONLY (never fills empty/un-scanned cells!)
     const smoothH = new Float32Array(nx * nz);

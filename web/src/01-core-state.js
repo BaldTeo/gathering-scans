@@ -105,7 +105,7 @@
     maskBoundaryPoints: [],
     cropMode: "delete_inside",
     lassoInputMethod: "lasso",
-    lassoVisibleOnlyDelete: true,
+    lassoVisibleOnlyDelete: false,
     lassoVisibleOnlyKeep: false,
     lassoStrokes: [],
     pendingCropPolygons: [],

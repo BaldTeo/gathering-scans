@@ -1718,13 +1718,16 @@
 
   function setCategorizeLabelsVisibility(visible, opts = {}) {
     STATE.categorizeLabelsVisible = Boolean(visible);
+    if (studioThree && studioThree.commentPinsGroup) {
+      studioThree.commentPinsGroup.visible = STATE.categorizeLabelsVisible;
+    }
     update2DBadgePositions();
     syncCategorizeVisibilityUI();
     if (!opts.silent) {
       showToast(
         STATE.categorizeLabelsVisible
-          ? tr("🏷️ 2D 分類標籤：顯示中", "🏷️ 2D Classification Labels: Visible")
-          : tr("🏷️ 2D 分類標籤：已隱藏", "🏷️ 2D Classification Labels: Hidden")
+          ? tr("🏷️ 2D 標籤與標註：顯示中", "🏷️ 2D Labels & Notes: Visible")
+          : tr("🏷️ 2D 標籤與標註：已隱藏", "🏷️ 2D Labels & Notes: Hidden")
       );
     }
   }
@@ -4653,6 +4656,9 @@
     }
     if (studioThree.commentPinsGroup) {
       studioThree.commentPinsGroup.visible = true;
+      if (STATE.categorizeLabelsVisible === false) {
+        studioThree.commentPinsGroup.visible = false;
+      }
     }
 
     const scan = STATE.activeScan;

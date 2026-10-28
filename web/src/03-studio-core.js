@@ -249,6 +249,90 @@
     showToast("Scan brightness reset to 1.0x");
   });
 
+  function installSurfaceAwareOrbitZoom(domEl, getViewerFn, opts = {}) {
+    if (!domEl || domEl._surfaceZoomBound) return;
+    domEl._surfaceZoomBound = true;
+    const ray = new THREE.Raycaster();
+    const ndc = new THREE.Vector2();
+    const collectTargetMeshes = (v) => {
+      const list = [];
+      const roots = [v?.modelPivot, v?.multiAlignGroup, v?.fallbackGroup, v?.left?.modelPivot, v?.right?.modelPivot];
+      roots.forEach((r) => {
+        if (!r || !r.visible) return;
+        r.traverse((c) => {
+          if (c.isMesh && c.visible && !c.userData?.isAlignBoxHelper) list.push(c);
+        });
+      });
+      return list;
+    };
+    const syncExtraCams = (v) => {
+      if (v && v.left && v.right && v.left.camera) {
+        [v.right, v.third, v.fourth].forEach((s) => {
+          if (s && s.camera) {
+            s.camera.position.copy(v.left.camera.position);
+            s.camera.quaternion.copy(v.left.camera.quaternion);
+          }
+        });
+      }
+    };
+
+    domEl.addEventListener(
+      "wheel",
+      (e) => {
+        const v = typeof getViewerFn === "function" ? getViewerFn() : null;
+        const cam = v?.camera || v?.left?.camera;
+        const ctrls = v?.controls;
+        if (!cam || !ctrls || !ctrls.enabled || ctrls.enableZoom === false) return;
+        if (opts.isStudio && (STATE.fpMode?.active || STATE.activeView !== "studio")) return;
+        if (e.deltaY >= 0) return; // Zoom-out works normally
+
+        const rect = domEl.getBoundingClientRect();
+        if (rect.width <= 0 || rect.height <= 0) return;
+        ndc.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+        ndc.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+        if (!Number.isFinite(ndc.x) || Math.abs(ndc.x) > 1.05 || Math.abs(ndc.y) > 1.05) {
+          ndc.set(0, 0);
+        }
+
+        const meshes = collectTargetMeshes(v);
+        if (!meshes.length) return;
+        ray.setFromCamera(ndc, cam);
+        let hits = ray.intersectObjects(meshes, false);
+        if (!hits.length && (ndc.x !== 0 || ndc.y !== 0)) {
+          ray.setFromCamera(new THREE.Vector2(0, 0), cam);
+          hits = ray.intersectObjects(meshes, false);
+        }
+        if (!hits.length) return;
+
+        const hitPt = hits[0].point;
+        const surfDist = hits[0].distance;
+        const targetDist = cam.position.distanceTo(ctrls.target);
+
+        // If OrbitControls target is floating in mid-air closer than the surface (or getting close to camera),
+        // push target onto/through the surface and advance the camera smoothly so zoom NEVER stalls near Earth!
+        if (targetDist < Math.max(4.5, surfDist * 0.58) || surfDist < 8.0) {
+          const viewDir = new THREE.Vector3().subVectors(ctrls.target, cam.position);
+          if (viewDir.lengthSq() < 1e-6) cam.getWorldDirection(viewDir);
+          else viewDir.normalize();
+
+          const cursorDir = new THREE.Vector3().subVectors(hitPt, cam.position).normalize();
+          const blendDir = viewDir.clone().lerp(cursorDir, 0.28).normalize();
+          const desiredTargetDist = Math.max(0.35, surfDist);
+          const stepAdvance = surfDist > 0.14 ? Math.min(surfDist * 0.12, Math.max(0.16, surfDist * 0.08)) : 0;
+
+          if (targetDist < surfDist * 0.72 || targetDist < 2.8) {
+            cam.position.addScaledVector(blendDir, stepAdvance);
+          }
+          ctrls.target.copy(cam.position).addScaledVector(blendDir, desiredTargetDist);
+          ctrls.update();
+          syncExtraCams(v);
+        }
+      },
+      { passive: true, capture: true }
+    );
+  }
+  window.installSurfaceAwareOrbitZoom = installSurfaceAwareOrbitZoom;
+
   function initStudio3D() {
     if (studioThree) return studioThree;
     const container = document.getElementById("studioCanvasContainer");
@@ -261,7 +345,7 @@
     const camera = new THREE.PerspectiveCamera(
       50,
       Math.max(1, container.clientWidth) / Math.max(1, container.clientHeight),
-      0.1,
+      0.03,
       10000
     );
     camera.position.set(45, 38, 55);
@@ -308,7 +392,9 @@
     controls.dampingFactor = 0.06;
     controls.enablePan = true;
     controls.enableZoom = true;
+    controls.minDistance = 0.08;
     controls.screenSpacePanning = true;
+    installSurfaceAwareOrbitZoom(renderer.domElement, () => studioThree, { isStudio: true });
     controls.mouseButtons = {
       LEFT: THREE.MOUSE.ROTATE,
       MIDDLE: THREE.MOUSE.ROTATE,
@@ -1600,7 +1686,11 @@
     if (STATE.fpMode?.active && typeof exitFirstPersonMode === "function") {
       exitFirstPersonMode(true);
     }
-    let cx = 0, cy = 0, cz = 0;
+    let cx = 0,
+      cy = Number.isFinite(studioThree?.boundingSphere?._groundOffsetY)
+        ? studioThree.boundingSphere._groundOffsetY * 0.65
+        : 0,
+      cz = 0;
     let rawR = Number(studioThree?.boundingSphere?.radius) || 58;
     if (STATE.multiAlign?.active && Array.isArray(STATE.multiAlign.layers)) {
       const visLayers = STATE.multiAlign.layers.filter((l) => l && l.visible);
@@ -2253,6 +2343,10 @@
       const isCat = Boolean(b.isCategorize || b.el.classList.contains("is-categorize-badge"));
       if (b.isCommentPin) {
         if (b.folderKey && STATE.hiddenCommentFolders && STATE.hiddenCommentFolders[b.folderKey]) {
+          b.el.style.display = "none";
+          return;
+        }
+        if (STATE.categorizeLabelsVisible === false) {
           b.el.style.display = "none";
           return;
         }

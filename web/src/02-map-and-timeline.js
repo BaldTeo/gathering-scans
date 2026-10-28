@@ -1300,7 +1300,7 @@
     const camera = new THREE.PerspectiveCamera(
       50,
       Math.max(1, container.clientWidth) / Math.max(1, container.clientHeight),
-      0.1,
+      0.03,
       10000
     );
     camera.position.set(42, 34, 48);
@@ -1346,7 +1346,11 @@
     controls.dampingFactor = 0.06;
     controls.enablePan = true;
     controls.enableZoom = true;
+    controls.minDistance = 0.08;
     controls.screenSpacePanning = true;
+    if (typeof installSurfaceAwareOrbitZoom === "function") {
+      installSurfaceAwareOrbitZoom(renderer.domElement, () => previewThree);
+    }
     controls.mouseButtons = {
       LEFT: THREE.MOUSE.ROTATE,
       MIDDLE: THREE.MOUSE.ROTATE,

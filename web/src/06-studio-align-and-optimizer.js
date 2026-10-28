@@ -800,17 +800,29 @@
           </button>
         </div>
 
-        ${
-          inputMethod !== "polygon"
-            ? `<label style="display:flex;align-items:flex-start;gap:7px;font-size:11px;color:var(--ui-text-primary);background:var(--ui-bg-surface);border:1px solid var(--ui-border);border-radius:6px;padding:6px 8px;margin-bottom:8px;cursor:pointer;">
-                <input type="checkbox" id="chkLassoVisibleOnly" ${visibleOnlyChecked ? "checked" : ""} style="margin-top:2px;accent-color:var(--ui-accent);" />
-                <span>
-                  <b>${tr("僅選取可見前景表面", "Protect Occluded Background")}</b><br/>
-                  <span style="font-size:10px;color:var(--ui-text-secondary);">${tr("避免誤刪被前景遮蔽之後方牆面、道路或地形。", "Prevents deleting walls, roads, or terrain hidden behind foreground objects.")}</span>
-                </span>
-              </label>`
-            : ""
-        }
+        <div style="margin-bottom:8px;">
+          <div style="font-size:10.5px;font-weight:700;color:var(--ui-text-secondary);margin-bottom:4px;">
+            ${tr("刪除深度模式 (預設：選取內全部)：", "Erase Depth Mode (Default: Erase All):")}
+          </div>
+          <div style="display:flex;gap:5px;margin-bottom:5px;">
+            <button type="button" class="gs-top-btn ${!visibleOnlyChecked ? "accent" : ""}" id="btnLassoEraseAllMode" style="flex:1;justify-content:center;font-size:10.5px;padding:5px 6px;" title="${tr("刪除選取範圍內所有深度的三角面（預設）", "Erase all triangles inside selection through all depths (Default)")}">
+              <span>🌐 ${tr("刪除選取內全部", "Erase All in Selection")}</span>
+            </button>
+            <button type="button" class="gs-top-btn ${visibleOnlyChecked ? "accent" : ""}" id="btnLassoEraseVisibleMode" style="flex:1;justify-content:center;font-size:10.5px;padding:5px 6px;" title="${tr("僅刪除前景可見表面，保護後方被遮蔽的牆面或地面", "Erase only visible foreground triangles, protecting occluded background")}">
+              <span>👁️ ${tr("僅刪除可見表面", "Erase Visible Only")}</span>
+            </button>
+          </div>
+          <label style="display:flex;align-items:flex-start;gap:7px;font-size:10.5px;color:var(--ui-text-secondary);background:var(--ui-bg-surface);border:1px solid var(--ui-border);border-radius:6px;padding:5px 8px;cursor:pointer;">
+            <input type="checkbox" id="chkLassoVisibleOnly" ${visibleOnlyChecked ? "checked" : ""} style="margin-top:2px;accent-color:var(--ui-accent);" />
+            <span>
+              ${
+                visibleOnlyChecked
+                  ? tr("目前：<b>僅刪除可見前景表面</b>（避免誤刪後方被遮蔽的牆面或地形）", "Active: <b>Erase Visible in Selection</b> (protects background surfaces behind foreground objects)")
+                  : tr("目前：<b>刪除選取內全部 (預設)</b>（穿透深度刪除圈選範圍內所有三角面）", "Active: <b>Erase All in Selection (Default)</b> (erases all triangles through depth inside selection)")
+              }
+            </span>
+          </label>
+        </div>
 
         <div style="font-size:11px;color:var(--ui-text-secondary);background:var(--ui-bg-surface);border:1px solid var(--ui-border);border-radius:6px;padding:6px 8px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;gap:6px;flex-wrap:wrap;">
           <span>
@@ -925,15 +937,30 @@
       );
     });
 
-    document.getElementById("chkLassoVisibleOnly")?.addEventListener("change", (ev) => {
-      STATE.lassoVisibleOnlyDelete = Boolean(ev.target.checked);
+    const applyLassoDeleteDepthMode = (visOnly) => {
+      STATE.lassoVisibleOnlyDelete = Boolean(visOnly);
+      if (Array.isArray(STATE.lassoStrokes)) {
+        STATE.lassoStrokes.forEach((s) => {
+          if (s && typeof s === "object") s.visible_only = STATE.lassoVisibleOnlyDelete;
+        });
+      }
       const selTris = rebuildLassoHighlight3D();
       openLassoDeleteInspector({ armLasso: isLassoActive });
       showToast(
         STATE.lassoVisibleOnlyDelete
-          ? `Occlusion Protection ON — ${selTris.toLocaleString()} visible foreground triangles marked`
-          : `Through-Depth Mode — ${selTris.toLocaleString()} triangles marked across all depths`
+          ? tr(`👁️ 僅刪除可見表面 — 已標記 ${selTris.toLocaleString()} 個前景三角面`, `👁️ Erase Visible Only — ${selTris.toLocaleString()} visible foreground triangles marked`)
+          : tr(`🌐 刪除選取內全部 (穿透) — 已標記 ${selTris.toLocaleString()} 個三角面`, `🌐 Erase All in Selection — ${selTris.toLocaleString()} triangles marked across all depths`)
       );
+    };
+
+    document.getElementById("btnLassoEraseAllMode")?.addEventListener("click", () => {
+      applyLassoDeleteDepthMode(false);
+    });
+    document.getElementById("btnLassoEraseVisibleMode")?.addEventListener("click", () => {
+      applyLassoDeleteDepthMode(true);
+    });
+    document.getElementById("chkLassoVisibleOnly")?.addEventListener("change", (ev) => {
+      applyLassoDeleteDepthMode(Boolean(ev.target.checked));
     });
 
     document.getElementById("btnModeFreehandLasso")?.addEventListener("click", () => {

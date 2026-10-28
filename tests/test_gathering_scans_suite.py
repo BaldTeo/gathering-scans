@@ -1742,6 +1742,51 @@ class GatheringScansTestSuite(unittest.TestCase):
         self.assertIn("const frustumPts = [];", js08)
         self.assertIn("const frustumStride = Math.max(1, Math.ceil(camList.length / 36));", js08)
 
+    def test_21_zoom_drainage_hill_erase_modes_labels_and_laser_fixes(self):
+        """Verify all 5 v174 fixes: surface-aware zoom near Earth, bare-earth drainage despike, 2-mode triangle erase (Erase All default), Labels button toggling comments, and full-mesh Laser tool."""
+        with open(os.path.join(BASE_DIR, "web", "src", "01-core-state.js"), "r", encoding="utf-8") as f:
+            js01 = f.read()
+        with open(os.path.join(BASE_DIR, "web", "src", "02-map-and-timeline.js"), "r", encoding="utf-8") as f:
+            js02 = f.read()
+        with open(os.path.join(BASE_DIR, "web", "src", "03-studio-core.js"), "r", encoding="utf-8") as f:
+            js03 = f.read()
+        with open(os.path.join(BASE_DIR, "web", "src", "04-studio-lasso-and-edits.js"), "r", encoding="utf-8") as f:
+            js04 = f.read()
+        with open(os.path.join(BASE_DIR, "web", "src", "05-studio-civil-inspectors.js"), "r", encoding="utf-8") as f:
+            js05 = f.read()
+        with open(os.path.join(BASE_DIR, "web", "src", "06-studio-align-and-optimizer.js"), "r", encoding="utf-8") as f:
+            js06 = f.read()
+        with open(os.path.join(BASE_DIR, "web", "src", "07-compare-and-queue.js"), "r", encoding="utf-8") as f:
+            js07 = f.read()
+        with open(os.path.join(BASE_DIR, "web", "src", "08-advanced-surveying-and-qa.js"), "r", encoding="utf-8") as f:
+            js08 = f.read()
+
+        # 1. Surface-aware OrbitControls zoom near Earth across Studio, Preview, and Compare
+        self.assertIn("function installSurfaceAwareOrbitZoom(", js03)
+        self.assertIn("controls.minDistance = 0.08;", js03)
+        self.assertIn("controls.minDistance = 0.08;", js02)
+        self.assertIn("controls.minDistance = 0.08;", js07)
+
+        # 2. Drainage bare-earth minYGrid + 5x5 lower-envelope despike pass (no 0.22 * meanY canopy hill)
+        self.assertIn("rawH[idx] = minYGrid[idx];", js08)
+        self.assertIn("const despikedH = new Float32Array(rawH);", js08)
+        self.assertNotIn("0.78 * minYGrid[idx] + 0.22 * meanY", js08)
+
+        # 3. Erasing triangles 2 modes ("Erase All in Selection" default + "Erase Visible Only")
+        self.assertIn("lassoVisibleOnlyDelete: false,", js01)
+        self.assertIn('id="btnLassoEraseAllMode"', js06)
+        self.assertIn('id="btnLassoEraseVisibleMode"', js06)
+        self.assertIn("const applyLassoDeleteDepthMode = (visOnly) => {", js06)
+
+        # 4. Labels button hides/shows 2D/3D comments & pins
+        self.assertIn("if (STATE.categorizeLabelsVisible === false) {\n          b.el.style.display = \"none\";\n          return;\n        }", js03)
+        self.assertIn("studioThree.commentPinsGroup.visible = STATE.categorizeLabelsVisible;", js05)
+
+        # 5. Laser tool full-mesh indexing & slope-seeded surface tracing
+        self.assertIn("const targetMaxTris = 750000;", js04)
+        self.assertIn("const semiCands = [];", js04)
+        self.assertIn("if (stepJump <= 0.135 && probe.absNy >= 0.68)", js04)
+
 
 if __name__ == "__main__":
     unittest.main()

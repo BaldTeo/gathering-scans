@@ -70,8 +70,8 @@
       return studioThree._laserSpatialIndex;
     }
 
-    // Cap synchronous indexing at ~180k triangles so first mouse-move / hover never stalls a 60 FPS frame
-    const targetMaxTris = 180000;
+    // Index up to 750k triangles at full 1:1 resolution so 3D Tiles meshes never have Swiss-cheese subsampling gaps
+    const targetMaxTris = 750000;
     const triStride = totalTris > targetMaxTris ? Math.ceil(totalTris / targetMaxTris) : 1;
     const maxIndexed = Math.ceil(totalTris / triStride) + 16;
     const triVerts = new Float32Array(maxIndexed * 9);
@@ -395,13 +395,43 @@
         continue;
       }
 
-      if (yHit < prevY - 0.65 || yHit > prevY + 0.65) continue;
+      if (yHit < prevY - 0.95 || yHit > prevY + 0.95) continue;
       const diff = Math.abs(yHit - expectedY);
       if (diff < bestDiff) {
         bestDiff = diff;
         bestY = yHit;
         bestNy = absNy;
         found = true;
+      }
+    }
+
+    if (!found && !obstacle) {
+      for (let dz = -1; dz <= 1; dz++) {
+        const jz = gz + dz;
+        if (jz < 0 || jz >= gridH) continue;
+        for (let dx = -1; dx <= 1; dx++) {
+          const jx = gx + dx;
+          if (jx < 0 || jx >= gridW) continue;
+          const jc = jz * gridW + jx;
+          for (let p = cellOffsets[jc], pe = cellOffsets[jc + 1]; p < pe; p++) {
+            const t = cellTris[p];
+            const absNy = triAbsNy[t];
+            if (absNy < 0.58) continue;
+            const b = t * 9;
+            const cx = (triVerts[b] + triVerts[b + 3] + triVerts[b + 6]) / 3.0;
+            const cy = (triVerts[b + 1] + triVerts[b + 4] + triVerts[b + 7]) / 3.0;
+            const cz = (triVerts[b + 2] + triVerts[b + 5] + triVerts[b + 8]) / 3.0;
+            if (Math.hypot(qx - cx, qz - cz) <= 0.52 && Math.abs(cy - prevY) <= 0.90) {
+              const diff = Math.abs(cy - expectedY);
+              if (diff < bestDiff) {
+                bestDiff = diff;
+                bestY = cy;
+                bestNy = absNy;
+                found = true;
+              }
+            }
+          }
+        }
       }
     }
 
@@ -412,7 +442,7 @@
     const step = 0.24;
     let prevS = 0.0;
     let prevY = oy;
-    let localSlope = Number.isFinite(initSlope) ? Math.max(-0.10, Math.min(0.10, initSlope)) : 0.0;
+    let localSlope = Number.isFinite(initSlope) ? Math.max(-0.36, Math.min(0.36, initSlope)) : 0.0;
     let hasSlope = Number.isFinite(initSlope);
     const histS = [0.0];
     const histY = [oy];
@@ -519,14 +549,15 @@
           continue;
         }
 
-        // Backtrack 1–2 steps if curb bevel already started creeping up so lo sits right at the curb/wall toe
+        // Backtrack at most 1–2 steps if curb bevel already started creeping up so lo sits right at the curb/wall toe
         let loIdx = histS.length - 1;
+        const minAllowIdx = Math.max(histS.length >= 3 ? 1 : 0, histS.length - 3);
         const refIdx = Math.max(0, histS.length - 4);
         const refBaseY = histY[refIdx];
         const refBaseS = histS[refIdx];
         while (
-          loIdx > refIdx &&
-          Math.abs(histY[loIdx] - (refBaseY + localSlope * (histS[loIdx] - refBaseS))) > 0.055
+          loIdx > minAllowIdx &&
+          Math.abs(histY[loIdx] - (refBaseY + localSlope * (histS[loIdx] - refBaseS))) > 0.065
         ) {
           loIdx--;
         }
@@ -597,13 +628,13 @@
         };
       }
 
-      // Smoothly track rolling road/pool-floor grade via EMA on smooth steps (never polluted by curb ramps!)
-      if (stepJump <= 0.042 && probe.absNy >= 0.84) {
+      // Smoothly track rolling road/pool-floor/terrain grade via EMA on smooth steps (never polluted by curb ramps!)
+      if (stepJump <= 0.135 && probe.absNy >= 0.68) {
         const backK = Math.max(0, histS.length - 3);
         const dsSpan = s - histS[backK];
         if (dsSpan >= 0.20) {
-          const instSlope = Math.max(-0.11, Math.min(0.11, (probe.y - histY[backK]) / dsSpan));
-          localSlope = hasSlope ? localSlope * 0.76 + instSlope * 0.24 : instSlope;
+          const instSlope = Math.max(-0.36, Math.min(0.36, (probe.y - histY[backK]) / dsSpan));
+          localSlope = hasSlope ? localSlope * 0.72 + instSlope * 0.28 : instSlope;
           hasSlope = true;
         }
       }
@@ -622,8 +653,8 @@
     };
   }
 
-  function findDirectionalBoundary(idx, ox, oy, oz, ux, uz, maxDist, hasCeiling) {
-    const surf = traceRoadEdgeAlongRay(idx, ox, oy, oz, ux, uz, maxDist);
+  function findDirectionalBoundary(idx, ox, oy, oz, ux, uz, maxDist, hasCeiling, initSlope = null) {
+    const surf = traceRoadEdgeAlongRay(idx, ox, oy, oz, ux, uz, maxDist, initSlope);
     const hitLo = castRayInLaserGrid(idx, ox, oy + 0.24, oz, ux, 0, uz, 0.20, maxDist, 0.68);
     const hitHi = castRayInLaserGrid(idx, ox, oy + 0.78, oz, ux, 0, uz, 0.20, maxDist, 0.72);
 
@@ -763,22 +794,53 @@
     const N_AZ = 36;
     const MAX_WIDTH_SCAN = 44.0;
     const cands = new Array(N_AZ).fill(null);
+    const semiCands = [];
 
     for (let k = 0; k < N_AZ; k++) {
       const ang = (k * Math.PI) / N_AZ;
       const ux = Math.cos(ang);
       const uz = Math.sin(ang);
-      const bP = findDirectionalBoundary(idx, sweepPt.x, sweepPt.y, sweepPt.z, ux, uz, MAX_WIDTH_SCAN, hasCeiling);
-      const bM = findDirectionalBoundary(idx, sweepPt.x, sweepPt.y, sweepPt.z, -ux, -uz, MAX_WIDTH_SCAN, hasCeiling);
+      const slopeSeed = Math.abs(n.y) >= 0.55 ? Math.max(-0.34, Math.min(0.34, -(n.x * ux + n.z * uz) / n.y)) : null;
+      const bP = findDirectionalBoundary(idx, sweepPt.x, sweepPt.y, sweepPt.z, ux, uz, MAX_WIDTH_SCAN, hasCeiling, slopeSeed);
+      const bM = findDirectionalBoundary(
+        idx,
+        sweepPt.x,
+        sweepPt.y,
+        sweepPt.z,
+        -ux,
+        -uz,
+        MAX_WIDTH_SCAN,
+        hasCeiling,
+        slopeSeed !== null ? -slopeSeed : null
+      );
       if (bP.bounded && bM.bounded && bP.dist >= 0.28 && bM.dist >= 0.28) {
         const w0 = Math.hypot(bP.pt.x - bM.pt.x, bP.pt.z - bM.pt.z);
         if (w0 >= 0.95) {
           cands[k] = { k, ang, ux, uz, bP, bM, w0 };
         }
+      } else if (bP.dist >= 0.35 && bM.dist >= 0.35) {
+        const w0 = Math.hypot(bP.pt.x - bM.pt.x, bP.pt.z - bM.pt.z);
+        if (w0 >= 1.1) {
+          semiCands.push({
+            k,
+            ang,
+            ux,
+            uz,
+            bP: { ...bP, bounded: true },
+            bM: { ...bM, bounded: true },
+            w0,
+          });
+        }
       }
     }
 
-    const validList = cands.filter(Boolean);
+    let validList = cands.filter(Boolean);
+    if (validList.length === 0 && semiCands.length > 0) {
+      semiCands.forEach((sc) => {
+        cands[sc.k] = sc;
+      });
+      validList = semiCands;
+    }
     if (validList.length === 0) {
       if (fallbackWallSpan) return fallbackWallSpan;
       return {
@@ -2501,6 +2563,12 @@
     const nearV = findNearestEditableVertexAtScreenXY(e.clientX, e.clientY, window.innerWidth <= 768 ? 34 : 28);
     if (nearV) {
       startStudioVertexMove(nearV);
+    } else if (STATE.activeTool === "orbit" && studioThree?.controls) {
+      const hit = pickStudio3DHit(e.clientX, e.clientY);
+      if (hit && hit.rawPoint) {
+        studioThree.controls.target.copy(hit.rawPoint);
+        studioThree.controls.update();
+      }
     }
   });
 
