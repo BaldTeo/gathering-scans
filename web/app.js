@@ -1537,32 +1537,17 @@
     }).catch(() => {});
     showToast(enabled ? "Enabled Browser Offline Caching" : "Disabled Browser Offline Caching");
   });
-  document.getElementById("btnToggleSimulatedOffline")?.addEventListener("click", async () => {
-    const newOffline = STATE.pcOnline;
-    const res = await apiPost("/api/pc/simulate-offline", { offline: newOffline });
-    STATE.pcOnline = res.pc_online;
-    updatePcStatusUI();
-    refreshAdminPcDaemonUI();
-    showToast(
-      STATE.pcOnline
-        ? "PC Online — Workstation Daemon Active"
-        : "PC Daemon Stopped — Viewing scans from Cloud / Local Browser CacheStorage"
-    );
-  });
 
   function updatePcStatusUI() {
     const chip = document.getElementById("pcStatusChip");
     const txt = document.getElementById("pcStatusText");
-    const btnSim = document.getElementById("btnToggleSimulatedOffline");
     if (!chip || !txt) return;
     if (STATE.pcOnline) {
       chip.classList.remove("state-offline");
       txt.textContent = tr("佇列", "Queue");
-      if (btnSim) btnSim.textContent = tr("切換離線", "Offline");
     } else {
       chip.classList.add("state-offline");
       txt.textContent = tr("離線", "Offline");
-      if (btnSim) btnSim.textContent = tr("切換連線", "Online");
     }
   }
 

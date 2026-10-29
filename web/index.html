@@ -18,7 +18,7 @@
   <meta name="twitter:image" content="https://scans.gatheren.cloud/assets/gathering_cloud_logo.png" />
   <!-- GS_SHARE_OG_END -->
   <link rel="icon" type="image/png" href="/assets/gathering_cloud_logo.png" />
-  <link rel="stylesheet" href="/app.css?v=20261029_v186" />
+  <link rel="stylesheet" href="/app.css?v=20261029_v187" />
   <script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
 <body>
@@ -1667,20 +1667,12 @@
         Linux 雲端伺服器不儲存任何原始掃描、照片或 3D 快取；最佳化後的 3D 圖磚會直接快取於您的本機瀏覽器 (CacheStorage + IndexedDB)，即使工作站關機也能離線檢視。
       </p>
 
-      <div class="gs-settings-row" style="background:var(--ui-bg-subtle);border:1px solid var(--ui-border);border-radius:10px;padding:12px 14px;margin-bottom:10px;display:flex;justify-content:space-between;align-items:center;gap:12px;">
+      <div class="gs-settings-row" style="background:var(--ui-bg-subtle);border:1px solid var(--ui-border);border-radius:10px;padding:12px 14px;margin-bottom:14px;display:flex;justify-content:space-between;align-items:center;gap:12px;">
         <div style="min-width:0;flex:1;">
           <div style="font-size:12.5px;font-weight:700;color:var(--ui-text-primary);word-break:break-word;" id="lblOfflineCacheUserEmail" data-i18n-zh="啟用瀏覽器離線快取" data-i18n-en="Enable Offline Caching in Browser">啟用瀏覽器離線快取</div>
           <div style="font-size:11px;color:var(--ui-text-muted);margin-top:2px;" data-i18n-zh="自動將檢視過的 3D 掃描模型快取於此裝置。" data-i18n-en="Automatically caches viewed 3D tilesets locally on this device.">自動將檢視過的 3D 掃描模型快取於此裝置。</div>
         </div>
         <input type="checkbox" id="chkEnableOfflineCache" checked style="width:18px;height:18px;accent-color:#0284c7;cursor:pointer;flex-shrink:0;" />
-      </div>
-
-      <div class="gs-settings-row" style="background:var(--ui-bg-subtle);border:1px solid var(--ui-border);border-radius:10px;padding:12px 14px;margin-bottom:14px;display:flex;justify-content:space-between;align-items:center;gap:12px;">
-        <div style="min-width:0;flex:1;">
-          <div style="font-size:12.5px;font-weight:700;color:var(--ui-text-primary);" data-i18n-zh="模擬運算工作站離線模式" data-i18n-en="Simulate Processing PC Offline Mode">模擬運算工作站離線模式</div>
-          <div style="font-size:11px;color:var(--ui-text-muted);margin-top:2px;" data-i18n-zh="測試直接從本機瀏覽器快取讀取並檢視 3D 掃描模型。" data-i18n-en="Test viewing cached scans directly from local browser storage.">測試直接從本機瀏覽器快取讀取並檢視 3D 掃描模型。</div>
-        </div>
-        <button type="button" class="btn-xs" id="btnToggleSimulatedOffline" title="切換模擬工作站離線模式" data-i18n-zh="離線測試" data-i18n-en="Offline" data-i18n-title-zh="切換模擬工作站離線模式" data-i18n-title-en="Toggle Simulated PC Offline Mode" style="flex-shrink:0;">離線測試</button>
       </div>
 
       <div class="gs-table-scroll-wrap" style="border:1px solid var(--ui-border);border-radius:8px;overflow:auto;">
@@ -2139,15 +2131,15 @@
   <script src="/lib/3d-tiles-renderer.bundle.js"></script>
 
   <!-- Main GatheringScans Bilingual Translation & Modular Application Logic (< 5,000 lines per module) -->
-  <script src="/i18n.js?v=20261029_v186"></script>
-  <script src="/src/01-core-state.js?v=20261029_v186"></script>
-  <script src="/src/02-map-and-timeline.js?v=20261029_v186"></script>
-  <script src="/src/03-studio-core.js?v=20261029_v186"></script>
-  <script src="/src/04-studio-lasso-and-edits.js?v=20261029_v186"></script>
-  <script src="/src/05-studio-civil-inspectors.js?v=20261029_v186"></script>
-  <script src="/src/06-studio-align-and-optimizer.js?v=20261029_v186"></script>
-  <script src="/src/07-compare-and-queue.js?v=20261029_v186"></script>
-  <script src="/src/08-advanced-surveying-and-qa.js?v=20261029_v186"></script>
-  <script src="/app.js?v=20261029_v186"></script>
+  <script src="/i18n.js?v=20261029_v187"></script>
+  <script src="/src/01-core-state.js?v=20261029_v187"></script>
+  <script src="/src/02-map-and-timeline.js?v=20261029_v187"></script>
+  <script src="/src/03-studio-core.js?v=20261029_v187"></script>
+  <script src="/src/04-studio-lasso-and-edits.js?v=20261029_v187"></script>
+  <script src="/src/05-studio-civil-inspectors.js?v=20261029_v187"></script>
+  <script src="/src/06-studio-align-and-optimizer.js?v=20261029_v187"></script>
+  <script src="/src/07-compare-and-queue.js?v=20261029_v187"></script>
+  <script src="/src/08-advanced-surveying-and-qa.js?v=20261029_v187"></script>
+  <script src="/app.js?v=20261029_v187"></script>
 </body>
 </html>
