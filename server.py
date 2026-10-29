@@ -2894,6 +2894,8 @@ def run_server(host: str = SERVER_HOST, port: int = SERVER_PORT):
         start_pc_reverse_tunnel_pool(local_port=port)
         t_cm = threading.Thread(target=_pc_cloud_manifest_sync_loop, daemon=True)
         t_cm.start()
+    ThreadingHTTPServer.request_queue_size = 256
+    ThreadingHTTPServer.daemon_threads = True
     server = ThreadingHTTPServer((host, port), GatheringScansHandler)
     print(f"[GatheringScans] Server listening on http://{host}:{port} (CRS: {TWD97_TWVD2001_SHORT}, 2K Textures, Root: {LOCAL_SCANS_ROOT})")
     server.serve_forever()
