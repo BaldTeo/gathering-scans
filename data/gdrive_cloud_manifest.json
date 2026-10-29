@@ -1,5 +1,5 @@
 {
-  "updated_at": 1793279161,
+  "updated_at": 1793281923,
   "shared_drive_dir": "G:\\Shared drives\\6.軟體\\3. GatheringScans\\StreamPackages",
   "my_drive_dir": "G:\\My Drive\\Scans\\StreamPackages",
   "shared_drive_folder_id": "1scUD9IQWsAJjg296pecxFYqhoVm4mpjs",
@@ -33,8 +33,8 @@
       "twd97_h": 4.87,
       "bounding_box_json": "{\"center\": [308121.469, 2774980.811, 4.87], \"half_extents\": [91.88, 126.18, 40.14]}",
       "status": "processing",
-      "progress_pct": 22.8,
-      "stage_label": "PIX4Dmatic: Calibration (82% · Optimizing camera bundle) · 14%CPU · 64%RAM",
+      "progress_pct": 30.4,
+      "stage_label": "PIX4Dmatic: Point Clouds (20% · Dense point cloud) · 100%CPU · 76%RAM",
       "bypass_count": 0,
       "force_next": 1,
       "priority_score": 2000000959.215,
@@ -59,7 +59,7 @@
       "pending_pass": "full_hq",
       "comment_folders": [],
       "size_mb": 28206.38,
-      "wait_minutes": 1227.0,
+      "wait_minutes": 1273.0,
       "comments": [],
       "comment_count": 0,
       "measurement_bookmarks": [],
@@ -97,11 +97,11 @@
       "stage_label": "Edited (Deleted 23 region(s) (1 tris) · Cropped to 1 keep region(s))",
       "bypass_count": 0,
       "force_next": 0,
-      "priority_score": 1000000216.005,
+      "priority_score": 1000000262.049,
       "notes": "Edited from edited_daan_652376 (backup moved to Trash Bin): Deleted 23 region(s) (1 tris) · Cropped to 1 keep region(s)",
       "user_edited_name": 1,
       "covered_area_m2": 4767.3,
-      "tileset_version": 1793279130183,
+      "tileset_version": 1793281812107,
       "extra_json": "{\"derived_from_scan_id\": \"edited_daan_652376\", \"applied_adjustments\": [\"Deleted 23 region(s) (1 tris)\", \"Cropped to 1 keep region(s)\"], \"quality_stage\": \"full_hq\", \"poly_count\": 28465708}",
       "bounding_box": {
         "center": [
@@ -120,11 +120,72 @@
         "Deleted 23 region(s) (1 tris)",
         "Cropped to 1 keep region(s)"
       ],
+      "poly_count": 28465708,
       "quality_stage": "full_hq",
       "pending_pass": "",
       "comment_folders": [],
       "size_mb": 457.42,
-      "wait_minutes": 216.1,
+      "wait_minutes": 262.2,
+      "comments": [],
+      "comment_count": 0,
+      "measurement_bookmarks": [],
+      "bookmark_count": 0
+    },
+    {
+      "scan_id": "qihu",
+      "name": "QiHu",
+      "project_group": "Qi Hu",
+      "project_name_zh": "Qi Hu 工程掃描群組",
+      "capture_date": "2026-10-29 04:17",
+      "uploaded_at": 1793218654.790234,
+      "uploader_email": "glibivanov@gatheren.com.tw",
+      "uploader_name": "雲在天",
+      "source_zip_path": "",
+      "project_dir": "C:\\GatheringScans\\QiHu",
+      "tileset_path": "C:\\GatheringScans\\QiHu\\QiHuTender_NoRTK-obj_mesh\\tileset\\tileset.json",
+      "obj_path": "C:\\GatheringScans\\QiHu\\QiHuTender_NoRTK-obj_mesh\\mesh.obj",
+      "report_path": "",
+      "cameras_dir": "",
+      "image_count": 0,
+      "size_bytes": 305262016,
+      "rtk_accuracy_cm": 1.5,
+      "crs": "TWD97 (121) + TWVD2001",
+      "texture_resolution": 16384,
+      "lat": 25.136342544,
+      "lon": 121.501337546,
+      "elev_m": 8.11,
+      "twd97_e": 300549.438,
+      "twd97_n": 2780973.191,
+      "twd97_h": 8.11,
+      "bounding_box_json": "{\"center\": [300549.438, 2780973.191, 8.11], \"half_extents\": [84.72, 78.79, 26.72]}",
+      "status": "completed",
+      "progress_pct": 100.0,
+      "stage_label": "Completed (TWD97 (121) + TWVD2001, 16K Web Tileset)",
+      "bypass_count": 0,
+      "force_next": 0,
+      "priority_score": 1000001054.31,
+      "notes": "Dynamically loaded from C:\\GatheringScans\\QiHu",
+      "user_edited_name": 0,
+      "covered_area_m2": 18156.2,
+      "tileset_version": 1793218710819,
+      "extra_json": "{}",
+      "bounding_box": {
+        "center": [
+          300549.438,
+          2780973.191,
+          8.11
+        ],
+        "half_extents": [
+          84.72,
+          78.79,
+          26.72
+        ]
+      },
+      "quality_stage": "full_hq",
+      "pending_pass": "",
+      "comment_folders": [],
+      "size_mb": 291.12,
+      "wait_minutes": 1054.5,
       "comments": [],
       "comment_count": 0,
       "measurement_bookmarks": [],
@@ -162,7 +223,7 @@
       "stage_label": "Completed (TWD97 (121) + TWVD2001, 16K HQ Web Tileset)",
       "bypass_count": 0,
       "force_next": 0,
-      "priority_score": 1000001314.626,
+      "priority_score": 1000001360.67,
       "notes": "Dynamically loaded from C:\\GatheringScans\\catch_QihuPark_20261028",
       "user_edited_name": 1,
       "covered_area_m2": 148.6,
@@ -184,7 +245,7 @@
       "pending_pass": "",
       "comment_folders": [],
       "size_mb": 1136.65,
-      "wait_minutes": 1236.2,
+      "wait_minutes": 1282.2,
       "comments": [],
       "comment_count": 0,
       "measurement_bookmarks": [],
@@ -222,7 +283,7 @@
       "stage_label": "Processed -> catch_LishanFinal (TWD97 + TWVD2001, 4K)",
       "bypass_count": 0,
       "force_next": 0,
-      "priority_score": 1000001798.928,
+      "priority_score": 1000001844.98,
       "notes": "Dynamically loaded from C:\\GatheringScans\\catch_LishanFinal",
       "user_edited_name": 0,
       "covered_area_m2": 71753.2,
@@ -244,7 +305,7 @@
       "pending_pass": "",
       "comment_folders": [],
       "size_mb": 19164.59,
-      "wait_minutes": 1799.1,
+      "wait_minutes": 1845.1,
       "comments": [],
       "comment_count": 0,
       "measurement_bookmarks": [],
@@ -282,7 +343,7 @@
       "stage_label": "Edited (Deleted 3 region(s) (1,280 tris))",
       "bypass_count": 0,
       "force_next": 0,
-      "priority_score": 1000001555.015,
+      "priority_score": 1000001601.059,
       "notes": "Edited from merged_qihu_merged_2026_10_28_77753 (backup moved to Trash Bin): Deleted 3 region(s) (1,280 tris)",
       "user_edited_name": 1,
       "covered_area_m2": 15814.2,
@@ -483,7 +544,7 @@
         "一般備註"
       ],
       "size_mb": 0.0,
-      "wait_minutes": 1555.2,
+      "wait_minutes": 1601.2,
       "comments": [
         {
           "comment_id": "cmt_1793017532792_2026_10_28_77753_026_10_28_858499",
@@ -796,7 +857,7 @@
       "stage_label": "Processed -> catch_QihuSide (TWD97 + TWVD2001, 4K)",
       "bypass_count": 0,
       "force_next": 0,
-      "priority_score": 1000001815.745,
+      "priority_score": 1000001861.799,
       "notes": "Dynamically loaded from C:\\GatheringScans\\catch_QihuSide",
       "user_edited_name": 0,
       "covered_area_m2": 7608.3,
@@ -818,7 +879,7 @@
       "pending_pass": "",
       "comment_folders": [],
       "size_mb": 13204.69,
-      "wait_minutes": 1815.9,
+      "wait_minutes": 1861.9,
       "comments": [],
       "comment_count": 0,
       "measurement_bookmarks": [],
@@ -856,7 +917,7 @@
       "stage_label": "Unified 6-Scan Full Merge (4K+16K multi-tile · Z-leveled dz=-0.097m · Trimmed 67,247 overlap skirt tris)",
       "bypass_count": 0,
       "force_next": 0,
-      "priority_score": 1000001230.971,
+      "priority_score": 1000001277.016,
       "notes": "Unified QiHu scan glueing merged_qihu_merged_2026_10_28_77753 + catch_QihuPark_20261028_HQ (dz=-0.097m)",
       "user_edited_name": 1,
       "covered_area_m2": 19551.3,
@@ -1082,7 +1143,7 @@
       "pending_pass": "",
       "comment_folders": [],
       "size_mb": 2231.63,
-      "wait_minutes": 1231.1,
+      "wait_minutes": 1277.1,
       "comments": [],
       "comment_count": 0,
       "measurement_bookmarks": [],
@@ -1120,7 +1181,7 @@
       "stage_label": "Edited (Deleted 27 region(s) (124,916 tris))",
       "bypass_count": 0,
       "force_next": 0,
-      "priority_score": 1000003133.544,
+      "priority_score": 1000003179.589,
       "notes": "Edited from edited_1021_908819 (backup moved to Trash Bin): Deleted 27 region(s) (124,916 tris)",
       "user_edited_name": 1,
       "covered_area_m2": 227674.2,
@@ -1146,7 +1207,7 @@
       "pending_pass": "",
       "comment_folders": [],
       "size_mb": 0.0,
-      "wait_minutes": 3133.7,
+      "wait_minutes": 3179.7,
       "comments": [],
       "comment_count": 0,
       "measurement_bookmarks": [],
@@ -1184,7 +1245,7 @@
       "stage_label": "Unified (4 Scans · Native 4K×4 Zero-Loss Multi-Tile)",
       "bypass_count": 0,
       "force_next": 0,
-      "priority_score": 1000007216.477,
+      "priority_score": 1000007262.522,
       "notes": "Unified scan merged from edited_qihutender_1_edited_346774, catch_QiHuTender_2, catch_QiHuTender_3, catch_QiHuTender_4 (Zero-Loss 4K per-scan multi-tile)",
       "user_edited_name": 1,
       "covered_area_m2": 11802.3,
@@ -1338,7 +1399,7 @@
       "pending_pass": "",
       "comment_folders": [],
       "size_mb": 196.62,
-      "wait_minutes": 7364.4,
+      "wait_minutes": 7410.4,
       "comments": [
         {
           "comment_id": "cmt_1793017532792",
@@ -1651,7 +1712,7 @@
       "stage_label": "Completed (TWD97 (121) + TWVD2001, 4K Web Tileset)",
       "bypass_count": 0,
       "force_next": 0,
-      "priority_score": 1000007407.775,
+      "priority_score": 1000007453.82,
       "notes": "Dynamically loaded from C:\\GatheringScans\\edited_qihutender_1_edited_346774",
       "user_edited_name": 1,
       "covered_area_m2": 6084.4,
@@ -1674,7 +1735,7 @@
       "pending_pass": "",
       "comment_folders": [],
       "size_mb": 111.8,
-      "wait_minutes": 7407.9,
+      "wait_minutes": 7453.9,
       "comments": [],
       "comment_count": 0,
       "measurement_bookmarks": [],
@@ -1712,7 +1773,7 @@
       "stage_label": "Processed -> catch_QiHuTender_4 (TWD97 + TWVD2001, 4K)",
       "bypass_count": 0,
       "force_next": 0,
-      "priority_score": 1000008622.508,
+      "priority_score": 1000008668.561,
       "notes": "Dynamically loaded from C:\\GatheringScans\\catch_QiHuTender_4",
       "user_edited_name": 0,
       "covered_area_m2": 8835.7,
@@ -1734,7 +1795,7 @@
       "pending_pass": "",
       "comment_folders": [],
       "size_mb": 6721.29,
-      "wait_minutes": 8622.6,
+      "wait_minutes": 8668.7,
       "comments": [],
       "comment_count": 0,
       "measurement_bookmarks": [],
@@ -1772,7 +1833,7 @@
       "stage_label": "Processed -> catch_QiHuTender_3 (TWD97 + TWVD2001, 4K)",
       "bypass_count": 0,
       "force_next": 0,
-      "priority_score": 1000008624.292,
+      "priority_score": 1000008670.345,
       "notes": "Dynamically loaded from C:\\GatheringScans\\catch_QiHuTender_3",
       "user_edited_name": 0,
       "covered_area_m2": 11207.3,
@@ -1794,7 +1855,7 @@
       "pending_pass": "",
       "comment_folders": [],
       "size_mb": 7192.61,
-      "wait_minutes": 8624.4,
+      "wait_minutes": 8670.4,
       "comments": [],
       "comment_count": 0,
       "measurement_bookmarks": [],
@@ -1832,7 +1893,7 @@
       "stage_label": "Processed -> catch_QiHuTender_2 (TWD97 + TWVD2001, 4K)",
       "bypass_count": 0,
       "force_next": 0,
-      "priority_score": 1000008544.239,
+      "priority_score": 1000008590.292,
       "notes": "Dynamically loaded from C:\\GatheringScans\\catch_QiHuTender_2",
       "user_edited_name": 0,
       "covered_area_m2": 4926.9,
@@ -1854,7 +1915,7 @@
       "pending_pass": "",
       "comment_folders": [],
       "size_mb": 7661.95,
-      "wait_minutes": 8544.4,
+      "wait_minutes": 8590.4,
       "comments": [],
       "comment_count": 0,
       "measurement_bookmarks": [],
@@ -1892,7 +1953,7 @@
       "stage_label": "Completed (TWD97 + TWVD2001, 4K Web Tileset)",
       "bypass_count": 0,
       "force_next": 1,
-      "priority_score": 1000008614.456,
+      "priority_score": 1000008660.5,
       "notes": "Dynamically loaded from C:\\GatheringScans\\catch_QiHuTender_1",
       "user_edited_name": 0,
       "covered_area_m2": 14118.6,
@@ -1914,7 +1975,7 @@
       "pending_pass": "",
       "comment_folders": [],
       "size_mb": 6878.16,
-      "wait_minutes": 10359.0,
+      "wait_minutes": 10405.0,
       "comments": [],
       "comment_count": 0,
       "measurement_bookmarks": [],
@@ -1952,7 +2013,7 @@
       "stage_label": "Processed -> catch_QuChi261016 (TWD97 + TWVD2001, 4K)",
       "bypass_count": 0,
       "force_next": 0,
-      "priority_score": 1000019141.451,
+      "priority_score": 1000019187.505,
       "notes": "Dynamically loaded from C:\\GatheringScans\\catch_QuChi261016",
       "user_edited_name": 0,
       "covered_area_m2": 36259.4,
@@ -1974,7 +2035,7 @@
       "pending_pass": "",
       "comment_folders": [],
       "size_mb": 34268.27,
-      "wait_minutes": 19141.6,
+      "wait_minutes": 19187.6,
       "comments": [],
       "comment_count": 0,
       "measurement_bookmarks": [],
@@ -2012,7 +2073,7 @@
       "stage_label": "Completed (TWD97 + TWVD2001, 4K Web Tileset)",
       "bypass_count": 0,
       "force_next": 0,
-      "priority_score": 1000017556.639,
+      "priority_score": 1000017602.674,
       "notes": "Dynamically loaded from C:\\GatheringScans\\QuChi261016_Trees",
       "user_edited_name": 1,
       "covered_area_m2": 49671.9,
@@ -2034,7 +2095,7 @@
       "pending_pass": "",
       "comment_folders": [],
       "size_mb": 506.77,
-      "wait_minutes": 17917.8,
+      "wait_minutes": 17963.8,
       "comments": [],
       "comment_count": 0,
       "measurement_bookmarks": [],
@@ -2072,7 +2133,7 @@
       "stage_label": "Completed (TWD97 + TWVD2001, 4K Web Tileset)",
       "bypass_count": 0,
       "force_next": 0,
-      "priority_score": 1000019033.433,
+      "priority_score": 1000019079.471,
       "notes": "Dynamically loaded from C:\\GatheringScans\\QuChi_20261015-obj_mesh",
       "user_edited_name": 1,
       "covered_area_m2": 45203.2,
@@ -2094,7 +2155,7 @@
       "pending_pass": "",
       "comment_folders": [],
       "size_mb": 128.83,
-      "wait_minutes": 19037.9,
+      "wait_minutes": 19083.9,
       "comments": [],
       "comment_count": 0,
       "measurement_bookmarks": [],
@@ -2132,7 +2193,7 @@
       "stage_label": "Completed (TWD97 + TWVD2001, 4K Web Tileset)",
       "bypass_count": 0,
       "force_next": 0,
-      "priority_score": 1000019033.429,
+      "priority_score": 1000019079.467,
       "notes": "Dynamically loaded from C:\\GatheringScans\\QuChi_20261015-cesium_mesh",
       "user_edited_name": 0,
       "covered_area_m2": 45203.2,
@@ -2154,7 +2215,7 @@
       "pending_pass": "",
       "comment_folders": [],
       "size_mb": 55.11,
-      "wait_minutes": 19033.6,
+      "wait_minutes": 19079.6,
       "comments": [],
       "comment_count": 0,
       "measurement_bookmarks": [],
@@ -2192,7 +2253,7 @@
       "stage_label": "Completed (TWD97 + TWVD2001, 4K Web Tileset)",
       "bypass_count": 0,
       "force_next": 0,
-      "priority_score": 1000020140.037,
+      "priority_score": 1000020186.075,
       "notes": "Merged from 3 PIX4Dcatch RTK walks in G:\\My Drive\\SCANS TEST (15-19-27, 15-37-05, 15-43-55). Converted to TWD97 (121) + TWVD2001 with 2K textures.",
       "user_edited_name": 0,
       "covered_area_m2": 149594.3,
@@ -2214,7 +2275,7 @@
       "pending_pass": "",
       "comment_folders": [],
       "size_mb": 109.91,
-      "wait_minutes": 25278.1,
+      "wait_minutes": 25324.1,
       "comments": [
         {
           "comment_id": "cmt_1792021676855",
@@ -2289,7 +2350,7 @@
       "stage_label": "Completed (TWD97 + TWVD2001, 4K Web Tileset)",
       "bypass_count": 0,
       "force_next": 0,
-      "priority_score": 1000020140.048,
+      "priority_score": 1000020186.093,
       "notes": "High-density sector 3 photogrammetry mesh of QuChi Dam spillway.",
       "user_edited_name": 0,
       "covered_area_m2": 136580.4,
@@ -2311,7 +2372,7 @@
       "pending_pass": "",
       "comment_folders": [],
       "size_mb": 70.76,
-      "wait_minutes": 20140.2,
+      "wait_minutes": 20186.2,
       "comments": [],
       "comment_count": 0,
       "measurement_bookmarks": [],
@@ -2349,7 +2410,7 @@
       "stage_label": "Completed (TWD97 + TWVD2001, 4K Web Tileset)",
       "bypass_count": 0,
       "force_next": 0,
-      "priority_score": 1000020140.036,
+      "priority_score": 1000020186.074,
       "notes": "Baseline epoch prior to October earthwork and revetment concrete pour.",
       "user_edited_name": 0,
       "covered_area_m2": 47792.8,
@@ -2371,7 +2432,7 @@
       "pending_pass": "",
       "comment_folders": [],
       "size_mb": 91.93,
-      "wait_minutes": 45438.1,
+      "wait_minutes": 45484.1,
       "comments": [],
       "comment_count": 0,
       "measurement_bookmarks": [],
@@ -2409,7 +2470,7 @@
       "stage_label": "Processed -> catch_2026_09_21_11_39_49 (TWD97 + TWVD2001, 4K)",
       "bypass_count": 0,
       "force_next": 0,
-      "priority_score": 1000015958.132,
+      "priority_score": 1000016004.181,
       "notes": "Dynamically loaded from C:\\GatheringScans\\catch_2026_09_21_11_39_49",
       "user_edited_name": 1,
       "covered_area_m2": 272.0,
@@ -2431,7 +2492,7 @@
       "pending_pass": "",
       "comment_folders": [],
       "size_mb": 752.36,
-      "wait_minutes": 15958.3,
+      "wait_minutes": 16004.3,
       "comments": [],
       "comment_count": 0,
       "measurement_bookmarks": [],
@@ -2469,7 +2530,7 @@
       "stage_label": "Completed (TWD97 + TWVD2001, 4K Web Tileset)",
       "bypass_count": 0,
       "force_next": 0,
-      "priority_score": 1000020140.051,
+      "priority_score": 1000020186.095,
       "notes": "Merged scan of Rose Park landscape grading and drainage trenching.",
       "user_edited_name": 0,
       "covered_area_m2": 6684.2,
@@ -2491,7 +2552,7 @@
       "pending_pass": "",
       "comment_folders": [],
       "size_mb": 65.23,
-      "wait_minutes": 49758.1,
+      "wait_minutes": 49804.1,
       "comments": [
         {
           "comment_id": "cmt_1792021676860",
@@ -2548,7 +2609,7 @@
       "stage_label": "Completed (TWD97 + TWVD2001, 4K Web Tileset)",
       "bypass_count": 0,
       "force_next": 0,
-      "priority_score": 1000020140.049,
+      "priority_score": 1000020186.093,
       "notes": "Initial excavation trench scan at Rose Park East sector.",
       "user_edited_name": 0,
       "covered_area_m2": 8410.0,
@@ -2570,7 +2631,7 @@
       "pending_pass": "",
       "comment_folders": [],
       "size_mb": 42.06,
-      "wait_minutes": 51198.1,
+      "wait_minutes": 51244.1,
       "comments": [],
       "comment_count": 0,
       "measurement_bookmarks": [],
@@ -2608,7 +2669,7 @@
       "stage_label": "Completed (TWD97 + TWVD2001, 4K Web Tileset)",
       "bypass_count": 0,
       "force_next": 0,
-      "priority_score": 1000020140.03,
+      "priority_score": 1000020186.065,
       "notes": "Excavation progress and soldier pile wall survey at NTU Dorm site.",
       "user_edited_name": 0,
       "covered_area_m2": 5781.2,
@@ -2630,7 +2691,7 @@
       "pending_pass": "",
       "comment_folders": [],
       "size_mb": 56.17,
-      "wait_minutes": 51918.1,
+      "wait_minutes": 51964.1,
       "comments": [],
       "comment_count": 0,
       "measurement_bookmarks": [],
@@ -2668,7 +2729,7 @@
       "stage_label": "Completed (TWD97 + TWVD2001, 4K Web Tileset)",
       "bypass_count": 0,
       "force_next": 0,
-      "priority_score": 1000020140.028,
+      "priority_score": 1000020186.063,
       "notes": "Baseline perimeter survey prior to retaining wall excavation.",
       "user_edited_name": 0,
       "covered_area_m2": 10905.3,
@@ -2690,7 +2751,7 @@
       "pending_pass": "",
       "comment_folders": [],
       "size_mb": 40.82,
-      "wait_minutes": 54246.5,
+      "wait_minutes": 54292.6,
       "comments": [],
       "comment_count": 0,
       "measurement_bookmarks": [],
@@ -3187,8 +3248,8 @@
     "edited_daan_661536": {
       "scan_id": "edited_daan_661536",
       "pkg_path": "G:\\Shared drives\\6.軟體\\3. GatheringScans\\StreamPackages\\edited_daan_661536.3tz",
-      "size_bytes": 486003921,
-      "mtime": 1793279137,
+      "size_bytes": 486003922,
+      "mtime": 1793281818,
       "toc": {
         "tileset.json": {
           "offset": 42,
@@ -4224,19 +4285,129 @@
         },
         "preview_tileset.json": {
           "offset": 479709364,
-          "size": 358
+          "size": 359
         },
         "preview_low/tiles/root.glb": {
-          "offset": 479709778,
+          "offset": 479709779,
           "size": 5686188
         },
         "thumbnail.png": {
-          "offset": 485396009,
+          "offset": 485396010,
           "size": 587759
         }
       },
       "file_id": "1NV8fCTqMMKmN5uNoPeuXw1UegkG5rXJ3",
       "my_drive_file_id": "107ev3aVpYF5VCA72K-kJpAYKtAlsgcFL"
+    },
+    "qihu": {
+      "scan_id": "qihu",
+      "pkg_path": "G:\\Shared drives\\6.軟體\\3. GatheringScans\\StreamPackages\\qihu.3tz",
+      "size_bytes": 43873022,
+      "mtime": 1793280173,
+      "toc": {
+        "tileset.json": {
+          "offset": 42,
+          "size": 5008
+        },
+        "tiles/root.glb": {
+          "offset": 5094,
+          "size": 5129724
+        },
+        "tiles/tile_l1_q0.glb": {
+          "offset": 5134868,
+          "size": 1237168
+        },
+        "tiles/tile_l1_q0_l2_q0.glb": {
+          "offset": 6372092,
+          "size": 686860
+        },
+        "tiles/tile_l1_q0_l2_q1.glb": {
+          "offset": 7059008,
+          "size": 734636
+        },
+        "tiles/tile_l1_q0_l2_q2.glb": {
+          "offset": 7793700,
+          "size": 651656
+        },
+        "tiles/tile_l1_q0_l2_q3.glb": {
+          "offset": 8445412,
+          "size": 986188
+        },
+        "tiles/tile_l1_q1.glb": {
+          "offset": 9431650,
+          "size": 2735588
+        },
+        "tiles/tile_l1_q1_l2_q0.glb": {
+          "offset": 12167294,
+          "size": 343492
+        },
+        "tiles/tile_l1_q1_l2_q1.glb": {
+          "offset": 12510842,
+          "size": 1578292
+        },
+        "tiles/tile_l1_q1_l2_q2.glb": {
+          "offset": 14089190,
+          "size": 3746904
+        },
+        "tiles/tile_l1_q1_l2_q3.glb": {
+          "offset": 17836150,
+          "size": 1393300
+        },
+        "tiles/tile_l1_q2.glb": {
+          "offset": 19229500,
+          "size": 2356176
+        },
+        "tiles/tile_l1_q2_l2_q0.glb": {
+          "offset": 21585732,
+          "size": 1433624
+        },
+        "tiles/tile_l1_q2_l2_q1.glb": {
+          "offset": 23019412,
+          "size": 3607516
+        },
+        "tiles/tile_l1_q2_l2_q2.glb": {
+          "offset": 26626984,
+          "size": 567584
+        },
+        "tiles/tile_l1_q2_l2_q3.glb": {
+          "offset": 27194624,
+          "size": 1370356
+        },
+        "tiles/tile_l1_q3.glb": {
+          "offset": 28565030,
+          "size": 2264060
+        },
+        "tiles/tile_l1_q3_l2_q0.glb": {
+          "offset": 30829146,
+          "size": 3060624
+        },
+        "tiles/tile_l1_q3_l2_q1.glb": {
+          "offset": 33889826,
+          "size": 2077592
+        },
+        "tiles/tile_l1_q3_l2_q2.glb": {
+          "offset": 35967474,
+          "size": 1545232
+        },
+        "tiles/tile_l1_q3_l2_q3.glb": {
+          "offset": 37512762,
+          "size": 1233400
+        },
+        "preview_tileset.json": {
+          "offset": 38746212,
+          "size": 381
+        },
+        "preview_low/tiles/root.glb": {
+          "offset": 38746649,
+          "size": 4755880
+        },
+        "thumbnail.png": {
+          "offset": 43502572,
+          "size": 368697
+        }
+      },
+      "file_id": "1Cvb9GVQoOBTeuMPAuIFyBm2ZR2hNCpgx",
+      "my_drive_file_id": "1mL76Ma46VCEI9dKRgGQs7LEfelZ1MERQ"
     },
     "catch_QihuPark_20261028_HQ": {
       "scan_id": "catch_QihuPark_20261028_HQ",

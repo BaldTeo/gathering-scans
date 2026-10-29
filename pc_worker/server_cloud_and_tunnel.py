@@ -350,14 +350,36 @@ def _load_cloud_manifest() -> Dict[str, Any]:
     global _CLOUD_MANIFEST_MEM
     if _CLOUD_MANIFEST_MEM is not None:
         return _CLOUD_MANIFEST_MEM
-    for cand in (CLOUD_MANIFEST_PATH, os.path.join(DATA_DIR, "gdrive_cloud_manifest.json")):
+    best_manifest: Dict[str, Any] = {}
+    best_ts = -1.0
+    for cand in {CLOUD_MANIFEST_PATH, os.path.join(DATA_DIR, "gdrive_cloud_manifest.json")}:
         if os.path.isfile(cand):
             try:
                 with open(cand, "r", encoding="utf-8") as f:
-                    _CLOUD_MANIFEST_MEM = json.load(f)
-                    return _CLOUD_MANIFEST_MEM
+                    m_obj = json.load(f)
+                if isinstance(m_obj, dict):
+                    u_ts = float(m_obj.get("updated_at") or 0.0)
+                    if not best_manifest:
+                        best_manifest = m_obj
+                        best_ts = u_ts
+                    else:
+                        # Merge packages preferring the newer mtime per scan_id
+                        pkgs_base = best_manifest.setdefault("packages", {})
+                        for sid, pinfo in (m_obj.get("packages") or {}).items():
+                            if isinstance(pinfo, dict):
+                                old_p = pkgs_base.get(sid)
+                                if not isinstance(old_p, dict) or float(pinfo.get("mtime") or 0) >= float(old_p.get("mtime") or 0):
+                                    pkgs_base[sid] = pinfo
+                        if u_ts > best_ts:
+                            for k, v in m_obj.items():
+                                if k != "packages":
+                                    best_manifest[k] = v
+                            best_ts = u_ts
             except Exception:
                 pass
+    if best_manifest:
+        _CLOUD_MANIFEST_MEM = best_manifest
+        return _CLOUD_MANIFEST_MEM
     return {}
 
 
@@ -827,7 +849,7 @@ def _acquire_vps_tunnel_socket(timeout: float = 6.0) -> Tuple[Optional[socket.so
         return sock, done_evt, proto_ver
 
 
-def start_pc_reverse_tunnel_pool(local_port: int = SERVER_PORT, pool_size: int = 48):
+def start_pc_reverse_tunnel_pool(local_port: int = SERVER_PORT, pool_size: int = 64):
     """On Windows PC, maintains a pool of persistent reverse TCP sockets to Hostinger VPS (76.13.197.29:8095)."""
     global _TUNNEL_POOL_STARTED
     if os.name != "nt" or _TUNNEL_POOL_STARTED:
@@ -1354,9 +1376,10 @@ class CloudAndTunnelHandlerMixin:
             and (path.startswith("/api/optimizer/") or path in ("/api/scans/merge", "/api/optimizer/merge"))
         ) or path.startswith("/api/download")
         for _attempt in range(1 if is_long_post else 4):
-            tun_sock, done_evt, proto_ver = _acquire_vps_tunnel_socket(timeout=5.0)
+            tun_sock, done_evt, proto_ver = _acquire_vps_tunnel_socket(timeout=18.0)
             if not tun_sock or not done_evt:
-                break
+                time.sleep(0.25)
+                continue
             try:
                 tun_sock.settimeout(900.0 if is_long_post else 60.0)
                 req_headers = {k: v for k, v in self.headers.items()}

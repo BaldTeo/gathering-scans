@@ -883,7 +883,7 @@ def build_tileset_from_pix4d_native_octree(
         root_bmin = np.min(np.vstack([c["bmin"] for c in root_cells]), axis=0)
         root_bmax = np.max(np.vstack([c["bmax"] for c in root_cells]), axis=0)
         diag = float(np.linalg.norm(root_bmax - root_bmin))
-        root_error = max(24.0, round(diag / 4.0, 2))
+        root_error = round(max(1.8, min(6.0, diag / 15.0)), 3)
 
         pack_jobs: List[Dict[str, Any]] = [
             {
@@ -963,7 +963,7 @@ def build_tileset_from_pix4d_native_octree(
                 }
             )
 
-            node_err = round(max(0.25, parent_err / 2.2), 3)
+            node_err = round(max(0.015, parent_err / 2.6), 3)
             child_nodes: List[Dict[str, Any]] = []
             ready_siblings: List[Tuple[Tuple[int, int, int, int], List[Tuple[int, int, int, int]], int, int]] = []
 

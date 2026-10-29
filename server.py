@@ -505,15 +505,17 @@ class GatheringScansHandler(CloudAndTunnelHandlerMixin, ServerWriteRoutesMixin, 
                             valid_children.append(ch)
                     node["children"] = valid_children
                     if valid_children:
-                        min_err = 24.0 if depth == 0 else max(0.15, 24.0 / (2.0 ** depth))
-                        node["geometricError"] = max(float(node.get("geometricError") or 0.0), min_err)
+                        cur_err = float(node.get("geometricError") or 0.0)
+                        if cur_err <= 0.0:
+                            cur_err = 2.6 if depth == 0 else max(0.015, 2.6 / (2.5 ** depth))
+                        node["geometricError"] = cur_err
                     else:
                         node["geometricError"] = 0.0
                     return has_valid_content or (len(valid_children) > 0)
 
                 _normalize_node(root, 0)
                 if root.get("children"):
-                    ts["geometricError"] = max(float(ts.get("geometricError") or 0.0), float(root.get("geometricError") or 24.0))
+                    ts["geometricError"] = float(ts.get("geometricError") or root.get("geometricError") or 2.6)
                 else:
                     ts["geometricError"] = 0.0
                 raw_json = json.dumps(ts, separators=(",", ":")).encode("utf-8")

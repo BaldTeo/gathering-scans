@@ -1705,13 +1705,14 @@
       tr.getBoundingSphere(outSphere);
     }
     const isMobileOrTab = typeof isMobileOrTabletDevice === "function" && isMobileOrTabletDevice();
+    const isPreviewRenderer = Boolean(previewThree && previewThree.tilesRenderer === tr);
     const lodMode = STATE.scanLodMode || "auto";
     if (lodMode === "rough") {
       tr.errorTarget = 1e9;
     } else if (lodMode === "max") {
-      tr.errorTarget = 0.0;
+      tr.errorTarget = isPreviewRenderer ? 0.5 : 0.0;
     } else {
-      tr.errorTarget = isMobileOrTab ? 10.0 : 5.0;
+      tr.errorTarget = isPreviewRenderer ? (isMobileOrTab ? 18.0 : 12.0) : (isMobileOrTab ? 10.0 : 2.0);
     }
     // If root has no direct content URI (e.g. PIX4Dmatic cubic octree where root box is in the sky),
     // or if root box spans > 1,500m horizontally (Safeguard C: multi-island scan), walk content nodes and center on the dominant island.
@@ -2050,9 +2051,9 @@
       } else if (lodMode === "max") {
         tr.errorTarget = 0.5;
       } else {
-        tr.errorTarget = isMobileOrTab ? 10.0 : 5.0;
+        tr.errorTarget = isMobileOrTab ? 18.0 : 12.0;
       }
-      if (tr.downloadQueue) tr.downloadQueue.maxJobs = isIOS ? 3 : isMobileOrTab ? 4 : 12;
+      if (tr.downloadQueue) tr.downloadQueue.maxJobs = isIOS ? 3 : isMobileOrTab ? 4 : 8;
       if (tr.parseQueue) tr.parseQueue.maxJobs = isIOS ? 1 : isMobileOrTab ? 2 : 6;
       if (tr.lruCache) {
         if (isMobileOrTab) {
