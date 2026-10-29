@@ -3869,7 +3869,12 @@
         } else if (typeof renderClosedAreaPolygon === "function") {
           renderClosedAreaPolygon(lockedPts, { preserveExistingAreas: true });
         }
-        showToast(`Area polygon locked (${lockedPts.length} vertices)`);
+        showToast(
+          tr(
+            `面積多邊形已閉合 (${lockedPts.length} 個頂點) — 可直接按住拖曳頂點調整範圍並重新計算面積`,
+            `Area polygon locked (${lockedPts.length} vertices) — drag any vertex to adjust & recalculate area`
+          )
+        );
       } else if (STATE.activeTool === "contours") {
         STATE.maskBoundaryPoints = lockedPts.map((p) => p.clone());
         showToast(`Mask boundary locked (${lockedPts.length} vertices) — generating Contours, Civil3D.dxf & A3 PDF`);

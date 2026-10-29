@@ -2006,7 +2006,7 @@ class GatheringScansTestSuite(unittest.TestCase):
         self.assertIn("function renderPipelineSubitemsGridHtml(", js07)
         self.assertIn('id="livePix4dSegmentedBarWrap"', idx_html)
         self.assertIn('id="livePix4dSubitemsGrid"', idx_html)
-        self.assertIn("?v=20261029_v192", idx_html)
+        self.assertIn("?v=20261029_v193", idx_html)
 
     def test_25_two_pass_preview_and_scalable_lod_recovery(self):
         """Verify Option C Two-Pass Fast Preview + Full 16K HQ pipeline, dynamic Scalable octree LOD recovery,
@@ -2151,6 +2151,28 @@ class GatheringScansTestSuite(unittest.TestCase):
         mask = _eval_multiscan_layer_delete_mask(v_centered, f_idx, "scan_a", deletions)
         self.assertTrue(bool(mask[0]))
         self.assertFalse(bool(mask[1]))
+
+    def test_28_middle_mouse_orbit_and_closed_area_polygon_vertex_drag(self):
+        """Verify Middle Mouse Button (MMB) orbits across all tools (including Freehand Lasso & First-Person) and closed Area polygon vertices can be dragged directly to recalculate area."""
+        with open(os.path.join(BASE_DIR, "web", "lib", "OrbitControls.js"), "r", encoding="utf-8") as f:
+            orbit_js = f.read()
+        with open(os.path.join(BASE_DIR, "web", "src", "03-studio-core.js"), "r", encoding="utf-8") as f:
+            js03 = f.read()
+        with open(os.path.join(BASE_DIR, "web", "src", "04-studio-lasso-and-edits.js"), "r", encoding="utf-8") as f:
+            js04 = f.read()
+
+        # 1. Middle Mouse Button (MIDDLE: THREE.MOUSE.ROTATE) enabled even when LMB is used by Freehand Lasso or other tools
+        self.assertIn("MIDDLE: THREE.MOUSE.ROTATE", orbit_js)
+        self.assertNotIn("studioThree.controls.enableRotate = !isFreehandLasso;", js03)
+        self.assertIn("studioThree.controls.enableRotate = true;", js03)
+        self.assertIn("controls.mouseButtons.MIDDLE = THREE.MOUSE.ROTATE;", js03)
+
+        # 2. Direct click-and-drag on closed Area polygon vertices updates vertex position & recalculates Area/Perim live
+        self.assertIn("function startStudioVertexMove(vDesc, opts = {})", js03)
+        self.assertIn("dragMode: true, pointerId: e.pointerId", js03)
+        self.assertIn("STATE.movingVertex?.dragMode && typeof updateStudioVertexMove === \"function\"", js03)
+        self.assertIn("Recalculated Area: ${areaM2.toFixed(2)} m²", js03)
+        self.assertIn("drag any vertex to adjust & recalculate area", js04)
 
 
 if __name__ == "__main__":

@@ -727,7 +727,10 @@
         if (handleGizmoPointerDown(e)) return;
       }
       if (STATE.activeView === "studio" && STATE.fpMode.active) {
-        if (document.pointerLockElement !== renderer.domElement && (e.button === 0 || e.button === 2 || e.pointerType === "touch")) {
+        if (
+          document.pointerLockElement !== renderer.domElement &&
+          (e.button === 0 || e.button === 1 || e.button === 2 || e.pointerType === "touch")
+        ) {
           if (e.button === 2) _lastFpRightDragTs = performance.now();
           STATE.fpMode.dragLooking = true;
           STATE.fpMode.lookPointerId = e.pointerId;
@@ -757,7 +760,53 @@
         if (_lassoState.dragging) {
           cancelActiveLassoDrag(e);
         }
+        if (controls) {
+          controls.enabled = true;
+          controls.enableRotate = true;
+          controls.mouseButtons.MIDDLE = THREE.MOUSE.ROTATE;
+        }
         return;
+      }
+      // Direct click-and-drag on editable vertices (especially closed Area polygon points & completed measurement points)
+      if (
+        e.button === 0 &&
+        !e.ctrlKey &&
+        !e.metaKey &&
+        !e.altKey &&
+        !STATE.movingVertex &&
+        activeTouchPointers.size < 2 &&
+        STATE.activeView === "studio" &&
+        STATE.activeTool !== "crop" &&
+        STATE.activeTool !== "crop_delete" &&
+        !(Array.isArray(STATE.measurePoints) && STATE.measurePoints.length > 0) &&
+        typeof findNearestEditableVertexAtScreenXY === "function" &&
+        typeof startStudioVertexMove === "function"
+      ) {
+        const nearV = findNearestEditableVertexAtScreenXY(
+          e.clientX,
+          e.clientY,
+          window.innerWidth <= 768 ? 30 : 22
+        );
+        if (
+          nearV &&
+          (nearV.measType === "area" ||
+            STATE.activeTool === "area" ||
+            STATE.activeTool === nearV.measType ||
+            STATE.activeTool === "orbit")
+        ) {
+          if (startStudioVertexMove(nearV, { dragMode: true, pointerId: e.pointerId, startClientX: e.clientX, startClientY: e.clientY })) {
+            if (controls) {
+              controls.mouseButtons.LEFT = -1;
+            }
+            if (renderer.domElement) {
+              renderer.domElement.style.cursor = "grabbing";
+              try {
+                renderer.domElement.setPointerCapture(e.pointerId);
+              } catch (_) {}
+            }
+            return;
+          }
+        }
       }
       if (
         e.button === 0 &&
@@ -793,6 +842,10 @@
         STATE.fpMode.dragLooking = false;
         STATE.fpMode.lookPointerId = null;
       }
+      if (STATE.movingVertex?.dragMode && (STATE.movingVertex.pointerId == null || e.pointerId === STATE.movingVertex.pointerId)) {
+        if (typeof cancelStudioVertexMove === "function") cancelStudioVertexMove(false);
+        syncStudioControlsForTool();
+      }
       if ((_lassoState.dragging || _lassoState.chordOrbitActive) && (_lassoState.pointerId === null || e.pointerId === _lassoState.pointerId)) {
         cancelActiveLassoDrag(e);
       }
@@ -813,6 +866,33 @@
           lastMultiTouchTime = performance.now();
         }
         activeTouchPointers.delete(e.pointerId);
+      }
+      if (
+        STATE.movingVertex?.dragMode &&
+        (e.button === 0 || e.pointerType === "touch") &&
+        (STATE.movingVertex.pointerId == null || e.pointerId === STATE.movingVertex.pointerId)
+      ) {
+        try {
+          renderer.domElement.releasePointerCapture(e.pointerId);
+        } catch (_) {}
+        const dragDistPx = Math.hypot(
+          e.clientX - (STATE.movingVertex.startClientX ?? downPos.x),
+          e.clientY - (STATE.movingVertex.startClientY ?? downPos.y)
+        );
+        if (dragDistPx >= 4 || STATE.movingVertex.hasMoved) {
+          const moveHit = pickStudio3DHit(e.clientX, e.clientY);
+          if (typeof commitStudioVertexMove === "function") {
+            commitStudioVertexMove(moveHit ? moveHit.point : null);
+          }
+          syncStudioControlsForTool();
+          return;
+        }
+        // User clicked without dragging: convert to sticky click-move-click mode
+        STATE.movingVertex.dragMode = false;
+        STATE.movingVertex.pointerId = null;
+        STATE.movingVertex.startedAt = performance.now();
+        syncStudioControlsForTool();
+        return;
       }
       if (handleGizmoPointerUp(e)) return;
       if (typeof handleSectionBoxGizmoPointerUp === "function" && handleSectionBoxGizmoPointerUp(e)) return;
@@ -912,7 +992,7 @@
         }
         const isTrackedTouch = e.pointerType === "touch" && STATE.fpMode.lookPointerId === e.pointerId;
         const isSamePointer = STATE.fpMode.lookPointerId == null || STATE.fpMode.lookPointerId === e.pointerId;
-        if (STATE.fpMode.dragLooking && isSamePointer && ((e.buttons & 3) !== 0 || isTrackedTouch)) {
+        if (STATE.fpMode.dragLooking && isSamePointer && ((e.buttons & 7) !== 0 || isTrackedTouch)) {
           if ((e.buttons & 2) !== 0) _lastFpRightDragTs = performance.now();
           const dx = e.clientX - STATE.fpMode.dragLastX;
           const dy = e.clientY - STATE.fpMode.dragLastY;
@@ -925,6 +1005,21 @@
         if (isSamePointer) {
           STATE.fpMode.dragLooking = false;
           STATE.fpMode.lookPointerId = null;
+        }
+      }
+      if (STATE.movingVertex?.dragMode && typeof updateStudioVertexMove === "function") {
+        if ((e.buttons & 1) !== 0 || e.pointerType === "touch") {
+          STATE.movingVertex.hasMoved = true;
+          const moveHit = pickStudio3DHit(e.clientX, e.clientY);
+          if (moveHit && moveHit.point) {
+            updateStudioVertexMove(moveHit.point);
+            const twd = localToTwd97(moveHit.point);
+            const lbl = document.getElementById("lblLastPickedCoord");
+            if (lbl) {
+              lbl.textContent = formatScanCoordReadout(twd, STATE.activeScan);
+            }
+          }
+          return;
         }
       }
       if (_lassoState.chordOrbitActive) {
@@ -1008,6 +1103,32 @@
           }
         }
         return;
+      }
+
+      if (
+        typeof findNearestEditableVertexAtScreenXY === "function" &&
+        STATE.activeTool !== "crop" &&
+        STATE.activeTool !== "crop_delete" &&
+        !(Array.isArray(STATE.measurePoints) && STATE.measurePoints.length > 0)
+      ) {
+        const nearHoverV = findNearestEditableVertexAtScreenXY(
+          e.clientX,
+          e.clientY,
+          window.innerWidth <= 768 ? 30 : 22
+        );
+        if (
+          nearHoverV &&
+          (nearHoverV.measType === "area" ||
+            STATE.activeTool === "area" ||
+            STATE.activeTool === nearHoverV.measType ||
+            STATE.activeTool === "orbit")
+        ) {
+          if (renderer.domElement && renderer.domElement.style.cursor !== "grab") {
+            renderer.domElement.style.cursor = "grab";
+          }
+        } else if (renderer.domElement && renderer.domElement.style.cursor === "grab") {
+          renderer.domElement.style.cursor = "";
+        }
       }
 
       if (STATE.activeTool === "laser") {
@@ -2616,7 +2737,7 @@
       STATE.lassoInputMethod !== "polygon" &&
       !STATE.studioLassoOrbitMode;
     studioThree.controls.enabled = true;
-    studioThree.controls.enableRotate = !isFreehandLasso;
+    studioThree.controls.enableRotate = true;
     studioThree.controls.enableZoom = true;
     studioThree.controls.enablePan = true;
     studioThree.controls.screenSpacePanning = true;
@@ -3811,11 +3932,12 @@
   }
   window.rebuildAllCompletedMeasurements3D = rebuildAllCompletedMeasurements3D;
 
-  function startStudioVertexMove(vDesc) {
+  function startStudioVertexMove(vDesc, opts = {}) {
     if (!vDesc || !vDesc.point) return false;
     if (STATE.movingVertex) {
       cancelStudioVertexMove(false);
     }
+    const isDragMode = Boolean(opts && opts.dragMode);
     STATE.movingVertex = {
       point: vDesc.point,
       source: vDesc.source || "completed",
@@ -3826,15 +3948,22 @@
       label: vDesc.label || "Point",
       originalPoint: vDesc.point.clone(),
       startedAt: performance.now(),
+      dragMode: isDragMode,
+      pointerId: opts?.pointerId !== undefined ? opts.pointerId : null,
+      startClientX: Number.isFinite(opts?.startClientX) ? opts.startClientX : null,
+      startClientY: Number.isFinite(opts?.startClientY) ? opts.startClientY : null,
+      hasMoved: false,
     };
     updateStudioMovingVertexIndicator(vDesc.point);
     if (typeof syncStudioMobileToolHud === "function") syncStudioMobileToolHud();
-    showToast(
-      tr(
-        `🎯 移動點位 (${STATE.movingVertex.label}) — 移動滑鼠預覽，點擊新位置放置，按 ESC 取消`,
-        `🎯 Moving ${STATE.movingVertex.label} — Move cursor to preview, click to place, press ESC to cancel`
-      )
-    );
+    if (!isDragMode) {
+      showToast(
+        tr(
+          `🎯 移動點位 (${STATE.movingVertex.label}) — 移動滑鼠預覽，點擊新位置放置，按 ESC 取消`,
+          `🎯 Moving ${STATE.movingVertex.label} — Move cursor to preview, click to place, press ESC to cancel`
+        )
+      );
+    }
     return true;
   }
   window.startStudioVertexMove = startStudioVertexMove;
@@ -3871,6 +4000,7 @@
     const moved = STATE.movingVertex;
     STATE.movingVertex = null;
     updateStudioMovingVertexIndicator(null);
+    syncStudioControlsForTool();
     rebuildAllCompletedMeasurements3D();
     if (
       moved.source === "cutFillPolygonPoints" &&
@@ -3901,6 +4031,28 @@
       }
     }
     if (typeof syncStudioMobileToolHud === "function") syncStudioMobileToolHud();
+    if (moved.measType === "area" && Array.isArray(STATE.completedMeasurements)) {
+      const m = STATE.completedMeasurements.find((item) => item && item.id === moved.measId);
+      if (m && Array.isArray(m.points) && m.points.length >= 3) {
+        let area2 = 0;
+        let perim = 0;
+        for (let i = 0; i < m.points.length; i++) {
+          const a = m.points[i];
+          const b = m.points[(i + 1) % m.points.length];
+          area2 += a.x * b.z - b.x * a.z;
+          perim += a.distanceTo(b);
+        }
+        const areaM2 = Math.abs(area2) * 0.5;
+        const areaPing = areaM2 * 0.3025;
+        showToast(
+          tr(
+            `✓ 已調整 ${moved.label} — 重新計算面積：${areaM2.toFixed(2)} m² (${areaPing.toFixed(2)} 坪) · 周長 ${perim.toFixed(2)} m`,
+            `✓ Adjusted ${moved.label} — Recalculated Area: ${areaM2.toFixed(2)} m² (${areaPing.toFixed(2)} 坪) · Perim ${perim.toFixed(2)} m`
+          )
+        );
+        return true;
+      }
+    }
     showToast(tr(`✓ 已更新點位位置 (${moved.label})`, `✓ Updated ${moved.label} position`));
     return true;
   }
@@ -3922,6 +4074,7 @@
     }
     STATE.movingVertex = null;
     updateStudioMovingVertexIndicator(null);
+    syncStudioControlsForTool();
     rebuildAllCompletedMeasurements3D();
     if (
       moved.source === "cutFillPolygonPoints" &&

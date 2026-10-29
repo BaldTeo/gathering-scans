@@ -3002,7 +3002,12 @@
         } else {
           renderClosedAreaPolygon(lockedPts, { preserveExistingAreas: true });
         }
-        showToast(`Area polygon closed (${lockedPts.length} vertices)`);
+        showToast(
+          tr(
+            `面積多邊形已閉合 (${lockedPts.length} 個頂點) — 可直接按住拖曳頂點調整範圍並重新計算面積`,
+            `Area polygon closed (${lockedPts.length} vertices) — drag any vertex to adjust & recalculate area`
+          )
+        );
         syncStudioMobileToolHud();
         return;
       }

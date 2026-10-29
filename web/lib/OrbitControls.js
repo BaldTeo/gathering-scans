@@ -80,7 +80,7 @@
 
 			this.mouseButtons = {
 				LEFT: THREE.MOUSE.ROTATE,
-				MIDDLE: THREE.MOUSE.DOLLY,
+				MIDDLE: THREE.MOUSE.ROTATE,
 				RIGHT: THREE.MOUSE.PAN
 			}; // Touch fingers
 
