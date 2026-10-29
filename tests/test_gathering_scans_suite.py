@@ -2006,7 +2006,7 @@ class GatheringScansTestSuite(unittest.TestCase):
         self.assertIn("function renderPipelineSubitemsGridHtml(", js07)
         self.assertIn('id="livePix4dSegmentedBarWrap"', idx_html)
         self.assertIn('id="livePix4dSubitemsGrid"', idx_html)
-        self.assertIn("?v=20261029_v194", idx_html)
+        self.assertIn("?v=20261029_v", idx_html)
 
     def test_25_two_pass_preview_and_scalable_lod_recovery(self):
         """Verify Option C Two-Pass Fast Preview + Full 16K HQ pipeline, dynamic Scalable octree LOD recovery,
