@@ -1710,7 +1710,7 @@
     if (lodMode === "rough") {
       tr.errorTarget = 1e9;
     } else if (lodMode === "max") {
-      tr.errorTarget = isPreviewRenderer ? 0.5 : 0.0;
+      tr.errorTarget = isPreviewRenderer ? 1.2 : 0.8;
     } else {
       tr.errorTarget = isPreviewRenderer ? (isMobileOrTab ? 18.0 : 12.0) : (isMobileOrTab ? 10.0 : 2.0);
     }
@@ -2049,11 +2049,12 @@
       if (lodMode === "rough") {
         tr.errorTarget = 1e9;
       } else if (lodMode === "max") {
-        tr.errorTarget = 0.5;
+        tr.errorTarget = 1.2;
       } else {
         tr.errorTarget = isMobileOrTab ? 18.0 : 12.0;
       }
-      if (tr.downloadQueue) tr.downloadQueue.maxJobs = isIOS ? 3 : isMobileOrTab ? 4 : 8;
+      const isLocalHost = window.location.hostname === "127.0.0.1" || window.location.hostname === "localhost";
+      if (tr.downloadQueue) tr.downloadQueue.maxJobs = isIOS ? 3 : isMobileOrTab ? 4 : isLocalHost ? 8 : 4;
       if (tr.parseQueue) tr.parseQueue.maxJobs = isIOS ? 1 : isMobileOrTab ? 2 : 6;
       if (tr.lruCache) {
         if (isMobileOrTab) {

@@ -5,7 +5,7 @@
  * Strictly zero scan cache is ever stored on the Linux VPS.
  */
 
-const CACHE_NAME = "gathering-scans-offline-v197";
+const CACHE_NAME = "gathering-scans-offline-v198";
 const SCAN_TILES_CACHE = "gathering-scans-tiles-v2";
 const APP_SHELL = [
   "/",
@@ -96,7 +96,28 @@ self.addEventListener("fetch", (event) => {
           existingCached = (await tileCache.match(req)) || (await tileCache.match(req, { ignoreSearch: true }));
         } catch (_) {}
         try {
-          const networkResp = await fetch(req);
+          let networkResp = null;
+          const retryDelays = [0, 350, 900, 2000];
+          for (let attempt = 0; attempt < retryDelays.length; attempt++) {
+            if (retryDelays[attempt] > 0) {
+              await new Promise((r) => setTimeout(r, retryDelays[attempt]));
+            }
+            try {
+              networkResp = await fetch(req);
+            } catch (fetchErr) {
+              if (attempt === retryDelays.length - 1) throw fetchErr;
+              continue;
+            }
+            if (
+              !networkResp ||
+              (networkResp.status !== 502 &&
+                networkResp.status !== 503 &&
+                networkResp.status !== 504 &&
+                networkResp.status !== 429)
+            ) {
+              break;
+            }
+          }
           if (networkResp && networkResp.status === 200) {
             if (existingCached && tileCache) {
               const clone = networkResp.clone();

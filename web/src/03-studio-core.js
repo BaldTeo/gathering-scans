@@ -1833,11 +1833,12 @@
       if (lodMode === "rough") {
         tr.errorTarget = 1e9;
       } else if (lodMode === "max") {
-        tr.errorTarget = 0.0;
+        tr.errorTarget = 0.8;
       } else {
         tr.errorTarget = isMobOrTab ? 10.0 : 2.0;
       }
-      if (tr.downloadQueue) tr.downloadQueue.maxJobs = isIOS ? 3 : isMobOrTab ? 4 : 16;
+      const isLocalHost = window.location.hostname === "127.0.0.1" || window.location.hostname === "localhost";
+      if (tr.downloadQueue) tr.downloadQueue.maxJobs = isIOS ? 3 : isMobOrTab ? 4 : isLocalHost ? 16 : (lodMode === "max" ? 6 : 4);
       if (tr.parseQueue) tr.parseQueue.maxJobs = isIOS ? 1 : isMobOrTab ? 2 : 8;
       if (tr.lruCache) {
         if (isMobOrTab) {
@@ -3534,8 +3535,11 @@
     const selPreview = document.getElementById("selPreviewLodMode");
     if (selPreview && selPreview.value !== validMode) selPreview.value = validMode;
 
-    const isMobOrTab = typeof isMobileOrTabletDevice === "function" && isMobileOrTabletDevice();
-    const targetErr = validMode === "rough" ? 1e9 : validMode === "max" ? 0.0 : isMobOrTab ? 10.0 : 2.0;
+    const isIOS = typeof isIOSOrIPadDevice === "function" && isIOSOrIPadDevice();
+    const isMobOrTab = isIOS || (typeof isMobileOrTabletDevice === "function" && isMobileOrTabletDevice());
+    const isLocalHost = window.location.hostname === "127.0.0.1" || window.location.hostname === "localhost";
+    const targetErr = validMode === "rough" ? 1e9 : validMode === "max" ? 0.8 : isMobOrTab ? 10.0 : 2.0;
+    const previewTargetErr = validMode === "rough" ? 1e9 : validMode === "max" ? 1.2 : isMobOrTab ? 18.0 : 12.0;
 
     if (studioThree) {
       if (
@@ -3551,6 +3555,9 @@
         });
       } else if (studioThree.tilesRenderer) {
         studioThree.tilesRenderer.errorTarget = targetErr;
+        if (studioThree.tilesRenderer.downloadQueue) {
+          studioThree.tilesRenderer.downloadQueue.maxJobs = isIOS ? 3 : isMobOrTab ? 4 : isLocalHost ? 16 : (validMode === "max" ? 6 : 4);
+        }
         studioThree.camera?.updateMatrixWorld();
         studioThree.tilesRenderer.update();
         if (studioThree.renderer && studioThree.scene && studioThree.camera) {
@@ -3569,7 +3576,10 @@
       ) {
         loadScanIntoPreview(STATE.activeScanId, true);
       } else if (previewThree.tilesRenderer) {
-        previewThree.tilesRenderer.errorTarget = targetErr;
+        previewThree.tilesRenderer.errorTarget = previewTargetErr;
+        if (previewThree.tilesRenderer.downloadQueue) {
+          previewThree.tilesRenderer.downloadQueue.maxJobs = isIOS ? 3 : isMobOrTab ? 4 : isLocalHost ? 8 : 4;
+        }
         previewThree.camera?.updateMatrixWorld();
         previewThree.tilesRenderer.update();
         if (previewThree.renderer && previewThree.scene && previewThree.camera) {

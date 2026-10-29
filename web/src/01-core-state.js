@@ -16,6 +16,42 @@
     };
   }
 
+  // Resilient fetch wrapper for /stream/ 3D tile requests so transient 502/503/504/429 responses auto-retry transparently
+  if (typeof window !== "undefined" && typeof window.fetch === "function" && !window.__gsStreamFetchWrapped) {
+    window.__gsStreamFetchWrapped = true;
+    const _origFetch = window.fetch.bind(window);
+    window.fetch = async function (input, init) {
+      const urlStr = typeof input === "string" ? input : (input && input.url ? String(input.url) : "");
+      const methodStr = (init && init.method) || (input && input.method) || "GET";
+      if (String(methodStr).toUpperCase() === "GET" && urlStr.includes("/stream/")) {
+        const delays = [0, 350, 900, 1800];
+        let lastResp = null;
+        for (let i = 0; i < delays.length; i++) {
+          if (delays[i] > 0) {
+            await new Promise((r) => setTimeout(r, delays[i]));
+          }
+          try {
+            lastResp = await _origFetch(input, init);
+          } catch (err) {
+            if (i === delays.length - 1) throw err;
+            continue;
+          }
+          if (
+            !lastResp ||
+            (lastResp.status !== 502 &&
+              lastResp.status !== 503 &&
+              lastResp.status !== 504 &&
+              lastResp.status !== 429)
+          ) {
+            return lastResp;
+          }
+        }
+        return lastResp;
+      }
+      return _origFetch(input, init);
+    };
+  }
+
   let sharedKtx2Loader = null;
   function getKTX2Loader(renderer) {
     if (!sharedKtx2Loader && window.THREE && window.THREE.KTX2Loader) {

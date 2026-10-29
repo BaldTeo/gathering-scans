@@ -344,6 +344,7 @@ CLOUD_AUTH_PATH = (
 )
 _CLOUD_MANIFEST_MEM: Optional[Dict[str, Any]] = None
 _CLOUD_AUTH_MEM: Optional[Dict[str, Any]] = None
+_GDRIVE_STALE_SCAN_BYPASS_UNTIL: Dict[str, float] = {}
 
 
 def _load_cloud_manifest() -> Dict[str, Any]:
@@ -834,8 +835,9 @@ def _acquire_vps_tunnel_socket(timeout: float = 6.0) -> Tuple[Optional[socket.so
             if time.time() >= deadline:
                 return None, None, 0
             continue
-        max_idle = 210.0 if proto_ver >= 2 else 42.0
-        if done_evt.is_set() or (time.time() - ts > max_idle):
+        max_idle = 540.0 if proto_ver >= 2 else 42.0
+        last_ts = getattr(done_evt, "last_ts", ts)
+        if done_evt.is_set() or (time.time() - last_ts > max_idle):
             done_evt.set()
             continue
         try:
@@ -846,10 +848,12 @@ def _acquire_vps_tunnel_socket(timeout: float = 6.0) -> Tuple[Optional[socket.so
         except Exception:
             done_evt.set()
             continue
+        done_evt.in_use = True
+        done_evt.last_ts = time.time()
         return sock, done_evt, proto_ver
 
 
-def start_pc_reverse_tunnel_pool(local_port: int = SERVER_PORT, pool_size: int = 64):
+def start_pc_reverse_tunnel_pool(local_port: int = SERVER_PORT, pool_size: int = 96):
     """On Windows PC, maintains a pool of persistent reverse TCP sockets to Hostinger VPS (76.13.197.29:8095)."""
     global _TUNNEL_POOL_STARTED
     if os.name != "nt" or _TUNNEL_POOL_STARTED:
@@ -1013,9 +1017,20 @@ class CloudAndTunnelHandlerMixin:
             return
 
         done_evt = threading.Event()
-        VPS_TUNNEL_POOL.put((self.connection, done_evt, time.time(), proto_ver))
+        done_evt.last_ts = time.time()
+        done_evt.in_use = False
+        VPS_TUNNEL_POOL.put((self.connection, done_evt, done_evt.last_ts, proto_ver))
         # Hold handler thread open while persistent socket serves requests in the pool
-        done_evt.wait(timeout=240.0 if proto_ver >= 2 else 45.0)
+        max_idle = 600.0 if proto_ver >= 2 else 45.0
+        while not done_evt.is_set():
+            done_evt.wait(timeout=30.0)
+            if done_evt.is_set():
+                break
+            if not getattr(done_evt, "in_use", False) and (time.time() - getattr(done_evt, "last_ts", 0.0) > max_idle):
+                done_evt.set()
+                break
+        while getattr(done_evt, "in_use", False):
+            time.sleep(0.05)
         done_evt.set()
         self.close_connection = True
 
@@ -1154,13 +1169,17 @@ class CloudAndTunnelHandlerMixin:
                     pass
 
         if data is None:
+            if time.time() < _GDRIVE_STALE_SCAN_BYPASS_UNTIL.get(scan_id, 0.0):
+                return False
             data = _fetch_gdrive_byte_slice(file_ids, start_b, len_b)
         if data is None:
+            _GDRIVE_STALE_SCAN_BYPASS_UNTIL[scan_id] = time.time() + 300.0
             return False
         if not use_gzip and toc_entry.get("gzip_only"):
             try:
                 data = gzip.decompress(data)
             except Exception:
+                _GDRIVE_STALE_SCAN_BYPASS_UNTIL[scan_id] = time.time() + 300.0
                 return False
 
         # Verify slice boundary integrity (protects against serving stale offsets while Google Drive Desktop is mid-upload)
@@ -1168,12 +1187,15 @@ class CloudAndTunnelHandlerMixin:
             if inner_path.endswith(".json"):
                 s_strip = data.strip()
                 if not (s_strip.startswith(b"{") and s_strip.endswith(b"}")):
+                    _GDRIVE_STALE_SCAN_BYPASS_UNTIL[scan_id] = time.time() + 300.0
                     return False
             elif inner_path.endswith(".glb"):
                 if len(data) < 20 or data[:4] != b"glTF" or struct.unpack_from("<I", data, 8)[0] != len(data):
+                    _GDRIVE_STALE_SCAN_BYPASS_UNTIL[scan_id] = time.time() + 300.0
                     return False
             elif inner_path.endswith(".png"):
                 if len(data) < 16 or data[:8] != b"\x89PNG\r\n\x1a\n":
+                    _GDRIVE_STALE_SCAN_BYPASS_UNTIL[scan_id] = time.time() + 300.0
                     return False
 
         hdrs: Dict[str, str] = {
@@ -1375,10 +1397,10 @@ class CloudAndTunnelHandlerMixin:
             method == "POST"
             and (path.startswith("/api/optimizer/") or path in ("/api/scans/merge", "/api/optimizer/merge"))
         ) or path.startswith("/api/download")
-        for _attempt in range(1 if is_long_post else 4):
+        for _attempt in range(1 if is_long_post else 10):
             tun_sock, done_evt, proto_ver = _acquire_vps_tunnel_socket(timeout=18.0)
             if not tun_sock or not done_evt:
-                time.sleep(0.25)
+                time.sleep(0.35)
                 continue
             try:
                 tun_sock.settimeout(900.0 if is_long_post else 60.0)
@@ -1397,11 +1419,13 @@ class CloudAndTunnelHandlerMixin:
 
                 len_bytes = _recv_exact(tun_sock, 4)
                 if not len_bytes:
+                    done_evt.in_use = False
                     done_evt.set()
                     continue
                 (meta_len,) = struct.unpack("!I", len_bytes)
                 meta_raw = _recv_exact(tun_sock, meta_len)
                 if not meta_raw:
+                    done_evt.in_use = False
                     done_evt.set()
                     continue
                 resp_meta = json.loads(meta_raw.decode("utf-8"))
@@ -1456,8 +1480,12 @@ class CloudAndTunnelHandlerMixin:
                                 client_Write_ok = False
                     if stream_clean and not done_evt.is_set():
                         # Return socket immediately to pool for reuse by next request
-                        VPS_TUNNEL_POOL.put((tun_sock, done_evt, time.time(), proto_ver))
+                        now_put = time.time()
+                        done_evt.last_ts = now_put
+                        done_evt.in_use = False
+                        VPS_TUNNEL_POOL.put((tun_sock, done_evt, now_put, proto_ver))
                     else:
+                        done_evt.in_use = False
                         done_evt.set()
                 else:
                     while True:
@@ -1473,6 +1501,7 @@ class CloudAndTunnelHandlerMixin:
                             self.wfile.write(chunk)
                         except (BrokenPipeError, ConnectionResetError):
                             break
+                    done_evt.in_use = False
                     done_evt.set()
 
                 if buf_for_cache is not None and stream_clean:
@@ -1547,6 +1576,7 @@ class CloudAndTunnelHandlerMixin:
                             pass
                 return True
             except Exception:
+                done_evt.in_use = False
                 done_evt.set()
                 continue
 
