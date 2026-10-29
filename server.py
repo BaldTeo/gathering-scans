@@ -1646,6 +1646,8 @@ class GatheringScansHandler(CloudAndTunnelHandlerMixin, ServerWriteRoutesMixin, 
             self.send_json(
                 {
                     "status": "ok",
+                    "daemon_running": is_pc_daemon_running(),
+                    "pc_online": (not is_pc_simulated_offline()) and is_pc_daemon_running(),
                     "inbox_dir": GDRIVE_INPUTS_DIR if is_q_admin else "",
                     "crs_enforced": TWD97_TWVD2001_LABEL,
                     "texture_size_enforced": p4d_cfg.get("texture_size", PIX4DMATIC_TEXTURE_SIZE),

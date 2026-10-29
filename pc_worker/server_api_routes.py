@@ -54,6 +54,7 @@ from pc_worker.server_cloud_and_tunnel import (
     _VPS_RAM_FALLBACK_CACHE,
     is_pc_daemon_running,
     set_pc_daemon_running,
+    set_pc_simulated_offline,
     get_pc_daemon_status,
     sync_scans_with_filesystem,
     _load_cloud_manifest,
@@ -328,13 +329,13 @@ class ServerWriteRoutesMixin:
                 self.send_json(status_obj)
                 return
 
-            # 1. Simulate PC Online / Offline Mode (for testing Requirement 5)
+            # 1. Simulate PC Online / Offline Mode (for testing Requirement 5 without pausing background PIX4Dmatic daemon)
             if path == "/api/pc/simulate-offline":
                 if not actor_perms.get("can_manage_users"):
                     self.send_json({"error": "Owner or Admin session required to toggle offline simulation."}, status=403)
                     return
                 want_offline = bool(payload.get("offline", False))
-                d_stat = set_pc_daemon_running(not want_offline, actor_email=actor_email)
+                d_stat = set_pc_simulated_offline(want_offline)
                 self.send_json({"status": "ok", "pc_online": d_stat["pc_online"], "daemon_running": d_stat["daemon_running"]})
                 return
 
@@ -926,6 +927,8 @@ class ServerWriteRoutesMixin:
                 if not actor_perms.get("can_run_workflows"):
                     self.send_json({"error": f"Role '{actor_role}' cannot trigger PC inbox rescans."}, status=403)
                     return
+                if not is_pc_daemon_running():
+                    set_pc_daemon_running(True, actor_email=actor_email)
                 self._GZIP_FILE_CACHE.clear()
                 self._OPTIMIZED_TILESET_CACHE.clear()
                 _VPS_RAM_FALLBACK_CACHE.clear()
@@ -934,7 +937,9 @@ class ServerWriteRoutesMixin:
                     _sid_i = _s_item.get("scan_id") if isinstance(_s_item, dict) else None
                     if _sid_i and not SURVEY.get_saved_ortho_meta(_sid_i, _s_item):
                         _trigger_auto_ortho_regen(_sid_i)
-                self.send_json({"status": "ok", "inbox_dir": GDRIVE_INPUTS_DIR, "total_scans": len(scans)})
+                _DAEMON_WAKE_EVENT.set()
+                _PIX4D_WAKE_EVENT.set()
+                self.send_json({"status": "ok", "inbox_dir": GDRIVE_INPUTS_DIR, "total_scans": len(scans), "daemon_running": True})
                 return
 
             if path == "/api/pix4d/settings":
@@ -949,16 +954,20 @@ class ServerWriteRoutesMixin:
                 if not actor_perms.get("can_run_workflows"):
                     self.send_json({"error": f"Role '{actor_role}' cannot reorder the PC processing queue."}, status=403)
                     return
+                if not is_pc_daemon_running():
+                    set_pc_daemon_running(True, actor_email=actor_email)
                 scan_id = payload.get("scan_id", "")
                 updated = DB.set_force_next(scan_id, bool(payload.get("force", True)))
                 _PIX4D_WAKE_EVENT.set()
-                self.send_json({"status": "ok", "scan": updated})
+                self.send_json({"status": "ok", "scan": updated, "daemon_running": True})
                 return
 
             if path in ("/api/scans/rerun", "/api/queue/enqueue", "/api/queue/reprocess"):
                 if not actor_perms.get("can_run_workflows"):
                     self.send_json({"error": f"Role '{actor_role}' cannot run or re-run scans on the PC (Editor, Admin, or Owner required)."}, status=403)
                     return
+                if not is_pc_daemon_running():
+                    set_pc_daemon_running(True, actor_email=actor_email)
                 scan_id = str(payload.get("scan_id", "")).strip()
                 scan = DB.get_scan(scan_id)
                 if not scan:

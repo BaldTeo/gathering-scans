@@ -140,9 +140,10 @@ def set_pc_daemon_running(running: bool, actor_email: str = "admin") -> Dict[str
             json.dump(state, f, indent=2, ensure_ascii=False)
     except Exception as e:
         print(f"[GatheringScans] Warning saving daemon_state.json: {e}")
-    PC_SIMULATED_OFFLINE = not bool(running)
     if running:
+        PC_SIMULATED_OFFLINE = False
         _DAEMON_WAKE_EVENT.set()
+        _PIX4D_WAKE_EVENT.set()
         if os.name == "nt":
             def _immediate_discover():
                 try:
@@ -154,6 +155,16 @@ def set_pc_daemon_running(running: bool, actor_email: str = "admin") -> Dict[str
                 except Exception as ex:
                     print(f"[GatheringScans] Daemon start discovery note: {ex}")
             threading.Thread(target=_immediate_discover, daemon=True).start()
+    return get_pc_daemon_status()
+
+
+def set_pc_simulated_offline(offline: bool) -> Dict[str, Any]:
+    """
+    Toggles in-memory Browser Offline Cache testing mode without stopping or pausing
+    the Windows Workstation background Inbox Watcher or PIX4Dmatic queue daemon.
+    """
+    global PC_SIMULATED_OFFLINE
+    PC_SIMULATED_OFFLINE = bool(offline)
     return get_pc_daemon_status()
 
 
@@ -259,8 +270,8 @@ SURVEY = SurveyingEngine(DB)
 AUTH_SHARE = AuthAndSharingManager(DB)
 GCHAT = GoogleChatNotifier(DB)
 
-# Simulated PC Online Toggle (synchronized with persistent daemon_state.json)
-PC_SIMULATED_OFFLINE = not is_pc_daemon_running()
+# Simulated PC Online Toggle (strictly in-memory for browser cache testing; never pauses daemon_state.json)
+PC_SIMULATED_OFFLINE = False
 
 
 def is_pc_simulated_offline() -> bool:

@@ -18,7 +18,7 @@
   <meta name="twitter:image" content="https://scans.gatheren.cloud/assets/gathering_cloud_logo.png" />
   <!-- GS_SHARE_OG_END -->
   <link rel="icon" type="image/png" href="/assets/gathering_cloud_logo.png" />
-  <link rel="stylesheet" href="/app.css?v=20261029_v185" />
+  <link rel="stylesheet" href="/app.css?v=20261029_v186" />
   <script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
 <body>
@@ -1193,6 +1193,14 @@
         </div>
       </div>
 
+      <div id="queueDaemonPausedBanner" style="display:none;background:rgba(245,158,11,0.14);border:1px solid rgba(245,158,11,0.45);border-radius:8px;padding:10px 12px;margin-bottom:10px;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;">
+        <div style="font-size:12px;color:var(--ui-text-primary);display:flex;align-items:center;gap:8px;">
+          <span class="status-dot" style="background:#f59e0b;box-shadow:0 0 8px #f59e0b;"></span>
+          <span data-i18n-zh="⚠️ 工作站背景排程目前已暫停 — 排隊中的掃描不會自動啟動，請點擊右側按鈕立即恢復。" data-i18n-en="⚠️ Workstation background queue is currently PAUSED — queued scans will not auto-start until resumed.">⚠️ 工作站背景排程目前已暫停 — 排隊中的掃描不會自動啟動，請點擊右側按鈕立即恢復。</span>
+        </div>
+        <button type="button" class="btn-xs primary" id="btnResumeDaemonFromQueue" style="background:#10b981;border-color:#059669;color:#fff;font-weight:700;padding:4px 12px;" data-i18n-zh="立即恢復自動排程" data-i18n-en="Resume Queue Daemon Now">立即恢復自動排程</button>
+      </div>
+
       <div id="livePix4dMonitorBox" style="display:none;background:var(--ui-bg-subtle);border:1px solid var(--ui-accent);border-radius:8px;padding:10px 12px;margin-bottom:10px;">
         <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px;">
           <div style="font-size:12px;font-weight:700;color:var(--ui-text-primary);display:flex;align-items:center;gap:6px;">
@@ -2131,15 +2139,15 @@
   <script src="/lib/3d-tiles-renderer.bundle.js"></script>
 
   <!-- Main GatheringScans Bilingual Translation & Modular Application Logic (< 5,000 lines per module) -->
-  <script src="/i18n.js?v=20261029_v185"></script>
-  <script src="/src/01-core-state.js?v=20261029_v185"></script>
-  <script src="/src/02-map-and-timeline.js?v=20261029_v185"></script>
-  <script src="/src/03-studio-core.js?v=20261029_v185"></script>
-  <script src="/src/04-studio-lasso-and-edits.js?v=20261029_v185"></script>
-  <script src="/src/05-studio-civil-inspectors.js?v=20261029_v185"></script>
-  <script src="/src/06-studio-align-and-optimizer.js?v=20261029_v185"></script>
-  <script src="/src/07-compare-and-queue.js?v=20261029_v185"></script>
-  <script src="/src/08-advanced-surveying-and-qa.js?v=20261029_v185"></script>
-  <script src="/app.js?v=20261029_v185"></script>
+  <script src="/i18n.js?v=20261029_v186"></script>
+  <script src="/src/01-core-state.js?v=20261029_v186"></script>
+  <script src="/src/02-map-and-timeline.js?v=20261029_v186"></script>
+  <script src="/src/03-studio-core.js?v=20261029_v186"></script>
+  <script src="/src/04-studio-lasso-and-edits.js?v=20261029_v186"></script>
+  <script src="/src/05-studio-civil-inspectors.js?v=20261029_v186"></script>
+  <script src="/src/06-studio-align-and-optimizer.js?v=20261029_v186"></script>
+  <script src="/src/07-compare-and-queue.js?v=20261029_v186"></script>
+  <script src="/src/08-advanced-surveying-and-qa.js?v=20261029_v186"></script>
+  <script src="/app.js?v=20261029_v186"></script>
 </body>
 </html>

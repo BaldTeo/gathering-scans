@@ -1668,6 +1668,15 @@
         applyPix4dSettingsToUI(qData.pix4d_settings, false);
       }
 
+      const pausedBanner = document.getElementById("queueDaemonPausedBanner");
+      if (pausedBanner) {
+        pausedBanner.style.display = qData.daemon_running === false ? "flex" : "none";
+      }
+      if (typeof qData.daemon_running === "boolean") {
+        STATE.pcOnline = Boolean(qData.pc_online ?? qData.daemon_running);
+        if (typeof updatePcStatusUI === "function") updatePcStatusUI();
+      }
+
       const monBox = document.getElementById("livePix4dMonitorBox");
       if (monBox) {
         if (qData.live_pix4d && qData.live_pix4d.scan_id) {
@@ -1924,6 +1933,20 @@
   document.getElementById("btnSavePix4dSettingsUser")?.addEventListener("click", () => savePix4dSettingsFromUI("User"));
 
   document.getElementById("pcStatusChip")?.addEventListener("click", openQueueModal);
+  document.getElementById("btnResumeDaemonFromQueue")?.addEventListener("click", async () => {
+    try {
+      await apiPost("/api/admin/pc-daemon", {
+        actor_email: STATE.currentUser?.email || "",
+        action: "start",
+      });
+      STATE.pcOnline = true;
+      if (typeof updatePcStatusUI === "function") updatePcStatusUI();
+      await refreshQueueModalData();
+      showToast(tr("已恢復工作站自動排程與 PIX4Dmatic 佇列！", "Resumed Workstation Daemon & PIX4Dmatic Queue!"));
+    } catch (err) {
+      showToast(`Resume Daemon Error: ${err.message}`);
+    }
+  });
   document.getElementById("btnPreviewGstScript")?.addEventListener("click", () => previewGstForScan(STATE.activeScanId));
   document.getElementById("btnRescanGDriveInbox")?.addEventListener("click", async () => {
     const res = await apiPost("/api/queue/scan-inbox", {});

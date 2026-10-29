@@ -49,6 +49,7 @@ from server import (
     GCHAT,
     AUTH_SHARE,
     is_pc_daemon_running,
+    set_pc_daemon_running,
     mark_daemon_poll_completed,
     _DAEMON_WAKE_EVENT,
     _PIX4D_WAKE_EVENT,
@@ -490,6 +491,11 @@ def prestage_queued_inputs_loop():
 
 
 if __name__ == "__main__":
+    # Safeguard: Always ensure the workstation daemon starts in active running mode on launcher startup
+    if not is_pc_daemon_running():
+        set_pc_daemon_running(True, actor_email="workstation_startup")
+        print("[GatheringScans] Auto-resumed paused daemon state on workstation launcher startup.")
+
     t_discovery = threading.Thread(target=inbox_discovery_loop, daemon=True)
     t_discovery.start()
 
