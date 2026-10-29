@@ -1768,7 +1768,7 @@
     }
     const isMobileOrTab = typeof isMobileOrTabletDevice === "function" && isMobileOrTabletDevice();
     const isPreviewRenderer = Boolean(previewThree && previewThree.tilesRenderer === tr);
-    const lodMode = STATE.scanLodMode || "auto";
+    const lodMode = isPreviewRenderer ? (STATE.previewLodMode || "rough") : (STATE.scanLodMode || "auto");
     if (lodMode === "rough") {
       tr.errorTarget = 1e9;
     } else if (lodMode === "max") {
