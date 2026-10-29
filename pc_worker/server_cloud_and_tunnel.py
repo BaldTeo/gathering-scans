@@ -1116,7 +1116,20 @@ class CloudAndTunnelHandlerMixin:
             try:
                 data = gzip.decompress(data)
             except Exception:
-                pass
+                return False
+
+        # Verify slice boundary integrity (protects against serving stale offsets while Google Drive Desktop is mid-upload)
+        if not use_gzip and not range_hdr:
+            if inner_path.endswith(".json"):
+                s_strip = data.strip()
+                if not (s_strip.startswith(b"{") and s_strip.endswith(b"}")):
+                    return False
+            elif inner_path.endswith(".glb"):
+                if len(data) < 20 or data[:4] != b"glTF" or struct.unpack_from("<I", data, 8)[0] != len(data):
+                    return False
+            elif inner_path.endswith(".png"):
+                if len(data) < 16 or data[:8] != b"\x89PNG\r\n\x1a\n":
+                    return False
 
         hdrs: Dict[str, str] = {
             "Content-Type": ctype,
