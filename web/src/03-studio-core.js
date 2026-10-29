@@ -45,9 +45,12 @@
           mat.map.minFilter = THREE.LinearFilter;
           mat.map.needsUpdate = true;
         }
-      } else if (!mat.map.anisotropy || mat.map.anisotropy < 8) {
-        mat.map.anisotropy = 8;
-        mat.map.needsUpdate = true;
+      } else {
+        const maxAniso = Math.min(16, studioThree?.renderer?.capabilities?.getMaxAnisotropy?.() || 16);
+        if (!mat.map.anisotropy || mat.map.anisotropy < maxAniso) {
+          mat.map.anisotropy = maxAniso;
+          mat.map.needsUpdate = true;
+        }
       }
     }
     if (mat.color && !mat.userData._origColor) {
@@ -97,7 +100,7 @@
     if (!mat.userData._hasBrightnessShader) {
       mat.userData._hasBrightnessShader = true;
       mat.customProgramCacheKey = function () {
-        return `GS_ScanShader_v5_${mat.type || "Standard"}_${mat.map ? "1" : "0"}_${mat.vertexColors ? "1" : "0"}`;
+        return `GS_ScanShader_v6_${mat.type || "Standard"}_${mat.map ? "1" : "0"}_${mat.vertexColors ? "1" : "0"}`;
       };
       const prevOnBeforeCompile = mat.onBeforeCompile;
       mat.onBeforeCompile = function (shader, renderer) {
@@ -181,7 +184,9 @@
           "#include <dithering_fragment>",
           `#include <dithering_fragment>
            vec3 basePhoto = gcHasPhotoColor ? gcScanPhotoColor : gl_FragColor.rgb;
-           vec3 litPhoto = basePhoto * uBrightness;
+           vec3 litPhoto = (uBrightness > 1.0)
+             ? (basePhoto * uBrightness) / (1.0 + max(vec3(0.0), basePhoto * (uBrightness - 1.0)) * 0.35)
+             : (basePhoto * uBrightness);
            if (uElevationHeatmap > 1.5) {
              vec2 relUv = clamp((vGsWorldPos.xz - uBaseBounds.xy) / max(vec2(0.5), uBaseBounds.zw - uBaseBounds.xy), 0.0, 1.0);
              vec2 gCoord = relUv * max(1.0, uBaseGridN - 1.0);
@@ -1830,13 +1835,20 @@
       } else if (lodMode === "max") {
         tr.errorTarget = 0.0;
       } else {
-        tr.errorTarget = isMobOrTab ? 10.0 : 5.0;
+        tr.errorTarget = isMobOrTab ? 10.0 : 2.0;
       }
-      if (tr.downloadQueue) tr.downloadQueue.maxJobs = isIOS ? 3 : isMobOrTab ? 4 : 12;
-      if (tr.parseQueue) tr.parseQueue.maxJobs = isIOS ? 1 : isMobOrTab ? 2 : 6;
-      if (isMobOrTab && tr.lruCache) {
-        tr.lruCache.maxSize = isIOS ? 24 : 64;
-        tr.lruCache.minSize = isIOS ? 10 : 24;
+      if (tr.downloadQueue) tr.downloadQueue.maxJobs = isIOS ? 3 : isMobOrTab ? 4 : 16;
+      if (tr.parseQueue) tr.parseQueue.maxJobs = isIOS ? 1 : isMobOrTab ? 2 : 8;
+      if (tr.lruCache) {
+        if (isMobOrTab) {
+          tr.lruCache.maxSize = isIOS ? 24 : 64;
+          tr.lruCache.minSize = isIOS ? 10 : 24;
+        } else {
+          tr.lruCache.maxSize = 6000;
+          tr.lruCache.minSize = 4000;
+          tr.lruCache.maxBytesSize = 16 * 1024 * 1024 * 1024;
+          tr.lruCache.minBytesSize = 12 * 1024 * 1024 * 1024;
+        }
       }
       studioThree.modelPivot.add(tr.group);
       studioThree.tilesRenderer = tr;
@@ -3523,7 +3535,7 @@
     if (selPreview && selPreview.value !== validMode) selPreview.value = validMode;
 
     const isMobOrTab = typeof isMobileOrTabletDevice === "function" && isMobileOrTabletDevice();
-    const targetErr = validMode === "rough" ? 1e9 : validMode === "max" ? 0.0 : isMobOrTab ? 10.0 : 5.0;
+    const targetErr = validMode === "rough" ? 1e9 : validMode === "max" ? 0.0 : isMobOrTab ? 10.0 : 2.0;
 
     if (studioThree) {
       if (

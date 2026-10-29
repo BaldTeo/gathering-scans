@@ -486,74 +486,36 @@ class GatheringScansHandler(CloudAndTunnelHandlerMixin, ServerWriteRoutesMixin, 
                 root = ts.get("root") or {}
                 if not root.get("transform"):
                     ts.setdefault("asset", {})["gltfUpAxis"] = "Z"
-                r_content = root.get("content") or {}
-                r_uri = r_content.get("uri") if isinstance(r_content, dict) else None
-                if r_uri:
-                    clean_r_uri = r_uri.split("?")[0]
-                    r_file = os.path.join(base_dir, clean_r_uri)
-                    if os.path.isfile(r_file):
-                        r_content["uri"] = f"{clean_r_uri}?v={int(os.path.getmtime(r_file))}"
-                    valid_c1 = []
-                    for c1 in root.get("children") or []:
-                        if not isinstance(c1, dict):
-                            continue
-                        c1_c = c1.get("content") or {}
-                        if isinstance(c1_c, dict) and c1_c.get("uri"):
-                            u1 = c1_c["uri"].split("?")[0]
-                            f1 = os.path.join(base_dir, u1)
-                            if os.path.isfile(f1):
-                                c1_c["uri"] = f"{u1}?v={int(os.path.getmtime(f1))}"
-                        valid_c2 = []
-                        for c2 in c1.get("children") or []:
-                            if not isinstance(c2, dict):
-                                continue
-                            c2_c = c2.get("content") or {}
-                            if isinstance(c2_c, dict) and c2_c.get("uri"):
-                                u2 = c2_c["uri"].split("?")[0]
-                                f2 = os.path.join(base_dir, u2)
-                                if os.path.isfile(f2):
-                                    c2_c["uri"] = f"{u2}?v={int(os.path.getmtime(f2))}"
-                            c2["geometricError"] = 0.0
-                            c2["children"] = []
-                            valid_c2.append(c2)
-                        c1["children"] = valid_c2
-                        if valid_c2:
-                            c1["geometricError"] = max(float(c1.get("geometricError") or 0.0), 8.0)
-                        else:
-                            c1["geometricError"] = 0.0
-                        valid_c1.append(c1)
-                    if valid_c1:
-                        root["children"] = valid_c1
-                        root["geometricError"] = max(float(root.get("geometricError") or 0.0), 24.0)
-                        ts["geometricError"] = max(float(ts.get("geometricError") or 0.0), float(root["geometricError"]))
-                    else:
-                        root["geometricError"] = 0.0
-                        root["children"] = []
-                else:
-                    # PIX4Dmatic Cesium octree: prune each octant branch at its first content node (100k-300k triangles per tile)
-                    def _prune_branch(node: dict, depth: int = 0) -> bool:
-                        c = node.get("content") or {}
-                        if isinstance(c, dict) and c.get("uri"):
-                            u_clean = c["uri"].split("?")[0]
-                            f_clean = os.path.join(base_dir, u_clean)
-                            if os.path.isfile(f_clean):
-                                c["uri"] = f"{u_clean}?v={int(os.path.getmtime(f_clean))}"
-                            node["geometricError"] = 0.0
-                            node["children"] = []
-                            return True
-                        if depth >= 2:
-                            node["children"] = []
-                            return False
-                        kept = []
-                        for ch in node.get("children") or []:
-                            if _prune_branch(ch, depth + 1):
-                                kept.append(ch)
-                        # Prioritize children with direct level-1 content so main 100k-300k triangle meshes stream first
-                        kept.sort(key=lambda x: 0 if isinstance(x.get("content"), dict) and x["content"].get("uri") else 1)
-                        node["children"] = kept
-                        return len(kept) > 0
 
-                    _prune_branch(root, 0)
+                def _normalize_node(node: dict, depth: int = 0) -> bool:
+                    if not isinstance(node, dict):
+                        return False
+                    c = node.get("content") or {}
+                    has_valid_content = False
+                    if isinstance(c, dict) and c.get("uri"):
+                        u_clean = c["uri"].split("?")[0]
+                        f_clean = os.path.join(base_dir, u_clean)
+                        if os.path.isfile(f_clean):
+                            c["uri"] = f"{u_clean}?v={int(os.path.getmtime(f_clean))}"
+                            has_valid_content = True
+                    raw_children = node.get("children") or []
+                    valid_children = []
+                    for ch in raw_children:
+                        if isinstance(ch, dict) and _normalize_node(ch, depth + 1):
+                            valid_children.append(ch)
+                    node["children"] = valid_children
+                    if valid_children:
+                        min_err = 24.0 if depth == 0 else max(0.15, 24.0 / (2.0 ** depth))
+                        node["geometricError"] = max(float(node.get("geometricError") or 0.0), min_err)
+                    else:
+                        node["geometricError"] = 0.0
+                    return has_valid_content or (len(valid_children) > 0)
+
+                _normalize_node(root, 0)
+                if root.get("children"):
+                    ts["geometricError"] = max(float(ts.get("geometricError") or 0.0), float(root.get("geometricError") or 24.0))
+                else:
+                    ts["geometricError"] = 0.0
                 raw_json = json.dumps(ts, separators=(",", ":")).encode("utf-8")
                 self._OPTIMIZED_TILESET_CACHE[ts_path] = (mtime, raw_json)
 
@@ -996,7 +958,7 @@ class GatheringScansHandler(CloudAndTunnelHandlerMixin, ServerWriteRoutesMixin, 
                         else:
                             def _walk_m(node: dict, depth: int = 0):
                                 _chs = [c for c in (node.get("children") or []) if isinstance(c, dict)]
-                                if _chs and depth < 2:
+                                if _chs and depth < 12:
                                     for _ch in _chs:
                                         _walk_m(_ch, depth + 1)
                                     return
@@ -2364,7 +2326,7 @@ class GatheringScansHandler(CloudAndTunnelHandlerMixin, ServerWriteRoutesMixin, 
                             else:
                                 def _walk_g_dl(node: dict, depth: int = 0):
                                     _chs = [c for c in (node.get("children") or []) if isinstance(c, dict)]
-                                    if _chs and depth < 2:
+                                    if _chs and depth < 12:
                                         for _ch in _chs:
                                             _walk_g_dl(_ch, depth + 1)
                                         return

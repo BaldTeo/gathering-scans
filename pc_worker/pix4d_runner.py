@@ -902,7 +902,7 @@ def _detect_scalable_mesh_max_lod(proj_dir: str, cap_for_obj_tiler: bool = True)
     for lvl in sorted_levels:
         lvl_tiles = by_level_count[lvl]
         lvl_mb = by_level_bytes.get(lvl, 0) / (1024.0 * 1024.0)
-        if cum_tiles + lvl_tiles <= 450 and cum_mb + lvl_mb <= 420.0:
+        if cum_tiles + lvl_tiles <= 2500 and cum_mb + lvl_mb <= 1800.0:
             chosen_lvl = lvl
             cum_tiles += lvl_tiles
             cum_mb += lvl_mb
@@ -1519,13 +1519,14 @@ def postprocess_obj_to_tileset(
     tiler = QuadtreeTiler(
         input_path=obj_path,
         output_dir=tileset_dir,
-        max_levels=2,
+        max_levels=9,
+        min_faces_to_split=180000,
         root_triangles=120000,
         root_texture_limit=2048,
-        level1_triangles=90000,
+        level1_triangles=100000,
         level1_texture_limit=2048,
         level2_triangles=250000,
-        leaf_max_triangles=250000,
+        leaf_max_triangles=None,
         texture_quality=8,
         texture_limit=active_tex_limit,
         high_compression=True,

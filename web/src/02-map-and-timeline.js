@@ -2054,9 +2054,16 @@
       }
       if (tr.downloadQueue) tr.downloadQueue.maxJobs = isIOS ? 3 : isMobileOrTab ? 4 : 12;
       if (tr.parseQueue) tr.parseQueue.maxJobs = isIOS ? 1 : isMobileOrTab ? 2 : 6;
-      if (isMobileOrTab && tr.lruCache) {
-        tr.lruCache.maxSize = isIOS ? 24 : 48;
-        tr.lruCache.minSize = isIOS ? 10 : 16;
+      if (tr.lruCache) {
+        if (isMobileOrTab) {
+          tr.lruCache.maxSize = isIOS ? 24 : 48;
+          tr.lruCache.minSize = isIOS ? 10 : 16;
+        } else {
+          tr.lruCache.maxSize = 4000;
+          tr.lruCache.minSize = 2500;
+          tr.lruCache.maxBytesSize = 12 * 1024 * 1024 * 1024;
+          tr.lruCache.minBytesSize = 8 * 1024 * 1024 * 1024;
+        }
       }
       previewThree.modelPivot.add(tr.group);
       previewThree.tilesRenderer = tr;

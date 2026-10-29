@@ -802,9 +802,16 @@
     tr.errorTarget = isMobOrIOS ? 16.0 : 6.0;
     if (tr.downloadQueue) tr.downloadQueue.maxJobs = isMobOrIOS ? 4 : 12;
     if (tr.parseQueue) tr.parseQueue.maxJobs = isMobOrIOS ? 2 : 6;
-    if (isMobOrIOS && tr.lruCache) {
-      tr.lruCache.maxSize = 48;
-      tr.lruCache.minSize = 16;
+    if (tr.lruCache) {
+      if (isMobOrIOS) {
+        tr.lruCache.maxSize = 48;
+        tr.lruCache.minSize = 16;
+      } else {
+        tr.lruCache.maxSize = 4000;
+        tr.lruCache.minSize = 2500;
+        tr.lruCache.maxBytesSize = 12 * 1024 * 1024 * 1024;
+        tr.lruCache.minBytesSize = 8 * 1024 * 1024 * 1024;
+      }
     }
     side.alignGroup.add(tr.group);
     side.tilesRenderer = tr;
