@@ -3520,26 +3520,71 @@
     }
   }
 
-  function applyScanLodMode(mode, silent = false) {
-    const validMode = mode === "rough" || mode === "auto" || mode === "max" ? mode : "auto";
-    STATE.scanLodMode = validMode;
+  function applyPreviewLodMode(mode, silent = false) {
+    const validMode = mode === "rough" || mode === "auto" || mode === "max" ? mode : "rough";
+    STATE.previewLodMode = validMode;
     try {
-      localStorage.setItem("gs_scan_lod_mode", validMode);
+      localStorage.setItem("gs_preview_lod_mode_v2", validMode);
     } catch (_e) {}
 
-    document.querySelectorAll("#studioLodModeSwitcher [data-lod-mode], #previewLodModeSwitcher [data-lod-mode], #settingsLodModeSwitcher [data-lod-mode]").forEach((btn) => {
+    document.querySelectorAll("#previewLodModeSwitcher [data-lod-mode]").forEach((btn) => {
       btn.classList.toggle("active", btn.dataset.lodMode === validMode);
     });
-    const selStudio = document.getElementById("selStudioLodMode");
-    if (selStudio && selStudio.value !== validMode) selStudio.value = validMode;
     const selPreview = document.getElementById("selPreviewLodMode");
     if (selPreview && selPreview.value !== validMode) selPreview.value = validMode;
 
     const isIOS = typeof isIOSOrIPadDevice === "function" && isIOSOrIPadDevice();
     const isMobOrTab = isIOS || (typeof isMobileOrTabletDevice === "function" && isMobileOrTabletDevice());
     const isLocalHost = window.location.hostname === "127.0.0.1" || window.location.hostname === "localhost";
-    const targetErr = validMode === "rough" ? 1e9 : validMode === "max" ? 0.8 : isMobOrTab ? 10.0 : 2.0;
     const previewTargetErr = validMode === "rough" ? 1e9 : validMode === "max" ? 1.2 : isMobOrTab ? 18.0 : 12.0;
+
+    if (typeof previewThree !== "undefined" && previewThree) {
+      if (
+        validMode !== "rough" &&
+        String(previewThree._loadedTilesetUrl || "").includes("preview_tileset.json") &&
+        STATE.activeView === "map" &&
+        STATE.activeScanId &&
+        typeof loadScanIntoPreview === "function"
+      ) {
+        loadScanIntoPreview(STATE.activeScanId, true);
+      } else if (previewThree.tilesRenderer) {
+        previewThree.tilesRenderer.errorTarget = previewTargetErr;
+        if (previewThree.tilesRenderer.downloadQueue) {
+          previewThree.tilesRenderer.downloadQueue.maxJobs = isIOS ? 3 : isMobOrTab ? 4 : isLocalHost ? 8 : 4;
+        }
+        previewThree.camera?.updateMatrixWorld();
+        previewThree.tilesRenderer.update();
+        if (previewThree.renderer && previewThree.scene && previewThree.camera) {
+          previewThree.renderer.render(previewThree.scene, previewThree.camera);
+        }
+      }
+    }
+
+    if (!silent && typeof showToast === "function") {
+      const labelZh = validMode === "rough" ? "粗模 (極速預覽)" : validMode === "max" ? "精細 (高清)" : "自動 (漸進細化)";
+      const labelEn = validMode === "rough" ? "Rough (Fast Preview)" : validMode === "max" ? "Max Detail" : "Auto Progressive";
+      showToast(tr(`預覽畫質已切換至：${labelZh}`, `Preview Quality set to: ${labelEn}`));
+    }
+  }
+  window.applyPreviewLodMode = applyPreviewLodMode;
+
+  function applyScanLodMode(mode, silent = false) {
+    const validMode = mode === "rough" || mode === "auto" || mode === "max" ? mode : "auto";
+    STATE.scanLodMode = validMode;
+    try {
+      localStorage.setItem("gs_studio_lod_mode_v2", validMode);
+    } catch (_e) {}
+
+    document.querySelectorAll("#studioLodModeSwitcher [data-lod-mode], #settingsLodModeSwitcher [data-lod-mode]").forEach((btn) => {
+      btn.classList.toggle("active", btn.dataset.lodMode === validMode);
+    });
+    const selStudio = document.getElementById("selStudioLodMode");
+    if (selStudio && selStudio.value !== validMode) selStudio.value = validMode;
+
+    const isIOS = typeof isIOSOrIPadDevice === "function" && isIOSOrIPadDevice();
+    const isMobOrTab = isIOS || (typeof isMobileOrTabletDevice === "function" && isMobileOrTabletDevice());
+    const isLocalHost = window.location.hostname === "127.0.0.1" || window.location.hostname === "localhost";
+    const targetErr = validMode === "rough" ? 1e9 : validMode === "max" ? 0.8 : isMobOrTab ? 10.0 : 2.0;
 
     if (studioThree) {
       if (
@@ -3566,32 +3611,10 @@
       }
     }
 
-    if (typeof previewThree !== "undefined" && previewThree) {
-      if (
-        validMode !== "rough" &&
-        String(previewThree._loadedTilesetUrl || "").includes("preview_tileset.json") &&
-        STATE.activeView === "map" &&
-        STATE.activeScanId &&
-        typeof loadScanIntoPreview === "function"
-      ) {
-        loadScanIntoPreview(STATE.activeScanId, true);
-      } else if (previewThree.tilesRenderer) {
-        previewThree.tilesRenderer.errorTarget = previewTargetErr;
-        if (previewThree.tilesRenderer.downloadQueue) {
-          previewThree.tilesRenderer.downloadQueue.maxJobs = isIOS ? 3 : isMobOrTab ? 4 : isLocalHost ? 8 : 4;
-        }
-        previewThree.camera?.updateMatrixWorld();
-        previewThree.tilesRenderer.update();
-        if (previewThree.renderer && previewThree.scene && previewThree.camera) {
-          previewThree.renderer.render(previewThree.scene, previewThree.camera);
-        }
-      }
-    }
-
     if (!silent && typeof showToast === "function") {
-      const labelZh = validMode === "rough" ? "粗模 (L0 極速)" : validMode === "max" ? "精細 (L2 高清)" : "自動 (L0→L1→L2 漸進)";
-      const labelEn = validMode === "rough" ? "Rough (L0 Fast)" : validMode === "max" ? "Max Detail (L2)" : "Auto Progressive (L0→L1→L2)";
-      showToast(tr(`3D 畫質已切換至：${labelZh}`, `3D Quality set to: ${labelEn}`));
+      const labelZh = validMode === "rough" ? "粗模 (L0 極速)" : validMode === "max" ? "精細 (最高解析度)" : "自動 (漸進細化)";
+      const labelEn = validMode === "rough" ? "Rough (Fast)" : validMode === "max" ? "Max Detail" : "Auto Progressive";
+      showToast(tr(`3D 工作坊畫質已切換至：${labelZh}`, `Studio 3D Quality set to: ${labelEn}`));
     }
   }
   window.applyScanLodMode = applyScanLodMode;
@@ -3599,8 +3622,18 @@
   if (typeof document !== "undefined" && !window.__gsLodSwitcherBound) {
     window.__gsLodSwitcherBound = true;
     document.addEventListener("click", (ev) => {
+      const previewBtn = ev.target && typeof ev.target.closest === "function"
+        ? ev.target.closest("#previewLodModeSwitcher [data-lod-mode]")
+        : null;
+      if (previewBtn) {
+        ev.preventDefault();
+        ev.stopPropagation();
+        const mode = previewBtn.getAttribute("data-lod-mode");
+        if (mode) applyPreviewLodMode(mode, false);
+        return;
+      }
       const btn = ev.target && typeof ev.target.closest === "function"
-        ? ev.target.closest("#studioLodModeSwitcher [data-lod-mode], #previewLodModeSwitcher [data-lod-mode], #settingsLodModeSwitcher [data-lod-mode]")
+        ? ev.target.closest("#studioLodModeSwitcher [data-lod-mode], #settingsLodModeSwitcher [data-lod-mode]")
         : null;
       if (!btn) return;
       ev.preventDefault();

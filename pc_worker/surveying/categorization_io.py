@@ -1993,6 +1993,453 @@ class CategorizationIoMixin:
                     pass
         return None
 
+    def _render_leaf_glb_uv_zbuffer_ortho(
+        self, scan: Dict[str, Any], ce: float, cn: float, ch: float
+    ) -> Optional[Tuple[np.ndarray, float, float, float, float, int, int, float]]:
+        """
+        High-resolution True Z-Buffered UV-Textured Nadir Orthomosaic renderer.
+        Streams leaf .glb tiles (up to 80 leaf tiles), subdivides triangles + UVs down to sub-pixel
+        resolution, samples full 4K textures directly, and composites via a true elevation Z-buffer.
+        """
+        glb_files = self._collect_scan_glb_files(scan, max_tiles=56)
+        if not glb_files:
+            return None
+
+        pdir = scan.get("project_dir") or ""
+        off_x, off_y, off_z = 0.0, 0.0, 0.0
+        off_loaded = False
+        if pdir and os.path.isdir(pdir):
+            for cand_off in (
+                os.path.join(pdir, "offset.xyz"),
+                os.path.join(pdir, "exports", "obj_mesh", "offset.xyz"),
+            ):
+                if os.path.isfile(cand_off):
+                    try:
+                        with open(cand_off, "r", encoding="utf-8", errors="ignore") as f:
+                            parts = f.readline().strip().split()
+                            if len(parts) >= 3:
+                                off_x, off_y, off_z = float(parts[0]), float(parts[1]), float(parts[2])
+                                off_loaded = True
+                                break
+                    except Exception:
+                        pass
+
+        import io
+        import struct
+
+        if GC_SCAN_OPTIMIZER_DIR not in sys.path:
+            sys.path.append(GC_SCAN_OPTIMIZER_DIR)
+        from optimizer.geometry_optimizer import extract_glb_64bit_origin_to_local
+
+        def _parse_glb_textured_primitives(gpath: str):
+            try:
+                with open(gpath, "rb") as gf:
+                    raw_bytes = gf.read()
+            except Exception:
+                return []
+            if len(raw_bytes) < 28 or raw_bytes[:4] != b"glTF":
+                return []
+            orig_shift = (0.0, 0.0, 0.0)
+            j_len_0, j_type_0 = struct.unpack_from("<I4s", raw_bytes, 12)
+            if j_type_0 == b"JSON" and b"EXT_meshopt_compression" in raw_bytes[20 : 20 + j_len_0] and os.path.isfile(GLTFPACK_EXE):
+                loc_b, orig_shift = extract_glb_64bit_origin_to_local(raw_bytes)
+                fd_in, tmp_in = tempfile.mkstemp(suffix=".glb")
+                fd_out, tmp_out = tempfile.mkstemp(suffix=".glb")
+                os.close(fd_out)
+                try:
+                    with os.fdopen(fd_in, "wb") as fi:
+                        fi.write(loc_b)
+                    subprocess.run(
+                        [GLTFPACK_EXE, "-i", tmp_in, "-o", tmp_out, "-noq"],
+                        capture_output=True,
+                        timeout=20,
+                        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000) if os.name == "nt" else 0,
+                    )
+                    if os.path.isfile(tmp_out) and os.path.getsize(tmp_out) > 28:
+                        with open(tmp_out, "rb") as fo:
+                            raw_bytes = fo.read()
+                except Exception:
+                    pass
+                finally:
+                    for p_rm in (tmp_in, tmp_out):
+                        if p_rm and os.path.exists(p_rm):
+                            try:
+                                os.remove(p_rm)
+                            except OSError:
+                                pass
+            if len(raw_bytes) < 28 or raw_bytes[:4] != b"glTF":
+                return []
+            j_len, j_type = struct.unpack_from("<I4s", raw_bytes, 12)
+            if j_type != b"JSON":
+                return []
+            b_off = 20 + j_len
+            if b_off + 8 > len(raw_bytes):
+                return []
+            b_len, b_type = struct.unpack_from("<I4s", raw_bytes, b_off)
+            if b_type != b"BIN\x00":
+                return []
+            try:
+                j = json.loads(raw_bytes[20 : 20 + j_len].decode("utf-8"))
+            except Exception:
+                return []
+            acc_list = j.get("accessors") or []
+            bv_list = j.get("bufferViews") or []
+            meshes_list = j.get("meshes") or []
+            nodes_list = j.get("nodes") or []
+            images_list = j.get("images") or []
+            textures_list = j.get("textures") or []
+            materials_list = j.get("materials") or []
+            blob = memoryview(raw_bytes)[b_off + 8 : b_off + 8 + b_len]
+
+            pil_images: Dict[int, np.ndarray] = {}
+            if images_list and Image is not None:
+                for img_idx, img_meta in enumerate(images_list):
+                    if "bufferView" in img_meta:
+                        try:
+                            ibv = bv_list[img_meta["bufferView"]]
+                            ioff = int(ibv.get("byteOffset", 0))
+                            ilen = int(ibv["byteLength"])
+                            raw_img = bytes(blob[ioff : ioff + ilen])
+                            im = Image.open(io.BytesIO(raw_img)).convert("RGB")
+                            pil_images[img_idx] = np.asarray(im, dtype=np.uint8)
+                        except Exception:
+                            pass
+
+            def _node_mat4(nd: Dict[str, Any]) -> np.ndarray:
+                if isinstance(nd.get("matrix"), list) and len(nd["matrix"]) == 16:
+                    return np.array([float(x) for x in nd["matrix"][:16]], dtype=np.float64).reshape((4, 4), order="F")
+                m = np.eye(4, dtype=np.float64)
+                s = nd.get("scale") or [1.0, 1.0, 1.0]
+                S = np.diag([float(s[0]), float(s[1]), float(s[2])])
+                q = nd.get("rotation")
+                if isinstance(q, list) and len(q) == 4:
+                    qx, qy, qz, qw = float(q[0]), float(q[1]), float(q[2]), float(q[3])
+                    nq = math.sqrt(qx * qx + qy * qy + qz * qz + qw * qw)
+                    if nq > 1e-12:
+                        qx, qy, qz, qw = qx / nq, qy / nq, qz / nq, qw / nq
+                    R = np.array(
+                        [
+                            [1.0 - 2.0 * (qy * qy + qz * qz), 2.0 * (qx * qy - qw * qz), 2.0 * (qx * qz + qw * qy)],
+                            [2.0 * (qx * qy + qw * qz), 1.0 - 2.0 * (qx * qx + qz * qz), 2.0 * (qy * qz - qw * qx)],
+                            [2.0 * (qx * qz - qw * qy), 2.0 * (qy * qz + qw * qx), 1.0 - 2.0 * (qx * qx + qy * qy)],
+                        ],
+                        dtype=np.float64,
+                    )
+                else:
+                    R = np.eye(3, dtype=np.float64)
+                m[:3, :3] = R @ S
+                t = nd.get("translation") or [0.0, 0.0, 0.0]
+                m[:3, 3] = [float(t[0]), float(t[1]), float(t[2])]
+                return m
+
+            out_recs = []
+
+            def _read_mesh_prims(m_idx: int, m_tf: np.ndarray):
+                if not (0 <= m_idx < len(meshes_list)):
+                    return
+                m_obj = meshes_list[m_idx]
+                for prim in m_obj.get("primitives") or []:
+                    if prim.get("mode", 4) != 4:
+                        continue
+                    attrs = prim.get("attributes") or {}
+                    if "POSITION" not in attrs:
+                        continue
+                    pos_acc = acc_list[attrs["POSITION"]]
+                    if "bufferView" not in pos_acc:
+                        continue
+                    pos_bv = bv_list[pos_acc["bufferView"]]
+                    if "EXT_meshopt_compression" in (pos_bv.get("extensions") or {}):
+                        continue
+                    ctype = pos_acc.get("componentType")
+                    cnt = int(pos_acc["count"])
+                    p_off = int(pos_bv.get("byteOffset", 0)) + int(pos_acc.get("byteOffset", 0))
+                    if ctype == 5126:
+                        b_stride = int(pos_bv.get("byteStride") or 12)
+                        if b_stride == 12:
+                            pos = np.frombuffer(blob, dtype=np.float32, count=cnt * 3, offset=p_off).reshape(-1, 3).astype(np.float64)
+                        else:
+                            raw_u8 = np.frombuffer(blob, dtype=np.uint8, count=cnt * b_stride, offset=p_off).reshape(cnt, b_stride)
+                            pos = np.frombuffer(raw_u8[:, :12].tobytes(), dtype=np.float32).reshape(-1, 3).astype(np.float64)
+                    elif ctype in (5122, 5123):
+                        dt = np.int16 if ctype == 5122 else np.uint16
+                        b_stride = int(pos_bv.get("byteStride") or 6)
+                        raw_u8 = np.frombuffer(blob, dtype=np.uint8, count=cnt * b_stride, offset=p_off).reshape(cnt, b_stride)
+                        pos = np.frombuffer(raw_u8[:, :6].tobytes(), dtype=dt).reshape(-1, 3).astype(np.float64)
+                        if pos_acc.get("normalized"):
+                            pos = pos / (32767.0 if ctype == 5122 else 65535.0)
+                    else:
+                        continue
+                    pos = (pos @ m_tf[:3, :3].T) + m_tf[:3, 3]
+                    if orig_shift != (0.0, 0.0, 0.0):
+                        pos[:, 0] += orig_shift[0]
+                        pos[:, 1] += orig_shift[1]
+                        pos[:, 2] += orig_shift[2]
+
+                    if "indices" in prim:
+                        idx_acc = acc_list[prim["indices"]]
+                        if "bufferView" not in idx_acc:
+                            continue
+                        idx_bv = bv_list[idx_acc["bufferView"]]
+                        if "EXT_meshopt_compression" in (idx_bv.get("extensions") or {}):
+                            continue
+                        i_off = int(idx_bv.get("byteOffset", 0)) + int(idx_acc.get("byteOffset", 0))
+                        icnt = int(idx_acc["count"])
+                        ictype = idx_acc.get("componentType")
+                        idtype = np.uint32 if ictype == 5125 else (np.uint16 if ictype == 5123 else np.uint8)
+                        idx_flat = np.frombuffer(blob, dtype=idtype, count=icnt, offset=i_off).astype(np.int32)
+                        idx = idx_flat[: icnt - (icnt % 3)].reshape(-1, 3)
+                    else:
+                        idx = np.arange(cnt - (cnt % 3), dtype=np.int32).reshape(-1, 3)
+
+                    if len(idx) == 0:
+                        continue
+
+                    tex_u8 = None
+                    uv_offset = np.array([0.0, 0.0], dtype=np.float32)
+                    uv_scale = np.array([1.0, 1.0], dtype=np.float32)
+                    mat_idx = prim.get("material")
+                    if mat_idx is not None and 0 <= int(mat_idx) < len(materials_list):
+                        mat_obj = materials_list[int(mat_idx)]
+                        pbr = mat_obj.get("pbrMetallicRoughness") or {}
+                        bct = pbr.get("baseColorTexture") or mat_obj.get("emissiveTexture") or {}
+                        if isinstance(bct, dict) and "index" in bct:
+                            khr_tf = (bct.get("extensions") or {}).get("KHR_texture_transform")
+                            if isinstance(khr_tf, dict):
+                                if isinstance(khr_tf.get("offset"), list) and len(khr_tf["offset"]) >= 2:
+                                    uv_offset = np.array([float(khr_tf["offset"][0]), float(khr_tf["offset"][1])], dtype=np.float32)
+                                if isinstance(khr_tf.get("scale"), list) and len(khr_tf["scale"]) >= 2:
+                                    uv_scale = np.array([float(khr_tf["scale"][0]), float(khr_tf["scale"][1])], dtype=np.float32)
+                            t_idx = int(bct["index"])
+                            if 0 <= t_idx < len(textures_list):
+                                t_obj = textures_list[t_idx]
+                                src_idx = t_obj.get("source")
+                                if src_idx is not None and int(src_idx) in pil_images:
+                                    tex_u8 = pil_images[int(src_idx)]
+                    if tex_u8 is None and pil_images:
+                        tex_u8 = next(iter(pil_images.values()))
+
+                    uv_g = None
+                    if "TEXCOORD_0" in attrs and tex_u8 is not None:
+                        uv_acc = acc_list[attrs["TEXCOORD_0"]]
+                        if "bufferView" in uv_acc:
+                            uv_bv = bv_list[uv_acc["bufferView"]]
+                            if "EXT_meshopt_compression" not in (uv_bv.get("extensions") or {}):
+                                u_off = int(uv_bv.get("byteOffset", 0)) + int(uv_acc.get("byteOffset", 0))
+                                uctype = uv_acc.get("componentType")
+                                if uctype == 5126:
+                                    ub_stride = int(uv_bv.get("byteStride") or 8)
+                                    if ub_stride == 8:
+                                        uv_g = np.frombuffer(blob, dtype=np.float32, count=cnt * 2, offset=u_off).reshape(-1, 2)
+                                    else:
+                                        ru8 = np.frombuffer(blob, dtype=np.uint8, count=cnt * ub_stride, offset=u_off).reshape(cnt, ub_stride)
+                                        uv_g = np.frombuffer(ru8[:, :8].tobytes(), dtype=np.float32).reshape(-1, 2)
+                                elif uctype == 5123:
+                                    ub_stride = int(uv_bv.get("byteStride") or 4)
+                                    ru8 = np.frombuffer(blob, dtype=np.uint8, count=cnt * ub_stride, offset=u_off).reshape(cnt, ub_stride)
+                                    uv_g = np.frombuffer(ru8[:, :4].tobytes(), dtype=np.uint16).reshape(-1, 2).astype(np.float32) / 65535.0
+                    if uv_g is not None:
+                        uv_g = uv_g * uv_scale + uv_offset
+                    out_recs.append((pos, idx, uv_g, tex_u8))
+
+            if nodes_list:
+                scenes = j.get("scenes") or []
+                s_idx = int(j.get("scene", 0)) if scenes else 0
+                root_idxs = (
+                    list(scenes[s_idx].get("nodes") or [])
+                    if (0 <= s_idx < len(scenes) and scenes[s_idx].get("nodes"))
+                    else [0]
+                )
+
+                def _walk(n_idx: int, m_parent: np.ndarray):
+                    if not (0 <= int(n_idx) < len(nodes_list)):
+                        return
+                    nd = nodes_list[int(n_idx)]
+                    m_cur = m_parent @ _node_mat4(nd)
+                    if "mesh" in nd and nd["mesh"] is not None:
+                        _read_mesh_prims(int(nd["mesh"]), m_cur)
+                    for ch_i in nd.get("children") or []:
+                        _walk(int(ch_i), m_cur)
+
+                for ri in root_idxs:
+                    _walk(int(ri), np.eye(4, dtype=np.float64))
+            else:
+                for mi in range(len(meshes_list)):
+                    _read_mesh_prims(mi, np.eye(4, dtype=np.float64))
+            return out_recs
+
+        # Pass 1: Determine exact TWD97 bounding box across all collected leaf tiles (parallel meshopt decode)
+        from concurrent.futures import ThreadPoolExecutor
+
+        e_min, e_max = float("inf"), float("-inf")
+        n_min, n_max = float("inf"), float("-inf")
+        valid_tile_records = []
+
+        with ThreadPoolExecutor(max_workers=min(8, max(1, len(glb_files)))) as pool:
+            parsed_lists = list(pool.map(_parse_glb_textured_primitives, glb_files))
+
+        for recs in parsed_lists:
+            if not recs:
+                continue
+            for verts, faces, uvs, tex_arr in recs:
+                if len(verts) == 0 or len(faces) == 0:
+                    continue
+                v = verts.astype(np.float64, copy=True)
+                max_idx = int(faces.max()) if len(faces) > 0 else -1
+                if max_idx >= len(v):
+                    continue
+                if abs(v[:, 0].mean()) < 50000.0:
+                    if off_loaded:
+                        v[:, 0] += off_x
+                        v[:, 1] += off_y
+                        v[:, 2] += off_z
+                    else:
+                        v[:, 0] += ce
+                        v[:, 1] += cn
+                        v[:, 2] += ch
+                e_min = min(e_min, float(v[:, 0].min()))
+                e_max = max(e_max, float(v[:, 0].max()))
+                n_min = min(n_min, float(v[:, 1].min()))
+                n_max = max(n_max, float(v[:, 1].max()))
+                valid_tile_records.append((v.astype(np.float32), faces, uvs, tex_arr))
+
+        if not valid_tile_records or not math.isfinite(e_min) or not math.isfinite(n_min):
+            return None
+
+        span_e = max(e_max - e_min, 4.0)
+        span_n = max(n_max - n_min, 4.0)
+        max_span = max(span_e, span_n)
+
+        # High-definition ground sampling resolution (up to 1152 px along longest axis)
+        res = float(np.clip(max_span / 1080.0, 0.03, 0.30))
+        nx = int(np.clip(math.ceil(span_e / res) + 1, 64, 1152))
+        ny = int(np.clip(math.ceil(span_n / res) + 1, 64, 1152))
+        res_e = span_e / max(1, nx - 1)
+        res_n = span_n / max(1, ny - 1)
+
+        z_buf = np.full((ny, nx), -1e9, dtype=np.float32)
+        rgb_buf = np.zeros((ny, nx, 3), dtype=np.uint8)
+
+        for v, faces, uvs, tex_arr in valid_tile_records:
+            tv0 = v[faces[:, 0]]
+            tv1 = v[faces[:, 1]]
+            tv2 = v[faces[:, 2]]
+
+            # Convert E, N to continuous pixel coordinates [0, nx-1], [0, ny-1]
+            p0 = np.empty_like(tv0)
+            p1 = np.empty_like(tv1)
+            p2 = np.empty_like(tv2)
+            p0[:, 0] = (tv0[:, 0] - e_min) / res_e
+            p0[:, 1] = (tv0[:, 1] - n_min) / res_n
+            p0[:, 2] = tv0[:, 2]
+            p1[:, 0] = (tv1[:, 0] - e_min) / res_e
+            p1[:, 1] = (tv1[:, 1] - n_min) / res_n
+            p1[:, 2] = tv1[:, 2]
+            p2[:, 0] = (tv2[:, 0] - e_min) / res_e
+            p2[:, 1] = (tv2[:, 1] - n_min) / res_n
+            p2[:, 2] = tv2[:, 2]
+
+            if uvs is not None and len(uvs) == len(v):
+                tuv0 = uvs[faces[:, 0]].astype(np.float32, copy=True)
+                tuv1 = uvs[faces[:, 1]].astype(np.float32, copy=True)
+                tuv2 = uvs[faces[:, 2]].astype(np.float32, copy=True)
+                # Prevent interpolating across shelf-atlas patch boundaries when adjacent cell vertices are welded
+                uv_d01 = np.hypot(tuv1[:, 0] - tuv0[:, 0], tuv1[:, 1] - tuv0[:, 1])
+                uv_d12 = np.hypot(tuv2[:, 0] - tuv1[:, 0], tuv2[:, 1] - tuv1[:, 1])
+                uv_d20 = np.hypot(tuv0[:, 0] - tuv2[:, 0], tuv0[:, 1] - tuv2[:, 1])
+                seam_mask = np.maximum(np.maximum(uv_d01, uv_d12), uv_d20) > 0.065
+                if np.any(seam_mask):
+                    tuv1[seam_mask] = tuv0[seam_mask]
+                    tuv2[seam_mask] = tuv0[seam_mask]
+            else:
+                tuv0 = np.zeros((len(faces), 2), dtype=np.float32)
+                tuv1 = np.zeros((len(faces), 2), dtype=np.float32)
+                tuv2 = np.zeros((len(faces), 2), dtype=np.float32)
+
+            # Vectorized 1-to-4 midpoint subdivision until triangle edges are <= 0.85 pixels
+            for _sub_pass in range(6):
+                d01 = np.hypot(p1[:, 0] - p0[:, 0], p1[:, 1] - p0[:, 1])
+                d12 = np.hypot(p2[:, 0] - p1[:, 0], p2[:, 1] - p1[:, 1])
+                d20 = np.hypot(p0[:, 0] - p2[:, 0], p0[:, 1] - p2[:, 1])
+                max_edge = np.maximum(np.maximum(d01, d12), d20)
+                big = max_edge > 0.85
+                if not np.any(big) or len(p0) > 420000:
+                    break
+                small = ~big
+                bp0, bp1, bp2 = p0[big], p1[big], p2[big]
+                bu0, bu1, bu2 = tuv0[big], tuv1[big], tuv2[big]
+                m01 = 0.5 * (bp0 + bp1)
+                m12 = 0.5 * (bp1 + bp2)
+                m20 = 0.5 * (bp2 + bp0)
+                mu01 = 0.5 * (bu0 + bu1)
+                mu12 = 0.5 * (bu1 + bu2)
+                mu20 = 0.5 * (bu2 + bu0)
+
+                p0 = np.concatenate([p0[small], bp0, m01, m20, m01], axis=0)
+                p1 = np.concatenate([p1[small], m01, bp1, m12, m12], axis=0)
+                p2 = np.concatenate([p2[small], m20, m12, bp2, m20], axis=0)
+                tuv0 = np.concatenate([tuv0[small], bu0, mu01, mu20, mu01], axis=0)
+                tuv1 = np.concatenate([tuv1[small], mu01, bu1, mu12, mu12], axis=0)
+                tuv2 = np.concatenate([tuv2[small], mu20, mu12, bu2, mu20], axis=0)
+
+            pc = (p0 + p1 + p2) * (1.0 / 3.0)
+            uvc = (tuv0 + tuv1 + tuv2) * (1.0 / 3.0)
+            pts = np.concatenate([pc, p0, p1, p2], axis=0)
+            pts_uv = np.concatenate([uvc, tuv0, tuv1, tuv2], axis=0)
+
+            if tex_arr is not None and tex_arr.ndim == 3 and tex_arr.shape[0] > 0 and tex_arr.shape[1] > 0:
+                th, tw = tex_arr.shape[0], tex_arr.shape[1]
+                u_wrapped = np.mod(pts_uv[:, 0], 1.0)
+                v_wrapped = np.mod(pts_uv[:, 1], 1.0)
+                tx = np.clip((u_wrapped * (tw - 1)).astype(np.int32), 0, tw - 1)
+                ty = np.clip((v_wrapped * (th - 1)).astype(np.int32), 0, th - 1)
+                cols = tex_arr[ty, tx, :3]
+            else:
+                cols = np.full((len(pts), 3), 185, dtype=np.uint8)
+
+            iz = pts[:, 2]
+            order = np.argsort(iz, kind="mergesort")
+            px_s = pts[order, 0]
+            py_s = pts[order, 1]
+            iz_s = iz[order]
+            cols_s = cols[order]
+
+            ix0 = np.clip(np.floor(px_s).astype(np.int32), 0, nx - 1)
+            iy0 = np.clip(np.floor(py_s).astype(np.int32), 0, ny - 1)
+            ix1 = np.clip(np.ceil(px_s).astype(np.int32), 0, nx - 1)
+            iy1 = np.clip(np.ceil(py_s).astype(np.int32), 0, ny - 1)
+
+            for iy_c, ix_c in ((iy0, ix0), (iy0, ix1), (iy1, ix0), (iy1, ix1)):
+                np.maximum.at(z_buf, (iy_c, ix_c), iz_s)
+                win_mask = iz_s >= (z_buf[iy_c, ix_c] - 0.025)
+                rgb_buf[iy_c[win_mask], ix_c[win_mask]] = cols_s[win_mask]
+
+        has_pix = z_buf > -1e8
+        if not np.any(has_pix):
+            return None
+
+        from scipy.ndimage import binary_closing, binary_erosion, maximum_filter
+
+        # Eliminate any 1px see-through cracks where floor beneath a roof/dome bled through
+        z_env = maximum_filter(z_buf, size=3)
+        upper_valid = has_pix & (z_buf >= z_env - 0.55)
+        occ_closed = binary_closing(has_pix, structure=np.ones((3, 3), dtype=bool))
+        pinhole = (~upper_valid) & occ_closed
+        if np.any(pinhole) and np.any(upper_valid) and not np.all(upper_valid):
+            _, nearest_idx = distance_transform_edt(~upper_valid, return_indices=True)
+            for ch_i in range(3):
+                plane = rgb_buf[:, :, ch_i]
+                plane[pinhole] = plane[nearest_idx[0][pinhole], nearest_idx[1][pinhole]]
+
+        final_rgba = np.zeros((ny, nx, 4), dtype=np.uint8)
+        final_rgba[:, :, :3] = rgb_buf
+        alpha = np.where(occ_closed, 255, 0).astype(np.uint8)
+        inner_occ = binary_erosion(occ_closed, structure=np.ones((3, 3), dtype=bool))
+        edge_ring = occ_closed & (~inner_occ)
+        alpha[edge_ring] = 215
+        final_rgba[:, :, 3] = alpha
+        final_rgba = np.flipud(final_rgba)
+        return final_rgba, e_min, e_max, n_min, n_max, nx, ny, res
+
     def get_or_generate_true_nadir_ortho(
         self, scan_id: str, force: bool = False
     ) -> Optional[Dict[str, Any]]:
@@ -2035,137 +2482,137 @@ class CategorizationIoMixin:
             from PIL import ImageDraw
             from pc_worker.surveying.dsm_and_volume import twd97_to_wgs84
 
-            mesh_data = self._load_scan_textured_triangles_twd97(scan, ce, cn, ch)
-            v0 = mesh_data["v0"]
-            v1 = mesh_data["v1"]
-            v2 = mesh_data["v2"]
-            centroids = mesh_data["centroids"]
-            area_2d = mesh_data["area_2d"]
-            rgb = mesh_data["rgb"]
-
-            if len(centroids) == 0:
-                return None
-
-            base_e = np.concatenate([v0[:, 0], v1[:, 0], v2[:, 0], centroids[:, 0]])
-            base_n = np.concatenate([v0[:, 1], v1[:, 1], v2[:, 1], centroids[:, 1]])
-            e_min, e_max = float(base_e.min()), float(base_e.max())
-            n_min, n_max = float(base_n.min()), float(base_n.max())
-            span_e = max(e_max - e_min, 4.0)
-            span_n = max(n_max - n_min, 4.0)
-            max_span = max(span_e, span_n)
-
-            res = float(np.clip(max_span / 720.0, 0.08, 0.45))
-            nx = int(np.clip(math.ceil(span_e / res) + 1, 32, 960))
-            ny = int(np.clip(math.ceil(span_n / res) + 1, 32, 960))
-            res_e = span_e / max(1, nx - 1)
-            res_n = span_n / max(1, ny - 1)
-
-            # 1. Base polygon pass for medium/large triangles so coarse triangles have zero internal gaps
-            poly_img = Image.new("RGBA", (nx, ny), (0, 0, 0, 0))
-            tri_span_e = np.maximum(np.maximum(v0[:, 0], v1[:, 0]), v2[:, 0]) - np.minimum(np.minimum(v0[:, 0], v1[:, 0]), v2[:, 0])
-            tri_span_n = np.maximum(np.maximum(v0[:, 1], v1[:, 1]), v2[:, 1]) - np.minimum(np.minimum(v0[:, 1], v1[:, 1]), v2[:, 1])
-            coarse_mask = (tri_span_e >= res_e * 1.35) | (tri_span_n >= res_n * 1.35)
-            if np.any(coarse_mask):
-                c_idx = np.where(coarse_mask)[0]
-                if len(c_idx) > 85000:
-                    # Keep the largest / highest-priority coarse triangles if mesh is huge
-                    top_k = np.argsort(area_2d[c_idx])[-85000:]
-                    c_idx = c_idx[top_k]
-                c_order = c_idx[np.argsort(centroids[c_idx, 2])]
-                drw = ImageDraw.Draw(poly_img)
-                x0_arr = ((v0[c_order, 0] - e_min) / res_e).astype(np.float32)
-                y0_arr = ((v0[c_order, 1] - n_min) / res_n).astype(np.float32)
-                x1_arr = ((v1[c_order, 0] - e_min) / res_e).astype(np.float32)
-                y1_arr = ((v1[c_order, 1] - n_min) / res_n).astype(np.float32)
-                x2_arr = ((v2[c_order, 0] - e_min) / res_e).astype(np.float32)
-                y2_arr = ((v2[c_order, 1] - n_min) / res_n).astype(np.float32)
-                rgb_u8_c = np.clip(rgb[c_order] * 255.0, 0, 255).astype(np.uint8)
-                for i in range(len(c_order)):
-                    r_c, g_c, b_c = int(rgb_u8_c[i, 0]), int(rgb_u8_c[i, 1]), int(rgb_u8_c[i, 2])
-                    drw.polygon(
-                        [
-                            (float(x0_arr[i]), float(y0_arr[i])),
-                            (float(x1_arr[i]), float(y1_arr[i])),
-                            (float(x2_arr[i]), float(y2_arr[i])),
-                        ],
-                        fill=(r_c, g_c, b_c, 255),
-                    )
-            poly_rgba = np.asarray(poly_img, dtype=np.uint8)
-
-            # 2. High-density barycentric vertex/centroid splatting pass for crisp fine detail
-            n_tris = len(centroids)
-            tri_indices = np.arange(n_tris, dtype=np.int32)
-            sp_e_list = [centroids[:, 0], v0[:, 0], v1[:, 0], v2[:, 0]]
-            sp_n_list = [centroids[:, 1], v0[:, 1], v1[:, 1], v2[:, 1]]
-            sp_t_list = [tri_indices, tri_indices, tri_indices, tri_indices]
-            w_base = np.maximum(area_2d * 0.25, 1e-5).astype(np.float32)
-            sp_w_list = [w_base, w_base, w_base, w_base]
-
-            med_mask = area_2d >= (res * res * 0.65)
-            if np.any(med_mask):
-                m_idx = tri_indices[med_mask]
-                mv0, mv1, mv2 = v0[med_mask], v1[med_mask], v2[med_mask]
-                mw = np.maximum(area_2d[med_mask] * (1.0 / 9.0), 1e-5).astype(np.float32)
-                for bw0, bw1, bw2 in (
-                    (0.5, 0.5, 0.0),
-                    (0.5, 0.0, 0.5),
-                    (0.0, 0.5, 0.5),
-                    (0.6, 0.2, 0.2),
-                    (0.2, 0.6, 0.2),
-                    (0.2, 0.2, 0.6),
-                ):
-                    pts_m = bw0 * mv0 + bw1 * mv1 + bw2 * mv2
-                    sp_e_list.append(pts_m[:, 0])
-                    sp_n_list.append(pts_m[:, 1])
-                    sp_t_list.append(m_idx)
-                    sp_w_list.append(mw)
-
-            all_e = np.concatenate(sp_e_list)
-            all_n = np.concatenate(sp_n_list)
-            splat_t_idx = np.concatenate(sp_t_list)
-            splat_w = np.concatenate(sp_w_list)
-
-            ie_all = np.clip(((all_e - e_min) / res_e).astype(np.int32), 0, nx - 1)
-            in_all = np.clip(((all_n - n_min) / res_n).astype(np.int32), 0, ny - 1)
-
-            ortho_rgb = np.zeros((ny, nx, 3), dtype=np.float32)
-            ortho_cnt = np.zeros((ny, nx), dtype=np.float32)
-            for ch_i in range(3):
-                np.add.at(ortho_rgb[:, :, ch_i], (in_all, ie_all), rgb[splat_t_idx, ch_i] * splat_w)
-            np.add.at(ortho_cnt, (in_all, ie_all), splat_w)
-
-            has_splat = ortho_cnt > 1e-7
-            has_poly = poly_rgba[:, :, 3] > 0
-            raw_occ = has_splat | has_poly
-            occ_closed = binary_closing(raw_occ, structure=np.ones((3, 3), dtype=bool))
-
-            if np.any(has_splat) and not np.all(has_splat):
-                _, nearest_idx = distance_transform_edt(~has_splat, return_indices=True)
+            uv_zbuf_res = self._render_leaf_glb_uv_zbuffer_ortho(scan, ce, cn, ch)
+            if uv_zbuf_res is not None:
+                final_rgba, e_min, e_max, n_min, n_max, nx, ny, res = uv_zbuf_res
             else:
-                nearest_idx = None
+                mesh_data = self._load_scan_textured_triangles_twd97(scan, ce, cn, ch)
+                v0 = mesh_data["v0"]
+                v1 = mesh_data["v1"]
+                v2 = mesh_data["v2"]
+                centroids = mesh_data["centroids"]
+                area_2d = mesh_data["area_2d"]
+                rgb = mesh_data["rgb"]
 
-            final_rgba = np.zeros((ny, nx, 4), dtype=np.uint8)
-            for ch_i in range(3):
-                plane = ortho_rgb[:, :, ch_i]
-                plane[has_splat] /= ortho_cnt[has_splat]
-                splat_u8 = np.clip(plane * 255.0, 0, 255).astype(np.uint8)
-                out_ch = np.zeros((ny, nx), dtype=np.uint8)
-                out_ch[has_splat] = splat_u8[has_splat]
-                only_poly = (~has_splat) & has_poly
-                out_ch[only_poly] = poly_rgba[:, :, ch_i][only_poly]
-                pinhole = (~has_splat) & (~has_poly) & occ_closed
-                if np.any(pinhole) and nearest_idx is not None:
-                    out_ch[pinhole] = splat_u8[nearest_idx[0][pinhole], nearest_idx[1][pinhole]]
-                final_rgba[:, :, ch_i] = out_ch
+                if len(centroids) == 0:
+                    return None
 
-            alpha = np.where(occ_closed, 255, 0).astype(np.uint8)
-            inner_occ = binary_erosion(occ_closed, structure=np.ones((3, 3), dtype=bool))
-            edge_ring = occ_closed & (~inner_occ)
-            alpha[edge_ring] = 210
-            final_rgba[:, :, 3] = alpha
+                base_e = np.concatenate([v0[:, 0], v1[:, 0], v2[:, 0], centroids[:, 0]])
+                base_n = np.concatenate([v0[:, 1], v1[:, 1], v2[:, 1], centroids[:, 1]])
+                e_min, e_max = float(base_e.min()), float(base_e.max())
+                n_min, n_max = float(base_n.min()), float(base_n.max())
+                span_e = max(e_max - e_min, 4.0)
+                span_n = max(n_max - n_min, 4.0)
+                max_span = max(span_e, span_n)
 
-            # Flip vertically so Row 0 is North (n_max) and Row ny-1 is South (n_min)
-            final_rgba = np.flipud(final_rgba)
+                res = float(np.clip(max_span / 720.0, 0.08, 0.45))
+                nx = int(np.clip(math.ceil(span_e / res) + 1, 32, 960))
+                ny = int(np.clip(math.ceil(span_n / res) + 1, 32, 960))
+                res_e = span_e / max(1, nx - 1)
+                res_n = span_n / max(1, ny - 1)
+
+                poly_img = Image.new("RGBA", (nx, ny), (0, 0, 0, 0))
+                tri_span_e = np.maximum(np.maximum(v0[:, 0], v1[:, 0]), v2[:, 0]) - np.minimum(np.minimum(v0[:, 0], v1[:, 0]), v2[:, 0])
+                tri_span_n = np.maximum(np.maximum(v0[:, 1], v1[:, 1]), v2[:, 1]) - np.minimum(np.minimum(v0[:, 1], v1[:, 1]), v2[:, 1])
+                coarse_mask = (tri_span_e >= res_e * 1.35) | (tri_span_n >= res_n * 1.35)
+                if np.any(coarse_mask):
+                    c_idx = np.where(coarse_mask)[0]
+                    if len(c_idx) > 85000:
+                        top_k = np.argsort(area_2d[c_idx])[-85000:]
+                        c_idx = c_idx[top_k]
+                    c_order = c_idx[np.argsort(centroids[c_idx, 2])]
+                    drw = ImageDraw.Draw(poly_img)
+                    x0_arr = ((v0[c_order, 0] - e_min) / res_e).astype(np.float32)
+                    y0_arr = ((v0[c_order, 1] - n_min) / res_n).astype(np.float32)
+                    x1_arr = ((v1[c_order, 0] - e_min) / res_e).astype(np.float32)
+                    y1_arr = ((v1[c_order, 1] - n_min) / res_n).astype(np.float32)
+                    x2_arr = ((v2[c_order, 0] - e_min) / res_e).astype(np.float32)
+                    y2_arr = ((v2[c_order, 1] - n_min) / res_n).astype(np.float32)
+                    rgb_u8_c = np.clip(rgb[c_order] * 255.0, 0, 255).astype(np.uint8)
+                    for i in range(len(c_order)):
+                        r_c, g_c, b_c = int(rgb_u8_c[i, 0]), int(rgb_u8_c[i, 1]), int(rgb_u8_c[i, 2])
+                        drw.polygon(
+                            [
+                                (float(x0_arr[i]), float(y0_arr[i])),
+                                (float(x1_arr[i]), float(y1_arr[i])),
+                                (float(x2_arr[i]), float(y2_arr[i])),
+                            ],
+                            fill=(r_c, g_c, b_c, 255),
+                        )
+                poly_rgba = np.asarray(poly_img, dtype=np.uint8)
+
+                n_tris = len(centroids)
+                tri_indices = np.arange(n_tris, dtype=np.int32)
+                sp_e_list = [centroids[:, 0], v0[:, 0], v1[:, 0], v2[:, 0]]
+                sp_n_list = [centroids[:, 1], v0[:, 1], v1[:, 1], v2[:, 1]]
+                sp_t_list = [tri_indices, tri_indices, tri_indices, tri_indices]
+                w_base = np.maximum(area_2d * 0.25, 1e-5).astype(np.float32)
+                sp_w_list = [w_base, w_base, w_base, w_base]
+
+                med_mask = area_2d >= (res * res * 0.65)
+                if np.any(med_mask):
+                    m_idx = tri_indices[med_mask]
+                    mv0, mv1, mv2 = v0[med_mask], v1[med_mask], v2[med_mask]
+                    mw = np.maximum(area_2d[med_mask] * (1.0 / 9.0), 1e-5).astype(np.float32)
+                    for bw0, bw1, bw2 in (
+                        (0.5, 0.5, 0.0),
+                        (0.5, 0.0, 0.5),
+                        (0.0, 0.5, 0.5),
+                        (0.6, 0.2, 0.2),
+                        (0.2, 0.6, 0.2),
+                        (0.2, 0.2, 0.6),
+                    ):
+                        pts_m = bw0 * mv0 + bw1 * mv1 + bw2 * mv2
+                        sp_e_list.append(pts_m[:, 0])
+                        sp_n_list.append(pts_m[:, 1])
+                        sp_t_list.append(m_idx)
+                        sp_w_list.append(mw)
+
+                all_e = np.concatenate(sp_e_list)
+                all_n = np.concatenate(sp_n_list)
+                splat_t_idx = np.concatenate(sp_t_list)
+                splat_w = np.concatenate(sp_w_list)
+
+                ie_all = np.clip(((all_e - e_min) / res_e).astype(np.int32), 0, nx - 1)
+                in_all = np.clip(((all_n - n_min) / res_n).astype(np.int32), 0, ny - 1)
+
+                ortho_rgb = np.zeros((ny, nx, 3), dtype=np.float32)
+                ortho_cnt = np.zeros((ny, nx), dtype=np.float32)
+                for ch_i in range(3):
+                    np.add.at(ortho_rgb[:, :, ch_i], (in_all, ie_all), rgb[splat_t_idx, ch_i] * splat_w)
+                np.add.at(ortho_cnt, (in_all, ie_all), splat_w)
+
+                has_splat = ortho_cnt > 1e-7
+                has_poly = poly_rgba[:, :, 3] > 0
+                raw_occ = has_splat | has_poly
+                occ_closed = binary_closing(raw_occ, structure=np.ones((3, 3), dtype=bool))
+
+                if np.any(has_splat) and not np.all(has_splat):
+                    _, nearest_idx = distance_transform_edt(~has_splat, return_indices=True)
+                else:
+                    nearest_idx = None
+
+                final_rgba = np.zeros((ny, nx, 4), dtype=np.uint8)
+                for ch_i in range(3):
+                    plane = ortho_rgb[:, :, ch_i]
+                    plane[has_splat] /= ortho_cnt[has_splat]
+                    splat_u8 = np.clip(plane * 255.0, 0, 255).astype(np.uint8)
+                    out_ch = np.zeros((ny, nx), dtype=np.uint8)
+                    out_ch[has_splat] = splat_u8[has_splat]
+                    only_poly = (~has_splat) & has_poly
+                    out_ch[only_poly] = poly_rgba[:, :, ch_i][only_poly]
+                    pinhole = (~has_splat) & (~has_poly) & occ_closed
+                    if np.any(pinhole) and nearest_idx is not None:
+                        out_ch[pinhole] = splat_u8[nearest_idx[0][pinhole], nearest_idx[1][pinhole]]
+                    final_rgba[:, :, ch_i] = out_ch
+
+                alpha = np.where(occ_closed, 255, 0).astype(np.uint8)
+                inner_occ = binary_erosion(occ_closed, structure=np.ones((3, 3), dtype=bool))
+                edge_ring = occ_closed & (~inner_occ)
+                alpha[edge_ring] = 210
+                final_rgba[:, :, 3] = alpha
+
+                final_rgba = np.flipud(final_rgba)
 
             lon0_deg = 119.0 if (s_lon < 120.0 or "119" in crs_str) else 121.0
             south_lat, west_lon = twd97_to_wgs84(e_min, n_min, lon0_deg=lon0_deg)

@@ -2526,18 +2526,139 @@ class GatheringScansHandler(CloudAndTunnelHandlerMixin, ServerWriteRoutesMixin, 
             # C. Download .zip (Textured .OBJ + .MTL + .JPG Textures + offset.xyz Bundle)
             if dtype_norm in ("zip", "obj_zip"):
                 dl_zip_name = f"{scan_id}_{crs_tag}_OBJ_Textured.zip"
-                conv_zip = os.path.join(conv_dir, f"{scan_id}_obj_textured_v1.zip")
+                conv_zip = os.path.join(conv_dir, f"{scan_id}_obj_textured_v2.zip")
                 if not os.path.isfile(conv_zip) or (ts_mtime > 0 and os.path.getmtime(conv_zip) < ts_mtime):
                     try:
                         import zipfile as _zf
 
-                        obj_dir_z = os.path.dirname(obj_path) if (obj_path and os.path.isfile(obj_path)) else ""
+                        obj_dir_z = os.path.dirname(obj_path) if (obj_path and os.path.isfile(obj_path) and os.path.getmtime(obj_path) + 2.0 >= ts_mtime) else ""
                         if obj_dir_z and os.path.isdir(obj_dir_z):
                             with _zf.ZipFile(conv_zip, "w", compression=_zf.ZIP_STORED) as _z:
                                 for _fn_o in sorted(os.listdir(obj_dir_z)):
                                     _fp_o = os.path.join(obj_dir_z, _fn_o)
                                     if os.path.isfile(_fp_o) and _fn_o.lower().endswith((".obj", ".mtl", ".jpg", ".jpeg", ".png", ".xyz")):
                                         _z.write(_fp_o, _fn_o)
+                        else:
+                            # Synthesize a complete multi-material Textured .OBJ + .MTL + .JPG + offset.xyz ZIP directly from leaf .glb tiles
+                            import io as _io
+                            import numpy as _np
+                            import subprocess as _sp
+                            from PIL import Image as _Image
+                            from pc_worker.surveying_engine import GLTFPACK_EXE
+                            from pc_worker.config import GC_SCAN_OPTIMIZER_DIR
+                            if GC_SCAN_OPTIMIZER_DIR not in sys.path:
+                                sys.path.append(GC_SCAN_OPTIMIZER_DIR)
+                            from optimizer.geometry_optimizer import extract_glb_64bit_origin_to_local
+
+                            leaf_glbs_z = SURVEY._collect_scan_glb_files(scan, max_tiles=64)
+                            if leaf_glbs_z:
+                                ox_z = float(scan.get("twd97_e") or 0.0)
+                                oy_z = float(scan.get("twd97_n") or 0.0)
+                                oz_z = float(scan.get("twd97_h") or 0.0)
+                                mtl_lines = ["# GatheringScans Multi-Tile Textured OBJ Export"]
+                                obj_chunks = ["mtllib mesh.mtl\n"]
+                                v_base = 1
+                                vt_base = 1
+                                with _zf.ZipFile(conv_zip, "w", compression=_zf.ZIP_STORED) as _z:
+                                    _z.writestr("offset.xyz", f"{ox_z:.3f} {oy_z:.3f} {oz_z:.3f}\n")
+                                    for t_idx, g_fp in enumerate(leaf_glbs_z):
+                                        with open(g_fp, "rb") as _rf_z:
+                                            raw_z = _rf_z.read()
+                                        loc_z, orig_z = extract_glb_64bit_origin_to_local(raw_z)
+                                        j_len_z, j_type_z = struct.unpack_from("<I4s", loc_z, 12)
+                                        if j_type_z == b"JSON" and b"EXT_meshopt_compression" in loc_z[20 : 20 + j_len_z] and os.path.isfile(GLTFPACK_EXE):
+                                            tmp_in_z = os.path.join(conv_dir, f"_tmp_zin_{t_idx}.glb")
+                                            tmp_out_z = os.path.join(conv_dir, f"_tmp_zout_{t_idx}.glb")
+                                            try:
+                                                with open(tmp_in_z, "wb") as _wf_z:
+                                                    _wf_z.write(loc_z)
+                                                _sp.run([GLTFPACK_EXE, "-i", tmp_in_z, "-o", tmp_out_z, "-noq"], capture_output=True, timeout=30)
+                                                if os.path.isfile(tmp_out_z) and os.path.getsize(tmp_out_z) > 28:
+                                                    with open(tmp_out_z, "rb") as _rfo_z:
+                                                        loc_z = _rfo_z.read()
+                                            finally:
+                                                for _rm_z in (tmp_in_z, tmp_out_z):
+                                                    if os.path.isfile(_rm_z):
+                                                        try:
+                                                            os.remove(_rm_z)
+                                                        except OSError:
+                                                            pass
+                                        j_len_z, _ = struct.unpack_from("<I4s", loc_z, 12)
+                                        b_off_z = 20 + j_len_z
+                                        b_len_z, _ = struct.unpack_from("<I4s", loc_z, b_off_z)
+                                        j_z = json.loads(loc_z[20 : 20 + j_len_z].decode("utf-8"))
+                                        blob_z = memoryview(loc_z)[b_off_z + 8 : b_off_z + 8 + b_len_z]
+                                        accs_z = j_z.get("accessors") or []
+                                        bvs_z = j_z.get("bufferViews") or []
+                                        imgs_z = j_z.get("images") or []
+                                        mats_z = j_z.get("materials") or []
+                                        prims_z = ((j_z.get("meshes") or [{}])[0]).get("primitives") or []
+                                        if not prims_z:
+                                            continue
+                                        pr_z = prims_z[0]
+                                        at_z = pr_z.get("attributes") or {}
+                                        if "POSITION" not in at_z:
+                                            continue
+                                        p_acc = accs_z[at_z["POSITION"]]
+                                        p_bv = bvs_z[p_acc["bufferView"]]
+                                        p_off = int(p_bv.get("byteOffset", 0)) + int(p_acc.get("byteOffset", 0))
+                                        cnt_z = int(p_acc["count"])
+                                        if p_acc.get("componentType") != 5126:
+                                            continue
+                                        pos_z = _np.frombuffer(blob_z, dtype=_np.float32, count=cnt_z * 3, offset=p_off).reshape(-1, 3).astype(_np.float64)
+                                        if orig_z != (0.0, 0.0, 0.0):
+                                            pos_z[:, 0] += orig_z[0] - ox_z
+                                            pos_z[:, 1] += orig_z[1] - oy_z
+                                            pos_z[:, 2] += orig_z[2] - oz_z
+                                        i_acc = accs_z[pr_z["indices"]]
+                                        i_bv = bvs_z[i_acc["bufferView"]]
+                                        i_off = int(i_bv.get("byteOffset", 0)) + int(i_acc.get("byteOffset", 0))
+                                        icnt_z = int(i_acc["count"])
+                                        idtype_z = _np.uint32 if i_acc.get("componentType") == 5125 else _np.uint16
+                                        idx_z = _np.frombuffer(blob_z, dtype=idtype_z, count=icnt_z, offset=i_off).astype(_np.int64).reshape(-1, 3)
+
+                                        uv_z = _np.zeros((cnt_z, 2), dtype=_np.float32)
+                                        if "TEXCOORD_0" in at_z:
+                                            u_acc = accs_z[at_z["TEXCOORD_0"]]
+                                            u_bv = bvs_z[u_acc["bufferView"]]
+                                            u_off = int(u_bv.get("byteOffset", 0)) + int(u_acc.get("byteOffset", 0))
+                                            if u_acc.get("componentType") == 5126:
+                                                uv_z = _np.frombuffer(blob_z, dtype=_np.float32, count=cnt_z * 2, offset=u_off).reshape(-1, 2).copy()
+                                            if mats_z:
+                                                bct_z = ((mats_z[0].get("pbrMetallicRoughness") or {}).get("baseColorTexture") or {})
+                                                khr_z = (bct_z.get("extensions") or {}).get("KHR_texture_transform")
+                                                if isinstance(khr_z, dict):
+                                                    sc_z = khr_z.get("scale") or [1.0, 1.0]
+                                                    of_z = khr_z.get("offset") or [0.0, 0.0]
+                                                    uv_z[:, 0] = uv_z[:, 0] * float(sc_z[0]) + float(of_z[0])
+                                                    uv_z[:, 1] = uv_z[:, 1] * float(sc_z[1]) + float(of_z[1])
+                                        uv_z[:, 1] = 1.0 - uv_z[:, 1]
+
+                                        mtl_name = f"tile_{t_idx}"
+                                        jpg_name = f"tile_{t_idx}.jpg"
+                                        if imgs_z and "bufferView" in imgs_z[0]:
+                                            im_bv = bvs_z[imgs_z[0]["bufferView"]]
+                                            im_bytes = bytes(blob_z[int(im_bv.get("byteOffset", 0)) : int(im_bv.get("byteOffset", 0)) + int(im_bv["byteLength"])])
+                                            _z.writestr(jpg_name, im_bytes)
+                                            mtl_lines.append(f"newmtl {mtl_name}\nKa 1.0 1.0 1.0\nKd 1.0 1.0 1.0\nmap_Kd {jpg_name}\n")
+
+                                        v_buf_z = _io.StringIO()
+                                        _np.savetxt(v_buf_z, pos_z, fmt="v %.4f %.4f %.4f")
+                                        vt_buf_z = _io.StringIO()
+                                        _np.savetxt(vt_buf_z, uv_z, fmt="vt %.5f %.5f")
+                                        f_idx_v = idx_z + v_base
+                                        f_idx_vt = idx_z + vt_base
+                                        f_mat = _np.column_stack([f_idx_v[:, 0], f_idx_vt[:, 0], f_idx_v[:, 1], f_idx_vt[:, 1], f_idx_v[:, 2], f_idx_vt[:, 2]])
+                                        f_buf_z = _io.StringIO()
+                                        _np.savetxt(f_buf_z, f_mat, fmt="f %d/%d %d/%d %d/%d")
+                                        obj_chunks.append(v_buf_z.getvalue())
+                                        obj_chunks.append(vt_buf_z.getvalue())
+                                        obj_chunks.append(f"usemtl {mtl_name}\n")
+                                        obj_chunks.append(f_buf_z.getvalue())
+                                        v_base += cnt_z
+                                        vt_base += cnt_z
+                                    _z.writestr("mesh.mtl", "\n".join(mtl_lines) + "\n")
+                                    _z.writestr(f"{scan_id}.obj", "".join(obj_chunks))
                     except Exception as _ezip:
                         print(f"[GatheringScans] Textured OBJ ZIP error for {scan_id}: {_ezip}")
                 if os.path.isfile(conv_zip):
@@ -2617,8 +2738,8 @@ class GatheringScansHandler(CloudAndTunnelHandlerMixin, ServerWriteRoutesMixin, 
                             has_root_tf = True
                             root_tf_mat = _np.array(_rtf_l, dtype=_np.float64).reshape((4, 4), order="F")
 
-                    # Use complete Horizon Cut (<= 40 tiles) so multi-level octrees export full site detail rather than coarse root.glb
-                    for gf_hc in SURVEY._collect_scan_glb_files(scan, max_tiles=40):
+                    # Use complete Horizon Cut (<= 64 tiles) so multi-level octrees export full site detail rather than coarse root.glb
+                    for gf_hc in SURVEY._collect_scan_glb_files(scan, max_tiles=64):
                         glb_entries.append((gf_hc, root_tf_mat))
 
                     apply_y_to_z = (up_axis == "Y") or (up_axis == "" and has_root_tf)

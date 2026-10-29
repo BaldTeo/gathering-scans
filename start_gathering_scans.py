@@ -337,14 +337,16 @@ def pix4d_worker_loop():
                     DB.set_force_next(fin_sid, True)
                 else:
                     ts_path = scan_row.get("tileset_path") or os.path.join(proj_dir, "tileset", "tileset.json")
+                    scalable_glbs = glob.glob(os.path.join(proj_dir, "processing", "meshes", "*", "content", "*_*_*_*.glb"))
+                    newest_scalable_mtime = max((os.path.getmtime(g) for g in scalable_glbs), default=0.0)
                     if newest_obj and os.path.isfile(newest_obj) and os.path.getsize(newest_obj) > 1024:
-                        # If OBJ is newer than tileset.json, rebuild tileset + preview + DSM
-                        if not os.path.isfile(ts_path) or os.path.getmtime(newest_obj) > os.path.getmtime(ts_path):
+                        # If OBJ or native Scalable Mesh octree is newer than tileset.json, rebuild tileset + preview + DSM
+                        if not os.path.isfile(ts_path) or max(os.path.getmtime(newest_obj), newest_scalable_mtime) > os.path.getmtime(ts_path):
                             DB.update_job_progress(
                                 fin_sid,
                                 "processing",
                                 91.0,
-                                "Website Processing (15%): TWD97 64-bit Offset & Mesh Island Check...",
+                                "Website Processing (15%): Building 9-Level Native Octree & TWD97 64-bit Offset...",
                             )
                             try:
                                 built_ts = postprocess_obj_to_tileset(
@@ -357,6 +359,19 @@ def pix4d_worker_loop():
                                     ts_path = built_ts
                             except Exception as post_err:
                                 print(f"[InboxWatcher] Error in postprocess_obj_to_tileset for {fin_sid}: {post_err}")
+                    elif scalable_glbs and (not os.path.isfile(ts_path) or newest_scalable_mtime > os.path.getmtime(ts_path)):
+                        try:
+                            from pc_worker.native_octree_builder import build_native_octree_from_scalable_tileset
+
+                            nat_res = build_native_octree_from_scalable_tileset(
+                                scan_id=fin_sid,
+                                proj_dir=proj_dir,
+                                progress_callback=lambda p, msg: DB.update_job_progress(fin_sid, "processing", p, msg),
+                            )
+                            if nat_res and nat_res.get("tileset_path"):
+                                ts_path = str(nat_res["tileset_path"])
+                        except Exception as nat_err:
+                            print(f"[InboxWatcher] Error in build_native_octree_from_scalable_tileset for {fin_sid}: {nat_err}")
                     if os.path.isfile(rerun_cfg_fp):
                         try:
                             os.remove(rerun_cfg_fp)

@@ -1502,7 +1502,38 @@ def postprocess_obj_to_tileset(
         print(f"[PIX4DRunner] Warning updating MTL Kd factor: {e}")
 
     if progress_callback:
-        progress_callback(93.0, "Website Processing (35%): Building Quadtree 3D Tileset (GC_ScanOptimizer)...")
+        progress_callback(93.0, "Website Processing (35%): Building 9-Level Native Octree 3D Tileset...")
+
+    # Prefer PIX4Dmatic's native 9-level Scalable Mesh octree (processing/meshes/*/content/<level>_<x>_<y>_<z>.glb)
+    # whenever available (and no island-split override filtered the OBJ) so all 9 LOD levels + 4K leaf atlases are preserved.
+    native_scalable_glbs = glob.glob(os.path.join(proj_dir, "processing", "meshes", "*", "content", "*_*_*_*.glb"))
+    if native_scalable_glbs and not dominant_island_info:
+        try:
+            from pc_worker.native_octree_builder import build_native_octree_from_scalable_tileset
+
+            native_res = build_native_octree_from_scalable_tileset(
+                scan_id=scan_id,
+                proj_dir=proj_dir,
+                progress_callback=progress_callback,
+            )
+            native_ts = str((native_res or {}).get("tileset_path") or "")
+            if native_ts and os.path.isfile(native_ts):
+                try:
+                    backup_dir = os.path.join(proj_dir, "tileset_backup")
+                    if os.path.isdir(backup_dir):
+                        shutil.rmtree(backup_dir, ignore_errors=True)
+                    shutil.copytree(os.path.dirname(native_ts), backup_dir)
+                except Exception as bk_err:
+                    print(f"[PIX4DRunner] Warning creating tileset_backup for {scan_id}: {bk_err}")
+                for dsm_cache in glob.glob(os.path.join(proj_dir, "_dsm_cache_*.npz")):
+                    try:
+                        os.remove(dsm_cache)
+                    except OSError:
+                        pass
+                return native_ts
+        except Exception as nat_err:
+            print(f"[PIX4DRunner] Warning in build_native_octree_from_scalable_tileset for {scan_id}, falling back to QuadtreeTiler: {nat_err}")
+
     if GC_SCAN_OPTIMIZER_DIR not in sys.path:
         sys.path.append(GC_SCAN_OPTIMIZER_DIR)
     from optimizer.quadtree_tiler import QuadtreeTiler
@@ -2700,6 +2731,18 @@ def run_pix4dmatic_pipeline(
             progress_callback=progress_callback,
             texture_limit_override=active_tex_size,
         )
+    elif _detect_scalable_mesh_max_lod(proj_dir) is not None:
+        try:
+            from pc_worker.native_octree_builder import build_native_octree_from_scalable_tileset
+
+            native_res = build_native_octree_from_scalable_tileset(
+                scan_id=scan_id,
+                proj_dir=proj_dir,
+                progress_callback=progress_callback,
+            )
+            tileset_path = str((native_res or {}).get("tileset_path") or "")
+        except Exception as nat_e:
+            print(f"[PIX4DRunner] Native octree fallback error for {scan_id}: {nat_e}")
     elif os.path.isdir(prev_obj_dir) and not os.path.isdir(old_obj_dir):
         try:
             os.replace(prev_obj_dir, old_obj_dir)

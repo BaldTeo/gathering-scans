@@ -1561,6 +1561,11 @@
         clearTimeout(ctx._loaderHideTimer);
         ctx._loaderHideTimer = null;
       }
+      if (ctx._detailPillHideTimer) {
+        clearTimeout(ctx._detailPillHideTimer);
+        ctx._detailPillHideTimer = null;
+      }
+      ctx._wasRefiningDetails = false;
       ctx._loadingDone = false;
       ctx._tilesetReady = false;
       ctx._tilesetReadyMs = 0;
@@ -1568,7 +1573,60 @@
       ctx._maxPct = 6;
       if (scanId) ctx._loadingScanId = scanId;
     }
+    const detailPill = document.getElementById(`${prefix}DetailStreamPill`);
+    if (detailPill) detailPill.classList.remove("active", "done");
     updateScanLoader(prefix, true, 6, tr(`正在載入 ${scanName || "3D 掃描"}...`, `Loading ${scanName || "3D Scan"}...`));
+  }
+
+  function syncBackgroundDetailStreamingPill(ctx, prefix) {
+    if (!ctx || !ctx.tilesRenderer) return;
+    const pillEl = document.getElementById(`${prefix}DetailStreamPill`);
+    if (!pillEl) return;
+    const textEl = document.getElementById(`${prefix}DetailStreamText`);
+    const barEl = document.getElementById(`${prefix}DetailStreamBar`);
+    const stats = ctx.tilesRenderer.stats || {};
+    const loaded = Number(stats.loaded || 0);
+    const downloading = Number(stats.downloading || 0);
+    const parsing = Number(stats.parsing || 0);
+    const queued = Number(stats.queued || 0);
+    const pending = downloading + parsing + queued;
+
+    if (pending > 0) {
+      if (ctx._detailPillHideTimer) {
+        clearTimeout(ctx._detailPillHideTimer);
+        ctx._detailPillHideTimer = null;
+      }
+      ctx._wasRefiningDetails = true;
+      const total = Math.max(1, loaded + pending);
+      const pct = Math.min(99, Math.max(8, Math.round((loaded / total) * 100)));
+      pillEl.classList.remove("done");
+      pillEl.classList.add("active");
+      if (textEl) {
+        textEl.textContent = tr(
+          `正在載入更多高清細節 · ${loaded}/${total} 圖磚 (${pct}%)`,
+          `Loading more HD details · ${loaded}/${total} tiles (${pct}%)`
+        );
+      }
+      if (barEl) {
+        barEl.style.width = `${pct}%`;
+      }
+    } else if (ctx._wasRefiningDetails) {
+      ctx._wasRefiningDetails = false;
+      pillEl.classList.add("active", "done");
+      if (textEl) {
+        textEl.textContent = tr(
+          `✓ 高清細節已載入 (${loaded} 圖磚)`,
+          `✓ HD details loaded (${loaded} tiles)`
+        );
+      }
+      if (barEl) {
+        barEl.style.width = "100%";
+      }
+      if (ctx._detailPillHideTimer) clearTimeout(ctx._detailPillHideTimer);
+      ctx._detailPillHideTimer = setTimeout(() => {
+        pillEl.classList.remove("active", "done");
+      }, 1800);
+    }
   }
 
   function finishScanLoader(ctx, prefix, labelText = tr("掃描已就緒", "Scan Ready")) {
@@ -1596,7 +1654,11 @@
   }
 
   function syncTilesLoaderProgress(ctx, prefix) {
-    if (!ctx || !ctx.tilesRenderer || ctx._loadingDone) return;
+    if (!ctx || !ctx.tilesRenderer) return;
+    if (ctx._loadingDone) {
+      syncBackgroundDetailStreamingPill(ctx, prefix);
+      return;
+    }
     const stats = ctx.tilesRenderer.stats || {};
     const loaded = Number(stats.loaded || 0);
     const downloading = Number(stats.downloading || 0);
@@ -1902,7 +1964,7 @@
 
     const isMobileOrTab = typeof isMobileOrTabletDevice === "function" && isMobileOrTabletDevice();
     const isIOS = typeof isIOSOrIPadDevice === "function" && isIOSOrIPadDevice();
-    const lodMode = STATE.scanLodMode || "auto";
+    const lodMode = STATE.previewLodMode || "rough";
     const useRoughTilesetOnly = lodMode === "rough" && isIOS;
     const streamUrl = useRoughTilesetOnly
       ? scan.preview_stream_url ||

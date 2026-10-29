@@ -4322,3 +4322,76 @@ body.theme-light .gs-comment-folder-section { background: rgba(241, 245, 249, 0.
 .gs-queue-mini-chip { display: inline-flex; align-items: center; gap: 3px; font-size: 9.5px; font-weight: 600; padding: 1px 5px; border-radius: 4px; background: var(--ui-bg-surface); border: 1px solid var(--ui-border); color: var(--ui-text-secondary); line-height: 1.3; white-space: nowrap; }
 .gs-queue-mini-chip.is-active { font-weight: 800; color: var(--ui-text-primary); background: var(--ui-bg-subtle); }
 .gs-queue-mini-chip.is-pending { opacity: 0.58; }
+
+/* Non-Blocking Progressive Detail Streaming Indicator Pill */
+.gs-detail-stream-pill {
+  position: absolute;
+  bottom: 72px;
+  right: 18px;
+  z-index: 62;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.86);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 1px solid rgba(56, 189, 248, 0.42);
+  color: #f8fafc;
+  font-size: 11.5px;
+  font-weight: 600;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+  pointer-events: none;
+  opacity: 0;
+  transform: translateY(6px);
+  transition: opacity 0.22s ease, transform 0.22s ease, border-color 0.22s ease;
+}
+#previewDetailStreamPill {
+  bottom: 14px;
+  left: 14px;
+  right: auto;
+}
+.gs-detail-stream-pill.active {
+  opacity: 1;
+  transform: translateY(0);
+}
+.gs-detail-stream-pill.done {
+  border-color: rgba(16, 185, 129, 0.55);
+}
+.gs-detail-stream-spinner {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 2px solid rgba(56, 189, 248, 0.28);
+  border-top-color: #38bdf8;
+  animation: gsDetailSpin 0.8s linear infinite;
+  flex-shrink: 0;
+}
+.gs-detail-stream-pill.done .gs-detail-stream-spinner {
+  border-color: #10b981;
+  background: #10b981;
+  animation: none;
+}
+@keyframes gsDetailSpin {
+  to { transform: rotate(360deg); }
+}
+.gs-detail-stream-bar {
+  width: 48px;
+  height: 4px;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.28);
+  overflow: hidden;
+  flex-shrink: 0;
+}
+.gs-detail-stream-bar-fill {
+  display: block;
+  height: 100%;
+  width: 0%;
+  background: linear-gradient(90deg, #0ea5e9, #38bdf8);
+  border-radius: 999px;
+  transition: width 0.2s ease;
+}
+.gs-detail-stream-pill.done .gs-detail-stream-bar-fill {
+  background: #10b981;
+}

@@ -225,13 +225,17 @@
     },
     scanLodMode: (function () {
       try {
-        const saved = localStorage.getItem("gs_scan_lod_mode");
+        const saved = localStorage.getItem("gs_studio_lod_mode_v2");
         if (saved === "rough" || saved === "auto" || saved === "max") return saved;
       } catch (_e) {}
-      if (typeof window !== "undefined" && (window.innerWidth <= 767 || /iPhone|iPod|Android.*Mobile/i.test(String(navigator?.userAgent || "")))) {
-        return "rough";
-      }
       return "auto";
+    })(),
+    previewLodMode: (function () {
+      try {
+        const saved = localStorage.getItem("gs_preview_lod_mode_v2");
+        if (saved === "rough" || saved === "auto" || saved === "max") return saved;
+      } catch (_e) {}
+      return "rough";
     })(),
   };
   window.STATE = STATE;

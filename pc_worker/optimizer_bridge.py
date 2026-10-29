@@ -3890,6 +3890,150 @@ class OptimizerBridge:
             for s_idx, sp_e in enumerate(src_specs):
                 raw_loaded_s = _load_raw_obj_source(str(sp_e.get("derived_from_scan_id") or "")) or _load_raw_obj_source(str(sp_e.get("scan_id") or ""))
                 if raw_loaded_s is None:
+                    # Fallback for 9-Level Native Octree scans without mesh.obj: restore directly from tileset_backup or parent scan leaf .glb tiles
+                    cand_bkp_dirs = [
+                        os.path.join(proj_dir, "tileset_backup"),
+                        os.path.join(proj_dir, "tileset_prev"),
+                    ]
+                    p_sid = str(sp_e.get("derived_from_scan_id") or scan.get("derived_from_scan_id") or "").strip()
+                    if not p_sid and "daan" in scan_id.lower():
+                        p_sid = "catch_DaAn"
+                    if p_sid:
+                        cand_bkp_dirs.append(os.path.join(LOCAL_SCANS_ROOT, p_sid, "tileset"))
+                    bkp_ts_dir = next((d for d in cand_bkp_dirs if os.path.isfile(os.path.join(d, "tileset.json"))), "")
+                    if bkp_ts_dir:
+                        try:
+                            from optimizer.geometry_optimizer import extract_glb_64bit_origin_to_local
+                            bkp_ts_j = json.load(open(os.path.join(bkp_ts_dir, "tileset.json"), encoding="utf-8"))
+                            bkp_leaves: List[str] = []
+
+                            def _walk_bkp_leaves(nd_b: Dict[str, Any]):
+                                chs_b = [c for c in (nd_b.get("children") or []) if isinstance(c, dict)]
+                                if chs_b:
+                                    for ch_b in chs_b:
+                                        _walk_bkp_leaves(ch_b)
+                                else:
+                                    u_b = ((nd_b.get("content") or {}).get("uri") or "").split("?")[0]
+                                    if u_b:
+                                        fp_b = os.path.normpath(os.path.join(bkp_ts_dir, u_b))
+                                        if os.path.isfile(fp_b):
+                                            bkp_leaves.append(fp_b)
+
+                            if isinstance(bkp_ts_j.get("root"), dict):
+                                _walk_bkp_leaves(bkp_ts_j["root"])
+                            for bi, b_gp in enumerate(bkp_leaves):
+                                with open(b_gp, "rb") as _rf_b:
+                                    loc_b, orig_b = extract_glb_64bit_origin_to_local(_rf_b.read())
+                                tmp_bin_p = os.path.join(proj_dir, f"_tmp_bkp_in_{bi}.glb")
+                                tmp_bout_p = os.path.join(proj_dir, f"_tmp_bkp_out_{bi}.glb")
+                                try:
+                                    with open(tmp_bin_p, "wb") as _wf_b:
+                                        _wf_b.write(loc_b)
+                                    subprocess.run([GLTFPACK_EXE, "-i", tmp_bin_p, "-o", tmp_bout_p, "-noq"], capture_output=True, timeout=30)
+                                    if os.path.isfile(tmp_bout_p) and os.path.getsize(tmp_bout_p) > 28:
+                                        with open(tmp_bout_p, "rb") as _rfo_b:
+                                            loc_b = _rfo_b.read()
+                                finally:
+                                    for _rm_b in (tmp_bin_p, tmp_bout_p):
+                                        if os.path.isfile(_rm_b):
+                                            try:
+                                                os.remove(_rm_b)
+                                            except OSError:
+                                                pass
+                                j_len_b, _ = struct.unpack_from("<I4s", loc_b, 12)
+                                b_off_b = 20 + j_len_b
+                                b_len_b, _ = struct.unpack_from("<I4s", loc_b, b_off_b)
+                                j_b = json.loads(loc_b[20 : 20 + j_len_b].decode("utf-8"))
+                                blob_b = memoryview(loc_b)[b_off_b + 8 : b_off_b + 8 + b_len_b]
+                                accs_b = j_b.get("accessors") or []
+                                bvs_b = j_b.get("bufferViews") or []
+                                imgs_b = j_b.get("images") or []
+                                mats_b = j_b.get("materials") or []
+                                prims_b = ((j_b.get("meshes") or [{}])[0]).get("primitives") or []
+                                if not prims_b or not imgs_b or "bufferView" not in imgs_b[0]:
+                                    continue
+                                pr_b = prims_b[0]
+                                at_b = pr_b.get("attributes") or {}
+                                if "POSITION" not in at_b or "TEXCOORD_0" not in at_b or "indices" not in pr_b:
+                                    continue
+                                p_acc_b = accs_b[at_b["POSITION"]]
+                                if p_acc_b.get("componentType") != 5126:
+                                    continue
+                                cnt_b = int(p_acc_b["count"])
+                                p_bv_b = bvs_b[p_acc_b["bufferView"]]
+                                p_off_b = int(p_bv_b.get("byteOffset", 0)) + int(p_acc_b.get("byteOffset", 0))
+                                v_b_twd = np.frombuffer(blob_b, dtype=np.float32, count=cnt_b * 3, offset=p_off_b).reshape(-1, 3).astype(np.float64) + np.array(orig_b, dtype=np.float64)
+                                i_acc_b = accs_b[pr_b["indices"]]
+                                i_bv_b = bvs_b[i_acc_b["bufferView"]]
+                                i_off_b = int(i_bv_b.get("byteOffset", 0)) + int(i_acc_b.get("byteOffset", 0))
+                                idtype_b = np.uint32 if i_acc_b.get("componentType") == 5125 else np.uint16
+                                fv_b = np.frombuffer(blob_b, dtype=idtype_b, count=int(i_acc_b["count"]), offset=i_off_b).astype(np.int64).reshape(-1, 3)
+                                in_b = cutter_eval._compute_inside_mask_for_triangles(v_b_twd[fv_b[:, 0]], v_b_twd[fv_b[:, 1]], v_b_twd[fv_b[:, 2]], np.eye(4, dtype=np.float64))
+                                cand_b = np.where(in_b)[0]
+                                if len(cand_b) == 0:
+                                    continue
+                                if tree_ex_all is not None:
+                                    d_ex_b, _ = tree_ex_all.query(v_b_twd[fv_b[cand_b]].mean(axis=1), k=1)
+                                    cand_b = cand_b[d_ex_b > 0.015]
+                                if len(cand_b) == 0:
+                                    continue
+                                u_acc_b = accs_b[at_b["TEXCOORD_0"]]
+                                u_bv_b = bvs_b[u_acc_b["bufferView"]]
+                                u_off_b = int(u_bv_b.get("byteOffset", 0)) + int(u_acc_b.get("byteOffset", 0))
+                                vt_b = np.frombuffer(blob_b, dtype=np.float32, count=cnt_b * 2, offset=u_off_b).reshape(-1, 2).copy()
+                                if mats_b:
+                                    bct_b = ((mats_b[0].get("pbrMetallicRoughness") or {}).get("baseColorTexture") or {})
+                                    khr_b = (bct_b.get("extensions") or {}).get("KHR_texture_transform")
+                                    if isinstance(khr_b, dict):
+                                        sc_b = khr_b.get("scale") or [1.0, 1.0]
+                                        of_b = khr_b.get("offset") or [0.0, 0.0]
+                                        vt_b[:, 0] = vt_b[:, 0] * float(sc_b[0]) + float(of_b[0])
+                                        vt_b[:, 1] = vt_b[:, 1] * float(sc_b[1]) + float(of_b[1])
+                                vt_b[:, 1] = 1.0 - vt_b[:, 1]
+                                im_bv_b = bvs_b[imgs_b[0]["bufferView"]]
+                                jb_b = bytes(blob_b[int(im_bv_b.get("byteOffset", 0)) : int(im_bv_b.get("byteOffset", 0)) + int(im_bv_b["byteLength"])])
+                                total_restored += len(cand_b)
+                                f_sel_b = fv_b[cand_b]
+                                u_vb, inv_vb = np.unique(f_sel_b, return_inverse=True)
+                                vp_twd_b = v_b_twd[u_vb]
+                                off_pb = np.round(vp_twd_b.mean(axis=0))
+                                vp_loc_b = (vp_twd_b - off_pb).astype(np.float32)
+                                vtp_b = vt_b[u_vb].astype(np.float32)
+                                iv_b = inv_vb.reshape(-1, 3) + 1
+                                fl_b = np.column_stack([iv_b[:, 0], iv_b[:, 0], iv_b[:, 1], iv_b[:, 1], iv_b[:, 2], iv_b[:, 2]])
+                                patch_fn_b = f"tile_s_patch_{s_idx}_{bi}_{int(time.time() * 1000) % 1000000}.glb"
+                                patch_rel_b = f"tiles/{patch_fn_b}"
+                                patch_out_b = os.path.join(tiles_dir, patch_fn_b)
+                                tmp_dir_pb = os.path.join(proj_dir, f"_tmp_patch_{s_idx}_{bi}")
+                                os.makedirs(tmp_dir_pb, exist_ok=True)
+                                try:
+                                    with open(os.path.join(tmp_dir_pb, "mesh_0.jpg"), "wb") as _jf_b:
+                                        _jf_b.write(jb_b)
+                                    with open(os.path.join(tmp_dir_pb, "p.mtl"), "w", encoding="utf-8") as mf_pb:
+                                        mf_pb.write("newmtl m0\nKd 1.0 1.0 1.0\nillum 0\nmap_Kd mesh_0.jpg\n")
+                                    with open(os.path.join(tmp_dir_pb, "p.obj"), "wb") as of_pb:
+                                        of_pb.write(b"mtllib p.mtl\nusemtl m0\n")
+                                        np.savetxt(of_pb, vp_loc_b, fmt="v %.4f %.4f %.4f")
+                                        np.savetxt(of_pb, vtp_b, fmt="vt %.6f %.6f")
+                                        np.savetxt(of_pb, fl_b, fmt="f %d/%d %d/%d %d/%d")
+                                    tmp_gpb = os.path.join(tmp_dir_pb, "p.glb")
+                                    subprocess.run([GLTFPACK_EXE, "-i", os.path.join(tmp_dir_pb, "p.obj"), "-o", tmp_gpb, "-vp", "16", "-vt", "16", "-vn", "8", "-cc"], capture_output=True, check=True)
+                                    rb_pb = replace_glb_single_image_bytes(open(tmp_gpb, "rb").read(), jb_b, "image/jpeg")
+                                    with open(patch_out_b, "wb") as wf_pb:
+                                        wf_pb.write(shift_glb_node_translation(rb_pb, float(off_pb[0]), float(off_pb[1]), float(off_pb[2])))
+                                finally:
+                                    shutil.rmtree(tmp_dir_pb, ignore_errors=True)
+                                p_vmin_b, p_vmax_b = vp_twd_b.min(axis=0), vp_twd_b.max(axis=0)
+                                p_bc_b, p_bh_b = (p_vmin_b + p_vmax_b) * 0.5, (p_vmax_b - p_vmin_b) * 0.5
+                                patch_nodes.append({
+                                    "boundingVolume": {"box": [round(float(p_bc_b[0]), 4), round(float(p_bc_b[1]), 4), round(float(p_bc_b[2]), 4), round(max(float(p_bh_b[0]), 0.5), 4), 0.0, 0.0, 0.0, round(max(float(p_bh_b[1]), 0.5), 4), 0.0, 0.0, 0.0, round(max(float(p_bh_b[2]), 0.5), 4)]},
+                                    "geometricError": 0.0,
+                                    "refine": "ADD",
+                                    "content": {"uri": patch_rel_b},
+                                    "children": [],
+                                })
+                        except Exception as bkp_rest_err:
+                            print(f"[OptimizerBridge] GLB backup region restore note: {bkp_rest_err}")
                     continue
                 v_nat, vt_nat, f_nat, jb_nat, src_jpg_path = raw_loaded_s
                 if isinstance(sp_e.get("r_zup_rowmajor"), list) and len(sp_e["r_zup_rowmajor"]) == 9:

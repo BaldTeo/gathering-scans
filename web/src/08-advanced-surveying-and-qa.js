@@ -444,8 +444,9 @@
     img.onerror = () => {
       entry.failed = true;
     };
-    const qSuffix = STATE.shareToken ? `?share=${encodeURIComponent(STATE.shareToken)}` : "";
-    img.src = scan.ortho_url || `/api/scans/${encodeURIComponent(sid)}/ortho${qSuffix}`;
+    const qSuffix = STATE.shareToken ? `?share=${encodeURIComponent(STATE.shareToken)}&v=v199` : "?v=v199";
+    const baseOrthoUrl = scan.ortho_url || `/api/scans/${encodeURIComponent(sid)}/ortho`;
+    img.src = baseOrthoUrl.includes("?") ? `${baseOrthoUrl}&v=v199` : `${baseOrthoUrl}${qSuffix}`;
     return entry;
   }
 
