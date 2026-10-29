@@ -950,16 +950,31 @@ class ServerWriteRoutesMixin:
                 self.send_json({"status": "ok", "settings": saved})
                 return
 
-            if path == "/api/queue/force-next":
+            if path in ("/api/queue/force-next", "/api/queue/prioritize"):
                 if not actor_perms.get("can_run_workflows"):
                     self.send_json({"error": f"Role '{actor_role}' cannot reorder the PC processing queue."}, status=403)
                     return
                 if not is_pc_daemon_running():
                     set_pc_daemon_running(True, actor_email=actor_email)
-                scan_id = payload.get("scan_id", "")
-                updated = DB.set_force_next(scan_id, bool(payload.get("force", True)))
+                scan_id = str(payload.get("scan_id") or "").strip()
+                if not scan_id:
+                    self.send_json({"error": "scan_id is required"}, status=400)
+                    return
+                if path == "/api/queue/prioritize" or bool(payload.get("force", True)):
+                    updated = DB.prioritize_scan_next(scan_id)
+                else:
+                    updated = DB.set_force_next(scan_id, False)
+                _DAEMON_WAKE_EVENT.set()
                 _PIX4D_WAKE_EVENT.set()
-                self.send_json({"status": "ok", "scan": updated, "daemon_running": True})
+                self.send_json(
+                    {
+                        "ok": True,
+                        "status": "ok",
+                        "scan_id": scan_id,
+                        "scan": updated,
+                        "daemon_running": True,
+                    }
+                )
                 return
 
             if path in ("/api/scans/rerun", "/api/queue/enqueue", "/api/queue/reprocess"):

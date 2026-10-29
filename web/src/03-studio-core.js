@@ -1379,6 +1379,23 @@
     studioThree.tileUpMatrix = new THREE.Matrix4();
     if (studioThree.fallbackGroup) studioThree.fallbackGroup.visible = false;
 
+    if (scan.status && scan.status !== "completed" && !scan.stream_url) {
+      if (studioThree.fallbackGroup) studioThree.fallbackGroup.visible = true;
+      frameStudioCamera();
+      const pendingMsg =
+        scan.status === "processing"
+          ? `Processing in PIX4Dmatic (${Math.round(scan.progress_pct || 0)}%) — ${scan.stage_label || ""}`
+          : scan.status === "queued"
+          ? `Queued for PIX4Dmatic — ${scan.stage_label || "Waiting in Queue"}`
+          : scan.status === "waiting_parts"
+          ? `Waiting for Split Upload Parts — ${scan.stage_label || ""}`
+          : typeof window.formatPendingScanStatusMessage === "function"
+          ? window.formatPendingScanStatusMessage(scan)
+          : `Status: ${scan.status}`;
+      finishScanLoader(studioThree, "studio", pendingMsg);
+      return;
+    }
+
     startScanLoader(studioThree, "studio", scan.name, scan.scan_id);
 
     const isIOS = typeof isIOSOrIPadDevice === "function" && isIOSOrIPadDevice();

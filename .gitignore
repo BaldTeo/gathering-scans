@@ -25,3 +25,7 @@ data/glb_cache/
 Thumbs.db
 .vscode/
 .idea/
+.env
+data/gchat_config.json
+data/gcp_service_account.json
+data/gdrive_cloud_auth.json

@@ -15,6 +15,40 @@ import threading
 import subprocess
 from typing import Optional, Tuple
 
+
+def _install_silent_subprocess_patch() -> None:
+    """Ensure all child console processes spawned under pythonw.exe on Windows run with CREATE_NO_WINDOW and SW_HIDE."""
+    if os.name != "nt" or getattr(subprocess.Popen, "_gs_silent_patched", False):
+        return
+    _orig_popen_init = subprocess.Popen.__init__
+    _create_no_window = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
+    _create_new_console = getattr(subprocess, "CREATE_NEW_CONSOLE", 0x00000010)
+    _detached_process = getattr(subprocess, "DETACHED_PROCESS", 0x00000008)
+    _startf_useshowwindow = getattr(subprocess, "STARTF_USESHOWWINDOW", 0x00000001)
+
+    def _silent_popen_init(self, *args, **kwargs):
+        allow_window = bool(kwargs.pop("_allow_window", False))
+        if not allow_window:
+            cflags = int(kwargs.get("creationflags") or 0)
+            if not (cflags & (_create_new_console | _detached_process)):
+                kwargs["creationflags"] = cflags | _create_no_window
+            si = kwargs.get("startupinfo")
+            if si is None:
+                si = subprocess.STARTUPINFO()
+                si.dwFlags |= _startf_useshowwindow
+                si.wShowWindow = 0
+                kwargs["startupinfo"] = si
+            elif not (si.dwFlags & _startf_useshowwindow):
+                si.dwFlags |= _startf_useshowwindow
+                si.wShowWindow = 0
+        return _orig_popen_init(self, *args, **kwargs)
+
+    subprocess.Popen.__init__ = _silent_popen_init  # type: ignore[method-assign]
+    setattr(subprocess.Popen, "_gs_silent_patched", True)
+
+
+_install_silent_subprocess_patch()
+
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 if sys.path[:1] != [BASE_DIR]:
     while BASE_DIR in sys.path:
@@ -76,18 +110,30 @@ def _detect_running_pix4dmatic() -> Tuple[bool, str, str]:
     """
     if os.name != "nt":
         return False, "", ""
+    running_p4d_pids = set()
+    tasklist_stdout = ""
     try:
-        r = subprocess.run(
-            ["tasklist", "/FI", "IMAGENAME eq PIX4Dmatic.exe", "/NH"],
-            capture_output=True,
-            text=True,
-            timeout=5,
-            creationflags=_WIN_NO_WINDOW,
-        )
-        if "PIX4Dmatic.exe" not in (r.stdout or ""):
+        import psutil
+        for p in psutil.process_iter(["pid", "name"]):
+            pname = (p.info.get("name") or "").lower()
+            if "pix4dmatic" in pname:
+                running_p4d_pids.add(int(p.info.get("pid") or 0))
+        if not running_p4d_pids:
             return False, "", ""
     except Exception:
-        return False, "", ""
+        try:
+            r = subprocess.run(
+                ["tasklist", "/FI", "IMAGENAME eq PIX4Dmatic.exe", "/NH"],
+                capture_output=True,
+                text=True,
+                timeout=5,
+                creationflags=_WIN_NO_WINDOW,
+            )
+            tasklist_stdout = r.stdout or ""
+            if "PIX4Dmatic.exe" not in tasklist_stdout:
+                return False, "", ""
+        except Exception:
+            return False, "", ""
 
     # Find the active PIX4Dmatic scan_id (prefer rerun_settings.json with matching running PID, then recent logs)
     all_scans = DB.list_scans()
@@ -103,7 +149,7 @@ def _detect_running_pix4dmatic() -> Tuple[bool, str, str]:
                 with open(rcfg, "r", encoding="utf-8") as rf:
                     rd = _json.load(rf)
                 rpid = int(rd.get("pid") or 0)
-                if rpid > 0 and f" {rpid} " in f" {r.stdout or ''} ":
+                if rpid > 0 and (rpid in running_p4d_pids or f" {rpid} " in f" {tasklist_stdout} "):
                     pid_matched_sid = sid
                     break
             except Exception:
@@ -207,7 +253,9 @@ def pix4d_worker_loop():
             if is_running and running_sid:
                 adopted_sid = running_sid
                 info = parse_pix4dmatic_log_progress(latest_log)
-                pct = float(info.get("progress_pct", 15.0))
+                cur_scan = DB.get_scan(running_sid) or {}
+                prev_pct = float(cur_scan.get("progress_pct") or 0.0) if cur_scan.get("status") == "processing" else 0.0
+                pct = min(99.0, max(prev_pct, float(info.get("progress_pct", 15.0))))
                 stg = info.get("stage", "Processing")
                 cpu_ram = info.get("cpu_ram", "")
                 label = f"PIX4Dmatic: {stg} ({cpu_ram})" if cpu_ram else f"PIX4Dmatic: {stg}"

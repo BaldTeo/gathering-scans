@@ -114,35 +114,66 @@ def parse_pix4dmatic_log_progress(log_path: str) -> Dict[str, Any]:
         cpu_ram = live_cpu_ram or log_cpu_ram
 
         stage_pct_map = [
+            ("Initializing", 5.0),
+            ("Loading", 5.0),
             ("Import", 12.0),
+            ("Keypoints", 14.0),
+            ("Extract", 14.0),
             ("Sky mask", 16.0),
-            ("Feature extraction", 24.0),
-            ("Keypoints", 24.0),
-            ("Pair matching", 34.0),
-            ("Initial tracks creation", 39.0),
-            ("Calibration sequence", 45.0),
-            ("Calibration", 45.0),
-            ("Bundle", 52.0),
-            ("dense point cloud", 62.0),
-            ("Densification", 62.0),
-            ("Depth point cloud", 75.0),
+            ("Feature extraction", 18.0),
+            ("Matching", 24.0),
+            ("Match", 24.0),
+            ("Pair matching", 28.0),
+            ("Initial tracks creation", 33.0),
+            ("Calibrating", 38.0),
+            ("Calibrate", 38.0),
+            ("Calibration", 38.0),
+            ("Bundle", 38.0),
+            ("Optimizing camera", 38.0),
+            ("Georeferencing", 45.0),
+            ("Control points", 45.0),
+            ("Densifying", 58.0),
+            ("Dense", 58.0),
+            ("Depth map", 58.0),
+            ("Densification", 58.0),
+            ("Generate point cloud", 66.0),
+            ("Point cloud", 66.0),
+            ("Depth point cloud", 72.0),
+            ("Finalize point cloud", 75.0),
+            ("Generate fused point cloud", 79.0),
+            ("Fusing", 79.0),
             ("Fuse", 79.0),
-            ("textured mesh", 85.0),
-            ("Mesh generation", 85.0),
+            ("Generate mesh", 84.0),
+            ("Mesh", 84.0),
+            ("Decimat", 84.0),
+            ("Texture", 88.0),
+            ("Texturing", 88.0),
             ("scalable mesh", 88.0),
             ("Finalize scalable mesh", 91.0),
-            ("Export quality report", 93.0),
-            ("Export mesh to .obj", 95.0),
+            ("Generate tiles", 91.0),
+            ("Tiles", 91.0),
+            ("Cesium", 91.0),
+            ("3D Tiles", 91.0),
+            ("DSM", 93.0),
+            ("Ortho", 95.0),
+            ("Orthomosaic", 95.0),
+            ("Export", 97.0),
+            ("Quality report", 97.0),
+            ("Saving", 97.0),
         ]
         est_pct = 12.0
-        # Match strictly against the active stage_name so an early "[Save project]" after Import never jumps progress to 96%
+        # Match against the active stage_name so an early "[Save project]" after Import never jumps progress to 97%
         if stage_name:
+            stg_low = stage_name.lower()
             for k_stg, v_pct in stage_pct_map:
-                if k_stg.lower() in stage_name.lower():
+                if k_stg.lower() in stg_low:
                     est_pct = max(est_pct, v_pct)
-            if "save project" in stage_name.lower():
-                if "Export mesh to .obj" in tail_text or "Export quality report" in tail_text:
-                    est_pct = 96.0
+            if "save project" in stg_low:
+                if any(
+                    k in tail_text
+                    for k in ("Export mesh to .obj", "Export quality report", "Generate tiles", "Finalize scalable mesh")
+                ):
+                    est_pct = 97.0
                 else:
                     est_pct = 14.0
 

@@ -1357,6 +1357,23 @@ class ScanQueueDB:
         self.refresh_queue_priorities()
         return self.get_scan(scan_id)
 
+    def prioritize_scan_next(self, scan_id: str) -> Optional[Dict[str, Any]]:
+        clean_id = (scan_id or "").strip()
+        if not clean_id:
+            return None
+        with DB_LOCK, self._connect() as conn:
+            conn.execute(
+                "UPDATE scans SET force_next = 0 WHERE scan_id != ?",
+                (clean_id,),
+            )
+            conn.execute(
+                "UPDATE scans SET force_next = 1, priority_score = 9999.0 WHERE scan_id = ?",
+                (clean_id,),
+            )
+            conn.commit()
+        self.refresh_queue_priorities()
+        return self.get_scan(clean_id)
+
     def _row_to_dict(self, row: sqlite3.Row) -> Dict[str, Any]:
         d = dict(row)
         try:
@@ -1545,7 +1562,20 @@ class ScanQueueDB:
                 ).fetchall()
             else:
                 rows = conn.execute(
-                    "SELECT * FROM scans ORDER BY CASE WHEN status='processing' THEN 0 WHEN status='queued' THEN 1 ELSE 2 END, capture_date DESC"
+                    """
+                    SELECT * FROM scans
+                    ORDER BY
+                      CASE
+                        WHEN status = 'processing' THEN 0
+                        WHEN status = 'queued' THEN 1
+                        WHEN status = 'waiting_parts' THEN 2
+                        ELSE 3
+                      END ASC,
+                      CASE WHEN status = 'queued' THEN COALESCE(force_next, 0) END DESC,
+                      CASE WHEN status = 'queued' THEN priority_score END DESC,
+                      CASE WHEN status = 'queued' THEN uploaded_at END ASC,
+                      capture_date DESC
+                    """
                 ).fetchall()
             all_comments = conn.execute(
                 "SELECT * FROM scan_comments ORDER BY created_at DESC"
@@ -1577,6 +1607,17 @@ class ScanQueueDB:
                 item["measurement_bookmarks"] = bms
                 item["bookmark_count"] = len(bms)
                 out.append(item)
+            if not project_group:
+                out.sort(
+                    key=lambda x: (
+                        0
+                        if x.get("status") == "processing"
+                        else (1 if x.get("status") == "queued" else (2 if x.get("status") == "waiting_parts" else 3)),
+                        -int(x.get("force_next") or 0) if x.get("status") == "queued" else 0,
+                        -float(x.get("priority_score") or 0.0) if x.get("status") == "queued" else 0.0,
+                        float(x.get("uploaded_at") or 0.0) if x.get("status") == "queued" else 0.0,
+                    )
+                )
             return out
 
     def list_measurement_bookmarks(self, scan_id: str) -> List[Dict[str, Any]]:

@@ -1702,42 +1702,107 @@
       }
 
       const rows = Array.isArray(qData.all_scans) && qData.all_scans.length > 0 ? qData.all_scans : STATE.scans;
+      let queuedSeq = 0;
+      rows.forEach((s) => {
+        if (s.status === "queued") {
+          queuedSeq += 1;
+          if (!s.queue_position) s.queue_position = queuedSeq;
+        }
+        const matchState = Array.isArray(STATE.scans) ? STATE.scans.find((x) => x.scan_id === s.scan_id) : null;
+        if (matchState) {
+          matchState.status = s.status;
+          matchState.progress_pct = s.progress_pct;
+          matchState.stage_label = s.stage_label;
+          matchState.priority_score = s.priority_score;
+          matchState.force_next = s.force_next;
+          matchState.queue_position = s.queue_position;
+          if (s.stream_url !== undefined) matchState.stream_url = s.stream_url;
+        }
+      });
       tbody.innerHTML = "";
       rows.forEach((s) => {
         const rowEl = document.createElement("tr");
         const isProc = s.status === "processing";
+        const isQueued = s.status === "queued";
+        const isWaitingParts = s.status === "waiting_parts";
+        const qPos = Number(s.queue_position || 0);
+        const isNextJob = isQueued && (qPos === 1 || Number(s.force_next || 0) === 1);
         const pct = Math.round(Number(s.progress_pct || (s.status === "completed" ? 100 : 0)));
         const rawStatusUpper = String(s.status || "").toUpperCase();
         const statusDisplay =
           rawStatusUpper === "COMPLETED"
             ? tr("已完成", "COMPLETED")
+            : rawStatusUpper === "WAITING_PARTS"
+            ? tr("等待分卷", "WAITING PARTS")
             : rawStatusUpper === "QUEUED" || rawStatusUpper === "WAITING"
-            ? tr("排隊等待", "QUEUED")
+            ? isNextJob
+              ? tr(`#${qPos || 1} 下一個執行`, `#${qPos || 1} NEXT`)
+              : tr(`#${qPos || "-"} 排隊等待`, `#${qPos || "-"} QUEUED`)
             : rawStatusUpper === "FAILED" || rawStatusUpper === "ERROR"
             ? tr("失敗", "FAILED")
             : rawStatusUpper;
         const safeStatus = escapeHtml(statusDisplay);
-        const safeStage = escapeHtml(s.stage_label || tr("正在執行 PIX4Dmatic...", "Running PIX4Dmatic..."));
-        const statusHtml = isProc
-          ? `<div style="display:flex;flex-direction:column;gap:3px;min-width:130px;">
-               <span class="gs-crs-pill" style="background:rgba(2,132,199,0.18);color:var(--ui-accent);">${tr(`處理中 · ${pct}%`, `PROCESSING · ${pct}%`)}</span>
+        const defaultStageText = isProc
+          ? tr("正在執行 PIX4Dmatic...", "Running PIX4Dmatic...")
+          : isQueued
+          ? tr("排隊等待 PIX4Dmatic 管線", "Queued for PIX4Dmatic")
+          : isWaitingParts
+          ? tr("等待其餘分卷上傳...", "Waiting for remaining parts...")
+          : "";
+        const safeStage = escapeHtml(s.stage_label || defaultStageText);
+        let statusHtml = `<span class="gs-crs-pill">${safeStatus}</span>`;
+        if (isProc) {
+          statusHtml = `<div style="display:flex;flex-direction:column;gap:3px;min-width:145px;">
+               <span class="gs-crs-pill" style="background:rgba(2,132,199,0.18);color:var(--ui-accent);font-weight:700;">${tr(`處理中 · ${pct}%`, `PROCESSING · ${pct}%`)}</span>
                <div style="height:4px;background:var(--ui-border-strong);border-radius:999px;overflow:hidden;">
                  <div style="height:100%;width:${Math.max(5, pct)}%;background:var(--ui-accent);"></div>
                </div>
-               <span style="font-size:10px;color:var(--ui-text-secondary);">${safeStage}</span>
-             </div>`
-          : `<span class="gs-crs-pill">${safeStatus}</span>`;
+               <span style="font-size:10px;color:var(--ui-text-secondary);line-height:1.3;">${safeStage}</span>
+             </div>`;
+        } else if (isQueued) {
+          const pillStyle = isNextJob
+            ? "background:rgba(16,185,129,0.18);color:#10b981;border:1px solid rgba(16,185,129,0.4);font-weight:700;"
+            : "background:rgba(245,158,11,0.16);color:#f59e0b;border:1px solid rgba(245,158,11,0.35);font-weight:700;";
+          statusHtml = `<div style="display:flex;flex-direction:column;gap:3px;min-width:145px;">
+               <span class="gs-crs-pill" style="${pillStyle}">${safeStatus}</span>
+               ${safeStage ? `<span style="font-size:10px;color:var(--ui-text-secondary);line-height:1.3;">${safeStage}</span>` : ""}
+             </div>`;
+        } else if (isWaitingParts) {
+          statusHtml = `<div style="display:flex;flex-direction:column;gap:3px;min-width:145px;">
+               <span class="gs-crs-pill" style="background:rgba(6,182,212,0.16);color:#06b6d4;border:1px solid rgba(6,182,212,0.35);font-weight:700;">${safeStatus}</span>
+               ${safeStage ? `<span style="font-size:10px;color:var(--ui-text-secondary);line-height:1.3;">${safeStage}</span>` : ""}
+             </div>`;
+        }
 
         const safeScanId = escapeHtml(s.scan_id || "");
+        const safeGroup = escapeHtml(s.project_group || "");
+        const has3dStream = Boolean(s.stream_url);
+        const canPrioritize = isQueued && !Number(s.force_next || 0);
         rowEl.innerHTML = `
-          <td><b style="color:var(--ui-text-primary);">${escapeHtml(s.name || s.scan_id || "")}</b><br><span style="font-size:10.5px;color:var(--ui-text-muted);">${safeScanId}</span></td>
-          <td style="color:var(--ui-text-secondary);">${escapeHtml(s.project_group || "")}</td>
+          <td>
+            <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+              <b style="color:var(--ui-text-primary);">${escapeHtml(s.name || s.scan_id || "")}</b>
+              ${safeGroup ? `<span style="font-size:10px;font-weight:700;padding:1px 6px;border-radius:4px;background:var(--ui-accent-soft);color:var(--ui-accent);">${safeGroup}</span>` : ""}
+            </div>
+            <span style="font-size:10.5px;color:var(--ui-text-muted);">${safeScanId}</span>
+          </td>
+          <td style="color:var(--ui-text-secondary);font-weight:600;">${safeGroup}</td>
           <td><span style="color:var(--ui-text-primary);font-weight:600;">${escapeHtml(s.uploader_name || "")}</span><br><span style="font-size:10.5px;color:var(--ui-text-muted);">${escapeHtml(s.uploader_email || "")} · ${escapeHtml(s.capture_date || "")}</span></td>
           <td><span style="color:var(--ui-text-primary);font-weight:600;">${Number(s.image_count || 0)} ${tr("張照片", "imgs")}</span><br><span style="font-size:10.5px;color:var(--ui-text-muted);">${escapeHtml(formatCoveredAreaM2(s))} · ${Number(s.size_mb || (s.size_bytes || 0) / 1048576).toFixed(1)} MB</span></td>
           <td><span class="gs-crs-pill">${escapeHtml(getScanCrsDisplayLabel(s))} · ${Number(s.texture_resolution || 4096)}px</span></td>
           <td style="font-family:monospace;font-weight:700;color:var(--ui-text-primary);">${escapeHtml(String(s.priority_score ?? ""))}</td>
           <td>${statusHtml}</td>
-          <td style="display:flex;gap:4px;">
+          <td style="display:flex;gap:4px;flex-wrap:wrap;align-items:center;">
+            ${
+              canPrioritize
+                ? `<button type="button" class="btn-xs primary" data-prioritize="${safeScanId}" title="${tr("排至佇列第 1 順位優先執行", "Prioritize as #1 Next in PIX4Dmatic Queue")}" style="padding:0 6px;font-size:10.5px;font-weight:700;">${tr("⚡ 優先執行", "⚡ Run Next")}</button>`
+                : ""
+            }
+            ${
+              isQueued && has3dStream
+                ? `<button type="button" class="btn-xs" data-inspect3d="${safeScanId}" title="${tr("於等待重算期間檢視現有 3D 模型", "Inspect existing 3D model while re-run is queued")}" style="padding:0 6px;font-size:10.5px;">${tr("檢視 3D", "Inspect 3D")}</button>`
+                : ""
+            }
             <button type="button" class="btn-xs" data-gst="${safeScanId}" title="${tr("預覽 .GST 腳本", "Preview .GST Script")}">
               <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8">
                 <polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/>
@@ -1750,6 +1815,21 @@
             </button>
           </td>
         `;
+        rowEl.querySelector("[data-prioritize]")?.addEventListener("click", async () => {
+          try {
+            await apiPost("/api/queue/prioritize", { scan_id: s.scan_id });
+            showToast(tr(`已將 ${s.name || s.scan_id} 設為 #1 下一個優先執行`, `Prioritized ${s.name || s.scan_id} as #1 Next in queue`));
+            await refreshQueueModalData();
+          } catch (err) {
+            showToast(`Failed to prioritize scan: ${err.message}`);
+          }
+        });
+        rowEl.querySelector("[data-inspect3d]")?.addEventListener("click", () => {
+          closeModal("modalQueue");
+          if (s.project_group) STATE.activeProjectGroup = s.project_group;
+          populateProjectScanDropdowns(s.project_group || STATE.activeProjectGroup, s.scan_id);
+          switchView("studio", s.scan_id);
+        });
         rowEl.querySelector("[data-gst]")?.addEventListener("click", () => previewGstForScan(s.scan_id));
         rowEl.querySelector("[data-reprocess]")?.addEventListener("click", () => {
           openRerunScanModal(s.scan_id);

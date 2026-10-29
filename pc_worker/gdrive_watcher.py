@@ -1731,6 +1731,9 @@ def _sync_gdrive_folder_to_local_vault(src_folder: str, parent_project: str = ""
     return dst_folder
 
 
+_AUTO_TILE_ATTEMPTED_CACHE: Dict[str, float] = {}
+
+
 def _discover_folder_scan_item(
     folder_path: str,
     parent_project: str = "",
@@ -1819,38 +1822,45 @@ def _discover_folder_scan_item(
     # If a completed .obj mesh was dropped without a 3D tileset, auto-build a 4K quadtree tileset on local disk
     # using postprocess_obj_to_tileset so offset.xyz (UTM51N / TWD97) and .mtl Kd factors are properly applied.
     if not (tileset_path and os.path.isfile(tileset_path)) and obj_path and os.path.isfile(obj_path):
+        abs_raw_obj = os.path.abspath(obj_path)
         try:
-            from pc_worker.pix4d_runner import postprocess_obj_to_tileset
-
-            print(f"[GDriveWatcher] Auto-tiling standalone OBJ mesh with offset.xyz support: {obj_path}")
-            built_ts = postprocess_obj_to_tileset(scan_id, folder_path, obj_path)
-            if built_ts and os.path.isfile(built_ts):
-                tileset_path = built_ts
-        except Exception as e:
-            print(f"[GDriveWatcher] Warning in postprocess_obj_to_tileset for {obj_path}, falling back to QuadtreeTiler: {e}")
+            obj_mtime = os.path.getmtime(abs_raw_obj)
+        except OSError:
+            obj_mtime = 0.0
+        if _AUTO_TILE_ATTEMPTED_CACHE.get(abs_raw_obj) != obj_mtime:
+            _AUTO_TILE_ATTEMPTED_CACHE[abs_raw_obj] = obj_mtime
             try:
-                import sys
-                from pc_worker.config import GC_SCAN_OPTIMIZER_DIR
-                if GC_SCAN_OPTIMIZER_DIR and os.path.isdir(GC_SCAN_OPTIMIZER_DIR) and GC_SCAN_OPTIMIZER_DIR not in sys.path:
-                    sys.path.append(GC_SCAN_OPTIMIZER_DIR)
-                from optimizer.quadtree_tiler import QuadtreeTiler  # type: ignore
-                auto_ts_dir = os.path.join(folder_path, "tileset")
-                os.makedirs(auto_ts_dir, exist_ok=True)
-                tiler = QuadtreeTiler(
-                    input_path=obj_path,
-                    output_dir=auto_ts_dir,
-                    max_levels=3,
-                    texture_quality=7,
-                    texture_limit=PIX4DMATIC_TEXTURE_SIZE,
-                    high_compression=True,
-                    verbose=True,
-                )
-                tiler.run()
-                built_ts = os.path.join(auto_ts_dir, "tileset.json")
-                if os.path.isfile(built_ts):
+                from pc_worker.pix4d_runner import postprocess_obj_to_tileset
+
+                print(f"[GDriveWatcher] Auto-tiling standalone OBJ mesh with offset.xyz support: {obj_path}")
+                built_ts = postprocess_obj_to_tileset(scan_id, folder_path, obj_path)
+                if built_ts and os.path.isfile(built_ts):
                     tileset_path = built_ts
-            except Exception as e2:
-                print(f"[GDriveWatcher] Warning auto-tiling standalone OBJ {obj_path}: {e2}")
+            except Exception as e:
+                print(f"[GDriveWatcher] Warning in postprocess_obj_to_tileset for {obj_path}, falling back to QuadtreeTiler: {e}")
+                try:
+                    import sys
+                    from pc_worker.config import GC_SCAN_OPTIMIZER_DIR
+                    if GC_SCAN_OPTIMIZER_DIR and os.path.isdir(GC_SCAN_OPTIMIZER_DIR) and GC_SCAN_OPTIMIZER_DIR not in sys.path:
+                        sys.path.append(GC_SCAN_OPTIMIZER_DIR)
+                    from optimizer.quadtree_tiler import QuadtreeTiler  # type: ignore
+                    auto_ts_dir = os.path.join(folder_path, "tileset")
+                    os.makedirs(auto_ts_dir, exist_ok=True)
+                    tiler = QuadtreeTiler(
+                        input_path=obj_path,
+                        output_dir=auto_ts_dir,
+                        max_levels=3,
+                        texture_quality=7,
+                        texture_limit=PIX4DMATIC_TEXTURE_SIZE,
+                        high_compression=True,
+                        verbose=True,
+                    )
+                    tiler.run()
+                    built_ts = os.path.join(auto_ts_dir, "tileset.json")
+                    if os.path.isfile(built_ts):
+                        tileset_path = built_ts
+                except Exception as e2:
+                    print(f"[GDriveWatcher] Warning auto-tiling standalone OBJ {obj_path}: {e2}")
 
     if not (tileset_path and os.path.isfile(tileset_path)):
         return None

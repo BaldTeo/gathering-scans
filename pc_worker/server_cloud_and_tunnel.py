@@ -194,6 +194,21 @@ def get_pc_daemon_status() -> Dict[str, Any]:
 
 
 def _compute_scans_dir_fingerprint() -> Tuple[str, ...]:
+    _KNOWN_OUTPUT_SUBDIRS = {"tileset", "exports", "ortho", "dsm", "3d_tiles", "mesh", "pointcloud"}
+    _IGNORED_INTERNAL_SUBDIRS = {
+        "logs",
+        "temp",
+        "processing",
+        "inputs",
+        "images",
+        "project",
+        "opf_files",
+        "meshes",
+        "point_clouds",
+        "configs",
+        "tileset_backup",
+        "tileset_prev",
+    }
     entries = []
     for root_label, root_dir in (("local", LOCAL_SCANS_ROOT), ("gdrive_inputs", GDRIVE_INPUTS_DIR)):
         if not root_dir or not os.path.isdir(root_dir):
@@ -209,17 +224,28 @@ def _compute_scans_dir_fingerprint() -> Tuple[str, ...]:
                     except Exception:
                         sub = []
                     nested_parts = []
-                    for sname in sub[:24]:
+                    name_low = name.lower()
+                    for sname in sub:
+                        if sname.startswith(("_", ".")):
+                            continue
+                        sname_low = sname.lower()
+                        if sname_low == name_low or sname_low in _IGNORED_INTERNAL_SUBDIRS:
+                            continue
                         sfull = os.path.join(full, sname)
                         try:
                             if os.path.isdir(sfull):
-                                ssub = sorted(os.listdir(sfull))[:8]
+                                if root_label == "local" and sname_low not in _KNOWN_OUTPUT_SUBDIRS:
+                                    continue
+                                ssub = [
+                                    x for x in sorted(os.listdir(sfull))
+                                    if not x.startswith(("_", ".")) and x.lower() not in _IGNORED_INTERNAL_SUBDIRS
+                                ][:8]
                                 nested_parts.append(f"{sname}[{','.join(ssub)}]")
-                            else:
+                            elif sname_low.endswith(".json"):
                                 nested_parts.append(sname)
                         except Exception:
-                            nested_parts.append(sname)
-                    entries.append(f"{root_label}:{name}:{','.join(nested_parts)}")
+                            pass
+                    entries.append(f"{root_label}:{name}:{','.join(nested_parts[:24])}")
                 elif os.path.isfile(full) and name.lower().endswith(".zip"):
                     try:
                         sz = os.path.getsize(full)
@@ -231,18 +257,19 @@ def _compute_scans_dir_fingerprint() -> Tuple[str, ...]:
     return tuple(entries)
 
 
-def sync_scans_with_filesystem(max_age_s: float = 1.5, force: bool = False) -> None:
+def sync_scans_with_filesystem(max_age_s: float = 10.0, force: bool = False) -> None:
     """Live filesystem sync: discovers new folders in C:\\GatheringScans and removes deleted folders."""
     global _LAST_FS_SYNC_TS, _LAST_FS_FINGERPRINT
     if os.name != "nt":
         return
     if not force and not is_pc_daemon_running():
         return
+    effective_age = max(10.0, float(max_age_s or 10.0))
     now = time.time()
-    if not force and (now - _LAST_FS_SYNC_TS < max_age_s):
+    if not force and (now - _LAST_FS_SYNC_TS < effective_age):
         return
     with _FS_SYNC_LOCK:
-        if not force and (time.time() - _LAST_FS_SYNC_TS < max_age_s):
+        if not force and (time.time() - _LAST_FS_SYNC_TS < effective_age):
             return
         fp = _compute_scans_dir_fingerprint()
         prev_fp = _LAST_FS_FINGERPRINT

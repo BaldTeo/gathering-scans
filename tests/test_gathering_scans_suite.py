@@ -1850,6 +1850,72 @@ class GatheringScansTestSuite(unittest.TestCase):
         self.assertGreaterEqual(float(mrg_cat["summary"]["water_planar_area_m2"]), 1300.0)
         self.assertTrue(all(t.get("verified_photo") for t in mrg_cat.get("trees", [])))
 
+    def test_23_silent_subprocess_queue_order_progress_and_rerun_visibility(self):
+        """Verify Task 1 & Task 2: silent subprocess patch, psutil process check, auto-tile retry cache,
+        PIX4Dmatic 2.11.0 stage progress mapping, queue ordering + prioritize_scan_next, and queued re-run 3D visibility."""
+        import tempfile
+        from pc_worker.pix4d_runner import parse_pix4dmatic_log_progress
+
+        # 1. Verify PIX4Dmatic 2.11.0 stage mapping (Generate tiles -> 91.0, Finalize point cloud -> 75.0, etc.)
+        with tempfile.NamedTemporaryFile("w", suffix=".txt", delete=False, encoding="utf-8") as tf:
+            tf.write("[2026-10-29 13:20:00][45%CPU][62%RAM][Generate tiles] Generating Cesium 3D Tiles...\n")
+            tmp_log = tf.name
+        try:
+            info = parse_pix4dmatic_log_progress(tmp_log)
+            self.assertEqual(info["stage"], "Generate tiles")
+            self.assertAlmostEqual(float(info["progress_pct"]), 91.0, places=1)
+        finally:
+            try:
+                os.remove(tmp_log)
+            except OSError:
+                pass
+
+        # 2. Verify list_scans() ordering (processing -> queued by force_next DESC, priority_score DESC, uploaded_at ASC -> waiting_parts -> completed)
+        now = time.time()
+        self.db.upsert_scan({"scan_id": "s_comp", "name": "Completed", "status": "completed", "capture_date": "2026-10-28"})
+        self.db.upsert_scan({"scan_id": "s_wait", "name": "Waiting Parts", "status": "waiting_parts", "capture_date": "2026-10-29"})
+        self.db.upsert_scan({"scan_id": "s_q_large", "name": "Queued Large", "status": "queued", "image_count": 2000, "size_bytes": 5000 * 1024 * 1024, "uploaded_at": now - 10})
+        self.db.upsert_scan({"scan_id": "s_q_small", "name": "Queued Small", "status": "queued", "image_count": 100, "size_bytes": 200 * 1024 * 1024, "uploaded_at": now - 5})
+        self.db.upsert_scan({"scan_id": "s_proc", "name": "Processing", "status": "processing", "progress_pct": 91.0})
+
+        ordered = [s["scan_id"] for s in self.db.list_scans() if s["scan_id"] in {"s_comp", "s_wait", "s_q_large", "s_q_small", "s_proc"}]
+        self.assertEqual(ordered, ["s_proc", "s_q_small", "s_q_large", "s_wait", "s_comp"])
+
+        # 3. Verify prioritize_scan_next moves s_q_large ahead of s_q_small
+        self.db.prioritize_scan_next("s_q_large")
+        ordered_after = [s["scan_id"] for s in self.db.list_scans() if s["scan_id"] in {"s_comp", "s_wait", "s_q_large", "s_q_small", "s_proc"}]
+        self.assertEqual(ordered_after, ["s_proc", "s_q_large", "s_q_small", "s_wait", "s_comp"])
+
+        # 4. Verify source wiring across Python & JS files
+        with open(os.path.join(BASE_DIR, "start_gathering_scans.py"), "r", encoding="utf-8") as f:
+            start_py = f.read()
+        with open(os.path.join(BASE_DIR, "server.py"), "r", encoding="utf-8") as f:
+            srv_py = f.read()
+        with open(os.path.join(BASE_DIR, "pc_worker", "gdrive_watcher.py"), "r", encoding="utf-8") as f:
+            watcher_py = f.read()
+        with open(os.path.join(BASE_DIR, "pc_worker", "server_cloud_and_tunnel.py"), "r", encoding="utf-8") as f:
+            tunnel_py = f.read()
+        with open(os.path.join(BASE_DIR, "pc_worker", "server_api_routes.py"), "r", encoding="utf-8") as f:
+            routes_py = f.read()
+        with open(os.path.join(BASE_DIR, "web", "src", "02-map-and-timeline.js"), "r", encoding="utf-8") as f:
+            js02 = f.read()
+        with open(os.path.join(BASE_DIR, "web", "src", "03-studio-core.js"), "r", encoding="utf-8") as f:
+            js03 = f.read()
+        with open(os.path.join(BASE_DIR, "web", "src", "07-compare-and-queue.js"), "r", encoding="utf-8") as f:
+            js07 = f.read()
+
+        self.assertIn("def _install_silent_subprocess_patch()", start_py)
+        self.assertIn("def _install_silent_subprocess_patch()", srv_py)
+        self.assertIn("psutil.process_iter", start_py)
+        self.assertIn("psutil.process_iter", srv_py)
+        self.assertIn("_AUTO_TILE_ATTEMPTED_CACHE", watcher_py)
+        self.assertIn("_KNOWN_OUTPUT_SUBDIRS", tunnel_py)
+        self.assertIn('"/api/queue/prioritize"', routes_py)
+        self.assertIn('if (scan.status && scan.status !== "completed" && !scan.stream_url)', js02)
+        self.assertIn('if (scan.status && scan.status !== "completed" && !scan.stream_url)', js03)
+        self.assertIn("data-prioritize", js07)
+        self.assertIn("data-inspect3d", js07)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -984,6 +984,53 @@
     }, 10);
   }
 
+  function formatScanQueueStatusBadgeHtml(scan) {
+    if (!scan || !scan.status || scan.status === "completed") return "";
+    const st = String(scan.status).toLowerCase();
+    if (st === "processing") {
+      const pct = Math.round(Number(scan.progress_pct || 0));
+      return `<span class="gs-tile-chip" style="background:rgba(2,132,199,0.9);color:#fff;font-weight:700;">${tr(`處理中 ${pct}%`, `PROCESSING ${pct}%`)}</span>`;
+    }
+    if (st === "queued") {
+      let qPos = Number(scan.queue_position || 0);
+      if (!qPos && Array.isArray(STATE.scans)) {
+        const qList = STATE.scans
+          .filter((x) => x.status === "queued")
+          .sort(
+            (a, b) =>
+              Number(b.force_next || 0) - Number(a.force_next || 0) ||
+              Number(b.priority_score || 0) - Number(a.priority_score || 0) ||
+              Number(a.uploaded_at || 0) - Number(b.uploaded_at || 0)
+          );
+        const idx = qList.findIndex((x) => x.scan_id === scan.scan_id);
+        if (idx >= 0) qPos = idx + 1;
+      }
+      const isNext = qPos === 1 || Number(scan.force_next || 0) === 1;
+      const lbl = qPos > 0 ? tr(`排隊 #${qPos}`, `QUEUED #${qPos}`) : isNext ? tr("排隊 #1", "QUEUED #1") : tr("排隊中", "QUEUED");
+      const bg = isNext ? "rgba(16,185,129,0.9)" : "rgba(245,158,11,0.9)";
+      return `<span class="gs-tile-chip" style="background:${bg};color:#fff;font-weight:700;">${lbl}</span>`;
+    }
+    if (st === "waiting_parts") {
+      return `<span class="gs-tile-chip" style="background:rgba(6,182,212,0.9);color:#fff;font-weight:700;">${tr("等待分卷", "WAITING PARTS")}</span>`;
+    }
+    return "";
+  }
+
+  function formatPendingScanStatusMessage(scan) {
+    if (!scan) return "";
+    if (scan.status === "processing") {
+      return `Processing in PIX4Dmatic (${Math.round(scan.progress_pct || 0)}%) — ${scan.stage_label || ""}`;
+    }
+    if (scan.status === "queued") {
+      return `Queued for PIX4Dmatic — ${scan.stage_label || "Waiting in Queue"}`;
+    }
+    if (scan.status === "waiting_parts") {
+      return `Waiting for Split Upload Parts — ${scan.stage_label || ""}`;
+    }
+    return `Status: ${scan.status || "Pending"}`;
+  }
+  window.formatPendingScanStatusMessage = formatPendingScanStatusMessage;
+
   function openClusterPopover(grp, userExplicit = false) {
     const pop = document.getElementById("clusterHoverPopover");
     if (!pop || !grp) return;
@@ -1000,8 +1047,9 @@
 
     if (sortedScans.length > 0) {
       const currInGroup = sortedScans.find((s) => s.scan_id === STATE.activeScanId);
-      if (!currInGroup || (currInGroup.status !== "completed" && sortedScans.some((s) => s.status === "completed"))) {
-        const bestScan = sortedScans.find((s) => s.status === "completed") || sortedScans[0];
+      const isPlayable = (s) => s.status === "completed" || Boolean(s.stream_url);
+      if (!currInGroup || (!isPlayable(currInGroup) && sortedScans.some(isPlayable))) {
+        const bestScan = sortedScans.find(isPlayable) || sortedScans[0];
         STATE.activeScanId = bestScan.scan_id;
         STATE.activeScan = bestScan;
       }
@@ -1087,6 +1135,7 @@
         <div class="gs-map-tile-thumb-wrap">
           <img class="gs-map-tile-thumb" data-scan-thumb="${safeId}" src="${safeThumbSrc}" alt="${safeName}" />
           <div class="gs-tile-badge-row">
+            ${formatScanQueueStatusBadgeHtml(scan)}
             <span class="gs-tile-chip">${escapeHtml(polyShort)} · ${escapeHtml(texLabel)} · ${escapeHtml(sizeShort)}</span>
             <span class="gs-tile-chip">${escapeHtml(formatCoveredAreaM2(scan))}</span>
           </div>
@@ -1791,14 +1840,18 @@
     if (previewThree.fallbackGroup) previewThree.fallbackGroup.visible = false;
 
     previewThree._retriedOnce = false;
-    if (scan.status && scan.status !== "completed") {
+    if (scan.status && scan.status !== "completed" && !scan.stream_url) {
       if (previewThree.fallbackGroup) previewThree.fallbackGroup.visible = true;
       framePreviewCamera();
-      finishScanLoader(
-        previewThree,
-        "preview",
-        `Processing in PIX4Dmatic (${Math.round(Number(scan.progress_pct) || 0)}%)`
-      );
+      const pendingMsg =
+        scan.status === "processing"
+          ? `Processing in PIX4Dmatic (${Math.round(scan.progress_pct || 0)}%) — ${scan.stage_label || ""}`
+          : scan.status === "queued"
+          ? `Queued for PIX4Dmatic — ${scan.stage_label || "Waiting in Queue"}`
+          : scan.status === "waiting_parts"
+          ? `Waiting for Split Upload Parts — ${scan.stage_label || ""}`
+          : formatPendingScanStatusMessage(scan);
+      finishScanLoader(previewThree, "preview", pendingMsg);
       return;
     }
     startScanLoader(previewThree, "preview", `${scan.name} (Interactive Preview)`, scan.scan_id);
@@ -2120,6 +2173,7 @@
           <div class="gs-tile-thumb-wrap">
             <img class="gs-tile-thumb" data-scan-thumb="${escapeHtml(s.scan_id)}" src="${thumbSrc}" alt="${safeName}" />
             <div class="gs-tile-badge-row">
+              ${formatScanQueueStatusBadgeHtml(s)}
               <span class="gs-tile-chip" title="${tr("網格面數", "Polygons")}: ${escapeHtml(formatScanPolyCount(s))} · ${tr("貼圖解析度", "Texture")}: ${escapeHtml(formatScanTextureSize(s))} · ${tr("掃描大小", "Scan Size")}: ${escapeHtml(sizeShort)}">${escapeHtml(polyShort)} · ${escapeHtml(texLabel)} · ${escapeHtml(sizeShort)}</span>
               <span class="gs-tile-chip ${isSelected ? "active-indicator" : ""}" data-rtk-chip="1">${formatCoveredAreaM2(s)}</span>
             </div>

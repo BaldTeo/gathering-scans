@@ -22,10 +22,45 @@ import html
 import hashlib
 import mimetypes
 import threading
+import subprocess
 import urllib.parse
 from datetime import datetime, timezone
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from typing import Dict, Any, Optional, Tuple, List
+
+
+def _install_silent_subprocess_patch() -> None:
+    """Ensure all child console processes spawned under pythonw.exe on Windows run with CREATE_NO_WINDOW and SW_HIDE."""
+    if os.name != "nt" or getattr(subprocess.Popen, "_gs_silent_patched", False):
+        return
+    _orig_popen_init = subprocess.Popen.__init__
+    _create_no_window = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
+    _create_new_console = getattr(subprocess, "CREATE_NEW_CONSOLE", 0x00000010)
+    _detached_process = getattr(subprocess, "DETACHED_PROCESS", 0x00000008)
+    _startf_useshowwindow = getattr(subprocess, "STARTF_USESHOWWINDOW", 0x00000001)
+
+    def _silent_popen_init(self, *args, **kwargs):
+        allow_window = bool(kwargs.pop("_allow_window", False))
+        if not allow_window:
+            cflags = int(kwargs.get("creationflags") or 0)
+            if not (cflags & (_create_new_console | _detached_process)):
+                kwargs["creationflags"] = cflags | _create_no_window
+            si = kwargs.get("startupinfo")
+            if si is None:
+                si = subprocess.STARTUPINFO()
+                si.dwFlags |= _startf_useshowwindow
+                si.wShowWindow = 0
+                kwargs["startupinfo"] = si
+            elif not (si.dwFlags & _startf_useshowwindow):
+                si.dwFlags |= _startf_useshowwindow
+                si.wShowWindow = 0
+        return _orig_popen_init(self, *args, **kwargs)
+
+    subprocess.Popen.__init__ = _silent_popen_init  # type: ignore[method-assign]
+    setattr(subprocess.Popen, "_gs_silent_patched", True)
+
+
+_install_silent_subprocess_patch()
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 if BASE_DIR not in sys.path:
@@ -890,7 +925,24 @@ class GatheringScansHandler(CloudAndTunnelHandlerMixin, ServerWriteRoutesMixin, 
                 s["has_undo"] = os.path.isfile(os.path.join(proj_dir, "tileset_prev", "tileset.json"))
             except Exception:
                 pass
-        if ts_path.lower().endswith(".glb"):
+        proj_dir_chk = s.get("project_dir") or (os.path.join(LOCAL_SCANS_ROOT, sid) if LOCAL_SCANS_ROOT else "")
+        has_disk_tileset = bool(
+            (ts_path and os.path.isfile(ts_path))
+            or (proj_dir_chk and os.path.isfile(os.path.join(str(proj_dir_chk), "tileset", "tileset.json")))
+        )
+        has_cloud_pkg = False
+        try:
+            has_cloud_pkg = bool(sid in ((_load_cloud_manifest().get("packages") or {})))
+        except Exception:
+            pass
+        has_playable_3d = (s.get("status") == "completed") or has_disk_tileset or has_cloud_pkg
+
+        if not has_playable_3d:
+            s["stream_url"] = ""
+            s["stream_type"] = "tileset"
+            s["preview_stream_url"] = ""
+            s["preview_stream_type"] = "tileset"
+        elif ts_path.lower().endswith(".glb"):
             s["stream_url"] = f"/stream/{sid}/{os.path.basename(ts_path)}{q_suffix}"
             s["stream_type"] = "glb"
             s["preview_stream_url"] = f"/stream/{sid}/preview_low.glb{q_suffix}"
@@ -1551,20 +1603,28 @@ class GatheringScansHandler(CloudAndTunnelHandlerMixin, ServerWriteRoutesMixin, 
                 self.send_json({"error": "Queue status restricted to internal company users."}, status=403)
                 return
 
-            # Check if PIX4Dmatic.exe is actively running on Windows PC
+            # Check if PIX4Dmatic.exe is actively running on Windows PC (in-process via psutil, no console window)
             p4d_running = False
             if os.name == "nt":
                 try:
-                    import subprocess as _sp
-                    tr = _sp.run(
-                        ["tasklist", "/FI", "IMAGENAME eq PIX4Dmatic.exe", "/NH"],
-                        capture_output=True,
-                        text=True,
-                        timeout=3,
+                    import psutil
+                    p4d_running = any(
+                        "pix4dmatic" in (p.info.get("name") or "").lower()
+                        for p in psutil.process_iter(["pid", "name"])
                     )
-                    p4d_running = "PIX4Dmatic.exe" in (tr.stdout or "")
                 except Exception:
-                    p4d_running = False
+                    try:
+                        import subprocess as _sp
+                        tr = _sp.run(
+                            ["tasklist", "/FI", "IMAGENAME eq PIX4Dmatic.exe", "/NH"],
+                            capture_output=True,
+                            text=True,
+                            timeout=3,
+                            creationflags=0x08000000,
+                        )
+                        p4d_running = "PIX4Dmatic.exe" in (tr.stdout or "")
+                    except Exception:
+                        p4d_running = False
 
             all_scans = DB.list_scans()
             active_proc_ids = {s["scan_id"] for s in all_scans if s.get("status") == "processing"}
@@ -1603,6 +1663,7 @@ class GatheringScansHandler(CloudAndTunnelHandlerMixin, ServerWriteRoutesMixin, 
                     stage_name = info.get("stage", "Processing")
                     cpu_ram = live_os_cpu_ram or info.get("cpu_ram", "")
                     est_pct = float(info.get("progress_pct", 12.0))
+                    est_pct = min(99.0, max(float(active_scan.get("progress_pct") or 0.0), float(est_pct)))
                     new_label = (
                         f"PIX4Dmatic: {stage_name} ({cpu_ram})"
                         if stage_name and cpu_ram
@@ -1636,10 +1697,42 @@ class GatheringScansHandler(CloudAndTunnelHandlerMixin, ServerWriteRoutesMixin, 
                         active_scan["stage_label"] = "Queued (Resuming interrupted PIX4Dmatic job)"
                         DB.update_job_progress(sid, "queued", 0.0, "Queued (Resuming interrupted PIX4Dmatic job)")
 
-            queued = [s for s in all_scans if s["status"] in ("queued", "waiting_parts")]
-            queued.sort(key=lambda x: (0 if x["status"] == "queued" else 1, -float(x["priority_score"]), float(x["uploaded_at"])))
+            for s in all_scans:
+                sid_s = s.get("scan_id") or ""
+                ts_s = s.get("tileset_path") or ""
+                pdir_s = s.get("project_dir") or (os.path.join(LOCAL_SCANS_ROOT, sid_s) if LOCAL_SCANS_ROOT else "")
+                has_ts = bool(
+                    (ts_s and os.path.isfile(ts_s))
+                    or (pdir_s and os.path.isfile(os.path.join(str(pdir_s), "tileset", "tileset.json")))
+                )
+                if has_ts or s.get("status") == "completed":
+                    if not s.get("stream_url"):
+                        s["stream_url"] = f"/stream/{sid_s}/tileset.json"
+                else:
+                    s["stream_url"] = ""
+
+            queued_only = [s for s in all_scans if s["status"] == "queued"]
+            queued_only.sort(
+                key=lambda x: (
+                    -int(x.get("force_next") or 0),
+                    -float(x.get("priority_score") or 0.0),
+                    float(x.get("uploaded_at") or 0.0),
+                )
+            )
+            for q_idx, q_item in enumerate(queued_only, start=1):
+                q_item["queue_position"] = q_idx
+            waiting_parts_list = [s for s in all_scans if s["status"] == "waiting_parts"]
+            queued = queued_only + waiting_parts_list
             processing = [s for s in all_scans if s["status"] == "processing"]
             completed = [s for s in all_scans if s["status"] == "completed"]
+            all_scans.sort(
+                key=lambda x: (
+                    0
+                    if x.get("status") == "processing"
+                    else (1 if x.get("status") == "queued" else (2 if x.get("status") == "waiting_parts" else 3)),
+                    int(x.get("queue_position") or 999999) if x.get("status") == "queued" else 0,
+                )
+            )
             p4d_cfg = load_pix4d_settings()
             _, _, q_perms = self._resolve_request_role(None, query, share_token)
             is_q_admin = bool(q_perms.get("can_manage_users"))
@@ -1654,6 +1747,7 @@ class GatheringScansHandler(CloudAndTunnelHandlerMixin, ServerWriteRoutesMixin, 
                     "pix4d_settings": p4d_cfg,
                     "processing": processing,
                     "queued": queued,
+                    "waiting_parts_count": len(waiting_parts_list),
                     "all_scans": all_scans,
                     "live_pix4d": live_log_info,
                     "completed_count": len(completed),
