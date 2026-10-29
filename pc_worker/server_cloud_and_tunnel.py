@@ -257,9 +257,38 @@ def _compute_scans_dir_fingerprint() -> Tuple[str, ...]:
     return tuple(entries)
 
 
+_FS_SYNC_RUNNING = False
+
+
+def _run_fs_sync_worker(force: bool = False) -> None:
+    global _LAST_FS_SYNC_TS, _LAST_FS_FINGERPRINT, _FS_SYNC_RUNNING
+    try:
+        with _FS_SYNC_LOCK:
+            fp = _compute_scans_dir_fingerprint()
+            prev_fp = _LAST_FS_FINGERPRINT
+            if force or fp != prev_fp:
+                try:
+                    seed_and_discover_scans(DB)
+                    mark_daemon_poll_completed()
+                    _LAST_FS_FINGERPRINT = fp
+                    if (force or (prev_fp is not None and fp != prev_fp)) and "AUTH_SHARE" in globals():
+                        def _bg_cloud_sync():
+                            try:
+                                from pc_worker.gdrive_cloud_sync import sync_all_scans_to_gdrive_and_vps
+                                sync_all_scans_to_gdrive_and_vps(DB, AUTH_SHARE, force=False)
+                            except Exception:
+                                pass
+                        threading.Thread(target=_bg_cloud_sync, daemon=True).start()
+                except Exception as e:
+                    print(f"[GatheringScans] Live filesystem sync note: {e}")
+            _LAST_FS_SYNC_TS = time.time()
+    finally:
+        _FS_SYNC_RUNNING = False
+
+
 def sync_scans_with_filesystem(max_age_s: float = 10.0, force: bool = False) -> None:
     """Live filesystem sync: discovers new folders in C:\\GatheringScans and removes deleted folders."""
-    global _LAST_FS_SYNC_TS, _LAST_FS_FINGERPRINT
+    global _LAST_FS_SYNC_TS, _FS_SYNC_RUNNING
     if os.name != "nt":
         return
     if not force and not is_pc_daemon_running():
@@ -268,30 +297,24 @@ def sync_scans_with_filesystem(max_age_s: float = 10.0, force: bool = False) -> 
     now = time.time()
     if not force and (now - _LAST_FS_SYNC_TS < effective_age):
         return
-    with _FS_SYNC_LOCK:
-        if not force and (time.time() - _LAST_FS_SYNC_TS < effective_age):
-            return
-        fp = _compute_scans_dir_fingerprint()
-        prev_fp = _LAST_FS_FINGERPRINT
-        if force or fp != prev_fp:
-            try:
-                seed_and_discover_scans(DB)
-                mark_daemon_poll_completed()
-                _LAST_FS_FINGERPRINT = fp
-                if (force or (prev_fp is not None and fp != prev_fp)) and "AUTH_SHARE" in globals():
-                    def _bg_cloud_sync():
-                        try:
-                            from pc_worker.gdrive_cloud_sync import sync_all_scans_to_gdrive_and_vps
-                            sync_all_scans_to_gdrive_and_vps(DB, AUTH_SHARE, force=False)
-                        except Exception:
-                            pass
-                    threading.Thread(target=_bg_cloud_sync, daemon=True).start()
-            except Exception as e:
-                print(f"[GatheringScans] Live filesystem sync note: {e}")
-        _LAST_FS_SYNC_TS = time.time()
+    if force:
+        _run_fs_sync_worker(force=True)
+        return
+    if _FS_SYNC_RUNNING:
+        return
+    _FS_SYNC_RUNNING = True
+    _LAST_FS_SYNC_TS = now
+    threading.Thread(target=_run_fs_sync_worker, kwargs={"force": False}, daemon=True).start()
 
 
-sync_scans_with_filesystem(force=True)
+_LAST_FS_SYNC_TS = time.time()
+try:
+    if len(DB.list_scans()) == 0:
+        sync_scans_with_filesystem(force=True)
+    else:
+        threading.Thread(target=_run_fs_sync_worker, kwargs={"force": True}, daemon=True).start()
+except Exception:
+    pass
 OPTIMIZER = OptimizerBridge(DB)
 SURVEY = SurveyingEngine(DB)
 AUTH_SHARE = AuthAndSharingManager(DB)

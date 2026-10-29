@@ -869,9 +869,10 @@ class GatheringScansHandler(CloudAndTunnelHandlerMixin, ServerWriteRoutesMixin, 
                 p_glb = os.path.join(bdir, "preview_low", "tiles", "root.glb")
                 max_tile_mt = os.path.getmtime(ts_path)
                 if os.path.isdir(tiles_sub):
-                    for fn_t in os.listdir(tiles_sub):
-                        if fn_t.lower().endswith(".glb"):
-                            max_tile_mt = max(max_tile_mt, os.path.getmtime(os.path.join(tiles_sub, fn_t)))
+                    max_tile_mt = max(max_tile_mt, os.path.getmtime(tiles_sub))
+                    root_tile_fp = os.path.join(tiles_sub, "root.glb")
+                    if os.path.isfile(root_tile_fp):
+                        max_tile_mt = max(max_tile_mt, os.path.getmtime(root_tile_fp))
                 m_ts = int(max(max_tile_mt, float(s.get("tileset_version") or 0) / 1000.0) * 1000)
                 m_prev = int(
                     max(
@@ -940,13 +941,15 @@ class GatheringScansHandler(CloudAndTunnelHandlerMixin, ServerWriteRoutesMixin, 
             if ts_path and os.path.isfile(ts_path):
                 try:
                     import io as _io
+                    import math as _math
                     from PIL import Image as _Image
 
                     bdir_m = os.path.dirname(ts_path)
                     proj_dir_m = s.get("project_dir") or os.path.dirname(bdir_m)
-                    leaf_glbs = []
+                    leaf_rel_uris: List[str] = []
                     if ts_path.lower().endswith(".glb"):
                         leaf_glbs = [ts_path]
+                        total_leaf_count = 1
                     else:
                         with open(ts_path, "r", encoding="utf-8") as _mf:
                             _tso = json.load(_mf)
@@ -955,8 +958,11 @@ class GatheringScansHandler(CloudAndTunnelHandlerMixin, ServerWriteRoutesMixin, 
                         _rf = os.path.join(bdir_m, _rc) if _rc else ""
                         if not (_root.get("children")) and _rf and os.path.isfile(_rf):
                             leaf_glbs = [_rf]
+                            total_leaf_count = 1
                         else:
                             def _walk_m(node: dict, depth: int = 0):
+                                if len(leaf_rel_uris) >= 512:
+                                    return
                                 _chs = [c for c in (node.get("children") or []) if isinstance(c, dict)]
                                 if _chs and depth < 12:
                                     for _ch in _chs:
@@ -964,16 +970,27 @@ class GatheringScansHandler(CloudAndTunnelHandlerMixin, ServerWriteRoutesMixin, 
                                     return
                                 _cu = ((node.get("content") or {}).get("uri") or "").split("?")[0]
                                 if _cu:
-                                    _cf = os.path.join(bdir_m, _cu)
-                                    if os.path.isfile(_cf):
-                                        leaf_glbs.append(_cf)
+                                    leaf_rel_uris.append(_cu)
                             _walk_m(_root, 0)
+                            total_leaf_count = len(leaf_rel_uris)
+                            if total_leaf_count > 12:
+                                _step = max(1, total_leaf_count // 12)
+                                _sampled_uris = leaf_rel_uris[::_step][:12]
+                            else:
+                                _sampled_uris = leaf_rel_uris
+                            leaf_glbs = []
+                            for _su in _sampled_uris:
+                                _cf = os.path.join(bdir_m, _su)
+                                if os.path.isfile(_cf):
+                                    leaf_glbs.append(_cf)
                             if not leaf_glbs and _rf and os.path.isfile(_rf):
                                 leaf_glbs = [_rf]
+                                total_leaf_count = max(1, total_leaf_count)
 
                     tris_sum = 0
                     glb_bytes_sum = 0
                     tex_dims_list = []
+                    sample_scale = (float(total_leaf_count) / float(len(leaf_glbs))) if (leaf_glbs and total_leaf_count > len(leaf_glbs)) else 1.0
                     for _gfp in leaf_glbs:
                         try:
                             glb_bytes_sum += os.path.getsize(_gfp)
@@ -987,17 +1004,18 @@ class GatheringScansHandler(CloudAndTunnelHandlerMixin, ServerWriteRoutesMixin, 
                                         for _gp in _gm.get("primitives") or []:
                                             if "indices" in _gp and _gp["indices"] < len(_accs):
                                                 tris_sum += int(_accs[_gp["indices"]].get("count", 0)) // 3
-                                    _imgs = _gj.get("images") or []
-                                    _bvs = _gj.get("bufferViews") or []
-                                    if _imgs and "bufferView" in _imgs[0] and _imgs[0]["bufferView"] < len(_bvs):
-                                        _bv = _bvs[_imgs[0]["bufferView"]]
-                                        _gf.seek(20 + _jlen + 8 + int(_bv.get("byteOffset", 0)))
-                                        _ib = _gf.read(min(int(_bv.get("byteLength", 0)), 65536))
-                                        try:
-                                            _im = _Image.open(_io.BytesIO(_ib))
-                                            tex_dims_list.append((int(_im.width), int(_im.height)))
-                                        except Exception:
-                                            pass
+                                    if len(tex_dims_list) < 4:
+                                        _imgs = _gj.get("images") or []
+                                        _bvs = _gj.get("bufferViews") or []
+                                        if _imgs and "bufferView" in _imgs[0] and _imgs[0]["bufferView"] < len(_bvs):
+                                            _bv = _bvs[_imgs[0]["bufferView"]]
+                                            _gf.seek(20 + _jlen + 8 + int(_bv.get("byteOffset", 0)))
+                                            _ib = _gf.read(min(int(_bv.get("byteLength", 0)), 65536))
+                                            try:
+                                                _im = _Image.open(_io.BytesIO(_ib))
+                                                tex_dims_list.append((int(_im.width), int(_im.height)))
+                                            except Exception:
+                                                pass
                         except Exception:
                             pass
 
@@ -1005,11 +1023,11 @@ class GatheringScansHandler(CloudAndTunnelHandlerMixin, ServerWriteRoutesMixin, 
                     obj_tex_dims = []
                     if os.path.isdir(obj_dir_m):
                         obj_b_sum = 0
-                        for _ofn in sorted(os.listdir(obj_dir_m)):
+                        for _ofn in sorted(os.listdir(obj_dir_m))[:12]:
                             _ofp = os.path.join(obj_dir_m, _ofn)
                             if os.path.isfile(_ofp):
                                 obj_b_sum += os.path.getsize(_ofp)
-                                if _ofn.lower().endswith((".jpg", ".jpeg", ".png")):
+                                if len(obj_tex_dims) < 2 and _ofn.lower().endswith((".jpg", ".jpeg", ".png")):
                                     try:
                                         with _Image.open(_ofp) as _oim:
                                             obj_tex_dims.append((int(_oim.width), int(_oim.height)))
@@ -1020,22 +1038,24 @@ class GatheringScansHandler(CloudAndTunnelHandlerMixin, ServerWriteRoutesMixin, 
                         if not tex_dims_list and obj_tex_dims:
                             tex_dims_list = obj_tex_dims
 
-                    if tris_sum > 0:
-                        poly_count = tris_sum
+                    if poly_count <= 0 and tris_sum > 0:
+                        poly_count = int(round(tris_sum * sample_scale))
                     if glb_bytes_sum > 0:
-                        stream_mb = round(glb_bytes_sum / (1024 * 1024), 2)
+                        est_glb_bytes = float(s.get("size_bytes") or 0) if (sample_scale > 1.0 and float(s.get("size_bytes") or 0) > glb_bytes_sum) else (glb_bytes_sum * sample_scale)
+                        stream_mb = round(est_glb_bytes / (1024 * 1024), 2)
                     if tex_dims_list:
                         tex_w = max(w for w, _ in tex_dims_list)
                         tex_h = max(h for _, h in tex_dims_list)
-                        tex_cnt = len(tex_dims_list)
+                        tex_cnt = max(total_leaf_count, len(tex_dims_list))
                 except Exception:
                     obj_tex_dims = []
             else:
                 obj_tex_dims = []
 
+            import math as _math2
             tile_max_dim = max(tex_w, tex_h)
             obj_max_dim = max((max(w, h) for w, h in obj_tex_dims), default=0)
-            grid_side = int(math.ceil(math.sqrt(max(1, tex_cnt)))) if tex_cnt > 1 else 1
+            grid_side = int(_math2.ceil(_math2.sqrt(max(1, tex_cnt)))) if tex_cnt > 1 else 1
             tiled_eff_dim = min(16384, tile_max_dim * grid_side) if tex_cnt > 1 else tile_max_dim
             raw_eff_res = max(
                 tex_res_default if tex_cnt > 1 else 0,
@@ -1088,8 +1108,7 @@ class GatheringScansHandler(CloudAndTunnelHandlerMixin, ServerWriteRoutesMixin, 
                 "obj_size_mb": obj_mb,
                 "scan_size_mb": scan_mb,
             }
-            if poly_count > 0 or stream_mb > 0:
-                self._SCAN_MESH_METRICS_CACHE[cache_key] = cached_metrics
+            self._SCAN_MESH_METRICS_CACHE[cache_key] = cached_metrics
 
         s.update(cached_metrics)
         s["ortho_url"] = f"/api/scans/{sid}/ortho{thumb_q}"
