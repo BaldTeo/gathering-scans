@@ -862,21 +862,53 @@ def parse_pix4dmatic_log_progress(log_path: str) -> Dict[str, Any]:
     return out
 
 
-def _detect_scalable_mesh_max_lod(proj_dir: str) -> Optional[int]:
+def _detect_scalable_mesh_max_lod(proj_dir: str, cap_for_obj_tiler: bool = True) -> Optional[int]:
     """
     Inspects PIX4Dmatic's internal octree mesh tile directory (`**/processing/meshes/*/content/*.glb`)
-    and returns the highest integer level prefix `<level>_*.glb` (e.g. 9 for `catch_DaAn`, 10 for `NTU_Dorm`).
+    and returns the optimal integer level prefix `<level>_*.glb` for `.obj` export.
+    - When `cap_for_obj_tiler=True` (default) and the octree is massive (> 600 tiles or > 350 MB),
+      caps the chosen level to the highest level whose cumulative tile count <= 450 and cumulative
+      size <= 420 MB (e.g. Level 4 for `catch_DaAn` with 331 tiles / 247 MB instead of Level 9's
+      7,862 tiles / 4.4 GB `.obj`), so `QuadtreeTiler` (`trimesh`) tiles it in ~45 seconds instead of
+      running out of RAM on a multi-GB ASCII `.obj`.
     Returns None if no `.glb` mesh tiles exist.
     """
     if not proj_dir or not os.path.isdir(proj_dir):
         return None
-    levels = []
+    by_level_count: Dict[int, int] = {}
+    by_level_bytes: Dict[int, int] = {}
     for glb_fp in glob.glob(os.path.join(proj_dir, "**", "processing", "meshes", "*", "content", "*.glb"), recursive=True):
         bn = os.path.basename(glb_fp)
         head = bn.split("_", 1)[0]
         if head.isdigit():
-            levels.append(int(head))
-    return max(levels) if levels else None
+            lvl = int(head)
+            by_level_count[lvl] = by_level_count.get(lvl, 0) + 1
+            try:
+                by_level_bytes[lvl] = by_level_bytes.get(lvl, 0) + os.path.getsize(glb_fp)
+            except OSError:
+                pass
+    if not by_level_count:
+        return None
+    sorted_levels = sorted(by_level_count.keys())
+    max_lvl = sorted_levels[-1]
+    total_tiles = sum(by_level_count.values())
+    total_mb = sum(by_level_bytes.values()) / (1024.0 * 1024.0)
+    if not cap_for_obj_tiler or (total_tiles <= 600 and total_mb <= 350.0):
+        return max_lvl
+
+    chosen_lvl = sorted_levels[0]
+    cum_tiles = 0
+    cum_mb = 0.0
+    for lvl in sorted_levels:
+        lvl_tiles = by_level_count[lvl]
+        lvl_mb = by_level_bytes.get(lvl, 0) / (1024.0 * 1024.0)
+        if cum_tiles + lvl_tiles <= 450 and cum_mb + lvl_mb <= 420.0:
+            chosen_lvl = lvl
+            cum_tiles += lvl_tiles
+            cum_mb += lvl_mb
+        else:
+            break
+    return chosen_lvl
 
 
 def run_export_obj_recovery(
@@ -896,6 +928,8 @@ def run_export_obj_recovery(
         return ""
     exp_dir = export_dir or os.path.join(proj_dir, "exports")
     obj_mesh_dir = os.path.join(exp_dir, "obj_mesh")
+    if os.path.isdir(obj_mesh_dir):
+        shutil.rmtree(obj_mesh_dir, ignore_errors=True)
     os.makedirs(obj_mesh_dir, exist_ok=True)
 
     # Remove any 0-byte or truncated <= 1024 byte .obj files left by the failed ExportMeshToObj
@@ -904,7 +938,7 @@ def run_export_obj_recovery(
             if fn.lower().endswith(".obj"):
                 fp = os.path.join(r_dir, fn)
                 try:
-                    if os.path.getsize(fp) <= 1024:
+                    if os.path.getsize(fp) <= 1024 or os.path.getsize(fp) > 800 * 1024 * 1024:
                         os.remove(fp)
                 except OSError:
                     pass

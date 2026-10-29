@@ -314,10 +314,11 @@ def pix4d_worker_loop():
                 newest_obj_mtime = objs[0][0] if objs else (os.path.getmtime(newest_obj) if newest_obj and os.path.isfile(newest_obj) else 0.0)
 
                 # If Scalable mesh octree tiles exist on disk (`processing/meshes/*/content/*.glb`)
-                # but ExportMeshToObj left a 0-byte or missing .obj because dynamic max_level < 13 (e.g. level 9 for catch_DaAn),
-                # automatically recover and export mesh.obj at the exact max octree level!
-                if not newest_obj and _detect_scalable_mesh_max_lod(proj_dir) is not None:
-                    print(f"[InboxWatcher] Recovering Scalable mesh .obj export for {fin_sid} at dynamic octree max level...")
+                # but ExportMeshToObj left a 0-byte, missing, or oversized (>800 MB) .obj,
+                # automatically recover and export mesh.obj at the optimal octree level!
+                obj_is_oversized = bool(newest_obj and os.path.isfile(newest_obj) and os.path.getsize(newest_obj) > 800 * 1024 * 1024)
+                if (not newest_obj or obj_is_oversized) and _detect_scalable_mesh_max_lod(proj_dir) is not None:
+                    print(f"[InboxWatcher] Recovering Scalable mesh .obj export for {fin_sid} at optimal octree level...")
                     try:
                         newest_obj = run_export_obj_recovery(
                             fin_sid,
