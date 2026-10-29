@@ -1740,6 +1740,7 @@ class GatheringScansHandler(CloudAndTunnelHandlerMixin, ServerWriteRoutesMixin, 
                 {
                     "status": "ok",
                     "daemon_running": is_pc_daemon_running(),
+                    "pix4d_running": bool(p4d_running),
                     "pc_online": (not is_pc_simulated_offline()) and is_pc_daemon_running(),
                     "inbox_dir": GDRIVE_INPUTS_DIR if is_q_admin else "",
                     "crs_enforced": TWD97_TWVD2001_LABEL,
