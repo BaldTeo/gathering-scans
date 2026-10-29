@@ -1653,6 +1653,134 @@
     }
   }
 
+  function buildFallbackPipelineBreakdownClient(scanObj) {
+    const s = scanObj || {};
+    const status = String(s.status || "").toLowerCase();
+    const rawPct = Number(s.progress_pct || (status === "completed" ? 100 : 0));
+    const isComp = status === "completed" || rawPct >= 99.9;
+    const isProc = status === "processing";
+    const sCopy = isComp ? 100 : isProc ? (rawPct >= 8 ? 100 : Math.min(99, Math.max(10, rawPct * 12))) : status === "waiting_parts" ? 25 : 0;
+    const sCalib = isComp ? 100 : isProc && rawPct > 8 ? Math.min(100, Math.round(((rawPct - 8) / 18) * 100)) : 0;
+    const sPc = isComp ? 100 : isProc && rawPct > 26 ? Math.min(100, Math.round(((rawPct - 26) / 22) * 100)) : 0;
+    const sMesh = isComp ? 100 : isProc && rawPct > 48 ? Math.min(100, Math.round(((rawPct - 48) / 36) * 100)) : 0;
+    const sExp = isComp ? 100 : isProc && rawPct > 84 ? Math.min(100, Math.round(((rawPct - 84) / 6) * 100)) : 0;
+    const sWeb = isComp ? 100 : isProc && rawPct > 90 ? Math.min(99, Math.round(((rawPct - 90) / 10) * 100)) : 0;
+
+    const secs = [
+      { id: "copy_files", weight: 8, color: "#06b6d4", short_en: "1. Copy Files", short_zh: "1. 複製檔案", title_en: "1. Copy & Stage Files", title_zh: "1. 複製與準備檔案", substep_pct: Math.max(0, sCopy), detail_en: sCopy >= 100 ? "Local SSD staged" : "Staging files", detail_zh: sCopy >= 100 ? "SSD 本機準備完成" : "準備檔案中" },
+      { id: "calibration", weight: 18, color: "#3b82f6", short_en: "2. Calibration", short_zh: "2. 相機率定", title_en: "2. PIX4D: Calibration", title_zh: "2. PIX4D：相機率定", substep_pct: Math.max(0, sCalib), detail_en: sCalib >= 100 ? "TWD97 calibrated" : "Camera calibration", detail_zh: sCalib >= 100 ? "TWD97 相機率定完成" : "相機率定" },
+      { id: "point_cloud", weight: 22, color: "#8b5cf6", short_en: "3. Point Clouds", short_zh: "3. 點雲生成", title_en: "3. PIX4D: Point Clouds", title_zh: "3. PIX4D：點雲生成與融合", substep_pct: Math.max(0, sPc), detail_en: sPc >= 100 ? "Dense + Depth + Fused" : "Point clouds", detail_zh: sPc >= 100 ? "加密＋深度＋融合點雲" : "點雲生成與融合" },
+      { id: "textured_mesh", weight: 36, color: "#f59e0b", short_en: "4. Textured Mesh", short_zh: "4. 紋理網格", title_en: "4. PIX4D: Textured Mesh", title_zh: "4. PIX4D：建立紋理網格", substep_pct: Math.max(0, sMesh), detail_en: sMesh >= 100 ? "Textured mesh built" : `${Math.max(0, sMesh)}% · Textured mesh`, detail_zh: sMesh >= 100 ? "紋理網格完成" : `${Math.max(0, sMesh)}% · 建立紋理網格` },
+      { id: "pix4d_export", weight: 6, color: "#ec4899", short_en: "5. PIX4D Export", short_zh: "5. 匯出模型", title_en: "5. PIX4D: Export OBJ & PDF", title_zh: "5. PIX4D：匯出模型與報告", substep_pct: Math.max(0, sExp), detail_en: sExp >= 100 ? "OBJ & PDF exported" : "OBJ & PDF export", detail_zh: sExp >= 100 ? "OBJ 與報告已匯出" : "匯出 OBJ 與報告" },
+      { id: "web_tileset", weight: 10, color: "#10b981", short_en: "6. Website Tiles", short_zh: "6. 網站圖磚", title_en: "6. Website: 3D Tiles & Sync", title_zh: "6. 網站處理：3D 圖磚與同步", substep_pct: Math.max(0, sWeb), detail_en: sWeb >= 100 ? "3D Tiles & .3tz ready" : "Quadtree 3D Tiles", detail_zh: sWeb >= 100 ? "3D 圖磚與雲端封包就緒" : "建置網站 3D 圖磚" },
+    ];
+    let activeSec = secs[0];
+    let foundAct = false;
+    secs.forEach((sec) => {
+      if (sec.substep_pct >= 100) {
+        sec.status = "completed";
+      } else if (!foundAct && (sec.substep_pct > 0 || isProc)) {
+        sec.status = "active";
+        activeSec = sec;
+        foundAct = true;
+      } else {
+        sec.status = "pending";
+      }
+    });
+    if (isComp) activeSec = secs[5];
+    const overall = isComp ? 100 : Math.round(secs.reduce((acc, x) => acc + (x.weight * x.substep_pct) / 100, 0) * 10) / 10;
+    return {
+      overall_pct: overall,
+      active_section_id: activeSec.id,
+      active_section_color: activeSec.color,
+      active_section_short_en: activeSec.short_en,
+      active_section_short_zh: activeSec.short_zh,
+      active_section_title_en: activeSec.title_en,
+      active_section_title_zh: activeSec.title_zh,
+      active_substep_pct: activeSec.substep_pct,
+      active_detail_en: activeSec.detail_en,
+      active_detail_zh: activeSec.detail_zh,
+      sections: secs,
+    };
+  }
+
+  function hexToRgbaTint(hex, alpha = 0.22) {
+    const h = String(hex || "#0284c7").replace("#", "");
+    if (h.length !== 6) return `rgba(2, 132, 199, ${alpha})`;
+    const r = parseInt(h.slice(0, 2), 16) || 0;
+    const g = parseInt(h.slice(2, 4), 16) || 0;
+    const b = parseInt(h.slice(4, 6), 16) || 0;
+    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+  }
+
+  function renderSegmentedPipelineBarHtml(breakdown, opts = {}) {
+    const bd = breakdown && Array.isArray(breakdown.sections) ? breakdown : buildFallbackPipelineBreakdownClient(opts.scan);
+    const heightPx = Number(opts.height || 8);
+    const segsHtml = bd.sections
+      .map((sec) => {
+        const w = Math.max(4, Number(sec.weight || 10));
+        const pct = Math.max(0, Math.min(100, Number(sec.substep_pct || 0)));
+        const col = sec.color || "#0284c7";
+        const isAct = sec.status === "active";
+        const fillW = isAct ? Math.max(8, pct) : pct;
+        const titleTxt = tr(sec.title_zh || sec.title_en, sec.title_en || sec.title_zh);
+        const detTxt = tr(sec.detail_zh || sec.detail_en, sec.detail_en || sec.detail_zh);
+        const tip = escapeHtml(`${titleTxt} (${Math.round(pct)}% · ${tr("佔總進度", "Weight")} ${w}%) — ${detTxt}`);
+        return `<div class="gs-seg-pipeline-track${isAct ? " is-active" : ""}" style="flex:${w} 1 0%;background:${hexToRgbaTint(col, 0.20)};color:${col};" title="${tip}">
+          <div class="gs-seg-pipeline-fill" style="width:${fillW}%;background:${col};"></div>
+        </div>`;
+      })
+      .join("");
+    return `<div class="gs-seg-pipeline-bar" style="height:${heightPx}px;">${segsHtml}</div>`;
+  }
+
+  function renderPipelineSubitemsGridHtml(breakdown, opts = {}) {
+    const bd = breakdown && Array.isArray(breakdown.sections) ? breakdown : buildFallbackPipelineBreakdownClient(opts.scan);
+    return bd.sections
+      .map((sec) => {
+        const pct = Math.round(Math.max(0, Math.min(100, Number(sec.substep_pct || 0))));
+        const col = sec.color || "#0284c7";
+        const isComp = sec.status === "completed" || pct >= 100;
+        const isAct = sec.status === "active" && !isComp;
+        const shortName = escapeHtml(tr(sec.short_zh || sec.title_zh, sec.short_en || sec.title_en));
+        const detTxt = escapeHtml(tr(sec.detail_zh || sec.detail_en || "", sec.detail_en || sec.detail_zh || ""));
+        const badgeTxt = isComp ? `✓ 100%` : isAct ? `● ${pct}%` : `${pct}%`;
+        const borderStyle = isAct
+          ? `border-color:${col};border-left:3px solid ${col};`
+          : `border-left:3px solid ${col};`;
+        const stateCls = isComp ? " is-completed" : isAct ? " is-active" : " is-pending";
+        return `<div class="gs-pipeline-subitem-card${stateCls}" style="${borderStyle}" title="${shortName} (${pct}%) — ${detTxt}">
+          <div class="gs-pipeline-subitem-head">
+            <span style="overflow:hidden;text-overflow:ellipsis;">${shortName}</span>
+            <span style="color:${col};font-family:var(--mono);font-size:10px;flex-shrink:0;">${badgeTxt}</span>
+          </div>
+          <div class="gs-pipeline-subitem-sub">${detTxt}</div>
+        </div>`;
+      })
+      .join("");
+  }
+
+  function renderQueueRowMiniSubitemsHtml(breakdown, opts = {}) {
+    const bd = breakdown && Array.isArray(breakdown.sections) ? breakdown : buildFallbackPipelineBreakdownClient(opts.scan);
+    return `<div class="gs-queue-mini-subitems">${bd.sections
+      .map((sec) => {
+        const pct = Math.round(Math.max(0, Math.min(100, Number(sec.substep_pct || 0))));
+        const col = sec.color || "#0284c7";
+        const isComp = sec.status === "completed" || pct >= 100;
+        const isAct = sec.status === "active" && !isComp;
+        const lbl = escapeHtml(tr(sec.short_zh || sec.title_zh, sec.short_en || sec.title_en));
+        const det = escapeHtml(tr(sec.detail_zh || sec.detail_en || "", sec.detail_en || sec.detail_zh || ""));
+        const cls = isComp ? " is-completed" : isAct ? " is-active" : " is-pending";
+        const borderCol = isAct ? col : "var(--ui-border)";
+        return `<span class="gs-queue-mini-chip${cls}" style="border-color:${borderCol};" title="${lbl} (${pct}%) — ${det}">
+          <span style="width:6px;height:6px;border-radius:50%;background:${col};display:inline-block;flex-shrink:0;"></span>
+          <span>${lbl}</span>
+          <b style="color:${col};font-family:var(--mono);">${isComp ? "✓" : `${pct}%`}</b>
+        </span>`;
+      })
+      .join("")}</div>`;
+  }
+
   async function refreshQueueModalData() {
     const tbody = document.getElementById("queueTableBody");
     if (!tbody) return;
@@ -1681,17 +1809,38 @@
       if (monBox) {
         if (qData.live_pix4d && qData.live_pix4d.scan_id) {
           const lp = qData.live_pix4d;
+          const bd = lp.pipeline_breakdown || buildFallbackPipelineBreakdownClient(lp);
+          const overallPct = Math.round(Number(bd.overall_pct ?? lp.progress_pct ?? 0));
+          const subPct = Math.round(Number(bd.active_substep_pct ?? lp.substep_pct ?? 0));
+          const actTitle = tr(bd.active_section_title_zh || bd.active_section_title_en, bd.active_section_title_en || bd.active_section_title_zh);
           monBox.style.display = "block";
           const tEl = document.getElementById("livePix4dTitle");
-          if (tEl)
+          if (tEl) {
             tEl.textContent = tr(
-              `執行中 PIX4Dmatic 管線：${lp.scan_name} · ${Math.round(lp.progress_pct || 0)}%`,
-              `Active PIX4Dmatic Pipeline: ${lp.scan_name} · ${Math.round(lp.progress_pct || 0)}%`
+              `執行中建模管線：${lp.scan_name} · 總進度 ${overallPct}%（目前階段：${actTitle} ${subPct}%）`,
+              `Active Processing Pipeline: ${lp.scan_name} · Overall ${overallPct}% (${actTitle} ${subPct}%)`
             );
+          }
           const bEl = document.getElementById("livePix4dStageBadge");
-          if (bEl) bEl.textContent = `${lp.stage}${lp.cpu_ram ? " · " + lp.cpu_ram : ""}`;
-          const pBar = document.getElementById("livePix4dProgressBar");
-          if (pBar) pBar.style.width = `${Math.max(5, Math.min(100, Number(lp.progress_pct || 10)))}%`;
+          if (bEl) {
+            const stgText = tr(lp.stage_zh || lp.stage || "", lp.stage || lp.stage_zh || "");
+            bEl.textContent = `${stgText}${lp.cpu_ram ? " · " + lp.cpu_ram : ""}`;
+            if (bd.active_section_color) {
+              bEl.style.borderColor = bd.active_section_color;
+              bEl.style.color = bd.active_section_color;
+            }
+          }
+          const segWrap = document.getElementById("livePix4dSegmentedBarWrap");
+          if (segWrap) {
+            segWrap.innerHTML = renderSegmentedPipelineBarHtml(bd, { height: 10, scan: lp });
+          } else {
+            const pBar = document.getElementById("livePix4dProgressBar");
+            if (pBar) pBar.style.width = `${Math.max(5, Math.min(100, overallPct))}%`;
+          }
+          const gridEl = document.getElementById("livePix4dSubitemsGrid");
+          if (gridEl) {
+            gridEl.innerHTML = renderPipelineSubitemsGridHtml(bd, { scan: lp });
+          }
           const pathEl = document.getElementById("livePix4dLogPath");
           if (pathEl) pathEl.textContent = `${tr("日誌：", "Log: ")}${lp.log_path || ""}`;
           const tailEl = document.getElementById("livePix4dLogTail");
@@ -1716,6 +1865,7 @@
           matchState.priority_score = s.priority_score;
           matchState.force_next = s.force_next;
           matchState.queue_position = s.queue_position;
+          matchState.pipeline_breakdown = s.pipeline_breakdown;
           if (s.stream_url !== undefined) matchState.stream_url = s.stream_url;
         }
       });
@@ -1725,9 +1875,15 @@
         const isProc = s.status === "processing";
         const isQueued = s.status === "queued";
         const isWaitingParts = s.status === "waiting_parts";
+        const isComp = s.status === "completed";
         const qPos = Number(s.queue_position || 0);
         const isNextJob = isQueued && (qPos === 1 || Number(s.force_next || 0) === 1);
-        const pct = Math.round(Number(s.progress_pct || (s.status === "completed" ? 100 : 0)));
+        const bd = s.pipeline_breakdown || buildFallbackPipelineBreakdownClient(s);
+        const pct = Math.round(Number(bd.overall_pct ?? s.progress_pct ?? (isComp ? 100 : 0)));
+        const subPct = Math.round(Number(bd.active_substep_pct ?? 0));
+        const actShort = escapeHtml(tr(bd.active_section_short_zh || bd.active_section_title_zh || "", bd.active_section_short_en || bd.active_section_title_en || ""));
+        const actDetail = escapeHtml(tr(bd.active_detail_zh || bd.active_detail_en || "", bd.active_detail_en || bd.active_detail_zh || ""));
+        const actCol = bd.active_section_color || "var(--ui-accent)";
         const rawStatusUpper = String(s.status || "").toUpperCase();
         const statusDisplay =
           rawStatusUpper === "COMPLETED"
@@ -1752,24 +1908,35 @@
         const safeStage = escapeHtml(s.stage_label || defaultStageText);
         let statusHtml = `<span class="gs-crs-pill">${safeStatus}</span>`;
         if (isProc) {
-          statusHtml = `<div style="display:flex;flex-direction:column;gap:3px;min-width:145px;">
-               <span class="gs-crs-pill" style="background:rgba(2,132,199,0.18);color:var(--ui-accent);font-weight:700;">${tr(`處理中 · ${pct}%`, `PROCESSING · ${pct}%`)}</span>
-               <div style="height:4px;background:var(--ui-border-strong);border-radius:999px;overflow:hidden;">
-                 <div style="height:100%;width:${Math.max(5, pct)}%;background:var(--ui-accent);"></div>
+          statusHtml = `<div style="display:flex;flex-direction:column;gap:4px;min-width:250px;max-width:340px;">
+               <div style="display:flex;align-items:center;justify-content:space-between;gap:4px;flex-wrap:wrap;">
+                 <span class="gs-crs-pill" style="background:rgba(2,132,199,0.18);color:var(--ui-accent);font-weight:800;">${tr(`總進度 ${pct}%`, `OVERALL ${pct}%`)}</span>
+                 <span class="gs-crs-pill" style="background:${hexToRgbaTint(actCol, 0.18)};color:${actCol};border:1px solid ${hexToRgbaTint(actCol, 0.45)};font-weight:700;">${actShort} · ${subPct}%</span>
                </div>
-               <span style="font-size:10px;color:var(--ui-text-secondary);line-height:1.3;">${safeStage}</span>
+               ${renderSegmentedPipelineBarHtml(bd, { height: 7, scan: s })}
+               ${renderQueueRowMiniSubitemsHtml(bd, { scan: s })}
+               <span style="font-size:10px;color:var(--ui-text-secondary);line-height:1.3;">${actDetail || safeStage}</span>
+             </div>`;
+        } else if (isComp) {
+          statusHtml = `<div style="display:flex;flex-direction:column;gap:3px;min-width:155px;">
+               <div style="display:flex;align-items:center;justify-content:space-between;gap:4px;">
+                 <span class="gs-crs-pill" style="background:rgba(16,185,129,0.16);color:#10b981;font-weight:700;">${safeStatus} · 100%</span>
+               </div>
+               ${renderSegmentedPipelineBarHtml(bd, { height: 5, scan: s })}
              </div>`;
         } else if (isQueued) {
           const pillStyle = isNextJob
             ? "background:rgba(16,185,129,0.18);color:#10b981;border:1px solid rgba(16,185,129,0.4);font-weight:700;"
             : "background:rgba(245,158,11,0.16);color:#f59e0b;border:1px solid rgba(245,158,11,0.35);font-weight:700;";
-          statusHtml = `<div style="display:flex;flex-direction:column;gap:3px;min-width:145px;">
+          statusHtml = `<div style="display:flex;flex-direction:column;gap:3px;min-width:165px;">
                <span class="gs-crs-pill" style="${pillStyle}">${safeStatus}</span>
+               ${renderSegmentedPipelineBarHtml(bd, { height: 5, scan: s })}
                ${safeStage ? `<span style="font-size:10px;color:var(--ui-text-secondary);line-height:1.3;">${safeStage}</span>` : ""}
              </div>`;
         } else if (isWaitingParts) {
-          statusHtml = `<div style="display:flex;flex-direction:column;gap:3px;min-width:145px;">
+          statusHtml = `<div style="display:flex;flex-direction:column;gap:3px;min-width:165px;">
                <span class="gs-crs-pill" style="background:rgba(6,182,212,0.16);color:#06b6d4;border:1px solid rgba(6,182,212,0.35);font-weight:700;">${safeStatus}</span>
+               ${renderSegmentedPipelineBarHtml(bd, { height: 5, scan: s })}
                ${safeStage ? `<span style="font-size:10px;color:var(--ui-text-secondary);line-height:1.3;">${safeStage}</span>` : ""}
              </div>`;
         }

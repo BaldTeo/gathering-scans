@@ -1648,30 +1648,33 @@ class GatheringScansHandler(CloudAndTunnelHandlerMixin, ServerWriteRoutesMixin, 
                                     is_proc_bonus = 1 if sid in active_proc_ids else 0
                                     candidate_logs.append((mtime, is_proc_bonus, s, full_lp))
 
+            from pc_worker.pix4d_runner import get_live_system_cpu_ram, build_pipeline_breakdown
+
+            active_log_by_sid: Dict[str, Dict[str, Any]] = {}
             if candidate_logs:
                 candidate_logs.sort(key=lambda x: (x[0], x[1]))
                 latest_mtime, _, active_scan, latest_log = candidate_logs[-1]
                 sid = active_scan["scan_id"]
 
                 info = parse_pix4dmatic_log_progress(latest_log)
-                from pc_worker.pix4d_runner import get_live_system_cpu_ram
                 _, _, live_os_cpu_ram = get_live_system_cpu_ram()
                 log_age_s = time.time() - latest_mtime
 
                 # Only show active PIX4Dmatic monitor if PIX4Dmatic.exe is actually running (or log updated within last 45s)
                 if p4d_running or (active_scan.get("status") == "processing" and not info.get("is_finished") and log_age_s < 45.0):
                     stage_name = info.get("stage", "Processing")
+                    stage_zh = info.get("stage_zh") or stage_name
                     cpu_ram = live_os_cpu_ram or info.get("cpu_ram", "")
-                    est_pct = float(info.get("progress_pct", 12.0))
-                    est_pct = min(99.0, max(float(active_scan.get("progress_pct") or 0.0), float(est_pct)))
+                    est_pct = min(90.0, max(8.0, float(info.get("progress_pct", 12.0))))
                     new_label = (
-                        f"PIX4Dmatic: {stage_name} ({cpu_ram})"
+                        f"PIX4Dmatic: {stage_name} · {cpu_ram}"
                         if stage_name and cpu_ram
                         else f"PIX4Dmatic: {stage_name}"
                     )
                     active_scan["status"] = "processing"
                     active_scan["progress_pct"] = est_pct
                     active_scan["stage_label"] = new_label
+                    active_log_by_sid[sid] = info
                     DB.update_job_progress(sid, "processing", est_pct, new_label)
                     for other_s in all_scans:
                         if other_s["scan_id"] != sid and other_s.get("status") == "processing":
@@ -1679,23 +1682,33 @@ class GatheringScansHandler(CloudAndTunnelHandlerMixin, ServerWriteRoutesMixin, 
                             other_s["progress_pct"] = 0.0
                             other_s["stage_label"] = "Queued for PIX4Dmatic"
                             DB.update_job_progress(other_s["scan_id"], "queued", 0.0, "Queued for PIX4Dmatic")
+                    bd = info.get("pipeline_breakdown") or build_pipeline_breakdown(active_scan, info)
                     live_log_info = {
                         "scan_id": sid,
                         "scan_name": active_scan.get("name") or sid,
                         "log_path": latest_log,
                         "stage": stage_name,
+                        "stage_zh": stage_zh,
+                        "substep_pct": float(info.get("substep_pct") or bd.get("active_substep_pct") or 0.0),
                         "cpu_ram": cpu_ram,
                         "progress_pct": est_pct,
+                        "pipeline_breakdown": bd,
                         "tail_lines": info.get("tail_lines", [])[-10:],
                     }
                 elif not p4d_running and active_scan.get("status") == "processing" and log_age_s >= 45.0:
-                    # PIX4Dmatic.exe stopped before finishing: re-queue if no tileset exists yet so worker resumes it cleanly
-                    ts_chk = active_scan.get("tileset_path") or ""
-                    if not (ts_chk and os.path.isfile(ts_chk)):
-                        active_scan["status"] = "queued"
-                        active_scan["progress_pct"] = 0.0
-                        active_scan["stage_label"] = "Queued (Resuming interrupted PIX4Dmatic job)"
-                        DB.update_job_progress(sid, "queued", 0.0, "Queued (Resuming interrupted PIX4Dmatic job)")
+                    cur_stg_low = str(active_scan.get("stage_label") or "").lower()
+                    is_post_or_pre = any(
+                        k in cur_stg_low
+                        for k in ("website processing", "gc_scanoptimizer", "3d tileset", ".3tz", "fast-staging", "extracting archive", "mesh islands")
+                    )
+                    if not is_post_or_pre:
+                        # PIX4Dmatic.exe stopped before finishing: re-queue if no tileset exists yet so worker resumes it cleanly
+                        ts_chk = active_scan.get("tileset_path") or ""
+                        if not (ts_chk and os.path.isfile(ts_chk)):
+                            active_scan["status"] = "queued"
+                            active_scan["progress_pct"] = 0.0
+                            active_scan["stage_label"] = "Queued (Resuming interrupted PIX4Dmatic job)"
+                            DB.update_job_progress(sid, "queued", 0.0, "Queued (Resuming interrupted PIX4Dmatic job)")
 
             for s in all_scans:
                 sid_s = s.get("scan_id") or ""
@@ -1710,6 +1723,26 @@ class GatheringScansHandler(CloudAndTunnelHandlerMixin, ServerWriteRoutesMixin, 
                         s["stream_url"] = f"/stream/{sid_s}/tileset.json"
                 else:
                     s["stream_url"] = ""
+                s["pipeline_breakdown"] = build_pipeline_breakdown(s, active_log_by_sid.get(sid_s))
+
+            if not live_log_info:
+                proc_scans = [s for s in all_scans if s.get("status") == "processing"]
+                if proc_scans:
+                    ps = proc_scans[0]
+                    _, _, live_os_cpu_ram = get_live_system_cpu_ram()
+                    bd_ps = ps.get("pipeline_breakdown") or build_pipeline_breakdown(ps)
+                    live_log_info = {
+                        "scan_id": ps["scan_id"],
+                        "scan_name": ps.get("name") or ps["scan_id"],
+                        "log_path": os.path.join(ps.get("project_dir") or os.path.join(LOCAL_SCANS_ROOT, ps["scan_id"]), "pix4d_stdout.log"),
+                        "stage": ps.get("stage_label") or bd_ps.get("active_detail_en") or "Processing",
+                        "stage_zh": bd_ps.get("active_detail_zh") or ps.get("stage_label") or "處理中",
+                        "substep_pct": float(bd_ps.get("active_substep_pct") or 0.0),
+                        "cpu_ram": live_os_cpu_ram or "",
+                        "progress_pct": float(ps.get("progress_pct") or bd_ps.get("overall_pct") or 10.0),
+                        "pipeline_breakdown": bd_ps,
+                        "tail_lines": [str(ps.get("stage_label") or "Processing scan pipeline...")],
+                    }
 
             queued_only = [s for s in all_scans if s["status"] == "queued"]
             queued_only.sort(

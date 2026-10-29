@@ -253,12 +253,10 @@ def pix4d_worker_loop():
             if is_running and running_sid:
                 adopted_sid = running_sid
                 info = parse_pix4dmatic_log_progress(latest_log)
-                cur_scan = DB.get_scan(running_sid) or {}
-                prev_pct = float(cur_scan.get("progress_pct") or 0.0) if cur_scan.get("status") == "processing" else 0.0
-                pct = min(99.0, max(prev_pct, float(info.get("progress_pct", 15.0))))
+                pct = min(90.0, max(8.0, float(info.get("progress_pct", 15.0))))
                 stg = info.get("stage", "Processing")
                 cpu_ram = info.get("cpu_ram", "")
-                label = f"PIX4Dmatic: {stg} ({cpu_ram})" if cpu_ram else f"PIX4Dmatic: {stg}"
+                label = f"PIX4Dmatic: {stg} · {cpu_ram}" if cpu_ram else f"PIX4Dmatic: {stg}"
                 DB.update_job_progress(running_sid, "processing", pct, label)
                 _PIX4D_WAKE_EVENT.wait(timeout=4.0)
                 continue
@@ -315,9 +313,17 @@ def pix4d_worker_loop():
                         # If OBJ is newer than tileset.json, rebuild tileset + preview + DSM
                         if not os.path.isfile(ts_path) or os.path.getmtime(newest_obj) > os.path.getmtime(ts_path):
                             DB.update_job_progress(
-                                fin_sid, "processing", 96.0, "Building Hierarchical 3D Tileset in GC_ScanOptimizer..."
+                                fin_sid,
+                                "processing",
+                                91.0,
+                                "Website Processing (15%): TWD97 64-bit Offset & Mesh Island Check...",
                             )
-                            built_ts = postprocess_obj_to_tileset(fin_sid, proj_dir, newest_obj)
+                            built_ts = postprocess_obj_to_tileset(
+                                fin_sid,
+                                proj_dir,
+                                newest_obj,
+                                progress_callback=lambda p, msg: DB.update_job_progress(fin_sid, "processing", p, msg),
+                            )
                             if built_ts:
                                 ts_path = built_ts
                     if os.path.isfile(rerun_cfg_fp):

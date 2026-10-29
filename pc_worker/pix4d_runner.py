@@ -33,6 +33,7 @@ from pc_worker.config import (
 )
 
 _PSUTIL_CACHE = {"ts": 0.0, "cpu": 0, "ram": 0, "label": ""}
+_LOG_PARSE_CACHE: Dict[str, Dict[str, Any]] = {}
 
 
 def get_live_system_cpu_ram() -> Tuple[Optional[int], Optional[int], str]:
@@ -56,12 +57,701 @@ def get_live_system_cpu_ram() -> Tuple[Optional[int], Optional[int], str]:
         return None, None, ""
 
 
+def _new_log_parse_state() -> Dict[str, Any]:
+    return {
+        "offset": 0,
+        "mtime": 0.0,
+        "has_fatal_error": False,
+        "error_message": "",
+        "is_finished": False,
+        "import_running": False,
+        "import_done": False,
+        "feature_extraction_running": False,
+        "feature_extraction_done": False,
+        "pair_matching_running": False,
+        "pair_matching_done": False,
+        "tracks_done": False,
+        "calib_running": False,
+        "calib_done": False,
+        "dense_pc_running": False,
+        "dense_pc_done": False,
+        "dense_scene_str": "",
+        "dense_colorizing": False,
+        "depth_pc_running": False,
+        "depth_pc_done": False,
+        "fused_pc_running": False,
+        "fused_pc_done": False,
+        "mesh_running": False,
+        "mesh_done": False,
+        "total_tiles": 0,
+        "geom_started_tiles": set(),
+        "geom_done_tiles": set(),
+        "decimate_done_tiles": set(),
+        "depth_buf_done_tiles": set(),
+        "score_tiles": set(),
+        "tex_started_tiles": [],
+        "tex_started_set": set(),
+        "tex_coord_tiles": set(),
+        "tex_atlas_tiles": set(),
+        "tex_done_tiles": set(),
+        "tree_level_0_count": 0,
+        "current_tree_level": None,
+        "current_tile_subaction_en": "",
+        "current_tile_subaction_zh": "",
+        "report_running": False,
+        "report_done": False,
+        "export_obj_running": False,
+        "export_obj_done": False,
+        "last_bracket_stage": "",
+        "last_log_cpu_ram": "",
+    }
+
+
+def _feed_log_line(st: Dict[str, Any], ln: str) -> None:
+    if not ln:
+        return
+    if "Could not create runnable pipeline due to QML errors" in ln:
+        st["has_fatal_error"] = True
+        if not st["error_message"]:
+            st["error_message"] = "PIX4Dmatic QML pipeline script error"
+    if st["has_fatal_error"] and any(k in ln for k in ("QML", "Cannot assign", "not a type", "Invalid property")):
+        st["error_message"] = ln.strip()
+
+    m_hdr = re.search(r"\[(\d+%CPU)\]\[(\d+%RAM)\]\[([^\]]+)\]", ln)
+    if m_hdr:
+        st["last_log_cpu_ram"] = f"{m_hdr.group(1)} · {m_hdr.group(2)}"
+        st["last_bracket_stage"] = m_hdr.group(3).strip()
+
+    # 1. Import & Calibration milestones
+    if "[Import " in ln or "[Add " in ln or "[Camera information]" in ln or "[Set GCP coordinate system]" in ln:
+        st["import_running"] = True
+        if "] Finished" in ln:
+            st["import_done"] = True
+    if "[Feature extraction]" in ln:
+        st["import_done"] = True
+        st["feature_extraction_running"] = True
+        if "] Finished" in ln:
+            st["feature_extraction_done"] = True
+    if "[Pair matching]" in ln:
+        st["import_done"] = True
+        st["feature_extraction_done"] = True
+        st["pair_matching_running"] = True
+        if "] Finished" in ln:
+            st["pair_matching_done"] = True
+    if "[Initial tracks creation]" in ln:
+        st["pair_matching_done"] = True
+        if "] Finished" in ln:
+            st["tracks_done"] = True
+    if "[Calibrate " in ln or "[Generate calibration]" in ln or "[Calibration]" in ln:
+        st["import_done"] = True
+        st["calib_running"] = True
+        if "[Generate calibration] Finished" in ln or "[Calibrate cameras] Finished" in ln or "[Calibration] Finished" in ln:
+            st["calib_done"] = True
+    if "[Open automatic tie points] Finished" in ln:
+        st["import_done"] = True
+        st["calib_done"] = True
+
+    # 2. Point Clouds milestones
+    if "[Generate dense point cloud]" in ln or "[Densification]" in ln:
+        st["calib_done"] = True
+        st["dense_pc_running"] = True
+        if "Scene [2/2]" in ln:
+            st["dense_scene_str"] = "2/2"
+        elif "Scene [1/2]" in ln and st["dense_scene_str"] != "2/2":
+            st["dense_scene_str"] = "1/2"
+        if "colorizing" in ln.lower():
+            st["dense_colorizing"] = True
+        if "[Generate dense point cloud] Finished" in ln:
+            st["dense_pc_done"] = True
+    if "[Open dense point cloud] Finished" in ln:
+        st["calib_done"] = True
+        st["dense_pc_done"] = True
+
+    if "[Generate depth point cloud]" in ln or "[Depth point cloud]" in ln:
+        st["calib_done"] = True
+        st["depth_pc_running"] = True
+        if "[Generate depth point cloud] Finished" in ln or "[Depth point cloud] Finished" in ln:
+            st["depth_pc_done"] = True
+    if "[Open depth point cloud] Finished" in ln:
+        st["calib_done"] = True
+        st["depth_pc_done"] = True
+
+    if "[Fusing dense and depth point cloud]" in ln or "[Generate fused point cloud]" in ln:
+        st["calib_done"] = True
+        st["dense_pc_done"] = True
+        st["depth_pc_done"] = True
+        st["fused_pc_running"] = True
+        if "] Finished" in ln:
+            st["fused_pc_done"] = True
+    if "[Open fused point cloud] Finished" in ln:
+        st["calib_done"] = True
+        st["dense_pc_done"] = True
+        st["depth_pc_done"] = True
+        st["fused_pc_done"] = True
+
+    # 3. Textured Mesh (GenerateScalableMesh / Generate textured mesh) milestones
+    if "[Generate textured mesh]" in ln or "[Generate scalable mesh]" in ln:
+        st["calib_done"] = True
+        st["dense_pc_done"] = True
+        st["depth_pc_done"] = True
+        st["fused_pc_done"] = True
+        if "] Running" in ln:
+            st["mesh_running"] = True
+        elif "[Generate textured mesh] Finished" in ln:
+            st["mesh_done"] = True
+    if "[Finalize scalable mesh] Finished" in ln:
+        st["mesh_done"] = True
+
+    m_subdiv = re.search(r"Scene subdivided into (\d+) tiles", ln)
+    if m_subdiv:
+        st["mesh_running"] = True
+        st["total_tiles"] = max(st["total_tiles"], int(m_subdiv.group(1)))
+
+    m_tid = re.search(r"tileid=(\{[^\}]+\}|[^\],\s]+)", ln)
+    tid = m_tid.group(1) if m_tid else ""
+
+    if "Pre-process point cloud" in ln or "Running Screened Poisson Reconstruction" in ln or "Generating mesh geometry" in ln:
+        st["mesh_running"] = True
+        if tid:
+            st["geom_started_tiles"].add(tid)
+            if "Generating mesh geometry - done" in ln:
+                st["geom_done_tiles"].add(tid)
+            n_tot = max(1, st["total_tiles"], len(st["geom_started_tiles"]))
+            k_cur = len(st["geom_started_tiles"])
+            st["current_tile_subaction_en"] = f"Tile {k_cur}/{n_tot} · Poisson mesh reconstruction"
+            st["current_tile_subaction_zh"] = f"分塊 {k_cur}/{n_tot}：Poisson 網格重建"
+
+    if "Decimate geometry - done" in ln and tid:
+        st["decimate_done_tiles"].add(tid)
+        n_tot = max(1, st["total_tiles"], len(st["geom_started_tiles"]))
+        k_cur = len(st["decimate_done_tiles"])
+        st["current_tile_subaction_en"] = f"Tile {k_cur}/{n_tot} · Decimating geometry"
+        st["current_tile_subaction_zh"] = f"分塊 {k_cur}/{n_tot}：網格幾何簡化"
+
+    if "Update depth buffers - done" in ln and tid:
+        st["depth_buf_done_tiles"].add(tid)
+
+    if "Compute face to view scores" in ln:
+        st["mesh_running"] = True
+        if tid:
+            st["score_tiles"].add(tid)
+        n_tot = max(1, st["total_tiles"], len(st["geom_started_tiles"]), len(st["score_tiles"]))
+        k_cur = max(1, len(st["score_tiles"]))
+        st["current_tile_subaction_en"] = f"Tile {k_cur}/{n_tot} · Computing face-to-view scores"
+        st["current_tile_subaction_zh"] = f"分塊 {k_cur}/{n_tot}：計算視角評分"
+
+    if "Generate texture for tile:" in ln or "Deserializing tile data" in ln:
+        st["mesh_running"] = True
+        if tid and tid not in st["tex_started_set"]:
+            st["tex_started_set"].add(tid)
+            st["tex_started_tiles"].append(tid)
+        n_tot = max(1, st["total_tiles"], len(st["geom_started_tiles"]), len(st["tex_started_tiles"]))
+        k_cur = max(1, len(st["tex_started_tiles"]))
+        st["current_tile_subaction_en"] = f"Tile {k_cur}/{n_tot} · Preparing tile texture"
+        st["current_tile_subaction_zh"] = f"分塊 {k_cur}/{n_tot}：準備分塊貼圖"
+
+    if "Global Seam Leveling" in ln:
+        n_tot = max(1, st["total_tiles"], len(st["geom_started_tiles"]), len(st["tex_started_tiles"]))
+        k_cur = max(1, len(st["tex_started_tiles"]))
+        st["current_tile_subaction_en"] = f"Tile {k_cur}/{n_tot} · Global seam leveling"
+        st["current_tile_subaction_zh"] = f"分塊 {k_cur}/{n_tot}：全局接縫勻光"
+
+    if "Compute texture coordinates - start" in ln:
+        if tid:
+            st["tex_coord_tiles"].add(tid)
+        n_tot = max(1, st["total_tiles"], len(st["geom_started_tiles"]), len(st["tex_started_tiles"]))
+        k_cur = max(1, len(st["tex_started_tiles"]))
+        st["current_tile_subaction_en"] = f"Tile {k_cur}/{n_tot} · Computing texture coordinates"
+        st["current_tile_subaction_zh"] = f"分塊 {k_cur}/{n_tot}：計算 UV 貼圖座標"
+
+    if "Generate texture atlas" in ln or "Reducing atlas seams" in ln or "Padding texture" in ln:
+        if tid:
+            st["tex_atlas_tiles"].add(tid)
+        n_tot = max(1, st["total_tiles"], len(st["geom_started_tiles"]), len(st["tex_started_tiles"]))
+        k_cur = max(1, len(st["tex_started_tiles"]))
+        st["current_tile_subaction_en"] = f"Tile {k_cur}/{n_tot} · Generating texture atlas"
+        st["current_tile_subaction_zh"] = f"分塊 {k_cur}/{n_tot}：生成貼圖集與接縫優化"
+
+    if "Texture mesh - done" in ln:
+        if tid:
+            st["tex_done_tiles"].add(tid)
+        n_tot = max(1, st["total_tiles"], len(st["geom_started_tiles"]), len(st["tex_started_tiles"]))
+        k_cur = max(1, len(st["tex_started_tiles"]))
+        st["current_tile_subaction_en"] = f"Tile {k_cur}/{n_tot} · Texturing completed"
+        st["current_tile_subaction_zh"] = f"分塊 {k_cur}/{n_tot}：貼圖完成"
+
+    if "[Write tiles to disk]" in ln:
+        if "Generating leave nodes" in ln:
+            st["current_tree_level"] = None
+            n_tot = max(1, st["total_tiles"], len(st["geom_started_tiles"]), len(st["tex_started_tiles"]))
+            k_cur = max(1, len(st["tex_started_tiles"]), st["tree_level_0_count"] + 1)
+            st["current_tile_subaction_en"] = f"Tile {k_cur}/{n_tot} · Writing LOD leaf nodes"
+            st["current_tile_subaction_zh"] = f"分塊 {k_cur}/{n_tot}：寫入底層 LOD 節點"
+        m_tl = re.search(r"Processing tree level (\d+)", ln)
+        if m_tl:
+            lvl = int(m_tl.group(1))
+            st["current_tree_level"] = lvl
+            if lvl == 0:
+                st["tree_level_0_count"] += 1
+            n_tot = max(1, st["total_tiles"], len(st["geom_started_tiles"]), len(st["tex_started_tiles"]))
+            k_cur = min(n_tot, max(1, len(st["tex_started_tiles"]), st["tree_level_0_count"]))
+            st["current_tile_subaction_en"] = f"Tile {k_cur}/{n_tot} · Writing LOD tree (Level {lvl})"
+            st["current_tile_subaction_zh"] = f"分塊 {k_cur}/{n_tot}：寫入 LOD 階層 (Level {lvl})"
+
+    # 4. PIX4D Export & Quality Report milestones
+    if "[Export quality report]" in ln:
+        st["mesh_done"] = True
+        st["report_running"] = True
+        if "] Finished" in ln:
+            st["report_done"] = True
+    if "[Export mesh to .obj]" in ln:
+        st["mesh_done"] = True
+        st["export_obj_running"] = True
+        if "] Finished" in ln:
+            st["export_obj_done"] = True
+            st["is_finished"] = True
+    if "CloseSession" in ln or "[Processing] Finished" in ln:
+        st["is_finished"] = True
+
+
+def _compute_log_substeps(st: Dict[str, Any]) -> Dict[str, Any]:
+    # 1. Calibration substep %
+    if st["calib_done"] or st["dense_pc_running"] or st["depth_pc_running"] or st["mesh_running"] or st["is_finished"]:
+        calib_pct = 100.0
+    elif st["calib_running"]:
+        if st["tracks_done"]:
+            calib_pct = 82.0
+        elif st["pair_matching_done"]:
+            calib_pct = 68.0
+        elif st["pair_matching_running"]:
+            calib_pct = 52.0
+        elif st["feature_extraction_done"]:
+            calib_pct = 38.0
+        elif st["feature_extraction_running"]:
+            calib_pct = 24.0
+        else:
+            calib_pct = 15.0
+    elif st["import_done"]:
+        calib_pct = 12.0
+    elif st["import_running"]:
+        calib_pct = 6.0
+    else:
+        calib_pct = 0.0
+
+    # 2. Point Clouds substep %
+    if st["fused_pc_done"] or st["mesh_running"] or st["mesh_done"] or st["is_finished"]:
+        pc_pct = 100.0
+    elif st["fused_pc_running"]:
+        pc_pct = 88.0
+    elif st["depth_pc_done"]:
+        pc_pct = 78.0
+    elif st["depth_pc_running"]:
+        pc_pct = 68.0
+    elif st["dense_pc_done"]:
+        pc_pct = 55.0
+    elif st["dense_pc_running"]:
+        if st["dense_scene_str"] == "2/2":
+            pc_pct = 46.0 if st["dense_colorizing"] else 36.0
+        elif st["dense_scene_str"] == "1/2":
+            pc_pct = 24.0 if st["dense_colorizing"] else 16.0
+        else:
+            pc_pct = 20.0
+    else:
+        pc_pct = 0.0
+
+    # 3. Textured Mesh substep %
+    n_tiles = max(
+        1,
+        int(st["total_tiles"] or 0),
+        len(st["geom_started_tiles"]),
+        len(st["score_tiles"]),
+        len(st["tex_started_tiles"]),
+    )
+    if st["mesh_done"] or st["report_running"] or st["export_obj_running"] or st["is_finished"]:
+        mesh_pct = 100.0
+    elif st["mesh_running"]:
+        has_tile_events = (
+            st["total_tiles"] > 0
+            or len(st["geom_started_tiles"]) > 0
+            or len(st["score_tiles"]) > 0
+            or len(st["tex_started_tiles"]) > 0
+        )
+        if has_tile_events:
+            p1_units = min(
+                1.0,
+                max(
+                    0.0,
+                    (
+                        0.25 * len(st["geom_started_tiles"])
+                        + 0.35 * len(st["geom_done_tiles"])
+                        + 0.20 * len(st["decimate_done_tiles"])
+                        + 0.20 * len(st["depth_buf_done_tiles"])
+                    )
+                    / float(n_tiles),
+                ),
+            )
+            p2_units = min(1.0, max(0.0, len(st["score_tiles"]) / float(n_tiles)))
+            done_l0 = int(st["tree_level_0_count"] or 0)
+            active_tile_frac = 0.0
+            if len(st["tex_started_tiles"]) > done_l0:
+                if len(st["tex_done_tiles"]) >= len(st["tex_started_tiles"]):
+                    active_tile_frac = 0.85
+                elif len(st["tex_atlas_tiles"]) >= len(st["tex_started_tiles"]):
+                    active_tile_frac = 0.65
+                elif len(st["tex_coord_tiles"]) >= len(st["tex_started_tiles"]):
+                    active_tile_frac = 0.40
+                else:
+                    active_tile_frac = 0.20
+            p3_units = min(1.0, max(0.0, (done_l0 + active_tile_frac) / float(n_tiles)))
+            mesh_pct = round(min(99.0, max(2.0, 35.0 * p1_units + 24.0 * p2_units + 41.0 * p3_units)), 1)
+        else:
+            stg_l = (st["last_bracket_stage"] or "").lower()
+            if "generate tiles" in stg_l or "write tiles" in stg_l or "finalize scalable mesh" in stg_l:
+                mesh_pct = 86.0
+            elif "texture" in stg_l:
+                mesh_pct = 65.0
+            else:
+                mesh_pct = 35.0
+    else:
+        mesh_pct = 0.0
+
+    # 4. PIX4D Export substep %
+    if st["is_finished"] or st["export_obj_done"]:
+        export_pct = 100.0
+    elif st["export_obj_running"]:
+        export_pct = 75.0
+    elif st["report_done"]:
+        export_pct = 45.0
+    elif st["report_running"]:
+        export_pct = 25.0
+    else:
+        export_pct = 0.0
+
+    return {
+        "calib_pct": round(calib_pct, 1),
+        "pc_pct": round(pc_pct, 1),
+        "mesh_pct": round(mesh_pct, 1),
+        "export_pct": round(export_pct, 1),
+        "n_tiles": n_tiles,
+        "tex_tile_idx": min(n_tiles, max(len(st["tex_started_tiles"]), int(st["tree_level_0_count"] or 0))),
+        "geom_tile_idx": min(n_tiles, len(st["geom_started_tiles"])),
+        "score_tile_idx": min(n_tiles, len(st["score_tiles"])),
+        "tree_level_0_count": int(st["tree_level_0_count"] or 0),
+        "current_tile_subaction_en": st["current_tile_subaction_en"],
+        "current_tile_subaction_zh": st["current_tile_subaction_zh"],
+    }
+
+
+def build_pipeline_breakdown(
+    scan_row: Optional[Dict[str, Any]] = None,
+    log_info: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """
+    Returns the canonical 6-Section Pipeline Progress Model (weights sum to 100%):
+      1. copy_files (8%, #06b6d4 Cyan): Copy & Stage Files
+      2. calibration (18%, #3b82f6 Blue): PIX4D Calibration
+      3. point_cloud (22%, #8b5cf6 Violet): PIX4D Point Clouds (Dense + Depth + Fused)
+      4. textured_mesh (36%, #f59e0b Amber): PIX4D Textured Mesh (Multi-Tile Geometry + Scoring + Atlas/LODs)
+      5. pix4d_export (6%, #ec4899 Pink): PIX4D Export OBJ & Quality Report PDF
+      6. web_tileset (10%, #10b981 Emerald): Website 3D Tileset, Preview & Cloud Sync
+    """
+    row = scan_row or {}
+    status = str(row.get("status") or "").lower()
+    raw_pct = float(row.get("progress_pct") or 0.0)
+    stage_lbl = str(row.get("stage_label") or "")
+    stage_low = stage_lbl.lower()
+
+    # Initialize substep percentages [0..100]
+    s_copy = 0.0
+    s_calib = 0.0
+    s_pc = 0.0
+    s_mesh = 0.0
+    s_exp = 0.0
+    s_web = 0.0
+
+    d_copy_en, d_copy_zh = "Waiting in queue", "排隊等待中"
+    d_calib_en, d_calib_zh = "Pending", "等待執行"
+    d_pc_en, d_pc_zh = "Pending", "等待執行"
+    d_mesh_en, d_mesh_zh = "Pending", "等待執行"
+    d_exp_en, d_exp_zh = "Pending", "等待執行"
+    d_web_en, d_web_zh = "Pending", "等待執行"
+
+    if status == "completed" or raw_pct >= 99.9:
+        s_copy = s_calib = s_pc = s_mesh = s_exp = s_web = 100.0
+        d_copy_en, d_copy_zh = "Local SSD staged", "SSD 本機準備完成"
+        d_calib_en, d_calib_zh = "TWD97 + RTK calibrated", "TWD97 相機率定完成"
+        d_pc_en, d_pc_zh = "Dense + Depth + Fused", "加密＋深度＋融合點雲完成"
+        d_mesh_en, d_mesh_zh = "Textured mesh built", "紋理網格建置完成"
+        d_exp_en, d_exp_zh = "OBJ & PDF exported", "OBJ 與品質報告已匯出"
+        d_web_en, d_web_zh = "Quadtree 3D Tiles & .3tz ready", "3D 圖磚與雲端封包已就緒"
+    elif status == "waiting_parts":
+        s_copy = 25.0
+        d_copy_en, d_copy_zh = "Waiting for multi-part uploads", "等待其餘分卷上傳"
+    elif status == "queued":
+        # Check if inputs are already pre-staged on local SSD
+        pdir = row.get("project_dir") or (os.path.join(LOCAL_SCANS_ROOT, str(row.get("scan_id") or "")) if row.get("scan_id") else "")
+        inputs_d = os.path.join(pdir, "inputs") if pdir else ""
+        has_staged = False
+        if inputs_d and os.path.isdir(inputs_d):
+            for r_d, _, f_l in os.walk(inputs_d):
+                if ".staged_ok" in f_l:
+                    has_staged = True
+                    break
+        if has_staged:
+            s_copy = 100.0
+            d_copy_en, d_copy_zh = "Pre-staged on local SSD", "已預先複製至本機 SSD"
+        else:
+            s_copy = 0.0
+            d_copy_en, d_copy_zh = "Queued for SSD staging", "排隊等待複製檔案"
+    elif log_info and isinstance(log_info.get("_substeps"), dict) and not (
+        "website processing" in stage_low or "gc_scanoptimizer" in stage_low or "3d tileset" in stage_low or ".3tz" in stage_low
+    ):
+        sub = log_info["_substeps"]
+        st = log_info.get("_raw_state") or {}
+        s_copy = 100.0
+        d_copy_en, d_copy_zh = "Local SSD staged", "已複製至本機 SSD"
+
+        s_calib = float(sub.get("calib_pct", 0.0))
+        s_pc = float(sub.get("pc_pct", 0.0))
+        s_mesh = float(sub.get("mesh_pct", 0.0))
+        s_exp = float(sub.get("export_pct", 0.0))
+
+        # Detail labels for Calibration
+        if s_calib >= 100.0:
+            d_calib_en, d_calib_zh = "TWD97 cameras calibrated", "TWD97 相機率定完成"
+        elif s_calib > 0.0:
+            if st.get("tracks_done"):
+                d_calib_en, d_calib_zh = f"{int(round(s_calib))}% · Optimizing camera bundle", f"{int(round(s_calib))}% · 平差優化相機參數"
+            elif st.get("pair_matching_running") or st.get("pair_matching_done"):
+                d_calib_en, d_calib_zh = f"{int(round(s_calib))}% · Image pair matching", f"{int(round(s_calib))}% · 影像特徵配對中"
+            elif st.get("feature_extraction_running"):
+                d_calib_en, d_calib_zh = f"{int(round(s_calib))}% · Extracting keypoints", f"{int(round(s_calib))}% · 萃取影像特徵點"
+            else:
+                d_calib_en, d_calib_zh = f"{int(round(s_calib))}% · Importing RTK cameras", f"{int(round(s_calib))}% · 匯入 RTK 相機資訊"
+
+        # Detail labels for Point Clouds
+        if s_pc >= 100.0:
+            d_pc_en, d_pc_zh = "Dense + Depth + Fused ready", "加密＋深度＋融合點雲完成"
+        elif s_pc > 0.0:
+            if st.get("fused_pc_running"):
+                d_pc_en, d_pc_zh = f"{int(round(s_pc))}% · Fusing dense & depth clouds", f"{int(round(s_pc))}% · 融合加密與深度點雲"
+            elif st.get("depth_pc_running") or st.get("depth_pc_done"):
+                d_pc_en, d_pc_zh = f"{int(round(s_pc))}% · Generating depth point cloud", f"{int(round(s_pc))}% · 生成 LiDAR 深度點雲"
+            else:
+                sc_tag = f" (Scene {st.get('dense_scene_str')})" if st.get("dense_scene_str") else ""
+                d_pc_en, d_pc_zh = f"{int(round(s_pc))}% · Dense point cloud{sc_tag}", f"{int(round(s_pc))}% · 生成加密點雲{sc_tag}"
+
+        # Detail labels for Textured Mesh
+        if s_mesh >= 100.0:
+            n_t = int(sub.get("n_tiles") or 1)
+            d_mesh_en = f"100% · {n_t} tiles textured" if n_t > 1 else "100% · Textured mesh ready"
+            d_mesh_zh = f"100% · {n_t} 個分塊貼圖完成" if n_t > 1 else "100% · 紋理網格完成"
+        elif s_mesh > 0.0:
+            sub_en = sub.get("current_tile_subaction_en") or "Generating scalable textured mesh"
+            sub_zh = sub.get("current_tile_subaction_zh") or "建立多分塊紋理網格"
+            d_mesh_en = f"{int(round(s_mesh))}% · {sub_en}"
+            d_mesh_zh = f"{int(round(s_mesh))}% · {sub_zh}"
+
+        # Detail labels for PIX4D Export
+        if s_exp >= 100.0:
+            d_exp_en, d_exp_zh = "OBJ & Quality Report exported", "OBJ 模型與報告已匯出"
+        elif s_exp > 0.0:
+            if st.get("export_obj_running"):
+                d_exp_en, d_exp_zh = f"{int(round(s_exp))}% · Exporting mesh.obj", f"{int(round(s_exp))}% · 匯出 mesh.obj 網格"
+            else:
+                d_exp_en, d_exp_zh = f"{int(round(s_exp))}% · Exporting quality report PDF", f"{int(round(s_exp))}% · 匯出品質報告 PDF"
+    else:
+        # Infer from stage_label & raw_pct (e.g. during Section 1 file staging or Section 6 website post-processing)
+        if (
+            "fast-staging" in stage_low
+            or "extracting archive" in stage_low
+            or "already-staged" in stage_low
+            or (0.0 < raw_pct < 10.0 and "pix4d" not in stage_low)
+        ):
+            s_copy = round(min(99.0, max(10.0, ((raw_pct - 5.0) / 4.5) * 100.0 if raw_pct >= 5.0 else raw_pct * 10.0)), 1)
+            d_copy_en = stage_lbl or f"{int(round(s_copy))}% · Staging files to local SSD"
+            d_copy_zh = f"{int(round(s_copy))}% · 正在複製與解壓縮檔案至本機 SSD"
+        elif (
+            "website processing" in stage_low
+            or "gc_scanoptimizer" in stage_low
+            or "3d tileset" in stage_low
+            or "mesh islands" in stage_low
+            or ".3tz" in stage_low
+            or raw_pct >= 90.5
+        ):
+            s_copy = s_calib = s_pc = s_mesh = s_exp = 100.0
+            d_copy_en, d_copy_zh = "Local SSD staged", "SSD 本機準備完成"
+            d_calib_en, d_calib_zh = "TWD97 + RTK calibrated", "TWD97 相機率定完成"
+            d_pc_en, d_pc_zh = "Dense + Depth + Fused", "加密＋深度＋融合點雲完成"
+            d_mesh_en, d_mesh_zh = "Textured mesh built", "紋理網格建置完成"
+            d_exp_en, d_exp_zh = "OBJ & PDF exported", "OBJ 與品質報告已匯出"
+
+            m_wpct = re.search(r"Website Processing\s*\((\d+)%\)", stage_lbl, re.IGNORECASE)
+            if m_wpct:
+                s_web = float(min(99.0, max(5.0, int(m_wpct.group(1)))))
+            else:
+                s_web = round(min(99.0, max(15.0, (raw_pct - 90.0) * 10.0)), 1)
+
+            if ".3tz" in stage_low or s_web >= 90.0:
+                d_web_en = f"{int(round(s_web))}% · Packaging .3tz & syncing cloud"
+                d_web_zh = f"{int(round(s_web))}% · 封裝 .3tz 並同步雲端"
+            elif "preview" in stage_low or "thumbnail" in stage_low or s_web >= 80.0:
+                d_web_en = f"{int(round(s_web))}% · Generating preview & thumbnail"
+                d_web_zh = f"{int(round(s_web))}% · 產生預覽模型與縮圖"
+            elif "l0 overview" in stage_low or "georef offset" in stage_low or s_web >= 60.0:
+                d_web_en = f"{int(round(s_web))}% · L0 GLB & TWD97 64-bit offset"
+                d_web_zh = f"{int(round(s_web))}% · 建立 L0 概覽與 TWD97 位移"
+            elif "quadtree" in stage_low or "gc_scanoptimizer" in stage_low or s_web >= 30.0:
+                d_web_en = f"{int(round(s_web))}% · Building Quadtree 3D Tileset"
+                d_web_zh = f"{int(round(s_web))}% · 建置四叉樹多層級 3D 圖磚"
+            else:
+                d_web_en = f"{int(round(s_web))}% · TWD97 coordinate & island check"
+                d_web_zh = f"{int(round(s_web))}% · TWD97 座標轉換與區塊檢查"
+        elif status == "processing":
+            # Fallback proportional mapping if log file isn't created yet (e.g. launching PIX4Dmatic at 10%)
+            s_copy = 100.0
+            d_copy_en, d_copy_zh = "Local SSD staged", "已複製至本機 SSD"
+            if raw_pct <= 26.0:
+                s_calib = round(max(5.0, min(99.0, ((raw_pct - 8.0) / 18.0) * 100.0)), 1)
+                d_calib_en, d_calib_zh = f"{int(round(s_calib))}% · Calibrating cameras", f"{int(round(s_calib))}% · 相機率定中"
+            elif raw_pct <= 48.0:
+                s_calib = 100.0
+                d_calib_en, d_calib_zh = "TWD97 + RTK calibrated", "TWD97 相機率定完成"
+                s_pc = round(max(5.0, min(99.0, ((raw_pct - 26.0) / 22.0) * 100.0)), 1)
+                d_pc_en, d_pc_zh = f"{int(round(s_pc))}% · Generating point clouds", f"{int(round(s_pc))}% · 點雲生成中"
+            elif raw_pct <= 84.0:
+                s_calib = s_pc = 100.0
+                d_calib_en, d_calib_zh = "TWD97 + RTK calibrated", "TWD97 相機率定完成"
+                d_pc_en, d_pc_zh = "Dense + Depth + Fused", "加密＋深度＋融合點雲完成"
+                s_mesh = round(max(5.0, min(99.0, ((raw_pct - 48.0) / 36.0) * 100.0)), 1)
+                d_mesh_en, d_mesh_zh = f"{int(round(s_mesh))}% · Generating textured mesh", f"{int(round(s_mesh))}% · 建立紋理網格中"
+            else:
+                s_calib = s_pc = s_mesh = 100.0
+                d_calib_en, d_calib_zh = "TWD97 + RTK calibrated", "TWD97 相機率定完成"
+                d_pc_en, d_pc_zh = "Dense + Depth + Fused", "加密＋深度＋融合點雲完成"
+                d_mesh_en, d_mesh_zh = "Textured mesh built", "紋理網格建置完成"
+                s_exp = round(max(10.0, min(99.0, ((raw_pct - 84.0) / 6.0) * 100.0)), 1)
+                d_exp_en, d_exp_zh = f"{int(round(s_exp))}% · Exporting OBJ & report", f"{int(round(s_exp))}% · 匯出 OBJ 與報告"
+
+    raw_sections = [
+        {
+            "id": "copy_files",
+            "weight": 8,
+            "color": "#06b6d4",
+            "short_en": "1. Copy Files",
+            "short_zh": "1. 複製檔案",
+            "title_en": "1. Copy & Stage Files",
+            "title_zh": "1. 複製與準備檔案",
+            "substep_pct": round(s_copy, 1),
+            "detail_en": d_copy_en,
+            "detail_zh": d_copy_zh,
+        },
+        {
+            "id": "calibration",
+            "weight": 18,
+            "color": "#3b82f6",
+            "short_en": "2. Calibration",
+            "short_zh": "2. 相機率定",
+            "title_en": "2. PIX4D: Calibration",
+            "title_zh": "2. PIX4D：相機率定",
+            "substep_pct": round(s_calib, 1),
+            "detail_en": d_calib_en,
+            "detail_zh": d_calib_zh,
+        },
+        {
+            "id": "point_cloud",
+            "weight": 22,
+            "color": "#8b5cf6",
+            "short_en": "3. Point Clouds",
+            "short_zh": "3. 點雲生成",
+            "title_en": "3. PIX4D: Point Clouds",
+            "title_zh": "3. PIX4D：點雲生成與融合",
+            "substep_pct": round(s_pc, 1),
+            "detail_en": d_pc_en,
+            "detail_zh": d_pc_zh,
+        },
+        {
+            "id": "textured_mesh",
+            "weight": 36,
+            "color": "#f59e0b",
+            "short_en": "4. Textured Mesh",
+            "short_zh": "4. 紋理網格",
+            "title_en": "4. PIX4D: Textured Mesh",
+            "title_zh": "4. PIX4D：建立紋理網格",
+            "substep_pct": round(s_mesh, 1),
+            "detail_en": d_mesh_en,
+            "detail_zh": d_mesh_zh,
+        },
+        {
+            "id": "pix4d_export",
+            "weight": 6,
+            "color": "#ec4899",
+            "short_en": "5. PIX4D Export",
+            "short_zh": "5. 匯出模型",
+            "title_en": "5. PIX4D: Export OBJ & PDF",
+            "title_zh": "5. PIX4D：匯出模型與報告",
+            "substep_pct": round(s_exp, 1),
+            "detail_en": d_exp_en,
+            "detail_zh": d_exp_zh,
+        },
+        {
+            "id": "web_tileset",
+            "weight": 10,
+            "color": "#10b981",
+            "short_en": "6. Website Tiles",
+            "short_zh": "6. 網站圖磚",
+            "title_en": "6. Website: 3D Tiles & Sync",
+            "title_zh": "6. 網站處理：3D 圖磚與同步",
+            "substep_pct": round(s_web, 1),
+            "detail_en": d_web_en,
+            "detail_zh": d_web_zh,
+        },
+    ]
+
+    active_sec = raw_sections[0]
+    found_active = False
+    for sec in raw_sections:
+        pct_val = float(sec["substep_pct"])
+        if pct_val >= 100.0:
+            sec["status"] = "completed"
+        elif not found_active and (pct_val > 0.0 or status == "processing"):
+            sec["status"] = "active"
+            active_sec = sec
+            found_active = True
+        else:
+            sec["status"] = "pending"
+
+    if status == "completed" or all(s["status"] == "completed" for s in raw_sections):
+        active_sec = raw_sections[-1]
+        overall_pct = 100.0
+    else:
+        overall_pct = round(sum(float(s["weight"]) * (float(s["substep_pct"]) / 100.0) for s in raw_sections), 1)
+
+    return {
+        "overall_pct": overall_pct,
+        "active_section_id": active_sec["id"],
+        "active_section_color": active_sec["color"],
+        "active_section_short_en": active_sec["short_en"],
+        "active_section_short_zh": active_sec["short_zh"],
+        "active_section_title_en": active_sec["title_en"],
+        "active_section_title_zh": active_sec["title_zh"],
+        "active_substep_pct": active_sec["substep_pct"],
+        "active_detail_en": active_sec["detail_en"],
+        "active_detail_zh": active_sec["detail_zh"],
+        "sections": raw_sections,
+    }
+
+
 def parse_pix4dmatic_log_progress(log_path: str) -> Dict[str, Any]:
     """
-    Reads the tail of a PIX4Dmatic project or app log file and extracts:
-    - stage: human-readable current stage
+    Incrementally parses a PIX4Dmatic 2.11.0 project/app log file from start to current EOF
+    (caching byte offset & mtime so subsequent calls read only newly appended bytes) and extracts:
+    - stage: human-readable current stage including substep % & tile progress
+    - stage_zh: Chinese human-readable current stage including substep % & tile progress
     - cpu_ram: live OS CPU/RAM string (with log fallback)
-    - progress_pct: float (10.0 .. 96.0)
+    - progress_pct: overall pipeline percentage (8.0 .. 90.0 while PIX4Dmatic runs)
+    - substep_pct: active PIX4D substep percentage (0.0 .. 100.0, matching PIX4Dmatic GUI!)
+    - pipeline_breakdown: canonical 6-section color-coded breakdown
     - is_finished: bool
     - has_fatal_error: bool
     - error_message: str
@@ -70,126 +760,92 @@ def parse_pix4dmatic_log_progress(log_path: str) -> Dict[str, Any]:
     out: Dict[str, Any] = {
         "log_path": log_path,
         "stage": "Initializing",
+        "stage_zh": "初始化中",
         "cpu_ram": "",
         "progress_pct": 10.0,
+        "substep_pct": 0.0,
         "is_finished": False,
         "has_fatal_error": False,
         "error_message": "",
         "tail_lines": [],
+        "pipeline_breakdown": None,
     }
     if not log_path or not os.path.isfile(log_path):
+        out["pipeline_breakdown"] = build_pipeline_breakdown({"status": "processing", "progress_pct": 10.0})
         return out
     try:
-        fsize = os.path.getsize(log_path)
-        with open(log_path, "rb") as lf:
-            if fsize > 24576:
-                lf.seek(fsize - 24576)
-            tail_text = lf.read().decode("utf-8", errors="replace")
+        abs_lp = os.path.abspath(log_path)
+        fsize = os.path.getsize(abs_lp)
+        mtime = os.path.getmtime(abs_lp)
+
+        cached = _LOG_PARSE_CACHE.get(abs_lp)
+        if cached is None or fsize < cached["offset"]:
+            cached = _new_log_parse_state()
+            _LOG_PARSE_CACHE[abs_lp] = cached
+
+        if fsize > cached["offset"]:
+            with open(abs_lp, "rb") as lf:
+                lf.seek(cached["offset"])
+                new_bytes = lf.read()
+                cached["offset"] = lf.tell()
+                cached["mtime"] = mtime
+            new_text = new_bytes.decode("utf-8", errors="replace")
+            for ln in new_text.splitlines():
+                _feed_log_line(cached, ln.strip())
+
+        # Read last 16 KB for tail_lines display
+        with open(abs_lp, "rb") as tf:
+            if fsize > 16384:
+                tf.seek(fsize - 16384)
+            tail_text = tf.read().decode("utf-8", errors="replace")
         tail_lines = [ln.strip() for ln in tail_text.splitlines() if ln.strip()]
         out["tail_lines"] = tail_lines[-12:]
 
-        if "Could not create runnable pipeline due to QML errors" in tail_text:
-            out["has_fatal_error"] = True
-            for ln in reversed(tail_lines):
-                if "QML" in ln or "Cannot assign" in ln or "not a type" in ln or "Invalid property" in ln:
-                    out["error_message"] = ln
-                    break
-            if not out["error_message"]:
-                out["error_message"] = "PIX4Dmatic QML pipeline script error"
-
-        for ln in tail_lines[-4:]:
-            if "CloseSession" in ln or "[Export mesh to .obj] Finished" in ln or "[Processing] Finished" in ln:
-                out["is_finished"] = True
-
-        stage_name = ""
-        log_cpu_ram = ""
-        for ln in reversed(tail_lines):
-            m = re.search(r"\[(\d+%CPU)\]\[(\d+%RAM)\]\[([^\]]+)\]", ln)
-            if m:
-                log_cpu_ram = f"{m.group(1)} · {m.group(2)}"
-                stage_name = m.group(3).strip()
-                break
+        out["has_fatal_error"] = bool(cached["has_fatal_error"])
+        out["error_message"] = str(cached["error_message"] or "")
+        out["is_finished"] = bool(cached["is_finished"])
 
         _, _, live_cpu_ram = get_live_system_cpu_ram()
-        cpu_ram = live_cpu_ram or log_cpu_ram
-
-        stage_pct_map = [
-            ("Initializing", 5.0),
-            ("Loading", 5.0),
-            ("Import", 12.0),
-            ("Keypoints", 14.0),
-            ("Extract", 14.0),
-            ("Sky mask", 16.0),
-            ("Feature extraction", 18.0),
-            ("Matching", 24.0),
-            ("Match", 24.0),
-            ("Pair matching", 28.0),
-            ("Initial tracks creation", 33.0),
-            ("Calibrating", 38.0),
-            ("Calibrate", 38.0),
-            ("Calibration", 38.0),
-            ("Bundle", 38.0),
-            ("Optimizing camera", 38.0),
-            ("Georeferencing", 45.0),
-            ("Control points", 45.0),
-            ("Densifying", 58.0),
-            ("Dense", 58.0),
-            ("Depth map", 58.0),
-            ("Densification", 58.0),
-            ("Generate point cloud", 66.0),
-            ("Point cloud", 66.0),
-            ("Depth point cloud", 72.0),
-            ("Finalize point cloud", 75.0),
-            ("Generate fused point cloud", 79.0),
-            ("Fusing", 79.0),
-            ("Fuse", 79.0),
-            ("Generate mesh", 84.0),
-            ("Mesh", 84.0),
-            ("Decimat", 84.0),
-            ("Texture", 88.0),
-            ("Texturing", 88.0),
-            ("scalable mesh", 88.0),
-            ("Finalize scalable mesh", 91.0),
-            ("Generate tiles", 91.0),
-            ("Tiles", 91.0),
-            ("Cesium", 91.0),
-            ("3D Tiles", 91.0),
-            ("DSM", 93.0),
-            ("Ortho", 95.0),
-            ("Orthomosaic", 95.0),
-            ("Export", 97.0),
-            ("Quality report", 97.0),
-            ("Saving", 97.0),
-        ]
-        est_pct = 12.0
-        # Match against the active stage_name so an early "[Save project]" after Import never jumps progress to 97%
-        if stage_name:
-            stg_low = stage_name.lower()
-            for k_stg, v_pct in stage_pct_map:
-                if k_stg.lower() in stg_low:
-                    est_pct = max(est_pct, v_pct)
-            if "save project" in stg_low:
-                if any(
-                    k in tail_text
-                    for k in ("Export mesh to .obj", "Export quality report", "Generate tiles", "Finalize scalable mesh")
-                ):
-                    est_pct = 97.0
-                else:
-                    est_pct = 14.0
-
-        if "Scene [2/2]" in tail_text and 60.0 <= est_pct < 73.0:
-            est_pct = max(est_pct, 69.0)
-            if "colorizing" in tail_text.split("Scene [2/2]")[-1]:
-                est_pct = max(est_pct, 73.0)
-        elif "Scene [1/2]" in tail_text and 60.0 <= est_pct < 68.0:
-            if "colorizing" in tail_text.split("Scene [1/2]")[-1]:
-                est_pct = max(est_pct, 65.0)
-
-        out["stage"] = stage_name or "Processing"
+        cpu_ram = live_cpu_ram or cached["last_log_cpu_ram"]
         out["cpu_ram"] = cpu_ram
-        out["progress_pct"] = 96.0 if out["is_finished"] else est_pct
+
+        substeps = _compute_log_substeps(cached)
+        out["_substeps"] = substeps
+        out["_raw_state"] = cached
+
+        breakdown = build_pipeline_breakdown(
+            scan_row={"status": "processing", "progress_pct": 12.0},
+            log_info=out,
+        )
+        out["pipeline_breakdown"] = breakdown
+        out["substep_pct"] = float(breakdown.get("active_substep_pct") or 0.0)
+        out["progress_pct"] = 90.0 if out["is_finished"] else float(breakdown.get("overall_pct") or 10.0)
+
+        act_id = breakdown.get("active_section_id")
+        sub_pct_int = int(round(out["substep_pct"]))
+        if act_id == "textured_mesh":
+            sub_en = substeps.get("current_tile_subaction_en") or "Generating scalable mesh"
+            sub_zh = substeps.get("current_tile_subaction_zh") or "建立多分塊網格"
+            out["stage"] = f"Generate Textured Mesh ({sub_pct_int}% · {sub_en})"
+            out["stage_zh"] = f"建立紋理網格 ({sub_pct_int}% · {sub_zh})"
+        elif act_id == "point_cloud":
+            out["stage"] = f"Point Clouds ({ breakdown.get('active_detail_en') })"
+            out["stage_zh"] = f"點雲生成 ({ breakdown.get('active_detail_zh') })"
+        elif act_id == "calibration":
+            out["stage"] = f"Calibration ({ breakdown.get('active_detail_en') })"
+            out["stage_zh"] = f"相機率定 ({ breakdown.get('active_detail_zh') })"
+        elif act_id == "pix4d_export":
+            out["stage"] = f"Export OBJ & Report ({ breakdown.get('active_detail_en') })"
+            out["stage_zh"] = f"匯出模型與報告 ({ breakdown.get('active_detail_zh') })"
+        else:
+            raw_stg = cached["last_bracket_stage"] or "Processing"
+            out["stage"] = raw_stg
+            out["stage_zh"] = raw_stg
+
+        out.pop("_raw_state", None)
     except Exception:
-        pass
+        if not out.get("pipeline_breakdown"):
+            out["pipeline_breakdown"] = build_pipeline_breakdown({"status": "processing", "progress_pct": 10.0})
     return out
 
 
@@ -432,6 +1088,8 @@ def postprocess_obj_to_tileset(
     """
     if not obj_path or not os.path.isfile(obj_path):
         return ""
+    if progress_callback:
+        progress_callback(91.0, "Website Processing (15%): TWD97 64-bit Offset & Mesh Island Check...")
     obj_dir = os.path.dirname(obj_path)
     offset_xyz_path = os.path.join(obj_dir, "offset.xyz")
     ox, oy, oz = 0.0, 0.0, 0.0
@@ -636,7 +1294,7 @@ def postprocess_obj_to_tileset(
         print(f"[PIX4DRunner] Warning updating MTL Kd factor: {e}")
 
     if progress_callback:
-        progress_callback(96.0, "Building Hierarchical 3D Tileset in GC_ScanOptimizer...")
+        progress_callback(93.0, "Website Processing (35%): Building Quadtree 3D Tileset (GC_ScanOptimizer)...")
     if GC_SCAN_OPTIMIZER_DIR not in sys.path:
         sys.path.append(GC_SCAN_OPTIMIZER_DIR)
     from optimizer.quadtree_tiler import QuadtreeTiler
@@ -662,6 +1320,8 @@ def postprocess_obj_to_tileset(
     tiler.run()
     ts_candidate = os.path.join(tileset_dir, "tileset.json")
     if os.path.isfile(ts_candidate):
+        if progress_callback:
+            progress_callback(96.0, "Website Processing (65%): Building L0 Overview GLB & Applying Georef Offset...")
         # Build high-precision (-vp 14 -vt 12) L0 overview root.glb (~180k tris, 2048px) via gltfpack
         try:
             from pc_worker.preview_generator import (
@@ -777,6 +1437,8 @@ def postprocess_obj_to_tileset(
                 os.remove(dsm_cache)
             except OSError:
                 pass
+        if progress_callback:
+            progress_callback(98.0, "Website Processing (85%): Generating Web Preview & Thumbnail...")
         try:
             from pc_worker.preview_generator import (
                 ensure_scan_low_quality_preview,
@@ -787,6 +1449,8 @@ def postprocess_obj_to_tileset(
             ensure_scan_full_quality_thumbnail(ts_candidate, scan_id, project_dir=proj_dir, force=True)
         except Exception as e:
             print(f"[PIX4DRunner] Warning generating preview/thumbnail for {ts_candidate}: {e}")
+        if progress_callback:
+            progress_callback(99.0, "Website Processing (95%): Packaging .3tz Cloud Archive & Syncing...")
         try:
             from pc_worker.gdrive_cloud_sync import build_scan_3tz_package
 

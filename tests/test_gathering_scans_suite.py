@@ -1856,14 +1856,16 @@ class GatheringScansTestSuite(unittest.TestCase):
         import tempfile
         from pc_worker.pix4d_runner import parse_pix4dmatic_log_progress
 
-        # 1. Verify PIX4Dmatic 2.11.0 stage mapping (Generate tiles -> 91.0, Finalize point cloud -> 75.0, etc.)
+        # 1. Verify PIX4Dmatic 2.11.0 stage mapping (Generate tiles -> textured_mesh substep, overall ~79%)
         with tempfile.NamedTemporaryFile("w", suffix=".txt", delete=False, encoding="utf-8") as tf:
-            tf.write("[2026-10-29 13:20:00][45%CPU][62%RAM][Generate tiles] Generating Cesium 3D Tiles...\n")
+            tf.write("[2026-10-29 13:20:00][45%CPU][62%RAM][Generate textured mesh] Running\n")
+            tf.write("[2026-10-29 13:20:01][45%CPU][62%RAM][Generate tiles] Generating Cesium 3D Tiles...\n")
             tmp_log = tf.name
         try:
             info = parse_pix4dmatic_log_progress(tmp_log)
-            self.assertEqual(info["stage"], "Generate tiles")
-            self.assertAlmostEqual(float(info["progress_pct"]), 91.0, places=1)
+            self.assertIn("Generate Textured Mesh", info["stage"])
+            self.assertGreaterEqual(float(info["progress_pct"]), 75.0)
+            self.assertLessEqual(float(info["progress_pct"]), 89.0)
         finally:
             try:
                 os.remove(tmp_log)
@@ -1876,7 +1878,7 @@ class GatheringScansTestSuite(unittest.TestCase):
         self.db.upsert_scan({"scan_id": "s_wait", "name": "Waiting Parts", "status": "waiting_parts", "capture_date": "2026-10-29"})
         self.db.upsert_scan({"scan_id": "s_q_large", "name": "Queued Large", "status": "queued", "image_count": 2000, "size_bytes": 5000 * 1024 * 1024, "uploaded_at": now - 10})
         self.db.upsert_scan({"scan_id": "s_q_small", "name": "Queued Small", "status": "queued", "image_count": 100, "size_bytes": 200 * 1024 * 1024, "uploaded_at": now - 5})
-        self.db.upsert_scan({"scan_id": "s_proc", "name": "Processing", "status": "processing", "progress_pct": 91.0})
+        self.db.upsert_scan({"scan_id": "s_proc", "name": "Processing", "status": "processing", "progress_pct": 71.0})
 
         ordered = [s["scan_id"] for s in self.db.list_scans() if s["scan_id"] in {"s_comp", "s_wait", "s_q_large", "s_q_small", "s_proc"}]
         self.assertEqual(ordered, ["s_proc", "s_q_small", "s_q_large", "s_wait", "s_comp"])
@@ -1915,6 +1917,96 @@ class GatheringScansTestSuite(unittest.TestCase):
         self.assertIn('if (scan.status && scan.status !== "completed" && !scan.stream_url)', js03)
         self.assertIn("data-prioritize", js07)
         self.assertIn("data-inspect3d", js07)
+
+    def test_24_multi_stage_pipeline_progress_and_segmented_queue_bar(self):
+        """Verify 6-section color-coded pipeline progress model and PIX4Dmatic 15-tile textured mesh substep accuracy."""
+        import tempfile
+        from pc_worker.pix4d_runner import parse_pix4dmatic_log_progress, build_pipeline_breakdown
+
+        lines = [
+            "[2026-10-29 14:00:00][20%CPU][50%RAM][Import project] Finished",
+            "[2026-10-29 14:05:00][40%CPU][60%RAM][Generate calibration] Finished",
+            "[2026-10-29 14:15:00][80%CPU][75%RAM][Generate dense point cloud] Finished",
+            "[2026-10-29 14:18:00][60%CPU][76%RAM][Generate depth point cloud] Finished",
+            "[2026-10-29 14:20:00][55%CPU][78%RAM][Fusing dense and depth point cloud] Finished",
+            "[2026-10-29 14:20:05][30%CPU][80%RAM][Generate textured mesh] Running",
+            "[2026-10-29 14:20:05][30%CPU][80%RAM][Generate scalable mesh] Running",
+            "[2026-10-29 14:20:05][30%CPU][80%RAM][Generate tiles] Running",
+            "[2026-10-29 14:20:05][30%CPU][80%RAM][Write tiles to disk] Running",
+            "[2026-10-29 14:20:06][30%CPU][80%RAM][Generate tiles](Info) Scene subdivided into 15 tiles",
+        ]
+        # Pass 1 & Pass 2 for all 15 tiles
+        for idx in range(1, 16):
+            tid = f"{{tile-{idx:02d}}}"
+            lines.append(f"[2026-10-29 14:22:00][75%CPU][85%RAM][Generate tiles](Info) [tileid={tid}] Pre-process point cloud - done")
+            lines.append(f"[2026-10-29 14:23:00][75%CPU][85%RAM][Generate tiles](Info) [tileid={tid}] Generating mesh geometry - done")
+            lines.append(f"[2026-10-29 14:24:00][75%CPU][85%RAM][Generate tiles](Info) [tileid={tid}] Decimate geometry - done")
+            lines.append(f"[2026-10-29 14:25:00][75%CPU][85%RAM][Generate tiles](Info) [tileid={tid}] Update depth buffers - done")
+            lines.append(f"[2026-10-29 14:26:00][65%CPU][88%RAM][Generate tiles](Info) [tileid={tid}] Compute face to view scores")
+
+        # Pass 3: Tile 1 finished texturing & wrote tree level 0
+        lines.extend([
+            "[2026-10-29 14:30:00][40%CPU][92%RAM][Generate tiles](Debug) Generate texture for tile: [tileid={tile-01}]",
+            "[2026-10-29 14:31:00][40%CPU][92%RAM][Generate tiles](Info) [tileid={tile-01}] Compute texture coordinates - start",
+            "[2026-10-29 14:32:00][40%CPU][92%RAM][Generate tiles](Info) [tileid={tile-01}] Generate texture atlas",
+            "[2026-10-29 14:33:00][40%CPU][92%RAM][Generate tiles](Info) [tileid={tile-01}] Texture mesh - done",
+            "[2026-10-29 14:33:10][20%CPU][95%RAM][Write tiles to disk](Info) Generating leave nodes",
+            "[2026-10-29 14:33:20][20%CPU][95%RAM][Write tiles to disk](Info) Processing tree level 0",
+            # Tile 2 currently in progress (Texture mesh - done, writing LOD tree level 2)
+            "[2026-10-29 14:34:00][20%CPU][97%RAM][Generate tiles](Debug) Generate texture for tile: [tileid={tile-02}]",
+            "[2026-10-29 14:35:00][20%CPU][97%RAM][Generate tiles](Info) [tileid={tile-02}] Compute texture coordinates - start",
+            "[2026-10-29 14:36:00][20%CPU][97%RAM][Generate tiles](Info) [tileid={tile-02}] Generate texture atlas",
+            "[2026-10-29 14:37:00][20%CPU][97%RAM][Generate tiles](Info) [tileid={tile-02}] Texture mesh - done",
+            "[2026-10-29 14:37:10][20%CPU][97%RAM][Write tiles to disk](Info) Generating leave nodes",
+            "[2026-10-29 14:37:15][20%CPU][97%RAM][Write tiles to disk](Info) Processing tree level 2",
+        ])
+
+        with tempfile.NamedTemporaryFile("w", suffix=".txt", delete=False, encoding="utf-8") as tf:
+            tf.write("\n".join(lines) + "\n")
+            daan_log = tf.name
+        try:
+            info = parse_pix4dmatic_log_progress(daan_log)
+            bd = info["pipeline_breakdown"]
+            self.assertIsNotNone(bd)
+            self.assertEqual(bd["active_section_id"], "textured_mesh")
+            # Substep % for textured_mesh should be ~63% - 65% (matching PIX4Dmatic's 63%!), NOT 93%
+            self.assertGreaterEqual(float(info["substep_pct"]), 62.0)
+            self.assertLessEqual(float(info["substep_pct"]), 66.0)
+            # Overall progress should be ~70% - 72% (8 + 18 + 22 + 36*0.64 = 71.0%)
+            self.assertGreaterEqual(float(info["progress_pct"]), 69.5)
+            self.assertLessEqual(float(info["progress_pct"]), 72.5)
+            self.assertIn("Tile 2/15", info["stage"])
+            self.assertEqual(len(bd["sections"]), 6)
+            sec_by_id = {s["id"]: s for s in bd["sections"]}
+            self.assertEqual(sec_by_id["copy_files"]["substep_pct"], 100.0)
+            self.assertEqual(sec_by_id["calibration"]["substep_pct"], 100.0)
+            self.assertEqual(sec_by_id["point_cloud"]["substep_pct"], 100.0)
+            self.assertAlmostEqual(sec_by_id["textured_mesh"]["substep_pct"], info["substep_pct"], places=1)
+            self.assertEqual(sec_by_id["pix4d_export"]["substep_pct"], 0.0)
+            self.assertEqual(sec_by_id["web_tileset"]["substep_pct"], 0.0)
+        finally:
+            try:
+                os.remove(daan_log)
+            except OSError:
+                pass
+
+        # Verify Website Post-Processing breakdown (Section 6)
+        web_bd = build_pipeline_breakdown(
+            {"status": "processing", "progress_pct": 96.0, "stage_label": "Website Processing (65%): Building L0 Overview GLB & Applying Georef Offset..."}
+        )
+        self.assertEqual(web_bd["active_section_id"], "web_tileset")
+        self.assertEqual(web_bd["active_substep_pct"], 65.0)
+        self.assertAlmostEqual(web_bd["overall_pct"], 96.5, places=1)
+
+        with open(os.path.join(BASE_DIR, "web", "src", "07-compare-and-queue.js"), "r", encoding="utf-8") as f:
+            js07 = f.read()
+        with open(os.path.join(BASE_DIR, "web", "index.html"), "r", encoding="utf-8") as f:
+            idx_html = f.read()
+        self.assertIn("function renderSegmentedPipelineBarHtml(", js07)
+        self.assertIn("function renderPipelineSubitemsGridHtml(", js07)
+        self.assertIn('id="livePix4dSegmentedBarWrap"', idx_html)
+        self.assertIn('id="livePix4dSubitemsGrid"', idx_html)
+        self.assertIn("?v=20261029_v189", idx_html)
 
 
 if __name__ == "__main__":
