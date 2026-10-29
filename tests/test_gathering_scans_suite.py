@@ -1198,7 +1198,7 @@ class GatheringScansTestSuite(unittest.TestCase):
         self.assertIn("c.userData?.isPhotoTargetPin", js03)
         self.assertIn("c.userData?.isSectionTempPin", js03)
         self.assertIn("m.userData.isSectionTempPin = true;", js04)
-        self.assertIn("} else if (!st.active) {\n      st.active = true;", js05)
+        self.assertIn("if ((p1 && p2) || !st.active) {\n      st.active = true;", js05)
 
         # 5. Requirement 5: Drainage Mesh Triangle Rasterization (InterleavedBufferAttribute safe) + Density (arrows/m2) vs Length Sliders
         self.assertIn("pos.getX(i)", js08)
@@ -2006,7 +2006,7 @@ class GatheringScansTestSuite(unittest.TestCase):
         self.assertIn("function renderPipelineSubitemsGridHtml(", js07)
         self.assertIn('id="livePix4dSegmentedBarWrap"', idx_html)
         self.assertIn('id="livePix4dSubitemsGrid"', idx_html)
-        self.assertIn("?v=20261029_v191", idx_html)
+        self.assertIn("?v=20261029_v192", idx_html)
 
     def test_25_two_pass_preview_and_scalable_lod_recovery(self):
         """Verify Option C Two-Pass Fast Preview + Full 16K HQ pipeline, dynamic Scalable octree LOD recovery,
@@ -2076,6 +2076,81 @@ class GatheringScansTestSuite(unittest.TestCase):
                 pass
             self.assertEqual(postprocess_obj_to_tileset("catch_DaAn", tmp_proj, zero_obj), "")
 
+    def test_27_section_box_lasso_clipping_manual_inputs_hide_handles_and_unclipped_wireframe(self):
+        """Verify Section Box is respected by Lasso 'Erase All in Selection', manual number inputs + 0.1m ArrowUp/ArrowDown step, flicker-free unclipped wireframe, and Hide Handles button."""
+        import numpy as np
+        from pc_worker.optimizer_bridge import _eval_multiscan_layer_delete_mask
+
+        with open(os.path.join(BASE_DIR, "web", "src", "03-studio-core.js"), "r", encoding="utf-8") as f:
+            js03 = f.read()
+        with open(os.path.join(BASE_DIR, "web", "src", "04-studio-lasso-and-edits.js"), "r", encoding="utf-8") as f:
+            js04 = f.read()
+        with open(os.path.join(BASE_DIR, "web", "src", "05-studio-civil-inspectors.js"), "r", encoding="utf-8") as f:
+            js05 = f.read()
+        with open(os.path.join(BASE_DIR, "web", "src", "06-studio-align-and-optimizer.js"), "r", encoding="utf-8") as f:
+            js06 = f.read()
+
+        # 1. Flicker-free unclipped material & reused wireframe box helper + Hide Handles button
+        self.assertIn("function makeUnclippedMaterial(", js03)
+        self.assertIn('#include <clipping_planes_fragment>', js03)
+        self.assertIn("studioThree._sectionBoxHelper.scale.set(hx, hy, hz);", js05)
+        self.assertIn('id="btnToggleSectionHandles"', js05)
+        self.assertIn("st.hideHandles = !st.hideHandles;", js05)
+
+        # 2. Manual value entry inputs + 0.1 m step & ArrowUp/ArrowDown 0.1 m movement
+        for input_id in ("numSecClipX", "numSecClipZ", "numSecClipY", "numSecClipYMin", "numSecClipYaw"):
+            self.assertIn(f'id="{input_id}"', js05)
+        self.assertIn('step="0.1" value="${curYTop}" class="gs-input" id="secClipY"', js05)
+        self.assertIn('step="0.1" value="${curYBot}" class="gs-input" id="secClipYMin"', js05)
+        self.assertIn('const stepM = 0.1 * (e.key === "ArrowUp" ? 1 : -1);', js06)
+
+        # 3. Lasso Erase All in Selection & Frustum Strokes respect active Section Box
+        self.assertIn("function isTriangleInSectionBox(", js03)
+        self.assertIn("isTriangleInSectionBox(wx0, wy0, wz0, wx1, wy1, wz1, wx2, wy2, wz2, sb)", js04)
+        self.assertIn("sectionBox: parseSectionBoxForEval(st.section_box)", js04)
+
+        # 4. Backend _eval_multiscan_layer_delete_mask respects section_box
+        # Two triangles at X=0, Z=0: Tri 0 at Y=2.0 (inside section box Y in [-5, +5]), Tri 1 at Y=15.0 (clipped out by section box)
+        v_centered = np.array(
+            [
+                [-1.0, 2.0, -1.0],
+                [1.0, 2.0, -1.0],
+                [0.0, 2.0, 1.0],
+                [-1.0, 15.0, -1.0],
+                [1.0, 15.0, -1.0],
+                [0.0, 15.0, 1.0],
+            ],
+            dtype=np.float64,
+        )
+        f_idx = np.array([[0, 1, 2], [3, 4, 5]], dtype=np.int64)
+        # Identity clip/world matrices where (x, y, z) -> clip (x*0.1, y*0.02, 0, 1) so both triangles project inside NDC [-0.5, 0.5]^2
+        clip_mat = np.array(
+            [
+                [0.1, 0.0, 0.0, 0.0],
+                [0.0, 0.02, 0.0, 0.0],
+                [0.0, 0.0, 0.01, 0.0],
+                [0.0, 0.0, 0.0, 1.0],
+            ],
+            dtype=np.float64,
+        )
+        world_mat = np.eye(4, dtype=np.float64)
+        deletions = [
+            {
+                "frustum_strokes": [
+                    {
+                        "op": "add",
+                        "ndc_polygon": [[-0.8, -0.8], [0.8, -0.8], [0.8, 0.8], [-0.8, 0.8]],
+                        "visible_only": False,
+                        "layer_zup_to_clip": {"scan_a": clip_mat.flatten(order="F").tolist()},
+                        "layer_zup_to_world": {"scan_a": world_mat.flatten(order="F").tolist()},
+                        "section_box": {"center": [0.0, 0.0, 0.0], "half": [10.0, 5.0, 10.0], "yaw_rad": 0.0},
+                    }
+                ]
+            }
+        ]
+        mask = _eval_multiscan_layer_delete_mask(v_centered, f_idx, "scan_a", deletions)
+        self.assertTrue(bool(mask[0]))
+        self.assertFalse(bool(mask[1]))
 
 
 if __name__ == "__main__":

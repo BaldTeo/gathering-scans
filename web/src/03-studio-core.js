@@ -1239,7 +1239,7 @@
       STATE.lastProfileResult = null;
       STATE.sectionBoxEndpoints = [];
       STATE.sectionBoxState = null;
-      STATE.keepSectionBoxClip = false;
+      STATE.keepSectionBoxClip = true;
       studioThree._laserSpatialIndex = null;
       if (studioThree.contourGroup) {
         while (studioThree.contourGroup.children.length > 0) {
@@ -1959,7 +1959,11 @@
       });
     }
 
-    const hits = studioThree.raycaster.intersectObjects(targets, true);
+    const rawHits = studioThree.raycaster.intersectObjects(targets, true);
+    const activeSbEval = isSectionBoxClippingActive() ? parseSectionBoxForEval(STATE.sectionBoxState) : null;
+    const hits = activeSbEval
+      ? rawHits.filter((h) => h && h.point && isPointInSectionBox(h.point.x, h.point.y, h.point.z, activeSbEval))
+      : rawHits;
     const snappedVertex =
       STATE.snapEnabled && typeof findNearestSnappableToolVertex === "function"
         ? findNearestSnappableToolVertex(clientX, clientY, window.innerWidth <= 768 ? 28 : 24, STATE.movingVertex)
@@ -2183,6 +2187,7 @@
     }
     updateZoomInvariantElements();
   }
+
   window.updateStudioSnapIndicator = updateStudioSnapIndicator;
 
   function updateStudioMovingVertexIndicator(worldPt) {
@@ -2219,6 +2224,7 @@
     }
     updateZoomInvariantElements();
   }
+
   window.updateStudioMovingVertexIndicator = updateStudioMovingVertexIndicator;
 
   function pickStudio3DPoint(clientX, clientY) {
@@ -4081,6 +4087,7 @@
     updateZoomInvariantElements();
   }
 
+
   // Interactive Dynamic Angle Visuals (3-Point: P1 -> Vertex P2 -> P3 with live legs, 3D sector arc & wedge)
   function renderAngleVisuals(dynamicPt = null, existingMeas = null) {
     if (!studioThree) return;
@@ -4328,6 +4335,7 @@
     updateZoomInvariantElements();
   }
 
+
   // Interactive Hover & Pinned Coordinate Visuals (Compact 4-Row Format: Name; E; N; H)
   function renderCoordinateVisuals(pt, existingMeas = null) {
     if (!studioThree || !pt) return;
@@ -4369,4 +4377,99 @@
 
     updateZoomInvariantElements();
   }
+
+  // Section Box Unclipped Material & 3D Triangle Clipping Evaluation Helpers
+  function makeUnclippedMaterial(mat) {
+    if (!mat) return mat;
+    mat.clippingPlanes = [];
+    mat.onBeforeCompile = (shader) => {
+      shader.fragmentShader = shader.fragmentShader.replace("#include <clipping_planes_fragment>", "");
+    };
+    mat.customProgramCacheKey = () => "gs_unclipped_v1";
+    return mat;
+  }
+
+  function isSectionBoxClippingActive() {
+    return Boolean(
+      STATE.sectionBoxState &&
+        STATE.sectionBoxState.active &&
+        studioThree?.renderer?.clippingPlanes &&
+        studioThree.renderer.clippingPlanes.length > 0
+    );
+  }
+
+  function getSerializedActiveSectionBox() {
+    if (!isSectionBoxClippingActive()) return null;
+    const sb = STATE.sectionBoxState;
+    return {
+      center: [
+        Math.round((Number(sb.centerX) || 0) * 10000) / 10000,
+        Math.round((Number(sb.centerY) || 0) * 10000) / 10000,
+        Math.round((Number(sb.centerZ) || 0) * 10000) / 10000,
+      ],
+      half: [
+        Math.round(Math.max(0.1, Number(sb.halfX) || 10) * 10000) / 10000,
+        Math.round(Math.max(0.1, Number(sb.halfY) || 10) * 10000) / 10000,
+        Math.round(Math.max(0.1, Number(sb.halfZ) || 10) * 10000) / 10000,
+      ],
+      yaw_rad: Math.round((Number(sb.yawRad) || 0) * 100000) / 100000,
+    };
+  }
+
+  function parseSectionBoxForEval(rawSb) {
+    if (!rawSb || typeof rawSb !== "object") return null;
+    if (Array.isArray(rawSb.center) && Array.isArray(rawSb.half)) {
+      const yaw = Number(rawSb.yaw_rad) || 0;
+      return {
+        cx: Number(rawSb.center[0]) || 0,
+        cy: Number(rawSb.center[1]) || 0,
+        cz: Number(rawSb.center[2]) || 0,
+        hx: Math.max(0.05, Number(rawSb.half[0]) || 10),
+        hy: Math.max(0.05, Number(rawSb.half[1]) || 10),
+        hz: Math.max(0.05, Number(rawSb.half[2]) || 10),
+        cosY: Math.cos(yaw),
+        sinY: Math.sin(yaw),
+      };
+    }
+    if (rawSb.active) {
+      const yaw = Number(rawSb.yawRad) || 0;
+      return {
+        cx: Number(rawSb.centerX) || 0,
+        cy: Number(rawSb.centerY) || 0,
+        cz: Number(rawSb.centerZ) || 0,
+        hx: Math.max(0.05, Number(rawSb.halfX) || 10),
+        hy: Math.max(0.05, Number(rawSb.halfY) || 10),
+        hz: Math.max(0.05, Number(rawSb.halfZ) || 10),
+        cosY: Math.cos(yaw),
+        sinY: Math.sin(yaw),
+      };
+    }
+    return null;
+  }
+
+  function isPointInSectionBox(wx, wy, wz, sb) {
+    if (!sb) return true;
+    const dy = wy - sb.cy;
+    if (Math.abs(dy) > sb.hy + 1e-4) return false;
+    const dx = wx - sb.cx;
+    const dz = wz - sb.cz;
+    const lx = dx * sb.cosY - dz * sb.sinY;
+    if (Math.abs(lx) > sb.hx + 1e-4) return false;
+    const lz = dx * sb.sinY + dz * sb.cosY;
+    return Math.abs(lz) <= sb.hz + 1e-4;
+  }
+
+  function isTriangleInSectionBox(wx0, wy0, wz0, wx1, wy1, wz1, wx2, wy2, wz2, sb) {
+    if (!sb) return true;
+    const wxc = (wx0 + wx1 + wx2) / 3.0;
+    const wyc = (wy0 + wy1 + wy2) / 3.0;
+    const wzc = (wz0 + wz1 + wz2) / 3.0;
+    if (isPointInSectionBox(wxc, wyc, wzc, sb)) return true;
+    let vIn = 0;
+    if (isPointInSectionBox(wx0, wy0, wz0, sb)) vIn++;
+    if (isPointInSectionBox(wx1, wy1, wz1, sb)) vIn++;
+    if (vIn < 2 && isPointInSectionBox(wx2, wy2, wz2, sb)) vIn++;
+    return vIn >= 2;
+  }
+
 

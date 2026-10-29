@@ -1520,11 +1520,13 @@
 
     const meshes = collectVisibleStudioScanMeshes();
     const mvp = new THREE.Matrix4();
+    const activeSb = isSectionBoxClippingActive() ? parseSectionBoxForEval(STATE.sectionBoxState) : null;
 
     for (let mi = 0; mi < meshes.length; mi++) {
       const m = meshes[mi];
       mvp.multiplyMatrices(viewProjMat, m.matrixWorld);
       const e = mvp.elements;
+      const mw = m.matrixWorld.elements;
       const posAttr = m.geometry.attributes.position;
       const idxAttr = m.geometry.index;
       const triCount = idxAttr ? Math.floor(idxAttr.count / 3) : Math.floor(posAttr.count / 3);
@@ -1546,6 +1548,13 @@
         const cw2 = e[3] * x2 + e[7] * y2 + e[11] * z2 + e[15];
         if (cw2 <= 0.05) continue;
 
+        if (activeSb) {
+          const wx0 = mw[0] * x0 + mw[4] * y0 + mw[8] * z0 + mw[12], wy0 = mw[1] * x0 + mw[5] * y0 + mw[9] * z0 + mw[13], wz0 = mw[2] * x0 + mw[6] * y0 + mw[10] * z0 + mw[14];
+          const wx1 = mw[0] * x1 + mw[4] * y1 + mw[8] * z1 + mw[12], wy1 = mw[1] * x1 + mw[5] * y1 + mw[9] * z1 + mw[13], wz1 = mw[2] * x1 + mw[6] * y1 + mw[10] * z1 + mw[14];
+          const wx2 = mw[0] * x2 + mw[4] * y2 + mw[8] * z2 + mw[12], wy2 = mw[1] * x2 + mw[5] * y2 + mw[9] * z2 + mw[13], wz2 = mw[2] * x2 + mw[6] * y2 + mw[10] * z2 + mw[14];
+          if (!isTriangleInSectionBox(wx0, wy0, wz0, wx1, wy1, wz1, wx2, wy2, wz2, activeSb)) continue;
+        }
+
         const nx0 = (e[0] * x0 + e[4] * y0 + e[8] * z0 + e[12]) / cw0;
         const ny0 = (e[1] * x0 + e[5] * y0 + e[9] * z0 + e[13]) / cw0;
         const nx1 = (e[0] * x1 + e[4] * y1 + e[8] * z1 + e[12]) / cw1;
@@ -1553,10 +1562,8 @@
         const nx2 = (e[0] * x2 + e[4] * y2 + e[8] * z2 + e[12]) / cw2;
         const ny2 = (e[1] * x2 + e[5] * y2 + e[9] * z2 + e[13]) / cw2;
 
-        const tMinX = Math.min(nx0, nx1, nx2);
-        const tMaxX = Math.max(nx0, nx1, nx2);
-        const tMinY = Math.min(ny0, ny1, ny2);
-        const tMaxY = Math.max(ny0, ny1, ny2);
+        const tMinX = Math.min(nx0, nx1, nx2), tMaxX = Math.max(nx0, nx1, nx2);
+        const tMinY = Math.min(ny0, ny1, ny2), tMaxY = Math.max(ny0, ny1, ny2);
         if (tMaxX < padMinX || tMinX > padMaxX || tMaxY < padMinY || tMinY > padMaxY) continue;
 
         const gx0 = Math.max(0, Math.min(G - 1, Math.floor((tMinX * 0.5 + 0.5) * G)));
@@ -1564,9 +1571,7 @@
         const gy0 = Math.max(0, Math.min(G - 1, Math.floor((tMinY * 0.5 + 0.5) * G)));
         const gy1 = Math.max(0, Math.min(G - 1, Math.floor((tMaxY * 0.5 + 0.5) * G)));
 
-        const wMin = Math.min(cw0, cw1, cw2);
-        const wMax = Math.max(cw0, cw1, cw2);
-
+        const wMin = Math.min(cw0, cw1, cw2), wMax = Math.max(cw0, cw1, cw2);
         if (gx0 === gx1 && gy0 === gy1) {
           const gi = gy0 * G + gx0;
           if (wMin < depthRaw[gi]) depthRaw[gi] = wMin;
@@ -1614,13 +1619,16 @@
     }
 
     let layerZUpToClip = null;
+    let layerZUpToWorld = null;
     if (STATE.multiAlign?.active && Array.isArray(STATE.multiAlign.layers)) {
       if (studioThree.multiAlignGroup) studioThree.multiAlignGroup.updateMatrixWorld(true);
       layerZUpToClip = {};
+      layerZUpToWorld = {};
       STATE.multiAlign.layers.forEach((layer) => {
         if (!layer || !layer.visible || !layer.zUpGroup) return;
         const lMat = new THREE.Matrix4().multiplyMatrices(viewProjMat, layer.zUpGroup.matrixWorld);
         layerZUpToClip[layer.scan_id] = Array.from(lMat.elements);
+        layerZUpToWorld[layer.scan_id] = Array.from(layer.zUpGroup.matrixWorld.elements);
       });
     }
 
@@ -1636,9 +1644,10 @@
       depth_grid: depthGridList,
       depth_tolerance_m: 0.85,
     };
-    if (layerZUpToClip) {
-      strokeObj.layer_zup_to_clip = layerZUpToClip;
-    }
+    const sbSer = getSerializedActiveSectionBox();
+    if (sbSer) strokeObj.section_box = sbSer;
+    if (layerZUpToClip) strokeObj.layer_zup_to_clip = layerZUpToClip;
+    if (layerZUpToWorld) strokeObj.layer_zup_to_world = layerZUpToWorld;
     return strokeObj;
   }
 
@@ -1697,12 +1706,14 @@
         G,
         maxValidW,
         tolM: Number(st.depth_tolerance_m) || 0.85,
+        sectionBox: parseSectionBoxForEval(st.section_box),
       };
     });
   }
 
-  function prepareNativePolyEvalList(polyList2D) {
+  function prepareNativePolyEvalList(polyList2D, sectionBoxRaw = null) {
     if (!Array.isArray(polyList2D) || polyList2D.length === 0) return [];
+    const defaultSb = parseSectionBoxForEval(sectionBoxRaw);
     const out = [];
     for (let pi = 0; pi < polyList2D.length; pi++) {
       const poly = polyList2D[pi];
@@ -1715,7 +1726,7 @@
         if (py < bMinY) bMinY = py;
         if (py > bMaxY) bMaxY = py;
       }
-      out.push({ poly, bMinX, bMinY, bMaxX, bMaxY });
+      out.push({ poly, bMinX, bMinY, bMaxX, bMaxY, sectionBox: parseSectionBoxForEval(poly.section_box) || defaultSb });
     }
     return out;
   }
@@ -1728,6 +1739,7 @@
         ? (k) => indexArrayOrAttr[k]
         : (k) => indexArrayOrAttr.getX(k)
       : (k) => k;
+    const mw = m.matrixWorld.elements;
 
     if (preparedStrokes.length > 0) {
       const mvp = new THREE.Matrix4();
@@ -1737,6 +1749,7 @@
       for (let si = 0; si < preparedStrokes.length; si++) {
         const st = preparedStrokes[si];
         const isSub = st.op === "sub";
+        const sb = st.sectionBox;
         if (layerId && st.layerZUpMap) {
           const lMat = st.layerZUpMap[layerId];
           if (!lMat || !invCurZUp) continue;
@@ -1750,10 +1763,7 @@
           if (isSub && !selFlags[t]) continue;
           if (!isSub && selFlags[t]) continue;
 
-          const i0 = getIdx(t * 3);
-          const i1 = getIdx(t * 3 + 1);
-          const i2 = getIdx(t * 3 + 2);
-
+          const i0 = getIdx(t * 3), i1 = getIdx(t * 3 + 1), i2 = getIdx(t * 3 + 2);
           const x0 = posAttr.getX(i0), y0 = posAttr.getY(i0), z0 = posAttr.getZ(i0);
           const cw0 = e[3] * x0 + e[7] * y0 + e[11] * z0 + e[15];
           if (cw0 <= 0.05) continue;
@@ -1765,6 +1775,13 @@
           const x2 = posAttr.getX(i2), y2 = posAttr.getY(i2), z2 = posAttr.getZ(i2);
           const cw2 = e[3] * x2 + e[7] * y2 + e[11] * z2 + e[15];
           if (cw2 <= 0.05) continue;
+
+          if (sb) {
+            const wx0 = mw[0] * x0 + mw[4] * y0 + mw[8] * z0 + mw[12], wy0 = mw[1] * x0 + mw[5] * y0 + mw[9] * z0 + mw[13], wz0 = mw[2] * x0 + mw[6] * y0 + mw[10] * z0 + mw[14];
+            const wx1 = mw[0] * x1 + mw[4] * y1 + mw[8] * z1 + mw[12], wy1 = mw[1] * x1 + mw[5] * y1 + mw[9] * z1 + mw[13], wz1 = mw[2] * x1 + mw[6] * y1 + mw[10] * z1 + mw[14];
+            const wx2 = mw[0] * x2 + mw[4] * y2 + mw[8] * z2 + mw[12], wy2 = mw[1] * x2 + mw[5] * y2 + mw[9] * z2 + mw[13], wz2 = mw[2] * x2 + mw[6] * y2 + mw[10] * z2 + mw[14];
+            if (!isTriangleInSectionBox(wx0, wy0, wz0, wx1, wy1, wz1, wx2, wy2, wz2, sb)) continue;
+          }
 
           const xc = (x0 + x1 + x2) / 3.0, yc = (y0 + y1 + y2) / 3.0, zc = (z0 + z1 + z2) / 3.0;
           const cwc = (cw0 + cw1 + cw2) / 3.0;
@@ -1817,20 +1834,23 @@
       const me = meshToPivotLocal.elements;
       for (let t = 0; t < triCount; t++) {
         if (selFlags[t]) continue;
-        const i0 = getIdx(t * 3);
-        const i1 = getIdx(t * 3 + 1);
-        const i2 = getIdx(t * 3 + 2);
-
-        const xc = (posAttr.getX(i0) + posAttr.getX(i1) + posAttr.getX(i2)) / 3.0;
-        const yc = (posAttr.getY(i0) + posAttr.getY(i1) + posAttr.getY(i2)) / 3.0;
-        const zc = (posAttr.getZ(i0) + posAttr.getZ(i1) + posAttr.getZ(i2)) / 3.0;
-
+        const i0 = getIdx(t * 3), i1 = getIdx(t * 3 + 1), i2 = getIdx(t * 3 + 2);
+        const x0 = posAttr.getX(i0), y0 = posAttr.getY(i0), z0 = posAttr.getZ(i0);
+        const x1 = posAttr.getX(i1), y1 = posAttr.getY(i1), z1 = posAttr.getZ(i1);
+        const x2 = posAttr.getX(i2), y2 = posAttr.getY(i2), z2 = posAttr.getZ(i2);
+        const xc = (x0 + x1 + x2) / 3.0, yc = (y0 + y1 + y2) / 3.0, zc = (z0 + z1 + z2) / 3.0;
         const natX = me[0] * xc + me[4] * yc + me[8] * zc + me[12] + tc[0];
         const natY = me[1] * xc + me[5] * yc + me[9] * zc + me[13] + tc[1];
 
         for (let pi = 0; pi < preparedPolys.length; pi++) {
           const pp = preparedPolys[pi];
           if (natX < pp.bMinX || natX > pp.bMaxX || natY < pp.bMinY || natY > pp.bMaxY) continue;
+          if (pp.sectionBox) {
+            const wx0 = mw[0] * x0 + mw[4] * y0 + mw[8] * z0 + mw[12], wy0 = mw[1] * x0 + mw[5] * y0 + mw[9] * z0 + mw[13], wz0 = mw[2] * x0 + mw[6] * y0 + mw[10] * z0 + mw[14];
+            const wx1 = mw[0] * x1 + mw[4] * y1 + mw[8] * z1 + mw[12], wy1 = mw[1] * x1 + mw[5] * y1 + mw[9] * z1 + mw[13], wz1 = mw[2] * x1 + mw[6] * y1 + mw[10] * z1 + mw[14];
+            const wx2 = mw[0] * x2 + mw[4] * y2 + mw[8] * z2 + mw[12], wy2 = mw[1] * x2 + mw[5] * y2 + mw[9] * z2 + mw[13], wz2 = mw[2] * x2 + mw[6] * y2 + mw[10] * z2 + mw[14];
+            if (!isTriangleInSectionBox(wx0, wy0, wz0, wx1, wy1, wz1, wx2, wy2, wz2, pp.sectionBox)) continue;
+          }
           if (pointInPoly2D(natX, natY, pp.poly)) {
             selFlags[t] = 1;
             break;
@@ -1878,7 +1898,7 @@
     const tilesCenter = studioThree.tilesCenter ? studioThree.tilesCenter.slice() : [0, 0, 0];
     const upMat = studioThree.tileUpMatrix ? studioThree.tileUpMatrix.clone() : new THREE.Matrix4();
     const pivotMat = studioThree.modelPivot.matrixWorld.clone();
-    return {
+    const strokeObj = {
       op: "add",
       ndc_polygon: ndcPoly,
       tiles_center: tilesCenter,
@@ -1890,6 +1910,9 @@
       depth_grid: [],
       depth_tolerance_m: 0.85,
     };
+    const sbSer = getSerializedActiveSectionBox();
+    if (sbSer) strokeObj.section_box = sbSer;
+    return strokeObj;
   }
 
   function rebuildLassoHighlight3D() {
@@ -1898,12 +1921,15 @@
 
     const isDelete = (STATE.cropMode || "delete_inside") === "delete_inside";
     const visibleOnlyNow = getEffectiveLassoVisibleOnly(isDelete ? "delete_inside" : "keep_inside");
+    const activeSbSer = getSerializedActiveSectionBox();
     const meshes = collectVisibleStudioScanMeshes();
 
     let preparedStrokes = [];
     if (Array.isArray(STATE.lassoStrokes) && STATE.lassoStrokes.length > 0) {
       STATE.lassoStrokes.forEach((st) => {
         st.visible_only = visibleOnlyNow;
+        if (activeSbSer) st.section_box = activeSbSer;
+        else delete st.section_box;
       });
       preparedStrokes = prepareStrokeEvalList(STATE.lassoStrokes, visibleOnlyNow);
     }
@@ -1943,9 +1969,9 @@
             return [loc.x, loc.y];
           })
         );
-        preparedPolysByLayer[layer.scan_id] = prepareNativePolyEvalList(layerPolys2D);
+        preparedPolysByLayer[layer.scan_id] = prepareNativePolyEvalList(layerPolys2D, activeSbSer);
       });
-    } else if (allWorldPolys.length > 0 && isActiveStudioTilesetEcef()) {
+    } else if (allWorldPolys.length > 0 && (isActiveStudioTilesetEcef() || activeSbSer)) {
       const orthoStrokes = allWorldPolys.map((pts) => planPolygonToTopDownFrustumStroke(pts)).filter(Boolean);
       if (orthoStrokes.length > 0) {
         preparedStrokes = preparedStrokes.concat(prepareStrokeEvalList(orthoStrokes, false));
@@ -1957,7 +1983,7 @@
           return [n[0], n[1]];
         })
       );
-      preparedPolys = prepareNativePolyEvalList(nativePolyList2D);
+      preparedPolys = prepareNativePolyEvalList(nativePolyList2D, activeSbSer);
     }
 
     if (preparedStrokes.length === 0 && allWorldPolys.length === 0) {
@@ -1985,43 +2011,22 @@
       const meshInv = isMulti && lid ? invZUpByLayer[lid] || null : invPivot;
       const meshTc = isMulti && lid ? [0, 0, 0] : tc;
 
-      const selFlags = evaluateTrianglesMaskOnMesh(
-        m,
-        posAttr,
-        idxAttr,
-        triCount,
-        preparedStrokes,
-        meshPolys,
-        meshInv,
-        meshTc
-      );
+      const selFlags = evaluateTrianglesMaskOnMesh(m, posAttr, idxAttr, triCount, preparedStrokes, meshPolys, meshInv, meshTc);
 
       for (let t = 0; t < triCount; t++) {
         if (!selFlags[t]) continue;
         selectedCount++;
-        const i0 = idxAttr ? idxAttr.getX(t * 3) : t * 3;
-        const i1 = idxAttr ? idxAttr.getX(t * 3 + 1) : t * 3 + 1;
-        const i2 = idxAttr ? idxAttr.getX(t * 3 + 2) : t * 3 + 2;
-
+        const i0 = idxAttr ? idxAttr.getX(t * 3) : t * 3, i1 = idxAttr ? idxAttr.getX(t * 3 + 1) : t * 3 + 1, i2 = idxAttr ? idxAttr.getX(t * 3 + 2) : t * 3 + 2;
         const x0 = posAttr.getX(i0), y0 = posAttr.getY(i0), z0 = posAttr.getZ(i0);
-        const wx0 = mw[0] * x0 + mw[4] * y0 + mw[8] * z0 + mw[12];
-        const wy0 = mw[1] * x0 + mw[5] * y0 + mw[9] * z0 + mw[13];
-        const wz0 = mw[2] * x0 + mw[6] * y0 + mw[10] * z0 + mw[14];
-
+        const wx0 = mw[0] * x0 + mw[4] * y0 + mw[8] * z0 + mw[12], wy0 = mw[1] * x0 + mw[5] * y0 + mw[9] * z0 + mw[13], wz0 = mw[2] * x0 + mw[6] * y0 + mw[10] * z0 + mw[14];
         const x1 = posAttr.getX(i1), y1 = posAttr.getY(i1), z1 = posAttr.getZ(i1);
-        const wx1 = mw[0] * x1 + mw[4] * y1 + mw[8] * z1 + mw[12];
-        const wy1 = mw[1] * x1 + mw[5] * y1 + mw[9] * z1 + mw[13];
-        const wz1 = mw[2] * x1 + mw[6] * y1 + mw[10] * z1 + mw[14];
-
+        const wx1 = mw[0] * x1 + mw[4] * y1 + mw[8] * z1 + mw[12], wy1 = mw[1] * x1 + mw[5] * y1 + mw[9] * z1 + mw[13], wz1 = mw[2] * x1 + mw[6] * y1 + mw[10] * z1 + mw[14];
         const x2 = posAttr.getX(i2), y2 = posAttr.getY(i2), z2 = posAttr.getZ(i2);
-        const wx2 = mw[0] * x2 + mw[4] * y2 + mw[8] * z2 + mw[12];
-        const wy2 = mw[1] * x2 + mw[5] * y2 + mw[9] * z2 + mw[13];
-        const wz2 = mw[2] * x2 + mw[6] * y2 + mw[10] * z2 + mw[14];
+        const wx2 = mw[0] * x2 + mw[4] * y2 + mw[8] * z2 + mw[12], wy2 = mw[1] * x2 + mw[5] * y2 + mw[9] * z2 + mw[13], wz2 = mw[2] * x2 + mw[6] * y2 + mw[10] * z2 + mw[14];
 
         sumX += (wx0 + wx1 + wx2) / 3.0;
         sumY += (wy0 + wy1 + wy2) / 3.0;
         sumZ += (wz0 + wz1 + wz2) / 3.0;
-
         if (highlightedPositions.length < maxPreviewTris * 9) {
           highlightedPositions.push(wx0, wy0, wz0, wx1, wy1, wz1, wx2, wy2, wz2);
         }
@@ -2030,9 +2035,7 @@
 
     STATE.lassoSelectedTriCount = selectedCount;
     const lblTris = document.getElementById("lblLassoSelectedTris");
-    if (lblTris) {
-      lblTris.textContent = selectedCount > 0 ? `${selectedCount.toLocaleString()} tris` : "0 tris";
-    }
+    if (lblTris) lblTris.textContent = selectedCount > 0 ? `${selectedCount.toLocaleString()} tris` : "0 tris";
 
     if (highlightedPositions.length >= 9) {
       const hlGeom = new THREE.BufferGeometry();
@@ -2057,9 +2060,7 @@
         const centroid = new THREE.Vector3(sumX / selectedCount, sumY / selectedCount, sumZ / selectedCount);
         add2DBadge(
           centroid,
-          isDelete
-            ? `🗑️ Marked for Deletion: <b>${selectedCount.toLocaleString()} triangles</b>`
-            : `✂️ Marked to Keep: <b>${selectedCount.toLocaleString()} triangles</b>`,
+          isDelete ? `🗑️ Marked for Deletion: <b>${selectedCount.toLocaleString()} triangles</b>` : `✂️ Marked to Keep: <b>${selectedCount.toLocaleString()} triangles</b>`,
           isDelete ? "#ef4444" : "#10b981",
           { isLassoHighlight: true }
         );
@@ -2090,28 +2091,19 @@
     if (pts.length >= 2) {
       const loopPts = pts.length >= 3 ? [...pts, pts[0]] : pts;
       const lineGeom = new THREE.BufferGeometry().setFromPoints(loopPts);
-      const lineMesh = new THREE.Line(
-        lineGeom,
-        new THREE.LineBasicMaterial({ color: colorHex, depthTest: false, linewidth: 2 })
-      );
+      const lineMesh = new THREE.Line(lineGeom, new THREE.LineBasicMaterial({ color: colorHex, depthTest: false, linewidth: 2 }));
       lineMesh.renderOrder = 1000;
       addCropObj(lineMesh);
     }
     if (pts.length >= 3 && labelPrefix) {
       let area2 = 0;
       for (let i = 0; i < pts.length; i++) {
-        const a = pts[i];
-        const b = pts[(i + 1) % pts.length];
+        const a = pts[i], b = pts[(i + 1) % pts.length];
         area2 += a.x * b.z - b.x * a.z;
       }
       const areaM2 = Math.abs(area2) * 0.5;
       const centroid = pts.reduce((acc, p) => acc.add(p.clone()), new THREE.Vector3()).divideScalar(pts.length);
-      add2DBadge(
-        centroid,
-        `${labelPrefix}: <b>${areaM2.toFixed(1)} m²</b> (${pts.length} pts)`,
-        borderCss,
-        { isArea: true }
-      );
+      add2DBadge(centroid, `${labelPrefix}: <b>${areaM2.toFixed(1)} m²</b> (${pts.length} pts)`, borderCss, { isArea: true });
     }
   }
 
@@ -2122,28 +2114,14 @@
     for (let i = 0; i < lockedList.length; i++) {
       const pList = lockedList[i];
       if (Array.isArray(pList) && pList.length >= 3) {
-        renderSingleCropPolyOutline3D(
-          pList,
-          isDelete,
-          isDelete ? `🗑️ Polygon #${i + 1}` : `✂️ Keep Zone #${i + 1}`,
-          false
-        );
+        renderSingleCropPolyOutline3D(pList, isDelete, isDelete ? `🗑️ Polygon #${i + 1}` : `✂️ Keep Zone #${i + 1}`, false);
       }
     }
-    if (
-      (STATE.activeTool === "crop" || STATE.activeTool === "crop_delete") &&
-      STATE.lassoInputMethod === "polygon" &&
-      Array.isArray(STATE.measurePoints) &&
-      STATE.measurePoints.length >= 1
-    ) {
+    if ((STATE.activeTool === "crop" || STATE.activeTool === "crop_delete") && STATE.lassoInputMethod === "polygon" && Array.isArray(STATE.measurePoints) && STATE.measurePoints.length >= 1) {
       renderSingleCropPolyOutline3D(
         STATE.measurePoints,
         isDelete,
-        STATE.measurePoints.length >= 3
-          ? isDelete
-            ? `🗑️ New Polygon (click V1 / Enter)`
-            : `✂️ New Keep Zone (click V1 / Enter)`
-          : "",
+        STATE.measurePoints.length >= 3 ? (isDelete ? `🗑️ New Polygon (click V1 / Enter)` : `✂️ New Keep Zone (click V1 / Enter)`) : "",
         true
       );
     }
@@ -2165,31 +2143,16 @@
   function resetStagedEditsForScan(scanObj = null) {
     const sc = scanObj || STATE.activeScan || {};
     const sid = getStagedEditsScopeKey(sc);
-    const curSite =
-      (STATE.activeProjectGroup && STATE.activeProjectGroup !== "__all__" ? STATE.activeProjectGroup : "") ||
-      sc.project_group ||
-      "Unassigned Site";
+    const curSite = (STATE.activeProjectGroup && STATE.activeProjectGroup !== "__all__" ? STATE.activeProjectGroup : "") || sc.project_group || "Unassigned Site";
     const todayStr = new Date().toISOString().slice(0, 10);
-    const baseName = STATE.multiAlign?.active
-      ? `${curSite}_Merged_${todayStr}`
-      : `${String(sc.name || sid || "Scan").trim()}`;
-    STATE.stagedEdits = {
-      scanId: sid,
-      rev: 0,
-      deletions: [],
-      cropKeep: null,
-      compressionPreset: null,
-      crsConfig: null,
-      newScanName: baseName,
-    };
+    const baseName = STATE.multiAlign?.active ? `${curSite}_Merged_${todayStr}` : `${String(sc.name || sid || "Scan").trim()}`;
+    STATE.stagedEdits = { scanId: sid, rev: 0, deletions: [], cropKeep: null, compressionPreset: null, crsConfig: null, newScanName: baseName };
     syncStagedEditsDockBadge();
   }
 
   function ensureStagedEditsForActiveScan() {
     const sid = getStagedEditsScopeKey();
-    if (!STATE.stagedEdits || STATE.stagedEdits.scanId !== sid) {
-      resetStagedEditsForScan(STATE.activeScan);
-    }
+    if (!STATE.stagedEdits || STATE.stagedEdits.scanId !== sid) resetStagedEditsForScan(STATE.activeScan);
     return STATE.stagedEdits;
   }
 
@@ -2198,9 +2161,7 @@
     if (!STATE.stagedEdits || STATE.stagedEdits.scanId !== sid) return 0;
     const st = STATE.stagedEdits;
     let cnt = 0;
-    if (STATE.multiAlign?.active && Array.isArray(STATE.multiAlign.layers) && STATE.multiAlign.layers.length >= 2) {
-      cnt++;
-    }
+    if (STATE.multiAlign?.active && Array.isArray(STATE.multiAlign.layers) && STATE.multiAlign.layers.length >= 2) cnt++;
     if (Array.isArray(st.deletions) && st.deletions.length > 0) cnt++;
     if (!STATE.multiAlign?.active && st.cropKeep) cnt++;
     if (st.compressionPreset && st.compressionPreset !== "none") cnt++;
@@ -2211,10 +2172,7 @@
   function hasStagedMeshEditsForActiveScan() {
     const sid = getStagedEditsScopeKey();
     if (!STATE.stagedEdits || STATE.stagedEdits.scanId !== sid) return false;
-    return (
-      (Array.isArray(STATE.stagedEdits.deletions) && STATE.stagedEdits.deletions.length > 0) ||
-      Boolean(!STATE.multiAlign?.active && STATE.stagedEdits.cropKeep)
-    );
+    return (Array.isArray(STATE.stagedEdits.deletions) && STATE.stagedEdits.deletions.length > 0) || Boolean(!STATE.multiAlign?.active && STATE.stagedEdits.cropKeep);
   }
 
   function syncStagedEditsDockBadge() {
@@ -2230,9 +2188,7 @@
       mobBadge.textContent = String(cnt);
       mobBadge.style.display = cnt > 0 ? "inline-block" : "none";
     }
-    if (btn) {
-      btn.classList.toggle("has-staged", cnt > 0);
-    }
+    if (btn) btn.classList.toggle("has-staged", cnt > 0);
   }
 
   function restoreOriginalStudioMeshIndices() {
@@ -2246,9 +2202,7 @@
           } else {
             m.geometry.setIndex(null);
           }
-          if (typeof m.userData._origVisible === "boolean") {
-            m.visible = m.userData._origVisible;
-          }
+          if (typeof m.userData._origVisible === "boolean") m.visible = m.userData._origVisible;
           if ("boundsTree" in m.geometry) m.geometry.boundsTree = null;
           m.geometry.computeBoundingBox();
           m.geometry.computeBoundingSphere();
@@ -2259,12 +2213,8 @@
     restoreUnder(studioThree.modelPivot);
     restoreUnder(studioThree.multiAlignGroup);
     studioThree._laserSpatialIndex = null;
-    if (typeof scheduleScanGoogleMapCoverageUpdate === "function") {
-      scheduleScanGoogleMapCoverageUpdate(studioThree, STATE.activeScan, 35);
-    }
-    if (studioThree.renderer && studioThree.scene && studioThree.camera) {
-      studioThree.renderer.render(studioThree.scene, studioThree.camera);
-    }
+    if (typeof scheduleScanGoogleMapCoverageUpdate === "function") scheduleScanGoogleMapCoverageUpdate(studioThree, STATE.activeScan, 35);
+    if (studioThree.renderer && studioThree.scene && studioThree.camera) studioThree.renderer.render(studioThree.scene, studioThree.camera);
   }
 
   function applyStagedEditsToStudioMeshes(forceRecompute = true) {
@@ -2277,8 +2227,8 @@
 
     const isMulti = Boolean(STATE.multiAlign?.active && studioThree.multiAlignGroup && studioThree.multiAlignGroup.visible);
     const allDelStrokes = [];
-    const allDelPolys = [];
-    const delPolysByLayer = {};
+    const prepDelPolys = [];
+    const prepDelPolysByLayer = {};
     for (let bi = 0; bi < st.deletions.length; bi++) {
       const b = st.deletions[bi];
       if (Array.isArray(b.frustum_strokes)) {
@@ -2288,25 +2238,20 @@
         Object.keys(b.layer_centered_polygons).forEach((lid) => {
           const arr = b.layer_centered_polygons[lid];
           if (Array.isArray(arr) && arr.length > 0) {
-            if (!delPolysByLayer[lid]) delPolysByLayer[lid] = [];
-            for (let i = 0; i < arr.length; i++) delPolysByLayer[lid].push(arr[i]);
+            if (!prepDelPolysByLayer[lid]) prepDelPolysByLayer[lid] = [];
+            prepDelPolysByLayer[lid].push(...prepareNativePolyEvalList(arr, b.section_box));
           }
         });
       } else if (Array.isArray(b.native_polygons)) {
-        for (let i = 0; i < b.native_polygons.length; i++) allDelPolys.push(b.native_polygons[i]);
+        prepDelPolys.push(...prepareNativePolyEvalList(b.native_polygons, b.section_box));
       }
     }
     const prepDelStrokes = prepareStrokeEvalList(allDelStrokes, null);
-    const prepDelPolys = prepareNativePolyEvalList(allDelPolys);
-    const prepDelPolysByLayer = {};
-    Object.keys(delPolysByLayer).forEach((lid) => {
-      prepDelPolysByLayer[lid] = prepareNativePolyEvalList(delPolysByLayer[lid]);
-    });
 
     const hasKeep = Boolean(!isMulti && st.cropKeep);
     const prepKeepStrokes = hasKeep ? prepareStrokeEvalList(st.cropKeep.frustum_strokes || [], null) : [];
-    const prepKeepPolys = hasKeep ? prepareNativePolyEvalList(st.cropKeep.native_polygons || []) : [];
-    const editSig = `${st.rev}:${st.deletions.length}:${allDelStrokes.length}:${allDelPolys.length}:${hasKeep ? 1 : 0}`;
+    const prepKeepPolys = hasKeep ? prepareNativePolyEvalList(st.cropKeep.native_polygons || [], st.cropKeep.section_box) : [];
+    const editSig = `${st.rev}:${st.deletions.length}:${allDelStrokes.length}:${prepDelPolys.length}:${hasKeep ? 1 : 0}`;
 
     let totalHiddenTris = 0;
     const applyOnMesh = (m, meshDelPolys, meshInv, meshTc) => {
@@ -3218,6 +3163,7 @@
     }
 
     if (tool === "section") {
+      if (STATE.sectionBoxState?.hideHandles) return;
       STATE.measurePoints.push(pt.clone());
       if (STATE.measurePoints.length === 1) {
         add3DPinMarker(STATE.measurePoints[0], 0xff3b30, studioThree.overlayGroup, (m) => {

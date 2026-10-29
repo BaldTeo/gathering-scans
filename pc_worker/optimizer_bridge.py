@@ -830,6 +830,42 @@ def _eval_multiscan_layer_delete_mask(
             p1_v = p1[valid_idx]
             p2_v = p2[valid_idx]
             pc_v = pc[valid_idx]
+            raw_sb = st.get("section_box")
+            wmap = st.get("layer_zup_to_world")
+            if (
+                isinstance(raw_sb, dict)
+                and isinstance(raw_sb.get("center"), list)
+                and len(raw_sb["center"]) >= 3
+                and isinstance(raw_sb.get("half"), list)
+                and len(raw_sb["half"]) >= 3
+                and isinstance(wmap, dict)
+                and isinstance(wmap.get(scan_id), list)
+                and len(wmap[scan_id]) == 16
+            ):
+                mw_col = np.asarray(wmap[scan_id], dtype=np.float64).reshape((4, 4), order="F")
+                rw, tw = mw_col[:3, :3], mw_col[:3, 3]
+                yaw_r = float(raw_sb.get("yaw_rad") or 0.0)
+                cos_y, sin_y = float(np.cos(yaw_r)), float(np.sin(yaw_r))
+                sb_cx, sb_cy, sb_cz = float(raw_sb["center"][0]), float(raw_sb["center"][1]), float(raw_sb["center"][2])
+                sb_hx, sb_hy, sb_hz = max(0.05, float(raw_sb["half"][0])), max(0.05, float(raw_sb["half"][1])), max(0.05, float(raw_sb["half"][2]))
+
+                def _in_sb(pts_l: np.ndarray) -> np.ndarray:
+                    pts_w = pts_l @ rw.T + tw
+                    dy = np.abs(pts_w[:, 1] - sb_cy) <= (sb_hy + 1e-4)
+                    dx = pts_w[:, 0] - sb_cx
+                    dz = pts_w[:, 2] - sb_cz
+                    lx = np.abs(dx * cos_y - dz * sin_y) <= (sb_hx + 1e-4)
+                    lz = np.abs(dx * sin_y + dz * cos_y) <= (sb_hz + 1e-4)
+                    return dy & lx & lz
+
+                sb_keep = _in_sb(pc_v) | ((_in_sb(p0_v).astype(np.int8) + _in_sb(p1_v).astype(np.int8) + _in_sb(p2_v).astype(np.int8)) >= 2)
+                valid_idx = valid_idx[sb_keep]
+                if len(valid_idx) == 0:
+                    continue
+                p0_v = p0[valid_idx]
+                p1_v = p1[valid_idx]
+                p2_v = p2[valid_idx]
+                pc_v = pc[valid_idx]
             w0 = cw0[valid_idx]
             w1 = cw1[valid_idx]
             w2 = cw2[valid_idx]

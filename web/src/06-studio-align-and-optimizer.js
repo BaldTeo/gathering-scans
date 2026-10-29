@@ -248,10 +248,13 @@
       modeOverride ||
       (!STATE.multiAlign?.active && STATE.cropMode === "keep_inside" ? "keep_inside" : "delete_inside");
     const st = ensureStagedEditsForActiveScan();
+    const activeSbSer = getSerializedActiveSectionBox();
 
     if (mode === "keep_inside" && !STATE.multiAlign?.active) {
       const effVis = getEffectiveLassoVisibleOnly("keep_inside");
-      const batchStrokes = (STATE.lassoStrokes || []).map((s) => Object.assign({}, s, { visible_only: effVis }));
+      const batchStrokes = (STATE.lassoStrokes || []).map((s) =>
+        Object.assign({}, s, { visible_only: effVis }, activeSbSer && !s.section_box ? { section_box: activeSbSer } : {})
+      );
       const batchPolys = [];
       const rawKeepPolys = [];
       (STATE.pendingCropPolygons || []).forEach((pts) => {
@@ -260,7 +263,7 @@
       if (Array.isArray(STATE.measurePoints) && STATE.measurePoints.length >= 3) {
         rawKeepPolys.push(STATE.measurePoints);
       }
-      if (rawKeepPolys.length > 0 && isActiveStudioTilesetEcef()) {
+      if (rawKeepPolys.length > 0 && (isActiveStudioTilesetEcef() || activeSbSer)) {
         rawKeepPolys.forEach((pts) => {
           const orthoSt = planPolygonToTopDownFrustumStroke(pts);
           if (orthoSt) batchStrokes.push(orthoSt);
@@ -279,6 +282,7 @@
         frustum_strokes: batchStrokes,
         native_polygons: batchPolys,
       };
+      if (activeSbSer) st.cropKeep.section_box = activeSbSer;
       st.rev++;
       STATE.measurePoints = [];
       clearLassoSelectionState();
@@ -288,7 +292,9 @@
     }
 
     const effVis = getEffectiveLassoVisibleOnly("delete_inside");
-    const batchStrokes = (STATE.lassoStrokes || []).map((s) => Object.assign({}, s, { visible_only: effVis }));
+    const batchStrokes = (STATE.lassoStrokes || []).map((s) =>
+      Object.assign({}, s, { visible_only: effVis }, activeSbSer && !s.section_box ? { section_box: activeSbSer } : {})
+    );
     const rawWorldPolys = [];
     if (Array.isArray(STATE.pendingCropPolygons)) {
       STATE.pendingCropPolygons.forEach((pts) => {
@@ -319,7 +325,7 @@
           })
         );
       });
-    } else if (rawWorldPolys.length > 0 && isActiveStudioTilesetEcef()) {
+    } else if (rawWorldPolys.length > 0 && (isActiveStudioTilesetEcef() || activeSbSer)) {
       rawWorldPolys.forEach((pts) => {
         const orthoSt = planPolygonToTopDownFrustumStroke(pts);
         if (orthoSt) batchStrokes.push(orthoSt);
@@ -349,6 +355,7 @@
       frustum_strokes: batchStrokes,
       native_polygons: batchPolys,
     };
+    if (activeSbSer) delBatch.section_box = activeSbSer;
     if (layerCenteredPolygons) {
       delBatch.layer_centered_polygons = layerCenteredPolygons;
     }
@@ -852,6 +859,13 @@
               }
             </span>
           </label>
+          ${
+            isSectionBoxClippingActive()
+              ? `<div style="margin-top:5px;font-size:10.5px;color:var(--ui-accent);background:rgba(56,189,248,0.1);border:1px solid rgba(56,189,248,0.35);border-radius:6px;padding:4px 8px;">
+                  📦 ${tr("<b>3D 剖面盒裁切啟用中</b> — 被剖面隱藏的外部三角面受到保護，不會被選取或刪除。", "<b>Section Box Active</b> — triangles hidden outside the section box are protected and will not be selected or erased.")}
+                </div>`
+              : ""
+          }
         </div>
 
         <div style="font-size:11px;color:var(--ui-text-secondary);background:var(--ui-bg-surface);border:1px solid var(--ui-border);border-radius:6px;padding:6px 8px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;gap:6px;flex-wrap:wrap;">
@@ -3755,6 +3769,24 @@
 
     if (e.key === "Escape") {
       triggerStudioEscapeAction(e);
+      return;
+    } else if (
+      (e.key === "ArrowUp" || e.key === "ArrowDown") &&
+      STATE.activeView === "studio" &&
+      !hasOpenModal &&
+      !STATE.fpMode?.active &&
+      (STATE.activeTool === "section" || isSectionBoxClippingActive())
+    ) {
+      e.preventDefault();
+      const st = STATE.sectionBoxState;
+      if (st && st.active && typeof applySectionBoxStateToClippingAndUI === "function") {
+        const stepM = 0.1 * (e.key === "ArrowUp" ? 1 : -1);
+        st.centerY = Math.round((Number(st.centerY || 0) + stepM) * 100) / 100;
+        applySectionBoxStateToClippingAndUI(true);
+        if (typeof rebuildLassoHighlight3D === "function" && ((STATE.lassoStrokes && STATE.lassoStrokes.length > 0) || (STATE.pendingCropPolygons && STATE.pendingCropPolygons.length > 0))) {
+          rebuildLassoHighlight3D();
+        }
+      }
       return;
     } else if (
       e.key === "Enter" &&

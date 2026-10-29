@@ -3637,7 +3637,10 @@
         halfY: 15,
         halfZ: 25,
         yawRad: 0,
+        hideHandles: false,
       };
+    } else if (typeof STATE.sectionBoxState.hideHandles !== "boolean") {
+      STATE.sectionBoxState.hideHandles = false;
     }
     return STATE.sectionBoxState;
   }
@@ -3646,7 +3649,7 @@
     if (!studioThree || !studioThree.overlayGroup) return;
     clearSectionBoxGizmos3D();
     const st = getOrInitSectionBoxState();
-    if (!st.active || STATE.activeTool !== "section") return;
+    if (!st.active || STATE.activeTool !== "section" || st.hideHandles) return;
 
     const grp = new THREE.Group();
     grp.position.set(st.centerX, st.centerY, st.centerZ);
@@ -3677,15 +3680,17 @@
     ];
     const coneGeo = new THREE.ConeGeometry(hScale * 0.34, hScale * 0.9, 16);
     const hitSphereGeo = new THREE.SphereGeometry(hScale * 0.72, 12, 12);
-    const hitMat = new THREE.MeshBasicMaterial({ visible: false });
+    const hitMat = makeUnclippedMaterial(new THREE.MeshBasicMaterial({ visible: false }));
 
     faceSpecs.forEach((fs) => {
-      const mat = new THREE.MeshBasicMaterial({
-        color: fs.col,
-        depthTest: false,
-        transparent: true,
-        opacity: 0.94,
-      });
+      const mat = makeUnclippedMaterial(
+        new THREE.MeshBasicMaterial({
+          color: fs.col,
+          depthTest: false,
+          transparent: true,
+          opacity: 0.94,
+        })
+      );
       const outCone = new THREE.Mesh(coneGeo, mat);
       const dirVec = new THREE.Vector3(fs.dir[0], fs.dir[1], fs.dir[2]);
       outCone.position.set(
@@ -3720,7 +3725,9 @@
       { action: "translate_z", dir: new THREE.Vector3(0, 0, 1), col: 0x60a5fa },
     ];
     moveAxes.forEach((ax) => {
-      const m = new THREE.MeshBasicMaterial({ color: ax.col, depthTest: false, transparent: true, opacity: 0.95 });
+      const m = makeUnclippedMaterial(
+        new THREE.MeshBasicMaterial({ color: ax.col, depthTest: false, transparent: true, opacity: 0.95 })
+      );
       const q = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), ax.dir);
       const shaft = new THREE.Mesh(shaftGeo, m);
       shaft.position.copy(ax.dir).multiplyScalar(arrowLen * 0.5);
@@ -3735,7 +3742,7 @@
 
     const centerPad = new THREE.Mesh(
       new THREE.BoxGeometry(hScale * 0.78, hScale * 0.28, hScale * 0.78),
-      new THREE.MeshBasicMaterial({ color: 0x38bdf8, depthTest: false, transparent: true, opacity: 0.9 })
+      makeUnclippedMaterial(new THREE.MeshBasicMaterial({ color: 0x38bdf8, depthTest: false, transparent: true, opacity: 0.9 }))
     );
     addGizmoHandleMesh(centerPad, "translate_xz", "move");
 
@@ -3743,7 +3750,7 @@
     const rotRadius = Math.max(hScale * 2.4, Math.min(hx, hz) * 0.55);
     const ringMesh = new THREE.Mesh(
       new THREE.TorusGeometry(rotRadius, hScale * 0.08, 12, 48),
-      new THREE.MeshBasicMaterial({ color: 0xf59e0b, depthTest: false, transparent: true, opacity: 0.92 })
+      makeUnclippedMaterial(new THREE.MeshBasicMaterial({ color: 0xf59e0b, depthTest: false, transparent: true, opacity: 0.92 }))
     );
     ringMesh.rotation.x = Math.PI * 0.5;
     ringMesh.position.set(0, hy, 0);
@@ -3751,7 +3758,7 @@
 
     const rotKnob = new THREE.Mesh(
       new THREE.SphereGeometry(hScale * 0.38, 16, 16),
-      new THREE.MeshBasicMaterial({ color: 0xfbbf24, depthTest: false })
+      makeUnclippedMaterial(new THREE.MeshBasicMaterial({ color: 0xfbbf24, depthTest: false }))
     );
     rotKnob.position.set(0, hy, rotRadius);
     addGizmoHandleMesh(rotKnob, "rotate_yaw", "grab");
@@ -3764,6 +3771,8 @@
       studioThree.renderer.clippingPlanes = [];
       if (studioThree._sectionBoxHelper) {
         studioThree.overlayGroup?.remove(studioThree._sectionBoxHelper);
+        if (studioThree._sectionBoxHelper.geometry) studioThree._sectionBoxHelper.geometry.dispose();
+        if (studioThree._sectionBoxHelper.material) studioThree._sectionBoxHelper.material.dispose();
         studioThree._sectionBoxHelper = null;
       }
       clearSectionBoxGizmos3D();
@@ -3771,7 +3780,7 @@
     }
 
     const hx = Math.max(0.5, Number(st.halfX) || 10);
-    const hy = Math.max(0.25, Number(st.halfY) || 10);
+    const hy = Math.max(0.1, Number(st.halfY) || 10);
     const hz = Math.max(0.5, Number(st.halfZ) || 10);
     const yaw = Number(st.yawRad) || 0;
     const cosY = Math.cos(yaw);
@@ -3792,30 +3801,36 @@
       makePlane(axisZ.clone(), center.clone().addScaledVector(axisZ, -hz)),
     ];
 
-    if (studioThree._sectionBoxHelper) {
-      studioThree.overlayGroup?.remove(studioThree._sectionBoxHelper);
-      if (studioThree._sectionBoxHelper.geometry) studioThree._sectionBoxHelper.geometry.dispose();
-      if (studioThree._sectionBoxHelper.material) studioThree._sectionBoxHelper.material.dispose();
-      studioThree._sectionBoxHelper = null;
+    if (!studioThree._sectionBoxHelper || !studioThree._sectionBoxHelper.parent) {
+      if (studioThree._sectionBoxHelper) {
+        studioThree.overlayGroup?.remove(studioThree._sectionBoxHelper);
+      }
+      const boxGeo = new THREE.BoxGeometry(2, 2, 2);
+      const edgesGeo = new THREE.EdgesGeometry(boxGeo);
+      boxGeo.dispose();
+      const wfMat = makeUnclippedMaterial(
+        new THREE.LineBasicMaterial({ color: 0x38bdf8, depthTest: false, transparent: true, opacity: 0.92 })
+      );
+      const wireframe = new THREE.LineSegments(edgesGeo, wfMat);
+      wireframe.renderOrder = 997;
+      wireframe.frustumCulled = false;
+      studioThree.overlayGroup.add(wireframe);
+      studioThree._sectionBoxHelper = wireframe;
     }
-    const boxGeo = new THREE.BoxGeometry(hx * 2, hy * 2, hz * 2);
-    const edgesGeo = new THREE.EdgesGeometry(boxGeo);
-    boxGeo.dispose();
-    const wireframe = new THREE.LineSegments(
-      edgesGeo,
-      new THREE.LineBasicMaterial({ color: 0x38bdf8, depthTest: false, transparent: true, opacity: 0.88 })
-    );
-    wireframe.position.copy(center);
-    wireframe.rotation.set(0, yaw, 0);
-    wireframe.renderOrder = 997;
-    studioThree.overlayGroup.add(wireframe);
-    studioThree._sectionBoxHelper = wireframe;
+    studioThree._sectionBoxHelper.position.copy(center);
+    studioThree._sectionBoxHelper.rotation.set(0, yaw, 0);
+    studioThree._sectionBoxHelper.scale.set(hx, hy, hz);
+    studioThree._sectionBoxHelper.visible = true;
 
     rebuildSectionBox3DGizmos();
 
     const yTop = st.centerY + hy;
     const yBot = st.centerY - hy;
     const yawDeg = Math.round((yaw * 180) / Math.PI);
+    const setVal = (id, v) => {
+      const el = document.getElementById(id);
+      if (el && document.activeElement !== el) el.value = String(v);
+    };
     const lblX = document.getElementById("lblSecClipX");
     if (lblX) lblX.textContent = `±${hx.toFixed(1)} m`;
     const lblZ = document.getElementById("lblSecClipZ");
@@ -3828,17 +3843,17 @@
     if (lblYaw) lblYaw.textContent = `${yawDeg >= 0 ? "+" : ""}${yawDeg}°`;
 
     if (syncSliders) {
-      const elX = document.getElementById("secClipX");
-      if (elX) elX.value = String(Math.round(hx));
-      const elZ = document.getElementById("secClipZ");
-      if (elZ) elZ.value = String(Math.round(hz));
-      const elY = document.getElementById("secClipY");
-      if (elY) elY.value = String(yTop.toFixed(1));
-      const elYMin = document.getElementById("secClipYMin");
-      if (elYMin) elYMin.value = String(yBot.toFixed(1));
-      const elYaw = document.getElementById("secClipYaw");
-      if (elYaw) elYaw.value = String(yawDeg);
+      setVal("secClipX", hx.toFixed(1));
+      setVal("secClipZ", hz.toFixed(1));
+      setVal("secClipY", yTop.toFixed(1));
+      setVal("secClipYMin", yBot.toFixed(1));
+      setVal("secClipYaw", yawDeg);
     }
+    setVal("numSecClipX", hx.toFixed(1));
+    setVal("numSecClipZ", hz.toFixed(1));
+    setVal("numSecClipY", yTop.toFixed(1));
+    setVal("numSecClipYMin", yBot.toFixed(1));
+    setVal("numSecClipYaw", yawDeg);
   }
 
   function unprojectPointerToSectionGizmoRay(e) {
@@ -3856,7 +3871,7 @@
   function handleSectionBoxGizmoPointerDown(e) {
     if (STATE.activeView !== "studio" || STATE.activeTool !== "section") return false;
     const st = STATE.sectionBoxState;
-    if (!st || !st.active || !studioThree?.sectionBoxGizmoGroup) return false;
+    if (!st || !st.active || st.hideHandles || !studioThree?.sectionBoxGizmoGroup) return false;
     const ray = unprojectPointerToSectionGizmoRay(e);
     if (!ray) return false;
     studioThree.sectionBoxGizmoGroup.updateMatrixWorld(true);
@@ -3913,7 +3928,7 @@
   function handleSectionBoxGizmoPointerMove(e) {
     if (STATE.activeView !== "studio" || STATE.activeTool !== "section") return false;
     const st = STATE.sectionBoxState;
-    if (!st || !st.active || !studioThree?.sectionBoxGizmoGroup) return false;
+    if (!st || !st.active || st.hideHandles || !studioThree?.sectionBoxGizmoGroup) return false;
     const ray = unprojectPointerToSectionGizmoRay(e);
     if (!ray) return false;
 
@@ -3955,7 +3970,7 @@
     } else if (act === "face_px" || act === "face_nx") {
       const sign = act === "face_px" ? 1 : -1;
       const d = delta.dot(axisX) * sign;
-      const newFull = Math.max(1.5, s0.halfX * 2 + d);
+      const newFull = Math.max(1.0, s0.halfX * 2 + d);
       const actualDelta = newFull - s0.halfX * 2;
       st.halfX = newFull * 0.5;
       st.centerX = s0.centerX + axisX.x * (actualDelta * 0.5 * sign);
@@ -3963,7 +3978,7 @@
     } else if (act === "face_pz" || act === "face_nz") {
       const sign = act === "face_pz" ? 1 : -1;
       const d = delta.dot(axisZ) * sign;
-      const newFull = Math.max(1.5, s0.halfZ * 2 + d);
+      const newFull = Math.max(1.0, s0.halfZ * 2 + d);
       const actualDelta = newFull - s0.halfZ * 2;
       st.halfZ = newFull * 0.5;
       st.centerX = s0.centerX + axisZ.x * (actualDelta * 0.5 * sign);
@@ -3971,7 +3986,7 @@
     } else if (act === "face_py" || act === "face_ny") {
       const sign = act === "face_py" ? 1 : -1;
       const d = delta.y * sign;
-      const newFull = Math.max(1.0, s0.halfY * 2 + d);
+      const newFull = Math.max(0.2, s0.halfY * 2 + d);
       const actualDelta = newFull - s0.halfY * 2;
       st.halfY = newFull * 0.5;
       st.centerY = s0.centerY + actualDelta * 0.5 * sign;
@@ -3992,6 +4007,9 @@
     if (typeof syncStudioControlsForTool === "function") {
       syncStudioControlsForTool();
     }
+    if (typeof rebuildLassoHighlight3D === "function" && ((STATE.lassoStrokes && STATE.lassoStrokes.length > 0) || (STATE.pendingCropPolygons && STATE.pendingCropPolygons.length > 0))) {
+      rebuildLassoHighlight3D();
+    }
     return true;
   }
   window.handleSectionBoxGizmoPointerUp = handleSectionBoxGizmoPointerUp;
@@ -4008,11 +4026,7 @@
         ? STATE.sectionBoxEndpoints
         : null;
     const hasTwoPoints = Boolean(eps && eps.length >= 2);
-    if (window.innerWidth <= 768) {
-      STATE.sidePanelMinimized = !hasTwoPoints;
-    } else {
-      STATE.sidePanelMinimized = false;
-    }
+    STATE.sidePanelMinimized = window.innerWidth <= 768 ? !hasTwoPoints : false;
     const rawR = Math.max(20, computeStudioEffectiveBoundingRadius());
     const maxHoriz = Math.ceil(rawR * 1.35);
     const centerX = hasTwoPoints ? 0.5 * (eps[0].x + eps[1].x) : 0;
@@ -4029,16 +4043,7 @@
     const initYBot = Math.floor(minElev * 0.85);
 
     const st = getOrInitSectionBoxState();
-    if (p1 && p2) {
-      st.active = true;
-      st.centerX = centerX;
-      st.centerY = 0.5 * (initYTop + initYBot);
-      st.centerZ = centerZ;
-      st.halfX = initHorizX;
-      st.halfY = Math.max(1.0, 0.5 * (initYTop - initYBot));
-      st.halfZ = initHorizZ;
-      st.yawRad = 0;
-    } else if (!st.active) {
+    if ((p1 && p2) || !st.active) {
       st.active = true;
       st.centerX = centerX;
       st.centerY = 0.5 * (initYTop + initYBot);
@@ -4052,91 +4057,136 @@
     const curYawDeg = Math.round(((st.yawRad || 0) * 180) / Math.PI);
     const curYTop = (st.centerY + st.halfY).toFixed(1);
     const curYBot = (st.centerY - st.halfY).toFixed(1);
+    const curHX = st.halfX.toFixed(1);
+    const curHZ = st.halfZ.toFixed(1);
+    const numStyle = "width:68px;padding:2px 5px;font-size:11px;font-family:var(--font-mono);text-align:right;";
 
     showSidePanel(
       `<span>${tr("3D 剖面盒裁切器", "Section Box Slicer")}</span>`,
       `
-      <div style="font-size:11px;color:var(--ui-text-secondary);background:var(--ui-bg-pill);border:1px solid var(--ui-border-strong);border-radius:7px;padding:7px 9px;margin-bottom:9px;line-height:1.4;">
-        ${
-          hasTwoPoints || st.active
-            ? tr(
-                `可直接於 3D 畫面上拖曳剖面盒的 <b>移動軸、6 個面縮放控制點或頂部旋轉環</b>，或使用下方滑桿微調。`,
-                `Drag the <b>3D Move triad, 6 face resize cones, or top rotation ring</b> directly in 3D, or adjust sliders below.`
-              )
-            : tr(
-                `請在 3D 掃描模型上點擊 <b>2 個端點 (P1 &rarr; P2)</b> 建立剖面盒（或直接拖曳下方滑桿啟用 3D 控制項）。`,
-                `Click <b>2 points (P1 &rarr; P2)</b> on the 3D scan to create a section box (or drag any slider below to spawn 3D gizmos).`
-              )
-        }
+      <div style="font-size:11px;color:var(--ui-text-secondary);background:var(--ui-bg-pill);border:1px solid var(--ui-border-strong);border-radius:7px;padding:7px 9px;margin-bottom:8px;line-height:1.4;">
+        ${tr(
+          `可拖曳 3D <b>移動軸、6 個面控制點或頂部旋轉環</b>，或直接輸入數值（<b>↑/↓ 方向鍵</b> 每次平移 <b>0.1 m</b>）。`,
+          `Drag the <b>3D Move triad, 6 face cones, or rotation ring</b>, or enter exact values below (<b>↑/↓ keys</b> step by <b>0.1 m</b>).`
+        )}
+      </div>
+      <div style="display:flex;gap:6px;margin-bottom:9px;">
+        <button type="button" class="gs-top-btn ${st.hideHandles ? "accent" : ""}" id="btnToggleSectionHandles" style="flex:1;justify-content:center;font-size:11px;" title="${tr("隱藏或顯示 3D 剖面盒控制點", "Hide or show 3D Section Box handles")}">
+          <span id="lblToggleSectionHandles">${st.hideHandles ? `👁️ ${tr("顯示控制點", "Show Handles")}` : `🙈 ${tr("隱藏控制點", "Hide Handles")}`}</span>
+        </button>
+        <button type="button" class="gs-top-btn" id="btnResetSectionBox" style="flex:1;justify-content:center;font-size:11px;" title="${tr("重設剖面盒裁切面", "Reset Clipping Planes")}">
+          <span>${tr("重設剖面盒", "Reset Section Box")}</span>
+        </button>
       </div>
       <div class="gs-form-group">
-        <div style="display:flex;justify-content:space-between;align-items:center;">
-          <label>${tr("東西向裁切範圍 (±X m)", "East-West Clipping Bound (±X m)")}</label>
-          <span id="lblSecClipX" style="font-size:11px;font-family:var(--font-mono);color:var(--ui-accent);">±${Math.round(st.halfX)} m</span>
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:6px;margin-bottom:3px;">
+          <label>${tr("東西向裁切 (±X m)", "East-West Bound (±X m)")}</label>
+          <div style="display:flex;align-items:center;gap:5px;">
+            <span id="lblSecClipX" style="font-size:10.5px;font-family:var(--font-mono);color:var(--ui-accent);">±${curHX} m</span>
+            <input type="number" min="0.5" max="${maxHoriz * 2}" step="0.1" value="${curHX}" class="gs-input" id="numSecClipX" style="${numStyle}" />
+          </div>
         </div>
-        <input type="range" min="2" max="${maxHoriz}" step="1" value="${Math.round(st.halfX)}" class="gs-input" id="secClipX" />
+        <input type="range" min="0.5" max="${maxHoriz}" step="0.1" value="${curHX}" class="gs-input" id="secClipX" />
       </div>
       <div class="gs-form-group">
-        <div style="display:flex;justify-content:space-between;align-items:center;">
-          <label>${tr("南北向裁切範圍 (±Z m)", "North-South Clipping Bound (±Z m)")}</label>
-          <span id="lblSecClipZ" style="font-size:11px;font-family:var(--font-mono);color:var(--ui-accent);">±${Math.round(st.halfZ)} m</span>
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:6px;margin-bottom:3px;">
+          <label>${tr("南北向裁切 (±Z m)", "North-South Bound (±Z m)")}</label>
+          <div style="display:flex;align-items:center;gap:5px;">
+            <span id="lblSecClipZ" style="font-size:10.5px;font-family:var(--font-mono);color:var(--ui-accent);">±${curHZ} m</span>
+            <input type="number" min="0.5" max="${maxHoriz * 2}" step="0.1" value="${curHZ}" class="gs-input" id="numSecClipZ" style="${numStyle}" />
+          </div>
         </div>
-        <input type="range" min="2" max="${maxHoriz}" step="1" value="${Math.round(st.halfZ)}" class="gs-input" id="secClipZ" />
+        <input type="range" min="0.5" max="${maxHoriz}" step="0.1" value="${curHZ}" class="gs-input" id="secClipZ" />
       </div>
       <div class="gs-form-group">
-        <div style="display:flex;justify-content:space-between;align-items:center;">
-          <label>${tr("頂部高程裁切上限 (+Y m)", "Top Ceiling Bound (+Y Elevation m)")}</label>
-          <span id="lblSecClipY" style="font-size:11px;font-family:var(--font-mono);color:var(--ui-accent);">+${curYTop} m</span>
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:6px;margin-bottom:3px;">
+          <label>${tr("頂部高程上限 (+Y m)", "Top Ceiling (+Y m)")}</label>
+          <div style="display:flex;align-items:center;gap:5px;">
+            <span id="lblSecClipY" style="font-size:10.5px;font-family:var(--font-mono);color:var(--ui-accent);">+${curYTop} m</span>
+            <input type="number" min="${minElev * 2}" max="${maxElev * 2}" step="0.1" value="${curYTop}" class="gs-input" id="numSecClipY" style="${numStyle}" />
+          </div>
         </div>
-        <input type="range" min="${minElev}" max="${maxElev}" step="0.5" value="${curYTop}" class="gs-input" id="secClipY" />
+        <input type="range" min="${minElev}" max="${maxElev}" step="0.1" value="${curYTop}" class="gs-input" id="secClipY" />
       </div>
       <div class="gs-form-group">
-        <div style="display:flex;justify-content:space-between;align-items:center;">
-          <label>${tr("底部高程裁切下限 (-Y m)", "Bottom Floor Bound (-Y Elevation m)")}</label>
-          <span id="lblSecClipYMin" style="font-size:11px;font-family:var(--font-mono);color:var(--ui-accent);">${curYBot} m</span>
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:6px;margin-bottom:3px;">
+          <label>${tr("底部高程下限 (-Y m)", "Bottom Floor (-Y m)")}</label>
+          <div style="display:flex;align-items:center;gap:5px;">
+            <span id="lblSecClipYMin" style="font-size:10.5px;font-family:var(--font-mono);color:var(--ui-accent);">${curYBot} m</span>
+            <input type="number" min="${minElev * 2}" max="${maxElev * 2}" step="0.1" value="${curYBot}" class="gs-input" id="numSecClipYMin" style="${numStyle}" />
+          </div>
         </div>
-        <input type="range" min="${minElev}" max="${maxElev}" step="0.5" value="${curYBot}" class="gs-input" id="secClipYMin" />
+        <input type="range" min="${minElev}" max="${maxElev}" step="0.1" value="${curYBot}" class="gs-input" id="secClipYMin" />
       </div>
       <div class="gs-form-group">
-        <div style="display:flex;justify-content:space-between;align-items:center;">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:6px;margin-bottom:3px;">
           <label>${tr("水平旋轉角度 (Yaw °)", "Horizontal Rotation (Yaw °)")}</label>
-          <span id="lblSecClipYaw" style="font-size:11px;font-family:var(--font-mono);color:#f59e0b;">${curYawDeg >= 0 ? "+" : ""}${curYawDeg}°</span>
+          <div style="display:flex;align-items:center;gap:5px;">
+            <span id="lblSecClipYaw" style="font-size:10.5px;font-family:var(--font-mono);color:#f59e0b;">${curYawDeg >= 0 ? "+" : ""}${curYawDeg}°</span>
+            <input type="number" min="-180" max="180" step="1" value="${curYawDeg}" class="gs-input" id="numSecClipYaw" style="${numStyle}" />
+          </div>
         </div>
         <input type="range" min="-180" max="180" step="1" value="${curYawDeg}" class="gs-input" id="secClipYaw" />
       </div>
-      <label style="display:flex;align-items:center;gap:7px;font-size:11.5px;color:var(--ui-text-primary);cursor:pointer;margin:8px 0 10px;">
+      <label style="display:flex;align-items:center;gap:7px;font-size:11.5px;color:var(--ui-text-primary);cursor:pointer;margin:8px 0 4px;">
         <input type="checkbox" id="chkKeepSectionClip" ${STATE.keepSectionBoxClip ? "checked" : ""} />
-        <span>${tr("關閉面板後保留剖面裁切", "Keep Clipping Active When Panel Closed")}</span>
+        <span>${tr("切換工具或關閉面板時保留剖面裁切", "Keep Clipping Active Across Tools")}</span>
       </label>
-      <button type="button" class="gs-top-btn" id="btnResetSectionBox" style="width:100%;justify-content:center;" title="${tr("重設剖面盒裁切面", "Reset Clipping Planes")}">
-        <span>${tr("重設剖面盒", "Reset Section Box")}</span>
-      </button>
       `
     );
 
-    const updateClipFromSliders = () => {
+    const applyValuesToSectionState = (cx, cz, cyTop, cyBot, yawDeg, syncRangeSliders) => {
       if (!studioThree) return;
       st.active = true;
-      const cx = parseFloat(document.getElementById("secClipX")?.value || String(initHorizX));
-      const cz = parseFloat(document.getElementById("secClipZ")?.value || String(initHorizZ));
-      let cyTop = parseFloat(document.getElementById("secClipY")?.value || String(initYTop));
-      let cyBot = parseFloat(document.getElementById("secClipYMin")?.value || String(initYBot));
-      const yawDeg = parseFloat(document.getElementById("secClipYaw")?.value || "0");
-      if (cyBot >= cyTop - 0.5) {
-        cyBot = cyTop - 0.5;
-        const botEl = document.getElementById("secClipYMin");
-        if (botEl) botEl.value = String(cyBot);
-      }
-      st.halfX = Math.max(0.5, cx);
-      st.halfZ = Math.max(0.5, cz);
+      if (cyBot >= cyTop - 0.1) cyBot = cyTop - 0.1;
+      st.halfX = Math.max(0.5, Number.isFinite(cx) ? cx : st.halfX);
+      st.halfZ = Math.max(0.5, Number.isFinite(cz) ? cz : st.halfZ);
       st.centerY = 0.5 * (cyTop + cyBot);
-      st.halfY = Math.max(0.25, 0.5 * (cyTop - cyBot));
-      st.yawRad = (yawDeg * Math.PI) / 180.0;
-      applySectionBoxStateToClippingAndUI(false);
+      st.halfY = Math.max(0.05, 0.5 * (cyTop - cyBot));
+      st.yawRad = ((Number.isFinite(yawDeg) ? yawDeg : 0) * Math.PI) / 180.0;
+      applySectionBoxStateToClippingAndUI(syncRangeSliders);
+      if (typeof rebuildLassoHighlight3D === "function" && ((STATE.lassoStrokes && STATE.lassoStrokes.length > 0) || (STATE.pendingCropPolygons && STATE.pendingCropPolygons.length > 0))) {
+        rebuildLassoHighlight3D();
+      }
+    };
+
+    const updateClipFromSliders = () => {
+      applyValuesToSectionState(
+        parseFloat(document.getElementById("secClipX")?.value || String(initHorizX)),
+        parseFloat(document.getElementById("secClipZ")?.value || String(initHorizZ)),
+        parseFloat(document.getElementById("secClipY")?.value || String(initYTop)),
+        parseFloat(document.getElementById("secClipYMin")?.value || String(initYBot)),
+        parseFloat(document.getElementById("secClipYaw")?.value || "0"),
+        false
+      );
+    };
+
+    const updateClipFromNumbers = () => {
+      applyValuesToSectionState(
+        parseFloat(document.getElementById("numSecClipX")?.value || String(st.halfX)),
+        parseFloat(document.getElementById("numSecClipZ")?.value || String(st.halfZ)),
+        parseFloat(document.getElementById("numSecClipY")?.value || String(st.centerY + st.halfY)),
+        parseFloat(document.getElementById("numSecClipYMin")?.value || String(st.centerY - st.halfY)),
+        parseFloat(document.getElementById("numSecClipYaw")?.value || "0"),
+        true
+      );
     };
 
     ["secClipX", "secClipZ", "secClipY", "secClipYMin", "secClipYaw"].forEach((id) => {
       document.getElementById(id)?.addEventListener("input", updateClipFromSliders);
+    });
+    ["numSecClipX", "numSecClipZ", "numSecClipY", "numSecClipYMin", "numSecClipYaw"].forEach((id) => {
+      document.getElementById(id)?.addEventListener("input", updateClipFromNumbers);
+      document.getElementById(id)?.addEventListener("change", updateClipFromNumbers);
+    });
+    document.getElementById("btnToggleSectionHandles")?.addEventListener("click", () => {
+      st.hideHandles = !st.hideHandles;
+      const btn = document.getElementById("btnToggleSectionHandles");
+      const lbl = document.getElementById("lblToggleSectionHandles");
+      if (btn) btn.classList.toggle("accent", Boolean(st.hideHandles));
+      if (lbl) lbl.textContent = st.hideHandles ? `👁️ ${tr("顯示控制點", "Show Handles")}` : `🙈 ${tr("隱藏控制點", "Hide Handles")}`;
+      rebuildSectionBox3DGizmos();
+      if (studioThree?.renderer?.domElement) studioThree.renderer.domElement.style.cursor = "";
     });
     document.getElementById("chkKeepSectionClip")?.addEventListener("change", (e) => {
       STATE.keepSectionBoxClip = Boolean(e.target.checked);
@@ -4152,25 +4202,15 @@
       st.halfZ = maxHoriz;
       st.halfY = 0.5 * (maxElev - minElev);
       st.yawRad = 0;
-      const elX = document.getElementById("secClipX");
-      const elZ = document.getElementById("secClipZ");
-      const elY = document.getElementById("secClipY");
-      const elYMin = document.getElementById("secClipYMin");
-      const elYaw = document.getElementById("secClipYaw");
-      if (elX) elX.value = String(maxHoriz);
-      if (elZ) elZ.value = String(maxHoriz);
-      if (elY) elY.value = String(maxElev);
-      if (elYMin) elYMin.value = String(minElev);
-      if (elYaw) elYaw.value = "0";
-      applySectionBoxStateToClippingAndUI(false);
+      applySectionBoxStateToClippingAndUI(true);
       showToast("Section Box clipping reset — click 2 points on scan to create new section box");
     });
 
     if (hasTwoPoints || st.active) {
       st.active = true;
-      applySectionBoxStateToClippingAndUI(false);
+      applySectionBoxStateToClippingAndUI(true);
     } else if (studioThree) {
-      applySectionBoxStateToClippingAndUI(false);
+      applySectionBoxStateToClippingAndUI(true);
     }
   }
 
