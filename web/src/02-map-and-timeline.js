@@ -726,12 +726,23 @@
     const cnt = Number(scan.texture_count || 1);
     const w = Number(scan.texture_width || scan.texture_resolution || 4096);
     const h = Number(scan.texture_height || scan.texture_resolution || w);
+    const tileMax = Math.max(w, h);
+    const gridSide = cnt > 1 ? Math.ceil(Math.sqrt(cnt)) : 1;
+    const tiledEff = cnt > 1 ? Math.min(16384, tileMax * gridSide) : tileMax;
+    const effRes = Math.max(Number(scan.texture_resolution || 0), tiledEff, tileMax);
+    const toK = (v) => (v >= 12288 ? "16K" : v >= 6144 ? "8K" : v >= 3072 ? "4K" : v >= 1536 ? "2K" : `${v}px`);
     if (short) {
-      const kTag = w >= 8192 ? "8K" : w >= 4096 ? "4K" : w >= 2048 ? "2K" : `${w}px`;
-      return cnt > 1 && cnt <= 8 ? `${kTag}×${cnt}` : kTag;
+      if (cnt > 1 && effRes > tileMax) {
+        return `${toK(effRes)} (${cnt}×${toK(tileMax)})`;
+      }
+      const kTag = toK(tileMax);
+      return cnt > 1 ? `${kTag}×${cnt}` : toK(effRes);
     }
     if (scan.texture_size_label) return String(scan.texture_size_label);
-    return cnt > 1 && cnt <= 8 ? `${w}×${h} px (×${cnt})` : `${w}×${h} px`;
+    if (cnt > 1 && effRes > tileMax) {
+      return `${toK(effRes)} (${cnt}×${toK(tileMax)} tiles)`;
+    }
+    return cnt > 1 && cnt <= 8 ? `${w}×${h} px (×${cnt})` : cnt > 8 ? `${w}×${h} px (${cnt} tiles)` : `${w}×${h} px`;
   }
 
   function formatScanSizeMb(scan, { includeTotal = false } = {}) {
@@ -781,13 +792,22 @@
       if (!scan.texture_size_label && liveTexDims.length > 0) {
         const mw = Math.max(...liveTexDims.map((d) => d[0]));
         const mh = Math.max(...liveTexDims.map((d) => d[1]));
+        const cnt = liveTexDims.length;
+        const tileMax = Math.max(mw, mh);
+        const effRes = Math.max(
+          Number(scan.texture_resolution || 0),
+          cnt > 1 ? Math.min(16384, tileMax * Math.ceil(Math.sqrt(cnt))) : tileMax
+        );
+        const toK = (v) => (v >= 12288 ? "16K" : v >= 6144 ? "8K" : v >= 3072 ? "4K" : v >= 1536 ? "2K" : `${v}px`);
         scan.texture_width = mw;
         scan.texture_height = mh;
-        scan.texture_count = liveTexDims.length;
-        scan.texture_size_label =
-          liveTexDims.length > 1 && liveTexDims.length <= 8
-            ? `${mw}×${mh} px (×${liveTexDims.length})`
-            : `${mw}×${mh} px`;
+        scan.texture_count = cnt;
+        if (cnt > 1 && effRes > tileMax) {
+          scan.texture_size_label = `${toK(effRes)} (${cnt}×${toK(tileMax)} tiles)`;
+        } else {
+          scan.texture_size_label =
+            cnt > 1 && cnt <= 8 ? `${mw}×${mh} px (×${cnt})` : cnt > 8 ? `${mw}×${mh} px (${cnt} tiles)` : `${mw}×${mh} px`;
+        }
       }
     }
 

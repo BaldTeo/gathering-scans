@@ -363,11 +363,14 @@ def pix4d_worker_loop():
                         except OSError:
                             pass
                     if os.path.isfile(ts_path):
+                        _fin_row = DB.get_scan(fin_sid) or {}
+                        _fin_tex = int(_fin_row.get("texture_resolution") or 16384)
+                        _fin_k = "16K" if _fin_tex >= 12288 else ("8K" if _fin_tex >= 6144 else ("4K" if _fin_tex >= 3072 else "2K"))
                         DB.update_job_progress(
                             fin_sid,
                             "completed",
                             100.0,
-                            "Completed (TWD97 + TWVD2001, 4K Web Tileset)",
+                            f"Completed (TWD97 + TWVD2001, {_fin_k} Web Tileset)",
                             tileset_path=ts_path,
                             obj_path=newest_obj if (newest_obj and os.path.isfile(newest_obj)) else None,
                             quality_stage="full_hq",

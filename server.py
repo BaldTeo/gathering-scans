@@ -1039,9 +1039,9 @@ class GatheringScansHandler(CloudAndTunnelHandlerMixin, ServerWriteRoutesMixin, 
                             pass
 
                     obj_dir_m = os.path.join(proj_dir_m, "exports", "obj_mesh")
+                    obj_tex_dims = []
                     if os.path.isdir(obj_dir_m):
                         obj_b_sum = 0
-                        obj_tex_dims = []
                         for _ofn in sorted(os.listdir(obj_dir_m)):
                             _ofp = os.path.join(obj_dir_m, _ofn)
                             if os.path.isfile(_ofp):
@@ -1066,10 +1066,46 @@ class GatheringScansHandler(CloudAndTunnelHandlerMixin, ServerWriteRoutesMixin, 
                         tex_h = max(h for _, h in tex_dims_list)
                         tex_cnt = len(tex_dims_list)
                 except Exception:
-                    pass
+                    obj_tex_dims = []
+            else:
+                obj_tex_dims = []
+
+            tile_max_dim = max(tex_w, tex_h)
+            obj_max_dim = max((max(w, h) for w, h in obj_tex_dims), default=0)
+            grid_side = int(math.ceil(math.sqrt(max(1, tex_cnt)))) if tex_cnt > 1 else 1
+            tiled_eff_dim = min(16384, tile_max_dim * grid_side) if tex_cnt > 1 else tile_max_dim
+            raw_eff_res = max(
+                tex_res_default if tex_cnt > 1 else 0,
+                obj_max_dim,
+                tiled_eff_dim,
+                tile_max_dim,
+            )
+            if raw_eff_res >= 12288:
+                eff_res = 16384
+            elif raw_eff_res >= 6144:
+                eff_res = 8192
+            elif raw_eff_res >= 3072:
+                eff_res = 4096
+            elif raw_eff_res >= 1536:
+                eff_res = 2048
+            else:
+                eff_res = raw_eff_res
+
+            def _dim_k_tag(d: int) -> str:
+                if d >= 12288:
+                    return "16K"
+                if d >= 6144:
+                    return "8K"
+                if d >= 3072:
+                    return "4K"
+                if d >= 1536:
+                    return "2K"
+                return f"{d}px"
 
             if not tex_label:
-                if tex_cnt > 1 and tex_cnt <= 8:
+                if tex_cnt > 1 and eff_res > tile_max_dim:
+                    tex_label = f"{_dim_k_tag(eff_res)} ({tex_cnt}\u00d7{_dim_k_tag(tile_max_dim)} tiles)"
+                elif tex_cnt > 1 and tex_cnt <= 8:
                     tex_label = f"{tex_w}\u00d7{tex_h} px (\u00d7{tex_cnt})"
                 elif tex_cnt > 8:
                     tex_label = f"{tex_w}\u00d7{tex_h} px ({tex_cnt} tiles)"
@@ -1080,7 +1116,7 @@ class GatheringScansHandler(CloudAndTunnelHandlerMixin, ServerWriteRoutesMixin, 
             scan_mb = stream_mb if stream_mb > 0 else total_mb
             cached_metrics = {
                 "poly_count": poly_count,
-                "texture_resolution": max(tex_w, tex_h),
+                "texture_resolution": eff_res,
                 "texture_width": tex_w,
                 "texture_height": tex_h,
                 "texture_count": tex_cnt,

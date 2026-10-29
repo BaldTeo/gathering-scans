@@ -2006,6 +2006,8 @@ def _discover_folder_scan_item(
         else int(meta.get("tileset_version") or (stat.st_mtime * 1000))
     )
 
+    tex_res_val = int(meta.get("texture_resolution", PIX4DMATIC_TEXTURE_SIZE))
+    tex_k_label = "16K" if tex_res_val >= 12288 else ("8K" if tex_res_val >= 6144 else ("4K" if tex_res_val >= 3072 else "2K"))
     result_item = {
         "scan_id": scan_id,
         "name": resolved_name,
@@ -2026,7 +2028,7 @@ def _discover_folder_scan_item(
         "covered_area_m2": round(covered_area_m2, 1),
         "rtk_accuracy_cm": float(meta.get("rtk_accuracy_cm", 1.5)),
         "crs": crs_val,
-        "texture_resolution": int(meta.get("texture_resolution", PIX4DMATIC_TEXTURE_SIZE)),
+        "texture_resolution": tex_res_val,
         "lat": lat,
         "lon": lon,
         "elev_m": elev_m,
@@ -2040,7 +2042,7 @@ def _discover_folder_scan_item(
         "tileset_version": ts_ver,
         "status": meta.get("status", "completed"),
         "progress_pct": float(meta.get("progress_pct", 100.0)),
-        "stage_label": meta.get("stage_label", f"Completed ({crs_val}, 4K Web Tileset)"),
+        "stage_label": meta.get("stage_label", f"Completed ({crs_val}, {tex_k_label} Web Tileset)"),
         "notes": meta.get("notes", f"Dynamically loaded from {folder_path}"),
     }
     for extra_key in ("merged_from", "derived_from_scan_id", "applied_adjustments"):
@@ -2498,7 +2500,9 @@ def _seed_and_discover_scans_locked(db: ScanQueueDB) -> List[Dict[str, Any]]:
             primary_meta["quality_stage"] = "full_hq"
             primary_meta["pending_pass"] = ""
             primary_meta["progress_pct"] = 100.0
-            primary_meta["stage_label"] = f"Processed -> {scan_id} (TWD97 + TWVD2001, 4K)"
+            _pm_tex = int(primary_meta.get("texture_resolution", PIX4DMATIC_TEXTURE_SIZE))
+            _pm_k = "16K" if _pm_tex >= 12288 else ("8K" if _pm_tex >= 6144 else ("4K" if _pm_tex >= 3072 else "2K"))
+            primary_meta["stage_label"] = f"Processed -> {scan_id} (TWD97 + TWVD2001, {_pm_k})"
             # Keep scan_meta.json on disk in sync with parent_proj, uploader, and true_img_cnt
             meta_on_disk = os.path.join(cand_processed_dir, "scan_meta.json")
             if os.path.isfile(meta_on_disk):
