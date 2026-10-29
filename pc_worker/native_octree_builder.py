@@ -80,7 +80,37 @@ def build_3d_occupancy_mask_from_tileset(
     tiles_sub = os.path.join(tileset_dir, "tiles")
     if not os.path.isdir(tiles_sub):
         return None
-    leaf_candidates = sorted(glob.glob(os.path.join(tiles_sub, "tile_l1_*_l2_*.glb")))
+    leaf_candidates: List[str] = []
+    root_tf_offset = (0.0, 0.0, 0.0)
+    ts_json_p = os.path.join(tileset_dir, "tileset.json")
+    if os.path.isfile(ts_json_p):
+        try:
+            with open(ts_json_p, "r", encoding="utf-8") as tf:
+                ts_doc = json.load(tf)
+            r_node = ts_doc.get("root") or {}
+            rtf = r_node.get("transform")
+            if isinstance(rtf, list) and len(rtf) == 16:
+                root_tf_offset = (float(rtf[12]), float(rtf[13]), float(rtf[14]))
+
+            def _walk_occ_leaves(nd: Dict[str, Any]) -> None:
+                chs = [c for c in (nd.get("children") or []) if isinstance(c, dict)]
+                if chs:
+                    for ch in chs:
+                        _walk_occ_leaves(ch)
+                    return
+                cnt = nd.get("content")
+                uri = (cnt.get("uri") or cnt.get("url") or "").split("?")[0] if isinstance(cnt, dict) else ""
+                if uri:
+                    fp = os.path.join(tileset_dir, uri.replace("/", os.sep))
+                    if os.path.isfile(fp) and fp.lower().endswith(".glb"):
+                        leaf_candidates.append(fp)
+
+            if isinstance(r_node, dict):
+                _walk_occ_leaves(r_node)
+        except Exception:
+            pass
+    if not leaf_candidates:
+        leaf_candidates = sorted(glob.glob(os.path.join(tiles_sub, "tile_l1_*_l2_*.glb")))
     if not leaf_candidates:
         leaf_candidates = sorted(glob.glob(os.path.join(tiles_sub, "tile_*.glb")))
     if not leaf_candidates:
@@ -90,29 +120,36 @@ def build_3d_occupancy_mask_from_tileset(
     if not leaf_candidates:
         return None
 
+    from pc_worker.config import GC_SCAN_OPTIMIZER_DIR
+    import sys as _sys
+    if GC_SCAN_OPTIMIZER_DIR not in _sys.path:
+        _sys.path.append(GC_SCAN_OPTIMIZER_DIR)
+    from optimizer.geometry_optimizer import extract_glb_64bit_origin_to_local
+
     ox, oy, oz = ref_offset
     pts_all: List[np.ndarray] = []
     for g_fp in leaf_candidates:
-        fd, tmp_g = tempfile.mkstemp(suffix=".glb")
-        os.close(fd)
+        fd_in, tmp_in = tempfile.mkstemp(suffix=".glb")
+        fd_out, tmp_g = tempfile.mkstemp(suffix=".glb")
+        os.close(fd_out)
         try:
+            with open(g_fp, "rb") as rf_in:
+                raw_in = rf_in.read()
+            loc_bytes, orig_t = extract_glb_64bit_origin_to_local(raw_in)
+            with os.fdopen(fd_in, "wb") as wf_in:
+                wf_in.write(loc_bytes)
             subprocess.run(
-                [GLTFPACK_EXE, "-i", g_fp, "-o", tmp_g, "-noq"],
+                [GLTFPACK_EXE, "-i", tmp_in, "-o", tmp_g, "-noq"],
                 capture_output=True,
                 timeout=45,
                 creationflags=_WIN_NO_WINDOW,
             )
-            read_fp = tmp_g if (os.path.isfile(tmp_g) and os.path.getsize(tmp_g) > 0) else g_fp
+            read_fp = tmp_g if (os.path.isfile(tmp_g) and os.path.getsize(tmp_g) > 0) else tmp_in
             with open(read_fp, "rb") as f:
                 raw = f.read()
             jlen = struct.unpack_from("<I", raw, 12)[0]
             j = json.loads(raw[20 : 20 + jlen].decode("utf-8"))
             b = raw[28 + jlen :]
-            t_node = [0.0, 0.0, 0.0]
-            for nd in j.get("nodes") or []:
-                if nd.get("translation"):
-                    t_node = [float(x) for x in nd["translation"]]
-                    break
             for m in j.get("meshes") or []:
                 for p in m.get("primitives") or []:
                     pos_idx = (p.get("attributes") or {}).get("POSITION")
@@ -122,17 +159,25 @@ def build_3d_occupancy_mask_from_tileset(
                     bv = j["bufferViews"][acc["bufferView"]]
                     off = int(bv.get("byteOffset", 0)) + int(acc.get("byteOffset", 0))
                     pos = np.frombuffer(b, dtype=np.float32, count=int(acc["count"]) * 3, offset=off).reshape(-1, 3)
-                    if len(pos) > 0 and abs(float(pos[0, 0])) > 10000.0:
+                    if orig_t != (0.0, 0.0, 0.0):
+                        shift = np.array([orig_t[0] - ox, orig_t[1] - oy, orig_t[2] - oz], dtype=np.float32)
+                    elif len(pos) > 0 and abs(float(pos[0, 0])) > 10000.0:
                         shift = np.array([-ox, -oy, -oz], dtype=np.float32)
+                    elif root_tf_offset != (0.0, 0.0, 0.0):
+                        shift = np.array(
+                            [root_tf_offset[0] - ox, root_tf_offset[1] - oy, root_tf_offset[2] - oz],
+                            dtype=np.float32,
+                        )
                     else:
-                        shift = np.array([t_node[0] - ox, t_node[1] - oy, t_node[2] - oz], dtype=np.float32)
+                        shift = np.zeros(3, dtype=np.float32)
                     pts_all.append(pos + shift)
         finally:
-            if os.path.exists(tmp_g):
-                try:
-                    os.remove(tmp_g)
-                except OSError:
-                    pass
+            for p_rm in (tmp_in, tmp_g):
+                if os.path.exists(p_rm):
+                    try:
+                        os.remove(p_rm)
+                    except OSError:
+                        pass
 
     if not pts_all:
         return None
@@ -253,6 +298,91 @@ BASIS({{ wasmBinary: wasmBin }}).then(Module => {{
     return out_bin_path, meta_list
 
 
+def _eval_shelf_width(
+    pw_arr: np.ndarray,
+    ph_arr: np.ndarray,
+    order: np.ndarray,
+    target_w: int,
+) -> Tuple[int, int, np.ndarray, np.ndarray]:
+    n = len(pw_arr)
+    dst_x = np.zeros(n, dtype=np.int32)
+    dst_y = np.zeros(n, dtype=np.int32)
+    cur_x = 0
+    cur_y = 0
+    shelf_h = 0
+    max_used_w = 0
+    for idx in order:
+        w_i = int(pw_arr[idx])
+        h_i = int(ph_arr[idx])
+        if cur_x > 0 and cur_x + w_i > target_w:
+            cur_y += shelf_h
+            cur_x = 0
+            shelf_h = 0
+        dst_x[idx] = cur_x
+        dst_y[idx] = cur_y
+        cur_x += w_i
+        if cur_x > max_used_w:
+            max_used_w = cur_x
+        if h_i > shelf_h:
+            shelf_h = h_i
+    return max(16, max_used_w), max(16, cur_y + shelf_h), dst_x, dst_y
+
+
+def _solve_shelf_layout(
+    pw_arr: np.ndarray,
+    ph_arr: np.ndarray,
+    max_tex_dim: int = 4096,
+) -> Tuple[int, int, np.ndarray, np.ndarray]:
+    order = np.lexsort((-pw_arr, -ph_arr))
+    max_pw = int(np.max(pw_arr))
+    total_area = int(np.sum(pw_arr.astype(np.int64) * ph_arr.astype(np.int64)))
+    ideal_w = max(max_pw, int(math.ceil(math.sqrt(total_area * 1.06))))
+
+    # First check if packing at max_tex_dim fits within max_tex_dim x max_tex_dim (1:1 lossless)
+    if max_pw <= max_tex_dim:
+        aw_max, ah_max, dx_max, dy_max = _eval_shelf_width(pw_arr, ph_arr, order, max_tex_dim)
+        if aw_max <= max_tex_dim and ah_max <= max_tex_dim:
+            # Search for the most compact width <= max_tex_dim that still keeps ah <= max_tex_dim
+            best = (aw_max, ah_max, dx_max, dy_max)
+            best_area = aw_max * ah_max
+            lo_w = min(max_tex_dim, max(64, ((ideal_w + 15) // 16) * 16))
+            for step_i in range(10):
+                cand_w = lo_w + int(round((max_tex_dim - lo_w) * (step_i / 9.0)))
+                cand_w = max(max_pw, min(max_tex_dim, ((cand_w + 15) // 16) * 16))
+                aw_c, ah_c, dx_c, dy_c = _eval_shelf_width(pw_arr, ph_arr, order, cand_w)
+                if aw_c <= max_tex_dim and ah_c <= max_tex_dim and (aw_c * ah_c) <= best_area:
+                    best = (aw_c, ah_c, dx_c, dy_c)
+                    best_area = aw_c * ah_c
+            return best
+
+    # Coarse overview fallback (when total_area exceeds max_tex_dim^2): balance aspect ratio ~1:1
+    target_w = max(64, ((ideal_w + 15) // 16) * 16)
+    best_bal = _eval_shelf_width(pw_arr, ph_arr, order, target_w)
+    best_max_dim = max(best_bal[0], best_bal[1])
+    for mult in (1.05, 1.12, 1.20, 1.30):
+        cand_w = max(max_pw, ((int(math.ceil(ideal_w * mult)) + 15) // 16) * 16)
+        res = _eval_shelf_width(pw_arr, ph_arr, order, cand_w)
+        if max(res[0], res[1]) < best_max_dim:
+            best_bal = res
+            best_max_dim = max(res[0], res[1])
+    return best_bal
+
+
+def _can_pack_cells_1to1(cells: List[Dict[str, Any]], max_tex_dim: int = 4096) -> bool:
+    if not cells:
+        return True
+    gutter = 2 if len(cells) > 1 else 0
+    pw_arr = np.array([int(c["cw"]) + 2 * gutter for c in cells], dtype=np.int32)
+    ph_arr = np.array([int(c["ch"]) + 2 * gutter for c in cells], dtype=np.int32)
+    if int(np.max(pw_arr)) > max_tex_dim or int(np.max(ph_arr)) > max_tex_dim:
+        return False
+    if int(np.sum(pw_arr.astype(np.int64) * ph_arr.astype(np.int64))) > max_tex_dim * max_tex_dim:
+        return False
+    order = np.lexsort((-pw_arr, -ph_arr))
+    aw, ah, _, _ = _eval_shelf_width(pw_arr, ph_arr, order, max_tex_dim)
+    return aw <= max_tex_dim and ah <= max_tex_dim
+
+
 def _pack_cells_to_glb_tile(
     cells: List[Dict[str, Any]],
     rgb_mmap: np.memmap,
@@ -264,7 +394,7 @@ def _pack_cells_to_glb_tile(
 ) -> Tuple[int, int, Tuple[int, int], np.ndarray, np.ndarray]:
     """
     Packs a list of decoded native octree cells into a single standard GLB tile:
-      1. Shelf-packs each cell's active cropped RGB texture patch into a single atlas.
+      1. Shelf-packs each cell's active cropped RGB texture patch (with a 2px clamped edge gutter) into a single atlas.
       2. Remaps each cell's glTF 2.0 TEXCOORD_0 into the packed atlas.
       3. Concatenates POSITION, TEXCOORD_0, and triangle indices.
       4. Compresses geometry with `gltfpack -vp 16 -vt 16 -cc` (no `-si` decimation when `target_tris is None`),
@@ -272,37 +402,13 @@ def _pack_cells_to_glb_tile(
     Returns `(final_tris, file_bytes, (tex_w, tex_h), bmin_local, bmax_local)`.
     """
     n_cells = len(cells)
+    gutter = 2 if n_cells > 1 else 0
     cw_arr = np.array([int(c["cw"]) for c in cells], dtype=np.int32)
     ch_arr = np.array([int(c["ch"]) for c in cells], dtype=np.int32)
-    total_area = int(np.sum(cw_arr.astype(np.int64) * ch_arr.astype(np.int64)))
+    pw_arr = cw_arr + 2 * gutter
+    ph_arr = ch_arr + 2 * gutter
 
-    target_W = max(int(np.max(cw_arr)), int(math.ceil(math.sqrt(total_area * 1.10))))
-    target_W = max(64, ((target_W + 15) // 16) * 16)
-
-    order = np.argsort(-ch_arr)
-    dst_x = np.zeros(n_cells, dtype=np.int32)
-    dst_y = np.zeros(n_cells, dtype=np.int32)
-    cur_x = 0
-    cur_y = 0
-    shelf_h = 0
-    max_used_w = 0
-    for idx in order:
-        w_i = int(cw_arr[idx])
-        h_i = int(ch_arr[idx])
-        if cur_x > 0 and cur_x + w_i > target_W:
-            cur_y += shelf_h
-            cur_x = 0
-            shelf_h = 0
-        dst_x[idx] = cur_x
-        dst_y[idx] = cur_y
-        cur_x += w_i
-        if cur_x > max_used_w:
-            max_used_w = cur_x
-        if h_i > shelf_h:
-            shelf_h = h_i
-
-    atlas_W = max(16, max_used_w)
-    atlas_H = max(16, cur_y + shelf_h)
+    atlas_W, atlas_H, dst_x, dst_y = _solve_shelf_layout(pw_arr, ph_arr, max_tex_dim=max_tex_dim)
     atlas_rgb = np.zeros((atlas_H, atlas_W, 3), dtype=np.uint8)
 
     pos_list: List[np.ndarray] = []
@@ -321,15 +427,21 @@ def _pack_cells_to_glb_tile(
         patch = raw_rgb[py0:py1, px0:px1]
         ph, pw = patch.shape[0], patch.shape[1]
         dx, dy = int(dst_x[idx]), int(dst_y[idx])
-        atlas_rgb[dy : dy + ph, dx : dx + pw] = patch
+        if gutter > 0:
+            padded = np.pad(patch, ((gutter, gutter), (gutter, gutter), (0, 0)), mode="edge")
+            atlas_rgb[dy : dy + ph + 2 * gutter, dx : dx + pw + 2 * gutter] = padded
+        else:
+            atlas_rgb[dy : dy + ph, dx : dx + pw] = patch
 
+        ix = dx + gutter
+        iy = dy + gutter
         c_pos = c["pos"]
         c_uv = c["uv"]
         c_tris = c["tris"]
 
         remapped_uv = np.empty_like(c_uv, dtype=np.float32)
-        remapped_uv[:, 0] = np.clip((dx + (c_uv[:, 0] * w_full - px0)) / float(atlas_W), 0.0, 1.0)
-        remapped_uv[:, 1] = np.clip((dy + (c_uv[:, 1] * h_full - py0)) / float(atlas_H), 0.0, 1.0)
+        remapped_uv[:, 0] = np.clip((ix + (c_uv[:, 0] * w_full - px0)) / float(atlas_W), 0.0, 1.0)
+        remapped_uv[:, 1] = np.clip((iy + (c_uv[:, 1] * h_full - py0)) / float(atlas_H), 0.0, 1.0)
 
         pos_list.append(c_pos)
         uv_list.append(remapped_uv)
@@ -345,7 +457,10 @@ def _pack_cells_to_glb_tile(
 
     pil_atlas = Image.fromarray(atlas_rgb)
     if pil_atlas.width > max_tex_dim or pil_atlas.height > max_tex_dim:
-        pil_atlas.thumbnail((max_tex_dim, max_tex_dim), Image.Resampling.LANCZOS)
+        scale = float(max_tex_dim) / float(max(pil_atlas.width, pil_atlas.height))
+        new_w = max(16, int(round(pil_atlas.width * scale)))
+        new_h = max(16, int(round(pil_atlas.height * scale)))
+        pil_atlas = pil_atlas.resize((new_w, new_h), Image.Resampling.LANCZOS)
     final_tex_dims = (pil_atlas.width, pil_atlas.height)
     jpeg_buf = io.BytesIO()
     pil_atlas.save(jpeg_buf, format="JPEG", quality=jpeg_quality, optimize=True)
@@ -551,7 +666,10 @@ def build_tileset_from_pix4d_native_octree(
     grid_occ = occ_mask["occ"] if occ_mask else None
 
     cell_records: Dict[Tuple[int, int, int, int], Dict[str, Any]] = {}
-    for c, fp in sorted(all_files.items()):
+
+    def _load_single_cell_record(
+        c: Tuple[int, int, int, int], fp: str, apply_focal_filter: bool = True
+    ) -> Optional[Dict[str, Any]]:
         lvl = c[0]
         with open(fp, "rb") as f:
             raw = f.read()
@@ -563,12 +681,12 @@ def build_tileset_from_pix4d_native_octree(
 
         if vmin_occ is not None and vmax_occ is not None:
             if not (np.all(bmax >= vmin_occ) and np.all(bmin <= vmax_occ)):
-                continue
+                return None
 
-        if focal_bbox_local is not None and lvl > outer_max_level:
+        if apply_focal_filter and focal_bbox_local is not None and lvl > outer_max_level:
             fmin, fmax = focal_bbox_local
             if not (np.all(bmax >= fmin) and np.all(bmin <= fmax)):
-                continue
+                return None
 
         boff = 28 + jlen
         b = memoryview(raw)[boff:]
@@ -590,12 +708,12 @@ def build_tileset_from_pix4d_native_octree(
             tc = pos[tris].mean(axis=1)
             in_box = np.all((tc >= vmin_occ) & (tc <= vmax_occ), axis=1)
             if not np.any(in_box):
-                continue
+                return None
             tc_ijk = np.floor((tc[in_box] - vmin_occ) / res_occ).astype(int)
             tc_ijk = np.clip(tc_ijk, 0, np.array(grid_occ.shape) - 1)
             sub_keep = grid_occ[tc_ijk[:, 0], tc_ijk[:, 1], tc_ijk[:, 2]]
             if not np.any(sub_keep):
-                continue
+                return None
             keep_mask = np.zeros(len(tris), dtype=bool)
             keep_mask[np.nonzero(in_box)[0][sub_keep]] = True
             kept_tris = tris[keep_mask]
@@ -627,7 +745,7 @@ def build_tileset_from_pix4d_native_octree(
         cw = max(1, px1 - px0)
         ch = max(1, py1 - py0)
 
-        cell_records[c] = {
+        return {
             "coord": c,
             "fp": fp,
             "pos": pos,
@@ -649,8 +767,51 @@ def build_tileset_from_pix4d_native_octree(
             "ktx_byte_length": ktx_len,
         }
 
+    for c, fp in sorted(all_files.items()):
+        rec = _load_single_cell_record(c, fp, apply_focal_filter=True)
+        if rec is not None:
+            cell_records[c] = rec
+
     if not cell_records:
         raise RuntimeError("No octree cells survived spatial filtering")
+
+    # Enforce Ancestor + Sibling Octant Closure to fixed point so no subdivided parent node ever loses child octants under REPLACE
+    raw_children_by_parent: Dict[Tuple[int, int, int, int], List[Tuple[int, int, int, int]]] = {}
+    for c_raw in sorted(all_files.keys()):
+        if c_raw[0] > 2:
+            p_raw = (c_raw[0] - 1, c_raw[1] // 2, c_raw[2] // 2, c_raw[3] // 2)
+            raw_children_by_parent.setdefault(p_raw, []).append(c_raw)
+
+    while True:
+        added_in_pass = False
+        # 1. Ensure every surviving cell's parent up to L2 is present in cell_records
+        for c_surv in sorted(cell_records.keys()):
+            if c_surv[0] > 2:
+                p_surv = (c_surv[0] - 1, c_surv[1] // 2, c_surv[2] // 2, c_surv[3] // 2)
+                if p_surv not in cell_records and p_surv in all_files:
+                    p_rec = _load_single_cell_record(p_surv, all_files[p_surv], apply_focal_filter=False)
+                    if p_rec is not None:
+                        cell_records[p_surv] = p_rec
+                        added_in_pass = True
+
+        # 2. Ensure every parent with >=1 surviving child includes all its valid sibling octants
+        active_parents: Set[Tuple[int, int, int, int]] = set()
+        for c_surv in list(cell_records.keys()):
+            if c_surv[0] > 2:
+                p_surv = (c_surv[0] - 1, c_surv[1] // 2, c_surv[2] // 2, c_surv[3] // 2)
+                if p_surv in cell_records:
+                    active_parents.add(p_surv)
+
+        for p_act in sorted(active_parents):
+            for sib_c in raw_children_by_parent.get(p_act, []):
+                if sib_c not in cell_records:
+                    sib_rec = _load_single_cell_record(sib_c, all_files[sib_c], apply_focal_filter=False)
+                    if sib_rec is not None:
+                        cell_records[sib_c] = sib_rec
+                        added_in_pass = True
+
+        if not added_in_pass:
+            break
 
     # Build octree parent-child adjacency over surviving cells
     children_map: Dict[Tuple[int, int, int, int], List[Tuple[int, int, int, int]]] = {
@@ -715,23 +876,26 @@ def build_tileset_from_pix4d_native_octree(
             min_lvl = min(c[0] for c in cell_records)
             l2_coords = sorted(c for c in cell_records if c[0] == min_lvl)
 
+        from concurrent.futures import ThreadPoolExecutor
+
         root_cells = [cell_records[c] for c in l2_coords]
         root_glb_path = os.path.join(tiles_out_dir, "root.glb")
-        _, root_bytes, _, root_bmin, root_bmax = _pack_cells_to_glb_tile(
-            cells=root_cells,
-            rgb_mmap=rgb_mmap,
-            out_glb_path=root_glb_path,
-            offset_xyz=(ox, oy, oz),
-            max_tex_dim=2048,
-            target_tris=150000,
-            jpeg_quality=86,
-        )
-        stats["total_tiles"] += 1
-        stats["total_bytes"] += root_bytes
-
+        root_bmin = np.min(np.vstack([c["bmin"] for c in root_cells]), axis=0)
+        root_bmax = np.max(np.vstack([c["bmax"] for c in root_cells]), axis=0)
         diag = float(np.linalg.norm(root_bmax - root_bmin))
         root_error = max(24.0, round(diag / 4.0, 2))
 
+        pack_jobs: List[Dict[str, Any]] = [
+            {
+                "cells": root_cells,
+                "out_glb_path": root_glb_path,
+                "max_tex_dim": 2048,
+                "target_tris": 150000,
+                "jpeg_quality": 86,
+                "is_leaf": False,
+                "is_root": True,
+            }
+        ]
         leaf_counter = [0]
 
         def _build_leaf_node_from_coords(
@@ -744,20 +908,19 @@ def build_tileset_from_pix4d_native_octree(
             tile_rel = f"tiles/{node_tag}.glb"
             tile_abs = os.path.join(staging_dir, tile_rel)
             l_cells = [cell_records[x] for x in leaf_coords]
-            f_tris, f_bytes, f_dims, bmin_l, bmax_l = _pack_cells_to_glb_tile(
-                cells=l_cells,
-                rgb_mmap=rgb_mmap,
-                out_glb_path=tile_abs,
-                offset_xyz=(ox, oy, oz),
-                max_tex_dim=4096,
-                target_tris=None,  # Zero triangle decimation on finest leaf macro-tiles!
-                jpeg_quality=88,
+            bmin_l = np.min(np.vstack([c["bmin"] for c in l_cells]), axis=0)
+            bmax_l = np.max(np.vstack([c["bmax"] for c in l_cells]), axis=0)
+            pack_jobs.append(
+                {
+                    "cells": l_cells,
+                    "out_glb_path": tile_abs,
+                    "max_tex_dim": 4096,
+                    "target_tris": None,  # Zero triangle decimation on finest leaf macro-tiles!
+                    "jpeg_quality": 88,
+                    "is_leaf": True,
+                    "is_root": False,
+                }
             )
-            stats["total_tiles"] += 1
-            stats["leaf_tiles"] += 1
-            stats["leaf_triangles"] += f_tris
-            stats["leaf_texels_mp"] += (f_dims[0] * f_dims[1]) / 1e6
-            stats["total_bytes"] += f_bytes
             return {
                 "boundingVolume": {"box": _compute_3dtiles_box(bmin_l, bmax_l, ox, oy, oz)},
                 "geometricError": 0.0,
@@ -776,24 +939,29 @@ def build_tileset_from_pix4d_native_octree(
             tot_tris = sum(cell_records[x]["n_tris"] for x in leaves)
 
             tag = f"tile_d{depth}_l{c[0]}_{c[1]}_{c[2]}_{c[3]}"
-            if tot_tex <= max_leaf_texels and tot_tris <= max_leaf_tris:
+            if (
+                tot_tex <= max_leaf_texels
+                and tot_tris <= max_leaf_tris
+                and _can_pack_cells_1to1([cell_records[x] for x in leaves], max_tex_dim=4096)
+            ):
                 return _build_leaf_node_from_coords(leaves, depth, tag)
 
             # Internal LOD node: export `c`'s own intermediate Pix4Dmatic cell mesh
             tile_rel = f"tiles/{tag}.glb"
             tile_abs = os.path.join(staging_dir, tile_rel)
-            _, i_bytes, _, bmin_i, bmax_i = _pack_cells_to_glb_tile(
-                cells=[cell_records[c]],
-                rgb_mmap=rgb_mmap,
-                out_glb_path=tile_abs,
-                offset_xyz=(ox, oy, oz),
-                max_tex_dim=2048,
-                target_tris=120000,
-                jpeg_quality=85,
+            bmin_i = cell_records[c]["bmin"]
+            bmax_i = cell_records[c]["bmax"]
+            pack_jobs.append(
+                {
+                    "cells": [cell_records[c]],
+                    "out_glb_path": tile_abs,
+                    "max_tex_dim": 2048,
+                    "target_tris": 120000,
+                    "jpeg_quality": 85,
+                    "is_leaf": False,
+                    "is_root": False,
+                }
             )
-            stats["total_tiles"] += 1
-            stats["internal_tiles"] += 1
-            stats["total_bytes"] += i_bytes
 
             node_err = round(max(0.25, parent_err / 2.2), 3)
             child_nodes: List[Dict[str, Any]] = []
@@ -803,18 +971,27 @@ def build_tileset_from_pix4d_native_octree(
                 ch_leaves = _get_true_leaves(ch)
                 ch_tex = sum(cell_records[x]["texels"] for x in ch_leaves)
                 ch_tris = sum(cell_records[x]["n_tris"] for x in ch_leaves)
-                if ch_tex <= max_leaf_texels and ch_tris <= max_leaf_tris:
+                if (
+                    ch_tex <= max_leaf_texels
+                    and ch_tris <= max_leaf_tris
+                    and _can_pack_cells_1to1([cell_records[x] for x in ch_leaves], max_tex_dim=4096)
+                ):
                     ready_siblings.append((ch, ch_leaves, ch_tris, ch_tex))
                 else:
                     child_nodes.append(_build_subtree_node(ch, depth + 1, node_err))
 
-            # Greedily bin-pack leaf-ready sibling octants under `c` into well-filled <= 4096x4096 leaf macro-tiles
+            # Greedily bin-pack leaf-ready sibling octants under `c` into guaranteed 1:1 <= 4096x4096 leaf macro-tiles
             cur_leaves: List[Tuple[int, int, int, int]] = []
             cur_tris = 0
             cur_tex = 0
             pack_idx = 0
             for ch, ch_leaves, ch_tris, ch_tex in ready_siblings:
-                if cur_leaves and (cur_tex + ch_tex > max_leaf_texels or cur_tris + ch_tris > max_leaf_tris):
+                cand_leaves = cur_leaves + list(ch_leaves)
+                if cur_leaves and (
+                    cur_tex + ch_tex > max_leaf_texels
+                    or cur_tris + ch_tris > max_leaf_tris
+                    or not _can_pack_cells_1to1([cell_records[x] for x in cand_leaves], max_tex_dim=4096)
+                ):
                     pack_tag = f"{tag}_leaf{pack_idx}"
                     child_nodes.append(_build_leaf_node_from_coords(cur_leaves, depth + 1, pack_tag))
                     pack_idx += 1
@@ -822,15 +999,15 @@ def build_tileset_from_pix4d_native_octree(
                     cur_tris = ch_tris
                     cur_tex = ch_tex
                 else:
-                    cur_leaves.extend(ch_leaves)
+                    cur_leaves = cand_leaves
                     cur_tris += ch_tris
                     cur_tex += ch_tex
             if cur_leaves:
                 pack_tag = f"{tag}_leaf{pack_idx}"
                 child_nodes.append(_build_leaf_node_from_coords(cur_leaves, depth + 1, pack_tag))
 
-            all_sub_bmins = [bmin_i] + [cell_records[x]["bmin"] for x in leaves]
-            all_sub_bmaxs = [bmax_i] + [cell_records[x]["bmax"] for x in leaves]
+            all_sub_bmins = [cell_records[x]["bmin"] for x in leaves] if leaves else [bmin_i]
+            all_sub_bmaxs = [cell_records[x]["bmax"] for x in leaves] if leaves else [bmax_i]
             u_bmin = np.min(np.vstack(all_sub_bmins), axis=0)
             u_bmax = np.max(np.vstack(all_sub_bmaxs), axis=0)
 
@@ -845,6 +1022,29 @@ def build_tileset_from_pix4d_native_octree(
         root_children: List[Dict[str, Any]] = []
         for r_coord in l2_coords:
             root_children.append(_build_subtree_node(r_coord, 1, root_error))
+
+        def _run_pack_job(job: Dict[str, Any]) -> Tuple[Dict[str, Any], int, int, Tuple[int, int]]:
+            f_tris, f_bytes, f_dims, _, _ = _pack_cells_to_glb_tile(
+                cells=job["cells"],
+                rgb_mmap=rgb_mmap,
+                out_glb_path=job["out_glb_path"],
+                offset_xyz=(ox, oy, oz),
+                max_tex_dim=job["max_tex_dim"],
+                target_tris=job["target_tris"],
+                jpeg_quality=job["jpeg_quality"],
+            )
+            return job, f_tris, f_bytes, f_dims
+
+        with ThreadPoolExecutor(max_workers=min(8, max(1, len(pack_jobs)))) as pool:
+            for job_res, f_tris, f_bytes, f_dims in pool.map(_run_pack_job, pack_jobs):
+                stats["total_tiles"] += 1
+                stats["total_bytes"] += f_bytes
+                if job_res["is_leaf"]:
+                    stats["leaf_tiles"] += 1
+                    stats["leaf_triangles"] += f_tris
+                    stats["leaf_texels_mp"] += (f_dims[0] * f_dims[1]) / 1e6
+                elif not job_res["is_root"]:
+                    stats["internal_tiles"] += 1
 
         all_bmins = [rec["bmin"] for rec in ordered_recs]
         all_bmaxs = [rec["bmax"] for rec in ordered_recs]
@@ -887,13 +1087,40 @@ def build_tileset_from_pix4d_native_octree(
             shutil.rmtree(old_swap, ignore_errors=True)
 
         final_ts_json = os.path.join(final_tileset_dir, "tileset.json")
+        scan_id_str = os.path.basename(target_proj_dir.rstrip("\\/"))
         try:
-            ensure_scan_low_quality_preview(final_ts_json, target_proj_dir)
-            ensure_scan_full_quality_thumbnail(
-                os.path.basename(target_proj_dir.rstrip("\\/")), final_ts_json, target_proj_dir
-            )
+            ensure_scan_low_quality_preview(final_ts_json, force=True)
+            ensure_scan_full_quality_thumbnail(final_ts_json, scan_id_str, target_proj_dir)
         except Exception as pe:
             print(f"[NativeOctreeBuilder] Warning building preview/thumbnail: {pe}")
+
+        # Persist accurate poly_count and size_bytes to scan_meta.json and ScanQueueDB
+        try:
+            meta_p = os.path.join(target_proj_dir, "scan_meta.json")
+            meta_obj: Dict[str, Any] = {}
+            if os.path.isfile(meta_p):
+                with open(meta_p, "r", encoding="utf-8") as mf:
+                    meta_obj = json.load(mf)
+            meta_obj["poly_count"] = int(stats["leaf_triangles"])
+            meta_obj["size_bytes"] = int(stats["total_bytes"])
+            meta_obj["tileset_path"] = final_ts_json
+            with open(meta_p, "w", encoding="utf-8") as mf:
+                json.dump(meta_obj, mf, indent=2)
+        except Exception as me:
+            print(f"[NativeOctreeBuilder] Warning updating scan_meta.json: {me}")
+
+        try:
+            from pc_worker.priority_queue import ScanQueueDB
+            db = ScanQueueDB()
+            existing = db.get_scan(scan_id_str)
+            if existing:
+                upd = dict(existing)
+                upd["size_bytes"] = int(stats["total_bytes"])
+                upd["poly_count"] = int(stats["leaf_triangles"])
+                upd["tileset_path"] = final_ts_json
+                db.upsert_scan(upd)
+        except Exception as de:
+            print(f"[NativeOctreeBuilder] Warning updating ScanQueueDB: {de}")
 
         stats["duration_s"] = round(time.time() - t0, 2)
         stats["tileset_path"] = final_ts_json

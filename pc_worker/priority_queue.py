@@ -353,7 +353,7 @@ class ScanQueueDB:
                     extra_payload.update(parsed_ex)
             except Exception:
                 pass
-        for ex_k in ("merged_from", "derived_from_scan_id", "applied_adjustments"):
+        for ex_k in ("merged_from", "derived_from_scan_id", "applied_adjustments", "poly_count"):
             if ex_k in scan_data and scan_data[ex_k] not in (None, "", [], {}):
                 extra_payload[ex_k] = scan_data[ex_k]
         for pass_k in ("quality_stage", "pending_pass"):
@@ -1467,14 +1467,24 @@ class ScanQueueDB:
                     with open(meta_fp, "r", encoding="utf-8") as mf:
                         m_obj = json.load(mf)
                     if isinstance(m_obj, dict):
-                        for ex_k in ("merged_from", "derived_from_scan_id", "applied_adjustments"):
+                        for ex_k in ("merged_from", "derived_from_scan_id", "applied_adjustments", "poly_count"):
                             if ex_k in m_obj and m_obj[ex_k] not in (None, "", [], {}):
                                 extra_dict[ex_k] = m_obj[ex_k]
                         if not d.get("tileset_version") and m_obj.get("tileset_version"):
                             d["tileset_version"] = int(m_obj["tileset_version"])
                 except Exception:
                     pass
-        for ex_k in ("merged_from", "derived_from_scan_id", "applied_adjustments"):
+        if "poly_count" not in extra_dict and d.get("project_dir"):
+            meta_fp2 = os.path.join(str(d["project_dir"]), "scan_meta.json")
+            if os.path.isfile(meta_fp2):
+                try:
+                    with open(meta_fp2, "r", encoding="utf-8") as mf2:
+                        m_obj2 = json.load(mf2)
+                    if isinstance(m_obj2, dict) and m_obj2.get("poly_count"):
+                        extra_dict["poly_count"] = int(m_obj2["poly_count"])
+                except Exception:
+                    pass
+        for ex_k in ("merged_from", "derived_from_scan_id", "applied_adjustments", "poly_count"):
             if ex_k in extra_dict:
                 d[ex_k] = extra_dict[ex_k]
         status_str = str(d.get("status") or "queued")

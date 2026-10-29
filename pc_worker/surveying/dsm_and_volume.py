@@ -291,8 +291,13 @@ class DsmAndVolumeMixin:
         return None
 
     @staticmethod
-    def _collect_scan_glb_files(scan: Dict[str, Any]) -> List[str]:
-        """Collects active leaf .glb tile paths for a scan (ordered largest-first), excluding backups/previews."""
+    def _collect_scan_glb_files(scan: Dict[str, Any], max_tiles: int = 64) -> List[str]:
+        """
+        Collects active .glb tile paths for a scan (ordered largest-first), excluding backups/previews.
+        When a deep hierarchical 3D Tileset (`refine: REPLACE`) has more than `max_tiles` leaves (and `max_tiles > 0`),
+        selects the deepest complete Horizon Cut across the octree that fits within `max_tiles` so 100% of the
+        scan's spatial footprint is covered without missing regions.
+        """
         scan_id = str(scan.get("scan_id") or "")
         proj_dir = scan.get("project_dir") or os.path.join(SCANS_ROOT_DIR, scan_id)
         ts_path = scan.get("tileset_path") or os.path.join(proj_dir, "tileset", "tileset.json")
@@ -307,34 +312,65 @@ class DsmAndVolumeMixin:
                         ts_doc = json.load(tf)
                     leaf_glbs: List[str] = []
                     all_glbs: List[str] = []
+                    max_tree_d = [0]
 
-                    def _walk_glbs(nd: Dict[str, Any]) -> None:
+                    def _walk_glbs(nd: Dict[str, Any], d: int = 0) -> None:
+                        if d > max_tree_d[0]:
+                            max_tree_d[0] = d
                         cnt = nd.get("content")
                         uri = (cnt.get("uri") or cnt.get("url") or "") if isinstance(cnt, dict) else ""
                         uri_clean = uri.split("?")[0]
                         fp = os.path.join(ts_base_dir, uri_clean.replace("/", os.sep)) if uri_clean else ""
-                        chs = nd.get("children") or []
+                        chs = [c_nd for c_nd in (nd.get("children") or []) if isinstance(c_nd, dict)]
                         if fp and os.path.isfile(fp) and fp.lower().endswith(".glb"):
                             all_glbs.append(fp)
                             if not chs:
                                 leaf_glbs.append(fp)
                         for c_nd in chs:
-                            if isinstance(c_nd, dict):
-                                _walk_glbs(c_nd)
+                            _walk_glbs(c_nd, d + 1)
 
-                    if isinstance(ts_doc.get("root"), dict):
-                        _walk_glbs(ts_doc["root"])
-                    if len(leaf_glbs) > 64 and all_glbs:
+                    def _walk_horizon_cut(nd: Dict[str, Any], cur_d: int, target_d: int, out_cut: List[str]) -> None:
+                        cnt = nd.get("content")
+                        uri = (cnt.get("uri") or cnt.get("url") or "").split("?")[0] if isinstance(cnt, dict) else ""
+                        fp = os.path.join(ts_base_dir, uri.replace("/", os.sep)) if uri else ""
+                        chs = [c_nd for c_nd in (nd.get("children") or []) if isinstance(c_nd, dict)]
+                        if cur_d >= target_d or not chs:
+                            if fp and os.path.isfile(fp) and fp.lower().endswith(".glb"):
+                                out_cut.append(fp)
+                            return
+                        for c_nd in chs:
+                            _walk_horizon_cut(c_nd, cur_d + 1, target_d, out_cut)
+
+                    root_nd = ts_doc.get("root")
+                    if isinstance(root_nd, dict):
+                        _walk_glbs(root_nd, 0)
+                        if max_tiles > 0 and len(leaf_glbs) > max_tiles:
+                            best_cut: List[str] = []
+                            for td in range(1, max_tree_d[0] + 1):
+                                cut_td: List[str] = []
+                                _walk_horizon_cut(root_nd, 0, td, cut_td)
+                                cut_td = list(dict.fromkeys(cut_td))
+                                if 1 <= len(cut_td) <= max_tiles:
+                                    best_cut = cut_td
+                                elif len(cut_td) > max_tiles:
+                                    if not best_cut:
+                                        best_cut = cut_td
+                                    break
+                            if best_cut:
+                                glb_files = best_cut
+                    if not glb_files and max_tiles > 0 and len(leaf_glbs) > max_tiles and all_glbs:
                         lod_groups: Dict[int, List[str]] = {}
                         for g_fp in all_glbs:
-                            b_tok = os.path.basename(g_fp).split("_")[0]
-                            if b_tok.isdigit():
-                                lod_groups.setdefault(int(b_tok), []).append(g_fp)
+                            parts_b = os.path.splitext(os.path.basename(g_fp))[0].split("_")
+                            if parts_b and parts_b[0].isdigit():
+                                lod_groups.setdefault(int(parts_b[0]), []).append(g_fp)
+                            elif len(parts_b) >= 2 and parts_b[0].lower() == "tile" and parts_b[1].lower().startswith("d") and parts_b[1][1:].isdigit():
+                                lod_groups.setdefault(int(parts_b[1][1:]), []).append(g_fp)
                         if lod_groups:
-                            if 2 in lod_groups and 4 <= len(lod_groups[2]) <= 64:
+                            if 2 in lod_groups and 4 <= len(lod_groups[2]) <= max_tiles:
                                 glb_files = lod_groups[2]
                             else:
-                                valid_lods = [k for k, v in lod_groups.items() if 4 <= len(v) <= 64 and k <= 4]
+                                valid_lods = [k for k, v in lod_groups.items() if 4 <= len(v) <= max_tiles and k <= 4]
                                 if valid_lods:
                                     glb_files = lod_groups[max(valid_lods)]
                                 else:
@@ -357,17 +393,19 @@ class DsmAndVolumeMixin:
                     if "preview" not in g.lower() and "tileset_backup" not in g.lower() and "tileset_prev" not in g.lower()
                 ]
                 if found:
-                    if len(found) > 64:
+                    if max_tiles > 0 and len(found) > max_tiles:
                         lod_groups_f: Dict[int, List[str]] = {}
                         for g_fp in found:
-                            b_tok = os.path.basename(g_fp).split("_")[0]
-                            if b_tok.isdigit():
-                                lod_groups_f.setdefault(int(b_tok), []).append(g_fp)
+                            parts_b = os.path.splitext(os.path.basename(g_fp))[0].split("_")
+                            if parts_b and parts_b[0].isdigit():
+                                lod_groups_f.setdefault(int(parts_b[0]), []).append(g_fp)
+                            elif len(parts_b) >= 2 and parts_b[0].lower() == "tile" and parts_b[1].lower().startswith("d") and parts_b[1][1:].isdigit():
+                                lod_groups_f.setdefault(int(parts_b[1][1:]), []).append(g_fp)
                         if lod_groups_f:
-                            if 2 in lod_groups_f and 4 <= len(lod_groups_f[2]) <= 64:
+                            if 2 in lod_groups_f and 4 <= len(lod_groups_f[2]) <= max_tiles:
                                 found = lod_groups_f[2]
                             else:
-                                valid_lods_f = [k for k, v in lod_groups_f.items() if 4 <= len(v) <= 64 and k <= 4]
+                                valid_lods_f = [k for k, v in lod_groups_f.items() if 4 <= len(v) <= max_tiles and k <= 4]
                                 if valid_lods_f:
                                     found = lod_groups_f[max(valid_lods_f)]
                                 else:
@@ -666,13 +704,14 @@ class DsmAndVolumeMixin:
                         ts_doc_loaded = json.load(tf)
                 except Exception:
                     ts_doc_loaded = None
-            glb_files = self._collect_scan_glb_files(scan)
+            glb_files = self._collect_scan_glb_files(scan, max_tiles=64)
             if glb_files:
-                chunks = []
-                for gp in glb_files[:64]:
-                    v_arr = self._load_glb_vertices(gp)
-                    if v_arr is not None and len(v_arr) > 0:
-                        chunks.append(v_arr)
+                from concurrent.futures import ThreadPoolExecutor
+
+                target_glbs = glb_files[: max(64, len(glb_files))]
+                with ThreadPoolExecutor(max_workers=min(8, max(1, len(target_glbs)))) as pool:
+                    loaded_arrays = list(pool.map(self._load_glb_vertices, target_glbs))
+                chunks = [v_arr for v_arr in loaded_arrays if v_arr is not None and len(v_arr) > 0]
                 if chunks:
                     raw_verts = np.vstack(chunks)
                     geom_source = "glb"

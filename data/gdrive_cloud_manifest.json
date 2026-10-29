@@ -1,5 +1,5 @@
 {
-  "updated_at": 1793276111,
+  "updated_at": 1793279161,
   "shared_drive_dir": "G:\\Shared drives\\6.軟體\\3. GatheringScans\\StreamPackages",
   "my_drive_dir": "G:\\My Drive\\Scans\\StreamPackages",
   "shared_drive_folder_id": "1scUD9IQWsAJjg296pecxFYqhoVm4mpjs",
@@ -34,7 +34,7 @@
       "bounding_box_json": "{\"center\": [308121.469, 2774980.811, 4.87], \"half_extents\": [91.88, 126.18, 40.14]}",
       "status": "processing",
       "progress_pct": 22.8,
-      "stage_label": "PIX4Dmatic: Calibration (82% · Optimizing camera bundle) · 6%CPU · 64%RAM",
+      "stage_label": "PIX4Dmatic: Calibration (82% · Optimizing camera bundle) · 14%CPU · 64%RAM",
       "bypass_count": 0,
       "force_next": 1,
       "priority_score": 2000000959.215,
@@ -59,7 +59,7 @@
       "pending_pass": "full_hq",
       "comment_folders": [],
       "size_mb": 28206.38,
-      "wait_minutes": 1176.1,
+      "wait_minutes": 1227.0,
       "comments": [],
       "comment_count": 0,
       "measurement_bookmarks": [],
@@ -81,32 +81,32 @@
       "report_path": "",
       "cameras_dir": "C:\\GatheringScans\\catch_DaAn\\inputs",
       "image_count": 1852,
-      "size_bytes": 1024,
+      "size_bytes": 479635676,
       "rtk_accuracy_cm": 1.5,
       "crs": "TWD97 (121) + TWVD2001",
       "texture_resolution": 16384,
-      "lat": 25.032218308,
-      "lon": 121.537050082,
+      "lat": 25.032219173,
+      "lon": 121.537051237,
       "elev_m": 13.13,
-      "twd97_e": 304196.201,
-      "twd97_n": 2769453.605,
+      "twd97_e": 304196.317,
+      "twd97_n": 2769453.702,
       "twd97_h": 13.13,
-      "bounding_box_json": "{\"center\": [304196.201, 2769453.605, 13.13], \"half_extents\": [6.13, 3.43, 1.75]}",
+      "bounding_box_json": "{\"center\": [304196.317, 2769453.702, 13.13], \"half_extents\": [6.13, 3.43, 1.75]}",
       "status": "completed",
       "progress_pct": 100.0,
       "stage_label": "Edited (Deleted 23 region(s) (1 tris) · Cropped to 1 keep region(s))",
       "bypass_count": 0,
       "force_next": 0,
-      "priority_score": 1000000165.007,
+      "priority_score": 1000000216.005,
       "notes": "Edited from edited_daan_652376 (backup moved to Trash Bin): Deleted 23 region(s) (1 tris) · Cropped to 1 keep region(s)",
       "user_edited_name": 1,
       "covered_area_m2": 4767.3,
-      "tileset_version": 1793275577119,
-      "extra_json": "{\"derived_from_scan_id\": \"edited_daan_652376\", \"applied_adjustments\": [\"Deleted 23 region(s) (1 tris)\", \"Cropped to 1 keep region(s)\"]}",
+      "tileset_version": 1793279130183,
+      "extra_json": "{\"derived_from_scan_id\": \"edited_daan_652376\", \"applied_adjustments\": [\"Deleted 23 region(s) (1 tris)\", \"Cropped to 1 keep region(s)\"], \"quality_stage\": \"full_hq\", \"poly_count\": 28465708}",
       "bounding_box": {
         "center": [
-          304196.201,
-          2769453.605,
+          304196.317,
+          2769453.702,
           13.13
         ],
         "half_extents": [
@@ -123,8 +123,8 @@
       "quality_stage": "full_hq",
       "pending_pass": "",
       "comment_folders": [],
-      "size_mb": 0.0,
-      "wait_minutes": 165.3,
+      "size_mb": 457.42,
+      "wait_minutes": 216.1,
       "comments": [],
       "comment_count": 0,
       "measurement_bookmarks": [],
@@ -162,7 +162,7 @@
       "stage_label": "Completed (TWD97 (121) + TWVD2001, 16K HQ Web Tileset)",
       "bypass_count": 0,
       "force_next": 0,
-      "priority_score": 1000001263.629,
+      "priority_score": 1000001314.626,
       "notes": "Dynamically loaded from C:\\GatheringScans\\catch_QihuPark_20261028",
       "user_edited_name": 1,
       "covered_area_m2": 148.6,
@@ -184,7 +184,7 @@
       "pending_pass": "",
       "comment_folders": [],
       "size_mb": 1136.65,
-      "wait_minutes": 1185.3,
+      "wait_minutes": 1236.2,
       "comments": [],
       "comment_count": 0,
       "measurement_bookmarks": [],
@@ -222,7 +222,7 @@
       "stage_label": "Processed -> catch_LishanFinal (TWD97 + TWVD2001, 4K)",
       "bypass_count": 0,
       "force_next": 0,
-      "priority_score": 1000001747.931,
+      "priority_score": 1000001798.928,
       "notes": "Dynamically loaded from C:\\GatheringScans\\catch_LishanFinal",
       "user_edited_name": 0,
       "covered_area_m2": 71753.2,
@@ -244,7 +244,7 @@
       "pending_pass": "",
       "comment_folders": [],
       "size_mb": 19164.59,
-      "wait_minutes": 1748.2,
+      "wait_minutes": 1799.1,
       "comments": [],
       "comment_count": 0,
       "measurement_bookmarks": [],
@@ -282,7 +282,7 @@
       "stage_label": "Edited (Deleted 3 region(s) (1,280 tris))",
       "bypass_count": 0,
       "force_next": 0,
-      "priority_score": 1000001504.017,
+      "priority_score": 1000001555.015,
       "notes": "Edited from merged_qihu_merged_2026_10_28_77753 (backup moved to Trash Bin): Deleted 3 region(s) (1,280 tris)",
       "user_edited_name": 1,
       "covered_area_m2": 15814.2,
@@ -483,7 +483,7 @@
         "一般備註"
       ],
       "size_mb": 0.0,
-      "wait_minutes": 1504.3,
+      "wait_minutes": 1555.2,
       "comments": [
         {
           "comment_id": "cmt_1793017532792_2026_10_28_77753_026_10_28_858499",
@@ -796,7 +796,7 @@
       "stage_label": "Processed -> catch_QihuSide (TWD97 + TWVD2001, 4K)",
       "bypass_count": 0,
       "force_next": 0,
-      "priority_score": 1000001764.75,
+      "priority_score": 1000001815.745,
       "notes": "Dynamically loaded from C:\\GatheringScans\\catch_QihuSide",
       "user_edited_name": 0,
       "covered_area_m2": 7608.3,
@@ -818,7 +818,7 @@
       "pending_pass": "",
       "comment_folders": [],
       "size_mb": 13204.69,
-      "wait_minutes": 1765.0,
+      "wait_minutes": 1815.9,
       "comments": [],
       "comment_count": 0,
       "measurement_bookmarks": [],
@@ -856,7 +856,7 @@
       "stage_label": "Unified 6-Scan Full Merge (4K+16K multi-tile · Z-leveled dz=-0.097m · Trimmed 67,247 overlap skirt tris)",
       "bypass_count": 0,
       "force_next": 0,
-      "priority_score": 1000001179.973,
+      "priority_score": 1000001230.971,
       "notes": "Unified QiHu scan glueing merged_qihu_merged_2026_10_28_77753 + catch_QihuPark_20261028_HQ (dz=-0.097m)",
       "user_edited_name": 1,
       "covered_area_m2": 19551.3,
@@ -1082,7 +1082,7 @@
       "pending_pass": "",
       "comment_folders": [],
       "size_mb": 2231.63,
-      "wait_minutes": 1180.2,
+      "wait_minutes": 1231.1,
       "comments": [],
       "comment_count": 0,
       "measurement_bookmarks": [],
@@ -1120,7 +1120,7 @@
       "stage_label": "Edited (Deleted 27 region(s) (124,916 tris))",
       "bypass_count": 0,
       "force_next": 0,
-      "priority_score": 1000003082.547,
+      "priority_score": 1000003133.544,
       "notes": "Edited from edited_1021_908819 (backup moved to Trash Bin): Deleted 27 region(s) (124,916 tris)",
       "user_edited_name": 1,
       "covered_area_m2": 227674.2,
@@ -1146,7 +1146,7 @@
       "pending_pass": "",
       "comment_folders": [],
       "size_mb": 0.0,
-      "wait_minutes": 3082.8,
+      "wait_minutes": 3133.7,
       "comments": [],
       "comment_count": 0,
       "measurement_bookmarks": [],
@@ -1184,7 +1184,7 @@
       "stage_label": "Unified (4 Scans · Native 4K×4 Zero-Loss Multi-Tile)",
       "bypass_count": 0,
       "force_next": 0,
-      "priority_score": 1000007165.479,
+      "priority_score": 1000007216.477,
       "notes": "Unified scan merged from edited_qihutender_1_edited_346774, catch_QiHuTender_2, catch_QiHuTender_3, catch_QiHuTender_4 (Zero-Loss 4K per-scan multi-tile)",
       "user_edited_name": 1,
       "covered_area_m2": 11802.3,
@@ -1338,7 +1338,7 @@
       "pending_pass": "",
       "comment_folders": [],
       "size_mb": 196.62,
-      "wait_minutes": 7313.5,
+      "wait_minutes": 7364.4,
       "comments": [
         {
           "comment_id": "cmt_1793017532792",
@@ -1651,7 +1651,7 @@
       "stage_label": "Completed (TWD97 (121) + TWVD2001, 4K Web Tileset)",
       "bypass_count": 0,
       "force_next": 0,
-      "priority_score": 1000007356.777,
+      "priority_score": 1000007407.775,
       "notes": "Dynamically loaded from C:\\GatheringScans\\edited_qihutender_1_edited_346774",
       "user_edited_name": 1,
       "covered_area_m2": 6084.4,
@@ -1674,7 +1674,7 @@
       "pending_pass": "",
       "comment_folders": [],
       "size_mb": 111.8,
-      "wait_minutes": 7357.0,
+      "wait_minutes": 7407.9,
       "comments": [],
       "comment_count": 0,
       "measurement_bookmarks": [],
@@ -1712,7 +1712,7 @@
       "stage_label": "Processed -> catch_QiHuTender_4 (TWD97 + TWVD2001, 4K)",
       "bypass_count": 0,
       "force_next": 0,
-      "priority_score": 1000008571.512,
+      "priority_score": 1000008622.508,
       "notes": "Dynamically loaded from C:\\GatheringScans\\catch_QiHuTender_4",
       "user_edited_name": 0,
       "covered_area_m2": 8835.7,
@@ -1734,7 +1734,7 @@
       "pending_pass": "",
       "comment_folders": [],
       "size_mb": 6721.29,
-      "wait_minutes": 8571.7,
+      "wait_minutes": 8622.6,
       "comments": [],
       "comment_count": 0,
       "measurement_bookmarks": [],
@@ -1772,7 +1772,7 @@
       "stage_label": "Processed -> catch_QiHuTender_3 (TWD97 + TWVD2001, 4K)",
       "bypass_count": 0,
       "force_next": 0,
-      "priority_score": 1000008573.296,
+      "priority_score": 1000008624.292,
       "notes": "Dynamically loaded from C:\\GatheringScans\\catch_QiHuTender_3",
       "user_edited_name": 0,
       "covered_area_m2": 11207.3,
@@ -1794,7 +1794,7 @@
       "pending_pass": "",
       "comment_folders": [],
       "size_mb": 7192.61,
-      "wait_minutes": 8573.5,
+      "wait_minutes": 8624.4,
       "comments": [],
       "comment_count": 0,
       "measurement_bookmarks": [],
@@ -1832,7 +1832,7 @@
       "stage_label": "Processed -> catch_QiHuTender_2 (TWD97 + TWVD2001, 4K)",
       "bypass_count": 0,
       "force_next": 0,
-      "priority_score": 1000008493.242,
+      "priority_score": 1000008544.239,
       "notes": "Dynamically loaded from C:\\GatheringScans\\catch_QiHuTender_2",
       "user_edited_name": 0,
       "covered_area_m2": 4926.9,
@@ -1854,7 +1854,7 @@
       "pending_pass": "",
       "comment_folders": [],
       "size_mb": 7661.95,
-      "wait_minutes": 8493.5,
+      "wait_minutes": 8544.4,
       "comments": [],
       "comment_count": 0,
       "measurement_bookmarks": [],
@@ -1892,7 +1892,7 @@
       "stage_label": "Completed (TWD97 + TWVD2001, 4K Web Tileset)",
       "bypass_count": 0,
       "force_next": 1,
-      "priority_score": 1000008563.458,
+      "priority_score": 1000008614.456,
       "notes": "Dynamically loaded from C:\\GatheringScans\\catch_QiHuTender_1",
       "user_edited_name": 0,
       "covered_area_m2": 14118.6,
@@ -1914,7 +1914,7 @@
       "pending_pass": "",
       "comment_folders": [],
       "size_mb": 6878.16,
-      "wait_minutes": 10308.1,
+      "wait_minutes": 10359.0,
       "comments": [],
       "comment_count": 0,
       "measurement_bookmarks": [],
@@ -1952,7 +1952,7 @@
       "stage_label": "Processed -> catch_QuChi261016 (TWD97 + TWVD2001, 4K)",
       "bypass_count": 0,
       "force_next": 0,
-      "priority_score": 1000019090.461,
+      "priority_score": 1000019141.451,
       "notes": "Dynamically loaded from C:\\GatheringScans\\catch_QuChi261016",
       "user_edited_name": 0,
       "covered_area_m2": 36259.4,
@@ -1974,7 +1974,7 @@
       "pending_pass": "",
       "comment_folders": [],
       "size_mb": 34268.27,
-      "wait_minutes": 19090.7,
+      "wait_minutes": 19141.6,
       "comments": [],
       "comment_count": 0,
       "measurement_bookmarks": [],
@@ -2012,7 +2012,7 @@
       "stage_label": "Completed (TWD97 + TWVD2001, 4K Web Tileset)",
       "bypass_count": 0,
       "force_next": 0,
-      "priority_score": 1000017505.641,
+      "priority_score": 1000017556.639,
       "notes": "Dynamically loaded from C:\\GatheringScans\\QuChi261016_Trees",
       "user_edited_name": 1,
       "covered_area_m2": 49671.9,
@@ -2034,7 +2034,7 @@
       "pending_pass": "",
       "comment_folders": [],
       "size_mb": 506.77,
-      "wait_minutes": 17866.9,
+      "wait_minutes": 17917.8,
       "comments": [],
       "comment_count": 0,
       "measurement_bookmarks": [],
@@ -2072,7 +2072,7 @@
       "stage_label": "Completed (TWD97 + TWVD2001, 4K Web Tileset)",
       "bypass_count": 0,
       "force_next": 0,
-      "priority_score": 1000018982.435,
+      "priority_score": 1000019033.433,
       "notes": "Dynamically loaded from C:\\GatheringScans\\QuChi_20261015-obj_mesh",
       "user_edited_name": 1,
       "covered_area_m2": 45203.2,
@@ -2094,7 +2094,7 @@
       "pending_pass": "",
       "comment_folders": [],
       "size_mb": 128.83,
-      "wait_minutes": 18987.0,
+      "wait_minutes": 19037.9,
       "comments": [],
       "comment_count": 0,
       "measurement_bookmarks": [],
@@ -2132,7 +2132,7 @@
       "stage_label": "Completed (TWD97 + TWVD2001, 4K Web Tileset)",
       "bypass_count": 0,
       "force_next": 0,
-      "priority_score": 1000018982.431,
+      "priority_score": 1000019033.429,
       "notes": "Dynamically loaded from C:\\GatheringScans\\QuChi_20261015-cesium_mesh",
       "user_edited_name": 0,
       "covered_area_m2": 45203.2,
@@ -2154,7 +2154,7 @@
       "pending_pass": "",
       "comment_folders": [],
       "size_mb": 55.11,
-      "wait_minutes": 18982.7,
+      "wait_minutes": 19033.6,
       "comments": [],
       "comment_count": 0,
       "measurement_bookmarks": [],
@@ -2192,7 +2192,7 @@
       "stage_label": "Completed (TWD97 + TWVD2001, 4K Web Tileset)",
       "bypass_count": 0,
       "force_next": 0,
-      "priority_score": 1000020089.039,
+      "priority_score": 1000020140.037,
       "notes": "Merged from 3 PIX4Dcatch RTK walks in G:\\My Drive\\SCANS TEST (15-19-27, 15-37-05, 15-43-55). Converted to TWD97 (121) + TWVD2001 with 2K textures.",
       "user_edited_name": 0,
       "covered_area_m2": 149594.3,
@@ -2214,7 +2214,7 @@
       "pending_pass": "",
       "comment_folders": [],
       "size_mb": 109.91,
-      "wait_minutes": 25227.2,
+      "wait_minutes": 25278.1,
       "comments": [
         {
           "comment_id": "cmt_1792021676855",
@@ -2289,7 +2289,7 @@
       "stage_label": "Completed (TWD97 + TWVD2001, 4K Web Tileset)",
       "bypass_count": 0,
       "force_next": 0,
-      "priority_score": 1000020089.05,
+      "priority_score": 1000020140.048,
       "notes": "High-density sector 3 photogrammetry mesh of QuChi Dam spillway.",
       "user_edited_name": 0,
       "covered_area_m2": 136580.4,
@@ -2311,7 +2311,7 @@
       "pending_pass": "",
       "comment_folders": [],
       "size_mb": 70.76,
-      "wait_minutes": 20089.3,
+      "wait_minutes": 20140.2,
       "comments": [],
       "comment_count": 0,
       "measurement_bookmarks": [],
@@ -2349,7 +2349,7 @@
       "stage_label": "Completed (TWD97 + TWVD2001, 4K Web Tileset)",
       "bypass_count": 0,
       "force_next": 0,
-      "priority_score": 1000020089.038,
+      "priority_score": 1000020140.036,
       "notes": "Baseline epoch prior to October earthwork and revetment concrete pour.",
       "user_edited_name": 0,
       "covered_area_m2": 47792.8,
@@ -2371,7 +2371,7 @@
       "pending_pass": "",
       "comment_folders": [],
       "size_mb": 91.93,
-      "wait_minutes": 45387.2,
+      "wait_minutes": 45438.1,
       "comments": [],
       "comment_count": 0,
       "measurement_bookmarks": [],
@@ -2409,7 +2409,7 @@
       "stage_label": "Processed -> catch_2026_09_21_11_39_49 (TWD97 + TWVD2001, 4K)",
       "bypass_count": 0,
       "force_next": 0,
-      "priority_score": 1000015907.134,
+      "priority_score": 1000015958.132,
       "notes": "Dynamically loaded from C:\\GatheringScans\\catch_2026_09_21_11_39_49",
       "user_edited_name": 1,
       "covered_area_m2": 272.0,
@@ -2431,7 +2431,7 @@
       "pending_pass": "",
       "comment_folders": [],
       "size_mb": 752.36,
-      "wait_minutes": 15907.4,
+      "wait_minutes": 15958.3,
       "comments": [],
       "comment_count": 0,
       "measurement_bookmarks": [],
@@ -2469,7 +2469,7 @@
       "stage_label": "Completed (TWD97 + TWVD2001, 4K Web Tileset)",
       "bypass_count": 0,
       "force_next": 0,
-      "priority_score": 1000020089.054,
+      "priority_score": 1000020140.051,
       "notes": "Merged scan of Rose Park landscape grading and drainage trenching.",
       "user_edited_name": 0,
       "covered_area_m2": 6684.2,
@@ -2491,7 +2491,7 @@
       "pending_pass": "",
       "comment_folders": [],
       "size_mb": 65.23,
-      "wait_minutes": 49707.2,
+      "wait_minutes": 49758.1,
       "comments": [
         {
           "comment_id": "cmt_1792021676860",
@@ -2548,7 +2548,7 @@
       "stage_label": "Completed (TWD97 + TWVD2001, 4K Web Tileset)",
       "bypass_count": 0,
       "force_next": 0,
-      "priority_score": 1000020089.051,
+      "priority_score": 1000020140.049,
       "notes": "Initial excavation trench scan at Rose Park East sector.",
       "user_edited_name": 0,
       "covered_area_m2": 8410.0,
@@ -2570,7 +2570,7 @@
       "pending_pass": "",
       "comment_folders": [],
       "size_mb": 42.06,
-      "wait_minutes": 51147.2,
+      "wait_minutes": 51198.1,
       "comments": [],
       "comment_count": 0,
       "measurement_bookmarks": [],
@@ -2608,7 +2608,7 @@
       "stage_label": "Completed (TWD97 + TWVD2001, 4K Web Tileset)",
       "bypass_count": 0,
       "force_next": 0,
-      "priority_score": 1000020089.032,
+      "priority_score": 1000020140.03,
       "notes": "Excavation progress and soldier pile wall survey at NTU Dorm site.",
       "user_edited_name": 0,
       "covered_area_m2": 5781.2,
@@ -2630,7 +2630,7 @@
       "pending_pass": "",
       "comment_folders": [],
       "size_mb": 56.17,
-      "wait_minutes": 51867.2,
+      "wait_minutes": 51918.1,
       "comments": [],
       "comment_count": 0,
       "measurement_bookmarks": [],
@@ -2668,7 +2668,7 @@
       "stage_label": "Completed (TWD97 + TWVD2001, 4K Web Tileset)",
       "bypass_count": 0,
       "force_next": 0,
-      "priority_score": 1000020089.031,
+      "priority_score": 1000020140.028,
       "notes": "Baseline perimeter survey prior to retaining wall excavation.",
       "user_edited_name": 0,
       "covered_area_m2": 10905.3,
@@ -2690,7 +2690,7 @@
       "pending_pass": "",
       "comment_folders": [],
       "size_mb": 40.82,
-      "wait_minutes": 54195.7,
+      "wait_minutes": 54246.5,
       "comments": [],
       "comment_count": 0,
       "measurement_bookmarks": [],
@@ -3187,1023 +3187,1051 @@
     "edited_daan_661536": {
       "scan_id": "edited_daan_661536",
       "pkg_path": "G:\\Shared drives\\6.軟體\\3. GatheringScans\\StreamPackages\\edited_daan_661536.3tz",
-      "size_bytes": 480503534,
-      "mtime": 1793276093,
+      "size_bytes": 486003921,
+      "mtime": 1793279137,
       "toc": {
         "tileset.json": {
           "offset": 42,
-          "size": 56256
+          "size": 57832
         },
         "tiles/root.glb": {
-          "offset": 56342,
-          "size": 6518648
+          "offset": 57918,
+          "size": 6443568
         },
         "tiles/tile_d1_l2_1_1_0.glb": {
-          "offset": 6575046,
-          "size": 1084468
+          "offset": 6501542,
+          "size": 1083420
         },
         "tiles/tile_d2_l3_3_3_0.glb": {
-          "offset": 7659570,
-          "size": 1165660
+          "offset": 7585018,
+          "size": 1163104
         },
         "tiles/tile_d3_l4_6_7_0.glb": {
-          "offset": 8825286,
-          "size": 933528
+          "offset": 8748178,
+          "size": 919976
         },
         "tiles/tile_d4_l5_12_15_0.glb": {
-          "offset": 9758872,
+          "offset": 9668212,
           "size": 829792
         },
         "tiles/tile_d5_l6_25_31_1.glb": {
-          "offset": 10588722,
+          "offset": 10498062,
           "size": 575972
         },
         "tiles/tile_d5_l6_25_31_1_leaf0.glb": {
-          "offset": 11164758,
-          "size": 2560920
+          "offset": 11074098,
+          "size": 2581324
         },
         "tiles/tile_d5_l6_25_31_1_leaf1.glb": {
-          "offset": 13725742,
-          "size": 1069868
+          "offset": 13655486,
+          "size": 1085176
         },
         "tiles/tile_d4_l5_12_15_0_leaf0.glb": {
-          "offset": 14795674,
-          "size": 2674036
+          "offset": 14740726,
+          "size": 2953772
         },
         "tiles/tile_d4_l5_13_14_0.glb": {
-          "offset": 17469768,
-          "size": 440808
+          "offset": 17694556,
+          "size": 426152
         },
         "tiles/tile_d4_l5_13_14_0_leaf0.glb": {
-          "offset": 17910640,
-          "size": 1471748
+          "offset": 18120772,
+          "size": 1468152
         },
         "tiles/tile_d4_l5_13_14_0_leaf1.glb": {
-          "offset": 19382452,
-          "size": 507732
+          "offset": 19588988,
+          "size": 516824
         },
         "tiles/tile_d4_l5_13_15_0.glb": {
-          "offset": 19890242,
+          "offset": 20105870,
           "size": 801564
         },
+        "tiles/tile_d5_l6_27_31_1.glb": {
+          "offset": 20907492,
+          "size": 708332
+        },
+        "tiles/tile_d5_l6_27_31_1_leaf0.glb": {
+          "offset": 21615888,
+          "size": 1586976
+        },
+        "tiles/tile_d5_l6_27_31_1_leaf1.glb": {
+          "offset": 23202928,
+          "size": 1264716
+        },
         "tiles/tile_d4_l5_13_15_0_leaf0.glb": {
-          "offset": 20691870,
-          "size": 2519984
+          "offset": 24467708,
+          "size": 2546060
         },
         "tiles/tile_d4_l5_13_15_0_leaf1.glb": {
-          "offset": 23211918,
-          "size": 1236548
-        },
-        "tiles/tile_d4_l5_13_15_0_leaf2.glb": {
-          "offset": 24448530,
-          "size": 2662492
+          "offset": 27013832,
+          "size": 1237116
         },
         "tiles/tile_d3_l4_6_7_0_leaf0.glb": {
-          "offset": 27111084,
-          "size": 1218736
+          "offset": 28251010,
+          "size": 1144680
         },
         "tiles/tile_d3_l4_6_7_0_leaf1.glb": {
-          "offset": 28329882,
-          "size": 2671488
+          "offset": 29395752,
+          "size": 1273828
+        },
+        "tiles/tile_d3_l4_6_7_0_leaf2.glb": {
+          "offset": 30669642,
+          "size": 1901452
         },
         "tiles/tile_d3_l4_7_7_0.glb": {
-          "offset": 31001426,
-          "size": 1230300
+          "offset": 32571150,
+          "size": 1228636
         },
         "tiles/tile_d4_l5_14_15_0.glb": {
-          "offset": 32231784,
+          "offset": 33799844,
           "size": 818632
         },
+        "tiles/tile_d5_l6_28_31_1.glb": {
+          "offset": 34618534,
+          "size": 561120
+        },
+        "tiles/tile_d5_l6_28_31_1_leaf0.glb": {
+          "offset": 35179718,
+          "size": 2450016
+        },
+        "tiles/tile_d5_l6_28_31_1_leaf1.glb": {
+          "offset": 37629798,
+          "size": 532160
+        },
         "tiles/tile_d4_l5_14_15_0_leaf0.glb": {
-          "offset": 33050480,
-          "size": 2520424
+          "offset": 38162022,
+          "size": 2537648
         },
         "tiles/tile_d4_l5_14_15_0_leaf1.glb": {
-          "offset": 35570968,
-          "size": 2690752
+          "offset": 40699734,
+          "size": 1341504
         },
         "tiles/tile_d4_l5_14_15_0_leaf2.glb": {
-          "offset": 38261784,
-          "size": 1333928
-        },
-        "tiles/tile_d4_l5_14_15_0_leaf3.glb": {
-          "offset": 39595776,
-          "size": 1553632
+          "offset": 42041302,
+          "size": 1564792
         },
         "tiles/tile_d4_l5_15_15_0.glb": {
-          "offset": 41149466,
+          "offset": 43606152,
           "size": 907656
         },
         "tiles/tile_d4_l5_15_15_0_leaf0.glb": {
-          "offset": 42057186,
-          "size": 2258412
+          "offset": 44513872,
+          "size": 2274584
         },
         "tiles/tile_d4_l5_15_15_0_leaf1.glb": {
-          "offset": 44315662,
-          "size": 2613712
+          "offset": 46788520,
+          "size": 2633112
         },
         "tiles/tile_d4_l5_15_15_1.glb": {
-          "offset": 46929432,
-          "size": 1075220
+          "offset": 49421690,
+          "size": 1075460
+        },
+        "tiles/tile_d5_l6_31_31_2.glb": {
+          "offset": 50497208,
+          "size": 915264
+        },
+        "tiles/tile_d5_l6_31_31_2_leaf0.glb": {
+          "offset": 51412536,
+          "size": 2703504
+        },
+        "tiles/tile_d5_l6_31_31_2_leaf1.glb": {
+          "offset": 54116104,
+          "size": 126000
         },
         "tiles/tile_d4_l5_15_15_1_leaf0.glb": {
-          "offset": 48004716,
-          "size": 707012
-        },
-        "tiles/tile_d4_l5_15_15_1_leaf1.glb": {
-          "offset": 48711792,
-          "size": 2594244
-        },
-        "tiles/tile_d4_l5_15_15_1_leaf2.glb": {
-          "offset": 51306100,
-          "size": 1194176
+          "offset": 54242168,
+          "size": 1915240
         },
         "tiles/tile_d3_l4_7_7_0_leaf0.glb": {
-          "offset": 52500338,
-          "size": 1532836
+          "offset": 56157470,
+          "size": 1606796
         },
         "tiles/tile_d3_l4_7_7_0_leaf1.glb": {
-          "offset": 54033236,
-          "size": 1303772
+          "offset": 57764328,
+          "size": 1297592
         },
         "tiles/tile_d2_l3_3_3_0_leaf0.glb": {
-          "offset": 55337070,
-          "size": 492424
+          "offset": 59061982,
+          "size": 82216
         },
         "tiles/tile_d1_l2_1_1_0_leaf0.glb": {
-          "offset": 55829556,
-          "size": 1552576
+          "offset": 59144260,
+          "size": 1505980
         },
         "tiles/tile_d1_l2_1_2_0.glb": {
-          "offset": 57382188,
-          "size": 1746068
+          "offset": 60650296,
+          "size": 1746156
         },
         "tiles/tile_d2_l3_3_4_0.glb": {
-          "offset": 59128312,
-          "size": 1812820
+          "offset": 62396508,
+          "size": 1812848
         },
         "tiles/tile_d3_l4_6_8_0.glb": {
-          "offset": 60941188,
-          "size": 1555632
+          "offset": 64209412,
+          "size": 1555580
         },
         "tiles/tile_d4_l5_12_16_0.glb": {
-          "offset": 62496878,
-          "size": 875488
+          "offset": 65765050,
+          "size": 876424
         },
         "tiles/tile_d4_l5_12_16_0_leaf0.glb": {
-          "offset": 63372430,
-          "size": 3046372
+          "offset": 66641538,
+          "size": 3056248
         },
         "tiles/tile_d4_l5_12_16_0_leaf1.glb": {
-          "offset": 66418866,
-          "size": 1135408
+          "offset": 69697850,
+          "size": 1138744
         },
         "tiles/tile_d4_l5_12_17_0.glb": {
-          "offset": 67554332,
+          "offset": 70836652,
           "size": 1434868
         },
         "tiles/tile_d4_l5_12_17_0_leaf0.glb": {
-          "offset": 68989264,
-          "size": 2350928
+          "offset": 72271584,
+          "size": 2370104
         },
         "tiles/tile_d4_l5_12_17_0_leaf1.glb": {
-          "offset": 71340256,
-          "size": 1595612
+          "offset": 74641752,
+          "size": 1602176
         },
         "tiles/tile_d3_l4_6_8_0_leaf0.glb": {
-          "offset": 72935930,
-          "size": 1865572
+          "offset": 76243990,
+          "size": 1884468
         },
         "tiles/tile_d3_l4_6_8_0_leaf1.glb": {
-          "offset": 74801564,
-          "size": 2833368
+          "offset": 78128520,
+          "size": 2834896
         },
         "tiles/tile_d3_l4_6_8_0_leaf2.glb": {
-          "offset": 77634994,
-          "size": 2211700
+          "offset": 80963478,
+          "size": 2232308
         },
         "tiles/tile_d3_l4_6_8_0_leaf3.glb": {
-          "offset": 79846756,
-          "size": 1227808
+          "offset": 83195848,
+          "size": 1253348
         },
         "tiles/tile_d3_l4_6_8_1.glb": {
-          "offset": 81074620,
+          "offset": 84449252,
           "size": 1149860
         },
         "tiles/tile_d4_l5_13_17_2.glb": {
-          "offset": 82224538,
+          "offset": 85599170,
           "size": 1065232
         },
         "tiles/tile_d4_l5_13_17_2_leaf0.glb": {
-          "offset": 83289834,
-          "size": 2305288
+          "offset": 86664466,
+          "size": 2320420
         },
         "tiles/tile_d4_l5_13_17_2_leaf1.glb": {
-          "offset": 85595186,
-          "size": 1713724
+          "offset": 88984950,
+          "size": 1722476
         },
         "tiles/tile_d3_l4_6_8_1_leaf0.glb": {
-          "offset": 87308972,
-          "size": 2026800
+          "offset": 90707488,
+          "size": 2068940
         },
         "tiles/tile_d3_l4_6_9_0.glb": {
-          "offset": 89335828,
-          "size": 1648400
+          "offset": 92776484,
+          "size": 1648228
         },
         "tiles/tile_d4_l5_13_18_1.glb": {
-          "offset": 90984286,
-          "size": 1592852
+          "offset": 94424770,
+          "size": 1592968
         },
         "tiles/tile_d4_l5_13_18_1_leaf0.glb": {
-          "offset": 92577202,
-          "size": 2697936
+          "offset": 96017802,
+          "size": 2713764
         },
         "tiles/tile_d4_l5_13_18_1_leaf1.glb": {
-          "offset": 95275202,
-          "size": 1149728
+          "offset": 98731630,
+          "size": 1153568
         },
         "tiles/tile_d4_l5_13_18_1_leaf2.glb": {
-          "offset": 96424994,
-          "size": 2868280
+          "offset": 99885262,
+          "size": 2866564
         },
         "tiles/tile_d4_l5_13_18_1_leaf3.glb": {
-          "offset": 99293338,
+          "offset": 102751890,
           "size": 780016
         },
         "tiles/tile_d3_l4_6_9_0_leaf0.glb": {
-          "offset": 100073416,
-          "size": 1258100
+          "offset": 103531968,
+          "size": 1261888
         },
         "tiles/tile_d3_l4_6_9_0_leaf1.glb": {
-          "offset": 101331578,
-          "size": 2334952
+          "offset": 104793918,
+          "size": 2344740
         },
         "tiles/tile_d3_l4_6_9_0_leaf2.glb": {
-          "offset": 103666592,
-          "size": 2967584
+          "offset": 107138720,
+          "size": 3009068
         },
         "tiles/tile_d3_l4_6_9_0_leaf3.glb": {
-          "offset": 106634238,
-          "size": 2146772
+          "offset": 110147850,
+          "size": 2188932
         },
         "tiles/tile_d3_l4_6_9_1.glb": {
-          "offset": 108781066,
+          "offset": 112336838,
           "size": 1349668
         },
         "tiles/tile_d4_l5_13_18_2.glb": {
-          "offset": 110130792,
+          "offset": 113686564,
           "size": 1222700
         },
         "tiles/tile_d4_l5_13_18_2_leaf0.glb": {
-          "offset": 111353556,
-          "size": 2495740
+          "offset": 114909328,
+          "size": 2509060
         },
         "tiles/tile_d4_l5_13_18_2_leaf1.glb": {
-          "offset": 113849360,
-          "size": 2361036
+          "offset": 117418452,
+          "size": 2383660
         },
         "tiles/tile_d3_l4_6_9_1_leaf0.glb": {
-          "offset": 116210458,
-          "size": 2440232
+          "offset": 119802174,
+          "size": 2471440
         },
         "tiles/tile_d3_l4_6_9_1_leaf1.glb": {
-          "offset": 118650752,
-          "size": 2480972
+          "offset": 122273676,
+          "size": 2494688
         },
         "tiles/tile_d3_l4_7_8_0.glb": {
-          "offset": 121131780,
-          "size": 1651980
+          "offset": 124768420,
+          "size": 1652576
         },
         "tiles/tile_d4_l5_14_16_1.glb": {
-          "offset": 122783818,
-          "size": 1151772
+          "offset": 126421054,
+          "size": 1151788
         },
         "tiles/tile_d4_l5_14_16_1_leaf0.glb": {
-          "offset": 123935654,
-          "size": 2309636
+          "offset": 127572906,
+          "size": 2323928
         },
         "tiles/tile_d4_l5_14_16_1_leaf1.glb": {
-          "offset": 126245354,
-          "size": 1127972
+          "offset": 129896898,
+          "size": 1146496
         },
         "tiles/tile_d4_l5_14_17_1.glb": {
-          "offset": 127373384,
-          "size": 1221276
+          "offset": 131043452,
+          "size": 1221920
         },
         "tiles/tile_d4_l5_14_17_1_leaf0.glb": {
-          "offset": 128594724,
-          "size": 2702092
+          "offset": 132265436,
+          "size": 2738508
         },
         "tiles/tile_d4_l5_14_17_1_leaf1.glb": {
-          "offset": 131296880,
-          "size": 1437604
+          "offset": 135004008,
+          "size": 1455060
         },
         "tiles/tile_d4_l5_15_16_1.glb": {
-          "offset": 132734542,
+          "offset": 136459126,
           "size": 1382620
         },
         "tiles/tile_d4_l5_15_16_1_leaf0.glb": {
-          "offset": 134117226,
-          "size": 2954832
+          "offset": 137841810,
+          "size": 2974520
         },
         "tiles/tile_d4_l5_15_16_1_leaf1.glb": {
-          "offset": 137072122,
-          "size": 2724772
+          "offset": 140816394,
+          "size": 2758148
         },
         "tiles/tile_d4_l5_15_17_1.glb": {
-          "offset": 139796952,
+          "offset": 143574600,
           "size": 1230360
         },
         "tiles/tile_d4_l5_15_17_1_leaf0.glb": {
-          "offset": 141027376,
-          "size": 2970004
+          "offset": 144805024,
+          "size": 2976488
         },
         "tiles/tile_d4_l5_15_17_1_leaf1.glb": {
-          "offset": 143997444,
-          "size": 1875160
+          "offset": 147781576,
+          "size": 1885308
         },
         "tiles/tile_d3_l4_7_8_0_leaf0.glb": {
-          "offset": 145872666,
-          "size": 2848248
+          "offset": 149666946,
+          "size": 2864312
         },
         "tiles/tile_d3_l4_7_8_0_leaf1.glb": {
-          "offset": 148720976,
-          "size": 2190784
+          "offset": 152531320,
+          "size": 2201308
         },
         "tiles/tile_d3_l4_7_8_1.glb": {
-          "offset": 150911816,
+          "offset": 154732684,
           "size": 1535288
         },
         "tiles/tile_d4_l5_14_17_2.glb": {
-          "offset": 152447162,
+          "offset": 156268030,
           "size": 1249556
         },
         "tiles/tile_d4_l5_14_17_2_leaf0.glb": {
-          "offset": 153696782,
-          "size": 2783676
+          "offset": 157517650,
+          "size": 2822312
         },
         "tiles/tile_d4_l5_14_17_2_leaf1.glb": {
-          "offset": 156480522,
-          "size": 2342496
+          "offset": 160340026,
+          "size": 2366820
         },
         "tiles/tile_d4_l5_15_17_2.glb": {
-          "offset": 158823076,
+          "offset": 162706904,
           "size": 1018076
         },
         "tiles/tile_d4_l5_15_17_2_leaf0.glb": {
-          "offset": 159841216,
-          "size": 2061668
+          "offset": 163725044,
+          "size": 2089564
         },
         "tiles/tile_d4_l5_15_17_2_leaf1.glb": {
-          "offset": 161902948,
-          "size": 2355136
+          "offset": 165814672,
+          "size": 2363644
         },
         "tiles/tile_d3_l4_7_8_1_leaf0.glb": {
-          "offset": 164258146,
-          "size": 2598676
+          "offset": 168178378,
+          "size": 2631572
         },
         "tiles/tile_d3_l4_7_9_0.glb": {
-          "offset": 166856878,
-          "size": 1599920
+          "offset": 170810006,
+          "size": 1600124
         },
         "tiles/tile_d3_l4_7_9_0_leaf0.glb": {
-          "offset": 168456860,
-          "size": 541960
+          "offset": 172410192,
+          "size": 548688
         },
         "tiles/tile_d3_l4_7_9_0_leaf1.glb": {
-          "offset": 168998882,
-          "size": 2736880
+          "offset": 172958942,
+          "size": 2761236
         },
         "tiles/tile_d3_l4_7_9_0_leaf2.glb": {
-          "offset": 171735824,
-          "size": 2992916
+          "offset": 175720240,
+          "size": 3014624
         },
         "tiles/tile_d3_l4_7_9_0_leaf3.glb": {
-          "offset": 174728802,
-          "size": 2685128
+          "offset": 178734926,
+          "size": 2707056
         },
         "tiles/tile_d3_l4_7_9_0_leaf4.glb": {
-          "offset": 177413992,
-          "size": 2314848
+          "offset": 181442044,
+          "size": 2309580
         },
         "tiles/tile_d3_l4_7_9_1.glb": {
-          "offset": 179728896,
-          "size": 1401448
+          "offset": 183751680,
+          "size": 1401460
         },
         "tiles/tile_d4_l5_15_18_2.glb": {
-          "offset": 181130402,
+          "offset": 185153198,
           "size": 1178388
         },
         "tiles/tile_d4_l5_15_18_2_leaf0.glb": {
-          "offset": 182308854,
-          "size": 2588408
+          "offset": 186331650,
+          "size": 2624016
         },
         "tiles/tile_d4_l5_15_18_2_leaf1.glb": {
-          "offset": 184897326,
-          "size": 2119868
+          "offset": 188955730,
+          "size": 2136492
         },
         "tiles/tile_d3_l4_7_9_1_leaf0.glb": {
-          "offset": 187017256,
-          "size": 2626376
+          "offset": 191092284,
+          "size": 2647040
         },
         "tiles/tile_d3_l4_7_9_1_leaf1.glb": {
-          "offset": 189643694,
-          "size": 2437132
+          "offset": 193739386,
+          "size": 2469428
         },
         "tiles/tile_d1_l2_1_2_0_leaf0.glb": {
-          "offset": 192080888,
-          "size": 2771600
+          "offset": 196208876,
+          "size": 2758228
         },
         "tiles/tile_d1_l2_1_2_0_leaf1.glb": {
-          "offset": 194852550,
-          "size": 5319936
+          "offset": 198967166,
+          "size": 5297300
         },
         "tiles/tile_d1_l2_2_1_0.glb": {
-          "offset": 200172542,
-          "size": 921100
+          "offset": 204264522,
+          "size": 913420
         },
         "tiles/tile_d2_l3_4_3_0.glb": {
-          "offset": 201093698,
-          "size": 1032572
+          "offset": 205177998,
+          "size": 1022336
         },
         "tiles/tile_d3_l4_8_7_0.glb": {
-          "offset": 202126326,
-          "size": 1584044
+          "offset": 206200390,
+          "size": 1583464
         },
         "tiles/tile_d4_l5_16_15_1.glb": {
-          "offset": 203710428,
-          "size": 1417124
+          "offset": 207783912,
+          "size": 1416904
         },
         "tiles/tile_d4_l5_16_15_1_leaf0.glb": {
-          "offset": 205127616,
-          "size": 3674560
+          "offset": 209200880,
+          "size": 3723016
         },
         "tiles/tile_d4_l5_16_15_1_leaf1.glb": {
-          "offset": 208802240,
-          "size": 2695616
+          "offset": 212923960,
+          "size": 2735260
         },
         "tiles/tile_d4_l5_16_15_1_leaf2.glb": {
-          "offset": 211497920,
-          "size": 2348604
+          "offset": 215659284,
+          "size": 2050264
         },
         "tiles/tile_d4_l5_16_15_1_leaf3.glb": {
-          "offset": 213846588,
-          "size": 1156672
+          "offset": 217709612,
+          "size": 1621928
         },
         "tiles/tile_d4_l5_17_15_1.glb": {
-          "offset": 215003318,
+          "offset": 219331598,
           "size": 1224508
         },
         "tiles/tile_d4_l5_17_15_1_leaf0.glb": {
-          "offset": 216227890,
-          "size": 2213068
+          "offset": 220556170,
+          "size": 2278412
         },
         "tiles/tile_d4_l5_17_15_1_leaf1.glb": {
-          "offset": 218441022,
-          "size": 3509924
+          "offset": 222834646,
+          "size": 2839112
+        },
+        "tiles/tile_d4_l5_17_15_1_leaf2.glb": {
+          "offset": 225673822,
+          "size": 872628
         },
         "tiles/tile_d3_l4_8_7_0_leaf0.glb": {
-          "offset": 221951008,
-          "size": 2339720
+          "offset": 226546512,
+          "size": 2367636
         },
         "tiles/tile_d3_l4_8_7_0_leaf1.glb": {
-          "offset": 224290790,
-          "size": 2021416
+          "offset": 228914210,
+          "size": 2040744
         },
         "tiles/tile_d3_l4_8_7_0_leaf2.glb": {
-          "offset": 226312268,
-          "size": 3165556
+          "offset": 230955016,
+          "size": 3308224
         },
         "tiles/tile_d3_l4_8_7_0_leaf3.glb": {
-          "offset": 229477886,
-          "size": 1685276
+          "offset": 234263302,
+          "size": 1696740
         },
         "tiles/tile_d3_l4_9_7_0.glb": {
-          "offset": 231163218,
-          "size": 967856
+          "offset": 235960098,
+          "size": 940096
         },
         "tiles/tile_d3_l4_9_7_0_leaf0.glb": {
-          "offset": 232131136,
-          "size": 5742688
+          "offset": 236900256,
+          "size": 5759972
         },
         "tiles/tile_d3_l4_9_7_0_leaf1.glb": {
-          "offset": 237873886,
-          "size": 1744444
+          "offset": 242660290,
+          "size": 1809552
         },
         "tiles/tile_d2_l3_4_3_0_leaf0.glb": {
-          "offset": 239618392,
-          "size": 229808
+          "offset": 244469904,
+          "size": 159252
         },
         "tiles/tile_d1_l2_2_2_0.glb": {
-          "offset": 239848256,
-          "size": 3046956
+          "offset": 244629212,
+          "size": 3046700
         },
         "tiles/tile_d2_l3_4_4_0.glb": {
-          "offset": 242895268,
-          "size": 2380404
+          "offset": 247675968,
+          "size": 2380512
         },
         "tiles/tile_d3_l4_8_8_0.glb": {
-          "offset": 245275728,
+          "offset": 250056536,
           "size": 1791500
         },
         "tiles/tile_d4_l5_16_16_1.glb": {
-          "offset": 247067286,
-          "size": 1340348
+          "offset": 251848094,
+          "size": 1340356
         },
         "tiles/tile_d4_l5_16_16_1_leaf0.glb": {
-          "offset": 248407698,
-          "size": 2470588
+          "offset": 253188514,
+          "size": 2490552
         },
         "tiles/tile_d4_l5_16_16_1_leaf1.glb": {
-          "offset": 250878350,
-          "size": 2339072
+          "offset": 255679130,
+          "size": 2363084
         },
         "tiles/tile_d4_l5_16_17_1.glb": {
-          "offset": 253217480,
+          "offset": 258042272,
           "size": 1718788
         },
         "tiles/tile_d5_l6_33_35_3.glb": {
-          "offset": 254936326,
+          "offset": 259761118,
           "size": 1337376
         },
         "tiles/tile_d5_l6_33_35_3_leaf0.glb": {
-          "offset": 256273766,
-          "size": 2527628
+          "offset": 261098558,
+          "size": 2552604
         },
         "tiles/tile_d5_l6_33_35_3_leaf1.glb": {
-          "offset": 258801458,
+          "offset": 263651226,
           "size": 776220
         },
         "tiles/tile_d4_l5_16_17_1_leaf0.glb": {
-          "offset": 259577742,
-          "size": 2543468
+          "offset": 264427510,
+          "size": 2576356
         },
         "tiles/tile_d4_l5_16_17_1_leaf1.glb": {
-          "offset": 262121274,
-          "size": 932116
+          "offset": 267003930,
+          "size": 936424
         },
         "tiles/tile_d4_l5_16_17_1_leaf2.glb": {
-          "offset": 263053454,
-          "size": 2450244
+          "offset": 267940418,
+          "size": 2466320
         },
         "tiles/tile_d4_l5_16_17_1_leaf3.glb": {
-          "offset": 265503762,
-          "size": 1189848
+          "offset": 270406802,
+          "size": 1202168
         },
         "tiles/tile_d4_l5_17_17_1.glb": {
-          "offset": 266693668,
+          "offset": 271609028,
           "size": 1710008
         },
         "tiles/tile_d4_l5_17_17_1_leaf0.glb": {
-          "offset": 268403740,
-          "size": 1488516
+          "offset": 273319100,
+          "size": 1504440
         },
         "tiles/tile_d4_l5_17_17_1_leaf1.glb": {
-          "offset": 269892320,
-          "size": 2645172
+          "offset": 274823604,
+          "size": 2656912
         },
         "tiles/tile_d4_l5_17_17_1_leaf2.glb": {
-          "offset": 272537556,
-          "size": 2747144
+          "offset": 277480580,
+          "size": 2764732
         },
         "tiles/tile_d4_l5_17_17_1_leaf3.glb": {
-          "offset": 275284764,
+          "offset": 280245376,
           "size": 158864
         },
         "tiles/tile_d3_l4_8_8_0_leaf0.glb": {
-          "offset": 275443690,
-          "size": 1118968
+          "offset": 280404302,
+          "size": 1127564
         },
         "tiles/tile_d3_l4_8_8_0_leaf1.glb": {
-          "offset": 276562720,
-          "size": 1937252
+          "offset": 281531928,
+          "size": 1941764
         },
         "tiles/tile_d3_l4_8_8_0_leaf2.glb": {
-          "offset": 278500034,
-          "size": 1209444
+          "offset": 283473754,
+          "size": 1223780
         },
         "tiles/tile_d3_l4_8_8_0_leaf3.glb": {
-          "offset": 279709540,
-          "size": 1586476
+          "offset": 284697596,
+          "size": 1596896
         },
         "tiles/tile_d3_l4_8_8_1.glb": {
-          "offset": 281296072,
-          "size": 1742864
+          "offset": 286294548,
+          "size": 1742464
         },
         "tiles/tile_d4_l5_16_16_2.glb": {
-          "offset": 283038994,
+          "offset": 288037070,
           "size": 1225712
         },
         "tiles/tile_d4_l5_16_16_2_leaf0.glb": {
-          "offset": 284264770,
-          "size": 2387836
+          "offset": 289262846,
+          "size": 2406592
         },
         "tiles/tile_d4_l5_16_16_2_leaf1.glb": {
-          "offset": 286652670,
-          "size": 2739736
+          "offset": 291669502,
+          "size": 2752608
         },
         "tiles/tile_d4_l5_16_17_2.glb": {
-          "offset": 289392464,
-          "size": 1345576
+          "offset": 294422168,
+          "size": 1346000
         },
         "tiles/tile_d4_l5_16_17_2_leaf0.glb": {
-          "offset": 290738104,
-          "size": 2158896
+          "offset": 295768232,
+          "size": 2174712
         },
         "tiles/tile_d4_l5_16_17_2_leaf1.glb": {
-          "offset": 292897064,
-          "size": 2456692
+          "offset": 297943008,
+          "size": 2479280
         },
         "tiles/tile_d4_l5_17_16_2.glb": {
-          "offset": 295353814,
+          "offset": 300422346,
           "size": 1091632
         },
         "tiles/tile_d4_l5_17_16_2_leaf0.glb": {
-          "offset": 296445510,
-          "size": 2434272
+          "offset": 301514042,
+          "size": 2454920
         },
         "tiles/tile_d4_l5_17_16_2_leaf1.glb": {
-          "offset": 298879846,
-          "size": 1049632
+          "offset": 303969026,
+          "size": 1060064
         },
         "tiles/tile_d4_l5_17_17_2.glb": {
-          "offset": 299929536,
-          "size": 1610680
+          "offset": 305029148,
+          "size": 1610832
         },
         "tiles/tile_d4_l5_17_17_2_leaf0.glb": {
-          "offset": 301540280,
-          "size": 2608720
+          "offset": 306640044,
+          "size": 2632476
         },
         "tiles/tile_d4_l5_17_17_2_leaf1.glb": {
-          "offset": 304149064,
-          "size": 1890416
+          "offset": 309272584,
+          "size": 1899972
         },
         "tiles/tile_d4_l5_17_17_2_leaf2.glb": {
-          "offset": 306039544,
-          "size": 2521080
+          "offset": 311172620,
+          "size": 2550992
         },
         "tiles/tile_d3_l4_8_9_0.glb": {
-          "offset": 308560680,
-          "size": 1727920
+          "offset": 313723668,
+          "size": 1727976
         },
         "tiles/tile_d4_l5_16_18_1.glb": {
-          "offset": 310288658,
-          "size": 1286696
+          "offset": 315451702,
+          "size": 1286856
         },
         "tiles/tile_d4_l5_16_18_1_leaf0.glb": {
-          "offset": 311575418,
-          "size": 1978324
+          "offset": 316738622,
+          "size": 1995728
         },
         "tiles/tile_d4_l5_16_18_1_leaf1.glb": {
-          "offset": 313553806,
-          "size": 1407024
+          "offset": 318734414,
+          "size": 1424948
         },
         "tiles/tile_d4_l5_17_18_1.glb": {
-          "offset": 314960888,
-          "size": 1073848
+          "offset": 320159420,
+          "size": 1074504
         },
         "tiles/tile_d4_l5_17_18_1_leaf0.glb": {
-          "offset": 316034800,
-          "size": 1610136
+          "offset": 321233988,
+          "size": 1624528
         },
         "tiles/tile_d4_l5_17_18_1_leaf1.glb": {
-          "offset": 317645000,
-          "size": 1429144
+          "offset": 322858580,
+          "size": 1443024
         },
         "tiles/tile_d4_l5_17_19_1.glb": {
-          "offset": 319074202,
+          "offset": 324301662,
           "size": 1488140
         },
         "tiles/tile_d4_l5_17_19_1_leaf0.glb": {
-          "offset": 320562406,
-          "size": 2459796
+          "offset": 325789866,
+          "size": 2476604
         },
         "tiles/tile_d4_l5_17_19_1_leaf1.glb": {
-          "offset": 323022266,
-          "size": 1931604
+          "offset": 328266534,
+          "size": 1939556
         },
         "tiles/tile_d4_l5_17_19_1_leaf2.glb": {
-          "offset": 324953934,
-          "size": 1044492
+          "offset": 330206154,
+          "size": 1049280
         },
         "tiles/tile_d3_l4_8_9_0_leaf0.glb": {
-          "offset": 325998488,
-          "size": 3201172
+          "offset": 331255496,
+          "size": 3224016
         },
         "tiles/tile_d3_l4_8_9_0_leaf1.glb": {
-          "offset": 329199722,
-          "size": 1991108
+          "offset": 334479574,
+          "size": 2009568
         },
         "tiles/tile_d3_l4_8_9_1.glb": {
-          "offset": 331190886,
+          "offset": 336489198,
           "size": 1434736
         },
         "tiles/tile_d4_l5_16_18_2.glb": {
-          "offset": 332625680,
+          "offset": 337923992,
           "size": 1208656
         },
         "tiles/tile_d4_l5_16_18_2_leaf0.glb": {
-          "offset": 333834400,
-          "size": 2234072
+          "offset": 339132712,
+          "size": 2242640
         },
         "tiles/tile_d4_l5_16_18_2_leaf1.glb": {
-          "offset": 336068536,
-          "size": 1742652
+          "offset": 341375416,
+          "size": 1763516
         },
         "tiles/tile_d4_l5_17_18_2.glb": {
-          "offset": 337811246,
+          "offset": 343138990,
           "size": 1118772
         },
         "tiles/tile_d4_l5_17_18_2_leaf0.glb": {
-          "offset": 338930082,
-          "size": 1900140
+          "offset": 344257826,
+          "size": 1921512
         },
         "tiles/tile_d4_l5_17_18_2_leaf1.glb": {
-          "offset": 340830286,
-          "size": 2102088
+          "offset": 346179402,
+          "size": 2119144
         },
         "tiles/tile_d3_l4_8_9_1_leaf0.glb": {
-          "offset": 342932436,
-          "size": 333584
+          "offset": 348298608,
+          "size": 340484
         },
         "tiles/tile_d3_l4_9_8_0.glb": {
-          "offset": 343266076,
-          "size": 1839524
+          "offset": 348639148,
+          "size": 1839640
         },
         "tiles/tile_d4_l5_18_17_1.glb": {
-          "offset": 345105658,
-          "size": 1391156
+          "offset": 350478846,
+          "size": 1391084
         },
         "tiles/tile_d4_l5_18_17_1_leaf0.glb": {
-          "offset": 346496878,
-          "size": 2734596
+          "offset": 351869994,
+          "size": 2754276
         },
         "tiles/tile_d4_l5_18_17_1_leaf1.glb": {
-          "offset": 349231538,
-          "size": 1482380
+          "offset": 354624334,
+          "size": 1499196
         },
         "tiles/tile_d4_l5_19_17_0.glb": {
-          "offset": 350713976,
+          "offset": 356123588,
           "size": 1475920
         },
         "tiles/tile_d4_l5_19_17_0_leaf0.glb": {
-          "offset": 352189960,
-          "size": 2747300
+          "offset": 357599572,
+          "size": 2759396
         },
         "tiles/tile_d4_l5_19_17_0_leaf1.glb": {
-          "offset": 354937324,
-          "size": 1777440
+          "offset": 360359032,
+          "size": 1789732
         },
         "tiles/tile_d3_l4_9_8_0_leaf0.glb": {
-          "offset": 356714826,
-          "size": 3019260
+          "offset": 362148826,
+          "size": 3037348
         },
         "tiles/tile_d3_l4_9_8_0_leaf1.glb": {
-          "offset": 359734148,
-          "size": 2761128
+          "offset": 365186236,
+          "size": 2773608
         },
         "tiles/tile_d3_l4_9_8_0_leaf2.glb": {
-          "offset": 362495338,
-          "size": 2683896
+          "offset": 367959906,
+          "size": 2715880
         },
         "tiles/tile_d3_l4_9_9_0.glb": {
-          "offset": 365179290,
-          "size": 1870848
+          "offset": 370675842,
+          "size": 1870812
         },
         "tiles/tile_d4_l5_18_19_0.glb": {
-          "offset": 367050196,
+          "offset": 372546712,
           "size": 1677624
         },
         "tiles/tile_d4_l5_18_19_0_leaf0.glb": {
-          "offset": 368727884,
-          "size": 1968572
+          "offset": 374224400,
+          "size": 1978272
         },
         "tiles/tile_d4_l5_18_19_0_leaf1.glb": {
-          "offset": 370696520,
-          "size": 2981672
+          "offset": 376202736,
+          "size": 3003592
         },
         "tiles/tile_d4_l5_18_19_0_leaf2.glb": {
-          "offset": 373678256,
-          "size": 1411736
+          "offset": 379206392,
+          "size": 1416172
         },
         "tiles/tile_d4_l5_18_19_1.glb": {
-          "offset": 375090050,
+          "offset": 380622622,
           "size": 1445468
         },
         "tiles/tile_d4_l5_18_19_1_leaf0.glb": {
-          "offset": 376535582,
-          "size": 3140608
+          "offset": 382068154,
+          "size": 3154052
         },
         "tiles/tile_d4_l5_18_19_1_leaf1.glb": {
-          "offset": 379676254,
-          "size": 2376492
+          "offset": 385222270,
+          "size": 2390564
         },
         "tiles/tile_d4_l5_19_18_0.glb": {
-          "offset": 382052804,
+          "offset": 387612892,
           "size": 1305032
         },
         "tiles/tile_d4_l5_19_18_0_leaf0.glb": {
-          "offset": 383357900,
-          "size": 2883108
+          "offset": 388917988,
+          "size": 2894208
         },
         "tiles/tile_d4_l5_19_18_0_leaf1.glb": {
-          "offset": 386241072,
+          "offset": 391812260,
           "size": 434420
         },
         "tiles/tile_d4_l5_19_19_0.glb": {
-          "offset": 386675550,
+          "offset": 392246738,
           "size": 1433796
         },
         "tiles/tile_d4_l5_19_19_0_leaf0.glb": {
-          "offset": 388109410,
-          "size": 2148216
+          "offset": 393680598,
+          "size": 2165112
         },
         "tiles/tile_d4_l5_19_19_0_leaf1.glb": {
-          "offset": 390257690,
-          "size": 2440648
+          "offset": 395845774,
+          "size": 2451376
         },
         "tiles/tile_d4_l5_19_19_1.glb": {
-          "offset": 392698396,
+          "offset": 398297208,
           "size": 1583864
         },
         "tiles/tile_d4_l5_19_19_1_leaf0.glb": {
-          "offset": 394282324,
-          "size": 3238164
+          "offset": 399881136,
+          "size": 3265396
         },
         "tiles/tile_d4_l5_19_19_1_leaf1.glb": {
-          "offset": 397520552,
-          "size": 3174712
+          "offset": 403146596,
+          "size": 3194248
         },
         "tiles/tile_d3_l4_9_9_0_leaf0.glb": {
-          "offset": 400695326,
-          "size": 2454980
+          "offset": 406340906,
+          "size": 2479728
         },
         "tiles/tile_d3_l4_9_9_0_leaf1.glb": {
-          "offset": 403150368,
-          "size": 2381440
+          "offset": 408820696,
+          "size": 2402872
         },
         "tiles/tile_d2_l3_4_4_0_leaf0.glb": {
-          "offset": 405531870,
-          "size": 2247888
+          "offset": 411223630,
+          "size": 2282708
         },
         "tiles/tile_d2_l3_4_5_0.glb": {
-          "offset": 407779814,
-          "size": 1300260
+          "offset": 413506394,
+          "size": 1292612
         },
         "tiles/tile_d3_l4_9_10_0.glb": {
-          "offset": 409080131,
-          "size": 1705000
+          "offset": 414799063,
+          "size": 1703068
         },
         "tiles/tile_d4_l5_18_20_1.glb": {
-          "offset": 410785189,
-          "size": 1732968
+          "offset": 416502189,
+          "size": 1731152
         },
         "tiles/tile_d4_l5_18_20_1_leaf0.glb": {
-          "offset": 412518221,
-          "size": 3406068
+          "offset": 418233405,
+          "size": 3436816
         },
         "tiles/tile_d4_l5_18_20_1_leaf1.glb": {
-          "offset": 415924353,
-          "size": 2293084
+          "offset": 421670285,
+          "size": 2298752
         },
         "tiles/tile_d4_l5_18_20_1_leaf2.glb": {
-          "offset": 418217501,
-          "size": 2071432
+          "offset": 423969101,
+          "size": 2091380
         },
         "tiles/tile_d4_l5_18_20_1_leaf3.glb": {
-          "offset": 420288997,
-          "size": 2747612
+          "offset": 426060545,
+          "size": 2763808
         },
         "tiles/tile_d4_l5_18_20_1_leaf4.glb": {
-          "offset": 423036673,
-          "size": 945404
+          "offset": 428824417,
+          "size": 944732
         },
         "tiles/tile_d4_l5_19_20_1.glb": {
-          "offset": 423982135,
-          "size": 1177316
+          "offset": 429769207,
+          "size": 1176332
         },
         "tiles/tile_d4_l5_19_20_1_leaf0.glb": {
-          "offset": 425159515,
-          "size": 3007752
+          "offset": 430945603,
+          "size": 3035316
         },
         "tiles/tile_d4_l5_19_20_1_leaf1.glb": {
-          "offset": 428167331,
-          "size": 1740964
+          "offset": 433980983,
+          "size": 1754104
         },
         "tiles/tile_d3_l4_9_10_0_leaf0.glb": {
-          "offset": 429908358,
-          "size": 2377664
+          "offset": 435735150,
+          "size": 2293364
         },
         "tiles/tile_d3_l4_9_10_0_leaf1.glb": {
-          "offset": 432286085,
-          "size": 2675880
+          "offset": 438028577,
+          "size": 2682072
         },
         "tiles/tile_d2_l3_4_5_0_leaf0.glb": {
-          "offset": 434962027,
-          "size": 3552568
+          "offset": 440710711,
+          "size": 3191884
         },
         "tiles/tile_d2_l3_5_4_0.glb": {
-          "offset": 438514651,
-          "size": 1427188
+          "offset": 443902651,
+          "size": 1430800
         },
         "tiles/tile_d3_l4_10_8_0.glb": {
-          "offset": 439941896,
-          "size": 1055084
+          "offset": 445333508,
+          "size": 1063564
         },
         "tiles/tile_d3_l4_10_8_0_leaf0.glb": {
-          "offset": 440997043,
-          "size": 3535308
+          "offset": 446397135,
+          "size": 3574768
         },
         "tiles/tile_d3_l4_10_8_0_leaf1.glb": {
-          "offset": 444532414,
-          "size": 730496
+          "offset": 449971966,
+          "size": 744888
         },
         "tiles/tile_d3_l4_10_9_0.glb": {
-          "offset": 445262967,
-          "size": 1607416
+          "offset": 450716911,
+          "size": 1607432
         },
         "tiles/tile_d4_l5_20_19_0.glb": {
-          "offset": 446870441,
+          "offset": 452324401,
           "size": 1252796
         },
         "tiles/tile_d4_l5_20_19_0_leaf0.glb": {
-          "offset": 448123301,
-          "size": 3200184
+          "offset": 453577261,
+          "size": 3207956
         },
         "tiles/tile_d4_l5_20_19_0_leaf1.glb": {
-          "offset": 451323549,
+          "offset": 456785281,
           "size": 603144
         },
         "tiles/tile_d4_l5_20_19_1.glb": {
-          "offset": 451926751,
+          "offset": 457388483,
           "size": 1461332
         },
         "tiles/tile_d4_l5_20_19_1_leaf0.glb": {
-          "offset": 453388147,
-          "size": 1983476
+          "offset": 458849879,
+          "size": 1992684
         },
         "tiles/tile_d4_l5_20_19_1_leaf1.glb": {
-          "offset": 455371687,
-          "size": 847316
+          "offset": 460842627,
+          "size": 853812
         },
         "tiles/tile_d4_l5_20_19_1_leaf2.glb": {
-          "offset": 456219067,
-          "size": 1612512
+          "offset": 461696503,
+          "size": 1620204
         },
         "tiles/tile_d4_l5_20_19_1_leaf3.glb": {
-          "offset": 457831643,
-          "size": 1043224
+          "offset": 463316771,
+          "size": 1047392
         },
         "tiles/tile_d3_l4_10_9_0_leaf0.glb": {
-          "offset": 458874930,
-          "size": 1701052
+          "offset": 464364226,
+          "size": 1716600
         },
         "tiles/tile_d3_l4_10_9_0_leaf1.glb": {
-          "offset": 460576045,
-          "size": 3440372
+          "offset": 466080889,
+          "size": 3466780
         },
         "tiles/tile_d3_l4_10_9_0_leaf2.glb": {
-          "offset": 464016480,
-          "size": 712080
+          "offset": 469547732,
+          "size": 717076
         },
         "tiles/tile_d2_l3_5_5_0.glb": {
-          "offset": 464728616,
-          "size": 1345472
+          "offset": 470264864,
+          "size": 1344948
         },
         "tiles/tile_d3_l4_10_10_0.glb": {
-          "offset": 466074146,
-          "size": 1387568
+          "offset": 471609870,
+          "size": 1386920
         },
         "tiles/tile_d4_l5_20_20_1.glb": {
-          "offset": 467461772,
-          "size": 1246712
+          "offset": 472996848,
+          "size": 1246964
         },
         "tiles/tile_d4_l5_20_20_1_leaf0.glb": {
-          "offset": 468708548,
-          "size": 2471048
+          "offset": 474243876,
+          "size": 2481952
         },
         "tiles/tile_d4_l5_20_20_1_leaf1.glb": {
-          "offset": 471179660,
-          "size": 820596
+          "offset": 476725892,
+          "size": 823468
         },
         "tiles/tile_d3_l4_10_10_0_leaf0.glb": {
-          "offset": 472000320,
-          "size": 2081756
+          "offset": 477549424,
+          "size": 2106456
         },
         "tiles/tile_d1_l2_2_2_0_leaf0.glb": {
-          "offset": 474082138,
+          "offset": 479655942,
           "size": 53372
         },
         "preview_tileset.json": {
-          "offset": 474135560,
-          "size": 355
+          "offset": 479709364,
+          "size": 358
         },
         "preview_low/tiles/root.glb": {
-          "offset": 474135971,
-          "size": 5760148
+          "offset": 479709778,
+          "size": 5686188
         },
         "thumbnail.png": {
-          "offset": 479896162,
+          "offset": 485396009,
           "size": 587759
         }
       },

@@ -285,7 +285,7 @@ class CategorizationIoMixin:
 
         # 2. Fallback to leaf/LOD-2 .glb tiles (or .3tz stream archive) with automatic meshopt & KHR_texture_transform support
         if v0_arr is None or len(v0_arr) == 0:
-            glb_files = DsmAndVolumeMixin._collect_scan_glb_files(scan)
+            glb_files = DsmAndVolumeMixin._collect_scan_glb_files(scan, max_tiles=24)
             v0_list, v1_list, v2_list, rgb_list = [], [], [], []
             ts_doc_loaded = None
             if ts_path and os.path.isfile(ts_path) and ts_path.lower().endswith(".json"):
@@ -651,7 +651,7 @@ class CategorizationIoMixin:
                     return None
                 return None
 
-            max_glb_cnt = 20 if (glb_files and os.path.basename(glb_files[0]).startswith("tile_l1_")) else 24
+            max_glb_cnt = 20 if (glb_files and os.path.basename(glb_files[0]).startswith("tile_l1_")) else max(24, min(36, len(glb_files)))
             for gp in glb_files[:max_glb_cnt]:
                 try:
                     is_legacy_tile = os.path.basename(gp).startswith("tile_l1_")

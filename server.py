@@ -2130,7 +2130,13 @@ class GatheringScansHandler(CloudAndTunnelHandlerMixin, ServerWriteRoutesMixin, 
                 tiles_dir = os.path.join(ts_dir, "tiles")
                 if os.path.isdir(tiles_dir):
                     for fn in sorted(os.listdir(tiles_dir)):
-                        if fn == "root.glb" or fn.startswith("tile_l1_") or fn.startswith("tile_l2_"):
+                        if (
+                            fn == "root.glb"
+                            or fn.startswith("tile_l1_")
+                            or fn.startswith("tile_l2_")
+                            or fn.startswith("tile_d1_")
+                            or fn.startswith("tile_d2_")
+                        ):
                             urls.append(f"/stream/{scan_id}/tiles/{fn}")
                 subtrees_dir = os.path.join(ts_dir, "subtrees")
                 if os.path.isdir(subtrees_dir):
@@ -2302,73 +2308,118 @@ class GatheringScansHandler(CloudAndTunnelHandlerMixin, ServerWriteRoutesMixin, 
                     )
                     return
 
-            # B. Download .glb (Self-Contained Binary glTF 2.0 3D Model with Embedded Textures)
+            # B. Download .glb (Self-Contained Binary glTF 2.0 3D Model with Embedded Textures & 64-bit TWD97 Origin)
             if dtype_norm == "glb":
                 dl_glb_name = f"{scan_id}_{crs_tag}.glb"
-                conv_glb = os.path.join(conv_dir, f"{scan_id}_export_v1.glb")
+                conv_glb = os.path.join(conv_dir, f"{scan_id}_export_v2.glb")
                 if not os.path.isfile(conv_glb) or (ts_mtime > 0 and os.path.getmtime(conv_glb) < ts_mtime):
                     try:
+                        import numpy as _np
                         import subprocess as _sp
                         from pc_worker.surveying_engine import GLTFPACK_EXE
+                        from pc_worker.config import GC_SCAN_OPTIMIZER_DIR
+                        if GC_SCAN_OPTIMIZER_DIR not in sys.path:
+                            sys.path.append(GC_SCAN_OPTIMIZER_DIR)
+                        from optimizer.geometry_optimizer import extract_glb_64bit_origin_to_local, restore_glb_64bit_origin
 
-                        leaf_glbs_dl = []
-                        if ts_path_check and ts_path_check.lower().endswith(".glb") and os.path.isfile(ts_path_check):
-                            leaf_glbs_dl = [ts_path_check]
-                        elif ts_path_check and os.path.isfile(ts_path_check):
-                            _bdir_g = os.path.dirname(ts_path_check)
-                            with open(ts_path_check, "r", encoding="utf-8") as _gfh:
-                                _gtso = json.load(_gfh)
-                            _groot = _gtso.get("root") or {}
-                            _grc = ((_groot.get("content") or {}).get("uri") or "").split("?")[0]
-                            _grf = os.path.join(_bdir_g, _grc) if _grc else ""
-                            if not (_groot.get("children")) and _grf and os.path.isfile(_grf):
-                                leaf_glbs_dl = [_grf]
-                            else:
-                                def _walk_g_dl(node: dict, depth: int = 0):
-                                    _chs = [c for c in (node.get("children") or []) if isinstance(c, dict)]
-                                    if _chs and depth < 12:
-                                        for _ch in _chs:
-                                            _walk_g_dl(_ch, depth + 1)
-                                        return
-                                    _cu = ((node.get("content") or {}).get("uri") or "").split("?")[0]
-                                    if _cu:
-                                        _cf = os.path.join(_bdir_g, _cu)
-                                        if os.path.isfile(_cf):
-                                            leaf_glbs_dl.append(_cf)
-                                _walk_g_dl(_groot, 0)
-                                if not leaf_glbs_dl and _grf and os.path.isfile(_grf):
-                                    leaf_glbs_dl = [_grf]
-                        if not leaf_glbs_dl:
-                            leaf_glbs_dl = SURVEY._collect_scan_glb_files(scan)[:8]
+                        # Select a complete 100%-coverage Horizon Cut (<= 36 tiles) so multi-level octrees export cleanly within GLB limits
+                        leaf_glbs_dl = SURVEY._collect_scan_glb_files(scan, max_tiles=36)
+                        root_tf_vec = (0.0, 0.0, 0.0)
+                        if ts_path_check and ts_path_check.lower().endswith(".json") and os.path.isfile(ts_path_check):
+                            try:
+                                with open(ts_path_check, "r", encoding="utf-8") as _gfh:
+                                    _gtso = json.load(_gfh)
+                                _rtf = (_gtso.get("root") or {}).get("transform")
+                                if isinstance(_rtf, list) and len(_rtf) == 16:
+                                    root_tf_vec = (float(_rtf[12]), float(_rtf[13]), float(_rtf[14]))
+                            except Exception:
+                                pass
 
                         if len(leaf_glbs_dl) == 1 and os.path.isfile(GLTFPACK_EXE):
-                            _sp.run([GLTFPACK_EXE, "-i", leaf_glbs_dl[0], "-o", conv_glb, "-noq"], capture_output=True, timeout=45)
+                            with open(leaf_glbs_dl[0], "rb") as _rf0:
+                                _loc0, _orig0 = extract_glb_64bit_origin_to_local(_rf0.read())
+                            if _orig0 == (0.0, 0.0, 0.0) and root_tf_vec != (0.0, 0.0, 0.0):
+                                _orig0 = root_tf_vec
+                            _tmp_in0 = os.path.join(conv_dir, "_tmp_dl_in0.glb")
+                            with open(_tmp_in0, "wb") as _wf0:
+                                _wf0.write(_loc0)
+                            try:
+                                _sp.run([GLTFPACK_EXE, "-i", _tmp_in0, "-o", conv_glb, "-noq"], capture_output=True, timeout=45)
+                                if os.path.isfile(conv_glb) and _orig0 != (0.0, 0.0, 0.0):
+                                    with open(conv_glb, "rb") as _rf_c:
+                                        _rest = restore_glb_64bit_origin(_rf_c.read(), _orig0)
+                                    with open(conv_glb, "wb") as _wf_c:
+                                        _wf_c.write(_rest)
+                            finally:
+                                if os.path.isfile(_tmp_in0):
+                                    try:
+                                        os.remove(_tmp_in0)
+                                    except OSError:
+                                        pass
                         elif len(leaf_glbs_dl) >= 1:
                             c_bvs, c_accs, c_imgs, c_texs, c_mats, c_prims = [], [], [], [], [], []
                             c_bin = bytearray()
+                            ref_origin: Optional[Tuple[float, float, float]] = None
                             for _gfp in leaf_glbs_dl:
+                                _tmp_in = os.path.join(conv_dir, f"_tmp_dlin_{os.path.basename(_gfp)}")
                                 _tmp_g = os.path.join(conv_dir, f"_tmp_dl_{os.path.basename(_gfp)}")
-                                _read_g = _gfp
+                                with open(_gfp, "rb") as _rf_in:
+                                    _loc_b, _orig_t = extract_glb_64bit_origin_to_local(_rf_in.read())
+                                if _orig_t == (0.0, 0.0, 0.0) and root_tf_vec != (0.0, 0.0, 0.0):
+                                    _orig_t = root_tf_vec
+                                if ref_origin is None and _orig_t != (0.0, 0.0, 0.0):
+                                    ref_origin = _orig_t
+                                _read_g = _tmp_in
+                                with open(_tmp_in, "wb") as _wf_in:
+                                    _wf_in.write(_loc_b)
                                 if os.path.isfile(GLTFPACK_EXE):
-                                    _sp.run([GLTFPACK_EXE, "-i", _gfp, "-o", _tmp_g, "-noq"], capture_output=True, timeout=45)
-                                    if os.path.isfile(_tmp_g):
+                                    _sp.run([GLTFPACK_EXE, "-i", _tmp_in, "-o", _tmp_g, "-noq"], capture_output=True, timeout=45)
+                                    if os.path.isfile(_tmp_g) and os.path.getsize(_tmp_g) > 0:
                                         _read_g = _tmp_g
                                 try:
                                     with open(_read_g, "rb") as _rfg:
                                         _raw_g = _rfg.read()
                                 finally:
-                                    if os.path.isfile(_tmp_g):
-                                        try:
-                                            os.remove(_tmp_g)
-                                        except OSError:
-                                            pass
+                                    for _rm_p in (_tmp_in, _tmp_g):
+                                        if os.path.isfile(_rm_p):
+                                            try:
+                                                os.remove(_rm_p)
+                                            except OSError:
+                                                pass
                                 if len(_raw_g) < 28 or _raw_g[:4] != b"glTF":
                                     continue
                                 _jlen_g = struct.unpack_from("<I", _raw_g, 12)[0]
                                 _jg = json.loads(_raw_g[20 : 20 + _jlen_g].decode("utf-8"))
                                 _boff_g = 20 + _jlen_g
                                 _blen_g = struct.unpack_from("<I", _raw_g, _boff_g)[0]
-                                _blob_g = _raw_g[_boff_g + 8 : _boff_g + 8 + _blen_g]
+                                _blob_g = bytearray(_raw_g[_boff_g + 8 : _boff_g + 8 + _blen_g])
+
+                                # Shift tile's local float32 POSITION relative to shared 64-bit `ref_origin`
+                                if ref_origin is not None and _orig_t != (0.0, 0.0, 0.0):
+                                    _dx = float(_orig_t[0] - ref_origin[0])
+                                    _dy = float(_orig_t[1] - ref_origin[1])
+                                    _dz = float(_orig_t[2] - ref_origin[2])
+                                    if abs(_dx) > 1e-6 or abs(_dy) > 1e-6 or abs(_dz) > 1e-6:
+                                        _delta_f32 = _np.array([_dx, _dy, _dz], dtype=_np.float32)
+                                        _pos_accs = set()
+                                        for _gm in _jg.get("meshes") or []:
+                                            for _gp in _gm.get("primitives") or []:
+                                                _pi = (_gp.get("attributes") or {}).get("POSITION")
+                                                if _pi is not None:
+                                                    _pos_accs.add(int(_pi))
+                                        for _pai in _pos_accs:
+                                            _pa = _jg["accessors"][_pai]
+                                            if _pa.get("componentType") == 5126 and _pa.get("type") == "VEC3":
+                                                _pbv = _jg["bufferViews"][int(_pa["bufferView"])]
+                                                _poff = int(_pbv.get("byteOffset", 0)) + int(_pa.get("byteOffset", 0))
+                                                _pcnt = int(_pa["count"])
+                                                _pstride = int(_pbv.get("byteStride") or 12)
+                                                if _pstride == 12:
+                                                    _parr = _np.frombuffer(_blob_g, dtype=_np.float32, count=_pcnt * 3, offset=_poff).reshape(-1, 3) + _delta_f32
+                                                    _blob_g[_poff : _poff + _pcnt * 12] = _parr.astype(_np.float32).tobytes()
+                                                    _pa["min"] = [float(x) for x in _parr.min(axis=0)]
+                                                    _pa["max"] = [float(x) for x in _parr.max(axis=0)]
+
                                 _base_off = len(c_bin)
                                 c_bin.extend(_blob_g)
                                 while len(c_bin) % 4:
@@ -2419,11 +2470,14 @@ class GatheringScansHandler(CloudAndTunnelHandlerMixin, ServerWriteRoutesMixin, 
                                             _np_prim["mode"] = _gp["mode"]
                                         c_prims.append(_np_prim)
                             if c_prims:
+                                _root_node_g: Dict[str, Any] = {"mesh": 0}
+                                if ref_origin is not None and ref_origin != (0.0, 0.0, 0.0):
+                                    _root_node_g["translation"] = [float(ref_origin[0]), float(ref_origin[1]), float(ref_origin[2])]
                                 _cj = {
                                     "asset": {"version": "2.0", "generator": "GatheringScans GLB Exporter"},
                                     "scene": 0,
                                     "scenes": [{"nodes": [0]}],
-                                    "nodes": [{"mesh": 0}],
+                                    "nodes": [_root_node_g],
                                     "meshes": [{"primitives": c_prims}],
                                     "materials": c_mats,
                                     "textures": c_texs,
@@ -2485,8 +2539,8 @@ class GatheringScansHandler(CloudAndTunnelHandlerMixin, ServerWriteRoutesMixin, 
                     self._serve_file_with_range(obj_path, download_name=dl_obj_name)
                     return
 
-            # Convert ALL leaf .glb tiles (with accumulated 4x4 tile transforms) into a world-georeferenced .obj on disk
-            conv_obj = os.path.join(conv_dir, f"{scan_id}_world_export_v3.obj")
+            # Convert Horizon-Cut / leaf .glb tiles (with accumulated 4x4 tile transforms & 64-bit TWD97 origins) into a world-georeferenced .obj on disk
+            conv_obj = os.path.join(conv_dir, f"{scan_id}_world_export_v4.obj")
             if not os.path.isfile(conv_obj) or (ts_mtime > 0 and os.path.getmtime(conv_obj) < ts_mtime):
                 # Fast path: if raw obj_path + offset.xyz exist and are up to date, shift vertices by offset.xyz in ~1.5s preserving UVs/materials
                 if obj_path and os.path.isfile(obj_path) and (ts_mtime <= os.path.getmtime(obj_path) + 2.0):
@@ -2524,77 +2578,64 @@ class GatheringScansHandler(CloudAndTunnelHandlerMixin, ServerWriteRoutesMixin, 
                     import trimesh
                     import subprocess as _sp
                     from pc_worker.surveying_engine import GLTFPACK_EXE
+                    from pc_worker.config import GC_SCAN_OPTIMIZER_DIR
+                    if GC_SCAN_OPTIMIZER_DIR not in sys.path:
+                        sys.path.append(GC_SCAN_OPTIMIZER_DIR)
+                    from optimizer.geometry_optimizer import extract_glb_64bit_origin_to_local
 
                     glb_entries = []
                     has_root_tf = False
                     up_axis = ""
+                    root_tf_mat = _np.eye(4, dtype=_np.float64)
                     if ts_path_check and ts_path_check.lower().endswith(".json") and os.path.isfile(ts_path_check):
                         with open(ts_path_check, "r", encoding="utf-8") as _tfh:
                             _ts_obj = json.load(_tfh)
                         up_axis = str((_ts_obj.get("asset") or {}).get("gltfUpAxis") or "").upper().strip()
-                        has_root_tf = bool((_ts_obj.get("root") or {}).get("transform"))
-                        _ts_base = os.path.dirname(ts_path_check)
-                        _r_glb = os.path.join(_ts_base, "tiles", "root.glb")
+                        _rtf_l = (_ts_obj.get("root") or {}).get("transform")
+                        if isinstance(_rtf_l, list) and len(_rtf_l) == 16:
+                            has_root_tf = True
+                            root_tf_mat = _np.array(_rtf_l, dtype=_np.float64).reshape((4, 4), order="F")
 
-                        def _walk_dl_leaves(node, p_tf, out_l):
-                            c_tf = p_tf
-                            ntf = node.get("transform")
-                            if isinstance(ntf, list) and len(ntf) == 16:
-                                c_tf = p_tf @ _np.array(ntf, dtype=_np.float64).reshape((4, 4), order="F")
-                            ch_list = [c for c in (node.get("children") or []) if isinstance(c, dict)]
-                            if ch_list:
-                                for ch in ch_list:
-                                    _walk_dl_leaves(ch, c_tf, out_l)
-                            else:
-                                uri = ((node.get("content") or {}).get("uri") or (node.get("content") or {}).get("url") or "")
-                                if uri and "{level}" not in uri:
-                                    cp = os.path.normpath(os.path.join(_ts_base, uri))
-                                    if os.path.isfile(cp):
-                                        out_l.append((cp, c_tf))
-
-                        if os.path.isfile(_r_glb):
-                            _rtf_l = (_ts_obj.get("root") or {}).get("transform")
-                            _rtf_m = _np.array(_rtf_l, dtype=_np.float64).reshape((4, 4), order="F") if (isinstance(_rtf_l, list) and len(_rtf_l) == 16) else _np.eye(4, dtype=_np.float64)
-                            glb_entries = [(_r_glb, _rtf_m)]
-                        elif isinstance(_ts_obj.get("root"), dict):
-                            _walk_dl_leaves(_ts_obj["root"], _np.eye(4, dtype=_np.float64), glb_entries)
-                            if not glb_entries:
-                                _prev_p = os.path.join(_ts_base, "preview_tileset.json")
-                                if os.path.isfile(_prev_p):
-                                    with open(_prev_p, "r", encoding="utf-8") as _pfh:
-                                        _pts = json.load(_pfh)
-                                    if isinstance(_pts.get("root"), dict):
-                                        _walk_dl_leaves(_pts["root"], _np.eye(4, dtype=_np.float64), glb_entries)
-                    if not glb_entries:
-                        for gf_fb in SURVEY._collect_scan_glb_files(scan):
-                            glb_entries.append((gf_fb, _np.eye(4, dtype=_np.float64)))
+                    # Use complete Horizon Cut (<= 40 tiles) so multi-level octrees export full site detail rather than coarse root.glb
+                    for gf_hc in SURVEY._collect_scan_glb_files(scan, max_tiles=40):
+                        glb_entries.append((gf_hc, root_tf_mat))
 
                     apply_y_to_z = (up_axis == "Y") or (up_axis == "" and has_root_tf)
                     meshes = []
                     for gf, tile_tf in glb_entries:
-                        load_target = gf
+                        tmp_in = None
                         tmp_gf = None
                         m = None
+                        orig_shift = _np.zeros(3, dtype=_np.float64)
                         try:
-                            loaded = trimesh.load(load_target, process=False)
-                            m = loaded.to_geometry() if hasattr(loaded, "to_geometry") else (loaded.dump(concatenate=True) if isinstance(loaded, trimesh.Scene) else loaded)
-                            if not hasattr(m, "vertices") or len(m.vertices) == 0:
-                                raise ValueError("Empty GLB")
-                        except Exception:
-                            if os.path.isfile(GLTFPACK_EXE):
-                                tmp_gf = os.path.join(conv_dir, f"_tmp_{os.path.basename(gf)}")
-                                _sp.run([GLTFPACK_EXE, "-i", gf, "-o", tmp_gf, "-noq"], capture_output=True, timeout=45)
-                                if os.path.isfile(tmp_gf):
-                                    loaded = trimesh.load(tmp_gf, process=False)
-                                    m = loaded.to_geometry() if hasattr(loaded, "to_geometry") else (loaded.dump(concatenate=True) if isinstance(loaded, trimesh.Scene) else loaded)
+                            with open(gf, "rb") as _rf_obj:
+                                _loc_obj_b, _orig_obj_t = extract_glb_64bit_origin_to_local(_rf_obj.read())
+                            if _orig_obj_t != (0.0, 0.0, 0.0):
+                                orig_shift = _np.array(_orig_obj_t, dtype=_np.float64)
+                            tmp_in = os.path.join(conv_dir, f"_tmp_objin_{os.path.basename(gf)}")
+                            with open(tmp_in, "wb") as _wf_obj:
+                                _wf_obj.write(_loc_obj_b)
+                            try:
+                                loaded = trimesh.load(tmp_in, process=False)
+                                m = loaded.to_geometry() if hasattr(loaded, "to_geometry") else (loaded.dump(concatenate=True) if isinstance(loaded, trimesh.Scene) else loaded)
+                                if not hasattr(m, "vertices") or len(m.vertices) == 0:
+                                    raise ValueError("Empty GLB")
+                            except Exception:
+                                if os.path.isfile(GLTFPACK_EXE):
+                                    tmp_gf = os.path.join(conv_dir, f"_tmp_{os.path.basename(gf)}")
+                                    _sp.run([GLTFPACK_EXE, "-i", tmp_in, "-o", tmp_gf, "-noq"], capture_output=True, timeout=45)
+                                    if os.path.isfile(tmp_gf):
+                                        loaded = trimesh.load(tmp_gf, process=False)
+                                        m = loaded.to_geometry() if hasattr(loaded, "to_geometry") else (loaded.dump(concatenate=True) if isinstance(loaded, trimesh.Scene) else loaded)
                         finally:
-                            if tmp_gf and os.path.isfile(tmp_gf):
-                                try:
-                                    os.remove(tmp_gf)
-                                except OSError:
-                                    pass
+                            for _rm_obj in (tmp_in, tmp_gf):
+                                if _rm_obj and os.path.isfile(_rm_obj):
+                                    try:
+                                        os.remove(_rm_obj)
+                                    except OSError:
+                                        pass
                         if m is not None and hasattr(m, "vertices") and len(m.vertices) > 0:
-                            verts = _np.asarray(m.vertices, dtype=_np.float64)
+                            verts = _np.asarray(m.vertices, dtype=_np.float64) + orig_shift
                             if apply_y_to_z:
                                 verts = _np.column_stack([verts[:, 0], -verts[:, 2], verts[:, 1]])
                             verts = verts @ tile_tf[:3, :3].T + tile_tf[:3, 3]
