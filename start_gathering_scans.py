@@ -94,6 +94,8 @@ from pc_worker.pix4d_runner import (
     run_pix4dmatic_pipeline,
     parse_pix4dmatic_log_progress,
     postprocess_obj_to_tileset,
+    _detect_scalable_mesh_max_lod,
+    run_export_obj_recovery,
 )
 
 
@@ -297,10 +299,35 @@ def pix4d_worker_loop():
                             for f in r_files:
                                 if f.lower().endswith(".obj"):
                                     fp = os.path.join(r_dir, f)
-                                    objs.append((os.path.getmtime(fp), fp))
+                                    try:
+                                        if os.path.getsize(fp) > 1024:
+                                            objs.append((os.path.getmtime(fp), fp))
+                                        else:
+                                            os.remove(fp)
+                                    except OSError:
+                                        pass
                 objs.sort(key=lambda x: x[0], reverse=True)
-                newest_obj = objs[0][1] if objs else (scan_row.get("obj_path") or "")
+                fallback_obj = str(scan_row.get("obj_path") or "")
+                if fallback_obj and (not os.path.isfile(fallback_obj) or os.path.getsize(fallback_obj) <= 1024):
+                    fallback_obj = ""
+                newest_obj = objs[0][1] if objs else fallback_obj
                 newest_obj_mtime = objs[0][0] if objs else (os.path.getmtime(newest_obj) if newest_obj and os.path.isfile(newest_obj) else 0.0)
+
+                # If Scalable mesh octree tiles exist on disk (`processing/meshes/*/content/*.glb`)
+                # but ExportMeshToObj left a 0-byte or missing .obj because dynamic max_level < 13 (e.g. level 9 for catch_DaAn),
+                # automatically recover and export mesh.obj at the exact max octree level!
+                if not newest_obj and _detect_scalable_mesh_max_lod(proj_dir) is not None:
+                    print(f"[InboxWatcher] Recovering Scalable mesh .obj export for {fin_sid} at dynamic octree max level...")
+                    try:
+                        newest_obj = run_export_obj_recovery(
+                            fin_sid,
+                            proj_dir,
+                            progress_callback=lambda p, msg: DB.update_job_progress(fin_sid, "processing", p, msg),
+                        )
+                        if newest_obj and os.path.isfile(newest_obj) and os.path.getsize(newest_obj) > 1024:
+                            newest_obj_mtime = os.path.getmtime(newest_obj)
+                    except Exception as rec_err:
+                        print(f"[InboxWatcher] ExportMeshToObj recovery warning for {fin_sid}: {rec_err}")
 
                 # If rerun_settings.json is still present and no new .obj was exported after the rerun started,
                 # do NOT falsely mark a stale pre-rerun tileset.json as completed! Re-queue or mark failed.
@@ -309,7 +336,7 @@ def pix4d_worker_loop():
                     DB.set_force_next(fin_sid, True)
                 else:
                     ts_path = scan_row.get("tileset_path") or os.path.join(proj_dir, "tileset", "tileset.json")
-                    if newest_obj and os.path.isfile(newest_obj):
+                    if newest_obj and os.path.isfile(newest_obj) and os.path.getsize(newest_obj) > 1024:
                         # If OBJ is newer than tileset.json, rebuild tileset + preview + DSM
                         if not os.path.isfile(ts_path) or os.path.getmtime(newest_obj) > os.path.getmtime(ts_path):
                             DB.update_job_progress(
@@ -318,27 +345,32 @@ def pix4d_worker_loop():
                                 91.0,
                                 "Website Processing (15%): TWD97 64-bit Offset & Mesh Island Check...",
                             )
-                            built_ts = postprocess_obj_to_tileset(
-                                fin_sid,
-                                proj_dir,
-                                newest_obj,
-                                progress_callback=lambda p, msg: DB.update_job_progress(fin_sid, "processing", p, msg),
-                            )
-                            if built_ts:
-                                ts_path = built_ts
+                            try:
+                                built_ts = postprocess_obj_to_tileset(
+                                    fin_sid,
+                                    proj_dir,
+                                    newest_obj,
+                                    progress_callback=lambda p, msg: DB.update_job_progress(fin_sid, "processing", p, msg),
+                                )
+                                if built_ts:
+                                    ts_path = built_ts
+                            except Exception as post_err:
+                                print(f"[InboxWatcher] Error in postprocess_obj_to_tileset for {fin_sid}: {post_err}")
                     if os.path.isfile(rerun_cfg_fp):
                         try:
                             os.remove(rerun_cfg_fp)
                         except OSError:
                             pass
-                    if os.path.isfile(ts_path) or (newest_obj and os.path.isfile(newest_obj)):
+                    if os.path.isfile(ts_path):
                         DB.update_job_progress(
                             fin_sid,
                             "completed",
                             100.0,
                             "Completed (TWD97 + TWVD2001, 4K Web Tileset)",
-                            tileset_path=ts_path if os.path.isfile(ts_path) else None,
-                            obj_path=newest_obj if os.path.isfile(newest_obj) else None,
+                            tileset_path=ts_path,
+                            obj_path=newest_obj if (newest_obj and os.path.isfile(newest_obj)) else None,
+                            quality_stage="full_hq",
+                            pending_pass="",
                         )
                         try:
                             from pc_worker.gdrive_watcher import _discover_folder_scan_item, normalize_gatheren_uploader
@@ -349,6 +381,8 @@ def pix4d_worker_loop():
                                 merged.update(disc)
                                 merged["scan_id"] = fin_sid
                                 merged["status"] = "completed"
+                                merged["quality_stage"] = "full_hq"
+                                merged["pending_pass"] = ""
                                 merged["progress_pct"] = 100.0
                                 if cur_row.get("source_zip_path"):
                                     merged["source_zip_path"] = cur_row["source_zip_path"]
@@ -384,11 +418,20 @@ def pix4d_worker_loop():
                 sid = next_job["scan_id"]
                 src_zip = next_job.get("source_zip_path") or ""
                 out_dir = next_job.get("project_dir") or os.path.join(LOCAL_SCANS_ROOT, sid)
+                has_rerun_cfg = os.path.isfile(os.path.join(out_dir, "rerun_settings.json"))
+                raw_pending_pass = str(next_job.get("pending_pass") or "").strip().lower()
+                if has_rerun_cfg:
+                    job_pass = "full_hq"
+                elif raw_pending_pass in ("preview", "full_hq"):
+                    job_pass = raw_pending_pass
+                else:
+                    existing_ts = str(next_job.get("tileset_path") or "")
+                    job_pass = "full_hq" if (existing_ts and os.path.isfile(existing_ts)) else "preview"
 
-                print(f"[InboxWatcher] Auto-starting PIX4Dmatic pipeline for {sid}: {src_zip or out_dir}")
+                print(f"[InboxWatcher] Auto-starting PIX4Dmatic pipeline ({job_pass}) for {sid}: {src_zip or out_dir}")
 
                 def _on_progress(pct: float, stage: str):
-                    DB.update_job_progress(sid, "processing", pct, stage)
+                    DB.update_job_progress(sid, "processing", pct, stage, pending_pass=job_pass)
 
                 try:
                     res = run_pix4dmatic_pipeline(
@@ -396,6 +439,7 @@ def pix4d_worker_loop():
                         input_path=src_zip,
                         output_project_dir=out_dir,
                         progress_callback=_on_progress,
+                        pipeline_pass=job_pass,
                     )
                 except Exception as job_exc:
                     import traceback
@@ -409,52 +453,121 @@ def pix4d_worker_loop():
                     continue
 
                 if res.get("success") and res.get("tileset_path"):
-                    DB.update_job_progress(
-                        sid,
-                        "completed",
-                        100.0,
-                        f"Completed (TWD97 + TWVD2001, {res.get('texture_size', 4096)}px Web Tileset)",
-                        tileset_path=res.get("tileset_path"),
-                        obj_path=res.get("obj_path"),
-                    )
-                    try:
-                        from pc_worker.gdrive_watcher import _discover_folder_scan_item, normalize_gatheren_uploader
-                        disc = _discover_folder_scan_item(out_dir)
-                        if disc:
-                            cur_row = DB.get_scan(sid) or {}
-                            merged = dict(cur_row)
-                            merged.update(disc)
-                            merged["scan_id"] = sid
-                            merged["status"] = "completed"
-                            merged["progress_pct"] = 100.0
-                            merged["stage_label"] = f"Completed (TWD97 + TWVD2001, {res.get('texture_size', 4096)}px Web Tileset)"
-                            if cur_row.get("source_zip_path"):
-                                merged["source_zip_path"] = cur_row["source_zip_path"]
-                            if cur_row.get("name"):
-                                merged["name"] = cur_row["name"]
-                            up_name, up_email = normalize_gatheren_uploader(
-                                cur_row.get("uploader_name") or merged.get("uploader_name", ""),
-                                cur_row.get("uploader_email") or merged.get("uploader_email", "glibivanov@gatheren.com.tw"),
-                                merged.get("source_zip_path") or out_dir,
-                            )
-                            merged["uploader_name"] = up_name
-                            merged["uploader_email"] = up_email
-                            if cur_row.get("rtk_accuracy_cm"):
-                                merged["rtk_accuracy_cm"] = cur_row["rtk_accuracy_cm"]
-                            if cur_row.get("project_group") and cur_row["project_group"] != "General / Unassigned":
-                                merged["project_group"] = cur_row["project_group"]
-                            if cur_row.get("project_name_zh"):
-                                merged["project_name_zh"] = cur_row["project_name_zh"]
-                            if int(cur_row.get("image_count") or 0) > int(merged.get("image_count") or 0):
-                                merged["image_count"] = int(cur_row["image_count"])
-                            DB.upsert_scan(merged)
-                    except Exception as de:
-                        print(f"[InboxWatcher] Metadata refresh note for {sid}: {de}")
-                    try:
-                        GCHAT.notify_scan_ready(sid)
-                    except Exception as ge:
-                        print(f"[InboxWatcher] Google Chat notify note: {ge}")
-                    print(f"[InboxWatcher] Completed {sid} -> {res.get('tileset_path')}")
+                    if job_pass == "preview":
+                        # Pass 1 Fast Preview finished! Put scan live on Map/Studio immediately, notify uploader,
+                        # and queue Pass 2 (Full 16K HQ Upgrade) on the SAME scan_id!
+                        pass2_stage = "⚡ Fast Preview Live · Queued for Pass 2/2 Full 16K HQ Upgrade"
+                        DB.update_job_progress(
+                            sid,
+                            "queued",
+                            0.0,
+                            pass2_stage,
+                            tileset_path=res.get("tileset_path"),
+                            obj_path=res.get("obj_path"),
+                            quality_stage="preview_ready",
+                            pending_pass="full_hq",
+                        )
+                        try:
+                            from pc_worker.gdrive_watcher import _discover_folder_scan_item, normalize_gatheren_uploader
+                            disc = _discover_folder_scan_item(out_dir)
+                            if disc:
+                                cur_row = DB.get_scan(sid) or {}
+                                merged = dict(cur_row)
+                                merged.update(disc)
+                                merged["scan_id"] = sid
+                                merged["status"] = "queued"
+                                merged["quality_stage"] = "preview_ready"
+                                merged["pending_pass"] = "full_hq"
+                                merged["progress_pct"] = 0.0
+                                merged["stage_label"] = pass2_stage
+                                merged["force_next"] = 0
+                                merged["bypass_count"] = 0
+                                if cur_row.get("source_zip_path"):
+                                    merged["source_zip_path"] = cur_row["source_zip_path"]
+                                if cur_row.get("name"):
+                                    merged["name"] = cur_row["name"]
+                                up_name, up_email = normalize_gatheren_uploader(
+                                    cur_row.get("uploader_name") or merged.get("uploader_name", ""),
+                                    cur_row.get("uploader_email") or merged.get("uploader_email", "glibivanov@gatheren.com.tw"),
+                                    merged.get("source_zip_path") or out_dir,
+                                )
+                                merged["uploader_name"] = up_name
+                                merged["uploader_email"] = up_email
+                                if cur_row.get("rtk_accuracy_cm"):
+                                    merged["rtk_accuracy_cm"] = cur_row["rtk_accuracy_cm"]
+                                if cur_row.get("project_group") and cur_row["project_group"] != "General / Unassigned":
+                                    merged["project_group"] = cur_row["project_group"]
+                                if cur_row.get("project_name_zh"):
+                                    merged["project_name_zh"] = cur_row["project_name_zh"]
+                                if int(cur_row.get("image_count") or 0) > int(merged.get("image_count") or 0):
+                                    merged["image_count"] = int(cur_row["image_count"])
+                                DB.upsert_scan(merged)
+                        except Exception as de:
+                            print(f"[InboxWatcher] Preview metadata refresh note for {sid}: {de}")
+                        try:
+                            GCHAT.notify_scan_preview_ready(sid)
+                        except Exception as ge:
+                            print(f"[InboxWatcher] Google Chat preview notify note: {ge}")
+                        try:
+                            threading.Thread(
+                                target=sync_all_scans_to_gdrive_and_vps,
+                                args=(DB, AUTH_SHARE, False),
+                                daemon=True,
+                            ).start()
+                        except Exception:
+                            pass
+                        print(f"[InboxWatcher] Completed Pass 1/2 Fast Preview for {sid} -> queued Pass 2/2 Full HQ on same scan_id")
+                    else:
+                        DB.update_job_progress(
+                            sid,
+                            "completed",
+                            100.0,
+                            f"Completed (TWD97 + TWVD2001, {res.get('texture_size', 16384)}px Web Tileset)",
+                            tileset_path=res.get("tileset_path"),
+                            obj_path=res.get("obj_path"),
+                            quality_stage="full_hq",
+                            pending_pass="",
+                        )
+                        try:
+                            from pc_worker.gdrive_watcher import _discover_folder_scan_item, normalize_gatheren_uploader
+                            disc = _discover_folder_scan_item(out_dir)
+                            if disc:
+                                cur_row = DB.get_scan(sid) or {}
+                                merged = dict(cur_row)
+                                merged.update(disc)
+                                merged["scan_id"] = sid
+                                merged["status"] = "completed"
+                                merged["quality_stage"] = "full_hq"
+                                merged["pending_pass"] = ""
+                                merged["progress_pct"] = 100.0
+                                merged["stage_label"] = f"Completed (TWD97 + TWVD2001, {res.get('texture_size', 16384)}px Web Tileset)"
+                                if cur_row.get("source_zip_path"):
+                                    merged["source_zip_path"] = cur_row["source_zip_path"]
+                                if cur_row.get("name"):
+                                    merged["name"] = cur_row["name"]
+                                up_name, up_email = normalize_gatheren_uploader(
+                                    cur_row.get("uploader_name") or merged.get("uploader_name", ""),
+                                    cur_row.get("uploader_email") or merged.get("uploader_email", "glibivanov@gatheren.com.tw"),
+                                    merged.get("source_zip_path") or out_dir,
+                                )
+                                merged["uploader_name"] = up_name
+                                merged["uploader_email"] = up_email
+                                if cur_row.get("rtk_accuracy_cm"):
+                                    merged["rtk_accuracy_cm"] = cur_row["rtk_accuracy_cm"]
+                                if cur_row.get("project_group") and cur_row["project_group"] != "General / Unassigned":
+                                    merged["project_group"] = cur_row["project_group"]
+                                if cur_row.get("project_name_zh"):
+                                    merged["project_name_zh"] = cur_row["project_name_zh"]
+                                if int(cur_row.get("image_count") or 0) > int(merged.get("image_count") or 0):
+                                    merged["image_count"] = int(cur_row["image_count"])
+                                DB.upsert_scan(merged)
+                        except Exception as de:
+                            print(f"[InboxWatcher] Metadata refresh note for {sid}: {de}")
+                        try:
+                            GCHAT.notify_scan_ready(sid)
+                        except Exception as ge:
+                            print(f"[InboxWatcher] Google Chat notify note: {ge}")
+                        print(f"[InboxWatcher] Completed Pass 2/2 Full HQ {sid} -> {res.get('tileset_path')}")
                 else:
                     err_detail = res.get("error") or f"exit {res.get('return_code')}"
                     DB.update_job_progress(

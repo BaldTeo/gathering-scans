@@ -113,12 +113,30 @@ DEFAULT_PIX4D_SETTINGS = {
     "skyless": False,                       # False = Sky Mask Disabled (preserves surrounding trees & canopy)
     "use_roi": False,                       # False = Exclude restrictive OPF RoiSet clipping
     "texture_size": 16384,                  # 1024, 2048, 4096, 8192, or 16384
+    "calib_image_scale": "Full",            # "Full", "Half", "Quarter", or "AutoAdaptive"
+    "skip_dense_cloud": False,              # True = Pass 1 uses LiDAR DepthPointCloud directly
     "dense_image_scale": "Full",            # "Full", "Half", or "Quarter" (1x full resolution to fill surface gaps)
     "depth_min_confidence": "Medium",       # "High", "Medium", or "Low"
     "depth_agreement_m": 0.01,              # Depth filter agreement threshold in meters
     "model_simplification": "Conservative", # "Conservative", "Moderate", or "Aggressive"
     "deghosting": "Weak",                   # "Weak", "Strong", or "Disabled"
     "export_lod": 13,                       # 13 = Full detail LOD export
+}
+
+# Option C — Hybrid Adaptive Pass 1 Fast Preview Settings (~3–6 min preview before Pass 2 16K HQ)
+FAST_PREVIEW_PIX4D_SETTINGS = {
+    "mesh_pipeline": "FixedSize",
+    "skyless": False,
+    "use_roi": False,
+    "texture_size": 2048,
+    "calib_image_scale": "AutoAdaptive",    # Full (1:1) if <=500 imgs & 1 part, else Quarter (1/4)
+    "skip_dense_cloud": True,               # Use fast LiDAR DepthPointCloud directly in Pass 1
+    "dense_image_scale": "Quarter",         # Fallback only if scan has no LiDAR depth maps
+    "depth_min_confidence": "Medium",
+    "depth_agreement_m": 0.02,
+    "model_simplification": "Moderate",
+    "deghosting": "Weak",
+    "export_lod": 12,
 }
 
 
@@ -143,6 +161,9 @@ def load_pix4d_settings() -> dict:
         cfg["texture_size"] = 16384
     dense_scale = str(cfg.get("dense_image_scale", "Full"))
     cfg["dense_image_scale"] = dense_scale if dense_scale in ("Full", "Half", "Quarter") else "Full"
+    calib_scale = str(cfg.get("calib_image_scale", "Full"))
+    cfg["calib_image_scale"] = calib_scale if calib_scale in ("Full", "Half", "Quarter", "AutoAdaptive") else "Full"
+    cfg["skip_dense_cloud"] = bool(cfg.get("skip_dense_cloud", False))
     depth_conf = str(cfg.get("depth_min_confidence", "Medium"))
     cfg["depth_min_confidence"] = depth_conf if depth_conf in ("High", "Medium", "Low") else "Medium"
     try:
@@ -188,6 +209,9 @@ def load_pix4d_settings_from_dict(raw: dict) -> dict:
         cfg["texture_size"] = 16384
     dense_scale = str(cfg.get("dense_image_scale", "Full"))
     cfg["dense_image_scale"] = dense_scale if dense_scale in ("Full", "Half", "Quarter") else "Full"
+    calib_scale = str(cfg.get("calib_image_scale", "Full"))
+    cfg["calib_image_scale"] = calib_scale if calib_scale in ("Full", "Half", "Quarter", "AutoAdaptive") else "Full"
+    cfg["skip_dense_cloud"] = bool(cfg.get("skip_dense_cloud", False))
     depth_conf = str(cfg.get("depth_min_confidence", "Medium"))
     cfg["depth_min_confidence"] = depth_conf if depth_conf in ("High", "Medium", "Low") else "Medium"
     try:

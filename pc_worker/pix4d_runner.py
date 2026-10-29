@@ -28,6 +28,7 @@ from pc_worker.config import (
     TWD97_TWVD2001_LABEL,
     LOCAL_SCANS_ROOT,
     GC_SCAN_OPTIMIZER_DIR,
+    FAST_PREVIEW_PIX4D_SETTINGS,
     load_pix4d_settings,
     load_pix4d_settings_from_dict,
 )
@@ -727,8 +728,20 @@ def build_pipeline_breakdown(
     else:
         overall_pct = round(sum(float(s["weight"]) * (float(s["substep_pct"]) / 100.0) for s in raw_sections), 1)
 
+    q_stage = str(row.get("quality_stage") or "").strip()
+    p_pass = str(row.get("pending_pass") or "").strip()
+    if not p_pass:
+        if "pass 1" in stage_low or "fast preview" in stage_low or "快速預覽" in stage_lbl:
+            p_pass = "preview" if q_stage != "preview_ready" else "full_hq"
+        else:
+            p_pass = "full_hq" if q_stage == "preview_ready" else ("preview" if status in ("queued", "waiting_parts") and not row.get("tileset_path") else "full_hq")
+    if not q_stage:
+        q_stage = "full_hq" if status == "completed" else ("preview_ready" if row.get("tileset_path") else "none")
+
     return {
         "overall_pct": overall_pct,
+        "pipeline_pass": p_pass,
+        "quality_stage": q_stage,
         "active_section_id": active_sec["id"],
         "active_section_color": active_sec["color"],
         "active_section_short_en": active_sec["short_en"],
@@ -849,6 +862,122 @@ def parse_pix4dmatic_log_progress(log_path: str) -> Dict[str, Any]:
     return out
 
 
+def _detect_scalable_mesh_max_lod(proj_dir: str) -> Optional[int]:
+    """
+    Inspects PIX4Dmatic's internal octree mesh tile directory (`**/processing/meshes/*/content/*.glb`)
+    and returns the highest integer level prefix `<level>_*.glb` (e.g. 9 for `catch_DaAn`, 10 for `NTU_Dorm`).
+    Returns None if no `.glb` mesh tiles exist.
+    """
+    if not proj_dir or not os.path.isdir(proj_dir):
+        return None
+    levels = []
+    for glb_fp in glob.glob(os.path.join(proj_dir, "**", "processing", "meshes", "*", "content", "*.glb"), recursive=True):
+        bn = os.path.basename(glb_fp)
+        head = bn.split("_", 1)[0]
+        if head.isdigit():
+            levels.append(int(head))
+    return max(levels) if levels else None
+
+
+def run_export_obj_recovery(
+    scan_id: str,
+    proj_dir: str,
+    export_dir: Optional[str] = None,
+    progress_callback: Optional[Callable[[float, str], None]] = None,
+) -> str:
+    """
+    Recovers a scan whose `Scalable` mesh finished building `.glb` octree tiles inside
+    `<proj_dir>/<scan_id>/processing/meshes/*/content/*.glb`, but whose `ExportMeshToObj`
+    step failed because `exportLod: 13` exceeded the dynamic octree max level (e.g. level 9 or 10).
+    Re-exports `mesh.obj` using the exact max octree level in ~15-30 seconds without re-running photogrammetry.
+    """
+    max_lod = _detect_scalable_mesh_max_lod(proj_dir)
+    if max_lod is None:
+        return ""
+    exp_dir = export_dir or os.path.join(proj_dir, "exports")
+    obj_mesh_dir = os.path.join(exp_dir, "obj_mesh")
+    os.makedirs(obj_mesh_dir, exist_ok=True)
+
+    # Remove any 0-byte or truncated <= 1024 byte .obj files left by the failed ExportMeshToObj
+    for r_dir, _, r_files in os.walk(exp_dir):
+        for fn in r_files:
+            if fn.lower().endswith(".obj"):
+                fp = os.path.join(r_dir, fn)
+                try:
+                    if os.path.getsize(fp) <= 1024:
+                        os.remove(fp)
+                except OSError:
+                    pass
+
+    proj_folder_clean = proj_dir.replace("\\", "/")
+    if os.path.isfile(os.path.join(proj_dir, "project", "root.p4m")) and not os.path.isfile(os.path.join(proj_dir, scan_id, "root.p4m")):
+        proj_name = "project"
+    else:
+        proj_name = scan_id
+    obj_mesh_clean = obj_mesh_dir.replace("\\", "/")
+    recovery_gst_path = os.path.join(proj_dir, f"{scan_id}_export_recovery.gst")
+    gst_content = f"""Session {{
+    Project {{
+        folder : "{proj_folder_clean}"
+        name : "{proj_name}"
+
+        CommandGraph {{
+            ExportMeshToObj {{
+                folder : "{obj_mesh_clean}"
+                settings.exportAsTiles : false
+                settings.exportLod : {max_lod}
+                settings.exportSrs : ExportSrs.Scene
+                inputs : [Mesh{{ }}]
+            }}
+        }}
+        SaveProject {{ }}
+    }}
+    CloseSession {{ }}
+}}
+"""
+    with open(recovery_gst_path, "w", encoding="utf-8") as f:
+        f.write(gst_content)
+
+    if progress_callback:
+        progress_callback(89.5, f"PIX4Dmatic: Exporting Scalable Mesh at dynamic tree level {max_lod}...")
+
+    if not os.path.isfile(PIX4DMATIC_EXE):
+        return ""
+
+    startupinfo = None
+    creation_flags = 0
+    if os.name == "nt":
+        startupinfo = subprocess.STARTUPINFO()
+        startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+        startupinfo.wShowWindow = 7  # SW_SHOWMINNOACTIVE
+        creation_flags = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+
+    rec_log_path = os.path.join(proj_dir, "pix4d_export_recovery.log")
+    with open(rec_log_path, "w", encoding="utf-8", errors="replace") as log_fh:
+        subprocess.run(
+            [PIX4DMATIC_EXE, "--gst", recovery_gst_path],
+            stdout=log_fh,
+            stderr=subprocess.STDOUT,
+            startupinfo=startupinfo,
+            creationflags=creation_flags,
+            timeout=900,
+        )
+
+    valid_objs = []
+    for r_dir, r_subdirs, r_files in os.walk(exp_dir):
+        r_subdirs[:] = [d for d in r_subdirs if d != "obj_mesh_prev"]
+        for fn in sorted(r_files):
+            if fn.lower().endswith(".obj"):
+                fp = os.path.join(r_dir, fn)
+                try:
+                    if os.path.getsize(fp) > 1024:
+                        valid_objs.append((os.path.getmtime(fp), fp))
+                except OSError:
+                    pass
+    valid_objs.sort(key=lambda x: x[0], reverse=True)
+    return valid_objs[0][1] if valid_objs else ""
+
+
 def generate_pix4dmatic_gst_script(
     project_p4m_path: str,
     input_zip_or_folder: str,
@@ -860,18 +989,20 @@ def generate_pix4dmatic_gst_script(
     part_image_groups: Optional[list] = None,
     pipeline_settings: Optional[Dict[str, Any]] = None,
     existing_project_only: bool = False,
+    pipeline_pass: str = "full_hq",
+    has_depth_inputs: bool = True,
 ) -> str:
     """
     Generates a verified PIX4Dmatic 2.11.0 .gst / .p4mpl QML automation script:
-    - Default meshPipeline: MeshPipeline.FixedSize (compact file size, preserves trees when skyless=false)
-    - Default skyless: false (Sky Mask disabled so surrounding trees & canopy are never trimmed away)
-    - Default use_roi: false (excludes restrictive OPF RoiSet bounding box)
-    - Default textureSize: 4096
-    - Default modelSimplification: ModelSimplification.Conservative
-    - Default deghosting: Deghosting.Weak
-    - Default exportLod: 13
+    - Supports Two-Pass Option C:
+      * Pass 1 (`pipeline_pass="preview"`): FixedSize 2048px mesh, skips GenerateGaPmvsDensePointCloud
+        when LiDAR depth maps exist (`skip_dense_cloud=True`), and uses Adaptive Calibration Scale
+        (`1:1 Full` if <= 500 photos & single-part so Pass 2 reuses calibration with 0 duplicate work,
+         or `1/4 Quarter` if > 500 photos or multi-part for a 3-6 min preview).
+      * Pass 2 (`pipeline_pass="full_hq"`): Scalable 16K mesh (reusing Pass 1 `1:1` calibration when available).
     """
-    cfg = load_pix4d_settings()
+    base_defaults = FAST_PREVIEW_PIX4D_SETTINGS if pipeline_pass == "preview" else load_pix4d_settings()
+    cfg = load_pix4d_settings_from_dict(base_defaults)
     if isinstance(pipeline_settings, dict):
         cfg = load_pix4d_settings_from_dict({**cfg, **pipeline_settings})
     if texture_size is not None:
@@ -895,6 +1026,24 @@ def generate_pix4dmatic_gst_script(
     deghosting = cfg["deghosting"]
     export_lod = int(cfg["export_lod"])
     skyless_str = "true" if skyless else "false"
+
+    # Resolve Adaptive Calibration ImageScale (Option C)
+    calib_image_scale = str(cfg.get("calib_image_scale", "Full"))
+    total_img_cnt = len(extracted_image_paths or [])
+    if part_image_groups:
+        total_img_cnt = max(total_img_cnt, sum(len(g) for g in part_image_groups))
+    is_multi_part = bool(
+        part_image_groups and (len(part_image_groups) > 1 or (primary_opf_path and len(part_image_groups) >= 1))
+    )
+    if calib_image_scale == "AutoAdaptive":
+        if 0 < total_img_cnt <= 500 and not is_multi_part:
+            calib_image_scale = "Full"
+        else:
+            calib_image_scale = "Quarter"
+    elif calib_image_scale not in ("Full", "Half", "Quarter"):
+        calib_image_scale = "Full"
+
+    skip_dense_cloud = bool(cfg.get("skip_dense_cloud", False)) and bool(has_depth_inputs)
 
     proj_folder_clean = os.path.dirname(project_p4m_path).replace("\\", "/")
     proj_name = os.path.splitext(os.path.basename(project_p4m_path))[0] or "p4m_project"
@@ -982,35 +1131,42 @@ def generate_pix4dmatic_gst_script(
 
     calib_step = ""
     if not existing_project_only:
-        calib_step = """            GenerateReconstruction {
+        max_kp = 5000 if calib_image_scale == "Quarter" else 20000
+        preproc_str = "true" if calib_image_scale == "Quarter" else "false"
+        rematch_str = "false" if calib_image_scale == "Quarter" else "true"
+        calib_step = f"""            GenerateReconstruction {{
                 settings.calibPipeline : CalibPipeline.AccurateCameraExternalMeasurements
                 settings.calibTemplate : CalibTemplate.CatchRTK
                 settings.cameraExternalsConfidence : CameraExternalsConfidence.Auto
                 settings.cameraInternalsOptimizationType : CameraInternalsOptimizationType.All
                 settings.computeUncertainties : true
-                settings.imageScale : ImageScale.Full
-                settings.maxKeyPointCount : 20000
+                settings.imageScale : ImageScale.{calib_image_scale}
+                settings.maxKeyPointCount : {max_kp}
                 settings.optimizeInternalsWithTiePoints : false
-                settings.preprocessImagePairs : false
-                settings.rematch : true
+                settings.preprocessImagePairs : {preproc_str}
+                settings.rematch : {rematch_str}
                 settings.tryUseDepth : true
                 settings.useAutomaticItps : false
                 resources.tryReusePreviousResults : true
                 resources.useGpu : GpuUsage.Yes
-                inputs : [InputCameras{ },TiePointSet{ },ConstraintSet{ }]
-                outputs : [InputCameras{ },CalibratedCameras{ },SparsePointCloud{ },FeaturesAndMatches{ },IntersectionTiePointSet{ },LineFeatures{ }]
-            }
+                inputs : [InputCameras{{ }},TiePointSet{{ }},ConstraintSet{{ }}]
+                outputs : [InputCameras{{ }},CalibratedCameras{{ }},SparsePointCloud{{ }},FeaturesAndMatches{{ }},IntersectionTiePointSet{{ }},LineFeatures{{ }}]
+            }}
 """
 
-    gst_content = f"""Session {{
-    Project {{
-        folder : "{proj_folder_clean}"
-        name : "{proj_name}"
-
-{imports_joined}        // Photogrammetry & Mesh Pipeline (PIX4Dmatic 2.11.0 CommandGraph)
-        // Defaults: MeshPipeline.{mesh_pipeline}, skyless={skyless_str}, use_roi={str(use_roi).lower()}, textureSize={tex_size}, exportLod={export_lod}
-        CommandGraph {{
-{calib_step}{sky_masks_step}            GenerateGaPmvsDensePointCloud {{
+    if skip_dense_cloud:
+        point_cloud_steps = f"""            GenerateDepthPointCloud {{
+                settings.depthFilterAgreementThresholdMeters : {depth_agreement_m}
+                settings.filter : true
+                settings.minConfidenceLevel : ConfidenceLevel.{depth_min_confidence}
+                settings.normalEstimationNeighborCount : 10
+                inputs : [CalibratedCameras{{ }},SparsePointCloud{{ }}]
+                outputs : [DepthPointCloud{{ }}]
+            }}"""
+        mesh_cloud_input = "DepthPointCloud{ }"
+        report_cloud_inputs = "DepthPointCloud{ }"
+    else:
+        point_cloud_steps = f"""            GenerateGaPmvsDensePointCloud {{
                 settings.sensorType : SensorType.Rgb
                 settings.denoise : true
                 settings.imageScale : ImageScale.{dense_image_scale}
@@ -1036,7 +1192,19 @@ def generate_pix4dmatic_gst_script(
                 settings.nearestNeighboursCount : 128
                 inputs : [DensePointCloud{{ }},DepthPointCloud{{ }}]
                 outputs : [FusedPointCloud{{ }}]
-            }}
+            }}"""
+        mesh_cloud_input = "FusedPointCloud{ }"
+        report_cloud_inputs = "DensePointCloud{ },DepthPointCloud{ },FusedPointCloud{ }"
+
+    gst_content = f"""Session {{
+    Project {{
+        folder : "{proj_folder_clean}"
+        name : "{proj_name}"
+
+{imports_joined}        // Photogrammetry & Mesh Pipeline (PIX4Dmatic 2.11.0 CommandGraph, pass={pipeline_pass}, calibScale={calib_image_scale})
+        // Defaults: MeshPipeline.{mesh_pipeline}, skyless={skyless_str}, use_roi={str(use_roi).lower()}, textureSize={tex_size}, exportLod={export_lod}
+        CommandGraph {{
+{calib_step}{sky_masks_step}{point_cloud_steps}
             GenerateScalableMesh {{
                 settings.deghosting : Deghosting.{deghosting}
                 settings.generatePlanes : false
@@ -1047,7 +1215,7 @@ def generate_pix4dmatic_gst_script(
                 settings.polygonAware : false
                 settings.skyless : {skyless_str}
                 settings.textureSize : {tex_size}
-                inputs : [FusedPointCloud{{ }}{sky_token}{mesh_roi_token}]
+                inputs : [{mesh_cloud_input}{sky_token}{mesh_roi_token}]
                 outputs : [Mesh{{ }}]
             }}
             ExportQualityReport {{
@@ -1056,7 +1224,7 @@ def generate_pix4dmatic_gst_script(
                 settings.reportExportFormat : ReportExportFormat.Pdf
                 settings.temperatureUnit : TemperatureUnit.Celsius
                 settings.thermalColorMap : ColorMap.Inferno
-                inputs : [CalibratedCameras{{ }},SparsePointCloud{{ }},TiePointSet{{ }},IntersectionTiePointSet{{ }}{",GaussianSplats{ }" if primary_opf_path else ""},DensePointCloud{{ }},DepthPointCloud{{ }},FusedPointCloud{{ }},Mesh{{ }}]
+                inputs : [CalibratedCameras{{ }},SparsePointCloud{{ }},TiePointSet{{ }},IntersectionTiePointSet{{ }}{",GaussianSplats{ }" if primary_opf_path else ""},{report_cloud_inputs},Mesh{{ }}]
             }}
             ExportMeshToObj {{
                 folder : "{obj_mesh_folder}"
@@ -1079,14 +1247,20 @@ def postprocess_obj_to_tileset(
     proj_dir: str,
     obj_path: str,
     progress_callback: Optional[Callable[[float, str], None]] = None,
+    texture_limit_override: Optional[int] = None,
 ) -> str:
     """
     Ensures OBJ vertices are in local centered coordinates near (0,0,0) with 64-bit TWD97
     offset in offset.xyz so neither PIX4Dmatic, trimesh, nor gltfpack quantizes TWD97 coordinates
     (2,775,627m) in float32 (which causes 25cm steps). Then shifts generated .glb node.translation
     and tileset.json boundingVolume.box[0..2] by the 64-bit TWD97 offset.
+    When an existing `tileset/tileset.json` is already live (e.g. upgrading Pass 1 Fast Preview to
+    Pass 2 Full HQ), builds into `tileset_staging/` first and atomically swaps into `tileset/`.
     """
-    if not obj_path or not os.path.isfile(obj_path):
+    try:
+        if not obj_path or not os.path.isfile(obj_path) or os.path.getsize(obj_path) <= 1024:
+            return ""
+    except OSError:
         return ""
     if progress_callback:
         progress_callback(91.0, "Website Processing (15%): TWD97 64-bit Offset & Mesh Island Check...")
@@ -1300,8 +1474,14 @@ def postprocess_obj_to_tileset(
     from optimizer.quadtree_tiler import QuadtreeTiler
 
     active_cfg = load_pix4d_settings()
-    active_tex_limit = min(4096, int(active_cfg.get("texture_size", PIX4DMATIC_TEXTURE_SIZE)))
-    tileset_dir = os.path.join(proj_dir, "tileset")
+    raw_tex_limit = int(texture_limit_override) if texture_limit_override is not None else int(active_cfg.get("texture_size", PIX4DMATIC_TEXTURE_SIZE))
+    active_tex_limit = min(4096, max(1024, raw_tex_limit))
+    final_tileset_dir = os.path.join(proj_dir, "tileset")
+    use_staging = os.path.isfile(os.path.join(final_tileset_dir, "tileset.json"))
+    tileset_dir = os.path.join(proj_dir, "tileset_staging") if use_staging else final_tileset_dir
+    if use_staging and os.path.isdir(tileset_dir):
+        shutil.rmtree(tileset_dir, ignore_errors=True)
+
     tiler = QuadtreeTiler(
         input_path=obj_path,
         output_dir=tileset_dir,
@@ -1418,6 +1598,28 @@ def postprocess_obj_to_tileset(
                     print(f"[PIX4DRunner] Warning shifting tileset.json boundingVolume: {te}")
         except Exception as e:
             print(f"[PIX4DRunner] Warning building direct gltfpack root.glb: {e}")
+
+        # If built in tileset_staging/, atomically swap into tileset/ so active 3D viewers never see partial GLBs
+        if use_staging:
+            try:
+                old_swap_dir = os.path.join(proj_dir, "tileset_old_swap")
+                if os.path.isdir(old_swap_dir):
+                    shutil.rmtree(old_swap_dir, ignore_errors=True)
+                if os.path.isdir(final_tileset_dir):
+                    os.replace(final_tileset_dir, old_swap_dir)
+                os.replace(tileset_dir, final_tileset_dir)
+                if os.path.isdir(old_swap_dir):
+                    shutil.rmtree(old_swap_dir, ignore_errors=True)
+            except Exception as sw_err:
+                print(f"[PIX4DRunner] Warning swapping tileset_staging into tileset for {scan_id}: {sw_err}")
+                try:
+                    if os.path.isdir(final_tileset_dir):
+                        shutil.rmtree(final_tileset_dir, ignore_errors=True)
+                    shutil.move(tileset_dir, final_tileset_dir)
+                except Exception:
+                    pass
+            tileset_dir = final_tileset_dir
+            ts_candidate = os.path.join(final_tileset_dir, "tileset.json")
 
         # Save a pristine backup of the freshly generated tileset so mesh edits can always be undone/restored
         try:
@@ -1959,16 +2161,19 @@ def run_pix4dmatic_pipeline(
     custom_gst_path: Optional[str] = None,
     force_from_photos: bool = False,
     custom_settings: Optional[Dict[str, Any]] = None,
+    pipeline_pass: str = "full_hq",
 ) -> Dict[str, Any]:
     """
     Executes the automated PIX4Dmatic 2.11.0 workflow (acquiring cloud license seat 6fdbf93b,
     minimized window) with live log-file progress monitoring and QML error watchdog,
     then chains GC_ScanOptimizer QuadtreeTiler to produce the web 3D Tileset.
-    Supports re-running from original photos (inputs/ or source_zip_path) with custom settings.
+    Supports Two-Pass Option C (`pipeline_pass="preview"` -> `pipeline_pass="full_hq"`)
+    as well as re-running from original photos (`inputs/` or `source_zip_path`) with custom settings.
     """
     import zipfile
     import shutil
 
+    clean_pass = "preview" if str(pipeline_pass).strip().lower() == "preview" else "full_hq"
     proj_dir = output_project_dir or os.path.join(LOCAL_SCANS_ROOT, scan_id)
     export_dir = os.path.join(proj_dir, "exports")
     inputs_dir = os.path.join(proj_dir, "inputs")
@@ -1991,11 +2196,12 @@ def run_pix4dmatic_pipeline(
         except Exception as e:
             print(f"[PIX4DRunner] Warning reading {rerun_cfg_path}: {e}")
 
-    active_cfg = (
-        load_pix4d_settings_from_dict(custom_settings)
-        if isinstance(custom_settings, dict) and custom_settings
-        else load_pix4d_settings()
-    )
+    if isinstance(custom_settings, dict) and custom_settings:
+        active_cfg = load_pix4d_settings_from_dict(custom_settings)
+    elif clean_pass == "preview":
+        active_cfg = load_pix4d_settings_from_dict(FAST_PREVIEW_PIX4D_SETTINGS)
+    else:
+        active_cfg = load_pix4d_settings()
     active_tex_size = int(active_cfg.get("texture_size", PIX4DMATIC_TEXTURE_SIZE))
 
     # Persist used pix4d_settings into scan_meta.json for audit/inspection
@@ -2007,6 +2213,7 @@ def run_pix4dmatic_pipeline(
             if isinstance(m_obj, dict):
                 m_obj["pix4d_settings"] = active_cfg
                 m_obj["texture_resolution"] = active_tex_size
+                m_obj["pipeline_pass"] = clean_pass
                 with open(meta_fp, "w", encoding="utf-8") as mf:
                     json.dump(m_obj, mf, ensure_ascii=False, indent=2)
         except Exception:
@@ -2015,6 +2222,17 @@ def run_pix4dmatic_pipeline(
     p4m_path = os.path.join(proj_dir, f"{scan_id}.p4m")
     nested_proj_dir = os.path.join(proj_dir, scan_id)
     recon_dir = os.path.join(nested_proj_dir, "processing", "reconstructions")
+    preview_meta_path = os.path.join(proj_dir, "preview_pass_meta.json")
+    preview_meta: Dict[str, Any] = {}
+    if os.path.isfile(preview_meta_path):
+        try:
+            with open(preview_meta_path, "r", encoding="utf-8") as pmf:
+                loaded_pm = json.load(pmf)
+            if isinstance(loaded_pm, dict):
+                preview_meta = loaded_pm
+        except Exception:
+            pass
+
     part_paths = [p.strip() for p in input_path.split(";") if p.strip() and os.path.exists(p.strip())]
     has_inputs_on_disk = bool(part_paths) or (
         os.path.isdir(inputs_dir)
@@ -2024,29 +2242,32 @@ def run_pix4dmatic_pipeline(
             for fn in files
         )
     )
-    existing_project_only = (
+    reuse_pass1_full_calibration = (
+        clean_pass == "full_hq"
+        and not force_from_photos
+        and str(preview_meta.get("calib_scale_used") or "") == "Full"
+        and os.path.isdir(recon_dir)
+        and bool(os.listdir(recon_dir))
+    )
+    existing_project_only = reuse_pass1_full_calibration or (
         not force_from_photos
         and not has_inputs_on_disk
         and os.path.isdir(recon_dir)
         and bool(os.listdir(recon_dir))
     )
 
+    resolved_calib_scale = str(active_cfg.get("calib_image_scale", "Full"))
+
     if custom_gst_path and os.path.isfile(custom_gst_path):
         gst_path = custom_gst_path
     else:
-        gst_path = os.path.join(proj_dir, f"{scan_id}_pipeline.gst")
+        gst_suffix = "_preview_pipeline.gst" if clean_pass == "preview" else "_pipeline.gst"
+        gst_path = os.path.join(proj_dir, f"{scan_id}{gst_suffix}")
         extracted_files: List[str] = []
         primary_opf_path = None
         part_image_groups: List[List[str]] = []
 
-        if not dry_run and not existing_project_only:
-            if os.path.isdir(nested_proj_dir):
-                shutil.rmtree(nested_proj_dir, ignore_errors=True)
-            if os.path.isfile(p4m_path):
-                try:
-                    os.remove(p4m_path)
-                except OSError:
-                    pass
+        if not dry_run:
             old_obj_dir = os.path.join(export_dir, "obj_mesh")
             prev_obj_dir = os.path.join(export_dir, "obj_mesh_prev")
             if os.path.isdir(old_obj_dir):
@@ -2057,133 +2278,162 @@ def run_pix4dmatic_pipeline(
                 except Exception:
                     shutil.rmtree(old_obj_dir, ignore_errors=True)
 
-            if part_paths:
-                for idx, zpath in enumerate(part_paths):
-                    if os.path.isfile(zpath) and zpath.lower().endswith(".zip"):
-                        stem = os.path.splitext(os.path.basename(zpath))[0]
-                        target_extract = os.path.join(inputs_dir, stem)
-                        stage_marker = os.path.join(target_extract, ".staged_ok")
-                        if not os.path.isfile(stage_marker):
-                            if progress_callback:
-                                progress_callback(
-                                    6.0 + idx * 0.8,
-                                    f"Extracting archive {idx + 1}/{len(part_paths)}: {os.path.basename(zpath)} to local SSD...",
-                                )
+            if not existing_project_only:
+                if os.path.isdir(nested_proj_dir):
+                    shutil.rmtree(nested_proj_dir, ignore_errors=True)
+                if os.path.isfile(p4m_path):
+                    try:
+                        os.remove(p4m_path)
+                    except OSError:
+                        pass
+
+                if part_paths:
+                    for idx, zpath in enumerate(part_paths):
+                        if os.path.isfile(zpath) and zpath.lower().endswith(".zip"):
+                            stem = os.path.splitext(os.path.basename(zpath))[0]
+                            target_extract = os.path.join(inputs_dir, stem)
+                            stage_marker = os.path.join(target_extract, ".staged_ok")
+                            if not os.path.isfile(stage_marker):
+                                if progress_callback:
+                                    progress_callback(
+                                        6.0 + idx * 0.8,
+                                        f"Extracting archive {idx + 1}/{len(part_paths)}: {os.path.basename(zpath)} to local SSD...",
+                                    )
+                                os.makedirs(target_extract, exist_ok=True)
+                                with zipfile.ZipFile(zpath, "r") as zf:
+                                    zf.extractall(target_extract)
+                                # Remove un-georeferenced mobile preview meshes folder so it is never mistaken for exported mesh
+                                preview_meshes_dir = os.path.join(target_extract, "meshes")
+                                if os.path.isdir(preview_meshes_dir):
+                                    shutil.rmtree(preview_meshes_dir, ignore_errors=True)
+                                try:
+                                    with open(stage_marker, "w", encoding="utf-8") as mf:
+                                        mf.write(str(int(time.time())))
+                                except Exception:
+                                    pass
+                            cand_opf = os.path.join(target_extract, "project.opf")
+                            part_imgs = []
+                            for root, dirs, files in os.walk(target_extract):
+                                dirs[:] = [d for d in dirs if d.lower() != "meshes"]
+                                for fn in sorted(files):
+                                    if fn.lower().endswith((".jpg", ".jpeg", ".png", ".tiff", ".tif")):
+                                        full_img = os.path.join(root, fn)
+                                        extracted_files.append(full_img)
+                                        part_imgs.append(full_img)
+                            if idx == 0 and os.path.isfile(cand_opf):
+                                primary_opf_path = cand_opf
+                            elif part_imgs:
+                                part_image_groups.append(part_imgs)
+                        elif os.path.isdir(zpath):
+                            stem = os.path.basename(zpath.rstrip("/\\"))
+                            target_extract = os.path.join(inputs_dir, stem)
+                            stage_marker = os.path.join(target_extract, ".staged_ok")
                             os.makedirs(target_extract, exist_ok=True)
-                            with zipfile.ZipFile(zpath, "r") as zf:
-                                zf.extractall(target_extract)
-                            # Remove un-georeferenced mobile preview meshes folder so it is never mistaken for exported mesh
+                            # Remove any mobile preview meshes directory if previously copied
                             preview_meshes_dir = os.path.join(target_extract, "meshes")
                             if os.path.isdir(preview_meshes_dir):
                                 shutil.rmtree(preview_meshes_dir, ignore_errors=True)
-                            try:
-                                with open(stage_marker, "w", encoding="utf-8") as mf:
-                                    mf.write(str(int(time.time())))
-                            except Exception:
-                                pass
-                        cand_opf = os.path.join(target_extract, "project.opf")
-                        part_imgs = []
-                        for root, dirs, files in os.walk(target_extract):
-                            dirs[:] = [d for d in dirs if d.lower() != "meshes"]
-                            for fn in sorted(files):
-                                if fn.lower().endswith((".jpg", ".jpeg", ".png", ".tiff", ".tif")):
-                                    full_img = os.path.join(root, fn)
-                                    extracted_files.append(full_img)
-                                    part_imgs.append(full_img)
-                        if idx == 0 and os.path.isfile(cand_opf):
-                            primary_opf_path = cand_opf
-                        elif part_imgs:
-                            part_image_groups.append(part_imgs)
-                    elif os.path.isdir(zpath):
-                        stem = os.path.basename(zpath.rstrip("/\\"))
-                        target_extract = os.path.join(inputs_dir, stem)
-                        stage_marker = os.path.join(target_extract, ".staged_ok")
-                        os.makedirs(target_extract, exist_ok=True)
-                        # Remove any mobile preview meshes directory if previously copied
-                        preview_meshes_dir = os.path.join(target_extract, "meshes")
-                        if os.path.isdir(preview_meshes_dir):
-                            shutil.rmtree(preview_meshes_dir, ignore_errors=True)
 
-                        already_staged = False
-                        if os.path.isfile(stage_marker):
-                            staged_img_chk = any(
-                                fn.lower().endswith((".jpg", ".jpeg", ".png", ".tiff", ".tif"))
-                                for r_chk, d_chk, f_chk in os.walk(target_extract)
-                                for fn in f_chk
-                            )
-                            if staged_img_chk:
-                                already_staged = True
-
-                        if not already_staged:
-                            if progress_callback:
-                                progress_callback(
-                                    6.0 + idx * 0.8,
-                                    f"Fast-staging folder {idx + 1}/{len(part_paths)} to local SSD: {stem}...",
+                            already_staged = False
+                            if os.path.isfile(stage_marker):
+                                staged_img_chk = any(
+                                    fn.lower().endswith((".jpg", ".jpeg", ".png", ".tiff", ".tif"))
+                                    for r_chk, d_chk, f_chk in os.walk(target_extract)
+                                    for fn in f_chk
                                 )
+                                if staged_img_chk:
+                                    already_staged = True
 
-                            alt_unredacted_dirs = glob.glob(os.path.join(r"G:\My Drive\Scans", "*", stem, "images")) + glob.glob(os.path.join(r"G:\My Drive\Scans", stem, "images"))
-                            alt_src_dir = alt_unredacted_dirs[0] if alt_unredacted_dirs and os.path.isdir(alt_unredacted_dirs[0]) else ""
-
-                            copy_tasks = []
-                            for root, dirs, files in os.walk(zpath):
-                                # Skip mobile preview meshes folder (unneeded by PIX4Dmatic and saves time)
-                                dirs[:] = [d for d in dirs if d.lower() not in {"meshes", ".git", "__pycache__"}]
-                                rel_dir = os.path.relpath(root, zpath)
-                                dst_dir = target_extract if rel_dir == "." else os.path.join(target_extract, rel_dir)
-                                os.makedirs(dst_dir, exist_ok=True)
-                                for fn in files:
-                                    if fn.startswith("."):
-                                        continue
-                                    copy_tasks.append((os.path.join(root, fn), os.path.join(dst_dir, fn), fn))
-
-                            total_files = max(1, len(copy_tasks))
-                            copied_cnt = 0
-                            copy_lock = threading.Lock()
-
-                            def _copy_one(task_tuple):
-                                nonlocal copied_cnt
-                                s_f, d_f, fn = task_tuple
-                                try:
-                                    if not os.path.isfile(d_f) or os.path.getsize(d_f) != os.path.getsize(s_f):
-                                        shutil.copy2(s_f, d_f)
-                                    if fn.lower().endswith((".jpg", ".jpeg")) and alt_src_dir:
-                                        alt_f = os.path.join(alt_src_dir, fn)
-                                        if os.path.isfile(alt_f):
-                                            with open(d_f, "rb") as chk_f:
-                                                hdr = chk_f.read(4096)
-                                            if b"\x00\x00\x00\x00\x00\x00\x00\x00" in hdr[200:3500] and b"RTKLatitude" not in hdr:
-                                                shutil.copy2(alt_f, d_f)
-                                except Exception:
-                                    pass
-                                with copy_lock:
-                                    copied_cnt += 1
-                                    cur_c = copied_cnt
-                                if progress_callback and (cur_c % 250 == 0 or cur_c == total_files):
+                            if not already_staged:
+                                if progress_callback:
                                     progress_callback(
-                                        min(9.5, 6.0 + (cur_c / float(total_files)) * 3.5),
-                                        f"Fast-staging {stem} to local SSD ({cur_c}/{total_files} files, 16x parallel)...",
+                                        6.0 + idx * 0.8,
+                                        f"Fast-staging folder {idx + 1}/{len(part_paths)} to local SSD: {stem}...",
                                     )
 
-                            from concurrent.futures import ThreadPoolExecutor
-                            with ThreadPoolExecutor(max_workers=16) as pool:
-                                list(pool.map(_copy_one, copy_tasks))
+                                alt_unredacted_dirs = glob.glob(os.path.join(r"G:\My Drive\Scans", "*", stem, "images")) + glob.glob(os.path.join(r"G:\My Drive\Scans", stem, "images"))
+                                alt_src_dir = alt_unredacted_dirs[0] if alt_unredacted_dirs and os.path.isdir(alt_unredacted_dirs[0]) else ""
 
-                            try:
-                                with open(stage_marker, "w", encoding="utf-8") as mf:
-                                    mf.write(str(int(time.time())))
-                            except Exception:
-                                pass
-                        else:
-                            if progress_callback:
-                                progress_callback(
-                                    9.0,
-                                    f"Using already-staged local SSD inputs for {stem}...",
-                                )
+                                copy_tasks = []
+                                for root, dirs, files in os.walk(zpath):
+                                    # Skip mobile preview meshes folder (unneeded by PIX4Dmatic and saves time)
+                                    dirs[:] = [d for d in dirs if d.lower() not in {"meshes", ".git", "__pycache__"}]
+                                    rel_dir = os.path.relpath(root, zpath)
+                                    dst_dir = target_extract if rel_dir == "." else os.path.join(target_extract, rel_dir)
+                                    os.makedirs(dst_dir, exist_ok=True)
+                                    for fn in files:
+                                        if fn.startswith("."):
+                                            continue
+                                        copy_tasks.append((os.path.join(root, fn), os.path.join(dst_dir, fn), fn))
 
-                        cand_opf = os.path.join(target_extract, "project.opf")
+                                total_files = max(1, len(copy_tasks))
+                                copied_cnt = 0
+                                copy_lock = threading.Lock()
+
+                                def _copy_one(task_tuple):
+                                    nonlocal copied_cnt
+                                    s_f, d_f, fn = task_tuple
+                                    try:
+                                        if not os.path.isfile(d_f) or os.path.getsize(d_f) != os.path.getsize(s_f):
+                                            shutil.copy2(s_f, d_f)
+                                        if fn.lower().endswith((".jpg", ".jpeg")) and alt_src_dir:
+                                            alt_f = os.path.join(alt_src_dir, fn)
+                                            if os.path.isfile(alt_f):
+                                                with open(d_f, "rb") as chk_f:
+                                                    hdr = chk_f.read(4096)
+                                                if b"\x00\x00\x00\x00\x00\x00\x00\x00" in hdr[200:3500] and b"RTKLatitude" not in hdr:
+                                                    shutil.copy2(alt_f, d_f)
+                                    except Exception:
+                                        pass
+                                    with copy_lock:
+                                        copied_cnt += 1
+                                        cur_c = copied_cnt
+                                    if progress_callback and (cur_c % 250 == 0 or cur_c == total_files):
+                                        progress_callback(
+                                            min(9.5, 6.0 + (cur_c / float(total_files)) * 3.5),
+                                            f"Fast-staging {stem} to local SSD ({cur_c}/{total_files} files, 16x parallel)...",
+                                        )
+
+                                from concurrent.futures import ThreadPoolExecutor
+                                with ThreadPoolExecutor(max_workers=16) as pool:
+                                    list(pool.map(_copy_one, copy_tasks))
+
+                                try:
+                                    with open(stage_marker, "w", encoding="utf-8") as mf:
+                                        mf.write(str(int(time.time())))
+                                except Exception:
+                                    pass
+                            else:
+                                if progress_callback:
+                                    progress_callback(
+                                        9.0,
+                                        f"Using already-staged local SSD inputs for {stem}...",
+                                    )
+
+                            cand_opf = os.path.join(target_extract, "project.opf")
+                            part_imgs = []
+                            for root, dirs, files in os.walk(target_extract):
+                                dirs[:] = [d for d in dirs if d.lower() != "meshes"]
+                                for fn in sorted(files):
+                                    if fn.lower().endswith((".jpg", ".jpeg", ".png", ".tiff", ".tif")):
+                                        full_img = os.path.join(root, fn)
+                                        extracted_files.append(full_img)
+                                        part_imgs.append(full_img)
+                            if idx == 0 and os.path.isfile(cand_opf):
+                                primary_opf_path = cand_opf
+                            elif part_imgs:
+                                part_image_groups.append(part_imgs)
+                elif os.path.isdir(inputs_dir):
+                    # Discover already-extracted part folders inside inputs_dir
+                    subfolders = sorted(
+                        os.path.join(inputs_dir, d)
+                        for d in os.listdir(inputs_dir)
+                        if os.path.isdir(os.path.join(inputs_dir, d))
+                    )
+                    for idx, sdir in enumerate(subfolders):
+                        cand_opf = os.path.join(sdir, "project.opf")
                         part_imgs = []
-                        for root, dirs, files in os.walk(target_extract):
-                            dirs[:] = [d for d in dirs if d.lower() != "meshes"]
+                        for root, _, files in os.walk(sdir):
                             for fn in sorted(files):
                                 if fn.lower().endswith((".jpg", ".jpeg", ".png", ".tiff", ".tif")):
                                     full_img = os.path.join(root, fn)
@@ -2193,28 +2443,7 @@ def run_pix4dmatic_pipeline(
                             primary_opf_path = cand_opf
                         elif part_imgs:
                             part_image_groups.append(part_imgs)
-            elif os.path.isdir(inputs_dir):
-                # Discover already-extracted part folders inside inputs_dir
-                subfolders = sorted(
-                    os.path.join(inputs_dir, d)
-                    for d in os.listdir(inputs_dir)
-                    if os.path.isdir(os.path.join(inputs_dir, d))
-                )
-                for idx, sdir in enumerate(subfolders):
-                    cand_opf = os.path.join(sdir, "project.opf")
-                    part_imgs = []
-                    for root, _, files in os.walk(sdir):
-                        for fn in sorted(files):
-                            if fn.lower().endswith((".jpg", ".jpeg", ".png", ".tiff", ".tif")):
-                                full_img = os.path.join(root, fn)
-                                extracted_files.append(full_img)
-                                part_imgs.append(full_img)
-                    if idx == 0 and os.path.isfile(cand_opf):
-                        primary_opf_path = cand_opf
-                    elif part_imgs:
-                        part_image_groups.append(part_imgs)
 
-            if not existing_project_only:
                 extracted_files, primary_opf_path, part_image_groups = _filter_multi_subscan_geographic_outliers(
                     scan_id=scan_id,
                     inputs_dir=inputs_dir,
@@ -2222,6 +2451,23 @@ def run_pix4dmatic_pipeline(
                     primary_opf_path=primary_opf_path,
                     part_image_groups=part_image_groups,
                 )
+
+        has_depth_inputs = bool(primary_opf_path) or (
+            os.path.isdir(inputs_dir)
+            and any(
+                "depth" in fn.lower() or fn.lower().endswith(".opf")
+                for _, _, files in os.walk(inputs_dir)
+                for fn in files
+            )
+        )
+        total_img_cnt = len(extracted_files or [])
+        if part_image_groups:
+            total_img_cnt = max(total_img_cnt, sum(len(g) for g in part_image_groups))
+        is_multi_part = bool(
+            part_image_groups and (len(part_image_groups) > 1 or (primary_opf_path and len(part_image_groups) >= 1))
+        )
+        if resolved_calib_scale == "AutoAdaptive":
+            resolved_calib_scale = "Full" if (0 < total_img_cnt <= 500 and not is_multi_part) else "Quarter"
 
         gst_code = generate_pix4dmatic_gst_script(
             project_p4m_path=p4m_path,
@@ -2234,6 +2480,8 @@ def run_pix4dmatic_pipeline(
             part_image_groups=part_image_groups if part_image_groups else None,
             pipeline_settings=active_cfg,
             existing_project_only=existing_project_only,
+            pipeline_pass=clean_pass,
+            has_depth_inputs=has_depth_inputs or dry_run,
         )
         with open(gst_path, "w", encoding="utf-8") as f:
             f.write(gst_code)
@@ -2247,6 +2495,9 @@ def run_pix4dmatic_pipeline(
             "export_dir": export_dir,
             "crs": TWD97_TWVD2001_LABEL,
             "texture_size": active_tex_size,
+            "pipeline_pass": clean_pass,
+            "calib_scale_used": resolved_calib_scale,
+            "existing_project_only": existing_project_only,
         }
 
     if "commentphoto" in scan_id.lower() or (not existing_project_only and not primary_opf_path and len(extracted_files) < 10):
@@ -2257,8 +2508,9 @@ def run_pix4dmatic_pipeline(
             "gst_path": gst_path,
         }
 
+    pass_tag = "Pass 1/2 Fast Preview" if clean_pass == "preview" else "Pass 2/2 Full 16K HQ"
     if progress_callback:
-        progress_callback(10.0, f"Launching PIX4Dmatic 2.11.0 (CRS: TWD97 + TWVD2001, {active_tex_size}px)...")
+        progress_callback(10.0, f"Launching PIX4Dmatic 2.11.0 ({pass_tag}, CRS: TWD97 + TWVD2001, {active_tex_size}px)...")
 
     startupinfo = None
     creation_flags = 0
@@ -2374,7 +2626,7 @@ def run_pix4dmatic_pipeline(
             "log_tail": tail_lines,
         }
 
-    # Locate newest exported .obj in export_dir (excluding obj_mesh_prev backup)
+    # Locate newest non-empty (> 1024 bytes) exported .obj in export_dir (excluding obj_mesh_prev backup)
     objs = []
     if os.path.isdir(export_dir):
         for r_dir, r_subdirs, r_files in os.walk(export_dir):
@@ -2382,12 +2634,28 @@ def run_pix4dmatic_pipeline(
             for f in sorted(r_files):
                 if f.lower().endswith(".obj"):
                     fp = os.path.join(r_dir, f)
-                    objs.append((os.path.getmtime(fp), fp))
+                    try:
+                        if os.path.getsize(fp) > 1024:
+                            objs.append((os.path.getmtime(fp), fp))
+                        else:
+                            os.remove(fp)
+                    except OSError:
+                        pass
     objs.sort(key=lambda x: x[0], reverse=True)
     obj_path = objs[0][1] if objs else ""
 
+    # Automatic Scalable Mesh ExportLod recovery when ExportMeshToObj failed due to dynamic octree depth (< 13)
+    if not obj_path and _detect_scalable_mesh_max_lod(proj_dir) is not None:
+        print(f"[PIX4DRunner] ExportMeshToObj produced no valid .obj for {scan_id}; running dynamic exportLod recovery...")
+        obj_path = run_export_obj_recovery(
+            scan_id=scan_id,
+            proj_dir=proj_dir,
+            export_dir=export_dir,
+            progress_callback=progress_callback,
+        )
+
     tileset_path = ""
-    if obj_path and os.path.isfile(obj_path):
+    if obj_path and os.path.isfile(obj_path) and os.path.getsize(obj_path) > 1024:
         if os.path.isdir(prev_obj_dir):
             shutil.rmtree(prev_obj_dir, ignore_errors=True)
         tileset_path = postprocess_obj_to_tileset(
@@ -2395,6 +2663,7 @@ def run_pix4dmatic_pipeline(
             proj_dir=proj_dir,
             obj_path=obj_path,
             progress_callback=progress_callback,
+            texture_limit_override=active_tex_size,
         )
     elif os.path.isdir(prev_obj_dir) and not os.path.isdir(old_obj_dir):
         try:
@@ -2402,14 +2671,32 @@ def run_pix4dmatic_pipeline(
         except Exception:
             pass
 
-    if tileset_path and os.path.isfile(rerun_cfg_path):
+    if tileset_path and clean_pass == "preview":
+        try:
+            with open(preview_meta_path, "w", encoding="utf-8") as pmf:
+                json.dump(
+                    {
+                        "scan_id": scan_id,
+                        "calib_scale_used": resolved_calib_scale,
+                        "image_count": len(extracted_files),
+                        "texture_size": active_tex_size,
+                        "completed_at": time.time(),
+                    },
+                    pmf,
+                    ensure_ascii=False,
+                    indent=2,
+                )
+        except Exception:
+            pass
+
+    if tileset_path and os.path.isfile(rerun_cfg_path) and clean_pass == "full_hq":
         try:
             os.remove(rerun_cfg_path)
         except OSError:
             pass
 
     if progress_callback and tileset_path:
-        progress_callback(100.0, f"Completed (TWD97 + TWVD2001, {active_tex_size}px Web Tileset)")
+        progress_callback(100.0, f"Completed ({pass_tag}, TWD97 + TWVD2001, {active_tex_size}px Web Tileset)")
 
     return {
         "success": (ret == 0 and bool(tileset_path)),
@@ -2421,6 +2708,8 @@ def run_pix4dmatic_pipeline(
         "tileset_path": tileset_path,
         "crs": TWD97_TWVD2001_LABEL,
         "texture_size": active_tex_size,
+        "pipeline_pass": clean_pass,
+        "calib_scale_used": resolved_calib_scale,
         "log_tail": tail_lines[-30:],
     }
 

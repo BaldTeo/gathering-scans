@@ -30,11 +30,14 @@ def calculate_priority_score(
     wait_minutes: float,
     bypass_count: int = 0,
     force_next: int = 0,
+    pending_pass: str = "",
 ) -> float:
     """
     Computes dynamic WSJF-Aging priority score for a queued scan:
     - Small scans receive a boost inversely proportional to image_count^0.65.
     - Waiting scans gain +1.5 * (wait_minutes^1.15) aging priority.
+    - Pass 1 Fast Previews (`pending_pass == "preview"`) receive a +50,000 bonus so newly uploaded
+      scans always get their ~3-8 min fast preview before background Pass 2 Full HQ upgrades run.
     - Anti-starvation guarantee: if bypassed >= 3 times or waited >= 90 minutes,
       locks priority to 1e9+ so large scans are never starved indefinitely.
     """
@@ -47,7 +50,8 @@ def calculate_priority_score(
     effective_units = max(float(image_count) if image_count > 0 else (max(size_mb, 1.0) / 3.5), 25.0)
     size_score = 1000.0 / (effective_units ** 0.65)
     aging_score = 1.5 * (wait_m ** 1.15)
-    return round(size_score + aging_score, 3)
+    preview_bonus = 50000.0 if str(pending_pass).strip().lower() == "preview" else 0.0
+    return round(size_score + aging_score + preview_bonus, 3)
 
 
 class ScanQueueDB:
@@ -326,17 +330,22 @@ class ScanQueueDB:
         force_next = int(scan_data.get("force_next", 0))
         user_edited_name = 1 if scan_data.get("user_edited_name") else 0
         wait_minutes = max(0.0, (now - uploaded_at) / 60.0)
-        score = calculate_priority_score(
-            image_count=image_count,
-            size_mb=size_bytes / (1024 * 1024),
-            wait_minutes=wait_minutes,
-            bypass_count=bypass_count,
-            force_next=force_next,
-        )
 
         raw_lat = scan_data.get("lat")
         raw_lon = scan_data.get("lon")
         extra_payload: Dict[str, Any] = {}
+        try:
+            with DB_LOCK, self._connect() as conn:
+                ex_row = conn.execute(
+                    "SELECT extra_json FROM scans WHERE scan_id = ? LIMIT 1",
+                    (scan_data["scan_id"],),
+                ).fetchone()
+                if ex_row and ex_row["extra_json"]:
+                    parsed_old = json.loads(ex_row["extra_json"])
+                    if isinstance(parsed_old, dict):
+                        extra_payload.update(parsed_old)
+        except Exception:
+            pass
         if isinstance(scan_data.get("extra_json"), str) and scan_data["extra_json"].strip() not in ("", "{}"):
             try:
                 parsed_ex = json.loads(scan_data["extra_json"])
@@ -347,6 +356,23 @@ class ScanQueueDB:
         for ex_k in ("merged_from", "derived_from_scan_id", "applied_adjustments"):
             if ex_k in scan_data and scan_data[ex_k] not in (None, "", [], {}):
                 extra_payload[ex_k] = scan_data[ex_k]
+        for pass_k in ("quality_stage", "pending_pass"):
+            if pass_k in scan_data and scan_data[pass_k] is not None:
+                val_str = str(scan_data[pass_k]).strip()
+                if val_str:
+                    extra_payload[pass_k] = val_str
+                else:
+                    extra_payload.pop(pass_k, None)
+
+        pending_pass_val = str(extra_payload.get("pending_pass") or "")
+        score = calculate_priority_score(
+            image_count=image_count,
+            size_mb=size_bytes / (1024 * 1024),
+            wait_minutes=wait_minutes,
+            bypass_count=bypass_count,
+            force_next=force_next,
+            pending_pass=pending_pass_val,
+        )
 
         record = {
             "scan_id": scan_data["scan_id"],
@@ -1249,12 +1275,22 @@ class ScanQueueDB:
                 return []
             for r in rows:
                 wait_m = max(0.0, (now_ts - float(r["uploaded_at"])) / 60.0)
+                pending_pass_val = ""
+                try:
+                    ex_d = json.loads(r["extra_json"] or "{}")
+                    if isinstance(ex_d, dict):
+                        pending_pass_val = str(ex_d.get("pending_pass") or "")
+                except Exception:
+                    pass
+                if not pending_pass_val:
+                    pending_pass_val = "full_hq" if str(r["tileset_path"] or "").strip() else "preview"
                 score = calculate_priority_score(
                     image_count=int(r["image_count"]),
                     size_mb=float(r["size_bytes"]) / (1024 * 1024),
                     wait_minutes=wait_m,
                     bypass_count=int(r["bypass_count"]),
                     force_next=int(r["force_next"]),
+                    pending_pass=pending_pass_val,
                 )
                 conn.execute(
                     "UPDATE scans SET priority_score = ? WHERE scan_id = ?",
@@ -1289,8 +1325,9 @@ class ScanQueueDB:
             chosen = queued[0]
             chosen_id = chosen["scan_id"]
             chosen_uploaded = float(chosen["uploaded_at"])
+            chosen_pass = str(chosen.get("pending_pass") or ("full_hq" if chosen.get("tileset_path") else "preview"))
 
-            # Increment bypass_count for any older scan that was bypassed by this smaller scan
+            # Increment bypass_count for any older scan in the same pass tier that was bypassed by this smaller scan
             for other in queued[1:]:
                 if float(other["uploaded_at"]) <= chosen_uploaded:
                     conn.execute(
@@ -1298,15 +1335,20 @@ class ScanQueueDB:
                         (other["scan_id"],),
                     )
 
+            init_lbl = (
+                "Initializing PIX4Dmatic Pass 1/2 (Fast 2K Preview)..."
+                if chosen_pass == "preview"
+                else "Initializing PIX4Dmatic Pass 2/2 (Full 16K HQ Upgrade)..."
+            )
             conn.execute(
                 """
                 UPDATE scans
                 SET status = 'processing',
                     progress_pct = 5.0,
-                    stage_label = 'Initializing PIX4Dmatic (TWD97 + TWVD2001, 2K)...'
+                    stage_label = ?
                 WHERE scan_id = ?
                 """,
-                (chosen_id,),
+                (init_lbl, chosen_id),
             )
             conn.commit()
             self.refresh_queue_priorities(now=now_ts)
@@ -1320,8 +1362,37 @@ class ScanQueueDB:
         stage_label: str,
         tileset_path: Optional[str] = None,
         obj_path: Optional[str] = None,
+        quality_stage: Optional[str] = None,
+        pending_pass: Optional[str] = None,
     ):
         with DB_LOCK, self._connect() as conn:
+            if quality_stage is not None or pending_pass is not None:
+                ex_row = conn.execute(
+                    "SELECT extra_json FROM scans WHERE scan_id = ? LIMIT 1",
+                    (scan_id,),
+                ).fetchone()
+                ex_dict: Dict[str, Any] = {}
+                if ex_row and ex_row["extra_json"]:
+                    try:
+                        parsed_e = json.loads(ex_row["extra_json"])
+                        if isinstance(parsed_e, dict):
+                            ex_dict = parsed_e
+                    except Exception:
+                        pass
+                if quality_stage is not None:
+                    if quality_stage:
+                        ex_dict["quality_stage"] = str(quality_stage)
+                    else:
+                        ex_dict.pop("quality_stage", None)
+                if pending_pass is not None:
+                    if pending_pass:
+                        ex_dict["pending_pass"] = str(pending_pass)
+                    else:
+                        ex_dict.pop("pending_pass", None)
+                conn.execute(
+                    "UPDATE scans SET extra_json = ? WHERE scan_id = ?",
+                    (json.dumps(ex_dict, ensure_ascii=False), scan_id),
+                )
             conn.execute(
                 """
                 UPDATE scans
@@ -1406,6 +1477,21 @@ class ScanQueueDB:
         for ex_k in ("merged_from", "derived_from_scan_id", "applied_adjustments"):
             if ex_k in extra_dict:
                 d[ex_k] = extra_dict[ex_k]
+        status_str = str(d.get("status") or "queued")
+        has_tileset = bool(str(d.get("tileset_path") or "").strip())
+        q_stage = str(extra_dict.get("quality_stage") or "").strip()
+        if not q_stage:
+            if status_str == "completed":
+                q_stage = "full_hq"
+            elif has_tileset:
+                q_stage = "preview_ready"
+            else:
+                q_stage = "none"
+        p_pass = str(extra_dict.get("pending_pass") or "").strip()
+        if not p_pass and status_str in ("queued", "processing"):
+            p_pass = "full_hq" if (q_stage == "preview_ready" or has_tileset) else "preview"
+        d["quality_stage"] = q_stage
+        d["pending_pass"] = p_pass
         raw_folders = extra_dict.get("comment_folders")
         if isinstance(raw_folders, list):
             d["comment_folders"] = [str(f).strip() for f in raw_folders if str(f).strip()]
@@ -1414,13 +1500,14 @@ class ScanQueueDB:
         d["size_mb"] = round(float(d.get("size_bytes", 0)) / (1024 * 1024), 2)
         wait_m = max(0.0, (time.time() - float(d.get("uploaded_at", time.time()))) / 60.0)
         d["wait_minutes"] = round(wait_m, 1)
-        if d.get("status") == "queued":
+        if status_str == "queued":
             d["priority_score"] = calculate_priority_score(
                 image_count=int(d.get("image_count") or 0),
                 size_mb=float(d.get("size_bytes") or 0) / (1024 * 1024),
                 wait_minutes=wait_m,
                 bypass_count=int(d.get("bypass_count") or 0),
                 force_next=int(d.get("force_next") or 0),
+                pending_pass=p_pass,
             )
         return d
 

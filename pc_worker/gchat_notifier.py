@@ -582,6 +582,84 @@ class GoogleChatNotifier:
             "card": card_payload,
         }
 
+    def notify_scan_preview_ready(self, scan_id: str) -> Dict[str, Any]:
+        """
+        Sends a Fast Preview Ready notification card when Pass 1/2 (`FixedSize 2048px`) finishes,
+        letting the engineer inspect the 3D preview and map placement immediately while Pass 2/2
+        (`Scalable 16K`) is queued in the background on the same scan_id.
+        """
+        from pc_worker.gdrive_watcher import normalize_gatheren_uploader
+
+        scan = self.db.get_scan(scan_id)
+        if not scan:
+            raise ValueError(f"Scan not found: {scan_id}")
+
+        hint_ref = scan.get("source_zip_path") or scan.get("project_dir") or scan_id
+        uploader_name, uploader_email = normalize_gatheren_uploader(
+            scan.get("uploader_name", ""),
+            scan.get("uploader_email", "glibivanov@gatheren.com.tw"),
+            hint_ref,
+        )
+        scan["uploader_name"] = uploader_name
+        scan["uploader_email"] = uploader_email
+        self._ensure_and_sync_thumbnail_to_public_url(scan_id, scan)
+
+        gchat_uid = self.user_gchat_ids.get(uploader_email.lower(), "")
+        mention_tag = f"<users/{gchat_uid}>" if gchat_uid else f"*{uploader_name}*"
+        name = scan.get("name", scan_id)
+        project_group = scan.get("project_name_zh") or scan.get("project_group") or "未分類工區"
+        image_count = int(scan.get("image_count") or 0)
+        view_url = f"{PUBLIC_BASE_URL}/?scan={urllib.parse.quote(scan_id)}"
+        thumb_url = f"{PUBLIC_BASE_URL}/api/scans/{urllib.parse.quote(scan_id)}/thumbnail.png"
+
+        card_payload: Dict[str, Any] = {
+            "text": (
+                f"⚡ {mention_tag} 您的 3D 掃描 *{name}* 快速預覽版（Pass 1/2）已上線，可立即於地圖與 3D Studio 檢視！\n"
+                f"✨ 高畫質 16K 完整版（Pass 2/2）已排入背景自動升級，完成後將再次通知您。"
+            ),
+            "cardsV2": [
+                {
+                    "cardId": f"scan_preview_ready_{scan_id}",
+                    "card": {
+                        "header": {
+                            "title": f"⚡ 3D 快速預覽已就緒：{name}",
+                            "subtitle": f"{project_group} • {image_count:,} 張照片 • 背景升級 16K 完整版中",
+                        },
+                        "sections": [
+                            {
+                                "widgets": [
+                                    {
+                                        "image": {
+                                            "imageUrl": thumb_url,
+                                            "altText": f"3D 快速預覽：{name}",
+                                            "onClick": {"openLink": {"url": view_url}},
+                                        }
+                                    },
+                                    {
+                                        "buttonList": {
+                                            "buttons": [
+                                                {
+                                                    "text": "立即檢視 3D 快速預覽",
+                                                    "onClick": {"openLink": {"url": view_url}},
+                                                }
+                                            ]
+                                        }
+                                    },
+                                ]
+                            }
+                        ],
+                    },
+                }
+            ],
+        }
+        return self._dispatch_card_to_uploader(
+            scan_id=scan_id,
+            uploader_email=uploader_email,
+            uploader_name=uploader_name,
+            card_payload=card_payload,
+            thread_suffix="preview",
+        )
+
     def _dispatch_card_to_uploader(
         self,
         scan_id: str,

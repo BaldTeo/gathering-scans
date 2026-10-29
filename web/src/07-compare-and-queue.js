@@ -1816,9 +1816,15 @@
           monBox.style.display = "block";
           const tEl = document.getElementById("livePix4dTitle");
           if (tEl) {
+            const lpPassTag =
+              lp.pending_pass === "preview"
+                ? tr(" [⚡ 第 1/2 階段：2K 快速預覽]", " [⚡ Pass 1/2: Fast 2K Preview]")
+                : lp.quality_stage === "preview_ready" || lp.pending_pass === "full_hq"
+                ? tr(" [✨ 第 2/2 階段：16K 完整版升級]", " [✨ Pass 2/2: Full 16K HQ Upgrade]")
+                : "";
             tEl.textContent = tr(
-              `執行中建模管線：${lp.scan_name} · 總進度 ${overallPct}%（目前階段：${actTitle} ${subPct}%）`,
-              `Active Processing Pipeline: ${lp.scan_name} · Overall ${overallPct}% (${actTitle} ${subPct}%)`
+              `執行中建模管線：${lp.scan_name}${lpPassTag} · 總進度 ${overallPct}%（目前階段：${actTitle} ${subPct}%）`,
+              `Active Processing Pipeline: ${lp.scan_name}${lpPassTag} · Overall ${overallPct}% (${actTitle} ${subPct}%)`
             );
           }
           const bEl = document.getElementById("livePix4dStageBadge");
@@ -1866,6 +1872,8 @@
           matchState.force_next = s.force_next;
           matchState.queue_position = s.queue_position;
           matchState.pipeline_breakdown = s.pipeline_breakdown;
+          if (s.quality_stage !== undefined) matchState.quality_stage = s.quality_stage;
+          if (s.pending_pass !== undefined) matchState.pending_pass = s.pending_pass;
           if (s.stream_url !== undefined) matchState.stream_url = s.stream_url;
         }
       });
@@ -1876,6 +1884,14 @@
         const isQueued = s.status === "queued";
         const isWaitingParts = s.status === "waiting_parts";
         const isComp = s.status === "completed";
+        const isPreviewReady = s.quality_stage === "preview_ready";
+        const isPass1 = s.pending_pass === "preview" && !isPreviewReady;
+        const isPass2 = isPreviewReady || (s.pending_pass === "full_hq" && !isComp);
+        const passBadgeHtml = isPass1
+          ? `<span class="gs-crs-pill" style="background:rgba(2,132,199,0.16);color:#0284c7;border:1px solid rgba(2,132,199,0.4);font-weight:700;font-size:9.5px;">${tr("⚡ 階段 1/2：2K 快速預覽", "⚡ Pass 1/2: Fast 2K Preview")}</span>`
+          : isPass2 && (isProc || isQueued)
+          ? `<span class="gs-crs-pill" style="background:rgba(139,92,246,0.16);color:#8b5cf6;border:1px solid rgba(139,92,246,0.4);font-weight:700;font-size:9.5px;">${tr("✨ 階段 2/2：16K 完整版升級（預覽已上線）", "✨ Pass 2/2: 16K HQ Upgrade (Preview Live)")}</span>`
+          : "";
         const qPos = Number(s.queue_position || 0);
         const isNextJob = isQueued && (qPos === 1 || Number(s.force_next || 0) === 1);
         const bd = s.pipeline_breakdown || buildFallbackPipelineBreakdownClient(s);
@@ -1909,6 +1925,7 @@
         let statusHtml = `<span class="gs-crs-pill">${safeStatus}</span>`;
         if (isProc) {
           statusHtml = `<div style="display:flex;flex-direction:column;gap:4px;min-width:250px;max-width:340px;">
+               ${passBadgeHtml ? `<div>${passBadgeHtml}</div>` : ""}
                <div style="display:flex;align-items:center;justify-content:space-between;gap:4px;flex-wrap:wrap;">
                  <span class="gs-crs-pill" style="background:rgba(2,132,199,0.18);color:var(--ui-accent);font-weight:800;">${tr(`總進度 ${pct}%`, `OVERALL ${pct}%`)}</span>
                  <span class="gs-crs-pill" style="background:${hexToRgbaTint(actCol, 0.18)};color:${actCol};border:1px solid ${hexToRgbaTint(actCol, 0.45)};font-weight:700;">${actShort} · ${subPct}%</span>
@@ -1929,6 +1946,7 @@
             ? "background:rgba(16,185,129,0.18);color:#10b981;border:1px solid rgba(16,185,129,0.4);font-weight:700;"
             : "background:rgba(245,158,11,0.16);color:#f59e0b;border:1px solid rgba(245,158,11,0.35);font-weight:700;";
           statusHtml = `<div style="display:flex;flex-direction:column;gap:3px;min-width:165px;">
+               ${passBadgeHtml ? `<div>${passBadgeHtml}</div>` : ""}
                <span class="gs-crs-pill" style="${pillStyle}">${safeStatus}</span>
                ${renderSegmentedPipelineBarHtml(bd, { height: 5, scan: s })}
                ${safeStage ? `<span style="font-size:10px;color:var(--ui-text-secondary);line-height:1.3;">${safeStage}</span>` : ""}
@@ -1966,8 +1984,8 @@
                 : ""
             }
             ${
-              isQueued && has3dStream
-                ? `<button type="button" class="btn-xs" data-inspect3d="${safeScanId}" title="${tr("於等待重算期間檢視現有 3D 模型", "Inspect existing 3D model while re-run is queued")}" style="padding:0 6px;font-size:10.5px;">${tr("檢視 3D", "Inspect 3D")}</button>`
+              (isQueued || isProc) && has3dStream
+                ? `<button type="button" class="btn-xs" data-inspect3d="${safeScanId}" title="${tr("於等待或升級 16K 期間檢視現有 3D 預覽模型", "Inspect live 3D preview while 16K HQ upgrade is queued/running")}" style="padding:0 6px;font-size:10.5px;">${tr("⚡ 檢視預覽", "⚡ View 3D")}</button>`
                 : ""
             }
             <button type="button" class="btn-xs" data-gst="${safeScanId}" title="${tr("預覽 .GST 腳本", "Preview .GST Script")}">

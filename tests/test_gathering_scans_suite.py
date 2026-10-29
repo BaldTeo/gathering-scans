@@ -2006,7 +2006,76 @@ class GatheringScansTestSuite(unittest.TestCase):
         self.assertIn("function renderPipelineSubitemsGridHtml(", js07)
         self.assertIn('id="livePix4dSegmentedBarWrap"', idx_html)
         self.assertIn('id="livePix4dSubitemsGrid"', idx_html)
-        self.assertIn("?v=20261029_v189", idx_html)
+        self.assertIn("?v=20261029_v190", idx_html)
+
+    def test_25_two_pass_preview_and_scalable_lod_recovery(self):
+        """Verify Option C Two-Pass Fast Preview + Full 16K HQ pipeline, dynamic Scalable octree LOD recovery,
+        0-byte mesh.obj rejection, and Pass 1 queue priority boost (+50000)."""
+        import tempfile
+        from pc_worker.config import FAST_PREVIEW_PIX4D_SETTINGS
+        from pc_worker.pix4d_runner import (
+            _detect_scalable_mesh_max_lod,
+            generate_pix4dmatic_gst_script,
+            postprocess_obj_to_tileset,
+        )
+        from pc_worker.priority_queue import calculate_priority_score
+
+        # 1. Verify FAST_PREVIEW_PIX4D_SETTINGS & GST generation for Pass 1 (preview)
+        self.assertEqual(FAST_PREVIEW_PIX4D_SETTINGS["mesh_pipeline"], "FixedSize")
+        self.assertEqual(FAST_PREVIEW_PIX4D_SETTINGS["texture_size"], 2048)
+        self.assertTrue(FAST_PREVIEW_PIX4D_SETTINGS["skip_dense_cloud"])
+
+        gst_preview_small = generate_pix4dmatic_gst_script(
+            project_p4m_path=r"C:\test\test_small.p4m",
+            input_zip_or_folder=r"C:\test\photos",
+            export_dir=r"C:\test\out",
+            extracted_image_paths=[rf"C:\test\photos\img_{i}.jpg" for i in range(120)],
+            pipeline_settings=dict(FAST_PREVIEW_PIX4D_SETTINGS, calib_image_scale="AutoAdaptive"),
+            pipeline_pass="preview",
+            has_depth_inputs=True,
+        )
+        self.assertIn("settings.imageScale : ImageScale.Full", gst_preview_small)
+        self.assertIn("settings.meshPipeline : MeshPipeline.FixedSize", gst_preview_small)
+        self.assertIn("settings.textureSize : 2048", gst_preview_small)
+        # Skip dense cloud: GenerateGaPmvsDensePointCloud omitted and DepthPointCloud wired directly to GenerateScalableMesh
+        self.assertNotIn("GenerateGaPmvsDensePointCloud", gst_preview_small)
+        self.assertIn("inputs : [DepthPointCloud{ }", gst_preview_small)
+
+        gst_preview_large = generate_pix4dmatic_gst_script(
+            project_p4m_path=r"C:\test\test_large.p4m",
+            input_zip_or_folder=r"C:\test\photos",
+            export_dir=r"C:\test\out",
+            part_image_groups=[[r"C:\test\part1\a.jpg"], [r"C:\test\part2\b.jpg"]],
+            pipeline_settings=dict(FAST_PREVIEW_PIX4D_SETTINGS, calib_image_scale="AutoAdaptive"),
+            pipeline_pass="preview",
+            has_depth_inputs=True,
+        )
+        self.assertIn("settings.imageScale : ImageScale.Quarter", gst_preview_large)
+
+        # 2. Verify Pass 1 priority boost (+50000) over Pass 2 full_hq
+        score_pass1 = calculate_priority_score(
+            image_count=300, size_mb=500.0, wait_minutes=10.0, pending_pass="preview"
+        )
+        score_pass2 = calculate_priority_score(
+            image_count=300, size_mb=500.0, wait_minutes=10.0, pending_pass="full_hq"
+        )
+        self.assertGreater(score_pass1 - score_pass2, 49000.0)
+
+        # 3. Verify _detect_scalable_mesh_max_lod detects level 9 from octree .glb tiles
+        with tempfile.TemporaryDirectory() as tmp_proj:
+            content_dir = os.path.join(tmp_proj, "catch_DaAn", "processing", "meshes", "uuid-1", "content")
+            os.makedirs(content_dir, exist_ok=True)
+            for fname in ["0_0_0_0.glb", "5_12_10_4.glb", "9_140_220_35.glb"]:
+                with open(os.path.join(content_dir, fname), "wb") as f:
+                    f.write(b"glTF" + b"\x00" * 32)
+            self.assertEqual(_detect_scalable_mesh_max_lod(tmp_proj), 9)
+
+            # 4. Verify postprocess_obj_to_tileset rejects 0-byte mesh.obj instead of looping infinitely
+            zero_obj = os.path.join(tmp_proj, "mesh.obj")
+            with open(zero_obj, "wb") as f:
+                pass
+            self.assertEqual(postprocess_obj_to_tileset("catch_DaAn", tmp_proj, zero_obj), "")
+
 
 
 if __name__ == "__main__":

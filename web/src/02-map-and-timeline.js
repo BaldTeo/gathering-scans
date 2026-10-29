@@ -796,8 +796,12 @@
     const polyText = formatScanPolyCount(scan);
     const texText = formatScanTextureSize(scan);
     const sizeText = formatScanSizeMb(scan);
+    const stageTag =
+      scan.quality_stage === "preview_ready"
+        ? ` · ⚡ ${tr("快速預覽 (16K 完整版排隊中)", "Fast Preview (16K HQ Queued)")}`
+        : "";
 
-    metricsEl.textContent = `${crsText} · ${areaText} · ${polyText} · ${texText} · ${sizeText}`;
+    metricsEl.textContent = `${crsText} · ${areaText} · ${polyText} · ${texText} · ${sizeText}${stageTag}`;
     const totalDiskMb = Number(scan.size_mb || (Number(scan.size_bytes || 0) / 1048576) || 0);
     const objMb = Number(scan.obj_size_mb || 0);
     metricsEl.title = [
@@ -985,10 +989,24 @@
   }
 
   function formatScanQueueStatusBadgeHtml(scan) {
-    if (!scan || !scan.status || scan.status === "completed") return "";
+    if (!scan || !scan.status) return "";
     const st = String(scan.status).toLowerCase();
+    const isPreviewReady = scan.quality_stage === "preview_ready";
+    const isPass1 = scan.pending_pass === "preview" && !isPreviewReady;
+    if (st === "completed") {
+      if (isPreviewReady) {
+        return `<span class="gs-tile-chip" style="background:rgba(139,92,246,0.92);color:#fff;font-weight:700;">${tr("⚡ 快速預覽版", "⚡ FAST PREVIEW")}</span>`;
+      }
+      return "";
+    }
     if (st === "processing") {
       const pct = Math.round(Number(scan.progress_pct || 0));
+      if (isPreviewReady) {
+        return `<span class="gs-tile-chip" style="background:rgba(139,92,246,0.92);color:#fff;font-weight:700;" title="${tr("快速預覽已上線可檢視，正在計算 16K 完整版", "Fast Preview is live & viewable while 16K HQ builds")}">${tr(`⚡ 預覽就緒 · 16K ${pct}%`, `⚡ PREVIEW · 16K ${pct}%`)}</span>`;
+      }
+      if (isPass1) {
+        return `<span class="gs-tile-chip" style="background:rgba(2,132,199,0.92);color:#fff;font-weight:700;">${tr(`⚡ 快速預覽 ${pct}%`, `⚡ PREVIEW ${pct}%`)}</span>`;
+      }
       return `<span class="gs-tile-chip" style="background:rgba(2,132,199,0.9);color:#fff;font-weight:700;">${tr(`處理中 ${pct}%`, `PROCESSING ${pct}%`)}</span>`;
     }
     if (st === "queued") {
@@ -1005,8 +1023,13 @@
         const idx = qList.findIndex((x) => x.scan_id === scan.scan_id);
         if (idx >= 0) qPos = idx + 1;
       }
+      if (isPreviewReady) {
+        const lbl = qPos > 0 ? tr(`⚡ 預覽版 · 16K 排隊 #${qPos}`, `⚡ PREVIEW · 16K #${qPos}`) : tr("⚡ 預覽版 · 16K 排隊", "⚡ PREVIEW · 16K QUEUED");
+        return `<span class="gs-tile-chip" style="background:rgba(139,92,246,0.92);color:#fff;font-weight:700;" title="${tr("快速預覽已上線可檢視，16K 完整版排隊中", "Fast Preview is live & viewable; 16K HQ upgrade is queued")}">${lbl}</span>`;
+      }
       const isNext = qPos === 1 || Number(scan.force_next || 0) === 1;
-      const lbl = qPos > 0 ? tr(`排隊 #${qPos}`, `QUEUED #${qPos}`) : isNext ? tr("排隊 #1", "QUEUED #1") : tr("排隊中", "QUEUED");
+      const passPrefix = isPass1 ? "⚡ " : "";
+      const lbl = qPos > 0 ? tr(`${passPrefix}排隊 #${qPos}`, `${passPrefix}QUEUED #${qPos}`) : isNext ? tr(`${passPrefix}排隊 #1`, `${passPrefix}QUEUED #1`) : tr(`${passPrefix}排隊中`, `${passPrefix}QUEUED`);
       const bg = isNext ? "rgba(16,185,129,0.9)" : "rgba(245,158,11,0.9)";
       return `<span class="gs-tile-chip" style="background:${bg};color:#fff;font-weight:700;">${lbl}</span>`;
     }

@@ -1778,7 +1778,12 @@ def _discover_folder_scan_item(
                 elif low_fn.endswith(".glb") and rel_depth <= 1:
                     glb_fallbacks.append(os.path.join(root, fn))
                 elif low_fn.endswith(".obj") and rel_depth <= 2:
-                    obj_candidates.append(os.path.join(root, fn))
+                    fp_obj = os.path.join(root, fn)
+                    try:
+                        if os.path.getsize(fp_obj) > 1024:
+                            obj_candidates.append(fp_obj)
+                    except OSError:
+                        pass
         for c in candidate_ts + glb_fallbacks:
             if os.path.isfile(c):
                 tileset_path = c
@@ -1791,18 +1796,29 @@ def _discover_folder_scan_item(
                 continue
             for fn in files:
                 if fn.lower().endswith(".obj"):
-                    obj_candidates.append(os.path.join(root, fn))
+                    fp_obj = os.path.join(root, fn)
+                    try:
+                        if os.path.getsize(fp_obj) > 1024:
+                            obj_candidates.append(fp_obj)
+                    except OSError:
+                        pass
 
-    # Auto-detect obj_path if not already valid (ignore mobile preview meshes inside inputs/)
+    # Auto-detect obj_path if not already valid (ignore mobile preview meshes inside inputs/ and 0-byte .obj files)
     obj_path = meta.get("obj_path", "")
     if obj_path and ("\\inputs\\" in obj_path.lower() or "/inputs/" in obj_path.lower() or "\\meshes\\" in obj_path.lower()):
         obj_path = ""
+    if obj_path and os.path.isfile(obj_path):
+        try:
+            if os.path.getsize(obj_path) <= 1024:
+                obj_path = ""
+        except OSError:
+            obj_path = ""
     if not (obj_path and os.path.isfile(obj_path)):
         cand_obj = os.path.join(folder_path, "mesh.obj")
         exp_obj = os.path.join(folder_path, "exports", "obj_mesh", "mesh.obj")
-        if os.path.isfile(exp_obj):
+        if os.path.isfile(exp_obj) and os.path.getsize(exp_obj) > 1024:
             obj_path = exp_obj
-        elif os.path.isfile(cand_obj):
+        elif os.path.isfile(cand_obj) and os.path.getsize(cand_obj) > 1024:
             obj_path = cand_obj
         elif obj_candidates:
             obj_path = obj_candidates[0]
@@ -1821,7 +1837,7 @@ def _discover_folder_scan_item(
 
     # If a completed .obj mesh was dropped without a 3D tileset, auto-build a 4K quadtree tileset on local disk
     # using postprocess_obj_to_tileset so offset.xyz (UTM51N / TWD97) and .mtl Kd factors are properly applied.
-    if not (tileset_path and os.path.isfile(tileset_path)) and obj_path and os.path.isfile(obj_path):
+    if not (tileset_path and os.path.isfile(tileset_path)) and obj_path and os.path.isfile(obj_path) and os.path.getsize(obj_path) > 1024:
         abs_raw_obj = os.path.abspath(obj_path)
         try:
             obj_mtime = os.path.getmtime(abs_raw_obj)
@@ -2309,6 +2325,10 @@ def _seed_and_discover_scans_locked(db: ScanQueueDB) -> List[Dict[str, Any]]:
             item["stage_label"] = existing_row.get("stage_label", "Queued")
             item["force_next"] = int(existing_row.get("force_next", 0))
             item["bypass_count"] = int(existing_row.get("bypass_count", 0))
+            if existing_row.get("quality_stage"):
+                item["quality_stage"] = existing_row["quality_stage"]
+            if existing_row.get("pending_pass"):
+                item["pending_pass"] = existing_row["pending_pass"]
             if existing_row.get("source_zip_path"):
                 item["source_zip_path"] = existing_row["source_zip_path"]
         db.upsert_scan(item)
@@ -2445,6 +2465,10 @@ def _seed_and_discover_scans_locked(db: ScanQueueDB) -> List[Dict[str, Any]]:
             primary_meta["project_dir"] = existing.get("project_dir", cand_processed_dir)
             primary_meta["force_next"] = int(existing.get("force_next", 0))
             primary_meta["bypass_count"] = int(existing.get("bypass_count", 0))
+            if existing.get("quality_stage"):
+                primary_meta["quality_stage"] = existing["quality_stage"]
+            if existing.get("pending_pass"):
+                primary_meta["pending_pass"] = existing["pending_pass"]
         elif all_parts_ready and not folder_syncing and os.path.isfile(cand_processed_ts):
             true_img_cnt = sum(int(m.get("image_count", 0)) for m in part_metas)
             zip_up_name = part_metas[0].get("uploader_name") or ""
@@ -2468,9 +2492,11 @@ def _seed_and_discover_scans_locked(db: ScanQueueDB) -> List[Dict[str, Any]]:
             primary_meta["tileset_path"] = cand_processed_ts
             primary_meta["project_dir"] = cand_processed_dir
             cand_obj = os.path.join(cand_processed_dir, "exports", "obj_mesh", "mesh.obj")
-            if os.path.isfile(cand_obj):
+            if os.path.isfile(cand_obj) and os.path.getsize(cand_obj) > 1024:
                 primary_meta["obj_path"] = cand_obj
             primary_meta["status"] = "completed"
+            primary_meta["quality_stage"] = "full_hq"
+            primary_meta["pending_pass"] = ""
             primary_meta["progress_pct"] = 100.0
             primary_meta["stage_label"] = f"Processed -> {scan_id} (TWD97 + TWVD2001, 4K)"
             # Keep scan_meta.json on disk in sync with parent_proj, uploader, and true_img_cnt
@@ -2493,7 +2519,7 @@ def _seed_and_discover_scans_locked(db: ScanQueueDB) -> List[Dict[str, Any]]:
                         or m_disk.get("uploader_name") != primary_meta.get("uploader_name")
                         or m_disk.get("source_zip_path") != primary_meta.get("source_zip_path")
                         or (not existing.get("user_edited_name") and m_disk.get("name") != primary_meta.get("name"))
-                        or (cand_obj and os.path.isfile(cand_obj) and m_disk.get("obj_path") != cand_obj)
+                        or (cand_obj and os.path.isfile(cand_obj) and os.path.getsize(cand_obj) > 1024 and m_disk.get("obj_path") != cand_obj)
                     )
                     if disk_needs_sync:
                         m_disk["project_group"] = proj_group
@@ -2504,7 +2530,7 @@ def _seed_and_discover_scans_locked(db: ScanQueueDB) -> List[Dict[str, Any]]:
                         m_disk["uploader_name"] = primary_meta.get("uploader_name", "雲在天")
                         if not existing.get("user_edited_name") and primary_meta.get("name"):
                             m_disk["name"] = primary_meta["name"]
-                        if cand_obj and os.path.isfile(cand_obj):
+                        if cand_obj and os.path.isfile(cand_obj) and os.path.getsize(cand_obj) > 1024:
                             m_disk["obj_path"] = cand_obj
                         with open(meta_on_disk, "w", encoding="utf-8") as wf:
                             json.dump(m_disk, wf, indent=2, ensure_ascii=False)
@@ -2531,6 +2557,8 @@ def _seed_and_discover_scans_locked(db: ScanQueueDB) -> List[Dict[str, Any]]:
                 )
             elif existing.get("status") == "completed" and existing.get("tileset_path") and os.path.isfile(existing.get("tileset_path", "")):
                 primary_meta["status"] = "completed"
+                primary_meta["quality_stage"] = existing.get("quality_stage") or "full_hq"
+                primary_meta["pending_pass"] = ""
                 primary_meta["progress_pct"] = existing.get("progress_pct", 100.0)
                 primary_meta["stage_label"] = existing.get("stage_label", "Completed")
                 primary_meta["tileset_path"] = existing.get("tileset_path", "")
@@ -2538,16 +2566,18 @@ def _seed_and_discover_scans_locked(db: ScanQueueDB) -> List[Dict[str, Any]]:
                 primary_meta["project_dir"] = existing.get("project_dir", "")
             else:
                 primary_meta["status"] = "queued"
+                primary_meta["quality_stage"] = "none"
+                primary_meta["pending_pass"] = "preview"
                 primary_meta["progress_pct"] = 0.0
                 if total_parts > 1:
-                    primary_meta["stage_label"] = f"Queued (All {total_parts}/{total_parts} parts ready — Single PIX4Dmatic Project)"
+                    primary_meta["stage_label"] = f"Queued for Pass 1/2 Fast 2K Preview (All {total_parts}/{total_parts} parts ready)"
                     primary_meta["notes"] = (
                         f"All {total_parts}/{total_parts} parts uploaded ({', '.join(os.path.basename(parts_map[p]) for p in present_parts)}). "
-                        f"Queued to merge and process as a single PIX4Dmatic project ({primary_meta['image_count']} RTK photos)."
+                        f"Queued for Two-Pass PIX4Dmatic pipeline ({primary_meta['image_count']} RTK photos)."
                     )
                 else:
-                    primary_meta["stage_label"] = "Queued for PIX4Dmatic (TWD97 + TWVD2001, 4K)"
-                    primary_meta["notes"] = f"Scan '{base_name}' ({primary_meta['image_count']} RTK photos) ready for PIX4Dmatic processing."
+                    primary_meta["stage_label"] = "Queued for Pass 1/2 Fast 2K Preview (TWD97 + TWVD2001)"
+                    primary_meta["notes"] = f"Scan '{base_name}' ({primary_meta['image_count']} RTK photos) queued for Pass 1 Fast Preview + Pass 2 Full HQ."
 
         db.upsert_scan(primary_meta)
         discovered_ids.add(scan_id)
