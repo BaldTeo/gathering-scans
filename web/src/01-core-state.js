@@ -1307,17 +1307,33 @@
   async function apiPost(url, body = {}) {
     const sep = url.includes("?") ? "&" : "?";
     const fullUrl = STATE.shareToken ? `${url}${sep}share=${encodeURIComponent(STATE.shareToken)}` : url;
-    const res = await fetch(fullUrl, {
-      method: "POST",
-      headers: apiHeaders(),
-      body: JSON.stringify(body),
-    });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
-    if (url.startsWith("/api/survey/") && !body?.only_update_filters) {
-      SHARE_TELEMETRY.recordMeasurement(url.replace("/api/survey/", "survey_"));
+    const isLongAction =
+      url.startsWith("/api/optimizer/") || url === "/api/scans/merge" || url === "/api/optimizer/merge";
+    const maxAttempts = isLongAction ? 2 : 1;
+    let lastErr = null;
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      if (attempt > 0) {
+        await new Promise((r) => setTimeout(r, 2500));
+      }
+      const res = await fetch(fullUrl, {
+        method: "POST",
+        headers: apiHeaders(),
+        body: JSON.stringify(body),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        lastErr = new Error(data.error || `HTTP ${res.status}`);
+        if (res.status === 503 && attempt + 1 < maxAttempts) {
+          continue;
+        }
+        throw lastErr;
+      }
+      if (url.startsWith("/api/survey/") && !body?.only_update_filters) {
+        SHARE_TELEMETRY.recordMeasurement(url.replace("/api/survey/", "survey_"));
+      }
+      return data;
     }
-    return data;
+    throw lastErr || new Error("Request failed");
   }
 
   // Register Client-Side Offline Service Worker

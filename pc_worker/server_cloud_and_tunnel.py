@@ -1462,11 +1462,13 @@ class CloudAndTunnelHandlerMixin:
             method == "POST"
             and (path.startswith("/api/optimizer/") or path in ("/api/scans/merge", "/api/optimizer/merge"))
         ) or path.startswith("/api/download")
-        for _attempt in range(1 if is_long_post else 10):
-            tun_sock, done_evt, proto_ver = _acquire_vps_tunnel_socket(timeout=18.0)
+        tun_wait_attempts = 16 if is_long_post else 10
+        for _attempt in range(tun_wait_attempts):
+            tun_sock, done_evt, proto_ver = _acquire_vps_tunnel_socket(timeout=3.0 if is_long_post else 18.0)
             if not tun_sock or not done_evt:
-                time.sleep(0.35)
+                time.sleep(0.5 if is_long_post else 0.35)
                 continue
+            sent_payload = False
             try:
                 tun_sock.settimeout(900.0 if is_long_post else 60.0)
                 req_headers = {k: v for k, v in self.headers.items()}
@@ -1481,17 +1483,22 @@ class CloudAndTunnelHandlerMixin:
                     }
                 ).encode("utf-8")
                 tun_sock.sendall(struct.pack("!I", len(envelope)) + envelope)
+                sent_payload = True
 
                 len_bytes = _recv_exact(tun_sock, 4)
                 if not len_bytes:
                     done_evt.in_use = False
                     done_evt.set()
+                    if is_long_post:
+                        break
                     continue
                 (meta_len,) = struct.unpack("!I", len_bytes)
                 meta_raw = _recv_exact(tun_sock, meta_len)
                 if not meta_raw:
                     done_evt.in_use = False
                     done_evt.set()
+                    if is_long_post:
+                        break
                     continue
                 resp_meta = json.loads(meta_raw.decode("utf-8"))
                 status_code = int(resp_meta.get("status", 200))
@@ -1643,6 +1650,8 @@ class CloudAndTunnelHandlerMixin:
             except Exception:
                 done_evt.in_use = False
                 done_evt.set()
+                if is_long_post and sent_payload:
+                    break
                 continue
 
         # 4. Serve from in-memory fallback cache if available during momentary tunnel reconnect
