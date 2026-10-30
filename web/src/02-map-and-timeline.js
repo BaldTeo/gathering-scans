@@ -1851,89 +1851,81 @@
 
     tr.loadSiblings = false;
 
-    const maxAutoTiles = isIOS || isPhone
-      ? 22
-      : isMobOrTab
-      ? 26
-      : isEmbed
-      ? 30
-      : isPreview || isCompareOrAlign
-      ? 36
-      : 52;
-
-    const depthInfo = computeTilesetDepthLimits(tr.root, maxAutoTiles);
+    const depthInfo = computeTilesetDepthLimits(tr.root, 30);
     if (lodMode === "rough") {
       tr.errorTarget = 1e9;
       tr.maxDepth = depthInfo.roughMaxDepth;
+      tr._maxActiveTiles = 16;
     } else if (lodMode === "max" && !isEmbed) {
-      tr.errorTarget = isPreview ? 1.5 : isMobOrTab ? 6.0 : 0.8;
-      if (isMobOrTab) {
-        const mobMaxInfo = computeTilesetDepthLimits(tr.root, isIOS ? 36 : 52);
-        tr.maxDepth = mobMaxInfo.autoMaxDepth;
-      } else {
-        tr.maxDepth = Infinity;
-      }
+      tr.maxDepth = Infinity;
+      tr.errorTarget = isPreview ? 1.5 : isMobOrTab ? 4.0 : 0.8;
+      tr._maxActiveTiles = isIOS || isPhone ? 120 : isMobOrTab ? 140 : isPreview ? 180 : 600;
     } else {
-      tr.errorTarget = isEmbed
-        ? (isMobOrTab ? 14.0 : 10.0)
-        : isPreview
-        ? (isMobOrTab ? 16.0 : 10.0)
-        : (isMobOrTab ? 12.0 : 6.0);
-      tr.maxDepth = depthInfo.autoMaxDepth;
+      // Auto mode: NO depth cap (maxDepth = Infinity) so close-up zooming refines all the way to leaf tiles,
+      // while capping active in-frustum tiles (_maxActiveTiles) and culling out-of-frustum tiles.
+      tr.maxDepth = Infinity;
+      if (isIOS || isPhone) {
+        tr._maxActiveTiles = 85;
+        tr.errorTarget = 8.0;
+      } else if (isMobOrTab) {
+        tr._maxActiveTiles = 100;
+        tr.errorTarget = 7.0;
+      } else if (isEmbed || isPreview || isCompareOrAlign) {
+        tr._maxActiveTiles = 120;
+        tr.errorTarget = 6.0;
+      } else {
+        tr._maxActiveTiles = 160;
+        tr.errorTarget = 5.0;
+      }
     }
 
     if (tr.downloadQueue) {
       tr.downloadQueue.maxJobs = isIOS
-        ? 2
-        : isMobOrTab
         ? 3
-        : isEmbed || isPreview
+        : isMobOrTab
         ? 4
+        : isEmbed || isPreview
+        ? 6
         : isLocalHost
         ? 8
         : lodMode === "max"
-        ? 6
-        : 4;
+        ? 8
+        : 6;
     }
     if (tr.parseQueue) {
-      tr.parseQueue.maxJobs = isIOS ? 1 : isMobOrTab || isEmbed || isPreview ? 2 : 4;
+      tr.parseQueue.maxJobs = isIOS ? 2 : isMobOrTab || isEmbed || isPreview ? 3 : 4;
     }
     if (tr.lruCache) {
       if (lodMode === "rough") {
-        tr.lruCache.maxSize = 16;
-        tr.lruCache.minSize = 8;
-        tr.lruCache.maxBytesSize = 64 * 1024 * 1024;
-        tr.lruCache.minBytesSize = 32 * 1024 * 1024;
+        tr.lruCache.minSize = 16;
+        tr.lruCache.maxSize = 32;
+        tr.lruCache.minBytesSize = 48 * 1024 * 1024;
+        tr.lruCache.maxBytesSize = 96 * 1024 * 1024;
+      } else if (lodMode === "max" && !isEmbed) {
+        tr.lruCache.minSize = isMobOrTab ? 140 : isPreview ? 180 : 400;
+        tr.lruCache.maxSize = isMobOrTab ? 180 : isPreview ? 240 : 800;
+        tr.lruCache.minBytesSize = (isMobOrTab ? 256 : isPreview ? 384 : 768) * 1024 * 1024;
+        tr.lruCache.maxBytesSize = (isMobOrTab ? 512 : isPreview ? 768 : 1536) * 1024 * 1024;
       } else if (isIOS || isPhone) {
-        tr.lruCache.maxSize = lodMode === "max" ? 40 : 28;
-        tr.lruCache.minSize = lodMode === "max" ? 20 : 14;
-        tr.lruCache.maxBytesSize = (lodMode === "max" ? 96 : 72) * 1024 * 1024;
-        tr.lruCache.minBytesSize = (lodMode === "max" ? 48 : 36) * 1024 * 1024;
+        tr.lruCache.minSize = 85;
+        tr.lruCache.maxSize = 120;
+        tr.lruCache.minBytesSize = 256 * 1024 * 1024;
+        tr.lruCache.maxBytesSize = 512 * 1024 * 1024;
       } else if (isMobOrTab) {
-        tr.lruCache.maxSize = lodMode === "max" ? 56 : 32;
-        tr.lruCache.minSize = lodMode === "max" ? 28 : 16;
-        tr.lruCache.maxBytesSize = (lodMode === "max" ? 140 : 96) * 1024 * 1024;
-        tr.lruCache.minBytesSize = (lodMode === "max" ? 70 : 48) * 1024 * 1024;
-      } else if (isEmbed) {
-        tr.lruCache.maxSize = 36;
-        tr.lruCache.minSize = 18;
-        tr.lruCache.maxBytesSize = 110 * 1024 * 1024;
-        tr.lruCache.minBytesSize = 55 * 1024 * 1024;
-      } else if (lodMode === "max") {
-        tr.lruCache.maxSize = isPreview ? 180 : 600;
-        tr.lruCache.minSize = isPreview ? 90 : 300;
-        tr.lruCache.maxBytesSize = (isPreview ? 512 : 1536) * 1024 * 1024;
-        tr.lruCache.minBytesSize = (isPreview ? 256 : 768) * 1024 * 1024;
-      } else if (isPreview || isCompareOrAlign) {
-        tr.lruCache.maxSize = 44;
-        tr.lruCache.minSize = 22;
-        tr.lruCache.maxBytesSize = 140 * 1024 * 1024;
-        tr.lruCache.minBytesSize = 70 * 1024 * 1024;
+        tr.lruCache.minSize = 100;
+        tr.lruCache.maxSize = 140;
+        tr.lruCache.minBytesSize = 320 * 1024 * 1024;
+        tr.lruCache.maxBytesSize = 640 * 1024 * 1024;
+      } else if (isEmbed || isPreview || isCompareOrAlign) {
+        tr.lruCache.minSize = 120;
+        tr.lruCache.maxSize = 165;
+        tr.lruCache.minBytesSize = 384 * 1024 * 1024;
+        tr.lruCache.maxBytesSize = 768 * 1024 * 1024;
       } else {
-        tr.lruCache.maxSize = 64;
-        tr.lruCache.minSize = 32;
-        tr.lruCache.maxBytesSize = 240 * 1024 * 1024;
-        tr.lruCache.minBytesSize = 120 * 1024 * 1024;
+        tr.lruCache.minSize = 160;
+        tr.lruCache.maxSize = 220;
+        tr.lruCache.minBytesSize = 512 * 1024 * 1024;
+        tr.lruCache.maxBytesSize = 1024 * 1024 * 1024;
       }
       if (typeof tr.lruCache.scheduleUnload === "function") {
         tr.lruCache.scheduleUnload();
