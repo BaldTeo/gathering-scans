@@ -1857,35 +1857,8 @@
         }
       });
 
-      if (lodMode === "rough") {
-        tr.errorTarget = 1e9;
-      } else if (lodMode === "max" && !STATE.isEmbedded) {
-        tr.errorTarget = 0.8;
-      } else if (STATE.isEmbedded) {
-        tr.errorTarget = isMobOrTab ? 18.0 : 12.0;
-      } else {
-        tr.errorTarget = isMobOrTab ? 10.0 : 2.0;
-      }
-      const isLocalHost = window.location.hostname === "127.0.0.1" || window.location.hostname === "localhost";
-      if (tr.downloadQueue) tr.downloadQueue.maxJobs = isIOS ? 2 : isMobOrTab ? 3 : STATE.isEmbedded ? 4 : isLocalHost ? 16 : (lodMode === "max" ? 6 : 4);
-      if (tr.parseQueue) tr.parseQueue.maxJobs = isIOS ? 1 : (isMobOrTab || STATE.isEmbedded) ? 2 : 8;
-      if (tr.lruCache) {
-        if (isMobOrTab) {
-          tr.lruCache.maxSize = isIOS ? 24 : 64;
-          tr.lruCache.minSize = isIOS ? 10 : 24;
-          tr.lruCache.maxBytesSize = (isIOS ? 64 : 160) * 1024 * 1024;
-          tr.lruCache.minBytesSize = (isIOS ? 32 : 80) * 1024 * 1024;
-        } else if (STATE.isEmbedded) {
-          tr.lruCache.maxSize = 120;
-          tr.lruCache.minSize = 48;
-          tr.lruCache.maxBytesSize = 320 * 1024 * 1024;
-          tr.lruCache.minBytesSize = 160 * 1024 * 1024;
-        } else {
-          tr.lruCache.maxSize = 6000;
-          tr.lruCache.minSize = 4000;
-          tr.lruCache.maxBytesSize = 16 * 1024 * 1024 * 1024;
-          tr.lruCache.minBytesSize = 12 * 1024 * 1024 * 1024;
-        }
+      if (typeof configureTilesRendererLodAndCaps === "function") {
+        configureTilesRendererLodAndCaps(tr, lodMode, "studio");
       }
       studioThree.modelPivot.add(tr.group);
       studioThree.tilesRenderer = tr;
@@ -3641,9 +3614,10 @@
       ) {
         loadScanIntoPreview(STATE.activeScanId, true);
       } else if (previewThree.tilesRenderer) {
-        previewThree.tilesRenderer.errorTarget = previewTargetErr;
-        if (previewThree.tilesRenderer.downloadQueue) {
-          previewThree.tilesRenderer.downloadQueue.maxJobs = isIOS ? 3 : isMobOrTab ? 4 : isLocalHost ? 8 : 4;
+        if (typeof configureTilesRendererLodAndCaps === "function") {
+          configureTilesRendererLodAndCaps(previewThree.tilesRenderer, validMode, "preview");
+        } else {
+          previewThree.tilesRenderer.errorTarget = previewTargetErr;
         }
         previewThree.camera?.updateMatrixWorld();
         previewThree.tilesRenderer.update();
@@ -3663,7 +3637,7 @@
 
   function applyScanLodMode(mode, silent = false) {
     const validMode = STATE.isEmbedded
-      ? (mode === "auto" ? "auto" : "rough")
+      ? (mode === "rough" ? "rough" : "auto")
       : (mode === "rough" || mode === "auto" || mode === "max" ? mode : "auto");
     STATE.scanLodMode = validMode;
     if (!STATE.isEmbedded) {
@@ -3681,17 +3655,6 @@
     const selStudio = document.getElementById("selStudioLodMode");
     if (selStudio && selStudio.value !== validMode) selStudio.value = validMode;
 
-    const isIOS = typeof isIOSOrIPadDevice === "function" && isIOSOrIPadDevice();
-    const isMobOrTab = isIOS || (typeof isMobileOrTabletDevice === "function" && isMobileOrTabletDevice());
-    const isLocalHost = window.location.hostname === "127.0.0.1" || window.location.hostname === "localhost";
-    const targetErr = validMode === "rough"
-      ? 1e9
-      : validMode === "max"
-      ? 0.8
-      : STATE.isEmbedded
-      ? (isMobOrTab ? 18.0 : 12.0)
-      : (isMobOrTab ? 10.0 : 2.0);
-
     if (studioThree) {
       if (
         validMode !== "rough" &&
@@ -3705,9 +3668,8 @@
           forceFullRes: true,
         });
       } else if (studioThree.tilesRenderer) {
-        studioThree.tilesRenderer.errorTarget = targetErr;
-        if (studioThree.tilesRenderer.downloadQueue) {
-          studioThree.tilesRenderer.downloadQueue.maxJobs = isIOS ? 2 : isMobOrTab ? 3 : STATE.isEmbedded ? 4 : isLocalHost ? 16 : (validMode === "max" ? 6 : 4);
+        if (typeof configureTilesRendererLodAndCaps === "function") {
+          configureTilesRendererLodAndCaps(studioThree.tilesRenderer, validMode, "studio");
         }
         studioThree.camera?.updateMatrixWorld();
         studioThree.tilesRenderer.update();

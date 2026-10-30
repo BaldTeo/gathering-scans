@@ -249,7 +249,7 @@
     scanLodMode: (function () {
       const urlLod = String(_urlParams.get("lod") || "").trim().toLowerCase();
       if (initialIsEmbedded) {
-        return urlLod === "auto" ? "auto" : "rough";
+        return urlLod === "rough" ? "rough" : "auto";
       }
       if (urlLod === "rough" || urlLod === "auto" || urlLod === "max") return urlLod;
       try {

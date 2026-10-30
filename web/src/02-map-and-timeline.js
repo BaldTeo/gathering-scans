@@ -1789,21 +1789,172 @@
     return;
   }
 
+  function computeTilesetDepthLimits(rootNode, maxAutoTiles) {
+    if (!rootNode) {
+      return { roughMaxDepth: 1, autoMaxDepth: 3, acceptedCumTiles: 0 };
+    }
+    const countsByDepth = new Map();
+    const walkDepth = (node, depth) => {
+      if (!node || depth > 14) return;
+      const hasContent = Boolean(node.content && (node.content.uri || node.content.url));
+      if (hasContent) {
+        countsByDepth.set(depth, (countsByDepth.get(depth) || 0) + 1);
+      }
+      if (Array.isArray(node.children)) {
+        for (let i = 0; i < node.children.length; i++) {
+          walkDepth(node.children[i], depth + 1);
+        }
+      }
+    };
+    walkDepth(rootNode, 0);
+    const depths = Array.from(countsByDepth.keys()).sort((a, b) => a - b);
+    if (depths.length === 0) {
+      return { roughMaxDepth: 2, autoMaxDepth: 3, acceptedCumTiles: 0 };
+    }
+    const firstDepth = depths[0];
+    let bestAutoDepth = firstDepth;
+    let cumTiles = 0;
+    let acceptedCumTiles = 0;
+    for (let i = 0; i < depths.length; i++) {
+      const d = depths[i];
+      const nextCum = cumTiles + (countsByDepth.get(d) || 0);
+      if (d === firstDepth || nextCum <= maxAutoTiles) {
+        bestAutoDepth = d;
+        cumTiles = nextCum;
+        acceptedCumTiles = nextCum;
+      } else {
+        break;
+      }
+    }
+    return {
+      roughMaxDepth: firstDepth + 1,
+      autoMaxDepth: bestAutoDepth + 1,
+      acceptedCumTiles,
+    };
+  }
+  window.computeTilesetDepthLimits = computeTilesetDepthLimits;
+
+  function configureTilesRendererLodAndCaps(tr, rawLodMode, viewerType = "studio") {
+    if (!tr) return;
+    tr._gsViewerType = viewerType;
+    const isIOS = typeof isIOSOrIPadDevice === "function" && isIOSOrIPadDevice();
+    const isPhone = typeof isIPhoneOrMobilePhone === "function" && isIPhoneOrMobilePhone();
+    const isMobOrTab = isIOS || isPhone || (typeof isMobileOrTabletDevice === "function" && isMobileOrTabletDevice());
+    const isEmbed = Boolean(STATE.isEmbedded);
+    const isPreview = viewerType === "preview";
+    const isCompareOrAlign = viewerType === "compare" || viewerType === "align";
+    const isLocalHost = window.location.hostname === "127.0.0.1" || window.location.hostname === "localhost";
+
+    const lodMode = isEmbed
+      ? (rawLodMode === "rough" ? "rough" : "auto")
+      : (rawLodMode === "rough" || rawLodMode === "max" ? rawLodMode : "auto");
+
+    tr.loadSiblings = false;
+
+    const maxAutoTiles = isIOS || isPhone
+      ? 22
+      : isMobOrTab
+      ? 26
+      : isEmbed
+      ? 30
+      : isPreview || isCompareOrAlign
+      ? 36
+      : 52;
+
+    const depthInfo = computeTilesetDepthLimits(tr.root, maxAutoTiles);
+    if (lodMode === "rough") {
+      tr.errorTarget = 1e9;
+      tr.maxDepth = depthInfo.roughMaxDepth;
+    } else if (lodMode === "max" && !isEmbed) {
+      tr.errorTarget = isPreview ? 1.5 : isMobOrTab ? 6.0 : 0.8;
+      if (isMobOrTab) {
+        const mobMaxInfo = computeTilesetDepthLimits(tr.root, isIOS ? 36 : 52);
+        tr.maxDepth = mobMaxInfo.autoMaxDepth;
+      } else {
+        tr.maxDepth = Infinity;
+      }
+    } else {
+      tr.errorTarget = isEmbed
+        ? (isMobOrTab ? 14.0 : 10.0)
+        : isPreview
+        ? (isMobOrTab ? 16.0 : 10.0)
+        : (isMobOrTab ? 12.0 : 6.0);
+      tr.maxDepth = depthInfo.autoMaxDepth;
+    }
+
+    if (tr.downloadQueue) {
+      tr.downloadQueue.maxJobs = isIOS
+        ? 2
+        : isMobOrTab
+        ? 3
+        : isEmbed || isPreview
+        ? 4
+        : isLocalHost
+        ? 8
+        : lodMode === "max"
+        ? 6
+        : 4;
+    }
+    if (tr.parseQueue) {
+      tr.parseQueue.maxJobs = isIOS ? 1 : isMobOrTab || isEmbed || isPreview ? 2 : 4;
+    }
+    if (tr.lruCache) {
+      if (lodMode === "rough") {
+        tr.lruCache.maxSize = 16;
+        tr.lruCache.minSize = 8;
+        tr.lruCache.maxBytesSize = 64 * 1024 * 1024;
+        tr.lruCache.minBytesSize = 32 * 1024 * 1024;
+      } else if (isIOS || isPhone) {
+        tr.lruCache.maxSize = lodMode === "max" ? 40 : 28;
+        tr.lruCache.minSize = lodMode === "max" ? 20 : 14;
+        tr.lruCache.maxBytesSize = (lodMode === "max" ? 96 : 72) * 1024 * 1024;
+        tr.lruCache.minBytesSize = (lodMode === "max" ? 48 : 36) * 1024 * 1024;
+      } else if (isMobOrTab) {
+        tr.lruCache.maxSize = lodMode === "max" ? 56 : 32;
+        tr.lruCache.minSize = lodMode === "max" ? 28 : 16;
+        tr.lruCache.maxBytesSize = (lodMode === "max" ? 140 : 96) * 1024 * 1024;
+        tr.lruCache.minBytesSize = (lodMode === "max" ? 70 : 48) * 1024 * 1024;
+      } else if (isEmbed) {
+        tr.lruCache.maxSize = 36;
+        tr.lruCache.minSize = 18;
+        tr.lruCache.maxBytesSize = 110 * 1024 * 1024;
+        tr.lruCache.minBytesSize = 55 * 1024 * 1024;
+      } else if (lodMode === "max") {
+        tr.lruCache.maxSize = isPreview ? 180 : 600;
+        tr.lruCache.minSize = isPreview ? 90 : 300;
+        tr.lruCache.maxBytesSize = (isPreview ? 512 : 1536) * 1024 * 1024;
+        tr.lruCache.minBytesSize = (isPreview ? 256 : 768) * 1024 * 1024;
+      } else if (isPreview || isCompareOrAlign) {
+        tr.lruCache.maxSize = 44;
+        tr.lruCache.minSize = 22;
+        tr.lruCache.maxBytesSize = 140 * 1024 * 1024;
+        tr.lruCache.minBytesSize = 70 * 1024 * 1024;
+      } else {
+        tr.lruCache.maxSize = 64;
+        tr.lruCache.minSize = 32;
+        tr.lruCache.maxBytesSize = 240 * 1024 * 1024;
+        tr.lruCache.minBytesSize = 120 * 1024 * 1024;
+      }
+      if (typeof tr.lruCache.scheduleUnload === "function") {
+        tr.lruCache.scheduleUnload();
+      }
+    }
+  }
+  window.configureTilesRendererLodAndCaps = configureTilesRendererLodAndCaps;
+
   function computeTilesetContentSphere(tr, outSphere) {
     if (!tr || !tr.root) return false;
     if (typeof tr.getBoundingSphere === "function") {
       tr.getBoundingSphere(outSphere);
     }
-    const isMobileOrTab = typeof isMobileOrTabletDevice === "function" && isMobileOrTabletDevice();
     const isPreviewRenderer = Boolean(previewThree && previewThree.tilesRenderer === tr);
-    const lodMode = isPreviewRenderer ? (STATE.previewLodMode || "rough") : (STATE.scanLodMode || "auto");
-    if (lodMode === "rough") {
-      tr.errorTarget = 1e9;
-    } else if (lodMode === "max") {
-      tr.errorTarget = isPreviewRenderer ? 1.2 : 0.8;
-    } else {
-      tr.errorTarget = isPreviewRenderer ? (isMobileOrTab ? 18.0 : 12.0) : (isMobileOrTab ? 10.0 : 2.0);
-    }
+    const vType = isPreviewRenderer ? "preview" : (tr._gsViewerType || "studio");
+    const lodMode = isPreviewRenderer
+      ? (STATE.previewLodMode || "rough")
+      : vType === "compare" || vType === "align"
+      ? "auto"
+      : (STATE.scanLodMode || "auto");
+    configureTilesRendererLodAndCaps(tr, lodMode, vType);
     // If root has no direct content URI (e.g. PIX4Dmatic cubic octree where root box is in the sky),
     // or if root box spans > 1,500m horizontally (Safeguard C: multi-island scan), walk content nodes and center on the dominant island.
     const rootBox = tr.root.boundingVolume && Array.isArray(tr.root.boundingVolume.box) ? tr.root.boundingVolume.box : null;
@@ -2136,27 +2287,7 @@
         }
       });
 
-      if (lodMode === "rough") {
-        tr.errorTarget = 1e9;
-      } else if (lodMode === "max") {
-        tr.errorTarget = 1.2;
-      } else {
-        tr.errorTarget = isMobileOrTab ? 18.0 : 12.0;
-      }
-      const isLocalHost = window.location.hostname === "127.0.0.1" || window.location.hostname === "localhost";
-      if (tr.downloadQueue) tr.downloadQueue.maxJobs = isIOS ? 3 : isMobileOrTab ? 4 : isLocalHost ? 8 : 4;
-      if (tr.parseQueue) tr.parseQueue.maxJobs = isIOS ? 1 : isMobileOrTab ? 2 : 6;
-      if (tr.lruCache) {
-        if (isMobileOrTab) {
-          tr.lruCache.maxSize = isIOS ? 24 : 48;
-          tr.lruCache.minSize = isIOS ? 10 : 16;
-        } else {
-          tr.lruCache.maxSize = 4000;
-          tr.lruCache.minSize = 2500;
-          tr.lruCache.maxBytesSize = 12 * 1024 * 1024 * 1024;
-          tr.lruCache.minBytesSize = 8 * 1024 * 1024 * 1024;
-        }
-      }
+      configureTilesRendererLodAndCaps(tr, lodMode, "preview");
       previewThree.modelPivot.add(tr.group);
       previewThree.tilesRenderer = tr;
       framePreviewCamera();

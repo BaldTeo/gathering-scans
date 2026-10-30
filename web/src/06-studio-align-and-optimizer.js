@@ -2220,7 +2220,11 @@
         }
       });
 
-      tr.errorTarget = 6.0;
+      if (typeof configureTilesRendererLodAndCaps === "function") {
+        configureTilesRendererLodAndCaps(tr, "auto", "align");
+      } else {
+        tr.errorTarget = 6.0;
+      }
       zUpGroup.add(tr.group);
       layer.tilesRenderer = tr;
       studioThree.camera.updateMatrixWorld();

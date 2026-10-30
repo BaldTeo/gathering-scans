@@ -2802,7 +2802,7 @@
         selEl.style.display = "none";
       }
     }
-    const curLod = STATE.scanLodMode === "auto" ? "auto" : "rough";
+    const curLod = STATE.scanLodMode === "rough" ? "rough" : "auto";
     document.querySelectorAll("#gsEmbedLodSwitcher [data-embed-lod]").forEach((b) => {
       b.classList.toggle("active", b.getAttribute("data-embed-lod") === curLod);
     });
