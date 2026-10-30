@@ -4661,20 +4661,19 @@ body.gs-embed-mode .gs-scan-loader-label {
 .gs-model-library-overlay {
   position: absolute;
   inset: 0;
-  z-index: 25;
+  z-index: 35;
   display: flex;
   flex-direction: column;
-  padding: 58px 16px 16px 16px;
+  padding: 14px 16px 16px 16px;
   background: linear-gradient(160deg, rgba(15, 23, 42, 0.97) 0%, rgba(11, 17, 32, 0.99) 100%);
   backdrop-filter: blur(14px);
   overflow: hidden;
 }
 .gs-library-header {
   display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-  flex-wrap: wrap;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
   padding-bottom: 10px;
   border-bottom: 1px solid rgba(148, 163, 184, 0.16);
 }
@@ -4842,6 +4841,8 @@ body.theme-light .gs-lib-folder-pill {
 .gs-share-banner strong { white-space: nowrap; flex-shrink: 0; }
 body.gs-single-scan-share #mainModeSwitcher { display: none !important; }
 #viewMap.gs-library-mode-active .gs-map-hud-top,
+#viewMap.gs-library-mode-active .gs-map-controls-rail,
+#viewMap.gs-library-mode-active .gs-map-bottom-left-bar,
 #viewMap.gs-library-mode-active #clusterHoverPopover { display: none !important; }
 @media (max-width: 768px) {
   .gs-share-banner,

@@ -1031,7 +1031,32 @@ class GatheringScansHandler(CloudAndTunnelHandlerMixin, ServerWriteRoutesMixin, 
         s["download_glb_url"] = f"/api/download?scan_id={sid}&type=glb" + (f"&share={share_token}" if share_token else "")
         s["download_obj_url"] = f"/api/download?scan_id={sid}&type=obj" + (f"&share={share_token}" if share_token else "")
         s["download_zip_url"] = f"/api/download?scan_id={sid}&type=zip" + (f"&share={share_token}" if share_token else "")
-        thumb_q = f"?v={ts_ver}&share={share_token}" if share_token else f"?v={ts_ver}"
+        thumb_mt_ms = int(s.get("tileset_version") or 0)
+        try:
+            t_cands = [
+                os.path.join(THUMBS_DIR, f"{sid}.png"),
+                os.path.join(THUMBS_DIR, f"{str(sid).lower()}.png"),
+            ]
+            if proj_dir_chk:
+                t_cands.append(os.path.join(str(proj_dir_chk), "thumbnail.png"))
+            for tc in t_cands:
+                if os.path.isfile(tc):
+                    thumb_mt_ms = max(thumb_mt_ms, int(os.path.getmtime(tc) * 1000))
+        except Exception:
+            pass
+        existing_th_url = str(s.get("thumbnail_url") or "")
+        if "v=th_" in existing_th_url or "?t=" in existing_th_url:
+            try:
+                m_th = re.search(r"(?:v=th_|[?&]t=)(\d+)", existing_th_url)
+                if m_th:
+                    val_th = int(m_th.group(1))
+                    if val_th < 10_000_000_000:
+                        val_th *= 1000
+                    thumb_mt_ms = max(thumb_mt_ms, val_th)
+            except Exception:
+                pass
+        thumb_ver = f"th_{thumb_mt_ms}" if thumb_mt_ms > 0 else ts_ver
+        thumb_q = f"?v={thumb_ver}&share={share_token}" if share_token else f"?v={thumb_ver}"
         s["thumbnail_url"] = f"/api/scans/{sid}/thumbnail{thumb_q}"
 
         # Detect 3D Gaussian Splat (.gsplat) and group_type ('site' vs 'library')
@@ -1387,24 +1412,36 @@ class GatheringScansHandler(CloudAndTunnelHandlerMixin, ServerWriteRoutesMixin, 
         s = scan or DB.get_scan(scan_id) or (DB.get_trashed_scan(scan_id) if hasattr(DB, "get_trashed_scan") else None) or {}
         proj_dir = s.get("project_dir") or ""
 
-        # 1. Check scan.project_dir/thumbnail.png dynamically inside C:\GatheringScans (flat or nested)
+        # 1. Compare primary thumbnail candidates (proj_dir/thumbnail.png vs THUMBS_DIR/<scan_id>.png) and return the newest
+        primary_candidates = []
         if proj_dir and os.path.isdir(proj_dir):
-            for fname in ("thumbnail.png", "preview.png", "thumbnail.jpg", "ortho_preview.png"):
+            cand_proj_th = os.path.join(proj_dir, "thumbnail.png")
+            if os.path.isfile(cand_proj_th) and os.path.getsize(cand_proj_th) > 256:
+                primary_candidates.append(cand_proj_th)
+
+        captured_png = os.path.join(THUMBS_DIR, f"{scan_id}.png")
+        if os.path.isfile(captured_png) and os.path.getsize(captured_png) > 256:
+            primary_candidates.append(captured_png)
+        else:
+            low_target = f"{scan_id.lower()}.png"
+            if os.path.isdir(THUMBS_DIR):
+                for fn in os.listdir(THUMBS_DIR):
+                    if fn.lower() == low_target:
+                        cand = os.path.join(THUMBS_DIR, fn)
+                        if os.path.isfile(cand) and os.path.getsize(cand) > 256:
+                            primary_candidates.append(cand)
+                            break
+
+        if primary_candidates:
+            primary_candidates.sort(key=lambda p: os.path.getmtime(p), reverse=True)
+            return primary_candidates[0]
+
+        # 2. Fallback to secondary project_dir images (preview.png, thumbnail.jpg, ortho_preview.png)
+        if proj_dir and os.path.isdir(proj_dir):
+            for fname in ("preview.png", "thumbnail.jpg", "ortho_preview.png"):
                 cand = os.path.join(proj_dir, fname)
                 if os.path.isfile(cand) and os.path.getsize(cand) > 256:
                     return cand
-
-        # 2. Check automatically captured WebGL screenshot in data/thumbnails/<scan_id>.png (exact & case-insensitive)
-        captured_png = os.path.join(THUMBS_DIR, f"{scan_id}.png")
-        if os.path.isfile(captured_png) and os.path.getsize(captured_png) > 512:
-            return captured_png
-        low_target = f"{scan_id.lower()}.png"
-        if os.path.isdir(THUMBS_DIR):
-            for fn in os.listdir(THUMBS_DIR):
-                if fn.lower() == low_target:
-                    cand = os.path.join(THUMBS_DIR, fn)
-                    if os.path.isfile(cand) and os.path.getsize(cand) > 512:
-                        return cand
 
         # 3. Dynamic sibling scan thumbnail lookup in the same project_group (supports 100+ projects)
         grp = s.get("project_group", "")

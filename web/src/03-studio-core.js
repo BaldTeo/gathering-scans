@@ -2040,14 +2040,58 @@
     let thumbDataUrl = "";
     try {
       if (ctx.renderer && ctx.scene && ctx.camera) {
+        const srcCanvas = ctx.renderer.domElement;
+        const srcW = Math.max(1, srcCanvas.width || srcCanvas.clientWidth || 640);
+        const srcH = Math.max(1, srcCanvas.height || srcCanvas.clientHeight || 360);
+        const viewAspect = srcW / srcH;
+        const thumbW = 560;
+        const thumbH = 260;
+        const thumbAspect = thumbW / thumbH;
+        const savedPos = ctx.camera.position.clone();
+        const pullbackFactor = Math.max(1.06, (thumbAspect / Math.max(0.5, viewAspect)) * 1.06);
+        if (pullbackFactor > 1.01 && ctx.controls?.target) {
+          const offset = savedPos.clone().sub(ctx.controls.target).multiplyScalar(pullbackFactor);
+          ctx.camera.position.copy(ctx.controls.target).add(offset);
+          ctx.camera.updateMatrixWorld(true);
+        }
         if (typeof updateGaussianSplatForContext === "function" && ctx.gaussianSplatMesh) {
           updateGaussianSplatForContext(ctx);
         }
         ctx.renderer.render(ctx.scene, ctx.camera);
-        const rawUrl = ctx.renderer.domElement.toDataURL("image/png");
+        let rawUrl = "";
+        try {
+          const offCanvas = document.createElement("canvas");
+          offCanvas.width = thumbW;
+          offCanvas.height = thumbH;
+          const c2d = offCanvas.getContext("2d");
+          if (c2d) {
+            let cropW = srcW;
+            let cropH = Math.round(srcW / thumbAspect);
+            if (cropH > srcH) {
+              cropH = srcH;
+              cropW = Math.round(srcH * thumbAspect);
+            }
+            const sx = Math.max(0, Math.round((srcW - cropW) * 0.5));
+            const sy = Math.max(0, Math.round((srcH - cropH) * 0.45));
+            c2d.fillStyle = "#0b1120";
+            c2d.fillRect(0, 0, thumbW, thumbH);
+            c2d.drawImage(srcCanvas, sx, sy, cropW, cropH, 0, 0, thumbW, thumbH);
+            rawUrl = offCanvas.toDataURL("image/png");
+          }
+        } catch (_cErr) {}
+        if (!rawUrl || rawUrl.length < 1024) {
+          rawUrl = srcCanvas.toDataURL("image/png");
+        }
         if (rawUrl && rawUrl.length >= 1024) {
           thumbDataUrl = rawUrl;
         }
+        // Immediately restore exact live camera position and re-render
+        ctx.camera.position.copy(savedPos);
+        ctx.camera.updateMatrixWorld(true);
+        if (typeof updateGaussianSplatForContext === "function" && ctx.gaussianSplatMesh) {
+          updateGaussianSplatForContext(ctx);
+        }
+        ctx.renderer.render(ctx.scene, ctx.camera);
       }
     } catch (_e) {}
 
@@ -2068,13 +2112,22 @@
         listMatch.home_view = savedHv;
         if (newThumbUrl) listMatch.thumbnail_url = newThumbUrl;
       }
+      try {
+        localStorage.setItem(
+          "gs_last_catalog_v1",
+          JSON.stringify({ scans: STATE.scans, projects: STATE.projects })
+        );
+      } catch (_lsErr) {}
       if (thumbDataUrl || newThumbUrl) {
-        const displaySrc = thumbDataUrl || newThumbUrl;
+        const displaySrc = newThumbUrl || thumbDataUrl;
         document
           .querySelectorAll(`img[data-scan-thumb="${scanId}"], .gs-lib-card[data-scan-id="${scanId}"] img`)
           .forEach((imgEl) => {
             imgEl.src = displaySrc;
           });
+      }
+      if (STATE.leftPaneMode === "library" && typeof renderModelLibraryView === "function") {
+        renderModelLibraryView();
       }
       showToast(tr("✓ 已將目前視角設為首頁視角並更新預覽圖片", "✓ Saved current camera as Home View and updated preview picture"));
     } catch (err) {

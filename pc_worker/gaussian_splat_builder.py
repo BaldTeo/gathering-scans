@@ -507,8 +507,8 @@ def _render_gaussian_splat_thumbnail(
     rgba: np.ndarray,
     quat_zup: np.ndarray,
     out_png_path: str,
-    width: int = 960,
-    height: int = 640,
+    width: int = 860,
+    height: int = 400,
 ) -> None:
     """Renders a photorealistic 2D EWA Gaussian Splat preview thumbnail to `out_png_path`."""
     az = math.radians(-8.0)
@@ -535,7 +535,7 @@ def _render_gaussian_splat_thumbnail(
 
     fov_y = math.radians(40.0)
     aspect = float(width) / float(height)
-    half_h = max(span_y * 0.58, (span_x * 0.58) / aspect)
+    half_h = max(span_y * 0.68, (span_x * 0.58) / aspect)
     cam_dist = max(0.8, half_h / math.tan(fov_y * 0.5) + float(q_max[2] - cz_m) * 0.65)
 
     tz = pts_cam[:, 2] - cam_dist

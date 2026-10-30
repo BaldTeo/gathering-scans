@@ -337,9 +337,33 @@ class ServerWriteRoutesMixin:
                             if isinstance(hv_raw.get("tiles_center"), list) and len(hv_raw["tiles_center"]) >= 3:
                                 hv_clean["tiles_center"] = [round(float(v), 4) for v in hv_raw["tiles_center"][:3]]
                             DB.set_scan_home_view(hv_scan_id, hv_clean)
+                            vps_thumb_data = str(payload.get("thumbnail_data_url") or payload.get("data_url") or "").strip()
+                            vps_new_thumb_url = ""
+                            if "," in vps_thumb_data:
+                                try:
+                                    raw_png_vps = base64.b64decode(vps_thumb_data.split(",", 1)[1])
+                                    if len(raw_png_vps) >= 256:
+                                        os.makedirs(THUMBS_DIR, exist_ok=True)
+                                        safe_sid_vps = re.sub(r"[^a-zA-Z0-9_\-]", "", hv_scan_id)
+                                        with open(os.path.join(THUMBS_DIR, f"{safe_sid_vps}.png"), "wb") as vf1:
+                                            vf1.write(raw_png_vps)
+                                        with open(os.path.join(THUMBS_DIR, f"{safe_sid_vps.lower()}.png"), "wb") as vf2:
+                                            vf2.write(raw_png_vps)
+                                        vps_new_thumb_url = f"/api/scans/{safe_sid_vps}/thumbnail?v=th_{int(time.time() * 1000)}"
+                                except Exception:
+                                    pass
                             c_man = _load_cloud_manifest()
                             if isinstance(c_man.get("scans"), dict) and hv_scan_id in c_man["scans"]:
                                 c_man["scans"][hv_scan_id]["home_view"] = hv_clean
+                                if vps_new_thumb_url:
+                                    c_man["scans"][hv_scan_id]["thumbnail_url"] = vps_new_thumb_url
+                                _save_cloud_manifest(c_man)
+                            elif isinstance(c_man.get("scans"), list):
+                                for s_m_vps in c_man["scans"]:
+                                    if isinstance(s_m_vps, dict) and s_m_vps.get("scan_id") == hv_scan_id:
+                                        s_m_vps["home_view"] = hv_clean
+                                        if vps_new_thumb_url:
+                                            s_m_vps["thumbnail_url"] = vps_new_thumb_url
                                 _save_cloud_manifest(c_man)
                             with _VPS_RAM_FALLBACK_LOCK:
                                 _VPS_RAM_FALLBACK_CACHE.clear()
@@ -587,7 +611,7 @@ class ServerWriteRoutesMixin:
                                         pf.write(raw_bytes)
                                 except Exception:
                                     pass
-                            fresh_thumb_url = f"/api/scans/{scan_id}/thumbnail?t={int(time.time())}"
+                            fresh_thumb_url = f"/api/scans/{scan_id}/thumbnail?v=th_{int(time.time() * 1000)}"
                     except Exception:
                         pass
                 try:

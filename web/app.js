@@ -2526,7 +2526,7 @@
       const prevCatalogSig = (STATE.scans || [])
         .map(
           (s) =>
-            `${s.scan_id}:${s.name}:${s.project_group}:${s.status}:${Math.round(s.progress_pct || 0)}:${s.stream_url || ""}:${s.preview_stream_url || ""}`
+            `${s.scan_id}:${s.name}:${s.project_group}:${s.status}:${Math.round(s.progress_pct || 0)}:${s.stream_url || ""}:${s.preview_stream_url || ""}:${s.thumbnail_url || ""}:${s.home_view?.updated_at || ""}`
         )
         .join("|");
       const data = await apiGet(isBackgroundPoll ? "/api/scans?bg=1" : "/api/scans");
@@ -2669,7 +2669,7 @@
       const nextCatalogSig = (STATE.scans || [])
         .map(
           (s) =>
-            `${s.scan_id}:${s.name}:${s.project_group}:${s.status}:${Math.round(s.progress_pct || 0)}:${s.stream_url || ""}:${s.preview_stream_url || ""}`
+            `${s.scan_id}:${s.name}:${s.project_group}:${s.status}:${Math.round(s.progress_pct || 0)}:${s.stream_url || ""}:${s.preview_stream_url || ""}:${s.thumbnail_url || ""}:${s.home_view?.updated_at || ""}`
         )
         .join("|");
 
@@ -2781,8 +2781,20 @@
           if (cached && Array.isArray(cached.scans) && cached.scans.length > 0) {
             STATE.scans = cached.scans;
             STATE.projects = cached.projects || [];
+            if (!STATE.activeProjectGroup && !STATE.activeScanId && typeof resolveInitialMapSiteAndScan === "function") {
+              const initTarget = resolveInitialMapSiteAndScan(STATE.scans);
+              if (initTarget.scan) {
+                STATE.activeScan = initTarget.scan;
+                STATE.activeScanId = initTarget.scan.scan_id;
+                STATE.selectedTimelineScanId = initTarget.scan.scan_id;
+                STATE.activeProjectGroup = initTarget.projectGroup;
+              }
+            }
             populateProjectScanDropdowns(STATE.activeProjectGroup, STATE.activeScanId);
             renderMapClusters();
+            if (!STATE.isEmbedded && STATE.activeView === "map" && STATE.activeProjectGroup) {
+              openSiteTimeline(STATE.activeProjectGroup, STATE.activeScanId, false);
+            }
             if (!isBackgroundPoll) {
               showToast("Offline Mode: Loaded scans from local browser cache");
             }
@@ -2857,6 +2869,23 @@
       }
       if (document.getElementById("rerunScanModal")?.classList.contains("active") && _rerunTargetScanId) {
         openRerunScanModal(_rerunTargetScanId);
+      }
+      const moveModalEl = document.getElementById("moveScanModal");
+      if (
+        moveModalEl &&
+        (moveModalEl.classList.contains("active") || moveModalEl.style.display === "flex") &&
+        moveModalEl.dataset.scanId &&
+        typeof openMoveScanModal === "function"
+      ) {
+        openMoveScanModal(moveModalEl.dataset.scanId, { preserveTargetType: true });
+      }
+      const libFolderModalEl = document.getElementById("libraryFolderModal");
+      if (
+        libFolderModalEl &&
+        (libFolderModalEl.classList.contains("active") || libFolderModalEl.style.display === "flex") &&
+        typeof openLibraryFolderModal === "function"
+      ) {
+        openLibraryFolderModal(libFolderModalEl.dataset.mode || "create", { preserveInput: true });
       }
       const dlPopover = document.getElementById("gsDownloadFormatPopover");
       if (dlPopover && _downloadFormatMenuAnchor && _downloadFormatMenuScan) {
@@ -3055,11 +3084,25 @@
       if (bootPayload.materials) STATE.materials = bootPayload.materials;
       if (bootPayload.share_link) STATE.shareLinkInfo = bootPayload.share_link;
       if (!STATE.activeScanId || !STATE.scans.some((s) => s.scan_id === STATE.activeScanId)) {
-        STATE.activeScanId = bootPayload.initial_scan_id || STATE.scans[0].scan_id;
+        if (bootPayload.initial_scan_id) {
+          STATE.activeScanId = bootPayload.initial_scan_id;
+        } else if (!STATE.isEmbedded && typeof resolveInitialMapSiteAndScan === "function") {
+          const initTarget = resolveInitialMapSiteAndScan(STATE.scans);
+          if (initTarget.scan) {
+            STATE.activeScanId = initTarget.scan.scan_id;
+            STATE.selectedTimelineScanId = initTarget.scan.scan_id;
+            STATE.activeProjectGroup = initTarget.projectGroup;
+          }
+        }
+        if (!STATE.activeScanId) {
+          STATE.activeScanId = STATE.scans[0].scan_id;
+        }
       }
       const leadScan = STATE.scans.find((s) => s.scan_id === STATE.activeScanId) || STATE.scans[0];
       STATE.activeScan = leadScan;
-      if (leadScan && leadScan.project_group) STATE.activeProjectGroup = leadScan.project_group;
+      if (leadScan && leadScan.project_group && !STATE.activeProjectGroup) {
+        STATE.activeProjectGroup = leadScan.project_group;
+      }
       applyRolePermissionsToUI();
       populateProjectScanDropdowns(STATE.activeProjectGroup, STATE.activeScanId);
       syncEmbedHudUI();

@@ -2123,6 +2123,8 @@
     const libOverlay = document.getElementById("modelLibraryOverlay");
     const viewMapEl = document.getElementById("viewMap");
     const mapHudTop = document.querySelector("#viewMap .gs-map-hud-top");
+    const mapControlsRail = document.querySelector("#viewMap .gs-map-controls-rail");
+    const mapBottomLeftBar = document.querySelector("#viewMap .gs-map-bottom-left-bar");
 
     if (navLibBtn) navLibBtn.classList.toggle("active", STATE.activeView === "map" && nextMode === "library");
     if (navMapBtn) navMapBtn.classList.toggle("active", STATE.activeView === "map" && nextMode === "map");
@@ -2131,6 +2133,12 @@
     }
     if (mapHudTop) {
       mapHudTop.style.display = nextMode === "library" ? "none" : "";
+    }
+    if (mapControlsRail) {
+      mapControlsRail.style.display = nextMode === "library" ? "none" : "";
+    }
+    if (mapBottomLeftBar) {
+      mapBottomLeftBar.style.display = nextMode === "library" ? "none" : "";
     }
     if (libOverlay) {
       libOverlay.style.display = nextMode === "library" ? "flex" : "none";
@@ -2441,7 +2449,7 @@
     }
   }
 
-  function openMoveScanModal(scanId) {
+  function openMoveScanModal(scanId, { preserveTargetType = false } = {}) {
     const scan =
       STATE.scans.find((s) => s.scan_id === scanId) ||
       STATE.activeScan ||
@@ -2457,11 +2465,19 @@
       nameEl.textContent = `${scan.name} (${formatGroupDisplayName(scan.project_group, scan.project_name_zh)})`;
     }
 
-    const curType = isLibraryScan(scan) ? "library" : "site";
+    const curType =
+      preserveTargetType && modal.dataset.targetType
+        ? modal.dataset.targetType
+        : isLibraryScan(scan)
+          ? "library"
+          : "site";
+    const sel = document.getElementById("moveScanTargetSelect");
+    const prevSelVal = preserveTargetType && sel ? sel.value : scan.project_group;
     const newInp = document.getElementById("moveScanNewGroupInput");
-    if (newInp) newInp.value = "";
+    if (newInp && !preserveTargetType) newInp.value = "";
 
-    _populateMoveScanTargetDropdown(curType, scan.project_group);
+    _populateMoveScanTargetDropdown(curType, prevSelVal);
+    modal.classList.add("active");
     modal.style.display = "flex";
   }
 
@@ -2509,7 +2525,11 @@
         cacheLastViewedMapSiteAndScan(finalGroup, scanId);
       }
 
-      if (modal) modal.style.display = "none";
+      if (modal) {
+        modal.classList.remove("active");
+        modal.classList.remove("active");
+      modal.style.display = "none";
+      }
       populateProjectScanDropdowns(finalGroup, scanId);
       if (typeof renderMapClusters === "function") renderMapClusters();
       renderModelLibraryView();
@@ -2535,7 +2555,7 @@
     }
   }
 
-  function openLibraryFolderModal(mode = "create") {
+  function openLibraryFolderModal(mode = "create", { preserveInput = false } = {}) {
     const modal = document.getElementById("libraryFolderModal");
     if (!modal) return;
     modal.dataset.mode = mode;
@@ -2547,17 +2567,18 @@
       const curName = STATE.selectedLibraryFolder;
       modal.dataset.oldName = curName;
       if (titleEl) titleEl.textContent = tr("重新命名模型庫資料夾", "Rename Library Folder");
-      if (inpName) inpName.value = formatGroupDisplayName(curName);
+      if (inpName && !preserveInput) inpName.value = formatGroupDisplayName(curName);
       const curObj = getLibraryFoldersList().find((f) => f.folder_name.toLowerCase() === curName.toLowerCase());
-      if (inpIcon && curObj) inpIcon.value = curObj.icon || "folder";
+      if (inpIcon && curObj && !preserveInput) inpIcon.value = curObj.icon || "folder";
     } else {
       modal.dataset.oldName = "";
-      if (titleEl) titleEl.textContent = tr("新增 3D 模型庫資料夾", "Create 3D Model Library Folder");
-      if (inpName) inpName.value = "";
-      if (inpIcon) inpIcon.value = "cube";
+      if (titleEl) titleEl.textContent = tr("新增 3D 模型庫資料夾", "New 3D Library Folder");
+      if (inpName && !preserveInput) inpName.value = "";
+      if (inpIcon && !preserveInput) inpIcon.value = "cube";
     }
+    modal.classList.add("active");
     modal.style.display = "flex";
-    setTimeout(() => inpName?.focus(), 40);
+    if (!preserveInput) setTimeout(() => inpName?.focus(), 40);
   }
 
   async function submitLibraryFolderModal() {
@@ -2584,6 +2605,7 @@
       if (Array.isArray(res.scans)) STATE.scans = res.scans;
       const norm = normalizeCanonicalFolderName(newName);
       STATE.selectedLibraryFolder = norm.en;
+      modal.classList.remove("active");
       modal.style.display = "none";
       renderModelLibraryView();
       populateProjectScanDropdowns(STATE.activeProjectGroup, STATE.activeScanId);

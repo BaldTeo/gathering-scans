@@ -1345,6 +1345,19 @@ class CloudAndTunnelHandlerMixin:
                                 tf1.write(raw_png)
                             with open(os.path.join(THUMBS_DIR, f"{sid_th.lower()}.png"), "wb") as tf2:
                                 tf2.write(raw_png)
+                            try:
+                                c_man_th = _load_cloud_manifest()
+                                th_u = f"/api/scans/{sid_th}/thumbnail?v=th_{int(time.time() * 1000)}"
+                                if isinstance(c_man_th.get("scans"), dict) and sid_th in c_man_th["scans"]:
+                                    c_man_th["scans"][sid_th]["thumbnail_url"] = th_u
+                                    _save_cloud_manifest(c_man_th)
+                                elif isinstance(c_man_th.get("scans"), list):
+                                    for s_m_th in c_man_th["scans"]:
+                                        if isinstance(s_m_th, dict) and s_m_th.get("scan_id") == sid_th:
+                                            s_m_th["thumbnail_url"] = th_u
+                                    _save_cloud_manifest(c_man_th)
+                            except Exception:
+                                pass
                 except Exception:
                     pass
             for k in list(_VPS_RAM_FALLBACK_CACHE.keys()):

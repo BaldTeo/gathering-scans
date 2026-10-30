@@ -2100,7 +2100,11 @@
   }
 
   function loadScanIntoPreview(scanId, forceReload = false) {
-    const scan = STATE.scans.find((s) => s.scan_id === scanId) || STATE.scans[0];
+    const mapPool =
+      STATE.leftPaneMode !== "library" && typeof getMapScansOnly === "function"
+        ? getMapScansOnly(STATE.scans)
+        : STATE.scans;
+    const scan = STATE.scans.find((s) => s.scan_id === scanId) || mapPool[0] || STATE.scans[0];
     if (!scan) return;
     if (STATE.activeView !== "map") {
       STATE.selectedTimelineScanId = scan.scan_id;
@@ -2523,7 +2527,11 @@
         const safeName = escapeHtml(s.name || s.scan_id);
         const safeUploader = escapeHtml(s.uploader_name || "Engineer");
         const safeEmail = escapeHtml(s.uploader_email || "");
-        const safeGroup = escapeHtml(s.project_group || "");
+        const dispGroup =
+          typeof formatGroupDisplayName === "function"
+            ? formatGroupDisplayName(s.project_group, s.project_name_zh)
+            : s.project_group || "";
+        const safeGroup = escapeHtml(dispGroup);
 
         tile.innerHTML = `
           <div class="gs-tile-thumb-wrap">
@@ -2667,9 +2675,13 @@
     const fileBase = getScanDefaultFileName(scan);
     const folderInfo = document.getElementById("renameScanModalFolderInfo");
     if (folderInfo) {
+      const dispGroup =
+        typeof formatGroupDisplayName === "function"
+          ? formatGroupDisplayName(scan.project_group, scan.project_name_zh)
+          : scan.project_group || tr("工區", "Site");
       folderInfo.textContent = tr(
-        `原始檔案／資料夾：${fileBase} · ${scan.project_group || "工區"}`,
-        `File / Folder: ${fileBase} · ${scan.project_group || "Site"}`
+        `原始檔案／資料夾：${fileBase} · ${dispGroup}`,
+        `File / Folder: ${fileBase} · ${dispGroup}`
       );
     }
     const inp = document.getElementById("renameScanInput");
@@ -2809,9 +2821,13 @@
     const fileBase = getScanDefaultFileName(scan);
     if (nameEl) nameEl.textContent = scan.name || fileBase;
     if (metaEl) {
+      const dispGroup =
+        typeof formatGroupDisplayName === "function"
+          ? formatGroupDisplayName(scan.project_group, scan.project_name_zh)
+          : scan.project_group || tr("工區", "Site");
       metaEl.textContent = tr(
-        `工區：${scan.project_group || "工區"} · 日期：${scan.capture_date || "—"} · ID: ${scan.scan_id}`,
-        `Site: ${scan.project_group || "Site"} · Date: ${scan.capture_date || "—"} · ID: ${scan.scan_id}`
+        `工區：${dispGroup} · 日期：${scan.capture_date || "—"} · ID: ${scan.scan_id}`,
+        `Site: ${dispGroup} · Date: ${scan.capture_date || "—"} · ID: ${scan.scan_id}`
       );
     }
     openModal("deleteScanModal");
@@ -2845,7 +2861,11 @@
     const targetGroup = preferredGroup || STATE.activeProjectGroup;
     const remainingInGroup = STATE.scans.filter((s) => s.project_group === targetGroup);
     const chosenById = preferredScanId ? STATE.scans.find((s) => s.scan_id === preferredScanId) : null;
-    const nextScan = chosenById || remainingInGroup[0] || STATE.scans[0] || null;
+    const fallbackPool =
+      STATE.leftPaneMode !== "library" && typeof getMapScansOnly === "function"
+        ? getMapScansOnly(STATE.scans)
+        : STATE.scans;
+    const nextScan = chosenById || remainingInGroup[0] || fallbackPool[0] || STATE.scans[0] || null;
     const nextGroup = nextScan ? nextScan.project_group : "";
     const nextId = nextScan ? nextScan.scan_id : "";
 
@@ -2955,7 +2975,11 @@
     _cachedBinScans.forEach((item) => {
       const sid = String(item.scan_id || "");
       const safeName = escapeHtml(item.name || sid);
-      const safeGroup = escapeHtml(item.project_group || "Site");
+      const dispGroup =
+        typeof formatGroupDisplayName === "function"
+          ? formatGroupDisplayName(item.project_group, item.project_name_zh)
+          : item.project_group || "Site";
+      const safeGroup = escapeHtml(dispGroup);
       const safeDate = escapeHtml(item.capture_date || "—");
       const safeActor = escapeHtml(item.trashed_by_name || item.trashed_by_email || "User");
       const sizeMb = item.size_bytes ? `${(Number(item.size_bytes) / (1024 * 1024)).toFixed(1)} MB` : "—";
@@ -3126,21 +3150,29 @@
       showToast("Only Editor, Admin, or Owner accounts can rename sites.");
       return;
     }
+    const fallbackScan =
+      STATE.leftPaneMode !== "library" && typeof getMapScansOnly === "function"
+        ? getMapScansOnly(STATE.scans)[0] || STATE.scans[0]
+        : STATE.scans[0];
     const targetGroup =
       projectGroup ||
       STATE.activeProjectGroup ||
       (STATE.activeScan && STATE.activeScan.project_group) ||
-      (STATE.scans[0] && STATE.scans[0].project_group) ||
+      (fallbackScan && fallbackScan.project_group) ||
       "";
     if (!targetGroup) return;
     _renamingSiteGroup = targetGroup;
     const siteScans = STATE.scans.filter((s) => s.project_group === targetGroup);
     const zhName = (siteScans[0] && siteScans[0].project_name_zh) || targetGroup;
+    const dispGroup =
+      typeof formatGroupDisplayName === "function"
+        ? formatGroupDisplayName(targetGroup, zhName)
+        : targetGroup;
     const subEl = document.getElementById("renameSiteModalSub");
     if (subEl) {
       subEl.textContent = tr(
-        `目前工區：${targetGroup} · ${siteScans.length} 組掃描`,
-        `Current Site: ${targetGroup} · ${siteScans.length} Scan${siteScans.length === 1 ? "" : "s"}`
+        `目前工區：${dispGroup} · ${siteScans.length} 組掃描`,
+        `Current Site: ${dispGroup} · ${siteScans.length} Scan${siteScans.length === 1 ? "" : "s"}`
       );
     }
     const grpInp = document.getElementById("renameSiteGroupInput");
@@ -3387,7 +3419,11 @@
 
   document.getElementById("btnTimelineCompare")?.addEventListener("click", () => {
     const siteScans = STATE.scans.filter((s) => s.project_group === STATE.activeProjectGroup);
-    const s1 = siteScans.find((s) => s.scan_id === STATE.selectedTimelineScanId) || siteScans[0] || STATE.scans[0];
+    const fallbackPool =
+      STATE.leftPaneMode !== "library" && typeof getMapScansOnly === "function"
+        ? getMapScansOnly(STATE.scans)
+        : STATE.scans;
+    const s1 = siteScans.find((s) => s.scan_id === STATE.selectedTimelineScanId) || siteScans[0] || fallbackPool[0] || STATE.scans[0];
     const s2 = siteScans.find((s) => s.scan_id !== s1.scan_id) || s1;
     if (s1 && s2) launchMultiDateCompare(s2.scan_id, s1.scan_id);
   });
