@@ -3649,6 +3649,7 @@
       const photosHtml = photos
         .map((p, idx) => {
           const uv = _projectWorldPointToPhotoUV(p, targetTwd);
+          const photoUrl = typeof appendAuthToDownloadUrl === "function" ? appendAuthToDownloadUrl(p.url) : p.url;
           return `
           <div class="gs-rtk-photo-card" draggable="true" data-rtk-photo-idx="${idx}" style="background:var(--ui-bg-subtle);border:1px solid ${idx === 0 ? "var(--ui-accent)" : "var(--ui-border)"};border-radius:8px;padding:8px;margin-top:8px;cursor:grab;">
             <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:5px;font-size:11px;gap:4px;">
@@ -3660,7 +3661,7 @@
             </div>
             <div data-photo-enlarge-img="${idx}" title="${tr("點擊放大檢視照片與目標準星", "Click to enlarge photo with target reticle")}" style="width:100%;background:#090d16;border-radius:6px;display:flex;align-items:center;justify-content:center;overflow:hidden;cursor:zoom-in;">
               <div style="position:relative;display:inline-flex;max-width:100%;max-height:240px;line-height:0;">
-                <img src="${escapeHtml(p.url)}" alt="${escapeHtml(p.filename)}" style="max-width:100%;max-height:240px;width:auto;height:auto;display:block;object-fit:contain;" onerror="this.closest('[data-photo-enlarge-img]').style.display='none'" />
+                <img src="${escapeHtml(photoUrl)}" alt="${escapeHtml(p.filename)}" style="max-width:100%;max-height:240px;width:auto;height:auto;display:block;object-fit:contain;" onerror="this.closest('[data-photo-enlarge-img]').style.display='none'" />
                 <div class="gs-photo-target-reticle" style="position:absolute;left:${(uv.u * 100).toFixed(2)}%;top:${(uv.v * 100).toFixed(2)}%;transform:translate(-50%,-50%);pointer-events:none;">
                   <div style="width:20px;height:20px;border:2px solid #38bdf8;border-radius:50%;box-shadow:0 0 0 1.5px rgba(2,6,23,0.85),0 0 8px #38bdf8;position:relative;">
                     <span style="position:absolute;left:50%;top:50%;width:4px;height:4px;border-radius:50%;background:#f43f5e;transform:translate(-50%,-50%);"></span>
@@ -3679,7 +3680,7 @@
                 <span>🎯 ${tr("對齊視角", "Align 3D")}</span>
               </button>
               <button type="button" class="btn-xs" data-photo-attach-comment-idx="${idx}" title="${tr("將此照片附加至新標註或選取標註", "Attach this photo to a new or existing comment")}">📎 ${tr("附加標註", "Attach Note")}</button>
-              <a class="btn-xs" href="${escapeHtml(p.url)}" download="${escapeHtml(p.filename)}" style="padding:0 8px;justify-content:center;text-decoration:none;display:inline-flex;align-items:center;" title="${tr("下載原始 RTK 照片", "Download Original RTK Photo")}">⬇</a>
+              <a class="btn-xs" href="${escapeHtml(photoUrl)}" download="${escapeHtml(p.filename)}" style="padding:0 8px;justify-content:center;text-decoration:none;display:inline-flex;align-items:center;" title="${tr("下載原始 RTK 照片", "Download Original RTK Photo")}">⬇</a>
             </div>
           </div>
         `;
@@ -3754,7 +3755,7 @@
         return false;
       }
     }
-    let resolvedAuthorName = STATE.currentUser?.name || "Engineer";
+    let resolvedAuthorName = typeof getOrAssignExternalReviewerName === "function" ? getOrAssignExternalReviewerName() : (STATE.currentUser?.name || "Sturdy lemon");
     try {
       const savedGuest = localStorage.getItem("gs_guest_comment_author") || "";
       if (STATE.shareToken || !STATE.currentUser?.email || STATE.currentUser.email.startsWith("guest@")) {
@@ -4079,7 +4080,8 @@
         ? `<div class="gs-comment-photos-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(74px,1fr));gap:6px;margin-top:7px;">
             ${attachedPhotos
               .map((p, pIdx) => {
-                const purl = escapeHtml(p.url || "");
+                const rawUrl = String(p.url || "");
+                const purl = escapeHtml(typeof appendAuthToDownloadUrl === "function" ? appendAuthToDownloadUrl(rawUrl) : rawUrl);
                 const pfn = escapeHtml(p.filename || `Photo_${pIdx + 1}.jpg`);
                 return `
                   <div class="gs-comment-photo-thumb" draggable="${canEditThis ? "true" : "false"}" data-comment-photo-drag-cid="${cid}" data-comment-photo-drag-idx="${pIdx}" style="position:relative;border-radius:6px;overflow:hidden;border:1px solid var(--ui-border);background:var(--ui-bg-pill);cursor:${canEditThis ? "grab" : "pointer"};">

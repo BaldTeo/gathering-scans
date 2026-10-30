@@ -268,7 +268,7 @@ def get_role_permissions(role: str, has_share_token: bool = False) -> Dict[str, 
     can_download = lvl >= 2 and not has_share_token
     can_comment = lvl >= 2 and not has_share_token
     if eff_role == "guest":
-        allowed_tools = ["orbit", "distance", "area", "coordinates", "laser", "volume"]
+        allowed_tools = ["orbit", "distance", "angle", "area", "coordinates", "laser", "volume", "photos"]
     elif eff_role == "viewer":
         allowed_tools = [
             "orbit", "laser", "coordinates", "distance", "angle",

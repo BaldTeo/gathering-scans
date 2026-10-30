@@ -4226,10 +4226,11 @@
   function getCurrentCommentActorName() {
     let savedGuest = "";
     try {
-      savedGuest = document.getElementById("txtGuestAuthorName")?.value.trim() || localStorage.getItem("gs_guest_comment_author") || "";
+      savedGuest = document.getElementById("txtGuestAuthorName")?.value.trim() || "";
     } catch (_) {}
     const isExt = Boolean(STATE.shareToken || !STATE.currentUser?.email || STATE.currentUser.email.startsWith("guest@"));
-    return isExt ? savedGuest || STATE.currentUser?.name || "External Reviewer" : STATE.currentUser?.name || "Engineer";
+    const fallbackName = typeof getOrAssignExternalReviewerName === "function" ? getOrAssignExternalReviewerName() : "Sturdy lemon";
+    return isExt ? savedGuest || fallbackName : STATE.currentUser?.name || fallbackName;
   }
 
   function openLocationPhotosForComment(c) {
@@ -4476,7 +4477,7 @@
     const pt = clickedPt || STATE.pendingCommentDraftPt || new THREE.Vector3(0, 1.2, 0);
     const twd = clickedTwd || localToTwd97(pt);
     const isExternalOrGuest = Boolean(STATE.shareToken || !STATE.currentUser?.email || STATE.currentUser.email.startsWith("guest@"));
-    const savedGuestAuthor = localStorage.getItem("gs_guest_comment_author") || "";
+    const savedGuestAuthor = typeof getOrAssignExternalReviewerName === "function" ? getOrAssignExternalReviewerName() : (localStorage.getItem("gs_guest_comment_author") || "Sturdy lemon");
     const roleInfo = getCurrentUserRoleInfo();
     const canModifyComments = Boolean(roleInfo.allowComments);
 
@@ -4516,18 +4517,21 @@
         isExternalOrGuest
           ? `<div class="gs-form-group" style="margin-bottom:8px;">
                <label>${tr("您的姓名", "Your Name")}</label>
-               <input type="text" class="gs-input" id="txtGuestAuthorName" value="${escapeHtml(savedGuestAuthor)}" placeholder="${tr("例如：審查工程師", "e.g. Reviewer Name")}" />
+               <input type="text" class="gs-input" id="txtGuestAuthorName" value="${escapeHtml(savedGuestAuthor)}" placeholder="${tr("例如：Sturdy lemon", "e.g. Sturdy lemon")}" />
              </div>`
           : ""
       }
       <div class="gs-form-group" id="commentsInspectorDropZone" style="border:1px dashed var(--ui-border-strong);border-radius:8px;padding:7px;transition:border-color 0.15s,background 0.15s;">
-        <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;margin-bottom:5px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:4px;flex-wrap:wrap;margin-bottom:5px;">
           <label style="margin:0;">${tr("標註座標", "Pin Coordinate")}: E:${twd.e}m, N:${twd.n}m, H:+${twd.h}m</label>
-          <button type="button" class="btn-xs" id="btnUploadDraftCommentPhoto" title="${tr("從電腦拖放或手機相簿選擇照片上傳至 Google Drive", "Upload photo from PC or mobile gallery to Google Drive")}" style="color:var(--ui-accent);border-color:var(--ui-accent);">📷+ ${tr("上傳照片 (GDrive)", "Upload Photo (GDrive)")}</button>
+          <div style="display:flex;gap:4px;">
+            <button type="button" class="btn-xs" id="btnPickDraftScanPhotos" title="${tr("從此點位附近的掃描原始照片中選取並附加", "Select and attach photos from this 3D scan near this point")}" style="color:var(--ui-accent);border-color:var(--ui-accent);">📷 ${tr("掃描照片", "Scan Photos")}</button>
+            <button type="button" class="btn-xs" id="btnUploadDraftCommentPhoto" title="${tr("從電腦拖放或手機相簿選擇照片上傳至 Google Drive", "Upload photo from PC or mobile gallery to Google Drive")}" style="color:var(--ui-accent);border-color:var(--ui-accent);">📷+ ${tr("上傳照片", "Upload Photo")}</button>
+          </div>
           <input type="file" id="inpUploadDraftCommentPhoto" accept="image/*" multiple style="display:none;" />
         </div>
         ${folderComposerBarHtml}
-        <textarea class="gs-input" id="txtNewComment" rows="2" placeholder="${tr("輸入工程觀察或標註內容（可將電腦照片或 RTK 照片拖曳至此附加，或點擊 📷+ 從手機相簿上傳）...", "Leave an engineering observation (drop local image files or RTK photos here, or tap 📷+ to upload from gallery)...")}"></textarea>
+        <textarea class="gs-input" id="txtNewComment" rows="2" placeholder="${tr("輸入工程觀察或標註內容（可點擊「📷 掃描照片」選取模型照片，或點擊「📷+ 上傳照片」）...", "Leave an engineering observation (click 📷 Scan Photos to select scan photos or 📷+ Upload Photo)...")}"></textarea>
         ${draftPhotosHtml}
       </div>
       <button type="button" class="gs-top-btn accent" style="width:100%;justify-content:center;margin-bottom:8px;" id="btnSubmitComment" title="${tr("張貼 3D 空間標註", "Post 3D Comment Pin")}">
@@ -4551,6 +4555,12 @@
       });
     });
 
+    document.getElementById("btnPickDraftScanPhotos")?.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      STATE.targetAttachCommentId = null;
+      STATE.pendingCommentDraftPt = pt.clone();
+      openRtkPhotoInspector(pt, true);
+    });
     document.getElementById("btnUploadDraftCommentPhoto")?.addEventListener("click", (ev) => {
       ev.stopPropagation();
       const inp = document.getElementById("inpUploadDraftCommentPhoto");
@@ -4620,9 +4630,10 @@
           localStorage.setItem("gs_guest_comment_author", customGuestName);
         } catch (_) {}
       }
+      const fallbackReviewer = typeof getOrAssignExternalReviewerName === "function" ? getOrAssignExternalReviewerName() : "Sturdy lemon";
       const resolvedAuthorName = isExternalOrGuest
-        ? customGuestName || STATE.currentUser?.name || "External Reviewer"
-        : STATE.currentUser?.name || "Guest Viewer";
+        ? customGuestName || fallbackReviewer
+        : STATE.currentUser?.name || fallbackReviewer;
       const resolvedAuthorEmail = isExternalOrGuest
         ? "external@gatheren.cloud"
         : STATE.currentUser?.email || "guest@gatheren.cloud";

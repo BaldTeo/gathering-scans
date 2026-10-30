@@ -906,7 +906,7 @@ class ServerWriteRoutesMixin:
                     ok_s, reason_s, link_s, _ = AUTH_SHARE.validate_share_access(
                         share_token, requested_scan_id=payload.get("scan_id")
                     )
-                    if not ok_s or not (link_s and link_s.get("allow_measurements", True)):
+                    if not ok_s or not (link_s and (link_s.get("allow_measurements", True) or link_s.get("allow_comments", True))):
                         self.send_json({"error": "Photo inspection is disabled for this external share link."}, status=403)
                         return
                 res = SURVEY.inspect_rtk_camera_photos(payload)

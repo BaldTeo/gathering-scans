@@ -4836,3 +4836,10 @@ html[data-theme="light"] .gs-lib-folder-pill,
 body.theme-light .gs-lib-folder-pill {
   background: rgba(255, 255, 255, 0.85);
 }
+.gs-share-banner { gap: 10px; white-space: nowrap; }
+.gs-share-banner strong { white-space: nowrap; flex-shrink: 0; }
+body.gs-single-scan-share #mainModeSwitcher { display: none !important; }
+@media (max-width: 768px) {
+  .gs-share-banner,
+  #externalShareBanner { display: none !important; }
+}

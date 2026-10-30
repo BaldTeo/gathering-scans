@@ -725,15 +725,20 @@
     };
 
     const getViewerName = () => {
+      if (typeof getOrAssignExternalReviewerName === "function") {
+        return getOrAssignExternalReviewerName();
+      }
       try {
         const savedGuest = (localStorage.getItem("gs_guest_comment_author") || "").trim();
-        if (savedGuest) return savedGuest;
+        if (savedGuest && !["external reviewer", "guest viewer", "guest", "anonymous"].includes(savedGuest.toLowerCase())) {
+          return savedGuest;
+        }
       } catch (_) {}
       const uName = String(STATE.currentUser?.name || "").trim();
-      if (uName && !["guest", "guest viewer", "anonymous"].includes(uName.toLowerCase())) {
+      if (uName && !["guest", "guest viewer", "anonymous", "external reviewer"].includes(uName.toLowerCase())) {
         return uName;
       }
-      return "";
+      return "Sturdy lemon";
     };
 
     const getViewerEmail = () => {
@@ -1072,10 +1077,78 @@
     return map[k] || map.viewer;
   }
 
+  const RANDOM_REVIEWER_ADJECTIVES = [
+    "Sturdy", "Clever", "Brisk", "Calm", "Swift", "Bright", "Gentle", "Bold", "Sunny", "Nimble",
+    "Steady", "Vivid", "Crisp", "Mellow", "Lucky", "Brave", "Quiet", "Lively", "Warm", "Noble",
+  ];
+  const RANDOM_REVIEWER_NOUNS = [
+    "lemon", "otter", "falcon", "pebble", "mango", "cedar", "pine", "kiwi", "badger", "heron",
+    "maple", "melon", "walnut", "peach", "finch", "panda", "lotus", "olive", "acorn", "spruce",
+  ];
+  const GENERIC_REVIEWER_PLACEHOLDERS = new Set([
+    "external reviewer",
+    "guest viewer",
+    "guest",
+    "anonymous",
+    "engineer",
+  ]);
+
+  function getOrAssignExternalReviewerName() {
+    // 1. Prefer Google account name from active session or saved browser profile if available
+    const curEmail = String(STATE.currentUser?.email || "").trim().toLowerCase();
+    const curName = String(STATE.currentUser?.name || "").trim();
+    if (
+      curName &&
+      curEmail &&
+      !curEmail.startsWith("guest@") &&
+      curEmail !== "external@gatheren.cloud" &&
+      !GENERIC_REVIEWER_PLACEHOLDERS.has(curName.toLowerCase())
+    ) {
+      return curName;
+    }
+    try {
+      for (const storageKey of ["gathering_user_profile", "gs_current_user", "google_user_profile"]) {
+        const raw = localStorage.getItem(storageKey);
+        if (!raw) continue;
+        const parsed = JSON.parse(raw);
+        const pEmail = String(parsed?.email || "").trim().toLowerCase();
+        const pName = String(parsed?.name || parsed?.given_name || "").trim();
+        if (
+          pName &&
+          pEmail &&
+          !pEmail.startsWith("guest@") &&
+          pEmail !== "external@gatheren.cloud" &&
+          !GENERIC_REVIEWER_PLACEHOLDERS.has(pName.toLowerCase())
+        ) {
+          return pName;
+        }
+      }
+    } catch (_) {}
+
+    // 2. Check persisted custom or previously generated 2-word reviewer name
+    try {
+      const saved = String(localStorage.getItem("gs_guest_comment_author") || "").trim();
+      if (saved && !GENERIC_REVIEWER_PLACEHOLDERS.has(saved.toLowerCase())) {
+        return saved;
+      }
+    } catch (_) {}
+
+    // 3. Generate a friendly 2-word name like "Sturdy lemon" and persist it
+    const adj = RANDOM_REVIEWER_ADJECTIVES[Math.floor(Math.random() * RANDOM_REVIEWER_ADJECTIVES.length)] || "Sturdy";
+    const noun = RANDOM_REVIEWER_NOUNS[Math.floor(Math.random() * RANDOM_REVIEWER_NOUNS.length)] || "lemon";
+    const generated = `${adj} ${noun}`;
+    try {
+      localStorage.setItem("gs_guest_comment_author", generated);
+    } catch (_) {}
+    return generated;
+  }
+  window.getOrAssignExternalReviewerName = getOrAssignExternalReviewerName;
+
   function getCurrentUserRoleInfo() {
     if (STATE.shareToken) {
       const link = STATE.shareLinkInfo || {};
       const isSingleScan = String(link.scope_type || "scan").toLowerCase() === "scan";
+      const isQuickViewComment = String(link.label || "").startsWith("View & Comment");
       return {
         role: "guest",
         level: 1,
@@ -1089,7 +1162,7 @@
         isGuestRole: true,
         isGuestSingleScan: isSingleScan,
         isSingleScanLock: isSingleScan,
-        allowMeasurements: link.allow_measurements !== false,
+        allowMeasurements: link.allow_measurements !== false || isQuickViewComment || Boolean(link.allow_comments),
         allowComments: Boolean(link.allow_comments),
         allowDownload: Boolean(link.allow_download),
       };
@@ -1140,22 +1213,27 @@
     const cmtName = String(c.author_name || "").trim().toLowerCase();
     const ownerAliases = new Set(["glibivanov@gatheren.com.tw", "gleb.ivanov1999@gmail.com"]);
     if (userEmail && !userEmail.startsWith("guest@") && userEmail !== "external@gatheren.cloud") {
-      return Boolean(
+      if (
         (cmtEmail && cmtEmail === userEmail) ||
-          (ownerAliases.has(userEmail) && ownerAliases.has(cmtEmail)) ||
-          ((!cmtEmail || cmtEmail === "guest@gatheren.cloud") && cmtName && userName && cmtName === userName)
-      );
+        (ownerAliases.has(userEmail) && ownerAliases.has(cmtEmail)) ||
+        ((!cmtEmail || cmtEmail === "guest@gatheren.cloud" || cmtEmail === "external@gatheren.cloud") && cmtName && userName && cmtName === userName)
+      ) {
+        return true;
+      }
     }
     if (STATE.shareToken && roleInfo.allowComments) {
-      let savedGuest = "";
+      const candidateNames = new Set();
       try {
-        savedGuest = String(localStorage.getItem("gs_guest_comment_author") || "").trim().toLowerCase();
+        const lsName = String(localStorage.getItem("gs_guest_comment_author") || "").trim().toLowerCase();
+        if (lsName) candidateNames.add(lsName);
       } catch (_) {}
+      const assignedName = String(getOrAssignExternalReviewerName() || "").trim().toLowerCase();
+      if (assignedName) candidateNames.add(assignedName);
+      if (userName) candidateNames.add(userName);
       return Boolean(
-        savedGuest &&
-          cmtName &&
-          cmtName === savedGuest &&
-          (!cmtEmail || cmtEmail === "external@gatheren.cloud" || cmtEmail.startsWith("guest@"))
+        cmtName &&
+          candidateNames.has(cmtName) &&
+          (!cmtEmail || cmtEmail === "external@gatheren.cloud" || cmtEmail.startsWith("guest@") || cmtEmail === userEmail)
       );
     }
     return false;
@@ -1235,15 +1313,21 @@
     // Interactive Guest Mode can freely browse Map, Studio, and Compare across all projects/scans.
     const lockSingleScan = Boolean(info.isSingleScanLock);
     setDisp("btnNavMap", !lockSingleScan, "inline-flex");
+    setDisp("btnNavLibrary", !lockSingleScan, "inline-flex");
     setDisp("btnNavCompare", !lockSingleScan, "inline-flex");
+    setDisp("mainModeSwitcher", !lockSingleScan, "inline-flex");
     setDisp("btnStudioBackToTimeline", !lockSingleScan, "inline-flex");
     setDisp("studioProjectSelect", !lockSingleScan, "inline-block");
+    if (document.body) {
+      document.body.classList.toggle("gs-single-scan-share", lockSingleScan);
+    }
     const studioScanSel = document.getElementById("studioScanSelect");
     if (studioScanSel) studioScanSel.disabled = lockSingleScan || Boolean(STATE.multiAlign?.active);
 
-    // 5. Basic & Guest measurement tools (Distance, Area, Coordinates, Laser, Volume, Snap, Clear) honor allowMeasurements
+    // 5. Basic & Guest measurement tools (Distance, Angle, Area, Coordinates, Laser, Volume, Snap, Clear) honor allowMeasurements
     [
       "btnMeasureDistance",
+      "btnMeasureAngle",
       "btnMeasureArea",
       "btnMeasureCoordinates",
       "btnMeasureCoords",
@@ -1257,6 +1341,7 @@
       "btnMeasureClear",
       "btnClearMeasurements",
     ].forEach((id) => setDisp(id, info.allowMeasurements, "inline-flex"));
+    setDisp("btnMeasurePhotos", Boolean(info.allowMeasurements || info.allowComments), "inline-flex");
     if (!info.allowMeasurements) {
       document.getElementById("btnMeasureDistance")?.classList.remove("active");
     }
@@ -1265,13 +1350,11 @@
       coordPillEl.style.display = info.allowMeasurements ? "" : "none";
     }
 
-    // 6. Advanced surveying tools hidden for Guest role (Viewer+ gets full surveying suite; Guest gets Distance, Area, Coords, Laser & Volume)
+    // 6. Advanced surveying tools hidden for Guest role (Viewer+ gets full surveying suite; Guest gets Distance, Angle, Area, Coords, Laser, Volume & Photos)
     const showAdvancedSurvey = !info.isGuestRole && info.allowMeasurements;
     [
-      "btnMeasureAngle",
       "btnMeasureContours",
       "btnMeasureProfile",
-      "btnMeasurePhotos",
       "btnDockCategorize",
       "btnDockDrainage",
       "btnDockGcpQa",
@@ -1293,7 +1376,7 @@
     }
 
     // 8. If current active Studio tool is no longer permitted after role change, reset cleanly
-    const advTools = new Set(["angle", "contours", "profile", "section", "photos", "categorize"]);
+    const advTools = new Set(["contours", "profile", "section", "categorize"]);
     const wfTools = new Set(["optimizer", "crs", "generate_scan", "crop", "crop_delete", "align_merge"]);
     if (!info.canRunWorkflows && STATE.multiAlign?.active && typeof exitMultiScanAlignMode === "function") {
       exitMultiScanAlignMode(true);
@@ -1302,7 +1385,8 @@
       (!showAdvancedSurvey && advTools.has(STATE.activeTool)) ||
       (!info.canRunWorkflows && wfTools.has(STATE.activeTool)) ||
       (!info.allowComments && STATE.activeTool === "comments") ||
-      (!info.allowMeasurements && ["distance", "area", "coordinates", "laser", "volume"].includes(STATE.activeTool))
+      (!info.allowMeasurements && !info.allowComments && STATE.activeTool === "photos") ||
+      (!info.allowMeasurements && ["distance", "angle", "area", "coordinates", "laser", "volume"].includes(STATE.activeTool))
     ) {
       STATE.activeTool = info.allowMeasurements ? "distance" : "orbit";
       document.getElementById("studioSidePanel")?.classList.remove("active");

@@ -789,7 +789,6 @@
       String(linkObj.scope_type || "").toLowerCase() === "scan" &&
       String(linkObj.target_id || "") === String(scanId || "") &&
       Boolean(linkObj.allow_comments) === true &&
-      Boolean(linkObj.allow_measurements) === false &&
       Boolean(linkObj.allow_download) === false
     );
   }
@@ -811,7 +810,7 @@
       scope_type: "scan",
       target_id: scan.scan_id,
       label: `View & Comment — ${scan.name || scan.scan_id}`,
-      allow_measurements: false,
+      allow_measurements: true,
       allow_comments: true,
       allow_download: false,
     });
@@ -863,9 +862,9 @@
         </button>
       </div>
       <div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:8px;">
-        <span class="gs-quick-share-chip" style="color:var(--ui-accent);border-color:var(--ui-accent);">${tr("僅限 3D 檢視 + 留言", "3D View + Comment Only")}</span>
+        <span class="gs-quick-share-chip" style="color:var(--ui-accent);border-color:var(--ui-accent);">${tr("3D 檢視 + 留言 + 基礎測量", "3D View + Comment + Basic Measurements")}</span>
         <span class="gs-quick-share-chip">${tr("鎖定單一掃描", "Single Scan Locked")}</span>
-        <span class="gs-quick-share-chip">${tr("不開放測量", "No Measurements")}</span>
+        <span class="gs-quick-share-chip">${tr("距離 / 角度 / 面積測量", "Distance / Angle / Area")}</span>
         <span class="gs-quick-share-chip">${tr("不開放下載", "No Download")}</span>
       </div>
       <div id="quickShareBodyArea" style="font-size:11.5px;color:var(--ui-text-secondary);padding:6px 0;">
@@ -1705,7 +1704,13 @@
     STATE.currentUser = Object.assign({ offlineCacheEnabled: true }, STATE.currentUser || {}, normalized);
     syncSessionTokenCookie(STATE.currentUser);
     const targetEmail = String(STATE.currentUser.email || "").trim().toLowerCase();
-    const isGuestEmail = !targetEmail || targetEmail === "guest" || targetEmail.startsWith("guest@");
+    const isGuestEmail = !targetEmail || targetEmail === "guest" || targetEmail.startsWith("guest@") || targetEmail === "external@gatheren.cloud";
+    if (isGuestEmail && typeof getOrAssignExternalReviewerName === "function") {
+      const curNm = String(STATE.currentUser.name || "").trim().toLowerCase();
+      if (!curNm || ["guest", "guest viewer", "external reviewer", "anonymous"].includes(curNm)) {
+        STATE.currentUser.name = getOrAssignExternalReviewerName();
+      }
+    }
     if (!isGuestEmail) {
       if (markAuthorized && window.__gsUserManuallyToggledLang) {
         const manualLang = typeof window.getAppLanguage === "function" ? window.getAppLanguage() : "zh-TW";
@@ -2616,26 +2621,32 @@
         }
         const banner = document.getElementById("externalShareBanner");
         const scopeLbl = document.getElementById("lblExternalShareScope");
+        const rolePerms = getCurrentUserRoleInfo();
         if (banner && scopeLbl) {
-          banner.style.display = "flex";
+          banner.style.display = window.innerWidth > 768 ? "flex" : "none";
           const friendlyScope = resolveShareScopeTitle(data.share_link.scope_type, data.share_link.target_id);
           const linkPerms = [
             tr("3D 檢視", "3D View"),
-            data.share_link.allow_measurements ? tr("工程測量", "Measurements") : null,
-            data.share_link.allow_comments ? tr("3D 空間留言", "3D Comments") : null,
-            data.share_link.allow_download ? tr("下載", "Download") : null,
+            rolePerms.allowMeasurements ? tr("基礎測量", "Basic Measurements") : null,
+            rolePerms.allowComments ? tr("3D 空間留言", "3D Comments") : null,
+            rolePerms.allowDownload ? tr("下載", "Download") : null,
           ]
             .filter(Boolean)
             .join(" + ");
           scopeLbl.textContent = `${data.share_link.label} · ${String(data.share_link.scope_type || "scan").toUpperCase()}: ${friendlyScope} — ${linkPerms}`;
         }
+        const assignedReviewerName =
+          typeof getOrAssignExternalReviewerName === "function" ? getOrAssignExternalReviewerName() : "Sturdy lemon";
+        if (
+          !STATE.currentUser?.name ||
+          ["guest", "guest viewer", "external reviewer", "anonymous"].includes(String(STATE.currentUser.name).toLowerCase())
+        ) {
+          if (STATE.currentUser) STATE.currentUser.name = assignedReviewerName;
+        }
         const viewerNameInp = document.getElementById("inpShareViewerName");
         if (viewerNameInp && !viewerNameInp.dataset.boundTelemetry) {
           viewerNameInp.dataset.boundTelemetry = "1";
-          try {
-            const savedName = (localStorage.getItem("gs_guest_comment_author") || "").trim();
-            if (savedName) viewerNameInp.value = savedName;
-          } catch (_) {}
+          viewerNameInp.value = assignedReviewerName;
           const commitViewerName = () => {
             const nm = viewerNameInp.value.trim();
             if (nm) {
@@ -2985,6 +2996,13 @@
       openUserProfileGateModal();
     } else if (!STATE.isEmbedded) {
       loadTeamUserProfiles();
+      if (
+        STATE.shareToken &&
+        (!STATE.currentUser?.email || STATE.currentUser.email.startsWith("guest@")) &&
+        REGISTERED_GOOGLE_OAUTH_ORIGINS.has(window.location.origin)
+      ) {
+        initGoogleIdentityServicesButton(0);
+      }
     }
 
     // Zero-Roundtrip Instant Bootstrap when server pre-injected window.__GS_EMBED_BOOTSTRAP__

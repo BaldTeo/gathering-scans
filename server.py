@@ -1591,7 +1591,7 @@ class GatheringScansHandler(CloudAndTunnelHandlerMixin, ServerWriteRoutesMixin, 
             return
 
         # 1. On Linux VPS, proxy dynamic API and 3D stream routes over Reverse Tunnel to Windows PC
-        if os.name != "nt" and (path.startswith("/api/") or path.startswith("/stream/")):
+        if os.name != "nt" and (path.startswith("/api/") or path.startswith("/stream/") or path.startswith("/cameras/")):
             if self._proxy_via_pc_tunnel_if_vps("GET", path):
                 return
 
