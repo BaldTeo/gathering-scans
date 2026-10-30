@@ -2174,6 +2174,39 @@ class GatheringScansTestSuite(unittest.TestCase):
         self.assertIn("Recalculated Area: ${areaM2.toFixed(2)} m²", js03)
         self.assertIn("drag any vertex to adjust & recalculate area", js04)
 
+    def test_29_hostinger_embed_mode_and_zero_roundtrip_bootstrap(self):
+        """Verify Hostinger Website Builder Embed Mode (?embed=1, ?embed=poster, /embed/<token>), server-side __GS_EMBED_BOOTSTRAP__ injection, CSP frame-ancestors *, and embed code generator."""
+        with open(os.path.join(BASE_DIR, "server.py"), "r", encoding="utf-8") as f:
+            srv_py = f.read()
+        with open(os.path.join(BASE_DIR, "web", "src", "01-core-state.js"), "r", encoding="utf-8") as f:
+            js01 = f.read()
+        with open(os.path.join(BASE_DIR, "web", "app.js"), "r", encoding="utf-8") as f:
+            app_js = f.read()
+        with open(os.path.join(BASE_DIR, "web", "index.html"), "r", encoding="utf-8") as f:
+            idx_html = f.read()
+        with open(os.path.join(BASE_DIR, "web", "app.css"), "r", encoding="utf-8") as f:
+            app_css = f.read()
+
+        # 1. Server-side CSP frame-ancestors *, /embed/<token> route, and zero-roundtrip bootstrap injection
+        self.assertIn('self.send_header("Content-Security-Policy", "frame-ancestors *")', srv_py)
+        self.assertIn("def _build_embed_bootstrap_payload(", srv_py)
+        self.assertIn("window.__GS_EMBED_BOOTSTRAP__ =", srv_py)
+        self.assertIn('if path.startswith("/embed/"):', srv_py)
+
+        # 2. Core state embed mode detection & pre-populated STATE.scans
+        self.assertIn("window.__GS_EMBED_BOOTSTRAP__", js01)
+        self.assertIn("embedMode: initialEmbedMode", js01)
+        self.assertIn("isEmbedded: initialIsEmbedded", js01)
+
+        # 3. Hostinger Embed Code generator & Floating HUD / Poster overlay
+        self.assertIn("function buildPublicEmbedUrl(", app_js)
+        self.assertIn("function buildHostingerEmbedCode(", app_js)
+        self.assertIn("function syncEmbedHudUI(", app_js)
+        self.assertIn('id="gsEmbedFloatingHud"', idx_html)
+        self.assertIn('id="gsEmbedPosterOverlay"', idx_html)
+        self.assertIn('id="btnCopyLatestShareEmbed"', idx_html)
+        self.assertIn("html.gs-embed-mode .gs-topbar", app_css)
+
 
 if __name__ == "__main__":
     unittest.main()

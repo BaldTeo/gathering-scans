@@ -105,16 +105,38 @@
     return null;
   }
 
-  const initialShareToken = new URLSearchParams(window.location.search).get("share") || "";
+  const _urlParams = new URLSearchParams(window.location.search);
+  const _embedBoot = (typeof window !== "undefined" && window.__GS_EMBED_BOOTSTRAP__) ? window.__GS_EMBED_BOOTSTRAP__ : null;
+  const _pathEmbedMatch = String(window.location.pathname || "").match(/^\/embed\/([^/?#]+)/);
+  const initialShareToken =
+    _urlParams.get("share") ||
+    (_pathEmbedMatch ? decodeURIComponent(_pathEmbedMatch[1]) : "") ||
+    (_embedBoot && _embedBoot.share_token ? String(_embedBoot.share_token) : "");
+  const _rawEmbedParam = String(
+    _urlParams.get("embed") ||
+    (_pathEmbedMatch ? "1" : "") ||
+    (_embedBoot && _embedBoot.embed_mode ? _embedBoot.embed_mode : (_embedBoot && _embedBoot.embed ? "1" : ""))
+  ).trim().toLowerCase();
+  const initialEmbedMode =
+    _rawEmbedParam === "poster"
+      ? "poster"
+      : (_rawEmbedParam === "1" || _rawEmbedParam === "true" || _rawEmbedParam === "yes" || _rawEmbedParam === "instant" ? "instant" : "");
+  const initialIsEmbedded = Boolean(initialEmbedMode);
+  if (initialIsEmbedded && typeof document !== "undefined" && document.documentElement) {
+    document.documentElement.classList.add("gs-embed-mode");
+  }
   const initialUser = getInitialCurrentUser();
 
   // Application State
   const STATE = {
-    activeView: "map",
-    scans: [],
-    projects: [],
-    materials: {},
-    activeScanId: "",
+    activeView: initialIsEmbedded ? "studio" : "map",
+    embedMode: initialEmbedMode,
+    isEmbedded: initialIsEmbedded,
+    embedPosterDismissed: initialEmbedMode !== "poster",
+    scans: (_embedBoot && Array.isArray(_embedBoot.scans)) ? _embedBoot.scans : [],
+    projects: (_embedBoot && Array.isArray(_embedBoot.projects)) ? _embedBoot.projects : [],
+    materials: (_embedBoot && _embedBoot.materials) ? _embedBoot.materials : {},
+    activeScanId: (_embedBoot && _embedBoot.initial_scan_id) ? String(_embedBoot.initial_scan_id) : (_urlParams.get("scan") || ""),
     activeScan: null,
     activeProjectGroup: "",
     projectFilterQuery: "",
@@ -130,9 +152,9 @@
     snapEnabled: true,
     pcOnline: true,
     shareToken: initialShareToken,
-    shareLinkInfo: null,
+    shareLinkInfo: (_embedBoot && _embedBoot.share_link) ? _embedBoot.share_link : null,
     currentUser: initialUser,
-    isAuthorized: Boolean(initialUser && initialUser.email) || Boolean(initialShareToken),
+    isAuthorized: Boolean(initialUser && initialUser.email) || Boolean(initialShareToken) || Boolean(initialIsEmbedded),
     themePreference: localStorage.getItem("gs_theme_pref") || "auto",
     resolvedTheme: "light",
     teamProfiles: [],
@@ -224,6 +246,8 @@
       lastFrameTime: 0,
     },
     scanLodMode: (function () {
+      const urlLod = String(_urlParams.get("lod") || "").trim().toLowerCase();
+      if (urlLod === "rough" || urlLod === "auto" || urlLod === "max") return urlLod;
       try {
         const saved = localStorage.getItem("gs_studio_lod_mode_v2");
         if (saved === "rough" || saved === "auto" || saved === "max") return saved;

@@ -1838,7 +1838,7 @@
         tr.errorTarget = isMobOrTab ? 10.0 : 2.0;
       }
       const isLocalHost = window.location.hostname === "127.0.0.1" || window.location.hostname === "localhost";
-      if (tr.downloadQueue) tr.downloadQueue.maxJobs = isIOS ? 3 : isMobOrTab ? 4 : isLocalHost ? 16 : (lodMode === "max" ? 6 : 4);
+      if (tr.downloadQueue) tr.downloadQueue.maxJobs = isIOS ? 3 : isMobOrTab ? 4 : isLocalHost ? 16 : (STATE.isEmbedded ? 10 : (lodMode === "max" ? 6 : 4));
       if (tr.parseQueue) tr.parseQueue.maxJobs = isIOS ? 1 : isMobOrTab ? 2 : 8;
       if (tr.lruCache) {
         if (isMobOrTab) {

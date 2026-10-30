@@ -4395,3 +4395,164 @@ body.theme-light .gs-comment-folder-section { background: rgba(241, 245, 249, 0.
 .gs-detail-stream-pill.done .gs-detail-stream-bar-fill {
   background: #10b981;
 }
+
+/* ==========================================================================
+   Hostinger / External Website Minimal 3D Embed Mode (?embed=1 & ?embed=poster)
+   ========================================================================== */
+html.gs-embed-mode .gs-topbar,
+body.gs-embed-mode .gs-topbar,
+html.gs-embed-mode #externalShareBanner,
+body.gs-embed-mode #externalShareBanner,
+html.gs-embed-mode .gs-studio-top-bar,
+body.gs-embed-mode .gs-studio-top-bar,
+html.gs-embed-mode #studioEditingDock,
+body.gs-embed-mode #studioEditingDock,
+html.gs-embed-mode #btnMobileEditingUmbrella,
+body.gs-embed-mode #btnMobileEditingUmbrella,
+html.gs-embed-mode #viewMap,
+body.gs-embed-mode #viewMap {
+  display: none !important;
+}
+html.gs-embed-mode .gs-main,
+body.gs-embed-mode .gs-main {
+  height: 100vh !important;
+  height: 100dvh !important;
+  top: 0 !important;
+}
+html.gs-embed-mode #viewStudio,
+body.gs-embed-mode #viewStudio {
+  display: block !important;
+  height: 100% !important;
+}
+html.gs-embed-mode:not(.gs-embed-tools-open) #studioBottomDock,
+body.gs-embed-mode:not(.gs-embed-tools-open) #studioBottomDock,
+html.gs-embed-mode:not(.gs-embed-tools-open) #btnMobileMeasureUmbrella,
+body.gs-embed-mode:not(.gs-embed-tools-open) #btnMobileMeasureUmbrella {
+  display: none !important;
+}
+.gs-embed-floating-hud {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  right: 12px;
+  z-index: 68;
+  display: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: 12px;
+  background: rgba(15, 23, 42, 0.78);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(148, 163, 184, 0.26);
+  color: #f8fafc;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.32);
+}
+html.gs-embed-mode .gs-embed-floating-hud,
+body.gs-embed-mode .gs-embed-floating-hud {
+  display: flex !important;
+}
+.gs-embed-hud-brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.gs-embed-hud-logo {
+  width: 20px;
+  height: 20px;
+  border-radius: 4px;
+  object-fit: contain;
+  flex-shrink: 0;
+}
+.gs-embed-hud-title {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: #f8fafc;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 280px;
+}
+.gs-embed-hud-actions {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+}
+.gs-embed-poster-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 75;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #0f172a;
+  overflow: hidden;
+}
+.gs-embed-poster-img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  filter: brightness(0.84) saturate(1.06);
+  transition: transform 0.35s ease, filter 0.35s ease;
+}
+.gs-embed-poster-overlay:hover .gs-embed-poster-img {
+  transform: scale(1.02);
+  filter: brightness(0.92) saturate(1.1);
+}
+.gs-embed-poster-scrim {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  text-align: center;
+  padding: 20px;
+}
+.gs-embed-poster-play-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 22px;
+  border-radius: 999px;
+  border: 1px solid rgba(56, 189, 248, 0.65);
+  background: rgba(15, 23, 42, 0.86);
+  backdrop-filter: blur(10px);
+  color: #ffffff;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 10px 28px rgba(2, 132, 199, 0.42);
+  transition: transform 0.18s ease, background 0.18s ease;
+}
+.gs-embed-poster-play-btn:hover {
+  transform: translateY(-2px) scale(1.02);
+  background: rgba(2, 132, 199, 0.92);
+}
+.gs-embed-poster-cube-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: linear-gradient(135deg, #0284c7, #38bdf8);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+}
+.gs-embed-poster-sub {
+  font-size: 12px;
+  font-weight: 600;
+  color: rgba(248, 250, 252, 0.9);
+  text-shadow: 0 2px 6px rgba(0, 0, 0, 0.65);
+}
+@media (max-width: 640px) {
+  .gs-embed-hud-title { max-width: 130px; font-size: 11.5px; }
+  .gs-embed-lod-switcher { display: none; }
+}

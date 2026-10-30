@@ -202,6 +202,7 @@ class GatheringScansHandler(CloudAndTunnelHandlerMixin, ServerWriteRoutesMixin, 
             "Content-Type, Authorization, X-Share-Token, X-Session-Token, X-Telemetry-Session, X-Client-IP, X-Tunnel-Key, X-User-Email, X-User-Name, Range",
         )
         self.send_header("Access-Control-Expose-Headers", "Content-Range, Content-Length, Accept-Ranges")
+        self.send_header("Content-Security-Policy", "frame-ancestors *")
         self.send_header("Alt-Svc", "clear")
         super().end_headers()
 
@@ -212,6 +213,12 @@ class GatheringScansHandler(CloudAndTunnelHandlerMixin, ServerWriteRoutesMixin, 
     def do_HEAD(self):
         parsed = urllib.parse.urlparse(self.path)
         path = urllib.parse.unquote(parsed.path)
+        if path.startswith("/embed/"):
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Cache-Control", "no-cache")
+            self.end_headers()
+            return
         if path.startswith("/s/"):
             tok = path[len("/s/") :].strip("/")
             safe_tok = urllib.parse.quote(tok, safe="-_")
@@ -387,6 +394,72 @@ class GatheringScansHandler(CloudAndTunnelHandlerMixin, ServerWriteRoutesMixin, 
             f'  <meta name="twitter:description" content="{d}" />\n'
             f'  <meta name="twitter:image" content="{im}" />'
         )
+
+    def _build_embed_bootstrap_payload(
+        self, share_token: str, query: Dict[str, list]
+    ) -> Optional[Dict[str, Any]]:
+        tok = (share_token or "").strip()
+        emb_raw = str((query.get("embed") or [""])[0] or "").strip().lower()
+        is_emb = emb_raw in ("1", "true", "yes", "poster", "instant")
+        req_scan_id = str((query.get("scan") or [""])[0] or "").strip()
+        if not tok and not (is_emb and req_scan_id):
+            return None
+
+        allowed_scans: List[Dict[str, Any]] = []
+        link: Optional[Dict[str, Any]] = None
+        if tok:
+            ok, _, link, allowed_scans = AUTH_SHARE.validate_share_access(tok, increment_view=False)
+            if not ok:
+                ok_c, _, link_c, allowed_c = self._validate_cloud_share_token(tok)
+                if ok_c:
+                    ok, link, allowed_scans = ok_c, link_c, allowed_c
+            if not ok or not link:
+                return None
+            if not allowed_scans:
+                m_scans = (_load_cloud_manifest().get("scans") or [])
+                scope_type = str(link.get("scope_type") or "scan").lower()
+                target_id = str(link.get("target_id") or "")
+                if scope_type == "scan":
+                    allowed_scans = [s for s in m_scans if str(s.get("scan_id")) == target_id]
+                else:
+                    allowed_scans = [s for s in m_scans if str(s.get("project_group")) == target_id]
+        elif req_scan_id:
+            try:
+                sync_scans_with_filesystem()
+                s_row = DB.get_scan(req_scan_id)
+                if s_row:
+                    allowed_scans = [s_row]
+            except Exception:
+                pass
+            if not allowed_scans:
+                m_scans = (_load_cloud_manifest().get("scans") or [])
+                allowed_scans = [s for s in m_scans if str(s.get("scan_id")) == req_scan_id]
+
+        if not allowed_scans:
+            return None
+
+        enriched = [self._enrich_scan_urls(s, tok) for s in allowed_scans]
+        lead_scan = next((s for s in enriched if str(s.get("scan_id")) == req_scan_id), enriched[0])
+        lod_q = str((query.get("lod") or [""])[0] or "").strip().lower()
+        preload_url = (
+            (lead_scan.get("preview_stream_url") or lead_scan.get("stream_url") or "")
+            if lod_q == "rough"
+            else (lead_scan.get("stream_url") or lead_scan.get("preview_stream_url") or "")
+        )
+        return {
+            "status": "ok",
+            "mode": "external_share" if tok else "embed_public",
+            "embed": is_emb,
+            "embed_mode": "poster" if emb_raw == "poster" else ("instant" if is_emb else ""),
+            "share_token": tok,
+            "share_link": link,
+            "scans": enriched,
+            "projects": self._build_projects_summary(enriched),
+            "materials": MATERIAL_CATALOG,
+            "initial_scan_id": str(lead_scan.get("scan_id") or ""),
+            "preload_stream_url": str(preload_url),
+            "thumbnail_url": str(lead_scan.get("thumbnail_url") or ""),
+        }
 
     def _record_and_forward_bot_unfurl(self, token: str):
         tok = (token or "").strip()
@@ -1357,7 +1430,18 @@ class GatheringScansHandler(CloudAndTunnelHandlerMixin, ServerWriteRoutesMixin, 
             self.send_json(_test_gdrive_service_account())
             return
 
-        # 0b. Scoped External Share Link Short URL: /s/<token>
+        # 0b. Instant Embed Short URL: /embed/<token>
+        # Serves index.html directly (HTTP 200, zero 302 redirect) with pre-bootstrapped scan & share metadata
+        if path.startswith("/embed/"):
+            tok_emb = path[len("/embed/") :].strip("/")
+            if tok_emb and not share_token:
+                share_token = tok_emb
+                query["share"] = [tok_emb]
+            if "embed" not in query:
+                query["embed"] = ["1"]
+            path = "/"
+
+        # 0c. Scoped External Share Link Short URL: /s/<token>
         # Serves rich, short Open Graph / Twitter Card HTML directly to chat link-preview crawlers
         # (LINE, WhatsApp, Slack, Telegram, Discord, iMessage, etc.) while 302-redirecting browsers in <1ms.
         if path.startswith("/s/"):
@@ -2956,29 +3040,47 @@ class GatheringScansHandler(CloudAndTunnelHandlerMixin, ServerWriteRoutesMixin, 
             rel_web = path.lstrip("/")
         web_target = os.path.join(WEB_DIR, os.path.normpath(rel_web))
         if os.path.isfile(web_target) and os.path.abspath(web_target).startswith(os.path.abspath(WEB_DIR)):
-            if rel_web == "index.html" and share_token:
+            emb_q_val = str((query.get("embed") or [""])[0] or "").strip().lower()
+            is_emb_req = emb_q_val in ("1", "true", "yes", "poster", "instant")
+            if rel_web == "index.html" and (share_token or is_emb_req):
                 ua_idx = self.headers.get("User-Agent", "")
-                if is_link_preview_bot(ua_idx):
+                if share_token and is_link_preview_bot(ua_idx):
                     self._record_and_forward_bot_unfurl(share_token)
                 try:
                     with open(web_target, "r", encoding="utf-8") as f_html:
                         raw_html = f_html.read()
-                    meta = self._build_share_preview_meta(share_token)
-                    og_block = self._render_share_og_tags_block(meta)
+                    og_block = ""
+                    if share_token:
+                        meta = self._build_share_preview_meta(share_token)
+                        og_block = self._render_share_og_tags_block(meta)
+                    bootstrap_payload = self._build_embed_bootstrap_payload(share_token, query)
+                    bootstrap_tags = ""
+                    if bootstrap_payload:
+                        preload_u = html.escape(str(bootstrap_payload.get("preload_stream_url") or ""), quote=True)
+                        if preload_u:
+                            bootstrap_tags += f'\n  <link rel="preload" href="{preload_u}" as="fetch" crossorigin="anonymous" />'
+                        safe_json = json.dumps(bootstrap_payload, ensure_ascii=False).replace("</", "<\\/")
+                        bootstrap_tags += f'\n  <script id="gsEmbedBootstrapScript">window.__GS_EMBED_BOOTSTRAP__ = {safe_json};</script>'
+                    if is_emb_req:
+                        raw_html = raw_html.replace('<html lang="zh-Hant">', '<html lang="zh-Hant" class="gs-embed-mode">', 1)
+                        raw_html = raw_html.replace("<body>", '<body class="gs-embed-mode">', 1)
+                        raw_html = raw_html.replace('<script src="https://accounts.google.com/gsi/client" async defer></script>', "")
                     if "<!-- GS_SHARE_OG_START -->" in raw_html and "<!-- GS_SHARE_OG_END -->" in raw_html:
                         s_idx = raw_html.index("<!-- GS_SHARE_OG_START -->")
                         e_idx = raw_html.index("<!-- GS_SHARE_OG_END -->") + len("<!-- GS_SHARE_OG_END -->")
+                        inner_og = og_block if og_block else raw_html[s_idx + len("<!-- GS_SHARE_OG_START -->") : raw_html.index("<!-- GS_SHARE_OG_END -->")].strip()
                         raw_html = (
                             raw_html[:s_idx]
-                            + "<!-- GS_SHARE_OG_START -->\n"
-                            + og_block
+                            + "<!-- GS_SHARE_OG_START -->\n  "
+                            + inner_og
+                            + bootstrap_tags
                             + "\n  <!-- GS_SHARE_OG_END -->"
                             + raw_html[e_idx:]
                         )
-                    else:
+                    elif og_block or bootstrap_tags:
                         raw_html = re.sub(
                             r"<title>.*?</title>",
-                            og_block,
+                            (og_block or "<title>GatheringCloud 3D Scans</title>") + bootstrap_tags,
                             raw_html,
                             count=1,
                             flags=re.DOTALL,

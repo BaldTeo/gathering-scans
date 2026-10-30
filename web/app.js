@@ -30,6 +30,43 @@
     return `${getPublicShareOrigin()}/s/${cleanTok}`;
   }
 
+  function buildPublicEmbedUrl(token, opts = {}) {
+    const cleanTok = encodeURIComponent(String(token || "").trim());
+    const mode = opts.poster ? "poster" : "1";
+    const lod = opts.lod || "auto";
+    const qs = new URLSearchParams();
+    if (mode === "poster") qs.set("embed", "poster");
+    if (lod && lod !== "auto") qs.set("lod", lod);
+    if (opts.scanId) qs.set("scan", String(opts.scanId));
+    const qStr = qs.toString();
+    return `${getPublicShareOrigin()}/embed/${cleanTok}${qStr ? `?${qStr}` : ""}`;
+  }
+
+  function buildHostingerEmbedCode(token, title = "GatheringCloud 3D Scan", opts = {}) {
+    const origin = getPublicShareOrigin();
+    const embedUrl = buildPublicEmbedUrl(token, opts);
+    const safeTitle = String(title || "GatheringCloud 3D Scan").replace(/"/g, "&quot;");
+    const heightPx = Number(opts.height) > 200 ? Number(opts.height) : 620;
+    return [
+      `<!-- GatheringCloud Instant 3D Scan Embed (Hostinger Website Builder HTML Block) -->`,
+      `<link rel="preconnect" href="${origin}" crossorigin />`,
+      `<link rel="dns-prefetch" href="${origin}" />`,
+      `<div style="position:relative;width:100%;height:${heightPx}px;min-height:420px;border-radius:14px;overflow:hidden;background:#0f172a;box-shadow:0 12px 32px rgba(0,0,0,0.24);">`,
+      `  <iframe`,
+      `    src="${embedUrl}"`,
+      `    title="${safeTitle}"`,
+      `    style="position:absolute;inset:0;width:100%;height:100%;border:0;"`,
+      `    loading="eager"`,
+      `    fetchpriority="high"`,
+      `    allow="fullscreen; xr-spatial-tracking; accelerometer; gyroscope; clipboard-write"`,
+      `    allowfullscreen`,
+      `  ></iframe>`,
+      `</div>`,
+    ].join("\n");
+  }
+  window.buildPublicEmbedUrl = buildPublicEmbedUrl;
+  window.buildHostingerEmbedCode = buildHostingerEmbedCode;
+
   function resolveShareScopeTitle(scopeType, targetId) {
     const st = String(scopeType || "scan").toLowerCase();
     const tid = String(targetId || "");
@@ -137,6 +174,21 @@
     inp?.select?.();
     flashCopyButtonState(btn);
     showToast(`Copied share link: ${url}`);
+  });
+  document.getElementById("btnCopyLatestShareEmbed")?.addEventListener("click", async (e) => {
+    const btn = e.currentTarget;
+    const inp = document.getElementById("shareLatestUrlInput");
+    const url = inp?.value || "";
+    const tokMatch = url.match(/\/(?:s|embed)\/([^/?#]+)/) || url.match(/[?&]share=([^&#]+)/);
+    const tok = tokMatch ? decodeURIComponent(tokMatch[1]) : "";
+    if (!tok) return;
+    const scopeSel = document.getElementById("shareScopeType");
+    const targetSel = document.getElementById("shareTargetId");
+    const title = resolveShareScopeTitle(scopeSel?.value || "scan", targetSel?.value || STATE.activeScanId);
+    const snippet = buildHostingerEmbedCode(tok, title);
+    await copyTextToClipboard(snippet);
+    flashCopyButtonState(btn);
+    showToast(tr("已複製 Hostinger HTML 嵌入程式碼！可直接貼上至網站建置器。", "Copied Hostinger HTML Embed Code! Paste into an Embed Code block."));
   });
 
   function formatDurationCompact(secRaw) {
@@ -593,6 +645,12 @@
                 </svg>
                 <span>${tr("複製", "Copy")}</span>
               </button>
+              <button type="button" class="btn-xs gs-share-embed-btn" data-copy-embed="${safeToken}" title="${tr("複製 Hostinger 網站嵌入程式碼 (HTML)", "Copy Hostinger Website Builder Embed Code (HTML)")}">
+                <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2">
+                  <polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/>
+                </svg>
+                <span>${tr("嵌入", "Embed")}</span>
+              </button>
               <a href="${safeFullUrl}" target="_blank" rel="noopener noreferrer" class="btn-xs gs-share-open-btn" title="${tr("於新分頁開啟分享連結", "Open Share Link in New Tab")}">
                 <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8">
                   <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/>
@@ -645,6 +703,13 @@
           flashCopyButtonState(copyBtn);
           showLatestShareLinkBanner(fullShareUrl, tr("已複製到剪貼簿：", "Copied to Clipboard:"));
           showToast(tr(`已複製分享連結：${fullShareUrl}`, `Copied share link: ${fullShareUrl}`));
+        });
+        const copyEmbedBtn = rowEl.querySelector("[data-copy-embed]");
+        copyEmbedBtn?.addEventListener("click", async () => {
+          const snippet = buildHostingerEmbedCode(l.token, friendlyTarget);
+          await copyTextToClipboard(snippet);
+          flashCopyButtonState(copyEmbedBtn);
+          showToast(tr(`已複製「${friendlyTarget}」的 Hostinger 嵌入程式碼！`, `Copied Hostinger HTML Embed code for "${friendlyTarget}"!`));
         });
         rowEl.querySelector("[data-analytics]")?.addEventListener("click", () => {
           openShareAnalyticsDrawer(l.token);
@@ -865,6 +930,12 @@
             </svg>
             <span>${tr("複製", "Copy")}</span>
           </button>
+          <button type="button" class="btn-xs gs-share-embed-btn" id="btnCopyStudioQuickEmbedCode" title="${tr("複製 Hostinger 網站嵌入 HTML 程式碼 (即時載入 3D)", "Copy Hostinger Website Builder HTML Embed Code (Instant 3D Load)")}">
+            <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/>
+            </svg>
+            <span>${tr("嵌入", "Embed")}</span>
+          </button>
           <a href="${safeFullUrl}" target="_blank" rel="noopener noreferrer" class="btn-xs gs-share-open-btn" title="${tr("於新分頁開啟連結", "Open Link in New Tab")}">
             <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8">
               <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/>
@@ -905,6 +976,14 @@
         inpEl?.select?.();
         flashCopyButtonState(copyBtn);
         showToast(`Copied View & Comment link: ${fullUrl}`);
+      });
+
+      const copyEmbedBtn = bodyArea.querySelector("#btnCopyStudioQuickEmbedCode");
+      copyEmbedBtn?.addEventListener("click", async () => {
+        const snippet = buildHostingerEmbedCode(linkObj.token, scan.name || scan.scan_id, { scanId: scan.scan_id });
+        await copyTextToClipboard(snippet);
+        flashCopyButtonState(copyEmbedBtn);
+        showToast(tr("已複製 Hostinger 嵌入程式碼！請貼至網站 HTML 程式碼區塊。", "Copied Hostinger HTML Embed Code! Paste into an Embed Code block."));
       });
 
       bodyArea.querySelector("#btnQuickShareAnalytics")?.addEventListener("click", () => {
@@ -2684,6 +2763,113 @@
     }
   };
 
+  function syncEmbedHudUI() {
+    if (!STATE.isEmbedded) return;
+    document.documentElement.classList.add("gs-embed-mode");
+    document.body.classList.add("gs-embed-mode");
+    const hud = document.getElementById("gsEmbedFloatingHud");
+    if (hud) hud.style.display = "flex";
+    const activeScan = STATE.activeScan || (STATE.scans || []).find((s) => s.scan_id === STATE.activeScanId) || (STATE.scans || [])[0] || null;
+    const titleEl = document.getElementById("gsEmbedHudTitle");
+    if (titleEl && activeScan) {
+      titleEl.textContent = activeScan.name || activeScan.scan_id || "3D Scan";
+    }
+    const selEl = document.getElementById("gsEmbedScanSelect");
+    if (selEl) {
+      if ((STATE.scans || []).length > 1) {
+        selEl.style.display = "";
+        selEl.innerHTML = "";
+        STATE.scans.forEach((s) => {
+          const opt = document.createElement("option");
+          opt.value = s.scan_id;
+          opt.textContent = s.name || s.scan_id;
+          selEl.appendChild(opt);
+        });
+        if (STATE.activeScanId) selEl.value = STATE.activeScanId;
+      } else {
+        selEl.style.display = "none";
+      }
+    }
+    const openFullBtn = document.getElementById("btnEmbedOpenFullApp");
+    if (openFullBtn) {
+      openFullBtn.href = STATE.shareToken
+        ? buildPublicShareUrl(STATE.shareToken)
+        : `${getPublicShareOrigin()}/?scan=${encodeURIComponent(STATE.activeScanId || "")}`;
+    }
+    const toolsBtn = document.getElementById("btnEmbedToggleTools");
+    if (toolsBtn && STATE.shareLinkInfo) {
+      const canTools = Boolean(STATE.shareLinkInfo.allow_measurements || STATE.shareLinkInfo.allow_comments);
+      toolsBtn.style.display = canTools ? "" : "none";
+    }
+    document.querySelectorAll("#gsEmbedLodSwitcher [data-embed-lod]").forEach((b) => {
+      b.classList.toggle("active", b.getAttribute("data-embed-lod") === (STATE.scanLodMode || "auto"));
+    });
+    const posterOverlay = document.getElementById("gsEmbedPosterOverlay");
+    if (posterOverlay) {
+      if (STATE.embedMode === "poster" && !STATE.embedPosterDismissed && activeScan) {
+        posterOverlay.style.display = "flex";
+        const posterImg = document.getElementById("gsEmbedPosterImg");
+        if (posterImg && activeScan.thumbnail_url) posterImg.src = activeScan.thumbnail_url;
+        const posterTitle = document.getElementById("gsEmbedPosterTitle");
+        if (posterTitle) posterTitle.textContent = `${activeScan.name || activeScan.scan_id} · ${activeScan.project_group || "GatheringCloud"}`;
+      } else {
+        posterOverlay.style.display = "none";
+      }
+    }
+  }
+  window.syncEmbedHudUI = syncEmbedHudUI;
+
+  function initEmbedHudControls() {
+    document.getElementById("btnEmbedResetCamera")?.addEventListener("click", () => {
+      if (typeof frameStudioCamera === "function") frameStudioCamera();
+    });
+    document.getElementById("btnEmbedFirstPerson")?.addEventListener("click", () => {
+      if (typeof toggleFirstPersonMode === "function") toggleFirstPersonMode();
+    });
+    document.getElementById("btnEmbedToggleTools")?.addEventListener("click", (e) => {
+      const open = document.body.classList.toggle("gs-embed-tools-open");
+      document.documentElement.classList.toggle("gs-embed-tools-open", open);
+      e.currentTarget?.classList.toggle("active", open);
+      e.currentTarget?.classList.toggle("primary", open);
+    });
+    document.getElementById("btnEmbedFullscreen")?.addEventListener("click", () => {
+      const rootEl = document.documentElement;
+      if (!document.fullscreenElement && rootEl.requestFullscreen) {
+        rootEl.requestFullscreen().catch(() => {
+          const openBtn = document.getElementById("btnEmbedOpenFullApp");
+          if (openBtn && openBtn.href) window.open(openBtn.href, "_blank", "noopener");
+        });
+      } else if (document.exitFullscreen) {
+        document.exitFullscreen().catch(() => {});
+      }
+    });
+    document.getElementById("gsEmbedScanSelect")?.addEventListener("change", (e) => {
+      const nextSid = e.target.value;
+      if (nextSid) {
+        switchView("studio", nextSid);
+        syncEmbedHudUI();
+      }
+    });
+    document.querySelectorAll("#gsEmbedLodSwitcher [data-embed-lod]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const mode = btn.getAttribute("data-embed-lod") || "auto";
+        if (typeof applyScanLodMode === "function") applyScanLodMode(mode, true);
+        syncEmbedHudUI();
+      });
+    });
+    const dismissPosterAndStart = () => {
+      if (STATE.embedPosterDismissed) return;
+      STATE.embedPosterDismissed = true;
+      const posterOverlay = document.getElementById("gsEmbedPosterOverlay");
+      if (posterOverlay) posterOverlay.style.display = "none";
+      if (STATE.activeScanId) {
+        switchView("studio", STATE.activeScanId);
+      }
+    };
+    document.getElementById("btnEmbedPosterStart")?.addEventListener("click", dismissPosterAndStart);
+    document.getElementById("gsEmbedPosterOverlay")?.addEventListener("click", dismissPosterAndStart);
+  }
+
   // Bootstrap Application, Theme Engine (Default: Time of Day Auto) & Mandatory Authorization Gate
   window.addEventListener("DOMContentLoaded", async () => {
     const topBadge = document.getElementById("topCrsBadge");
@@ -2700,24 +2886,66 @@
     if (typeof window.applyStaticDomTranslations === "function") {
       window.applyStaticDomTranslations(document);
     }
+    initEmbedHudControls();
     await applyTheme(STATE.themePreference, false);
     applyUserProfileToUI(STATE.currentUser, false);
-    if (!STATE.isAuthorized && !STATE.shareToken) {
+    if (!STATE.isAuthorized && !STATE.shareToken && !STATE.isEmbedded) {
       document.body.classList.add("gs-auth-locked");
       openUserProfileGateModal();
-    } else {
+    } else if (!STATE.isEmbedded) {
       loadTeamUserProfiles();
     }
-    await refreshScansCatalog(false);
-    const urlScan = new URLSearchParams(window.location.search).get("scan");
-    if (urlScan) {
-      switchView("studio", urlScan);
-    } else if (
-      STATE.shareToken &&
-      String(STATE.shareLinkInfo?.scope_type || "").toLowerCase() === "scan" &&
-      STATE.activeScanId
-    ) {
-      switchView("studio", STATE.activeScanId);
+
+    // Zero-Roundtrip Instant Bootstrap when server pre-injected window.__GS_EMBED_BOOTSTRAP__
+    const bootPayload = window.__GS_EMBED_BOOTSTRAP__;
+    if (bootPayload && Array.isArray(bootPayload.scans) && bootPayload.scans.length > 0) {
+      STATE.scans = bootPayload.scans;
+      STATE.projects = bootPayload.projects || [];
+      if (bootPayload.materials) STATE.materials = bootPayload.materials;
+      if (bootPayload.share_link) STATE.shareLinkInfo = bootPayload.share_link;
+      if (!STATE.activeScanId || !STATE.scans.some((s) => s.scan_id === STATE.activeScanId)) {
+        STATE.activeScanId = bootPayload.initial_scan_id || STATE.scans[0].scan_id;
+      }
+      const leadScan = STATE.scans.find((s) => s.scan_id === STATE.activeScanId) || STATE.scans[0];
+      STATE.activeScan = leadScan;
+      if (leadScan && leadScan.project_group) STATE.activeProjectGroup = leadScan.project_group;
+      applyRolePermissionsToUI();
+      populateProjectScanDropdowns(STATE.activeProjectGroup, STATE.activeScanId);
+      syncEmbedHudUI();
+      if (STATE.isEmbedded) {
+        if (STATE.embedMode === "poster" && !STATE.embedPosterDismissed) {
+          // Pre-warm tileset.json in background while displaying high-res poster
+          if (bootPayload.preload_stream_url) {
+            fetch(bootPayload.preload_stream_url, { mode: "cors" }).catch(() => {});
+          }
+        } else {
+          switchView("studio", STATE.activeScanId);
+        }
+      } else if (
+        new URLSearchParams(window.location.search).get("scan") ||
+        (STATE.shareToken && String(STATE.shareLinkInfo?.scope_type || "").toLowerCase() === "scan")
+      ) {
+        switchView("studio", STATE.activeScanId);
+      }
+      // Refresh catalog non-blockingly in the background
+      setTimeout(() => refreshScansCatalog(true), 1200);
+    } else {
+      await refreshScansCatalog(false);
+      syncEmbedHudUI();
+      const urlScan = new URLSearchParams(window.location.search).get("scan");
+      if (STATE.isEmbedded && STATE.activeScanId) {
+        if (!(STATE.embedMode === "poster" && !STATE.embedPosterDismissed)) {
+          switchView("studio", STATE.activeScanId);
+        }
+      } else if (urlScan) {
+        switchView("studio", urlScan);
+      } else if (
+        STATE.shareToken &&
+        String(STATE.shareLinkInfo?.scope_type || "").toLowerCase() === "scan" &&
+        STATE.activeScanId
+      ) {
+        switchView("studio", STATE.activeScanId);
+      }
     }
     window.addEventListener("focus", () => {
       refreshScansCatalog(true);
