@@ -1180,7 +1180,7 @@ class GatheringScansTestSuite(unittest.TestCase):
         self.assertIn("Math.max(2.0, Math.min(23.0, nextZoom))", js02)
         self.assertIn("Math.min(23.0, gsMap.zoom + 0.75)", js02)
         self.assertIn("const zInt = Math.max(2, Math.min(19, Math.floor(gsMap.zoom)));", js02)
-        self.assertIn("opt.textContent = grp.project_group;", js01)
+        self.assertIn("formatGroupDisplayName(grp.project_group, grp.project_name_zh)", js01)
         self.assertIn("opt.textContent = s.name;", js01)
         self.assertNotIn("`${s.name} (${s.scan_date})`", js01)
 
@@ -2282,9 +2282,11 @@ class GatheringScansTestSuite(unittest.TestCase):
         self.assertGreaterEqual(len(folders_init), 3)
 
         folders_after_create = self.db.create_library_folder(
-            "專題獎座與展品 (Awards)", "專題獎座與展品 3D 模型", "star"
+            "專題獎座與展品 (Awards)", "專題獎座與展品", "star"
         )
-        self.assertTrue(any(f["folder_name"] == "專題獎座與展品 (Awards)" for f in folders_after_create))
+        self.assertTrue(
+            any(f["folder_name"] == "Awards" and f["folder_name_zh"] == "專題獎座與展品" for f in folders_after_create)
+        )
 
         self.db.upsert_scan(
             {
@@ -2302,6 +2304,8 @@ class GatheringScansTestSuite(unittest.TestCase):
         s0 = self.db.get_scan("test_splat_person")
         self.assertTrue(s0["is_gaussian_splat"])
         self.assertEqual(s0["group_type"], "library")
+        self.assertEqual(s0["project_group"], "People")
+        self.assertEqual(s0["project_name_zh"], "人物與角色")
         self.assertEqual(s0["splat_count"], 151391)
 
         # Move from Library Folder to Map Site
@@ -2314,10 +2318,11 @@ class GatheringScansTestSuite(unittest.TestCase):
 
         # Move from Map Site back to custom Library Folder
         self.db.move_scans_to_group(
-            ["test_splat_person"], "專題獎座與展品 (Awards)", "專題獎座與展品 3D 模型", target_type="library"
+            ["test_splat_person"], "專題獎座與展品 (Awards)", "專題獎座與展品", target_type="library"
         )
         s_moved_lib = self.db.get_scan("test_splat_person")
-        self.assertEqual(s_moved_lib["project_group"], "專題獎座與展品 (Awards)")
+        self.assertEqual(s_moved_lib["project_group"], "Awards")
+        self.assertEqual(s_moved_lib["project_name_zh"], "專題獎座與展品")
         self.assertEqual(s_moved_lib["group_type"], "library")
 
         # Verify frontend EWA Gaussian Splat shader, Embed Viewer splat support, Auto-Rotate defaults & Library UI wiring

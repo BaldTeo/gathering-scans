@@ -4757,7 +4757,8 @@ body.gs-embed-mode .gs-scan-loader-label {
   background: radial-gradient(circle at 50% 40%, #1e293b 0%, #090d16 100%);
   overflow: hidden;
 }
-.gs-lib-card-thumb {
+.gs-lib-card-thumb,
+.gs-lib-card-thumb-wrap img {
   width: 100%;
   height: 100%;
   object-fit: cover;
@@ -4776,7 +4777,8 @@ body.gs-embed-mode .gs-scan-loader-label {
   border: 1px solid rgba(148, 163, 184, 0.3);
   backdrop-filter: blur(4px);
 }
-.gs-lib-type-badge.splat {
+.gs-lib-type-badge.splat,
+.gs-lib-type-badge.gsplat {
   background: rgba(88, 28, 135, 0.86);
   color: #f3e8ff;
   border-color: rgba(192, 132, 252, 0.55);
@@ -4839,6 +4841,8 @@ body.theme-light .gs-lib-folder-pill {
 .gs-share-banner { gap: 10px; white-space: nowrap; }
 .gs-share-banner strong { white-space: nowrap; flex-shrink: 0; }
 body.gs-single-scan-share #mainModeSwitcher { display: none !important; }
+#viewMap.gs-library-mode-active .gs-map-hud-top,
+#viewMap.gs-library-mode-active #clusterHoverPopover { display: none !important; }
 @media (max-width: 768px) {
   .gs-share-banner,
   #externalShareBanner { display: none !important; }

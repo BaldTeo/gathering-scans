@@ -1328,9 +1328,27 @@ class CloudAndTunnelHandlerMixin:
             or path.startswith("/cameras/")
         )
         is_comment_photo_upload = method == "POST" and path in ("/api/comments/upload-photo", "/api/comments/upload_photo")
-        if method == "POST" and path.endswith("/thumbnail"):
+        if method == "POST" and (path.endswith("/thumbnail") or path == "/api/scans/home-view" or path.endswith("/home-view")):
+            if body:
+                try:
+                    p_th = json.loads(body.decode("utf-8"))
+                    d_url = str(p_th.get("thumbnail_data_url") or p_th.get("data_url") or "").strip()
+                    sid_th = str(p_th.get("scan_id") or "").strip()
+                    if not sid_th and path.startswith("/api/scans/"):
+                        sid_th = path[len("/api/scans/"):].split("/")[0].strip()
+                    sid_th = re.sub(r"[^a-zA-Z0-9_\-]", "", sid_th)
+                    if sid_th and "," in d_url:
+                        raw_png = base64.b64decode(d_url.split(",", 1)[1])
+                        if len(raw_png) >= 256:
+                            os.makedirs(THUMBS_DIR, exist_ok=True)
+                            with open(os.path.join(THUMBS_DIR, f"{sid_th}.png"), "wb") as tf1:
+                                tf1.write(raw_png)
+                            with open(os.path.join(THUMBS_DIR, f"{sid_th.lower()}.png"), "wb") as tf2:
+                                tf2.write(raw_png)
+                except Exception:
+                    pass
             for k in list(_VPS_RAM_FALLBACK_CACHE.keys()):
-                if k.startswith(path):
+                if k.startswith("/api/scans") or "/thumbnail" in k:
                     _VPS_RAM_FALLBACK_CACHE.pop(k, None)
         if method in ("POST", "DELETE") and ("/rename" in path or "/move" in path or "/library/" in path or "/delete" in path or "/bin" in path or "/rerun" in path or "/admin/users" in path or "/user/" in path or "/user-profiles" in path or "/auth/" in path or path == "/api/comments" or path.startswith("/api/comments/") or path.startswith("/api/measurements/") or path.startswith("/api/optimizer/") or path in ("/api/scans/rename", "/api/scans/move", "/api/scans/delete", "/api/scans/merge", "/api/library/folders", "/api/library/move-scan")):
             if method == "POST" and body and path in ("/api/user/settings", "/api/user/preferences"):

@@ -6,6 +6,7 @@ over large scans up to an anti-starvation cap (3 bypasses or 90 minutes wait).
 """
 
 import os
+import re
 import json
 import time
 import math
@@ -656,24 +657,45 @@ class ScanQueueDB:
     def get_library_registry_path(self) -> str:
         return os.path.join(os.path.dirname(self.db_path), "library_folders.json")
 
+    @staticmethod
+    def _normalize_library_folder_names(raw_name: str, raw_zh: str = "") -> tuple[str, str]:
+        name = str(raw_name or "").strip()
+        zh = str(raw_zh or "").strip()
+        low = name.lower()
+        if low in ("人物與角色 (people)", "people", "人物與角色"):
+            return "People", "人物與角色"
+        if low in ("機具與設備 (equipment)", "equipment", "機具與設備"):
+            return "Equipment", "機具與設備"
+        if low in ("一般 3d 模型 (general models)", "general models", "一般 3d 模型", "一般非地理定位 3d 模型"):
+            return "General Models", "一般 3D 模型"
+        # Strip any mixed "中文 (English)" pattern into pure (en, zh)
+        m = re.match(r"^([^\(（]+?)\s*[\(（]([A-Za-z0-9\s&/\-_]+)[\)）]$", name)
+        if m:
+            zh_part = m.group(1).strip()
+            en_part = m.group(2).strip()
+            return en_part, (zh if zh and "(" not in zh else zh_part)
+        if not zh or "(" in zh:
+            zh = name
+        return name, zh
+
     def _default_library_folders(self) -> List[Dict[str, Any]]:
         now_iso = datetime.now(timezone.utc).isoformat()
         return [
             {
-                "folder_name": "人物與角色 (People)",
-                "folder_name_zh": "人物與角色 3D 模型",
+                "folder_name": "People",
+                "folder_name_zh": "人物與角色",
                 "icon": "person",
                 "created_at": now_iso,
             },
             {
-                "folder_name": "機具與設備 (Equipment)",
-                "folder_name_zh": "機具與設備 3D 模型",
+                "folder_name": "Equipment",
+                "folder_name_zh": "機具與設備",
                 "icon": "tool",
                 "created_at": now_iso,
             },
             {
-                "folder_name": "一般 3D 模型 (General Models)",
-                "folder_name_zh": "一般非地理定位 3D 模型",
+                "folder_name": "General Models",
+                "folder_name_zh": "一般 3D 模型",
                 "icon": "cube",
                 "created_at": now_iso,
             },
@@ -692,13 +714,49 @@ class ScanQueueDB:
             with open(reg_path, "r", encoding="utf-8") as rf:
                 data = json.load(rf)
             if isinstance(data, dict):
-                folders = data.get("folders")
-                if not isinstance(folders, list) or len(folders) == 0:
+                raw_folders = data.get("folders")
+                if not isinstance(raw_folders, list) or len(raw_folders) == 0:
                     folders = self._default_library_folders()
+                else:
+                    folders = []
+                    seen_f = set()
+                    dirty = False
+                    for f in raw_folders:
+                        if not isinstance(f, dict):
+                            continue
+                        norm_en, norm_zh = self._normalize_library_folder_names(
+                            f.get("folder_name") or "", f.get("folder_name_zh") or ""
+                        )
+                        if not norm_en or norm_en.lower() in seen_f:
+                            continue
+                        seen_f.add(norm_en.lower())
+                        if norm_en != f.get("folder_name") or norm_zh != f.get("folder_name_zh"):
+                            dirty = True
+                        folders.append(
+                            {
+                                "folder_name": norm_en,
+                                "folder_name_zh": norm_zh,
+                                "icon": str(f.get("icon") or "folder"),
+                                "created_at": str(f.get("created_at") or ""),
+                            }
+                        )
                 assigns = data.get("scan_assignments")
                 if not isinstance(assigns, dict):
                     assigns = {}
-                return {"folders": folders, "scan_assignments": assigns}
+                else:
+                    for k_sid, a_val in list(assigns.items()):
+                        if isinstance(a_val, dict) and a_val.get("group_type") == "library":
+                            n_en, n_zh = self._normalize_library_folder_names(
+                                a_val.get("project_group") or "", a_val.get("project_name_zh") or ""
+                            )
+                            if n_en != a_val.get("project_group") or n_zh != a_val.get("project_name_zh"):
+                                a_val["project_group"] = n_en
+                                a_val["project_name_zh"] = n_zh
+                                dirty = True
+                res_reg = {"folders": folders, "scan_assignments": assigns}
+                if dirty:
+                    self.save_library_registry(res_reg)
+                return res_reg
         except Exception:
             pass
         return default_reg
@@ -728,7 +786,10 @@ class ScanQueueDB:
         for f in reg.get("folders") or []:
             if not isinstance(f, dict):
                 continue
-            fname = str(f.get("folder_name") or "").strip()
+            fname, fzh = self._normalize_library_folder_names(
+                str(f.get("folder_name") or "").strip(),
+                str(f.get("folder_name_zh") or "").strip(),
+            )
             if not fname:
                 continue
             k = fname.lower()
@@ -736,7 +797,7 @@ class ScanQueueDB:
                 ordered_keys.append(k)
                 folders_by_key[k] = {
                     "folder_name": fname,
-                    "folder_name_zh": str(f.get("folder_name_zh") or f"{fname} 模型庫"),
+                    "folder_name_zh": fzh or fname,
                     "icon": str(f.get("icon") or "folder"),
                     "created_at": str(f.get("created_at") or ""),
                     "scan_count": 0,
@@ -746,13 +807,24 @@ class ScanQueueDB:
         all_scans = self.list_scans()
         for sc in all_scans:
             if sc.get("group_type") == "library":
-                grp = str(sc.get("project_group") or "一般 3D 模型 (General Models)").strip()
+                raw_grp = str(sc.get("project_group") or "General Models").strip()
+                grp, grp_zh = self._normalize_library_folder_names(raw_grp, str(sc.get("project_name_zh") or ""))
+                if grp != raw_grp:
+                    try:
+                        with DB_LOCK, self._connect() as conn:
+                            conn.execute(
+                                "UPDATE scans SET project_group = ?, project_name_zh = ? WHERE scan_id = ?",
+                                (grp, grp_zh, sc["scan_id"]),
+                            )
+                            conn.commit()
+                    except Exception:
+                        pass
                 k = grp.lower()
                 if k not in folders_by_key:
                     ordered_keys.append(k)
                     folders_by_key[k] = {
                         "folder_name": grp,
-                        "folder_name_zh": str(sc.get("project_name_zh") or f"{grp} 模型庫"),
+                        "folder_name_zh": grp_zh or grp,
                         "icon": "cube",
                         "created_at": "",
                         "scan_count": 0,
@@ -765,10 +837,9 @@ class ScanQueueDB:
     def create_library_folder(
         self, folder_name: str, folder_name_zh: str = "", icon: str = "folder"
     ) -> List[Dict[str, Any]]:
-        clean_name = (folder_name or "").strip()
+        clean_name, clean_zh = self._normalize_library_folder_names(folder_name or "", folder_name_zh or "")
         if not clean_name:
             return self.get_library_folders()
-        clean_zh = (folder_name_zh or "").strip() or f"{clean_name} 模型庫"
         clean_icon = (icon or "folder").strip()
         reg = self.load_library_registry()
         folders = reg.get("folders") or []
@@ -796,16 +867,15 @@ class ScanQueueDB:
     def rename_library_folder(
         self, old_name: str, new_name: str, new_name_zh: str = "", icon: Optional[str] = None
     ) -> List[Dict[str, Any]]:
-        clean_old = (old_name or "").strip()
-        clean_new = (new_name or "").strip()
+        clean_old, _ = self._normalize_library_folder_names(old_name or "")
+        clean_new, clean_zh = self._normalize_library_folder_names(new_name or "", new_name_zh or "")
         if not clean_old or not clean_new:
             return self.get_library_folders()
-        clean_zh = (new_name_zh or "").strip() or f"{clean_new} 模型庫"
         reg = self.load_library_registry()
         folders = reg.get("folders") or []
         found = False
         for f in folders:
-            if isinstance(f, dict) and str(f.get("folder_name") or "").strip().lower() == clean_old.lower():
+            if isinstance(f, dict) and str(f.get("folder_name") or "").strip().lower() in (clean_old.lower(), (old_name or "").strip().lower()):
                 f["folder_name"] = clean_new
                 f["folder_name_zh"] = clean_zh
                 if icon:
@@ -827,7 +897,7 @@ class ScanQueueDB:
         affected_ids = [
             s["scan_id"]
             for s in self.list_scans()
-            if str(s.get("project_group") or "").strip().lower() == clean_old.lower()
+            if str(s.get("project_group") or "").strip().lower() in (clean_old.lower(), (old_name or "").strip().lower())
             and s.get("group_type") == "library"
         ]
         if affected_ids:
@@ -835,16 +905,17 @@ class ScanQueueDB:
         return self.get_library_folders()
 
     def delete_library_folder(
-        self, folder_name: str, fallback_folder: str = "一般 3D 模型 (General Models)"
+        self, folder_name: str, fallback_folder: str = "General Models"
     ) -> List[Dict[str, Any]]:
-        clean_name = (folder_name or "").strip()
+        clean_name, _ = self._normalize_library_folder_names(folder_name or "")
         if not clean_name:
             return self.get_library_folders()
         reg = self.load_library_registry()
         folders = [
             f
             for f in (reg.get("folders") or [])
-            if isinstance(f, dict) and str(f.get("folder_name") or "").strip().lower() != clean_name.lower()
+            if isinstance(f, dict)
+            and str(f.get("folder_name") or "").strip().lower() not in (clean_name.lower(), (folder_name or "").strip().lower())
         ]
         if not folders:
             folders = self._default_library_folders()
@@ -854,12 +925,15 @@ class ScanQueueDB:
         affected_ids = [
             s["scan_id"]
             for s in self.list_scans()
-            if str(s.get("project_group") or "").strip().lower() == clean_name.lower()
+            if str(s.get("project_group") or "").strip().lower() in (clean_name.lower(), (folder_name or "").strip().lower())
             and s.get("group_type") == "library"
         ]
         if affected_ids:
-            fb = fallback_folder if fallback_folder.lower() != clean_name.lower() else folders[0]["folder_name"]
-            self.move_scans_to_group(affected_ids, fb, f"{fb} 模型庫", target_type="library")
+            fb_en, fb_zh = self._normalize_library_folder_names(fallback_folder)
+            if fb_en.lower() == clean_name.lower():
+                fb_en = folders[0]["folder_name"]
+                fb_zh = folders[0].get("folder_name_zh") or fb_en
+            self.move_scans_to_group(affected_ids, fb_en, fb_zh, target_type="library")
         return self.get_library_folders()
 
     def move_scans_to_group(
@@ -873,12 +947,15 @@ class ScanQueueDB:
         Moves one or more scans to any Map Site (`target_type='site'`) or Library Folder (`target_type='library'`).
         Persists across SQLite `scans`, `<project_dir>/scan_meta.json`, and `data/library_folders.json`.
         """
-        clean_group = (target_group or "").strip()
-        if not clean_group or not scan_ids:
+        raw_group = (target_group or "").strip()
+        if not raw_group or not scan_ids:
             return []
         norm_type = "site" if str(target_type or "").strip().lower() == "site" else "library"
-        default_suffix = "工程掃描群組" if norm_type == "site" else "模型庫"
-        final_zh = (target_group_zh or "").strip() or f"{clean_group} {default_suffix}"
+        if norm_type == "library":
+            clean_group, final_zh = self._normalize_library_folder_names(raw_group, target_group_zh or "")
+        else:
+            clean_group = raw_group
+            final_zh = (target_group_zh or "").strip() or f"{clean_group} 工程掃描群組"
 
         reg = self.load_library_registry()
         assigns = reg.get("scan_assignments") or {}
@@ -1880,6 +1957,13 @@ class ScanQueueDB:
                 and str(d.get("crs") or "").strip().upper() != "LOCAL_ORIGIN"
             )
             d["group_type"] = "site" if has_georef else "library"
+        if d.get("group_type") == "library":
+            norm_en, norm_zh = self._normalize_library_folder_names(
+                str(d.get("project_group") or "General Models"),
+                str(d.get("project_name_zh") or ""),
+            )
+            d["project_group"] = norm_en
+            d["project_name_zh"] = norm_zh
         d["is_gaussian_splat"] = bool(d.get("is_gaussian_splat"))
         if d["is_gaussian_splat"] and d.get("splat_count") and not d.get("poly_count"):
             d["poly_count"] = int(d["splat_count"])

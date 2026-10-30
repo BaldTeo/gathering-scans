@@ -1993,31 +1993,37 @@ def _discover_folder_scan_item(
 
     if lib_assign and lib_assign.get("project_group"):
         proj_group = str(lib_assign["project_group"]).strip()
-        proj_zh = str(lib_assign.get("project_name_zh") or f"{proj_group} 模型庫")
+        proj_zh = str(lib_assign.get("project_name_zh") or proj_group)
         group_type = "site" if str(lib_assign.get("group_type") or "").lower() == "site" else "library"
+        if group_type == "library":
+            from pc_worker.priority_queue import ScanQueueDB
+            proj_group, proj_zh = ScanQueueDB._normalize_library_folder_names(proj_group, proj_zh)
         user_edited_project = True
     elif user_edited_project and proj_group and proj_group != "Unassigned Site":
         if group_type not in ("site", "library"):
             group_type = "site" if (lat is not None and lon is not None and crs_val != "LOCAL_ORIGIN") else "library"
         if group_type == "site":
             proj_group, proj_zh = _apply_site_rename_override(proj_group, proj_zh or f"{proj_group} 工程掃描群組")
+        else:
+            from pc_worker.priority_queue import ScanQueueDB
+            proj_group, proj_zh = ScanQueueDB._normalize_library_folder_names(proj_group, proj_zh or "")
     elif lat is None or lon is None or crs_val == "LOCAL_ORIGIN":
         # Non-georeferenced model (not tied to map) -> 3D Model Library folder
         group_type = "library"
         if parent_project:
-            proj_group = parent_project
-            proj_zh = f"{parent_project} 模型庫"
+            from pc_worker.priority_queue import ScanQueueDB
+            proj_group, proj_zh = ScanQueueDB._normalize_library_folder_names(parent_project, parent_project)
         else:
             fn_low = folder_name.lower()
             if any(k in fn_low for k in ("jishi", "person", "people", "human", "man", "woman", "avatar", "character", "人物", "人像")):
-                proj_group = "人物與角色 (People)"
-                proj_zh = "人物與角色 3D 模型"
+                proj_group = "People"
+                proj_zh = "人物與角色"
             elif any(k in fn_low for k in ("equip", "machine", "excavator", "truck", "crane", "tool", "drone", "device", "機具", "設備")):
-                proj_group = "機具與設備 (Equipment)"
-                proj_zh = "機具與設備 3D 模型"
+                proj_group = "Equipment"
+                proj_zh = "機具與設備"
             else:
-                proj_group = "一般 3D 模型 (General Models)"
-                proj_zh = "一般非地理定位 3D 模型"
+                proj_group = "General Models"
+                proj_zh = "一般 3D 模型"
     else:
         group_type = "site"
         if parent_project:

@@ -2439,8 +2439,9 @@
   document.getElementById("moveScanTargetSelect")?.addEventListener("change", (e) => {
     const newWrap = document.getElementById("moveScanNewGroupWrap");
     if (newWrap) {
-      newWrap.style.display = e.target.value === "__new__" ? "block" : "none";
-      if (e.target.value === "__new__") {
+      const isNew = e.target.value === "__NEW__" || e.target.value === "__new__";
+      newWrap.style.display = isNew ? "block" : "none";
+      if (isNew) {
         setTimeout(() => document.getElementById("moveScanNewGroupInput")?.focus(), 40);
       }
     }
@@ -2680,22 +2681,52 @@
       const params = new URLSearchParams(window.location.search);
       const urlProject = params.get("project");
       const urlScan = params.get("scan");
+      const isSingleScanShare =
+        Boolean(STATE.shareToken) &&
+        (STATE.scans.length === 1 || String(STATE.shareLinkInfo?.scope_type || "").toLowerCase() === "scan");
+
       if (!isBackgroundPoll && urlScan && STATE.scans.some((s) => s.scan_id === urlScan)) {
         STATE.activeScanId = urlScan;
+      } else if (
+        !isBackgroundPoll &&
+        !urlScan &&
+        !isSingleScanShare &&
+        STATE.activeView === "map" &&
+        STATE.leftPaneMode !== "library" &&
+        typeof resolveInitialMapSiteAndScan === "function"
+      ) {
+        const initMapTarget = resolveInitialMapSiteAndScan(STATE.scans);
+        if (initMapTarget && initMapTarget.scan) {
+          STATE.activeScanId = initMapTarget.scan.scan_id;
+          STATE.selectedTimelineScanId = initMapTarget.scan.scan_id;
+          if (!urlProject && initMapTarget.projectGroup) {
+            STATE.activeProjectGroup = initMapTarget.projectGroup;
+          }
+        }
       } else if (!STATE.activeScanId || !STATE.scans.some((s) => s.scan_id === STATE.activeScanId)) {
         // Never silently switch the active Studio scan during a background poll if the user is actively in Studio
         if (STATE.scans.length > 0 && !(isBackgroundPoll && STATE.activeView === "studio" && STATE.activeScanId)) {
+          const mapPool =
+            STATE.activeView === "map" && STATE.leftPaneMode !== "library" && typeof getMapScansOnly === "function"
+              ? getMapScansOnly(STATE.scans)
+              : STATE.scans;
+          const pool = mapPool.length > 0 ? mapPool : STATE.scans;
           const sameProjReady =
             STATE.activeProjectGroup && STATE.activeProjectGroup !== "__all__"
-              ? STATE.scans.find((s) => s.project_group === STATE.activeProjectGroup && s.status === "completed")
+              ? pool.find((s) => s.project_group === STATE.activeProjectGroup && s.status === "completed")
               : null;
-          const firstReady = sameProjReady || STATE.scans.find((s) => s.status === "completed") || STATE.scans[0];
+          const firstReady = sameProjReady || pool.find((s) => s.status === "completed") || pool[0];
           STATE.activeScanId = firstReady.scan_id;
         }
       }
       if (
         !STATE.selectedTimelineScanId ||
-        !STATE.scans.some((s) => s.scan_id === STATE.selectedTimelineScanId)
+        !STATE.scans.some((s) => s.scan_id === STATE.selectedTimelineScanId) ||
+        (!isBackgroundPoll &&
+          STATE.activeView === "map" &&
+          STATE.leftPaneMode !== "library" &&
+          typeof isLibraryScan === "function" &&
+          isLibraryScan(STATE.scans.find((s) => s.scan_id === STATE.selectedTimelineScanId)))
       ) {
         STATE.selectedTimelineScanId = STATE.activeScanId;
       }
@@ -2707,7 +2738,14 @@
       } else if (
         STATE.activeProjectGroup !== "__all__" &&
         (!STATE.activeProjectGroup ||
-          !STATE.scans.some((s) => s.project_group === STATE.activeProjectGroup))
+          !STATE.scans.some((s) => s.project_group === STATE.activeProjectGroup) ||
+          (!isBackgroundPoll &&
+            STATE.activeView === "map" &&
+            STATE.leftPaneMode !== "library" &&
+            typeof isLibraryScan === "function" &&
+            activeScanObj &&
+            !isLibraryScan(activeScanObj) &&
+            STATE.activeProjectGroup !== activeScanObj.project_group))
       ) {
         if (activeScanObj && activeScanObj.project_group) {
           STATE.activeProjectGroup = activeScanObj.project_group;

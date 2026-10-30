@@ -404,7 +404,7 @@
   }
 
   // Aggregate unique project groups dynamically (scales cleanly to 100+ projects)
-  function getProjectGroupsList(filterQuery = "") {
+  function getProjectGroupsList(filterQuery = "", { includeLibrary = false } = {}) {
     const q = String(filterQuery || "").trim().toLowerCase();
     const map = new Map();
     const isGeorefScan = (sc) =>
@@ -420,6 +420,9 @@
       !String(sc.crs || "").toUpperCase().includes("LOCAL");
 
     STATE.scans.forEach((s) => {
+      if (!includeLibrary && typeof isLibraryScan === "function" && isLibraryScan(s)) {
+        return;
+      }
       const g = s.project_group || "Unassigned Site";
       if (!map.has(g)) {
         map.set(g, {
@@ -473,21 +476,28 @@
 
   // Populate all project & scan selectors across Map, Timeline, Studio, and Compare (Supports 100+ Projects)
   function populateProjectScanDropdowns(projectGroup, preferredScanId = null) {
-    const allGroups = getProjectGroupsList("");
+    const mapGroups = getProjectGroupsList("", { includeLibrary: false });
+    const allGroupsWithLib = getProjectGroupsList("", { includeLibrary: true });
+    const activeCatalogGroups = STATE.leftPaneMode === "library" || STATE.activeView === "studio" ? allGroupsWithLib : mapGroups;
     if (projectGroup === "__all__") {
       STATE.activeProjectGroup = "__all__";
-    } else if (projectGroup && allGroups.some((g) => g.project_group === projectGroup)) {
+    } else if (projectGroup && activeCatalogGroups.some((g) => g.project_group === projectGroup)) {
       STATE.activeProjectGroup = projectGroup;
-    } else if (STATE.activeScan && STATE.activeScan.project_group && STATE.activeProjectGroup !== "__all__") {
+    } else if (
+      STATE.activeScan &&
+      STATE.activeScan.project_group &&
+      STATE.activeProjectGroup !== "__all__" &&
+      activeCatalogGroups.some((g) => g.project_group === STATE.activeScan.project_group)
+    ) {
       STATE.activeProjectGroup = STATE.activeScan.project_group;
-    } else if (!STATE.activeProjectGroup && allGroups.length > 0) {
-      STATE.activeProjectGroup = allGroups[0].project_group;
+    } else if (!STATE.activeProjectGroup && mapGroups.length > 0) {
+      STATE.activeProjectGroup = mapGroups[0].project_group;
     }
 
-    // 1. Populate Map Project Selector (#mapProjectSelect) with search filter support
+    // 1. Populate Map Project Selector (#mapProjectSelect) strictly with Map Sites (never Library folders)
     const mapProjSel = document.getElementById("mapProjectSelect");
     if (mapProjSel) {
-      const filteredGroups = getProjectGroupsList(STATE.projectFilterQuery);
+      const filteredGroups = getProjectGroupsList(STATE.projectFilterQuery, { includeLibrary: false });
       const prevMapVal = mapProjSel.value;
       mapProjSel.innerHTML = "";
       const allOpt = document.createElement("option");
@@ -500,7 +510,7 @@
       filteredGroups.forEach((grp) => {
         const opt = document.createElement("option");
         opt.value = grp.project_group;
-        opt.textContent = grp.project_group;
+        opt.textContent = typeof formatGroupDisplayName === "function" ? formatGroupDisplayName(grp.project_group, grp.project_name_zh) : grp.project_group;
         mapProjSel.appendChild(opt);
       });
 
@@ -519,6 +529,10 @@
     ["timelineProjectSelect", "studioProjectSelect", "compareProjectSelect"].forEach((selId) => {
       const sel = document.getElementById(selId);
       if (!sel) return;
+      const groupsForSel =
+        selId === "studioProjectSelect" || (selId === "timelineProjectSelect" && STATE.leftPaneMode === "library")
+          ? allGroupsWithLib
+          : mapGroups;
       sel.innerHTML = "";
       if (selId === "timelineProjectSelect") {
         const allOpt = document.createElement("option");
@@ -526,31 +540,31 @@
         allOpt.textContent = tr("全部工區", "All Projects");
         sel.appendChild(allOpt);
       }
-      allGroups.forEach((grp) => {
+      groupsForSel.forEach((grp) => {
         const opt = document.createElement("option");
         opt.value = grp.project_group;
-        opt.textContent = grp.project_group;
+        opt.textContent = typeof formatGroupDisplayName === "function" ? formatGroupDisplayName(grp.project_group, grp.project_name_zh) : grp.project_group;
         sel.appendChild(opt);
       });
       if (selId === "timelineProjectSelect" && STATE.activeProjectGroup === "__all__") {
         sel.value = "__all__";
-      } else if (STATE.activeProjectGroup && allGroups.some((g) => g.project_group === STATE.activeProjectGroup)) {
+      } else if (STATE.activeProjectGroup && groupsForSel.some((g) => g.project_group === STATE.activeProjectGroup)) {
         sel.value = STATE.activeProjectGroup;
-      } else if (allGroups[0]) {
-        sel.value = allGroups[0].project_group;
+      } else if (groupsForSel[0]) {
+        sel.value = groupsForSel[0].project_group;
       }
     });
 
     const resolvedSpecificGroup =
       STATE.activeProjectGroup && STATE.activeProjectGroup !== "__all__"
         ? STATE.activeProjectGroup
-        : STATE.activeScan?.project_group || allGroups[0]?.project_group || "";
+        : STATE.activeScan?.project_group || mapGroups[0]?.project_group || allGroupsWithLib[0]?.project_group || "";
 
     // Update hidden badges for backward compatibility
     const studioBadge = document.getElementById("studioProjectGroupBadge");
-    if (studioBadge) studioBadge.textContent = resolvedSpecificGroup;
+    if (studioBadge) studioBadge.textContent = typeof formatGroupDisplayName === "function" ? formatGroupDisplayName(resolvedSpecificGroup) : resolvedSpecificGroup;
     const cmpBadge = document.getElementById("compareProjectGroupBadge");
-    if (cmpBadge) cmpBadge.textContent = resolvedSpecificGroup;
+    if (cmpBadge) cmpBadge.textContent = typeof formatGroupDisplayName === "function" ? formatGroupDisplayName(resolvedSpecificGroup) : resolvedSpecificGroup;
 
     // 3. Populate Scan Selectors strictly for the active project (or resolved project when __all__ is selected on map)
     let projectScans = STATE.scans.filter((s) => s.project_group === resolvedSpecificGroup);
@@ -1904,8 +1918,151 @@
     return scan.lat == null || scan.lon == null || crs.includes("LOCAL");
   }
 
+  function normalizeCanonicalFolderName(rawName, rawZh = "") {
+    const clean = String(rawName || "").trim();
+    const low = clean.toLowerCase();
+    if (low === "people" || low === "人物與角色" || low === "人物與角色 (people)") {
+      return { en: "People", zh: "人物與角色" };
+    }
+    if (low === "equipment" || low === "機具與設備" || low === "機具與設備 (equipment)") {
+      return { en: "Equipment", zh: "機具與設備" };
+    }
+    if (
+      low === "general models" ||
+      low === "一般 3d 模型" ||
+      low === "一般 3d 模型 (general models)" ||
+      low === "一般非地理定位 3d 模型"
+    ) {
+      return { en: "General Models", zh: "一般 3D 模型" };
+    }
+    const m = clean.match(/^([^\(（]+?)\s*[\(（]([A-Za-z0-9\s&/\-_]+)[\)）]$/);
+    if (m) {
+      return {
+        en: m[2].trim(),
+        zh: m[1].trim(),
+      };
+    }
+    const cleanZh = String(rawZh || "")
+      .replace(/\s*(工程掃描群組|3D\s*模型|模型庫|Engineering Scan Group).*$/i, "")
+      .replace(/\s*[\(（][A-Za-z0-9\s&/\-_]+[\)）]\s*/g, "")
+      .trim();
+    return {
+      en: clean,
+      zh: cleanZh || clean,
+    };
+  }
+
+  function formatGroupDisplayName(rawName, rawZh = "") {
+    if (!rawName || rawName === "__all__") {
+      return tr("全部工區", "All Projects");
+    }
+    const norm = normalizeCanonicalFolderName(rawName, rawZh);
+    const lang = typeof window.getAppLanguage === "function" ? window.getAppLanguage() : "zh-TW";
+    if (lang === "en") {
+      return norm.en;
+    }
+    // In zh-TW: for library folders or sites with pure Chinese names, show pure Chinese without any parenthetical English
+    if (norm.en === "People" || norm.en === "Equipment" || norm.en === "General Models") {
+      return norm.zh;
+    }
+    return norm.en;
+  }
+
+  function formatGroupSubtitleDisplay(rawName, rawZh = "", isLib = false) {
+    if (!rawName || rawName === "__all__") {
+      return tr("跨工區掃描總覽", "All Project Sites Overview");
+    }
+    const norm = normalizeCanonicalFolderName(rawName, rawZh);
+    const lang = typeof window.getAppLanguage === "function" ? window.getAppLanguage() : "zh-TW";
+    if (lang === "en") {
+      return isLib ? `${norm.en} 3D Model Library` : `${norm.en} Engineering Scan Group`;
+    }
+    if (isLib) {
+      return `${norm.zh} 3D 模型庫`;
+    }
+    const cleanRawZh = String(rawZh || "")
+      .replace(/\s*[\(（][A-Za-z0-9\s&/\-_]+[\)）]\s*/g, "")
+      .trim();
+    return cleanRawZh || `${norm.zh} 工程掃描群組`;
+  }
+
   function getLibraryScansList() {
     return (STATE.scans || []).filter((s) => isLibraryScan(s));
+  }
+
+  function getMapScansOnly(scansList = STATE.scans) {
+    return (scansList || []).filter((s) => !isLibraryScan(s));
+  }
+
+  function cacheLastViewedMapSiteAndScan(projectGroup, scanId = "") {
+    try {
+      const scanObj = (STATE.scans || []).find((s) => s.scan_id === scanId);
+      if (scanObj && isLibraryScan(scanObj)) return;
+      const grp = String(projectGroup || scanObj?.project_group || "").trim();
+      if (grp && grp !== "__all__") {
+        const libFolders = (STATE.libraryFolders || []).map((f) => String(f.folder_name || "").toLowerCase());
+        const normGrp = normalizeCanonicalFolderName(grp).en.toLowerCase();
+        if (
+          normGrp === "people" ||
+          normGrp === "equipment" ||
+          normGrp === "general models" ||
+          libFolders.includes(grp.toLowerCase()) ||
+          libFolders.includes(normGrp)
+        ) {
+          return;
+        }
+        localStorage.setItem("gs_last_map_site", grp);
+      }
+      if (scanObj && !isLibraryScan(scanObj)) {
+        localStorage.setItem("gs_last_map_scan_id", String(scanObj.scan_id));
+      }
+    } catch (_) {}
+  }
+
+  function resolveInitialMapSiteAndScan(scansList = STATE.scans) {
+    const mapScans = getMapScansOnly(scansList);
+    const readyMapScans = mapScans.filter((s) => s.status === "completed");
+    const pool = readyMapScans.length > 0 ? readyMapScans : mapScans;
+    if (pool.length === 0) {
+      const fb = (scansList || [])[0] || null;
+      return { scan: fb, projectGroup: fb?.project_group || "" };
+    }
+    try {
+      const cachedScanId = localStorage.getItem("gs_last_map_scan_id") || "";
+      const cachedSite = localStorage.getItem("gs_last_map_site") || "";
+      if (cachedScanId) {
+        const matchedScan = pool.find((s) => s.scan_id === cachedScanId);
+        if (matchedScan) {
+          return {
+            scan: matchedScan,
+            projectGroup: matchedScan.project_group || cachedSite || "",
+          };
+        }
+      }
+      if (cachedSite) {
+        const siteScans = pool.filter((s) => s.project_group === cachedSite);
+        if (siteScans.length > 0) {
+          return {
+            scan: siteScans[0],
+            projectGroup: cachedSite,
+          };
+        }
+      }
+    } catch (_) {}
+    // Default fallback on startup: latest added scan among those on the map (never from library)
+    const sortedByLatest = pool.slice().sort((a, b) => {
+      const ua = Number(a.uploaded_at || 0);
+      const ub = Number(b.uploaded_at || 0);
+      if (ua !== ub && ua > 0 && ub > 0) return ub - ua;
+      const ca = String(a.capture_date || "");
+      const cb = String(b.capture_date || "");
+      return cb.localeCompare(ca);
+    });
+    const latestMapScan = sortedByLatest[0] || pool[0];
+    return {
+      scan: latestMapScan,
+      projectGroup: latestMapScan?.project_group || "",
+    };
   }
 
   function getMapSiteProjectsList() {
@@ -1915,13 +2072,14 @@
   function getLibraryFoldersList() {
     const byKey = new Map();
     const addFolder = (name, zh, icon) => {
-      const clean = String(name || "").trim();
+      const norm = normalizeCanonicalFolderName(name, zh);
+      const clean = norm.en;
       if (!clean) return;
       const k = clean.toLowerCase();
       if (!byKey.has(k)) {
         byKey.set(k, {
           folder_name: clean,
-          folder_name_zh: zh || `${clean} 模型庫`,
+          folder_name_zh: norm.zh,
           icon: icon || "folder",
           scan_count: 0,
           scans: [],
@@ -1933,15 +2091,17 @@
       if (f && f.folder_name) addFolder(f.folder_name, f.folder_name_zh, f.icon);
     });
     if (byKey.size === 0) {
-      addFolder("人物與角色 (People)", "人物與角色 3D 模型", "person");
-      addFolder("機具與設備 (Equipment)", "機具與設備 3D 模型", "tool");
-      addFolder("一般 3D 模型 (General Models)", "一般非地理定位 3D 模型", "cube");
+      addFolder("People", "人物與角色", "person");
+      addFolder("Equipment", "機具與設備", "tool");
+      addFolder("General Models", "一般 3D 模型", "cube");
     }
 
     getLibraryScansList().forEach((s) => {
-      const grp = String(s.project_group || "一般 3D 模型 (General Models)").trim();
-      addFolder(grp, s.project_name_zh, "cube");
-      const entry = byKey.get(grp.toLowerCase());
+      const norm = normalizeCanonicalFolderName(s.project_group || "General Models", s.project_name_zh || "");
+      s.project_group = norm.en;
+      s.project_name_zh = norm.zh;
+      addFolder(norm.en, norm.zh, "cube");
+      const entry = byKey.get(norm.en.toLowerCase());
       if (entry) {
         entry.scan_count += 1;
         entry.scans.push(s);
@@ -1955,34 +2115,70 @@
     const nextMode = mode === "library" ? "library" : "map";
     STATE.leftPaneMode = nextMode;
     if (folderName) {
-      STATE.selectedLibraryFolder = folderName;
+      STATE.selectedLibraryFolder = folderName === "ALL" ? "ALL" : normalizeCanonicalFolderName(folderName).en;
     }
 
-    const mapBtn = document.getElementById("btnLeftModeMap");
-    const libBtn = document.getElementById("btnLeftModeLibrary");
     const navLibBtn = document.getElementById("btnNavLibrary");
     const navMapBtn = document.getElementById("btnNavMap");
     const libOverlay = document.getElementById("modelLibraryOverlay");
+    const viewMapEl = document.getElementById("viewMap");
+    const mapHudTop = document.querySelector("#viewMap .gs-map-hud-top");
 
-    if (mapBtn) mapBtn.classList.toggle("active", nextMode === "map");
-    if (libBtn) libBtn.classList.toggle("active", nextMode === "library");
     if (navLibBtn) navLibBtn.classList.toggle("active", STATE.activeView === "map" && nextMode === "library");
     if (navMapBtn) navMapBtn.classList.toggle("active", STATE.activeView === "map" && nextMode === "map");
+    if (viewMapEl) {
+      viewMapEl.classList.toggle("gs-library-mode-active", nextMode === "library");
+    }
+    if (mapHudTop) {
+      mapHudTop.style.display = nextMode === "library" ? "none" : "";
+    }
     if (libOverlay) {
       libOverlay.style.display = nextMode === "library" ? "flex" : "none";
     }
 
     renderModelLibraryView();
     if (nextMode === "library") {
+      document.getElementById("clusterHoverPopover")?.classList.remove("active");
       const libScans = getLibraryScansList();
+      const selFolder = STATE.selectedLibraryFolder || "ALL";
       const targetScan =
-        (folderName && folderName !== "ALL"
-          ? libScans.find((s) => String(s.project_group || "").toLowerCase() === String(folderName).toLowerCase())
+        (selFolder !== "ALL"
+          ? libScans.find((s) => String(s.project_group || "").toLowerCase() === String(selFolder).toLowerCase())
           : null) || libScans[0];
       if (targetScan && typeof openSiteTimeline === "function") {
         openSiteTimeline(targetScan.project_group, targetScan.scan_id);
       }
+    } else {
+      // Returning to Map mode: if timeline currently displays a library scan/folder, restore Map Site & Scan
+      const curScan = (STATE.scans || []).find((s) => s.scan_id === (STATE.selectedTimelineScanId || STATE.activeScanId));
+      if (!curScan || isLibraryScan(curScan)) {
+        const mapTarget = resolveInitialMapSiteAndScan(STATE.scans);
+        if (mapTarget.scan) {
+          STATE.activeScanId = mapTarget.scan.scan_id;
+          STATE.selectedTimelineScanId = mapTarget.scan.scan_id;
+          STATE.activeProjectGroup = mapTarget.projectGroup;
+          populateProjectScanDropdowns(STATE.activeProjectGroup, STATE.activeScanId);
+          if (typeof renderMapClusters === "function") renderMapClusters();
+          if (typeof openSiteTimeline === "function") {
+            openSiteTimeline(STATE.activeProjectGroup, STATE.activeScanId);
+          }
+        }
+      }
     }
+  }
+
+  function _getLibraryFolderSvgIcon(iconKey) {
+    const k = String(iconKey || "folder").toLowerCase();
+    if (k === "person" || k === "🧑" || k === "👤") {
+      return `<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0;"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>`;
+    }
+    if (k === "tool" || k === "🚜" || k === "🛠️") {
+      return `<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0;"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>`;
+    }
+    if (k === "cube" || k === "📦" || k === "🧊") {
+      return `<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0;"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>`;
+    }
+    return `<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0;"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>`;
   }
 
   function renderModelLibraryView() {
@@ -2001,27 +2197,22 @@
     const info = getCurrentUserRoleInfo();
     const canEdit = Boolean(info.canEditNames && !STATE.isEmbedded);
 
-    const iconMap = {
-      person: "👤",
-      tool: "🛠️",
-      cube: "🧊",
-      folder: "📁",
-    };
-
     const selFolder = STATE.selectedLibraryFolder || "ALL";
     let pillsHtml = `
       <button type="button" class="gs-lib-folder-pill ${selFolder === "ALL" ? "active" : ""}" data-folder="ALL">
-        <span>📦 ${tr("全部模型", "All Models")}</span>
+        ${_getLibraryFolderSvgIcon("cube")}
+        <span>${tr("全部", "All")}</span>
         <span class="gs-lib-folder-count">${allLibScans.length}</span>
       </button>
     `;
     folders.forEach((f) => {
       const isAct = selFolder.toLowerCase() === f.folder_name.toLowerCase();
-      const ico = iconMap[f.icon] || "📁";
       const safeName = f.folder_name.replace(/"/g, "&quot;");
+      const dispName = escapeHtml(formatGroupDisplayName(f.folder_name, f.folder_name_zh));
       pillsHtml += `
         <button type="button" class="gs-lib-folder-pill ${isAct ? "active" : ""}" data-folder="${safeName}">
-          <span>${ico} ${f.folder_name}</span>
+          ${_getLibraryFolderSvgIcon(f.icon)}
+          <span>${dispName}</span>
           <span class="gs-lib-folder-count">${f.scan_count}</span>
         </button>
       `;
@@ -2056,17 +2247,18 @@
       return (
         String(s.name || "").toLowerCase().includes(q) ||
         String(s.scan_id || "").toLowerCase().includes(q) ||
-        String(s.project_group || "").toLowerCase().includes(q)
+        String(s.project_group || "").toLowerCase().includes(q) ||
+        String(s.project_name_zh || "").toLowerCase().includes(q)
       );
     });
 
     if (filteredScans.length === 0) {
       gridEl.innerHTML = `
         <div class="gs-lib-empty-state">
-          <div style="font-size:28px;margin-bottom:8px;">📦</div>
-          <div style="font-weight:700;color:#e2e8f0;margin-bottom:4px;">${tr("此資料夾尚無 3D 模型", "No 3D models in this folder yet")}</div>
-          <div style="font-size:12px;color:#94a3b8;max-width:360px;">
-            ${tr("上傳不含 offset.xyz 的高斯潑濺 (.ply / .splat) 或一般 3D 模型即可自動歸入模型庫，管理員亦可將任何工區掃描移動至此資料夾。", "Upload Gaussian Splats (.ply / .splat) or 3D models without offset.xyz, or use the Admin Move button to move any scan into this folder.")}
+          <div style="margin-bottom:8px;opacity:0.7;">${_getLibraryFolderSvgIcon("cube")}</div>
+          <div style="font-weight:700;color:var(--ui-text-primary);margin-bottom:4px;">${tr("此資料夾尚無 3D 模型", "No 3D models in this folder yet")}</div>
+          <div style="font-size:12px;color:var(--ui-text-secondary);max-width:360px;">
+            ${tr("上傳不含 offset.xyz 的高斯潑濺 (.ply / .splat) 或一般 3D 模型即可自動歸入模型庫，管理員亦可將任何工區掃描移動至此資料夾。", "Upload Gaussian Splats (.ply / .splat) or 3D models without offset.xyz, or use the Move button to move any scan into this folder.")}
           </div>
         </div>
       `;
@@ -2077,43 +2269,63 @@
       .map((s) => {
         const isGs = Boolean(s.is_gaussian_splat);
         const typeBadge = isGs
-          ? `<span class="gs-lib-type-badge gsplat">✨ 3DGS 高斯潑濺</span>`
-          : `<span class="gs-lib-type-badge mesh">🧊 3D Mesh</span>`;
+          ? `<span class="gs-lib-type-badge gsplat">3DGS</span>`
+          : `<span class="gs-lib-type-badge mesh">3D</span>`;
         const metricText = isGs
-          ? `${Number(s.splat_count || s.poly_count || 0).toLocaleString()} Splats`
-          : `${Number(s.poly_count || 0).toLocaleString()} Tris`;
+          ? `${Number(s.splat_count || s.poly_count || 0).toLocaleString()} ${tr("潑濺點", "splats")}`
+          : `${Number(s.poly_count || 0).toLocaleString()} ${tr("面", "tris")}`;
         const sizeMb = Number(s.scan_size_mb || (s.size_bytes ? s.size_bytes / (1024 * 1024) : 0)).toFixed(1);
         const isSelected = STATE.selectedTimelineScanId === s.scan_id || STATE.activeScanId === s.scan_id;
+        const dispFolder = escapeHtml(formatGroupDisplayName(s.project_group, s.project_name_zh));
+        const safeScanName = escapeHtml(s.name || s.scan_id);
         return `
-          <div class="gs-lib-card ${isSelected ? "active" : ""}" data-scan-id="${s.scan_id}">
+          <div class="gs-lib-card ${isSelected ? "active" : ""}" data-scan-id="${escapeHtml(s.scan_id)}">
             <div class="gs-lib-card-thumb-wrap">
-              <img src="${s.thumbnail_url || `/api/scans/${s.scan_id}/thumbnail`}" alt="${s.name}" loading="lazy" />
+              <img class="gs-lib-card-thumb" data-scan-thumb="${escapeHtml(s.scan_id)}" src="${s.thumbnail_url || `/api/scans/${s.scan_id}/thumbnail`}" alt="${safeScanName}" loading="lazy" />
               ${typeBadge}
-              <span class="gs-lib-folder-tag">📁 ${s.project_group || ""}</span>
+              <span class="gs-lib-folder-tag">${dispFolder}</span>
             </div>
             <div class="gs-lib-card-body">
-              <div class="gs-lib-card-title" title="${s.name}">${s.name}</div>
+              <div style="display:flex;align-items:center;justify-content:space-between;gap:4px;min-width:0;">
+                <div class="gs-lib-card-title" title="${safeScanName}" style="flex:1;min-width:0;">${safeScanName}</div>
+                <div class="gs-lib-card-actions" style="margin-top:0;gap:3px;flex-shrink:0;">
+                  <button type="button" class="btn-xs js-lib-preview" data-scan-id="${escapeHtml(s.scan_id)}" title="${tr("預覽 3D 模型", "Preview 3D Model")}" aria-label="Preview 3D Model" style="height:22px;width:24px;padding:0;justify-content:center;">
+                    <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
+                    </svg>
+                  </button>
+                  <button type="button" class="btn-xs primary js-lib-studio" data-scan-id="${escapeHtml(s.scan_id)}" title="${tr("於全螢幕 3D 工作坊開啟", "Open in Full 3D Studio")}" aria-label="Open in Full 3D Studio" style="height:22px;width:24px;padding:0;justify-content:center;">
+                    <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2">
+                      <polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/>
+                    </svg>
+                  </button>
+                  ${
+                    canEdit
+                      ? `<button type="button" class="btn-xs js-lib-move" data-scan-id="${escapeHtml(s.scan_id)}" title="${tr("移動至其他模型庫資料夾或地圖工區", "Move to another Library Folder or Map Site")}" aria-label="Move Scan" style="height:22px;width:24px;padding:0;justify-content:center;">
+                          <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2">
+                            <polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/>
+                          </svg>
+                        </button>
+                        <button type="button" class="btn-xs js-lib-rename" data-scan-id="${escapeHtml(s.scan_id)}" title="${tr("編輯模型名稱", "Edit Model Name")}" aria-label="Edit Model Name" style="height:22px;width:24px;padding:0;justify-content:center;">
+                          <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
+                          </svg>
+                        </button>
+                        <button type="button" class="btn-xs js-lib-delete" data-scan-id="${escapeHtml(s.scan_id)}" title="${tr("移至回收桶", "Move to Recycle Bin")}" aria-label="Delete Model" style="height:22px;width:24px;padding:0;justify-content:center;color:#ef4444;">
+                          <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2">
+                            <polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                          </svg>
+                        </button>`
+                      : ""
+                  }
+                </div>
+              </div>
               <div class="gs-lib-card-meta">
                 <span>${metricText}</span>
                 <span>·</span>
                 <span>${sizeMb} MB</span>
                 <span>·</span>
                 <span>${s.capture_date || ""}</span>
-              </div>
-              <div class="gs-lib-card-actions">
-                <button type="button" class="gs-btn gs-btn-xs gs-btn-secondary js-lib-preview" data-scan-id="${s.scan_id}">
-                  👁️ ${tr("預覽", "Preview")}
-                </button>
-                <button type="button" class="gs-btn gs-btn-xs gs-btn-primary js-lib-studio" data-scan-id="${s.scan_id}">
-                  🚀 ${tr("3D 工作室", "Studio")}
-                </button>
-                ${
-                  canEdit
-                    ? `<button type="button" class="gs-btn gs-btn-xs gs-btn-secondary js-lib-move" data-scan-id="${s.scan_id}" title="${tr("移動至其他模型庫資料夾或地圖工區", "Move to another Library Folder or Map Site")}">
-                        ⇄ ${tr("移動", "Move")}
-                      </button>`
-                    : ""
-                }
               </div>
             </div>
           </div>
@@ -2161,11 +2373,39 @@
         if (sid) openMoveScanModal(sid);
       });
     });
+
+    gridEl.querySelectorAll(".js-lib-rename").forEach((btn) => {
+      btn.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        const sid = btn.getAttribute("data-scan-id");
+        if (sid && typeof openRenameScanModal === "function") openRenameScanModal(sid);
+      });
+    });
+
+    gridEl.querySelectorAll(".js-lib-delete").forEach((btn) => {
+      btn.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        const sid = btn.getAttribute("data-scan-id");
+        if (sid && typeof openDeleteScanModal === "function") openDeleteScanModal(sid);
+      });
+    });
   }
 
   function _populateMoveScanTargetDropdown(targetType, currentGroup = "") {
     const sel = document.getElementById("moveScanTargetSelect");
     const newWrap = document.getElementById("moveScanNewGroupWrap");
+    const modal = document.getElementById("moveScanModal");
+    if (modal) modal.dataset.targetType = targetType === "site" ? "site" : "library";
+    const typeLibBtn = document.getElementById("moveScanTypeLibrary");
+    const typeSiteBtn = document.getElementById("moveScanTypeSite");
+    if (typeLibBtn) {
+      typeLibBtn.classList.toggle("active", targetType !== "site");
+      typeLibBtn.classList.toggle("primary", targetType !== "site");
+    }
+    if (typeSiteBtn) {
+      typeSiteBtn.classList.toggle("active", targetType === "site");
+      typeSiteBtn.classList.toggle("primary", targetType === "site");
+    }
     if (!sel) return;
 
     let options = [];
@@ -2173,13 +2413,13 @@
       const folders = getLibraryFoldersList();
       options = folders.map((f) => ({
         value: f.folder_name,
-        label: `📁 ${f.folder_name} (${f.scan_count})`,
+        label: `${formatGroupDisplayName(f.folder_name, f.folder_name_zh)} (${f.scan_count})`,
       }));
     } else {
-      const sites = getMapSiteProjectsList();
+      const sites = getProjectGroupsList("", { includeLibrary: false });
       options = sites.map((p) => ({
         value: p.project_group,
-        label: `📍 ${p.project_group}${p.project_name_zh ? ` — ${p.project_name_zh}` : ""} (${p.scan_count || 0})`,
+        label: `${formatGroupDisplayName(p.project_group, p.project_name_zh)} (${p.scans?.length || p.scan_count || 0})`,
       }));
     }
 
@@ -2187,7 +2427,7 @@
       .map((o) => {
         const safeVal = String(o.value).replace(/"/g, "&quot;");
         const isSel = String(o.value).toLowerCase() === String(currentGroup || "").toLowerCase();
-        return `<option value="${safeVal}" ${isSel ? "selected" : ""}>${o.label}</option>`;
+        return `<option value="${safeVal}" ${isSel ? "selected" : ""}>${escapeHtml(o.label)}</option>`;
       })
       .join("");
     html += `<option value="__NEW__">＋ ${
@@ -2197,7 +2437,7 @@
     }</option>`;
     sel.innerHTML = html;
     if (newWrap) {
-      newWrap.style.display = sel.value === "__NEW__" ? "block" : "none";
+      newWrap.style.display = sel.value === "__NEW__" || sel.value === "__new__" ? "block" : "none";
     }
   }
 
@@ -2214,15 +2454,10 @@
 
     const nameEl = document.getElementById("moveScanCurrentName");
     if (nameEl) {
-      nameEl.textContent = `${scan.name} (${scan.project_group || ""})`;
+      nameEl.textContent = `${scan.name} (${formatGroupDisplayName(scan.project_group, scan.project_name_zh)})`;
     }
 
     const curType = isLibraryScan(scan) ? "library" : "site";
-    const typeLibRadio = document.getElementById("moveScanTypeLibrary");
-    const typeSiteRadio = document.getElementById("moveScanTypeSite");
-    if (typeLibRadio) typeLibRadio.checked = curType === "library";
-    if (typeSiteRadio) typeSiteRadio.checked = curType === "site";
-
     const newInp = document.getElementById("moveScanNewGroupInput");
     if (newInp) newInp.value = "";
 
@@ -2235,13 +2470,12 @@
     const scanId = modal?.dataset?.scanId;
     if (!scanId) return;
 
-    const typeLibRadio = document.getElementById("moveScanTypeLibrary");
-    const targetType = typeLibRadio && typeLibRadio.checked ? "library" : "site";
+    const targetType = modal?.dataset?.targetType === "site" ? "site" : "library";
     const sel = document.getElementById("moveScanTargetSelect");
     const newInp = document.getElementById("moveScanNewGroupInput");
 
     let targetGroup = sel ? sel.value : "";
-    if (targetGroup === "__NEW__") {
+    if (targetGroup === "__NEW__" || targetGroup === "__new__") {
       targetGroup = String(newInp?.value || "").trim();
     }
     if (!targetGroup) {
@@ -2267,23 +2501,27 @@
       if (updatedScan && STATE.activeScanId === scanId) {
         STATE.activeScan = updatedScan;
       }
-      STATE.activeProjectGroup = targetGroup;
+      const finalGroup = updatedScan?.project_group || targetGroup;
+      STATE.activeProjectGroup = finalGroup;
       if (targetType === "library") {
-        STATE.selectedLibraryFolder = targetGroup;
+        STATE.selectedLibraryFolder = finalGroup;
+      } else {
+        cacheLastViewedMapSiteAndScan(finalGroup, scanId);
       }
 
       if (modal) modal.style.display = "none";
-      populateProjectScanDropdowns(targetGroup, scanId);
+      populateProjectScanDropdowns(finalGroup, scanId);
       if (typeof renderMapClusters === "function") renderMapClusters();
       renderModelLibraryView();
       if (typeof openSiteTimeline === "function") {
-        openSiteTimeline(targetGroup, scanId);
+        openSiteTimeline(finalGroup, scanId);
       }
       if (typeof showToast === "function") {
+        const dispTarget = formatGroupDisplayName(finalGroup, updatedScan?.project_name_zh || "");
         showToast(
           tr(
-            `已將「${updatedScan?.name || scanId}」移動至 ${targetType === "library" ? "📦 模型庫資料夾" : "🗺️ 地圖工區"}「${targetGroup}」`,
-            `Moved "${updatedScan?.name || scanId}" to ${targetType === "library" ? "Library Folder" : "Map Site"} "${targetGroup}"`
+            `已將「${updatedScan?.name || scanId}」移動至${targetType === "library" ? "模型庫資料夾" : "地圖工區"}「${dispTarget}」`,
+            `Moved "${updatedScan?.name || scanId}" to ${targetType === "library" ? "Library Folder" : "Map Site"} "${dispTarget}"`
           ),
           "success"
         );
@@ -2308,13 +2546,13 @@
     if (mode === "rename" && STATE.selectedLibraryFolder && STATE.selectedLibraryFolder !== "ALL") {
       const curName = STATE.selectedLibraryFolder;
       modal.dataset.oldName = curName;
-      if (titleEl) titleEl.textContent = `✎ ${tr("重新命名模型庫資料夾", "Rename Library Folder")}`;
-      if (inpName) inpName.value = curName;
+      if (titleEl) titleEl.textContent = tr("重新命名模型庫資料夾", "Rename Library Folder");
+      if (inpName) inpName.value = formatGroupDisplayName(curName);
       const curObj = getLibraryFoldersList().find((f) => f.folder_name.toLowerCase() === curName.toLowerCase());
       if (inpIcon && curObj) inpIcon.value = curObj.icon || "folder";
     } else {
       modal.dataset.oldName = "";
-      if (titleEl) titleEl.textContent = `📁 ${tr("新增 3D 模型庫資料夾", "Create 3D Model Library Folder")}`;
+      if (titleEl) titleEl.textContent = tr("新增 3D 模型庫資料夾", "Create 3D Model Library Folder");
       if (inpName) inpName.value = "";
       if (inpIcon) inpIcon.value = "cube";
     }
@@ -2344,16 +2582,18 @@
       if (Array.isArray(res.library_folders)) STATE.libraryFolders = res.library_folders;
       if (Array.isArray(res.projects)) STATE.projects = res.projects;
       if (Array.isArray(res.scans)) STATE.scans = res.scans;
-      STATE.selectedLibraryFolder = newName;
+      const norm = normalizeCanonicalFolderName(newName);
+      STATE.selectedLibraryFolder = norm.en;
       modal.style.display = "none";
       renderModelLibraryView();
       populateProjectScanDropdowns(STATE.activeProjectGroup, STATE.activeScanId);
       if (typeof renderMapClusters === "function") renderMapClusters();
       if (typeof showToast === "function") {
+        const disp = formatGroupDisplayName(norm.en, norm.zh);
         showToast(
           mode === "rename"
-            ? tr(`已重新命名資料夾為「${newName}」`, `Renamed folder to "${newName}"`)
-            : tr(`已建立模型庫資料夾「${newName}」`, `Created library folder "${newName}"`),
+            ? tr(`已重新命名資料夾為「${disp}」`, `Renamed folder to "${disp}"`)
+            : tr(`已建立模型庫資料夾「${disp}」`, `Created library folder "${disp}"`),
           "success"
         );
       }
@@ -2368,6 +2608,7 @@
     const cur = STATE.selectedLibraryFolder;
     if (!cur || cur === "ALL") return;
     try {
+      const disp = formatGroupDisplayName(cur);
       const res = await apiPost("/api/library/folders", {
         action: "delete",
         folder_name: cur,
@@ -2380,7 +2621,7 @@
       populateProjectScanDropdowns(STATE.activeProjectGroup, STATE.activeScanId);
       if (typeof renderMapClusters === "function") renderMapClusters();
       if (typeof showToast === "function") {
-        showToast(tr(`已刪除資料夾「${cur}」`, `Deleted folder "${cur}"`), "info");
+        showToast(tr(`已刪除資料夾「${disp}」`, `Deleted folder "${disp}"`), "info");
       }
     } catch (err) {
       if (typeof showToast === "function") showToast(err.message || "Failed to delete folder", "error");
@@ -2388,7 +2629,13 @@
   }
 
   window.isLibraryScan = isLibraryScan;
+  window.normalizeCanonicalFolderName = normalizeCanonicalFolderName;
+  window.formatGroupDisplayName = formatGroupDisplayName;
+  window.formatGroupSubtitleDisplay = formatGroupSubtitleDisplay;
   window.getLibraryScansList = getLibraryScansList;
+  window.getMapScansOnly = getMapScansOnly;
+  window.cacheLastViewedMapSiteAndScan = cacheLastViewedMapSiteAndScan;
+  window.resolveInitialMapSiteAndScan = resolveInitialMapSiteAndScan;
   window.getLibraryFoldersList = getLibraryFoldersList;
   window.setLeftPaneMode = setLeftPaneMode;
   window.renderModelLibraryView = renderModelLibraryView;

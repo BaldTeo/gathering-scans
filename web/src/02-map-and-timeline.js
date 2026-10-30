@@ -610,14 +610,15 @@
     if (!gsMap) return;
 
     gsMap.markerLayer.innerHTML = "";
-    const allGroups = getProjectGroupsList("");
-    const visibleGroups = getProjectGroupsList(STATE.projectFilterQuery);
+    const allGroups = getProjectGroupsList("", { includeLibrary: false });
+    const visibleGroups = getProjectGroupsList(STATE.projectFilterQuery, { includeLibrary: false });
     gsMap.groups = visibleGroups;
     if (!gsMap._initialFitDone && allGroups.some((g) => g.hasGeoref)) {
       fitMapToAllGeorefGroups(allGroups);
       gsMap._initialFitDone = true;
     }
 
+    const totalMapScansCount = allGroups.reduce((acc, g) => acc + (g.scans?.length || 0), 0);
     const countEl = document.getElementById("lblMapClusterCount");
     if (countEl) {
       if (STATE.projectFilterQuery) {
@@ -627,8 +628,8 @@
         );
       } else {
         countEl.textContent = tr(
-          `${allGroups.length} 個工區 · ${STATE.scans.length} 組掃描`,
-          `${allGroups.length} Site${allGroups.length === 1 ? "" : "s"} · ${STATE.scans.length} Scans`
+          `${allGroups.length} 個工區 · ${totalMapScansCount} 組掃描`,
+          `${allGroups.length} Site${allGroups.length === 1 ? "" : "s"} · ${totalMapScansCount} Scans`
         );
       }
     }
@@ -648,9 +649,10 @@
       blob.style.transform = "translate(-50%, -50%)";
       blob.style.pointerEvents = "auto";
       blob.style.touchAction = "none";
+      const dispGrp = typeof formatGroupDisplayName === "function" ? formatGroupDisplayName(grp.project_group, grp.project_name_zh) : grp.project_group;
       blob.innerHTML = `
         <span>${count}</span>
-        <div class="blob-label">${escapeHtml(grp.project_group)} (${count})</div>
+        <div class="blob-label">${escapeHtml(dispGrp)} (${count})</div>
       `;
 
       blob.addEventListener("click", (e) => {
@@ -674,7 +676,7 @@
     if (STATE.activeProjectGroup === "__all__") {
       document.getElementById("clusterHoverPopover")?.classList.remove("active");
       document.querySelectorAll(".scan-cluster-blob").forEach((b) => b.classList.remove("active-cluster"));
-    } else if (visibleGroups.length > 0) {
+    } else if (visibleGroups.length > 0 && STATE.leftPaneMode !== "library") {
       const activeGrp =
         visibleGroups.find((g) => g.project_group === STATE.activeProjectGroup) || visibleGroups[0];
       const isSingleScanShare =
@@ -1102,12 +1104,12 @@
     populateProjectScanDropdowns(grp.project_group, STATE.activeScanId);
     if (gsMap && gsMap.drawMap) gsMap.drawMap();
 
-    document.getElementById("popoverGroupTitle").textContent = `${grp.project_group} · ${grp.scans.length}`;
-    const rawSubZh = String(grp.project_name_zh || "工程掃描群組");
+    const dispGrpTitle = typeof formatGroupDisplayName === "function" ? formatGroupDisplayName(grp.project_group, grp.project_name_zh) : grp.project_group;
+    document.getElementById("popoverGroupTitle").textContent = `${dispGrpTitle} · ${grp.scans.length}`;
     const subGroupLabel =
-      window.getAppLanguage?.() === "en"
-        ? rawSubZh.replace(/工程掃描群組/g, "Engineering Scan Group")
-        : rawSubZh;
+      typeof formatGroupSubtitleDisplay === "function"
+        ? formatGroupSubtitleDisplay(grp.project_group, grp.project_name_zh, false)
+        : String(grp.project_name_zh || "工程掃描群組");
     document.getElementById("popoverGroupSubtitle").textContent = subGroupLabel;
 
     // Unified 3-Pane Workbench on Desktop/Tablet; on Phone (<=767px), keep first page map-only until a site is explicitly chosen
@@ -2113,7 +2115,8 @@
     const metaEl = document.getElementById("previewScanMeta");
     if (metaEl) {
       if (typeof isLibraryScan === "function" && isLibraryScan(scan)) {
-        metaEl.textContent = `${scan.capture_date} · ${scan.uploader_name} · 📁 ${scan.project_group || "3D Library"} · ${formatScanPolyCount(scan)}`;
+        const dispFolder = typeof formatGroupDisplayName === "function" ? formatGroupDisplayName(scan.project_group, scan.project_name_zh) : (scan.project_group || "3D Library");
+        metaEl.textContent = `${scan.capture_date} · ${scan.uploader_name} · ${dispFolder} · ${formatScanPolyCount(scan)}`;
       } else {
         metaEl.textContent = `${scan.capture_date} · ${scan.uploader_name} · ${formatCoveredAreaM2(scan)} · E ${Number(scan.twd97_e).toFixed(1)} N ${Number(scan.twd97_n).toFixed(1)} H +${Number(scan.twd97_h).toFixed(2)}m`;
       }
@@ -2372,6 +2375,10 @@
     document.querySelectorAll("#popoverScanList .gs-scan-item-card").forEach((c) => {
       c.classList.toggle("active", c.dataset.scanId === scanId);
     });
+    const pickedScan = STATE.scans.find((s) => s.scan_id === scanId);
+    if (pickedScan && typeof cacheLastViewedMapSiteAndScan === "function") {
+      cacheLastViewedMapSiteAndScan(pickedScan.project_group, pickedScan.scan_id);
+    }
     loadScanIntoPreview(scanId);
     if (typeof gsMap !== "undefined" && gsMap && typeof gsMap.drawMap === "function") {
       gsMap.drawMap();
@@ -2387,7 +2394,7 @@
       STATE._timelineInitTimer = null;
     }
 
-    const allGroups = getProjectGroupsList("");
+    const allGroups = getProjectGroupsList("", { includeLibrary: STATE.leftPaneMode === "library" });
     const grpName =
       projectGroup ||
       STATE.activeProjectGroup ||
@@ -2410,11 +2417,25 @@
       if (gsMap && gsMap.drawMap) gsMap.drawMap();
     }
 
-    let siteScans = (isAllProjects ? STATE.scans : STATE.scans.filter((s) => s.project_group === grpName))
+    const basePool =
+      isAllProjects && STATE.leftPaneMode !== "library" && typeof getMapScansOnly === "function"
+        ? getMapScansOnly(STATE.scans)
+        : STATE.scans;
+
+    let siteScans = (isAllProjects
+      ? basePool
+      : STATE.scans.filter((s) => {
+          if (s.project_group === grpName) return true;
+          if (typeof normalizeCanonicalFolderName === "function") {
+            return normalizeCanonicalFolderName(s.project_group).en.toLowerCase() === normalizeCanonicalFolderName(grpName).en.toLowerCase();
+          }
+          return false;
+        })
+    )
       .slice()
       .sort((a, b) => String(b.capture_date || "").localeCompare(String(a.capture_date || "")));
     if (!siteScans.length) {
-      siteScans = STATE.scans
+      siteScans = basePool
         .slice()
         .sort((a, b) => String(b.capture_date || "").localeCompare(String(a.capture_date || "")));
     }
@@ -2423,6 +2444,10 @@
       (preferredScanId && siteScans.find((s) => s.scan_id === preferredScanId)) ||
       siteScans.find((s) => s.scan_id === STATE.activeScanId) ||
       siteScans[0];
+
+    if (chosenScan && typeof cacheLastViewedMapSiteAndScan === "function") {
+      cacheLastViewedMapSiteAndScan(chosenScan.project_group, chosenScan.scan_id);
+    }
 
     populateProjectScanDropdowns(grpName, chosenScan ? chosenScan.scan_id : null);
 
@@ -2435,7 +2460,11 @@
     // Populate Header
     const titleEl = document.getElementById("timelineSiteTitle");
     if (titleEl) {
-      titleEl.textContent = isAllProjects ? tr("全部工區", "All Project Sites") : grpName;
+      const dispGrp =
+        typeof formatGroupDisplayName === "function"
+          ? formatGroupDisplayName(grpName, siteScans[0]?.project_name_zh || "")
+          : grpName;
+      titleEl.textContent = isAllProjects ? tr("全部工區", "All Project Sites") : dispGrp;
     }
     const countEl = document.getElementById("timelineSiteCountPill");
     if (countEl) {
@@ -2455,17 +2484,17 @@
     }
     const subEl = document.getElementById("timelineSiteSubtitle");
     if (subEl && siteScans[0]) {
-      const rawSubZh = String(siteScans[0].project_name_zh || "工程掃描群組");
-      const enSubName = rawSubZh.replace(/工程掃描群組/g, "Engineering Scan Group");
+      const isLib = typeof isLibraryScan === "function" && isLibraryScan(siteScans[0]);
+      const subPrefix =
+        typeof formatGroupSubtitleDisplay === "function"
+          ? formatGroupSubtitleDisplay(grpName, siteScans[0].project_name_zh || "", isLib)
+          : String(siteScans[0].project_name_zh || "工程掃描群組");
       subEl.textContent = isAllProjects
         ? tr(
             "全部工區依最新日期排序 · 點選任一掃描卡片即可於下方預覽",
             "All project sites sorted newest-first · Select any scan tile to preview below"
           )
-        : tr(
-            `${rawSubZh} · 點選時間軸上的掃描卡片即可於下方預覽`,
-            `${enSubName} · Select a scan tile on the timeline to preview below`
-          );
+        : `${subPrefix} · ${tr("點選時間軸上的掃描卡片即可於下方預覽", "Select a scan tile on the timeline to preview below")}`;
     }
     const timelineProjSel = document.getElementById("timelineProjectSelect");
     if (timelineProjSel && Array.from(timelineProjSel.options).some((o) => o.value === grpName)) {
@@ -2524,7 +2553,9 @@
               <div class="gs-tile-name" title="${safeName}" style="flex:1;min-width:0;">${safeName}</div>
               <div class="gs-tile-edit-actions" style="display:${roleInfo.canEditNames ? "flex" : "none"};align-items:center;gap:2px;flex-shrink:0;">
                 <button type="button" class="btn-xs" data-move-tile="${escapeHtml(s.scan_id)}" title="${tr("移動至其他工區或 3D 模型庫資料夾", "Move to another Site or 3D Library Folder")}" style="height:18px;padding:0 4px;">
-                  ⇄
+                  <svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/>
+                  </svg>
                 </button>
                 <button type="button" class="btn-xs" data-rename-tile="${escapeHtml(s.scan_id)}" title="${tr("修改掃描名稱", "Edit Scan Name")}" style="height:18px;padding:0 4px;">
                   <svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" stroke-width="2">

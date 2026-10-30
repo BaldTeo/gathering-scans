@@ -1,30 +1,30 @@
 {
   "folders": [
     {
-      "folder_name": "人物與角色 (People)",
-      "folder_name_zh": "人物與角色 3D 模型",
+      "folder_name": "People",
+      "folder_name_zh": "人物與角色",
       "icon": "person",
       "created_at": "2026-10-30T11:48:18.711998+00:00"
     },
     {
-      "folder_name": "機具與設備 (Equipment)",
-      "folder_name_zh": "機具與設備 3D 模型",
+      "folder_name": "Equipment",
+      "folder_name_zh": "機具與設備",
       "icon": "tool",
       "created_at": "2026-10-30T11:48:18.711998+00:00"
     },
     {
-      "folder_name": "一般 3D 模型 (General Models)",
-      "folder_name_zh": "一般非地理定位 3D 模型",
+      "folder_name": "General Models",
+      "folder_name_zh": "一般 3D 模型",
       "icon": "cube",
       "created_at": "2026-10-30T11:48:18.711998+00:00"
     }
   ],
   "scan_assignments": {
     "jishi_gauss": {
-      "project_group": "人物與角色 (People)",
-      "project_name_zh": "人物與角色 3D 模型",
+      "project_group": "People",
+      "project_name_zh": "人物與角色",
       "group_type": "library",
-      "updated_at": 1793363932.4862006
+      "updated_at": 1793368467.2559903
     }
   }
 }

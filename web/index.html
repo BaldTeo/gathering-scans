@@ -18,7 +18,7 @@
   <meta name="twitter:image" content="https://scans.gatheren.cloud/assets/gathering_cloud_logo.png" />
   <!-- GS_SHARE_OG_END -->
   <link rel="icon" type="image/png" href="/assets/gathering_cloud_logo.png" />
-  <link rel="stylesheet" href="/app.css?v=20261030_v214" />
+  <link rel="stylesheet" href="/app.css?v=20261030_v215" />
   <script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
 <body>
@@ -161,16 +161,6 @@
         <!-- Top-Left Map HUD (Scalable for 100+ Projects) -->
         <div class="gs-map-hud-top">
           <div class="gs-map-card">
-            <div class="gs-left-mode-bar" style="display:flex;gap:4px;margin-bottom:8px;padding:3px;background:var(--ui-bg-subtle);border:1px solid var(--ui-border);border-radius:8px;">
-              <button type="button" class="btn-xs active primary" id="btnLeftModeMap" style="flex:1;justify-content:center;height:25px;font-size:11.5px;gap:4px;" title="地理定位工區地圖總覽" data-i18n-title-zh="地理定位工區地圖總覽" data-i18n-title-en="Georeferenced Map Sites">
-                <span>🗺️</span>
-                <span data-i18n-zh="地圖工區" data-i18n-en="Map Sites">地圖工區</span>
-              </button>
-              <button type="button" class="btn-xs" id="btnLeftModeLibrary" style="flex:1;justify-content:center;height:25px;font-size:11.5px;gap:4px;" title="非地圖綁定之 3D 模型庫（人物、機具、物件與 3DGS）" data-i18n-title-zh="非地圖綁定之 3D 模型庫（人物、機具、物件與 3DGS）" data-i18n-title-en="Non-Map 3D Model Library (People, Equipment &amp; Objects)">
-                <span>📦</span>
-                <span data-i18n-zh="3D 模型庫" data-i18n-en="3D Library">3D 模型庫</span>
-              </button>
-            </div>
             <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
               <span style="font-size:13px;font-weight:700;color:var(--ui-text-primary);display:flex;align-items:center;gap:6px;">
                 <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="var(--ui-accent)" stroke-width="2">
@@ -245,17 +235,15 @@
           <div class="gs-library-header">
             <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
               <div style="display:flex;align-items:center;gap:8px;min-width:0;">
-                <button type="button" class="btn-xs" id="btnLibraryBackToMap" title="返回地圖工區" data-i18n-title-zh="返回地圖工區" data-i18n-title-en="Back to Map Sites">
-                  <span>🗺️</span>
-                  <span data-i18n-zh="返回地圖" data-i18n-en="Map">返回地圖</span>
-                </button>
-                <div style="font-size:15px;font-weight:800;color:var(--ui-text-primary);display:flex;align-items:center;gap:6px;">
-                  <span>📦</span>
-                  <span data-i18n-zh="3D 模型庫（非地圖綁定模型）" data-i18n-en="3D Model Library (Non-Map Models)">3D 模型庫（非地圖綁定模型）</span>
+                <div style="font-size:14.5px;font-weight:800;color:var(--ui-text-primary);display:flex;align-items:center;gap:6px;">
+                  <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="var(--ui-accent)" stroke-width="2">
+                    <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+                  </svg>
+                  <span data-i18n-zh="3D 模型庫" data-i18n-en="3D Library">3D 模型庫</span>
                 </div>
-                <span class="gs-crs-pill" id="libraryTotalCountBadge">0 個模型</span>
+                <span class="gs-crs-pill" id="libraryTotalCountBadge">0</span>
               </div>
-              <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+              <div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap;">
                 <input
                   type="search"
                   class="gs-input"
@@ -263,18 +251,20 @@
                   placeholder="搜尋人物、機具、高斯潑濺或模型..."
                   data-i18n-placeholder-zh="搜尋人物、機具、高斯潑濺或模型..."
                   data-i18n-placeholder-en="Search people, equipment, Gaussian Splats..."
-                  style="width:210px;height:28px;font-size:11.5px;"
+                  style="width:200px;height:26px;font-size:11.5px;"
                 />
-                <button type="button" class="btn-xs primary" id="btnCreateLibraryFolder" title="新增模型庫資料夾 (管理員)" data-i18n-title-zh="新增模型庫資料夾 (管理員)" data-i18n-title-en="New Library Folder (Admin)">
-                  <span>＋</span>
-                  <span data-i18n-zh="新增資料夾" data-i18n-en="New Folder">新增資料夾</span>
+                <button type="button" class="btn-xs primary" id="btnCreateLibraryFolder" title="新增模型庫資料夾" data-i18n-title-zh="新增模型庫資料夾" data-i18n-title-en="New Library Folder" aria-label="New Library Folder" style="height:26px;width:28px;padding:0;justify-content:center;">
+                  <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+                    <line x1="12" y1="11" x2="12" y2="17"/><line x1="9" y1="14" x2="15" y2="14"/>
+                  </svg>
                 </button>
-                <button type="button" class="btn-xs" id="btnRenameLibraryFolder" title="重新命名目前資料夾" data-i18n-title-zh="重新命名目前資料夾" data-i18n-title-en="Rename Active Folder" style="display:none;">
+                <button type="button" class="btn-xs" id="btnRenameLibraryFolder" title="重新命名目前資料夾" data-i18n-title-zh="重新命名目前資料夾" data-i18n-title-en="Rename Active Folder" aria-label="Rename Active Folder" style="display:none;height:26px;width:28px;padding:0;justify-content:center;">
                   <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2">
                     <path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
                   </svg>
                 </button>
-                <button type="button" class="btn-xs" id="btnDeleteLibraryFolder" title="刪除此資料夾（模型將移至一般 3D 模型）" data-i18n-title-zh="刪除此資料夾（模型將移至一般 3D 模型）" data-i18n-title-en="Delete Folder (Models move to General)" style="display:none;color:#ef4444;border-color:rgba(239,68,68,0.35);">
+                <button type="button" class="btn-xs" id="btnDeleteLibraryFolder" title="刪除此資料夾" data-i18n-title-zh="刪除此資料夾" data-i18n-title-en="Delete Active Folder" aria-label="Delete Active Folder" style="display:none;height:26px;width:28px;padding:0;justify-content:center;color:#ef4444;border-color:rgba(239,68,68,0.35);">
                   <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2">
                     <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
                   </svg>
@@ -421,8 +411,10 @@
                       <path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
                     </svg>
                   </button>
-                  <button type="button" class="btn-xs" id="btnMovePreviewScan" title="移動至其他地圖工區或 3D 模型庫資料夾" data-i18n-title-zh="移動至其他地圖工區或 3D 模型庫資料夾" data-i18n-title-en="Move Scan to Map Site or 3D Library Folder" aria-label="Move Scan" style="height:22px;width:24px;padding:0;justify-content:center;flex-shrink:0;color:#38bdf8;border-color:rgba(56,189,248,0.35);">
-                    <span style="font-size:12px;line-height:1;">⇄</span>
+                  <button type="button" class="btn-xs" id="btnMovePreviewScan" title="移動至其他地圖工區或 3D 模型庫資料夾" data-i18n-title-zh="移動至其他地圖工區或 3D 模型庫資料夾" data-i18n-title-en="Move Scan to Map Site or 3D Library Folder" aria-label="Move Scan" style="height:22px;width:24px;padding:0;justify-content:center;flex-shrink:0;">
+                    <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2">
+                      <polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/>
+                    </svg>
                   </button>
                   <button type="button" class="btn-xs" id="btnRerunPreviewScan" title="使用自訂 PIX4Dmatic 參數從原始照片重新建模" data-i18n-title-zh="使用自訂 PIX4Dmatic 參數從原始照片重新建模" data-i18n-title-en="Re-run Scan from Original Photos with Custom PIX4Dmatic Settings" aria-label="Re-run Scan" style="height:22px;width:24px;padding:0;justify-content:center;flex-shrink:0;">
                     <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2">
@@ -465,19 +457,19 @@
                 <button type="button" class="btn-seg" data-lod-mode="auto" title="自動漸進 (依鏡頭距離自動細化)" data-i18n-zh="自動" data-i18n-en="Auto" data-i18n-title-zh="自動漸進 (依鏡頭距離自動細化)" data-i18n-title-en="Auto Progressive (Refine by Camera Distance)">自動</button>
                 <button type="button" class="btn-seg" data-lod-mode="max" title="精細 (強制載入最高解析度圖磚)" data-i18n-zh="精細" data-i18n-en="Max" data-i18n-title-zh="精細 (強制載入最高解析度圖磚)" data-i18n-title-en="Max Detail (Force High-Res Leaf Tiles)">精細</button>
               </div>
-              <button type="button" class="btn-xs active primary" id="btnPreviewAutoRotate" aria-pressed="true" title="切換緩慢自動旋轉 (Auto-Rotate)" data-i18n-title-zh="切換緩慢自動旋轉 (Auto-Rotate)" data-i18n-title-en="Toggle Slow Auto-Rotation" style="gap:3px;">
+              <button type="button" class="btn-xs active primary" id="btnPreviewAutoRotate" aria-pressed="true" title="切換緩慢自動旋轉" data-i18n-title-zh="切換緩慢自動旋轉" data-i18n-title-en="Toggle Slow Auto-Rotation" style="gap:3px;">
                 <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
                   <path d="M21 12a9 9 0 1 1-2.64-6.36"/>
                   <polyline points="21 3 21 9 15 9"/>
                 </svg>
                 <span data-i18n-zh="轉轉" data-i18n-en="Spin">轉轉</span>
               </button>
-              <button type="button" class="btn-xs" id="btnPreviewResetCamera" title="回到首頁視角 (Home)" data-i18n-title-zh="回到首頁視角 (Home)" data-i18n-title-en="Home View">
+              <button type="button" class="btn-xs" id="btnPreviewResetCamera" title="回到首頁視角" data-i18n-title-zh="回到首頁視角" data-i18n-title-en="Home View">
                 <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
                   <path d="M3 9.5L12 3l9 6.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1V9.5z"/>
                 </svg>
               </button>
-              <button type="button" class="btn-xs" id="btnPreviewSetHomeView" title="將目前視角設為此掃描的首頁視角 (Set Home View)" data-i18n-title-zh="將目前視角設為此掃描的首頁視角 (Set Home View)" data-i18n-title-en="Set Current Camera as Default Home View" style="gap:3px;">
+              <button type="button" class="btn-xs" id="btnPreviewSetHomeView" title="將目前視角設為此掃描的首頁視角並更新預覽縮圖" data-i18n-title-zh="將目前視角設為此掃描的首頁視角並更新預覽縮圖" data-i18n-title-en="Set Current Camera as Default Home View &amp; Update Preview Picture" style="gap:3px;">
                 <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
                   <path d="M3 9.5L12 3l9 6.5V20a1 1 0 0 1-1 1h-5.5"/>
                   <polyline points="14 17 16.5 19.5 21 15"/>
@@ -561,7 +553,7 @@
               <button type="button" class="btn-seg active" data-embed-lod="auto" style="padding:2px 7px;font-size:10.5px;" title="自動漸進細化" data-i18n-zh="自動" data-i18n-en="Auto" data-i18n-title-zh="自動漸進細化" data-i18n-title-en="Auto Progressive">自動</button>
             </div>
           </div>
-          <button type="button" class="btn-xs active primary" id="btnEmbedAutoRotate" aria-pressed="true" title="切換緩慢自動旋轉 (Auto-Rotate)" data-i18n-title-zh="切換緩慢自動旋轉 (Auto-Rotate)" data-i18n-title-en="Toggle Slow Auto-Rotation" style="gap:3px;">
+          <button type="button" class="btn-xs active primary" id="btnEmbedAutoRotate" aria-pressed="true" title="切換緩慢自動旋轉" data-i18n-title-zh="切換緩慢自動旋轉" data-i18n-title-en="Toggle Slow Auto-Rotation" style="gap:3px;">
             <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
               <path d="M21 12a9 9 0 1 1-2.64-6.36"/>
               <polyline points="21 3 21 9 15 9"/>
@@ -621,8 +613,10 @@
               <path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
             </svg>
           </button>
-          <button type="button" class="btn-xs" id="btnMoveStudioScan" title="移動至其他地圖工區或 3D 模型庫資料夾" data-i18n-title-zh="移動至其他地圖工區或 3D 模型庫資料夾" data-i18n-title-en="Move Active Scan to Map Site or 3D Library Folder" style="color:#38bdf8;border-color:rgba(56,189,248,0.35);">
-            <span style="font-size:12px;line-height:1;">⇄</span>
+          <button type="button" class="btn-xs" id="btnMoveStudioScan" title="移動至其他地圖工區或 3D 模型庫資料夾" data-i18n-title-zh="移動至其他地圖工區或 3D 模型庫資料夾" data-i18n-title-en="Move Active Scan to Map Site or 3D Library Folder">
+            <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/>
+            </svg>
           </button>
           <button type="button" class="btn-xs" id="btnRerunStudioScan" title="使用自訂 PIX4Dmatic 參數從原始照片重新建模" data-i18n-title-zh="使用自訂 PIX4Dmatic 參數從原始照片重新建模" data-i18n-title-en="Re-run Scan from Original Photos with Custom PIX4Dmatic Settings">
             <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2">
@@ -681,19 +675,19 @@
             <button type="button" class="btn-seg" data-lod-mode="max" title="精細 (強制載入 L2 最高解析度圖磚)" data-i18n-zh="精細" data-i18n-en="Max" data-i18n-title-zh="精細 (強制載入 L2 最高解析度圖磚)" data-i18n-title-en="Max Detail (Force L2 High-Res Tiles)">精細</button>
           </div>
 
-          <button type="button" class="btn-xs" id="btnStudioAutoRotate" aria-pressed="false" title="切換緩慢自動旋轉 (Auto-Rotate)" data-i18n-title-zh="切換緩慢自動旋轉 (Auto-Rotate)" data-i18n-title-en="Toggle Slow Auto-Rotation" style="gap:3px;">
+          <button type="button" class="btn-xs" id="btnStudioAutoRotate" aria-pressed="false" title="切換緩慢自動旋轉" data-i18n-title-zh="切換緩慢自動旋轉" data-i18n-title-en="Toggle Slow Auto-Rotation" style="gap:3px;">
             <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
               <path d="M21 12a9 9 0 1 1-2.64-6.36"/>
               <polyline points="21 3 21 9 15 9"/>
             </svg>
             <span data-i18n-zh="轉轉" data-i18n-en="Spin">轉轉</span>
           </button>
-          <button type="button" class="btn-xs" id="btnStudioResetCamera" title="回到首頁視角 (Home)" data-i18n-title-zh="回到首頁視角 (Home)" data-i18n-title-en="Home View">
+          <button type="button" class="btn-xs" id="btnStudioResetCamera" title="回到首頁視角" data-i18n-title-zh="回到首頁視角" data-i18n-title-en="Home View">
             <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
               <path d="M3 9.5L12 3l9 6.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1V9.5z"/>
             </svg>
           </button>
-          <button type="button" class="btn-xs" id="btnStudioSetHomeView" title="將目前視角設為此掃描的首頁視角 (Set Home View)" data-i18n-title-zh="將目前視角設為此掃描的首頁視角 (Set Home View)" data-i18n-title-en="Set Current Camera as Default Home View" style="gap:3px;">
+          <button type="button" class="btn-xs" id="btnStudioSetHomeView" title="將目前視角設為此掃描的首頁視角並更新預覽縮圖" data-i18n-title-zh="將目前視角設為此掃描的首頁視角並更新預覽縮圖" data-i18n-title-en="Set Current Camera as Default Home View &amp; Update Preview Picture" style="gap:3px;">
             <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
               <path d="M3 9.5L12 3l9 6.5V20a1 1 0 0 1-1 1h-5.5"/>
               <polyline points="14 17 16.5 19.5 21 15"/>
@@ -2319,7 +2313,7 @@
 
         <div id="moveScanNewGroupWrap" style="display:none;">
           <label for="moveScanNewGroupInput" style="display:block;font-size:11.5px;font-weight:700;color:var(--ui-text-secondary);margin-bottom:5px;" data-i18n-zh="輸入新資料夾或新工區名稱：" data-i18n-en="New Folder or Site Name:">輸入新資料夾或新工區名稱：</label>
-          <input type="text" class="gs-input" id="moveScanNewGroupInput" placeholder="例如：人物與角色 (People) 或 新工區名稱" style="width:100%;" />
+          <input type="text" class="gs-input" id="moveScanNewGroupInput" placeholder="例如：人物與角色、無人機設備 或 新工區名稱" data-i18n-placeholder-zh="例如：人物與角色、無人機設備 或 新工區名稱" data-i18n-placeholder-en="e.g. People, Drone Equipment, or New Site Name" style="width:100%;" />
         </div>
 
         <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:4px;">
@@ -2340,18 +2334,18 @@
       <div class="gs-modal-body" style="display:flex;flex-direction:column;gap:12px;">
         <div>
           <label for="libraryFolderNameInput" style="display:block;font-size:11.5px;font-weight:700;color:var(--ui-text-secondary);margin-bottom:5px;" data-i18n-zh="資料夾名稱：" data-i18n-en="Folder Name:">資料夾名稱：</label>
-          <input type="text" class="gs-input" id="libraryFolderNameInput" placeholder="例如：人物與角色 (People)、無人機設備..." style="width:100%;" />
+          <input type="text" class="gs-input" id="libraryFolderNameInput" placeholder="例如：人物與角色、無人機設備..." data-i18n-placeholder-zh="例如：人物與角色、無人機設備..." data-i18n-placeholder-en="e.g. People, Drone Equipment..." style="width:100%;" />
         </div>
         <div>
           <label for="libraryFolderIconSelect" style="display:block;font-size:11.5px;font-weight:700;color:var(--ui-text-secondary);margin-bottom:5px;" data-i18n-zh="資料夾圖示：" data-i18n-en="Folder Icon:">資料夾圖示：</label>
           <select class="gs-select" id="libraryFolderIconSelect" style="width:100%;height:32px;">
-            <option value="📁">📁 資料夾 (Folder)</option>
-            <option value="🧑">🧑 人物與角色 (People)</option>
-            <option value="🚜">🚜 機具與設備 (Equipment)</option>
-            <option value="📦">📦 物件與資產 (Objects)</option>
-            <option value="✨">✨ 3D 高斯潑濺 (Gaussian Splat)</option>
-            <option value="🏛️">🏛️ 建築與室內構件 (Architecture)</option>
-            <option value="🌳">🌳 植栽與自然標本 (Flora / Specimens)</option>
+            <option value="folder" data-i18n-zh="資料夾" data-i18n-en="Folder">資料夾</option>
+            <option value="person" data-i18n-zh="人物與角色" data-i18n-en="People">人物與角色</option>
+            <option value="tool" data-i18n-zh="機具與設備" data-i18n-en="Equipment">機具與設備</option>
+            <option value="cube" data-i18n-zh="一般 3D 模型" data-i18n-en="General 3D Models">一般 3D 模型</option>
+            <option value="sparkles" data-i18n-zh="3D 高斯潑濺" data-i18n-en="Gaussian Splat">3D 高斯潑濺</option>
+            <option value="building" data-i18n-zh="建築與室內構件" data-i18n-en="Architecture">建築與室內構件</option>
+            <option value="tree" data-i18n-zh="植栽與自然標本" data-i18n-en="Flora &amp; Specimens">植栽與自然標本</option>
           </select>
         </div>
         <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:4px;">
@@ -2377,18 +2371,18 @@
   <script src="/lib/GLTFLoader.js"></script>
   <script src="/lib/KTX2Loader.js"></script>
   <script src="/lib/meshopt_decoder.js"></script>
-  <script src="/lib/3d-tiles-renderer.bundle.js?v=20261030_v214"></script>
+  <script src="/lib/3d-tiles-renderer.bundle.js?v=20261030_v215"></script>
 
   <!-- Main GatheringScans Bilingual Translation & Modular Application Logic (< 5,000 lines per module) -->
-  <script src="/i18n.js?v=20261030_v214"></script>
-  <script src="/src/01-core-state.js?v=20261030_v214"></script>
-  <script src="/src/02-map-and-timeline.js?v=20261030_v214"></script>
-  <script src="/src/03-studio-core.js?v=20261030_v214"></script>
-  <script src="/src/04-studio-lasso-and-edits.js?v=20261030_v214"></script>
-  <script src="/src/05-studio-civil-inspectors.js?v=20261030_v214"></script>
-  <script src="/src/06-studio-align-and-optimizer.js?v=20261030_v214"></script>
-  <script src="/src/07-compare-and-queue.js?v=20261030_v214"></script>
-  <script src="/src/08-advanced-surveying-and-qa.js?v=20261030_v214"></script>
-  <script src="/app.js?v=20261030_v214"></script>
+  <script src="/i18n.js?v=20261030_v215"></script>
+  <script src="/src/01-core-state.js?v=20261030_v215"></script>
+  <script src="/src/02-map-and-timeline.js?v=20261030_v215"></script>
+  <script src="/src/03-studio-core.js?v=20261030_v215"></script>
+  <script src="/src/04-studio-lasso-and-edits.js?v=20261030_v215"></script>
+  <script src="/src/05-studio-civil-inspectors.js?v=20261030_v215"></script>
+  <script src="/src/06-studio-align-and-optimizer.js?v=20261030_v215"></script>
+  <script src="/src/07-compare-and-queue.js?v=20261030_v215"></script>
+  <script src="/src/08-advanced-surveying-and-qa.js?v=20261030_v215"></script>
+  <script src="/app.js?v=20261030_v215"></script>
 </body>
 </html>

@@ -564,6 +564,32 @@ class ServerWriteRoutesMixin:
                             "updated_by": actor_email or "engineer@gatheren.cloud",
                         }
                 updated = DB.set_scan_home_view(scan_id, clean_hv)
+                thumb_data_url = str(payload.get("thumbnail_data_url") or payload.get("data_url") or "").strip()
+                fresh_thumb_url = None
+                if "," in thumb_data_url:
+                    try:
+                        b64_part = thumb_data_url.split(",", 1)[1]
+                        raw_bytes = base64.b64decode(b64_part)
+                        if len(raw_bytes) >= 256:
+                            os.makedirs(THUMBS_DIR, exist_ok=True)
+                            with open(os.path.join(THUMBS_DIR, f"{scan_id}.png"), "wb") as tf1:
+                                tf1.write(raw_bytes)
+                            try:
+                                with open(os.path.join(THUMBS_DIR, f"{scan_id.lower()}.png"), "wb") as tf2:
+                                    tf2.write(raw_bytes)
+                            except Exception:
+                                pass
+                            scan_row = updated or DB.get_scan(scan_id) or {}
+                            pdir = scan_row.get("project_dir") or ""
+                            if pdir and os.path.isdir(pdir):
+                                try:
+                                    with open(os.path.join(pdir, "thumbnail.png"), "wb") as pf:
+                                        pf.write(raw_bytes)
+                                except Exception:
+                                    pass
+                            fresh_thumb_url = f"/api/scans/{scan_id}/thumbnail?t={int(time.time())}"
+                    except Exception:
+                        pass
                 try:
                     m_cur = _load_cloud_manifest()
                     if isinstance(m_cur, dict) and isinstance(m_cur.get("scans"), list):
@@ -573,6 +599,8 @@ class ServerWriteRoutesMixin:
                                     s_m["home_view"] = clean_hv
                                 else:
                                     s_m.pop("home_view", None)
+                                if fresh_thumb_url:
+                                    s_m["thumbnail_url"] = fresh_thumb_url
                         m_cur["updated_at"] = int(time.time())
                         _save_cloud_manifest(m_cur)
                 except Exception:
@@ -586,13 +614,17 @@ class ServerWriteRoutesMixin:
                         except Exception:
                             pass
                     threading.Thread(target=_bg_sync_home_view, daemon=True).start()
+                enriched_scan = self._enrich_scan_urls(updated) if updated else None
+                if enriched_scan and fresh_thumb_url:
+                    enriched_scan["thumbnail_url"] = fresh_thumb_url
                 self.send_json(
                     {
                         "status": "ok",
                         "ok": True,
                         "scan_id": scan_id,
                         "home_view": clean_hv,
-                        "scan": self._enrich_scan_urls(updated) if updated else None,
+                        "thumbnail_url": fresh_thumb_url or (enriched_scan.get("thumbnail_url") if enriched_scan else None),
+                        "scan": enriched_scan,
                     }
                 )
                 return
@@ -831,7 +863,7 @@ class ServerWriteRoutesMixin:
                     if not folder_name:
                         self.send_json({"error": "folder_name is required"}, status=400)
                         return
-                    fallback = str(payload.get("fallback_folder") or "一般 3D 模型 (General Models)").strip()
+                    fallback = str(payload.get("fallback_folder") or "General Models").strip()
                     folders = DB.delete_library_folder(folder_name, fallback_folder=fallback)
                 else:
                     if not folder_name:

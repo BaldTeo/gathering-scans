@@ -1505,6 +1505,9 @@
     if (typeof resetStagedEditsForScan === "function") {
       resetStagedEditsForScan(scan);
     }
+    if (typeof cacheLastViewedMapSiteAndScan === "function") {
+      cacheLastViewedMapSiteAndScan(scan.project_group, scan.scan_id);
+    }
 
     const hasValidPrevCenter =
       preserveCamera &&
@@ -2021,7 +2024,10 @@
 
   async function saveCurrentScanHomeView(source = "studio") {
     const ctx = source === "preview" && typeof previewThree !== "undefined" && previewThree ? previewThree : studioThree;
-    const scanId = STATE.activeScanId || STATE.activeScan?.scan_id;
+    const scanId =
+      source === "preview"
+        ? STATE.selectedTimelineScanId || STATE.activeScanId || STATE.activeScan?.scan_id
+        : STATE.activeScanId || STATE.activeScan?.scan_id;
     if (!ctx || !ctx.camera || !ctx.controls || !scanId) return;
     const cam = ctx.camera.position;
     const tgt = ctx.controls.target;
@@ -2031,15 +2037,46 @@
       target: [Number(tgt.x.toFixed(4)), Number(tgt.y.toFixed(4)), Number(tgt.z.toFixed(4))],
       tiles_center: [Number((tc[0] || 0).toFixed(4)), Number((tc[1] || 0).toFixed(4)), Number((tc[2] || 0).toFixed(4))],
     };
+    let thumbDataUrl = "";
     try {
-      const res = await apiPost("/api/scans/home-view", { scan_id: scanId, home_view: homeView });
+      if (ctx.renderer && ctx.scene && ctx.camera) {
+        if (typeof updateGaussianSplatForContext === "function" && ctx.gaussianSplatMesh) {
+          updateGaussianSplatForContext(ctx);
+        }
+        ctx.renderer.render(ctx.scene, ctx.camera);
+        const rawUrl = ctx.renderer.domElement.toDataURL("image/png");
+        if (rawUrl && rawUrl.length >= 1024) {
+          thumbDataUrl = rawUrl;
+        }
+      }
+    } catch (_e) {}
+
+    try {
+      const res = await apiPost("/api/scans/home-view", {
+        scan_id: scanId,
+        home_view: homeView,
+        thumbnail_data_url: thumbDataUrl,
+      });
       const savedHv = (res && res.home_view) ? res.home_view : homeView;
+      const newThumbUrl = res?.thumbnail_url || res?.scan?.thumbnail_url || thumbDataUrl || "";
       if (STATE.activeScan && STATE.activeScan.scan_id === scanId) {
         STATE.activeScan.home_view = savedHv;
+        if (newThumbUrl) STATE.activeScan.thumbnail_url = newThumbUrl;
       }
       const listMatch = (STATE.scans || []).find((s) => s.scan_id === scanId);
-      if (listMatch) listMatch.home_view = savedHv;
-      showToast(tr("✓ 已將目前視角設為此掃描的首頁視角 (Home View)", "✓ Saved current camera as default Home View for this scan"));
+      if (listMatch) {
+        listMatch.home_view = savedHv;
+        if (newThumbUrl) listMatch.thumbnail_url = newThumbUrl;
+      }
+      if (thumbDataUrl || newThumbUrl) {
+        const displaySrc = thumbDataUrl || newThumbUrl;
+        document
+          .querySelectorAll(`img[data-scan-thumb="${scanId}"], .gs-lib-card[data-scan-id="${scanId}"] img`)
+          .forEach((imgEl) => {
+            imgEl.src = displaySrc;
+          });
+      }
+      showToast(tr("✓ 已將目前視角設為首頁視角並更新預覽圖片", "✓ Saved current camera as Home View and updated preview picture"));
     } catch (err) {
       showToast(tr(`設定首頁視角失敗：${err?.message || err}`, `Failed to set Home View: ${err?.message || err}`));
     }
