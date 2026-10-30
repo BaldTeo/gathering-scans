@@ -628,8 +628,9 @@
           project_group: curSite,
         };
       } else {
+        const targetSourceScanId = st.scanId && st.scanId !== "__multi_align__" ? st.scanId : STATE.activeScanId;
         const payload = {
-          scan_id: STATE.activeScanId,
+          scan_id: targetSourceScanId,
           new_scan_name: newScanName,
           deletions: st.deletions,
           crop_keep: st.cropKeep || null,

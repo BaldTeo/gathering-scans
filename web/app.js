@@ -2585,8 +2585,13 @@
       if (!isBackgroundPoll && urlScan && STATE.scans.some((s) => s.scan_id === urlScan)) {
         STATE.activeScanId = urlScan;
       } else if (!STATE.activeScanId || !STATE.scans.some((s) => s.scan_id === STATE.activeScanId)) {
-        if (STATE.scans.length > 0) {
-          const firstReady = STATE.scans.find((s) => s.status === "completed") || STATE.scans[0];
+        // Never silently switch the active Studio scan during a background poll if the user is actively in Studio
+        if (STATE.scans.length > 0 && !(isBackgroundPoll && STATE.activeView === "studio" && STATE.activeScanId)) {
+          const sameProjReady =
+            STATE.activeProjectGroup && STATE.activeProjectGroup !== "__all__"
+              ? STATE.scans.find((s) => s.project_group === STATE.activeProjectGroup && s.status === "completed")
+              : null;
+          const firstReady = sameProjReady || STATE.scans.find((s) => s.status === "completed") || STATE.scans[0];
           STATE.activeScanId = firstReady.scan_id;
         }
       }
