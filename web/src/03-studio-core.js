@@ -449,6 +449,8 @@
     controls.enableZoom = true;
     controls.minDistance = 0.08;
     controls.screenSpacePanning = true;
+    controls.autoRotate = Boolean(STATE.autoRotateEnabled);
+    controls.autoRotateSpeed = Number(STATE.autoRotateSpeed) || 0.45;
     installSurfaceAwareOrbitZoom(renderer.domElement, () => studioThree, { isStudio: true });
     controls.mouseButtons = {
       LEFT: THREE.MOUSE.ROTATE,
@@ -2008,6 +2010,53 @@
   document.getElementById("btnStudioSetHomeView")?.addEventListener("click", () => saveCurrentScanHomeView("studio"));
   document.getElementById("btnPreviewSetHomeView")?.addEventListener("click", () => saveCurrentScanHomeView("preview"));
 
+  function syncAutoRotateUI() {
+    const enabled = Boolean(STATE.autoRotateEnabled);
+    const speed = Number(STATE.autoRotateSpeed) || 0.45;
+    const isToolActive = Boolean(
+      STATE.activeView === "studio" &&
+      ((STATE.activeTool && STATE.activeTool !== "orbit") || STATE.fpMode?.active || STATE.multiAlign?.active)
+    );
+    if (studioThree && studioThree.controls) {
+      studioThree.controls.autoRotate = enabled && !isToolActive;
+      studioThree.controls.autoRotateSpeed = speed;
+    }
+    if (typeof previewThree !== "undefined" && previewThree && previewThree.controls) {
+      previewThree.controls.autoRotate = enabled;
+      previewThree.controls.autoRotateSpeed = speed;
+    }
+    ["btnEmbedAutoRotate", "btnStudioAutoRotate", "btnPreviewAutoRotate"].forEach((id) => {
+      const btn = document.getElementById(id);
+      if (btn) {
+        btn.classList.toggle("active", enabled);
+        btn.classList.toggle("primary", enabled);
+        btn.setAttribute("aria-pressed", enabled ? "true" : "false");
+      }
+    });
+  }
+  window.syncAutoRotateUI = syncAutoRotateUI;
+
+  function setAutoRotateEnabled(enabled, showFeedback = false) {
+    STATE.autoRotateEnabled = Boolean(enabled);
+    syncAutoRotateUI();
+    if (showFeedback && typeof showToast === "function") {
+      showToast(
+        STATE.autoRotateEnabled
+          ? tr("已開啟緩慢自動旋轉", "Slow auto-rotation enabled")
+          : tr("已關閉自動旋轉", "Auto-rotation paused")
+      );
+    }
+  }
+  window.setAutoRotateEnabled = setAutoRotateEnabled;
+
+  function toggleAutoRotate(showFeedback = false) {
+    setAutoRotateEnabled(!STATE.autoRotateEnabled, showFeedback);
+  }
+  window.toggleAutoRotate = toggleAutoRotate;
+
+  document.getElementById("btnStudioAutoRotate")?.addEventListener("click", () => toggleAutoRotate(true));
+  document.getElementById("btnPreviewAutoRotate")?.addEventListener("click", () => toggleAutoRotate(true));
+
   function getScanCrsDisplayLabel(scanObj) {
     const s = scanObj || STATE.activeScan || {};
     const code = inferActiveScanCrsCode(s);
@@ -2834,6 +2883,9 @@
         (STATE.activeTool === "crop" || STATE.activeTool === "crop_delete") && !STATE.studioLassoOrbitMode
           ? "crosshair"
           : "";
+    }
+    if (typeof syncAutoRotateUI === "function") {
+      syncAutoRotateUI();
     }
   }
 

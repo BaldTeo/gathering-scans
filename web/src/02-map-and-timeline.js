@@ -1440,6 +1440,8 @@
     controls.enableZoom = true;
     controls.minDistance = 0.08;
     controls.screenSpacePanning = true;
+    controls.autoRotate = Boolean(STATE.autoRotateEnabled);
+    controls.autoRotateSpeed = Number(STATE.autoRotateSpeed) || 0.45;
     if (typeof installSurfaceAwareOrbitZoom === "function") {
       installSurfaceAwareOrbitZoom(renderer.domElement, () => previewThree);
     }

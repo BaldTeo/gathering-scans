@@ -2806,6 +2806,9 @@
     document.querySelectorAll("#gsEmbedLodSwitcher [data-embed-lod]").forEach((b) => {
       b.classList.toggle("active", b.getAttribute("data-embed-lod") === curLod);
     });
+    if (typeof syncAutoRotateUI === "function") {
+      syncAutoRotateUI();
+    }
     const posterOverlay = document.getElementById("gsEmbedPosterOverlay");
     if (posterOverlay) {
       if (STATE.embedMode === "poster" && !STATE.embedPosterDismissed && activeScan) {
@@ -2822,6 +2825,9 @@
   window.syncEmbedHudUI = syncEmbedHudUI;
 
   function initEmbedHudControls() {
+    document.getElementById("btnEmbedAutoRotate")?.addEventListener("click", () => {
+      if (typeof toggleAutoRotate === "function") toggleAutoRotate(false);
+    });
     document.getElementById("btnEmbedResetCamera")?.addEventListener("click", () => {
       if (typeof frameStudioCamera === "function") frameStudioCamera();
     });

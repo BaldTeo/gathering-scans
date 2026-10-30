@@ -265,6 +265,13 @@
       } catch (_e) {}
       return "rough";
     })(),
+    autoRotateEnabled: (function () {
+      const urlRot = String(_urlParams.get("autorotate") || _urlParams.get("rotate") || "").trim().toLowerCase();
+      if (urlRot === "0" || urlRot === "false" || urlRot === "off") return false;
+      if (urlRot === "1" || urlRot === "true" || urlRot === "on") return true;
+      return true;
+    })(),
+    autoRotateSpeed: 0.45,
   };
   window.STATE = STATE;
 
