@@ -19,5 +19,12 @@
       "created_at": "2026-10-30T11:48:18.711998+00:00"
     }
   ],
-  "scan_assignments": {}
+  "scan_assignments": {
+    "jishi_gauss": {
+      "project_group": "人物與角色 (People)",
+      "project_name_zh": "人物與角色 3D 模型",
+      "group_type": "library",
+      "updated_at": 1793363932.4862006
+    }
+  }
 }
