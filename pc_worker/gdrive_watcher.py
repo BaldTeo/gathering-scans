@@ -1637,6 +1637,8 @@ def _is_direct_scan_folder(folder_path: str) -> bool:
                 or low.endswith("-cesium_mesh.json")
                 or low.endswith(".obj")
                 or low.endswith(".glb")
+                or low.endswith(".ply")
+                or low.endswith(".splat")
             ):
                 return True
     except Exception:
@@ -1645,7 +1647,7 @@ def _is_direct_scan_folder(folder_path: str) -> bool:
 
 
 def _folder_has_completed_scan_assets(folder_path: str) -> bool:
-    """Checks if a folder contains completed scan assets (.obj, .glb, tileset.json, *-cesium_mesh.json, scan_meta.json)."""
+    """Checks if a folder contains completed scan assets (.obj, .glb, .ply, .splat, tileset.json, *-cesium_mesh.json, scan_meta.json)."""
     if not os.path.isdir(folder_path):
         return False
     if _is_raw_pix4dcatch_opf_folder(folder_path):
@@ -1666,6 +1668,8 @@ def _folder_has_completed_scan_assets(folder_path: str) -> bool:
                 or low.endswith("-cesium_mesh.json")
                 or low.endswith(".obj")
                 or (low.endswith(".glb") and rel_depth <= 1)
+                or (low.endswith(".ply") and rel_depth <= 1)
+                or (low.endswith(".splat") and rel_depth <= 1)
             ):
                 return True
     return False
@@ -1835,6 +1839,22 @@ def _discover_folder_scan_item(
     if scan_id.lower().startswith("catch_") and folder_name.lower().startswith("catch_"):
         scan_id = folder_name
 
+    # If a 3D Gaussian Splat (.ply / .compressed.ply / .splat) was dropped into folder_path,
+    # auto-convert it into a tileset + splats.gsplat + oriented surfel GLB + thumbnail.png
+    try:
+        from pc_worker.gaussian_splat_builder import (
+            find_gaussian_splat_source_in_folder,
+            build_gaussian_splat_tileset,
+        )
+
+        gsplat_src = find_gaussian_splat_source_in_folder(folder_path)
+        if gsplat_src and os.path.isfile(gsplat_src):
+            built_gs_ts = build_gaussian_splat_tileset(scan_id, folder_path, gsplat_src, force=False)
+            if built_gs_ts and os.path.isfile(built_gs_ts):
+                tileset_path = built_gs_ts
+    except Exception as e_gs:
+        print(f"[GDriveWatcher] Warning checking Gaussian Splat in {folder_path}: {e_gs}")
+
     # If a completed .obj mesh was dropped without a 3D tileset, auto-build a 4K quadtree tileset on local disk
     # using postprocess_obj_to_tileset so offset.xyz (UTM51N / TWD97) and .mtl Kd factors are properly applied.
     if not (tileset_path and os.path.isfile(tileset_path)) and obj_path and os.path.isfile(obj_path) and os.path.getsize(obj_path) > 1024:
@@ -1936,22 +1956,84 @@ def _discover_folder_scan_item(
         twd_h = 0.0
         crs_val = "LOCAL_ORIGIN"
 
+    is_gaussian_splat = bool(meta.get("is_gaussian_splat"))
+    splat_count = int(meta.get("splat_count") or 0)
+    gaussian_splat_uri = str(meta.get("gaussian_splat_uri") or "")
+    if tileset_path and tileset_path.lower().endswith(".json") and os.path.isfile(tileset_path):
+        try:
+            with open(tileset_path, "r", encoding="utf-8") as tsf:
+                ts_doc_peek = json.load(tsf)
+            ts_extras = ts_doc_peek.get("extras") or {}
+            if ts_extras.get("is_gaussian_splat"):
+                is_gaussian_splat = True
+                splat_count = int(ts_extras.get("splat_count") or splat_count or 0)
+                gaussian_splat_uri = str(ts_extras.get("gaussian_splat_uri") or "tiles/splats.gsplat")
+        except Exception:
+            pass
+
+    # Check library_folders.json for explicit admin move assignments
+    lib_assign: Optional[Dict[str, Any]] = None
+    try:
+        from pc_worker.config import DATA_DIR
+        lib_reg_path = os.path.join(DATA_DIR, "library_folders.json")
+        if os.path.isfile(lib_reg_path):
+            with open(lib_reg_path, "r", encoding="utf-8") as lrf:
+                lib_reg = json.load(lrf)
+            if isinstance(lib_reg, dict):
+                assigns = lib_reg.get("scan_assignments") or {}
+                if scan_id.lower() in assigns and isinstance(assigns[scan_id.lower()], dict):
+                    lib_assign = assigns[scan_id.lower()]
+    except Exception:
+        pass
+
     proj_group = meta.get("project_group")
     proj_zh = meta.get("project_name_zh")
-    if parent_project:
-        proj_group, proj_zh = match_project_group(
-            lat, lon, hint_name=folder_name, parent_project=parent_project, dynamic_clusters=dynamic_clusters
-        )
-    elif not proj_group or proj_group == "Unassigned Site":
-        proj_group, proj_zh = match_project_group(
-            lat,
-            lon,
-            hint_name=folder_name,
-            parent_project=parent_project,
-            dynamic_clusters=dynamic_clusters,
-        )
+    group_type = str(meta.get("group_type") or "").strip().lower()
+    user_edited_project = bool(meta.get("user_edited_project"))
+
+    if lib_assign and lib_assign.get("project_group"):
+        proj_group = str(lib_assign["project_group"]).strip()
+        proj_zh = str(lib_assign.get("project_name_zh") or f"{proj_group} 模型庫")
+        group_type = "site" if str(lib_assign.get("group_type") or "").lower() == "site" else "library"
+        user_edited_project = True
+    elif user_edited_project and proj_group and proj_group != "Unassigned Site":
+        if group_type not in ("site", "library"):
+            group_type = "site" if (lat is not None and lon is not None and crs_val != "LOCAL_ORIGIN") else "library"
+        if group_type == "site":
+            proj_group, proj_zh = _apply_site_rename_override(proj_group, proj_zh or f"{proj_group} 工程掃描群組")
+    elif lat is None or lon is None or crs_val == "LOCAL_ORIGIN":
+        # Non-georeferenced model (not tied to map) -> 3D Model Library folder
+        group_type = "library"
+        if parent_project:
+            proj_group = parent_project
+            proj_zh = f"{parent_project} 模型庫"
+        else:
+            fn_low = folder_name.lower()
+            if any(k in fn_low for k in ("jishi", "person", "people", "human", "man", "woman", "avatar", "character", "人物", "人像")):
+                proj_group = "人物與角色 (People)"
+                proj_zh = "人物與角色 3D 模型"
+            elif any(k in fn_low for k in ("equip", "machine", "excavator", "truck", "crane", "tool", "drone", "device", "機具", "設備")):
+                proj_group = "機具與設備 (Equipment)"
+                proj_zh = "機具與設備 3D 模型"
+            else:
+                proj_group = "一般 3D 模型 (General Models)"
+                proj_zh = "一般非地理定位 3D 模型"
     else:
-        proj_group, proj_zh = _apply_site_rename_override(proj_group, proj_zh or f"{proj_group} 工程掃描群組")
+        group_type = "site"
+        if parent_project:
+            proj_group, proj_zh = match_project_group(
+                lat, lon, hint_name=folder_name, parent_project=parent_project, dynamic_clusters=dynamic_clusters
+            )
+        elif not proj_group or proj_group == "Unassigned Site":
+            proj_group, proj_zh = match_project_group(
+                lat,
+                lon,
+                hint_name=folder_name,
+                parent_project=parent_project,
+                dynamic_clusters=dynamic_clusters,
+            )
+        else:
+            proj_group, proj_zh = _apply_site_rename_override(proj_group, proj_zh or f"{proj_group} 工程掃描群組")
 
     if (
         dynamic_clusters is not None
@@ -2007,13 +2089,23 @@ def _discover_folder_scan_item(
     )
 
     tex_res_val = int(meta.get("texture_resolution", PIX4DMATIC_TEXTURE_SIZE))
-    tex_k_label = "16K" if tex_res_val >= 12288 else ("8K" if tex_res_val >= 6144 else ("4K" if tex_res_val >= 3072 else "2K"))
+    tex_k_label = "3DGS Splat" if is_gaussian_splat else ("16K" if tex_res_val >= 12288 else ("8K" if tex_res_val >= 6144 else ("4K" if tex_res_val >= 3072 else "2K")))
+    default_stage_lbl = (
+        f"Completed (3D Gaussian Splat, {splat_count:,} splats)"
+        if is_gaussian_splat
+        else f"Completed ({crs_val}, {tex_k_label} Web Tileset)"
+    )
     result_item = {
         "scan_id": scan_id,
         "name": resolved_name,
         "user_edited_name": 1 if user_edited else 0,
         "project_group": proj_group,
-        "project_name_zh": proj_zh or "工程掃描群組",
+        "project_name_zh": proj_zh or ("模型庫" if group_type == "library" else "工程掃描群組"),
+        "group_type": group_type,
+        "user_edited_project": user_edited_project,
+        "is_gaussian_splat": is_gaussian_splat,
+        "splat_count": splat_count,
+        "gaussian_splat_uri": gaussian_splat_uri,
         "capture_date": meta.get("capture_date") or _infer_capture_date_from_name(folder_name, stat.st_mtime),
         "uploaded_at": float(meta.get("uploaded_at", stat.st_mtime)),
         "uploader_email": resolved_uploader_email,
@@ -2042,11 +2134,13 @@ def _discover_folder_scan_item(
         "tileset_version": ts_ver,
         "status": meta.get("status", "completed"),
         "progress_pct": float(meta.get("progress_pct", 100.0)),
-        "stage_label": meta.get("stage_label", f"Completed ({crs_val}, {tex_k_label} Web Tileset)"),
+        "stage_label": default_stage_lbl if is_gaussian_splat else meta.get("stage_label", default_stage_lbl),
         "notes": meta.get("notes", f"Dynamically loaded from {folder_path}"),
     }
-    for extra_key in ("merged_from", "derived_from_scan_id", "applied_adjustments"):
-        if extra_key in meta:
+    if is_gaussian_splat and splat_count > 0:
+        result_item["poly_count"] = splat_count
+    for extra_key in ("merged_from", "derived_from_scan_id", "applied_adjustments", "poly_count", "home_view"):
+        if extra_key in meta and extra_key not in result_item:
             result_item[extra_key] = meta[extra_key]
 
     # Persist scan_meta.json on local disk whenever georeferencing, bounding_box, or metadata changed
@@ -2069,6 +2163,9 @@ def _discover_folder_scan_item(
         or (not user_edited and meta.get("name") != resolved_name)
         or meta.get("uploader_name") != resolved_uploader_name
         or meta.get("uploader_email") != resolved_uploader_email
+        or bool(meta.get("is_gaussian_splat")) != is_gaussian_splat
+        or meta.get("group_type") != group_type
+        or meta.get("project_group") != proj_group
     )
     if need_write_meta and is_safe_jailed_path(folder_path, LOCAL_SCANS_ROOT):
         try:

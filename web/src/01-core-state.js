@@ -136,6 +136,10 @@
     embedPosterDismissed: initialEmbedMode !== "poster",
     scans: (_embedBoot && Array.isArray(_embedBoot.scans)) ? _embedBoot.scans : [],
     projects: (_embedBoot && Array.isArray(_embedBoot.projects)) ? _embedBoot.projects : [],
+    libraryFolders: (_embedBoot && Array.isArray(_embedBoot.library_folders)) ? _embedBoot.library_folders : [],
+    leftPaneMode: "map", // 'map' = Google Map Sites | 'library' = 3D Model Library with Folders
+    selectedLibraryFolder: "ALL",
+    librarySearchQuery: "",
     materials: (_embedBoot && _embedBoot.materials) ? _embedBoot.materials : {},
     activeScanId: (_embedBoot && _embedBoot.initial_scan_id) ? String(_embedBoot.initial_scan_id) : (_urlParams.get("scan") || ""),
     activeScan: null,
@@ -392,6 +396,7 @@
     const map = new Map();
     const isGeorefScan = (sc) =>
       sc &&
+      sc.group_type !== "library" &&
       sc.lat !== null &&
       sc.lat !== undefined &&
       sc.lon !== null &&
@@ -407,6 +412,7 @@
         map.set(g, {
           project_group: g,
           project_name_zh: s.project_name_zh || "",
+          group_type: s.group_type || "site",
           lat: null,
           lon: null,
           hasGeoref: false,
@@ -1150,7 +1156,7 @@
       if (el) el.style.display = show ? disp : "none";
     };
 
-    // 1. Rename Site, Rename Scan, Set Home View & Delete Scan buttons (Editor, Admin, Owner only)
+    // 1. Rename Site, Rename Scan, Move Scan, Library Folder Controls, Set Home View & Delete Scan buttons (Editor, Admin, Owner only)
     [
       "btnRenameMapSite",
       "btnRenamePopoverSite",
@@ -1158,6 +1164,11 @@
       "btnRenameStudioSite",
       "btnRenamePreviewScan",
       "btnRenameStudioScan",
+      "btnMovePreviewScan",
+      "btnMoveStudioScan",
+      "btnCreateLibraryFolder",
+      "btnRenameLibraryFolder",
+      "btnDeleteLibraryFolder",
       "btnPreviewSetHomeView",
       "btnStudioSetHomeView",
       "btnDeletePreviewScan",
@@ -1356,5 +1367,923 @@
       console.warn("[GatheringScans] ServiceWorker registration note:", err);
     });
   }
+
+  // ============================================================================
+  // 3D Gaussian Splat (.gsplat) WebGL Instanced EWA Splat Renderer
+  // ============================================================================
+
+  const _GSPLAT_BUFFER_CACHE = new Map();
+
+  function disposeGaussianSplatFromContext(ctx) {
+    if (!ctx || !ctx.gsplatState) return;
+    const st = ctx.gsplatState;
+    ctx.gsplatState = null;
+    if (st.mesh) {
+      if (st.mesh.parent) st.mesh.parent.remove(st.mesh);
+      if (st.mesh.geometry) st.mesh.geometry.dispose();
+      if (st.mesh.material) st.mesh.material.dispose();
+    }
+  }
+
+  function _hideRaycastSurfelMeshes(tilesGroup) {
+    if (!tilesGroup) return;
+    tilesGroup.traverse((child) => {
+      if (child && child.isMesh && child.material && !child.userData?.isGaussianSplatMesh) {
+        const mats = Array.isArray(child.material) ? child.material : [child.material];
+        mats.forEach((m) => {
+          if (!m) return;
+          m.transparent = true;
+          m.opacity = 0.0;
+          m.depthWrite = false;
+          m.colorWrite = false;
+          m.needsUpdate = true;
+        });
+      }
+    });
+  }
+
+  async function loadGaussianSplatIntoContext(ctx, scan, prefix = "studio", onReady = null) {
+    disposeGaussianSplatFromContext(ctx);
+    const tsExtras = ctx?.tilesRenderer?.root?.extras || ctx?.tilesRenderer?.root?.parent?.extras || null;
+    const isGsplat = Boolean(scan?.is_gaussian_splat || tsExtras?.is_gaussian_splat);
+    if (!ctx || !scan || !isGsplat) return null;
+    scan.is_gaussian_splat = true;
+    const THREE = window.THREE;
+    if (!THREE || !ctx.modelPivot) return null;
+
+    const splatUrl =
+      scan.splat_url ||
+      `/stream/${encodeURIComponent(scan.scan_id)}/tiles/splats.gsplat` +
+        (STATE.shareToken ? `?share=${encodeURIComponent(STATE.shareToken)}` : "");
+
+    const expectedScanId = scan.scan_id;
+    let parsed = _GSPLAT_BUFFER_CACHE.get(splatUrl);
+    if (!parsed) {
+      try {
+        const resp = await fetch(splatUrl, { headers: apiHeaders() });
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        const buf = await resp.arrayBuffer();
+        if (buf.byteLength < 16) throw new Error("Invalid .gsplat header");
+        const dv = new DataView(buf);
+        const magic = dv.getUint32(0, true);
+        if (magic !== 0x4c505347 && magic !== 0x544c5053) throw new Error("Unexpected .gsplat magic header");
+        const totalCount = dv.getUint32(8, true);
+        const n = Math.min(totalCount, Math.floor((buf.byteLength - 16) / 32));
+        const f32 = new Float32Array(buf, 16, n * 8);
+        const u8 = new Uint8Array(buf, 16, n * 32);
+
+        const pos = new Float32Array(n * 3);
+        const scale = new Float32Array(n * 3);
+        const quat = new Float32Array(n * 4);
+        const col = new Float32Array(n * 4);
+
+        for (let i = 0; i < n; i++) {
+          const fBase = i * 8;
+          const bBase = i * 32;
+          const i3 = i * 3;
+          const i4 = i * 4;
+          pos[i3] = f32[fBase];
+          pos[i3 + 1] = f32[fBase + 1];
+          pos[i3 + 2] = f32[fBase + 2];
+
+          scale[i3] = Math.max(0.0008, Math.min(0.45, f32[fBase + 3]));
+          scale[i3 + 1] = Math.max(0.0008, Math.min(0.45, f32[fBase + 4]));
+          scale[i3 + 2] = Math.max(0.0008, Math.min(0.45, f32[fBase + 5]));
+
+          col[i4] = u8[bBase + 24] / 255.0;
+          col[i4 + 1] = u8[bBase + 25] / 255.0;
+          col[i4 + 2] = u8[bBase + 26] / 255.0;
+          col[i4 + 3] = u8[bBase + 27] / 255.0;
+
+          let qx = (u8[bBase + 28] / 255.0) * 2.0 - 1.0;
+          let qy = (u8[bBase + 29] / 255.0) * 2.0 - 1.0;
+          let qz = (u8[bBase + 30] / 255.0) * 2.0 - 1.0;
+          let qw = (u8[bBase + 31] / 255.0) * 2.0 - 1.0;
+          const qn = Math.hypot(qx, qy, qz, qw) || 1.0;
+          quat[i4] = qx / qn;
+          quat[i4 + 1] = qy / qn;
+          quat[i4 + 2] = qz / qn;
+          quat[i4 + 3] = qw / qn;
+        }
+        parsed = { count: n, pos, scale, quat, col };
+        if (_GSPLAT_BUFFER_CACHE.size >= 6) {
+          const oldestKey = _GSPLAT_BUFFER_CACHE.keys().next().value;
+          _GSPLAT_BUFFER_CACHE.delete(oldestKey);
+        }
+        _GSPLAT_BUFFER_CACHE.set(splatUrl, parsed);
+      } catch (err) {
+        console.warn("[GaussianSplat] Failed loading .gsplat stream:", err);
+        return null;
+      }
+    }
+
+    if (
+      (prefix === "studio" && STATE.activeScanId !== expectedScanId) ||
+      (prefix === "preview" && ctx.currentScanId && ctx.currentScanId !== expectedScanId)
+    ) {
+      return null;
+    }
+
+    const totalSplats = parsed.count;
+    const baseGeom = new THREE.InstancedBufferGeometry();
+    const quadVerts = new Float32Array([
+      -1.0, -1.0, 0.0,
+       1.0, -1.0, 0.0,
+       1.0,  1.0, 0.0,
+      -1.0,  1.0, 0.0,
+    ]);
+    baseGeom.setAttribute("position", new THREE.BufferAttribute(quadVerts, 3));
+    baseGeom.setIndex([0, 1, 2, 0, 2, 3]);
+
+    const sortedPos = new Float32Array(parsed.pos);
+    const sortedScale = new Float32Array(parsed.scale);
+    const sortedQuat = new Float32Array(parsed.quat);
+    const sortedCol = new Float32Array(parsed.col);
+
+    const attrCenter = new THREE.InstancedBufferAttribute(sortedPos, 3);
+    const attrScale = new THREE.InstancedBufferAttribute(sortedScale, 3);
+    const attrQuat = new THREE.InstancedBufferAttribute(sortedQuat, 4);
+    const attrColor = new THREE.InstancedBufferAttribute(sortedCol, 4);
+    attrCenter.setUsage(THREE.DynamicDrawUsage);
+    attrScale.setUsage(THREE.DynamicDrawUsage);
+    attrQuat.setUsage(THREE.DynamicDrawUsage);
+    attrColor.setUsage(THREE.DynamicDrawUsage);
+
+    baseGeom.setAttribute("splatCenter", attrCenter);
+    baseGeom.setAttribute("splatScale", attrScale);
+    baseGeom.setAttribute("splatQuat", attrQuat);
+    baseGeom.setAttribute("splatColor", attrColor);
+    baseGeom.instanceCount = totalSplats;
+
+    const w = Math.max(1, ctx.container?.clientWidth || 800);
+    const h = Math.max(1, ctx.container?.clientHeight || 600);
+    const dpr = ctx.renderer ? ctx.renderer.getPixelRatio() : (window.devicePixelRatio || 1);
+    const fy = (0.5 * h * dpr) / Math.tan(THREE.MathUtils.degToRad((ctx.camera?.fov || 48) * 0.5));
+    const fx = fy;
+
+    const material = new THREE.ShaderMaterial({
+      uniforms: {
+        uViewport: { value: new THREE.Vector2(w * dpr, h * dpr) },
+        uFocal: { value: new THREE.Vector2(fx, fy) },
+        uBrightness: { value: Number(STATE.scanBrightness || 1.0) },
+      },
+      vertexShader: `
+        attribute vec3 splatCenter;
+        attribute vec3 splatScale;
+        attribute vec4 splatQuat;
+        attribute vec4 splatColor;
+        uniform vec2 uViewport;
+        uniform vec2 uFocal;
+        varying vec4 vColor;
+        varying vec3 vConic;
+        varying vec2 vDeltaPx;
+
+        mat3 quatToMat3(vec4 q) {
+          float x = q.x, y = q.y, z = q.z, w = q.w;
+          float x2 = x + x, y2 = y + y, z2 = z + z;
+          float xx = x * x2, xy = x * y2, xz = x * z2;
+          float yy = y * y2, yz = y * z2, zz = z * z2;
+          float wx = w * x2, wy = w * y2, wz = w * z2;
+          return mat3(
+            1.0 - (yy + zz), xy + wz, xz - wy,
+            xy - wz, 1.0 - (xx + zz), yz + wx,
+            xz + wy, yz - wx, 1.0 - (xx + yy)
+          );
+        }
+
+        void main() {
+          vec4 viewCenter = modelViewMatrix * vec4(splatCenter, 1.0);
+          vec4 clipCenter = projectionMatrix * viewCenter;
+          if (viewCenter.z > -0.05 || splatColor.a < 0.006) {
+            gl_Position = vec4(0.0, 0.0, 2.0, 1.0);
+            return;
+          }
+
+          mat3 R = quatToMat3(splatQuat);
+          mat3 S = mat3(
+            splatScale.x, 0.0, 0.0,
+            0.0, splatScale.y, 0.0,
+            0.0, 0.0, splatScale.z
+          );
+          mat3 M = R * S;
+          mat3 Vrk = M * transpose(M);
+
+          float tz = viewCenter.z;
+          float tz2 = tz * tz;
+          float limX = 1.35 * abs(tz);
+          float limY = 1.35 * abs(tz);
+          float tx = clamp(viewCenter.x, -limX, limX);
+          float ty = clamp(viewCenter.y, -limY, limY);
+
+          mat3 J = mat3(
+            uFocal.x / tz, 0.0, -(uFocal.x * tx) / tz2,
+            0.0, uFocal.y / tz, -(uFocal.y * ty) / tz2,
+            0.0, 0.0, 0.0
+          );
+          mat3 W = transpose(mat3(modelViewMatrix));
+          mat3 T = W * J;
+          mat3 cov2d = transpose(T) * Vrk * T;
+
+          float c00 = cov2d[0][0] + 0.3;
+          float c01 = cov2d[0][1];
+          float c11 = cov2d[1][1] + 0.3;
+          float det = max(c00 * c11 - c01 * c01, 1e-6);
+
+          vConic = vec3(c11 / det, -c01 / det, c00 / det);
+          vColor = splatColor;
+
+          float maxPix = min(max(uViewport.x, uViewport.y) * 0.25, 256.0);
+          vec2 radPx = min(vec2(2.85 * sqrt(c00), 2.85 * sqrt(c11)), vec2(maxPix));
+          vec2 offsetPx = position.xy * radPx;
+          vDeltaPx = offsetPx;
+
+          vec2 screenOffset = offsetPx * 2.0 / uViewport;
+          gl_Position = vec4(clipCenter.xy / clipCenter.w + screenOffset, clipCenter.z / clipCenter.w, 1.0);
+        }
+      `,
+      fragmentShader: `
+        uniform float uBrightness;
+        varying vec4 vColor;
+        varying vec3 vConic;
+        varying vec2 vDeltaPx;
+
+        void main() {
+          float power = -0.5 * (
+            vConic.x * vDeltaPx.x * vDeltaPx.x +
+            2.0 * vConic.y * vDeltaPx.x * vDeltaPx.y +
+            vConic.z * vDeltaPx.y * vDeltaPx.y
+          );
+          if (power > 0.0 || power < -4.0) discard;
+          float alpha = min(0.99, vColor.a * exp(power));
+          if (alpha < (1.0 / 255.0)) discard;
+          vec3 rgb = clamp(vColor.rgb * uBrightness, 0.0, 1.0);
+          gl_FragColor = vec4(rgb, alpha);
+        }
+      `,
+      transparent: true,
+      depthTest: true,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+    });
+
+    const mesh = new THREE.Mesh(baseGeom, material);
+    mesh.frustumCulled = false;
+    mesh.renderOrder = 10;
+    mesh.userData.isGaussianSplatMesh = true;
+    if (ctx.tilesRenderer && ctx.tilesRenderer.group) {
+      mesh.position.copy(ctx.tilesRenderer.group.position);
+      _hideRaycastSurfelMeshes(ctx.tilesRenderer.group);
+    }
+    ctx.modelPivot.add(mesh);
+
+    ctx.gsplatState = {
+      scanId: expectedScanId,
+      mesh,
+      material,
+      geom: baseGeom,
+      src: parsed,
+      attrCenter,
+      attrScale,
+      attrQuat,
+      attrColor,
+      lastCamDir: new THREE.Vector3(0, 0, 0),
+      lastActiveCount: 0,
+      sortCounts: new Uint32Array(65536),
+      sortKeys: new Uint16Array(totalSplats),
+      sortIndices: new Uint32Array(totalSplats),
+    };
+
+    updateGaussianSplatForContext(ctx, prefix, true);
+    if (typeof onReady === "function") onReady(mesh);
+    return mesh;
+  }
+
+  function updateGaussianSplatForContext(ctx, prefix = "studio", forceSort = false) {
+    if (!ctx || !ctx.gsplatState || !ctx.camera || !ctx.renderer) return;
+    const THREE = window.THREE;
+    const st = ctx.gsplatState;
+    if (!st.mesh || !st.src) return;
+
+    if (ctx.tilesRenderer && ctx.tilesRenderer.group) {
+      st.mesh.position.copy(ctx.tilesRenderer.group.position);
+      _hideRaycastSurfelMeshes(ctx.tilesRenderer.group);
+    }
+
+    const w = Math.max(1, ctx.container?.clientWidth || 800);
+    const h = Math.max(1, ctx.container?.clientHeight || 600);
+    const dpr = ctx.renderer.getPixelRatio() || 1;
+    const fy = (0.5 * h * dpr) / Math.tan(THREE.MathUtils.degToRad((ctx.camera.fov || 48) * 0.5));
+    st.material.uniforms.uViewport.value.set(w * dpr, h * dpr);
+    st.material.uniforms.uFocal.value.set(fy, fy);
+    st.material.uniforms.uBrightness.value = Number(STATE.scanBrightness || 1.0);
+
+    const mode = String((prefix === "preview" ? STATE.previewLodMode : STATE.scanLodMode) || ctx.qualityMode || "auto");
+    const total = st.src.count;
+    const activeCount = mode === "rough" ? Math.min(total, 48000) : total;
+
+    // Camera view direction transformed into Z-up modelPivot space (since modelPivot has rotation.x = -PI/2)
+    const camDirWorld = new THREE.Vector3();
+    ctx.camera.getWorldDirection(camDirWorld);
+    // Inverse of R_x(-90 deg) is R_x(+90 deg): (x, y, z)_world -> (x, -z, y)_zup
+    const vx = camDirWorld.x;
+    const vy = -camDirWorld.z;
+    const vz = camDirWorld.y;
+
+    const dirDelta =
+      Math.hypot(vx - st.lastCamDir.x, vy - st.lastCamDir.y, vz - st.lastCamDir.z) +
+      (st.lastActiveCount !== activeCount ? 1.0 : 0.0);
+
+    if (!forceSort && dirDelta < 0.025) return;
+    st.lastCamDir.set(vx, vy, vz);
+    st.lastActiveCount = activeCount;
+
+    const srcPos = st.src.pos;
+    const srcScale = st.src.scale;
+    const srcQuat = st.src.quat;
+    const srcCol = st.src.col;
+
+    // 16-bit counting sort from farthest to nearest (back-to-front alpha compositing)
+    let minD = Infinity;
+    let maxD = -Infinity;
+    for (let i = 0; i < activeCount; i++) {
+      const i3 = i * 3;
+      const d = srcPos[i3] * vx + srcPos[i3 + 1] * vy + srcPos[i3 + 2] * vz;
+      if (d < minD) minD = d;
+      if (d > maxD) maxD = d;
+    }
+    const span = Math.max(1e-5, maxD - minD);
+    const invSpan = 65535.0 / span;
+    const counts = st.sortCounts;
+    const keys = st.sortKeys;
+    const indices = st.sortIndices;
+    counts.fill(0);
+
+    for (let i = 0; i < activeCount; i++) {
+      const i3 = i * 3;
+      const d = srcPos[i3] * vx + srcPos[i3 + 1] * vy + srcPos[i3 + 2] * vz;
+      // Farthest (larger d along view forward vector) -> smaller bucket index 0..65535
+      const k = Math.max(0, Math.min(65535, ((maxD - d) * invSpan) | 0));
+      keys[i] = k;
+      counts[k]++;
+    }
+    let sum = 0;
+    for (let b = 0; b < 65536; b++) {
+      const c = counts[b];
+      counts[b] = sum;
+      sum += c;
+    }
+    for (let i = 0; i < activeCount; i++) {
+      const k = keys[i];
+      indices[counts[k]++] = i;
+    }
+
+    const dstPos = st.attrCenter.array;
+    const dstScale = st.attrScale.array;
+    const dstQuat = st.attrQuat.array;
+    const dstCol = st.attrColor.array;
+
+    for (let outIdx = 0; outIdx < activeCount; outIdx++) {
+      const srcIdx = indices[outIdx];
+      const s3 = srcIdx * 3;
+      const s4 = srcIdx * 4;
+      const d3 = outIdx * 3;
+      const d4 = outIdx * 4;
+
+      dstPos[d3] = srcPos[s3];
+      dstPos[d3 + 1] = srcPos[s3 + 1];
+      dstPos[d3 + 2] = srcPos[s3 + 2];
+
+      dstScale[d3] = srcScale[s3];
+      dstScale[d3 + 1] = srcScale[s3 + 1];
+      dstScale[d3 + 2] = srcScale[s3 + 2];
+
+      dstQuat[d4] = srcQuat[s4];
+      dstQuat[d4 + 1] = srcQuat[s4 + 1];
+      dstQuat[d4 + 2] = srcQuat[s4 + 2];
+      dstQuat[d4 + 3] = srcQuat[s4 + 3];
+
+      dstCol[d4] = srcCol[s4];
+      dstCol[d4 + 1] = srcCol[s4 + 1];
+      dstCol[d4 + 2] = srcCol[s4 + 2];
+      dstCol[d4 + 3] = srcCol[s4 + 3];
+    }
+
+    st.geom.instanceCount = activeCount;
+    st.attrCenter.needsUpdate = true;
+    st.attrScale.needsUpdate = true;
+    st.attrQuat.needsUpdate = true;
+    st.attrColor.needsUpdate = true;
+  }
+
+  // ============================================================================
+  // 3D Model Library with Folders & Admin Move Scan Between Sites and Folders
+  // ============================================================================
+
+  function isLibraryScan(scan) {
+    if (!scan) return false;
+    if (scan.group_type === "library") return true;
+    if (scan.group_type === "site") return false;
+    const crs = String(scan.crs || "").toUpperCase();
+    return scan.lat == null || scan.lon == null || crs.includes("LOCAL");
+  }
+
+  function getLibraryScansList() {
+    return (STATE.scans || []).filter((s) => isLibraryScan(s));
+  }
+
+  function getMapSiteProjectsList() {
+    return (STATE.projects || []).filter((p) => p.group_type !== "library");
+  }
+
+  function getLibraryFoldersList() {
+    const byKey = new Map();
+    const addFolder = (name, zh, icon) => {
+      const clean = String(name || "").trim();
+      if (!clean) return;
+      const k = clean.toLowerCase();
+      if (!byKey.has(k)) {
+        byKey.set(k, {
+          folder_name: clean,
+          folder_name_zh: zh || `${clean} 模型庫`,
+          icon: icon || "folder",
+          scan_count: 0,
+          scans: [],
+        });
+      }
+    };
+
+    (STATE.libraryFolders || []).forEach((f) => {
+      if (f && f.folder_name) addFolder(f.folder_name, f.folder_name_zh, f.icon);
+    });
+    if (byKey.size === 0) {
+      addFolder("人物與角色 (People)", "人物與角色 3D 模型", "person");
+      addFolder("機具與設備 (Equipment)", "機具與設備 3D 模型", "tool");
+      addFolder("一般 3D 模型 (General Models)", "一般非地理定位 3D 模型", "cube");
+    }
+
+    getLibraryScansList().forEach((s) => {
+      const grp = String(s.project_group || "一般 3D 模型 (General Models)").trim();
+      addFolder(grp, s.project_name_zh, "cube");
+      const entry = byKey.get(grp.toLowerCase());
+      if (entry) {
+        entry.scan_count += 1;
+        entry.scans.push(s);
+      }
+    });
+
+    return Array.from(byKey.values());
+  }
+
+  function setLeftPaneMode(mode, folderName = null) {
+    const nextMode = mode === "library" ? "library" : "map";
+    STATE.leftPaneMode = nextMode;
+    if (folderName) {
+      STATE.selectedLibraryFolder = folderName;
+    }
+
+    const mapBtn = document.getElementById("btnLeftModeMap");
+    const libBtn = document.getElementById("btnLeftModeLibrary");
+    const navLibBtn = document.getElementById("btnNavLibrary");
+    const navMapBtn = document.getElementById("btnNavMap");
+    const libOverlay = document.getElementById("modelLibraryOverlay");
+
+    if (mapBtn) mapBtn.classList.toggle("active", nextMode === "map");
+    if (libBtn) libBtn.classList.toggle("active", nextMode === "library");
+    if (navLibBtn) navLibBtn.classList.toggle("active", STATE.activeView === "map" && nextMode === "library");
+    if (navMapBtn) navMapBtn.classList.toggle("active", STATE.activeView === "map" && nextMode === "map");
+    if (libOverlay) {
+      libOverlay.style.display = nextMode === "library" ? "flex" : "none";
+    }
+
+    renderModelLibraryView();
+    if (nextMode === "library") {
+      const libScans = getLibraryScansList();
+      const targetScan =
+        (folderName && folderName !== "ALL"
+          ? libScans.find((s) => String(s.project_group || "").toLowerCase() === String(folderName).toLowerCase())
+          : null) || libScans[0];
+      if (targetScan && typeof openSiteTimeline === "function") {
+        openSiteTimeline(targetScan.project_group, targetScan.scan_id);
+      }
+    }
+  }
+
+  function renderModelLibraryView() {
+    const folders = getLibraryFoldersList();
+    const allLibScans = getLibraryScansList();
+
+    const badgeEl = document.getElementById("libraryTotalCountBadge");
+    if (badgeEl) badgeEl.textContent = String(allLibScans.length);
+    const navBadgeEl = document.getElementById("navLibraryCountBadge");
+    if (navBadgeEl) navBadgeEl.textContent = String(allLibScans.length);
+
+    const foldersBar = document.getElementById("libraryFoldersBar");
+    const gridEl = document.getElementById("libraryModelsGrid");
+    if (!foldersBar || !gridEl) return;
+
+    const info = getCurrentUserRoleInfo();
+    const canEdit = Boolean(info.canEditNames && !STATE.isEmbedded);
+
+    const iconMap = {
+      person: "👤",
+      tool: "🛠️",
+      cube: "🧊",
+      folder: "📁",
+    };
+
+    const selFolder = STATE.selectedLibraryFolder || "ALL";
+    let pillsHtml = `
+      <button type="button" class="gs-lib-folder-pill ${selFolder === "ALL" ? "active" : ""}" data-folder="ALL">
+        <span>📦 ${tr("全部模型", "All Models")}</span>
+        <span class="gs-lib-folder-count">${allLibScans.length}</span>
+      </button>
+    `;
+    folders.forEach((f) => {
+      const isAct = selFolder.toLowerCase() === f.folder_name.toLowerCase();
+      const ico = iconMap[f.icon] || "📁";
+      const safeName = f.folder_name.replace(/"/g, "&quot;");
+      pillsHtml += `
+        <button type="button" class="gs-lib-folder-pill ${isAct ? "active" : ""}" data-folder="${safeName}">
+          <span>${ico} ${f.folder_name}</span>
+          <span class="gs-lib-folder-count">${f.scan_count}</span>
+        </button>
+      `;
+    });
+    foldersBar.innerHTML = pillsHtml;
+
+    foldersBar.querySelectorAll(".gs-lib-folder-pill").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const fname = btn.getAttribute("data-folder") || "ALL";
+        STATE.selectedLibraryFolder = fname;
+        renderModelLibraryView();
+        if (fname !== "ALL") {
+          const matchScan = allLibScans.find((s) => String(s.project_group || "").toLowerCase() === fname.toLowerCase());
+          if (matchScan && typeof openSiteTimeline === "function") {
+            openSiteTimeline(matchScan.project_group, matchScan.scan_id);
+          }
+        }
+      });
+    });
+
+    const btnRenFolder = document.getElementById("btnRenameLibraryFolder");
+    const btnDelFolder = document.getElementById("btnDeleteLibraryFolder");
+    if (btnRenFolder) btnRenFolder.style.display = canEdit && selFolder !== "ALL" ? "inline-flex" : "none";
+    if (btnDelFolder) btnDelFolder.style.display = canEdit && selFolder !== "ALL" ? "inline-flex" : "none";
+
+    const q = String(STATE.librarySearchQuery || "").trim().toLowerCase();
+    const filteredScans = allLibScans.filter((s) => {
+      if (selFolder !== "ALL" && String(s.project_group || "").toLowerCase() !== selFolder.toLowerCase()) {
+        return false;
+      }
+      if (!q) return true;
+      return (
+        String(s.name || "").toLowerCase().includes(q) ||
+        String(s.scan_id || "").toLowerCase().includes(q) ||
+        String(s.project_group || "").toLowerCase().includes(q)
+      );
+    });
+
+    if (filteredScans.length === 0) {
+      gridEl.innerHTML = `
+        <div class="gs-lib-empty-state">
+          <div style="font-size:28px;margin-bottom:8px;">📦</div>
+          <div style="font-weight:700;color:#e2e8f0;margin-bottom:4px;">${tr("此資料夾尚無 3D 模型", "No 3D models in this folder yet")}</div>
+          <div style="font-size:12px;color:#94a3b8;max-width:360px;">
+            ${tr("上傳不含 offset.xyz 的高斯潑濺 (.ply / .splat) 或一般 3D 模型即可自動歸入模型庫，管理員亦可將任何工區掃描移動至此資料夾。", "Upload Gaussian Splats (.ply / .splat) or 3D models without offset.xyz, or use the Admin Move button to move any scan into this folder.")}
+          </div>
+        </div>
+      `;
+      return;
+    }
+
+    gridEl.innerHTML = filteredScans
+      .map((s) => {
+        const isGs = Boolean(s.is_gaussian_splat);
+        const typeBadge = isGs
+          ? `<span class="gs-lib-type-badge gsplat">✨ 3DGS 高斯潑濺</span>`
+          : `<span class="gs-lib-type-badge mesh">🧊 3D Mesh</span>`;
+        const metricText = isGs
+          ? `${Number(s.splat_count || s.poly_count || 0).toLocaleString()} Splats`
+          : `${Number(s.poly_count || 0).toLocaleString()} Tris`;
+        const sizeMb = Number(s.scan_size_mb || (s.size_bytes ? s.size_bytes / (1024 * 1024) : 0)).toFixed(1);
+        const isSelected = STATE.selectedTimelineScanId === s.scan_id || STATE.activeScanId === s.scan_id;
+        return `
+          <div class="gs-lib-card ${isSelected ? "active" : ""}" data-scan-id="${s.scan_id}">
+            <div class="gs-lib-card-thumb-wrap">
+              <img src="${s.thumbnail_url || `/api/scans/${s.scan_id}/thumbnail`}" alt="${s.name}" loading="lazy" />
+              ${typeBadge}
+              <span class="gs-lib-folder-tag">📁 ${s.project_group || ""}</span>
+            </div>
+            <div class="gs-lib-card-body">
+              <div class="gs-lib-card-title" title="${s.name}">${s.name}</div>
+              <div class="gs-lib-card-meta">
+                <span>${metricText}</span>
+                <span>·</span>
+                <span>${sizeMb} MB</span>
+                <span>·</span>
+                <span>${s.capture_date || ""}</span>
+              </div>
+              <div class="gs-lib-card-actions">
+                <button type="button" class="gs-btn gs-btn-xs gs-btn-secondary js-lib-preview" data-scan-id="${s.scan_id}">
+                  👁️ ${tr("預覽", "Preview")}
+                </button>
+                <button type="button" class="gs-btn gs-btn-xs gs-btn-primary js-lib-studio" data-scan-id="${s.scan_id}">
+                  🚀 ${tr("3D 工作室", "Studio")}
+                </button>
+                ${
+                  canEdit
+                    ? `<button type="button" class="gs-btn gs-btn-xs gs-btn-secondary js-lib-move" data-scan-id="${s.scan_id}" title="${tr("移動至其他模型庫資料夾或地圖工區", "Move to another Library Folder or Map Site")}">
+                        ⇄ ${tr("移動", "Move")}
+                      </button>`
+                    : ""
+                }
+              </div>
+            </div>
+          </div>
+        `;
+      })
+      .join("");
+
+    gridEl.querySelectorAll(".gs-lib-card").forEach((card) => {
+      const sid = card.getAttribute("data-scan-id");
+      const scanObj = STATE.scans.find((x) => x.scan_id === sid);
+      if (!scanObj) return;
+      card.addEventListener("click", (ev) => {
+        if (ev.target.closest("button")) return;
+        if (typeof openSiteTimeline === "function") {
+          openSiteTimeline(scanObj.project_group, scanObj.scan_id);
+        }
+      });
+    });
+
+    gridEl.querySelectorAll(".js-lib-preview").forEach((btn) => {
+      btn.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        const sid = btn.getAttribute("data-scan-id");
+        const scanObj = STATE.scans.find((x) => x.scan_id === sid);
+        if (scanObj && typeof openSiteTimeline === "function") {
+          openSiteTimeline(scanObj.project_group, scanObj.scan_id);
+        }
+      });
+    });
+
+    gridEl.querySelectorAll(".js-lib-studio").forEach((btn) => {
+      btn.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        const sid = btn.getAttribute("data-scan-id");
+        if (sid && typeof switchView === "function") {
+          switchView("studio", sid);
+        }
+      });
+    });
+
+    gridEl.querySelectorAll(".js-lib-move").forEach((btn) => {
+      btn.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        const sid = btn.getAttribute("data-scan-id");
+        if (sid) openMoveScanModal(sid);
+      });
+    });
+  }
+
+  function _populateMoveScanTargetDropdown(targetType, currentGroup = "") {
+    const sel = document.getElementById("moveScanTargetSelect");
+    const newWrap = document.getElementById("moveScanNewGroupWrap");
+    if (!sel) return;
+
+    let options = [];
+    if (targetType === "library") {
+      const folders = getLibraryFoldersList();
+      options = folders.map((f) => ({
+        value: f.folder_name,
+        label: `📁 ${f.folder_name} (${f.scan_count})`,
+      }));
+    } else {
+      const sites = getMapSiteProjectsList();
+      options = sites.map((p) => ({
+        value: p.project_group,
+        label: `📍 ${p.project_group}${p.project_name_zh ? ` — ${p.project_name_zh}` : ""} (${p.scan_count || 0})`,
+      }));
+    }
+
+    let html = options
+      .map((o) => {
+        const safeVal = String(o.value).replace(/"/g, "&quot;");
+        const isSel = String(o.value).toLowerCase() === String(currentGroup || "").toLowerCase();
+        return `<option value="${safeVal}" ${isSel ? "selected" : ""}>${o.label}</option>`;
+      })
+      .join("");
+    html += `<option value="__NEW__">＋ ${
+      targetType === "library"
+        ? tr("建立新模型庫資料夾...", "Create New Library Folder...")
+        : tr("建立新地圖工區...", "Create New Map Site...")
+    }</option>`;
+    sel.innerHTML = html;
+    if (newWrap) {
+      newWrap.style.display = sel.value === "__NEW__" ? "block" : "none";
+    }
+  }
+
+  function openMoveScanModal(scanId) {
+    const scan =
+      STATE.scans.find((s) => s.scan_id === scanId) ||
+      STATE.activeScan ||
+      STATE.scans.find((s) => s.scan_id === STATE.selectedTimelineScanId);
+    if (!scan) return;
+
+    const modal = document.getElementById("moveScanModal");
+    if (!modal) return;
+    modal.dataset.scanId = scan.scan_id;
+
+    const nameEl = document.getElementById("moveScanCurrentName");
+    if (nameEl) {
+      nameEl.textContent = `${scan.name} (${scan.project_group || ""})`;
+    }
+
+    const curType = isLibraryScan(scan) ? "library" : "site";
+    const typeLibRadio = document.getElementById("moveScanTypeLibrary");
+    const typeSiteRadio = document.getElementById("moveScanTypeSite");
+    if (typeLibRadio) typeLibRadio.checked = curType === "library";
+    if (typeSiteRadio) typeSiteRadio.checked = curType === "site";
+
+    const newInp = document.getElementById("moveScanNewGroupInput");
+    if (newInp) newInp.value = "";
+
+    _populateMoveScanTargetDropdown(curType, scan.project_group);
+    modal.style.display = "flex";
+  }
+
+  async function submitMoveScanModal() {
+    const modal = document.getElementById("moveScanModal");
+    const scanId = modal?.dataset?.scanId;
+    if (!scanId) return;
+
+    const typeLibRadio = document.getElementById("moveScanTypeLibrary");
+    const targetType = typeLibRadio && typeLibRadio.checked ? "library" : "site";
+    const sel = document.getElementById("moveScanTargetSelect");
+    const newInp = document.getElementById("moveScanNewGroupInput");
+
+    let targetGroup = sel ? sel.value : "";
+    if (targetGroup === "__NEW__") {
+      targetGroup = String(newInp?.value || "").trim();
+    }
+    if (!targetGroup) {
+      if (typeof showToast === "function") {
+        showToast(tr("請輸入或選擇目標資料夾 / 工區名稱", "Please select or enter a target folder / site name"), "warning");
+      }
+      return;
+    }
+
+    const submitBtn = document.getElementById("btnConfirmMoveScan");
+    if (submitBtn) submitBtn.disabled = true;
+    try {
+      const res = await apiPost("/api/scans/move", {
+        scan_id: scanId,
+        target_group: targetGroup,
+        target_type: targetType,
+      });
+      if (Array.isArray(res.scans)) STATE.scans = res.scans;
+      if (Array.isArray(res.projects)) STATE.projects = res.projects;
+      if (Array.isArray(res.library_folders)) STATE.libraryFolders = res.library_folders;
+
+      const updatedScan = STATE.scans.find((s) => s.scan_id === scanId);
+      if (updatedScan && STATE.activeScanId === scanId) {
+        STATE.activeScan = updatedScan;
+      }
+      STATE.activeProjectGroup = targetGroup;
+      if (targetType === "library") {
+        STATE.selectedLibraryFolder = targetGroup;
+      }
+
+      if (modal) modal.style.display = "none";
+      populateProjectScanDropdowns(targetGroup, scanId);
+      if (typeof renderMapClusters === "function") renderMapClusters();
+      renderModelLibraryView();
+      if (typeof openSiteTimeline === "function") {
+        openSiteTimeline(targetGroup, scanId);
+      }
+      if (typeof showToast === "function") {
+        showToast(
+          tr(
+            `已將「${updatedScan?.name || scanId}」移動至 ${targetType === "library" ? "📦 模型庫資料夾" : "🗺️ 地圖工區"}「${targetGroup}」`,
+            `Moved "${updatedScan?.name || scanId}" to ${targetType === "library" ? "Library Folder" : "Map Site"} "${targetGroup}"`
+          ),
+          "success"
+        );
+      }
+    } catch (err) {
+      if (typeof showToast === "function") {
+        showToast(err.message || "Failed to move scan", "error");
+      }
+    } finally {
+      if (submitBtn) submitBtn.disabled = false;
+    }
+  }
+
+  function openLibraryFolderModal(mode = "create") {
+    const modal = document.getElementById("libraryFolderModal");
+    if (!modal) return;
+    modal.dataset.mode = mode;
+    const titleEl = document.getElementById("libraryFolderModalTitle");
+    const inpName = document.getElementById("libraryFolderNameInput");
+    const inpIcon = document.getElementById("libraryFolderIconSelect");
+
+    if (mode === "rename" && STATE.selectedLibraryFolder && STATE.selectedLibraryFolder !== "ALL") {
+      const curName = STATE.selectedLibraryFolder;
+      modal.dataset.oldName = curName;
+      if (titleEl) titleEl.textContent = `✎ ${tr("重新命名模型庫資料夾", "Rename Library Folder")}`;
+      if (inpName) inpName.value = curName;
+      const curObj = getLibraryFoldersList().find((f) => f.folder_name.toLowerCase() === curName.toLowerCase());
+      if (inpIcon && curObj) inpIcon.value = curObj.icon || "folder";
+    } else {
+      modal.dataset.oldName = "";
+      if (titleEl) titleEl.textContent = `📁 ${tr("新增 3D 模型庫資料夾", "Create 3D Model Library Folder")}`;
+      if (inpName) inpName.value = "";
+      if (inpIcon) inpIcon.value = "cube";
+    }
+    modal.style.display = "flex";
+    setTimeout(() => inpName?.focus(), 40);
+  }
+
+  async function submitLibraryFolderModal() {
+    const modal = document.getElementById("libraryFolderModal");
+    if (!modal) return;
+    const mode = modal.dataset.mode || "create";
+    const oldName = modal.dataset.oldName || "";
+    const inpName = document.getElementById("libraryFolderNameInput");
+    const inpIcon = document.getElementById("libraryFolderIconSelect");
+    const newName = String(inpName?.value || "").trim();
+    const icon = String(inpIcon?.value || "folder").trim();
+    if (!newName) return;
+
+    const btn = document.getElementById("btnConfirmLibraryFolder");
+    if (btn) btn.disabled = true;
+    try {
+      const payload =
+        mode === "rename"
+          ? { action: "rename", old_folder_name: oldName, new_folder_name: newName, icon }
+          : { action: "create", folder_name: newName, icon };
+      const res = await apiPost("/api/library/folders", payload);
+      if (Array.isArray(res.library_folders)) STATE.libraryFolders = res.library_folders;
+      if (Array.isArray(res.projects)) STATE.projects = res.projects;
+      if (Array.isArray(res.scans)) STATE.scans = res.scans;
+      STATE.selectedLibraryFolder = newName;
+      modal.style.display = "none";
+      renderModelLibraryView();
+      populateProjectScanDropdowns(STATE.activeProjectGroup, STATE.activeScanId);
+      if (typeof renderMapClusters === "function") renderMapClusters();
+      if (typeof showToast === "function") {
+        showToast(
+          mode === "rename"
+            ? tr(`已重新命名資料夾為「${newName}」`, `Renamed folder to "${newName}"`)
+            : tr(`已建立模型庫資料夾「${newName}」`, `Created library folder "${newName}"`),
+          "success"
+        );
+      }
+    } catch (err) {
+      if (typeof showToast === "function") showToast(err.message || "Folder operation failed", "error");
+    } finally {
+      if (btn) btn.disabled = false;
+    }
+  }
+
+  async function deleteActiveLibraryFolder() {
+    const cur = STATE.selectedLibraryFolder;
+    if (!cur || cur === "ALL") return;
+    try {
+      const res = await apiPost("/api/library/folders", {
+        action: "delete",
+        folder_name: cur,
+      });
+      if (Array.isArray(res.library_folders)) STATE.libraryFolders = res.library_folders;
+      if (Array.isArray(res.projects)) STATE.projects = res.projects;
+      if (Array.isArray(res.scans)) STATE.scans = res.scans;
+      STATE.selectedLibraryFolder = "ALL";
+      renderModelLibraryView();
+      populateProjectScanDropdowns(STATE.activeProjectGroup, STATE.activeScanId);
+      if (typeof renderMapClusters === "function") renderMapClusters();
+      if (typeof showToast === "function") {
+        showToast(tr(`已刪除資料夾「${cur}」`, `Deleted folder "${cur}"`), "info");
+      }
+    } catch (err) {
+      if (typeof showToast === "function") showToast(err.message || "Failed to delete folder", "error");
+    }
+  }
+
+  window.isLibraryScan = isLibraryScan;
+  window.getLibraryScansList = getLibraryScansList;
+  window.getLibraryFoldersList = getLibraryFoldersList;
+  window.setLeftPaneMode = setLeftPaneMode;
+  window.renderModelLibraryView = renderModelLibraryView;
+  window._populateMoveScanTargetDropdown = _populateMoveScanTargetDropdown;
+  window.openMoveScanModal = openMoveScanModal;
+  window.submitMoveScanModal = submitMoveScanModal;
+  window.openLibraryFolderModal = openLibraryFolderModal;
+  window.submitLibraryFolderModal = submitLibraryFolderModal;
+  window.deleteActiveLibraryFolder = deleteActiveLibraryFolder;
+  window.loadGaussianSplatIntoContext = loadGaussianSplatIntoContext;
+  window.updateGaussianSplatForContext = updateGaussianSplatForContext;
+  window.disposeGaussianSplatFromContext = disposeGaussianSplatFromContext;
+
 
 

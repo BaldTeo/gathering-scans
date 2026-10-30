@@ -766,6 +766,101 @@ class ServerWriteRoutesMixin:
                 )
                 return
 
+            # 1d-1. Move Scan(s) Between Map Sites and 3D Model Library Folders (/api/scans/move, /api/library/move-scan)
+            if path in ("/api/scans/move", "/api/library/move-scan") or (path.startswith("/api/scans/") and path.endswith("/move")):
+                if not (actor_perms.get("can_edit_names") or actor_perms.get("can_manage_users")):
+                    self.send_json({"error": f"Role '{actor_role}' cannot move scans between sites and folders (Admin, Owner, or Editor required)."}, status=403)
+                    return
+                raw_ids = payload.get("scan_ids")
+                if not isinstance(raw_ids, list):
+                    single_id = str(payload.get("scan_id") or "").strip()
+                    if not single_id and path.startswith("/api/scans/") and path.endswith("/move"):
+                        single_id = path[len("/api/scans/") : -len("/move")].strip("/")
+                    raw_ids = [single_id] if single_id else []
+                scan_ids = [str(x).strip() for x in raw_ids if str(x).strip()]
+                target_group = str(payload.get("target_group") or payload.get("project_group") or payload.get("folder_name") or "").strip()
+                target_zh = str(payload.get("target_group_zh") or payload.get("project_name_zh") or payload.get("folder_name_zh") or "").strip()
+                target_type = str(payload.get("target_type") or payload.get("group_type") or "library").strip().lower()
+                if target_type not in ("site", "library"):
+                    target_type = "library"
+                if not scan_ids or not target_group:
+                    self.send_json({"error": "scan_ids (or scan_id) and target_group are required"}, status=400)
+                    return
+                moved_scans = DB.move_scans_to_group(scan_ids, target_group, target_zh, target_type=target_type)
+                _VPS_RAM_FALLBACK_CACHE.clear()
+                if os.name == "nt":
+                    def _bg_sync_after_move():
+                        try:
+                            from pc_worker.gdrive_cloud_sync import sync_all_scans_to_gdrive_and_vps
+                            sync_all_scans_to_gdrive_and_vps(DB, AUTH_SHARE, force=False)
+                        except Exception:
+                            pass
+                    threading.Thread(target=_bg_sync_after_move, daemon=True).start()
+                all_scans = [self._enrich_scan_urls(s) for s in DB.list_scans()]
+                self.send_json(
+                    {
+                        "status": "ok",
+                        "ok": True,
+                        "moved_count": len(moved_scans),
+                        "target_group": target_group,
+                        "target_type": target_type,
+                        "scans": all_scans,
+                        "projects": self._build_projects_summary(all_scans),
+                        "library_folders": DB.get_library_folders() if hasattr(DB, "get_library_folders") else [],
+                    }
+                )
+                return
+
+            # 1d-2. Manage 3D Model Library Folders (/api/library/folders — create, rename, delete)
+            if path == "/api/library/folders":
+                if not (actor_perms.get("can_edit_names") or actor_perms.get("can_manage_users")):
+                    self.send_json({"error": f"Role '{actor_role}' cannot manage library folders (Admin, Owner, or Editor required)."}, status=403)
+                    return
+                action = str(payload.get("action") or "create").strip().lower()
+                folder_name = str(payload.get("folder_name") or payload.get("name") or "").strip()
+                folder_zh = str(payload.get("folder_name_zh") or payload.get("name_zh") or "").strip()
+                icon = str(payload.get("icon") or "folder").strip()
+                if action == "rename":
+                    old_fname = str(payload.get("old_folder_name") or payload.get("old_name") or "").strip()
+                    new_fname = str(payload.get("new_folder_name") or folder_name or "").strip()
+                    if not old_fname or not new_fname:
+                        self.send_json({"error": "old_folder_name and new_folder_name are required"}, status=400)
+                        return
+                    folders = DB.rename_library_folder(old_fname, new_fname, folder_zh, icon=icon)
+                elif action in ("delete", "remove"):
+                    if not folder_name:
+                        self.send_json({"error": "folder_name is required"}, status=400)
+                        return
+                    fallback = str(payload.get("fallback_folder") or "一般 3D 模型 (General Models)").strip()
+                    folders = DB.delete_library_folder(folder_name, fallback_folder=fallback)
+                else:
+                    if not folder_name:
+                        self.send_json({"error": "folder_name is required"}, status=400)
+                        return
+                    folders = DB.create_library_folder(folder_name, folder_zh, icon=icon)
+                _VPS_RAM_FALLBACK_CACHE.clear()
+                if os.name == "nt":
+                    def _bg_sync_after_folder_op():
+                        try:
+                            from pc_worker.gdrive_cloud_sync import sync_all_scans_to_gdrive_and_vps
+                            sync_all_scans_to_gdrive_and_vps(DB, AUTH_SHARE, force=False)
+                        except Exception:
+                            pass
+                    threading.Thread(target=_bg_sync_after_folder_op, daemon=True).start()
+                all_scans = [self._enrich_scan_urls(s) for s in DB.list_scans()]
+                self.send_json(
+                    {
+                        "status": "ok",
+                        "ok": True,
+                        "action": action,
+                        "folders": folders,
+                        "library_folders": folders,
+                        "projects": self._build_projects_summary(all_scans),
+                        "scans": all_scans,
+                    }
+                )
+                return
+
             # 2. Civil Surveying: Cut/Fill & Stockpile Volume + Report Generation
             if path in ("/api/survey/volume", "/api/surveying/volume"):
                 if share_token:

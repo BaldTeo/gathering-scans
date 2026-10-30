@@ -322,9 +322,10 @@ def build_scan_3tz_package(scan: Dict[str, Any], force: bool = False) -> Optiona
     proj_dir = str(scan.get("project_dir") or os.path.dirname(base_dir) or "")
     r_glb = os.path.join(base_dir, "tiles", "root.glb")
     p_glb = os.path.join(base_dir, "preview_low", "tiles", "root.glb")
+    s_gsplat = os.path.join(base_dir, "tiles", "splats.gsplat")
     meta_json = os.path.join(proj_dir, "scan_meta.json") if proj_dir else ""
     src_mtime = os.path.getmtime(ts_path)
-    for cand in (r_glb, p_glb, meta_json):
+    for cand in (r_glb, p_glb, s_gsplat, meta_json):
         if cand and os.path.isfile(cand):
             src_mtime = max(src_mtime, os.path.getmtime(cand))
     for sub_d in ("content", os.path.join("preview_low", "content"), "tiles"):
@@ -414,6 +415,14 @@ def build_scan_3tz_package(scan: Dict[str, Any], force: bool = False) -> Optiona
                     if os.path.isfile(gf):
                         with open(gf, "rb") as f:
                             files_to_pack[u] = f.read()
+            except Exception:
+                pass
+
+        gsplat_fp = os.path.join(base_dir, "tiles", "splats.gsplat")
+        if os.path.isfile(gsplat_fp):
+            try:
+                with open(gsplat_fp, "rb") as gsf:
+                    files_to_pack["tiles/splats.gsplat"] = gsf.read()
             except Exception:
                 pass
 
@@ -581,6 +590,7 @@ def sync_all_scans_to_gdrive_and_vps(db: Any, auth_share: Any = None, force: boo
         "shared_drive_folder_id": dfs_ids.get("shared_drive_folder_id") or prev_manifest.get("shared_drive_folder_id", ""),
         "my_drive_folder_id": dfs_ids.get("my_drive_folder_id") or prev_manifest.get("my_drive_folder_id", ""),
         "scans": scans,
+        "library_folders": db.get_library_folders() if hasattr(db, "get_library_folders") else [],
         "trashed_scan_ids": trashed_ids,
         "share_links": share_links,
         "packages": packages,

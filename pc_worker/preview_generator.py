@@ -502,6 +502,11 @@ def ensure_scan_low_quality_preview(tileset_path: str, force: bool = False) -> O
         print(f"[PreviewGenerator] Failed reading {tileset_path}: {e}")
         return None
 
+    if (ts.get("extras") or {}).get("is_gaussian_splat"):
+        if os.path.isfile(preview_ts_path):
+            return preview_ts_path
+        return tileset_path
+
     preview_ts = copy.deepcopy(ts)
     root = preview_ts.get("root") or {}
     if not root.get("transform"):
@@ -1025,6 +1030,29 @@ def ensure_scan_full_quality_thumbnail(
     os.makedirs(thumbs_dir, exist_ok=True)
     data_thumb = os.path.join(thumbs_dir, f"{scan_id}.png")
     proj_thumb = os.path.join(project_dir, "thumbnail.png") if project_dir and os.path.isdir(project_dir) else None
+
+    if not tileset_path.lower().endswith(".glb"):
+        try:
+            with open(tileset_path, "r", encoding="utf-8") as f:
+                ts_check = json.load(f)
+            if (ts_check.get("extras") or {}).get("is_gaussian_splat"):
+                if proj_thumb and os.path.isfile(proj_thumb) and os.path.getsize(proj_thumb) > 2048:
+                    if not os.path.isfile(data_thumb) or force:
+                        try:
+                            shutil.copy2(proj_thumb, data_thumb)
+                        except Exception:
+                            pass
+                    return proj_thumb
+                if os.path.isfile(data_thumb) and os.path.getsize(data_thumb) > 2048:
+                    if proj_thumb and not os.path.isfile(proj_thumb):
+                        try:
+                            shutil.copy2(data_thumb, proj_thumb)
+                        except Exception:
+                            pass
+                    return proj_thumb or data_thumb
+                return None
+        except Exception:
+            pass
 
     targets = [p for p in (proj_thumb, data_thumb) if p]
     if not force and all(os.path.isfile(p) and os.path.getsize(p) > 4096 for p in targets):

@@ -18,7 +18,7 @@
   <meta name="twitter:image" content="https://scans.gatheren.cloud/assets/gathering_cloud_logo.png" />
   <!-- GS_SHARE_OG_END -->
   <link rel="icon" type="image/png" href="/assets/gathering_cloud_logo.png" />
-  <link rel="stylesheet" href="/app.css?v=20261030_v211" />
+  <link rel="stylesheet" href="/app.css?v=20261030_v212" />
   <script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
 <body>
@@ -43,6 +43,13 @@
           <line x1="8" y1="2" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="22"/>
         </svg>
         <span data-i18n-zh="地圖" data-i18n-en="Map">地圖</span>
+      </button>
+      <button type="button" class="btn-seg" data-view="library" id="btnNavLibrary" title="3D 模型庫（非地圖綁定之人物、機具與物件模型）" data-i18n-title-zh="3D 模型庫（非地圖綁定之人物、機具與物件模型）" data-i18n-title-en="3D Model Library (Non-Map Models: People, Equipment &amp; Objects)">
+        <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8">
+          <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+        </svg>
+        <span data-i18n-zh="模型庫" data-i18n-en="Library">模型庫</span>
+        <span class="gs-nav-badge" id="navLibraryCountBadge" style="display:none;font-size:10px;padding:1px 5px;border-radius:999px;background:rgba(14,165,233,0.18);color:var(--ui-accent);font-weight:700;">0</span>
       </button>
       <button type="button" class="btn-seg" data-view="studio" id="btnNavStudio" title="3D 掃描工作坊" data-i18n-title-zh="3D 掃描工作坊" data-i18n-title-en="3D Scan Studio">
         <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8">
@@ -154,6 +161,16 @@
         <!-- Top-Left Map HUD (Scalable for 100+ Projects) -->
         <div class="gs-map-hud-top">
           <div class="gs-map-card">
+            <div class="gs-left-mode-bar" style="display:flex;gap:4px;margin-bottom:8px;padding:3px;background:var(--ui-bg-subtle);border:1px solid var(--ui-border);border-radius:8px;">
+              <button type="button" class="btn-xs active primary" id="btnLeftModeMap" style="flex:1;justify-content:center;height:25px;font-size:11.5px;gap:4px;" title="地理定位工區地圖總覽" data-i18n-title-zh="地理定位工區地圖總覽" data-i18n-title-en="Georeferenced Map Sites">
+                <span>🗺️</span>
+                <span data-i18n-zh="地圖工區" data-i18n-en="Map Sites">地圖工區</span>
+              </button>
+              <button type="button" class="btn-xs" id="btnLeftModeLibrary" style="flex:1;justify-content:center;height:25px;font-size:11.5px;gap:4px;" title="非地圖綁定之 3D 模型庫（人物、機具、物件與 3DGS）" data-i18n-title-zh="非地圖綁定之 3D 模型庫（人物、機具、物件與 3DGS）" data-i18n-title-en="Non-Map 3D Model Library (People, Equipment &amp; Objects)">
+                <span>📦</span>
+                <span data-i18n-zh="3D 模型庫" data-i18n-en="3D Library">3D 模型庫</span>
+              </button>
+            </div>
             <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
               <span style="font-size:13px;font-weight:700;color:var(--ui-text-primary);display:flex;align-items:center;gap:6px;">
                 <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="var(--ui-accent)" stroke-width="2">
@@ -221,6 +238,52 @@
               於地圖上移動游標以檢視座標
             </div>
           </div>
+        </div>
+
+        <!-- 3D Model Library Overlay (Folders for Non-Map Models: People, Equipment, Gaussian Splats, Objects) -->
+        <div class="gs-model-library-overlay" id="modelLibraryOverlay" style="display:none;">
+          <div class="gs-library-header">
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
+              <div style="display:flex;align-items:center;gap:8px;min-width:0;">
+                <button type="button" class="btn-xs" id="btnLibraryBackToMap" title="返回地圖工區" data-i18n-title-zh="返回地圖工區" data-i18n-title-en="Back to Map Sites">
+                  <span>🗺️</span>
+                  <span data-i18n-zh="返回地圖" data-i18n-en="Map">返回地圖</span>
+                </button>
+                <div style="font-size:15px;font-weight:800;color:var(--ui-text-primary);display:flex;align-items:center;gap:6px;">
+                  <span>📦</span>
+                  <span data-i18n-zh="3D 模型庫（非地圖綁定模型）" data-i18n-en="3D Model Library (Non-Map Models)">3D 模型庫（非地圖綁定模型）</span>
+                </div>
+                <span class="gs-crs-pill" id="libraryTotalCountBadge">0 個模型</span>
+              </div>
+              <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+                <input
+                  type="search"
+                  class="gs-input"
+                  id="librarySearchInput"
+                  placeholder="搜尋人物、機具、高斯潑濺或模型..."
+                  data-i18n-placeholder-zh="搜尋人物、機具、高斯潑濺或模型..."
+                  data-i18n-placeholder-en="Search people, equipment, Gaussian Splats..."
+                  style="width:210px;height:28px;font-size:11.5px;"
+                />
+                <button type="button" class="btn-xs primary" id="btnCreateLibraryFolder" title="新增模型庫資料夾 (管理員)" data-i18n-title-zh="新增模型庫資料夾 (管理員)" data-i18n-title-en="New Library Folder (Admin)">
+                  <span>＋</span>
+                  <span data-i18n-zh="新增資料夾" data-i18n-en="New Folder">新增資料夾</span>
+                </button>
+                <button type="button" class="btn-xs" id="btnRenameLibraryFolder" title="重新命名目前資料夾" data-i18n-title-zh="重新命名目前資料夾" data-i18n-title-en="Rename Active Folder" style="display:none;">
+                  <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
+                  </svg>
+                </button>
+                <button type="button" class="btn-xs" id="btnDeleteLibraryFolder" title="刪除此資料夾（模型將移至一般 3D 模型）" data-i18n-title-zh="刪除此資料夾（模型將移至一般 3D 模型）" data-i18n-title-en="Delete Folder (Models move to General)" style="display:none;color:#ef4444;border-color:rgba(239,68,68,0.35);">
+                  <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
+                  </svg>
+                </button>
+              </div>
+            </div>
+            <div class="gs-library-folders-bar" id="libraryFoldersBar"></div>
+          </div>
+          <div class="gs-library-models-grid" id="libraryModelsGrid"></div>
         </div>
       </div>
 
@@ -357,6 +420,9 @@
                     <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2">
                       <path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
                     </svg>
+                  </button>
+                  <button type="button" class="btn-xs" id="btnMovePreviewScan" title="移動至其他地圖工區或 3D 模型庫資料夾" data-i18n-title-zh="移動至其他地圖工區或 3D 模型庫資料夾" data-i18n-title-en="Move Scan to Map Site or 3D Library Folder" aria-label="Move Scan" style="height:22px;width:24px;padding:0;justify-content:center;flex-shrink:0;color:#38bdf8;border-color:rgba(56,189,248,0.35);">
+                    <span style="font-size:12px;line-height:1;">⇄</span>
                   </button>
                   <button type="button" class="btn-xs" id="btnRerunPreviewScan" title="使用自訂 PIX4Dmatic 參數從原始照片重新建模" data-i18n-title-zh="使用自訂 PIX4Dmatic 參數從原始照片重新建模" data-i18n-title-en="Re-run Scan from Original Photos with Custom PIX4Dmatic Settings" aria-label="Re-run Scan" style="height:22px;width:24px;padding:0;justify-content:center;flex-shrink:0;">
                     <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2">
@@ -554,6 +620,9 @@
             <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
             </svg>
+          </button>
+          <button type="button" class="btn-xs" id="btnMoveStudioScan" title="移動至其他地圖工區或 3D 模型庫資料夾" data-i18n-title-zh="移動至其他地圖工區或 3D 模型庫資料夾" data-i18n-title-en="Move Active Scan to Map Site or 3D Library Folder" style="color:#38bdf8;border-color:rgba(56,189,248,0.35);">
+            <span style="font-size:12px;line-height:1;">⇄</span>
           </button>
           <button type="button" class="btn-xs" id="btnRerunStudioScan" title="使用自訂 PIX4Dmatic 參數從原始照片重新建模" data-i18n-title-zh="使用自訂 PIX4Dmatic 參數從原始照片重新建模" data-i18n-title-en="Re-run Scan from Original Photos with Custom PIX4Dmatic Settings">
             <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2">
@@ -2213,6 +2282,86 @@
     </div>
   </div>
 
+  <!-- Move Scan Between Map Sites & 3D Library Folders Modal (Admin) -->
+  <div class="gs-modal-backdrop" id="moveScanModal">
+    <div class="gs-modal" style="max-width:460px;">
+      <div class="gs-modal-header">
+        <div class="gs-modal-title" style="display:flex;align-items:center;gap:8px;">
+          <span>⇄</span>
+          <span data-i18n-zh="移動 3D 掃描模型（地圖工區 ⇄ 3D 模型庫資料夾）" data-i18n-en="Move 3D Scan (Map Site ⇄ 3D Library Folder)">移動 3D 掃描模型（地圖工區 ⇄ 3D 模型庫資料夾）</span>
+        </div>
+        <button type="button" class="btn-xs" data-close-modal="moveScanModal">✕</button>
+      </div>
+      <div class="gs-modal-body" style="display:flex;flex-direction:column;gap:12px;">
+        <div style="font-size:12px;color:var(--ui-text-secondary);">
+          <span data-i18n-zh="目標模型：" data-i18n-en="Selected Scan:">目標模型：</span>
+          <strong id="moveScanCurrentName" style="color:var(--ui-text-primary);"></strong>
+        </div>
+
+        <div>
+          <div style="font-size:11.5px;font-weight:700;color:var(--ui-text-secondary);margin-bottom:6px;" data-i18n-zh="1. 選擇目的地類型：" data-i18n-en="1. Destination Type:">1. 選擇目的地類型：</div>
+          <div style="display:flex;gap:8px;">
+            <button type="button" class="btn-xs active primary" id="moveScanTypeLibrary" style="flex:1;justify-content:center;height:32px;gap:5px;">
+              <span>📦</span>
+              <span data-i18n-zh="3D 模型庫資料夾（非地圖綁定）" data-i18n-en="3D Library Folder (Non-Map)">3D 模型庫資料夾（非地圖綁定）</span>
+            </button>
+            <button type="button" class="btn-xs" id="moveScanTypeSite" style="flex:1;justify-content:center;height:32px;gap:5px;">
+              <span>🗺️</span>
+              <span data-i18n-zh="地圖工區（地理定位）" data-i18n-en="Map Project Site (Georef)">地圖工區（地理定位）</span>
+            </button>
+          </div>
+        </div>
+
+        <div>
+          <label for="moveScanTargetSelect" style="display:block;font-size:11.5px;font-weight:700;color:var(--ui-text-secondary);margin-bottom:6px;" data-i18n-zh="2. 選擇目標資料夾或工區：" data-i18n-en="2. Target Folder or Project Site:">2. 選擇目標資料夾或工區：</label>
+          <select class="gs-select" id="moveScanTargetSelect" style="width:100%;height:32px;font-weight:600;"></select>
+        </div>
+
+        <div id="moveScanNewGroupWrap" style="display:none;">
+          <label for="moveScanNewGroupInput" style="display:block;font-size:11.5px;font-weight:700;color:var(--ui-text-secondary);margin-bottom:5px;" data-i18n-zh="輸入新資料夾或新工區名稱：" data-i18n-en="New Folder or Site Name:">輸入新資料夾或新工區名稱：</label>
+          <input type="text" class="gs-input" id="moveScanNewGroupInput" placeholder="例如：人物與角色 (People) 或 新工區名稱" style="width:100%;" />
+        </div>
+
+        <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:4px;">
+          <button type="button" class="btn-xs" data-close-modal="moveScanModal" data-i18n-zh="取消" data-i18n-en="Cancel">取消</button>
+          <button type="button" class="btn-xs primary" id="btnConfirmMoveScan" data-i18n-zh="確認移動" data-i18n-en="Move Scan">確認移動</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Create / Rename 3D Library Folder Modal (Admin) -->
+  <div class="gs-modal-backdrop" id="libraryFolderModal">
+    <div class="gs-modal" style="max-width:400px;">
+      <div class="gs-modal-header">
+        <div class="gs-modal-title" id="libraryFolderModalTitle" data-i18n-zh="新增 3D 模型庫資料夾" data-i18n-en="New 3D Library Folder">新增 3D 模型庫資料夾</div>
+        <button type="button" class="btn-xs" data-close-modal="libraryFolderModal">✕</button>
+      </div>
+      <div class="gs-modal-body" style="display:flex;flex-direction:column;gap:12px;">
+        <div>
+          <label for="libraryFolderNameInput" style="display:block;font-size:11.5px;font-weight:700;color:var(--ui-text-secondary);margin-bottom:5px;" data-i18n-zh="資料夾名稱：" data-i18n-en="Folder Name:">資料夾名稱：</label>
+          <input type="text" class="gs-input" id="libraryFolderNameInput" placeholder="例如：人物與角色 (People)、無人機設備..." style="width:100%;" />
+        </div>
+        <div>
+          <label for="libraryFolderIconSelect" style="display:block;font-size:11.5px;font-weight:700;color:var(--ui-text-secondary);margin-bottom:5px;" data-i18n-zh="資料夾圖示：" data-i18n-en="Folder Icon:">資料夾圖示：</label>
+          <select class="gs-select" id="libraryFolderIconSelect" style="width:100%;height:32px;">
+            <option value="📁">📁 資料夾 (Folder)</option>
+            <option value="🧑">🧑 人物與角色 (People)</option>
+            <option value="🚜">🚜 機具與設備 (Equipment)</option>
+            <option value="📦">📦 物件與資產 (Objects)</option>
+            <option value="✨">✨ 3D 高斯潑濺 (Gaussian Splat)</option>
+            <option value="🏛️">🏛️ 建築與室內構件 (Architecture)</option>
+            <option value="🌳">🌳 植栽與自然標本 (Flora / Specimens)</option>
+          </select>
+        </div>
+        <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:4px;">
+          <button type="button" class="btn-xs" data-close-modal="libraryFolderModal" data-i18n-zh="取消" data-i18n-en="Cancel">取消</button>
+          <button type="button" class="btn-xs primary" id="btnConfirmLibraryFolder" data-i18n-zh="儲存資料夾" data-i18n-en="Save Folder">儲存資料夾</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- Toast Notification -->
   <div class="gs-toast" id="gsToast"></div>
 
@@ -2228,18 +2377,18 @@
   <script src="/lib/GLTFLoader.js"></script>
   <script src="/lib/KTX2Loader.js"></script>
   <script src="/lib/meshopt_decoder.js"></script>
-  <script src="/lib/3d-tiles-renderer.bundle.js?v=20261030_v211"></script>
+  <script src="/lib/3d-tiles-renderer.bundle.js?v=20261030_v212"></script>
 
   <!-- Main GatheringScans Bilingual Translation & Modular Application Logic (< 5,000 lines per module) -->
-  <script src="/i18n.js?v=20261030_v211"></script>
-  <script src="/src/01-core-state.js?v=20261030_v211"></script>
-  <script src="/src/02-map-and-timeline.js?v=20261030_v211"></script>
-  <script src="/src/03-studio-core.js?v=20261030_v211"></script>
-  <script src="/src/04-studio-lasso-and-edits.js?v=20261030_v211"></script>
-  <script src="/src/05-studio-civil-inspectors.js?v=20261030_v211"></script>
-  <script src="/src/06-studio-align-and-optimizer.js?v=20261030_v211"></script>
-  <script src="/src/07-compare-and-queue.js?v=20261030_v211"></script>
-  <script src="/src/08-advanced-surveying-and-qa.js?v=20261030_v211"></script>
-  <script src="/app.js?v=20261030_v211"></script>
+  <script src="/i18n.js?v=20261030_v212"></script>
+  <script src="/src/01-core-state.js?v=20261030_v212"></script>
+  <script src="/src/02-map-and-timeline.js?v=20261030_v212"></script>
+  <script src="/src/03-studio-core.js?v=20261030_v212"></script>
+  <script src="/src/04-studio-lasso-and-edits.js?v=20261030_v212"></script>
+  <script src="/src/05-studio-civil-inspectors.js?v=20261030_v212"></script>
+  <script src="/src/06-studio-align-and-optimizer.js?v=20261030_v212"></script>
+  <script src="/src/07-compare-and-queue.js?v=20261030_v212"></script>
+  <script src="/src/08-advanced-surveying-and-qa.js?v=20261030_v212"></script>
+  <script src="/app.js?v=20261030_v212"></script>
 </body>
 </html>

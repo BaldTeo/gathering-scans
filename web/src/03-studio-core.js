@@ -268,7 +268,8 @@
           if (
             c.isMesh &&
             (typeof isMeshVisibleUnderRoot === "function" ? isMeshVisibleUnderRoot(c, r) : c.visible) &&
-            !c.userData?.isAlignBoxHelper
+            !c.userData?.isAlignBoxHelper &&
+            !c.userData?.isGaussianSplatMesh
           ) {
             list.push(c);
           }
@@ -1248,6 +1249,7 @@
           }
         });
       }
+      if (typeof updateGaussianSplatForContext === "function") updateGaussianSplatForContext(studioThree, "studio");
       if (STATE.multiAlign.active && studioThree.multiAlignGroup.visible) {
         updateMultiAlignLayersEachFrame();
       }
@@ -1519,6 +1521,7 @@
     if (typeof suspendPreview3DResources === "function" && STATE.activeView === "studio") {
       suspendPreview3DResources();
     }
+    if (typeof disposeGaussianSplatFromContext === "function") disposeGaussianSplatFromContext(studioThree);
     if (studioThree.tilesRenderer) {
       studioThree.modelPivot.remove(studioThree.tilesRenderer.group);
       studioThree.tilesRenderer.dispose();
@@ -1745,6 +1748,15 @@
           } else {
             frameStudioCamera();
           }
+          studioThree.currentScanId = scan.scan_id;
+          studioThree.qualityMode = lodMode;
+          const isGsplat = Boolean(scan.is_gaussian_splat || tr.root?.extras?.is_gaussian_splat || tr.root?.parent?.extras?.is_gaussian_splat);
+          if (isGsplat && typeof loadGaussianSplatIntoContext === "function") {
+            scan.is_gaussian_splat = true;
+            loadGaussianSplatIntoContext(studioThree, scan, "studio", () => {
+              finishScanLoader(studioThree, "studio", tr("100% · 3D 高斯潑濺已就緒", "100% · 3D Gaussian Splat Ready"));
+            });
+          }
           if (
             STATE.categorizeOverlayVisible &&
             STATE.lastCategorizeResult &&
@@ -1792,15 +1804,25 @@
         if (ev && ev.scene) {
           _lastBadgeOcclusionCamSig = "";
           if (studioThree.fallbackGroup) studioThree.fallbackGroup.visible = false;
+          const isGsplat = Boolean(scan.is_gaussian_splat || tr.root?.extras?.is_gaussian_splat || tr.root?.parent?.extras?.is_gaussian_splat);
           ev.scene.traverse((c) => {
             if (c.isMesh && c.material) {
               const mats = Array.isArray(c.material) ? c.material : [c.material];
               mats.forEach((m) => {
-                if (m && typeof m.metalness === "number" && m.metalness > 0) {
+                if (!m) return;
+                if (isGsplat) {
+                  m.transparent = true;
+                  m.opacity = 0.0;
+                  m.depthWrite = false;
+                  m.colorWrite = false;
+                  m.needsUpdate = true;
+                  return;
+                }
+                if (typeof m.metalness === "number" && m.metalness > 0) {
                   m.metalness = 0.0;
                   m.roughness = 1.0;
                 }
-                if (m && m.side !== THREE.DoubleSide) {
+                if (m.side !== THREE.DoubleSide) {
                   m.side = THREE.DoubleSide;
                 }
                 applyBrightnessToMaterial(m, STATE.scanBrightness);
@@ -1877,6 +1899,7 @@
       clearTimeout(studioThree._loaderHideTimer);
       studioThree._loaderHideTimer = null;
     }
+    if (typeof disposeGaussianSplatFromContext === "function") disposeGaussianSplatFromContext(studioThree);
     if (studioThree.tilesRenderer) {
       try {
         studioThree.modelPivot.remove(studioThree.tilesRenderer.group);
@@ -1942,12 +1965,12 @@
       studioThree.camera.updateMatrixWorld(true);
       return;
     }
-    let cx = 0,
-      cy = Number.isFinite(studioThree?.boundingSphere?._groundOffsetY)
-        ? studioThree.boundingSphere._groundOffsetY * 0.65
-        : 0,
-      cz = 0;
     let rawR = Number(studioThree?.boundingSphere?.radius) || 58;
+    let cx = 0,
+      cy = rawR < 14 ? 0 : (Number.isFinite(studioThree?.boundingSphere?._groundOffsetY)
+        ? studioThree.boundingSphere._groundOffsetY * 0.65
+        : 0),
+      cz = 0;
     if (STATE.multiAlign?.active && Array.isArray(STATE.multiAlign.layers)) {
       const visLayers = STATE.multiAlign.layers.filter((l) => l && l.visible);
       if (visLayers.length > 0) {
@@ -1968,7 +1991,7 @@
         rawR = maxR;
       }
     }
-    const r = Math.max(22, Math.min(280, rawR));
+    const r = rawR < 14 ? Math.max(1.4, rawR * 1.55) : Math.max(22, Math.min(280, rawR));
     studioThree.controls.target.set(cx, cy, cz);
     studioThree.camera.position.set(cx + r * 0.7, cy + r * 0.56, cz + r * 0.8);
     studioThree.camera.lookAt(cx, cy, cz);

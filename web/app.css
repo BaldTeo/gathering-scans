@@ -4654,3 +4654,185 @@ html.gs-embed-mode .gs-scan-loader-label,
 body.gs-embed-mode .gs-scan-loader-label {
   color: #0369a1;
 }
+
+/* ============================================================
+   3D Model Library & Folders Overlay (Non-Map / Local Models)
+   ============================================================ */
+.gs-model-library-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 25;
+  display: flex;
+  flex-direction: column;
+  padding: 58px 16px 16px 16px;
+  background: linear-gradient(160deg, rgba(15, 23, 42, 0.97) 0%, rgba(11, 17, 32, 0.99) 100%);
+  backdrop-filter: blur(14px);
+  overflow: hidden;
+}
+.gs-library-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding-bottom: 10px;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.16);
+}
+.gs-library-folders-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  overflow-x: auto;
+  padding: 10px 0 8px 0;
+  scrollbar-width: thin;
+}
+.gs-lib-folder-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 11px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  font-weight: 600;
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  background: rgba(30, 41, 59, 0.65);
+  color: var(--ui-text-secondary);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.16s ease;
+}
+.gs-lib-folder-pill:hover {
+  border-color: rgba(56, 189, 248, 0.5);
+  color: var(--ui-text-primary);
+}
+.gs-lib-folder-pill.active {
+  background: rgba(56, 189, 248, 0.18);
+  border-color: #38bdf8;
+  color: #38bdf8;
+  box-shadow: 0 0 12px rgba(56, 189, 248, 0.2);
+}
+.gs-lib-folder-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 16px;
+  padding: 0 5px;
+  border-radius: 999px;
+  font-size: 10px;
+  background: rgba(15, 23, 42, 0.55);
+  color: inherit;
+}
+.gs-library-models-grid {
+  flex: 1;
+  overflow-y: auto;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(215px, 1fr));
+  gap: 12px;
+  align-content: start;
+  padding: 6px 2px 18px 2px;
+}
+.gs-lib-card {
+  display: flex;
+  flex-direction: column;
+  border-radius: 11px;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  background: rgba(30, 41, 59, 0.72);
+  overflow: hidden;
+  cursor: pointer;
+  transition: transform 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.gs-lib-card:hover {
+  transform: translateY(-2px);
+  border-color: rgba(56, 189, 248, 0.55);
+  box-shadow: 0 8px 22px rgba(2, 6, 23, 0.45);
+}
+.gs-lib-card.active {
+  border-color: #38bdf8;
+  box-shadow: 0 0 0 1px #38bdf8, 0 8px 24px rgba(56, 189, 248, 0.22);
+}
+.gs-lib-card-thumb-wrap {
+  position: relative;
+  height: 126px;
+  background: radial-gradient(circle at 50% 40%, #1e293b 0%, #090d16 100%);
+  overflow: hidden;
+}
+.gs-lib-card-thumb {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.gs-lib-type-badge {
+  position: absolute;
+  top: 7px;
+  left: 7px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 700;
+  background: rgba(15, 23, 42, 0.82);
+  color: #e2e8f0;
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  backdrop-filter: blur(4px);
+}
+.gs-lib-type-badge.splat {
+  background: rgba(88, 28, 135, 0.86);
+  color: #f3e8ff;
+  border-color: rgba(192, 132, 252, 0.55);
+}
+.gs-lib-folder-tag {
+  position: absolute;
+  bottom: 6px;
+  right: 6px;
+  max-width: 85%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 2px 7px;
+  border-radius: 6px;
+  font-size: 10px;
+  background: rgba(15, 23, 42, 0.82);
+  color: #bae6fd;
+  border: 1px solid rgba(56, 189, 248, 0.28);
+}
+.gs-lib-card-body {
+  padding: 9px 10px 10px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.gs-lib-card-title {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--ui-text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.gs-lib-card-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 10.5px;
+  color: var(--ui-text-muted);
+}
+.gs-lib-card-actions {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 4px;
+}
+html[data-theme="light"] .gs-model-library-overlay,
+body.theme-light .gs-model-library-overlay {
+  background: linear-gradient(160deg, rgba(248, 250, 252, 0.97) 0%, rgba(241, 245, 249, 0.99) 100%);
+}
+html[data-theme="light"] .gs-lib-card,
+body.theme-light .gs-lib-card {
+  background: rgba(255, 255, 255, 0.92);
+  border-color: rgba(148, 163, 184, 0.35);
+}
+html[data-theme="light"] .gs-lib-folder-pill,
+body.theme-light .gs-lib-folder-pill {
+  background: rgba(255, 255, 255, 0.85);
+}

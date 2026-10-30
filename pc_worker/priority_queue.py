@@ -353,7 +353,18 @@ class ScanQueueDB:
                     extra_payload.update(parsed_ex)
             except Exception:
                 pass
-        for ex_k in ("merged_from", "derived_from_scan_id", "applied_adjustments", "poly_count", "home_view"):
+        for ex_k in (
+            "merged_from",
+            "derived_from_scan_id",
+            "applied_adjustments",
+            "poly_count",
+            "home_view",
+            "is_gaussian_splat",
+            "splat_count",
+            "gaussian_splat_uri",
+            "group_type",
+            "user_edited_project",
+        ):
             if ex_k in scan_data and scan_data[ex_k] not in (None, "", [], {}):
                 extra_payload[ex_k] = scan_data[ex_k]
         for pass_k in ("quality_stage", "pending_pass"):
@@ -636,6 +647,317 @@ class ScanQueueDB:
                         json.dump(meta, wf, indent=2, ensure_ascii=False)
                 except Exception as e:
                     print(f"[DB] Warning updating scan_meta.json for site rename {meta_file}: {e}")
+        return updated_scans
+
+    # ==========================================================================
+    # 3D Model Library Folders & Scan Group Move (Sites <-> Library Folders)
+    # ==========================================================================
+
+    def get_library_registry_path(self) -> str:
+        return os.path.join(os.path.dirname(self.db_path), "library_folders.json")
+
+    def _default_library_folders(self) -> List[Dict[str, Any]]:
+        now_iso = datetime.now(timezone.utc).isoformat()
+        return [
+            {
+                "folder_name": "人物與角色 (People)",
+                "folder_name_zh": "人物與角色 3D 模型",
+                "icon": "person",
+                "created_at": now_iso,
+            },
+            {
+                "folder_name": "機具與設備 (Equipment)",
+                "folder_name_zh": "機具與設備 3D 模型",
+                "icon": "tool",
+                "created_at": now_iso,
+            },
+            {
+                "folder_name": "一般 3D 模型 (General Models)",
+                "folder_name_zh": "一般非地理定位 3D 模型",
+                "icon": "cube",
+                "created_at": now_iso,
+            },
+        ]
+
+    def load_library_registry(self) -> Dict[str, Any]:
+        reg_path = self.get_library_registry_path()
+        default_reg = {
+            "folders": self._default_library_folders(),
+            "scan_assignments": {},
+        }
+        if not os.path.isfile(reg_path):
+            self.save_library_registry(default_reg)
+            return default_reg
+        try:
+            with open(reg_path, "r", encoding="utf-8") as rf:
+                data = json.load(rf)
+            if isinstance(data, dict):
+                folders = data.get("folders")
+                if not isinstance(folders, list) or len(folders) == 0:
+                    folders = self._default_library_folders()
+                assigns = data.get("scan_assignments")
+                if not isinstance(assigns, dict):
+                    assigns = {}
+                return {"folders": folders, "scan_assignments": assigns}
+        except Exception:
+            pass
+        return default_reg
+
+    def save_library_registry(self, reg: Dict[str, Any]) -> None:
+        try:
+            reg_path = self.get_library_registry_path()
+            os.makedirs(os.path.dirname(reg_path), exist_ok=True)
+            with open(reg_path, "w", encoding="utf-8") as wf:
+                json.dump(
+                    {
+                        "folders": reg.get("folders") or self._default_library_folders(),
+                        "scan_assignments": reg.get("scan_assignments") or {},
+                    },
+                    wf,
+                    indent=2,
+                    ensure_ascii=False,
+                )
+        except Exception as e:
+            print(f"[DB] Warning saving library_folders.json: {e}")
+
+    def get_library_folders(self) -> List[Dict[str, Any]]:
+        reg = self.load_library_registry()
+        folders_by_key: Dict[str, Dict[str, Any]] = {}
+        ordered_keys: List[str] = []
+
+        for f in reg.get("folders") or []:
+            if not isinstance(f, dict):
+                continue
+            fname = str(f.get("folder_name") or "").strip()
+            if not fname:
+                continue
+            k = fname.lower()
+            if k not in folders_by_key:
+                ordered_keys.append(k)
+                folders_by_key[k] = {
+                    "folder_name": fname,
+                    "folder_name_zh": str(f.get("folder_name_zh") or f"{fname} 模型庫"),
+                    "icon": str(f.get("icon") or "folder"),
+                    "created_at": str(f.get("created_at") or ""),
+                    "scan_count": 0,
+                    "group_type": "library",
+                }
+
+        all_scans = self.list_scans()
+        for sc in all_scans:
+            if sc.get("group_type") == "library":
+                grp = str(sc.get("project_group") or "一般 3D 模型 (General Models)").strip()
+                k = grp.lower()
+                if k not in folders_by_key:
+                    ordered_keys.append(k)
+                    folders_by_key[k] = {
+                        "folder_name": grp,
+                        "folder_name_zh": str(sc.get("project_name_zh") or f"{grp} 模型庫"),
+                        "icon": "cube",
+                        "created_at": "",
+                        "scan_count": 0,
+                        "group_type": "library",
+                    }
+                folders_by_key[k]["scan_count"] += 1
+
+        return [folders_by_key[k] for k in ordered_keys]
+
+    def create_library_folder(
+        self, folder_name: str, folder_name_zh: str = "", icon: str = "folder"
+    ) -> List[Dict[str, Any]]:
+        clean_name = (folder_name or "").strip()
+        if not clean_name:
+            return self.get_library_folders()
+        clean_zh = (folder_name_zh or "").strip() or f"{clean_name} 模型庫"
+        clean_icon = (icon or "folder").strip()
+        reg = self.load_library_registry()
+        folders = reg.get("folders") or []
+        found = False
+        for f in folders:
+            if isinstance(f, dict) and str(f.get("folder_name") or "").strip().lower() == clean_name.lower():
+                f["folder_name"] = clean_name
+                f["folder_name_zh"] = clean_zh
+                f["icon"] = clean_icon
+                found = True
+                break
+        if not found:
+            folders.append(
+                {
+                    "folder_name": clean_name,
+                    "folder_name_zh": clean_zh,
+                    "icon": clean_icon,
+                    "created_at": datetime.now(timezone.utc).isoformat(),
+                }
+            )
+        reg["folders"] = folders
+        self.save_library_registry(reg)
+        return self.get_library_folders()
+
+    def rename_library_folder(
+        self, old_name: str, new_name: str, new_name_zh: str = "", icon: Optional[str] = None
+    ) -> List[Dict[str, Any]]:
+        clean_old = (old_name or "").strip()
+        clean_new = (new_name or "").strip()
+        if not clean_old or not clean_new:
+            return self.get_library_folders()
+        clean_zh = (new_name_zh or "").strip() or f"{clean_new} 模型庫"
+        reg = self.load_library_registry()
+        folders = reg.get("folders") or []
+        found = False
+        for f in folders:
+            if isinstance(f, dict) and str(f.get("folder_name") or "").strip().lower() == clean_old.lower():
+                f["folder_name"] = clean_new
+                f["folder_name_zh"] = clean_zh
+                if icon:
+                    f["icon"] = icon
+                found = True
+                break
+        if not found:
+            folders.append(
+                {
+                    "folder_name": clean_new,
+                    "folder_name_zh": clean_zh,
+                    "icon": icon or "folder",
+                    "created_at": datetime.now(timezone.utc).isoformat(),
+                }
+            )
+        reg["folders"] = folders
+        self.save_library_registry(reg)
+
+        affected_ids = [
+            s["scan_id"]
+            for s in self.list_scans()
+            if str(s.get("project_group") or "").strip().lower() == clean_old.lower()
+            and s.get("group_type") == "library"
+        ]
+        if affected_ids:
+            self.move_scans_to_group(affected_ids, clean_new, clean_zh, target_type="library")
+        return self.get_library_folders()
+
+    def delete_library_folder(
+        self, folder_name: str, fallback_folder: str = "一般 3D 模型 (General Models)"
+    ) -> List[Dict[str, Any]]:
+        clean_name = (folder_name or "").strip()
+        if not clean_name:
+            return self.get_library_folders()
+        reg = self.load_library_registry()
+        folders = [
+            f
+            for f in (reg.get("folders") or [])
+            if isinstance(f, dict) and str(f.get("folder_name") or "").strip().lower() != clean_name.lower()
+        ]
+        if not folders:
+            folders = self._default_library_folders()
+        reg["folders"] = folders
+        self.save_library_registry(reg)
+
+        affected_ids = [
+            s["scan_id"]
+            for s in self.list_scans()
+            if str(s.get("project_group") or "").strip().lower() == clean_name.lower()
+            and s.get("group_type") == "library"
+        ]
+        if affected_ids:
+            fb = fallback_folder if fallback_folder.lower() != clean_name.lower() else folders[0]["folder_name"]
+            self.move_scans_to_group(affected_ids, fb, f"{fb} 模型庫", target_type="library")
+        return self.get_library_folders()
+
+    def move_scans_to_group(
+        self,
+        scan_ids: List[str],
+        target_group: str,
+        target_group_zh: Optional[str] = None,
+        target_type: str = "library",
+    ) -> List[Dict[str, Any]]:
+        """
+        Moves one or more scans to any Map Site (`target_type='site'`) or Library Folder (`target_type='library'`).
+        Persists across SQLite `scans`, `<project_dir>/scan_meta.json`, and `data/library_folders.json`.
+        """
+        clean_group = (target_group or "").strip()
+        if not clean_group or not scan_ids:
+            return []
+        norm_type = "site" if str(target_type or "").strip().lower() == "site" else "library"
+        default_suffix = "工程掃描群組" if norm_type == "site" else "模型庫"
+        final_zh = (target_group_zh or "").strip() or f"{clean_group} {default_suffix}"
+
+        reg = self.load_library_registry()
+        assigns = reg.get("scan_assignments") or {}
+        if norm_type == "library":
+            folders = reg.get("folders") or []
+            if not any(
+                isinstance(f, dict) and str(f.get("folder_name") or "").strip().lower() == clean_group.lower()
+                for f in folders
+            ):
+                folders.append(
+                    {
+                        "folder_name": clean_group,
+                        "folder_name_zh": final_zh,
+                        "icon": "folder",
+                        "created_at": datetime.now(timezone.utc).isoformat(),
+                    }
+                )
+                reg["folders"] = folders
+
+        updated_scans: List[Dict[str, Any]] = []
+        for raw_sid in scan_ids:
+            sid = str(raw_sid or "").strip()
+            if not sid:
+                continue
+            with DB_LOCK, self._connect() as conn:
+                row = conn.execute(
+                    "SELECT scan_id, project_dir, extra_json FROM scans WHERE lower(scan_id) = lower(?) LIMIT 1",
+                    (sid,),
+                ).fetchone()
+                if not row:
+                    continue
+                real_id = row["scan_id"]
+                proj_dir = row["project_dir"] or ""
+                ex_dict: Dict[str, Any] = {}
+                if row["extra_json"]:
+                    try:
+                        parsed = json.loads(row["extra_json"])
+                        if isinstance(parsed, dict):
+                            ex_dict = parsed
+                    except Exception:
+                        pass
+                ex_dict["group_type"] = norm_type
+                ex_dict["user_edited_project"] = True
+                conn.execute(
+                    "UPDATE scans SET project_group = ?, project_name_zh = ?, extra_json = ? WHERE scan_id = ?",
+                    (clean_group, final_zh, json.dumps(ex_dict, ensure_ascii=False), real_id),
+                )
+                conn.commit()
+
+            assigns[real_id.lower()] = {
+                "project_group": clean_group,
+                "project_name_zh": final_zh,
+                "group_type": norm_type,
+                "updated_at": time.time(),
+            }
+            if proj_dir and os.path.isdir(proj_dir):
+                meta_file = os.path.join(proj_dir, "scan_meta.json")
+                meta: Dict[str, Any] = {}
+                if os.path.isfile(meta_file):
+                    try:
+                        with open(meta_file, "r", encoding="utf-8") as rf:
+                            meta = json.load(rf)
+                    except Exception:
+                        meta = {}
+                meta["project_group"] = clean_group
+                meta["project_name_zh"] = final_zh
+                meta["group_type"] = norm_type
+                meta["user_edited_project"] = True
+                try:
+                    with open(meta_file, "w", encoding="utf-8") as wf:
+                        json.dump(meta, wf, indent=2, ensure_ascii=False)
+                except Exception as e:
+                    print(f"[DB] Warning updating scan_meta.json for move_scans_to_group {meta_file}: {e}")
+            sc = self.get_scan(real_id)
+            if sc:
+                updated_scans.append(sc)
+
+        reg["scan_assignments"] = assigns
+        self.save_library_registry(reg)
         return updated_scans
 
     def get_deleted_scans_registry_path(self) -> str:
@@ -1535,9 +1857,32 @@ class ScanQueueDB:
                             extra_dict["home_view"] = m_obj2["home_view"]
                 except Exception:
                     pass
-        for ex_k in ("merged_from", "derived_from_scan_id", "applied_adjustments", "poly_count", "home_view"):
+        for ex_k in (
+            "merged_from",
+            "derived_from_scan_id",
+            "applied_adjustments",
+            "poly_count",
+            "home_view",
+            "is_gaussian_splat",
+            "splat_count",
+            "gaussian_splat_uri",
+            "group_type",
+            "user_edited_project",
+        ):
             if ex_k in extra_dict:
                 d[ex_k] = extra_dict[ex_k]
+        # Default group_type if not explicitly overridden:
+        # Scans without geographic coordinates (crs == LOCAL_ORIGIN or lat/lon None) belong to 'library'
+        if d.get("group_type") not in ("site", "library"):
+            has_georef = (
+                d.get("lat") is not None
+                and d.get("lon") is not None
+                and str(d.get("crs") or "").strip().upper() != "LOCAL_ORIGIN"
+            )
+            d["group_type"] = "site" if has_georef else "library"
+        d["is_gaussian_splat"] = bool(d.get("is_gaussian_splat"))
+        if d["is_gaussian_splat"] and d.get("splat_count") and not d.get("poly_count"):
+            d["poly_count"] = int(d["splat_count"])
         status_str = str(d.get("status") or "queued")
         has_tileset = bool(str(d.get("tileset_path") or "").strip())
         q_stage = str(extra_dict.get("quality_stage") or "").strip()

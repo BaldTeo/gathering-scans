@@ -710,9 +710,10 @@
   }
 
   function formatScanPolyCount(scan, { short = false } = {}) {
-    const unit = tr("面", "polys");
+    const isGs = Boolean(scan && scan.is_gaussian_splat);
+    const unit = isGs ? tr("潑濺點", "splats") : tr("面", "polys");
     if (!scan) return `— ${unit}`;
-    const polys = Number(scan._live_poly_count || scan.poly_count || 0);
+    const polys = Number(isGs ? scan.splat_count || scan.poly_count || 0 : scan._live_poly_count || scan.poly_count || 0);
     if (!(polys > 0)) return `— ${unit}`;
     if (short) {
       if (polys >= 1000000) return `${(polys / 1000000).toFixed(2)}M ${unit}`;
@@ -723,6 +724,7 @@
 
   function formatScanTextureSize(scan, { short = false } = {}) {
     if (!scan) return "4096×4096 px";
+    if (scan.is_gaussian_splat) return short ? "3DGS" : "3DGS Splat";
     const cnt = Number(scan.texture_count || 1);
     const w = Number(scan.texture_width || scan.texture_resolution || 4096);
     const h = Number(scan.texture_height || scan.texture_resolution || w);
@@ -1358,6 +1360,9 @@
       clearTimeout(previewThree._loaderHideTimer);
       previewThree._loaderHideTimer = null;
     }
+    if (typeof disposeGaussianSplatFromContext === "function") {
+      disposeGaussianSplatFromContext(previewThree);
+    }
     if (previewThree.tilesRenderer) {
       try {
         previewThree.modelPivot.remove(previewThree.tilesRenderer.group);
@@ -1519,6 +1524,9 @@
             });
           }
         });
+      }
+      if (typeof updateGaussianSplatForContext === "function") {
+        updateGaussianSplatForContext(previewThree, "preview");
       }
       if (typeof updateNorthArrowCompass === "function" && STATE.siteTimelineOpen) {
         updateNorthArrowCompass(camera);
@@ -1751,7 +1759,7 @@
       return;
     }
     const rawR = Number(previewThree.boundingSphere?.radius) || 55;
-    const r = Math.max(22, Math.min(240, rawR));
+    const r = rawR < 14 ? Math.max(1.4, rawR * 1.55) : Math.max(22, Math.min(240, rawR));
     previewThree.controls.target.set(0, 0, 0);
     previewThree.camera.position.set(r * 0.68, r * 0.54, r * 0.78);
     previewThree.camera.lookAt(0, 0, 0);
@@ -2053,19 +2061,25 @@
         const dx = maxX - minX;
         const dy = maxY - minY;
         const dz = maxZ - minZ;
-        outSphere.radius = Math.max(18, Math.sqrt(dx * dx + dy * dy + dz * dz) * 0.42);
-        outSphere._groundOffsetY = Math.min(-1.5, minZ - medZ - 0.3);
+        const calcR = Math.sqrt(dx * dx + dy * dy + dz * dz) * 0.42;
+        outSphere.radius = calcR < 12 ? Math.max(0.4, calcR) : Math.max(18, calcR);
+        outSphere._groundOffsetY = calcR < 12 ? minZ - medZ - 0.02 : Math.min(-1.5, minZ - medZ - 0.3);
       }
     } else if (outSphere.radius > 0) {
-      outSphere.radius = Math.max(18, outSphere.radius * 0.72);
+      const scaledR = outSphere.radius * 0.72;
+      outSphere.radius = outSphere.radius < 14 ? Math.max(0.4, outSphere.radius * 0.92) : Math.max(18, scaledR);
       if (rootBox && rootBox.length >= 12) {
         const hz =
           Math.abs(Number(rootBox[5]) || 0) +
           Math.abs(Number(rootBox[8]) || 0) +
           Math.abs(Number(rootBox[11]) || 0);
-        outSphere._groundOffsetY = hz > 0 ? -Math.min(hz + 0.3, 24.0) : -Math.max(4.0, Math.min(20.0, outSphere.radius * 0.25));
+        if (outSphere.radius < 12) {
+          outSphere._groundOffsetY = hz > 0 ? -(hz + 0.02) : -outSphere.radius * 0.85;
+        } else {
+          outSphere._groundOffsetY = hz > 0 ? -Math.min(hz + 0.3, 24.0) : -Math.max(4.0, Math.min(20.0, outSphere.radius * 0.25));
+        }
       } else {
-        outSphere._groundOffsetY = -Math.max(4.0, Math.min(20.0, outSphere.radius * 0.25));
+        outSphere._groundOffsetY = outSphere.radius < 12 ? -outSphere.radius * 0.85 : -Math.max(4.0, Math.min(20.0, outSphere.radius * 0.25));
       }
     }
     return outSphere.radius > 0;
@@ -2086,10 +2100,15 @@
     if (titleEl) titleEl.textContent = scan.name;
     const metaEl = document.getElementById("previewScanMeta");
     if (metaEl) {
-      metaEl.textContent = `${scan.capture_date} · ${scan.uploader_name} · ${formatCoveredAreaM2(scan)} · E ${Number(scan.twd97_e).toFixed(1)} N ${Number(scan.twd97_n).toFixed(1)} H +${Number(scan.twd97_h).toFixed(2)}m`;
+      if (typeof isLibraryScan === "function" && isLibraryScan(scan)) {
+        metaEl.textContent = `${scan.capture_date} · ${scan.uploader_name} · 📁 ${scan.project_group || "3D Library"} · ${formatScanPolyCount(scan)}`;
+      } else {
+        metaEl.textContent = `${scan.capture_date} · ${scan.uploader_name} · ${formatCoveredAreaM2(scan)} · E ${Number(scan.twd97_e).toFixed(1)} N ${Number(scan.twd97_n).toFixed(1)} H +${Number(scan.twd97_h).toFixed(2)}m`;
+      }
     }
 
     const hasLoadedPreviewContent =
+      Boolean(previewThree.gaussianSplatMesh) ||
       (previewThree.tilesRenderer && Number(previewThree.tilesRenderer.stats?.failed || 0) === 0) ||
       (!previewThree.tilesRenderer && previewThree.modelPivot && previewThree.modelPivot.children.length > 0) ||
       !previewThree._loadingDone;
@@ -2106,6 +2125,9 @@
     STATE.activeScan = scan;
     SHARE_TELEMETRY.recordScanViewed(scan, "preview");
 
+    if (typeof disposeGaussianSplatFromContext === "function") {
+      disposeGaussianSplatFromContext(previewThree);
+    }
     if (previewThree.tilesRenderer) {
       previewThree.modelPivot.remove(previewThree.tilesRenderer.group);
       previewThree.tilesRenderer.dispose();
@@ -2249,6 +2271,15 @@
           }
           updateScanGoogleMap3DLayer(previewThree, scan);
           framePreviewCamera();
+          previewThree.currentScanId = scan.scan_id;
+          previewThree.qualityMode = lodMode;
+          const isGsplat = Boolean(scan.is_gaussian_splat || tr.root?.extras?.is_gaussian_splat || tr.root?.parent?.extras?.is_gaussian_splat);
+          if (isGsplat && typeof loadGaussianSplatIntoContext === "function") {
+            scan.is_gaussian_splat = true;
+            loadGaussianSplatIntoContext(previewThree, scan, "preview", () => {
+              finishScanLoader(previewThree, "preview", tr("100% · 3D 高斯潑濺已就緒", "100% · 3D Gaussian Splat Ready"));
+            });
+          }
         }
         previewThree.camera.updateMatrixWorld();
         tr.update();
@@ -2258,15 +2289,25 @@
         if (previewThree.tilesRenderer !== tr) return;
         if (ev && ev.scene) {
           if (previewThree.fallbackGroup) previewThree.fallbackGroup.visible = false;
+          const isGsplat = Boolean(scan.is_gaussian_splat || tr.root?.extras?.is_gaussian_splat || tr.root?.parent?.extras?.is_gaussian_splat);
           ev.scene.traverse((c) => {
             if (c.isMesh && c.material) {
               const mats = Array.isArray(c.material) ? c.material : [c.material];
               mats.forEach((m) => {
-                if (m && typeof m.metalness === "number" && m.metalness > 0) {
+                if (!m) return;
+                if (isGsplat) {
+                  m.transparent = true;
+                  m.opacity = 0.0;
+                  m.depthWrite = false;
+                  m.colorWrite = false;
+                  m.needsUpdate = true;
+                  return;
+                }
+                if (typeof m.metalness === "number" && m.metalness > 0) {
                   m.metalness = 0.0;
                   m.roughness = 1.0;
                 }
-                if (m && m.side !== THREE.DoubleSide) {
+                if (m.side !== THREE.DoubleSide) {
                   m.side = THREE.DoubleSide;
                 }
                 applyBrightnessToMaterial(m, STATE.scanBrightness);
@@ -2463,6 +2504,9 @@
             <div style="display:flex;align-items:center;justify-content:space-between;gap:4px;min-width:0;">
               <div class="gs-tile-name" title="${safeName}" style="flex:1;min-width:0;">${safeName}</div>
               <div class="gs-tile-edit-actions" style="display:${roleInfo.canEditNames ? "flex" : "none"};align-items:center;gap:2px;flex-shrink:0;">
+                <button type="button" class="btn-xs" data-move-tile="${escapeHtml(s.scan_id)}" title="${tr("移動至其他工區或 3D 模型庫資料夾", "Move to another Site or 3D Library Folder")}" style="height:18px;padding:0 4px;">
+                  ⇄
+                </button>
                 <button type="button" class="btn-xs" data-rename-tile="${escapeHtml(s.scan_id)}" title="${tr("修改掃描名稱", "Edit Scan Name")}" style="height:18px;padding:0 4px;">
                   <svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" stroke-width="2">
                     <path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
@@ -2479,9 +2523,16 @@
         `;
 
         tile.addEventListener("click", (ev) => {
-          if (ev.target.closest("[data-rename-tile]") || ev.target.closest("[data-delete-tile]")) return;
+          if (ev.target.closest("[data-move-tile]") || ev.target.closest("[data-rename-tile]") || ev.target.closest("[data-delete-tile]")) return;
           selectTimelineTile(s.scan_id);
         });
+        const moveTileBtn = tile.querySelector("[data-move-tile]");
+        if (moveTileBtn) {
+          moveTileBtn.addEventListener("click", (ev) => {
+            ev.stopPropagation();
+            if (typeof openMoveScanModal === "function") openMoveScanModal(s.scan_id);
+          });
+        }
         const renTileBtn = tile.querySelector("[data-rename-tile]");
         if (renTileBtn) {
           renTileBtn.addEventListener("click", (ev) => {
@@ -2632,11 +2683,17 @@
   document.getElementById("btnRenamePreviewScan")?.addEventListener("click", () => {
     openRenameScanModal(STATE.selectedTimelineScanId || STATE.activeScanId);
   });
+  document.getElementById("btnMovePreviewScan")?.addEventListener("click", () => {
+    if (typeof openMoveScanModal === "function") openMoveScanModal(STATE.selectedTimelineScanId || STATE.activeScanId);
+  });
   document.getElementById("previewScanTitle")?.addEventListener("dblclick", () => {
     if (!STATE.shareToken) openRenameScanModal(STATE.selectedTimelineScanId || STATE.activeScanId);
   });
   document.getElementById("btnRenameStudioScan")?.addEventListener("click", () => {
     openRenameScanModal(STATE.activeScanId);
+  });
+  document.getElementById("btnMoveStudioScan")?.addEventListener("click", () => {
+    if (typeof openMoveScanModal === "function") openMoveScanModal(STATE.activeScanId);
   });
   document.getElementById("btnResetScanNameToFile")?.addEventListener("click", () => {
     const scan = STATE.scans.find((s) => s.scan_id === _renamingScanId);
@@ -2716,6 +2773,12 @@
     }
     if (Array.isArray(res.projects)) {
       STATE.projects = res.projects;
+    }
+    if (Array.isArray(res.library_folders)) {
+      STATE.libraryFolders = res.library_folders;
+    }
+    if (typeof renderModelLibraryView === "function") {
+      renderModelLibraryView();
     }
     if (typeof res.bin_scans_count === "number") {
       updateRecycleBinBadges(res.bin_scans_count);
@@ -4047,7 +4110,8 @@
     layer.originTwd = originTwd;
     layer.scanId = scan.scan_id || "";
 
-    if (!STATE.scanGoogleMapEnabled || !originTwd.valid) {
+    const isLibModel = typeof isLibraryScan === "function" && isLibraryScan(scan);
+    if (!STATE.scanGoogleMapEnabled || !originTwd.valid || isLibModel) {
       layer.group.visible = false;
       if (ctx.renderer && ctx.scene && ctx.camera) {
         ctx.renderer.render(ctx.scene, ctx.camera);

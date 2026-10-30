@@ -1314,12 +1314,13 @@ class CloudAndTunnelHandlerMixin:
         share_token = self._extract_share_token(parsed_q)
 
         cacheable = method == "GET" and (
-            path in ("/api/scans", "/api/projects", "/api/status", "/api/pc/health")
+            path in ("/api/scans", "/api/projects", "/api/library/folders", "/api/status", "/api/pc/health")
             or path.endswith("/thumbnail")
             or path.endswith("/thumbnail.png")
             or path.endswith("/tileset.json")
             or path.endswith("/preview_tileset.json")
             or path.endswith(".glb")
+            or path.endswith(".gsplat")
             or path == "/api/comment-photo"
             or path.startswith("/api/comments/photo/")
             or path.startswith("/api/survey/cameras")
@@ -1331,7 +1332,7 @@ class CloudAndTunnelHandlerMixin:
             for k in list(_VPS_RAM_FALLBACK_CACHE.keys()):
                 if k.startswith(path):
                     _VPS_RAM_FALLBACK_CACHE.pop(k, None)
-        if method in ("POST", "DELETE") and ("/rename" in path or "/delete" in path or "/bin" in path or "/rerun" in path or "/admin/users" in path or "/user/" in path or "/user-profiles" in path or "/auth/" in path or path == "/api/comments" or path.startswith("/api/comments/") or path.startswith("/api/measurements/") or path.startswith("/api/optimizer/") or path in ("/api/scans/rename", "/api/scans/delete", "/api/scans/merge")):
+        if method in ("POST", "DELETE") and ("/rename" in path or "/move" in path or "/library/" in path or "/delete" in path or "/bin" in path or "/rerun" in path or "/admin/users" in path or "/user/" in path or "/user-profiles" in path or "/auth/" in path or path == "/api/comments" or path.startswith("/api/comments/") or path.startswith("/api/measurements/") or path.startswith("/api/optimizer/") or path in ("/api/scans/rename", "/api/scans/move", "/api/scans/delete", "/api/scans/merge", "/api/library/folders", "/api/library/move-scan")):
             if method == "POST" and body and path in ("/api/user/settings", "/api/user/preferences"):
                 try:
                     p_u = json.loads(body.decode("utf-8"))
@@ -1341,17 +1342,18 @@ class CloudAndTunnelHandlerMixin:
                 except Exception:
                     pass
             for k in list(_VPS_RAM_FALLBACK_CACHE.keys()):
-                if k.startswith("/api/scans") or k.startswith("/api/projects") or k.startswith("/api/user-profiles") or k.startswith("/api/user/") or k.startswith("/api/auth/") or k.startswith("/api/admin/users") or k.startswith("/stream/"):
+                if k.startswith("/api/scans") or k.startswith("/api/projects") or k.startswith("/api/library") or k.startswith("/api/user-profiles") or k.startswith("/api/user/") or k.startswith("/api/auth/") or k.startswith("/api/admin/users") or k.startswith("/stream/"):
                     _VPS_RAM_FALLBACK_CACHE.pop(k, None)
         if method == "POST" and path in ("/api/queue/scan-inbox", "/api/queue/rescan", "/api/admin/pc-daemon", "/api/pc/simulate-offline"):
             _VPS_RAM_FALLBACK_CACHE.clear()
 
-        # 1. Serve immutable binary .glb tiles, thumbnails, and tileset.json from volatile RAM if already cached
+        # 1. Serve immutable binary .glb/.gsplat tiles, thumbnails, and tileset.json from volatile RAM if already cached
         cache_hit_key = self.path if self.path in _VPS_RAM_FALLBACK_CACHE else (path if path in _VPS_RAM_FALLBACK_CACHE else None)
         if (
             method == "GET"
             and (
                 path.endswith(".glb")
+                or path.endswith(".gsplat")
                 or path.endswith("/thumbnail")
                 or path.endswith("/thumbnail.png")
                 or path.endswith("/tileset.json")
@@ -1761,6 +1763,7 @@ class CloudAndTunnelHandlerMixin:
                     "crs": TWD97_TWVD2001_LABEL,
                     "scans": enriched,
                     "projects": self._build_projects_summary(enriched),
+                    "library_folders": manifest.get("library_folders") or (DB.get_library_folders() if hasattr(DB, "get_library_folders") else []),
                     "materials": MATERIAL_CATALOG,
                     "google_client_id": GOOGLE_OAUTH_CLIENT_ID,
                     "user_settings": fb_user_settings,
@@ -1776,6 +1779,15 @@ class CloudAndTunnelHandlerMixin:
                     "total_projects": len(projects),
                     "total_scans": len(enriched),
                     "projects": projects,
+                    "library_folders": manifest.get("library_folders") or (DB.get_library_folders() if hasattr(DB, "get_library_folders") else []),
+                }
+            )
+            return True
+        if path == "/api/library/folders":
+            self.send_json(
+                {
+                    "status": "ok",
+                    "folders": manifest.get("library_folders") or (DB.get_library_folders() if hasattr(DB, "get_library_folders") else []),
                 }
             )
             return True

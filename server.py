@@ -1033,6 +1033,29 @@ class GatheringScansHandler(CloudAndTunnelHandlerMixin, ServerWriteRoutesMixin, 
         thumb_q = f"?v={ts_ver}&share={share_token}" if share_token else f"?v={ts_ver}"
         s["thumbnail_url"] = f"/api/scans/{sid}/thumbnail{thumb_q}"
 
+        # Detect 3D Gaussian Splat (.gsplat) and group_type ('site' vs 'library')
+        is_gsplat = bool(s.get("is_gaussian_splat"))
+        splat_cnt = int(s.get("splat_count") or 0)
+        if not is_gsplat and ts_path and os.path.isfile(ts_path):
+            gs_cand = os.path.join(os.path.dirname(ts_path), "tiles", "splats.gsplat")
+            if os.path.isfile(gs_cand):
+                is_gsplat = True
+                if splat_cnt <= 0:
+                    splat_cnt = max(0, (os.path.getsize(gs_cand) - 16) // 32)
+        s["is_gaussian_splat"] = is_gsplat
+        if is_gsplat:
+            s["splat_count"] = splat_cnt
+            s["splat_url"] = f"/stream/{sid}/tiles/splats.gsplat{thumb_q}"
+            if splat_cnt > 0:
+                s["poly_count"] = splat_cnt
+        if s.get("group_type") not in ("site", "library"):
+            has_geo = (
+                s.get("lat") is not None
+                and s.get("lon") is not None
+                and str(s.get("crs") or "").strip().upper() != "LOCAL_ORIGIN"
+            )
+            s["group_type"] = "site" if has_geo else "library"
+
         # Enrich polygon count, texture size, and 3D scan size (MB) with fast mtime-keyed cache
         cache_key = (sid, ts_ver)
         cached_metrics = self._SCAN_MESH_METRICS_CACHE.get(cache_key)
@@ -1219,6 +1242,10 @@ class GatheringScansHandler(CloudAndTunnelHandlerMixin, ServerWriteRoutesMixin, 
             self._SCAN_MESH_METRICS_CACHE[cache_key] = cached_metrics
 
         s.update(cached_metrics)
+        if s.get("is_gaussian_splat"):
+            s["texture_size_label"] = "3DGS Splat"
+            if s.get("splat_count"):
+                s["poly_count"] = int(s["splat_count"])
         s["ortho_url"] = f"/api/scans/{sid}/ortho{thumb_q}"
         try:
             saved_ortho = SURVEY.get_saved_ortho_meta(sid, s)
@@ -1260,10 +1287,12 @@ class GatheringScansHandler(CloudAndTunnelHandlerMixin, ServerWriteRoutesMixin, 
         georef_accum: Dict[str, List[Tuple[float, float, float, float]]] = {}
         for s in scans:
             grp = s.get("project_group") or "Unassigned Site"
+            s_gtype = "library" if s.get("group_type") == "library" else "site"
             if grp not in projects_map:
                 projects_map[grp] = {
                     "project_group": grp,
                     "project_name_zh": s.get("project_name_zh") or "",
+                    "group_type": s_gtype,
                     "scan_count": 0,
                     "lat": None,
                     "lon": None,
@@ -1277,6 +1306,8 @@ class GatheringScansHandler(CloudAndTunnelHandlerMixin, ServerWriteRoutesMixin, 
             entry = projects_map[grp]
             if not entry["project_name_zh"] and s.get("project_name_zh"):
                 entry["project_name_zh"] = s.get("project_name_zh")
+            if s_gtype == "library":
+                entry["group_type"] = "library"
             entry["scan_count"] += 1
             entry["scan_ids"].append(s.get("scan_id"))
             cdate = str(s.get("capture_date") or "")
@@ -1286,7 +1317,7 @@ class GatheringScansHandler(CloudAndTunnelHandlerMixin, ServerWriteRoutesMixin, 
             crs_str = str(s.get("crs") or "").upper()
             raw_lat = s.get("lat")
             raw_lon = s.get("lon")
-            if raw_lat is not None and raw_lon is not None and "LOCAL" not in crs_str:
+            if s_gtype != "library" and raw_lat is not None and raw_lon is not None and "LOCAL" not in crs_str:
                 try:
                     flat = float(raw_lat)
                     flon = float(raw_lon)
@@ -1299,13 +1330,45 @@ class GatheringScansHandler(CloudAndTunnelHandlerMixin, ServerWriteRoutesMixin, 
 
         for grp, entry in projects_map.items():
             pts = georef_accum.get(grp) or []
-            if pts:
+            if pts and entry.get("group_type") != "library":
                 n_pts = len(pts)
                 entry["lat"] = round(sum(p[0] for p in pts) / n_pts, 6)
                 entry["lon"] = round(sum(p[1] for p in pts) / n_pts, 6)
                 entry["twd97_e"] = round(sum(p[2] for p in pts) / n_pts, 3)
                 entry["twd97_n"] = round(sum(p[3] for p in pts) / n_pts, 3)
                 entry["has_georef"] = True
+
+        # Also include any configured Library Folders so empty folders appear in the catalog/dropdowns
+        try:
+            lib_folders = (
+                DB.get_library_folders()
+                if hasattr(DB, "get_library_folders")
+                else (_load_cloud_manifest().get("library_folders") or [])
+            )
+            existing_lower = {k.lower(): k for k in projects_map}
+            for lf in lib_folders:
+                if not isinstance(lf, dict):
+                    continue
+                fname = str(lf.get("folder_name") or "").strip()
+                if not fname:
+                    continue
+                if fname.lower() not in existing_lower:
+                    projects_map[fname] = {
+                        "project_group": fname,
+                        "project_name_zh": str(lf.get("folder_name_zh") or f"{fname} 模型庫"),
+                        "group_type": "library",
+                        "icon": str(lf.get("icon") or "folder"),
+                        "scan_count": 0,
+                        "lat": None,
+                        "lon": None,
+                        "twd97_e": 0.0,
+                        "twd97_n": 0.0,
+                        "has_georef": False,
+                        "latest_date": "",
+                        "scan_ids": [],
+                    }
+        except Exception:
+            pass
 
         return sorted(projects_map.values(), key=lambda x: (-x["scan_count"], x["project_group"].lower()))
 
@@ -1569,6 +1632,7 @@ class GatheringScansHandler(CloudAndTunnelHandlerMixin, ServerWriteRoutesMixin, 
                         "share_link": link,
                         "scans": enriched,
                         "projects": self._build_projects_summary(enriched),
+                        "library_folders": DB.get_library_folders() if hasattr(DB, "get_library_folders") else [],
                         "materials": MATERIAL_CATALOG,
                         "google_client_id": GOOGLE_OAUTH_CLIENT_ID,
                     }
@@ -1599,6 +1663,7 @@ class GatheringScansHandler(CloudAndTunnelHandlerMixin, ServerWriteRoutesMixin, 
                     "crs": TWD97_TWVD2001_LABEL,
                     "scans": scans,
                     "projects": self._build_projects_summary(scans),
+                    "library_folders": DB.get_library_folders() if hasattr(DB, "get_library_folders") else [],
                     "bin_scans_count": len(bin_scans),
                     "materials": MATERIAL_CATALOG,
                     "google_client_id": GOOGLE_OAUTH_CLIENT_ID,
@@ -1631,6 +1696,18 @@ class GatheringScansHandler(CloudAndTunnelHandlerMixin, ServerWriteRoutesMixin, 
                     "total_projects": len(projects),
                     "total_scans": len(scans),
                     "projects": projects,
+                    "library_folders": DB.get_library_folders() if hasattr(DB, "get_library_folders") else [],
+                }
+            )
+            return
+
+        # 3a-1. 3D Model Library Folders Endpoint (/api/library/folders)
+        if path == "/api/library/folders":
+            sync_scans_with_filesystem()
+            self.send_json(
+                {
+                    "status": "ok",
+                    "folders": DB.get_library_folders() if hasattr(DB, "get_library_folders") else [],
                 }
             )
             return
@@ -2270,7 +2347,7 @@ class GatheringScansHandler(CloudAndTunnelHandlerMixin, ServerWriteRoutesMixin, 
                 if os.path.isdir(tiles_dir):
                     for fn in sorted(os.listdir(tiles_dir)):
                         if (
-                            fn == "root.glb"
+                            fn in ("root.glb", "splats.gsplat")
                             or fn.startswith("tile_l1_")
                             or fn.startswith("tile_l2_")
                             or fn.startswith("tile_d1_")

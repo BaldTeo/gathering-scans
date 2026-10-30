@@ -2282,22 +2282,35 @@
   });
 
   function switchView(viewName, optionalScanId = null) {
-    if (viewName !== "studio" && STATE.fpMode?.active && typeof exitFirstPersonMode === "function") {
+    const requestedLibrary = viewName === "library";
+    const resolvedView = requestedLibrary ? "map" : viewName;
+    if (resolvedView !== "studio" && STATE.fpMode?.active && typeof exitFirstPersonMode === "function") {
       exitFirstPersonMode(true);
     }
-    if (viewName !== "studio" && STATE.multiAlign?.active && typeof exitMultiScanAlignMode === "function") {
+    if (resolvedView !== "studio" && STATE.multiAlign?.active && typeof exitMultiScanAlignMode === "function") {
       exitMultiScanAlignMode(false);
     }
-    STATE.activeView = viewName;
+    STATE.activeView = resolvedView;
+    if (requestedLibrary && typeof setLeftPaneMode === "function") {
+      setLeftPaneMode("library");
+    } else if (viewName === "map" && typeof setLeftPaneMode === "function") {
+      setLeftPaneMode("map");
+    }
     SHARE_TELEMETRY.recordViewSwitch(viewName);
     document.querySelectorAll("#mainModeSwitcher .btn-seg").forEach((b) => {
-      b.classList.toggle("active", b.dataset.view === viewName);
+      if (b.dataset.view === "library") {
+        b.classList.toggle("active", resolvedView === "map" && STATE.leftPaneMode === "library");
+      } else if (b.dataset.view === "map") {
+        b.classList.toggle("active", resolvedView === "map" && STATE.leftPaneMode !== "library");
+      } else {
+        b.classList.toggle("active", b.dataset.view === resolvedView);
+      }
     });
-    document.getElementById("viewMap")?.classList.toggle("active", viewName === "map");
-    document.getElementById("viewStudio")?.classList.toggle("active", viewName === "studio");
-    document.getElementById("viewCompare")?.classList.toggle("active", viewName === "compare");
+    document.getElementById("viewMap")?.classList.toggle("active", resolvedView === "map");
+    document.getElementById("viewStudio")?.classList.toggle("active", resolvedView === "studio");
+    document.getElementById("viewCompare")?.classList.toggle("active", resolvedView === "compare");
 
-    if (viewName === "map") {
+    if (resolvedView === "map") {
       if (typeof suspendCompare3DResources === "function" && typeof isMobileOrTabletDevice === "function" && isMobileOrTabletDevice()) {
         suspendCompare3DResources();
       }
@@ -2326,7 +2339,7 @@
           loadScanIntoPreview(STATE.selectedTimelineScanId || STATE.activeScanId);
         }
       }, 60);
-    } else if (viewName === "studio") {
+    } else if (resolvedView === "studio") {
       if (typeof suspendPreview3DResources === "function") {
         suspendPreview3DResources();
       }
@@ -2336,7 +2349,7 @@
       initStudio3D();
       handleResize();
       loadScanIntoStudio(optionalScanId || STATE.activeScanId);
-    } else if (viewName === "compare") {
+    } else if (resolvedView === "compare") {
       if (typeof suspendPreview3DResources === "function") {
         suspendPreview3DResources();
       }
@@ -2365,6 +2378,69 @@
       }
       switchView(btn.dataset.view);
     });
+  });
+
+  // 3D Model Library & Move Scan UI Listeners
+  document.getElementById("btnLeftModeMap")?.addEventListener("click", () => {
+    if (typeof setLeftPaneMode === "function") setLeftPaneMode("map");
+  });
+  document.getElementById("btnLeftModeLibrary")?.addEventListener("click", () => {
+    if (typeof setLeftPaneMode === "function") setLeftPaneMode("library");
+  });
+  document.getElementById("btnLibraryBackToMap")?.addEventListener("click", () => {
+    if (typeof setLeftPaneMode === "function") setLeftPaneMode("map");
+  });
+  document.getElementById("librarySearchInput")?.addEventListener("input", (e) => {
+    STATE.librarySearchQuery = e.target.value || "";
+    if (typeof renderModelLibraryView === "function") renderModelLibraryView();
+  });
+  document.getElementById("btnCreateLibraryFolder")?.addEventListener("click", () => {
+    if (typeof openLibraryFolderModal === "function") openLibraryFolderModal("create");
+  });
+  document.getElementById("btnRenameLibraryFolder")?.addEventListener("click", () => {
+    if (typeof openLibraryFolderModal === "function") {
+      openLibraryFolderModal("rename", STATE.selectedLibraryFolder);
+    }
+  });
+  document.getElementById("btnDeleteLibraryFolder")?.addEventListener("click", () => {
+    if (typeof deleteActiveLibraryFolder === "function") deleteActiveLibraryFolder();
+  });
+  document.getElementById("btnConfirmLibraryFolder")?.addEventListener("click", () => {
+    if (typeof submitLibraryFolderModal === "function") submitLibraryFolderModal();
+  });
+  document.getElementById("libraryFolderNameInput")?.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      if (typeof submitLibraryFolderModal === "function") submitLibraryFolderModal();
+    }
+  });
+  document.getElementById("moveScanTypeLibrary")?.addEventListener("click", () => {
+    if (typeof _populateMoveScanTargetDropdown === "function") {
+      _populateMoveScanTargetDropdown("library", "");
+    }
+  });
+  document.getElementById("moveScanTypeSite")?.addEventListener("click", () => {
+    if (typeof _populateMoveScanTargetDropdown === "function") {
+      _populateMoveScanTargetDropdown("site", "");
+    }
+  });
+  document.getElementById("moveScanTargetSelect")?.addEventListener("change", (e) => {
+    const newWrap = document.getElementById("moveScanNewGroupWrap");
+    if (newWrap) {
+      newWrap.style.display = e.target.value === "__new__" ? "block" : "none";
+      if (e.target.value === "__new__") {
+        setTimeout(() => document.getElementById("moveScanNewGroupInput")?.focus(), 40);
+      }
+    }
+  });
+  document.getElementById("btnConfirmMoveScan")?.addEventListener("click", () => {
+    if (typeof submitMoveScanModal === "function") submitMoveScanModal();
+  });
+  document.getElementById("moveScanNewGroupInput")?.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      if (typeof submitMoveScanModal === "function") submitMoveScanModal();
+    }
   });
 
   function handleResize() {
@@ -2484,6 +2560,9 @@
 
       if (data.materials) {
         STATE.materials = data.materials;
+      }
+      if (Array.isArray(data.library_folders)) {
+        STATE.libraryFolders = data.library_folders;
       }
       if (typeof data.pc_online === "boolean") {
         STATE.pcOnline = data.pc_online;
@@ -2625,6 +2704,9 @@
       }
       populateProjectScanDropdowns(STATE.activeProjectGroup, STATE.activeScanId);
       renderMapClusters({ preservePopover: Boolean(isBackgroundPoll) });
+      if (typeof renderModelLibraryView === "function") {
+        renderModelLibraryView();
+      }
 
       if (prevCatalogSig !== nextCatalogSig && STATE.siteTimelineOpen && STATE.activeView === "map" && STATE.scans.length > 0) {
         openSiteTimeline(STATE.activeProjectGroup, STATE.selectedTimelineScanId, false);
@@ -2689,6 +2771,9 @@
       applyTheme(STATE.themePreference, false);
       populateProjectScanDropdowns(STATE.activeProjectGroup, STATE.activeScanId);
       renderMapClusters();
+      if (typeof renderModelLibraryView === "function") {
+        renderModelLibraryView();
+      }
       if (STATE.siteTimelineOpen && STATE.activeView === "map") {
         openSiteTimeline(STATE.activeProjectGroup || "__all__", STATE.selectedTimelineScanId, false);
       }
@@ -2903,6 +2988,7 @@
       }
       STATE.scans = bootPayload.scans;
       STATE.projects = bootPayload.projects || [];
+      if (Array.isArray(bootPayload.library_folders)) STATE.libraryFolders = bootPayload.library_folders;
       if (bootPayload.materials) STATE.materials = bootPayload.materials;
       if (bootPayload.share_link) STATE.shareLinkInfo = bootPayload.share_link;
       if (!STATE.activeScanId || !STATE.scans.some((s) => s.scan_id === STATE.activeScanId)) {
@@ -3061,5 +3147,11 @@
     cancelStudioVertexMove,
     rebuildAllCompletedMeasurements3D,
     uploadLocalFilesToComment: (...args) => window.uploadLocalFilesToComment?.(...args),
+    setLeftPaneMode,
+    renderModelLibraryView,
+    openMoveScanModal,
+    submitMoveScanModal,
+    openLibraryFolderModal,
+    submitLibraryFolderModal,
   };
 
