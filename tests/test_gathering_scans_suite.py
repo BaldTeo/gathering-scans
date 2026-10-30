@@ -2236,6 +2236,27 @@ class GatheringScansTestSuite(unittest.TestCase):
         self.assertEqual(link_sid["token"], real_link["token"])
         self.assertEqual(len(scans_sid), 1)
 
+        # 5. Share link whose original target_id was superseded by a newer edited/cleared scan auto-resolves to the active scan
+        self.db.upsert_scan(
+            {
+                "scan_id": "edited_daan_cleared_246001",
+                "name": "DaAn_Cleared",
+                "project_group": "DaAn Park",
+                "status": "completed",
+            }
+        )
+        daan_link = auth.create_share_link(
+            {
+                "scope_type": "scan",
+                "target_id": "edited_daan_661536",
+                "label": "DaAn Embed Link",
+            }
+        )
+        ok_daan, _, link_daan_res, scans_daan = auth.validate_share_access(daan_link["token"])
+        self.assertTrue(ok_daan)
+        self.assertEqual(len(scans_daan), 1)
+        self.assertEqual(scans_daan[0]["scan_id"], "edited_daan_cleared_246001")
+
 
 if __name__ == "__main__":
     unittest.main()

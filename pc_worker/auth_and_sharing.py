@@ -1616,7 +1616,42 @@ class AuthAndSharingManager:
 
         # Determine authorized scans for this token
         if link["scope_type"] == "scan":
-            scan = self.db.get_scan(link["target_id"])
+            target_id = str(link["target_id"])
+            scan = self.db.get_scan(target_id)
+            if not scan:
+                # Target scan was superseded by a newer edited/cleared version in the same site or moved to Recycle Bin
+                trashed = self.db.get_trashed_scan(target_id) if hasattr(self.db, "get_trashed_scan") else None
+                cand_group = str((trashed or {}).get("project_group") or "").strip()
+                all_active = self.db.list_scans()
+                if cand_group:
+                    grp_cands = [s for s in all_active if s.get("project_group") == cand_group and s.get("status") == "completed"]
+                    if grp_cands:
+                        scan = grp_cands[0]
+                if not scan:
+                    m_base = re.sub(r"^edited_", "", re.sub(r"_\d{5,}$", "", target_id)).lower()
+                    stem_tokens = [t for t in m_base.split("_") if len(t) >= 3 and t not in ("edited", "cleared", "merged", "scan", "scans", "catch")]
+                    if stem_tokens:
+                        for s_cand in all_active:
+                            sid_low = str(s_cand.get("scan_id") or "").lower()
+                            grp_low = str(s_cand.get("project_group") or "").lower()
+                            if any(st in sid_low or st in grp_low for st in stem_tokens):
+                                scan = s_cand
+                                break
+                if not scan and trashed:
+                    scan = trashed
+                if scan and scan.get("scan_id") and scan["scan_id"] != target_id:
+                    new_sid = str(scan["scan_id"])
+                    link["target_id"] = new_sid
+                    resolved_tok_upd = str(link.get("token") or token)
+                    try:
+                        with DB_LOCK, self.db._connect() as conn:
+                            conn.execute(
+                                "UPDATE share_links SET target_id = ? WHERE token = ?",
+                                (new_sid, resolved_tok_upd),
+                            )
+                            conn.commit()
+                    except Exception:
+                        pass
             allowed_scans = [scan] if scan else []
         else:
             allowed_scans = self.db.list_scans(project_group=link["target_id"])

@@ -384,11 +384,38 @@
       powerPreference: isIOS ? "default" : "high-performance",
     });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, isIOS ? 1.5 : 2));
-    renderer.setSize(Math.max(1, container.clientWidth), Math.max(1, container.clientHeight));
+    renderer.setSize(
+      Math.max(1, container.clientWidth || window.innerWidth || 800),
+      Math.max(1, container.clientHeight || window.innerHeight || 600)
+    );
     renderer.toneMapping = THREE.NoToneMapping;
     renderer.toneMappingExposure = 1.0;
     renderer.localClippingEnabled = true;
     container.appendChild(renderer.domElement);
+
+    if (typeof ResizeObserver === "function") {
+      try {
+        const ro = new ResizeObserver((entries) => {
+          if (!studioThree || STATE.activeView !== "studio") return;
+          for (const entry of entries) {
+            const rw = Math.max(1, Math.round(entry.contentRect?.width || container.clientWidth || 0));
+            const rh = Math.max(1, Math.round(entry.contentRect?.height || container.clientHeight || 0));
+            if (rw > 4 && rh > 4 && (rw !== studioThree._lastRoW || rh !== studioThree._lastRoH)) {
+              studioThree._lastRoW = rw;
+              studioThree._lastRoH = rh;
+              studioThree.camera.aspect = rw / rh;
+              studioThree.camera.updateProjectionMatrix();
+              studioThree.renderer.setSize(rw, rh);
+              if (studioThree.tilesRenderer) {
+                studioThree.tilesRenderer.setResolutionFromRenderer(studioThree.camera, studioThree.renderer);
+                studioThree.tilesRenderer.update();
+              }
+            }
+          }
+        });
+        ro.observe(container);
+      } catch (_) {}
+    }
 
     renderer.domElement.addEventListener(
       "webglcontextlost",

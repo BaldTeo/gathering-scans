@@ -1147,6 +1147,18 @@ class CloudAndTunnelHandlerMixin:
                 allowed_scans.append(s)
             elif not allowed_ids and scope_grp and sgrp == scope_grp:
                 allowed_scans.append(s)
+        if not allowed_scans and scope_type == "scan" and target_id and scans:
+            m_base = re.sub(r"^edited_", "", re.sub(r"_\d{5,}$", "", target_id)).lower()
+            stem_tokens = [t for t in m_base.split("_") if len(t) >= 3 and t not in ("edited", "cleared", "merged", "scan", "scans", "catch")]
+            if stem_tokens:
+                for s_cand in scans:
+                    sid_low = str(s_cand.get("scan_id") or "").lower()
+                    grp_low = str(s_cand.get("project_group") or "").lower()
+                    if any(st in sid_low or st in grp_low for st in stem_tokens):
+                        allowed_scans.append(s_cand)
+                        link = dict(link)
+                        link["target_id"] = str(s_cand.get("scan_id") or target_id)
+                        break
         if requested_scan_id and not any(str(s.get("scan_id")) == requested_scan_id for s in allowed_scans):
             return False, f"Forbidden: Scan '{requested_scan_id}' is outside the authorized scope of this share link.", link, []
         return True, "", link, allowed_scans

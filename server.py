@@ -187,8 +187,8 @@ class GatheringScansHandler(CloudAndTunnelHandlerMixin, ServerWriteRoutesMixin, 
         if origin:
             o_low = origin.lower()
             if (
-                o_low in ("https://scans.gatheren.cloud", "https://gatheren.cloud")
-                or (o_low.startswith("https://") and o_low.endswith(".gatheren.cloud"))
+                o_low in ("https://scans.gatheren.cloud", "https://gatheren.cloud", "https://gatheren.com.tw", "https://www.gatheren.com.tw")
+                or (o_low.startswith("https://") and (o_low.endswith(".gatheren.cloud") or o_low.endswith(".gatheren.com.tw")))
                 or o_low.startswith("http://localhost:")
                 or o_low.startswith("http://127.0.0.1:")
                 or o_low in ("http://localhost", "http://127.0.0.1")
@@ -427,6 +427,21 @@ class GatheringScansHandler(CloudAndTunnelHandlerMixin, ServerWriteRoutesMixin, 
                 target_id = str(link.get("target_id") or "")
                 if scope_type == "scan":
                     allowed_scans = [s for s in m_scans if str(s.get("scan_id")) == target_id]
+                    if not allowed_scans and target_id and m_scans:
+                        m_base = re.sub(r"^edited_", "", re.sub(r"_\d{5,}$", "", target_id)).lower()
+                        stem_tokens = [
+                            t
+                            for t in m_base.split("_")
+                            if len(t) >= 3 and t not in ("edited", "cleared", "merged", "scan", "scans", "catch")
+                        ]
+                        if stem_tokens:
+                            for s_cand in m_scans:
+                                sid_low = str(s_cand.get("scan_id") or "").lower()
+                                grp_low = str(s_cand.get("project_group") or "").lower()
+                                if any(st in sid_low or st in grp_low for st in stem_tokens):
+                                    allowed_scans = [s_cand]
+                                    link["target_id"] = str(s_cand.get("scan_id") or target_id)
+                                    break
                 else:
                     allowed_scans = [s for s in m_scans if str(s.get("project_group")) == target_id]
         elif req_scan_id:
