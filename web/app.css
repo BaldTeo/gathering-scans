@@ -4534,13 +4534,16 @@ body.gs-embed-mode .gs-embed-floating-hud {
   border: 1px solid rgba(15, 23, 42, 0.14);
   color: #1e293b;
 }
-.gs-embed-floating-hud .btn-xs:hover {
+.gs-embed-floating-hud .btn-xs:hover,
+.gs-embed-floating-hud .btn-xs:focus-visible {
   background: #ffffff;
   border-color: #0284c7;
   color: #0284c7;
 }
 .gs-embed-floating-hud .btn-xs.active,
-.gs-embed-floating-hud .btn-xs.primary {
+.gs-embed-floating-hud .btn-xs.primary,
+.gs-embed-floating-hud .btn-xs.active:hover,
+.gs-embed-floating-hud .btn-xs.active:focus-visible {
   background: #0284c7;
   border-color: #0284c7;
   color: #ffffff;
