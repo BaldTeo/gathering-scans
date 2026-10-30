@@ -18,7 +18,7 @@
   <meta name="twitter:image" content="https://scans.gatheren.cloud/assets/gathering_cloud_logo.png" />
   <!-- GS_SHARE_OG_END -->
   <link rel="icon" type="image/png" href="/assets/gathering_cloud_logo.png" />
-  <link rel="stylesheet" href="/app.css?v=20261030_v210" />
+  <link rel="stylesheet" href="/app.css?v=20261030_v211" />
   <script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
 <body>
@@ -399,11 +399,12 @@
                 <button type="button" class="btn-seg" data-lod-mode="auto" title="自動漸進 (依鏡頭距離自動細化)" data-i18n-zh="自動" data-i18n-en="Auto" data-i18n-title-zh="自動漸進 (依鏡頭距離自動細化)" data-i18n-title-en="Auto Progressive (Refine by Camera Distance)">自動</button>
                 <button type="button" class="btn-seg" data-lod-mode="max" title="精細 (強制載入最高解析度圖磚)" data-i18n-zh="精細" data-i18n-en="Max" data-i18n-title-zh="精細 (強制載入最高解析度圖磚)" data-i18n-title-en="Max Detail (Force High-Res Leaf Tiles)">精細</button>
               </div>
-              <button type="button" class="btn-xs active primary" id="btnPreviewAutoRotate" aria-pressed="true" title="切換緩慢自動旋轉 (Auto-Rotate)" data-i18n-title-zh="切換緩慢自動旋轉 (Auto-Rotate)" data-i18n-title-en="Toggle Slow Auto-Rotation">
+              <button type="button" class="btn-xs active primary" id="btnPreviewAutoRotate" aria-pressed="true" title="切換緩慢自動旋轉 (Auto-Rotate)" data-i18n-title-zh="切換緩慢自動旋轉 (Auto-Rotate)" data-i18n-title-en="Toggle Slow Auto-Rotation" style="gap:3px;">
                 <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
                   <path d="M21 12a9 9 0 1 1-2.64-6.36"/>
                   <polyline points="21 3 21 9 15 9"/>
                 </svg>
+                <span data-i18n-zh="轉轉" data-i18n-en="Spin">轉轉</span>
               </button>
               <button type="button" class="btn-xs" id="btnPreviewResetCamera" title="回到首頁視角 (Home)" data-i18n-title-zh="回到首頁視角 (Home)" data-i18n-title-en="Home View">
                 <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
@@ -494,11 +495,12 @@
               <button type="button" class="btn-seg active" data-embed-lod="auto" style="padding:2px 7px;font-size:10.5px;" title="自動漸進細化" data-i18n-zh="自動" data-i18n-en="Auto" data-i18n-title-zh="自動漸進細化" data-i18n-title-en="Auto Progressive">自動</button>
             </div>
           </div>
-          <button type="button" class="btn-xs active primary" id="btnEmbedAutoRotate" aria-pressed="true" title="切換緩慢自動旋轉 (Auto-Rotate)" data-i18n-title-zh="切換緩慢自動旋轉 (Auto-Rotate)" data-i18n-title-en="Toggle Slow Auto-Rotation">
+          <button type="button" class="btn-xs active primary" id="btnEmbedAutoRotate" aria-pressed="true" title="切換緩慢自動旋轉 (Auto-Rotate)" data-i18n-title-zh="切換緩慢自動旋轉 (Auto-Rotate)" data-i18n-title-en="Toggle Slow Auto-Rotation" style="gap:3px;">
             <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
               <path d="M21 12a9 9 0 1 1-2.64-6.36"/>
               <polyline points="21 3 21 9 15 9"/>
             </svg>
+            <span data-i18n-zh="轉轉" data-i18n-en="Spin">轉轉</span>
           </button>
           <button type="button" class="btn-xs" id="btnEmbedResetCamera" title="回到首頁視角" data-i18n-title-zh="回到首頁視角" data-i18n-title-en="Home View">
             <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
@@ -610,11 +612,12 @@
             <button type="button" class="btn-seg" data-lod-mode="max" title="精細 (強制載入 L2 最高解析度圖磚)" data-i18n-zh="精細" data-i18n-en="Max" data-i18n-title-zh="精細 (強制載入 L2 最高解析度圖磚)" data-i18n-title-en="Max Detail (Force L2 High-Res Tiles)">精細</button>
           </div>
 
-          <button type="button" class="btn-xs active primary" id="btnStudioAutoRotate" aria-pressed="true" title="切換緩慢自動旋轉 (Auto-Rotate)" data-i18n-title-zh="切換緩慢自動旋轉 (Auto-Rotate)" data-i18n-title-en="Toggle Slow Auto-Rotation">
+          <button type="button" class="btn-xs active primary" id="btnStudioAutoRotate" aria-pressed="true" title="切換緩慢自動旋轉 (Auto-Rotate)" data-i18n-title-zh="切換緩慢自動旋轉 (Auto-Rotate)" data-i18n-title-en="Toggle Slow Auto-Rotation" style="gap:3px;">
             <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
               <path d="M21 12a9 9 0 1 1-2.64-6.36"/>
               <polyline points="21 3 21 9 15 9"/>
             </svg>
+            <span data-i18n-zh="轉轉" data-i18n-en="Spin">轉轉</span>
           </button>
           <button type="button" class="btn-xs" id="btnStudioResetCamera" title="回到首頁視角 (Home)" data-i18n-title-zh="回到首頁視角 (Home)" data-i18n-title-en="Home View">
             <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
@@ -2225,18 +2228,18 @@
   <script src="/lib/GLTFLoader.js"></script>
   <script src="/lib/KTX2Loader.js"></script>
   <script src="/lib/meshopt_decoder.js"></script>
-  <script src="/lib/3d-tiles-renderer.bundle.js?v=20261030_v210"></script>
+  <script src="/lib/3d-tiles-renderer.bundle.js?v=20261030_v211"></script>
 
   <!-- Main GatheringScans Bilingual Translation & Modular Application Logic (< 5,000 lines per module) -->
-  <script src="/i18n.js?v=20261030_v210"></script>
-  <script src="/src/01-core-state.js?v=20261030_v210"></script>
-  <script src="/src/02-map-and-timeline.js?v=20261030_v210"></script>
-  <script src="/src/03-studio-core.js?v=20261030_v210"></script>
-  <script src="/src/04-studio-lasso-and-edits.js?v=20261030_v210"></script>
-  <script src="/src/05-studio-civil-inspectors.js?v=20261030_v210"></script>
-  <script src="/src/06-studio-align-and-optimizer.js?v=20261030_v210"></script>
-  <script src="/src/07-compare-and-queue.js?v=20261030_v210"></script>
-  <script src="/src/08-advanced-surveying-and-qa.js?v=20261030_v210"></script>
-  <script src="/app.js?v=20261030_v210"></script>
+  <script src="/i18n.js?v=20261030_v211"></script>
+  <script src="/src/01-core-state.js?v=20261030_v211"></script>
+  <script src="/src/02-map-and-timeline.js?v=20261030_v211"></script>
+  <script src="/src/03-studio-core.js?v=20261030_v211"></script>
+  <script src="/src/04-studio-lasso-and-edits.js?v=20261030_v211"></script>
+  <script src="/src/05-studio-civil-inspectors.js?v=20261030_v211"></script>
+  <script src="/src/06-studio-align-and-optimizer.js?v=20261030_v211"></script>
+  <script src="/src/07-compare-and-queue.js?v=20261030_v211"></script>
+  <script src="/src/08-advanced-surveying-and-qa.js?v=20261030_v211"></script>
+  <script src="/app.js?v=20261030_v211"></script>
 </body>
 </html>
