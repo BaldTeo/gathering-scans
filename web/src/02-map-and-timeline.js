@@ -1445,7 +1445,7 @@
     controls.enableZoom = true;
     controls.minDistance = 0.08;
     controls.screenSpacePanning = true;
-    controls.autoRotate = Boolean(STATE.autoRotateEnabled);
+    controls.autoRotate = Boolean(STATE.previewAutoRotateEnabled ?? true);
     controls.autoRotateSpeed = Number(STATE.autoRotateSpeed) || 0.45;
     if (typeof installSurfaceAwareOrbitZoom === "function") {
       installSurfaceAwareOrbitZoom(renderer.domElement, () => previewThree);
@@ -1684,6 +1684,11 @@
     // Complete as soon as the coarse L0 root tile (loaded >= 1) is rendered so L1/L2 stream silently in background
     const total = Math.max(1, loaded + pending);
     const enoughTilesReady = loaded >= 1;
+    if (ctx._gsplatLoading) {
+      ctx._maxPct = Math.max(ctx._maxPct || 65, 82);
+      updateScanLoader(prefix, true, ctx._maxPct, tr("正在串流 3D 高斯潑濺...", "Streaming 3D Gaussian Splats..."));
+      return;
+    }
     if (enoughTilesReady && elapsed > 180) {
       finishScanLoader(ctx, prefix, tr(`100% · ${loaded} 個 3D 圖磚已就緒`, `100% · ${loaded} 3D tiles ready`));
       return;
@@ -1761,7 +1766,14 @@
     const rawR = Number(previewThree.boundingSphere?.radius) || 55;
     const r = rawR < 14 ? Math.max(1.4, rawR * 1.55) : Math.max(22, Math.min(240, rawR));
     previewThree.controls.target.set(0, 0, 0);
-    previewThree.camera.position.set(r * 0.68, r * 0.54, r * 0.78);
+    if (
+      STATE.activeScan?.is_gaussian_splat &&
+      String(STATE.activeScan?.crs || "").toUpperCase().includes("LOCAL")
+    ) {
+      previewThree.camera.position.set(-r * 0.14, r * 0.16, r * 1.18);
+    } else {
+      previewThree.camera.position.set(r * 0.68, r * 0.54, r * 0.78);
+    }
     previewThree.camera.lookAt(0, 0, 0);
     previewThree.controls.update();
   }
@@ -2273,9 +2285,13 @@
           framePreviewCamera();
           previewThree.currentScanId = scan.scan_id;
           previewThree.qualityMode = lodMode;
-          const isGsplat = Boolean(scan.is_gaussian_splat || tr.root?.extras?.is_gaussian_splat || tr.root?.parent?.extras?.is_gaussian_splat);
+          const isGsplat =
+            typeof isScanOrTilesetGaussianSplat === "function"
+              ? isScanOrTilesetGaussianSplat(scan, tr)
+              : Boolean(scan.is_gaussian_splat || tr.root?.extras?.is_gaussian_splat || tr.root?.parent?.extras?.is_gaussian_splat);
           if (isGsplat && typeof loadGaussianSplatIntoContext === "function") {
             scan.is_gaussian_splat = true;
+            framePreviewCamera();
             loadGaussianSplatIntoContext(previewThree, scan, "preview", () => {
               finishScanLoader(previewThree, "preview", tr("100% · 3D 高斯潑濺已就緒", "100% · 3D Gaussian Splat Ready"));
             });
@@ -2289,7 +2305,10 @@
         if (previewThree.tilesRenderer !== tr) return;
         if (ev && ev.scene) {
           if (previewThree.fallbackGroup) previewThree.fallbackGroup.visible = false;
-          const isGsplat = Boolean(scan.is_gaussian_splat || tr.root?.extras?.is_gaussian_splat || tr.root?.parent?.extras?.is_gaussian_splat);
+          const isGsplat =
+            typeof isScanOrTilesetGaussianSplat === "function"
+              ? isScanOrTilesetGaussianSplat(scan, tr)
+              : Boolean(scan.is_gaussian_splat || tr.root?.extras?.is_gaussian_splat || tr.root?.parent?.extras?.is_gaussian_splat);
           ev.scene.traverse((c) => {
             if (c.isMesh && c.material) {
               const mats = Array.isArray(c.material) ? c.material : [c.material];

@@ -491,6 +491,7 @@ class GatheringScansHandler(CloudAndTunnelHandlerMixin, ServerWriteRoutesMixin, 
             "materials": MATERIAL_CATALOG,
             "initial_scan_id": str(lead_scan.get("scan_id") or ""),
             "preload_stream_url": str(preload_url),
+            "preload_splat_url": str(lead_scan.get("splat_url") or "") if lead_scan.get("is_gaussian_splat") else "",
             "thumbnail_url": str(lead_scan.get("thumbnail_url") or ""),
         }
 
@@ -1042,6 +1043,16 @@ class GatheringScansHandler(CloudAndTunnelHandlerMixin, ServerWriteRoutesMixin, 
                 is_gsplat = True
                 if splat_cnt <= 0:
                     splat_cnt = max(0, (os.path.getsize(gs_cand) - 16) // 32)
+        if not is_gsplat:
+            try:
+                pkg_toc = ((_load_cloud_manifest().get("packages") or {}).get(sid) or {}).get("toc") or {}
+                splat_entry = pkg_toc.get("tiles/splats.gsplat")
+                if isinstance(splat_entry, dict) and int(splat_entry.get("size") or 0) >= 48:
+                    is_gsplat = True
+                    if splat_cnt <= 0:
+                        splat_cnt = max(0, (int(splat_entry["size"]) - 16) // 32)
+            except Exception:
+                pass
         s["is_gaussian_splat"] = is_gsplat
         if is_gsplat:
             s["splat_count"] = splat_cnt
@@ -3170,6 +3181,9 @@ class GatheringScansHandler(CloudAndTunnelHandlerMixin, ServerWriteRoutesMixin, 
                         preload_u = html.escape(str(bootstrap_payload.get("preload_stream_url") or ""), quote=True)
                         if preload_u:
                             bootstrap_tags += f'\n  <link rel="preload" href="{preload_u}" as="fetch" crossorigin="anonymous" />'
+                        preload_s = html.escape(str(bootstrap_payload.get("preload_splat_url") or ""), quote=True)
+                        if preload_s:
+                            bootstrap_tags += f'\n  <link rel="preload" href="{preload_s}" as="fetch" crossorigin="anonymous" />'
                         safe_json = json.dumps(bootstrap_payload, ensure_ascii=False).replace("</", "<\\/")
                         bootstrap_tags += f'\n  <script id="gsEmbedBootstrapScript">window.__GS_EMBED_BOOTSTRAP__ = {safe_json};</script>'
                     if is_emb_req:

@@ -1032,6 +1032,7 @@
     const controls = new THREE.OrbitControls(left.camera, stage);
     controls.target.set(0, 0, 0);
     controls.enableDamping = true;
+    controls.autoRotate = false;
     controls.enablePan = true;
     controls.enableZoom = true;
     controls.minDistance = 0.08;

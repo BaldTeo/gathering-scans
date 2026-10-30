@@ -269,11 +269,24 @@
       } catch (_e) {}
       return "rough";
     })(),
-    autoRotateEnabled: (function () {
+    embedAutoRotateEnabled: (function () {
       const urlRot = String(_urlParams.get("autorotate") || _urlParams.get("rotate") || "").trim().toLowerCase();
       if (urlRot === "0" || urlRot === "false" || urlRot === "off") return false;
       if (urlRot === "1" || urlRot === "true" || urlRot === "on") return true;
       return true;
+    })(),
+    previewAutoRotateEnabled: (function () {
+      const urlRot = String(_urlParams.get("autorotate") || _urlParams.get("rotate") || "").trim().toLowerCase();
+      if (urlRot === "0" || urlRot === "false" || urlRot === "off") return false;
+      if (urlRot === "1" || urlRot === "true" || urlRot === "on") return true;
+      return true;
+    })(),
+    studioAutoRotateEnabled: false,
+    autoRotateEnabled: (function () {
+      const urlRot = String(_urlParams.get("autorotate") || _urlParams.get("rotate") || "").trim().toLowerCase();
+      if (urlRot === "0" || urlRot === "false" || urlRot === "off") return false;
+      if (urlRot === "1" || urlRot === "true" || urlRot === "on") return true;
+      return initialIsEmbedded ? true : false;
     })(),
     autoRotateSpeed: 0.45,
   };
@@ -1402,14 +1415,28 @@
     });
   }
 
+  function isScanOrTilesetGaussianSplat(scan, tr) {
+    if (scan && scan.is_gaussian_splat) return true;
+    if (tr) {
+      if (tr.root?.extras?.is_gaussian_splat || tr.root?.parent?.extras?.is_gaussian_splat) return true;
+      const tsMap = tr.tileSets;
+      if (tsMap && typeof tsMap === "object") {
+        for (const k of Object.keys(tsMap)) {
+          if (tsMap[k]?.extras?.is_gaussian_splat || tsMap[k]?.root?.extras?.is_gaussian_splat) return true;
+        }
+      }
+    }
+    return false;
+  }
+
   async function loadGaussianSplatIntoContext(ctx, scan, prefix = "studio", onReady = null) {
     disposeGaussianSplatFromContext(ctx);
-    const tsExtras = ctx?.tilesRenderer?.root?.extras || ctx?.tilesRenderer?.root?.parent?.extras || null;
-    const isGsplat = Boolean(scan?.is_gaussian_splat || tsExtras?.is_gaussian_splat);
+    const isGsplat = isScanOrTilesetGaussianSplat(scan, ctx?.tilesRenderer);
     if (!ctx || !scan || !isGsplat) return null;
     scan.is_gaussian_splat = true;
     const THREE = window.THREE;
     if (!THREE || !ctx.modelPivot) return null;
+    ctx._gsplatLoading = true;
 
     const splatUrl =
       scan.splat_url ||
@@ -1472,6 +1499,7 @@
         }
         _GSPLAT_BUFFER_CACHE.set(splatUrl, parsed);
       } catch (err) {
+        ctx._gsplatLoading = false;
         console.warn("[GaussianSplat] Failed loading .gsplat stream:", err);
         return null;
       }
@@ -1481,6 +1509,7 @@
       (prefix === "studio" && STATE.activeScanId !== expectedScanId) ||
       (prefix === "preview" && ctx.currentScanId && ctx.currentScanId !== expectedScanId)
     ) {
+      ctx._gsplatLoading = false;
       return null;
     }
 
@@ -1653,7 +1682,11 @@
       sortIndices: new Uint32Array(totalSplats),
     };
 
+    ctx._gsplatLoading = false;
     updateGaussianSplatForContext(ctx, prefix, true);
+    if (ctx.renderer && ctx.scene && ctx.camera) {
+      ctx.renderer.render(ctx.scene, ctx.camera);
+    }
     if (typeof onReady === "function") onReady(mesh);
     return mesh;
   }
@@ -1679,7 +1712,7 @@
 
     const mode = String((prefix === "preview" ? STATE.previewLodMode : STATE.scanLodMode) || ctx.qualityMode || "auto");
     const total = st.src.count;
-    const activeCount = mode === "rough" ? Math.min(total, 48000) : total;
+    const activeCount = mode === "rough" ? Math.min(total, 250000) : total;
 
     // Camera view direction transformed into Z-up modelPivot space (since modelPivot has rotation.x = -PI/2)
     const camDirWorld = new THREE.Vector3();
@@ -1693,7 +1726,7 @@
       Math.hypot(vx - st.lastCamDir.x, vy - st.lastCamDir.y, vz - st.lastCamDir.z) +
       (st.lastActiveCount !== activeCount ? 1.0 : 0.0);
 
-    if (!forceSort && dirDelta < 0.025) return;
+    if (!forceSort && dirDelta < 0.008) return;
     st.lastCamDir.set(vx, vy, vz);
     st.lastActiveCount = activeCount;
 
@@ -2281,6 +2314,7 @@
   window.openLibraryFolderModal = openLibraryFolderModal;
   window.submitLibraryFolderModal = submitLibraryFolderModal;
   window.deleteActiveLibraryFolder = deleteActiveLibraryFolder;
+  window.isScanOrTilesetGaussianSplat = isScanOrTilesetGaussianSplat;
   window.loadGaussianSplatIntoContext = loadGaussianSplatIntoContext;
   window.updateGaussianSplatForContext = updateGaussianSplatForContext;
   window.disposeGaussianSplatFromContext = disposeGaussianSplatFromContext;

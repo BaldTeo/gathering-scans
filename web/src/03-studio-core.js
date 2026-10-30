@@ -450,7 +450,7 @@
     controls.enableZoom = true;
     controls.minDistance = 0.08;
     controls.screenSpacePanning = true;
-    controls.autoRotate = Boolean(STATE.autoRotateEnabled);
+    controls.autoRotate = Boolean(STATE.isEmbedded ? STATE.embedAutoRotateEnabled : STATE.studioAutoRotateEnabled);
     controls.autoRotateSpeed = Number(STATE.autoRotateSpeed) || 0.45;
     installSurfaceAwareOrbitZoom(renderer.domElement, () => studioThree, { isStudio: true });
     controls.mouseButtons = {
@@ -1434,9 +1434,11 @@
       if (typeof closeSidePanel === "function") {
         closeSidePanel();
       }
+      if (!STATE.isEmbedded) STATE.studioAutoRotateEnabled = false;
       if (typeof setActiveStudioTool === "function") {
         setActiveStudioTool("orbit");
       }
+      if (typeof syncAutoRotateUI === "function") syncAutoRotateUI();
     }
     SHARE_TELEMETRY.recordScanViewed(scan, "studio");
     if (STATE.activeProjectGroup !== "__all__") {
@@ -1750,9 +1752,13 @@
           }
           studioThree.currentScanId = scan.scan_id;
           studioThree.qualityMode = lodMode;
-          const isGsplat = Boolean(scan.is_gaussian_splat || tr.root?.extras?.is_gaussian_splat || tr.root?.parent?.extras?.is_gaussian_splat);
+          const isGsplat =
+            typeof isScanOrTilesetGaussianSplat === "function"
+              ? isScanOrTilesetGaussianSplat(scan, tr)
+              : Boolean(scan.is_gaussian_splat || tr.root?.extras?.is_gaussian_splat || tr.root?.parent?.extras?.is_gaussian_splat);
           if (isGsplat && typeof loadGaussianSplatIntoContext === "function") {
             scan.is_gaussian_splat = true;
+            if (!preserveCamera) frameStudioCamera();
             loadGaussianSplatIntoContext(studioThree, scan, "studio", () => {
               finishScanLoader(studioThree, "studio", tr("100% · 3D 高斯潑濺已就緒", "100% · 3D Gaussian Splat Ready"));
             });
@@ -1804,7 +1810,10 @@
         if (ev && ev.scene) {
           _lastBadgeOcclusionCamSig = "";
           if (studioThree.fallbackGroup) studioThree.fallbackGroup.visible = false;
-          const isGsplat = Boolean(scan.is_gaussian_splat || tr.root?.extras?.is_gaussian_splat || tr.root?.parent?.extras?.is_gaussian_splat);
+          const isGsplat =
+            typeof isScanOrTilesetGaussianSplat === "function"
+              ? isScanOrTilesetGaussianSplat(scan, tr)
+              : Boolean(scan.is_gaussian_splat || tr.root?.extras?.is_gaussian_splat || tr.root?.parent?.extras?.is_gaussian_splat);
           ev.scene.traverse((c) => {
             if (c.isMesh && c.material) {
               const mats = Array.isArray(c.material) ? c.material : [c.material];
@@ -1993,7 +2002,15 @@
     }
     const r = rawR < 14 ? Math.max(1.4, rawR * 1.55) : Math.max(22, Math.min(280, rawR));
     studioThree.controls.target.set(cx, cy, cz);
-    studioThree.camera.position.set(cx + r * 0.7, cy + r * 0.56, cz + r * 0.8);
+    if (
+      !STATE.multiAlign?.active &&
+      STATE.activeScan?.is_gaussian_splat &&
+      String(STATE.activeScan?.crs || "").toUpperCase().includes("LOCAL")
+    ) {
+      studioThree.camera.position.set(cx - r * 0.14, cy + r * 0.16, cz + r * 1.18);
+    } else {
+      studioThree.camera.position.set(cx + r * 0.7, cy + r * 0.56, cz + r * 0.8);
+    }
     studioThree.camera.lookAt(cx, cy, cz);
     studioThree.controls.update();
     studioThree.camera.updateMatrixWorld(true);
@@ -2034,37 +2051,79 @@
   document.getElementById("btnPreviewSetHomeView")?.addEventListener("click", () => saveCurrentScanHomeView("preview"));
 
   function syncAutoRotateUI() {
-    const enabled = Boolean(STATE.autoRotateEnabled);
     const speed = Number(STATE.autoRotateSpeed) || 0.45;
-    const isToolActive = Boolean(
-      STATE.activeView === "studio" &&
-      ((STATE.activeTool && STATE.activeTool !== "orbit") || STATE.fpMode?.active || STATE.multiAlign?.active)
-    );
+    const isToolActive = STATE.isEmbedded
+      ? Boolean(STATE.fpMode?.active)
+      : Boolean(
+          STATE.activeView === "studio" &&
+            ((STATE.activeTool && STATE.activeTool !== "orbit") || STATE.fpMode?.active || STATE.multiAlign?.active)
+        );
+    const embedEnabled = Boolean(STATE.embedAutoRotateEnabled ?? true);
+    const previewEnabled = Boolean(STATE.previewAutoRotateEnabled ?? true);
+    const studioEnabled = STATE.isEmbedded ? embedEnabled : Boolean(STATE.studioAutoRotateEnabled);
+
     if (studioThree && studioThree.controls) {
-      studioThree.controls.autoRotate = enabled && !isToolActive;
+      studioThree.controls.autoRotate = studioEnabled && !isToolActive;
       studioThree.controls.autoRotateSpeed = speed;
     }
     if (typeof previewThree !== "undefined" && previewThree && previewThree.controls) {
-      previewThree.controls.autoRotate = enabled;
+      previewThree.controls.autoRotate = previewEnabled;
       previewThree.controls.autoRotateSpeed = speed;
     }
-    ["btnEmbedAutoRotate", "btnStudioAutoRotate", "btnPreviewAutoRotate"].forEach((id) => {
-      const btn = document.getElementById(id);
-      if (btn) {
-        btn.classList.toggle("active", enabled);
-        btn.classList.toggle("primary", enabled);
-        btn.setAttribute("aria-pressed", enabled ? "true" : "false");
-      }
-    });
+    if (typeof compareCtx !== "undefined" && compareCtx && compareCtx.controls) {
+      compareCtx.controls.autoRotate = false;
+    }
+    const btnEmbed = document.getElementById("btnEmbedAutoRotate");
+    if (btnEmbed) {
+      btnEmbed.classList.toggle("active", embedEnabled);
+      btnEmbed.classList.toggle("primary", embedEnabled);
+      btnEmbed.setAttribute("aria-pressed", embedEnabled ? "true" : "false");
+    }
+    const btnPreview = document.getElementById("btnPreviewAutoRotate");
+    if (btnPreview) {
+      btnPreview.classList.toggle("active", previewEnabled);
+      btnPreview.classList.toggle("primary", previewEnabled);
+      btnPreview.setAttribute("aria-pressed", previewEnabled ? "true" : "false");
+    }
+    const btnStudio = document.getElementById("btnStudioAutoRotate");
+    if (btnStudio) {
+      const stActive = Boolean(STATE.studioAutoRotateEnabled) && !isToolActive;
+      btnStudio.classList.toggle("active", stActive);
+      btnStudio.classList.toggle("primary", stActive);
+      btnStudio.setAttribute("aria-pressed", stActive ? "true" : "false");
+    }
+    STATE.autoRotateEnabled = STATE.isEmbedded
+      ? embedEnabled
+      : STATE.activeView === "map"
+      ? previewEnabled
+      : STATE.activeView === "compare"
+      ? false
+      : Boolean(STATE.studioAutoRotateEnabled);
   }
   window.syncAutoRotateUI = syncAutoRotateUI;
 
-  function setAutoRotateEnabled(enabled, showFeedback = false) {
-    STATE.autoRotateEnabled = Boolean(enabled);
+  function setAutoRotateEnabled(enabled, showFeedback = false, targetScope = "") {
+    const val = Boolean(enabled);
+    const scope =
+      targetScope ||
+      (STATE.isEmbedded
+        ? "embed"
+        : STATE.activeView === "map"
+        ? "preview"
+        : STATE.activeView === "studio"
+        ? "studio"
+        : "preview");
+    if (scope === "embed") {
+      STATE.embedAutoRotateEnabled = val;
+    } else if (scope === "preview") {
+      STATE.previewAutoRotateEnabled = val;
+    } else if (scope === "studio") {
+      STATE.studioAutoRotateEnabled = val;
+    }
     syncAutoRotateUI();
     if (showFeedback && typeof showToast === "function") {
       showToast(
-        STATE.autoRotateEnabled
+        val
           ? tr("已開啟緩慢自動旋轉", "Slow auto-rotation enabled")
           : tr("已關閉自動旋轉", "Auto-rotation paused")
       );
@@ -2072,13 +2131,28 @@
   }
   window.setAutoRotateEnabled = setAutoRotateEnabled;
 
-  function toggleAutoRotate(showFeedback = false) {
-    setAutoRotateEnabled(!STATE.autoRotateEnabled, showFeedback);
+  function toggleAutoRotate(showFeedback = false, targetScope = "") {
+    const scope =
+      targetScope ||
+      (STATE.isEmbedded
+        ? "embed"
+        : STATE.activeView === "map"
+        ? "preview"
+        : STATE.activeView === "studio"
+        ? "studio"
+        : "preview");
+    const cur =
+      scope === "embed"
+        ? Boolean(STATE.embedAutoRotateEnabled ?? true)
+        : scope === "preview"
+        ? Boolean(STATE.previewAutoRotateEnabled ?? true)
+        : Boolean(STATE.studioAutoRotateEnabled);
+    setAutoRotateEnabled(!cur, showFeedback, scope);
   }
   window.toggleAutoRotate = toggleAutoRotate;
 
-  document.getElementById("btnStudioAutoRotate")?.addEventListener("click", () => toggleAutoRotate(true));
-  document.getElementById("btnPreviewAutoRotate")?.addEventListener("click", () => toggleAutoRotate(true));
+  document.getElementById("btnStudioAutoRotate")?.addEventListener("click", () => toggleAutoRotate(true, "studio"));
+  document.getElementById("btnPreviewAutoRotate")?.addEventListener("click", () => toggleAutoRotate(true, "preview"));
 
   function getScanCrsDisplayLabel(scanObj) {
     const s = scanObj || STATE.activeScan || {};
@@ -3696,6 +3770,9 @@
         }
         previewThree.camera?.updateMatrixWorld();
         previewThree.tilesRenderer.update();
+        if (typeof updateGaussianSplatForContext === "function") {
+          updateGaussianSplatForContext(previewThree, "preview", true);
+        }
         if (previewThree.renderer && previewThree.scene && previewThree.camera) {
           previewThree.renderer.render(previewThree.scene, previewThree.camera);
         }
@@ -3748,6 +3825,9 @@
         }
         studioThree.camera?.updateMatrixWorld();
         studioThree.tilesRenderer.update();
+        if (typeof updateGaussianSplatForContext === "function") {
+          updateGaussianSplatForContext(studioThree, "studio", true);
+        }
         if (studioThree.renderer && studioThree.scene && studioThree.camera) {
           studioThree.renderer.render(studioThree.scene, studioThree.camera);
         }

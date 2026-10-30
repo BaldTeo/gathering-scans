@@ -2320,14 +2320,27 @@ class GatheringScansTestSuite(unittest.TestCase):
         self.assertEqual(s_moved_lib["project_group"], "專題獎座與展品 (Awards)")
         self.assertEqual(s_moved_lib["group_type"], "library")
 
-        # Verify frontend EWA Gaussian Splat shader & Library UI wiring
+        # Verify frontend EWA Gaussian Splat shader, Embed Viewer splat support, Auto-Rotate defaults & Library UI wiring
         with open(os.path.join(BASE_DIR, "web", "src", "01-core-state.js"), "r", encoding="utf-8") as f:
             js01 = f.read()
+        with open(os.path.join(BASE_DIR, "web", "src", "03-studio-core.js"), "r", encoding="utf-8") as f:
+            js03 = f.read()
+        with open(os.path.join(BASE_DIR, "web", "src", "07-compare-and-queue.js"), "r", encoding="utf-8") as f:
+            js07 = f.read()
         with open(os.path.join(BASE_DIR, "web", "index.html"), "r", encoding="utf-8") as f:
             html_txt = f.read()
         self.assertIn("loadGaussianSplatIntoContext", js01)
         self.assertIn("updateGaussianSplatForContext", js01)
+        self.assertIn("isScanOrTilesetGaussianSplat", js01)
         self.assertIn("vConic", js01)
+        self.assertIn("embedAutoRotateEnabled", js01)
+        self.assertIn("previewAutoRotateEnabled", js01)
+        self.assertIn("studioAutoRotateEnabled: false", js01)
+        self.assertIn("isScanOrTilesetGaussianSplat", js03)
+        self.assertIn("controls.autoRotate = false;", js07)
+        self.assertIn('id="btnEmbedAutoRotate" aria-pressed="true"', html_txt)
+        self.assertIn('id="btnPreviewAutoRotate" aria-pressed="true"', html_txt)
+        self.assertIn('id="btnStudioAutoRotate" aria-pressed="false"', html_txt)
         self.assertIn("renderModelLibraryView", js01)
         self.assertIn("openMoveScanModal", js01)
         self.assertIn("modelLibraryOverlay", html_txt)

@@ -803,6 +803,11 @@ def build_gaussian_splat_tileset(
             "geometricError": 0.0,
             "refine": "REPLACE",
             "content": {"uri": "tiles/root.glb"},
+            "extras": {
+                "is_gaussian_splat": True,
+                "splat_count": int(n_total),
+                "gaussian_splat_uri": f"tiles/splats.gsplat?v={gsplat_mtime}",
+            },
             "children": [],
         },
     }

@@ -2348,7 +2348,9 @@
       }
       initStudio3D();
       handleResize();
+      if (!STATE.isEmbedded) STATE.studioAutoRotateEnabled = false;
       loadScanIntoStudio(optionalScanId || STATE.activeScanId);
+      if (typeof syncAutoRotateUI === "function") syncAutoRotateUI();
     } else if (resolvedView === "compare") {
       if (typeof suspendPreview3DResources === "function") {
         suspendPreview3DResources();
@@ -2356,10 +2358,15 @@
       if (typeof suspendStudio3DResources === "function" && typeof isMobileOrTabletDevice === "function" && isMobileOrTabletDevice()) {
         suspendStudio3DResources();
       }
+      STATE.studioAutoRotateEnabled = false;
       populateProjectScanDropdowns(STATE.activeProjectGroup, STATE.activeScanId);
       initCompareView();
       handleResize();
       syncCompareScansFromDropdowns();
+      if (typeof syncAutoRotateUI === "function") syncAutoRotateUI();
+    }
+    if (resolvedView === "map" && typeof syncAutoRotateUI === "function") {
+      syncAutoRotateUI();
     }
   }
 
@@ -2911,7 +2918,7 @@
 
   function initEmbedHudControls() {
     document.getElementById("btnEmbedAutoRotate")?.addEventListener("click", () => {
-      if (typeof toggleAutoRotate === "function") toggleAutoRotate(false);
+      if (typeof toggleAutoRotate === "function") toggleAutoRotate(false, "embed");
     });
     document.getElementById("btnEmbedResetCamera")?.addEventListener("click", () => {
       if (typeof frameStudioCamera === "function") frameStudioCamera();

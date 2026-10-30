@@ -1470,6 +1470,7 @@ class AuthAndSharingManager:
             return None
 
         # 1. Check gdrive_cloud_manifest.json (in case link was created on VPS or PC before DB sync)
+        manifest_scans: List[Dict[str, Any]] = []
         try:
             import os as _os
             from pc_worker.config import DATA_DIR as _DATA_DIR
@@ -1482,6 +1483,8 @@ class AuthAndSharingManager:
                 if _os.path.isfile(m_path):
                     with open(m_path, "r", encoding="utf-8") as mf:
                         m_data = json.load(mf)
+                    if not manifest_scans and isinstance(m_data.get("scans"), list):
+                        manifest_scans = [s for s in m_data["scans"] if isinstance(s, dict)]
                     for sl in (m_data.get("share_links") or []):
                         if isinstance(sl, dict) and str(sl.get("token") or "").strip() == clean_tok:
                             return self._format_share_row(dict(sl))
@@ -1505,14 +1508,20 @@ class AuthAndSharingManager:
 
         if not is_placeholder:
             target_scan = self.db.get_scan(clean_tok)
+            if not target_scan and manifest_scans:
+                target_scan = next((s for s in manifest_scans if str(s.get("scan_id")) == clean_tok), None)
             if not target_scan:
                 grp_scans = self.db.list_scans(project_group=clean_tok)
+                if not grp_scans and manifest_scans:
+                    grp_scans = [s for s in manifest_scans if str(s.get("project_group")) == clean_tok]
                 if grp_scans:
                     target_group = clean_tok
 
         if not target_scan and not target_group and requested_scan_id:
             # Do not fall back if the requested_scan_id only has explicitly revoked links and token was an old token
             target_scan = self.db.get_scan(requested_scan_id)
+            if not target_scan and manifest_scans:
+                target_scan = next((s for s in manifest_scans if str(s.get("scan_id")) == requested_scan_id), None)
 
         if is_placeholder and not target_scan and not target_group:
             all_scans = self.db.list_scans()
@@ -1615,14 +1624,35 @@ class AuthAndSharingManager:
                 pass
 
         # Determine authorized scans for this token
+        manifest_scans: List[Dict[str, Any]] = []
+        try:
+            import os as _os
+            from pc_worker.config import DATA_DIR as _DATA_DIR
+
+            for m_path in (
+                _os.path.join(_DATA_DIR, "gdrive_cloud_manifest.json"),
+                "/host_docker/gathering_scans/data/gdrive_cloud_manifest.json",
+                "/host_opt/gathering_scans/data/gdrive_cloud_manifest.json",
+            ):
+                if _os.path.isfile(m_path):
+                    with open(m_path, "r", encoding="utf-8") as mf:
+                        m_data = json.load(mf)
+                    if isinstance(m_data.get("scans"), list):
+                        manifest_scans = [s for s in m_data["scans"] if isinstance(s, dict)]
+                        break
+        except Exception:
+            pass
+
         if link["scope_type"] == "scan":
             target_id = str(link["target_id"])
             scan = self.db.get_scan(target_id)
+            if not scan and manifest_scans:
+                scan = next((s for s in manifest_scans if str(s.get("scan_id")) == target_id), None)
             if not scan:
                 # Target scan was superseded by a newer edited/cleared version in the same site or moved to Recycle Bin
                 trashed = self.db.get_trashed_scan(target_id) if hasattr(self.db, "get_trashed_scan") else None
                 cand_group = str((trashed or {}).get("project_group") or "").strip()
-                all_active = self.db.list_scans()
+                all_active = self.db.list_scans() or manifest_scans
                 if cand_group:
                     grp_cands = [s for s in all_active if s.get("project_group") == cand_group and s.get("status") == "completed"]
                     if grp_cands:
@@ -1655,6 +1685,8 @@ class AuthAndSharingManager:
             allowed_scans = [scan] if scan else []
         else:
             allowed_scans = self.db.list_scans(project_group=link["target_id"])
+            if not allowed_scans and manifest_scans:
+                allowed_scans = [s for s in manifest_scans if str(s.get("project_group")) == str(link["target_id"])]
 
         allowed_ids = {s["scan_id"] for s in allowed_scans if s}
 
