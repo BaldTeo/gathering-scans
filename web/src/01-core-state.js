@@ -2122,6 +2122,7 @@
     const navMapBtn = document.getElementById("btnNavMap");
     const libOverlay = document.getElementById("modelLibraryOverlay");
     const viewMapEl = document.getElementById("viewMap");
+    const mapContainerEl = document.getElementById("mapContainer");
     const mapHudTop = document.querySelector("#viewMap .gs-map-hud-top");
     const mapControlsRail = document.querySelector("#viewMap .gs-map-controls-rail");
     const mapBottomLeftBar = document.querySelector("#viewMap .gs-map-bottom-left-bar");
@@ -2130,6 +2131,9 @@
     if (navMapBtn) navMapBtn.classList.toggle("active", STATE.activeView === "map" && nextMode === "map");
     if (viewMapEl) {
       viewMapEl.classList.toggle("gs-library-mode-active", nextMode === "library");
+    }
+    if (mapContainerEl) {
+      mapContainerEl.style.display = nextMode === "library" ? "none" : "";
     }
     if (mapHudTop) {
       mapHudTop.style.display = nextMode === "library" ? "none" : "";
@@ -2477,8 +2481,8 @@
     if (newInp && !preserveTargetType) newInp.value = "";
 
     _populateMoveScanTargetDropdown(curType, prevSelVal);
+    modal.style.display = "";
     modal.classList.add("active");
-    modal.style.display = "flex";
   }
 
   async function submitMoveScanModal() {
@@ -2528,7 +2532,7 @@
       if (modal) {
         modal.classList.remove("active");
         modal.classList.remove("active");
-      modal.style.display = "none";
+      modal.style.display = "";
       }
       populateProjectScanDropdowns(finalGroup, scanId);
       if (typeof renderMapClusters === "function") renderMapClusters();
@@ -2576,8 +2580,8 @@
       if (inpName && !preserveInput) inpName.value = "";
       if (inpIcon && !preserveInput) inpIcon.value = "cube";
     }
+    modal.style.display = "";
     modal.classList.add("active");
-    modal.style.display = "flex";
     if (!preserveInput) setTimeout(() => inpName?.focus(), 40);
   }
 
@@ -2606,7 +2610,7 @@
       const norm = normalizeCanonicalFolderName(newName);
       STATE.selectedLibraryFolder = norm.en;
       modal.classList.remove("active");
-      modal.style.display = "none";
+      modal.style.display = "";
       renderModelLibraryView();
       populateProjectScanDropdowns(STATE.activeProjectGroup, STATE.activeScanId);
       if (typeof renderMapClusters === "function") renderMapClusters();

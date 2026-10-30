@@ -1410,7 +1410,11 @@
       showToast("Please sign in with Google or choose Guest Mode to continue");
       return;
     }
-    document.getElementById(id)?.classList.remove("active");
+    const el = document.getElementById(id);
+    if (el) {
+      el.classList.remove("active");
+      el.style.display = "";
+    }
   }
   document.querySelectorAll("[data-close-modal]").forEach((btn) => {
     btn.addEventListener("click", () => closeModal(btn.dataset.closeModal));
