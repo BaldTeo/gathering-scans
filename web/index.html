@@ -18,7 +18,7 @@
   <meta name="twitter:image" content="https://scans.gatheren.cloud/assets/gathering_cloud_logo.png" />
   <!-- GS_SHARE_OG_END -->
   <link rel="icon" type="image/png" href="/assets/gathering_cloud_logo.png" />
-  <link rel="stylesheet" href="/app.css?v=20261030_v204" />
+  <link rel="stylesheet" href="/app.css?v=20261030_v205" />
   <script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
 <body>
@@ -399,11 +399,17 @@
                 <button type="button" class="btn-seg" data-lod-mode="auto" title="自動漸進 (依鏡頭距離自動細化)" data-i18n-zh="自動" data-i18n-en="Auto" data-i18n-title-zh="自動漸進 (依鏡頭距離自動細化)" data-i18n-title-en="Auto Progressive (Refine by Camera Distance)">自動</button>
                 <button type="button" class="btn-seg" data-lod-mode="max" title="精細 (強制載入最高解析度圖磚)" data-i18n-zh="精細" data-i18n-en="Max" data-i18n-title-zh="精細 (強制載入最高解析度圖磚)" data-i18n-title-en="Max Detail (Force High-Res Leaf Tiles)">精細</button>
               </div>
-              <button type="button" class="btn-xs" id="btnPreviewResetCamera" title="重設預覽視角" data-i18n-title-zh="重設預覽視角" data-i18n-title-en="Frame Scan to Preview Viewport">
-                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8">
-                  <circle cx="12" cy="12" r="7"/><line x1="12" y1="2" x2="12" y2="5"/><line x1="12" y1="19" x2="12" y2="22"/>
-                  <line x1="2" y1="12" x2="5" y2="12"/><line x1="19" y1="12" x2="22" y2="12"/>
+              <button type="button" class="btn-xs" id="btnPreviewResetCamera" title="回到首頁視角 (Home)" data-i18n-title-zh="回到首頁視角 (Home)" data-i18n-title-en="Home View">
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M3 9.5L12 3l9 6.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1V9.5z"/>
                 </svg>
+              </button>
+              <button type="button" class="btn-xs" id="btnPreviewSetHomeView" title="將目前視角設為此掃描的首頁視角 (Set Home View)" data-i18n-title-zh="將目前視角設為此掃描的首頁視角 (Set Home View)" data-i18n-title-en="Set Current Camera as Default Home View" style="gap:3px;">
+                <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M3 9.5L12 3l9 6.5V20a1 1 0 0 1-1 1h-5.5"/>
+                  <polyline points="14 17 16.5 19.5 21 15"/>
+                </svg>
+                <span data-i18n-zh="設為首頁" data-i18n-en="Set Home">設為首頁</span>
               </button>
               <button type="button" class="btn-xs" id="btnCaptureNadirOrtho" title="擷取正射俯視影像並更新地圖 2D 疊圖" data-i18n-title-zh="擷取正射俯視影像並更新地圖 2D 疊圖" data-i18n-title-en="Capture Nadir Ortho Snapshot &amp; Update Map 2D Overlay" style="display:none !important;gap:4px;">
                 <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8">
@@ -475,22 +481,20 @@
           <select class="gs-scan-select" id="gsEmbedScanSelect" style="display:none;max-width:170px;height:24px;font-size:11px;" title="切換掃描模型" data-i18n-title-zh="切換掃描模型" data-i18n-title-en="Switch 3D Scan"></select>
         </div>
         <div class="gs-embed-hud-actions">
-          <div class="segmented-pill gs-embed-lod-switcher" id="gsEmbedLodSwitcher" style="padding:1px;border-radius:6px;">
-            <button type="button" class="btn-seg" data-embed-lod="rough" style="padding:2px 6px;font-size:10px;" title="極速粗模 (L0)" data-i18n-zh="極速" data-i18n-en="Fast">極速</button>
-            <button type="button" class="btn-seg active" data-embed-lod="auto" style="padding:2px 6px;font-size:10px;" title="自動漸進細節" data-i18n-zh="自動" data-i18n-en="Auto">自動</button>
-            <button type="button" class="btn-seg" data-embed-lod="max" style="padding:2px 6px;font-size:10px;" title="最高解析度 (L2)" data-i18n-zh="高清" data-i18n-en="HD">高清</button>
+          <div class="gs-embed-quality-wrap">
+            <span class="gs-embed-lod-label" data-i18n-zh="品質：" data-i18n-en="Quality:">品質：</span>
+            <div class="segmented-pill gs-embed-lod-switcher" id="gsEmbedLodSwitcher" style="padding:1px;border-radius:6px;">
+              <button type="button" class="btn-seg active" data-embed-lod="rough" style="padding:2px 7px;font-size:10.5px;" title="粗模 (極速低記憶體)" data-i18n-zh="粗模" data-i18n-en="Rough" data-i18n-title-zh="粗模 (極速低記憶體)" data-i18n-title-en="Rough (Fast / Low Memory)">粗模</button>
+              <button type="button" class="btn-seg" data-embed-lod="auto" style="padding:2px 7px;font-size:10.5px;" title="自動漸進細化" data-i18n-zh="自動" data-i18n-en="Auto" data-i18n-title-zh="自動漸進細化" data-i18n-title-en="Auto Progressive">自動</button>
+            </div>
           </div>
-          <button type="button" class="btn-xs" id="btnEmbedResetCamera" title="重設視角" data-i18n-title-zh="重設視角" data-i18n-title-en="Reset Camera">
-            <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.9">
-              <circle cx="12" cy="12" r="7"/><line x1="12" y1="2" x2="12" y2="5"/><line x1="12" y1="19" x2="12" y2="22"/>
-              <line x1="2" y1="12" x2="5" y2="12"/><line x1="19" y1="12" x2="22" y2="12"/>
+          <button type="button" class="btn-xs" id="btnEmbedResetCamera" title="回到首頁視角" data-i18n-title-zh="回到首頁視角" data-i18n-title-en="Home View">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M3 9.5L12 3l9 6.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1V9.5z"/>
             </svg>
           </button>
           <button type="button" class="btn-xs" id="btnEmbedFirstPerson" title="WASD 第一人稱漫遊" data-i18n-title-zh="WASD 第一人稱漫遊" data-i18n-title-en="WASD First-Person Walk/Fly">
             <span>WASD</span>
-          </button>
-          <button type="button" class="btn-xs" id="btnEmbedToggleTools" title="顯示/隱藏量測與留言工具列" data-i18n-title-zh="顯示/隱藏量測與留言工具列" data-i18n-title-en="Toggle Measure &amp; Comment Tools">
-            <span data-i18n-zh="工具" data-i18n-en="Tools">工具</span>
           </button>
           <button type="button" class="btn-xs" id="btnEmbedFullscreen" title="全螢幕檢視" data-i18n-title-zh="全螢幕檢視" data-i18n-title-en="Full Screen">
             <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.9">
@@ -498,12 +502,6 @@
               <line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/>
             </svg>
           </button>
-          <a href="#" target="_blank" rel="noopener noreferrer" class="btn-xs primary" id="btnEmbedOpenFullApp" title="於新分頁開啟完整 3D 檢視器" data-i18n-title-zh="於新分頁開啟完整 3D 檢視器" data-i18n-title-en="Open Full 3D Viewer in New Tab" style="gap:3px;">
-            <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/>
-            </svg>
-            <span data-i18n-zh="完整版" data-i18n-en="Open">完整版</span>
-          </a>
         </div>
       </div>
 
@@ -600,11 +598,17 @@
             <button type="button" class="btn-seg" data-lod-mode="max" title="精細 (強制載入 L2 最高解析度圖磚)" data-i18n-zh="精細" data-i18n-en="Max" data-i18n-title-zh="精細 (強制載入 L2 最高解析度圖磚)" data-i18n-title-en="Max Detail (Force L2 High-Res Tiles)">精細</button>
           </div>
 
-          <button type="button" class="btn-xs" id="btnStudioResetCamera" title="重設視角至完整模型" data-i18n-title-zh="重設視角至完整模型" data-i18n-title-en="Frame Scan to Viewport">
-            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8">
-              <circle cx="12" cy="12" r="7"/><line x1="12" y1="2" x2="12" y2="5"/><line x1="12" y1="19" x2="12" y2="22"/>
-              <line x1="2" y1="12" x2="5" y2="12"/><line x1="19" y1="12" x2="22" y2="12"/>
+          <button type="button" class="btn-xs" id="btnStudioResetCamera" title="回到首頁視角 (Home)" data-i18n-title-zh="回到首頁視角 (Home)" data-i18n-title-en="Home View">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M3 9.5L12 3l9 6.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1V9.5z"/>
             </svg>
+          </button>
+          <button type="button" class="btn-xs" id="btnStudioSetHomeView" title="將目前視角設為此掃描的首頁視角 (Set Home View)" data-i18n-title-zh="將目前視角設為此掃描的首頁視角 (Set Home View)" data-i18n-title-en="Set Current Camera as Default Home View" style="gap:3px;">
+            <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M3 9.5L12 3l9 6.5V20a1 1 0 0 1-1 1h-5.5"/>
+              <polyline points="14 17 16.5 19.5 21 15"/>
+            </svg>
+            <span data-i18n-zh="設為首頁" data-i18n-en="Set Home">設為首頁</span>
           </button>
           <button type="button" class="btn-xs" id="btnStudioFirstPerson" title="第一人稱漫遊視角：WASD 移動與滑鼠環視" data-i18n-title-zh="第一人稱漫遊視角：WASD 移動與滑鼠環視" data-i18n-title-en="First-Person Camera Mode: WASD &amp; Mouse Look">
             <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8">
@@ -2206,15 +2210,15 @@
   <script src="/lib/3d-tiles-renderer.bundle.js"></script>
 
   <!-- Main GatheringScans Bilingual Translation & Modular Application Logic (< 5,000 lines per module) -->
-  <script src="/i18n.js?v=20261030_v204"></script>
-  <script src="/src/01-core-state.js?v=20261030_v204"></script>
-  <script src="/src/02-map-and-timeline.js?v=20261030_v204"></script>
-  <script src="/src/03-studio-core.js?v=20261030_v204"></script>
-  <script src="/src/04-studio-lasso-and-edits.js?v=20261030_v204"></script>
-  <script src="/src/05-studio-civil-inspectors.js?v=20261030_v204"></script>
-  <script src="/src/06-studio-align-and-optimizer.js?v=20261030_v204"></script>
-  <script src="/src/07-compare-and-queue.js?v=20261030_v204"></script>
-  <script src="/src/08-advanced-surveying-and-qa.js?v=20261030_v204"></script>
-  <script src="/app.js?v=20261030_v204"></script>
+  <script src="/i18n.js?v=20261030_v205"></script>
+  <script src="/src/01-core-state.js?v=20261030_v205"></script>
+  <script src="/src/02-map-and-timeline.js?v=20261030_v205"></script>
+  <script src="/src/03-studio-core.js?v=20261030_v205"></script>
+  <script src="/src/04-studio-lasso-and-edits.js?v=20261030_v205"></script>
+  <script src="/src/05-studio-civil-inspectors.js?v=20261030_v205"></script>
+  <script src="/src/06-studio-align-and-optimizer.js?v=20261030_v205"></script>
+  <script src="/src/07-compare-and-queue.js?v=20261030_v205"></script>
+  <script src="/src/08-advanced-surveying-and-qa.js?v=20261030_v205"></script>
+  <script src="/app.js?v=20261030_v205"></script>
 </body>
 </html>

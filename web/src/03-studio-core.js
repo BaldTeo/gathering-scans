@@ -1859,18 +1859,27 @@
 
       if (lodMode === "rough") {
         tr.errorTarget = 1e9;
-      } else if (lodMode === "max") {
+      } else if (lodMode === "max" && !STATE.isEmbedded) {
         tr.errorTarget = 0.8;
+      } else if (STATE.isEmbedded) {
+        tr.errorTarget = isMobOrTab ? 18.0 : 12.0;
       } else {
         tr.errorTarget = isMobOrTab ? 10.0 : 2.0;
       }
       const isLocalHost = window.location.hostname === "127.0.0.1" || window.location.hostname === "localhost";
-      if (tr.downloadQueue) tr.downloadQueue.maxJobs = isIOS ? 3 : isMobOrTab ? 4 : isLocalHost ? 16 : (STATE.isEmbedded ? 10 : (lodMode === "max" ? 6 : 4));
-      if (tr.parseQueue) tr.parseQueue.maxJobs = isIOS ? 1 : isMobOrTab ? 2 : 8;
+      if (tr.downloadQueue) tr.downloadQueue.maxJobs = isIOS ? 2 : isMobOrTab ? 3 : STATE.isEmbedded ? 4 : isLocalHost ? 16 : (lodMode === "max" ? 6 : 4);
+      if (tr.parseQueue) tr.parseQueue.maxJobs = isIOS ? 1 : (isMobOrTab || STATE.isEmbedded) ? 2 : 8;
       if (tr.lruCache) {
         if (isMobOrTab) {
           tr.lruCache.maxSize = isIOS ? 24 : 64;
           tr.lruCache.minSize = isIOS ? 10 : 24;
+          tr.lruCache.maxBytesSize = (isIOS ? 64 : 160) * 1024 * 1024;
+          tr.lruCache.minBytesSize = (isIOS ? 32 : 80) * 1024 * 1024;
+        } else if (STATE.isEmbedded) {
+          tr.lruCache.maxSize = 120;
+          tr.lruCache.minSize = 48;
+          tr.lruCache.maxBytesSize = 320 * 1024 * 1024;
+          tr.lruCache.minBytesSize = 160 * 1024 * 1024;
         } else {
           tr.lruCache.maxSize = 6000;
           tr.lruCache.minSize = 4000;
@@ -1930,6 +1939,34 @@
     if (STATE.fpMode?.active && typeof exitFirstPersonMode === "function") {
       exitFirstPersonMode(true);
     }
+    const hv = !STATE.multiAlign?.active ? STATE.activeScan?.home_view : null;
+    if (hv && Array.isArray(hv.pos) && hv.pos.length >= 3 && Array.isArray(hv.target) && hv.target.length >= 3) {
+      let dx = 0, dy = 0, dz = 0;
+      if (Array.isArray(hv.tiles_center) && hv.tiles_center.length >= 3 && Array.isArray(studioThree.tilesCenter) && studioThree.tilesCenter.length >= 3) {
+        const rawDx = Number(studioThree.tilesCenter[0]) - Number(hv.tiles_center[0]);
+        const rawDy = Number(studioThree.tilesCenter[1]) - Number(hv.tiles_center[1]);
+        const rawDz = Number(studioThree.tilesCenter[2]) - Number(hv.tiles_center[2]);
+        if (Math.hypot(rawDx, rawDy, rawDz) < 500) {
+          dx = rawDx;
+          dy = rawDy;
+          dz = rawDz;
+        }
+      }
+      studioThree.controls.target.set(
+        (Number(hv.target[0]) || 0) - dx,
+        (Number(hv.target[1]) || 0) - dz,
+        (Number(hv.target[2]) || 0) + dy
+      );
+      studioThree.camera.position.set(
+        (Number(hv.pos[0]) || 0) - dx,
+        (Number(hv.pos[1]) || 0) - dz,
+        (Number(hv.pos[2]) || 0) + dy
+      );
+      studioThree.camera.lookAt(studioThree.controls.target);
+      studioThree.controls.update();
+      studioThree.camera.updateMatrixWorld(true);
+      return;
+    }
     let cx = 0,
       cy = Number.isFinite(studioThree?.boundingSphere?._groundOffsetY)
         ? studioThree.boundingSphere._groundOffsetY * 0.65
@@ -1967,7 +2004,36 @@
     }
   }
 
+  async function saveCurrentScanHomeView(source = "studio") {
+    const ctx = source === "preview" && typeof previewThree !== "undefined" && previewThree ? previewThree : studioThree;
+    const scanId = STATE.activeScanId || STATE.activeScan?.scan_id;
+    if (!ctx || !ctx.camera || !ctx.controls || !scanId) return;
+    const cam = ctx.camera.position;
+    const tgt = ctx.controls.target;
+    const tc = Array.isArray(ctx.tilesCenter) ? ctx.tilesCenter : [0, 0, 0];
+    const homeView = {
+      pos: [Number(cam.x.toFixed(4)), Number(cam.y.toFixed(4)), Number(cam.z.toFixed(4))],
+      target: [Number(tgt.x.toFixed(4)), Number(tgt.y.toFixed(4)), Number(tgt.z.toFixed(4))],
+      tiles_center: [Number((tc[0] || 0).toFixed(4)), Number((tc[1] || 0).toFixed(4)), Number((tc[2] || 0).toFixed(4))],
+    };
+    try {
+      const res = await apiPost("/api/scans/home-view", { scan_id: scanId, home_view: homeView });
+      const savedHv = (res && res.home_view) ? res.home_view : homeView;
+      if (STATE.activeScan && STATE.activeScan.scan_id === scanId) {
+        STATE.activeScan.home_view = savedHv;
+      }
+      const listMatch = (STATE.scans || []).find((s) => s.scan_id === scanId);
+      if (listMatch) listMatch.home_view = savedHv;
+      showToast(tr("✓ 已將目前視角設為此掃描的首頁視角 (Home View)", "✓ Saved current camera as default Home View for this scan"));
+    } catch (err) {
+      showToast(tr(`設定首頁視角失敗：${err?.message || err}`, `Failed to set Home View: ${err?.message || err}`));
+    }
+  }
+  window.saveCurrentScanHomeView = saveCurrentScanHomeView;
+
   document.getElementById("btnStudioResetCamera")?.addEventListener("click", frameStudioCamera);
+  document.getElementById("btnStudioSetHomeView")?.addEventListener("click", () => saveCurrentScanHomeView("studio"));
+  document.getElementById("btnPreviewSetHomeView")?.addEventListener("click", () => saveCurrentScanHomeView("preview"));
 
   function getScanCrsDisplayLabel(scanObj) {
     const s = scanObj || STATE.activeScan || {};
@@ -3596,14 +3662,21 @@
   window.applyPreviewLodMode = applyPreviewLodMode;
 
   function applyScanLodMode(mode, silent = false) {
-    const validMode = mode === "rough" || mode === "auto" || mode === "max" ? mode : "auto";
+    const validMode = STATE.isEmbedded
+      ? (mode === "auto" ? "auto" : "rough")
+      : (mode === "rough" || mode === "auto" || mode === "max" ? mode : "auto");
     STATE.scanLodMode = validMode;
-    try {
-      localStorage.setItem("gs_studio_lod_mode_v2", validMode);
-    } catch (_e) {}
+    if (!STATE.isEmbedded) {
+      try {
+        localStorage.setItem("gs_studio_lod_mode_v2", validMode);
+      } catch (_e) {}
+    }
 
     document.querySelectorAll("#studioLodModeSwitcher [data-lod-mode], #settingsLodModeSwitcher [data-lod-mode]").forEach((btn) => {
       btn.classList.toggle("active", btn.dataset.lodMode === validMode);
+    });
+    document.querySelectorAll("#gsEmbedLodSwitcher [data-embed-lod]").forEach((btn) => {
+      btn.classList.toggle("active", btn.getAttribute("data-embed-lod") === validMode);
     });
     const selStudio = document.getElementById("selStudioLodMode");
     if (selStudio && selStudio.value !== validMode) selStudio.value = validMode;
@@ -3611,7 +3684,13 @@
     const isIOS = typeof isIOSOrIPadDevice === "function" && isIOSOrIPadDevice();
     const isMobOrTab = isIOS || (typeof isMobileOrTabletDevice === "function" && isMobileOrTabletDevice());
     const isLocalHost = window.location.hostname === "127.0.0.1" || window.location.hostname === "localhost";
-    const targetErr = validMode === "rough" ? 1e9 : validMode === "max" ? 0.8 : isMobOrTab ? 10.0 : 2.0;
+    const targetErr = validMode === "rough"
+      ? 1e9
+      : validMode === "max"
+      ? 0.8
+      : STATE.isEmbedded
+      ? (isMobOrTab ? 18.0 : 12.0)
+      : (isMobOrTab ? 10.0 : 2.0);
 
     if (studioThree) {
       if (
@@ -3628,7 +3707,7 @@
       } else if (studioThree.tilesRenderer) {
         studioThree.tilesRenderer.errorTarget = targetErr;
         if (studioThree.tilesRenderer.downloadQueue) {
-          studioThree.tilesRenderer.downloadQueue.maxJobs = isIOS ? 3 : isMobOrTab ? 4 : isLocalHost ? 16 : (validMode === "max" ? 6 : 4);
+          studioThree.tilesRenderer.downloadQueue.maxJobs = isIOS ? 2 : isMobOrTab ? 3 : STATE.isEmbedded ? 4 : isLocalHost ? 16 : (validMode === "max" ? 6 : 4);
         }
         studioThree.camera?.updateMatrixWorld();
         studioThree.tilesRenderer.update();

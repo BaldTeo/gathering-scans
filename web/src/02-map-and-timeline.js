@@ -1720,6 +1720,34 @@
 
   function framePreviewCamera() {
     if (!previewThree) return;
+    const hv = STATE.activeScan?.home_view;
+    if (hv && Array.isArray(hv.pos) && hv.pos.length >= 3 && Array.isArray(hv.target) && hv.target.length >= 3) {
+      let dx = 0, dy = 0, dz = 0;
+      if (Array.isArray(hv.tiles_center) && hv.tiles_center.length >= 3 && Array.isArray(previewThree.tilesCenter) && previewThree.tilesCenter.length >= 3) {
+        const rawDx = Number(previewThree.tilesCenter[0]) - Number(hv.tiles_center[0]);
+        const rawDy = Number(previewThree.tilesCenter[1]) - Number(hv.tiles_center[1]);
+        const rawDz = Number(previewThree.tilesCenter[2]) - Number(hv.tiles_center[2]);
+        if (Math.hypot(rawDx, rawDy, rawDz) < 500) {
+          dx = rawDx;
+          dy = rawDy;
+          dz = rawDz;
+        }
+      }
+      previewThree.controls.target.set(
+        (Number(hv.target[0]) || 0) - dx,
+        (Number(hv.target[1]) || 0) - dz,
+        (Number(hv.target[2]) || 0) + dy
+      );
+      previewThree.camera.position.set(
+        (Number(hv.pos[0]) || 0) - dx,
+        (Number(hv.pos[1]) || 0) - dz,
+        (Number(hv.pos[2]) || 0) + dy
+      );
+      previewThree.camera.lookAt(previewThree.controls.target);
+      previewThree.controls.update();
+      previewThree.camera.updateMatrixWorld(true);
+      return;
+    }
     const rawR = Number(previewThree.boundingSphere?.radius) || 55;
     const r = Math.max(22, Math.min(240, rawR));
     previewThree.controls.target.set(0, 0, 0);

@@ -1814,6 +1814,8 @@ class CloudAndTunnelHandlerMixin:
             or path.startswith("/api/comments/")
             or path.startswith("/api/measurements/")
             or path == "/api/scans/delete"
+            or path == "/api/scans/home-view"
+            or path.endswith("/home-view")
             or path.startswith("/api/scans/bin")
             or path.endswith("/thumbnail")
             or path.endswith("/thumbnail.png")

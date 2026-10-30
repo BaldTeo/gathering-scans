@@ -2502,6 +2502,7 @@
           settingsEmail === curUserEmail
       );
       if (
+        !STATE.isEmbedded &&
         isSignedInSettingsMatch &&
         data.user_settings &&
         data.user_settings.theme_preference &&
@@ -2775,6 +2776,9 @@
     if (!STATE.isEmbedded) return;
     document.documentElement.classList.add("gs-embed-mode");
     document.body.classList.add("gs-embed-mode");
+    document.documentElement.setAttribute("data-theme", "light");
+    document.body.classList.add("theme-light");
+    document.body.classList.remove("theme-dark");
     const hud = document.getElementById("gsEmbedFloatingHud");
     if (hud) hud.style.display = "flex";
     const activeScan = STATE.activeScan || (STATE.scans || []).find((s) => s.scan_id === STATE.activeScanId) || (STATE.scans || [])[0] || null;
@@ -2798,19 +2802,9 @@
         selEl.style.display = "none";
       }
     }
-    const openFullBtn = document.getElementById("btnEmbedOpenFullApp");
-    if (openFullBtn) {
-      openFullBtn.href = STATE.shareToken
-        ? buildPublicShareUrl(STATE.shareToken)
-        : `${getPublicShareOrigin()}/?scan=${encodeURIComponent(STATE.activeScanId || "")}`;
-    }
-    const toolsBtn = document.getElementById("btnEmbedToggleTools");
-    if (toolsBtn && STATE.shareLinkInfo) {
-      const canTools = Boolean(STATE.shareLinkInfo.allow_measurements || STATE.shareLinkInfo.allow_comments);
-      toolsBtn.style.display = canTools ? "" : "none";
-    }
+    const curLod = STATE.scanLodMode === "auto" ? "auto" : "rough";
     document.querySelectorAll("#gsEmbedLodSwitcher [data-embed-lod]").forEach((b) => {
-      b.classList.toggle("active", b.getAttribute("data-embed-lod") === (STATE.scanLodMode || "auto"));
+      b.classList.toggle("active", b.getAttribute("data-embed-lod") === curLod);
     });
     const posterOverlay = document.getElementById("gsEmbedPosterOverlay");
     if (posterOverlay) {
@@ -2834,19 +2828,10 @@
     document.getElementById("btnEmbedFirstPerson")?.addEventListener("click", () => {
       if (typeof toggleFirstPersonMode === "function") toggleFirstPersonMode();
     });
-    document.getElementById("btnEmbedToggleTools")?.addEventListener("click", (e) => {
-      const open = document.body.classList.toggle("gs-embed-tools-open");
-      document.documentElement.classList.toggle("gs-embed-tools-open", open);
-      e.currentTarget?.classList.toggle("active", open);
-      e.currentTarget?.classList.toggle("primary", open);
-    });
     document.getElementById("btnEmbedFullscreen")?.addEventListener("click", () => {
       const rootEl = document.documentElement;
       if (!document.fullscreenElement && rootEl.requestFullscreen) {
-        rootEl.requestFullscreen().catch(() => {
-          const openBtn = document.getElementById("btnEmbedOpenFullApp");
-          if (openBtn && openBtn.href) window.open(openBtn.href, "_blank", "noopener");
-        });
+        rootEl.requestFullscreen().catch(() => {});
       } else if (document.exitFullscreen) {
         document.exitFullscreen().catch(() => {});
       }
@@ -2860,8 +2845,8 @@
     });
     document.querySelectorAll("#gsEmbedLodSwitcher [data-embed-lod]").forEach((btn) => {
       btn.addEventListener("click", () => {
-        const mode = btn.getAttribute("data-embed-lod") || "auto";
-        if (typeof applyScanLodMode === "function") applyScanLodMode(mode, true);
+        const mode = btn.getAttribute("data-embed-lod") === "auto" ? "auto" : "rough";
+        if (typeof applyScanLodMode === "function") applyScanLodMode(mode, false);
         syncEmbedHudUI();
       });
     });

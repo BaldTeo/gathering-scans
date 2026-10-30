@@ -124,6 +124,7 @@
   const initialIsEmbedded = Boolean(initialEmbedMode);
   if (initialIsEmbedded && typeof document !== "undefined" && document.documentElement) {
     document.documentElement.classList.add("gs-embed-mode");
+    document.documentElement.setAttribute("data-theme", "light");
   }
   const initialUser = getInitialCurrentUser();
 
@@ -155,7 +156,7 @@
     shareLinkInfo: (_embedBoot && _embedBoot.share_link) ? _embedBoot.share_link : null,
     currentUser: initialUser,
     isAuthorized: Boolean(initialUser && initialUser.email) || Boolean(initialShareToken) || Boolean(initialIsEmbedded),
-    themePreference: localStorage.getItem("gs_theme_pref") || "auto",
+    themePreference: initialIsEmbedded ? "light" : (localStorage.getItem("gs_theme_pref") || "auto"),
     resolvedTheme: "light",
     teamProfiles: [],
     cachedScanIds: new Set(JSON.parse(localStorage.getItem("gs_cached_scans") || "[]")),
@@ -247,6 +248,9 @@
     },
     scanLodMode: (function () {
       const urlLod = String(_urlParams.get("lod") || "").trim().toLowerCase();
+      if (initialIsEmbedded) {
+        return urlLod === "auto" ? "auto" : "rough";
+      }
       if (urlLod === "rough" || urlLod === "auto" || urlLod === "max") return urlLod;
       try {
         const saved = localStorage.getItem("gs_studio_lod_mode_v2");
@@ -1138,7 +1142,7 @@
       if (el) el.style.display = show ? disp : "none";
     };
 
-    // 1. Rename Site, Rename Scan & Delete Scan buttons (Editor, Admin, Owner only)
+    // 1. Rename Site, Rename Scan, Set Home View & Delete Scan buttons (Editor, Admin, Owner only)
     [
       "btnRenameMapSite",
       "btnRenamePopoverSite",
@@ -1146,9 +1150,11 @@
       "btnRenameStudioSite",
       "btnRenamePreviewScan",
       "btnRenameStudioScan",
+      "btnPreviewSetHomeView",
+      "btnStudioSetHomeView",
       "btnDeletePreviewScan",
       "btnDeleteStudioScan",
-    ].forEach((id) => setDisp(id, info.canEditNames, "inline-flex"));
+    ].forEach((id) => setDisp(id, info.canEditNames && !STATE.isEmbedded, "inline-flex"));
     document.querySelectorAll(".gs-tile-edit-actions").forEach((el) => {
       el.style.display = info.canEditNames ? "flex" : "none";
     });

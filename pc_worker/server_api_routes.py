@@ -165,6 +165,19 @@ class ServerWriteRoutesMixin:
             if isinstance(payload.get("manifest"), dict):
                 m_in = payload["manifest"]
                 if os.name != "nt":
+                    m_prev = _load_cloud_manifest()
+                    prev_hv_by_id = {
+                        str(s.get("scan_id") or "").lower(): s.get("home_view")
+                        for s in (m_prev.get("scans") or [])
+                        if isinstance(s, dict) and s.get("scan_id") and isinstance(s.get("home_view"), dict)
+                    }
+                    for s_in in (m_in.get("scans") or []):
+                        if isinstance(s_in, dict) and s_in.get("scan_id"):
+                            sid_l = str(s_in["scan_id"]).lower()
+                            prev_hv = prev_hv_by_id.get(sid_l)
+                            in_hv = s_in.get("home_view") if isinstance(s_in.get("home_view"), dict) else None
+                            if prev_hv and (not in_hv or float(prev_hv.get("updated_at") or 0) > float(in_hv.get("updated_at") or 0)):
+                                s_in["home_view"] = prev_hv
                     by_t = {str(x.get("token")): x for x in (m_in.get("share_links") or []) if isinstance(x, dict) and x.get("token")}
                     for lx in AUTH_SHARE.list_share_links():
                         if lx.get("token") and str(lx["token"]) not in by_t:
@@ -304,6 +317,32 @@ class ServerWriteRoutesMixin:
                                 {**ex_p, "email": em_vps, "language": s_vps.get("language", "zh-TW")},
                                 preserve_existing_role=True,
                             )
+                except Exception:
+                    pass
+            if path == "/api/scans/home-view" or (path.startswith("/api/scans/") and path.endswith("/home-view")):
+                try:
+                    actor_email_vps, _, actor_perms_vps = self._resolve_request_role(payload, query, share_token)
+                    if not share_token and (actor_perms_vps.get("can_edit_names") or actor_perms_vps.get("can_manage_users")):
+                        hv_scan_id = str(payload.get("scan_id", "")).strip()
+                        if not hv_scan_id and path.startswith("/api/scans/") and path.endswith("/home-view"):
+                            hv_scan_id = path[len("/api/scans/") : -len("/home-view")].strip("/")
+                        hv_raw = payload.get("home_view")
+                        if hv_scan_id and isinstance(hv_raw, dict) and isinstance(hv_raw.get("pos"), list) and isinstance(hv_raw.get("target"), list):
+                            hv_clean = {
+                                "pos": [round(float(v), 4) for v in hv_raw["pos"][:3]],
+                                "target": [round(float(v), 4) for v in hv_raw["target"][:3]],
+                                "updated_by": actor_email_vps,
+                                "updated_at": datetime.now().isoformat(),
+                            }
+                            if isinstance(hv_raw.get("tiles_center"), list) and len(hv_raw["tiles_center"]) >= 3:
+                                hv_clean["tiles_center"] = [round(float(v), 4) for v in hv_raw["tiles_center"][:3]]
+                            DB.set_scan_home_view(hv_scan_id, hv_clean)
+                            c_man = _load_cloud_manifest()
+                            if isinstance(c_man.get("scans"), dict) and hv_scan_id in c_man["scans"]:
+                                c_man["scans"][hv_scan_id]["home_view"] = hv_clean
+                                _save_cloud_manifest(c_man)
+                            with _VPS_RAM_FALLBACK_LOCK:
+                                _VPS_RAM_FALLBACK_CACHE.clear()
                 except Exception:
                     pass
             if self._proxy_via_pc_tunnel_if_vps("POST", path, body):
@@ -494,6 +533,68 @@ class ServerWriteRoutesMixin:
                     if ck.startswith("/api/scans") or ck.startswith("/api/projects"):
                         _VPS_RAM_FALLBACK_CACHE.pop(ck, None)
                 self.send_json({"status": "ok", "scan": self._enrich_scan_urls(updated)})
+                return
+
+            # 1c-1b. Save Scan Default 3D Camera Home View (/api/scans/home-view or /api/scans/<id>/home-view)
+            if path == "/api/scans/home-view" or (path.startswith("/api/scans/") and path.endswith("/home-view")):
+                if not actor_perms.get("can_edit_names"):
+                    self.send_json({"error": f"Role '{actor_role}' cannot set default Home View (Editor, Admin, or Owner required)."}, status=403)
+                    return
+                if path == "/api/scans/home-view":
+                    scan_id = str(payload.get("scan_id") or (query.get("scan_id") or [""])[0]).strip()
+                else:
+                    scan_id = re.sub(r"[^a-zA-Z0-9_\-]", "", path[len("/api/scans/") : -len("/home-view")].strip("/"))
+                if not scan_id:
+                    self.send_json({"error": "scan_id is required"}, status=400)
+                    return
+                raw_hv = payload.get("home_view")
+                clean_hv: Optional[Dict[str, Any]] = None
+                if isinstance(raw_hv, dict):
+                    pos_in = raw_hv.get("pos")
+                    tgt_in = raw_hv.get("target")
+                    tc_in = raw_hv.get("tiles_center")
+                    if isinstance(pos_in, list) and len(pos_in) >= 3 and isinstance(tgt_in, list) and len(tgt_in) >= 3:
+                        clean_hv = {
+                            "pos": [round(float(pos_in[0]), 4), round(float(pos_in[1]), 4), round(float(pos_in[2]), 4)],
+                            "target": [round(float(tgt_in[0]), 4), round(float(tgt_in[1]), 4), round(float(tgt_in[2]), 4)],
+                            "tiles_center": [round(float(tc_in[0]), 4), round(float(tc_in[1]), 4), round(float(tc_in[2]), 4)]
+                            if (isinstance(tc_in, list) and len(tc_in) >= 3)
+                            else [0.0, 0.0, 0.0],
+                            "updated_at": int(time.time()),
+                            "updated_by": actor_email or "engineer@gatheren.cloud",
+                        }
+                updated = DB.set_scan_home_view(scan_id, clean_hv)
+                try:
+                    m_cur = _load_cloud_manifest()
+                    if isinstance(m_cur, dict) and isinstance(m_cur.get("scans"), list):
+                        for s_m in m_cur["scans"]:
+                            if isinstance(s_m, dict) and str(s_m.get("scan_id") or "").lower() == scan_id.lower():
+                                if clean_hv:
+                                    s_m["home_view"] = clean_hv
+                                else:
+                                    s_m.pop("home_view", None)
+                        m_cur["updated_at"] = int(time.time())
+                        _save_cloud_manifest(m_cur)
+                except Exception:
+                    pass
+                _VPS_RAM_FALLBACK_CACHE.clear()
+                if os.name == "nt":
+                    def _bg_sync_home_view():
+                        try:
+                            from pc_worker.gdrive_cloud_sync import sync_all_scans_to_gdrive_and_vps
+                            sync_all_scans_to_gdrive_and_vps(DB, AUTH_SHARE, force=False)
+                        except Exception:
+                            pass
+                    threading.Thread(target=_bg_sync_home_view, daemon=True).start()
+                self.send_json(
+                    {
+                        "status": "ok",
+                        "ok": True,
+                        "scan_id": scan_id,
+                        "home_view": clean_hv,
+                        "scan": self._enrich_scan_urls(updated) if updated else None,
+                    }
+                )
                 return
 
             # 1c-2. Move Scan to Recycle Bin (/api/scans/delete or /api/scans/bin/trash)

@@ -353,7 +353,7 @@ class ScanQueueDB:
                     extra_payload.update(parsed_ex)
             except Exception:
                 pass
-        for ex_k in ("merged_from", "derived_from_scan_id", "applied_adjustments", "poly_count"):
+        for ex_k in ("merged_from", "derived_from_scan_id", "applied_adjustments", "poly_count", "home_view"):
             if ex_k in scan_data and scan_data[ex_k] not in (None, "", [], {}):
                 extra_payload[ex_k] = scan_data[ex_k]
         for pass_k in ("quality_stage", "pending_pass"):
@@ -514,6 +514,54 @@ class ScanQueueDB:
             except Exception as e:
                 print(f"[DB] Warning writing renamed scan_meta.json {meta_file}: {e}")
         return scan
+
+    def set_scan_home_view(self, scan_id: str, home_view: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+        """Persists a scan's default 3D camera Home View in SQLite extra_json and scan_meta.json on disk."""
+        clean_id = (scan_id or "").strip()
+        if not clean_id:
+            return None
+        with DB_LOCK, self._connect() as conn:
+            row = conn.execute("SELECT scan_id, project_dir, extra_json FROM scans WHERE lower(scan_id) = lower(?) LIMIT 1", (clean_id,)).fetchone()
+            if not row:
+                return None
+            real_id = row["scan_id"]
+            proj_dir = row["project_dir"] or ""
+            ex_dict: Dict[str, Any] = {}
+            if row["extra_json"]:
+                try:
+                    parsed = json.loads(row["extra_json"])
+                    if isinstance(parsed, dict):
+                        ex_dict = parsed
+                except Exception:
+                    pass
+            if home_view and isinstance(home_view, dict):
+                ex_dict["home_view"] = home_view
+            else:
+                ex_dict.pop("home_view", None)
+            conn.execute(
+                "UPDATE scans SET extra_json = ? WHERE scan_id = ?",
+                (json.dumps(ex_dict, ensure_ascii=False), real_id),
+            )
+            conn.commit()
+        if proj_dir and os.path.isdir(proj_dir):
+            meta_file = os.path.join(proj_dir, "scan_meta.json")
+            meta: Dict[str, Any] = {}
+            if os.path.isfile(meta_file):
+                try:
+                    with open(meta_file, "r", encoding="utf-8") as rf:
+                        meta = json.load(rf)
+                except Exception:
+                    meta = {}
+            if home_view and isinstance(home_view, dict):
+                meta["home_view"] = home_view
+            else:
+                meta.pop("home_view", None)
+            try:
+                with open(meta_file, "w", encoding="utf-8") as wf:
+                    json.dump(meta, wf, indent=2, ensure_ascii=False)
+            except Exception as e:
+                print(f"[DB] Warning writing home_view to scan_meta.json {meta_file}: {e}")
+        return self.get_scan(real_id)
 
     def rename_site(
         self,
@@ -1467,24 +1515,27 @@ class ScanQueueDB:
                     with open(meta_fp, "r", encoding="utf-8") as mf:
                         m_obj = json.load(mf)
                     if isinstance(m_obj, dict):
-                        for ex_k in ("merged_from", "derived_from_scan_id", "applied_adjustments", "poly_count"):
+                        for ex_k in ("merged_from", "derived_from_scan_id", "applied_adjustments", "poly_count", "home_view"):
                             if ex_k in m_obj and m_obj[ex_k] not in (None, "", [], {}):
                                 extra_dict[ex_k] = m_obj[ex_k]
                         if not d.get("tileset_version") and m_obj.get("tileset_version"):
                             d["tileset_version"] = int(m_obj["tileset_version"])
                 except Exception:
                     pass
-        if "poly_count" not in extra_dict and d.get("project_dir"):
+        if ("poly_count" not in extra_dict or "home_view" not in extra_dict) and d.get("project_dir"):
             meta_fp2 = os.path.join(str(d["project_dir"]), "scan_meta.json")
             if os.path.isfile(meta_fp2):
                 try:
                     with open(meta_fp2, "r", encoding="utf-8") as mf2:
                         m_obj2 = json.load(mf2)
-                    if isinstance(m_obj2, dict) and m_obj2.get("poly_count"):
-                        extra_dict["poly_count"] = int(m_obj2["poly_count"])
+                    if isinstance(m_obj2, dict):
+                        if "poly_count" not in extra_dict and m_obj2.get("poly_count"):
+                            extra_dict["poly_count"] = int(m_obj2["poly_count"])
+                        if "home_view" not in extra_dict and isinstance(m_obj2.get("home_view"), dict):
+                            extra_dict["home_view"] = m_obj2["home_view"]
                 except Exception:
                     pass
-        for ex_k in ("merged_from", "derived_from_scan_id", "applied_adjustments", "poly_count"):
+        for ex_k in ("merged_from", "derived_from_scan_id", "applied_adjustments", "poly_count", "home_view"):
             if ex_k in extra_dict:
                 d[ex_k] = extra_dict[ex_k]
         status_str = str(d.get("status") or "queued")
