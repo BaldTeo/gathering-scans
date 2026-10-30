@@ -269,8 +269,9 @@
   window.STATE = STATE;
 
   function isIPhoneOrMobilePhone() {
-    if (typeof window !== "undefined" && window.innerWidth <= 767) return true;
     if (typeof navigator !== "undefined" && /iPhone|iPod|Android.*Mobile/i.test(String(navigator.userAgent || ""))) return true;
+    const isEmbedFrame = typeof window !== "undefined" && window.self !== window.top;
+    if (typeof window !== "undefined" && !isEmbedFrame && window.innerWidth <= 767 && Number(navigator?.maxTouchPoints || 0) > 0) return true;
     return false;
   }
   window.isIPhoneOrMobilePhone = isIPhoneOrMobilePhone;
