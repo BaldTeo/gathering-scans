@@ -408,13 +408,19 @@ class GatheringScansHandler(CloudAndTunnelHandlerMixin, ServerWriteRoutesMixin, 
         allowed_scans: List[Dict[str, Any]] = []
         link: Optional[Dict[str, Any]] = None
         if tok:
-            ok, _, link, allowed_scans = AUTH_SHARE.validate_share_access(tok, increment_view=False)
+            ok, _, link, allowed_scans = AUTH_SHARE.validate_share_access(
+                tok, requested_scan_id=req_scan_id or None, increment_view=False
+            )
             if not ok:
-                ok_c, _, link_c, allowed_c = self._validate_cloud_share_token(tok)
+                ok_c, _, link_c, allowed_c = self._validate_cloud_share_token(
+                    tok, requested_scan_id=req_scan_id or None
+                )
                 if ok_c:
                     ok, link, allowed_scans = ok_c, link_c, allowed_c
             if not ok or not link:
                 return None
+            if link.get("token"):
+                tok = str(link["token"]).strip()
             if not allowed_scans:
                 m_scans = (_load_cloud_manifest().get("scans") or [])
                 scope_type = str(link.get("scope_type") or "scan").lower()
@@ -424,13 +430,25 @@ class GatheringScansHandler(CloudAndTunnelHandlerMixin, ServerWriteRoutesMixin, 
                 else:
                     allowed_scans = [s for s in m_scans if str(s.get("project_group")) == target_id]
         elif req_scan_id:
-            try:
-                sync_scans_with_filesystem()
-                s_row = DB.get_scan(req_scan_id)
-                if s_row:
-                    allowed_scans = [s_row]
-            except Exception:
-                pass
+            ok_s, _, link_s, allowed_s = AUTH_SHARE.validate_share_access(
+                req_scan_id, requested_scan_id=req_scan_id, increment_view=False
+            )
+            if not ok_s:
+                ok_s, _, link_s, allowed_s = self._validate_cloud_share_token(
+                    req_scan_id, requested_scan_id=req_scan_id
+                )
+            if ok_s and link_s:
+                link = link_s
+                tok = str(link_s.get("token") or req_scan_id).strip()
+                allowed_scans = allowed_s
+            if not allowed_scans:
+                try:
+                    sync_scans_with_filesystem()
+                    s_row = DB.get_scan(req_scan_id)
+                    if s_row:
+                        allowed_scans = [s_row]
+                except Exception:
+                    pass
             if not allowed_scans:
                 m_scans = (_load_cloud_manifest().get("scans") or [])
                 allowed_scans = [s for s in m_scans if str(s.get("scan_id")) == req_scan_id]
@@ -1527,7 +1545,8 @@ class GatheringScansHandler(CloudAndTunnelHandlerMixin, ServerWriteRoutesMixin, 
                 if not ok:
                     self.send_json({"error": reason, "revoked": True}, status=403)
                     return
-                enriched = [self._enrich_scan_urls(s, share_token) for s in allowed_scans]
+                canonical_tok = str((link or {}).get("token") or share_token).strip()
+                enriched = [self._enrich_scan_urls(s, canonical_tok) for s in allowed_scans]
                 self.send_json(
                     {
                         "status": "ok",

@@ -2524,6 +2524,9 @@
 
       if (data.mode === "external_share" && data.share_link) {
         STATE.shareLinkInfo = data.share_link;
+        if (data.share_link.token && data.share_link.token !== STATE.shareToken) {
+          STATE.shareToken = String(data.share_link.token);
+        }
         const banner = document.getElementById("externalShareBanner");
         const scopeLbl = document.getElementById("lblExternalShareScope");
         if (banner && scopeLbl) {
@@ -2899,6 +2902,9 @@
     // Zero-Roundtrip Instant Bootstrap when server pre-injected window.__GS_EMBED_BOOTSTRAP__
     const bootPayload = window.__GS_EMBED_BOOTSTRAP__;
     if (bootPayload && Array.isArray(bootPayload.scans) && bootPayload.scans.length > 0) {
+      if (bootPayload.share_token) {
+        STATE.shareToken = String(bootPayload.share_token);
+      }
       STATE.scans = bootPayload.scans;
       STATE.projects = bootPayload.projects || [];
       if (bootPayload.materials) STATE.materials = bootPayload.materials;

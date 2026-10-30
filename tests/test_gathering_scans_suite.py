@@ -2207,6 +2207,35 @@ class GatheringScansTestSuite(unittest.TestCase):
         self.assertIn('id="btnCopyLatestShareEmbed"', idx_html)
         self.assertIn("html.gs-embed-mode .gs-topbar", app_css)
 
+        # 4. Placeholder token ("YOUR_SHARE_TOKEN") and direct scan_id in /embed/<token> auto-resolve without 403
+        self.db.upsert_scan(
+            {
+                "scan_id": "edited_qihu_unified_merged_scan_4_scans__edited_372953",
+                "name": "QiHu Unified Merged Scan (4 Scans)",
+                "project_group": "QiHu",
+                "status": "completed",
+            }
+        )
+        auth = AuthAndSharingManager(self.db)
+        real_link = auth.create_share_link(
+            {
+                "scope_type": "scan",
+                "target_id": "edited_qihu_unified_merged_scan_4_scans__edited_372953",
+                "label": "Hostinger Embed QiHu",
+            }
+        )
+        ok_ph, _, link_ph, scans_ph = auth.validate_share_access("YOUR_SHARE_TOKEN")
+        self.assertTrue(ok_ph)
+        self.assertEqual(link_ph["token"], real_link["token"])
+        self.assertEqual(len(scans_ph), 1)
+
+        ok_sid, _, link_sid, scans_sid = auth.validate_share_access(
+            "edited_qihu_unified_merged_scan_4_scans__edited_372953"
+        )
+        self.assertTrue(ok_sid)
+        self.assertEqual(link_sid["token"], real_link["token"])
+        self.assertEqual(len(scans_sid), 1)
+
 
 if __name__ == "__main__":
     unittest.main()

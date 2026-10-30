@@ -109,9 +109,9 @@
   const _embedBoot = (typeof window !== "undefined" && window.__GS_EMBED_BOOTSTRAP__) ? window.__GS_EMBED_BOOTSTRAP__ : null;
   const _pathEmbedMatch = String(window.location.pathname || "").match(/^\/embed\/([^/?#]+)/);
   const initialShareToken =
+    (_embedBoot && _embedBoot.share_token ? String(_embedBoot.share_token) : "") ||
     _urlParams.get("share") ||
-    (_pathEmbedMatch ? decodeURIComponent(_pathEmbedMatch[1]) : "") ||
-    (_embedBoot && _embedBoot.share_token ? String(_embedBoot.share_token) : "");
+    (_pathEmbedMatch ? decodeURIComponent(_pathEmbedMatch[1]) : "");
   const _rawEmbedParam = String(
     _urlParams.get("embed") ||
     (_pathEmbedMatch ? "1" : "") ||
