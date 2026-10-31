@@ -3266,6 +3266,9 @@ class GatheringScansTestSuite(unittest.TestCase):
         with open(os.path.join(BASE_DIR, "web", "index.html"), "r", encoding="utf-8") as f:
             index_html = f.read()
         for btn_id in (
+            "btnDockStationing",
+            "btnDockDrainage",
+            "btnDockGcpQa",
             "btnDockFlatness",
             "btnDockTrench",
             "btnDockStakeout",
@@ -3277,6 +3280,24 @@ class GatheringScansTestSuite(unittest.TestCase):
         ):
             self.assertIn(f'id="{btn_id}"', index_html)
 
+        with open(os.path.join(BASE_DIR, "web", "src", "10-construction-qa-and-stakeout.js"), "r", encoding="utf-8") as f:
+            js10 = f.read()
+        self.assertNotIn("runUtilityTracer(", js10, "Must call runUtilityTrace(scanId), never undefined runUtilityTracer")
+        self.assertNotIn("inpUtilCoverM", js10, "Must read #inpUtilMinCover, never non-existent #inpUtilCoverM")
+        self.assertIn('document.getElementById("btnPickComparePoly")?.addEventListener', js10)
+        self.assertIn('document.getElementById("btnExportCompareCsv")?.addEventListener', js10)
+
+        with open(os.path.join(BASE_DIR, "web", "src", "09-construction-survey-and-bim.js"), "r", encoding="utf-8") as f:
+            js09 = f.read()
+        self.assertIn('document.getElementById("btnPickAlignment")?.addEventListener', js09)
+        self.assertIn('document.getElementById("btnToggleSlopeArrows")?.addEventListener', js09)
+        self.assertIn("window.handleStationAlignment3DPick", js09)
+
+        with open(os.path.join(BASE_DIR, "web", "src", "06-studio-align-and-optimizer.js"), "r", encoding="utf-8") as f:
+            js06 = f.read()
+        self.assertIn('"flatten_zone"', js06)
+        self.assertIn("native_polygon: polyNative", js06)
+
         # 4. Experimental flattened Lishan copy exists and original catch_LishanFinal is untouched
         exp_dir = os.path.join(SCANS_ROOT_DIR, "edited_lishan_track_flattened_exp_copy_449912")
         if os.path.isdir(exp_dir):
@@ -3287,15 +3308,22 @@ class GatheringScansTestSuite(unittest.TestCase):
             self.assertIn("Slope-Flattened", str(exp_meta.get("stage_label") or ""))
             self.assertIn("637,596 verts", str(exp_meta.get("stage_label") or ""))
 
-        # 5. Gemini AI Scan-to-BIM engine presence
+        # Verify _apply_slope_preserving_flatten_zones_to_tileset accepts frontend zoneObj schema
+        with open(os.path.join(BASE_DIR, "pc_worker", "optimizer_bridge.py"), "r", encoding="utf-8") as f:
+            opt_py = f.read()
+        self.assertIn('z_item.get("polygon_native")', opt_py)
+        self.assertIn('z_item.get("keep_residual_ratio")', opt_py)
+        self.assertIn('z_item.get("max_dev_m")', opt_py)
+
+        # 5. Gemini AI Scan-to-BIM engine presence & zero deprecated 2.5 models
         with open(os.path.join(BASE_DIR, "pc_worker", "surveying", "scan_to_bim.py"), "r", encoding="utf-8") as f:
             bim_py = f.read()
         self.assertIn("gemini-3.8-flash", bim_py)
+        self.assertIn("gemini-3.5-flash-lite", bim_py)
+        self.assertNotIn("gemini-2.5-", bim_py)
         self.assertIn("_run_gemini_ai_bim_reasoning", bim_py)
 
 
 if __name__ == "__main__":
     unittest.main()
-
-
 

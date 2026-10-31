@@ -185,13 +185,15 @@
 
     showSidePanel(t("表面平整度", "Surface Flatness"), html);
     bindSurfaceQaEvents(scanId);
+    runSurfaceFlatnessQa(scanId);
   }
 
   function bindSurfaceQaEvents(scanId) {
     document.querySelectorAll('input[name="qaRefMode"]').forEach((radio) => {
       radio.addEventListener("change", (e) => {
-        document.querySelectorAll(".gs-qa-mode-pill").forEach((p) => p.classList.remove("active"));
+        document.querySelectorAll("#surfaceQaContainer .gs-qa-mode-pill").forEach((p) => p.classList.remove("active"));
         e.target.closest(".gs-qa-mode-pill")?.classList.add("active");
+        runSurfaceFlatnessQa(scanId);
       });
     });
     // Set initial active state on first radio
@@ -604,6 +606,7 @@
 
     showSidePanel(t("管溝竣工實測", "Utility Tracer"), html);
     bindUtilityTracerEvents(scanId);
+    runUtilityTrace(scanId);
   }
 
   function bindUtilityTracerEvents(scanId) {
@@ -933,11 +936,34 @@
 
     showSidePanel(t("時期差體積計算", "Compare Volume"), html);
     bindCompareVolumeEvents(baseId, compId);
+    runCompareVolumeTakeoff(baseId, compId);
   }
 
   function bindCompareVolumeEvents(baseId, compId) {
     document.getElementById("btnRunCompareVolume")?.addEventListener("click", () => {
       runCompareVolumeTakeoff(baseId, compId);
+    });
+
+    document.getElementById("btnPickComparePoly")?.addEventListener("click", () => {
+      QA_STATE.isPickingComparePoly = true;
+      QA_STATE.comparePolyDraft = [];
+      if (typeof showToast === "function") {
+        showToast(t("請在 3D 模型表面點擊至少 3 處頂點圈選比較範圍", "Click 3+ vertices on 3D surface to bound compare region"));
+      }
+    });
+
+    document.getElementById("btnExportCompareCsv")?.addEventListener("click", () => {
+      const r = QA_STATE.compareVolumeLastResult;
+      if (!r) {
+        if (typeof showToast === "function") showToast(t("請先計算時期差體積", "Run compare volume first"));
+        return;
+      }
+      const bal = r.site_balance || {};
+      const lines = [
+        "\uFEFFBaseline_Scan,Compare_Scan,Cut_BCM_m3,Fill_CCM_m3,Net_DeltaV_m3,Cut_Mass_t,Fill_Mass_t,Haul_Trips,Limiting_Constraint",
+        `"${r.baseline_scan_id || baseId}","${r.compare_scan_id || compId}",${r.cut_volume_bcm || 0},${r.fill_volume_ccm || 0},${r.net_volume_delta_m3 || 0},${r.cut_mass_tonnes || 0},${r.fill_mass_tonnes || 0},${bal.truck_trips || 0},"${bal.limiting_constraint || ""}"`,
+      ];
+      downloadBlob(lines.join("\r\n"), `compare_volume_${r.baseline_scan_id || "scan"}.csv`, "text/csv;charset=utf-8;");
     });
   }
 
@@ -950,7 +976,12 @@
       compare_scan_id: compId,
       material_type: matType,
       truck_capacity_m3: truckCap,
-      polygon: (window.STATE && window.STATE.activeVolumePolygon) || null,
+      polygon:
+        (Array.isArray(QA_STATE.comparePolyDraft) && QA_STATE.comparePolyDraft.length >= 3
+          ? QA_STATE.comparePolyDraft
+          : null) ||
+        (window.STATE && window.STATE.activeVolumePolygon) ||
+        null,
     };
 
     try {
@@ -959,6 +990,7 @@
         if (typeof showToast === "function") showToast(t("時期差體積計算失敗", "Compare volume failed"));
         return;
       }
+      QA_STATE.compareVolumeLastResult = res;
       renderCompareVolumeResults(res);
       renderCompareVolume3DOverlay(res);
     } catch (err) {
@@ -1157,6 +1189,17 @@
   }
 
   function bindRtkStakeoutEvents(scanId) {
+    document.querySelectorAll('input[name="stkSourceMode"]').forEach((radio) => {
+      radio.addEventListener("change", (e) => {
+        document.querySelectorAll("#rtkStakeoutContainer .gs-qa-mode-pill").forEach((p) => p.classList.remove("active"));
+        e.target.closest(".gs-qa-mode-pill")?.classList.add("active");
+        if (e.target.value === "grid") {
+          QA_STATE.stakeoutPoints = [];
+        }
+        runGenerateStakeout(scanId);
+      });
+    });
+
     document.getElementById("btnGenStakeout")?.addEventListener("click", () => {
       runGenerateStakeout(scanId);
     });
@@ -1351,13 +1394,28 @@
   window.handleQaTool3DCanvasPick = function (tool, pt, twd) {
     if (!twd) return false;
     const scanId = (window.STATE && window.STATE.activeScanId) || "";
+    if (QA_STATE.isPickingComparePoly) {
+      if (!Array.isArray(QA_STATE.comparePolyDraft)) QA_STATE.comparePolyDraft = [];
+      QA_STATE.comparePolyDraft.push({ e: Number(twd.e.toFixed(3)), n: Number(twd.n.toFixed(3)) });
+      if (QA_STATE.comparePolyDraft.length >= 3) {
+        const baseId = (window.STATE && window.STATE.compareBaseScanId) || scanId;
+        const compId = (window.STATE && window.STATE.compareScanId) || baseId;
+        runCompareVolumeTakeoff(baseId, compId);
+      } else if (typeof showToast === "function") {
+        showToast(t(`已選取頂點 #${QA_STATE.comparePolyDraft.length} — 滿 3 點自動計算`, `Vertex #${QA_STATE.comparePolyDraft.length} placed`));
+      }
+      return true;
+    }
+    if ((tool === "stationing" || (window.STATE && window.STATE.isPickingStationAlignment)) && typeof window.handleStationAlignment3DPick === "function") {
+      return window.handleStationAlignment3DPick(pt, twd);
+    }
     if (tool === "flatness" || QA_STATE.isPickingFlatnessPoint) {
       QA_STATE.surfaceQaPoints.push({ e: Number(twd.e.toFixed(3)), n: Number(twd.n.toFixed(3)), h: Number(twd.h.toFixed(3)) });
       runSurfaceFlatnessQa(scanId);
       return true;
     }
     if (tool === "trench" || QA_STATE.isPickingUtilityPoint) {
-      const depthCover = safeFloat(document.getElementById("inpUtilCoverM")?.value, 1.2);
+      const depthCover = safeFloat(document.getElementById("inpUtilMinCover")?.value, 1.2);
       QA_STATE.utilityTrenchPoints.push({
         e: Number(twd.e.toFixed(3)),
         n: Number(twd.n.toFixed(3)),
@@ -1365,7 +1423,7 @@
         ground_h: Number(twd.h.toFixed(3)),
       });
       if (QA_STATE.utilityTrenchPoints.length >= 2) {
-        runUtilityTracer(scanId);
+        runUtilityTrace(scanId);
       } else if (typeof showToast === "function") {
         showToast(t("已設定管溝起點 — 請點擊下一處管溝節點", "Trench Pt #1 placed — click next trench vertex"));
       }

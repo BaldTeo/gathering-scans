@@ -18,8 +18,8 @@
   <meta name="twitter:image" content="https://scans.gatheren.cloud/assets/gathering_cloud_logo.png" />
   <!-- GS_SHARE_OG_END -->
   <link rel="icon" type="image/png" href="/assets/gathering_cloud_logo.png" />
-  <link rel="stylesheet" href="/app.css?v=20261031_v232" />
-  <link rel="stylesheet" href="/survey-bim.css?v=20261031_v232" />
+  <link rel="stylesheet" href="/app.css?v=20261031_v233" />
+  <link rel="stylesheet" href="/survey-bim.css?v=20261031_v233" />
   <script src="https://accounts.google.com/gsi/client" async defer></script>
 
 </head>
@@ -980,8 +980,22 @@
           <span class="bim-dock-label" data-i18n-zh="分類" data-i18n-en="Classify">分類</span>
         </button>
 
+        <!-- 10b-2. Centerline Stationing (0K+000) & Average-End-Area (AEA) Cut/Fill Volume -->
+        <button type="button" class="bim-dock-btn autodesk-measure-btn" id="btnDockStationing" data-tool="stationing" data-dock="stationing" title="道路中心線樁號斷面 (0K+000) 與平均端面積法 (AEA) 土方計算" data-i18n-title-zh="道路中心線樁號斷面 (0K+000) 與平均端面積法 (AEA) 土方計算" data-i18n-title-en="Centerline Stationing (0K+000) &amp; Average-End-Area (AEA) Volume Takeoff" aria-label="Centerline Stationing">
+          <div class="bim-dock-icon">
+            <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8">
+              <path d="M4 19L8 5"/>
+              <path d="M16 5l4 14"/>
+              <line x1="12" y1="6" x2="12" y2="8"/>
+              <line x1="12" y1="11" x2="12" y2="13"/>
+              <line x1="12" y1="16" x2="12" y2="18"/>
+            </svg>
+          </div>
+          <span class="bim-dock-label" data-i18n-zh="樁號" data-i18n-en="Station">樁號</span>
+        </button>
+
         <!-- 10c. Surface Drainage & Slope Steepness Analysis -->
-        <button type="button" class="bim-dock-btn autodesk-measure-btn" id="btnDockDrainage" data-tool="drainage" data-dock="drainage" title="地表坡度熱力圖與雨水逕流排水流向模擬" data-i18n-title-zh="地表坡度熱力圖與雨水逕流排水流向模擬" data-i18n-title-en="Surface Slope Steepness &amp; Rainwater Runoff Flow-Lines" aria-label="Surface Drainage and Slope Analysis">
+        <button type="button" class="bim-dock-btn autodesk-measure-btn" id="btnDockDrainage" data-tool="drainage" data-dock="drainage" title="地表坡度熱力圖、積水窪蓄分析與雨水逕流排水流向模擬" data-i18n-title-zh="地表坡度熱力圖、積水窪蓄分析與雨水逕流排水流向模擬" data-i18n-title-en="Surface Slope Steepness, Depression Ponding &amp; Rainwater Runoff Flow-Lines" aria-label="Surface Drainage and Slope Analysis">
           <div class="bim-dock-icon">
             <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8">
               <path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z"/>
@@ -2473,19 +2487,19 @@
   <script src="/lib/3d-tiles-renderer.bundle.js?v=20261031_v218"></script>
 
   <!-- Main GatheringScans Bilingual Translation & Modular Application Logic (< 5,000 lines per module) -->
-  <script src="/i18n.js?v=20261031_v232"></script>
-  <script src="/src/01-core-state.js?v=20261031_v232"></script>
-  <script src="/src/02-map-and-timeline.js?v=20261031_v232"></script>
-  <script src="/src/03-studio-core.js?v=20261031_v232"></script>
-  <script src="/src/04-studio-lasso-and-edits.js?v=20261031_v232"></script>
-  <script src="/src/05-studio-civil-inspectors.js?v=20261031_v232"></script>
-  <script src="/src/06-studio-align-and-optimizer.js?v=20261031_v232"></script>
-  <script src="/src/07-compare-and-queue.js?v=20261031_v232"></script>
-  <script src="/src/08-advanced-surveying-and-qa.js?v=20261031_v232"></script>
-  <script src="/src/09-construction-survey-and-bim.js?v=20261031_v232"></script>
-  <script src="/src/10-construction-qa-and-stakeout.js?v=20261031_v232"></script>
-  <script src="/src/11-scan-to-bim-primitives.js?v=20261031_v232"></script>
-  <script src="/src/12-public-utilities-gis.js?v=20261031_v232"></script>
-  <script src="/app.js?v=20261031_v232"></script>
+  <script src="/i18n.js?v=20261031_v233"></script>
+  <script src="/src/01-core-state.js?v=20261031_v233"></script>
+  <script src="/src/02-map-and-timeline.js?v=20261031_v233"></script>
+  <script src="/src/03-studio-core.js?v=20261031_v233"></script>
+  <script src="/src/04-studio-lasso-and-edits.js?v=20261031_v233"></script>
+  <script src="/src/05-studio-civil-inspectors.js?v=20261031_v233"></script>
+  <script src="/src/06-studio-align-and-optimizer.js?v=20261031_v233"></script>
+  <script src="/src/07-compare-and-queue.js?v=20261031_v233"></script>
+  <script src="/src/08-advanced-surveying-and-qa.js?v=20261031_v233"></script>
+  <script src="/src/09-construction-survey-and-bim.js?v=20261031_v233"></script>
+  <script src="/src/10-construction-qa-and-stakeout.js?v=20261031_v233"></script>
+  <script src="/src/11-scan-to-bim-primitives.js?v=20261031_v233"></script>
+  <script src="/src/12-public-utilities-gis.js?v=20261031_v233"></script>
+  <script src="/app.js?v=20261031_v233"></script>
 </body>
 </html>

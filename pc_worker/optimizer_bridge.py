@@ -873,20 +873,29 @@ def _apply_slope_preserving_flatten_zones_to_tileset(
     for z_idx, z_item in enumerate(flatten_zones or []):
         if not isinstance(z_item, dict):
             continue
-        strength = max(0.05, min(1.0, float(safe_float(z_item.get("strength"), 0.90) or 0.90)))
-        max_res_m = max(0.08, min(3.0, float(safe_float(z_item.get("max_residual_m"), 0.45) or 0.45)))
+        raw_strength = safe_float(z_item.get("strength"))
+        if raw_strength is None and z_item.get("keep_residual_ratio") is not None:
+            kr = safe_float(z_item.get("keep_residual_ratio"), 0.15)
+            raw_strength = 1.0 - (kr if kr is not None else 0.15)
+        strength = max(0.05, min(1.0, float(raw_strength if raw_strength is not None else 0.90)))
+        raw_max_res = safe_float(z_item.get("max_residual_m"))
+        if raw_max_res is None:
+            raw_max_res = safe_float(z_item.get("max_dev_m"))
+        max_res_m = max(0.08, min(3.0, float(raw_max_res if raw_max_res is not None else 0.45)))
         feather_m = max(0.0, min(10.0, float(safe_float(z_item.get("feather_m"), 1.2) or 1.2)))
         min_z = safe_float(z_item.get("min_z"), -9999.0) or -9999.0
         max_z = safe_float(z_item.get("max_z"), 9999.0) or 9999.0
 
         raw_polys = []
-        if isinstance(z_item.get("native_polygons"), list):
+        if isinstance(z_item.get("native_polygons"), list) and z_item["native_polygons"]:
             raw_polys.extend(z_item["native_polygons"])
-        if z_item.get("native_polygon"):
+        elif z_item.get("native_polygon"):
             raw_polys.append(z_item["native_polygon"])
-        if isinstance(z_item.get("polygons_twd97"), list):
+        elif z_item.get("polygon_native"):
+            raw_polys.append(z_item["polygon_native"])
+        elif isinstance(z_item.get("polygons_twd97"), list) and z_item["polygons_twd97"]:
             raw_polys.extend(z_item["polygons_twd97"])
-        if z_item.get("polygon_twd97"):
+        elif z_item.get("polygon_twd97"):
             raw_polys.append(z_item["polygon_twd97"])
 
         for rp in raw_polys:

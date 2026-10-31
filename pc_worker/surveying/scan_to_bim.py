@@ -1358,7 +1358,7 @@ class ScanToBimMixin:
 
             # 2. Pure Python stdlib HTTPS fallback to Gemini REST API if google-genai package is not installed
             if not parsed_ai:
-                for candidate_model in ("gemini-3.8-flash", "gemini-2.5-flash"):
+                for candidate_model in ("gemini-3.8-flash", "gemini-3.5-flash-lite"):
                     try:
                         url = f"https://generativelanguage.googleapis.com/v1beta/models/{candidate_model}:generateContent"
                         req_body = {

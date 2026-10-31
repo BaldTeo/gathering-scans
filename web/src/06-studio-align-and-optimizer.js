@@ -1784,14 +1784,19 @@
         return [Number(t.e.toFixed(3)), Number(t.n.toFixed(3)), Number(t.h.toFixed(3))];
       });
 
+      const keepRatio = Number((fp.keep_residual_pct / 100.0).toFixed(3));
+      const maxDevM = Number((fp.max_dev_cm / 100.0).toFixed(3));
       const zoneObj = {
         id: `fz_${Date.now()}`,
         polygon_local_xz: polyLocalXZ,
         polygon_native: polyNative,
+        native_polygon: polyNative,
         polygon_twd97: polyTwd97,
-        keep_residual_ratio: Number((fp.keep_residual_pct / 100.0).toFixed(3)),
+        keep_residual_ratio: keepRatio,
+        strength: Number((1.0 - keepRatio).toFixed(3)),
         feather_m: fp.feather_m,
-        max_dev_m: Number((fp.max_dev_cm / 100.0).toFixed(3)),
+        max_dev_m: maxDevM,
+        max_residual_m: maxDevM,
       };
       st.flattenZones.push(zoneObj);
       st.rev++;
@@ -3889,6 +3894,13 @@
       showToast("Cancelled in-progress points (Esc)");
       return true;
     }
+    if (STATE.activeView === "studio" && Array.isArray(STATE.flattenDraftPoints) && STATE.flattenDraftPoints.length > 0) {
+      STATE.flattenDraftPoints = [];
+      clearAreaVisualsOnly();
+      if (STATE.activeTool === "flatten_zone") openFlattenZoneInspector({ armPolygon: true });
+      showToast("Cleared draft flatten vertices (Esc)");
+      return true;
+    }
     if (
       STATE.activeView === "studio" &&
       [
@@ -3904,8 +3916,13 @@
         "photos",
         "rtk",
         "categorize",
+        "stationing",
         "drainage",
         "gcp_qa",
+        "flatness",
+        "trench",
+        "stakeout",
+        "flatten_zone",
         "bookmarks",
         "utilities",
         "bim",
@@ -3924,8 +3941,9 @@
         clearCategorizeVisualsOnly();
         if (typeof syncCategorizeVisibilityUI === "function") syncCategorizeVisibilityUI();
       }
-      if (STATE.activeTool === "drainage" && typeof clearDrainageVisuals3D === "function") {
-        clearDrainageVisuals3D();
+      if (STATE.activeTool === "drainage") {
+        if (typeof clearDrainageVisuals3D === "function") clearDrainageVisuals3D();
+        if (typeof window.clearEnhancedPondingVisuals3D === "function") window.clearEnhancedPondingVisuals3D();
       }
       if (STATE.activeTool === "utilities" && typeof window.onUtilitiesPanelClosed === "function") {
         window.onUtilitiesPanelClosed();
@@ -4114,6 +4132,7 @@
         openRtkPhotoInspector(null, false);
       } else if (tool === "categorize") openCategorizeInspector();
       else if (tool === "comments") openCommentsInspector();
+      else if (tool === "stationing" && typeof window.openStationingAndAeaVolumeInspector === "function") window.openStationingAndAeaVolumeInspector();
       else if (tool === "drainage" && typeof openDrainageAndSlopeInspector === "function") openDrainageAndSlopeInspector();
       else if (tool === "gcp_qa" && typeof openGcpAccuracyQaInspector === "function") openGcpAccuracyQaInspector();
       else if (tool === "flatness" && typeof window.openSurfaceFlatnessQaInspector === "function") window.openSurfaceFlatnessQaInspector();
@@ -4449,6 +4468,14 @@
           mean_height_m: 2.5,
         });
       }
+    } else if (
+      e.key === "Enter" &&
+      STATE.activeView === "studio" &&
+      STATE.activeTool === "flatten_zone" &&
+      Array.isArray(STATE.flattenDraftPoints) &&
+      STATE.flattenDraftPoints.length >= 3
+    ) {
+      document.getElementById("btnApplyLiveFlattenZone")?.click();
     } else if (e.key === "Enter" && STATE.activeView === "studio" && STATE.measurePoints.length >= 3) {
       if (studioThree && studioThree.polyPreviewGroup) {
         while (studioThree.polyPreviewGroup.children.length > 0) {

@@ -649,6 +649,19 @@
 
     const panelHtml = `
       <div class="gcp-qa-container">
+        <!-- Unified Civil Surveying Sub-Tabs -->
+        <div class="civil-subtabs">
+          <button type="button" class="subtab-btn" id="subtabStationing">
+            ${SVG_ICONS.ROAD} 樁號斷面
+          </button>
+          <button type="button" class="subtab-btn" id="subtabDrainage">
+            ${SVG_ICONS.DROPLET} 坡度窪蓄
+          </button>
+          <button type="button" class="subtab-btn active" id="subtabGcpQa">
+            ${SVG_ICONS.TARGET} 控制點
+          </button>
+        </div>
+
         <!-- Grade Header: Single-line CRS Pill + Grade Badge (No duplicate inner heading) -->
         <div class="gcp-grade-header">
           <span class="gcp-crs-pill" title="${esc(qaResult.crs || "TWD97 / TM2 zone 121 + TWVD 2001 height [EPSG:3826+8904]")}">
@@ -792,6 +805,10 @@
         panelHtml
       );
     }
+
+    // Subtab event bindings
+    document.getElementById("subtabStationing")?.addEventListener("click", () => openEnhancedStationingAndAeaInspector());
+    document.getElementById("subtabDrainage")?.addEventListener("click", () => openEnhancedDrainageAndPondingInspector());
 
     // Bind Event Listeners
     document.getElementById("btnComputeGcpQa")?.addEventListener("click", () => {
@@ -991,6 +1008,7 @@
    * Opens the Centerline Stationing (0K+000) & Average-End-Area (AEA) Cut/Fill Volume Inspector.
    */
   async function openEnhancedStationingAndAeaInspector(initialResult = null) {
+    if (typeof setActiveStudioTool === "function") setActiveStudioTool("stationing");
     const t = typeof tr === "function" ? tr : (zh, en) => zh;
     const scanId = window.STATE && window.STATE.activeScanId;
     if (!scanId) {
@@ -1240,11 +1258,22 @@
             template_type: tmplVal,
             road_width: widthVal,
             bottom_width: widthVal,
+            alignment: (window.STATE && Array.isArray(window.STATE.stationAlignmentPoints) && window.STATE.stationAlignmentPoints.length >= 2) ? window.STATE.stationAlignmentPoints : null,
           });
           openEnhancedStationingAndAeaInspector(updated);
         } catch (err) {
           console.error("[Stationing] Recompute failed:", err);
         }
+      }
+    });
+
+    document.getElementById("btnPickAlignment")?.addEventListener("click", () => {
+      if (window.STATE) {
+        window.STATE.isPickingStationAlignment = true;
+        window.STATE.stationAlignmentPoints = [];
+      }
+      if (typeof showToast === "function") {
+        showToast(t("請在 3D 視圖中點擊至少 2 處中心線節點", "Click 2+ centerline vertices on 3D scan"));
       }
     });
 
@@ -1256,6 +1285,19 @@
       window.print();
     });
   }
+
+  window.handleStationAlignment3DPick = function (pt, twd) {
+    if (!twd || !window.STATE) return false;
+    if (!Array.isArray(window.STATE.stationAlignmentPoints)) window.STATE.stationAlignmentPoints = [];
+    window.STATE.stationAlignmentPoints.push({ e: Number(twd.e.toFixed(3)), n: Number(twd.n.toFixed(3)), h: Number(twd.h.toFixed(3)) });
+    const t = typeof tr === "function" ? tr : (zh, en) => zh;
+    if (window.STATE.stationAlignmentPoints.length >= 2) {
+      document.getElementById("btnRecomputeStationing")?.click();
+    } else if (typeof showToast === "function") {
+      showToast(t("已設定中心線起點 (0K+000) — 請點擊下一處中心線節點", "Centerline start (0K+000) placed — click next vertex"));
+    }
+    return true;
+  };
 
   // =========================================================================
   // 4. SURFACE DRAINAGE & PONDING WATER VOLUME TAKEOFF (V_water m³) INSPECTOR
@@ -1358,6 +1400,7 @@
    * Opens the Enhanced Surface Drainage & Ponding Water Takeoff Inspector.
    */
   async function openEnhancedDrainageAndPondingInspector(initialResult = null) {
+    if (typeof setActiveStudioTool === "function") setActiveStudioTool("drainage");
     const t = typeof tr === "function" ? tr : (zh, en) => zh;
     const scanId = window.STATE && window.STATE.activeScanId;
     if (!scanId) {
@@ -1581,6 +1624,23 @@
         } catch (err) {
           console.error("[Drainage] Recompute failed:", err);
         }
+      }
+    });
+
+    document.getElementById("btnToggleSlopeArrows")?.addEventListener("click", (e) => {
+      const btn = e.currentTarget;
+      const isActive = btn.classList.toggle("active");
+      const excludeW = document.getElementById("chkExcludeWalls")?.checked !== false;
+      if (isActive && typeof window.renderDrainageAndSlopeVisuals3D === "function") {
+        window.renderDrainageAndSlopeVisuals3D({
+          gridSize: (window.STATE && Number(window.STATE.drainageGridSize)) || 20,
+          densityPerM2: (window.STATE && Number(window.STATE.drainageDensityPerM2)) || 0.25,
+          arrowScale: (window.STATE && Number(window.STATE.drainageArrowScale)) || 1.0,
+          showLabels: true,
+          excludeWalls: excludeW,
+        });
+      } else if (!isActive && typeof clearDrainageVisuals3D === "function") {
+        clearDrainageVisuals3D();
       }
     });
 
