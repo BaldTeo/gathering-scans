@@ -16,6 +16,7 @@ import time
 import tempfile
 import math
 import unittest
+import re
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if BASE_DIR not in sys.path:
@@ -2788,12 +2789,25 @@ class GatheringScansTestSuite(unittest.TestCase):
         with open(os.path.join(BASE_DIR, "web", "src", "09-construction-survey-and-bim.js"), "r", encoding="utf-8") as f:
             js09 = f.read()
 
-        self.assertIn("/survey-bim.css?v=20261031_v219", index_html)
+        self.assertIn("/survey-bim.css?v=20261031_v220", index_html)
         self.assertIn("/survey-bim.css", sw_js)
-        self.assertIn("gathering-scans-offline-v219", sw_js)
+        self.assertIn("gathering-scans-offline-v220", sw_js)
         self.assertIn("openEnhancedGcpAccuracyQaInspector", js09)
         self.assertIn("renderEnhancedGcpQaMarkers3D", js09)
         self.assertIn("window.openGcpAccuracyQaInspector", js09)
+
+        # 5. Strict UI/UX Remediation verification: Zero Unicode emojis & Dual Theme support
+        emoji_pattern = re.compile(r"[\U00010000-\U0010ffff]|[\u2600-\u27bf]|[\u2300-\u23ff]|[\u2b50-\u2b55]|[\u203c-\u2049]")
+        self.assertEqual(len(emoji_pattern.findall(js09)), 0, "Zero emojis allowed in 09-construction-survey-and-bim.js")
+        self.assertIn("SVG_ICONS", js09)
+
+        with open(os.path.join(BASE_DIR, "web", "survey-bim.css"), "r", encoding="utf-8") as f:
+            css_bim = f.read()
+        self.assertEqual(len(emoji_pattern.findall(css_bim)), 0, "Zero emojis allowed in web/survey-bim.css")
+        self.assertIn('html[data-theme="light"]', css_bim)
+        self.assertIn('html[data-theme="dark"]', css_bim)
+        self.assertIn('body.theme-light', css_bim)
+        self.assertIn('body.theme-dark', css_bim)
 
 
 if __name__ == "__main__":

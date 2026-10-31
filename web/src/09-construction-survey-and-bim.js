@@ -18,13 +18,37 @@
  *    - Swell factor (Caterpillar expansion ratio or bulking %, e.g. 0.80 / 1.25)
  *    - Shrinkage / compaction factor (e.g. 0.10 / 10%)
  *    - Dump truck haul capacity (m³) & gross legal payload limit (tonnes)
- * 4. Scan-to-BIM & Trench Utility foundation interfaces.
+ * 4. 3D GCP Residual Accuracy & 1-Click TBM Vertical Datum Calibration.
  *
- * Compliance: Strictly under 5,000 lines modular architecture ceiling.
+ * Strict Design Discipline:
+ *  - ZERO Unicode emojis (pure monochrome vector SVG stroke icons)
+ *  - Comprehensive Bright & Dark Theme Support (via CSS custom properties)
+ *  - Strict 1-word action buttons and minimalist typography
+ *  - Strictly under 5,000 lines modular architecture ceiling.
  */
 
 (function () {
   "use strict";
+
+  // Crisp inline SVG icons (Autodesk/BIM CAD style, stroke="currentColor", stroke-width="2", fill="none")
+  const SVG_ICONS = {
+    TRUCK: `<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="gs-icon"><rect x="1" y="3" width="15" height="13"></rect><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"></polygon><circle cx="5.5" cy="18.5" r="2.5"></circle><circle cx="18.5" cy="18.5" r="2.5"></circle></svg>`,
+    PLANE: `<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="gs-icon"><path d="M2 22L22 2v20H2z"></path><path d="M18 18v-3"></path><path d="M14 18v-2"></path><path d="M10 18v-3"></path><path d="M6 18v-2"></path></svg>`,
+    SCALE: `<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="gs-icon"><path d="M16 16l3-8 3 8c-.87.65-1.92 1-3 1s-2.13-.35-3-1z"></path><path d="M2 16l3-8 3 8c-.87.65-1.92 1-3 1s-2.13-.35-3-1z"></path><path d="M7 21h10"></path><path d="M12 3v18"></path><path d="M3 7h18"></path></svg>`,
+    ALERT: `<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="gs-icon"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>`,
+    BOX: `<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="gs-icon"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg>`,
+    TARGET: `<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="gs-icon"><circle cx="12" cy="12" r="10"></circle><circle cx="12" cy="12" r="6"></circle><circle cx="12" cy="12" r="2"></circle></svg>`,
+    ANCHOR: `<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="gs-icon"><circle cx="12" cy="5" r="3"></circle><line x1="12" y1="22" x2="12" y2="8"></line><path d="M5 12H2a10 10 0 0 0 20 0h-3"></path></svg>`,
+    BOLT: `<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="gs-icon"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>`,
+    RESET: `<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="gs-icon"><polyline points="1 4 1 10 7 10"></polyline><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"></path></svg>`,
+    CHECK: `<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" class="gs-icon"><polyline points="20 6 9 17 4 12"></polyline></svg>`,
+    CALC: `<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="gs-icon"><line x1="18" y1="20" x2="18" y2="10"></line><line x1="12" y1="20" x2="12" y2="4"></line><line x1="6" y1="20" x2="6" y2="14"></line></svg>`,
+    SAMPLE: `<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="gs-icon"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>`,
+    DOWNLOAD: `<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="gs-icon"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>`,
+    FILE: `<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="gs-icon"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>`,
+    PRINTER: `<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="gs-icon"><polyline points="6 9 6 2 18 2 18 9"></polyline><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path><rect x="6" y="14" width="12" height="8"></rect></svg>`,
+    VECTOR: `<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="gs-icon"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>`
+  };
 
   // Helper for safe client float parsing
   function safeParseFloat(val, fallback) {
@@ -57,23 +81,23 @@
         </div>
       </div>
 
-      <div style="background:var(--ui-bg-subtle, rgba(255,255,255,0.03));border:1px solid var(--ui-border, rgba(255,255,255,0.08));border-radius:8px;padding:8px 10px;margin-bottom:9px;">
+      <div style="background:var(--ui-bg-subtle);border:1px solid var(--ui-border);border-radius:8px;padding:8px 10px;margin-bottom:9px;">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
-          <span style="font-size:11px;font-weight:700;color:var(--ui-text-primary, #f1f5f9);">
-            🚜 ${t("土方質量守恆與運料卡車參數", "Earthwork Mass & Truck Haul Parameters")}
+          <span style="font-size:11px;font-weight:700;color:var(--ui-text-primary);display:flex;align-items:center;">
+            ${SVG_ICONS.TRUCK} ${t("土方運料參數", "Haul Parameters")}
           </span>
-          <span style="font-size:10px;color:var(--ui-text-secondary, #94a3b8);">${t("工程預設", "Civil Std")}</span>
+          <span style="font-size:10px;color:var(--ui-text-muted);">${t("工程規範", "Civil Std")}</span>
         </div>
 
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:6px;">
           <div>
-            <label style="font-size:10px;display:block;margin-bottom:2px;color:var(--ui-text-secondary, #94a3b8);" title="${t("Caterpillar 鬆散膨脹率 (例如 1.25 表示膨脹 25%，或 0.80 表示載重率)", "Swell / Bulking Factor (e.g. 1.25 for 25% expansion, or 0.80 Cat load factor)")}">
+            <label style="font-size:10px;display:block;margin-bottom:2px;color:var(--ui-text-secondary);" title="${t("Caterpillar 鬆散膨脹率 (例如 1.25 表示膨脹 25%)", "Swell / Bulking Factor (e.g. 1.25 for 25% expansion)")}">
               ${t("膨脹係數 (Swell)", "Swell Factor")}
             </label>
             <input type="number" step="0.05" class="gs-input" id="volSwellFactor" value="1.25" style="padding:4px 7px;font-size:11px;" />
           </div>
           <div>
-            <label style="font-size:10px;display:block;margin-bottom:2px;color:var(--ui-text-secondary, #94a3b8);" title="${t("滾壓壓實收縮折減率 (例如 0.10 代表 10% 收縮折減)", "Compaction Shrinkage Factor (e.g. 0.10 for 10% compaction reduction)")}">
+            <label style="font-size:10px;display:block;margin-bottom:2px;color:var(--ui-text-secondary);" title="${t("滾壓壓實收縮折減率 (例如 0.10 代表 10% 收縮折減)", "Compaction Shrinkage Factor (e.g. 0.10 for 10% compaction reduction)")}">
               ${t("收縮係數 (Shrink)", "Shrink Factor")}
             </label>
             <input type="number" step="0.05" class="gs-input" id="volShrinkFactor" value="0.10" style="padding:4px 7px;font-size:11px;" />
@@ -82,14 +106,14 @@
 
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
           <div>
-            <label style="font-size:10px;display:block;margin-bottom:2px;color:var(--ui-text-secondary, #94a3b8);" title="${t("砂石傾卸卡車單車鬆散斗容量 (m³，標準 10 輪車約 12-15 m³)", "Dump Truck Haul Volume Capacity (m³, std tandem 10-wheeler is 12-15 m³)")}">
-              ${t("卡車容量 (m³)", "Truck Vol (m³)")}
+            <label style="font-size:10px;display:block;margin-bottom:2px;color:var(--ui-text-secondary);" title="${t("砂石傾卸卡車單車鬆散斗容量 (m³，標準約 12-15 m³)", "Dump Truck Haul Volume Capacity (m³, std is 12-15 m³)")}">
+              ${t("容量 (m³)", "Capacity (m³)")}
             </label>
             <input type="number" step="1" class="gs-input" id="volTruckVolumeM3" value="15.0" style="padding:4px 7px;font-size:11px;" />
           </div>
           <div>
-            <label style="font-size:10px;display:block;margin-bottom:2px;color:var(--ui-text-secondary, #94a3b8);" title="${t("傾卸卡車單車法定最大淨載重 (噸，標準雙橋車約 18-22 噸)", "Dump Truck Legal Max Payload (tonnes, std tandem is 18-22 t)")}">
-              ${t("載重限制 (t)", "Truck Max (t)")}
+            <label style="font-size:10px;display:block;margin-bottom:2px;color:var(--ui-text-secondary);" title="${t("傾卸卡車單車法定最大淨載重 (噸，標準約 18-22 噸)", "Dump Truck Legal Max Payload (tonnes, std is 18-22 t)")}">
+              ${t("限重 (t)", "Max (t)")}
             </label>
             <input type="number" step="1" class="gs-input" id="volTruckMaxTonnes" value="20.0" style="padding:4px 7px;font-size:11px;" />
           </div>
@@ -150,15 +174,15 @@
       const slopeDeg = Number(bfp.slope_deg || 0).toFixed(2);
       const azDeg = Number(bfp.azimuth_deg || 0).toFixed(1);
       bfpHtml = `
-        <div style="margin-top:8px;padding-top:7px;border-top:1px dashed var(--ui-border, rgba(255,255,255,0.1));font-size:11px;line-height:1.4;">
-          <div style="font-weight:700;color:var(--ui-accent, #38bdf8);margin-bottom:3px;">
-            📐 ${t("最小平方法最佳擬合傾斜面", "Least-Squares Best-Fit Reference Plane")}
+        <div style="margin-top:8px;padding-top:7px;border-top:1px dashed var(--ui-border);font-size:11px;line-height:1.4;">
+          <div style="font-weight:700;color:var(--ui-accent);margin-bottom:3px;display:flex;align-items:center;">
+            ${SVG_ICONS.PLANE} ${t("最佳擬合傾斜面", "Best-Fit Plane")}
           </div>
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">
-            <div><b>${t("坡度比率：", "Slope:")}</b> ${esc(slopePct)}% (${esc(slopeDeg)}°)</div>
+            <div><b>${t("坡度：", "Slope:")}</b> ${esc(slopePct)}% (${esc(slopeDeg)}°)</div>
             <div><b>${t("方位角：", "Azimuth:")}</b> ${esc(azDeg)}°</div>
           </div>
-          <div style="font-size:10px;color:var(--ui-text-secondary, #94a3b8);margin-top:2px;">
+          <div style="font-size:10px;color:var(--ui-text-muted);margin-top:2px;">
             Z = ${Number(bfp.c || bfp.c0 || 0).toFixed(3)} + (${Number(bfp.a || 0).toFixed(4)} × dE) + (${Number(bfp.b || 0).toFixed(4)} × dN)
           </div>
         </div>
@@ -166,26 +190,26 @@
     }
 
     return `
-      <div style="font-size:11px;color:var(--ui-text-secondary, #94a3b8);background:var(--ui-bg-subtle, rgba(255,255,255,0.03));padding:9px 10px;border-radius:8px;border:1px solid var(--ui-border, rgba(255,255,255,0.08));margin-bottom:10px;line-height:1.5;">
-        <div style="font-weight:700;color:var(--ui-text-primary, #f1f5f9);margin-bottom:5px;display:flex;align-items:center;justify-content:space-between;">
-          <span>⚖️ ${t("土方質量守恆清單 (Mass Conservation Schedule)", "Mass Conservation & Haul Schedule")}</span>
-          <span style="font-size:10px;font-weight:600;padding:1px 6px;border-radius:4px;background:rgba(56,189,248,0.15);color:var(--ui-accent, #38bdf8);">
-            ${haulDirection === "export_cut" ? t("出土 (外運)", "Surplus Export") : haulDirection === "import_fill" ? t("借土 (進料)", "Deficit Import") : t("平衡", "Balanced")}
+      <div style="font-size:11px;color:var(--ui-text-secondary);background:var(--ui-bg-subtle);padding:9px 10px;border-radius:8px;border:1px solid var(--ui-border);margin-bottom:10px;line-height:1.5;">
+        <div style="font-weight:700;color:var(--ui-text-primary);margin-bottom:5px;display:flex;align-items:center;justify-content:space-between;">
+          <span style="display:flex;align-items:center;">${SVG_ICONS.SCALE} ${t("土方質量守恆", "Mass Schedule")}</span>
+          <span style="font-size:10px;font-weight:600;padding:2px 6px;border-radius:4px;background:var(--ui-bg-pill);border:1px solid var(--ui-border);color:var(--ui-accent);">
+            ${haulDirection === "export_cut" ? t("出土 (外運)", "Surplus") : haulDirection === "import_fill" ? t("借土 (進料)", "Deficit") : t("平衡", "Balanced")}
           </span>
         </div>
 
-        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px;background:var(--ui-bg-card, rgba(0,0,0,0.25));border-radius:6px;padding:6px;margin-bottom:6px;text-align:center;">
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px;background:var(--ui-bg-surface);border:1px solid var(--ui-border);border-radius:6px;padding:6px;margin-bottom:6px;text-align:center;">
           <div>
-            <div style="font-size:10px;color:var(--ui-text-secondary, #94a3b8);">${t("自然實方 (BCM)", "Bank (BCM)")}</div>
-            <div style="font-weight:700;color:var(--ui-text-primary, #f1f5f9);">${esc(String(cutBcm > 0 ? cutBcm : fillBcm))} m³</div>
+            <div style="font-size:10px;color:var(--ui-text-muted);">${t("自然實方 (BCM)", "Bank (BCM)")}</div>
+            <div style="font-weight:700;color:var(--ui-text-primary);">${esc(String(cutBcm > 0 ? cutBcm : fillBcm))} m³</div>
           </div>
           <div>
-            <div style="font-size:10px;color:var(--ui-text-secondary, #94a3b8);">${t("挖方鬆方 (LCM)", "Loose (LCM)")}</div>
-            <div style="font-weight:700;color:#f59e0b;">${esc(String(cutLcm))} m³</div>
+            <div style="font-size:10px;color:var(--ui-text-muted);">${t("挖方鬆方 (LCM)", "Loose (LCM)")}</div>
+            <div style="font-weight:700;color:var(--ui-accent);">${esc(String(cutLcm))} m³</div>
           </div>
           <div>
-            <div style="font-size:10px;color:var(--ui-text-secondary, #94a3b8);">${t("填方壓實 (CCM)", "Compacted (CCM)")}</div>
-            <div style="font-weight:700;color:var(--ui-accent, #38bdf8);">${esc(String(fillCcm))} m³</div>
+            <div style="font-size:10px;color:var(--ui-text-muted);">${t("填方壓實 (CCM)", "Compacted (CCM)")}</div>
+            <div style="font-weight:700;color:var(--ui-accent);">${esc(String(fillCcm))} m³</div>
           </div>
         </div>
 
@@ -194,14 +218,14 @@
           <div><b>${t("守恆質量 (填)：", "Fill Mass:")}</b> ${esc(String(fillMass))} t</div>
         </div>
 
-        <div style="background:var(--ui-bg-pill, rgba(255,255,255,0.05));border-radius:6px;padding:5px 8px;margin-top:5px;display:flex;align-items:center;justify-content:space-between;">
+        <div style="background:var(--ui-bg-pill);border:1px solid var(--ui-border);border-radius:6px;padding:5px 8px;margin-top:5px;display:flex;align-items:center;justify-content:space-between;">
           <div>
-            <b>${t("卡車趟數：", "Truck Trips:")}</b>
-            <span style="font-weight:700;color:#10b981;">${esc(String(truckCutTrips))} ${t("車次", "trips")}</span>
-            ${netTruckTrips !== truckCutTrips ? `<span style="font-size:10px;color:var(--ui-text-secondary);">(${t("淨", "Net")} ${esc(String(netTruckTrips))})</span>` : ""}
+            <b>${t("卡車趟數：", "Trucks:")}</b>
+            <span style="font-weight:700;color:var(--ui-accent);">${esc(String(truckCutTrips))} ${t("車次", "trips")}</span>
+            ${netTruckTrips !== truckCutTrips ? `<span style="font-size:10px;color:var(--ui-text-muted);">(${t("淨", "Net")} ${esc(String(netTruckTrips))})</span>` : ""}
           </div>
-          <div style="font-size:10px;padding:1px 6px;border-radius:4px;border:1px solid ${isWeightLimited ? "#f43f5e" : "#0284c7"};color:${isWeightLimited ? "#fda4af" : "#7dd3fc"};">
-            ${isWeightLimited ? t("⚠️ 載重控制 (Weight)", "⚠️ Weight-Limited") : t("📦 容積控制 (Volume)", "📦 Volume-Limited")}
+          <div style="font-size:10px;padding:2px 7px;border-radius:4px;border:1px solid var(--ui-border);background:var(--ui-bg-surface);color:var(--ui-text-primary);display:flex;align-items:center;">
+            ${isWeightLimited ? `${SVG_ICONS.ALERT} ${t("載重限制", "Weight")}` : `${SVG_ICONS.BOX} ${t("容積限制", "Volume")}`}
           </div>
         </div>
 
@@ -449,9 +473,9 @@
 
       if (options.apply_tbm_calibration && typeof showToast === "function") {
         if (options.reset_calibration) {
-          showToast(t("✓ 已復原 TBM 高程校正", "✓ Restored original vertical datum"));
+          showToast(t("已復原 TBM 高程校正", "Restored original vertical datum"));
         } else {
-          showToast(t(`✓ 已成功套用 TBM 高程校正 (${res.tbm_shift_m >= 0 ? "+" : ""}${res.tbm_shift_m} m)`, `✓ Applied TBM datum shift (${res.tbm_shift_m} m)`));
+          showToast(t(`已成功套用 TBM 高程校正 (${res.tbm_shift_m >= 0 ? "+" : ""}${res.tbm_shift_m} m)`, `Applied TBM datum shift (${res.tbm_shift_m} m)`));
         }
       }
     } catch (err) {
@@ -477,7 +501,7 @@
     txtEl.value = lines.join("\n");
 
     if (typeof showToast === "function") {
-      showToast(t(`已新增檢核點 CP-${String(nextIdx).padStart(2, "0")} 至檢核表`, `Added Check Point CP-${String(nextIdx).padStart(2, "0")} from 3D scan`));
+      showToast(t(`已新增檢核點 CP-${String(nextIdx).padStart(2, "0")}`, `Added Check Point CP-${String(nextIdx).padStart(2, "0")}`));
     }
 
     runEnhancedGcpAccuracyQaEvaluation(parseEnhancedGcpCsvInput(txtEl.value));
@@ -574,7 +598,7 @@
       .join("\n");
 
     const tableRowsHtml = resList
-      .map((p, idx) => {
+      .map((p) => {
         const status = String(p.status || "pass").toLowerCase();
         const badgeClass = status === "pass" ? "pass" : status === "warn" ? "warn" : "outlier";
         const isTbm = Boolean(p.is_tbm);
@@ -588,16 +612,14 @@
             <td>
               <input type="radio" name="gcpTbmRadio" value="${esc(p.name)}" ${isTbm ? "checked" : ""} title="${t("設為高程水準基點 (TBM)", "Set as TBM benchmark")}" />
             </td>
-            <td style="font-weight:700;color:${isTbm ? "var(--ui-accent, #38bdf8)" : "inherit"};">
-              ${esc(p.name)} ${isTbm ? "⚓" : ""}
+            <td style="font-weight:700;color:${isTbm ? "var(--ui-accent)" : "inherit"};">
+              ${esc(p.name)}${isTbm ? ` <span title="TBM">${SVG_ICONS.ANCHOR}</span>` : ""}
             </td>
             <td>${Number(p.h_gcp).toFixed(3)}</td>
             <td>${Number(p.h_scan).toFixed(3)}</td>
-            <td style="color:${deCm >= 0 ? "inherit" : "#f43f5e"};">${deCm >= 0 ? "+" : ""}${deCm}</td>
-            <td style="color:${dnCm >= 0 ? "inherit" : "#f43f5e"};">${dnCm >= 0 ? "+" : ""}${dnCm}</td>
-            <td style="font-weight:700;color:${status === "pass" ? "#10b981" : status === "warn" ? "#f59e0b" : "#ef4444"};">
-              ${dhCm >= 0 ? "+" : ""}${dhCm}
-            </td>
+            <td>${deCm >= 0 ? "+" : ""}${deCm}</td>
+            <td>${dnCm >= 0 ? "+" : ""}${dnCm}</td>
+            <td style="font-weight:700;">${dhCm >= 0 ? "+" : ""}${dhCm}</td>
             <td style="font-weight:700;">${d3dCm}</td>
             <td><span class="gcp-status-badge ${badgeClass}">${esc(status.toUpperCase())}</span></td>
           </tr>
@@ -612,11 +634,11 @@
         <!-- Grade Header -->
         <div class="gcp-grade-header">
           <div>
-            <div style="font-weight:700;font-size:12px;color:var(--ui-text-primary, #f1f5f9);">
-              🎯 ${t("3D 控制點空間精度檢核", "3D Control Point Accuracy QA")}
+            <div class="gcp-header-title">
+              ${SVG_ICONS.TARGET} ${t("控制點空間精度檢核", "Control Accuracy QA")}
             </div>
-            <div style="font-size:10px;color:var(--ui-text-secondary, #94a3b8);margin-top:2px;">
-              CRS: <b>${esc(qaResult.crs || "TWD97 [121] + TWVD2001")}</b> | N = ${resList.length} 點
+            <div class="gcp-subtitle">
+              CRS: ${esc(qaResult.crs || "TWD97 / TWVD2001")} · N = ${resList.length}
             </div>
           </div>
           <span class="gcp-grade-badge ${gradeClass}">
@@ -636,9 +658,7 @@
           </div>
           <div class="gcp-kpi-card">
             <div class="kpi-label">高程 RMSE_H</div>
-            <div class="kpi-val" style="color:${grade === "A" ? "#10b981" : grade === "B" ? "#f59e0b" : "#ef4444"};">
-              ${rmseHCm} <span style="font-size:10px;font-weight:600;">cm</span>
-            </div>
+            <div class="kpi-val">${rmseHCm} <span style="font-size:10px;font-weight:600;">cm</span></div>
           </div>
           <div class="gcp-kpi-card">
             <div class="kpi-label">ASPRS 95% 高程</div>
@@ -650,65 +670,59 @@
           </div>
           <div class="gcp-kpi-card">
             <div class="kpi-label">高程平均偏差</div>
-            <div class="kpi-val" style="color:${biasHCm >= 0 ? "inherit" : "#f43f5e"};">
-              ${biasHCm >= 0 ? "+" : ""}${biasHCm} <span style="font-size:10px;font-weight:600;">cm</span>
-            </div>
+            <div class="kpi-val">${biasHCm >= 0 ? "+" : ""}${biasHCm} <span style="font-size:10px;font-weight:600;">cm</span></div>
           </div>
         </div>
 
         <!-- 1-Click TBM Vertical Datum Calibration Card -->
         <div class="gcp-tbm-card">
           <div class="gcp-tbm-header">
-            <span class="gcp-tbm-title">
-              ⚓ ${t("1-Click TBM 水準基點高程校正", "1-Click TBM Vertical Datum Calibration")}
+            <span class="gcp-tbm-title" title="${t("原始點雲與 DSM 高程不受更動，僅於執行期套用水準基準平移", "Raw point cloud is unmodified; applies runtime datum offset.")}">
+              ${SVG_ICONS.ANCHOR} ${t("TBM 高程水準校正", "TBM Datum Calibration")}
             </span>
-            ${isCalibrated ? `<span style="font-size:9.5px;padding:2px 7px;border-radius:4px;background:rgba(16,185,129,0.18);color:#10b981;font-weight:700;">✓ 已校正 (${qaResult.tbm_shift_m >= 0 ? "+" : ""}${qaResult.tbm_shift_m}m)</span>` : ""}
+            ${isCalibrated ? `<span class="gcp-tbm-badge">${SVG_ICONS.CHECK} ${t("已校正", "Calibrated")} (${qaResult.tbm_shift_m >= 0 ? "+" : ""}${qaResult.tbm_shift_m}m)</span>` : ""}
           </div>
           <div class="gcp-tbm-preview-box">
             <div class="gcp-tbm-preview-row">
-              <span style="color:var(--ui-text-secondary, #94a3b8);">${t("校正基準模式：", "Calibration Mode:")}</span>
-              <b>${prev.tbm_point_id ? `指定水準點 [${esc(prev.tbm_point_id)}]` : t("全區平均偏差補償 (Network Mean)", "Network Mean Bias")}</b>
+              <span style="color:var(--ui-text-secondary);">${t("基準模式", "Mode")}</span>
+              <b>${prev.tbm_point_id ? `TBM [${esc(prev.tbm_point_id)}]` : t("全區平均偏差", "Network Mean")}</b>
             </div>
             <div class="gcp-tbm-preview-row" style="margin-top:3px;">
-              <span style="color:var(--ui-text-secondary, #94a3b8);">${t("建議高程平移量：", "Proposed Shift ΔH:")}</span>
-              <b style="color:var(--ui-accent, #38bdf8);">${proposedShiftM >= 0 ? "+" : ""}${proposedShiftM} m (${proposedShiftCm >= 0 ? "+" : ""}${proposedShiftCm} cm)</b>
+              <span style="color:var(--ui-text-secondary);">${t("平移量 ΔH", "Shift ΔH")}</span>
+              <b class="gcp-highlight-val">${proposedShiftM >= 0 ? "+" : ""}${proposedShiftM} m (${proposedShiftCm >= 0 ? "+" : ""}${proposedShiftCm} cm)</b>
             </div>
             <div class="gcp-tbm-preview-row" style="margin-top:3px;">
-              <span style="color:var(--ui-text-secondary, #94a3b8);">${t("校正後預估高程 RMSE：", "Calibrated RMSE_H Preview:")}</span>
-              <span style="color:#10b981;font-weight:800;">${calRmseHCm} cm (當前 ${rmseHCm} cm)</span>
+              <span style="color:var(--ui-text-secondary);">${t("校正後預估 RMSE_H", "Calibrated RMSE_H")}</span>
+              <span class="gcp-pass-val" style="font-weight:800;">${calRmseHCm} cm</span>
             </div>
           </div>
           <div class="gcp-tbm-actions">
-            <button type="button" class="btn-xs primary" id="btnApplyTbmCalibration" style="flex:1;justify-content:center;">
-              ⚡ ${t("套用 TBM 高程校正", "Apply TBM Calibration")}
+            <button type="button" class="btn-xs primary" id="btnApplyTbmCalibration" style="flex:1;justify-content:center;" title="${t("套用 TBM 高程校正基準平移", "Apply vertical benchmark datum shift")}">
+              ${SVG_ICONS.BOLT} ${t("校正", "Calibrate")}
             </button>
             ${isCalibrated ? `
               <button type="button" class="btn-xs" id="btnResetTbmCalibration" title="${t("復原原始測量水準高程", "Restore original datum")}">
-                ↺ ${t("復原", "Reset")}
+                ${SVG_ICONS.RESET} ${t("重設", "Reset")}
               </button>
             ` : ""}
-          </div>
-          <div style="font-size:9.5px;color:var(--ui-text-secondary, #94a3b8);margin-top:4px;">
-            🔒 ${t("零破壞保證：原始點雲與 DSM 高程不受更動，僅於執行期套用水準基準平移", "Zero-Destruction: Raw point cloud is unmodified; applies runtime datum offset.")}
           </div>
         </div>
 
         <!-- Check Points CSV Input Textarea -->
         <div class="gs-form-group" style="margin-bottom:2px;">
           <label style="display:flex;justify-content:space-between;align-items:center;">
-            <span>${t("檢核點座標表 (點號, E, N, H_gcp, [TBM])", "Check Points CSV (Name, E, N, H, [TBM])")}</span>
-            <span style="font-size:9.5px;color:var(--ui-text-secondary, #94a3b8);">${t("可直接手動編輯或貼上", "Editable")}</span>
+            <span>${t("檢核點座標表", "Check Points CSV")}</span>
           </label>
-          <textarea class="gs-input" id="txtGcpCsvInput" rows="3" style="font-family:var(--font-mono);font-size:10.5px;padding:5px 7px;">${esc(csvDefault)}</textarea>
+          <textarea class="gs-input" id="txtGcpCsvInput" rows="3" placeholder="Point, E, N, H, [TBM]" style="font-family:var(--font-mono);font-size:10.5px;padding:5px 7px;">${esc(csvDefault)}</textarea>
         </div>
 
-        <!-- Evaluation Action Buttons -->
+        <!-- Evaluation Action Buttons (Strictly 1-Word Labels) -->
         <div style="display:flex;gap:6px;">
-          <button type="button" class="btn-xs primary" id="btnComputeGcpQa" style="flex:1;justify-content:center;">
-            📊 ${t("計算 3D 空間精度", "Compute 3D QA")}
+          <button type="button" class="btn-xs primary" id="btnComputeGcpQa" style="flex:1;justify-content:center;" title="${t("計算 3D 空間精度與殘差", "Compute 3D Spatial Accuracy & Residuals")}">
+            ${SVG_ICONS.CALC} ${t("檢核", "Check")}
           </button>
           <button type="button" class="btn-xs" id="btnLoadSampleGcpPoints" title="${t("自動在工區分佈 6 處標準檢核點", "Auto-Generate 6 Site Check Points")}">
-            🎯 ${t("自動佈點", "Auto GCPs")}
+            ${SVG_ICONS.SAMPLE} ${t("佈點", "Sample")}
           </button>
         </div>
 
@@ -734,29 +748,29 @@
 
         <!-- 3D Studio Vector Exaggeration Controls -->
         <div class="gcp-vis-controls">
-          <span>📐 ${t("3D 誤差向量可視化：", "3D Error Vectors:")}</span>
+          <span class="gcp-vis-label">${SVG_ICONS.VECTOR} ${t("誤差向量", "Error Vectors")}</span>
           <div class="gcp-scale-selector">
-            <label>${t("放大倍率：", "Scale:")}</label>
+            <label>${t("倍率", "Scale")}</label>
             <select id="selGcpVectorScale">
-              <option value="1" ${currentScale === 1 ? "selected" : ""}>1x (真實比例)</option>
+              <option value="1" ${currentScale === 1 ? "selected" : ""}>1x</option>
               <option value="10" ${currentScale === 10 ? "selected" : ""}>10x</option>
-              <option value="20" ${currentScale === 20 ? "selected" : ""}>20x (建議視圖)</option>
+              <option value="20" ${currentScale === 20 ? "selected" : ""}>20x</option>
               <option value="50" ${currentScale === 50 ? "selected" : ""}>50x</option>
               <option value="100" ${currentScale === 100 ? "selected" : ""}>100x</option>
             </select>
           </div>
         </div>
 
-        <!-- Export Buttons -->
+        <!-- Export Action Buttons (Strictly 1-Word Labels) -->
         <div style="display:flex;gap:6px;">
-          <button type="button" class="btn-xs" id="btnDownloadGcpCsv" style="flex:1;justify-content:center;">
-            💾 ${t("下載 3D 殘差 CSV", "Download 3D CSV")}
+          <button type="button" class="btn-xs" id="btnDownloadGcpCsv" style="flex:1;justify-content:center;" title="${t("下載 3D 殘差 CSV", "Download 3D CSV")}">
+            ${SVG_ICONS.DOWNLOAD} CSV
           </button>
-          <a class="btn-xs primary" href="${esc(typeof appendAuthToDownloadUrl === "function" ? appendAuthToDownloadUrl(qaResult.html_url || "#") : (qaResult.html_url || "#"))}" target="_blank" rel="noopener" style="flex:1;justify-content:center;text-decoration:none;display:flex;align-items:center;">
-            📄 ${t("品管證書", "Certificate")}
+          <a class="btn-xs primary" id="btnOpenCertificate" href="${esc(typeof appendAuthToDownloadUrl === "function" ? appendAuthToDownloadUrl(qaResult.html_url || "#") : (qaResult.html_url || "#"))}" target="_blank" rel="noopener" style="flex:1;justify-content:center;text-decoration:none;display:flex;align-items:center;" title="${t("檢視品管證書與報告", "View QA Certificate")}">
+            ${SVG_ICONS.FILE} ${t("報告", "Report")}
           </a>
-          <button type="button" class="btn-xs" id="btnPrintGcpCertificate" title="${t("列印檢核單 (Ctrl+P)", "Print Report")}">
-            🖨️
+          <button type="button" class="btn-xs" id="btnPrintGcpCertificate" title="${t("列印品管檢核單 (Ctrl+P)", "Print Report")}">
+            ${SVG_ICONS.PRINTER} ${t("列印", "Print")}
           </button>
         </div>
       </div>
@@ -764,7 +778,7 @@
 
     if (typeof showSidePanel === "function") {
       showSidePanel(
-        `<span>${t("🎯 控制點精度檢核與 3D GCP 校正", "3D Control Alignment & GCP QA")}</span>`,
+        `<span>${SVG_ICONS.TARGET} ${t("控制點精度檢核", "Control Accuracy QA")}</span>`,
         panelHtml
       );
     }
@@ -856,4 +870,3 @@
     } catch (_) {}
   }
 })();
-
