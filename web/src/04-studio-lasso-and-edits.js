@@ -2146,13 +2146,14 @@
     const curSite = (STATE.activeProjectGroup && STATE.activeProjectGroup !== "__all__" ? STATE.activeProjectGroup : "") || sc.project_group || "Unassigned Site";
     const todayStr = new Date().toISOString().slice(0, 10);
     const baseName = STATE.multiAlign?.active ? `${curSite}_Merged_${todayStr}` : `${String(sc.name || sid || "Scan").trim()}`;
-    STATE.stagedEdits = { scanId: sid, rev: 0, deletions: [], cropKeep: null, compressionPreset: null, crsConfig: null, newScanName: baseName };
+    STATE.stagedEdits = { scanId: sid, rev: 0, deletions: [], cropKeep: null, flattenZones: [], compressionPreset: null, crsConfig: null, newScanName: baseName };
     syncStagedEditsDockBadge();
   }
 
   function ensureStagedEditsForActiveScan() {
     const sid = getStagedEditsScopeKey();
     if (!STATE.stagedEdits || STATE.stagedEdits.scanId !== sid) resetStagedEditsForScan(STATE.activeScan);
+    if (!Array.isArray(STATE.stagedEdits.flattenZones)) STATE.stagedEdits.flattenZones = [];
     return STATE.stagedEdits;
   }
 
@@ -2164,6 +2165,7 @@
     if (STATE.multiAlign?.active && Array.isArray(STATE.multiAlign.layers) && STATE.multiAlign.layers.length >= 2) cnt++;
     if (Array.isArray(st.deletions) && st.deletions.length > 0) cnt++;
     if (!STATE.multiAlign?.active && st.cropKeep) cnt++;
+    if (Array.isArray(st.flattenZones) && st.flattenZones.length > 0) cnt++;
     if (st.compressionPreset && st.compressionPreset !== "none") cnt++;
     if (st.crsConfig) cnt++;
     return cnt;
@@ -2193,6 +2195,7 @@
 
   function restoreOriginalStudioMeshIndices() {
     if (!studioThree) return;
+    if (typeof window.restoreOriginalStudioMeshPositions === "function") window.restoreOriginalStudioMeshPositions();
     const restoreUnder = (root) => {
       if (!root) return;
       root.traverse((m) => {
@@ -3227,6 +3230,7 @@
       handleGcpQa3DPick(pt, twd);
       return;
     }
+    if (typeof window.handleStudioExtraToolCanvasClick === "function" && window.handleStudioExtraToolCanvasClick(tool, pt, twd, isNearStartVertex)) return;
   }
 
   // Real-time Three.js 3D Mesh Vertical Raycaster for Client-Side Volume & Cross-Section Profile Sampling

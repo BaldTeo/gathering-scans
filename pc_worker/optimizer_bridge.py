@@ -834,6 +834,354 @@ def _fill_depth_grid_3x3_np(grid_1d: np.ndarray, g_size: int) -> np.ndarray:
     return out.ravel()
 
 
+def _apply_slope_preserving_flatten_zones_to_tileset(
+    tileset_dir: str,
+    flatten_zones: List[Dict[str, Any]],
+) -> Dict[str, Any]:
+    """
+    Applies Two-Pass Global Slope-Preserving Mesh Flattening (`Z_plane(E,N) = a*(E-cE) + b*(N-cN) + c`)
+    inside user-defined polygon zones across all .glb tiles in `tileset_dir`:
+      - Pass 1: Collects ground vertices inside each polygon zone and fits a robust IRLS (Huber)
+        sloped plane that preserves the real overall drainage grade while rejecting vertical walls/curbs/trees.
+      - Pass 2: Modifies vertex elevations in place across all overlapping .glb tiles with smooth boundary
+        feathering (`feather_m`) so fake photogrammetric holes and hills are damped without tile seams or edge cliffs.
+    """
+    import subprocess
+    import tempfile
+    import shapely
+    from shapely.geometry import Polygon as ShapelyPolygon
+    from optimizer.geometry_optimizer import (
+        find_gltfpack_binary,
+        parse_glb_chunks,
+        pack_glb_chunks,
+        extract_glb_64bit_origin_to_local,
+        restore_glb_64bit_origin,
+    )
+    from cutter.spatial_cutter import _build_gltf_mesh_transforms
+
+    ts_path = os.path.join(tileset_dir, "tileset.json")
+    gltf_up = "Z"
+    if os.path.isfile(ts_path):
+        try:
+            ts_j = json.load(open(ts_path, "r", encoding="utf-8"))
+            gltf_up = str((ts_j.get("asset") or {}).get("gltfUpAxis") or "Z").upper().strip()
+        except Exception:
+            gltf_up = "Z"
+
+    # Parse valid polygon zones
+    parsed_zones: List[Dict[str, Any]] = []
+    for z_idx, z_item in enumerate(flatten_zones or []):
+        if not isinstance(z_item, dict):
+            continue
+        strength = max(0.05, min(1.0, float(safe_float(z_item.get("strength"), 0.90) or 0.90)))
+        max_res_m = max(0.08, min(3.0, float(safe_float(z_item.get("max_residual_m"), 0.45) or 0.45)))
+        feather_m = max(0.0, min(10.0, float(safe_float(z_item.get("feather_m"), 1.2) or 1.2)))
+        min_z = safe_float(z_item.get("min_z"), -9999.0) or -9999.0
+        max_z = safe_float(z_item.get("max_z"), 9999.0) or 9999.0
+
+        raw_polys = []
+        if isinstance(z_item.get("native_polygons"), list):
+            raw_polys.extend(z_item["native_polygons"])
+        if z_item.get("native_polygon"):
+            raw_polys.append(z_item["native_polygon"])
+        if isinstance(z_item.get("polygons_twd97"), list):
+            raw_polys.extend(z_item["polygons_twd97"])
+        if z_item.get("polygon_twd97"):
+            raw_polys.append(z_item["polygon_twd97"])
+
+        for rp in raw_polys:
+            pts2d = _safe_parse_poly2d(rp)
+            if not pts2d or len(pts2d) < 3:
+                continue
+            try:
+                sp = ShapelyPolygon(pts2d)
+                if not sp.is_valid:
+                    sp = sp.buffer(0)
+                if sp.is_empty:
+                    continue
+                parsed_zones.append(
+                    {
+                        "zone_idx": len(parsed_zones) + 1,
+                        "poly": sp,
+                        "ext_ring": sp.exterior,
+                        "bounds": sp.bounds,
+                        "strength": strength,
+                        "max_res_m": max_res_m,
+                        "feather_m": feather_m,
+                        "min_z": min_z,
+                        "max_z": max_z,
+                        "sample_pts": [],
+                    }
+                )
+            except Exception:
+                continue
+
+    if not parsed_zones:
+        return {"zones_applied": 0, "vertices_flattened": 0, "tiles_updated": 0, "zone_reports": []}
+
+    gltfpack = find_gltfpack_binary()
+    glb_files: List[str] = []
+    for r_d, sub_d, f_list in os.walk(tileset_dir):
+        sub_d[:] = [d for d in sub_d if d.lower() != "preview_low"]
+        for fn in sorted(f_list):
+            if fn.lower().endswith(".glb"):
+                glb_files.append(os.path.join(r_d, fn))
+
+    # Cache decoded uncompressed GLB data per tile that intersects any zone XY bbox
+    decoded_tiles: List[Dict[str, Any]] = []
+    with tempfile.TemporaryDirectory() as tmp_d:
+        for t_idx, fp in enumerate(glb_files):
+            try:
+                raw_b = open(fp, "rb").read()
+                loc_b, orig_64 = extract_glb_64bit_origin_to_local(raw_b)
+                p_in = os.path.join(tmp_d, f"in_{t_idx}.glb")
+                p_unc = os.path.join(tmp_d, f"unc_{t_idx}.glb")
+                open(p_in, "wb").write(loc_b)
+                proc = subprocess.run([gltfpack, "-i", p_in, "-o", p_unc, "-noq"], capture_output=True, timeout=60)
+                unc_b = open(p_unc, "rb").read() if (proc.returncode == 0 and os.path.isfile(p_unc)) else loc_b
+                j_u, b_u = parse_glb_chunks(unc_b)
+                mt = _build_gltf_mesh_transforms(j_u)
+                ox, oy, oz = orig_64
+                orig_vec = np.array([ox, oy, oz], dtype=np.float64)
+
+                prim_records = []
+                tile_intersects = False
+                for m_i, m_obj in enumerate(j_u.get("meshes") or []):
+                    m_mat = mt.get(m_i, np.eye(4, dtype=np.float64))
+                    R_m, t_m = m_mat[:3, :3], m_mat[:3, 3]
+                    for p_i, prim in enumerate(m_obj.get("primitives") or []):
+                        attrs = prim.get("attributes") or {}
+                        if int(prim.get("mode", 4)) != 4 or "POSITION" not in attrs:
+                            continue
+                        acc_idx = int(attrs["POSITION"])
+                        acc = j_u["accessors"][acc_idx]
+                        if int(acc.get("componentType", 0)) != 5126:
+                            continue
+                        bv = j_u["bufferViews"][int(acc["bufferView"])]
+                        off = int(bv.get("byteOffset", 0)) + int(acc.get("byteOffset", 0))
+                        stride = int(bv.get("byteStride") or 12)
+                        cnt = int(acc["count"])
+                        if cnt == 0:
+                            continue
+                        raw_rows = np.frombuffer(b_u, dtype=np.uint8, count=cnt * stride, offset=off).reshape(cnt, stride)
+                        pos_f32 = np.frombuffer(raw_rows[:, :12].tobytes(), dtype=np.float32).reshape(cnt, 3)
+                        pos_g = pos_f32.astype(np.float64) @ R_m.T + t_m + orig_vec
+                        if gltf_up != "Z":
+                            pos_zup = np.column_stack([pos_g[:, 0], -pos_g[:, 2], pos_g[:, 1]])
+                        else:
+                            pos_zup = pos_g
+
+                        px_min, py_min = float(pos_zup[:, 0].min()), float(pos_zup[:, 1].min())
+                        px_max, py_max = float(pos_zup[:, 0].max()), float(pos_zup[:, 1].max())
+                        prim_hits_any = False
+                        for zn in parsed_zones:
+                            zminx, zminy, zmaxx, zmaxy = zn["bounds"]
+                            if px_max < zminx or px_min > zmaxx or py_max < zminy or py_min > zmaxy:
+                                continue
+                            cand_m = (
+                                (pos_zup[:, 0] >= zminx)
+                                & (pos_zup[:, 0] <= zmaxx)
+                                & (pos_zup[:, 1] >= zminy)
+                                & (pos_zup[:, 1] <= zmaxy)
+                                & (pos_zup[:, 2] >= zn["min_z"])
+                                & (pos_zup[:, 2] <= zn["max_z"])
+                            )
+                            c_idx = np.where(cand_m)[0]
+                            if len(c_idx) == 0:
+                                continue
+                            in_p = np.asarray(shapely.contains_xy(zn["poly"], pos_zup[c_idx, 0], pos_zup[c_idx, 1]), dtype=bool)
+                            hit_idx = c_idx[in_p]
+                            if len(hit_idx) > 0:
+                                zn["sample_pts"].append(pos_zup[hit_idx])
+                                prim_hits_any = True
+                                tile_intersects = True
+                        if prim_hits_any:
+                            prim_records.append(
+                                {
+                                    "acc_idx": acc_idx,
+                                    "off": off,
+                                    "stride": stride,
+                                    "cnt": cnt,
+                                    "R_m": R_m,
+                                    "t_m": t_m,
+                                    "pos_zup": pos_zup,
+                                }
+                            )
+                if tile_intersects and prim_records:
+                    decoded_tiles.append(
+                        {
+                            "fp": fp,
+                            "orig_64": orig_64,
+                            "orig_vec": orig_vec,
+                            "j_u": j_u,
+                            "b_u": bytearray(b_u),
+                            "prims": prim_records,
+                        }
+                    )
+            except Exception as te:
+                print(f"[SlopeFlatten] Tile decode note on {fp}: {te}")
+
+        # Pass 1: Fit Global Robust IRLS (Huber) Sloped Plane for each zone
+        zone_reports: List[Dict[str, Any]] = []
+        active_zones: List[Dict[str, Any]] = []
+        for zn in parsed_zones:
+            if not zn["sample_pts"]:
+                continue
+            pts_all = np.vstack(zn["sample_pts"])
+            if len(pts_all) < 6:
+                continue
+            # Subsample up to 40,000 points for fast IRLS plane fitting
+            stride_s = max(1, len(pts_all) // 40000)
+            pts_fit = pts_all[::stride_s]
+            cx, cy = float(pts_fit[:, 0].mean()), float(pts_fit[:, 1].mean())
+            dx = pts_fit[:, 0] - cx
+            dy = pts_fit[:, 1] - cy
+            z_v = pts_fit[:, 2]
+            # Anchor initial height near the median ground level (filtering tall roofs/trees)
+            z_med = float(np.percentile(z_v, 35))
+            w = np.where(np.abs(z_v - z_med) <= max(1.5, zn["max_res_m"] * 3.0), 1.0, 0.05)
+            A = np.column_stack([dx, dy, np.ones_like(dx)])
+            coef = np.array([0.0, 0.0, z_med], dtype=np.float64)
+            for _ in range(8):
+                Aw = A * w[:, None]
+                coef, _, _, _ = np.linalg.lstsq(Aw, z_v * w, rcond=None)
+                res = z_v - (A @ coef)
+                inliers = np.abs(res) <= zn["max_res_m"]
+                if int(inliers.sum()) < 6:
+                    inliers = np.abs(res) <= max(1.2, zn["max_res_m"] * 2.5)
+                mad = float(np.median(np.abs(res[inliers] - np.median(res[inliers])))) * 1.4826 + 1e-4 if np.any(inliers) else 0.1
+                w = np.where(inliers, 1.0 / np.maximum(1.0, np.abs(res) / (1.345 * mad)), 0.0)
+
+            res_all = pts_all[:, 2] - (coef[0] * (pts_all[:, 0] - cx) + coef[1] * (pts_all[:, 1] - cy) + coef[2])
+            g_mask = np.abs(res_all) <= zn["max_res_m"]
+            g_res = res_all[g_mask] if np.any(g_mask) else res_all
+            rmse_before_cm = round(float(np.sqrt(np.mean(g_res ** 2))) * 100.0, 2)
+            p95_before_cm = round(float(np.percentile(np.abs(g_res), 95)) * 100.0, 2)
+            rmse_after_cm = round(rmse_before_cm * (1.0 - zn["strength"]), 2)
+            p95_after_cm = round(p95_before_cm * (1.0 - zn["strength"]), 2)
+            slope_pct = round(float(math.hypot(coef[0], coef[1])) * 100.0, 2)
+
+            zn["cx"] = cx
+            zn["cy"] = cy
+            zn["coef"] = coef
+            active_zones.append(zn)
+            zone_reports.append(
+                {
+                    "zone_index": zn["zone_idx"],
+                    "center_xy": [round(cx, 3), round(cy, 3)],
+                    "plane_a_dx": round(float(coef[0]), 6),
+                    "plane_b_dy": round(float(coef[1]), 6),
+                    "plane_c_z": round(float(coef[2]), 3),
+                    "preserved_slope_pct": slope_pct,
+                    "strength": zn["strength"],
+                    "rmse_before_cm": rmse_before_cm,
+                    "rmse_after_cm": rmse_after_cm,
+                    "p95_before_cm": p95_before_cm,
+                    "p95_after_cm": p95_after_cm,
+                }
+            )
+
+        # Pass 2: Apply Slope-Preserving Flatten across all intersecting tiles & re-pack
+        total_verts_flattened = 0
+        tiles_updated = 0
+        for t_rec in decoded_tiles:
+            tile_mod = False
+            b_mut = t_rec["b_u"]
+            j_u = t_rec["j_u"]
+            orig_vec = t_rec["orig_vec"]
+            for p_rec in t_rec["prims"]:
+                pos_zup = p_rec["pos_zup"].copy()
+                prim_mod = False
+                for zn in active_zones:
+                    zminx, zminy, zmaxx, zmaxy = zn["bounds"]
+                    cand_m = (
+                        (pos_zup[:, 0] >= zminx)
+                        & (pos_zup[:, 0] <= zmaxx)
+                        & (pos_zup[:, 1] >= zminy)
+                        & (pos_zup[:, 1] <= zmaxy)
+                        & (pos_zup[:, 2] >= zn["min_z"])
+                        & (pos_zup[:, 2] <= zn["max_z"])
+                    )
+                    c_idx = np.where(cand_m)[0]
+                    if len(c_idx) == 0:
+                        continue
+                    in_p = np.asarray(shapely.contains_xy(zn["poly"], pos_zup[c_idx, 0], pos_zup[c_idx, 1]), dtype=bool)
+                    hit_idx = c_idx[in_p]
+                    if len(hit_idx) == 0:
+                        continue
+                    hx = pos_zup[hit_idx, 0]
+                    hy = pos_zup[hit_idx, 1]
+                    hz = pos_zup[hit_idx, 2]
+                    coef = zn["coef"]
+                    z_plane = coef[0] * (hx - zn["cx"]) + coef[1] * (hy - zn["cy"]) + coef[2]
+                    res_h = z_plane - hz
+                    # Smooth vertical weight so obstacles/walls above max_res_m are untouched
+                    abs_r = np.abs(res_h)
+                    v_weight = np.where(
+                        abs_r <= zn["max_res_m"],
+                        1.0,
+                        np.clip(1.0 - (abs_r - zn["max_res_m"]) / 0.25, 0.0, 1.0),
+                    )
+                    # Smooth boundary feathering weight over feather_m
+                    if zn["feather_m"] > 0.05 and hasattr(shapely, "points"):
+                        pts_geom = shapely.points(hx, hy)
+                        d_edge = np.asarray(shapely.distance(zn["ext_ring"], pts_geom), dtype=np.float64)
+                        f_weight = np.clip(d_edge / zn["feather_m"], 0.15, 1.0)
+                    else:
+                        f_weight = 1.0
+                    eff_alpha = zn["strength"] * v_weight * f_weight
+                    active_v = eff_alpha > 0.001
+                    if np.any(active_v):
+                        pos_zup[hit_idx, 2] = hz + eff_alpha * res_h
+                        total_verts_flattened += int(np.count_nonzero(active_v))
+                        prim_mod = True
+
+                if prim_mod:
+                    tile_mod = True
+                    if gltf_up != "Z":
+                        pos_g_new = np.column_stack([pos_zup[:, 0], pos_zup[:, 2], -pos_zup[:, 1]])
+                    else:
+                        pos_g_new = pos_zup
+                    R_inv = np.linalg.inv(p_rec["R_m"])
+                    pos_f32_new = ((pos_g_new - orig_vec - p_rec["t_m"]) @ R_inv.T).astype(np.float32)
+                    acc = j_u["accessors"][p_rec["acc_idx"]]
+                    acc["min"] = [float(x) for x in pos_f32_new.min(axis=0)]
+                    acc["max"] = [float(x) for x in pos_f32_new.max(axis=0)]
+                    cnt = p_rec["cnt"]
+                    stride = p_rec["stride"]
+                    off = p_rec["off"]
+                    arr_view = np.frombuffer(b_mut, dtype=np.uint8, count=cnt * stride, offset=off).reshape(cnt, stride)
+                    arr_view[:, :12] = pos_f32_new.view(np.uint8).reshape(cnt, 12)
+
+            if tile_mod:
+                for ext_k in ("extensionsUsed", "extensionsRequired"):
+                    if ext_k in j_u and isinstance(j_u[ext_k], list):
+                        j_u[ext_k] = [e for e in j_u[ext_k] if e not in ("EXT_meshopt_compression", "KHR_mesh_quantization")]
+                        if not j_u[ext_k]:
+                            del j_u[ext_k]
+                mod_loc_b = pack_glb_chunks(j_u, bytes(b_mut))
+                p_mod = os.path.join(tmp_d, f"mod_{tiles_updated}.glb")
+                p_cmp = os.path.join(tmp_d, f"cmp_{tiles_updated}.glb")
+                open(p_mod, "wb").write(mod_loc_b)
+                proc_c = subprocess.run(
+                    [gltfpack, "-i", p_mod, "-o", p_cmp, "-cc", "-vp", "16", "-vt", "16", "-vn", "8", "-vc", "8"],
+                    capture_output=True,
+                    timeout=90,
+                )
+                out_loc_b = open(p_cmp, "rb").read() if (proc_c.returncode == 0 and os.path.isfile(p_cmp)) else mod_loc_b
+                final_b = restore_glb_64bit_origin(out_loc_b, t_rec["orig_64"]) if t_rec["orig_64"] != (0.0, 0.0, 0.0) else out_loc_b
+                with open(t_rec["fp"], "wb") as wf:
+                    wf.write(final_b)
+                tiles_updated += 1
+
+    return {
+        "zones_applied": len(zone_reports),
+        "vertices_flattened": total_verts_flattened,
+        "tiles_updated": tiles_updated,
+        "zone_reports": zone_reports,
+    }
+
+
 def _eval_multiscan_layer_delete_mask(
     v_centered: np.ndarray,
     f_v0_idx: np.ndarray,
@@ -3261,9 +3609,13 @@ class OptimizerBridge:
             or geoid_override_val is not None
         )
 
-        if not (has_deletions or has_crop_keep or has_compression or has_crs):
+        # 5. Collect optional Slope-Preserving Flatten Zones
+        raw_flatten_zones = payload.get("flatten_zones") if isinstance(payload.get("flatten_zones"), list) else []
+        has_flatten = len(raw_flatten_zones) > 0
+
+        if not (has_deletions or has_crop_keep or has_compression or has_crs or has_flatten):
             raise ValueError(
-                "Please stage at least one adjustment (Lasso Delete, Crop Keep, Mesh Compression, or Coordinate System) before generating a new scan."
+                "Please stage at least one adjustment (Lasso Delete, Crop Keep, Slope Flatten, Mesh Compression, or Coordinate System) before generating a new scan."
             )
 
         base_name = str(source_scan.get("name") or source_scan_id).strip()
@@ -3287,6 +3639,7 @@ class OptimizerBridge:
         del_stats: Dict[str, Any] = {}
         keep_stats: Dict[str, Any] = {}
         opt_stats: Dict[str, Any] = {}
+        flatten_stats: Dict[str, Any] = {}
         crs_info: Dict[str, Any] = {}
         applied_steps: List[str] = []
 
@@ -3389,6 +3742,18 @@ class OptimizerBridge:
             ts_work_path = os.path.join(tileset_work_dir, "tileset.json")
             if not os.path.isfile(ts_work_path):
                 raise FileNotFoundError(f"Generated scan is missing tileset.json at {ts_work_path}")
+
+            if has_flatten:
+                flatten_stats = _apply_slope_preserving_flatten_zones_to_tileset(
+                    tileset_dir=tileset_work_dir,
+                    flatten_zones=raw_flatten_zones,
+                )
+                z_rpts = flatten_stats.get("zone_reports") or []
+                if z_rpts:
+                    r0 = z_rpts[0]
+                    applied_steps.append(
+                        f"Slope-Flattened {len(z_rpts)} zone(s) ({int(flatten_stats.get('vertices_flattened', 0)):,} verts, slope {r0.get('preserved_slope_pct')}% preserved, RMSE {r0.get('rmse_before_cm')}->{r0.get('rmse_after_cm')}cm)"
+                    )
 
             final_crs_label = str(source_scan.get("crs") or TWD97_TWVD2001_SHORT)
             lat_final = float(source_scan["lat"]) if source_scan.get("lat") is not None else None
@@ -3579,6 +3944,7 @@ class OptimizerBridge:
                 "delete_stats": del_stats,
                 "crop_keep_stats": keep_stats,
                 "optimize_stats": opt_stats,
+                "flatten_stats": flatten_stats,
                 "crs_info": crs_info,
                 "crs": final_crs_label,
                 "output_mb": out_mb,

@@ -80,9 +80,7 @@
 
   function closeSidePanel() {
     clearSectionBoxClippingIfNotKept();
-    if (typeof clearPhotoTargetVisuals3D === "function") {
-      clearPhotoTargetVisuals3D(true);
-    }
+    if (typeof clearPhotoTargetVisuals3D === "function") clearPhotoTargetVisuals3D(true);
     if (studioThree?.cameraTrajectoryGroup) studioThree.cameraTrajectoryGroup.visible = false;
     if (studioThree?.photoFrustumGroup) studioThree.photoFrustumGroup.visible = false;
     if (studioThree?.photoTargetGroup) studioThree.photoTargetGroup.visible = false;
@@ -92,11 +90,10 @@
       if (typeof clearCategorizeVisualsOnly === "function") clearCategorizeVisualsOnly();
       if (typeof syncCategorizeVisibilityUI === "function") syncCategorizeVisibilityUI();
     }
+    if (typeof window.onUtilitiesPanelClosed === "function") window.onUtilitiesPanelClosed();
     if (STATE.activeTool === "crop_delete" || STATE.activeTool === "crop" || STATE.activeTool === "optimizer") {
       cancelLassoToolMode(false);
-    } else if (
-      ["section", "profile", "crs", "generate_scan", "rtk", "photos", "comments", "drainage", "gcp_qa", "bookmarks", "categorize"].includes(STATE.activeTool)
-    ) {
+    } else if (["section", "profile", "crs", "generate_scan", "rtk", "photos", "comments", "drainage", "gcp_qa", "bookmarks", "categorize", "utilities", "bim"].includes(STATE.activeTool)) {
       setActiveStudioTool(STATE.multiAlign?.active ? "align_merge" : "orbit");
     }
     const panel = document.getElementById("studioSidePanel");

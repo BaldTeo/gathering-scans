@@ -67,7 +67,7 @@
       BIM_STATE.activeScanId = curScanId;
     }
 
-    const titleHtml = `<div style="display:flex;align-items:center;gap:6px;">${ICONS.cube}<span>${tr("Scan-to-BIM 幾何實體模型", "Scan-to-BIM Primitives")}</span></div>`;
+    const titleHtml = `<div style="display:flex;align-items:center;gap:6px;">${ICONS.cube}<span>${tr("AI Scan-to-BIM 幾何實體模型", "AI Scan-to-BIM Primitives")}</span></div>`;
     const bodyHtml = renderBimInspectorBody();
 
     if (typeof showSidePanel === "function") {
@@ -78,6 +78,9 @@
     // If primitives already exist for this scan, update UI; otherwise run initial fitting
     if (BIM_STATE.primitives.length === 0) {
       runScanToBimFitting();
+    } else if (BIM_STATE.lastAiResult) {
+      updateBimKpis(BIM_STATE.lastAiResult);
+      updateBimElementsList();
     }
   }
 
@@ -96,7 +99,10 @@
             ${ICONS.cube}
             <span style="font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(scanId)}</span>
           </div>
-          <span class="bim-badge-pill" title="TWD97 / TM2 121 + TWVD2001 [EPSG:3826+8904]">EPSG:3826 + TWVD2001</span>
+          <div style="display:flex;align-items:center;gap:4px;flex-shrink:0;">
+            <span class="bim-badge-pill" id="bimAiModelBadge" style="background:rgba(16,185,129,0.14);color:#10b981;border:1px solid rgba(16,185,129,0.35);">Gemini 3.8 Flash</span>
+            <span class="bim-badge-pill" title="TWD97 / TM2 121 + TWVD2001 [EPSG:3826+8904]">EPSG:3826</span>
+          </div>
         </div>
 
         <!-- Metric KPI Cards -->
@@ -112,6 +118,22 @@
           <div class="bim-kpi-card">
             <span class="bim-kpi-val" id="bimKpiCategories">0</span>
             <span class="bim-kpi-lbl">${tr("地物類別數", "Classes")}</span>
+          </div>
+        </div>
+
+        <!-- Gemini AI BIM Reasoning Card -->
+        <div class="bim-categories-box" style="border-color:rgba(16,185,129,0.35);background:rgba(16,185,129,0.06);">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;margin-bottom:4px;">
+            <span style="font-size:10.5px;font-weight:700;color:#10b981;display:flex;align-items:center;gap:4px;">
+              ${ICONS.wand}<span>${tr("Gemini AI 結構與 IFC4 語意推論", "Gemini AI BIM Semantic Reasoning")}</span>
+            </span>
+            <span style="font-size:9.5px;color:var(--ui-text-muted);">Google Gemini API</span>
+          </div>
+          <div id="bimAiSummaryBox" style="font-size:10.5px;color:var(--ui-text-secondary);line-height:1.45;margin-bottom:6px;">
+            ${tr("正在透過 Gemini AI 分析 3D 空間幾何特徵並指派 IFC4 構件類別與工程材質...", "Analyzing 3D spatial geometry via Gemini AI to assign IFC4 classes and materials...")}
+          </div>
+          <div style="display:flex;gap:4px;">
+            <input type="text" id="inpBimAiPrompt" class="bim-input" style="flex:1;font-size:10.5px;" placeholder="${tr("輸入 AI 工程指令 (例：依擋土牆與排水規範分類)...", "Optional Gemini AI BIM instruction...")}" value="${escapeHtml(BIM_STATE.aiPrompt || "")}" />
           </div>
         </div>
 
@@ -165,7 +187,7 @@
 
         <!-- Strict 1-Word Action Buttons -->
         <div class="bim-actions-bar">
-          <button type="button" class="bim-btn primary" id="btnBimRunFit" title="${tr("重新執行幾何實體擬合", "Fit geometric primitives")}">
+          <button type="button" class="bim-btn primary" id="btnBimRunFit" title="${tr("重新執行 Gemini AI 幾何實體擬合", "Fit geometric primitives with Gemini AI")}">
             ${ICONS.wand}<span>${tr("擬合", "Fit")}</span>
           </button>
           <button type="button" class="bim-btn" id="btnBimTogglePreview" title="${tr("切換 Studio 3D 實體預覽覆蓋", "Toggle 3D BIM preview")}">
@@ -223,7 +245,7 @@
     if (btnFit) {
       btnFit.addEventListener("click", () => {
         readBimParamsFromInputs();
-        runScanToBimFitting();
+        runScanToBimFitting(true);
       });
     }
 
@@ -261,12 +283,15 @@
 
     const inpMinTree = document.getElementById("inpBimMinTreeH");
     if (inpMinTree && !isNaN(parseFloat(inpMinTree.value))) BIM_STATE.params.min_tree_height_m = parseFloat(inpMinTree.value);
+
+    const inpPrompt = document.getElementById("inpBimAiPrompt");
+    if (inpPrompt) BIM_STATE.aiPrompt = String(inpPrompt.value || "").trim();
   }
 
   /**
    * Request geometric primitive fitting from backend API
    */
-  async function runScanToBimFitting() {
+  async function runScanToBimFitting(forceRefresh = false) {
     const scanId = STATE.activeScanId;
     if (!scanId) {
       if (typeof showToast === "function") showToast(tr("請先載入 3D 掃描專案", "Please load a scan first"));
@@ -287,6 +312,8 @@
         wall_thickness_m: BIM_STATE.params.wall_thickness_m,
         min_wall_length_m: BIM_STATE.params.min_wall_length_m,
         min_tree_height_m: BIM_STATE.params.min_tree_height_m,
+        ai_prompt: BIM_STATE.aiPrompt || "",
+        force_ai_refresh: Boolean(forceRefresh && BIM_STATE.aiPrompt),
       };
 
       const resp = await fetch("/api/survey/scan-to-bim", {
@@ -305,6 +332,7 @@
       }
 
       BIM_STATE.primitives = res.primitives || [];
+      BIM_STATE.lastAiResult = res;
       updateBimKpis(res);
       updateBimElementsList();
 
@@ -314,7 +342,7 @@
       renderBimThreeMeshes();
 
       if (typeof showToast === "function") {
-        showToast(tr(`成功擬合 ${BIM_STATE.primitives.length} 個 BIM 幾何實體`, `Fitted ${BIM_STATE.primitives.length} BIM solids`));
+        showToast(tr(`成功擬合 ${BIM_STATE.primitives.length} 個 AI BIM 幾何實體`, `Fitted ${BIM_STATE.primitives.length} AI BIM solids`));
       }
     } catch (err) {
       console.error("[ScanToBim] Error fitting primitives:", err);
@@ -336,12 +364,25 @@
     const elCount = document.getElementById("bimKpiCount");
     const elVol = document.getElementById("bimKpiVolume");
     const elCats = document.getElementById("bimKpiCategories");
+    const elBadge = document.getElementById("bimAiModelBadge");
+    const elAiBox = document.getElementById("bimAiSummaryBox");
 
     if (elCount) elCount.textContent = (res.primitive_count ?? BIM_STATE.primitives.length).toString();
     if (elVol) elVol.textContent = Number(res.total_volume_m3 || 0).toFixed(1);
 
     const activeCatsCount = new Set(BIM_STATE.primitives.map((p) => p.category)).size;
     if (elCats) elCats.textContent = activeCatsCount.toString();
+
+    if (elBadge && res.ai_model) {
+      elBadge.textContent = res.ai_model;
+    }
+    if (elAiBox && res.ai_summary) {
+      const recs = Array.isArray(res.ai_recommendations) ? res.ai_recommendations : [];
+      const recsHtml = recs.length > 0
+        ? `<ul style="margin:4px 0 0 14px;padding:0;font-size:10px;color:var(--ui-text-secondary);">${recs.slice(0, 3).map((r) => `<li style="margin-bottom:2px;">${escapeHtml(r)}</li>`).join("")}</ul>`
+        : "";
+      elAiBox.innerHTML = `<div style="color:var(--ui-text-primary);margin-bottom:3px;">${escapeHtml(res.ai_summary)}</div>${recsHtml}`;
+    }
   }
 
   /**
@@ -377,12 +418,16 @@
         } else {
           dimStr = `V:${props.volume_m3}m³`;
         }
+        const ifcSub = [prim.ifc_class, props.material].filter(Boolean).join(" · ");
 
         return `
-          <div class="bim-element-row" data-prim-id="${escapeHtml(prim.id)}" title="${escapeHtml(prim.ifc_class || "")}">
-            <div class="bim-element-info">
-              <span class="bim-dot" style="background:${prim.color || '#3b82f6'};"></span>
-              <span class="bim-element-name">${escapeHtml(prim.name || prim.id)}</span>
+          <div class="bim-element-row" data-prim-id="${escapeHtml(prim.id)}" title="${escapeHtml(ifcSub)}">
+            <div class="bim-element-info" style="flex-direction:column;align-items:flex-start;gap:1px;">
+              <div style="display:flex;align-items:center;gap:6px;">
+                <span class="bim-dot" style="background:${prim.color || '#3b82f6'};"></span>
+                <span class="bim-element-name">${escapeHtml(prim.name || prim.id)}</span>
+              </div>
+              ${ifcSub ? `<span style="font-size:9.5px;color:var(--ui-text-muted);padding-left:14px;">${escapeHtml(ifcSub)}</span>` : ""}
             </div>
             <div style="display:flex;align-items:center;gap:6px;">
               <span class="bim-element-meta">${dimStr}</span>

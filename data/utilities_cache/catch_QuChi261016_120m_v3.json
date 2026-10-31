@@ -1,0 +1,1022 @@
+{
+  "status": "ok",
+  "scan_id": "catch_QuChi261016",
+  "center": {
+    "e": 304891.922,
+    "n": 2757029.5,
+    "h": 43.201
+  },
+  "ground_reference_h": 43.201,
+  "radius_m": 120.0,
+  "bbox": {
+    "xmin": 304771.922,
+    "ymin": 2756909.5,
+    "xmax": 305011.922,
+    "ymax": 2757149.5
+  },
+  "crs": "TWD97 / TM2 zone 121 + TWVD 2001 height - EPSG:3826+8904",
+  "layers": {
+    "storm": {
+      "id": "storm",
+      "name_zh": "雨水下水道",
+      "name_en": "Storm Sewer",
+      "color": "#06b6d4",
+      "default_depth_m": 2.2,
+      "default_dia_mm": 600,
+      "symbol": "cylindrical_or_box"
+    },
+    "sanitary": {
+      "id": "sanitary",
+      "name_zh": "污水下水道",
+      "name_en": "Sanitary Sewer",
+      "color": "#d97706",
+      "default_depth_m": 2.8,
+      "default_dia_mm": 300,
+      "symbol": "cylindrical"
+    },
+    "water": {
+      "id": "water",
+      "name_zh": "自來水與消防栓",
+      "name_en": "Water Supply & Hydrants",
+      "color": "#3b82f6",
+      "default_depth_m": 1.2,
+      "default_dia_mm": 200,
+      "symbol": "cylindrical"
+    },
+    "electric": {
+      "id": "electric",
+      "name_zh": "電力管線與電桿",
+      "name_en": "Electricity & Poles",
+      "color": "#ef4444",
+      "default_depth_m": 1.5,
+      "default_dia_mm": 150,
+      "symbol": "cylindrical"
+    },
+    "telecom": {
+      "id": "telecom",
+      "name_zh": "電信與光纖管線",
+      "name_en": "Telecom & Fiber",
+      "color": "#10b981",
+      "default_depth_m": 1.2,
+      "default_dia_mm": 100,
+      "symbol": "cylindrical"
+    },
+    "gas": {
+      "id": "gas",
+      "name_zh": "天然瓦斯管線",
+      "name_en": "Natural Gas",
+      "color": "#eab308",
+      "default_depth_m": 1.0,
+      "default_dia_mm": 100,
+      "symbol": "cylindrical"
+    },
+    "ducts": {
+      "id": "ducts",
+      "name_zh": "共同管道與纜線寬頻",
+      "name_en": "Common & Broadband Ducts",
+      "color": "#8b5cf6",
+      "default_depth_m": 2.6,
+      "default_dia_mm": 1000,
+      "symbol": "box"
+    },
+    "streetlights": {
+      "id": "streetlights",
+      "name_zh": "路燈與照明管線",
+      "name_en": "Streetlights",
+      "color": "#f59e0b",
+      "default_depth_m": 0.8,
+      "default_dia_mm": 80,
+      "symbol": "vertical_pole"
+    },
+    "excavations": {
+      "id": "excavations",
+      "name_zh": "即時道路挖掘工程",
+      "name_en": "Active Road Excavations",
+      "color": "#ec4899",
+      "default_depth_m": 1.5,
+      "default_dia_mm": 0,
+      "symbol": "trench_polygon"
+    },
+    "as_built": {
+      "id": "as_built",
+      "name_zh": "管溝開挖竣工實測",
+      "name_en": "Open-Trench As-Built Traced",
+      "color": "#14b8a6",
+      "default_depth_m": 1.8,
+      "default_dia_mm": 200,
+      "symbol": "cylindrical"
+    }
+  },
+  "layer_counts": {
+    "storm": 15,
+    "sanitary": 0,
+    "water": 0,
+    "electric": 0,
+    "telecom": 0,
+    "gas": 0,
+    "ducts": 0,
+    "streetlights": 0,
+    "excavations": 0,
+    "as_built": 0
+  },
+  "total_features": 15,
+  "total_pipe_length_m": 1642.22,
+  "total_structures": 6,
+  "features": [
+    {
+      "id": "ntpc_rw_culvert_418",
+      "layer": "storm",
+      "type": "box_culvert",
+      "name": "雨水箱涵 CC3-CC (1.20x1.20m)",
+      "diameter_mm": 1200,
+      "width_m": 1.2,
+      "height_m": 1.2,
+      "length_m": 85.74,
+      "material": "RC/鋼筋混凝土",
+      "start_coord": [
+        305192.959,
+        2757169.328,
+        40.917
+      ],
+      "end_coord": [
+        305160.979,
+        2757089.778,
+        40.765
+      ],
+      "start_ground_h": 43.217,
+      "end_ground_h": 43.215,
+      "start_rim_h": 43.217,
+      "end_rim_h": 43.215,
+      "start_invert_h": 40.917,
+      "end_invert_h": 40.765,
+      "start_crown_h": 42.117,
+      "end_crown_h": 41.965,
+      "start_depth_m": 2.3,
+      "end_depth_m": 2.45,
+      "start_cover_m": 1.1,
+      "end_cover_m": 1.25,
+      "depth_m": 2.38,
+      "slope_pct": 0.177,
+      "flow_direction": 1,
+      "upstream_mh": "CC3",
+      "downstream_mh": "CC",
+      "coords": [
+        [
+          305192.959,
+          2757169.328,
+          40.917
+        ],
+        [
+          305160.979,
+          2757089.778,
+          40.765
+        ]
+      ],
+      "source": "New Taipei City WRD Rainwater System (wrd.ntpc.gov.tw)",
+      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.920563&lon=121.546117&zoom=19",
+      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
+      "osm_url": "https://www.openstreetmap.org/?mlat=24.920563&mlon=121.546117#map=19/24.920563/121.546117",
+      "osm_label": "OpenStreetMap 座標圖台",
+      "portal_url": "https://wrd.ntpc.gov.tw/",
+      "portal_label": "新北市政府水利局 水利地理資訊系統",
+      "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #418",
+      "gov_links": {
+        "portal_url": "https://wrd.ntpc.gov.tw/",
+        "portal_label": "新北市政府水利局 水利地理資訊系統",
+        "api_url": null,
+        "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #418",
+        "osm_url": "https://www.openstreetmap.org/?mlat=24.920563&mlon=121.546117#map=19/24.920563/121.546117",
+        "osm_label": "OpenStreetMap 座標圖台",
+        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.920563&lon=121.546117&zoom=19",
+        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
+      }
+    },
+    {
+      "id": "ntpc_rw_culvert_424",
+      "layer": "storm",
+      "type": "box_culvert",
+      "name": "雨水箱涵 CC1-CC2 (0.80x0.80m)",
+      "diameter_mm": 800,
+      "width_m": 0.8,
+      "height_m": 0.8,
+      "length_m": 155.99,
+      "material": "RC/鋼筋混凝土",
+      "start_coord": [
+        305299.373,
+        2757336.497,
+        41.313
+      ],
+      "end_coord": [
+        305327.784,
+        2757183.542,
+        41.159
+      ],
+      "start_ground_h": 43.213,
+      "end_ground_h": 43.209,
+      "start_rim_h": 43.213,
+      "end_rim_h": 43.209,
+      "start_invert_h": 41.313,
+      "end_invert_h": 41.159,
+      "start_crown_h": 42.113,
+      "end_crown_h": 41.959,
+      "start_depth_m": 1.9,
+      "end_depth_m": 2.05,
+      "start_cover_m": 1.1,
+      "end_cover_m": 1.25,
+      "depth_m": 1.97,
+      "slope_pct": 0.099,
+      "flow_direction": 1,
+      "upstream_mh": "CC1",
+      "downstream_mh": "CC2",
+      "coords": [
+        [
+          305299.373,
+          2757336.497,
+          41.313
+        ],
+        [
+          305299.082,
+          2757322.543,
+          41.276
+        ],
+        [
+          305302.841,
+          2757293.674,
+          41.237
+        ],
+        [
+          305315.242,
+          2757239.749,
+          41.198
+        ],
+        [
+          305327.784,
+          2757183.542,
+          41.159
+        ]
+      ],
+      "source": "New Taipei City WRD Rainwater System (wrd.ntpc.gov.tw)",
+      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.922398&lon=121.547530&zoom=19",
+      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
+      "osm_url": "https://www.openstreetmap.org/?mlat=24.922398&mlon=121.547530#map=19/24.922398/121.547530",
+      "osm_label": "OpenStreetMap 座標圖台",
+      "portal_url": "https://wrd.ntpc.gov.tw/",
+      "portal_label": "新北市政府水利局 水利地理資訊系統",
+      "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #424",
+      "gov_links": {
+        "portal_url": "https://wrd.ntpc.gov.tw/",
+        "portal_label": "新北市政府水利局 水利地理資訊系統",
+        "api_url": null,
+        "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #424",
+        "osm_url": "https://www.openstreetmap.org/?mlat=24.922398&mlon=121.547530#map=19/24.922398/121.547530",
+        "osm_label": "OpenStreetMap 座標圖台",
+        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.922398&lon=121.547530&zoom=19",
+        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
+      }
+    },
+    {
+      "id": "ntpc_rw_culvert_422",
+      "layer": "storm",
+      "type": "box_culvert",
+      "name": "雨水箱涵 CC2-CC3 (1.00x1.00m)",
+      "diameter_mm": 1000,
+      "width_m": 1.0,
+      "height_m": 1.0,
+      "length_m": 135.57,
+      "material": "RC/鋼筋混凝土",
+      "start_coord": [
+        305327.784,
+        2757183.542,
+        41.109
+      ],
+      "end_coord": [
+        305192.959,
+        2757169.328,
+        40.967
+      ],
+      "start_ground_h": 43.209,
+      "end_ground_h": 43.217,
+      "start_rim_h": 43.209,
+      "end_rim_h": 43.217,
+      "start_invert_h": 41.109,
+      "end_invert_h": 40.967,
+      "start_crown_h": 42.109,
+      "end_crown_h": 41.967,
+      "start_depth_m": 2.1,
+      "end_depth_m": 2.25,
+      "start_cover_m": 1.1,
+      "end_cover_m": 1.25,
+      "depth_m": 2.17,
+      "slope_pct": 0.105,
+      "flow_direction": 1,
+      "upstream_mh": "CC2",
+      "downstream_mh": "CC3",
+      "coords": [
+        [
+          305327.784,
+          2757183.542,
+          41.109
+        ],
+        [
+          305192.959,
+          2757169.328,
+          40.967
+        ]
+      ],
+      "source": "New Taipei City WRD Rainwater System (wrd.ntpc.gov.tw)",
+      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.921280&lon=121.546437&zoom=19",
+      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
+      "osm_url": "https://www.openstreetmap.org/?mlat=24.921280&mlon=121.546437#map=19/24.921280/121.546437",
+      "osm_label": "OpenStreetMap 座標圖台",
+      "portal_url": "https://wrd.ntpc.gov.tw/",
+      "portal_label": "新北市政府水利局 水利地理資訊系統",
+      "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #422",
+      "gov_links": {
+        "portal_url": "https://wrd.ntpc.gov.tw/",
+        "portal_label": "新北市政府水利局 水利地理資訊系統",
+        "api_url": null,
+        "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #422",
+        "osm_url": "https://www.openstreetmap.org/?mlat=24.921280&mlon=121.546437#map=19/24.921280/121.546437",
+        "osm_label": "OpenStreetMap 座標圖台",
+        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.921280&lon=121.546437&zoom=19",
+        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
+      }
+    },
+    {
+      "id": "ntpc_rw_culvert_425",
+      "layer": "storm",
+      "type": "box_culvert",
+      "name": "雨水箱涵 CA4-CA (2.20x2.20m)",
+      "diameter_mm": 2200,
+      "width_m": 2.2,
+      "height_m": 2.2,
+      "length_m": 135.16,
+      "material": "RC/鋼筋混凝土",
+      "start_coord": [
+        305383.482,
+        2756909.47,
+        39.893
+      ],
+      "end_coord": [
+        305249.559,
+        2756891.233,
+        39.734
+      ],
+      "start_ground_h": 43.193,
+      "end_ground_h": 43.184,
+      "start_rim_h": 43.193,
+      "end_rim_h": 43.184,
+      "start_invert_h": 39.893,
+      "end_invert_h": 39.734,
+      "start_crown_h": 42.093,
+      "end_crown_h": 41.934,
+      "start_depth_m": 3.3,
+      "end_depth_m": 3.45,
+      "start_cover_m": 1.1,
+      "end_cover_m": 1.25,
+      "depth_m": 3.38,
+      "slope_pct": 0.118,
+      "flow_direction": 1,
+      "upstream_mh": "CA4",
+      "downstream_mh": "CA",
+      "coords": [
+        [
+          305383.482,
+          2756909.47,
+          39.893
+        ],
+        [
+          305249.559,
+          2756891.233,
+          39.734
+        ]
+      ],
+      "source": "New Taipei City WRD Rainwater System (wrd.ntpc.gov.tw)",
+      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.918767&lon=121.546986&zoom=19",
+      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
+      "osm_url": "https://www.openstreetmap.org/?mlat=24.918767&mlon=121.546986#map=19/24.918767/121.546986",
+      "osm_label": "OpenStreetMap 座標圖台",
+      "portal_url": "https://wrd.ntpc.gov.tw/",
+      "portal_label": "新北市政府水利局 水利地理資訊系統",
+      "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #425",
+      "gov_links": {
+        "portal_url": "https://wrd.ntpc.gov.tw/",
+        "portal_label": "新北市政府水利局 水利地理資訊系統",
+        "api_url": null,
+        "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #425",
+        "osm_url": "https://www.openstreetmap.org/?mlat=24.918767&mlon=121.546986#map=19/24.918767/121.546986",
+        "osm_label": "OpenStreetMap 座標圖台",
+        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.918767&lon=121.546986&zoom=19",
+        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
+      }
+    },
+    {
+      "id": "ntpc_rw_culvert_540",
+      "layer": "storm",
+      "type": "box_culvert",
+      "name": "雨水箱涵 CB6-CB(規劃既有) (3.50x2.00m)",
+      "diameter_mm": 3500,
+      "width_m": 3.5,
+      "height_m": 2.0,
+      "length_m": 406.32,
+      "material": "RC/鋼筋混凝土",
+      "start_coord": [
+        304884.065,
+        2757594.621,
+        40.112
+      ],
+      "end_coord": [
+        304835.715,
+        2757193.47,
+        39.893
+      ],
+      "start_ground_h": 43.212,
+      "end_ground_h": 43.143,
+      "start_rim_h": 43.212,
+      "end_rim_h": 43.143,
+      "start_invert_h": 40.112,
+      "end_invert_h": 39.893,
+      "start_crown_h": 42.112,
+      "end_crown_h": 41.893,
+      "start_depth_m": 3.1,
+      "end_depth_m": 3.25,
+      "start_cover_m": 1.1,
+      "end_cover_m": 1.25,
+      "depth_m": 3.17,
+      "slope_pct": 0.054,
+      "flow_direction": 1,
+      "upstream_mh": "CB6",
+      "downstream_mh": "CB",
+      "coords": [
+        [
+          304884.065,
+          2757594.621,
+          40.112
+        ],
+        [
+          304835.855,
+          2757372.288,
+          40.034
+        ],
+        [
+          304835.715,
+          2757193.47,
+          39.893
+        ]
+      ],
+      "source": "New Taipei City WRD Rainwater System (wrd.ntpc.gov.tw)",
+      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.923125&lon=121.542909&zoom=19",
+      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
+      "osm_url": "https://www.openstreetmap.org/?mlat=24.923125&mlon=121.542909#map=19/24.923125/121.542909",
+      "osm_label": "OpenStreetMap 座標圖台",
+      "portal_url": "https://wrd.ntpc.gov.tw/",
+      "portal_label": "新北市政府水利局 水利地理資訊系統",
+      "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #540",
+      "gov_links": {
+        "portal_url": "https://wrd.ntpc.gov.tw/",
+        "portal_label": "新北市政府水利局 水利地理資訊系統",
+        "api_url": null,
+        "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #540",
+        "osm_url": "https://www.openstreetmap.org/?mlat=24.923125&mlon=121.542909#map=19/24.923125/121.542909",
+        "osm_label": "OpenStreetMap 座標圖台",
+        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.923125&lon=121.542909&zoom=19",
+        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
+      }
+    },
+    {
+      "id": "ntpc_rw_culvert_543",
+      "layer": "storm",
+      "type": "box_culvert",
+      "name": "雨水箱涵 CB4b-CB4c(規劃既有) (0.89x0.89m)",
+      "diameter_mm": 890,
+      "width_m": 0.89,
+      "height_m": 0.89,
+      "length_m": 191.37,
+      "material": "RC/鋼筋混凝土",
+      "start_coord": [
+        305123.584,
+        2757404.722,
+        41.228
+      ],
+      "end_coord": [
+        305198.861,
+        2757532.269,
+        41.073
+      ],
+      "start_ground_h": 43.218,
+      "end_ground_h": 43.213,
+      "start_rim_h": 43.218,
+      "end_rim_h": 43.213,
+      "start_invert_h": 41.228,
+      "end_invert_h": 41.073,
+      "start_crown_h": 42.118,
+      "end_crown_h": 41.963,
+      "start_depth_m": 1.99,
+      "end_depth_m": 2.14,
+      "start_cover_m": 1.1,
+      "end_cover_m": 1.25,
+      "depth_m": 2.06,
+      "slope_pct": 0.081,
+      "flow_direction": 1,
+      "upstream_mh": "CB4b",
+      "downstream_mh": "CB4c",
+      "coords": [
+        [
+          305123.584,
+          2757404.722,
+          41.228
+        ],
+        [
+          305182.311,
+          2757402.288,
+          41.201
+        ],
+        [
+          305200.012,
+          2757470.822,
+          41.174
+        ],
+        [
+          305201.828,
+          2757489.885,
+          41.149
+        ],
+        [
+          305202.282,
+          2757509.401,
+          41.124
+        ],
+        [
+          305200.012,
+          2757522.109,
+          41.099
+        ],
+        [
+          305198.861,
+          2757532.269,
+          41.073
+        ]
+      ],
+      "source": "New Taipei City WRD Rainwater System (wrd.ntpc.gov.tw)",
+      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.924174&lon=121.546537&zoom=19",
+      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
+      "osm_url": "https://www.openstreetmap.org/?mlat=24.924174&mlon=121.546537#map=19/24.924174/121.546537",
+      "osm_label": "OpenStreetMap 座標圖台",
+      "portal_url": "https://wrd.ntpc.gov.tw/",
+      "portal_label": "新北市政府水利局 水利地理資訊系統",
+      "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #543",
+      "gov_links": {
+        "portal_url": "https://wrd.ntpc.gov.tw/",
+        "portal_label": "新北市政府水利局 水利地理資訊系統",
+        "api_url": null,
+        "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #543",
+        "osm_url": "https://www.openstreetmap.org/?mlat=24.924174&mlon=121.546537#map=19/24.924174/121.546537",
+        "osm_label": "OpenStreetMap 座標圖台",
+        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.924174&lon=121.546537&zoom=19",
+        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
+      }
+    },
+    {
+      "id": "ntpc_rw_mh_685",
+      "layer": "storm",
+      "type": "manhole",
+      "name": "雨水下水道節點人孔 CB4b",
+      "facility_no": "CB4b",
+      "structure_type": "雨水人孔",
+      "coord": [
+        305123.583,
+        2757404.722,
+        41.118
+      ],
+      "rim_h": 43.218,
+      "invert_h": 41.118,
+      "depth_m": 2.1,
+      "diameter_mm": 800,
+      "source": "New Taipei City WRD Rainwater System (wrd.ntpc.gov.tw)",
+      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.923408&lon=121.545759&zoom=19",
+      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
+      "osm_url": "https://www.openstreetmap.org/?mlat=24.923408&mlon=121.545759#map=19/24.923408/121.545759",
+      "osm_label": "OpenStreetMap 座標圖台",
+      "portal_url": "https://wrd.ntpc.gov.tw/",
+      "portal_label": "新北市政府水利局 水利地理資訊系統",
+      "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #685",
+      "gov_links": {
+        "portal_url": "https://wrd.ntpc.gov.tw/",
+        "portal_label": "新北市政府水利局 水利地理資訊系統",
+        "api_url": null,
+        "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #685",
+        "osm_url": "https://www.openstreetmap.org/?mlat=24.923408&mlon=121.545759#map=19/24.923408/121.545759",
+        "osm_label": "OpenStreetMap 座標圖台",
+        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.923408&lon=121.545759&zoom=19",
+        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
+      }
+    },
+    {
+      "id": "ntpc_rw_mh_688",
+      "layer": "storm",
+      "type": "manhole",
+      "name": "雨水下水道節點人孔 CC3",
+      "facility_no": "CC3",
+      "structure_type": "雨水人孔",
+      "coord": [
+        305192.959,
+        2757169.328,
+        41.117
+      ],
+      "rim_h": 43.217,
+      "invert_h": 41.117,
+      "depth_m": 2.1,
+      "diameter_mm": 800,
+      "source": "New Taipei City WRD Rainwater System (wrd.ntpc.gov.tw)",
+      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.921280&lon=121.546437&zoom=19",
+      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
+      "osm_url": "https://www.openstreetmap.org/?mlat=24.921280&mlon=121.546437#map=19/24.921280/121.546437",
+      "osm_label": "OpenStreetMap 座標圖台",
+      "portal_url": "https://wrd.ntpc.gov.tw/",
+      "portal_label": "新北市政府水利局 水利地理資訊系統",
+      "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #688",
+      "gov_links": {
+        "portal_url": "https://wrd.ntpc.gov.tw/",
+        "portal_label": "新北市政府水利局 水利地理資訊系統",
+        "api_url": null,
+        "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #688",
+        "osm_url": "https://www.openstreetmap.org/?mlat=24.921280&mlon=121.546437#map=19/24.921280/121.546437",
+        "osm_label": "OpenStreetMap 座標圖台",
+        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.921280&lon=121.546437&zoom=19",
+        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
+      }
+    },
+    {
+      "id": "ntpc_rw_mh_694",
+      "layer": "storm",
+      "type": "manhole",
+      "name": "雨水下水道節點人孔 CA",
+      "facility_no": "CA",
+      "structure_type": "雨水人孔",
+      "coord": [
+        305249.559,
+        2756891.233,
+        41.084
+      ],
+      "rim_h": 43.184,
+      "invert_h": 41.084,
+      "depth_m": 2.1,
+      "diameter_mm": 800,
+      "source": "New Taipei City WRD Rainwater System (wrd.ntpc.gov.tw)",
+      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.918767&lon=121.546986&zoom=19",
+      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
+      "osm_url": "https://www.openstreetmap.org/?mlat=24.918767&mlon=121.546986#map=19/24.918767/121.546986",
+      "osm_label": "OpenStreetMap 座標圖台",
+      "portal_url": "https://wrd.ntpc.gov.tw/",
+      "portal_label": "新北市政府水利局 水利地理資訊系統",
+      "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #694",
+      "gov_links": {
+        "portal_url": "https://wrd.ntpc.gov.tw/",
+        "portal_label": "新北市政府水利局 水利地理資訊系統",
+        "api_url": null,
+        "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #694",
+        "osm_url": "https://www.openstreetmap.org/?mlat=24.918767&mlon=121.546986#map=19/24.918767/121.546986",
+        "osm_label": "OpenStreetMap 座標圖台",
+        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.918767&lon=121.546986&zoom=19",
+        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
+      }
+    },
+    {
+      "id": "ntpc_rw_mh_689",
+      "layer": "storm",
+      "type": "manhole",
+      "name": "雨水下水道節點人孔 CC",
+      "facility_no": "CC",
+      "structure_type": "雨水人孔",
+      "coord": [
+        305160.979,
+        2757089.778,
+        41.115
+      ],
+      "rim_h": 43.215,
+      "invert_h": 41.115,
+      "depth_m": 2.1,
+      "diameter_mm": 800,
+      "source": "New Taipei City WRD Rainwater System (wrd.ntpc.gov.tw)",
+      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.920563&lon=121.546117&zoom=19",
+      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
+      "osm_url": "https://www.openstreetmap.org/?mlat=24.920563&mlon=121.546117#map=19/24.920563/121.546117",
+      "osm_label": "OpenStreetMap 座標圖台",
+      "portal_url": "https://wrd.ntpc.gov.tw/",
+      "portal_label": "新北市政府水利局 水利地理資訊系統",
+      "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #689",
+      "gov_links": {
+        "portal_url": "https://wrd.ntpc.gov.tw/",
+        "portal_label": "新北市政府水利局 水利地理資訊系統",
+        "api_url": null,
+        "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #689",
+        "osm_url": "https://www.openstreetmap.org/?mlat=24.920563&mlon=121.546117#map=19/24.920563/121.546117",
+        "osm_label": "OpenStreetMap 座標圖台",
+        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.920563&lon=121.546117&zoom=19",
+        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
+      }
+    },
+    {
+      "id": "ntpc_rw_mh_686",
+      "layer": "storm",
+      "type": "manhole",
+      "name": "雨水下水道節點人孔 CC1",
+      "facility_no": "CC1",
+      "structure_type": "雨水人孔",
+      "coord": [
+        305299.373,
+        2757336.497,
+        41.113
+      ],
+      "rim_h": 43.213,
+      "invert_h": 41.113,
+      "depth_m": 2.1,
+      "diameter_mm": 800,
+      "source": "New Taipei City WRD Rainwater System (wrd.ntpc.gov.tw)",
+      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.922785&lon=121.547497&zoom=19",
+      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
+      "osm_url": "https://www.openstreetmap.org/?mlat=24.922785&mlon=121.547497#map=19/24.922785/121.547497",
+      "osm_label": "OpenStreetMap 座標圖台",
+      "portal_url": "https://wrd.ntpc.gov.tw/",
+      "portal_label": "新北市政府水利局 水利地理資訊系統",
+      "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #686",
+      "gov_links": {
+        "portal_url": "https://wrd.ntpc.gov.tw/",
+        "portal_label": "新北市政府水利局 水利地理資訊系統",
+        "api_url": null,
+        "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #686",
+        "osm_url": "https://www.openstreetmap.org/?mlat=24.922785&mlon=121.547497#map=19/24.922785/121.547497",
+        "osm_label": "OpenStreetMap 座標圖台",
+        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.922785&lon=121.547497&zoom=19",
+        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
+      }
+    },
+    {
+      "id": "ntpc_rw_mh_695",
+      "layer": "storm",
+      "type": "manhole",
+      "name": "雨水下水道節點人孔 CB",
+      "facility_no": "CB",
+      "structure_type": "雨水人孔",
+      "coord": [
+        304835.715,
+        2757193.47,
+        41.043
+      ],
+      "rim_h": 43.143,
+      "invert_h": 41.043,
+      "depth_m": 2.1,
+      "diameter_mm": 800,
+      "source": "New Taipei City WRD Rainwater System (wrd.ntpc.gov.tw)",
+      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.921511&lon=121.542901&zoom=19",
+      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
+      "osm_url": "https://www.openstreetmap.org/?mlat=24.921511&mlon=121.542901#map=19/24.921511/121.542901",
+      "osm_label": "OpenStreetMap 座標圖台",
+      "portal_url": "https://wrd.ntpc.gov.tw/",
+      "portal_label": "新北市政府水利局 水利地理資訊系統",
+      "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #695",
+      "gov_links": {
+        "portal_url": "https://wrd.ntpc.gov.tw/",
+        "portal_label": "新北市政府水利局 水利地理資訊系統",
+        "api_url": null,
+        "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #695",
+        "osm_url": "https://www.openstreetmap.org/?mlat=24.921511&mlon=121.542901#map=19/24.921511/121.542901",
+        "osm_label": "OpenStreetMap 座標圖台",
+        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.921511&lon=121.542901&zoom=19",
+        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
+      }
+    },
+    {
+      "id": "osm_waterway_259222251",
+      "layer": "storm",
+      "type": "pipe",
+      "name": "新店溪 D=1000mm",
+      "diameter_mm": 1500,
+      "width_m": 1.5,
+      "height_m": 1.4,
+      "length_m": 213.0,
+      "material": "RC/鋼筋混凝土箱涵",
+      "start_coord": [
+        304961.671,
+        2756899.9,
+        40.831
+      ],
+      "end_coord": [
+        304762.322,
+        2756964.494,
+        41.159
+      ],
+      "start_ground_h": 42.881,
+      "end_ground_h": 43.209,
+      "start_rim_h": 42.881,
+      "end_rim_h": 43.209,
+      "start_invert_h": 40.831,
+      "end_invert_h": 41.159,
+      "start_crown_h": 42.231,
+      "end_crown_h": 42.559,
+      "start_depth_m": 2.05,
+      "end_depth_m": 2.05,
+      "start_cover_m": 0.65,
+      "end_cover_m": 0.65,
+      "depth_m": 2.05,
+      "slope_pct": -0.154,
+      "flow_direction": 1,
+      "coords": [
+        [
+          304961.671,
+          2756899.9,
+          40.831
+        ],
+        [
+          304814.754,
+          2756964.696,
+          40.776
+        ],
+        [
+          304762.322,
+          2756964.494,
+          41.159
+        ]
+      ],
+      "source": "Taiwan Hydraulic & Culvert GIS (OpenStreetMap Taiwan)",
+      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.919446&lon=121.542684&zoom=19",
+      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
+      "osm_url": "https://www.openstreetmap.org/way/259222251",
+      "osm_label": "OpenStreetMap 圖資廊道 #259222251",
+      "portal_url": "https://pipe.nlma.gov.tw/",
+      "portal_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+      "gov_links": {
+        "portal_url": "https://pipe.nlma.gov.tw/",
+        "portal_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+        "api_url": null,
+        "api_label": null,
+        "osm_url": "https://www.openstreetmap.org/way/259222251",
+        "osm_label": "OpenStreetMap 圖資廊道 #259222251",
+        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.919446&lon=121.542684&zoom=19",
+        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
+      }
+    },
+    {
+      "id": "osm_waterway_487011226",
+      "layer": "storm",
+      "type": "pipe",
+      "name": "排水渠道 (stream) D=1000mm",
+      "diameter_mm": 1000,
+      "width_m": 1.0,
+      "height_m": 1.0,
+      "length_m": 2.34,
+      "material": "RC/鋼筋混凝土箱涵",
+      "start_coord": [
+        304814.447,
+        2757159.1,
+        41.207
+      ],
+      "end_coord": [
+        304813.815,
+        2757156.849,
+        41.029
+      ],
+      "start_ground_h": 42.957,
+      "end_ground_h": 42.929,
+      "start_rim_h": 42.957,
+      "end_rim_h": 42.929,
+      "start_invert_h": 41.207,
+      "end_invert_h": 41.029,
+      "start_crown_h": 42.207,
+      "end_crown_h": 42.029,
+      "start_depth_m": 1.75,
+      "end_depth_m": 1.9,
+      "start_cover_m": 0.75,
+      "end_cover_m": 0.9,
+      "depth_m": 1.82,
+      "slope_pct": 7.613,
+      "flow_direction": 1,
+      "coords": [
+        [
+          304814.447,
+          2757159.1,
+          41.207
+        ],
+        [
+          304813.815,
+          2757156.849,
+          41.029
+        ]
+      ],
+      "source": "Taiwan Hydraulic & Culvert GIS (OpenStreetMap Taiwan)",
+      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.921181&lon=121.542683&zoom=19",
+      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
+      "osm_url": "https://www.openstreetmap.org/way/487011226",
+      "osm_label": "OpenStreetMap 圖資廊道 #487011226",
+      "portal_url": "https://pipe.nlma.gov.tw/",
+      "portal_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+      "gov_links": {
+        "portal_url": "https://pipe.nlma.gov.tw/",
+        "portal_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+        "api_url": null,
+        "api_label": null,
+        "osm_url": "https://www.openstreetmap.org/way/487011226",
+        "osm_label": "OpenStreetMap 圖資廊道 #487011226",
+        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.921181&lon=121.542683&zoom=19",
+        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
+      }
+    },
+    {
+      "id": "osm_waterway_1394460986",
+      "layer": "storm",
+      "type": "box_culvert",
+      "name": "排水渠道 (canal) (1.5x1.4m)",
+      "diameter_mm": 1500,
+      "width_m": 1.5,
+      "height_m": 1.4,
+      "length_m": 316.73,
+      "material": "RC/鋼筋混凝土箱涵",
+      "start_coord": [
+        305021.522,
+        2757057.313,
+        41.227
+      ],
+      "end_coord": [
+        304762.322,
+        2757109.253,
+        40.863
+      ],
+      "start_ground_h": 43.277,
+      "end_ground_h": 42.913,
+      "start_rim_h": 43.277,
+      "end_rim_h": 42.913,
+      "start_invert_h": 41.227,
+      "end_invert_h": 40.863,
+      "start_crown_h": 42.627,
+      "end_crown_h": 42.263,
+      "start_depth_m": 2.05,
+      "end_depth_m": 2.05,
+      "start_cover_m": 0.65,
+      "end_cover_m": 0.65,
+      "depth_m": 2.05,
+      "slope_pct": 0.115,
+      "flow_direction": 1,
+      "coords": [
+        [
+          305021.522,
+          2757057.313,
+          41.227
+        ],
+        [
+          304990.179,
+          2757060.523,
+          41.286
+        ],
+        [
+          304949.282,
+          2757090.399,
+          41.232
+        ],
+        [
+          304912.388,
+          2757137.138,
+          41.223
+        ],
+        [
+          304847.285,
+          2757155.465,
+          40.972
+        ],
+        [
+          304813.815,
+          2757156.849,
+          40.879
+        ],
+        [
+          304778.539,
+          2757140.104,
+          40.849
+        ],
+        [
+          304762.322,
+          2757109.253,
+          40.863
+        ]
+      ],
+      "source": "Taiwan Hydraulic & Culvert GIS (OpenStreetMap Taiwan)",
+      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.921167&lon=121.543014&zoom=19",
+      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
+      "osm_url": "https://www.openstreetmap.org/way/1394460986",
+      "osm_label": "OpenStreetMap 圖資廊道 #1394460986",
+      "portal_url": "https://pipe.nlma.gov.tw/",
+      "portal_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+      "gov_links": {
+        "portal_url": "https://pipe.nlma.gov.tw/",
+        "portal_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+        "api_url": null,
+        "api_label": null,
+        "osm_url": "https://www.openstreetmap.org/way/1394460986",
+        "osm_label": "OpenStreetMap 圖資廊道 #1394460986",
+        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.921167&lon=121.543014&zoom=19",
+        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
+      }
+    }
+  ],
+  "query_timestamp": "2026-10-31T11:20:37.431024+00:00",
+  "cached": false
+}

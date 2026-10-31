@@ -1406,24 +1406,13 @@
           studioThree.contourGroup.remove(c);
         }
       }
-      if (typeof clearMeasurements === "function") {
-        clearMeasurements();
-      }
-      if (typeof clearProfileVisualsOnly === "function") {
-        clearProfileVisualsOnly();
-      }
-      if (typeof clearSectionBoxClippingIfNotKept === "function") {
-        clearSectionBoxClippingIfNotKept();
-      }
-      if (typeof clearDrainageVisuals3D === "function") {
-        clearDrainageVisuals3D();
-      }
-      if (typeof clearGcpQaMarkers3D === "function") {
-        clearGcpQaMarkers3D();
-      }
-      if (typeof clearPhotoTargetVisuals3D === "function") {
-        clearPhotoTargetVisuals3D(true);
-      }
+      if (typeof clearMeasurements === "function") clearMeasurements();
+      if (typeof clearProfileVisualsOnly === "function") clearProfileVisualsOnly();
+      if (typeof clearSectionBoxClippingIfNotKept === "function") clearSectionBoxClippingIfNotKept();
+      if (typeof clearDrainageVisuals3D === "function") clearDrainageVisuals3D();
+      if (typeof clearGcpQaMarkers3D === "function") clearGcpQaMarkers3D();
+      if (typeof window.resetUtilitiesOnScanChange === "function") window.resetUtilitiesOnScanChange(scanId);
+      if (typeof clearPhotoTargetVisuals3D === "function") clearPhotoTargetVisuals3D(true);
       STATE.categorizeOverlayVisible = false;
       STATE.categorizeLabelsVisible = true;
       if (typeof hideCategorizeOverlaysAndLabels === "function") {
@@ -2349,6 +2338,13 @@
             e: Number((metaE + cosR * dx - sinR * dy).toFixed(3)),
             n: Number((metaN + sinR * dx + cosR * dy).toFixed(3)),
             h: Number((baseZ + dz).toFixed(3)),
+          };
+        }
+        if (Math.hypot(tc[0], tc[1]) < 50000 && metaE >= 100000 && metaN >= 2000000) {
+          return {
+            e: Number((metaE + dx).toFixed(3)),
+            n: Number((metaN + dy).toFixed(3)),
+            h: Number((metaH + dz).toFixed(3)),
           };
         }
         const baseZ = tc[2] < -50 && metaH > -50 ? metaH : tc[2];

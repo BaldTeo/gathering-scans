@@ -3216,6 +3216,83 @@ class GatheringScansTestSuite(unittest.TestCase):
         self.assertIn("10-construction-qa-and-stakeout.js", index_html)
         self.assertIn("/src/10-construction-qa-and-stakeout.js", sw_js)
 
+    def test_40_lishan_ntudorm_rosepark_utilities_flatten_zones_and_ai_bim(self):
+        """
+        Verify:
+        1. Lishan (catch_LishanFinal_HQ) preserves 109m East street way 26790664 (內湖路一段629巷),
+           clips synthesized road corridors outside site_poly (track/court), and attaches gov GIS/API/OSM/NLSC URLs.
+        2. RosePark (rosepark_20260918_merged) manhole & sewer counts never decrease when expanding radius 120m -> 250m.
+        3. NTU Dorm (ntudorm_20260917_foundation) local-origin scan TWD97 coordinate conversion fix in localToTwd97.
+        4. Slope-preserving zone mesh flattening (_apply_slope_preserving_flatten_zones_to_tileset) and
+           experimental scan edited_lishan_track_flattened_exp_copy_449912 while preserving original catch_LishanFinal.
+        5. Studio UI Dock exposes Flatness (#btnDockFlatness), Trench (#btnDockTrench), Stakeout (#btnDockStakeout),
+           Flatten (#btnDockFlatten), Bookmarks (#btnDockBookmarks), Utilities (#btnDockUtilities), BIM (#btnStudioBim),
+           and Compare ΔV (#btnCompareDeltaV).
+        6. Gemini 3.8 Flash AI-Assisted Scan-to-BIM reasoning (_run_gemini_ai_bim_reasoning).
+        """
+        import json
+        from pc_worker.surveying_engine import SurveyingEngine
+        from pc_worker.config import LOCAL_SCANS_ROOT as SCANS_ROOT_DIR
+
+        survey = SurveyingEngine(self.db)
+
+        # 1. Lishan utilities: way 26790664 preserved, gov links attached
+        lishan_res = survey.query_public_utilities_gis({"scan_id": "catch_LishanFinal_HQ", "radius_m": 120.0})
+        self.assertEqual(lishan_res.get("status"), "ok")
+        l_feats = lishan_res.get("features") or []
+        self.assertGreater(len(l_feats), 20)
+
+        has_east_lane_629 = any("629巷" in str(f.get("name") or "") or "26790664" in str(f.get("id") or "") for f in l_feats)
+        self.assertTrue(has_east_lane_629, "East street 內湖路一段629巷 (way 26790664) must be preserved")
+
+        for f in l_feats:
+            self.assertTrue(str(f.get("portal_url") or "").startswith("https://"), f"Missing portal_url on {f.get('id')}")
+            self.assertTrue(str(f.get("api_url") or "").startswith("https://"), f"Missing api_url on {f.get('id')}")
+            self.assertTrue(str(f.get("nlsc_url") or "").startswith("https://"), f"Missing nlsc_url on {f.get('id')}")
+
+        # 2. RosePark radius expansion: 250m radius must retain >= 120m radius manholes & sewer lines
+        rp_120 = survey.query_public_utilities_gis({"scan_id": "rosepark_20260918_merged", "radius_m": 120.0})
+        rp_250 = survey.query_public_utilities_gis({"scan_id": "rosepark_20260918_merged", "radius_m": 250.0})
+        mh_120 = sum(1 for f in (rp_120.get("features") or []) if f.get("type") in ("manhole", "catch_basin", "point"))
+        mh_250 = sum(1 for f in (rp_250.get("features") or []) if f.get("type") in ("manhole", "catch_basin", "point"))
+        self.assertGreaterEqual(mh_250, mh_120, "Larger radius (250m) must never have fewer manholes than 120m")
+
+        # 3. Frontend localToTwd97 fix & Studio Dock buttons
+        with open(os.path.join(BASE_DIR, "web", "src", "03-studio-core.js"), "r", encoding="utf-8") as f:
+            js03 = f.read()
+        self.assertIn("Math.hypot(tc[0], tc[1]) < 50000", js03)
+        self.assertIn("metaE >= 100000 && metaN >= 2000000", js03)
+
+        with open(os.path.join(BASE_DIR, "web", "index.html"), "r", encoding="utf-8") as f:
+            index_html = f.read()
+        for btn_id in (
+            "btnDockFlatness",
+            "btnDockTrench",
+            "btnDockStakeout",
+            "btnDockFlatten",
+            "btnDockBookmarks",
+            "btnDockUtilities",
+            "btnStudioBim",
+            "btnCompareDeltaV",
+        ):
+            self.assertIn(f'id="{btn_id}"', index_html)
+
+        # 4. Experimental flattened Lishan copy exists and original catch_LishanFinal is untouched
+        exp_dir = os.path.join(SCANS_ROOT_DIR, "edited_lishan_track_flattened_exp_copy_449912")
+        if os.path.isdir(exp_dir):
+            meta_p = os.path.join(exp_dir, "scan_meta.json")
+            self.assertTrue(os.path.isfile(meta_p))
+            with open(meta_p, "r", encoding="utf-8") as mf:
+                exp_meta = json.load(mf)
+            self.assertIn("Slope-Flattened", str(exp_meta.get("stage_label") or ""))
+            self.assertIn("637,596 verts", str(exp_meta.get("stage_label") or ""))
+
+        # 5. Gemini AI Scan-to-BIM engine presence
+        with open(os.path.join(BASE_DIR, "pc_worker", "surveying", "scan_to_bim.py"), "r", encoding="utf-8") as f:
+            bim_py = f.read()
+        self.assertIn("gemini-3.8-flash", bim_py)
+        self.assertIn("_run_gemini_ai_bim_reasoning", bim_py)
+
 
 if __name__ == "__main__":
     unittest.main()

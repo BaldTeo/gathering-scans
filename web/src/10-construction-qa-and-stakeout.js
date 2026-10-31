@@ -1348,6 +1348,59 @@
   window.openCompareVolumeTakeoffInspector = openCompareVolumeTakeoffInspector;
   window.openRtkStakeoutInspector = openRtkStakeoutInspector;
 
+  window.handleQaTool3DCanvasPick = function (tool, pt, twd) {
+    if (!twd) return false;
+    const scanId = (window.STATE && window.STATE.activeScanId) || "";
+    if (tool === "flatness" || QA_STATE.isPickingFlatnessPoint) {
+      QA_STATE.surfaceQaPoints.push({ e: Number(twd.e.toFixed(3)), n: Number(twd.n.toFixed(3)), h: Number(twd.h.toFixed(3)) });
+      runSurfaceFlatnessQa(scanId);
+      return true;
+    }
+    if (tool === "trench" || QA_STATE.isPickingUtilityPoint) {
+      const depthCover = safeFloat(document.getElementById("inpUtilCoverM")?.value, 1.2);
+      QA_STATE.utilityTrenchPoints.push({
+        e: Number(twd.e.toFixed(3)),
+        n: Number(twd.n.toFixed(3)),
+        h: Number((twd.h - depthCover).toFixed(3)),
+        ground_h: Number(twd.h.toFixed(3)),
+      });
+      if (QA_STATE.utilityTrenchPoints.length >= 2) {
+        runUtilityTracer(scanId);
+      } else if (typeof showToast === "function") {
+        showToast(t("已設定管溝起點 — 請點擊下一處管溝節點", "Trench Pt #1 placed — click next trench vertex"));
+      }
+      return true;
+    }
+    if (tool === "stakeout" || QA_STATE.isPickingStakeoutPoint) {
+      const idx = QA_STATE.stakeoutPoints.length + 1;
+      QA_STATE.stakeoutPoints.push({
+        ptid: `STK-${String(idx).padStart(3, "0")}`,
+        easting: Number(twd.e.toFixed(3)),
+        northing: Number(twd.n.toFixed(3)),
+        elevation: Number(twd.h.toFixed(3)),
+        code: "DESIGN_PT",
+      });
+      runGenerateStakeout(scanId);
+      return true;
+    }
+    return false;
+  };
+
+  document.addEventListener("DOMContentLoaded", () => {
+    const btnCmpVol = document.getElementById("btnCompareDeltaV");
+    if (btnCmpVol) {
+      btnCmpVol.addEventListener("click", () => {
+        if (window.STATE && window.STATE.activeView === "compare" && typeof switchView === "function") {
+          switchView("studio");
+        }
+        openCompareVolumeTakeoffInspector();
+        const baseId = (window.STATE && window.STATE.compareBaseScanId) || (window.STATE && window.STATE.activeScanId) || "";
+        const compId = (window.STATE && window.STATE.compareScanId) || baseId;
+        runCompareVolumeTakeoff(baseId, compId);
+      });
+    }
+  });
+
   // Handle URL parameters auto-launching
   if (typeof window !== "undefined" && window.location) {
     try {

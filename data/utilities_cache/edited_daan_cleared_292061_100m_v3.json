@@ -1,0 +1,4432 @@
+{
+  "status": "ok",
+  "scan_id": "edited_daan_cleared_292061",
+  "center": {
+    "e": 304196.208,
+    "n": 2769454.377,
+    "h": 6.801
+  },
+  "ground_reference_h": 6.801,
+  "radius_m": 100.0,
+  "bbox": {
+    "xmin": 304096.208,
+    "ymin": 2769354.377,
+    "xmax": 304296.208,
+    "ymax": 2769554.377
+  },
+  "crs": "TWD97 / TM2 zone 121 + TWVD 2001 height - EPSG:3826+8904",
+  "layers": {
+    "storm": {
+      "id": "storm",
+      "name_zh": "雨水下水道",
+      "name_en": "Storm Sewer",
+      "color": "#06b6d4",
+      "default_depth_m": 2.2,
+      "default_dia_mm": 600,
+      "symbol": "cylindrical_or_box"
+    },
+    "sanitary": {
+      "id": "sanitary",
+      "name_zh": "污水下水道",
+      "name_en": "Sanitary Sewer",
+      "color": "#d97706",
+      "default_depth_m": 2.8,
+      "default_dia_mm": 300,
+      "symbol": "cylindrical"
+    },
+    "water": {
+      "id": "water",
+      "name_zh": "自來水與消防栓",
+      "name_en": "Water Supply & Hydrants",
+      "color": "#3b82f6",
+      "default_depth_m": 1.2,
+      "default_dia_mm": 200,
+      "symbol": "cylindrical"
+    },
+    "electric": {
+      "id": "electric",
+      "name_zh": "電力管線與電桿",
+      "name_en": "Electricity & Poles",
+      "color": "#ef4444",
+      "default_depth_m": 1.5,
+      "default_dia_mm": 150,
+      "symbol": "cylindrical"
+    },
+    "telecom": {
+      "id": "telecom",
+      "name_zh": "電信與光纖管線",
+      "name_en": "Telecom & Fiber",
+      "color": "#10b981",
+      "default_depth_m": 1.2,
+      "default_dia_mm": 100,
+      "symbol": "cylindrical"
+    },
+    "gas": {
+      "id": "gas",
+      "name_zh": "天然瓦斯管線",
+      "name_en": "Natural Gas",
+      "color": "#eab308",
+      "default_depth_m": 1.0,
+      "default_dia_mm": 100,
+      "symbol": "cylindrical"
+    },
+    "ducts": {
+      "id": "ducts",
+      "name_zh": "共同管道與纜線寬頻",
+      "name_en": "Common & Broadband Ducts",
+      "color": "#8b5cf6",
+      "default_depth_m": 2.6,
+      "default_dia_mm": 1000,
+      "symbol": "box"
+    },
+    "streetlights": {
+      "id": "streetlights",
+      "name_zh": "路燈與照明管線",
+      "name_en": "Streetlights",
+      "color": "#f59e0b",
+      "default_depth_m": 0.8,
+      "default_dia_mm": 80,
+      "symbol": "vertical_pole"
+    },
+    "excavations": {
+      "id": "excavations",
+      "name_zh": "即時道路挖掘工程",
+      "name_en": "Active Road Excavations",
+      "color": "#ec4899",
+      "default_depth_m": 1.5,
+      "default_dia_mm": 0,
+      "symbol": "trench_polygon"
+    },
+    "as_built": {
+      "id": "as_built",
+      "name_zh": "管溝開挖竣工實測",
+      "name_en": "Open-Trench As-Built Traced",
+      "color": "#14b8a6",
+      "default_depth_m": 1.8,
+      "default_dia_mm": 200,
+      "symbol": "cylindrical"
+    }
+  },
+  "layer_counts": {
+    "storm": 26,
+    "sanitary": 12,
+    "water": 15,
+    "electric": 7,
+    "telecom": 5,
+    "gas": 4,
+    "ducts": 2,
+    "streetlights": 3,
+    "excavations": 0,
+    "as_built": 1
+  },
+  "total_features": 75,
+  "total_pipe_length_m": 3277.95,
+  "total_structures": 35,
+  "features": [
+    {
+      "id": "osm_elec_pt_2940178811",
+      "layer": "electric",
+      "type": "pole",
+      "name": "號誌電力控制箱 #8811",
+      "coord": [
+        304246.713,
+        2769460.994,
+        5.41
+      ],
+      "rim_h": 6.76,
+      "invert_h": 5.41,
+      "depth_m": 1.35,
+      "diameter_mm": 300,
+      "source": "Taiwan Power & Traffic Signal GIS (OpenStreetMap Taiwan)",
+      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.032283&lon=121.537551&zoom=19",
+      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
+      "osm_url": "https://www.openstreetmap.org/node/2940178811",
+      "osm_label": "OpenStreetMap 設施節點 #2940178811",
+      "portal_url": "https://dig.taipei/",
+      "portal_label": "臺北市道路管線暨資訊中心 (dig.taipei)",
+      "api_url": "https://pipe.nlma.gov.tw/",
+      "api_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+      "gov_links": {
+        "portal_url": "https://dig.taipei/",
+        "portal_label": "臺北市道路管線暨資訊中心 (dig.taipei)",
+        "api_url": "https://pipe.nlma.gov.tw/",
+        "api_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+        "osm_url": "https://www.openstreetmap.org/node/2940178811",
+        "osm_label": "OpenStreetMap 設施節點 #2940178811",
+        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.032283&lon=121.537551&zoom=19",
+        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
+      }
+    },
+    {
+      "id": "osm_elec_pt_2940178812",
+      "layer": "electric",
+      "type": "pole",
+      "name": "號誌電力控制箱 #8812",
+      "coord": [
+        304292.44,
+        2769460.777,
+        5.433
+      ],
+      "rim_h": 6.783,
+      "invert_h": 5.433,
+      "depth_m": 1.35,
+      "diameter_mm": 300,
+      "source": "Taiwan Power & Traffic Signal GIS (OpenStreetMap Taiwan)",
+      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.032280&lon=121.538004&zoom=19",
+      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
+      "osm_url": "https://www.openstreetmap.org/node/2940178812",
+      "osm_label": "OpenStreetMap 設施節點 #2940178812",
+      "portal_url": "https://dig.taipei/",
+      "portal_label": "臺北市道路管線暨資訊中心 (dig.taipei)",
+      "api_url": "https://pipe.nlma.gov.tw/",
+      "api_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+      "gov_links": {
+        "portal_url": "https://dig.taipei/",
+        "portal_label": "臺北市道路管線暨資訊中心 (dig.taipei)",
+        "api_url": "https://pipe.nlma.gov.tw/",
+        "api_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+        "osm_url": "https://www.openstreetmap.org/node/2940178812",
+        "osm_label": "OpenStreetMap 設施節點 #2940178812",
+        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.032280&lon=121.538004&zoom=19",
+        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
+      }
+    },
+    {
+      "id": "osm_hydrant_6336421802",
+      "layer": "water",
+      "type": "hydrant",
+      "name": "地下式消防栓 #4243",
+      "facility_no": "4243",
+      "structure_type": "地下式消防栓",
+      "coord": [
+        304255.347,
+        2769452.089,
+        5.571
+      ],
+      "rim_h": 6.771,
+      "invert_h": 5.571,
+      "depth_m": 1.2,
+      "diameter_mm": 150,
+      "source": "Taiwan Water Supply GIS (臺北自來水事業處)",
+      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.032203&lon=121.537636&zoom=19",
+      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
+      "osm_url": "https://www.openstreetmap.org/node/6336421802",
+      "osm_label": "OpenStreetMap 設施節點 #6336421802",
+      "portal_url": "https://www.water.gov.taipei/",
+      "portal_label": "臺北自來水事業處 地理資訊圖台",
+      "api_url": "https://pipe.nlma.gov.tw/",
+      "api_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+      "gov_links": {
+        "portal_url": "https://www.water.gov.taipei/",
+        "portal_label": "臺北自來水事業處 地理資訊圖台",
+        "api_url": "https://pipe.nlma.gov.tw/",
+        "api_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+        "osm_url": "https://www.openstreetmap.org/node/6336421802",
+        "osm_label": "OpenStreetMap 設施節點 #6336421802",
+        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.032203&lon=121.537636&zoom=19",
+        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
+      }
+    },
+    {
+      "id": "osm_hydrant_6336444498",
+      "layer": "water",
+      "type": "hydrant",
+      "name": "地下式消防栓 #4243",
+      "facility_no": "4243",
+      "structure_type": "地下式消防栓",
+      "coord": [
+        304306.045,
+        2769480.791,
+        5.579
+      ],
+      "rim_h": 6.779,
+      "invert_h": 5.579,
+      "depth_m": 1.2,
+      "diameter_mm": 150,
+      "source": "Taiwan Water Supply GIS (臺北自來水事業處)",
+      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.032460&lon=121.538140&zoom=19",
+      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
+      "osm_url": "https://www.openstreetmap.org/node/6336444498",
+      "osm_label": "OpenStreetMap 設施節點 #6336444498",
+      "portal_url": "https://www.water.gov.taipei/",
+      "portal_label": "臺北自來水事業處 地理資訊圖台",
+      "api_url": "https://pipe.nlma.gov.tw/",
+      "api_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+      "gov_links": {
+        "portal_url": "https://www.water.gov.taipei/",
+        "portal_label": "臺北自來水事業處 地理資訊圖台",
+        "api_url": "https://pipe.nlma.gov.tw/",
+        "api_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+        "osm_url": "https://www.openstreetmap.org/node/6336444498",
+        "osm_label": "OpenStreetMap 設施節點 #6336444498",
+        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.032460&lon=121.538140&zoom=19",
+        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
+      }
+    },
+    {
+      "id": "osm_hydrant_6336466562",
+      "layer": "water",
+      "type": "hydrant",
+      "name": "地下式消防栓 #4243",
+      "facility_no": "4243",
+      "structure_type": "地下式消防栓",
+      "coord": [
+        304308.826,
+        2769525.098,
+        5.572
+      ],
+      "rim_h": 6.772,
+      "invert_h": 5.572,
+      "depth_m": 1.2,
+      "diameter_mm": 150,
+      "source": "Taiwan Water Supply GIS (臺北自來水事業處)",
+      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.032860&lon=121.538169&zoom=19",
+      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
+      "osm_url": "https://www.openstreetmap.org/node/6336466562",
+      "osm_label": "OpenStreetMap 設施節點 #6336466562",
+      "portal_url": "https://www.water.gov.taipei/",
+      "portal_label": "臺北自來水事業處 地理資訊圖台",
+      "api_url": "https://pipe.nlma.gov.tw/",
+      "api_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+      "gov_links": {
+        "portal_url": "https://www.water.gov.taipei/",
+        "portal_label": "臺北自來水事業處 地理資訊圖台",
+        "api_url": "https://pipe.nlma.gov.tw/",
+        "api_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+        "osm_url": "https://www.openstreetmap.org/node/6336466562",
+        "osm_label": "OpenStreetMap 設施節點 #6336466562",
+        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.032860&lon=121.538169&zoom=19",
+        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
+      }
+    },
+    {
+      "id": "osm_hydrant_6336469996",
+      "layer": "water",
+      "type": "hydrant",
+      "name": "地上式消防栓 #4243",
+      "facility_no": "4243",
+      "structure_type": "地上式消防栓",
+      "coord": [
+        304240.329,
+        2769561.634,
+        5.556
+      ],
+      "rim_h": 6.756,
+      "invert_h": 5.556,
+      "depth_m": 1.2,
+      "diameter_mm": 150,
+      "source": "Taiwan Water Supply GIS (臺北自來水事業處)",
+      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.033192&lon=121.537492&zoom=19",
+      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
+      "osm_url": "https://www.openstreetmap.org/node/6336469996",
+      "osm_label": "OpenStreetMap 設施節點 #6336469996",
+      "portal_url": "https://www.water.gov.taipei/",
+      "portal_label": "臺北自來水事業處 地理資訊圖台",
+      "api_url": "https://pipe.nlma.gov.tw/",
+      "api_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+      "gov_links": {
+        "portal_url": "https://www.water.gov.taipei/",
+        "portal_label": "臺北自來水事業處 地理資訊圖台",
+        "api_url": "https://pipe.nlma.gov.tw/",
+        "api_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+        "osm_url": "https://www.openstreetmap.org/node/6336469996",
+        "osm_label": "OpenStreetMap 設施節點 #6336469996",
+        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.033192&lon=121.537492&zoom=19",
+        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
+      }
+    },
+    {
+      "id": "osm_hydrant_6336475950",
+      "layer": "water",
+      "type": "hydrant",
+      "name": "地上式消防栓 #4243",
+      "facility_no": "4243",
+      "structure_type": "地上式消防栓",
+      "coord": [
+        304302.297,
+        2769446.327,
+        5.594
+      ],
+      "rim_h": 6.794,
+      "invert_h": 5.594,
+      "depth_m": 1.2,
+      "diameter_mm": 150,
+      "source": "Taiwan Water Supply GIS (臺北自來水事業處)",
+      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.032149&lon=121.538101&zoom=19",
+      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
+      "osm_url": "https://www.openstreetmap.org/node/6336475950",
+      "osm_label": "OpenStreetMap 設施節點 #6336475950",
+      "portal_url": "https://www.water.gov.taipei/",
+      "portal_label": "臺北自來水事業處 地理資訊圖台",
+      "api_url": "https://pipe.nlma.gov.tw/",
+      "api_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+      "gov_links": {
+        "portal_url": "https://www.water.gov.taipei/",
+        "portal_label": "臺北自來水事業處 地理資訊圖台",
+        "api_url": "https://pipe.nlma.gov.tw/",
+        "api_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+        "osm_url": "https://www.openstreetmap.org/node/6336475950",
+        "osm_label": "OpenStreetMap 設施節點 #6336475950",
+        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.032149&lon=121.538101&zoom=19",
+        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
+      }
+    },
+    {
+      "id": "osm_hydrant_6336477308",
+      "layer": "water",
+      "type": "hydrant",
+      "name": "地下式消防栓 #4243",
+      "facility_no": "4243",
+      "structure_type": "地下式消防栓",
+      "coord": [
+        304224.971,
+        2769579.041,
+        5.559
+      ],
+      "rim_h": 6.759,
+      "invert_h": 5.559,
+      "depth_m": 1.2,
+      "diameter_mm": 150,
+      "source": "Taiwan Water Supply GIS (臺北自來水事業處)",
+      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.033350&lon=121.537340&zoom=19",
+      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
+      "osm_url": "https://www.openstreetmap.org/node/6336477308",
+      "osm_label": "OpenStreetMap 設施節點 #6336477308",
+      "portal_url": "https://www.water.gov.taipei/",
+      "portal_label": "臺北自來水事業處 地理資訊圖台",
+      "api_url": "https://pipe.nlma.gov.tw/",
+      "api_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+      "gov_links": {
+        "portal_url": "https://www.water.gov.taipei/",
+        "portal_label": "臺北自來水事業處 地理資訊圖台",
+        "api_url": "https://pipe.nlma.gov.tw/",
+        "api_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+        "osm_url": "https://www.openstreetmap.org/node/6336477308",
+        "osm_label": "OpenStreetMap 設施節點 #6336477308",
+        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.033350&lon=121.537340&zoom=19",
+        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
+      }
+    },
+    {
+      "id": "osm_hydrant_6336491561",
+      "layer": "water",
+      "type": "hydrant",
+      "name": "地下式消防栓 #4243",
+      "facility_no": "4243",
+      "structure_type": "地下式消防栓",
+      "coord": [
+        304106.201,
+        2769579.234,
+        5.571
+      ],
+      "rim_h": 6.771,
+      "invert_h": 5.571,
+      "depth_m": 1.2,
+      "diameter_mm": 150,
+      "source": "Taiwan Water Supply GIS (臺北自來水事業處)",
+      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.033356&lon=121.536163&zoom=19",
+      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
+      "osm_url": "https://www.openstreetmap.org/node/6336491561",
+      "osm_label": "OpenStreetMap 設施節點 #6336491561",
+      "portal_url": "https://www.water.gov.taipei/",
+      "portal_label": "臺北自來水事業處 地理資訊圖台",
+      "api_url": "https://pipe.nlma.gov.tw/",
+      "api_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+      "gov_links": {
+        "portal_url": "https://www.water.gov.taipei/",
+        "portal_label": "臺北自來水事業處 地理資訊圖台",
+        "api_url": "https://pipe.nlma.gov.tw/",
+        "api_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+        "osm_url": "https://www.openstreetmap.org/node/6336491561",
+        "osm_label": "OpenStreetMap 設施節點 #6336491561",
+        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.033356&lon=121.536163&zoom=19",
+        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
+      }
+    },
+    {
+      "id": "osm_hydrant_6336744656",
+      "layer": "water",
+      "type": "hydrant",
+      "name": "地上式消防栓 #4243",
+      "facility_no": "4243",
+      "structure_type": "地上式消防栓",
+      "coord": [
+        304238.736,
+        2769398.711,
+        5.751
+      ],
+      "rim_h": 6.951,
+      "invert_h": 5.751,
+      "depth_m": 1.2,
+      "diameter_mm": 150,
+      "source": "Taiwan Water Supply GIS (臺北自來水事業處)",
+      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.031721&lon=121.537469&zoom=19",
+      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
+      "osm_url": "https://www.openstreetmap.org/node/6336744656",
+      "osm_label": "OpenStreetMap 設施節點 #6336744656",
+      "portal_url": "https://www.water.gov.taipei/",
+      "portal_label": "臺北自來水事業處 地理資訊圖台",
+      "api_url": "https://pipe.nlma.gov.tw/",
+      "api_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+      "gov_links": {
+        "portal_url": "https://www.water.gov.taipei/",
+        "portal_label": "臺北自來水事業處 地理資訊圖台",
+        "api_url": "https://pipe.nlma.gov.tw/",
+        "api_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+        "osm_url": "https://www.openstreetmap.org/node/6336744656",
+        "osm_label": "OpenStreetMap 設施節點 #6336744656",
+        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.031721&lon=121.537469&zoom=19",
+        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
+      }
+    },
+    {
+      "id": "osm_hydrant_6336746892",
+      "layer": "water",
+      "type": "hydrant",
+      "name": "地上式消防栓 #4243",
+      "facility_no": "4243",
+      "structure_type": "地上式消防栓",
+      "coord": [
+        304239.544,
+        2769479.873,
+        5.579
+      ],
+      "rim_h": 6.779,
+      "invert_h": 5.579,
+      "depth_m": 1.2,
+      "diameter_mm": 150,
+      "source": "Taiwan Water Supply GIS (臺北自來水事業處)",
+      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.032454&lon=121.537481&zoom=19",
+      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
+      "osm_url": "https://www.openstreetmap.org/node/6336746892",
+      "osm_label": "OpenStreetMap 設施節點 #6336746892",
+      "portal_url": "https://www.water.gov.taipei/",
+      "portal_label": "臺北自來水事業處 地理資訊圖台",
+      "api_url": "https://pipe.nlma.gov.tw/",
+      "api_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+      "gov_links": {
+        "portal_url": "https://www.water.gov.taipei/",
+        "portal_label": "臺北自來水事業處 地理資訊圖台",
+        "api_url": "https://pipe.nlma.gov.tw/",
+        "api_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+        "osm_url": "https://www.openstreetmap.org/node/6336746892",
+        "osm_label": "OpenStreetMap 設施節點 #6336746892",
+        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.032454&lon=121.537481&zoom=19",
+        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
+      }
+    },
+    {
+      "id": "osm_hydrant_6336750731",
+      "layer": "water",
+      "type": "hydrant",
+      "name": "地下式消防栓 #4243",
+      "facility_no": "4243",
+      "structure_type": "地下式消防栓",
+      "coord": [
+        304301.266,
+        2769362.86,
+        5.64
+      ],
+      "rim_h": 6.84,
+      "invert_h": 5.64,
+      "depth_m": 1.2,
+      "diameter_mm": 150,
+      "source": "Taiwan Water Supply GIS (臺北自來水事業處)",
+      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.031395&lon=121.538088&zoom=19",
+      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
+      "osm_url": "https://www.openstreetmap.org/node/6336750731",
+      "osm_label": "OpenStreetMap 設施節點 #6336750731",
+      "portal_url": "https://www.water.gov.taipei/",
+      "portal_label": "臺北自來水事業處 地理資訊圖台",
+      "api_url": "https://pipe.nlma.gov.tw/",
+      "api_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+      "gov_links": {
+        "portal_url": "https://www.water.gov.taipei/",
+        "portal_label": "臺北自來水事業處 地理資訊圖台",
+        "api_url": "https://pipe.nlma.gov.tw/",
+        "api_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+        "osm_url": "https://www.openstreetmap.org/node/6336750731",
+        "osm_label": "OpenStreetMap 設施節點 #6336750731",
+        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.031395&lon=121.538088&zoom=19",
+        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
+      }
+    },
+    {
+      "id": "road_storm_317347667",
+      "layer": "storm",
+      "type": "pipe",
+      "name": "建國南路二段 雨水幹管 D=800mm",
+      "diameter_mm": 800,
+      "width_m": 0.8,
+      "height_m": 0.8,
+      "length_m": 114.16,
+      "material": "RCP/鋼筋混凝土管",
+      "start_coord": [
+        304294.24,
+        2769460.76,
+        4.634
+      ],
+      "end_coord": [
+        304295.109,
+        2769574.915,
+        4.419
+      ],
+      "start_ground_h": 6.784,
+      "end_ground_h": 6.769,
+      "start_rim_h": 6.784,
+      "end_rim_h": 6.769,
+      "start_invert_h": 4.634,
+      "end_invert_h": 4.419,
+      "start_crown_h": 5.434,
+      "end_crown_h": 5.219,
+      "start_depth_m": 2.15,
+      "end_depth_m": 2.35,
+      "start_cover_m": 1.35,
+      "end_cover_m": 1.55,
+      "depth_m": 2.25,
+      "slope_pct": 0.188,
+      "flow_direction": 1,
+      "coords": [
+        [
+          304294.24,
+          2769460.76,
+          4.634
+        ],
+        [
+          304294.339,
+          2769471.372,
+          4.578
+        ],
+        [
+          304294.422,
+          2769480.899,
+          4.525
+        ],
+        [
+          304294.814,
+          2769524.537,
+          4.468
+        ],
+        [
+          304295.109,
+          2769574.915,
+          4.419
+        ]
+      ],
+      "source": "Taipei / Taiwan Municipal Roadway Utility GIS",
+      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.032461&lon=121.538024&zoom=19",
+      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
+      "osm_url": "https://www.openstreetmap.org/way/317347667",
+      "osm_label": "OpenStreetMap 圖資廊道 #317347667",
+      "portal_url": "https://dig.taipei/",
+      "portal_label": "臺北市道路管線暨資訊中心 (dig.taipei)",
+      "api_url": "https://pipe.nlma.gov.tw/",
+      "api_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+      "gov_links": {
+        "portal_url": "https://dig.taipei/",
+        "portal_label": "臺北市道路管線暨資訊中心 (dig.taipei)",
+        "api_url": "https://pipe.nlma.gov.tw/",
+        "api_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+        "osm_url": "https://www.openstreetmap.org/way/317347667",
+        "osm_label": "OpenStreetMap 圖資廊道 #317347667",
+        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.032461&lon=121.538024&zoom=19",
+        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
+      }
+    },
+    {
+      "id": "road_storm_mh_317347667_UP",
+      "layer": "storm",
+      "type": "manhole",
+      "name": "建國南路二段 雨水人孔 MH-7667-UP",
+      "facility_no": "SMH-7667-UP",
+      "structure_type": "圓形雨水人孔",
+      "coord": [
+        304294.24,
+        2769460.76,
+        4.634
+      ],
+      "rim_h": 6.784,
+      "invert_h": 4.634,
+      "depth_m": 2.15,
+      "diameter_mm": 750,
+      "road_name": "建國南路二段",
+      "source": "Taipei / Taiwan Municipal Roadway Utility GIS",
+      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.032279&lon=121.538022&zoom=19",
+      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
+      "osm_url": "https://www.openstreetmap.org/?mlat=25.032279&mlon=121.538022#map=19/25.032279/121.538022",
+      "osm_label": "OpenStreetMap 座標圖台",
+      "portal_url": "https://dig.taipei/",
+      "portal_label": "臺北市道路管線暨資訊中心 (dig.taipei)",
+      "api_url": "https://pipe.nlma.gov.tw/",
+      "api_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+      "gov_links": {
+        "portal_url": "https://dig.taipei/",
+        "portal_label": "臺北市道路管線暨資訊中心 (dig.taipei)",
+        "api_url": "https://pipe.nlma.gov.tw/",
+        "api_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+        "osm_url": "https://www.openstreetmap.org/?mlat=25.032279&mlon=121.538022#map=19/25.032279/121.538022",
+        "osm_label": "OpenStreetMap 座標圖台",
+        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.032279&lon=121.538022&zoom=19",
+        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
+      }
+    },
+    {
+      "id": "road_storm_mh_317347667_DN",
+      "layer": "storm",
+      "type": "manhole",
+      "name": "建國南路二段 雨水人孔 MH-7667-DN",
+      "facility_no": "SMH-7667-DN",
+      "structure_type": "圓形雨水人孔",
+      "coord": [
+        304295.109,
+        2769574.915,
+        4.419
+      ],
+      "rim_h": 6.769,
+      "invert_h": 4.419,
+      "depth_m": 2.35,
+      "diameter_mm": 750,
+      "road_name": "建國南路二段",
+      "source": "Taipei / Taiwan Municipal Roadway Utility GIS",
+      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.033310&lon=121.538035&zoom=19",
+      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
+      "osm_url": "https://www.openstreetmap.org/?mlat=25.033310&mlon=121.538035#map=19/25.033310/121.538035",
+      "osm_label": "OpenStreetMap 座標圖台",
+      "portal_url": "https://dig.taipei/",
+      "portal_label": "臺北市道路管線暨資訊中心 (dig.taipei)",
+      "api_url": "https://pipe.nlma.gov.tw/",
+      "api_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+      "gov_links": {
+        "portal_url": "https://dig.taipei/",
+        "portal_label": "臺北市道路管線暨資訊中心 (dig.taipei)",
+        "api_url": "https://pipe.nlma.gov.tw/",
+        "api_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+        "osm_url": "https://www.openstreetmap.org/?mlat=25.033310&mlon=121.538035#map=19/25.033310/121.538035",
+        "osm_label": "OpenStreetMap 座標圖台",
+        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.033310&lon=121.538035&zoom=19",
+        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
+      }
+    },
+    {
+      "id": "road_sanitary_317347667",
+      "layer": "sanitary",
+      "type": "pipe",
+      "name": "建國南路二段 污水管線 D=400mm",
+      "diameter_mm": 400,
+      "width_m": 0.4,
+      "height_m": 0.4,
+      "length_m": 114.15,
+      "material": "DIP/延性鑄鐵管",
+      "start_coord": [
+        304290.84,
+        2769460.792,
+        4.032
+      ],
+      "end_coord": [
+        304291.709,
+        2769574.935,
+        3.819
+      ],
+      "start_ground_h": 6.782,
+      "end_ground_h": 6.769,
+      "start_rim_h": 6.782,
+      "end_rim_h": 6.769,
+      "start_invert_h": 4.032,
+      "end_invert_h": 3.819,
+      "start_crown_h": 4.432,
+      "end_crown_h": 4.219,
+      "start_depth_m": 2.75,
+      "end_depth_m": 2.95,
+      "start_cover_m": 2.35,
+      "end_cover_m": 2.55,
+      "depth_m": 2.85,
+      "slope_pct": 0.187,
+      "flow_direction": 1,
+      "coords": [
+        [
+          304290.84,
+          2769460.792,
+          4.032
+        ],
+        [
+          304290.939,
+          2769471.402,
+          3.977
+        ],
+        [
+          304291.022,
+          2769480.929,
+          3.923
+        ],
+        [
+          304291.414,
+          2769524.557,
+          3.867
+        ],
+        [
+          304291.709,
+          2769574.935,
+          3.819
+        ]
+      ],
+      "source": "Taipei / Taiwan Sanitary Sewer Corridor GIS",
+      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.032462&lon=121.537991&zoom=19",
+      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
+      "osm_url": "https://www.openstreetmap.org/way/317347667",
+      "osm_label": "OpenStreetMap 圖資廊道 #317347667",
+      "portal_url": "https://dig.taipei/",
+      "portal_label": "臺北市道路管線暨資訊中心 (dig.taipei)",
+      "api_url": "https://pipe.nlma.gov.tw/",
+      "api_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+      "gov_links": {
+        "portal_url": "https://dig.taipei/",
+        "portal_label": "臺北市道路管線暨資訊中心 (dig.taipei)",
+        "api_url": "https://pipe.nlma.gov.tw/",
+        "api_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+        "osm_url": "https://www.openstreetmap.org/way/317347667",
+        "osm_label": "OpenStreetMap 圖資廊道 #317347667",
+        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.032462&lon=121.537991&zoom=19",
+        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
+      }
+    },
+    {
+      "id": "road_sanitary_mh_317347667",
+      "layer": "sanitary",
+      "type": "manhole",
+      "name": "建國南路二段 污水人孔 WMH-7667",
+      "facility_no": "WMH-7667",
+      "structure_type": "圓形污水人孔",
+      "coord": [
+        304290.84,
+        2769460.792,
+        4.032
+      ],
+      "rim_h": 6.782,
+      "invert_h": 4.032,
+      "depth_m": 2.75,
+      "diameter_mm": 600,
+      "road_name": "建國南路二段",
+      "source": "Taipei / Taiwan Sanitary Sewer Corridor GIS",
+      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.032280&lon=121.537988&zoom=19",
+      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
+      "osm_url": "https://www.openstreetmap.org/?mlat=25.032280&mlon=121.537988#map=19/25.032280/121.537988",
+      "osm_label": "OpenStreetMap 座標圖台",
+      "portal_url": "https://dig.taipei/",
+      "portal_label": "臺北市道路管線暨資訊中心 (dig.taipei)",
+      "api_url": "https://pipe.nlma.gov.tw/",
+      "api_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+      "gov_links": {
+        "portal_url": "https://dig.taipei/",
+        "portal_label": "臺北市道路管線暨資訊中心 (dig.taipei)",
+        "api_url": "https://pipe.nlma.gov.tw/",
+        "api_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+        "osm_url": "https://www.openstreetmap.org/?mlat=25.032280&mlon=121.537988#map=19/25.032280/121.537988",
+        "osm_label": "OpenStreetMap 座標圖台",
+        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.032280&lon=121.537988&zoom=19",
+        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
+      }
+    },
+    {
+      "id": "road_water_317347667",
+      "layer": "water",
+      "type": "pipe",
+      "name": "建國南路二段 自來水配水管 D=250mm",
+      "diameter_mm": 250,
+      "width_m": 0.25,
+      "height_m": 0.25,
+      "length_m": 114.16,
+      "material": "DIP/自來水延性鑄鐵管",
+      "start_coord": [
+        304293.34,
+        2769460.769,
+        5.533
+      ],
+      "end_coord": [
+        304294.209,
+        2769574.921,
+        5.469
+      ],
+      "start_ground_h": 6.783,
+      "end_ground_h": 6.769,
+      "start_rim_h": 6.783,
+      "end_rim_h": 6.769,
+      "start_invert_h": 5.533,
+      "end_invert_h": 5.469,
+      "start_crown_h": 5.783,
+      "end_crown_h": 5.719,
+      "start_depth_m": 1.25,
+      "end_depth_m": 1.3,
+      "start_cover_m": 1.0,
+      "end_cover_m": 1.05,
+      "depth_m": 1.27,
+      "slope_pct": 0.056,
+      "flow_direction": 1,
+      "coords": [
+        [
+          304293.34,
+          2769460.769,
+          5.533
+        ],
+        [
+          304293.439,
+          2769471.38,
+          5.515
+        ],
+        [
+          304293.522,
+          2769480.907,
+          5.499
+        ],
+        [
+          304293.914,
+          2769524.543,
+          5.479
+        ],
+        [
+          304294.209,
+          2769574.921,
+          5.469
+        ]
+      ],
+      "source": "Taipei Water Department Corridor GIS (臺北自來水事業處)",
+      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.032461&lon=121.538016&zoom=19",
+      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
+      "osm_url": "https://www.openstreetmap.org/way/317347667",
+      "osm_label": "OpenStreetMap 圖資廊道 #317347667",
+      "portal_url": "https://www.water.gov.taipei/",
+      "portal_label": "臺北自來水事業處 地理資訊圖台",
+      "api_url": "https://pipe.nlma.gov.tw/",
+      "api_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+      "gov_links": {
+        "portal_url": "https://www.water.gov.taipei/",
+        "portal_label": "臺北自來水事業處 地理資訊圖台",
+        "api_url": "https://pipe.nlma.gov.tw/",
+        "api_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+        "osm_url": "https://www.openstreetmap.org/way/317347667",
+        "osm_label": "OpenStreetMap 圖資廊道 #317347667",
+        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.032461&lon=121.538016&zoom=19",
+        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
+      }
+    },
+    {
+      "id": "road_electric_317347667",
+      "layer": "electric",
+      "type": "pipe",
+      "name": "建國南路二段 台電配電管線 D=150mm",
+      "diameter_mm": 150,
+      "width_m": 0.15,
+      "height_m": 0.15,
+      "length_m": 114.15,
+      "material": "PVC/台電地下配電管",
+      "start_coord": [
+        304291.54,
+        2769460.785,
+        5.333
+      ],
+      "end_coord": [
+        304292.409,
+        2769574.931,
+        5.269
+      ],
+      "start_ground_h": 6.783,
+      "end_ground_h": 6.769,
+      "start_rim_h": 6.783,
+      "end_rim_h": 6.769,
+      "start_invert_h": 5.333,
+      "end_invert_h": 5.269,
+      "start_crown_h": 5.483,
+      "end_crown_h": 5.419,
+      "start_depth_m": 1.45,
+      "end_depth_m": 1.5,
+      "start_cover_m": 1.3,
+      "end_cover_m": 1.35,
+      "depth_m": 1.48,
+      "slope_pct": 0.056,
+      "flow_direction": 1,
+      "coords": [
+        [
+          304291.54,
+          2769460.785,
+          5.333
+        ],
+        [
+          304291.639,
+          2769471.396,
+          5.315
+        ],
+        [
+          304291.722,
+          2769480.923,
+          5.299
+        ],
+        [
+          304292.114,
+          2769524.553,
+          5.28
+        ],
+        [
+          304292.409,
+          2769574.931,
+          5.269
+        ]
+      ],
+      "source": "Taipower Underground Distribution Corridor GIS",
+      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.032462&lon=121.537998&zoom=19",
+      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
+      "osm_url": "https://www.openstreetmap.org/way/317347667",
+      "osm_label": "OpenStreetMap 圖資廊道 #317347667",
+      "portal_url": "https://dig.taipei/",
+      "portal_label": "臺北市道路管線暨資訊中心 (dig.taipei)",
+      "api_url": "https://pipe.nlma.gov.tw/",
+      "api_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+      "gov_links": {
+        "portal_url": "https://dig.taipei/",
+        "portal_label": "臺北市道路管線暨資訊中心 (dig.taipei)",
+        "api_url": "https://pipe.nlma.gov.tw/",
+        "api_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+        "osm_url": "https://www.openstreetmap.org/way/317347667",
+        "osm_label": "OpenStreetMap 圖資廊道 #317347667",
+        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.032462&lon=121.537998&zoom=19",
+        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
+      }
+    },
+    {
+      "id": "road_telecom_317347667",
+      "layer": "telecom",
+      "type": "pipe",
+      "name": "建國南路二段 中華電信光纖管線 D=100mm",
+      "diameter_mm": 100,
+      "width_m": 0.1,
+      "height_m": 0.1,
+      "length_m": 114.14,
+      "material": "HDPE/中華電信光纖管",
+      "start_coord": [
+        304290.24,
+        2769460.798,
+        5.632
+      ],
+      "end_coord": [
+        304291.109,
+        2769574.939,
+        5.569
+      ],
+      "start_ground_h": 6.782,
+      "end_ground_h": 6.769,
+      "start_rim_h": 6.782,
+      "end_rim_h": 6.769,
+      "start_invert_h": 5.632,
+      "end_invert_h": 5.569,
+      "start_crown_h": 5.732,
+      "end_crown_h": 5.669,
+      "start_depth_m": 1.15,
+      "end_depth_m": 1.2,
+      "start_cover_m": 1.05,
+      "end_cover_m": 1.1,
+      "depth_m": 1.17,
+      "slope_pct": 0.055,
+      "flow_direction": 1,
+      "coords": [
+        [
+          304290.24,
+          2769460.798,
+          5.632
+        ],
+        [
+          304290.339,
+          2769471.407,
+          5.615
+        ],
+        [
+          304290.422,
+          2769480.935,
+          5.598
+        ],
+        [
+          304290.814,
+          2769524.561,
+          5.579
+        ],
+        [
+          304291.109,
+          2769574.939,
+          5.569
+        ]
+      ],
+      "source": "Telecom & Broadband Fiber Corridor GIS",
+      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.032462&lon=121.537985&zoom=19",
+      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
+      "osm_url": "https://www.openstreetmap.org/way/317347667",
+      "osm_label": "OpenStreetMap 圖資廊道 #317347667",
+      "portal_url": "https://dig.taipei/",
+      "portal_label": "臺北市道路管線暨資訊中心 (dig.taipei)",
+      "api_url": "https://pipe.nlma.gov.tw/",
+      "api_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+      "gov_links": {
+        "portal_url": "https://dig.taipei/",
+        "portal_label": "臺北市道路管線暨資訊中心 (dig.taipei)",
+        "api_url": "https://pipe.nlma.gov.tw/",
+        "api_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+        "osm_url": "https://www.openstreetmap.org/way/317347667",
+        "osm_label": "OpenStreetMap 圖資廊道 #317347667",
+        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.032462&lon=121.537985&zoom=19",
+        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
+      }
+    },
+    {
+      "id": "road_gas_317347667",
+      "layer": "gas",
+      "type": "pipe",
+      "name": "建國南路二段 天然瓦斯低壓管 D=100mm",
+      "diameter_mm": 100,
+      "width_m": 0.1,
+      "height_m": 0.1,
+      "length_m": 114.16,
+      "material": "PE/天然氣聚乙烯管",
+      "start_coord": [
+        304294.84,
+        2769460.755,
+        5.784
+      ],
+      "end_coord": [
+        304295.709,
+        2769574.912,
+        5.719
+      ],
+      "start_ground_h": 6.784,
+      "end_ground_h": 6.769,
+      "start_rim_h": 6.784,
+      "end_rim_h": 6.769,
+      "start_invert_h": 5.784,
+      "end_invert_h": 5.719,
+      "start_crown_h": 5.884,
+      "end_crown_h": 5.819,
+      "start_depth_m": 1.0,
+      "end_depth_m": 1.05,
+      "start_cover_m": 0.9,
+      "end_cover_m": 0.95,
+      "depth_m": 1.02,
+      "slope_pct": 0.057,
+      "flow_direction": 1,
+      "coords": [
+        [
+          304294.84,
+          2769460.755,
+          5.784
+        ],
+        [
+          304294.939,
+          2769471.367,
+          5.765
+        ],
+        [
+          304295.022,
+          2769480.893,
+          5.75
+        ],
+        [
+          304295.414,
+          2769524.534,
+          5.73
+        ],
+        [
+          304295.709,
+          2769574.912,
+          5.719
+        ]
+      ],
+      "source": "Municipal Natural Gas Utility Corridor GIS",
+      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.032461&lon=121.538030&zoom=19",
+      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
+      "osm_url": "https://www.openstreetmap.org/way/317347667",
+      "osm_label": "OpenStreetMap 圖資廊道 #317347667",
+      "portal_url": "https://dig.taipei/",
+      "portal_label": "臺北市道路管線暨資訊中心 (dig.taipei)",
+      "api_url": "https://pipe.nlma.gov.tw/",
+      "api_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+      "gov_links": {
+        "portal_url": "https://dig.taipei/",
+        "portal_label": "臺北市道路管線暨資訊中心 (dig.taipei)",
+        "api_url": "https://pipe.nlma.gov.tw/",
+        "api_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+        "osm_url": "https://www.openstreetmap.org/way/317347667",
+        "osm_label": "OpenStreetMap 圖資廊道 #317347667",
+        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.032461&lon=121.538030&zoom=19",
+        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
+      }
+    },
+    {
+      "id": "road_duct_317347667",
+      "layer": "ducts",
+      "type": "box_culvert",
+      "name": "建國南路二段 纜線共同管溝 0.8x0.8m",
+      "diameter_mm": 800,
+      "width_m": 0.8,
+      "height_m": 0.8,
+      "length_m": 114.15,
+      "material": "RC/共同管道箱涵",
+      "start_coord": [
+        304292.44,
+        2769460.777,
+        4.483
+      ],
+      "end_coord": [
+        304293.309,
+        2769574.926,
+        4.369
+      ],
+      "start_ground_h": 6.783,
+      "end_ground_h": 6.769,
+      "start_rim_h": 6.783,
+      "end_rim_h": 6.769,
+      "start_invert_h": 4.483,
+      "end_invert_h": 4.369,
+      "start_crown_h": 5.283,
+      "end_crown_h": 5.169,
+      "start_depth_m": 2.3,
+      "end_depth_m": 2.4,
+      "start_cover_m": 1.5,
+      "end_cover_m": 1.6,
+      "depth_m": 2.35,
+      "slope_pct": 0.1,
+      "flow_direction": 1,
+      "coords": [
+        [
+          304292.44,
+          2769460.777,
+          4.483
+        ],
+        [
+          304292.539,
+          2769471.388,
+          4.453
+        ],
+        [
+          304292.622,
+          2769480.915,
+          4.424
+        ],
+        [
+          304293.014,
+          2769524.548,
+          4.392
+        ],
+        [
+          304293.309,
+          2769574.926,
+          4.369
+        ]
+      ],
+      "source": "Municipal Broadband & Common Utility Duct GIS",
+      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.032461&lon=121.538007&zoom=19",
+      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
+      "osm_url": "https://www.openstreetmap.org/way/317347667",
+      "osm_label": "OpenStreetMap 圖資廊道 #317347667",
+      "portal_url": "https://dig.taipei/",
+      "portal_label": "臺北市道路管線暨資訊中心 (dig.taipei)",
+      "api_url": "https://pipe.nlma.gov.tw/",
+      "api_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+      "gov_links": {
+        "portal_url": "https://dig.taipei/",
+        "portal_label": "臺北市道路管線暨資訊中心 (dig.taipei)",
+        "api_url": "https://pipe.nlma.gov.tw/",
+        "api_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+        "osm_url": "https://www.openstreetmap.org/way/317347667",
+        "osm_label": "OpenStreetMap 圖資廊道 #317347667",
+        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.032461&lon=121.538007&zoom=19",
+        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
+      }
+    },
+    {
+      "id": "road_streetlight_317347667",
+      "layer": "streetlights",
+      "type": "pipe",
+      "name": "建國南路二段 路燈照明管線 D=80mm",
+      "diameter_mm": 80,
+      "width_m": 0.08,
+      "height_m": 0.08,
+      "length_m": 114.14,
+      "material": "PVC/路燈專用管",
+      "start_coord": [
+        304289.84,
+        2769460.801,
+        5.982
+      ],
+      "end_coord": [
+        304290.709,
+        2769574.941,
+        5.948
+      ],
+      "start_ground_h": 6.782,
+      "end_ground_h": 6.768,
+      "start_rim_h": 6.782,
+      "end_rim_h": 6.768,
+      "start_invert_h": 5.982,
+      "end_invert_h": 5.948,
+      "start_crown_h": 6.062,
+      "end_crown_h": 6.028,
+      "start_depth_m": 0.8,
+      "end_depth_m": 0.82,
+      "start_cover_m": 0.72,
+      "end_cover_m": 0.74,
+      "depth_m": 0.81,
+      "slope_pct": 0.03,
+      "flow_direction": 1,
+      "coords": [
+        [
+          304289.84,
+          2769460.801,
+          5.982
+        ],
+        [
+          304289.939,
+          2769471.411,
+          5.972
+        ],
+        [
+          304290.022,
+          2769480.938,
+          5.963
+        ],
+        [
+          304290.414,
+          2769524.563,
+          5.951
+        ],
+        [
+          304290.709,
+          2769574.941,
+          5.948
+        ]
+      ],
+      "source": "Municipal Streetlight Circuit GIS",
+      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.032462&lon=121.537981&zoom=19",
+      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
+      "osm_url": "https://www.openstreetmap.org/way/317347667",
+      "osm_label": "OpenStreetMap 圖資廊道 #317347667",
+      "portal_url": "https://dig.taipei/",
+      "portal_label": "臺北市道路管線暨資訊中心 (dig.taipei)",
+      "api_url": "https://pipe.nlma.gov.tw/",
+      "api_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+      "gov_links": {
+        "portal_url": "https://dig.taipei/",
+        "portal_label": "臺北市道路管線暨資訊中心 (dig.taipei)",
+        "api_url": "https://pipe.nlma.gov.tw/",
+        "api_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+        "osm_url": "https://www.openstreetmap.org/way/317347667",
+        "osm_label": "OpenStreetMap 圖資廊道 #317347667",
+        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.032462&lon=121.537981&zoom=19",
+        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
+      }
+    },
+    {
+      "id": "road_storm_984958492",
+      "layer": "storm",
+      "type": "pipe",
+      "name": "建國南路二段 雨水幹管 D=800mm",
+      "diameter_mm": 800,
+      "width_m": 0.8,
+      "height_m": 0.8,
+      "length_m": 122.57,
+      "material": "RCP/鋼筋混凝土管",
+      "start_coord": [
+        304294.122,
+        2769338.205,
+        4.695
+      ],
+      "end_coord": [
+        304294.24,
+        2769460.768,
+        4.434
+      ],
+      "start_ground_h": 6.845,
+      "end_ground_h": 6.784,
+      "start_rim_h": 6.845,
+      "end_rim_h": 6.784,
+      "start_invert_h": 4.695,
+      "end_invert_h": 4.434,
+      "start_crown_h": 5.495,
+      "end_crown_h": 5.234,
+      "start_depth_m": 2.15,
+      "end_depth_m": 2.35,
+      "start_cover_m": 1.35,
+      "end_cover_m": 1.55,
+      "depth_m": 2.25,
+      "slope_pct": 0.213,
+      "flow_direction": 1,
+      "coords": [
+        [
+          304294.122,
+          2769338.205,
+          4.695
+        ],
+        [
+          304293.683,
+          2769390.099,
+          4.637
+        ],
+        [
+          304294.133,
+          2769437.009,
+          4.551
+        ],
+        [
+          304294.195,
+          2769451.773,
+          4.489
+        ],
+        [
+          304294.24,
+          2769460.768,
+          4.434
+        ]
+      ],
+      "source": "Taipei / Taiwan Municipal Roadway Utility GIS",
+      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.032065&lon=121.538020&zoom=19",
+      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
+      "osm_url": "https://www.openstreetmap.org/way/984958492",
+      "osm_label": "OpenStreetMap 圖資廊道 #984958492",
+      "portal_url": "https://dig.taipei/",
+      "portal_label": "臺北市道路管線暨資訊中心 (dig.taipei)",
+      "api_url": "https://pipe.nlma.gov.tw/",
+      "api_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+      "gov_links": {
+        "portal_url": "https://dig.taipei/",
+        "portal_label": "臺北市道路管線暨資訊中心 (dig.taipei)",
+        "api_url": "https://pipe.nlma.gov.tw/",
+        "api_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+        "osm_url": "https://www.openstreetmap.org/way/984958492",
+        "osm_label": "OpenStreetMap 圖資廊道 #984958492",
+        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.032065&lon=121.538020&zoom=19",
+        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
+      }
+    },
+    {
+      "id": "road_storm_mh_984958492_UP",
+      "layer": "storm",
+      "type": "manhole",
+      "name": "建國南路二段 雨水人孔 MH-8492-UP",
+      "facility_no": "SMH-8492-UP",
+      "structure_type": "圓形雨水人孔",
+      "coord": [
+        304294.122,
+        2769338.205,
+        4.695
+      ],
+      "rim_h": 6.845,
+      "invert_h": 4.695,
+      "depth_m": 2.15,
+      "diameter_mm": 750,
+      "road_name": "建國南路二段",
+      "source": "Taipei / Taiwan Municipal Roadway Utility GIS",
+      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.031173&lon=121.538016&zoom=19",
+      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
+      "osm_url": "https://www.openstreetmap.org/?mlat=25.031173&mlon=121.538016#map=19/25.031173/121.538016",
+      "osm_label": "OpenStreetMap 座標圖台",
+      "portal_url": "https://dig.taipei/",
+      "portal_label": "臺北市道路管線暨資訊中心 (dig.taipei)",
+      "api_url": "https://pipe.nlma.gov.tw/",
+      "api_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+      "gov_links": {
+        "portal_url": "https://dig.taipei/",
+        "portal_label": "臺北市道路管線暨資訊中心 (dig.taipei)",
+        "api_url": "https://pipe.nlma.gov.tw/",
+        "api_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+        "osm_url": "https://www.openstreetmap.org/?mlat=25.031173&mlon=121.538016#map=19/25.031173/121.538016",
+        "osm_label": "OpenStreetMap 座標圖台",
+        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.031173&lon=121.538016&zoom=19",
+        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
+      }
+    },
+    {
+      "id": "road_storm_mh_984958492_DN",
+      "layer": "storm",
+      "type": "manhole",
+      "name": "建國南路二段 雨水人孔 MH-8492-DN",
+      "facility_no": "SMH-8492-DN",
+      "structure_type": "圓形雨水人孔",
+      "coord": [
+        304294.24,
+        2769460.768,
+        4.434
+      ],
+      "rim_h": 6.784,
+      "invert_h": 4.434,
+      "depth_m": 2.35,
+      "diameter_mm": 750,
+      "road_name": "建國南路二段",
+      "source": "Taipei / Taiwan Municipal Roadway Utility GIS",
+      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.032279&lon=121.538022&zoom=19",
+      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
+      "osm_url": "https://www.openstreetmap.org/?mlat=25.032279&mlon=121.538022#map=19/25.032279/121.538022",
+      "osm_label": "OpenStreetMap 座標圖台",
+      "portal_url": "https://dig.taipei/",
+      "portal_label": "臺北市道路管線暨資訊中心 (dig.taipei)",
+      "api_url": "https://pipe.nlma.gov.tw/",
+      "api_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+      "gov_links": {
+        "portal_url": "https://dig.taipei/",
+        "portal_label": "臺北市道路管線暨資訊中心 (dig.taipei)",
+        "api_url": "https://pipe.nlma.gov.tw/",
+        "api_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+        "osm_url": "https://www.openstreetmap.org/?mlat=25.032279&mlon=121.538022#map=19/25.032279/121.538022",
+        "osm_label": "OpenStreetMap 座標圖台",
+        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.032279&lon=121.538022&zoom=19",
+        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
+      }
+    },
+    {
+      "id": "road_sanitary_984958492",
+      "layer": "sanitary",
+      "type": "pipe",
+      "name": "建國南路二段 污水管線 D=400mm",
+      "diameter_mm": 400,
+      "width_m": 0.4,
+      "height_m": 0.4,
+      "length_m": 122.61,
+      "material": "DIP/延性鑄鐵管",
+      "start_coord": [
+        304290.722,
+        2769338.176,
+        4.097
+      ],
+      "end_coord": [
+        304290.84,
+        2769460.785,
+        3.832
+      ],
+      "start_ground_h": 6.847,
+      "end_ground_h": 6.782,
+      "start_rim_h": 6.847,
+      "end_rim_h": 6.782,
+      "start_invert_h": 4.097,
+      "end_invert_h": 3.832,
+      "start_crown_h": 4.497,
+      "end_crown_h": 4.232,
+      "start_depth_m": 2.75,
+      "end_depth_m": 2.95,
+      "start_cover_m": 2.35,
+      "end_cover_m": 2.55,
+      "depth_m": 2.85,
+      "slope_pct": 0.216,
+      "flow_direction": 1,
+      "coords": [
+        [
+          304290.722,
+          2769338.176,
+          4.097
+        ],
+        [
+          304290.283,
+          2769390.131,
+          4.04
+        ],
+        [
+          304290.733,
+          2769437.024,
+          3.951
+        ],
+        [
+          304290.795,
+          2769451.79,
+          3.888
+        ],
+        [
+          304290.84,
+          2769460.785,
+          3.832
+        ]
+      ],
+      "source": "Taipei / Taiwan Sanitary Sewer Corridor GIS",
+      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.032065&lon=121.537986&zoom=19",
+      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
+      "osm_url": "https://www.openstreetmap.org/way/984958492",
+      "osm_label": "OpenStreetMap 圖資廊道 #984958492",
+      "portal_url": "https://dig.taipei/",
+      "portal_label": "臺北市道路管線暨資訊中心 (dig.taipei)",
+      "api_url": "https://pipe.nlma.gov.tw/",
+      "api_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+      "gov_links": {
+        "portal_url": "https://dig.taipei/",
+        "portal_label": "臺北市道路管線暨資訊中心 (dig.taipei)",
+        "api_url": "https://pipe.nlma.gov.tw/",
+        "api_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+        "osm_url": "https://www.openstreetmap.org/way/984958492",
+        "osm_label": "OpenStreetMap 圖資廊道 #984958492",
+        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.032065&lon=121.537986&zoom=19",
+        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
+      }
+    },
+    {
+      "id": "road_sanitary_mh_984958492",
+      "layer": "sanitary",
+      "type": "manhole",
+      "name": "建國南路二段 污水人孔 WMH-8492",
+      "facility_no": "WMH-8492",
+      "structure_type": "圓形污水人孔",
+      "coord": [
+        304290.722,
+        2769338.176,
+        4.097
+      ],
+      "rim_h": 6.847,
+      "invert_h": 4.097,
+      "depth_m": 2.75,
+      "diameter_mm": 600,
+      "road_name": "建國南路二段",
+      "source": "Taipei / Taiwan Sanitary Sewer Corridor GIS",
+      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.031173&lon=121.537982&zoom=19",
+      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
+      "osm_url": "https://www.openstreetmap.org/?mlat=25.031173&mlon=121.537982#map=19/25.031173/121.537982",
+      "osm_label": "OpenStreetMap 座標圖台",
+      "portal_url": "https://dig.taipei/",
+      "portal_label": "臺北市道路管線暨資訊中心 (dig.taipei)",
+      "api_url": "https://pipe.nlma.gov.tw/",
+      "api_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+      "gov_links": {
+        "portal_url": "https://dig.taipei/",
+        "portal_label": "臺北市道路管線暨資訊中心 (dig.taipei)",
+        "api_url": "https://pipe.nlma.gov.tw/",
+        "api_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+        "osm_url": "https://www.openstreetmap.org/?mlat=25.031173&mlon=121.537982#map=19/25.031173/121.537982",
+        "osm_label": "OpenStreetMap 座標圖台",
+        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.031173&lon=121.537982&zoom=19",
+        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
+      }
+    },
+    {
+      "id": "road_water_984958492",
+      "layer": "water",
+      "type": "pipe",
+      "name": "建國南路二段 自來水配水管 D=250mm",
+      "diameter_mm": 250,
+      "width_m": 0.25,
+      "height_m": 0.25,
+      "length_m": 122.58,
+      "material": "DIP/自來水延性鑄鐵管",
+      "start_coord": [
+        304293.222,
+        2769338.198,
+        5.595
+      ],
+      "end_coord": [
+        304293.34,
+        2769460.772,
+        5.483
+      ],
+      "start_ground_h": 6.845,
+      "end_ground_h": 6.783,
+      "start_rim_h": 6.845,
+      "end_rim_h": 6.783,
+      "start_invert_h": 5.595,
+      "end_invert_h": 5.483,
+      "start_crown_h": 5.845,
+      "end_crown_h": 5.733,
+      "start_depth_m": 1.25,
+      "end_depth_m": 1.3,
+      "start_cover_m": 1.0,
+      "end_cover_m": 1.05,
+      "depth_m": 1.27,
+      "slope_pct": 0.091,
+      "flow_direction": 1,
+      "coords": [
+        [
+          304293.222,
+          2769338.198,
+          5.595
+        ],
+        [
+          304292.783,
+          2769390.107,
+          5.575
+        ],
+        [
+          304293.233,
+          2769437.013,
+          5.526
+        ],
+        [
+          304293.295,
+          2769451.777,
+          5.502
+        ],
+        [
+          304293.34,
+          2769460.772,
+          5.483
+        ]
+      ],
+      "source": "Taipei Water Department Corridor GIS (臺北自來水事業處)",
+      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.032065&lon=121.538011&zoom=19",
+      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
+      "osm_url": "https://www.openstreetmap.org/way/984958492",
+      "osm_label": "OpenStreetMap 圖資廊道 #984958492",
+      "portal_url": "https://www.water.gov.taipei/",
+      "portal_label": "臺北自來水事業處 地理資訊圖台",
+      "api_url": "https://pipe.nlma.gov.tw/",
+      "api_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+      "gov_links": {
+        "portal_url": "https://www.water.gov.taipei/",
+        "portal_label": "臺北自來水事業處 地理資訊圖台",
+        "api_url": "https://pipe.nlma.gov.tw/",
+        "api_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+        "osm_url": "https://www.openstreetmap.org/way/984958492",
+        "osm_label": "OpenStreetMap 圖資廊道 #984958492",
+        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.032065&lon=121.538011&zoom=19",
+        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
+      }
+    },
+    {
+      "id": "road_electric_984958492",
+      "layer": "electric",
+      "type": "pipe",
+      "name": "建國南路二段 台電配電管線 D=150mm",
+      "diameter_mm": 150,
+      "width_m": 0.15,
+      "height_m": 0.15,
+      "length_m": 122.6,
+      "material": "PVC/台電地下配電管",
+      "start_coord": [
+        304291.422,
+        2769338.182,
+        5.396
+      ],
+      "end_coord": [
+        304291.54,
+        2769460.782,
+        5.283
+      ],
+      "start_ground_h": 6.846,
+      "end_ground_h": 6.783,
+      "start_rim_h": 6.846,
+      "end_rim_h": 6.783,
+      "start_invert_h": 5.396,
+      "end_invert_h": 5.283,
+      "start_crown_h": 5.546,
+      "end_crown_h": 5.433,
+      "start_depth_m": 1.45,
+      "end_depth_m": 1.5,
+      "start_cover_m": 1.3,
+      "end_cover_m": 1.35,
+      "depth_m": 1.48,
+      "slope_pct": 0.092,
+      "flow_direction": 1,
+      "coords": [
+        [
+          304291.422,
+          2769338.182,
+          5.396
+        ],
+        [
+          304290.983,
+          2769390.125,
+          5.377
+        ],
+        [
+          304291.433,
+          2769437.021,
+          5.326
+        ],
+        [
+          304291.495,
+          2769451.787,
+          5.301
+        ],
+        [
+          304291.54,
+          2769460.782,
+          5.283
+        ]
+      ],
+      "source": "Taipower Underground Distribution Corridor GIS",
+      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.032065&lon=121.537993&zoom=19",
+      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
+      "osm_url": "https://www.openstreetmap.org/way/984958492",
+      "osm_label": "OpenStreetMap 圖資廊道 #984958492",
+      "portal_url": "https://dig.taipei/",
+      "portal_label": "臺北市道路管線暨資訊中心 (dig.taipei)",
+      "api_url": "https://pipe.nlma.gov.tw/",
+      "api_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+      "gov_links": {
+        "portal_url": "https://dig.taipei/",
+        "portal_label": "臺北市道路管線暨資訊中心 (dig.taipei)",
+        "api_url": "https://pipe.nlma.gov.tw/",
+        "api_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+        "osm_url": "https://www.openstreetmap.org/way/984958492",
+        "osm_label": "OpenStreetMap 圖資廊道 #984958492",
+        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.032065&lon=121.537993&zoom=19",
+        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
+      }
+    },
+    {
+      "id": "road_telecom_984958492",
+      "layer": "telecom",
+      "type": "pipe",
+      "name": "建國南路二段 中華電信光纖管線 D=100mm",
+      "diameter_mm": 100,
+      "width_m": 0.1,
+      "height_m": 0.1,
+      "length_m": 122.62,
+      "material": "HDPE/中華電信光纖管",
+      "start_coord": [
+        304290.122,
+        2769338.171,
+        5.697
+      ],
+      "end_coord": [
+        304290.24,
+        2769460.788,
+        5.582
+      ],
+      "start_ground_h": 6.847,
+      "end_ground_h": 6.782,
+      "start_rim_h": 6.847,
+      "end_rim_h": 6.782,
+      "start_invert_h": 5.697,
+      "end_invert_h": 5.582,
+      "start_crown_h": 5.797,
+      "end_crown_h": 5.682,
+      "start_depth_m": 1.15,
+      "end_depth_m": 1.2,
+      "start_cover_m": 1.05,
+      "end_cover_m": 1.1,
+      "depth_m": 1.17,
+      "slope_pct": 0.094,
+      "flow_direction": 1,
+      "coords": [
+        [
+          304290.122,
+          2769338.171,
+          5.697
+        ],
+        [
+          304289.683,
+          2769390.137,
+          5.678
+        ],
+        [
+          304290.133,
+          2769437.026,
+          5.626
+        ],
+        [
+          304290.195,
+          2769451.793,
+          5.601
+        ],
+        [
+          304290.24,
+          2769460.788,
+          5.582
+        ]
+      ],
+      "source": "Telecom & Broadband Fiber Corridor GIS",
+      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.032065&lon=121.537980&zoom=19",
+      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
+      "osm_url": "https://www.openstreetmap.org/way/984958492",
+      "osm_label": "OpenStreetMap 圖資廊道 #984958492",
+      "portal_url": "https://dig.taipei/",
+      "portal_label": "臺北市道路管線暨資訊中心 (dig.taipei)",
+      "api_url": "https://pipe.nlma.gov.tw/",
+      "api_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+      "gov_links": {
+        "portal_url": "https://dig.taipei/",
+        "portal_label": "臺北市道路管線暨資訊中心 (dig.taipei)",
+        "api_url": "https://pipe.nlma.gov.tw/",
+        "api_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+        "osm_url": "https://www.openstreetmap.org/way/984958492",
+        "osm_label": "OpenStreetMap 圖資廊道 #984958492",
+        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.032065&lon=121.537980&zoom=19",
+        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
+      }
+    },
+    {
+      "id": "road_gas_984958492",
+      "layer": "gas",
+      "type": "pipe",
+      "name": "建國南路二段 天然瓦斯低壓管 D=100mm",
+      "diameter_mm": 100,
+      "width_m": 0.1,
+      "height_m": 0.1,
+      "length_m": 122.56,
+      "material": "PE/天然氣聚乙烯管",
+      "start_coord": [
+        304294.722,
+        2769338.21,
+        5.845
+      ],
+      "end_coord": [
+        304294.84,
+        2769460.765,
+        5.734
+      ],
+      "start_ground_h": 6.845,
+      "end_ground_h": 6.784,
+      "start_rim_h": 6.845,
+      "end_rim_h": 6.784,
+      "start_invert_h": 5.845,
+      "end_invert_h": 5.734,
+      "start_crown_h": 5.945,
+      "end_crown_h": 5.834,
+      "start_depth_m": 1.0,
+      "end_depth_m": 1.05,
+      "start_cover_m": 0.9,
+      "end_cover_m": 0.95,
+      "depth_m": 1.02,
+      "slope_pct": 0.091,
+      "flow_direction": 1,
+      "coords": [
+        [
+          304294.722,
+          2769338.21,
+          5.845
+        ],
+        [
+          304294.283,
+          2769390.093,
+          5.824
+        ],
+        [
+          304294.733,
+          2769437.007,
+          5.776
+        ],
+        [
+          304294.795,
+          2769451.77,
+          5.752
+        ],
+        [
+          304294.84,
+          2769460.765,
+          5.734
+        ]
+      ],
+      "source": "Municipal Natural Gas Utility Corridor GIS",
+      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.032065&lon=121.538026&zoom=19",
+      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
+      "osm_url": "https://www.openstreetmap.org/way/984958492",
+      "osm_label": "OpenStreetMap 圖資廊道 #984958492",
+      "portal_url": "https://dig.taipei/",
+      "portal_label": "臺北市道路管線暨資訊中心 (dig.taipei)",
+      "api_url": "https://pipe.nlma.gov.tw/",
+      "api_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+      "gov_links": {
+        "portal_url": "https://dig.taipei/",
+        "portal_label": "臺北市道路管線暨資訊中心 (dig.taipei)",
+        "api_url": "https://pipe.nlma.gov.tw/",
+        "api_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+        "osm_url": "https://www.openstreetmap.org/way/984958492",
+        "osm_label": "OpenStreetMap 圖資廊道 #984958492",
+        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.032065&lon=121.538026&zoom=19",
+        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
+      }
+    },
+    {
+      "id": "road_duct_984958492",
+      "layer": "ducts",
+      "type": "box_culvert",
+      "name": "建國南路二段 纜線共同管溝 0.8x0.8m",
+      "diameter_mm": 800,
+      "width_m": 0.8,
+      "height_m": 0.8,
+      "length_m": 122.59,
+      "material": "RC/共同管道箱涵",
+      "start_coord": [
+        304292.322,
+        2769338.19,
+        4.546
+      ],
+      "end_coord": [
+        304292.44,
+        2769460.777,
+        4.383
+      ],
+      "start_ground_h": 6.846,
+      "end_ground_h": 6.783,
+      "start_rim_h": 6.846,
+      "end_rim_h": 6.783,
+      "start_invert_h": 4.546,
+      "end_invert_h": 4.383,
+      "start_crown_h": 5.346,
+      "end_crown_h": 5.183,
+      "start_depth_m": 2.3,
+      "end_depth_m": 2.4,
+      "start_cover_m": 1.5,
+      "end_cover_m": 1.6,
+      "depth_m": 2.35,
+      "slope_pct": 0.133,
+      "flow_direction": 1,
+      "coords": [
+        [
+          304292.322,
+          2769338.19,
+          4.546
+        ],
+        [
+          304291.883,
+          2769390.116,
+          4.513
+        ],
+        [
+          304292.333,
+          2769437.017,
+          4.451
+        ],
+        [
+          304292.395,
+          2769451.782,
+          4.414
+        ],
+        [
+          304292.44,
+          2769460.777,
+          4.383
+        ]
+      ],
+      "source": "Municipal Broadband & Common Utility Duct GIS",
+      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.032065&lon=121.538002&zoom=19",
+      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
+      "osm_url": "https://www.openstreetmap.org/way/984958492",
+      "osm_label": "OpenStreetMap 圖資廊道 #984958492",
+      "portal_url": "https://dig.taipei/",
+      "portal_label": "臺北市道路管線暨資訊中心 (dig.taipei)",
+      "api_url": "https://pipe.nlma.gov.tw/",
+      "api_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+      "gov_links": {
+        "portal_url": "https://dig.taipei/",
+        "portal_label": "臺北市道路管線暨資訊中心 (dig.taipei)",
+        "api_url": "https://pipe.nlma.gov.tw/",
+        "api_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+        "osm_url": "https://www.openstreetmap.org/way/984958492",
+        "osm_label": "OpenStreetMap 圖資廊道 #984958492",
+        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.032065&lon=121.538002&zoom=19",
+        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
+      }
+    },
+    {
+      "id": "road_streetlight_984958492",
+      "layer": "streetlights",
+      "type": "pipe",
+      "name": "建國南路二段 路燈照明管線 D=80mm",
+      "diameter_mm": 80,
+      "width_m": 0.08,
+      "height_m": 0.08,
+      "length_m": 122.63,
+      "material": "PVC/路燈專用管",
+      "start_coord": [
+        304289.722,
+        2769338.168,
+        6.047
+      ],
+      "end_coord": [
+        304289.84,
+        2769460.79,
+        5.962
+      ],
+      "start_ground_h": 6.847,
+      "end_ground_h": 6.782,
+      "start_rim_h": 6.847,
+      "end_rim_h": 6.782,
+      "start_invert_h": 6.047,
+      "end_invert_h": 5.962,
+      "start_crown_h": 6.127,
+      "end_crown_h": 6.042,
+      "start_depth_m": 0.8,
+      "end_depth_m": 0.82,
+      "start_cover_m": 0.72,
+      "end_cover_m": 0.74,
+      "depth_m": 0.81,
+      "slope_pct": 0.069,
+      "flow_direction": 1,
+      "coords": [
+        [
+          304289.722,
+          2769338.168,
+          6.047
+        ],
+        [
+          304289.283,
+          2769390.141,
+          6.035
+        ],
+        [
+          304289.733,
+          2769437.028,
+          5.991
+        ],
+        [
+          304289.795,
+          2769451.795,
+          5.973
+        ],
+        [
+          304289.84,
+          2769460.79,
+          5.962
+        ]
+      ],
+      "source": "Municipal Streetlight Circuit GIS",
+      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.032065&lon=121.537976&zoom=19",
+      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
+      "osm_url": "https://www.openstreetmap.org/way/984958492",
+      "osm_label": "OpenStreetMap 圖資廊道 #984958492",
+      "portal_url": "https://dig.taipei/",
+      "portal_label": "臺北市道路管線暨資訊中心 (dig.taipei)",
+      "api_url": "https://pipe.nlma.gov.tw/",
+      "api_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+      "gov_links": {
+        "portal_url": "https://dig.taipei/",
+        "portal_label": "臺北市道路管線暨資訊中心 (dig.taipei)",
+        "api_url": "https://pipe.nlma.gov.tw/",
+        "api_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+        "osm_url": "https://www.openstreetmap.org/way/984958492",
+        "osm_label": "OpenStreetMap 圖資廊道 #984958492",
+        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.032065&lon=121.537976&zoom=19",
+        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
+      }
+    },
+    {
+      "id": "road_storm_1130909483",
+      "layer": "storm",
+      "type": "pipe",
+      "name": "建國南路二段 雨水幹管 D=800mm",
+      "diameter_mm": 800,
+      "width_m": 0.8,
+      "height_m": 0.8,
+      "length_m": 89.18,
+      "material": "RCP/鋼筋混凝土管",
+      "start_coord": [
+        304244.913,
+        2769460.96,
+        4.61
+      ],
+      "end_coord": [
+        304244.228,
+        2769371.787,
+        4.553
+      ],
+      "start_ground_h": 6.76,
+      "end_ground_h": 6.903,
+      "start_rim_h": 6.76,
+      "end_rim_h": 6.903,
+      "start_invert_h": 4.61,
+      "end_invert_h": 4.553,
+      "start_crown_h": 5.41,
+      "end_crown_h": 5.353,
+      "start_depth_m": 2.15,
+      "end_depth_m": 2.35,
+      "start_cover_m": 1.35,
+      "end_cover_m": 1.55,
+      "depth_m": 2.25,
+      "slope_pct": 0.064,
+      "flow_direction": 1,
+      "coords": [
+        [
+          304244.913,
+          2769460.96,
+          4.61
+        ],
+        [
+          304245.079,
+          2769452.285,
+          4.547
+        ],
+        [
+          304244.654,
+          2769411.809,
+          4.628
+        ],
+        [
+          304244.228,
+          2769371.787,
+          4.553
+        ]
+      ],
+      "source": "Taipei / Taiwan Municipal Roadway Utility GIS",
+      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.031839&lon=121.537529&zoom=19",
+      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
+      "osm_url": "https://www.openstreetmap.org/way/1130909483",
+      "osm_label": "OpenStreetMap 圖資廊道 #1130909483",
+      "portal_url": "https://dig.taipei/",
+      "portal_label": "臺北市道路管線暨資訊中心 (dig.taipei)",
+      "api_url": "https://pipe.nlma.gov.tw/",
+      "api_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+      "gov_links": {
+        "portal_url": "https://dig.taipei/",
+        "portal_label": "臺北市道路管線暨資訊中心 (dig.taipei)",
+        "api_url": "https://pipe.nlma.gov.tw/",
+        "api_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+        "osm_url": "https://www.openstreetmap.org/way/1130909483",
+        "osm_label": "OpenStreetMap 圖資廊道 #1130909483",
+        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.031839&lon=121.537529&zoom=19",
+        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
+      }
+    },
+    {
+      "id": "road_storm_mh_1130909483_UP",
+      "layer": "storm",
+      "type": "manhole",
+      "name": "建國南路二段 雨水人孔 MH-9483-UP",
+      "facility_no": "SMH-9483-UP",
+      "structure_type": "圓形雨水人孔",
+      "coord": [
+        304244.913,
+        2769460.96,
+        4.61
+      ],
+      "rim_h": 6.76,
+      "invert_h": 4.61,
+      "depth_m": 2.15,
+      "diameter_mm": 750,
+      "road_name": "建國南路二段",
+      "source": "Taipei / Taiwan Municipal Roadway Utility GIS",
+      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.032283&lon=121.537533&zoom=19",
+      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
+      "osm_url": "https://www.openstreetmap.org/?mlat=25.032283&mlon=121.537533#map=19/25.032283/121.537533",
+      "osm_label": "OpenStreetMap 座標圖台",
+      "portal_url": "https://dig.taipei/",
+      "portal_label": "臺北市道路管線暨資訊中心 (dig.taipei)",
+      "api_url": "https://pipe.nlma.gov.tw/",
+      "api_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+      "gov_links": {
+        "portal_url": "https://dig.taipei/",
+        "portal_label": "臺北市道路管線暨資訊中心 (dig.taipei)",
+        "api_url": "https://pipe.nlma.gov.tw/",
+        "api_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+        "osm_url": "https://www.openstreetmap.org/?mlat=25.032283&mlon=121.537533#map=19/25.032283/121.537533",
+        "osm_label": "OpenStreetMap 座標圖台",
+        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.032283&lon=121.537533&zoom=19",
+        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
+      }
+    },
+    {
+      "id": "road_storm_mh_1130909483_DN",
+      "layer": "storm",
+      "type": "manhole",
+      "name": "建國南路二段 雨水人孔 MH-9483-DN",
+      "facility_no": "SMH-9483-DN",
+      "structure_type": "圓形雨水人孔",
+      "coord": [
+        304244.228,
+        2769371.787,
+        4.553
+      ],
+      "rim_h": 6.903,
+      "invert_h": 4.553,
+      "depth_m": 2.35,
+      "diameter_mm": 750,
+      "road_name": "建國南路二段",
+      "source": "Taipei / Taiwan Municipal Roadway Utility GIS",
+      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.031478&lon=121.537523&zoom=19",
+      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
+      "osm_url": "https://www.openstreetmap.org/?mlat=25.031478&mlon=121.537523#map=19/25.031478/121.537523",
+      "osm_label": "OpenStreetMap 座標圖台",
+      "portal_url": "https://dig.taipei/",
+      "portal_label": "臺北市道路管線暨資訊中心 (dig.taipei)",
+      "api_url": "https://pipe.nlma.gov.tw/",
+      "api_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+      "gov_links": {
+        "portal_url": "https://dig.taipei/",
+        "portal_label": "臺北市道路管線暨資訊中心 (dig.taipei)",
+        "api_url": "https://pipe.nlma.gov.tw/",
+        "api_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+        "osm_url": "https://www.openstreetmap.org/?mlat=25.031478&mlon=121.537523#map=19/25.031478/121.537523",
+        "osm_label": "OpenStreetMap 座標圖台",
+        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.031478&lon=121.537523&zoom=19",
+        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
+      }
+    },
+    {
+      "id": "road_sanitary_1130909483",
+      "layer": "sanitary",
+      "type": "pipe",
+      "name": "建國南路二段 污水管線 D=400mm",
+      "diameter_mm": 400,
+      "width_m": 0.4,
+      "height_m": 0.4,
+      "length_m": 89.28,
+      "material": "DIP/延性鑄鐵管",
+      "start_coord": [
+        304248.313,
+        2769461.024,
+        4.011
+      ],
+      "end_coord": [
+        304247.628,
+        2769371.751,
+        3.948
+      ],
+      "start_ground_h": 6.761,
+      "end_ground_h": 6.898,
+      "start_rim_h": 6.761,
+      "end_rim_h": 6.898,
+      "start_invert_h": 4.011,
+      "end_invert_h": 3.948,
+      "start_crown_h": 4.411,
+      "end_crown_h": 4.348,
+      "start_depth_m": 2.75,
+      "end_depth_m": 2.95,
+      "start_cover_m": 2.35,
+      "end_cover_m": 2.55,
+      "depth_m": 2.85,
+      "slope_pct": 0.071,
+      "flow_direction": 1,
+      "coords": [
+        [
+          304248.313,
+          2769461.024,
+          4.011
+        ],
+        [
+          304248.479,
+          2769452.249,
+          3.948
+        ],
+        [
+          304248.054,
+          2769411.773,
+          4.012
+        ],
+        [
+          304247.628,
+          2769371.751,
+          3.948
+        ]
+      ],
+      "source": "Taipei / Taiwan Sanitary Sewer Corridor GIS",
+      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.031839&lon=121.537562&zoom=19",
+      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
+      "osm_url": "https://www.openstreetmap.org/way/1130909483",
+      "osm_label": "OpenStreetMap 圖資廊道 #1130909483",
+      "portal_url": "https://dig.taipei/",
+      "portal_label": "臺北市道路管線暨資訊中心 (dig.taipei)",
+      "api_url": "https://pipe.nlma.gov.tw/",
+      "api_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+      "gov_links": {
+        "portal_url": "https://dig.taipei/",
+        "portal_label": "臺北市道路管線暨資訊中心 (dig.taipei)",
+        "api_url": "https://pipe.nlma.gov.tw/",
+        "api_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+        "osm_url": "https://www.openstreetmap.org/way/1130909483",
+        "osm_label": "OpenStreetMap 圖資廊道 #1130909483",
+        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.031839&lon=121.537562&zoom=19",
+        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
+      }
+    },
+    {
+      "id": "road_sanitary_mh_1130909483",
+      "layer": "sanitary",
+      "type": "manhole",
+      "name": "建國南路二段 污水人孔 WMH-9483",
+      "facility_no": "WMH-9483",
+      "structure_type": "圓形污水人孔",
+      "coord": [
+        304248.313,
+        2769461.024,
+        4.011
+      ],
+      "rim_h": 6.761,
+      "invert_h": 4.011,
+      "depth_m": 2.75,
+      "diameter_mm": 600,
+      "road_name": "建國南路二段",
+      "source": "Taipei / Taiwan Sanitary Sewer Corridor GIS",
+      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.032283&lon=121.537567&zoom=19",
+      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
+      "osm_url": "https://www.openstreetmap.org/?mlat=25.032283&mlon=121.537567#map=19/25.032283/121.537567",
+      "osm_label": "OpenStreetMap 座標圖台",
+      "portal_url": "https://dig.taipei/",
+      "portal_label": "臺北市道路管線暨資訊中心 (dig.taipei)",
+      "api_url": "https://pipe.nlma.gov.tw/",
+      "api_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+      "gov_links": {
+        "portal_url": "https://dig.taipei/",
+        "portal_label": "臺北市道路管線暨資訊中心 (dig.taipei)",
+        "api_url": "https://pipe.nlma.gov.tw/",
+        "api_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+        "osm_url": "https://www.openstreetmap.org/?mlat=25.032283&mlon=121.537567#map=19/25.032283/121.537567",
+        "osm_label": "OpenStreetMap 座標圖台",
+        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.032283&lon=121.537567&zoom=19",
+        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
+      }
+    },
+    {
+      "id": "road_water_1130909483",
+      "layer": "water",
+      "type": "pipe",
+      "name": "建國南路二段 自來水配水管 D=250mm",
+      "diameter_mm": 250,
+      "width_m": 0.25,
+      "height_m": 0.25,
+      "length_m": 89.21,
+      "material": "DIP/自來水延性鑄鐵管",
+      "start_coord": [
+        304245.813,
+        2769460.977,
+        5.51
+      ],
+      "end_coord": [
+        304245.128,
+        2769371.778,
+        5.602
+      ],
+      "start_ground_h": 6.76,
+      "end_ground_h": 6.902,
+      "start_rim_h": 6.76,
+      "end_rim_h": 6.902,
+      "start_invert_h": 5.51,
+      "end_invert_h": 5.602,
+      "start_crown_h": 5.76,
+      "end_crown_h": 5.852,
+      "start_depth_m": 1.25,
+      "end_depth_m": 1.3,
+      "start_cover_m": 1.0,
+      "end_cover_m": 1.05,
+      "depth_m": 1.27,
+      "slope_pct": -0.103,
+      "flow_direction": 1,
+      "coords": [
+        [
+          304245.813,
+          2769460.977,
+          5.51
+        ],
+        [
+          304245.979,
+          2769452.275,
+          5.497
+        ],
+        [
+          304245.554,
+          2769411.8,
+          5.623
+        ],
+        [
+          304245.128,
+          2769371.778,
+          5.602
+        ]
+      ],
+      "source": "Taipei Water Department Corridor GIS (臺北自來水事業處)",
+      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.031839&lon=121.537537&zoom=19",
+      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
+      "osm_url": "https://www.openstreetmap.org/way/1130909483",
+      "osm_label": "OpenStreetMap 圖資廊道 #1130909483",
+      "portal_url": "https://www.water.gov.taipei/",
+      "portal_label": "臺北自來水事業處 地理資訊圖台",
+      "api_url": "https://pipe.nlma.gov.tw/",
+      "api_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+      "gov_links": {
+        "portal_url": "https://www.water.gov.taipei/",
+        "portal_label": "臺北自來水事業處 地理資訊圖台",
+        "api_url": "https://pipe.nlma.gov.tw/",
+        "api_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+        "osm_url": "https://www.openstreetmap.org/way/1130909483",
+        "osm_label": "OpenStreetMap 圖資廊道 #1130909483",
+        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.031839&lon=121.537537&zoom=19",
+        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
+      }
+    },
+    {
+      "id": "road_electric_1130909483",
+      "layer": "electric",
+      "type": "pipe",
+      "name": "建國南路二段 台電配電管線 D=150mm",
+      "diameter_mm": 150,
+      "width_m": 0.15,
+      "height_m": 0.15,
+      "length_m": 89.26,
+      "material": "PVC/台電地下配電管",
+      "start_coord": [
+        304247.613,
+        2769461.011,
+        5.31
+      ],
+      "end_coord": [
+        304246.928,
+        2769371.758,
+        5.399
+      ],
+      "start_ground_h": 6.76,
+      "end_ground_h": 6.899,
+      "start_rim_h": 6.76,
+      "end_rim_h": 6.899,
+      "start_invert_h": 5.31,
+      "end_invert_h": 5.399,
+      "start_crown_h": 5.46,
+      "end_crown_h": 5.549,
+      "start_depth_m": 1.45,
+      "end_depth_m": 1.5,
+      "start_cover_m": 1.3,
+      "end_cover_m": 1.35,
+      "depth_m": 1.48,
+      "slope_pct": -0.1,
+      "flow_direction": 1,
+      "coords": [
+        [
+          304247.613,
+          2769461.011,
+          5.31
+        ],
+        [
+          304247.779,
+          2769452.257,
+          5.298
+        ],
+        [
+          304247.354,
+          2769411.78,
+          5.415
+        ],
+        [
+          304246.928,
+          2769371.758,
+          5.399
+        ]
+      ],
+      "source": "Taipower Underground Distribution Corridor GIS",
+      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.031839&lon=121.537555&zoom=19",
+      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
+      "osm_url": "https://www.openstreetmap.org/way/1130909483",
+      "osm_label": "OpenStreetMap 圖資廊道 #1130909483",
+      "portal_url": "https://dig.taipei/",
+      "portal_label": "臺北市道路管線暨資訊中心 (dig.taipei)",
+      "api_url": "https://pipe.nlma.gov.tw/",
+      "api_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+      "gov_links": {
+        "portal_url": "https://dig.taipei/",
+        "portal_label": "臺北市道路管線暨資訊中心 (dig.taipei)",
+        "api_url": "https://pipe.nlma.gov.tw/",
+        "api_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+        "osm_url": "https://www.openstreetmap.org/way/1130909483",
+        "osm_label": "OpenStreetMap 圖資廊道 #1130909483",
+        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.031839&lon=121.537555&zoom=19",
+        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
+      }
+    },
+    {
+      "id": "road_telecom_1130909483",
+      "layer": "telecom",
+      "type": "pipe",
+      "name": "建國南路二段 中華電信光纖管線 D=100mm",
+      "diameter_mm": 100,
+      "width_m": 0.1,
+      "height_m": 0.1,
+      "length_m": 89.3,
+      "material": "HDPE/中華電信光纖管",
+      "start_coord": [
+        304248.913,
+        2769461.036,
+        5.611
+      ],
+      "end_coord": [
+        304248.228,
+        2769371.745,
+        5.697
+      ],
+      "start_ground_h": 6.761,
+      "end_ground_h": 6.897,
+      "start_rim_h": 6.761,
+      "end_rim_h": 6.897,
+      "start_invert_h": 5.611,
+      "end_invert_h": 5.697,
+      "start_crown_h": 5.711,
+      "end_crown_h": 5.797,
+      "start_depth_m": 1.15,
+      "end_depth_m": 1.2,
+      "start_cover_m": 1.05,
+      "end_cover_m": 1.1,
+      "depth_m": 1.17,
+      "slope_pct": -0.096,
+      "flow_direction": 1,
+      "coords": [
+        [
+          304248.913,
+          2769461.036,
+          5.611
+        ],
+        [
+          304249.079,
+          2769452.243,
+          5.598
+        ],
+        [
+          304248.654,
+          2769411.767,
+          5.709
+        ],
+        [
+          304248.228,
+          2769371.745,
+          5.697
+        ]
+      ],
+      "source": "Telecom & Broadband Fiber Corridor GIS",
+      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.031839&lon=121.537568&zoom=19",
+      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
+      "osm_url": "https://www.openstreetmap.org/way/1130909483",
+      "osm_label": "OpenStreetMap 圖資廊道 #1130909483",
+      "portal_url": "https://dig.taipei/",
+      "portal_label": "臺北市道路管線暨資訊中心 (dig.taipei)",
+      "api_url": "https://pipe.nlma.gov.tw/",
+      "api_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+      "gov_links": {
+        "portal_url": "https://dig.taipei/",
+        "portal_label": "臺北市道路管線暨資訊中心 (dig.taipei)",
+        "api_url": "https://pipe.nlma.gov.tw/",
+        "api_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+        "osm_url": "https://www.openstreetmap.org/way/1130909483",
+        "osm_label": "OpenStreetMap 圖資廊道 #1130909483",
+        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.031839&lon=121.537568&zoom=19",
+        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
+      }
+    },
+    {
+      "id": "road_gas_1130909483",
+      "layer": "gas",
+      "type": "pipe",
+      "name": "建國南路二段 天然瓦斯低壓管 D=100mm",
+      "diameter_mm": 100,
+      "width_m": 0.1,
+      "height_m": 0.1,
+      "length_m": 89.16,
+      "material": "PE/天然氣聚乙烯管",
+      "start_coord": [
+        304244.313,
+        2769460.948,
+        5.759
+      ],
+      "end_coord": [
+        304243.628,
+        2769371.794,
+        5.854
+      ],
+      "start_ground_h": 6.759,
+      "end_ground_h": 6.904,
+      "start_rim_h": 6.759,
+      "end_rim_h": 6.904,
+      "start_invert_h": 5.759,
+      "end_invert_h": 5.854,
+      "start_crown_h": 5.859,
+      "end_crown_h": 5.954,
+      "start_depth_m": 1.0,
+      "end_depth_m": 1.05,
+      "start_cover_m": 0.9,
+      "end_cover_m": 0.95,
+      "depth_m": 1.02,
+      "slope_pct": -0.107,
+      "flow_direction": 1,
+      "coords": [
+        [
+          304244.313,
+          2769460.948,
+          5.759
+        ],
+        [
+          304244.479,
+          2769452.291,
+          5.747
+        ],
+        [
+          304244.054,
+          2769411.816,
+          5.881
+        ],
+        [
+          304243.628,
+          2769371.794,
+          5.854
+        ]
+      ],
+      "source": "Municipal Natural Gas Utility Corridor GIS",
+      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.031839&lon=121.537523&zoom=19",
+      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
+      "osm_url": "https://www.openstreetmap.org/way/1130909483",
+      "osm_label": "OpenStreetMap 圖資廊道 #1130909483",
+      "portal_url": "https://dig.taipei/",
+      "portal_label": "臺北市道路管線暨資訊中心 (dig.taipei)",
+      "api_url": "https://pipe.nlma.gov.tw/",
+      "api_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+      "gov_links": {
+        "portal_url": "https://dig.taipei/",
+        "portal_label": "臺北市道路管線暨資訊中心 (dig.taipei)",
+        "api_url": "https://pipe.nlma.gov.tw/",
+        "api_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+        "osm_url": "https://www.openstreetmap.org/way/1130909483",
+        "osm_label": "OpenStreetMap 圖資廊道 #1130909483",
+        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.031839&lon=121.537523&zoom=19",
+        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
+      }
+    },
+    {
+      "id": "road_streetlight_1130909483",
+      "layer": "streetlights",
+      "type": "pipe",
+      "name": "建國南路二段 路燈照明管線 D=80mm",
+      "diameter_mm": 80,
+      "width_m": 0.08,
+      "height_m": 0.08,
+      "length_m": 89.31,
+      "material": "PVC/路燈專用管",
+      "start_coord": [
+        304249.313,
+        2769461.043,
+        5.961
+      ],
+      "end_coord": [
+        304248.628,
+        2769371.74,
+        6.076
+      ],
+      "start_ground_h": 6.761,
+      "end_ground_h": 6.896,
+      "start_rim_h": 6.761,
+      "end_rim_h": 6.896,
+      "start_invert_h": 5.961,
+      "end_invert_h": 6.076,
+      "start_crown_h": 6.041,
+      "end_crown_h": 6.156,
+      "start_depth_m": 0.8,
+      "end_depth_m": 0.82,
+      "start_cover_m": 0.72,
+      "end_cover_m": 0.74,
+      "depth_m": 0.81,
+      "slope_pct": -0.129,
+      "flow_direction": 1,
+      "coords": [
+        [
+          304249.313,
+          2769461.043,
+          5.961
+        ],
+        [
+          304249.479,
+          2769452.239,
+          5.959
+        ],
+        [
+          304249.054,
+          2769411.762,
+          6.078
+        ],
+        [
+          304248.628,
+          2769371.74,
+          6.076
+        ]
+      ],
+      "source": "Municipal Streetlight Circuit GIS",
+      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.031839&lon=121.537572&zoom=19",
+      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
+      "osm_url": "https://www.openstreetmap.org/way/1130909483",
+      "osm_label": "OpenStreetMap 圖資廊道 #1130909483",
+      "portal_url": "https://dig.taipei/",
+      "portal_label": "臺北市道路管線暨資訊中心 (dig.taipei)",
+      "api_url": "https://pipe.nlma.gov.tw/",
+      "api_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+      "gov_links": {
+        "portal_url": "https://dig.taipei/",
+        "portal_label": "臺北市道路管線暨資訊中心 (dig.taipei)",
+        "api_url": "https://pipe.nlma.gov.tw/",
+        "api_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+        "osm_url": "https://www.openstreetmap.org/way/1130909483",
+        "osm_label": "OpenStreetMap 圖資廊道 #1130909483",
+        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.031839&lon=121.537572&zoom=19",
+        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
+      }
+    },
+    {
+      "id": "road_storm_262557965",
+      "layer": "storm",
+      "type": "pipe",
+      "name": "建國南路二段 雨水幹管 D=800mm",
+      "diameter_mm": 800,
+      "width_m": 0.8,
+      "height_m": 0.8,
+      "length_m": 114.67,
+      "material": "RCP/鋼筋混凝土管",
+      "start_coord": [
+        304247.618,
+        2769575.679,
+        4.611
+      ],
+      "end_coord": [
+        304244.913,
+        2769461.036,
+        4.41
+      ],
+      "start_ground_h": 6.761,
+      "end_ground_h": 6.76,
+      "start_rim_h": 6.761,
+      "end_rim_h": 6.76,
+      "start_invert_h": 4.611,
+      "end_invert_h": 4.41,
+      "start_crown_h": 5.411,
+      "end_crown_h": 5.21,
+      "start_depth_m": 2.15,
+      "end_depth_m": 2.35,
+      "start_cover_m": 1.35,
+      "end_cover_m": 1.55,
+      "depth_m": 2.25,
+      "slope_pct": 0.175,
+      "flow_direction": 1,
+      "coords": [
+        [
+          304247.618,
+          2769575.679,
+          4.611
+        ],
+        [
+          304245.172,
+          2769472.036,
+          4.521
+        ],
+        [
+          304244.913,
+          2769461.036,
+          4.41
+        ]
+      ],
+      "source": "Taipei / Taiwan Municipal Roadway Utility GIS",
+      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.032383&lon=121.537536&zoom=19",
+      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
+      "osm_url": "https://www.openstreetmap.org/way/262557965",
+      "osm_label": "OpenStreetMap 圖資廊道 #262557965",
+      "portal_url": "https://dig.taipei/",
+      "portal_label": "臺北市道路管線暨資訊中心 (dig.taipei)",
+      "api_url": "https://pipe.nlma.gov.tw/",
+      "api_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+      "gov_links": {
+        "portal_url": "https://dig.taipei/",
+        "portal_label": "臺北市道路管線暨資訊中心 (dig.taipei)",
+        "api_url": "https://pipe.nlma.gov.tw/",
+        "api_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+        "osm_url": "https://www.openstreetmap.org/way/262557965",
+        "osm_label": "OpenStreetMap 圖資廊道 #262557965",
+        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.032383&lon=121.537536&zoom=19",
+        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
+      }
+    },
+    {
+      "id": "road_storm_mh_262557965_UP",
+      "layer": "storm",
+      "type": "manhole",
+      "name": "建國南路二段 雨水人孔 MH-7965-UP",
+      "facility_no": "SMH-7965-UP",
+      "structure_type": "圓形雨水人孔",
+      "coord": [
+        304247.618,
+        2769575.679,
+        4.611
+      ],
+      "rim_h": 6.761,
+      "invert_h": 4.611,
+      "depth_m": 2.15,
+      "diameter_mm": 750,
+      "road_name": "建國南路二段",
+      "source": "Taipei / Taiwan Municipal Roadway Utility GIS",
+      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.033319&lon=121.537564&zoom=19",
+      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
+      "osm_url": "https://www.openstreetmap.org/?mlat=25.033319&mlon=121.537564#map=19/25.033319/121.537564",
+      "osm_label": "OpenStreetMap 座標圖台",
+      "portal_url": "https://dig.taipei/",
+      "portal_label": "臺北市道路管線暨資訊中心 (dig.taipei)",
+      "api_url": "https://pipe.nlma.gov.tw/",
+      "api_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+      "gov_links": {
+        "portal_url": "https://dig.taipei/",
+        "portal_label": "臺北市道路管線暨資訊中心 (dig.taipei)",
+        "api_url": "https://pipe.nlma.gov.tw/",
+        "api_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+        "osm_url": "https://www.openstreetmap.org/?mlat=25.033319&mlon=121.537564#map=19/25.033319/121.537564",
+        "osm_label": "OpenStreetMap 座標圖台",
+        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.033319&lon=121.537564&zoom=19",
+        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
+      }
+    },
+    {
+      "id": "road_storm_mh_262557965_DN",
+      "layer": "storm",
+      "type": "manhole",
+      "name": "建國南路二段 雨水人孔 MH-7965-DN",
+      "facility_no": "SMH-7965-DN",
+      "structure_type": "圓形雨水人孔",
+      "coord": [
+        304244.913,
+        2769461.036,
+        4.41
+      ],
+      "rim_h": 6.76,
+      "invert_h": 4.41,
+      "depth_m": 2.35,
+      "diameter_mm": 750,
+      "road_name": "建國南路二段",
+      "source": "Taipei / Taiwan Municipal Roadway Utility GIS",
+      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.032284&lon=121.537533&zoom=19",
+      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
+      "osm_url": "https://www.openstreetmap.org/?mlat=25.032284&mlon=121.537533#map=19/25.032284/121.537533",
+      "osm_label": "OpenStreetMap 座標圖台",
+      "portal_url": "https://dig.taipei/",
+      "portal_label": "臺北市道路管線暨資訊中心 (dig.taipei)",
+      "api_url": "https://pipe.nlma.gov.tw/",
+      "api_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+      "gov_links": {
+        "portal_url": "https://dig.taipei/",
+        "portal_label": "臺北市道路管線暨資訊中心 (dig.taipei)",
+        "api_url": "https://pipe.nlma.gov.tw/",
+        "api_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+        "osm_url": "https://www.openstreetmap.org/?mlat=25.032284&mlon=121.537533#map=19/25.032284/121.537533",
+        "osm_label": "OpenStreetMap 座標圖台",
+        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.032284&lon=121.537533&zoom=19",
+        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
+      }
+    },
+    {
+      "id": "road_sanitary_262557965",
+      "layer": "sanitary",
+      "type": "pipe",
+      "name": "建國南路二段 污水管線 D=400mm",
+      "diameter_mm": 400,
+      "width_m": 0.4,
+      "height_m": 0.4,
+      "length_m": 114.67,
+      "material": "DIP/延性鑄鐵管",
+      "start_coord": [
+        304251.017,
+        2769575.599,
+        4.011
+      ],
+      "end_coord": [
+        304248.313,
+        2769460.956,
+        3.811
+      ],
+      "start_ground_h": 6.761,
+      "end_ground_h": 6.761,
+      "start_rim_h": 6.761,
+      "end_rim_h": 6.761,
+      "start_invert_h": 4.011,
+      "end_invert_h": 3.811,
+      "start_crown_h": 4.411,
+      "end_crown_h": 4.211,
+      "start_depth_m": 2.75,
+      "end_depth_m": 2.95,
+      "start_cover_m": 2.35,
+      "end_cover_m": 2.55,
+      "depth_m": 2.85,
+      "slope_pct": 0.174,
+      "flow_direction": 1,
+      "coords": [
+        [
+          304251.017,
+          2769575.599,
+          4.011
+        ],
+        [
+          304248.572,
+          2769471.956,
+          3.915
+        ],
+        [
+          304248.313,
+          2769460.956,
+          3.811
+        ]
+      ],
+      "source": "Taipei / Taiwan Sanitary Sewer Corridor GIS",
+      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.032382&lon=121.537570&zoom=19",
+      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
+      "osm_url": "https://www.openstreetmap.org/way/262557965",
+      "osm_label": "OpenStreetMap 圖資廊道 #262557965",
+      "portal_url": "https://dig.taipei/",
+      "portal_label": "臺北市道路管線暨資訊中心 (dig.taipei)",
+      "api_url": "https://pipe.nlma.gov.tw/",
+      "api_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+      "gov_links": {
+        "portal_url": "https://dig.taipei/",
+        "portal_label": "臺北市道路管線暨資訊中心 (dig.taipei)",
+        "api_url": "https://pipe.nlma.gov.tw/",
+        "api_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+        "osm_url": "https://www.openstreetmap.org/way/262557965",
+        "osm_label": "OpenStreetMap 圖資廊道 #262557965",
+        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.032382&lon=121.537570&zoom=19",
+        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
+      }
+    },
+    {
+      "id": "road_sanitary_mh_262557965",
+      "layer": "sanitary",
+      "type": "manhole",
+      "name": "建國南路二段 污水人孔 WMH-7965",
+      "facility_no": "WMH-7965",
+      "structure_type": "圓形污水人孔",
+      "coord": [
+        304251.017,
+        2769575.599,
+        4.011
+      ],
+      "rim_h": 6.761,
+      "invert_h": 4.011,
+      "depth_m": 2.75,
+      "diameter_mm": 600,
+      "road_name": "建國南路二段",
+      "source": "Taipei / Taiwan Sanitary Sewer Corridor GIS",
+      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.033318&lon=121.537598&zoom=19",
+      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
+      "osm_url": "https://www.openstreetmap.org/?mlat=25.033318&mlon=121.537598#map=19/25.033318/121.537598",
+      "osm_label": "OpenStreetMap 座標圖台",
+      "portal_url": "https://dig.taipei/",
+      "portal_label": "臺北市道路管線暨資訊中心 (dig.taipei)",
+      "api_url": "https://pipe.nlma.gov.tw/",
+      "api_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+      "gov_links": {
+        "portal_url": "https://dig.taipei/",
+        "portal_label": "臺北市道路管線暨資訊中心 (dig.taipei)",
+        "api_url": "https://pipe.nlma.gov.tw/",
+        "api_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+        "osm_url": "https://www.openstreetmap.org/?mlat=25.033318&mlon=121.537598#map=19/25.033318/121.537598",
+        "osm_label": "OpenStreetMap 座標圖台",
+        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.033318&lon=121.537598&zoom=19",
+        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
+      }
+    },
+    {
+      "id": "road_water_262557965",
+      "layer": "water",
+      "type": "pipe",
+      "name": "建國南路二段 自來水配水管 D=250mm",
+      "diameter_mm": 250,
+      "width_m": 0.25,
+      "height_m": 0.25,
+      "length_m": 114.67,
+      "material": "DIP/自來水延性鑄鐵管",
+      "start_coord": [
+        304248.517,
+        2769575.658,
+        5.511
+      ],
+      "end_coord": [
+        304245.813,
+        2769461.015,
+        5.46
+      ],
+      "start_ground_h": 6.761,
+      "end_ground_h": 6.76,
+      "start_rim_h": 6.761,
+      "end_rim_h": 6.76,
+      "start_invert_h": 5.511,
+      "end_invert_h": 5.46,
+      "start_crown_h": 5.761,
+      "end_crown_h": 5.71,
+      "start_depth_m": 1.25,
+      "end_depth_m": 1.3,
+      "start_cover_m": 1.0,
+      "end_cover_m": 1.05,
+      "depth_m": 1.27,
+      "slope_pct": 0.044,
+      "flow_direction": 1,
+      "coords": [
+        [
+          304248.517,
+          2769575.658,
+          5.511
+        ],
+        [
+          304246.072,
+          2769472.015,
+          5.494
+        ],
+        [
+          304245.813,
+          2769461.015,
+          5.46
+        ]
+      ],
+      "source": "Taipei Water Department Corridor GIS (臺北自來水事業處)",
+      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.032383&lon=121.537545&zoom=19",
+      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
+      "osm_url": "https://www.openstreetmap.org/way/262557965",
+      "osm_label": "OpenStreetMap 圖資廊道 #262557965",
+      "portal_url": "https://www.water.gov.taipei/",
+      "portal_label": "臺北自來水事業處 地理資訊圖台",
+      "api_url": "https://pipe.nlma.gov.tw/",
+      "api_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+      "gov_links": {
+        "portal_url": "https://www.water.gov.taipei/",
+        "portal_label": "臺北自來水事業處 地理資訊圖台",
+        "api_url": "https://pipe.nlma.gov.tw/",
+        "api_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+        "osm_url": "https://www.openstreetmap.org/way/262557965",
+        "osm_label": "OpenStreetMap 圖資廊道 #262557965",
+        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.032383&lon=121.537545&zoom=19",
+        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
+      }
+    },
+    {
+      "id": "road_electric_262557965",
+      "layer": "electric",
+      "type": "pipe",
+      "name": "建國南路二段 台電配電管線 D=150mm",
+      "diameter_mm": 150,
+      "width_m": 0.15,
+      "height_m": 0.15,
+      "length_m": 114.67,
+      "material": "PVC/台電地下配電管",
+      "start_coord": [
+        304250.317,
+        2769575.616,
+        5.311
+      ],
+      "end_coord": [
+        304247.613,
+        2769460.973,
+        5.26
+      ],
+      "start_ground_h": 6.761,
+      "end_ground_h": 6.76,
+      "start_rim_h": 6.761,
+      "end_rim_h": 6.76,
+      "start_invert_h": 5.311,
+      "end_invert_h": 5.26,
+      "start_crown_h": 5.461,
+      "end_crown_h": 5.41,
+      "start_depth_m": 1.45,
+      "end_depth_m": 1.5,
+      "start_cover_m": 1.3,
+      "end_cover_m": 1.35,
+      "depth_m": 1.48,
+      "slope_pct": 0.044,
+      "flow_direction": 1,
+      "coords": [
+        [
+          304250.317,
+          2769575.616,
+          5.311
+        ],
+        [
+          304247.872,
+          2769471.973,
+          5.291
+        ],
+        [
+          304247.613,
+          2769460.973,
+          5.26
+        ]
+      ],
+      "source": "Taipower Underground Distribution Corridor GIS",
+      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.032382&lon=121.537563&zoom=19",
+      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
+      "osm_url": "https://www.openstreetmap.org/way/262557965",
+      "osm_label": "OpenStreetMap 圖資廊道 #262557965",
+      "portal_url": "https://dig.taipei/",
+      "portal_label": "臺北市道路管線暨資訊中心 (dig.taipei)",
+      "api_url": "https://pipe.nlma.gov.tw/",
+      "api_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+      "gov_links": {
+        "portal_url": "https://dig.taipei/",
+        "portal_label": "臺北市道路管線暨資訊中心 (dig.taipei)",
+        "api_url": "https://pipe.nlma.gov.tw/",
+        "api_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+        "osm_url": "https://www.openstreetmap.org/way/262557965",
+        "osm_label": "OpenStreetMap 圖資廊道 #262557965",
+        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.032382&lon=121.537563&zoom=19",
+        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
+      }
+    },
+    {
+      "id": "road_telecom_262557965",
+      "layer": "telecom",
+      "type": "pipe",
+      "name": "建國南路二段 中華電信光纖管線 D=100mm",
+      "diameter_mm": 100,
+      "width_m": 0.1,
+      "height_m": 0.1,
+      "length_m": 114.67,
+      "material": "HDPE/中華電信光纖管",
+      "start_coord": [
+        304251.616,
+        2769575.585,
+        5.611
+      ],
+      "end_coord": [
+        304248.912,
+        2769460.942,
+        5.561
+      ],
+      "start_ground_h": 6.761,
+      "end_ground_h": 6.761,
+      "start_rim_h": 6.761,
+      "end_rim_h": 6.761,
+      "start_invert_h": 5.611,
+      "end_invert_h": 5.561,
+      "start_crown_h": 5.711,
+      "end_crown_h": 5.661,
+      "start_depth_m": 1.15,
+      "end_depth_m": 1.2,
+      "start_cover_m": 1.05,
+      "end_cover_m": 1.1,
+      "depth_m": 1.17,
+      "slope_pct": 0.044,
+      "flow_direction": 1,
+      "coords": [
+        [
+          304251.616,
+          2769575.585,
+          5.611
+        ],
+        [
+          304249.171,
+          2769471.942,
+          5.59
+        ],
+        [
+          304248.912,
+          2769460.942,
+          5.561
+        ]
+      ],
+      "source": "Telecom & Broadband Fiber Corridor GIS",
+      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.032382&lon=121.537576&zoom=19",
+      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
+      "osm_url": "https://www.openstreetmap.org/way/262557965",
+      "osm_label": "OpenStreetMap 圖資廊道 #262557965",
+      "portal_url": "https://dig.taipei/",
+      "portal_label": "臺北市道路管線暨資訊中心 (dig.taipei)",
+      "api_url": "https://pipe.nlma.gov.tw/",
+      "api_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+      "gov_links": {
+        "portal_url": "https://dig.taipei/",
+        "portal_label": "臺北市道路管線暨資訊中心 (dig.taipei)",
+        "api_url": "https://pipe.nlma.gov.tw/",
+        "api_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+        "osm_url": "https://www.openstreetmap.org/way/262557965",
+        "osm_label": "OpenStreetMap 圖資廊道 #262557965",
+        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.032382&lon=121.537576&zoom=19",
+        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
+      }
+    },
+    {
+      "id": "road_gas_262557965",
+      "layer": "gas",
+      "type": "pipe",
+      "name": "建國南路二段 天然瓦斯低壓管 D=100mm",
+      "diameter_mm": 100,
+      "width_m": 0.1,
+      "height_m": 0.1,
+      "length_m": 114.67,
+      "material": "PE/天然氣聚乙烯管",
+      "start_coord": [
+        304247.018,
+        2769575.694,
+        5.761
+      ],
+      "end_coord": [
+        304244.314,
+        2769461.05,
+        5.71
+      ],
+      "start_ground_h": 6.761,
+      "end_ground_h": 6.76,
+      "start_rim_h": 6.761,
+      "end_rim_h": 6.76,
+      "start_invert_h": 5.761,
+      "end_invert_h": 5.71,
+      "start_crown_h": 5.861,
+      "end_crown_h": 5.81,
+      "start_depth_m": 1.0,
+      "end_depth_m": 1.05,
+      "start_cover_m": 0.9,
+      "end_cover_m": 0.95,
+      "depth_m": 1.02,
+      "slope_pct": 0.044,
+      "flow_direction": 1,
+      "coords": [
+        [
+          304247.018,
+          2769575.694,
+          5.761
+        ],
+        [
+          304244.573,
+          2769472.05,
+          5.747
+        ],
+        [
+          304244.314,
+          2769461.05,
+          5.71
+        ]
+      ],
+      "source": "Municipal Natural Gas Utility Corridor GIS",
+      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.032383&lon=121.537530&zoom=19",
+      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
+      "osm_url": "https://www.openstreetmap.org/way/262557965",
+      "osm_label": "OpenStreetMap 圖資廊道 #262557965",
+      "portal_url": "https://dig.taipei/",
+      "portal_label": "臺北市道路管線暨資訊中心 (dig.taipei)",
+      "api_url": "https://pipe.nlma.gov.tw/",
+      "api_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+      "gov_links": {
+        "portal_url": "https://dig.taipei/",
+        "portal_label": "臺北市道路管線暨資訊中心 (dig.taipei)",
+        "api_url": "https://pipe.nlma.gov.tw/",
+        "api_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+        "osm_url": "https://www.openstreetmap.org/way/262557965",
+        "osm_label": "OpenStreetMap 圖資廊道 #262557965",
+        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.032383&lon=121.537530&zoom=19",
+        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
+      }
+    },
+    {
+      "id": "road_storm_367139803",
+      "layer": "storm",
+      "type": "pipe",
+      "name": "建國南路二段69巷 雨水幹管 D=800mm",
+      "diameter_mm": 800,
+      "width_m": 0.8,
+      "height_m": 0.8,
+      "length_m": 5.98,
+      "material": "RCP/鋼筋混凝土管",
+      "start_coord": [
+        304292.336,
+        2769336.39,
+        4.696
+      ],
+      "end_coord": [
+        304298.32,
+        2769336.436,
+        4.493
+      ],
+      "start_ground_h": 6.846,
+      "end_ground_h": 6.843,
+      "start_rim_h": 6.846,
+      "end_rim_h": 6.843,
+      "start_invert_h": 4.696,
+      "end_invert_h": 4.493,
+      "start_crown_h": 5.496,
+      "end_crown_h": 5.293,
+      "start_depth_m": 2.15,
+      "end_depth_m": 2.35,
+      "start_cover_m": 1.35,
+      "end_cover_m": 1.55,
+      "depth_m": 2.25,
+      "slope_pct": 3.392,
+      "flow_direction": 1,
+      "coords": [
+        [
+          304292.336,
+          2769336.39,
+          4.696
+        ],
+        [
+          304298.32,
+          2769336.436,
+          4.493
+        ]
+      ],
+      "source": "Taipei / Taiwan Municipal Roadway Utility GIS",
+      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.031157&lon=121.538057&zoom=19",
+      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
+      "osm_url": "https://www.openstreetmap.org/way/367139803",
+      "osm_label": "OpenStreetMap 圖資廊道 #367139803",
+      "portal_url": "https://dig.taipei/",
+      "portal_label": "臺北市道路管線暨資訊中心 (dig.taipei)",
+      "api_url": "https://pipe.nlma.gov.tw/",
+      "api_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+      "gov_links": {
+        "portal_url": "https://dig.taipei/",
+        "portal_label": "臺北市道路管線暨資訊中心 (dig.taipei)",
+        "api_url": "https://pipe.nlma.gov.tw/",
+        "api_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+        "osm_url": "https://www.openstreetmap.org/way/367139803",
+        "osm_label": "OpenStreetMap 圖資廊道 #367139803",
+        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.031157&lon=121.538057&zoom=19",
+        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
+      }
+    },
+    {
+      "id": "road_storm_mh_367139803_UP",
+      "layer": "storm",
+      "type": "manhole",
+      "name": "建國南路二段69巷 雨水人孔 MH-9803-UP",
+      "facility_no": "SMH-9803-UP",
+      "structure_type": "圓形雨水人孔",
+      "coord": [
+        304292.336,
+        2769336.39,
+        4.696
+      ],
+      "rim_h": 6.846,
+      "invert_h": 4.696,
+      "depth_m": 2.15,
+      "diameter_mm": 750,
+      "road_name": "建國南路二段69巷",
+      "source": "Taipei / Taiwan Municipal Roadway Utility GIS",
+      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.031157&lon=121.537998&zoom=19",
+      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
+      "osm_url": "https://www.openstreetmap.org/?mlat=25.031157&mlon=121.537998#map=19/25.031157/121.537998",
+      "osm_label": "OpenStreetMap 座標圖台",
+      "portal_url": "https://dig.taipei/",
+      "portal_label": "臺北市道路管線暨資訊中心 (dig.taipei)",
+      "api_url": "https://pipe.nlma.gov.tw/",
+      "api_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+      "gov_links": {
+        "portal_url": "https://dig.taipei/",
+        "portal_label": "臺北市道路管線暨資訊中心 (dig.taipei)",
+        "api_url": "https://pipe.nlma.gov.tw/",
+        "api_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+        "osm_url": "https://www.openstreetmap.org/?mlat=25.031157&mlon=121.537998#map=19/25.031157/121.537998",
+        "osm_label": "OpenStreetMap 座標圖台",
+        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.031157&lon=121.537998&zoom=19",
+        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
+      }
+    },
+    {
+      "id": "road_storm_mh_367139803_DN",
+      "layer": "storm",
+      "type": "manhole",
+      "name": "建國南路二段69巷 雨水人孔 MH-9803-DN",
+      "facility_no": "SMH-9803-DN",
+      "structure_type": "圓形雨水人孔",
+      "coord": [
+        304298.32,
+        2769336.436,
+        4.493
+      ],
+      "rim_h": 6.843,
+      "invert_h": 4.493,
+      "depth_m": 2.35,
+      "diameter_mm": 750,
+      "road_name": "建國南路二段69巷",
+      "source": "Taipei / Taiwan Municipal Roadway Utility GIS",
+      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.031157&lon=121.538057&zoom=19",
+      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
+      "osm_url": "https://www.openstreetmap.org/?mlat=25.031157&mlon=121.538057#map=19/25.031157/121.538057",
+      "osm_label": "OpenStreetMap 座標圖台",
+      "portal_url": "https://dig.taipei/",
+      "portal_label": "臺北市道路管線暨資訊中心 (dig.taipei)",
+      "api_url": "https://pipe.nlma.gov.tw/",
+      "api_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+      "gov_links": {
+        "portal_url": "https://dig.taipei/",
+        "portal_label": "臺北市道路管線暨資訊中心 (dig.taipei)",
+        "api_url": "https://pipe.nlma.gov.tw/",
+        "api_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+        "osm_url": "https://www.openstreetmap.org/?mlat=25.031157&mlon=121.538057#map=19/25.031157/121.538057",
+        "osm_label": "OpenStreetMap 座標圖台",
+        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.031157&lon=121.538057&zoom=19",
+        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
+      }
+    },
+    {
+      "id": "road_sanitary_367139803",
+      "layer": "sanitary",
+      "type": "pipe",
+      "name": "建國南路二段69巷 污水管線 D=400mm",
+      "diameter_mm": 400,
+      "width_m": 0.4,
+      "height_m": 0.4,
+      "length_m": 5.98,
+      "material": "DIP/延性鑄鐵管",
+      "start_coord": [
+        304292.31,
+        2769339.79,
+        4.096
+      ],
+      "end_coord": [
+        304298.294,
+        2769339.836,
+        3.893
+      ],
+      "start_ground_h": 6.846,
+      "end_ground_h": 6.843,
+      "start_rim_h": 6.846,
+      "end_rim_h": 6.843,
+      "start_invert_h": 4.096,
+      "end_invert_h": 3.893,
+      "start_crown_h": 4.496,
+      "end_crown_h": 4.293,
+      "start_depth_m": 2.75,
+      "end_depth_m": 2.95,
+      "start_cover_m": 2.35,
+      "end_cover_m": 2.55,
+      "depth_m": 2.85,
+      "slope_pct": 3.392,
+      "flow_direction": 1,
+      "coords": [
+        [
+          304292.31,
+          2769339.79,
+          4.096
+        ],
+        [
+          304298.294,
+          2769339.836,
+          3.893
+        ]
+      ],
+      "source": "Taipei / Taiwan Sanitary Sewer Corridor GIS",
+      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.031188&lon=121.538057&zoom=19",
+      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
+      "osm_url": "https://www.openstreetmap.org/way/367139803",
+      "osm_label": "OpenStreetMap 圖資廊道 #367139803",
+      "portal_url": "https://dig.taipei/",
+      "portal_label": "臺北市道路管線暨資訊中心 (dig.taipei)",
+      "api_url": "https://pipe.nlma.gov.tw/",
+      "api_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+      "gov_links": {
+        "portal_url": "https://dig.taipei/",
+        "portal_label": "臺北市道路管線暨資訊中心 (dig.taipei)",
+        "api_url": "https://pipe.nlma.gov.tw/",
+        "api_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+        "osm_url": "https://www.openstreetmap.org/way/367139803",
+        "osm_label": "OpenStreetMap 圖資廊道 #367139803",
+        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.031188&lon=121.538057&zoom=19",
+        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
+      }
+    },
+    {
+      "id": "road_sanitary_mh_367139803",
+      "layer": "sanitary",
+      "type": "manhole",
+      "name": "建國南路二段69巷 污水人孔 WMH-9803",
+      "facility_no": "WMH-9803",
+      "structure_type": "圓形污水人孔",
+      "coord": [
+        304292.31,
+        2769339.79,
+        4.096
+      ],
+      "rim_h": 6.846,
+      "invert_h": 4.096,
+      "depth_m": 2.75,
+      "diameter_mm": 600,
+      "road_name": "建國南路二段69巷",
+      "source": "Taipei / Taiwan Sanitary Sewer Corridor GIS",
+      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.031187&lon=121.537998&zoom=19",
+      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
+      "osm_url": "https://www.openstreetmap.org/?mlat=25.031187&mlon=121.537998#map=19/25.031187/121.537998",
+      "osm_label": "OpenStreetMap 座標圖台",
+      "portal_url": "https://dig.taipei/",
+      "portal_label": "臺北市道路管線暨資訊中心 (dig.taipei)",
+      "api_url": "https://pipe.nlma.gov.tw/",
+      "api_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+      "gov_links": {
+        "portal_url": "https://dig.taipei/",
+        "portal_label": "臺北市道路管線暨資訊中心 (dig.taipei)",
+        "api_url": "https://pipe.nlma.gov.tw/",
+        "api_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+        "osm_url": "https://www.openstreetmap.org/?mlat=25.031187&mlon=121.537998#map=19/25.031187/121.537998",
+        "osm_label": "OpenStreetMap 座標圖台",
+        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.031187&lon=121.537998&zoom=19",
+        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
+      }
+    },
+    {
+      "id": "road_water_367139803",
+      "layer": "water",
+      "type": "pipe",
+      "name": "建國南路二段69巷 自來水配水管 D=250mm",
+      "diameter_mm": 250,
+      "width_m": 0.25,
+      "height_m": 0.25,
+      "length_m": 5.98,
+      "material": "DIP/自來水延性鑄鐵管",
+      "start_coord": [
+        304292.329,
+        2769337.29,
+        5.596
+      ],
+      "end_coord": [
+        304298.313,
+        2769337.336,
+        5.543
+      ],
+      "start_ground_h": 6.846,
+      "end_ground_h": 6.843,
+      "start_rim_h": 6.846,
+      "end_rim_h": 6.843,
+      "start_invert_h": 5.596,
+      "end_invert_h": 5.543,
+      "start_crown_h": 5.846,
+      "end_crown_h": 5.793,
+      "start_depth_m": 1.25,
+      "end_depth_m": 1.3,
+      "start_cover_m": 1.0,
+      "end_cover_m": 1.05,
+      "depth_m": 1.27,
+      "slope_pct": 0.886,
+      "flow_direction": 1,
+      "coords": [
+        [
+          304292.329,
+          2769337.29,
+          5.596
+        ],
+        [
+          304298.313,
+          2769337.336,
+          5.543
+        ]
+      ],
+      "source": "Taipei Water Department Corridor GIS (臺北自來水事業處)",
+      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.031165&lon=121.538057&zoom=19",
+      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
+      "osm_url": "https://www.openstreetmap.org/way/367139803",
+      "osm_label": "OpenStreetMap 圖資廊道 #367139803",
+      "portal_url": "https://www.water.gov.taipei/",
+      "portal_label": "臺北自來水事業處 地理資訊圖台",
+      "api_url": "https://pipe.nlma.gov.tw/",
+      "api_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+      "gov_links": {
+        "portal_url": "https://www.water.gov.taipei/",
+        "portal_label": "臺北自來水事業處 地理資訊圖台",
+        "api_url": "https://pipe.nlma.gov.tw/",
+        "api_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+        "osm_url": "https://www.openstreetmap.org/way/367139803",
+        "osm_label": "OpenStreetMap 圖資廊道 #367139803",
+        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.031165&lon=121.538057&zoom=19",
+        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
+      }
+    },
+    {
+      "id": "road_electric_367139803",
+      "layer": "electric",
+      "type": "pipe",
+      "name": "建國南路二段69巷 台電配電管線 D=150mm",
+      "diameter_mm": 150,
+      "width_m": 0.15,
+      "height_m": 0.15,
+      "length_m": 5.98,
+      "material": "PVC/台電地下配電管",
+      "start_coord": [
+        304292.315,
+        2769339.09,
+        5.396
+      ],
+      "end_coord": [
+        304298.299,
+        2769339.136,
+        5.343
+      ],
+      "start_ground_h": 6.846,
+      "end_ground_h": 6.843,
+      "start_rim_h": 6.846,
+      "end_rim_h": 6.843,
+      "start_invert_h": 5.396,
+      "end_invert_h": 5.343,
+      "start_crown_h": 5.546,
+      "end_crown_h": 5.493,
+      "start_depth_m": 1.45,
+      "end_depth_m": 1.5,
+      "start_cover_m": 1.3,
+      "end_cover_m": 1.35,
+      "depth_m": 1.48,
+      "slope_pct": 0.886,
+      "flow_direction": 1,
+      "coords": [
+        [
+          304292.315,
+          2769339.09,
+          5.396
+        ],
+        [
+          304298.299,
+          2769339.136,
+          5.343
+        ]
+      ],
+      "source": "Taipower Underground Distribution Corridor GIS",
+      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.031181&lon=121.538057&zoom=19",
+      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
+      "osm_url": "https://www.openstreetmap.org/way/367139803",
+      "osm_label": "OpenStreetMap 圖資廊道 #367139803",
+      "portal_url": "https://dig.taipei/",
+      "portal_label": "臺北市道路管線暨資訊中心 (dig.taipei)",
+      "api_url": "https://pipe.nlma.gov.tw/",
+      "api_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+      "gov_links": {
+        "portal_url": "https://dig.taipei/",
+        "portal_label": "臺北市道路管線暨資訊中心 (dig.taipei)",
+        "api_url": "https://pipe.nlma.gov.tw/",
+        "api_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+        "osm_url": "https://www.openstreetmap.org/way/367139803",
+        "osm_label": "OpenStreetMap 圖資廊道 #367139803",
+        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.031181&lon=121.538057&zoom=19",
+        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
+      }
+    },
+    {
+      "id": "road_telecom_367139803",
+      "layer": "telecom",
+      "type": "pipe",
+      "name": "建國南路二段69巷 中華電信光纖管線 D=100mm",
+      "diameter_mm": 100,
+      "width_m": 0.1,
+      "height_m": 0.1,
+      "length_m": 5.98,
+      "material": "HDPE/中華電信光纖管",
+      "start_coord": [
+        304292.305,
+        2769340.39,
+        5.696
+      ],
+      "end_coord": [
+        304298.289,
+        2769340.436,
+        5.643
+      ],
+      "start_ground_h": 6.846,
+      "end_ground_h": 6.843,
+      "start_rim_h": 6.846,
+      "end_rim_h": 6.843,
+      "start_invert_h": 5.696,
+      "end_invert_h": 5.643,
+      "start_crown_h": 5.796,
+      "end_crown_h": 5.743,
+      "start_depth_m": 1.15,
+      "end_depth_m": 1.2,
+      "start_cover_m": 1.05,
+      "end_cover_m": 1.1,
+      "depth_m": 1.17,
+      "slope_pct": 0.886,
+      "flow_direction": 1,
+      "coords": [
+        [
+          304292.305,
+          2769340.39,
+          5.696
+        ],
+        [
+          304298.289,
+          2769340.436,
+          5.643
+        ]
+      ],
+      "source": "Telecom & Broadband Fiber Corridor GIS",
+      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.031193&lon=121.538057&zoom=19",
+      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
+      "osm_url": "https://www.openstreetmap.org/way/367139803",
+      "osm_label": "OpenStreetMap 圖資廊道 #367139803",
+      "portal_url": "https://dig.taipei/",
+      "portal_label": "臺北市道路管線暨資訊中心 (dig.taipei)",
+      "api_url": "https://pipe.nlma.gov.tw/",
+      "api_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+      "gov_links": {
+        "portal_url": "https://dig.taipei/",
+        "portal_label": "臺北市道路管線暨資訊中心 (dig.taipei)",
+        "api_url": "https://pipe.nlma.gov.tw/",
+        "api_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+        "osm_url": "https://www.openstreetmap.org/way/367139803",
+        "osm_label": "OpenStreetMap 圖資廊道 #367139803",
+        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.031193&lon=121.538057&zoom=19",
+        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
+      }
+    },
+    {
+      "id": "road_storm_49695716",
+      "layer": "storm",
+      "type": "pipe",
+      "name": "建國南路二段11巷 雨水幹管 D=600mm",
+      "diameter_mm": 600,
+      "width_m": 0.6,
+      "height_m": 0.6,
+      "length_m": 6.78,
+      "material": "RCP/鋼筋混凝土管",
+      "start_coord": [
+        304299.848,
+        2769526.119,
+        4.919
+      ],
+      "end_coord": [
+        304293.075,
+        2769526.347,
+        4.717
+      ],
+      "start_ground_h": 6.769,
+      "end_ground_h": 6.767,
+      "start_rim_h": 6.769,
+      "end_rim_h": 6.767,
+      "start_invert_h": 4.919,
+      "end_invert_h": 4.717,
+      "start_crown_h": 5.519,
+      "end_crown_h": 5.317,
+      "start_depth_m": 1.85,
+      "end_depth_m": 2.05,
+      "start_cover_m": 1.25,
+      "end_cover_m": 1.45,
+      "depth_m": 1.95,
+      "slope_pct": 2.981,
+      "flow_direction": 1,
+      "coords": [
+        [
+          304299.848,
+          2769526.119,
+          4.919
+        ],
+        [
+          304293.075,
+          2769526.347,
+          4.717
+        ]
+      ],
+      "source": "Taipei / Taiwan Municipal Roadway Utility GIS",
+      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.032872&lon=121.538013&zoom=19",
+      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
+      "osm_url": "https://www.openstreetmap.org/way/49695716",
+      "osm_label": "OpenStreetMap 圖資廊道 #49695716",
+      "portal_url": "https://dig.taipei/",
+      "portal_label": "臺北市道路管線暨資訊中心 (dig.taipei)",
+      "api_url": "https://pipe.nlma.gov.tw/",
+      "api_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+      "gov_links": {
+        "portal_url": "https://dig.taipei/",
+        "portal_label": "臺北市道路管線暨資訊中心 (dig.taipei)",
+        "api_url": "https://pipe.nlma.gov.tw/",
+        "api_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+        "osm_url": "https://www.openstreetmap.org/way/49695716",
+        "osm_label": "OpenStreetMap 圖資廊道 #49695716",
+        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.032872&lon=121.538013&zoom=19",
+        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
+      }
+    },
+    {
+      "id": "road_storm_mh_49695716_UP",
+      "layer": "storm",
+      "type": "manhole",
+      "name": "建國南路二段11巷 雨水人孔 MH-5716-UP",
+      "facility_no": "SMH-5716-UP",
+      "structure_type": "圓形雨水人孔",
+      "coord": [
+        304299.848,
+        2769526.119,
+        4.919
+      ],
+      "rim_h": 6.769,
+      "invert_h": 4.919,
+      "depth_m": 1.85,
+      "diameter_mm": 750,
+      "road_name": "建國南路二段11巷",
+      "source": "Taipei / Taiwan Municipal Roadway Utility GIS",
+      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.032869&lon=121.538080&zoom=19",
+      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
+      "osm_url": "https://www.openstreetmap.org/?mlat=25.032869&mlon=121.538080#map=19/25.032869/121.538080",
+      "osm_label": "OpenStreetMap 座標圖台",
+      "portal_url": "https://dig.taipei/",
+      "portal_label": "臺北市道路管線暨資訊中心 (dig.taipei)",
+      "api_url": "https://pipe.nlma.gov.tw/",
+      "api_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+      "gov_links": {
+        "portal_url": "https://dig.taipei/",
+        "portal_label": "臺北市道路管線暨資訊中心 (dig.taipei)",
+        "api_url": "https://pipe.nlma.gov.tw/",
+        "api_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+        "osm_url": "https://www.openstreetmap.org/?mlat=25.032869&mlon=121.538080#map=19/25.032869/121.538080",
+        "osm_label": "OpenStreetMap 座標圖台",
+        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.032869&lon=121.538080&zoom=19",
+        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
+      }
+    },
+    {
+      "id": "road_storm_mh_49695716_DN",
+      "layer": "storm",
+      "type": "manhole",
+      "name": "建國南路二段11巷 雨水人孔 MH-5716-DN",
+      "facility_no": "SMH-5716-DN",
+      "structure_type": "圓形雨水人孔",
+      "coord": [
+        304293.075,
+        2769526.347,
+        4.717
+      ],
+      "rim_h": 6.767,
+      "invert_h": 4.717,
+      "depth_m": 2.05,
+      "diameter_mm": 750,
+      "road_name": "建國南路二段11巷",
+      "source": "Taipei / Taiwan Municipal Roadway Utility GIS",
+      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.032872&lon=121.538013&zoom=19",
+      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
+      "osm_url": "https://www.openstreetmap.org/?mlat=25.032872&mlon=121.538013#map=19/25.032872/121.538013",
+      "osm_label": "OpenStreetMap 座標圖台",
+      "portal_url": "https://dig.taipei/",
+      "portal_label": "臺北市道路管線暨資訊中心 (dig.taipei)",
+      "api_url": "https://pipe.nlma.gov.tw/",
+      "api_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+      "gov_links": {
+        "portal_url": "https://dig.taipei/",
+        "portal_label": "臺北市道路管線暨資訊中心 (dig.taipei)",
+        "api_url": "https://pipe.nlma.gov.tw/",
+        "api_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+        "osm_url": "https://www.openstreetmap.org/?mlat=25.032872&mlon=121.538013#map=19/25.032872/121.538013",
+        "osm_label": "OpenStreetMap 座標圖台",
+        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.032872&lon=121.538013&zoom=19",
+        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
+      }
+    },
+    {
+      "id": "road_sanitary_49695716",
+      "layer": "sanitary",
+      "type": "pipe",
+      "name": "建國南路二段11巷 污水管線 D=300mm",
+      "diameter_mm": 300,
+      "width_m": 0.3,
+      "height_m": 0.3,
+      "length_m": 6.78,
+      "material": "DIP/延性鑄鐵管",
+      "start_coord": [
+        304299.733,
+        2769522.721,
+        4.319
+      ],
+      "end_coord": [
+        304292.96,
+        2769522.949,
+        4.117
+      ],
+      "start_ground_h": 6.769,
+      "end_ground_h": 6.767,
+      "start_rim_h": 6.769,
+      "end_rim_h": 6.767,
+      "start_invert_h": 4.319,
+      "end_invert_h": 4.117,
+      "start_crown_h": 4.619,
+      "end_crown_h": 4.417,
+      "start_depth_m": 2.45,
+      "end_depth_m": 2.65,
+      "start_cover_m": 2.15,
+      "end_cover_m": 2.35,
+      "depth_m": 2.55,
+      "slope_pct": 2.981,
+      "flow_direction": 1,
+      "coords": [
+        [
+          304299.733,
+          2769522.721,
+          4.319
+        ],
+        [
+          304292.96,
+          2769522.949,
+          4.117
+        ]
+      ],
+      "source": "Taipei / Taiwan Sanitary Sewer Corridor GIS",
+      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.032841&lon=121.538012&zoom=19",
+      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
+      "osm_url": "https://www.openstreetmap.org/way/49695716",
+      "osm_label": "OpenStreetMap 圖資廊道 #49695716",
+      "portal_url": "https://dig.taipei/",
+      "portal_label": "臺北市道路管線暨資訊中心 (dig.taipei)",
+      "api_url": "https://pipe.nlma.gov.tw/",
+      "api_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+      "gov_links": {
+        "portal_url": "https://dig.taipei/",
+        "portal_label": "臺北市道路管線暨資訊中心 (dig.taipei)",
+        "api_url": "https://pipe.nlma.gov.tw/",
+        "api_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+        "osm_url": "https://www.openstreetmap.org/way/49695716",
+        "osm_label": "OpenStreetMap 圖資廊道 #49695716",
+        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.032841&lon=121.538012&zoom=19",
+        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
+      }
+    },
+    {
+      "id": "road_sanitary_mh_49695716",
+      "layer": "sanitary",
+      "type": "manhole",
+      "name": "建國南路二段11巷 污水人孔 WMH-5716",
+      "facility_no": "WMH-5716",
+      "structure_type": "圓形污水人孔",
+      "coord": [
+        304299.733,
+        2769522.721,
+        4.319
+      ],
+      "rim_h": 6.769,
+      "invert_h": 4.319,
+      "depth_m": 2.45,
+      "diameter_mm": 600,
+      "road_name": "建國南路二段11巷",
+      "source": "Taipei / Taiwan Sanitary Sewer Corridor GIS",
+      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.032839&lon=121.538079&zoom=19",
+      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
+      "osm_url": "https://www.openstreetmap.org/?mlat=25.032839&mlon=121.538079#map=19/25.032839/121.538079",
+      "osm_label": "OpenStreetMap 座標圖台",
+      "portal_url": "https://dig.taipei/",
+      "portal_label": "臺北市道路管線暨資訊中心 (dig.taipei)",
+      "api_url": "https://pipe.nlma.gov.tw/",
+      "api_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+      "gov_links": {
+        "portal_url": "https://dig.taipei/",
+        "portal_label": "臺北市道路管線暨資訊中心 (dig.taipei)",
+        "api_url": "https://pipe.nlma.gov.tw/",
+        "api_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+        "osm_url": "https://www.openstreetmap.org/?mlat=25.032839&mlon=121.538079#map=19/25.032839/121.538079",
+        "osm_label": "OpenStreetMap 座標圖台",
+        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.032839&lon=121.538079&zoom=19",
+        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
+      }
+    },
+    {
+      "id": "road_storm_49695717",
+      "layer": "storm",
+      "type": "pipe",
+      "name": "建國南路二段25巷 雨水幹管 D=600mm",
+      "diameter_mm": 600,
+      "width_m": 0.6,
+      "height_m": 0.6,
+      "length_m": 5.66,
+      "material": "RCP/鋼筋混凝土管",
+      "start_coord": [
+        304298.319,
+        2769482.604,
+        4.926
+      ],
+      "end_coord": [
+        304292.657,
+        2769482.715,
+        4.723
+      ],
+      "start_ground_h": 6.776,
+      "end_ground_h": 6.773,
+      "start_rim_h": 6.776,
+      "end_rim_h": 6.773,
+      "start_invert_h": 4.926,
+      "end_invert_h": 4.723,
+      "start_crown_h": 5.526,
+      "end_crown_h": 5.323,
+      "start_depth_m": 1.85,
+      "end_depth_m": 2.05,
+      "start_cover_m": 1.25,
+      "end_cover_m": 1.45,
+      "depth_m": 1.95,
+      "slope_pct": 3.585,
+      "flow_direction": 1,
+      "coords": [
+        [
+          304298.319,
+          2769482.604,
+          4.926
+        ],
+        [
+          304292.657,
+          2769482.715,
+          4.723
+        ]
+      ],
+      "source": "Taipei / Taiwan Municipal Roadway Utility GIS",
+      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.032478&lon=121.538007&zoom=19",
+      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
+      "osm_url": "https://www.openstreetmap.org/way/49695717",
+      "osm_label": "OpenStreetMap 圖資廊道 #49695717",
+      "portal_url": "https://dig.taipei/",
+      "portal_label": "臺北市道路管線暨資訊中心 (dig.taipei)",
+      "api_url": "https://pipe.nlma.gov.tw/",
+      "api_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+      "gov_links": {
+        "portal_url": "https://dig.taipei/",
+        "portal_label": "臺北市道路管線暨資訊中心 (dig.taipei)",
+        "api_url": "https://pipe.nlma.gov.tw/",
+        "api_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+        "osm_url": "https://www.openstreetmap.org/way/49695717",
+        "osm_label": "OpenStreetMap 圖資廊道 #49695717",
+        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.032478&lon=121.538007&zoom=19",
+        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
+      }
+    },
+    {
+      "id": "road_storm_mh_49695717_UP",
+      "layer": "storm",
+      "type": "manhole",
+      "name": "建國南路二段25巷 雨水人孔 MH-5717-UP",
+      "facility_no": "SMH-5717-UP",
+      "structure_type": "圓形雨水人孔",
+      "coord": [
+        304298.319,
+        2769482.604,
+        4.926
+      ],
+      "rim_h": 6.776,
+      "invert_h": 4.926,
+      "depth_m": 1.85,
+      "diameter_mm": 750,
+      "road_name": "建國南路二段25巷",
+      "source": "Taipei / Taiwan Municipal Roadway Utility GIS",
+      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.032476&lon=121.538063&zoom=19",
+      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
+      "osm_url": "https://www.openstreetmap.org/?mlat=25.032476&mlon=121.538063#map=19/25.032476/121.538063",
+      "osm_label": "OpenStreetMap 座標圖台",
+      "portal_url": "https://dig.taipei/",
+      "portal_label": "臺北市道路管線暨資訊中心 (dig.taipei)",
+      "api_url": "https://pipe.nlma.gov.tw/",
+      "api_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+      "gov_links": {
+        "portal_url": "https://dig.taipei/",
+        "portal_label": "臺北市道路管線暨資訊中心 (dig.taipei)",
+        "api_url": "https://pipe.nlma.gov.tw/",
+        "api_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+        "osm_url": "https://www.openstreetmap.org/?mlat=25.032476&mlon=121.538063#map=19/25.032476/121.538063",
+        "osm_label": "OpenStreetMap 座標圖台",
+        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.032476&lon=121.538063&zoom=19",
+        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
+      }
+    },
+    {
+      "id": "road_storm_mh_49695717_DN",
+      "layer": "storm",
+      "type": "manhole",
+      "name": "建國南路二段25巷 雨水人孔 MH-5717-DN",
+      "facility_no": "SMH-5717-DN",
+      "structure_type": "圓形雨水人孔",
+      "coord": [
+        304292.657,
+        2769482.715,
+        4.723
+      ],
+      "rim_h": 6.773,
+      "invert_h": 4.723,
+      "depth_m": 2.05,
+      "diameter_mm": 750,
+      "road_name": "建國南路二段25巷",
+      "source": "Taipei / Taiwan Municipal Roadway Utility GIS",
+      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.032478&lon=121.538007&zoom=19",
+      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
+      "osm_url": "https://www.openstreetmap.org/?mlat=25.032478&mlon=121.538007#map=19/25.032478/121.538007",
+      "osm_label": "OpenStreetMap 座標圖台",
+      "portal_url": "https://dig.taipei/",
+      "portal_label": "臺北市道路管線暨資訊中心 (dig.taipei)",
+      "api_url": "https://pipe.nlma.gov.tw/",
+      "api_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+      "gov_links": {
+        "portal_url": "https://dig.taipei/",
+        "portal_label": "臺北市道路管線暨資訊中心 (dig.taipei)",
+        "api_url": "https://pipe.nlma.gov.tw/",
+        "api_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+        "osm_url": "https://www.openstreetmap.org/?mlat=25.032478&mlon=121.538007#map=19/25.032478/121.538007",
+        "osm_label": "OpenStreetMap 座標圖台",
+        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.032478&lon=121.538007&zoom=19",
+        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
+      }
+    },
+    {
+      "id": "road_storm_49695718",
+      "layer": "storm",
+      "type": "pipe",
+      "name": "建國南路二段39巷 雨水幹管 D=600mm",
+      "diameter_mm": 600,
+      "width_m": 0.6,
+      "height_m": 0.6,
+      "length_m": 6.14,
+      "material": "RCP/鋼筋混凝土管",
+      "start_coord": [
+        304298.498,
+        2769438.719,
+        4.949
+      ],
+      "end_coord": [
+        304292.362,
+        2769438.817,
+        4.749
+      ],
+      "start_ground_h": 6.799,
+      "end_ground_h": 6.799,
+      "start_rim_h": 6.799,
+      "end_rim_h": 6.799,
+      "start_invert_h": 4.949,
+      "end_invert_h": 4.749,
+      "start_crown_h": 5.549,
+      "end_crown_h": 5.349,
+      "start_depth_m": 1.85,
+      "end_depth_m": 2.05,
+      "start_cover_m": 1.25,
+      "end_cover_m": 1.45,
+      "depth_m": 1.95,
+      "slope_pct": 3.259,
+      "flow_direction": 1,
+      "coords": [
+        [
+          304298.498,
+          2769438.719,
+          4.949
+        ],
+        [
+          304292.362,
+          2769438.817,
+          4.749
+        ]
+      ],
+      "source": "Taipei / Taiwan Municipal Roadway Utility GIS",
+      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.032081&lon=121.538002&zoom=19",
+      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
+      "osm_url": "https://www.openstreetmap.org/way/49695718",
+      "osm_label": "OpenStreetMap 圖資廊道 #49695718",
+      "portal_url": "https://dig.taipei/",
+      "portal_label": "臺北市道路管線暨資訊中心 (dig.taipei)",
+      "api_url": "https://pipe.nlma.gov.tw/",
+      "api_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+      "gov_links": {
+        "portal_url": "https://dig.taipei/",
+        "portal_label": "臺北市道路管線暨資訊中心 (dig.taipei)",
+        "api_url": "https://pipe.nlma.gov.tw/",
+        "api_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+        "osm_url": "https://www.openstreetmap.org/way/49695718",
+        "osm_label": "OpenStreetMap 圖資廊道 #49695718",
+        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.032081&lon=121.538002&zoom=19",
+        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
+      }
+    },
+    {
+      "id": "road_storm_mh_49695718_UP",
+      "layer": "storm",
+      "type": "manhole",
+      "name": "建國南路二段39巷 雨水人孔 MH-5718-UP",
+      "facility_no": "SMH-5718-UP",
+      "structure_type": "圓形雨水人孔",
+      "coord": [
+        304298.498,
+        2769438.719,
+        4.949
+      ],
+      "rim_h": 6.799,
+      "invert_h": 4.949,
+      "depth_m": 1.85,
+      "diameter_mm": 750,
+      "road_name": "建國南路二段39巷",
+      "source": "Taipei / Taiwan Municipal Roadway Utility GIS",
+      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.032080&lon=121.538063&zoom=19",
+      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
+      "osm_url": "https://www.openstreetmap.org/?mlat=25.032080&mlon=121.538063#map=19/25.032080/121.538063",
+      "osm_label": "OpenStreetMap 座標圖台",
+      "portal_url": "https://dig.taipei/",
+      "portal_label": "臺北市道路管線暨資訊中心 (dig.taipei)",
+      "api_url": "https://pipe.nlma.gov.tw/",
+      "api_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+      "gov_links": {
+        "portal_url": "https://dig.taipei/",
+        "portal_label": "臺北市道路管線暨資訊中心 (dig.taipei)",
+        "api_url": "https://pipe.nlma.gov.tw/",
+        "api_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+        "osm_url": "https://www.openstreetmap.org/?mlat=25.032080&mlon=121.538063#map=19/25.032080/121.538063",
+        "osm_label": "OpenStreetMap 座標圖台",
+        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.032080&lon=121.538063&zoom=19",
+        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
+      }
+    },
+    {
+      "id": "road_storm_mh_49695718_DN",
+      "layer": "storm",
+      "type": "manhole",
+      "name": "建國南路二段39巷 雨水人孔 MH-5718-DN",
+      "facility_no": "SMH-5718-DN",
+      "structure_type": "圓形雨水人孔",
+      "coord": [
+        304292.362,
+        2769438.817,
+        4.749
+      ],
+      "rim_h": 6.799,
+      "invert_h": 4.749,
+      "depth_m": 2.05,
+      "diameter_mm": 750,
+      "road_name": "建國南路二段39巷",
+      "source": "Taipei / Taiwan Municipal Roadway Utility GIS",
+      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.032081&lon=121.538002&zoom=19",
+      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
+      "osm_url": "https://www.openstreetmap.org/?mlat=25.032081&mlon=121.538002#map=19/25.032081/121.538002",
+      "osm_label": "OpenStreetMap 座標圖台",
+      "portal_url": "https://dig.taipei/",
+      "portal_label": "臺北市道路管線暨資訊中心 (dig.taipei)",
+      "api_url": "https://pipe.nlma.gov.tw/",
+      "api_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+      "gov_links": {
+        "portal_url": "https://dig.taipei/",
+        "portal_label": "臺北市道路管線暨資訊中心 (dig.taipei)",
+        "api_url": "https://pipe.nlma.gov.tw/",
+        "api_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+        "osm_url": "https://www.openstreetmap.org/?mlat=25.032081&mlon=121.538002#map=19/25.032081/121.538002",
+        "osm_label": "OpenStreetMap 座標圖台",
+        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.032081&lon=121.538002&zoom=19",
+        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
+      }
+    },
+    {
+      "id": "scan_road_ditch_1",
+      "layer": "storm",
+      "type": "box_culvert",
+      "name": "鋪設路面/人行道 道路排水側溝 0.5x0.6m",
+      "diameter_mm": 600,
+      "width_m": 0.5,
+      "height_m": 0.6,
+      "length_m": 8.0,
+      "material": "RC/預鑄混凝土U型側溝",
+      "start_coord": [
+        304208.75,
+        2769453.077,
+        5.513
+      ],
+      "end_coord": [
+        304205.75,
+        2769445.662,
+        5.406
+      ],
+      "start_ground_h": 6.663,
+      "end_ground_h": 6.656,
+      "start_rim_h": 6.663,
+      "end_rim_h": 6.656,
+      "start_invert_h": 5.513,
+      "end_invert_h": 5.406,
+      "start_crown_h": 6.113,
+      "end_crown_h": 6.006,
+      "start_depth_m": 1.15,
+      "end_depth_m": 1.25,
+      "start_cover_m": 0.55,
+      "end_cover_m": 0.65,
+      "depth_m": 1.2,
+      "slope_pct": 1.338,
+      "flow_direction": 1,
+      "coords": [
+        [
+          304208.75,
+          2769453.077,
+          5.513
+        ],
+        [
+          304207.25,
+          2769449.37,
+          5.463
+        ],
+        [
+          304205.75,
+          2769445.662,
+          5.406
+        ]
+      ],
+      "source": "New Taipei / Taipei Scan-Derived Roadside Drainage GIS",
+      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.032180&lon=121.537159&zoom=19",
+      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
+      "osm_url": "https://www.openstreetmap.org/way/1",
+      "osm_label": "OpenStreetMap 圖資廊道 #1",
+      "portal_url": "https://dig.taipei/",
+      "portal_label": "臺北市道路管線暨資訊中心 (dig.taipei)",
+      "api_url": "https://pipe.nlma.gov.tw/",
+      "api_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+      "gov_links": {
+        "portal_url": "https://dig.taipei/",
+        "portal_label": "臺北市道路管線暨資訊中心 (dig.taipei)",
+        "api_url": "https://pipe.nlma.gov.tw/",
+        "api_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+        "osm_url": "https://www.openstreetmap.org/way/1",
+        "osm_label": "OpenStreetMap 圖資廊道 #1",
+        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.032180&lon=121.537159&zoom=19",
+        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
+      }
+    },
+    {
+      "id": "scan_catch_basin_1",
+      "layer": "storm",
+      "type": "catch_basin",
+      "name": "鋪設路面/人行道 道路集水井 CB-01",
+      "facility_no": "CB-01",
+      "structure_type": "道路集水井",
+      "coord": [
+        304205.75,
+        2769445.662,
+        5.406
+      ],
+      "rim_h": 6.656,
+      "invert_h": 5.406,
+      "depth_m": 1.25,
+      "diameter_mm": 600,
+      "source": "New Taipei / Taipei Scan-Derived Roadside Drainage GIS",
+      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.032146&lon=121.537144&zoom=19",
+      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
+      "osm_url": "https://www.openstreetmap.org/?mlat=25.032146&mlon=121.537144#map=19/25.032146/121.537144",
+      "osm_label": "OpenStreetMap 座標圖台",
+      "portal_url": "https://dig.taipei/",
+      "portal_label": "臺北市道路管線暨資訊中心 (dig.taipei)",
+      "api_url": "https://pipe.nlma.gov.tw/",
+      "api_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+      "gov_links": {
+        "portal_url": "https://dig.taipei/",
+        "portal_label": "臺北市道路管線暨資訊中心 (dig.taipei)",
+        "api_url": "https://pipe.nlma.gov.tw/",
+        "api_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+        "osm_url": "https://www.openstreetmap.org/?mlat=25.032146&mlon=121.537144#map=19/25.032146/121.537144",
+        "osm_label": "OpenStreetMap 座標圖台",
+        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.032146&lon=121.537144&zoom=19",
+        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
+      }
+    },
+    {
+      "id": "scan_as_built_1",
+      "layer": "as_built",
+      "type": "pipe",
+      "name": "鋪設路面/人行道 竣工實測管線 D=200mm",
+      "diameter_mm": 200,
+      "width_m": 0.2,
+      "height_m": 0.2,
+      "length_m": 8.0,
+      "material": "HDPE/高密度聚乙烯管",
+      "start_coord": [
+        304208.75,
+        2769453.077,
+        5.213
+      ],
+      "end_coord": [
+        304205.75,
+        2769445.662,
+        5.156
+      ],
+      "start_ground_h": 6.663,
+      "end_ground_h": 6.656,
+      "start_rim_h": 6.663,
+      "end_rim_h": 6.656,
+      "start_invert_h": 5.213,
+      "end_invert_h": 5.156,
+      "start_crown_h": 5.413,
+      "end_crown_h": 5.356,
+      "start_depth_m": 1.45,
+      "end_depth_m": 1.5,
+      "start_cover_m": 1.25,
+      "end_cover_m": 1.3,
+      "depth_m": 1.48,
+      "slope_pct": 0.713,
+      "flow_direction": 1,
+      "coords": [
+        [
+          304208.75,
+          2769453.077,
+          5.213
+        ],
+        [
+          304205.75,
+          2769445.662,
+          5.156
+        ]
+      ],
+      "source": "Scan-to-BIM As-Built Survey Verification",
+      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.032146&lon=121.537144&zoom=19",
+      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
+      "osm_url": "https://www.openstreetmap.org/?mlat=25.032146&mlon=121.537144#map=19/25.032146/121.537144",
+      "osm_label": "OpenStreetMap 座標圖台",
+      "portal_url": "https://dig.taipei/",
+      "portal_label": "臺北市道路管線暨資訊中心 (dig.taipei)",
+      "api_url": "https://pipe.nlma.gov.tw/",
+      "api_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+      "gov_links": {
+        "portal_url": "https://dig.taipei/",
+        "portal_label": "臺北市道路管線暨資訊中心 (dig.taipei)",
+        "api_url": "https://pipe.nlma.gov.tw/",
+        "api_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+        "osm_url": "https://www.openstreetmap.org/?mlat=25.032146&mlon=121.537144#map=19/25.032146/121.537144",
+        "osm_label": "OpenStreetMap 座標圖台",
+        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.032146&lon=121.537144&zoom=19",
+        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
+      }
+    }
+  ],
+  "query_timestamp": "2026-10-31T10:51:34.690753+00:00",
+  "cached": false
+}

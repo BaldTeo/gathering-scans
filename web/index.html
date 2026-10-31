@@ -18,8 +18,8 @@
   <meta name="twitter:image" content="https://scans.gatheren.cloud/assets/gathering_cloud_logo.png" />
   <!-- GS_SHARE_OG_END -->
   <link rel="icon" type="image/png" href="/assets/gathering_cloud_logo.png" />
-  <link rel="stylesheet" href="/app.css?v=20261031_v231" />
-  <link rel="stylesheet" href="/survey-bim.css?v=20261031_v231" />
+  <link rel="stylesheet" href="/app.css?v=20261031_v232" />
+  <link rel="stylesheet" href="/survey-bim.css?v=20261031_v232" />
   <script src="https://accounts.google.com/gsi/client" async defer></script>
 
 </head>
@@ -1001,8 +1001,45 @@
           <span class="bim-dock-label" data-i18n-zh="檢核" data-i18n-en="QA">檢核</span>
         </button>
 
+        <!-- 10d-2. 3D Surface Flatness, Levelness & Wall Plumbness Inspector -->
+        <button type="button" class="bim-dock-btn autodesk-measure-btn" id="btnDockFlatness" data-tool="flatness" data-dock="flatness" title="3D 表面平整度與牆面垂直鉛直度檢核 (ASTM E1155 / 1:N)" data-i18n-title-zh="3D 表面平整度與牆面垂直鉛直度檢核 (ASTM E1155 / 1:N)" data-i18n-title-en="3D Surface Flatness, Levelness &amp; Wall Plumbness Inspector (ASTM E1155 / 1:N)" aria-label="Surface Flatness and Plumbness">
+          <div class="bim-dock-icon">
+            <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8">
+              <line x1="3" y1="19" x2="21" y2="19"/>
+              <line x1="12" y1="3" x2="12" y2="15"/>
+              <circle cx="12" cy="16.5" r="2"/>
+              <polyline points="8 7 12 3 16 7"/>
+            </svg>
+          </div>
+          <span class="bim-dock-label" data-i18n-zh="平整" data-i18n-en="Flatness">平整</span>
+        </button>
+
+        <!-- 10d-3. Open-Trench Buried Utility 3D As-Built Tracer -->
+        <button type="button" class="bim-dock-btn autodesk-measure-btn" id="btnDockTrench" data-tool="trench" data-dock="trench" title="明挖管溝 3D 竣工實測追蹤與覆土坡度檢核" data-i18n-title-zh="明挖管溝 3D 竣工實測追蹤與覆土坡度檢核" data-i18n-title-en="Open-Trench Buried Utility 3D As-Built Tracer &amp; Cover Depth QA" aria-label="Open-Trench Utility Tracer">
+          <div class="bim-dock-icon">
+            <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8">
+              <path d="M3 6h5l2 12h4l2-12h5"/>
+              <circle cx="12" cy="14" r="2.2"/>
+            </svg>
+          </div>
+          <span class="bim-dock-label" data-i18n-zh="管溝" data-i18n-en="Trench">管溝</span>
+        </button>
+
+        <!-- 10d-4. RTK Stakeout Export (Strict E, N, Z Order) -->
+        <button type="button" class="bim-dock-btn autodesk-measure-btn" id="btnDockStakeout" data-tool="stakeout" data-dock="stakeout" title="RTK 施工放樣點位匯出 (E, N, Z 嚴格順序 CSV / TXT / DXF / A4 簽認單)" data-i18n-title-zh="RTK 施工放樣點位匯出 (E, N, Z 嚴格順序 CSV / TXT / DXF / A4 簽認單)" data-i18n-title-en="RTK Stakeout Coordinate Exporter (Strict E, N, Z CSV / Leica TXT / DXF / A4 Sheet)" aria-label="RTK Stakeout">
+          <div class="bim-dock-icon">
+            <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8">
+              <circle cx="12" cy="10" r="6"/>
+              <circle cx="12" cy="10" r="2"/>
+              <line x1="12" y1="16" x2="12" y2="22"/>
+              <line x1="8" y1="22" x2="16" y2="22"/>
+            </svg>
+          </div>
+          <span class="bim-dock-label" data-i18n-zh="放樣" data-i18n-en="Stakeout">放樣</span>
+        </button>
+
         <!-- 10e. Persistent Measurement Bookmarks / Saved Survey Views -->
-        <button type="button" class="bim-dock-btn" id="btnDockBookmarks" data-tool="bookmarks" data-dock="bookmarks" title="儲存與載入測量視角書籤" data-i18n-title-zh="儲存與載入測量視角書籤" data-i18n-title-en="Saved Survey Views &amp; Measurement Bookmarks" aria-label="Saved Survey Views">
+        <button type="button" class="bim-dock-btn autodesk-measure-btn" id="btnDockBookmarks" data-tool="bookmarks" data-dock="bookmarks" title="儲存與載入測量視角書籤" data-i18n-title-zh="儲存與載入測量視角書籤" data-i18n-title-en="Saved Survey Views &amp; Measurement Bookmarks" aria-label="Saved Survey Views">
           <div class="bim-dock-icon">
             <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8">
               <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/>
@@ -1027,8 +1064,8 @@
           <span class="bim-dock-label" data-i18n-zh="管線" data-i18n-en="Utilities">管線</span>
         </button>
 
-        <!-- 10g. Scan-to-BIM Simplified Classified Geometric Model -->
-        <button type="button" class="bim-dock-btn autodesk-measure-btn" id="btnStudioBim" data-tool="bim" data-dock="bim" title="Scan-to-BIM 幾何實體模型與 IFC/DXF/OBJ 匯出" data-i18n-title-zh="Scan-to-BIM 幾何實體模型與 IFC/DXF/OBJ 匯出" data-i18n-title-en="Scan-to-BIM Geometric Primitives &amp; IFC/DXF/OBJ Exporter" aria-label="Scan-to-BIM Primitives">
+        <!-- 10g. AI-Assisted Scan-to-BIM Simplified Classified Geometric Model -->
+        <button type="button" class="bim-dock-btn autodesk-measure-btn" id="btnStudioBim" data-tool="bim" data-dock="bim" title="Gemini AI 輔助 Scan-to-BIM 幾何實體模型與 IFC/DXF/OBJ 匯出" data-i18n-title-zh="Gemini AI 輔助 Scan-to-BIM 幾何實體模型與 IFC/DXF/OBJ 匯出" data-i18n-title-en="Gemini AI Scan-to-BIM Geometric Primitives &amp; IFC/DXF/OBJ Exporter" aria-label="Scan-to-BIM Primitives">
           <div class="bim-dock-icon">
             <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8">
               <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
@@ -1036,7 +1073,7 @@
               <line x1="12" y1="22.08" x2="12" y2="12"/>
             </svg>
           </div>
-          <span class="bim-dock-label" data-i18n-zh="實體" data-i18n-en="BIM">實體</span>
+          <span class="bim-dock-label" data-i18n-zh="BIM" data-i18n-en="BIM">BIM</span>
         </button>
 
         <!-- 11. 3D Geo-Comments -->
@@ -1123,6 +1160,18 @@
             </svg>
           </div>
           <span class="bim-dock-label" data-i18n-zh="裁切" data-i18n-en="Crop">裁切</span>
+        </button>
+
+        <!-- Edit 2b. Slope-Preserving Zone Mesh Flatten -->
+        <button type="button" class="bim-dock-btn gs-edit-dock-btn" id="btnDockFlatten" data-tool="flatten_zone" data-dock="flatten_zone" title="保坡度網格局部整平：消除模型假性凹凸波浪並保留真實排水坡度" data-i18n-title-zh="保坡度網格局部整平：消除模型假性凹凸波浪並保留真實排水坡度" data-i18n-title-en="Slope-Preserving Zone Flatten: Smooth artificial mesh bumps/holes while preserving true drainage slope" aria-label="Slope-Preserving Zone Flatten">
+          <div class="bim-dock-icon">
+            <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8">
+              <path d="M2 17l20-3"/>
+              <path d="M3 10c2.5-3 5 3 7.5 0s5 3 7.5 0" stroke-dasharray="2 2" opacity="0.65"/>
+              <polyline points="9 6 12 9 15 6"/>
+            </svg>
+          </div>
+          <span class="bim-dock-label" data-i18n-zh="整平" data-i18n-en="Flatten">整平</span>
         </button>
 
         <!-- Edit 3. Multi-Scan Align & Merge -->
@@ -1259,6 +1308,12 @@
               <polyline points="3 17 8 11 13 14 21 6"/><polyline points="3 20 9 16 15 18 21 12" stroke-dasharray="2 2"/>
             </svg>
             <span data-i18n-zh="斷面" data-i18n-en="Profile">斷面</span>
+          </button>
+          <button type="button" class="btn-xs" id="btnCompareDeltaV" title="跨期土方差異體積計算 (ΔV 挖填體積與卡車車次報表)" data-i18n-title-zh="跨期土方差異體積計算 (ΔV 挖填體積與卡車車次報表)" data-i18n-title-en="Multi-Epoch ΔV Earthwork Volume Takeoff &amp; Truck Haulage Report" style="gap:4px;">
+            <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M3 18L9 8l5 6 4-4 3 8H3z"/>
+            </svg>
+            <span data-i18n-zh="土方" data-i18n-en="ΔV">土方</span>
           </button>
           <button type="button" class="btn-xs" id="btnCompareResetCamera" title="重設並同步視角" data-i18n-title-zh="重設並同步視角" data-i18n-title-en="Reset &amp; Sync Camera Framing" aria-label="Reset View">
             <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2">
@@ -2418,19 +2473,19 @@
   <script src="/lib/3d-tiles-renderer.bundle.js?v=20261031_v218"></script>
 
   <!-- Main GatheringScans Bilingual Translation & Modular Application Logic (< 5,000 lines per module) -->
-  <script src="/i18n.js?v=20261031_v231"></script>
-  <script src="/src/01-core-state.js?v=20261031_v231"></script>
-  <script src="/src/02-map-and-timeline.js?v=20261031_v231"></script>
-  <script src="/src/03-studio-core.js?v=20261031_v231"></script>
-  <script src="/src/04-studio-lasso-and-edits.js?v=20261031_v231"></script>
-  <script src="/src/05-studio-civil-inspectors.js?v=20261031_v231"></script>
-  <script src="/src/06-studio-align-and-optimizer.js?v=20261031_v231"></script>
-  <script src="/src/07-compare-and-queue.js?v=20261031_v231"></script>
-  <script src="/src/08-advanced-surveying-and-qa.js?v=20261031_v231"></script>
-  <script src="/src/09-construction-survey-and-bim.js?v=20261031_v231"></script>
-  <script src="/src/10-construction-qa-and-stakeout.js?v=20261031_v231"></script>
-  <script src="/src/11-scan-to-bim-primitives.js?v=20261031_v231"></script>
-  <script src="/src/12-public-utilities-gis.js?v=20261031_v231"></script>
-  <script src="/app.js?v=20261031_v231"></script>
+  <script src="/i18n.js?v=20261031_v232"></script>
+  <script src="/src/01-core-state.js?v=20261031_v232"></script>
+  <script src="/src/02-map-and-timeline.js?v=20261031_v232"></script>
+  <script src="/src/03-studio-core.js?v=20261031_v232"></script>
+  <script src="/src/04-studio-lasso-and-edits.js?v=20261031_v232"></script>
+  <script src="/src/05-studio-civil-inspectors.js?v=20261031_v232"></script>
+  <script src="/src/06-studio-align-and-optimizer.js?v=20261031_v232"></script>
+  <script src="/src/07-compare-and-queue.js?v=20261031_v232"></script>
+  <script src="/src/08-advanced-surveying-and-qa.js?v=20261031_v232"></script>
+  <script src="/src/09-construction-survey-and-bim.js?v=20261031_v232"></script>
+  <script src="/src/10-construction-qa-and-stakeout.js?v=20261031_v232"></script>
+  <script src="/src/11-scan-to-bim-primitives.js?v=20261031_v232"></script>
+  <script src="/src/12-public-utilities-gis.js?v=20261031_v232"></script>
+  <script src="/app.js?v=20261031_v232"></script>
 </body>
 </html>

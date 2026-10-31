@@ -844,10 +844,23 @@ html[data-theme="dark"] .bim-element-row:hover {
 /* -------------------------------------------------------------------------
    Public Utilities GIS & Subsurface Twin (Module 12)
    ------------------------------------------------------------------------- */
+.gs-inspector-title-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 700;
+  color: var(--ui-text-primary, #0f172a);
+}
+
+html[data-theme="dark"] .gs-inspector-title-badge,
+body.theme-dark .gs-inspector-title-badge {
+  color: var(--ui-text-primary, #f8fafc);
+}
+
 .gs-util-panel-container {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 10px;
   font-family: inherit;
   font-size: 11.5px;
   color: var(--ui-text-primary, #0f172a);
@@ -858,15 +871,17 @@ html[data-theme="dark"] .bim-element-row:hover {
 
 .gs-util-section-card {
   background: var(--ui-bg-surface, #ffffff);
-  border: 1px solid var(--ui-border, #e2e8f0);
-  border-radius: 8px;
-  padding: 8px 10px;
+  border: 1px solid var(--ui-border, rgba(15, 23, 42, 0.08));
+  border-radius: 10px;
+  padding: 10px 12px;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.03);
 }
 
 html[data-theme="dark"] .gs-util-section-card,
 body.theme-dark .gs-util-section-card {
   background: var(--ui-bg-surface, #0f172a);
-  border-color: var(--ui-border, #1e293b);
+  border-color: var(--ui-border, rgba(255, 255, 255, 0.09));
+  box-shadow: none;
 }
 
 .gs-util-section-header {
@@ -875,7 +890,7 @@ body.theme-dark .gs-util-section-card {
   align-items: center;
   font-weight: 700;
   font-size: 11.5px;
-  margin-bottom: 6px;
+  margin-bottom: 8px;
   color: var(--ui-text-primary, #0f172a);
 }
 
@@ -887,7 +902,7 @@ body.theme-dark .gs-util-section-header {
 .gs-util-row-flex {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
 }
 
 .gs-util-field-label {
@@ -899,27 +914,164 @@ body.theme-dark .gs-util-section-header {
 }
 
 .gs-util-input {
-  width: 72px;
-  padding: 4px 6px;
+  width: 68px !important;
+  height: 28px;
+  padding: 4px 8px !important;
+  font-size: 11.5px !important;
+  font-family: var(--font-mono, monospace);
+  font-weight: 600;
+  border-radius: 6px !important;
+  border: 1px solid var(--ui-border-strong, rgba(15, 23, 42, 0.14)) !important;
+  background: var(--ui-bg-pill, #f1f5f9) !important;
+  color: var(--ui-text, #0f172a) !important;
+  box-sizing: border-box;
+}
+
+html[data-theme="dark"] .gs-util-input,
+body.theme-dark .gs-util-input {
+  background: var(--ui-bg-pill, rgba(30, 41, 59, 0.7)) !important;
+  border-color: var(--ui-border-strong, rgba(255, 255, 255, 0.16)) !important;
+  color: var(--ui-text, #f8fafc) !important;
+}
+
+.gs-util-input:focus {
+  outline: none;
+  border-color: var(--ui-accent, #2563eb) !important;
+  box-shadow: 0 0 0 2px var(--ui-accent-soft, rgba(37, 99, 235, 0.15));
+}
+
+/* Sleek modern buttons for Utilities & Subsurface GIS panel */
+.gs-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  height: 28px;
+  padding: 0 10px;
+  border-radius: 6px;
+  font-family: inherit;
   font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+  border: 1px solid var(--ui-border-strong, rgba(15, 23, 42, 0.14));
+  background: var(--ui-bg-pill, #f1f5f9);
+  color: var(--ui-text, #0f172a);
+  transition: all 0.15s cubic-bezier(0.16, 1, 0.3, 1);
+  box-sizing: border-box;
+}
+
+html[data-theme="dark"] .gs-btn,
+body.theme-dark .gs-btn {
+  background: var(--ui-bg-pill, rgba(30, 41, 59, 0.7));
+  border-color: var(--ui-border-strong, rgba(255, 255, 255, 0.16));
+  color: var(--ui-text, #f8fafc);
+}
+
+.gs-btn:hover:not(:disabled) {
+  background: var(--ui-bg-hover, rgba(15, 23, 42, 0.06));
+  border-color: var(--ui-text-muted, #64748b);
+  color: var(--ui-text, #0f172a);
+  transform: translateY(-0.5px);
+}
+
+html[data-theme="dark"] .gs-btn:hover:not(:disabled),
+body.theme-dark .gs-btn:hover:not(:disabled) {
+  background: var(--ui-bg-hover, rgba(255, 255, 255, 0.1));
+  color: #ffffff;
+}
+
+.gs-btn:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.gs-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.gs-btn-primary {
+  background: var(--ui-accent, #2563eb) !important;
+  border-color: var(--ui-accent, #2563eb) !important;
+  color: #ffffff !important;
+  box-shadow: 0 1px 2px rgba(37, 99, 235, 0.2);
+}
+
+.gs-btn-primary:hover:not(:disabled) {
+  background: var(--ui-accent-hover, #1d4ed8) !important;
+  border-color: var(--ui-accent-hover, #1d4ed8) !important;
+  color: #ffffff !important;
+}
+
+.gs-btn-sm {
+  height: 24px;
+  padding: 0 8px;
+  font-size: 10.5px;
+  border-radius: 5px;
+}
+
+.gs-btn-text {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px 7px;
+  border-radius: 5px;
+  font-family: inherit;
+  font-size: 10px;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px solid var(--ui-border, rgba(15, 23, 42, 0.08));
+  background: var(--ui-bg-pill, #f1f5f9);
+  color: var(--ui-text-secondary, #475569);
+  transition: all 0.12s ease;
+}
+
+html[data-theme="dark"] .gs-btn-text,
+body.theme-dark .gs-btn-text {
+  background: var(--ui-bg-pill, rgba(30, 41, 59, 0.7));
+  border-color: var(--ui-border, rgba(255, 255, 255, 0.09));
+  color: var(--ui-text-secondary, #cbd5e1);
+}
+
+.gs-btn-text:hover {
+  background: var(--ui-accent-soft, rgba(37, 99, 235, 0.1));
+  border-color: var(--ui-accent, #2563eb);
+  color: var(--ui-accent, #2563eb);
+}
+
+.gs-util-panel-container input[type="range"] {
+  accent-color: var(--ui-accent, #2563eb);
+  height: 4px;
+  cursor: pointer;
+}
+
+.gs-util-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
 }
 
 .gs-util-metrics-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 6px;
-  margin-top: 6px;
-  background: var(--ui-bg-subtle, #f8fafc);
-  border: 1px solid var(--ui-border-subtle, #f1f5f9);
-  border-radius: 6px;
-  padding: 6px;
+  margin-top: 8px;
+  background: var(--ui-bg-pill, #f8fafc);
+  border: 1px solid var(--ui-border, rgba(15, 23, 42, 0.08));
+  border-radius: 8px;
+  padding: 7px 6px;
   text-align: center;
 }
 
 html[data-theme="dark"] .gs-util-metrics-grid,
 body.theme-dark .gs-util-metrics-grid {
-  background: var(--ui-bg-subtle, #1e293b);
-  border-color: var(--ui-border-subtle, #334155);
+  background: var(--ui-bg-pill, #1e293b);
+  border-color: var(--ui-border, rgba(255, 255, 255, 0.09));
 }
 
 .gs-util-metric-cell {
@@ -929,6 +1081,8 @@ body.theme-dark .gs-util-metrics-grid {
 }
 
 .gs-util-metric-val {
+  font-family: var(--font-mono, monospace);
+  font-variant-numeric: tabular-nums;
   font-weight: 800;
   font-size: 13px;
   color: var(--ui-text-primary, #0f172a);
@@ -941,6 +1095,7 @@ body.theme-dark .gs-util-metric-val {
 
 .gs-util-metric-lbl {
   font-size: 9.5px;
+  font-weight: 600;
   color: var(--ui-text-muted, #64748b);
 }
 
@@ -954,25 +1109,28 @@ body.theme-dark .gs-util-metric-val {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 4px 6px;
-  border-radius: 5px;
+  padding: 5px 8px;
+  border-radius: 6px;
   background: var(--ui-bg-elevated, #ffffff);
-  border: 1px solid var(--ui-border-subtle, #f1f5f9);
-  transition: background 0.12s ease;
+  border: 1px solid var(--ui-border, rgba(15, 23, 42, 0.08));
+  transition: background 0.12s ease, border-color 0.12s ease;
 }
 
 html[data-theme="dark"] .gs-util-layer-row,
 body.theme-dark .gs-util-layer-row {
   background: var(--ui-bg-elevated, #1e293b);
-  border-color: var(--ui-border-subtle, #334155);
+  border-color: var(--ui-border, rgba(255, 255, 255, 0.09));
 }
 
 .gs-util-layer-row:hover {
   background: var(--ui-bg-hover, #f8fafc);
+  border-color: var(--ui-border-strong, rgba(15, 23, 42, 0.14));
 }
 
-html[data-theme="dark"] .gs-util-layer-row:hover {
+html[data-theme="dark"] .gs-util-layer-row:hover,
+body.theme-dark .gs-util-layer-row:hover {
   background: var(--ui-bg-hover, #334155);
+  border-color: var(--ui-border-strong, rgba(255, 255, 255, 0.16));
 }
 
 .gs-util-checkbox-label {
@@ -981,7 +1139,13 @@ html[data-theme="dark"] .gs-util-layer-row:hover {
   gap: 6px;
   cursor: pointer;
   font-size: 11px;
+  font-weight: 500;
   user-select: none;
+}
+
+.gs-util-checkbox-label input[type="checkbox"] {
+  accent-color: var(--ui-accent, #2563eb);
+  cursor: pointer;
 }
 
 .gs-util-color-dot {
@@ -990,42 +1154,48 @@ html[data-theme="dark"] .gs-util-layer-row:hover {
   border-radius: 50%;
   flex-shrink: 0;
   display: inline-block;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.12);
 }
 
 .gs-util-count-pill {
+  font-family: var(--font-mono, monospace);
+  font-variant-numeric: tabular-nums;
   font-size: 10px;
-  padding: 1px 6px;
+  font-weight: 700;
+  padding: 1px 7px;
   border-radius: 999px;
-  background: var(--ui-bg-subtle, #f1f5f9);
-  border: 1px solid var(--ui-border-subtle, #e2e8f0);
+  background: var(--ui-bg-pill, #f1f5f9);
+  border: 1px solid var(--ui-border, rgba(15, 23, 42, 0.08));
+  color: var(--ui-text-secondary, #475569);
 }
 
 html[data-theme="dark"] .gs-util-count-pill,
 body.theme-dark .gs-util-count-pill {
-  background: var(--ui-bg-subtle, #0f172a);
-  border-color: var(--ui-border-subtle, #334155);
+  background: var(--ui-bg-pill, #0f172a);
+  border-color: var(--ui-border, rgba(255, 255, 255, 0.09));
+  color: var(--ui-text-secondary, #cbd5e1);
 }
 
 .gs-util-detail-card {
   background: var(--ui-bg-surface, #ffffff);
-  border: 1px solid var(--ui-border, #e2e8f0);
-  border-radius: 8px;
-  padding: 8px 10px;
-  margin-top: 6px;
+  border: 1px solid var(--ui-border, rgba(15, 23, 42, 0.08));
+  border-radius: 10px;
+  padding: 10px 12px;
+  margin-top: 4px;
 }
 
 html[data-theme="dark"] .gs-util-detail-card,
 body.theme-dark .gs-util-detail-card {
   background: var(--ui-bg-surface, #0f172a);
-  border-color: var(--ui-border, #1e293b);
+  border-color: var(--ui-border, rgba(255, 255, 255, 0.09));
 }
 
 .gs-util-detail-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 4px;
+  gap: 5px 8px;
   font-size: 10.5px;
-  margin-top: 4px;
+  margin-top: 6px;
 }
 
 .gs-util-detail-lbl {
@@ -1034,19 +1204,19 @@ body.theme-dark .gs-util-detail-card {
 }
 
 .gs-util-hint-card {
-  padding: 8px 10px;
+  padding: 9px 10px;
   font-size: 10.5px;
   color: var(--ui-text-muted, #64748b);
-  background: var(--ui-bg-subtle, #f8fafc);
-  border: 1px dashed var(--ui-border, #cbd5e1);
-  border-radius: 6px;
+  background: var(--ui-bg-pill, #f8fafc);
+  border: 1px dashed var(--ui-border-strong, #cbd5e1);
+  border-radius: 8px;
   text-align: center;
 }
 
 html[data-theme="dark"] .gs-util-hint-card,
 body.theme-dark .gs-util-hint-card {
-  background: var(--ui-bg-subtle, #1e293b);
-  border-color: var(--ui-border, #334155);
+  background: var(--ui-bg-pill, #1e293b);
+  border-color: var(--ui-border-strong, #334155);
   color: var(--ui-text-muted, #94a3b8);
 }
 

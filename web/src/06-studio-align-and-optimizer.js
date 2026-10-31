@@ -440,6 +440,15 @@
         </div>
       `);
     }
+    if (Array.isArray(st.flattenZones) && st.flattenZones.length > 0) {
+      const totalFlatVerts = st.flattenZones.reduce((acc, z) => acc + (Number(z.flattenedVerts) || 0), 0);
+      itemsHtml.push(`
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;padding:5px 7px;background:rgba(16,185,129,0.09);border:1px solid rgba(16,185,129,0.35);border-radius:6px;font-size:11px;">
+          <span>📐 <b>${tr("保留坡度整平：", "Slope Flatten:")}</b> ${tr(`${st.flattenZones.length} 個區塊${totalFlatVerts > 0 ? ` · ${totalFlatVerts.toLocaleString()} 點` : ""}`, `${st.flattenZones.length} zone${st.flattenZones.length === 1 ? "" : "s"}${totalFlatVerts > 0 ? ` · ${totalFlatVerts.toLocaleString()} pts` : ""}`)}</span>
+          <button type="button" class="gs-top-btn" data-unstage="flattenZones" style="padding:1px 6px;font-size:10px;" title="${tr("移除暫存整平區塊", "Remove staged flatten zones")}">✕</button>
+        </div>
+      `);
+    }
     if (st.compressionPreset && st.compressionPreset !== "none") {
       itemsHtml.push(`
         <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;padding:5px 7px;background:var(--ui-bg-surface);border:1px solid var(--ui-border);border-radius:6px;font-size:11px;">
@@ -473,8 +482,8 @@
             ? `<div style="display:flex;flex-direction:column;gap:4px;margin-bottom:8px;">${itemsHtml.join("")}</div>`
             : `<div style="font-size:11px;color:var(--ui-text-secondary);background:var(--ui-bg-surface);border:1px dashed var(--ui-border-strong);border-radius:6px;padding:8px;margin-bottom:8px;">
                 ${tr(
-                  "尚未加入任何修改。請先使用左側工具列的<b>套索刪除</b>、<b>網格優化</b>或<b>座標系統</b>，再點擊<b>儲存變更</b>！",
-                  "No adjustments staged yet. Use <b>Lasso Delete</b>, <b>Mesh Compression</b>, or <b>Coordinate System</b> on the left dock first, then press <b>Save Edits</b>!"
+                  "尚未加入任何修改。請先使用左側工具列的<b>套索刪除</b>、<b>整平區域</b>、<b>網格優化</b>或<b>座標系統</b>，再點擊<b>儲存變更</b>！",
+                  "No adjustments staged yet. Use <b>Lasso Delete</b>, <b>Flatten Zone</b>, <b>Mesh Compression</b>, or <b>Coordinate System</b> on the left dock first, then press <b>Save Edits</b>!"
                 )}
               </div>`
         }
@@ -485,6 +494,7 @@
               : ""
           }
           <button type="button" class="gs-top-btn" data-jump-edit="crop_delete" style="font-size:10.5px;padding:3px 7px;">${tr("+ 刪除範圍", "+ Delete Regions")}</button>
+          <button type="button" class="gs-top-btn" data-jump-edit="flatten_zone" style="font-size:10.5px;padding:3px 7px;">${tr("+ 坡度整平", "+ Slope Flatten")}</button>
           <button type="button" class="gs-top-btn" data-jump-edit="optimizer" style="font-size:10.5px;padding:3px 7px;">${tr("+ 壓縮優化", "+ Compression")}</button>
           <button type="button" class="gs-top-btn" data-jump-edit="crs" style="font-size:10.5px;padding:3px 7px;">${tr("+ 座標系統", "+ Coordinate System")}</button>
         </div>
@@ -536,6 +546,10 @@
           st.cropKeep = null;
           st.rev++;
           applyStagedEditsToStudioMeshes(true);
+        } else if (kind === "flattenZones") {
+          st.flattenZones = [];
+          st.rev++;
+          if (typeof restoreOriginalStudioMeshPositions === "function") restoreOriginalStudioMeshPositions();
         } else if (kind === "compression") {
           st.compressionPreset = null;
         } else if (kind === "crs") {
@@ -556,6 +570,8 @@
         } else if (target === "crop_delete") {
           STATE.cropMode = "delete_inside";
           openLassoDeleteInspector({ armLasso: true });
+        } else if (target === "flatten_zone") {
+          openFlattenZoneInspector({ armPolygon: true });
         } else if (target === "optimizer") {
           setActiveStudioTool("optimizer");
           openMeshCompressionInspector();
@@ -571,11 +587,11 @@
     });
   }
 
-  async function executeGenerateStagedScan() {
+  async function executeGenerateStagedScan(opts = {}) {
     const st = ensureStagedEditsForActiveScan();
     const isMulti = Boolean(STATE.multiAlign?.active);
 
-    if (countMarkedRegionsPending() > 0) {
+    if (countMarkedRegionsPending() > 0 && STATE.activeTool !== "flatten_zone") {
       commitPendingLassoMarksToStagedEdits();
     }
 
@@ -589,12 +605,12 @@
         return;
       }
     } else if (countStagedAdjustments() === 0) {
-      showToast("Stage at least one adjustment (Delete, Compression, or CRS) before saving edits.");
+      showToast("Stage at least one adjustment (Delete, Flatten Zone, Compression, or CRS) before saving edits.");
       return;
     }
 
     const nameEl = document.getElementById("txtGenerateScanName");
-    const newScanName = String(nameEl?.value || st.newScanName || `${STATE.activeScan?.name || "Scan"}`).trim();
+    const newScanName = String(opts.overrideScanName || nameEl?.value || st.newScanName || `${STATE.activeScan?.name || "Scan"}`).trim();
     st.newScanName = newScanName;
 
     const btnGen = document.getElementById("btnGenerateStagedScan");
@@ -606,7 +622,7 @@
     if (resBox) {
       resBox.innerHTML = `<div style="font-size:11.5px;color:var(--ui-accent);">Saving "${escapeHtml(
         newScanName
-      )}" with all staged edits (moving untouched original backup${isMulti ? "s" : ""} to Trash Bin)...</div>`;
+      )}" with all staged edits...</div>`;
     }
 
     try {
@@ -643,9 +659,10 @@
           new_scan_name: newScanName,
           deletions: st.deletions,
           crop_keep: st.cropKeep || null,
+          flatten_zones: st.flattenZones || [],
           compression_preset: st.compressionPreset || "",
           crs_config: st.crsConfig || null,
-          archive_original_to_bin: true,
+          archive_original_to_bin: opts.keepOriginalUntouched ? false : true,
         };
         res = await apiPost("/api/optimizer/generate-scan", payload);
       }
@@ -1342,6 +1359,497 @@
 
     bindStagedAdjustmentsCardEvents(() => openLassoKeepInspector({ armLasso: STATE.activeTool === "crop" }));
   }
+
+  // =========================================================================
+  // SLOPE-PRESERVING ZONE MESH FLATTENING (Huber-IRLS Plane + Feathering)
+  // =========================================================================
+  function restoreOriginalStudioMeshPositions() {
+    if (!studioThree) return;
+    const restorePosUnder = (root) => {
+      if (!root) return;
+      root.traverse((m) => {
+        if (m && m.isMesh && m.geometry && m.userData && m.userData._origPosSaved && m.userData._origPosArray) {
+          const posAttr = m.geometry.attributes.position;
+          if (posAttr && posAttr.array && posAttr.array.length === m.userData._origPosArray.length) {
+            posAttr.array.set(m.userData._origPosArray);
+            posAttr.needsUpdate = true;
+            m.geometry.computeVertexNormals();
+            m.geometry.computeBoundingBox();
+            m.geometry.computeBoundingSphere();
+          }
+          m.userData._appliedFlattenRev = 0;
+        }
+      });
+    };
+    restorePosUnder(studioThree.modelPivot);
+    restorePosUnder(studioThree.fallbackGroup);
+    if (studioThree.renderer && studioThree.scene && studioThree.camera) {
+      studioThree.renderer.render(studioThree.scene, studioThree.camera);
+    }
+  }
+  window.restoreOriginalStudioMeshPositions = restoreOriginalStudioMeshPositions;
+
+  function _distPointToPolygon2D(px, py, poly) {
+    let minD = Infinity;
+    for (let i = 0; i < poly.length; i++) {
+      const a = poly[i];
+      const b = poly[(i + 1) % poly.length];
+      const abx = b[0] - a[0];
+      const aby = b[1] - a[1];
+      const len2 = abx * abx + aby * aby;
+      const t = len2 > 1e-8 ? Math.max(0, Math.min(1, ((px - a[0]) * abx + (py - a[1]) * aby) / len2)) : 0;
+      const d = Math.hypot(px - (a[0] + t * abx), py - (a[1] + t * aby));
+      if (d < minD) minD = d;
+    }
+    return minD;
+  }
+
+  function _fitRobustTiltedPlaneXZ(samples) {
+    // Fits y = a * dx + b * dz + c using 4-iteration Huber IRLS around centroid
+    if (!samples || samples.length < 4) return null;
+    let cx = 0, cz = 0;
+    for (let i = 0; i < samples.length; i++) {
+      cx += samples[i][0];
+      cz += samples[i][2];
+    }
+    cx /= samples.length;
+    cz /= samples.length;
+
+    const ys = samples.map((s) => s[1]).sort((u, v) => u - v);
+    const q20 = ys[Math.floor(ys.length * 0.20)];
+    const q75 = ys[Math.floor(ys.length * 0.75)];
+    const yMed = ys[Math.floor(ys.length * 0.45)];
+    const inliers = samples.filter((s) => s[1] >= q20 - 0.35 && s[1] <= q75 + 0.30 && Math.abs(s[1] - yMed) <= 0.65);
+    const pts = inliers.length >= 4 ? inliers : samples;
+
+    let a = 0, b = 0, c = yMed;
+    const weights = new Float64Array(pts.length);
+    weights.fill(1.0);
+
+    for (let iter = 0; iter < 4; iter++) {
+      let sxx = 0, sxz = 0, sx1 = 0, szz = 0, sz1 = 0, s11 = 0;
+      let sxy = 0, szy = 0, s1y = 0;
+      for (let i = 0; i < pts.length; i++) {
+        const w = weights[i];
+        const dx = pts[i][0] - cx;
+        const y = pts[i][1];
+        const dz = pts[i][2] - cz;
+        sxx += w * dx * dx;
+        sxz += w * dx * dz;
+        sx1 += w * dx;
+        szz += w * dz * dz;
+        sz1 += w * dz;
+        s11 += w;
+        sxy += w * dx * y;
+        szy += w * dz * y;
+        s1y += w * y;
+      }
+      // Solve 3x3 normal equations via Cramer's rule / Gaussian elimination
+      const M = [
+        [sxx + 1e-6, sxz, sx1, sxy],
+        [sxz, szz + 1e-6, sz1, szy],
+        [sx1, sz1, s11 + 1e-6, s1y],
+      ];
+      for (let col = 0; col < 3; col++) {
+        let piv = col;
+        for (let r = col + 1; r < 3; r++) {
+          if (Math.abs(M[r][col]) > Math.abs(M[piv][col])) piv = r;
+        }
+        const tmp = M[col]; M[col] = M[piv]; M[piv] = tmp;
+        const div = M[col][col] || 1e-9;
+        for (let j = col; j < 4; j++) M[col][j] /= div;
+        for (let r = 0; r < 3; r++) {
+          if (r === col) continue;
+          const f = M[r][col];
+          for (let j = col; j < 4; j++) M[r][j] -= f * M[col][j];
+        }
+      }
+      a = M[0][3];
+      b = M[1][3];
+      c = M[2][3];
+
+      const huberDelta = 0.08;
+      for (let i = 0; i < pts.length; i++) {
+        const dx = pts[i][0] - cx;
+        const dz = pts[i][2] - cz;
+        const r = Math.abs(pts[i][1] - (a * dx + b * dz + c));
+        weights[i] = r <= huberDelta ? 1.0 : huberDelta / Math.max(r, 1e-6);
+      }
+    }
+
+    let sumSqPre = 0;
+    for (let i = 0; i < pts.length; i++) {
+      const dx = pts[i][0] - cx;
+      const dz = pts[i][2] - cz;
+      const r = pts[i][1] - (a * dx + b * dz + c);
+      sumSqPre += r * r;
+    }
+    const rmsePreM = Math.sqrt(sumSqPre / Math.max(1, pts.length));
+    const slopePct = Math.hypot(a, b) * 100.0;
+    return { a, b, c, cx, cz, rmsePreM, slopePct, inlierCount: pts.length };
+  }
+
+  function applyLiveFlattenZonesToStudioMeshes() {
+    if (!studioThree) return null;
+    restoreOriginalStudioMeshPositions();
+    const st = ensureStagedEditsForActiveScan();
+    if (!Array.isArray(st.flattenZones) || st.flattenZones.length === 0) return null;
+
+    const meshes = [];
+    if (studioThree.modelPivot && studioThree.modelPivot.visible) {
+      studioThree.modelPivot.updateMatrixWorld(true);
+      studioThree.modelPivot.traverse((m) => {
+        if (m && m.isMesh && m.geometry && m.geometry.attributes && m.geometry.attributes.position) meshes.push(m);
+      });
+    }
+    if (meshes.length === 0 && studioThree.fallbackGroup && studioThree.fallbackGroup.visible) {
+      studioThree.fallbackGroup.updateMatrixWorld(true);
+      studioThree.fallbackGroup.traverse((m) => {
+        if (m && m.isMesh && m.geometry && m.geometry.attributes && m.geometry.attributes.position) meshes.push(m);
+      });
+    }
+    if (meshes.length === 0) return null;
+
+    let lastZoneStats = null;
+    for (let zi = 0; zi < st.flattenZones.length; zi++) {
+      const zone = st.flattenZones[zi];
+      const polyXZ = zone.polygon_local_xz;
+      if (!Array.isArray(polyXZ) || polyXZ.length < 3) continue;
+
+      let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
+      for (let i = 0; i < polyXZ.length; i++) {
+        if (polyXZ[i][0] < minX) minX = polyXZ[i][0];
+        if (polyXZ[i][0] > maxX) maxX = polyXZ[i][0];
+        if (polyXZ[i][1] < minZ) minZ = polyXZ[i][1];
+        if (polyXZ[i][1] > maxZ) maxZ = polyXZ[i][1];
+      }
+
+      const keepRatio = Math.max(0.0, Math.min(1.0, Number(zone.keep_residual_ratio ?? 0.10)));
+      const featherM = Math.max(0.2, Number(zone.feather_m ?? 3.0));
+      const maxDevM = Math.max(0.08, Number(zone.max_dev_m ?? 0.35));
+
+      const samples = [];
+      for (let mi = 0; mi < meshes.length; mi++) {
+        const m = meshes[mi];
+        const mw = m.matrixWorld.elements;
+        const posAttr = m.geometry.attributes.position;
+        const vCount = posAttr.count;
+        const stride = vCount > 50000 ? Math.ceil(vCount / 50000) : 1;
+        for (let vi = 0; vi < vCount; vi += stride) {
+          const lx = posAttr.getX(vi), ly = posAttr.getY(vi), lz = posAttr.getZ(vi);
+          const wx = mw[0] * lx + mw[4] * ly + mw[8] * lz + mw[12];
+          const wy = mw[1] * lx + mw[5] * ly + mw[9] * lz + mw[13];
+          const wz = mw[2] * lx + mw[6] * ly + mw[10] * lz + mw[14];
+          if (wx < minX || wx > maxX || wz < minZ || wz > maxZ) continue;
+          if (pointInPoly2D(wx, wz, polyXZ)) {
+            samples.push([wx, wy, wz]);
+          }
+        }
+      }
+
+      const plane = _fitRobustTiltedPlaneXZ(samples);
+      if (!plane) continue;
+
+      let modifiedVerts = 0;
+      const invMat = new THREE.Matrix4();
+      const wVec = new THREE.Vector3();
+
+      for (let mi = 0; mi < meshes.length; mi++) {
+        const m = meshes[mi];
+        const posAttr = m.geometry.attributes.position;
+        if (!m.userData._origPosSaved) {
+          m.userData._origPosArray = posAttr.array.slice();
+          m.userData._origPosSaved = true;
+        }
+        const mw = m.matrixWorld.elements;
+        invMat.copy(m.matrixWorld).invert();
+        const vCount = posAttr.count;
+        let meshTouched = false;
+
+        for (let vi = 0; vi < vCount; vi++) {
+          const lx = posAttr.getX(vi), ly = posAttr.getY(vi), lz = posAttr.getZ(vi);
+          const wx = mw[0] * lx + mw[4] * ly + mw[8] * lz + mw[12];
+          const wy = mw[1] * lx + mw[5] * ly + mw[9] * lz + mw[13];
+          const wz = mw[2] * lx + mw[6] * ly + mw[10] * lz + mw[14];
+          if (wx < minX || wx > maxX || wz < minZ || wz > maxZ) continue;
+          if (!pointInPoly2D(wx, wz, polyXZ)) continue;
+
+          const yPlane = plane.a * (wx - plane.cx) + plane.b * (wz - plane.cz) + plane.c;
+          const resY = wy - yPlane;
+          if (Math.abs(resY) > maxDevM) continue;
+
+          const bDist = _distPointToPolygon2D(wx, wz, polyXZ);
+          let wBlend = 1.0;
+          if (featherM > 0.05 && bDist < featherM) {
+            const t = Math.max(0.0, Math.min(1.0, bDist / featherM));
+            wBlend = 0.5 - 0.5 * Math.cos(Math.PI * t);
+          }
+
+          const yTarget = yPlane + keepRatio * resY;
+          const wyNew = wy + wBlend * (yTarget - wy);
+          wVec.set(wx, wyNew, wz).applyMatrix4(invMat);
+          posAttr.setXYZ(vi, wVec.x, wVec.y, wVec.z);
+          meshTouched = true;
+          modifiedVerts++;
+        }
+
+        if (meshTouched) {
+          posAttr.needsUpdate = true;
+          m.geometry.computeVertexNormals();
+          m.geometry.computeBoundingBox();
+          m.geometry.computeBoundingSphere();
+        }
+      }
+
+      zone.flattenedVerts = modifiedVerts;
+      zone.slopePct = Number(plane.slopePct.toFixed(2));
+      zone.rmsePreCm = Number((plane.rmsePreM * 100.0).toFixed(2));
+      zone.rmsePostCm = Number((plane.rmsePreM * keepRatio * 100.0).toFixed(2));
+      lastZoneStats = zone;
+    }
+
+    studioThree._laserSpatialIndex = null;
+    if (studioThree.renderer && studioThree.scene && studioThree.camera) {
+      studioThree.renderer.render(studioThree.scene, studioThree.camera);
+    }
+    return lastZoneStats;
+  }
+  window.applyLiveFlattenZonesToStudioMeshes = applyLiveFlattenZonesToStudioMeshes;
+
+  function openFlattenZoneInspector(opts = {}) {
+    const armPoly = opts && opts.armPolygon !== undefined ? Boolean(opts.armPolygon) : true;
+    if (armPoly) {
+      if (STATE.activeTool !== "flatten_zone") setActiveStudioTool("flatten_zone");
+    }
+    STATE.sidePanelMinimized = false;
+    const st = ensureStagedEditsForActiveScan();
+    if (!STATE.flattenZoneParams) {
+      STATE.flattenZoneParams = {
+        keep_residual_pct: 10,
+        feather_m: 3.0,
+        max_dev_cm: 35,
+      };
+    }
+    const fp = STATE.flattenZoneParams;
+    const curPts = Array.isArray(STATE.flattenDraftPoints) ? STATE.flattenDraftPoints : [];
+    const stagedZones = Array.isArray(st.flattenZones) ? st.flattenZones : [];
+    const lastZone = stagedZones.length > 0 ? stagedZones[stagedZones.length - 1] : null;
+
+    showSidePanel(
+      `<span>📐 ${tr("保留坡度區域整平 · 消除假性凹凸", "Slope-Preserving Zone Flatten")}</span>`,
+      `
+      <div style="background:rgba(16,185,129,0.10);border:1px solid rgba(16,185,129,0.38);border-radius:8px;padding:10px;margin-bottom:10px;">
+        <div style="font-size:12px;font-weight:700;color:#10b981;margin-bottom:5px;display:flex;align-items:center;justify-content:space-between;gap:6px;">
+          <span>📐 ${tr("保留真實排水坡度 · 整平攝影測量波浪偽影", "Preserve Real Slope · Flatten Disparity Waves")}</span>
+        </div>
+        <div style="font-size:11px;color:var(--ui-text-secondary);margin-bottom:8px;line-height:1.45;">
+          ${tr(
+            "針對球場、跑道或大面積反光鋪面因同質紋理造成的假性波浪起伏：自動以 <b>Huber-IRLS 強健最小二乘法</b>擬合真實整體傾斜平面 <code>Z(E,N) = a·E + b·N + c</code>，保留真實坡度同時壓平假性坑洞與隆起，並於邊界自動平滑羽化。",
+            "Fixes photogrammetric disparity waves on homogeneous surfaces (tracks, courts, plazas): fits a robust <b>Huber-IRLS tilted plane</b> <code>Z(E,N) = a·E + b·N + c</code> to preserve real drainage slope while flattening fake pits and hills with cosine boundary feathering."
+          )}
+        </div>
+
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:8px;">
+          <div>
+            <label style="font-size:10px;color:var(--ui-text-secondary);display:block;margin-bottom:2px;">${tr("保留微紋理 (%)", "Keep Texture (%)")}</label>
+            <input type="number" id="inpFlattenKeepPct" class="gs-input" min="0" max="50" step="5" value="${fp.keep_residual_pct}" />
+          </div>
+          <div>
+            <label style="font-size:10px;color:var(--ui-text-secondary);display:block;margin-bottom:2px;">${tr("邊界羽化 (m)", "Feather (m)")}</label>
+            <input type="number" id="inpFlattenFeatherM" class="gs-input" min="0.5" max="12" step="0.5" value="${fp.feather_m}" />
+          </div>
+          <div>
+            <label style="font-size:10px;color:var(--ui-text-secondary);display:block;margin-bottom:2px;">${tr("高度保護閾值 (cm)", "Outlier Clip (cm)")}</label>
+            <input type="number" id="inpFlattenMaxDevCm" class="gs-input" min="10" max="150" step="5" value="${fp.max_dev_cm}" />
+          </div>
+        </div>
+
+        <div style="font-size:11px;color:var(--ui-text-secondary);background:var(--ui-bg-surface);border:1px solid var(--ui-border);border-radius:6px;padding:6px 8px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;gap:6px;flex-wrap:wrap;">
+          <span>
+            ${tr("目前多邊形頂點：", "Polygon Vertices:")} <b>${curPts.length}</b> ${curPts.length >= 3 ? `<span style="color:#10b981;">(${tr("可套用整平", "Ready to flatten")})</span>` : `<span style="color:var(--ui-text-muted);">(${tr("請在 3D 表面點擊 3+ 點", "Click 3+ pts on 3D surface")})</span>`}
+          </span>
+          <div style="display:flex;gap:4px;">
+            <button type="button" class="gs-top-btn" id="btnAutoDetectTrackZone" style="padding:2px 7px;font-size:10.5px;border-color:rgba(16,185,129,0.45);color:#10b981;" title="${tr("自動載入主運動場 / 跑道 / 鋪面邊界", "Auto-detect primary track/court/road boundary")}">
+              <span>⚡ ${tr("自動偵測鋪面", "Auto-Detect Zone")}</span>
+            </button>
+            <button type="button" class="gs-top-btn" id="btnClearFlattenDraft" style="padding:2px 7px;font-size:10.5px;">
+              <span>${tr("清除點位", "Clear")}</span>
+            </button>
+          </div>
+        </div>
+
+        <button type="button" class="gs-top-btn accent" id="btnApplyLiveFlattenZone" style="width:100%;justify-content:center;padding:9px 12px;font-weight:700;background:#10b981;border-color:#059669;color:#fff;">
+          <span>📐 ${curPts.length >= 3 ? tr(`立即套用保留坡度整平預覽 (${curPts.length} 點)`, `Flatten Zone in 3D Preview (${curPts.length} pts)`) : tr("自動偵測或圈選區域並套用整平", "Auto-Detect & Flatten Surface Zone")}</span>
+        </button>
+      </div>
+
+      ${
+        lastZone
+          ? `<div style="background:var(--ui-bg-subtle);border:1px solid rgba(16,185,129,0.4);border-radius:8px;padding:9px 10px;margin-bottom:10px;">
+              <div style="font-size:11.5px;font-weight:700;color:#10b981;margin-bottom:5px;display:flex;justify-content:space-between;align-items:center;">
+                <span>✓ ${tr(`已整平 ${stagedZones.length} 個區域`, `Flattened ${stagedZones.length} Zone${stagedZones.length === 1 ? "" : "s"} in 3D Preview`)}</span>
+                <span>${Number(lastZone.flattenedVerts || 0).toLocaleString()} pts</span>
+              </div>
+              <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:5px;font-size:10.5px;margin-bottom:7px;">
+                <div style="background:var(--ui-bg-surface);padding:5px;border-radius:5px;border:1px solid var(--ui-border);">
+                  <div style="color:var(--ui-text-muted);">${tr("保留真實坡度", "Preserved Slope")}</div>
+                  <div style="font-weight:700;color:var(--ui-text-primary);">${lastZone.slopePct || 0}%</div>
+                </div>
+                <div style="background:var(--ui-bg-surface);padding:5px;border-radius:5px;border:1px solid var(--ui-border);">
+                  <div style="color:var(--ui-text-muted);">${tr("整平前起伏 RMSE", "Pre-Flatten RMSE")}</div>
+                  <div style="font-weight:700;color:#ef4444;">±${lastZone.rmsePreCm || 0} cm</div>
+                </div>
+                <div style="background:var(--ui-bg-surface);padding:5px;border-radius:5px;border:1px solid var(--ui-border);">
+                  <div style="color:var(--ui-text-muted);">${tr("整平後起伏 RMSE", "Post-Flatten RMSE")}</div>
+                  <div style="font-weight:700;color:#10b981;">±${lastZone.rmsePostCm || 0} cm</div>
+                </div>
+              </div>
+              <div style="display:flex;gap:6px;">
+                <button type="button" class="gs-top-btn" id="btnSaveFlattenAsExpCopy" style="flex:1;justify-content:center;font-size:11px;border-color:#10b981;color:#10b981;font-weight:700;" title="${tr("建立獨立實驗副本，完全不更動原始掃描檔案", "Generate a new experimental flattened scan copy while keeping the original scan 100% untouched")}">
+                  <span>🧪 ${tr("另存為實驗副本 (保留原檔)", "Save as Experimental Copy")}</span>
+                </button>
+                <button type="button" class="gs-top-btn" id="btnResetAllFlattenZones" style="padding:5px 8px;font-size:11px;">
+                  <span>↩️ ${tr("還原", "Undo")}</span>
+                </button>
+              </div>
+            </div>`
+          : ""
+      }
+
+      ${renderStagedAdjustmentsCardHtml({ alwaysShow: false })}
+      `
+    );
+
+    const readParams = () => {
+      const kEl = document.getElementById("inpFlattenKeepPct");
+      const fEl = document.getElementById("inpFlattenFeatherM");
+      const mEl = document.getElementById("inpFlattenMaxDevCm");
+      if (kEl && Number.isFinite(parseFloat(kEl.value))) fp.keep_residual_pct = Math.max(0, Math.min(50, parseFloat(kEl.value)));
+      if (fEl && Number.isFinite(parseFloat(fEl.value))) fp.feather_m = Math.max(0.2, Math.min(15, parseFloat(fEl.value)));
+      if (mEl && Number.isFinite(parseFloat(mEl.value))) fp.max_dev_cm = Math.max(8, Math.min(200, parseFloat(mEl.value)));
+    };
+
+    const autoDetectBoundaryPoints = async () => {
+      let catRes = STATE.lastCategorizeResult;
+      if (!catRes || !Array.isArray(catRes.roads) || catRes.roads.length === 0) {
+        try {
+          catRes = await apiPost("/api/survey/categorize", { scan_id: STATE.activeScanId, cached_only: true });
+          if (catRes && catRes.ok) STATE.lastCategorizeResult = catRes;
+        } catch (_) {}
+      }
+      const originTwd = typeof localToTwd97 === "function" ? localToTwd97({ x: 0, y: 0, z: 0 }) : { e: 0, n: 0, h: 0 };
+      if (catRes && Array.isArray(catRes.roads) && catRes.roads.length > 0) {
+        const primaryRoad = catRes.roads[0];
+        const bTwd = primaryRoad.boundary_twd97 || [];
+        if (bTwd.length >= 3) {
+          STATE.flattenDraftPoints = bTwd.map((p) => new THREE.Vector3(Number(p[0]) - originTwd.e, Number(p[2] || originTwd.h) - originTwd.h, originTwd.n - Number(p[1])));
+          return STATE.flattenDraftPoints;
+        }
+      }
+      // Fallback: central 30m x 30m surface zone around target
+      const c = studioThree?.controls?.target || new THREE.Vector3(0, 0, 0);
+      STATE.flattenDraftPoints = [
+        new THREE.Vector3(c.x - 18, c.y, c.z - 18),
+        new THREE.Vector3(c.x + 18, c.y, c.z - 18),
+        new THREE.Vector3(c.x + 18, c.y, c.z + 18),
+        new THREE.Vector3(c.x - 18, c.y, c.z + 18),
+      ];
+      return STATE.flattenDraftPoints;
+    };
+
+    const stageAndPreviewFlattenZone = async () => {
+      readParams();
+      let pts = Array.isArray(STATE.flattenDraftPoints) && STATE.flattenDraftPoints.length >= 3 ? STATE.flattenDraftPoints : null;
+      if (!pts && Array.isArray(STATE.pendingCropPolygons) && STATE.pendingCropPolygons.length > 0) {
+        pts = STATE.pendingCropPolygons[STATE.pendingCropPolygons.length - 1];
+      }
+      if (!pts && Array.isArray(STATE.measurePoints) && STATE.measurePoints.length >= 3) {
+        pts = STATE.measurePoints.slice();
+      }
+      if (!pts || pts.length < 3) {
+        pts = await autoDetectBoundaryPoints();
+      }
+      if (!pts || pts.length < 3) {
+        showToast("Click 3+ polygon vertices on the 3D surface to define the zone to flatten.");
+        return;
+      }
+
+      const polyLocalXZ = pts.map((p) => [Number(p.x.toFixed(3)), Number(p.z.toFixed(3))]);
+      const polyNative = pts.map((p) => {
+        const n = studioWorldToTilesetNative(p);
+        return [Number(n[0].toFixed(3)), Number(n[1].toFixed(3))];
+      });
+      const polyTwd97 = pts.map((p) => {
+        const t = localToTwd97(p);
+        return [Number(t.e.toFixed(3)), Number(t.n.toFixed(3)), Number(t.h.toFixed(3))];
+      });
+
+      const zoneObj = {
+        id: `fz_${Date.now()}`,
+        polygon_local_xz: polyLocalXZ,
+        polygon_native: polyNative,
+        polygon_twd97: polyTwd97,
+        keep_residual_ratio: Number((fp.keep_residual_pct / 100.0).toFixed(3)),
+        feather_m: fp.feather_m,
+        max_dev_m: Number((fp.max_dev_cm / 100.0).toFixed(3)),
+      };
+      st.flattenZones.push(zoneObj);
+      st.rev++;
+      STATE.flattenDraftPoints = [];
+      clearAreaVisualsOnly();
+      renderClosedAreaPolygon(pts, { preserveExistingAreas: false });
+
+      const stats = applyLiveFlattenZonesToStudioMeshes();
+      syncStagedEditsDockBadge();
+      openFlattenZoneInspector({ armPolygon: true });
+      if (stats) {
+        showToast(
+          tr(
+            `✓ 已保留 ${stats.slopePct}% 真實坡度並整平 ${Number(stats.flattenedVerts || 0).toLocaleString()} 個網格頂點 (RMSE: ±${stats.rmsePreCm}cm → ±${stats.rmsePostCm}cm)`,
+            `✓ Flattened ${Number(stats.flattenedVerts || 0).toLocaleString()} vertices preserving ${stats.slopePct}% slope (RMSE: ±${stats.rmsePreCm}cm → ±${stats.rmsePostCm}cm)`
+          )
+        );
+      }
+    };
+
+    document.getElementById("btnAutoDetectTrackZone")?.addEventListener("click", async () => {
+      const pts = await autoDetectBoundaryPoints();
+      if (pts && pts.length >= 3) {
+        clearAreaVisualsOnly();
+        renderClosedAreaPolygon(pts, { preserveExistingAreas: false });
+        openFlattenZoneInspector({ armPolygon: true });
+        showToast(tr(`已自動載入鋪面區域 (${pts.length} 個頂點) — 點擊下方按鈕立即整平`, `Loaded surface zone (${pts.length} vertices) — click Flatten below`));
+      }
+    });
+
+    document.getElementById("btnClearFlattenDraft")?.addEventListener("click", () => {
+      STATE.flattenDraftPoints = [];
+      clearAreaVisualsOnly();
+      openFlattenZoneInspector({ armPolygon: true });
+    });
+
+    document.getElementById("btnApplyLiveFlattenZone")?.addEventListener("click", () => {
+      stageAndPreviewFlattenZone();
+    });
+
+    document.getElementById("btnResetAllFlattenZones")?.addEventListener("click", () => {
+      st.flattenZones = [];
+      st.rev++;
+      restoreOriginalStudioMeshPositions();
+      clearAreaVisualsOnly();
+      syncStagedEditsDockBadge();
+      openFlattenZoneInspector({ armPolygon: true });
+      showToast(tr("已還原原始網格表面", "Restored original mesh surface"));
+    });
+
+    document.getElementById("btnSaveFlattenAsExpCopy")?.addEventListener("click", async () => {
+      const baseName = `${STATE.activeScan?.name || STATE.activeScanId || "Scan"} Flattened Exp Copy`;
+      await executeGenerateStagedScan({ keepOriginalUntouched: true, overrideScanName: baseName });
+    });
+
+    bindStagedAdjustmentsCardEvents(() => openFlattenZoneInspector({ armPolygon: STATE.activeTool === "flatten_zone" }));
+  }
+  window.openFlattenZoneInspector = openFlattenZoneInspector;
 
   function renderActiveScanSpecsCardHtml(scan = STATE.activeScan) {
     if (!scan) return "";
@@ -3399,6 +3907,8 @@
         "drainage",
         "gcp_qa",
         "bookmarks",
+        "utilities",
+        "bim",
         "comments",
         "optimizer",
         "crs",
@@ -3416,6 +3926,9 @@
       }
       if (STATE.activeTool === "drainage" && typeof clearDrainageVisuals3D === "function") {
         clearDrainageVisuals3D();
+      }
+      if (STATE.activeTool === "utilities" && typeof window.onUtilitiesPanelClosed === "function") {
+        window.onUtilitiesPanelClosed();
       }
       if ((STATE.activeTool === "photos" || STATE.activeTool === "rtk") && typeof clearPhotoTargetVisuals3D === "function") {
         clearPhotoTargetVisuals3D(true);
@@ -3531,6 +4044,14 @@
         const isPanelOpen = Boolean(
           panelEl && !panelEl.classList.contains("hidden") && panelEl.classList.contains("active")
         );
+        if (tool === "utilities" && isPanelOpen) {
+          if (typeof window.closeUtilitiesInspector === "function") {
+            window.closeUtilitiesInspector();
+          } else if (typeof closeSidePanel === "function") {
+            closeSidePanel();
+          }
+          return;
+        }
         if (
           STATE.measurePoints.length > 0 ||
           ["distance", "area", "angle", "coordinates", "laser"].includes(tool) ||
@@ -3595,9 +4116,16 @@
       else if (tool === "comments") openCommentsInspector();
       else if (tool === "drainage" && typeof openDrainageAndSlopeInspector === "function") openDrainageAndSlopeInspector();
       else if (tool === "gcp_qa" && typeof openGcpAccuracyQaInspector === "function") openGcpAccuracyQaInspector();
+      else if (tool === "flatness" && typeof window.openSurfaceFlatnessQaInspector === "function") window.openSurfaceFlatnessQaInspector();
+      else if (tool === "trench" && typeof window.openUtilityTracerInspector === "function") window.openUtilityTracerInspector();
+      else if (tool === "stakeout" && typeof window.openRtkStakeoutInspector === "function") window.openRtkStakeoutInspector();
+      else if (tool === "utilities" && typeof window.openUtilitiesInspector === "function") window.openUtilitiesInspector();
       else if (tool === "bim" && typeof openScanToBimInspector === "function") openScanToBimInspector();
       else if (tool === "bookmarks" && typeof openSavedMeasurementsInspector === "function") openSavedMeasurementsInspector();
-      else if (tool === "crop_delete") {
+      else if (tool === "flatten_zone") {
+        STATE.flattenDraftPoints = [];
+        openFlattenZoneInspector({ armPolygon: true });
+      } else if (tool === "crop_delete") {
         STATE.cropMode = "delete_inside";
         openLassoDeleteInspector({ armLasso: true });
         showToast(
@@ -3619,6 +4147,36 @@
       if (typeof syncStudioMobileToolHud === "function") syncStudioMobileToolHud();
     });
   });
+
+  window.handleStudioExtraToolCanvasClick = function (tool, pt, twd, isNearStartVertex) {
+    if (tool === "flatten_zone") {
+      if (!Array.isArray(STATE.flattenDraftPoints)) STATE.flattenDraftPoints = [];
+      if (STATE.flattenDraftPoints.length >= 3 && typeof isNearStartVertex === "function" && isNearStartVertex(pt, STATE.flattenDraftPoints[0])) {
+        document.getElementById("btnApplyLiveFlattenZone")?.click();
+        return true;
+      }
+      STATE.flattenDraftPoints.push(pt.clone());
+      clearAreaVisualsOnly();
+      const pts = STATE.flattenDraftPoints;
+      const addAreaObj = (m) => {
+        m.userData.isAreaVisual = true;
+        studioThree.overlayGroup.add(m);
+      };
+      pts.forEach((p, idx) => add3DPinMarker(p, idx === 0 ? 0xff3b30 : 0x10b981, studioThree.overlayGroup, addAreaObj));
+      if (pts.length >= 2) {
+        const loopPts = pts.length >= 3 ? [...pts, pts[0]] : pts;
+        const lGeo = new THREE.BufferGeometry().setFromPoints(loopPts);
+        const lMesh = new THREE.Line(lGeo, new THREE.LineBasicMaterial({ color: 0x10b981, depthTest: false }));
+        addAreaObj(lMesh);
+      }
+      openFlattenZoneInspector({ armPolygon: true });
+      return true;
+    }
+    if (typeof window.handleQaTool3DCanvasPick === "function" && window.handleQaTool3DCanvasPick(tool, pt, twd)) {
+      return true;
+    }
+    return false;
+  };
 
   // Mobile Editing Umbrella Button Toggle (#btnMobileEditingUmbrella -> #studioEditingDock.mobile-expanded)
   document.getElementById("btnMobileEditingUmbrella")?.addEventListener("click", (e) => {
