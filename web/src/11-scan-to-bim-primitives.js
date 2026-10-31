@@ -39,6 +39,19 @@
   };
 
   /**
+   * Escape HTML entities to prevent XSS and ReferenceErrors
+   */
+  function escapeHtml(str) {
+    if (str === null || str === undefined) return "";
+    return String(str)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
+  }
+
+  /**
    * Open the Scan-to-BIM side panel inspector
    */
   function openScanToBimInspector() {
@@ -46,7 +59,13 @@
       setActiveStudioTool("bim");
     }
     STATE.sidePanelMinimized = false;
-    BIM_STATE.activeScanId = STATE.activeScanId || "";
+    const curScanId = STATE.activeScanId || "";
+    if (BIM_STATE.activeScanId !== curScanId) {
+      BIM_STATE.primitives = [];
+      clearBimThreeMeshes();
+      BIM_STATE.overlayVisible = false;
+      BIM_STATE.activeScanId = curScanId;
+    }
 
     const titleHtml = `<div style="display:flex;align-items:center;gap:6px;">${ICONS.cube}<span>${tr("Scan-to-BIM 幾何實體模型", "Scan-to-BIM Primitives")}</span></div>`;
     const bodyHtml = renderBimInspectorBody();
@@ -435,11 +454,15 @@
       studioThree.scene.add(BIM_STATE.threeGroup);
     }
 
-    const originTwd = (STATE.activeScan && (STATE.activeScan.anchor_twd97 || STATE.activeScan.origin_twd97)) || {
-      e: 0,
-      n: 0,
-      h: 0,
-    };
+    let originTwd = (STATE.activeScan && (STATE.activeScan.anchor_twd97 || STATE.activeScan.origin_twd97)) || STATE.activeScanOriginTwd;
+    if (!originTwd || (originTwd.e === 0 && originTwd.n === 0 && originTwd.h === 0)) {
+      if (BIM_STATE.primitives.length > 0 && BIM_STATE.primitives[0].transform && BIM_STATE.primitives[0].transform.center_twd97) {
+        const c = BIM_STATE.primitives[0].transform.center_twd97;
+        originTwd = { e: Number(c[0]) || 0, n: Number(c[1]) || 0, h: Number(c[2]) || 0 };
+      } else {
+        originTwd = { e: 0, n: 0, h: 0 };
+      }
+    }
 
     const visiblePrims = BIM_STATE.primitives.filter((p) => BIM_STATE.selectedCategories.has(p.category));
 

@@ -2304,7 +2304,7 @@ class TestScanToBimExporters(unittest.TestCase):
         self.assertIn("IFCRELAGGREGATES(", ifc_str)
 
         self.assertIn("IFCWALL(", ifc_str)
-        self.assertIn("IFCGEOGRAPHIC_ELEMENT(", ifc_str)
+        self.assertIn("IFCGEOGRAPHICELEMENT(", ifc_str)
         self.assertIn("IFCFACETEDBREP(", ifc_str)
         self.assertIn("IFCCLOSEDSHELL(", ifc_str)
         self.assertIn("IFCPOLYLOOP(", ifc_str)

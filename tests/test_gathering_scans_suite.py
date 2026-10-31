@@ -2967,7 +2967,7 @@ class GatheringScansTestSuite(unittest.TestCase):
         self.assertIn("ISO-10303-21;", ifc_content)
         self.assertIn("FILE_SCHEMA(('IFC4'));", ifc_content)
         self.assertIn("IFCWALL", ifc_content)
-        self.assertIn("IFCGEOGRAPHIC_ELEMENT", ifc_content)
+        self.assertIn("IFCGEOGRAPHICELEMENT", ifc_content)
         self.assertIn("IFCBUILDINGELEMENTPROXY", ifc_content)
         self.assertIn("END-ISO-10303-21;", ifc_content)
 

@@ -519,7 +519,6 @@
 
     const raycaster = new THREE.Raycaster();
     const mouse = new THREE.Vector2();
-
     studioThree = {
       container,
       scene,
@@ -547,6 +546,7 @@
       _cancelLassoDrag: null,
       _lassoHighlightTimer: null,
     };
+    window.studioThree = studioThree;
 
     buildReferenceTerrainMesh(studioThree);
     buildStudioTransformGizmo(studioThree);

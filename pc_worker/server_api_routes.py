@@ -1087,6 +1087,10 @@ class ServerWriteRoutesMixin:
 
             # 5j. Civil Surveying: Scan-to-BIM Simplified Classified Geometric Model & CAD/BIM Exporters
             if path in ("/api/survey/scan-to-bim", "/api/surveying/scan-to-bim"):
+                s_id = str(payload.get("scan_id") or "").strip()
+                if ".." in s_id or "/" in s_id or "\\" in s_id:
+                    self.send_json({"error": "Invalid scan_id: path traversal forbidden"}, status=400)
+                    return
                 if share_token:
                     ok_s, reason_s, link_s, _ = AUTH_SHARE.validate_share_access(
                         share_token, requested_scan_id=payload.get("scan_id")
@@ -1099,6 +1103,10 @@ class ServerWriteRoutesMixin:
                 return
 
             if path in ("/api/survey/scan-to-bim/export", "/api/surveying/scan-to-bim/export"):
+                s_id = str(payload.get("scan_id") or "").strip()
+                if ".." in s_id or "/" in s_id or "\\" in s_id:
+                    self.send_json({"error": "Invalid scan_id: path traversal forbidden"}, status=400)
+                    return
                 if share_token:
                     ok_s, reason_s, link_s, _ = AUTH_SHARE.validate_share_access(
                         share_token, requested_scan_id=payload.get("scan_id")
@@ -2285,7 +2293,7 @@ class ServerWriteRoutesMixin:
         except KeyError as e:
             msg = e.args[0] if e.args else str(e)
             self.send_json({"error": str(msg)}, status=404)
-        except ValueError as e:
+        except (ValueError, TypeError) as e:
             self.send_json({"error": str(e)}, status=400)
         except Exception as e:
             self.send_json({"error": str(e)}, status=500)

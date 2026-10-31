@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import os
 import sys
+import re
 import math
 import uuid
 import json
@@ -774,201 +775,222 @@ class ScanToBimMixin:
         # -------------------------------------------------------------------
         if "trees" in active_cats:
             trees_list = cat_data.get("trees") or []
+            if not isinstance(trees_list, list):
+                trees_list = []
             for t in trees_list:
-                t_id = str(t.get("id") or "T")
-                height_m = float(t.get("height_m") or 0.0)
-                if height_m < min_tree_h:
+                if not isinstance(t, dict):
                     continue
+                try:
+                    t_id = str(t.get("id") or "T")
+                    height_m = _safe_float(t.get("height_m"), 0.0)
+                    if height_m < min_tree_h:
+                        continue
 
-                dbh_cm = float(t.get("dbh_cm") or 20.0)
-                trunk_r = max(0.06, (dbh_cm / 100.0) * 0.5)
-                crown_d = float(t.get("crown_diameter_m") or (height_m * 0.55))
-                crown_r = max(0.5, crown_d * 0.5)
+                    dbh_cm = _safe_float(t.get("dbh_cm"), 20.0)
+                    trunk_r = max(0.06, (dbh_cm / 100.0) * 0.5)
+                    crown_d = _safe_float(t.get("crown_diameter_m"), height_m * 0.55)
+                    crown_r = max(0.5, crown_d * 0.5)
 
-                tr_twd = t.get("trunk_twd97") or [anc_e, anc_n, anc_h]
-                ground_z = float(t.get("ground_elevation_m") or tr_twd[2])
-                trunk_h = max(1.3, min(2.5, height_m * 0.35))
+                    tr_twd = _safe_coord_point(t.get("trunk_twd97"), default=(anc_e, anc_n, anc_h))
+                    ground_z = _safe_float(t.get("ground_elevation_m"), tr_twd[2])
+                    trunk_h = max(1.3, min(2.5, height_m * 0.35))
 
-                # Trunk cylinder mesh
-                trunk_mesh = _generate_cylinder_mesh(
-                    (tr_twd[0], tr_twd[1], ground_z),
-                    radius=trunk_r,
-                    height=trunk_h,
-                    radial_segments=12,
-                )
+                    # Trunk cylinder mesh
+                    trunk_mesh = _generate_cylinder_mesh(
+                        (tr_twd[0], tr_twd[1], ground_z),
+                        radius=trunk_r,
+                        height=trunk_h,
+                        radial_segments=12,
+                    )
 
-                # Canopy ellipsoid mesh
-                canopy_center_z = ground_z + trunk_h + (height_m - trunk_h) * 0.5
-                canopy_rz = max(0.6, (height_m - trunk_h) * 0.55)
-                canopy_mesh = _generate_ellipsoid_mesh(
-                    (tr_twd[0], tr_twd[1], canopy_center_z),
-                    rx=crown_r,
-                    ry=crown_r,
-                    rz=canopy_rz,
-                    lat_segs=8,
-                    lon_segs=12,
-                )
+                    # Canopy ellipsoid mesh
+                    canopy_center_z = ground_z + trunk_h + (height_m - trunk_h) * 0.5
+                    canopy_rz = max(0.6, (height_m - trunk_h) * 0.55)
+                    canopy_mesh = _generate_ellipsoid_mesh(
+                        (tr_twd[0], tr_twd[1], canopy_center_z),
+                        rx=crown_r,
+                        ry=crown_r,
+                        rz=canopy_rz,
+                        lat_segs=8,
+                        lon_segs=12,
+                    )
 
-                # Merge trunk + canopy into composite tree primitive mesh
-                comb_verts_twd: List[Tuple[float, float, float]] = []
-                comb_faces: List[Tuple[int, int, int]] = []
+                    # Merge trunk + canopy into composite tree primitive mesh
+                    comb_verts_twd: List[Tuple[float, float, float]] = []
+                    comb_faces: List[Tuple[int, int, int]] = []
 
-                comb_verts_twd.extend(trunk_mesh["vertices"])
-                comb_faces.extend(trunk_mesh["faces"])
+                    comb_verts_twd.extend(trunk_mesh["vertices"])
+                    comb_faces.extend(trunk_mesh["faces"])
 
-                c_offset = len(comb_verts_twd)
-                comb_verts_twd.extend(canopy_mesh["vertices"])
-                for a, b, c in canopy_mesh["faces"]:
-                    comb_faces.append((a + c_offset, b + c_offset, c + c_offset))
+                    c_offset = len(comb_verts_twd)
+                    comb_verts_twd.extend(canopy_mesh["vertices"])
+                    for a, b, c in canopy_mesh["faces"]:
+                        comb_faces.append((a + c_offset, b + c_offset, c + c_offset))
 
-                v_twd = [list(v) for v in comb_verts_twd]
-                v_loc = [_to_studio_local(tuple(v)) for v in comb_verts_twd]
-                trunk_vol = math.pi * trunk_r * trunk_r * trunk_h
-                canopy_vol = (4.0 / 3.0) * math.pi * crown_r * crown_r * canopy_rz
-                tot_vol = round(trunk_vol + canopy_vol, 2)
+                    v_twd = [list(v) for v in comb_verts_twd]
+                    v_loc = [_to_studio_local(tuple(v)) for v in comb_verts_twd]
+                    trunk_vol = math.pi * trunk_r * trunk_r * trunk_h
+                    canopy_vol = (4.0 / 3.0) * math.pi * crown_r * crown_r * canopy_rz
+                    tot_vol = round(trunk_vol + canopy_vol, 2)
 
-                primitives.append({
-                    "id": f"BIM_{t_id}",
-                    "source_id": t_id,
-                    "category": "trees",
-                    "ifc_class": "IfcGeographicElement",
-                    "ifc_predefined_type": "USERDEFINED",
-                    "ifc_object_type": "TREE",
-                    "name": f"Tree {t_id}",
-                    "primitive_type": "composite_tree",
-                    "color": "#10b981",
-                    "properties": {
-                        "height_m": round(height_m, 2),
-                        "dbh_cm": round(dbh_cm, 1),
-                        "trunk_radius_m": round(trunk_r, 3),
-                        "trunk_height_m": round(trunk_h, 2),
-                        "crown_diameter_m": round(crown_d, 2),
-                        "crown_area_m2": round(math.pi * crown_r * crown_r, 2),
-                        "volume_m3": tot_vol,
-                    },
-                    "transform": {
-                        "center_twd97": [round(tr_twd[0], 3), round(tr_twd[1], 3), round(ground_z, 3)],
-                        "center_local": [round(c, 3) for c in _to_studio_local((tr_twd[0], tr_twd[1], ground_z))],
-                    },
-                    "mesh": {
-                        "vertices_twd97": v_twd,
-                        "vertices_local": v_loc,
-                        "faces": comb_faces,
-                    },
-                })
+                    primitives.append({
+                        "id": f"BIM_{t_id}",
+                        "source_id": t_id,
+                        "category": "trees",
+                        "ifc_class": "IfcGeographicElement",
+                        "ifc_predefined_type": "USERDEFINED",
+                        "ifc_object_type": "TREE",
+                        "name": f"Tree {t_id}",
+                        "primitive_type": "composite_tree",
+                        "color": "#10b981",
+                        "properties": {
+                            "height_m": round(height_m, 2),
+                            "dbh_cm": round(dbh_cm, 1),
+                            "trunk_radius_m": round(trunk_r, 3),
+                            "trunk_height_m": round(trunk_h, 2),
+                            "crown_diameter_m": round(crown_d, 2),
+                            "crown_area_m2": round(math.pi * crown_r * crown_r, 2),
+                            "volume_m3": tot_vol,
+                        },
+                        "transform": {
+                            "center_twd97": [round(tr_twd[0], 3), round(tr_twd[1], 3), round(ground_z, 3)],
+                            "center_local": [round(c, 3) for c in _to_studio_local((tr_twd[0], tr_twd[1], ground_z))],
+                        },
+                        "mesh": {
+                            "vertices_twd97": v_twd,
+                            "vertices_local": v_loc,
+                            "faces": comb_faces,
+                        },
+                    })
+                except Exception:
+                    continue
 
         # -------------------------------------------------------------------
         # 3. ROADS -> 3D Surface Pavement Prisms
         # -------------------------------------------------------------------
         if "roads" in active_cats:
             roads_list = cat_data.get("roads") or []
+            if not isinstance(roads_list, list):
+                roads_list = []
             for r in roads_list:
-                r_id = str(r.get("id") or "R")
-                b_poly = r.get("boundary_twd97") or []
-                if len(b_poly) < 3:
+                if not isinstance(r, dict):
                     continue
+                try:
+                    r_id = str(r.get("id") or "R")
+                    b_poly = _safe_coord_list(r.get("boundary_twd97"), min_len=3)
+                    if len(b_poly) < 3:
+                        continue
 
-                pavement_thick_m = 0.20
-                c_twd = r.get("center_twd97") or [anc_e, anc_n, anc_h]
-                mesh_data = _generate_extruded_polygon_mesh(
-                    [tuple(p) for p in b_poly],
-                    extrusion_depth=pavement_thick_m,
-                    extrude_direction="down",
-                )
+                    pavement_thick_m = 0.20
+                    c_twd = _safe_coord_point(r.get("center_twd97"), default=(anc_e, anc_n, anc_h))
+                    mesh_data = _generate_extruded_polygon_mesh(
+                        b_poly,
+                        extrusion_depth=pavement_thick_m,
+                        extrude_direction="down",
+                    )
 
-                if not mesh_data["faces"]:
+                    if not mesh_data["faces"]:
+                        continue
+
+                    v_twd = [list(v) for v in mesh_data["vertices"]]
+                    v_loc = [_to_studio_local(tuple(v)) for v in mesh_data["vertices"]]
+                    p_area = _safe_float(r.get("planar_area_m2"), 0.0)
+                    vol_m3 = round(p_area * pavement_thick_m, 2)
+
+                    primitives.append({
+                        "id": f"BIM_{r_id}",
+                        "source_id": r_id,
+                        "category": "roads",
+                        "ifc_class": "IfcCivilElement",
+                        "ifc_predefined_type": "USERDEFINED",
+                        "ifc_object_type": "ROAD_PAVEMENT",
+                        "name": f"Road {r_id}",
+                        "primitive_type": "extruded_ribbon",
+                        "color": "#f59e0b",
+                        "properties": {
+                            "planar_area_m2": round(p_area, 2),
+                            "mean_width_m": round(_safe_float(r.get("mean_width_m"), 0.0), 2),
+                            "mean_slope_pct": round(_safe_float(r.get("mean_slope_pct"), 0.0), 1),
+                            "thickness_m": pavement_thick_m,
+                            "volume_m3": vol_m3,
+                        },
+                        "transform": {
+                            "center_twd97": [round(c, 3) for c in c_twd],
+                            "center_local": [round(c, 3) for c in _to_studio_local(c_twd)],
+                        },
+                        "mesh": {
+                            "vertices_twd97": v_twd,
+                            "vertices_local": v_loc,
+                            "faces": mesh_data["faces"],
+                        },
+                    })
+                except Exception:
                     continue
-
-                v_twd = [list(v) for v in mesh_data["vertices"]]
-                v_loc = [_to_studio_local(tuple(v)) for v in mesh_data["vertices"]]
-                p_area = float(r.get("planar_area_m2") or 0.0)
-                vol_m3 = round(p_area * pavement_thick_m, 2)
-
-                primitives.append({
-                    "id": f"BIM_{r_id}",
-                    "source_id": r_id,
-                    "category": "roads",
-                    "ifc_class": "IfcCivilElement",
-                    "ifc_predefined_type": "USERDEFINED",
-                    "ifc_object_type": "ROAD_PAVEMENT",
-                    "name": f"Road {r_id}",
-                    "primitive_type": "extruded_ribbon",
-                    "color": "#f59e0b",
-                    "properties": {
-                        "planar_area_m2": round(p_area, 2),
-                        "mean_width_m": round(float(r.get("mean_width_m") or 0.0), 2),
-                        "mean_slope_pct": round(float(r.get("mean_slope_pct") or 0.0), 1),
-                        "thickness_m": pavement_thick_m,
-                        "volume_m3": vol_m3,
-                    },
-                    "transform": {
-                        "center_twd97": [round(c, 3) for c in c_twd],
-                        "center_local": [round(c, 3) for c in _to_studio_local(tuple(c_twd))],
-                    },
-                    "mesh": {
-                        "vertices_twd97": v_twd,
-                        "vertices_local": v_loc,
-                        "faces": mesh_data["faces"],
-                    },
-                })
 
         # -------------------------------------------------------------------
         # 4. WATER BODIES -> Hydrostatic Bathymetric Prisms
         # -------------------------------------------------------------------
         if "water" in active_cats:
             water_list = cat_data.get("water_bodies") or []
+            if not isinstance(water_list, list):
+                water_list = []
             for wb in water_list:
-                wb_id = str(wb.get("id") or "W")
-                b_poly = wb.get("boundary_twd97") or []
-                if len(b_poly) < 3:
+                if not isinstance(wb, dict):
                     continue
+                try:
+                    wb_id = str(wb.get("id") or "W")
+                    b_poly = _safe_coord_list(wb.get("boundary_twd97"), min_len=3)
+                    if len(b_poly) < 3:
+                        continue
 
-                w_level = float(wb.get("water_level_twvd2001_m") or (wb.get("center_twd97") or [0, 0, 0])[2])
-                c_twd = wb.get("center_twd97") or [anc_e, anc_n, w_level]
-                # Force flat water surface
-                b_flat = [(p[0], p[1], w_level) for p in b_poly]
-                depth_m = 0.80
+                    c_twd = _safe_coord_point(wb.get("center_twd97"), default=(anc_e, anc_n, anc_h))
+                    w_level = _safe_float(wb.get("water_level_twvd2001_m"), c_twd[2])
+                    # Force flat water surface
+                    b_flat = [(p[0], p[1], w_level) for p in b_poly]
+                    depth_m = 0.80
 
-                mesh_data = _generate_extruded_polygon_mesh(
-                    b_flat,
-                    extrusion_depth=depth_m,
-                    extrude_direction="down",
-                )
-                if not mesh_data["faces"]:
+                    mesh_data = _generate_extruded_polygon_mesh(
+                        b_flat,
+                        extrusion_depth=depth_m,
+                        extrude_direction="down",
+                    )
+                    if not mesh_data["faces"]:
+                        continue
+
+                    v_twd = [list(v) for v in mesh_data["vertices"]]
+                    v_loc = [_to_studio_local(tuple(v)) for v in mesh_data["vertices"]]
+                    p_area = _safe_float(wb.get("planar_area_m2"), 0.0)
+                    vol_m3 = round(p_area * depth_m, 2)
+
+                    primitives.append({
+                        "id": f"BIM_{wb_id}",
+                        "source_id": wb_id,
+                        "category": "water",
+                        "ifc_class": "IfcGeographicElement",
+                        "ifc_predefined_type": "USERDEFINED",
+                        "ifc_object_type": "WATER_BODY",
+                        "name": f"Water {wb_id}",
+                        "primitive_type": "water_prism",
+                        "color": "#06b6d4",
+                        "properties": {
+                            "water_level_m": round(w_level, 2),
+                            "planar_area_m2": round(p_area, 2),
+                            "perimeter_m": round(_safe_float(wb.get("perimeter_m"), 0.0), 1),
+                            "depth_m": depth_m,
+                            "volume_m3": vol_m3,
+                        },
+                        "transform": {
+                            "center_twd97": [round(c_twd[0], 3), round(c_twd[1], 3), round(w_level, 3)],
+                            "center_local": [round(c, 3) for c in _to_studio_local((c_twd[0], c_twd[1], w_level))],
+                        },
+                        "mesh": {
+                            "vertices_twd97": v_twd,
+                            "vertices_local": v_loc,
+                            "faces": mesh_data["faces"],
+                        },
+                    })
+                except Exception:
                     continue
-
-                v_twd = [list(v) for v in mesh_data["vertices"]]
-                v_loc = [_to_studio_local(tuple(v)) for v in mesh_data["vertices"]]
-                p_area = float(wb.get("planar_area_m2") or 0.0)
-                vol_m3 = round(p_area * depth_m, 2)
-
-                primitives.append({
-                    "id": f"BIM_{wb_id}",
-                    "source_id": wb_id,
-                    "category": "water",
-                    "ifc_class": "IfcGeographicElement",
-                    "ifc_predefined_type": "USERDEFINED",
-                    "ifc_object_type": "WATER_BODY",
-                    "name": f"Water {wb_id}",
-                    "primitive_type": "water_prism",
-                    "color": "#06b6d4",
-                    "properties": {
-                        "water_level_m": round(w_level, 2),
-                        "planar_area_m2": round(p_area, 2),
-                        "perimeter_m": round(float(wb.get("perimeter_m") or 0.0), 1),
-                        "depth_m": depth_m,
-                        "volume_m3": vol_m3,
-                    },
-                    "transform": {
-                        "center_twd97": [round(c_twd[0], 3), round(c_twd[1], 3), round(w_level, 3)],
-                        "center_local": [round(c, 3) for c in _to_studio_local((c_twd[0], c_twd[1], w_level))],
-                    },
-                    "mesh": {
-                        "vertices_twd97": v_twd,
-                        "vertices_local": v_loc,
-                        "faces": mesh_data["faces"],
-                    },
-                })
 
         # -------------------------------------------------------------------
         # 5. BUILDINGS & STRUCTURES -> 3D Bounding Prisms
@@ -995,52 +1017,57 @@ class ScanToBimMixin:
                         break
 
             for b in bldg_entries:
-                b_id = str(b.get("id") or "B1")
-                c_twd = b.get("center_twd97") or [anc_e, anc_n, anc_h + 2.5]
-                dx = float(b.get("dx") or 12.0)
-                dy = float(b.get("dy") or 8.0)
-                h = float(b.get("height_m") or 6.0)
-                az = float(b.get("azimuth_deg") or 0.0)
+                try:
+                    b_id = str(b.get("id") or "B1")
+                    c_twd = _safe_coord_point(b.get("center_twd97"), (anc_e, anc_n, anc_h + 2.5))
+                    dx = max(0.1, _safe_float(b.get("dx"), 12.0))
+                    dy = max(0.1, _safe_float(b.get("dy"), 8.0))
+                    h = max(0.1, _safe_float(b.get("height_m"), 6.0))
+                    az = _safe_float(b.get("azimuth_deg"), 0.0)
 
-                mesh_data = _generate_box_mesh(
-                    (c_twd[0], c_twd[1], c_twd[2]),
-                    dx=dx,
-                    dy=dy,
-                    dz=h,
-                    azimuth_deg=az,
-                )
+                    mesh_data = _generate_box_mesh(
+                        (c_twd[0], c_twd[1], c_twd[2]),
+                        dx=dx,
+                        dy=dy,
+                        dz=h,
+                        azimuth_deg=az,
+                    )
+                    if not mesh_data["faces"]:
+                        continue
 
-                v_twd = [list(v) for v in mesh_data["vertices"]]
-                v_loc = [_to_studio_local(tuple(v)) for v in mesh_data["vertices"]]
-                vol_m3 = round(dx * dy * h, 2)
+                    v_twd = [list(v) for v in mesh_data["vertices"]]
+                    v_loc = [_to_studio_local(tuple(v)) for v in mesh_data["vertices"]]
+                    vol_m3 = round(dx * dy * h, 2)
 
-                primitives.append({
-                    "id": f"BIM_{b_id}",
-                    "source_id": b_id,
-                    "category": "buildings",
-                    "ifc_class": "IfcBuildingElementProxy",
-                    "ifc_predefined_type": "USERDEFINED",
-                    "ifc_object_type": "BUILDING",
-                    "name": f"Structure {b_id}",
-                    "primitive_type": "cuboid",
-                    "color": "#3b82f6",
-                    "properties": {
-                        "length_m": round(dx, 2),
-                        "width_m": round(dy, 2),
-                        "height_m": round(h, 2),
-                        "footprint_area_m2": round(dx * dy, 2),
-                        "volume_m3": vol_m3,
-                    },
-                    "transform": {
-                        "center_twd97": [round(c, 3) for c in c_twd],
-                        "center_local": [round(c, 3) for c in _to_studio_local(tuple(c_twd))],
-                    },
-                    "mesh": {
-                        "vertices_twd97": v_twd,
-                        "vertices_local": v_loc,
-                        "faces": mesh_data["faces"],
-                    },
-                })
+                    primitives.append({
+                        "id": f"BIM_{b_id}",
+                        "source_id": b_id,
+                        "category": "buildings",
+                        "ifc_class": "IfcBuildingElementProxy",
+                        "ifc_predefined_type": "USERDEFINED",
+                        "ifc_object_type": "BUILDING",
+                        "name": f"Structure {b_id}",
+                        "primitive_type": "cuboid",
+                        "color": "#3b82f6",
+                        "properties": {
+                            "length_m": round(dx, 2),
+                            "width_m": round(dy, 2),
+                            "height_m": round(h, 2),
+                            "footprint_area_m2": round(dx * dy, 2),
+                            "volume_m3": vol_m3,
+                        },
+                        "transform": {
+                            "center_twd97": [round(c, 3) for c in c_twd],
+                            "center_local": [round(c, 3) for c in _to_studio_local(tuple(c_twd))],
+                        },
+                        "mesh": {
+                            "vertices_twd97": v_twd,
+                            "vertices_local": v_loc,
+                            "faces": mesh_data["faces"],
+                        },
+                    })
+                except Exception:
+                    continue
 
         # -------------------------------------------------------------------
         # 6. PIPES & UTILITIES -> 3D Cylindrical Solids
@@ -1058,60 +1085,63 @@ class ScanToBimMixin:
                 }]
 
             for p in pipes_list:
-                p_id = str(p.get("id") or "P1")
-                p_start = p.get("start") or [anc_e, anc_n, anc_h - 1.0]
-                p_end = p.get("end") or [anc_e + 10.0, anc_n, anc_h - 1.2]
-                dia = float(p.get("diameter_m") or pipe_dia_m)
-                r_pipe = dia * 0.5
+                try:
+                    p_id = str(p.get("id") or "P1")
+                    p_start = _safe_coord_point(p.get("start"), (anc_e, anc_n, anc_h - 1.0))
+                    p_end = _safe_coord_point(p.get("end"), (anc_e + 10.0, anc_n, anc_h - 1.2))
+                    dia = max(0.01, _safe_float(p.get("diameter_m"), pipe_dia_m))
+                    r_pipe = dia * 0.5
 
-                mesh_data = _generate_pipe_cylinder_mesh(
-                    tuple(p_start), tuple(p_end), radius=r_pipe, radial_segments=10
-                )
-                if not mesh_data["faces"]:
+                    mesh_data = _generate_pipe_cylinder_mesh(
+                        tuple(p_start), tuple(p_end), radius=r_pipe, radial_segments=10
+                    )
+                    if not mesh_data["faces"]:
+                        continue
+
+                    dx = p_end[0] - p_start[0]
+                    dy = p_end[1] - p_start[1]
+                    dz = p_end[2] - p_start[2]
+                    length_m = math.sqrt(dx * dx + dy * dy + dz * dz)
+                    c_pt = (
+                        (p_start[0] + p_end[0]) * 0.5,
+                        (p_start[1] + p_end[1]) * 0.5,
+                        (p_start[2] + p_end[2]) * 0.5,
+                    )
+
+                    v_twd = [list(v) for v in mesh_data["vertices"]]
+                    v_loc = [_to_studio_local(tuple(v)) for v in mesh_data["vertices"]]
+                    vol_m3 = round(math.pi * r_pipe * r_pipe * length_m, 3)
+
+                    primitives.append({
+                        "id": f"BIM_{p_id}",
+                        "source_id": p_id,
+                        "category": "pipes",
+                        "ifc_class": "IfcFlowSegment",
+                        "ifc_predefined_type": "USERDEFINED",
+                        "ifc_object_type": "PIPE",
+                        "name": f"Pipe {p_id}",
+                        "primitive_type": "pipe_cylinder",
+                        "color": "#f97316",
+                        "properties": {
+                            "length_m": round(length_m, 2),
+                            "diameter_mm": int(dia * 1000.0),
+                            "slope_pct": round(abs(dz / max(1e-4, math.hypot(dx, dy))) * 100.0, 2),
+                            "invert_start_m": round(p_start[2], 3),
+                            "invert_end_m": round(p_end[2], 3),
+                            "volume_m3": vol_m3,
+                        },
+                        "transform": {
+                            "center_twd97": [round(c, 3) for c in c_pt],
+                            "center_local": [round(c, 3) for c in _to_studio_local(c_pt)],
+                        },
+                        "mesh": {
+                            "vertices_twd97": v_twd,
+                            "vertices_local": v_loc,
+                            "faces": mesh_data["faces"],
+                        },
+                    })
+                except Exception:
                     continue
-
-                dx = p_end[0] - p_start[0]
-                dy = p_end[1] - p_start[1]
-                dz = p_end[2] - p_start[2]
-                length_m = math.sqrt(dx * dx + dy * dy + dz * dz)
-                c_pt = (
-                    (p_start[0] + p_end[0]) * 0.5,
-                    (p_start[1] + p_end[1]) * 0.5,
-                    (p_start[2] + p_end[2]) * 0.5,
-                )
-
-                v_twd = [list(v) for v in mesh_data["vertices"]]
-                v_loc = [_to_studio_local(tuple(v)) for v in mesh_data["vertices"]]
-                vol_m3 = round(math.pi * r_pipe * r_pipe * length_m, 3)
-
-                primitives.append({
-                    "id": f"BIM_{p_id}",
-                    "source_id": p_id,
-                    "category": "pipes",
-                    "ifc_class": "IfcFlowSegment",
-                    "ifc_predefined_type": "USERDEFINED",
-                    "ifc_object_type": "PIPE",
-                    "name": f"Pipe {p_id}",
-                    "primitive_type": "pipe_cylinder",
-                    "color": "#f97316",
-                    "properties": {
-                        "length_m": round(length_m, 2),
-                        "diameter_mm": int(dia * 1000.0),
-                        "slope_pct": round(abs(dz / max(1e-4, math.hypot(dx, dy))) * 100.0, 2),
-                        "invert_start_m": round(p_start[2], 3),
-                        "invert_end_m": round(p_end[2], 3),
-                        "volume_m3": vol_m3,
-                    },
-                    "transform": {
-                        "center_twd97": [round(c, 3) for c in c_pt],
-                        "center_local": [round(c, 3) for c in _to_studio_local(c_pt)],
-                    },
-                    "mesh": {
-                        "vertices_twd97": v_twd,
-                        "vertices_local": v_loc,
-                        "faces": mesh_data["faces"],
-                    },
-                })
 
         # Summary KPIs
         cat_counts: Dict[str, int] = {}
@@ -1161,7 +1191,12 @@ class ScanToBimMixin:
         2. AutoCAD 3D DXF (ASCII format with 3DFACE solids)
         3. Wavefront OBJ + MTL (Semantic grouped meshes)
         """
-        scan_id = str(payload.get("scan_id") or "scan").strip()
+        raw_scan_id = str(payload.get("scan_id") or "scan").strip()
+        if ".." in raw_scan_id or "/" in raw_scan_id or "\\" in raw_scan_id:
+            raise ValueError("Invalid scan_id: path traversal forbidden")
+        scan_id = re.sub(r"[^a-zA-Z0-9_\-]", "_", os.path.basename(raw_scan_id))
+        if not scan_id:
+            scan_id = "scan"
         primitives = payload.get("primitives")
         if not isinstance(primitives, list):
             fit_res = self.fit_scan_to_bim_primitives(payload)
@@ -1318,15 +1353,18 @@ class ScanToBimMixin:
         lines.append(f"#{id_context}=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-05,#{id_axis},#{id_dir_plan});")
 
         # Spatial Structure: Project -> Site -> Building -> Storey
+        id_local_placement = next_id()
+        lines.append(f"#{id_local_placement}=IFCLOCALPLACEMENT($,#{id_axis});")
+
         id_proj = next_id()
         id_site = next_id()
         id_bldg = next_id()
         id_storey = next_id()
 
         lines.append(f"#{id_proj}=IFCPROJECT('{create_ifc_guid()}',#{id_owner},'GatheringScans Civil Scan-to-BIM Project',$,$,$,$,(#{id_context}),#{id_u_assign});")
-        lines.append(f"#{id_site}=IFCSITE('{create_ifc_guid()}',#{id_owner},'Civil Survey Site',$,$,#{id_axis},$,$,.ELEMENT.,(25,2,0),(121,30,0),15.0,$,$);")
-        lines.append(f"#{id_bldg}=IFCBUILDING('{create_ifc_guid()}',#{id_owner},'Site Elements',$,$,#{id_axis},$,$,.ELEMENT.,$,$,$);")
-        lines.append(f"#{id_storey}=IFCBUILDINGSTOREY('{create_ifc_guid()}',#{id_owner},'Ground Level',$,$,#{id_axis},$,$,.ELEMENT.,0.0);")
+        lines.append(f"#{id_site}=IFCSITE('{create_ifc_guid()}',#{id_owner},'Civil Survey Site',$,$,#{id_local_placement},$,$,.ELEMENT.,(25,2,0),(121,30,0),15.0,$,$);")
+        lines.append(f"#{id_bldg}=IFCBUILDING('{create_ifc_guid()}',#{id_owner},'Site Elements',$,$,#{id_local_placement},$,$,.ELEMENT.,$,$,$);")
+        lines.append(f"#{id_storey}=IFCBUILDINGSTOREY('{create_ifc_guid()}',#{id_owner},'Ground Level',$,$,#{id_local_placement},$,$,.ELEMENT.,0.0);")
 
         lines.append(f"#{next_id()}=IFCRELAGGREGATES('{create_ifc_guid()}',#{id_owner},$,$,#{id_proj},(#{id_site}));")
         lines.append(f"#{next_id()}=IFCRELAGGREGATES('{create_ifc_guid()}',#{id_owner},$,$,#{id_site},(#{id_bldg}));")
@@ -1407,15 +1445,15 @@ class ScanToBimMixin:
             id_elem = next_id()
 
             if ifc_cls == "IfcWall":
-                lines.append(f"#{id_elem}=IFCWALL('{create_ifc_guid()}',#{id_owner},'{prim_name}',$,$,#{id_axis},#{id_prod_shape},'{prim_id_str}');")
+                lines.append(f"#{id_elem}=IFCWALL('{create_ifc_guid()}',#{id_owner},'{prim_name}',$,'WALL',#{id_local_placement},#{id_prod_shape},'{prim_id_str}',.SOLIDWALL.);")
             elif ifc_cls == "IfcCivilElement":
-                lines.append(f"#{id_elem}=IFCCIVILELEMENT('{create_ifc_guid()}',#{id_owner},'{prim_name}',$,$,#{id_axis},#{id_prod_shape},'{prim_id_str}');")
+                lines.append(f"#{id_elem}=IFCCIVILELEMENT('{create_ifc_guid()}',#{id_owner},'{prim_name}',$,'CIVIL_ROAD',#{id_local_placement},#{id_prod_shape},'{prim_id_str}');")
             elif ifc_cls == "IfcFlowSegment":
-                lines.append(f"#{id_elem}=IFCFLOWSEGMENT('{create_ifc_guid()}',#{id_owner},'{prim_name}',$,$,#{id_axis},#{id_prod_shape},'{prim_id_str}');")
+                lines.append(f"#{id_elem}=IFCFLOWSEGMENT('{create_ifc_guid()}',#{id_owner},'{prim_name}',$,'PIPE',#{id_local_placement},#{id_prod_shape},'{prim_id_str}',.USERDEFINED.);")
             elif ifc_cls == "IfcGeographicElement":
-                lines.append(f"#{id_elem}=IFCGEOGRAPHIC_ELEMENT('{create_ifc_guid()}',#{id_owner},'{prim_name}',$,$,#{id_axis},#{id_prod_shape},'{prim_id_str}',.USERDEFINED.);")
+                lines.append(f"#{id_elem}=IFCGEOGRAPHICELEMENT('{create_ifc_guid()}',#{id_owner},'{prim_name}',$,'TERRAIN_ELEMENT',#{id_local_placement},#{id_prod_shape},'{prim_id_str}',.USERDEFINED.);")
             else:
-                lines.append(f"#{id_elem}=IFCBUILDINGELEMENTPROXY('{create_ifc_guid()}',#{id_owner},'{prim_name}',$,$,#{id_axis},#{id_prod_shape},'{prim_id_str}',.USERDEFINED.);")
+                lines.append(f"#{id_elem}=IFCBUILDINGELEMENTPROXY('{create_ifc_guid()}',#{id_owner},'{prim_name}',$,'STRUCTURE',#{id_local_placement},#{id_prod_shape},'{prim_id_str}',.USERDEFINED.);")
 
             product_ids.append(id_elem)
 
