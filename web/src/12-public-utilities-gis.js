@@ -300,6 +300,10 @@
     const asBuiltCount = asBuiltLayer ? asBuiltLayer.count || 0 : 0;
     const asBuiltChecked = asBuiltLayer && asBuiltLayer.visible !== false ? "checked" : "";
     const layersHtml = `
+      <div style="margin:0 0 4px 0;font-size:9.5px;font-weight:700;color:var(--ui-text-muted);display:flex;align-items:center;justify-content:space-between;">
+        <span>${t("官方開放 API 圖資 (9 圖層)", "Official Open API Layers (9)")}</span>
+        <span style="font-size:9px;color:#38bdf8;">OPEN API</span>
+      </div>
       ${apiLayersHtml}
       <div style="margin:6px 0 4px 0;padding-top:6px;border-top:1px dashed rgba(148,163,184,0.28);font-size:9.5px;font-weight:700;color:var(--ui-text-muted);display:flex;align-items:center;justify-content:space-between;">
         <span>${t("自建 / Scan-to-BIM 獨立圖層 (與 API 嚴格隔離)", "User / Scan-to-BIM Isolated Layer")}</span>
@@ -545,11 +549,14 @@
 
     return `
       <div class="gs-util-detail-card" style="border-left:3px solid ${lyr.color};">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:4px;margin-bottom:4px;flex-wrap:wrap;">
           <span style="font-weight:700;font-size:12px;color:var(--ui-text-primary);">${escapeHtml(nameStr)}</span>
-          <span class="gs-util-badge" style="background:${lyr.color}22;color:${lyr.color};border:1px solid ${lyr.color}44;">
-            ${t(lyr.name_zh, lyr.name_en)}
-          </span>
+          <div style="display:flex;align-items:center;gap:4px;">
+            ${originBadgeHtml}
+            <span class="gs-util-badge" style="background:${lyr.color}22;color:${lyr.color};border:1px solid ${lyr.color}44;">
+              ${t(lyr.name_zh, lyr.name_en)}
+            </span>
+          </div>
         </div>
         <div class="gs-util-detail-grid">
           <div><span class="gs-util-detail-lbl">${t("管徑/尺寸", "Size")}:</span> <b>${escapeHtml(dimText)}</b></div>
@@ -565,7 +572,6 @@
         <div style="font-size:10px;color:var(--ui-text-muted);margin-top:4px;">
           ${t("資料來源", "Source")}: ${escapeHtml(getFeatProp(feat, "source", "Taiwan Open GIS"))}
         </div>
-        ${originBadgeHtml}
         ${linksBarHtml}
       </div>
     `;
@@ -744,9 +750,18 @@
           });
         }
 
+        renderUtilities3D(res);
+        if (
+          !UTILS_STATE.selectedFeature ||
+          !UTILS_STATE.features.some((f) => getFeatProp(f, "id", "") === getFeatProp(UTILS_STATE.selectedFeature, "id", "__none__"))
+        ) {
+          UTILS_STATE.selectedFeature =
+            UTILS_STATE.features.find((f) => getFeatProp(f, "type", "") === "pipe" || f.geometry?.type === "LineString") ||
+            UTILS_STATE.features[0] ||
+            null;
+        }
         renderUtilitiesSidePanel();
         applyUtilitiesGroundXray(UTILS_STATE.groundXrayPct);
-        renderUtilities3D(res);
 
         if (typeof showToast === "function") {
           showToast(
@@ -794,9 +809,13 @@
           });
         }
 
+        renderUtilities3D(res);
+        UTILS_STATE.selectedFeature =
+          UTILS_STATE.features.find((f) => getFeatProp(f, "type", "") === "pipe" || f.geometry?.type === "LineString") ||
+          UTILS_STATE.features[0] ||
+          null;
         renderUtilitiesSidePanel();
         applyUtilitiesGroundXray(UTILS_STATE.groundXrayPct);
-        renderUtilities3D(res);
 
         if (typeof showToast === "function") {
           showToast(t(`成功匯入 ${res.total_features} 筆管線圖資 (${res.format})`, `Imported ${res.total_features} features (${res.format})`));
@@ -1683,6 +1702,13 @@
     return null;
   }
 
+  function selectUtilityFeature(feat) {
+    if (!feat) return;
+    UTILS_STATE.selectedFeature = feat;
+    const box = document.getElementById("utilSelectedFeatureBox");
+    if (box) box.innerHTML = renderSelectedFeatureCardHtml(feat);
+  }
+
   // Bind pointerdown in Studio to select utility features when tool is active
   window.addEventListener("pointerdown", (ev) => {
     if (typeof STATE === "undefined" || STATE.activeTool !== "utilities" || !UTILS_STATE.active) return;
@@ -1692,9 +1718,7 @@
 
     const feat = pickUtilityFeatureAtScreenXY(ev.clientX, ev.clientY);
     if (feat) {
-      UTILS_STATE.selectedFeature = feat;
-      const box = document.getElementById("utilSelectedFeatureBox");
-      if (box) box.innerHTML = renderSelectedFeatureCardHtml(feat);
+      selectUtilityFeature(feat);
     }
   });
 
@@ -1703,6 +1727,7 @@
   window.closeUtilitiesInspector = closeUtilitiesInspector;
   window.resetUtilitiesOnScanChange = resetUtilitiesOnScanChange;
   window.onUtilitiesPanelClosed = onUtilitiesPanelClosed;
+  window.selectUtilityFeature = selectUtilityFeature;
   window.UTILITY_LAYERS = UTILITY_LAYERS;
   window.UTILS_STATE = UTILS_STATE;
 })();

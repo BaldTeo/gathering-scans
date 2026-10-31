@@ -163,13 +163,13 @@
         <!-- 1-Word Action Button Toolbar -->
         <div style="display:grid;grid-template-columns:repeat(4, 1fr);gap:4px;margin-top:4px;">
           <button type="button" class="btn-xs primary" id="btnRunSurfaceQa" title="${t("計算表面平整度", "Inspect")}">
-            ${QA_SVGS.CHECK} 檢核
+            ${QA_SVGS.CHECK} ${t("檢核", "Inspect")}
           </button>
           <button type="button" class="btn-xs" id="btnPickSurfaceQaPoint" title="${t("在 3D 模型選點", "Pick Point")}">
-            ${QA_SVGS.PICK} 選點
+            ${QA_SVGS.PICK} ${t("選點", "Pick")}
           </button>
           <button type="button" class="btn-xs" id="btnResetSurfaceQa" title="${t("重置所有點位與設定", "Reset")}">
-            ${QA_SVGS.RESET} 重置
+            ${QA_SVGS.RESET} ${t("重置", "Reset")}
           </button>
           <button type="button" class="btn-xs" id="btnExportSurfaceQaCsv" title="${t("導出檢核報表 CSV", "Export CSV")}">
             ${QA_SVGS.CSV} CSV
@@ -581,13 +581,13 @@
         <!-- 1-Word Action Button Toolbar -->
         <div style="display:grid;grid-template-columns:repeat(5, 1fr);gap:4px;margin-top:4px;">
           <button type="button" class="btn-xs primary" id="btnTraceUtility" title="${t("計算管溝高程與坡度", "Trace Pipe")}">
-            ${QA_SVGS.PIPE} 追蹤
+            ${QA_SVGS.PIPE} ${t("追蹤", "Trace")}
           </button>
           <button type="button" class="btn-xs" id="btnPickUtilityPoint" title="${t("在 3D 模型拾取管溝點", "Add Point")}">
-            ${QA_SVGS.PICK} 加點
+            ${QA_SVGS.PICK} ${t("加點", "Pick")}
           </button>
           <button type="button" class="btn-xs" id="btnClearUtilityTrace" title="${t("清除點位與 3D 模型", "Clear")}">
-            ${QA_SVGS.RESET} 清除
+            ${QA_SVGS.RESET} ${t("清除", "Clear")}
           </button>
           <button type="button" class="btn-xs" id="btnExportUtilityCsv" title="${t("導出管溝檢核 CSV", "Export CSV")}">
             ${QA_SVGS.CSV} CSV
@@ -597,9 +597,17 @@
           </button>
         </div>
 
-        <!-- Dynamic Results Card -->
-        <div id="utilityTracerResultsCard" style="display:none;margin-top:8px;">
-          <!-- Populated by renderUtilityTraceResults -->
+        <!-- Dynamic Results / Empty-State Guidance Card -->
+        <div id="utilityTracerResultsCard" style="display:block;margin-top:8px;">
+          <div class="gs-qa-card" style="border:1px dashed rgba(20,184,166,0.38);background:rgba(20,184,166,0.06);">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">
+              <span style="font-size:10.5px;font-weight:700;color:#14b8a6;">${t("自建 / 竣工實測獨立圖層", "Isolated User As-Built Layer")}</span>
+              <span style="font-size:9px;font-weight:700;padding:1px 6px;border-radius:999px;background:rgba(20,184,166,0.16);color:#14b8a6;border:1px solid rgba(20,184,166,0.38);">NON-API</span>
+            </div>
+            <div style="font-size:10.5px;color:var(--ui-text-muted);line-height:1.45;">
+              ${t("請點擊「加點」於 3D 管溝連續拾取至少 2 個管底/人孔點位，再點擊「追蹤」計算坡度與覆土深（嚴格與官方 API 圖層隔離）。", "Click 'Pick' to sample at least 2 trench invert/manhole points in 3D, then click 'Trace' to compute slope & cover depth (strictly isolated from Official API layers).")}
+            </div>
+          </div>
         </div>
       </div>
     `;
@@ -628,7 +636,20 @@
       QA_STATE.utilityLastResult = null;
       utilityTrace3DGroup = clear3DGroup(utilityTrace3DGroup);
       const resEl = document.getElementById("utilityTracerResultsCard");
-      if (resEl) resEl.style.display = "none";
+      if (resEl) {
+        resEl.style.display = "block";
+        resEl.innerHTML = `
+          <div class="gs-qa-card" style="border:1px dashed rgba(20,184,166,0.38);background:rgba(20,184,166,0.06);">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">
+              <span style="font-size:10.5px;font-weight:700;color:#14b8a6;">${t("自建 / 竣工實測獨立圖層", "Isolated User As-Built Layer")}</span>
+              <span style="font-size:9px;font-weight:700;padding:1px 6px;border-radius:999px;background:rgba(20,184,166,0.16);color:#14b8a6;border:1px solid rgba(20,184,166,0.38);">NON-API</span>
+            </div>
+            <div style="font-size:10.5px;color:var(--ui-text-muted);line-height:1.45;">
+              ${t("請點擊「加點」於 3D 管溝連續拾取至少 2 個管底/人孔點位，再點擊「追蹤」計算坡度與覆土深（嚴格與官方 API 圖層隔離）。", "Click 'Pick' to sample at least 2 trench invert/manhole points in 3D, then click 'Trace' to compute slope & cover depth (strictly isolated from Official API layers).")}
+            </div>
+          </div>
+        `;
+      }
       if (typeof showToast === "function") showToast(t("已清除管溝點位", "Utility Points Cleared"));
     });
 
@@ -919,13 +940,13 @@
         <!-- 1-Word Action Button Toolbar -->
         <div style="display:grid;grid-template-columns:repeat(3, 1fr);gap:4px;margin-top:4px;">
           <button type="button" class="btn-xs primary" id="btnRunCompareVolume" title="${t("計算時期差體積", "Compute")}">
-            ${QA_SVGS.CALC} 計算
+            ${QA_SVGS.CALC} ${t("計算", "Compute")}
           </button>
           <button type="button" class="btn-xs" id="btnPickComparePoly" title="${t("在 3D 模型繪製多邊形範圍", "Polygon")}">
-            ${QA_SVGS.PICK} 圈選
+            ${QA_SVGS.PICK} ${t("圈選", "Polygon")}
           </button>
           <button type="button" class="btn-xs" id="btnExportCompareCsv" title="${t("導出體積報表", "Export CSV")}">
-            ${QA_SVGS.CSV} 導出
+            ${QA_SVGS.CSV} ${t("導出", "CSV")}
           </button>
         </div>
 
@@ -1162,10 +1183,10 @@
         <!-- 1-Word Action Button Toolbar -->
         <div style="display:grid;grid-template-columns:repeat(5, 1fr);gap:4px;margin-top:4px;">
           <button type="button" class="btn-xs primary" id="btnGenStakeout" title="${t("生成放樣點位", "Generate")}">
-            ${QA_SVGS.STAKEOUT} 放樣
+            ${QA_SVGS.STAKEOUT} ${t("放樣", "Stake")}
           </button>
           <button type="button" class="btn-xs" id="btnPickStakeoutPt" title="${t("在 3D 視圖中拾取放樣點", "Pick Pt")}">
-            ${QA_SVGS.PICK} 加點
+            ${QA_SVGS.PICK} ${t("加點", "Pick")}
           </button>
           <button type="button" class="btn-xs" id="btnExportStakeoutCsv" title="${t("導出標準 CSV (嚴格 E N Z 順序)", "CSV")}">
             ${QA_SVGS.CSV} CSV
@@ -1174,7 +1195,7 @@
             ${QA_SVGS.PIPE} TXT
           </button>
           <button type="button" class="btn-xs" id="btnPrintStakeoutSheet" title="${t("列印 A4 現場放樣檢核記錄表", "Print")}">
-            ${QA_SVGS.PRINT} 列印
+            ${QA_SVGS.PRINT} ${t("列印", "Print")}
           </button>
         </div>
 

@@ -535,19 +535,34 @@ class PublicUtilitiesGISMixin:
         if not isinstance(requested_layers, list) or not requested_layers:
             requested_layers = list(UTILITY_LAYERS.keys())
 
-        # Resolve scan coordinate center
+        # Resolve scan coordinate center (check fast master cache center first before expensive disk/categorization reads)
+        ce = safe_float(payload.get("center_e"))
+        cn = safe_float(payload.get("center_n"))
+        ch = safe_float(payload.get("center_h"))
+
+        safe_sid = "".join(c if c.isalnum() or c in "_-" else "_" for c in (scan_id or "pt"))
+        master_cache_file = os.path.join(UTILITIES_CACHE_DIR, f"{safe_sid}_master_v3.json") if scan_id else ""
+
+        if (ce is None or cn is None) and master_cache_file and os.path.isfile(master_cache_file):
+            try:
+                with open(master_cache_file, "r", encoding="utf-8") as mcf:
+                    mc_doc = json.load(mcf)
+                mc_ctr = (mc_doc or {}).get("center") or {}
+                ce = safe_float(mc_ctr.get("e"))
+                cn = safe_float(mc_ctr.get("n"))
+                if ch is None:
+                    ch = safe_float(mc_ctr.get("h"))
+            except Exception:
+                pass
+
         scan: Dict[str, Any] = {}
         if hasattr(self, "db") and self.db and scan_id:
             scan = self.db.get_scan(scan_id) or {}
-        if not scan and hasattr(self, "_resolve_scan_record") and scan_id:
+        if not scan and (ce is None or cn is None or force_refresh) and hasattr(self, "_resolve_scan_record") and scan_id:
             try:
                 scan = self._resolve_scan_record(scan_id) or {}
             except Exception:
                 scan = {}
-
-        ce = safe_float(payload.get("center_e"))
-        cn = safe_float(payload.get("center_n"))
-        ch = safe_float(payload.get("center_h"))
 
         if ce is None or cn is None:
             ce = safe_float(scan.get("twd97_e"))
@@ -622,10 +637,7 @@ class PublicUtilitiesGISMixin:
                 "cached": False,
             }
 
-        # Build local road/ground elevation sampler in TWVD2001
-        sample_ground_z, cat_data, base_ground_z = self._build_ground_elevation_sampler(scan_id, scan, ce, cn, ch)
-
-        # Check local v3 cache for genuine responses (exact radius cache first, then scan master cache / project_dir cache)
+        # Check local v3 cache for genuine responses first (zero categorization disk I/O on cache hits)
         safe_sid = "".join(c if c.isalnum() or c in "_-" else "_" for c in (scan_id or f"pt_{int(ce)}_{int(cn)}"))
         cache_file = os.path.join(UTILITIES_CACHE_DIR, f"{safe_sid}_{int(radius_m)}m_v3.json")
         master_cache_file = os.path.join(UTILITIES_CACHE_DIR, f"{safe_sid}_master_v3.json")
@@ -672,6 +684,7 @@ class PublicUtilitiesGISMixin:
                     ):
                         raw_features = cached_data["features"]
                         req_set = set(requested_layers)
+                        ref_ground_h = safe_float(cached_data.get("ground_reference_h"), ch) or ch
                         filtered_features = self._filter_cached_utilities_to_radius(
                             raw_features=raw_features,
                             req_set=req_set,
@@ -683,7 +696,7 @@ class PublicUtilitiesGISMixin:
                             ymax=ymax,
                             radius_m=radius_m,
                             is_exact_radius=is_exact_radius,
-                            sample_ground_z=sample_ground_z,
+                            sample_ground_z=lambda _e, _n: ref_ground_h,
                         )
                         layer_counts = {k: 0 for k in UTILITY_LAYERS.keys()}
                         total_pipe_length_m = 0.0
@@ -710,6 +723,14 @@ class PublicUtilitiesGISMixin:
                         return filtered_res
                 except Exception:
                     pass
+
+        # Cache miss or force_refresh=True: resolve full scan record and build ground elevation sampler
+        if not scan and hasattr(self, "_resolve_scan_record") and scan_id:
+            try:
+                scan = self._resolve_scan_record(scan_id) or {}
+            except Exception:
+                scan = {}
+        sample_ground_z, cat_data, base_ground_z = self._build_ground_elevation_sampler(scan_id, scan, ce, cn, ch)
 
         all_features: List[Dict[str, Any]] = []
 
@@ -991,14 +1012,20 @@ class PublicUtilitiesGISMixin:
                         continue
                     d1 = float(f_item.get("start_depth_m") or f_item.get("depth_m") or 1.2)
                     d2 = float(f_item.get("end_depth_m") or f_item.get("depth_m") or d1)
+                    has_3d_z = len(coords[0]) >= 3 and len(coords[-1]) >= 3
+                    z_start_cached = float(coords[0][2]) if has_3d_z else None
+                    z_end_cached = float(coords[-1][2]) if has_3d_z else None
                     new_coords = []
                     acc = 0.0
                     for idx_p, (px, py) in enumerate(clipped_2d):
                         if idx_p > 0:
                             acc += math.hypot(px - clipped_2d[idx_p - 1][0], py - clipped_2d[idx_p - 1][1])
                         t_frac = acc / seg_len if seg_len > 1e-6 else 0.0
-                        loc_g = sample_ground_z(px, py)
-                        pz = round(loc_g - (d1 + t_frac * (d2 - d1)), 3)
+                        if z_start_cached is not None and z_end_cached is not None:
+                            pz = round(z_start_cached + t_frac * (z_end_cached - z_start_cached), 3)
+                        else:
+                            loc_g = sample_ground_z(px, py)
+                            pz = round(loc_g - (d1 + t_frac * (d2 - d1)), 3)
                         new_coords.append([round(px, 3), round(py, 3), pz])
                     f_copy = dict(f_item)
                     f_copy["coords"] = new_coords
