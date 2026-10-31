@@ -1819,6 +1819,9 @@
     if (box) {
       const rawHtml = renderSelectedFeatureCardHtml(feat);
       box.innerHTML = typeof window.translateDynamicHtml === "function" ? window.translateDynamicHtml(rawHtml) : rawHtml;
+      try {
+        box.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      } catch (_) {}
     }
   }
 

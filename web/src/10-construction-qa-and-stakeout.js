@@ -741,6 +741,9 @@
         typeof window.syncUserTracedUtilityToGisLayer === "function"
       ) {
         window.syncUserTracedUtilityToGisLayer(res, payload.scan_id);
+        if (typeof showToast === "function") {
+          showToast(t("已完成管溝追蹤並同步至自建管線圖層", "Utility pipe traced & synced to User As-Built layer"));
+        }
       }
     } catch (err) {
       console.error("[UtilityTracer] Error:", err);
