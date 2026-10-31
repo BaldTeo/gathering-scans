@@ -2614,6 +2614,112 @@ class GatheringScansTestSuite(unittest.TestCase):
         )
         self.assertEqual(res_qa_empty["status"], "ok")
 
+    def test_34_compound_coordinate_adversarial_input_resilience(self):
+        """M1 Iteration 3 Remediation: Verifies compound coordinate dictionary/array parsing resilience without 500 crashes."""
+        self._ensure_test_scan("quchi_20261005_merged")
+        from pc_worker.optimizer_bridge import OptimizerBridge
+
+        survey = SurveyingEngine(self.db)
+        opt = OptimizerBridge(self.db)
+
+        # 1. /api/survey/gcp-qa: Empty strings, whitespace, and invalid non-numeric tokens
+        res_qa_malformed = survey.compute_gcp_accuracy_qa(
+            {
+                "scan_id": "quchi_20261005_merged",
+                "points": [
+                    {"name": "CP_BAD_1", "e": "", "n": "  ", "h_gcp": "invalid"},
+                    {"name": "CP_BAD_2", "e": "none", "n": "null", "h_gcp": ""},
+                    {"name": "CP_VALID_1", "e": 304950.0, "n": 2757080.0, "h_gcp": 125.0, "h_scan": "125.04"},
+                ],
+            }
+        )
+        self.assertEqual(res_qa_malformed["status"], "ok")
+        self.assertEqual(res_qa_malformed["point_count"], 1)
+        self.assertEqual(res_qa_malformed["points"][0]["name"], "CP_VALID_1")
+
+        # Completely invalid point list handles gracefully without crashing
+        res_qa_all_invalid = survey.compute_gcp_accuracy_qa(
+            {
+                "scan_id": "quchi_20261005_merged",
+                "points": [{"name": "CP_BAD", "e": "", "n": "abc"}],
+            }
+        )
+        self.assertEqual(res_qa_all_invalid["status"], "ok")
+        self.assertEqual(res_qa_all_invalid["point_count"], 0)
+
+        # 2. /api/survey/volume: Malformed polygon vertices return clean error instead of 500 crash
+        res_vol_invalid = survey.calculate_cut_fill_volume(
+            {
+                "scan_id": "quchi_20261005_merged",
+                "polygon": [{"x": "", "z": "  "}, {"x": "bad", "z": 10}],
+            }
+        )
+        self.assertEqual(res_vol_invalid["status"], "error")
+        self.assertIn("at least 3 valid coordinate points", res_vol_invalid["error"])
+        self.assertLess(res_vol_invalid["valid_points_count"], 3)
+
+        # Mixed valid/invalid vertices with >= 3 valid vertices succeeds cleanly
+        res_vol_mixed = survey.calculate_cut_fill_volume(
+            {
+                "scan_id": "quchi_20261005_merged",
+                "polygon": [
+                    {"x": "", "z": "bad"},
+                    {"x": -5.0, "z": -5.0},
+                    {"x": "none", "z": "null"},
+                    {"x": 5.0, "z": -5.0},
+                    {"x": 0.0, "z": 5.0},
+                ],
+            }
+        )
+        self.assertEqual(res_vol_mixed["status"], "ok")
+        self.assertGreater(res_vol_mixed["planar_area_m2"], 0.0)
+
+        # 3. /api/survey/contours: Empty string / whitespace intervals fallback safely
+        res_contours = survey.generate_elevation_contours(
+            {
+                "scan_id": "quchi_20261005_merged",
+                "minor_interval_m": "",
+                "major_interval_m": "   ",
+            }
+        )
+        self.assertEqual(res_contours["status"], "ok")
+        self.assertGreaterEqual(res_contours["minor_interval_m"], 0.1)
+        self.assertGreaterEqual(res_contours["major_interval_m"], res_contours["minor_interval_m"])
+
+        # 4. /api/survey/profile: Empty strings/whitespace in start_point and end_point
+        res_prof = survey.compute_cross_section_profile(
+            {
+                "scan_id": "quchi_20261005_merged",
+                "start_point": {"x": "", "z": "  "},
+                "end_point": {"x": "invalid", "z": ""},
+            }
+        )
+        self.assertEqual(res_prof["status"], "ok")
+        self.assertGreater(len(res_prof["samples"]), 0)
+
+        # 5. /api/survey/inspect-photos: Empty strings/whitespace in click coordinates
+        res_photos = survey.inspect_rtk_camera_photos(
+            {
+                "scan_id": "quchi_20261005_merged",
+                "x": "",
+                "y": "  ",
+                "z": "bad",
+                "max_radius_m": "",
+                "limit": "   ",
+            }
+        )
+        self.assertEqual(res_photos["status"], "ok")
+
+        # 6. /api/optimizer/generate-scan: crop_keep empty strings & invalid elevation tokens
+        with self.assertRaises(ValueError) as cm:
+            opt.run_generate_scan_action(
+                {
+                    "scan_id": "quchi_20261005_merged",
+                    "crop_keep": {"min_elev": "", "max_elev": "bad"},
+                }
+            )
+        self.assertIn("Please stage at least one adjustment", str(cm.exception))
+
 
 if __name__ == "__main__":
     unittest.main()

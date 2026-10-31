@@ -49,6 +49,25 @@ def safe_float(val: Any, default: Optional[float] = None) -> Optional[float]:
         return default
 
 
+def _safe_parse_poly2d(poly: Any) -> Optional[List[List[float]]]:
+    """Safely extracts a 2D polygon as a list of [x, y] floats, skipping invalid vertices."""
+    if not isinstance(poly, (list, tuple)) or len(poly) < 3:
+        return None
+    pts: List[List[float]] = []
+    for p in poly:
+        if isinstance(p, (list, tuple)) and len(p) >= 2:
+            x = safe_float(p[0])
+            y = safe_float(p[1])
+            if x is not None and y is not None:
+                pts.append([x, y])
+        elif isinstance(p, dict):
+            x = safe_float(p.get("x", p.get("e")))
+            y = safe_float(p.get("y", p.get("n", p.get("z"))))
+            if x is not None and y is not None:
+                pts.append([x, y])
+    return pts if len(pts) >= 3 else None
+
+
 CRS_DEFINITIONS: Dict[str, Dict[str, Any]] = {
     "TWD97_121_TWVD2001": {
         "code": "TWD97_121_TWVD2001",
@@ -1550,14 +1569,15 @@ class OptimizerBridge:
         frustum_strokes = payload.get("frustum_strokes") if isinstance(payload.get("frustum_strokes"), list) else []
         raw_native_poly = payload.get("native_polygon") if isinstance(payload.get("native_polygon"), list) else []
         raw_polygon = payload.get("polygon") if isinstance(payload.get("polygon"), list) else []
-        min_elev = float(payload.get("min_elev", -9999.0))
-        max_elev = float(payload.get("max_elev", 9999.0))
+        min_elev = safe_float(payload.get("min_elev"), -9999.0)
+        if min_elev is None:
+            min_elev = -9999.0
+        max_elev = safe_float(payload.get("max_elev"), 9999.0)
+        if max_elev is None:
+            max_elev = 9999.0
         mode = str(payload.get("mode", "keep_inside")).lower().strip()
         if mode not in ("keep_inside", "delete_inside"):
             mode = "keep_inside"
-
-        if not frustum_strokes and len(raw_native_poly) < 3 and len(raw_polygon) < 3:
-            raise ValueError("Lasso / Polygon crop requires either frustum_strokes or a polygon with at least 3 vertices.")
 
         scan = self.db.get_scan(scan_id)
         if not scan:
@@ -1577,25 +1597,27 @@ class OptimizerBridge:
                     ts_data = json.load(f)
                 box = ((ts_data.get("root") or {}).get("boundingVolume") or {}).get("box")
                 if isinstance(box, list) and len(box) >= 3:
-                    ts_cx, ts_cy, ts_cz = float(box[0]), float(box[1]), float(box[2])
+                    ts_cx = safe_float(box[0], 0.0) or 0.0
+                    ts_cy = safe_float(box[1], 0.0) or 0.0
+                    ts_cz = safe_float(box[2], 0.0) or 0.0
             except Exception:
                 pass
 
-        scan_e = float(scan.get("twd97_e") or 0.0)
-        scan_n = float(scan.get("twd97_n") or 0.0)
-        scan_h = float(scan.get("twd97_h") or 0.0)
+        scan_e = safe_float(scan.get("twd97_e"), 0.0) or 0.0
+        scan_n = safe_float(scan.get("twd97_n"), 0.0) or 0.0
+        scan_h = safe_float(scan.get("twd97_h"), 0.0) or 0.0
 
         native_poly: List[List[float]] = []
         twd_poly: List[List[float]] = []
 
-        if len(raw_native_poly) >= 3:
-            for pt in raw_native_poly:
-                nx, ny = float(pt[0]), float(pt[1])
-                native_poly.append([nx, ny])
-                twd_poly.append([nx, ny])
-        elif len(raw_polygon) >= 3:
-            for pt in raw_polygon:
-                px, py = float(pt[0]), float(pt[1])
+        parsed_native = _safe_parse_poly2d(raw_native_poly)
+        parsed_poly = _safe_parse_poly2d(raw_polygon)
+        if parsed_native is not None:
+            native_poly = list(parsed_native)
+            twd_poly = list(parsed_native)
+        elif parsed_poly is not None:
+            for pt in parsed_poly:
+                px, py = pt[0], pt[1]
                 if abs(px) > 10000.0 and abs(py) > 100000.0:
                     dx = px - scan_e
                     dn = py - scan_n
@@ -1605,6 +1627,9 @@ class OptimizerBridge:
                     dn = py
                     twd_poly.append([scan_e + dx, scan_n + dn])
                 native_poly.append([ts_cx + dx, ts_cy + dn])
+
+        if not frustum_strokes and not native_poly:
+            raise ValueError("Lasso / Polygon crop requires either frustum_strokes or a polygon with at least 3 vertices.")
 
         if payload.get("elev_is_native"):
             native_min_z = min_elev
@@ -1777,14 +1802,27 @@ class OptimizerBridge:
 
         # Reference Z-up center (TWD97 Easting, Northing, TWVD2001 Elevation)
         ref_c = payload.get("ref_center_zup")
-        if isinstance(ref_c, list) and len(ref_c) >= 3:
-            c_ref = np.array([float(ref_c[0]), float(ref_c[1]), float(ref_c[2])], dtype=np.float64)
+        if isinstance(ref_c, (list, tuple)) and len(ref_c) >= 3:
+            r0 = safe_float(ref_c[0])
+            r1 = safe_float(ref_c[1])
+            r2 = safe_float(ref_c[2])
+            if r0 is not None and r1 is not None and r2 is not None:
+                c_ref = np.array([r0, r1, r2], dtype=np.float64)
+            else:
+                c_ref = np.array(
+                    [
+                        safe_float(primary_scan.get("twd97_e"), 0.0) or 0.0,
+                        safe_float(primary_scan.get("twd97_n"), 0.0) or 0.0,
+                        safe_float(primary_scan.get("twd97_h"), 0.0) or 0.0,
+                    ],
+                    dtype=np.float64,
+                )
         else:
             c_ref = np.array(
                 [
-                    float(primary_scan["twd97_e"]) if primary_scan.get("twd97_e") is not None else 0.0,
-                    float(primary_scan["twd97_n"]) if primary_scan.get("twd97_n") is not None else 0.0,
-                    float(primary_scan["twd97_h"]) if primary_scan.get("twd97_h") is not None else 0.0,
+                    safe_float(primary_scan.get("twd97_e"), 0.0) or 0.0,
+                    safe_float(primary_scan.get("twd97_n"), 0.0) or 0.0,
+                    safe_float(primary_scan.get("twd97_h"), 0.0) or 0.0,
                 ],
                 dtype=np.float64,
             )
@@ -3151,18 +3189,22 @@ class OptimizerBridge:
                 if isinstance(st, dict) and len(st.get("ndc_polygon") or []) >= 3:
                     all_del_strokes.append(st)
             for poly in batch.get("native_polygons") or []:
-                if isinstance(poly, list) and len(poly) >= 3:
-                    all_del_polys.append([[float(p[0]), float(p[1])] for p in poly])
+                p_clean = _safe_parse_poly2d(poly)
+                if p_clean is not None:
+                    all_del_polys.append(p_clean)
             single_poly = batch.get("native_polygon")
-            if isinstance(single_poly, list) and len(single_poly) >= 3:
-                all_del_polys.append([[float(p[0]), float(p[1])] for p in single_poly])
+            if single_poly:
+                p_clean = _safe_parse_poly2d(single_poly)
+                if p_clean is not None:
+                    all_del_polys.append(p_clean)
 
         for st in payload.get("delete_frustum_strokes") or []:
             if isinstance(st, dict) and len(st.get("ndc_polygon") or []) >= 3:
                 all_del_strokes.append(st)
         for poly in payload.get("delete_native_polygons") or []:
-            if isinstance(poly, list) and len(poly) >= 3:
-                all_del_polys.append([[float(p[0]), float(p[1])] for p in poly])
+            p_clean = _safe_parse_poly2d(poly)
+            if p_clean is not None:
+                all_del_polys.append(p_clean)
 
         has_deletions = bool(all_del_strokes or all_del_polys)
 
@@ -3173,15 +3215,21 @@ class OptimizerBridge:
             for st in (crop_keep.get("frustum_strokes") or [])
             if isinstance(st, dict) and len(st.get("ndc_polygon") or []) >= 3
         ]
-        keep_polys = [
-            [[float(p[0]), float(p[1])] for p in poly]
-            for poly in (crop_keep.get("native_polygons") or [])
-            if isinstance(poly, list) and len(poly) >= 3
-        ]
-        if isinstance(crop_keep.get("native_polygon"), list) and len(crop_keep["native_polygon"]) >= 3:
-            keep_polys.append([[float(p[0]), float(p[1])] for p in crop_keep["native_polygon"]])
-        keep_min_z = float(crop_keep.get("min_elev", -9999.0))
-        keep_max_z = float(crop_keep.get("max_elev", 9999.0))
+        keep_polys: List[List[List[float]]] = []
+        for poly in (crop_keep.get("native_polygons") or []):
+            p_clean = _safe_parse_poly2d(poly)
+            if p_clean is not None:
+                keep_polys.append(p_clean)
+        if crop_keep.get("native_polygon"):
+            p_clean = _safe_parse_poly2d(crop_keep.get("native_polygon"))
+            if p_clean is not None:
+                keep_polys.append(p_clean)
+        keep_min_z = safe_float(crop_keep.get("min_elev"), -9999.0)
+        if keep_min_z is None:
+            keep_min_z = -9999.0
+        keep_max_z = safe_float(crop_keep.get("max_elev"), 9999.0)
+        if keep_max_z is None:
+            keep_max_z = 9999.0
         has_crop_keep = bool(keep_strokes or keep_polys)
 
         # 3. Collect optional Compression preset
@@ -3590,8 +3638,9 @@ class OptimizerBridge:
 
         clean_polys: List[List[List[float]]] = []
         for poly in raw_polys:
-            if isinstance(poly, list) and len(poly) >= 3:
-                clean_polys.append([[float(p[0]), float(p[1])] for p in poly])
+            p_clean = _safe_parse_poly2d(poly)
+            if p_clean is not None:
+                clean_polys.append(p_clean)
 
         if not zup_strokes and not clean_polys:
             raise ValueError("Mark the missing gap with Freehand 3D Lasso or Plan Polygon first.")

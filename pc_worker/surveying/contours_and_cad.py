@@ -58,6 +58,7 @@ os.makedirs(CAMERAS_CACHE_DIR, exist_ok=True)
 from pc_worker.priority_queue import ScanQueueDB
 
 from pc_worker.surveying.dsm_and_volume import (
+    safe_float,
     wgs84_to_twd97,
     GLTFPACK_EXE,
     MS_CASES,
@@ -329,8 +330,10 @@ class ContoursAndCadMixin:
         and exports AutoCAD Civil3D .DXF, .DWG, and A3 .PDF files.
         """
         scan_id = (payload.get("scan_id") or "").strip()
-        minor_interval = max(float(payload.get("minor_interval_m", 0.5)), 0.1)
-        major_interval = max(float(payload.get("major_interval_m", minor_interval * 5.0)), minor_interval)
+        minor_raw = safe_float(payload.get("minor_interval_m"), 0.5)
+        minor_interval = max(minor_raw if minor_raw is not None and minor_raw > 0 else 0.5, 0.1)
+        major_raw = safe_float(payload.get("major_interval_m"), minor_interval * 5.0)
+        major_interval = max(major_raw if major_raw is not None and major_raw > 0 else minor_interval * 5.0, minor_interval)
 
         scan = self._resolve_scan_record(scan_id)
 
@@ -1342,21 +1345,31 @@ class ContoursAndCadMixin:
         p_start = payload.get("start_point") or payload.get("start_pt") or [ce - span_e, cn - span_n]
         p_end = payload.get("end_point") or payload.get("end_pt") or [ce + span_e, cn + span_n]
 
-        def _to_en(pt_val: Any) -> Tuple[float, float]:
+        def _to_en(pt_val: Any, default_x: float, default_y: float) -> Tuple[float, float]:
             if isinstance(pt_val, dict):
-                px = float(pt_val.get("x", pt_val.get("e", 0.0)))
-                pz = float(pt_val.get("z", pt_val.get("n", 0.0)))
+                px = safe_float(pt_val.get("x", pt_val.get("e")))
+                pz = safe_float(pt_val.get("z", pt_val.get("n")))
+                if px is None:
+                    px = default_x
+                if pz is None:
+                    pz = default_y
                 if abs(px) < 10000 and abs(pz) < 10000:
                     return ce + px, cn - pz
                 return px, pz
-            px = float(pt_val[0])
-            py = float(pt_val[1])
-            if abs(px) < 10000 and abs(py) < 10000:
-                return ce + px, cn - py
-            return px, py
+            if isinstance(pt_val, (list, tuple)) and len(pt_val) >= 2:
+                px = safe_float(pt_val[0])
+                py = safe_float(pt_val[1])
+                if px is None:
+                    px = default_x
+                if py is None:
+                    py = default_y
+                if abs(px) < 10000 and abs(py) < 10000:
+                    return ce + px, cn - py
+                return px, py
+            return default_x, default_y
 
-        x1, y1 = _to_en(p_start)
-        x2, y2 = _to_en(p_end)
+        x1, y1 = _to_en(p_start, -span_e, -span_n)
+        x2, y2 = _to_en(p_end, span_e, span_n)
 
         total_len = max(math.hypot(x2 - x1, y2 - y1), 0.5)
         num_samples = 60
@@ -2470,16 +2483,19 @@ class ContoursAndCadMixin:
                     pinned_cam = c
                     break
 
-        click_x = float(payload.get("x", 0.0))
-        click_y = float(payload.get("y", 0.0))
-        click_z = float(payload.get("z", 0.0))
+        click_x = safe_float(payload.get("x"), 0.0) or 0.0
+        click_y = safe_float(payload.get("y"), 0.0) or 0.0
+        click_z = safe_float(payload.get("z"), 0.0) or 0.0
 
         use_camera_ray_dsm = bool(payload.get("use_camera_ray_dsm"))
-        if not use_camera_ray_dsm and payload.get("twd_e") is not None and payload.get("twd_n") is not None:
-            target_e = round(float(payload["twd_e"]), 3)
-            target_n = round(float(payload["twd_n"]), 3)
-            if payload.get("twd_h") is not None:
-                target_h = round(float(payload["twd_h"]), 3)
+        twd_e_safe = safe_float(payload.get("twd_e"))
+        twd_n_safe = safe_float(payload.get("twd_n"))
+        if not use_camera_ray_dsm and twd_e_safe is not None and twd_n_safe is not None:
+            target_e = round(twd_e_safe, 3)
+            target_n = round(twd_n_safe, 3)
+            twd_h_safe = safe_float(payload.get("twd_h"))
+            if twd_h_safe is not None:
+                target_h = round(twd_h_safe, 3)
             else:
                 target_h = round(ch + click_y if abs(click_y) < 1000 else click_y, 3)
         elif pinned_cam is not None and (
@@ -2488,9 +2504,9 @@ class ContoursAndCadMixin:
         ):
             # Raycast along the pinned camera's calibrated optical axis against the scan DSM surface
             f_vec = pinned_cam.get("forward") or [0.0, 1.0, -0.25]
-            cam_e = float(pinned_cam["e"])
-            cam_n = float(pinned_cam["n"])
-            cam_h = float(pinned_cam["h"])
+            cam_e = safe_float(pinned_cam.get("e"), ce) or ce
+            cam_n = safe_float(pinned_cam.get("n"), cn) or cn
+            cam_h = safe_float(pinned_cam.get("h"), ch) or ch
             est_dist = 4.5
             if f_vec[2] < -0.08:
                 est_dist = max(1.5, min(18.0, 1.55 / (-f_vec[2])))
@@ -2533,16 +2549,23 @@ class ContoursAndCadMixin:
             else:
                 target_h = round(ch + click_y if abs(click_y) < 1000 else click_y, 3)
 
-        max_radius_m = float(payload.get("max_radius_m") or 45.0)
-        limit_photos = max(1, min(24, int(payload.get("limit") or 6)))
+        max_rad = safe_float(payload.get("max_radius_m"), 45.0)
+        max_radius_m = max_rad if max_rad is not None and max_rad > 0 else 45.0
+        lim_photos = safe_float(payload.get("limit"), 6.0)
+        limit_photos = max(1, min(24, int(round(lim_photos or 6.0))))
 
         fov_candidates: List[Tuple[float, float, float, float, bool, Dict[str, Any]]] = []
         near_fallback: List[Tuple[float, float, float, float, bool, Dict[str, Any]]] = []
 
         for cam in catalog:
-            dx = target_e - float(cam["e"])
-            dy = target_n - float(cam["n"])
-            dz = target_h - float(cam["h"])
+            c_e = safe_float(cam.get("e"))
+            c_n = safe_float(cam.get("n"))
+            c_h = safe_float(cam.get("h"))
+            if c_e is None or c_n is None or c_h is None:
+                continue
+            dx = target_e - c_e
+            dy = target_n - c_n
+            dz = target_h - c_h
             dist_3d = math.sqrt(dx * dx + dy * dy + dz * dz)
             if dist_3d > max_radius_m or dist_3d < 0.2:
                 continue

@@ -1040,8 +1040,11 @@ class DsmAndVolumeMixin:
                 except Exception:
                     dsm_cmp = None
 
-        raw_poly = payload.get("polygon") or payload.get("points") or []
-        if not raw_poly or len(raw_poly) < 3:
+        user_poly = payload.get("polygon") if payload.get("polygon") is not None else payload.get("points")
+        has_user_poly = isinstance(user_poly, list) and len(user_poly) > 0
+        if has_user_poly:
+            raw_poly = user_poly
+        else:
             # Adaptive default boundary scaled to 28% of the scan's actual DSM span
             span_e_def = min(8.0, max(1.5, (dsm_curr["e_max"] - dsm_curr["e_min"]) * 0.28))
             span_n_def = min(7.0, max(1.5, (dsm_curr["n_max"] - dsm_curr["n_min"]) * 0.28))
@@ -1057,8 +1060,21 @@ class DsmAndVolumeMixin:
         poly_local: List[List[float]] = []
         for pt in raw_poly:
             if isinstance(pt, dict):
-                px = float(pt.get("x", pt.get("e", 0.0)))
-                py = float(pt.get("z", pt.get("n", 0.0)))
+                px = safe_float(pt.get("x", pt.get("e")))
+                py = safe_float(pt.get("z", pt.get("n")))
+                if px is None or py is None:
+                    continue
+                if abs(px) < 10000 and abs(py) < 10000:
+                    e_val = round(center_e + px, 3)
+                    n_val = round(center_n - py, 3)
+                else:
+                    e_val = round(px, 3)
+                    n_val = round(py, 3)
+            elif isinstance(pt, (list, tuple)) and len(pt) >= 2:
+                px = safe_float(pt[0])
+                py = safe_float(pt[1])
+                if px is None or py is None:
+                    continue
                 if abs(px) < 10000 and abs(py) < 10000:
                     e_val = round(center_e + px, 3)
                     n_val = round(center_n - py, 3)
@@ -1066,19 +1082,19 @@ class DsmAndVolumeMixin:
                     e_val = round(px, 3)
                     n_val = round(py, 3)
             else:
-                px = float(pt[0])
-                py = float(pt[1])
-                if abs(px) < 10000 and abs(py) < 10000:
-                    e_val = round(center_e + px, 3)
-                    n_val = round(center_n - py, 3)
-                else:
-                    e_val = round(px, 3)
-                    n_val = round(py, 3)
+                continue
 
             sampled_h, _, _, _ = self._sample_dsm_elevation(dsm_curr, e_val, n_val)
             h_val = round(sampled_h, 3)
             poly_twd.append((e_val, n_val, h_val))
             poly_local.append([round(e_val - origin_e, 3), round(h_val - origin_h, 3), round(origin_n - n_val, 3)])
+
+        if len(poly_twd) < 3:
+            return {
+                "status": "error",
+                "error": "Polygon must contain at least 3 valid coordinate points.",
+                "valid_points_count": len(poly_twd),
+            }
 
         pts_2d = [(p[0], p[1]) for p in poly_twd]
         planar_area_m2, perimeter_m = polygon_area_and_perimeter_2d(pts_2d)
@@ -1673,12 +1689,13 @@ class DsmAndVolumeMixin:
         is_custom = False
 
         if isinstance(raw_poly, list) and len(raw_poly) >= 3:
-            is_custom = True
             for pt in raw_poly:
                 if isinstance(pt, dict):
-                    px = float(pt.get("x", pt.get("e", 0.0)))
-                    py = float(pt.get("y", pt.get("n", 0.0)))
-                    pz = float(pt.get("z", pt.get("h", ch)))
+                    px = safe_float(pt.get("x", pt.get("e")))
+                    py = safe_float(pt.get("y", pt.get("n")))
+                    pz = safe_float(pt.get("z", pt.get("h", ch)), ch)
+                    if px is None or py is None:
+                        continue
                     is_local_dict = "x" in pt and "z" in pt and abs(px) < 10000
                     if is_local_dict:
                         lx, ly, lz = px, py, pz
@@ -1689,10 +1706,12 @@ class DsmAndVolumeMixin:
                         e_val = round(px, 3)
                         n_val = round(py, 3)
                         h_val = round(pz, 3)
-                else:
-                    px = float(pt[0])
-                    py = float(pt[1])
-                    pz = float(pt[2]) if len(pt) >= 3 else ch
+                elif isinstance(pt, (list, tuple)) and len(pt) >= 2:
+                    px = safe_float(pt[0])
+                    py = safe_float(pt[1])
+                    pz = safe_float(pt[2], ch) if len(pt) >= 3 else ch
+                    if px is None or py is None:
+                        continue
                     if abs(px) < 10000 and abs(py) < 10000:
                         e_val = round(ce + px, 3)
                         n_val = round(cn - py, 3)
@@ -1701,6 +1720,8 @@ class DsmAndVolumeMixin:
                         e_val = round(px, 3)
                         n_val = round(py, 3)
                         h_val = round(pz, 3)
+                else:
+                    continue
 
                 if dsm_data is not None:
                     sampled_h, _, _, _ = self._sample_dsm_elevation(dsm_data, e_val, n_val)
@@ -1711,7 +1732,14 @@ class DsmAndVolumeMixin:
                 ly = round(h_val - ch, 3)
                 poly_twd.append((e_val, n_val, h_val))
                 poly_local.append([lx, ly, lz])
-        else:
+
+            if len(poly_twd) >= 3:
+                is_custom = True
+            else:
+                poly_twd.clear()
+                poly_local.clear()
+
+        if not is_custom:
             # Default 6-vertex survey mask boundary scaled to the scan's valid DSM footprint
             half_e = 36.0
             half_n = 28.0
@@ -1818,33 +1846,40 @@ class DsmAndVolumeMixin:
         for idx, pt in enumerate(raw_pts):
             if isinstance(pt, dict):
                 name = str(pt.get("name") or pt.get("id") or f"CP-{idx + 1:02d}").strip()
-                e_val = float(pt.get("e", pt.get("twd97_e", ce)))
-                n_val = float(pt.get("n", pt.get("twd97_n", cn)))
-                h_gcp = float(pt.get("h_gcp", pt.get("h", pt.get("twd97_h", ch))))
+                e_val = safe_float(pt.get("e", pt.get("twd97_e", ce)))
+                n_val = safe_float(pt.get("n", pt.get("twd97_n", cn)))
+                h_gcp = safe_float(pt.get("h_gcp", pt.get("h", pt.get("twd97_h", ch))))
                 h_scan_in = pt.get("h_scan", pt.get("mesh_h"))
             elif isinstance(pt, (list, tuple)) and len(pt) >= 3:
                 if len(pt) >= 4 and isinstance(pt[0], str):
                     name = str(pt[0]).strip()
-                    e_val = float(pt[1])
-                    n_val = float(pt[2])
-                    h_gcp = float(pt[3])
+                    e_val = safe_float(pt[1])
+                    n_val = safe_float(pt[2])
+                    h_gcp = safe_float(pt[3])
                     h_scan_in = pt[4] if len(pt) >= 5 else None
                 else:
                     name = f"CP-{idx + 1:02d}"
-                    e_val = float(pt[0])
-                    n_val = float(pt[1])
-                    h_gcp = float(pt[2])
+                    e_val = safe_float(pt[0])
+                    n_val = safe_float(pt[1])
+                    h_gcp = safe_float(pt[2])
                     h_scan_in = pt[3] if len(pt) >= 4 else None
             else:
                 continue
 
+            if e_val is None or n_val is None:
+                continue
+            if h_gcp is None:
+                h_gcp = ch if ch is not None else 0.0
+
+            h_scan = None
             if h_scan_in is not None and str(h_scan_in).strip() != "":
-                h_scan = float(h_scan_in)
-            elif dsm_data is not None:
-                sampled_h, _, _, _ = self._sample_dsm_elevation(dsm_data, e_val, n_val)
-                h_scan = float(sampled_h)
-            else:
-                h_scan = float(h_gcp + 0.012 * math.sin(idx + 1))
+                h_scan = safe_float(h_scan_in)
+            if h_scan is None:
+                if dsm_data is not None:
+                    sampled_h, _, _, _ = self._sample_dsm_elevation(dsm_data, e_val, n_val)
+                    h_scan = float(sampled_h)
+                else:
+                    h_scan = float(h_gcp + 0.012 * math.sin(idx + 1))
 
             if geoid_offset_override is not None:
                 h_scan = h_scan - geoid_offset_override
@@ -2019,23 +2054,24 @@ class DsmAndVolumeMixin:
         the scan's actual hull_mask from the DSM.
         """
         scan_id = str(payload.get("scan_id") or "").strip()
-        grid_size = max(8, min(32, int(payload.get("grid_size") or 14)))
+        grid_size_val = safe_float(payload.get("grid_size"), 14.0)
+        grid_size = max(8, min(32, int(round(grid_size_val or 14.0))))
         exclude_walls = bool(payload.get("exclude_walls", True))
         scan = self.db.get_scan(scan_id) or {}
         try:
             dsm_data = self._load_or_build_scan_dsm(scan)
         except Exception:
             dsm_data = None
-        ce = float(scan.get("twd97_e") or 304952.4)
-        cn = float(scan.get("twd97_n") or 2757084.2)
-        ch = float(scan.get("twd97_h") or 124.8)
+        ce = safe_float(scan.get("twd97_e"), 304952.4) or 304952.4
+        cn = safe_float(scan.get("twd97_n"), 2757084.2) or 2757084.2
+        ch = safe_float(scan.get("twd97_h"), 124.8) or 124.8
 
         raw_grid = None
         hull_mask = None
         if isinstance(dsm_data, dict):
-            ce = float(dsm_data.get("ce", ce))
-            cn = float(dsm_data.get("cn", cn))
-            ch = float(dsm_data.get("ch", ch))
+            ce = safe_float(dsm_data.get("ce"), ce) or ce
+            cn = safe_float(dsm_data.get("cn"), cn) or cn
+            ch = safe_float(dsm_data.get("ch"), ch) or ch
             raw_grid = (
                 dsm_data.get("dsm_contour")
                 if dsm_data.get("dsm_contour") is not None
