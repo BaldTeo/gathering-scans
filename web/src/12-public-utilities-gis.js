@@ -101,16 +101,67 @@
   }
 
   function localizeUtilityText(rawStr, zhFallback, enFallback) {
-    const s = String(rawStr || "").trim();
+    let s = String(rawStr || "").trim();
     if (!s) return t(zhFallback || "", enFallback || "");
     if (t("zh", "en") !== "en") return s;
-    const osmWayMatch = s.match(/OpenStreetMap\s*圖資查詢\s*(#\d+)/i);
+    const osmWayMatch = s.match(/OpenStreetMap\s*[^\d#]*\s*(#\d+)/i);
     if (osmWayMatch) return `OpenStreetMap Way ${osmWayMatch[1]}`;
-    if (s.includes("dig.taipei")) return "dig.taipei Road & Pipe Center";
+    if (s.includes("dig.taipei") || s.includes("道路管線暨資訊中心")) return "dig.taipei Road & Pipe Center";
     if (s.includes("pipe.nlma.gov.tw") || s.includes("全國公共管線資料庫")) return "NLMA Public Pipe GIS";
-    if (s.includes("OpenStreetMap 座標圖台")) return "OpenStreetMap Map View";
+    if (s.includes("OpenStreetMap") && s.includes("座標")) return "OpenStreetMap Map View";
     if (s.includes("NLSC") || s.includes("國土測繪圖資")) return "NLSC Taiwan Map";
     if (s.includes("ArcGIS REST")) return s.replace(/圖層/g, "Layer").replace(/服務/g, "Service");
+    const dict = [
+      ["台電地下電纜", "Taipower Underground Cable"],
+      ["台電高壓管路", "Taipower HV Conduit"],
+      ["台電手孔/電桿", "Taipower Manhole / Pole"],
+      ["台電手孔", "Taipower Handhole"],
+      ["中華電信光纖管道", "CHT Fiber Duct"],
+      ["中華電信人手孔", "CHT Telecom Manhole"],
+      ["電信光纖管道", "Telecom Fiber Duct"],
+      ["雨水下水道箱涵", "Storm Box Culvert"],
+      ["雨水箱涵", "Storm Box Culvert"],
+      ["雨水連接管", "Storm Lateral Pipe"],
+      ["雨水幹線", "Storm Trunk Sewer"],
+      ["雨水人孔", "Storm Manhole"],
+      ["雨水集水井", "Storm Catch Basin"],
+      ["污水下水道管線", "Sanitary Sewer Pipe"],
+      ["污水管線", "Sanitary Sewer Pipe"],
+      ["污水幹線", "Sanitary Trunk Sewer"],
+      ["污水人孔", "Sanitary Manhole"],
+      ["自來水管線", "Water Supply Main"],
+      ["自來水幹管", "Water Supply Main"],
+      ["自來水制水閥/消防栓", "Water Valve / Hydrant"],
+      ["地上式消防栓", "Fire Hydrant"],
+      ["消防栓", "Fire Hydrant"],
+      ["瓦斯中壓管", "Medium-Pressure Gas Main"],
+      ["瓦斯低壓管", "Low-Pressure Gas Pipe"],
+      ["瓦斯管線", "Natural Gas Pipe"],
+      ["瓦斯閥孔", "Gas Valve Box"],
+      ["共同管道", "Common Utility Duct"],
+      ["寬頻管道", "Broadband Duct"],
+      ["路燈線路", "Streetlight Conduit"],
+      ["路燈電纜", "Streetlight Cable"],
+      ["路燈桿", "Streetlight Pole"],
+      ["道路挖掘工程", "Road Excavation Zone"],
+      ["明挖竣工實測管線", "User As-Built Trench Pipe"],
+      ["使用者 3D 明挖管溝竣工實測", "User 3D Open-Trench As-Built Survey"],
+      ["仁愛路一段", "Sec. 1, Ren'ai Rd."],
+      ["仁愛路二段", "Sec. 2, Ren'ai Rd."],
+      ["羅斯福路四段", "Sec. 4, Roosevelt Rd."],
+      ["羅斯福路三段", "Sec. 3, Roosevelt Rd."],
+      ["新生南路三段", "Sec. 3, Xinsheng S. Rd."],
+      ["新生南路", "Xinsheng S. Rd."],
+      ["基隆路四段", "Sec. 4, Keelung Rd."],
+      ["基隆路", "Keelung Rd."],
+      ["辛亥路", "Xinhai Rd."],
+      ["舟山路", "Zhoushan Rd."],
+      ["林森南路", "Linsen S. Rd."],
+      ["徐州路", "Xuzhou Rd."],
+    ];
+    for (let i = 0; i < dict.length; i++) {
+      if (s.includes(dict[i][0])) s = s.split(dict[i][0]).join(dict[i][1]);
+    }
     return typeof window.translateDynamicHtml === "function" ? window.translateDynamicHtml(s) : s;
   }
 
@@ -775,6 +826,10 @@
         UTILS_STATE.isCached = Boolean(res.cached);
         UTILS_STATE.cacheTimestamp = String(res.query_timestamp || "");
         UTILS_STATE.features = mergeUserAsBuiltFeatures(scanId, res.features);
+
+        if (!UTILS_STATE.active || (typeof STATE !== "undefined" && STATE.activeTool !== "utilities")) {
+          return;
+        }
 
         renderUtilities3D(res);
         if (

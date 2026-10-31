@@ -54,7 +54,7 @@
   /**
    * Open the Scan-to-BIM side panel inspector
    */
-  function openScanToBimInspector() {
+  async function openScanToBimInspector() {
     if (typeof setActiveStudioTool === "function") {
       setActiveStudioTool("bim");
     }
@@ -77,10 +77,14 @@
 
     // If primitives already exist for this scan, update UI; otherwise run initial fitting
     if (BIM_STATE.primitives.length === 0) {
-      runScanToBimFitting();
+      await runScanToBimFitting();
     } else if (BIM_STATE.lastAiResult) {
       updateBimKpis(BIM_STATE.lastAiResult);
       updateBimElementsList();
+      BIM_STATE.overlayVisible = true;
+      const lbl = document.getElementById("lblBimPreviewStatus");
+      if (lbl) lbl.textContent = tr("隱藏", "Hide");
+      renderBimThreeMeshes();
     }
   }
 
@@ -333,6 +337,9 @@
 
       BIM_STATE.primitives = res.primitives || [];
       BIM_STATE.lastAiResult = res;
+      if (STATE.activeTool !== "bim" || STATE.activeScanId !== scanId) {
+        return;
+      }
       updateBimKpis(res);
       updateBimElementsList();
 
