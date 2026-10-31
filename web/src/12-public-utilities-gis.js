@@ -80,6 +80,7 @@
     groundXrayPct: 38, // Default 38% X-Ray translucency (= 0.62 terrain opacity) when Utilities active
     groundOpacity: 0.62,
     features: [],
+    userAsBuiltByScan: {}, // scanId -> array of user-traced open-trench features (isolated NON-API layer)
     selectedFeature: null,
     flowAnimationActive: true,
     flowAnimationSpeed: 1.0,
@@ -97,6 +98,34 @@
     if (typeof tr === "function") return tr(zh, en);
     const lang = String(document.documentElement.lang || navigator.language || "zh").toLowerCase();
     return lang.startsWith("en") ? en : zh;
+  }
+
+  function localizeUtilityText(rawStr, zhFallback, enFallback) {
+    const s = String(rawStr || "").trim();
+    if (!s) return t(zhFallback || "", enFallback || "");
+    if (t("zh", "en") !== "en") return s;
+    const osmWayMatch = s.match(/OpenStreetMap\s*圖資查詢\s*(#\d+)/i);
+    if (osmWayMatch) return `OpenStreetMap Way ${osmWayMatch[1]}`;
+    if (s.includes("dig.taipei")) return "dig.taipei Road & Pipe Center";
+    if (s.includes("pipe.nlma.gov.tw") || s.includes("全國公共管線資料庫")) return "NLMA Public Pipe GIS";
+    if (s.includes("OpenStreetMap 座標圖台")) return "OpenStreetMap Map View";
+    if (s.includes("NLSC") || s.includes("國土測繪圖資")) return "NLSC Taiwan Map";
+    if (s.includes("ArcGIS REST")) return s.replace(/圖層/g, "Layer").replace(/服務/g, "Service");
+    return typeof window.translateDynamicHtml === "function" ? window.translateDynamicHtml(s) : s;
+  }
+
+  function mergeUserAsBuiltFeatures(scanId, baseFeatures) {
+    const apiList = (Array.isArray(baseFeatures) ? baseFeatures : []).filter(
+      (f) => getFeatProp(f, "origin_class", "api_open_data") !== "user_or_scan_to_bim" && getFeatProp(f, "layer", "") !== "as_built"
+    );
+    const userList = (scanId && Array.isArray(UTILS_STATE.userAsBuiltByScan[scanId])) ? UTILS_STATE.userAsBuiltByScan[scanId] : [];
+    const merged = apiList.concat(userList);
+    Object.keys(UTILITY_LAYERS).forEach((k) => (UTILITY_LAYERS[k].count = 0));
+    merged.forEach((f) => {
+      const k = getFeatProp(f, "layer", "storm");
+      if (UTILITY_LAYERS[k]) UTILITY_LAYERS[k].count++;
+    });
+    return merged;
   }
 
   function escapeHtml(str) {
@@ -240,7 +269,9 @@
     ) {
       await runUtilitiesQuery(false);
     } else {
+      UTILS_STATE.features = mergeUserAsBuiltFeatures(currentScanId, UTILS_STATE.features);
       renderUtilities3D();
+      renderUtilitiesSidePanel();
     }
   }
 
@@ -441,7 +472,8 @@
     const layerId = getFeatProp(feat, "layer", "storm");
     const lyr = UTILITY_LAYERS[layerId] || { name_zh: layerId, name_en: layerId, color: "#94a3b8" };
     const fType = getFeatProp(feat, "type", feat.geometry?.type === "Point" ? "manhole" : "pipe");
-    const nameStr = getFeatProp(feat, "name", getFeatProp(feat, "id", "Utility"));
+    const nameStr = localizeUtilityText(getFeatProp(feat, "name", getFeatProp(feat, "id", "Utility")), "公共管線", "Utility");
+    const sourceStr = localizeUtilityText(getFeatProp(feat, "source", "Taiwan Open GIS"), "臺灣開放管線圖資", "Taiwan Open GIS");
     const diaMm = Number(getFeatProp(feat, "diameter_mm", 0));
     const widthM = Number(getFeatProp(feat, "width_m", 0));
     const heightM = Number(getFeatProp(feat, "height_m", 0));
@@ -457,13 +489,13 @@
         : `<span class="gs-util-badge" style="background:rgba(56,189,248,0.14);color:#38bdf8;border:1px solid rgba(56,189,248,0.35);font-size:9.5px;">${t("官方開放 API 圖資", "Official API Record")}</span>`;
 
     const portalUrl = getFeatProp(feat, "portal_url", "");
-    const portalLabel = getFeatProp(feat, "portal_label", t("政府管線圖資入口網", "Gov GIS Portal"));
+    const portalLabel = localizeUtilityText(getFeatProp(feat, "portal_label", ""), "政府管線圖資入口網", "Gov GIS Portal");
     const apiUrl = getFeatProp(feat, "api_url", "");
-    const apiLabel = getFeatProp(feat, "api_label", "ArcGIS REST API");
+    const apiLabel = localizeUtilityText(getFeatProp(feat, "api_label", ""), "ArcGIS REST API", "ArcGIS REST API");
     const osmUrl = getFeatProp(feat, "osm_url", "");
-    const osmLabel = getFeatProp(feat, "osm_label", "OpenStreetMap");
+    const osmLabel = localizeUtilityText(getFeatProp(feat, "osm_label", ""), "OpenStreetMap", "OpenStreetMap");
     const nlscUrl = getFeatProp(feat, "nlsc_url", "");
-    const nlscLabel = getFeatProp(feat, "nlsc_label", t("國土測繪圖資雲", "NLSC Taiwan Map"));
+    const nlscLabel = localizeUtilityText(getFeatProp(feat, "nlsc_label", ""), "國土測繪圖資雲", "NLSC Taiwan Map");
 
     const linkPills = [];
     if (portalUrl) {
@@ -517,7 +549,7 @@
             <div><span class="gs-util-detail-lbl">${t("孔底高程", "Inv EL")}:</span> <b>${invStr}</b></div>
           </div>
           <div style="font-size:10px;color:var(--ui-text-muted);margin-top:4px;">
-            ${t("資料來源", "Source")}: ${escapeHtml(getFeatProp(feat, "source", "Taiwan Open GIS"))}
+            ${t("資料來源", "Source")}: ${escapeHtml(sourceStr)}
           </div>
           ${linksBarHtml}
         </div>
@@ -571,7 +603,7 @@
           <div style="grid-column:span 2;"><span class="gs-util-detail-lbl">${t("水力流向", "Flow")}:</span> <b>${flowDir === 1 ? t("起點 → 終點 (順流)", "Upstream → Downstream") : flowDir === -1 ? t("終點 → 起點 (逆流)", "Downstream → Upstream") : t("雙向/重力流", "Gravity / Bidirectional")}</b></div>
         </div>
         <div style="font-size:10px;color:var(--ui-text-muted);margin-top:4px;">
-          ${t("資料來源", "Source")}: ${escapeHtml(getFeatProp(feat, "source", "Taiwan Open GIS"))}
+          ${t("資料來源", "Source")}: ${escapeHtml(sourceStr)}
         </div>
         ${linksBarHtml}
       </div>
@@ -737,20 +769,12 @@
 
       const res = typeof apiPost === "function" ? await apiPost("/api/survey/utilities-query", payload) : null;
       if (res && res.status === "ok" && Array.isArray(res.features)) {
-        UTILS_STATE.features = res.features;
         UTILS_STATE.loadedScanId = scanId;
         UTILS_STATE.lastCenter = res.center || null;
         UTILS_STATE.groundReferenceH = Number(res.ground_reference_h ?? res.center?.ground_h ?? res.center?.h);
         UTILS_STATE.isCached = Boolean(res.cached);
         UTILS_STATE.cacheTimestamp = String(res.query_timestamp || "");
-
-        // Reset counts and sum up
-        Object.keys(UTILITY_LAYERS).forEach((k) => (UTILITY_LAYERS[k].count = 0));
-        if (res.layer_counts) {
-          Object.keys(res.layer_counts).forEach((k) => {
-            if (UTILITY_LAYERS[k]) UTILITY_LAYERS[k].count = res.layer_counts[k];
-          });
-        }
+        UTILS_STATE.features = mergeUserAsBuiltFeatures(scanId, res.features);
 
         renderUtilities3D(res);
         if (
@@ -995,9 +1019,31 @@
 
     const cache = new Map();
     const validSamples = []; // [{ x, z, y }]
+    let meshMinX = -Infinity;
+    let meshMaxX = Infinity;
+    let meshMinZ = -Infinity;
+    let meshMaxZ = Infinity;
+    if (meshes && meshes.length > 0 && window.THREE) {
+      const mBox = new THREE.Box3();
+      const tmpBox = new THREE.Box3();
+      meshes.forEach((m) => {
+        if (!m) return;
+        try {
+          tmpBox.setFromObject(m);
+          if (!tmpBox.isEmpty()) mBox.union(tmpBox);
+        } catch (_) {}
+      });
+      if (!mBox.isEmpty()) {
+        meshMinX = mBox.min.x - 2.0;
+        meshMaxX = mBox.max.x + 2.0;
+        meshMinZ = mBox.min.z - 2.0;
+        meshMaxZ = mBox.max.z + 2.0;
+      }
+    }
 
     function raycastLowestGroundAt(x, z) {
       if (!meshes || meshes.length === 0) return null;
+      if (x < meshMinX || x > meshMaxX || z < meshMinZ || z > meshMaxZ) return null;
       rayOrigin.set(x, 5000, z);
       rc.set(rayOrigin, downDir);
       const hits = rc.intersectObjects(meshes, true);
@@ -1715,7 +1761,77 @@
     if (!feat) return;
     UTILS_STATE.selectedFeature = feat;
     const box = document.getElementById("utilSelectedFeatureBox");
-    if (box) box.innerHTML = renderSelectedFeatureCardHtml(feat);
+    if (box) {
+      const rawHtml = renderSelectedFeatureCardHtml(feat);
+      box.innerHTML = typeof window.translateDynamicHtml === "function" ? window.translateDynamicHtml(rawHtml) : rawHtml;
+    }
+  }
+
+  function syncUserTracedUtilityToGisLayer(traceRes, scanId) {
+    if (!traceRes || !Array.isArray(traceRes.stations) || traceRes.stations.length < 2) return null;
+    const sid = String(scanId || traceRes.scan_id || (typeof STATE !== "undefined" && STATE.activeScanId) || "default");
+    const stations = traceRes.stations;
+    const firstSt = stations[0];
+    const lastSt = stations[stations.length - 1];
+    const diaMm = Math.round(Number(traceRes.pipe_diameter_mm || (traceRes.pipe_diameter_m ? traceRes.pipe_diameter_m * 1000 : 300)));
+    const startDepthM = Number(
+      firstSt.ground_z !== undefined && firstSt.invert_z !== undefined
+        ? (Number(firstSt.ground_z) - Number(firstSt.invert_z)).toFixed(2)
+        : (Number(firstSt.cover_depth_m || 1.2) + diaMm / 1000.0).toFixed(2)
+    );
+    const endDepthM = Number(
+      lastSt.ground_z !== undefined && lastSt.invert_z !== undefined
+        ? (Number(lastSt.ground_z) - Number(lastSt.invert_z)).toFixed(2)
+        : (Number(lastSt.cover_depth_m || 1.2) + diaMm / 1000.0).toFixed(2)
+    );
+
+    const coordsTwd97 = stations.map((s) => [Number(s.e), Number(s.n), Number(s.invert_z)]);
+    const pipeTypeLabel = String(traceRes.pipe_type || "DRAIN").toUpperCase();
+    const feat = {
+      id: `USER-TRACED-${sid}`,
+      type: "pipe",
+      layer: "as_built",
+      origin_class: "user_or_scan_to_bim",
+      name: t(`明挖竣工實測管線 (${pipeTypeLabel} Ø${diaMm}mm)`, `User As-Built Trench Pipe (${pipeTypeLabel} Ø${diaMm}mm)`),
+      diameter_mm: diaMm,
+      length_m: Number(traceRes.total_length_3d_m || traceRes.total_length_2d_m || 12.0),
+      slope_pct: Number(traceRes.overall_slope_pct || 0.8),
+      flow_direction: Number(firstSt.invert_z) >= Number(lastSt.invert_z) ? 1 : -1,
+      start_depth_m: startDepthM,
+      end_depth_m: endDepthM,
+      start_cover_m: Number(firstSt.cover_depth_m || 1.2),
+      start_ground_h: Number(firstSt.ground_z || (Number(firstSt.invert_z) + startDepthM)),
+      end_ground_h: Number(lastSt.ground_z || (Number(lastSt.invert_z) + endDepthM)),
+      start_invert_h: Number(firstSt.invert_z),
+      end_invert_h: Number(lastSt.invert_z),
+      coords_twd97: coordsTwd97,
+      source: t("使用者 3D 明挖管溝竣工實測 (NON-API)", "User 3D Open-Trench As-Built Survey (NON-API)"),
+      geometry: {
+        type: "LineString",
+        coordinates: coordsTwd97,
+      },
+    };
+    UTILS_STATE.userAsBuiltByScan[sid] = [feat];
+    if (UTILS_STATE.loadedScanId === sid && Array.isArray(UTILS_STATE.features)) {
+      UTILS_STATE.features = mergeUserAsBuiltFeatures(sid, UTILS_STATE.features);
+      if (UTILS_STATE.active) {
+        renderUtilities3D();
+        renderUtilitiesSidePanel();
+      }
+    }
+    return feat;
+  }
+
+  function clearUserTracedUtilityFromGisLayer(scanId) {
+    const sid = String(scanId || (typeof STATE !== "undefined" && STATE.activeScanId) || "default");
+    delete UTILS_STATE.userAsBuiltByScan[sid];
+    if (UTILS_STATE.loadedScanId === sid && Array.isArray(UTILS_STATE.features)) {
+      UTILS_STATE.features = mergeUserAsBuiltFeatures(sid, UTILS_STATE.features);
+      if (UTILS_STATE.active) {
+        renderUtilities3D();
+        renderUtilitiesSidePanel();
+      }
+    }
   }
 
   // Bind pointerdown in Studio to select utility features when tool is active
@@ -1737,6 +1853,8 @@
   window.resetUtilitiesOnScanChange = resetUtilitiesOnScanChange;
   window.onUtilitiesPanelClosed = onUtilitiesPanelClosed;
   window.selectUtilityFeature = selectUtilityFeature;
+  window.syncUserTracedUtilityToGisLayer = syncUserTracedUtilityToGisLayer;
+  window.clearUserTracedUtilityFromGisLayer = clearUserTracedUtilityFromGisLayer;
   window.UTILITY_LAYERS = UTILITY_LAYERS;
   window.UTILS_STATE = UTILS_STATE;
 })();

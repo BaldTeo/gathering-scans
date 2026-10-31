@@ -2879,7 +2879,7 @@
         return;
       }
       if (!isCat) {
-        if (STATE.categorizeLabelsVisible === false && !b.isTempDistance && !b.isLassoHighlight) {
+        if ((STATE.categorizeLabelsVisible === false || (panelOpen && !isMobile && x > rightSafeX - 8)) && !b.isTempDistance && !b.isLassoHighlight) {
           b.el.style.display = "none";
           return;
         }
@@ -2889,7 +2889,7 @@
         const halfW = Math.min(bw * 0.5, Math.max(16, w * 0.5 - 8));
         const halfH = bh * 0.5;
         const minX = isMobile ? Math.max(24, halfW + 8) : halfW + 8;
-        const maxX = isMobile ? Math.min(w - 24, w - halfW - 8) : w - halfW - 8;
+        const maxX = isMobile ? Math.min(w - 24, w - halfW - 8) : rightSafeX - halfW - 8;
         const clampedX = Math.max(minX, Math.min(Math.max(minX, maxX), x));
         const minY = isMobile ? Math.max(mobHudOpen ? 122 : 82, bh + (mobHudOpen ? 108 : 66)) : 58;
         const maxY = isMobile ? Math.max(minY + 12, bottomSafeY - 6) : h - 72;
@@ -3989,30 +3989,23 @@
       STATE.categorizeEditPoints = [];
       STATE.categorizeTempPoints = [];
       STATE.categorizeOverlayVisible = false;
-      if (typeof clearCategorizeVisualsOnly === "function") {
-        clearCategorizeVisualsOnly();
-      }
-      if (typeof syncCategorizeVisibilityUI === "function") {
-        syncCategorizeVisibilityUI();
-      }
+      if (typeof clearCategorizeVisualsOnly === "function") clearCategorizeVisualsOnly();
+      if (typeof syncCategorizeVisibilityUI === "function") syncCategorizeVisibilityUI();
     }
-    if (toolName !== "profile" && typeof clearProfileVisualsOnly === "function") {
-      clearProfileVisualsOnly();
-    }
+    if (toolName !== "profile" && typeof clearProfileVisualsOnly === "function") clearProfileVisualsOnly();
+    if (toolName !== "utilities" && typeof window.onUtilitiesPanelClosed === "function") window.onUtilitiesPanelClosed();
+    if (toolName !== "bim" && typeof window.onBimPanelClosed === "function") window.onBimPanelClosed();
+    if (typeof window.onQaPanelsClosed === "function") window.onQaPanelsClosed(toolName);
     if (STATE.activeTool === "photos" && toolName !== "photos" && typeof clearPhotoTargetVisuals3D === "function") {
       clearPhotoTargetVisuals3D(true);
     }
     if (toolName !== "photos" && toolName !== "rtk") {
-      if (typeof clearPhotoTargetVisuals3D === "function") {
-        clearPhotoTargetVisuals3D(true);
-      }
+      if (typeof clearPhotoTargetVisuals3D === "function") clearPhotoTargetVisuals3D(true);
       if (studioThree?.cameraTrajectoryGroup) studioThree.cameraTrajectoryGroup.visible = false;
       if (studioThree?.photoFrustumGroup) studioThree.photoFrustumGroup.visible = false;
       if (studioThree?.photoTargetGroup) studioThree.photoTargetGroup.visible = false;
     }
-    if (STATE.activeTool !== toolName) {
-      STATE.measurePoints = [];
-    }
+    if (STATE.activeTool !== toolName) STATE.measurePoints = [];
     STATE.activeTool = toolName;
     SHARE_TELEMETRY.recordToolSelected(toolName);
     const sidePanelEl = document.getElementById("studioSidePanel");

@@ -357,6 +357,28 @@
     }
   }
 
+  function localizeBimBilingualText(rawText) {
+    const s = String(rawText || "").trim();
+    if (!s) return "";
+    const isEn = tr("zh", "en") === "en";
+    const enMatch = s.match(/English\s*:\s*([\s\S]+)$/i);
+    if (enMatch) {
+      if (isEn) return enMatch[1].trim();
+      return s.slice(0, enMatch.index).replace(/^(?:傳統中文|繁體中文|中文|ZH)\s*:\s*/i, "").trim();
+    }
+    const parenMatch = s.match(/^([\s\S]+?)\s*\((Gemini AI[\s\S]+)\)\s*$/i);
+    if (parenMatch) {
+      return isEn ? parenMatch[2].trim() : parenMatch[1].trim();
+    }
+    if (s.includes(" / ")) {
+      const parts = s.split(" / ").map((p) => p.trim()).filter(Boolean);
+      if (parts.length >= 2) {
+        return isEn ? parts[parts.length - 1] : parts[0];
+      }
+    }
+    return typeof window.translateDynamicHtml === "function" ? window.translateDynamicHtml(s) : s;
+  }
+
   /**
    * Update KPI cards in side panel
    */
@@ -379,9 +401,9 @@
     if (elAiBox && res.ai_summary) {
       const recs = Array.isArray(res.ai_recommendations) ? res.ai_recommendations : [];
       const recsHtml = recs.length > 0
-        ? `<ul style="margin:4px 0 0 14px;padding:0;font-size:10px;color:var(--ui-text-secondary);">${recs.slice(0, 3).map((r) => `<li style="margin-bottom:2px;">${escapeHtml(r)}</li>`).join("")}</ul>`
+        ? `<ul style="margin:4px 0 0 14px;padding:0;font-size:10px;color:var(--ui-text-secondary);">${recs.slice(0, 3).map((r) => `<li style="margin-bottom:2px;">${escapeHtml(localizeBimBilingualText(r))}</li>`).join("")}</ul>`
         : "";
-      elAiBox.innerHTML = `<div style="color:var(--ui-text-primary);margin-bottom:3px;">${escapeHtml(res.ai_summary)}</div>${recsHtml}`;
+      elAiBox.innerHTML = `<div style="color:var(--ui-text-primary);margin-bottom:3px;">${escapeHtml(localizeBimBilingualText(res.ai_summary))}</div>${recsHtml}`;
     }
   }
 
@@ -419,13 +441,14 @@
           dimStr = `V:${props.volume_m3}m³`;
         }
         const ifcSub = [prim.ifc_class, props.material].filter(Boolean).join(" · ");
+        const dispName = localizeBimBilingualText(prim.name || prim.id);
 
         return `
           <div class="bim-element-row" data-prim-id="${escapeHtml(prim.id)}" title="${escapeHtml(ifcSub)}">
             <div class="bim-element-info" style="flex-direction:column;align-items:flex-start;gap:1px;">
               <div style="display:flex;align-items:center;gap:6px;">
                 <span class="bim-dot" style="background:${prim.color || '#3b82f6'};"></span>
-                <span class="bim-element-name">${escapeHtml(prim.name || prim.id)}</span>
+                <span class="bim-element-name">${escapeHtml(dispName)}</span>
               </div>
               ${ifcSub ? `<span style="font-size:9.5px;color:var(--ui-text-muted);padding-left:14px;">${escapeHtml(ifcSub)}</span>` : ""}
             </div>

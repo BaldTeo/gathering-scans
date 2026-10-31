@@ -84,8 +84,9 @@
 
   function clear3DGroup(grp) {
     if (!grp) return null;
-    if (window.studioThree && window.studioThree.overlayGroup) {
-      window.studioThree.overlayGroup.remove(grp);
+    if (window.studioThree) {
+      if (window.studioThree.overlayGroup) window.studioThree.overlayGroup.remove(grp);
+      if (window.studioThree.scene) window.studioThree.scene.remove(grp);
     }
     grp.traverse((child) => {
       if (child.geometry) child.geometry.dispose();
@@ -97,12 +98,38 @@
     return null;
   }
 
+  function onQaPanelsClosed(nextTool) {
+    const active = String(nextTool || "");
+    if (active !== "flatness") {
+      QA_STATE.isPickingFlatnessPoint = false;
+      surfaceQa3DGroup = clear3DGroup(surfaceQa3DGroup);
+    }
+    if (active !== "trench") {
+      QA_STATE.isPickingUtilityPoint = false;
+      utilityTrace3DGroup = clear3DGroup(utilityTrace3DGroup);
+    }
+    if (active !== "compare_volume") {
+      QA_STATE.isPickingComparePoly = false;
+      compareVolume3DGroup = clear3DGroup(compareVolume3DGroup);
+    }
+    if (active !== "stakeout") {
+      QA_STATE.isPickingStakeoutPoint = false;
+      stakeout3DGroup = clear3DGroup(stakeout3DGroup);
+    }
+    if (window.studioThree && window.studioThree.renderer && window.studioThree.scene && window.studioThree.camera) {
+      window.studioThree.renderer.render(window.studioThree.scene, window.studioThree.camera);
+    }
+  }
+
   // =========================================================================
   // 1. 3D SURFACE FLATNESS & PLUMBNESS INSPECTOR
   // =========================================================================
 
   function openSurfaceFlatnessQaInspector() {
     if (typeof showSidePanel !== "function") return;
+    if (typeof setActiveStudioTool === "function" && (!window.STATE || window.STATE.activeTool !== "flatness")) {
+      setActiveStudioTool("flatness");
+    }
     const scanId = (window.STATE && window.STATE.activeScanId) || "";
 
     const html = `
@@ -515,6 +542,9 @@
 
   function openUtilityTracerInspector() {
     if (typeof showSidePanel !== "function") return;
+    if (typeof setActiveStudioTool === "function" && (!window.STATE || window.STATE.activeTool !== "trench")) {
+      setActiveStudioTool("trench");
+    }
     const scanId = (window.STATE && window.STATE.activeScanId) || "";
 
     const html = `
@@ -635,6 +665,9 @@
       QA_STATE.utilityTrenchPoints = [];
       QA_STATE.utilityLastResult = null;
       utilityTrace3DGroup = clear3DGroup(utilityTrace3DGroup);
+      if (typeof window.clearUserTracedUtilityFromGisLayer === "function") {
+        window.clearUserTracedUtilityFromGisLayer(scanId || (window.STATE && window.STATE.activeScanId) || "");
+      }
       const resEl = document.getElementById("utilityTracerResultsCard");
       if (resEl) {
         resEl.style.display = "block";
@@ -702,6 +735,13 @@
       QA_STATE.utilityLastResult = res;
       renderUtilityTraceResults(res);
       renderUtilityTrace3DOverlay(res);
+      if (
+        Array.isArray(res.stations) &&
+        res.stations.length >= 2 &&
+        typeof window.syncUserTracedUtilityToGisLayer === "function"
+      ) {
+        window.syncUserTracedUtilityToGisLayer(res, payload.scan_id);
+      }
     } catch (err) {
       console.error("[UtilityTracer] Error:", err);
       if (typeof showToast === "function") showToast(t("連線伺服器異常", "Network error"));
@@ -890,6 +930,9 @@
 
   function openCompareVolumeTakeoffInspector() {
     if (typeof showSidePanel !== "function") return;
+    if (typeof setActiveStudioTool === "function" && (!window.STATE || window.STATE.activeTool !== "compare_volume")) {
+      setActiveStudioTool("compare_volume");
+    }
     const baseId = (window.STATE && window.STATE.compareBaseScanId) || (window.STATE && window.STATE.activeScanId) || "";
     const compId = (window.STATE && window.STATE.compareScanId) || baseId;
 
@@ -1152,6 +1195,9 @@
 
   function openRtkStakeoutInspector() {
     if (typeof showSidePanel !== "function") return;
+    if (typeof setActiveStudioTool === "function" && (!window.STATE || window.STATE.activeTool !== "stakeout")) {
+      setActiveStudioTool("stakeout");
+    }
     const scanId = (window.STATE && window.STATE.activeScanId) || "";
 
     const html = `
@@ -1413,6 +1459,7 @@
   window.openUtilityTracerInspector = openUtilityTracerInspector;
   window.openCompareVolumeTakeoffInspector = openCompareVolumeTakeoffInspector;
   window.openRtkStakeoutInspector = openRtkStakeoutInspector;
+  window.onQaPanelsClosed = onQaPanelsClosed;
 
   window.handleQaTool3DCanvasPick = function (tool, pt, twd) {
     if (!twd) return false;

@@ -45,9 +45,9 @@
     if (!panel || !titleEl || !bodyEl) return;
     if (STATE.activeTool !== "utilities" && typeof window.onUtilitiesPanelClosed === "function") window.onUtilitiesPanelClosed();
     if (STATE.activeTool !== "bim" && typeof window.onBimPanelClosed === "function") window.onBimPanelClosed();
+    if (typeof window.onQaPanelsClosed === "function") window.onQaPanelsClosed(STATE.activeTool);
     const tTitle = typeof window.translateDynamicHtml === "function" ? window.translateDynamicHtml(String(title || "")) : String(title || "");
-    const tBody =
-      typeof window.translateDynamicHtml === "function" ? window.translateDynamicHtml(String(htmlContent || "")) : String(htmlContent || "");
+    const tBody = typeof window.translateDynamicHtml === "function" ? window.translateDynamicHtml(String(htmlContent || "")) : String(htmlContent || "");
     titleEl.innerHTML = tTitle;
     bodyEl.innerHTML = tBody;
     panel.setAttribute("data-active-tool", STATE.activeTool || "");
@@ -56,9 +56,7 @@
     panel.classList.toggle("mobile-minimized", Boolean(STATE.sidePanelMinimized));
     panel.classList.toggle("gs-panel-minimized", Boolean(STATE.sidePanelMinimized));
     const lblCollapse = document.getElementById("lblCollapseSidePanel");
-    if (lblCollapse) {
-      lblCollapse.textContent = STATE.sidePanelMinimized ? "▴" : "▾";
-    }
+    if (lblCollapse) lblCollapse.textContent = STATE.sidePanelMinimized ? "▴" : "▾";
     if (typeof syncStudioMobileToolHud === "function") syncStudioMobileToolHud();
     if (typeof syncMobileToastPosition === "function") syncMobileToastPosition();
     update2DBadgePositions();
@@ -72,9 +70,7 @@
     panel.classList.toggle("mobile-minimized", STATE.sidePanelMinimized);
     panel.classList.toggle("gs-panel-minimized", STATE.sidePanelMinimized);
     const lblCollapse = document.getElementById("lblCollapseSidePanel");
-    if (lblCollapse) {
-      lblCollapse.textContent = STATE.sidePanelMinimized ? "▴" : "▾";
-    }
+    if (lblCollapse) lblCollapse.textContent = STATE.sidePanelMinimized ? "▴" : "▾";
     if (typeof syncStudioMobileToolHud === "function") syncStudioMobileToolHud();
     if (typeof syncMobileToastPosition === "function") syncMobileToastPosition();
     update2DBadgePositions();
@@ -94,9 +90,10 @@
     }
     if (typeof window.onUtilitiesPanelClosed === "function") window.onUtilitiesPanelClosed();
     if (typeof window.onBimPanelClosed === "function") window.onBimPanelClosed();
+    if (typeof window.onQaPanelsClosed === "function") window.onQaPanelsClosed("");
     if (STATE.activeTool === "crop_delete" || STATE.activeTool === "crop" || STATE.activeTool === "optimizer") {
       cancelLassoToolMode(false);
-    } else if (["section", "profile", "crs", "generate_scan", "rtk", "photos", "comments", "drainage", "gcp_qa", "bookmarks", "categorize", "utilities", "bim"].includes(STATE.activeTool)) {
+    } else if (["section", "profile", "crs", "generate_scan", "rtk", "photos", "comments", "drainage", "gcp_qa", "bookmarks", "categorize", "utilities", "bim", "flatness", "trench", "stakeout", "compare_volume", "stationing"].includes(STATE.activeTool)) {
       setActiveStudioTool(STATE.multiAlign?.active ? "align_merge" : "orbit");
     }
     const panel = document.getElementById("studioSidePanel");
