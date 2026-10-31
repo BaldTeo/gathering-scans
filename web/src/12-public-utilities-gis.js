@@ -214,6 +214,7 @@
    */
   function onUtilitiesPanelClosed() {
     UTILS_STATE.active = false;
+    clearUtilitiesVisuals3D();
     restoreUtilitiesGroundOpacity();
   }
 
@@ -739,6 +740,7 @@
         UTILS_STATE.features = res.features;
         UTILS_STATE.loadedScanId = scanId;
         UTILS_STATE.lastCenter = res.center || null;
+        UTILS_STATE.groundReferenceH = Number(res.ground_reference_h ?? res.center?.ground_h ?? res.center?.h);
         UTILS_STATE.isCached = Boolean(res.cached);
         UTILS_STATE.cacheTimestamp = String(res.query_timestamp || "");
 
@@ -974,7 +976,14 @@
     }
 
     let roadRefY = 0.0;
-    const centerGroundH = Number(payload?.center?.ground_h ?? UTILS_STATE.lastCenter?.ground_h);
+    const centerGroundH = Number(
+      payload?.ground_reference_h ??
+      payload?.center?.ground_h ??
+      payload?.center?.h ??
+      UTILS_STATE.groundReferenceH ??
+      UTILS_STATE.lastCenter?.ground_h ??
+      UTILS_STATE.lastCenter?.h
+    );
     if (roadSamplesY.length > 0) {
       roadSamplesY.sort((a, b) => a - b);
       // Use 25th percentile to reject any roof/canopy outliers

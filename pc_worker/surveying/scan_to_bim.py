@@ -696,6 +696,43 @@ class ScanToBimMixin:
         anc_n = _safe_float(anchor.get("n"), 0.0)
         anc_h = _safe_float(anchor.get("h"), 0.0)
 
+        if abs(anc_e) < 1e-3 and abs(anc_n) < 1e-3:
+            # Derive exact anchor from any categorized feature pair (center_twd97 / center_local or trunk_twd97 / trunk_local)
+            for feat_list, twd_k, loc_k in (
+                (cat_data.get("roads") or [], "center_twd97", "center_local"),
+                (cat_data.get("walls") or [], "center_twd97", "center_local"),
+                (cat_data.get("trees") or [], "trunk_twd97", "trunk_local"),
+                (cat_data.get("water_bodies") or [], "center_twd97", "center_local"),
+            ):
+                if not isinstance(feat_list, list):
+                    continue
+                for item in feat_list:
+                    if not isinstance(item, dict):
+                        continue
+                    c_twd = item.get(twd_k)
+                    c_loc = item.get(loc_k)
+                    if isinstance(c_twd, (list, tuple)) and len(c_twd) >= 3:
+                        te, tn, th = _safe_float(c_twd[0]), _safe_float(c_twd[1]), _safe_float(c_twd[2])
+                        if abs(te) > 100.0 or abs(tn) > 100.0:
+                            if isinstance(c_loc, (list, tuple)) and len(c_loc) >= 3:
+                                anc_e = te - _safe_float(c_loc[0])
+                                anc_n = tn + _safe_float(c_loc[2])
+                                anc_h = th - _safe_float(c_loc[1])
+                            else:
+                                anc_e, anc_n, anc_h = te, tn, th
+                            break
+                if abs(anc_e) > 100.0 or abs(anc_n) > 100.0:
+                    break
+
+        if abs(anc_e) < 1e-3 and abs(anc_n) < 1e-3 and hasattr(self, "_resolve_scan_record"):
+            try:
+                scan_rec = self._resolve_scan_record(scan_id) or {}
+                anc_e = _safe_float(scan_rec.get("twd97_e") or scan_rec.get("e"), 0.0)
+                anc_n = _safe_float(scan_rec.get("twd97_n") or scan_rec.get("n"), 0.0)
+                anc_h = _safe_float(scan_rec.get("twd97_h") or scan_rec.get("h"), 0.0)
+            except Exception:
+                pass
+
         def _to_studio_local(pt: Tuple[float, float, float]) -> Tuple[float, float, float]:
             """Convert (E, N, H) to Three.js studio coordinates (x = dE, y = dH, z = -dN)."""
             return (pt[0] - anc_e, pt[2] - anc_h, anc_n - pt[1])

@@ -43,6 +43,8 @@
     const titleEl = document.getElementById("sidePanelTitle");
     const bodyEl = document.getElementById("sidePanelBody");
     if (!panel || !titleEl || !bodyEl) return;
+    if (STATE.activeTool !== "utilities" && typeof window.onUtilitiesPanelClosed === "function") window.onUtilitiesPanelClosed();
+    if (STATE.activeTool !== "bim" && typeof window.onBimPanelClosed === "function") window.onBimPanelClosed();
     const tTitle = typeof window.translateDynamicHtml === "function" ? window.translateDynamicHtml(String(title || "")) : String(title || "");
     const tBody =
       typeof window.translateDynamicHtml === "function" ? window.translateDynamicHtml(String(htmlContent || "")) : String(htmlContent || "");
@@ -91,6 +93,7 @@
       if (typeof syncCategorizeVisibilityUI === "function") syncCategorizeVisibilityUI();
     }
     if (typeof window.onUtilitiesPanelClosed === "function") window.onUtilitiesPanelClosed();
+    if (typeof window.onBimPanelClosed === "function") window.onBimPanelClosed();
     if (STATE.activeTool === "crop_delete" || STATE.activeTool === "crop" || STATE.activeTool === "optimizer") {
       cancelLassoToolMode(false);
     } else if (["section", "profile", "crs", "generate_scan", "rtk", "photos", "comments", "drainage", "gcp_qa", "bookmarks", "categorize", "utilities", "bim"].includes(STATE.activeTool)) {

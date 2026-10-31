@@ -538,6 +538,7 @@
       }
 
       const vTwd = meshData.vertices_twd97;
+      const vLoc = Array.isArray(meshData.vertices_local) ? meshData.vertices_local : null;
       const faces = meshData.faces;
       if (vTwd.length === 0 || faces.length === 0) return;
 
@@ -548,9 +549,14 @@
       for (let i = 0; i < vTwd.length; i++) {
         const pt = vTwd[i];
         // Convert to local Studio vector: x = dE, y = dH, z = -dN
-        const lx = Number(pt[0]) - originTwd.e;
-        const ly = Number(pt[2]) - originTwd.h;
-        const lz = originTwd.n - Number(pt[1]);
+        let lx = Number(pt[0]) - originTwd.e;
+        let ly = Number(pt[2]) - originTwd.h;
+        let lz = originTwd.n - Number(pt[1]);
+        if ((Math.abs(lx) > 2000 || Math.abs(lz) > 2000) && vLoc && Array.isArray(vLoc[i]) && vLoc[i].length >= 3) {
+          lx = Number(vLoc[i][0]);
+          ly = Number(vLoc[i][1]);
+          lz = Number(vLoc[i][2]);
+        }
 
         posArray[i * 3] = lx;
         posArray[i * 3 + 1] = ly;
@@ -611,21 +617,6 @@
 
       BIM_STATE.threeGroup.add(mesh);
     });
-
-    // Auto-frame camera to showcase the generated 3D BIM primitives
-    if (BIM_STATE.threeGroup.children.length > 0 && studioThree.camera && studioThree.controls) {
-      const box = new THREE.Box3().setFromObject(BIM_STATE.threeGroup);
-      if (!box.isEmpty()) {
-        const center = new THREE.Vector3();
-        box.getCenter(center);
-        const size = new THREE.Vector3();
-        box.getSize(size);
-        const maxDim = Math.max(size.x, size.y, size.z, 20);
-        studioThree.controls.target.copy(center);
-        studioThree.camera.position.set(center.x + maxDim * 0.85, center.y + maxDim * 0.65, center.z + maxDim * 0.95);
-        studioThree.controls.update();
-      }
-    }
 
     if (studioThree.renderer && studioThree.camera) {
       studioThree.renderer.render(studioThree.scene, studioThree.camera);
@@ -768,6 +759,7 @@
 
   // Register on window and studio tool system
   window.openScanToBimInspector = openScanToBimInspector;
+  window.onBimPanelClosed = clearBimThreeMeshes;
   window.__GS_BIM = {
     openInspector: openScanToBimInspector,
     fit: runScanToBimFitting,
