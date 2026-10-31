@@ -35,6 +35,20 @@ if os.path.isdir(GC_SCAN_OPTIMIZER_DIR) and GC_SCAN_OPTIMIZER_DIR not in sys.pat
     sys.path.append(GC_SCAN_OPTIMIZER_DIR)
 
 
+def safe_float(val: Any, default: Optional[float] = None) -> Optional[float]:
+    """Safely converts input to float; returns default on None, empty string, whitespace, non-numeric tokens, or inf/nan."""
+    if val is None:
+        return default
+    try:
+        s = str(val).strip()
+        if not s or s.lower() in ("none", "null", "undefined", "nan"):
+            return default
+        f = float(s)
+        return f if math.isfinite(f) else default
+    except (ValueError, TypeError):
+        return default
+
+
 CRS_DEFINITIONS: Dict[str, Dict[str, Any]] = {
     "TWD97_121_TWVD2001": {
         "code": "TWD97_121_TWVD2001",
@@ -287,6 +301,7 @@ def _transform_tileset_crs_in_place(
     source_scan: Dict[str, Any],
     target_crs_code: str,
     custom_offset_xyz: Tuple[float, float, float] = (0.0, 0.0, 0.0),
+    geoid_offset_override: Optional[float] = None,
 ) -> Dict[str, Any]:
     """
     Zero-loss 64-bit CRS & datum transformation across all GLB root scene nodes and tileset.json OBBs.
@@ -340,7 +355,13 @@ def _transform_tileset_crs_in_place(
             sdef["k0"],
             sdef["f_inv"],
         )
-        twvd_h0 = float(c_src[2]) - float(sdef["h_offset_from_twvd"])
+        geoid_override_float = safe_float(geoid_offset_override)
+        src_h_off = (
+            geoid_override_float
+            if geoid_override_float is not None and sdef["code"].startswith("WGS84_UTM")
+            else float(sdef["h_offset_from_twvd"])
+        )
+        twvd_h0 = float(c_src[2]) - src_h_off
         has_src_georef = True
     else:
         if tdef["kind"] == "tm" and not has_src_georef:
@@ -410,7 +431,13 @@ def _transform_tileset_crs_in_place(
                 tdef["k0"],
                 tdef["f_inv"],
             )
-            h_dst = twvd_h0 + float(tdef["h_offset_from_twvd"])
+            geoid_override_float = safe_float(geoid_offset_override)
+            tgt_h_off = (
+                geoid_override_float
+                if geoid_override_float is not None and tdef["code"].startswith("WGS84_UTM")
+                else float(tdef["h_offset_from_twvd"])
+            )
+            h_dst = twvd_h0 + tgt_h_off
             c_dst = np.array([e_dst, n_dst, h_dst], dtype=np.float64) + offset_vec
 
     cos_z = math.cos(rot_z_rad)
@@ -622,6 +649,26 @@ def _transform_tileset_crs_in_place(
         "custom_offset_xyz": [round(float(x), 3) for x in offset_vec],
         "glb_tiles_updated": glb_updated,
     }
+
+
+def transform_scan_crs(
+    tileset_dir: str,
+    source_scan: Dict[str, Any],
+    target_crs_code: str,
+    custom_offset_xyz: Tuple[float, float, float] = (0.0, 0.0, 0.0),
+    geoid_offset_override: Optional[float] = None,
+) -> Dict[str, Any]:
+    """
+    Public API wrapper for _transform_tileset_crs_in_place supporting geoid_offset_override
+    and user-specified TWVD2001 / WGS84 vertical datum shifts.
+    """
+    return _transform_tileset_crs_in_place(
+        tileset_dir=tileset_dir,
+        source_scan=source_scan,
+        target_crs_code=target_crs_code,
+        custom_offset_xyz=custom_offset_xyz,
+        geoid_offset_override=geoid_offset_override,
+    )
 
 
 def _downscale_glb_embedded_textures(glb_path: str, tex_limit: int = 2048, jpeg_quality: int = 78) -> int:
@@ -1715,14 +1762,17 @@ class OptimizerBridge:
 
         crs_cfg = payload.get("crs_config") if isinstance(payload.get("crs_config"), dict) else {}
         target_crs_code = str(crs_cfg.get("target_crs") or "").strip().upper()
-        crs_off_x = float(crs_cfg.get("offset_x") or 0.0)
-        crs_off_y = float(crs_cfg.get("offset_y") or 0.0)
-        crs_off_z = float(crs_cfg.get("offset_z") or 0.0)
+        crs_off_x = safe_float(crs_cfg.get("offset_x"), 0.0) or 0.0
+        crs_off_y = safe_float(crs_cfg.get("offset_y"), 0.0) or 0.0
+        crs_off_z = safe_float(crs_cfg.get("offset_z"), 0.0) or 0.0
+        geoid_override_raw = crs_cfg.get("geoid_offset_override") if crs_cfg.get("geoid_offset_override") is not None else crs_cfg.get("h_offset_from_twvd")
+        geoid_override_val = safe_float(geoid_override_raw)
         has_crs = bool(
             (target_crs_code and target_crs_code in CRS_DEFINITIONS)
             or abs(crs_off_x) > 1e-6
             or abs(crs_off_y) > 1e-6
             or abs(crs_off_z) > 1e-6
+            or geoid_override_val is not None
         )
 
         # Reference Z-up center (TWD97 Easting, Northing, TWVD2001 Elevation)
@@ -2784,6 +2834,7 @@ class OptimizerBridge:
                     source_scan=merged_src_ref,
                     target_crs_code=target_crs_code,
                     custom_offset_xyz=(crs_off_x, crs_off_y, crs_off_z),
+                    geoid_offset_override=geoid_override_val,
                 )
                 final_crs_label = crs_info["crs_label"]
                 lat_m = crs_info["lat"]
@@ -3149,14 +3200,17 @@ class OptimizerBridge:
         # 4. Collect optional Coordinate System & Datum Offset
         crs_cfg = payload.get("crs_config") if isinstance(payload.get("crs_config"), dict) else {}
         target_crs_code = str(crs_cfg.get("target_crs") or "").strip().upper()
-        off_x = float(crs_cfg.get("offset_x") or 0.0)
-        off_y = float(crs_cfg.get("offset_y") or 0.0)
-        off_z = float(crs_cfg.get("offset_z") or 0.0)
+        off_x = safe_float(crs_cfg.get("offset_x"), 0.0) or 0.0
+        off_y = safe_float(crs_cfg.get("offset_y"), 0.0) or 0.0
+        off_z = safe_float(crs_cfg.get("offset_z"), 0.0) or 0.0
+        geoid_override_raw = crs_cfg.get("geoid_offset_override") if crs_cfg.get("geoid_offset_override") is not None else crs_cfg.get("h_offset_from_twvd")
+        geoid_override_val = safe_float(geoid_override_raw)
         has_crs = bool(
             (target_crs_code and target_crs_code in CRS_DEFINITIONS)
             or abs(off_x) > 1e-6
             or abs(off_y) > 1e-6
             or abs(off_z) > 1e-6
+            or geoid_override_val is not None
         )
 
         if not (has_deletions or has_crop_keep or has_compression or has_crs):
@@ -3298,6 +3352,7 @@ class OptimizerBridge:
                     source_scan=source_scan,
                     target_crs_code=target_crs_code,
                     custom_offset_xyz=(off_x, off_y, off_z),
+                    geoid_offset_override=geoid_override_val,
                 )
                 final_crs_label = crs_info["crs_label"]
                 lat_final = crs_info["lat"]

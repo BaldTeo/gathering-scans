@@ -92,16 +92,16 @@ GCHAT_WEBHOOK_URL = os.environ.get(
     "",
 )
 
-# 6. Standard Engineering Material Densities (tonnes / m^3) & Swell Factors
+# 6. Standard Engineering Material Densities (tonnes / m^3) & Swell / Shrinkage Factors
 MATERIAL_CATALOG = {
-    "crushed_stone": {"name": "Crushed Stone / 碎石級配", "density_t_m3": 1.65, "swell_factor": 0.88},
-    "river_gravel": {"name": "River Gravel & Cobble / 河床卵礫石", "density_t_m3": 1.78, "swell_factor": 0.90},
-    "sand_dry": {"name": "Dry Construction Sand / 建築乾砂", "density_t_m3": 1.55, "swell_factor": 0.92},
-    "sand_wet": {"name": "Wet River Sand / 河砂(含水)", "density_t_m3": 1.92, "swell_factor": 0.94},
-    "excavated_soil": {"name": "Excavated Earth / 一般開挖土方", "density_t_m3": 1.45, "swell_factor": 0.80},
-    "clay_compacted": {"name": "Compacted Clay / 壓實黏土", "density_t_m3": 1.85, "swell_factor": 1.00},
-    "concrete_rubble": {"name": "Concrete Rubble / 混凝土廢料", "density_t_m3": 1.50, "swell_factor": 0.78},
-    "asphalt_milling": {"name": "Asphalt Millings / 瀝青刨除料", "density_t_m3": 1.40, "swell_factor": 0.85},
+    "crushed_stone": {"name": "Crushed Stone / 碎石級配", "density_t_m3": 1.65, "swell_factor": 0.88, "shrinkage_factor": 0.05, "swell_pct": 0.136},
+    "river_gravel": {"name": "River Gravel & Cobble / 河床卵礫石", "density_t_m3": 1.78, "swell_factor": 0.90, "shrinkage_factor": 0.06, "swell_pct": 0.111},
+    "sand_dry": {"name": "Dry Construction Sand / 建築乾砂", "density_t_m3": 1.55, "swell_factor": 0.92, "shrinkage_factor": 0.08, "swell_pct": 0.087},
+    "sand_wet": {"name": "Wet River Sand / 河砂(含水)", "density_t_m3": 1.92, "swell_factor": 0.94, "shrinkage_factor": 0.10, "swell_pct": 0.064},
+    "excavated_soil": {"name": "Excavated Earth / 一般開挖土方", "density_t_m3": 1.45, "swell_factor": 0.80, "shrinkage_factor": 0.10, "swell_pct": 0.250},
+    "clay_compacted": {"name": "Compacted Clay / 壓實黏土", "density_t_m3": 1.85, "swell_factor": 1.00, "shrinkage_factor": 0.15, "swell_pct": 0.000},
+    "concrete_rubble": {"name": "Concrete Rubble / 混凝土廢料", "density_t_m3": 1.50, "swell_factor": 0.78, "shrinkage_factor": 0.04, "swell_pct": 0.282},
+    "asphalt_milling": {"name": "Asphalt Millings / 瀝青刨除料", "density_t_m3": 1.40, "swell_factor": 0.85, "shrinkage_factor": 0.05, "swell_pct": 0.176},
 }
 
 # 7. Default PIX4Dmatic 2.11.0 Mesh & Photogrammetry Pipeline Settings

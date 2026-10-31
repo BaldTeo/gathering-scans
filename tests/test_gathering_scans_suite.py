@@ -14,6 +14,7 @@ import os
 import sys
 import time
 import tempfile
+import math
 import unittest
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -35,10 +36,26 @@ from pc_worker.gchat_notifier import GoogleChatNotifier
 
 
 class GatheringScansTestSuite(unittest.TestCase):
+    def _ensure_test_scan(self, scan_id: str = "quchi_20261005_merged"):
+        """Hermetic scan record guaranteeing zero dependency on data/gdrive_cloud_manifest.json."""
+        self.db.upsert_scan(
+            {
+                "scan_id": scan_id,
+                "name": "2026-10-05-15-43-55",
+                "project_group": "QuChi Dam",
+                "project_dir": r"C:\GatheringScans\QuChi_20261005_Compressed",
+                "tileset_path": r"C:\GatheringScans\QuChi_20261005_Compressed\tileset\tileset.json",
+                "obj_path": r"C:\Scans\QuChi\QuChi_20261005_Compressed\exports\QuChi_20261005_Compressed-obj_mesh\mesh.obj",
+                "crs": "TWD97 (121) + TWVD2001",
+                "status": "completed",
+            }
+        )
+
     def setUp(self):
         self.tmp_db_fd, self.tmp_db_path = tempfile.mkstemp(suffix=".db")
         os.close(self.tmp_db_fd)
         self.db = ScanQueueDB(db_path=self.tmp_db_path)
+        self._ensure_test_scan("quchi_20261005_merged")
 
     def tearDown(self):
         try:
@@ -2350,6 +2367,252 @@ class GatheringScansTestSuite(unittest.TestCase):
         self.assertIn("openMoveScanModal", js01)
         self.assertIn("modelLibraryOverlay", html_txt)
         self.assertIn("moveScanModal", html_txt)
+
+    def test_30_best_fit_reference_plane(self):
+        """M1 Verification: Least-Squares Best-Fit Reference Plane via 2D Normal Equations with Cramer's Rule."""
+        self._ensure_test_scan("quchi_20261005_merged")
+        survey = SurveyingEngine(self.db)
+        # Test 1: Sloping plane on real scan with best_fit_plane base mode
+        vol = survey.calculate_cut_fill_volume(
+            {
+                "scan_id": "quchi_20261005_merged",
+                "stockpile_name": "Best-Fit Plane Zone",
+                "base_mode": "best_fit_plane",
+                "polygon": [
+                    [304945.0, 2757078.0, 43.1],
+                    [304960.0, 2757078.0, 43.1],
+                    [304960.0, 2757090.0, 43.4],
+                    [304945.0, 2757090.0, 43.4],
+                ],
+            }
+        )
+        self.assertEqual(vol["status"], "ok")
+        self.assertIn("best_fit_plane", vol)
+        bfp = vol["best_fit_plane"]
+        self.assertIn("a", bfp)
+        self.assertIn("b", bfp)
+        self.assertIn("c", bfp)
+        self.assertIn("slope_pct", bfp)
+        self.assertIn("azimuth_deg", bfp)
+        self.assertGreaterEqual(bfp["slope_pct"], 0.0)
+        self.assertGreaterEqual(bfp["azimuth_deg"], 0.0)
+        self.assertLess(bfp["azimuth_deg"], 360.0)
+
+        # Test 2: Degenerate / collinear points safeguard (must not raise ZeroDivisionError)
+        vol_collinear = survey.calculate_cut_fill_volume(
+            {
+                "scan_id": "quchi_20261005_merged",
+                "base_mode": "best_fit_plane",
+                "polygon": [
+                    [304945.0, 2757078.0, 42.0],
+                    [304950.0, 2757083.0, 42.5],
+                    [304955.0, 2757088.0, 43.0],
+                ],
+            }
+        )
+        self.assertEqual(vol_collinear["status"], "ok")
+        self.assertIn("best_fit_plane", vol_collinear)
+        # Collinear points fallback to mean horizontal plane (slope = 0.0)
+        self.assertEqual(vol_collinear["best_fit_plane"]["slope_pct"], 0.0)
+        self.assertEqual(vol_collinear["best_fit_plane"]["a"], 0.0)
+        self.assertEqual(vol_collinear["best_fit_plane"]["b"], 0.0)
+
+        # Test 3: 100m collinear alignment at arbitrary angle (eigenvalue safeguard test)
+        angle = math.radians(35.0)
+        dx, dy = math.cos(angle), math.sin(angle)
+        collinear_100m = [
+            [304950.0 + (k / 9.0 - 0.5) * 100.0 * dx, 2757080.0 + (k / 9.0 - 0.5) * 100.0 * dy, 42.0 + 0.1 * k]
+            for k in range(10)
+        ]
+        vol_collinear_100m = survey.calculate_cut_fill_volume(
+            {
+                "scan_id": "quchi_20261005_merged",
+                "base_mode": "best_fit_plane",
+                "polygon": collinear_100m,
+            }
+        )
+        self.assertEqual(vol_collinear_100m["status"], "ok")
+        self.assertEqual(vol_collinear_100m["best_fit_plane"]["slope_pct"], 0.0)
+        self.assertEqual(vol_collinear_100m["best_fit_plane"]["a"], 0.0)
+        self.assertEqual(vol_collinear_100m["best_fit_plane"]["b"], 0.0)
+
+    def test_31_earthwork_mass_conservation(self):
+        """M1 Verification: Earthwork Mass Conservation across BCM, LCM, CCM, and Conserved Mass Identity."""
+        self._ensure_test_scan("quchi_20261005_merged")
+        survey = SurveyingEngine(self.db)
+        vol = survey.calculate_cut_fill_volume(
+            {
+                "scan_id": "quchi_20261005_merged",
+                "base_mode": "best_fit_plane",
+                "material_type": "excavated_soil",
+                "density_t_m3": 1.45,
+                "swell_factor": 0.80,  # Caterpillar load factor -> 1.25x expansion
+                "shrinkage_factor": 0.10,  # 10% shrinkage -> 0.90x compaction
+                "polygon": [
+                    [304945.0, 2757078.0, 43.1],
+                    [304960.0, 2757078.0, 43.1],
+                    [304960.0, 2757090.0, 43.2],
+                    [304945.0, 2757090.0, 43.2],
+                ],
+            }
+        )
+        self.assertEqual(vol["status"], "ok")
+        # Check required fields exist
+        self.assertIn("cut_volume_bcm", vol)
+        self.assertIn("fill_volume_bcm", vol)
+        self.assertIn("cut_volume_lcm", vol)
+        self.assertIn("fill_volume_ccm", vol)
+        self.assertIn("conserved_cut_mass_t", vol)
+        self.assertIn("conserved_fill_mass_t", vol)
+
+        cut_bcm = vol["cut_volume_bcm"]
+        cut_lcm = vol["cut_volume_lcm"]
+        fill_bcm = vol["fill_volume_bcm"]
+        fill_ccm = vol["fill_volume_ccm"]
+        cut_mass = vol["conserved_cut_mass_t"]
+
+        # If cut volume exists, LCM must expand (swell_mult = 1.25)
+        if cut_bcm > 0.0:
+            self.assertGreater(cut_lcm, cut_bcm)
+            self.assertAlmostEqual(cut_lcm, round(cut_bcm * 1.25, 2), places=1)
+            # Physical Mass Invariance: M_cut = BCM * rho_bank == LCM * rho_loose
+            rho_bank = 1.45
+            rho_loose = rho_bank / 1.25
+            mass_from_bank = round(cut_bcm * rho_bank, 2)
+            mass_from_loose = round(cut_lcm * rho_loose, 2)
+            self.assertEqual(cut_mass, mass_from_bank)
+            self.assertAlmostEqual(cut_mass, mass_from_loose, places=1)
+
+        # If fill volume exists, CCM must compact (compaction_mult = 0.90)
+        if fill_bcm > 0.0:
+            self.assertLess(fill_ccm, fill_bcm)
+            self.assertAlmostEqual(fill_ccm, round(fill_bcm * 0.90, 2), places=1)
+
+        # Robust sanitization test: empty strings and invalid tokens do not crash
+        vol_sanitized = survey.calculate_cut_fill_volume(
+            {
+                "scan_id": "quchi_20261005_merged",
+                "base_mode": "best_fit_plane",
+                "swell_factor": "",
+                "shrinkage_factor": "   ",
+                "density_t_m3": "not_a_num",
+            }
+        )
+        self.assertEqual(vol_sanitized["status"], "ok")
+
+    def test_32_dump_truck_dual_constraint_estimator(self):
+        """M1 Verification: Dump Truck Load Estimator (Volume-limited vs Weight-limited haul trips)."""
+        self._ensure_test_scan("quchi_20261005_merged")
+        survey = SurveyingEngine(self.db)
+        # Case A: Light material (1.1 t/m³) with custom truck volume (15 m³) and payload (25 t) -> volume limited
+        vol_light = survey.calculate_cut_fill_volume(
+            {
+                "scan_id": "quchi_20261005_merged",
+                "base_mode": "best_fit_plane",
+                "density_t_m3": 1.10,
+                "swell_factor": 1.30,
+                "truck_volume_m3": 15.0,
+                "truck_max_tonnes": 25.0,
+            }
+        )
+        self.assertIn("truck_loads_cut", vol_light)
+        self.assertIn("truck_limiting_factor", vol_light)
+        self.assertIn("net_haul_direction", vol_light)
+        self.assertIn("net_truck_loads", vol_light)
+        if vol_light["cut_volume_bcm"] > 0:
+            self.assertEqual(vol_light["truck_limiting_factor"], "volume")
+
+        # Case B: Heavy material (2.5 t/m³) with standard truck (15 m³, 18 t) -> weight limited
+        vol_heavy = survey.calculate_cut_fill_volume(
+            {
+                "scan_id": "quchi_20261005_merged",
+                "base_mode": "best_fit_plane",
+                "density_t_m3": 2.50,
+                "swell_factor": 1.10,
+                "truck_volume_m3": 15.0,
+                "truck_max_tonnes": 18.0,
+            }
+        )
+        if vol_heavy["cut_volume_bcm"] > 0:
+            self.assertEqual(vol_heavy["truck_limiting_factor"], "weight")
+
+        # Robust sanitization test: empty/invalid truck parameters fallback gracefully
+        vol_truck_safe = survey.calculate_cut_fill_volume(
+            {
+                "scan_id": "quchi_20261005_merged",
+                "truck_volume_m3": "",
+                "truck_max_tonnes": "undefined",
+            }
+        )
+        self.assertEqual(vol_truck_safe["status"], "ok")
+        self.assertIn("truck_loads_cut", vol_truck_safe)
+
+    def test_33_geoid_catalog_synchronization_and_overrides(self):
+        """M1 Verification: UTM51N / UTM50N vertical geoid offsets synchronized and user override support."""
+        self._ensure_test_scan("quchi_20261005_merged")
+        from pc_worker.optimizer_bridge import CRS_DEFINITIONS, transform_scan_crs
+
+        # 1. Backend CRS catalog verification
+        self.assertEqual(CRS_DEFINITIONS["WGS84_UTM51N"]["h_offset_from_twvd"], 17.20)
+        self.assertEqual(CRS_DEFINITIONS["WGS84_UTM50N"]["h_offset_from_twvd"], 16.80)
+
+        # 2. Frontend catalog source code verification
+        js_path = os.path.join(BASE_DIR, "web", "src", "06-studio-align-and-optimizer.js")
+        with open(js_path, "r", encoding="utf-8") as f:
+            js_src = f.read()
+
+        # Must have 17.20 and 16.80 for UTM51N and UTM50N
+        self.assertIn('code: "WGS84_UTM51N"', js_src)
+        self.assertIn("hOff: 17.20", js_src)
+        self.assertIn('code: "WGS84_UTM50N"', js_src)
+        self.assertIn("hOff: 16.80", js_src)
+        self.assertNotIn("hOff: 20.6", js_src)
+        self.assertNotIn("hOff: 19.8", js_src)
+
+        # Must have numGeoidOffset and btnResetGeoidOffset in inspector
+        self.assertIn('id="numGeoidOffset"', js_src)
+        self.assertIn('id="btnResetGeoidOffset"', js_src)
+        self.assertIn("geoid_offset_override", js_src)
+
+        # 3. User Geoid Offset Override in calculate_cut_fill_volume
+        survey = SurveyingEngine(self.db)
+        res_vol = survey.calculate_cut_fill_volume(
+            {
+                "scan_id": "quchi_20261005_merged",
+                "geoid_offset_override": 18.45,
+            }
+        )
+        self.assertEqual(res_vol["status"], "ok")
+        self.assertEqual(res_vol["geoid_offset_override"], 18.45)
+        self.assertEqual(res_vol["geoid_offset_m"], 18.45)
+
+        # 4. User Geoid Offset Override in compute_gcp_accuracy_qa
+        res_qa = survey.compute_gcp_accuracy_qa(
+            {
+                "scan_id": "quchi_20261005_merged",
+                "geoid_offset_override": 17.50,
+            }
+        )
+        self.assertEqual(res_qa["status"], "ok")
+        self.assertEqual(res_qa["geoid_offset_override"], 17.50)
+        self.assertTrue(res_qa["geoid_offset_applied"])
+
+        # 5. Robust sanitization test: empty strings and invalid tokens do not throw unhandled ValueError
+        res_vol_empty = survey.calculate_cut_fill_volume(
+            {
+                "scan_id": "quchi_20261005_merged",
+                "geoid_offset_override": "",
+            }
+        )
+        self.assertEqual(res_vol_empty["status"], "ok")
+
+        res_qa_empty = survey.compute_gcp_accuracy_qa(
+            {
+                "scan_id": "quchi_20261005_merged",
+                "geoid_offset_override": "invalid_geoid",
+            }
+        )
+        self.assertEqual(res_qa_empty["status"], "ok")
 
 
 if __name__ == "__main__":

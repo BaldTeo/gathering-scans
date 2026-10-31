@@ -738,16 +738,14 @@
           <label>${tr("物料種類與比重 (t/m³)", "Material Classification & Bulk Density (t/m³)")}</label>
           <select class="gs-select" id="volMaterialSelect">${matOptions}</select>
         </div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;" class="gs-form-group">
-          <div>
-            <label>${tr("比重 (t/m³)", "Density (t/m³)")}</label>
-            <input type="number" step="0.05" class="gs-input" id="volCustomDensity" value="1.65" />
-          </div>
-          <div>
-            <label>${tr("基準高程 Z₀ (TWVD2001 m)", "Datum Elev Z₀ (TWVD2001 m)")}</label>
-            <input type="number" step="0.1" class="gs-input" id="volDatumZ" value="${defaultDatumZ}" />
-          </div>
-        </div>
+        ${
+          typeof renderEarthworkInputFieldsHtml === "function"
+            ? renderEarthworkInputFieldsHtml(defaultDatumZ)
+            : `<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;" class="gs-form-group">
+                 <div><label>${tr("比重 (t/m³)", "Density (t/m³)")}</label><input type="number" step="0.05" class="gs-input" id="volCustomDensity" value="1.65" /></div>
+                 <div><label>${tr("基準高程 Z₀ (TWVD2001 m)", "Datum Elev Z₀ (TWVD2001 m)")}</label><input type="number" step="0.1" class="gs-input" id="volDatumZ" value="${defaultDatumZ}" /></div>
+               </div>`
+        }
         <div style="display:flex;gap:6px;margin-bottom:8px;">
           <button type="button" class="gs-top-btn accent" style="flex:1.6;justify-content:center;" id="btnRunVolumeCalc" title="${tr("鎖定多邊形並計算挖填土方體積", "Lock Polygon & Compute Cut/Fill Volume")}">
             <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8">
@@ -902,13 +900,18 @@
       const btnLbl = document.getElementById("lblRunVolumeCalc");
       if (btnLbl) btnLbl.textContent = tr("計算中... 0%", "Computing... 0%");
 
+      const ewIn = typeof getEarthworkInputValues === "function" ? getEarthworkInputValues(defaultDatumZ) : {};
       const opts = {
         scan_id: STATE.activeScanId,
         stockpile_name: document.getElementById("volStockpileName")?.value || defaultZoneName,
         base_mode: document.getElementById("volBaseMode")?.value || "triangulated_boundary",
         material_type: document.getElementById("volMaterialSelect")?.value || "crushed_stone",
-        density_t_m3: parseFloat(document.getElementById("volCustomDensity")?.value || "1.65"),
-        datum_elevation_m: parseFloat(document.getElementById("volDatumZ")?.value || String(defaultDatumZ)),
+        density_t_m3: ewIn.density_t_m3 !== undefined ? ewIn.density_t_m3 : parseFloat(document.getElementById("volCustomDensity")?.value || "1.65"),
+        datum_elevation_m: ewIn.datum_elevation_m !== undefined ? ewIn.datum_elevation_m : parseFloat(document.getElementById("volDatumZ")?.value || String(defaultDatumZ)),
+        swell_factor: ewIn.swell_factor !== undefined ? ewIn.swell_factor : 1.25,
+        shrinkage_factor: ewIn.shrinkage_factor !== undefined ? ewIn.shrinkage_factor : 0.10,
+        truck_volume_m3: ewIn.truck_volume_m3 !== undefined ? ewIn.truck_volume_m3 : 15.0,
+        truck_max_tonnes: ewIn.truck_max_tonnes !== undefined ? ewIn.truck_max_tonnes : 20.0,
       };
 
       updateVolumeProgressHudPill(2, tr("正在背景計算土方體積... 2% (可自由旋轉檢視 3D 模型)", "Computing Volume in background... 2%"));
@@ -1098,6 +1101,7 @@
           }</div>
           <div><b>${tr("物料：", "Material:")}</b> ${escapeHtml(String(res.material_name || ""))} (${escapeHtml(String(res.density_t_m3))} t/m³ · ${tr("實方重：", "Bank:")} ${escapeHtml(String(res.bank_tonnage_t ?? res.estimated_tonnage_t))} t)</div>
         </div>
+        ${typeof renderMassConservationScheduleHtml === "function" ? renderMassConservationScheduleHtml(res) : ""}
         ${
           res._perspectiveImgDataUrl || res._nadirImgDataUrl
             ? `<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:10px;">

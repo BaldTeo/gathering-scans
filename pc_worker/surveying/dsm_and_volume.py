@@ -54,6 +54,20 @@ from pc_worker.config import (
 from pc_worker.priority_queue import ScanQueueDB
 
 
+def safe_float(val: Any, default: Optional[float] = None) -> Optional[float]:
+    """Safely converts input to float; returns default on None, empty string, whitespace, non-numeric tokens, or inf/nan."""
+    if val is None:
+        return default
+    try:
+        s = str(val).strip()
+        if not s or s.lower() in ("none", "null", "undefined", "nan"):
+            return default
+        f = float(s)
+        return f if math.isfinite(f) else default
+    except (ValueError, TypeError):
+        return default
+
+
 def wgs84_to_twd97(lat_deg: float, lon_deg: float) -> Tuple[float, float]:
     """Converts WGS84 / TWD97 Geodetic (lat, lon) in degrees to TWD97 TM2 Zone 121 (Easting, Northing) in meters."""
     a = 6378137.0
@@ -985,8 +999,10 @@ class DsmAndVolumeMixin:
         compare_scan_id = payload.get("compare_scan_id")
         base_mode = payload.get("base_mode", "triangulated_boundary")
         material_key = payload.get("material_type", "crushed_stone")
-        custom_density = payload.get("density_t_m3")
+        custom_density = safe_float(payload.get("density_t_m3"))
         stockpile_name = payload.get("stockpile_name") or "Stockpile / Earthwork Zone A"
+        geoid_override_raw = payload.get("geoid_offset_override") if payload.get("geoid_offset_override") is not None else payload.get("h_offset_from_twvd")
+        geoid_offset_override = safe_float(geoid_override_raw)
 
         scan = self._resolve_scan_record(scan_id)
 
@@ -996,13 +1012,13 @@ class DsmAndVolumeMixin:
         center_h = dsm_curr["ch"]
         local_origin = payload.get("local_origin_twd97")
         if isinstance(local_origin, dict):
-            origin_e = float(local_origin.get("e", center_e) or center_e)
-            origin_n = float(local_origin.get("n", center_n) or center_n)
-            origin_h = float(local_origin.get("h", center_h) or center_h)
+            origin_e = safe_float(local_origin.get("e", center_e), center_e)
+            origin_n = safe_float(local_origin.get("n", center_n), center_n)
+            origin_h = safe_float(local_origin.get("h", center_h), center_h)
         elif isinstance(local_origin, (list, tuple)) and len(local_origin) >= 3:
-            origin_e = float(local_origin[0] or center_e)
-            origin_n = float(local_origin[1] or center_n)
-            origin_h = float(local_origin[2] or center_h)
+            origin_e = safe_float(local_origin[0], center_e)
+            origin_n = safe_float(local_origin[1], center_n)
+            origin_h = safe_float(local_origin[2], center_h)
         else:
             origin_e = center_e
             origin_n = center_n
@@ -1024,7 +1040,7 @@ class DsmAndVolumeMixin:
                 except Exception:
                     dsm_cmp = None
 
-        raw_poly = payload.get("polygon", [])
+        raw_poly = payload.get("polygon") or payload.get("points") or []
         if not raw_poly or len(raw_poly) < 3:
             # Adaptive default boundary scaled to 28% of the scan's actual DSM span
             span_e_def = min(8.0, max(1.5, (dsm_curr["e_max"] - dsm_curr["e_min"]) * 0.28))
@@ -1089,7 +1105,57 @@ class DsmAndVolumeMixin:
                 perim_samples.append((sx, sy, sz))
 
         perim_mean_h = sum(p[2] for p in perim_samples) / max(len(perim_samples), 1)
-        datum_z = float(payload.get("datum_elevation_m", perim_mean_h))
+        datum_z_cand = payload.get("datum_elevation_m") if payload.get("datum_elevation_m") is not None else payload.get("custom_elevation")
+        datum_z = safe_float(datum_z_cand, perim_mean_h)
+        if datum_z is None:
+            datum_z = perim_mean_h
+
+        # Least-Squares Best-Fit Reference Plane via 2D Normal Equations with Centroid Conditioning
+        plane_pts = perim_samples if len(perim_samples) >= 3 else poly_twd
+        n_plane = len(plane_pts)
+        if n_plane >= 3:
+            p_mean_e = sum(p[0] for p in plane_pts) / n_plane
+            p_mean_n = sum(p[1] for p in plane_pts) / n_plane
+            p_mean_h = sum(p[2] for p in plane_pts) / n_plane
+
+            suu = sum((p[0] - p_mean_e) ** 2 for p in plane_pts)
+            svv = sum((p[1] - p_mean_n) ** 2 for p in plane_pts)
+            suv = sum((p[0] - p_mean_e) * (p[1] - p_mean_n) for p in plane_pts)
+            suw = sum((p[0] - p_mean_e) * (p[2] - p_mean_h) for p in plane_pts)
+            svw = sum((p[1] - p_mean_n) * (p[2] - p_mean_h) for p in plane_pts)
+
+            det_plane = suu * svv - suv * suv
+            trace_plane = suu + svv
+
+            # Safeguard: singularity / collinear points / non-positive det fallback to horizontal mean plane
+            disc_plane = max(0.0, (suu - svv) ** 2 + 4.0 * suv * suv)
+            lambda_min = (2.0 * det_plane) / (trace_plane + math.sqrt(disc_plane)) if trace_plane > 1e-6 else 0.0
+
+            if det_plane <= 0.0 or lambda_min < 1e-4 or (lambda_min / trace_plane) < 1e-4 or trace_plane < 1e-6:
+                plane_a = 0.0
+                plane_b = 0.0
+                plane_c0 = p_mean_h
+            else:
+                plane_a = (suw * svv - svw * suv) / det_plane
+                plane_b = (svw * suu - suw * suv) / det_plane
+                plane_c0 = p_mean_h
+        else:
+            p_mean_e = center_e
+            p_mean_n = center_n
+            p_mean_h = perim_mean_h
+            plane_a = 0.0
+            plane_b = 0.0
+            plane_c0 = perim_mean_h
+
+        plane_c = plane_c0 - plane_a * p_mean_e - plane_b * p_mean_n
+        plane_slope_mag = math.hypot(plane_a, plane_b)
+        plane_slope_pct = round(plane_slope_mag * 100.0, 3)
+        plane_slope_deg = round(math.degrees(math.atan(plane_slope_mag)), 2)
+        plane_azimuth_deg = (
+            round(math.degrees(math.atan2(plane_a, plane_b)) % 360.0, 2)
+            if plane_slope_mag > 1e-7
+            else 0.0
+        )
 
         # High-resolution integration grid inside bounding box (adaptive 28..64 cells per axis)
         span_box_e = max(max_e - min_e, 0.25)
@@ -1127,6 +1193,8 @@ class DsmAndVolumeMixin:
                     z_base = datum_z
                 elif base_mode == "lowest_point":
                     z_base = min((p[2] for p in perim_samples), default=datum_z)
+                elif base_mode == "best_fit_plane":
+                    z_base = plane_a * (gx - p_mean_e) + plane_b * (gy - p_mean_n) + plane_c0
                 elif base_mode == "epoch_diff" and dsm_cmp is not None:
                     z_base, _, _, _ = self._sample_dsm_elevation(dsm_cmp, gx, gy)
                 else:
@@ -1180,12 +1248,90 @@ class DsmAndVolumeMixin:
         net_vol = fill_vol - cut_vol
 
         mat_info = MATERIAL_CATALOG.get(material_key, MATERIAL_CATALOG["crushed_stone"])
-        density = float(custom_density) if custom_density is not None else float(mat_info["density_t_m3"])
-        swell = float(mat_info["swell_factor"])
+        density = custom_density if custom_density is not None else safe_float(mat_info.get("density_t_m3"), 1.65)
+        if density is None or density <= 0.0:
+            density = 1.65
+
+        # Swell factor handling (expansion ratio >= 1.0)
+        raw_swell = payload.get("swell_factor")
+        sw = safe_float(raw_swell)
+        if sw is not None and sw > 0.0:
+            if 0.0 < sw < 0.5:
+                swell_mult = 1.0 + sw
+            elif 0.5 <= sw < 1.0:
+                swell_mult = 1.0 / sw
+            elif sw >= 1.0:
+                swell_mult = sw
+            else:
+                swell_mult = 1.0
+        else:
+            base_sw = safe_float(mat_info.get("swell_factor", 0.88), 0.88)
+            if base_sw is None or base_sw <= 0.0:
+                base_sw = 0.88
+            swell_mult = 1.0 / base_sw if 0.0 < base_sw < 1.0 else (base_sw if base_sw >= 1.0 else 1.15)
+
+        # Compaction / Shrinkage factor handling
+        raw_shrink = payload.get("shrinkage_factor")
+        sh = safe_float(raw_shrink)
+        if sh is not None and sh >= 0.0:
+            if 0.0 <= sh <= 0.5:
+                compaction_mult = 1.0 - sh
+            elif 0.5 < sh <= 1.0:
+                compaction_mult = sh
+            elif 1.0 < sh <= 50.0:
+                compaction_mult = 1.0 - (sh / 100.0)
+            else:
+                compaction_mult = 0.90
+        else:
+            sh_cat = safe_float(mat_info.get("shrinkage_factor", 0.10), 0.10)
+            if sh_cat is None:
+                sh_cat = 0.10
+            compaction_mult = 1.0 - sh_cat if 0.0 <= sh_cat <= 0.5 else (sh_cat if sh_cat > 0.5 else 0.90)
+
+        cut_vol_bcm = round(cut_vol, 2)
+        fill_vol_bcm = round(fill_vol, 2)
+        net_vol_bcm = round(net_vol, 2)
+        cut_vol_lcm = round(cut_vol * swell_mult, 2)
+        fill_vol_ccm = round(fill_vol * compaction_mult, 2)
+        conserved_cut_mass = round(cut_vol * density, 2)
+        conserved_fill_mass = round(fill_vol * density, 2)
 
         effective_m3 = fill_vol if fill_vol >= cut_vol else cut_vol
         tonnage_loose = effective_m3 * density
-        tonnage_bank = effective_m3 * density * swell
+        tonnage_bank = effective_m3 * density * (1.0 / swell_mult)
+
+        # Dump Truck Load Estimator (Volume-limited vs Weight-limited)
+        truck_vol = safe_float(payload.get("truck_volume_m3"), 15.0)
+        if truck_vol is None or truck_vol <= 0.0:
+            truck_vol = 15.0
+        truck_max_wt = safe_float(payload.get("truck_max_tonnes"), 20.0)
+        if truck_max_wt is None or truck_max_wt <= 0.0:
+            truck_max_wt = 20.0
+        trips_vol = cut_vol_lcm / max(truck_vol, 0.1)
+        trips_wt = conserved_cut_mass / max(truck_max_wt, 0.1)
+        truck_loads_cut = int(math.ceil(max(trips_vol, trips_wt))) if cut_vol > 0 else 0
+        truck_limiting_factor = "weight" if trips_wt > trips_vol else "volume"
+
+        fill_lcm = fill_vol * swell_mult
+        trips_fill_vol = fill_lcm / max(truck_vol, 0.1)
+        trips_fill_wt = conserved_fill_mass / max(truck_max_wt, 0.1)
+        truck_loads_fill = int(math.ceil(max(trips_fill_vol, trips_fill_wt))) if fill_vol > 0 else 0
+
+        if cut_vol > fill_vol:
+            net_cut_bcm = cut_vol - fill_vol
+            net_trips_vol = (net_cut_bcm * swell_mult) / max(truck_vol, 0.1)
+            net_trips_wt = (net_cut_bcm * density) / max(truck_max_wt, 0.1)
+            net_truck_loads = int(math.ceil(max(net_trips_vol, net_trips_wt))) if net_cut_bcm > 0 else 0
+            net_haul_direction = "export"
+        elif fill_vol > cut_vol:
+            net_fill_bcm = fill_vol - cut_vol
+            net_trips_vol = (net_fill_bcm * swell_mult) / max(truck_vol, 0.1)
+            net_trips_wt = (net_fill_bcm * density) / max(truck_max_wt, 0.1)
+            net_truck_loads = int(math.ceil(max(net_trips_vol, net_trips_wt))) if net_fill_bcm > 0 else 0
+            net_haul_direction = "import"
+        else:
+            net_truck_loads = 0
+            net_haul_direction = "balanced"
 
         ts_id = int(time.time())
         report_base = f"stockpile_report_{scan_id}_{ts_id}"
@@ -1210,12 +1356,44 @@ class DsmAndVolumeMixin:
             "fill_volume_m3": round(fill_vol, 2),
             "cut_volume_m3": round(cut_vol, 2),
             "net_volume_m3": round(net_vol, 2),
+            # Standardized Earthwork Mass Conservation Schedule (M1 Contract)
+            "cut_volume_bcm": cut_vol_bcm,
+            "fill_volume_bcm": fill_vol_bcm,
+            "net_volume_bcm": net_vol_bcm,
+            "cut_volume_lcm": cut_vol_lcm,
+            "fill_volume_ccm": fill_vol_ccm,
+            "conserved_cut_mass_t": conserved_cut_mass,
+            "conserved_fill_mass_t": conserved_fill_mass,
+            "truck_loads_cut": truck_loads_cut,
+            "truck_loads_fill": truck_loads_fill,
+            "truck_limiting_factor": truck_limiting_factor,
+            "net_haul_direction": net_haul_direction,
+            "net_truck_loads": net_truck_loads,
+            "truck_volume_m3": round(truck_vol, 1),
+            "truck_max_tonnes": round(truck_max_wt, 1),
+            "truck_specs": {
+                "capacity_m3": round(truck_vol, 1),
+                "max_payload_tonnes": round(truck_max_wt, 1),
+            },
+            "geoid_offset_override": geoid_offset_override,
+            "geoid_offset_m": geoid_offset_override if geoid_offset_override is not None else 17.20,
+            "best_fit_plane": {
+                "a": round(plane_a, 6),
+                "b": round(plane_b, 6),
+                "c": round(plane_c, 4),
+                "c0": round(plane_c0, 4),
+                "e0": round(p_mean_e, 3),
+                "n0": round(p_mean_n, 3),
+                "slope_pct": plane_slope_pct,
+                "slope_deg": plane_slope_deg,
+                "azimuth_deg": plane_azimuth_deg,
+            },
             "max_delta_z_m": round(max_dz if max_dz > -1e8 else 0.0, 2),
             "min_delta_z_m": round(min_dz if min_dz < 1e8 else 0.0, 2),
             "material_key": material_key,
             "material_name": mat_info["name"],
             "density_t_m3": round(density, 2),
-            "swell_factor": round(swell, 2),
+            "swell_factor": round(float(mat_info.get("swell_factor", 0.88)), 2),
             "estimated_tonnage_t": round(tonnage_loose, 2),
             "bank_tonnage_t": round(tonnage_bank, 2),
             "boundary_twd97": [
@@ -1260,6 +1438,20 @@ class DsmAndVolumeMixin:
             writer.writerow(["Fill / Stockpile Volume (+)", data["fill_volume_m3"], "m³"])
             writer.writerow(["Cut / Excavation Volume (-)", data["cut_volume_m3"], "m³"])
             writer.writerow(["Net Earthwork Volume", data["net_volume_m3"], "m³"])
+            writer.writerow(["Bank Cut Volume (BCM)", data.get("cut_volume_bcm", data["cut_volume_m3"]), "m³"])
+            writer.writerow(["Bank Fill Volume (BCM)", data.get("fill_volume_bcm", data["fill_volume_m3"]), "m³"])
+            writer.writerow(["Loose Cut Volume (LCM)", data.get("cut_volume_lcm", 0.0), "m³"])
+            writer.writerow(["Compacted Fill Volume (CCM)", data.get("fill_volume_ccm", 0.0), "m³"])
+            writer.writerow(["Conserved Cut Mass", data.get("conserved_cut_mass_t", data["estimated_tonnage_t"]), "tonnes (公噸)"])
+            writer.writerow(["Conserved Fill Mass", data.get("conserved_fill_mass_t", 0.0), "tonnes (公噸)"])
+            writer.writerow(["Dump Truck Cut Trips", data.get("truck_loads_cut", 0), "loads"])
+            writer.writerow(["Truck Limiting Constraint", data.get("truck_limiting_factor", "volume"), ""])
+            writer.writerow(["Net Haul Direction", data.get("net_haul_direction", "balanced"), ""])
+            writer.writerow(["Net Truck Trips", data.get("net_truck_loads", 0), "loads"])
+            if data.get("best_fit_plane"):
+                bfp = data["best_fit_plane"]
+                writer.writerow(["Best-Fit Plane Slope (%)", bfp.get("slope_pct", 0.0), "%"])
+                writer.writerow(["Best-Fit Plane Azimuth", bfp.get("azimuth_deg", 0.0), "deg"])
             writer.writerow(["2D Planar Footprint Area", data["planar_area_m2"], "m²"])
             writer.writerow(["2D Planar Footprint Area (Ping)", data["planar_area_ping"], "坪"])
             writer.writerow(["3D Sloped Surface Area", data["surface_area_m2"], "m²"])
@@ -1581,6 +1773,8 @@ class DsmAndVolumeMixin:
             or payload.get("gcps")
             or []
         )
+        geoid_override_raw = payload.get("geoid_offset_override") if payload.get("geoid_offset_override") is not None else payload.get("h_offset_from_twvd")
+        geoid_offset_override = safe_float(geoid_override_raw)
         evaluated: List[Dict[str, Any]] = []
 
         if not isinstance(raw_pts, list) or len(raw_pts) == 0:
@@ -1651,6 +1845,9 @@ class DsmAndVolumeMixin:
                 h_scan = float(sampled_h)
             else:
                 h_scan = float(h_gcp + 0.012 * math.sin(idx + 1))
+
+            if geoid_offset_override is not None:
+                h_scan = h_scan - geoid_offset_override
 
             dz_m = round(h_scan - h_gcp, 4)
             dz_cm = round(dz_m * 100.0, 2)
@@ -1791,6 +1988,8 @@ class DsmAndVolumeMixin:
 
         return {
             "status": "ok",
+            "geoid_offset_override": geoid_offset_override,
+            "geoid_offset_applied": bool(geoid_offset_override is not None),
             "scan_id": scan_id,
             "scan_name": scan.get("name") or scan_id,
             "crs": TWD97_TWVD2001_LABEL,

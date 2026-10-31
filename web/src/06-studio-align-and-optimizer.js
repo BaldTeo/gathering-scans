@@ -42,7 +42,7 @@
       fe: 500000.0,
       k0: 0.9996,
       fInv: 298.257223563,
-      hOff: 20.6,
+      hOff: 17.20,
     },
     {
       code: "WGS84_UTM50N",
@@ -53,7 +53,7 @@
       fe: 500000.0,
       k0: 0.9996,
       fInv: 298.257223563,
-      hOff: 19.8,
+      hOff: 16.80,
     },
     {
       code: "LOCAL_ORIGIN",
@@ -158,7 +158,7 @@
     );
   }
 
-  function previewTargetCrsCenterJS(scanObj, targetCode, offX = 0, offY = 0, offZ = 0) {
+  function previewTargetCrsCenterJS(scanObj, targetCode, offX = 0, offY = 0, offZ = 0, geoidOverride = null) {
     const s = scanObj || STATE.activeScan || {};
     const srcCode = inferActiveScanCrsCode(s);
     const srcDef = CRS_UI_CATALOG.find((c) => c.code === srcCode) || CRS_UI_CATALOG[0];
@@ -166,10 +166,17 @@
     const ce = s.twd97_e !== undefined && s.twd97_e !== null ? Number(s.twd97_e) : 0;
     const cn = s.twd97_n !== undefined && s.twd97_n !== null ? Number(s.twd97_n) : 0;
     const ch = s.twd97_h !== undefined && s.twd97_h !== null ? Number(s.twd97_h) : 0;
-    const twvdH = ch - (srcDef.hOff || 0);
+    const effectiveTgtHoff = (geoidOverride !== null && Number.isFinite(Number(geoidOverride)))
+      ? Number(geoidOverride)
+      : (tgtDef.hOff || 0);
+    const effectiveSrcHoff = srcDef.hOff || 0;
+    const twvdH = ch - effectiveSrcHoff;
 
     if (tgtDef.code === srcCode) {
-      return { x: ce + offX, y: cn + offY, z: ch + offZ, crsLabel: getCrsItemShortLabel(tgtDef) };
+      const zVal = (geoidOverride !== null && Number.isFinite(Number(geoidOverride)))
+        ? twvdH + effectiveTgtHoff + offZ
+        : ch + offZ;
+      return { x: ce + offX, y: cn + offY, z: zVal, crsLabel: getCrsItemShortLabel(tgtDef) };
     }
     if (tgtDef.kind === "local") {
       return { x: 0 + offX, y: 0 + offY, z: 0 + offZ, crsLabel: getCrsItemShortLabel(tgtDef) };
@@ -189,7 +196,7 @@
     return {
       x: en.e + offX,
       y: en.n + offY,
-      z: twvdH + (tgtDef.hOff || 0) + offZ,
+      z: twvdH + effectiveTgtHoff + offZ,
       crsLabel: getCrsItemShortLabel(tgtDef),
     };
   }
@@ -383,14 +390,16 @@
     const crsItem = st.crsConfig
       ? CRS_UI_CATALOG.find((c) => c.code === st.crsConfig.target_crs) || CRS_UI_CATALOG[0]
       : null;
+    const hasGeoidOverride = st.crsConfig && st.crsConfig.geoid_offset_override !== undefined && st.crsConfig.geoid_offset_override !== null;
     const crsOffText =
       st.crsConfig &&
       (Math.abs(st.crsConfig.offset_x || 0) > 1e-4 ||
         Math.abs(st.crsConfig.offset_y || 0) > 1e-4 ||
-        Math.abs(st.crsConfig.offset_z || 0) > 1e-4)
-        ? ` + Δ ${Number(st.crsConfig.offset_x).toFixed(2)}, ${Number(st.crsConfig.offset_y).toFixed(2)}, ${Number(
-            st.crsConfig.offset_z
-          ).toFixed(2)} m`
+        Math.abs(st.crsConfig.offset_z || 0) > 1e-4 ||
+        hasGeoidOverride)
+        ? ` + Δ ${Number(st.crsConfig.offset_x || 0).toFixed(2)}, ${Number(st.crsConfig.offset_y || 0).toFixed(2)}, ${Number(
+            st.crsConfig.offset_z || 0
+          ).toFixed(2)} m${hasGeoidOverride ? ` · N=${Number(st.crsConfig.geoid_offset_override).toFixed(2)}m` : ""}`
         : "";
 
     const itemsHtml = [];
@@ -1435,6 +1444,10 @@
     const initOffX = Number(st.crsConfig?.offset_x || 0);
     const initOffY = Number(st.crsConfig?.offset_y || 0);
     const initOffZ = Number(st.crsConfig?.offset_z || 0);
+    const defTgt = CRS_UI_CATALOG.find((c) => c.code === selectedCode) || CRS_UI_CATALOG[0];
+    const initGeoidOff = (st.crsConfig?.geoid_offset_override !== undefined && st.crsConfig?.geoid_offset_override !== null)
+      ? Number(st.crsConfig.geoid_offset_override)
+      : (defTgt.hOff || 0.0);
 
     const curE = scan.twd97_e !== undefined && scan.twd97_e !== null ? Number(scan.twd97_e) : 0;
     const curN = scan.twd97_n !== undefined && scan.twd97_n !== null ? Number(scan.twd97_n) : 0;
@@ -1470,6 +1483,19 @@
           </div>
         </div>
 
+        <div class="gs-form-group" style="margin-bottom:8px;">
+          <label style="display:flex;justify-content:space-between;align-items:center;">
+            <span>${tr("大地起伏 / 水準面分離量 N · 公尺", "Geoid Undulation N / Vertical Offset · m")}</span>
+            <button type="button" class="gs-btn-ghost" id="btnResetGeoidOffset" style="font-size:10.5px;padding:1px 6px;cursor:pointer;" title="${tr("還原為標準目錄值", "Reset to catalog standard")}">
+              ↺ ${tr("還原目錄值", "Reset Catalog")}
+            </button>
+          </label>
+          <input type="number" step="0.01" class="gs-input" id="numGeoidOffset" value="${initGeoidOff.toFixed(2)}" placeholder="17.20" title="${tr("WGS84 橢球高 h 與 TWVD2001 正高 H: h = H + N", "WGS84 Ellipsoidal h vs TWVD2001 Orthometric H: h = H + N")}" />
+          <div style="font-size:10px;color:var(--ui-text-muted);margin-top:2px;">
+            ${tr("標準目錄：UTM51N=17.20m, UTM50N=16.80m, TWD97=0.00m · 可依現場 RTK 水準基準自訂", "Standard: UTM51N=17.20m, UTM50N=16.80m, TWD97=0.00m · Editable per site RTK")}
+          </div>
+        </div>
+
         <div id="lblCrsTargetPreview" style="font-size:11px;color:var(--ui-accent);background:var(--ui-bg-surface);border:1px solid var(--ui-border);border-radius:6px;padding:7px 8px;margin-bottom:9px;"></div>
 
         <button type="button" class="gs-top-btn accent" style="width:100%;justify-content:center;padding:8px 12px;font-weight:700;" id="btnStageCrs">
@@ -1486,7 +1512,9 @@
       const ox = Number(document.getElementById("numCrsOffsetX")?.value || 0);
       const oy = Number(document.getElementById("numCrsOffsetY")?.value || 0);
       const oz = Number(document.getElementById("numCrsOffsetZ")?.value || 0);
-      const prev = previewTargetCrsCenterJS(scan, code, ox, oy, oz);
+      const geoidRaw = document.getElementById("numGeoidOffset")?.value;
+      const geoidVal = (geoidRaw !== undefined && geoidRaw !== null && String(geoidRaw).trim() !== "") ? Number(geoidRaw) : null;
+      const prev = previewTargetCrsCenterJS(scan, code, ox, oy, oz, geoidVal);
       const previewEl = document.getElementById("lblCrsTargetPreview");
       const stageBtn = document.getElementById("btnStageCrs");
       if (prev.error) {
@@ -1505,17 +1533,42 @@
     };
     updatePreviewBox();
 
-    ["selTargetCrs", "numCrsOffsetX", "numCrsOffsetY", "numCrsOffsetZ"].forEach((id) => {
+    ["numCrsOffsetX", "numCrsOffsetY", "numCrsOffsetZ"].forEach((id) => {
       document.getElementById(id)?.addEventListener("input", updatePreviewBox);
       document.getElementById(id)?.addEventListener("change", updatePreviewBox);
     });
+
+    document.getElementById("selTargetCrs")?.addEventListener("change", (e) => {
+      const code = e.target.value;
+      const item = CRS_UI_CATALOG.find((c) => c.code === code);
+      const geoidInput = document.getElementById("numGeoidOffset");
+      if (geoidInput && item) {
+        geoidInput.value = Number(item.hOff || 0.0).toFixed(2);
+      }
+      updatePreviewBox();
+    });
+
+    document.getElementById("btnResetGeoidOffset")?.addEventListener("click", () => {
+      const code = document.getElementById("selTargetCrs")?.value || curCode;
+      const item = CRS_UI_CATALOG.find((c) => c.code === code);
+      const geoidInput = document.getElementById("numGeoidOffset");
+      if (geoidInput && item) {
+        geoidInput.value = Number(item.hOff || 0.0).toFixed(2);
+      }
+      updatePreviewBox();
+    });
+
+    document.getElementById("numGeoidOffset")?.addEventListener("input", updatePreviewBox);
+    document.getElementById("numGeoidOffset")?.addEventListener("change", updatePreviewBox);
 
     document.getElementById("btnStageCrs")?.addEventListener("click", () => {
       const code = document.getElementById("selTargetCrs")?.value || curCode;
       const ox = Number(document.getElementById("numCrsOffsetX")?.value || 0);
       const oy = Number(document.getElementById("numCrsOffsetY")?.value || 0);
       const oz = Number(document.getElementById("numCrsOffsetZ")?.value || 0);
-      const prev = previewTargetCrsCenterJS(scan, code, ox, oy, oz);
+      const geoidRaw = document.getElementById("numGeoidOffset")?.value;
+      const geoidVal = (geoidRaw !== undefined && geoidRaw !== null && String(geoidRaw).trim() !== "") ? Number(geoidRaw) : null;
+      const prev = previewTargetCrsCenterJS(scan, code, ox, oy, oz, geoidVal);
       if (prev.error) {
         showToast(prev.error);
         return;
@@ -1525,6 +1578,8 @@
         offset_x: ox,
         offset_y: oy,
         offset_z: oz,
+        geoid_offset_override: (geoidVal !== null && Number.isFinite(geoidVal)) ? geoidVal : null,
+        h_offset_from_twvd: (geoidVal !== null && Number.isFinite(geoidVal)) ? geoidVal : null,
       };
       syncStagedEditsDockBadge();
       const item = CRS_UI_CATALOG.find((c) => c.code === code);
