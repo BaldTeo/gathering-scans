@@ -940,15 +940,17 @@ body.theme-dark .gs-util-input {
   box-shadow: 0 0 0 2px var(--ui-accent-soft, rgba(37, 99, 235, 0.15));
 }
 
-/* Sleek modern buttons for Utilities & Subsurface GIS panel */
-.gs-btn {
+/* Sleek modern buttons for Utilities & Subsurface GIS and Construction QA panels */
+.gs-btn,
+.gs-util-panel-container .btn-xs,
+.gs-qa-container .btn-xs {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 5px;
   height: 28px;
-  padding: 0 10px;
-  border-radius: 6px;
+  padding: 0 11px;
+  border-radius: 7px;
   font-family: inherit;
   font-size: 11px;
   font-weight: 600;
@@ -956,72 +958,95 @@ body.theme-dark .gs-util-input {
   white-space: nowrap;
   cursor: pointer;
   border: 1px solid var(--ui-border-strong, rgba(15, 23, 42, 0.14));
-  background: var(--ui-bg-pill, #f1f5f9);
+  background: linear-gradient(180deg, var(--ui-bg-surface, #ffffff) 0%, var(--ui-bg-pill, #f1f5f9) 100%);
   color: var(--ui-text, #0f172a);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.05);
   transition: all 0.15s cubic-bezier(0.16, 1, 0.3, 1);
   box-sizing: border-box;
 }
 
 html[data-theme="dark"] .gs-btn,
-body.theme-dark .gs-btn {
-  background: var(--ui-bg-pill, rgba(30, 41, 59, 0.7));
+body.theme-dark .gs-btn,
+html[data-theme="dark"] .gs-util-panel-container .btn-xs,
+body.theme-dark .gs-util-panel-container .btn-xs,
+html[data-theme="dark"] .gs-qa-container .btn-xs,
+body.theme-dark .gs-qa-container .btn-xs {
+  background: linear-gradient(180deg, rgba(30, 41, 59, 0.85) 0%, rgba(15, 23, 42, 0.9) 100%);
   border-color: var(--ui-border-strong, rgba(255, 255, 255, 0.16));
   color: var(--ui-text, #f8fafc);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
 }
 
-.gs-btn:hover:not(:disabled) {
-  background: var(--ui-bg-hover, rgba(15, 23, 42, 0.06));
-  border-color: var(--ui-text-muted, #64748b);
-  color: var(--ui-text, #0f172a);
+.gs-btn:hover:not(:disabled),
+.gs-util-panel-container .btn-xs:hover:not(:disabled),
+.gs-qa-container .btn-xs:hover:not(:disabled) {
+  background: var(--ui-bg-hover, rgba(37, 99, 235, 0.06));
+  border-color: var(--ui-accent, #2563eb);
+  color: var(--ui-accent, #2563eb);
   transform: translateY(-0.5px);
+  box-shadow: 0 2px 5px rgba(37, 99, 235, 0.12);
 }
 
 html[data-theme="dark"] .gs-btn:hover:not(:disabled),
-body.theme-dark .gs-btn:hover:not(:disabled) {
-  background: var(--ui-bg-hover, rgba(255, 255, 255, 0.1));
+body.theme-dark .gs-btn:hover:not(:disabled),
+html[data-theme="dark"] .gs-util-panel-container .btn-xs:hover:not(:disabled),
+body.theme-dark .gs-util-panel-container .btn-xs:hover:not(:disabled),
+html[data-theme="dark"] .gs-qa-container .btn-xs:hover:not(:disabled),
+body.theme-dark .gs-qa-container .btn-xs:hover:not(:disabled) {
+  background: rgba(59, 130, 246, 0.16);
+  border-color: rgba(96, 165, 250, 0.6);
   color: #ffffff;
 }
 
-.gs-btn:active:not(:disabled) {
+.gs-btn:active:not(:disabled),
+.gs-util-panel-container .btn-xs:active:not(:disabled),
+.gs-qa-container .btn-xs:active:not(:disabled) {
   transform: translateY(0);
 }
 
-.gs-btn:disabled {
+.gs-btn:disabled,
+.gs-util-panel-container .btn-xs:disabled,
+.gs-qa-container .btn-xs:disabled {
   opacity: 0.55;
   cursor: not-allowed;
 }
 
-.gs-btn-primary {
-  background: var(--ui-accent, #2563eb) !important;
+.gs-btn-primary,
+.gs-util-panel-container .btn-xs.primary,
+.gs-qa-container .btn-xs.primary {
+  background: linear-gradient(180deg, #3b82f6 0%, var(--ui-accent, #2563eb) 100%) !important;
   border-color: var(--ui-accent, #2563eb) !important;
   color: #ffffff !important;
-  box-shadow: 0 1px 2px rgba(37, 99, 235, 0.2);
+  box-shadow: 0 1px 3px rgba(37, 99, 235, 0.28);
 }
 
-.gs-btn-primary:hover:not(:disabled) {
-  background: var(--ui-accent-hover, #1d4ed8) !important;
+.gs-btn-primary:hover:not(:disabled),
+.gs-util-panel-container .btn-xs.primary:hover:not(:disabled),
+.gs-qa-container .btn-xs.primary:hover:not(:disabled) {
+  background: linear-gradient(180deg, #2563eb 0%, var(--ui-accent-hover, #1d4ed8) 100%) !important;
   border-color: var(--ui-accent-hover, #1d4ed8) !important;
   color: #ffffff !important;
+  box-shadow: 0 2px 6px rgba(37, 99, 235, 0.36);
 }
 
 .gs-btn-sm {
   height: 24px;
   padding: 0 8px;
   font-size: 10.5px;
-  border-radius: 5px;
+  border-radius: 6px;
 }
 
 .gs-btn-text {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 2px 7px;
-  border-radius: 5px;
+  padding: 2px 8px;
+  border-radius: 6px;
   font-family: inherit;
   font-size: 10px;
   font-weight: 600;
   cursor: pointer;
-  border: 1px solid var(--ui-border, rgba(15, 23, 42, 0.08));
+  border: 1px solid var(--ui-border, rgba(15, 23, 42, 0.1));
   background: var(--ui-bg-pill, #f1f5f9);
   color: var(--ui-text-secondary, #475569);
   transition: all 0.12s ease;
@@ -1030,7 +1055,7 @@ body.theme-dark .gs-btn:hover:not(:disabled) {
 html[data-theme="dark"] .gs-btn-text,
 body.theme-dark .gs-btn-text {
   background: var(--ui-bg-pill, rgba(30, 41, 59, 0.7));
-  border-color: var(--ui-border, rgba(255, 255, 255, 0.09));
+  border-color: var(--ui-border, rgba(255, 255, 255, 0.12));
   color: var(--ui-text-secondary, #cbd5e1);
 }
 
@@ -1038,6 +1063,39 @@ body.theme-dark .gs-btn-text {
   background: var(--ui-accent-soft, rgba(37, 99, 235, 0.1));
   border-color: var(--ui-accent, #2563eb);
   color: var(--ui-accent, #2563eb);
+}
+
+.gs-util-cache-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 7px;
+  border-radius: 999px;
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  border: 1px solid rgba(16, 185, 129, 0.35);
+  background: rgba(16, 185, 129, 0.12);
+  color: #059669;
+}
+
+html[data-theme="dark"] .gs-util-cache-pill,
+body.theme-dark .gs-util-cache-pill {
+  border-color: rgba(52, 211, 153, 0.35);
+  background: rgba(16, 185, 129, 0.18);
+  color: #34d399;
+}
+
+.gs-util-cache-pill.live {
+  border-color: rgba(59, 130, 246, 0.35);
+  background: rgba(59, 130, 246, 0.12);
+  color: #2563eb;
+}
+
+html[data-theme="dark"] .gs-util-cache-pill.live,
+body.theme-dark .gs-util-cache-pill.live {
+  border-color: rgba(96, 165, 250, 0.35);
+  background: rgba(59, 130, 246, 0.18);
+  color: #60a5fa;
 }
 
 .gs-util-panel-container input[type="range"] {

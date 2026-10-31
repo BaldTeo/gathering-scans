@@ -312,6 +312,11 @@ def _enrich_feature_gov_links(feat: Dict[str, Any], ce: float, cn: float) -> Dic
     lyr = str(feat.get("layer") or "storm")
     is_taipei_city = (mx >= 299500.0 and my >= 2765000.0)
 
+    if lyr == "as_built" or feat.get("origin_class") == "user_or_scan_to_bim":
+        feat["origin_class"] = "user_or_scan_to_bim"
+    else:
+        feat["origin_class"] = "api_open_data"
+
     # Extract OSM element links if backed by OpenStreetMap node or way, else direct coordinate map link
     m_way = re.search(r"(?:osm_waterway_|osm_power_|road_[a-z]+_)(\d+)", fid)
     m_node = re.search(r"osm_(?:hydrant|elec_pt|lamp|sluice|duct_pt)_(\d+)", fid)
@@ -620,14 +625,32 @@ class PublicUtilitiesGISMixin:
         # Build local road/ground elevation sampler in TWVD2001
         sample_ground_z, cat_data, base_ground_z = self._build_ground_elevation_sampler(scan_id, scan, ce, cn, ch)
 
-        # Check local v3 cache for genuine responses
+        # Check local v3 cache for genuine responses (exact radius cache first, then scan master cache / project_dir cache)
         safe_sid = "".join(c if c.isalnum() or c in "_-" else "_" for c in (scan_id or f"pt_{int(ce)}_{int(cn)}"))
         cache_file = os.path.join(UTILITIES_CACHE_DIR, f"{safe_sid}_{int(radius_m)}m_v3.json")
+        master_cache_file = os.path.join(UTILITIES_CACHE_DIR, f"{safe_sid}_master_v3.json")
+        scan_dir_cache_file = ""
+        proj_dir = str((scan or {}).get("project_dir") or "").strip()
+        if proj_dir and os.path.isdir(proj_dir):
+            scan_dir_cache_file = os.path.join(proj_dir, "_utilities_cache_v3.json")
 
-        if not force_refresh and os.path.exists(cache_file):
-            try:
-                with open(cache_file, "r", encoding="utf-8") as f:
-                    cached_data = json.load(f)
+        if not force_refresh:
+            candidate_files: List[Tuple[str, bool]] = []
+            if os.path.isfile(cache_file):
+                candidate_files.append((cache_file, True))
+            if os.path.isfile(master_cache_file):
+                candidate_files.append((master_cache_file, False))
+            if scan_dir_cache_file and os.path.isfile(scan_dir_cache_file):
+                candidate_files.append((scan_dir_cache_file, False))
+            for fallback_r in (250, 200, 150, 120, 100, 60):
+                fb_fp = os.path.join(UTILITIES_CACHE_DIR, f"{safe_sid}_{fallback_r}m_v3.json")
+                if os.path.isfile(fb_fp) and fb_fp != cache_file:
+                    candidate_files.append((fb_fp, fallback_r == int(radius_m)))
+
+            for cand_fp, is_exact_radius in candidate_files:
+                try:
+                    with open(cand_fp, "r", encoding="utf-8") as f:
+                        cached_data = json.load(f)
                     c_center = (cached_data or {}).get("center") or {}
                     center_match = (
                         abs(safe_float(c_center.get("e"), ce) - ce) <= 8.0
@@ -641,11 +664,19 @@ class PublicUtilitiesGISMixin:
                     ):
                         raw_features = cached_data["features"]
                         req_set = set(requested_layers)
-                        filtered_features = [
-                            _enrich_feature_gov_links(f_item, ce, cn)
-                            for f_item in raw_features
-                            if f_item.get("layer") in req_set
-                        ]
+                        filtered_features = self._filter_cached_utilities_to_radius(
+                            raw_features=raw_features,
+                            req_set=req_set,
+                            ce=ce,
+                            cn=cn,
+                            xmin=xmin,
+                            ymin=ymin,
+                            xmax=xmax,
+                            ymax=ymax,
+                            radius_m=radius_m,
+                            is_exact_radius=is_exact_radius,
+                            sample_ground_z=sample_ground_z,
+                        )
                         layer_counts = {k: 0 for k in UTILITY_LAYERS.keys()}
                         total_pipe_length_m = 0.0
                         total_structures = 0
@@ -659,6 +690,8 @@ class PublicUtilitiesGISMixin:
                                 total_structures += 1
 
                         filtered_res = dict(cached_data)
+                        filtered_res["radius_m"] = radius_m
+                        filtered_res["bbox"] = {"xmin": xmin, "ymin": ymin, "xmax": xmax, "ymax": ymax}
                         filtered_res["features"] = filtered_features
                         filtered_res["layer_counts"] = layer_counts
                         filtered_res["total_features"] = len(filtered_features)
@@ -666,8 +699,8 @@ class PublicUtilitiesGISMixin:
                         filtered_res["total_structures"] = total_structures
                         filtered_res["cached"] = True
                         return filtered_res
-            except Exception:
-                pass
+                except Exception:
+                    pass
 
         all_features: List[Dict[str, Any]] = []
 
@@ -740,7 +773,9 @@ class PublicUtilitiesGISMixin:
                     }
                     for in_f in (inner_doc.get("features") or []):
                         fid_in = str(in_f.get("id") or "")
-                        if fid_in.startswith("scan_") and len(all_features) > 0:
+                        if fid_in.startswith("scan_"):
+                            continue
+                        if in_f.get("layer") == "as_built" and in_f.get("origin_class") != "user_or_scan_to_bim":
                             continue
                         fno_key = (str(in_f.get("layer") or ""), str(in_f.get("facility_no") or ""))
                         if fid_in not in seen_ids and (not in_f.get("facility_no") or fno_key not in seen_fnos):
@@ -753,7 +788,13 @@ class PublicUtilitiesGISMixin:
 
         # Filter to requested layers, attach official Government GIS links, and compute layer statistics
         req_set = set(requested_layers)
-        all_features = [_enrich_feature_gov_links(f, ce, cn) for f in all_features if f.get("layer") in req_set]
+        all_features = [
+            _enrich_feature_gov_links(f, ce, cn)
+            for f in all_features
+            if f.get("layer") in req_set
+            and not str(f.get("id") or "").startswith("scan_")
+            and (f.get("layer") != "as_built" or f.get("origin_class") == "user_or_scan_to_bim")
+        ]
 
         layer_counts = {k: 0 for k in UTILITY_LAYERS.keys()}
         total_pipe_length_m = 0.0
@@ -786,7 +827,7 @@ class PublicUtilitiesGISMixin:
             "cached": False,
         }
 
-        # Save to v3 cache if features found
+        # Save to v3 cache and scan master cache if features found
         if all_features:
             try:
                 merged_features = list(all_features)
@@ -799,6 +840,8 @@ class PublicUtilitiesGISMixin:
                                     _enrich_feature_gov_links(f, ce, cn)
                                     for f in prev_data["features"]
                                     if f.get("layer") not in req_set
+                                    and not str(f.get("id") or "").startswith("scan_")
+                                    and (f.get("layer") != "as_built" or f.get("origin_class") == "user_or_scan_to_bim")
                                 ]
                                 merged_features.extend(existing_unqueried)
                     except Exception:
@@ -825,10 +868,142 @@ class PublicUtilitiesGISMixin:
 
                 with open(cache_file, "w", encoding="utf-8") as f:
                     json.dump(cache_payload, f, ensure_ascii=False, indent=2)
+
+                # Also update master scan cache (<safe_sid>_master_v3.json and <scan_dir>/_utilities_cache_v3.json)
+                should_update_master = not os.path.isfile(master_cache_file) or radius_m >= 200.0
+                if not should_update_master and os.path.isfile(master_cache_file):
+                    try:
+                        with open(master_cache_file, "r", encoding="utf-8") as mf:
+                            m_prev = json.load(mf)
+                        if radius_m >= float((m_prev or {}).get("radius_m") or 0.0):
+                            should_update_master = True
+                    except Exception:
+                        should_update_master = True
+
+                if should_update_master:
+                    with open(master_cache_file, "w", encoding="utf-8") as mf:
+                        json.dump(cache_payload, mf, ensure_ascii=False, indent=2)
+                    if scan_dir_cache_file:
+                        try:
+                            with open(scan_dir_cache_file, "w", encoding="utf-8") as sdf:
+                                json.dump(cache_payload, sdf, ensure_ascii=False, indent=2)
+                        except Exception:
+                            pass
             except Exception:
                 pass
 
         return result
+
+    def _filter_cached_utilities_to_radius(
+        self,
+        raw_features: List[Dict[str, Any]],
+        req_set: set,
+        ce: float,
+        cn: float,
+        xmin: float,
+        ymin: float,
+        xmax: float,
+        ymax: float,
+        radius_m: float,
+        is_exact_radius: bool,
+        sample_ground_z: Callable[[float, float], float],
+    ) -> List[Dict[str, Any]]:
+        """Filters and clips cached scan utilities to any requested radius_m without external HTTP calls."""
+        out: List[Dict[str, Any]] = []
+        cxmin, cymin, cxmax, cymax = xmin - 4.0, ymin - 4.0, xmax + 4.0, ymax + 4.0
+        pxmin, pymin, pxmax, pymax = xmin - 12.0, ymin - 12.0, xmax + 12.0, ymax + 12.0
+        sxmin, symin, sxmax, symax = xmin - 15.0, ymin - 15.0, xmax + 15.0, ymax + 15.0
+
+        for f_item in raw_features:
+            lyr = f_item.get("layer")
+            if lyr not in req_set:
+                continue
+            fid = str(f_item.get("id") or "")
+            if fid.startswith("scan_"):
+                continue
+            if lyr == "as_built" and f_item.get("origin_class") != "user_or_scan_to_bim":
+                continue
+
+            if is_exact_radius:
+                out.append(_enrich_feature_gov_links(dict(f_item), ce, cn))
+                continue
+
+            ftype = f_item.get("type")
+            if ftype in ("manhole", "catch_basin", "hydrant", "pole"):
+                coord = f_item.get("coord")
+                if isinstance(coord, list) and len(coord) >= 2:
+                    ex, ny = float(coord[0]), float(coord[1])
+                    if pxmin <= ex <= pxmax and pymin <= ny <= pymax:
+                        out.append(_enrich_feature_gov_links(dict(f_item), ce, cn))
+            elif ftype in ("pipe", "box_culvert"):
+                coords = f_item.get("coords")
+                if not isinstance(coords, list) or len(coords) < 2:
+                    continue
+                if fid.startswith("osm_corr_") or fid.startswith("osm_duct_corr_"):
+                    pts_2d = [(float(pt[0]), float(pt[1])) for pt in coords if isinstance(pt, list) and len(pt) >= 2]
+                    clipped_2d = _clip_polyline_to_bbox(pts_2d, cxmin, cymin, cxmax, cymax)
+                    if len(clipped_2d) < 2:
+                        continue
+                    seg_len = sum(
+                        math.hypot(clipped_2d[i + 1][0] - clipped_2d[i][0], clipped_2d[i + 1][1] - clipped_2d[i][1])
+                        for i in range(len(clipped_2d) - 1)
+                    )
+                    if seg_len < 2.5:
+                        continue
+                    d1 = float(f_item.get("start_depth_m") or f_item.get("depth_m") or 1.2)
+                    d2 = float(f_item.get("end_depth_m") or f_item.get("depth_m") or d1)
+                    new_coords = []
+                    acc = 0.0
+                    for idx_p, (px, py) in enumerate(clipped_2d):
+                        if idx_p > 0:
+                            acc += math.hypot(px - clipped_2d[idx_p - 1][0], py - clipped_2d[idx_p - 1][1])
+                        t_frac = acc / seg_len if seg_len > 1e-6 else 0.0
+                        loc_g = sample_ground_z(px, py)
+                        pz = round(loc_g - (d1 + t_frac * (d2 - d1)), 3)
+                        new_coords.append([round(px, 3), round(py, 3), pz])
+                    f_copy = dict(f_item)
+                    f_copy["coords"] = new_coords
+                    f_copy["length_m"] = round(seg_len, 2)
+                    out.append(_enrich_feature_gov_links(f_copy, ce, cn))
+                else:
+                    pts_2d = [(float(pt[0]), float(pt[1])) for pt in coords if isinstance(pt, list) and len(pt) >= 2]
+                    clipped_check = _clip_polyline_to_bbox(pts_2d, sxmin, symin, sxmax, symax)
+                    if len(clipped_check) >= 2:
+                        out.append(_enrich_feature_gov_links(dict(f_item), ce, cn))
+            else:
+                out.append(_enrich_feature_gov_links(dict(f_item), ce, cn))
+
+        return out
+
+    def ensure_scan_utilities_cached(self, scan_id: str, force: bool = False) -> Dict[str, Any]:
+        """Queries and persists the master utilities snapshot for a scan once upon creation/update."""
+        sid = str(scan_id or "").strip()
+        if not sid:
+            return {"status": "skipped", "reason": "empty scan_id"}
+        safe_sid = "".join(c if c.isalnum() or c in "_-" else "_" for c in sid)
+        master_fp = os.path.join(UTILITIES_CACHE_DIR, f"{safe_sid}_master_v3.json")
+        if not force and os.path.isfile(master_fp):
+            return {"status": "ok", "scan_id": sid, "cached": True, "master_cache": master_fp}
+        return self.query_public_utilities_gis(
+            {
+                "scan_id": sid,
+                "radius_m": 250.0,
+                "force_refresh": True,
+            }
+        )
+
+    def ensure_scan_utilities_cached_async(self, scan_id: str) -> None:
+        """Spawns a non-blocking daemon thread to populate the scan's utilities cache on scan creation/update."""
+        import threading
+
+        sid = str(scan_id or "").strip()
+        if not sid:
+            return
+        threading.Thread(
+            target=self.ensure_scan_utilities_cached,
+            args=(sid, False),
+            daemon=True,
+        ).start()
 
     def _query_ntpc_wrd_stormwater(
         self,
@@ -2189,7 +2364,8 @@ class PublicUtilitiesGISMixin:
         if not isinstance(cat_data, dict):
             return features
 
-        # 1. Explicit As-Built open-trench traced pipes if recorded in categorization cache
+        # 1. Explicit User-Created / As-Built open-trench traced pipes if recorded in categorization cache
+        # Strictly isolated to the 'as_built' layer ("管溝開挖竣工實測"), never mixed into API public utility layers.
         if "as_built" in req_set:
             as_built = cat_data.get("as_built_pipes") or (cat_data.get("manual_overrides") or {}).get("as_built_pipes", [])
             for idx, p in enumerate(as_built):
@@ -2199,381 +2375,22 @@ class PublicUtilitiesGISMixin:
                         {
                             "id": f"as_built_{idx+1}",
                             "layer": "as_built",
+                            "origin_class": "user_or_scan_to_bim",
                             "type": "pipe",
                             "name": p.get("name") or f"竣工實測管線 #{idx+1}",
                             "diameter_mm": int(safe_float(p.get("diameter_mm"), 200) or 200),
                             "length_m": round(safe_float(p.get("length_m"), 10.0) or 10.0, 2),
                             "start_coord": pts[0],
                             "end_coord": pts[-1],
-                            "depth_m": 1.5,
-                            "slope_pct": 0.5,
+                            "depth_m": safe_float(p.get("depth_m"), 1.5) or 1.5,
+                            "slope_pct": safe_float(p.get("slope_pct"), 0.5) or 0.5,
                             "coords": pts,
-                            "source": "Scan-to-BIM Open-Trench Utility Tracer",
+                            "source": "User / Scan-to-BIM Open-Trench Utility Tracer (Isolated As-Built Layer)",
                         }
                     )
 
-        # If real municipal GIS or OpenStreetMap features were already found around this scan,
-        # do NOT synthesize diagonal pipes across categorized flat surface polygons (e.g. Lishan athletic track).
-        if len(existing_features) > 0:
-            return features
-
-        # 2. Fallback: Extract 3D Road-Aligned Roadside Ditches (側溝) only when no external GIS/OSM roads exist
-        has_near_storm = False
-        has_near_sanitary = False
-
-        roads = cat_data.get("roads") or []
-        for idx_r, r in enumerate(roads[:5]):
-            b_twd = r.get("boundary_twd97") or []
-            if len(b_twd) < 4:
-                continue
-            # Find principal axis endpoints of the detected 3D road polygon
-            valid_pts = [
-                (float(pt[0]), float(pt[1]), float(pt[2]))
-                for pt in b_twd
-                if isinstance(pt, list) and len(pt) >= 3 and xmin <= float(pt[0]) <= xmax and ymin <= float(pt[1]) <= ymax
-            ]
-            if len(valid_pts) < 2:
-                continue
-            # Pick the two farthest points on the road boundary to define the road corridor spine
-            p_start = min(valid_pts, key=lambda p: p[0] + p[1])
-            p_end = max(valid_pts, key=lambda p: p[0] + p[1])
-            seg_len = math.hypot(p_end[0] - p_start[0], p_end[1] - p_start[1])
-            if seg_len < 6.0:
-                continue
-
-            # Ensure flow from higher ground to lower ground
-            if p_start[2] < p_end[2]:
-                p_start, p_end = p_end, p_start
-
-            mid_e = 0.5 * (p_start[0] + p_end[0])
-            mid_n = 0.5 * (p_start[1] + p_end[1])
-            g_start = sample_ground_z(p_start[0], p_start[1])
-            g_mid = sample_ground_z(mid_e, mid_n)
-            g_end = sample_ground_z(p_end[0], p_end[1])
-
-            r_label = r.get("label_zh") or r.get("name") or f"道路走廊 #{idx_r+1}"
-
-            # A. Roadside Storm Ditch (側溝) & Catch Basin (集水井) along scan roads
-            if "storm" in req_set and (not has_near_storm or idx_r < 2):
-                d1, d2 = 1.15, 1.25
-                z1 = round(g_start - d1, 3)
-                zm = round(g_mid - 0.5 * (d1 + d2), 3)
-                z2 = round(g_end - d2, 3)
-                slp = round(max(-24.0, min(24.0, ((z1 - z2) / seg_len) * 100.0)), 3)
-                coords_3d = [
-                    [round(p_start[0], 3), round(p_start[1], 3), z1],
-                    [round(mid_e, 3), round(mid_n, 3), zm],
-                    [round(p_end[0], 3), round(p_end[1], 3), z2],
-                ]
-                features.append(
-                    {
-                        "id": f"scan_road_ditch_{idx_r+1}",
-                        "layer": "storm",
-                        "type": "box_culvert",
-                        "name": f"{r_label} 道路排水側溝 0.5x0.6m",
-                        "diameter_mm": 600,
-                        "width_m": 0.50,
-                        "height_m": 0.60,
-                        "length_m": round(seg_len, 2),
-                        "material": "RC/預鑄混凝土U型側溝",
-                        "start_coord": coords_3d[0],
-                        "end_coord": coords_3d[-1],
-                        "start_ground_h": round(g_start, 3),
-                        "end_ground_h": round(g_end, 3),
-                        "start_rim_h": round(g_start, 3),
-                        "end_rim_h": round(g_end, 3),
-                        "start_invert_h": z1,
-                        "end_invert_h": z2,
-                        "start_crown_h": round(z1 + 0.60, 3),
-                        "end_crown_h": round(z2 + 0.60, 3),
-                        "start_depth_m": d1,
-                        "end_depth_m": d2,
-                        "start_cover_m": round(d1 - 0.60, 2),
-                        "end_cover_m": round(d2 - 0.60, 2),
-                        "depth_m": 1.20,
-                        "slope_pct": slp,
-                        "flow_direction": 1,
-                        "coords": coords_3d,
-                        "source": "New Taipei / Taipei Scan-Derived Roadside Drainage GIS",
-                    }
-                )
-                features.append(
-                    {
-                        "id": f"scan_catch_basin_{idx_r+1}",
-                        "layer": "storm",
-                        "type": "catch_basin",
-                        "name": f"{r_label} 道路集水井 CB-{idx_r+1:02d}",
-                        "facility_no": f"CB-{idx_r+1:02d}",
-                        "structure_type": "道路集水井",
-                        "coord": [round(p_end[0], 3), round(p_end[1], 3), z2],
-                        "rim_h": round(g_end, 3),
-                        "invert_h": z2,
-                        "depth_m": d2,
-                        "diameter_mm": 600,
-                        "source": "New Taipei / Taipei Scan-Derived Roadside Drainage GIS",
-                    }
-                )
-
-            # B. On-site Sanitary Lateral along primary scan road if no NTPC sanitary pipe within 75m
-            if "sanitary" in req_set and not has_near_sanitary and idx_r < 2:
-                d1, d2 = 2.15, 2.30
-                z1 = round(g_start - d1, 3)
-                z2 = round(g_end - d2, 3)
-                slp = round(max(-24.0, min(24.0, ((z1 - z2) / seg_len) * 100.0)), 3)
-                coords_3d = [
-                    [round(p_start[0], 3), round(p_start[1], 3), z1],
-                    [round(p_end[0], 3), round(p_end[1], 3), z2],
-                ]
-                features.append(
-                    {
-                        "id": f"scan_sanitary_branch_{idx_r+1}",
-                        "layer": "sanitary",
-                        "type": "pipe",
-                        "name": f"{r_label} 污水連接支管 D=250mm",
-                        "diameter_mm": 250,
-                        "width_m": 0.25,
-                        "height_m": 0.25,
-                        "length_m": round(seg_len, 2),
-                        "material": "PVCP/硬質聚氯乙烯污水管",
-                        "start_coord": coords_3d[0],
-                        "end_coord": coords_3d[-1],
-                        "start_ground_h": round(g_start, 3),
-                        "end_ground_h": round(g_end, 3),
-                        "start_rim_h": round(g_start, 3),
-                        "end_rim_h": round(g_end, 3),
-                        "start_invert_h": z1,
-                        "end_invert_h": z2,
-                        "start_crown_h": round(z1 + 0.25, 3),
-                        "end_crown_h": round(z2 + 0.25, 3),
-                        "start_depth_m": d1,
-                        "end_depth_m": d2,
-                        "start_cover_m": round(d1 - 0.25, 2),
-                        "end_cover_m": round(d2 - 0.25, 2),
-                        "depth_m": 2.22,
-                        "slope_pct": slp,
-                        "flow_direction": 1,
-                        "coords": coords_3d,
-                        "source": "Site Sanitary Service Corridor GIS",
-                    }
-                )
-
-            # B2. Facility Water, Electric, Telecom & Streetlight Corridors along 3D Scan Roads when not covered by OSM ways
-            has_existing_water = any(f.get("layer") == "water" for f in existing_features)
-            if "water" in req_set and not has_existing_water and idx_r < 3:
-                d1, d2 = 1.25, 1.30
-                z1, z2 = round(g_start - d1, 3), round(g_end - d2, 3)
-                slp = round(max(-24.0, min(24.0, ((z1 - z2) / seg_len) * 100.0)), 3)
-                coords_3d = [[round(p_start[0], 3), round(p_start[1], 3), z1], [round(p_end[0], 3), round(p_end[1], 3), z2]]
-                features.append(
-                    {
-                        "id": f"scan_water_main_{idx_r+1}",
-                        "layer": "water",
-                        "type": "pipe",
-                        "name": f"{r_label} 自來水與消防給水管 D=200mm",
-                        "diameter_mm": 200,
-                        "width_m": 0.20,
-                        "height_m": 0.20,
-                        "length_m": round(seg_len, 2),
-                        "material": "DIP/自來水延性鑄鐵管",
-                        "start_coord": coords_3d[0],
-                        "end_coord": coords_3d[-1],
-                        "start_ground_h": round(g_start, 3),
-                        "end_ground_h": round(g_end, 3),
-                        "start_rim_h": round(g_start, 3),
-                        "end_rim_h": round(g_end, 3),
-                        "start_invert_h": z1,
-                        "end_invert_h": z2,
-                        "start_crown_h": round(z1 + 0.20, 3),
-                        "end_crown_h": round(z2 + 0.20, 3),
-                        "start_depth_m": d1,
-                        "end_depth_m": d2,
-                        "start_cover_m": round(d1 - 0.20, 2),
-                        "end_cover_m": round(d2 - 0.20, 2),
-                        "depth_m": 1.28,
-                        "slope_pct": slp,
-                        "flow_direction": 1,
-                        "coords": coords_3d,
-                        "source": "Taiwan Water Supply Corridor GIS (臺北自來水事業處)",
-                    }
-                )
-                if idx_r < 2:
-                    features.append(
-                        {
-                            "id": f"scan_hydrant_{idx_r+1}",
-                            "layer": "water",
-                            "type": "hydrant",
-                            "name": f"{r_label} 地上式消防栓 FH-{idx_r+1:02d}",
-                            "facility_no": f"FH-{idx_r+1:02d}",
-                            "structure_type": "地上式消防栓",
-                            "coord": [round(p_start[0], 3), round(p_start[1], 3), round(g_start - 1.20, 3)],
-                            "rim_h": round(g_start, 3),
-                            "invert_h": round(g_start - 1.20, 3),
-                            "depth_m": 1.20,
-                            "diameter_mm": 150,
-                            "source": "Taiwan Water Supply Corridor GIS (臺北自來水事業處)",
-                        }
-                    )
-
-            has_existing_elec = any(f.get("layer") == "electric" for f in existing_features)
-            if "electric" in req_set and not has_existing_elec and idx_r < 3:
-                d1, d2 = 1.45, 1.50
-                z1, z2 = round(g_start - d1, 3), round(g_end - d2, 3)
-                slp = round(max(-24.0, min(24.0, ((z1 - z2) / seg_len) * 100.0)), 3)
-                coords_3d = [[round(p_start[0], 3), round(p_start[1], 3), z1], [round(p_end[0], 3), round(p_end[1], 3), z2]]
-                features.append(
-                    {
-                        "id": f"scan_elec_duct_{idx_r+1}",
-                        "layer": "electric",
-                        "type": "pipe",
-                        "name": f"{r_label} 台電地下動力電纜管 D=150mm",
-                        "diameter_mm": 150,
-                        "width_m": 0.15,
-                        "height_m": 0.15,
-                        "length_m": round(seg_len, 2),
-                        "material": "PVC/台電高壓配電管",
-                        "start_coord": coords_3d[0],
-                        "end_coord": coords_3d[-1],
-                        "start_ground_h": round(g_start, 3),
-                        "end_ground_h": round(g_end, 3),
-                        "start_rim_h": round(g_start, 3),
-                        "end_rim_h": round(g_end, 3),
-                        "start_invert_h": z1,
-                        "end_invert_h": z2,
-                        "start_crown_h": round(z1 + 0.15, 3),
-                        "end_crown_h": round(z2 + 0.15, 3),
-                        "start_depth_m": d1,
-                        "end_depth_m": d2,
-                        "start_cover_m": round(d1 - 0.15, 2),
-                        "end_cover_m": round(d2 - 0.15, 2),
-                        "depth_m": 1.48,
-                        "slope_pct": slp,
-                        "flow_direction": 1,
-                        "coords": coords_3d,
-                        "source": "Taipower Underground Distribution Corridor GIS",
-                    }
-                )
-
-            has_existing_tel = any(f.get("layer") == "telecom" for f in existing_features)
-            if "telecom" in req_set and not has_existing_tel and idx_r < 3:
-                d1, d2 = 1.15, 1.20
-                z1, z2 = round(g_start - d1, 3), round(g_end - d2, 3)
-                slp = round(max(-24.0, min(24.0, ((z1 - z2) / seg_len) * 100.0)), 3)
-                coords_3d = [[round(p_start[0], 3), round(p_start[1], 3), z1], [round(p_end[0], 3), round(p_end[1], 3), z2]]
-                features.append(
-                    {
-                        "id": f"scan_telecom_fiber_{idx_r+1}",
-                        "layer": "telecom",
-                        "type": "pipe",
-                        "name": f"{r_label} 光纖監測與通信管線 D=100mm",
-                        "diameter_mm": 100,
-                        "width_m": 0.10,
-                        "height_m": 0.10,
-                        "length_m": round(seg_len, 2),
-                        "material": "HDPE/中華電信光纖管",
-                        "start_coord": coords_3d[0],
-                        "end_coord": coords_3d[-1],
-                        "start_ground_h": round(g_start, 3),
-                        "end_ground_h": round(g_end, 3),
-                        "start_rim_h": round(g_start, 3),
-                        "end_rim_h": round(g_end, 3),
-                        "start_invert_h": z1,
-                        "end_invert_h": z2,
-                        "start_crown_h": round(z1 + 0.10, 3),
-                        "end_crown_h": round(z2 + 0.10, 3),
-                        "start_depth_m": d1,
-                        "end_depth_m": d2,
-                        "start_cover_m": round(d1 - 0.10, 2),
-                        "end_cover_m": round(d2 - 0.10, 2),
-                        "depth_m": 1.18,
-                        "slope_pct": slp,
-                        "flow_direction": 1,
-                        "coords": coords_3d,
-                        "source": "Telecom & Telemetry Fiber Corridor GIS",
-                    }
-                )
-
-            has_existing_sl = any(f.get("layer") == "streetlights" for f in existing_features)
-            if "streetlights" in req_set and not has_existing_sl and idx_r < 2:
-                d1, d2 = 0.82, 0.85
-                z1, z2 = round(g_start - d1, 3), round(g_end - d2, 3)
-                slp = round(max(-24.0, min(24.0, ((z1 - z2) / seg_len) * 100.0)), 3)
-                coords_3d = [[round(p_start[0], 3), round(p_start[1], 3), z1], [round(p_end[0], 3), round(p_end[1], 3), z2]]
-                features.append(
-                    {
-                        "id": f"scan_streetlight_{idx_r+1}",
-                        "layer": "streetlights",
-                        "type": "pipe",
-                        "name": f"{r_label} 道路照明管線 D=80mm",
-                        "diameter_mm": 80,
-                        "width_m": 0.08,
-                        "height_m": 0.08,
-                        "length_m": round(seg_len, 2),
-                        "material": "PVC/路燈專用管",
-                        "start_coord": coords_3d[0],
-                        "end_coord": coords_3d[-1],
-                        "start_ground_h": round(g_start, 3),
-                        "end_ground_h": round(g_end, 3),
-                        "start_rim_h": round(g_start, 3),
-                        "end_rim_h": round(g_end, 3),
-                        "start_invert_h": z1,
-                        "end_invert_h": z2,
-                        "start_crown_h": round(z1 + 0.08, 3),
-                        "end_crown_h": round(z2 + 0.08, 3),
-                        "start_depth_m": d1,
-                        "end_depth_m": d2,
-                        "start_cover_m": round(d1 - 0.08, 2),
-                        "end_cover_m": round(d2 - 0.08, 2),
-                        "depth_m": 0.84,
-                        "slope_pct": slp,
-                        "flow_direction": 1,
-                        "coords": coords_3d,
-                        "source": "Municipal Streetlight Circuit GIS",
-                    }
-                )
-
-            # C. As-Built Surveyed Trench Alignment on primary scan road
-            if "as_built" in req_set and idx_r == 0:
-                d1, d2 = 1.45, 1.50
-                z1 = round(g_start - d1, 3)
-                z2 = round(g_end - d2, 3)
-                slp = round(max(-24.0, min(24.0, ((z1 - z2) / seg_len) * 100.0)), 3)
-                coords_3d = [
-                    [round(p_start[0], 3), round(p_start[1], 3), z1],
-                    [round(p_end[0], 3), round(p_end[1], 3), z2],
-                ]
-                features.append(
-                    {
-                        "id": f"scan_as_built_{idx_r+1}",
-                        "layer": "as_built",
-                        "type": "pipe",
-                        "name": f"{r_label} 竣工實測管線 D=200mm",
-                        "diameter_mm": 200,
-                        "width_m": 0.20,
-                        "height_m": 0.20,
-                        "length_m": round(seg_len, 2),
-                        "material": "HDPE/高密度聚乙烯管",
-                        "start_coord": coords_3d[0],
-                        "end_coord": coords_3d[-1],
-                        "start_ground_h": round(g_start, 3),
-                        "end_ground_h": round(g_end, 3),
-                        "start_rim_h": round(g_start, 3),
-                        "end_rim_h": round(g_end, 3),
-                        "start_invert_h": z1,
-                        "end_invert_h": z2,
-                        "start_crown_h": round(z1 + 0.20, 3),
-                        "end_crown_h": round(z2 + 0.20, 3),
-                        "start_depth_m": d1,
-                        "end_depth_m": d2,
-                        "start_cover_m": round(d1 - 0.20, 2),
-                        "end_cover_m": round(d2 - 0.20, 2),
-                        "depth_m": 1.48,
-                        "slope_pct": slp,
-                        "flow_direction": 1,
-                        "coords": coords_3d,
-                        "source": "Scan-to-BIM As-Built Survey Verification",
-                    }
-                )
-
+        # CRITICAL RULE: Under no circumstances create any synthetic pipes from scan road polygons
+        # that did not exist in the API or explicit user/Scan-to-BIM as_built records!
         return features
 
     def _query_open_data_hydrants(

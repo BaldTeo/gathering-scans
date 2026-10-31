@@ -108,7 +108,7 @@
     }
   },
   "layer_counts": {
-    "storm": 29,
+    "storm": 25,
     "sanitary": 106,
     "water": 5,
     "electric": 8,
@@ -117,11 +117,11 @@
     "ducts": 2,
     "streetlights": 3,
     "excavations": 0,
-    "as_built": 1
+    "as_built": 0
   },
-  "total_features": 163,
-  "total_pipe_length_m": 5870.36,
-  "total_structures": 25,
+  "total_features": 158,
+  "total_pipe_length_m": 5775.48,
+  "total_structures": 23,
   "features": [
     {
       "id": "storm_pipe_557",
@@ -190,7 +190,8 @@
         "osm_label": "OpenStreetMap 座標圖台",
         "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.022789&lon=121.456826&zoom=19",
         "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      }
+      },
+      "origin_class": "api_open_data"
     },
     {
       "id": "storm_pipe_890",
@@ -269,7 +270,8 @@
         "osm_label": "OpenStreetMap 座標圖台",
         "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.022788&lon=121.456827&zoom=19",
         "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      }
+      },
+      "origin_class": "api_open_data"
     },
     {
       "id": "storm_pipe_931",
@@ -348,7 +350,8 @@
         "osm_label": "OpenStreetMap 座標圖台",
         "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.023113&lon=121.456346&zoom=19",
         "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      }
+      },
+      "origin_class": "api_open_data"
     },
     {
       "id": "storm_pipe_936",
@@ -422,7 +425,8 @@
         "osm_label": "OpenStreetMap 座標圖台",
         "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.025637&lon=121.454875&zoom=19",
         "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      }
+      },
+      "origin_class": "api_open_data"
     },
     {
       "id": "storm_pipe_937",
@@ -491,7 +495,8 @@
         "osm_label": "OpenStreetMap 座標圖台",
         "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.025638&lon=121.454875&zoom=19",
         "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      }
+      },
+      "origin_class": "api_open_data"
     },
     {
       "id": "storm_pipe_938",
@@ -565,7 +570,8 @@
         "osm_label": "OpenStreetMap 座標圖台",
         "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.025601&lon=121.455486&zoom=19",
         "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      }
+      },
+      "origin_class": "api_open_data"
     },
     {
       "id": "storm_pipe_987",
@@ -634,7 +640,8 @@
         "osm_label": "OpenStreetMap 座標圖台",
         "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.025808&lon=121.454874&zoom=19",
         "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      }
+      },
+      "origin_class": "api_open_data"
     },
     {
       "id": "storm_pipe_988",
@@ -713,7 +720,8 @@
         "osm_label": "OpenStreetMap 座標圖台",
         "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.026274&lon=121.454560&zoom=19",
         "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      }
+      },
+      "origin_class": "api_open_data"
     },
     {
       "id": "storm_pipe_1884",
@@ -782,7 +790,8 @@
         "osm_label": "OpenStreetMap 座標圖台",
         "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.023450&lon=121.453602&zoom=19",
         "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      }
+      },
+      "origin_class": "api_open_data"
     },
     {
       "id": "storm_mh_239",
@@ -819,7 +828,8 @@
         "osm_label": "OpenStreetMap 座標圖台",
         "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.025602&lon=121.455478&zoom=19",
         "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      }
+      },
+      "origin_class": "api_open_data"
     },
     {
       "id": "storm_mh_459",
@@ -856,7 +866,8 @@
         "osm_label": "OpenStreetMap 座標圖台",
         "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.022789&lon=121.456826&zoom=19",
         "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      }
+      },
+      "origin_class": "api_open_data"
     },
     {
       "id": "storm_mh_1272",
@@ -893,7 +904,8 @@
         "osm_label": "OpenStreetMap 座標圖台",
         "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.025568&lon=121.455751&zoom=19",
         "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      }
+      },
+      "origin_class": "api_open_data"
     },
     {
       "id": "storm_mh_1603",
@@ -930,7 +942,8 @@
         "osm_label": "OpenStreetMap 座標圖台",
         "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.022932&lon=121.456681&zoom=19",
         "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      }
+      },
+      "origin_class": "api_open_data"
     },
     {
       "id": "storm_mh_1611",
@@ -967,7 +980,8 @@
         "osm_label": "OpenStreetMap 座標圖台",
         "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.023213&lon=121.456245&zoom=19",
         "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      }
+      },
+      "origin_class": "api_open_data"
     },
     {
       "id": "storm_mh_1619",
@@ -1004,7 +1018,8 @@
         "osm_label": "OpenStreetMap 座標圖台",
         "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.023507&lon=121.455839&zoom=19",
         "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      }
+      },
+      "origin_class": "api_open_data"
     },
     {
       "id": "storm_mh_1771",
@@ -1041,7 +1056,8 @@
         "osm_label": "OpenStreetMap 座標圖台",
         "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.023085&lon=121.454187&zoom=19",
         "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      }
+      },
+      "origin_class": "api_open_data"
     },
     {
       "id": "storm_mh_1792",
@@ -1078,7 +1094,8 @@
         "osm_label": "OpenStreetMap 座標圖台",
         "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.025638&lon=121.454875&zoom=19",
         "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      }
+      },
+      "origin_class": "api_open_data"
     },
     {
       "id": "storm_mh_1860",
@@ -1115,7 +1132,8 @@
         "osm_label": "OpenStreetMap 座標圖台",
         "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.023672&lon=121.455582&zoom=19",
         "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      }
+      },
+      "origin_class": "api_open_data"
     },
     {
       "id": "storm_mh_1888",
@@ -1152,7 +1170,8 @@
         "osm_label": "OpenStreetMap 座標圖台",
         "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.024058&lon=121.455082&zoom=19",
         "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      }
+      },
+      "origin_class": "api_open_data"
     },
     {
       "id": "storm_mh_1911",
@@ -1189,7 +1208,8 @@
         "osm_label": "OpenStreetMap 座標圖台",
         "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.024767&lon=121.454879&zoom=19",
         "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      }
+      },
+      "origin_class": "api_open_data"
     },
     {
       "id": "storm_mh_1928",
@@ -1226,7 +1246,8 @@
         "osm_label": "OpenStreetMap 座標圖台",
         "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.025153&lon=121.454877&zoom=19",
         "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      }
+      },
+      "origin_class": "api_open_data"
     },
     {
       "id": "storm_mh_1939",
@@ -1263,7 +1284,8 @@
         "osm_label": "OpenStreetMap 座標圖台",
         "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.025515&lon=121.454875&zoom=19",
         "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      }
+      },
+      "origin_class": "api_open_data"
     },
     {
       "id": "storm_mh_1996",
@@ -1300,7 +1322,8 @@
         "osm_label": "OpenStreetMap 座標圖台",
         "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.023189&lon=121.456230&zoom=19",
         "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      }
+      },
+      "origin_class": "api_open_data"
     },
     {
       "id": "storm_mh_16135",
@@ -1337,7 +1360,8 @@
         "osm_label": "OpenStreetMap 座標圖台",
         "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.024213&lon=121.454881&zoom=19",
         "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      }
+      },
+      "origin_class": "api_open_data"
     },
     {
       "id": "storm_mh_8238",
@@ -1374,7 +1398,8 @@
         "osm_label": "OpenStreetMap 座標圖台",
         "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.025638&lon=121.454875&zoom=19",
         "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      }
+      },
+      "origin_class": "api_open_data"
     },
     {
       "id": "sanitary_pipe_1188",
@@ -1443,7 +1468,8 @@
         "osm_label": "OpenStreetMap 座標圖台",
         "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.025925&lon=121.453821&zoom=19",
         "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      }
+      },
+      "origin_class": "api_open_data"
     },
     {
       "id": "sanitary_pipe_1219",
@@ -1512,7 +1538,8 @@
         "osm_label": "OpenStreetMap 座標圖台",
         "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.023130&lon=121.454236&zoom=19",
         "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      }
+      },
+      "origin_class": "api_open_data"
     },
     {
       "id": "sanitary_pipe_1289",
@@ -1581,7 +1608,8 @@
         "osm_label": "OpenStreetMap 座標圖台",
         "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.024460&lon=121.454476&zoom=19",
         "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      }
+      },
+      "origin_class": "api_open_data"
     },
     {
       "id": "sanitary_pipe_1290",
@@ -1650,7 +1678,8 @@
         "osm_label": "OpenStreetMap 座標圖台",
         "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.023911&lon=121.454497&zoom=19",
         "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      }
+      },
+      "origin_class": "api_open_data"
     },
     {
       "id": "sanitary_pipe_1300",
@@ -1719,7 +1748,8 @@
         "osm_label": "OpenStreetMap 座標圖台",
         "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.022610&lon=121.456582&zoom=19",
         "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      }
+      },
+      "origin_class": "api_open_data"
     },
     {
       "id": "sanitary_pipe_1304",
@@ -1788,7 +1818,8 @@
         "osm_label": "OpenStreetMap 座標圖台",
         "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.023208&lon=121.453932&zoom=19",
         "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      }
+      },
+      "origin_class": "api_open_data"
     },
     {
       "id": "sanitary_pipe_1305",
@@ -1857,7 +1888,8 @@
         "osm_label": "OpenStreetMap 座標圖台",
         "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.023122&lon=121.454101&zoom=19",
         "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      }
+      },
+      "origin_class": "api_open_data"
     },
     {
       "id": "sanitary_pipe_1306",
@@ -1926,7 +1958,8 @@
         "osm_label": "OpenStreetMap 座標圖台",
         "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.023170&lon=121.454111&zoom=19",
         "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      }
+      },
+      "origin_class": "api_open_data"
     },
     {
       "id": "sanitary_pipe_1466",
@@ -1995,7 +2028,8 @@
         "osm_label": "OpenStreetMap 座標圖台",
         "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.022922&lon=121.456509&zoom=19",
         "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      }
+      },
+      "origin_class": "api_open_data"
     },
     {
       "id": "sanitary_pipe_1467",
@@ -2064,7 +2098,8 @@
         "osm_label": "OpenStreetMap 座標圖台",
         "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.022792&lon=121.456708&zoom=19",
         "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      }
+      },
+      "origin_class": "api_open_data"
     },
     {
       "id": "sanitary_pipe_1468",
@@ -2133,7 +2168,8 @@
         "osm_label": "OpenStreetMap 座標圖台",
         "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.023952&lon=121.455068&zoom=19",
         "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      }
+      },
+      "origin_class": "api_open_data"
     },
     {
       "id": "sanitary_pipe_1469",
@@ -2202,7 +2238,8 @@
         "osm_label": "OpenStreetMap 座標圖台",
         "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.024026&lon=121.454975&zoom=19",
         "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      }
+      },
+      "origin_class": "api_open_data"
     },
     {
       "id": "sanitary_pipe_1470",
@@ -2271,7 +2308,8 @@
         "osm_label": "OpenStreetMap 座標圖台",
         "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.024246&lon=121.454696&zoom=19",
         "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      }
+      },
+      "origin_class": "api_open_data"
     },
     {
       "id": "sanitary_pipe_1471",
@@ -2340,7 +2378,8 @@
         "osm_label": "OpenStreetMap 座標圖台",
         "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.024312&lon=121.454615&zoom=19",
         "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      }
+      },
+      "origin_class": "api_open_data"
     },
     {
       "id": "sanitary_pipe_1472",
@@ -2409,7 +2448,8 @@
         "osm_label": "OpenStreetMap 座標圖台",
         "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.024333&lon=121.454475&zoom=19",
         "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      }
+      },
+      "origin_class": "api_open_data"
     },
     {
       "id": "sanitary_pipe_1485",
@@ -2478,7 +2518,8 @@
         "osm_label": "OpenStreetMap 座標圖台",
         "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.023799&lon=121.455259&zoom=19",
         "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      }
+      },
+      "origin_class": "api_open_data"
     },
     {
       "id": "sanitary_pipe_1486",
@@ -2547,7 +2588,8 @@
         "osm_label": "OpenStreetMap 座標圖台",
         "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.023876&lon=121.455162&zoom=19",
         "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      }
+      },
+      "origin_class": "api_open_data"
     },
     {
       "id": "sanitary_pipe_2076",
@@ -2616,7 +2658,8 @@
         "osm_label": "OpenStreetMap 座標圖台",
         "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.024579&lon=121.456586&zoom=19",
         "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      }
+      },
+      "origin_class": "api_open_data"
     },
     {
       "id": "sanitary_pipe_2077",
@@ -2685,7 +2728,8 @@
         "osm_label": "OpenStreetMap 座標圖台",
         "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.024619&lon=121.456660&zoom=19",
         "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      }
+      },
+      "origin_class": "api_open_data"
     },
     {
       "id": "sanitary_pipe_2078",
@@ -2754,7 +2798,8 @@
         "osm_label": "OpenStreetMap 座標圖台",
         "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.024186&lon=121.457136&zoom=19",
         "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      }
+      },
+      "origin_class": "api_open_data"
     },
     {
       "id": "sanitary_pipe_2079",
@@ -2823,7 +2868,8 @@
         "osm_label": "OpenStreetMap 座標圖台",
         "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.024071&lon=121.456932&zoom=19",
         "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      }
+      },
+      "origin_class": "api_open_data"
     },
     {
       "id": "sanitary_pipe_2080",
@@ -2892,7 +2938,8 @@
         "osm_label": "OpenStreetMap 座標圖台",
         "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.023925&lon=121.456651&zoom=19",
         "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      }
+      },
+      "origin_class": "api_open_data"
     },
     {
       "id": "sanitary_pipe_2081",
@@ -2961,7 +3008,8 @@
         "osm_label": "OpenStreetMap 座標圖台",
         "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.023878&lon=121.456560&zoom=19",
         "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      }
+      },
+      "origin_class": "api_open_data"
     },
     {
       "id": "sanitary_pipe_2082",
@@ -3030,7 +3078,8 @@
         "osm_label": "OpenStreetMap 座標圖台",
         "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.024186&lon=121.457136&zoom=19",
         "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      }
+      },
+      "origin_class": "api_open_data"
     },
     {
       "id": "sanitary_pipe_2083",
@@ -3099,7 +3148,8 @@
         "osm_label": "OpenStreetMap 座標圖台",
         "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.024321&lon=121.457052&zoom=19",
         "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      }
+      },
+      "origin_class": "api_open_data"
     },
     {
       "id": "sanitary_pipe_2098",
@@ -3168,7 +3218,8 @@
         "osm_label": "OpenStreetMap 座標圖台",
         "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.024468&lon=121.456336&zoom=19",
         "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      }
+      },
+      "origin_class": "api_open_data"
     },
     {
       "id": "sanitary_pipe_2099",
@@ -3237,7 +3288,8 @@
         "osm_label": "OpenStreetMap 座標圖台",
         "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.024407&lon=121.456337&zoom=19",
         "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      }
+      },
+      "origin_class": "api_open_data"
     },
     {
       "id": "sanitary_pipe_2100",
@@ -3306,7 +3358,8 @@
         "osm_label": "OpenStreetMap 座標圖台",
         "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.024293&lon=121.456128&zoom=19",
         "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      }
+      },
+      "origin_class": "api_open_data"
     },
     {
       "id": "sanitary_pipe_2101",
@@ -3375,7 +3428,8 @@
         "osm_label": "OpenStreetMap 座標圖台",
         "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.024221&lon=121.455984&zoom=19",
         "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      }
+      },
+      "origin_class": "api_open_data"
     },
     {
       "id": "sanitary_pipe_2102",
@@ -3444,7 +3498,8 @@
         "osm_label": "OpenStreetMap 座標圖台",
         "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.024293&lon=121.456128&zoom=19",
         "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      }
+      },
+      "origin_class": "api_open_data"
     },
     {
       "id": "sanitary_pipe_2103",
@@ -3513,7 +3568,8 @@
         "osm_label": "OpenStreetMap 座標圖台",
         "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.024156&lon=121.456211&zoom=19",
         "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      }
+      },
+      "origin_class": "api_open_data"
     },
     {
       "id": "sanitary_pipe_2104",
@@ -3582,7 +3638,8 @@
         "osm_label": "OpenStreetMap 座標圖台",
         "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.024156&lon=121.456211&zoom=19",
         "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      }
+      },
+      "origin_class": "api_open_data"
     },
     {
       "id": "sanitary_pipe_2105",
@@ -3651,7 +3708,8 @@
         "osm_label": "OpenStreetMap 座標圖台",
         "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.024126&lon=121.456167&zoom=19",
         "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      }
+      },
+      "origin_class": "api_open_data"
     },
     {
       "id": "sanitary_pipe_2106",
@@ -3720,7 +3778,8 @@
         "osm_label": "OpenStreetMap 座標圖台",
         "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.024407&lon=121.456337&zoom=19",
         "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      }
+      },
+      "origin_class": "api_open_data"
     },
     {
       "id": "sanitary_pipe_2107",
@@ -3789,7 +3848,8 @@
         "osm_label": "OpenStreetMap 座標圖台",
         "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.024452&lon=121.456426&zoom=19",
         "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      }
+      },
+      "origin_class": "api_open_data"
     },
     {
       "id": "sanitary_pipe_2108",
@@ -3858,7 +3918,8 @@
         "osm_label": "OpenStreetMap 座標圖台",
         "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.024468&lon=121.456336&zoom=19",
         "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      }
+      },
+      "origin_class": "api_open_data"
     },
     {
       "id": "sanitary_pipe_2109",
@@ -3927,7 +3988,8 @@
         "osm_label": "OpenStreetMap 座標圖台",
         "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.024497&lon=121.456428&zoom=19",
         "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      }
+      },
+      "origin_class": "api_open_data"
     },
     {
       "id": "sanitary_pipe_2110",
@@ -3996,7 +4058,8 @@
         "osm_label": "OpenStreetMap 座標圖台",
         "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.025163&lon=121.456362&zoom=19",
         "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      }
+      },
+      "origin_class": "api_open_data"
     },
     {
       "id": "sanitary_pipe_2111",
@@ -4065,7 +4128,8 @@
         "osm_label": "OpenStreetMap 座標圖台",
         "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.025236&lon=121.456493&zoom=19",
         "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      }
+      },
+      "origin_class": "api_open_data"
     },
     {
       "id": "sanitary_pipe_2112",
@@ -4134,7 +4198,8 @@
         "osm_label": "OpenStreetMap 座標圖台",
         "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.025451&lon=121.456489&zoom=19",
         "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      }
+      },
+      "origin_class": "api_open_data"
     },
     {
       "id": "sanitary_pipe_2113",
@@ -4203,7 +4268,8 @@
         "osm_label": "OpenStreetMap 座標圖台",
         "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.025336&lon=121.456515&zoom=19",
         "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      }
+      },
+      "origin_class": "api_open_data"
     },
     {
       "id": "sanitary_pipe_2114",
@@ -4272,7 +4338,8 @@
         "osm_label": "OpenStreetMap 座標圖台",
         "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.025379&lon=121.456609&zoom=19",
         "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      }
+      },
+      "origin_class": "api_open_data"
     },
     {
       "id": "sanitary_pipe_2115",
@@ -4341,7 +4408,8 @@
         "osm_label": "OpenStreetMap 座標圖台",
         "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.024660&lon=121.456836&zoom=19",
         "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      }
+      },
+      "origin_class": "api_open_data"
     },
     {
       "id": "sanitary_pipe_2116",
@@ -4410,7 +4478,8 @@
         "osm_label": "OpenStreetMap 座標圖台",
         "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.024736&lon=121.456924&zoom=19",
         "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      }
+      },
+      "origin_class": "api_open_data"
     },
     {
       "id": "sanitary_pipe_2119",
@@ -4479,7 +4548,8 @@
         "osm_label": "OpenStreetMap 座標圖台",
         "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.024660&lon=121.456836&zoom=19",
         "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      }
+      },
+      "origin_class": "api_open_data"
     },
     {
       "id": "sanitary_pipe_2120",
@@ -4548,7 +4618,8 @@
         "osm_label": "OpenStreetMap 座標圖台",
         "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.024736&lon=121.456924&zoom=19",
         "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      }
+      },
+      "origin_class": "api_open_data"
     },
     {
       "id": "sanitary_pipe_2121",
@@ -4617,7 +4688,8 @@
         "osm_label": "OpenStreetMap 座標圖台",
         "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.024696&lon=121.456898&zoom=19",
         "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      }
+      },
+      "origin_class": "api_open_data"
     },
     {
       "id": "sanitary_pipe_2122",
@@ -4686,7 +4758,8 @@
         "osm_label": "OpenStreetMap 座標圖台",
         "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.024521&lon=121.457008&zoom=19",
         "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      }
+      },
+      "origin_class": "api_open_data"
     },
     {
       "id": "sanitary_pipe_2131",
@@ -4755,7 +4828,8 @@
         "osm_label": "OpenStreetMap 座標圖台",
         "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.024885&lon=121.455825&zoom=19",
         "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      }
+      },
+      "origin_class": "api_open_data"
     },
     {
       "id": "sanitary_pipe_2132",
@@ -4824,7 +4898,8 @@
         "osm_label": "OpenStreetMap 座標圖台",
         "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.024848&lon=121.455753&zoom=19",
         "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      }
+      },
+      "origin_class": "api_open_data"
     },
     {
       "id": "sanitary_pipe_2133",
@@ -4893,7 +4968,8 @@
         "osm_label": "OpenStreetMap 座標圖台",
         "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.024958&lon=121.455967&zoom=19",
         "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      }
+      },
+      "origin_class": "api_open_data"
     },
     {
       "id": "sanitary_pipe_2134",
@@ -4962,7 +5038,8 @@
         "osm_label": "OpenStreetMap 座標圖台",
         "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.024916&lon=121.455981&zoom=19",
         "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      }
+      },
+      "origin_class": "api_open_data"
     },
     {
       "id": "sanitary_pipe_2135",
@@ -5031,7 +5108,8 @@
         "osm_label": "OpenStreetMap 座標圖台",
         "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.025006&lon=121.456136&zoom=19",
         "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      }
+      },
+      "origin_class": "api_open_data"
     },
     {
       "id": "sanitary_pipe_2136",
@@ -5100,7 +5178,8 @@
         "osm_label": "OpenStreetMap 座標圖台",
         "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.025122&lon=121.456374&zoom=19",
         "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      }
+      },
+      "origin_class": "api_open_data"
     },
     {
       "id": "sanitary_pipe_2137",
@@ -5169,7 +5248,8 @@
         "osm_label": "OpenStreetMap 座標圖台",
         "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.024916&lon=121.455981&zoom=19",
         "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      }
+      },
+      "origin_class": "api_open_data"
     },
     {
       "id": "sanitary_pipe_2138",
@@ -5238,7 +5318,8 @@
         "osm_label": "OpenStreetMap 座標圖台",
         "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.024906&lon=121.455954&zoom=19",
         "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      }
+      },
+      "origin_class": "api_open_data"
     },
     {
       "id": "sanitary_pipe_2139",
@@ -5307,7 +5388,8 @@
         "osm_label": "OpenStreetMap 座標圖台",
         "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.024492&lon=121.455948&zoom=19",
         "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      }
+      },
+      "origin_class": "api_open_data"
     },
     {
       "id": "sanitary_pipe_2140",
@@ -5376,7 +5458,8 @@
         "osm_label": "OpenStreetMap 座標圖台",
         "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.024500&lon=121.455984&zoom=19",
         "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      }
+      },
+      "origin_class": "api_open_data"
     },
     {
       "id": "sanitary_pipe_2141",
@@ -5445,7 +5528,8 @@
         "osm_label": "OpenStreetMap 座標圖台",
         "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.024500&lon=121.455984&zoom=19",
         "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      }
+      },
+      "origin_class": "api_open_data"
     },
     {
       "id": "sanitary_pipe_2142",
@@ -5514,7 +5598,8 @@
         "osm_label": "OpenStreetMap 座標圖台",
         "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.025236&lon=121.456493&zoom=19",
         "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      }
+      },
+      "origin_class": "api_open_data"
     },
     {
       "id": "sanitary_pipe_2143",
@@ -5583,7 +5668,8 @@
         "osm_label": "OpenStreetMap 座標圖台",
         "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.025203&lon=121.456443&zoom=19",
         "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      }
+      },
+      "origin_class": "api_open_data"
     },
     {
       "id": "sanitary_pipe_2211",
@@ -5652,7 +5738,8 @@
         "osm_label": "OpenStreetMap 座標圖台",
         "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.025582&lon=121.455741&zoom=19",
         "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      }
+      },
+      "origin_class": "api_open_data"
     },
     {
       "id": "sanitary_pipe_2236",
@@ -5721,7 +5808,8 @@
         "osm_label": "OpenStreetMap 座標圖台",
         "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.025499&lon=121.455836&zoom=19",
         "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      }
+      },
+      "origin_class": "api_open_data"
     },
     {
       "id": "sanitary_pipe_2237",
@@ -5790,7 +5878,8 @@
         "osm_label": "OpenStreetMap 座標圖台",
         "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.025510&lon=121.455699&zoom=19",
         "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      }
+      },
+      "origin_class": "api_open_data"
     },
     {
       "id": "sanitary_pipe_2238",
@@ -5859,7 +5948,8 @@
         "osm_label": "OpenStreetMap 座標圖台",
         "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.025354&lon=121.455688&zoom=19",
         "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      }
+      },
+      "origin_class": "api_open_data"
     },
     {
       "id": "sanitary_pipe_2239",
@@ -5928,7 +6018,8 @@
         "osm_label": "OpenStreetMap 座標圖台",
         "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.025242&lon=121.455677&zoom=19",
         "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      }
+      },
+      "origin_class": "api_open_data"
     },
     {
       "id": "sanitary_pipe_2240",
@@ -5997,7 +6088,8 @@
         "osm_label": "OpenStreetMap 座標圖台",
         "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.025499&lon=121.455836&zoom=19",
         "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      }
+      },
+      "origin_class": "api_open_data"
     },
     {
       "id": "sanitary_pipe_2241",
@@ -6066,7 +6158,8 @@
         "osm_label": "OpenStreetMap 座標圖台",
         "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.025567&lon=121.455840&zoom=19",
         "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      }
+      },
+      "origin_class": "api_open_data"
     },
     {
       "id": "sanitary_pipe_2242",
@@ -6135,7 +6228,8 @@
         "osm_label": "OpenStreetMap 座標圖台",
         "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.025542&lon=121.456049&zoom=19",
         "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      }
+      },
+      "origin_class": "api_open_data"
     },
     {
       "id": "sanitary_pipe_2243",
@@ -6204,7 +6298,8 @@
         "osm_label": "OpenStreetMap 座標圖台",
         "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.025567&lon=121.455840&zoom=19",
         "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      }
+      },
+      "origin_class": "api_open_data"
     },
     {
       "id": "sanitary_pipe_2244",
@@ -6273,7 +6368,8 @@
         "osm_label": "OpenStreetMap 座標圖台",
         "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.025582&lon=121.455741&zoom=19",
         "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      }
+      },
+      "origin_class": "api_open_data"
     },
     {
       "id": "sanitary_pipe_3069",
@@ -6342,7 +6438,8 @@
         "osm_label": "OpenStreetMap 座標圖台",
         "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.023861&lon=121.454271&zoom=19",
         "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      }
+      },
+      "origin_class": "api_open_data"
     },
     {
       "id": "sanitary_pipe_3070",
@@ -6411,7 +6508,8 @@
         "osm_label": "OpenStreetMap 座標圖台",
         "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.024032&lon=121.454155&zoom=19",
         "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      }
+      },
+      "origin_class": "api_open_data"
     },
     {
       "id": "sanitary_pipe_3071",
@@ -6480,7 +6578,8 @@
         "osm_label": "OpenStreetMap 座標圖台",
         "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.024301&lon=121.454210&zoom=19",
         "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      }
+      },
+      "origin_class": "api_open_data"
     },
     {
       "id": "sanitary_pipe_5002",
@@ -6549,7 +6648,8 @@
         "osm_label": "OpenStreetMap 座標圖台",
         "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.023911&lon=121.454497&zoom=19",
         "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      }
+      },
+      "origin_class": "api_open_data"
     },
     {
       "id": "sanitary_pipe_5003",
@@ -6618,7 +6718,8 @@
         "osm_label": "OpenStreetMap 座標圖台",
         "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.023861&lon=121.454271&zoom=19",
         "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      }
+      },
+      "origin_class": "api_open_data"
     },
     {
       "id": "sanitary_pipe_5009",
@@ -6687,7 +6788,8 @@
         "osm_label": "OpenStreetMap 座標圖台",
         "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.023123&lon=121.455232&zoom=19",
         "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      }
+      },
+      "origin_class": "api_open_data"
     },
     {
       "id": "sanitary_pipe_5010",
@@ -6756,7 +6858,8 @@
         "osm_label": "OpenStreetMap 座標圖台",
         "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.023369&lon=121.454923&zoom=19",
         "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      }
+      },
+      "origin_class": "api_open_data"
     },
     {
       "id": "sanitary_pipe_5011",
@@ -6825,7 +6928,8 @@
         "osm_label": "OpenStreetMap 座標圖台",
         "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.023403&lon=121.454404&zoom=19",
         "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      }
+      },
+      "origin_class": "api_open_data"
     },
     {
       "id": "sanitary_pipe_5037",
@@ -6894,7 +6998,8 @@
         "osm_label": "OpenStreetMap 座標圖台",
         "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.022870&lon=121.456183&zoom=19",
         "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      }
+      },
+      "origin_class": "api_open_data"
     },
     {
       "id": "sanitary_pipe_5038",
@@ -6963,7 +7068,8 @@
         "osm_label": "OpenStreetMap 座標圖台",
         "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.023118&lon=121.455770&zoom=19",
         "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      }
+      },
+      "origin_class": "api_open_data"
     },
     {
       "id": "sanitary_pipe_5039",
@@ -7032,7 +7138,8 @@
         "osm_label": "OpenStreetMap 座標圖台",
         "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.023481&lon=121.455333&zoom=19",
         "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      }
+      },
+      "origin_class": "api_open_data"
     },
     {
       "id": "sanitary_pipe_5040",
@@ -7101,7 +7208,8 @@
         "osm_label": "OpenStreetMap 座標圖台",
         "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.023718&lon=121.454880&zoom=19",
         "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      }
+      },
+      "origin_class": "api_open_data"
     },
     {
       "id": "sanitary_pipe_5054",
@@ -7170,7 +7278,8 @@
         "osm_label": "OpenStreetMap 座標圖台",
         "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.023130&lon=121.454236&zoom=19",
         "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      }
+      },
+      "origin_class": "api_open_data"
     },
     {
       "id": "sanitary_pipe_5055",
@@ -7239,7 +7348,8 @@
         "osm_label": "OpenStreetMap 座標圖台",
         "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.023403&lon=121.454404&zoom=19",
         "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      }
+      },
+      "origin_class": "api_open_data"
     },
     {
       "id": "sanitary_pipe_5056",
@@ -7308,7 +7418,8 @@
         "osm_label": "OpenStreetMap 座標圖台",
         "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.023861&lon=121.454271&zoom=19",
         "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      }
+      },
+      "origin_class": "api_open_data"
     },
     {
       "id": "sanitary_pipe_5057",
@@ -7377,7 +7488,8 @@
         "osm_label": "OpenStreetMap 座標圖台",
         "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.024460&lon=121.454476&zoom=19",
         "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      }
+      },
+      "origin_class": "api_open_data"
     },
     {
       "id": "sanitary_pipe_5058",
@@ -7446,7 +7558,8 @@
         "osm_label": "OpenStreetMap 座標圖台",
         "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.025020&lon=121.454502&zoom=19",
         "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      }
+      },
+      "origin_class": "api_open_data"
     },
     {
       "id": "sanitary_pipe_5059",
@@ -7515,7 +7628,8 @@
         "osm_label": "OpenStreetMap 座標圖台",
         "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.025441&lon=121.454527&zoom=19",
         "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      }
+      },
+      "origin_class": "api_open_data"
     },
     {
       "id": "sanitary_pipe_5060",
@@ -7584,7 +7698,8 @@
         "osm_label": "OpenStreetMap 座標圖台",
         "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.025836&lon=121.454389&zoom=19",
         "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      }
+      },
+      "origin_class": "api_open_data"
     },
     {
       "id": "sanitary_pipe_5159",
@@ -7653,7 +7768,8 @@
         "osm_label": "OpenStreetMap 座標圖台",
         "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.025451&lon=121.456489&zoom=19",
         "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      }
+      },
+      "origin_class": "api_open_data"
     },
     {
       "id": "sanitary_pipe_5162",
@@ -7722,7 +7838,8 @@
         "osm_label": "OpenStreetMap 座標圖台",
         "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.025236&lon=121.456493&zoom=19",
         "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      }
+      },
+      "origin_class": "api_open_data"
     },
     {
       "id": "sanitary_pipe_5163",
@@ -7791,7 +7908,8 @@
         "osm_label": "OpenStreetMap 座標圖台",
         "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.024660&lon=121.456836&zoom=19",
         "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      }
+      },
+      "origin_class": "api_open_data"
     },
     {
       "id": "sanitary_pipe_5186",
@@ -7860,7 +7978,8 @@
         "osm_label": "OpenStreetMap 座標圖台",
         "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.024660&lon=121.456836&zoom=19",
         "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      }
+      },
+      "origin_class": "api_open_data"
     },
     {
       "id": "sanitary_pipe_5187",
@@ -7929,7 +8048,8 @@
         "osm_label": "OpenStreetMap 座標圖台",
         "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.025236&lon=121.456493&zoom=19",
         "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      }
+      },
+      "origin_class": "api_open_data"
     },
     {
       "id": "sanitary_pipe_5188",
@@ -7998,7 +8118,8 @@
         "osm_label": "OpenStreetMap 座標圖台",
         "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.025451&lon=121.456489&zoom=19",
         "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      }
+      },
+      "origin_class": "api_open_data"
     },
     {
       "id": "sanitary_pipe_5189",
@@ -8067,7 +8188,8 @@
         "osm_label": "OpenStreetMap 座標圖台",
         "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.025499&lon=121.455836&zoom=19",
         "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      }
+      },
+      "origin_class": "api_open_data"
     },
     {
       "id": "sanitary_pipe_5190",
@@ -8136,7 +8258,8 @@
         "osm_label": "OpenStreetMap 座標圖台",
         "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.025609&lon=121.455283&zoom=19",
         "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      }
+      },
+      "origin_class": "api_open_data"
     },
     {
       "id": "sanitary_pipe_5191",
@@ -8205,7 +8328,8 @@
         "osm_label": "OpenStreetMap 座標圖台",
         "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.026334&lon=121.455417&zoom=19",
         "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      }
+      },
+      "origin_class": "api_open_data"
     },
     {
       "id": "sanitary_pipe_47092.0",
@@ -8272,7 +8396,8 @@
         "osm_label": "OpenStreetMap 座標圖台",
         "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.023861&lon=121.454271&zoom=19",
         "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      }
+      },
+      "origin_class": "api_open_data"
     },
     {
       "id": "sanitary_pipe_47093.0",
@@ -8339,7 +8464,8 @@
         "osm_label": "OpenStreetMap 座標圖台",
         "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.024032&lon=121.454155&zoom=19",
         "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      }
+      },
+      "origin_class": "api_open_data"
     },
     {
       "id": "sanitary_pipe_47094.0",
@@ -8406,7 +8532,8 @@
         "osm_label": "OpenStreetMap 座標圖台",
         "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.024301&lon=121.454210&zoom=19",
         "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      }
+      },
+      "origin_class": "api_open_data"
     },
     {
       "id": "sanitary_mh_1351",
@@ -8442,7 +8569,8 @@
         "osm_label": "OpenStreetMap 座標圖台",
         "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.025673&lon=121.454175&zoom=19",
         "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      }
+      },
+      "origin_class": "api_open_data"
     },
     {
       "id": "sanitary_mh_1368",
@@ -8478,7 +8606,8 @@
         "osm_label": "OpenStreetMap 座標圖台",
         "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.023208&lon=121.453932&zoom=19",
         "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      }
+      },
+      "origin_class": "api_open_data"
     },
     {
       "id": "sanitary_mh_1369",
@@ -8514,7 +8643,8 @@
         "osm_label": "OpenStreetMap 座標圖台",
         "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.023122&lon=121.454101&zoom=19",
         "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      }
+      },
+      "origin_class": "api_open_data"
     },
     {
       "id": "sanitary_mh_1370",
@@ -8550,7 +8680,8 @@
         "osm_label": "OpenStreetMap 座標圖台",
         "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.023170&lon=121.454111&zoom=19",
         "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      }
+      },
+      "origin_class": "api_open_data"
     },
     {
       "id": "osm_elec_pt_501787857",
@@ -8582,7 +8713,8 @@
         "osm_label": "OpenStreetMap 設施節點 #501787857",
         "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.024367&lon=121.454377&zoom=19",
         "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      }
+      },
+      "origin_class": "api_open_data"
     },
     {
       "id": "osm_elec_pt_3365843326",
@@ -8614,7 +8746,8 @@
         "osm_label": "OpenStreetMap 設施節點 #3365843326",
         "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.025515&lon=121.454438&zoom=19",
         "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      }
+      },
+      "origin_class": "api_open_data"
     },
     {
       "id": "osm_elec_pt_3365843373",
@@ -8646,7 +8779,8 @@
         "osm_label": "OpenStreetMap 設施節點 #3365843373",
         "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.025514&lon=121.454545&zoom=19",
         "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      }
+      },
+      "origin_class": "api_open_data"
     },
     {
       "id": "road_water_414194141",
@@ -8741,7 +8875,8 @@
         "osm_label": "OpenStreetMap 圖資廊道 #414194141",
         "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.023441&lon=121.454295&zoom=19",
         "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      }
+      },
+      "origin_class": "api_open_data"
     },
     {
       "id": "road_electric_414194141",
@@ -8836,7 +8971,8 @@
         "osm_label": "OpenStreetMap 圖資廊道 #414194141",
         "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.023441&lon=121.454313&zoom=19",
         "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      }
+      },
+      "origin_class": "api_open_data"
     },
     {
       "id": "road_telecom_414194141",
@@ -8931,7 +9067,8 @@
         "osm_label": "OpenStreetMap 圖資廊道 #414194141",
         "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.023441&lon=121.454326&zoom=19",
         "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      }
+      },
+      "origin_class": "api_open_data"
     },
     {
       "id": "road_gas_414194141",
@@ -9026,7 +9163,8 @@
         "osm_label": "OpenStreetMap 圖資廊道 #414194141",
         "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.023441&lon=121.454280&zoom=19",
         "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      }
+      },
+      "origin_class": "api_open_data"
     },
     {
       "id": "road_duct_414194141",
@@ -9121,7 +9259,8 @@
         "osm_label": "OpenStreetMap 圖資廊道 #414194141",
         "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.023441&lon=121.454304&zoom=19",
         "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      }
+      },
+      "origin_class": "api_open_data"
     },
     {
       "id": "road_streetlight_414194141",
@@ -9216,7 +9355,8 @@
         "osm_label": "OpenStreetMap 圖資廊道 #414194141",
         "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.023441&lon=121.454330&zoom=19",
         "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      }
+      },
+      "origin_class": "api_open_data"
     },
     {
       "id": "road_water_329664611",
@@ -9296,7 +9436,8 @@
         "osm_label": "OpenStreetMap 圖資廊道 #329664611",
         "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.025417&lon=121.454514&zoom=19",
         "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      }
+      },
+      "origin_class": "api_open_data"
     },
     {
       "id": "road_electric_329664611",
@@ -9376,7 +9517,8 @@
         "osm_label": "OpenStreetMap 圖資廊道 #329664611",
         "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.025422&lon=121.454498&zoom=19",
         "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      }
+      },
+      "origin_class": "api_open_data"
     },
     {
       "id": "road_telecom_329664611",
@@ -9456,7 +9598,8 @@
         "osm_label": "OpenStreetMap 圖資廊道 #329664611",
         "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.025427&lon=121.454486&zoom=19",
         "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      }
+      },
+      "origin_class": "api_open_data"
     },
     {
       "id": "road_gas_329664611",
@@ -9536,7 +9679,8 @@
         "osm_label": "OpenStreetMap 圖資廊道 #329664611",
         "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.025412&lon=121.454528&zoom=19",
         "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      }
+      },
+      "origin_class": "api_open_data"
     },
     {
       "id": "road_duct_329664611",
@@ -9616,7 +9760,8 @@
         "osm_label": "OpenStreetMap 圖資廊道 #329664611",
         "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.025420&lon=121.454506&zoom=19",
         "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      }
+      },
+      "origin_class": "api_open_data"
     },
     {
       "id": "road_streetlight_329664611",
@@ -9696,7 +9841,8 @@
         "osm_label": "OpenStreetMap 圖資廊道 #329664611",
         "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.025428&lon=121.454482&zoom=19",
         "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      }
+      },
+      "origin_class": "api_open_data"
     },
     {
       "id": "road_water_1090890395",
@@ -9771,7 +9917,8 @@
         "osm_label": "OpenStreetMap 圖資廊道 #1090890395",
         "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.025212&lon=121.454394&zoom=19",
         "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      }
+      },
+      "origin_class": "api_open_data"
     },
     {
       "id": "road_electric_1090890395",
@@ -9846,7 +9993,8 @@
         "osm_label": "OpenStreetMap 圖資廊道 #1090890395",
         "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.025214&lon=121.454412&zoom=19",
         "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      }
+      },
+      "origin_class": "api_open_data"
     },
     {
       "id": "road_telecom_1090890395",
@@ -9921,7 +10069,8 @@
         "osm_label": "OpenStreetMap 圖資廊道 #1090890395",
         "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.025216&lon=121.454425&zoom=19",
         "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      }
+      },
+      "origin_class": "api_open_data"
     },
     {
       "id": "road_gas_1090890395",
@@ -9996,7 +10145,8 @@
         "osm_label": "OpenStreetMap 圖資廊道 #1090890395",
         "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.025210&lon=121.454379&zoom=19",
         "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      }
+      },
+      "origin_class": "api_open_data"
     },
     {
       "id": "road_streetlight_1090890395",
@@ -10071,7 +10221,8 @@
         "osm_label": "OpenStreetMap 圖資廊道 #1090890395",
         "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.025217&lon=121.454428&zoom=19",
         "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      }
+      },
+      "origin_class": "api_open_data"
     },
     {
       "id": "road_water_251873321",
@@ -10136,7 +10287,8 @@
         "osm_label": "OpenStreetMap 圖資廊道 #251873321",
         "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.025517&lon=121.454429&zoom=19",
         "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      }
+      },
+      "origin_class": "api_open_data"
     },
     {
       "id": "road_electric_251873321",
@@ -10201,7 +10353,8 @@
         "osm_label": "OpenStreetMap 圖資廊道 #251873321",
         "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.025513&lon=121.454447&zoom=19",
         "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      }
+      },
+      "origin_class": "api_open_data"
     },
     {
       "id": "road_telecom_251873321",
@@ -10266,7 +10419,8 @@
         "osm_label": "OpenStreetMap 圖資廊道 #251873321",
         "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.025511&lon=121.454459&zoom=19",
         "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      }
+      },
+      "origin_class": "api_open_data"
     },
     {
       "id": "road_gas_251873321",
@@ -10331,7 +10485,8 @@
         "osm_label": "OpenStreetMap 圖資廊道 #251873321",
         "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.025519&lon=121.454415&zoom=19",
         "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      }
+      },
+      "origin_class": "api_open_data"
     },
     {
       "id": "road_water_1019368448",
@@ -10396,7 +10551,8 @@
         "osm_label": "OpenStreetMap 圖資廊道 #1019368448",
         "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.025073&lon=121.454435&zoom=19",
         "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      }
+      },
+      "origin_class": "api_open_data"
     },
     {
       "id": "road_electric_1019368448",
@@ -10461,7 +10617,8 @@
         "osm_label": "OpenStreetMap 圖資廊道 #1019368448",
         "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.025074&lon=121.454417&zoom=19",
         "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      }
+      },
+      "origin_class": "api_open_data"
     },
     {
       "id": "road_telecom_1019368448",
@@ -10526,280 +10683,8 @@
         "osm_label": "OpenStreetMap 圖資廊道 #1019368448",
         "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.025074&lon=121.454404&zoom=19",
         "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      }
-    },
-    {
-      "id": "scan_road_ditch_1",
-      "layer": "storm",
-      "type": "box_culvert",
-      "name": "道路鋪面 道路排水側溝 0.5x0.6m",
-      "diameter_mm": 600,
-      "width_m": 0.5,
-      "height_m": 0.6,
-      "length_m": 38.94,
-      "material": "RC/預鑄混凝土U型側溝",
-      "start_coord": [
-        295987.5,
-        2768477.666,
-        7.989
-      ],
-      "end_coord": [
-        295990.334,
-        2768516.5,
-        7.825
-      ],
-      "start_ground_h": 9.139,
-      "end_ground_h": 9.075,
-      "start_rim_h": 9.139,
-      "end_rim_h": 9.075,
-      "start_invert_h": 7.989,
-      "end_invert_h": 7.825,
-      "start_crown_h": 8.589,
-      "end_crown_h": 8.425,
-      "start_depth_m": 1.15,
-      "end_depth_m": 1.25,
-      "start_cover_m": 0.55,
-      "end_cover_m": 0.65,
-      "depth_m": 1.2,
-      "slope_pct": 0.421,
-      "flow_direction": 1,
-      "coords": [
-        [
-          295987.5,
-          2768477.666,
-          7.989
-        ],
-        [
-          295988.917,
-          2768497.083,
-          7.928
-        ],
-        [
-          295990.334,
-          2768516.5,
-          7.825
-        ]
-      ],
-      "source": "New Taipei / Taipei Scan-Derived Roadside Drainage GIS",
-      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.023854&lon=121.455691&zoom=19",
-      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
-      "osm_url": "https://www.openstreetmap.org/way/1",
-      "osm_label": "OpenStreetMap 圖資廊道 #1",
-      "portal_url": "https://pipe.nlma.gov.tw/",
-      "portal_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
-      "gov_links": {
-        "portal_url": "https://pipe.nlma.gov.tw/",
-        "portal_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
-        "api_url": null,
-        "api_label": null,
-        "osm_url": "https://www.openstreetmap.org/way/1",
-        "osm_label": "OpenStreetMap 圖資廊道 #1",
-        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.023854&lon=121.455691&zoom=19",
-        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      }
-    },
-    {
-      "id": "scan_catch_basin_1",
-      "layer": "storm",
-      "type": "catch_basin",
-      "name": "道路鋪面 道路集水井 CB-01",
-      "facility_no": "CB-01",
-      "structure_type": "道路集水井",
-      "coord": [
-        295990.334,
-        2768516.5,
-        7.825
-      ],
-      "rim_h": 9.075,
-      "invert_h": 7.825,
-      "depth_m": 1.25,
-      "diameter_mm": 600,
-      "source": "New Taipei / Taipei Scan-Derived Roadside Drainage GIS",
-      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.024030&lon=121.455706&zoom=19",
-      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
-      "osm_url": "https://www.openstreetmap.org/?mlat=25.024030&mlon=121.455706#map=19/25.024030/121.455706",
-      "osm_label": "OpenStreetMap 座標圖台",
-      "portal_url": "https://pipe.nlma.gov.tw/",
-      "portal_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
-      "gov_links": {
-        "portal_url": "https://pipe.nlma.gov.tw/",
-        "portal_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
-        "api_url": null,
-        "api_label": null,
-        "osm_url": "https://www.openstreetmap.org/?mlat=25.024030&mlon=121.455706#map=19/25.024030/121.455706",
-        "osm_label": "OpenStreetMap 座標圖台",
-        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.024030&lon=121.455706&zoom=19",
-        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      }
-    },
-    {
-      "id": "scan_as_built_1",
-      "layer": "as_built",
-      "type": "pipe",
-      "name": "道路鋪面 竣工實測管線 D=200mm",
-      "diameter_mm": 200,
-      "width_m": 0.2,
-      "height_m": 0.2,
-      "length_m": 38.94,
-      "material": "HDPE/高密度聚乙烯管",
-      "start_coord": [
-        295987.5,
-        2768477.666,
-        7.689
-      ],
-      "end_coord": [
-        295990.334,
-        2768516.5,
-        7.575
-      ],
-      "start_ground_h": 9.139,
-      "end_ground_h": 9.075,
-      "start_rim_h": 9.139,
-      "end_rim_h": 9.075,
-      "start_invert_h": 7.689,
-      "end_invert_h": 7.575,
-      "start_crown_h": 7.889,
-      "end_crown_h": 7.775,
-      "start_depth_m": 1.45,
-      "end_depth_m": 1.5,
-      "start_cover_m": 1.25,
-      "end_cover_m": 1.3,
-      "depth_m": 1.48,
-      "slope_pct": 0.293,
-      "flow_direction": 1,
-      "coords": [
-        [
-          295987.5,
-          2768477.666,
-          7.689
-        ],
-        [
-          295990.334,
-          2768516.5,
-          7.575
-        ]
-      ],
-      "source": "Scan-to-BIM As-Built Survey Verification",
-      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.024030&lon=121.455706&zoom=19",
-      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
-      "osm_url": "https://www.openstreetmap.org/?mlat=25.024030&mlon=121.455706#map=19/25.024030/121.455706",
-      "osm_label": "OpenStreetMap 座標圖台",
-      "portal_url": "https://pipe.nlma.gov.tw/",
-      "portal_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
-      "gov_links": {
-        "portal_url": "https://pipe.nlma.gov.tw/",
-        "portal_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
-        "api_url": null,
-        "api_label": null,
-        "osm_url": "https://www.openstreetmap.org/?mlat=25.024030&mlon=121.455706#map=19/25.024030/121.455706",
-        "osm_label": "OpenStreetMap 座標圖台",
-        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.024030&lon=121.455706&zoom=19",
-        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      }
-    },
-    {
-      "id": "scan_road_ditch_2",
-      "layer": "storm",
-      "type": "box_culvert",
-      "name": "道路鋪面 道路排水側溝 0.5x0.6m",
-      "diameter_mm": 600,
-      "width_m": 0.5,
-      "height_m": 0.6,
-      "length_m": 17.0,
-      "material": "RC/預鑄混凝土U型側溝",
-      "start_coord": [
-        295957.916,
-        2768526.25,
-        7.887
-      ],
-      "end_coord": [
-        295958.084,
-        2768543.25,
-        7.732
-      ],
-      "start_ground_h": 9.037,
-      "end_ground_h": 8.982,
-      "start_rim_h": 9.037,
-      "end_rim_h": 8.982,
-      "start_invert_h": 7.887,
-      "end_invert_h": 7.732,
-      "start_crown_h": 8.487,
-      "end_crown_h": 8.332,
-      "start_depth_m": 1.15,
-      "end_depth_m": 1.25,
-      "start_cover_m": 0.55,
-      "end_cover_m": 0.65,
-      "depth_m": 1.2,
-      "slope_pct": 0.912,
-      "flow_direction": 1,
-      "coords": [
-        [
-          295957.916,
-          2768526.25,
-          7.887
-        ],
-        [
-          295958.0,
-          2768534.75,
-          7.803
-        ],
-        [
-          295958.084,
-          2768543.25,
-          7.732
-        ]
-      ],
-      "source": "New Taipei / Taipei Scan-Derived Roadside Drainage GIS",
-      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.024195&lon=121.455386&zoom=19",
-      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
-      "osm_url": "https://www.openstreetmap.org/way/2",
-      "osm_label": "OpenStreetMap 圖資廊道 #2",
-      "portal_url": "https://pipe.nlma.gov.tw/",
-      "portal_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
-      "gov_links": {
-        "portal_url": "https://pipe.nlma.gov.tw/",
-        "portal_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
-        "api_url": null,
-        "api_label": null,
-        "osm_url": "https://www.openstreetmap.org/way/2",
-        "osm_label": "OpenStreetMap 圖資廊道 #2",
-        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.024195&lon=121.455386&zoom=19",
-        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      }
-    },
-    {
-      "id": "scan_catch_basin_2",
-      "layer": "storm",
-      "type": "catch_basin",
-      "name": "道路鋪面 道路集水井 CB-02",
-      "facility_no": "CB-02",
-      "structure_type": "道路集水井",
-      "coord": [
-        295958.084,
-        2768543.25,
-        7.732
-      ],
-      "rim_h": 8.982,
-      "invert_h": 7.732,
-      "depth_m": 1.25,
-      "diameter_mm": 600,
-      "source": "New Taipei / Taipei Scan-Derived Roadside Drainage GIS",
-      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.024272&lon=121.455387&zoom=19",
-      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
-      "osm_url": "https://www.openstreetmap.org/?mlat=25.024272&mlon=121.455387#map=19/25.024272/121.455387",
-      "osm_label": "OpenStreetMap 座標圖台",
-      "portal_url": "https://pipe.nlma.gov.tw/",
-      "portal_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
-      "gov_links": {
-        "portal_url": "https://pipe.nlma.gov.tw/",
-        "portal_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
-        "api_url": null,
-        "api_label": null,
-        "osm_url": "https://www.openstreetmap.org/?mlat=25.024272&mlon=121.455387#map=19/25.024272/121.455387",
-        "osm_label": "OpenStreetMap 座標圖台",
-        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=25.024272&lon=121.455387&zoom=19",
-        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      }
+      },
+      "origin_class": "api_open_data"
     }
   ],
   "query_timestamp": "2026-10-31T10:43:53.573976+00:00",

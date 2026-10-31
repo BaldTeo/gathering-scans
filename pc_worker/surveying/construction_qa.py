@@ -512,14 +512,29 @@ class ConstructionQAMixin:
                 if e_v is not None and n_v is not None:
                     parsed_pts.append({"e": e_v, "n": n_v, "h": h_v, "name": name})
 
-        # Fallback synthetic trench alignment if empty
+        # Strictly zero synthetic fallback pipes — only trace explicit user-provided trench points
         if len(parsed_pts) < 2:
-            parsed_pts = [
-                {"e": ce - 15.0, "n": cn - 5.0, "h": ch - 1.8, "name": "MH-01"},
-                {"e": ce - 5.0, "n": cn - 2.0, "h": ch - 1.9, "name": "P-02"},
-                {"e": ce + 5.0, "n": cn + 1.0, "h": ch - 2.05, "name": "P-03"},
-                {"e": ce + 15.0, "n": cn + 4.0, "h": ch - 2.2, "name": "MH-02"},
-            ]
+            return {
+                "status": "ok",
+                "scan_id": scan_id,
+                "crs": TWD97_TWVD2001_LABEL,
+                "pipe_type": pipe_type,
+                "pipe_diameter_mm": dia_mm,
+                "pipe_diameter_m": dia_m,
+                "min_cover_m": min_cover_m,
+                "point_mode": point_mode,
+                "total_length_2d_m": 0.0,
+                "total_length_3d_m": 0.0,
+                "overall_slope_pct": 0.0,
+                "overall_slope_ratio": "—",
+                "overall_dz_m": 0.0,
+                "station_count": 0,
+                "stations": [],
+                "csv_export": "",
+                "dxf_export": "",
+                "center_twd97": {"e": round(ce, 3), "n": round(cn, 3), "h": round(ch, 3)},
+                "origin_class": "user_or_scan_to_bim",
+            }
 
         # Calculate stations and elevations
         cum_dist_2d = float(station_start)

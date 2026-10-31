@@ -156,8 +156,8 @@
             <span class="bim-cat-pill ${BIM_STATE.selectedCategories.has("buildings") ? "active" : ""}" data-cat="buildings">
               <span class="bim-dot" style="background:#3b82f6;"></span>${tr("建築設施", "Buildings")}
             </span>
-            <span class="bim-cat-pill ${BIM_STATE.selectedCategories.has("pipes") ? "active" : ""}" data-cat="pipes">
-              <span class="bim-dot" style="background:#f97316;"></span>${tr("地下管線", "Pipes")}
+            <span class="bim-cat-pill ${BIM_STATE.selectedCategories.has("pipes") ? "active" : ""}" data-cat="pipes" title="${tr("僅顯示自建或 Scan-to-BIM 管線，與官方 API 管線圖層嚴格隔離", "User / Scan-to-BIM pipes only — strictly isolated from Official API Utilities")}">
+              <span class="bim-dot" style="background:#f97316;"></span>${tr("自建/BIM管線", "BIM Pipes")}
             </span>
           </div>
         </div>

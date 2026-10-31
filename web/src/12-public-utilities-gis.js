@@ -75,6 +75,8 @@
     loadedScanId: null,
     lastCenter: null,
     radiusM: 120.0,
+    isCached: false,
+    cacheTimestamp: "",
     groundXrayPct: 38, // Default 38% X-Ray translucency (= 0.62 terrain opacity) when Utilities active
     groundOpacity: 0.62,
     features: [],
@@ -273,10 +275,12 @@
       }
     });
 
-    // 10 Layer toggle cards
-    const layersHtml = Object.keys(UTILITY_LAYERS)
+    // 9 Official API Public Utility Layers + 1 Strictly Isolated User/Scan-to-BIM As-Built Layer
+    const apiLayerKeys = ["storm", "sanitary", "water", "electric", "telecom", "gas", "ducts", "streetlights", "excavations"];
+    const apiLayersHtml = apiLayerKeys
       .map((k) => {
         const l = UTILITY_LAYERS[k];
+        if (!l) return "";
         const isChecked = l.visible !== false ? "checked" : "";
         const count = l.count || 0;
         return `
@@ -292,27 +296,54 @@
       })
       .join("");
 
+    const asBuiltLayer = UTILITY_LAYERS.as_built;
+    const asBuiltCount = asBuiltLayer ? asBuiltLayer.count || 0 : 0;
+    const asBuiltChecked = asBuiltLayer && asBuiltLayer.visible !== false ? "checked" : "";
+    const layersHtml = `
+      ${apiLayersHtml}
+      <div style="margin:6px 0 4px 0;padding-top:6px;border-top:1px dashed rgba(148,163,184,0.28);font-size:9.5px;font-weight:700;color:var(--ui-text-muted);display:flex;align-items:center;justify-content:space-between;">
+        <span>${t("自建 / Scan-to-BIM 獨立圖層 (與 API 嚴格隔離)", "User / Scan-to-BIM Isolated Layer")}</span>
+        <span style="font-size:9px;color:#14b8a6;">NON-API</span>
+      </div>
+      <div class="gs-util-layer-row" data-layer="as_built" style="background:rgba(20,184,166,0.06);border:1px solid rgba(20,184,166,0.22);border-radius:6px;padding:3px 6px;">
+        <label class="gs-util-checkbox-label">
+          <input type="checkbox" id="chkUtil_as_built" data-layer="as_built" ${asBuiltChecked} />
+          <span class="gs-util-color-dot" style="background:${asBuiltLayer.color};box-shadow:0 0 6px ${asBuiltLayer.color}44;"></span>
+          <span class="gs-util-layer-name">${t("竣工實測 / Scan-to-BIM 自建管線", "User / Scan-to-BIM As-Built Pipes")}</span>
+        </label>
+        <span class="gs-util-count-pill" id="cntUtil_as_built" style="${asBuiltCount > 0 ? "font-weight:700;color:#14b8a6;" : "opacity:0.5;"}">${asBuiltCount}</span>
+      </div>
+    `;
+
     const selCardHtml = UTILS_STATE.selectedFeature
       ? renderSelectedFeatureCardHtml(UTILS_STATE.selectedFeature)
       : `<div class="gs-util-hint-card">${t("點擊 3D 管線或人孔檢視埋深與管底高程", "Click 3D pipe or manhole to inspect burial depth & invert elevation")}</div>`;
+
+    const cacheBadgeHtml =
+      UTILS_STATE.features && UTILS_STATE.features.length > 0
+        ? `<span class="gs-util-cache-pill ${UTILS_STATE.isCached ? "cached" : "live"}" title="${escapeHtml(UTILS_STATE.cacheTimestamp || t("已儲存工區管線圖資快取，調整半徑無須重查外部 API", "Saved scan utilities snapshot; radius changes filter instantly without API calls"))}">
+             ${SVG.CHECK} ${UTILS_STATE.isCached ? t("已快取", "Cached") : t("已同步", "Synced")}
+           </span>`
+        : "";
 
     const html = `
       <div class="gs-util-panel-container">
         <!-- Search & Control Header -->
         <div class="gs-util-section-card">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:5px;">
+            <label class="gs-util-field-label" style="margin:0;">${t("搜尋半徑 (快取即時篩選)", "Radius (Instant Cached Filter)")}</label>
+            ${cacheBadgeHtml}
+          </div>
           <div class="gs-util-row-flex" style="margin-bottom:8px;">
-            <div style="flex:1;">
-              <label class="gs-util-field-label">${t("搜尋半徑", "Radius")}</label>
-              <div style="display:flex;align-items:center;gap:4px;">
-                <input type="number" id="inpUtilRadius" class="gs-input gs-util-input" min="10" max="1000" step="10" value="${UTILS_STATE.radiusM}" />
-                <span style="font-size:11px;color:var(--ui-text-muted);">m</span>
-              </div>
+            <div style="display:flex;align-items:center;gap:4px;flex:1;">
+              <input type="number" id="inpUtilRadius" class="gs-input gs-util-input" min="10" max="1000" step="10" value="${UTILS_STATE.radiusM}" />
+              <span style="font-size:11px;font-weight:600;color:var(--ui-text-muted);">m</span>
             </div>
-            <div style="display:flex;align-items:flex-end;gap:5px;">
-              <button type="button" class="btn-xs primary" id="btnUtilQuery" title="${t("查詢現場周圍真實公共管線", "Query real public utilities around scan")}">
-                ${SVG.SEARCH} ${t("查詢", "Query")}
+            <div style="display:flex;align-items:center;gap:6px;">
+              <button type="button" class="gs-btn gs-btn-primary btn-xs primary" id="btnUtilQuery" title="${t("手動重新向政府開放 API 同步最新管線圖資並更新儲存快取", "Manually re-query external government GIS APIs and update saved cache")}">
+                ${SVG.RESET} ${t("更新圖資", "Sync")}
               </button>
-              <button type="button" class="btn-xs" id="btnUtilUpload" title="${t("匯入 MOI NGIS GML 3.1.1、GeoJSON 或 KML 管線檔案", "Import MOI NGIS GML 3.1.1, GeoJSON, or KML file")}">
+              <button type="button" class="gs-btn btn-xs" id="btnUtilUpload" title="${t("匯入 MOI NGIS GML 3.1.1、GeoJSON 或 KML 管線檔案", "Import MOI NGIS GML 3.1.1, GeoJSON, or KML file")}">
                 ${SVG.UPLOAD} ${t("匯入", "Import")}
               </button>
               <input type="file" id="inpUtilFile" accept=".gml,.xml,.json,.geojson,.kml,.csv" style="display:none;" />
@@ -340,9 +371,9 @@
         <div class="gs-util-section-card">
           <div class="gs-util-section-header">
             <span>${SVG.EYE} ${t("管線圖層 (10 類)", "Utility Layers")}</span>
-            <div style="display:flex;gap:4px;">
-              <button type="button" class="btn-xs" id="btnUtilAllLayers">${t("全選", "All")}</button>
-              <button type="button" class="btn-xs" id="btnUtilNoneLayers">${t("全無", "None")}</button>
+            <div style="display:flex;gap:5px;">
+              <button type="button" class="gs-btn gs-btn-sm btn-xs" id="btnUtilAllLayers">${t("全選", "All")}</button>
+              <button type="button" class="gs-btn gs-btn-sm btn-xs" id="btnUtilNoneLayers">${t("全無", "None")}</button>
             </div>
           </div>
           <div class="gs-util-layers-list">
@@ -354,7 +385,7 @@
         <div class="gs-util-section-card">
           <div class="gs-util-section-header">
             <span>${SVG.LAYERS} ${t("地底透視與流向模擬", "Subsurface X-Ray & Flow")}</span>
-            <button type="button" class="btn-xs ${UTILS_STATE.flowAnimationActive ? "primary" : ""}" id="btnUtilToggleAnim">
+            <button type="button" class="gs-btn gs-btn-sm btn-xs ${UTILS_STATE.flowAnimationActive ? "gs-btn-primary primary" : ""}" id="btnUtilToggleAnim">
               ${UTILS_STATE.flowAnimationActive ? SVG.PAUSE : SVG.PLAY} ${UTILS_STATE.flowAnimationActive ? t("暫停", "Pause") : t("流動", "Flow")}
             </button>
           </div>
@@ -377,13 +408,13 @@
 
         <!-- Action Export Bar -->
         <div style="display:flex;gap:6px;margin-top:10px;">
-          <button type="button" class="btn-xs" id="btnUtilExportGeoJson" style="flex:1;">
+          <button type="button" class="gs-btn btn-xs" id="btnUtilExportGeoJson" style="flex:1;">
             ${SVG.EXPORT} GeoJSON
           </button>
-          <button type="button" class="btn-xs" id="btnUtilExportDxf" style="flex:1;">
+          <button type="button" class="gs-btn btn-xs" id="btnUtilExportDxf" style="flex:1;">
             ${SVG.EXPORT} DXF
           </button>
-          <button type="button" class="btn-xs" id="btnUtilReset" style="width:auto;" title="${t("清除管線圖資", "Clear utilities")}">
+          <button type="button" class="gs-btn btn-xs" id="btnUtilReset" style="width:auto;" title="${t("清除管線圖資", "Clear utilities")}">
             ${SVG.RESET} ${t("清除", "Clear")}
           </button>
         </div>
@@ -414,6 +445,11 @@
 
     const computed = feat.__computed3D || {};
     const isManhole = fType === "manhole" || fType === "catch_basin" || fType === "hydrant" || fType === "pole";
+    const originClass = getFeatProp(feat, "origin_class", layerId === "as_built" ? "user_or_scan_to_bim" : "api_open_data");
+    const originBadgeHtml =
+      originClass === "user_or_scan_to_bim"
+        ? `<span class="gs-util-badge" style="background:rgba(20,184,166,0.16);color:#14b8a6;border:1px solid rgba(20,184,166,0.4);font-size:9.5px;">${t("自建 / Scan-to-BIM 圖層", "User / Scan-to-BIM Layer")}</span>`
+        : `<span class="gs-util-badge" style="background:rgba(56,189,248,0.14);color:#38bdf8;border:1px solid rgba(56,189,248,0.35);font-size:9.5px;">${t("官方開放 API 圖資", "Official API Record")}</span>`;
 
     const portalUrl = getFeatProp(feat, "portal_url", "");
     const portalLabel = getFeatProp(feat, "portal_label", t("政府管線圖資入口網", "Gov GIS Portal"));
@@ -460,11 +496,14 @@
 
       return `
         <div class="gs-util-detail-card" style="border-left:3px solid ${lyr.color};">
-          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:4px;margin-bottom:4px;flex-wrap:wrap;">
             <span style="font-weight:700;font-size:12px;color:var(--ui-text-primary);">${escapeHtml(nameStr)}</span>
-            <span class="gs-util-badge" style="background:${lyr.color}22;color:${lyr.color};border:1px solid ${lyr.color}44;">
-              ${t(lyr.name_zh, lyr.name_en)}
-            </span>
+            <div style="display:flex;align-items:center;gap:4px;">
+              ${originBadgeHtml}
+              <span class="gs-util-badge" style="background:${lyr.color}22;color:${lyr.color};border:1px solid ${lyr.color}44;">
+                ${t(lyr.name_zh, lyr.name_en)}
+              </span>
+            </div>
           </div>
           <div class="gs-util-detail-grid">
             <div><span class="gs-util-detail-lbl">${t("孔徑/尺寸", "Size")}:</span> <b>${escapeHtml(dimText)}</b></div>
@@ -526,6 +565,7 @@
         <div style="font-size:10px;color:var(--ui-text-muted);margin-top:4px;">
           ${t("資料來源", "Source")}: ${escapeHtml(getFeatProp(feat, "source", "Taiwan Open GIS"))}
         </div>
+        ${originBadgeHtml}
         ${linksBarHtml}
       </div>
     `;
@@ -544,11 +584,12 @@
       };
     }
 
-    // Radius change
+    // Radius change: filter from saved scan snapshot immediately without hitting external APIs
     const inpR = document.getElementById("inpUtilRadius");
     if (inpR) {
-      inpR.onchange = () => {
+      inpR.onchange = async () => {
         UTILS_STATE.radiusM = Math.max(10, Math.min(1000, parseFloat(inpR.value) || 120));
+        await runUtilitiesQuery(false);
       };
     }
 
@@ -650,6 +691,7 @@
         UTILS_STATE.features = [];
         UTILS_STATE.selectedFeature = null;
         UTILS_STATE.loadedScanId = null;
+        UTILS_STATE.isCached = false;
         Object.keys(UTILITY_LAYERS).forEach((k) => (UTILITY_LAYERS[k].count = 0));
         renderUtilitiesSidePanel();
       };
@@ -661,8 +703,8 @@
    */
   async function runUtilitiesQuery(forceRefresh = false) {
     const scanId = String((typeof STATE !== "undefined" && STATE.activeScanId) || "");
-    if (typeof showToast === "function") {
-      showToast(t("正在查詢現場周邊公共管線開放圖資...", "Querying public utilities GIS endpoints..."));
+    if (forceRefresh && typeof showToast === "function") {
+      showToast(t("正在向政府開放 API 同步最新公共管線圖資...", "Syncing public utilities from external GIS APIs..."));
     }
 
     try {
@@ -691,6 +733,8 @@
         UTILS_STATE.features = res.features;
         UTILS_STATE.loadedScanId = scanId;
         UTILS_STATE.lastCenter = res.center || null;
+        UTILS_STATE.isCached = Boolean(res.cached);
+        UTILS_STATE.cacheTimestamp = String(res.query_timestamp || "");
 
         // Reset counts and sum up
         Object.keys(UTILITY_LAYERS).forEach((k) => (UTILITY_LAYERS[k].count = 0));
@@ -707,7 +751,7 @@
         if (typeof showToast === "function") {
           showToast(
             t(
-              `已成功取得 ${res.total_features} 筆公共管線圖資 (總長 ${Math.round(res.total_pipe_length_m || 0)}m)`,
+              `已載入 ${res.total_features} 筆公共管線圖資 (總長 ${Math.round(res.total_pipe_length_m || 0)}m)`,
               `Loaded ${res.total_features} public utility features (${Math.round(res.total_pipe_length_m || 0)}m)`
             )
           );
@@ -741,6 +785,7 @@
       if (res && res.status === "ok" && Array.isArray(res.features)) {
         UTILS_STATE.features = res.features;
         UTILS_STATE.loadedScanId = String((typeof STATE !== "undefined" && STATE.activeScanId) || "");
+        UTILS_STATE.isCached = false;
 
         Object.keys(UTILITY_LAYERS).forEach((k) => (UTILITY_LAYERS[k].count = 0));
         if (res.layer_counts) {
@@ -805,7 +850,7 @@
   }
 
   /**
-   * Clears all 3D Three.js utilities visuals from studioThree scene.
+   * Clears all 3D Three.js utilities visuals from studioThree scene (including any orphaned PublicUtilitiesGroup).
    */
   function clearUtilitiesVisuals3D() {
     if (UTILS_STATE.animationFrameId) {
@@ -813,19 +858,48 @@
       UTILS_STATE.animationFrameId = null;
     }
 
-    const studioThree = window.studioThree;
-    if (studioThree && UTILS_STATE.threeGroup) {
-      if (studioThree.overlayGroup) studioThree.overlayGroup.remove(UTILS_STATE.threeGroup);
-      if (studioThree.scene) studioThree.scene.remove(UTILS_STATE.threeGroup);
-      UTILS_STATE.threeGroup.traverse((obj) => {
-        if (obj.geometry) obj.geometry.dispose();
+    function disposeGroupTree(grp) {
+      if (!grp) return;
+      grp.traverse((obj) => {
+        if (obj.geometry) {
+          try {
+            obj.geometry.dispose();
+          } catch (_) {}
+        }
         if (obj.material) {
-          if (Array.isArray(obj.material)) obj.material.forEach((m) => m.dispose());
-          else obj.material.dispose();
+          try {
+            if (Array.isArray(obj.material)) obj.material.forEach((m) => m && m.dispose && m.dispose());
+            else if (obj.material.dispose) obj.material.dispose();
+          } catch (_) {}
         }
       });
-      UTILS_STATE.threeGroup = null;
     }
+
+    const studioThree = window.studioThree;
+    if (studioThree) {
+      const roots = [studioThree.overlayGroup, studioThree.scene].filter(Boolean);
+      roots.forEach((root) => {
+        const toRemove = [];
+        root.children.forEach((ch) => {
+          if (ch === UTILS_STATE.threeGroup || (ch && ch.name === "PublicUtilitiesGroup")) {
+            toRemove.push(ch);
+          }
+        });
+        toRemove.forEach((ch) => {
+          root.remove(ch);
+          disposeGroupTree(ch);
+        });
+      });
+      if (UTILS_STATE.threeGroup) {
+        disposeGroupTree(UTILS_STATE.threeGroup);
+      }
+      if (typeof studioThree.render === "function") {
+        studioThree.render();
+      } else if (studioThree.renderer && studioThree.camera && studioThree.scene) {
+        studioThree.renderer.render(studioThree.scene, studioThree.camera);
+      }
+    }
+    UTILS_STATE.threeGroup = null;
     UTILS_STATE.pipeMeshMap.clear();
   }
 
@@ -1466,6 +1540,9 @@
       }
     });
 
+    const anyLayerVisible = Object.values(UTILITY_LAYERS).some((l) => l && l.visible === true);
+    group.visible = anyLayerVisible;
+
     // Add to overlayGroup or scene (without hijacking or teleporting the user's camera)
     if (studioThree.overlayGroup) {
       studioThree.overlayGroup.add(group);
@@ -1485,25 +1562,41 @@
 
   /**
    * Updates 3D mesh visibility according to the 10 layer toggles.
+   * When all layers are unchecked ("None"), hides the root group and all children completely.
    */
   function updateLayerVisibility3D() {
+    const anyLayerVisible = Object.values(UTILITY_LAYERS).some((l) => l && l.visible === true);
+    const studioThree = window.studioThree;
+    if (studioThree) {
+      [studioThree.overlayGroup, studioThree.scene].filter(Boolean).forEach((root) => {
+        root.children.forEach((ch) => {
+          if (ch && ch.name === "PublicUtilitiesGroup") {
+            ch.visible = anyLayerVisible;
+          }
+        });
+      });
+    }
+
     if (!UTILS_STATE.threeGroup) return;
+    UTILS_STATE.threeGroup.visible = anyLayerVisible;
 
     UTILS_STATE.threeGroup.traverse((child) => {
-      if (child.userData && child.userData.layerId) {
-        const lyr = UTILITY_LAYERS[child.userData.layerId];
-        const isVis = lyr ? lyr.visible !== false : true;
-        if (child.userData.isFlowPulse) {
-          child.visible = isVis && UTILS_STATE.flowAnimationActive;
-        } else {
-          child.visible = isVis;
-        }
+      if (child === UTILS_STATE.threeGroup) {
+        child.visible = anyLayerVisible;
+        return;
+      }
+      const lyr = child.userData && child.userData.layerId ? UTILITY_LAYERS[child.userData.layerId] : null;
+      const isVis = anyLayerVisible && Boolean(lyr && lyr.visible === true);
+      if (child.userData && child.userData.isFlowPulse) {
+        child.visible = isVis && UTILS_STATE.flowAnimationActive;
+      } else {
+        child.visible = isVis;
       }
     });
 
     UTILS_STATE.pipeMeshMap.forEach((entry) => {
       const lyr = UTILITY_LAYERS[entry.layer];
-      const isVis = lyr ? lyr.visible !== false : true;
+      const isVis = anyLayerVisible && Boolean(lyr && lyr.visible === true);
       entry.mesh.visible = isVis;
       if (entry.xrayMesh) entry.xrayMesh.visible = isVis;
       if (entry.pulseMesh) {
@@ -1514,7 +1607,6 @@
       }
     });
 
-    const studioThree = window.studioThree;
     if (studioThree && typeof studioThree.render === "function") {
       studioThree.render();
     } else if (studioThree && studioThree.renderer && studioThree.camera && studioThree.scene) {

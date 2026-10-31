@@ -1208,6 +1208,11 @@ class ServerWriteRoutesMixin:
                     SURVEY.get_or_generate_true_nadir_ortho(sid_clean, force=True)
                 except Exception:
                     pass
+                try:
+                    if hasattr(SURVEY, "ensure_scan_utilities_cached_async"):
+                        SURVEY.ensure_scan_utilities_cached_async(sid_clean)
+                except Exception:
+                    pass
 
             if path == "/api/optimizer/optimize":
                 if not actor_perms.get("can_run_workflows"):

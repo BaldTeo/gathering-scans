@@ -420,10 +420,15 @@
       !String(sc.crs || "").toUpperCase().includes("LOCAL");
 
     STATE.scans.forEach((s) => {
-      if (!includeLibrary && typeof isLibraryScan === "function" && isLibraryScan(s)) {
-        return;
-      }
       const g = s.project_group || "Unassigned Site";
+      if (!includeLibrary) {
+        if (typeof isLibraryScan === "function" && isLibraryScan(s)) {
+          return;
+        }
+        if (typeof isLibraryFolderGroup === "function" && isLibraryFolderGroup(g)) {
+          return;
+        }
+      }
       if (!map.has(g)) {
         map.set(g, {
           project_group: g,
@@ -478,7 +483,7 @@
   function populateProjectScanDropdowns(projectGroup, preferredScanId = null) {
     const mapGroups = getProjectGroupsList("", { includeLibrary: false });
     const allGroupsWithLib = getProjectGroupsList("", { includeLibrary: true });
-    const activeCatalogGroups = STATE.leftPaneMode === "library" || STATE.activeView === "studio" ? allGroupsWithLib : mapGroups;
+    const activeCatalogGroups = STATE.leftPaneMode === "library" && STATE.activeView !== "studio" ? allGroupsWithLib : mapGroups;
     if (projectGroup === "__all__") {
       STATE.activeProjectGroup = "__all__";
     } else if (projectGroup && activeCatalogGroups.some((g) => g.project_group === projectGroup)) {
@@ -525,12 +530,12 @@
       }
     }
 
-    // 2. Populate Timeline, Studio, and Compare Project Switcher Dropdowns
+    // 2. Populate Timeline, Studio, and Compare Project Switcher Dropdowns (Studio & Compare strictly exclude Library folders)
     ["timelineProjectSelect", "studioProjectSelect", "compareProjectSelect"].forEach((selId) => {
       const sel = document.getElementById(selId);
       if (!sel) return;
       const groupsForSel =
-        selId === "studioProjectSelect" || (selId === "timelineProjectSelect" && STATE.leftPaneMode === "library")
+        selId === "timelineProjectSelect" && STATE.leftPaneMode === "library"
           ? allGroupsWithLib
           : mapGroups;
       sel.innerHTML = "";
@@ -1910,9 +1915,33 @@
   // 3D Model Library with Folders & Admin Move Scan Between Sites and Folders
   // ============================================================================
 
+  function isLibraryFolderGroup(groupName) {
+    const clean = String(groupName || "").trim();
+    if (!clean) return false;
+    const low = clean.toLowerCase();
+    const normEn = typeof normalizeCanonicalFolderName === "function" ? normalizeCanonicalFolderName(clean).en.toLowerCase() : low;
+    if (
+      normEn === "people" ||
+      normEn === "equipment" ||
+      normEn === "general models" ||
+      low === "人物與角色" ||
+      low === "機具與設備" ||
+      low === "一般 3d 模型" ||
+      low === "一般非地理定位 3d 模型"
+    ) {
+      return true;
+    }
+    const libFolders = (STATE.libraryFolders || [])
+      .map((f) => String(f.folder_name || f.name || "").trim().toLowerCase())
+      .filter(Boolean);
+    return libFolders.includes(low) || libFolders.includes(normEn);
+  }
+  window.isLibraryFolderGroup = isLibraryFolderGroup;
+
   function isLibraryScan(scan) {
     if (!scan) return false;
     if (scan.group_type === "library") return true;
+    if (isLibraryFolderGroup(scan.project_group)) return true;
     if (scan.group_type === "site") return false;
     const crs = String(scan.crs || "").toUpperCase();
     return scan.lat == null || scan.lon == null || crs.includes("LOCAL");

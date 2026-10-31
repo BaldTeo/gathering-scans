@@ -1075,19 +1075,10 @@ class ScanToBimMixin:
                     continue
 
         # -------------------------------------------------------------------
-        # 6. PIPES & UTILITIES -> 3D Cylindrical Solids
+        # 6. PIPES & UTILITIES (Explicit User / Scan-to-BIM Layer Only — Never Mix With API)
         # -------------------------------------------------------------------
         if "pipes" in active_cats:
             pipes_list = cat_data.get("pipes") or payload.get("pipes") or []
-            if not pipes_list and payload.get("include_sample_pipe"):
-                # Optional sample utility run for testing & verification
-                pipes_list = [{
-                    "id": "P1",
-                    "start": [anc_e - 10.0, anc_n - 10.0, anc_h - 1.2],
-                    "end": [anc_e + 20.0, anc_n - 10.0, anc_h - 1.5],
-                    "diameter_m": pipe_dia_m,
-                    "utility_type": "Storm Sewer",
-                }]
 
             for p in pipes_list:
                 try:

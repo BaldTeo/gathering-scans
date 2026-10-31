@@ -606,7 +606,9 @@
 
     showSidePanel(t("管溝竣工實測", "Utility Tracer"), html);
     bindUtilityTracerEvents(scanId);
-    runUtilityTrace(scanId);
+    if (Array.isArray(QA_STATE.utilityTrenchPoints) && QA_STATE.utilityTrenchPoints.length >= 2) {
+      runUtilityTrace(scanId);
+    }
   }
 
   function bindUtilityTracerEvents(scanId) {
