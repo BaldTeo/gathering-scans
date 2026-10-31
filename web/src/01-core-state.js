@@ -531,6 +531,23 @@
     }
 
     // 2. Populate Timeline, Studio, and Compare Project Switcher Dropdowns (Studio & Compare strictly exclude Library folders)
+    const activeGroupIsMapSite =
+      STATE.activeProjectGroup &&
+      STATE.activeProjectGroup !== "__all__" &&
+      !isLibraryFolderGroup(STATE.activeProjectGroup) &&
+      mapGroups.some((g) => g.project_group === STATE.activeProjectGroup);
+
+    const activeScanGroupIsMapSite =
+      STATE.activeScan?.project_group &&
+      !isLibraryFolderGroup(STATE.activeScan.project_group) &&
+      mapGroups.some((g) => g.project_group === STATE.activeScan.project_group);
+
+    const resolvedSpecificGroup = activeGroupIsMapSite
+      ? STATE.activeProjectGroup
+      : activeScanGroupIsMapSite
+      ? STATE.activeScan.project_group
+      : mapGroups[0]?.project_group || allGroupsWithLib[0]?.project_group || "";
+
     ["timelineProjectSelect", "studioProjectSelect", "compareProjectSelect"].forEach((selId) => {
       const sel = document.getElementById(selId);
       if (!sel) return;
@@ -553,6 +570,8 @@
       });
       if (selId === "timelineProjectSelect" && STATE.activeProjectGroup === "__all__") {
         sel.value = "__all__";
+      } else if (selId !== "timelineProjectSelect" && resolvedSpecificGroup && groupsForSel.some((g) => g.project_group === resolvedSpecificGroup)) {
+        sel.value = resolvedSpecificGroup;
       } else if (STATE.activeProjectGroup && groupsForSel.some((g) => g.project_group === STATE.activeProjectGroup)) {
         sel.value = STATE.activeProjectGroup;
       } else if (groupsForSel[0]) {
@@ -560,21 +579,17 @@
       }
     });
 
-    const resolvedSpecificGroup =
-      STATE.activeProjectGroup && STATE.activeProjectGroup !== "__all__"
-        ? STATE.activeProjectGroup
-        : STATE.activeScan?.project_group || mapGroups[0]?.project_group || allGroupsWithLib[0]?.project_group || "";
-
     // Update hidden badges for backward compatibility
     const studioBadge = document.getElementById("studioProjectGroupBadge");
     if (studioBadge) studioBadge.textContent = typeof formatGroupDisplayName === "function" ? formatGroupDisplayName(resolvedSpecificGroup) : resolvedSpecificGroup;
     const cmpBadge = document.getElementById("compareProjectGroupBadge");
     if (cmpBadge) cmpBadge.textContent = typeof formatGroupDisplayName === "function" ? formatGroupDisplayName(resolvedSpecificGroup) : resolvedSpecificGroup;
 
-    // 3. Populate Scan Selectors strictly for the active project (or resolved project when __all__ is selected on map)
-    let projectScans = STATE.scans.filter((s) => s.project_group === resolvedSpecificGroup);
+    // 3. Populate Scan Selectors strictly for the active map project (excluding Library 3D models)
+    const mapOnlyScans = getMapScansOnly(STATE.scans);
+    let projectScans = mapOnlyScans.filter((s) => s.project_group === resolvedSpecificGroup);
     if (!projectScans.length) {
-      projectScans = STATE.scans.slice();
+      projectScans = mapOnlyScans.length ? mapOnlyScans.slice() : STATE.scans.slice();
     }
 
     const studioSel = document.getElementById("studioScanSelect");

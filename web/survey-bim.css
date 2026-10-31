@@ -940,8 +940,11 @@ body.theme-dark .gs-util-input {
   box-shadow: 0 0 0 2px var(--ui-accent-soft, rgba(37, 99, 235, 0.15));
 }
 
-/* Sleek modern buttons for Utilities & Subsurface GIS and Construction QA panels */
+/* Sleek modern buttons for Utilities & Subsurface GIS, Scan-to-BIM, and Construction QA panels */
 .gs-btn,
+.bim-btn,
+#studioSidePanel .btn-xs,
+.gcp-qa-container .btn-xs,
 .gs-util-panel-container .btn-xs,
 .gs-qa-container .btn-xs {
   display: inline-flex;
@@ -967,6 +970,12 @@ body.theme-dark .gs-util-input {
 
 html[data-theme="dark"] .gs-btn,
 body.theme-dark .gs-btn,
+html[data-theme="dark"] .bim-btn,
+body.theme-dark .bim-btn,
+html[data-theme="dark"] #studioSidePanel .btn-xs,
+body.theme-dark #studioSidePanel .btn-xs,
+html[data-theme="dark"] .gcp-qa-container .btn-xs,
+body.theme-dark .gcp-qa-container .btn-xs,
 html[data-theme="dark"] .gs-util-panel-container .btn-xs,
 body.theme-dark .gs-util-panel-container .btn-xs,
 html[data-theme="dark"] .gs-qa-container .btn-xs,
@@ -978,6 +987,9 @@ body.theme-dark .gs-qa-container .btn-xs {
 }
 
 .gs-btn:hover:not(:disabled),
+.bim-btn:hover:not(:disabled),
+#studioSidePanel .btn-xs:hover:not(:disabled),
+.gcp-qa-container .btn-xs:hover:not(:disabled),
 .gs-util-panel-container .btn-xs:hover:not(:disabled),
 .gs-qa-container .btn-xs:hover:not(:disabled) {
   background: var(--ui-bg-hover, rgba(37, 99, 235, 0.06));
@@ -989,6 +1001,12 @@ body.theme-dark .gs-qa-container .btn-xs {
 
 html[data-theme="dark"] .gs-btn:hover:not(:disabled),
 body.theme-dark .gs-btn:hover:not(:disabled),
+html[data-theme="dark"] .bim-btn:hover:not(:disabled),
+body.theme-dark .bim-btn:hover:not(:disabled),
+html[data-theme="dark"] #studioSidePanel .btn-xs:hover:not(:disabled),
+body.theme-dark #studioSidePanel .btn-xs:hover:not(:disabled),
+html[data-theme="dark"] .gcp-qa-container .btn-xs:hover:not(:disabled),
+body.theme-dark .gcp-qa-container .btn-xs:hover:not(:disabled),
 html[data-theme="dark"] .gs-util-panel-container .btn-xs:hover:not(:disabled),
 body.theme-dark .gs-util-panel-container .btn-xs:hover:not(:disabled),
 html[data-theme="dark"] .gs-qa-container .btn-xs:hover:not(:disabled),
@@ -999,12 +1017,18 @@ body.theme-dark .gs-qa-container .btn-xs:hover:not(:disabled) {
 }
 
 .gs-btn:active:not(:disabled),
+.bim-btn:active:not(:disabled),
+#studioSidePanel .btn-xs:active:not(:disabled),
+.gcp-qa-container .btn-xs:active:not(:disabled),
 .gs-util-panel-container .btn-xs:active:not(:disabled),
 .gs-qa-container .btn-xs:active:not(:disabled) {
   transform: translateY(0);
 }
 
 .gs-btn:disabled,
+.bim-btn:disabled,
+#studioSidePanel .btn-xs:disabled,
+.gcp-qa-container .btn-xs:disabled,
 .gs-util-panel-container .btn-xs:disabled,
 .gs-qa-container .btn-xs:disabled {
   opacity: 0.55;
@@ -1012,6 +1036,9 @@ body.theme-dark .gs-qa-container .btn-xs:hover:not(:disabled) {
 }
 
 .gs-btn-primary,
+.bim-btn.primary,
+#studioSidePanel .btn-xs.primary,
+.gcp-qa-container .btn-xs.primary,
 .gs-util-panel-container .btn-xs.primary,
 .gs-qa-container .btn-xs.primary {
   background: linear-gradient(180deg, #3b82f6 0%, var(--ui-accent, #2563eb) 100%) !important;
@@ -1021,6 +1048,9 @@ body.theme-dark .gs-qa-container .btn-xs:hover:not(:disabled) {
 }
 
 .gs-btn-primary:hover:not(:disabled),
+.bim-btn.primary:hover:not(:disabled),
+#studioSidePanel .btn-xs.primary:hover:not(:disabled),
+.gcp-qa-container .btn-xs.primary:hover:not(:disabled),
 .gs-util-panel-container .btn-xs.primary:hover:not(:disabled),
 .gs-qa-container .btn-xs.primary:hover:not(:disabled) {
   background: linear-gradient(180deg, #2563eb 0%, var(--ui-accent-hover, #1d4ed8) 100%) !important;

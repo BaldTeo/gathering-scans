@@ -3323,6 +3323,82 @@ class GatheringScansTestSuite(unittest.TestCase):
         self.assertNotIn("gemini-2.5-", bim_py)
         self.assertIn("_run_gemini_ai_bim_reasoning", bim_py)
 
+    def test_39_utilities_zero_synthetic_layer_isolation_master_cache_and_library_exclusion(self):
+        """Verify (1) Zero synthetic scan_* pipes & strict API vs User/Scan-to-BIM layer isolation,
+        (2) Complete 3D layer visual clearing & modern button CSS,
+        (3) Monotonic 500m+ master utilities cache filtering without external HTTP calls,
+        (4) Exclusion of Library folders from Studio & Compare quick site/scan selectors."""
+        import glob
+        import json
+
+        survey = SurveyingEngine(self.db)
+
+        # 1. Verify zero synthetic scan_* features in all data/utilities_cache/*.json files
+        cache_dir = os.path.join(BASE_DIR, "data", "utilities_cache")
+        cache_files = glob.glob(os.path.join(cache_dir, "*_v3.json"))
+        self.assertGreater(len(cache_files), 10)
+        for fp in cache_files:
+            with open(fp, "r", encoding="utf-8") as f:
+                doc = json.load(f)
+            for feat in doc.get("features") or []:
+                fid = str(feat.get("id") or "")
+                self.assertFalse(fid.startswith("scan_"), f"Synthetic scan_ feature {fid} found in {fp}")
+                if feat.get("layer") == "as_built":
+                    self.assertEqual(feat.get("origin_class"), "user_or_scan_to_bim")
+
+        # 2. Verify monotonic radius filtering from master cache across key scans (30m -> 85m -> 100m -> 120m -> 250m -> 500m)
+        radii = [30.0, 60.0, 85.0, 100.0, 120.0, 160.0, 250.0, 350.0, 500.0]
+        for sid in (
+            "rosepark_20260918_merged",
+            "ntudorm_20260915_baseline",
+            "edited_daan_cleared_292061",
+            "edited_qihu_unified_merged_scan_4_scans__edited_372953",
+            "QuChi261016_Trees",
+            "catch_LishanFinal",
+        ):
+            prev_count = -1
+            prev_len = -1.0
+            counts_by_r = {}
+            for r in radii:
+                res = survey.query_public_utilities_gis({"scan_id": sid, "radius_m": r, "force_refresh": False})
+                self.assertEqual(res.get("status"), "ok")
+                self.assertTrue(res.get("cached"), f"Expected cached=True for {sid} at r={r}")
+                c_val = int(res.get("total_features") or 0)
+                l_val = float(res.get("total_pipe_length_m") or 0.0)
+                self.assertGreaterEqual(c_val, prev_count, f"Non-monotonic feature count for {sid} at r={r}")
+                self.assertGreaterEqual(l_val + 0.05, prev_len, f"Non-monotonic pipe length for {sid} at r={r}")
+                prev_count = c_val
+                prev_len = l_val
+                counts_by_r[r] = c_val
+            self.assertGreater(counts_by_r[500.0], counts_by_r[120.0], f"Expected 500m count > 120m count for {sid}")
+
+        # 3. Verify 3D visual clearing & modern button CSS in 12-public-utilities-gis.js and survey-bim.css
+        with open(os.path.join(BASE_DIR, "web", "src", "12-public-utilities-gis.js"), "r", encoding="utf-8") as f:
+            js12 = f.read()
+        self.assertIn("const anyLayerVisible = Object.values(UTILITY_LAYERS).some", js12)
+        self.assertIn("UTILS_STATE.threeGroup.visible = anyLayerVisible;", js12)
+        self.assertIn("api_open_data", js12)
+        self.assertIn("user_or_scan_to_bim", js12)
+
+        with open(os.path.join(BASE_DIR, "web", "survey-bim.css"), "r", encoding="utf-8") as f:
+            bim_css = f.read()
+        for sel in (
+            ".gs-btn",
+            ".bim-btn",
+            "#studioSidePanel .btn-xs",
+            ".gcp-qa-container .btn-xs",
+            ".gs-util-panel-container .btn-xs",
+            ".gs-qa-container .btn-xs",
+        ):
+            self.assertIn(sel, bim_css)
+
+        # 4. Verify Library folder exclusion from Studio & Compare selectors in 01-core-state.js
+        with open(os.path.join(BASE_DIR, "web", "src", "01-core-state.js"), "r", encoding="utf-8") as f:
+            js01 = f.read()
+        self.assertIn('const mapGroups = getProjectGroupsList("", { includeLibrary: false });', js01)
+        self.assertIn("!isLibraryFolderGroup(STATE.activeProjectGroup)", js01)
+        self.assertIn("const mapOnlyScans = getMapScansOnly(STATE.scans);", js01)
+
 
 if __name__ == "__main__":
     unittest.main()

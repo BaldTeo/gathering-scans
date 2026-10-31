@@ -271,6 +271,20 @@ def _run_fs_sync_worker(force: bool = False) -> None:
                     seed_and_discover_scans(DB)
                     mark_daemon_poll_completed()
                     _LAST_FS_FINGERPRINT = fp
+                    if "SURVEY" in globals():
+                        try:
+                            util_cache_dir = os.path.join(BASE_DIR, "data", "utilities_cache")
+                            for _sid, _smeta in list((DB.get("scans") or {}).items()):
+                                if not isinstance(_smeta, dict) or _smeta.get("deleted") or _smeta.get("status") != "completed":
+                                    continue
+                                if not (_smeta.get("twd97_origin") or _smeta.get("lat")):
+                                    continue
+                                _safe_sid = "".join(c if c.isalnum() or c in "_-" else "_" for c in str(_sid))
+                                _master_fp = os.path.join(util_cache_dir, f"{_safe_sid}_master_v3.json")
+                                if not os.path.isfile(_master_fp):
+                                    SURVEY.ensure_scan_utilities_cached_async(_sid)
+                        except Exception:
+                            pass
                     if (force or (prev_fp is not None and fp != prev_fp)) and "AUTH_SHARE" in globals():
                         def _bg_cloud_sync():
                             try:

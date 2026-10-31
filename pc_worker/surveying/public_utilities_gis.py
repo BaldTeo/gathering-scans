@@ -636,16 +636,16 @@ class PublicUtilitiesGISMixin:
 
         if not force_refresh:
             candidate_files: List[Tuple[str, bool]] = []
-            if os.path.isfile(cache_file):
-                candidate_files.append((cache_file, True))
             if os.path.isfile(master_cache_file):
                 candidate_files.append((master_cache_file, False))
             if scan_dir_cache_file and os.path.isfile(scan_dir_cache_file):
                 candidate_files.append((scan_dir_cache_file, False))
-            for fallback_r in (250, 200, 150, 120, 100, 60):
+            if os.path.isfile(cache_file):
+                candidate_files.append((cache_file, False))
+            for fallback_r in (1000, 500, 350, 250, 200, 160, 150, 120, 100, 85, 60):
                 fb_fp = os.path.join(UTILITIES_CACHE_DIR, f"{safe_sid}_{fallback_r}m_v3.json")
                 if os.path.isfile(fb_fp) and fb_fp != cache_file:
-                    candidate_files.append((fb_fp, fallback_r == int(radius_m)))
+                    candidate_files.append((fb_fp, False))
 
             for cand_fp, is_exact_radius in candidate_files:
                 try:
@@ -653,8 +653,16 @@ class PublicUtilitiesGISMixin:
                         cached_data = json.load(f)
                     c_center = (cached_data or {}).get("center") or {}
                     center_match = (
-                        abs(safe_float(c_center.get("e"), ce) - ce) <= 8.0
-                        and abs(safe_float(c_center.get("n"), cn) - cn) <= 8.0
+                        (
+                            bool(scan_id)
+                            and str((cached_data or {}).get("scan_id") or "") == scan_id
+                            and abs(safe_float(c_center.get("e"), ce) - ce) <= 150.0
+                            and abs(safe_float(c_center.get("n"), cn) - cn) <= 150.0
+                        )
+                        or (
+                            abs(safe_float(c_center.get("e"), ce) - ce) <= 35.0
+                            and abs(safe_float(c_center.get("n"), cn) - cn) <= 35.0
+                        )
                     )
                     if (
                         cached_data
@@ -690,6 +698,7 @@ class PublicUtilitiesGISMixin:
                                 total_structures += 1
 
                         filtered_res = dict(cached_data)
+                        filtered_res["scan_id"] = scan_id
                         filtered_res["radius_m"] = radius_m
                         filtered_res["bbox"] = {"xmin": xmin, "ymin": ymin, "xmax": xmax, "ymax": ymax}
                         filtered_res["features"] = filtered_features
@@ -870,25 +879,55 @@ class PublicUtilitiesGISMixin:
                     json.dump(cache_payload, f, ensure_ascii=False, indent=2)
 
                 # Also update master scan cache (<safe_sid>_master_v3.json and <scan_dir>/_utilities_cache_v3.json)
-                should_update_master = not os.path.isfile(master_cache_file) or radius_m >= 200.0
-                if not should_update_master and os.path.isfile(master_cache_file):
+                master_payload = dict(cache_payload)
+                if os.path.isfile(master_cache_file):
                     try:
                         with open(master_cache_file, "r", encoding="utf-8") as mf:
                             m_prev = json.load(mf)
-                        if radius_m >= float((m_prev or {}).get("radius_m") or 0.0):
-                            should_update_master = True
+                        if isinstance(m_prev, dict) and isinstance(m_prev.get("features"), list):
+                            prev_r = float(m_prev.get("radius_m") or 0.0)
+                            if prev_r > radius_m:
+                                seen_m_ids = {str(f.get("id") or "") for f in merged_features}
+                                combined_m = list(merged_features)
+                                for pf in m_prev["features"]:
+                                    pf_id = str(pf.get("id") or "")
+                                    if (
+                                        pf_id
+                                        and pf_id not in seen_m_ids
+                                        and not pf_id.startswith("scan_")
+                                        and (pf.get("layer") != "as_built" or pf.get("origin_class") == "user_or_scan_to_bim")
+                                    ):
+                                        combined_m.append(pf)
+                                        seen_m_ids.add(pf_id)
+                                m_counts = {k: 0 for k in UTILITY_LAYERS.keys()}
+                                m_plen = 0.0
+                                m_structs = 0
+                                for f_m in combined_m:
+                                    l_m = f_m.get("layer")
+                                    if l_m in m_counts:
+                                        m_counts[l_m] += 1
+                                    if f_m.get("type") in ("pipe", "box_culvert"):
+                                        m_plen += float(f_m.get("length_m") or 0.0)
+                                    elif f_m.get("type") in ("manhole", "catch_basin", "hydrant", "pole"):
+                                        m_structs += 1
+                                master_payload["radius_m"] = prev_r
+                                master_payload["bbox"] = m_prev.get("bbox") or master_payload["bbox"]
+                                master_payload["features"] = combined_m
+                                master_payload["layer_counts"] = m_counts
+                                master_payload["total_features"] = len(combined_m)
+                                master_payload["total_pipe_length_m"] = round(m_plen, 2)
+                                master_payload["total_structures"] = m_structs
                     except Exception:
-                        should_update_master = True
+                        pass
 
-                if should_update_master:
-                    with open(master_cache_file, "w", encoding="utf-8") as mf:
-                        json.dump(cache_payload, mf, ensure_ascii=False, indent=2)
-                    if scan_dir_cache_file:
-                        try:
-                            with open(scan_dir_cache_file, "w", encoding="utf-8") as sdf:
-                                json.dump(cache_payload, sdf, ensure_ascii=False, indent=2)
-                        except Exception:
-                            pass
+                with open(master_cache_file, "w", encoding="utf-8") as mf:
+                    json.dump(master_payload, mf, ensure_ascii=False, indent=2)
+                if scan_dir_cache_file:
+                    try:
+                        with open(scan_dir_cache_file, "w", encoding="utf-8") as sdf:
+                            json.dump(master_payload, sdf, ensure_ascii=False, indent=2)
+                    except Exception:
+                        pass
             except Exception:
                 pass
 
@@ -939,7 +978,7 @@ class PublicUtilitiesGISMixin:
                 coords = f_item.get("coords")
                 if not isinstance(coords, list) or len(coords) < 2:
                     continue
-                if fid.startswith("osm_corr_") or fid.startswith("osm_duct_corr_"):
+                if fid.startswith(("road_", "osm_corr_", "osm_duct_corr_", "osm_waterway_", "osm_power_")):
                     pts_2d = [(float(pt[0]), float(pt[1])) for pt in coords if isinstance(pt, list) and len(pt) >= 2]
                     clipped_2d = _clip_polyline_to_bbox(pts_2d, cxmin, cymin, cxmax, cymax)
                     if len(clipped_2d) < 2:
@@ -963,6 +1002,8 @@ class PublicUtilitiesGISMixin:
                         new_coords.append([round(px, 3), round(py, 3), pz])
                     f_copy = dict(f_item)
                     f_copy["coords"] = new_coords
+                    f_copy["start_coord"] = new_coords[0]
+                    f_copy["end_coord"] = new_coords[-1]
                     f_copy["length_m"] = round(seg_len, 2)
                     out.append(_enrich_feature_gov_links(f_copy, ce, cn))
                 else:
@@ -987,7 +1028,7 @@ class PublicUtilitiesGISMixin:
         return self.query_public_utilities_gis(
             {
                 "scan_id": sid,
-                "radius_m": 250.0,
+                "radius_m": 500.0,
                 "force_refresh": True,
             }
         )
