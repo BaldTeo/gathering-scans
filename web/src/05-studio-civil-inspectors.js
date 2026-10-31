@@ -751,10 +751,10 @@
             <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8">
               <path d="M3 18L9 8l5 6 4-4 3 8H3z"/>
             </svg>
-            <span id="lblRunVolumeCalc">${tr("鎖定並計算", "Lock & Compute")}</span>
+            <span id="lblRunVolumeCalc">${tr("計算", "Compute")}</span>
           </button>
           <button type="button" class="gs-top-btn" style="flex:1;justify-content:center;" id="btnResetVolumePoly" title="${tr("清除並重新繪製範圍多邊形", "Clear & Draw New Boundary Polygon")}">
-            <span>${tr("重新繪製多邊形", "Redraw Polygon")}</span>
+            <span>${tr("重繪", "Reset")}</span>
           </button>
         </div>
         <div id="volProgressBox" style="display:none;"></div>
@@ -818,10 +818,7 @@
       const placedCount = STATE.measurePoints?.length || 0;
       const btnLbl = document.getElementById("lblRunVolumeCalc");
       if (btnLbl) {
-        btnLbl.textContent =
-          placedCount >= 3
-            ? tr(`鎖定 (${placedCount} 點) 並計算`, `Lock (${placedCount} pts) & Compute`)
-            : tr("鎖定並計算", "Lock & Compute");
+        btnLbl.textContent = tr("計算", "Compute");
       }
       if (placedCount === 0) {
         box.innerHTML = `
@@ -1034,7 +1031,7 @@
         // Client-side 3D mesh raycast result is already rendered and downloadable
       } finally {
         if (!cancelToken.isCancelled() && btnLbl) {
-          btnLbl.textContent = tr("重新計算", "Recompute");
+          btnLbl.textContent = tr("計算", "Compute");
         }
       }
     }
@@ -1107,17 +1104,17 @@
             ? `<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:10px;">
                  ${
                    res._perspectiveImgDataUrl
-                     ? `<a href="${safeHtmlUrl}" target="_blank" rel="noopener noreferrer" style="display:block;text-decoration:none;border:1px solid var(--ui-border);border-radius:7px;overflow:hidden;background:#0f172a;" title="${tr("圖 1：3D 體積柱體與底部限制基準面總覽 (點擊開啟報告)", "Figure 1: 3D Volume Enclosure & Bottom Limiting Plane Overview (Click to open report)")}">
+                     ? `<a href="${safeHtmlUrl}" target="_blank" rel="noopener noreferrer" style="display:block;text-decoration:none;border:1px solid var(--ui-border);border-radius:7px;overflow:hidden;background:var(--ui-bg-surface);" title="${tr("圖 1：3D 體積柱體與底部限制基準面總覽 (點擊開啟報告)", "Figure 1: 3D Volume Enclosure & Bottom Limiting Plane Overview (Click to open report)")}">
                           <img src="${res._perspectiveImgDataUrl}" alt="Figure 1: 3D Enclosure Overview" style="width:100%;height:88px;object-fit:cover;display:block;" />
-                          <div style="font-size:10px;color:#e2e8f0;padding:3px 6px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${tr("圖 1：3D 圍束與底面總覽", "Fig 1: 3D Enclosure Overview")}</div>
+                          <div style="font-size:10px;color:var(--ui-text-primary);padding:3px 6px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${tr("圖 1：3D 圍束與底面總覽", "Fig 1: 3D Enclosure Overview")}</div>
                         </a>`
                      : ""
                  }
                  ${
                    res._nadirImgDataUrl
-                     ? `<a href="${safeHtmlUrl}" target="_blank" rel="noopener noreferrer" style="display:block;text-decoration:none;border:1px solid var(--ui-border);border-radius:7px;overflow:hidden;background:#0f172a;" title="${tr("圖 2：正射俯視圖與全頂點 (V1..Vn) 標註 (點擊開啟報告)", "Figure 2: Top-Down Nadir View with Point Labels V1..Vn & Thick Boundary (Click to open report)")}">
+                     ? `<a href="${safeHtmlUrl}" target="_blank" rel="noopener noreferrer" style="display:block;text-decoration:none;border:1px solid var(--ui-border);border-radius:7px;overflow:hidden;background:var(--ui-bg-surface);" title="${tr("圖 2：正射俯視圖與全頂點 (V1..Vn) 標註 (點擊開啟報告)", "Figure 2: Top-Down Nadir View with Point Labels V1..Vn & Thick Boundary (Click to open report)")}">
                           <img src="${res._nadirImgDataUrl}" alt="Figure 2: Top-Down Nadir View" style="width:100%;height:88px;object-fit:cover;display:block;" />
-                          <div style="font-size:10px;color:#38bdf8;padding:3px 6px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${tr("圖 2：正射頂點 V1..Vn 標註圖", "Fig 2: Nadir View (V1..Vn)")}</div>
+                          <div style="font-size:10px;color:var(--ui-accent);padding:3px 6px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${tr("圖 2：正射頂點 V1..Vn 標註圖", "Fig 2: Nadir View (V1..Vn)")}</div>
                         </a>`
                      : ""
                  }
@@ -1129,7 +1126,7 @@
             <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8">
               <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>
             </svg>
-            <span>📄 ${tr("土方報告", "Report")}</span>
+            <span>${tr("報告", "Report")}</span>
           </a>
           <a class="btn-xs" style="flex:1;justify-content:center;" href="${safeCsvUrl}" download="stockpile_volume_report.csv" title="${tr("匯出 Excel (.CSV)", "Export Excel (.CSV)")}">
             <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8">
