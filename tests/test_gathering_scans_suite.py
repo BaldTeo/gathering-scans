@@ -2789,9 +2789,9 @@ class GatheringScansTestSuite(unittest.TestCase):
         with open(os.path.join(BASE_DIR, "web", "src", "09-construction-survey-and-bim.js"), "r", encoding="utf-8") as f:
             js09 = f.read()
 
-        self.assertIn("/survey-bim.css?v=20261031_v220", index_html)
+        self.assertIn("/survey-bim.css?v=20261031_v221", index_html)
         self.assertIn("/survey-bim.css", sw_js)
-        self.assertIn("gathering-scans-offline-v220", sw_js)
+        self.assertIn("gathering-scans-offline-v221", sw_js)
         self.assertIn("openEnhancedGcpAccuracyQaInspector", js09)
         self.assertIn("renderEnhancedGcpQaMarkers3D", js09)
         self.assertIn("window.openGcpAccuracyQaInspector", js09)

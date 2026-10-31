@@ -563,6 +563,20 @@
     if (typeof setActiveStudioTool === "function") setActiveStudioTool("gcp_qa");
     if (window.STATE) window.STATE.sidePanelMinimized = false;
 
+    // Purge lingering elements from #studioSidePanel and empty #sidePanelBody
+    const panel = document.getElementById("studioSidePanel");
+    const bodyEl = document.getElementById("sidePanelBody");
+    if (panel) {
+      Array.from(panel.children).forEach((child) => {
+        if (child.id !== "sidePanelBody" && !child.classList.contains("gs-panel-header")) {
+          child.remove();
+        }
+      });
+    }
+    if (bodyEl) {
+      bodyEl.innerHTML = "";
+    }
+
     const t = typeof tr === "function" ? tr : (zh, en) => zh;
     const esc = typeof escapeHtml === "function" ? escapeHtml : (s) => String(s);
 
@@ -600,28 +614,28 @@
     const tableRowsHtml = resList
       .map((p) => {
         const status = String(p.status || "pass").toLowerCase();
-        const badgeClass = status === "pass" ? "pass" : status === "warn" ? "warn" : "outlier";
         const isTbm = Boolean(p.is_tbm);
         const deCm = Number(p.de_cm !== undefined ? p.de_cm : (p.de * 100)).toFixed(1);
         const dnCm = Number(p.dn_cm !== undefined ? p.dn_cm : (p.dn * 100)).toFixed(1);
         const dhCm = Number(p.dh_cm !== undefined ? p.dh_cm : (p.dz_cm !== undefined ? p.dz_cm : (p.dh * 100))).toFixed(1);
         const d3dCm = Number(p.d3d_cm !== undefined ? p.d3d_cm : (p.d3d * 100)).toFixed(1);
+        const hGcpStr = Number(p.h_gcp).toFixed(3);
+        const hScanStr = Number(p.h_scan).toFixed(3);
+        const statusColor = status === "pass" ? "#10b981" : status === "warn" ? "#f59e0b" : "#ef4444";
+        const rowTooltip = `${esc(p.name)}: GCP H=${hGcpStr}m, Scan H=${hScanStr}m · ΔH=${dhCm >= 0 ? "+" : ""}${dhCm}cm, Δ3D=${d3dCm}cm · ${status.toUpperCase()}`;
 
         return `
-          <tr data-point-id="${esc(p.name)}">
-            <td>
+          <tr data-point-id="${esc(p.name)}" title="${rowTooltip}">
+            <td style="width:26px;text-align:center;">
               <input type="radio" name="gcpTbmRadio" value="${esc(p.name)}" ${isTbm ? "checked" : ""} title="${t("設為高程水準基點 (TBM)", "Set as TBM benchmark")}" />
             </td>
-            <td style="font-weight:700;color:${isTbm ? "var(--ui-accent)" : "inherit"};">
-              ${esc(p.name)}${isTbm ? ` <span title="TBM">${SVG_ICONS.ANCHOR}</span>` : ""}
+            <td style="width:52px;text-align:left;font-weight:700;color:${isTbm ? "var(--ui-accent)" : "inherit"};">
+              ${esc(p.name)}${isTbm ? ` ${SVG_ICONS.ANCHOR}` : ""}
             </td>
-            <td>${Number(p.h_gcp).toFixed(3)}</td>
-            <td>${Number(p.h_scan).toFixed(3)}</td>
-            <td>${deCm >= 0 ? "+" : ""}${deCm}</td>
-            <td>${dnCm >= 0 ? "+" : ""}${dnCm}</td>
-            <td style="font-weight:700;">${dhCm >= 0 ? "+" : ""}${dhCm}</td>
-            <td style="font-weight:700;">${d3dCm}</td>
-            <td><span class="gcp-status-badge ${badgeClass}">${esc(status.toUpperCase())}</span></td>
+            <td style="text-align:right;color:${deCm >= 0 ? "inherit" : "#f43f5e"};">${deCm >= 0 ? "+" : ""}${deCm}</td>
+            <td style="text-align:right;color:${dnCm >= 0 ? "inherit" : "#f43f5e"};">${dnCm >= 0 ? "+" : ""}${dnCm}</td>
+            <td style="text-align:right;font-weight:700;color:${statusColor};">${dhCm >= 0 ? "+" : ""}${dhCm}</td>
+            <td style="text-align:right;font-weight:800;color:${statusColor};">${d3dCm}</td>
           </tr>
         `;
       })
@@ -631,16 +645,11 @@
 
     const panelHtml = `
       <div class="gcp-qa-container">
-        <!-- Grade Header -->
+        <!-- Grade Header: Single-line CRS Pill + Grade Badge (No duplicate inner heading) -->
         <div class="gcp-grade-header">
-          <div>
-            <div class="gcp-header-title">
-              ${SVG_ICONS.TARGET} ${t("控制點空間精度檢核", "Control Accuracy QA")}
-            </div>
-            <div class="gcp-subtitle">
-              CRS: ${esc(qaResult.crs || "TWD97 / TWVD2001")} · N = ${resList.length}
-            </div>
-          </div>
+          <span class="gcp-crs-pill" title="${esc(qaResult.crs || "TWD97 / TM2 zone 121 + TWVD 2001 height [EPSG:3826+8904]")}">
+            EPSG:3826 + TWVD2001 · N=${resList.length}
+          </span>
           <span class="gcp-grade-badge ${gradeClass}">
             Grade ${esc(grade)} (${rmse3dCm} cm)
           </span>
@@ -731,15 +740,12 @@
           <table class="gcp-residuals-table">
             <thead>
               <tr>
-                <th style="width:24px;">TBM</th>
-                <th>ID</th>
-                <th>H_gcp</th>
-                <th>H_scan</th>
-                <th>dE</th>
-                <th>dN</th>
-                <th>dH (cm)</th>
-                <th>d3D (cm)</th>
-                <th style="width:40px;">Status</th>
+                <th style="width:26px;text-align:center;">TBM</th>
+                <th style="width:52px;text-align:left;">ID</th>
+                <th style="text-align:right;">ΔE</th>
+                <th style="text-align:right;">ΔN</th>
+                <th style="text-align:right;">ΔH</th>
+                <th style="text-align:right;">Δ3D</th>
               </tr>
             </thead>
             <tbody>${tableRowsHtml}</tbody>

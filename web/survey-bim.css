@@ -18,6 +18,10 @@
   font-family: inherit;
   font-size: 11.5px;
   color: var(--ui-text-primary, #0f172a);
+  background: var(--ui-bg-surface, #ffffff);
+  width: 100%;
+  box-sizing: border-box;
+  padding-bottom: 28px;
 }
 
 .gs-icon {
@@ -27,18 +31,23 @@
   display: inline-block;
 }
 
-.gcp-header-title {
+.gcp-crs-pill {
+  font-size: 10px;
   font-weight: 700;
-  font-size: 12px;
-  color: var(--ui-text-primary, #0f172a);
-  display: flex;
-  align-items: center;
+  color: var(--ui-text-secondary, #475569);
+  background: var(--ui-bg-pill, #f1f5f9);
+  border: 1px solid var(--ui-border, #e2e8f0);
+  border-radius: 999px;
+  padding: 3px 9px;
+  letter-spacing: 0.2px;
+  white-space: nowrap;
 }
 
-.gcp-subtitle {
-  font-size: 10px;
-  color: var(--ui-text-muted, #64748b);
-  margin-top: 2px;
+html[data-theme="dark"] .gcp-crs-pill,
+body.theme-dark .gcp-crs-pill {
+  color: var(--ui-text-muted, #94a3b8);
+  background: var(--ui-bg-pill, #1e293b);
+  border-color: var(--ui-border, #1e293b);
 }
 
 /* -------------------------------------------------------------------------
@@ -226,7 +235,8 @@ body.theme-dark .gcp-pass-val {
    ------------------------------------------------------------------------- */
 .gcp-table-container {
   max-height: 185px;
-  overflow: auto;
+  overflow-y: auto;
+  overflow-x: hidden;
   border: 1px solid var(--ui-border, #e2e8f0);
   border-radius: 7px;
   background: var(--ui-bg-surface, #ffffff);
@@ -234,33 +244,42 @@ body.theme-dark .gcp-pass-val {
 
 .gcp-residuals-table {
   width: 100%;
+  table-layout: fixed;
   border-collapse: collapse;
-  font-size: 10.5px;
+  font-size: 10px;
   text-align: right;
 }
 
 .gcp-residuals-table th {
   background: var(--ui-bg-elevated, #f8fafc);
   color: var(--ui-text-secondary, #475569);
-  padding: 5px 6px;
+  padding: 5px 3px;
   font-weight: 700;
   position: sticky;
   top: 0;
   z-index: 2;
   border-bottom: 1px solid var(--ui-border, #e2e8f0);
+  font-size: 10px;
 }
 
 .gcp-residuals-table th:first-child,
-.gcp-residuals-table td:first-child,
+.gcp-residuals-table td:first-child {
+  text-align: center;
+  width: 26px;
+}
+
 .gcp-residuals-table th:nth-child(2),
 .gcp-residuals-table td:nth-child(2) {
   text-align: left;
+  width: 52px;
 }
 
 .gcp-residuals-table td {
-  padding: 4px 6px;
+  padding: 4px 3px;
   border-bottom: 1px solid var(--ui-border, #e2e8f0);
   color: var(--ui-text-primary, #0f172a);
+  font-size: 10px;
+  white-space: nowrap;
 }
 
 .gcp-residuals-table tr:hover {
