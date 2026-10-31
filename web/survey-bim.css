@@ -1255,3 +1255,12 @@ body.theme-dark .subtab-btn.active {
   color: var(--ui-accent, #38bdf8);
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
 }
+
+.station-profile-label {
+  white-space: nowrap !important;
+  display: inline-flex !important;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+

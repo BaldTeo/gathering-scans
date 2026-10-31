@@ -278,6 +278,11 @@ class DsmAndVolumeMixin:
                     for s in mdata.get("scans") or []:
                         if str(s.get("scan_id") or "").lower() == clean_id.lower():
                             return s
+                    pkgs = mdata.get("packages") or {}
+                    if isinstance(pkgs, dict):
+                        for k, v in pkgs.items():
+                            if str(k).lower() == clean_id.lower() or (isinstance(v, dict) and str(v.get("scan_id") or "").lower() == clean_id.lower()):
+                                return v
                 except Exception:
                     pass
         raise KeyError(f"Scan not found: {clean_id}")
@@ -2492,46 +2497,6 @@ class DsmAndVolumeMixin:
             "csv_url": f"/api/reports/{csv_filename}",
             "html_url": f"/api/reports/{html_filename}",
         }
-
-    # =========================================================================
-    # 6. SURFACE DRAINAGE / SLOPE STEEPNESS & STEPPED 1:N ARROW FIELD ANALYSIS
-    # =========================================================================
-    def compute_drainage_and_slope(self, payload: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Computes real-surface stepped civil engineering slope ratios (1:N, e.g. <1:200, 1:200-1:100,
-        1:100-1:50, 1:50-1:20, 1:20-1:10, >1:10) and downhill drainage arrow vectors strictly inside
-        the scan's actual hull_mask from the DSM.
-        """
-        scan_id = str(payload.get("scan_id") or "").strip()
-        grid_size_val = safe_float(payload.get("grid_size"), 14.0)
-        grid_size = max(8, min(32, int(round(grid_size_val or 14.0))))
-        exclude_walls = bool(payload.get("exclude_walls", True))
-        scan = self.db.get_scan(scan_id) or {}
-        v_shift = self._resolve_vertical_datum_shift(scan_id, payload, scan)
-        try:
-            dsm_data = self._load_or_build_scan_dsm(scan)
-        except Exception:
-            dsm_data = None
-        ce = safe_float(scan.get("twd97_e"), 304952.4) or 304952.4
-        cn = safe_float(scan.get("twd97_n"), 2757084.2) or 2757084.2
-        ch = (safe_float(scan.get("twd97_h"), 124.8) or 124.8) + v_shift
-
-        raw_grid = None
-        hull_mask = None
-        if isinstance(dsm_data, dict):
-            ce = safe_float(dsm_data.get("ce"), ce) or ce
-            cn = safe_float(dsm_data.get("cn"), cn) or cn
-            ch = (safe_float(dsm_data.get("ch"), ch) or ch) + v_shift
-            raw_grid = (
-                dsm_data.get("dsm_contour")
-                if dsm_data.get("dsm_contour") is not None
-                else (
-                    dsm_data.get("grid")
-                    if dsm_data.get("grid") is not None
-                    else dsm_data.get("dsm_raw")
-                )
-            )
-            hull_mask = dsm_data.get("hull_mask")
 
     @staticmethod
     def _parse_custom_slope_tiers(custom_input: Any) -> List[Dict[str, Any]]:

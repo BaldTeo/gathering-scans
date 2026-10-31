@@ -1082,17 +1082,14 @@
           </button>
         </div>
 
-        <!-- Grade Header Banner -->
+        <!-- Grade Header Banner (No duplicate inner heading) -->
         <div class="gcp-grade-header">
-          <div>
-            <div style="font-weight:800;font-size:12px;color:var(--ui-text-primary);">
-              ${SVG_ICONS.ROAD} ${t("道路與溝渠樁號斷面", "Stationing & AEA Takeoff")}
-            </div>
-            <div style="font-size:10px;color:var(--ui-text-muted);margin-top:1px;">
-              ${t("全長", "Total")}: <b>${stationResult.total_length_m} m</b> · ${stationResult.station_count} ${t("樁", "Stations")}
-            </div>
+          <div style="font-size:11px;color:var(--ui-text-secondary);display:flex;align-items:center;gap:6px;">
+            <span>${t("全長", "Total")}: <b style="color:var(--ui-text-primary);">${stationResult.total_length_m} m</b></span>
+            <span>·</span>
+            <span><b style="color:var(--ui-text-primary);">${stationResult.station_count}</b> ${t("樁", "Stations")}</span>
           </div>
-          <span class="gcp-crs-pill">EPSG:3826+8904</span>
+          <span class="gcp-crs-pill">EPSG:3826 + TWVD2001</span>
         </div>
 
         <!-- KPI Metrics Grid -->
@@ -1151,11 +1148,11 @@
 
         <!-- 2D Profile Canvas Card -->
         <div class="gcp-tbm-card">
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
-            <span style="font-weight:700;font-size:11px;color:var(--ui-text-primary);">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;gap:8px;">
+            <span class="station-profile-label" style="font-weight:700;font-size:11px;color:var(--ui-text-primary);white-space:nowrap;display:inline-flex;align-items:center;gap:4px;flex-shrink:0;">
               ${SVG_ICONS.CHART} ${t("橫斷面檢視", "Cross-Section")}
             </span>
-            <select id="selActiveStation" class="gs-select" style="height:22px;font-size:10.5px;padding:1px 4px;">
+            <select id="selActiveStation" class="gs-select" style="height:22px;font-size:10.5px;padding:1px 4px;max-width:140px;flex-shrink:1;">
               ${stations.map((st, i) => `<option value="${i}">${st.chainage_code}</option>`).join("")}
             </select>
           </div>
@@ -1443,17 +1440,14 @@
           </button>
         </div>
 
-        <!-- Grade Header Banner -->
+        <!-- Grade Header Banner (No duplicate inner heading) -->
         <div class="gcp-grade-header">
-          <div>
-            <div style="font-weight:800;font-size:12px;color:var(--ui-text-primary);">
-              ${SVG_ICONS.DROPLET} ${t("坡度與積水窪蓄分析", "Drainage & Ponding Takeoff")}
-            </div>
-            <div style="font-size:10px;color:var(--ui-text-muted);margin-top:1px;">
-              ${t("平均坡度", "Mean Slope")}: <b>${drainageResult.mean_ratio_label || "1:20"}</b> · ${deps.length} ${t("處窪蓄", "Ponds")}
-            </div>
+          <div style="font-size:11px;color:var(--ui-text-secondary);display:flex;align-items:center;gap:6px;">
+            <span>${t("平均坡度", "Mean Slope")}: <b style="color:var(--ui-text-primary);">${drainageResult.mean_ratio_label || "1:20"}</b></span>
+            <span>·</span>
+            <span><b style="color:var(--ui-text-primary);">${deps.length}</b> ${t("處窪蓄", "Ponds")}</span>
           </div>
-          <span class="gcp-crs-pill">EPSG:3826+8904</span>
+          <span class="gcp-crs-pill">EPSG:3826 + TWVD2001</span>
         </div>
 
         <!-- Ponding Water Takeoff KPI Grid -->

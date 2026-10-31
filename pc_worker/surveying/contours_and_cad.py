@@ -2797,6 +2797,8 @@ class ContoursAndCadMixin:
 
         # 1. Parse or synthesize alignment polyline
         raw_align = payload.get("alignment") or payload.get("centerline") or payload.get("polyline") or payload.get("points") or []
+        if not isinstance(raw_align, (list, tuple)):
+            raw_align = []
         pts: List[Tuple[float, float, Optional[float]]] = []
 
         def _parse_align_pt(p: Any) -> Optional[Tuple[float, float, Optional[float]]]:
