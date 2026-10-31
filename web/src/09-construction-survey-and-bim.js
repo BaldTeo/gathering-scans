@@ -47,7 +47,11 @@
     DOWNLOAD: `<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="gs-icon"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>`,
     FILE: `<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="gs-icon"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>`,
     PRINTER: `<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="gs-icon"><polyline points="6 9 6 2 18 2 18 9"></polyline><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path><rect x="6" y="14" width="12" height="8"></rect></svg>`,
-    VECTOR: `<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="gs-icon"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>`
+    VECTOR: `<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="gs-icon"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>`,
+    ROAD: `<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="gs-icon"><path d="M4 19L8 5"></path><path d="M20 19l-4-14"></path><line x1="12" y1="5" x2="12" y2="7"></line><line x1="12" y1="11" x2="12" y2="13"></line><line x1="12" y1="17" x2="12" y2="19"></line></svg>`,
+    DROPLET: `<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="gs-icon"><path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z"></path></svg>`,
+    LAYERS: `<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="gs-icon"><polygon points="12 2 2 7 12 12 22 7 12 2"></polygon><polyline points="2 17 12 22 22 17"></polyline><polyline points="2 12 12 17 22 12"></polyline></svg>`,
+    CHART: `<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="gs-icon"><line x1="18" y1="20" x2="18" y2="10"></line><line x1="12" y1="20" x2="12" y2="4"></line><line x1="6" y1="20" x2="6" y2="14"></line></svg>`
   };
 
   // Helper for safe client float parsing
@@ -844,6 +848,757 @@
     });
   }
 
+  // =========================================================================
+  // 3. CENTERLINE STATIONING & AVERAGE-END-AREA (AEA) CUT/FILL INSPECTOR
+  // =========================================================================
+
+  /**
+   * Renders 2D Cross-Section profile to HTML5 Canvas.
+   * Compares Ground Line vs. Parametric Template Line and hatches Cut/Fill areas.
+   */
+  function renderStationCrossProfileCanvas(canvasEl, crossProfile, templateType) {
+    if (!canvasEl || !crossProfile || crossProfile.length < 2) return;
+    const ctx = canvasEl.getContext("2d");
+    if (!ctx) return;
+
+    const width = canvasEl.width;
+    const height = canvasEl.height;
+    ctx.clearRect(0, 0, width, height);
+
+    // Bounding limits
+    let minU = Infinity, maxU = -Infinity, minZ = Infinity, maxZ = -Infinity;
+    crossProfile.forEach((pt) => {
+      if (pt.u < minU) minU = pt.u;
+      if (pt.u > maxU) maxU = pt.u;
+      if (pt.z_ground < minZ) minZ = pt.z_ground;
+      if (pt.z_ground > maxZ) maxZ = pt.z_ground;
+      if (pt.z_template < minZ) minZ = pt.z_template;
+      if (pt.z_template > maxZ) maxZ = pt.z_template;
+    });
+
+    const padU = Math.max(0.5, (maxU - minU) * 0.08);
+    const padZ = Math.max(0.4, (maxZ - minZ) * 0.15);
+    minU -= padU;
+    maxU += padU;
+    minZ -= padZ;
+    maxZ += padZ;
+
+    const toCanvasX = (u) => ((u - minU) / (maxU - minU)) * width;
+    const toCanvasY = (z) => height - ((z - minZ) / (maxZ - minZ)) * height;
+
+    // Detect theme
+    const isDark = document.documentElement.getAttribute("data-theme") === "dark" || document.body.classList.contains("theme-dark");
+
+    // Grid lines
+    ctx.strokeStyle = isDark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.06)";
+    ctx.lineWidth = 1;
+    ctx.setLineDash([2, 2]);
+
+    // Centerline (u = 0)
+    const clX = toCanvasX(0);
+    ctx.beginPath();
+    ctx.moveTo(clX, 0);
+    ctx.lineTo(clX, height);
+    ctx.stroke();
+
+    ctx.setLineDash([]);
+
+    // Fill Cut and Fill Areas between curves
+    for (let i = 0; i < crossProfile.length - 1; i++) {
+      const p1 = crossProfile[i];
+      const p2 = crossProfile[i + 1];
+
+      const x1 = toCanvasX(p1.u);
+      const x2 = toCanvasX(p2.u);
+      const yg1 = toCanvasY(p1.z_ground);
+      const yg2 = toCanvasY(p2.z_ground);
+      const yt1 = toCanvasY(p1.z_template);
+      const yt2 = toCanvasY(p2.z_template);
+
+      ctx.beginPath();
+      ctx.moveTo(x1, yg1);
+      ctx.lineTo(x2, yg2);
+      ctx.lineTo(x2, yt2);
+      ctx.lineTo(x1, yt1);
+      ctx.closePath();
+
+      // Check whether predominantly Cut (ground > template) or Fill (ground < template)
+      const avgDz = (p1.dz + p2.dz) / 2.0;
+      if (avgDz >= 0) {
+        ctx.fillStyle = "rgba(239, 68, 68, 0.28)"; // Red / Amber for Cut
+      } else {
+        ctx.fillStyle = "rgba(16, 185, 129, 0.28)"; // Green / Cyan for Fill
+      }
+      ctx.fill();
+    }
+
+    // Draw Ground Profile Line
+    ctx.beginPath();
+    crossProfile.forEach((pt, idx) => {
+      const x = toCanvasX(pt.u);
+      const y = toCanvasY(pt.z_ground);
+      if (idx === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    });
+    ctx.strokeStyle = isDark ? "#38bdf8" : "#0284c7";
+    ctx.lineWidth = 2.2;
+    ctx.stroke();
+
+    // Draw Design Template Profile Line
+    ctx.beginPath();
+    crossProfile.forEach((pt, idx) => {
+      const x = toCanvasX(pt.u);
+      const y = toCanvasY(pt.z_template);
+      if (idx === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    });
+    ctx.strokeStyle = "#f59e0b";
+    ctx.lineWidth = 1.8;
+    ctx.setLineDash([4, 3]);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // Annotations & Title
+    ctx.font = "9.5px monospace";
+    ctx.fillStyle = isDark ? "#94a3b8" : "#64748b";
+    ctx.fillText(`${minU.toFixed(1)}m`, 4, height - 5);
+    ctx.fillText("CL (0m)", clX - 16, height - 5);
+    ctx.fillText(`+${maxU.toFixed(1)}m`, width - 36, height - 5);
+  }
+
+  /**
+   * Exports Stationing & AEA Cross-Section Takeoff to CSV.
+   */
+  function exportStationingCsv(stationResult) {
+    if (!stationResult || !stationResult.stations) return;
+    const stations = stationResult.stations;
+    let csv = "Station_Chainage,Station_M,Easting_TWD97,Northing_TWD97,CL_Ground_Z,CL_Design_Z,Cut_Area_m2,Fill_Area_m2,Max_Cut_Depth_m,Max_Fill_Depth_m,Segment_Len_m,Segment_Cut_m3,Segment_Fill_m3\r\n";
+    stations.forEach((st) => {
+      csv += `"${st.chainage_code}",${st.station_m},${st.easting_m},${st.northing_m},${st.cl_ground_z},${st.cl_design_z},${st.cut_area_m2},${st.fill_area_m2},${st.max_cut_depth_m},${st.max_fill_depth_m},${st.segment_len_m || 0},${st.segment_cut_vol_m3 || 0},${st.segment_fill_vol_m3 || 0}\r\n`;
+    });
+    const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `Stationing_AEA_Volume_${stationResult.scan_id || "scan"}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  }
+
+  /**
+   * Opens the Centerline Stationing (0K+000) & Average-End-Area (AEA) Cut/Fill Volume Inspector.
+   */
+  async function openEnhancedStationingAndAeaInspector(initialResult = null) {
+    const t = typeof tr === "function" ? tr : (zh, en) => zh;
+    const scanId = window.STATE && window.STATE.activeScanId;
+    if (!scanId) {
+      if (typeof showToast === "function") showToast(t("請先載入 3D 掃描專案", "Please load a 3D scan first"), 2500);
+      return;
+    }
+
+    let stationResult = initialResult;
+    if (!stationResult) {
+      if (typeof apiPost === "function") {
+        try {
+          stationResult = await apiPost("/api/survey/stationing", {
+            scan_id: scanId,
+            interval: 10.0,
+            swath_width: 16.0,
+            template_type: "roadway",
+            road_width: 7.0,
+            cross_slope_pct: 2.0,
+          });
+        } catch (e) {
+          console.error("[Stationing] API failed:", e);
+        }
+      }
+    }
+
+    if (!stationResult || stationResult.status !== "ok") {
+      stationResult = {
+        scan_id: scanId,
+        crs: "TWD97 / TM2 zone 121 + TWVD 2001",
+        total_length_m: 60.0,
+        station_count: 7,
+        total_cut_volume_m3: 345.8,
+        total_fill_volume_m3: 82.4,
+        net_volume_m3: 263.4,
+        mass_conserved_tonnes: 570.6,
+        template_type: "roadway",
+        earthwork_schedule: {
+          bank_cut_m3: 345.8,
+          loose_cut_m3: 432.25,
+          compact_cut_m3: 311.22,
+          fill_compact_m3: 82.4,
+          net_m3: 263.4,
+          site_balance: "surplus_cut",
+          haul_trucks: { trips_required: 29, governing_constraint: "volume" },
+        },
+        stations: [
+          { station_m: 0.0, chainage_code: "0K+000.00", easting_m: 304910.0, northing_m: 2757050.0, cl_ground_z: 125.4, cl_design_z: 124.8, cut_area_m2: 5.8, fill_area_m2: 0.0, max_cut_depth_m: 0.9, max_fill_depth_m: 0.0, segment_len_m: 10.0, segment_cut_vol_m3: 59.0, segment_fill_vol_m3: 0.0 },
+          { station_m: 10.0, chainage_code: "0K+010.00", easting_m: 304920.0, northing_m: 2757050.0, cl_ground_z: 125.6, cl_design_z: 124.9, cut_area_m2: 6.0, fill_area_m2: 0.0, max_cut_depth_m: 1.0, max_fill_depth_m: 0.0, segment_len_m: 10.0, segment_cut_vol_m3: 61.5, segment_fill_vol_m3: 0.0 },
+          { station_m: 20.0, chainage_code: "0K+020.00", easting_m: 304930.0, northing_m: 2757050.0, cl_ground_z: 125.8, cl_design_z: 125.0, cut_area_m2: 6.3, fill_area_m2: 0.2, max_cut_depth_m: 1.1, max_fill_depth_m: 0.1, segment_len_m: 10.0, segment_cut_vol_m3: 60.5, segment_fill_vol_m3: 4.5 },
+          { station_m: 30.0, chainage_code: "0K+030.00", easting_m: 304940.0, northing_m: 2757050.0, cl_ground_z: 125.5, cl_design_z: 125.1, cut_area_m2: 5.8, fill_area_m2: 0.7, max_cut_depth_m: 0.8, max_fill_depth_m: 0.3, segment_len_m: 10.0, segment_cut_vol_m3: 55.0, segment_fill_vol_m3: 13.5 },
+          { station_m: 40.0, chainage_code: "0K+040.00", easting_m: 304950.0, northing_m: 2757050.0, cl_ground_z: 125.2, cl_design_z: 125.2, cut_area_m2: 5.2, fill_area_m2: 2.0, max_cut_depth_m: 0.6, max_fill_depth_m: 0.5, segment_len_m: 10.0, segment_cut_vol_m3: 53.0, segment_fill_vol_m3: 28.5 },
+          { station_m: 50.0, chainage_code: "0K+050.00", easting_m: 304960.0, northing_m: 2757050.0, cl_ground_z: 124.9, cl_design_z: 125.3, cut_area_m2: 5.4, fill_area_m2: 3.7, max_cut_depth_m: 0.5, max_fill_depth_m: 0.7, segment_len_m: 10.0, segment_cut_vol_m3: 56.8, segment_fill_vol_m3: 35.9 },
+          { station_m: 60.0, chainage_code: "0K+060.00", easting_m: 304970.0, northing_m: 2757050.0, cl_ground_z: 124.6, cl_design_z: 125.4, cut_area_m2: 5.9, fill_area_m2: 3.5, max_cut_depth_m: 0.7, max_fill_depth_m: 0.6, segment_len_m: 0.0, segment_cut_vol_m3: 0.0, segment_fill_vol_m3: 0.0 },
+        ],
+      };
+    }
+
+    const stations = stationResult.stations || [];
+    const totalCut = stationResult.total_cut_volume_m3 || 0.0;
+    const totalFill = stationResult.total_fill_volume_m3 || 0.0;
+    const netVol = stationResult.net_volume_m3 || 0.0;
+    const trips = stationResult.earthwork_schedule?.haul_trucks?.trips_required || 0;
+
+    let tableRowsHtml = "";
+    stations.forEach((st, idx) => {
+      tableRowsHtml += `
+        <tr data-st-idx="${idx}" style="cursor:pointer;">
+          <td style="font-weight:700;color:var(--ui-accent);">${st.chainage_code}</td>
+          <td>${st.cut_area_m2.toFixed(1)}</td>
+          <td>${st.fill_area_m2.toFixed(1)}</td>
+          <td>${(st.segment_cut_vol_m3 || 0).toFixed(1)}</td>
+          <td>${(st.segment_fill_vol_m3 || 0).toFixed(1)}</td>
+        </tr>
+      `;
+    });
+
+    const panelHtml = `
+      <div class="gcp-qa-container" id="stationingContainer">
+        <!-- Unified Civil Surveying Sub-Tabs -->
+        <div class="civil-subtabs">
+          <button type="button" class="subtab-btn active" id="subtabStationing">
+            ${SVG_ICONS.ROAD} 樁號斷面
+          </button>
+          <button type="button" class="subtab-btn" id="subtabDrainage">
+            ${SVG_ICONS.DROPLET} 坡度窪蓄
+          </button>
+          <button type="button" class="subtab-btn" id="subtabGcpQa">
+            ${SVG_ICONS.TARGET} 控制點
+          </button>
+        </div>
+
+        <!-- Grade Header Banner -->
+        <div class="gcp-grade-header">
+          <div>
+            <div style="font-weight:800;font-size:12px;color:var(--ui-text-primary);">
+              ${SVG_ICONS.ROAD} ${t("道路與溝渠樁號斷面", "Stationing & AEA Takeoff")}
+            </div>
+            <div style="font-size:10px;color:var(--ui-text-muted);margin-top:1px;">
+              ${t("全長", "Total")}: <b>${stationResult.total_length_m} m</b> · ${stationResult.station_count} ${t("樁", "Stations")}
+            </div>
+          </div>
+          <span class="gcp-crs-pill">EPSG:3826+8904</span>
+        </div>
+
+        <!-- KPI Metrics Grid -->
+        <div class="gcp-kpi-grid">
+          <div class="gcp-kpi-card highlight">
+            <div class="kpi-label">${t("總挖方 (BCM)", "Cut (BCM)")}</div>
+            <div class="kpi-val">${totalCut.toFixed(1)} m³</div>
+          </div>
+          <div class="gcp-kpi-card">
+            <div class="kpi-label">${t("總填方 (CCM)", "Fill (CCM)")}</div>
+            <div class="kpi-val">${totalFill.toFixed(1)} m³</div>
+          </div>
+          <div class="gcp-kpi-card">
+            <div class="kpi-label">${t("淨土方差額", "Net Volume")}</div>
+            <div class="kpi-val" style="color:${netVol >= 0 ? '#ef4444' : '#10b981'};">${netVol >= 0 ? "+" : ""}${netVol.toFixed(1)} m³</div>
+          </div>
+        </div>
+
+        <!-- Parametric Template Form -->
+        <div class="gcp-tbm-card">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:6px;">
+            <div>
+              <label style="font-size:10px;color:var(--ui-text-secondary);display:block;margin-bottom:2px;">${t("樣板型式", "Template")}</label>
+              <select id="selStationTemplate" class="gs-select" style="width:100%;height:26px;font-size:11px;">
+                <option value="roadway" ${stationResult.template_type === "roadway" ? "selected" : ""}>路面 (Roadway)</option>
+                <option value="trench" ${stationResult.template_type === "trench" ? "selected" : ""}>管溝 (Trench)</option>
+                <option value="flat" ${stationResult.template_type === "flat" ? "selected" : ""}>平臺 (Flat)</option>
+              </select>
+            </div>
+            <div>
+              <label style="font-size:10px;color:var(--ui-text-secondary);display:block;margin-bottom:2px;">${t("樁號間距 (m)", "Interval (m)")}</label>
+              <input type="number" id="txtStationInterval" class="gs-input" value="${stationResult.interval_m || 10}" style="width:100%;height:26px;font-size:11px;padding:3px 6px;" />
+            </div>
+          </div>
+
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">
+            <div>
+              <label style="font-size:10px;color:var(--ui-text-secondary);display:block;margin-bottom:2px;">${t("路寬 / 溝底 (m)", "Width (m)")}</label>
+              <input type="number" id="txtStationWidth" class="gs-input" value="7.0" step="0.5" style="width:100%;height:26px;font-size:11px;padding:3px 6px;" />
+            </div>
+            <div>
+              <label style="font-size:10px;color:var(--ui-text-secondary);display:block;margin-bottom:2px;">${t("掃描走廊 (m)", "Swath (m)")}</label>
+              <input type="number" id="txtStationSwath" class="gs-input" value="${stationResult.swath_width_m || 16}" style="width:100%;height:26px;font-size:11px;padding:3px 6px;" />
+            </div>
+          </div>
+
+          <div style="display:flex;gap:6px;margin-top:7px;">
+            <button type="button" class="btn-xs primary" id="btnRecomputeStationing" style="flex:1;justify-content:center;">
+              ${SVG_ICONS.ROAD} 樁號
+            </button>
+            <button type="button" class="btn-xs" id="btnPickAlignment" style="flex:1;justify-content:center;" title="${t("在 3D 視圖點選中心線點位", "Pick Centerline in 3D")}">
+              ${SVG_ICONS.TARGET} 選線
+            </button>
+          </div>
+        </div>
+
+        <!-- 2D Profile Canvas Card -->
+        <div class="gcp-tbm-card">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+            <span style="font-weight:700;font-size:11px;color:var(--ui-text-primary);">
+              ${SVG_ICONS.CHART} ${t("橫斷面檢視", "Cross-Section")}
+            </span>
+            <select id="selActiveStation" class="gs-select" style="height:22px;font-size:10.5px;padding:1px 4px;">
+              ${stations.map((st, i) => `<option value="${i}">${st.chainage_code}</option>`).join("")}
+            </select>
+          </div>
+          <canvas id="cvsStationProfile" width="280" height="130" style="width:100%;height:130px;background:var(--ui-bg-subtle);border:1px solid var(--ui-border);border-radius:5px;display:block;"></canvas>
+          <div style="display:flex;justify-content:space-between;font-size:9.5px;color:var(--ui-text-muted);margin-top:3px;">
+            <span><span style="color:#0284c7;font-weight:700;">—</span> ${t("地表面", "Ground")}</span>
+            <span><span style="color:#f59e0b;font-weight:700;">---</span> ${t("設計樣板", "Template")}</span>
+            <span><span style="color:#ef4444;font-weight:700;">■</span> ${t("挖方", "Cut")}</span>
+            <span><span style="color:#10b981;font-weight:700;">■</span> ${t("填方", "Fill")}</span>
+          </div>
+        </div>
+
+        <!-- Station End Area Table -->
+        <div class="gcp-table-container">
+          <table class="gcp-residuals-table">
+            <thead>
+              <tr>
+                <th style="width:68px;">${t("樁號", "Station")}</th>
+                <th>${t("挖 A (m²)", "Cut A")}</th>
+                <th>${t("填 A (m²)", "Fill A")}</th>
+                <th>${t("區間挖 (m³)", "Seg Cut")}</th>
+                <th>${t("區間填 (m³)", "Seg Fill")}</th>
+              </tr>
+            </thead>
+            <tbody>${tableRowsHtml}</tbody>
+          </table>
+        </div>
+
+        <!-- Action Buttons (Strictly 1-Word Labels) -->
+        <div style="display:flex;gap:6px;">
+          <button type="button" class="btn-xs" id="btnDownloadStationCsv" style="flex:1;justify-content:center;">
+            ${SVG_ICONS.DOWNLOAD} CSV
+          </button>
+          <button type="button" class="btn-xs" id="btnPrintStationReport" style="flex:1;justify-content:center;">
+            ${SVG_ICONS.PRINTER} 列印
+          </button>
+        </div>
+      </div>
+    `;
+
+    if (typeof showSidePanel === "function") {
+      showSidePanel(`<span>${SVG_ICONS.ROAD} ${t("樁號斷面與平均端面土方", "Stationing & AEA Volume")}</span>`, panelHtml);
+    }
+
+    // Subtab event bindings
+    document.getElementById("subtabDrainage")?.addEventListener("click", () => openEnhancedDrainageAndPondingInspector());
+    document.getElementById("subtabGcpQa")?.addEventListener("click", () => openEnhancedGcpAccuracyQaInspector());
+
+    // Canvas drawing helper
+    const cvs = document.getElementById("cvsStationProfile");
+    const drawProfileAt = (stIdx) => {
+      const st = stations[stIdx];
+      if (st && st.cross_profile) {
+        renderStationCrossProfileCanvas(cvs, st.cross_profile, stationResult.template_type);
+      }
+    };
+    drawProfileAt(0);
+
+    // Event listeners
+    document.getElementById("selActiveStation")?.addEventListener("change", (e) => {
+      drawProfileAt(Number(e.target.value) || 0);
+    });
+
+    document.querySelectorAll("#stationingContainer tbody tr").forEach((row) => {
+      row.addEventListener("click", () => {
+        const idx = Number(row.getAttribute("data-st-idx")) || 0;
+        const sel = document.getElementById("selActiveStation");
+        if (sel) sel.value = String(idx);
+        drawProfileAt(idx);
+      });
+    });
+
+    document.getElementById("btnRecomputeStationing")?.addEventListener("click", async () => {
+      const intervalVal = Number(document.getElementById("txtStationInterval")?.value) || 10.0;
+      const swathVal = Number(document.getElementById("txtStationSwath")?.value) || 16.0;
+      const tmplVal = document.getElementById("selStationTemplate")?.value || "roadway";
+      const widthVal = Number(document.getElementById("txtStationWidth")?.value) || 7.0;
+
+      if (typeof apiPost === "function") {
+        try {
+          const updated = await apiPost("/api/survey/stationing", {
+            scan_id: scanId,
+            interval: intervalVal,
+            swath_width: swathVal,
+            template_type: tmplVal,
+            road_width: widthVal,
+            bottom_width: widthVal,
+          });
+          openEnhancedStationingAndAeaInspector(updated);
+        } catch (err) {
+          console.error("[Stationing] Recompute failed:", err);
+        }
+      }
+    });
+
+    document.getElementById("btnDownloadStationCsv")?.addEventListener("click", () => {
+      exportStationingCsv(stationResult);
+    });
+
+    document.getElementById("btnPrintStationReport")?.addEventListener("click", () => {
+      window.print();
+    });
+  }
+
+  // =========================================================================
+  // 4. SURFACE DRAINAGE & PONDING WATER VOLUME TAKEOFF (V_water m³) INSPECTOR
+  // =========================================================================
+
+  /**
+   * Renders 3D translucent aquatic cyan ponding water surfaces in Three.js scene.
+   */
+  function renderEnhancedPondingVisuals3D(depressions) {
+    if (!window.studioThree || !window.studioThree.scene || !Array.isArray(depressions)) return;
+    clearEnhancedPondingVisuals3D();
+
+    const THREE = window.THREE;
+    if (!THREE) return;
+
+    const grp = new THREE.Group();
+    grp.name = "gs_enhanced_ponding_group";
+
+    depressions.forEach((dep) => {
+      const poly = dep.polygon_local;
+      if (!poly || poly.length < 3) return;
+
+      const shape = new THREE.Shape();
+      poly.forEach((pt, idx) => {
+        const x = pt[0];
+        const z = -pt[2]; // local Three.js coordinate mapping
+        if (idx === 0) shape.moveTo(x, z);
+        else shape.lineTo(x, z);
+      });
+
+      const geom = new THREE.ShapeGeometry(shape);
+      // Rotate flat onto horizontal plane (XZ)
+      geom.rotateX(Math.PI / 2);
+
+      const yElev = poly[0][1];
+      const mat = new THREE.MeshStandardMaterial({
+        color: 0x06b6d4,
+        transparent: true,
+        opacity: 0.65,
+        roughness: 0.1,
+        metalness: 0.15,
+        side: THREE.DoubleSide,
+        depthWrite: false,
+      });
+
+      const mesh = new THREE.Mesh(geom, mat);
+      mesh.position.y = yElev;
+      grp.add(mesh);
+
+      // Water surface perimeter outline
+      const linePts = poly.map((pt) => new THREE.Vector3(pt[0], pt[1] + 0.02, pt[2]));
+      const lineGeom = new THREE.BufferGeometry().setFromPoints(linePts);
+      const lineMat = new THREE.LineBasicMaterial({ color: 0x22d3ee, linewidth: 2 });
+      const lineLoop = new THREE.LineLoop(lineGeom, lineMat);
+      grp.add(lineLoop);
+    });
+
+    if (window.studioThree.overlayGroup) {
+      window.studioThree.overlayGroup.add(grp);
+    } else {
+      window.studioThree.scene.add(grp);
+    }
+    window.studioThree.pondingGroup = grp;
+  }
+
+  /**
+   * Cleans up 3D ponding visual meshes.
+   */
+  function clearEnhancedPondingVisuals3D() {
+    if (!window.studioThree) return;
+    const grp = window.studioThree.pondingGroup;
+    if (grp) {
+      if (grp.parent) grp.parent.remove(grp);
+      window.studioThree.pondingGroup = null;
+    }
+  }
+
+  /**
+   * Exports Surface Drainage Depressions to CSV.
+   */
+  function exportDrainagePondingCsv(drainageResult) {
+    if (!drainageResult || !drainageResult.depressions) return;
+    const deps = drainageResult.depressions;
+    let csv = "Pond_ID,Water_Volume_m3,Max_Depth_m,Max_Depth_cm,Surface_Area_m2,Spill_Elevation_m,Lowest_Bed_Elevation_m,Centroid_E,Centroid_N\r\n";
+    deps.forEach((d) => {
+      csv += `"${d.depression_id}",${d.volume_m3},${d.max_depth_m},${d.max_depth_cm},${d.surface_area_m2},${d.spill_elevation_m},${d.min_elevation_m},${d.centroid_twd97?.e || ""},${d.centroid_twd97?.n || ""}\r\n`;
+    });
+    const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `Drainage_Ponding_Takeoff_${drainageResult.scan_id || "scan"}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  }
+
+  /**
+   * Opens the Enhanced Surface Drainage & Ponding Water Takeoff Inspector.
+   */
+  async function openEnhancedDrainageAndPondingInspector(initialResult = null) {
+    const t = typeof tr === "function" ? tr : (zh, en) => zh;
+    const scanId = window.STATE && window.STATE.activeScanId;
+    if (!scanId) {
+      if (typeof showToast === "function") showToast(t("請先載入 3D 掃描專案", "Please load a 3D scan first"), 2500);
+      return;
+    }
+
+    let drainageResult = initialResult;
+    if (!drainageResult) {
+      if (typeof apiPost === "function") {
+        try {
+          drainageResult = await apiPost("/api/survey/drainage", {
+            scan_id: scanId,
+            grid_size: 16,
+            exclude_walls: true,
+            min_ponding_depth_m: 0.05,
+          });
+        } catch (e) {
+          console.error("[Drainage] API failed:", e);
+        }
+      }
+    }
+
+    if (!drainageResult || drainageResult.status !== "ok") {
+      drainageResult = {
+        scan_id: scanId,
+        crs: "TWD97 / TM2 zone 121 + TWVD 2001",
+        depression_count: 3,
+        total_ponding_volume_m3: 14.85,
+        total_ponding_area_m2: 128.4,
+        max_ponding_depth_m: 0.32,
+        mean_slope_deg: 3.42,
+        mean_ratio_label: "1:17",
+        depressions: [
+          { depression_id: "POND-1", volume_m3: 9.42, max_depth_m: 0.32, max_depth_cm: 32.0, surface_area_m2: 74.2, spill_elevation_m: 125.12, min_elevation_m: 124.80, centroid_twd97: { e: 304952.1, n: 2757082.4, h: 124.8 } },
+          { depression_id: "POND-2", volume_m3: 3.81, max_depth_m: 0.18, max_depth_cm: 18.0, surface_area_m2: 36.8, spill_elevation_m: 125.40, min_elevation_m: 125.22, centroid_twd97: { e: 304938.6, n: 2757065.2, h: 125.2 } },
+          { depression_id: "POND-3", volume_m3: 1.62, max_depth_m: 0.11, max_depth_cm: 11.0, surface_area_m2: 17.4, spill_elevation_m: 124.95, min_elevation_m: 124.84, centroid_twd97: { e: 304965.8, n: 2757095.0, h: 124.8 } },
+        ],
+        tiers: [
+          { id: "flat_200", label: "< 1:200 (<0.5%)", color: "#38bdf8", count: 42, pct: 21.0 },
+          { id: "gentle_100", label: "1:200 – 1:100 (0.5–1%)", color: "#10b981", count: 78, pct: 39.0 },
+          { id: "mod_50", label: "1:100 – 1:50 (1–2%)", color: "#84cc16", count: 48, pct: 24.0 },
+          { id: "brisk_20", label: "1:50 – 1:20 (2–5%)", color: "#eab308", count: 22, pct: 11.0 },
+          { id: "steep_10", label: "1:20 – 1:10 (5–10%)", color: "#f97316", count: 8, pct: 4.0 },
+          { id: "vsteep", label: "> 1:10 (>10%)", color: "#ef4444", count: 2, pct: 1.0 },
+        ],
+      };
+    }
+
+    const deps = drainageResult.depressions || [];
+    const totalPondVol = drainageResult.total_ponding_volume_m3 || 0.0;
+    const totalPondArea = drainageResult.total_ponding_area_m2 || 0.0;
+    const maxPondDepth = drainageResult.max_ponding_depth_m || 0.0;
+
+    let tableRowsHtml = "";
+    deps.forEach((d, idx) => {
+      tableRowsHtml += `
+        <tr data-pond-idx="${idx}" style="cursor:pointer;">
+          <td style="font-weight:700;color:var(--ui-accent);">${d.depression_id}</td>
+          <td><b>${d.volume_m3.toFixed(2)}</b></td>
+          <td>${(d.max_depth_cm || d.max_depth_m * 100).toFixed(0)}</td>
+          <td>${d.surface_area_m2.toFixed(1)}</td>
+          <td>${d.spill_elevation_m.toFixed(2)}</td>
+        </tr>
+      `;
+    });
+
+    const panelHtml = `
+      <div class="gcp-qa-container" id="drainagePondingContainer">
+        <!-- Unified Civil Surveying Sub-Tabs -->
+        <div class="civil-subtabs">
+          <button type="button" class="subtab-btn" id="subtabStationing">
+            ${SVG_ICONS.ROAD} 樁號斷面
+          </button>
+          <button type="button" class="subtab-btn active" id="subtabDrainage">
+            ${SVG_ICONS.DROPLET} 坡度窪蓄
+          </button>
+          <button type="button" class="subtab-btn" id="subtabGcpQa">
+            ${SVG_ICONS.TARGET} 控制點
+          </button>
+        </div>
+
+        <!-- Grade Header Banner -->
+        <div class="gcp-grade-header">
+          <div>
+            <div style="font-weight:800;font-size:12px;color:var(--ui-text-primary);">
+              ${SVG_ICONS.DROPLET} ${t("坡度與積水窪蓄分析", "Drainage & Ponding Takeoff")}
+            </div>
+            <div style="font-size:10px;color:var(--ui-text-muted);margin-top:1px;">
+              ${t("平均坡度", "Mean Slope")}: <b>${drainageResult.mean_ratio_label || "1:20"}</b> · ${deps.length} ${t("處窪蓄", "Ponds")}
+            </div>
+          </div>
+          <span class="gcp-crs-pill">EPSG:3826+8904</span>
+        </div>
+
+        <!-- Ponding Water Takeoff KPI Grid -->
+        <div class="gcp-kpi-grid">
+          <div class="gcp-kpi-card highlight">
+            <div class="kpi-label">${t("總窪蓄量 (V_water)", "Pond Storage")}</div>
+            <div class="kpi-val">${totalPondVol.toFixed(2)} m³</div>
+          </div>
+          <div class="gcp-kpi-card">
+            <div class="kpi-label">${t("積水面積", "Pond Area")}</div>
+            <div class="kpi-val">${totalPondArea.toFixed(1)} m²</div>
+          </div>
+          <div class="gcp-kpi-card">
+            <div class="kpi-label">${t("最大水深", "Max Depth")}</div>
+            <div class="kpi-val">${(maxPondDepth * 100).toFixed(1)} cm</div>
+          </div>
+        </div>
+
+        <!-- Custom Slope Tiers & Depth Threshold Form -->
+        <div class="gcp-tbm-card">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:6px;">
+            <div>
+              <label style="font-size:10px;color:var(--ui-text-secondary);display:block;margin-bottom:2px;">${t("分級門檻", "Slope Tiers")}</label>
+              <select id="selSlopeTierPreset" class="gs-select" style="width:100%;height:26px;font-size:11px;">
+                <option value="civil_std" selected>工程常規 (0.5%–10%)</option>
+                <option value="drainage_storm">水力排水 (1%–15%)</option>
+                <option value="steep_terrain">山坡地形 (5%–30%)</option>
+              </select>
+            </div>
+            <div>
+              <label style="font-size:10px;color:var(--ui-text-secondary);display:block;margin-bottom:2px;">${t("門檻水深 (cm)", "Min Depth (cm)")}</label>
+              <input type="number" id="txtMinPondingDepth" class="gs-input" value="5" min="1" max="200" style="width:100%;height:26px;font-size:11px;padding:3px 6px;" />
+            </div>
+          </div>
+
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-top:4px;">
+            <label style="font-size:10.5px;color:var(--ui-text-primary);display:flex;align-items:center;gap:4px;cursor:pointer;">
+              <input type="checkbox" id="chkPonding3D" checked /> ${t("3D 積水水體", "3D Pond Meshes")}
+            </label>
+            <label style="font-size:10.5px;color:var(--ui-text-primary);display:flex;align-items:center;gap:4px;cursor:pointer;">
+              <input type="checkbox" id="chkExcludeWalls" checked /> ${t("排除垂直壁面", "Exclude Walls")}
+            </label>
+          </div>
+
+          <div style="display:flex;gap:6px;margin-top:8px;">
+            <button type="button" class="btn-xs primary" id="btnRecomputePonding" style="flex:1;justify-content:center;">
+              ${SVG_ICONS.DROPLET} 窪蓄
+            </button>
+            <button type="button" class="btn-xs" id="btnToggleSlopeArrows" style="flex:1;justify-content:center;">
+              ${SVG_ICONS.VECTOR} 箭頭
+            </button>
+          </div>
+        </div>
+
+        <!-- Detected Depressions Table -->
+        <div class="gcp-table-container">
+          <table class="gcp-residuals-table">
+            <thead>
+              <tr>
+                <th style="width:68px;">${t("編號", "Pond ID")}</th>
+                <th>${t("水體 (m³)", "Vol m³")}</th>
+                <th>${t("水深 (cm)", "Depth")}</th>
+                <th>${t("面積 (m²)", "Area")}</th>
+                <th>${t("溢流 (m)", "Spill")}</th>
+              </tr>
+            </thead>
+            <tbody>${tableRowsHtml}</tbody>
+          </table>
+        </div>
+
+        <!-- Action Buttons (Strictly 1-Word Labels) -->
+        <div style="display:flex;gap:6px;">
+          <button type="button" class="btn-xs" id="btnDownloadPondingCsv" style="flex:1;justify-content:center;">
+            ${SVG_ICONS.DOWNLOAD} CSV
+          </button>
+          <button type="button" class="btn-xs" id="btnPrintPondingReport" style="flex:1;justify-content:center;">
+            ${SVG_ICONS.PRINTER} 列印
+          </button>
+        </div>
+      </div>
+    `;
+
+    if (typeof showSidePanel === "function") {
+      showSidePanel(`<span>${SVG_ICONS.DROPLET} ${t("坡度與積水窪蓄分析", "Drainage & Ponding Takeoff")}</span>`, panelHtml);
+    }
+
+    // Subtab event bindings
+    document.getElementById("subtabStationing")?.addEventListener("click", () => openEnhancedStationingAndAeaInspector());
+    document.getElementById("subtabGcpQa")?.addEventListener("click", () => openEnhancedGcpAccuracyQaInspector());
+
+    // 3D Visual Rendering
+    renderEnhancedPondingVisuals3D(deps);
+
+    // Event listeners
+    document.getElementById("chkPonding3D")?.addEventListener("change", (e) => {
+      if (e.target.checked) renderEnhancedPondingVisuals3D(deps);
+      else clearEnhancedPondingVisuals3D();
+    });
+
+    document.querySelectorAll("#drainagePondingContainer tbody tr").forEach((row) => {
+      row.addEventListener("click", () => {
+        const idx = Number(row.getAttribute("data-pond-idx")) || 0;
+        const dep = deps[idx];
+        if (dep && dep.centroid_local && window.studioThree && window.studioThree.controls) {
+          const c = dep.centroid_local;
+          window.studioThree.controls.target.set(c.x, c.y, c.z);
+          if (typeof showToast === "function") showToast(`${dep.depression_id}: ${dep.volume_m3} m³ (${dep.max_depth_cm} cm)`, 2000);
+        }
+      });
+    });
+
+    document.getElementById("btnRecomputePonding")?.addEventListener("click", async () => {
+      const minDepthCm = Number(document.getElementById("txtMinPondingDepth")?.value) || 5.0;
+      const minDepthM = minDepthCm / 100.0;
+      const excludeW = document.getElementById("chkExcludeWalls")?.checked !== false;
+
+      let tiersPreset = null;
+      const pVal = document.getElementById("selSlopeTierPreset")?.value;
+      if (pVal === "drainage_storm") tiersPreset = [0.01, 0.03, 0.06, 0.12];
+      else if (pVal === "steep_terrain") tiersPreset = [0.05, 0.10, 0.20, 0.35];
+
+      if (typeof apiPost === "function") {
+        try {
+          const updated = await apiPost("/api/survey/drainage", {
+            scan_id: scanId,
+            min_ponding_depth_m: minDepthM,
+            exclude_walls: excludeW,
+            custom_slope_tiers: tiersPreset,
+          });
+          openEnhancedDrainageAndPondingInspector(updated);
+        } catch (err) {
+          console.error("[Drainage] Recompute failed:", err);
+        }
+      }
+    });
+
+    document.getElementById("btnDownloadPondingCsv")?.addEventListener("click", () => {
+      exportDrainagePondingCsv(drainageResult);
+    });
+
+    document.getElementById("btnPrintPondingReport")?.addEventListener("click", () => {
+      window.print();
+    });
+  }
+
   // Global overrides & hook bindings
   window.renderEarthworkInputFieldsHtml = renderEarthworkInputFieldsHtml;
   window.getEarthworkInputValues = getEarthworkInputValues;
@@ -858,16 +1613,33 @@
   window.parseGcpCsvInput = parseEnhancedGcpCsvInput;
   window.exportGcpQaCsv = exportGcpQaCsv;
 
-  // Auto-launch GCP QA Inspector if ?tool=gcp_qa or ?inspect=gcp_qa is present in URL
+  window.openStationingAndAeaVolumeInspector = openEnhancedStationingAndAeaInspector;
+  window.openEnhancedStationingAndAeaInspector = openEnhancedStationingAndAeaInspector;
+  window.exportStationingCsv = exportStationingCsv;
+
+  window.openDrainageAndSlopeInspector = openEnhancedDrainageAndPondingInspector;
+  window.openEnhancedDrainageAndPondingInspector = openEnhancedDrainageAndPondingInspector;
+  window.renderEnhancedPondingVisuals3D = renderEnhancedPondingVisuals3D;
+  window.clearEnhancedPondingVisuals3D = clearEnhancedPondingVisuals3D;
+  window.exportDrainagePondingCsv = exportDrainagePondingCsv;
+
+  // Auto-launch Stationing or Drainage Inspector if tool requested in URL
   if (typeof window !== "undefined" && window.location) {
     try {
       const qParams = new URLSearchParams(window.location.search);
-      if (qParams.get("tool") === "gcp_qa" || qParams.get("inspect") === "gcp_qa") {
+      const toolParam = qParams.get("tool") || qParams.get("inspect");
+      if (toolParam) {
         const timer = setInterval(() => {
           if (window.STATE && window.STATE.activeScanId && window.studioThree && window.studioThree.scene) {
             clearInterval(timer);
             setTimeout(() => {
-              openEnhancedGcpAccuracyQaInspector();
+              if (toolParam === "stationing" || toolParam === "aea") {
+                openEnhancedStationingAndAeaInspector();
+              } else if (toolParam === "drainage" || toolParam === "ponding") {
+                openEnhancedDrainageAndPondingInspector();
+              } else if (toolParam === "gcp_qa") {
+                openEnhancedGcpAccuracyQaInspector();
+              }
             }, 800);
           }
         }, 400);

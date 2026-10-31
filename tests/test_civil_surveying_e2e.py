@@ -64,6 +64,7 @@ if BASE_DIR not in sys.path:
 from pc_worker.priority_queue import ScanQueueDB
 from pc_worker.surveying_engine import SurveyingEngine
 from pc_worker.optimizer_bridge import CRS_DEFINITIONS
+from pc_worker.config import REPORTS_DIR
 
 
 # ============================================================================
@@ -1345,6 +1346,1294 @@ class TestMilestone2ControlAlignmentAndGcpCalibration(unittest.TestCase):
         self.assertEqual(res_malformed["std_dh_m"], 0.0)
 
 
+class TestSurfaceFlatnessAndPlumbnessInspector(unittest.TestCase):
+    """
+    Milestone 4: 3D Surface Flatness, Levelness & Wall Plumbness Inspector:
+    1. Horizontal reference plane deviation heatmap & ASTM E1155 approximation
+    2. Vertical wall plumbness tilt ratio (1:N, mm/m) and tilt angle
+    3. Best-fit least squares reference plane
+    4. Tolerance pass rate %, Max High / Max Low coordinate recovery
+    5. Robustness against malformed/empty inputs
+    """
+
+    def setUp(self):
+        self.tmp_dir = tempfile.mkdtemp()
+        self.tmp_db_path = os.path.join(self.tmp_dir, "test_flatness.db")
+        self.db = ScanQueueDB(self.tmp_db_path)
+        self.scan_id = "test_construction_qa_scan"
+        self.db.upsert_scan({
+            "scan_id": self.scan_id,
+            "project_dir": self.tmp_dir,
+            "twd97_e": 304950.0,
+            "twd97_n": 2757080.0,
+            "twd97_h": 125.0,
+        })
+        self.survey = SurveyingEngine(self.db)
+
+    def tearDown(self):
+        import shutil
+        try:
+            shutil.rmtree(self.tmp_dir, ignore_errors=True)
+        except Exception:
+            pass
+
+
+    def test_01_horizontal_flatness_and_tolerance(self):
+        """Verify horizontal slab flatness, tolerance pass rate, and max high/low point recovery."""
+        payload = {
+            "scan_id": self.scan_id,
+            "reference_mode": "horizontal",
+            "reference_elevation": 100.0,
+            "tolerance_mm": 10.0,
+            "points": [
+                {"e": 304950.0, "n": 2757080.0, "h": 100.004},
+                {"e": 304952.0, "n": 2757080.0, "h": 99.994},
+                {"e": 304954.0, "n": 2757080.0, "h": 100.014},
+                {"e": 304950.0, "n": 2757082.0, "h": 99.982},
+                {"e": 304952.0, "n": 2757082.0, "h": 100.000},
+            ],
+        }
+        res = self.survey.compute_surface_flatness_and_plumbness(payload)
+        self.assertEqual(res["status"], "ok")
+        self.assertEqual(res["total_points"], 5)
+        self.assertEqual(res["pass_count"], 3)
+        self.assertEqual(res["high_count"], 1)
+        self.assertEqual(res["low_count"], 1)
+        self.assertEqual(res["pass_rate_pct"], 60.0)
+        self.assertAlmostEqual(res["max_high"]["dev_mm"], 14.0, places=1)
+        self.assertAlmostEqual(res["max_low"]["dev_mm"], -18.0, places=1)
+        self.assertIn("ff_flatness", res["astm_e1155"])
+        self.assertGreater(res["astm_e1155"]["ff_flatness"], 0.0)
+
+    def test_02_vertical_wall_plumbness_tilt_ratio(self):
+        """Verify vertical wall plumbness, out-of-plumb tilt ratio, and mm/m deviation."""
+        payload = {
+            "scan_id": self.scan_id,
+            "reference_mode": "vertical",
+            "tolerance_mm": 15.0,
+            "wall_line": [{"e": 304950.0, "n": 2757080.0}, {"e": 304950.0, "n": 2757090.0}],
+            "points": [
+                {"e": 304950.000, "n": 2757080.0, "h": 100.0},
+                {"e": 304950.000, "n": 2757085.0, "h": 100.0},
+                {"e": 304950.010, "n": 2757080.0, "h": 102.0},
+                {"e": 304950.010, "n": 2757085.0, "h": 102.0},
+                {"e": 304950.020, "n": 2757080.0, "h": 104.0},
+                {"e": 304950.020, "n": 2757085.0, "h": 104.0},
+            ],
+        }
+        res = self.survey.compute_surface_flatness_and_plumbness(payload)
+        self.assertEqual(res["status"], "ok")
+        self.assertEqual(res["reference_mode"], "vertical")
+        plumb = res["plumb_tilt"]
+        self.assertAlmostEqual(plumb["plumb_mm_per_m"], 5.0, delta=0.5)
+        self.assertAlmostEqual(plumb["tilt_ratio_num"], 200.0, delta=20.0)
+
+    def test_03_best_fit_plane_recovery(self):
+        """Verify best-fit plane least squares estimation."""
+        payload = {
+            "scan_id": self.scan_id,
+            "reference_mode": "best_fit",
+            "tolerance_mm": 5.0,
+            "points": [
+                {"e": 304950.0, "n": 2757080.0, "h": 100.0},
+                {"e": 304960.0, "n": 2757080.0, "h": 100.5},
+                {"e": 304950.0, "n": 2757090.0, "h": 100.2},
+                {"e": 304960.0, "n": 2757090.0, "h": 100.7},
+            ],
+        }
+        res = self.survey.compute_surface_flatness_and_plumbness(payload)
+        self.assertEqual(res["status"], "ok")
+        self.assertEqual(res["pass_rate_pct"], 100.0)
+        self.assertLess(res["rms_dev_mm"], 1.0)
+
+
+class TestOpenTrenchUtilityTracer(unittest.TestCase):
+    """
+    Milestone 4: Open-Trench Utility 3D Tracer:
+    1. 3D polyline stationing and gradient calculation (% and 1:N)
+    2. Invert and crown elevation derivation from diameter
+    3. Depth of cover evaluation against ground surface
+    4. CSV and 3D DXF export format compliance
+    """
+
+    def setUp(self):
+        self.tmp_dir = tempfile.mkdtemp()
+        self.tmp_db_path = os.path.join(self.tmp_dir, "test_utility.db")
+        self.db = ScanQueueDB(self.tmp_db_path)
+        self.scan_id = "test_utility_tracer_scan"
+        self.db.upsert_scan({
+            "scan_id": self.scan_id,
+            "project_dir": self.tmp_dir,
+            "twd97_e": 304950.0,
+            "twd97_n": 2757080.0,
+            "twd97_h": 125.0,
+        })
+        self.survey = SurveyingEngine(self.db)
+
+    def tearDown(self):
+        import shutil
+        try:
+            shutil.rmtree(self.tmp_dir, ignore_errors=True)
+        except Exception:
+            pass
+
+    def test_01_pipe_geometry_gradient_and_cover(self):
+        """Verify pipe 3D length, slope percentage, slope ratio, and depth of cover."""
+        payload = {
+            "scan_id": self.scan_id,
+            "pipe_type": "SEWER",
+            "pipe_diameter_mm": 300.0,
+            "min_cover_m": 1.20,
+            "point_mode": "invert",
+            "trench_points": [
+                {"e": 304950.0, "n": 2757080.0, "h": 120.0, "name": "MH-01"},
+                {"e": 304980.0, "n": 2757120.0, "h": 119.0, "name": "P-02"},
+                {"e": 305010.0, "n": 2757160.0, "h": 118.0, "name": "MH-02"},
+            ],
+        }
+        res = self.survey.trace_open_trench_utility(payload)
+        self.assertEqual(res["status"], "ok")
+        self.assertAlmostEqual(res["total_length_2d_m"], 100.0, places=2)
+        self.assertEqual(res["station_count"], 3)
+        st0 = res["stations"][0]
+        self.assertEqual(st0["station_m"], 0.0)
+        self.assertEqual(st0["station_label"], "0K+000.00")
+        self.assertAlmostEqual(st0["crown_z"] - st0["invert_z"], 0.300, places=3)
+        self.assertAlmostEqual(st0["slope_pct"], -2.0, places=2)
+        self.assertEqual(st0["slope_ratio"], "1:50")
+        self.assertEqual(st0["flow_dir"], "Forward")
+
+        # Verify CSV export
+        self.assertIn("PIPE_INVERT", res["dxf_export"])
+        self.assertIn("PIPE_CROWN", res["dxf_export"])
+        self.assertIn("MH-01", res["csv_export"])
+        self.assertIn("0K+000.00", res["csv_export"])
+
+
+class TestCompareViewDeltaVVolumeTakeoff(unittest.TestCase):
+    """
+    Milestone 5: Compare View ΔV Volume Takeoff:
+    1. Bounded polygon cut/fill volume integration
+    2. Mass conservation (BCM, LCM, CCM, Tonnes)
+    3. Haulage trips and site balance
+    """
+
+    def setUp(self):
+        self.tmp_dir = tempfile.mkdtemp()
+        self.tmp_db_path = os.path.join(self.tmp_dir, "test_compare.db")
+        self.db = ScanQueueDB(self.tmp_db_path)
+        self.scan_id_base = "test_epoch1"
+        self.scan_id_comp = "test_epoch2"
+        for sid in (self.scan_id_base, self.scan_id_comp):
+            self.db.upsert_scan({
+                "scan_id": sid,
+                "project_dir": self.tmp_dir,
+                "twd97_e": 304950.0,
+                "twd97_n": 2757080.0,
+                "twd97_h": 100.0,
+            })
+        self.survey = SurveyingEngine(self.db)
+
+    def tearDown(self):
+        import shutil
+        try:
+            shutil.rmtree(self.tmp_dir, ignore_errors=True)
+        except Exception:
+            pass
+
+    def test_01_compare_volume_analytical_takeoff(self):
+        """Verify polygon-bounded compare volume takeoff and mass conservation."""
+        payload = {
+            "baseline_scan_id": self.scan_id_base,
+            "compare_scan_id": self.scan_id_comp,
+            "polygon": [
+                {"e": 304940.0, "n": 2757070.0},
+                {"e": 304960.0, "n": 2757070.0},
+                {"e": 304960.0, "n": 2757090.0},
+                {"e": 304940.0, "n": 2757090.0},
+            ],
+            "material_type": "common_earth",
+            "swell_factor": 0.20,
+            "shrink_factor": 0.10,
+            "truck_capacity_m3": 15.0,
+        }
+        res = self.survey.compute_compare_volume_takeoff(payload)
+        self.assertEqual(res["status"], "ok")
+        self.assertEqual(res["polygon_area_m2"], 400.0)
+        self.assertIn("net_volume_delta_m3", res)
+        self.assertIn("site_balance", res)
+        self.assertIn("truck_trips", res["site_balance"])
+        self.assertGreaterEqual(res["cells_evaluated"], 100)
+
+
+class TestRTKStakeoutExportStrictENZOrder(unittest.TestCase):
+    """
+    Milestone 5: RTK Stakeout Export strictly in Easting, Northing, Elevation (E, N, Z) order:
+    1. CSV format strictly: PtID,Easting,Northing,Elevation,Code
+    2. Space-delimited ASCII TXT (Leica/Trimble)
+    3. 3D AutoCAD DXF R12 POINT & TEXT entities
+    4. Printable HTML Field Sheet with sign-off block
+    """
+
+    def setUp(self):
+        self.tmp_dir = tempfile.mkdtemp()
+        self.tmp_db_path = os.path.join(self.tmp_dir, "test_stakeout.db")
+        self.db = ScanQueueDB(self.tmp_db_path)
+        self.scan_id = "test_stakeout_scan"
+        self.db.upsert_scan({
+            "scan_id": self.scan_id,
+            "project_dir": self.tmp_dir,
+            "twd97_e": 304950.0,
+            "twd97_n": 2757080.0,
+            "twd97_h": 125.0,
+        })
+        self.survey = SurveyingEngine(self.db)
+
+    def tearDown(self):
+        import shutil
+        try:
+            shutil.rmtree(self.tmp_dir, ignore_errors=True)
+        except Exception:
+            pass
+
+
+    def test_01_strict_e_n_z_order_csv(self):
+        """Verify strict PtID, Easting, Northing, Elevation, Code coordinate ordering."""
+        payload = {
+            "scan_id": self.scan_id,
+            "project_name": "Taipei Civil Site QA",
+            "surveyor": "Senior Surveyor Chang",
+            "points": [
+                {"id": "P01", "e": 304951.123, "n": 2757081.456, "z": 125.789, "code": "PILE_CAP_1"},
+                {"id": "P02", "e": 304962.345, "n": 2757093.678, "z": 126.012, "code": "COLUMN_C1"},
+            ],
+        }
+        res = self.survey.generate_stakeout_export(payload)
+        self.assertEqual(res["status"], "ok")
+        self.assertEqual(res["point_count"], 2)
+
+        # Verify CSV format and exact column order
+        csv_str = res["csv_export"]
+        lines = [line.strip() for line in csv_str.strip().split("\n") if not line.startswith("#")]
+        header = lines[0]
+        self.assertEqual(header, "PtID,Easting,Northing,Elevation,Code")
+
+        row1 = lines[1].split(",")
+        self.assertEqual(row1[0], "P01")
+        self.assertEqual(row1[1], "304951.123")  # Easting
+        self.assertEqual(row1[2], "2757081.456")  # Northing
+        self.assertEqual(row1[3], "125.789")     # Elevation
+        self.assertEqual(row1[4], "PILE_CAP_1")
+
+        row2 = lines[2].split(",")
+        self.assertEqual(row2[0], "P02")
+        self.assertEqual(row2[1], "304962.345")  # Easting
+        self.assertEqual(row2[2], "2757093.678")  # Northing
+        self.assertEqual(row2[3], "126.012")     # Elevation
+        self.assertEqual(row2[4], "COLUMN_C1")
+
+        # Verify TXT format
+        txt_str = res["txt_export"]
+        self.assertIn("P01 304951.123 2757081.456 125.789 PILE_CAP_1", txt_str)
+
+        # Verify 3D DXF format
+        dxf_str = res["dxf_export"]
+        self.assertIn("STAKEOUT_PT", dxf_str)
+        self.assertIn("STAKEOUT_LBL", dxf_str)
+        self.assertIn("304951.123", dxf_str)
+
+        # Verify Printable HTML field sheet
+        html_str = res["html_field_sheet"]
+        self.assertIn("RTK Field Stakeout Sheet", html_str)
+        self.assertIn("Design E (m)", html_str)
+        self.assertIn("Design N (m)", html_str)
+        self.assertIn("Design Z (m)", html_str)
+        self.assertIn("As-Staked E", html_str)
+        self.assertIn("As-Staked N", html_str)
+        self.assertIn("As-Staked Z", html_str)
+        self.assertIn("Senior Surveyor Chang", html_str)
+class TestCenterlineStationingAndAverageEndArea(unittest.TestCase):
+    """
+    Milestone 3 Test Suite: Centerline Stationing (0K+000) & Average-End-Area (AEA) Cut/Fill Volume.
+    Verifies polyline chainage, parametric templates (roadway crown, trench, flat),
+    closed-form AEA volume numerical integration, and earthwork mass conservation.
+    """
+
+    def setUp(self):
+        self.tmp_dir = tempfile.mkdtemp(prefix="gs_test_m3_align_")
+        self.scan_id = "test_m3_alignment_scan"
+        self.scan_dir = os.path.join(self.tmp_dir, self.scan_id)
+        os.makedirs(self.scan_dir, exist_ok=True)
+        with open(os.path.join(self.scan_dir, "model.obj"), "w", encoding="utf-8") as f:
+            f.write("# dummy mesh\nv 0 0 0\n")
+
+        self.db = ScanQueueDB(db_path=os.path.join(self.tmp_dir, "test_queue.db"))
+        self.db.upsert_scan({
+            "scan_id": self.scan_id,
+            "project_name": "Test M3 Stationing",
+            "project_group": "M3_Testing",
+            "project_dir": self.scan_dir,
+            "twd97_e": 304950.0,
+            "twd97_n": 2757080.0,
+            "twd97_h": 120.0,
+            "crs": "TWD97 / TM2 zone 121 + TWVD 2001 height - EPSG:3826+8904",
+        })
+        self.survey = SurveyingEngine(self.db)
+
+        # Synthetic flat DSM at Z = 120.0m
+        import numpy as np
+        res = 0.5
+        e_min, e_max = 304900.0, 305000.0
+        n_min, n_max = 2757030.0, 2757130.0
+        nx = int((e_max - e_min) / res)
+        ny = int((n_max - n_min) / res)
+        dsm_grid = np.full((ny, nx), 120.0, dtype=np.float32)
+        hull_mask = np.ones((ny, nx), dtype=bool)
+        npz_path = os.path.join(self.scan_dir, "_dsm_cache_v5.npz")
+        np.savez_compressed(
+            npz_path,
+            ce=304950.0,
+            cn=2757080.0,
+            ch=120.0,
+            e_min=e_min,
+            e_max=e_max,
+            n_min=n_min,
+            n_max=n_max,
+            res=res,
+            dsm_raw=dsm_grid,
+            dsm_contour=dsm_grid,
+            hull_mask=hull_mask,
+        )
+
+    def tearDown(self):
+        import shutil
+        try:
+            shutil.rmtree(self.tmp_dir)
+        except OSError:
+            pass
+
+    def test_01_polyline_stationing_chainage_codes(self):
+        """
+        Verify multi-segment polyline chainage calculation and formatting (0K+000.00):
+        L_seg1 = (304910, 2757050) -> (304940, 2757050) = 30.0m
+        L_seg2 = (304940, 2757050) -> (304940, 2757090) = 40.0m
+        Total L = 70.0m.
+        Station interval = 10.0m -> 8 stations from 0K+000.00 to 0K+070.00.
+        """
+        payload = {
+            "scan_id": self.scan_id,
+            "alignment": [
+                [304910.0, 2757050.0],
+                [304940.0, 2757050.0],
+                [304940.0, 2757090.0],
+            ],
+            "interval": 10.0,
+            "swath_width": 16.0,
+        }
+        res = self.survey.compute_centerline_stationing_and_volume(payload)
+        self.assertEqual(res["status"], "ok")
+        self.assertAlmostEqual(res["total_length_m"], 70.0, places=2)
+        self.assertEqual(res["station_count"], 8)
+
+        expected_stations = [
+            (0.0, "0K+000.00"),
+            (10.0, "0K+010.00"),
+            (20.0, "0K+020.00"),
+            (30.0, "0K+030.00"),
+            (40.0, "0K+040.00"),
+            (50.0, "0K+050.00"),
+            (60.0, "0K+060.00"),
+            (70.0, "0K+070.00"),
+        ]
+        stations = res["stations"]
+        for idx, (exp_dist, exp_code) in enumerate(expected_stations):
+            st = stations[idx]
+            self.assertAlmostEqual(st["station_m"], exp_dist, places=2)
+            self.assertEqual(st["chainage_code"], exp_code)
+
+    def test_02_average_end_area_volume_analytical_closed_form(self):
+        """
+        Verify Average-End-Area volume against exact analytical geometry:
+        Terrain is flat at Z = 120.0m.
+        Straight alignment of L = 50.0m from E=304920 to E=304970 along N=2757070.
+        Template: Flat excavation bed width B = 6.0m at fixed Z = 118.0m (depth = 2.0m),
+        with vertical cuts (swath width = 6.0m).
+        Exact cross-section area at every station:
+          A_cut = 6.0m * 2.0m = 12.0 m².
+        Exact AEA Cut Volume across L = 50.0m:
+          V_cut = A_cut * L = 12.0 * 50.0 = 600.0 m³.
+        """
+        payload = {
+            "scan_id": self.scan_id,
+            "alignment": [
+                [304920.0, 2757070.0],
+                [304970.0, 2757070.0],
+            ],
+            "interval": 10.0,
+            "swath_width": 6.0,
+            "template_type": "flat",
+            "bed_width": 6.0,
+            "design_elevation": 118.0,
+            "density_t_m3": 1.65,
+            "swell_factor": 1.25,
+            "shrinkage_factor": 0.10,
+        }
+        res = self.survey.compute_centerline_stationing_and_volume(payload)
+        self.assertEqual(res["status"], "ok")
+        self.assertAlmostEqual(res["total_length_m"], 50.0, places=2)
+
+        # Check end area at stations
+        for st in res["stations"]:
+            self.assertAlmostEqual(st["cut_area_m2"], 12.0, delta=0.2)
+            self.assertAlmostEqual(st["fill_area_m2"], 0.0, delta=0.01)
+
+        # Check cumulative cut volume
+        self.assertAlmostEqual(res["total_cut_volume_m3"], 600.0, delta=10.0)
+        self.assertAlmostEqual(res["total_fill_volume_m3"], 0.0, delta=1.0)
+        self.assertGreater(res["net_volume_m3"], 0.0)
+
+        # Check mass conservation schedule
+        sched = res["earthwork_schedule"]
+        self.assertAlmostEqual(sched["bank_cut_m3"], res["total_cut_volume_m3"], delta=0.1)
+        self.assertAlmostEqual(sched["loose_cut_m3"], round(res["total_cut_volume_m3"] * 1.25, 2), delta=1.0)
+        self.assertAlmostEqual(sched["compact_cut_m3"], round(res["total_cut_volume_m3"] * 0.90, 2), delta=1.0)
+        self.assertAlmostEqual(sched["conserved_mass_tonnes"], round(res["total_cut_volume_m3"] * 1.65, 2), delta=1.0)
+        self.assertEqual(sched["site_balance"], "surplus_cut")
+        self.assertGreater(sched["haul_trucks"]["trips_required"], 0)
+
+    def test_03_parametric_roadway_crown_and_trench_templates(self):
+        """
+        Verify parametric roadway crown (cross-slope 2.0%) and trench templates:
+        - Roadway with cross-slope correctly applies sloping template across bed
+        - Trench template with depth=2.0m and bottom_width=1.5m creates excavation trench
+        """
+        payload_road = {
+            "scan_id": self.scan_id,
+            "alignment": [[304920.0, 2757070.0], [304960.0, 2757070.0]],
+            "interval": 10.0,
+            "swath_width": 14.0,
+            "template_type": "roadway",
+            "road_width": 7.0,
+            "cross_slope_pct": 2.0,
+            "elevation_offset": -1.0,  # 1m cut below ground
+        }
+        res_road = self.survey.compute_centerline_stationing_and_volume(payload_road)
+        self.assertEqual(res_road["status"], "ok")
+        self.assertGreater(res_road["total_cut_volume_m3"], 0.0)
+        self.assertEqual(res_road["template_type"], "roadway")
+
+        payload_trench = {
+            "scan_id": self.scan_id,
+            "alignment": [[304920.0, 2757070.0], [304960.0, 2757070.0]],
+            "interval": 10.0,
+            "swath_width": 10.0,
+            "template_type": "trench",
+            "bottom_width": 1.5,
+            "trench_depth": 2.5,
+        }
+        res_trench = self.survey.compute_centerline_stationing_and_volume(payload_trench)
+        self.assertEqual(res_trench["status"], "ok")
+        self.assertGreater(res_trench["total_cut_volume_m3"], 0.0)
+        self.assertEqual(res_trench["template_type"], "trench")
+
+    def test_04_adversarial_and_boundary_resilience(self):
+        """
+        Verify robust error handling on edge/adversarial inputs:
+        - Empty alignment list generates synthetic default crossing the scan
+        - Single point alignment triggers default alignment
+        - Extreme interval larger than alignment still samples start and end
+        """
+        res_empty = self.survey.compute_centerline_stationing_and_volume({
+            "scan_id": self.scan_id,
+            "alignment": [],
+        })
+        self.assertEqual(res_empty["status"], "ok")
+        self.assertGreater(res_empty["total_length_m"], 0.0)
+        self.assertGreaterEqual(res_empty["station_count"], 2)
+
+        res_large_interval = self.survey.compute_centerline_stationing_and_volume({
+            "scan_id": self.scan_id,
+            "alignment": [[304920.0, 2757070.0], [304940.0, 2757070.0]],
+            "interval": 100.0,  # larger than 20m length
+        })
+        self.assertEqual(res_large_interval["status"], "ok")
+        self.assertEqual(res_large_interval["station_count"], 2)
+
+
+class TestSurfaceDrainagePondingAndCustomSlopeTiers(unittest.TestCase):
+    """
+    Milestone 3 Test Suite: Surface Drainage Depression Ponding Volume Takeoff
+    and Custom Slope Classification Tiers.
+    Verifies Priority-Flood morphological reconstruction, spill point elevation,
+    closed-form ponding storage V_water m³, and user-selectable slope tiers.
+    """
+
+    def setUp(self):
+        self.tmp_dir = tempfile.mkdtemp(prefix="gs_test_m3_pond_")
+        self.scan_id = "test_m3_ponding_scan"
+        self.scan_dir = os.path.join(self.tmp_dir, self.scan_id)
+        os.makedirs(self.scan_dir, exist_ok=True)
+        with open(os.path.join(self.scan_dir, "model.obj"), "w", encoding="utf-8") as f:
+            f.write("# dummy mesh\nv 0 0 0\n")
+
+        self.db = ScanQueueDB(db_path=os.path.join(self.tmp_dir, "test_queue.db"))
+        self.db.upsert_scan({
+            "scan_id": self.scan_id,
+            "project_name": "Test M3 Ponding",
+            "project_group": "M3_Testing",
+            "project_dir": self.scan_dir,
+            "twd97_e": 304950.0,
+            "twd97_n": 2757080.0,
+            "twd97_h": 100.0,
+            "crs": "TWD97 / TM2 zone 121 + TWVD 2001 height - EPSG:3826+8904",
+        })
+        self.survey = SurveyingEngine(self.db)
+
+        # Synthetic DSM with a known rectangular excavation sink:
+        # Domain: 50m x 50m, flat at Z = 100.0m.
+        # Rectangular depression: 10m x 10m (from E=304945 to 304955, N=2757075 to 2757085),
+        # excavated to Z = 98.0m (depth = 2.0m).
+        # Analytical ponding water volume: V = 10m * 10m * 2m = 200.0 m³.
+        import numpy as np
+        res = 1.0
+        e_min, e_max = 304925.0, 304975.0
+        n_min, n_max = 2757055.0, 2757105.0
+        nx = int((e_max - e_min) / res)
+        ny = int((n_max - n_min) / res)
+        grid = np.full((ny, nx), 100.0, dtype=np.float32)
+
+        # Excavate 10x10 sink in center
+        ix_start, ix_end = 20, 30  # 10 cells = 10m
+        iy_start, iy_end = 20, 30  # 10 cells = 10m
+        grid[iy_start:iy_end, ix_start:ix_end] = 98.0
+
+        hull_mask = np.ones((ny, nx), dtype=bool)
+        npz_path = os.path.join(self.scan_dir, "_dsm_cache_v5.npz")
+        np.savez_compressed(
+            npz_path,
+            ce=304950.0,
+            cn=2757080.0,
+            ch=100.0,
+            e_min=e_min,
+            e_max=e_max,
+            n_min=n_min,
+            n_max=n_max,
+            res=res,
+            dsm_raw=grid,
+            dsm_contour=grid,
+            hull_mask=hull_mask,
+        )
+
+    def tearDown(self):
+        import shutil
+        try:
+            shutil.rmtree(self.tmp_dir)
+        except OSError:
+            pass
+
+    def test_01_closed_form_ponding_volume_and_depth_takeoff(self):
+        """
+        Verify Priority-Flood depression takeoff matches analytical closed form:
+        - Sink volume V_water = 100 m² * 2.0 m = 200.0 m³
+        - Max depth = 2.0 m (200.0 cm)
+        - Surface area = 100.0 m²
+        - Spill pour point elevation = 100.0 m
+        """
+        payload = {
+            "scan_id": self.scan_id,
+            "min_ponding_depth_m": 0.10,
+        }
+        res = self.survey.compute_drainage_and_slope(payload)
+        self.assertEqual(res["status"], "ok")
+        self.assertGreaterEqual(res["depression_count"], 1)
+
+        dep = res["depressions"][0]
+        # Allow small tolerance for grid boundary discretization
+        self.assertAlmostEqual(dep["volume_m3"], 200.0, delta=15.0)
+        self.assertAlmostEqual(dep["max_depth_m"], 2.0, delta=0.1)
+        self.assertAlmostEqual(dep["spill_elevation_m"], 100.0, delta=0.1)
+        self.assertAlmostEqual(dep["min_elevation_m"], 98.0, delta=0.1)
+        self.assertAlmostEqual(dep["surface_area_m2"], 100.0, delta=10.0)
+
+        # Check aggregate totals
+        self.assertAlmostEqual(res["total_ponding_volume_m3"], dep["volume_m3"], delta=0.1)
+        self.assertAlmostEqual(res["max_ponding_depth_m"], dep["max_depth_m"], delta=0.1)
+
+    def test_02_custom_slope_classification_tiers(self):
+        """
+        Verify user-configurable slope classification tiers:
+        - Custom numeric cutoff thresholds [0.01, 0.03, 0.08, 0.15]
+        - Verified that custom tiers override defaults and compute correct cell counts
+        """
+        payload = {
+            "scan_id": self.scan_id,
+            "custom_slope_tiers": [0.01, 0.03, 0.08, 0.15],
+        }
+        res = self.survey.compute_drainage_and_slope(payload)
+        self.assertEqual(res["status"], "ok")
+        self.assertTrue(res["custom_tiers_applied"])
+        self.assertEqual(len(res["tiers"]), 5)
+        self.assertIn("< 1:100", res["tiers"][0]["label"])
+        self.assertIn("> 1:7", res["tiers"][-1]["label"])
+
+    def test_03_min_depth_filter_safeguard(self):
+        """
+        Verify that min_ponding_depth_m filters depressions correctly:
+        - When min_depth = 2.5m (greater than 2.0m depression depth), 0 depressions detected
+        - When min_depth = 0.5m (less than 2.0m depression depth), depression is detected
+        """
+        res_high_thresh = self.survey.compute_drainage_and_slope({
+            "scan_id": self.scan_id,
+            "min_ponding_depth_m": 2.5,
+        })
+        self.assertEqual(res_high_thresh["depression_count"], 0)
+        self.assertEqual(res_high_thresh["total_ponding_volume_m3"], 0.0)
+
+        res_low_thresh = self.survey.compute_drainage_and_slope({
+            "scan_id": self.scan_id,
+            "min_ponding_depth_m": 0.5,
+        })
+        self.assertGreaterEqual(res_low_thresh["depression_count"], 1)
+        self.assertGreater(res_low_thresh["total_ponding_volume_m3"], 100.0)
+
+
+class TestScanToBimGeometricFitting(unittest.TestCase):
+    """
+    Milestone 6: Scan-to-BIM Simplified Classified Geometric Model:
+    1. Parametric primitive fitting for walls (extruded wall prism, volume, strike normal)
+    2. Trees composite primitive (trunk cylinder + canopy ellipsoid, DBH at 1.3m, volume)
+    3. Road surface ribbons (pavement extrusion, planar area, volume)
+    4. Water bodies (hydrostatic water prism, shoreline elevation, volume)
+    5. Building bounding prisms (cuboids, footprint area, gross volume)
+    6. Buried pipes (3D cylindrical pipe, diameter, slope, invert)
+    7. User-configurable parameters (tolerance, wall thickness, min dimensions)
+    """
+
+    def setUp(self):
+        self.temp_db_fd, self.temp_db_path = tempfile.mkstemp(suffix=".sqlite3")
+        self.db = ScanQueueDB(self.temp_db_path)
+        self.scan_id = "test_bim_synthetic_scan"
+        self.db.upsert_scan({
+            "scan_id": self.scan_id,
+            "project_dir": tempfile.gettempdir(),
+            "twd97_e": 300550.0,
+            "twd97_n": 2780975.0,
+            "twd97_h": 14.0,
+        })
+        self.survey = SurveyingEngine(self.db)
+
+    def tearDown(self):
+        try:
+            os.close(self.temp_db_fd)
+            if os.path.isfile(self.temp_db_path):
+                os.remove(self.temp_db_path)
+        except Exception:
+            pass
+
+    def test_01_wall_prism_fitting(self):
+        """Verify wall polyline extrusion into 3D structural wall prism with closed faces and non-zero volume."""
+        payload = {
+            "scan_id": self.scan_id,
+            "categories": ["walls"],
+            "wall_thickness_m": 0.30,
+            "min_wall_length_m": 2.0,
+        }
+        original_get_cat = getattr(self.survey, "get_saved_categorization", None)
+        self.survey.get_saved_categorization = lambda s, scan=None: {
+            "ok": True,
+            "walls": [{
+                "id": "WL1",
+                "length_m": 15.0,
+                "mean_height_m": 2.5,
+                "vertical_area_m2": 37.5,
+                "azimuth_deg": 90.0,
+                "center_twd97": [300550.0, 2780975.0, 15.0],
+                "base_polyline_twd97": [
+                    [300542.5, 2780975.0, 14.0],
+                    [300550.0, 2780975.0, 14.0],
+                    [300557.5, 2780975.0, 14.0],
+                ],
+                "top_polyline_twd97": [
+                    [300542.5, 2780975.0, 16.5],
+                    [300550.0, 2780975.0, 16.5],
+                    [300557.5, 2780975.0, 16.5],
+                ],
+            }],
+            "anchor_twd97": {"e": 300550.0, "n": 2780975.0, "h": 14.0},
+        }
+        try:
+            res = self.survey.fit_scan_to_bim_primitives(payload)
+            self.assertTrue(res["ok"])
+            self.assertEqual(res["status"], "ok")
+            self.assertEqual(len(res["primitives"]), 1)
+
+            prim = res["primitives"][0]
+            self.assertEqual(prim["category"], "walls")
+            self.assertEqual(prim["ifc_class"], "IfcWall")
+            self.assertEqual(prim["properties"]["thickness_m"], 0.30)
+            self.assertEqual(prim["properties"]["length_m"], 15.0)
+            self.assertEqual(prim["properties"]["height_m"], 2.5)
+            self.assertAlmostEqual(prim["properties"]["volume_m3"], 11.25, delta=0.1)
+
+            mesh = prim["mesh"]
+            self.assertGreater(len(mesh["vertices_twd97"]), 0)
+            self.assertGreater(len(mesh["faces"]), 0)
+            self.assertEqual(len(mesh["vertices_twd97"]), len(mesh["vertices_local"]))
+        finally:
+            if original_get_cat:
+                self.survey.get_saved_categorization = original_get_cat
+
+    def test_02_tree_composite_solid_fitting(self):
+        """Verify tree trunk cylinder and canopy ellipsoid primitive fitting with DBH calculation."""
+        payload = {
+            "scan_id": self.scan_id,
+            "categories": ["trees"],
+            "min_tree_height_m": 2.0,
+        }
+        original_get_cat = getattr(self.survey, "get_saved_categorization", None)
+        self.survey.get_saved_categorization = lambda s, scan=None: {
+            "ok": True,
+            "trees": [{
+                "id": "T1",
+                "height_m": 8.0,
+                "dbh_cm": 24.0,
+                "crown_diameter_m": 4.0,
+                "ground_elevation_m": 12.0,
+                "trunk_twd97": [300560.0, 2780980.0, 12.0],
+            }],
+            "anchor_twd97": {"e": 300550.0, "n": 2780975.0, "h": 14.0},
+        }
+        try:
+            res = self.survey.fit_scan_to_bim_primitives(payload)
+            self.assertTrue(res["ok"])
+            self.assertEqual(len(res["primitives"]), 1)
+
+            prim = res["primitives"][0]
+            self.assertEqual(prim["category"], "trees")
+            self.assertEqual(prim["ifc_class"], "IfcGeographicElement")
+            self.assertEqual(prim["properties"]["dbh_cm"], 24.0)
+            self.assertEqual(prim["properties"]["height_m"], 8.0)
+            self.assertGreater(prim["properties"]["volume_m3"], 0.0)
+
+            self.assertGreater(len(prim["mesh"]["vertices_twd97"]), 20)
+            self.assertGreater(len(prim["mesh"]["faces"]), 20)
+        finally:
+            if original_get_cat:
+                self.survey.get_saved_categorization = original_get_cat
+
+    def test_03_road_surface_pavement_fitting(self):
+        """Verify road surface boundary extrusion into subgrade prism with area and volume."""
+        payload = {
+            "scan_id": self.scan_id,
+            "categories": ["roads"],
+        }
+        original_get_cat = getattr(self.survey, "get_saved_categorization", None)
+        self.survey.get_saved_categorization = lambda s, scan=None: {
+            "ok": True,
+            "roads": [{
+                "id": "R1",
+                "planar_area_m2": 200.0,
+                "mean_width_m": 6.0,
+                "mean_slope_pct": 2.5,
+                "center_twd97": [300550.0, 2780975.0, 14.0],
+                "boundary_twd97": [
+                    [300540.0, 2780970.0, 14.0],
+                    [300560.0, 2780970.0, 14.0],
+                    [300560.0, 2780980.0, 14.0],
+                    [300540.0, 2780980.0, 14.0],
+                    [300540.0, 2780970.0, 14.0],
+                ],
+            }],
+            "anchor_twd97": {"e": 300550.0, "n": 2780975.0, "h": 14.0},
+        }
+        try:
+            res = self.survey.fit_scan_to_bim_primitives(payload)
+            self.assertTrue(res["ok"])
+            self.assertEqual(len(res["primitives"]), 1)
+
+            prim = res["primitives"][0]
+            self.assertEqual(prim["category"], "roads")
+            self.assertEqual(prim["ifc_class"], "IfcCivilElement")
+            self.assertEqual(prim["properties"]["planar_area_m2"], 200.0)
+            self.assertGreater(prim["properties"]["volume_m3"], 0.0)
+        finally:
+            if original_get_cat:
+                self.survey.get_saved_categorization = original_get_cat
+
+    def test_04_water_body_bathymetric_fitting(self):
+        """Verify water body hydrostatic shoreline boundary extrusion into water volume."""
+        payload = {
+            "scan_id": self.scan_id,
+            "categories": ["water"],
+        }
+        original_get_cat = getattr(self.survey, "get_saved_categorization", None)
+        self.survey.get_saved_categorization = lambda s, scan=None: {
+            "ok": True,
+            "water_bodies": [{
+                "id": "W1",
+                "water_level_twvd2001_m": 6.82,
+                "planar_area_m2": 150.0,
+                "center_twd97": [300550.0, 2780975.0, 6.82],
+                "boundary_twd97": [
+                    [300540.0, 2780970.0, 6.82],
+                    [300560.0, 2780970.0, 6.82],
+                    [300560.0, 2780980.0, 6.82],
+                    [300540.0, 2780980.0, 6.82],
+                ],
+            }],
+            "anchor_twd97": {"e": 300550.0, "n": 2780975.0, "h": 14.0},
+        }
+        try:
+            res = self.survey.fit_scan_to_bim_primitives(payload)
+            self.assertTrue(res["ok"])
+            self.assertEqual(len(res["primitives"]), 1)
+
+            prim = res["primitives"][0]
+            self.assertEqual(prim["category"], "water")
+            self.assertEqual(prim["properties"]["water_level_m"], 6.82)
+            self.assertGreater(prim["properties"]["volume_m3"], 0.0)
+        finally:
+            if original_get_cat:
+                self.survey.get_saved_categorization = original_get_cat
+
+    def test_05_buried_pipe_cylinder_fitting(self):
+        """Verify open-trench / utility pipe 3D cylindrical solid fitting along 3D centerline."""
+        payload = {
+            "scan_id": self.scan_id,
+            "categories": ["pipes"],
+            "pipe_default_dia_m": 0.40,
+            "pipes": [{
+                "id": "P_MAIN",
+                "start": [300500.0, 2780900.0, 12.0],
+                "end": [300520.0, 2780900.0, 11.5],
+                "diameter_m": 0.40,
+            }],
+        }
+        res = self.survey.fit_scan_to_bim_primitives(payload)
+        self.assertTrue(res["ok"])
+        self.assertEqual(len(res["primitives"]), 1)
+
+        prim = res["primitives"][0]
+        self.assertEqual(prim["category"], "pipes")
+        self.assertEqual(prim["ifc_class"], "IfcFlowSegment")
+        self.assertEqual(prim["properties"]["diameter_mm"], 400)
+        self.assertAlmostEqual(prim["properties"]["length_m"], 20.006, delta=0.01)
+        self.assertGreater(prim["properties"]["volume_m3"], 0.0)
+
+
+class TestScanToBimExporters(unittest.TestCase):
+    """
+    Milestone 6: Pure Python Standard Library CAD/BIM Exporters:
+    1. ISO-10303-21 IFC SPF (schema IFC4, Brep solids, standard spatial hierarchy, 22-char GUIDs)
+    2. AutoCAD 3D DXF (3DFACE entities, ACI layer colors, AC1015 compatibility)
+    3. Wavefront OBJ + MTL (Grouped meshes with semantic materials)
+    """
+
+    def setUp(self):
+        self.temp_db_fd, self.temp_db_path = tempfile.mkstemp(suffix=".sqlite3")
+        self.db = ScanQueueDB(self.temp_db_path)
+        self.scan_id = "test_bim_export_scan"
+        self.db.upsert_scan({
+            "scan_id": self.scan_id,
+            "project_dir": tempfile.gettempdir(),
+            "twd97_e": 300550.0,
+            "twd97_n": 2780975.0,
+            "twd97_h": 14.0,
+        })
+        self.survey = SurveyingEngine(self.db)
+        self.sample_primitives = [
+            {
+                "id": "BIM_WL1",
+                "category": "walls",
+                "ifc_class": "IfcWall",
+                "name": "Retaining Wall WL1",
+                "properties": {"length_m": 10.0, "height_m": 2.0, "volume_m3": 5.0},
+                "mesh": {
+                    "vertices_twd97": [
+                        [300550.0, 2780970.0, 10.0],
+                        [300560.0, 2780970.0, 10.0],
+                        [300560.0, 2780970.0, 12.0],
+                        [300550.0, 2780970.0, 12.0],
+                    ],
+                    "vertices_local": [[0, 0, 0], [10, 0, 0], [10, 2, 0], [0, 2, 0]],
+                    "faces": [[0, 1, 2], [0, 2, 3]],
+                },
+            },
+            {
+                "id": "BIM_T1",
+                "category": "trees",
+                "ifc_class": "IfcGeographicElement",
+                "name": "Tree T1",
+                "properties": {"dbh_cm": 25.0, "height_m": 6.0, "volume_m3": 1.8},
+                "mesh": {
+                    "vertices_twd97": [
+                        [300565.0, 2780975.0, 10.0],
+                        [300566.0, 2780975.0, 10.0],
+                        [300565.5, 2780976.0, 10.0],
+                        [300565.5, 2780975.5, 16.0],
+                    ],
+                    "vertices_local": [[15, 0, 0], [16, 0, 0], [15.5, 1, 0], [15.5, 0.5, 6]],
+                    "faces": [[0, 1, 2], [0, 1, 3]],
+                },
+            },
+        ]
+
+    def tearDown(self):
+        try:
+            os.close(self.temp_db_fd)
+            if os.path.isfile(self.temp_db_path):
+                os.remove(self.temp_db_path)
+        except Exception:
+            pass
+
+    def test_01_pure_python_ifc_spf_generation(self):
+        """Verify ISO-10303-21 IFC SPF syntax, schema IFC4, 22-char GUIDs, and Brep solid definition."""
+        ifc_str = self.survey._generate_pure_python_ifc_spf(self.scan_id, self.sample_primitives)
+
+        self.assertTrue(ifc_str.startswith("ISO-10303-21;"))
+        self.assertIn("HEADER;", ifc_str)
+        self.assertIn("FILE_SCHEMA(('IFC4'));", ifc_str)
+        self.assertIn("ENDSEC;", ifc_str)
+        self.assertIn("DATA;", ifc_str)
+        self.assertTrue(ifc_str.strip().endswith("END-ISO-10303-21;"))
+
+        self.assertIn("IFCPROJECT(", ifc_str)
+        self.assertIn("IFCSITE(", ifc_str)
+        self.assertIn("IFCBUILDING(", ifc_str)
+        self.assertIn("IFCBUILDINGSTOREY(", ifc_str)
+        self.assertIn("IFCRELAGGREGATES(", ifc_str)
+
+        self.assertIn("IFCWALL(", ifc_str)
+        self.assertIn("IFCGEOGRAPHIC_ELEMENT(", ifc_str)
+        self.assertIn("IFCFACETEDBREP(", ifc_str)
+        self.assertIn("IFCCLOSEDSHELL(", ifc_str)
+        self.assertIn("IFCPOLYLOOP(", ifc_str)
+        self.assertIn("IFCCARTESIANPOINT(", ifc_str)
+
+        guid_pattern = re.compile(r"'([0-9A-Za-z_\$]{22})'")
+        guids = guid_pattern.findall(ifc_str)
+        self.assertGreater(len(guids), 5)
+        for g in guids:
+            self.assertEqual(len(g), 22)
+
+    def test_02_pure_python_3d_dxf_generation(self):
+        """Verify AutoCAD R12/2000 3D DXF syntax, layers, 3DFACE entities, and EOF marker."""
+        dxf_str = self.survey._generate_pure_python_3d_dxf(self.scan_id, self.sample_primitives)
+
+        self.assertIn("SECTION", dxf_str)
+        self.assertIn("HEADER", dxf_str)
+        self.assertIn("$ACADVER", dxf_str)
+        self.assertIn("AC1015", dxf_str)
+        self.assertIn("TABLES", dxf_str)
+        self.assertIn("LAYER", dxf_str)
+        self.assertIn("BIM_WALLS", dxf_str)
+        self.assertIn("BIM_TREES", dxf_str)
+        self.assertIn("ENTITIES", dxf_str)
+        self.assertIn("3DFACE", dxf_str)
+        self.assertTrue(dxf_str.strip().endswith("EOF"))
+
+    def test_03_pure_python_obj_mtl_generation(self):
+        """Verify Wavefront OBJ and MTL syntax, semantic group tags, and material library references."""
+        obj_str, mtl_str = self.survey._generate_pure_python_obj_mtl(self.scan_id, self.sample_primitives, "test.mtl")
+
+        self.assertIn("mtllib test.mtl", obj_str)
+        self.assertIn("o BIM_WL1", obj_str)
+        self.assertIn("g Walls_BIM_WL1", obj_str)
+        self.assertIn("usemtl Mat_Wall", obj_str)
+        self.assertIn("v 300550.0000 2780970.0000 10.0000", obj_str)
+        self.assertIn("f ", obj_str)
+
+        self.assertIn("newmtl Mat_Wall", mtl_str)
+        self.assertIn("newmtl Mat_Tree", mtl_str)
+        self.assertIn("Kd ", mtl_str)
+        self.assertIn("d ", mtl_str)
+
+    def test_04_export_scan_to_bim_files_written(self):
+        """Verify export_scan_to_bim writes files to disk and returns valid download links."""
+        payload = {
+            "scan_id": self.scan_id,
+            "formats": ["ifc", "dxf", "obj"],
+            "primitives": self.sample_primitives,
+        }
+        res = self.survey.export_scan_to_bim(payload)
+        self.assertTrue(res["ok"])
+        self.assertIn("downloads", res)
+        self.assertIn("ifc_url", res["downloads"])
+        self.assertIn("dxf_url", res["downloads"])
+        self.assertIn("obj_url", res["downloads"])
+        self.assertIn("mtl_url", res["downloads"])
+
+        for fp in res["written_files"]:
+            self.assertTrue(os.path.isfile(fp))
+            self.assertGreater(os.path.getsize(fp), 0)
+
+
+class TestPublicUtilitiesGISIntegration(unittest.TestCase):
+    """
+    Milestone 7: Real Public Utilities GIS Integration with Taiwan Open APIs:
+    1. 10 Standard Utility Layers with Color Coding
+    2. MOI NGIS GML 3.1.1 XML Parser (Pipes, Culverts, Manholes, Flow Direction)
+    3. GeoJSON and KML Parser with Coordinate Transformation (WGS84 -> TWD97)
+    4. Genuine Live Query against Taiwan Open GIS Endpoints (wrd.ntpc.gov.tw / sewer.ntpc.gov.tw)
+    5. Zero Mocked/Fake Data Integrity Mandate
+    6. Subsurface 3D Hydraulic Attribution & DXF/GeoJSON Exporters
+    7. Frontend Module & No-Emoji Compliance
+    """
+
+    def setUp(self):
+        self.tmp_dir = tempfile.mkdtemp()
+        self.tmp_db_path = os.path.join(self.tmp_dir, "test_utilities.db")
+        self.db = ScanQueueDB(self.tmp_db_path)
+        self.scan_id = "rosepark_20260918_merged"
+        self.db.upsert_scan({
+            "scan_id": self.scan_id,
+            "project_dir": self.tmp_dir,
+            "twd97_e": 295966.701,
+            "twd97_n": 2768539.373,
+            "twd97_h": 11.34,
+        })
+        self.survey = SurveyingEngine(self.db)
+
+    def tearDown(self):
+        import shutil
+        try:
+            shutil.rmtree(self.tmp_dir, ignore_errors=True)
+        except Exception:
+            pass
+
+    def test_01_public_utilities_10_layer_definitions_and_colors(self):
+        """Verify that all 10 mandated utility layers are defined with correct color hex codes."""
+        from pc_worker.surveying.public_utilities_gis import UTILITY_LAYERS
+
+        expected_layers = {
+            "storm": "#06b6d4",
+            "sanitary": "#d97706",
+            "water": "#3b82f6",
+            "electric": "#ef4444",
+            "telecom": "#10b981",
+            "gas": "#eab308",
+            "ducts": "#8b5cf6",
+            "streetlights": "#f59e0b",
+            "excavations": "#ec4899",
+            "as_built": "#14b8a6",
+        }
+
+        self.assertEqual(len(UTILITY_LAYERS), 10)
+        for layer_id, expected_color in expected_layers.items():
+            self.assertIn(layer_id, UTILITY_LAYERS, f"Layer {layer_id} must be in UTILITY_LAYERS")
+            self.assertEqual(
+                UTILITY_LAYERS[layer_id]["color"].lower(),
+                expected_color.lower(),
+                f"Layer {layer_id} color must match {expected_color}"
+            )
+            self.assertTrue(bool(UTILITY_LAYERS[layer_id].get("name_zh")))
+            self.assertTrue(bool(UTILITY_LAYERS[layer_id].get("name_en")))
+
+    def test_02_moi_ngis_gml_311_parsing(self):
+        """Verify genuine parsing of MOI NGIS GML 3.1.1 XML underground pipeline network."""
+        gml_sample = """<?xml version="1.0" encoding="UTF-8"?>
+<ngis:FeatureCollection xmlns:gml="http://www.opengis.net/gml" xmlns:ngis="http://ngis.moi.gov.tw">
+  <ngis:Pipe gml:id="P_STORM_101">
+    <ngis:PIPE_ID>SP-101</ngis:PIPE_ID>
+    <ngis:LAYER>storm</ngis:LAYER>
+    <ngis:DIAMETER>800</ngis:DIAMETER>
+    <ngis:MATERIAL>RCP</ngis:MATERIAL>
+    <ngis:START_ELEV>10.50</ngis:START_ELEV>
+    <ngis:END_ELEV>10.15</ngis:END_ELEV>
+    <ngis:FLOW_DIR>1</ngis:FLOW_DIR>
+    <gml:curveProperty>
+      <gml:LineString srsName="EPSG:3826">
+        <gml:posList>295900.0 2768500.0 10.50 295940.0 2768530.0 10.15</gml:posList>
+      </gml:LineString>
+    </gml:curveProperty>
+  </ngis:Pipe>
+  <ngis:Manhole gml:id="MH_STORM_01">
+    <ngis:FACILITY_ID>MH-01</ngis:FACILITY_ID>
+    <ngis:LAYER>storm</ngis:LAYER>
+    <ngis:DEPTH>2.80</ngis:DEPTH>
+    <ngis:DIAMETER>1200</ngis:DIAMETER>
+    <gml:pointProperty>
+      <gml:Point srsName="EPSG:3826">
+        <gml:pos>295900.0 2768500.0 10.50</gml:pos>
+      </gml:Point>
+    </gml:pointProperty>
+  </ngis:Manhole>
+</ngis:FeatureCollection>"""
+
+        res = self.survey.parse_utilities_file({"file_content": gml_sample, "filename": "network.gml"})
+        self.assertEqual(res.get("status"), "ok")
+        self.assertEqual(res.get("format"), "MOI NGIS GML 3.1.1")
+        self.assertEqual(res.get("total_features"), 2)
+
+        pipe = next(f for f in res["features"] if f["type"] == "pipe")
+        self.assertEqual(pipe["layer"], "storm")
+        self.assertEqual(pipe["diameter_mm"], 800)
+        self.assertEqual(pipe["material"], "RCP")
+        self.assertEqual(pipe["flow_direction"], 1)
+        self.assertAlmostEqual(pipe["length_m"], 50.0, places=1)
+        self.assertEqual(pipe["start_invert_h"], 10.5)
+        self.assertEqual(pipe["end_invert_h"], 10.15)
+
+        mh = next(f for f in res["features"] if f["type"] == "manhole")
+        self.assertEqual(mh["layer"], "storm")
+        self.assertEqual(mh["depth_m"], 2.8)
+        self.assertEqual(mh["diameter_mm"], 1200)
+
+    def test_03_geojson_and_kml_parsing(self):
+        """Verify parsing of GeoJSON and KML files with WGS84 to TWD97 transformation."""
+        geojson_data = {
+            "type": "FeatureCollection",
+            "features": [
+                {
+                    "type": "Feature",
+                    "properties": {
+                        "id": "W-01",
+                        "layer": "water",
+                        "diameter_mm": 200,
+                        "material": "DIP",
+                        "flow_direction": 1,
+                    },
+                    "geometry": {
+                        "type": "LineString",
+                        "coordinates": [
+                            [295900.0, 2768500.0, 8.5],
+                            [295950.0, 2768500.0, 8.4],
+                        ],
+                    },
+                },
+                {
+                    "type": "Feature",
+                    "properties": {
+                        "id": "HYD-01",
+                        "layer": "water",
+                        "type": "hydrant",
+                        "depth_m": 0.0,
+                    },
+                    "geometry": {
+                        "type": "Point",
+                        "coordinates": [295900.0, 2768500.0, 11.2],
+                    },
+                },
+            ],
+        }
+
+        res = self.survey.parse_utilities_file({
+            "file_content": json.dumps(geojson_data),
+            "filename": "water_network.geojson",
+        })
+        self.assertEqual(res.get("status"), "ok")
+        self.assertEqual(res.get("total_features"), 2)
+        self.assertEqual(res["layer_counts"]["water"], 2)
+
+    def test_04_zero_fake_data_integrity_check(self):
+        """Strict Integrity Mandate: Querying an uninhabited/ocean coordinate set must report 0 features honestly without fake pipes."""
+        payload = {
+            "center_e": 100000.0,  # Far offshore in Taiwan Strait
+            "center_n": 2500000.0,
+            "center_h": 0.0,
+            "radius_m": 50.0,
+            "force_refresh": True,
+        }
+        res = self.survey.query_public_utilities_gis(payload)
+        self.assertEqual(res.get("status"), "ok")
+        self.assertEqual(res.get("total_features"), 0)
+        self.assertEqual(len(res.get("features", [])), 0)
+        self.assertEqual(res.get("total_pipe_length_m"), 0.0)
+
+    def test_05_live_or_cached_taiwan_open_gis_query_rosepark(self):
+        """Query genuine Taiwan public utilities around Rose Park scan."""
+        payload = {
+            "scan_id": self.scan_id,
+            "radius_m": 120.0,
+            "force_refresh": False,
+        }
+        res = self.survey.query_public_utilities_gis(payload)
+        self.assertEqual(res.get("status"), "ok")
+        self.assertIn("crs", res)
+        self.assertIn("layers", res)
+        self.assertIn("layer_counts", res)
+        self.assertIsInstance(res.get("features"), list)
+
+        # If connected to network, features around Rose Park are recovered
+        if res.get("total_features", 0) > 0:
+            feat = res["features"][0]
+            self.assertIn("layer", feat)
+            self.assertIn("type", feat)
+            self.assertTrue("coords" in feat or "coord" in feat)
+
+    def test_06_utilities_export_geojson_and_dxf(self):
+        """Verify export of utility features to standard GeoJSON and AutoCAD 3D DXF."""
+        test_features = [
+            {
+                "id": "SP-1",
+                "layer": "storm",
+                "type": "pipe",
+                "name": "Storm Pipe 1",
+                "diameter_mm": 600,
+                "length_m": 35.0,
+                "coords": [[295900.0, 2768500.0, 10.0], [295935.0, 2768500.0, 9.8]],
+            },
+            {
+                "id": "SMH-1",
+                "layer": "storm",
+                "type": "manhole",
+                "name": "Manhole 1",
+                "coord": [295900.0, 2768500.0, 10.0],
+            },
+        ]
+
+        from pc_worker.config import REPORTS_DIR
+
+        # 1. GeoJSON export
+        res_geo = self.survey.export_utilities_dataset({
+            "scan_id": self.scan_id,
+            "format": "geojson",
+            "features": test_features,
+        })
+        self.assertEqual(res_geo.get("status"), "ok")
+        self.assertEqual(res_geo.get("format"), "geojson")
+        geo_file = os.path.join(REPORTS_DIR, res_geo["filename"])
+        self.assertTrue(os.path.isfile(geo_file))
+
+        # 2. DXF export
+        res_dxf = self.survey.export_utilities_dataset({
+            "scan_id": self.scan_id,
+            "format": "dxf",
+            "features": test_features,
+        })
+        self.assertEqual(res_dxf.get("status"), "ok")
+        self.assertEqual(res_dxf.get("format"), "dxf")
+        dxf_file = os.path.join(REPORTS_DIR, res_dxf["filename"])
+        self.assertTrue(os.path.isfile(dxf_file))
+        with open(dxf_file, "r", encoding="utf-8") as f:
+            dxf_text = f.read()
+        self.assertIn("UTIL_STORM", dxf_text)
+        self.assertIn("ENTITIES", dxf_text)
+
+    def test_07_frontend_assets_and_no_emojis(self):
+        """Verify frontend module web/src/12-public-utilities-gis.js exists, has 0 emojis, and strict 1-word buttons."""
+        js_path = os.path.join(BASE_DIR, "web", "src", "12-public-utilities-gis.js")
+        self.assertTrue(os.path.isfile(js_path), "12-public-utilities-gis.js must exist")
+
+        with open(js_path, "r", encoding="utf-8") as f:
+            js_code = f.read()
+
+        # Zero Unicode emoji validation (common UI emoji ranges)
+        emoji_pattern = re.compile(r"[\U0001F300-\U0001F6FF\U0001F900-\U0001F9FF\u2600-\u26FF\u2700-\u27BF]")
+        found_emojis = emoji_pattern.findall(js_code)
+        self.assertEqual(len(found_emojis), 0, f"Found Unicode emojis in 12-public-utilities-gis.js: {found_emojis}")
+
+        # Check registration in web/index.html and web/sw.js
+        with open(os.path.join(BASE_DIR, "web", "index.html"), "r", encoding="utf-8") as f:
+            index_html = f.read()
+        with open(os.path.join(BASE_DIR, "web", "sw.js"), "r", encoding="utf-8") as f:
+            sw_js = f.read()
+
+        self.assertIn("12-public-utilities-gis.js", index_html)
+        self.assertIn("btnDockUtilities", index_html)
+        self.assertIn("/src/12-public-utilities-gis.js", sw_js)
+
+
 class TestModularArchitectureCompliance(unittest.TestCase):
     """
     Modular File Ceiling & Architecture Compliance:
@@ -1363,10 +2652,16 @@ class TestModularArchitectureCompliance(unittest.TestCase):
             os.path.join(BASE_DIR, "pc_worker", "surveying", "contours_and_cad.py"),
             os.path.join(BASE_DIR, "pc_worker", "surveying", "categorization_heuristics.py"),
             os.path.join(BASE_DIR, "pc_worker", "surveying", "categorization_io.py"),
+            os.path.join(BASE_DIR, "pc_worker", "surveying", "construction_qa.py"),
+            os.path.join(BASE_DIR, "pc_worker", "surveying", "scan_to_bim.py"),
+            os.path.join(BASE_DIR, "pc_worker", "surveying", "public_utilities_gis.py"),
             os.path.join(BASE_DIR, "pc_worker", "priority_queue.py"),
             os.path.join(BASE_DIR, "pc_worker", "server_api_routes.py"),
             os.path.join(BASE_DIR, "server.py"),
             os.path.join(BASE_DIR, "web", "src", "09-construction-survey-and-bim.js"),
+            os.path.join(BASE_DIR, "web", "src", "10-construction-qa-and-stakeout.js"),
+            os.path.join(BASE_DIR, "web", "src", "11-scan-to-bim-primitives.js"),
+            os.path.join(BASE_DIR, "web", "src", "12-public-utilities-gis.js"),
             os.path.join(BASE_DIR, "web", "survey-bim.css"),
             os.path.join(BASE_DIR, "web", "src", "08-advanced-surveying-and-qa.js"),
             os.path.join(BASE_DIR, "web", "src", "05-studio-civil-inspectors.js"),

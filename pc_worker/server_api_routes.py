@@ -1016,7 +1016,135 @@ class ServerWriteRoutesMixin:
                 self.send_json(res)
                 return
 
-            # 5e. Persistent Measurement Sets ("Saved Survey Views" / Bookmarks)
+            # 5e. Civil Surveying: Centerline Stationing (0K+000) & Average-End-Area (AEA) Cut/Fill Volume
+            if path in ("/api/survey/stationing", "/api/surveying/stationing"):
+                if share_token:
+                    ok_s, reason_s, link_s, _ = AUTH_SHARE.validate_share_access(
+                        share_token, requested_scan_id=payload.get("scan_id")
+                    )
+                    if not ok_s or not (link_s and link_s.get("allow_measurements", True)):
+                        self.send_json({"error": "Stationing analysis is disabled for this external share link."}, status=403)
+                        return
+                res = SURVEY.compute_centerline_stationing_and_volume(payload)
+                self.send_json(res)
+                return
+
+            # 5f. Construction QA: 3D Surface Flatness, Levelness & Wall Plumbness Inspector
+            if path in ("/api/survey/surface-qa", "/api/surveying/surface-qa"):
+                if share_token:
+                    ok_s, reason_s, link_s, _ = AUTH_SHARE.validate_share_access(
+                        share_token, requested_scan_id=payload.get("scan_id")
+                    )
+                    if not ok_s or not (link_s and link_s.get("allow_measurements", True)):
+                        self.send_json({"error": "Surface QA is disabled for this external share link."}, status=403)
+                        return
+                res = SURVEY.compute_surface_flatness_and_plumbness(payload)
+                self.send_json(res)
+                return
+
+            # 5g. Construction QA: Open-Trench Buried Utility 3D As-Built Tracer
+            if path in ("/api/survey/utility-trace", "/api/surveying/utility-trace"):
+                if share_token:
+                    ok_s, reason_s, link_s, _ = AUTH_SHARE.validate_share_access(
+                        share_token, requested_scan_id=payload.get("scan_id")
+                    )
+                    if not ok_s or not (link_s and link_s.get("allow_measurements", True)):
+                        self.send_json({"error": "Utility tracer is disabled for this external share link."}, status=403)
+                        return
+                res = SURVEY.trace_open_trench_utility(payload)
+                self.send_json(res)
+                return
+
+            # 5h. Construction QA: Compare View Polygon ΔV Cut/Fill Volume Takeoff
+            if path in ("/api/survey/compare-volume", "/api/surveying/compare-volume"):
+                if share_token:
+                    ok_s, reason_s, link_s, _ = AUTH_SHARE.validate_share_access(
+                        share_token, requested_scan_id=payload.get("baseline_scan_id") or payload.get("scan_id")
+                    )
+                    if not ok_s or not (link_s and link_s.get("allow_measurements", True)):
+                        self.send_json({"error": "Compare volume takeoff is disabled for this external share link."}, status=403)
+                        return
+                res = SURVEY.compute_compare_volume_takeoff(payload)
+                self.send_json(res)
+                return
+
+            # 5i. Construction QA: RTK Stakeout Export (Strictly E, N, Z Order)
+            if path in ("/api/survey/stakeout-export", "/api/surveying/stakeout-export"):
+                if share_token:
+                    ok_s, reason_s, link_s, _ = AUTH_SHARE.validate_share_access(
+                        share_token, requested_scan_id=payload.get("scan_id")
+                    )
+                    if not ok_s or not (link_s and link_s.get("allow_measurements", True)):
+                        self.send_json({"error": "Stakeout export is disabled for this external share link."}, status=403)
+                        return
+                res = SURVEY.generate_stakeout_export(payload)
+                self.send_json(res)
+                return
+
+            # 5j. Civil Surveying: Scan-to-BIM Simplified Classified Geometric Model & CAD/BIM Exporters
+            if path in ("/api/survey/scan-to-bim", "/api/surveying/scan-to-bim"):
+                if share_token:
+                    ok_s, reason_s, link_s, _ = AUTH_SHARE.validate_share_access(
+                        share_token, requested_scan_id=payload.get("scan_id")
+                    )
+                    if not ok_s or not (link_s and link_s.get("allow_measurements", True)):
+                        self.send_json({"error": "Scan-to-BIM is disabled for this external share link."}, status=403)
+                        return
+                res = SURVEY.fit_scan_to_bim_primitives(payload)
+                self.send_json(res)
+                return
+
+            if path in ("/api/survey/scan-to-bim/export", "/api/surveying/scan-to-bim/export"):
+                if share_token:
+                    ok_s, reason_s, link_s, _ = AUTH_SHARE.validate_share_access(
+                        share_token, requested_scan_id=payload.get("scan_id")
+                    )
+                    if not ok_s or not (link_s and link_s.get("allow_download", True)):
+                        self.send_json({"error": "BIM downloads are disabled for this external share link."}, status=403)
+                        return
+                res = SURVEY.export_scan_to_bim(payload)
+                self.send_json(res)
+                return
+
+            # 5k. Civil Surveying: Real Public Utilities GIS Integration & MOI NGIS GML Parser
+            if path in ("/api/survey/utilities-query", "/api/surveying/utilities-query"):
+                if share_token:
+                    ok_s, reason_s, link_s, _ = AUTH_SHARE.validate_share_access(
+                        share_token, requested_scan_id=payload.get("scan_id")
+                    )
+                    if not ok_s or not (link_s and link_s.get("allow_measurements", True)):
+                        self.send_json({"error": "Utilities query is disabled for this external share link."}, status=403)
+                        return
+                res = SURVEY.query_public_utilities_gis(payload)
+                self.send_json(res)
+                return
+
+            if path in ("/api/survey/utilities-parse", "/api/surveying/utilities-parse"):
+                if share_token:
+                    ok_s, reason_s, link_s, _ = AUTH_SHARE.validate_share_access(
+                        share_token, requested_scan_id=payload.get("scan_id")
+                    )
+                    if not ok_s or not (link_s and link_s.get("allow_measurements", True)):
+                        self.send_json({"error": "Utilities parsing is disabled for this external share link."}, status=403)
+                        return
+                res = SURVEY.parse_utilities_file(payload)
+                self.send_json(res)
+                return
+
+            if path in ("/api/survey/utilities-export", "/api/surveying/utilities-export"):
+                if share_token:
+                    ok_s, reason_s, link_s, _ = AUTH_SHARE.validate_share_access(
+                        share_token, requested_scan_id=payload.get("scan_id")
+                    )
+                    if not ok_s or not (link_s and link_s.get("allow_download", True)):
+                        self.send_json({"error": "Utilities export is disabled for this external share link."}, status=403)
+                        return
+                res = SURVEY.export_utilities_dataset(payload)
+                self.send_json(res)
+                return
+
+            # 5j. Persistent Measurement Sets ("Saved Survey Views" / Bookmarks)
+
             if path in ("/api/measurements/bookmarks", "/api/measurements/bookmarks/delete"):
                 action = str(
                     payload.get("action")

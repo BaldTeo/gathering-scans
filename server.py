@@ -168,6 +168,7 @@ class GatheringScansHandler(CloudAndTunnelHandlerMixin, ServerWriteRoutesMixin, 
             ".wasm": "application/wasm",
             ".obj": "text/plain; charset=utf-8",
             ".mtl": "text/plain; charset=utf-8",
+            ".ifc": "application/x-step",
             ".dxf": "application/dxf",
             ".dwg": "application/acad",
             ".pdf": "application/pdf",
@@ -3164,7 +3165,7 @@ class GatheringScansHandler(CloudAndTunnelHandlerMixin, ServerWriteRoutesMixin, 
                 base_sid = re.sub(r"_\d{9,}$", "", os.path.splitext(fname[len("categorization_report_") :])[0])
                 SURVEY.get_saved_categorization(base_sid)
             force_dl = query.get("download", ["0"])[0] == "1"
-            dl = fname if (fname.endswith((".csv", ".dwg", ".dxf")) or force_dl) else None
+            dl = fname if (fname.endswith((".csv", ".dwg", ".dxf", ".ifc", ".obj", ".mtl")) or force_dl) else None
             self._serve_file_with_range(fpath, download_name=dl)
             return
 

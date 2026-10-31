@@ -3595,6 +3595,7 @@
       else if (tool === "comments") openCommentsInspector();
       else if (tool === "drainage" && typeof openDrainageAndSlopeInspector === "function") openDrainageAndSlopeInspector();
       else if (tool === "gcp_qa" && typeof openGcpAccuracyQaInspector === "function") openGcpAccuracyQaInspector();
+      else if (tool === "bim" && typeof openScanToBimInspector === "function") openScanToBimInspector();
       else if (tool === "bookmarks" && typeof openSavedMeasurementsInspector === "function") openSavedMeasurementsInspector();
       else if (tool === "crop_delete") {
         STATE.cropMode = "delete_inside";

@@ -2773,3 +2773,328 @@ class ContoursAndCadMixin:
             "cameras": cameras_out,
         }
 
+    # =========================================================================
+    # 7. CENTERLINE STATIONING (0K+000) & AVERAGE-END-AREA (AEA) CUT/FILL VOLUME
+    # =========================================================================
+    def compute_centerline_stationing_and_volume(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Computes civil engineering Centerline Stationing (chainage 0K+000), swath-width cross-section
+        elevation profile slicing from the 3D DSM, parametric roadway/trench template overlays,
+        and closed-form Average-End-Area (AEA) Cut & Fill volume integration.
+        Conserves mass across BCM, LCM, and CCM with haul truck load scheduling.
+        """
+        scan_id = str(payload.get("scan_id") or "").strip()
+        scan = self._resolve_scan_record(scan_id)
+        dsm = self._load_or_build_scan_dsm(scan)
+
+        ce = float(dsm.get("ce", 304952.4))
+        cn = float(dsm.get("cn", 2757084.2))
+        ch = float(dsm.get("ch", 124.8))
+        v_shift = self._resolve_vertical_datum_shift(scan_id, payload, scan) if hasattr(self, "_resolve_vertical_datum_shift") else 0.0
+        ch += v_shift
+        e_min, e_max = float(dsm.get("e_min", ce - 25.0)), float(dsm.get("e_max", ce + 25.0))
+        n_min, n_max = float(dsm.get("n_min", cn - 25.0)), float(dsm.get("n_max", cn + 25.0))
+
+        # 1. Parse or synthesize alignment polyline
+        raw_align = payload.get("alignment") or payload.get("centerline") or payload.get("polyline") or payload.get("points") or []
+        pts: List[Tuple[float, float, Optional[float]]] = []
+
+        def _parse_align_pt(p: Any) -> Optional[Tuple[float, float, Optional[float]]]:
+            if isinstance(p, dict):
+                pe = safe_float(p.get("e", p.get("x")))
+                pn = safe_float(p.get("n", p.get("z")))
+                pz = safe_float(p.get("h", p.get("y")))
+                if pe is not None and pn is not None:
+                    if abs(pe) < 10000.0 and abs(pn) < 10000.0:
+                        return ce + pe, cn - pn, (ch + pz) if pz is not None else None
+                    return pe, pn, pz
+            elif isinstance(p, (list, tuple)) and len(p) >= 2:
+                pe = safe_float(p[0])
+                pn = safe_float(p[1])
+                pz = safe_float(p[2]) if len(p) >= 3 else None
+                if pe is not None and pn is not None:
+                    if abs(pe) < 10000.0 and abs(pn) < 10000.0:
+                        return ce + pe, cn - pn, (ch + pz) if pz is not None else None
+                    return pe, pn, pz
+            return None
+
+        for item in raw_align:
+            parsed_pt = _parse_align_pt(item)
+            if parsed_pt is not None:
+                # Deduplicate consecutive identical points
+                if not pts or math.hypot(parsed_pt[0] - pts[-1][0], parsed_pt[1] - pts[-1][1]) > 0.05:
+                    pts.append(parsed_pt)
+
+        # Default alignment across scan domain if none provided
+        if len(pts) < 2:
+            span_e = e_max - e_min
+            span_n = n_max - n_min
+            p0 = (ce - 0.35 * span_e, cn - 0.28 * span_n, None)
+            p_mid = (ce - 0.05 * span_e, cn + 0.04 * span_n, None)
+            p1 = (ce + 0.35 * span_e, cn + 0.28 * span_n, None)
+            pts = [p0, p_mid, p1]
+
+        # 2. Cumulative alignment chainage
+        cum_s = [0.0]
+        for i in range(1, len(pts)):
+            d_seg = math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1])
+            cum_s.append(cum_s[-1] + d_seg)
+        total_len = cum_s[-1]
+
+        def _fmt_station(dist_m: float) -> str:
+            km = int(dist_m // 1000.0)
+            m = dist_m % 1000.0
+            return f"{km}K+{m:06.2f}"
+
+        # 3. User-selectable station interval & swath width
+        interval_m = max(1.0, safe_float(payload.get("interval"), 10.0) or 10.0)
+        swath_width_m = max(2.0, safe_float(payload.get("swath_width"), 20.0) or 20.0)
+        cross_step_m = max(0.2, safe_float(payload.get("cross_sample_step"), 0.5) or 0.5)
+
+        # Template configurations
+        template_type = str(payload.get("template_type") or "roadway").lower().strip()
+        road_width = max(1.0, safe_float(payload.get("road_width"), 7.0) or 7.0)
+        cross_slope_pct = safe_float(payload.get("cross_slope_pct"), 2.0) or 2.0
+        cut_slope = max(0.1, safe_float(payload.get("cut_slope"), 1.0) or 1.0)
+        fill_slope = max(0.1, safe_float(payload.get("fill_slope"), 1.5) or 1.5)
+        bottom_width = max(0.4, safe_float(payload.get("bottom_width"), 1.5) or 1.5)
+        trench_depth = max(0.1, safe_float(payload.get("trench_depth"), 2.0) or 2.0)
+        side_batter = max(0.0, safe_float(payload.get("side_batter"), 0.0) or 0.0)
+        bed_width = max(1.0, safe_float(payload.get("bed_width"), 8.0) or 8.0)
+        elev_offset = safe_float(payload.get("elevation_offset"), 0.0) or 0.0
+        custom_design_z = safe_float(payload.get("design_elevation"))
+
+        # Reference ground elevations at alignment start and end
+        z_start_grd, _, _, _ = self._sample_dsm_elevation(dsm, pts[0][0], pts[0][1])
+        z_end_grd, _, _, _ = self._sample_dsm_elevation(dsm, pts[-1][0], pts[-1][1])
+        z_start_grd += v_shift
+        z_end_grd += v_shift
+
+        # Generate sampling station chainages
+        sampled_s = []
+        curr_dist = 0.0
+        while curr_dist < total_len - 0.05:
+            sampled_s.append(round(curr_dist, 2))
+            curr_dist += interval_m
+        if not sampled_s or abs(sampled_s[-1] - total_len) > 0.1:
+            sampled_s.append(round(total_len, 2))
+
+        # 4. Cross-section slicing at each station
+        stations_out = []
+        half_w = swath_width_m / 2.0
+        num_cross_pts = max(5, int(round(swath_width_m / cross_step_m))) + 1
+        u_offsets = np.linspace(-half_w, half_w, num_cross_pts)
+
+        for s_dist in sampled_s:
+            # Locate polyline segment for station s_dist
+            seg_idx = 0
+            for idx in range(len(cum_s) - 1):
+                if cum_s[idx] <= s_dist <= cum_s[idx + 1] + 1e-6:
+                    seg_idx = idx
+                    break
+            else:
+                seg_idx = max(0, len(cum_s) - 2)
+
+            s0 = cum_s[seg_idx]
+            s1 = cum_s[seg_idx + 1]
+            seg_len = max(1e-4, s1 - s0)
+            alpha = min(1.0, max(0.0, (s_dist - s0) / seg_len))
+
+            p_a = pts[seg_idx]
+            p_b = pts[seg_idx + 1]
+            e_cl = p_a[0] + alpha * (p_b[0] - p_a[0])
+            n_cl = p_a[1] + alpha * (p_b[1] - p_a[1])
+
+            # Unit tangent and normal vectors (horizontal plane)
+            t_e = (p_b[0] - p_a[0]) / seg_len
+            t_n = (p_b[1] - p_a[1]) / seg_len
+            n_e = -t_n
+            n_n = t_e
+
+            # Centerline ground elevation
+            z_cl_grd, _, _, _ = self._sample_dsm_elevation(dsm, e_cl, n_cl)
+            z_cl_grd += v_shift
+
+            # Centerline design elevation
+            if custom_design_z is not None:
+                z_cl_des = custom_design_z
+            elif template_type == "trench":
+                z_cl_des = z_cl_grd - trench_depth
+            else:
+                ratio_align = s_dist / max(1.0, total_len)
+                z_cl_des = (z_start_grd + ratio_align * (z_end_grd - z_start_grd)) + elev_offset
+
+            # Sample cross-section ground and evaluate design template across swath
+            cross_profile = []
+            for u in u_offsets:
+                e_u = e_cl + u * n_e
+                n_u = n_cl + u * n_n
+                z_g, _, _, is_in_hull = self._sample_dsm_elevation(dsm, e_u, n_u)
+                z_g += v_shift
+
+                # Template profile
+                abs_u = abs(u)
+                if template_type == "roadway":
+                    b_half = road_width / 2.0
+                    if abs_u <= b_half:
+                        z_t = z_cl_des - (abs_u * cross_slope_pct / 100.0)
+                    else:
+                        du = abs_u - b_half
+                        z_edge = z_cl_des - (b_half * cross_slope_pct / 100.0)
+                        if z_g >= z_edge:
+                            # Cut batter daylight
+                            z_t = min(z_g, z_edge + du / cut_slope)
+                        else:
+                            # Fill batter daylight
+                            z_t = max(z_g, z_edge - du / fill_slope)
+                elif template_type == "trench":
+                    b_half = bottom_width / 2.0
+                    if abs_u <= b_half:
+                        z_t = z_cl_des
+                    else:
+                        du = abs_u - b_half
+                        if side_batter > 0.0:
+                            z_t = min(z_g, z_cl_des + du / side_batter)
+                        else:
+                            z_t = z_g  # Vertical sidewalls daylighting at trench edge
+                else:  # "flat"
+                    b_half = bed_width / 2.0
+                    if abs_u <= b_half:
+                        z_t = z_cl_des
+                    else:
+                        du = abs_u - b_half
+                        if z_g >= z_cl_des:
+                            z_t = min(z_g, z_cl_des + du / cut_slope)
+                        else:
+                            z_t = max(z_g, z_cl_des - du / fill_slope)
+
+                dz = z_g - z_t
+                cross_profile.append({
+                    "u": round(float(u), 2),
+                    "z_ground": round(float(z_g), 3),
+                    "z_template": round(float(z_t), 3),
+                    "dz": round(float(dz), 3),
+                })
+
+            # Numerical trapezoidal quadrature of Cut & Fill end areas
+            a_cut = 0.0
+            a_fill = 0.0
+            for i in range(len(cross_profile) - 1):
+                p1 = cross_profile[i]
+                p2 = cross_profile[i + 1]
+                du = p2["u"] - p1["u"]
+                dz1 = p1["dz"]
+                dz2 = p2["dz"]
+
+                if dz1 >= 0.0 and dz2 >= 0.0:
+                    a_cut += 0.5 * (dz1 + dz2) * du
+                elif dz1 <= 0.0 and dz2 <= 0.0:
+                    a_fill += 0.5 * (abs(dz1) + abs(dz2)) * du
+                else:
+                    # Line zero-crossing
+                    t_zero = abs(dz1) / max(1e-6, abs(dz1) + abs(dz2))
+                    if dz1 > 0.0:
+                        a_cut += 0.5 * dz1 * (t_zero * du)
+                        a_fill += 0.5 * abs(dz2) * ((1.0 - t_zero) * du)
+                    else:
+                        a_fill += 0.5 * abs(dz1) * (t_zero * du)
+                        a_cut += 0.5 * dz2 * ((1.0 - t_zero) * du)
+
+            max_cut_depth = max(0.0, max(p["dz"] for p in cross_profile))
+            max_fill_depth = max(0.0, max(-p["dz"] for p in cross_profile))
+
+            stations_out.append({
+                "station_m": s_dist,
+                "chainage_code": _fmt_station(s_dist),
+                "easting_m": round(e_cl, 3),
+                "northing_m": round(n_cl, 3),
+                "cl_ground_z": round(z_cl_grd, 3),
+                "cl_design_z": round(z_cl_des, 3),
+                "cut_area_m2": round(a_cut, 3),
+                "fill_area_m2": round(a_fill, 3),
+                "max_cut_depth_m": round(max_cut_depth, 3),
+                "max_fill_depth_m": round(max_fill_depth, 3),
+                "cross_profile": cross_profile,
+            })
+
+        # 5. Average-End-Area (AEA) Cut & Fill Volume Accumulation
+        total_cut_vol = 0.0
+        total_fill_vol = 0.0
+        for i in range(len(stations_out) - 1):
+            st_a = stations_out[i]
+            st_b = stations_out[i + 1]
+            seg_len = st_b["station_m"] - st_a["station_m"]
+            seg_cut = 0.5 * (st_a["cut_area_m2"] + st_b["cut_area_m2"]) * seg_len
+            seg_fill = 0.5 * (st_a["fill_area_m2"] + st_b["fill_area_m2"]) * seg_len
+            st_a["segment_len_m"] = round(seg_len, 2)
+            st_a["segment_cut_vol_m3"] = round(seg_cut, 3)
+            st_a["segment_fill_vol_m3"] = round(seg_fill, 3)
+            total_cut_vol += seg_cut
+            total_fill_vol += seg_fill
+
+        if stations_out:
+            stations_out[-1]["segment_len_m"] = 0.0
+            stations_out[-1]["segment_cut_vol_m3"] = 0.0
+            stations_out[-1]["segment_fill_vol_m3"] = 0.0
+
+        net_vol = total_cut_vol - total_fill_vol
+
+        # 6. Earthwork mass conservation & dump truck haul scheduling (M1 standard)
+        swell_f = max(0.5, safe_float(payload.get("swell_factor"), 1.25) or 1.25)
+        shrink_f = min(0.9, max(0.0, safe_float(payload.get("shrinkage_factor"), 0.10) or 0.10))
+        density = max(0.5, safe_float(payload.get("density_t_m3"), 1.65) or 1.65)
+        truck_m3 = max(1.0, safe_float(payload.get("truck_capacity_m3"), 15.0) or 15.0)
+        truck_t = max(1.0, safe_float(payload.get("truck_payload_tonnes"), 20.0) or 20.0)
+
+        bank_cut_m3 = round(total_cut_vol, 2)
+        loose_cut_m3 = round(total_cut_vol * swell_f, 2)
+        compact_cut_m3 = round(total_cut_vol * (1.0 - shrink_f), 2)
+        fill_compact_m3 = round(total_fill_vol, 2)
+        conserved_mass = round(total_cut_vol * density, 2)
+
+        haul_vol_target = loose_cut_m3 if net_vol > 0.0 else round(abs(net_vol) * swell_f, 2)
+        trips_vol = math.ceil(haul_vol_target / truck_m3) if haul_vol_target > 0.0 else 0
+        trips_wt = math.ceil((haul_vol_target * (density / swell_f)) / truck_t) if haul_vol_target > 0.0 else 0
+        haul_trips = max(trips_vol, trips_wt)
+        gov_constraint = "volume" if trips_vol >= trips_wt else "weight"
+
+        site_balance = "surplus_cut" if net_vol > 0.1 else ("deficit_fill" if net_vol < -0.1 else "balanced")
+
+        pts_out = [[round(p[0], 3), round(p[1], 3)] for p in pts]
+
+        return {
+            "status": "ok",
+            "scan_id": scan_id,
+            "crs": TWD97_TWVD2001_LABEL,
+            "total_length_m": round(total_len, 2),
+            "station_count": len(stations_out),
+            "interval_m": interval_m,
+            "swath_width_m": swath_width_m,
+            "template_type": template_type,
+            "total_cut_volume_m3": round(total_cut_vol, 2),
+            "total_fill_volume_m3": round(total_fill_vol, 2),
+            "net_volume_m3": round(net_vol, 2),
+            "mass_conserved_tonnes": conserved_mass,
+            "earthwork_schedule": {
+                "bank_cut_m3": bank_cut_m3,
+                "loose_cut_m3": loose_cut_m3,
+                "compact_cut_m3": compact_cut_m3,
+                "fill_compact_m3": fill_compact_m3,
+                "net_m3": round(net_vol, 2),
+                "site_balance": site_balance,
+                "density_t_m3": density,
+                "swell_factor": swell_f,
+                "shrinkage_factor": shrink_f,
+                "conserved_mass_tonnes": conserved_mass,
+                "haul_trucks": {
+                    "truck_capacity_m3": truck_m3,
+                    "truck_payload_tonnes": truck_t,
+                    "trips_required": haul_trips,
+                    "governing_constraint": gov_constraint,
+                },
+            },
+            "stations": stations_out,
+            "alignment_points_twd97": pts_out,
+        }
+
+

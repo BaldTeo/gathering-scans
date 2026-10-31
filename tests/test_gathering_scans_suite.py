@@ -56,6 +56,7 @@ class GatheringScansTestSuite(unittest.TestCase):
         self.tmp_db_fd, self.tmp_db_path = tempfile.mkstemp(suffix=".db")
         os.close(self.tmp_db_fd)
         self.db = ScanQueueDB(db_path=self.tmp_db_path)
+        self.survey = SurveyingEngine(db=self.db)
         self._ensure_test_scan("quchi_20261005_merged")
 
     def tearDown(self):
@@ -2789,9 +2790,9 @@ class GatheringScansTestSuite(unittest.TestCase):
         with open(os.path.join(BASE_DIR, "web", "src", "09-construction-survey-and-bim.js"), "r", encoding="utf-8") as f:
             js09 = f.read()
 
-        self.assertIn("/survey-bim.css?v=20261031_v221", index_html)
+        self.assertTrue(re.search(r"/survey-bim\.css\?v=20261031_v\d+", index_html))
         self.assertIn("/survey-bim.css", sw_js)
-        self.assertIn("gathering-scans-offline-v221", sw_js)
+        self.assertTrue(re.search(r"gathering-scans-offline-v\d+", sw_js))
         self.assertIn("openEnhancedGcpAccuracyQaInspector", js09)
         self.assertIn("renderEnhancedGcpQaMarkers3D", js09)
         self.assertIn("window.openGcpAccuracyQaInspector", js09)
@@ -2809,8 +2810,415 @@ class GatheringScansTestSuite(unittest.TestCase):
         self.assertIn('body.theme-light', css_bim)
         self.assertIn('body.theme-dark', css_bim)
 
+    def test_36_milestone3_stationing_aea_and_drainage_ponding(self):
+        """
+        Milestone 3 Verification: Centerline Stationing (0K+000), Average-End-Area (AEA)
+        Cut/Fill Volume, and Surface Drainage Depression Ponding Volume Takeoff (V_water m³).
+        """
+        self._ensure_test_scan("quchi_20261005_merged")
+        from pc_worker.surveying_engine import SurveyingEngine
+        survey = SurveyingEngine(self.db)
+        sid = "quchi_20261005_merged"
+
+        # 1. Verify Centerline Stationing & AEA Calculation
+        stationing_payload = {
+            "scan_id": sid,
+            "alignment": [[304910.0, 2757050.0], [304950.0, 2757050.0]],
+            "interval": 10.0,
+            "swath_width": 14.0,
+            "template_type": "roadway",
+            "road_width": 7.0,
+            "cross_slope_pct": 2.0,
+        }
+        res_station = survey.compute_centerline_stationing_and_volume(stationing_payload)
+        self.assertEqual(res_station["status"], "ok")
+        self.assertAlmostEqual(res_station["total_length_m"], 40.0, places=1)
+        self.assertEqual(res_station["station_count"], 5)
+        self.assertEqual(res_station["stations"][0]["chainage_code"], "0K+000.00")
+        self.assertEqual(res_station["stations"][-1]["chainage_code"], "0K+040.00")
+        self.assertIn("total_cut_volume_m3", res_station)
+        self.assertIn("total_fill_volume_m3", res_station)
+        self.assertIn("earthwork_schedule", res_station)
+        self.assertIn("haul_trucks", res_station["earthwork_schedule"])
+
+        # 2. Verify Surface Drainage & Priority-Flood Depression Takeoff
+        drainage_payload = {
+            "scan_id": sid,
+            "custom_slope_tiers": [0.01, 0.02, 0.05, 0.10],
+            "min_ponding_depth_m": 0.05,
+        }
+        res_drainage = survey.compute_drainage_and_slope(drainage_payload)
+        self.assertEqual(res_drainage["status"], "ok")
+        self.assertTrue(res_drainage["custom_tiers_applied"])
+        self.assertEqual(len(res_drainage["tiers"]), 5)
+        self.assertIn("depressions", res_drainage)
+        self.assertIn("total_ponding_volume_m3", res_drainage)
+        self.assertIn("max_ponding_depth_m", res_drainage)
+
+        # 3. Verify Frontend Module 09 & CSS Integration
+        with open(os.path.join(BASE_DIR, "web", "src", "09-construction-survey-and-bim.js"), "r", encoding="utf-8") as f:
+            js09 = f.read()
+        self.assertIn("openEnhancedStationingAndAeaInspector", js09)
+        self.assertIn("openEnhancedDrainageAndPondingInspector", js09)
+
+        # 4. Strict Zero Emoji Check
+        emoji_pattern = re.compile(r"[\U00010000-\U0010ffff]|[\u2600-\u27bf]|[\u2300-\u23ff]|[\u2b50-\u2b55]|[\u203c-\u2049]")
+        self.assertEqual(len(emoji_pattern.findall(js09)), 0, "Zero Unicode emojis allowed in 09-construction-survey-and-bim.js")
+
+    def test_37_milestone6_scan_to_bim_fitting_and_exporters(self):
+        """
+        Milestone 6 Verification: Scan-to-BIM Simplified Classified Geometric Model,
+        Pure Python IFC SPF (ISO-10303-21) Exporter, 3D DXF Exporter, OBJ/MTL Exporter,
+        and Frontend Three.js Studio Module.
+        """
+        from pc_worker.surveying_engine import SurveyingEngine
+        from pc_worker.config import REPORTS_DIR
+        survey = SurveyingEngine(self.db)
+        sid = "quchi_20261005_merged"
+
+        # 1. Verify primitive fitting with mock classification payload
+        mock_objects = {
+            "ok": True,
+            "walls": [{
+                "id": "W1",
+                "length_m": 20.0,
+                "mean_height_m": 2.5,
+                "base_polyline_twd97": [[304910.0, 2757050.0, 99.0], [304930.0, 2757050.0, 99.0]],
+                "top_polyline_twd97": [[304910.0, 2757050.0, 101.5], [304930.0, 2757050.0, 101.5]],
+            }],
+            "trees": [{
+                "id": "T1",
+                "height_m": 7.5,
+                "dbh_cm": 35.0,
+                "trunk_twd97": [304940.0, 2757060.0, 102.0],
+            }],
+            "roads": [{
+                "id": "R1",
+                "planar_area_m2": 150.0,
+                "boundary_twd97": [
+                    [304900.0, 2757040.0, 98.0],
+                    [304950.0, 2757040.0, 98.0],
+                    [304950.0, 2757045.0, 98.0],
+                    [304900.0, 2757045.0, 98.0],
+                    [304900.0, 2757040.0, 98.0],
+                ],
+            }],
+            "water_bodies": [{
+                "id": "WB1",
+                "planar_area_m2": 80.0,
+                "water_level_twvd2001_m": 95.0,
+                "boundary_twd97": [
+                    [304910.0, 2757080.0, 95.0],
+                    [304930.0, 2757080.0, 95.0],
+                    [304930.0, 2757100.0, 95.0],
+                    [304910.0, 2757100.0, 95.0],
+                    [304910.0, 2757080.0, 95.0],
+                ],
+            }],
+            "pipes": [{
+                "id": "P1",
+                "start": [304915.0, 2757055.0, 97.0],
+                "end": [304935.0, 2757055.0, 96.8],
+                "diameter_m": 0.6,
+            }],
+            "buildings": [{
+                "id": "B1",
+                "center_twd97": [304965.0, 2757075.0, 105.0],
+                "dx": 15.0,
+                "dy": 12.0,
+                "height_m": 6.0,
+            }],
+            "anchor_twd97": {"e": 304900.0, "n": 2757000.0, "h": 90.0},
+        }
+
+        res_fit = survey.fit_scan_to_bim_primitives({
+            "scan_id": sid,
+            "classified_objects": mock_objects,
+            "wall_thickness_m": 0.25,
+        })
+        self.assertTrue(res_fit.get("ok"))
+        self.assertIn("primitives", res_fit)
+        prims = res_fit["primitives"]
+        self.assertGreaterEqual(len(prims), 6)
+        cat_set = {p["category"] for p in prims}
+        self.assertTrue({"walls", "trees", "roads", "water", "pipes", "buildings"}.issubset(cat_set))
+
+        # 2. Pure Python IFC, DXF, OBJ/MTL exporters
+        res_exp = survey.export_scan_to_bim({
+            "scan_id": sid,
+            "primitives": prims,
+            "formats": ["ifc", "dxf", "obj"],
+        })
+        self.assertTrue(res_exp.get("ok"))
+        self.assertIn("downloads", res_exp)
+        self.assertIn("ifc_url", res_exp["downloads"])
+        self.assertIn("dxf_url", res_exp["downloads"])
+        self.assertIn("obj_url", res_exp["downloads"])
+        self.assertIn("mtl_url", res_exp["downloads"])
+
+        for fp in res_exp.get("written_files", []):
+            self.assertTrue(os.path.isfile(fp))
+            self.assertGreater(os.path.getsize(fp), 0)
+
+        # Verify IFC content
+        ifc_path = next(fp for fp in res_exp["written_files"] if fp.endswith(".ifc"))
+        with open(ifc_path, "r", encoding="utf-8") as f:
+            ifc_content = f.read()
+        self.assertIn("ISO-10303-21;", ifc_content)
+        self.assertIn("FILE_SCHEMA(('IFC4'));", ifc_content)
+        self.assertIn("IFCWALL", ifc_content)
+        self.assertIn("IFCGEOGRAPHIC_ELEMENT", ifc_content)
+        self.assertIn("IFCBUILDINGELEMENTPROXY", ifc_content)
+        self.assertIn("END-ISO-10303-21;", ifc_content)
+
+        # Verify DXF content
+        dxf_path = next(fp for fp in res_exp["written_files"] if fp.endswith(".dxf"))
+        with open(dxf_path, "r", encoding="utf-8") as f:
+            dxf_content = f.read()
+        self.assertIn("BIM_WALLS", dxf_content)
+        self.assertIn("3DFACE", dxf_content)
+
+        # Verify OBJ content
+        obj_path = next(fp for fp in res_exp["written_files"] if fp.endswith(".obj"))
+        with open(obj_path, "r", encoding="utf-8") as f:
+            obj_content = f.read()
+        self.assertIn("mtllib", obj_content)
+        self.assertIn("usemtl Mat_Wall", obj_content)
+
+        # 5. Frontend Module 11 validation (registration, zero emojis, 1-word buttons)
+        js11_path = os.path.join(BASE_DIR, "web", "src", "11-scan-to-bim-primitives.js")
+        self.assertTrue(os.path.isfile(js11_path))
+        with open(js11_path, "r", encoding="utf-8") as f:
+            js11 = f.read()
+        self.assertIn("openScanToBimInspector", js11)
+        self.assertIn("renderBimThreeMeshes", js11)
+
+        emoji_pattern = re.compile(r"[\U00010000-\U0010ffff]|[\u2600-\u27bf]|[\u2300-\u23ff]|[\u2b50-\u2b55]|[\u203c-\u2049]")
+        self.assertEqual(len(emoji_pattern.findall(js11)), 0, "Zero Unicode emojis allowed in 11-scan-to-bim-primitives.js")
+
+        with open(os.path.join(BASE_DIR, "web", "index.html"), "r", encoding="utf-8") as f:
+            index_html = f.read()
+        with open(os.path.join(BASE_DIR, "web", "sw.js"), "r", encoding="utf-8") as f:
+            sw_js = f.read()
+        self.assertIn("11-scan-to-bim-primitives.js", index_html)
+        self.assertIn("/src/11-scan-to-bim-primitives.js", sw_js)
+
+    def test_38_milestone7_public_utilities_gis_and_gml_integration(self):
+        """
+        Milestone 7 Verification: Real Public Utilities GIS Integration with Taiwan Open APIs,
+        10 layer toggles with color coding, animated 3D flow direction, MOI NGIS GML 3.1.1 parser,
+        strictly 0 fake/mocked data, and pure Python DXF/GeoJSON exporters.
+        """
+        self._ensure_test_scan("rosepark_20260918_merged")
+        from pc_worker.surveying_engine import SurveyingEngine
+        from pc_worker.surveying.public_utilities_gis import UTILITY_LAYERS
+        from pc_worker.config import REPORTS_DIR
+
+        survey = SurveyingEngine(self.db)
+        sid = "rosepark_20260918_merged"
+
+        # 1. Verify 10 layer toggles & color coding
+        self.assertEqual(len(UTILITY_LAYERS), 10)
+        expected_colors = {
+            "storm": "#06b6d4",
+            "sanitary": "#d97706",
+            "water": "#3b82f6",
+            "electric": "#ef4444",
+            "telecom": "#10b981",
+            "gas": "#eab308",
+            "ducts": "#8b5cf6",
+            "streetlights": "#f59e0b",
+            "excavations": "#ec4899",
+            "as_built": "#14b8a6",
+        }
+        for lid, col in expected_colors.items():
+            self.assertIn(lid, UTILITY_LAYERS)
+            self.assertEqual(UTILITY_LAYERS[lid]["color"].lower(), col.lower())
+
+        # 2. Verify MOI NGIS GML 3.1.1 XML parsing
+        gml_text = """<?xml version="1.0" encoding="UTF-8"?>
+<ngis:FeatureCollection xmlns:gml="http://www.opengis.net/gml" xmlns:ngis="http://ngis.moi.gov.tw">
+  <ngis:Pipe gml:id="P1">
+    <ngis:PIPE_ID>SP-101</ngis:PIPE_ID>
+    <ngis:LAYER>storm</ngis:LAYER>
+    <ngis:DIAMETER>600</ngis:DIAMETER>
+    <ngis:MATERIAL>RCP</ngis:MATERIAL>
+    <ngis:FLOW_DIR>1</ngis:FLOW_DIR>
+    <gml:curveProperty>
+      <gml:LineString srsName="EPSG:3826">
+        <gml:posList>295900.0 2768500.0 10.5 295940.0 2768530.0 10.15</gml:posList>
+      </gml:LineString>
+    </gml:curveProperty>
+  </ngis:Pipe>
+  <ngis:Manhole gml:id="MH1">
+    <ngis:FACILITY_ID>MH-01</ngis:FACILITY_ID>
+    <ngis:LAYER>storm</ngis:LAYER>
+    <ngis:DEPTH>2.8</ngis:DEPTH>
+    <gml:pointProperty>
+      <gml:Point srsName="EPSG:3826">
+        <gml:pos>295900.0 2768500.0 10.5</gml:pos>
+      </gml:Point>
+    </gml:pointProperty>
+  </ngis:Manhole>
+</ngis:FeatureCollection>"""
+
+        res_gml = survey.parse_utilities_file({"file_content": gml_text, "filename": "sample.gml"})
+        self.assertEqual(res_gml["status"], "ok")
+        self.assertEqual(res_gml["total_features"], 2)
+        pipe = next(f for f in res_gml["features"] if f["type"] == "pipe")
+        self.assertEqual(pipe["diameter_mm"], 600)
+        self.assertEqual(pipe["flow_direction"], 1)
+
+        # 3. Query genuine public utilities around scan coordinates
+        res_q = survey.query_public_utilities_gis({"scan_id": sid, "radius_m": 120.0})
+        self.assertEqual(res_q["status"], "ok")
+        self.assertIn("crs", res_q)
+        self.assertIn("layers", res_q)
+        self.assertIn("layer_counts", res_q)
+
+        # 4. Strict Zero Fake Data Integrity: Unpopulated coordinates must return 0 features
+        res_offshore = survey.query_public_utilities_gis({
+            "center_e": 100000.0,
+            "center_n": 2500000.0,
+            "radius_m": 50.0,
+            "force_refresh": True,
+        })
+        self.assertEqual(res_offshore["status"], "ok")
+        self.assertEqual(res_offshore["total_features"], 0)
+        self.assertEqual(len(res_offshore["features"]), 0)
+
+        # 5. Export to GeoJSON and DXF
+        res_exp = survey.export_utilities_dataset({
+            "scan_id": sid,
+            "format": "dxf",
+            "features": res_gml["features"],
+        })
+        self.assertEqual(res_exp["status"], "ok")
+        self.assertTrue(os.path.isfile(os.path.join(REPORTS_DIR, res_exp["filename"])))
+
+        # 6. Verify Frontend Module 12 & Zero Emojis
+        js12_path = os.path.join(BASE_DIR, "web", "src", "12-public-utilities-gis.js")
+        self.assertTrue(os.path.isfile(js12_path))
+        with open(js12_path, "r", encoding="utf-8") as f:
+            js12 = f.read()
+        self.assertIn("openUtilitiesInspector", js12)
+        self.assertIn("renderUtilities3D", js12)
+
+        emoji_pattern = re.compile(r"[\U00010000-\U0010ffff]|[\u2600-\u27bf]|[\u2300-\u23ff]|[\u2b50-\u2b55]|[\u203c-\u2049]")
+        self.assertEqual(len(emoji_pattern.findall(js12)), 0, "Zero Unicode emojis allowed in 12-public-utilities-gis.js")
+
+        with open(os.path.join(BASE_DIR, "web", "index.html"), "r", encoding="utf-8") as f:
+            index_html = f.read()
+        with open(os.path.join(BASE_DIR, "web", "sw.js"), "r", encoding="utf-8") as f:
+            sw_js = f.read()
+        self.assertIn("12-public-utilities-gis.js", index_html)
+        self.assertIn("btnDockUtilities", index_html)
+        self.assertIn("/src/12-public-utilities-gis.js", sw_js)
+
+    def test_39_milestone4_milestone5_construction_qa_and_stakeout(self):
+        """
+        Milestone 4 & Milestone 5 Verification:
+        1. 3D Surface Flatness & Plumbness Inspector (ASTM E1155, horizontal/vertical/best-fit,
+           tolerance heatmap, Pass Rate %, Max High / Max Low, plumb tilt ratio).
+        2. Open-Trench Utility 3D Tracer (invert/crown elevation, pipe diameter, gradient % and 1:N,
+           depth of cover, DXF/CSV export).
+        3. Compare View ΔV Volume Takeoff (polygon-bounded cut/fill, mass conservation, haul trips).
+        4. RTK Stakeout Export strictly in Easting, Northing, Elevation (E, N, Z) order:
+           PtID, Easting, Northing, Elevation, Code format with printable field sheet.
+        5. Frontend Module 10 validation:
+           - web/src/10-construction-qa-and-stakeout.js exists and is < 5,000 lines
+           - Zero Unicode emojis check
+           - Registration in web/index.html and web/sw.js
+        """
+        from pc_worker.surveying_engine import SurveyingEngine
+        survey = SurveyingEngine(self.db)
+        self._ensure_test_scan("quchi_20261005_merged")
+        sid = "quchi_20261005_merged"
+
+        # 1. Surface Flatness & Plumbness Inspector
+        flat_res = survey.compute_surface_flatness_and_plumbness({
+            "scan_id": sid,
+            "reference_mode": "horizontal",
+            "tolerance_mm": 10.0,
+        })
+        self.assertEqual(flat_res["status"], "ok")
+        self.assertIn("pass_rate_pct", flat_res)
+        self.assertIn("max_high", flat_res)
+        self.assertIn("max_low", flat_res)
+        self.assertIn("astm_e1155", flat_res)
+        self.assertIn("plumb_tilt", flat_res)
+
+        # 2. Open-Trench Utility 3D Tracer
+        util_res = survey.trace_open_trench_utility({
+            "scan_id": sid,
+            "pipe_type": "SEWER",
+            "pipe_diameter_mm": 300.0,
+            "trench_points": [
+                {"e": 304950.0, "n": 2757080.0, "h": 120.0, "name": "MH-01"},
+                {"e": 304980.0, "n": 2757120.0, "h": 119.0, "name": "P-02"},
+            ],
+        })
+        self.assertEqual(util_res["status"], "ok")
+        self.assertAlmostEqual(util_res["total_length_2d_m"], 50.0, places=1)
+        self.assertIn("csv_export", util_res)
+        self.assertIn("dxf_export", util_res)
+
+        # 3. Compare View ΔV Volume Takeoff
+        cmp_res = survey.compute_compare_volume_takeoff({
+            "baseline_scan_id": sid,
+            "compare_scan_id": sid,
+            "polygon": [
+                {"e": 304940.0, "n": 2757070.0},
+                {"e": 304960.0, "n": 2757070.0},
+                {"e": 304960.0, "n": 2757090.0},
+                {"e": 304940.0, "n": 2757090.0},
+            ],
+            "material_type": "common_earth",
+        })
+        self.assertEqual(cmp_res["status"], "ok")
+        self.assertIn("net_volume_delta_m3", cmp_res)
+        self.assertIn("site_balance", cmp_res)
+
+        # 4. RTK Stakeout Export strictly in E N Z order
+        stk_res = survey.generate_stakeout_export({
+            "scan_id": sid,
+            "points": [
+                {"id": "STK-1", "e": 304950.123, "n": 2757080.456, "z": 125.789, "code": "CORNER_1"},
+            ],
+        })
+        self.assertEqual(stk_res["status"], "ok")
+        self.assertEqual(stk_res["point_count"], 1)
+        csv_lines = [l for l in stk_res["csv_export"].splitlines() if not l.startswith("#")]
+        self.assertEqual(csv_lines[0], "PtID,Easting,Northing,Elevation,Code")
+        self.assertEqual(csv_lines[1], "STK-1,304950.123,2757080.456,125.789,CORNER_1")
+        self.assertIn("html_field_sheet", stk_res)
+        self.assertIn("Design E (m)", stk_res["html_field_sheet"])
+        self.assertIn("Design N (m)", stk_res["html_field_sheet"])
+        self.assertIn("Design Z (m)", stk_res["html_field_sheet"])
+
+        # 5. Frontend Module 10 validation
+        js10_path = os.path.join(BASE_DIR, "web", "src", "10-construction-qa-and-stakeout.js")
+        self.assertTrue(os.path.isfile(js10_path))
+        with open(js10_path, "r", encoding="utf-8") as f:
+            js10 = f.read()
+        self.assertIn("openSurfaceFlatnessQaInspector", js10)
+        self.assertIn("openUtilityTracerInspector", js10)
+        self.assertIn("openCompareVolumeTakeoffInspector", js10)
+        self.assertIn("openRtkStakeoutInspector", js10)
+
+        emoji_pattern = re.compile(r"[\U00010000-\U0010ffff]|[\u2600-\u27bf]|[\u2300-\u23ff]|[\u2b50-\u2b55]|[\u203c-\u2049]")
+        self.assertEqual(len(emoji_pattern.findall(js10)), 0, "Zero Unicode emojis allowed in 10-construction-qa-and-stakeout.js")
+
+        with open(os.path.join(BASE_DIR, "web", "index.html"), "r", encoding="utf-8") as f:
+            index_html = f.read()
+        with open(os.path.join(BASE_DIR, "web", "sw.js"), "r", encoding="utf-8") as f:
+            sw_js = f.read()
+        self.assertIn("10-construction-qa-and-stakeout.js", index_html)
+        self.assertIn("/src/10-construction-qa-and-stakeout.js", sw_js)
+
 
 if __name__ == "__main__":
     unittest.main()
+
 
 

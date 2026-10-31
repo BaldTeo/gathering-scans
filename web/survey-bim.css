@@ -538,3 +538,720 @@ body.theme-light .gcp-scale-selector select {
     border-bottom: 1px solid #cbd5e1 !important;
   }
 }
+
+
+/* -------------------------------------------------------------------------
+   Scan-to-BIM Simplified Classified Geometric Model (Milestone 6)
+   ------------------------------------------------------------------------- */
+.bim-container {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  font-family: inherit;
+  font-size: 11.5px;
+  color: var(--ui-text-primary, #0f172a);
+  background: var(--ui-bg-surface, #ffffff);
+  width: 100%;
+  box-sizing: border-box;
+  padding-bottom: 24px;
+}
+
+html[data-theme="dark"] .bim-container,
+body.theme-dark .bim-container {
+  color: var(--ui-text-primary, #f8fafc);
+  background: var(--ui-bg-surface, #0f172a);
+}
+
+.bim-header-banner {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: var(--ui-bg-elevated, #f1f5f9);
+  border: 1px solid var(--ui-border, #e2e8f0);
+}
+
+html[data-theme="dark"] .bim-header-banner,
+body.theme-dark .bim-header-banner {
+  background: var(--ui-bg-elevated, #1e293b);
+  border-color: var(--ui-border, #334155);
+}
+
+.bim-badge-pill {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: var(--ui-bg-pill, #e2e8f0);
+  color: var(--ui-text-secondary, #475569);
+  border: 1px solid var(--ui-border, #cbd5e1);
+  white-space: nowrap;
+}
+
+html[data-theme="dark"] .bim-badge-pill,
+body.theme-dark .bim-badge-pill {
+  background: var(--ui-bg-pill, #334155);
+  color: var(--ui-text-secondary, #94a3b8);
+  border-color: var(--ui-border, #475569);
+}
+
+.bim-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+}
+
+.bim-kpi-card {
+  display: flex;
+  flex-direction: column;
+  padding: 6px 8px;
+  border-radius: 5px;
+  background: var(--ui-bg-elevated, #f8fafc);
+  border: 1px solid var(--ui-border, #e2e8f0);
+  text-align: center;
+}
+
+html[data-theme="dark"] .bim-kpi-card,
+body.theme-dark .bim-kpi-card {
+  background: var(--ui-bg-elevated, #1e293b);
+  border-color: var(--ui-border, #334155);
+}
+
+.bim-kpi-val {
+  font-size: 14px;
+  font-weight: 800;
+  color: var(--ui-accent, #3b82f6);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+}
+
+.bim-kpi-lbl {
+  font-size: 9.5px;
+  font-weight: 600;
+  color: var(--ui-text-muted, #64748b);
+  margin-top: 2px;
+}
+
+.bim-categories-box {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  border-radius: 6px;
+  background: var(--ui-bg-subtle, #f8fafc);
+  border: 1px solid var(--ui-border, #e2e8f0);
+}
+
+html[data-theme="dark"] .bim-categories-box,
+body.theme-dark .bim-categories-box {
+  background: var(--ui-bg-subtle, #141f32);
+  border-color: var(--ui-border, #24344d);
+}
+
+.bim-category-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.bim-cat-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 10.5px;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 4px;
+  background: var(--ui-bg-surface, #ffffff);
+  border: 1px solid var(--ui-border, #cbd5e1);
+  cursor: pointer;
+  user-select: none;
+  transition: all 0.15s ease;
+}
+
+html[data-theme="dark"] .bim-cat-pill,
+body.theme-dark .bim-cat-pill {
+  background: var(--ui-bg-surface, #1e293b);
+  border-color: var(--ui-border, #334155);
+}
+
+.bim-cat-pill.active {
+  border-color: var(--ui-accent, #3b82f6);
+  box-shadow: 0 0 0 1px var(--ui-accent, #3b82f6);
+}
+
+.bim-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  flex-shrink: 0;
+  display: inline-block;
+}
+
+.bim-params-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 6px;
+}
+
+.bim-param-field {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.bim-param-label {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--ui-text-secondary, #475569);
+}
+
+html[data-theme="dark"] .bim-param-label,
+body.theme-dark .bim-param-label {
+  color: var(--ui-text-secondary, #94a3b8);
+}
+
+.bim-input {
+  height: 26px;
+  padding: 2px 6px;
+  font-size: 11px;
+  border-radius: 4px;
+  border: 1px solid var(--ui-border, #cbd5e1);
+  background: var(--ui-bg-surface, #ffffff);
+  color: var(--ui-text-primary, #0f172a);
+  box-sizing: border-box;
+}
+
+html[data-theme="dark"] .bim-input,
+body.theme-dark .bim-input {
+  border-color: var(--ui-border, #334155);
+  background: var(--ui-bg-surface, #1e293b);
+  color: var(--ui-text-primary, #f8fafc);
+}
+
+.bim-actions-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.bim-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  height: 28px;
+  padding: 0 10px;
+  font-size: 11px;
+  font-weight: 700;
+  border-radius: 4px;
+  border: 1px solid var(--ui-border, #cbd5e1);
+  background: var(--ui-bg-elevated, #f1f5f9);
+  color: var(--ui-text-primary, #0f172a);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+html[data-theme="dark"] .bim-btn,
+body.theme-dark .bim-btn {
+  background: var(--ui-bg-elevated, #1e293b);
+  border-color: var(--ui-border, #334155);
+  color: var(--ui-text-primary, #f8fafc);
+}
+
+.bim-btn:hover {
+  background: var(--ui-bg-hover, #e2e8f0);
+}
+
+html[data-theme="dark"] .bim-btn:hover {
+  background: var(--ui-bg-hover, #2d3d54);
+}
+
+.bim-btn.primary {
+  background: var(--ui-accent, #3b82f6);
+  border-color: var(--ui-accent, #3b82f6);
+  color: #ffffff;
+}
+
+.bim-btn.primary:hover {
+  filter: brightness(1.1);
+}
+
+.bim-elements-scroll {
+  max-height: 260px;
+  overflow-y: auto;
+  border-radius: 5px;
+  border: 1px solid var(--ui-border, #e2e8f0);
+  background: var(--ui-bg-surface, #ffffff);
+}
+
+html[data-theme="dark"] .bim-elements-scroll,
+body.theme-dark .bim-elements-scroll {
+  border-color: var(--ui-border, #334155);
+  background: var(--ui-bg-surface, #0f172a);
+}
+
+.bim-element-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 5px 8px;
+  border-bottom: 1px solid var(--ui-border-subtle, #f1f5f9);
+  font-size: 11px;
+  cursor: pointer;
+  transition: background 0.12s ease;
+}
+
+html[data-theme="dark"] .bim-element-row,
+body.theme-dark .bim-element-row {
+  border-bottom-color: var(--ui-border-subtle, #1e293b);
+}
+
+.bim-element-row:hover {
+  background: var(--ui-bg-hover, #f8fafc);
+}
+
+html[data-theme="dark"] .bim-element-row:hover {
+  background: var(--ui-bg-hover, #1e293b);
+}
+
+.bim-element-info {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  flex: 1;
+}
+
+.bim-element-name {
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bim-element-meta {
+  font-size: 10px;
+  color: var(--ui-text-muted, #64748b);
+  white-space: nowrap;
+}
+
+
+/* -------------------------------------------------------------------------
+   Public Utilities GIS & Subsurface Twin (Module 12)
+   ------------------------------------------------------------------------- */
+.gs-util-panel-container {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-family: inherit;
+  font-size: 11.5px;
+  color: var(--ui-text-primary, #0f172a);
+  width: 100%;
+  box-sizing: border-box;
+  padding-bottom: 24px;
+}
+
+.gs-util-section-card {
+  background: var(--ui-bg-surface, #ffffff);
+  border: 1px solid var(--ui-border, #e2e8f0);
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+
+html[data-theme="dark"] .gs-util-section-card,
+body.theme-dark .gs-util-section-card {
+  background: var(--ui-bg-surface, #0f172a);
+  border-color: var(--ui-border, #1e293b);
+}
+
+.gs-util-section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-weight: 700;
+  font-size: 11.5px;
+  margin-bottom: 6px;
+  color: var(--ui-text-primary, #0f172a);
+}
+
+html[data-theme="dark"] .gs-util-section-header,
+body.theme-dark .gs-util-section-header {
+  color: var(--ui-text-primary, #f8fafc);
+}
+
+.gs-util-row-flex {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.gs-util-field-label {
+  display: block;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--ui-text-muted, #64748b);
+  margin-bottom: 3px;
+}
+
+.gs-util-input {
+  width: 72px;
+  padding: 4px 6px;
+  font-size: 11px;
+}
+
+.gs-util-metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+  margin-top: 6px;
+  background: var(--ui-bg-subtle, #f8fafc);
+  border: 1px solid var(--ui-border-subtle, #f1f5f9);
+  border-radius: 6px;
+  padding: 6px;
+  text-align: center;
+}
+
+html[data-theme="dark"] .gs-util-metrics-grid,
+body.theme-dark .gs-util-metrics-grid {
+  background: var(--ui-bg-subtle, #1e293b);
+  border-color: var(--ui-border-subtle, #334155);
+}
+
+.gs-util-metric-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.gs-util-metric-val {
+  font-weight: 800;
+  font-size: 13px;
+  color: var(--ui-text-primary, #0f172a);
+}
+
+html[data-theme="dark"] .gs-util-metric-val,
+body.theme-dark .gs-util-metric-val {
+  color: var(--ui-text-primary, #f8fafc);
+}
+
+.gs-util-metric-lbl {
+  font-size: 9.5px;
+  color: var(--ui-text-muted, #64748b);
+}
+
+.gs-util-layers-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.gs-util-layer-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 6px;
+  border-radius: 5px;
+  background: var(--ui-bg-elevated, #ffffff);
+  border: 1px solid var(--ui-border-subtle, #f1f5f9);
+  transition: background 0.12s ease;
+}
+
+html[data-theme="dark"] .gs-util-layer-row,
+body.theme-dark .gs-util-layer-row {
+  background: var(--ui-bg-elevated, #1e293b);
+  border-color: var(--ui-border-subtle, #334155);
+}
+
+.gs-util-layer-row:hover {
+  background: var(--ui-bg-hover, #f8fafc);
+}
+
+html[data-theme="dark"] .gs-util-layer-row:hover {
+  background: var(--ui-bg-hover, #334155);
+}
+
+.gs-util-checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  font-size: 11px;
+  user-select: none;
+}
+
+.gs-util-color-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  display: inline-block;
+}
+
+.gs-util-count-pill {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--ui-bg-subtle, #f1f5f9);
+  border: 1px solid var(--ui-border-subtle, #e2e8f0);
+}
+
+html[data-theme="dark"] .gs-util-count-pill,
+body.theme-dark .gs-util-count-pill {
+  background: var(--ui-bg-subtle, #0f172a);
+  border-color: var(--ui-border-subtle, #334155);
+}
+
+.gs-util-detail-card {
+  background: var(--ui-bg-surface, #ffffff);
+  border: 1px solid var(--ui-border, #e2e8f0);
+  border-radius: 8px;
+  padding: 8px 10px;
+  margin-top: 6px;
+}
+
+html[data-theme="dark"] .gs-util-detail-card,
+body.theme-dark .gs-util-detail-card {
+  background: var(--ui-bg-surface, #0f172a);
+  border-color: var(--ui-border, #1e293b);
+}
+
+.gs-util-detail-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  font-size: 10.5px;
+  margin-top: 4px;
+}
+
+.gs-util-detail-lbl {
+  color: var(--ui-text-muted, #64748b);
+  margin-right: 3px;
+}
+
+.gs-util-hint-card {
+  padding: 8px 10px;
+  font-size: 10.5px;
+  color: var(--ui-text-muted, #64748b);
+  background: var(--ui-bg-subtle, #f8fafc);
+  border: 1px dashed var(--ui-border, #cbd5e1);
+  border-radius: 6px;
+  text-align: center;
+}
+
+html[data-theme="dark"] .gs-util-hint-card,
+body.theme-dark .gs-util-hint-card {
+  background: var(--ui-bg-subtle, #1e293b);
+  border-color: var(--ui-border, #334155);
+  color: var(--ui-text-muted, #94a3b8);
+}
+
+/* -------------------------------------------------------------------------
+   Construction QA, Utility Tracer & RTK Stakeout (Milestone 4 & 5)
+   ------------------------------------------------------------------------- */
+.gs-qa-container {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-family: inherit;
+  font-size: 11.5px;
+  color: var(--ui-text-primary, #0f172a);
+  background: var(--ui-bg-surface, #ffffff);
+  width: 100%;
+  box-sizing: border-box;
+  padding-bottom: 24px;
+}
+
+.gs-qa-card {
+  background: var(--ui-bg-surface, #ffffff);
+  border: 1px solid var(--ui-border, #e2e8f0);
+  border-radius: 8px;
+  padding: 8px 10px;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+
+html[data-theme="dark"] .gs-qa-card,
+body.theme-dark .gs-qa-card {
+  background: var(--ui-bg-surface, #0f172a);
+  border-color: var(--ui-border, #1e293b);
+  box-shadow: none;
+}
+
+.gs-qa-mode-pill {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 5px 8px;
+  font-size: 10.5px;
+  font-weight: 600;
+  border-radius: 6px;
+  cursor: pointer;
+  background: var(--ui-bg-subtle, #f1f5f9);
+  color: var(--ui-text-secondary, #475569);
+  border: 1px solid var(--ui-border, #e2e8f0);
+  transition: all 0.15s ease;
+  user-select: none;
+}
+
+.gs-qa-mode-pill:hover {
+  background: var(--ui-bg-hover, #e2e8f0);
+}
+
+.gs-qa-mode-pill.active {
+  background: var(--ui-accent, #0284c7);
+  color: #ffffff;
+  border-color: var(--ui-accent, #0284c7);
+}
+
+html[data-theme="dark"] .gs-qa-mode-pill,
+body.theme-dark .gs-qa-mode-pill {
+  background: var(--ui-bg-subtle, #1e293b);
+  color: var(--ui-text-muted, #94a3b8);
+  border-color: var(--ui-border, #334155);
+}
+
+html[data-theme="dark"] .gs-qa-mode-pill.active,
+body.theme-dark .gs-qa-mode-pill.active {
+  background: var(--ui-accent, #0284c7);
+  color: #ffffff;
+}
+
+.gs-qa-grade-box {
+  border-radius: 8px;
+  padding: 10px 12px;
+  border: 1px solid;
+}
+
+.gs-qa-grade-box.pass {
+  background: rgba(16, 185, 129, 0.10);
+  border-color: rgba(16, 185, 129, 0.35);
+  color: #059669;
+}
+
+.gs-qa-grade-box.warn {
+  background: rgba(245, 158, 11, 0.10);
+  border-color: rgba(245, 158, 11, 0.35);
+  color: #d97706;
+}
+
+.gs-qa-grade-box.fail {
+  background: rgba(239, 68, 68, 0.10);
+  border-color: rgba(239, 68, 68, 0.35);
+  color: #dc2626;
+}
+
+.gs-qa-stat-pill {
+  background: var(--ui-bg-subtle, #f8fafc);
+  border: 1px solid var(--ui-border, #e2e8f0);
+  border-radius: 6px;
+  padding: 6px 8px;
+}
+
+html[data-theme="dark"] .gs-qa-stat-pill,
+body.theme-dark .gs-qa-stat-pill {
+  background: var(--ui-bg-subtle, #1e293b);
+  border-color: var(--ui-border, #334155);
+}
+
+.gs-qa-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.gs-qa-table th {
+  background: var(--ui-bg-subtle, #f1f5f9);
+  color: var(--ui-text-secondary, #475569);
+  padding: 4px 6px;
+  text-align: left;
+  font-weight: 600;
+  border-bottom: 1px solid var(--ui-border, #e2e8f0);
+}
+
+html[data-theme="dark"] .gs-qa-table th,
+body.theme-dark .gs-qa-table th {
+  background: var(--ui-bg-subtle, #1e293b);
+  color: var(--ui-text-muted, #94a3b8);
+  border-bottom-color: var(--ui-border, #334155);
+}
+
+.gs-qa-table td {
+  padding: 4px 6px;
+  border-bottom: 1px solid var(--ui-border, #f1f5f9);
+  color: var(--ui-text-primary, #0f172a);
+}
+
+html[data-theme="dark"] .gs-qa-table td,
+body.theme-dark .gs-qa-table td {
+  border-bottom-color: var(--ui-border, #1e293b);
+  color: var(--ui-text-primary, #f8fafc);
+}
+
+
+/* -------------------------------------------------------------------------
+   Milestone 3: Unified Civil Surveying Sub-Tabs & Stationing Styles
+   ------------------------------------------------------------------------- */
+.civil-subtabs {
+  display: flex;
+  background: var(--ui-bg-subtle, #f1f5f9);
+  border: 1px solid var(--ui-border, #e2e8f0);
+  border-radius: 8px;
+  padding: 3px;
+  gap: 3px;
+  margin-bottom: 6px;
+}
+
+.subtab-btn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  padding: 5px 6px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--ui-text-secondary, #64748b);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.subtab-btn:hover {
+  color: var(--ui-text-primary, #0f172a);
+  background: var(--ui-bg-hover, rgba(0, 0, 0, 0.04));
+}
+
+.subtab-btn.active {
+  background: var(--ui-bg-surface, #ffffff);
+  color: var(--ui-accent, #0284c7);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
+}
+
+html[data-theme="dark"] .civil-subtabs,
+body.theme-dark .civil-subtabs {
+  background: var(--ui-bg-subtle, #1e293b);
+  border-color: var(--ui-border, #334155);
+}
+
+html[data-theme="dark"] .subtab-btn,
+body.theme-dark .subtab-btn {
+  color: var(--ui-text-muted, #94a3b8);
+}
+
+html[data-theme="dark"] .subtab-btn:hover,
+body.theme-dark .subtab-btn:hover {
+  color: var(--ui-text-primary, #f8fafc);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+html[data-theme="dark"] .subtab-btn.active,
+body.theme-dark .subtab-btn.active {
+  background: var(--ui-bg-surface, #0f172a);
+  color: var(--ui-accent, #38bdf8);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+}

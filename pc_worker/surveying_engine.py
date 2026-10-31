@@ -22,6 +22,9 @@ from pc_worker.surveying import (
     ContoursAndCadMixin,
     CategorizationIoMixin,
     CategorizationHeuristicsMixin,
+    ConstructionQAMixin,
+    ScanToBimMixin,
+    PublicUtilitiesGISMixin,
 )
 
 
@@ -30,10 +33,14 @@ class SurveyingEngine(
     ContoursAndCadMixin,
     CategorizationIoMixin,
     CategorizationHeuristicsMixin,
+    ConstructionQAMixin,
+    ScanToBimMixin,
+    PublicUtilitiesGISMixin,
 ):
     """Unified Civil Surveying Engine composed of modular domain mixins (< 2,600 lines each)."""
 
     pass
+
 
 
 __all__ = [

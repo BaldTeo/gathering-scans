@@ -12,6 +12,7 @@ import glob
 import math
 import json
 import time
+import heapq
 import tempfile
 import subprocess
 from datetime import datetime
@@ -23,10 +24,11 @@ except ImportError:
     np = None  # type: ignore
 
 try:
-    from scipy.ndimage import distance_transform_edt, gaussian_filter
+    from scipy.ndimage import distance_transform_edt, gaussian_filter, binary_erosion
 except ImportError:
     distance_transform_edt = None  # type: ignore
     gaussian_filter = None  # type: ignore
+    binary_erosion = None  # type: ignore
 
 try:
     import trimesh
@@ -2531,7 +2533,91 @@ class DsmAndVolumeMixin:
             )
             hull_mask = dsm_data.get("hull_mask")
 
-        tier_defs = [
+    @staticmethod
+    def _parse_custom_slope_tiers(custom_input: Any) -> List[Dict[str, Any]]:
+        """
+        Parses user-selectable slope classification tiers.
+        Supports:
+        1. List of tier dicts: [{'id':..., 'min_s':..., 'max_s':..., 'label':..., 'color':...}, ...]
+        2. List of numeric cutoff thresholds: [0.01, 0.02, 0.05, 0.10]
+        """
+        palette = ["#38bdf8", "#10b981", "#84cc16", "#eab308", "#f97316", "#ef4444", "#a855f7", "#ec4899"]
+        if isinstance(custom_input, list) and len(custom_input) >= 2:
+            # Check if list of numeric thresholds
+            if all(isinstance(x, (int, float)) or (isinstance(x, str) and str(x).replace(".", "", 1).isdigit()) for x in custom_input):
+                cutoffs = sorted(list(set(float(x) for x in custom_input if float(x) > 0.0)))
+                # If numbers were given in percent (e.g. [1, 2, 5, 10]), convert to ratio if max > 1.0
+                if any(c > 1.0 for c in cutoffs):
+                    cutoffs = [c / 100.0 for c in cutoffs]
+                tiers = []
+                prev_s = 0.0
+                for idx, c in enumerate(cutoffs):
+                    color = palette[idx % len(palette)]
+                    scale = 0.38 + idx * 0.14
+                    ratio_n = int(round(1.0 / max(c, 1e-4)))
+                    prev_ratio_n = int(round(1.0 / max(prev_s, 1e-4))) if prev_s > 0 else 999
+                    if prev_s == 0.0:
+                        lbl = f"< 1:{ratio_n} (<{round(c * 100.0, 1)}%)"
+                        r_range = f"< 1:{ratio_n}"
+                        pct_range = f"< {round(c * 100.0, 1)}%"
+                    else:
+                        lbl = f"1:{prev_ratio_n} – 1:{ratio_n} ({round(prev_s * 100.0, 1)}–{round(c * 100.0, 1)}%)"
+                        r_range = f"1:{prev_ratio_n} – 1:{ratio_n}"
+                        pct_range = f"{round(prev_s * 100.0, 1)}% – {round(c * 100.0, 1)}%"
+                    tiers.append({
+                        "id": f"tier_{idx+1}",
+                        "label": lbl,
+                        "ratio_range": r_range,
+                        "pct_range": pct_range,
+                        "color": color,
+                        "min_s": prev_s,
+                        "max_s": c,
+                        "len_scale": round(scale, 2),
+                    })
+                    prev_s = c
+                # Final open-ended tier
+                last_color = palette[len(tiers) % len(palette)]
+                last_ratio_n = int(round(1.0 / max(prev_s, 1e-4)))
+                tiers.append({
+                    "id": f"tier_{len(tiers)+1}",
+                    "label": f"> 1:{last_ratio_n} (>{round(prev_s * 100.0, 1)}%)",
+                    "ratio_range": f"> 1:{last_ratio_n}",
+                    "pct_range": f"> {round(prev_s * 100.0, 1)}%",
+                    "color": last_color,
+                    "min_s": prev_s,
+                    "max_s": 999.0,
+                    "len_scale": 1.15,
+                })
+                return tiers
+
+            # Dict-based tier definition
+            parsed_tiers = []
+            for idx, item in enumerate(custom_input):
+                if not isinstance(item, dict):
+                    continue
+                min_s = max(0.0, safe_float(item.get("min_s"), 0.0) or 0.0)
+                max_s = safe_float(item.get("max_s"), 999.0) or 999.0
+                if max_s <= min_s:
+                    continue
+                tid = str(item.get("id") or f"custom_{idx+1}").strip()
+                color = str(item.get("color") or palette[idx % len(palette)]).strip()
+                scale = safe_float(item.get("len_scale"), 0.4 + idx * 0.14) or (0.4 + idx * 0.14)
+                lbl = str(item.get("label") or f"Tier {idx+1} ({round(min_s*100,1)}%–{round(max_s*100,1)}%)").strip()
+                parsed_tiers.append({
+                    "id": tid,
+                    "label": lbl,
+                    "ratio_range": str(item.get("ratio_range") or lbl),
+                    "pct_range": str(item.get("pct_range") or f"{round(min_s*100,1)}%–{round(max_s*100,1)}%"),
+                    "color": color,
+                    "min_s": min_s,
+                    "max_s": max_s,
+                    "len_scale": round(scale, 2),
+                })
+            if len(parsed_tiers) >= 2:
+                return parsed_tiers
+
+        # Default civil standard tiers
+        return [
             {"id": "flat_200", "label": "< 1:200 (<0.5%)", "ratio_range": "< 1:200", "pct_range": "< 0.5%", "color": "#38bdf8", "min_s": 0.0, "max_s": 0.005, "len_scale": 0.38},
             {"id": "gentle_100", "label": "1:200 – 1:100 (0.5–1%)", "ratio_range": "1:200 – 1:100", "pct_range": "0.5% – 1.0%", "color": "#10b981", "min_s": 0.005, "max_s": 0.01, "len_scale": 0.52},
             {"id": "mod_50", "label": "1:100 – 1:50 (1–2%)", "ratio_range": "1:100 – 1:50", "pct_range": "1.0% – 2.0%", "color": "#84cc16", "min_s": 0.01, "max_s": 0.02, "len_scale": 0.66},
@@ -2539,12 +2625,241 @@ class DsmAndVolumeMixin:
             {"id": "steep_10", "label": "1:20 – 1:10 (5–10%)", "ratio_range": "1:20 – 1:10", "pct_range": "5.0% – 10.0%", "color": "#f97316", "min_s": 0.05, "max_s": 0.10, "len_scale": 0.94},
             {"id": "vsteep", "label": "> 1:10 (>10%)", "ratio_range": "> 1:10", "pct_range": "> 10.0%", "color": "#ef4444", "min_s": 0.10, "max_s": 999.0, "len_scale": 1.08},
         ]
+
+    @staticmethod
+    def _compute_surface_depressions_priority_flood(
+        grid_in: np.ndarray,
+        mask_in: np.ndarray,
+        e_min: float,
+        n_min: float,
+        e_max: float,
+        n_max: float,
+        ce: float,
+        cn: float,
+        ch: float,
+        min_depth_m: float = 0.05,
+        max_grid_dim: int = 120,
+    ) -> List[Dict[str, Any]]:
+        """
+        Exact hydrological depression sink and ponding water storage volume takeoff (V_water m³).
+        Uses Priority-Flood morphological reconstruction over the digital surface model.
+        Identifies spill / pour point saddles, inundation depths, and inundated surface areas.
+        """
+        if grid_in is None or np is None:
+            return []
+
+        grid_full = np.asarray(grid_in, dtype=float)
+        mask_full = np.asarray(mask_in, dtype=bool) if mask_in is not None else np.isfinite(grid_full)
+        mask_full = mask_full & np.isfinite(grid_full)
+
+        ny_full, nx_full = grid_full.shape
+        if ny_full < 3 or nx_full < 3:
+            return []
+
+        # Subsample if grid is overly dense to maintain fast interactive response (<20ms)
+        step_y = max(1, ny_full // max_grid_dim)
+        step_x = max(1, nx_full // max_grid_dim)
+        yi = np.arange(0, ny_full, step_y)
+        xi = np.arange(0, nx_full, step_x)
+        grid = grid_full[np.ix_(yi, xi)]
+        mask = mask_full[np.ix_(yi, xi)]
+        ny, nx = grid.shape
+
+        dx = max(0.1, (e_max - e_min) / max(1, nx - 1))
+        dy = max(0.1, (n_max - n_min) / max(1, ny - 1))
+        cell_area = dx * dy
+
+        # Priority-Flood algorithm
+        filled = np.full((ny, nx), np.inf, dtype=float)
+        visited = np.zeros((ny, nx), dtype=bool)
+        pq: List[Tuple[float, int, int]] = []
+
+        # Seed domain boundary cells
+        for r in range(ny):
+            for c in range(nx):
+                if not mask[r, c]:
+                    continue
+                is_boundary = (r == 0 or r == ny - 1 or c == 0 or c == nx - 1)
+                if not is_boundary:
+                    # Check 4-connected neighbors for domain void
+                    for dr, dc in ((-1, 0), (1, 0), (0, -1), (0, 1)):
+                        if not mask[r + dr, c + dc]:
+                            is_boundary = True
+                            break
+                if is_boundary:
+                    visited[r, c] = True
+                    elev_val = float(grid[r, c])
+                    filled[r, c] = elev_val
+                    heapq.heappush(pq, (elev_val, r, c))
+
+        if not pq:
+            return []
+
+        # Flood inward along the lowest wavefront
+        while pq:
+            elev, r, c = heapq.heappop(pq)
+            for dr, dc in ((-1, 0), (1, 0), (0, -1), (0, 1), (-1, -1), (-1, 1), (1, -1), (1, 1)):
+                nr, nc = r + dr, c + dc
+                if 0 <= nr < ny and 0 <= nc < nx and mask[nr, nc] and not visited[nr, nc]:
+                    visited[nr, nc] = True
+                    target_elev = max(float(grid[nr, nc]), elev)
+                    filled[nr, nc] = target_elev
+                    heapq.heappush(pq, (target_elev, nr, nc))
+
+        # Ponding water depth map: d = filled - original
+        depth = np.where(mask & np.isfinite(filled), np.maximum(0.0, filled - grid), 0.0)
+
+        # Connected component clustering for depression water bodies
+        seen = np.zeros((ny, nx), dtype=bool)
+        raw_depressions = []
+
+        for r in range(ny):
+            for c in range(nx):
+                if depth[r, c] >= min_depth_m and not seen[r, c]:
+                    queue = [(r, c)]
+                    seen[r, c] = True
+                    cluster = []
+                    while queue:
+                        curr_r, curr_c = queue.pop(0)
+                        cluster.append((curr_r, curr_c))
+                        for dr, dc in ((-1, 0), (1, 0), (0, -1), (0, 1), (-1, -1), (-1, 1), (1, -1), (1, 1)):
+                            nr, nc = curr_r + dr, curr_c + dc
+                            if 0 <= nr < ny and 0 <= nc < nx and mask[nr, nc] and not seen[nr, nc]:
+                                if depth[nr, nc] > 0.005:
+                                    seen[nr, nc] = True
+                                    queue.append((nr, nc))
+
+                    if len(cluster) < 2:
+                        continue
+
+                    # Calculate depression metrics
+                    max_d = float(max(depth[cr, cc] for cr, cc in cluster))
+                    if max_d < min_depth_m:
+                        continue
+
+                    v_water = float(sum(depth[cr, cc] * cell_area for cr, cc in cluster))
+                    a_water = float(len(cluster) * cell_area)
+                    if v_water <= 0.001 or a_water <= 0.05:
+                        continue
+
+                    spill_elev = float(max(filled[cr, cc] for cr, cc in cluster))
+                    min_elev = float(min(grid[cr, cc] for cr, cc in cluster))
+
+                    # Weighted centroid
+                    weight_sum = sum(depth[cr, cc] for cr, cc in cluster)
+                    if weight_sum > 0:
+                        e_cent = sum((e_min + cc * dx) * depth[cr, cc] for cr, cc in cluster) / weight_sum
+                        n_cent = sum((n_min + cr * dy) * depth[cr, cc] for cr, cc in cluster) / weight_sum
+                    else:
+                        e_cent = sum(e_min + cc * dx for cr, cc in cluster) / len(cluster)
+                        n_cent = sum(n_min + cr * dy for cr, cc in cluster) / len(cluster)
+
+                    # Bounding perimeter polygon (radial sorting around centroid)
+                    perimeter_pts = []
+                    for cr, cc in cluster:
+                        # Check if boundary cell
+                        is_p_bound = False
+                        for dr, dc in ((-1, 0), (1, 0), (0, -1), (0, 1)):
+                            adj_r, adj_c = cr + dr, cc + dc
+                            if not (0 <= adj_r < ny and 0 <= adj_c < nx) or depth[adj_r, adj_c] <= 0.005:
+                                is_p_bound = True
+                                break
+                        if is_p_bound:
+                            pt_e = e_min + cc * dx
+                            pt_n = n_min + cr * dy
+                            angle = math.atan2(pt_n - n_cent, pt_e - e_cent)
+                            perimeter_pts.append((angle, pt_e, pt_n))
+
+                    perimeter_pts.sort(key=lambda item: item[0])
+                    poly_twd = [[round(p[1], 2), round(p[2], 2), round(spill_elev, 2)] for p in perimeter_pts]
+                    if poly_twd and poly_twd[0] != poly_twd[-1]:
+                        poly_twd.append(poly_twd[0])
+
+                    poly_local = [
+                        [round(p[1] - ce, 3), round(spill_elev - ch, 3), round(cn - p[2], 3)]
+                        for p in perimeter_pts
+                    ]
+                    if poly_local and poly_local[0] != poly_local[-1]:
+                        poly_local.append(poly_local[0])
+
+                    raw_depressions.append({
+                        "volume_m3": round(v_water, 3),
+                        "surface_area_m2": round(a_water, 2),
+                        "max_depth_m": round(max_d, 3),
+                        "max_depth_cm": round(max_d * 100.0, 1),
+                        "mean_depth_m": round(v_water / max(0.01, a_water), 3),
+                        "spill_elevation_m": round(spill_elev, 3),
+                        "min_elevation_m": round(min_elev, 3),
+                        "centroid_twd97": {"e": round(e_cent, 2), "n": round(n_cent, 2), "h": round(min_elev, 2)},
+                        "centroid_local": {"x": round(e_cent - ce, 3), "y": round(min_elev - ch, 3), "z": round(cn - n_cent, 3)},
+                        "polygon_twd97": poly_twd,
+                        "polygon_local": poly_local,
+                    })
+
+        # Sort by volume descending and assign IDs
+        raw_depressions.sort(key=lambda d: d["volume_m3"], reverse=True)
+        depressions = []
+        for idx, dep in enumerate(raw_depressions):
+            dep["depression_id"] = f"POND-{idx + 1}"
+            dep["rank"] = idx + 1
+            depressions.append(dep)
+
+        return depressions
+
+    # =========================================================================
+    # 6. SURFACE DRAINAGE / SLOPE STEEPNESS & STEPPED 1:N ARROW FIELD ANALYSIS
+    # =========================================================================
+    def compute_drainage_and_slope(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Computes real-surface stepped civil engineering slope ratios (1:N, e.g. <1:200, 1:200-1:100,
+        1:100-1:50, 1:50-1:20, 1:20-1:10, >1:10) and downhill drainage arrow vectors strictly inside
+        the scan's actual hull_mask from the DSM.
+        Also calculates closed-form surface drainage depression ponding water volume takeoff (V_water m³).
+        """
+        scan_id = str(payload.get("scan_id") or "").strip()
+        grid_size_val = safe_float(payload.get("grid_size"), 14.0)
+        grid_size = max(8, min(32, int(round(grid_size_val or 14.0))))
+        exclude_walls = bool(payload.get("exclude_walls", True))
+        min_ponding_depth_m = safe_float(payload.get("min_ponding_depth_m", payload.get("min_depth_m")), 0.05) or 0.05
+        min_ponding_depth_m = max(0.005, min(50.0, min_ponding_depth_m))
+
+        scan = self.db.get_scan(scan_id) or {}
+        v_shift = self._resolve_vertical_datum_shift(scan_id, payload, scan)
+        try:
+            dsm_data = self._load_or_build_scan_dsm(scan)
+        except Exception:
+            dsm_data = None
+        ce = safe_float(scan.get("twd97_e"), 304952.4) or 304952.4
+        cn = safe_float(scan.get("twd97_n"), 2757084.2) or 2757084.2
+        ch = (safe_float(scan.get("twd97_h"), 124.8) or 124.8) + v_shift
+
+        raw_grid = None
+        hull_mask = None
+        if isinstance(dsm_data, dict):
+            ce = safe_float(dsm_data.get("ce"), ce) or ce
+            cn = safe_float(dsm_data.get("cn"), cn) or cn
+            ch = (safe_float(dsm_data.get("ch"), ch) or ch) + v_shift
+            raw_grid = (
+                dsm_data.get("dsm_contour")
+                if dsm_data.get("dsm_contour") is not None
+                else (
+                    dsm_data.get("grid")
+                    if dsm_data.get("grid") is not None
+                    else dsm_data.get("dsm_raw")
+                )
+            )
+            hull_mask = dsm_data.get("hull_mask")
+
+        # Custom or standard slope classification tiers
+        custom_input = payload.get("custom_slope_tiers") or payload.get("slope_tiers")
+        tier_defs = self._parse_custom_slope_tiers(custom_input)
         tier_counts = {t["id"]: 0 for t in tier_defs}
         slope_cells: List[Dict[str, Any]] = []
         arrows: List[Dict[str, Any]] = []
+        depressions: List[Dict[str, Any]] = []
 
         if raw_grid is not None and np is not None:
-            grid_full = np.asarray(raw_grid, dtype=float)
+            grid_full = np.asarray(raw_grid, dtype=float) + v_shift
             mask_full = (
                 np.asarray(hull_mask, dtype=bool)
                 if hull_mask is not None and np.asarray(hull_mask).shape == grid_full.shape
@@ -2556,13 +2871,29 @@ class DsmAndVolumeMixin:
                 if binary_erosion is not None:
                     occ_bool = binary_erosion(occ_bool, structure=np.ones((3, 3), dtype=bool))
                 mask_full = mask_full & occ_bool
+
+            e_min, e_max = float(dsm_data.get("e_min", ce - 25.0)), float(dsm_data.get("e_max", ce + 25.0))
+            n_min, n_max = float(dsm_data.get("n_min", cn - 25.0)), float(dsm_data.get("n_max", cn + 25.0))
+
+            # Compute genuine surface depressions and ponding volume takeoff
+            depressions = self._compute_surface_depressions_priority_flood(
+                grid_full,
+                mask_full,
+                e_min,
+                n_min,
+                e_max,
+                n_max,
+                ce,
+                cn,
+                ch,
+                min_depth_m=min_ponding_depth_m,
+            )
+
             yi = np.linspace(0, grid_full.shape[0] - 1, grid_size).astype(int)
             xi = np.linspace(0, grid_full.shape[1] - 1, grid_size).astype(int)
             grid = grid_full[np.ix_(yi, xi)]
             mask = mask_full[np.ix_(yi, xi)]
             ny, nx = grid.shape
-            e_min, e_max = float(dsm_data.get("e_min", ce - 25.0)), float(dsm_data.get("e_max", ce + 25.0))
-            n_min, n_max = float(dsm_data.get("n_min", cn - 25.0)), float(dsm_data.get("n_max", cn + 25.0))
             dx = max(0.25, (e_max - e_min) / max(1, nx - 1))
             dy = max(0.25, (n_max - n_min) / max(1, ny - 1))
             gy, gx = np.gradient(grid, dy, dx)
@@ -2649,7 +2980,7 @@ class DsmAndVolumeMixin:
         total_arrows = max(1, len(arrows))
         tiers_summary = []
         for td in tier_defs:
-            cnt = tier_counts[td["id"]]
+            cnt = tier_counts.get(td["id"], 0)
             tiers_summary.append(
                 {
                     **td,
@@ -2657,6 +2988,10 @@ class DsmAndVolumeMixin:
                     "pct": round(cnt * 100.0 / total_arrows, 1) if arrows else 0.0,
                 }
             )
+
+        total_ponding_vol = round(sum(d["volume_m3"] for d in depressions), 3) if depressions else 0.0
+        total_ponding_area = round(sum(d["surface_area_m2"] for d in depressions), 2) if depressions else 0.0
+        max_ponding_depth = round(max((d["max_depth_m"] for d in depressions), default=0.0), 3)
 
         return {
             "status": "ok",
@@ -2670,9 +3005,16 @@ class DsmAndVolumeMixin:
             "mean_ratio_label": mean_ratio_label,
             "arrow_count": len(arrows),
             "tiers": tiers_summary,
+            "custom_tiers_applied": bool(custom_input),
             "arrows": arrows,
             "slope_cells": slope_cells,
             "center_twd97": {"e": round(ce, 3), "n": round(cn, 3), "h": round(ch, 3)},
+            "depression_count": len(depressions),
+            "total_ponding_volume_m3": total_ponding_vol,
+            "total_ponding_area_m2": total_ponding_area,
+            "max_ponding_depth_m": max_ponding_depth,
+            "min_ponding_depth_m": round(min_ponding_depth_m, 3),
+            "depressions": depressions,
         }
 
 
