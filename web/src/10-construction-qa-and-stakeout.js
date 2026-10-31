@@ -689,8 +689,9 @@
             ${t("基期 (Epoch 1) vs 比對期 (Epoch 2)", "Baseline vs Compare Epoch")}
           </div>
           <div style="font-size:11px;font-weight:700;color:var(--ui-text-primary);">
-            ${baseId || "Baseline"} &nbsp;➔&nbsp; ${compId || "Compare"}
+            ${baseId || "Baseline"} &nbsp;&rarr;&nbsp; ${compId || "Compare"}
           </div>
+
         </div>
 
         <!-- Material Parameters -->
