@@ -1979,6 +1979,9 @@
     ) {
       return { en: "General Models", zh: "一般 3D 模型" };
     }
+    if (clean === "總公司" || low === "head office" || low === "hq") {
+      return { en: "Head Office (HQ)", zh: "總公司" };
+    }
     const m = clean.match(/^([^\(（]+?)\s*[\(（]([A-Za-z0-9\s&/\-_]+)[\)）]$/);
     if (m) {
       return {

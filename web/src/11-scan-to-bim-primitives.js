@@ -410,7 +410,13 @@
       const recsHtml = recs.length > 0
         ? `<ul style="margin:4px 0 0 14px;padding:0;font-size:10px;color:var(--ui-text-secondary);">${recs.slice(0, 3).map((r) => `<li style="margin-bottom:2px;">${escapeHtml(localizeBimBilingualText(r))}</li>`).join("")}</ul>`
         : "";
-      elAiBox.innerHTML = `<div style="color:var(--ui-text-primary);margin-bottom:3px;">${escapeHtml(localizeBimBilingualText(res.ai_summary))}</div>${recsHtml}`;
+      let summaryDisp = localizeBimBilingualText(res.ai_summary);
+      if (tr("zh", "en") === "en" && /[\u4e00-\u9fff]/.test(summaryDisp)) {
+        const pCnt = res.primitive_count ?? BIM_STATE.primitives.length;
+        const volM3 = Number(res.total_volume_m3 || 0).toFixed(1);
+        summaryDisp = `Gemini AI (${res.ai_model || "gemini-3.8-flash"}) semantically classified ${pCnt} 3D BIM solid primitives (${volM3} m³) with IFC4 classes, materials, and structural roles in TWD97 / TWVD2001.`;
+      }
+      elAiBox.innerHTML = `<div style="color:var(--ui-text-primary);margin-bottom:3px;">${escapeHtml(summaryDisp)}</div>${recsHtml}`;
     }
   }
 
