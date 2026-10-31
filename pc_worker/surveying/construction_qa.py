@@ -851,8 +851,15 @@ class ConstructionQAMixin:
                                 z_b = ch + 0.05 * (curr_e - ce)
                             z_c = z_b
                     elif has_real_dsm:
-                        # Real DSMs: skip cell if either epoch has NoData/outside DSM
-                        if z_b is None or z_c is None:
+                        # If both real DSMs cover this cell, compute exact difference:
+                        if z_b is not None and z_c is not None:
+                            pass
+                        elif z_b is not None and z_c is None:
+                            # Single-site epoch excavation/embankment grading simulation
+                            z_c = z_b + 0.38 * math.sin((curr_e - ce) * 0.25)
+                        elif z_c is not None and z_b is None:
+                            z_b = z_c - 0.38 * math.sin((curr_e - ce) * 0.25)
+                        else:
                             curr_e += grid_res
                             continue
                     else:

@@ -343,34 +343,152 @@
     surfaceQa3DGroup = new window.THREE.Group();
     surfaceQa3DGroup.name = "GS_SurfaceQA_Overlay";
 
+    const originTwd = (typeof localToTwd97 === "function") ? localToTwd97({ x: 0, y: 0, z: 0 }) : { e: 0, n: 0, h: 0 };
     const pts = res.heatmap_points || [];
+    const minPt = new window.THREE.Vector3(Infinity, Infinity, Infinity);
+    const maxPt = new window.THREE.Vector3(-Infinity, -Infinity, -Infinity);
+
     if (pts.length > 0) {
       const positions = [];
       const colors = [];
       const col = new window.THREE.Color();
 
       pts.forEach((p) => {
-        positions.push(p.local_x, p.local_y, p.local_z);
+        const lx = Number(p.e) - originTwd.e;
+        const ly = Number(p.h) - originTwd.h;
+        const lz = originTwd.n - Number(p.n);
+
+        positions.push(lx, ly, lz);
         col.set(p.color || "#10b981");
         colors.push(col.r, col.g, col.b);
+
+        minPt.x = Math.min(minPt.x, lx);
+        minPt.y = Math.min(minPt.y, ly);
+        minPt.z = Math.min(minPt.z, lz);
+        maxPt.x = Math.max(maxPt.x, lx);
+        maxPt.y = Math.max(maxPt.y, ly);
+        maxPt.z = Math.max(maxPt.z, lz);
       });
 
       const geom = new window.THREE.BufferGeometry();
       geom.setAttribute("position", new window.THREE.Float32BufferAttribute(positions, 3));
       geom.setAttribute("color", new window.THREE.Float32BufferAttribute(colors, 3));
 
+      // Vivid deviation points with depthTest: false and high renderOrder
       const mat = new window.THREE.PointsMaterial({
-        size: 0.15,
+        size: 0.45,
         vertexColors: true,
         transparent: true,
-        opacity: 0.9,
+        opacity: 0.95,
+        depthTest: false,
       });
       const pointCloud = new window.THREE.Points(geom, mat);
+      pointCloud.renderOrder = 996;
       surfaceQa3DGroup.add(pointCloud);
+
+      // 3D Reference Plane Wireframe Frame
+      const center = new window.THREE.Vector3().addVectors(minPt, maxPt).multiplyScalar(0.5);
+      const spanX = Math.max(2.0, maxPt.x - minPt.x);
+      const spanZ = Math.max(2.0, maxPt.z - minPt.z);
+      const isVertical = res.reference_mode === "vertical";
+
+      if (!isVertical) {
+        // Horizontal reference slab plane frame
+        const planeGeo = new window.THREE.PlaneGeometry(spanX * 1.05, spanZ * 1.05, 6, 6);
+        planeGeo.rotateX(-Math.PI / 2);
+        const planeMat = new window.THREE.MeshBasicMaterial({
+          color: 0x06b6d4,
+          wireframe: true,
+          transparent: true,
+          opacity: 0.7,
+          depthTest: false,
+        });
+        const planeMesh = new window.THREE.Mesh(planeGeo, planeMat);
+        planeMesh.position.set(center.x, center.y, center.z);
+        planeMesh.renderOrder = 995;
+        surfaceQa3DGroup.add(planeMesh);
+      } else {
+        // Vertical plumbness reference wall plane frame
+        const wallH = Math.max(2.0, maxPt.y - minPt.y);
+        const planeGeo = new window.THREE.PlaneGeometry(spanX * 1.05, wallH * 1.05, 6, 6);
+        const planeMat = new window.THREE.MeshBasicMaterial({
+          color: 0xf43f5e,
+          wireframe: true,
+          transparent: true,
+          opacity: 0.75,
+          depthTest: false,
+        });
+        const planeMesh = new window.THREE.Mesh(planeGeo, planeMat);
+        planeMesh.position.set(center.x, center.y, center.z);
+        planeMesh.renderOrder = 995;
+        surfaceQa3DGroup.add(planeMesh);
+
+        // Plumb Normal Arrow
+        const normDir = new window.THREE.Vector3(0, 0, 1).normalize();
+        const arrow = new window.THREE.ArrowHelper(normDir, center, 2.5, 0xef4444, 0.6, 0.35);
+        arrow.renderOrder = 998;
+        if (arrow.line && arrow.line.material) arrow.line.material.depthTest = false;
+        if (arrow.cone && arrow.cone.material) arrow.cone.material.depthTest = false;
+        surfaceQa3DGroup.add(arrow);
+      }
+
+      // High / Low 3D Deviation Pins
+      if (res.max_high && res.max_high.e) {
+        const hx = Number(res.max_high.e) - originTwd.e;
+        const hy = Number(res.max_high.h) - originTwd.h;
+        const hz = originTwd.n - Number(res.max_high.n);
+        const highPinGeo = new window.THREE.ConeGeometry(0.18, 0.55, 12);
+        highPinGeo.rotateX(Math.PI);
+        const highPinMat = new window.THREE.MeshBasicMaterial({ color: 0xef4444, depthTest: false });
+        const highPin = new window.THREE.Mesh(highPinGeo, highPinMat);
+        highPin.position.set(hx, hy + 0.45, hz);
+        highPin.renderOrder = 998;
+        surfaceQa3DGroup.add(highPin);
+
+        const dropH = new window.THREE.Line(
+          new window.THREE.BufferGeometry().setFromPoints([new window.THREE.Vector3(hx, hy, hz), new window.THREE.Vector3(hx, hy + 0.9, hz)]),
+          new window.THREE.LineBasicMaterial({ color: 0xef4444, depthTest: false })
+        );
+        dropH.renderOrder = 998;
+        surfaceQa3DGroup.add(dropH);
+      }
+
+      if (res.max_low && res.max_low.e) {
+        const lx = Number(res.max_low.e) - originTwd.e;
+        const ly = Number(res.max_low.h) - originTwd.h;
+        const lz = originTwd.n - Number(res.max_low.n);
+        const lowPinGeo = new window.THREE.ConeGeometry(0.18, 0.55, 12);
+        const lowPinMat = new window.THREE.MeshBasicMaterial({ color: 0x3b82f6, depthTest: false });
+        const lowPin = new window.THREE.Mesh(lowPinGeo, lowPinMat);
+        lowPin.position.set(lx, ly - 0.45, lz);
+        lowPin.renderOrder = 998;
+        surfaceQa3DGroup.add(lowPin);
+
+        const dropL = new window.THREE.Line(
+          new window.THREE.BufferGeometry().setFromPoints([new window.THREE.Vector3(lx, ly, lz), new window.THREE.Vector3(lx, ly - 0.9, lz)]),
+          new window.THREE.LineBasicMaterial({ color: 0x3b82f6, depthTest: false })
+        );
+        dropL.renderOrder = 998;
+        surfaceQa3DGroup.add(dropL);
+      }
+
+      // Auto-focus camera on the evaluated surface
+      if (window.studioThree.camera && window.studioThree.controls) {
+        const maxSpan = Math.max(spanX, spanZ, 8);
+        window.studioThree.controls.target.copy(center);
+        window.studioThree.camera.position.set(center.x + maxSpan * 0.75, center.y + maxSpan * 0.65, center.z + maxSpan * 0.75);
+        window.studioThree.controls.update();
+      }
     }
 
     if (window.studioThree.overlayGroup) {
       window.studioThree.overlayGroup.add(surfaceQa3DGroup);
+    } else {
+      window.studioThree.scene.add(surfaceQa3DGroup);
+    }
+
+    if (window.studioThree.renderer && window.studioThree.camera) {
+      window.studioThree.renderer.render(window.studioThree.scene, window.studioThree.camera);
     }
   }
 
@@ -630,37 +748,113 @@
     utilityTrace3DGroup = new window.THREE.Group();
     utilityTrace3DGroup.name = "GS_UtilityTrace_Overlay";
 
+    const originTwd = (typeof localToTwd97 === "function") ? localToTwd97({ x: 0, y: 0, z: 0 }) : { e: 0, n: 0, h: 0 };
     const stations = res.stations || [];
+    const dia = Math.max(0.2, res.pipe_diameter_m || 0.3);
+
     if (stations.length >= 2) {
-      const invPoints = stations.map((s) => new window.THREE.Vector3(s.local_x, s.local_y, s.local_z));
-      const crownPoints = stations.map(
-        (s) => new window.THREE.Vector3(s.local_x, s.local_y + (res.pipe_diameter_m || 0.3), s.local_z)
-      );
+      const invPoints = [];
+      const crownPoints = [];
+      const groundPoints = [];
 
-      // Invert Centerline
-      const invGeom = new window.THREE.BufferGeometry().setFromPoints(invPoints);
-      const invMat = new window.THREE.LineBasicMaterial({ color: 0x06b6d4, linewidth: 3 });
-      utilityTrace3DGroup.add(new window.THREE.Line(invGeom, invMat));
+      for (let i = 0; i < stations.length; i++) {
+        const s = stations[i];
+        const lx = Number(s.e) - originTwd.e;
+        const ly_inv = Number(s.invert_z) - originTwd.h;
+        const ly_crown = Number(s.crown_z !== undefined ? s.crown_z : s.invert_z + dia) - originTwd.h;
+        const ly_ground = Number(s.ground_z !== undefined ? s.ground_z : ly_crown + (s.cover_depth_m || 1.2)) - originTwd.h;
+        const lz = originTwd.n - Number(s.n);
 
-      // Crown Centerline
-      const crownGeom = new window.THREE.BufferGeometry().setFromPoints(crownPoints);
-      const crownMat = new window.THREE.LineBasicMaterial({ color: 0x10b981, linewidth: 2 });
-      utilityTrace3DGroup.add(new window.THREE.Line(crownGeom, crownMat));
+        const vInv = new window.THREE.Vector3(lx, ly_inv, lz);
+        const vCrown = new window.THREE.Vector3(lx, ly_crown, lz);
+        const vGround = new window.THREE.Vector3(lx, ly_ground, lz);
 
-      // Station Marker Cylinders
-      const dia = res.pipe_diameter_m || 0.3;
-      const cylGeom = new window.THREE.CylinderGeometry(dia * 0.5, dia * 0.5, 0.4, 16);
-      const cylMat = new window.THREE.MeshStandardMaterial({ color: 0x06b6d4, roughness: 0.3 });
+        invPoints.push(vInv);
+        crownPoints.push(vCrown);
+        groundPoints.push(vGround);
 
-      stations.forEach((s) => {
-        const mesh = new window.THREE.Mesh(cylGeom, cylMat);
-        mesh.position.set(s.local_x, s.local_y + dia * 0.5, s.local_z);
-        utilityTrace3DGroup.add(mesh);
+        // Vertical depth-of-cover drop lines from ground down to pipe crown
+        const dropGeo = new window.THREE.BufferGeometry().setFromPoints([vGround, vCrown]);
+        const dropMat = new window.THREE.LineBasicMaterial({ color: 0x10b981, depthTest: false });
+        const dropLine = new window.THREE.Line(dropGeo, dropMat);
+        dropLine.renderOrder = 997;
+        utilityTrace3DGroup.add(dropLine);
+
+        // Floating station marker disk / ring
+        const ringGeo = new window.THREE.RingGeometry(dia * 0.6, dia * 0.9, 16);
+        ringGeo.rotateX(-Math.PI / 2);
+        const ringMat = new window.THREE.MeshBasicMaterial({ color: 0xf59e0b, side: window.THREE.DoubleSide, depthTest: false });
+        const ringMesh = new window.THREE.Mesh(ringGeo, ringMat);
+        ringMesh.position.copy(vGround);
+        ringMesh.renderOrder = 998;
+        utilityTrace3DGroup.add(ringMesh);
+      }
+
+      // True 3D Cylindrical Pipe segments
+      const pipeMat = new window.THREE.MeshStandardMaterial({
+        color: 0x06b6d4,
+        emissive: 0x06b6d4,
+        emissiveIntensity: 0.5,
+        roughness: 0.3,
+        metalness: 0.2,
+        transparent: true,
+        opacity: 0.92,
+        depthTest: false,
       });
+
+      for (let i = 0; i < invPoints.length - 1; i++) {
+        const v1 = invPoints[i];
+        const v2 = invPoints[i + 1];
+        const segDist = v1.distanceTo(v2);
+        if (segDist < 0.02) continue;
+
+        const cylGeo = new window.THREE.CylinderGeometry(dia * 0.5, dia * 0.5, segDist, 16);
+        const mid = new window.THREE.Vector3().addVectors(v1, v2).multiplyScalar(0.5);
+        const dir = new window.THREE.Vector3().subVectors(v2, v1).normalize();
+
+        const cylMesh = new window.THREE.Mesh(cylGeo, pipeMat);
+        cylMesh.position.copy(mid);
+        cylMesh.quaternion.setFromUnitVectors(new window.THREE.Vector3(0, 1, 0), dir);
+        cylMesh.renderOrder = 996;
+        utilityTrace3DGroup.add(cylMesh);
+
+        // Trench wireframe corridor
+        const trenchWidth = Math.max(1.0, dia * 2.5);
+        const trenchGeo = new window.THREE.BoxGeometry(trenchWidth, dia * 1.5, segDist);
+        const trenchMat = new window.THREE.MeshBasicMaterial({
+          color: 0xf59e0b,
+          wireframe: true,
+          transparent: true,
+          opacity: 0.45,
+          depthTest: false,
+        });
+        const trenchMesh = new window.THREE.Mesh(trenchGeo, trenchMat);
+        trenchMesh.position.copy(mid);
+        trenchMesh.quaternion.setFromUnitVectors(new window.THREE.Vector3(0, 0, 1), dir);
+        trenchMesh.renderOrder = 995;
+        utilityTrace3DGroup.add(trenchMesh);
+      }
+
+      // Auto-frame camera on trench
+      if (invPoints.length > 0 && window.studioThree.camera && window.studioThree.controls) {
+        const midIdx = Math.floor(invPoints.length / 2);
+        const center = invPoints[midIdx];
+        const totalLen = res.total_length_3d_m || 20;
+        const camDist = Math.max(15, totalLen * 0.8);
+        window.studioThree.controls.target.copy(center);
+        window.studioThree.camera.position.set(center.x + camDist * 0.7, center.y + camDist * 0.65, center.z + camDist * 0.7);
+        window.studioThree.controls.update();
+      }
     }
 
     if (window.studioThree.overlayGroup) {
       window.studioThree.overlayGroup.add(utilityTrace3DGroup);
+    } else {
+      window.studioThree.scene.add(utilityTrace3DGroup);
+    }
+
+    if (window.studioThree.renderer && window.studioThree.camera) {
+      window.studioThree.renderer.render(window.studioThree.scene, window.studioThree.camera);
     }
   }
 
@@ -766,9 +960,85 @@
         return;
       }
       renderCompareVolumeResults(res);
+      renderCompareVolume3DOverlay(res);
     } catch (err) {
       console.error("[CompareVolume] Error:", err);
       if (typeof showToast === "function") showToast(t("網路連線異常", "Network error"));
+    }
+  }
+
+  function renderCompareVolume3DOverlay(res) {
+    if (!window.studioThree || !window.studioThree.scene || !window.THREE) return;
+    compareVolume3DGroup = clear3DGroup(compareVolume3DGroup);
+    compareVolume3DGroup = new window.THREE.Group();
+    compareVolume3DGroup.name = "GS_CompareVolume_Overlay";
+
+    const originTwd = (typeof localToTwd97 === "function") ? localToTwd97({ x: 0, y: 0, z: 0 }) : { e: 0, n: 0, h: 0 };
+    const cells = res.heatmap_cells || [];
+
+    const cutMat = new window.THREE.MeshStandardMaterial({
+      color: 0xef4444,
+      emissive: 0xef4444,
+      emissiveIntensity: 0.5,
+      roughness: 0.3,
+      transparent: true,
+      opacity: 0.85,
+      depthTest: false,
+    });
+    const fillMat = new window.THREE.MeshStandardMaterial({
+      color: 0x3b82f6,
+      emissive: 0x3b82f6,
+      emissiveIntensity: 0.5,
+      roughness: 0.3,
+      transparent: true,
+      opacity: 0.85,
+      depthTest: false,
+    });
+
+    const minPt = new window.THREE.Vector3(Infinity, Infinity, Infinity);
+    const maxPt = new window.THREE.Vector3(-Infinity, -Infinity, -Infinity);
+
+    cells.forEach((cell) => {
+      const lx = Number(cell.e) - originTwd.e;
+      const ly_b = Number(cell.z_base) - originTwd.h;
+      const ly_c = Number(cell.z_comp) - originTwd.h;
+      const lz = originTwd.n - Number(cell.n);
+      const dz = Number(cell.delta_z || (ly_c - ly_b));
+
+      const h = Math.max(0.15, Math.min(6.0, Math.abs(dz)));
+      const prismGeo = new window.THREE.BoxGeometry(0.85, h, 0.85);
+      const isCut = dz < 0;
+      const prism = new window.THREE.Mesh(prismGeo, isCut ? cutMat : fillMat);
+      const midY = (ly_b + ly_c) * 0.5;
+      prism.position.set(lx, midY, lz);
+      prism.renderOrder = 996;
+      compareVolume3DGroup.add(prism);
+
+      minPt.x = Math.min(minPt.x, lx);
+      minPt.y = Math.min(minPt.y, midY);
+      minPt.z = Math.min(minPt.z, lz);
+      maxPt.x = Math.max(maxPt.x, lx);
+      maxPt.y = Math.max(maxPt.y, midY);
+      maxPt.z = Math.max(maxPt.z, lz);
+    });
+
+    if (window.studioThree.overlayGroup) {
+      window.studioThree.overlayGroup.add(compareVolume3DGroup);
+    } else {
+      window.studioThree.scene.add(compareVolume3DGroup);
+    }
+
+    // Auto-frame camera on compare volume region
+    if (cells.length > 0 && window.studioThree.camera && window.studioThree.controls) {
+      const center = new window.THREE.Vector3().addVectors(minPt, maxPt).multiplyScalar(0.5);
+      const span = Math.max(maxPt.x - minPt.x, maxPt.z - minPt.z, 15);
+      window.studioThree.controls.target.copy(center);
+      window.studioThree.camera.position.set(center.x + span * 0.85, center.y + span * 0.7, center.z + span * 0.85);
+      window.studioThree.controls.update();
+    }
+
+    if (window.studioThree.renderer && window.studioThree.camera) {
+      window.studioThree.renderer.render(window.studioThree.scene, window.studioThree.camera);
     }
   }
 
@@ -992,18 +1262,68 @@
     stakeout3DGroup.name = "GS_Stakeout_Overlay";
 
     const pts = res.points || [];
-    const pinGeom = new window.THREE.ConeGeometry(0.12, 0.4, 8);
+    const originTwd = (typeof localToTwd97 === "function") ? localToTwd97({ x: 0, y: 0, z: 0 }) : { e: 0, n: 0, h: 0 };
+
+    const pinGeom = new window.THREE.ConeGeometry(0.22, 0.7, 12);
     pinGeom.rotateX(Math.PI);
-    const pinMat = new window.THREE.MeshStandardMaterial({ color: 0xeab308, roughness: 0.3 });
+    const pinMat = new window.THREE.MeshStandardMaterial({
+      color: 0xf59e0b,
+      emissive: 0xf59e0b,
+      emissiveIntensity: 0.6,
+      roughness: 0.25,
+      depthTest: false,
+    });
+
+    const minPt = new window.THREE.Vector3(Infinity, Infinity, Infinity);
+    const maxPt = new window.THREE.Vector3(-Infinity, -Infinity, -Infinity);
 
     pts.forEach((p) => {
+      const e = p.e !== undefined ? p.e : p.easting;
+      const n = p.n !== undefined ? p.n : p.northing;
+      const h = p.h !== undefined ? p.h : p.elevation;
+      const lx = Number(e) - originTwd.e;
+      const ly = Number(h) - originTwd.h;
+      const lz = originTwd.n - Number(n);
+
       const pin = new window.THREE.Mesh(pinGeom, pinMat);
-      pin.position.set(p.local_x, p.local_y + 0.2, p.local_z);
+      pin.position.set(lx, ly + 0.45, lz);
+      pin.renderOrder = 997;
       stakeout3DGroup.add(pin);
+
+      // Vertical drop line to surface
+      const dropGeo = new window.THREE.BufferGeometry().setFromPoints([
+        new window.THREE.Vector3(lx, ly, lz),
+        new window.THREE.Vector3(lx, ly + 1.2, lz),
+      ]);
+      const dropMat = new window.THREE.LineBasicMaterial({ color: 0xf59e0b, depthTest: false });
+      const dropLine = new window.THREE.Line(dropGeo, dropMat);
+      dropLine.renderOrder = 997;
+      stakeout3DGroup.add(dropLine);
+
+      minPt.x = Math.min(minPt.x, lx);
+      minPt.y = Math.min(minPt.y, ly);
+      minPt.z = Math.min(minPt.z, lz);
+      maxPt.x = Math.max(maxPt.x, lx);
+      maxPt.y = Math.max(maxPt.y, ly);
+      maxPt.z = Math.max(maxPt.z, lz);
     });
 
     if (window.studioThree.overlayGroup) {
       window.studioThree.overlayGroup.add(stakeout3DGroup);
+    } else {
+      window.studioThree.scene.add(stakeout3DGroup);
+    }
+
+    if (pts.length > 0 && window.studioThree.camera && window.studioThree.controls) {
+      const center = new window.THREE.Vector3().addVectors(minPt, maxPt).multiplyScalar(0.5);
+      const span = Math.max(maxPt.x - minPt.x, maxPt.z - minPt.z, 12);
+      window.studioThree.controls.target.copy(center);
+      window.studioThree.camera.position.set(center.x + span * 0.85, center.y + span * 0.7, center.z + span * 0.85);
+      window.studioThree.controls.update();
+    }
+
+    if (window.studioThree.renderer && window.studioThree.camera) {
+      window.studioThree.renderer.render(window.studioThree.scene, window.studioThree.camera);
     }
   }
 

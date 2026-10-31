@@ -229,8 +229,8 @@ async def capture_all():
             (() => {
                 if (typeof window.openCompareVolumeTakeoffInspector === 'function') {
                     if (window.STATE) {
-                        window.STATE.compareBaseScanId = 'ntudorm_20260915_baseline';
-                        window.STATE.compareScanId = 'rosepark_20260918_merged';
+                        window.STATE.compareBaseScanId = 'rosepark_20260918_merged';
+                        window.STATE.compareScanId = 'ntudorm_20260915_baseline';
                     }
                     window.openCompareVolumeTakeoffInspector();
                     const btn = document.getElementById('btnRunCompareVolume');
@@ -287,9 +287,8 @@ async def capture_all():
             (() => {
                 if (typeof window.openScanToBimInspector === 'function') {
                     window.openScanToBimInspector();
-                    if (window.__GS_BIM && typeof window.__GS_BIM.toggleOverlay === 'function') {
-                        window.__GS_BIM.toggleOverlay(true);
-                    }
+                    const btnFit = document.getElementById('btnBimRunFit');
+                    if (btnFit) btnFit.click();
                     return 'bim_triggered';
                 }
                 return 'openScanToBimInspector_missing';
@@ -297,7 +296,7 @@ async def capture_all():
             """
             res_bim = await cdp_call(ws, "Runtime.evaluate", {"expression": setup_bim, "returnByValue": True}, msg_id=230)
             print("Scan-to-BIM trigger result:", res_bim)
-            await asyncio.sleep(5.0)
+            await asyncio.sleep(6.0)
 
             # Ensure overlay is definitely enabled
             enable_overlay_script = """

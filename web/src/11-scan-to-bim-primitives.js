@@ -308,9 +308,10 @@
       updateBimKpis(res);
       updateBimElementsList();
 
-      if (BIM_STATE.overlayVisible) {
-        renderBimThreeMeshes();
-      }
+      BIM_STATE.overlayVisible = true;
+      const lbl = document.getElementById("lblBimPreviewStatus");
+      if (lbl) lbl.textContent = tr("隱藏", "Hide");
+      renderBimThreeMeshes();
 
       if (typeof showToast === "function") {
         showToast(tr(`成功擬合 ${BIM_STATE.primitives.length} 個 BIM 幾何實體`, `Fitted ${BIM_STATE.primitives.length} BIM solids`));
@@ -446,7 +447,8 @@
    */
   function renderBimThreeMeshes() {
     clearBimThreeMeshes();
-    if (!window.studioThree || !studioThree.scene) return;
+    const studioThree = window.studioThree;
+    if (!studioThree || !studioThree.scene) return;
 
     if (!BIM_STATE.threeGroup) {
       BIM_STATE.threeGroup = new THREE.Group();
@@ -454,14 +456,32 @@
       studioThree.scene.add(BIM_STATE.threeGroup);
     }
 
-    let originTwd = (STATE.activeScan && (STATE.activeScan.anchor_twd97 || STATE.activeScan.origin_twd97)) || STATE.activeScanOriginTwd;
-    if (!originTwd || (originTwd.e === 0 && originTwd.n === 0 && originTwd.h === 0)) {
-      if (BIM_STATE.primitives.length > 0 && BIM_STATE.primitives[0].transform && BIM_STATE.primitives[0].transform.center_twd97) {
-        const c = BIM_STATE.primitives[0].transform.center_twd97;
-        originTwd = { e: Number(c[0]) || 0, n: Number(c[1]) || 0, h: Number(c[2]) || 0 };
-      } else {
-        originTwd = { e: 0, n: 0, h: 0 };
-      }
+    const originTwd = (typeof localToTwd97 === "function") ? localToTwd97({ x: 0, y: 0, z: 0 }) : { e: 0, n: 0, h: 0 };
+
+    // Ghost / dim raw photogrammetric mesh to make solid BIM model pop vividly
+    if (studioThree.modelPivot) {
+      studioThree.modelPivot.traverse((m) => {
+        if (m.isMesh) {
+          if (m.userData._origTransparent === undefined) {
+            m.userData._origTransparent = m.transparent;
+            m.userData._origOpacity = m.opacity !== undefined ? m.opacity : 1.0;
+          }
+          m.transparent = true;
+          m.opacity = 0.25;
+        }
+      });
+    }
+    if (studioThree.fallbackGroup) {
+      studioThree.fallbackGroup.traverse((m) => {
+        if (m.isMesh) {
+          if (m.userData._origTransparent === undefined) {
+            m.userData._origTransparent = m.transparent;
+            m.userData._origOpacity = m.opacity !== undefined ? m.opacity : 1.0;
+          }
+          m.transparent = true;
+          m.opacity = 0.25;
+        }
+      });
     }
 
     const visiblePrims = BIM_STATE.primitives.filter((p) => BIM_STATE.selectedCategories.has(p.category));
@@ -504,22 +524,25 @@
 
       // Semantic Color & Opacity
       const hexColor = prim.color || "#3b82f6";
-      let opacity = 0.75;
-      if (prim.category === "water") opacity = 0.55;
-      else if (prim.category === "roads") opacity = 0.85;
-      else if (prim.category === "trees") opacity = 0.80;
+      let opacity = 0.88;
+      if (prim.category === "water") opacity = 0.65;
+      else if (prim.category === "roads") opacity = 0.92;
+      else if (prim.category === "trees") opacity = 0.90;
+      else if (prim.category === "walls") opacity = 0.92;
+      else if (prim.category === "buildings") opacity = 0.90;
 
       const mat = new THREE.MeshStandardMaterial({
         color: new THREE.Color(hexColor),
-        transparent: true,
+        roughness: 0.35,
+        metalness: 0.15,
+        transparent: opacity < 1.0,
         opacity: opacity,
-        roughness: 0.5,
-        metalness: 0.1,
         side: THREE.DoubleSide,
-        depthWrite: false,
+        depthTest: true,
       });
 
       const mesh = new THREE.Mesh(geom, mat);
+      mesh.renderOrder = 994;
       mesh.userData = {
         isBimPrimitive: true,
         primitiveId: prim.id,
@@ -531,16 +554,33 @@
       // Add crisp wireframe edge outline
       const wireGeom = new THREE.WireframeGeometry(geom);
       const wireMat = new THREE.LineBasicMaterial({
-        color: new THREE.Color(hexColor),
+        color: new THREE.Color(hexColor).clone().multiplyScalar(0.7),
         transparent: true,
         opacity: 0.95,
-        linewidth: 1,
+        linewidth: 1.5,
+        depthTest: true,
       });
       const wireLine = new THREE.LineSegments(wireGeom, wireMat);
+      wireLine.renderOrder = 995;
       mesh.add(wireLine);
 
       BIM_STATE.threeGroup.add(mesh);
     });
+
+    // Auto-frame camera to showcase the generated 3D BIM primitives
+    if (BIM_STATE.threeGroup.children.length > 0 && studioThree.camera && studioThree.controls) {
+      const box = new THREE.Box3().setFromObject(BIM_STATE.threeGroup);
+      if (!box.isEmpty()) {
+        const center = new THREE.Vector3();
+        box.getCenter(center);
+        const size = new THREE.Vector3();
+        box.getSize(size);
+        const maxDim = Math.max(size.x, size.y, size.z, 20);
+        studioThree.controls.target.copy(center);
+        studioThree.camera.position.set(center.x + maxDim * 0.85, center.y + maxDim * 0.65, center.z + maxDim * 0.95);
+        studioThree.controls.update();
+      }
+    }
 
     if (studioThree.renderer && studioThree.camera) {
       studioThree.renderer.render(studioThree.scene, studioThree.camera);
@@ -548,10 +588,33 @@
   }
 
   /**
-   * Clear 3D solid overlays from scene
+   * Clear 3D solid overlays from scene & restore mesh opacity
    */
   function clearBimThreeMeshes() {
-    if (BIM_STATE.threeGroup && window.studioThree && studioThree.scene) {
+    const studioThree = window.studioThree;
+    if (studioThree) {
+      if (studioThree.modelPivot) {
+        studioThree.modelPivot.traverse((m) => {
+          if (m.isMesh && m.userData._origTransparent !== undefined) {
+            m.transparent = m.userData._origTransparent;
+            m.opacity = m.userData._origOpacity;
+            delete m.userData._origTransparent;
+            delete m.userData._origOpacity;
+          }
+        });
+      }
+      if (studioThree.fallbackGroup) {
+        studioThree.fallbackGroup.traverse((m) => {
+          if (m.isMesh && m.userData._origTransparent !== undefined) {
+            m.transparent = m.userData._origTransparent;
+            m.opacity = m.userData._origOpacity;
+            delete m.userData._origTransparent;
+            delete m.userData._origOpacity;
+          }
+        });
+      }
+    }
+    if (BIM_STATE.threeGroup && studioThree && studioThree.scene) {
       while (BIM_STATE.threeGroup.children.length > 0) {
         const obj = BIM_STATE.threeGroup.children[0];
         if (obj.geometry) obj.geometry.dispose();
@@ -569,12 +632,22 @@
    */
   function flyToBimPrimitive(primId) {
     const prim = BIM_STATE.primitives.find((p) => p.id === primId);
-    if (!prim || !prim.transform || !prim.transform.center_local) return;
+    if (!prim || !prim.transform) return;
 
-    if (!window.studioThree || !studioThree.camera || !studioThree.controls) return;
+    const studioThree = window.studioThree;
+    if (!studioThree || !studioThree.camera || !studioThree.controls) return;
 
-    const cl = prim.transform.center_local;
-    const targetPt = new THREE.Vector3(cl[0], cl[1], cl[2]);
+    const originTwd = (typeof localToTwd97 === "function") ? localToTwd97({ x: 0, y: 0, z: 0 }) : { e: 0, n: 0, h: 0 };
+    let targetPt;
+    if (prim.transform.center_twd97 && prim.transform.center_twd97.length >= 3) {
+      const ct = prim.transform.center_twd97;
+      targetPt = new THREE.Vector3(Number(ct[0]) - originTwd.e, Number(ct[2]) - originTwd.h, originTwd.n - Number(ct[1]));
+    } else if (prim.transform.center_local && prim.transform.center_local.length >= 3) {
+      const cl = prim.transform.center_local;
+      targetPt = new THREE.Vector3(cl[0], cl[1], cl[2]);
+    } else {
+      return;
+    }
 
     const curTarget = studioThree.controls.target.clone();
     const curPos = studioThree.camera.position.clone();

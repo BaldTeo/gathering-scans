@@ -540,15 +540,8 @@
    * Converts real TWD97 (E, N, H) coordinates into Three.js local space.
    */
   function twd97ToLocal(e, n, h) {
-    if (typeof twd97ToStudioLocalVec === "function") {
-      return twd97ToStudioLocalVec(e, n, h);
-    }
-    // Fallback: relative to active scan metadata
-    const scan = STATE.scans?.find((s) => s.id === STATE.activeScanId) || {};
-    const ce = Number(scan.twd97_e || 0);
-    const cn = Number(scan.twd97_n || 0);
-    const ch = Number(scan.twd97_h || 0);
-    return new THREE.Vector3(Number(e) - ce, Number(h) - ch, cn - Number(n));
+    const originTwd = (typeof localToTwd97 === "function") ? localToTwd97({ x: 0, y: 0, z: 0 }) : { e: 0, n: 0, h: 0 };
+    return new THREE.Vector3(Number(e) - originTwd.e, Number(h) - originTwd.h, originTwd.n - Number(n));
   }
 
   /**
@@ -560,8 +553,10 @@
       UTILS_STATE.animationFrameId = null;
     }
 
-    if (studioThree && studioThree.overlayGroup && UTILS_STATE.threeGroup) {
-      studioThree.overlayGroup.remove(UTILS_STATE.threeGroup);
+    const studioThree = window.studioThree;
+    if (studioThree && UTILS_STATE.threeGroup) {
+      if (studioThree.overlayGroup) studioThree.overlayGroup.remove(UTILS_STATE.threeGroup);
+      if (studioThree.scene) studioThree.scene.remove(UTILS_STATE.threeGroup);
       UTILS_STATE.threeGroup.traverse((obj) => {
         if (obj.geometry) obj.geometry.dispose();
         if (obj.material) {
@@ -579,6 +574,7 @@
    */
   function renderUtilities3D() {
     clearUtilitiesVisuals3D();
+    const studioThree = window.studioThree;
     if (!studioThree || !studioThree.scene || !UTILS_STATE.features || UTILS_STATE.features.length === 0) {
       return;
     }
@@ -587,9 +583,9 @@
     group.name = "PublicUtilitiesGroup";
     UTILS_STATE.threeGroup = group;
 
-    // Materials cache by layer color
+    // Materials cache by layer color (Subsurface X-Ray glowing mode: depthTest: false, emissive)
     const matCache = new Map();
-    function getLayerMaterial(layerId, opacity = 0.88) {
+    function getLayerMaterial(layerId, opacity = 0.92) {
       const ldef = UTILITY_LAYERS[layerId] || { color: "#06b6d4" };
       const key = `${ldef.color}_${opacity}`;
       if (!matCache.has(key)) {
@@ -597,22 +593,26 @@
           key,
           new THREE.MeshStandardMaterial({
             color: new THREE.Color(ldef.color),
-            roughness: 0.35,
-            metalness: 0.25,
+            emissive: new THREE.Color(ldef.color),
+            emissiveIntensity: 0.55,
+            roughness: 0.3,
+            metalness: 0.2,
             transparent: true,
             opacity: opacity,
-            depthWrite: true,
+            depthTest: false,
+            depthWrite: false,
           })
         );
       }
       return matCache.get(key);
     }
 
-    // Material for flow direction pulses
+    // Material for flow direction pulses (X-Ray see-through)
     const pulseMat = new THREE.MeshBasicMaterial({
       color: 0xffffff,
       transparent: true,
-      opacity: 0.9,
+      opacity: 0.95,
+      depthTest: false,
     });
 
     UTILS_STATE.features.forEach((feat) => {
@@ -638,12 +638,12 @@
           const dir = new THREE.Vector3().subVectors(v2, v1).normalize();
 
           let geom;
-          const diaM = Math.max(0.12, (Number(feat.diameter_mm) || 300) / 1000.0);
+          const diaM = Math.max(0.15, (Number(feat.diameter_mm) || 300) / 1000.0);
           const isBox = feat.type === "box_culvert" || (feat.width_m > 0 && feat.height_m > 0);
 
           if (isBox) {
-            const wm = Math.max(0.3, Number(feat.width_m) || diaM);
-            const hm = Math.max(0.3, Number(feat.height_m) || diaM);
+            const wm = Math.max(0.35, Number(feat.width_m) || diaM);
+            const hm = Math.max(0.35, Number(feat.height_m) || diaM);
             geom = new THREE.BoxGeometry(wm, dist, hm);
           } else {
             const radius = diaM * 0.5;
@@ -656,6 +656,7 @@
           // Align Y axis to direction
           const up = new THREE.Vector3(0, 1, 0);
           mesh.quaternion.setFromUnitVectors(up, dir);
+          mesh.renderOrder = 995;
 
           mesh.userData = {
             isUtilityFeature: true,
@@ -665,6 +666,22 @@
           mesh.visible = ldef.visible !== false;
 
           group.add(mesh);
+
+          // Subsurface Leader Drop Line from Ground Surface down to Pipe
+          const dropGeo = new THREE.BufferGeometry().setFromPoints([
+            new THREE.Vector3(mid.x, mid.y, mid.z),
+            new THREE.Vector3(mid.x, Math.max(mid.y + 2.0, 1.2), mid.z),
+          ]);
+          const dropMat = new THREE.LineBasicMaterial({
+            color: new THREE.Color(ldef.color),
+            transparent: true,
+            opacity: 0.65,
+            depthTest: false,
+          });
+          const dropLine = new THREE.Line(dropGeo, dropMat);
+          dropLine.renderOrder = 996;
+          dropLine.visible = ldef.visible !== false;
+          group.add(dropLine);
 
           // Record for flow direction animation
           const meshKey = `${feat.id}_seg_${i}`;
@@ -680,9 +697,10 @@
           });
 
           // Add a small animated pulse indicator sphere
-          const pulseGeom = new THREE.SphereGeometry(diaM * 0.4, 8, 8);
+          const pulseGeom = new THREE.SphereGeometry(diaM * 0.55, 8, 8);
           const pulseSphere = new THREE.Mesh(pulseGeom, pulseMat);
           pulseSphere.position.copy(v1);
+          pulseSphere.renderOrder = 996;
           pulseSphere.visible = ldef.visible !== false && UTILS_STATE.flowAnimationActive;
           group.add(pulseSphere);
           UTILS_STATE.pipeMeshMap.get(meshKey).pulseMesh = pulseSphere;
@@ -693,16 +711,17 @@
       else if (feat.type === "manhole" || feat.type === "catch_basin") {
         const coord = feat.coord || [0, 0, 0];
         const vBase = twd97ToLocal(coord[0], coord[1], coord[2]);
-        const depthM = Math.max(1.0, Number(feat.depth_m) || 2.5);
-        const radiusM = 0.6; // 1200mm standard civil manhole
+        const depthM = Math.max(1.2, Number(feat.depth_m) || 2.5);
+        const radiusM = 0.65; // 1300mm standard civil manhole
 
         // Vertical cylinder from invert to rim
         const mhGeom = new THREE.CylinderGeometry(radiusM, radiusM, depthM, 16);
-        const mhMat = getLayerMaterial(layerId, 0.92);
+        const mhMat = getLayerMaterial(layerId, 0.94);
         const mhMesh = new THREE.Mesh(mhGeom, mhMat);
 
         // Center vertically
         mhMesh.position.set(vBase.x, vBase.y + depthM * 0.5, vBase.z);
+        mhMesh.renderOrder = 995;
         mhMesh.userData = {
           isUtilityFeature: true,
           feature: feat,
@@ -712,11 +731,12 @@
         group.add(mhMesh);
 
         // Rim ring on top
-        const ringGeom = new THREE.TorusGeometry(radiusM * 1.05, 0.05, 8, 24);
-        const ringMat = new THREE.MeshStandardMaterial({ color: 0x475569, metalness: 0.8, roughness: 0.2 });
+        const ringGeom = new THREE.TorusGeometry(radiusM * 1.05, 0.06, 8, 24);
+        const ringMat = new THREE.MeshBasicMaterial({ color: 0x94a3b8, depthTest: false });
         const ringMesh = new THREE.Mesh(ringGeom, ringMat);
         ringMesh.rotation.x = Math.PI / 2;
         ringMesh.position.set(vBase.x, vBase.y + depthM, vBase.z);
+        ringMesh.renderOrder = 996;
         ringMesh.visible = ldef.visible !== false;
         group.add(ringMesh);
       }
@@ -725,12 +745,13 @@
       else if (feat.type === "hydrant" || feat.type === "pole") {
         const coord = feat.coord || [0, 0, 0];
         const vBase = twd97ToLocal(coord[0], coord[1], coord[2]);
-        const heightM = feat.type === "pole" ? 8.0 : 1.0;
-        const radiusM = feat.type === "pole" ? 0.15 : 0.12;
+        const heightM = feat.type === "pole" ? 8.0 : 1.2;
+        const radiusM = feat.type === "pole" ? 0.16 : 0.14;
 
         const geom = new THREE.CylinderGeometry(radiusM * 0.8, radiusM, heightM, 12);
         const mesh = new THREE.Mesh(geom, getLayerMaterial(layerId));
         mesh.position.set(vBase.x, vBase.y + heightM * 0.5, vBase.z);
+        mesh.renderOrder = 995;
         mesh.userData = {
           isUtilityFeature: true,
           feature: feat,
@@ -746,6 +767,25 @@
       studioThree.overlayGroup.add(group);
     } else {
       studioThree.scene.add(group);
+    }
+
+    // Auto-frame camera to center the subsurface utilities in the 3D viewport
+    if (group.children.length > 0 && studioThree.camera && studioThree.controls) {
+      const box = new THREE.Box3().setFromObject(group);
+      if (!box.isEmpty()) {
+        const center = new THREE.Vector3();
+        box.getCenter(center);
+        const size = new THREE.Vector3();
+        box.getSize(size);
+        const maxDim = Math.max(size.x, size.y, size.z, 20);
+        studioThree.controls.target.copy(center);
+        studioThree.camera.position.set(center.x + maxDim * 0.85, center.y + maxDim * 0.65, center.z + maxDim * 0.85);
+        studioThree.controls.update();
+      }
+    }
+
+    if (studioThree.renderer && studioThree.camera) {
+      studioThree.renderer.render(studioThree.scene, studioThree.camera);
     }
 
     // Start hydraulic flow animation loop
