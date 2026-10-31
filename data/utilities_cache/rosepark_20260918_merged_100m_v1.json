@@ -1,0 +1,2094 @@
+{
+  "status": "ok",
+  "scan_id": "rosepark_20260918_merged",
+  "center": {
+    "e": 295966.701,
+    "n": 2768539.373,
+    "h": 11.34
+  },
+  "radius_m": 100.0,
+  "bbox": {
+    "xmin": 295866.701,
+    "ymin": 2768439.373,
+    "xmax": 296066.701,
+    "ymax": 2768639.373
+  },
+  "crs": "TWD97 / TM2 zone 121 + TWVD 2001 height - EPSG:3826+8904",
+  "layers": {
+    "storm": {
+      "id": "storm",
+      "name_zh": "雨水下水道",
+      "name_en": "Storm Sewer",
+      "color": "#06b6d4",
+      "default_depth_m": 2.2,
+      "default_dia_mm": 600,
+      "symbol": "cylindrical_or_box"
+    },
+    "sanitary": {
+      "id": "sanitary",
+      "name_zh": "污水下水道",
+      "name_en": "Sanitary Sewer",
+      "color": "#d97706",
+      "default_depth_m": 2.8,
+      "default_dia_mm": 300,
+      "symbol": "cylindrical"
+    },
+    "water": {
+      "id": "water",
+      "name_zh": "自來水與消防栓",
+      "name_en": "Water Supply & Hydrants",
+      "color": "#3b82f6",
+      "default_depth_m": 1.2,
+      "default_dia_mm": 200,
+      "symbol": "cylindrical"
+    },
+    "electric": {
+      "id": "electric",
+      "name_zh": "電力管線與電桿",
+      "name_en": "Electricity & Poles",
+      "color": "#ef4444",
+      "default_depth_m": 1.5,
+      "default_dia_mm": 150,
+      "symbol": "cylindrical"
+    },
+    "telecom": {
+      "id": "telecom",
+      "name_zh": "電信與光纖管線",
+      "name_en": "Telecom & Fiber",
+      "color": "#10b981",
+      "default_depth_m": 1.2,
+      "default_dia_mm": 100,
+      "symbol": "cylindrical"
+    },
+    "gas": {
+      "id": "gas",
+      "name_zh": "天然瓦斯管線",
+      "name_en": "Natural Gas",
+      "color": "#eab308",
+      "default_depth_m": 1.0,
+      "default_dia_mm": 100,
+      "symbol": "cylindrical"
+    },
+    "ducts": {
+      "id": "ducts",
+      "name_zh": "共同管道與纜線寬頻",
+      "name_en": "Common & Broadband Ducts",
+      "color": "#8b5cf6",
+      "default_depth_m": 3.0,
+      "default_dia_mm": 1200,
+      "symbol": "box"
+    },
+    "streetlights": {
+      "id": "streetlights",
+      "name_zh": "路燈與照明管線",
+      "name_en": "Streetlights",
+      "color": "#f59e0b",
+      "default_depth_m": 0.8,
+      "default_dia_mm": 80,
+      "symbol": "vertical_pole"
+    },
+    "excavations": {
+      "id": "excavations",
+      "name_zh": "即時道路挖掘工程",
+      "name_en": "Active Road Excavations",
+      "color": "#ec4899",
+      "default_depth_m": 1.5,
+      "default_dia_mm": 0,
+      "symbol": "trench_polygon"
+    },
+    "as_built": {
+      "id": "as_built",
+      "name_zh": "管溝開挖竣工實測",
+      "name_en": "Open-Trench As-Built Traced",
+      "color": "#14b8a6",
+      "default_depth_m": 1.8,
+      "default_dia_mm": 200,
+      "symbol": "cylindrical"
+    }
+  },
+  "layer_counts": {
+    "storm": 8,
+    "sanitary": 43,
+    "water": 0,
+    "electric": 0,
+    "telecom": 0,
+    "gas": 0,
+    "ducts": 0,
+    "streetlights": 0,
+    "excavations": 0,
+    "as_built": 0
+  },
+  "total_features": 51,
+  "total_pipe_length_m": 1816.86,
+  "total_structures": 5,
+  "features": [
+    {
+      "id": "storm_pipe_10790",
+      "layer": "storm",
+      "type": "box_culvert",
+      "name": "三孔箱涵(03) 3.0x3.0m",
+      "diameter_mm": 3000,
+      "width_m": 3.0,
+      "height_m": 3.0,
+      "length_m": 159.62,
+      "material": "RC",
+      "start_coord": [
+        295907.015,
+        2768536.5,
+        8.94
+      ],
+      "end_coord": [
+        295905.825,
+        2768694.396,
+        8.142
+      ],
+      "start_invert_h": 8.94,
+      "end_invert_h": 8.142,
+      "start_depth_m": 2.4,
+      "end_depth_m": 3.2,
+      "slope_pct": 0.5,
+      "flow_direction": 1,
+      "upstream_mh": "3141-F05",
+      "downstream_mh": "3141-F20",
+      "coords": [
+        [
+          295907.015,
+          2768536.5,
+          8.94
+        ],
+        [
+          295905.827,
+          2768694.242,
+          8.541
+        ],
+        [
+          295905.825,
+          2768694.396,
+          8.142
+        ]
+      ],
+      "source": "New Taipei City WRD SewerRain (wrd.ntpc.gov.tw)"
+    },
+    {
+      "id": "storm_pipe_10785",
+      "layer": "storm",
+      "type": "box_culvert",
+      "name": "三孔箱涵(03) 3.0x3.0m",
+      "diameter_mm": 3000,
+      "width_m": 3.0,
+      "height_m": 3.0,
+      "length_m": 252.6,
+      "material": "RC",
+      "start_coord": [
+        296103.821,
+        2768379.442,
+        8.94
+      ],
+      "end_coord": [
+        295907.015,
+        2768536.5,
+        7.677
+      ],
+      "start_invert_h": 8.94,
+      "end_invert_h": 7.677,
+      "start_depth_m": 2.4,
+      "end_depth_m": 3.66,
+      "slope_pct": 0.5,
+      "flow_direction": 1,
+      "upstream_mh": "3241-024",
+      "downstream_mh": "3141-F06",
+      "coords": [
+        [
+          296103.821,
+          2768379.442,
+          8.94
+        ],
+        [
+          296103.744,
+          2768379.451,
+          8.519
+        ],
+        [
+          296055.217,
+          2768415.179,
+          8.098
+        ],
+        [
+          295907.015,
+          2768536.5,
+          7.677
+        ]
+      ],
+      "source": "New Taipei City WRD SewerRain (wrd.ntpc.gov.tw)"
+    },
+    {
+      "id": "storm_pipe_10840",
+      "layer": "storm",
+      "type": "box_culvert",
+      "name": "單孔箱涵(01) 1.2x1.8m",
+      "diameter_mm": 1800,
+      "width_m": 1.2,
+      "height_m": 1.8,
+      "length_m": 463.65,
+      "material": "RC",
+      "start_coord": [
+        295851.536,
+        2768301.543,
+        8.94
+      ],
+      "end_coord": [
+        295873.792,
+        2768764.695,
+        6.622
+      ],
+      "start_invert_h": 8.94,
+      "end_invert_h": 6.622,
+      "start_depth_m": 2.4,
+      "end_depth_m": 4.72,
+      "slope_pct": 0.5,
+      "flow_direction": 1,
+      "upstream_mh": "3141-F09",
+      "downstream_mh": "3142-F09",
+      "coords": [
+        [
+          295851.536,
+          2768301.543,
+          8.94
+        ],
+        [
+          295863.239,
+          2768560.895,
+          8.167
+        ],
+        [
+          295873.788,
+          2768764.689,
+          7.395
+        ],
+        [
+          295873.792,
+          2768764.695,
+          6.622
+        ]
+      ],
+      "source": "New Taipei City WRD SewerRain (wrd.ntpc.gov.tw)"
+    },
+    {
+      "id": "storm_mh_8350",
+      "layer": "storm",
+      "type": "manhole",
+      "name": "雨水人孔 3141-F03",
+      "facility_no": "3141-F03",
+      "structure_type": "圓形(0)",
+      "coord": [
+        295906.557,
+        2768597.898,
+        8.84
+      ],
+      "rim_h": 11.34,
+      "invert_h": 8.84,
+      "depth_m": 2.5,
+      "diameter_mm": 1200,
+      "road_name": "新北市板橋區公館街",
+      "source": "New Taipei City WRD SewerRain (wrd.ntpc.gov.tw)"
+    },
+    {
+      "id": "storm_mh_8329",
+      "layer": "storm",
+      "type": "manhole",
+      "name": "雨水人孔 3141-F02",
+      "facility_no": "3141-F02",
+      "structure_type": "圓形(0)",
+      "coord": [
+        295927.363,
+        2768519.405,
+        8.84
+      ],
+      "rim_h": 11.34,
+      "invert_h": 8.84,
+      "depth_m": 2.5,
+      "diameter_mm": 1200,
+      "road_name": "新北市板橋區公館街",
+      "source": "New Taipei City WRD SewerRain (wrd.ntpc.gov.tw)"
+    },
+    {
+      "id": "storm_mh_8303",
+      "layer": "storm",
+      "type": "manhole",
+      "name": "雨水人孔 3141-F01",
+      "facility_no": "3141-F01",
+      "structure_type": "圓形(0)",
+      "coord": [
+        295977.973,
+        2768476.885,
+        8.84
+      ],
+      "rim_h": 11.34,
+      "invert_h": 8.84,
+      "depth_m": 2.5,
+      "diameter_mm": 1200,
+      "road_name": "新北市板橋區公館街",
+      "source": "New Taipei City WRD SewerRain (wrd.ntpc.gov.tw)"
+    },
+    {
+      "id": "storm_mh_8074",
+      "layer": "storm",
+      "type": "manhole",
+      "name": "雨水人孔 3241-047",
+      "facility_no": "3241-047",
+      "structure_type": "圓形(0)",
+      "coord": [
+        296003.99,
+        2768458.656,
+        8.84
+      ],
+      "rim_h": 11.34,
+      "invert_h": 8.84,
+      "depth_m": 2.5,
+      "diameter_mm": 1200,
+      "road_name": "新北市板橋區公館街",
+      "source": "New Taipei City WRD SewerRain (wrd.ntpc.gov.tw)"
+    },
+    {
+      "id": "storm_mh_16135",
+      "layer": "storm",
+      "type": "manhole",
+      "name": "雨水人孔 3141-F06",
+      "facility_no": "3141-F06",
+      "structure_type": "圓形(0)",
+      "coord": [
+        295907.015,
+        2768536.5,
+        8.84
+      ],
+      "rim_h": 11.34,
+      "invert_h": 8.84,
+      "depth_m": 2.5,
+      "diameter_mm": 1200,
+      "road_name": "",
+      "source": "New Taipei City WRD SewerRain (wrd.ntpc.gov.tw)"
+    },
+    {
+      "id": "sanitary_pipe_1290",
+      "layer": "sanitary",
+      "type": "pipe",
+      "name": "污水管線 D=200mm",
+      "diameter_mm": 200,
+      "width_m": 0.2,
+      "height_m": 0.2,
+      "length_m": 13.33,
+      "material": "DIP/延性鑄鐵管",
+      "start_coord": [
+        295879.275,
+        2768495.335,
+        8.54
+      ],
+      "end_coord": [
+        295868.305,
+        2768502.915,
+        8.487
+      ],
+      "start_invert_h": 8.54,
+      "end_invert_h": 8.487,
+      "start_depth_m": 2.8,
+      "end_depth_m": 2.85,
+      "slope_pct": 0.4,
+      "flow_direction": 1,
+      "coords": [
+        [
+          295879.275,
+          2768495.335,
+          8.54
+        ],
+        [
+          295868.305,
+          2768502.915,
+          8.487
+        ]
+      ],
+      "source": "New Taipei City Sanitary Sewer (sewer.ntpc.gov.tw)"
+    },
+    {
+      "id": "sanitary_pipe_1468",
+      "layer": "sanitary",
+      "type": "pipe",
+      "name": "污水管線 D=200mm",
+      "diameter_mm": 200,
+      "width_m": 0.2,
+      "height_m": 0.2,
+      "length_m": 12.7,
+      "material": "DIP/延性鑄鐵管",
+      "start_coord": [
+        295935.509,
+        2768499.319,
+        8.54
+      ],
+      "end_coord": [
+        295925.993,
+        2768507.731,
+        8.489
+      ],
+      "start_invert_h": 8.54,
+      "end_invert_h": 8.489,
+      "start_depth_m": 2.8,
+      "end_depth_m": 2.85,
+      "slope_pct": 0.4,
+      "flow_direction": 1,
+      "coords": [
+        [
+          295935.509,
+          2768499.319,
+          8.54
+        ],
+        [
+          295925.993,
+          2768507.731,
+          8.489
+        ]
+      ],
+      "source": "New Taipei City Sanitary Sewer (sewer.ntpc.gov.tw)"
+    },
+    {
+      "id": "sanitary_pipe_1469",
+      "layer": "sanitary",
+      "type": "pipe",
+      "name": "污水管線 D=200mm",
+      "diameter_mm": 200,
+      "width_m": 0.2,
+      "height_m": 0.2,
+      "length_m": 12.48,
+      "material": "DIP/延性鑄鐵管",
+      "start_coord": [
+        295925.993,
+        2768507.731,
+        8.54
+      ],
+      "end_coord": [
+        295916.56,
+        2768515.895,
+        8.49
+      ],
+      "start_invert_h": 8.54,
+      "end_invert_h": 8.49,
+      "start_depth_m": 2.8,
+      "end_depth_m": 2.85,
+      "slope_pct": 0.4,
+      "flow_direction": 1,
+      "coords": [
+        [
+          295925.993,
+          2768507.731,
+          8.54
+        ],
+        [
+          295916.56,
+          2768515.895,
+          8.49
+        ]
+      ],
+      "source": "New Taipei City Sanitary Sewer (sewer.ntpc.gov.tw)"
+    },
+    {
+      "id": "sanitary_pipe_1470",
+      "layer": "sanitary",
+      "type": "pipe",
+      "name": "污水管線 D=200mm",
+      "diameter_mm": 200,
+      "width_m": 0.2,
+      "height_m": 0.2,
+      "length_m": 37.23,
+      "material": "DIP/延性鑄鐵管",
+      "start_coord": [
+        295916.56,
+        2768515.895,
+        8.54
+      ],
+      "end_coord": [
+        295888.316,
+        2768540.157,
+        8.391
+      ],
+      "start_invert_h": 8.54,
+      "end_invert_h": 8.391,
+      "start_depth_m": 2.8,
+      "end_depth_m": 2.95,
+      "slope_pct": 0.4,
+      "flow_direction": 1,
+      "coords": [
+        [
+          295916.56,
+          2768515.895,
+          8.54
+        ],
+        [
+          295888.316,
+          2768540.157,
+          8.391
+        ]
+      ],
+      "source": "New Taipei City Sanitary Sewer (sewer.ntpc.gov.tw)"
+    },
+    {
+      "id": "sanitary_pipe_1471",
+      "layer": "sanitary",
+      "type": "pipe",
+      "name": "污水管線 D=200mm",
+      "diameter_mm": 200,
+      "width_m": 0.2,
+      "height_m": 0.2,
+      "length_m": 10.92,
+      "material": "DIP/延性鑄鐵管",
+      "start_coord": [
+        295888.316,
+        2768540.157,
+        8.54
+      ],
+      "end_coord": [
+        295880.157,
+        2768547.421,
+        8.496
+      ],
+      "start_invert_h": 8.54,
+      "end_invert_h": 8.496,
+      "start_depth_m": 2.8,
+      "end_depth_m": 2.84,
+      "slope_pct": 0.4,
+      "flow_direction": 1,
+      "coords": [
+        [
+          295888.316,
+          2768540.157,
+          8.54
+        ],
+        [
+          295880.157,
+          2768547.421,
+          8.496
+        ]
+      ],
+      "source": "New Taipei City Sanitary Sewer (sewer.ntpc.gov.tw)"
+    },
+    {
+      "id": "sanitary_pipe_1472",
+      "layer": "sanitary",
+      "type": "pipe",
+      "name": "污水管線 D=200mm",
+      "diameter_mm": 200,
+      "width_m": 0.2,
+      "height_m": 0.2,
+      "length_m": 14.41,
+      "material": "DIP/延性鑄鐵管",
+      "start_coord": [
+        295880.157,
+        2768547.421,
+        8.54
+      ],
+      "end_coord": [
+        295865.926,
+        2768549.67,
+        8.482
+      ],
+      "start_invert_h": 8.54,
+      "end_invert_h": 8.482,
+      "start_depth_m": 2.8,
+      "end_depth_m": 2.86,
+      "slope_pct": 0.4,
+      "flow_direction": 1,
+      "coords": [
+        [
+          295880.157,
+          2768547.421,
+          8.54
+        ],
+        [
+          295865.926,
+          2768549.67,
+          8.482
+        ]
+      ],
+      "source": "New Taipei City Sanitary Sewer (sewer.ntpc.gov.tw)"
+    },
+    {
+      "id": "sanitary_pipe_1485",
+      "layer": "sanitary",
+      "type": "pipe",
+      "name": "污水管線 D=200mm",
+      "diameter_mm": 200,
+      "width_m": 0.2,
+      "height_m": 0.2,
+      "length_m": 17.47,
+      "material": "DIP/延性鑄鐵管",
+      "start_coord": [
+        295958.529,
+        2768479.389,
+        8.54
+      ],
+      "end_coord": [
+        295945.254,
+        2768490.751,
+        8.47
+      ],
+      "start_invert_h": 8.54,
+      "end_invert_h": 8.47,
+      "start_depth_m": 2.8,
+      "end_depth_m": 2.87,
+      "slope_pct": 0.4,
+      "flow_direction": 1,
+      "coords": [
+        [
+          295958.529,
+          2768479.389,
+          8.54
+        ],
+        [
+          295945.254,
+          2768490.751,
+          8.47
+        ]
+      ],
+      "source": "New Taipei City Sanitary Sewer (sewer.ntpc.gov.tw)"
+    },
+    {
+      "id": "sanitary_pipe_1486",
+      "layer": "sanitary",
+      "type": "pipe",
+      "name": "污水管線 D=200mm",
+      "diameter_mm": 200,
+      "width_m": 0.2,
+      "height_m": 0.2,
+      "length_m": 12.98,
+      "material": "DIP/延性鑄鐵管",
+      "start_coord": [
+        295945.254,
+        2768490.751,
+        8.54
+      ],
+      "end_coord": [
+        295935.509,
+        2768499.319,
+        8.488
+      ],
+      "start_invert_h": 8.54,
+      "end_invert_h": 8.488,
+      "start_depth_m": 2.8,
+      "end_depth_m": 2.85,
+      "slope_pct": 0.4,
+      "flow_direction": 1,
+      "coords": [
+        [
+          295945.254,
+          2768490.751,
+          8.54
+        ],
+        [
+          295935.509,
+          2768499.319,
+          8.488
+        ]
+      ],
+      "source": "New Taipei City Sanitary Sewer (sewer.ntpc.gov.tw)"
+    },
+    {
+      "id": "sanitary_pipe_2081",
+      "layer": "sanitary",
+      "type": "pipe",
+      "name": "污水管線 D=200mm",
+      "diameter_mm": 200,
+      "width_m": 0.2,
+      "height_m": 0.2,
+      "length_m": 18.32,
+      "material": "DIP/延性鑄鐵管",
+      "start_coord": [
+        296061.4,
+        2768489.702,
+        8.54
+      ],
+      "end_coord": [
+        296076.55,
+        2768500.004,
+        8.467
+      ],
+      "start_invert_h": 8.54,
+      "end_invert_h": 8.467,
+      "start_depth_m": 2.8,
+      "end_depth_m": 2.87,
+      "slope_pct": 0.4,
+      "flow_direction": 1,
+      "coords": [
+        [
+          296061.4,
+          2768489.702,
+          8.54
+        ],
+        [
+          296076.55,
+          2768500.004,
+          8.467
+        ]
+      ],
+      "source": "New Taipei City Sanitary Sewer (sewer.ntpc.gov.tw)"
+    },
+    {
+      "id": "sanitary_pipe_2098",
+      "layer": "sanitary",
+      "type": "pipe",
+      "name": "污水管線 D=200mm",
+      "diameter_mm": 200,
+      "width_m": 0.2,
+      "height_m": 0.2,
+      "length_m": 6.76,
+      "material": "DIP/延性鑄鐵管",
+      "start_coord": [
+        296053.824,
+        2768558.492,
+        8.54
+      ],
+      "end_coord": [
+        296053.773,
+        2768565.248,
+        8.513
+      ],
+      "start_invert_h": 8.54,
+      "end_invert_h": 8.513,
+      "start_depth_m": 2.8,
+      "end_depth_m": 2.83,
+      "slope_pct": 0.4,
+      "flow_direction": 1,
+      "coords": [
+        [
+          296053.824,
+          2768558.492,
+          8.54
+        ],
+        [
+          296053.773,
+          2768565.248,
+          8.513
+        ]
+      ],
+      "source": "New Taipei City Sanitary Sewer (sewer.ntpc.gov.tw)"
+    },
+    {
+      "id": "sanitary_pipe_2099",
+      "layer": "sanitary",
+      "type": "pipe",
+      "name": "污水管線 D=200mm",
+      "diameter_mm": 200,
+      "width_m": 0.2,
+      "height_m": 0.2,
+      "length_m": 24.5,
+      "material": "DIP/延性鑄鐵管",
+      "start_coord": [
+        296032.864,
+        2768545.809,
+        8.54
+      ],
+      "end_coord": [
+        296053.824,
+        2768558.492,
+        8.442
+      ],
+      "start_invert_h": 8.54,
+      "end_invert_h": 8.442,
+      "start_depth_m": 2.8,
+      "end_depth_m": 2.9,
+      "slope_pct": 0.4,
+      "flow_direction": 1,
+      "coords": [
+        [
+          296032.864,
+          2768545.809,
+          8.54
+        ],
+        [
+          296053.824,
+          2768558.492,
+          8.442
+        ]
+      ],
+      "source": "New Taipei City Sanitary Sewer (sewer.ntpc.gov.tw)"
+    },
+    {
+      "id": "sanitary_pipe_2100",
+      "layer": "sanitary",
+      "type": "pipe",
+      "name": "污水管線 D=200mm",
+      "diameter_mm": 200,
+      "width_m": 0.2,
+      "height_m": 0.2,
+      "length_m": 16.6,
+      "material": "DIP/延性鑄鐵管",
+      "start_coord": [
+        296018.311,
+        2768537.821,
+        8.54
+      ],
+      "end_coord": [
+        296032.864,
+        2768545.809,
+        8.474
+      ],
+      "start_invert_h": 8.54,
+      "end_invert_h": 8.474,
+      "start_depth_m": 2.8,
+      "end_depth_m": 2.87,
+      "slope_pct": 0.4,
+      "flow_direction": 1,
+      "coords": [
+        [
+          296018.311,
+          2768537.821,
+          8.54
+        ],
+        [
+          296032.864,
+          2768545.809,
+          8.474
+        ]
+      ],
+      "source": "New Taipei City Sanitary Sewer (sewer.ntpc.gov.tw)"
+    },
+    {
+      "id": "sanitary_pipe_2101",
+      "layer": "sanitary",
+      "type": "pipe",
+      "name": "污水管線 D=200mm",
+      "diameter_mm": 200,
+      "width_m": 0.2,
+      "height_m": 0.2,
+      "length_m": 28.14,
+      "material": "DIP/延性鑄鐵管",
+      "start_coord": [
+        295994.087,
+        2768523.498,
+        8.54
+      ],
+      "end_coord": [
+        296018.311,
+        2768537.821,
+        8.427
+      ],
+      "start_invert_h": 8.54,
+      "end_invert_h": 8.427,
+      "start_depth_m": 2.8,
+      "end_depth_m": 2.91,
+      "slope_pct": 0.4,
+      "flow_direction": 1,
+      "coords": [
+        [
+          295994.087,
+          2768523.498,
+          8.54
+        ],
+        [
+          296018.311,
+          2768537.821,
+          8.427
+        ]
+      ],
+      "source": "New Taipei City Sanitary Sewer (sewer.ntpc.gov.tw)"
+    },
+    {
+      "id": "sanitary_pipe_2102",
+      "layer": "sanitary",
+      "type": "pipe",
+      "name": "污水管線 D=200mm",
+      "diameter_mm": 200,
+      "width_m": 0.2,
+      "height_m": 0.2,
+      "length_m": 17.28,
+      "material": "DIP/延性鑄鐵管",
+      "start_coord": [
+        296041.261,
+        2768530.706,
+        8.54
+      ],
+      "end_coord": [
+        296032.864,
+        2768545.809,
+        8.471
+      ],
+      "start_invert_h": 8.54,
+      "end_invert_h": 8.471,
+      "start_depth_m": 2.8,
+      "end_depth_m": 2.87,
+      "slope_pct": 0.4,
+      "flow_direction": 1,
+      "coords": [
+        [
+          296041.261,
+          2768530.706,
+          8.54
+        ],
+        [
+          296032.864,
+          2768545.809,
+          8.471
+        ]
+      ],
+      "source": "New Taipei City Sanitary Sewer (sewer.ntpc.gov.tw)"
+    },
+    {
+      "id": "sanitary_pipe_2103",
+      "layer": "sanitary",
+      "type": "pipe",
+      "name": "污水管線 D=200mm",
+      "diameter_mm": 200,
+      "width_m": 0.2,
+      "height_m": 0.2,
+      "length_m": 24.48,
+      "material": "DIP/延性鑄鐵管",
+      "start_coord": [
+        296053.657,
+        2768509.599,
+        8.54
+      ],
+      "end_coord": [
+        296041.261,
+        2768530.706,
+        8.442
+      ],
+      "start_invert_h": 8.54,
+      "end_invert_h": 8.442,
+      "start_depth_m": 2.8,
+      "end_depth_m": 2.9,
+      "slope_pct": 0.4,
+      "flow_direction": 1,
+      "coords": [
+        [
+          296053.657,
+          2768509.599,
+          8.54
+        ],
+        [
+          296041.261,
+          2768530.706,
+          8.442
+        ]
+      ],
+      "source": "New Taipei City Sanitary Sewer (sewer.ntpc.gov.tw)"
+    },
+    {
+      "id": "sanitary_pipe_2104",
+      "layer": "sanitary",
+      "type": "pipe",
+      "name": "污水管線 D=200mm",
+      "diameter_mm": 200,
+      "width_m": 0.2,
+      "height_m": 0.2,
+      "length_m": 5.58,
+      "material": "DIP/延性鑄鐵管",
+      "start_coord": [
+        296036.831,
+        2768527.307,
+        8.54
+      ],
+      "end_coord": [
+        296041.261,
+        2768530.706,
+        8.518
+      ],
+      "start_invert_h": 8.54,
+      "end_invert_h": 8.518,
+      "start_depth_m": 2.8,
+      "end_depth_m": 2.82,
+      "slope_pct": 0.4,
+      "flow_direction": 1,
+      "coords": [
+        [
+          296036.831,
+          2768527.307,
+          8.54
+        ],
+        [
+          296041.261,
+          2768530.706,
+          8.518
+        ]
+      ],
+      "source": "New Taipei City Sanitary Sewer (sewer.ntpc.gov.tw)"
+    },
+    {
+      "id": "sanitary_pipe_2105",
+      "layer": "sanitary",
+      "type": "pipe",
+      "name": "污水管線 D=200mm",
+      "diameter_mm": 200,
+      "width_m": 0.2,
+      "height_m": 0.2,
+      "length_m": 8.26,
+      "material": "DIP/延性鑄鐵管",
+      "start_coord": [
+        296040.841,
+        2768520.083,
+        8.54
+      ],
+      "end_coord": [
+        296036.831,
+        2768527.307,
+        8.507
+      ],
+      "start_invert_h": 8.54,
+      "end_invert_h": 8.507,
+      "start_depth_m": 2.8,
+      "end_depth_m": 2.83,
+      "slope_pct": 0.4,
+      "flow_direction": 1,
+      "coords": [
+        [
+          296040.841,
+          2768520.083,
+          8.54
+        ],
+        [
+          296036.831,
+          2768527.307,
+          8.507
+        ]
+      ],
+      "source": "New Taipei City Sanitary Sewer (sewer.ntpc.gov.tw)"
+    },
+    {
+      "id": "sanitary_pipe_2106",
+      "layer": "sanitary",
+      "type": "pipe",
+      "name": "污水管線 D=200mm",
+      "diameter_mm": 200,
+      "width_m": 0.2,
+      "height_m": 0.2,
+      "length_m": 10.3,
+      "material": "DIP/延性鑄鐵管",
+      "start_coord": [
+        296062.796,
+        2768563.558,
+        8.54
+      ],
+      "end_coord": [
+        296053.824,
+        2768558.492,
+        8.499
+      ],
+      "start_invert_h": 8.54,
+      "end_invert_h": 8.499,
+      "start_depth_m": 2.8,
+      "end_depth_m": 2.84,
+      "slope_pct": 0.4,
+      "flow_direction": 1,
+      "coords": [
+        [
+          296062.796,
+          2768563.558,
+          8.54
+        ],
+        [
+          296053.824,
+          2768558.492,
+          8.499
+        ]
+      ],
+      "source": "New Taipei City Sanitary Sewer (sewer.ntpc.gov.tw)"
+    },
+    {
+      "id": "sanitary_pipe_2107",
+      "layer": "sanitary",
+      "type": "pipe",
+      "name": "污水管線 D=200mm",
+      "diameter_mm": 200,
+      "width_m": 0.2,
+      "height_m": 0.2,
+      "length_m": 9.01,
+      "material": "DIP/延性鑄鐵管",
+      "start_coord": [
+        296070.667,
+        2768567.951,
+        8.54
+      ],
+      "end_coord": [
+        296062.796,
+        2768563.558,
+        8.504
+      ],
+      "start_invert_h": 8.54,
+      "end_invert_h": 8.504,
+      "start_depth_m": 2.8,
+      "end_depth_m": 2.84,
+      "slope_pct": 0.4,
+      "flow_direction": 1,
+      "coords": [
+        [
+          296070.667,
+          2768567.951,
+          8.54
+        ],
+        [
+          296062.796,
+          2768563.558,
+          8.504
+        ]
+      ],
+      "source": "New Taipei City Sanitary Sewer (sewer.ntpc.gov.tw)"
+    },
+    {
+      "id": "sanitary_pipe_2108",
+      "layer": "sanitary",
+      "type": "pipe",
+      "name": "污水管線 D=200mm",
+      "diameter_mm": 200,
+      "width_m": 0.2,
+      "height_m": 0.2,
+      "length_m": 9.74,
+      "material": "DIP/延性鑄鐵管",
+      "start_coord": [
+        296062.971,
+        2768568.46,
+        8.54
+      ],
+      "end_coord": [
+        296053.773,
+        2768565.248,
+        8.501
+      ],
+      "start_invert_h": 8.54,
+      "end_invert_h": 8.501,
+      "start_depth_m": 2.8,
+      "end_depth_m": 2.84,
+      "slope_pct": 0.4,
+      "flow_direction": 1,
+      "coords": [
+        [
+          296062.971,
+          2768568.46,
+          8.54
+        ],
+        [
+          296053.773,
+          2768565.248,
+          8.501
+        ]
+      ],
+      "source": "New Taipei City Sanitary Sewer (sewer.ntpc.gov.tw)"
+    },
+    {
+      "id": "sanitary_pipe_2109",
+      "layer": "sanitary",
+      "type": "pipe",
+      "name": "污水管線 D=200mm",
+      "diameter_mm": 200,
+      "width_m": 0.2,
+      "height_m": 0.2,
+      "length_m": 18.39,
+      "material": "DIP/延性鑄鐵管",
+      "start_coord": [
+        296078.919,
+        2768577.621,
+        8.54
+      ],
+      "end_coord": [
+        296062.971,
+        2768568.46,
+        8.466
+      ],
+      "start_invert_h": 8.54,
+      "end_invert_h": 8.466,
+      "start_depth_m": 2.8,
+      "end_depth_m": 2.87,
+      "slope_pct": 0.4,
+      "flow_direction": 1,
+      "coords": [
+        [
+          296078.919,
+          2768577.621,
+          8.54
+        ],
+        [
+          296062.971,
+          2768568.46,
+          8.466
+        ]
+      ],
+      "source": "New Taipei City Sanitary Sewer (sewer.ntpc.gov.tw)"
+    },
+    {
+      "id": "sanitary_pipe_2110",
+      "layer": "sanitary",
+      "type": "pipe",
+      "name": "污水管線 D=200mm",
+      "diameter_mm": 200,
+      "width_m": 0.2,
+      "height_m": 0.2,
+      "length_m": 13.13,
+      "material": "DIP/延性鑄鐵管",
+      "start_coord": [
+        296044.841,
+        2768635.533,
+        8.54
+      ],
+      "end_coord": [
+        296056.125,
+        2768642.251,
+        8.487
+      ],
+      "start_invert_h": 8.54,
+      "end_invert_h": 8.487,
+      "start_depth_m": 2.8,
+      "end_depth_m": 2.85,
+      "slope_pct": 0.4,
+      "flow_direction": 1,
+      "coords": [
+        [
+          296044.841,
+          2768635.533,
+          8.54
+        ],
+        [
+          296056.125,
+          2768642.251,
+          8.487
+        ]
+      ],
+      "source": "New Taipei City Sanitary Sewer (sewer.ntpc.gov.tw)"
+    },
+    {
+      "id": "sanitary_pipe_2131",
+      "layer": "sanitary",
+      "type": "pipe",
+      "name": "污水管線 D=200mm",
+      "diameter_mm": 200,
+      "width_m": 0.2,
+      "height_m": 0.2,
+      "length_m": 8.32,
+      "material": "DIP/延性鑄鐵管",
+      "start_coord": [
+        295994.804,
+        2768607.168,
+        8.54
+      ],
+      "end_coord": [
+        296002.047,
+        2768611.259,
+        8.507
+      ],
+      "start_invert_h": 8.54,
+      "end_invert_h": 8.507,
+      "start_depth_m": 2.8,
+      "end_depth_m": 2.83,
+      "slope_pct": 0.4,
+      "flow_direction": 1,
+      "coords": [
+        [
+          295994.804,
+          2768607.168,
+          8.54
+        ],
+        [
+          296002.047,
+          2768611.259,
+          8.507
+        ]
+      ],
+      "source": "New Taipei City Sanitary Sewer (sewer.ntpc.gov.tw)"
+    },
+    {
+      "id": "sanitary_pipe_2132",
+      "layer": "sanitary",
+      "type": "pipe",
+      "name": "污水管線 D=200mm",
+      "diameter_mm": 200,
+      "width_m": 0.2,
+      "height_m": 0.2,
+      "length_m": 10.45,
+      "material": "DIP/延性鑄鐵管",
+      "start_coord": [
+        295991.497,
+        2768617.081,
+        8.54
+      ],
+      "end_coord": [
+        295994.804,
+        2768607.168,
+        8.498
+      ],
+      "start_invert_h": 8.54,
+      "end_invert_h": 8.498,
+      "start_depth_m": 2.8,
+      "end_depth_m": 2.84,
+      "slope_pct": 0.4,
+      "flow_direction": 1,
+      "coords": [
+        [
+          295991.497,
+          2768617.081,
+          8.54
+        ],
+        [
+          295994.804,
+          2768607.168,
+          8.498
+        ]
+      ],
+      "source": "New Taipei City Sanitary Sewer (sewer.ntpc.gov.tw)"
+    },
+    {
+      "id": "sanitary_pipe_2133",
+      "layer": "sanitary",
+      "type": "pipe",
+      "name": "污水管線 D=200mm",
+      "diameter_mm": 200,
+      "width_m": 0.2,
+      "height_m": 0.2,
+      "length_m": 4.8,
+      "material": "DIP/延性鑄鐵管",
+      "start_coord": [
+        296017.734,
+        2768614.81,
+        8.54
+      ],
+      "end_coord": [
+        296016.276,
+        2768619.387,
+        8.521
+      ],
+      "start_invert_h": 8.54,
+      "end_invert_h": 8.521,
+      "start_depth_m": 2.8,
+      "end_depth_m": 2.82,
+      "slope_pct": 0.4,
+      "flow_direction": 1,
+      "coords": [
+        [
+          296017.734,
+          2768614.81,
+          8.54
+        ],
+        [
+          296016.276,
+          2768619.387,
+          8.521
+        ]
+      ],
+      "source": "New Taipei City Sanitary Sewer (sewer.ntpc.gov.tw)"
+    },
+    {
+      "id": "sanitary_pipe_2134",
+      "layer": "sanitary",
+      "type": "pipe",
+      "name": "污水管線 D=200mm",
+      "diameter_mm": 200,
+      "width_m": 0.2,
+      "height_m": 0.2,
+      "length_m": 18.6,
+      "material": "DIP/延性鑄鐵管",
+      "start_coord": [
+        296033.404,
+        2768624.824,
+        8.54
+      ],
+      "end_coord": [
+        296017.734,
+        2768614.81,
+        8.466
+      ],
+      "start_invert_h": 8.54,
+      "end_invert_h": 8.466,
+      "start_depth_m": 2.8,
+      "end_depth_m": 2.87,
+      "slope_pct": 0.4,
+      "flow_direction": 1,
+      "coords": [
+        [
+          296033.404,
+          2768624.824,
+          8.54
+        ],
+        [
+          296017.734,
+          2768614.81,
+          8.466
+        ]
+      ],
+      "source": "New Taipei City Sanitary Sewer (sewer.ntpc.gov.tw)"
+    },
+    {
+      "id": "sanitary_pipe_2135",
+      "layer": "sanitary",
+      "type": "pipe",
+      "name": "污水管線 D=200mm",
+      "diameter_mm": 200,
+      "width_m": 0.2,
+      "height_m": 0.2,
+      "length_m": 27.17,
+      "material": "DIP/延性鑄鐵管",
+      "start_coord": [
+        296057.335,
+        2768637.689,
+        8.54
+      ],
+      "end_coord": [
+        296033.404,
+        2768624.824,
+        8.431
+      ],
+      "start_invert_h": 8.54,
+      "end_invert_h": 8.431,
+      "start_depth_m": 2.8,
+      "end_depth_m": 2.91,
+      "slope_pct": 0.4,
+      "flow_direction": 1,
+      "coords": [
+        [
+          296057.335,
+          2768637.689,
+          8.54
+        ],
+        [
+          296033.404,
+          2768624.824,
+          8.431
+        ]
+      ],
+      "source": "New Taipei City Sanitary Sewer (sewer.ntpc.gov.tw)"
+    },
+    {
+      "id": "sanitary_pipe_2136",
+      "layer": "sanitary",
+      "type": "pipe",
+      "name": "污水管線 D=200mm",
+      "diameter_mm": 200,
+      "width_m": 0.2,
+      "height_m": 0.2,
+      "length_m": 1.84,
+      "material": "DIP/延性鑄鐵管",
+      "start_coord": [
+        296058.888,
+        2768638.674,
+        8.54
+      ],
+      "end_coord": [
+        296057.335,
+        2768637.689,
+        8.533
+      ],
+      "start_invert_h": 8.54,
+      "end_invert_h": 8.533,
+      "start_depth_m": 2.8,
+      "end_depth_m": 2.81,
+      "slope_pct": 0.4,
+      "flow_direction": 1,
+      "coords": [
+        [
+          296058.888,
+          2768638.674,
+          8.54
+        ],
+        [
+          296057.335,
+          2768637.689,
+          8.533
+        ]
+      ],
+      "source": "New Taipei City Sanitary Sewer (sewer.ntpc.gov.tw)"
+    },
+    {
+      "id": "sanitary_pipe_2137",
+      "layer": "sanitary",
+      "type": "pipe",
+      "name": "污水管線 D=200mm",
+      "diameter_mm": 200,
+      "width_m": 0.2,
+      "height_m": 0.2,
+      "length_m": 2.94,
+      "material": "DIP/延性鑄鐵管",
+      "start_coord": [
+        296015.045,
+        2768613.628,
+        8.54
+      ],
+      "end_coord": [
+        296017.734,
+        2768614.81,
+        8.528
+      ],
+      "start_invert_h": 8.54,
+      "end_invert_h": 8.528,
+      "start_depth_m": 2.8,
+      "end_depth_m": 2.81,
+      "slope_pct": 0.4,
+      "flow_direction": 1,
+      "coords": [
+        [
+          296015.045,
+          2768613.628,
+          8.54
+        ],
+        [
+          296017.734,
+          2768614.81,
+          8.528
+        ]
+      ],
+      "source": "New Taipei City Sanitary Sewer (sewer.ntpc.gov.tw)"
+    },
+    {
+      "id": "sanitary_pipe_2138",
+      "layer": "sanitary",
+      "type": "pipe",
+      "name": "污水管線 D=200mm",
+      "diameter_mm": 200,
+      "width_m": 0.2,
+      "height_m": 0.2,
+      "length_m": 3.6,
+      "material": "DIP/延性鑄鐵管",
+      "start_coord": [
+        296011.811,
+        2768612.054,
+        8.54
+      ],
+      "end_coord": [
+        296015.045,
+        2768613.628,
+        8.526
+      ],
+      "start_invert_h": 8.54,
+      "end_invert_h": 8.526,
+      "start_depth_m": 2.8,
+      "end_depth_m": 2.81,
+      "slope_pct": 0.4,
+      "flow_direction": 1,
+      "coords": [
+        [
+          296011.811,
+          2768612.054,
+          8.54
+        ],
+        [
+          296015.045,
+          2768613.628,
+          8.526
+        ]
+      ],
+      "source": "New Taipei City Sanitary Sewer (sewer.ntpc.gov.tw)"
+    },
+    {
+      "id": "sanitary_pipe_2139",
+      "layer": "sanitary",
+      "type": "pipe",
+      "name": "污水管線 D=200mm",
+      "diameter_mm": 200,
+      "width_m": 0.2,
+      "height_m": 0.2,
+      "length_m": 3.75,
+      "material": "DIP/延性鑄鐵管",
+      "start_coord": [
+        296018.219,
+        2768568.714,
+        8.54
+      ],
+      "end_coord": [
+        296014.586,
+        2768567.773,
+        8.525
+      ],
+      "start_invert_h": 8.54,
+      "end_invert_h": 8.525,
+      "start_depth_m": 2.8,
+      "end_depth_m": 2.81,
+      "slope_pct": 0.4,
+      "flow_direction": 1,
+      "coords": [
+        [
+          296018.219,
+          2768568.714,
+          8.54
+        ],
+        [
+          296014.586,
+          2768567.773,
+          8.525
+        ]
+      ],
+      "source": "New Taipei City Sanitary Sewer (sewer.ntpc.gov.tw)"
+    },
+    {
+      "id": "sanitary_pipe_2140",
+      "layer": "sanitary",
+      "type": "pipe",
+      "name": "污水管線 D=200mm",
+      "diameter_mm": 200,
+      "width_m": 0.2,
+      "height_m": 0.2,
+      "length_m": 6.23,
+      "material": "DIP/延性鑄鐵管",
+      "start_coord": [
+        296021.273,
+        2768563.287,
+        8.54
+      ],
+      "end_coord": [
+        296018.219,
+        2768568.714,
+        8.515
+      ],
+      "start_invert_h": 8.54,
+      "end_invert_h": 8.515,
+      "start_depth_m": 2.8,
+      "end_depth_m": 2.82,
+      "slope_pct": 0.4,
+      "flow_direction": 1,
+      "coords": [
+        [
+          296021.273,
+          2768563.287,
+          8.54
+        ],
+        [
+          296018.219,
+          2768568.714,
+          8.515
+        ]
+      ],
+      "source": "New Taipei City Sanitary Sewer (sewer.ntpc.gov.tw)"
+    },
+    {
+      "id": "sanitary_pipe_2141",
+      "layer": "sanitary",
+      "type": "pipe",
+      "name": "污水管線 D=200mm",
+      "diameter_mm": 200,
+      "width_m": 0.2,
+      "height_m": 0.2,
+      "length_m": 12.41,
+      "material": "DIP/延性鑄鐵管",
+      "start_coord": [
+        296012.188,
+        2768579.565,
+        8.54
+      ],
+      "end_coord": [
+        296018.219,
+        2768568.714,
+        8.49
+      ],
+      "start_invert_h": 8.54,
+      "end_invert_h": 8.49,
+      "start_depth_m": 2.8,
+      "end_depth_m": 2.85,
+      "slope_pct": 0.4,
+      "flow_direction": 1,
+      "coords": [
+        [
+          296012.188,
+          2768579.565,
+          8.54
+        ],
+        [
+          296018.219,
+          2768568.714,
+          8.49
+        ]
+      ],
+      "source": "New Taipei City Sanitary Sewer (sewer.ntpc.gov.tw)"
+    },
+    {
+      "id": "sanitary_pipe_5002",
+      "layer": "sanitary",
+      "type": "pipe",
+      "name": "污水管線 D=400mm",
+      "diameter_mm": 400,
+      "width_m": 0.4,
+      "height_m": 0.4,
+      "length_m": 44.2,
+      "material": "DIP/延性鑄鐵管",
+      "start_coord": [
+        295907.108,
+        2768481.752,
+        8.54
+      ],
+      "end_coord": [
+        295868.305,
+        2768502.915,
+        8.363
+      ],
+      "start_invert_h": 8.54,
+      "end_invert_h": 8.363,
+      "start_depth_m": 2.8,
+      "end_depth_m": 2.98,
+      "slope_pct": 0.4,
+      "flow_direction": 1,
+      "coords": [
+        [
+          295907.108,
+          2768481.752,
+          8.54
+        ],
+        [
+          295868.305,
+          2768502.915,
+          8.363
+        ]
+      ],
+      "source": "New Taipei City Sanitary Sewer (sewer.ntpc.gov.tw)"
+    },
+    {
+      "id": "sanitary_pipe_5003",
+      "layer": "sanitary",
+      "type": "pipe",
+      "name": "污水管線 D=400mm",
+      "diameter_mm": 400,
+      "width_m": 0.4,
+      "height_m": 0.4,
+      "length_m": 23.4,
+      "material": "DIP/延性鑄鐵管",
+      "start_coord": [
+        295868.305,
+        2768502.915,
+        8.54
+      ],
+      "end_coord": [
+        295845.577,
+        2768497.345,
+        8.446
+      ],
+      "start_invert_h": 8.54,
+      "end_invert_h": 8.446,
+      "start_depth_m": 2.8,
+      "end_depth_m": 2.89,
+      "slope_pct": 0.4,
+      "flow_direction": 1,
+      "coords": [
+        [
+          295868.305,
+          2768502.915,
+          8.54
+        ],
+        [
+          295845.577,
+          2768497.345,
+          8.446
+        ]
+      ],
+      "source": "New Taipei City Sanitary Sewer (sewer.ntpc.gov.tw)"
+    },
+    {
+      "id": "sanitary_pipe_5010",
+      "layer": "sanitary",
+      "type": "pipe",
+      "name": "污水管線 D=300mm",
+      "diameter_mm": 300,
+      "width_m": 0.3,
+      "height_m": 0.3,
+      "length_m": 41.4,
+      "material": "DIP/延性鑄鐵管",
+      "start_coord": [
+        295942.819,
+        2768415.888,
+        8.54
+      ],
+      "end_coord": [
+        295911.544,
+        2768443.015,
+        8.374
+      ],
+      "start_invert_h": 8.54,
+      "end_invert_h": 8.374,
+      "start_depth_m": 2.8,
+      "end_depth_m": 2.97,
+      "slope_pct": 0.4,
+      "flow_direction": 1,
+      "coords": [
+        [
+          295942.819,
+          2768415.888,
+          8.54
+        ],
+        [
+          295911.544,
+          2768443.015,
+          8.374
+        ]
+      ],
+      "source": "New Taipei City Sanitary Sewer (sewer.ntpc.gov.tw)"
+    },
+    {
+      "id": "sanitary_pipe_5011",
+      "layer": "sanitary",
+      "type": "pipe",
+      "name": "污水管線 D=300mm",
+      "diameter_mm": 300,
+      "width_m": 0.3,
+      "height_m": 0.3,
+      "length_m": 52.5,
+      "material": "DIP/延性鑄鐵管",
+      "start_coord": [
+        295911.544,
+        2768443.015,
+        8.54
+      ],
+      "end_coord": [
+        295859.169,
+        2768446.635,
+        8.33
+      ],
+      "start_invert_h": 8.54,
+      "end_invert_h": 8.33,
+      "start_depth_m": 2.8,
+      "end_depth_m": 3.01,
+      "slope_pct": 0.4,
+      "flow_direction": 1,
+      "coords": [
+        [
+          295911.544,
+          2768443.015,
+          8.54
+        ],
+        [
+          295859.169,
+          2768446.635,
+          8.33
+        ]
+      ],
+      "source": "New Taipei City Sanitary Sewer (sewer.ntpc.gov.tw)"
+    },
+    {
+      "id": "sanitary_pipe_5039",
+      "layer": "sanitary",
+      "type": "pipe",
+      "name": "污水管線 D=400mm",
+      "diameter_mm": 400,
+      "width_m": 0.4,
+      "height_m": 0.4,
+      "length_m": 59.65,
+      "material": "DIP/延性鑄鐵管",
+      "start_coord": [
+        295997.11,
+        2768415.595,
+        8.54
+      ],
+      "end_coord": [
+        295952.857,
+        2768455.593,
+        8.301
+      ],
+      "start_invert_h": 8.54,
+      "end_invert_h": 8.301,
+      "start_depth_m": 2.8,
+      "end_depth_m": 3.04,
+      "slope_pct": 0.4,
+      "flow_direction": 1,
+      "coords": [
+        [
+          295997.11,
+          2768415.595,
+          8.54
+        ],
+        [
+          295952.857,
+          2768455.593,
+          8.301
+        ]
+      ],
+      "source": "New Taipei City Sanitary Sewer (sewer.ntpc.gov.tw)"
+    },
+    {
+      "id": "sanitary_pipe_5040",
+      "layer": "sanitary",
+      "type": "pipe",
+      "name": "污水管線 D=400mm",
+      "diameter_mm": 400,
+      "width_m": 0.4,
+      "height_m": 0.4,
+      "length_m": 52.7,
+      "material": "DIP/延性鑄鐵管",
+      "start_coord": [
+        295952.857,
+        2768455.593,
+        8.54
+      ],
+      "end_coord": [
+        295907.108,
+        2768481.752,
+        8.329
+      ],
+      "start_invert_h": 8.54,
+      "end_invert_h": 8.329,
+      "start_depth_m": 2.8,
+      "end_depth_m": 3.01,
+      "slope_pct": 0.4,
+      "flow_direction": 1,
+      "coords": [
+        [
+          295952.857,
+          2768455.593,
+          8.54
+        ],
+        [
+          295907.108,
+          2768481.752,
+          8.329
+        ]
+      ],
+      "source": "New Taipei City Sanitary Sewer (sewer.ntpc.gov.tw)"
+    },
+    {
+      "id": "sanitary_pipe_5058",
+      "layer": "sanitary",
+      "type": "pipe",
+      "name": "污水管線 D=800mm",
+      "diameter_mm": 800,
+      "width_m": 0.8,
+      "height_m": 0.8,
+      "length_m": 62.13,
+      "material": "DIP/延性鑄鐵管",
+      "start_coord": [
+        295865.986,
+        2768563.749,
+        8.54
+      ],
+      "end_coord": [
+        295868.457,
+        2768625.834,
+        8.291
+      ],
+      "start_invert_h": 8.54,
+      "end_invert_h": 8.291,
+      "start_depth_m": 2.8,
+      "end_depth_m": 3.05,
+      "slope_pct": 0.4,
+      "flow_direction": 1,
+      "coords": [
+        [
+          295865.986,
+          2768563.749,
+          8.54
+        ],
+        [
+          295868.457,
+          2768625.834,
+          8.291
+        ]
+      ],
+      "source": "New Taipei City Sanitary Sewer (sewer.ntpc.gov.tw)"
+    },
+    {
+      "id": "sanitary_pipe_5059",
+      "layer": "sanitary",
+      "type": "pipe",
+      "name": "污水管線 D=800mm",
+      "diameter_mm": 800,
+      "width_m": 0.8,
+      "height_m": 0.8,
+      "length_m": 46.7,
+      "material": "DIP/延性鑄鐵管",
+      "start_coord": [
+        295868.457,
+        2768625.834,
+        8.54
+      ],
+      "end_coord": [
+        295870.772,
+        2768672.481,
+        8.353
+      ],
+      "start_invert_h": 8.54,
+      "end_invert_h": 8.353,
+      "start_depth_m": 2.8,
+      "end_depth_m": 2.99,
+      "slope_pct": 0.4,
+      "flow_direction": 1,
+      "coords": [
+        [
+          295868.457,
+          2768625.834,
+          8.54
+        ],
+        [
+          295870.772,
+          2768672.481,
+          8.353
+        ]
+      ],
+      "source": "New Taipei City Sanitary Sewer (sewer.ntpc.gov.tw)"
+    },
+    {
+      "id": "sanitary_pipe_5162",
+      "layer": "sanitary",
+      "type": "pipe",
+      "name": "污水管線 D=300mm",
+      "diameter_mm": 300,
+      "width_m": 0.3,
+      "height_m": 0.3,
+      "length_m": 61.4,
+      "material": "DIP/延性鑄鐵管",
+      "start_coord": [
+        296016.276,
+        2768619.387,
+        8.54
+      ],
+      "end_coord": [
+        296069.297,
+        2768650.348,
+        8.294
+      ],
+      "start_invert_h": 8.54,
+      "end_invert_h": 8.294,
+      "start_depth_m": 2.8,
+      "end_depth_m": 3.05,
+      "slope_pct": 0.4,
+      "flow_direction": 1,
+      "coords": [
+        [
+          296016.276,
+          2768619.387,
+          8.54
+        ],
+        [
+          296069.297,
+          2768650.348,
+          8.294
+        ]
+      ],
+      "source": "New Taipei City Sanitary Sewer (sewer.ntpc.gov.tw)"
+    },
+    {
+      "id": "sanitary_pipe_5163",
+      "layer": "sanitary",
+      "type": "pipe",
+      "name": "污水管線 D=300mm",
+      "diameter_mm": 300,
+      "width_m": 0.3,
+      "height_m": 0.3,
+      "length_m": 54.79,
+      "material": "DIP/延性鑄鐵管",
+      "start_coord": [
+        296053.773,
+        2768565.248,
+        8.54
+      ],
+      "end_coord": [
+        296104.172,
+        2768586.751,
+        8.321
+      ],
+      "start_invert_h": 8.54,
+      "end_invert_h": 8.321,
+      "start_depth_m": 2.8,
+      "end_depth_m": 3.02,
+      "slope_pct": 0.4,
+      "flow_direction": 1,
+      "coords": [
+        [
+          296053.773,
+          2768565.248,
+          8.54
+        ],
+        [
+          296104.172,
+          2768586.751,
+          8.321
+        ]
+      ],
+      "source": "New Taipei City Sanitary Sewer (sewer.ntpc.gov.tw)"
+    }
+  ],
+  "query_timestamp": "2026-10-31T07:51:56.815793+00:00",
+  "cached": false
+}

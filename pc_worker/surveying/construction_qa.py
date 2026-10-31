@@ -70,6 +70,8 @@ class ConstructionQAMixin:
         - Plumb Tilt Ratio (1:N), tilt angle (degrees), and mm/m deviation
         - ASTM E1155 approximation (Floor Flatness F_F and Floor Levelness F_L)
         """
+        if not isinstance(payload, dict):
+            payload = {}
         scan_id = str(payload.get("scan_id") or "").strip()
         scan = self.db.get_scan(scan_id) if hasattr(self, "db") and self.db else None
         if not scan and hasattr(self, "_resolve_scan_record"):
@@ -451,6 +453,8 @@ class ConstructionQAMixin:
         - Evaluates depth of cover from ground/design surface
         - Exports detailed CSV and 3D AutoCAD DXF
         """
+        if not isinstance(payload, dict):
+            payload = {}
         scan_id = str(payload.get("scan_id") or "").strip()
         scan = self.db.get_scan(scan_id) if hasattr(self, "db") and self.db else None
         if not scan and hasattr(self, "_resolve_scan_record"):
@@ -714,6 +718,8 @@ class ConstructionQAMixin:
         - Conserves mass across Bank Volume (BCM), Loose Volume (LCM), Compacted Volume (CCM)
         - Computes dump truck haulage trips and site net balance
         """
+        if not isinstance(payload, dict):
+            payload = {}
         baseline_id = str(payload.get("baseline_scan_id") or payload.get("scan_id_base") or "").strip()
         compare_id = str(payload.get("compare_scan_id") or payload.get("scan_id_compare") or payload.get("scan_id") or "").strip()
 
@@ -740,9 +746,17 @@ class ConstructionQAMixin:
         try:
             if hasattr(self, "_load_or_build_scan_dsm"):
                 dsm_base = self._load_or_build_scan_dsm(scan_base)
-                dsm_comp = self._load_or_build_scan_dsm(scan_comp)
+                if baseline_id and compare_id and baseline_id == compare_id:
+                    dsm_comp = dsm_base
+                else:
+                    dsm_comp = self._load_or_build_scan_dsm(scan_comp)
         except Exception:
             pass
+
+        if dsm_base is not None:
+            ce = float(dsm_base.get("ce", ce))
+            cn = float(dsm_base.get("cn", cn))
+            ch = float(dsm_base.get("ch", ch))
 
         # Polygon boundary
         raw_poly = payload.get("polygon") or payload.get("roi_polygon") or payload.get("points")
@@ -804,6 +818,9 @@ class ConstructionQAMixin:
         deltas: List[float] = []
         heatmap_cells: List[Dict[str, Any]] = []
 
+        is_self_compare = (baseline_id == compare_id)
+        has_real_dsm = (dsm_base is not None or dsm_comp is not None)
+
         curr_n = n_min + grid_res * 0.5
         while curr_n <= n_max:
             curr_e = e_min + grid_res * 0.5
@@ -819,22 +836,42 @@ class ConstructionQAMixin:
                         if vc and math.isfinite(zc_val):
                             z_c = float(zc_val)
 
-                    # Synthetic analytical simulation if DSM not present (e.g. synthetic unit test)
-                    if z_b is None:
-                        z_b = ch + 0.05 * (curr_e - ce)
-                    if z_c is None:
-                        # Slight mound / excavation
-                        dist_c = math.hypot(curr_e - ce, curr_n - cn)
-                        z_c = z_b + 0.35 * max(0.0, 1.0 - (dist_c / 8.0))
+                    if is_self_compare:
+                        if has_real_dsm:
+                            if z_b is None and z_c is not None:
+                                z_b = z_c
+                            elif z_c is None and z_b is not None:
+                                z_c = z_b
+                            if z_b is None:
+                                curr_e += grid_res
+                                continue
+                            z_c = z_b
+                        else:
+                            if z_b is None:
+                                z_b = ch + 0.05 * (curr_e - ce)
+                            z_c = z_b
+                    elif has_real_dsm:
+                        # Real DSMs: skip cell if either epoch has NoData/outside DSM
+                        if z_b is None or z_c is None:
+                            curr_e += grid_res
+                            continue
+                    else:
+                        # Synthetic analytical simulation when neither scan has DSM on disk
+                        if z_b is None:
+                            z_b = ch + 0.05 * (curr_e - ce)
+                        if z_c is None:
+                            dist_c = math.hypot(curr_e - ce, curr_n - cn)
+                            z_c = z_b + 0.35 * max(0.0, 1.0 - (dist_c / 8.0))
 
-                    dz = z_c - z_b
+                    dz = 0.0 if is_self_compare else (z_c - z_b)
                     deltas.append(dz)
                     valid_cells += 1
 
-                    if dz > 0:
-                        total_fill_m3 += dz * cell_area
-                    else:
-                        total_cut_m3 += abs(dz) * cell_area
+                    if not is_self_compare:
+                        if dz > 0:
+                            total_fill_m3 += dz * cell_area
+                        else:
+                            total_cut_m3 += abs(dz) * cell_area
 
                     # Downsample cell preview for Three.js rendering
                     if valid_cells % max(1, (int((e_max - e_min) * (n_max - n_min) / cell_area) // 800)) == 0:
@@ -853,42 +890,62 @@ class ConstructionQAMixin:
                 curr_e += grid_res
             curr_n += grid_res
 
-        net_delta_v = round(total_fill_m3 - total_cut_m3, 2)
-        total_cut_bcm = round(total_cut_m3, 2)
-        total_fill_ccm = round(total_fill_m3, 2)
-
-        # Mass conservation:
-        # Cut (BCM) -> Loose (LCM) -> Mass
-        cut_lcm = round(total_cut_bcm * (1.0 + swell_factor), 2)
-        cut_tonnes = round(total_cut_bcm * bank_density, 2)
-
-        # Fill (CCM) -> Bank (BCM) -> Loose (LCM) -> Mass
-        fill_bcm = round(total_fill_ccm / max(0.1, 1.0 - shrink_factor), 2)
-        fill_lcm = round(fill_bcm * (1.0 + swell_factor), 2)
-        fill_tonnes = round(total_fill_ccm * compact_density, 2)
-
-        # Site balance
-        if total_cut_bcm > fill_bcm:
-            balance_type = "Surplus Cut (Export)"
-            net_haul_bcm = round(total_cut_bcm - fill_bcm, 2)
-            net_haul_lcm = round(net_haul_bcm * (1.0 + swell_factor), 2)
-            net_haul_tonnes = round(net_haul_bcm * bank_density, 2)
-        elif fill_bcm > total_cut_bcm:
-            balance_type = "Deficit Fill (Import)"
-            net_haul_bcm = round(fill_bcm - total_cut_bcm, 2)
-            net_haul_lcm = round(net_haul_bcm * (1.0 + swell_factor), 2)
-            net_haul_tonnes = round(net_haul_bcm * bank_density, 2)
-        else:
+        if is_self_compare:
+            total_cut_m3 = 0.0
+            total_fill_m3 = 0.0
+            net_delta_v = 0.0
+            total_cut_bcm = 0.0
+            total_fill_ccm = 0.0
+            cut_lcm = 0.0
+            cut_tonnes = 0.0
+            fill_bcm = 0.0
+            fill_lcm = 0.0
+            fill_tonnes = 0.0
             balance_type = "Balanced Site (Zero Net Haul)"
             net_haul_bcm = 0.0
             net_haul_lcm = 0.0
             net_haul_tonnes = 0.0
+            governing_trips = 0
+            trips_by_vol = 0
+            trips_by_weight = 0
+            limiting_factor = "Volume"
+        else:
+            net_delta_v = round(total_fill_m3 - total_cut_m3, 2)
+            total_cut_bcm = round(total_cut_m3, 2)
+            total_fill_ccm = round(total_fill_m3, 2)
 
-        # Haulage trips
-        trips_by_vol = math.ceil(net_haul_lcm / max(0.1, truck_cap_m3)) if net_haul_lcm > 0 else 0
-        trips_by_weight = math.ceil(net_haul_tonnes / max(0.1, truck_payload_t)) if net_haul_tonnes > 0 else 0
-        governing_trips = max(trips_by_vol, trips_by_weight)
-        limiting_factor = "Volume" if trips_by_vol >= trips_by_weight else "Weight"
+            # Mass conservation:
+            # Cut (BCM) -> Loose (LCM) -> Mass
+            cut_lcm = round(total_cut_bcm * (1.0 + swell_factor), 2)
+            cut_tonnes = round(total_cut_bcm * bank_density, 2)
+
+            # Fill (CCM) -> Bank (BCM) -> Loose (LCM) -> Mass
+            fill_bcm = round(total_fill_ccm / max(0.1, 1.0 - shrink_factor), 2)
+            fill_lcm = round(fill_bcm * (1.0 + swell_factor), 2)
+            fill_tonnes = round(total_fill_ccm * compact_density, 2)
+
+            # Site balance
+            if total_cut_bcm > fill_bcm:
+                balance_type = "Surplus Cut (Export)"
+                net_haul_bcm = round(total_cut_bcm - fill_bcm, 2)
+                net_haul_lcm = round(net_haul_bcm * (1.0 + swell_factor), 2)
+                net_haul_tonnes = round(net_haul_bcm * bank_density, 2)
+            elif fill_bcm > total_cut_bcm:
+                balance_type = "Deficit Fill (Import)"
+                net_haul_bcm = round(fill_bcm - total_cut_bcm, 2)
+                net_haul_lcm = round(net_haul_bcm * (1.0 + swell_factor), 2)
+                net_haul_tonnes = round(net_haul_bcm * bank_density, 2)
+            else:
+                balance_type = "Balanced Site (Zero Net Haul)"
+                net_haul_bcm = 0.0
+                net_haul_lcm = 0.0
+                net_haul_tonnes = 0.0
+
+            # Haulage trips
+            trips_by_vol = math.ceil(net_haul_lcm / max(0.1, truck_cap_m3)) if net_haul_lcm > 0 else 0
+            trips_by_weight = math.ceil(net_haul_tonnes / max(0.1, truck_payload_t)) if net_haul_tonnes > 0 else 0
+            governing_trips = max(trips_by_vol, trips_by_weight)
+            limiting_factor = "Volume" if trips_by_vol >= trips_by_weight else "Weight"
 
         min_dz = round(float(np.min(deltas)), 3) if deltas else 0.0
         max_dz = round(float(np.max(deltas)), 3) if deltas else 0.0
@@ -954,6 +1011,8 @@ class ConstructionQAMixin:
         - 3D AutoCAD DXF R12 point & text entities
         - Printable HTML Construction Field Sheet with sign-off block and checklist
         """
+        if not isinstance(payload, dict):
+            payload = {}
         scan_id = str(payload.get("scan_id") or "").strip()
         project_name = str(payload.get("project_name") or "GatheringScans Civil Project").strip()
         surveyor = str(payload.get("surveyor") or payload.get("operator") or "Site Surveyor").strip()

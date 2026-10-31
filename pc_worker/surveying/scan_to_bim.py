@@ -248,12 +248,12 @@ def _generate_ellipsoid_mesh(
     verts.append((cx, cy, cz + rz))
     north_pole_idx = len(verts) - 1
 
-    # Connect south pole to first ring
+    # Connect south pole to first ring (outward CCW normals)
     for v in range(lon_segs):
         nxt = (v + 1) % lon_segs
-        faces.append((0, 1 + v, 1 + nxt))
+        faces.append((0, 1 + nxt, 1 + v))
 
-    # Connect intermediate rings
+    # Connect intermediate rings (outward CCW normals)
     for u in range(lat_segs - 2):
         r0 = 1 + u * lon_segs
         r1 = 1 + (u + 1) * lon_segs
@@ -263,14 +263,14 @@ def _generate_ellipsoid_mesh(
             p1 = r0 + nxt
             p2 = r1 + v
             p3 = r1 + nxt
-            faces.append((p0, p2, p3))
-            faces.append((p0, p3, p1))
+            faces.append((p0, p1, p3))
+            faces.append((p0, p3, p2))
 
-    # Connect top ring to north pole
+    # Connect top ring to north pole (outward CCW normals)
     last_ring_start = 1 + (lat_segs - 2) * lon_segs
     for v in range(lon_segs):
         nxt = (v + 1) % lon_segs
-        faces.append((north_pole_idx, last_ring_start + nxt, last_ring_start + v))
+        faces.append((north_pole_idx, last_ring_start + v, last_ring_start + nxt))
 
     return {
         "vertices": verts,
@@ -352,42 +352,58 @@ def _generate_extruded_polygon_mesh(
         return {"vertices": [], "faces": []}
 
     pts_2d = [(p[0], p[1]) for p in pts]
+    if _polygon_area_2d(pts_2d) < 0:
+        pts.reverse()
+        pts_2d = [(p[0], p[1]) for p in pts]
     top_faces = _triangulate_polygon_earclipping(pts_2d)
 
     sign = -1.0 if extrude_direction == "down" else 1.0
     dz = float(extrusion_depth) * sign
 
     verts: List[Tuple[float, float, float]] = []
-    # Top vertices: 0 .. n-1
+    # Vertices 0 .. n-1: top for down, bottom for up
     for p in pts:
         verts.append((p[0], p[1], p[2]))
 
-    # Bottom vertices: n .. 2n-1
+    # Vertices n .. 2n-1: bottom for down, top for up
     for p in pts:
         verts.append((p[0], p[1], p[2] + dz))
 
     faces: List[Tuple[int, int, int]] = []
 
-    # Top cap faces
-    faces.extend(top_faces)
-
-    # Bottom cap faces (reversed winding for outward normals)
-    for a, b, c in top_faces:
-        faces.append((c + n, b + n, a + n))
-
-    # Side wall skirts
-    for i in range(n):
-        nxt = (i + 1) % n
-        t0 = i
-        t1 = nxt
-        b0 = i + n
-        b1 = nxt + n
-        if sign < 0:
-            faces.append((t0, t1, b1))
-            faces.append((t0, b1, b0))
-        else:
-            faces.append((t0, b1, t1))
+    if sign < 0:
+        # Downward extrusion: 0..n-1 is top (higher Z), n..2n-1 is bottom (lower Z)
+        # Top cap facing +Z (outward CCW)
+        faces.extend(top_faces)
+        # Bottom cap facing -Z (outward CCW from exterior)
+        for a, b, c in top_faces:
+            faces.append((c + n, b + n, a + n))
+        # Side wall skirts
+        for i in range(n):
+            nxt = (i + 1) % n
+            t0 = i
+            t1 = nxt
+            b0 = i + n
+            b1 = nxt + n
             faces.append((t0, b0, b1))
+            faces.append((t0, b1, t1))
+    else:
+        # Upward extrusion: 0..n-1 is bottom (lower Z), n..2n-1 is top (higher Z)
+        # Bottom cap facing -Z
+        for a, b, c in top_faces:
+            faces.append((c, b, a))
+        # Top cap facing +Z
+        for a, b, c in top_faces:
+            faces.append((a + n, b + n, c + n))
+        # Side wall skirts
+        for i in range(n):
+            nxt = (i + 1) % n
+            b0 = i
+            b1 = nxt
+            t0 = i + n
+            t1 = nxt + n
+            faces.append((b0, b1, t1))
+            faces.append((b0, t1, t0))
 
     return {
         "vertices": verts,
@@ -555,15 +571,15 @@ def _generate_pipe_cylinder_mesh(
     c2_idx = len(verts)
     verts.append((x2, y2, z2))
 
-    # Sides
+    # Sides (oppose caps for manifold edges and outward CCW normals)
     for i in range(radial_segments):
         nxt = (i + 1) % radial_segments
         b0 = i
         b1 = nxt
         t0 = i + radial_segments
         t1 = nxt + radial_segments
-        faces.append((b0, t0, t1))
-        faces.append((b0, t1, b1))
+        faces.append((b0, b1, t1))
+        faces.append((b0, t1, t0))
 
     # Caps
     for i in range(radial_segments):
@@ -575,6 +591,46 @@ def _generate_pipe_cylinder_mesh(
         "vertices": verts,
         "faces": faces,
     }
+
+
+def _safe_float(val: Any, default: float = 0.0) -> float:
+    try:
+        f = float(val)
+        return f if math.isfinite(f) else default
+    except (ValueError, TypeError):
+        return default
+
+
+def _safe_coord_list(raw: Any, min_len: int = 2) -> List[Tuple[float, float, float]]:
+    if not isinstance(raw, (list, tuple)):
+        return []
+    res: List[Tuple[float, float, float]] = []
+    for item in raw:
+        if not isinstance(item, (list, tuple)) or len(item) < 2:
+            continue
+        try:
+            x = float(item[0])
+            y = float(item[1])
+            z = float(item[2]) if len(item) > 2 else 0.0
+            if math.isfinite(x) and math.isfinite(y) and math.isfinite(z):
+                res.append((x, y, z))
+        except (ValueError, TypeError):
+            continue
+    return res if len(res) >= min_len else []
+
+
+def _safe_coord_point(raw: Any, default: Tuple[float, float, float] = (0.0, 0.0, 0.0)) -> Tuple[float, float, float]:
+    if not isinstance(raw, (list, tuple)) or len(raw) < 2:
+        return default
+    try:
+        x = float(raw[0])
+        y = float(raw[1])
+        z = float(raw[2]) if len(raw) > 2 else default[2]
+        if math.isfinite(x) and math.isfinite(y) and math.isfinite(z):
+            return (x, y, z)
+    except (ValueError, TypeError):
+        pass
+    return default
 
 
 # ---------------------------------------------------------------------------

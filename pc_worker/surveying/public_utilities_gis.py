@@ -252,8 +252,45 @@ class PublicUtilitiesGISMixin:
                 with open(cache_file, "r", encoding="utf-8") as f:
                     cached_data = json.load(f)
                     if cached_data and isinstance(cached_data.get("features"), list):
-                        cached_data["cached"] = True
-                        return cached_data
+                        raw_features = cached_data["features"]
+                        # Sanitize any legacy sentinel slopes in cached features
+                        for f_item in raw_features:
+                            if "slope_pct" in f_item and f_item["slope_pct"] is not None:
+                                s_val = safe_float(f_item["slope_pct"])
+                                if s_val is not None and (abs(s_val) >= 900.0 or not (-100.0 < s_val < 100.0)):
+                                    z1 = safe_float(f_item.get("start_invert_h"))
+                                    z2 = safe_float(f_item.get("end_invert_h"))
+                                    l_m = safe_float(f_item.get("length_m"), 10.0) or 10.0
+                                    if z1 is not None and z2 is not None and l_m > 0:
+                                        f_item["slope_pct"] = round(((z1 - z2) / max(0.1, l_m)) * 100.0, 3)
+                                    else:
+                                        f_item["slope_pct"] = 0.5
+
+                        req_set = set(requested_layers)
+                        filtered_features = [
+                            f_item for f_item in raw_features
+                            if f_item.get("layer") in req_set
+                        ]
+                        layer_counts = {k: 0 for k in UTILITY_LAYERS.keys()}
+                        total_pipe_length_m = 0.0
+                        total_structures = 0
+                        for f_item in filtered_features:
+                            lyr = f_item.get("layer")
+                            if lyr in layer_counts:
+                                layer_counts[lyr] += 1
+                            if f_item.get("type") in ("pipe", "box_culvert"):
+                                total_pipe_length_m += float(f_item.get("length_m") or 0.0)
+                            elif f_item.get("type") in ("manhole", "catch_basin", "hydrant", "pole"):
+                                total_structures += 1
+
+                        filtered_res = dict(cached_data)
+                        filtered_res["features"] = filtered_features
+                        filtered_res["layer_counts"] = layer_counts
+                        filtered_res["total_features"] = len(filtered_features)
+                        filtered_res["total_pipe_length_m"] = round(total_pipe_length_m, 2)
+                        filtered_res["total_structures"] = total_structures
+                        filtered_res["cached"] = True
+                        return filtered_res
             except Exception:
                 pass
 
@@ -311,11 +348,44 @@ class PublicUtilitiesGISMixin:
             "cached": False,
         }
 
-        # Save to cache if features found
+        # Save to cache if features found (merge with existing cache to preserve unqueried layers)
         if all_features:
             try:
+                merged_features = list(all_features)
+                if os.path.exists(cache_file):
+                    try:
+                        with open(cache_file, "r", encoding="utf-8") as f_prev:
+                            prev_data = json.load(f_prev)
+                            if prev_data and isinstance(prev_data.get("features"), list):
+                                existing_unqueried = [
+                                    f for f in prev_data["features"]
+                                    if f.get("layer") not in set(requested_layers)
+                                ]
+                                merged_features.extend(existing_unqueried)
+                    except Exception:
+                        pass
+
+                full_layer_counts = {k: 0 for k in UTILITY_LAYERS.keys()}
+                full_pipe_len = 0.0
+                full_structs = 0
+                for f in merged_features:
+                    lyr = f.get("layer")
+                    if lyr in full_layer_counts:
+                        full_layer_counts[lyr] += 1
+                    if f.get("type") in ("pipe", "box_culvert"):
+                        full_pipe_len += float(f.get("length_m") or 0.0)
+                    elif f.get("type") in ("manhole", "catch_basin", "hydrant", "pole"):
+                        full_structs += 1
+
+                cache_payload = dict(result)
+                cache_payload["features"] = merged_features
+                cache_payload["layer_counts"] = full_layer_counts
+                cache_payload["total_features"] = len(merged_features)
+                cache_payload["total_pipe_length_m"] = round(full_pipe_len, 2)
+                cache_payload["total_structures"] = full_structs
+
                 with open(cache_file, "w", encoding="utf-8") as f:
-                    json.dump(result, f, ensure_ascii=False, indent=2)
+                    json.dump(cache_payload, f, ensure_ascii=False, indent=2)
             except Exception:
                 pass
 
@@ -379,7 +449,14 @@ class PublicUtilitiesGISMixin:
                     z2 = round(z1 - length_m * 0.005, 3)
 
                 slope_calc = round(((z1 - z2) / max(0.1, length_m)) * 100.0, 3)
-                slope = safe_float(attrs.get("P_SLOPE"), slope_calc) or slope_calc
+                raw_slope = safe_float(attrs.get("P_SLOPE"))
+                # Sanitize null sentinel values (e.g. -9999, -9999.0, 9999) or extreme values outside civil range
+                if raw_slope is not None and math.isfinite(raw_slope) and -100.0 < raw_slope < 100.0 and abs(raw_slope) < 900.0:
+                    slope = round(raw_slope, 3)
+                elif -25.0 <= slope_calc <= 25.0:
+                    slope = slope_calc
+                else:
+                    slope = round(max(-25.0, min(25.0, slope_calc)), 3)
 
                 # Assemble 3D coordinates for all vertices
                 coords_3d = []
@@ -598,7 +675,30 @@ class PublicUtilitiesGISMixin:
         Parses MOI NGIS GML 3.1.1, GeoJSON, KML, or CSV utility pipeline files.
         Categorizes features into the 10 standard utility layers with true coordinates and dimensions.
         """
-        file_content = payload.get("file_content") or ""
+        if not isinstance(payload, dict):
+            return {
+                "status": "error",
+                "error": "Payload must be a JSON object dictionary.",
+                "http_status": 400,
+                "features": [],
+            }
+
+        raw_fc = payload.get("file_content")
+        # Validate that file_content is string, bytes, or None (if file_path is provided)
+        if raw_fc is not None and not isinstance(raw_fc, (str, bytes, bytearray)):
+            return {
+                "status": "error",
+                "error": "Invalid file_content type: payload must be a string or bytes.",
+                "http_status": 400,
+                "features": [],
+            }
+
+        file_content: str = ""
+        if isinstance(raw_fc, (bytes, bytearray)):
+            file_content = raw_fc.decode("utf-8", errors="replace")
+        elif isinstance(raw_fc, str):
+            file_content = raw_fc
+
         filename = str(payload.get("filename") or "uploaded_utilities.gml").lower()
 
         if not file_content and payload.get("file_path"):
@@ -1068,27 +1168,53 @@ class PublicUtilitiesGISMixin:
         dxf_lines.extend(["0", "ENDTAB", "0", "ENDSEC", "0", "SECTION", "2", "ENTITIES"])
 
         for f in features:
+            if not isinstance(f, dict):
+                continue
             lyr_name = f"UTIL_{str(f.get('layer', 'storm')).upper()}"
             pts = f.get("coords") or []
-            if len(pts) >= 2:
+            if isinstance(pts, list) and len(pts) >= 2:
                 for i in range(len(pts) - 1):
                     p1, p2 = pts[i], pts[i+1]
+                    if not isinstance(p1, (list, tuple)) or not isinstance(p2, (list, tuple)):
+                        continue
+                    if len(p1) < 2 or len(p2) < 2:
+                        continue
+                    try:
+                        x1 = float(p1[0])
+                        y1 = float(p1[1])
+                        z1 = float(p1[2]) if len(p1) > 2 and p1[2] is not None and math.isfinite(float(p1[2])) else 0.0
+                        x2 = float(p2[0])
+                        y2 = float(p2[1])
+                        z2 = float(p2[2]) if len(p2) > 2 and p2[2] is not None and math.isfinite(float(p2[2])) else 0.0
+                    except (ValueError, TypeError):
+                        continue
                     dxf_lines.extend([
                         "0", "LINE",
                         "8", lyr_name,
-                        "10", f"{p1[0]:.3f}", "20", f"{p1[1]:.3f}", "30", f"{p1[2]:.3f}",
-                        "11", f"{p2[0]:.3f}", "21", f"{p2[1]:.3f}", "31", f"{p2[2]:.3f}",
+                        "10", f"{x1:.3f}", "20", f"{y1:.3f}", "30", f"{z1:.3f}",
+                        "11", f"{x2:.3f}", "21", f"{y2:.3f}", "31", f"{z2:.3f}",
                     ])
             elif f.get("coord"):
                 pt = f["coord"]
-                dxf_lines.extend([
-                    "0", "POINT",
-                    "8", lyr_name,
-                    "10", f"{pt[0]:.3f}", "20", f"{pt[1]:.3f}", "30", f"{pt[2]:.3f}",
-                ])
+                if isinstance(pt, (list, tuple)) and len(pt) >= 2:
+                    try:
+                        x_pt = float(pt[0])
+                        y_pt = float(pt[1])
+                        z_pt = float(pt[2]) if len(pt) > 2 and pt[2] is not None and math.isfinite(float(pt[2])) else 0.0
+                    except (ValueError, TypeError):
+                        continue
+                    dxf_lines.extend([
+                        "0", "POINT",
+                        "8", lyr_name,
+                        "10", f"{x_pt:.3f}", "20", f"{y_pt:.3f}", "30", f"{z_pt:.3f}",
+                    ])
 
         dxf_lines.extend(["0", "ENDSEC", "0", "EOF"])
         with open(out_path, "w", encoding="utf-8") as out_f:
             out_f.write("\n".join(dxf_lines))
 
         return {"status": "ok", "format": "dxf", "filename": fname, "url": f"/api/reports/{fname}", "feature_count": len(features)}
+
+    # Aliases for robust API integration
+    parse_uploaded_utility_file = parse_utilities_file
+    export_utilities_dxf = export_utilities_dataset

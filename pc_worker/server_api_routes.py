@@ -133,6 +133,10 @@ class ServerWriteRoutesMixin:
             self.send_json({"error": f"Invalid JSON: {e}"}, status=400)
             return
 
+        if not isinstance(payload, dict):
+            self.send_json({"error": "Payload must be a JSON object"}, status=400)
+            return
+
         # 0. Google Drive .3tz Cloud Manifest Sync & Auth (handled directly on both VPS and PC)
         if path == "/api/cloud-manifest/sync":
             t_key = self.headers.get("X-Tunnel-Key", "")
@@ -1127,8 +1131,13 @@ class ServerWriteRoutesMixin:
                     if not ok_s or not (link_s and link_s.get("allow_measurements", True)):
                         self.send_json({"error": "Utilities parsing is disabled for this external share link."}, status=403)
                         return
+                raw_fc = payload.get("file_content")
+                if raw_fc is not None and not isinstance(raw_fc, (str, bytes, bytearray)):
+                    self.send_json({"error": "Invalid file_content: payload must be a string or bytes.", "status": "error", "features": []}, status=400)
+                    return
                 res = SURVEY.parse_utilities_file(payload)
-                self.send_json(res)
+                http_status = res.get("http_status", 200) if isinstance(res, dict) else 200
+                self.send_json(res, status=http_status)
                 return
 
             if path in ("/api/survey/utilities-export", "/api/surveying/utilities-export"):
