@@ -650,17 +650,19 @@ class ScanToBimMixin:
         scan_id = str(payload.get("scan_id") or "").strip()
         if not scan_id:
             return {"ok": False, "status": "error", "error": "Missing scan_id"}
+        if ".." in scan_id or "/" in scan_id or "\\" in scan_id:
+            raise ValueError("Invalid scan_id")
 
         categories = payload.get("categories")
         if not isinstance(categories, list) or not categories:
             categories = ["buildings", "walls", "roads", "trees", "water", "pipes"]
         active_cats = set(str(c).lower().strip() for c in categories)
 
-        tolerance_m = max(0.05, float(payload.get("tolerance_m") or 0.25))
-        wall_thickness_m = max(0.10, float(payload.get("wall_thickness_m") or 0.25))
-        pipe_dia_m = max(0.05, float(payload.get("pipe_default_dia_m") or 0.30))
-        min_wall_len = max(0.5, float(payload.get("min_wall_length_m") or 1.0))
-        min_tree_h = max(0.5, float(payload.get("min_tree_height_m") or 1.5))
+        tolerance_m = max(0.05, _safe_float(payload.get("tolerance_m"), 0.25))
+        wall_thickness_m = max(0.10, _safe_float(payload.get("wall_thickness_m"), 0.25))
+        pipe_dia_m = max(0.05, _safe_float(payload.get("pipe_default_dia_m"), 0.30))
+        min_wall_len = max(0.5, _safe_float(payload.get("min_wall_length_m"), 1.0))
+        min_tree_h = max(0.5, _safe_float(payload.get("min_tree_height_m"), 1.5))
 
         # Retrieve categorization
         cat_data = payload.get("categorization_data") or payload.get("classified_objects")
@@ -684,9 +686,9 @@ class ScanToBimMixin:
             }
 
         anchor = cat_data.get("anchor_twd97") or {"e": 0.0, "n": 0.0, "h": 0.0}
-        anc_e = float(anchor.get("e") or 0.0)
-        anc_n = float(anchor.get("n") or 0.0)
-        anc_h = float(anchor.get("h") or 0.0)
+        anc_e = _safe_float(anchor.get("e"), 0.0)
+        anc_n = _safe_float(anchor.get("n"), 0.0)
+        anc_h = _safe_float(anchor.get("h"), 0.0)
 
         def _to_studio_local(pt: Tuple[float, float, float]) -> Tuple[float, float, float]:
             """Convert (E, N, H) to Three.js studio coordinates (x = dE, y = dH, z = -dN)."""
@@ -699,65 +701,73 @@ class ScanToBimMixin:
         # -------------------------------------------------------------------
         if "walls" in active_cats:
             walls_list = cat_data.get("walls") or []
+            if not isinstance(walls_list, list):
+                walls_list = []
             for w in walls_list:
-                w_id = str(w.get("id") or "WL")
-                length_m = float(w.get("length_m") or 0.0)
-                if length_m < min_wall_len:
+                if not isinstance(w, dict):
                     continue
+                try:
+                    w_id = str(w.get("id") or "WL")
+                    length_m = _safe_float(w.get("length_m"), 0.0)
+                    if length_m < min_wall_len:
+                        continue
 
-                b_poly = w.get("base_polyline_twd97") or []
-                t_poly = w.get("top_polyline_twd97") or []
-                mean_h = float(w.get("mean_height_m") or w.get("height_m") or 2.0)
-                azimuth = float(w.get("azimuth_deg") or 0.0)
-                c_twd = w.get("center_twd97") or [anc_e, anc_n, anc_h]
+                    b_poly = _safe_coord_list(w.get("base_polyline_twd97"), min_len=2)
+                    t_poly = _safe_coord_list(w.get("top_polyline_twd97"), min_len=2)
+                    mean_h = _safe_float(w.get("mean_height_m") or w.get("height_m"), 2.0)
+                    azimuth = _safe_float(w.get("azimuth_deg"), 0.0)
+                    c_twd = _safe_coord_point(w.get("center_twd97"), default=(anc_e, anc_n, anc_h))
 
-                mesh_data: Dict[str, Any] = {"vertices": [], "faces": []}
-                if len(b_poly) >= 2 and len(t_poly) >= 2:
-                    mesh_data = _generate_extruded_wall_prism_mesh(
-                        [tuple(p) for p in b_poly],
-                        [tuple(p) for p in t_poly],
-                        thickness_m=wall_thickness_m,
-                    )
-                else:
-                    # Bounding prism fallback
-                    mesh_data = _generate_box_mesh(
-                        (c_twd[0], c_twd[1], c_twd[2]),
-                        dx=length_m,
-                        dy=wall_thickness_m,
-                        dz=mean_h,
-                        azimuth_deg=azimuth,
-                    )
+                    mesh_data: Dict[str, Any] = {"vertices": [], "faces": []}
+                    if len(b_poly) >= 2 and len(t_poly) >= 2:
+                        mesh_data = _generate_extruded_wall_prism_mesh(
+                            b_poly,
+                            t_poly,
+                            thickness_m=wall_thickness_m,
+                        )
+                    else:
+                        # Bounding prism fallback
+                        mesh_data = _generate_box_mesh(
+                            c_twd,
+                            dx=length_m,
+                            dy=wall_thickness_m,
+                            dz=mean_h,
+                            azimuth_deg=azimuth,
+                        )
 
-                v_twd = [list(v) for v in mesh_data["vertices"]]
-                v_loc = [_to_studio_local(tuple(v)) for v in mesh_data["vertices"]]
-                vol_m3 = round(length_m * mean_h * wall_thickness_m, 2)
+                    v_twd = [list(v) for v in mesh_data["vertices"]]
+                    v_loc = [_to_studio_local(tuple(v)) for v in mesh_data["vertices"]]
+                    vol_m3 = round(length_m * mean_h * wall_thickness_m, 2)
+                    vert_area = round(_safe_float(w.get("vertical_area_m2"), length_m * mean_h), 2)
 
-                primitives.append({
-                    "id": f"BIM_{w_id}",
-                    "source_id": w_id,
-                    "category": "walls",
-                    "ifc_class": "IfcWall",
-                    "name": f"Wall {w_id}",
-                    "primitive_type": "extruded_prism",
-                    "color": "#f43f5e",
-                    "properties": {
-                        "length_m": round(length_m, 2),
-                        "height_m": round(mean_h, 2),
-                        "thickness_m": round(wall_thickness_m, 2),
-                        "azimuth_deg": round(azimuth, 1),
-                        "vertical_area_m2": round(float(w.get("vertical_area_m2") or (length_m * mean_h)), 2),
-                        "volume_m3": vol_m3,
-                    },
-                    "transform": {
-                        "center_twd97": [round(c, 3) for c in c_twd],
-                        "center_local": [round(c, 3) for c in _to_studio_local(tuple(c_twd))],
-                    },
-                    "mesh": {
-                        "vertices_twd97": v_twd,
-                        "vertices_local": v_loc,
-                        "faces": mesh_data["faces"],
-                    },
-                })
+                    primitives.append({
+                        "id": f"BIM_{w_id}",
+                        "source_id": w_id,
+                        "category": "walls",
+                        "ifc_class": "IfcWall",
+                        "name": f"Wall {w_id}",
+                        "primitive_type": "extruded_prism",
+                        "color": "#f43f5e",
+                        "properties": {
+                            "length_m": round(length_m, 2),
+                            "height_m": round(mean_h, 2),
+                            "thickness_m": round(wall_thickness_m, 2),
+                            "azimuth_deg": round(azimuth, 1),
+                            "vertical_area_m2": vert_area,
+                            "volume_m3": vol_m3,
+                        },
+                        "transform": {
+                            "center_twd97": [round(c, 3) for c in c_twd],
+                            "center_local": [round(c, 3) for c in _to_studio_local(c_twd)],
+                        },
+                        "mesh": {
+                            "vertices_twd97": v_twd,
+                            "vertices_local": v_loc,
+                            "faces": mesh_data["faces"],
+                        },
+                    })
+                except Exception:
+                    continue
 
         # -------------------------------------------------------------------
         # 2. TREES -> Trunk Cylinder + Canopy Ellipsoid
