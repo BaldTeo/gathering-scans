@@ -1979,20 +1979,9 @@
     ) {
       return { en: "General Models", zh: "一般 3D 模型" };
     }
-    const m = clean.match(/^([^\(（]+?)\s*[\(（]([A-Za-z0-9\s&/\-_]+)[\)）]$/);
-    if (m) {
-      return {
-        en: m[2].trim(),
-        zh: m[1].trim(),
-      };
-    }
-    const cleanZh = String(rawZh || "")
-      .replace(/\s*(工程掃描群組|3D\s*模型|模型庫|Engineering Scan Group).*$/i, "")
-      .replace(/\s*[\(（][A-Za-z0-9\s&/\-_]+[\)）]\s*/g, "")
-      .trim();
     return {
       en: clean,
-      zh: cleanZh || clean,
+      zh: clean,
     };
   }
 
@@ -2005,7 +1994,7 @@
     if (lang === "en") {
       return norm.en;
     }
-    // In zh-TW: for library folders or sites with pure Chinese names, show pure Chinese without any parenthetical English
+    // Only system library folders are localized; user-written site names stay untouched
     if (norm.en === "People" || norm.en === "Equipment" || norm.en === "General Models") {
       return norm.zh;
     }
@@ -2024,9 +2013,7 @@
     if (isLib) {
       return `${norm.zh} 3D 模型庫`;
     }
-    const cleanRawZh = String(rawZh || "")
-      .replace(/\s*[\(（][A-Za-z0-9\s&/\-_]+[\)）]\s*/g, "")
-      .trim();
+    const cleanRawZh = String(rawZh || "").trim();
     return cleanRawZh || `${norm.zh} 工程掃描群組`;
   }
 

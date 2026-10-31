@@ -3071,10 +3071,10 @@
                     } style="accent-color:var(--ui-accent);width:14px;height:14px;margin:0;flex-shrink:0;cursor:pointer;" />`
               }
               <div style="min-width:0;flex:1;">
-                <div style="font-size:11.5px;font-weight:600;color:var(--ui-text-primary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+                <div data-no-i18n="1" style="font-size:11.5px;font-weight:600;color:var(--ui-text-primary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
                   ${escapeHtml(s.name || s.scan_id)}
                 </div>
-                <div style="font-size:10px;color:var(--ui-text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+                <div data-no-i18n="1" style="font-size:10px;color:var(--ui-text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
                   ${escapeHtml(s.project_group || "")}${s.capture_date ? ` · ${escapeHtml(s.capture_date)}` : ""}
                 </div>
               </div>
@@ -3118,7 +3118,7 @@
                 <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;flex-wrap:wrap;margin-bottom:6px;">
                   <div style="display:flex;align-items:center;gap:6px;min-width:110px;flex:1 1 auto;cursor:pointer;" class="btn-select-align-layer" data-scan-id="${l.scan_id}" title="${tr("點擊以將 3D 平移／旋轉控制軸掛載至此掃描", "Click to attach 3D Move/Rotate Gizmo to this scan")}">
                     <span style="width:11px;height:11px;border-radius:50%;background:${l.color};flex-shrink:0;box-shadow:0 0 0 2px rgba(255,255,255,0.15);"></span>
-                    <span style="font-size:12px;font-weight:700;color:var(--ui-text-primary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:80px;flex:1 1 auto;">
+                    <span data-no-i18n="1" style="font-size:12px;font-weight:700;color:var(--ui-text-primary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:80px;flex:1 1 auto;">
                       #${idx + 1} ${l.name}
                     </span>
                     ${

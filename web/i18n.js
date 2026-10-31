@@ -547,18 +547,40 @@
     var target = lang || currentLang;
 
     var parts = html.split(/(<[^>]+>)/g);
+    var skipStack = [];
+    var voidTags = /^(area|base|br|col|embed|hr|img|input|link|meta|param|source|track|wbr)$/i;
     for (var i = 0; i < parts.length; i++) {
       var part = parts[i];
       if (!part) continue;
       if (part.charAt(0) === "<" && part.charAt(part.length - 1) === ">") {
-        parts[i] = part
-          .replace(/\b(title|placeholder)="([^"]*)"/g, function (_, attr, val) {
-            return attr + '="' + translateDynamicText(val, target) + '"';
-          })
-          .replace(/\b(title|placeholder)='([^']*)'/g, function (_, attr, val) {
-            return attr + "='" + translateDynamicText(val, target) + "'";
-          });
-      } else {
+        var closeMatch = part.match(/^<\s*\/\s*([a-zA-Z0-9_-]+)/);
+        if (closeMatch) {
+          var closeTag = closeMatch[1].toLowerCase();
+          if (skipStack.length > 0 && skipStack[skipStack.length - 1] === closeTag) {
+            skipStack.pop();
+          }
+          continue;
+        }
+        var openMatch = part.match(/^<\s*([a-zA-Z0-9_-]+)/);
+        var openTag = openMatch ? openMatch[1].toLowerCase() : "";
+        var selfClosing = /\/\s*>$/.test(part) || (openTag && voidTags.test(openTag));
+        var hasNoI18n =
+          /\bdata-no-i18n\b/i.test(part) ||
+          openTag === "textarea" ||
+          /\bgs-comment-(?:body-text|pin-text|pin-author|card-avatar)\b/.test(part);
+        if (openTag && !selfClosing && (skipStack.length > 0 || hasNoI18n)) {
+          skipStack.push(openTag);
+        }
+        if (skipStack.length === 0 && !hasNoI18n) {
+          parts[i] = part
+            .replace(/\b(title|placeholder)="([^"]*)"/g, function (_, attr, val) {
+              return attr + '="' + translateDynamicText(val, target) + '"';
+            })
+            .replace(/\b(title|placeholder)='([^']*)'/g, function (_, attr, val) {
+              return attr + "='" + translateDynamicText(val, target) + "'";
+            });
+        }
+      } else if (skipStack.length === 0) {
         parts[i] = translateDynamicText(part, target);
       }
     }

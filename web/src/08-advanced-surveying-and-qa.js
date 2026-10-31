@@ -3598,7 +3598,7 @@
       const targetCommentBannerHtml = targetCmt
         ? `<div style="background:rgba(2,132,199,0.14);border:1.5px solid var(--ui-accent);border-radius:8px;padding:8px 10px;margin-bottom:8px;">
              <div style="font-size:11.5px;font-weight:700;color:var(--ui-accent);margin-bottom:5px;line-height:1.35;">
-               🎯 ${tr(`正在為標註「${escapeHtml(String(targetCmt.text || "").slice(0, 32))}」選擇位置照片`, `Selecting location photos for comment "${escapeHtml(String(targetCmt.text || "").slice(0, 32))}"`)}
+               🎯 ${tr(`正在為標註「<span data-no-i18n="1">${escapeHtml(String(targetCmt.text || "").slice(0, 32))}</span>」選擇位置照片`, `Selecting location photos for comment "<span data-no-i18n="1">${escapeHtml(String(targetCmt.text || "").slice(0, 32))}</span>"`)}
              </div>
              <div style="display:flex;gap:5px;flex-wrap:wrap;">
                <button type="button" class="btn-xs primary" id="btnTargetCommentUploadLocalPhoto" style="gap:4px;">
@@ -3636,7 +3636,7 @@
                 const isTarget = targetCmt && String(targetCmt.comment_id) === String(c.comment_id);
                 return `
                   <div class="gs-comment-drop-target" data-drop-comment-id="${cid}" style="padding:5px 8px;border:1px solid ${isTarget ? "var(--ui-accent)" : "var(--ui-border)"};border-radius:6px;background:${isTarget ? "rgba(2,132,199,0.12)" : "var(--ui-bg-subtle)"};font-size:11px;color:var(--ui-text-primary);display:flex;align-items:center;justify-content:space-between;gap:6px;">
-                    <span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"><b>${escapeHtml(c.author_name || "Reviewer")}:</b> ${snippet}</span>
+                    <span data-no-i18n="1" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"><b>${escapeHtml(c.author_name || "Reviewer")}:</b> ${snippet}</span>
                     <span style="font-size:10px;font-family:var(--font-mono);color:var(--ui-accent);flex-shrink:0;">📷 ${pCnt}</span>
                   </div>
                 `;
@@ -4041,7 +4041,7 @@
       .map((fName) => {
         const label = fName ? `📁 ${escapeHtml(fName)}` : `📂 ${tr("未分類", "Unclassified")}`;
         const sel = fName === activeDefaultFolder ? "selected" : "";
-        return `<option value="${escapeHtml(fName)}" ${sel}>${label}</option>`;
+        return `<option value="${escapeHtml(fName)}" ${fName ? 'data-no-i18n="1"' : ""} ${sel}>${label}</option>`;
       })
       .join("");
     return `
@@ -4104,8 +4104,8 @@
         <div class="gs-comment-card" draggable="${canEditThis ? "true" : "false"}" data-comment-id="${cid}" data-comment-folder="${folderStr}" data-comment-editable="${canEditThis ? "1" : "0"}" title="${canEditThis ? tr("可拖曳此標註至其他資料夾，或將照片拖曳至此標註附加", "Drag note to a folder, or drop photos here to attach") : ""}" style="background:var(--ui-bg-subtle);border:1px solid var(--ui-border);border-radius:8px;padding:8px 9px;margin-top:6px;transition:border-color 0.15s,background 0.15s;cursor:${canEditThis ? "grab" : "default"};">
           <div style="display:flex;justify-content:space-between;align-items:center;gap:6px;font-size:11px;color:var(--ui-accent);font-weight:700;">
             <span style="display:inline-flex;align-items:center;gap:6px;min-width:0;">
-              <span class="gs-comment-card-avatar" style="background:${avatar.bg};">${escapeHtml(avatar.chars)}</span>
-              <span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(c.author_name || "Reviewer")}</span>
+              <span class="gs-comment-card-avatar" data-no-i18n="1" style="background:${avatar.bg};">${escapeHtml(avatar.chars)}</span>
+              <span data-no-i18n="1" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(c.author_name || "Reviewer")}</span>
             </span>
             <div style="display:flex;align-items:center;gap:3px;flex-shrink:0;">
               <span style="color:var(--ui-text-muted);font-weight:500;font-size:10px;margin-right:2px;">${timeStr}</span>
@@ -4124,10 +4124,10 @@
               }
             </div>
           </div>
-          <div class="gs-comment-body-text" data-comment-text="${cid}" style="font-size:12px;color:var(--ui-text-primary);margin-top:4px;white-space:pre-wrap;word-break:break-word;">${escapeHtml(c.text)}</div>
+          <div class="gs-comment-body-text" data-no-i18n="1" data-comment-text="${cid}" style="font-size:12px;color:var(--ui-text-primary);margin-top:4px;white-space:pre-wrap;word-break:break-word;">${escapeHtml(c.text)}</div>
           ${photosGridHtml}
           <div class="gs-comment-edit-wrap" data-comment-edit-box="${cid}" style="display:none;margin-top:6px;">
-            <textarea class="gs-input" data-comment-edit-input="${cid}" rows="2" style="font-size:12px;margin-bottom:5px;">${escapeHtml(c.text)}</textarea>
+            <textarea class="gs-input" data-no-i18n="1" data-comment-edit-input="${cid}" rows="2" style="font-size:12px;margin-bottom:5px;">${escapeHtml(c.text)}</textarea>
             <div style="display:flex;gap:5px;justify-content:flex-end;">
               <button type="button" class="btn-xs" data-comment-edit-cancel="${cid}">${tr("取消", "Cancel")}</button>
               <button type="button" class="btn-xs accent" data-comment-edit-save="${cid}" style="background:var(--ui-accent);color:#fff;border-color:var(--ui-accent);">${tr("儲存", "Save")}</button>
@@ -4163,7 +4163,7 @@
                 <button type="button" class="btn-xs gs-comment-folder-icon-btn" data-folder-collapse="${fEsc}" title="${isCollapsed ? tr("展開資料夾", "Expand Folder") : tr("收合資料夾", "Collapse Folder")}" aria-label="${isCollapsed ? tr("展開資料夾", "Expand Folder") : tr("收合資料夾", "Collapse Folder")}">
                   ${isCollapsed ? "▸" : "▾"}
                 </button>
-                <span style="font-size:11.5px;font-weight:700;color:var(--ui-text-primary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+                <span ${fName ? 'data-no-i18n="1"' : ""} style="font-size:11.5px;font-weight:700;color:var(--ui-text-primary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
                   ${fName ? "📁" : "📂"} ${fTitle}
                 </span>
                 <span style="font-size:10.5px;font-family:var(--font-mono);color:var(--ui-accent);flex-shrink:0;">(${folderComments.length})</span>
