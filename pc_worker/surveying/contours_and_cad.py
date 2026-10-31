@@ -336,11 +336,12 @@ class ContoursAndCadMixin:
         major_interval = max(major_raw if major_raw is not None and major_raw > 0 else minor_interval * 5.0, minor_interval)
 
         scan = self._resolve_scan_record(scan_id)
+        v_shift = self._resolve_vertical_datum_shift(scan_id, payload, scan) if hasattr(self, "_resolve_vertical_datum_shift") else 0.0
 
         dsm_data = self._load_or_build_scan_dsm(scan)
         ce = dsm_data["ce"]
         cn = dsm_data["cn"]
-        ch = dsm_data["ch"]
+        ch = dsm_data["ch"] + v_shift
 
         raw_poly = payload.get("mask_polygon") or payload.get("polygon")
         poly_twd, poly_local, has_custom_mask = self._normalize_mask_polygon_twd97(
@@ -375,6 +376,8 @@ class ContoursAndCadMixin:
             dtm_c1 = grey_dilation(grey_erosion(sub_grid, size=(w1_c, w1_c)), size=(w1_c, w1_c))
             dtm_c2 = grey_dilation(grey_erosion(np.minimum(sub_grid, dtm_c1), size=(w2_c, w2_c)), size=(w2_c, w2_c))
             sub_grid = gaussian_filter(dtm_c2, sigma=max(1.0, 1.15 / max(res, 0.1))).astype(np.float32)
+        if abs(v_shift) > 1e-6:
+            sub_grid = sub_grid + v_shift
         sub_hull = full_hull[j0 : j1 + 1, i0 : i1 + 1]
         sub_e_min = dsm_data["e_min"] + i0 * res
         sub_n_min = dsm_data["n_min"] + j0 * res
@@ -1375,10 +1378,14 @@ class ContoursAndCadMixin:
         num_samples = 60
         samples = []
         max_slope_pct = 0.0
+        v_shift_curr = self._resolve_vertical_datum_shift(scan_id, payload, scan) if hasattr(self, "_resolve_vertical_datum_shift") else 0.0
+        v_shift_cmp = self._resolve_vertical_datum_shift(compare_scan_id) if hasattr(self, "_resolve_vertical_datum_shift") and compare_scan_id else 0.0
 
         # Compute linear datum connecting start and end elevations as fallback if no baseline epoch exists
-        z_start, _, _, _ = self._sample_dsm_elevation(dsm_curr, x1, y1)
-        z_end, _, _, _ = self._sample_dsm_elevation(dsm_curr, x2, y2)
+        z_start_raw, _, _, _ = self._sample_dsm_elevation(dsm_curr, x1, y1)
+        z_end_raw, _, _, _ = self._sample_dsm_elevation(dsm_curr, x2, y2)
+        z_start = z_start_raw + v_shift_curr
+        z_end = z_end_raw + v_shift_curr
 
         prev_z = None
         step_m = total_len / num_samples
@@ -1388,12 +1395,15 @@ class ContoursAndCadMixin:
             ny = y1 + t * (y2 - y1)
             chainage = round(t * total_len, 2)
 
-            z_curr, _, _, _ = self._sample_dsm_elevation(dsm_curr, ex, ny)
+            z_curr_raw, _, _, _ = self._sample_dsm_elevation(dsm_curr, ex, ny)
+            z_curr = z_curr_raw + v_shift_curr
             if dsm_cmp is not None:
-                z_base, _, _, is_cmp_valid = self._sample_dsm_elevation(dsm_cmp, ex, ny)
+                z_base_raw, _, _, is_cmp_valid = self._sample_dsm_elevation(dsm_cmp, ex, ny)
                 if not is_cmp_valid:
                     # Shift by vertical datum difference if baseline scan has slight offset
                     z_base = z_curr - (ch - dsm_cmp["ch"])
+                else:
+                    z_base = z_base_raw + v_shift_cmp
             else:
                 z_base = z_start + t * (z_end - z_start)
 

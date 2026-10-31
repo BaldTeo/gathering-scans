@@ -647,8 +647,8 @@ class DsmAndVolumeMixin:
         meta_json_path = os.path.join(proj_dir, "scan_meta.json")
         obj_mtime = os.path.getmtime(obj_path) if (obj_path and os.path.isfile(obj_path)) else 0.0
         ts_mtime = os.path.getmtime(ts_path) if (ts_path and os.path.isfile(ts_path)) else 0.0
-        meta_mtime = os.path.getmtime(meta_json_path) if os.path.isfile(meta_json_path) else 0.0
-        source_mtime = max(obj_mtime, ts_mtime, meta_mtime)
+        geom_mtime = max(obj_mtime, ts_mtime)
+        source_mtime = geom_mtime if geom_mtime > 0.0 else (os.path.getmtime(meta_json_path) if os.path.isfile(meta_json_path) else 0.0)
         # Only prefer edited tileset over full-resolution mesh.obj when the scan actually has applied mesh edits
         is_edited_scan = bool(scan.get("applied_adjustments")) or (
             str(scan.get("scan_id") or "").startswith("edited_") and ts_mtime > obj_mtime + 60.0
@@ -662,7 +662,7 @@ class DsmAndVolumeMixin:
         npz_path = os.path.join(proj_dir, "_dsm_cache_v5.npz") if os.path.isdir(proj_dir) else None
         if npz_path and os.path.isfile(npz_path):
             try:
-                if source_mtime == 0.0 or os.path.getmtime(npz_path) >= source_mtime:
+                if geom_mtime == 0.0 or os.path.getmtime(npz_path) >= geom_mtime:
                     data = np.load(npz_path)
                     res_dict = {
                         "scan_id": scan_id,
@@ -986,6 +986,65 @@ class DsmAndVolumeMixin:
         is_valid = bool(inside_bounds and hull[j0, i0])
         return z_val, dz_de, dz_dn, is_valid
 
+    def _resolve_vertical_datum_shift(
+        self,
+        scan_id: str,
+        payload: Optional[Dict[str, Any]] = None,
+        scan: Optional[Dict[str, Any]] = None,
+    ) -> float:
+        """
+        Resolves the active vertical datum shift (in meters) for a scan:
+        1. Explicit payload override: payload['vertical_datum_offset'] or payload['geoid_offset_override']
+        2. Database scan record extra_json: scan['vertical_datum_offset'] or scan['tbm_calibration']['shift_m']
+        3. Disk mirror: project_dir/scan_meta.json
+        Returns 0.0 if uncalibrated.
+        """
+        if payload:
+            if payload.get("vertical_datum_offset") is not None:
+                val = safe_float(payload.get("vertical_datum_offset"))
+                if val is not None:
+                    return val
+            if payload.get("geoid_offset_override") is not None:
+                val = safe_float(payload.get("geoid_offset_override"))
+                if val is not None:
+                    return val
+        sc = scan
+        if not sc and hasattr(self, "db") and self.db and scan_id:
+            try:
+                sc = self.db.get_scan(scan_id)
+            except Exception:
+                sc = None
+        sc = sc or {}
+        if sc.get("vertical_datum_offset") is not None:
+            val = safe_float(sc.get("vertical_datum_offset"))
+            if val is not None:
+                return val
+        cal = sc.get("tbm_calibration")
+        if isinstance(cal, dict):
+            val = safe_float(cal.get("shift_m", cal.get("calibrated_shift_m")))
+            if val is not None:
+                return val
+        # Disk fallback
+        proj_dir = sc.get("project_dir") or (os.path.join(SCANS_ROOT_DIR, scan_id) if scan_id else None)
+        if proj_dir and os.path.isdir(proj_dir):
+            meta_fp = os.path.join(proj_dir, "scan_meta.json")
+            if os.path.isfile(meta_fp):
+                try:
+                    with open(meta_fp, "r", encoding="utf-8") as mf:
+                        m = json.load(mf)
+                    if isinstance(m, dict):
+                        val = safe_float(m.get("vertical_datum_offset"))
+                        if val is not None:
+                            return val
+                        cal_m = m.get("tbm_calibration")
+                        if isinstance(cal_m, dict):
+                            val = safe_float(cal_m.get("shift_m", cal_m.get("calibrated_shift_m")))
+                            if val is not None:
+                                return val
+                except Exception:
+                    pass
+        return 0.0
+
     def calculate_cut_fill_volume(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         """
         Computes real Cut/Fill Volumes & Material Stockpile Tonnage inside a 2D/3D boundary polygon
@@ -1005,6 +1064,7 @@ class DsmAndVolumeMixin:
         geoid_offset_override = safe_float(geoid_override_raw)
 
         scan = self._resolve_scan_record(scan_id)
+        v_shift = self._resolve_vertical_datum_shift(scan_id, payload, scan)
 
         dsm_curr = self._load_or_build_scan_dsm(scan)
         center_e = dsm_curr["ce"]
@@ -1085,7 +1145,7 @@ class DsmAndVolumeMixin:
                 continue
 
             sampled_h, _, _, _ = self._sample_dsm_elevation(dsm_curr, e_val, n_val)
-            h_val = round(sampled_h, 3)
+            h_val = round(sampled_h + v_shift, 3)
             poly_twd.append((e_val, n_val, h_val))
             poly_local.append([round(e_val - origin_e, 3), round(h_val - origin_h, 3), round(origin_n - n_val, 3)])
 
@@ -1118,7 +1178,7 @@ class DsmAndVolumeMixin:
                 sx = ax + t * (bx - ax)
                 sy = ay + t * (by - ay)
                 sz, _, _, _ = self._sample_dsm_elevation(dsm_curr, sx, sy)
-                perim_samples.append((sx, sy, sz))
+                perim_samples.append((sx, sy, sz + v_shift))
 
         perim_mean_h = sum(p[2] for p in perim_samples) / max(len(perim_samples), 1)
         datum_z_cand = payload.get("datum_elevation_m") if payload.get("datum_elevation_m") is not None else payload.get("custom_elevation")
@@ -1203,7 +1263,8 @@ class DsmAndVolumeMixin:
                 inside_cells += 1
 
                 # Real 3D scan surface elevation & slope gradients at (gx, gy)
-                z_surf, dz_de, dz_dn, _ = self._sample_dsm_elevation(dsm_curr, gx, gy)
+                z_surf_raw, dz_de, dz_dn, _ = self._sample_dsm_elevation(dsm_curr, gx, gy)
+                z_surf = z_surf_raw + v_shift
 
                 if base_mode == "custom_plane":
                     z_base = datum_z
@@ -1212,7 +1273,9 @@ class DsmAndVolumeMixin:
                 elif base_mode == "best_fit_plane":
                     z_base = plane_a * (gx - p_mean_e) + plane_b * (gy - p_mean_n) + plane_c0
                 elif base_mode == "epoch_diff" and dsm_cmp is not None:
-                    z_base, _, _, _ = self._sample_dsm_elevation(dsm_cmp, gx, gy)
+                    cmp_shift = self._resolve_vertical_datum_shift(compare_scan_id)
+                    z_base_raw, _, _, _ = self._sample_dsm_elevation(dsm_cmp, gx, gy)
+                    z_base = z_base_raw + cmp_shift
                 else:
                     # Inverse-distance weighted interpolation of dense perimeter DSM elevations
                     w_sum = 0.0
@@ -1393,6 +1456,8 @@ class DsmAndVolumeMixin:
             },
             "geoid_offset_override": geoid_offset_override,
             "geoid_offset_m": geoid_offset_override if geoid_offset_override is not None else 17.20,
+            "vertical_datum_offset": round(v_shift, 4),
+            "vertical_datum_applied": bool(abs(v_shift) > 1e-5),
             "best_fit_plane": {
                 "a": round(plane_a, 6),
                 "b": round(plane_b, 6),
@@ -1775,13 +1840,22 @@ class DsmAndVolumeMixin:
     # =========================================================================
     def compute_gcp_accuracy_qa(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Evaluates vertical accuracy (ΔH = H_scan - H_gcp) across a list of Ground Control
-        or Independent Check Points in TWD97 (121) + TWVD2001, computes RMSE_Z, Mean Bias,
-        Max |ΔH|, 95% Confidence (1.96 × RMSE_Z), assigns Taiwan Surveying QA Grade (A/B/C),
-        and generates CSV + Printable HTML QA Certificate in REPORTS_DIR.
+        Evaluates 3D spatial accuracy across a list of Ground Control Points (GCP) or
+        Independent Check Points in TWD97 (121) + TWVD2001:
+        1. 3D residuals: dE = E_scan - E_gcp, dN = N_scan - N_gcp, dH = H_scan - H_gcp,
+           d2D = sqrt(dE^2 + dN^2), d3D = sqrt(dE^2 + dN^2 + dH^2)
+        2. Statistical QA metrics: RMSE_E, RMSE_N, RMSE_H, RMSE_2D, RMSE_3D, Mean Biases, Sample StDev
+        3. ASPRS 2014 Positional Accuracies (95% Confidence):
+           Accuracy_z = 1.9600 * RMSE_H, Accuracy_r = 1.7308 * RMSE_2D, Accuracy_3d = 1.6140 * RMSE_3D
+        4. 1-Click TBM Vertical Datum Calibration & Zero-Destruction Persistence in SQLite & scan_meta.json
+        5. Taiwan Surveying QA Grades (A/B/C) and CSV + Printable HTML QA Certificate
         """
         scan_id = str(payload.get("scan_id") or "").strip()
-        scan = self.db.get_scan(scan_id) or {}
+        scan = self.db.get_scan(scan_id) if hasattr(self, "db") and self.db else None
+        if not scan:
+            scan = self._resolve_scan_record(scan_id) if hasattr(self, "_resolve_scan_record") else {}
+        scan = scan or {}
+
         ce = float(scan.get("twd97_e") or 304952.4)
         cn = float(scan.get("twd97_n") or 2757084.2)
         ch = float(scan.get("twd97_h") or 124.8)
@@ -1794,18 +1868,32 @@ class DsmAndVolumeMixin:
             cn = 0.5 * (dsm_data["n_min"] + dsm_data["n_max"])
             ch = float(dsm_data.get("h_median", ch))
 
-        raw_pts = (
-            payload.get("points")
-            or payload.get("checkpoints")
-            or payload.get("gcp_points")
-            or payload.get("gcps")
-            or []
+        has_explicit_pts = any(
+            k in payload and payload[k] is not None
+            for k in ("points", "checkpoints", "gcp_points", "gcps")
         )
+        raw_pts = None
+        for k in ("points", "checkpoints", "gcp_points", "gcps"):
+            if k in payload and payload[k] is not None:
+                raw_pts = payload[k]
+                break
+
         geoid_override_raw = payload.get("geoid_offset_override") if payload.get("geoid_offset_override") is not None else payload.get("h_offset_from_twvd")
         geoid_offset_override = safe_float(geoid_override_raw)
+        selected_tbm_id = str(payload.get("selected_tbm_id") or "").strip()
+        apply_tbm = bool(payload.get("apply_tbm_calibration"))
+        reset_cal = bool(payload.get("reset_calibration"))
+        if reset_cal and hasattr(self, "db") and self.db and scan_id:
+            try:
+                self.db.set_scan_vertical_datum_calibration(scan_id, None, None)
+            except Exception:
+                pass
+        generate_sample = bool(payload.get("generate_sample_points") or payload.get("demo_mode")) or (
+            not has_explicit_pts
+        )
         evaluated: List[Dict[str, Any]] = []
 
-        if not isinstance(raw_pts, list) or len(raw_pts) == 0:
+        if generate_sample and (raw_pts is None or len(raw_pts) == 0):
             # Auto-generate 6 sample site check points distributed across the scan footprint
             span_e = (
                 max(14.0, min(65.0, (dsm_data["e_max"] - dsm_data["e_min"]) * 0.28))
@@ -1818,15 +1906,15 @@ class DsmAndVolumeMixin:
                 else 20.0
             )
             sample_offsets = [
-                ("CP-01", -span_e * 0.65, -span_n * 0.55, -0.014),
-                ("CP-02", span_e * 0.62, -span_n * 0.50, 0.018),
-                ("CP-03", span_e * 0.70, span_n * 0.45, -0.022),
-                ("CP-04", -span_e * 0.58, span_n * 0.60, 0.011),
-                ("CP-05", 0.0, 0.0, 0.008),
-                ("CP-06", span_e * 0.25, -span_n * 0.18, -0.016),
+                ("CP-01", -span_e * 0.65, -span_n * 0.55, -0.014, 0.008, -0.011),
+                ("CP-02", span_e * 0.62, -span_n * 0.50, 0.018, -0.012, 0.009),
+                ("CP-03", span_e * 0.70, span_n * 0.45, -0.022, 0.015, -0.007),
+                ("CP-04", -span_e * 0.58, span_n * 0.60, 0.011, -0.009, 0.014),
+                ("CP-05", 0.0, 0.0, 0.008, 0.005, -0.004),
+                ("CP-06", span_e * 0.25, -span_n * 0.18, -0.016, -0.011, 0.012),
             ]
             raw_pts = []
-            for cp_name, de, dn, sim_err in sample_offsets:
+            for cp_name, de, dn, sim_err_h, sim_err_e, sim_err_n in sample_offsets:
                 e_pt = round(ce + de, 3)
                 n_pt = round(cn + dn, 3)
                 if dsm_data is not None:
@@ -1838,31 +1926,47 @@ class DsmAndVolumeMixin:
                         "name": cp_name,
                         "e": e_pt,
                         "n": n_pt,
-                        "h_gcp": round(float(h_s) - sim_err, 3),
+                        "h_gcp": round(float(h_s) - sim_err_h, 3),
+                        "mesh_e": round(e_pt + sim_err_e, 3),
+                        "mesh_n": round(n_pt + sim_err_n, 3),
+                        "mesh_h": round(float(h_s), 3),
                         "h_scan": round(float(h_s), 3),
                     }
                 )
 
+        raw_pts = raw_pts or []
         for idx, pt in enumerate(raw_pts):
+            is_tbm_flag = False
             if isinstance(pt, dict):
-                name = str(pt.get("name") or pt.get("id") or f"CP-{idx + 1:02d}").strip()
-                e_val = safe_float(pt.get("e", pt.get("twd97_e", ce)))
-                n_val = safe_float(pt.get("n", pt.get("twd97_n", cn)))
-                h_gcp = safe_float(pt.get("h_gcp", pt.get("h", pt.get("twd97_h", ch))))
-                h_scan_in = pt.get("h_scan", pt.get("mesh_h"))
+                name = str(pt.get("name") or pt.get("id") or pt.get("point_id") or f"CP-{idx + 1:02d}").strip()
+                is_tbm_flag = bool(pt.get("is_tbm") or pt.get("tbm"))
+                e_val = safe_float(pt.get("e", pt.get("easting", pt.get("twd97_e", ce))))
+                n_val = safe_float(pt.get("n", pt.get("northing", pt.get("twd97_n", cn))))
+                h_gcp = safe_float(pt.get("h_gcp", pt.get("h", pt.get("elevation", pt.get("twd97_h", ch)))))
+                e_scan_in = pt.get("e_scan", pt.get("mesh_e", pt.get("scan_e")))
+                n_scan_in = pt.get("n_scan", pt.get("mesh_n", pt.get("scan_n")))
+                h_scan_in = pt.get("h_scan", pt.get("mesh_h", pt.get("scan_h")))
             elif isinstance(pt, (list, tuple)) and len(pt) >= 3:
+                e_scan_in = None
+                n_scan_in = None
                 if len(pt) >= 4 and isinstance(pt[0], str):
                     name = str(pt[0]).strip()
                     e_val = safe_float(pt[1])
                     n_val = safe_float(pt[2])
                     h_gcp = safe_float(pt[3])
                     h_scan_in = pt[4] if len(pt) >= 5 else None
+                    if len(pt) >= 7:
+                        e_scan_in = pt[5]
+                        n_scan_in = pt[6]
                 else:
                     name = f"CP-{idx + 1:02d}"
                     e_val = safe_float(pt[0])
                     n_val = safe_float(pt[1])
                     h_gcp = safe_float(pt[2])
                     h_scan_in = pt[3] if len(pt) >= 4 else None
+                    if len(pt) >= 6:
+                        e_scan_in = pt[4]
+                        n_scan_in = pt[5]
             else:
                 continue
 
@@ -1871,12 +1975,22 @@ class DsmAndVolumeMixin:
             if h_gcp is None:
                 h_gcp = ch if ch is not None else 0.0
 
+            # Match model coordinates (Paired Target vs Check Point Mode)
+            if e_scan_in is not None and str(e_scan_in).strip() != "":
+                e_scan = safe_float(e_scan_in, e_val)
+            else:
+                e_scan = e_val
+            if n_scan_in is not None and str(n_scan_in).strip() != "":
+                n_scan = safe_float(n_scan_in, n_val)
+            else:
+                n_scan = n_val
+
             h_scan = None
             if h_scan_in is not None and str(h_scan_in).strip() != "":
                 h_scan = safe_float(h_scan_in)
             if h_scan is None:
                 if dsm_data is not None:
-                    sampled_h, _, _, _ = self._sample_dsm_elevation(dsm_data, e_val, n_val)
+                    sampled_h, _, _, _ = self._sample_dsm_elevation(dsm_data, e_scan, n_scan)
                     h_scan = float(sampled_h)
                 else:
                     h_scan = float(h_gcp + 0.012 * math.sin(idx + 1))
@@ -1884,21 +1998,54 @@ class DsmAndVolumeMixin:
             if geoid_offset_override is not None:
                 h_scan = h_scan - geoid_offset_override
 
-            dz_m = round(h_scan - h_gcp, 4)
-            dz_cm = round(dz_m * 100.0, 2)
+            de_m = round(e_scan - e_val, 4)
+            dn_m = round(n_scan - n_val, 4)
+            dh_m = round(h_scan - h_gcp, 4)
+            d2d_m = round(math.hypot(de_m, dn_m), 4)
+            d3d_m = round(math.hypot(d2d_m, dh_m), 4)
+
+            de_cm = round(de_m * 100.0, 2)
+            dn_cm = round(dn_m * 100.0, 2)
+            dh_cm = round(dh_m * 100.0, 2)
+            d2d_cm = round(d2d_m * 100.0, 2)
+            d3d_cm = round(d3d_m * 100.0, 2)
+            dz_m = dh_m
+            dz_cm = dh_cm
             abs_cm = abs(dz_cm)
-            status_tier = "pass" if abs_cm <= 5.0 else ("warn" if abs_cm <= 10.0 else "outlier")
+            status_tier = "pass" if (abs_cm <= 5.0 and d2d_cm <= 5.0) else ("warn" if (abs_cm <= 10.0 and d2d_cm <= 10.0) else "outlier")
+
             evaluated.append(
                 {
                     "index": idx + 1,
+                    "id": name,
                     "name": name,
                     "e": round(e_val, 3),
                     "n": round(n_val, 3),
                     "h_gcp": round(h_gcp, 3),
+                    "e_gcp": round(e_val, 3),
+                    "n_gcp": round(n_val, 3),
+                    "e_scan": round(e_scan, 3),
+                    "n_scan": round(n_scan, 3),
                     "h_scan": round(h_scan, 3),
+                    "de": de_m,
+                    "dn": dn_m,
+                    "dh": dh_m,
+                    "d2d": d2d_m,
+                    "d3d": d3d_m,
+                    "de_m": de_m,
+                    "dn_m": dn_m,
+                    "dh_m": dh_m,
+                    "d2d_m": d2d_m,
+                    "d3d_m": d3d_m,
+                    "de_cm": de_cm,
+                    "dn_cm": dn_cm,
+                    "dh_cm": dh_cm,
+                    "d2d_cm": d2d_cm,
+                    "d3d_cm": d3d_cm,
                     "dz_m": dz_m,
                     "dz_cm": dz_cm,
                     "abs_dz_cm": round(abs_cm, 2),
+                    "is_tbm": is_tbm_flag or (bool(selected_tbm_id) and name.lower() == selected_tbm_id.lower()),
                     "status": status_tier,
                     "local": [
                         round(e_val - ce, 3),
@@ -1908,26 +2055,253 @@ class DsmAndVolumeMixin:
                 }
             )
 
-        n_pts = max(1, len(evaluated))
-        sq_sum = sum((p["dz_m"] ** 2) for p in evaluated)
-        rmse_z_m = round(math.sqrt(sq_sum / n_pts), 4)
-        rmse_z_cm = round(rmse_z_m * 100.0, 2)
-        mean_err_m = round(sum(p["dz_m"] for p in evaluated) / n_pts, 4)
-        mean_err_cm = round(mean_err_m * 100.0, 2)
-        max_abs_m = round(max((abs(p["dz_m"]) for p in evaluated), default=0.0), 4)
-        max_abs_cm = round(max_abs_m * 100.0, 2)
-        conf_95_m = round(1.96 * rmse_z_m, 4)
-        conf_95_cm = round(1.96 * rmse_z_cm, 2)
+        n_pts = len(evaluated)
+        if n_pts == 0:
+            return {
+                "status": "ok",
+                "scan_id": scan_id,
+                "scan_name": scan.get("name") or scan_id,
+                "crs": TWD97_TWVD2001_LABEL,
+                "point_count": 0,
+                "total_submitted": len(raw_pts),
+                "points": [],
+                "gcp_residuals": [],
+                "rmse_e": 0.0,
+                "rmse_n": 0.0,
+                "rmse_h": 0.0,
+                "rmse_2d": 0.0,
+                "rmse_3d": 0.0,
+                "rmse_e_m": 0.0,
+                "rmse_n_m": 0.0,
+                "rmse_h_m": 0.0,
+                "rmse_2d_m": 0.0,
+                "rmse_3d_m": 0.0,
+                "rmse_e_cm": 0.0,
+                "rmse_n_cm": 0.0,
+                "rmse_h_cm": 0.0,
+                "rmse_2d_cm": 0.0,
+                "rmse_3d_cm": 0.0,
+                "rmse_z_m": 0.0,
+                "rmse_z_cm": 0.0,
+                "mean_bias_e": 0.0,
+                "mean_bias_n": 0.0,
+                "mean_bias_h": 0.0,
+                "mean_de_m": 0.0,
+                "mean_dn_m": 0.0,
+                "mean_dh_m": 0.0,
+                "std_de_m": 0.0,
+                "std_dn_m": 0.0,
+                "std_dh_m": 0.0,
+                "max_abs_de_m": 0.0,
+                "max_abs_dn_m": 0.0,
+                "max_abs_dh_m": 0.0,
+                "max_d2d_m": 0.0,
+                "max_d3d_m": 0.0,
+                "mean_error_m": 0.0,
+                "mean_error_cm": 0.0,
+                "max_abs_dz_m": 0.0,
+                "max_abs_dz_cm": 0.0,
+                "confidence_95_m": 0.0,
+                "confidence_95_cm": 0.0,
+                "accuracy_z_95_m": 0.0,
+                "accuracy_r_95_m": 0.0,
+                "accuracy_3d_95_m": 0.0,
+                "confidence_95_h_m": 0.0,
+                "confidence_95_2d_m": 0.0,
+                "confidence_95_3d_m": 0.0,
+                "qa_grade": "A",
+                "qa_grade_label": "Grade A (No Points)",
+                "tbm_applied": False,
+                "tbm_shift_m": 0.0,
+                "tbm_calibration_preview": {
+                    "shift_m": 0.0,
+                    "reference_tbm_id": None,
+                    "calibration_mode": "none",
+                    "raw_rmse_h_m": 0.0,
+                    "calibrated_rmse_h_m": 0.0,
+                    "calibrated_rmse_3d_m": 0.0,
+                    "raw_qa_grade": "A",
+                    "calibrated_qa_grade": "A",
+                },
+                "csv_url": "",
+                "html_url": "",
+            }
 
-        if rmse_z_cm <= 5.0:
-            qa_grade = "A"
-            qa_grade_label = "Grade A (RTK Survey-Grade ≤ 5.0 cm)"
-        elif rmse_z_cm <= 10.0:
-            qa_grade = "B"
-            qa_grade_label = "Grade B (Engineering Topographic ≤ 10.0 cm)"
+        # Raw statistical aggregation
+        rmse_e_m = round(math.sqrt(sum(p["de"] ** 2 for p in evaluated) / n_pts), 4)
+        rmse_n_m = round(math.sqrt(sum(p["dn"] ** 2 for p in evaluated) / n_pts), 4)
+        rmse_h_m = round(math.sqrt(sum(p["dh"] ** 2 for p in evaluated) / n_pts), 4)
+        rmse_2d_m = round(math.hypot(rmse_e_m, rmse_n_m), 4)
+        rmse_3d_m = round(math.hypot(rmse_2d_m, rmse_h_m), 4)
+
+        mean_de_m = round(sum(p["de"] for p in evaluated) / n_pts, 4)
+        mean_dn_m = round(sum(p["dn"] for p in evaluated) / n_pts, 4)
+        mean_dh_m = round(sum(p["dh"] for p in evaluated) / n_pts, 4)
+
+        if n_pts > 1:
+            std_de_m = round(math.sqrt(sum((p["de"] - mean_de_m) ** 2 for p in evaluated) / (n_pts - 1)), 4)
+            std_dn_m = round(math.sqrt(sum((p["dn"] - mean_dn_m) ** 2 for p in evaluated) / (n_pts - 1)), 4)
+            std_dh_m = round(math.sqrt(sum((p["dh"] - mean_dh_m) ** 2 for p in evaluated) / (n_pts - 1)), 4)
         else:
-            qa_grade = "C"
-            qa_grade_label = "Grade C (Reconnaissance / Needs GCP Re-Alignment > 10.0 cm)"
+            std_de_m = std_dn_m = std_dh_m = 0.0
+
+        max_abs_de_m = round(max(abs(p["de"]) for p in evaluated), 4)
+        max_abs_dn_m = round(max(abs(p["dn"]) for p in evaluated), 4)
+        max_abs_dh_m = round(max(abs(p["dh"]) for p in evaluated), 4)
+        max_d2d_m = round(max(p["d2d"] for p in evaluated), 4)
+        max_d3d_m = round(max(p["d3d"] for p in evaluated), 4)
+
+        # ASPRS 2014 95% Confidence Positional Accuracies
+        conf_95_h_m = round(1.9600 * rmse_h_m, 4)
+        conf_95_2d_m = round(1.7308 * rmse_2d_m, 4)
+        conf_95_3d_m = round(1.6140 * rmse_3d_m, 4)
+
+        # Taiwan Surveying QA Grading (Raw)
+        if (rmse_h_m * 100.0) <= 5.0 and (rmse_2d_m * 100.0) <= 5.0:
+            raw_qa_grade = "A"
+            raw_qa_grade_label = "Grade A (RTK Survey-Grade ≤ 5.0 cm)"
+        elif (rmse_h_m * 100.0) <= 10.0 and (rmse_2d_m * 100.0) <= 10.0:
+            raw_qa_grade = "B"
+            raw_qa_grade_label = "Grade B (Engineering Topographic ≤ 10.0 cm)"
+        else:
+            raw_qa_grade = "C"
+            raw_qa_grade_label = "Grade C (Reconnaissance / Calibration Needed > 10.0 cm)"
+
+        # 1-Click TBM Vertical Datum Calibration Math
+        tbm_pt = None
+        if selected_tbm_id:
+            for p in evaluated:
+                if p["name"].lower() == selected_tbm_id.lower():
+                    tbm_pt = p
+                    p["is_tbm"] = True
+                    break
+        if tbm_pt is None:
+            for p in evaluated:
+                if p["is_tbm"]:
+                    tbm_pt = p
+                    break
+
+        if tbm_pt is not None:
+            tbm_mode = "designated"
+            tbm_point_id = tbm_pt["name"]
+            proposed_shift_m = round(-tbm_pt["dh"], 4)
+        else:
+            tbm_mode = "network_mean"
+            tbm_point_id = None
+            proposed_shift_m = round(-mean_dh_m, 4)
+
+        # Compute calibrated residuals preview
+        calibrated_dh_list = []
+        for p in evaluated:
+            h_scan_cal = round(p["h_scan"] + proposed_shift_m, 3)
+            dh_cal = round(p["dh"] + proposed_shift_m, 4)
+            d3d_cal = round(math.hypot(p["d2d"], dh_cal), 4)
+            p["h_scan_cal"] = h_scan_cal
+            p["dh_cal"] = dh_cal
+            p["dh_cal_m"] = dh_cal
+            p["dh_cal_cm"] = round(dh_cal * 100.0, 2)
+            p["d3d_cal"] = d3d_cal
+            p["d3d_cal_m"] = d3d_cal
+            p["d3d_cal_cm"] = round(d3d_cal * 100.0, 2)
+            calibrated_dh_list.append(dh_cal)
+
+        cal_rmse_h_m = round(math.sqrt(sum(dh ** 2 for dh in calibrated_dh_list) / n_pts), 4)
+        cal_rmse_3d_m = round(math.hypot(rmse_2d_m, cal_rmse_h_m), 4)
+        cal_conf_95_h_m = round(1.9600 * cal_rmse_h_m, 4)
+        cal_conf_95_3d_m = round(1.6140 * cal_rmse_3d_m, 4)
+
+        if (cal_rmse_h_m * 100.0) <= 5.0 and (rmse_2d_m * 100.0) <= 5.0:
+            cal_qa_grade = "A"
+            cal_qa_grade_label = "Grade A (RTK Survey-Grade ≤ 5.0 cm)"
+        elif (cal_rmse_h_m * 100.0) <= 10.0 and (rmse_2d_m * 100.0) <= 10.0:
+            cal_qa_grade = "B"
+            cal_qa_grade_label = "Grade B (Engineering Topographic ≤ 10.0 cm)"
+        else:
+            cal_qa_grade = "C"
+            cal_qa_grade_label = "Grade C (Reconnaissance / Calibration Needed > 10.0 cm)"
+
+        tbm_calibration_preview = {
+            "shift_m": proposed_shift_m,
+            "shift_cm": round(proposed_shift_m * 100.0, 2),
+            "tbm_mode": tbm_mode,
+            "tbm_point_id": tbm_point_id,
+            "raw_rmse_h_m": rmse_h_m,
+            "calibrated_rmse_h_m": cal_rmse_h_m,
+            "calibrated_rmse_h_cm": round(cal_rmse_h_m * 100.0, 2),
+            "raw_rmse_3d_m": rmse_3d_m,
+            "calibrated_rmse_3d_m": cal_rmse_3d_m,
+            "calibrated_rmse_3d_cm": round(cal_rmse_3d_m * 100.0, 2),
+            "calibrated_qa_grade": cal_qa_grade,
+            "calibrated_qa_grade_label": cal_qa_grade_label,
+        }
+
+        # Apply TBM Calibration if requested
+        if apply_tbm:
+            if reset_cal:
+                if hasattr(self, "db") and self.db:
+                    self.db.set_scan_vertical_datum_calibration(scan_id, None, None)
+                tbm_applied = False
+                tbm_shift_m_active = 0.0
+                active_rmse_h_m = rmse_h_m
+                active_rmse_3d_m = rmse_3d_m
+                active_conf_95_h_m = conf_95_h_m
+                active_conf_95_3d_m = conf_95_3d_m
+                active_qa_grade = raw_qa_grade
+                active_qa_grade_label = raw_qa_grade_label
+            else:
+                cal_meta = {
+                    "shift_m": proposed_shift_m,
+                    "shift_cm": round(proposed_shift_m * 100.0, 2),
+                    "tbm_mode": tbm_mode,
+                    "tbm_point_id": tbm_point_id,
+                    "applied_at": int(time.time()),
+                    "raw_rmse_h_m": rmse_h_m,
+                    "calibrated_rmse_h_m": cal_rmse_h_m,
+                    "raw_rmse_3d_m": rmse_3d_m,
+                    "calibrated_rmse_3d_m": cal_rmse_3d_m,
+                }
+                if hasattr(self, "db") and self.db:
+                    self.db.set_scan_vertical_datum_calibration(scan_id, cal_meta, proposed_shift_m)
+                tbm_applied = True
+                tbm_shift_m_active = proposed_shift_m
+                # Overwrite active point metrics with calibrated values
+                for p in evaluated:
+                    p["h_scan_raw"] = p["h_scan"]
+                    p["h_scan"] = p["h_scan_cal"]
+                    p["dh"] = p["dh_cal"]
+                    p["dh_m"] = p["dh_cal"]
+                    p["dh_cm"] = p["dh_cal_cm"]
+                    p["dz_m"] = p["dh_cal"]
+                    p["dz_cm"] = p["dh_cal_cm"]
+                    p["abs_dz_cm"] = abs(p["dh_cal_cm"])
+                    p["d3d"] = p["d3d_cal"]
+                    p["d3d_m"] = p["d3d_cal"]
+                    p["d3d_cm"] = p["d3d_cal_cm"]
+                    abs_c = abs(p["dz_cm"])
+                    p["status"] = "pass" if (abs_c <= 5.0 and p["d2d_cm"] <= 5.0) else ("warn" if (abs_c <= 10.0 and p["d2d_cm"] <= 10.0) else "outlier")
+                    p["local"][1] = round(p["h_scan"] - ch, 3)
+
+                active_rmse_h_m = cal_rmse_h_m
+                active_rmse_3d_m = cal_rmse_3d_m
+                active_conf_95_h_m = cal_conf_95_h_m
+                active_conf_95_3d_m = cal_conf_95_3d_m
+                active_qa_grade = cal_qa_grade
+                active_qa_grade_label = cal_qa_grade_label
+        else:
+            tbm_applied = False
+            tbm_shift_m_active = 0.0
+            active_rmse_h_m = rmse_h_m
+            active_rmse_3d_m = rmse_3d_m
+            active_conf_95_h_m = conf_95_h_m
+            active_conf_95_3d_m = conf_95_3d_m
+            active_qa_grade = raw_qa_grade
+            active_qa_grade_label = raw_qa_grade_label
+
+        active_rmse_h_cm = round(active_rmse_h_m * 100.0, 2)
+        active_rmse_3d_cm = round(active_rmse_3d_m * 100.0, 2)
+        rmse_2d_cm = round(rmse_2d_m * 100.0, 2)
+        rmse_e_cm = round(rmse_e_m * 100.0, 2)
+        rmse_n_cm = round(rmse_n_m * 100.0, 2)
 
         ts = int(time.time())
         safe_sid = "".join(c if c.isalnum() or c in "_-" else "_" for c in (scan_id or "scan"))
@@ -1942,12 +2316,18 @@ class DsmAndVolumeMixin:
             writer.writerow(
                 [
                     "CheckPoint_ID",
-                    "TWD97_E_m",
-                    "TWD97_N_m",
-                    "GCP_Orthometric_H_m",
-                    "Scan_Surface_H_m",
-                    "Residual_dZ_m",
-                    "Residual_dZ_cm",
+                    "TWD97_E_GCP_m",
+                    "TWD97_N_GCP_m",
+                    "TWVD2001_H_GCP_m",
+                    "Scan_E_m",
+                    "Scan_N_m",
+                    "Scan_H_m",
+                    "Residual_dE_m",
+                    "Residual_dN_m",
+                    "Residual_dH_m",
+                    "Residual_d2D_m",
+                    "Residual_d3D_m",
+                    "Is_TBM",
                     "QA_Status",
                 ]
             )
@@ -1955,26 +2335,41 @@ class DsmAndVolumeMixin:
                 writer.writerow(
                     [
                         p["name"],
-                        f"{p['e']:.3f}",
-                        f"{p['n']:.3f}",
+                        f"{p['e_gcp']:.3f}",
+                        f"{p['n_gcp']:.3f}",
                         f"{p['h_gcp']:.3f}",
+                        f"{p['e_scan']:.3f}",
+                        f"{p['n_scan']:.3f}",
                         f"{p['h_scan']:.3f}",
-                        f"{p['dz_m']:+.4f}",
-                        f"{p['dz_cm']:+.2f}",
+                        f"{p['de']:+.4f}",
+                        f"{p['dn']:+.4f}",
+                        f"{p['dh']:+.4f}",
+                        f"{p['d2d']:.4f}",
+                        f"{p['d3d']:.4f}",
+                        "YES" if p["is_tbm"] else "NO",
                         p["status"].upper(),
                     ]
                 )
             writer.writerow([])
             writer.writerow(["Metric", "Value_m", "Value_cm", "Notes"])
-            writer.writerow(["RMSE_Z", f"{rmse_z_m:.4f}", f"{rmse_z_cm:.2f}", qa_grade_label])
-            writer.writerow(["Mean_Bias", f"{mean_err_m:+.4f}", f"{mean_err_cm:+.2f}", "Scan minus GCP"])
-            writer.writerow(["Max_Abs_Error", f"{max_abs_m:.4f}", f"{max_abs_cm:.2f}", ""])
-            writer.writerow(["Confidence_95_LE95", f"{conf_95_m:.4f}", f"{conf_95_cm:.2f}", "1.96 x RMSE_Z"])
+            writer.writerow(["RMSE_E", f"{rmse_e_m:.4f}", f"{rmse_e_cm:.2f}", "Easting RMSE"])
+            writer.writerow(["RMSE_N", f"{rmse_n_m:.4f}", f"{rmse_n_cm:.2f}", "Northing RMSE"])
+            writer.writerow(["RMSE_H (RMSE_Z)", f"{active_rmse_h_m:.4f}", f"{active_rmse_h_cm:.2f}", active_qa_grade_label])
+            writer.writerow(["RMSE_2D", f"{rmse_2d_m:.4f}", f"{rmse_2d_cm:.2f}", "Horizontal Planar RMSE"])
+            writer.writerow(["RMSE_3D", f"{active_rmse_3d_m:.4f}", f"{active_rmse_3d_cm:.2f}", "True 3D Spatial RMSE"])
+            writer.writerow(["ASPRS_95_Vertical", f"{active_conf_95_h_m:.4f}", f"{round(active_conf_95_h_m * 100.0, 2):.2f}", "1.9600 x RMSE_H"])
+            writer.writerow(["ASPRS_95_Horizontal", f"{conf_95_2d_m:.4f}", f"{round(conf_95_2d_m * 100.0, 2):.2f}", "1.7308 x RMSE_2D"])
+            writer.writerow(["ASPRS_95_Spatial_3D", f"{active_conf_95_3d_m:.4f}", f"{round(active_conf_95_3d_m * 100.0, 2):.2f}", "1.6140 x RMSE_3D"])
+            writer.writerow(["Mean_Bias_H", f"{mean_dh_m:+.4f}", f"{round(mean_dh_m * 100.0, 2):+.2f}", "Scan minus GCP"])
+            writer.writerow(["TBM_Calibration_Shift", f"{proposed_shift_m:+.4f}", f"{round(proposed_shift_m * 100.0, 2):+.2f}", f"Applied: {tbm_applied}"])
 
         rows_html = "".join(
-            f"<tr><td><b>{p['name']}</b></td><td>{p['e']:,.3f}</td><td>{p['n']:,.3f}</td>"
-            f"<td>{p['h_gcp']:,.3f}</td><td>{p['h_scan']:,.3f}</td>"
-            f"<td style='font-weight:700;color:{'#059669' if p['status']=='pass' else ('#d97706' if p['status']=='warn' else '#dc2626')};'>{p['dz_m']:+.3f} m ({p['dz_cm']:+.1f} cm)</td>"
+            f"<tr><td><b>{p['name']}</b>{' <span style=\"color:#0284c7;font-weight:800;\">[TBM]</span>' if p['is_tbm'] else ''}</td>"
+            f"<td>{p['e_gcp']:,.3f}</td><td>{p['n_gcp']:,.3f}</td><td>{p['h_gcp']:,.3f}</td>"
+            f"<td>{p['e_scan']:,.3f}</td><td>{p['n_scan']:,.3f}</td><td>{p['h_scan']:,.3f}</td>"
+            f"<td>{p['de']:+.3f} m</td><td>{p['dn']:+.3f} m</td>"
+            f"<td style='font-weight:700;color:{'#059669' if p['status']=='pass' else ('#d97706' if p['status']=='warn' else '#dc2626')};'>{p['dh']:+.3f} m ({p['dh_cm']:+.1f} cm)</td>"
+            f"<td><b>{p['d3d']:.3f} m</b> ({p['d3d_cm']:.1f} cm)</td>"
             f"<td>{p['status'].upper()}</td></tr>"
             for p in evaluated
         )
@@ -1982,16 +2377,16 @@ class DsmAndVolumeMixin:
 <html lang="zh-Hant">
 <head>
   <meta charset="UTF-8" />
-  <title>GCP Accuracy QA Certificate — {scan.get('name') or scan_id}</title>
+  <title>3D GCP Accuracy & Control Alignment Certificate — {scan.get('name') or scan_id}</title>
   <style>
-    body {{ font-family: "Microsoft JhengHei", system-ui, sans-serif; color: #0f172a; margin: 28px; }}
+    body {{ font-family: "Microsoft JhengHei", system-ui, sans-serif; color: #0f172a; margin: 28px; line-height: 1.5; }}
     .hdr {{ display:flex; justify-content:space-between; align-items:center; border-bottom:2px solid #0284c7; padding-bottom:12px; margin-bottom:16px; }}
-    .kpis {{ display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin-bottom:18px; }}
-    .kpi {{ border:1px solid #cbd5e1; border-radius:8px; padding:10px 14px; background:#f8fafc; }}
-    .kpi .l {{ font-size:11px; color:#475569; text-transform:uppercase; }}
-    .kpi .v {{ font-size:20px; font-weight:800; color:#0284c7; margin-top:4px; }}
-    table {{ width:100%; border-collapse:collapse; font-size:12.5px; }}
-    th, td {{ border:1px solid #cbd5e1; padding:7px 10px; text-align:right; }}
+    .kpis {{ display:grid; grid-template-columns:repeat(5,1fr); gap:10px; margin-bottom:18px; }}
+    .kpi {{ border:1px solid #cbd5e1; border-radius:8px; padding:10px 12px; background:#f8fafc; }}
+    .kpi .l {{ font-size:10.5px; color:#475569; text-transform:uppercase; font-weight:600; }}
+    .kpi .v {{ font-size:18px; font-weight:800; color:#0284c7; margin-top:4px; }}
+    table {{ width:100%; border-collapse:collapse; font-size:12px; }}
+    th, td {{ border:1px solid #cbd5e1; padding:6px 8px; text-align:right; }}
     th:first-child, td:first-child {{ text-align:left; }}
     th {{ background:#f1f5f9; font-weight:700; }}
   </style>
@@ -1999,20 +2394,25 @@ class DsmAndVolumeMixin:
 <body>
   <div class="hdr">
     <div>
-      <h2 style="margin:0;">控制點高程精度檢核證書 (GCP Vertical Accuracy QA Certificate)</h2>
-      <div style="font-size:12px;color:#475569;margin-top:4px;">Scan: <b>{scan.get('name') or scan_id}</b> | CRS: <b>{TWD97_TWVD2001_LABEL}</b></div>
+      <h2 style="margin:0;">3D 控制點空間精度與高程校正檢核證書 (3D GCP QA & TBM Calibration)</h2>
+      <div style="font-size:12px;color:#475569;margin-top:4px;">Scan: <b>{scan.get('name') or scan_id}</b> | CRS: <b>{TWD97_TWVD2001_LABEL}</b> | TBM Shift: <b>{tbm_shift_m_active:+.3f} m</b></div>
     </div>
-    <div style="font-size:14px;font-weight:800;padding:6px 14px;border-radius:999px;background:#e0f2fe;color:#0369a1;">{qa_grade_label}</div>
+    <div style="font-size:13px;font-weight:800;padding:6px 14px;border-radius:999px;background:#e0f2fe;color:#0369a1;">{active_qa_grade_label}</div>
   </div>
   <div class="kpis">
-    <div class="kpi"><div class="l">Vertical RMSE_Z (均方根誤差)</div><div class="v">{rmse_z_cm:.2f} cm ({rmse_z_m:.3f} m)</div></div>
-    <div class="kpi"><div class="l">95% Confidence (1.96 × RMSE)</div><div class="v">±{conf_95_cm:.2f} cm</div></div>
-    <div class="kpi"><div class="l">Mean Vertical Bias (平均偏差)</div><div class="v">{mean_err_cm:+.2f} cm</div></div>
-    <div class="kpi"><div class="l">Max |ΔH| Residual (最大誤差)</div><div class="v">{max_abs_cm:.2f} cm</div></div>
+    <div class="kpi"><div class="l">3D 空間 RMSE_3D</div><div class="v">{active_rmse_3d_cm:.2f} cm</div></div>
+    <div class="kpi"><div class="l">平面 2D RMSE_2D</div><div class="v">{rmse_2d_cm:.2f} cm</div></div>
+    <div class="kpi"><div class="l">高程 RMSE_H (Z)</div><div class="v">{active_rmse_h_cm:.2f} cm</div></div>
+    <div class="kpi"><div class="l">ASPRS 95% 高程</div><div class="v">±{round(active_conf_95_h_m * 100.0, 2):.2f} cm</div></div>
+    <div class="kpi"><div class="l">ASPRS 95% 平面</div><div class="v">±{round(conf_95_2d_m * 100.0, 2):.2f} cm</div></div>
   </div>
   <table>
     <thead>
-      <tr><th>Point ID</th><th>TWD97 E (m)</th><th>TWD97 N (m)</th><th>GCP H (m)</th><th>Scan H (m)</th><th>Residual ΔH</th><th>QA Status</th></tr>
+      <tr>
+        <th>Point ID</th><th>E_gcp (m)</th><th>N_gcp (m)</th><th>H_gcp (m)</th>
+        <th>E_scan (m)</th><th>N_scan (m)</th><th>H_scan (m)</th>
+        <th>ΔE</th><th>ΔN</th><th>ΔH (cm)</th><th>Δ3D (cm)</th><th>Status</th>
+      </tr>
     </thead>
     <tbody>{rows_html}</tbody>
   </table>
@@ -2029,17 +2429,64 @@ class DsmAndVolumeMixin:
             "scan_name": scan.get("name") or scan_id,
             "crs": TWD97_TWVD2001_LABEL,
             "point_count": len(evaluated),
-            "rmse_z_m": rmse_z_m,
-            "rmse_z_cm": rmse_z_cm,
-            "mean_error_m": mean_err_m,
-            "mean_error_cm": mean_err_cm,
-            "max_abs_dz_m": max_abs_m,
-            "max_abs_dz_cm": max_abs_cm,
-            "confidence_95_m": conf_95_m,
-            "confidence_95_cm": conf_95_cm,
-            "qa_grade": qa_grade,
-            "qa_grade_label": qa_grade_label,
+            "total_submitted": len(raw_pts),
+            # 3D RMSE metrics
+            "rmse_e": rmse_e_m,
+            "rmse_n": rmse_n_m,
+            "rmse_h": active_rmse_h_m,
+            "rmse_2d": rmse_2d_m,
+            "rmse_3d": active_rmse_3d_m,
+            "rmse_e_m": rmse_e_m,
+            "rmse_n_m": rmse_n_m,
+            "rmse_h_m": active_rmse_h_m,
+            "rmse_2d_m": rmse_2d_m,
+            "rmse_3d_m": active_rmse_3d_m,
+            "rmse_e_cm": rmse_e_cm,
+            "rmse_n_cm": rmse_n_cm,
+            "rmse_h_cm": active_rmse_h_cm,
+            "rmse_2d_cm": rmse_2d_cm,
+            "rmse_3d_cm": active_rmse_3d_cm,
+            # Legacy vertical keys for backward compatibility
+            "rmse_z_m": active_rmse_h_m,
+            "rmse_z_cm": active_rmse_h_cm,
+            "mean_error_m": mean_dh_m,
+            "mean_error_cm": round(mean_dh_m * 100.0, 2),
+            "max_abs_dz_m": max_abs_dh_m,
+            "max_abs_dz_cm": round(max_abs_dh_m * 100.0, 2),
+            "confidence_95_m": active_conf_95_h_m,
+            "confidence_95_cm": round(active_conf_95_h_m * 100.0, 2),
+            # ASPRS 2014 Positional Accuracies
+            "accuracy_z_95_m": active_conf_95_h_m,
+            "accuracy_r_95_m": conf_95_2d_m,
+            "accuracy_3d_95_m": active_conf_95_3d_m,
+            "confidence_95_h_m": active_conf_95_h_m,
+            "confidence_95_2d_m": conf_95_2d_m,
+            "confidence_95_3d_m": active_conf_95_3d_m,
+            # Systematic Biases & Dispersion
+            "mean_bias_e": mean_de_m,
+            "mean_bias_n": mean_dn_m,
+            "mean_bias_h": mean_dh_m,
+            "mean_de_m": mean_de_m,
+            "mean_dn_m": mean_dn_m,
+            "mean_dh_m": mean_dh_m,
+            "std_de_m": std_de_m,
+            "std_dn_m": std_dn_m,
+            "std_dh_m": std_dh_m,
+            "max_abs_de_m": max_abs_de_m,
+            "max_abs_dn_m": max_abs_dn_m,
+            "max_abs_dh_m": max_abs_dh_m,
+            "max_d2d_m": max_d2d_m,
+            "max_d3d_m": max_d3d_m,
+            # Grading
+            "qa_grade": active_qa_grade,
+            "qa_grade_label": active_qa_grade_label,
+            # TBM Calibration
+            "tbm_applied": tbm_applied,
+            "tbm_shift_m": tbm_shift_m_active,
+            "tbm_calibration_preview": tbm_calibration_preview,
+            # Datasets
             "points": evaluated,
+            "gcp_residuals": evaluated,
             "csv_url": f"/api/reports/{csv_filename}",
             "html_url": f"/api/reports/{html_filename}",
         }
@@ -2058,20 +2505,21 @@ class DsmAndVolumeMixin:
         grid_size = max(8, min(32, int(round(grid_size_val or 14.0))))
         exclude_walls = bool(payload.get("exclude_walls", True))
         scan = self.db.get_scan(scan_id) or {}
+        v_shift = self._resolve_vertical_datum_shift(scan_id, payload, scan)
         try:
             dsm_data = self._load_or_build_scan_dsm(scan)
         except Exception:
             dsm_data = None
         ce = safe_float(scan.get("twd97_e"), 304952.4) or 304952.4
         cn = safe_float(scan.get("twd97_n"), 2757084.2) or 2757084.2
-        ch = safe_float(scan.get("twd97_h"), 124.8) or 124.8
+        ch = (safe_float(scan.get("twd97_h"), 124.8) or 124.8) + v_shift
 
         raw_grid = None
         hull_mask = None
         if isinstance(dsm_data, dict):
             ce = safe_float(dsm_data.get("ce"), ce) or ce
             cn = safe_float(dsm_data.get("cn"), cn) or cn
-            ch = safe_float(dsm_data.get("ch"), ch) or ch
+            ch = (safe_float(dsm_data.get("ch"), ch) or ch) + v_shift
             raw_grid = (
                 dsm_data.get("dsm_contour")
                 if dsm_data.get("dsm_contour") is not None

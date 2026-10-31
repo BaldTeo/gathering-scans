@@ -1,0 +1,250 @@
+/**
+ * GatheringScans Civil Surveying, Construction QA & Scan-to-BIM Stylesheet
+ * File: web/survey-bim.css
+ * Compliance: Strictly under 5,000 lines modular ceiling.
+ */
+
+/* -------------------------------------------------------------------------
+   GCP QA & TBM Datum Calibration Panel
+   ------------------------------------------------------------------------- */
+.gcp-qa-container {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  font-family: inherit;
+  font-size: 11.5px;
+  color: var(--ui-text-primary, #f1f5f9);
+}
+
+.gcp-grade-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: var(--ui-bg-card, rgba(15, 23, 42, 0.6));
+  border: 1px solid var(--ui-border, rgba(255, 255, 255, 0.1));
+  border-radius: 8px;
+  padding: 8px 12px;
+}
+
+.gcp-grade-badge {
+  font-weight: 800;
+  font-size: 11px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.gcp-grade-badge.grade-a {
+  background: rgba(16, 185, 129, 0.18);
+  color: #10b981;
+  border: 1px solid rgba(16, 185, 129, 0.35);
+}
+
+.gcp-grade-badge.grade-b {
+  background: rgba(245, 158, 11, 0.18);
+  color: #f59e0b;
+  border: 1px solid rgba(245, 158, 11, 0.35);
+}
+
+.gcp-grade-badge.grade-c {
+  background: rgba(239, 68, 68, 0.18);
+  color: #ef4444;
+  border: 1px solid rgba(239, 68, 68, 0.35);
+}
+
+/* KPI Metrics Grid */
+.gcp-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+}
+
+.gcp-kpi-card {
+  background: var(--ui-bg-subtle, rgba(255, 255, 255, 0.03));
+  border: 1px solid var(--ui-border, rgba(255, 255, 255, 0.08));
+  border-radius: 6px;
+  padding: 6px 8px;
+  text-align: center;
+}
+
+.gcp-kpi-card .kpi-label {
+  font-size: 9.5px;
+  color: var(--ui-text-secondary, #94a3b8);
+  text-transform: uppercase;
+  margin-bottom: 2px;
+}
+
+.gcp-kpi-card .kpi-val {
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--ui-accent, #38bdf8);
+}
+
+.gcp-kpi-card.highlight .kpi-val {
+  color: #10b981;
+}
+
+/* 1-Click TBM Calibration Card */
+.gcp-tbm-card {
+  background: var(--ui-bg-card, rgba(15, 23, 42, 0.5));
+  border: 1px solid var(--ui-border-strong, rgba(56, 189, 248, 0.25));
+  border-radius: 8px;
+  padding: 10px;
+}
+
+.gcp-tbm-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+}
+
+.gcp-tbm-title {
+  font-weight: 700;
+  font-size: 11px;
+  color: var(--ui-accent, #38bdf8);
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.gcp-tbm-preview-box {
+  background: rgba(0, 0, 0, 0.25);
+  border-radius: 6px;
+  padding: 7px 9px;
+  margin: 6px 0;
+  font-size: 10.5px;
+  line-height: 1.4;
+}
+
+.gcp-tbm-preview-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.gcp-tbm-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+/* 3D Residuals Table */
+.gcp-table-container {
+  max-height: 190px;
+  overflow: auto;
+  border: 1px solid var(--ui-border, rgba(255, 255, 255, 0.1));
+  border-radius: 7px;
+}
+
+.gcp-residuals-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 10.5px;
+  text-align: right;
+}
+
+.gcp-residuals-table th {
+  background: var(--ui-bg-table-header, rgba(255, 255, 255, 0.05));
+  color: var(--ui-text-secondary, #94a3b8);
+  padding: 5px 6px;
+  font-weight: 700;
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  border-bottom: 1px solid var(--ui-border, rgba(255, 255, 255, 0.1));
+}
+
+.gcp-residuals-table th:first-child,
+.gcp-residuals-table td:first-child,
+.gcp-residuals-table th:nth-child(2),
+.gcp-residuals-table td:nth-child(2) {
+  text-align: left;
+}
+
+.gcp-residuals-table td {
+  padding: 4px 6px;
+  border-bottom: 1px solid var(--ui-border-subtle, rgba(255, 255, 255, 0.04));
+}
+
+.gcp-residuals-table tr:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.gcp-status-badge {
+  display: inline-block;
+  font-weight: 800;
+  font-size: 9px;
+  padding: 1px 5px;
+  border-radius: 4px;
+  text-transform: uppercase;
+}
+
+.gcp-status-badge.pass {
+  background: rgba(16, 185, 129, 0.18);
+  color: #10b981;
+}
+
+.gcp-status-badge.warn {
+  background: rgba(245, 158, 11, 0.18);
+  color: #f59e0b;
+}
+
+.gcp-status-badge.outlier {
+  background: rgba(239, 68, 68, 0.18);
+  color: #ef4444;
+}
+
+/* Vector Visualization Controls */
+.gcp-vis-controls {
+  background: var(--ui-bg-subtle, rgba(255, 255, 255, 0.03));
+  border: 1px solid var(--ui-border, rgba(255, 255, 255, 0.08));
+  border-radius: 7px;
+  padding: 6px 9px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 10.5px;
+}
+
+.gcp-scale-selector {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.gcp-scale-selector select {
+  background: var(--ui-bg-input, #0f172a);
+  color: var(--ui-text-primary, #f1f5f9);
+  border: 1px solid var(--ui-border, rgba(255, 255, 255, 0.15));
+  border-radius: 4px;
+  padding: 2px 6px;
+  font-size: 10.5px;
+}
+
+/* Print Styles */
+@media print {
+  .gs-topbar,
+  .bim-dock,
+  .side-panel-header,
+  .gcp-vis-controls,
+  .gcp-tbm-actions,
+  #txtGcpCsvInput,
+  #btnComputeGcpQa,
+  #btnLoadSampleGcpPoints {
+    display: none !important;
+  }
+  body, .side-panel {
+    background: #ffffff !important;
+    color: #0f172a !important;
+    font-family: "Microsoft JhengHei", system-ui, sans-serif !important;
+  }
+  .gcp-residuals-table th {
+    background: #f1f5f9 !important;
+    color: #0f172a !important;
+  }
+  .gcp-residuals-table td {
+    border-bottom: 1px solid #cbd5e1 !important;
+  }
+}

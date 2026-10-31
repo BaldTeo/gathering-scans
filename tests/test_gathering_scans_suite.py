@@ -2720,6 +2720,81 @@ class GatheringScansTestSuite(unittest.TestCase):
             )
         self.assertIn("Please stage at least one adjustment", str(cm.exception))
 
+    def test_35_milestone2_control_alignment_and_3d_gcp_calibration(self):
+        """Milestone 2 Verification: 3D GCP residuals, ASPRS 95% confidence accuracies, and 1-click TBM calibration."""
+        self._ensure_test_scan("quchi_20261005_merged")
+        from pc_worker.surveying_engine import SurveyingEngine
+
+        survey = SurveyingEngine(self.db)
+        sid = "quchi_20261005_merged"
+
+        # 1. 3D GCP Target Pairing & Residuals
+        payload = {
+            "scan_id": sid,
+            "points": [
+                {"name": "GCP_01", "e": 304950.0, "n": 2757080.0, "h_gcp": 125.0, "mesh_e": 304950.02, "mesh_n": 2757080.01, "mesh_h": 125.04},
+                {"name": "GCP_02", "e": 304960.0, "n": 2757090.0, "h_gcp": 126.0, "mesh_e": 304959.98, "mesh_n": 2757089.99, "mesh_h": 126.02},
+            ],
+        }
+        res = survey.compute_gcp_accuracy_qa(payload)
+        self.assertEqual(res["status"], "ok")
+        self.assertEqual(res["point_count"], 2)
+        self.assertIn("gcp_residuals", res)
+        self.assertIn("rmse_3d", res)
+        self.assertIn("rmse_2d", res)
+        self.assertIn("accuracy_z_95_m", res)
+        self.assertIn("accuracy_r_95_m", res)
+        self.assertIn("accuracy_3d_95_m", res)
+        self.assertIn("tbm_calibration_preview", res)
+
+        # Legacy backward-compatible keys
+        self.assertIn("points", res)
+        self.assertIn("rmse_z_m", res)
+        self.assertIn("rmse_z_cm", res)
+        self.assertIn("qa_grade", res)
+
+        # 2. 1-Click TBM Calibration Application & Persistence
+        res_cal = survey.compute_gcp_accuracy_qa({
+            "scan_id": sid,
+            "points": [
+                {"name": "TBM_01", "e": 304950.0, "n": 2757080.0, "h_gcp": 125.0, "mesh_h": 125.25, "is_tbm": True},
+            ],
+            "apply_tbm_calibration": True,
+        })
+        self.assertEqual(res_cal["status"], "ok")
+        self.assertTrue(res_cal["tbm_applied"])
+        self.assertAlmostEqual(res_cal["tbm_shift_m"], -0.250, places=3)
+
+        # Verify DB persistence & resolver
+        shift_resolved = survey._resolve_vertical_datum_shift(sid)
+        self.assertAlmostEqual(shift_resolved, -0.250, places=3)
+
+        # 3. Reset calibration
+        res_reset = survey.compute_gcp_accuracy_qa({
+            "scan_id": sid,
+            "points": [],
+            "reset_calibration": True,
+            "apply_tbm_calibration": True,
+        })
+        self.assertEqual(res_reset["status"], "ok")
+        self.assertFalse(res_reset["tbm_applied"])
+        self.assertAlmostEqual(survey._resolve_vertical_datum_shift(sid), 0.0, places=3)
+
+        # 4. Verify frontend assets & service worker registration
+        with open(os.path.join(BASE_DIR, "web", "index.html"), "r", encoding="utf-8") as f:
+            index_html = f.read()
+        with open(os.path.join(BASE_DIR, "web", "sw.js"), "r", encoding="utf-8") as f:
+            sw_js = f.read()
+        with open(os.path.join(BASE_DIR, "web", "src", "09-construction-survey-and-bim.js"), "r", encoding="utf-8") as f:
+            js09 = f.read()
+
+        self.assertIn("/survey-bim.css?v=20261031_v219", index_html)
+        self.assertIn("/survey-bim.css", sw_js)
+        self.assertIn("gathering-scans-offline-v219", sw_js)
+        self.assertIn("openEnhancedGcpAccuracyQaInspector", js09)
+        self.assertIn("renderEnhancedGcpQaMarkers3D", js09)
+        self.assertIn("window.openGcpAccuracyQaInspector", js09)
+
 
 if __name__ == "__main__":
     unittest.main()

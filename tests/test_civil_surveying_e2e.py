@@ -996,6 +996,355 @@ class TestSurveyingEngineIntegrationAndContract(unittest.TestCase):
         self.assertAlmostEqual(dz_dn, -0.02, delta=0.01)
 
 
+class TestMilestone2ControlAlignmentAndGcpCalibration(unittest.TestCase):
+    """
+    Milestone 2 Control Alignment & 3D GCP Calibration E2E Suite:
+    - 3D GCP target pairing and residual math (dE, dN, dH, d2D, d3D)
+    - Statistical RMSEs, mean biases, sample standard deviations, ASPRS 2014 95% confidence intervals
+    - 1-Click TBM vertical datum calibration (designated TBM point vs network mean bias)
+    - Zero-destruction persistence in SQLite extra_json and scan_meta.json
+    - Downstream datum propagation across volume and profile
+    - Adversarial input resilience (empty arrays, invalid strings, N=1 safeguards)
+    """
+
+    def setUp(self):
+        self.tmp_dir = tempfile.mkdtemp()
+        self.tmp_db_path = os.path.join(self.tmp_dir, "test_m2_scans.db")
+        self.db = ScanQueueDB(db_path=self.tmp_db_path)
+        self.survey = SurveyingEngine(self.db)
+
+        # Register a mock project scan in the test DB
+        self.scan_id = "test_m2_scan_01"
+        self.scan_dir = os.path.join(self.tmp_dir, self.scan_id)
+        os.makedirs(self.scan_dir, exist_ok=True)
+        self.db.upsert_scan({
+            "scan_id": self.scan_id,
+            "name": "Milestone 2 Test Scan",
+            "project_group": "Civil Construction QA Site",
+            "twd97_e": 304950.0,
+            "twd97_n": 2757080.0,
+            "twd97_h": 125.0,
+            "project_dir": self.scan_dir,
+        })
+
+        # Synthetic planar DSM fixture for volume tests
+        import numpy as np
+        res = 1.0
+        e_min, e_max = 304930.0, 304970.0
+        n_min, n_max = 2757060.0, 2757100.0
+        nx = int((e_max - e_min) / res)
+        ny = int((n_max - n_min) / res)
+        dsm_grid = np.full((ny, nx), 126.5, dtype=np.float32)
+        hull_mask = np.ones((ny, nx), dtype=bool)
+        npz_path = os.path.join(self.scan_dir, "_dsm_cache_v5.npz")
+        np.savez_compressed(
+            npz_path,
+            ce=304950.0,
+            cn=2757080.0,
+            ch=126.5,
+            e_min=e_min,
+            e_max=e_max,
+            n_min=n_min,
+            n_max=n_max,
+            res=res,
+            dsm_raw=dsm_grid,
+            dsm_contour=dsm_grid,
+            hull_mask=hull_mask,
+        )
+
+    def tearDown(self):
+        import shutil
+        try:
+            shutil.rmtree(self.tmp_dir)
+        except OSError:
+            pass
+
+    def test_01_true_3d_gcp_residual_math_and_target_pairing(self):
+        """
+        Verify true 3D GCP target pairing and residual vector math:
+        dE = E_scan - E_gcp, dN = N_scan - N_gcp, dH = H_scan - H_gcp,
+        d2D = sqrt(dE^2 + dN^2), d3D = sqrt(dE^2 + dN^2 + dH^2).
+        Invariant: d3D^2 == dE^2 + dN^2 + dH^2.
+        """
+        payload = {
+            "scan_id": self.scan_id,
+            "points": [
+                {
+                    "name": "GCP-01",
+                    "e": 304950.000,
+                    "n": 2757080.000,
+                    "h": 125.400,
+                    "mesh_e": 304950.015,
+                    "mesh_n": 2757079.980,
+                    "mesh_h": 125.425,
+                },
+                {
+                    "name": "GCP-02",
+                    "e": 304985.000,
+                    "n": 2757110.000,
+                    "h": 126.850,
+                    "mesh_e": 304984.985,
+                    "mesh_n": 2757110.020,
+                    "mesh_h": 126.830,
+                },
+            ],
+        }
+
+        res = self.survey.compute_gcp_accuracy_qa(payload)
+        self.assertEqual(res["status"], "ok")
+        self.assertEqual(res["point_count"], 2)
+
+        pts = res["gcp_residuals"]
+        p1 = pts[0]
+        # GCP-01: dE = 0.015, dN = -0.020, dH = 0.025
+        self.assertAlmostEqual(p1["de"], 0.015, places=3)
+        self.assertAlmostEqual(p1["dn"], -0.020, places=3)
+        self.assertAlmostEqual(p1["dh"], 0.025, places=3)
+        self.assertAlmostEqual(p1["d2d"], math.hypot(0.015, -0.020), places=3)
+        self.assertAlmostEqual(p1["d3d"], math.sqrt(0.015**2 + (-0.020)**2 + 0.025**2), places=3)
+        self.assertAlmostEqual(p1["d3d"]**2, p1["de"]**2 + p1["dn"]**2 + p1["dh"]**2, places=5)
+
+        p2 = pts[1]
+        # GCP-02: dE = -0.015, dN = 0.020, dH = -0.020
+        self.assertAlmostEqual(p2["de"], -0.015, places=3)
+        self.assertAlmostEqual(p2["dn"], 0.020, places=3)
+        self.assertAlmostEqual(p2["dh"], -0.020, places=3)
+        self.assertAlmostEqual(p2["d2d"], math.hypot(-0.015, 0.020), places=3)
+        self.assertAlmostEqual(p2["d3d"], math.sqrt((-0.015)**2 + 0.020**2 + (-0.020)**2), places=3)
+
+    def test_02_statistical_qa_rmse_and_asprs_confidence_intervals(self):
+        """
+        Verify statistical aggregation across 4 control points:
+        - RMSE_E, RMSE_N, RMSE_H, RMSE_2D, RMSE_3D
+        - Invariant: RMSE_3D^2 == RMSE_2D^2 + RMSE_H^2 == RMSE_E^2 + RMSE_N^2 + RMSE_H^2
+        - ASPRS 2014 95% Confidence Accuracies:
+          Accuracy_z = 1.9600 * RMSE_H
+          Accuracy_r = 1.7308 * RMSE_2D
+          Accuracy_3d = 1.6140 * RMSE_3D
+        - Sample Standard Deviations and Mean Biases
+        """
+        # Controlled dataset:
+        # P1: dE = +0.02, dN = +0.01, dH = +0.03
+        # P2: dE = -0.02, dN = -0.01, dH = +0.01
+        # P3: dE = +0.01, dN = -0.02, dH = -0.02
+        # P4: dE = -0.01, dN = +0.02, dH = -0.02
+        payload = {
+            "scan_id": self.scan_id,
+            "points": [
+                {"name": "CP-1", "e": 304900.0, "n": 2757000.0, "h": 100.0, "mesh_e": 304900.02, "mesh_n": 2757000.01, "mesh_h": 100.03},
+                {"name": "CP-2", "e": 304920.0, "n": 2757000.0, "h": 100.0, "mesh_e": 304919.98, "mesh_n": 2756999.99, "mesh_h": 100.01},
+                {"name": "CP-3", "e": 304940.0, "n": 2757000.0, "h": 100.0, "mesh_e": 304940.01, "mesh_n": 2756999.98, "mesh_h": 99.98},
+                {"name": "CP-4", "e": 304960.0, "n": 2757000.0, "h": 100.0, "mesh_e": 304959.99, "mesh_n": 2757000.02, "mesh_h": 99.98},
+            ],
+        }
+
+        res = self.survey.compute_gcp_accuracy_qa(payload)
+        self.assertEqual(res["status"], "ok")
+        self.assertEqual(res["point_count"], 4)
+
+        # Expected RMSEs:
+        # de: [0.02, -0.02, 0.01, -0.01] -> de^2 = [0.0004, 0.0004, 0.0001, 0.0001] -> sum = 0.0010 -> mean = 0.00025 -> sqrt = 0.01581
+        # dn: [0.01, -0.01, -0.02, 0.02] -> dn^2 = [0.0001, 0.0001, 0.0004, 0.0004] -> sum = 0.0010 -> mean = 0.00025 -> sqrt = 0.01581
+        # dh: [0.03, 0.01, -0.02, -0.02] -> dh^2 = [0.0009, 0.0001, 0.0004, 0.0004] -> sum = 0.0018 -> mean = 0.00045 -> sqrt = 0.02121
+        self.assertAlmostEqual(res["rmse_e"], math.sqrt(0.00025), places=3)
+        self.assertAlmostEqual(res["rmse_n"], math.sqrt(0.00025), places=3)
+        self.assertAlmostEqual(res["rmse_h"], math.sqrt(0.00045), places=3)
+        self.assertAlmostEqual(res["rmse_2d"], math.hypot(res["rmse_e"], res["rmse_n"]), places=3)
+        self.assertAlmostEqual(res["rmse_3d"], math.hypot(res["rmse_2d"], res["rmse_h"]), places=3)
+
+        # Mathematical invariant check:
+        rmse_3d_sq = res["rmse_3d"] ** 2
+        sum_sq = res["rmse_e"] ** 2 + res["rmse_n"] ** 2 + res["rmse_h"] ** 2
+        self.assertAlmostEqual(rmse_3d_sq, sum_sq, delta=1e-4)
+
+        # ASPRS 2014 95% Confidence Accuracies
+        self.assertAlmostEqual(res["accuracy_z_95_m"], round(1.9600 * res["rmse_h"], 4), places=4)
+        self.assertAlmostEqual(res["accuracy_r_95_m"], round(1.7308 * res["rmse_2d"], 4), places=4)
+        self.assertAlmostEqual(res["accuracy_3d_95_m"], round(1.6140 * res["rmse_3d"], 4), places=4)
+
+        # Surveying QA Grade: both RMSE_H and RMSE_2D are <= 0.05m -> Grade A
+        self.assertEqual(res["qa_grade"], "A")
+        self.assertIn("Grade A", res["qa_grade_label"])
+
+    def test_03_one_click_tbm_calibration_designated_point(self):
+        """
+        Verify 1-Click TBM calibration with a designated benchmark point:
+        - TBM point has true ground elevation H_gcp = 100.000m, scan has H_scan = 100.250m (dH = +0.250m)
+        - Shift = -dH = -0.250m
+        - After calibration, TBM point residual becomes exactly 0.000m
+        """
+        payload = {
+            "scan_id": self.scan_id,
+            "points": [
+                {"name": "BM-01", "e": 304910.0, "n": 2757010.0, "h": 100.0, "mesh_h": 100.25, "is_tbm": True},
+                {"name": "CP-02", "e": 304930.0, "n": 2757030.0, "h": 102.5, "mesh_h": 102.73, "is_tbm": False},
+                {"name": "CP-03", "e": 304950.0, "n": 2757050.0, "h": 105.0, "mesh_h": 105.26, "is_tbm": False},
+            ],
+            "apply_tbm_calibration": True,
+            "selected_tbm_id": "BM-01",
+        }
+
+        res = self.survey.compute_gcp_accuracy_qa(payload)
+        self.assertEqual(res["status"], "ok")
+        self.assertTrue(res["tbm_applied"])
+        self.assertAlmostEqual(res["tbm_shift_m"], -0.250, places=3)
+
+        # After calibration, BM-01 residual must be 0.000m
+        pts = res["gcp_residuals"]
+        bm = pts[0]
+        self.assertEqual(bm["name"], "BM-01")
+        self.assertTrue(bm["is_tbm"])
+        self.assertAlmostEqual(bm["dh"], 0.000, places=3)
+        self.assertAlmostEqual(bm["dz_cm"], 0.0, places=1)
+        self.assertAlmostEqual(bm["h_scan"], 100.000, places=3)
+
+        # CP-02 calibrated residual: 102.73 - 0.25 - 102.50 = -0.020m (-2.0cm)
+        cp2 = pts[1]
+        self.assertAlmostEqual(cp2["dh"], -0.020, places=3)
+
+        # Verify RMSE_H dropped dramatically from ~0.25m to ~0.015m
+        self.assertLess(res["rmse_h"], 0.03)
+        self.assertEqual(res["qa_grade"], "A")
+
+    def test_04_one_click_tbm_calibration_network_mean_bias(self):
+        """
+        Verify 1-Click TBM calibration with network mean bias:
+        - Points have systematic +0.250m bias plus small random dispersion (+0.02, -0.02, +0.01, -0.01)
+        - Raw RMSE_H = 0.2505m (Grade C)
+        - Shift = -mean_dh = -0.250m
+        - Calibrated RMSE_H drops to 0.0158m (Grade A)
+        - Analytical theorem: RMSE_cal^2 == RMSE_raw^2 - mean_bias^2
+        """
+        payload = {
+            "scan_id": self.scan_id,
+            "points": [
+                {"name": "CP-1", "e": 304910.0, "n": 2757010.0, "h": 100.00, "mesh_h": 100.27}, # dh = +0.27
+                {"name": "CP-2", "e": 304920.0, "n": 2757020.0, "h": 102.50, "mesh_h": 102.73}, # dh = +0.23
+                {"name": "CP-3", "e": 304930.0, "n": 2757030.0, "h": 105.00, "mesh_h": 105.26}, # dh = +0.26
+                {"name": "CP-4", "e": 304940.0, "n": 2757040.0, "h": 101.00, "mesh_h": 101.24}, # dh = +0.24
+            ],
+            "apply_tbm_calibration": True,
+        }
+
+        res = self.survey.compute_gcp_accuracy_qa(payload)
+        self.assertEqual(res["status"], "ok")
+        self.assertTrue(res["tbm_applied"])
+        self.assertAlmostEqual(res["tbm_shift_m"], -0.250, places=3)
+
+        # Calibrated RMSE_H should be ~0.0158m
+        self.assertAlmostEqual(res["rmse_h"], 0.0158, places=3)
+        self.assertLess(res["rmse_h_cm"], 2.0)
+        self.assertEqual(res["qa_grade"], "A")
+
+        # Verify preview dictionary contains both raw and calibrated values
+        prev = res["tbm_calibration_preview"]
+        self.assertAlmostEqual(prev["raw_rmse_h_m"], 0.2505, places=3)
+        self.assertAlmostEqual(prev["calibrated_rmse_h_m"], 0.0158, places=3)
+        self.assertEqual(prev["tbm_mode"], "network_mean")
+
+    def test_05_zero_destruction_persistence_and_downstream_propagation(self):
+        """
+        Verify Zero-Destruction Persistence and Downstream Propagation:
+        1. When apply_tbm_calibration is True, offset persists in DB extra_json and scan_meta.json
+        2. Downstream calculate_cut_fill_volume applies vertical_datum_offset
+        3. Resetting calibration with reset_calibration=True removes the offset cleanly
+        """
+        # Step 1: Apply TBM Calibration
+        payload_apply = {
+            "scan_id": self.scan_id,
+            "points": [
+                {"name": "TBM-A", "e": 304910.0, "n": 2757010.0, "h": 100.0, "mesh_h": 100.35, "is_tbm": True},
+            ],
+            "apply_tbm_calibration": True,
+            "selected_tbm_id": "TBM-A",
+        }
+        res_apply = self.survey.compute_gcp_accuracy_qa(payload_apply)
+        self.assertTrue(res_apply["tbm_applied"])
+        self.assertAlmostEqual(res_apply["tbm_shift_m"], -0.350, places=3)
+
+        # Verify persisted in DB scan object
+        scan_rec = self.db.get_scan(self.scan_id)
+        self.assertIsNotNone(scan_rec)
+        self.assertAlmostEqual(scan_rec.get("vertical_datum_offset"), -0.350, places=3)
+        self.assertIn("tbm_calibration", scan_rec)
+        self.assertEqual(scan_rec["tbm_calibration"]["shift_m"], -0.350)
+
+        # Verify persisted in scan_meta.json on disk
+        meta_fp = os.path.join(self.scan_dir, "scan_meta.json")
+        self.assertTrue(os.path.isfile(meta_fp))
+        with open(meta_fp, "r", encoding="utf-8") as f:
+            disk_meta = json.load(f)
+        self.assertAlmostEqual(disk_meta.get("vertical_datum_offset"), -0.350, places=3)
+
+        # Step 2: Downstream resolver helper verification
+        shift_resolved = self.survey._resolve_vertical_datum_shift(self.scan_id)
+        self.assertAlmostEqual(shift_resolved, -0.350, places=3)
+
+        # Downstream volume consumes vertical_datum_offset
+        vol_payload = {
+            "scan_id": self.scan_id,
+            "base_mode": "custom_plane",
+            "custom_elevation": 125.0,
+            "polygon": [
+                [304945.0, 2757078.0, 125.0],
+                [304955.0, 2757078.0, 125.0],
+                [304955.0, 2757088.0, 125.0],
+                [304945.0, 2757088.0, 125.0],
+            ],
+        }
+        vol_res = self.survey.calculate_cut_fill_volume(vol_payload)
+        self.assertEqual(vol_res["status"], "ok")
+        self.assertTrue(vol_res["vertical_datum_applied"])
+        self.assertAlmostEqual(vol_res["vertical_datum_offset"], -0.350, places=3)
+
+        # Step 3: Reset calibration
+        payload_reset = {
+            "scan_id": self.scan_id,
+            "points": [
+                {"name": "TBM-A", "e": 304910.0, "n": 2757010.0, "h": 100.0, "mesh_h": 100.35},
+            ],
+            "apply_tbm_calibration": True,
+            "reset_calibration": True,
+        }
+        res_reset = self.survey.compute_gcp_accuracy_qa(payload_reset)
+        self.assertFalse(res_reset["tbm_applied"])
+        self.assertEqual(res_reset["tbm_shift_m"], 0.0)
+
+        # Verify DB cleared
+        scan_reset = self.db.get_scan(self.scan_id)
+        self.assertIsNone(scan_reset.get("vertical_datum_offset"))
+        self.assertEqual(self.survey._resolve_vertical_datum_shift(self.scan_id), 0.0)
+
+    def test_06_adversarial_malformed_input_resilience(self):
+        """
+        Verify robustness against malformed/adversarial inputs:
+        - Empty points list returns point_count: 0 without error
+        - Invalid strings/nulls are safely ignored
+        - N=1 point calculates sample standard deviation as 0.0 without ZeroDivisionError
+        """
+        # Empty array
+        res_empty = self.survey.compute_gcp_accuracy_qa({"scan_id": self.scan_id, "points": []})
+        self.assertEqual(res_empty["status"], "ok")
+        self.assertEqual(res_empty["point_count"], 0)
+        self.assertEqual(res_empty["rmse_3d"], 0.0)
+
+        # Malformed strings and missing values
+        res_malformed = self.survey.compute_gcp_accuracy_qa({
+            "scan_id": self.scan_id,
+            "points": [
+                {"name": "BAD-1", "e": "", "n": "  ", "h_gcp": "invalid"},
+                {"name": "BAD-2", "e": "none", "n": "null", "h_gcp": ""},
+                {"name": "GOOD-1", "e": 304950.0, "n": 2757080.0, "h_gcp": 125.0, "mesh_h": 125.03},
+            ],
+        })
+        self.assertEqual(res_malformed["status"], "ok")
+        self.assertEqual(res_malformed["point_count"], 1)
+        # N=1 point: standard deviation must be safely 0.0 (no division by zero)
+        self.assertEqual(res_malformed["std_de_m"], 0.0)
+        self.assertEqual(res_malformed["std_dn_m"], 0.0)
+        self.assertEqual(res_malformed["std_dh_m"], 0.0)
+
+
 class TestModularArchitectureCompliance(unittest.TestCase):
     """
     Modular File Ceiling & Architecture Compliance:
@@ -1014,8 +1363,14 @@ class TestModularArchitectureCompliance(unittest.TestCase):
             os.path.join(BASE_DIR, "pc_worker", "surveying", "contours_and_cad.py"),
             os.path.join(BASE_DIR, "pc_worker", "surveying", "categorization_heuristics.py"),
             os.path.join(BASE_DIR, "pc_worker", "surveying", "categorization_io.py"),
+            os.path.join(BASE_DIR, "pc_worker", "priority_queue.py"),
             os.path.join(BASE_DIR, "pc_worker", "server_api_routes.py"),
             os.path.join(BASE_DIR, "server.py"),
+            os.path.join(BASE_DIR, "web", "src", "09-construction-survey-and-bim.js"),
+            os.path.join(BASE_DIR, "web", "survey-bim.css"),
+            os.path.join(BASE_DIR, "web", "src", "08-advanced-surveying-and-qa.js"),
+            os.path.join(BASE_DIR, "web", "src", "05-studio-civil-inspectors.js"),
+            os.path.join(BASE_DIR, "web", "src", "03-studio-core.js"),
         ]
 
         for fp in files_to_check:

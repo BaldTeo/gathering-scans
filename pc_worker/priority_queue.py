@@ -575,6 +575,74 @@ class ScanQueueDB:
                 print(f"[DB] Warning writing home_view to scan_meta.json {meta_file}: {e}")
         return self.get_scan(real_id)
 
+    def set_scan_vertical_datum_calibration(
+        self,
+        scan_id: str,
+        calibration_data: Optional[Dict[str, Any]] = None,
+        vertical_datum_offset: Optional[float] = None,
+    ) -> Optional[Dict[str, Any]]:
+        """Persists a scan's TBM datum calibration metadata and vertical datum offset in SQLite extra_json and scan_meta.json."""
+        clean_id = (scan_id or "").strip()
+        if not clean_id:
+            return None
+        with DB_LOCK, self._connect() as conn:
+            row = conn.execute(
+                "SELECT scan_id, project_dir, extra_json FROM scans WHERE lower(scan_id) = lower(?) LIMIT 1",
+                (clean_id,),
+            ).fetchone()
+            if not row:
+                return None
+            real_id = row["scan_id"]
+            proj_dir = row["project_dir"] or ""
+            ex_dict: Dict[str, Any] = {}
+            if row["extra_json"]:
+                try:
+                    parsed = json.loads(row["extra_json"])
+                    if isinstance(parsed, dict):
+                        ex_dict = parsed
+                except Exception:
+                    pass
+            if calibration_data and isinstance(calibration_data, dict):
+                ex_dict["tbm_calibration"] = calibration_data
+                shift_val = vertical_datum_offset if vertical_datum_offset is not None else calibration_data.get("shift_m", 0.0)
+                try:
+                    ex_dict["vertical_datum_offset"] = round(float(shift_val), 4)
+                except Exception:
+                    ex_dict["vertical_datum_offset"] = 0.0
+            else:
+                ex_dict.pop("tbm_calibration", None)
+                ex_dict.pop("vertical_datum_offset", None)
+            conn.execute(
+                "UPDATE scans SET extra_json = ? WHERE scan_id = ?",
+                (json.dumps(ex_dict, ensure_ascii=False), real_id),
+            )
+            conn.commit()
+        if proj_dir and os.path.isdir(proj_dir):
+            meta_file = os.path.join(proj_dir, "scan_meta.json")
+            meta: Dict[str, Any] = {}
+            if os.path.isfile(meta_file):
+                try:
+                    with open(meta_file, "r", encoding="utf-8") as rf:
+                        meta = json.load(rf)
+                except Exception:
+                    meta = {}
+            if calibration_data and isinstance(calibration_data, dict):
+                meta["tbm_calibration"] = calibration_data
+                shift_val = vertical_datum_offset if vertical_datum_offset is not None else calibration_data.get("shift_m", 0.0)
+                try:
+                    meta["vertical_datum_offset"] = round(float(shift_val), 4)
+                except Exception:
+                    meta["vertical_datum_offset"] = 0.0
+            else:
+                meta.pop("tbm_calibration", None)
+                meta.pop("vertical_datum_offset", None)
+            try:
+                with open(meta_file, "w", encoding="utf-8") as wf:
+                    json.dump(meta, wf, indent=2, ensure_ascii=False)
+            except Exception as e:
+                print(f"[DB] Warning writing tbm_calibration to scan_meta.json {meta_file}: {e}")
+        return self.get_scan(real_id)
+
     def rename_site(
         self,
         old_project_group: str,
@@ -1945,6 +2013,8 @@ class ScanQueueDB:
             "gaussian_splat_uri",
             "group_type",
             "user_edited_project",
+            "tbm_calibration",
+            "vertical_datum_offset",
         ):
             if ex_k in extra_dict:
                 d[ex_k] = extra_dict[ex_k]
