@@ -2348,7 +2348,13 @@
 				const samplers = json.samplers || {};
 				const sampler = samplers[ textureDef.sampler ] || {};
 				texture.magFilter = WEBGL_FILTERS[ sampler.magFilter ] || THREE.LinearFilter;
-				texture.minFilter = WEBGL_FILTERS[ sampler.minFilter ] || THREE.LinearMipmapLinearFilter;
+				const isSingleMipCompressed = Boolean( texture.isCompressedTexture && Array.isArray( texture.mipmaps ) && texture.mipmaps.length <= 1 );
+				texture.minFilter = isSingleMipCompressed
+					? THREE.LinearFilter
+					: ( WEBGL_FILTERS[ sampler.minFilter ] || THREE.LinearMipmapLinearFilter );
+				if ( isSingleMipCompressed ) {
+					texture.generateMipmaps = false;
+				}
 				texture.wrapS = WEBGL_WRAPPINGS[ sampler.wrapS ] || THREE.RepeatWrapping;
 				texture.wrapT = WEBGL_WRAPPINGS[ sampler.wrapT ] || THREE.RepeatWrapping;
 				parser.associations.set( texture, {

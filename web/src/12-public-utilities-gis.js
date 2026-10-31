@@ -511,6 +511,10 @@
     if (typeof showSidePanel === "function") {
       showSidePanel(title, html);
     }
+    const contentEl = document.getElementById("studioSidePanelContent");
+    if (contentEl) {
+      contentEl.scrollTop = 0;
+    }
 
     bindUtilitiesPanelEvents();
   }
@@ -1812,16 +1816,18 @@
     return null;
   }
 
-  function selectUtilityFeature(feat) {
+  function selectUtilityFeature(feat, opts = {}) {
     if (!feat) return;
     UTILS_STATE.selectedFeature = feat;
     const box = document.getElementById("utilSelectedFeatureBox");
     if (box) {
       const rawHtml = renderSelectedFeatureCardHtml(feat);
       box.innerHTML = typeof window.translateDynamicHtml === "function" ? window.translateDynamicHtml(rawHtml) : rawHtml;
-      try {
-        box.scrollIntoView({ behavior: "smooth", block: "nearest" });
-      } catch (_) {}
+      if (opts && opts.scrollIntoView) {
+        try {
+          box.scrollIntoView({ behavior: "smooth", block: "nearest" });
+        } catch (_) {}
+      }
     }
   }
 
@@ -1901,7 +1907,7 @@
 
     const feat = pickUtilityFeatureAtScreenXY(ev.clientX, ev.clientY);
     if (feat) {
-      selectUtilityFeature(feat);
+      selectUtilityFeature(feat, { scrollIntoView: true });
     }
   });
 

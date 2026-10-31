@@ -35,10 +35,21 @@
     mat.userData._lastBrightness = b;
     if (mat.map && mat.color) {
       mat.color.setRGB(1, 1, 1);
+      const isSingleMipCompressed =
+        Boolean(mat.map.isCompressedTexture) &&
+        Array.isArray(mat.map.mipmaps) &&
+        mat.map.mipmaps.length <= 1;
       const isMobOrIOS =
         (typeof isIOSOrIPadDevice === "function" && isIOSOrIPadDevice()) ||
         (typeof isMobileOrTabletDevice === "function" && isMobileOrTabletDevice());
-      if (isMobOrIOS) {
+      if (isSingleMipCompressed) {
+        if (mat.map.minFilter !== THREE.LinearFilter || mat.map.generateMipmaps !== false) {
+          mat.map.minFilter = THREE.LinearFilter;
+          mat.map.magFilter = THREE.LinearFilter;
+          mat.map.generateMipmaps = false;
+          mat.map.needsUpdate = true;
+        }
+      } else if (isMobOrIOS) {
         if (mat.map.anisotropy !== 1 || mat.map.generateMipmaps !== false) {
           mat.map.anisotropy = 1;
           mat.map.generateMipmaps = false;
