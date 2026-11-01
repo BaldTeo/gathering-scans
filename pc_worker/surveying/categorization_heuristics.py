@@ -1216,7 +1216,7 @@ class CategorizationHeuristicsMixin:
                     n1_tw = int(np.count_nonzero(np.hypot(c_up_tw[:, 0] - s1_e, c_up_tw[:, 1] - s1_n) <= 0.28))
                     n2_tw = int(np.count_nonzero(np.hypot(c_up_tw[:, 0] - s2_e, c_up_tw[:, 1] - s2_n) <= 0.28))
                     n_mid_tw = int(np.count_nonzero(np.hypot(c_up_tw[:, 0] - mid_e, c_up_tw[:, 1] - mid_n) <= 0.16))
-                    if min(n1_tw, n2_tw) >= 85 and n_mid_tw <= max(5, int(0.05 * min(n1_tw, n2_tw))):
+                    if min(n1_tw, n2_tw) >= 45 and n_mid_tw <= max(5, int(0.05 * min(n1_tw, n2_tw))):
                         twin_stem_centers.append((s1_e, s1_n, d_vsc))
                         twin_stem_centers.append((s2_e, s2_n, d_vsc))
 
@@ -1763,6 +1763,30 @@ class CategorizationHeuristicsMixin:
             if dbh_cm <= 0.0:
                 continue
 
+            h_stem_cyl = round(min(2.3, max(1.5, tree_h * 0.50)), 3)
+            base_e_ax, base_n_ax = trunk_e, trunk_n
+            top_e_ax, top_n_ax = trunk_e, trunk_n
+            if all_xy_tree is not None:
+                r_ax = 0.34 if is_confirmed_twin else 0.48
+                low_ax_m = (dt_fin <= r_ax) & (z_rel_fin >= 0.25) & (z_rel_fin <= 0.95) & (nz_abs[idx_arr26] < 0.50)
+                up_ax_m = (dt_fin <= r_ax) & (z_rel_fin >= 1.25) & (z_rel_fin <= 2.10) & (nz_abs[idx_arr26] < 0.50)
+                if np.count_nonzero(low_ax_m) >= 4 and np.count_nonzero(up_ax_m) >= 4:
+                    med_low_ax = np.median(c26[low_ax_m], axis=0)
+                    med_up_ax = np.median(c26[up_ax_m], axis=0)
+                    dz_ax = float(med_up_ax[2] - med_low_ax[2])
+                    if dz_ax >= 0.40:
+                        de_dz = float(med_up_ax[0] - med_low_ax[0]) / dz_ax
+                        dn_dz = float(med_up_ax[1] - med_low_ax[1]) / dz_ax
+                        slope_mag = math.hypot(de_dz, dn_dz)
+                        if slope_mag > 0.42:
+                            de_dz *= 0.42 / slope_mag
+                            dn_dz *= 0.42 / slope_mag
+                        z_piv = min(1.30, 0.55 * h_stem_cyl)
+                        base_e_ax = trunk_e - de_dz * z_piv
+                        base_n_ax = trunk_n - dn_dz * z_piv
+                        top_e_ax = base_e_ax + de_dz * h_stem_cyl
+                        top_n_ax = base_n_ax + dn_dz * h_stem_cyl
+
             tid = f"T{len(trees_list) + 1}"
             trees_list.append(
                 {
@@ -1782,6 +1806,10 @@ class CategorizationHeuristicsMixin:
                     "top_elevation_m": round(th_ground + tree_h, 3),
                     "trunk_twd97": [round(trunk_e, 3), round(trunk_n, 3), round(th_ground, 3)],
                     "trunk_local": [round(trunk_e - ce, 3), round(th_ground - ch, 3), round(cn - trunk_n, 3)],
+                    "trunk_base_twd97": [round(base_e_ax, 3), round(base_n_ax, 3), round(th_ground, 3)],
+                    "trunk_base_local": [round(base_e_ax - ce, 3), round(th_ground - ch, 3), round(cn - base_n_ax, 3)],
+                    "trunk_top_twd97": [round(top_e_ax, 3), round(top_n_ax, 3), round(th_ground + h_stem_cyl, 3)],
+                    "trunk_top_local": [round(top_e_ax - ce, 3), round(th_ground + h_stem_cyl - ch, 3), round(cn - top_n_ax, 3)],
                 }
             )
             if len(trees_list) >= int(round(145 * area_scale)):
@@ -1789,6 +1817,7 @@ class CategorizationHeuristicsMixin:
         trees_list.sort(key=lambda x: (x["height_m"], x["dbh_cm"]), reverse=True)
         for idx_t, t_obj in enumerate(trees_list, 1):
             t_obj["id"] = f"T{idx_t}"
+            t_obj["orig_id"] = f"T{idx_t}"
             t_obj["name"] = f"喬木 T{idx_t}"
 
         # =================================================================================
@@ -2545,18 +2574,23 @@ class CategorizationHeuristicsMixin:
             stockpiles_list = [sp_o for sp_o in stockpiles_list if sp_o["id"] not in rej_tags]
             for idx_r, r_obj in enumerate(roads_list, 1):
                 r_obj["id"] = f"R{idx_r}"
+                r_obj["orig_id"] = f"R{idx_r}"
             for idx_t, t_obj in enumerate(trees_list, 1):
                 t_obj["id"] = f"T{idx_t}"
+                t_obj["orig_id"] = f"T{idx_t}"
                 t_obj["name"] = f"喬木 T{idx_t}"
             for idx_w, w_obj in enumerate(water_list, 1):
                 w_obj["id"] = f"W{idx_w}"
+                w_obj["orig_id"] = f"W{idx_w}"
             for idx_wl, wl_obj in enumerate(walls_list, 1):
                 cur_wid = str(wl_obj.get("id") or "")
                 if not (cur_wid.startswith("CW_") or cur_wid.startswith("CF")):
                     wl_obj["id"] = f"WL{idx_wl}"
+                    wl_obj["orig_id"] = f"WL{idx_wl}"
                     wl_obj["name"] = f"擋土牆/垂直牆面 WL{idx_wl}"
             for idx_s, sp_obj in enumerate(stockpiles_list, 1):
                 sp_obj["id"] = f"S{idx_s}"
+                sp_obj["orig_id"] = f"S{idx_s}"
                 sp_obj["name"] = f"土石堆置區 S{idx_s} (Material Stockpile Mound)"
             summary_kpi["roads_count"] = len(roads_list)
             summary_kpi["roads_planar_area_m2"] = round(sum(r["planar_area_m2"] for r in roads_list), 2)
@@ -2716,7 +2750,7 @@ class CategorizationHeuristicsMixin:
         csv_filename: str,
         dxf_filename: str,
     ) -> None:
-        """Writes Printable Bilingual HTML Report, UTF-8-SIG Excel CSV Schedule, and AutoCAD Civil3D Categorized .DXF."""
+        """Writes Printable Bilingual HTML Report, UTF-8-SIG Excel CSV Schedule, and AutoCAD Civil3D Trees & DBH .DXF."""
         os.makedirs(REPORTS_DIR, exist_ok=True)
         os.makedirs(CONTOURS_DIR, exist_ok=True)
         html_path = os.path.join(REPORTS_DIR, html_filename)
@@ -2724,65 +2758,35 @@ class CategorizationHeuristicsMixin:
         dxf_path = os.path.join(CONTOURS_DIR, dxf_filename)
 
         s = data["summary"]
+        canopy_m2 = float(s.get("trees_canopy_area_m2") or 0.0)
+        canopy_ping = float(s.get("trees_canopy_area_ping") or round(canopy_m2 * 0.3025, 2))
 
-        # 1. Write UTF-8-SIG CSV Schedule for Excel
+        # 1. Write UTF-8-SIG CSV Schedule for Excel (100% dedicated to Trees & 1.3m Trunk DBH)
         with open(csv_path, "w", encoding="utf-8-sig", newline="") as cf:
             w = csv.writer(cf)
-            w.writerow(["GatheringScans AI 3D Surface & Object Categorization Schedule (AI 地物與表面自動分類數量總表)"])
+            w.writerow(["GatheringScans AI 3D Trees & 1.3m Breast-Height Trunk DBH Schedule (AI 3D 喬木與 1.3m 樹幹胸徑 DBH 清冊)"])
             w.writerow(["Project Site", data["project_group"], "Scan Name", data["scan_name"]])
             w.writerow(["CRS", data["crs"], "AI Engine", data["ai_model"]])
             w.writerow(["Generated At", data["generated_at"]])
             w.writerow(["AI Assessment (ZH)", data["ai_summary_zh"]])
             w.writerow(["AI Assessment (EN)", data["ai_summary_en"]])
+            w.writerow([
+                "Trees Count", s["trees_count"],
+                "Mean 1.3m DBH (cm)", s["trees_mean_dbh_cm"],
+                "Max 1.3m DBH (cm)", s["trees_max_dbh_cm"],
+                "Mean Height (m)", s["trees_mean_height_m"],
+                "Canopy Area (m²)", canopy_m2,
+            ])
             w.writerow([])
 
-            w.writerow(["=== 1. CATEGORY BREAKDOWN (全區地物分類面積統計) ==="])
-            w.writerow(["Category Key", "Category Name (ZH)", "Count", "2D Planar Area (m²)", "Area (坪)", "3D Surface Area (m²)", "Site Share (%)"])
-            for c in data["categories_breakdown"]:
-                w.writerow([c["key"], c["name_zh"], c["count"], c["planar_area_m2"], c["planar_area_ping"], c["surface_area_3d_m2"], c["site_share_pct"]])
-            w.writerow([])
-
-            w.writerow(["=== 2. ROADS SCHEDULE (道路鋪面清單) ==="])
-            w.writerow(["ID", "Name", "2D Planar Area (m²)", "Area (坪)", "3D Surface Area (m²)", "Mean Width (m)", "Perimeter (m)", "Mean Slope (%)", "Center E (m)", "Center N (m)", "Elev H (m)", "Verified RTK Photo"])
-            for r in data["roads"]:
-                c_twd = r["center_twd97"]
-                w.writerow([r["id"], r["name"], r["planar_area_m2"], r["planar_area_ping"], r["surface_area_3d_m2"], r["mean_width_m"], r["perimeter_m"], r["mean_slope_pct"], c_twd[0], c_twd[1], c_twd[2], r.get("verified_photo") or "—"])
-            w.writerow([])
-
-            w.writerow(["=== 3. TREES & 1.3M TRUNK DBH SCHEDULE (喬木與胸高直徑 DBH 清冊) ==="])
+            w.writerow(["=== TREES & 1.3M TRUNK DBH SCHEDULE (喬木與胸高直徑 DBH 清冊) ==="])
             w.writerow(["Tree ID", "Height (m)", "Trunk DBH at 1.3m (cm)", "DBH Method", "AI Vision Verified", "AI Visual Inspection (Object Seen)", "Crown Diameter (m)", "Crown Area (m²)", "Trunk Easting E (m)", "Trunk Northing N (m)", "Ground Elev H (m)", "Verified RTK Photo"])
             for t in data["trees"]:
                 tr_twd = t["trunk_twd97"]
                 ai_v_str = "Yes (AI+3D Trunk)" if t.get("ai_vision_verified") else ("3D Trunk Only" if t.get("trunk_verified_3d") else "No")
                 w.writerow([t["id"], t["height_m"], t["dbh_cm"], t["dbh_method"], ai_v_str, t.get("object_seen") or t.get("ai_vision_label") or "—", t["crown_diameter_m"], t["crown_area_m2"], tr_twd[0], tr_twd[1], tr_twd[2], t.get("verified_photo") or "—"])
-            w.writerow([])
 
-            w.writerow(["=== 4. WATER BODIES & UN-MODELLED WATER VOIDS (水體與未建模河道水域空洞) ==="])
-            w.writerow(["Water ID", "Name", "Detection Mode", "Shoreline Water Level TWVD2001 (m)", "Planar Area (m²)", "Area (坪)", "Perimeter (m)", "Mean Width (m)", "Center E (m)", "Center N (m)", "Verified RTK Photo"])
-            for wb in data["water_bodies"]:
-                c_twd = wb["center_twd97"]
-                w.writerow([wb["id"], wb["name"], wb["detection_label_zh"], wb["water_level_twvd2001_m"], wb["planar_area_m2"], wb["planar_area_ping"], wb["perimeter_m"], wb["mean_width_m"], c_twd[0], c_twd[1], wb.get("verified_photo") or "—"])
-            w.writerow([])
-
-            w.writerow(["=== 5. RETAINING & BUILDING WALLS (擋土牆與垂直結構牆面) ==="])
-            w.writerow(["Wall ID", "Name", "Length (m)", "Mean Height (m)", "Max Height (m)", "3D Vertical Area (m²)", "Azimuth (°)", "Tilt (°)", "Center E (m)", "Center N (m)", "Center H (m)", "Verified RTK Photo"])
-            for wl in data["walls"]:
-                c_twd = wl["center_twd97"]
-                w.writerow([wl["id"], wl["name"], wl["length_m"], wl["mean_height_m"], wl["max_height_m"], wl["vertical_area_m2"], wl["azimuth_deg"], wl["tilt_deg"], c_twd[0], c_twd[1], c_twd[2], wl.get("verified_photo") or "—"])
-
-        # 2. Write Printable Engineering HTML Report
-        cat_rows = "".join(
-            f"<tr><td><span style='display:inline-block;width:10px;height:10px;border-radius:2px;background:{c['color']};margin-right:6px;'></span><b>{c['name_zh']}</b></td>"
-            f"<td>{c['count']}</td><td>{c['planar_area_m2']:,.2f} m² ({c['planar_area_ping']:,.2f} 坪)</td>"
-            f"<td>{c['surface_area_3d_m2']:,.2f} m²</td><td><b>{c['site_share_pct']}%</b></td></tr>"
-            for c in data["categories_breakdown"]
-        )
-        road_rows = "".join(
-            f"<tr><td><b>{r['id']}</b></td><td>{r['name']}</td><td>{r['planar_area_m2']:,.2f} m² ({r['planar_area_ping']:,.2f} 坪)</td>"
-            f"<td>{r['surface_area_3d_m2']:,.2f} m²</td><td>{r['mean_width_m']:.2f} m</td><td>{r['mean_slope_pct']}%</td>"
-            f"<td>E:{r['center_twd97'][0]:.2f}, N:{r['center_twd97'][1]:.2f}, H:+{r['center_twd97'][2]:.2f}m</td><td>{r.get('verified_photo') or '—'}</td></tr>"
-            for r in data["roads"]
-        )
+        # 2. Write Printable Engineering HTML Report (100% dedicated to Trees & 1.3m Trunk DBH)
         tree_rows = "".join(
             f"<tr><td><b>{t['id']}</b></td><td><b>{t['dbh_cm']:.1f} cm</b></td><td>{t['height_m']:.2f} m</td>"
             f"<td>{t['crown_diameter_m']:.2f} m ({t['crown_area_m2']:.1f} m²)</td>"
@@ -2790,37 +2794,19 @@ class CategorizationHeuristicsMixin:
             f"<td>E:{t['trunk_twd97'][0]:.2f}, N:{t['trunk_twd97'][1]:.2f}, H:+{t['trunk_twd97'][2]:.2f}m</td><td>{t.get('verified_photo') or '—'}</td></tr>"
             for t in data["trees"]
         )
-        water_rows = "".join(
-            f"<tr><td><b>{wb['id']}</b></td><td>{wb['name']}</td><td>{wb['detection_label_zh']}</td>"
-            f"<td><b>+{wb['water_level_twvd2001_m']:.2f} m</b></td><td>{wb['planar_area_m2']:,.2f} m² ({wb['planar_area_ping']:,.2f} 坪)</td>"
-            f"<td>{wb['perimeter_m']:.1f} m</td><td>{wb.get('verified_photo') or '—'}</td></tr>"
-            for wb in data["water_bodies"]
-        )
-        wall_rows = "".join(
-            f"<tr><td><b>{wl['id']}</b></td><td>{wl['name']}</td><td>{wl['length_m']:.2f} m</td>"
-            f"<td>{wl['mean_height_m']:.2f} m (Max {wl['max_height_m']:.2f} m)</td><td><b>{wl['vertical_area_m2']:,.1f} m²</b></td>"
-            f"<td>{wl['azimuth_deg']}° / {wl['tilt_deg']}°</td><td>E:{wl['center_twd97'][0]:.2f}, N:{wl['center_twd97'][1]:.2f}</td><td>{wl.get('verified_photo') or '—'}</td></tr>"
-            for wl in data["walls"]
-        )
-
-        water_kpi_sub = (
-            f"Shoreline TWVD2001 +{float(s['water_level_twvd2001_m']):.2f} m"
-            if s.get("water_level_twvd2001_m") is not None and s.get("water_count", 0) > 0
-            else "無水域空洞 (No Water Bodies)"
-        )
 
         html_doc = f"""<!DOCTYPE html>
 <html lang="zh-Hant">
 <head>
 <meta charset="utf-8">
-<title>AI 3D Surface & Object Categorization Report — {data['scan_name']}</title>
+<title>AI 3D Trees & 1.3m Trunk DBH Report — {data['scan_name']}</title>
 <style>
   body {{ font-family: 'Segoe UI', 'Microsoft JhengHei', sans-serif; color: #0f172a; margin: 28px auto; max-width: 1020px; line-height: 1.5; }}
-  .header {{ display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 3px solid #0284c7; padding-bottom: 14px; margin-bottom: 20px; }}
+  .header {{ display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 3px solid #059669; padding-bottom: 14px; margin-bottom: 20px; }}
   .title {{ font-size: 21px; font-weight: 800; color: #0f172a; }}
   .subtitle {{ font-size: 12.5px; color: #475569; margin-top: 3px; }}
-  .badge {{ background: #e0f2fe; color: #0369a1; font-weight: 700; padding: 6px 12px; border-radius: 6px; font-size: 12px; }}
-  .ai-box {{ background: #f0f9ff; border: 1px solid #bae6fd; border-left: 4px solid #0284c7; border-radius: 8px; padding: 12px 16px; margin-bottom: 20px; font-size: 13px; }}
+  .badge {{ background: #d1fae5; color: #065f46; font-weight: 700; padding: 6px 12px; border-radius: 6px; font-size: 12px; }}
+  .ai-box {{ background: #ecfdf5; border: 1px solid #a7f3d0; border-left: 4px solid #059669; border-radius: 8px; padding: 12px 16px; margin-bottom: 20px; font-size: 13px; }}
   .kpi-grid {{ display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 22px; }}
   .kpi {{ border: 1px solid #cbd5e1; border-radius: 8px; padding: 12px; background: #f8fafc; }}
   .kpi-label {{ font-size: 11.5px; color: #64748b; font-weight: 600; }}
@@ -2842,60 +2828,40 @@ class CategorizationHeuristicsMixin:
   <div class="header">
     <div>
       <img src="/assets/gathering_construction_logo.png" alt="聚人營造股份有限公司" style="height:36px;margin-bottom:6px;display:block;" />
-      <div class="title">AI 3D 地物與表面自動分類測量成果報告 (Surface & Object Categorization Report)</div>
+      <div class="title">AI 3D 喬木與 1.3m 樹幹胸徑 DBH 測量成果報告 (AI 3D Trees & 1.3m Trunk DBH Report)</div>
       <div class="subtitle">Project: <b>{data['project_group']}</b> | Scan: <b>{data['scan_name']}</b> | CRS: <b>{data['crs']}</b> | Generated: {data['generated_at']}</div>
     </div>
     <div class="badge">{data['ai_model']}</div>
   </div>
   <div class="ai-box">
-    <div style="font-weight:700;color:#0369a1;margin-bottom:4px;">✦ Gemini Multimodal AI & 3D Computational Geometry Assessment</div>
+    <div style="font-weight:700;color:#065f46;margin-bottom:4px;">✦ Gemini Multimodal AI & 3D Trunk Cylinder DBH Assessment</div>
     <div>{data['ai_summary_zh']}</div>
     <div style="color:#475569;font-size:12px;margin-top:4px;">{data['ai_summary_en']}</div>
   </div>
   <div class="kpi-grid">
     <div class="kpi">
-      <div class="kpi-label">Road Surface (道路鋪面)</div>
-      <div class="kpi-val" style="color:#d97706;">{s['roads_planar_area_m2']:,.1f} m² ({s['roads_planar_area_ping']:,.1f} 坪)</div>
-      <div class="kpi-label">{s['roads_count']} corridors · 3D: {s['roads_surface_area_3d_m2']:,.1f} m²</div>
+      <div class="kpi-label">Standing Trees (喬木株數)</div>
+      <div class="kpi-val" style="color:#059669;">{s['trees_count']} 株</div>
+      <div class="kpi-label">AI Vision Verified: {s.get('trees_ai_verified_count', s['trees_count'])} 株</div>
     </div>
     <div class="kpi">
-      <div class="kpi-label">Trees & Trunk DBH (喬木與胸徑)</div>
-      <div class="kpi-val" style="color:#059669;">{s['trees_count']} 株 · DBH {s['trees_mean_dbh_cm']:.1f} cm</div>
-      <div class="kpi-label">AI Vision Verified: {s.get('trees_ai_verified_count', s['trees_count'])} 株 · Max DBH: {s['trees_max_dbh_cm']:.1f} cm</div>
+      <div class="kpi-label">Mean 1.3m Trunk DBH (平均胸徑)</div>
+      <div class="kpi-val" style="color:#0d9488;">{s['trees_mean_dbh_cm']:.1f} cm</div>
+      <div class="kpi-label">Max DBH: {s['trees_max_dbh_cm']:.1f} cm · 1.3m 胸高斷面</div>
     </div>
     <div class="kpi">
-      <div class="kpi-label">Water & Voids (水域與未建模水面)</div>
-      <div class="kpi-val" style="color:#0891b2;">{s['water_planar_area_m2']:,.1f} m² ({s['water_planar_area_ping']:,.1f} 坪)</div>
-      <div class="kpi-label">{water_kpi_sub}</div>
+      <div class="kpi-label">Mean Tree Height (平均樹高)</div>
+      <div class="kpi-val" style="color:#0284c7;">{s['trees_mean_height_m']:.2f} m</div>
+      <div class="kpi-label">TWD97 + TWVD2001 局部裸地高度</div>
     </div>
     <div class="kpi">
-      <div class="kpi-label">Retaining/Building Walls (擋土牆/牆面)</div>
-      <div class="kpi-val" style="color:#e11d48;">{s['walls_vertical_area_m2']:,.1f} m² (3D 立面)</div>
-      <div class="kpi-label">{s['walls_count']} segments · Total L: {s['walls_total_length_m']:.1f} m</div>
+      <div class="kpi-label">Canopy Footprint (樹冠投影面積)</div>
+      <div class="kpi-val" style="color:#16a34a;">{canopy_m2:,.1f} m² ({canopy_ping:,.1f} 坪)</div>
+      <div class="kpi-label">葉綠素樹冠水平投影總面積</div>
     </div>
   </div>
   <table>
-    <thead><tr><th colspan="5">1. Complete Site Surface & Object Category Breakdown (全區地物分類面積與佔比總表)</th></tr>
-    <tr><th>Category (分類項目)</th><th>Count</th><th>2D Planar Area (平面面積 m² / 坪)</th><th>3D Surface Area (真實 3D 表面積)</th><th>Share (%)</th></tr></thead>
-    <tbody>{cat_rows}</tbody>
-  </table>
-  <table>
-    <thead><tr><th colspan="8">2. Paved Road Corridors Schedule (道路鋪面清單)</th></tr>
-    <tr><th>ID</th><th>Name</th><th>2D Planar Area</th><th>3D Surface Area</th><th>Mean Width</th><th>Mean Grade</th><th>Centroid (TWD97)</th><th>Verified RTK Photo</th></tr></thead>
-    <tbody>{road_rows}</tbody>
-  </table>
-  <table>
-    <thead><tr><th colspan="7">3. Water Bodies & Un-Modelled Water Voids Schedule (水域與未建模河道空洞清單)</th></tr>
-    <tr><th>ID</th><th>Name</th><th>Detection Mode</th><th>Water Level (TWVD2001)</th><th>Planar Area</th><th>Perimeter</th><th>Verified RTK Photo</th></tr></thead>
-    <tbody>{water_rows}</tbody>
-  </table>
-  <table>
-    <thead><tr><th colspan="8">4. Retaining & Structural Walls Schedule (擋土牆與垂直牆面清單)</th></tr>
-    <tr><th>ID</th><th>Name</th><th>Length</th><th>Height (Mean / Max)</th><th>3D Vertical Area</th><th>Azimuth / Tilt</th><th>Centroid (TWD97)</th><th>Verified RTK Photo</th></tr></thead>
-    <tbody>{wall_rows}</tbody>
-  </table>
-  <table>
-    <thead><tr><th colspan="7">5. Individual Trees & 1.3m Breast-Height Trunk DBH Schedule (喬木樹高、冠幅與 1.3m 胸徑 DBH 清冊)</th></tr>
+    <thead><tr><th colspan="7">Individual Trees & 1.3m Breast-Height Trunk DBH Schedule (喬木樹高、冠幅與 1.3m 胸徑 DBH 清冊)</th></tr>
     <tr><th>Tree ID</th><th>1.3m Trunk DBH (胸徑)</th><th>Tree Height (樹高)</th><th>Crown Diam & Area (冠幅)</th><th>AI Vision & DBH Verification</th><th>Trunk Base (TWD97 E, N, H)</th><th>Verified RTK Photo</th></tr></thead>
     <tbody>{tree_rows}</tbody>
   </table>
@@ -2904,7 +2870,7 @@ class CategorizationHeuristicsMixin:
         with open(html_path, "w", encoding="utf-8") as hf:
             hf.write(html_doc)
 
-        # 3. Write AutoCAD Civil3D Categorized .DXF with dedicated layers
+        # 3. Write AutoCAD Civil3D Trees & 1.3m Trunk DBH .DXF with dedicated vegetation layers
         lines = [
             "0", "SECTION",
             "2", "HEADER",
@@ -2915,45 +2881,26 @@ class CategorizationHeuristicsMixin:
             "2", "TABLES",
             "0", "TABLE",
             "2", "LAYER",
-            "70", "8",
-            "0", "LAYER", "2", "C-ROAD-BNDY", "70", "0", "62", "30", "6", "CONTINUOUS",
+            "70", "2",
             "0", "LAYER", "2", "C-VEG-TREE", "70", "0", "62", "3", "6", "CONTINUOUS",
-            "0", "LAYER", "2", "C-HYDR-WATR", "70", "0", "62", "4", "6", "CONTINUOUS",
-            "0", "LAYER", "2", "C-STRC-WALL", "70", "0", "62", "1", "6", "CONTINUOUS",
-            "0", "LAYER", "2", "C-TOPO-STKP", "70", "0", "62", "40", "6", "CONTINUOUS",
+            "0", "LAYER", "2", "C-VEG-TRNK", "70", "0", "62", "30", "6", "CONTINUOUS",
             "0", "ENDTAB",
             "0", "ENDSEC",
             "0", "SECTION",
             "2", "ENTITIES",
         ]
 
-        def _add_closed_3d_poly(layer: str, color: str, pts: List[List[float]]) -> None:
-            if len(pts) < 3:
-                return
-            lines.extend(["0", "POLYLINE", "8", layer, "62", color, "66", "1", "10", "0.0", "20", "0.0", "30", f"{pts[0][2]:.3f}", "70", "9"])
-            for p in pts:
-                lines.extend(["0", "VERTEX", "8", layer, "10", f"{p[0]:.3f}", "20", f"{p[1]:.3f}", "30", f"{p[2]:.3f}", "70", "32"])
-            lines.extend(["0", "SEQEND", "8", layer])
-
-        for r in data["roads"]:
-            _add_closed_3d_poly("C-ROAD-BNDY", "30", r["boundary_twd97"])
-        for wb in data["water_bodies"]:
-            _add_closed_3d_poly("C-HYDR-WATR", "4", wb["boundary_twd97"])
-        for sp in data["stockpiles"]:
-            _add_closed_3d_poly("C-TOPO-STKP", "40", sp["boundary_twd97"])
-        for wl in data["walls"]:
-            b_pts = wl["base_polyline_twd97"]
-            if len(b_pts) >= 2:
-                lines.extend(["0", "POLYLINE", "8", "C-STRC-WALL", "62", "1", "66", "1", "10", "0.0", "20", "0.0", "30", f"{b_pts[0][2]:.3f}", "70", "8"])
-                for p in b_pts:
-                    lines.extend(["0", "VERTEX", "8", "C-STRC-WALL", "10", f"{p[0]:.3f}", "20", f"{p[1]:.3f}", "30", f"{p[2]:.3f}", "70", "32"])
-                lines.extend(["0", "SEQEND", "8", "C-STRC-WALL"])
         for t in data["trees"]:
             tx, ty, tz = t["trunk_twd97"]
+            bx, by, bz = t.get("trunk_base_twd97") or [tx, ty, tz]
+            ux, uy, uz = t.get("trunk_top_twd97") or [tx, ty, tz + min(2.3, max(1.5, float(t["height_m"]) * 0.5))]
             r_m = max(0.05, t["dbh_cm"] * 0.005)
             lines.extend([
-                "0", "CIRCLE", "8", "C-VEG-TREE", "62", "3",
-                "10", f"{tx:.3f}", "20", f"{ty:.3f}", "30", f"{tz:.3f}", "40", f"{r_m:.3f}",
+                "0", "CIRCLE", "8", "C-VEG-TRNK", "62", "30",
+                "10", f"{tx:.3f}", "20", f"{ty:.3f}", "30", f"{tz + 1.3:.3f}", "40", f"{r_m:.3f}",
+                "0", "LINE", "8", "C-VEG-TRNK", "62", "30",
+                "10", f"{bx:.3f}", "20", f"{by:.3f}", "30", f"{bz:.3f}",
+                "11", f"{ux:.3f}", "21", f"{uy:.3f}", "31", f"{uz:.3f}",
                 "0", "CIRCLE", "8", "C-VEG-TREE", "62", "3",
                 "10", f"{tx:.3f}", "20", f"{ty:.3f}", "30", f"{tz + t['height_m']:.3f}", "40", f"{t['crown_diameter_m'] * 0.5:.3f}",
                 "0", "TEXT", "8", "C-VEG-TREE", "62", "3",

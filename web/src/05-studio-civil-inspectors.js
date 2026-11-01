@@ -126,54 +126,6 @@
   });
 
   function finalizeActiveMobilePolygon() {
-    if (
-      STATE.activeView === "studio" &&
-      STATE.activeTool === "categorize" &&
-      STATE.categorizeEditMode &&
-      Array.isArray(STATE.categorizeEditPoints)
-    ) {
-      if (STATE.categorizeEditMode === "add_road" && STATE.categorizeEditPoints.length >= 3) {
-        const boundaryLoc = STATE.categorizeEditPoints.map((x) => [
-          Number(x.pt.x.toFixed(3)),
-          Number(x.pt.y.toFixed(3)),
-          Number(x.pt.z.toFixed(3)),
-        ]);
-        const boundaryTwd = STATE.categorizeEditPoints.map((x) => [
-          Number(x.twd.e.toFixed(3)),
-          Number(x.twd.n.toFixed(3)),
-          Number(x.twd.h.toFixed(3)),
-        ]);
-        STATE.categorizeEditPoints = [];
-        clearTempDistanceVisuals();
-        submitCategorizeManualEdit("manual_add", "roads", null, {
-          boundary_local: boundaryLoc,
-          boundary_twd97: boundaryTwd,
-        });
-        syncStudioMobileToolHud();
-        return;
-      }
-      if (STATE.categorizeEditMode === "add_wall" && STATE.categorizeEditPoints.length >= 2) {
-        const p0 = STATE.categorizeEditPoints[0];
-        const p1 = STATE.categorizeEditPoints[1];
-        STATE.categorizeEditPoints = [];
-        clearTempDistanceVisuals();
-        submitCategorizeManualEdit("manual_add", "walls", null, {
-          base_polyline_local: [
-            [Number(p0.pt.x.toFixed(3)), Number(p0.pt.y.toFixed(3)), Number(p0.pt.z.toFixed(3))],
-            [Number(p1.pt.x.toFixed(3)), Number(p1.pt.y.toFixed(3)), Number(p1.pt.z.toFixed(3))],
-          ],
-          base_polyline_twd97: [
-            [Number(p0.twd.e.toFixed(3)), Number(p0.twd.n.toFixed(3)), Number(p0.twd.h.toFixed(3))],
-            [Number(p1.twd.e.toFixed(3)), Number(p1.twd.n.toFixed(3)), Number(p1.twd.h.toFixed(3))],
-          ],
-          height_m: 2.5,
-          mean_height_m: 2.5,
-        });
-        syncStudioMobileToolHud();
-        return;
-      }
-    }
-
     if (STATE.activeView === "studio" && Array.isArray(STATE.measurePoints) && STATE.measurePoints.length >= 3) {
       if (studioThree && studioThree.polyPreviewGroup) {
         while (studioThree.polyPreviewGroup.children.length > 0) {
@@ -380,28 +332,13 @@
       `;
     } else if (tool === "categorize" && STATE.categorizeEditMode) {
       const mode = STATE.categorizeEditMode;
-      const catPts = Array.isArray(STATE.categorizeEditPoints) ? STATE.categorizeEditPoints.length : 0;
       const modeText =
         mode === "add_tree"
           ? tr("🟢 點擊 3D 樹木新增", "🟢 Tap 3D tree to add")
-          : mode === "add_wall"
-          ? tr(`🔴 點擊牆面起終點 (${catPts}/2)`, `🔴 Tap wall endpoints (${catPts}/2)`)
-          : mode === "add_road"
-          ? tr(`🟠 點擊道路頂點 (${catPts}點)`, `🟠 Tap road vertices (${catPts})`)
-          : tr("🗑️ 點擊 3D 物件刪除", "🗑️ Tap 3D item to remove");
+          : tr("🗑️ 點擊 3D 喬木刪除", "🗑️ Tap 3D tree to remove");
       hud.style.display = "flex";
       hud.innerHTML = `
         <span class="gs-mobile-hud-label">${modeText}</span>
-        ${
-          (mode === "add_road" && catPts >= 3) || (mode === "add_wall" && catPts >= 2)
-            ? `<button type="button" class="gs-mobile-hud-btn primary" data-mobile-hud="lock_poly">✓ ${tr("完成新增", "Finish")}</button>`
-            : ""
-        }
-        ${
-          catPts > 0
-            ? `<button type="button" class="gs-mobile-hud-btn" data-mobile-hud="undo_cat_pt">↩ ${tr("復原點", "Undo")}</button>`
-            : ""
-        }
         <button type="button" class="gs-mobile-hud-btn" data-mobile-hud="expand_cat_panel">${
           STATE.sidePanelMinimized ? tr("▴ 面板", "▴ Panel") : tr("▾ 收合", "▾ Hide")
         }</button>
@@ -2026,7 +1963,7 @@
         }
       }
       for (const prevAll of allPlacedBadgeAnchors3D) {
-        if (anchorVec3.distanceTo(prevAll) < 2.2) {
+        if (anchorVec3.distanceTo(prevAll) < Math.min(2.2, minSameCatSep)) {
           return false;
         }
       }
@@ -2043,225 +1980,49 @@
       return true;
     };
 
-    const addPolygonHorizontalMesh = (
-      ptsVec3,
-      fillHex,
-      strokeHex,
-      fillOpacity = 0.34,
-      yLift = 0.22,
-      holesVec3List = []
-    ) => {
-      if (!Array.isArray(ptsVec3) || ptsVec3.length < 3) return;
-      const meanY = ptsVec3.reduce((acc, p) => acc + p.y, 0) / ptsVec3.length + yLift;
-      const shape = new THREE.Shape();
-      ptsVec3.forEach((p, idx) => {
-        if (idx === 0) shape.moveTo(p.x, -p.z);
-        else shape.lineTo(p.x, -p.z);
-      });
-      shape.closePath();
-      if (Array.isArray(holesVec3List)) {
-        holesVec3List.forEach((holePts) => {
-          if (!Array.isArray(holePts) || holePts.length < 3) return;
-          const holePath = new THREE.Path();
-          holePts.forEach((hp, hIdx) => {
-            if (hIdx === 0) holePath.moveTo(hp.x, -hp.z);
-            else holePath.lineTo(hp.x, -hp.z);
-          });
-          holePath.closePath();
-          shape.holes.push(holePath);
-        });
-      }
-      const sGeo = new THREE.ShapeGeometry(shape);
-      sGeo.rotateX(-Math.PI / 2);
-      sGeo.translate(0, meanY, 0);
-      const sMat = new THREE.MeshBasicMaterial({
-        color: fillHex,
-        transparent: true,
-        opacity: fillOpacity,
-        side: THREE.DoubleSide,
-        depthWrite: false,
-      });
-      const fillMesh = new THREE.Mesh(sGeo, sMat);
-      fillMesh.renderOrder = 992;
-      grp.add(fillMesh);
-
-      const loopPts = ptsVec3.map((p) => new THREE.Vector3(p.x, p.y + yLift + 0.06, p.z));
-      loopPts.push(loopPts[0].clone());
-      const lGeo = new THREE.BufferGeometry().setFromPoints(loopPts);
-      const lMat = new THREE.LineBasicMaterial({
-        color: strokeHex,
-        linewidth: 2,
-        depthTest: true,
-      });
-      const line = new THREE.Line(lGeo, lMat);
-      line.renderOrder = 996;
-      grp.add(line);
-
-      if (Array.isArray(holesVec3List)) {
-        holesVec3List.forEach((holePts) => {
-          if (!Array.isArray(holePts) || holePts.length < 3) return;
-          const hLoopPts = holePts.map((hp) => new THREE.Vector3(hp.x, hp.y + yLift + 0.07, hp.z));
-          hLoopPts.push(hLoopPts[0].clone());
-          const hlGeo = new THREE.BufferGeometry().setFromPoints(hLoopPts);
-          const hlLine = new THREE.Line(hlGeo, lMat);
-          hlLine.renderOrder = 996;
-          grp.add(hlLine);
-        });
-      }
-    };
-
-    // 1. WATER BODIES & UN-MODELLED WATER VOIDS (Hydrostatic Cyan Plane #06b6d4) — Highest badge priority (Top 2: W1, W2)
-    if (flt.water && Array.isArray(res.water_bodies)) {
-      let waterBadgesAdded = 0;
-      res.water_bodies.forEach((w, idx) => {
-        const bTwd = w.boundary_twd97 || [];
-        const bLoc = w.boundary_local || [];
-        const waterLevelH = Number(w.water_level_twvd2001_m ?? (w.center_twd97 && w.center_twd97[2]) ?? originTwd.h);
-        const pts = (bTwd.length >= 3 ? bTwd : bLoc).map((p, i) => {
-          const v = twd97PointToStudioVec3(bTwd[i], bLoc[i], originTwd);
-          v.y = waterLevelH - originTwd.h;
-          return v;
-        });
-        addPolygonHorizontalMesh(pts, 0x06b6d4, 0x22d3ee, 0.42, 0.16);
-        const cPt = twd97PointToStudioVec3(w.center_twd97, w.center_local, originTwd);
-        cPt.y = waterLevelH - originTwd.h + 0.5;
-        if (waterBadgesAdded < 4) {
-          const isVoid = w.detection_mode === "unmodelled_void_shoreline";
-          const added = tryAddCategorizeBadge(
-            cPt,
-            `<span style="color:#22d3ee;font-weight:800;">💧 ${escapeHtml(w.id)}</span> ${isVoid ? tr("水域空洞", "Water Void") : tr("水體", "Water")} · <b>TWVD2001 +${waterLevelH.toFixed(2)}m</b> (${Number(w.planar_area_m2 || 0).toFixed(0)} m²)`,
-            "#06b6d4",
-            { offsetY: -14, priority: 90 - idx, featureId: w.id, catKey: "water" }
-          );
-          if (added) waterBadgesAdded++;
-        }
-      });
-    }
-
-    // 2. ROADS (Amber #f59e0b) — Top 5 badges (R1..R5) with interior lawn/planter hole cutouts
-    if (flt.roads && Array.isArray(res.roads)) {
-      let roadBadgesAdded = 0;
-      res.roads.forEach((r, idx) => {
-        const bTwd = r.boundary_twd97 || [];
-        const bLoc = r.boundary_local || [];
-        const pts = (bTwd.length >= 3 ? bTwd : bLoc).map((p, i) =>
-          twd97PointToStudioVec3(bTwd[i], bLoc[i], originTwd)
-        );
-        const hTwdList = r.holes_twd97 || [];
-        const hLocList = r.holes_local || [];
-        const nHoles = Math.max(hTwdList.length, hLocList.length);
-        const holesPts = [];
-        for (let hi = 0; hi < nHoles; hi++) {
-          const ht = hTwdList[hi] || [];
-          const hl = hLocList[hi] || [];
-          const hRing = (ht.length >= 3 ? ht : hl).map((hp, pi) =>
-            twd97PointToStudioVec3(ht[pi], hl[pi], originTwd)
-          );
-          if (hRing.length >= 3) holesPts.push(hRing);
-        }
-        addPolygonHorizontalMesh(pts, 0xf59e0b, 0xfbbf24, 0.36, 0.25, holesPts);
-        const cPt = twd97PointToStudioVec3(r.center_twd97, r.center_local, originTwd);
-        cPt.y += 0.6;
-        if (roadBadgesAdded < 5) {
-          const added = tryAddCategorizeBadge(
-            cPt,
-            `<span style="color:#fbbf24;font-weight:800;">🛣️ ${escapeHtml(r.id)}</span> · <b>${Number(r.planar_area_m2 || 0).toFixed(1)} m²</b> (${Number(r.mean_width_m || 0).toFixed(1)}m W)`,
-            "#f59e0b",
-            { offsetY: -12, priority: 80 - idx, featureId: r.id, catKey: "roads" }
-          );
-          if (added) roadBadgesAdded++;
-        }
-      });
-    }
-
-    // 3. WALLS (Extruded 3D Vertical Wall Ribbon + Wireframe #f43f5e) — Top 4 badges (WL1..WL4)
-    if (flt.walls && Array.isArray(res.walls)) {
-      let wallBadgesAdded = 0;
-      res.walls.forEach((wl, idx) => {
-        const bTwd = wl.base_polyline_twd97 || [];
-        const tTwd = wl.top_polyline_twd97 || [];
-        const bLoc = wl.base_polyline_local || [];
-        const tLoc = wl.top_polyline_local || [];
-        const nPts = Math.min(bTwd.length || bLoc.length, tTwd.length || tLoc.length);
-        if (nPts < 2) return;
-
-        const basePts = [];
-        const topPts = [];
-        for (let i = 0; i < nPts; i++) {
-          basePts.push(twd97PointToStudioVec3(bTwd[i], bLoc[i], originTwd));
-          topPts.push(twd97PointToStudioVec3(tTwd[i], tLoc[i], originTwd));
-        }
-
-        const posArr = [];
-        for (let i = 0; i < nPts - 1; i++) {
-          const b0 = basePts[i], b1 = basePts[i + 1];
-          const t0 = topPts[i], t1 = topPts[i + 1];
-          posArr.push(b0.x, b0.y, b0.z, b1.x, b1.y, b1.z, t1.x, t1.y, t1.z);
-          posArr.push(b0.x, b0.y, b0.z, t1.x, t1.y, t1.z, t0.x, t0.y, t0.z);
-        }
-        const wallGeo = new THREE.BufferGeometry();
-        wallGeo.setAttribute("position", new THREE.Float32BufferAttribute(posArr, 3));
-        wallGeo.computeVertexNormals();
-        const wallMat = new THREE.MeshBasicMaterial({
-          color: 0xf43f5e,
-          transparent: true,
-          opacity: 0.62,
-          side: THREE.DoubleSide,
-          depthWrite: false,
-        });
-        const wallMesh = new THREE.Mesh(wallGeo, wallMat);
-        wallMesh.renderOrder = 997;
-        grp.add(wallMesh);
-
-        const outlinePts = [...basePts, ...topPts.slice().reverse(), basePts[0].clone()];
-        const outGeo = new THREE.BufferGeometry().setFromPoints(outlinePts);
-        const outLine = new THREE.Line(
-          outGeo,
-          new THREE.LineBasicMaterial({ color: 0xfda4af, linewidth: 2, depthTest: true })
-        );
-        outLine.renderOrder = 999;
-        grp.add(outLine);
-
-        if (wallBadgesAdded < 4) {
-          const cPt = twd97PointToStudioVec3(wl.center_twd97, wl.center_local, originTwd);
-          cPt.y += Number(wl.mean_height_m || wl.height_m || 2.0) * 0.6 + 0.5;
-          const added = tryAddCategorizeBadge(
-            cPt,
-            `<span style="color:#fb7185;font-weight:800;">🧱 ${escapeHtml(wl.id)}</span> · L ${Number(wl.length_m || 0).toFixed(1)}m · 3D <b>${Number(wl.vertical_area_m2 || 0).toFixed(1)} m²</b>`,
-            "#f43f5e",
-            { offsetY: -12, priority: 70 - idx, featureId: wl.id, catKey: "walls" }
-          );
-          if (added) wallBadgesAdded++;
-        }
-      });
-    }
-
-    // 4. TREES & 1.3m BREAST-HEIGHT DBH (3D Trunk Cylinders + 1.3m DBH Ring + Emerald Canopy Domes + Crown Ring #10b981)
+    // TREES & 1.3m BREAST-HEIGHT DBH (Coaxial 3D Trunk Cylinders + 1.3m DBH Ring + Emerald Canopy Domes + Crown Ring #10b981)
     if (flt.trees && Array.isArray(res.trees)) {
       let treeBadgesAdded = 0;
-      const maxTreeBadges = STATE.categorizeActiveTab === "trees" ? 16 : 12;
-      const treePriorityBase = STATE.categorizeActiveTab === "trees" ? 95 : 68;
+      const maxTreeBadges = 24;
+      const treePriorityBase = 95;
+      const upVec = new THREE.Vector3(0, 1, 0);
+      const treeVecs = res.trees.map((t) => twd97PointToStudioVec3(t.trunk_twd97, t.trunk_local, originTwd));
       res.trees.forEach((t, idx) => {
-        const basePt = twd97PointToStudioVec3(t.trunk_twd97, t.trunk_local, originTwd);
-        const treeH = Math.max(2.5, Number(t.height_m || 6.0));
-        const dbhCm = Math.max(10.0, Number(t.dbh_cm || 30.0));
-        const crownD = Math.max(2.0, Number(t.crown_diameter_m || 4.0));
-        const rTrunk = Math.max(0.14, Math.min(0.65, (dbhCm / 200.0) * 1.15));
-        const trunkH = Math.max(1.8, treeH * 0.52);
+        const basePt = treeVecs[idx];
+        const treeH = Math.max(2.2, Number(t.height_m || 6.0));
+        const dbhCm = Math.max(8.0, Number(t.dbh_cm || 30.0));
+        const crownD = Math.max(1.6, Number(t.crown_diameter_m || 4.0));
+        const rTrunk = Math.max(0.085, Math.min(0.65, (dbhCm / 200.0) * 1.15));
+        const trunkHDefault = Math.max(1.6, Math.min(2.4, treeH * 0.50));
 
-        const trunkGeo = new THREE.CylinderGeometry(rTrunk * 0.85, rTrunk * 1.15, trunkH, 10);
+        const bPt = Array.isArray(t.trunk_base_twd97)
+          ? twd97PointToStudioVec3(t.trunk_base_twd97, t.trunk_base_local, originTwd)
+          : basePt.clone();
+        const tPt = Array.isArray(t.trunk_top_twd97)
+          ? twd97PointToStudioVec3(t.trunk_top_twd97, t.trunk_top_local, originTwd)
+          : new THREE.Vector3(basePt.x, basePt.y + trunkHDefault, basePt.z);
+
+        const stemVec = new THREE.Vector3().subVectors(tPt, bPt);
+        const trunkH = Math.max(1.4, stemVec.length() || trunkHDefault);
+        const stemDir = stemVec.lengthSq() > 1e-4 ? stemVec.clone().normalize() : upVec.clone();
+        const midPt = new THREE.Vector3().addVectors(bPt, tPt).multiplyScalar(0.5);
+
+        const trunkGeo = new THREE.CylinderGeometry(rTrunk * 0.88, rTrunk * 1.12, trunkH, 12);
         const trunkMat = new THREE.MeshBasicMaterial({
           color: 0xb45309,
           transparent: true,
           opacity: 0.88,
         });
         const trunkMesh = new THREE.Mesh(trunkGeo, trunkMat);
-        trunkMesh.position.set(basePt.x, basePt.y + trunkH * 0.5, basePt.z);
+        trunkMesh.position.copy(midPt);
+        trunkMesh.quaternion.setFromUnitVectors(upVec, stemDir);
         trunkMesh.renderOrder = 995;
         grp.add(trunkMesh);
 
-        // 1.3m Breast-Height (DBH) bright measurement collar ring
-        const dbhRingGeo = new THREE.RingGeometry(rTrunk * 1.05, rTrunk * 1.65, 22);
+        // 1.3m Breast-Height (DBH) bright measurement collar ring aligned coaxially with the 3D stem
+        const dbhFrac = Math.max(0.2, Math.min(0.9, 1.3 / Math.max(tPt.y - bPt.y, 1.4)));
+        const dbhPt = new THREE.Vector3().lerpVectors(bPt, tPt, dbhFrac);
+        const dbhRingGeo = new THREE.RingGeometry(rTrunk * 1.05, rTrunk * 1.65, 24);
         dbhRingGeo.rotateX(-Math.PI / 2);
         const dbhRingMat = new THREE.MeshBasicMaterial({
           color: 0xfef08a,
@@ -2269,22 +2030,23 @@
           depthTest: true,
         });
         const dbhRing = new THREE.Mesh(dbhRingGeo, dbhRingMat);
-        dbhRing.position.set(basePt.x, basePt.y + 1.3, basePt.z);
+        dbhRing.position.copy(dbhPt);
+        dbhRing.quaternion.setFromUnitVectors(upVec, stemDir);
         dbhRing.renderOrder = 999;
         grp.add(dbhRing);
 
         // Translucent 3D Canopy Crown Sphere/Dome + Crisp Emerald Crown Equatorial Ring
-        const crownR = Math.max(1.2, crownD * 0.46);
-        const crownY = basePt.y + trunkH + crownR * 0.35;
+        const crownR = Math.max(1.0, crownD * 0.46);
+        const crownY = bPt.y + trunkH + crownR * 0.35;
         const crownGeo = new THREE.SphereGeometry(crownR, 14, 10);
         const crownMat = new THREE.MeshBasicMaterial({
           color: 0x10b981,
           transparent: true,
-          opacity: 0.30,
+          opacity: 0.28,
           depthWrite: false,
         });
         const crownMesh = new THREE.Mesh(crownGeo, crownMat);
-        crownMesh.position.set(basePt.x, crownY, basePt.z);
+        crownMesh.position.set(tPt.x, crownY, tPt.z);
         crownMesh.scale.set(1.0, Math.max(0.65, (treeH * 0.55) / Math.max(crownR * 1.6, 1.0)), 1.0);
         crownMesh.renderOrder = 994;
         grp.add(crownMesh);
@@ -2294,9 +2056,9 @@
           const ang = (s / 24) * Math.PI * 2;
           cRingPts.push(
             new THREE.Vector3(
-              basePt.x + Math.cos(ang) * crownR,
-              basePt.y + trunkH * 0.92,
-              basePt.z + Math.sin(ang) * crownR
+              tPt.x + Math.cos(ang) * crownR,
+              bPt.y + trunkH * 0.92,
+              tPt.z + Math.sin(ang) * crownR
             )
           );
         }
@@ -2308,44 +2070,22 @@
         grp.add(cRingLine);
 
         if (treeBadgesAdded < maxTreeBadges) {
-          const topPt = new THREE.Vector3(basePt.x, basePt.y + Math.min(treeH * 0.65, 5.2), basePt.z);
+          const isTwin = treeVecs.some((ov, oIdx) => oIdx !== idx && Math.hypot(ov.x - basePt.x, ov.z - basePt.z) <= 1.15);
+          const topPt = new THREE.Vector3(tPt.x, bPt.y + Math.min(treeH * 0.65, 5.2), tPt.z);
           const added = tryAddCategorizeBadge(
             topPt,
             `<span style="color:#34d399;font-weight:800;">🌳 ${escapeHtml(t.id)}</span> · DBH <b>${dbhCm.toFixed(1)} cm</b> · H ${treeH.toFixed(1)}m`,
             "#10b981",
             {
-              offsetY: -10,
+              offsetY: isTwin ? (idx % 2 === 0 ? -18 : 4) : -10,
               priority: treePriorityBase - idx,
               featureId: t.id,
               catKey: "trees",
-              isFocused: STATE.categorizeActiveTab === "trees",
+              isFocused: true,
+              minSep: isTwin ? 0.38 : undefined,
             }
           );
           if (added) treeBadgesAdded++;
-        }
-      });
-    }
-
-    // 5. BARE EARTH / STOCKPILES (Orange #d97706) — Top 1 badge (S1)
-    if (flt.stockpiles && Array.isArray(res.stockpiles)) {
-      let spBadgesAdded = 0;
-      res.stockpiles.slice(0, 4).forEach((sp, idx) => {
-        const bTwd = sp.boundary_twd97 || [];
-        const bLoc = sp.boundary_local || [];
-        const pts = (bTwd.length >= 3 ? bTwd : bLoc).map((p, i) =>
-          twd97PointToStudioVec3(bTwd[i], bLoc[i], originTwd)
-        );
-        addPolygonHorizontalMesh(pts, 0xd97706, 0xf59e0b, 0.22, 0.18);
-        if (spBadgesAdded < 1) {
-          const cPt = twd97PointToStudioVec3(sp.center_twd97, sp.center_local, originTwd);
-          cPt.y += 0.5;
-          const added = tryAddCategorizeBadge(
-            cPt,
-            `<span style="color:#fbbf24;font-weight:800;">⛰️ ${escapeHtml(sp.id)}</span> · <b>${Number(sp.planar_area_m2 || 0).toFixed(0)} m²</b> (~${Number(sp.estimated_volume_m3 || 0).toFixed(0)} m³)`,
-            "#d97706",
-            { offsetY: -10, priority: 50 - idx, featureId: sp.id, catKey: "stockpiles" }
-          );
-          if (added) spBadgesAdded++;
         }
       });
     }

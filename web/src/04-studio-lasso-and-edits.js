@@ -2639,189 +2639,34 @@
         });
         return;
       }
-      if (mode === "add_wall") {
-        if (!Array.isArray(STATE.categorizeEditPoints)) STATE.categorizeEditPoints = [];
-        STATE.categorizeEditPoints.push({ pt: pt.clone(), twd });
-        add3DPinMarker(pt, 0xf43f5e, studioThree.overlayGroup, (m) => {
-          m.userData.isTempDistance = true;
-          studioThree.overlayGroup.add(m);
-        });
-        if (STATE.categorizeEditPoints.length >= 2) {
-          const p0 = STATE.categorizeEditPoints[0];
-          const p1 = STATE.categorizeEditPoints[1];
-          STATE.categorizeEditPoints = [];
-          clearTempDistanceVisuals();
-          submitCategorizeManualEdit("manual_add", "walls", null, {
-            base_polyline_local: [
-              [Number(p0.pt.x.toFixed(3)), Number(p0.pt.y.toFixed(3)), Number(p0.pt.z.toFixed(3))],
-              [Number(p1.pt.x.toFixed(3)), Number(p1.pt.y.toFixed(3)), Number(p1.pt.z.toFixed(3))],
-            ],
-            base_polyline_twd97: [
-              [Number(p0.twd.e.toFixed(3)), Number(p0.twd.n.toFixed(3)), Number(p0.twd.h.toFixed(3))],
-              [Number(p1.twd.e.toFixed(3)), Number(p1.twd.n.toFixed(3)), Number(p1.twd.h.toFixed(3))],
-            ],
-            height_m: 2.5,
-            mean_height_m: 2.5,
-          });
-        } else {
-          showToast(tr("🔴 牆面起點已標記，請點擊牆面終點", "🔴 Point 1/2 placed — click wall end point"));
-          if (STATE.lastCategorizeResult) renderCategorizePanelContent(STATE.lastCategorizeResult);
-        }
-        syncStudioMobileToolHud();
-        return;
-      }
-      if (mode === "add_road") {
-        if (!Array.isArray(STATE.categorizeEditPoints)) STATE.categorizeEditPoints = [];
-        if (
-          STATE.categorizeEditPoints.length >= 3 &&
-          isNearStartVertex(pt, STATE.categorizeEditPoints[0].pt)
-        ) {
-          const boundaryLoc = STATE.categorizeEditPoints.map((x) => [
-            Number(x.pt.x.toFixed(3)),
-            Number(x.pt.y.toFixed(3)),
-            Number(x.pt.z.toFixed(3)),
-          ]);
-          const boundaryTwd = STATE.categorizeEditPoints.map((x) => [
-            Number(x.twd.e.toFixed(3)),
-            Number(x.twd.n.toFixed(3)),
-            Number(x.twd.h.toFixed(3)),
-          ]);
-          STATE.categorizeEditPoints = [];
-          clearTempDistanceVisuals();
-          submitCategorizeManualEdit("manual_add", "roads", null, {
-            boundary_local: boundaryLoc,
-            boundary_twd97: boundaryTwd,
-          });
-          syncStudioMobileToolHud();
-          return;
-        }
-        STATE.categorizeEditPoints.push({ pt: pt.clone(), twd });
-        clearTempDistanceVisuals();
-        const pts = STATE.categorizeEditPoints.map((x) => x.pt);
-        pts.forEach((p, idx) => {
-          add3DPinMarker(p, idx === 0 ? 0xff3b30 : 0xf59e0b, studioThree.overlayGroup, (m) => {
-            m.userData.isTempDistance = true;
-            studioThree.overlayGroup.add(m);
-          });
-        });
-        if (pts.length >= 2) {
-          const loopPts = pts.length >= 3 ? [...pts, pts[0]] : pts;
-          const lGeo = new THREE.BufferGeometry().setFromPoints(loopPts);
-          const lMesh = new THREE.Line(lGeo, new THREE.LineBasicMaterial({ color: 0xf59e0b, depthTest: false }));
-          lMesh.userData.isTempDistance = true;
-          studioThree.overlayGroup.add(lMesh);
-        }
-        showToast(
-          pts.length >= 3
-            ? `🟠 道路頂點 #${pts.length} 已標記 — 點擊紅色起點 V1 或按 Enter 完成新增道路`
-            : `🟠 道路頂點 #${pts.length} 已標記 — 請再標記至少 ${3 - pts.length} 個頂點`
-        );
-        if (STATE.lastCategorizeResult) renderCategorizePanelContent(STATE.lastCategorizeResult);
-        syncStudioMobileToolHud();
-        return;
-      }
       if (mode === "remove_click") {
         const res = STATE.lastCategorizeResult;
         if (!res) return;
         let bestId = null;
-        let bestCat = null;
-        let bestDist = 5.5;
+        let bestDist = 4.2;
         (res.trees || []).forEach((t) => {
           const v = twd97PointToStudioVec3(t.trunk_twd97, t.trunk_local, originTwd);
-          const d = Math.hypot(v.x - pt.x, v.z - pt.z);
+          let d = Math.hypot(v.x - pt.x, v.z - pt.z);
+          if (Array.isArray(t.trunk_base_twd97) && Array.isArray(t.trunk_top_twd97)) {
+            const vb = twd97PointToStudioVec3(t.trunk_base_twd97, t.trunk_base_local, originTwd);
+            const vt = twd97PointToStudioVec3(t.trunk_top_twd97, t.trunk_top_local, originTwd);
+            const abx = vt.x - vb.x, aby = vt.y - vb.y, abz = vt.z - vb.z;
+            const len2 = abx * abx + aby * aby + abz * abz;
+            if (len2 > 1e-4) {
+              const tProj = Math.max(0, Math.min(1, ((pt.x - vb.x) * abx + (pt.y - vb.y) * aby + (pt.z - vb.z) * abz) / len2));
+              const d3 = Math.hypot(pt.x - (vb.x + tProj * abx), pt.z - (vb.z + tProj * abz));
+              if (d3 < d) d = d3;
+            }
+          }
           if (d < bestDist) {
             bestDist = d;
             bestId = t.id;
-            bestCat = "trees";
           }
         });
-        (res.walls || []).forEach((wl) => {
-          const bTwd = wl.base_polyline_twd97 || [];
-          const bLoc = wl.base_polyline_local || [];
-          const nPts = Math.max(bTwd.length, bLoc.length);
-          for (let i = 0; i < nPts - 1; i++) {
-            const a = twd97PointToStudioVec3(bTwd[i], bLoc[i], originTwd);
-            const b = twd97PointToStudioVec3(bTwd[i + 1], bLoc[i + 1], originTwd);
-            const abx = b.x - a.x;
-            const abz = b.z - a.z;
-            const len2 = abx * abx + abz * abz;
-            const tProj = len2 > 1e-6 ? Math.max(0, Math.min(1, ((pt.x - a.x) * abx + (pt.z - a.z) * abz) / len2)) : 0;
-            const px = a.x + tProj * abx;
-            const pz = a.z + tProj * abz;
-            const d = Math.hypot(pt.x - px, pt.z - pz);
-            if (d < bestDist) {
-              bestDist = d;
-              bestId = wl.id;
-              bestCat = "walls";
-            }
-          }
-        });
-        const checkPolyHit = (polyObj, catName) => {
-          const bTwd = polyObj.boundary_twd97 || [];
-          const bLoc = polyObj.boundary_local || [];
-          const nVerts = Math.max(bTwd.length, bLoc.length);
-          if (nVerts >= 3) {
-            const ringXZ = [];
-            for (let i = 0; i < nVerts; i++) {
-              const v = twd97PointToStudioVec3(bTwd[i], bLoc[i], originTwd);
-              ringXZ.push([v.x, v.z]);
-            }
-            if (pointInPoly2D(pt.x, pt.z, ringXZ)) {
-              const holesTwd = polyObj.holes_twd97 || [];
-              const holesLoc = polyObj.holes_local || [];
-              let inHole = false;
-              const nH = Math.max(holesTwd.length, holesLoc.length);
-              for (let hi = 0; hi < nH; hi++) {
-                const ht = holesTwd[hi] || [];
-                const hl = holesLoc[hi] || [];
-                const nhv = Math.max(ht.length, hl.length);
-                if (nhv >= 3) {
-                  const hXZ = [];
-                  for (let k = 0; k < nhv; k++) {
-                    const hv = twd97PointToStudioVec3(ht[k], hl[k], originTwd);
-                    hXZ.push([hv.x, hv.z]);
-                  }
-                  if (pointInPoly2D(pt.x, pt.z, hXZ)) {
-                    inHole = true;
-                    break;
-                  }
-                }
-              }
-              if (!inHole && 1.8 < bestDist) {
-                bestDist = 1.8;
-                bestId = polyObj.id;
-                bestCat = catName;
-              }
-            }
-            for (let i = 0; i < ringXZ.length; i++) {
-              const a = ringXZ[i];
-              const b = ringXZ[(i + 1) % ringXZ.length];
-              const abx = b[0] - a[0];
-              const abz = b[1] - a[1];
-              const len2 = abx * abx + abz * abz;
-              const tProj = len2 > 1e-6 ? Math.max(0, Math.min(1, ((pt.x - a[0]) * abx + (pt.z - a[1]) * abz) / len2)) : 0;
-              const d = Math.hypot(pt.x - (a[0] + tProj * abx), pt.z - (a[1] + tProj * abz));
-              if (d < bestDist) {
-                bestDist = d;
-                bestId = polyObj.id;
-                bestCat = catName;
-              }
-            }
-          }
-          const vc = twd97PointToStudioVec3(polyObj.center_twd97, polyObj.center_local, originTwd);
-          const dc = Math.hypot(vc.x - pt.x, vc.z - pt.z);
-          if (dc < bestDist) {
-            bestDist = dc;
-            bestId = polyObj.id;
-            bestCat = catName;
-          }
-        };
-        (res.roads || []).forEach((r) => checkPolyHit(r, "roads"));
-        (res.water_bodies || []).forEach((w) => checkPolyHit(w, "water_bodies"));
-        if (bestId && bestCat) {
-          submitCategorizeManualEdit("manual_remove", bestCat, bestId);
+        if (bestId) {
+          submitCategorizeManualEdit("manual_remove", "trees", bestId);
         } else {
-          showToast("附近 5.5m 內未找到可刪除的分類項目，或請直接點擊表格中的 🗑️ 按鈕", "warn");
+          showToast(tr("附近 4.2m 內未找到可刪除的喬木，或請直接點擊清冊中的 🗑️ 按鈕", "No tree found within 4.2m — or click 🗑️ in the tree schedule"), "warn");
         }
         return;
       }

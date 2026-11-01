@@ -4438,48 +4438,6 @@
     } else if (
       e.key === "Enter" &&
       STATE.activeView === "studio" &&
-      STATE.activeTool === "categorize" &&
-      STATE.categorizeEditMode &&
-      Array.isArray(STATE.categorizeEditPoints)
-    ) {
-      if (STATE.categorizeEditMode === "add_road" && STATE.categorizeEditPoints.length >= 3) {
-        const boundaryLoc = STATE.categorizeEditPoints.map((x) => [
-          Number(x.pt.x.toFixed(3)),
-          Number(x.pt.y.toFixed(3)),
-          Number(x.pt.z.toFixed(3)),
-        ]);
-        const boundaryTwd = STATE.categorizeEditPoints.map((x) => [
-          Number(x.twd.e.toFixed(3)),
-          Number(x.twd.n.toFixed(3)),
-          Number(x.twd.h.toFixed(3)),
-        ]);
-        STATE.categorizeEditPoints = [];
-        clearTempDistanceVisuals();
-        submitCategorizeManualEdit("manual_add", "roads", null, {
-          boundary_local: boundaryLoc,
-          boundary_twd97: boundaryTwd,
-        });
-      } else if (STATE.categorizeEditMode === "add_wall" && STATE.categorizeEditPoints.length >= 2) {
-        const p0 = STATE.categorizeEditPoints[0];
-        const p1 = STATE.categorizeEditPoints[1];
-        STATE.categorizeEditPoints = [];
-        clearTempDistanceVisuals();
-        submitCategorizeManualEdit("manual_add", "walls", null, {
-          base_polyline_local: [
-            [Number(p0.pt.x.toFixed(3)), Number(p0.pt.y.toFixed(3)), Number(p0.pt.z.toFixed(3))],
-            [Number(p1.pt.x.toFixed(3)), Number(p1.pt.y.toFixed(3)), Number(p1.pt.z.toFixed(3))],
-          ],
-          base_polyline_twd97: [
-            [Number(p0.twd.e.toFixed(3)), Number(p0.twd.n.toFixed(3)), Number(p0.twd.h.toFixed(3))],
-            [Number(p1.twd.e.toFixed(3)), Number(p1.twd.n.toFixed(3)), Number(p1.twd.h.toFixed(3))],
-          ],
-          height_m: 2.5,
-          mean_height_m: 2.5,
-        });
-      }
-    } else if (
-      e.key === "Enter" &&
-      STATE.activeView === "studio" &&
       STATE.activeTool === "flatten_zone" &&
       Array.isArray(STATE.flattenDraftPoints) &&
       STATE.flattenDraftPoints.length >= 3

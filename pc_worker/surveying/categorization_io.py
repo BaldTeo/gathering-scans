@@ -1176,6 +1176,8 @@ class CategorizationIoMixin:
                 if isinstance(cached_vision_map, dict) and sig_hash in cached_vision_map:
                     cached_entry = dict(cached_vision_map[sig_hash])
                     if cached_entry.get("ai_verified") is True:
+                        cached_entry["ai_summary_zh"] = default_zh
+                        cached_entry["ai_summary_en"] = default_en
                         cached_entry["photo_matches"] = photo_matches
                         cached_entry["photo_verified_count"] = n_photo_verified
                         return cached_entry
@@ -1555,8 +1557,7 @@ class CategorizationIoMixin:
             if ov_model:
                 active_model_id = ov_model
             parsed_json = parsed_ov or {}
-            zh_txt = str(parsed_json.get("ai_summary_zh") or "").strip() or default_zh
-            en_txt = str(parsed_json.get("ai_summary_en") or "").strip() or default_en
+            zh_txt, en_txt = _build_default_summaries(surviving_trees_cnt, mean_dbh)
             raw_ov_rej = parsed_json.get("rejected_false_positive_tags") or []
             allowed_non_tree = set(non_tree_ambig)
             non_tree_rej = [str(t).strip() for t in raw_ov_rej if str(t).strip() in allowed_non_tree]
@@ -1646,7 +1647,15 @@ class CategorizationIoMixin:
         html_path = os.path.join(REPORTS_DIR, html_name)
         csv_path = os.path.join(REPORTS_DIR, csv_name)
         dxf_path = os.path.join(CONTOURS_DIR, dxf_name)
-        if not (os.path.isfile(html_path) and os.path.isfile(csv_path) and os.path.isfile(dxf_path)):
+        need_write = not (os.path.isfile(html_path) and os.path.isfile(csv_path) and os.path.isfile(dxf_path))
+        if not need_write:
+            try:
+                with open(html_path, "r", encoding="utf-8", errors="ignore") as hf:
+                    if "Road Surface (道路鋪面)" in hf.read(4096):
+                        need_write = True
+            except Exception:
+                need_write = True
+        if need_write:
             try:
                 self._write_categorization_deliverables(result, html_name, csv_name, dxf_name)
             except Exception:
@@ -1901,9 +1910,23 @@ class CategorizationIoMixin:
                 if isinstance(r_o.get("boundary_twd97"), list):
                     r_o["boundary_local"] = [[round(float(p[0]) - ce_a, 3), round(float(p[2]) - ch_a, 3), round(cn_a - float(p[1]), 3)] for p in r_o["boundary_twd97"] if isinstance(p, (list, tuple)) and len(p) >= 3]
 
+        for _cname, _clist in (
+            ("roads", res.get("roads") or []),
+            ("trees", res.get("trees") or []),
+            ("walls", res.get("walls") or []),
+            ("water_bodies", res.get("water_bodies") or []),
+            ("buildings", res.get("buildings") or []),
+            ("water_tanks", res.get("water_tanks") or []),
+            ("pipes", res.get("pipes") or []),
+            ("street_furniture", res.get("street_furniture") or []),
+        ):
+            for _it in _clist:
+                if isinstance(_it, dict) and _it.get("id") and not _it.get("orig_id"):
+                    _it["orig_id"] = str(_it["id"]).strip()
+
         def _is_removed(item: Dict[str, Any], cat_type: str) -> bool:
-            iid = str(item.get("id") or "").strip()
-            if iid and iid in removed_ids:
+            orig_iid = str(item.get("orig_id") or item.get("id") or "").strip()
+            if orig_iid and orig_iid in removed_ids:
                 return True
             pt = item.get("trunk_twd97") if cat_type == "trees" else item.get("center_twd97")
             if isinstance(pt, list) and len(pt) >= 2:
@@ -1911,7 +1934,10 @@ class CategorizationIoMixin:
                     if rc.get("category") in (None, "", cat_type):
                         try:
                             d = math.hypot(float(pt[0]) - float(rc.get("e", 0.0)), float(pt[1]) - float(rc.get("n", 0.0)))
-                            if d <= float(rc.get("tol", 1.8)):
+                            default_tol = 0.35 if cat_type == "trees" else 1.8
+                            raw_tol = float(rc.get("tol", default_tol))
+                            eff_tol = min(raw_tol, 0.42) if cat_type == "trees" else raw_tol
+                            if d <= eff_tol:
                                 return True
                         except Exception:
                             pass
@@ -1928,17 +1954,20 @@ class CategorizationIoMixin:
 
         for idx_r, r_obj in enumerate(roads_list, 1):
             if not str(r_obj.get("id") or "").startswith("RM"):
+                r_obj.setdefault("orig_id", str(r_obj.get("id") or f"R{idx_r}"))
                 r_obj["id"] = f"R{idx_r}"
                 lbl_z = r_obj.get("label_zh") or res.get("road_corridor_label_zh") or "道路鋪面"
                 lbl_e = r_obj.get("label_en") or res.get("road_corridor_label_en") or "Paved Road Corridor"
                 r_obj["name"] = f"{lbl_z} {r_obj['id']} ({lbl_e})"
         for idx_t, t_obj in enumerate(trees_list, 1):
             if not str(t_obj.get("id") or "").startswith("TM"):
+                t_obj.setdefault("orig_id", str(t_obj.get("id") or f"T{idx_t}"))
                 t_obj["id"] = f"T{idx_t}"
                 t_obj["name"] = f"喬木 T{idx_t}"
         for idx_w, w_obj in enumerate(walls_list, 1):
             w_id_cur = str(w_obj.get("id") or "")
             if not (w_id_cur.startswith("WLM") or w_id_cur.startswith("CW_") or w_id_cur.startswith("CF")):
+                w_obj.setdefault("orig_id", w_id_cur or f"WL{idx_w}")
                 w_obj["id"] = f"WL{idx_w}"
                 w_obj["name"] = f"擋土牆/垂直牆面 WL{idx_w}"
 
@@ -2056,28 +2085,44 @@ class CategorizationIoMixin:
                 "reset_manual_overrides": True,
             })
 
+        for _cname, _clist in (
+            ("trees", cached_res.get("trees") or []),
+            ("walls", cached_res.get("walls") or []),
+            ("roads", cached_res.get("roads") or []),
+            ("water_bodies", cached_res.get("water_bodies") or []),
+        ):
+            for _it in _clist:
+                if isinstance(_it, dict) and _it.get("id") and not _it.get("orig_id"):
+                    _it["orig_id"] = str(_it["id"]).strip()
+
         if action == "manual_remove":
             item_id = str(payload.get("item_id") or "").strip()
             cat_type = str(payload.get("category") or "").strip()
             if not item_id:
                 return {"ok": False, "error": "Missing item_id"}
-            if item_id not in removed_ids:
-                removed_ids.append(item_id)
-            # Also record spatial center so it stays removed across future force_recompute runs
+            matched_orig_ids: List[str] = []
+            # Record original ID and spatial center (with 0.35m tol for trees so twin stems are preserved)
             for cname, clist in (("trees", cached_res.get("trees") or []), ("walls", cached_res.get("walls") or []), ("roads", cached_res.get("roads") or []), ("water_bodies", cached_res.get("water_bodies") or [])):
                 for it in clist:
-                    if str(it.get("id") or "") == item_id:
+                    if str(it.get("id") or "") == item_id or str(it.get("orig_id") or "") == item_id:
+                        oid = str(it.get("orig_id") or it.get("id") or "").strip()
+                        if oid:
+                            matched_orig_ids.append(oid)
                         pt = it.get("trunk_twd97") if cname == "trees" else it.get("center_twd97")
                         if isinstance(pt, list) and len(pt) >= 2:
-                            removed_centers.append({"category": cname, "e": float(pt[0]), "n": float(pt[1]), "tol": 1.65})
-            added_trees = [t for t in added_trees if str(t.get("id") or "") != item_id]
-            added_walls = [w for w in added_walls if str(w.get("id") or "") != item_id]
-            added_roads = [r for r in added_roads if str(r.get("id") or "") != item_id]
-            added_water = [w for w in added_water if str(w.get("id") or "") != item_id]
-            cached_res["trees"] = [t for t in (cached_res.get("trees") or []) if str(t.get("id") or "") != item_id]
-            cached_res["walls"] = [w for w in (cached_res.get("walls") or []) if str(w.get("id") or "") != item_id]
-            cached_res["roads"] = [r for r in (cached_res.get("roads") or []) if str(r.get("id") or "") != item_id]
-            cached_res["water_bodies"] = [w for w in (cached_res.get("water_bodies") or []) if str(w.get("id") or "") != item_id]
+                            rc_tol = 0.35 if cname == "trees" else 1.65
+                            removed_centers.append({"category": cname, "e": float(pt[0]), "n": float(pt[1]), "tol": rc_tol})
+            for oid in (matched_orig_ids or [item_id]):
+                if oid not in removed_ids:
+                    removed_ids.append(oid)
+            added_trees = [t for t in added_trees if str(t.get("id") or "") != item_id and str(t.get("orig_id") or "") != item_id]
+            added_walls = [w for w in added_walls if str(w.get("id") or "") != item_id and str(w.get("orig_id") or "") != item_id]
+            added_roads = [r for r in added_roads if str(r.get("id") or "") != item_id and str(r.get("orig_id") or "") != item_id]
+            added_water = [w for w in added_water if str(w.get("id") or "") != item_id and str(w.get("orig_id") or "") != item_id]
+            cached_res["trees"] = [t for t in (cached_res.get("trees") or []) if str(t.get("id") or "") != item_id and str(t.get("orig_id") or "") != item_id]
+            cached_res["walls"] = [w for w in (cached_res.get("walls") or []) if str(w.get("id") or "") != item_id and str(w.get("orig_id") or "") != item_id]
+            cached_res["roads"] = [r for r in (cached_res.get("roads") or []) if str(r.get("id") or "") != item_id and str(r.get("orig_id") or "") != item_id]
+            cached_res["water_bodies"] = [w for w in (cached_res.get("water_bodies") or []) if str(w.get("id") or "") != item_id and str(w.get("orig_id") or "") != item_id]
 
         elif action == "manual_add":
             cat_type = str(payload.get("category") or "").strip()

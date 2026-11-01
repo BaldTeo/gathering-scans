@@ -1920,10 +1920,34 @@ class GatheringScansTestSuite(unittest.TestCase):
         self.assertFalse(fail_res.get("ai_verified"))
         self.assertEqual(fail_res.get("per_tree_verdicts"), {})
 
-        # 6. Verify CSV & HTML engineering reports include AI Vision Verified & Object Seen columns and that non-tree vines/hedges are excluded
+        # 6. Verify CSV & HTML engineering reports include AI Vision Verified & Object Seen columns, zero leftover Road/Wall/Water sections, and V-fork twin-stem manual removal idempotency
         for tr_ntu in ntu_cat.get("trees", []):
             self.assertNotIn("low green hedge", str(tr_ntu.get("object_seen") or "").lower())
             self.assertNotIn("vining plant", str(tr_ntu.get("object_seen") or "").lower())
+        twin_stems = [
+            t for t in mrg_cat.get("trees", [])
+            if ((float(t["trunk_twd97"][0]) - 300581.27) ** 2 + (float(t["trunk_twd97"][1]) - 2780932.20) ** 2) ** 0.5 <= 0.80
+        ]
+        self.assertEqual(len(twin_stems), 2, "Both diverging stems of the V-fork twin tree must be detected")
+        for ts_obj in twin_stems:
+            self.assertIn("trunk_base_twd97", ts_obj)
+            self.assertIn("trunk_top_twd97", ts_obj)
+        import copy
+        mrg_copy = copy.deepcopy(mrg_cat)
+        ts_first = twin_stems[0]
+        ov_twin = {
+            "removed_ids": [ts_first["id"]],
+            "removed_centers": [{"category": "trees", "e": ts_first["trunk_twd97"][0], "n": ts_first["trunk_twd97"][1], "tol": 0.35}],
+            "added_trees": [],
+            "added_walls": [],
+            "added_roads": [],
+            "added_water": [],
+        }
+        after_ov1 = eng._apply_manual_overrides_to_categorization("edited_qihu_merged_2026_10_28_858499", mrg_copy, ov_twin)
+        self.assertEqual(len(after_ov1["trees"]), len(mrg_cat["trees"]) - 1)
+        after_ov2 = eng._apply_manual_overrides_to_categorization("edited_qihu_merged_2026_10_28_858499", after_ov1, after_ov1["manual_overrides"])
+        self.assertEqual(len(after_ov2["trees"]), len(mrg_cat["trees"]) - 1)
+
         ntu_csv_path = os.path.join(BASE_DIR, "data", "reports", "categorization_report_ntudorm_20260915_baseline.csv")
         ntu_html_path = os.path.join(BASE_DIR, "data", "reports", "categorization_report_ntudorm_20260915_baseline.html")
         if os.path.isfile(ntu_csv_path) and os.path.isfile(ntu_html_path):
@@ -1936,6 +1960,8 @@ class GatheringScansTestSuite(unittest.TestCase):
             self.assertIn("Yes (AI+3D Trunk)", csv_txt)
             self.assertIn("AI Vision & DBH Verification", html_txt)
             self.assertIn("✓ AI+3D 樹幹", html_txt)
+            self.assertNotIn("Road Surface (道路鋪面)", html_txt)
+            self.assertNotIn("ROADS SCHEDULE", csv_txt)
 
     def test_23_silent_subprocess_queue_order_progress_and_rerun_visibility(self):
         """Verify Task 1 & Task 2: silent subprocess patch, psutil process check, auto-tile retry cache,
