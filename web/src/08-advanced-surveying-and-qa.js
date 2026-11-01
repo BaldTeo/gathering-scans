@@ -1482,14 +1482,33 @@
 
     const sortedX = sx.slice().sort((a, b) => a - b);
     const sortedZ = sz.slice().sort((a, b) => a - b);
-    const minX = sortedX[Math.floor(sortedX.length * 0.005)];
-    const maxX = sortedX[Math.floor(sortedX.length * 0.995)];
-    const minZ = sortedZ[Math.floor(sortedZ.length * 0.005)];
-    const maxZ = sortedZ[Math.floor(sortedZ.length * 0.995)];
+    let minX = sortedX[Math.floor(sortedX.length * 0.005)];
+    let maxX = sortedX[Math.floor(sortedX.length * 0.995)];
+    let minZ = sortedZ[Math.floor(sortedZ.length * 0.005)];
+    let maxZ = sortedZ[Math.floor(sortedZ.length * 0.995)];
+    let cellStep = Math.max(0.65, targetStepM);
 
-    const spanX = Math.max(6.0, maxX - minX);
-    const spanZ = Math.max(6.0, maxZ - minZ);
-    const cellStep = Math.max(0.65, targetStepM);
+    const hasDrainPoly = Array.isArray(STATE.drainagePolygonPoints) && STATE.drainagePolygonPoints.length >= 3;
+    if (hasDrainPoly) {
+      let pMinX = Infinity, pMaxX = -Infinity, pMinZ = Infinity, pMaxZ = -Infinity;
+      for (const p of STATE.drainagePolygonPoints) {
+        const px = Number(p.x) || 0, pz = Number(p.z) || 0;
+        if (px < pMinX) pMinX = px;
+        if (px > pMaxX) pMaxX = px;
+        if (pz < pMinZ) pMinZ = pz;
+        if (pz > pMaxZ) pMaxZ = pz;
+      }
+      const pSpan = Math.max(0.5, Math.min(pMaxX - pMinX, pMaxZ - pMinZ));
+      cellStep = Math.max(0.20, Math.min(targetStepM, Math.max(0.25, pSpan / 3.5)));
+      const pad = cellStep * 2.0;
+      minX = pMinX - pad;
+      maxX = pMaxX + pad;
+      minZ = pMinZ - pad;
+      maxZ = pMaxZ + pad;
+    }
+
+    const spanX = Math.max(hasDrainPoly ? 1.0 : 6.0, maxX - minX);
+    const spanZ = Math.max(hasDrainPoly ? 1.0 : 6.0, maxZ - minZ);
     const nx = Math.max(6, Math.min(300, Math.round(spanX / cellStep) + 1));
     const nz = Math.max(6, Math.min(300, Math.round(spanZ / cellStep) + 1));
     const stepX = spanX / Math.max(1, nx - 1);
@@ -1928,19 +1947,7 @@
     const grp = new THREE.Group();
     studioThree.drainageGroup = grp;
     studioThree.overlayGroup.add(grp);
-
-    if (Array.isArray(STATE.drainagePolygonPoints) && STATE.drainagePolygonPoints.length >= 3) {
-      const polyPts = STATE.drainagePolygonPoints.map((p) => new THREE.Vector3(Number(p.x) || 0, Number(p.y) || 0, Number(p.z) || 0));
-      const loopGeo = new THREE.BufferGeometry().setFromPoints([...polyPts, polyPts[0]]);
-      const loopLine = new THREE.Line(loopGeo, new THREE.LineBasicMaterial({ color: 0x0284c7, depthTest: false }));
-      loopLine.renderOrder = 997;
-      grp.add(loopLine);
-      polyPts.forEach((p, idx) => {
-        if (typeof add3DPinMarker === "function") {
-          add3DPinMarker(p, idx === 0 ? 0xff3b30 : 0x0284c7, grp);
-        }
-      });
-    }
+    refreshDrainagePolygonPins3D();
 
     const { cellStep, arrows } = buildFastStudioSurfaceArrows(gridSize, excludeWalls, densityPerM2);
 
@@ -2118,12 +2125,44 @@
       tier_counts: tierCounts,
     };
 
+    if (typeof updateZoomInvariantElements === "function") updateZoomInvariantElements();
     updateStudioDrainageLegendHud(stats);
     updateDrainagePanelStatsInPlace(stats);
     return stats;
   }
   window.renderDrainageAndSlopeVisuals3D = renderDrainageAndSlopeVisuals3D;
   window.renderDrainageOverlay3D = renderDrainageAndSlopeVisuals3D;
+
+  function refreshDrainagePolygonPins3D() {
+    const grp = studioThree?.drainageGroup;
+    if (!grp) return;
+    for (let i = grp.children.length - 1; i >= 0; i--) {
+      const ch = grp.children[i];
+      if (ch && ch.userData?.isDrainagePolyVisual) {
+        if (ch.geometry) ch.geometry.dispose();
+        if (ch.material) ch.material.dispose();
+        grp.remove(ch);
+      }
+    }
+    if (Array.isArray(STATE.drainagePolygonPoints) && STATE.drainagePolygonPoints.length >= 3) {
+      const polyPts = STATE.drainagePolygonPoints.map((p) => new THREE.Vector3(Number(p.x) || 0, Number(p.y) || 0, Number(p.z) || 0));
+      const loopGeo = new THREE.BufferGeometry().setFromPoints([...polyPts, polyPts[0]]);
+      const loopLine = new THREE.Line(loopGeo, new THREE.LineBasicMaterial({ color: 0x0284c7, depthTest: false }));
+      loopLine.renderOrder = 997;
+      loopLine.userData.isDrainagePolyVisual = true;
+      grp.add(loopLine);
+      polyPts.forEach((p, idx) => {
+        if (typeof add3DPinMarker === "function") {
+          add3DPinMarker(p, idx === 0 ? 0xff3b30 : 0x0284c7, grp, (m) => {
+            m.userData.isDrainagePolyVisual = true;
+            grp.add(m);
+          });
+        }
+      });
+      if (typeof updateZoomInvariantElements === "function") updateZoomInvariantElements();
+    }
+  }
+  window.refreshDrainagePolygonPins3D = refreshDrainagePolygonPins3D;
 
   async function openDrainageAndSlopeInspector() {
     setActiveStudioTool("drainage");
@@ -2293,10 +2332,12 @@
       document.getElementById("chkDrainageExcludeWalls")?.addEventListener("change", () => refreshVisInPlace(null));
       document.getElementById("btnResetDrainageFullScan")?.addEventListener("click", () => {
         STATE.drainagePolygonPoints = null;
+        STATE.qaLinkedAreaMeasId = null;
         openDrainageAndSlopeInspector();
       });
       document.getElementById("btnClearDrainageVisuals")?.addEventListener("click", () => {
         STATE.drainagePolygonPoints = null;
+        STATE.qaLinkedAreaMeasId = null;
         clearDrainageVisuals3D();
         showToast(tr("已清除 3D 坡度與排水箭頭", "Cleared 3D Slope & Drainage arrows"));
       });

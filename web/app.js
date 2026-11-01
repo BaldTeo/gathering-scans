@@ -1733,7 +1733,15 @@
             credentials: "same-origin",
             headers: typeof apiHeaders === "function" ? apiHeaders(false) : {},
           })
-            .then((r) => (r.ok ? r.json() : null))
+            .then(async (r) => {
+              if (!r.ok) return null;
+              const txt = await r.text();
+              try {
+                return txt && txt.trim() ? JSON.parse(txt) : null;
+              } catch (_) {
+                return null;
+              }
+            })
             .then((prefData) => {
               const srvLang = prefData?.preferences?.language || prefData?.language;
               if (
@@ -2096,7 +2104,8 @@
               headers: { Authorization: `Bearer ${tokenResponse.access_token}` },
             });
             if (!uResp.ok) throw new Error(`HTTP ${uResp.status}`);
-            const info = await uResp.json();
+            const uTxt = await uResp.text();
+            const info = uTxt && uTxt.trim() ? JSON.parse(uTxt) : {};
             const chosenProfile = {
               id: info.sub ? `google_${info.sub}` : undefined,
               name: info.name || info.given_name || (info.email ? info.email.split("@")[0] : "Google User"),

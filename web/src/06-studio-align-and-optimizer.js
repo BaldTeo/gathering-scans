@@ -4163,9 +4163,11 @@
       }
       else if (tool === "gcp_qa" && typeof openGcpAccuracyQaInspector === "function") openGcpAccuracyQaInspector();
       else if (tool === "flatness" && typeof window.openSurfaceFlatnessQaInspector === "function") {
-        STATE.polygonLocked = false;
-        STATE.flatnessPolygonLocked = false;
-        STATE.flatnessPolygonPoints = [];
+        if (!window.QA_STATE?.flatnessCache || window.QA_STATE.flatnessCache.scanId !== STATE.activeScanId) {
+          STATE.polygonLocked = false;
+          STATE.flatnessPolygonLocked = false;
+          STATE.flatnessPolygonPoints = [];
+        }
         window.openSurfaceFlatnessQaInspector();
       }
       else if (tool === "trench" && typeof window.openUtilityTracerInspector === "function") window.openUtilityTracerInspector();

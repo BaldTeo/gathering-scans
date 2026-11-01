@@ -343,13 +343,13 @@
       `;
     } else if (tool === "categorize" && STATE.categorizeEditMode) {
       const mode = STATE.categorizeEditMode;
-      const modeText =
+      const modeIcon =
         mode === "add_tree"
-          ? tr("點擊 3D 樹木新增", "Tap 3D tree to add")
-          : tr("點擊 3D 樹木刪除", "Tap 3D tree to remove");
+          ? `<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.2" style="vertical-align:-2px;margin-right:4px;"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>${tr("新增", "Add")}`
+          : `<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-2px;margin-right:4px;"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>${tr("刪除", "Remove")}`;
       hud.style.display = "flex";
       hud.innerHTML = `
-        <span class="gs-mobile-hud-label">${modeText}</span>
+        <span class="gs-mobile-hud-label">${modeIcon}</span>
         <button type="button" class="gs-mobile-hud-btn" data-mobile-hud="expand_cat_panel">${
           STATE.sidePanelMinimized ? tr("面板", "Panel") : tr("收合", "Hide")
         }</button>
@@ -2191,15 +2191,12 @@
         <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;">
           <label style="display:inline-flex;align-items:center;gap:5px;cursor:pointer;font-size:11px;font-weight:600;color:var(--ui-text-primary);">
             <input type="checkbox" id="chkCategorizeMasterVis" ${isVis ? "checked" : ""} />
-            ${tr("3D 圖層", "3D Layer")}
+            ${tr("3D", "3D")}
           </label>
           <label style="display:inline-flex;align-items:center;gap:5px;cursor:pointer;font-size:11px;font-weight:600;color:var(--ui-text-secondary);">
             <input type="checkbox" id="chkCategorizeLabelsVis" ${lblsVis ? "checked" : ""} />
             ${tr("標籤", "Labels")}
           </label>
-          <button type="button" class="btn-xs ${isVis ? "primary" : ""}" id="btnToggleCategorizeOverlayVis" style="padding:3px 10px;">
-            ${isVis ? tr("隱藏", "Hide") : tr("顯示", "Show")}
-          </button>
         </div>
       </div>
 
@@ -2212,37 +2209,28 @@
           ${trashSvg}
           <span>${tr("刪除", "Remove")}</span>
         </button>
-        <button type="button" class="btn-xs" id="btnResetCategorizeManualEdits" style="flex:1;justify-content:center;gap:4px;" title="${tr("還原預設值", "Reset Edits")}">
+        <button type="button" class="btn-xs" id="btnResetCategorizeManualEdits" style="flex:1;justify-content:center;gap:4px;" title="${tr("重設", "Reset")}">
           <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
           <span>${tr("重設", "Reset")}</span>
         </button>
       </div>
-      ${
-        editMode
-          ? `<div id="categorizeEditStatusHint" style="font-size:10.5px;color:var(--brand-primary);background:var(--ui-bg-pill);border:1px solid var(--ui-border);border-radius:6px;padding:5px 8px;margin-bottom:8px;">${escapeHtml(
-              editMode === "add_tree"
-                ? tr("點擊 3D 場景新增樹木", "Click 3D model to add tree")
-                : tr("點擊 3D 樹木或清單按鈕刪除", "Click 3D tree or row icon to remove")
-            )}</div>`
-          : ""
-      }
 
       <div class="gs-metric-grid" style="grid-template-columns:1fr 1fr;gap:6px;margin-bottom:8px;">
         <div class="gs-metric-box">
-          <div class="lbl">${tr("樹木數量", "Trees")}</div>
+          <div class="lbl">${tr("樹木", "Trees")}</div>
           <div class="val" style="font-size:14px;">${treesCount}</div>
         </div>
         <div class="gs-metric-box">
-          <div class="lbl">${tr("平均胸徑", "Mean DBH")}</div>
+          <div class="lbl">${tr("胸徑", "DBH")}</div>
           <div class="val" style="font-size:14px;">${Number(s.trees_mean_dbh_cm || 0).toFixed(1)} cm</div>
           <div style="font-size:9.5px;color:var(--ui-text-muted);">Max ${Number(s.trees_max_dbh_cm || 0).toFixed(1)} cm</div>
         </div>
         <div class="gs-metric-box">
-          <div class="lbl">${tr("平均樹高", "Mean Height")}</div>
+          <div class="lbl">${tr("樹高", "Height")}</div>
           <div class="val" style="font-size:13px;">${Number(s.trees_mean_height_m || 0).toFixed(1)} m</div>
         </div>
         <div class="gs-metric-box">
-          <div class="lbl">${tr("樹冠面積", "Canopy Area")}</div>
+          <div class="lbl">${tr("樹冠", "Canopy")}</div>
           <div class="val" style="font-size:13px;">${Number(s.trees_canopy_area_m2 || 0).toLocaleString()} m²</div>
         </div>
       </div>
@@ -2253,7 +2241,7 @@
             <tr style="background:var(--ui-bg-pill);color:var(--ui-text-secondary);text-align:left;position:sticky;top:0;">
               <th style="padding:5px 6px;">ID</th>
               <th style="padding:5px 6px;">DBH</th>
-              <th style="padding:5px 6px;">${tr("樹高 · 樹冠", "H · Crown")}</th>
+              <th style="padding:5px 6px;">H / Ø</th>
               <th style="padding:5px 4px;text-align:center;width:32px;"></th>
             </tr>
           </thead>
@@ -2281,10 +2269,6 @@
 
     document.getElementById("chkCategorizeMasterVis")?.addEventListener("change", (ev) => {
       setCategorizeOverlayVisibility(Boolean(ev.target.checked));
-      renderCategorizePanelContent(res);
-    });
-    document.getElementById("btnToggleCategorizeOverlayVis")?.addEventListener("click", () => {
-      setCategorizeOverlayVisibility(!STATE.categorizeOverlayVisible);
       renderCategorizePanelContent(res);
     });
     document.getElementById("chkCategorizeLabelsVis")?.addEventListener("change", (ev) => {
@@ -2387,6 +2371,9 @@
     };
 
     const autoShow = typeof opts.showOverlays === "boolean" ? opts.showOverlays : true;
+    if (autoShow) {
+      STATE.activeTool = "categorize";
+    }
     STATE.categorizeOverlayVisible = autoShow;
     STATE.categorizeLabelsVisible = autoShow;
     if (STATE.lastCategorizeResult && STATE.lastCategorizeResult.scan_id === activeScan.scan_id) {
@@ -2396,7 +2383,7 @@
 
     const treeIconSvg = `<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px;"><path d="M12 3L5 12h4l-2 5h10l-2-5h4L12 3z"/><line x1="12" y1="17" x2="12" y2="21"/><line x1="9" y1="21" x2="15" y2="21"/></svg>`;
     showSidePanel(
-      `<span>${treeIconSvg}${tr("樹木與胸徑", "Trees & DBH")}</span>`,
+      `<span>${treeIconSvg}${tr("樹木", "Trees")}</span>`,
       `
       <div style="display:flex;gap:6px;margin-bottom:8px;">
         <button type="button" class="gs-top-btn accent" style="flex:1;justify-content:center;gap:5px;" id="btnRunCategorize">

@@ -1518,6 +1518,9 @@
       }
       return data;
     }
+    if ((url === "/api/survey/categorize" || url === "/api/surveying/categorize") && body && body.force_recompute && body.scan_id) {
+      return apiPost(url, { ...body, force_recompute: false });
+    }
     throw lastErr || new Error("Request failed");
   }
 

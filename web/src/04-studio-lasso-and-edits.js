@@ -2488,6 +2488,10 @@
           ev.preventDefault();
           ev.stopPropagation();
           const mode = btn.getAttribute("data-area-qa-jump");
+          const matchedMeas = (STATE.completedMeasurements || []).find(
+            (m) => m && m.type === "area" && Array.isArray(m.points) && (m.points === lockedPts || (m.points.length === lockedPts.length && m.points[0] && lockedPts[0] && m.points[0].distanceTo(lockedPts[0]) < 1e-4))
+          );
+          STATE.qaLinkedAreaMeasId = matchedMeas ? matchedMeas.id : null;
           const clonedPoly = lockedPts.map((p) => p.clone());
           if (mode === "flatness" && typeof window.openSurfaceFlatnessQaInspector === "function") {
             window.openSurfaceFlatnessQaInspector();
@@ -2564,8 +2568,11 @@
     if (Array.isArray(STATE.cutFillPolygonPoints) && STATE.cutFillPolygonPoints.length >= 3 && STATE.measurePoints.length === 0) {
       evalPolyEdges(STATE.cutFillPolygonPoints, { source: "cutFillPolygonPoints", measId: "__cut_fill__", measType: "volume", closed: true });
     }
-    if (Array.isArray(STATE.flatnessPolygonPoints) && STATE.flatnessPolygonPoints.length >= 3 && STATE.measurePoints.length === 0) {
+    if (Array.isArray(STATE.flatnessPolygonPoints) && STATE.flatnessPolygonPoints.length >= 3 && STATE.measurePoints.length === 0 && (STATE.activeTool === "flatness" || Boolean(studioThree?.overlayGroup?.getObjectByName?.("GS_SurfaceQA_Overlay")))) {
       evalPolyEdges(STATE.flatnessPolygonPoints, { source: "flatnessPolygonPoints", measId: "__flatness__", measType: "flatness", closed: true });
+    }
+    if (Array.isArray(STATE.drainagePolygonPoints) && STATE.drainagePolygonPoints.length >= 3 && STATE.measurePoints.length === 0 && (STATE.activeTool === "drainage" || Boolean(studioThree?.drainageGroup?.parent))) {
+      evalPolyEdges(STATE.drainagePolygonPoints, { source: "drainagePolygonPoints", measId: "__drainage__", measType: "drainage", closed: true });
     }
     if (Array.isArray(STATE.measurePoints) && STATE.measurePoints.length >= 2 && (STATE.activeTool === "area" || STATE.activeTool === "volume" || STATE.activeTool === "flatness")) {
       evalPolyEdges(STATE.measurePoints, { source: "measurePoints", measId: "__in_progress__", measType: STATE.activeTool, closed: false });
@@ -2582,6 +2589,7 @@
       const m = (STATE.completedMeasurements || []).find((item) => item && item.id === edgeDesc.measId);
       if (!m || !Array.isArray(m.points)) return null;
       m.points.splice(idx, 0, newPt);
+      window.syncQaLinkedPolygonEdit?.("completed", "insert", idx, newPt, m.id);
       if (typeof rebuildAllCompletedMeasurements3D === "function") rebuildAllCompletedMeasurements3D();
       return { point: newPt, source: "completed", measId: m.id, measType: "area", pointIndex: idx, label: `Area V${idx + 1}`, editable: true };
     }
@@ -2593,8 +2601,15 @@
     }
     if (edgeDesc.source === "flatnessPolygonPoints" && Array.isArray(STATE.flatnessPolygonPoints)) {
       STATE.flatnessPolygonPoints.splice(idx, 0, newPt);
+      window.syncQaLinkedPolygonEdit?.("flatnessPolygonPoints", "insert", idx, newPt);
       if (typeof rebuildAllCompletedMeasurements3D === "function") rebuildAllCompletedMeasurements3D();
       return { point: newPt, source: "flatnessPolygonPoints", measId: "__flatness__", measType: "flatness", pointIndex: idx, label: `Flatness V${idx + 1}`, editable: true };
+    }
+    if (edgeDesc.source === "drainagePolygonPoints" && Array.isArray(STATE.drainagePolygonPoints)) {
+      STATE.drainagePolygonPoints.splice(idx, 0, newPt);
+      window.syncQaLinkedPolygonEdit?.("drainagePolygonPoints", "insert", idx, newPt);
+      if (typeof rebuildAllCompletedMeasurements3D === "function") rebuildAllCompletedMeasurements3D();
+      return { point: newPt, source: "drainagePolygonPoints", measId: "__drainage__", measType: "drainage", pointIndex: idx, label: `Drainage V${idx + 1}`, editable: true };
     }
     if (edgeDesc.source === "measurePoints" && Array.isArray(STATE.measurePoints)) {
       STATE.measurePoints.splice(idx, 0, newPt);
@@ -2626,6 +2641,8 @@
       const m = STATE.completedMeasurements[mIdx];
       if (m.type === "area" && Array.isArray(m.points) && m.points.length > 3 && Number.isFinite(vDesc.pointIndex)) {
         m.points.splice(vDesc.pointIndex, 1);
+        window.syncQaLinkedPolygonEdit?.("completed", "delete", vDesc.pointIndex, null, m.id);
+        window.syncQaLinkedPolygonEdit?.("completed", "commit", vDesc.pointIndex, null, m.id);
         rebuild();
         showToast(tr(`已刪除多邊形頂點 (${vDesc.label})`, `Deleted polygon vertex (${vDesc.label})`));
         return true;
@@ -2652,11 +2669,25 @@
     if (vDesc.source === "flatnessPolygonPoints" && Array.isArray(STATE.flatnessPolygonPoints)) {
       if (STATE.flatnessPolygonPoints.length > 3 && Number.isFinite(vDesc.pointIndex)) {
         STATE.flatnessPolygonPoints.splice(vDesc.pointIndex, 1);
+        window.syncQaLinkedPolygonEdit?.("flatnessPolygonPoints", "delete", vDesc.pointIndex);
+        rebuild();
         if (typeof window.lockFlatnessPolygonAndAnalyze === "function") window.lockFlatnessPolygonAndAnalyze(STATE.flatnessPolygonPoints);
         showToast(tr(`已刪除平整度頂點 (${vDesc.label})`, `Deleted flatness vertex (${vDesc.label})`));
         return true;
       }
       document.getElementById("btnResetSurfaceQa")?.click();
+      return true;
+    }
+    if (vDesc.source === "drainagePolygonPoints" && Array.isArray(STATE.drainagePolygonPoints)) {
+      if (STATE.drainagePolygonPoints.length > 3 && Number.isFinite(vDesc.pointIndex)) {
+        STATE.drainagePolygonPoints.splice(vDesc.pointIndex, 1);
+        window.syncQaLinkedPolygonEdit?.("drainagePolygonPoints", "delete", vDesc.pointIndex);
+        rebuild();
+        window.syncQaLinkedPolygonEdit?.("drainagePolygonPoints", "commit", vDesc.pointIndex);
+        showToast(tr(`已刪除排水範圍頂點 (${vDesc.label})`, `Deleted drainage polygon vertex (${vDesc.label})`));
+        return true;
+      }
+      document.getElementById("btnResetDrainageFullScan")?.click();
       return true;
     }
     if (vDesc.source === "profileEndpoints") {

@@ -1416,6 +1416,7 @@
     const volMode = QA_STATE.flatnessVolumeMode || "threshold";
     const dispMode = QA_STATE.flatnessDisplayMode || "tiles";
     const ptsCount = (window.STATE && Array.isArray(window.STATE.measurePoints)) ? window.STATE.measurePoints.length : 0;
+    const isSampling = Boolean(QA_STATE.flatnessCancelToken && !QA_STATE.flatnessCancelToken.cancelled);
     const regSpec = getFlatnessRegulationSpec(tolMm);
 
     const html = `
@@ -1435,13 +1436,15 @@
               1. ${t("檢測範圍 (可拖曳頂點微調)", "1. Inspection Polygon (Draggable)")}
             </span>
             <span id="badgeFlatnessPolyState" style="font-size:10px;padding:1px 6px;border-radius:999px;background:rgba(2,132,199,0.15);color:#38bdf8;font-weight:700;">
-              ${QA_STATE.flatnessCache ? t("已鎖定", "Locked") : t("繪製中", "Drawing")}
+              ${isSampling ? t("計算中...", "Sampling...") : QA_STATE.flatnessCache ? t("已鎖定", "Locked") : t("繪製中", "Drawing")}
             </span>
           </div>
           <div id="lblFlatnessVertexCount" style="font-size:10.5px;color:var(--ui-text-secondary);line-height:1.35;margin-bottom:6px;">
             ${
               QA_STATE.flatnessCache
                 ? t(`已分析 ${QA_STATE.flatnessCache.totalAreaM2} m² — 可直接拖曳 3D 頂點或調整公差`, `Analyzed ${QA_STATE.flatnessCache.totalAreaM2} m² — drag 3D pins or adjust tolerance`)
+                : isSampling
+                ? t("網格取樣與平面擬合中...", "Sampling surface grid...")
                 : ptsCount === 0
                 ? t("點擊 3+ 點圍成範圍，點紅點 V1 或按 Enter 閉合", "Click 3+ pts on surface; click red V1 or Enter to close")
                 : t(`已選 ${ptsCount} 點`, `${ptsCount} pts placed`)
@@ -1459,7 +1462,7 @@
             </button>
           </div>
           <!-- Background Time-Sliced Sampling Progress Bar -->
-          <div id="flatnessSamplingProgressWrap" style="display:none;margin-top:7px;">
+          <div id="flatnessSamplingProgressWrap" style="display:${isSampling ? "block" : "none"};margin-top:7px;">
             <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--ui-text-secondary);margin-bottom:3px;">
               <span id="lblFlatnessSamplingStage">${t("網格取樣與平面擬合中...", "Sampling surface grid...")}</span>
               <span id="lblFlatnessSamplingPct" style="font-weight:700;color:#38bdf8;">0%</span>
@@ -1587,8 +1590,21 @@
     bindSurfaceQaEvents();
 
     if (QA_STATE.flatnessCache) {
+      if (
+        window.STATE &&
+        (!Array.isArray(window.STATE.flatnessPolygonPoints) || window.STATE.flatnessPolygonPoints.length < 3) &&
+        Array.isArray(QA_STATE.flatnessCache.polyPts) &&
+        QA_STATE.flatnessCache.polyPts.length >= 3 &&
+        window.THREE
+      ) {
+        window.STATE.flatnessPolygonPoints = QA_STATE.flatnessCache.polyPts.map(
+          (p) => new window.THREE.Vector3(Number(p.x) || 0, Number(p.y) || 0, Number(p.z) || 0)
+        );
+        window.STATE.flatnessPolygonLocked = true;
+        window.STATE.polygonLocked = true;
+      }
       recomputeFlatnessMetricsAndVisuals();
-    } else {
+    } else if (!isSampling) {
       refreshFlatnessDraftVisuals();
     }
   }
@@ -1664,25 +1680,28 @@
     const cancelToken = { cancelled: false };
     QA_STATE.flatnessCancelToken = cancelToken;
 
-    const progWrap = document.getElementById("flatnessSamplingProgressWrap");
-    const progBar = document.getElementById("barFlatnessSamplingFill");
-    const progPct = document.getElementById("lblFlatnessSamplingPct");
-    const badgeState = document.getElementById("badgeFlatnessPolyState");
-    if (progWrap) progWrap.style.display = "block";
-    if (badgeState) badgeState.textContent = t("計算中...", "Sampling...");
+    const progWrapInit = document.getElementById("flatnessSamplingProgressWrap");
+    const badgeStateInit = document.getElementById("badgeFlatnessPolyState");
+    if (progWrapInit) progWrapInit.style.display = "block";
+    if (badgeStateInit) badgeStateInit.textContent = t("計算中...", "Sampling...");
 
     try {
       const cache = await computeClientFlatnessPolygonAsync(
         polyPts,
         planeMode,
         (pct) => {
+          const progBar = document.getElementById("barFlatnessSamplingFill");
+          const progPct = document.getElementById("lblFlatnessSamplingPct");
           if (progBar) progBar.style.width = `${pct}%`;
           if (progPct) progPct.textContent = `${pct}%`;
         },
         cancelToken
       );
       if (cancelToken.cancelled) return;
+      QA_STATE.flatnessCancelToken = null;
       QA_STATE.flatnessCache = cache;
+      const progWrap = document.getElementById("flatnessSamplingProgressWrap");
+      const badgeState = document.getElementById("badgeFlatnessPolyState");
       if (progWrap) progWrap.style.display = "none";
       if (badgeState) badgeState.textContent = t("已鎖定", "Locked");
       const lblCount = document.getElementById("lblFlatnessVertexCount");
@@ -1695,8 +1714,10 @@
       recomputeFlatnessMetricsAndVisuals();
       if (typeof syncStudioMobileToolHud === "function") syncStudioMobileToolHud();
     } catch (err) {
+      QA_STATE.flatnessCancelToken = null;
       if (err && err.message === "cancelled") return;
       console.error("[Flatness] Polygon sampling error:", err);
+      const progWrap = document.getElementById("flatnessSamplingProgressWrap");
       if (progWrap) progWrap.style.display = "none";
     }
   }
@@ -1788,6 +1809,7 @@
         window.STATE.polygonLocked = false;
         window.STATE.flatnessPolygonLocked = false;
         window.STATE.flatnessPolygonPoints = [];
+        window.STATE.qaLinkedAreaMeasId = null;
       }
       if (window.studioThree && window.studioThree.polyPreviewGroup) {
         while (window.studioThree.polyPreviewGroup.children.length > 0) {
@@ -3080,7 +3102,62 @@
     }, 200);
   }
 
+  function syncQaLinkedPolygonEdit(source, action, idx, pt = null, measId = null) {
+    const st = window.STATE;
+    if (!st) return;
+    const linkedId = st.qaLinkedAreaMeasId;
+    const isLinked =
+      Boolean(linkedId) &&
+      (source === "flatnessPolygonPoints" ||
+        source === "drainagePolygonPoints" ||
+        (source === "completed" && measId === linkedId));
+
+    if (isLinked) {
+      const areaMeas = (st.completedMeasurements || []).find(
+        (m) => m && m.id === linkedId && m.type === "area" && Array.isArray(m.points)
+      );
+      const targets = [];
+      if (source !== "completed" && areaMeas) targets.push(areaMeas.points);
+      if (source !== "flatnessPolygonPoints" && Array.isArray(st.flatnessPolygonPoints) && st.flatnessPolygonPoints.length >= 3) {
+        targets.push(st.flatnessPolygonPoints);
+      }
+      if (source !== "drainagePolygonPoints" && Array.isArray(st.drainagePolygonPoints) && st.drainagePolygonPoints.length >= 3) {
+        targets.push(st.drainagePolygonPoints);
+      }
+      for (const arr of targets) {
+        if (action === "move" && pt && arr[idx] && typeof arr[idx].copy === "function") {
+          arr[idx].copy(pt);
+        } else if (action === "insert" && pt && Number.isFinite(idx)) {
+          arr.splice(idx, 0, typeof pt.clone === "function" ? pt.clone() : pt);
+        } else if (action === "delete" && Number.isFinite(idx) && arr.length > 3) {
+          arr.splice(idx, 1);
+        }
+      }
+    }
+
+    if (action === "commit") {
+      if (
+        (source === "drainagePolygonPoints" || (isLinked && st.activeTool === "drainage")) &&
+        Array.isArray(st.drainagePolygonPoints) &&
+        st.drainagePolygonPoints.length >= 3 &&
+        typeof window.renderDrainageAndSlopeVisuals3D === "function"
+      ) {
+        window.renderDrainageAndSlopeVisuals3D();
+      }
+      if (
+        isLinked &&
+        source !== "flatnessPolygonPoints" &&
+        st.activeTool === "flatness" &&
+        Array.isArray(st.flatnessPolygonPoints) &&
+        st.flatnessPolygonPoints.length >= 3
+      ) {
+        lockFlatnessPolygonAndAnalyze(st.flatnessPolygonPoints);
+      }
+    }
+  }
+
   // Global exports & API bindings
+  window.syncQaLinkedPolygonEdit = syncQaLinkedPolygonEdit;
   window.openSurfaceFlatnessQaInspector = openSurfaceFlatnessQaInspector;
   window.lockFlatnessPolygonAndAnalyze = lockFlatnessPolygonAndAnalyze;
   window.refreshFlatnessDraftVisuals = refreshFlatnessDraftVisuals;

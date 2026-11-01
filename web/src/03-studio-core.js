@@ -2578,8 +2578,11 @@
     if (Array.isArray(STATE.cutFillPolygonPoints) && STATE.cutFillPolygonPoints.length > 0 && STATE.measurePoints.length === 0) {
       STATE.cutFillPolygonPoints.forEach((pt, idx) => pushV(pt, { source: "cutFillPolygonPoints", measId: "__cut_fill__", measType: "volume", pointIndex: idx, label: `Volume V${idx + 1}` }));
     }
-    if (Array.isArray(STATE.flatnessPolygonPoints) && STATE.flatnessPolygonPoints.length > 0 && STATE.measurePoints.length === 0) {
+    if (Array.isArray(STATE.flatnessPolygonPoints) && STATE.flatnessPolygonPoints.length > 0 && STATE.measurePoints.length === 0 && (STATE.activeTool === "flatness" || Boolean(studioThree?.overlayGroup?.getObjectByName?.("GS_SurfaceQA_Overlay")))) {
       STATE.flatnessPolygonPoints.forEach((pt, idx) => pushV(pt, { source: "flatnessPolygonPoints", measId: "__flatness__", measType: "flatness", pointIndex: idx, label: `Flatness V${idx + 1}` }));
+    }
+    if (Array.isArray(STATE.drainagePolygonPoints) && STATE.drainagePolygonPoints.length > 0 && STATE.measurePoints.length === 0 && (STATE.activeTool === "drainage" || Boolean(studioThree?.drainageGroup?.parent))) {
+      STATE.drainagePolygonPoints.forEach((pt, idx) => pushV(pt, { source: "drainagePolygonPoints", measId: "__drainage__", measType: "drainage", pointIndex: idx, label: `Drainage V${idx + 1}` }));
     }
     if (Array.isArray(STATE.profileEndpoints) && STATE.profileEndpoints.length >= 2) {
       STATE.profileEndpoints.forEach((pt, idx) => pushV(pt, { source: "profileEndpoints", measId: "__profile__", measType: "profile", pointIndex: idx, label: idx === 0 ? "Profile A" : "Profile B" }));
@@ -4337,8 +4340,11 @@
     if (STATE.movingVertex?.source === "cutFillPolygonPoints" && Array.isArray(STATE.cutFillPolygonPoints) && STATE.cutFillPolygonPoints.length >= 2 && typeof drawPlacedCutFillPolygon3D === "function") {
       drawPlacedCutFillPolygon3D(STATE.cutFillPolygonPoints, null);
     }
-    if (STATE.movingVertex?.source === "flatnessPolygonPoints" && window.QA_STATE?.flatnessCache && typeof window.renderPolygonFlatness3DOverlay === "function") {
+    if ((STATE.activeTool === "flatness" || Boolean(studioThree?.overlayGroup?.getObjectByName?.("GS_SurfaceQA_Overlay"))) && window.QA_STATE?.flatnessCache && typeof window.renderPolygonFlatness3DOverlay === "function") {
       window.renderPolygonFlatness3DOverlay(window.QA_STATE.flatnessCache, window.QA_STATE.surfaceQaLastResult || {}, Boolean(window.QA_STATE.flatnessShowPass3D));
+    }
+    if ((STATE.activeTool === "drainage" || Boolean(studioThree?.drainageGroup?.parent)) && typeof window.refreshDrainagePolygonPins3D === "function") {
+      window.refreshDrainagePolygonPins3D();
     }
     if (Array.isArray(STATE.profileEndpoints) && STATE.profileEndpoints.length >= 2 && typeof drawProfileSectionLine3D === "function") {
       drawProfileSectionLine3D(STATE.profileEndpoints[0], STATE.profileEndpoints[1], STATE.movingVertex?.source === "profileEndpoints" ? null : STATE.lastProfileResult?.samples || null);
@@ -4384,6 +4390,7 @@
     if (STATE.movingVertex.source === "cutFillPolygonPoints" && Number.isFinite(STATE.movingVertex.pointIndex) && Array.isArray(STATE.maskBoundaryPoints) && STATE.maskBoundaryPoints[STATE.movingVertex.pointIndex]) {
       STATE.maskBoundaryPoints[STATE.movingVertex.pointIndex].copy(newPt);
     }
+    window.syncQaLinkedPolygonEdit?.(STATE.movingVertex.source, "move", STATE.movingVertex.pointIndex, newPt, STATE.movingVertex.measId);
     rebuildAllCompletedMeasurements3D();
     return true;
   }
@@ -4396,6 +4403,7 @@
       if (STATE.movingVertex.source === "cutFillPolygonPoints" && Number.isFinite(STATE.movingVertex.pointIndex) && Array.isArray(STATE.maskBoundaryPoints) && STATE.maskBoundaryPoints[STATE.movingVertex.pointIndex]) {
         STATE.maskBoundaryPoints[STATE.movingVertex.pointIndex].copy(finalPt);
       }
+      window.syncQaLinkedPolygonEdit?.(STATE.movingVertex.source, "move", STATE.movingVertex.pointIndex, finalPt, STATE.movingVertex.measId);
     }
     const moved = STATE.movingVertex;
     STATE.movingVertex = null;
@@ -4413,6 +4421,7 @@
       openSectionBoxInspector(STATE.sectionBoxEndpoints[0], STATE.sectionBoxEndpoints[1]);
       if (typeof applySectionBoxStateToClippingAndUI === "function") applySectionBoxStateToClippingAndUI(false);
     }
+    window.syncQaLinkedPolygonEdit?.(moved.source, "commit", moved.pointIndex, moved.point, moved.measId);
     if (typeof syncStudioMobileToolHud === "function") syncStudioMobileToolHud();
     if (moved.measType === "area" && Array.isArray(STATE.completedMeasurements)) {
       const m = STATE.completedMeasurements.find((item) => item && item.id === moved.measId);
@@ -4454,6 +4463,7 @@
       ) {
         STATE.maskBoundaryPoints[moved.pointIndex].copy(moved.originalPoint);
       }
+      window.syncQaLinkedPolygonEdit?.(moved.source, "move", moved.pointIndex, moved.originalPoint, moved.measId);
     }
     STATE.movingVertex = null;
     updateStudioMovingVertexIndicator(null);

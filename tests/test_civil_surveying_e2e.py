@@ -2856,11 +2856,20 @@ class TestModularArchitectureCompliance(unittest.TestCase):
         self.assertIn("add3DPinMarker", overlay_fn)
         self.assertIn('opacity: displayMode === "points" ? 0.96 : 0.94', overlay_fn)
 
-        # 2. Area 2D label QA jump buttons & flatness vertex editing
+        # 2. Area 2D label QA jump buttons & flatness/drainage vertex editing + linked polygon sync
+        with open(os.path.join(BASE_DIR, "web", "src", "03-studio-core.js"), "r", encoding="utf-8") as f:
+            core_js = f.read()
         self.assertIn('data-area-qa-jump="flatness"', lasso_js)
         self.assertIn('data-area-qa-jump="drainage"', lasso_js)
         self.assertIn('source: "flatnessPolygonPoints"', lasso_js)
+        self.assertIn('source: "drainagePolygonPoints"', lasso_js)
+        self.assertIn('source: "drainagePolygonPoints"', core_js)
+        self.assertIn("syncQaLinkedPolygonEdit", qa_js)
+        self.assertIn("syncQaLinkedPolygonEdit", core_js)
+        self.assertIn("syncQaLinkedPolygonEdit", lasso_js)
         self.assertIn("drainagePolygonPoints", adv_js)
+        self.assertIn("hasDrainPoly", adv_js)
+        self.assertIn("refreshDrainagePolygonPins3D", adv_js)
 
         # 3. Unified QA drop-up container in index.html
         self.assertIn('id="bimDockQaWrap"', index_html)

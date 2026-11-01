@@ -3002,16 +3002,21 @@ class GatheringScansTestSuite(unittest.TestCase):
         # 4. Verify UI policy (no AI explanation boxes, 0-1 word buttons, 3D mesh catItemId raycasting) & VPS manual_remove handling
         self.assertNotIn("Combines <b>3D Mesh Geometry</b>", js05)
         self.assertNotIn("1.3m Pratt Circle + AI Vision Verified", js05)
+        self.assertNotIn('id="btnToggleCategorizeOverlayVis"', js05)
+        self.assertIn('<span>${treeIconSvg}${tr("樹木", "Trees")}</span>', js05)
         self.assertIn('tr("偵測", "Detect")', js05)
         self.assertIn('tr("重算", "Recompute")', js05)
         self.assertIn('tr("新增", "Add")', js05)
         self.assertIn('tr("刪除", "Remove")', js05)
         self.assertIn('tr("重設", "Reset")', js05)
         self.assertIn("trunkMesh.userData.catItemId = t.id;", js05)
+        self.assertIn("vlow_trunk_m =", heur_py)
         with open(os.path.join(BASE_DIR, "pc_worker", "server_cloud_and_tunnel.py"), "r", encoding="utf-8") as f:
             tunnel_py = f.read()
         self.assertIn('elif req_action in ("manual_remove", "manual_add", "manual_reset"):', tunnel_py)
         self.assertIn("upd_cat = SURVEY.modify_saved_categorization(req_sid, p_obj)", tunnel_py)
+        self.assertIn("if not (stream_clean and status_code == 200 and buf_for_cache is not None and len(buf_for_cache) > 2):", tunnel_py)
+        self.assertIn("saved_cat_fb = SURVEY.get_saved_categorization(req_sid_fb)", tunnel_py)
 
         # 5. Verify sequential manual_remove (no id vs orig_id double-deletion), manual_add, and manual_reset on cached scans
         import copy
