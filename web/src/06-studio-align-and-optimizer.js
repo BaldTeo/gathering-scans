@@ -4219,6 +4219,10 @@
         closeTimer = null;
       }
       if (STATE.multiAlign?.active) return;
+      const studioView = document.getElementById("viewStudio") || document.body;
+      if (studioView && menuEl.parentElement !== studioView) {
+        studioView.appendChild(menuEl);
+      }
       const rect = groupBtn.getBoundingClientRect();
       const hasRect = Boolean(rect && (rect.width > 0 || rect.height > 0));
       const centerX = hasRect

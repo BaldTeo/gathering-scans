@@ -1433,7 +1433,7 @@
         <div class="gs-qa-card" id="flatnessStep1Card">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
             <span style="font-size:11px;font-weight:700;color:var(--ui-text-primary);">
-              1. ${t("檢測範圍 (可拖曳頂點微調)", "1. Inspection Polygon (Draggable)")}
+              1. ${t("檢測範圍 (可拖曳頂點微調)", "Inspection Polygon (Draggable)")}
             </span>
             <span id="badgeFlatnessPolyState" style="font-size:10px;padding:1px 6px;border-radius:999px;background:rgba(2,132,199,0.15);color:#38bdf8;font-weight:700;">
               ${isSampling ? t("計算中...", "Sampling...") : QA_STATE.flatnessCache ? t("已鎖定", "Locked") : t("繪製中", "Drawing")}
@@ -1476,7 +1476,7 @@
         <!-- Step 2: Reference Plane Mode -->
         <div class="gs-qa-card">
           <div style="font-size:11px;font-weight:700;color:var(--ui-text-secondary);margin-bottom:4px;">
-            2. ${t("基準平面", "2. Reference Plane")}
+            2. ${t("基準平面", "Reference Plane")}
           </div>
           <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px;">
             <label class="gs-qa-mode-pill ${planeMode === "best_fit_3d" ? "active" : ""}">
@@ -1498,7 +1498,7 @@
         <div class="gs-qa-card">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
             <span style="font-size:11px;font-weight:700;color:var(--ui-text-secondary);">
-              3. ${t("公差門檻", "3. Tolerance")}
+              3. ${t("公差門檻", "Tolerance")}
             </span>
             <span id="lblFlatnessTolReadout" style="font-size:12px;font-weight:800;color:#38bdf8;font-family:monospace;">
               +/-${tolMm.toFixed(1)} mm
