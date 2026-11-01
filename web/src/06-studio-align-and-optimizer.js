@@ -3889,10 +3889,19 @@
       } else if (STATE.activeTool === "volume" && !STATE.polygonLocked) {
         clearVolumeVisualsOnly();
         openCutFillVolumeInspector(null);
+      } else if (STATE.activeTool === "flatness" && typeof window.refreshFlatnessDraftVisuals === "function") {
+        window.refreshFlatnessDraftVisuals();
       }
       if (typeof syncStudioMobileToolHud === "function") syncStudioMobileToolHud();
       showToast("Cancelled in-progress points (Esc)");
       return true;
+    }
+    if (STATE.activeView === "studio" && STATE.activeTool === "flatness" && STATE.flatnessPolygonLocked) {
+      const resetBtn = document.getElementById("btnResetSurfaceQa");
+      if (resetBtn) {
+        resetBtn.click();
+        return true;
+      }
     }
     if (STATE.activeView === "studio" && Array.isArray(STATE.flattenDraftPoints) && STATE.flattenDraftPoints.length > 0) {
       STATE.flattenDraftPoints = [];
@@ -3952,6 +3961,9 @@
       if (STATE.activeTool === "drainage") {
         if (typeof clearDrainageVisuals3D === "function") clearDrainageVisuals3D();
         if (typeof window.clearEnhancedPondingVisuals3D === "function") window.clearEnhancedPondingVisuals3D();
+      }
+      if (["flatness", "trench", "stakeout"].includes(STATE.activeTool) && typeof window.onQaPanelsClosed === "function") {
+        window.onQaPanelsClosed();
       }
       if (STATE.activeTool === "utilities" && typeof window.onUtilitiesPanelClosed === "function") {
         window.onUtilitiesPanelClosed();
@@ -4147,7 +4159,12 @@
       else if (tool === "stationing" && typeof window.openStationingAndAeaVolumeInspector === "function") window.openStationingAndAeaVolumeInspector();
       else if (tool === "drainage" && typeof openDrainageAndSlopeInspector === "function") openDrainageAndSlopeInspector();
       else if (tool === "gcp_qa" && typeof openGcpAccuracyQaInspector === "function") openGcpAccuracyQaInspector();
-      else if (tool === "flatness" && typeof window.openSurfaceFlatnessQaInspector === "function") window.openSurfaceFlatnessQaInspector();
+      else if (tool === "flatness" && typeof window.openSurfaceFlatnessQaInspector === "function") {
+        STATE.polygonLocked = false;
+        STATE.flatnessPolygonLocked = false;
+        STATE.flatnessPolygonPoints = [];
+        window.openSurfaceFlatnessQaInspector();
+      }
       else if (tool === "trench" && typeof window.openUtilityTracerInspector === "function") window.openUtilityTracerInspector();
       else if (tool === "stakeout" && typeof window.openRtkStakeoutInspector === "function") window.openRtkStakeoutInspector();
       else if (tool === "utilities" && typeof window.openUtilitiesInspector === "function") window.openUtilitiesInspector();
@@ -4202,7 +4219,7 @@
       openFlattenZoneInspector({ armPolygon: true });
       return true;
     }
-    if (typeof window.handleQaTool3DCanvasPick === "function" && window.handleQaTool3DCanvasPick(tool, pt, twd)) {
+    if (typeof window.handleQaTool3DCanvasPick === "function" && window.handleQaTool3DCanvasPick(tool, pt, twd, isNearStartVertex)) {
       return true;
     }
     return false;
@@ -4344,7 +4361,9 @@
   // Keyboard shortcuts for First-Person WASD, Esc (cancel active lasso / measurement / FP or close top modal), Enter (lock active polygon), and W/E/R/L in Align & Merge mode
   window.addEventListener("keydown", (e) => {
     const tag = (e.target && e.target.tagName) ? e.target.tagName.toLowerCase() : "";
-    if (tag === "input" || tag === "textarea" || tag === "select" || e.target?.isContentEditable) return;
+    const inpType = (tag === "input" && e.target?.type) ? String(e.target.type).toLowerCase() : "";
+    const isNonTextInput = inpType === "range" || inpType === "radio" || inpType === "checkbox" || inpType === "button";
+    if ((tag === "input" && !isNonTextInput) || tag === "textarea" || tag === "select" || e.target?.isContentEditable) return;
 
     if ((e.ctrlKey || e.metaKey) && STATE.fpMode?.keys) {
       STATE.fpMode.keys = Object.create(null);
@@ -4494,6 +4513,10 @@
         STATE.maskBoundaryPoints = lockedPts.map((p) => p.clone());
         showToast(`Mask boundary locked (${lockedPts.length} vertices) — generating Contours, Civil3D.dxf & A3 PDF`);
         openContoursInspector(lockedPts);
+      } else if (STATE.activeTool === "flatness") {
+        if (typeof window.lockFlatnessPolygonAndAnalyze === "function") {
+          window.lockFlatnessPolygonAndAnalyze(lockedPts);
+        }
       }
     }
   });

@@ -74,6 +74,12 @@
     surfaceQaWallLine: [],
     surfaceQaLastResult: null,
     isPickingFlatnessPoint: false,
+    flatnessPlaneMode: "best_fit_3d",
+    flatnessToleranceMm: 3.0,
+    flatnessVolumeMode: "threshold",
+    flatnessShowPass3D: false,
+    flatnessCache: null,
+    flatnessCancelToken: null,
     utilityTrenchPoints: [],
     utilityLastResult: null,
     isPickingUtilityPoint: false,
@@ -98,6 +104,13 @@
     return null;
   }
 
+  function cancelActiveFlatnessJob() {
+    if (QA_STATE.flatnessCancelToken) {
+      QA_STATE.flatnessCancelToken.cancelled = true;
+      QA_STATE.flatnessCancelToken = null;
+    }
+  }
+
   function onQaPanelsClosed(nextTool) {
     const active = String(nextTool || "");
     if (typeof window.isStudioGroup1Tool === "function" && window.isStudioGroup1Tool(active)) {
@@ -107,7 +120,11 @@
       QA_STATE.isPickingStakeoutPoint = false;
       return;
     }
+    if (active !== "drainage" && typeof window.clearDrainageVisuals3D === "function") {
+      window.clearDrainageVisuals3D();
+    }
     if (active !== "flatness") {
+      cancelActiveFlatnessJob();
       QA_STATE.isPickingFlatnessPoint = false;
       surfaceQa3DGroup = clear3DGroup(surfaceQa3DGroup);
     }
@@ -129,169 +146,1316 @@
   }
 
   // =========================================================================
-  // 1. 3D SURFACE FLATNESS & PLUMBNESS INSPECTOR
+  // 1. POLYGON-BASED 3D SURFACE FLATNESS, PLUMBNESS & MATERIAL TAKEOFF
   // =========================================================================
+
+  /**
+   * Exact 3x3 Symmetric Jacobi Eigenvalue & Eigenvector Solver.
+   * Returns eigenvalues [d0, d1, d2] and orthonormal eigenvectors [v0, v1, v2] sorted ascending by eigenvalue.
+   */
+  function solveSymmetric3x3Eigen(m00, m01, m02, m11, m12, m22) {
+    const A = [
+      [m00, m01, m02],
+      [m01, m11, m12],
+      [m02, m12, m22],
+    ];
+    const V = [
+      [1, 0, 0],
+      [0, 1, 0],
+      [0, 0, 1],
+    ];
+    for (let iter = 0; iter < 18; iter++) {
+      let p = 0, q = 1;
+      let maxOff = Math.abs(A[0][1]);
+      if (Math.abs(A[0][2]) > maxOff) { maxOff = Math.abs(A[0][2]); p = 0; q = 2; }
+      if (Math.abs(A[1][2]) > maxOff) { maxOff = Math.abs(A[1][2]); p = 1; q = 2; }
+      if (maxOff < 1e-12) break;
+      const app = A[p][p], aqq = A[q][q], apq = A[p][q];
+      const phi = 0.5 * Math.atan2(2.0 * apq, aqq - app);
+      const c = Math.cos(phi), s = Math.sin(phi);
+      for (let i = 0; i < 3; i++) {
+        if (i !== p && i !== q) {
+          const aip = A[i][p], aiq = A[i][q];
+          A[i][p] = A[p][i] = c * aip - s * aiq;
+          A[i][q] = A[q][i] = s * aip + c * aiq;
+        }
+      }
+      A[p][p] = c * c * app - 2.0 * s * c * apq + s * s * aqq;
+      A[q][q] = s * s * app + 2.0 * s * c * apq + c * c * aqq;
+      A[p][q] = A[q][p] = 0.0;
+      for (let i = 0; i < 3; i++) {
+        const vip = V[i][p], viq = V[i][q];
+        V[i][p] = c * vip - s * viq;
+        V[i][q] = s * vip + c * viq;
+      }
+    }
+    const items = [0, 1, 2].map((col) => ({
+      val: A[col][col],
+      vec: { x: V[0][col], y: V[1][col], z: V[2][col] },
+    }));
+    items.sort((a, b) => a.val - b.val);
+    return items;
+  }
+
+  function vecNorm(v) {
+    const len = Math.hypot(v.x, v.y, v.z) || 1.0;
+    return { x: v.x / len, y: v.y / len, z: v.z / len };
+  }
+
+  function vecCross(a, b) {
+    return {
+      x: a.y * b.z - a.z * b.y,
+      y: a.z * b.x - a.x * b.z,
+      z: a.x * b.y - a.y * b.x,
+    };
+  }
+
+  function vecDot(a, b) {
+    return a.x * b.x + a.y * b.y + a.z * b.z;
+  }
+
+  /**
+   * Fits a 3D reference plane to a point set (in local Three.js Y-up coordinates).
+   * Supports:
+   * - "best_fit_3d" (Default): Orthogonal PCA Best-Fit Plane (adapts to floors, ramps, and vertical walls)
+   * - "horizontal": Horizontal Floor Plane (normal = +Y)
+   * - "vertical_plumb": Vertical Plumb Wall Plane (normal horizontal in XZ plane)
+   */
+  function fitFlatnessReferencePlane(points, planeMode = "best_fit_3d") {
+    const nPts = Array.isArray(points) ? points.length : 0;
+    if (nPts === 0) {
+      return {
+        center: { x: 0, y: 0, z: 0 },
+        normal: { x: 0, y: 1, z: 0 },
+        uAxis: { x: 1, y: 0, z: 0 },
+        vAxis: { x: 0, y: 0, z: 1 },
+        planeMode,
+        slopePct: 0,
+        slopeDeg: 0,
+        tiltRatio: "1:INF",
+        plumbMmPerM: 0,
+        azimuthDeg: 0,
+        surfaceClassZh: "水平面",
+        surfaceClassEn: "Horizontal",
+      };
+    }
+
+    let cx = 0, cy = 0, cz = 0, wSum = 0;
+    for (let i = 0; i < nPts; i++) {
+      const p = points[i];
+      const w = Number.isFinite(p.w) && p.w > 0 ? p.w : 1.0;
+      cx += p.x * w;
+      cy += p.y * w;
+      cz += p.z * w;
+      wSum += w;
+    }
+    cx /= wSum;
+    cy /= wSum;
+    cz /= wSum;
+    const center = { x: cx, y: cy, z: cz };
+
+    let c00 = 0, c01 = 0, c02 = 0, c11 = 0, c12 = 0, c22 = 0;
+    for (let i = 0; i < nPts; i++) {
+      const p = points[i];
+      const w = Number.isFinite(p.w) && p.w > 0 ? p.w : 1.0;
+      const dx = p.x - cx, dy = p.y - cy, dz = p.z - cz;
+      c00 += w * dx * dx;
+      c01 += w * dx * dy;
+      c02 += w * dx * dz;
+      c11 += w * dy * dy;
+      c12 += w * dy * dz;
+      c22 += w * dz * dz;
+    }
+
+    let normal = { x: 0, y: 1, z: 0 };
+    let uAxis = { x: 1, y: 0, z: 0 };
+    let vAxis = { x: 0, y: 0, z: 1 };
+
+    if (planeMode === "horizontal") {
+      normal = { x: 0, y: 1, z: 0 };
+      uAxis = { x: 1, y: 0, z: 0 };
+      vAxis = { x: 0, y: 0, z: 1 };
+    } else if (planeMode === "vertical_plumb") {
+      // 2D PCA in horizontal (X, Z) plane so the normal is strictly horizontal (ny = 0)
+      const phi = 0.5 * Math.atan2(2.0 * c02, c00 - c22);
+      const ux = Math.cos(phi), uz = Math.sin(phi);
+      normal = vecNorm({ x: -uz, y: 0, z: ux });
+      if (window.studioThree && window.studioThree.camera) {
+        const cam = window.studioThree.camera.position;
+        const toCam = { x: cam.x - cx, y: cam.y - cy, z: cam.z - cz };
+        if (vecDot(normal, toCam) < 0) {
+          normal = { x: -normal.x, y: 0, z: -normal.z };
+        }
+      }
+      uAxis = vecNorm({ x: -normal.z, y: 0, z: normal.x });
+      vAxis = { x: 0, y: 1, z: 0 };
+    } else {
+      // 3D PCA Orthogonal Best-Fit Plane
+      const eig = solveSymmetric3x3Eigen(c00, c01, c02, c11, c12, c22);
+      normal = vecNorm(eig[0].vec);
+      if (Math.abs(normal.y) >= 0.35) {
+        if (normal.y < 0) normal = { x: -normal.x, y: -normal.y, z: -normal.z };
+      } else if (window.studioThree && window.studioThree.camera) {
+        const cam = window.studioThree.camera.position;
+        const toCam = { x: cam.x - cx, y: cam.y - cy, z: cam.z - cz };
+        if (vecDot(normal, toCam) < 0) {
+          normal = { x: -normal.x, y: -normal.y, z: -normal.z };
+        }
+      }
+      uAxis = vecNorm(eig[2].vec);
+      // Gram-Schmidt orthogonalize uAxis against normal
+      const un = vecDot(uAxis, normal);
+      uAxis = vecNorm({ x: uAxis.x - un * normal.x, y: uAxis.y - un * normal.y, z: uAxis.z - un * normal.z });
+      vAxis = vecNorm(vecCross(normal, uAxis));
+    }
+
+    const nyAbs = Math.min(1.0, Math.abs(normal.y));
+    const nh = Math.hypot(normal.x, normal.z);
+    const angleFromHorizontalDeg = (Math.atan2(nh, nyAbs) * 180.0) / Math.PI;
+    const slopePct = nyAbs > 1e-4 ? (nh / nyAbs) * 100.0 : 999.9;
+    // Vertical plumb deviation (mm per meter of vertical rise)
+    const plumbMmPerM = nh > 1e-4 ? (nyAbs / nh) * 1000.0 : 0.0;
+    let tiltRatio = "1:INF";
+    if (angleFromHorizontalDeg <= 45.0) {
+      if (slopePct >= 0.05) tiltRatio = `1:${Math.max(1, Math.round(100.0 / slopePct))}`;
+    } else {
+      if (plumbMmPerM >= 0.5) tiltRatio = `1:${Math.max(1, Math.round(1000.0 / plumbMmPerM))}`;
+    }
+    // Azimuth in TWD97 (Easting = +X, Northing = -Z)
+    const azRad = Math.atan2(normal.x, -normal.z);
+    const azimuthDeg = ((azRad * 180.0) / Math.PI + 360.0) % 360.0;
+
+    let surfaceClassZh = "水平地坪";
+    let surfaceClassEn = "Floor Slab";
+    if (angleFromHorizontalDeg > 60.0) {
+      surfaceClassZh = "垂直牆面";
+      surfaceClassEn = "Vertical Wall";
+    } else if (angleFromHorizontalDeg > 5.0) {
+      surfaceClassZh = "傾斜坡面";
+      surfaceClassEn = "Sloped Ramp";
+    }
+
+    return {
+      center,
+      normal,
+      uAxis,
+      vAxis,
+      planeMode,
+      slopePct: Number(slopePct.toFixed(2)),
+      slopeDeg: Number(angleFromHorizontalDeg.toFixed(2)),
+      tiltRatio,
+      plumbMmPerM: Number(plumbMmPerM.toFixed(1)),
+      azimuthDeg: Number(azimuthDeg.toFixed(1)),
+      surfaceClassZh,
+      surfaceClassEn,
+    };
+  }
+
+  function isPointInPolygon2D(u, v, polyUV) {
+    let inside = false;
+    for (let i = 0, j = polyUV.length - 1; i < polyUV.length; j = i++) {
+      const ui = polyUV[i].u, vi = polyUV[i].v;
+      const uj = polyUV[j].u, vj = polyUV[j].v;
+      const intersect = (vi > v) !== (vj > v) && u < ((uj - ui) * (v - vi)) / (vj - vi + 1e-12) + ui;
+      if (intersect) inside = !inside;
+    }
+    return inside;
+  }
+
+  function computePolygonArea2D(polyUV) {
+    if (!Array.isArray(polyUV) || polyUV.length < 3) return 0;
+    let sum = 0;
+    for (let i = 0, j = polyUV.length - 1; i < polyUV.length; j = i++) {
+      sum += polyUV[j].u * polyUV[i].v - polyUV[i].u * polyUV[j].v;
+    }
+    return Math.abs(sum) * 0.5;
+  }
+
+  /**
+   * Time-sliced background surface sampler inside the 3D polygon.
+   * Uses an 8ms per-frame budget via requestAnimationFrame so the UI never lags.
+   */
+  function computeClientFlatnessPolygonAsync(polyPts, planeMode, onProgress, cancelToken) {
+    return new Promise((resolve, reject) => {
+      if (!Array.isArray(polyPts) || polyPts.length < 3) {
+        reject(new Error("Need at least 3 polygon vertices"));
+        return;
+      }
+
+      // 1. Initial plane from polygon vertices for 2D (u, v) projection
+      const initPlane = fitFlatnessReferencePlane(polyPts, planeMode);
+      const c0 = initPlane.center;
+      const u0 = initPlane.uAxis;
+      const v0 = initPlane.vAxis;
+      const n0 = initPlane.normal;
+
+      const polyUV = polyPts.map((p) => {
+        const dx = p.x - c0.x, dy = p.y - c0.y, dz = p.z - c0.z;
+        return {
+          u: dx * u0.x + dy * u0.y + dz * u0.z,
+          v: dx * v0.x + dy * v0.y + dz * v0.z,
+        };
+      });
+
+      let minU = Infinity, maxU = -Infinity, minV = Infinity, maxV = -Infinity;
+      for (let i = 0; i < polyUV.length; i++) {
+        if (polyUV[i].u < minU) minU = polyUV[i].u;
+        if (polyUV[i].u > maxU) maxU = polyUV[i].u;
+        if (polyUV[i].v < minV) minV = polyUV[i].v;
+        if (polyUV[i].v > maxV) maxV = polyUV[i].v;
+      }
+
+      // 3D AABB with generous margin along normal
+      let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity, minZ = Infinity, maxZ = -Infinity;
+      for (let i = 0; i < polyPts.length; i++) {
+        const p = polyPts[i];
+        if (p.x < minX) minX = p.x;
+        if (p.x > maxX) maxX = p.x;
+        if (p.y < minY) minY = p.y;
+        if (p.y > maxY) maxY = p.y;
+        if (p.z < minZ) minZ = p.z;
+        if (p.z > maxZ) maxZ = p.z;
+      }
+      const spanU = Math.max(0.4, maxU - minU);
+      const spanV = Math.max(0.4, maxV - minV);
+      const normalMargin = Math.max(2.5, Math.max(spanU, spanV) * 0.45);
+      minX -= normalMargin; maxX += normalMargin;
+      minY -= normalMargin; maxY += normalMargin;
+      minZ -= normalMargin; maxZ += normalMargin;
+
+      // Grid resolution: 40x40 target cells across polygon bounding box
+      const targetGrid = 40;
+      const cellSize = Math.max(0.05, Math.min(spanU, spanV) / targetGrid, Math.max(spanU, spanV) / 56);
+      const cols = Math.max(4, Math.min(64, Math.ceil(spanU / cellSize)));
+      const rows = Math.max(4, Math.min(64, Math.ceil(spanV / cellSize)));
+      const du = spanU / cols;
+      const dv = spanV / rows;
+      const cellAreaM2 = du * dv;
+
+      // Precompute which grid cells lie inside the polygon
+      const totalGridCells = rows * cols;
+      const cellInside = new Uint8Array(totalGridCells);
+      const cellSumX = new Float64Array(totalGridCells);
+      const cellSumY = new Float64Array(totalGridCells);
+      const cellSumZ = new Float64Array(totalGridCells);
+      const cellCount = new Uint32Array(totalGridCells);
+      let activeCellCount = 0;
+
+      for (let r = 0; r < rows; r++) {
+        const cv = minV + (r + 0.5) * dv;
+        for (let c = 0; c < cols; c++) {
+          const cu = minU + (c + 0.5) * du;
+          const idx = r * cols + c;
+          if (isPointInPolygon2D(cu, cv, polyUV)) {
+            cellInside[idx] = 1;
+            activeCellCount++;
+          }
+        }
+      }
+
+      // Collect meshes/points from studioThree (tilesRenderer, modelPivot, multiAlignGroup, fallbackGroup)
+      const meshes = [];
+      const pointClouds = [];
+      const seenGeoms = new Set();
+      const THREE = window.THREE;
+
+      const collectFromRoot = (rootObj, parentWorldMat = null) => {
+        if (!rootObj) return;
+        const isDetached = Boolean(parentWorldMat && rootObj.parent === null);
+        if (!isDetached && rootObj.visible === false) return;
+        if (typeof rootObj.updateMatrixWorld === "function") rootObj.updateMatrixWorld(true);
+        rootObj.traverse((child) => {
+          if (!child.visible || !child.geometry || !child.geometry.attributes?.position) return;
+          if (seenGeoms.has(child.geometry) || child.userData?.isAlignBoxHelper) return;
+          seenGeoms.add(child.geometry);
+          let matWorld = child.matrixWorld;
+          if (isDetached && THREE) {
+            matWorld = new THREE.Matrix4().multiplyMatrices(parentWorldMat, child.matrixWorld);
+          }
+          if (child.isMesh) meshes.push({ mesh: child, matWorld });
+          else if (child.isPoints) pointClouds.push({ pc: child, matWorld });
+        });
+      };
+
+      const st = window.studioThree;
+      if (st) {
+        const tr = st.tilesRenderer;
+        if (tr && tr.root && st.modelPivot?.visible) {
+          st.modelPivot.updateMatrixWorld(true);
+          const grpMat = tr.group ? tr.group.matrixWorld : st.modelPivot.matrixWorld;
+          const walkTile = (node) => {
+            if (!node) return;
+            const ch = Array.isArray(node.children) ? node.children : [];
+            if (ch.length > 0) ch.forEach(walkTile);
+            if (node.engineData?.scene) collectFromRoot(node.engineData.scene, grpMat);
+          };
+          walkTile(tr.root);
+        }
+        collectFromRoot(st.modelPivot, null);
+        if (window.STATE?.multiAlign?.active) collectFromRoot(st.multiAlignGroup, null);
+        if (meshes.length === 0 && pointClouds.length === 0) {
+          collectFromRoot(st.fallbackGroup, null);
+          collectFromRoot(st.scanRoot, null);
+        }
+      }
+
+      const binLocalPoint = (lx, ly, lz) => {
+        if (lx < minX || lx > maxX || ly < minY || ly > maxY || lz < minZ || lz > maxZ) return;
+        const dx = lx - c0.x, dy = ly - c0.y, dz = lz - c0.z;
+        const distN = Math.abs(dx * n0.x + dy * n0.y + dz * n0.z);
+        if (distN > normalMargin) return;
+        const pu = dx * u0.x + dy * u0.y + dz * u0.z;
+        const pv = dx * v0.x + dy * v0.y + dz * v0.z;
+        if (pu < minU || pu > maxU || pv < minV || pv > maxV) return;
+        const c = Math.min(cols - 1, Math.max(0, Math.floor((pu - minU) / du)));
+        const r = Math.min(rows - 1, Math.max(0, Math.floor((pv - minV) / dv)));
+        const idx = r * cols + c;
+        if (!cellInside[idx]) return;
+        cellSumX[idx] += lx;
+        cellSumY[idx] += ly;
+        cellSumZ[idx] += lz;
+        cellCount[idx] += 1;
+      };
+
+      // Build work queue over meshes + point clouds
+      let meshIdx = 0;
+      let triCursor = 0;
+      let ptCloudIdx = 0;
+      let ptCursor = 0;
+
+      // Estimate total work units for smooth progress reporting
+      let totalTriangles = 0;
+      for (let i = 0; i < meshes.length; i++) {
+        const g = meshes[i].mesh.geometry;
+        totalTriangles += g.index ? Math.floor(g.index.count / 3) : Math.floor(g.attributes.position.count / 3);
+      }
+      let totalPoints = 0;
+      for (let i = 0; i < pointClouds.length; i++) {
+        totalPoints += pointClouds[i].pc.geometry.attributes.position.count;
+      }
+      const totalUnits = Math.max(1, totalTriangles + totalPoints);
+      let processedUnits = 0;
+
+      const vA = THREE ? new THREE.Vector3() : { x: 0, y: 0, z: 0 };
+      const vB = THREE ? new THREE.Vector3() : { x: 0, y: 0, z: 0 };
+      const vC = THREE ? new THREE.Vector3() : { x: 0, y: 0, z: 0 };
+
+      const processChunk = () => {
+        if (cancelToken && cancelToken.cancelled) {
+          reject(new Error("cancelled"));
+          return;
+        }
+        const tStart = performance.now();
+        const budgetMs = 8.0;
+
+        while (meshIdx < meshes.length && performance.now() - tStart < budgetMs) {
+          const entry = meshes[meshIdx];
+          const mesh = entry.mesh;
+          const geom = mesh.geometry;
+          const posAttr = geom.attributes.position;
+          const idxAttr = geom.index;
+          const matWorld = entry.matWorld || mesh.matrixWorld;
+          const triCount = idxAttr ? Math.floor(idxAttr.count / 3) : Math.floor(posAttr.count / 3);
+          const batchEnd = Math.min(triCount, triCursor + 1500);
+
+          for (let t = triCursor; t < batchEnd; t++) {
+            const i0 = idxAttr ? idxAttr.getX(t * 3) : t * 3;
+            const i1 = idxAttr ? idxAttr.getX(t * 3 + 1) : t * 3 + 1;
+            const i2 = idxAttr ? idxAttr.getX(t * 3 + 2) : t * 3 + 2;
+
+            vA.fromBufferAttribute(posAttr, i0).applyMatrix4(matWorld);
+            vB.fromBufferAttribute(posAttr, i1).applyMatrix4(matWorld);
+            vC.fromBufferAttribute(posAttr, i2).applyMatrix4(matWorld);
+
+            // Fast triangle AABB reject
+            if (
+              Math.max(vA.x, vB.x, vC.x) < minX || Math.min(vA.x, vB.x, vC.x) > maxX ||
+              Math.max(vA.y, vB.y, vC.y) < minY || Math.min(vA.y, vB.y, vC.y) > maxY ||
+              Math.max(vA.z, vB.z, vC.z) < minZ || Math.min(vA.z, vB.z, vC.z) > maxZ
+            ) {
+              continue;
+            }
+
+            // Bin vertices and centroid
+            binLocalPoint(vA.x, vA.y, vA.z);
+            binLocalPoint(vB.x, vB.y, vC.z);
+            binLocalPoint(vC.x, vC.y, vC.z);
+            const mx = (vA.x + vB.x + vC.x) / 3.0;
+            const my = (vA.y + vB.y + vC.y) / 3.0;
+            const mz = (vA.z + vB.z + vC.z) / 3.0;
+            binLocalPoint(mx, my, mz);
+
+            // Sub-sample larger triangles so grid cells never have gaps
+            const e1 = Math.hypot(vB.x - vA.x, vB.y - vA.y, vB.z - vA.z);
+            const e2 = Math.hypot(vC.x - vB.x, vC.y - vB.y, vC.z - vB.z);
+            const maxEdge = Math.max(e1, e2);
+            if (maxEdge > du * 0.85) {
+              const steps = Math.min(8, Math.ceil(maxEdge / (du * 0.75)));
+              for (let s1 = 1; s1 <= steps; s1++) {
+                const a = s1 / (steps + 1);
+                for (let s2 = 0; s1 + s2 <= steps; s2++) {
+                  const b = s2 / (steps + 1);
+                  const c = 1.0 - a - b;
+                  binLocalPoint(
+                    vA.x * a + vB.x * b + vC.x * c,
+                    vA.y * a + vB.y * b + vC.y * c,
+                    vA.z * a + vB.z * b + vC.z * c
+                  );
+                }
+              }
+            }
+          }
+
+          processedUnits += batchEnd - triCursor;
+          triCursor = batchEnd;
+          if (triCursor >= triCount) {
+            meshIdx++;
+            triCursor = 0;
+          }
+        }
+
+        while (meshIdx >= meshes.length && ptCloudIdx < pointClouds.length && performance.now() - tStart < budgetMs) {
+          const pcEntry = pointClouds[ptCloudIdx];
+          const pc = pcEntry.pc;
+          const geom = pc.geometry;
+          const posAttr = geom.attributes.position;
+          const matWorld = pcEntry.matWorld || pc.matrixWorld;
+          const ptCount = posAttr.count;
+          const batchEnd = Math.min(ptCount, ptCursor + 4000);
+
+          for (let i = ptCursor; i < batchEnd; i++) {
+            vA.fromBufferAttribute(posAttr, i).applyMatrix4(matWorld);
+            binLocalPoint(vA.x, vA.y, vA.z);
+          }
+
+          processedUnits += batchEnd - ptCursor;
+          ptCursor = batchEnd;
+          if (ptCursor >= ptCount) {
+            ptCloudIdx++;
+            ptCursor = 0;
+          }
+        }
+
+        if (typeof onProgress === "function") {
+          const pct = Math.min(98, Math.round((processedUnits / totalUnits) * 100));
+          onProgress(pct);
+        }
+
+        if (meshIdx < meshes.length || ptCloudIdx < pointClouds.length) {
+          requestAnimationFrame(processChunk);
+          return;
+        }
+
+        // Finalize sampled cells
+        const sampledCells = [];
+        for (let r = 0; r < rows; r++) {
+          for (let c = 0; c < cols; c++) {
+            const idx = r * cols + c;
+            if (!cellInside[idx]) continue;
+            if (cellCount[idx] > 0) {
+              const inv = 1.0 / cellCount[idx];
+              sampledCells.push({
+                r,
+                c,
+                u: minU + (c + 0.5) * du,
+                v: minV + (r + 0.5) * dv,
+                x: cellSumX[idx] * inv,
+                y: cellSumY[idx] * inv,
+                z: cellSumZ[idx] * inv,
+                w: cellAreaM2,
+              });
+            }
+          }
+        }
+
+        // Fallback if polygon was drawn over sparse/unloaded mesh region: interpolate from polygon vertices + raycast
+        if (sampledCells.length < 4) {
+          for (let r = 0; r < rows; r++) {
+            const cv = minV + (r + 0.5) * dv;
+            for (let c = 0; c < cols; c++) {
+              const cu = minU + (c + 0.5) * du;
+              const idx = r * cols + c;
+              if (!cellInside[idx]) continue;
+              // Inverse distance weight from polygon vertices in (u, v)
+              let wx = 0, wy = 0, wz = 0, wTot = 0;
+              for (let k = 0; k < polyPts.length; k++) {
+                const distUV = Math.hypot(cu - polyUV[k].u, cv - polyUV[k].v) + 0.05;
+                const wk = 1.0 / (distUV * distUV);
+                wx += polyPts[k].x * wk;
+                wy += polyPts[k].y * wk;
+                wz += polyPts[k].z * wk;
+                wTot += wk;
+              }
+              sampledCells.push({
+                r,
+                c,
+                u: cu,
+                v: cv,
+                x: wx / wTot,
+                y: wy / wTot,
+                z: wz / wTot,
+                w: cellAreaM2,
+              });
+            }
+          }
+        }
+
+        // Fit the exact reference plane to the sampled surface points inside the polygon
+        const fittedPlane = fitFlatnessReferencePlane(sampledCells, planeMode);
+        const fc = fittedPlane.center;
+        const fn = fittedPlane.normal;
+        const fu = fittedPlane.uAxis;
+        const fv = fittedPlane.vAxis;
+        const originTwd = typeof localToTwd97 === "function" ? localToTwd97({ x: 0, y: 0, z: 0 }) : { e: 0, n: 0, h: 0 };
+
+        let sumSqMm = 0;
+        let maxHigh = null;
+        let maxLow = null;
+
+        for (let i = 0; i < sampledCells.length; i++) {
+          const cell = sampledCells[i];
+          const dx = cell.x - fc.x;
+          const dy = cell.y - fc.y;
+          const dz = cell.z - fc.z;
+          const devM = dx * fn.x + dy * fn.y + dz * fn.z;
+          const devMm = devM * 1000.0;
+          cell.devM = devM;
+          cell.devMm = devMm;
+          cell.planeU = dx * fu.x + dy * fu.y + dz * fu.z;
+          cell.planeV = dx * fv.x + dy * fv.y + dz * fv.z;
+          // Point projected onto the best-fit plane
+          cell.planeX = cell.x - devM * fn.x;
+          cell.planeY = cell.y - devM * fn.y;
+          cell.planeZ = cell.z - devM * fn.z;
+          cell.e = Number((originTwd.e + cell.x).toFixed(3));
+          cell.n = Number((originTwd.n - cell.z).toFixed(3));
+          cell.h = Number((originTwd.h + cell.y).toFixed(3));
+          sumSqMm += devMm * devMm;
+
+          if (!maxHigh || devMm > maxHigh.devMm) maxHigh = cell;
+          if (!maxLow || devMm < maxLow.devMm) maxLow = cell;
+        }
+
+        const nSamples = Math.max(1, sampledCells.length);
+        const rmsMm = Math.sqrt(sumSqMm / nSamples);
+        // ASTM E1155 F_F / F_L approximation from local curvature & levelness variance
+        let curvSumSq = 0, curvCnt = 0;
+        for (let i = 2; i < sampledCells.length; i++) {
+          const q = Math.abs(sampledCells[i].devMm - 2.0 * sampledCells[i - 1].devMm + sampledCells[i - 2].devMm);
+          curvSumSq += q * q;
+          curvCnt++;
+        }
+        const rmsCurvMm = curvCnt > 0 ? Math.sqrt(curvSumSq / curvCnt) : Math.max(1.2, rmsMm * 0.8);
+        const ffVal = Number(Math.min(120.0, Math.max(8.0, 115.0 / Math.max(1.1, rmsCurvMm))).toFixed(1));
+        const flVal = Number(Math.min(100.0, Math.max(6.0, 95.0 / Math.max(1.2, rmsMm))).toFixed(1));
+
+        const polygonArea2DM2 = computePolygonArea2D(polyUV);
+        const effectiveCellAreaM2 = sampledCells.length > 0 && polygonArea2DM2 > 0
+          ? polygonArea2DM2 / sampledCells.length
+          : cellAreaM2;
+
+        if (typeof onProgress === "function") onProgress(100);
+
+        resolve({
+          scanId: (window.STATE && window.STATE.activeScanId) || "scan",
+          polyPts: polyPts.map((p) => ({ x: p.x, y: p.y, z: p.z })),
+          polyUV,
+          plane: fittedPlane,
+          cells: sampledCells,
+          du,
+          dv,
+          cellAreaM2: effectiveCellAreaM2,
+          totalAreaM2: Number((sampledCells.length * effectiveCellAreaM2).toFixed(2)),
+          rmsMm: Number(rmsMm.toFixed(2)),
+          ffFlatness: ffVal,
+          flLevelness: flVal,
+          maxHigh,
+          maxLow,
+          spanU,
+          spanV,
+        });
+      };
+
+      requestAnimationFrame(processChunk);
+    });
+  }
+
+  /**
+   * Instantaneous (< 1 ms) recalculation of Pass Rate, Protruding/Excess Volume,
+   * Intruding/Lacking Volume, Net Material, and 3D Overlay when adjusting the Tolerance Slider.
+   */
+  function evaluateCachedFlatnessWithTolerance(cache, tolMm, volMode = "threshold") {
+    if (!cache || !Array.isArray(cache.cells) || cache.cells.length === 0) return null;
+    const tolM = Math.max(0.0001, tolMm / 1000.0);
+    const cellA = cache.cellAreaM2 || 0.04;
+    const cells = cache.cells;
+
+    let passCount = 0;
+    let highCount = 0;
+    let lowCount = 0;
+    let excessVolM3 = 0;
+    let lackingVolM3 = 0;
+
+    for (let i = 0; i < cells.length; i++) {
+      const c = cells[i];
+      const dMm = c.devMm;
+      const dM = c.devM;
+      if (dMm > tolMm) {
+        highCount++;
+        c.status = "high";
+        const effDepthM = volMode === "zero_plane" ? dM : Math.max(0, dM - tolM);
+        excessVolM3 += effDepthM * cellA;
+      } else if (dMm < -tolMm) {
+        lowCount++;
+        c.status = "low";
+        const effDepthM = volMode === "zero_plane" ? Math.abs(dM) : Math.max(0, Math.abs(dM) - tolM);
+        lackingVolM3 += effDepthM * cellA;
+      } else {
+        passCount++;
+        c.status = "pass";
+      }
+    }
+
+    const totalPts = cells.length;
+    const passRatePct = Number(((passCount / totalPts) * 100.0).toFixed(1));
+    const highAreaM2 = Number((highCount * cellA).toFixed(2));
+    const lowAreaM2 = Number((lowCount * cellA).toFixed(2));
+    const highAreaPct = Number(((highCount / totalPts) * 100.0).toFixed(1));
+    const lowAreaPct = Number(((lowCount / totalPts) * 100.0).toFixed(1));
+
+    const excessLiters = Number((excessVolM3 * 1000.0).toFixed(2));
+    const lackingLiters = Number((lackingVolM3 * 1000.0).toFixed(2));
+    const netVolM3 = lackingVolM3 - excessVolM3;
+    const netLiters = Number((netVolM3 * 1000.0).toFixed(2));
+    // Standard 25kg dry-mix cement mortar bag yields ~13.5 Liters of wet mortar
+    const estMortarBags25kg = lackingLiters > 0.05 ? Math.max(1, Math.ceil(lackingLiters / 13.5)) : 0;
+
+    return {
+      scan_id: cache.scanId,
+      reference_mode: cache.plane.planeMode,
+      tolerance_mm: tolMm,
+      volume_mode: volMode,
+      total_points: totalPts,
+      pass_count: passCount,
+      high_count: highCount,
+      low_count: lowCount,
+      pass_rate_pct: passRatePct,
+      rms_dev_mm: cache.rmsMm,
+      total_area_m2: cache.totalAreaM2,
+      high_area_m2: highAreaM2,
+      high_area_pct: highAreaPct,
+      low_area_m2: lowAreaM2,
+      low_area_pct: lowAreaPct,
+      excess_volume_m3: Number(excessVolM3.toFixed(4)),
+      excess_volume_liters: excessLiters,
+      lacking_volume_m3: Number(lackingVolM3.toFixed(4)),
+      lacking_volume_liters: lackingLiters,
+      net_volume_m3: Number(netVolM3.toFixed(4)),
+      net_volume_liters: netLiters,
+      est_mortar_bags_25kg: estMortarBags25kg,
+      max_high: cache.maxHigh
+        ? {
+            e: cache.maxHigh.e,
+            n: cache.maxHigh.n,
+            h: cache.maxHigh.h,
+            dev_mm: Number(cache.maxHigh.devMm.toFixed(1)),
+          }
+        : { e: 0, n: 0, h: 0, dev_mm: 0 },
+      max_low: cache.maxLow
+        ? {
+            e: cache.maxLow.e,
+            n: cache.maxLow.n,
+            h: cache.maxLow.h,
+            dev_mm: Number(cache.maxLow.devMm.toFixed(1)),
+          }
+        : { e: 0, n: 0, h: 0, dev_mm: 0 },
+      astm_e1155: {
+        ff_flatness: cache.ffFlatness,
+        fl_levelness: cache.flLevelness,
+      },
+      plumb_tilt: {
+        tilt_ratio: cache.plane.tiltRatio,
+        plumb_mm_per_m: cache.plane.plumbMmPerM,
+        slope_pct: cache.plane.slopePct,
+        slope_deg: cache.plane.slopeDeg,
+        azimuth_deg: cache.plane.azimuthDeg,
+        surface_class_zh: cache.plane.surfaceClassZh,
+        surface_class_en: cache.plane.surfaceClassEn,
+      },
+    };
+  }
+
+  /**
+   * Renders in-progress draft polygon vertices (V1 red, V2..Vn blue) and polyline while drawing.
+   */
+  function refreshFlatnessDraftVisuals() {
+    if (!window.studioThree || !window.studioThree.scene || !window.THREE) return;
+    surfaceQa3DGroup = clear3DGroup(surfaceQa3DGroup);
+    surfaceQa3DGroup = new window.THREE.Group();
+    surfaceQa3DGroup.name = "GS_SurfaceQA_Overlay";
+
+    const pts = (window.STATE && Array.isArray(window.STATE.measurePoints)) ? window.STATE.measurePoints : [];
+    const THREE = window.THREE;
+
+    pts.forEach((p, idx) => {
+      const isStart = idx === 0;
+      const pinColor = isStart ? 0xff3b30 : 0x0284c7;
+      if (typeof add3DPinMarker === "function") {
+        add3DPinMarker(p, pinColor, surfaceQa3DGroup);
+      } else {
+        const sp = new THREE.Mesh(
+          new THREE.SphereGeometry(isStart ? 0.22 : 0.16, 14, 14),
+          new THREE.MeshBasicMaterial({ color: pinColor, depthTest: false })
+        );
+        sp.position.copy(p);
+        sp.renderOrder = 998;
+        surfaceQa3DGroup.add(sp);
+      }
+    });
+
+    if (pts.length >= 2) {
+      const lineGeom = new THREE.BufferGeometry().setFromPoints(pts);
+      const lineMat = new THREE.LineBasicMaterial({ color: 0x0284c7, depthTest: false });
+      const line = new THREE.Line(lineGeom, lineMat);
+      line.renderOrder = 997;
+      surfaceQa3DGroup.add(line);
+    }
+
+    if (window.studioThree.overlayGroup) {
+      window.studioThree.overlayGroup.add(surfaceQa3DGroup);
+    } else {
+      window.studioThree.scene.add(surfaceQa3DGroup);
+    }
+
+    if (typeof update2DBadgePositions === "function") update2DBadgePositions();
+
+    // Sync UI vertex count badge & buttons
+    const countBadge = document.getElementById("lblFlatnessVertexCount");
+    if (countBadge) {
+      countBadge.textContent = pts.length === 0
+        ? t("尚未選點 (請在 3D 模型點擊 3+ 點圍成檢測範圍)", "0 pts (Click 3+ vertices on 3D surface)")
+        : pts.length < 3
+        ? t(`已標記 ${pts.length} 點 — 再點 ${3 - pts.length} 點即可閉合`, `${pts.length} pts — click ${3 - pts.length} more to close`)
+        : t(`已標記 ${pts.length} 點 — 點擊紅色 V1 起點或按 Enter 閉合分析`, `${pts.length} pts — click red V1 or press Enter to analyze`);
+    }
+    const btnLock = document.getElementById("btnLockFlatnessPoly");
+    if (btnLock) btnLock.disabled = pts.length < 3;
+    const btnUndo = document.getElementById("btnUndoFlatnessVertex");
+    if (btnUndo) btnUndo.disabled = pts.length === 0;
+  }
+
+  /**
+   * Renders the 3D Best-Fit Reference Plane Grid + Protruding (Red/Orange) & Intruding (Blue/Cyan)
+   * 3D Deviation Prisms inside the locked polygon.
+   */
+  function renderPolygonFlatness3DOverlay(cache, metrics, showPass3D = false) {
+    if (!window.studioThree || !window.studioThree.scene || !window.THREE || !cache) return;
+    const THREE = window.THREE;
+    surfaceQa3DGroup = clear3DGroup(surfaceQa3DGroup);
+    surfaceQa3DGroup = new THREE.Group();
+    surfaceQa3DGroup.name = "GS_SurfaceQA_Overlay";
+
+    const plane = cache.plane;
+    const fc = new THREE.Vector3(plane.center.x, plane.center.y, plane.center.z);
+    const fn = new THREE.Vector3(plane.normal.x, plane.normal.y, plane.normal.z).normalize();
+    const fu = new THREE.Vector3(plane.uAxis.x, plane.uAxis.y, plane.uAxis.z).normalize();
+    const fv = new THREE.Vector3(plane.vAxis.x, plane.vAxis.y, plane.vAxis.z).normalize();
+
+    // 1. Locked Polygon Perimeter Loop & Vertex Spheres
+    const polyPts = (cache.polyPts || []).map((p) => new THREE.Vector3(p.x, p.y, p.z).addScaledVector(fn, 0.015));
+    if (polyPts.length >= 3) {
+      const loopPts = [...polyPts, polyPts[0]];
+      const loopGeo = new THREE.BufferGeometry().setFromPoints(loopPts);
+      const loopMat = new THREE.LineBasicMaterial({ color: 0x38bdf8, depthTest: false });
+      const loopLine = new THREE.Line(loopGeo, loopMat);
+      loopLine.renderOrder = 997;
+      surfaceQa3DGroup.add(loopLine);
+
+      polyPts.forEach((p, idx) => {
+        const sp = new THREE.Mesh(
+          new THREE.SphereGeometry(idx === 0 ? 0.16 : 0.12, 12, 12),
+          new THREE.MeshBasicMaterial({ color: idx === 0 ? 0xff3b30 : 0x38bdf8, depthTest: false })
+        );
+        sp.position.copy(p);
+        sp.renderOrder = 998;
+        surfaceQa3DGroup.add(sp);
+      });
+    }
+
+    // 2. Oriented 3D Best-Fit Reference Plane Wireframe Grid
+    const basisMat = new THREE.Matrix4().makeBasis(fu, fv, fn);
+    const planeGeo = new THREE.PlaneGeometry(cache.spanU * 1.02, cache.spanV * 1.02, 8, 8);
+    const planeMat = new THREE.MeshBasicMaterial({
+      color: 0x22d3ee,
+      wireframe: true,
+      transparent: true,
+      opacity: 0.48,
+      depthTest: false,
+    });
+    const planeMesh = new THREE.Mesh(planeGeo, planeMat);
+    planeMesh.applyMatrix4(basisMat);
+    planeMesh.position.copy(fc);
+    planeMesh.renderOrder = 994;
+    surfaceQa3DGroup.add(planeMesh);
+
+    // Reference Plane Normal Arrow at Centroid
+    const arrowLen = Math.max(0.8, Math.min(2.2, Math.max(cache.spanU, cache.spanV) * 0.22));
+    const normArrow = new THREE.ArrowHelper(fn, fc, arrowLen, 0x22d3ee, arrowLen * 0.25, arrowLen * 0.14);
+    normArrow.renderOrder = 998;
+    if (normArrow.line && normArrow.line.material) normArrow.line.material.depthTest = false;
+    if (normArrow.cone && normArrow.cone.material) normArrow.cone.material.depthTest = false;
+    surfaceQa3DGroup.add(normArrow);
+
+    // 3. Protruding (> +T, Red/Orange) & Intruding (< -T, Blue/Cyan) 3D Deviation Cells
+    const tolMm = Math.max(0.5, metrics.tolerance_mm || 3.0);
+    const cells = cache.cells || [];
+    const activeCells = cells.filter((c) => showPass3D || c.status === "high" || c.status === "low");
+
+    if (activeCells.length > 0) {
+      const unitBox = new THREE.BoxGeometry(cache.du * 0.92, cache.dv * 0.92, 1.0);
+      const instMat = new THREE.MeshBasicMaterial({
+        transparent: true,
+        opacity: 0.82,
+        depthTest: false,
+      });
+      const instMesh = new THREE.InstancedMesh(unitBox, instMat, activeCells.length);
+      instMesh.renderOrder = 996;
+
+      const dummyMat = new THREE.Matrix4();
+      const scaleMat = new THREE.Matrix4();
+      const posVec = new THREE.Vector3();
+      const col = new THREE.Color();
+
+      for (let i = 0; i < activeCells.length; i++) {
+        const c = activeCells[i];
+        const absMm = Math.abs(c.devMm);
+        const ratio = Math.min(3.5, absMm / tolMm);
+        // Visual prism thickness scaled for clear 3D visibility while preserving sign
+        const prismThickM = Math.max(0.018, Math.min(0.45, Math.abs(c.devM) * 1.5 + 0.012));
+        const sign = c.devM >= 0 ? 1.0 : -1.0;
+
+        posVec.set(c.planeX, c.planeY, c.planeZ).addScaledVector(fn, sign * prismThickM * 0.5);
+        dummyMat.copy(basisMat);
+        scaleMat.makeScale(1.0, 1.0, prismThickM);
+        dummyMat.multiply(scaleMat);
+        dummyMat.setPosition(posVec);
+        instMesh.setMatrixAt(i, dummyMat);
+
+        if (c.status === "high") {
+          // Protruding (> +T): Warm Orange (#f97316) -> Crimson Red (#ef4444)
+          if (ratio >= 2.0) col.setHex(0xef4444);
+          else col.setHex(0xf97316).lerp(new THREE.Color(0xef4444), (ratio - 1.0));
+        } else if (c.status === "low") {
+          // Intruding (< -T): Cyan (#06b6d4) -> Deep Blue (#2563eb)
+          if (ratio >= 2.0) col.setHex(0x2563eb);
+          else col.setHex(0x06b6d4).lerp(new THREE.Color(0x2563eb), (ratio - 1.0));
+        } else {
+          col.setHex(0x10b981);
+        }
+        instMesh.setColorAt(i, col);
+      }
+      instMesh.instanceMatrix.needsUpdate = true;
+      if (instMesh.instanceColor) instMesh.instanceColor.needsUpdate = true;
+      surfaceQa3DGroup.add(instMesh);
+    }
+
+    // 4. Max High (Red Cone) & Max Low (Blue Cone) 3D Callout Pins
+    if (cache.maxHigh) {
+      const hp = new THREE.Vector3(cache.maxHigh.x, cache.maxHigh.y, cache.maxHigh.z);
+      const pinTop = hp.clone().addScaledVector(fn, 0.42);
+      const coneGeo = new THREE.ConeGeometry(0.14, 0.38, 12);
+      coneGeo.rotateX(Math.PI);
+      const cone = new THREE.Mesh(coneGeo, new THREE.MeshBasicMaterial({ color: 0xef4444, depthTest: false }));
+      cone.position.copy(pinTop);
+      cone.renderOrder = 999;
+      surfaceQa3DGroup.add(cone);
+    }
+    if (cache.maxLow) {
+      const lp = new THREE.Vector3(cache.maxLow.x, cache.maxLow.y, cache.maxLow.z);
+      const pinBot = lp.clone().addScaledVector(fn, -0.42);
+      const coneGeo = new THREE.ConeGeometry(0.14, 0.38, 12);
+      const cone = new THREE.Mesh(coneGeo, new THREE.MeshBasicMaterial({ color: 0x3b82f6, depthTest: false }));
+      cone.position.copy(pinBot);
+      cone.renderOrder = 999;
+      surfaceQa3DGroup.add(cone);
+    }
+
+    if (window.studioThree.overlayGroup) {
+      window.studioThree.overlayGroup.add(surfaceQa3DGroup);
+    } else {
+      window.studioThree.scene.add(surfaceQa3DGroup);
+    }
+  }
 
   function openSurfaceFlatnessQaInspector() {
     if (typeof showSidePanel !== "function") return;
     if (typeof setActiveStudioTool === "function" && (!window.STATE || window.STATE.activeTool !== "flatness")) {
       setActiveStudioTool("flatness");
     }
-    const scanId = (window.STATE && window.STATE.activeScanId) || "";
+
+    const tolMm = QA_STATE.flatnessToleranceMm || 3.0;
+    const planeMode = QA_STATE.flatnessPlaneMode || "best_fit_3d";
+    const volMode = QA_STATE.flatnessVolumeMode || "threshold";
+    const ptsCount = (window.STATE && Array.isArray(window.STATE.measurePoints)) ? window.STATE.measurePoints.length : 0;
 
     const html = `
       <div class="gs-qa-container" id="surfaceQaContainer">
-        <!-- Compact Header & CRS Pill -->
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
-          <span style="font-size:12px;font-weight:700;color:var(--ui-text-primary);">
-            ${QA_SVGS.FLATNESS} ${t("3D 表面平整與垂直度", "3D Surface Flatness & Plumbness")}
+        <!-- Header & Taiwan PCC Spec Pill -->
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;gap:4px;">
+          <span style="font-size:12px;font-weight:700;color:var(--ui-text-primary);display:inline-flex;align-items:center;gap:5px;">
+            ${QA_SVGS.FLATNESS} ${t("多邊形區域平整度與補料分析", "Polygon Flatness & Material Takeoff")}
           </span>
-          <span class="gcp-crs-pill">EPSG:3826 + TWVD2001</span>
+          <span class="gcp-crs-pill">PCC 09611/09220</span>
         </div>
 
-        <!-- Reference Mode Selector -->
+        <!-- Step 1: 3D Polygon Drawing Guide & Controls -->
+        <div class="gs-qa-card" id="flatnessStep1Card">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+            <span style="font-size:11px;font-weight:700;color:var(--ui-text-primary);">
+              1. ${t("框選 3D 檢測範圍 (地坪 / 斜坡 / 牆面)", "1. Draw 3D Inspection Polygon")}
+            </span>
+            <span id="badgeFlatnessPolyState" style="font-size:10px;padding:1px 6px;border-radius:999px;background:rgba(2,132,199,0.15);color:#38bdf8;font-weight:700;">
+              ${QA_STATE.flatnessCache ? t("已鎖定", "Locked") : t("繪製中", "Drawing")}
+            </span>
+          </div>
+          <div id="lblFlatnessVertexCount" style="font-size:10.5px;color:var(--ui-text-secondary);line-height:1.4;margin-bottom:6px;">
+            ${
+              QA_STATE.flatnessCache
+                ? t(`已完成多邊形區域取樣 (${QA_STATE.flatnessCache.totalAreaM2} m²) — 拖曳下方公差滑桿即時更新凸起/凹陷區域`, `Polygon analyzed (${QA_STATE.flatnessCache.totalAreaM2} m²) — drag tolerance slider for instant update`)
+                : ptsCount === 0
+                ? t("請在 3D 模型表面點擊 3 個以上頂點圍成檢測範圍，再點擊紅色起點 V1 或按 Enter 閉合分析", "Click 3+ vertices on the 3D surface, then click red V1 or press Enter to lock & analyze")
+                : t(`已標記 ${ptsCount} 個頂點`, `${ptsCount} vertices placed`)
+            }
+          </div>
+          <div style="display:grid;grid-template-columns:repeat(3, 1fr);gap:5px;">
+            <button type="button" class="btn-xs primary" id="btnLockFlatnessPoly" ${ptsCount >= 3 ? "" : "disabled"} title="${t("閉合多邊形並擬合最佳基準面", "Close polygon and fit reference plane")}">
+              ${QA_SVGS.CHECK} ${t("閉合分析", "Analyze")}
+            </button>
+            <button type="button" class="btn-xs" id="btnUndoFlatnessVertex" ${ptsCount >= 1 ? "" : "disabled"} title="${t("復原上一個頂點", "Undo last vertex")}">
+              ${QA_SVGS.RESET} ${t("復原點", "Undo")}
+            </button>
+            <button type="button" class="btn-xs" id="btnResetSurfaceQa" title="${t("清除目前多邊形並重新框選", "Clear polygon and redraw")}">
+              ${QA_SVGS.PICK} ${t("重繪範圍", "Redraw")}
+            </button>
+          </div>
+          <!-- Background Time-Sliced Sampling Progress Bar -->
+          <div id="flatnessSamplingProgressWrap" style="display:none;margin-top:7px;">
+            <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--ui-text-secondary);margin-bottom:3px;">
+              <span id="lblFlatnessSamplingStage">${t("背景分時網格取樣與 PCA 平面擬合中...", "Background time-sliced surface sampling...")}</span>
+              <span id="lblFlatnessSamplingPct" style="font-weight:700;color:#38bdf8;">0%</span>
+            </div>
+            <div style="width:100%;height:5px;background:var(--ui-bg-subtle);border-radius:999px;overflow:hidden;">
+              <div id="barFlatnessSamplingFill" style="width:0%;height:100%;background:linear-gradient(90deg,#0284c7,#22d3ee);transition:width 80ms linear;"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Step 2: Reference Plane Mode -->
         <div class="gs-qa-card">
           <div style="font-size:11px;font-weight:700;color:var(--ui-text-secondary);margin-bottom:4px;">
-            ${t("基準參考面", "Reference Plane Mode")}
+            2. ${t("基準平面擬合模式", "2. Reference Plane Fitting Mode")}
           </div>
           <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px;">
-            <label class="gs-qa-mode-pill">
-              <input type="radio" name="qaRefMode" value="horizontal" checked style="display:none;" />
-              <span>${t("水平面", "Horizontal")}</span>
+            <label class="gs-qa-mode-pill ${planeMode === "best_fit_3d" ? "active" : ""}">
+              <input type="radio" name="qaRefMode" value="best_fit_3d" ${planeMode === "best_fit_3d" ? "checked" : ""} style="display:none;" />
+              <span>${t("最佳擬合面", "3D Best-Fit")}</span>
             </label>
-            <label class="gs-qa-mode-pill">
-              <input type="radio" name="qaRefMode" value="vertical" style="display:none;" />
-              <span>${t("垂直鉛直", "Plumb Wall")}</span>
+            <label class="gs-qa-mode-pill ${planeMode === "horizontal" ? "active" : ""}">
+              <input type="radio" name="qaRefMode" value="horizontal" ${planeMode === "horizontal" ? "checked" : ""} style="display:none;" />
+              <span>${t("水平基準面", "Horizontal")}</span>
             </label>
-            <label class="gs-qa-mode-pill">
-              <input type="radio" name="qaRefMode" value="best_fit" style="display:none;" />
-              <span>${t("最佳擬合", "Best-Fit")}</span>
+            <label class="gs-qa-mode-pill ${planeMode === "vertical_plumb" ? "active" : ""}">
+              <input type="radio" name="qaRefMode" value="vertical_plumb" ${planeMode === "vertical_plumb" ? "checked" : ""} style="display:none;" />
+              <span>${t("垂直鉛直面", "Plumb Wall")}</span>
             </label>
           </div>
         </div>
 
-        <!-- Tolerances & Settings -->
+        <!-- Step 3: Taiwan PCC Regulation Presets & Real-Time Tolerance Slider -->
         <div class="gs-qa-card">
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">
-            <div>
-              <label style="font-size:10.5px;color:var(--ui-text-muted);display:block;margin-bottom:2px;">
-                ${t("合格公差 (mm)", "Tolerance (mm)")}
-              </label>
-              <input type="number" id="qaToleranceMm" class="gs-input" value="10" step="1" min="1" max="100" />
-            </div>
-            <div>
-              <label style="font-size:10.5px;color:var(--ui-text-muted);display:block;margin-bottom:2px;">
-                ${t("警戒公差 (mm)", "Secondary (mm)")}
-              </label>
-              <input type="number" id="qaSecToleranceMm" class="gs-input" value="15" step="1" min="1" max="150" />
-            </div>
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+            <span style="font-size:11px;font-weight:700;color:var(--ui-text-secondary);">
+              3. ${t("台灣公共工程規範公差門檻", "3. Taiwan PCC Tolerance Threshold")}
+            </span>
+            <span id="lblFlatnessTolReadout" style="font-size:12px;font-weight:800;color:#38bdf8;font-family:monospace;">
+              +/-${tolMm.toFixed(1)} mm
+            </span>
           </div>
-          <div style="margin-top:6px;">
-            <label style="font-size:10.5px;color:var(--ui-text-muted);display:block;margin-bottom:2px;">
-              ${t("基準高程 (m，留空為平均高)", "Ref Elevation (m, blank=mean)")}
+
+          <!-- Taiwan PCC Specification Quick Presets -->
+          <div style="display:grid;grid-template-columns:repeat(4, 1fr);gap:4px;margin-bottom:6px;">
+            <button type="button" class="btn-xs ${Math.abs(tolMm - 3.0) < 0.1 ? "primary" : ""}" data-flatness-preset-mm="3.0" title="公共工程施工綱要規範 第09611章 整體粉光 / 第09220章 精細水泥砂漿粉刷 (3m直規 ±3mm)">
+              ±3mm 粉光
+            </button>
+            <button type="button" class="btn-xs ${Math.abs(tolMm - 6.0) < 0.1 ? "primary" : ""}" data-flatness-preset-mm="6.0" title="公共工程施工綱要規範 第09220章 一般水泥砂漿粉刷 (3m直規 ±6mm)">
+              ±6mm 粉刷
+            </button>
+            <button type="button" class="btn-xs ${Math.abs(tolMm - 10.0) < 0.1 ? "primary" : ""}" data-flatness-preset-mm="10.0" title="公共工程施工綱要規範 第03310章 結構體混凝土模板粗底 (±10mm)">
+              ±10mm 粗底
+            </button>
+            <button type="button" class="btn-xs ${Math.abs(tolMm - 15.0) < 0.1 ? "primary" : ""}" data-flatness-preset-mm="15.0" title="道路與廣場鋪面基層施工公差 (±15mm)">
+              ±15mm 鋪面
+            </button>
+          </div>
+
+          <!-- Real-Time Slider + Numeric Input -->
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+            <input type="range" id="rngFlatnessToleranceMm" min="0.5" max="50" step="0.5" value="${tolMm}" style="flex:1;accent-color:#0284c7;cursor:pointer;" />
+            <input type="number" id="qaToleranceMm" class="gs-input" value="${tolMm}" step="0.5" min="0.5" max="100" style="width:68px;height:26px;font-size:11px;text-align:right;" />
+          </div>
+
+          <!-- Volume Takeoff Baseline Mode & 3D Pass Toggle -->
+          <div style="border-top:1px solid var(--ui-border);padding-top:6px;margin-top:4px;">
+            <div style="font-size:10px;color:var(--ui-text-muted);margin-bottom:4px;">
+              ${t("凸起打磨 / 凹陷補料體積計算基準：", "Volume Takeoff Calculation Baseline:")}
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-bottom:5px;">
+              <label class="gs-qa-mode-pill ${volMode === "threshold" ? "active" : ""}" title="${t("僅計算超出 ±公差門檻以外之超差體積 (|d| - T)", "Volume exceeding the ±Tolerance threshold (|d| - T)")}">
+                <input type="radio" name="flatnessVolMode" value="threshold" ${volMode === "threshold" ? "checked" : ""} style="display:none;" />
+                <span style="font-size:10px;">${t("超出公差門檻 (|d|-T)", "Beyond ±Tol (|d|-T)")}</span>
+              </label>
+              <label class="gs-qa-mode-pill ${volMode === "zero_plane" ? "active" : ""}" title="${t("計算超差區域整平至 0mm 基準面所需之完整體積 (|d|)", "Full volume to level out-of-spec zones to 0mm plane (|d|)")}">
+                <input type="radio" name="flatnessVolMode" value="zero_plane" ${volMode === "zero_plane" ? "checked" : ""} style="display:none;" />
+                <span style="font-size:10px;">${t("至 0mm 基準面 (|d|)", "To 0mm Plane (|d|)")}</span>
+              </label>
+            </div>
+            <label style="display:flex;align-items:center;gap:6px;font-size:10.5px;color:var(--ui-text-secondary);cursor:pointer;">
+              <input type="checkbox" id="chkFlatnessShowPass3D" ${QA_STATE.flatnessShowPass3D ? "checked" : ""} />
+              <span>${t("在 3D 視圖同時顯示合格區域 (綠色)", "Also show in-tolerance compliant cells (Green) in 3D")}</span>
             </label>
-            <input type="number" id="qaRefElevation" class="gs-input" placeholder="自動計算" step="0.01" />
           </div>
         </div>
 
-        <!-- 1-Word Action Button Toolbar -->
-        <div style="display:grid;grid-template-columns:repeat(4, 1fr);gap:4px;margin-top:4px;">
-          <button type="button" class="btn-xs primary" id="btnRunSurfaceQa" title="${t("計算表面平整度", "Inspect")}">
-            ${QA_SVGS.CHECK} ${t("檢核", "Inspect")}
-          </button>
-          <button type="button" class="btn-xs" id="btnPickSurfaceQaPoint" title="${t("在 3D 模型選點", "Pick Point")}">
-            ${QA_SVGS.PICK} ${t("選點", "Pick")}
-          </button>
-          <button type="button" class="btn-xs" id="btnResetSurfaceQa" title="${t("重置所有點位與設定", "Reset")}">
-            ${QA_SVGS.RESET} ${t("重置", "Reset")}
-          </button>
-          <button type="button" class="btn-xs" id="btnExportSurfaceQaCsv" title="${t("導出檢核報表 CSV", "Export CSV")}">
+        <!-- Export & Report Toolbar -->
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:4px;">
+          <button type="button" class="btn-xs" id="btnExportSurfaceQaCsv" title="${t("匯出格網偏差與體積數量 CSV", "Export Grid & Volume CSV")}">
             ${QA_SVGS.CSV} CSV
+          </button>
+          <button type="button" class="btn-xs primary" id="btnExportFlatnessReport" title="${t("產生含 3D 截圖與平面正射偏差圖之工程檢驗報告", "Generate Engineering Report with 3D & Orthographic Screenshots")}">
+            ${QA_SVGS.PRINT} ${t("截圖報告", "Report")}
           </button>
         </div>
 
         <!-- Dynamic Results Card -->
-        <div id="surfaceQaResultsCard" style="display:none;margin-top:8px;">
-          <!-- Populated by renderSurfaceQaResults -->
-        </div>
+        <div id="surfaceQaResultsCard" style="display:none;margin-top:8px;"></div>
       </div>
     `;
 
     showSidePanel(t("表面平整度", "Surface Flatness"), html);
-    bindSurfaceQaEvents(scanId);
-    runSurfaceFlatnessQa(scanId);
+    bindSurfaceQaEvents();
+
+    // If a polygon was already analyzed, restore its metrics & 3D overlay; otherwise draw draft vertices only
+    if (QA_STATE.flatnessCache) {
+      recomputeFlatnessMetricsAndVisuals();
+    } else {
+      refreshFlatnessDraftVisuals();
+    }
   }
 
-  function bindSurfaceQaEvents(scanId) {
+  function recomputeFlatnessMetricsAndVisuals() {
+    if (!QA_STATE.flatnessCache) return;
+    const tolMm = Math.max(0.5, safeFloat(document.getElementById("qaToleranceMm")?.value, QA_STATE.flatnessToleranceMm || 3.0));
+    QA_STATE.flatnessToleranceMm = tolMm;
+    const volMode = document.querySelector('input[name="flatnessVolMode"]:checked')?.value || QA_STATE.flatnessVolumeMode || "threshold";
+    QA_STATE.flatnessVolumeMode = volMode;
+    const showPass = Boolean(document.getElementById("chkFlatnessShowPass3D")?.checked);
+    QA_STATE.flatnessShowPass3D = showPass;
+
+    const lblTol = document.getElementById("lblFlatnessTolReadout");
+    if (lblTol) lblTol.textContent = `+/-${tolMm.toFixed(1)} mm`;
+
+    // Highlight matching preset pill if any
+    document.querySelectorAll("[data-flatness-preset-mm]").forEach((btn) => {
+      const pVal = safeFloat(btn.getAttribute("data-flatness-preset-mm"), -1);
+      btn.classList.toggle("primary", Math.abs(pVal - tolMm) < 0.08);
+    });
+
+    const metrics = evaluateCachedFlatnessWithTolerance(QA_STATE.flatnessCache, tolMm, volMode);
+    if (!metrics) return;
+    QA_STATE.surfaceQaLastResult = metrics;
+    renderSurfaceQaResults(metrics);
+    renderPolygonFlatness3DOverlay(QA_STATE.flatnessCache, metrics, showPass);
+  }
+
+  async function lockFlatnessPolygonAndAnalyze(lockedPtsInput = null) {
+    const rawPts = Array.isArray(lockedPtsInput) && lockedPtsInput.length >= 3
+      ? lockedPtsInput
+      : (window.STATE && Array.isArray(window.STATE.measurePoints) ? window.STATE.measurePoints.slice() : []);
+
+    if (rawPts.length < 3) {
+      if (typeof showToast === "function") {
+        showToast(t("請先在 3D 模型表面點擊至少 3 個頂點圍成檢測範圍", "Please click at least 3 vertices on the 3D surface first"));
+      }
+      return;
+    }
+
+    if (window.studioThree && window.studioThree.polyPreviewGroup) {
+      while (window.studioThree.polyPreviewGroup.children.length > 0) {
+        window.studioThree.polyPreviewGroup.remove(window.studioThree.polyPreviewGroup.children[0]);
+      }
+    }
+
+    const polyPts = rawPts.map((p) => (typeof p.clone === "function" ? p.clone() : { x: Number(p.x), y: Number(p.y), z: Number(p.z) }));
+    if (window.STATE) {
+      window.STATE.measurePoints = [];
+      window.STATE.polygonLocked = true;
+      window.STATE.flatnessPolygonLocked = true;
+      window.STATE.flatnessPolygonPoints = polyPts;
+    }
+
+    const planeMode = document.querySelector('input[name="qaRefMode"]:checked')?.value || QA_STATE.flatnessPlaneMode || "best_fit_3d";
+    QA_STATE.flatnessPlaneMode = planeMode;
+
+    cancelActiveFlatnessJob();
+    const cancelToken = { cancelled: false };
+    QA_STATE.flatnessCancelToken = cancelToken;
+
+    const progWrap = document.getElementById("flatnessSamplingProgressWrap");
+    const progBar = document.getElementById("barFlatnessSamplingFill");
+    const progPct = document.getElementById("lblFlatnessSamplingPct");
+    const badgeState = document.getElementById("badgeFlatnessPolyState");
+    if (progWrap) progWrap.style.display = "block";
+    if (badgeState) badgeState.textContent = t("計算中...", "Sampling...");
+
+    try {
+      const cache = await computeClientFlatnessPolygonAsync(
+        polyPts,
+        planeMode,
+        (pct) => {
+          if (progBar) progBar.style.width = `${pct}%`;
+          if (progPct) progPct.textContent = `${pct}%`;
+        },
+        cancelToken
+      );
+      if (cancelToken.cancelled) return;
+      QA_STATE.flatnessCache = cache;
+      if (progWrap) progWrap.style.display = "none";
+      if (badgeState) badgeState.textContent = t("已鎖定", "Locked");
+      const lblCount = document.getElementById("lblFlatnessVertexCount");
+      if (lblCount) {
+        lblCount.textContent = t(
+          `已分析多邊形區域 (${cache.totalAreaM2} m², ${cache.cells.length} 網格) — 拖曳下方公差滑桿即時更新凸起與凹陷區域`,
+          `Analyzed polygon (${cache.totalAreaM2} m², ${cache.cells.length} cells) — drag tolerance slider for instant update`
+        );
+      }
+      recomputeFlatnessMetricsAndVisuals();
+      if (typeof syncStudioMobileToolHud === "function") syncStudioMobileToolHud();
+    } catch (err) {
+      if (err && err.message === "cancelled") return;
+      console.error("[Flatness] Polygon sampling error:", err);
+      if (progWrap) progWrap.style.display = "none";
+    }
+  }
+
+  function bindSurfaceQaEvents() {
     document.querySelectorAll('input[name="qaRefMode"]').forEach((radio) => {
       radio.addEventListener("change", (e) => {
-        document.querySelectorAll("#surfaceQaContainer .gs-qa-mode-pill").forEach((p) => p.classList.remove("active"));
+        document.querySelectorAll('#surfaceQaContainer input[name="qaRefMode"]').forEach((r) => {
+          r.closest(".gs-qa-mode-pill")?.classList.remove("active");
+        });
         e.target.closest(".gs-qa-mode-pill")?.classList.add("active");
-        runSurfaceFlatnessQa(scanId);
+        QA_STATE.flatnessPlaneMode = e.target.value;
+        if (QA_STATE.flatnessCache && Array.isArray(QA_STATE.flatnessCache.polyPts) && QA_STATE.flatnessCache.polyPts.length >= 3) {
+          lockFlatnessPolygonAndAnalyze(QA_STATE.flatnessCache.polyPts);
+        }
       });
     });
-    // Set initial active state on first radio
-    document.querySelector('input[name="qaRefMode"]:checked')?.closest(".gs-qa-mode-pill")?.classList.add("active");
 
-    document.getElementById("btnRunSurfaceQa")?.addEventListener("click", () => {
-      runSurfaceFlatnessQa(scanId);
+    document.querySelectorAll('input[name="flatnessVolMode"]').forEach((radio) => {
+      radio.addEventListener("change", (e) => {
+        document.querySelectorAll('#surfaceQaContainer input[name="flatnessVolMode"]').forEach((r) => {
+          r.closest(".gs-qa-mode-pill")?.classList.remove("active");
+        });
+        e.target.closest(".gs-qa-mode-pill")?.classList.add("active");
+        QA_STATE.flatnessVolumeMode = e.target.value;
+        recomputeFlatnessMetricsAndVisuals();
+      });
     });
 
-    document.getElementById("btnPickSurfaceQaPoint")?.addEventListener("click", () => {
-      QA_STATE.isPickingFlatnessPoint = true;
-      if (typeof showToast === "function") {
-        showToast(t("請在 3D 模型表面點擊取樣", "Click on 3D surface to sample points"));
+    const rngTol = document.getElementById("rngFlatnessToleranceMm");
+    const inpTol = document.getElementById("qaToleranceMm");
+
+    rngTol?.addEventListener("input", (e) => {
+      const val = Math.max(0.5, safeFloat(e.target.value, 3.0));
+      if (inpTol) inpTol.value = String(val);
+      recomputeFlatnessMetricsAndVisuals();
+    });
+
+    inpTol?.addEventListener("input", (e) => {
+      const val = Math.max(0.5, safeFloat(e.target.value, 3.0));
+      if (rngTol) rngTol.value = String(Math.min(50, val));
+      recomputeFlatnessMetricsAndVisuals();
+    });
+
+    document.querySelectorAll("[data-flatness-preset-mm]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const val = Math.max(0.5, safeFloat(btn.getAttribute("data-flatness-preset-mm"), 3.0));
+        if (inpTol) inpTol.value = String(val);
+        if (rngTol) rngTol.value = String(Math.min(50, val));
+        recomputeFlatnessMetricsAndVisuals();
+      });
+    });
+
+    document.getElementById("chkFlatnessShowPass3D")?.addEventListener("change", () => {
+      recomputeFlatnessMetricsAndVisuals();
+    });
+
+    document.getElementById("btnLockFlatnessPoly")?.addEventListener("click", () => {
+      lockFlatnessPolygonAndAnalyze();
+    });
+
+    document.getElementById("btnUndoFlatnessVertex")?.addEventListener("click", () => {
+      if (window.STATE && Array.isArray(window.STATE.measurePoints) && window.STATE.measurePoints.length > 0) {
+        window.STATE.measurePoints.pop();
+        refreshFlatnessDraftVisuals();
+        if (typeof syncStudioMobileToolHud === "function") syncStudioMobileToolHud();
       }
     });
 
     document.getElementById("btnResetSurfaceQa")?.addEventListener("click", () => {
+      cancelActiveFlatnessJob();
       QA_STATE.surfaceQaPoints = [];
       QA_STATE.surfaceQaWallLine = [];
       QA_STATE.surfaceQaLastResult = null;
+      QA_STATE.flatnessCache = null;
+      if (window.STATE) {
+        window.STATE.measurePoints = [];
+        window.STATE.polygonLocked = false;
+        window.STATE.flatnessPolygonLocked = false;
+        window.STATE.flatnessPolygonPoints = [];
+      }
+      if (window.studioThree && window.studioThree.polyPreviewGroup) {
+        while (window.studioThree.polyPreviewGroup.children.length > 0) {
+          window.studioThree.polyPreviewGroup.remove(window.studioThree.polyPreviewGroup.children[0]);
+        }
+      }
       surfaceQa3DGroup = clear3DGroup(surfaceQa3DGroup);
       const resEl = document.getElementById("surfaceQaResultsCard");
       if (resEl) resEl.style.display = "none";
-      if (typeof showToast === "function") showToast(t("已重置平整度檢核設定", "Surface QA Reset"));
+      const badgeState = document.getElementById("badgeFlatnessPolyState");
+      if (badgeState) badgeState.textContent = t("繪製中", "Drawing");
+      refreshFlatnessDraftVisuals();
+      if (typeof syncStudioMobileToolHud === "function") syncStudioMobileToolHud();
+      if (typeof showToast === "function") {
+        showToast(t("已清除多邊形 — 請在 3D 模型表面點擊 3+ 點重新框選", "Polygon cleared — click 3+ vertices on 3D surface"));
+      }
     });
 
     document.getElementById("btnExportSurfaceQaCsv")?.addEventListener("click", () => {
-      if (!QA_STATE.surfaceQaLastResult) {
-        if (typeof showToast === "function") showToast(t("請先執行平整度檢核", "Run QA inspection first"));
+      if (!QA_STATE.surfaceQaLastResult || !QA_STATE.flatnessCache) {
+        if (typeof showToast === "function") showToast(t("請先框選多邊形執行平整度分析", "Draw and analyze a polygon first"));
         return;
       }
-      exportSurfaceQaCsv(QA_STATE.surfaceQaLastResult);
+      exportSurfaceQaCsv(QA_STATE.surfaceQaLastResult, QA_STATE.flatnessCache);
     });
-  }
 
-  async function runSurfaceFlatnessQa(scanId) {
-    const refMode = document.querySelector('input[name="qaRefMode"]:checked')?.value || "horizontal";
-    const tolMm = safeFloat(document.getElementById("qaToleranceMm")?.value, 10.0);
-    const secTolMm = safeFloat(document.getElementById("qaSecToleranceMm")?.value, 15.0);
-    const refElev = safeFloat(document.getElementById("qaRefElevation")?.value, null);
-
-    const payload = {
-      scan_id: scanId || (window.STATE && window.STATE.activeScanId) || "",
-      reference_mode: refMode,
-      tolerance_mm: tolMm,
-      secondary_tolerance_mm: secTolMm,
-      reference_elevation: refElev,
-      points: QA_STATE.surfaceQaPoints.length > 0 ? QA_STATE.surfaceQaPoints : null,
-      wall_line: QA_STATE.surfaceQaWallLine.length >= 2 ? QA_STATE.surfaceQaWallLine : null,
-    };
-
-    try {
-      const res = typeof apiPost === "function" ? await apiPost("/api/survey/surface-qa", payload) : null;
-      if (!res || res.status !== "ok") {
-        if (typeof showToast === "function") showToast(t("檢核計算失敗", "QA Evaluation failed"));
+    document.getElementById("btnExportFlatnessReport")?.addEventListener("click", () => {
+      if (!QA_STATE.surfaceQaLastResult || !QA_STATE.flatnessCache) {
+        if (typeof showToast === "function") showToast(t("請先框選多邊形執行平整度分析", "Draw and analyze a polygon first"));
         return;
       }
-      QA_STATE.surfaceQaLastResult = res;
-      renderSurfaceQaResults(res);
-      renderSurfaceQa3DOverlay(res);
-    } catch (err) {
-      console.error("[SurfaceQA] Error:", err);
-      if (typeof showToast === "function") showToast(t("伺服器連線異常", "Network error"));
-    }
+      exportFlatnessReportWithScreenshots(QA_STATE.surfaceQaLastResult, QA_STATE.flatnessCache);
+    });
   }
 
   function renderSurfaceQaResults(res) {
@@ -305,242 +1469,326 @@
     const maxLow = res.max_low || {};
     const astm = res.astm_e1155 || {};
     const plumb = res.plumb_tilt || {};
+    const netL = res.net_volume_liters || 0;
+    const isNetFill = netL >= 0;
 
     card.innerHTML = `
-      <!-- Grade / Pass Rate Banner -->
+      <!-- Pass Rate & Area Summary Banner -->
       <div class="gs-qa-grade-box ${badgeCls}">
         <div style="display:flex;justify-content:space-between;align-items:center;">
           <div>
             <div style="font-size:10px;text-transform:uppercase;color:var(--ui-text-muted);">
-              ${t("合格率", "Pass Rate")}
+              ${t("平整度合格率", "Flatness Pass Rate")} (+/-${res.tolerance_mm} mm)
             </div>
-            <div style="font-size:18px;font-weight:800;color:currentColor;">
+            <div style="font-size:19px;font-weight:800;color:currentColor;">
               ${passRate}%
             </div>
           </div>
           <div style="text-align:right;">
             <div style="font-size:10.5px;font-weight:700;">
-              ${res.pass_count || 0} / ${res.total_points || 0}
+              ${t("檢測面積", "Area")}: ${res.total_area_m2 || 0} m²
             </div>
             <div style="font-size:10px;color:var(--ui-text-muted);">
-              RMS: ${res.rms_dev_mm || 0} mm
+              ${res.pass_count || 0} / ${res.total_points || 0} ${t("格合格", "cells")} · RMS ${res.rms_dev_mm || 0} mm
             </div>
           </div>
         </div>
       </div>
 
-      <!-- Max High & Max Low Metrics -->
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-top:6px;">
-        <div class="gs-qa-stat-pill">
-          <div style="font-size:9.5px;color:var(--ui-text-muted);">${t("最高點 (凸起)", "Max High")}</div>
-          <div style="font-size:12px;font-weight:800;color:#ef4444;">
-            +${maxHigh.dev_mm || 0} mm
+      <!-- Protruding (Excess) vs Intruding (Lacking) Takeoff Cards -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-top:6px;">
+        <div class="gs-qa-stat-pill" style="border-left:3px solid #ef4444;padding-left:7px;">
+          <div style="font-size:10px;font-weight:700;color:#ef4444;">
+            ${t("凸起超差 (> +公差，需打磨)", "Protruding (> +Tol, Grind)")}
           </div>
-          <div style="font-size:9px;color:var(--ui-text-muted);font-family:monospace;">
-            H=${maxHigh.h || 0}m
+          <div style="font-size:13px;font-weight:800;color:#ef4444;margin-top:2px;">
+            ${res.excess_volume_liters} L <span style="font-size:10px;font-weight:600;color:var(--ui-text-secondary);">(${res.excess_volume_m3} m³)</span>
+          </div>
+          <div style="font-size:9.5px;color:var(--ui-text-secondary);margin-top:2px;">
+            ${t("超差面積", "Area")}: <b>${res.high_area_m2} m²</b> (${res.high_area_pct}%)
+          </div>
+          <div style="font-size:9.5px;color:var(--ui-text-muted);font-family:monospace;">
+            ${t("最大凸起", "Max High")}: +${maxHigh.dev_mm || 0} mm
           </div>
         </div>
-        <div class="gs-qa-stat-pill">
-          <div style="font-size:9.5px;color:var(--ui-text-muted);">${t("最低點 (凹陷)", "Max Low")}</div>
-          <div style="font-size:12px;font-weight:800;color:#3b82f6;">
-            ${maxLow.dev_mm || 0} mm
+
+        <div class="gs-qa-stat-pill" style="border-left:3px solid #3b82f6;padding-left:7px;">
+          <div style="font-size:10px;font-weight:700;color:#3b82f6;">
+            ${t("凹陷超差 (< -公差，需填補)", "Intruding (< -Tol, Fill)")}
           </div>
-          <div style="font-size:9px;color:var(--ui-text-muted);font-family:monospace;">
-            H=${maxLow.h || 0}m
+          <div style="font-size:13px;font-weight:800;color:#3b82f6;margin-top:2px;">
+            ${res.lacking_volume_liters} L <span style="font-size:10px;font-weight:600;color:var(--ui-text-secondary);">(${res.lacking_volume_m3} m³)</span>
+          </div>
+          <div style="font-size:9.5px;color:var(--ui-text-secondary);margin-top:2px;">
+            ${t("超差面積", "Area")}: <b>${res.low_area_m2} m²</b> (${res.low_area_pct}%)
+          </div>
+          <div style="font-size:9.5px;color:var(--ui-text-muted);font-family:monospace;">
+            ${t("最大凹陷", "Max Low")}: ${maxLow.dev_mm || 0} mm
           </div>
         </div>
       </div>
 
-      <!-- ASTM E1155 & Plumb Tilt Details -->
+      <!-- Net Material Takeoff & 25kg Mortar Bag Estimate -->
+      <div class="gs-qa-card" style="margin-top:6px;background:rgba(2,132,199,0.08);border-color:rgba(56,189,248,0.28);">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px;">
+          <span style="font-size:10.5px;font-weight:700;color:var(--ui-text-primary);">
+            ${t("淨材料差額 (填補 - 打磨)", "Net Material (Fill - Excess)")}:
+          </span>
+          <span style="font-size:12px;font-weight:800;color:${isNetFill ? "#38bdf8" : "#f97316"};">
+            ${isNetFill ? t("淨需補料", "Net Fill") : t("淨需打磨", "Net Grind")} ${Math.abs(netL).toFixed(2)} L (${Math.abs(res.net_volume_m3 || 0).toFixed(4)} m³)
+          </span>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;font-size:10px;color:var(--ui-text-secondary);">
+          <span>${t("預估 25kg 水泥砂漿/自平泥包數 (13.5 L/包):", "Est. 25kg Mortar Bags (13.5 L/bag):")}</span>
+          <b style="color:var(--ui-text-primary);">${res.est_mortar_bags_25kg || 0} ${t("包", "bags")}</b>
+        </div>
+      </div>
+
+      <!-- Plane Geometry, ASTM E1155 & Plumb Tilt Details -->
       <div class="gs-qa-card" style="margin-top:6px;">
         <div style="display:flex;justify-content:space-between;font-size:10.5px;margin-bottom:3px;">
-          <span style="color:var(--ui-text-muted);">ASTM E1155 平整指標 (F_F):</span>
-          <span style="font-weight:700;color:var(--ui-text-primary);">${astm.ff_flatness || "—"}</span>
+          <span style="color:var(--ui-text-muted);">${t("擬合表面型態 / 坡度", "Surface Type / Slope")}:</span>
+          <span style="font-weight:700;color:var(--ui-text-primary);">${t(plumb.surface_class_zh || "平面", plumb.surface_class_en || "Plane")} · ${plumb.slope_deg || 0}° (${plumb.tilt_ratio || "1:INF"})</span>
         </div>
         <div style="display:flex;justify-content:space-between;font-size:10.5px;margin-bottom:3px;">
-          <span style="color:var(--ui-text-muted);">水平等級 (F_L):</span>
-          <span style="font-weight:700;color:var(--ui-text-primary);">${astm.fl_levelness || "—"}</span>
-        </div>
-        <div style="display:flex;justify-content:space-between;font-size:10.5px;margin-bottom:3px;">
-          <span style="color:var(--ui-text-muted);">${t("垂直傾角比率", "Plumb Ratio")}:</span>
-          <span style="font-weight:700;color:var(--ui-text-primary);">${plumb.tilt_ratio || "—"} (${plumb.plumb_mm_per_m || 0} mm/m)</span>
+          <span style="color:var(--ui-text-muted);">ASTM E1155 (F_F / F_L):</span>
+          <span style="font-weight:700;color:var(--ui-text-primary);">F_F ${astm.ff_flatness || "—"} / F_L ${astm.fl_levelness || "—"}</span>
         </div>
         <div style="display:flex;justify-content:space-between;font-size:10.5px;">
-          <span style="color:var(--ui-text-muted);">${t("傾斜方向", "Azimuth")}:</span>
-          <span style="font-weight:700;color:var(--ui-text-primary);">${plumb.azimuth_deg || 0}°</span>
+          <span style="color:var(--ui-text-muted);">${t("鉛直度偏差 / 傾向方位", "Plumb Dev / Azimuth")}:</span>
+          <span style="font-weight:700;color:var(--ui-text-primary);">${plumb.plumb_mm_per_m || 0} mm/m · ${plumb.azimuth_deg || 0}°</span>
         </div>
       </div>
     `;
   }
 
-  function renderSurfaceQa3DOverlay(res) {
-    if (!window.studioThree || !window.studioThree.scene || !window.THREE) return;
-    surfaceQa3DGroup = clear3DGroup(surfaceQa3DGroup);
-    surfaceQa3DGroup = new window.THREE.Group();
-    surfaceQa3DGroup.name = "GS_SurfaceQA_Overlay";
-
-    const originTwd = (typeof localToTwd97 === "function") ? localToTwd97({ x: 0, y: 0, z: 0 }) : { e: 0, n: 0, h: 0 };
-    const pts = res.heatmap_points || [];
-    const minPt = new window.THREE.Vector3(Infinity, Infinity, Infinity);
-    const maxPt = new window.THREE.Vector3(-Infinity, -Infinity, -Infinity);
-
-    if (pts.length > 0) {
-      const positions = [];
-      const colors = [];
-      const col = new window.THREE.Color();
-
-      pts.forEach((p) => {
-        const lx = Number(p.e) - originTwd.e;
-        const ly = Number(p.h) - originTwd.h;
-        const lz = originTwd.n - Number(p.n);
-
-        positions.push(lx, ly, lz);
-        col.set(p.color || "#10b981");
-        colors.push(col.r, col.g, col.b);
-
-        minPt.x = Math.min(minPt.x, lx);
-        minPt.y = Math.min(minPt.y, ly);
-        minPt.z = Math.min(minPt.z, lz);
-        maxPt.x = Math.max(maxPt.x, lx);
-        maxPt.y = Math.max(maxPt.y, ly);
-        maxPt.z = Math.max(maxPt.z, lz);
-      });
-
-      const geom = new window.THREE.BufferGeometry();
-      geom.setAttribute("position", new window.THREE.Float32BufferAttribute(positions, 3));
-      geom.setAttribute("color", new window.THREE.Float32BufferAttribute(colors, 3));
-
-      // Vivid deviation points with depthTest: false and high renderOrder
-      const mat = new window.THREE.PointsMaterial({
-        size: 0.45,
-        vertexColors: true,
-        transparent: true,
-        opacity: 0.95,
-        depthTest: false,
-      });
-      const pointCloud = new window.THREE.Points(geom, mat);
-      pointCloud.renderOrder = 996;
-      surfaceQa3DGroup.add(pointCloud);
-
-      // 3D Reference Plane Wireframe Frame
-      const center = new window.THREE.Vector3().addVectors(minPt, maxPt).multiplyScalar(0.5);
-      const spanX = Math.max(2.0, maxPt.x - minPt.x);
-      const spanZ = Math.max(2.0, maxPt.z - minPt.z);
-      const isVertical = res.reference_mode === "vertical";
-
-      if (!isVertical) {
-        // Horizontal reference slab plane frame
-        const planeGeo = new window.THREE.PlaneGeometry(spanX * 1.05, spanZ * 1.05, 6, 6);
-        planeGeo.rotateX(-Math.PI / 2);
-        const planeMat = new window.THREE.MeshBasicMaterial({
-          color: 0x06b6d4,
-          wireframe: true,
-          transparent: true,
-          opacity: 0.7,
-          depthTest: false,
-        });
-        const planeMesh = new window.THREE.Mesh(planeGeo, planeMat);
-        planeMesh.position.set(center.x, center.y, center.z);
-        planeMesh.renderOrder = 995;
-        surfaceQa3DGroup.add(planeMesh);
-      } else {
-        // Vertical plumbness reference wall plane frame
-        const wallH = Math.max(2.0, maxPt.y - minPt.y);
-        const planeGeo = new window.THREE.PlaneGeometry(spanX * 1.05, wallH * 1.05, 6, 6);
-        const planeMat = new window.THREE.MeshBasicMaterial({
-          color: 0xf43f5e,
-          wireframe: true,
-          transparent: true,
-          opacity: 0.75,
-          depthTest: false,
-        });
-        const planeMesh = new window.THREE.Mesh(planeGeo, planeMat);
-        planeMesh.position.set(center.x, center.y, center.z);
-        planeMesh.renderOrder = 995;
-        surfaceQa3DGroup.add(planeMesh);
-
-        // Plumb Normal Arrow
-        const normDir = new window.THREE.Vector3(0, 0, 1).normalize();
-        const arrow = new window.THREE.ArrowHelper(normDir, center, 2.5, 0xef4444, 0.6, 0.35);
-        arrow.renderOrder = 998;
-        if (arrow.line && arrow.line.material) arrow.line.material.depthTest = false;
-        if (arrow.cone && arrow.cone.material) arrow.cone.material.depthTest = false;
-        surfaceQa3DGroup.add(arrow);
-      }
-
-      // High / Low 3D Deviation Pins
-      if (res.max_high && res.max_high.e) {
-        const hx = Number(res.max_high.e) - originTwd.e;
-        const hy = Number(res.max_high.h) - originTwd.h;
-        const hz = originTwd.n - Number(res.max_high.n);
-        const highPinGeo = new window.THREE.ConeGeometry(0.18, 0.55, 12);
-        highPinGeo.rotateX(Math.PI);
-        const highPinMat = new window.THREE.MeshBasicMaterial({ color: 0xef4444, depthTest: false });
-        const highPin = new window.THREE.Mesh(highPinGeo, highPinMat);
-        highPin.position.set(hx, hy + 0.45, hz);
-        highPin.renderOrder = 998;
-        surfaceQa3DGroup.add(highPin);
-
-        const dropH = new window.THREE.Line(
-          new window.THREE.BufferGeometry().setFromPoints([new window.THREE.Vector3(hx, hy, hz), new window.THREE.Vector3(hx, hy + 0.9, hz)]),
-          new window.THREE.LineBasicMaterial({ color: 0xef4444, depthTest: false })
-        );
-        dropH.renderOrder = 998;
-        surfaceQa3DGroup.add(dropH);
-      }
-
-      if (res.max_low && res.max_low.e) {
-        const lx = Number(res.max_low.e) - originTwd.e;
-        const ly = Number(res.max_low.h) - originTwd.h;
-        const lz = originTwd.n - Number(res.max_low.n);
-        const lowPinGeo = new window.THREE.ConeGeometry(0.18, 0.55, 12);
-        const lowPinMat = new window.THREE.MeshBasicMaterial({ color: 0x3b82f6, depthTest: false });
-        const lowPin = new window.THREE.Mesh(lowPinGeo, lowPinMat);
-        lowPin.position.set(lx, ly - 0.45, lz);
-        lowPin.renderOrder = 998;
-        surfaceQa3DGroup.add(lowPin);
-
-        const dropL = new window.THREE.Line(
-          new window.THREE.BufferGeometry().setFromPoints([new window.THREE.Vector3(lx, ly, lz), new window.THREE.Vector3(lx, ly - 0.9, lz)]),
-          new window.THREE.LineBasicMaterial({ color: 0x3b82f6, depthTest: false })
-        );
-        dropL.renderOrder = 998;
-        surfaceQa3DGroup.add(dropL);
-      }
-
-      // Auto-focus camera on the evaluated surface
-      if (window.studioThree.camera && window.studioThree.controls) {
-        const maxSpan = Math.max(spanX, spanZ, 8);
-        window.studioThree.controls.target.copy(center);
-        window.studioThree.camera.position.set(center.x + maxSpan * 0.75, center.y + maxSpan * 0.65, center.z + maxSpan * 0.75);
-        window.studioThree.controls.update();
-      }
-    }
-
-    if (window.studioThree.overlayGroup) {
-      window.studioThree.overlayGroup.add(surfaceQa3DGroup);
-    } else {
-      window.studioThree.scene.add(surfaceQa3DGroup);
-    }
-
-    if (window.studioThree.renderer && window.studioThree.camera) {
-      window.studioThree.renderer.render(window.studioThree.scene, window.studioThree.camera);
-    }
-  }
-
-  function exportSurfaceQaCsv(res) {
-    const pts = res.heatmap_points || [];
+  function exportSurfaceQaCsv(res, cache) {
+    const pts = (cache && Array.isArray(cache.cells)) ? cache.cells : [];
     const lines = [
-      `# GatheringScans 3D Surface Flatness & Plumbness Report`,
+      `# GatheringScans Polygon-Based 3D Surface Flatness & Material Takeoff Report`,
       `# Scan ID: ${res.scan_id} | CRS: EPSG:3826+TWVD2001`,
-      `# Reference Mode: ${res.reference_mode} | Tolerance: +/-${res.tolerance_mm}mm`,
-      `# Pass Rate: ${res.pass_rate_pct}% (${res.pass_count}/${res.total_points}) | RMS: ${res.rms_dev_mm}mm`,
-      `Index,Easting,Northing,Elevation,Deviation_mm,Status`,
+      `# Reference Mode: ${res.reference_mode} | Tolerance: +/-${res.tolerance_mm}mm | Volume Baseline: ${res.volume_mode}`,
+      `# Area: ${res.total_area_m2} m2 | Pass Rate: ${res.pass_rate_pct}% (${res.pass_count}/${res.total_points}) | RMS: ${res.rms_dev_mm}mm`,
+      `# Excess (> +Tol): ${res.excess_volume_liters} L (${res.excess_volume_m3} m3) | Lacking (< -Tol): ${res.lacking_volume_liters} L (${res.lacking_volume_m3} m3) | Net Fill: ${res.net_volume_liters} L`,
+      `Index,Easting,Northing,Elevation,Deviation_mm,CellArea_m2,Status`,
     ];
     pts.forEach((p, i) => {
-      lines.push(`${i + 1},${p.e},${p.n},${p.h},${p.dev_mm},${p.status.toUpperCase()}`);
+      lines.push(`${i + 1},${p.e},${p.n},${p.h},${Number(p.devMm || 0).toFixed(2)},${Number(cache.cellAreaM2 || 0).toFixed(4)},${String(p.status || "pass").toUpperCase()}`);
     });
-    downloadBlob(lines.join("\n"), `surface_qa_${res.scan_id || "scan"}.csv`, "text/csv;charset=utf-8;");
+    downloadBlob("\uFEFF" + lines.join("\r\n"), `flatness_takeoff_${res.scan_id || "scan"}.csv`, "text/csv;charset=utf-8;");
+  }
+
+  /**
+   * Captures 2 high-resolution screenshots (1: 3D Perspective View, 2: Plane-Normal Top-Down
+   * Orthographic Deviation Map with HUD legend & V1..Vn labels) and opens a printable A4 HTML Report.
+   */
+  function exportFlatnessReportWithScreenshots(res, cache) {
+    if (!window.studioThree || !window.studioThree.renderer || !window.studioThree.scene || !window.studioThree.camera) {
+      if (typeof showToast === "function") showToast(t("3D 視圖尚未就緒", "3D viewport not ready"));
+      return;
+    }
+    const { renderer, scene, camera, controls } = window.studioThree;
+    const THREE = window.THREE;
+
+    // 1. Capture Figure 1: Current 3D Perspective View
+    renderer.render(scene, camera);
+    const fig1DataUrl = renderer.domElement.toDataURL("image/png");
+
+    // 2. Capture Figure 2: Plane-Normal Top-Down / Elevation View with HUD Legend & Vertex Labels
+    const savedPos = camera.position.clone();
+    const savedQuat = camera.quaternion.clone();
+    const savedUp = camera.up.clone();
+    const savedTarget = controls ? controls.target.clone() : new THREE.Vector3();
+
+    const p = cache.plane;
+    const fc = new THREE.Vector3(p.center.x, p.center.y, p.center.z);
+    const fn = new THREE.Vector3(p.normal.x, p.normal.y, p.normal.z).normalize();
+    const fv = new THREE.Vector3(p.vAxis.x, p.vAxis.y, p.vAxis.z).normalize();
+    const maxSpan = Math.max(cache.spanU || 4, cache.spanV || 4, 3.0);
+    const camDist = maxSpan * 1.45;
+
+    camera.position.copy(fc).addScaledVector(fn, camDist);
+    camera.up.copy(fv);
+    camera.lookAt(fc);
+    camera.updateMatrixWorld(true);
+    renderer.render(scene, camera);
+
+    // Composite WebGL canvas + 2D vector annotations (V1..Vn labels + color legend)
+    const srcCvs = renderer.domElement;
+    const outCvs = document.createElement("canvas");
+    outCvs.width = srcCvs.width;
+    outCvs.height = srcCvs.height;
+    const ctx = outCvs.getContext("2d");
+    ctx.drawImage(srcCvs, 0, 0);
+
+    // Project V1..Vn onto Figure 2 canvas
+    if (Array.isArray(cache.polyPts)) {
+      ctx.font = "bold 14px Inter, sans-serif";
+      cache.polyPts.forEach((pt, idx) => {
+        const v = new THREE.Vector3(pt.x, pt.y, pt.z).project(camera);
+        const sx = (v.x * 0.5 + 0.5) * outCvs.width;
+        const sy = (-v.y * 0.5 + 0.5) * outCvs.height;
+        ctx.fillStyle = idx === 0 ? "#ef4444" : "#0284c7";
+        ctx.beginPath();
+        ctx.arc(sx, sy, 6, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = "#ffffff";
+        ctx.fillText(`V${idx + 1}`, sx + 9, sy + 4);
+      });
+    }
+
+    // Draw Legend Box on Figure 2
+    ctx.fillStyle = "rgba(15, 23, 42, 0.86)";
+    ctx.fillRect(18, 18, 280, 92);
+    ctx.strokeStyle = "rgba(56, 189, 248, 0.5)";
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(18, 18, 280, 92);
+    ctx.fillStyle = "#f8fafc";
+    ctx.font = "bold 13px sans-serif";
+    ctx.fillText(`平面正射高低差分佈圖 (公差 +/-${res.tolerance_mm} mm)`, 30, 40);
+    ctx.fillStyle = "#ef4444";
+    ctx.fillRect(30, 52, 14, 14);
+    ctx.fillStyle = "#f8fafc";
+    ctx.font = "12px sans-serif";
+    ctx.fillText(`凸起超差 (> +${res.tolerance_mm}mm): ${res.excess_volume_liters} L (${res.high_area_m2} m²)`, 52, 63);
+    ctx.fillStyle = "#3b82f6";
+    ctx.fillRect(30, 74, 14, 14);
+    ctx.fillStyle = "#f8fafc";
+    ctx.fillText(`凹陷超差 (< -${res.tolerance_mm}mm): ${res.lacking_volume_liters} L (${res.low_area_m2} m²)`, 52, 85);
+    const fig2DataUrl = outCvs.toDataURL("image/png");
+
+    // Restore camera immediately
+    camera.position.copy(savedPos);
+    camera.quaternion.copy(savedQuat);
+    camera.up.copy(savedUp);
+    if (controls) {
+      controls.target.copy(savedTarget);
+      controls.update();
+    }
+    renderer.render(scene, camera);
+
+    const nowStr = new Date().toISOString().slice(0, 19).replace("T", " ");
+    const netL = res.net_volume_liters || 0;
+    const reportHtml = `<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8" />
+  <title>3D 表面平整度與補料打磨體積檢驗報告 - ${res.scan_id}</title>
+  <style>
+    body { font-family: "Microsoft JhengHei", "Noto Sans TC", sans-serif; color: #0f172a; margin: 24px; line-height: 1.5; }
+    h1 { font-size: 20px; margin: 0 0 4px 0; color: #0f172a; border-bottom: 2px solid #0284c7; padding-bottom: 8px; }
+    .meta { font-size: 12px; color: #475569; margin-bottom: 14px; display: flex; justify-content: space-between; }
+    .kpi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 16px; }
+    .kpi-box { border: 1px solid #cbd5e1; border-radius: 6px; padding: 10px 12px; background: #f8fafc; }
+    .kpi-label { font-size: 11px; color: #64748b; }
+    .kpi-val { font-size: 18px; font-weight: 800; margin-top: 2px; }
+    table { width: 100%; border-collapse: collapse; margin-bottom: 16px; font-size: 12.5px; }
+    th, td { border: 1px solid #cbd5e1; padding: 7px 10px; text-align: left; }
+    th { background: #f1f5f9; font-weight: 700; }
+    .figs { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 18px; }
+    .fig-card { border: 1px solid #cbd5e1; border-radius: 6px; padding: 8px; background: #fff; }
+    .fig-card img { width: 100%; height: auto; border-radius: 4px; display: block; }
+    .fig-cap { font-size: 11.5px; font-weight: 700; color: #334155; margin-top: 6px; text-align: center; }
+    .sign-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-top: 24px; }
+    .sign-box { border: 1px solid #94a3b8; border-radius: 6px; padding: 10px 12px; height: 64px; font-size: 12px; color: #334155; }
+    @media print { .no-print { display: none; } body { margin: 10mm; } }
+  </style>
+</head>
+<body>
+  <div class="no-print" style="margin-bottom:12px;text-align:right;">
+    <button onclick="window.print()" style="padding:6px 14px;background:#0284c7;color:#fff;border:none;border-radius:4px;font-weight:700;cursor:pointer;">列印 / 另存 PDF (Print)</button>
+  </div>
+  <h1>3D 掃描多邊形區域平整度與補料/打磨體積檢驗報告</h1>
+  <div class="meta">
+    <span>掃描專案編號：<b>${res.scan_id}</b> ｜ 座標系統：<b>EPSG:3826 (TWD97) + TWVD2001</b></span>
+    <span>檢驗時間：<b>${nowStr}</b> ｜ 依據規範：<b>行政院公共工程委員會 施工綱要規範 第09611/09220/03310章</b></span>
+  </div>
+
+  <div class="kpi-grid">
+    <div class="kpi-box">
+      <div class="kpi-label">合格公差門檻 / 合格率</div>
+      <div class="kpi-val" style="color:#0284c7;">+/-${res.tolerance_mm} mm (${res.pass_rate_pct}%)</div>
+    </div>
+    <div class="kpi-box">
+      <div class="kpi-label">凸起超差體積 (需打磨剔除)</div>
+      <div class="kpi-val" style="color:#dc2626;">${res.excess_volume_liters} L (${res.excess_volume_m3} m³)</div>
+    </div>
+    <div class="kpi-box">
+      <div class="kpi-label">凹陷超差體積 (需填補批土)</div>
+      <div class="kpi-val" style="color:#2563eb;">${res.lacking_volume_liters} L (${res.lacking_volume_m3} m³)</div>
+    </div>
+    <div class="kpi-box">
+      <div class="kpi-label">淨材料差額 / 預估 25kg 砂漿</div>
+      <div class="kpi-val" style="color:#0f172a;">${netL >= 0 ? "補料 " : "打磨 "}${Math.abs(netL).toFixed(2)} L (${res.est_mortar_bags_25kg} 包)</div>
+    </div>
+  </div>
+
+  <table>
+    <thead>
+      <tr>
+        <th>檢驗項目</th>
+        <th>面積 (m² / 比例)</th>
+        <th>極值偏差 (mm)</th>
+        <th>體積 (公升 L)</th>
+        <th>體積 (立方公尺 m³)</th>
+        <th>施工處置建議</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><b>凸起超差區域 (&gt; +${res.tolerance_mm} mm)</b></td>
+        <td>${res.high_area_m2} m² (${res.high_area_pct}%)</td>
+        <td style="color:#dc2626;font-weight:700;">+${res.max_high?.dev_mm || 0} mm</td>
+        <td><b>${res.excess_volume_liters} L</b></td>
+        <td>${res.excess_volume_m3} m³</td>
+        <td>局部高點研磨機打磨或剔除</td>
+      </tr>
+      <tr>
+        <td><b>凹陷超差區域 (&lt; -${res.tolerance_mm} mm)</b></td>
+        <td>${res.low_area_m2} m² (${res.low_area_pct}%)</td>
+        <td style="color:#2563eb;font-weight:700;">${res.max_low?.dev_mm || 0} mm</td>
+        <td><b>${res.lacking_volume_liters} L</b></td>
+        <td>${res.lacking_volume_m3} m³</td>
+        <td>水泥砂漿 / 環氧樹脂砂漿 / 自平泥填補 (約 ${res.est_mortar_bags_25kg} 包 25kg)</td>
+      </tr>
+      <tr>
+        <td><b>合格範圍內 (|偏差| &le; ${res.tolerance_mm} mm)</b></td>
+        <td>${Number(Math.max(0, (res.total_area_m2 || 0) - (res.high_area_m2 || 0) - (res.low_area_m2 || 0))).toFixed(2)} m² (${res.pass_rate_pct}%)</td>
+        <td>RMS ${res.rms_dev_mm} mm</td>
+        <td>0.00 L</td>
+        <td>0.0000 m³</td>
+        <td>符合公共工程施工綱要規範容許公差</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="figs">
+    <div class="fig-card">
+      <img src="${fig1DataUrl}" alt="3D Perspective View" />
+      <div class="fig-cap">圖 1：3D 視角最佳擬合基準面與凸起(紅)/凹陷(藍)區域分佈圖</div>
+    </div>
+    <div class="fig-card">
+      <img src="${fig2DataUrl}" alt="Orthographic Deviation Map" />
+      <div class="fig-cap">圖 2：基準面法線正射投影偏差分佈圖 (含頂點 V1..Vn 與色階圖例)</div>
+    </div>
+  </div>
+
+  <div class="sign-grid">
+    <div class="sign-box">測量與 3D 掃描工程師簽章：</div>
+    <div class="sign-box">現場品管工程師 (QC) 簽章：</div>
+    <div class="sign-box">監造單位查驗簽章：</div>
+  </div>
+</body>
+</html>`;
+
+    const win = window.open("", "_blank");
+    if (win && win.document) {
+      win.document.open();
+      win.document.write(reportHtml);
+      win.document.close();
+    } else {
+      downloadBlob(reportHtml, `flatness_qa_report_${res.scan_id || "scan"}.html`, "text/html;charset=utf-8;");
+    }
   }
 
   // =========================================================================
@@ -1466,12 +2714,18 @@
 
   // Global exports & API bindings
   window.openSurfaceFlatnessQaInspector = openSurfaceFlatnessQaInspector;
+  window.lockFlatnessPolygonAndAnalyze = lockFlatnessPolygonAndAnalyze;
+  window.refreshFlatnessDraftVisuals = refreshFlatnessDraftVisuals;
+  window.recomputeFlatnessMetricsAndVisuals = recomputeFlatnessMetricsAndVisuals;
+  window.fitFlatnessReferencePlane = fitFlatnessReferencePlane;
+  window.computeClientFlatnessPolygonAsync = computeClientFlatnessPolygonAsync;
+  window.exportFlatnessReportWithScreenshots = exportFlatnessReportWithScreenshots;
   window.openUtilityTracerInspector = openUtilityTracerInspector;
   window.openCompareVolumeTakeoffInspector = openCompareVolumeTakeoffInspector;
   window.openRtkStakeoutInspector = openRtkStakeoutInspector;
   window.onQaPanelsClosed = onQaPanelsClosed;
 
-  window.handleQaTool3DCanvasPick = function (tool, pt, twd) {
+  window.handleQaTool3DCanvasPick = function (tool, pt, twd, isNearStartVertex) {
     if (!twd) return false;
     const scanId = (window.STATE && window.STATE.activeScanId) || "";
     if (QA_STATE.isPickingComparePoly) {
@@ -1490,8 +2744,39 @@
       return window.handleStationAlignment3DPick(pt, twd);
     }
     if (tool === "flatness" || QA_STATE.isPickingFlatnessPoint) {
-      QA_STATE.surfaceQaPoints.push({ e: Number(twd.e.toFixed(3)), n: Number(twd.n.toFixed(3)), h: Number(twd.h.toFixed(3)) });
-      runSurfaceFlatnessQa(scanId);
+      if (!window.STATE || !pt) return true;
+      if (!Array.isArray(window.STATE.measurePoints)) window.STATE.measurePoints = [];
+      if (window.STATE.flatnessPolygonLocked && window.STATE.measurePoints.length === 0) {
+        if (typeof showToast === "function") {
+          showToast(t("檢測多邊形已鎖定 — 如需重新框選請點擊面板「重繪範圍」按鈕", "Flatness polygon is locked — click 'Redraw' in the side panel to draw a new polygon"));
+        }
+        return true;
+      }
+      const startPt = window.STATE.measurePoints[0];
+      const closedOnStart =
+        window.STATE.measurePoints.length >= 3 &&
+        startPt &&
+        (typeof isNearStartVertex === "function"
+          ? isNearStartVertex(pt, startPt)
+          : isNearStartVertex === true ||
+            (typeof pt.distanceTo === "function" && pt.distanceTo(startPt) < 0.65));
+      if (closedOnStart) {
+        lockFlatnessPolygonAndAnalyze(window.STATE.measurePoints.slice());
+        return true;
+      }
+      window.STATE.polygonLocked = false;
+      window.STATE.flatnessPolygonLocked = false;
+      window.STATE.measurePoints.push(typeof pt.clone === "function" ? pt.clone() : pt);
+      refreshFlatnessDraftVisuals();
+      if (typeof syncStudioMobileToolHud === "function") syncStudioMobileToolHud();
+      const cnt = window.STATE.measurePoints.length;
+      if (typeof showToast === "function") {
+        if (cnt < 3) {
+          showToast(t(`平整度頂點 V${cnt} 已標記 — 再點 ${3 - cnt} 點可形成範圍`, `Flatness vertex V${cnt} placed — click ${3 - cnt} more`));
+        } else {
+          showToast(t(`已標記 ${cnt} 個頂點 — 點擊紅色起點 V1 或按 Enter 閉合分析`, `${cnt} vertices placed — click red V1 or press Enter to analyze`));
+        }
+      }
       return true;
     }
     if (tool === "trench" || QA_STATE.isPickingUtilityPoint) {

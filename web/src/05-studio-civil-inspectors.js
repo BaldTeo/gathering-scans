@@ -99,6 +99,9 @@
       if (typeof clearCategorizeVisualsOnly === "function") clearCategorizeVisualsOnly();
       if (typeof syncCategorizeVisibilityUI === "function") syncCategorizeVisibilityUI();
     }
+    if (STATE.activeTool === "drainage" || panelTool === "drainage") {
+      if (typeof clearDrainageVisuals3D === "function") clearDrainageVisuals3D();
+    }
     if (typeof window.onUtilitiesPanelClosed === "function") window.onUtilitiesPanelClosed();
     if (typeof window.onQaPanelsClosed === "function") window.onQaPanelsClosed("");
     if (panel) {
@@ -171,6 +174,10 @@
         STATE.polygonLocked = true;
         showToast(`Mask boundary locked (${lockedPts.length} vertices) — updating Civil3D.dwg & A3 PDF`);
         openContoursInspector(lockedPts);
+      } else if (STATE.activeTool === "flatness") {
+        if (typeof window.lockFlatnessPolygonAndAnalyze === "function") {
+          window.lockFlatnessPolygonAndAnalyze(lockedPts);
+        }
       }
       syncStudioMobileToolHud();
     }
@@ -231,10 +238,10 @@
         }</button>
         <button type="button" class="gs-mobile-hud-btn danger" data-mobile-hud="exit_tool">✕ ${tr("離開", "Exit")}</button>
       `;
-    } else if (tool === "area" || tool === "volume" || tool === "contours") {
+    } else if (tool === "area" || tool === "volume" || tool === "contours" || tool === "flatness") {
       const toolLabel =
-        tool === "area" ? tr("面積", "Area") : tool === "volume" ? tr("土方", "Volume") : tr("等高線", "Contours");
-      const hasPanelToggle = tool === "volume" || tool === "contours";
+        tool === "area" ? tr("面積", "Area") : tool === "volume" ? tr("土方", "Volume") : tool === "flatness" ? tr("平整度", "Flatness") : tr("等高線", "Contours");
+      const hasPanelToggle = tool === "volume" || tool === "contours" || tool === "flatness";
       if (ptsCount === 0) {
         if (window.innerWidth > 768) {
           hud.style.display = "none";
@@ -430,6 +437,8 @@
           }
         } else if (STATE.activeTool === "volume") {
           drawPlacedCutFillPolygon3D(STATE.measurePoints.slice(), null);
+        } else if (STATE.activeTool === "flatness" && typeof window.refreshFlatnessDraftVisuals === "function") {
+          window.refreshFlatnessDraftVisuals();
         }
       }
       syncStudioMobileToolHud();
@@ -452,6 +461,9 @@
         }
       }
       if (STATE.activeTool === "volume" && !STATE.polygonLocked) clearVolumeVisualsOnly();
+      if (STATE.activeTool === "flatness" && typeof window.refreshFlatnessDraftVisuals === "function") {
+        window.refreshFlatnessDraftVisuals();
+      }
       syncStudioMobileToolHud();
     });
     hud.querySelector('[data-mobile-hud="undo_cat_pt"]')?.addEventListener("click", (ev) => {

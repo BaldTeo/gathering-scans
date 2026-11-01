@@ -655,7 +655,7 @@
             ${SVG_ICONS.ROAD} 樁號斷面
           </button>
           <button type="button" class="subtab-btn" id="subtabDrainage">
-            ${SVG_ICONS.DROPLET} 坡度窪蓄
+            ${SVG_ICONS.DROPLET} 坡度排水
           </button>
           <button type="button" class="subtab-btn active" id="subtabGcpQa">
             ${SVG_ICONS.TARGET} 控制點
@@ -808,7 +808,9 @@
 
     // Subtab event bindings
     document.getElementById("subtabStationing")?.addEventListener("click", () => openEnhancedStationingAndAeaInspector());
-    document.getElementById("subtabDrainage")?.addEventListener("click", () => openEnhancedDrainageAndPondingInspector());
+    document.getElementById("subtabDrainage")?.addEventListener("click", () => {
+      if (typeof window.openDrainageAndSlopeInspector === "function") window.openDrainageAndSlopeInspector();
+    });
 
     // Bind Event Listeners
     document.getElementById("btnComputeGcpQa")?.addEventListener("click", () => {
@@ -1093,7 +1095,7 @@
             ${SVG_ICONS.ROAD} 樁號斷面
           </button>
           <button type="button" class="subtab-btn" id="subtabDrainage">
-            ${SVG_ICONS.DROPLET} 坡度窪蓄
+            ${SVG_ICONS.DROPLET} 坡度排水
           </button>
           <button type="button" class="subtab-btn" id="subtabGcpQa">
             ${SVG_ICONS.TARGET} 控制點
@@ -1216,7 +1218,9 @@
     }
 
     // Subtab event bindings
-    document.getElementById("subtabDrainage")?.addEventListener("click", () => openEnhancedDrainageAndPondingInspector());
+    document.getElementById("subtabDrainage")?.addEventListener("click", () => {
+      if (typeof window.openDrainageAndSlopeInspector === "function") window.openDrainageAndSlopeInspector();
+    });
     document.getElementById("subtabGcpQa")?.addEventListener("click", () => openEnhancedGcpAccuracyQaInspector());
 
     // Canvas drawing helper
@@ -1304,63 +1308,10 @@
   // =========================================================================
 
   /**
-   * Renders 3D translucent aquatic cyan ponding water surfaces in Three.js scene.
+   * Ponding water visual meshes are disabled so only drainage slope arrows are rendered.
    */
-  function renderEnhancedPondingVisuals3D(depressions) {
-    if (!window.studioThree || !window.studioThree.scene || !Array.isArray(depressions)) return;
+  function renderEnhancedPondingVisuals3D(_depressions) {
     clearEnhancedPondingVisuals3D();
-
-    const THREE = window.THREE;
-    if (!THREE) return;
-
-    const grp = new THREE.Group();
-    grp.name = "gs_enhanced_ponding_group";
-
-    depressions.forEach((dep) => {
-      const poly = dep.polygon_local;
-      if (!poly || poly.length < 3) return;
-
-      const shape = new THREE.Shape();
-      poly.forEach((pt, idx) => {
-        const x = pt[0];
-        const z = -pt[2]; // local Three.js coordinate mapping
-        if (idx === 0) shape.moveTo(x, z);
-        else shape.lineTo(x, z);
-      });
-
-      const geom = new THREE.ShapeGeometry(shape);
-      // Rotate flat onto horizontal plane (XZ)
-      geom.rotateX(Math.PI / 2);
-
-      const yElev = poly[0][1];
-      const mat = new THREE.MeshStandardMaterial({
-        color: 0x06b6d4,
-        transparent: true,
-        opacity: 0.65,
-        roughness: 0.1,
-        metalness: 0.15,
-        side: THREE.DoubleSide,
-        depthWrite: false,
-      });
-
-      const mesh = new THREE.Mesh(geom, mat);
-      mesh.position.y = yElev;
-      grp.add(mesh);
-
-      // Water surface perimeter outline
-      const linePts = poly.map((pt) => new THREE.Vector3(pt[0], pt[1] + 0.02, pt[2]));
-      const lineGeom = new THREE.BufferGeometry().setFromPoints(linePts);
-      const lineMat = new THREE.LineBasicMaterial({ color: 0x22d3ee, linewidth: 2 });
-      const lineLoop = new THREE.LineLoop(lineGeom, lineMat);
-      grp.add(lineLoop);
-    });
-
-    if (window.studioThree.overlayGroup) {
-      window.studioThree.overlayGroup.add(grp);
-    } else {
-      window.studioThree.scene.add(grp);
-    }
-    window.studioThree.pondingGroup = grp;
   }
 
   /**
@@ -1372,6 +1323,14 @@
     if (grp) {
       if (grp.parent) grp.parent.remove(grp);
       window.studioThree.pondingGroup = null;
+    }
+    if (window.studioThree.scene) {
+      const legacy = window.studioThree.scene.getObjectByName("gs_enhanced_ponding_group");
+      if (legacy && legacy.parent) legacy.parent.remove(legacy);
+    }
+    if (window.studioThree.overlayGroup) {
+      const legacyOv = window.studioThree.overlayGroup.getObjectByName("gs_enhanced_ponding_group");
+      if (legacyOv && legacyOv.parent) legacyOv.parent.remove(legacyOv);
     }
   }
 
@@ -1397,260 +1356,18 @@
   }
 
   /**
-   * Opens the Enhanced Surface Drainage & Ponding Water Takeoff Inspector.
+   * Delegates to the restored Surface Drainage & Slope Arrow Inspector (with Density & Arrow Scale sliders).
    */
-  async function openEnhancedDrainageAndPondingInspector(initialResult = null) {
-    if (typeof setActiveStudioTool === "function") setActiveStudioTool("drainage");
-    const t = typeof tr === "function" ? tr : (zh, en) => zh;
-    const scanId = window.STATE && window.STATE.activeScanId;
-    if (!scanId) {
-      if (typeof showToast === "function") showToast(t("請先載入 3D 掃描專案", "Please load a 3D scan first"), 2500);
-      return;
-    }
-
-    let drainageResult = initialResult;
-    if (!drainageResult) {
-      if (typeof apiPost === "function") {
-        try {
-          drainageResult = await apiPost("/api/survey/drainage", {
-            scan_id: scanId,
-            grid_size: 16,
-            exclude_walls: true,
-            min_ponding_depth_m: 0.05,
-          });
-        } catch (e) {
-          console.error("[Drainage] API failed:", e);
-        }
-      }
-    }
-
-    if (!drainageResult || drainageResult.status !== "ok") {
-      drainageResult = {
-        scan_id: scanId,
-        crs: "TWD97 / TM2 zone 121 + TWVD 2001",
-        depression_count: 3,
-        total_ponding_volume_m3: 14.85,
-        total_ponding_area_m2: 128.4,
-        max_ponding_depth_m: 0.32,
-        mean_slope_deg: 3.42,
-        mean_ratio_label: "1:17",
-        depressions: [
-          { depression_id: "POND-1", volume_m3: 9.42, max_depth_m: 0.32, max_depth_cm: 32.0, surface_area_m2: 74.2, spill_elevation_m: 125.12, min_elevation_m: 124.80, centroid_twd97: { e: 304952.1, n: 2757082.4, h: 124.8 } },
-          { depression_id: "POND-2", volume_m3: 3.81, max_depth_m: 0.18, max_depth_cm: 18.0, surface_area_m2: 36.8, spill_elevation_m: 125.40, min_elevation_m: 125.22, centroid_twd97: { e: 304938.6, n: 2757065.2, h: 125.2 } },
-          { depression_id: "POND-3", volume_m3: 1.62, max_depth_m: 0.11, max_depth_cm: 11.0, surface_area_m2: 17.4, spill_elevation_m: 124.95, min_elevation_m: 124.84, centroid_twd97: { e: 304965.8, n: 2757095.0, h: 124.8 } },
-        ],
-        tiers: [
-          { id: "flat_200", label: "< 1:200 (<0.5%)", color: "#38bdf8", count: 42, pct: 21.0 },
-          { id: "gentle_100", label: "1:200 – 1:100 (0.5–1%)", color: "#10b981", count: 78, pct: 39.0 },
-          { id: "mod_50", label: "1:100 – 1:50 (1–2%)", color: "#84cc16", count: 48, pct: 24.0 },
-          { id: "brisk_20", label: "1:50 – 1:20 (2–5%)", color: "#eab308", count: 22, pct: 11.0 },
-          { id: "steep_10", label: "1:20 – 1:10 (5–10%)", color: "#f97316", count: 8, pct: 4.0 },
-          { id: "vsteep", label: "> 1:10 (>10%)", color: "#ef4444", count: 2, pct: 1.0 },
-        ],
-      };
-    }
-
-    const deps = drainageResult.depressions || [];
-    const totalPondVol = drainageResult.total_ponding_volume_m3 || 0.0;
-    const totalPondArea = drainageResult.total_ponding_area_m2 || 0.0;
-    const maxPondDepth = drainageResult.max_ponding_depth_m || 0.0;
-
-    let tableRowsHtml = "";
-    deps.forEach((d, idx) => {
-      tableRowsHtml += `
-        <tr data-pond-idx="${idx}" style="cursor:pointer;">
-          <td style="font-weight:700;color:var(--ui-accent);">${d.depression_id}</td>
-          <td><b>${d.volume_m3.toFixed(2)}</b></td>
-          <td>${(d.max_depth_cm || d.max_depth_m * 100).toFixed(0)}</td>
-          <td>${d.surface_area_m2.toFixed(1)}</td>
-          <td>${d.spill_elevation_m.toFixed(2)}</td>
-        </tr>
-      `;
-    });
-
-    const panelHtml = `
-      <div class="gcp-qa-container" id="drainagePondingContainer">
-        <!-- Unified Civil Surveying Sub-Tabs -->
-        <div class="civil-subtabs">
-          <button type="button" class="subtab-btn" id="subtabStationing">
-            ${SVG_ICONS.ROAD} 樁號斷面
-          </button>
-          <button type="button" class="subtab-btn active" id="subtabDrainage">
-            ${SVG_ICONS.DROPLET} 坡度窪蓄
-          </button>
-          <button type="button" class="subtab-btn" id="subtabGcpQa">
-            ${SVG_ICONS.TARGET} 控制點
-          </button>
-        </div>
-
-        <!-- Grade Header Banner (No duplicate inner heading) -->
-        <div class="gcp-grade-header">
-          <div style="font-size:11px;color:var(--ui-text-secondary);display:flex;align-items:center;gap:6px;">
-            <span>${t("平均坡度", "Mean Slope")}: <b style="color:var(--ui-text-primary);">${drainageResult.mean_ratio_label || "1:20"}</b></span>
-            <span>·</span>
-            <span><b style="color:var(--ui-text-primary);">${deps.length}</b> ${t("處窪蓄", "Ponds")}</span>
-          </div>
-          <span class="gcp-crs-pill">EPSG:3826 + TWVD2001</span>
-        </div>
-
-        <!-- Ponding Water Takeoff KPI Grid -->
-        <div class="gcp-kpi-grid">
-          <div class="gcp-kpi-card highlight">
-            <div class="kpi-label">${t("總窪蓄量 (V_water)", "Pond Storage")}</div>
-            <div class="kpi-val">${totalPondVol.toFixed(2)} m³</div>
-          </div>
-          <div class="gcp-kpi-card">
-            <div class="kpi-label">${t("積水面積", "Pond Area")}</div>
-            <div class="kpi-val">${totalPondArea.toFixed(1)} m²</div>
-          </div>
-          <div class="gcp-kpi-card">
-            <div class="kpi-label">${t("最大水深", "Max Depth")}</div>
-            <div class="kpi-val">${(maxPondDepth * 100).toFixed(1)} cm</div>
-          </div>
-        </div>
-
-        <!-- Custom Slope Tiers & Depth Threshold Form -->
-        <div class="gcp-tbm-card">
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:6px;">
-            <div>
-              <label style="font-size:10px;color:var(--ui-text-secondary);display:block;margin-bottom:2px;">${t("分級門檻", "Slope Tiers")}</label>
-              <select id="selSlopeTierPreset" class="gs-select" style="width:100%;height:26px;font-size:11px;">
-                <option value="civil_std" selected>工程常規 (0.5%–10%)</option>
-                <option value="drainage_storm">水力排水 (1%–15%)</option>
-                <option value="steep_terrain">山坡地形 (5%–30%)</option>
-              </select>
-            </div>
-            <div>
-              <label style="font-size:10px;color:var(--ui-text-secondary);display:block;margin-bottom:2px;">${t("門檻水深 (cm)", "Min Depth (cm)")}</label>
-              <input type="number" id="txtMinPondingDepth" class="gs-input" value="5" min="1" max="200" style="width:100%;height:26px;font-size:11px;padding:3px 6px;" />
-            </div>
-          </div>
-
-          <div style="display:flex;align-items:center;justify-content:space-between;margin-top:4px;">
-            <label style="font-size:10.5px;color:var(--ui-text-primary);display:flex;align-items:center;gap:4px;cursor:pointer;">
-              <input type="checkbox" id="chkPonding3D" checked /> ${t("3D 積水水體", "3D Pond Meshes")}
-            </label>
-            <label style="font-size:10.5px;color:var(--ui-text-primary);display:flex;align-items:center;gap:4px;cursor:pointer;">
-              <input type="checkbox" id="chkExcludeWalls" checked /> ${t("排除垂直壁面", "Exclude Walls")}
-            </label>
-          </div>
-
-          <div style="display:flex;gap:6px;margin-top:8px;">
-            <button type="button" class="btn-xs primary" id="btnRecomputePonding" style="flex:1;justify-content:center;">
-              ${SVG_ICONS.DROPLET} 窪蓄
-            </button>
-            <button type="button" class="btn-xs" id="btnToggleSlopeArrows" style="flex:1;justify-content:center;">
-              ${SVG_ICONS.VECTOR} 箭頭
-            </button>
-          </div>
-        </div>
-
-        <!-- Detected Depressions Table -->
-        <div class="gcp-table-container">
-          <table class="gcp-residuals-table">
-            <thead>
-              <tr>
-                <th style="width:68px;">${t("編號", "Pond ID")}</th>
-                <th>${t("水體 (m³)", "Vol m³")}</th>
-                <th>${t("水深 (cm)", "Depth")}</th>
-                <th>${t("面積 (m²)", "Area")}</th>
-                <th>${t("溢流 (m)", "Spill")}</th>
-              </tr>
-            </thead>
-            <tbody>${tableRowsHtml}</tbody>
-          </table>
-        </div>
-
-        <!-- Action Buttons (Strictly 1-Word Labels) -->
-        <div style="display:flex;gap:6px;">
-          <button type="button" class="btn-xs" id="btnDownloadPondingCsv" style="flex:1;justify-content:center;">
-            ${SVG_ICONS.DOWNLOAD} CSV
-          </button>
-          <button type="button" class="btn-xs" id="btnPrintPondingReport" style="flex:1;justify-content:center;">
-            ${SVG_ICONS.PRINTER} 列印
-          </button>
-        </div>
-      </div>
-    `;
-
-    if (typeof showSidePanel === "function") {
-      showSidePanel(`<span>${SVG_ICONS.DROPLET} ${t("坡度與積水窪蓄分析", "Drainage & Ponding Takeoff")}</span>`, panelHtml);
-    }
-
-    // Subtab event bindings
-    document.getElementById("subtabStationing")?.addEventListener("click", () => openEnhancedStationingAndAeaInspector());
-    document.getElementById("subtabGcpQa")?.addEventListener("click", () => openEnhancedGcpAccuracyQaInspector());
-
-    // 3D Visual Rendering
-    renderEnhancedPondingVisuals3D(deps);
-
-    // Event listeners
-    document.getElementById("chkPonding3D")?.addEventListener("change", (e) => {
-      if (e.target.checked) renderEnhancedPondingVisuals3D(deps);
-      else clearEnhancedPondingVisuals3D();
-    });
-
-    document.querySelectorAll("#drainagePondingContainer tbody tr").forEach((row) => {
-      row.addEventListener("click", () => {
-        const idx = Number(row.getAttribute("data-pond-idx")) || 0;
-        const dep = deps[idx];
-        if (dep && dep.centroid_local && window.studioThree && window.studioThree.controls) {
-          const c = dep.centroid_local;
-          window.studioThree.controls.target.set(c.x, c.y, c.z);
-          if (typeof showToast === "function") showToast(`${dep.depression_id}: ${dep.volume_m3} m³ (${dep.max_depth_cm} cm)`, 2000);
-        }
-      });
-    });
-
-    document.getElementById("btnRecomputePonding")?.addEventListener("click", async () => {
-      const minDepthCm = Number(document.getElementById("txtMinPondingDepth")?.value) || 5.0;
-      const minDepthM = minDepthCm / 100.0;
-      const excludeW = document.getElementById("chkExcludeWalls")?.checked !== false;
-
-      let tiersPreset = null;
-      const pVal = document.getElementById("selSlopeTierPreset")?.value;
-      if (pVal === "drainage_storm") tiersPreset = [0.01, 0.03, 0.06, 0.12];
-      else if (pVal === "steep_terrain") tiersPreset = [0.05, 0.10, 0.20, 0.35];
-
-      if (typeof apiPost === "function") {
-        try {
-          const updated = await apiPost("/api/survey/drainage", {
-            scan_id: scanId,
-            min_ponding_depth_m: minDepthM,
-            exclude_walls: excludeW,
-            custom_slope_tiers: tiersPreset,
-          });
-          openEnhancedDrainageAndPondingInspector(updated);
-        } catch (err) {
-          console.error("[Drainage] Recompute failed:", err);
-        }
+  async function openEnhancedDrainageAndPondingInspector(_initialResult = null) {
+    clearEnhancedPondingVisuals3D();
+    document.getElementById("btnToggleSlopeArrows")?.addEventListener("click", () => {
+      if (typeof window.renderDrainageAndSlopeVisuals3D === "function") {
+        window.renderDrainageAndSlopeVisuals3D();
       }
     });
-
-    document.getElementById("btnToggleSlopeArrows")?.addEventListener("click", (e) => {
-      const btn = e.currentTarget;
-      const isActive = btn.classList.toggle("active");
-      const excludeW = document.getElementById("chkExcludeWalls")?.checked !== false;
-      if (isActive && typeof window.renderDrainageAndSlopeVisuals3D === "function") {
-        window.renderDrainageAndSlopeVisuals3D({
-          gridSize: (window.STATE && Number(window.STATE.drainageGridSize)) || 20,
-          densityPerM2: (window.STATE && Number(window.STATE.drainageDensityPerM2)) || 0.25,
-          arrowScale: (window.STATE && Number(window.STATE.drainageArrowScale)) || 1.0,
-          showLabels: true,
-          excludeWalls: excludeW,
-        });
-      } else if (!isActive && typeof clearDrainageVisuals3D === "function") {
-        clearDrainageVisuals3D();
-      }
-    });
-
-    document.getElementById("btnDownloadPondingCsv")?.addEventListener("click", () => {
-      exportDrainagePondingCsv(drainageResult);
-    });
-
-    document.getElementById("btnPrintPondingReport")?.addEventListener("click", () => {
-      window.print();
-    });
+    if (typeof window.openDrainageAndSlopeInspector === "function" && window.openDrainageAndSlopeInspector !== openEnhancedDrainageAndPondingInspector) {
+      return window.openDrainageAndSlopeInspector();
+    }
   }
 
   // Global overrides & hook bindings
@@ -1671,7 +1388,6 @@
   window.openEnhancedStationingAndAeaInspector = openEnhancedStationingAndAeaInspector;
   window.exportStationingCsv = exportStationingCsv;
 
-  window.openDrainageAndSlopeInspector = openEnhancedDrainageAndPondingInspector;
   window.openEnhancedDrainageAndPondingInspector = openEnhancedDrainageAndPondingInspector;
   window.renderEnhancedPondingVisuals3D = renderEnhancedPondingVisuals3D;
   window.clearEnhancedPondingVisuals3D = clearEnhancedPondingVisuals3D;
@@ -1690,7 +1406,9 @@
               if (toolParam === "stationing" || toolParam === "aea") {
                 openEnhancedStationingAndAeaInspector();
               } else if (toolParam === "drainage" || toolParam === "ponding") {
-                openEnhancedDrainageAndPondingInspector();
+                if (typeof window.openDrainageAndSlopeInspector === "function") {
+                  window.openDrainageAndSlopeInspector();
+                }
               } else if (toolParam === "gcp_qa") {
                 openEnhancedGcpAccuracyQaInspector();
               }

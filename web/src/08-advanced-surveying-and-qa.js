@@ -1214,12 +1214,14 @@
   function clearDrainageVisuals3D() {
     const hud = document.getElementById("studioDrainageLegendHud");
     if (hud) hud.style.display = "none";
+    if (typeof window.clearEnhancedPondingVisuals3D === "function") window.clearEnhancedPondingVisuals3D();
     if (!studioThree || !studioThree.overlayGroup) return;
     if (studioThree.drainageGroup) {
       studioThree.overlayGroup.remove(studioThree.drainageGroup);
       studioThree.drainageGroup = null;
     }
   }
+  window.clearDrainageVisuals3D = clearDrainageVisuals3D;
 
   const _drainageLabelTexCache = new Map();
   function createSlopeRatioSprite(ratioLabel, hexColor) {
@@ -2288,6 +2290,7 @@
       }
     } catch (_) {}
   }
+  window.openDrainageAndSlopeInspector = openDrainageAndSlopeInspector;
 
   // ============================================================================
   // FEATURE 5: AUTOMATED GCP (GROUND CONTROL POINT) ACCURACY QA REPORT

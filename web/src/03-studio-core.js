@@ -1199,6 +1199,7 @@
         (STATE.activeTool === "volume" ||
           STATE.activeTool === "area" ||
           STATE.activeTool === "contours" ||
+          STATE.activeTool === "flatness" ||
           STATE.activeTool === "crop" ||
           STATE.activeTool === "crop_delete" ||
           (STATE.activeTool === "profile" && STATE.measurePoints.length === 1) ||
@@ -3169,7 +3170,7 @@
         if (STATE.measurePoints.length === 1) renderDistanceVisuals(hoverPt, null);
       }
     } else if (
-      (tool === "area" || tool === "volume" || tool === "contours" || (tool === "profile" && STATE.measurePoints.length === 1)) &&
+      (tool === "area" || tool === "volume" || tool === "contours" || tool === "flatness" || (tool === "profile" && STATE.measurePoints.length === 1)) &&
       STATE.measurePoints.length >= 1
     ) {
       const hoverPt = pickStudio3DPoint(cx, cy);
@@ -3985,9 +3986,8 @@
         if (typeof syncCategorizeVisibilityUI === "function") syncCategorizeVisibilityUI();
       }
     }
-    if (!keepSidePanel && toolName !== "profile" && typeof clearProfileVisualsOnly === "function") {
-      clearProfileVisualsOnly();
-    }
+    if (!keepSidePanel && toolName !== "profile" && typeof clearProfileVisualsOnly === "function") clearProfileVisualsOnly();
+    if (!keepSidePanel && toolName !== "drainage" && typeof clearDrainageVisuals3D === "function") clearDrainageVisuals3D();
     if (!keepSidePanel && toolName !== "utilities" && typeof window.onUtilitiesPanelClosed === "function") {
       window.onUtilitiesPanelClosed();
     }
