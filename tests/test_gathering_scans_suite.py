@@ -3456,7 +3456,7 @@ class GatheringScansTestSuite(unittest.TestCase):
             {"scan_id": "edited_qihu_unified_merged_scan_4_scans__edited_372953", "radius_m": 250.0, "force_refresh": False}
         )
         self.assertEqual(qihu_res.get("status"), "ok")
-        self.assertGreaterEqual(float(qihu_res.get("ground_reference_h") or 0.0), 11.5)
+        self.assertGreaterEqual(float(qihu_res.get("ground_reference_h") or 0.0), 12.5)
         q_feats = qihu_res.get("features") or []
         open_waterways = [f for f in q_feats if str(f.get("id") or "").startswith("osm_waterway_") and f.get("is_open_channel")]
         self.assertGreaterEqual(len(open_waterways), 1, "Expected open waterway channel in QiHu Park utilities")
@@ -3474,6 +3474,11 @@ class GatheringScansTestSuite(unittest.TestCase):
         with open(os.path.join(BASE_DIR, "web", "src", "12-public-utilities-gis.js"), "r", encoding="utf-8") as f:
             js12 = f.read()
         self.assertIn("keepLayersOnClose:", js12)
+        self.assertIn('localStorage.getItem("gs_util_keep_on_close_v2") === "1"', js12)
+        self.assertIn(": false,", js12)
+        self.assertIn("resolveUtilitiesOriginTwd97", js12)
+        self.assertNotIn("collectStudioGroundMeshes", js12)
+        self.assertNotIn("getStudioRaycastMeshes", js12)
         self.assertIn('id="chkUtilKeepOnClose"', js12)
         self.assertIn('id="rngUtilZOffset"', js12)
         self.assertIn("window.collectExtraStudioPickTargets", js12)

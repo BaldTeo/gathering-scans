@@ -229,6 +229,43 @@ def _hydrate_utilities_doc(data: Dict[str, Any]) -> Dict[str, Any]:
     ctr = data.get("center") or {}
     ce_c = safe_float(ctr.get("e"), 300000.0) or 300000.0
     cn_c = safe_float(ctr.get("n"), 2770000.0) or 2770000.0
+
+    # Project-agnostic street-grade calibration for cached utility docs whose primary road polygon dipped into a ramp
+    lift_dz = 0.0
+    doc_sid = str(data.get("scan_id") or "").strip()
+    old_ref_h = safe_float(data.get("ground_reference_h") or ctr.get("ground_h") or ctr.get("h"))
+    if doc_sid and old_ref_h is not None:
+        cat_fp = os.path.join(DATA_DIR, "categorization_cache", f"{doc_sid}_categorization_v3.json")
+        if os.path.isfile(cat_fp):
+            try:
+                with open(cat_fp, "r", encoding="utf-8") as cf:
+                    c_doc = json.load(cf)
+                raw_rds = [r for r in (c_doc.get("roads") or []) if isinstance(r, dict)]
+                max_ra = max((safe_float(r.get("planar_area_m2"), 0.0) or 0.0 for r in raw_rds), default=0.0)
+                p65_list: List[float] = []
+                for r in raw_rds:
+                    ra = safe_float(r.get("planar_area_m2"), 100.0) or 100.0
+                    if ra < 0.20 * max_ra:
+                        continue
+                    bzs = sorted(
+                        [
+                            float(pt[2])
+                            for pt in (r.get("boundary_twd97") or [])
+                            if isinstance(pt, list) and len(pt) >= 3 and safe_float(pt[2]) is not None
+                        ]
+                    )
+                    if len(bzs) >= 4:
+                        p65_list.append(bzs[min(len(bzs) - 1, int(len(bzs) * 0.65))])
+                if p65_list:
+                    street_p65_h = round(sum(p65_list) / len(p65_list), 3)
+                    if 0.15 <= (street_p65_h - old_ref_h) <= 1.50:
+                        lift_dz = round(street_p65_h - old_ref_h, 3)
+                        data["ground_reference_h"] = street_p65_h
+                        if isinstance(ctr, dict):
+                            ctr["ground_h"] = street_p65_h
+            except Exception:
+                pass
+
     feats = data.get("features")
     if isinstance(feats, list):
         hydrated_list = []
@@ -259,6 +296,12 @@ def _hydrate_utilities_doc(data: Dict[str, Any]) -> Dict[str, Any]:
                     f["source"] = "OpenStreetMap Taiwan Utility GIS"
             cs = f.get("coords")
             if isinstance(cs, list) and len(cs) >= 2:
+                if lift_dz != 0.0:
+                    cs = [
+                        [p[0], p[1], round(float(p[2]) + lift_dz, 3)] if len(p) >= 3 else p
+                        for p in cs
+                    ]
+                    f["coords"] = cs
                 hm = float(f.get("height_m") or (float(f.get("diameter_mm") or 250) / 1000.0))
                 d1 = float(f.get("start_depth_m") or f.get("depth_m") or 1.35)
                 d2 = float(f.get("end_depth_m") or d1)
@@ -299,23 +342,23 @@ def _hydrate_utilities_doc(data: Dict[str, Any]) -> Dict[str, Any]:
                             if len(p) >= 3
                         ]
                         f["coords"] = cs
-                if "start_coord" not in f:
+                if "start_coord" not in f or lift_dz != 0.0:
                     f["start_coord"] = cs[0]
-                if "end_coord" not in f:
+                if "end_coord" not in f or lift_dz != 0.0:
                     f["end_coord"] = cs[-1]
                 z1 = float(cs[0][2]) if len(cs[0]) >= 3 else 0.0
                 z2 = float(cs[-1][2]) if len(cs[-1]) >= 3 else z1
                 f.setdefault("start_depth_m", round(d1, 2))
                 f.setdefault("end_depth_m", round(d2, 2))
                 f.setdefault("depth_m", round(0.5 * (d1 + d2), 2))
-                f.setdefault("start_invert_h", round(z1, 3))
-                f.setdefault("end_invert_h", round(z2, 3))
-                f.setdefault("start_ground_h", round(z1 + d1, 3))
-                f.setdefault("end_ground_h", round(z2 + d2, 3))
-                f.setdefault("start_rim_h", f["start_ground_h"])
-                f.setdefault("end_rim_h", f["end_ground_h"])
-                f.setdefault("start_crown_h", round(z1 + hm, 3))
-                f.setdefault("end_crown_h", round(z2 + hm, 3))
+                f["start_invert_h"] = round(z1, 3) if lift_dz != 0.0 else f.get("start_invert_h", round(z1, 3))
+                f["end_invert_h"] = round(z2, 3) if lift_dz != 0.0 else f.get("end_invert_h", round(z2, 3))
+                f["start_ground_h"] = round(z1 + d1, 3) if lift_dz != 0.0 else f.get("start_ground_h", round(z1 + d1, 3))
+                f["end_ground_h"] = round(z2 + d2, 3) if lift_dz != 0.0 else f.get("end_ground_h", round(z2 + d2, 3))
+                f["start_rim_h"] = f["start_ground_h"]
+                f["end_rim_h"] = f["end_ground_h"]
+                f["start_crown_h"] = round(z1 + hm, 3) if lift_dz != 0.0 else f.get("start_crown_h", round(z1 + hm, 3))
+                f["end_crown_h"] = round(z2 + hm, 3) if lift_dz != 0.0 else f.get("end_crown_h", round(z2 + hm, 3))
                 min_cov = 0.0 if f.get("is_open_channel") else 0.1
                 f.setdefault("start_cover_m", round(max(min_cov, d1 - hm), 2))
                 f.setdefault("end_cover_m", round(max(min_cov, d2 - hm), 2))
@@ -324,10 +367,13 @@ def _hydrate_utilities_doc(data: Dict[str, Any]) -> Dict[str, Any]:
             else:
                 pt_c = f.get("coord")
                 if isinstance(pt_c, list) and len(pt_c) >= 3:
+                    if lift_dz != 0.0:
+                        pt_c = [pt_c[0], pt_c[1], round(float(pt_c[2]) + lift_dz, 3)]
+                        f["coord"] = pt_c
                     dm = float(f.get("depth_m") or 1.6)
                     inv_z = float(pt_c[2])
-                    f.setdefault("invert_h", round(inv_z, 3))
-                    f.setdefault("rim_h", round(inv_z + dm, 3))
+                    f["invert_h"] = round(inv_z, 3) if lift_dz != 0.0 else f.get("invert_h", round(inv_z, 3))
+                    f["rim_h"] = round(inv_z + dm, 3) if lift_dz != 0.0 else f.get("rim_h", round(inv_z + dm, 3))
                     f.setdefault("depth_m", round(dm, 2))
             if "gov_links" not in f or not isinstance(f.get("gov_links"), dict):
                 _enrich_feature_gov_links(f, ce_c, cn_c)
@@ -869,44 +915,58 @@ class PublicUtilitiesGISMixin:
         samples: List[Tuple[float, float, float, float]] = []  # (e, n, h, weight)
         road_hs: List[float] = []
 
+        primary_road_h: Optional[float] = None
         if isinstance(cat_data, dict):
             raw_roads = [r for r in (cat_data.get("roads") or []) if isinstance(r, dict)]
             max_road_area = max((safe_float(r.get("planar_area_m2"), 0.0) or 0.0 for r in raw_roads), default=0.0)
             primary_hs: List[float] = []
             for r in raw_roads:
                 r_area = safe_float(r.get("planar_area_m2"), 100.0) or 100.0
-                rc = r.get("center_twd97")
-                if isinstance(rc, list) and len(rc) >= 3 and r_area >= 0.20 * max_road_area:
-                    rh_v = safe_float(rc[2])
-                    if rh_v is not None:
-                        primary_hs.append(rh_v)
+                if r_area < 0.20 * max_road_area:
+                    continue
+                b_zs = sorted(
+                    [
+                        float(pt[2])
+                        for pt in (r.get("boundary_twd97") or [])
+                        if isinstance(pt, list) and len(pt) >= 3 and safe_float(pt[2]) is not None
+                    ]
+                )
+                if len(b_zs) >= 4:
+                    primary_hs.append(b_zs[min(len(b_zs) - 1, int(len(b_zs) * 0.65))])
+                else:
+                    rc = r.get("center_twd97")
+                    if isinstance(rc, list) and len(rc) >= 3:
+                        rh_v = safe_float(rc[2])
+                        if rh_v is not None:
+                            primary_hs.append(rh_v)
             primary_road_h = (sum(primary_hs) / len(primary_hs)) if primary_hs else None
 
             for r in raw_roads:
                 r_area = safe_float(r.get("planar_area_m2"), 100.0) or 100.0
                 rc = r.get("center_twd97")
                 rh_center = safe_float(rc[2]) if (isinstance(rc, list) and len(rc) >= 3) else None
-                # Exclude minor sunken park footpaths (< 20% of primary street area sitting > 1.0m below street grade)
+                # Exclude minor sunken park footpaths (< 20% of primary street area sitting > 0.85m below street grade)
                 if (
                     primary_road_h is not None
                     and r_area < 0.20 * max_road_area
                     and rh_center is not None
-                    and (primary_road_h - rh_center) > 1.0
+                    and (primary_road_h - rh_center) > 0.85
                 ):
                     continue
                 area_w = max(1.0, min(4.0, (r_area / max(200.0, max_road_area)) * 4.0))
                 if isinstance(rc, list) and len(rc) >= 3:
                     re_v, rn_v, rh_v = safe_float(rc[0]), safe_float(rc[1]), safe_float(rc[2])
                     if re_v is not None and rn_v is not None and rh_v is not None:
-                        samples.append((re_v, rn_v, rh_v, 5.0 * area_w))
-                        road_hs.append(rh_v)
+                        eff_rh = max(rh_v, primary_road_h - 0.35) if primary_road_h is not None else rh_v
+                        samples.append((re_v, rn_v, eff_rh, 5.0 * area_w))
+                        road_hs.append(eff_rh)
                 b_pts = r.get("boundary_twd97") or []
                 stride = max(1, len(b_pts) // 36)
                 for pt in b_pts[::stride]:
                     if isinstance(pt, list) and len(pt) >= 3:
                         pe, pn, ph = safe_float(pt[0]), safe_float(pt[1]), safe_float(pt[2])
                         if pe is not None and pn is not None and ph is not None:
-                            if primary_road_h is not None and (primary_road_h - ph) > 1.2:
+                            if primary_road_h is not None and (primary_road_h - ph) > 0.85:
                                 continue
                             samples.append((pe, pn, ph, 2.5 * area_w))
                             road_hs.append(ph)
@@ -919,17 +979,17 @@ class PublicUtilitiesGISMixin:
                     te, tn, th = safe_float(tc[0]), safe_float(tc[1]), safe_float(tc[2])
                     if te is not None and tn is not None and th is not None:
                         # Only include tree bases near street grade (prevents sunken park basin trees from dragging street pipes down)
-                        if road_ref_h is None or abs(th - road_ref_h) <= 0.85:
+                        if road_ref_h is None or abs(th - road_ref_h) <= 0.65:
                             samples.append((te, tn, th, 0.8))
 
-            # Only include wall base points if no roads were detected or if the wall base is within 1.2m of road grade
+            # Only include wall base points if no roads were detected or if the wall base is within 0.85m of road grade
             for w in (cat_data.get("walls") or []):
                 b_poly = w.get("base_polyline_twd97") or []
                 for pt in b_poly[::max(1, len(b_poly) // 8)]:
                     if isinstance(pt, list) and len(pt) >= 3:
                         we, wn, wh = safe_float(pt[0]), safe_float(pt[1]), safe_float(pt[2])
                         if we is not None and wn is not None and wh is not None:
-                            if road_ref_h is None or abs(wh - road_ref_h) <= 1.2:
+                            if road_ref_h is None or abs(wh - road_ref_h) <= 0.85:
                                 samples.append((we, wn, wh, 0.5))
 
             if not road_hs:
@@ -942,13 +1002,14 @@ class PublicUtilitiesGISMixin:
                             samples.append((we, wn, wl + 1.0, 0.8))
 
         # Anchor Taipei City ground elevation with official 3dgis.reac.taipei get3dz.ashx bare-earth API
+        # (rejecting sunken park-bowl samples that sit > 0.75m below verified street grade)
         taipei_gov_z = _query_taipei_3d_elevation(ce, cn)
-        if taipei_gov_z is not None:
-            samples.append((ce, cn, taipei_gov_z, 8.0 if not samples else 3.5))
+        if taipei_gov_z is not None and (primary_road_h is None or taipei_gov_z >= primary_road_h - 0.75):
+            samples.append((ce, cn, taipei_gov_z, 8.0 if not samples else 2.5))
             for dx_gov, dy_gov in ((120.0, 0.0), (-120.0, 0.0), (0.0, 120.0), (0.0, -120.0)):
                 gz_card = _query_taipei_3d_elevation(ce + dx_gov, cn + dy_gov)
-                if gz_card is not None:
-                    samples.append((ce + dx_gov, cn + dy_gov, gz_card, 3.0))
+                if gz_card is not None and (primary_road_h is None or gz_card >= primary_road_h - 0.75):
+                    samples.append((ce + dx_gov, cn + dy_gov, gz_card, 2.0))
 
         if samples:
             w_tot = sum(s[3] for s in samples)

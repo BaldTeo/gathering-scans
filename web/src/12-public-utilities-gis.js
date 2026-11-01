@@ -67,12 +67,14 @@
   const UTILS_STATE = {
     active: false,
     keepLayersOnClose:
-      typeof localStorage !== "undefined" && localStorage.getItem("gs_util_keep_on_close") !== null
-        ? localStorage.getItem("gs_util_keep_on_close") !== "0"
-        : true,
+      typeof localStorage !== "undefined" && localStorage.getItem("gs_util_keep_on_close_v2") !== null
+        ? localStorage.getItem("gs_util_keep_on_close_v2") === "1"
+        : false,
     verticalOffsetM: 0.0,
     loadedScanId: null,
     lastCenter: null,
+    groundReferenceH: NaN,
+    lastRenderedOriginH: NaN,
     radiusM: 250.0,
     serverMasterRadiusM: 1000.0,
     isCached: false,
@@ -92,7 +94,7 @@
     threeGroup: null,
     layerMeshes: [], // Merged per-layer THREE.Mesh objects with userData.triToFeature for O(1) raycast picking
     pipeMeshMap: new Map(), // featId_seg -> { mesh, layer, feature, v1, v2, dist, dir }
-    groundGridCache: { scanId: null, meshCount: 0, catCount: 0, sampler: null },
+    groundGridCache: { scanId: null, originH: NaN, groundRefH: NaN, catCount: 0, sampler: null },
   };
 
   /**
@@ -332,22 +334,21 @@
     const roots = getStudioModelRoots(studioThree);
     if (!roots.length) return;
 
-    // Hook TilesRenderer 'load-model' once so newly streamed 3D tiles automatically inherit X-ray translucency and refresh ground elevation grid
+    // Hook TilesRenderer 'load-model' once so newly streamed 3D tiles automatically inherit X-ray translucency
     if (studioThree.tilesRenderer && !studioThree.tilesRenderer.__gsUtilXrayLoadBound) {
       studioThree.tilesRenderer.__gsUtilXrayLoadBound = true;
-      let _tileLoadRefreshTimer = null;
       studioThree.tilesRenderer.addEventListener("load-model", () => {
         if (hasVisibleUtilities3D() && UTILS_STATE.groundXrayPct > 1) {
           applyUtilitiesGroundXray(UTILS_STATE.groundXrayPct);
         }
         if (hasVisibleUtilities3D() && Array.isArray(UTILS_STATE.features) && UTILS_STATE.features.length > 0) {
-          const curMeshes = collectStudioGroundMeshes(window.studioThree);
-          if (!UTILS_STATE.groundGridCache || UTILS_STATE.groundGridCache.meshCount !== curMeshes.length) {
-            if (_tileLoadRefreshTimer) clearTimeout(_tileLoadRefreshTimer);
-            _tileLoadRefreshTimer = setTimeout(() => {
-              _tileLoadRefreshTimer = null;
-              if (hasVisibleUtilities3D()) renderUtilities3D();
-            }, 180);
+          const curOrigin = resolveUtilitiesOriginTwd97();
+          if (
+            Number.isFinite(curOrigin.h) &&
+            (!Number.isFinite(UTILS_STATE.lastRenderedOriginH) ||
+              Math.abs(curOrigin.h - UTILS_STATE.lastRenderedOriginH) > 0.01)
+          ) {
+            renderUtilities3D();
           }
         }
       });
@@ -1168,13 +1169,13 @@
       };
     }
 
-    // Keep 3D layers on close checkbox
+    // Keep 3D layers on close checkbox (off by default)
     const chkKeep = document.getElementById("chkUtilKeepOnClose");
     if (chkKeep) {
       chkKeep.onchange = () => {
         UTILS_STATE.keepLayersOnClose = Boolean(chkKeep.checked);
         try {
-          localStorage.setItem("gs_util_keep_on_close", UTILS_STATE.keepLayersOnClose ? "1" : "0");
+          localStorage.setItem("gs_util_keep_on_close_v2", UTILS_STATE.keepLayersOnClose ? "1" : "0");
         } catch (_) {}
       };
     }
@@ -1523,12 +1524,35 @@
   }
 
   /**
-   * Builds a blazing-fast (< 3ms) bare-earth 2D spatial elevation grid from the scan's mesh vertices
-   * and categorized road/tree-base points. Replaces slow per-vertex `THREE.Raycaster.intersectObjects`
-   * so large sloped scans (4,000+ features) render in < 35ms with zero main-thread freeze.
+   * Resolves a deterministic TWD97 / TWVD2001 origin `{ e, n, h }` for local Three.js coordinate `(0, 0, 0)`.
+   * Pre-seeds `studioThree.tilesCenter` from `STATE.activeScan.home_view.tiles_center` if `tileset.json`
+   * has not finished its async fetch yet, ensuring `originTwd.h` is identical before and after 3D tiles stream.
+   */
+  function resolveUtilitiesOriginTwd97() {
+    const studioThree = window.studioThree;
+    const activeScan = typeof STATE !== "undefined" ? STATE.activeScan : null;
+    if (
+      studioThree &&
+      (!Array.isArray(studioThree.tilesCenter) || studioThree.tilesCenter.length < 3) &&
+      Array.isArray(activeScan?.home_view?.tiles_center) &&
+      activeScan.home_view.tiles_center.length >= 3
+    ) {
+      const tc = activeScan.home_view.tiles_center;
+      if (Math.hypot(Number(tc[0]) || 0, Number(tc[1]) || 0) >= 50000 && Number.isFinite(Number(tc[2]))) {
+        studioThree.tilesCenter = [Number(tc[0]), Number(tc[1]), Number(tc[2])];
+      }
+    }
+    return typeof localToTwd97 === "function" ? localToTwd97({ x: 0, y: 0, z: 0 }) : { e: 0, n: 0, h: 0 };
+  }
+
+  /**
+   * Builds a 100% deterministic, tile-streaming-invariant bare-earth ground elevation sampler
+   * anchored to server-hydrated TWVD2001 elevations (`start_ground_h`, `end_ground_h`, `rim_h`),
+   * `ground_reference_h`, and categorized street-grade road/waterway data (`STATE.lastCategorizeResult`).
+   * Never reads raw streaming 3D tile mesh vertices so turning Utilities off and on again (or streaming LOD tiles)
+   * never causes vertical height jumps or drags street utilities down into sunken park basins or river gorges.
    */
   function createCanopyRejectingGroundSampler(payload, originTwd) {
-    const meshes = typeof getStudioRaycastMeshes === "function" ? getStudioRaycastMeshes() : [];
     const currentScanId = String((typeof STATE !== "undefined" && STATE.activeScanId) || "");
     const rawCatData = typeof STATE !== "undefined" ? STATE.lastCategorizeResult || STATE.categorizeData : null;
     const catData =
@@ -1541,50 +1565,63 @@
           (Array.isArray(catData.trees) ? catData.trees.length : 0) +
           (Array.isArray(catData.water_bodies) ? catData.water_bodies.length : 0)
         : 0;
+    const centerGroundH = Number(
+      payload?.ground_reference_h ??
+        payload?.center?.ground_h ??
+        payload?.center?.h ??
+        UTILS_STATE.groundReferenceH ??
+        UTILS_STATE.lastCenter?.ground_h ??
+        UTILS_STATE.lastCenter?.h
+    );
+    const originH = Number(originTwd?.h) || 0;
+
     if (
       UTILS_STATE.groundGridCache.sampler &&
       UTILS_STATE.groundGridCache.scanId === currentScanId &&
-      UTILS_STATE.groundGridCache.meshCount === (meshes ? meshes.length : 0) &&
+      Math.abs((Number(UTILS_STATE.groundGridCache.originH) || 0) - originH) < 1e-4 &&
+      ((!Number.isFinite(UTILS_STATE.groundGridCache.groundRefH) && !Number.isFinite(centerGroundH)) ||
+        Math.abs((Number(UTILS_STATE.groundGridCache.groundRefH) || 0) - centerGroundH) < 1e-4) &&
       UTILS_STATE.groundGridCache.catCount === catCount
     ) {
       return UTILS_STATE.groundGridCache.sampler;
     }
 
-    const cellSize = 2.0;
-    const cellMinY = new Map(); // "gx_gz" -> lowest local Y in 2m cell
-    const roadAnchorPts = []; // [{ x, z, y }] verified street road anchors
+    const roadAnchorPts = []; // [{ x, z, y }] verified upper-street road anchors
     const roadSamplesY = [];
     const waterSamplesY = [];
-    const allMeshYs = [];
 
-    function addGroundSample(lx, lz, ly, isRoadAnchor = false) {
+    function addRoadAnchorSample(lx, lz, ly) {
       if (!Number.isFinite(lx) || !Number.isFinite(lz) || !Number.isFinite(ly)) return;
-      const gx = Math.floor(lx / cellSize);
-      const gz = Math.floor(lz / cellSize);
-      const key = `${gx}_${gz}`;
-      const prev = cellMinY.get(key);
-      if (prev === undefined || ly < prev) {
-        cellMinY.set(key, ly);
-      }
-      if (isRoadAnchor) {
-        roadSamplesY.push(ly);
-        roadAnchorPts.push({ x: lx, z: lz, y: ly });
-      }
+      roadSamplesY.push(ly);
+      roadAnchorPts.push({ x: lx, z: lz, y: ly });
     }
 
     function readRoadLocalY(r) {
+      const bPts = Array.isArray(r?.boundary_twd97) ? r.boundary_twd97 : [];
+      const bZs = [];
+      for (let i = 0; i < bPts.length; i++) {
+        const pt = bPts[i];
+        if (Array.isArray(pt) && pt.length >= 3 && Number.isFinite(Number(pt[2]))) {
+          bZs.push(Number(pt[2]));
+        }
+      }
+      if (bZs.length >= 4) {
+        bZs.sort((a, b) => a - b);
+        const p65Z = bZs[Math.min(bZs.length - 1, Math.floor(bZs.length * 0.65))];
+        return p65Z - originH;
+      }
       if (Array.isArray(r.center_twd97) && r.center_twd97.length >= 3 && Number.isFinite(Number(r.center_twd97[2]))) {
-        return Number(r.center_twd97[2]) - originTwd.h;
+        return Number(r.center_twd97[2]) - originH;
       }
       if (Array.isArray(r.center_local) && r.center_local.length >= 3 && Number.isFinite(Number(r.center_local[1]))) {
         return Number(r.center_local[1]);
       }
       if (Number.isFinite(r.elevation_local_y)) return Number(r.elevation_local_y);
-      if (Number.isFinite(r.elevation_twd97_z)) return Number(r.elevation_twd97_z) - originTwd.h;
+      if (Number.isFinite(r.elevation_twd97_z)) return Number(r.elevation_twd97_z) - originH;
       return NaN;
     }
 
-    // 1. Ingest categorized roads, tree trunk bases, and water bodies (from STATE.lastCategorizeResult)
+    // Ingest categorized roads and water bodies (from STATE.lastCategorizeResult)
     let primaryRoadY = NaN;
     if (catData) {
       if (Array.isArray(catData.roads) && catData.roads.length > 0) {
@@ -1608,72 +1645,46 @@
         catData.roads.forEach((r) => {
           const rArea = Number(r?.planar_area_m2) || 100;
           const ry = readRoadLocalY(r);
-          // Exclude minor sunken park footpaths (< 20% of primary street area sitting > 1.0m below street grade)
           const isSunkenFootpath =
             Number.isFinite(primaryRoadY) &&
             rArea < 0.2 * maxRoadArea &&
             Number.isFinite(ry) &&
-            primaryRoadY - ry > 1.0;
+            primaryRoadY - ry > 0.85;
+          if (isSunkenFootpath) return;
 
-          if (Number.isFinite(ry)) {
-            if (!isSunkenFootpath) roadSamplesY.push(ry);
-            if (Array.isArray(r.center_twd97) && r.center_twd97.length >= 2) {
-              addGroundSample(
-                Number(r.center_twd97[0]) - originTwd.e,
-                originTwd.n - Number(r.center_twd97[1]),
-                ry,
-                !isSunkenFootpath
-              );
-            }
+          if (Number.isFinite(ry) && Array.isArray(r.center_twd97) && r.center_twd97.length >= 2) {
+            addRoadAnchorSample(
+              Number(r.center_twd97[0]) - originTwd.e,
+              originTwd.n - Number(r.center_twd97[1]),
+              ry
+            );
           }
           if (Array.isArray(r.boundary_twd97)) {
             const stride = Math.max(1, Math.floor(r.boundary_twd97.length / 24));
             for (let i = 0; i < r.boundary_twd97.length; i += stride) {
               const pt = r.boundary_twd97[i];
               if (Array.isArray(pt) && pt.length >= 3) {
-                const py = Number(pt[2]) - originTwd.h;
-                const isStreetPt = !isSunkenFootpath && (!Number.isFinite(primaryRoadY) || primaryRoadY - py <= 1.2);
-                addGroundSample(Number(pt[0]) - originTwd.e, originTwd.n - Number(pt[1]), py, isStreetPt);
-              } else if (Array.isArray(pt) && pt.length >= 2 && Number.isFinite(ry)) {
-                addGroundSample(Number(pt[0]) - originTwd.e, originTwd.n - Number(pt[1]), ry, !isSunkenFootpath);
+                const py = Number(pt[2]) - originH;
+                if (!Number.isFinite(primaryRoadY) || primaryRoadY - py <= 0.85) {
+                  addRoadAnchorSample(Number(pt[0]) - originTwd.e, originTwd.n - Number(pt[1]), py);
+                }
               }
             }
-          }
-        });
-      }
-      if (Array.isArray(catData.trees)) {
-        catData.trees.forEach((trObj) => {
-          let tx = NaN, ty = NaN, tz = NaN;
-          if (Array.isArray(trObj.trunk_twd97) && trObj.trunk_twd97.length >= 3) {
-            tx = Number(trObj.trunk_twd97[0]) - originTwd.e;
-            ty = Number(trObj.trunk_twd97[2]) - originTwd.h;
-            tz = originTwd.n - Number(trObj.trunk_twd97[1]);
-          } else {
-            const tLoc = trObj.trunk_local || trObj.base_local;
-            if (Array.isArray(tLoc) && tLoc.length >= 3) {
-              tx = Number(tLoc[0]);
-              ty = Number(tLoc[1]);
-              tz = Number(tLoc[2]);
-            }
-          }
-          if (Number.isFinite(tx) && Number.isFinite(ty) && Number.isFinite(tz)) {
-            const isNearStreetGrade = !Number.isFinite(primaryRoadY) || Math.abs(ty - primaryRoadY) <= 0.85;
-            addGroundSample(tx, tz, ty, isNearStreetGrade);
           }
         });
       }
       if (Array.isArray(catData.water_bodies)) {
         catData.water_bodies.forEach((wb) => {
           const wy = Number.isFinite(Number(wb.water_level_twvd2001_m))
-            ? Number(wb.water_level_twvd2001_m) - originTwd.h
+            ? Number(wb.water_level_twvd2001_m) - originH
             : Array.isArray(wb.center_twd97) && wb.center_twd97.length >= 3 && Number.isFinite(Number(wb.center_twd97[2]))
-            ? Number(wb.center_twd97[2]) - originTwd.h
+            ? Number(wb.center_twd97[2]) - originH
             : Array.isArray(wb.center_local) && wb.center_local.length >= 3 && Number.isFinite(Number(wb.center_local[1]))
             ? Number(wb.center_local[1])
             : Number.isFinite(wb.elevation_local_y)
             ? Number(wb.elevation_local_y)
             : Number.isFinite(wb.elevation_twd97_z)
-            ? Number(wb.elevation_twd97_z) - originTwd.h
+            ? Number(wb.elevation_twd97_z) - originH
             : NaN;
           if (Number.isFinite(wy)) {
             waterSamplesY.push(wy);
@@ -1682,174 +1693,66 @@
       }
     }
 
-    // 2. Single-pass strided vertex scan across 3D scan meshes (< 3ms for millions of vertices, zero raycasting!)
-    if (meshes && meshes.length > 0 && window.THREE) {
-      const tmpV = new THREE.Vector3();
-      let totalVerts = 0;
-      meshes.forEach((m) => {
-        const pos = m && m.geometry && m.geometry.attributes && m.geometry.attributes.position;
-        if (pos && pos.count) totalVerts += pos.count;
-      });
-      const targetSamples = 28000;
-      const stride = Math.max(1, Math.floor(totalVerts / targetSamples));
-
-      meshes.forEach((m) => {
-        const pos = m && m.geometry && m.geometry.attributes && m.geometry.attributes.position;
-        if (!pos || !pos.count) return;
-        m.updateMatrixWorld();
-        const matW = m.matrixWorld;
-        for (let i = 0; i < pos.count; i += stride) {
-          tmpV.fromBufferAttribute(pos, i).applyMatrix4(matW);
-          if (Number.isFinite(tmpV.y) && tmpV.y > -200 && tmpV.y < 500) {
-            addGroundSample(tmpV.x, tmpV.z, tmpV.y, false);
-            allMeshYs.push(tmpV.y);
-          }
-        }
-      });
-    }
-
-    allMeshYs.sort((a, b) => a - b);
-    const minScanY = allMeshYs.length > 0 ? allMeshYs[Math.floor(allMeshYs.length * 0.03)] : -3.5;
-    const medianScanY = allMeshYs.length > 0 ? allMeshYs[Math.floor(allMeshYs.length * 0.45)] : 0.2;
-
-    let roadRefY = medianScanY;
-    const centerGroundH = Number(
-      payload?.ground_reference_h ??
-        payload?.center?.ground_h ??
-        payload?.center?.h ??
-        UTILS_STATE.groundReferenceH ??
-        UTILS_STATE.lastCenter?.ground_h ??
-        UTILS_STATE.lastCenter?.h
-    );
+    const baseCenterRefY = Number.isFinite(centerGroundH) && centerGroundH > -100 ? centerGroundH - originH : NaN;
+    let roadRefY = Number.isFinite(baseCenterRefY) ? baseCenterRefY : 0.0;
     if (roadSamplesY.length > 0) {
       const sortedRoad = roadSamplesY.slice().sort((a, b) => a - b);
-      roadRefY = sortedRoad[Math.floor(sortedRoad.length * 0.5)];
+      const p60RoadY = sortedRoad[Math.min(sortedRoad.length - 1, Math.floor(sortedRoad.length * 0.6))];
+      roadRefY = Number.isFinite(baseCenterRefY) ? Math.max(baseCenterRefY, p60RoadY) : p60RoadY;
     } else if (Number.isFinite(primaryRoadY)) {
-      roadRefY = primaryRoadY;
-    } else if (Number.isFinite(centerGroundH) && centerGroundH > -100) {
-      roadRefY = centerGroundH - originTwd.h;
-    }
-
-    // If no explicit categorized road anchors yet, promote cells near roadRefY as road anchors (excluding deep river gorges)
-    if (roadAnchorPts.length < 8 && cellMinY.size > 0) {
-      cellMinY.forEach((ly, key) => {
-        if (ly >= roadRefY - 1.2 && ly <= roadRefY + 2.5 && roadAnchorPts.length < 500) {
-          const parts = key.split("_");
-          roadAnchorPts.push({
-            x: (Number(parts[0]) + 0.5) * cellSize,
-            z: (Number(parts[1]) + 0.5) * cellSize,
-            y: ly,
-          });
-        }
-      });
+      roadRefY = Number.isFinite(baseCenterRefY) ? Math.max(baseCenterRefY, primaryRoadY) : primaryRoadY;
     }
 
     const waterRefY =
       waterSamplesY.length > 0
-        ? Math.max(minScanY + 0.15, waterSamplesY.reduce((a, b) => a + b, 0) / waterSamplesY.length)
-        : Math.max(minScanY + 0.15, roadRefY - 1.4);
+        ? waterSamplesY.reduce((a, b) => a + b, 0) / waterSamplesY.length
+        : roadRefY - 1.2;
 
-    function estimateLocalRoadY(lx, lz, fallbackGroundH) {
-      let anchorY = NaN;
-      let minD2 = Infinity;
+    const sampler = function sampleLocalGroundY(lx, lz, fallbackGroundH, opts) {
+      const isOpenChannel = Boolean(opts && opts.isOpenChannel);
+      const fbH = Number(fallbackGroundH);
+      const hasValidFb = Number.isFinite(fbH) && fbH > -100;
+      const fbLocalY = hasValidFb ? fbH - originH : NaN;
+
+      if (isOpenChannel) {
+        if (Number.isFinite(fbLocalY)) {
+          return Math.max(waterRefY - 0.35, Math.min(roadRefY + 0.6, fbLocalY));
+        }
+        return Math.max(roadRefY - 0.85, waterRefY);
+      }
+
+      // Street utilities: anchor deterministically to street grade (never dragged down by sunken park bowls)
+      const safeFbY = Number.isFinite(fbLocalY) ? Math.max(roadRefY - 0.65, fbLocalY) : roadRefY;
       if (roadAnchorPts.length > 0) {
         let wSum = 0.0;
         let wySum = 0.0;
+        let minD2 = Infinity;
         for (let i = 0; i < roadAnchorPts.length; i++) {
           const p = roadAnchorPts[i];
           const d2 = (p.x - lx) * (p.x - lx) + (p.z - lz) * (p.z - lz);
-          if (d2 < minD2) {
-            minD2 = d2;
-          }
-          if (d2 <= 4225.0) {
-            const w = 1.0 / (d2 + 12.0);
+          if (d2 < minD2) minD2 = d2;
+          if (d2 <= 3600.0) {
+            const w = 1.0 / (d2 + 16.0);
             wSum += w;
             wySum += w * p.y;
           }
         }
         if (wSum > 0) {
-          anchorY = wySum / wSum;
-        }
-      }
-
-      const fbH = Number(fallbackGroundH);
-      const hasValidFb = Number.isFinite(fbH) && fbH > -100;
-      const fbLocalY = hasValidFb ? fbH - originTwd.h : NaN;
-      const safeFbY = Number.isFinite(fbLocalY) ? Math.max(roadRefY - 1.2, fbLocalY) : NaN;
-
-      if (Number.isFinite(anchorY) && Number.isFinite(safeFbY)) {
-        const distM = Math.sqrt(minD2);
-        const anchorAlpha = Math.max(0.25, Math.min(0.85, 1.0 - Math.max(0.0, distM - 12.0) / 55.0));
-        return anchorAlpha * anchorY + (1.0 - anchorAlpha) * safeFbY;
-      }
-      if (Number.isFinite(anchorY)) return anchorY;
-      if (Number.isFinite(safeFbY)) return safeFbY;
-      return roadRefY;
-    }
-
-    const sampler = function sampleLocalGroundY(lx, lz, fallbackGroundH, opts) {
-      const isOpenChannel = Boolean(opts && opts.isOpenChannel);
-      const gx = Math.floor(lx / cellSize);
-      const gz = Math.floor(lz / cellSize);
-      const localRoadY = estimateLocalRoadY(lx, lz, fallbackGroundH);
-
-      if (isOpenChannel) {
-        // Open surface stream/river channel: follow bare-earth channel/park grade smoothly without artificial downward cliffs
-        let minStreamY = Infinity;
-        for (let dx = -1; dx <= 1; dx++) {
-          for (let dz = -1; dz <= 1; dz++) {
-            const val = cellMinY.get(`${gx + dx}_${gz + dz}`);
-            if (val !== undefined && val < minStreamY) minStreamY = val;
+          const anchorY = wySum / wSum;
+          if (anchorY > safeFbY) {
+            const distM = Math.sqrt(minD2);
+            const alpha = Math.max(0.0, Math.min(0.5, 1.0 - Math.max(0.0, distM - 10.0) / 50.0));
+            return alpha * anchorY + (1.0 - alpha) * safeFbY;
           }
         }
-        if (Number.isFinite(minStreamY)) {
-          let hoodFloorY = minStreamY;
-          for (let dx = -4; dx <= 4; dx++) {
-            for (let dz = -4; dz <= 4; dz++) {
-              const val = cellMinY.get(`${gx + dx}_${gz + dz}`);
-              if (val !== undefined && val < hoodFloorY) hoodFloorY = val;
-            }
-          }
-          const canopyRejectedStreamY = Math.min(minStreamY, hoodFloorY + 1.4);
-          return Math.max(Math.max(minScanY + 0.25, localRoadY - 2.3), Math.min(localRoadY + 1.2, canopyRejectedStreamY));
-        }
-        return Math.max(localRoadY - 0.85, waterRefY);
       }
-
-      // Check immediate 4-connected neighborhood in 2m grid; reject isolated tree canopies using 10m bare-earth floor
-      // while allowing real hillside roads (up to localRoadY + 6.5m) and preventing bridge pipes from plunging into river gorges
-      const offsets = [
-        [0, 0],
-        [-1, 0],
-        [1, 0],
-        [0, -1],
-        [0, 1],
-      ];
-      let bestCellY = Infinity;
-      for (let i = 0; i < offsets.length; i++) {
-        const val = cellMinY.get(`${gx + offsets[i][0]}_${gz + offsets[i][1]}`);
-        if (val !== undefined && val < bestCellY) {
-          bestCellY = val;
-        }
-      }
-      if (Number.isFinite(bestCellY)) {
-        let hoodMinY = bestCellY;
-        for (let dx = -4; dx <= 4; dx += 2) {
-          for (let dz = -4; dz <= 4; dz += 2) {
-            const val = cellMinY.get(`${gx + dx}_${gz + dz}`);
-            if (val !== undefined && val < hoodMinY) hoodMinY = val;
-          }
-        }
-        const bareEarthCellY = Math.min(bestCellY, hoodMinY + 1.8);
-        return Math.max(localRoadY - 0.85, Math.min(localRoadY + 6.5, bareEarthCellY));
-      }
-
-      return localRoadY;
+      return safeFbY;
     };
 
     UTILS_STATE.groundGridCache = {
       scanId: currentScanId,
-      meshCount: meshes ? meshes.length : 0,
+      originH: originH,
+      groundRefH: centerGroundH,
       catCount: catCount,
       sampler: sampler,
     };
@@ -1925,7 +1828,8 @@
     }
 
     const zOffsetM = Number(UTILS_STATE.verticalOffsetM) || 0.0;
-    const originTwd = typeof localToTwd97 === "function" ? localToTwd97({ x: 0, y: 0, z: 0 }) : { e: 0, n: 0, h: 0 };
+    const originTwd = resolveUtilitiesOriginTwd97();
+    UTILS_STATE.lastRenderedOriginH = Number(originTwd?.h) || 0;
     const sampleLocalGroundY = createCanopyRejectingGroundSampler(payload, originTwd);
     const tpl = getUnitGeometryTemplates();
 
