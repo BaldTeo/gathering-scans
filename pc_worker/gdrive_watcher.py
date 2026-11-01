@@ -1957,8 +1957,10 @@ def _discover_folder_scan_item(
         crs_val = "LOCAL_ORIGIN"
 
     is_gaussian_splat = bool(meta.get("is_gaussian_splat"))
+    has_gaussian_splat_layer = bool(meta.get("has_gaussian_splat_layer") or is_gaussian_splat)
     splat_count = int(meta.get("splat_count") or 0)
     gaussian_splat_uri = str(meta.get("gaussian_splat_uri") or "")
+    gaussian_splat_origin = meta.get("gaussian_splat_origin")
     if tileset_path and tileset_path.lower().endswith(".json") and os.path.isfile(tileset_path):
         try:
             with open(tileset_path, "r", encoding="utf-8") as tsf:
@@ -1966,8 +1968,14 @@ def _discover_folder_scan_item(
             ts_extras = ts_doc_peek.get("extras") or {}
             if ts_extras.get("is_gaussian_splat"):
                 is_gaussian_splat = True
+                has_gaussian_splat_layer = True
+            if ts_extras.get("has_gaussian_splat_layer") or ts_extras.get("gaussian_splat_uri"):
+                has_gaussian_splat_layer = True
+            if has_gaussian_splat_layer:
                 splat_count = int(ts_extras.get("splat_count") or splat_count or 0)
-                gaussian_splat_uri = str(ts_extras.get("gaussian_splat_uri") or "tiles/splats.gsplat")
+                gaussian_splat_uri = str(ts_extras.get("gaussian_splat_uri") or gaussian_splat_uri or "tiles/splats.gsplat")
+                if isinstance(ts_extras.get("gaussian_splat_origin"), list):
+                    gaussian_splat_origin = ts_extras["gaussian_splat_origin"]
         except Exception:
             pass
 
@@ -2110,8 +2118,10 @@ def _discover_folder_scan_item(
         "group_type": group_type,
         "user_edited_project": user_edited_project,
         "is_gaussian_splat": is_gaussian_splat,
+        "has_gaussian_splat_layer": has_gaussian_splat_layer,
         "splat_count": splat_count,
         "gaussian_splat_uri": gaussian_splat_uri,
+        "gaussian_splat_origin": gaussian_splat_origin if isinstance(gaussian_splat_origin, list) else None,
         "capture_date": meta.get("capture_date") or _infer_capture_date_from_name(folder_name, stat.st_mtime),
         "uploaded_at": float(meta.get("uploaded_at", stat.st_mtime)),
         "uploader_email": resolved_uploader_email,

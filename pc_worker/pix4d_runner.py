@@ -103,6 +103,10 @@ def _new_log_parse_state() -> Dict[str, Any]:
         "report_done": False,
         "export_obj_running": False,
         "export_obj_done": False,
+        "gsplat_running": False,
+        "gsplat_done": False,
+        "export_gsplat_running": False,
+        "export_gsplat_done": False,
         "last_bracket_stage": "",
         "last_log_cpu_ram": "",
     }
@@ -299,12 +303,27 @@ def _feed_log_line(st: Dict[str, Any], ln: str) -> None:
             st["current_tile_subaction_en"] = f"Tile {k_cur}/{n_tot} · Writing LOD tree (Level {lvl})"
             st["current_tile_subaction_zh"] = f"分塊 {k_cur}/{n_tot}：寫入 LOD 階層 (Level {lvl})"
 
+    # 3B. Optional 3D Gaussian Splatting milestones
+    if "[Generate Gaussian splats]" in ln or "[Gaussian splats]" in ln:
+        st["calib_done"] = True
+        st["gsplat_running"] = True
+        st["current_tile_subaction_en"] = "Training 3D Gaussian Splats (3DGS)"
+        st["current_tile_subaction_zh"] = "計算 3D 高斯潑濺模型 (3DGS)"
+        if "] Finished" in ln:
+            st["gsplat_done"] = True
+
     # 4. PIX4D Export & Quality Report milestones
     if "[Export quality report]" in ln:
         st["mesh_done"] = True
         st["report_running"] = True
         if "] Finished" in ln:
             st["report_done"] = True
+    if "[Export Gaussian splats" in ln:
+        st["mesh_done"] = True
+        st["gsplat_done"] = True
+        st["export_gsplat_running"] = True
+        if "] Finished" in ln:
+            st["export_gsplat_done"] = True
     if "[Export mesh to .obj]" in ln:
         st["mesh_done"] = True
         st["export_obj_running"] = True
@@ -1060,6 +1079,10 @@ def generate_pix4dmatic_gst_script(
     deghosting = cfg["deghosting"]
     export_lod = int(cfg["export_lod"])
     skyless_str = "true" if skyless else "false"
+    compute_gsplats = bool(cfg.get("compute_gaussian_splats", False)) and (str(pipeline_pass).strip().lower() != "preview")
+    gsplat_template = str(cfg.get("gaussian_splats_template", "Catch"))
+    if gsplat_template not in ("Catch", "Nadir", "Oblique", "Mixed"):
+        gsplat_template = "Catch"
 
     # Resolve Adaptive Calibration ImageScale (Option C)
     calib_image_scale = str(cfg.get("calib_image_scale", "Full"))
@@ -1230,15 +1253,39 @@ def generate_pix4dmatic_gst_script(
         mesh_cloud_input = "FusedPointCloud{ }"
         report_cloud_inputs = "DensePointCloud{ },DepthPointCloud{ },FusedPointCloud{ }"
 
+    gsplat_generate_step = ""
+    gsplat_export_step = ""
+    if compute_gsplats:
+        try:
+            os.makedirs(os.path.join(export_dir, "gaussian_splats"), exist_ok=True)
+        except Exception:
+            pass
+        gsplat_ply_path = f"{exp_clean}/gaussian_splats/splats.ply"
+        gsplat_generate_step = f"""
+            GenerateGaussianSplats {{
+                settings.gaussianSplatsTemplate : GaussianSplatsTemplate.{gsplat_template}
+                settings.maskAware : false
+                settings.skyless : {skyless_str}
+                inputs : [CalibratedCameras{{ }},SparsePointCloud{{ }}{sky_token}{mesh_roi_token}]
+                outputs : [GaussianSplats{{ }}]
+            }}"""
+        gsplat_export_step = f"""
+            ExportGaussianSplatsToPly {{
+                path : "{gsplat_ply_path}"
+                inputs : [GaussianSplats{{ }}]
+            }}"""
+
+    has_gsplat_for_report = bool(primary_opf_path or compute_gsplats)
+
     gst_content = f"""Session {{
     Project {{
         folder : "{proj_folder_clean}"
         name : "{proj_name}"
 
 {imports_joined}        // Photogrammetry & Mesh Pipeline (PIX4Dmatic 2.11.0 CommandGraph, pass={pipeline_pass}, calibScale={calib_image_scale})
-        // Defaults: MeshPipeline.{mesh_pipeline}, skyless={skyless_str}, use_roi={str(use_roi).lower()}, textureSize={tex_size}, exportLod={export_lod}
+        // Defaults: MeshPipeline.{mesh_pipeline}, skyless={skyless_str}, use_roi={str(use_roi).lower()}, textureSize={tex_size}, exportLod={export_lod}, 3DGS={str(compute_gsplats).lower()}({gsplat_template})
         CommandGraph {{
-{calib_step}{sky_masks_step}{point_cloud_steps}
+{calib_step}{sky_masks_step}{point_cloud_steps}{gsplat_generate_step}
             GenerateScalableMesh {{
                 settings.deghosting : Deghosting.{deghosting}
                 settings.generatePlanes : false
@@ -1258,7 +1305,7 @@ def generate_pix4dmatic_gst_script(
                 settings.reportExportFormat : ReportExportFormat.Pdf
                 settings.temperatureUnit : TemperatureUnit.Celsius
                 settings.thermalColorMap : ColorMap.Inferno
-                inputs : [CalibratedCameras{{ }},SparsePointCloud{{ }},TiePointSet{{ }},IntersectionTiePointSet{{ }}{",GaussianSplats{ }" if primary_opf_path else ""},{report_cloud_inputs},Mesh{{ }}]
+                inputs : [CalibratedCameras{{ }},SparsePointCloud{{ }},TiePointSet{{ }},IntersectionTiePointSet{{ }}{",GaussianSplats{ }" if has_gsplat_for_report else ""},{report_cloud_inputs},Mesh{{ }}]
             }}
             ExportMeshToObj {{
                 folder : "{obj_mesh_folder}"
@@ -1266,7 +1313,7 @@ def generate_pix4dmatic_gst_script(
                 settings.exportLod : {export_lod}
                 settings.exportSrs : ExportSrs.Scene
                 inputs : [Mesh{{ }}]
-            }}
+            }}{gsplat_export_step}
         }}
         SaveProject {{ }}
     }}
@@ -1274,6 +1321,69 @@ def generate_pix4dmatic_gst_script(
 }}
 """
     return gst_content
+
+
+def _attach_exported_gaussian_splats_if_present(
+    scan_id: str,
+    proj_dir: str,
+    tileset_json_path: str,
+    progress_callback: Optional[Callable[[float, str], None]] = None,
+) -> Optional[Dict[str, Any]]:
+    """
+    Checks if PIX4Dmatic exported a 3D Gaussian Splat `.ply` (`exports/gaussian_splats/*.ply`)
+    and converts it into `tileset/tiles/splats.gsplat` (aligned with `offset.xyz` and `tileset.json`).
+    """
+    if not proj_dir or not os.path.isdir(proj_dir) or not tileset_json_path or not os.path.isfile(tileset_json_path):
+        return None
+    gs_dir = os.path.join(proj_dir, "exports", "gaussian_splats")
+    if not os.path.isdir(gs_dir):
+        return None
+    ply_cands = []
+    for root, _, files in os.walk(gs_dir):
+        for fn in sorted(files):
+            if fn.lower().endswith((".ply", ".splat")):
+                fp = os.path.join(root, fn)
+                try:
+                    if os.path.getsize(fp) > 256:
+                        ply_cands.append((os.path.getmtime(fp), fp))
+                except OSError:
+                    pass
+    if not ply_cands:
+        return None
+    ply_cands.sort(key=lambda x: x[0], reverse=True)
+    ply_fp = ply_cands[0][1]
+
+    cfg = load_pix4d_settings()
+    meta_fp = os.path.join(proj_dir, "scan_meta.json")
+    if os.path.isfile(meta_fp):
+        try:
+            with open(meta_fp, "r", encoding="utf-8") as mf:
+                m_obj = json.load(mf)
+            if isinstance(m_obj, dict) and isinstance(m_obj.get("pix4d_settings"), dict):
+                cfg = load_pix4d_settings_from_dict(m_obj["pix4d_settings"])
+        except Exception:
+            pass
+
+    max_millions = float(cfg.get("gaussian_splats_max_millions", 2.0) or 2.0)
+    max_splats = int(round(max(0.25, min(8.0, max_millions)) * 1_000_000))
+    cleanup_raw = bool(cfg.get("cleanup_raw_splat_ply", True))
+
+    if progress_callback:
+        progress_callback(97.2, f"Website Processing (78%): Packing 3D Gaussian Splats (.gsplat, max {max_millions:.1f}M)...")
+    try:
+        from pc_worker.gaussian_splat_builder import attach_gaussian_splat_layer_to_tileset
+
+        return attach_gaussian_splat_layer_to_tileset(
+            scan_id=scan_id,
+            folder_path=proj_dir,
+            ply_path=ply_fp,
+            tileset_json_path=tileset_json_path,
+            max_splats=max_splats,
+            cleanup_raw_ply=cleanup_raw,
+        )
+    except Exception as ge:
+        print(f"[PIX4DRunner] Warning attaching Gaussian Splat layer for {scan_id}: {ge}")
+        return None
 
 
 def postprocess_obj_to_tileset(
@@ -1521,6 +1631,12 @@ def postprocess_obj_to_tileset(
             )
             native_ts = str((native_res or {}).get("tileset_path") or "")
             if native_ts and os.path.isfile(native_ts):
+                gs_attached = _attach_exported_gaussian_splats_if_present(
+                    scan_id=scan_id,
+                    proj_dir=proj_dir,
+                    tileset_json_path=native_ts,
+                    progress_callback=progress_callback,
+                )
                 try:
                     backup_dir = os.path.join(proj_dir, "tileset_backup")
                     if os.path.isdir(backup_dir):
@@ -1528,6 +1644,15 @@ def postprocess_obj_to_tileset(
                     shutil.copytree(os.path.dirname(native_ts), backup_dir)
                 except Exception as bk_err:
                     print(f"[PIX4DRunner] Warning creating tileset_backup for {scan_id}: {bk_err}")
+                if gs_attached:
+                    try:
+                        from pc_worker.gdrive_cloud_sync import build_scan_3tz_package
+                        build_scan_3tz_package(
+                            {"scan_id": scan_id, "tileset_path": native_ts, "project_dir": proj_dir},
+                            force=True,
+                        )
+                    except Exception as e_3tz:
+                        print(f"[PIX4DRunner] Warning rebuilding .3tz with 3DGS layer for {scan_id}: {e_3tz}")
                 for dsm_cache in glob.glob(os.path.join(proj_dir, "_dsm_cache_*.npz")):
                     try:
                         os.remove(dsm_cache)
@@ -1689,6 +1814,14 @@ def postprocess_obj_to_tileset(
                     pass
             tileset_dir = final_tileset_dir
             ts_candidate = os.path.join(final_tileset_dir, "tileset.json")
+
+        # Attach optional PIX4Dmatic 3D Gaussian Splat (.gsplat) layer before backup and .3tz packaging
+        _attach_exported_gaussian_splats_if_present(
+            scan_id=scan_id,
+            proj_dir=proj_dir,
+            tileset_json_path=ts_candidate,
+            progress_callback=progress_callback,
+        )
 
         # Save a pristine backup of the freshly generated tileset so mesh edits can always be undone/restored
         try:
@@ -2744,6 +2877,22 @@ def run_pix4dmatic_pipeline(
                 progress_callback=progress_callback,
             )
             tileset_path = str((native_res or {}).get("tileset_path") or "")
+            if tileset_path and os.path.isfile(tileset_path):
+                gs_attached = _attach_exported_gaussian_splats_if_present(
+                    scan_id=scan_id,
+                    proj_dir=proj_dir,
+                    tileset_json_path=tileset_path,
+                    progress_callback=progress_callback,
+                )
+                if gs_attached:
+                    try:
+                        from pc_worker.gdrive_cloud_sync import build_scan_3tz_package
+                        build_scan_3tz_package(
+                            {"scan_id": scan_id, "tileset_path": tileset_path, "project_dir": proj_dir},
+                            force=True,
+                        )
+                    except Exception:
+                        pass
         except Exception as nat_e:
             print(f"[PIX4DRunner] Native octree fallback error for {scan_id}: {nat_e}")
     elif os.path.isdir(prev_obj_dir) and not os.path.isdir(old_obj_dir):

@@ -18,8 +18,8 @@
   <meta name="twitter:image" content="https://scans.gatheren.cloud/assets/gathering_cloud_logo.png" />
   <!-- GS_SHARE_OG_END -->
   <link rel="icon" type="image/png" href="/assets/gathering_cloud_logo.png" />
-  <link rel="stylesheet" href="/app.css?v=20261102_v290" />
-  <link rel="stylesheet" href="/survey-bim.css?v=20261102_v290" />
+  <link rel="stylesheet" href="/app.css?v=20261102_v291" />
+  <link rel="stylesheet" href="/survey-bim.css?v=20261102_v291" />
   <script src="https://accounts.google.com/gsi/client" async defer></script>
 
 </head>
@@ -676,6 +676,11 @@
             <button type="button" class="btn-seg active" data-lod-mode="auto" title="自動漸進 (L0→L1→L2 依鏡頭距離自動細化)" data-i18n-zh="自動" data-i18n-en="Auto" data-i18n-title-zh="自動漸進 (L0→L1→L2 依鏡頭距離自動細化)" data-i18n-title-en="Auto Progressive (L0→L1→L2 by Camera Distance)">自動</button>
             <button type="button" class="btn-seg" data-lod-mode="max" title="精細 (強制載入 L2 最高解析度圖磚)" data-i18n-zh="精細" data-i18n-en="Max" data-i18n-title-zh="精細 (強制載入 L2 最高解析度圖磚)" data-i18n-title-en="Max Detail (Force L2 High-Res Tiles)">精細</button>
           </div>
+
+          <button type="button" class="btn-xs" id="btnStudioToggle3dgsMode" aria-pressed="false" title="切換 3D 高斯潑濺 (3DGS) 照片級實景顯示與 3D 紋理網格（保留 1mm 網格量測）" data-i18n-title-zh="切換 3D 高斯潑濺 (3DGS) 照片級實景顯示與 3D 紋理網格（保留 1mm 網格量測）" data-i18n-title-en="Toggle Photorealistic 3D Gaussian Splats (3DGS) vs. 3D Textured Mesh (1mm Mesh Raycasting Active)" style="display:none;gap:4px;white-space:nowrap;flex-shrink:0;">
+            <span style="font-size:11px;">✨</span>
+            <span id="lblStudioToggle3dgsMode" data-i18n-zh="3DGS" data-i18n-en="3DGS">3DGS</span>
+          </button>
 
           <button type="button" class="btn-xs" id="btnStudioAutoRotate" aria-pressed="false" title="切換緩慢自動旋轉" data-i18n-title-zh="切換緩慢自動旋轉" data-i18n-title-en="Toggle Slow Auto-Rotation" style="gap:3px;">
             <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
@@ -1751,6 +1756,7 @@
           <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
             <select class="gs-select" id="selPix4dPresetUser" style="font-size:11px;padding:3px 8px;height:24px;min-width:255px;font-weight:600;border-color:var(--ui-accent);" title="選擇建模預設組" data-i18n-title-zh="選擇建模預設組" data-i18n-title-en="Select Pipeline Preset">
               <option value="gatheringcloud" selected data-i18n-zh="GatheringCloud 最佳預設 (Scalable + 16K + 1x 原圖點雲 + L0/L1/L2 .3tz)" data-i18n-en="GatheringCloud Optimal (Scalable + 16K + 1x Full Dense + L0/L1/L2 .3tz)">GatheringCloud 最佳預設 (Scalable + 16K + 1x 原圖點雲 + L0/L1/L2 .3tz)</option>
+              <option value="gatheringcloud_3dgs" data-i18n-zh="✨ GatheringCloud 混合實景 (Scalable 16K 網格 + 3DGS 高斯潑濺)" data-i18n-en="✨ GatheringCloud Hybrid 3DGS (Scalable 16K Mesh + 3D Gaussian Splats)">✨ GatheringCloud 混合實景 (Scalable 16K 網格 + 3DGS 高斯潑濺)</option>
               <option value="compact_4k" data-i18n-zh="精簡 4K 單一網格 (FixedSize + 4K + LOD 13)" data-i18n-en="Compact 4K Single-Mesh (FixedSize + 4K + LOD 13)">精簡 4K 單一網格 (FixedSize + 4K + LOD 13)</option>
               <option value="fast_field" data-i18n-zh="快速外業預覽 (2K + 適度簡化 + LOD 12)" data-i18n-en="Fast Field Preview (2K + Moderate + LOD 12)">快速外業預覽 (2K + 適度簡化 + LOD 12)</option>
               <option value="archival_8k" data-i18n-zh="超高解析度典藏版 (8K + 多分塊 + LOD 15)" data-i18n-en="Ultra Archival Multi-Tile (8K + Scalable + LOD 15)">超高解析度典藏版 (8K + 多分塊 + LOD 15)</option>
@@ -1806,6 +1812,27 @@
             <input type="checkbox" id="chkPix4dUseRoiUser" style="accent-color:#0284c7;width:14px;height:14px;" />
             <span><b><span data-i18n-zh="OPF 興趣區域裁切" data-i18n-en="OPF ROI Clip">OPF 興趣區域裁切</span> (<code>RoiSet</code>)</b> — <span style="color:var(--ui-text-secondary);" data-i18n-zh="關閉可保留完整掃描範圍" data-i18n-en="OFF keeps full extent">關閉可保留完整掃描範圍</span></span>
           </label>
+        </div>
+        <!-- Optional 3D Gaussian Splatting (3DGS) Computation Row -->
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-top:8px;padding:8px 10px;background:var(--ui-bg-surface);border:1px solid var(--ui-border-strong);border-radius:8px;">
+          <label style="display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--ui-text-primary);cursor:pointer;">
+            <input type="checkbox" id="chkPix4dGaussianSplatsUser" style="accent-color:#0284c7;width:14px;height:14px;" />
+            <span><b>✨ <span data-i18n-zh="同時計算 3D 高斯潑濺實景 (Compute 3D Gaussian Splats · 3DGS)" data-i18n-en="Compute 3D Gaussian Splats (3DGS Hybrid Layer)">同時計算 3D 高斯潑濺實景 (Compute 3D Gaussian Splats · 3DGS)</span></b> — <span style="color:var(--ui-text-secondary);font-size:11px;" data-i18n-zh="支援細管線、鋼筋、反光門片與精細文字；網頁端 .gsplat 僅約 32–64 MB" data-i18n-en="Crisp rebar, conduits, signs &amp; reflections; web .gsplat adds only ~32–64 MB">支援細管線、鋼筋、反光門片與精細文字；網頁端 .gsplat 僅約 32–64 MB</span></span>
+          </label>
+          <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+            <select class="gs-select" id="selPix4dGaussianTemplateUser" style="font-size:11px;padding:3px 6px;height:24px;" title="PIX4Dmatic 2.11.0 高斯潑濺範本" data-i18n-title-zh="PIX4Dmatic 2.11.0 高斯潑濺範本" data-i18n-title-en="PIX4Dmatic 2.11.0 Gaussian Splats Template">
+              <option value="Catch" selected data-i18n-zh="Catch 範本 (地面手持 / LiDAR)" data-i18n-en="Template: Catch (Terrestrial / LiDAR)">Catch 範本 (地面手持 / LiDAR)</option>
+              <option value="Oblique" data-i18n-zh="Oblique 範本 (傾斜空拍)" data-i18n-en="Template: Oblique (Drone Oblique)">Oblique 範本 (傾斜空拍)</option>
+              <option value="Nadir" data-i18n-zh="Nadir 範本 (正射空拍)" data-i18n-en="Template: Nadir (Drone Nadir)">Nadir 範本 (正射空拍)</option>
+              <option value="Mixed" data-i18n-zh="Mixed 範本 (空地混合)" data-i18n-en="Template: Mixed (Aerial + Ground)">Mixed 範本 (空地混合)</option>
+            </select>
+            <select class="gs-select" id="selPix4dGaussianMaxMillionsUser" style="font-size:11px;padding:3px 6px;height:24px;" title="網頁端 .gsplat 點數上限與容量 (32 bytes / splat)" data-i18n-title-zh="網頁端 .gsplat 點數上限與容量 (32 bytes / splat)" data-i18n-title-en="Web .gsplat Max Splats &amp; Storage Budget (32 bytes / splat)">
+              <option value="1.0" data-i18n-zh="上限 100 萬點 (~32 MB)" data-i18n-en="Max 1.0M Splats (~32 MB)">上限 100 萬點 (~32 MB)</option>
+              <option value="2.0" selected data-i18n-zh="上限 200 萬點 (~64 MB 推薦)" data-i18n-en="Max 2.0M Splats (~64 MB Recommended)">上限 200 萬點 (~64 MB 推薦)</option>
+              <option value="3.0" data-i18n-zh="上限 300 萬點 (~96 MB)" data-i18n-en="Max 3.0M Splats (~96 MB)">上限 300 萬點 (~96 MB)</option>
+              <option value="5.0" data-i18n-zh="上限 500 萬點 (~160 MB)" data-i18n-en="Max 5.0M Splats (~160 MB)">上限 500 萬點 (~160 MB)</option>
+            </select>
+          </div>
         </div>
       </div>
 
@@ -2373,6 +2400,18 @@
             <input type="checkbox" id="rerunChkRunImmediately" style="accent-color:#0284c7;" />
             <span data-i18n-zh="立即啟動 PIX4Dmatic" data-i18n-en="Launch PIX4Dmatic Immediately">立即啟動 PIX4Dmatic</span>
           </label>
+          <div style="display:flex;align-items:center;gap:6px;width:100%;padding-top:6px;border-top:1px dashed var(--ui-border);">
+            <label style="display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--ui-text-primary);cursor:pointer;flex:1;">
+              <input type="checkbox" id="rerunChkGaussianSplats" style="accent-color:#0284c7;" />
+              <span><b>✨ <span data-i18n-zh="同時計算 3D 高斯潑濺 (Compute 3D Gaussian Splats · 3DGS)" data-i18n-en="Compute 3D Gaussian Splats (3DGS Hybrid Layer)">同時計算 3D 高斯潑濺 (Compute 3D Gaussian Splats · 3DGS)</span></b> · <span style="font-size:11px;color:var(--ui-text-secondary);" data-i18n-zh="產生 splats.gsplat (~32–64 MB) 並支援 Studio 一鍵切換" data-i18n-en="Builds splats.gsplat (~32–64 MB) with 1-click Studio toggle">產生 splats.gsplat (~32–64 MB) 並支援 Studio 一鍵切換</span></span>
+            </label>
+            <select class="gs-select" id="rerunSelGaussianTemplate" style="width:165px;height:24px;font-size:11px;padding:2px 6px;">
+              <option value="Catch" selected data-i18n-zh="3DGS 範本：Catch (地面)" data-i18n-en="3DGS: Catch (Ground)">3DGS 範本：Catch (地面)</option>
+              <option value="Oblique" data-i18n-zh="3DGS 範本：Oblique (傾斜)" data-i18n-en="3DGS: Oblique">3DGS 範本：Oblique (傾斜)</option>
+              <option value="Nadir" data-i18n-zh="3DGS 範本：Nadir (正射)" data-i18n-en="3DGS: Nadir">3DGS 範本：Nadir (正射)</option>
+              <option value="Mixed" data-i18n-zh="3DGS 範本：Mixed (混合)" data-i18n-en="3DGS: Mixed">3DGS 範本：Mixed (混合)</option>
+            </select>
+          </div>
         </div>
 
         <div>
@@ -2497,24 +2536,24 @@
   <!-- Three.js + 3D Tileset / KTX2 / Meshopt Libraries -->
   <script src="/lib/three.min.js"></script>
   <script src="/lib/OrbitControls.js?v=20261029_v48"></script>
-  <script src="/lib/GLTFLoader.js?v=20261102_v290"></script>
+  <script src="/lib/GLTFLoader.js?v=20261102_v291"></script>
   <script src="/lib/KTX2Loader.js"></script>
   <script src="/lib/meshopt_decoder.js"></script>
-  <script src="/lib/3d-tiles-renderer.bundle.js?v=20261102_v290"></script>
+  <script src="/lib/3d-tiles-renderer.bundle.js?v=20261102_v291"></script>
 
   <!-- Main GatheringScans Bilingual Translation & Modular Application Logic (< 5,000 lines per module) -->
-  <script src="/i18n.js?v=20261102_v290"></script>
-  <script src="/src/01-core-state.js?v=20261102_v290"></script>
-  <script src="/src/02-map-and-timeline.js?v=20261102_v290"></script>
-  <script src="/src/03-studio-core.js?v=20261102_v290"></script>
-  <script src="/src/04-studio-lasso-and-edits.js?v=20261102_v290"></script>
-  <script src="/src/05-studio-civil-inspectors.js?v=20261102_v290"></script>
-  <script src="/src/06-studio-align-and-optimizer.js?v=20261102_v290"></script>
-  <script src="/src/07-compare-and-queue.js?v=20261102_v290"></script>
-  <script src="/src/08-advanced-surveying-and-qa.js?v=20261102_v290"></script>
-  <script src="/src/09-construction-survey-and-bim.js?v=20261102_v290"></script>
-  <script src="/src/10-construction-qa-and-stakeout.js?v=20261102_v290"></script>
-  <script src="/src/12-public-utilities-gis.js?v=20261102_v290"></script>
-  <script src="/app.js?v=20261102_v290"></script>
+  <script src="/i18n.js?v=20261102_v291"></script>
+  <script src="/src/01-core-state.js?v=20261102_v291"></script>
+  <script src="/src/02-map-and-timeline.js?v=20261102_v291"></script>
+  <script src="/src/03-studio-core.js?v=20261102_v291"></script>
+  <script src="/src/04-studio-lasso-and-edits.js?v=20261102_v291"></script>
+  <script src="/src/05-studio-civil-inspectors.js?v=20261102_v291"></script>
+  <script src="/src/06-studio-align-and-optimizer.js?v=20261102_v291"></script>
+  <script src="/src/07-compare-and-queue.js?v=20261102_v291"></script>
+  <script src="/src/08-advanced-surveying-and-qa.js?v=20261102_v291"></script>
+  <script src="/src/09-construction-survey-and-bim.js?v=20261102_v291"></script>
+  <script src="/src/10-construction-qa-and-stakeout.js?v=20261102_v291"></script>
+  <script src="/src/12-public-utilities-gis.js?v=20261102_v291"></script>
+  <script src="/app.js?v=20261102_v291"></script>
 </body>
 </html>

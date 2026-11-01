@@ -121,6 +121,10 @@ DEFAULT_PIX4D_SETTINGS = {
     "model_simplification": "Conservative", # "Conservative", "Moderate", or "Aggressive"
     "deghosting": "Weak",                   # "Weak", "Strong", or "Disabled"
     "export_lod": 13,                       # 13 = Full detail LOD export
+    "compute_gaussian_splats": False,       # Optional 3D Gaussian Splatting (GenerateGaussianSplats + ExportGaussianSplatsToPly)
+    "gaussian_splats_template": "Catch",    # "Catch", "Nadir", "Oblique", or "Mixed"
+    "gaussian_splats_max_millions": 2.0,    # Max splats (in millions) packed into web tiles/splats.gsplat (2.0M = 64 MB)
+    "cleanup_raw_splat_ply": True,          # Delete intermediate raw splats.ply after building tiles/splats.gsplat
 }
 
 # Option C — Hybrid Adaptive Pass 1 Fast Preview Settings (~3–6 min preview before Pass 2 16K HQ)
@@ -137,20 +141,14 @@ FAST_PREVIEW_PIX4D_SETTINGS = {
     "model_simplification": "Moderate",
     "deghosting": "Weak",
     "export_lod": 12,
+    "compute_gaussian_splats": False,       # Fast preview never computes 3DGS; Pass 2 Full HQ computes it if enabled
+    "gaussian_splats_template": "Catch",
+    "gaussian_splats_max_millions": 2.0,
+    "cleanup_raw_splat_ply": True,
 }
 
 
-def load_pix4d_settings() -> dict:
-    import json
-    cfg = dict(DEFAULT_PIX4D_SETTINGS)
-    if os.path.isfile(PIX4D_SETTINGS_PATH):
-        try:
-            with open(PIX4D_SETTINGS_PATH, "r", encoding="utf-8") as f:
-                saved = json.load(f)
-            if isinstance(saved, dict):
-                cfg.update(saved)
-        except Exception:
-            pass
+def _normalize_pix4d_settings_dict(cfg: dict) -> dict:
     cfg["mesh_pipeline"] = "FixedSize" if str(cfg.get("mesh_pipeline")) == "FixedSize" else "Scalable"
     cfg["skyless"] = bool(cfg.get("skyless", False))
     cfg["use_roi"] = bool(cfg.get("use_roi", False))
@@ -178,7 +176,29 @@ def load_pix4d_settings() -> dict:
         cfg["export_lod"] = max(0, min(20, int(cfg.get("export_lod", 13))))
     except Exception:
         cfg["export_lod"] = 13
+    cfg["compute_gaussian_splats"] = bool(cfg.get("compute_gaussian_splats", False))
+    gs_tpl = str(cfg.get("gaussian_splats_template", "Catch"))
+    cfg["gaussian_splats_template"] = gs_tpl if gs_tpl in ("Catch", "Nadir", "Oblique", "Mixed") else "Catch"
+    try:
+        cfg["gaussian_splats_max_millions"] = round(max(0.25, min(8.0, float(cfg.get("gaussian_splats_max_millions", 2.0)))), 2)
+    except Exception:
+        cfg["gaussian_splats_max_millions"] = 2.0
+    cfg["cleanup_raw_splat_ply"] = bool(cfg.get("cleanup_raw_splat_ply", True))
     return cfg
+
+
+def load_pix4d_settings() -> dict:
+    import json
+    cfg = dict(DEFAULT_PIX4D_SETTINGS)
+    if os.path.isfile(PIX4D_SETTINGS_PATH):
+        try:
+            with open(PIX4D_SETTINGS_PATH, "r", encoding="utf-8") as f:
+                saved = json.load(f)
+            if isinstance(saved, dict):
+                cfg.update(saved)
+        except Exception:
+            pass
+    return _normalize_pix4d_settings_dict(cfg)
 
 
 def save_pix4d_settings(updates: dict) -> dict:
@@ -199,32 +219,5 @@ def load_pix4d_settings_from_dict(raw: dict) -> dict:
     cfg = dict(DEFAULT_PIX4D_SETTINGS)
     if isinstance(raw, dict):
         cfg.update(raw)
-    cfg["mesh_pipeline"] = "FixedSize" if str(cfg.get("mesh_pipeline")) == "FixedSize" else "Scalable"
-    cfg["skyless"] = bool(cfg.get("skyless", False))
-    cfg["use_roi"] = bool(cfg.get("use_roi", False))
-    try:
-        ts = int(cfg.get("texture_size", 16384))
-        cfg["texture_size"] = ts if ts in (1024, 2048, 4096, 8192, 16384) else 16384
-    except Exception:
-        cfg["texture_size"] = 16384
-    dense_scale = str(cfg.get("dense_image_scale", "Full"))
-    cfg["dense_image_scale"] = dense_scale if dense_scale in ("Full", "Half", "Quarter") else "Full"
-    calib_scale = str(cfg.get("calib_image_scale", "Full"))
-    cfg["calib_image_scale"] = calib_scale if calib_scale in ("Full", "Half", "Quarter", "AutoAdaptive") else "Full"
-    cfg["skip_dense_cloud"] = bool(cfg.get("skip_dense_cloud", False))
-    depth_conf = str(cfg.get("depth_min_confidence", "Medium"))
-    cfg["depth_min_confidence"] = depth_conf if depth_conf in ("High", "Medium", "Low") else "Medium"
-    try:
-        cfg["depth_agreement_m"] = max(0.0005, min(0.5, float(cfg.get("depth_agreement_m", 0.01))))
-    except Exception:
-        cfg["depth_agreement_m"] = 0.01
-    simp = str(cfg.get("model_simplification", "Conservative"))
-    cfg["model_simplification"] = simp if simp in ("Conservative", "Moderate", "Aggressive") else "Conservative"
-    degh = str(cfg.get("deghosting", "Weak"))
-    cfg["deghosting"] = degh if degh in ("Weak", "Strong", "Disabled") else "Weak"
-    try:
-        cfg["export_lod"] = max(0, min(20, int(cfg.get("export_lod", 13))))
-    except Exception:
-        cfg["export_lod"] = 13
-    return cfg
+    return _normalize_pix4d_settings_dict(cfg)
 

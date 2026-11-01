@@ -4044,6 +4044,154 @@ vm.runInContext(fs.readFileSync('./web/src/12-public-utilities-gis.js', 'utf8'),
             self.assertGreaterEqual(float(out["wfBPassPct"]), 99.0)
             self.assertLess(float(out["sCurveRmsMm"]), 3.0)
 
+    def test_32_optional_pix4d_gaussian_splats_and_hybrid_layer(self):
+        """Verify optional PIX4Dmatic 2.11.0 3D Gaussian Splats (.gst generation, hybrid .gsplat attachment, and Studio/Settings UI)."""
+        import json as _json
+        import struct as _struct
+        import tempfile as _tempfile
+        from pc_worker.pix4d_runner import generate_pix4dmatic_gst_script
+        from pc_worker.gaussian_splat_builder import attach_gaussian_splat_layer_to_tileset
+
+        # 1. Verify .gst script generation with compute_gaussian_splats=False vs True vs preview pass
+        gst_off = generate_pix4dmatic_gst_script(
+            project_p4m_path="C:/proj/test.p4m",
+            input_zip_or_folder="C:/proj/inputs",
+            export_dir="C:/proj/exports",
+            pipeline_settings={"compute_gaussian_splats": False},
+        )
+        self.assertNotIn("GenerateGaussianSplats", gst_off)
+        self.assertNotIn("ExportGaussianSplatsToPly", gst_off)
+
+        gst_on = generate_pix4dmatic_gst_script(
+            project_p4m_path="C:/proj/test.p4m",
+            input_zip_or_folder="C:/proj/inputs",
+            export_dir="C:/proj/exports",
+            pipeline_settings={
+                "compute_gaussian_splats": True,
+                "gaussian_splats_template": "Oblique",
+                "skyless": False,
+            },
+        )
+        self.assertIn("GenerateGaussianSplats {", gst_on)
+        self.assertIn("settings.gaussianSplatsTemplate : GaussianSplatsTemplate.Oblique", gst_on)
+        self.assertIn("ExportGaussianSplatsToPly {", gst_on)
+        self.assertIn('path : "C:/proj/exports/gaussian_splats/splats.ply"', gst_on)
+        self.assertIn("GaussianSplats{ }", gst_on)
+
+        gst_preview = generate_pix4dmatic_gst_script(
+            project_p4m_path="C:/proj/test.p4m",
+            input_zip_or_folder="C:/proj/inputs",
+            export_dir="C:/proj/exports",
+            pipeline_settings={"compute_gaussian_splats": True},
+            pipeline_pass="preview",
+        )
+        self.assertNotIn("GenerateGaussianSplats", gst_preview)
+
+        # 2. Verify attach_gaussian_splat_layer_to_tileset on a hybrid mesh tileset with offset.xyz
+        with _tempfile.TemporaryDirectory() as tmpdir:
+            tiles_dir = os.path.join(tmpdir, "tileset", "tiles")
+            exp_gs_dir = os.path.join(tmpdir, "exports", "gaussian_splats")
+            os.makedirs(tiles_dir, exist_ok=True)
+            os.makedirs(exp_gs_dir, exist_ok=True)
+
+            with open(os.path.join(tmpdir, "offset.xyz"), "w", encoding="utf-8") as f:
+                f.write("303150.0 2780990.0 42.0\n")
+
+            ts_path = os.path.join(tmpdir, "tileset", "tileset.json")
+            with open(ts_path, "w", encoding="utf-8") as f:
+                _json.dump(
+                    {
+                        "asset": {"version": "1.1"},
+                        "root": {
+                            "boundingVolume": {
+                                "box": [303150.0, 2780990.0, 42.0, 10.0, 0.0, 0.0, 0.0, 10.0, 0.0, 0.0, 0.0, 5.0]
+                            },
+                            "geometricError": 1.0,
+                            "content": {"uri": "tiles/b0.glb"},
+                        },
+                    },
+                    f,
+                )
+
+            ply_path = os.path.join(exp_gs_dir, "splats.ply")
+            header = (
+                "ply\n"
+                "format binary_little_endian 1.0\n"
+                "element vertex 4\n"
+                "property float x\n"
+                "property float y\n"
+                "property float z\n"
+                "property float f_dc_0\n"
+                "property float f_dc_1\n"
+                "property float f_dc_2\n"
+                "property float opacity\n"
+                "property float scale_0\n"
+                "property float scale_1\n"
+                "property float scale_2\n"
+                "property float rot_0\n"
+                "property float rot_1\n"
+                "property float rot_2\n"
+                "property float rot_3\n"
+                "end_header\n"
+            ).encode("ascii")
+            with open(ply_path, "wb") as pf:
+                pf.write(header)
+                for idx in range(4):
+                    pf.write(
+                        _struct.pack(
+                            "<14f",
+                            float(idx),
+                            float(idx * 0.5),
+                            1.0,
+                            0.2,
+                            0.3,
+                            0.4,
+                            2.5,
+                            -3.5,
+                            -3.5,
+                            -3.5,
+                            1.0,
+                            0.0,
+                            0.0,
+                            0.0,
+                        )
+                    )
+
+            res = attach_gaussian_splat_layer_to_tileset(
+                scan_id="test_hybrid_scan",
+                folder_path=tmpdir,
+                ply_path=ply_path,
+                tileset_json_path=ts_path,
+                max_splats=1000,
+                cleanup_raw_ply=True,
+            )
+            self.assertEqual(res.get("status"), "ok")
+            self.assertEqual(res.get("splat_count"), 4)
+            self.assertFalse(os.path.exists(ply_path))
+            gsplat_bin = os.path.join(tiles_dir, "splats.gsplat")
+            self.assertTrue(os.path.isfile(gsplat_bin))
+            with open(ts_path, "r", encoding="utf-8") as f:
+                ts_after = _json.load(f)
+            self.assertTrue(ts_after.get("extras", {}).get("has_gaussian_splat_layer"))
+            self.assertEqual(ts_after.get("extras", {}).get("gaussian_splat_origin"), [303150.0, 2780990.0, 42.0])
+
+        # 3. Verify frontend UI hooks
+        with open(os.path.join(BASE_DIR, "web", "index.html"), "r", encoding="utf-8") as f:
+            html = f.read()
+        with open(os.path.join(BASE_DIR, "web", "src", "01-core-state.js"), "r", encoding="utf-8") as f:
+            js01 = f.read()
+        with open(os.path.join(BASE_DIR, "web", "src", "02-map-and-timeline.js"), "r", encoding="utf-8") as f:
+            js02 = f.read()
+        with open(os.path.join(BASE_DIR, "web", "src", "07-compare-and-queue.js"), "r", encoding="utf-8") as f:
+            js07 = f.read()
+        self.assertIn('id="btnStudioToggle3dgsMode"', html)
+        self.assertIn('id="chkPix4dGaussianSplatsUser"', html)
+        self.assertIn('id="rerunChkGaussianSplats"', html)
+        self.assertIn("function toggleStudioGaussianSplatMode(", js01)
+        self.assertIn("function hasScanOrTilesetGaussianSplatLayer(", js01)
+        self.assertIn("compute_gaussian_splats", js02)
+        self.assertIn("gatheringcloud_3dgs", js07)
+
 
 if __name__ == "__main__":
     unittest.main()

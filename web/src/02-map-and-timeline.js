@@ -3268,6 +3268,9 @@
       export_lod: Number(document.getElementById("rerunInpExportLod")?.value || 13),
       skyless: Boolean(document.getElementById("rerunChkSkyless")?.checked),
       use_roi: Boolean(document.getElementById("rerunChkUseRoi")?.checked),
+      compute_gaussian_splats: Boolean(document.getElementById("rerunChkGaussianSplats")?.checked),
+      gaussian_splats_template: document.getElementById("rerunSelGaussianTemplate")?.value || "Catch",
+      gaussian_splats_max_millions: Number(STATE.pix4dSettings?.gaussian_splats_max_millions || 2.0),
     };
   }
 
@@ -3309,6 +3312,16 @@
         `Original Photos Source: ${srcPath} · ${pCount} RTK photos`
       );
     }
+    const gsChk = document.getElementById("rerunChkGaussianSplats");
+    if (gsChk) {
+      gsChk.checked = Boolean(
+        scan.has_gaussian_splat_layer || STATE.pix4dSettings?.compute_gaussian_splats
+      );
+    }
+    const gsTpl = document.getElementById("rerunSelGaussianTemplate");
+    if (gsTpl && STATE.pix4dSettings?.gaussian_splats_template) {
+      gsTpl.value = STATE.pix4dSettings.gaussian_splats_template;
+    }
     openModal("rerunScanModal");
     updateRerunGstPreview();
   }
@@ -3329,10 +3342,11 @@
         settings,
       });
       closeModal("rerunScanModal");
+      const gsBadge = settings.compute_gaussian_splats ? `, ✨3DGS (${settings.gaussian_splats_template})` : "";
       showToast(
         runImmediately
-          ? `Launched PIX4Dmatic re-run from original photos (${res.original_photos_count || 100} imgs, ${settings.mesh_quality}, ${settings.texture_size}px)`
-          : `Queued ${res.scan?.name || _rerunTargetScanId} for re-run from original photos (${settings.mesh_quality}, ${settings.texture_size}px)`
+          ? `Launched PIX4Dmatic re-run from original photos (${res.original_photos_count || 100} imgs, ${settings.mesh_quality}, ${settings.texture_size}px${gsBadge})`
+          : `Queued ${res.scan?.name || _rerunTargetScanId} for re-run from original photos (${settings.mesh_quality}, ${settings.texture_size}px${gsBadge})`
       );
       await refreshScansCatalog();
     } catch (err) {
@@ -3358,6 +3372,8 @@
     "rerunInpExportLod",
     "rerunChkSkyless",
     "rerunChkUseRoi",
+    "rerunChkGaussianSplats",
+    "rerunSelGaussianTemplate",
   ].forEach((id) => {
     document.getElementById(id)?.addEventListener("change", updateRerunGstPreview);
   });

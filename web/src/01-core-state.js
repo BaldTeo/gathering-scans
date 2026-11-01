@@ -1550,17 +1550,6 @@
 
   const _GSPLAT_BUFFER_CACHE = new Map();
 
-  function disposeGaussianSplatFromContext(ctx) {
-    if (!ctx || !ctx.gsplatState) return;
-    const st = ctx.gsplatState;
-    ctx.gsplatState = null;
-    if (st.mesh) {
-      if (st.mesh.parent) st.mesh.parent.remove(st.mesh);
-      if (st.mesh.geometry) st.mesh.geometry.dispose();
-      if (st.mesh.material) st.mesh.material.dispose();
-    }
-  }
-
   function _hideRaycastSurfelMeshes(tilesGroup) {
     if (!tilesGroup) return;
     tilesGroup.traverse((child) => {
@@ -1568,6 +1557,15 @@
         const mats = Array.isArray(child.material) ? child.material : [child.material];
         mats.forEach((m) => {
           if (!m) return;
+          if (!m.userData) m.userData = {};
+          if (!m.userData._gsSavedBeforeSplat) {
+            m.userData._gsSavedBeforeSplat = {
+              transparent: Boolean(m.transparent),
+              opacity: typeof m.opacity === "number" ? m.opacity : 1.0,
+              depthWrite: m.depthWrite !== false,
+              colorWrite: m.colorWrite !== false,
+            };
+          }
           m.transparent = true;
           m.opacity = 0.0;
           m.depthWrite = false;
@@ -1578,25 +1576,208 @@
     });
   }
 
-  function isScanOrTilesetGaussianSplat(scan, tr) {
-    if (scan && scan.is_gaussian_splat) return true;
+  function _restoreRaycastSurfelMeshes(tilesGroup) {
+    if (!tilesGroup) return;
+    tilesGroup.traverse((child) => {
+      if (child && child.isMesh && child.material && !child.userData?.isGaussianSplatMesh) {
+        const mats = Array.isArray(child.material) ? child.material : [child.material];
+        mats.forEach((m) => {
+          if (!m) return;
+          const saved = m.userData?._gsSavedBeforeSplat;
+          if (saved) {
+            m.transparent = saved.transparent;
+            m.opacity = saved.opacity;
+            m.depthWrite = saved.depthWrite;
+            m.colorWrite = saved.colorWrite;
+            delete m.userData._gsSavedBeforeSplat;
+          } else {
+            m.transparent = false;
+            m.opacity = 1.0;
+            m.depthWrite = true;
+            m.colorWrite = true;
+          }
+          m.needsUpdate = true;
+        });
+      }
+    });
+  }
+
+  function _syncGaussianSplatMeshTransform(ctx, scan) {
+    if (!ctx || !ctx.gsplatState || !ctx.gsplatState.mesh) return;
+    const mesh = ctx.gsplatState.mesh;
+    const tr = ctx.tilesRenderer;
+    if (!tr || !tr.group) return;
+    const grpPos = tr.group.position;
+    const origin =
+      (scan && Array.isArray(scan.gaussian_splat_origin) && scan.gaussian_splat_origin.length >= 3
+        ? scan.gaussian_splat_origin
+        : null) ||
+      tr.root?.extras?.gaussian_splat_origin ||
+      tr.root?.parent?.extras?.gaussian_splat_origin ||
+      null;
+    if (Array.isArray(origin) && origin.length >= 3) {
+      mesh.position.set(
+        Number(origin[0] || 0) + grpPos.x,
+        Number(origin[1] || 0) + grpPos.y,
+        Number(origin[2] || 0) + grpPos.z
+      );
+    } else if (ctx.gsplatState.src?.hasGeoref) {
+      mesh.position.set(0, 0, 0);
+    } else {
+      mesh.position.copy(grpPos);
+    }
+  }
+
+  function disposeGaussianSplatFromContext(ctx) {
+    if (!ctx) return;
+    if (ctx.tilesRenderer && ctx.tilesRenderer.group) {
+      _restoreRaycastSurfelMeshes(ctx.tilesRenderer.group);
+    }
+    if (!ctx.gsplatState) return;
+    const st = ctx.gsplatState;
+    ctx.gsplatState = null;
+    if (st.mesh) {
+      if (st.mesh.parent) st.mesh.parent.remove(st.mesh);
+      if (st.mesh.geometry) st.mesh.geometry.dispose();
+      if (st.mesh.material) st.mesh.material.dispose();
+    }
+  }
+
+  function hasScanOrTilesetGaussianSplatLayer(scan, tr) {
+    if (scan && (scan.is_gaussian_splat || scan.has_gaussian_splat_layer || scan.splat_url)) {
+      return true;
+    }
     if (tr) {
-      if (tr.root?.extras?.is_gaussian_splat || tr.root?.parent?.extras?.is_gaussian_splat) return true;
+      const checkExtras = (ext) => {
+        if (!ext || typeof ext !== "object") return false;
+        if (ext.is_gaussian_splat || ext.has_gaussian_splat_layer || ext.gaussian_splat_uri) {
+          if (scan) {
+            if (ext.is_gaussian_splat) scan.is_gaussian_splat = true;
+            scan.has_gaussian_splat_layer = true;
+            if (!scan.gaussian_splat_origin && Array.isArray(ext.gaussian_splat_origin)) {
+              scan.gaussian_splat_origin = ext.gaussian_splat_origin;
+            }
+          }
+          return true;
+        }
+        return false;
+      };
+      if (checkExtras(tr.root?.extras) || checkExtras(tr.root?.parent?.extras)) return true;
       const tsMap = tr.tileSets;
       if (tsMap && typeof tsMap === "object") {
         for (const k of Object.keys(tsMap)) {
-          if (tsMap[k]?.extras?.is_gaussian_splat || tsMap[k]?.root?.extras?.is_gaussian_splat) return true;
+          if (checkExtras(tsMap[k]?.extras) || checkExtras(tsMap[k]?.root?.extras)) return true;
         }
       }
     }
     return false;
   }
 
+  function syncStudio3dgsToggleButton(scan, tr) {
+    const btn = document.getElementById("btnStudioToggle3dgsMode");
+    if (!btn) return;
+    const targetScan = scan || STATE.activeScan;
+    const targetTr = tr || (typeof studioThree !== "undefined" && studioThree ? studioThree.tilesRenderer : null);
+    const hasLayer = hasScanOrTilesetGaussianSplatLayer(targetScan, targetTr);
+    btn.style.display = hasLayer ? "inline-flex" : "none";
+    const isActive = Boolean(
+      (typeof studioThree !== "undefined" && studioThree && studioThree.gsplatState) ||
+        STATE.studioGaussianSplatMode ||
+        targetScan?.is_gaussian_splat
+    );
+    btn.classList.toggle("active", isActive);
+    btn.style.background = isActive ? "rgba(168,85,247,0.22)" : "";
+    btn.style.borderColor = isActive ? "rgba(168,85,247,0.7)" : "";
+    btn.style.color = isActive ? "#d8b4fe" : "";
+  }
+
+  function isScanOrTilesetGaussianSplat(scan, tr) {
+    let isStandalone = Boolean(scan && scan.is_gaussian_splat);
+    if (!isStandalone && tr) {
+      if (tr.root?.extras?.is_gaussian_splat || tr.root?.parent?.extras?.is_gaussian_splat) {
+        isStandalone = true;
+      } else {
+        const tsMap = tr.tileSets;
+        if (tsMap && typeof tsMap === "object") {
+          for (const k of Object.keys(tsMap)) {
+            if (tsMap[k]?.extras?.is_gaussian_splat || tsMap[k]?.root?.extras?.is_gaussian_splat) {
+              isStandalone = true;
+              break;
+            }
+          }
+        }
+      }
+    }
+    const hasLayer = isStandalone || hasScanOrTilesetGaussianSplatLayer(scan, tr);
+    if (typeof studioThree !== "undefined" && studioThree && (!tr || tr === studioThree.tilesRenderer)) {
+      syncStudio3dgsToggleButton(scan, tr);
+      if (
+        hasLayer &&
+        !isStandalone &&
+        STATE.studioGaussianSplatMode &&
+        tr &&
+        tr === studioThree.tilesRenderer &&
+        !studioThree.gsplatState &&
+        !studioThree._gsplatLoading
+      ) {
+        loadGaussianSplatIntoContext(studioThree, scan, "studio", () => {
+          syncStudio3dgsToggleButton(scan, tr);
+        });
+      }
+    }
+    return isStandalone;
+  }
+
+  async function toggleStudioGaussianSplatMode(forceState = null) {
+    if (typeof studioThree === "undefined" || !studioThree) return;
+    const scan = STATE.activeScan;
+    const tr = studioThree.tilesRenderer;
+    if (!hasScanOrTilesetGaussianSplatLayer(scan, tr)) {
+      showToast(
+        window.tr
+          ? window.tr("此掃描尚未包含 3D 高斯潑濺圖層（可於重新運算時勾選 3DGS）", "This scan does not have a 3D Gaussian Splat layer yet (enable 3DGS in Re-run / Settings).")
+          : "This scan does not have a 3D Gaussian Splat layer yet."
+      );
+      return;
+    }
+    const currentlyActive = Boolean(studioThree.gsplatState);
+    const nextState = typeof forceState === "boolean" ? forceState : !currentlyActive;
+    STATE.studioGaussianSplatMode = nextState;
+    if (nextState) {
+      await loadGaussianSplatIntoContext(studioThree, scan, "studio", () => {
+        syncStudio3dgsToggleButton(scan, tr);
+        showToast(
+          window.tr
+            ? window.tr("✨ 已切換至 3D 高斯潑濺檢視（保留 1mm 網格雷射量測）", "✨ Switched to 3D Gaussian Splat view (1mm mesh raycasting active)")
+            : "Switched to 3D Gaussian Splat view"
+        );
+      });
+    } else {
+      disposeGaussianSplatFromContext(studioThree);
+      syncStudio3dgsToggleButton(scan, tr);
+      if (studioThree.renderer && studioThree.scene && studioThree.camera) {
+        studioThree.renderer.render(studioThree.scene, studioThree.camera);
+      }
+      showToast(
+        window.tr
+          ? window.tr("已切換至 16K 紋理網格檢視", "Switched to 16K Textured Mesh view")
+          : "Switched to Textured Mesh view"
+      );
+    }
+  }
+  window.hasScanOrTilesetGaussianSplatLayer = hasScanOrTilesetGaussianSplatLayer;
+  window.syncStudio3dgsToggleButton = syncStudio3dgsToggleButton;
+  window.toggleStudioGaussianSplatMode = toggleStudioGaussianSplatMode;
+  document.getElementById("btnStudioToggle3dgsMode")?.addEventListener("click", () => {
+    toggleStudioGaussianSplatMode();
+  });
+
   async function loadGaussianSplatIntoContext(ctx, scan, prefix = "studio", onReady = null) {
     disposeGaussianSplatFromContext(ctx);
-    const isGsplat = isScanOrTilesetGaussianSplat(scan, ctx?.tilesRenderer);
-    if (!ctx || !scan || !isGsplat) return null;
-    scan.is_gaussian_splat = true;
+    const isStandalone = isScanOrTilesetGaussianSplat(scan, ctx?.tilesRenderer);
+    const hasLayer = isStandalone || hasScanOrTilesetGaussianSplatLayer(scan, ctx?.tilesRenderer);
+    if (!ctx || !scan || !hasLayer) return null;
+    if (isStandalone) scan.is_gaussian_splat = true;
     const THREE = window.THREE;
     if (!THREE || !ctx.modelPivot) return null;
     ctx._gsplatLoading = true;
@@ -1618,6 +1799,8 @@
         const magic = dv.getUint32(0, true);
         if (magic !== 0x4c505347 && magic !== 0x544c5053) throw new Error("Unexpected .gsplat magic header");
         const totalCount = dv.getUint32(8, true);
+        const flags = dv.getUint32(12, true);
+        const hasGeoref = (flags & 1) !== 0;
         const n = Math.min(totalCount, Math.floor((buf.byteLength - 16) / 32));
         const f32 = new Float32Array(buf, 16, n * 8);
         const u8 = new Uint8Array(buf, 16, n * 32);
@@ -1655,7 +1838,7 @@
           quat[i4 + 2] = qz / qn;
           quat[i4 + 3] = qw / qn;
         }
-        parsed = { count: n, pos, scale, quat, col };
+        parsed = { count: n, pos, scale, quat, col, hasGeoref };
         if (_GSPLAT_BUFFER_CACHE.size >= 6) {
           const oldestKey = _GSPLAT_BUFFER_CACHE.keys().next().value;
           _GSPLAT_BUFFER_CACHE.delete(oldestKey);
@@ -1822,14 +2005,11 @@
     mesh.frustumCulled = false;
     mesh.renderOrder = 10;
     mesh.userData.isGaussianSplatMesh = true;
-    if (ctx.tilesRenderer && ctx.tilesRenderer.group) {
-      mesh.position.copy(ctx.tilesRenderer.group.position);
-      _hideRaycastSurfelMeshes(ctx.tilesRenderer.group);
-    }
     ctx.modelPivot.add(mesh);
 
     ctx.gsplatState = {
       scanId: expectedScanId,
+      scan,
       mesh,
       material,
       geom: baseGeom,
@@ -1844,9 +2024,16 @@
       sortKeys: new Uint16Array(totalSplats),
       sortIndices: new Uint32Array(totalSplats),
     };
+    if (ctx.tilesRenderer && ctx.tilesRenderer.group) {
+      _syncGaussianSplatMeshTransform(ctx, scan);
+      _hideRaycastSurfelMeshes(ctx.tilesRenderer.group);
+    }
 
     ctx._gsplatLoading = false;
     updateGaussianSplatForContext(ctx, prefix, true);
+    if (prefix === "studio") {
+      syncStudio3dgsToggleButton(scan, ctx.tilesRenderer);
+    }
     if (ctx.renderer && ctx.scene && ctx.camera) {
       ctx.renderer.render(ctx.scene, ctx.camera);
     }
@@ -1861,7 +2048,7 @@
     if (!st.mesh || !st.src) return;
 
     if (ctx.tilesRenderer && ctx.tilesRenderer.group) {
-      st.mesh.position.copy(ctx.tilesRenderer.group.position);
+      _syncGaussianSplatMeshTransform(ctx, st.scan || STATE.activeScan);
       _hideRaycastSurfelMeshes(ctx.tilesRenderer.group);
     }
 

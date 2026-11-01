@@ -1060,30 +1060,44 @@ class GatheringScansHandler(CloudAndTunnelHandlerMixin, ServerWriteRoutesMixin, 
         thumb_q = f"?v={thumb_ver}&share={share_token}" if share_token else f"?v={thumb_ver}"
         s["thumbnail_url"] = f"/api/scans/{sid}/thumbnail{thumb_q}"
 
-        # Detect 3D Gaussian Splat (.gsplat) and group_type ('site' vs 'library')
+        # Detect 3D Gaussian Splat (.gsplat) — standalone (`is_gaussian_splat`) or hybrid (`has_gaussian_splat_layer`)
         is_gsplat = bool(s.get("is_gaussian_splat"))
+        has_gsplat_layer = bool(s.get("has_gaussian_splat_layer") or is_gsplat)
         splat_cnt = int(s.get("splat_count") or 0)
-        if not is_gsplat and ts_path and os.path.isfile(ts_path):
+        splat_origin = s.get("gaussian_splat_origin")
+        if ts_path and os.path.isfile(ts_path):
             gs_cand = os.path.join(os.path.dirname(ts_path), "tiles", "splats.gsplat")
             if os.path.isfile(gs_cand):
-                is_gsplat = True
+                has_gsplat_layer = True
                 if splat_cnt <= 0:
                     splat_cnt = max(0, (os.path.getsize(gs_cand) - 16) // 32)
-        if not is_gsplat:
+                try:
+                    with open(ts_path, "r", encoding="utf-8") as tsf_chk:
+                        ts_ext = (json.load(tsf_chk) or {}).get("extras") or {}
+                    if ts_ext.get("is_gaussian_splat"):
+                        is_gsplat = True
+                    if isinstance(ts_ext.get("gaussian_splat_origin"), list):
+                        splat_origin = ts_ext["gaussian_splat_origin"]
+                except Exception:
+                    pass
+        if not has_gsplat_layer:
             try:
                 pkg_toc = ((_load_cloud_manifest().get("packages") or {}).get(sid) or {}).get("toc") or {}
                 splat_entry = pkg_toc.get("tiles/splats.gsplat")
                 if isinstance(splat_entry, dict) and int(splat_entry.get("size") or 0) >= 48:
-                    is_gsplat = True
+                    has_gsplat_layer = True
                     if splat_cnt <= 0:
                         splat_cnt = max(0, (int(splat_entry["size"]) - 16) // 32)
             except Exception:
                 pass
         s["is_gaussian_splat"] = is_gsplat
-        if is_gsplat:
+        s["has_gaussian_splat_layer"] = has_gsplat_layer
+        if has_gsplat_layer:
             s["splat_count"] = splat_cnt
             s["splat_url"] = f"/stream/{sid}/tiles/splats.gsplat{thumb_q}"
-            if splat_cnt > 0:
+            if isinstance(splat_origin, list) and len(splat_origin) >= 3:
+                s["gaussian_splat_origin"] = splat_origin
+            if is_gsplat and splat_cnt > 0:
                 s["poly_count"] = splat_cnt
         if s.get("group_type") not in ("site", "library"):
             has_geo = (

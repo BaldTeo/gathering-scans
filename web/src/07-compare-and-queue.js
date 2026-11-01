@@ -1449,6 +1449,24 @@
       export_lod: 13,
       skyless: false,
       use_roi: false,
+      compute_gaussian_splats: false,
+      gaussian_splats_template: "Catch",
+      gaussian_splats_max_millions: 2.0,
+    },
+    gatheringcloud_3dgs: {
+      mesh_pipeline: "Scalable",
+      texture_size: 16384,
+      dense_image_scale: "Full",
+      depth_min_confidence: "Medium",
+      depth_agreement_m: 0.01,
+      model_simplification: "Conservative",
+      deghosting: "Weak",
+      export_lod: 13,
+      skyless: false,
+      use_roi: false,
+      compute_gaussian_splats: true,
+      gaussian_splats_template: "Catch",
+      gaussian_splats_max_millions: 2.0,
     },
     compact_4k: {
       mesh_pipeline: "FixedSize",
@@ -1461,6 +1479,9 @@
       export_lod: 13,
       skyless: false,
       use_roi: false,
+      compute_gaussian_splats: false,
+      gaussian_splats_template: "Catch",
+      gaussian_splats_max_millions: 2.0,
     },
     fast_field: {
       mesh_pipeline: "FixedSize",
@@ -1473,6 +1494,9 @@
       export_lod: 12,
       skyless: false,
       use_roi: false,
+      compute_gaussian_splats: false,
+      gaussian_splats_template: "Catch",
+      gaussian_splats_max_millions: 2.0,
     },
     archival_8k: {
       mesh_pipeline: "Scalable",
@@ -1485,6 +1509,9 @@
       export_lod: 15,
       skyless: false,
       use_roi: false,
+      compute_gaussian_splats: false,
+      gaussian_splats_template: "Catch",
+      gaussian_splats_max_millions: 2.0,
     },
   };
 
@@ -1498,7 +1525,8 @@
         String(cfg.deghosting || "Weak") === p.deghosting &&
         Number(cfg.export_lod ?? 13) === p.export_lod &&
         Boolean(cfg.skyless) === p.skyless &&
-        Boolean(cfg.use_roi) === p.use_roi
+        Boolean(cfg.use_roi) === p.use_roi &&
+        Boolean(cfg.compute_gaussian_splats) === Boolean(p.compute_gaussian_splats)
       ) {
         return k;
       }
@@ -1513,8 +1541,12 @@
     const tex = Number(cfg.texture_size || 16384);
     const texLabel = tex >= 16384 ? "16K" : tex >= 8192 ? "8K" : tex >= 4096 ? "4K" : "2K";
     const skyLabel = cfg.skyless ? "SkyMask ON" : "SkyMask OFF";
-    const prefix = presetKey === "gatheringcloud" ? "GatheringCloud Optimal · " : "";
-    return `${prefix}${mp} · ${texLabel} · ${skyLabel} · .3tz`;
+    const splatLabel = cfg.compute_gaussian_splats
+      ? ` · ✨3DGS (${cfg.gaussian_splats_template || "Catch"} · ${Number(cfg.gaussian_splats_max_millions || 2.0)}M)`
+      : "";
+    const prefix =
+      presetKey === "gatheringcloud" || presetKey === "gatheringcloud_3dgs" ? "GatheringCloud Optimal · " : "";
+    return `${prefix}${mp} · ${texLabel}${splatLabel} · ${skyLabel} · .3tz`;
   }
 
   function applyPix4dSettingsToUI(cfg, forceOverwrite = false) {
@@ -1531,6 +1563,9 @@
         model_simplification: "Conservative",
         deghosting: "Weak",
         export_lod: 13,
+        compute_gaussian_splats: false,
+        gaussian_splats_template: "Catch",
+        gaussian_splats_max_millions: 2.0,
       },
       cfg
     );
@@ -1540,7 +1575,8 @@
     if (sumEl) sumEl.textContent = formatPix4dSummaryBadge(c);
     const hdrEl = document.getElementById("gstScriptHeaderTitle");
     if (hdrEl) {
-      hdrEl.textContent = `PIX4Dmatic 2.11.0 Headless .GST Script (TWD97 (121) [EPSG:3826] + TWVD2001 [EPSG:8904] · ${c.mesh_pipeline} · ${c.texture_size}px · ${c.skyless ? "SkyMask ON" : "SkyMask OFF"}):`;
+      const gsTag = c.compute_gaussian_splats ? ` · 3DGS (${c.gaussian_splats_template || "Catch"})` : "";
+      hdrEl.textContent = `PIX4Dmatic 2.11.0 Headless .GST Script (TWD97 (121) [EPSG:3826] + TWVD2001 [EPSG:8904] · ${c.mesh_pipeline} · ${c.texture_size}px${gsTag} · ${c.skyless ? "SkyMask ON" : "SkyMask OFF"}):`;
     }
 
     if (_pix4dSettingsDirty && !forceOverwrite) return;
@@ -1556,6 +1592,8 @@
       ["selPix4dSimplification", "selPix4dSimplificationUser", String(c.model_simplification || "Conservative")],
       ["selPix4dDeghosting", "selPix4dDeghostingUser", String(c.deghosting || "Weak")],
       ["inpPix4dExportLod", "inpPix4dExportLodUser", String(c.export_lod ?? 13)],
+      ["selPix4dGaussianTemplate", "selPix4dGaussianTemplateUser", String(c.gaussian_splats_template || "Catch")],
+      ["selPix4dGaussianMaxMillions", "selPix4dGaussianMaxMillionsUser", String(Number(c.gaussian_splats_max_millions || 2.0).toFixed(1))],
     ];
     pairs.forEach(([id1, id2, val]) => {
       const el1 = document.getElementById(id1);
@@ -1567,6 +1605,7 @@
     const chkPairs = [
       ["chkPix4dSkyless", "chkPix4dSkylessUser", Boolean(c.skyless)],
       ["chkPix4dUseRoi", "chkPix4dUseRoiUser", Boolean(c.use_roi)],
+      ["chkPix4dGaussianSplats", "chkPix4dGaussianSplatsUser", Boolean(c.compute_gaussian_splats)],
     ];
     chkPairs.forEach(([id1, id2, checked]) => {
       const el1 = document.getElementById(id1);
@@ -1591,6 +1630,8 @@
       const label =
         presetKey === "gatheringcloud"
           ? "GatheringCloud Optimal (Scalable + 16K + 1x Full Dense + Progressive L0/L1/L2 .3tz)"
+          : presetKey === "gatheringcloud_3dgs"
+          ? "GatheringCloud Optimal + 3D Gaussian Splats (Scalable + 16K + 3DGS .gsplat)"
           : presetKey === "compact_4k"
           ? "Compact 4K Single-Mesh (FixedSize + 4K + LOD 13)"
           : presetKey === "fast_field"
@@ -1635,6 +1676,12 @@
       export_lod: Math.max(0, Math.min(20, Number(getVal("inpPix4dExportLod", "export_lod", 13)) || 13)),
       skyless: getChk("chkPix4dSkyless", "skyless", false),
       use_roi: getChk("chkPix4dUseRoi", "use_roi", false),
+      compute_gaussian_splats: getChk("chkPix4dGaussianSplats", "compute_gaussian_splats", false),
+      gaussian_splats_template: String(getVal("selPix4dGaussianTemplate", "gaussian_splats_template", "Catch")),
+      gaussian_splats_max_millions: Math.max(
+        0.5,
+        Math.min(8.0, Number(getVal("selPix4dGaussianMaxMillions", "gaussian_splats_max_millions", 2.0)) || 2.0)
+      ),
     };
   }
 
@@ -1648,8 +1695,9 @@
       if (gstBox && gstBox.style.display !== "none") {
         await previewGstForScan(STATE.activeScanId);
       }
+      const gsNote = draft.compute_gaussian_splats ? ` · ✨ 3DGS (${draft.gaussian_splats_template})` : "";
       showToast(
-        `Saved PIX4Dmatic defaults: ${draft.mesh_pipeline} · ${draft.texture_size}px · SkyMask ${draft.skyless ? "ON" : "OFF (Preserves Trees)"}`
+        `Saved PIX4Dmatic defaults: ${draft.mesh_pipeline} · ${draft.texture_size}px${gsNote} · SkyMask ${draft.skyless ? "ON" : "OFF (Preserves Trees)"}`
       );
     } catch (err) {
       showToast(`Failed to save PIX4Dmatic settings: ${err.message}`);
@@ -2098,6 +2146,9 @@
     "inpPix4dExportLod",
     "chkPix4dSkyless",
     "chkPix4dUseRoi",
+    "chkPix4dGaussianSplats",
+    "selPix4dGaussianTemplate",
+    "selPix4dGaussianMaxMillions",
   ].forEach((id) => {
     document.getElementById(id)?.addEventListener("change", () => {
       _pix4dSettingsDirty = true;

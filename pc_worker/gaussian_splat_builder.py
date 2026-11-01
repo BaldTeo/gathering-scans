@@ -268,17 +268,23 @@ def load_gaussian_splats_raw(file_path: str) -> Dict[str, np.ndarray]:
 
     if "ascii" in fmt:
         lines = raw[body_offset:].decode("ascii", errors="ignore").splitlines()
-        mat = np.loadtxt(lines[:n_verts], dtype=np.float32)
+        mat = np.loadtxt(lines[:n_verts], dtype=np.float64)
         if mat.ndim == 1:
             mat = mat.reshape(1, -1)
-        data_dict = {name: mat[:, idx] for idx, name in enumerate(prop_names)}
+        data_dict = {
+            name: (mat[:, idx] if name in ("x", "y", "z") else mat[:, idx].astype(np.float32))
+            for idx, name in enumerate(prop_names)
+        }
     else:
         np_fields = [(p_name, _PLY_NP_DTYPES.get(p_type, "<f4")) for p_type, p_name in props]
         dt = np.dtype(np_fields)
         arr = np.frombuffer(raw, dtype=dt, count=n_verts, offset=body_offset)
-        data_dict = {name: arr[name].astype(np.float32) for name in prop_names}
+        data_dict = {
+            name: (arr[name].astype(np.float64) if name in ("x", "y", "z") else arr[name].astype(np.float32))
+            for name in prop_names
+        }
 
-    xyz = np.column_stack([data_dict["x"], data_dict["y"], data_dict["z"]]).astype(np.float32)
+    xyz = np.column_stack([data_dict["x"], data_dict["y"], data_dict["z"]]).astype(np.float64)
 
     if "f_dc_0" in data_dict and "f_dc_1" in data_dict and "f_dc_2" in data_dict:
         r = np.clip(0.5 + SH_C0 * data_dict["f_dc_0"], 0.0, 1.0)
@@ -788,8 +794,11 @@ def build_gaussian_splat_tileset(
         },
         "extras": {
             "is_gaussian_splat": True,
+            "has_gaussian_splat_layer": True,
             "gaussian_splat_uri": f"tiles/splats.gsplat?v={gsplat_mtime}",
+            "gaussian_splat_origin": [round(bx, 4), round(by, 4), round(bz, 4)],
             "splat_count": int(n_total),
+            "splat_size_mb": round(os.path.getsize(gsplat_bin_path) / (1024.0 * 1024.0), 2),
             "source_ply": os.path.basename(ply_path),
             "has_georef_offset": bool(has_georef_offset),
             "tight_bounds": {
@@ -805,8 +814,10 @@ def build_gaussian_splat_tileset(
             "content": {"uri": "tiles/root.glb"},
             "extras": {
                 "is_gaussian_splat": True,
+                "has_gaussian_splat_layer": True,
                 "splat_count": int(n_total),
                 "gaussian_splat_uri": f"tiles/splats.gsplat?v={gsplat_mtime}",
+                "gaussian_splat_origin": [round(bx, 4), round(by, 4), round(bz, 4)],
             },
             "children": [],
         },
@@ -837,3 +848,242 @@ def build_gaussian_splat_tileset(
         f"({n_total:,} splats, georef={has_georef_offset}) -> {ts_json_path}"
     )
     return ts_json_path
+
+
+def attach_gaussian_splat_layer_to_tileset(
+    scan_id: str,
+    folder_path: str,
+    ply_path: str,
+    tileset_json_path: Optional[str] = None,
+    max_splats: int = 2_000_000,
+    cleanup_raw_ply: bool = True,
+) -> Optional[Dict[str, Any]]:
+    """
+    Converts a PIX4Dmatic exported 3DGS `.ply` (`exports/gaussian_splats/splats.ply`)
+    into a coordinate-locked `tileset/tiles/splats.gsplat` layer aligned with the
+    existing 3D Mesh `tileset/tileset.json` and `offset.xyz` (TWD97 EPSG:3826 + TWVD2001).
+    Preserves `is_gaussian_splat: False` on the mesh tileset so all 3-tier LOD mesh tiles
+    and 1mm raycast measurements work normally, while advertising `has_gaussian_splat_layer: True`
+    and `gaussian_splat_uri` so Studio can toggle seamlessly between Mesh and 3DGS.
+    """
+    import shutil
+
+    if not ply_path or not os.path.isfile(ply_path):
+        return None
+
+    tileset_dir = os.path.dirname(tileset_json_path) if tileset_json_path else os.path.join(folder_path, "tileset")
+    ts_path = tileset_json_path or os.path.join(tileset_dir, "tileset.json")
+    if not os.path.isfile(ts_path):
+        # Fallback: standalone Gaussian splat tileset build
+        built_ts = build_gaussian_splat_tileset(scan_id, folder_path, ply_path, force=True)
+        if built_ts and os.path.isfile(built_ts):
+            return {"tileset_path": built_ts, "splat_uri": "tiles/splats.gsplat"}
+        return None
+
+    tiles_sub = os.path.join(tileset_dir, "tiles")
+    os.makedirs(tiles_sub, exist_ok=True)
+    gsplat_bin_path = os.path.join(tiles_sub, "splats.gsplat")
+
+    raw_data = load_gaussian_splats_raw(ply_path)
+    xyz = raw_data["xyz"].astype(np.float64)
+    scale = raw_data["scale"].astype(np.float32)
+    rgba = raw_data["rgba"].astype(np.float32)
+    quat = raw_data["quat"].astype(np.float32)
+
+    valid_mask = (
+        np.isfinite(xyz).all(axis=1)
+        & np.isfinite(scale).all(axis=1)
+        & (rgba[:, 3] >= (1.5 / 255.0))
+    )
+    if np.count_nonzero(valid_mask) >= 16:
+        xyz = xyz[valid_mask]
+        scale = scale[valid_mask]
+        rgba = rgba[valid_mask]
+        quat = quat[valid_mask]
+
+    if len(xyz) == 0:
+        return None
+
+    # Resolve offset.xyz from ply dir, exports/obj_mesh, tileset, or project root
+    cand_offsets = [
+        os.path.join(os.path.dirname(ply_path), "offset.xyz"),
+        os.path.join(folder_path, "exports", "obj_mesh", "offset.xyz"),
+        os.path.join(tileset_dir, "offset.xyz"),
+        os.path.join(folder_path, "offset.xyz"),
+    ]
+    ox, oy, oz = 0.0, 0.0, 0.0
+    for c_fp in cand_offsets:
+        if os.path.isfile(c_fp):
+            try:
+                with open(c_fp, "r", encoding="utf-8", errors="ignore") as f_off:
+                    parts = f_off.read().strip().split()
+                if len(parts) >= 3:
+                    cand_x, cand_y, cand_z = float(parts[0]), float(parts[1]), float(parts[2])
+                    if abs(cand_x) > 1.0 or abs(cand_y) > 1.0 or abs(cand_z) > 1e-3:
+                        ox, oy, oz = cand_x, cand_y, cand_z
+                        break
+            except Exception:
+                pass
+
+    med_x = float(np.median(xyz[:, 0]))
+    med_y = float(np.median(xyz[:, 1]))
+    med_z = float(np.median(xyz[:, 2]))
+
+    # Determine full 64-bit TWD97 world coordinates for every splat
+    if abs(med_x) > 10000.0 or abs(med_y) > 10000.0:
+        # PLY vertices are already in projected coordinates (either TWD97 or UTM 51N)
+        if 330000.0 < med_x < 450000.0 and 2400000.0 < med_y < 2900000.0:
+            try:
+                from pc_worker.gdrive_watcher import utm51n_to_wgs84, wgs84_to_twd97
+                u0, v0 = med_x, med_y
+                e0, n0, _ = wgs84_to_twd97(*utm51n_to_wgs84(u0, v0))
+                ex, nx, _ = wgs84_to_twd97(*utm51n_to_wgs84(u0 + 100.0, v0))
+                ey, ny, _ = wgs84_to_twd97(*utm51n_to_wgs84(u0, v0 + 100.0))
+                j00, j01 = (ex - e0) / 100.0, (ey - e0) / 100.0
+                j10, j11 = (nx - n0) / 100.0, (ny - n0) / 100.0
+                dx = xyz[:, 0] - u0
+                dy = xyz[:, 1] - v0
+                xyz_twd = np.column_stack([e0 + j00 * dx + j01 * dy, n0 + j10 * dx + j11 * dy, xyz[:, 2]])
+            except Exception:
+                xyz_twd = xyz
+        else:
+            xyz_twd = xyz
+        has_georef = True
+    elif abs(ox) > 100.0 and abs(oy) > 100.0:
+        # PLY vertices are in local Scene coordinates relative to offset.xyz (ox, oy, oz)
+        xyz_twd = xyz + np.array([ox, oy, oz], dtype=np.float64)
+        has_georef = True
+    else:
+        xyz_twd = xyz
+        has_georef = False
+
+    # Use the existing tileset root boundingVolume box center if available so splatOrigin matches sphere.center
+    origin_x = float(np.median(xyz_twd[:, 0]))
+    origin_y = float(np.median(xyz_twd[:, 1]))
+    origin_z = float(np.median(xyz_twd[:, 2]))
+    try:
+        with open(ts_path, "r", encoding="utf-8") as tf_r:
+            ts_existing = json.load(tf_r)
+        r_box = ((ts_existing.get("root") or {}).get("boundingVolume") or {}).get("box")
+        if isinstance(r_box, list) and len(r_box) >= 3:
+            bx, by, bz = float(r_box[0]), float(r_box[1]), float(r_box[2])
+            if math.hypot(bx - origin_x, by - origin_y) < 5000.0:
+                origin_x, origin_y, origin_z = bx, by, bz
+    except Exception:
+        pass
+
+    xyz_zup = (xyz_twd - np.array([origin_x, origin_y, origin_z], dtype=np.float64)).astype(np.float32)
+    quat_zup = quat.astype(np.float32)
+
+    # Sort splats by visual importance descending and cap at max_splats
+    max_s = np.maximum(np.maximum(scale[:, 0], scale[:, 1]), scale[:, 2])
+    importance = rgba[:, 3] * (max_s ** 1.35)
+    imp_order = np.argsort(-importance)
+    if max_splats and max_splats > 0 and len(imp_order) > max_splats:
+        imp_order = imp_order[: int(max_splats)]
+
+    xyz_zup = xyz_zup[imp_order]
+    scale = scale[imp_order]
+    rgba = rgba[imp_order]
+    quat_zup = quat_zup[imp_order]
+    n_total = len(xyz_zup)
+
+    rec_dtype = np.dtype(
+        [
+            ("pos", "<f4", (3,)),
+            ("scale", "<f4", (3,)),
+            ("rgba", "<u1", (4,)),
+            ("quat", "<u1", (4,)),
+        ]
+    )
+    recs = np.empty(n_total, dtype=rec_dtype)
+    recs["pos"] = xyz_zup
+    recs["scale"] = scale
+    recs["rgba"] = np.clip(np.round(rgba * 255.0), 0, 255).astype(np.uint8)
+    quat_xyzw = np.column_stack([quat_zup[:, 1], quat_zup[:, 2], quat_zup[:, 3], quat_zup[:, 0]])
+    recs["quat"] = np.clip(np.round((quat_xyzw * 0.5 + 0.5) * 255.0), 0, 255).astype(np.uint8)
+
+    header_bytes = struct.pack("<4sIII", b"GSPL", 1, n_total, 1 if has_georef else 0)
+    with open(gsplat_bin_path, "wb") as gf:
+        gf.write(header_bytes)
+        gf.write(recs.tobytes())
+
+    gsplat_mtime = int(os.path.getmtime(gsplat_bin_path))
+    splat_size_mb = round(os.path.getsize(gsplat_bin_path) / (1024.0 * 1024.0), 2)
+    splat_uri_rel = f"tiles/splats.gsplat?v={gsplat_mtime}"
+    splat_origin_list = [round(origin_x, 4), round(origin_y, 4), round(origin_z, 4)]
+
+    # Inject hybrid 3DGS metadata into tileset.json and preview_tileset.json (preserving mesh root)
+    for target_ts in (
+        ts_path,
+        os.path.join(tileset_dir, "preview_tileset.json"),
+        os.path.join(folder_path, "tileset_backup", "tileset.json"),
+    ):
+        if os.path.isfile(target_ts):
+            try:
+                with open(target_ts, "r", encoding="utf-8") as f_in:
+                    doc = json.load(f_in)
+                if isinstance(doc, dict):
+                    ext = doc.setdefault("extras", {})
+                    ext["has_gaussian_splat_layer"] = True
+                    ext["gaussian_splat_uri"] = splat_uri_rel
+                    ext["gaussian_splat_origin"] = splat_origin_list
+                    ext["splat_count"] = int(n_total)
+                    ext["splat_size_mb"] = splat_size_mb
+                    if isinstance(doc.get("root"), dict):
+                        r_ext = doc["root"].setdefault("extras", {})
+                        r_ext["has_gaussian_splat_layer"] = True
+                        r_ext["gaussian_splat_uri"] = splat_uri_rel
+                        r_ext["gaussian_splat_origin"] = splat_origin_list
+                        r_ext["splat_count"] = int(n_total)
+                        r_ext["splat_size_mb"] = splat_size_mb
+                    with open(target_ts, "w", encoding="utf-8") as f_out:
+                        json.dump(doc, f_out, indent=2)
+            except Exception as te:
+                print(f"[GaussianSplatBuilder] Warning updating hybrid tileset metadata in {target_ts}: {te}")
+
+    # Copy splats.gsplat into tileset_backup/tiles/ if backup exists
+    backup_tiles_dir = os.path.join(folder_path, "tileset_backup", "tiles")
+    if os.path.isdir(backup_tiles_dir):
+        try:
+            shutil.copy2(gsplat_bin_path, os.path.join(backup_tiles_dir, "splats.gsplat"))
+        except Exception:
+            pass
+
+    # Persist metadata into scan_meta.json
+    meta_fp = os.path.join(folder_path, "scan_meta.json")
+    if os.path.isfile(meta_fp):
+        try:
+            with open(meta_fp, "r", encoding="utf-8") as mf:
+                m_obj = json.load(mf)
+            if isinstance(m_obj, dict):
+                m_obj["has_gaussian_splat_layer"] = True
+                m_obj["gaussian_splat_uri"] = splat_uri_rel
+                m_obj["gaussian_splat_origin"] = splat_origin_list
+                m_obj["splat_count"] = int(n_total)
+                m_obj["splat_size_mb"] = splat_size_mb
+                with open(meta_fp, "w", encoding="utf-8") as mf:
+                    json.dump(m_obj, mf, ensure_ascii=False, indent=2)
+        except Exception:
+            pass
+
+    if cleanup_raw_ply and os.path.isfile(gsplat_bin_path) and os.path.getsize(gsplat_bin_path) > 64:
+        try:
+            os.remove(ply_path)
+            print(f"[GaussianSplatBuilder] Cleaned up intermediate raw PLY {ply_path} after building {splat_size_mb} MB .gsplat")
+        except OSError:
+            pass
+
+    print(
+        f"[GaussianSplatBuilder] Attached hybrid 3DGS layer to '{scan_id}' "
+        f"({n_total:,} splats, {splat_size_mb} MB, origin={splat_origin_list}) -> {gsplat_bin_path}"
+    )
+    return {
+        "status": "ok",
+        "has_gaussian_splat_layer": True,
+        "gsplat_path": gsplat_bin_path,
+        "gaussian_splat_uri": splat_uri_rel,
+        "gaussian_splat_origin": splat_origin_list,
+        "splat_count": int(n_total),
+        "splat_size_mb": splat_size_mb,
+    }
