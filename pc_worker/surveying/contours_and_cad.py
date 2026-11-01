@@ -2849,9 +2849,11 @@ class ContoursAndCadMixin:
         if len(pts) < 2:
             span_e = e_max - e_min
             span_n = n_max - n_min
-            p0 = (ce - 0.35 * span_e, cn - 0.28 * span_n, None)
-            p_mid = (ce - 0.05 * span_e, cn + 0.04 * span_n, None)
-            p1 = (ce + 0.35 * span_e, cn + 0.28 * span_n, None)
+            mid_e = 0.5 * (e_min + e_max)
+            mid_n = 0.5 * (n_min + n_max)
+            p0 = (mid_e - 0.35 * span_e, mid_n - 0.28 * span_n, None)
+            p_mid = (mid_e - 0.05 * span_e, mid_n + 0.04 * span_n, None)
+            p1 = (mid_e + 0.35 * span_e, mid_n + 0.28 * span_n, None)
             pts = [p0, p_mid, p1]
 
         # 2. Cumulative alignment chainage
@@ -3030,6 +3032,11 @@ class ContoursAndCadMixin:
                 "northing_m": round(n_cl, 3),
                 "cl_ground_z": round(z_cl_grd, 3),
                 "cl_design_z": round(z_cl_des, 3),
+                "local_x": round(e_cl - ce, 3),
+                "local_y": round(z_cl_grd - ch, 3),
+                "local_z": round(cn - n_cl, 3),
+                "normal_e": round(n_e, 4),
+                "normal_n": round(n_n, 4),
                 "cut_area_m2": round(a_cut, 3),
                 "fill_area_m2": round(a_fill, 3),
                 "max_cut_depth_m": round(max_cut_depth, 3),

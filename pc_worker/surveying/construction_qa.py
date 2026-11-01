@@ -1046,23 +1046,33 @@ class ConstructionQAMixin:
             scan = self._resolve_scan_record(scan_id)
         scan = scan or {}
 
-        dsm = self._load_or_build_scan_dsm(scan) if hasattr(self, "_load_or_build_scan_dsm") and scan else None
-        if isinstance(dsm, dict) and dsm.get("e_min") is not None and dsm.get("e_max") is not None:
-            ce = (float(dsm["e_min"]) + float(dsm["e_max"])) * 0.5
-            cn = (float(dsm["n_min"]) + float(dsm["n_max"])) * 0.5
-            ch = safe_float(scan.get("twd97_h")) or ((float(dsm.get("z_min", 124.8)) + float(dsm.get("z_max", 124.8))) * 0.5)
-        else:
-            ce = safe_float(scan.get("twd97_e"), 304952.4) or 304952.4
-            cn = safe_float(scan.get("twd97_n"), 2757084.2) or 2757084.2
-            ch = safe_float(scan.get("twd97_h"), 124.8) or 124.8
+        try:
+            dsm = self._load_or_build_scan_dsm(scan) if hasattr(self, "_load_or_build_scan_dsm") and scan else None
+        except Exception:
+            dsm = None
+        ce = safe_float(scan.get("twd97_e"), 304952.4) or 304952.4
+        cn = safe_float(scan.get("twd97_n"), 2757084.2) or 2757084.2
+        ch = safe_float(scan.get("twd97_h"), 124.8) or 124.8
+        mid_e, mid_n = ce, cn
+        if isinstance(dsm, dict):
+            ce = safe_float(dsm.get("ce"), ce) or ce
+            cn = safe_float(dsm.get("cn"), cn) or cn
+            ch = safe_float(dsm.get("ch"), ch) or ch
+            if dsm.get("e_min") is not None and dsm.get("e_max") is not None:
+                mid_e = (float(dsm["e_min"]) + float(dsm["e_max"])) * 0.5
+                mid_n = (float(dsm["n_min"]) + float(dsm["n_max"])) * 0.5
 
         design_z_offset = safe_float(payload.get("design_z_offset"), 0.0) or 0.0
 
         def _sample_z(ev: float, nv: float, fallback_z: float) -> float:
             if isinstance(dsm, dict) and hasattr(self, "_sample_dsm_elevation"):
-                sampled = self._sample_dsm_elevation(dsm, ev, nv)
-                if sampled is not None and math.isfinite(sampled):
-                    return float(sampled) + design_z_offset
+                try:
+                    sampled = self._sample_dsm_elevation(dsm, ev, nv)
+                    zh = sampled[0] if isinstance(sampled, (tuple, list)) else sampled
+                    if zh is not None and math.isfinite(float(zh)):
+                        return float(zh) + design_z_offset
+                except Exception:
+                    pass
             return float(fallback_z) + design_z_offset
 
         raw_points = payload.get("points") or payload.get("stakeout_points") or []
@@ -1078,10 +1088,10 @@ class ConstructionQAMixin:
             half_h = (cnt_n - 1) * sp_n * 0.5
             orig_e = safe_float(payload.get("grid_origin_e"))
             if orig_e is None:
-                orig_e = ce - half_w
+                orig_e = mid_e - half_w
             orig_n = safe_float(payload.get("grid_origin_n"))
             if orig_n is None:
-                orig_n = cn - half_h
+                orig_n = mid_n - half_h
             raw_points = []
             pt_num = 1
             for row in range(cnt_n):
@@ -1148,10 +1158,10 @@ class ConstructionQAMixin:
                 span_e = max(3.0, min(14.0, (float(dsm["e_max"]) - float(dsm["e_min"])) * 0.18))
                 span_n = max(3.0, min(14.0, (float(dsm["n_max"]) - float(dsm["n_min"])) * 0.18))
             seed_defs = [
-                ("STK-01", ce - span_e, cn - span_n, "FOUNDATION_SW"),
-                ("STK-02", ce + span_e, cn - span_n, "FOUNDATION_SE"),
-                ("STK-03", ce + span_e, cn + span_n, "FOUNDATION_NE"),
-                ("STK-04", ce - span_e, cn + span_n, "FOUNDATION_NW"),
+                ("STK-01", mid_e - span_e, mid_n - span_n, "FOUNDATION_SW"),
+                ("STK-02", mid_e + span_e, mid_n - span_n, "FOUNDATION_SE"),
+                ("STK-03", mid_e + span_e, mid_n + span_n, "FOUNDATION_NE"),
+                ("STK-04", mid_e - span_e, mid_n + span_n, "FOUNDATION_NW"),
             ]
             for sid, se, sn, scode in seed_defs:
                 sz = _sample_z(se, sn, ch)

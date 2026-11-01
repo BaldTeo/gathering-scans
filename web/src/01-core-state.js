@@ -1368,6 +1368,12 @@
       "btnMeasureLaser",
       "btnMeasureVolume",
       "btnDockVolume",
+      "bimDockSurveyWrap",
+      "btnDockSurveyGroup",
+      "btnDockStakeout",
+      "btnDockStationing",
+      "btnDockGcpQa",
+      "btnDockContours",
       "bimDockQaWrap",
       "btnDockQaGroup",
       "btnDockFlatness",
@@ -1388,18 +1394,12 @@
       coordPillEl.style.display = info.allowMeasurements ? "" : "none";
     }
 
-    // 6. Advanced surveying tools hidden for Guest role (Viewer+ gets full surveying suite; Guest gets Distance, Angle, Area, Coords, Laser, Volume, QA & Photos)
+    // 6. Advanced surveying tools hidden for Guest role (Viewer+ gets full surveying suite; Guest gets Distance, Angle, Area, Coords, Laser, Volume, Survey, QA & Photos)
     const showAdvancedSurvey = !info.isGuestRole && info.allowMeasurements;
     [
       "btnMeasureContours",
       "btnMeasureProfile",
       "btnDockCategorize",
-      "bimDockSurveyWrap",
-      "btnDockSurveyGroup",
-      "btnDockStakeout",
-      "btnDockStationing",
-      "btnDockGcpQa",
-      "btnDockContours",
       "btnDockSection",
       "btnDockTrench",
       "btnDockUtilities",

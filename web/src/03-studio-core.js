@@ -2768,6 +2768,10 @@
   }
 
   function add2DBadge(worldPt, htmlText, borderColor = "#cbd5e1", options = {}) {
+    if (borderColor && typeof borderColor === "object") {
+      options = borderColor;
+      borderColor = options.borderColor || "#cbd5e1";
+    }
     const container = document.getElementById("studioOverlay2D");
     if (!container) return null;
     const translatedHtml =

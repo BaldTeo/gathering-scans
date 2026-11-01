@@ -1131,9 +1131,31 @@
     }
   }
 
+  function clearContoursVisualsOnly() {
+    if (studioThree && studioThree.contourGroup) {
+      while (studioThree.contourGroup.children.length > 0) {
+        const c = studioThree.contourGroup.children[0];
+        if (c.geometry) c.geometry.dispose();
+        if (c.material) c.material.dispose();
+        studioThree.contourGroup.remove(c);
+      }
+    }
+    if (STATE && Array.isArray(STATE.badges2D)) {
+      STATE.badges2D = STATE.badges2D.filter((b) => {
+        if (b && b.surveyTool === "contours") {
+          b.el?.remove();
+          return false;
+        }
+        return true;
+      });
+    }
+  }
+  window.clearContoursVisualsOnly = clearContoursVisualsOnly;
+
   // 3B. Survey Report: Mask Boundary, 3D Elevation Contours, Civil3D.dwg & A3 Ready-to-Print PDF Exporter
   async function openContoursInspector(lockedPts = null) {
     setActiveStudioTool("contours");
+    const forceRefresh = lockedPts === true;
     const hasLockedPolygon =
       (Array.isArray(lockedPts) && lockedPts.length >= 3) ||
       Boolean(STATE.polygonLocked && Array.isArray(STATE.maskBoundaryPoints) && STATE.maskBoundaryPoints.length >= 3);
@@ -1152,7 +1174,7 @@
         : [];
 
     const panel = document.getElementById("studioSidePanel");
-    const alreadyOpenForContours = panel?.classList.contains("active") && document.getElementById("cntDrawingTitle");
+    const alreadyOpenForContours = !forceRefresh && panel?.classList.contains("active") && document.getElementById("cntDrawingTitle");
 
     if (!alreadyOpenForContours) {
       const stagedContoursNotice = hasStagedMeshEditsForActiveScan()
@@ -1163,13 +1185,14 @@
       showSidePanel(
         `<span>${tr("測量圖資報表 · Civil3D.dwg & A3 PDF", "Survey Report · Civil3D.dwg & A3 PDF")}</span>`,
         `
+        ${typeof window.renderSurveyContainerSubtabsHtml === "function" ? window.renderSurveyContainerSubtabsHtml("contours") : ""}
+        ${typeof window.renderSurveyToolExplanationBannerHtml === "function" ? window.renderSurveyToolExplanationBannerHtml(
+          "3D 地形等高線與工程圖框報表",
+          "3D Topographic Contours & CAD/A3 Survey Report",
+          "自訂次等高線與計曲線間距，自動濾除建物/植被產製純地形等高線 (Bare-Earth DTM)，並匯出真實 TWD97 座標之 Civil3D (.DXF/.DWG) 與 A3 標準工程圖框 PDF。",
+          "Generate 3D topographic contour lines with customizable major/minor intervals and Bare-Earth DTM filtering. Exports georeferenced Civil3D (.DXF/.DWG) and ready-to-print A3 engineering survey PDF sheets."
+        ) : ""}
         ${stagedContoursNotice}
-        <div style="font-size:11px;color:var(--ui-text-secondary);background:var(--ui-bg-pill);border:1px solid var(--ui-border-strong);border-radius:7px;padding:7px 9px;margin-bottom:9px;line-height:1.45;">
-          ${tr(
-            `使用目前之<b>邊界遮罩</b>與<b>等高線</b>自動產製 <code>Civil3D.dwg</code>（真實 <b>${escapeHtml(getScanCrsDisplayLabel(activeScan))}</b> 座標）與 <b>A3 標準工程圖框報告 PDF</b>。可在掃描上點擊 3+ 點自訂遮罩範圍。`,
-            `Uses your active <b>Mask Boundary</b> &amp; <b>Contour Lines</b> to generate <code>Civil3D.dwg</code> (real <b>${escapeHtml(getScanCrsDisplayLabel(activeScan))}</b>) and a zoom-to-fit <b>A3 Ready-to-Print PDF</b> with filled engineering frame. Click 3+ points on the scan to customize the mask boundary.`
-          )}
-        </div>
         <div class="gs-form-group">
           <label>${tr("圖名 / 掃描專案名稱", "Engineering Frame Title")}</label>
           <input type="text" class="gs-input" id="cntDrawingTitle" value="${escapeHtml(defaultTitle)}" />
@@ -1221,6 +1244,9 @@
         <div id="cntResultContainer"></div>
         `
       );
+      if (typeof window.bindSurveyContainerSubtabs === "function") {
+        window.bindSurveyContainerSubtabs("contours");
+      }
 
       document.getElementById("btnDrawCustomMask")?.addEventListener("click", () => {
         setActiveStudioTool("contours");
@@ -1278,6 +1304,7 @@
           mask_polygon: maskPayload,
           bare_earth_dtm: bareEarthDtm,
         });
+        res._scan_id = STATE.activeScanId;
         STATE.lastContoursResult = res;
         renderContours3DAndPanel(res);
       } catch (err) {
@@ -1289,16 +1316,10 @@
     if (btnGen) btnGen.onclick = runContours;
     if (hasLockedPolygon) {
       await runContours();
+    } else if (STATE.lastContoursResult && STATE.lastContoursResult._scan_id === STATE.activeScanId) {
+      renderContours3DAndPanel(STATE.lastContoursResult);
     } else {
-      const cntBox = document.getElementById("cntResultContainer");
-      if (cntBox) {
-        cntBox.innerHTML = `<div style="font-size:11.5px;color:var(--ui-text-secondary);background:var(--ui-bg-subtle);border:1px dashed var(--ui-border-strong);border-radius:8px;padding:10px 12px;text-align:center;line-height:1.45;">
-          📐 ${tr(
-            "請在 3D 掃描模型上依序點擊 <b>3 個以上頂點</b> 並點擊紅色起點 <b>V1</b> 閉合範圍以產生等高線（或直接點擊上方按鈕產製全區報告）。",
-            "Click <b>3+ points</b> on the 3D scan and close on red start vertex <b>V1</b> to generate contours (or click Create Survey Report above)."
-          )}
-        </div>`;
-      }
+      await runContours();
     }
   }
 
@@ -1526,18 +1547,46 @@
     }
 
     if (!studioThree) return;
-    while (studioThree.contourGroup.children.length > 0) {
-      studioThree.contourGroup.remove(studioThree.contourGroup.children[0]);
-    }
+    clearContoursVisualsOnly();
 
-    // 1. Render Clipped 3D Contours in TWD97 / Local 3D Space
+    // 1. Render Clipped 3D Contours in TWD97 / Local 3D Space (depthTest: false so never occluded by mesh)
+    let majorBadgeCount = 0;
+    const seenElevBadges = new Set();
     (res.contours || []).forEach((c) => {
-      const pts = c.points_local.map((p) => new THREE.Vector3(p[0], p[1] + 0.15, p[2]));
+      const pts = (c.points_local || []).map((p) => new THREE.Vector3(p[0], p[1] + 0.16, p[2]));
       if (pts.length < 2) return;
       const geom = new THREE.BufferGeometry().setFromPoints(pts);
-      const color = c.is_major ? 0x0284c7 : 0x64748b;
-      const line = new THREE.Line(geom, new THREE.LineBasicMaterial({ color }));
+      const color = c.is_major ? 0x38bdf8 : 0x94a3b8;
+      const line = new THREE.Line(
+        geom,
+        new THREE.LineBasicMaterial({
+          color,
+          depthTest: false,
+          transparent: true,
+          opacity: c.is_major ? 0.96 : 0.72,
+        })
+      );
+      line.renderOrder = c.is_major ? 997 : 996;
       studioThree.contourGroup.add(line);
+
+      const elevVal = Number(c.elevation_m !== undefined ? c.elevation_m : c.elevation);
+      const elevKey = Number.isFinite(elevVal) ? elevVal.toFixed(1) : "";
+      if (c.is_major && majorBadgeCount < 8 && pts.length >= 4 && elevKey && !seenElevBadges.has(elevKey) && typeof add2DBadge === "function") {
+        seenElevBadges.add(elevKey);
+        majorBadgeCount++;
+        const midPt = pts[Math.floor(pts.length * 0.5)].clone();
+        midPt.y += 0.35;
+        add2DBadge(
+          midPt,
+          `<span style="color:#38bdf8;font-weight:700;">EL ${elevVal.toFixed(1)}m</span>`,
+          "badge-contour-elev",
+          {
+            isSurveyToolBadge: true,
+            surveyTool: "contours",
+            priority: 75 - majorBadgeCount,
+          }
+        );
+      }
     });
 
     // 2. Render Active 3D Mask Boundary Loop & Vertex Monuments
@@ -1547,14 +1596,20 @@
       const loopPts = [...bPts, bPts[0].clone()];
       const bLine = new THREE.Line(
         new THREE.BufferGeometry().setFromPoints(loopPts),
-        new THREE.LineBasicMaterial({ color: 0x38bdf8, linewidth: 2, depthTest: false })
+        new THREE.LineBasicMaterial({ color: 0xf59e0b, linewidth: 2, depthTest: false })
       );
       bLine.renderOrder = 1001;
       studioThree.contourGroup.add(bLine);
 
       bPts.forEach((bp, idx) => {
-        add3DPinMarker(bp, idx === 0 ? 0xff3b30 : 0x0284c7, studioThree.contourGroup);
+        add3DPinMarker(bp, idx === 0 ? 0xff3b30 : 0xf59e0b, studioThree.contourGroup);
       });
+    }
+
+    if (typeof updateZoomInvariantElements === "function") updateZoomInvariantElements();
+    if (typeof update2DBadgePositions === "function") update2DBadgePositions();
+    if (studioThree.renderer && studioThree.camera) {
+      studioThree.renderer.render(studioThree.scene, studioThree.camera);
     }
 
     showToast(

@@ -51,8 +51,195 @@
     ROAD: `<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="gs-icon"><path d="M4 19L8 5"></path><path d="M20 19l-4-14"></path><line x1="12" y1="5" x2="12" y2="7"></line><line x1="12" y1="11" x2="12" y2="13"></line><line x1="12" y1="17" x2="12" y2="19"></line></svg>`,
     DROPLET: `<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="gs-icon"><path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z"></path></svg>`,
     LAYERS: `<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="gs-icon"><polygon points="12 2 2 7 12 12 22 7 12 2"></polygon><polyline points="2 17 12 22 22 17"></polyline><polyline points="2 12 12 17 22 12"></polyline></svg>`,
-    CHART: `<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="gs-icon"><line x1="18" y1="20" x2="18" y2="10"></line><line x1="12" y1="20" x2="12" y2="4"></line><line x1="6" y1="20" x2="6" y2="14"></line></svg>`
+    CHART: `<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="gs-icon"><line x1="18" y1="20" x2="18" y2="10"></line><line x1="12" y1="20" x2="12" y2="4"></line><line x1="6" y1="20" x2="6" y2="14"></line></svg>`,
+    STAKEOUT: `<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="gs-icon"><circle cx="12" cy="10" r="6"></circle><circle cx="12" cy="10" r="2"></circle><line x1="12" y1="16" x2="12" y2="22"></line><line x1="8" y1="22" x2="16" y2="22"></line></svg>`,
+    CONTOURS: `<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="gs-icon"><ellipse cx="12" cy="12" rx="9" ry="5"></ellipse><ellipse cx="12" cy="12" rx="5" ry="2.5"></ellipse></svg>`,
+    INFO: `<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="gs-icon"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>`
   };
+
+  /**
+   * Renders a bilingual (ZH + EN) function explanation banner at the top of each Survey / QA tool menu.
+   */
+  function renderSurveyToolExplanationBannerHtml(zhTitle, enTitle, zhDesc, enDesc) {
+    const lang =
+      (typeof window.getAppLanguage === "function" && window.getAppLanguage()) ||
+      (window.STATE && window.STATE.lang) ||
+      document.documentElement.lang ||
+      "zh-TW";
+    const isEn = String(lang).toLowerCase().startsWith("en");
+    const primaryTitle = isEn ? enTitle : zhTitle;
+    const subTitle = isEn ? "Function Overview" : enTitle;
+    const primaryDesc = isEn ? enDesc : zhDesc;
+    return `
+      <div class="gs-survey-explainer-banner" data-no-auto-i18n="1" style="background:var(--ui-bg-subtle);border:1px solid var(--ui-border);border-left:3px solid var(--ui-accent);border-radius:6px;padding:7px 9px;margin-bottom:8px;line-height:1.4;">
+        <div style="font-size:11px;font-weight:700;color:var(--ui-text-primary);display:flex;align-items:center;justify-content:space-between;gap:5px;margin-bottom:3px;">
+          <span style="display:inline-flex;align-items:center;gap:5px;">
+            ${SVG_ICONS.INFO}
+            <span>${primaryTitle}</span>
+          </span>
+          <span style="font-size:9.5px;font-weight:600;color:var(--ui-accent);opacity:0.9;">${subTitle}</span>
+        </div>
+        <div style="font-size:10.5px;color:var(--ui-text-secondary);">${primaryDesc}</div>
+        ${!isEn ? `<div style="font-size:9.8px;color:var(--ui-text-muted);margin-top:2px;">${enDesc}</div>` : ""}
+      </div>
+    `;
+  }
+
+  /**
+   * Renders the unified 4-tab Survey (測量) container navigation bar:
+   * Stakeout (放樣), Station (樁號), Check (檢核), Contours (等高線).
+   * Note: Slope/Drainage is intentionally excluded from the Survey menu (resides in QA menu).
+   */
+  function renderSurveyContainerSubtabsHtml(activeTab) {
+    const t = typeof tr === "function" ? tr : (zh, en) => zh;
+    return `
+      <div class="civil-subtabs" id="surveyUnifiedSubtabBar" role="tablist" aria-label="${t("工程測量工具", "Engineering Survey Tools")}" style="display:grid;grid-template-columns:repeat(4,1fr);gap:4px;margin-bottom:8px;">
+        <button type="button" class="subtab-btn ${activeTab === "stakeout" ? "active" : ""}" id="subtabStakeout" data-survey-tab="stakeout" title="${t("RTK 施工放樣點位與座標匯出 (E, N, Z)", "RTK Stakeout Coordinate Exporter (E, N, Z)")}" style="padding:5px 4px;font-size:10.5px;justify-content:center;">
+          ${SVG_ICONS.STAKEOUT} <span>${t("放樣", "Stakeout")}</span>
+        </button>
+        <button type="button" class="subtab-btn ${activeTab === "stationing" ? "active" : ""}" id="subtabStationing" data-survey-tab="stationing" title="${t("道路中心線樁號斷面 (0K+000) 與平均端面積土方", "Centerline Stationing (0K+000) & AEA Volume")}" style="padding:5px 4px;font-size:10.5px;justify-content:center;">
+          ${SVG_ICONS.ROAD} <span>${t("樁號", "Station")}</span>
+        </button>
+        <button type="button" class="subtab-btn ${activeTab === "gcp_qa" ? "active" : ""}" id="subtabGcpQa" data-survey-tab="gcp_qa" title="${t("控制點精度檢核報告 (RMSE 與 TBM 校正)", "GCP Check-Point Accuracy QA & TBM Calibration")}" style="padding:5px 4px;font-size:10.5px;justify-content:center;">
+          ${SVG_ICONS.TARGET} <span>${t("檢核", "Check")}</span>
+        </button>
+        <button type="button" class="subtab-btn ${activeTab === "contours" ? "active" : ""}" id="subtabContours" data-survey-tab="contours" title="${t("等高線與測量成果圖 (.DXF + A3 PDF)", "Elevation Contours & A3 Survey Sheet (.DXF + PDF)")}" style="padding:5px 4px;font-size:10.5px;justify-content:center;">
+          ${SVG_ICONS.CONTOURS} <span>${t("等高線", "Contours")}</span>
+        </button>
+      </div>
+    `;
+  }
+
+  function bindSurveyContainerSubtabs(activeTab) {
+    document.getElementById("subtabStakeout")?.addEventListener("click", () => {
+      if (activeTab !== "stakeout" && typeof window.openRtkStakeoutInspector === "function") {
+        window.openRtkStakeoutInspector();
+      }
+    });
+    document.getElementById("subtabStationing")?.addEventListener("click", () => {
+      if (activeTab !== "stationing") {
+        openEnhancedStationingAndAeaInspector();
+      }
+    });
+    document.getElementById("subtabGcpQa")?.addEventListener("click", () => {
+      if (activeTab !== "gcp_qa") {
+        openEnhancedGcpAccuracyQaInspector();
+      }
+    });
+    document.getElementById("subtabContours")?.addEventListener("click", () => {
+      if (activeTab !== "contours") {
+        if (typeof setActiveStudioTool === "function") setActiveStudioTool("contours");
+        if (typeof window.openContoursInspector === "function") window.openContoursInspector();
+      }
+    });
+  }
+
+  /**
+   * Exact inverse of localToTwd97 with optional 3D mesh surface draping.
+   * Resolves TWD97 (Easting, Northing, TWVD2001 Elevation) into Three.js local coordinates (x, y, z)
+   * and drapes onto the loaded 3D scan mesh so markers never float or sink out of view.
+   */
+  function surveyTwd97ToLocalVec3(e, n, h, drapeToMesh = true, explicitLocal = null) {
+    const THREE = window.THREE;
+    if (!THREE) return null;
+
+    let o = { e: 304952.4, n: 2757084.2, h: 124.8 };
+    let lx = 0, ly = 0, lz = 0;
+    let resolvedViaJacobian = false;
+
+    if (typeof window.localToTwd97 === "function") {
+      try {
+        o = window.localToTwd97({ x: 0, y: 0, z: 0 }) || o;
+        const px = window.localToTwd97({ x: 1, y: 0, z: 0 });
+        const pz = window.localToTwd97({ x: 0, y: 0, z: 1 });
+        const ax = px.e - o.e;
+        const bx = px.n - o.n;
+        const az = pz.e - o.e;
+        const bz = pz.n - o.n;
+        const det = ax * bz - az * bx;
+        if (Math.abs(det) > 1e-8 && Number.isFinite(Number(e)) && Number.isFinite(Number(n))) {
+          const de = Number(e) - o.e;
+          const dn = Number(n) - o.n;
+          lx = (de * bz - dn * az) / det;
+          lz = (ax * dn - bx * de) / det;
+          ly = Number.isFinite(Number(h)) ? Number(h) - o.h : 0;
+          resolvedViaJacobian = true;
+        }
+      } catch (_) {}
+    }
+
+    let expX = null, expY = null, expZ = null;
+    if (Array.isArray(explicitLocal) && explicitLocal.length >= 3) {
+      expX = Number(explicitLocal[0]);
+      expY = Number(explicitLocal[1]);
+      expZ = Number(explicitLocal[2]);
+    } else if (explicitLocal && typeof explicitLocal === "object") {
+      expX = Number(explicitLocal.x !== undefined ? explicitLocal.x : explicitLocal.local_x);
+      expY = Number(explicitLocal.y !== undefined ? explicitLocal.y : explicitLocal.local_y);
+      expZ = Number(explicitLocal.z !== undefined ? explicitLocal.z : explicitLocal.local_z);
+    }
+    const hasExplicit = Number.isFinite(expX) && Number.isFinite(expZ);
+
+    if (!resolvedViaJacobian && hasExplicit) {
+      lx = expX;
+      ly = Number.isFinite(expY) ? expY : 0;
+      lz = expZ;
+    }
+
+    const boundR = Math.max(40, (Number(window.studioThree?.boundingSphere?.radius) || 45) * 2.5);
+    if (hasExplicit && Math.hypot(lx, lz) > boundR && Math.hypot(expX, expZ) <= boundR) {
+      lx = expX;
+      if (Number.isFinite(expY)) ly = expY;
+      lz = expZ;
+    }
+
+    let hitMesh = false;
+    if (typeof window.sampleStudioMeshElevationAtLocalXZ === "function") {
+      let sHit = window.sampleStudioMeshElevationAtLocalXZ(lx, lz, ly);
+      if ((!sHit || !sHit.hit) && hasExplicit && Math.hypot(lx - expX, lz - expZ) > 0.25) {
+        const altHit = window.sampleStudioMeshElevationAtLocalXZ(expX, expZ, Number.isFinite(expY) ? expY : ly);
+        if (altHit && altHit.hit) {
+          lx = expX;
+          lz = expZ;
+          sHit = altHit;
+        }
+      }
+      if (sHit && sHit.hit && Number.isFinite(sHit.y)) {
+        hitMesh = true;
+        if (drapeToMesh || Math.abs(ly - sHit.y) > 8.0) {
+          ly = sHit.y;
+        }
+      }
+    }
+
+    const vec = new THREE.Vector3(lx, ly, lz);
+    vec.surfaceH = Number((o.h + ly).toFixed(3));
+    vec.hitMesh = hitMesh;
+    return vec;
+  }
+
+  function focusStudioCameraOnLocalPoint(localVec, minDist = 14) {
+    if (!localVec || !window.studioThree || !window.studioThree.camera || !window.studioThree.controls) return;
+    const THREE = window.THREE;
+    const cam = window.studioThree.camera;
+    const ctrl = window.studioThree.controls;
+    const offset = cam.position.clone().sub(ctrl.target);
+    const curDist = offset.length();
+    if (curDist < 2 || curDist > 120) {
+      offset.normalize().multiplyScalar(Math.max(minDist, 22));
+    }
+    ctrl.target.copy(localVec);
+    cam.position.copy(localVec).add(offset);
+    ctrl.update();
+    if (typeof window.updateZoomInvariantElements === "function") window.updateZoomInvariantElements();
+    if (typeof window.update2DBadgePositions === "function") window.update2DBadgePositions();
+  }
+
+  window.surveyTwd97ToLocalVec3 = surveyTwd97ToLocalVec3;
+  window.focusStudioCameraOnLocalPoint = focusStudioCameraOnLocalPoint;
+  window.renderSurveyToolExplanationBannerHtml = renderSurveyToolExplanationBannerHtml;
+  window.renderSurveyContainerSubtabsHtml = renderSurveyContainerSubtabsHtml;
+  window.bindSurveyContainerSubtabs = bindSurveyContainerSubtabs;
 
   // Helper for safe client float parsing
   function safeParseFloat(val, fallback) {
@@ -183,11 +370,11 @@
             ${SVG_ICONS.PLANE} ${t("最佳擬合傾斜面", "Best-Fit Plane")}
           </div>
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">
-            <div><b>${t("坡度：", "Slope:")}</b> ${esc(slopePct)}% (${esc(slopeDeg)}°)</div>
-            <div><b>${t("方位角：", "Azimuth:")}</b> ${esc(azDeg)}°</div>
+            <div><b>${t("坡度：", "Slope:")}</b> ${esc(slopePct)}% (${esc(slopeDeg)} deg)</div>
+            <div><b>${t("方位角：", "Azimuth:")}</b> ${esc(azDeg)} deg</div>
           </div>
           <div style="font-size:10px;color:var(--ui-text-muted);margin-top:2px;">
-            Z = ${Number(bfp.c || bfp.c0 || 0).toFixed(3)} + (${Number(bfp.a || 0).toFixed(4)} × dE) + (${Number(bfp.b || 0).toFixed(4)} × dN)
+            Z = ${Number(bfp.c || bfp.c0 || 0).toFixed(3)} + (${Number(bfp.a || 0).toFixed(4)} x dE) + (${Number(bfp.b || 0).toFixed(4)} x dN)
           </div>
         </div>
       `;
@@ -243,9 +430,18 @@
   // =========================================================================
 
   /**
-   * Safely disposes and clears all Three.js 3D GCP QA overlay markers and error vectors.
+   * Safely disposes and clears all Three.js 3D GCP QA overlay markers, error vectors, and 2D badges.
    */
   function clearEnhancedGcpQaMarkers3D() {
+    if (window.STATE && Array.isArray(window.STATE.badges2D)) {
+      window.STATE.badges2D = window.STATE.badges2D.filter((b) => {
+        if (b && b.surveyTool === "gcp_qa") {
+          b.el?.remove();
+          return false;
+        }
+        return true;
+      });
+    }
     if (!window.studioThree || !window.studioThree.overlayGroup) return;
     if (window.studioThree.gcpQaGroup) {
       window.studioThree.gcpQaGroup.traverse((obj) => {
@@ -266,8 +462,8 @@
   }
 
   /**
-   * Renders 3D Studio Three.js GCP Target Reticles, TBM Diamond Badges, and
-   * 3D Error Vector Arrows (THREE.ArrowHelper) with user-selectable exaggeration scale.
+   * Renders 3D Studio Three.js GCP Target Reticles, Zoom-Invariant Pin Monuments,
+   * TBM Diamond Badges, 3D Error Vector Arrows (THREE.ArrowHelper), and floating 2D HUD Badges.
    */
   function renderEnhancedGcpQaMarkers3D(points, options = {}) {
     if (!window.studioThree || !window.studioThree.overlayGroup || !Array.isArray(points)) return;
@@ -282,54 +478,66 @@
     window.studioThree.overlayGroup.add(grp);
 
     const scale = Number(options.exaggerationScale || (window.STATE && window.STATE.gcpVectorExaggeration) || 20);
-    const centerE = (window.STATE && window.STATE.centerE) || 0;
-    const centerN = (window.STATE && window.STATE.centerN) || 0;
-    const centerH = (window.STATE && window.STATE.centerH) || 0;
+    const activePointId = String(options.activePointId || "");
 
-    points.forEach((p) => {
-      // Local position resolution
-      let lx = 0, ly = 0, lz = 0;
-      if (Array.isArray(p.local) && p.local.length >= 3) {
-        lx = Number(p.local[0]) || 0;
-        ly = Number(p.local[1]) || 0;
-        lz = Number(p.local[2]) || 0;
-      } else {
-        const pe = Number(p.e_scan !== undefined ? p.e_scan : p.e) || 0;
-        const pn = Number(p.n_scan !== undefined ? p.n_scan : p.n) || 0;
-        const ph = Number(p.h_scan !== undefined ? p.h_scan : (p.h_gcp || 0)) || 0;
-        lx = pe - centerE;
-        ly = ph - centerH;
-        lz = centerN - pn;
-      }
+    points.forEach((p, idx) => {
+      const pe = Number(p.e_scan !== undefined ? p.e_scan : p.e) || 0;
+      const pn = Number(p.n_scan !== undefined ? p.n_scan : p.n) || 0;
+      const ph = Number(p.h_scan !== undefined ? p.h_scan : (p.h_gcp || 0)) || 0;
+      const posVec = surveyTwd97ToLocalVec3(pe, pn, ph, true, p.local);
+      if (!posVec) return;
+      p._resolvedLocal = { x: posVec.x, y: posVec.y, z: posVec.z };
+
+      const lx = posVec.x;
+      const ly = posVec.y;
+      const lz = posVec.z;
 
       const isTbm = Boolean(p.is_tbm);
+      const isFocused = Boolean(activePointId && String(p.name || p.id) === activePointId);
       const status = String(p.status || "pass").toLowerCase();
-      const colHex = isTbm
-        ? 0x0284c7 // Cyan for TBM Benchmark
+      const colHex = isFocused
+        ? 0x00f6ff
+        : isTbm
+        ? 0x0284c7
         : status === "pass"
-        ? 0x10b981 // Emerald for Grade A / Pass
+        ? 0x10b981
         : status === "warn"
-        ? 0xf59e0b // Amber for Warn
-        : 0xef4444; // Red for Outlier
+        ? 0xf59e0b
+        : 0xef4444;
 
-      // 1. Ground Target Reticle (Horizontal Ring)
-      const ringGeom = new THREE.RingGeometry(0.35, 0.65, 24);
+      // 1. Zoom-Invariant 3D Pin Marker + Range Pole (visible at any camera zoom)
+      if (typeof window.add3DPinMarker === "function") {
+        window.add3DPinMarker(posVec, colHex, grp);
+      }
+      const poleHeight = isTbm ? 1.85 : 1.35;
+      const poleGeom = new THREE.BufferGeometry().setFromPoints([
+        new THREE.Vector3(lx, ly + 0.04, lz),
+        new THREE.Vector3(lx, ly + poleHeight, lz),
+      ]);
+      const poleLine = new THREE.Line(
+        poleGeom,
+        new THREE.LineBasicMaterial({ color: colHex, depthTest: false, transparent: true, opacity: 0.92 })
+      );
+      poleLine.renderOrder = 998;
+      grp.add(poleLine);
+
+      // 2. Ground Target Reticle (Horizontal Ring + Crosshair)
+      const ringGeom = new THREE.RingGeometry(0.45, 0.85, 28);
       const ringMat = new THREE.MeshBasicMaterial({
         color: colHex,
         side: THREE.DoubleSide,
         depthTest: false,
         transparent: true,
-        opacity: 0.85,
+        opacity: 0.9,
       });
       const ringMesh = new THREE.Mesh(ringGeom, ringMat);
       ringMesh.rotation.x = -Math.PI / 2;
-      ringMesh.position.set(lx, ly + 0.05, lz);
+      ringMesh.position.set(lx, ly + 0.06, lz);
       ringMesh.renderOrder = 998;
       grp.add(ringMesh);
 
-      // If TBM benchmark: add distinctive concentric outer diamond badge
       if (isTbm) {
-        const diamondGeom = new THREE.RingGeometry(0.75, 0.95, 4);
+        const diamondGeom = new THREE.RingGeometry(0.95, 1.25, 4);
         const diamondMat = new THREE.MeshBasicMaterial({
           color: 0x38bdf8,
           side: THREE.DoubleSide,
@@ -338,15 +546,12 @@
         const diamondMesh = new THREE.Mesh(diamondGeom, diamondMat);
         diamondMesh.rotation.x = -Math.PI / 2;
         diamondMesh.rotation.z = Math.PI / 4;
-        diamondMesh.position.set(lx, ly + 0.06, lz);
+        diamondMesh.position.set(lx, ly + 0.07, lz);
         diamondMesh.renderOrder = 999;
         grp.add(diamondMesh);
       }
 
-      // 2. 3D Residual Error Vector (ArrowHelper)
-      // dx = Easting Error = E_scan - E_gcp = dE
-      // dy = Elevation Error = H_scan - H_gcp = dH
-      // dz = -Northing Error = -(N_scan - N_gcp) = -dN
+      // 3. 3D Residual Error Vector (ArrowHelper)
       const de = Number(p.de !== undefined ? p.de : p.de_m) || 0;
       const dn = Number(p.dn !== undefined ? p.dn : p.dn_m) || 0;
       const dh = Number(p.dh !== undefined ? p.dh : (p.dz_m !== undefined ? p.dz_m : 0)) || 0;
@@ -358,10 +563,10 @@
 
       if (length3D >= 0.0005) {
         const dir = new THREE.Vector3(dx / length3D, dy / length3D, dz / length3D);
-        const origin = new THREE.Vector3(lx, ly + 0.08, lz);
-        const lengthVis = Math.max(0.2, length3D * scale);
-        const headLen = Math.min(lengthVis * 0.35, 0.45);
-        const headWidth = Math.min(lengthVis * 0.18, 0.22);
+        const origin = new THREE.Vector3(lx, ly + 0.12, lz);
+        const lengthVis = Math.max(0.45, length3D * scale);
+        const headLen = Math.min(lengthVis * 0.35, 0.55);
+        const headWidth = Math.min(lengthVis * 0.22, 0.3);
 
         const arrow = new THREE.ArrowHelper(dir, origin, lengthVis, colHex, headLen, headWidth);
         if (arrow.line && arrow.line.material) arrow.line.material.depthTest = false;
@@ -369,8 +574,27 @@
         arrow.renderOrder = 999;
         grp.add(arrow);
       }
+
+      // 4. Floating 2D Badge showing CP ID, TBM tag, and ΔH / Δ3D residuals
+      if (typeof window.add2DBadge === "function") {
+        const ptName = String(p.name || p.id || `CP-${idx + 1}`);
+        const dhCm = Number(p.dh_cm !== undefined ? p.dh_cm : dh * 100).toFixed(1);
+        const d3dCm = Number(p.d3d_cm !== undefined ? p.d3d_cm : length3D * 100).toFixed(1);
+        const bCol = isTbm ? "#38bdf8" : status === "pass" ? "#10b981" : status === "warn" ? "#f59e0b" : "#ef4444";
+        const badgeAnchor = new THREE.Vector3(lx, ly + poleHeight + 0.15, lz);
+        const badgeHtml = `<span style="display:inline-flex;align-items:center;gap:4px;font-family:var(--font-mono);font-size:10.5px;font-weight:700;"><span style="color:${bCol};">${ptName}${isTbm ? " [TBM]" : ""}</span><span style="opacity:0.88;">dH:${dhCm >= 0 ? "+" : ""}${dhCm}cm | 3D:${d3dCm}cm</span></span>`;
+        window.add2DBadge(badgeAnchor, badgeHtml, {
+          isSurveyToolBadge: true,
+          surveyTool: "gcp_qa",
+          priority: (isFocused ? 140 : 0) + (isTbm ? 95 : 80 - idx),
+          isFocused,
+          offsetY: -12,
+        });
+      }
     });
 
+    if (typeof window.updateZoomInvariantElements === "function") window.updateZoomInvariantElements();
+    if (typeof window.update2DBadgePositions === "function") window.update2DBadgePositions();
     if (window.studioThree && typeof window.studioThree.render === "function") {
       window.studioThree.render();
     }
@@ -567,7 +791,6 @@
     if (typeof setActiveStudioTool === "function") setActiveStudioTool("gcp_qa");
     if (window.STATE) window.STATE.sidePanelMinimized = false;
 
-    // Purge lingering elements from #studioSidePanel and empty #sidePanelBody
     const panel = document.getElementById("studioSidePanel");
     const bodyEl = document.getElementById("sidePanelBody");
     if (panel) {
@@ -590,6 +813,9 @@
     }
 
     const resList = qaResult.gcp_residuals || qaResult.points || [];
+    const currentScale = (window.STATE && window.STATE.gcpVectorExaggeration) || 20;
+    renderEnhancedGcpQaMarkers3D(resList, { exaggerationScale: currentScale });
+
     const grade = qaResult.qa_grade || "A";
     const gradeClass = grade === "A" ? "grade-a" : grade === "B" ? "grade-b" : "grade-c";
 
@@ -616,7 +842,7 @@
       .join("\n");
 
     const tableRowsHtml = resList
-      .map((p) => {
+      .map((p, idx) => {
         const status = String(p.status || "pass").toLowerCase();
         const isTbm = Boolean(p.is_tbm);
         const deCm = Number(p.de_cm !== undefined ? p.de_cm : (p.de * 100)).toFixed(1);
@@ -626,10 +852,10 @@
         const hGcpStr = Number(p.h_gcp).toFixed(3);
         const hScanStr = Number(p.h_scan).toFixed(3);
         const statusColor = status === "pass" ? "#10b981" : status === "warn" ? "#f59e0b" : "#ef4444";
-        const rowTooltip = `${esc(p.name)}: GCP H=${hGcpStr}m, Scan H=${hScanStr}m · ΔH=${dhCm >= 0 ? "+" : ""}${dhCm}cm, Δ3D=${d3dCm}cm · ${status.toUpperCase()}`;
+        const rowTooltip = `${esc(p.name)}: GCP H=${hGcpStr}m, Scan H=${hScanStr}m | dH=${dhCm >= 0 ? "+" : ""}${dhCm}cm, d3D=${d3dCm}cm | ${status.toUpperCase()}`;
 
         return `
-          <tr data-point-id="${esc(p.name)}" title="${rowTooltip}">
+          <tr data-point-id="${esc(p.name)}" data-point-idx="${idx}" style="cursor:pointer;" title="${rowTooltip}">
             <td style="width:26px;text-align:center;">
               <input type="radio" name="gcpTbmRadio" value="${esc(p.name)}" ${isTbm ? "checked" : ""} title="${t("設為高程水準基點 (TBM)", "Set as TBM benchmark")}" />
             </td>
@@ -645,62 +871,52 @@
       })
       .join("");
 
-    const currentScale = (window.STATE && window.STATE.gcpVectorExaggeration) || 20;
-
     const panelHtml = `
       <div class="gcp-qa-container">
-        <!-- Unified Civil Surveying Sub-Tabs -->
-        <div class="civil-subtabs">
-          <button type="button" class="subtab-btn" id="subtabStationing">
-            ${SVG_ICONS.ROAD} 樁號斷面
-          </button>
-          <button type="button" class="subtab-btn" id="subtabDrainage">
-            ${SVG_ICONS.DROPLET} 坡度排水
-          </button>
-          <button type="button" class="subtab-btn active" id="subtabGcpQa">
-            ${SVG_ICONS.TARGET} 控制點
-          </button>
-        </div>
+        ${renderSurveyContainerSubtabsHtml("gcp_qa")}
+        ${renderSurveyToolExplanationBannerHtml(
+          "控制點精度檢核",
+          "GCP & Check-Point Accuracy QA",
+          "比對實測控制點 (E, N, H) 與 3D 掃描模型，自動計算 ASPRS 3D/2D/高程 RMSE 誤差向量並執行單鍵 TBM 水準校正。",
+          "Validates 3D scan accuracy against ground control points (E, N, H), renders 3D residual vectors, and calibrates vertical TBM datum."
+        )}
 
-        <!-- Grade Header: Single-line CRS Pill + Grade Badge (No duplicate inner heading) -->
         <div class="gcp-grade-header">
           <span class="gcp-crs-pill" title="${esc(qaResult.crs || "TWD97 / TM2 zone 121 + TWVD 2001 height [EPSG:3826+8904]")}">
-            EPSG:3826 + TWVD2001 · N=${resList.length}
+            EPSG:3826 + TWVD2001 | N=${resList.length}
           </span>
           <span class="gcp-grade-badge ${gradeClass}">
             Grade ${esc(grade)} (${rmse3dCm} cm)
           </span>
         </div>
 
-        <!-- 3D KPI Metrics Cards -->
         <div class="gcp-kpi-grid">
           <div class="gcp-kpi-card highlight">
-            <div class="kpi-label">3D 空間 RMSE</div>
+            <div class="kpi-label">${t("3D 空間 RMSE", "3D Spatial RMSE")}</div>
             <div class="kpi-val">${rmse3dCm} <span style="font-size:10px;font-weight:600;">cm</span></div>
           </div>
           <div class="gcp-kpi-card">
-            <div class="kpi-label">平面 2D RMSE</div>
+            <div class="kpi-label">${t("平面 2D RMSE", "2D Planar RMSE")}</div>
             <div class="kpi-val">${rmse2dCm} <span style="font-size:10px;font-weight:600;">cm</span></div>
           </div>
           <div class="gcp-kpi-card">
-            <div class="kpi-label">高程 RMSE_H</div>
+            <div class="kpi-label">${t("高程 RMSE_H", "Vertical RMSE_H")}</div>
             <div class="kpi-val">${rmseHCm} <span style="font-size:10px;font-weight:600;">cm</span></div>
           </div>
           <div class="gcp-kpi-card">
-            <div class="kpi-label">ASPRS 95% 高程</div>
-            <div class="kpi-val">±${asprsVertCm} <span style="font-size:10px;font-weight:600;">cm</span></div>
+            <div class="kpi-label">${t("ASPRS 95% 高程", "ASPRS 95% Vert")}</div>
+            <div class="kpi-val">+/-${asprsVertCm} <span style="font-size:10px;font-weight:600;">cm</span></div>
           </div>
           <div class="gcp-kpi-card">
-            <div class="kpi-label">ASPRS 95% 平面</div>
-            <div class="kpi-val">±${asprsHorizCm} <span style="font-size:10px;font-weight:600;">cm</span></div>
+            <div class="kpi-label">${t("ASPRS 95% 平面", "ASPRS 95% Horiz")}</div>
+            <div class="kpi-val">+/-${asprsHorizCm} <span style="font-size:10px;font-weight:600;">cm</span></div>
           </div>
           <div class="gcp-kpi-card">
-            <div class="kpi-label">高程平均偏差</div>
+            <div class="kpi-label">${t("高程平均偏差", "Mean Vert Bias")}</div>
             <div class="kpi-val">${biasHCm >= 0 ? "+" : ""}${biasHCm} <span style="font-size:10px;font-weight:600;">cm</span></div>
           </div>
         </div>
 
-        <!-- 1-Click TBM Vertical Datum Calibration Card -->
         <div class="gcp-tbm-card">
           <div class="gcp-tbm-header">
             <span class="gcp-tbm-title" title="${t("原始點雲與 DSM 高程不受更動，僅於執行期套用水準基準平移", "Raw point cloud is unmodified; applies runtime datum offset.")}">
@@ -734,15 +950,13 @@
           </div>
         </div>
 
-        <!-- Check Points CSV Input Textarea -->
         <div class="gs-form-group" style="margin-bottom:2px;">
           <label style="display:flex;justify-content:space-between;align-items:center;">
-            <span>${t("檢核點座標表", "Check Points CSV")}</span>
+            <span>${t("檢核點座標表 (或點擊 3D 模型新增)", "Check Points CSV (or click 3D model)")}</span>
           </label>
           <textarea class="gs-input" id="txtGcpCsvInput" rows="3" placeholder="Point, E, N, H, [TBM]" style="font-family:var(--font-mono);font-size:10.5px;padding:5px 7px;">${esc(csvDefault)}</textarea>
         </div>
 
-        <!-- Evaluation Action Buttons (Strictly 1-Word Labels) -->
         <div style="display:flex;gap:6px;">
           <button type="button" class="btn-xs primary" id="btnComputeGcpQa" style="flex:1;justify-content:center;" title="${t("計算 3D 空間精度與殘差", "Compute 3D Spatial Accuracy & Residuals")}">
             ${SVG_ICONS.CALC} ${t("檢核", "Check")}
@@ -752,7 +966,6 @@
           </button>
         </div>
 
-        <!-- 3D Residuals Table -->
         <div class="gcp-table-container">
           <table class="gcp-residuals-table">
             <thead>
@@ -769,7 +982,6 @@
           </table>
         </div>
 
-        <!-- 3D Studio Vector Exaggeration Controls -->
         <div class="gcp-vis-controls">
           <span class="gcp-vis-label">${SVG_ICONS.VECTOR} ${t("誤差向量", "Error Vectors")}</span>
           <div class="gcp-scale-selector">
@@ -784,7 +996,6 @@
           </div>
         </div>
 
-        <!-- Export Action Buttons (Strictly 1-Word Labels) -->
         <div style="display:flex;gap:6px;">
           <button type="button" class="btn-xs" id="btnDownloadGcpCsv" style="flex:1;justify-content:center;" title="${t("下載 3D 殘差 CSV", "Download 3D CSV")}">
             ${SVG_ICONS.DOWNLOAD} CSV
@@ -801,18 +1012,31 @@
 
     if (typeof showSidePanel === "function") {
       showSidePanel(
-        `<span>${SVG_ICONS.TARGET} ${t("控制點精度檢核", "Control Accuracy QA")}</span>`,
+        `<span>${SVG_ICONS.TARGET} ${t("控制點精度檢核 (Check)", "Control Accuracy QA (Check)")}</span>`,
         panelHtml
       );
     }
 
-    // Subtab event bindings
-    document.getElementById("subtabStationing")?.addEventListener("click", () => openEnhancedStationingAndAeaInspector());
-    document.getElementById("subtabDrainage")?.addEventListener("click", () => {
-      if (typeof window.openDrainageAndSlopeInspector === "function") window.openDrainageAndSlopeInspector();
+    bindSurveyContainerSubtabs("gcp_qa");
+
+    document.querySelectorAll(".gcp-residuals-table tbody tr[data-point-idx]").forEach((row) => {
+      row.addEventListener("click", (ev) => {
+        if (ev.target && ev.target.tagName === "INPUT") return;
+        const idx = Number(row.getAttribute("data-point-idx")) || 0;
+        const pt = resList[idx];
+        if (!pt) return;
+        const pe = Number(pt.e_scan !== undefined ? pt.e_scan : pt.e) || 0;
+        const pn = Number(pt.n_scan !== undefined ? pt.n_scan : pt.n) || 0;
+        const ph = Number(pt.h_scan !== undefined ? pt.h_scan : (pt.h_gcp || 0)) || 0;
+        const vec = surveyTwd97ToLocalVec3(pe, pn, ph, true, pt.local);
+        renderEnhancedGcpQaMarkers3D(resList, {
+          exaggerationScale: (window.STATE && window.STATE.gcpVectorExaggeration) || 20,
+          activePointId: pt.name || pt.id,
+        });
+        if (vec) focusStudioCameraOnLocalPoint(vec, 16);
+      });
     });
 
-    // Bind Event Listeners
     document.getElementById("btnComputeGcpQa")?.addEventListener("click", () => {
       const txt = document.getElementById("txtGcpCsvInput")?.value || "";
       const parsed = parseEnhancedGcpCsvInput(txt);
@@ -1007,6 +1231,260 @@
   }
 
   /**
+   * Clears 3D Stationing centerline, cross-section swaths, monuments, and 2D chainage badges.
+   */
+  function clearStationingVisuals3D() {
+    if (window.STATE && Array.isArray(window.STATE.badges2D)) {
+      window.STATE.badges2D = window.STATE.badges2D.filter((b) => {
+        if (b && b.surveyTool === "stationing") {
+          b.el?.remove();
+          return false;
+        }
+        return true;
+      });
+    }
+    if (!window.studioThree || !window.studioThree.overlayGroup) return;
+    if (window.studioThree.stationingGroup) {
+      window.studioThree.stationingGroup.traverse((obj) => {
+        if (obj.geometry) {
+          try { obj.geometry.dispose(); } catch (_) {}
+        }
+        if (obj.material) {
+          if (Array.isArray(obj.material)) {
+            obj.material.forEach((m) => { try { m.dispose(); } catch (_) {} });
+          } else {
+            try { obj.material.dispose(); } catch (_) {}
+          }
+        }
+      });
+      window.studioThree.overlayGroup.remove(window.studioThree.stationingGroup);
+      window.studioThree.stationingGroup = null;
+    }
+  }
+
+  /**
+   * Renders 3D Centerline Alignment, Perpendicular Cross-Section Swath Profiles,
+   * Parametric Corridor Template Lines, Zoom-Invariant Station Monuments, and 2D Chainage HUD Badges.
+   */
+  function renderStationing3DOverlay(stationResult, activeIdx = 0) {
+    if (!window.studioThree || !window.studioThree.overlayGroup) return;
+    clearStationingVisuals3D();
+
+    const THREE = window.THREE;
+    if (!THREE) return;
+
+    const grp = new THREE.Group();
+    grp.name = "GS_StationingGroup";
+    window.studioThree.stationingGroup = grp;
+    window.studioThree.overlayGroup.add(grp);
+
+    const pickedPts = (window.STATE && Array.isArray(window.STATE.stationAlignmentPoints))
+      ? window.STATE.stationAlignmentPoints
+      : [];
+
+    // If user is actively picking centerline vertices (< 2 points), render picked nodes immediately
+    if (window.STATE && window.STATE.isPickingStationAlignment && pickedPts.length > 0 && (!stationResult || pickedPts.length < 2)) {
+      const pickVecs = [];
+      pickedPts.forEach((pt, idx) => {
+        const v = surveyTwd97ToLocalVec3(pt.e, pt.n, pt.h, true, [pt.local_x, pt.local_y, pt.local_z]);
+        if (!v) return;
+        pickVecs.push(v.clone().add(new THREE.Vector3(0, 0.14, 0)));
+        if (typeof window.add3DPinMarker === "function") {
+          window.add3DPinMarker(v, idx === 0 ? 0xff3b30 : 0x00f6ff, grp);
+        }
+        if (typeof window.add2DBadge === "function") {
+          window.add2DBadge(
+            v.clone().add(new THREE.Vector3(0, 1.35, 0)),
+            `<span style="font-family:var(--font-mono);font-size:10.5px;font-weight:700;color:#00f6ff;">CL-${idx + 1} (${idx === 0 ? "0K+000" : "Vertex"})</span>`,
+            { isSurveyToolBadge: true, surveyTool: "stationing", priority: 120 - idx, isFocused: true }
+          );
+        }
+      });
+      if (pickVecs.length >= 2) {
+        const lineGeom = new THREE.BufferGeometry().setFromPoints(pickVecs);
+        const lineObj = new THREE.Line(
+          lineGeom,
+          new THREE.LineBasicMaterial({ color: 0x00f6ff, depthTest: false, linewidth: 2 })
+        );
+        lineObj.renderOrder = 999;
+        grp.add(lineObj);
+      }
+      if (typeof window.updateZoomInvariantElements === "function") window.updateZoomInvariantElements();
+      if (typeof window.update2DBadgePositions === "function") window.update2DBadgePositions();
+      return;
+    }
+
+    const stations = (stationResult && Array.isArray(stationResult.stations)) ? stationResult.stations : [];
+    if (!stations.length) return;
+
+    const clVecs = [];
+    const swathHalf = Math.max(2.0, (Number(stationResult.swath_width_m) || 16.0) * 0.5);
+
+    stations.forEach((st, idx) => {
+      const explicitLoc = (st.local_x !== undefined && st.local_z !== undefined)
+        ? [st.local_x, st.local_y || 0, st.local_z]
+        : null;
+      const clVec = surveyTwd97ToLocalVec3(st.easting_m, st.northing_m, st.cl_ground_z, true, explicitLoc);
+      if (!clVec) return;
+      st._resolvedLocalVec = clVec;
+      clVecs.push(new THREE.Vector3(clVec.x, clVec.y + 0.16, clVec.z));
+    });
+
+    // 1. Render Draped 3D Centerline Polyline with dense intermediate terrain sampling
+    if (clVecs.length >= 2) {
+      const denseClPts = [];
+      for (let i = 0; i < clVecs.length - 1; i++) {
+        const a = clVecs[i];
+        const b = clVecs[i + 1];
+        const segLen = a.distanceTo(b);
+        const steps = Math.max(1, Math.min(12, Math.ceil(segLen / 1.5)));
+        for (let s = 0; s < steps; s++) {
+          const tFrac = s / steps;
+          const mx = a.x + (b.x - a.x) * tFrac;
+          const mz = a.z + (b.z - a.z) * tFrac;
+          let my = a.y + (b.y - a.y) * tFrac;
+          if (typeof window.sampleStudioMeshElevationAtLocalXZ === "function") {
+            const hit = window.sampleStudioMeshElevationAtLocalXZ(mx, mz, my - 0.16);
+            if (hit && hit.hit) my = hit.y + 0.16;
+          }
+          denseClPts.push(new THREE.Vector3(mx, my, mz));
+        }
+      }
+      denseClPts.push(clVecs[clVecs.length - 1].clone());
+
+      const clGeom = new THREE.BufferGeometry().setFromPoints(denseClPts);
+      const clLine = new THREE.Line(
+        clGeom,
+        new THREE.LineBasicMaterial({ color: 0x00f6ff, depthTest: false, linewidth: 2 })
+      );
+      clLine.renderOrder = 998;
+      grp.add(clLine);
+    }
+
+    // 2. Render Station Monuments, Cross-Section Swath Profiles, and 2D Chainage Badges
+    stations.forEach((st, idx) => {
+      const clVec = st._resolvedLocalVec;
+      if (!clVec) return;
+      const isSelected = idx === activeIdx;
+      const pinColor = isSelected ? 0xf59e0b : (idx === 0 ? 0xff3b30 : 0x0284c7);
+
+      // Compute perpendicular cross-section unit normal in Three.js local XZ plane
+      let nx = Number(st.normal_e);
+      let nz = Number.isFinite(Number(st.normal_n)) ? -Number(st.normal_n) : NaN;
+      if (!Number.isFinite(nx) || !Number.isFinite(nz) || Math.hypot(nx, nz) < 1e-4) {
+        const prevVec = idx > 0 && stations[idx - 1]._resolvedLocalVec ? stations[idx - 1]._resolvedLocalVec : clVec;
+        const nextVec = idx < stations.length - 1 && stations[idx + 1]._resolvedLocalVec ? stations[idx + 1]._resolvedLocalVec : clVec;
+        const tx = nextVec.x - prevVec.x;
+        const tz = nextVec.z - prevVec.z;
+        const tLen = Math.hypot(tx, tz) || 1.0;
+        nx = -tz / tLen;
+        nz = tx / tLen;
+      } else {
+        const nLen = Math.hypot(nx, nz) || 1.0;
+        nx /= nLen;
+        nz /= nLen;
+      }
+
+      // Draw perpendicular 3D ground cross-section swath line draped on mesh
+      const groundSwathPts = [];
+      const templateSwathPts = [];
+      const profileArr = Array.isArray(st.cross_profile) && st.cross_profile.length >= 2
+        ? st.cross_profile
+        : [{ u: -swathHalf, z_ground: st.cl_ground_z, z_template: st.cl_design_z }, { u: swathHalf, z_ground: st.cl_ground_z, z_template: st.cl_design_z }];
+
+      profileArr.forEach((cp) => {
+        const u = Number(cp.u) || 0;
+        const sx = clVec.x + u * nx;
+        const sz = clVec.z + u * nz;
+        const dzGround = (Number(cp.z_ground) || st.cl_ground_z) - (Number(st.cl_ground_z) || 0);
+        const dzTmpl = (Number(cp.z_template) || st.cl_design_z) - (Number(st.cl_ground_z) || 0);
+        let syGround = clVec.y + dzGround;
+        if (typeof window.sampleStudioMeshElevationAtLocalXZ === "function") {
+          const hit = window.sampleStudioMeshElevationAtLocalXZ(sx, sz, syGround);
+          if (hit && hit.hit) syGround = hit.y;
+        }
+        const syTmpl = clVec.y + dzTmpl;
+        groundSwathPts.push(new THREE.Vector3(sx, syGround + 0.12, sz));
+        templateSwathPts.push(new THREE.Vector3(sx, syTmpl + 0.14, sz));
+      });
+
+      if (groundSwathPts.length >= 2) {
+        const swGeom = new THREE.BufferGeometry().setFromPoints(groundSwathPts);
+        const swLine = new THREE.Line(
+          swGeom,
+          new THREE.LineBasicMaterial({
+            color: isSelected ? 0xf59e0b : 0x38bdf8,
+            depthTest: false,
+            transparent: true,
+            opacity: isSelected ? 1.0 : 0.72,
+          })
+        );
+        swLine.renderOrder = isSelected ? 999 : 997;
+        grp.add(swLine);
+      }
+
+      if (isSelected && templateSwathPts.length >= 2) {
+        const tmplGeom = new THREE.BufferGeometry().setFromPoints(templateSwathPts);
+        const tmplLine = new THREE.Line(
+          tmplGeom,
+          new THREE.LineBasicMaterial({
+            color: 0x10b981,
+            depthTest: false,
+            transparent: true,
+            opacity: 0.95,
+          })
+        );
+        tmplLine.renderOrder = 999;
+        grp.add(tmplLine);
+      }
+
+      // Zoom-invariant 3D station monument pin + range pole
+      if (typeof window.add3DPinMarker === "function") {
+        window.add3DPinMarker(clVec, pinColor, grp);
+      }
+      const poleH = isSelected ? 1.85 : 1.25;
+      const poleLine = new THREE.Line(
+        new THREE.BufferGeometry().setFromPoints([
+          new THREE.Vector3(clVec.x, clVec.y + 0.04, clVec.z),
+          new THREE.Vector3(clVec.x, clVec.y + poleH, clVec.z),
+        ]),
+        new THREE.LineBasicMaterial({ color: pinColor, depthTest: false, transparent: true, opacity: 0.9 })
+      );
+      poleLine.renderOrder = 998;
+      grp.add(poleLine);
+
+      // Floating 2D Chainage Badge
+      if (typeof window.add2DBadge === "function") {
+        const elevVal = Number.isFinite(clVec.surfaceH) ? clVec.surfaceH : Number(st.cl_ground_z || 0);
+        const cutA = Number(st.cut_area_m2 || 0).toFixed(1);
+        const fillA = Number(st.fill_area_m2 || 0).toFixed(1);
+        const accentCol = isSelected ? "#f59e0b" : "#38bdf8";
+        const badgeHtml = `<span style="display:inline-flex;align-items:center;gap:4px;font-family:var(--font-mono);font-size:10.5px;font-weight:700;"><span style="color:${accentCol};">${st.chainage_code}</span><span style="opacity:0.9;">Z:${elevVal.toFixed(2)}m | C:${cutA}/F:${fillA}m²</span></span>`;
+        window.add2DBadge(
+          new THREE.Vector3(clVec.x, clVec.y + poleH + 0.14, clVec.z),
+          badgeHtml,
+          {
+            isSurveyToolBadge: true,
+            surveyTool: "stationing",
+            priority: isSelected ? 160 : (idx === 0 || idx === stations.length - 1 ? 95 : 75 - idx),
+            isFocused: isSelected,
+            offsetY: -10,
+          }
+        );
+      }
+    });
+
+    if (typeof window.updateZoomInvariantElements === "function") window.updateZoomInvariantElements();
+    if (typeof window.update2DBadgePositions === "function") window.update2DBadgePositions();
+    if (window.studioThree && typeof window.studioThree.render === "function") {
+      window.studioThree.render();
+    }
+  }
+
+  window.clearStationingVisuals3D = clearStationingVisuals3D;
+  window.renderStationing3DOverlay = renderStationing3DOverlay;
+
+  /**
    * Opens the Centerline Stationing (0K+000) & Average-End-Area (AEA) Cut/Fill Volume Inspector.
    */
   async function openEnhancedStationingAndAeaInspector(initialResult = null) {
@@ -1018,7 +1496,7 @@
       return;
     }
 
-    let stationResult = initialResult;
+    let stationResult = initialResult || (window.STATE && window.STATE.lastStationingResult && window.STATE.lastStationingResult.scan_id === scanId ? window.STATE.lastStationingResult : null);
     if (!stationResult) {
       if (typeof apiPost === "function") {
         try {
@@ -1068,16 +1546,22 @@
       };
     }
 
+    if (window.STATE) {
+      window.STATE.lastStationingResult = stationResult;
+    }
+
     const stations = stationResult.stations || [];
     const totalCut = stationResult.total_cut_volume_m3 || 0.0;
     const totalFill = stationResult.total_fill_volume_m3 || 0.0;
     const netVol = stationResult.net_volume_m3 || 0.0;
-    const trips = stationResult.earthwork_schedule?.haul_trucks?.trips_required || 0;
+    const hasCustomAlign = Boolean(window.STATE && Array.isArray(window.STATE.stationAlignmentPoints) && window.STATE.stationAlignmentPoints.length >= 2);
+
+    renderStationing3DOverlay(stationResult, 0);
 
     let tableRowsHtml = "";
     stations.forEach((st, idx) => {
       tableRowsHtml += `
-        <tr data-st-idx="${idx}" style="cursor:pointer;">
+        <tr data-st-idx="${idx}" style="cursor:pointer;" title="${t("點擊聚焦此樁號 3D 橫斷面", "Click to focus station in 3D")}">
           <td style="font-weight:700;color:var(--ui-accent);">${st.chainage_code}</td>
           <td>${st.cut_area_m2.toFixed(1)}</td>
           <td>${st.fill_area_m2.toFixed(1)}</td>
@@ -1089,30 +1573,23 @@
 
     const panelHtml = `
       <div class="gcp-qa-container" id="stationingContainer">
-        <!-- Unified Civil Surveying Sub-Tabs -->
-        <div class="civil-subtabs">
-          <button type="button" class="subtab-btn active" id="subtabStationing">
-            ${SVG_ICONS.ROAD} 樁號斷面
-          </button>
-          <button type="button" class="subtab-btn" id="subtabDrainage">
-            ${SVG_ICONS.DROPLET} 坡度排水
-          </button>
-          <button type="button" class="subtab-btn" id="subtabGcpQa">
-            ${SVG_ICONS.TARGET} 控制點
-          </button>
-        </div>
+        ${renderSurveyContainerSubtabsHtml("stationing")}
+        ${renderSurveyToolExplanationBannerHtml(
+          "道路中心線樁號斷面",
+          "Centerline Stationing & AEA Volume",
+          "沿道路或管溝中心線自動佈設樁號 (0K+000)，於 3D 模型繪製橫斷面走廊並以平均端面積法 (AEA) 計算挖填土方。",
+          "Generates 0K+000 station monuments and 3D cross-section swaths along a centerline to compute Average-End-Area (AEA) cut/fill volumes."
+        )}
 
-        <!-- Grade Header Banner (No duplicate inner heading) -->
         <div class="gcp-grade-header">
           <div style="font-size:11px;color:var(--ui-text-secondary);display:flex;align-items:center;gap:6px;">
             <span>${t("全長", "Total")}: <b style="color:var(--ui-text-primary);">${stationResult.total_length_m} m</b></span>
-            <span>·</span>
+            <span>|</span>
             <span><b style="color:var(--ui-text-primary);">${stationResult.station_count}</b> ${t("樁", "Stations")}</span>
           </div>
           <span class="gcp-crs-pill">EPSG:3826 + TWVD2001</span>
         </div>
 
-        <!-- KPI Metrics Grid -->
         <div class="gcp-kpi-grid">
           <div class="gcp-kpi-card highlight">
             <div class="kpi-label">${t("總挖方 (BCM)", "Cut (BCM)")}</div>
@@ -1128,15 +1605,14 @@
           </div>
         </div>
 
-        <!-- Parametric Template Form -->
         <div class="gcp-tbm-card">
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:6px;">
             <div>
               <label style="font-size:10px;color:var(--ui-text-secondary);display:block;margin-bottom:2px;">${t("樣板型式", "Template")}</label>
               <select id="selStationTemplate" class="gs-select" style="width:100%;height:26px;font-size:11px;">
-                <option value="roadway" ${stationResult.template_type === "roadway" ? "selected" : ""}>路面 (Roadway)</option>
-                <option value="trench" ${stationResult.template_type === "trench" ? "selected" : ""}>管溝 (Trench)</option>
-                <option value="flat" ${stationResult.template_type === "flat" ? "selected" : ""}>平臺 (Flat)</option>
+                <option value="roadway" ${stationResult.template_type === "roadway" ? "selected" : ""}>${t("路面 (Roadway)", "Roadway")}</option>
+                <option value="trench" ${stationResult.template_type === "trench" ? "selected" : ""}>${t("管溝 (Trench)", "Trench")}</option>
+                <option value="flat" ${stationResult.template_type === "flat" ? "selected" : ""}>${t("平臺 (Flat)", "Flat Pad")}</option>
               </select>
             </div>
             <div>
@@ -1157,16 +1633,20 @@
           </div>
 
           <div style="display:flex;gap:6px;margin-top:7px;">
-            <button type="button" class="btn-xs primary" id="btnRecomputeStationing" style="flex:1;justify-content:center;">
-              ${SVG_ICONS.ROAD} 樁號
+            <button type="button" class="btn-xs primary" id="btnRecomputeStationing" style="flex:1;justify-content:center;" title="${t("重新計算樁號斷面與 3D 走廊", "Recompute Stationing & 3D Corridor")}">
+              ${SVG_ICONS.ROAD} ${t("樁號", "Compute")}
             </button>
-            <button type="button" class="btn-xs" id="btnPickAlignment" style="flex:1;justify-content:center;" title="${t("在 3D 視圖點選中心線點位", "Pick Centerline in 3D")}">
-              ${SVG_ICONS.TARGET} 選線
+            <button type="button" class="btn-xs" id="btnPickAlignment" style="flex:1;justify-content:center;" title="${t("在 3D 視圖點選中心線起終點", "Pick Centerline Points in 3D")}">
+              ${SVG_ICONS.TARGET} ${t("選線", "Pick Line")}
             </button>
+            ${hasCustomAlign ? `
+              <button type="button" class="btn-xs" id="btnResetStationAlignment" title="${t("重設為自動主軸中心線", "Reset to Auto Principal Axis")}">
+                ${SVG_ICONS.RESET} ${t("重設", "Reset")}
+              </button>
+            ` : ""}
           </div>
         </div>
 
-        <!-- 2D Profile Canvas Card -->
         <div class="gcp-tbm-card">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;gap:8px;">
             <span class="station-profile-label" style="font-weight:700;font-size:11px;color:var(--ui-text-primary);white-space:nowrap;display:inline-flex;align-items:center;gap:4px;flex-shrink:0;">
@@ -1180,12 +1660,11 @@
           <div style="display:flex;justify-content:space-between;font-size:9.5px;color:var(--ui-text-muted);margin-top:3px;">
             <span><span style="color:#0284c7;font-weight:700;">—</span> ${t("地表面", "Ground")}</span>
             <span><span style="color:#f59e0b;font-weight:700;">---</span> ${t("設計樣板", "Template")}</span>
-            <span><span style="color:#ef4444;font-weight:700;">■</span> ${t("挖方", "Cut")}</span>
-            <span><span style="color:#10b981;font-weight:700;">■</span> ${t("填方", "Fill")}</span>
+            <span><span style="display:inline-block;width:8px;height:8px;background:#ef4444;border-radius:2px;"></span> ${t("挖方", "Cut")}</span>
+            <span><span style="display:inline-block;width:8px;height:8px;background:#10b981;border-radius:2px;"></span> ${t("填方", "Fill")}</span>
           </div>
         </div>
 
-        <!-- Station End Area Table -->
         <div class="gcp-table-container">
           <table class="gcp-residuals-table">
             <thead>
@@ -1201,41 +1680,38 @@
           </table>
         </div>
 
-        <!-- Action Buttons (Strictly 1-Word Labels) -->
         <div style="display:flex;gap:6px;">
           <button type="button" class="btn-xs" id="btnDownloadStationCsv" style="flex:1;justify-content:center;">
             ${SVG_ICONS.DOWNLOAD} CSV
           </button>
           <button type="button" class="btn-xs" id="btnPrintStationReport" style="flex:1;justify-content:center;">
-            ${SVG_ICONS.PRINTER} 列印
+            ${SVG_ICONS.PRINTER} ${t("列印", "Print")}
           </button>
         </div>
       </div>
     `;
 
     if (typeof showSidePanel === "function") {
-      showSidePanel(`<span>${SVG_ICONS.ROAD} ${t("樁號斷面與平均端面土方", "Stationing & AEA Volume")}</span>`, panelHtml);
+      showSidePanel(`<span>${SVG_ICONS.ROAD} ${t("樁號斷面與平均端面土方 (Station)", "Stationing & AEA Volume")}</span>`, panelHtml);
     }
 
-    // Subtab event bindings
-    document.getElementById("subtabDrainage")?.addEventListener("click", () => {
-      if (typeof window.openDrainageAndSlopeInspector === "function") window.openDrainageAndSlopeInspector();
-    });
-    document.getElementById("subtabGcpQa")?.addEventListener("click", () => openEnhancedGcpAccuracyQaInspector());
+    bindSurveyContainerSubtabs("stationing");
 
-    // Canvas drawing helper
     const cvs = document.getElementById("cvsStationProfile");
-    const drawProfileAt = (stIdx) => {
+    const selectAndHighlightStation = (stIdx, focusCam = false) => {
       const st = stations[stIdx];
       if (st && st.cross_profile) {
         renderStationCrossProfileCanvas(cvs, st.cross_profile, stationResult.template_type);
       }
+      renderStationing3DOverlay(stationResult, stIdx);
+      if (focusCam && st && st._resolvedLocalVec) {
+        focusStudioCameraOnLocalPoint(st._resolvedLocalVec, 18);
+      }
     };
-    drawProfileAt(0);
+    selectAndHighlightStation(0, false);
 
-    // Event listeners
     document.getElementById("selActiveStation")?.addEventListener("change", (e) => {
-      drawProfileAt(Number(e.target.value) || 0);
+      selectAndHighlightStation(Number(e.target.value) || 0, true);
     });
 
     document.querySelectorAll("#stationingContainer tbody tr").forEach((row) => {
@@ -1243,7 +1719,7 @@
         const idx = Number(row.getAttribute("data-st-idx")) || 0;
         const sel = document.getElementById("selActiveStation");
         if (sel) sel.value = String(idx);
-        drawProfileAt(idx);
+        selectAndHighlightStation(idx, true);
       });
     });
 
@@ -1264,6 +1740,7 @@
             bottom_width: widthVal,
             alignment: (window.STATE && Array.isArray(window.STATE.stationAlignmentPoints) && window.STATE.stationAlignmentPoints.length >= 2) ? window.STATE.stationAlignmentPoints : null,
           });
+          if (window.STATE) window.STATE.isPickingStationAlignment = false;
           openEnhancedStationingAndAeaInspector(updated);
         } catch (err) {
           console.error("[Stationing] Recompute failed:", err);
@@ -1276,9 +1753,21 @@
         window.STATE.isPickingStationAlignment = true;
         window.STATE.stationAlignmentPoints = [];
       }
+      clearStationingVisuals3D();
+      const pickBtn = document.getElementById("btnPickAlignment");
+      if (pickBtn) pickBtn.classList.add("primary");
       if (typeof showToast === "function") {
-        showToast(t("請在 3D 視圖中點擊至少 2 處中心線節點", "Click 2+ centerline vertices on 3D scan"));
+        showToast(t("請在 3D 模型上依序點擊中心線起點 (0K+000) 與終點", "Click centerline start (0K+000) and end points on the 3D scan"));
       }
+    });
+
+    document.getElementById("btnResetStationAlignment")?.addEventListener("click", () => {
+      if (window.STATE) {
+        window.STATE.isPickingStationAlignment = false;
+        window.STATE.stationAlignmentPoints = [];
+        window.STATE.lastStationingResult = null;
+      }
+      openEnhancedStationingAndAeaInspector(null);
     });
 
     document.getElementById("btnDownloadStationCsv")?.addEventListener("click", () => {
@@ -1293,12 +1782,26 @@
   window.handleStationAlignment3DPick = function (pt, twd) {
     if (!twd || !window.STATE) return false;
     if (!Array.isArray(window.STATE.stationAlignmentPoints)) window.STATE.stationAlignmentPoints = [];
-    window.STATE.stationAlignmentPoints.push({ e: Number(twd.e.toFixed(3)), n: Number(twd.n.toFixed(3)), h: Number(twd.h.toFixed(3)) });
+    window.STATE.isPickingStationAlignment = true;
+    window.STATE.stationAlignmentPoints.push({
+      e: Number(twd.e.toFixed(3)),
+      n: Number(twd.n.toFixed(3)),
+      h: Number(twd.h.toFixed(3)),
+      local_x: pt ? Number(pt.x.toFixed(3)) : undefined,
+      local_y: pt ? Number(pt.y.toFixed(3)) : undefined,
+      local_z: pt ? Number(pt.z.toFixed(3)) : undefined,
+    });
     const t = typeof tr === "function" ? tr : (zh, en) => zh;
     if (window.STATE.stationAlignmentPoints.length >= 2) {
+      if (typeof showToast === "function") {
+        showToast(t(`已設定 ${window.STATE.stationAlignmentPoints.length} 處中心線節點 — 正在計算 3D 樁號與橫斷面`, `Centerline (${window.STATE.stationAlignmentPoints.length} vertices) locked — computing 3D stationing`));
+      }
       document.getElementById("btnRecomputeStationing")?.click();
-    } else if (typeof showToast === "function") {
-      showToast(t("已設定中心線起點 (0K+000) — 請點擊下一處中心線節點", "Centerline start (0K+000) placed — click next vertex"));
+    } else {
+      renderStationing3DOverlay(null, 0);
+      if (typeof showToast === "function") {
+        showToast(t("已設定中心線起點 (0K+000) — 請在 3D 模型點擊下一處中心線節點", "Centerline start (0K+000) placed in 3D — click next vertex"));
+      }
     }
     return true;
   };

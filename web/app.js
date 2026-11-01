@@ -2945,6 +2945,12 @@
           else if (STATE.activeTool === "generate_scan") openGenerateScanInspector();
           else if (STATE.activeTool === "flatness" && typeof window.openSurfaceFlatnessQaInspector === "function") window.openSurfaceFlatnessQaInspector();
           else if (STATE.activeTool === "drainage" && typeof openDrainageAndSlopeInspector === "function") openDrainageAndSlopeInspector();
+          else if (STATE.activeTool === "stationing" && typeof window.openStationingInspector === "function") window.openStationingInspector();
+          else if (STATE.activeTool === "gcp_qa" && typeof window.openGcpQaInspector === "function") window.openGcpQaInspector();
+          else if (STATE.activeTool === "stakeout" && typeof window.openRtkStakeoutInspector === "function") window.openRtkStakeoutInspector();
+          else if (STATE.activeTool === "trench" && typeof window.openUtilityTracerInspector === "function") window.openUtilityTracerInspector();
+          else if (STATE.activeTool === "bookmarks" && typeof openSurveyBookmarksInspector === "function") openSurveyBookmarksInspector();
+          else if (STATE.activeTool === "utilities" && typeof window.openPublicUtilitiesInspector === "function") window.openPublicUtilitiesInspector();
           else if (STATE.activeTool === "align_merge" || STATE.multiAlign?.active) renderAlignMergeInspectorContent();
         }
       }

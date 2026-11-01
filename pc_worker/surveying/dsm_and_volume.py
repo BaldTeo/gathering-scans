@@ -1881,10 +1881,14 @@ class DsmAndVolumeMixin:
             dsm_data = self._load_or_build_scan_dsm(scan)
         except Exception:
             dsm_data = None
+        local_ce, local_cn, local_ch = ce, cn, ch
         if dsm_data is not None:
+            local_ce = float(dsm_data.get("ce", ce))
+            local_cn = float(dsm_data.get("cn", cn))
+            local_ch = float(dsm_data.get("ch", ch))
             ce = 0.5 * (dsm_data["e_min"] + dsm_data["e_max"])
             cn = 0.5 * (dsm_data["n_min"] + dsm_data["n_max"])
-            ch = float(dsm_data.get("h_median", ch))
+            ch = float(dsm_data.get("h_median", local_ch))
 
         has_explicit_pts = any(
             k in payload and payload[k] is not None
@@ -2066,9 +2070,9 @@ class DsmAndVolumeMixin:
                     "is_tbm": is_tbm_flag or (bool(selected_tbm_id) and name.lower() == selected_tbm_id.lower()),
                     "status": status_tier,
                     "local": [
-                        round(e_val - ce, 3),
-                        round(h_scan - ch, 3),
-                        round(cn - n_val, 3),
+                        round(e_val - local_ce, 3),
+                        round(h_scan - local_ch, 3),
+                        round(local_cn - n_val, 3),
                     ],
                 }
             )

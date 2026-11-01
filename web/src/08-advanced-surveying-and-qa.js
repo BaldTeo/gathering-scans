@@ -2199,6 +2199,12 @@
       const aScale = Math.max(0.2, Math.min(3.0, Number(STATE.drainageArrowScale) || 1.0));
       const hasPoly = Array.isArray(STATE.drainagePolygonPoints) && STATE.drainagePolygonPoints.length >= 3;
       return `
+      ${typeof window.renderSurveyToolExplanationBannerHtml === "function" ? window.renderSurveyToolExplanationBannerHtml(
+        "3D 地表坡度與排水流向分析",
+        "3D Surface Slope & Runoff Flow Analysis",
+        "自動計算地表法向量與坡度比 (1:N)，以分級色階箭頭視覺化地表逕流方向並標示低窪易積水區 (<1:200)。",
+        "Computes 3D surface gradients and slope ratios (1:N), visualizing downhill runoff flow vectors and highlighting flat ponding risk zones (<1:200)."
+      ) : ""}
       <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;font-size:11px;color:var(--ui-text-secondary);margin-bottom:8px;">
         <span>${
           hasPoly
