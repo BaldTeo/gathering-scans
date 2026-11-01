@@ -901,6 +901,7 @@ class PublicUtilitiesGISMixin:
                 filtered_res["center"] = {"e": round(ce, 3), "n": round(cn, 3), "h": round(ref_ground_h, 3)}
                 filtered_res["radius_m"] = radius_m
                 filtered_res["master_cached_radius_m"] = float(best_cached_data.get("radius_m") or max(radius_m, 500.0))
+                filtered_res["master_radius_m"] = filtered_res["master_cached_radius_m"]
                 filtered_res["bbox"] = {"xmin": xmin, "ymin": ymin, "xmax": xmax, "ymax": ymax}
                 filtered_res["features"] = filtered_features
                 filtered_res["layer_counts"] = layer_counts
@@ -1167,6 +1168,21 @@ class PublicUtilitiesGISMixin:
                 continue
             if lyr == "as_built" and f_item.get("origin_class") != "user_or_scan_to_bim":
                 continue
+            arc_url = str(f_item.get("arcgis_layer_url") or "")
+            fname = str(f_item.get("name") or "")
+            if "rainwater_00131/MapServer/0/" in arc_url or "rainwater_00131/MapServer/7/" in arc_url or "規劃" in fname:
+                continue
+            if f_item.get("type") == "box_culvert" and (
+                "連接管" in fname
+                or "rainwater_00131/MapServer/5/" in arc_url
+                or "rainwater_00131/MapServer/8/" in arc_url
+            ):
+                f_item = dict(f_item)
+                f_item["type"] = "pipe"
+                f_item["diameter_mm"] = 300
+                f_item["width_m"] = None
+                f_item["height_m"] = None
+                f_item["name"] = re.sub(r"\(\d+\.\d+x\d+\.\d+m\)", "D=300mm", fname).replace("雨水箱涵", "雨水連接管")
 
             if is_exact_radius:
                 out.append(_ensure_links(f_item))
@@ -1284,6 +1300,7 @@ class PublicUtilitiesGISMixin:
         mh_lookup: Dict[str, Dict[str, Any]] = {}
         gov_ground_pts: List[Tuple[float, float, float]] = []
 
+        mh_tasks = []
         for svc, lid in [("Rain/Pipe_3D", 1), ("Rain/SewerRain", 0)]:
             for qx1, qy1, qx2, qy2 in [(xmin, ymin, xmax, ymax), (txmin, tymin, txmax, tymax)]:
                 url_m = (
@@ -1291,64 +1308,69 @@ class PublicUtilitiesGISMixin:
                     f"geometry={qx1},{qy1},{qx2},{qy2}&geometryType=esriGeometryEnvelope&"
                     f"spatialRel=esriSpatialRelIntersects&inSR=3826&outSR=3826&outFields=*&returnGeometry=true&f=json"
                 )
-                data_m = _http_get_json(url_m, timeout=5.5)
-                if not data_m or not isinstance(data_m.get("features"), list):
+                mh_tasks.append((svc, lid, url_m))
+
+        with ThreadPoolExecutor(max_workers=8) as pool:
+            mh_results = list(pool.map(lambda t: (t[0], t[1], _http_get_json(t[2], timeout=5.5)), mh_tasks))
+
+        for svc, lid, data_m in mh_results:
+            if not data_m or not isinstance(data_m.get("features"), list):
+                continue
+            for feat in data_m["features"]:
+                attrs = feat.get("attributes") or {}
+                geom = feat.get("geometry") or {}
+                if "x" not in geom or "y" not in geom:
                     continue
-                for feat in data_m["features"]:
-                    attrs = feat.get("attributes") or {}
-                    geom = feat.get("geometry") or {}
-                    if "x" not in geom or "y" not in geom:
-                        continue
-                    ex, ny = float(geom["x"]), float(geom["y"])
-                    mno = str(attrs.get("MH_NO") or attrs.get("MH_NO_") or f"MH-{attrs.get('OBJECTID')}").strip()
-                    alt_no = str(attrs.get("MH_NO_") or "").strip()
-                    top_el = safe_float(attrs.get("MH_TOPEL") or attrs.get("地盤高"), 0.0) or 0.0
-                    mh_w = safe_float(attrs.get("MH_WIDTH") or attrs.get("蓋部寬"), 0.0) or 0.0
-                    inp1 = safe_float(attrs.get("INP_EL1"), 0.0) or 0.0
-                    outp1 = safe_float(attrs.get("OUTP_EL1"), 0.0) or 0.0
-                    raw_d = safe_float(attrs.get("MH_DEPTH") or attrs.get("孔深"), 0.0) or 0.0
+                ex, ny = float(geom["x"]), float(geom["y"])
+                mno = str(attrs.get("MH_NO") or attrs.get("MH_NO_") or f"MH-{attrs.get('OBJECTID')}").strip()
+                alt_no = str(attrs.get("MH_NO_") or "").strip()
+                top_el = safe_float(attrs.get("MH_TOPEL") or attrs.get("地盤高"), 0.0) or 0.0
+                mh_w = safe_float(attrs.get("MH_WIDTH") or attrs.get("蓋部寬"), 0.0) or 0.0
+                inp1 = safe_float(attrs.get("INP_EL1"), 0.0) or 0.0
+                outp1 = safe_float(attrs.get("OUTP_EL1"), 0.0) or 0.0
+                raw_d = safe_float(attrs.get("MH_DEPTH") or attrs.get("孔深"), 0.0) or 0.0
 
-                    if top_el > 0.5:
-                        gov_ground_pts.append((ex, ny, top_el))
+                if top_el > 0.5:
+                    gov_ground_pts.append((ex, ny, top_el))
 
-                    norm_keys = _norm_mh_keys(mno) + _norm_mh_keys(alt_no)
-                    primary_key = norm_keys[0] if norm_keys else f"PT_{round(ex,1)}_{round(ny,1)}"
+                norm_keys = _norm_mh_keys(mno) + _norm_mh_keys(alt_no)
+                primary_key = norm_keys[0] if norm_keys else f"PT_{round(ex,1)}_{round(ny,1)}"
 
-                    if primary_key in raw_mhs:
-                        existing = raw_mhs[primary_key]
-                        if existing["top_el"] <= 0.5 and top_el > 0.5:
-                            existing["top_el"] = top_el
-                        if existing["mh_w"] <= 0.0 and mh_w > 0.0:
-                            existing["mh_w"] = mh_w
-                        if existing["inp1"] <= 0.0 and inp1 > 0.0:
-                            existing["inp1"] = inp1
-                        if existing["outp1"] <= 0.0 and outp1 > 0.0:
-                            existing["outp1"] = outp1
-                        if existing["raw_d"] <= 0.0 and raw_d > 0.0:
-                            existing["raw_d"] = raw_d
-                    else:
-                        node_obj = {
-                            "oid": attrs.get("OBJECTID"),
-                            "arcgis_layer_url": f"https://wrd.ntpc.gov.tw/arcgis/rest/services/{svc}/MapServer/{lid}/{attrs.get('OBJECTID')}",
-                            "mno": mno,
-                            "alt_no": alt_no,
-                            "ex": ex,
-                            "ny": ny,
-                            "top_el": top_el,
-                            "mh_w": mh_w,
-                            "inp1": inp1,
-                            "outp1": outp1,
-                            "raw_d": raw_d,
-                            "mtype": str(attrs.get("MH_TYPE") or "圓形人孔").strip(),
-                            "mclass": str(attrs.get("MH_CLASS") or "").strip(),
-                            "rd_name": str(attrs.get("RD_NAME") or "").strip(),
-                            "inv_el": None,
-                            "max_pipe_h": 0.6,
-                            "in_bbox": (xmin <= ex <= xmax and ymin <= ny <= ymax),
-                        }
-                        raw_mhs[primary_key] = node_obj
-                        for nk in norm_keys:
-                            mh_lookup[nk] = node_obj
+                if primary_key in raw_mhs:
+                    existing = raw_mhs[primary_key]
+                    if existing["top_el"] <= 0.5 and top_el > 0.5:
+                        existing["top_el"] = top_el
+                    if existing["mh_w"] <= 0.0 and mh_w > 0.0:
+                        existing["mh_w"] = mh_w
+                    if existing["inp1"] <= 0.0 and inp1 > 0.0:
+                        existing["inp1"] = inp1
+                    if existing["outp1"] <= 0.0 and outp1 > 0.0:
+                        existing["outp1"] = outp1
+                    if existing["raw_d"] <= 0.0 and raw_d > 0.0:
+                        existing["raw_d"] = raw_d
+                else:
+                    node_obj = {
+                        "oid": attrs.get("OBJECTID"),
+                        "arcgis_layer_url": f"https://wrd.ntpc.gov.tw/arcgis/rest/services/{svc}/MapServer/{lid}/{attrs.get('OBJECTID')}",
+                        "mno": mno,
+                        "alt_no": alt_no,
+                        "ex": ex,
+                        "ny": ny,
+                        "top_el": top_el,
+                        "mh_w": mh_w,
+                        "inp1": inp1,
+                        "outp1": outp1,
+                        "raw_d": raw_d,
+                        "mtype": str(attrs.get("MH_TYPE") or "圓形人孔").strip(),
+                        "mclass": str(attrs.get("MH_CLASS") or "").strip(),
+                        "rd_name": str(attrs.get("RD_NAME") or "").strip(),
+                        "inv_el": None,
+                        "max_pipe_h": 0.6,
+                        "in_bbox": (xmin <= ex <= xmax and ymin <= ny <= ymax),
+                    }
+                    raw_mhs[primary_key] = node_obj
+                    for nk in norm_keys:
+                        mh_lookup[nk] = node_obj
 
         def sample_gov_ground(e_pt: float, n_pt: float) -> float:
             if not gov_ground_pts:
@@ -1384,6 +1406,7 @@ class PublicUtilitiesGISMixin:
 
         # 2. Fetch Storm Pipes & Box Culverts from Pipe_3D/4 (has UP_PB/DOWN_PB), SewerRain/1 (has 起點埋/終點埋), and rainwater_POP/0
         raw_pipes: Dict[str, Dict[str, Any]] = {}
+        pipe_tasks = []
         for svc, lid in [("Rain/Pipe_3D", 4), ("Rain/SewerRain", 1), ("Rain/rainwater_POP", 0)]:
             for qx1, qy1, qx2, qy2 in [(xmin, ymin, xmax, ymax), (txmin, tymin, txmax, tymax)]:
                 url_p = (
@@ -1391,79 +1414,84 @@ class PublicUtilitiesGISMixin:
                     f"geometry={qx1},{qy1},{qx2},{qy2}&geometryType=esriGeometryEnvelope&"
                     f"spatialRel=esriSpatialRelIntersects&inSR=3826&outSR=3826&outFields=*&returnGeometry=true&f=json"
                 )
-                data_p = _http_get_json(url_p, timeout=5.5)
-                if not data_p or not isinstance(data_p.get("features"), list):
+                pipe_tasks.append((svc, lid, url_p))
+
+        with ThreadPoolExecutor(max_workers=8) as pool:
+            pipe_results = list(pool.map(lambda t: (t[0], t[1], _http_get_json(t[2], timeout=5.5)), pipe_tasks))
+
+        for svc, lid, data_p in pipe_results:
+            if not data_p or not isinstance(data_p.get("features"), list):
+                continue
+            for feat in data_p["features"]:
+                attrs = feat.get("attributes") or {}
+                geom = feat.get("geometry") or {}
+                paths = geom.get("paths") or []
+                if not paths or not paths[0]:
                     continue
-                for feat in data_p["features"]:
-                    attrs = feat.get("attributes") or {}
-                    geom = feat.get("geometry") or {}
-                    paths = geom.get("paths") or []
-                    if not paths or not paths[0]:
-                        continue
-                    pts = paths[0]
-                    p1, p2 = pts[0], pts[-1]
-                    e1, n1 = float(p1[0]), float(p1[1])
-                    e2, n2 = float(p2[0]), float(p2[1])
+                pts = paths[0]
+                p1, p2 = pts[0], pts[-1]
+                e1, n1 = float(p1[0]), float(p1[1])
+                e2, n2 = float(p2[0]), float(p2[1])
 
-                    # Check if any vertex or segment intersects user bbox
-                    in_user_bbox = any(xmin <= float(pt[0]) <= xmax and ymin <= float(pt[1]) <= ymax for pt in pts)
-                    if not in_user_bbox:
-                        mx, my = 0.5 * (e1 + e2), 0.5 * (n1 + n2)
-                        in_user_bbox = (xmin <= mx <= xmax and ymin <= my <= ymax)
+                # Check if any vertex or segment intersects user bbox
+                in_user_bbox = any(xmin <= float(pt[0]) <= xmax and ymin <= float(pt[1]) <= ymax for pt in pts)
+                if not in_user_bbox:
+                    mx, my = 0.5 * (e1 + e2), 0.5 * (n1 + n2)
+                    in_user_bbox = (xmin <= mx <= xmax and ymin <= my <= ymax)
 
-                    pno = str(attrs.get("P_NO") or attrs.get("P_NO_") or "").strip()
-                    up_mh = str(attrs.get("UP_MH") or attrs.get("UP_MH_") or "").strip()
-                    down_mh = str(attrs.get("DOWN_MH") or attrs.get("DOWN_MH_") or "").strip()
-                    up_mh_alt = str(attrs.get("UP_MH_") or "").strip()
-                    down_mh_alt = str(attrs.get("DOWN_MH_") or "").strip()
+                pno = str(attrs.get("P_NO") or attrs.get("P_NO_") or "").strip()
+                up_mh = str(attrs.get("UP_MH") or attrs.get("UP_MH_") or "").strip()
+                down_mh = str(attrs.get("DOWN_MH") or attrs.get("DOWN_MH_") or "").strip()
+                up_mh_alt = str(attrs.get("UP_MH_") or "").strip()
+                down_mh_alt = str(attrs.get("DOWN_MH_") or "").strip()
 
-                    up_pb = safe_float(attrs.get("UP_PB") or attrs.get("UIE"), 0.0) or 0.0
-                    down_pb = safe_float(attrs.get("DOWN_PB") or attrs.get("DIE"), 0.0) or 0.0
-                    up_dep = safe_float(attrs.get("起點埋") or attrs.get("START_DEP"), 0.0) or 0.0
-                    down_dep = safe_float(attrs.get("終點埋") or attrs.get("END_DEP"), 0.0) or 0.0
-                    pw = safe_float(attrs.get("P_WIDTH"), 0.0) or 0.0
-                    ph = safe_float(attrs.get("P_HEIGHT"), 0.0) or 0.0
-                    p_len = safe_float(attrs.get("P_LENGTH"), math.hypot(e2 - e1, n2 - n1)) or math.hypot(e2 - e1, n2 - n1)
-                    raw_slope = safe_float(attrs.get("P_SLOPE"))
+                up_pb = safe_float(attrs.get("UP_PB") or attrs.get("UIE"), 0.0) or 0.0
+                down_pb = safe_float(attrs.get("DOWN_PB") or attrs.get("DIE"), 0.0) or 0.0
+                up_dep = safe_float(attrs.get("起點埋") or attrs.get("START_DEP"), 0.0) or 0.0
+                down_dep = safe_float(attrs.get("終點埋") or attrs.get("END_DEP"), 0.0) or 0.0
+                pw = safe_float(attrs.get("P_WIDTH"), 0.0) or 0.0
+                ph = safe_float(attrs.get("P_HEIGHT"), 0.0) or 0.0
+                p_len = safe_float(attrs.get("P_LENGTH"), math.hypot(e2 - e1, n2 - n1)) or math.hypot(e2 - e1, n2 - n1)
+                raw_slope = safe_float(attrs.get("P_SLOPE"))
 
-                    pkey = pno if pno else f"{up_mh}_{down_mh}_{round(e1,1)}_{round(n1,1)}"
-                    if pkey in raw_pipes:
-                        ep = raw_pipes[pkey]
-                        if ep["up_pb"] <= 0.05 and up_pb > 0.05:
-                            ep["up_pb"] = up_pb
-                        if ep["down_pb"] <= 0.05 and down_pb > 0.05:
-                            ep["down_pb"] = down_pb
-                        if ep.get("up_dep", 0.0) <= 0.05 and up_dep > 0.05:
-                            ep["up_dep"] = up_dep
-                        if ep.get("down_dep", 0.0) <= 0.05 and down_dep > 0.05:
-                            ep["down_dep"] = down_dep
-                        if ep["pw"] <= 0.0 and pw > 0.0:
-                            ep["pw"] = pw
-                        if ep["ph"] <= 0.0 and ph > 0.0:
-                            ep["ph"] = ph
-                        ep["in_bbox"] = ep["in_bbox"] or in_user_bbox
-                    else:
-                        raw_pipes[pkey] = {
-                            "oid": attrs.get("OBJECTID"),
-                            "arcgis_layer_url": f"https://wrd.ntpc.gov.tw/arcgis/rest/services/{svc}/MapServer/{lid}/{attrs.get('OBJECTID')}",
-                            "pno": pno,
-                            "up_mh": up_mh,
-                            "down_mh": down_mh,
-                            "up_mh_alt": up_mh_alt,
-                            "down_mh_alt": down_mh_alt,
-                            "up_pb": up_pb,
-                            "down_pb": down_pb,
-                            "up_dep": up_dep,
-                            "down_dep": down_dep,
-                            "pw": pw,
-                            "ph": ph,
-                            "p_len": max(0.5, p_len),
-                            "raw_slope": raw_slope,
-                            "p_type": str(attrs.get("P_TYPE") or "管線").strip(),
-                            "material": str(attrs.get("P_METERL") or "RC/鋼筋混凝土").strip() or "RC/鋼筋混凝土",
-                            "pts": pts,
-                            "in_bbox": in_user_bbox,
-                        }
+                pkey = pno if pno else f"{up_mh}_{down_mh}_{round(e1,1)}_{round(n1,1)}"
+                if pkey in raw_pipes:
+                    ep = raw_pipes[pkey]
+                    if ep["up_pb"] <= 0.05 and up_pb > 0.05:
+                        ep["up_pb"] = up_pb
+                    if ep["down_pb"] <= 0.05 and down_pb > 0.05:
+                        ep["down_pb"] = down_pb
+                    if ep.get("up_dep", 0.0) <= 0.05 and up_dep > 0.05:
+                        ep["up_dep"] = up_dep
+                    if ep.get("down_dep", 0.0) <= 0.05 and down_dep > 0.05:
+                        ep["down_dep"] = down_dep
+                    if ep["pw"] <= 0.0 and pw > 0.0:
+                        ep["pw"] = pw
+                    if ep["ph"] <= 0.0 and ph > 0.0:
+                        ep["ph"] = ph
+                    ep["in_bbox"] = ep["in_bbox"] or in_user_bbox
+                else:
+                    raw_pipes[pkey] = {
+                        "oid": attrs.get("OBJECTID"),
+                        "arcgis_layer_url": f"https://wrd.ntpc.gov.tw/arcgis/rest/services/{svc}/MapServer/{lid}/{attrs.get('OBJECTID')}",
+                        "pno": pno,
+                        "up_mh": up_mh,
+                        "down_mh": down_mh,
+                        "up_mh_alt": up_mh_alt,
+                        "down_mh_alt": down_mh_alt,
+                        "up_pb": up_pb,
+                        "down_pb": down_pb,
+                        "up_dep": up_dep,
+                        "down_dep": down_dep,
+                        "pw": pw,
+                        "ph": ph,
+                        "p_len": max(0.5, p_len),
+                        "raw_slope": raw_slope,
+                        "p_type": str(attrs.get("P_TYPE") or "管線").strip(),
+                        "material": str(attrs.get("P_METERL") or "RC/鋼筋混凝土").strip() or "RC/鋼筋混凝土",
+                        "pts": pts,
+                        "in_bbox": in_user_bbox,
+                    }
 
         # 3. Topological Pipe-Manhole Graph Solver: seed & propagate invert elevations
         for p in raw_pipes.values():
@@ -1647,25 +1675,40 @@ class PublicUtilitiesGISMixin:
                 }
             )
 
-        # 4. Also query Rain/rainwater_00131 (box culverts & nodes in layers 0, 4, 5, 7, 8, 19) within user bbox (xmin, ymin, xmax, ymax)
-        seen_rw_pipe_keys = {
-            f"{round(float(f['coords'][0][0]), 1)}_{round(float(f['coords'][0][1]), 1)}"
-            for f in features
-            if f.get("type") in ("pipe", "box_culvert") and f.get("coords")
-        }
+        # 4. Also query Rain/rainwater_00131 surveyed layers (4: 箱涵, 5: 連接管, 8: 涵管, 19: 側溝).
+        # Exclude unbuilt conceptual planning layers (0: 規劃節點, 7: 規劃管線) when surveyed Pipe_3D/SewerRain data exists.
+        seen_rw_pipe_keys = set()
+        for f in features:
+            if f.get("type") in ("pipe", "box_culvert") and f.get("coords"):
+                c0, c1 = f["coords"][0], f["coords"][-1]
+                seen_rw_pipe_keys.add(f"{round(float(c0[0]), 1)}_{round(float(c0[1]), 1)}")
+                seen_rw_pipe_keys.add(f"{round(float(c0[0]), 1)}_{round(float(c0[1]), 1)}_{round(float(c1[0]), 1)}_{round(float(c1[1]), 1)}")
+        for p in raw_pipes.values():
+            if p.get("pno"):
+                seen_rw_pipe_keys.add(p["pno"])
+
         seen_rw_mh_keys = {
             f"{round(float(f['coord'][0]), 1)}_{round(float(f['coord'][1]), 1)}"
             for f in features
             if f.get("type") in ("manhole", "catch_basin") and f.get("coord")
         }
 
-        for rw_lid in (4, 5, 7, 8, 19):
-            url_rw_line = (
-                f"https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/rainwater_00131/MapServer/{rw_lid}/query?"
-                f"geometry={xmin},{ymin},{xmax},{ymax}&geometryType=esriGeometryEnvelope&"
-                f"spatialRel=esriSpatialRelIntersects&inSR=3826&outSR=3826&outFields=*&returnGeometry=true&f=json"
+        rw_line_lids = (4, 5, 8, 19) if len(raw_pipes) > 0 else (4, 5, 7, 8, 19)
+        rw_tasks = [
+            (
+                rw_lid,
+                (
+                    f"https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/rainwater_00131/MapServer/{rw_lid}/query?"
+                    f"geometry={xmin},{ymin},{xmax},{ymax}&geometryType=esriGeometryEnvelope&"
+                    f"spatialRel=esriSpatialRelIntersects&inSR=3826&outSR=3826&outFields=*&returnGeometry=true&f=json"
+                ),
             )
-            data_rw_line = _http_get_json(url_rw_line, timeout=4.5)
+            for rw_lid in rw_line_lids
+        ]
+        with ThreadPoolExecutor(max_workers=6) as pool:
+            rw_results = list(pool.map(lambda t: (t[0], _http_get_json(t[1], timeout=4.5)), rw_tasks))
+
+        for rw_lid, data_rw_line in rw_results:
             if not data_rw_line or not isinstance(data_rw_line.get("features"), list):
                 continue
             for feat in data_rw_line["features"]:
@@ -1674,19 +1717,64 @@ class PublicUtilitiesGISMixin:
                 if not paths or not paths[0]:
                     continue
                 pts = paths[0]
+                oid_rw = attrs.get("OBJECTID") or (len(features) + 1)
+                p_no = str(attrs.get("P_NO") or attrs.get("CP_NO") or attrs.get("B_NO") or f"RW-{oid_rw}").strip()
                 p_start_key = f"{round(float(pts[0][0]), 1)}_{round(float(pts[0][1]), 1)}"
-                if p_start_key in seen_rw_pipe_keys:
+                p_pair_key = f"{round(float(pts[0][0]), 1)}_{round(float(pts[0][1]), 1)}_{round(float(pts[-1][0]), 1)}_{round(float(pts[-1][1]), 1)}"
+                if p_start_key in seen_rw_pipe_keys or p_pair_key in seen_rw_pipe_keys or (p_no and p_no in seen_rw_pipe_keys):
                     continue
                 seen_rw_pipe_keys.add(p_start_key)
-                oid_rw = attrs.get("OBJECTID") or (len(features) + 1)
-                pw = safe_float(attrs.get("P_WIDTH") or attrs.get("WIDTH"), 0.9) or 0.9
-                ph = safe_float(attrs.get("P_HEIGHT") or attrs.get("HEIGHT"), 0.9) or 0.9
-                p_type = str(attrs.get("P_TYPE") or "單孔箱涵").strip()
-                p_no = str(attrs.get("P_NO") or f"RW-{oid_rw}").strip()
+                seen_rw_pipe_keys.add(p_pair_key)
+                if p_no:
+                    seen_rw_pipe_keys.add(p_no)
+
+                sewer_grp = str(attrs.get("SEWER_GRP") or "").strip()
+                memo_str = str(attrs.get("MEMO") or "").strip()
+                p_type = str(attrs.get("P_TYPE") or sewer_grp or ("連接管" if rw_lid == 5 else "單孔箱涵")).strip()
+                cp_w = safe_float(attrs.get("CP_WIDTH"), 0.0) or 0.0
+                cp_h = safe_float(attrs.get("CP_HEIGHT"), 0.0) or 0.0
+                raw_pw = safe_float(attrs.get("P_WIDTH") or attrs.get("WIDTH") or attrs.get("U_WID"), 0.0) or 0.0
+                raw_ph = safe_float(attrs.get("P_HEIGHT") or attrs.get("HEIGHT") or attrs.get("MH_DEP"), 0.0) or 0.0
+
+                # Distinguish circular catch-basin lateral pipes (Layer 5 連接管 / Layer 8 涵管 / CP_HEIGHT==0 / ψ in MEMO) from box culverts
+                is_circular_pipe = (
+                    rw_lid in (5, 8)
+                    or "連接管" in sewer_grp
+                    or "連接管" in p_type
+                    or "涵管" in p_type
+                    or "管線" in p_type
+                    or "ψ" in memo_str
+                    or "Ψ" in memo_str
+                    or (cp_w > 0.0 and cp_h <= 0.01)
+                )
+                if is_circular_pipe:
+                    pw = cp_w if cp_w > 0.05 else (raw_pw if raw_pw > 0.05 else 0.30)
+                    if pw > 10.0:
+                        pw = round(pw / 1000.0, 3)
+                    ph = pw
+                    dia_mm = int(round(pw * 1000))
+                    feat_type = "pipe"
+                    lbl_prefix = "雨水連接管" if (rw_lid == 5 or "連接管" in sewer_grp or "連接管" in p_type) else "雨水涵管"
+                    feat_name = f"{lbl_prefix} {p_no} D={dia_mm}mm"
+                    default_d1 = round(max(1.10, ph + 0.75), 2)
+                    default_d2 = round(default_d1 + 0.10, 2)
+                else:
+                    pw = raw_pw if raw_pw > 0.05 else (cp_w if cp_w > 0.05 else 0.90)
+                    ph = raw_ph if raw_ph > 0.05 else (cp_h if cp_h > 0.05 else pw)
+                    if pw > 15.0:
+                        pw = round(pw / 1000.0, 3)
+                    if ph > 15.0:
+                        ph = round(ph / 1000.0, 3)
+                    dia_mm = int(round(max(pw, ph) * 1000))
+                    feat_type = "box_culvert"
+                    feat_name = f"雨水箱涵 ({p_type}) {p_no} ({pw:.2f}x{ph:.2f}m)"
+                    default_d1 = round(ph + 1.1, 2)
+                    default_d2 = round(ph + 1.25, 2)
+
                 up_d = safe_float(attrs.get("起點埋") or attrs.get("UP_DEP"), 0.0) or 0.0
                 dn_d = safe_float(attrs.get("終點埋") or attrs.get("DOWN_DEP"), 0.0) or 0.0
-                d1 = round(up_d if up_d > 0.2 else (ph + 1.1), 2)
-                d2 = round(dn_d if dn_d > 0.2 else (ph + 1.25), 2)
+                d1 = round(up_d if up_d > 0.2 else default_d1, 2)
+                d2 = round(dn_d if dn_d > 0.2 else default_d2, 2)
                 coords_3d = []
                 for idx, pt in enumerate(pts):
                     px, py = float(pt[0]), float(pt[1])
@@ -1704,16 +1792,16 @@ class PublicUtilitiesGISMixin:
                 g2 = sample_ground_z(coords_3d[-1][0], coords_3d[-1][1])
                 features.append(
                     {
-                        "id": f"ntpc_rw_culvert_{oid_rw}",
+                        "id": f"ntpc_rw_{'pipe' if is_circular_pipe else 'culvert'}_{rw_lid}_{oid_rw}",
                         "arcgis_layer_url": f"https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/rainwater_00131/MapServer/{rw_lid}/{oid_rw}",
                         "layer": "storm",
-                        "type": "box_culvert",
-                        "name": f"雨水箱涵 ({p_type}) {p_no} ({pw:.2f}x{ph:.2f}m)",
-                        "diameter_mm": int(round(max(pw, ph) * 1000)),
+                        "type": feat_type,
+                        "name": feat_name,
+                        "diameter_mm": dia_mm,
                         "width_m": round(pw, 2),
                         "height_m": round(ph, 2),
                         "length_m": round(length_m, 2),
-                        "material": "RC/鋼筋混凝土",
+                        "material": "RCP/鋼筋混凝土管" if is_circular_pipe else "RC/鋼筋混凝土",
                         "start_coord": coords_3d[0],
                         "end_coord": coords_3d[-1],
                         "start_ground_h": round(g1, 3),
@@ -1726,59 +1814,60 @@ class PublicUtilitiesGISMixin:
                         "end_crown_h": round(coords_3d[-1][2] + ph, 3),
                         "start_depth_m": d1,
                         "end_depth_m": d2,
-                        "start_cover_m": round(d1 - ph, 2),
-                        "end_cover_m": round(d2 - ph, 2),
+                        "start_cover_m": round(max(0.2, d1 - ph), 2),
+                        "end_cover_m": round(max(0.2, d2 - ph), 2),
                         "depth_m": round(0.5 * (d1 + d2), 2),
                         "slope_pct": round(((coords_3d[0][2] - coords_3d[-1][2]) / max(1.0, length_m)) * 100.0, 3),
                         "flow_direction": 1,
-                        "upstream_mh": str(attrs.get("UP_MH") or "").strip(),
+                        "upstream_mh": str(attrs.get("UP_MH") or attrs.get("IN_MHOLE") or "").strip(),
                         "downstream_mh": str(attrs.get("DOWN_MH") or "").strip(),
                         "coords": coords_3d,
                         "source": "New Taipei City WRD Rainwater System (wrd.ntpc.gov.tw)",
                     }
                 )
 
-        # Storm nodes in rainwater_00131/0
-        url_rw0 = (
-            f"https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/rainwater_00131/MapServer/0/query?"
-            f"geometry={xmin},{ymin},{xmax},{ymax}&geometryType=esriGeometryEnvelope&"
-            f"spatialRel=esriSpatialRelIntersects&inSR=3826&outSR=3826&outFields=*&returnGeometry=true&f=json"
-        )
-        data_rw0 = _http_get_json(url_rw0, timeout=4.5)
-        if data_rw0 and isinstance(data_rw0.get("features"), list):
-            for feat in data_rw0["features"]:
-                attrs = feat.get("attributes") or {}
-                geom = feat.get("geometry") or {}
-                if "x" not in geom or "y" not in geom:
-                    continue
-                ex, ny = float(geom["x"]), float(geom["y"])
-                pt_key = f"{round(ex, 1)}_{round(ny, 1)}"
-                if pt_key in seen_rw_mh_keys:
-                    continue
-                seen_rw_mh_keys.add(pt_key)
-                oid_rw0 = attrs.get("OBJECTID") or (len(features) + 1)
-                loc_g = sample_ground_z(ex, ny)
-                raw_d0 = safe_float(attrs.get("MH_DEPTH") or attrs.get("孔深"), 0.0) or 0.0
-                depth_m = round(raw_d0 if 0.6 <= raw_d0 <= 10.0 else 2.1, 2)
-                inv_z = round(loc_g - depth_m, 3)
-                mno = str(attrs.get("MH_NO") or f"RW-MH-{oid_rw0}").strip()
-                features.append(
-                    {
-                        "id": f"ntpc_rw_mh_{oid_rw0}",
-                        "arcgis_layer_url": f"https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/rainwater_00131/MapServer/0/{oid_rw0}",
-                        "layer": "storm",
-                        "type": "manhole",
-                        "name": f"雨水下水道節點人孔 {mno}",
-                        "facility_no": mno,
-                        "structure_type": "雨水人孔",
-                        "coord": [round(ex, 3), round(ny, 3), inv_z],
-                        "rim_h": round(loc_g, 3),
-                        "invert_h": inv_z,
-                        "depth_m": depth_m,
-                        "diameter_mm": 800,
-                        "source": "New Taipei City WRD Rainwater System (wrd.ntpc.gov.tw)",
-                    }
-                )
+        # Storm nodes in rainwater_00131/0 (only when no surveyed Pipe_3D/SewerRain manholes exist)
+        if len(raw_mhs) == 0:
+            url_rw0 = (
+                f"https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/rainwater_00131/MapServer/0/query?"
+                f"geometry={xmin},{ymin},{xmax},{ymax}&geometryType=esriGeometryEnvelope&"
+                f"spatialRel=esriSpatialRelIntersects&inSR=3826&outSR=3826&outFields=*&returnGeometry=true&f=json"
+            )
+            data_rw0 = _http_get_json(url_rw0, timeout=4.5)
+            if data_rw0 and isinstance(data_rw0.get("features"), list):
+                for feat in data_rw0["features"]:
+                    attrs = feat.get("attributes") or {}
+                    geom = feat.get("geometry") or {}
+                    if "x" not in geom or "y" not in geom:
+                        continue
+                    ex, ny = float(geom["x"]), float(geom["y"])
+                    pt_key = f"{round(ex, 1)}_{round(ny, 1)}"
+                    if pt_key in seen_rw_mh_keys:
+                        continue
+                    seen_rw_mh_keys.add(pt_key)
+                    oid_rw0 = attrs.get("OBJECTID") or (len(features) + 1)
+                    loc_g = sample_ground_z(ex, ny)
+                    raw_d0 = safe_float(attrs.get("MH_DEPTH") or attrs.get("孔深"), 0.0) or 0.0
+                    depth_m = round(raw_d0 if 0.6 <= raw_d0 <= 10.0 else 2.1, 2)
+                    inv_z = round(loc_g - depth_m, 3)
+                    mno = str(attrs.get("MH_NO") or f"RW-MH-{oid_rw0}").strip()
+                    features.append(
+                        {
+                            "id": f"ntpc_rw_mh_{oid_rw0}",
+                            "arcgis_layer_url": f"https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/rainwater_00131/MapServer/0/{oid_rw0}",
+                            "layer": "storm",
+                            "type": "manhole",
+                            "name": f"雨水下水道節點人孔 {mno}",
+                            "facility_no": mno,
+                            "structure_type": "雨水人孔",
+                            "coord": [round(ex, 3), round(ny, 3), inv_z],
+                            "rim_h": round(loc_g, 3),
+                            "invert_h": inv_z,
+                            "depth_m": depth_m,
+                            "diameter_mm": 800,
+                            "source": "New Taipei City WRD Rainwater System (wrd.ntpc.gov.tw)",
+                        }
+                    )
 
         return features
 
@@ -1805,13 +1894,12 @@ class PublicUtilitiesGISMixin:
         san_lookup: Dict[str, Dict[str, Any]] = {}
         gov_ground_pts: List[Tuple[float, float, float]] = []
 
-        # 1. Fetch Sanitary Manholes & Catch Basins from Pipe_3D/2, swggis_20150625/1, and Pipe_3D/0
-        # Query exact user bbox first (so nearby sewer wells are never crowded out by ArcGIS maxRecordCount on large radii),
-        # then topological buffer window.
+        # 1. Fetch Sanitary Manholes & Catch Basins from Pipe_3D/2, swggis_20150625/1, and Pipe_3D/0 concurrently
         envelopes = [(xmin, ymin, xmax, ymax)]
         if (txmin, tymin, txmax, tymax) != (xmin, ymin, xmax, ymax):
             envelopes.append((txmin, tymin, txmax, tymax))
 
+        san_mh_tasks = []
         for env_xmin, env_ymin, env_xmax, env_ymax in envelopes:
             for base_host, svc, lid in [
                 ("wrd.ntpc.gov.tw", "Rain/Pipe_3D", 2),
@@ -1825,56 +1913,61 @@ class PublicUtilitiesGISMixin:
                     f"geometry={env_xmin},{env_ymin},{env_xmax},{env_ymax}&geometryType=esriGeometryEnvelope&"
                     f"spatialRel=esriSpatialRelIntersects&inSR=3826&outSR=3826&outFields=*&returnGeometry=true&f=json"
                 )
-                data_m = _http_get_json(url_m, timeout=5.0)
-                if not data_m or not isinstance(data_m.get("features"), list):
+                san_mh_tasks.append((base_host, svc, lid, url_m))
+
+        with ThreadPoolExecutor(max_workers=8) as pool:
+            san_mh_results = list(pool.map(lambda t: (t[0], t[1], t[2], _http_get_json(t[3], timeout=5.0)), san_mh_tasks))
+
+        for base_host, svc, lid, data_m in san_mh_results:
+            if not data_m or not isinstance(data_m.get("features"), list):
+                continue
+            for feat in data_m["features"]:
+                attrs = feat.get("attributes") or {}
+                geom = feat.get("geometry") or {}
+                ex = safe_float(geom.get("x") if "x" in geom else attrs.get("X"))
+                ny = safe_float(geom.get("y") if "y" in geom else attrs.get("Y"))
+                if ex is None or ny is None:
                     continue
-                for feat in data_m["features"]:
-                    attrs = feat.get("attributes") or {}
-                    geom = feat.get("geometry") or {}
-                    ex = safe_float(geom.get("x") if "x" in geom else attrs.get("X"))
-                    ny = safe_float(geom.get("y") if "y" in geom else attrs.get("Y"))
-                    if ex is None or ny is None:
-                        continue
-                    is_cb = (lid == 0)
-                    mno = str(
-                        attrs.get("MH_NO")
-                        or attrs.get("CB_NO")
-                        or attrs.get("D_MH_NO")
-                        or f"{'SCB' if is_cb else 'SMH'}-{attrs.get('OBJECTID')}"
-                    ).strip()
-                    dmno = str(attrs.get("D_MH_NO") or attrs.get("D_CB_NO") or "").strip()
-                    g_lvl = safe_float(attrs.get("G_LEVEL"), 0.0) or 0.0
-                    mh_ie = safe_float(attrs.get("MH_IE") if attrs.get("MH_IE") is not None else attrs.get("CB_IE"))
-                    mh_iht = safe_float(attrs.get("MH_IHT") if attrs.get("MH_IHT") is not None else attrs.get("CB_IHT"), 0.0) or 0.0
-                    mhc_w = safe_float(attrs.get("MHC_WIDTH") or attrs.get("CB_WIDTH"), 500.0 if is_cb else 600.0) or (500.0 if is_cb else 600.0)
+                is_cb = (lid == 0)
+                mno = str(
+                    attrs.get("MH_NO")
+                    or attrs.get("CB_NO")
+                    or attrs.get("D_MH_NO")
+                    or f"{'SCB' if is_cb else 'SMH'}-{attrs.get('OBJECTID')}"
+                ).strip()
+                dmno = str(attrs.get("D_MH_NO") or attrs.get("D_CB_NO") or "").strip()
+                g_lvl = safe_float(attrs.get("G_LEVEL"), 0.0) or 0.0
+                mh_ie = safe_float(attrs.get("MH_IE") if attrs.get("MH_IE") is not None else attrs.get("CB_IE"))
+                mh_iht = safe_float(attrs.get("MH_IHT") if attrs.get("MH_IHT") is not None else attrs.get("CB_IHT"), 0.0) or 0.0
+                mhc_w = safe_float(attrs.get("MHC_WIDTH") or attrs.get("CB_WIDTH"), 500.0 if is_cb else 600.0) or (500.0 if is_cb else 600.0)
 
-                    if g_lvl > 0.5:
-                        gov_ground_pts.append((ex, ny, g_lvl))
+                if g_lvl > 0.5:
+                    gov_ground_pts.append((ex, ny, g_lvl))
 
-                    keys = _norm_mh_keys(mno) + _norm_mh_keys(dmno)
-                    pk = keys[0] if keys else f"SMH_{round(ex,1)}_{round(ny,1)}"
-                    in_user_bbox = (xmin <= ex <= xmax and ymin <= ny <= ymax)
-                    oid_val = attrs.get("OBJECTID")
-                    if pk not in san_mhs:
-                        node_obj = {
-                            "oid": oid_val,
-                            "mno": mno,
-                            "dmno": dmno,
-                            "ex": ex,
-                            "ny": ny,
-                            "g_lvl": g_lvl,
-                            "mh_ie": mh_ie,
-                            "mh_iht": mh_iht,
-                            "mhc_w": mhc_w,
-                            "is_cb": is_cb,
-                            "in_bbox": in_user_bbox,
-                            "arcgis_layer_url": f"https://{base_host}/arcgis/rest/services/{svc}/MapServer/{lid}/{oid_val}",
-                        }
-                        san_mhs[pk] = node_obj
-                        for k in keys:
-                            san_lookup[k] = node_obj
-                    else:
-                        san_mhs[pk]["in_bbox"] = san_mhs[pk]["in_bbox"] or in_user_bbox
+                keys = _norm_mh_keys(mno) + _norm_mh_keys(dmno)
+                pk = keys[0] if keys else f"SMH_{round(ex,1)}_{round(ny,1)}"
+                in_user_bbox = (xmin <= ex <= xmax and ymin <= ny <= ymax)
+                oid_val = attrs.get("OBJECTID")
+                if pk not in san_mhs:
+                    node_obj = {
+                        "oid": oid_val,
+                        "mno": mno,
+                        "dmno": dmno,
+                        "ex": ex,
+                        "ny": ny,
+                        "g_lvl": g_lvl,
+                        "mh_ie": mh_ie,
+                        "mh_iht": mh_iht,
+                        "mhc_w": mhc_w,
+                        "is_cb": is_cb,
+                        "in_bbox": in_user_bbox,
+                        "arcgis_layer_url": f"https://{base_host}/arcgis/rest/services/{svc}/MapServer/{lid}/{oid_val}",
+                    }
+                    san_mhs[pk] = node_obj
+                    for k in keys:
+                        san_lookup[k] = node_obj
+                else:
+                    san_mhs[pk]["in_bbox"] = san_mhs[pk]["in_bbox"] or in_user_bbox
 
         def sample_gov_san_ground(e_pt: float, n_pt: float) -> float:
             if not gov_ground_pts:
@@ -1887,8 +1980,9 @@ class PublicUtilitiesGISMixin:
                 z_s += w * gz
             return z_s / w_s if w_s > 1e-9 else 6.0
 
-        # 2. Fetch Sanitary Pipes from Pipe_3D/5,3, swggis_20150625/2, NTPC_Sewer_Public/2,3, and SewerPublic/12,14
+        # 2. Fetch Sanitary Pipes from Pipe_3D/5,3, swggis_20150625/2, NTPC_Sewer_Public/2,3, and SewerPublic/12,14 concurrently
         seen_pipes = set()
+        san_pipe_tasks = []
         for base_host, svc, lid in [
             ("wrd.ntpc.gov.tw", "Rain/Pipe_3D", 5),
             ("wrd.ntpc.gov.tw", "Rain/swggis_20150625", 2),
@@ -1903,7 +1997,12 @@ class PublicUtilitiesGISMixin:
                 f"geometry={xmin},{ymin},{xmax},{ymax}&geometryType=esriGeometryEnvelope&"
                 f"spatialRel=esriSpatialRelIntersects&inSR=3826&outSR=3826&outFields=*&returnGeometry=true&f=json"
             )
-            data_p = _http_get_json(url_p, timeout=5.0)
+            san_pipe_tasks.append((base_host, svc, lid, url_p))
+
+        with ThreadPoolExecutor(max_workers=8) as pool:
+            san_pipe_results = list(pool.map(lambda t: (t[0], t[1], t[2], _http_get_json(t[3], timeout=5.0)), san_pipe_tasks))
+
+        for base_host, svc, lid, data_p in san_pipe_results:
             if not data_p or not isinstance(data_p.get("features"), list):
                 continue
             for feat in data_p["features"]:

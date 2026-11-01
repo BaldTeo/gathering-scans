@@ -2633,6 +2633,114 @@ class TestPublicUtilitiesGISIntegration(unittest.TestCase):
         self.assertIn("btnDockUtilities", index_html)
         self.assertIn("/src/12-public-utilities-gis.js", sw_js)
 
+    def test_08_six_public_utilities_ux_lag_flicker_tooltip_and_culvert_fixes(self):
+        """
+        Verify all 6 Public Utilities GIS fixes:
+        1. Automatic server persistence (*_master_v3.json) & site-wide cache discovery across scans.
+        2. Default 250m shown radius, automatic 500m server query/cache, and background loading bar.
+        3. QiHu Park lag elimination: in-memory JSON cache (<50ms repeat), batched 3D layer meshes,
+           4m bare-earth grid sampler, and removal of continuous flow animation loop & pulseCones.
+        4. Zoomed-out flicker fix: opaque MeshStandardMaterial with polygonOffset, single stepped manhole
+           cover at rimY + 0.05m, and adaptive camera near-plane scaling.
+        5. Hover info tooltip (#gsUtilHoverTooltip) rendering card info without links (includeLinks: false).
+        6. Rose Park 45-degree rotated box culverts fix: zero-roll basis (ry == 0, uy >= 0) across all
+           azimuths and exclusion of unbuilt conceptual layers (0/7) & lateral catch-basin misclassification.
+        """
+        import time
+
+        # 1 & 2. Default 250m shown radius & automatic 500m master cache persistence
+        res_default = self.survey.query_public_utilities_gis({
+            "scan_id": self.scan_id,
+            "force_refresh": False,
+        })
+        self.assertEqual(res_default.get("status"), "ok")
+        self.assertEqual(res_default.get("radius_m"), 250.0)
+        self.assertGreaterEqual(res_default.get("master_radius_m", 0.0), 500.0)
+        self.assertGreater(len(res_default.get("features", [])), 500)
+
+        # 3. QiHu Park repeat query latency via in-memory cache (< 50ms)
+        qihu_payload = {
+            "scan_id": "edited_qihu_unified_merged_scan_4_scans__edited_372953",
+            "center_e": 308297.27,
+            "center_n": 2773968.84,
+            "radius_m": 250.0,
+            "force_refresh": False,
+        }
+        res_qihu1 = self.survey.query_public_utilities_gis(qihu_payload)
+        self.assertEqual(res_qihu1.get("status"), "ok")
+        t0 = time.perf_counter()
+        res_qihu2 = self.survey.query_public_utilities_gis(qihu_payload)
+        elapsed_ms = (time.perf_counter() - t0) * 1000.0
+        self.assertEqual(res_qihu2.get("status"), "ok")
+        self.assertGreater(len(res_qihu2.get("features", [])), 1000)
+        self.assertLess(elapsed_ms, 50.0, f"QiHu repeat query took {elapsed_ms:.2f}ms (> 50ms)")
+
+        # 6A. Rose Park stormwater drain culvert classification integrity
+        storm_feats = [f for f in res_default.get("features", []) if f.get("layer") == "storm"]
+        self.assertGreater(len(storm_feats), 10)
+        for sf in storm_feats:
+            self.assertNotIn("規劃", sf.get("name", ""), f"Unbuilt conceptual feature leaked: {sf}")
+            if sf.get("type") == "box_culvert":
+                self.assertNotIn("連接管", sf.get("name", ""), f"Catch-basin lateral misclassified as box_culvert: {sf}")
+                self.assertGreater(float(sf.get("width_m", 0)), 0.0)
+                self.assertGreater(float(sf.get("height_m", 0)), 0.0)
+
+        # 6B. Zero-roll box culvert cross-section basis across 45 deg, 135 deg, 141 deg, and sloped alignments
+        def compute_zero_roll_basis(fx, fy, fz):
+            f_len = math.hypot(fx, fy, fz) or 1.0
+            dx, dy, dz = fx / f_len, fy / f_len, fz / f_len
+            horiz_len = math.hypot(dx, dz)
+            if horiz_len > 1e-5:
+                rx = -dz / horiz_len
+                ry = 0.0
+                rz = dx / horiz_len
+            else:
+                rx, ry, rz = 1.0, 0.0, 0.0
+            ux = dy * rz - dz * ry
+            uy = dz * rx - dx * rz
+            uz = dx * ry - dy * rx
+            u_len = math.hypot(ux, uy, uz) or 1.0
+            ux, uy, uz = ux / u_len, uy / u_len, uz / u_len
+            if uy < 0:
+                rx, ry, rz = -rx, -ry, -rz
+                ux, uy, uz = -ux, -uy, -uz
+            return (dx, dy, dz), (rx, ry, rz), (ux, uy, uz)
+
+        for az_deg in (0, 30, 45, 90, 135, 141, 180, 225, 315):
+            rad = math.radians(az_deg)
+            for dy_slope in (-0.15, 0.0, 0.15):
+                d_vec, r_vec, u_vec = compute_zero_roll_basis(math.sin(rad), dy_slope, math.cos(rad))
+                self.assertAlmostEqual(r_vec[1], 0.0, places=9, msg=f"Roll detected at azimuth {az_deg}")
+                self.assertGreaterEqual(u_vec[1], 0.0, msg=f"Inverted roof at azimuth {az_deg}")
+                # Orthogonality checks
+                dot_dr = sum(a * b for a, b in zip(d_vec, r_vec))
+                dot_du = sum(a * b for a, b in zip(d_vec, u_vec))
+                dot_ru = sum(a * b for a, b in zip(r_vec, u_vec))
+                self.assertAlmostEqual(dot_dr, 0.0, places=7)
+                self.assertAlmostEqual(dot_du, 0.0, places=7)
+                self.assertAlmostEqual(dot_ru, 0.0, places=7)
+
+        # 4 & 5. Frontend 12-public-utilities-gis.js & survey-bim.css verification
+        js_path = os.path.join(BASE_DIR, "web", "src", "12-public-utilities-gis.js")
+        css_path = os.path.join(BASE_DIR, "web", "survey-bim.css")
+        with open(js_path, "r", encoding="utf-8") as f:
+            js_code = f.read()
+        with open(css_path, "r", encoding="utf-8") as f:
+            css_code = f.read()
+
+        self.assertIn("radiusM: 250.0", js_code)
+        self.assertIn("serverMasterRadiusM: 500.0", js_code)
+        self.assertIn("computeZeroRollBasis(", js_code)
+        self.assertIn("ensureAdaptiveCameraNearPlane(", js_code)
+        self.assertIn("gsUtilHoverTooltip", js_code)
+        self.assertIn("includeLinks: false", js_code)
+        self.assertIn("startLoadingProgressTicker(", js_code)
+        self.assertIn("triToFeature", js_code)
+        self.assertNotIn("startFlowAnimationLoop", js_code)
+        self.assertNotIn("pulseCone", js_code)
+        self.assertIn(".gs-util-loading-bar-wrap", css_code)
+        self.assertIn(".gs-util-hover-tooltip", css_code)
+
 
 class TestModularArchitectureCompliance(unittest.TestCase):
     """

@@ -1314,6 +1314,83 @@ body.theme-dark .gs-util-hint-card {
   color: var(--ui-text-muted, #94a3b8);
 }
 
+.gs-util-loading-bar-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin-top: 8px;
+  padding: 7px 9px;
+  border-radius: 8px;
+  background: var(--ui-bg-pill, #f1f5f9);
+  border: 1px solid rgba(37, 99, 235, 0.28);
+}
+
+html[data-theme="dark"] .gs-util-loading-bar-wrap,
+body.theme-dark .gs-util-loading-bar-wrap {
+  background: rgba(30, 41, 59, 0.85);
+  border-color: rgba(96, 165, 250, 0.35);
+}
+
+.gs-util-loading-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--ui-accent, #2563eb);
+}
+
+html[data-theme="dark"] .gs-util-loading-header,
+body.theme-dark .gs-util-loading-header {
+  color: #60a5fa;
+}
+
+.gs-util-loading-track {
+  width: 100%;
+  height: 6px;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.25);
+  overflow: hidden;
+  position: relative;
+}
+
+.gs-util-loading-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #2563eb 0%, #06b6d4 50%, #3b82f6 100%);
+  transition: width 0.18s ease-out;
+}
+
+.gs-util-hover-tooltip {
+  position: fixed;
+  z-index: 9999;
+  pointer-events: none;
+  width: 315px;
+  max-width: calc(100vw - 24px);
+  border-radius: 10px;
+  box-shadow: 0 10px 28px rgba(2, 6, 23, 0.38), 0 0 0 1px rgba(59, 130, 246, 0.35);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  background: rgba(255, 255, 255, 0.96);
+  color: var(--ui-text-primary, #0f172a);
+  font-size: 11px;
+  transition: opacity 0.08s ease;
+}
+
+html[data-theme="dark"] .gs-util-hover-tooltip,
+body.theme-dark .gs-util-hover-tooltip {
+  background: rgba(15, 23, 42, 0.95);
+  color: var(--ui-text-primary, #f8fafc);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.65), 0 0 0 1px rgba(56, 189, 248, 0.38);
+}
+
+.gs-util-hover-tooltip .gs-util-detail-card {
+  margin-top: 0 !important;
+  border: none !important;
+  background: transparent !important;
+  padding: 9px 11px !important;
+}
+
 /* -------------------------------------------------------------------------
    Construction QA, Utility Tracer & RTK Stakeout (Milestone 4 & 5)
    ------------------------------------------------------------------------- */
