@@ -3587,7 +3587,7 @@
     mapTex.wrapS = THREE.ClampToEdgeWrapping;
     mapTex.wrapT = THREE.ClampToEdgeWrapping;
 
-    const halfSpan = 320;
+    const halfSpan = 640;
     const geom = new THREE.PlaneGeometry(halfSpan * 2, halfSpan * 2, 1, 1);
     geom.rotateX(-Math.PI / 2);
 
@@ -3702,7 +3702,7 @@
       const tx1 = Math.floor(seMerc.u * zPow);
       const ty0 = Math.floor(nwMerc.v * zPow);
       const ty1 = Math.floor(seMerc.v * zPow);
-      if (Math.abs(tx1 - tx0) + 1 <= 9 && Math.abs(ty1 - ty0) + 1 <= 9) {
+      if (Math.abs(tx1 - tx0) + 1 <= 11 && Math.abs(ty1 - ty0) + 1 <= 11) {
         zoom = z;
         break;
       }
@@ -4207,7 +4207,7 @@
 
     layer.group.visible = true;
     const rawR = Math.max(25, Number(ctx.boundingSphere?.radius) || 60);
-    const nextHalfSpan = Math.max(240, Math.min(840, Math.ceil((rawR * 3.0) / 20) * 20));
+    const nextHalfSpan = Math.max(480, Math.min(1680, Math.ceil((rawR * 3.0) / 20) * 40));
     if (Math.abs(nextHalfSpan - layer.halfSpan) > 10) {
       layer.halfSpan = nextHalfSpan;
       layer.uniforms.uHalfSpan.value = nextHalfSpan;
