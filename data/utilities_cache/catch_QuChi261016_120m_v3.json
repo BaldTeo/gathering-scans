@@ -173,24 +173,19 @@
         ]
       ],
       "source": "New Taipei City WRD Rainwater System (wrd.ntpc.gov.tw)",
-      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.920563&lon=121.546117&zoom=19",
-      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
-      "osm_url": "https://www.openstreetmap.org/?mlat=24.920563&mlon=121.546117#map=19/24.920563/121.546117",
-      "osm_label": "OpenStreetMap 座標圖台",
-      "portal_url": "https://wrd.ntpc.gov.tw/",
-      "portal_label": "新北市政府水利局 水利地理資訊系統",
-      "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #418",
       "gov_links": {
-        "portal_url": "https://wrd.ntpc.gov.tw/",
-        "portal_label": "新北市政府水利局 水利地理資訊系統",
-        "api_url": null,
+        "portal_url": null,
+        "portal_label": null,
+        "api_url": "https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/rainwater_00131/MapServer/7/418",
         "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #418",
-        "osm_url": "https://www.openstreetmap.org/?mlat=24.920563&mlon=121.546117#map=19/24.920563/121.546117",
-        "osm_label": "OpenStreetMap 座標圖台",
-        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.920563&lon=121.546117&zoom=19",
-        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
+        "osm_url": null,
+        "osm_label": null,
+        "nlsc_url": null,
+        "nlsc_label": null
       },
-      "origin_class": "api_open_data"
+      "origin_class": "api_open_data",
+      "api_url": "https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/rainwater_00131/MapServer/7/418",
+      "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #418"
     },
     {
       "id": "ntpc_rw_culvert_424",
@@ -257,24 +252,19 @@
         ]
       ],
       "source": "New Taipei City WRD Rainwater System (wrd.ntpc.gov.tw)",
-      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.922398&lon=121.547530&zoom=19",
-      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
-      "osm_url": "https://www.openstreetmap.org/?mlat=24.922398&mlon=121.547530#map=19/24.922398/121.547530",
-      "osm_label": "OpenStreetMap 座標圖台",
-      "portal_url": "https://wrd.ntpc.gov.tw/",
-      "portal_label": "新北市政府水利局 水利地理資訊系統",
-      "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #424",
       "gov_links": {
-        "portal_url": "https://wrd.ntpc.gov.tw/",
-        "portal_label": "新北市政府水利局 水利地理資訊系統",
-        "api_url": null,
+        "portal_url": null,
+        "portal_label": null,
+        "api_url": "https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/rainwater_00131/MapServer/7/424",
         "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #424",
-        "osm_url": "https://www.openstreetmap.org/?mlat=24.922398&mlon=121.547530#map=19/24.922398/121.547530",
-        "osm_label": "OpenStreetMap 座標圖台",
-        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.922398&lon=121.547530&zoom=19",
-        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
+        "osm_url": null,
+        "osm_label": null,
+        "nlsc_url": null,
+        "nlsc_label": null
       },
-      "origin_class": "api_open_data"
+      "origin_class": "api_open_data",
+      "api_url": "https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/rainwater_00131/MapServer/7/424",
+      "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #424"
     },
     {
       "id": "ntpc_rw_culvert_422",
@@ -326,24 +316,19 @@
         ]
       ],
       "source": "New Taipei City WRD Rainwater System (wrd.ntpc.gov.tw)",
-      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.921280&lon=121.546437&zoom=19",
-      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
-      "osm_url": "https://www.openstreetmap.org/?mlat=24.921280&mlon=121.546437#map=19/24.921280/121.546437",
-      "osm_label": "OpenStreetMap 座標圖台",
-      "portal_url": "https://wrd.ntpc.gov.tw/",
-      "portal_label": "新北市政府水利局 水利地理資訊系統",
-      "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #422",
       "gov_links": {
-        "portal_url": "https://wrd.ntpc.gov.tw/",
-        "portal_label": "新北市政府水利局 水利地理資訊系統",
-        "api_url": null,
+        "portal_url": null,
+        "portal_label": null,
+        "api_url": "https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/rainwater_00131/MapServer/7/422",
         "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #422",
-        "osm_url": "https://www.openstreetmap.org/?mlat=24.921280&mlon=121.546437#map=19/24.921280/121.546437",
-        "osm_label": "OpenStreetMap 座標圖台",
-        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.921280&lon=121.546437&zoom=19",
-        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
+        "osm_url": null,
+        "osm_label": null,
+        "nlsc_url": null,
+        "nlsc_label": null
       },
-      "origin_class": "api_open_data"
+      "origin_class": "api_open_data",
+      "api_url": "https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/rainwater_00131/MapServer/7/422",
+      "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #422"
     },
     {
       "id": "ntpc_rw_culvert_425",
@@ -395,24 +380,19 @@
         ]
       ],
       "source": "New Taipei City WRD Rainwater System (wrd.ntpc.gov.tw)",
-      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.918767&lon=121.546986&zoom=19",
-      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
-      "osm_url": "https://www.openstreetmap.org/?mlat=24.918767&mlon=121.546986#map=19/24.918767/121.546986",
-      "osm_label": "OpenStreetMap 座標圖台",
-      "portal_url": "https://wrd.ntpc.gov.tw/",
-      "portal_label": "新北市政府水利局 水利地理資訊系統",
-      "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #425",
       "gov_links": {
-        "portal_url": "https://wrd.ntpc.gov.tw/",
-        "portal_label": "新北市政府水利局 水利地理資訊系統",
-        "api_url": null,
+        "portal_url": null,
+        "portal_label": null,
+        "api_url": "https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/rainwater_00131/MapServer/7/425",
         "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #425",
-        "osm_url": "https://www.openstreetmap.org/?mlat=24.918767&mlon=121.546986#map=19/24.918767/121.546986",
-        "osm_label": "OpenStreetMap 座標圖台",
-        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.918767&lon=121.546986&zoom=19",
-        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
+        "osm_url": null,
+        "osm_label": null,
+        "nlsc_url": null,
+        "nlsc_label": null
       },
-      "origin_class": "api_open_data"
+      "origin_class": "api_open_data",
+      "api_url": "https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/rainwater_00131/MapServer/7/425",
+      "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #425"
     },
     {
       "id": "ntpc_rw_culvert_540",
@@ -469,24 +449,19 @@
         ]
       ],
       "source": "New Taipei City WRD Rainwater System (wrd.ntpc.gov.tw)",
-      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.923125&lon=121.542909&zoom=19",
-      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
-      "osm_url": "https://www.openstreetmap.org/?mlat=24.923125&mlon=121.542909#map=19/24.923125/121.542909",
-      "osm_label": "OpenStreetMap 座標圖台",
-      "portal_url": "https://wrd.ntpc.gov.tw/",
-      "portal_label": "新北市政府水利局 水利地理資訊系統",
-      "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #540",
       "gov_links": {
-        "portal_url": "https://wrd.ntpc.gov.tw/",
-        "portal_label": "新北市政府水利局 水利地理資訊系統",
-        "api_url": null,
+        "portal_url": null,
+        "portal_label": null,
+        "api_url": "https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/rainwater_00131/MapServer/7/540",
         "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #540",
-        "osm_url": "https://www.openstreetmap.org/?mlat=24.923125&mlon=121.542909#map=19/24.923125/121.542909",
-        "osm_label": "OpenStreetMap 座標圖台",
-        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.923125&lon=121.542909&zoom=19",
-        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
+        "osm_url": null,
+        "osm_label": null,
+        "nlsc_url": null,
+        "nlsc_label": null
       },
-      "origin_class": "api_open_data"
+      "origin_class": "api_open_data",
+      "api_url": "https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/rainwater_00131/MapServer/7/540",
+      "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #540"
     },
     {
       "id": "ntpc_rw_culvert_543",
@@ -563,24 +538,19 @@
         ]
       ],
       "source": "New Taipei City WRD Rainwater System (wrd.ntpc.gov.tw)",
-      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.924174&lon=121.546537&zoom=19",
-      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
-      "osm_url": "https://www.openstreetmap.org/?mlat=24.924174&mlon=121.546537#map=19/24.924174/121.546537",
-      "osm_label": "OpenStreetMap 座標圖台",
-      "portal_url": "https://wrd.ntpc.gov.tw/",
-      "portal_label": "新北市政府水利局 水利地理資訊系統",
-      "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #543",
       "gov_links": {
-        "portal_url": "https://wrd.ntpc.gov.tw/",
-        "portal_label": "新北市政府水利局 水利地理資訊系統",
-        "api_url": null,
+        "portal_url": null,
+        "portal_label": null,
+        "api_url": "https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/rainwater_00131/MapServer/7/543",
         "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #543",
-        "osm_url": "https://www.openstreetmap.org/?mlat=24.924174&mlon=121.546537#map=19/24.924174/121.546537",
-        "osm_label": "OpenStreetMap 座標圖台",
-        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.924174&lon=121.546537&zoom=19",
-        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
+        "osm_url": null,
+        "osm_label": null,
+        "nlsc_url": null,
+        "nlsc_label": null
       },
-      "origin_class": "api_open_data"
+      "origin_class": "api_open_data",
+      "api_url": "https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/rainwater_00131/MapServer/7/543",
+      "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #543"
     },
     {
       "id": "ntpc_rw_mh_685",
@@ -599,24 +569,19 @@
       "depth_m": 2.1,
       "diameter_mm": 800,
       "source": "New Taipei City WRD Rainwater System (wrd.ntpc.gov.tw)",
-      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.923408&lon=121.545759&zoom=19",
-      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
-      "osm_url": "https://www.openstreetmap.org/?mlat=24.923408&mlon=121.545759#map=19/24.923408/121.545759",
-      "osm_label": "OpenStreetMap 座標圖台",
-      "portal_url": "https://wrd.ntpc.gov.tw/",
-      "portal_label": "新北市政府水利局 水利地理資訊系統",
-      "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #685",
       "gov_links": {
-        "portal_url": "https://wrd.ntpc.gov.tw/",
-        "portal_label": "新北市政府水利局 水利地理資訊系統",
-        "api_url": null,
+        "portal_url": null,
+        "portal_label": null,
+        "api_url": "https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/rainwater_00131/MapServer/0/685",
         "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #685",
-        "osm_url": "https://www.openstreetmap.org/?mlat=24.923408&mlon=121.545759#map=19/24.923408/121.545759",
-        "osm_label": "OpenStreetMap 座標圖台",
-        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.923408&lon=121.545759&zoom=19",
-        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
+        "osm_url": null,
+        "osm_label": null,
+        "nlsc_url": null,
+        "nlsc_label": null
       },
-      "origin_class": "api_open_data"
+      "origin_class": "api_open_data",
+      "api_url": "https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/rainwater_00131/MapServer/0/685",
+      "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #685"
     },
     {
       "id": "ntpc_rw_mh_688",
@@ -635,24 +600,19 @@
       "depth_m": 2.1,
       "diameter_mm": 800,
       "source": "New Taipei City WRD Rainwater System (wrd.ntpc.gov.tw)",
-      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.921280&lon=121.546437&zoom=19",
-      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
-      "osm_url": "https://www.openstreetmap.org/?mlat=24.921280&mlon=121.546437#map=19/24.921280/121.546437",
-      "osm_label": "OpenStreetMap 座標圖台",
-      "portal_url": "https://wrd.ntpc.gov.tw/",
-      "portal_label": "新北市政府水利局 水利地理資訊系統",
-      "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #688",
       "gov_links": {
-        "portal_url": "https://wrd.ntpc.gov.tw/",
-        "portal_label": "新北市政府水利局 水利地理資訊系統",
-        "api_url": null,
+        "portal_url": null,
+        "portal_label": null,
+        "api_url": "https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/rainwater_00131/MapServer/0/688",
         "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #688",
-        "osm_url": "https://www.openstreetmap.org/?mlat=24.921280&mlon=121.546437#map=19/24.921280/121.546437",
-        "osm_label": "OpenStreetMap 座標圖台",
-        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.921280&lon=121.546437&zoom=19",
-        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
+        "osm_url": null,
+        "osm_label": null,
+        "nlsc_url": null,
+        "nlsc_label": null
       },
-      "origin_class": "api_open_data"
+      "origin_class": "api_open_data",
+      "api_url": "https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/rainwater_00131/MapServer/0/688",
+      "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #688"
     },
     {
       "id": "ntpc_rw_mh_694",
@@ -671,24 +631,19 @@
       "depth_m": 2.1,
       "diameter_mm": 800,
       "source": "New Taipei City WRD Rainwater System (wrd.ntpc.gov.tw)",
-      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.918767&lon=121.546986&zoom=19",
-      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
-      "osm_url": "https://www.openstreetmap.org/?mlat=24.918767&mlon=121.546986#map=19/24.918767/121.546986",
-      "osm_label": "OpenStreetMap 座標圖台",
-      "portal_url": "https://wrd.ntpc.gov.tw/",
-      "portal_label": "新北市政府水利局 水利地理資訊系統",
-      "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #694",
       "gov_links": {
-        "portal_url": "https://wrd.ntpc.gov.tw/",
-        "portal_label": "新北市政府水利局 水利地理資訊系統",
-        "api_url": null,
+        "portal_url": null,
+        "portal_label": null,
+        "api_url": "https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/rainwater_00131/MapServer/0/694",
         "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #694",
-        "osm_url": "https://www.openstreetmap.org/?mlat=24.918767&mlon=121.546986#map=19/24.918767/121.546986",
-        "osm_label": "OpenStreetMap 座標圖台",
-        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.918767&lon=121.546986&zoom=19",
-        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
+        "osm_url": null,
+        "osm_label": null,
+        "nlsc_url": null,
+        "nlsc_label": null
       },
-      "origin_class": "api_open_data"
+      "origin_class": "api_open_data",
+      "api_url": "https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/rainwater_00131/MapServer/0/694",
+      "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #694"
     },
     {
       "id": "ntpc_rw_mh_689",
@@ -707,24 +662,19 @@
       "depth_m": 2.1,
       "diameter_mm": 800,
       "source": "New Taipei City WRD Rainwater System (wrd.ntpc.gov.tw)",
-      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.920563&lon=121.546117&zoom=19",
-      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
-      "osm_url": "https://www.openstreetmap.org/?mlat=24.920563&mlon=121.546117#map=19/24.920563/121.546117",
-      "osm_label": "OpenStreetMap 座標圖台",
-      "portal_url": "https://wrd.ntpc.gov.tw/",
-      "portal_label": "新北市政府水利局 水利地理資訊系統",
-      "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #689",
       "gov_links": {
-        "portal_url": "https://wrd.ntpc.gov.tw/",
-        "portal_label": "新北市政府水利局 水利地理資訊系統",
-        "api_url": null,
+        "portal_url": null,
+        "portal_label": null,
+        "api_url": "https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/rainwater_00131/MapServer/0/689",
         "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #689",
-        "osm_url": "https://www.openstreetmap.org/?mlat=24.920563&mlon=121.546117#map=19/24.920563/121.546117",
-        "osm_label": "OpenStreetMap 座標圖台",
-        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.920563&lon=121.546117&zoom=19",
-        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
+        "osm_url": null,
+        "osm_label": null,
+        "nlsc_url": null,
+        "nlsc_label": null
       },
-      "origin_class": "api_open_data"
+      "origin_class": "api_open_data",
+      "api_url": "https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/rainwater_00131/MapServer/0/689",
+      "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #689"
     },
     {
       "id": "ntpc_rw_mh_686",
@@ -743,24 +693,19 @@
       "depth_m": 2.1,
       "diameter_mm": 800,
       "source": "New Taipei City WRD Rainwater System (wrd.ntpc.gov.tw)",
-      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.922785&lon=121.547497&zoom=19",
-      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
-      "osm_url": "https://www.openstreetmap.org/?mlat=24.922785&mlon=121.547497#map=19/24.922785/121.547497",
-      "osm_label": "OpenStreetMap 座標圖台",
-      "portal_url": "https://wrd.ntpc.gov.tw/",
-      "portal_label": "新北市政府水利局 水利地理資訊系統",
-      "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #686",
       "gov_links": {
-        "portal_url": "https://wrd.ntpc.gov.tw/",
-        "portal_label": "新北市政府水利局 水利地理資訊系統",
-        "api_url": null,
+        "portal_url": null,
+        "portal_label": null,
+        "api_url": "https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/rainwater_00131/MapServer/0/686",
         "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #686",
-        "osm_url": "https://www.openstreetmap.org/?mlat=24.922785&mlon=121.547497#map=19/24.922785/121.547497",
-        "osm_label": "OpenStreetMap 座標圖台",
-        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.922785&lon=121.547497&zoom=19",
-        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
+        "osm_url": null,
+        "osm_label": null,
+        "nlsc_url": null,
+        "nlsc_label": null
       },
-      "origin_class": "api_open_data"
+      "origin_class": "api_open_data",
+      "api_url": "https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/rainwater_00131/MapServer/0/686",
+      "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #686"
     },
     {
       "id": "ntpc_rw_mh_695",
@@ -779,24 +724,19 @@
       "depth_m": 2.1,
       "diameter_mm": 800,
       "source": "New Taipei City WRD Rainwater System (wrd.ntpc.gov.tw)",
-      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.921511&lon=121.542901&zoom=19",
-      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
-      "osm_url": "https://www.openstreetmap.org/?mlat=24.921511&mlon=121.542901#map=19/24.921511/121.542901",
-      "osm_label": "OpenStreetMap 座標圖台",
-      "portal_url": "https://wrd.ntpc.gov.tw/",
-      "portal_label": "新北市政府水利局 水利地理資訊系統",
-      "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #695",
       "gov_links": {
-        "portal_url": "https://wrd.ntpc.gov.tw/",
-        "portal_label": "新北市政府水利局 水利地理資訊系統",
-        "api_url": null,
+        "portal_url": null,
+        "portal_label": null,
+        "api_url": "https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/rainwater_00131/MapServer/0/695",
         "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #695",
-        "osm_url": "https://www.openstreetmap.org/?mlat=24.921511&mlon=121.542901#map=19/24.921511/121.542901",
-        "osm_label": "OpenStreetMap 座標圖台",
-        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.921511&lon=121.542901&zoom=19",
-        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
+        "osm_url": null,
+        "osm_label": null,
+        "nlsc_url": null,
+        "nlsc_label": null
       },
-      "origin_class": "api_open_data"
+      "origin_class": "api_open_data",
+      "api_url": "https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/rainwater_00131/MapServer/0/695",
+      "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #695"
     },
     {
       "id": "osm_waterway_259222251",
@@ -851,23 +791,19 @@
         ]
       ],
       "source": "Taiwan Hydraulic & Culvert GIS (OpenStreetMap Taiwan)",
-      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.919446&lon=121.542684&zoom=19",
-      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
-      "osm_url": "https://www.openstreetmap.org/way/259222251",
-      "osm_label": "OpenStreetMap 圖資廊道 #259222251",
-      "portal_url": "https://pipe.nlma.gov.tw/",
-      "portal_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
       "gov_links": {
-        "portal_url": "https://pipe.nlma.gov.tw/",
-        "portal_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+        "portal_url": null,
+        "portal_label": null,
         "api_url": null,
         "api_label": null,
         "osm_url": "https://www.openstreetmap.org/way/259222251",
-        "osm_label": "OpenStreetMap 圖資廊道 #259222251",
-        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.919446&lon=121.542684&zoom=19",
-        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
+        "osm_label": "OpenStreetMap 圖資線段 #259222251",
+        "nlsc_url": null,
+        "nlsc_label": null
       },
-      "origin_class": "api_open_data"
+      "origin_class": "api_open_data",
+      "osm_url": "https://www.openstreetmap.org/way/259222251",
+      "osm_label": "OpenStreetMap 圖資線段 #259222251"
     },
     {
       "id": "osm_waterway_487011226",
@@ -917,23 +853,19 @@
         ]
       ],
       "source": "Taiwan Hydraulic & Culvert GIS (OpenStreetMap Taiwan)",
-      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.921181&lon=121.542683&zoom=19",
-      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
-      "osm_url": "https://www.openstreetmap.org/way/487011226",
-      "osm_label": "OpenStreetMap 圖資廊道 #487011226",
-      "portal_url": "https://pipe.nlma.gov.tw/",
-      "portal_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
       "gov_links": {
-        "portal_url": "https://pipe.nlma.gov.tw/",
-        "portal_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+        "portal_url": null,
+        "portal_label": null,
         "api_url": null,
         "api_label": null,
         "osm_url": "https://www.openstreetmap.org/way/487011226",
-        "osm_label": "OpenStreetMap 圖資廊道 #487011226",
-        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.921181&lon=121.542683&zoom=19",
-        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
+        "osm_label": "OpenStreetMap 圖資線段 #487011226",
+        "nlsc_url": null,
+        "nlsc_label": null
       },
-      "origin_class": "api_open_data"
+      "origin_class": "api_open_data",
+      "osm_url": "https://www.openstreetmap.org/way/487011226",
+      "osm_label": "OpenStreetMap 圖資線段 #487011226"
     },
     {
       "id": "osm_waterway_1394460986",
@@ -1013,23 +945,19 @@
         ]
       ],
       "source": "Taiwan Hydraulic & Culvert GIS (OpenStreetMap Taiwan)",
-      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.921167&lon=121.543014&zoom=19",
-      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
-      "osm_url": "https://www.openstreetmap.org/way/1394460986",
-      "osm_label": "OpenStreetMap 圖資廊道 #1394460986",
-      "portal_url": "https://pipe.nlma.gov.tw/",
-      "portal_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
       "gov_links": {
-        "portal_url": "https://pipe.nlma.gov.tw/",
-        "portal_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+        "portal_url": null,
+        "portal_label": null,
         "api_url": null,
         "api_label": null,
         "osm_url": "https://www.openstreetmap.org/way/1394460986",
-        "osm_label": "OpenStreetMap 圖資廊道 #1394460986",
-        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.921167&lon=121.543014&zoom=19",
-        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
+        "osm_label": "OpenStreetMap 圖資線段 #1394460986",
+        "nlsc_url": null,
+        "nlsc_label": null
       },
-      "origin_class": "api_open_data"
+      "origin_class": "api_open_data",
+      "osm_url": "https://www.openstreetmap.org/way/1394460986",
+      "osm_label": "OpenStreetMap 圖資線段 #1394460986"
     }
   ],
   "query_timestamp": "2026-10-31T11:20:37.431024+00:00",

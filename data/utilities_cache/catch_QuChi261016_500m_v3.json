@@ -109,19 +109,19 @@
   },
   "layer_counts": {
     "storm": 40,
-    "sanitary": 12,
-    "water": 26,
-    "electric": 5,
-    "telecom": 5,
-    "gas": 4,
-    "ducts": 2,
-    "streetlights": 3,
+    "sanitary": 0,
+    "water": 21,
+    "electric": 0,
+    "telecom": 0,
+    "gas": 0,
+    "ducts": 0,
+    "streetlights": 0,
     "excavations": 0,
     "as_built": 0
   },
-  "total_features": 97,
-  "total_pipe_length_m": 17744.7,
-  "total_structures": 37,
+  "total_features": 61,
+  "total_pipe_length_m": 6810.56,
+  "total_structures": 31,
   "features": [
     {
       "id": "ntpc_rw_culvert_418",
@@ -173,24 +173,19 @@
         ]
       ],
       "source": "New Taipei City WRD Rainwater System (wrd.ntpc.gov.tw)",
-      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.920563&lon=121.546117&zoom=19",
-      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
-      "osm_url": "https://www.openstreetmap.org/?mlat=24.920563&mlon=121.546117#map=19/24.920563/121.546117",
-      "osm_label": "OpenStreetMap 座標圖台",
-      "portal_url": "https://wrd.ntpc.gov.tw/",
-      "portal_label": "新北市政府水利局 水利地理資訊系統",
-      "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #418",
       "gov_links": {
-        "portal_url": "https://wrd.ntpc.gov.tw/",
-        "portal_label": "新北市政府水利局 水利地理資訊系統",
-        "api_url": null,
+        "portal_url": null,
+        "portal_label": null,
+        "api_url": "https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/rainwater_00131/MapServer/7/418",
         "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #418",
-        "osm_url": "https://www.openstreetmap.org/?mlat=24.920563&mlon=121.546117#map=19/24.920563/121.546117",
-        "osm_label": "OpenStreetMap 座標圖台",
-        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.920563&lon=121.546117&zoom=19",
-        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
+        "osm_url": null,
+        "osm_label": null,
+        "nlsc_url": null,
+        "nlsc_label": null
       },
-      "origin_class": "api_open_data"
+      "origin_class": "api_open_data",
+      "api_url": "https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/rainwater_00131/MapServer/7/418",
+      "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #418"
     },
     {
       "id": "ntpc_rw_culvert_424",
@@ -257,24 +252,19 @@
         ]
       ],
       "source": "New Taipei City WRD Rainwater System (wrd.ntpc.gov.tw)",
-      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.922398&lon=121.547530&zoom=19",
-      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
-      "osm_url": "https://www.openstreetmap.org/?mlat=24.922398&mlon=121.547530#map=19/24.922398/121.547530",
-      "osm_label": "OpenStreetMap 座標圖台",
-      "portal_url": "https://wrd.ntpc.gov.tw/",
-      "portal_label": "新北市政府水利局 水利地理資訊系統",
-      "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #424",
       "gov_links": {
-        "portal_url": "https://wrd.ntpc.gov.tw/",
-        "portal_label": "新北市政府水利局 水利地理資訊系統",
-        "api_url": null,
+        "portal_url": null,
+        "portal_label": null,
+        "api_url": "https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/rainwater_00131/MapServer/7/424",
         "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #424",
-        "osm_url": "https://www.openstreetmap.org/?mlat=24.922398&mlon=121.547530#map=19/24.922398/121.547530",
-        "osm_label": "OpenStreetMap 座標圖台",
-        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.922398&lon=121.547530&zoom=19",
-        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
+        "osm_url": null,
+        "osm_label": null,
+        "nlsc_url": null,
+        "nlsc_label": null
       },
-      "origin_class": "api_open_data"
+      "origin_class": "api_open_data",
+      "api_url": "https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/rainwater_00131/MapServer/7/424",
+      "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #424"
     },
     {
       "id": "ntpc_rw_culvert_421",
@@ -336,24 +326,19 @@
         ]
       ],
       "source": "New Taipei City WRD Rainwater System (wrd.ntpc.gov.tw)",
-      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.919122&lon=121.548292&zoom=19",
-      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
-      "osm_url": "https://www.openstreetmap.org/?mlat=24.919122&mlon=121.548292#map=19/24.919122/121.548292",
-      "osm_label": "OpenStreetMap 座標圖台",
-      "portal_url": "https://wrd.ntpc.gov.tw/",
-      "portal_label": "新北市政府水利局 水利地理資訊系統",
-      "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #421",
       "gov_links": {
-        "portal_url": "https://wrd.ntpc.gov.tw/",
-        "portal_label": "新北市政府水利局 水利地理資訊系統",
-        "api_url": null,
+        "portal_url": null,
+        "portal_label": null,
+        "api_url": "https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/rainwater_00131/MapServer/7/421",
         "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #421",
-        "osm_url": "https://www.openstreetmap.org/?mlat=24.919122&mlon=121.548292#map=19/24.919122/121.548292",
-        "osm_label": "OpenStreetMap 座標圖台",
-        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.919122&lon=121.548292&zoom=19",
-        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
+        "osm_url": null,
+        "osm_label": null,
+        "nlsc_url": null,
+        "nlsc_label": null
       },
-      "origin_class": "api_open_data"
+      "origin_class": "api_open_data",
+      "api_url": "https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/rainwater_00131/MapServer/7/421",
+      "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #421"
     },
     {
       "id": "ntpc_rw_culvert_422",
@@ -405,24 +390,19 @@
         ]
       ],
       "source": "New Taipei City WRD Rainwater System (wrd.ntpc.gov.tw)",
-      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.921280&lon=121.546437&zoom=19",
-      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
-      "osm_url": "https://www.openstreetmap.org/?mlat=24.921280&mlon=121.546437#map=19/24.921280/121.546437",
-      "osm_label": "OpenStreetMap 座標圖台",
-      "portal_url": "https://wrd.ntpc.gov.tw/",
-      "portal_label": "新北市政府水利局 水利地理資訊系統",
-      "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #422",
       "gov_links": {
-        "portal_url": "https://wrd.ntpc.gov.tw/",
-        "portal_label": "新北市政府水利局 水利地理資訊系統",
-        "api_url": null,
+        "portal_url": null,
+        "portal_label": null,
+        "api_url": "https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/rainwater_00131/MapServer/7/422",
         "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #422",
-        "osm_url": "https://www.openstreetmap.org/?mlat=24.921280&mlon=121.546437#map=19/24.921280/121.546437",
-        "osm_label": "OpenStreetMap 座標圖台",
-        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.921280&lon=121.546437&zoom=19",
-        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
+        "osm_url": null,
+        "osm_label": null,
+        "nlsc_url": null,
+        "nlsc_label": null
       },
-      "origin_class": "api_open_data"
+      "origin_class": "api_open_data",
+      "api_url": "https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/rainwater_00131/MapServer/7/422",
+      "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #422"
     },
     {
       "id": "ntpc_rw_culvert_425",
@@ -474,24 +454,19 @@
         ]
       ],
       "source": "New Taipei City WRD Rainwater System (wrd.ntpc.gov.tw)",
-      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.918767&lon=121.546986&zoom=19",
-      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
-      "osm_url": "https://www.openstreetmap.org/?mlat=24.918767&mlon=121.546986#map=19/24.918767/121.546986",
-      "osm_label": "OpenStreetMap 座標圖台",
-      "portal_url": "https://wrd.ntpc.gov.tw/",
-      "portal_label": "新北市政府水利局 水利地理資訊系統",
-      "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #425",
       "gov_links": {
-        "portal_url": "https://wrd.ntpc.gov.tw/",
-        "portal_label": "新北市政府水利局 水利地理資訊系統",
-        "api_url": null,
+        "portal_url": null,
+        "portal_label": null,
+        "api_url": "https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/rainwater_00131/MapServer/7/425",
         "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #425",
-        "osm_url": "https://www.openstreetmap.org/?mlat=24.918767&mlon=121.546986#map=19/24.918767/121.546986",
-        "osm_label": "OpenStreetMap 座標圖台",
-        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.918767&lon=121.546986&zoom=19",
-        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
+        "osm_url": null,
+        "osm_label": null,
+        "nlsc_url": null,
+        "nlsc_label": null
       },
-      "origin_class": "api_open_data"
+      "origin_class": "api_open_data",
+      "api_url": "https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/rainwater_00131/MapServer/7/425",
+      "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #425"
     },
     {
       "id": "ntpc_rw_culvert_420",
@@ -743,24 +718,19 @@
         ]
       ],
       "source": "New Taipei City WRD Rainwater System (wrd.ntpc.gov.tw)",
-      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.919750&lon=121.548727&zoom=19",
-      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
-      "osm_url": "https://www.openstreetmap.org/?mlat=24.919750&mlon=121.548727#map=19/24.919750/121.548727",
-      "osm_label": "OpenStreetMap 座標圖台",
-      "portal_url": "https://wrd.ntpc.gov.tw/",
-      "portal_label": "新北市政府水利局 水利地理資訊系統",
-      "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #420",
       "gov_links": {
-        "portal_url": "https://wrd.ntpc.gov.tw/",
-        "portal_label": "新北市政府水利局 水利地理資訊系統",
-        "api_url": null,
+        "portal_url": null,
+        "portal_label": null,
+        "api_url": "https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/rainwater_00131/MapServer/7/420",
         "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #420",
-        "osm_url": "https://www.openstreetmap.org/?mlat=24.919750&mlon=121.548727#map=19/24.919750/121.548727",
-        "osm_label": "OpenStreetMap 座標圖台",
-        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.919750&lon=121.548727&zoom=19",
-        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
+        "osm_url": null,
+        "osm_label": null,
+        "nlsc_url": null,
+        "nlsc_label": null
       },
-      "origin_class": "api_open_data"
+      "origin_class": "api_open_data",
+      "api_url": "https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/rainwater_00131/MapServer/7/420",
+      "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #420"
     },
     {
       "id": "ntpc_rw_culvert_540",
@@ -817,24 +787,19 @@
         ]
       ],
       "source": "New Taipei City WRD Rainwater System (wrd.ntpc.gov.tw)",
-      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.923125&lon=121.542909&zoom=19",
-      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
-      "osm_url": "https://www.openstreetmap.org/?mlat=24.923125&mlon=121.542909#map=19/24.923125/121.542909",
-      "osm_label": "OpenStreetMap 座標圖台",
-      "portal_url": "https://wrd.ntpc.gov.tw/",
-      "portal_label": "新北市政府水利局 水利地理資訊系統",
-      "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #540",
       "gov_links": {
-        "portal_url": "https://wrd.ntpc.gov.tw/",
-        "portal_label": "新北市政府水利局 水利地理資訊系統",
-        "api_url": null,
+        "portal_url": null,
+        "portal_label": null,
+        "api_url": "https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/rainwater_00131/MapServer/7/540",
         "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #540",
-        "osm_url": "https://www.openstreetmap.org/?mlat=24.923125&mlon=121.542909#map=19/24.923125/121.542909",
-        "osm_label": "OpenStreetMap 座標圖台",
-        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.923125&lon=121.542909&zoom=19",
-        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
+        "osm_url": null,
+        "osm_label": null,
+        "nlsc_url": null,
+        "nlsc_label": null
       },
-      "origin_class": "api_open_data"
+      "origin_class": "api_open_data",
+      "api_url": "https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/rainwater_00131/MapServer/7/540",
+      "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #540"
     },
     {
       "id": "ntpc_rw_culvert_417",
@@ -896,24 +861,19 @@
         ]
       ],
       "source": "New Taipei City WRD Rainwater System (wrd.ntpc.gov.tw)",
-      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.924522&lon=121.546998&zoom=19",
-      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
-      "osm_url": "https://www.openstreetmap.org/?mlat=24.924522&mlon=121.546998#map=19/24.924522/121.546998",
-      "osm_label": "OpenStreetMap 座標圖台",
-      "portal_url": "https://wrd.ntpc.gov.tw/",
-      "portal_label": "新北市政府水利局 水利地理資訊系統",
-      "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #417",
       "gov_links": {
-        "portal_url": "https://wrd.ntpc.gov.tw/",
-        "portal_label": "新北市政府水利局 水利地理資訊系統",
-        "api_url": null,
+        "portal_url": null,
+        "portal_label": null,
+        "api_url": "https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/rainwater_00131/MapServer/7/417",
         "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #417",
-        "osm_url": "https://www.openstreetmap.org/?mlat=24.924522&mlon=121.546998#map=19/24.924522/121.546998",
-        "osm_label": "OpenStreetMap 座標圖台",
-        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.924522&lon=121.546998&zoom=19",
-        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
+        "osm_url": null,
+        "osm_label": null,
+        "nlsc_url": null,
+        "nlsc_label": null
       },
-      "origin_class": "api_open_data"
+      "origin_class": "api_open_data",
+      "api_url": "https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/rainwater_00131/MapServer/7/417",
+      "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #417"
     },
     {
       "id": "ntpc_rw_culvert_543",
@@ -990,24 +950,19 @@
         ]
       ],
       "source": "New Taipei City WRD Rainwater System (wrd.ntpc.gov.tw)",
-      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.924174&lon=121.546537&zoom=19",
-      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
-      "osm_url": "https://www.openstreetmap.org/?mlat=24.924174&mlon=121.546537#map=19/24.924174/121.546537",
-      "osm_label": "OpenStreetMap 座標圖台",
-      "portal_url": "https://wrd.ntpc.gov.tw/",
-      "portal_label": "新北市政府水利局 水利地理資訊系統",
-      "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #543",
       "gov_links": {
-        "portal_url": "https://wrd.ntpc.gov.tw/",
-        "portal_label": "新北市政府水利局 水利地理資訊系統",
-        "api_url": null,
+        "portal_url": null,
+        "portal_label": null,
+        "api_url": "https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/rainwater_00131/MapServer/7/543",
         "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #543",
-        "osm_url": "https://www.openstreetmap.org/?mlat=24.924174&mlon=121.546537#map=19/24.924174/121.546537",
-        "osm_label": "OpenStreetMap 座標圖台",
-        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.924174&lon=121.546537&zoom=19",
-        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
+        "osm_url": null,
+        "osm_label": null,
+        "nlsc_url": null,
+        "nlsc_label": null
       },
-      "origin_class": "api_open_data"
+      "origin_class": "api_open_data",
+      "api_url": "https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/rainwater_00131/MapServer/7/543",
+      "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #543"
     },
     {
       "id": "ntpc_rw_mh_687",
@@ -1026,24 +981,19 @@
       "depth_m": 2.1,
       "diameter_mm": 800,
       "source": "New Taipei City WRD Rainwater System (wrd.ntpc.gov.tw)",
-      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.921403&lon=121.547772&zoom=19",
-      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
-      "osm_url": "https://www.openstreetmap.org/?mlat=24.921403&mlon=121.547772#map=19/24.921403/121.547772",
-      "osm_label": "OpenStreetMap 座標圖台",
-      "portal_url": "https://wrd.ntpc.gov.tw/",
-      "portal_label": "新北市政府水利局 水利地理資訊系統",
-      "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #687",
       "gov_links": {
-        "portal_url": "https://wrd.ntpc.gov.tw/",
-        "portal_label": "新北市政府水利局 水利地理資訊系統",
-        "api_url": null,
+        "portal_url": null,
+        "portal_label": null,
+        "api_url": "https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/rainwater_00131/MapServer/0/687",
         "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #687",
-        "osm_url": "https://www.openstreetmap.org/?mlat=24.921403&mlon=121.547772#map=19/24.921403/121.547772",
-        "osm_label": "OpenStreetMap 座標圖台",
-        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.921403&lon=121.547772&zoom=19",
-        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
+        "osm_url": null,
+        "osm_label": null,
+        "nlsc_url": null,
+        "nlsc_label": null
       },
-      "origin_class": "api_open_data"
+      "origin_class": "api_open_data",
+      "api_url": "https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/rainwater_00131/MapServer/0/687",
+      "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #687"
     },
     {
       "id": "ntpc_rw_mh_693",
@@ -1062,24 +1012,19 @@
       "depth_m": 2.1,
       "diameter_mm": 800,
       "source": "New Taipei City WRD Rainwater System (wrd.ntpc.gov.tw)",
-      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.918927&lon=121.548313&zoom=19",
-      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
-      "osm_url": "https://www.openstreetmap.org/?mlat=24.918927&mlon=121.548313#map=19/24.918927/121.548313",
-      "osm_label": "OpenStreetMap 座標圖台",
-      "portal_url": "https://wrd.ntpc.gov.tw/",
-      "portal_label": "新北市政府水利局 水利地理資訊系統",
-      "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #693",
       "gov_links": {
-        "portal_url": "https://wrd.ntpc.gov.tw/",
-        "portal_label": "新北市政府水利局 水利地理資訊系統",
-        "api_url": null,
+        "portal_url": null,
+        "portal_label": null,
+        "api_url": "https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/rainwater_00131/MapServer/0/693",
         "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #693",
-        "osm_url": "https://www.openstreetmap.org/?mlat=24.918927&mlon=121.548313#map=19/24.918927/121.548313",
-        "osm_label": "OpenStreetMap 座標圖台",
-        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.918927&lon=121.548313&zoom=19",
-        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
+        "osm_url": null,
+        "osm_label": null,
+        "nlsc_url": null,
+        "nlsc_label": null
       },
-      "origin_class": "api_open_data"
+      "origin_class": "api_open_data",
+      "api_url": "https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/rainwater_00131/MapServer/0/693",
+      "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #693"
     },
     {
       "id": "ntpc_rw_mh_685",
@@ -1098,24 +1043,19 @@
       "depth_m": 2.1,
       "diameter_mm": 800,
       "source": "New Taipei City WRD Rainwater System (wrd.ntpc.gov.tw)",
-      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.923408&lon=121.545759&zoom=19",
-      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
-      "osm_url": "https://www.openstreetmap.org/?mlat=24.923408&mlon=121.545759#map=19/24.923408/121.545759",
-      "osm_label": "OpenStreetMap 座標圖台",
-      "portal_url": "https://wrd.ntpc.gov.tw/",
-      "portal_label": "新北市政府水利局 水利地理資訊系統",
-      "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #685",
       "gov_links": {
-        "portal_url": "https://wrd.ntpc.gov.tw/",
-        "portal_label": "新北市政府水利局 水利地理資訊系統",
-        "api_url": null,
+        "portal_url": null,
+        "portal_label": null,
+        "api_url": "https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/rainwater_00131/MapServer/0/685",
         "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #685",
-        "osm_url": "https://www.openstreetmap.org/?mlat=24.923408&mlon=121.545759#map=19/24.923408/121.545759",
-        "osm_label": "OpenStreetMap 座標圖台",
-        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.923408&lon=121.545759&zoom=19",
-        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
+        "osm_url": null,
+        "osm_label": null,
+        "nlsc_url": null,
+        "nlsc_label": null
       },
-      "origin_class": "api_open_data"
+      "origin_class": "api_open_data",
+      "api_url": "https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/rainwater_00131/MapServer/0/685",
+      "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #685"
     },
     {
       "id": "ntpc_rw_mh_688",
@@ -1134,24 +1074,19 @@
       "depth_m": 2.1,
       "diameter_mm": 800,
       "source": "New Taipei City WRD Rainwater System (wrd.ntpc.gov.tw)",
-      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.921280&lon=121.546437&zoom=19",
-      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
-      "osm_url": "https://www.openstreetmap.org/?mlat=24.921280&mlon=121.546437#map=19/24.921280/121.546437",
-      "osm_label": "OpenStreetMap 座標圖台",
-      "portal_url": "https://wrd.ntpc.gov.tw/",
-      "portal_label": "新北市政府水利局 水利地理資訊系統",
-      "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #688",
       "gov_links": {
-        "portal_url": "https://wrd.ntpc.gov.tw/",
-        "portal_label": "新北市政府水利局 水利地理資訊系統",
-        "api_url": null,
+        "portal_url": null,
+        "portal_label": null,
+        "api_url": "https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/rainwater_00131/MapServer/0/688",
         "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #688",
-        "osm_url": "https://www.openstreetmap.org/?mlat=24.921280&mlon=121.546437#map=19/24.921280/121.546437",
-        "osm_label": "OpenStreetMap 座標圖台",
-        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.921280&lon=121.546437&zoom=19",
-        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
+        "osm_url": null,
+        "osm_label": null,
+        "nlsc_url": null,
+        "nlsc_label": null
       },
-      "origin_class": "api_open_data"
+      "origin_class": "api_open_data",
+      "api_url": "https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/rainwater_00131/MapServer/0/688",
+      "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #688"
     },
     {
       "id": "ntpc_rw_mh_694",
@@ -1170,24 +1105,19 @@
       "depth_m": 2.1,
       "diameter_mm": 800,
       "source": "New Taipei City WRD Rainwater System (wrd.ntpc.gov.tw)",
-      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.918767&lon=121.546986&zoom=19",
-      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
-      "osm_url": "https://www.openstreetmap.org/?mlat=24.918767&mlon=121.546986#map=19/24.918767/121.546986",
-      "osm_label": "OpenStreetMap 座標圖台",
-      "portal_url": "https://wrd.ntpc.gov.tw/",
-      "portal_label": "新北市政府水利局 水利地理資訊系統",
-      "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #694",
       "gov_links": {
-        "portal_url": "https://wrd.ntpc.gov.tw/",
-        "portal_label": "新北市政府水利局 水利地理資訊系統",
-        "api_url": null,
+        "portal_url": null,
+        "portal_label": null,
+        "api_url": "https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/rainwater_00131/MapServer/0/694",
         "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #694",
-        "osm_url": "https://www.openstreetmap.org/?mlat=24.918767&mlon=121.546986#map=19/24.918767/121.546986",
-        "osm_label": "OpenStreetMap 座標圖台",
-        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.918767&lon=121.546986&zoom=19",
-        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
+        "osm_url": null,
+        "osm_label": null,
+        "nlsc_url": null,
+        "nlsc_label": null
       },
-      "origin_class": "api_open_data"
+      "origin_class": "api_open_data",
+      "api_url": "https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/rainwater_00131/MapServer/0/694",
+      "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #694"
     },
     {
       "id": "ntpc_rw_mh_689",
@@ -1206,24 +1136,19 @@
       "depth_m": 2.1,
       "diameter_mm": 800,
       "source": "New Taipei City WRD Rainwater System (wrd.ntpc.gov.tw)",
-      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.920563&lon=121.546117&zoom=19",
-      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
-      "osm_url": "https://www.openstreetmap.org/?mlat=24.920563&mlon=121.546117#map=19/24.920563/121.546117",
-      "osm_label": "OpenStreetMap 座標圖台",
-      "portal_url": "https://wrd.ntpc.gov.tw/",
-      "portal_label": "新北市政府水利局 水利地理資訊系統",
-      "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #689",
       "gov_links": {
-        "portal_url": "https://wrd.ntpc.gov.tw/",
-        "portal_label": "新北市政府水利局 水利地理資訊系統",
-        "api_url": null,
+        "portal_url": null,
+        "portal_label": null,
+        "api_url": "https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/rainwater_00131/MapServer/0/689",
         "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #689",
-        "osm_url": "https://www.openstreetmap.org/?mlat=24.920563&mlon=121.546117#map=19/24.920563/121.546117",
-        "osm_label": "OpenStreetMap 座標圖台",
-        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.920563&lon=121.546117&zoom=19",
-        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
+        "osm_url": null,
+        "osm_label": null,
+        "nlsc_url": null,
+        "nlsc_label": null
       },
-      "origin_class": "api_open_data"
+      "origin_class": "api_open_data",
+      "api_url": "https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/rainwater_00131/MapServer/0/689",
+      "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #689"
     },
     {
       "id": "ntpc_rw_mh_686",
@@ -1242,24 +1167,19 @@
       "depth_m": 2.1,
       "diameter_mm": 800,
       "source": "New Taipei City WRD Rainwater System (wrd.ntpc.gov.tw)",
-      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.922785&lon=121.547497&zoom=19",
-      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
-      "osm_url": "https://www.openstreetmap.org/?mlat=24.922785&mlon=121.547497#map=19/24.922785/121.547497",
-      "osm_label": "OpenStreetMap 座標圖台",
-      "portal_url": "https://wrd.ntpc.gov.tw/",
-      "portal_label": "新北市政府水利局 水利地理資訊系統",
-      "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #686",
       "gov_links": {
-        "portal_url": "https://wrd.ntpc.gov.tw/",
-        "portal_label": "新北市政府水利局 水利地理資訊系統",
-        "api_url": null,
+        "portal_url": null,
+        "portal_label": null,
+        "api_url": "https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/rainwater_00131/MapServer/0/686",
         "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #686",
-        "osm_url": "https://www.openstreetmap.org/?mlat=24.922785&mlon=121.547497#map=19/24.922785/121.547497",
-        "osm_label": "OpenStreetMap 座標圖台",
-        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.922785&lon=121.547497&zoom=19",
-        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
+        "osm_url": null,
+        "osm_label": null,
+        "nlsc_url": null,
+        "nlsc_label": null
       },
-      "origin_class": "api_open_data"
+      "origin_class": "api_open_data",
+      "api_url": "https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/rainwater_00131/MapServer/0/686",
+      "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #686"
     },
     {
       "id": "ntpc_rw_mh_695",
@@ -1278,24 +1198,19 @@
       "depth_m": 2.1,
       "diameter_mm": 800,
       "source": "New Taipei City WRD Rainwater System (wrd.ntpc.gov.tw)",
-      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.921511&lon=121.542901&zoom=19",
-      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
-      "osm_url": "https://www.openstreetmap.org/?mlat=24.921511&mlon=121.542901#map=19/24.921511/121.542901",
-      "osm_label": "OpenStreetMap 座標圖台",
-      "portal_url": "https://wrd.ntpc.gov.tw/",
-      "portal_label": "新北市政府水利局 水利地理資訊系統",
-      "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #695",
       "gov_links": {
-        "portal_url": "https://wrd.ntpc.gov.tw/",
-        "portal_label": "新北市政府水利局 水利地理資訊系統",
-        "api_url": null,
+        "portal_url": null,
+        "portal_label": null,
+        "api_url": "https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/rainwater_00131/MapServer/0/695",
         "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #695",
-        "osm_url": "https://www.openstreetmap.org/?mlat=24.921511&mlon=121.542901#map=19/24.921511/121.542901",
-        "osm_label": "OpenStreetMap 座標圖台",
-        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.921511&lon=121.542901&zoom=19",
-        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
+        "osm_url": null,
+        "osm_label": null,
+        "nlsc_url": null,
+        "nlsc_label": null
       },
-      "origin_class": "api_open_data"
+      "origin_class": "api_open_data",
+      "api_url": "https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/rainwater_00131/MapServer/0/695",
+      "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #695"
     },
     {
       "id": "ntpc_rw_mh_684",
@@ -1314,24 +1229,19 @@
       "depth_m": 2.1,
       "diameter_mm": 800,
       "source": "New Taipei City WRD Rainwater System (wrd.ntpc.gov.tw)",
-      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.924480&lon=121.547708&zoom=19",
-      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
-      "osm_url": "https://www.openstreetmap.org/?mlat=24.924480&mlon=121.547708#map=19/24.924480/121.547708",
-      "osm_label": "OpenStreetMap 座標圖台",
-      "portal_url": "https://wrd.ntpc.gov.tw/",
-      "portal_label": "新北市政府水利局 水利地理資訊系統",
-      "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #684",
       "gov_links": {
-        "portal_url": "https://wrd.ntpc.gov.tw/",
-        "portal_label": "新北市政府水利局 水利地理資訊系統",
-        "api_url": null,
+        "portal_url": null,
+        "portal_label": null,
+        "api_url": "https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/rainwater_00131/MapServer/0/684",
         "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #684",
-        "osm_url": "https://www.openstreetmap.org/?mlat=24.924480&mlon=121.547708#map=19/24.924480/121.547708",
-        "osm_label": "OpenStreetMap 座標圖台",
-        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.924480&lon=121.547708&zoom=19",
-        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
+        "osm_url": null,
+        "osm_label": null,
+        "nlsc_url": null,
+        "nlsc_label": null
       },
-      "origin_class": "api_open_data"
+      "origin_class": "api_open_data",
+      "api_url": "https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/rainwater_00131/MapServer/0/684",
+      "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #684"
     },
     {
       "id": "ntpc_rw_mh_692",
@@ -1350,24 +1260,19 @@
       "depth_m": 2.1,
       "diameter_mm": 800,
       "source": "New Taipei City WRD Rainwater System (wrd.ntpc.gov.tw)",
-      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.919629&lon=121.548311&zoom=19",
-      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
-      "osm_url": "https://www.openstreetmap.org/?mlat=24.919629&mlon=121.548311#map=19/24.919629/121.548311",
-      "osm_label": "OpenStreetMap 座標圖台",
-      "portal_url": "https://wrd.ntpc.gov.tw/",
-      "portal_label": "新北市政府水利局 水利地理資訊系統",
-      "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #692",
       "gov_links": {
-        "portal_url": "https://wrd.ntpc.gov.tw/",
-        "portal_label": "新北市政府水利局 水利地理資訊系統",
-        "api_url": null,
+        "portal_url": null,
+        "portal_label": null,
+        "api_url": "https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/rainwater_00131/MapServer/0/692",
         "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #692",
-        "osm_url": "https://www.openstreetmap.org/?mlat=24.919629&mlon=121.548311#map=19/24.919629/121.548311",
-        "osm_label": "OpenStreetMap 座標圖台",
-        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.919629&lon=121.548311&zoom=19",
-        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
+        "osm_url": null,
+        "osm_label": null,
+        "nlsc_url": null,
+        "nlsc_label": null
       },
-      "origin_class": "api_open_data"
+      "origin_class": "api_open_data",
+      "api_url": "https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/rainwater_00131/MapServer/0/692",
+      "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #692"
     },
     {
       "id": "osm_hydrant_6336426010",
@@ -1386,23 +1291,19 @@
       "depth_m": 1.2,
       "diameter_mm": 150,
       "source": "Taiwan Water Supply GIS (臺北自來水事業處)",
-      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.921499&lon=121.546139&zoom=19",
-      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
-      "osm_url": "https://www.openstreetmap.org/node/6336426010",
-      "osm_label": "OpenStreetMap 設施節點 #6336426010",
-      "portal_url": "https://pipe.nlma.gov.tw/",
-      "portal_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
       "gov_links": {
-        "portal_url": "https://pipe.nlma.gov.tw/",
-        "portal_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+        "portal_url": null,
+        "portal_label": null,
         "api_url": null,
         "api_label": null,
         "osm_url": "https://www.openstreetmap.org/node/6336426010",
         "osm_label": "OpenStreetMap 設施節點 #6336426010",
-        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.921499&lon=121.546139&zoom=19",
-        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
+        "nlsc_url": null,
+        "nlsc_label": null
       },
-      "origin_class": "api_open_data"
+      "origin_class": "api_open_data",
+      "osm_url": "https://www.openstreetmap.org/node/6336426010",
+      "osm_label": "OpenStreetMap 設施節點 #6336426010"
     },
     {
       "id": "osm_hydrant_6336428629",
@@ -1421,23 +1322,19 @@
       "depth_m": 1.2,
       "diameter_mm": 150,
       "source": "Taiwan Water Supply GIS (臺北自來水事業處)",
-      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.924319&lon=121.544917&zoom=19",
-      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
-      "osm_url": "https://www.openstreetmap.org/node/6336428629",
-      "osm_label": "OpenStreetMap 設施節點 #6336428629",
-      "portal_url": "https://pipe.nlma.gov.tw/",
-      "portal_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
       "gov_links": {
-        "portal_url": "https://pipe.nlma.gov.tw/",
-        "portal_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+        "portal_url": null,
+        "portal_label": null,
         "api_url": null,
         "api_label": null,
         "osm_url": "https://www.openstreetmap.org/node/6336428629",
         "osm_label": "OpenStreetMap 設施節點 #6336428629",
-        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.924319&lon=121.544917&zoom=19",
-        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
+        "nlsc_url": null,
+        "nlsc_label": null
       },
-      "origin_class": "api_open_data"
+      "origin_class": "api_open_data",
+      "osm_url": "https://www.openstreetmap.org/node/6336428629",
+      "osm_label": "OpenStreetMap 設施節點 #6336428629"
     },
     {
       "id": "osm_hydrant_6336437026",
@@ -1456,23 +1353,19 @@
       "depth_m": 1.2,
       "diameter_mm": 150,
       "source": "Taiwan Water Supply GIS (臺北自來水事業處)",
-      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.918797&lon=121.547091&zoom=19",
-      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
-      "osm_url": "https://www.openstreetmap.org/node/6336437026",
-      "osm_label": "OpenStreetMap 設施節點 #6336437026",
-      "portal_url": "https://pipe.nlma.gov.tw/",
-      "portal_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
       "gov_links": {
-        "portal_url": "https://pipe.nlma.gov.tw/",
-        "portal_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+        "portal_url": null,
+        "portal_label": null,
         "api_url": null,
         "api_label": null,
         "osm_url": "https://www.openstreetmap.org/node/6336437026",
         "osm_label": "OpenStreetMap 設施節點 #6336437026",
-        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.918797&lon=121.547091&zoom=19",
-        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
+        "nlsc_url": null,
+        "nlsc_label": null
       },
-      "origin_class": "api_open_data"
+      "origin_class": "api_open_data",
+      "osm_url": "https://www.openstreetmap.org/node/6336437026",
+      "osm_label": "OpenStreetMap 設施節點 #6336437026"
     },
     {
       "id": "osm_hydrant_6336437063",
@@ -1491,23 +1384,19 @@
       "depth_m": 1.2,
       "diameter_mm": 150,
       "source": "Taiwan Water Supply GIS (臺北自來水事業處)",
-      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.923628&lon=121.545073&zoom=19",
-      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
-      "osm_url": "https://www.openstreetmap.org/node/6336437063",
-      "osm_label": "OpenStreetMap 設施節點 #6336437063",
-      "portal_url": "https://pipe.nlma.gov.tw/",
-      "portal_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
       "gov_links": {
-        "portal_url": "https://pipe.nlma.gov.tw/",
-        "portal_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+        "portal_url": null,
+        "portal_label": null,
         "api_url": null,
         "api_label": null,
         "osm_url": "https://www.openstreetmap.org/node/6336437063",
         "osm_label": "OpenStreetMap 設施節點 #6336437063",
-        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.923628&lon=121.545073&zoom=19",
-        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
+        "nlsc_url": null,
+        "nlsc_label": null
       },
-      "origin_class": "api_open_data"
+      "origin_class": "api_open_data",
+      "osm_url": "https://www.openstreetmap.org/node/6336437063",
+      "osm_label": "OpenStreetMap 設施節點 #6336437063"
     },
     {
       "id": "osm_hydrant_6336442423",
@@ -1526,23 +1415,19 @@
       "depth_m": 1.2,
       "diameter_mm": 150,
       "source": "Taiwan Water Supply GIS (臺北自來水事業處)",
-      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.919216&lon=121.539477&zoom=19",
-      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
-      "osm_url": "https://www.openstreetmap.org/node/6336442423",
-      "osm_label": "OpenStreetMap 設施節點 #6336442423",
-      "portal_url": "https://pipe.nlma.gov.tw/",
-      "portal_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
       "gov_links": {
-        "portal_url": "https://pipe.nlma.gov.tw/",
-        "portal_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+        "portal_url": null,
+        "portal_label": null,
         "api_url": null,
         "api_label": null,
         "osm_url": "https://www.openstreetmap.org/node/6336442423",
         "osm_label": "OpenStreetMap 設施節點 #6336442423",
-        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.919216&lon=121.539477&zoom=19",
-        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
+        "nlsc_url": null,
+        "nlsc_label": null
       },
-      "origin_class": "api_open_data"
+      "origin_class": "api_open_data",
+      "osm_url": "https://www.openstreetmap.org/node/6336442423",
+      "osm_label": "OpenStreetMap 設施節點 #6336442423"
     },
     {
       "id": "osm_hydrant_6336456284",
@@ -1561,23 +1446,19 @@
       "depth_m": 1.2,
       "diameter_mm": 150,
       "source": "Taiwan Water Supply GIS (臺北自來水事業處)",
-      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.921674&lon=121.546020&zoom=19",
-      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
-      "osm_url": "https://www.openstreetmap.org/node/6336456284",
-      "osm_label": "OpenStreetMap 設施節點 #6336456284",
-      "portal_url": "https://pipe.nlma.gov.tw/",
-      "portal_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
       "gov_links": {
-        "portal_url": "https://pipe.nlma.gov.tw/",
-        "portal_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+        "portal_url": null,
+        "portal_label": null,
         "api_url": null,
         "api_label": null,
         "osm_url": "https://www.openstreetmap.org/node/6336456284",
         "osm_label": "OpenStreetMap 設施節點 #6336456284",
-        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.921674&lon=121.546020&zoom=19",
-        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
+        "nlsc_url": null,
+        "nlsc_label": null
       },
-      "origin_class": "api_open_data"
+      "origin_class": "api_open_data",
+      "osm_url": "https://www.openstreetmap.org/node/6336456284",
+      "osm_label": "OpenStreetMap 設施節點 #6336456284"
     },
     {
       "id": "osm_hydrant_6336458706",
@@ -1596,23 +1477,19 @@
       "depth_m": 1.2,
       "diameter_mm": 150,
       "source": "Taiwan Water Supply GIS (臺北自來水事業處)",
-      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.920678&lon=121.541422&zoom=19",
-      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
-      "osm_url": "https://www.openstreetmap.org/node/6336458706",
-      "osm_label": "OpenStreetMap 設施節點 #6336458706",
-      "portal_url": "https://pipe.nlma.gov.tw/",
-      "portal_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
       "gov_links": {
-        "portal_url": "https://pipe.nlma.gov.tw/",
-        "portal_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+        "portal_url": null,
+        "portal_label": null,
         "api_url": null,
         "api_label": null,
         "osm_url": "https://www.openstreetmap.org/node/6336458706",
         "osm_label": "OpenStreetMap 設施節點 #6336458706",
-        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.920678&lon=121.541422&zoom=19",
-        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
+        "nlsc_url": null,
+        "nlsc_label": null
       },
-      "origin_class": "api_open_data"
+      "origin_class": "api_open_data",
+      "osm_url": "https://www.openstreetmap.org/node/6336458706",
+      "osm_label": "OpenStreetMap 設施節點 #6336458706"
     },
     {
       "id": "osm_hydrant_6336462424",
@@ -1631,23 +1508,19 @@
       "depth_m": 1.2,
       "diameter_mm": 150,
       "source": "Taiwan Water Supply GIS (臺北自來水事業處)",
-      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.918770&lon=121.547519&zoom=19",
-      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
-      "osm_url": "https://www.openstreetmap.org/node/6336462424",
-      "osm_label": "OpenStreetMap 設施節點 #6336462424",
-      "portal_url": "https://pipe.nlma.gov.tw/",
-      "portal_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
       "gov_links": {
-        "portal_url": "https://pipe.nlma.gov.tw/",
-        "portal_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+        "portal_url": null,
+        "portal_label": null,
         "api_url": null,
         "api_label": null,
         "osm_url": "https://www.openstreetmap.org/node/6336462424",
         "osm_label": "OpenStreetMap 設施節點 #6336462424",
-        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.918770&lon=121.547519&zoom=19",
-        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
+        "nlsc_url": null,
+        "nlsc_label": null
       },
-      "origin_class": "api_open_data"
+      "origin_class": "api_open_data",
+      "osm_url": "https://www.openstreetmap.org/node/6336462424",
+      "osm_label": "OpenStreetMap 設施節點 #6336462424"
     },
     {
       "id": "osm_hydrant_6336462461",
@@ -1666,23 +1539,19 @@
       "depth_m": 1.2,
       "diameter_mm": 150,
       "source": "Taiwan Water Supply GIS (臺北自來水事業處)",
-      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.923021&lon=121.545563&zoom=19",
-      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
-      "osm_url": "https://www.openstreetmap.org/node/6336462461",
-      "osm_label": "OpenStreetMap 設施節點 #6336462461",
-      "portal_url": "https://pipe.nlma.gov.tw/",
-      "portal_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
       "gov_links": {
-        "portal_url": "https://pipe.nlma.gov.tw/",
-        "portal_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+        "portal_url": null,
+        "portal_label": null,
         "api_url": null,
         "api_label": null,
         "osm_url": "https://www.openstreetmap.org/node/6336462461",
         "osm_label": "OpenStreetMap 設施節點 #6336462461",
-        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.923021&lon=121.545563&zoom=19",
-        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
+        "nlsc_url": null,
+        "nlsc_label": null
       },
-      "origin_class": "api_open_data"
+      "origin_class": "api_open_data",
+      "osm_url": "https://www.openstreetmap.org/node/6336462461",
+      "osm_label": "OpenStreetMap 設施節點 #6336462461"
     },
     {
       "id": "osm_hydrant_6336468858",
@@ -1701,23 +1570,19 @@
       "depth_m": 1.2,
       "diameter_mm": 150,
       "source": "Taiwan Water Supply GIS (臺北自來水事業處)",
-      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.916480&lon=121.542447&zoom=19",
-      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
-      "osm_url": "https://www.openstreetmap.org/node/6336468858",
-      "osm_label": "OpenStreetMap 設施節點 #6336468858",
-      "portal_url": "https://pipe.nlma.gov.tw/",
-      "portal_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
       "gov_links": {
-        "portal_url": "https://pipe.nlma.gov.tw/",
-        "portal_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+        "portal_url": null,
+        "portal_label": null,
         "api_url": null,
         "api_label": null,
         "osm_url": "https://www.openstreetmap.org/node/6336468858",
         "osm_label": "OpenStreetMap 設施節點 #6336468858",
-        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.916480&lon=121.542447&zoom=19",
-        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
+        "nlsc_url": null,
+        "nlsc_label": null
       },
-      "origin_class": "api_open_data"
+      "origin_class": "api_open_data",
+      "osm_url": "https://www.openstreetmap.org/node/6336468858",
+      "osm_label": "OpenStreetMap 設施節點 #6336468858"
     },
     {
       "id": "osm_hydrant_6336469595",
@@ -1736,23 +1601,19 @@
       "depth_m": 1.2,
       "diameter_mm": 150,
       "source": "Taiwan Water Supply GIS (臺北自來水事業處)",
-      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.921327&lon=121.541907&zoom=19",
-      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
-      "osm_url": "https://www.openstreetmap.org/node/6336469595",
-      "osm_label": "OpenStreetMap 設施節點 #6336469595",
-      "portal_url": "https://pipe.nlma.gov.tw/",
-      "portal_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
       "gov_links": {
-        "portal_url": "https://pipe.nlma.gov.tw/",
-        "portal_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+        "portal_url": null,
+        "portal_label": null,
         "api_url": null,
         "api_label": null,
         "osm_url": "https://www.openstreetmap.org/node/6336469595",
         "osm_label": "OpenStreetMap 設施節點 #6336469595",
-        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.921327&lon=121.541907&zoom=19",
-        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
+        "nlsc_url": null,
+        "nlsc_label": null
       },
-      "origin_class": "api_open_data"
+      "origin_class": "api_open_data",
+      "osm_url": "https://www.openstreetmap.org/node/6336469595",
+      "osm_label": "OpenStreetMap 設施節點 #6336469595"
     },
     {
       "id": "osm_hydrant_6336473916",
@@ -1771,23 +1632,19 @@
       "depth_m": 1.2,
       "diameter_mm": 150,
       "source": "Taiwan Water Supply GIS (臺北自來水事業處)",
-      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.917164&lon=121.547821&zoom=19",
-      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
-      "osm_url": "https://www.openstreetmap.org/node/6336473916",
-      "osm_label": "OpenStreetMap 設施節點 #6336473916",
-      "portal_url": "https://pipe.nlma.gov.tw/",
-      "portal_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
       "gov_links": {
-        "portal_url": "https://pipe.nlma.gov.tw/",
-        "portal_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+        "portal_url": null,
+        "portal_label": null,
         "api_url": null,
         "api_label": null,
         "osm_url": "https://www.openstreetmap.org/node/6336473916",
         "osm_label": "OpenStreetMap 設施節點 #6336473916",
-        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.917164&lon=121.547821&zoom=19",
-        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
+        "nlsc_url": null,
+        "nlsc_label": null
       },
-      "origin_class": "api_open_data"
+      "origin_class": "api_open_data",
+      "osm_url": "https://www.openstreetmap.org/node/6336473916",
+      "osm_label": "OpenStreetMap 設施節點 #6336473916"
     },
     {
       "id": "osm_hydrant_6336482452",
@@ -1806,23 +1663,19 @@
       "depth_m": 1.2,
       "diameter_mm": 150,
       "source": "Taiwan Water Supply GIS (臺北自來水事業處)",
-      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.919625&lon=121.546850&zoom=19",
-      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
-      "osm_url": "https://www.openstreetmap.org/node/6336482452",
-      "osm_label": "OpenStreetMap 設施節點 #6336482452",
-      "portal_url": "https://pipe.nlma.gov.tw/",
-      "portal_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
       "gov_links": {
-        "portal_url": "https://pipe.nlma.gov.tw/",
-        "portal_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+        "portal_url": null,
+        "portal_label": null,
         "api_url": null,
         "api_label": null,
         "osm_url": "https://www.openstreetmap.org/node/6336482452",
         "osm_label": "OpenStreetMap 設施節點 #6336482452",
-        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.919625&lon=121.546850&zoom=19",
-        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
+        "nlsc_url": null,
+        "nlsc_label": null
       },
-      "origin_class": "api_open_data"
+      "origin_class": "api_open_data",
+      "osm_url": "https://www.openstreetmap.org/node/6336482452",
+      "osm_label": "OpenStreetMap 設施節點 #6336482452"
     },
     {
       "id": "osm_hydrant_6336486868",
@@ -1841,23 +1694,19 @@
       "depth_m": 1.2,
       "diameter_mm": 150,
       "source": "Taiwan Water Supply GIS (臺北自來水事業處)",
-      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.916436&lon=121.542912&zoom=19",
-      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
-      "osm_url": "https://www.openstreetmap.org/node/6336486868",
-      "osm_label": "OpenStreetMap 設施節點 #6336486868",
-      "portal_url": "https://pipe.nlma.gov.tw/",
-      "portal_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
       "gov_links": {
-        "portal_url": "https://pipe.nlma.gov.tw/",
-        "portal_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+        "portal_url": null,
+        "portal_label": null,
         "api_url": null,
         "api_label": null,
         "osm_url": "https://www.openstreetmap.org/node/6336486868",
         "osm_label": "OpenStreetMap 設施節點 #6336486868",
-        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.916436&lon=121.542912&zoom=19",
-        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
+        "nlsc_url": null,
+        "nlsc_label": null
       },
-      "origin_class": "api_open_data"
+      "origin_class": "api_open_data",
+      "osm_url": "https://www.openstreetmap.org/node/6336486868",
+      "osm_label": "OpenStreetMap 設施節點 #6336486868"
     },
     {
       "id": "osm_hydrant_6336740898",
@@ -1876,23 +1725,19 @@
       "depth_m": 1.2,
       "diameter_mm": 150,
       "source": "Taiwan Water Supply GIS (臺北自來水事業處)",
-      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.922130&lon=121.542246&zoom=19",
-      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
-      "osm_url": "https://www.openstreetmap.org/node/6336740898",
-      "osm_label": "OpenStreetMap 設施節點 #6336740898",
-      "portal_url": "https://pipe.nlma.gov.tw/",
-      "portal_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
       "gov_links": {
-        "portal_url": "https://pipe.nlma.gov.tw/",
-        "portal_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+        "portal_url": null,
+        "portal_label": null,
         "api_url": null,
         "api_label": null,
         "osm_url": "https://www.openstreetmap.org/node/6336740898",
         "osm_label": "OpenStreetMap 設施節點 #6336740898",
-        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.922130&lon=121.542246&zoom=19",
-        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
+        "nlsc_url": null,
+        "nlsc_label": null
       },
-      "origin_class": "api_open_data"
+      "origin_class": "api_open_data",
+      "osm_url": "https://www.openstreetmap.org/node/6336740898",
+      "osm_label": "OpenStreetMap 設施節點 #6336740898"
     },
     {
       "id": "osm_hydrant_6336741986",
@@ -1911,23 +1756,19 @@
       "depth_m": 1.2,
       "diameter_mm": 150,
       "source": "Taiwan Water Supply GIS (臺北自來水事業處)",
-      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.918824&lon=121.547987&zoom=19",
-      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
-      "osm_url": "https://www.openstreetmap.org/node/6336741986",
-      "osm_label": "OpenStreetMap 設施節點 #6336741986",
-      "portal_url": "https://pipe.nlma.gov.tw/",
-      "portal_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
       "gov_links": {
-        "portal_url": "https://pipe.nlma.gov.tw/",
-        "portal_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+        "portal_url": null,
+        "portal_label": null,
         "api_url": null,
         "api_label": null,
         "osm_url": "https://www.openstreetmap.org/node/6336741986",
         "osm_label": "OpenStreetMap 設施節點 #6336741986",
-        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.918824&lon=121.547987&zoom=19",
-        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
+        "nlsc_url": null,
+        "nlsc_label": null
       },
-      "origin_class": "api_open_data"
+      "origin_class": "api_open_data",
+      "osm_url": "https://www.openstreetmap.org/node/6336741986",
+      "osm_label": "OpenStreetMap 設施節點 #6336741986"
     },
     {
       "id": "osm_hydrant_6336742446",
@@ -1946,23 +1787,19 @@
       "depth_m": 1.2,
       "diameter_mm": 150,
       "source": "Taiwan Water Supply GIS (臺北自來水事業處)",
-      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.922958&lon=121.542384&zoom=19",
-      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
-      "osm_url": "https://www.openstreetmap.org/node/6336742446",
-      "osm_label": "OpenStreetMap 設施節點 #6336742446",
-      "portal_url": "https://pipe.nlma.gov.tw/",
-      "portal_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
       "gov_links": {
-        "portal_url": "https://pipe.nlma.gov.tw/",
-        "portal_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+        "portal_url": null,
+        "portal_label": null,
         "api_url": null,
         "api_label": null,
         "osm_url": "https://www.openstreetmap.org/node/6336742446",
         "osm_label": "OpenStreetMap 設施節點 #6336742446",
-        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.922958&lon=121.542384&zoom=19",
-        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
+        "nlsc_url": null,
+        "nlsc_label": null
       },
-      "origin_class": "api_open_data"
+      "origin_class": "api_open_data",
+      "osm_url": "https://www.openstreetmap.org/node/6336742446",
+      "osm_label": "OpenStreetMap 設施節點 #6336742446"
     },
     {
       "id": "osm_hydrant_6336744019",
@@ -1981,23 +1818,19 @@
       "depth_m": 1.2,
       "diameter_mm": 150,
       "source": "Taiwan Water Supply GIS (臺北自來水事業處)",
-      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.915879&lon=121.541186&zoom=19",
-      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
-      "osm_url": "https://www.openstreetmap.org/node/6336744019",
-      "osm_label": "OpenStreetMap 設施節點 #6336744019",
-      "portal_url": "https://pipe.nlma.gov.tw/",
-      "portal_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
       "gov_links": {
-        "portal_url": "https://pipe.nlma.gov.tw/",
-        "portal_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+        "portal_url": null,
+        "portal_label": null,
         "api_url": null,
         "api_label": null,
         "osm_url": "https://www.openstreetmap.org/node/6336744019",
         "osm_label": "OpenStreetMap 設施節點 #6336744019",
-        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.915879&lon=121.541186&zoom=19",
-        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
+        "nlsc_url": null,
+        "nlsc_label": null
       },
-      "origin_class": "api_open_data"
+      "origin_class": "api_open_data",
+      "osm_url": "https://www.openstreetmap.org/node/6336744019",
+      "osm_label": "OpenStreetMap 設施節點 #6336744019"
     },
     {
       "id": "osm_hydrant_6336747281",
@@ -2016,23 +1849,19 @@
       "depth_m": 1.2,
       "diameter_mm": 150,
       "source": "Taiwan Water Supply GIS (臺北自來水事業處)",
-      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.922461&lon=121.545991&zoom=19",
-      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
-      "osm_url": "https://www.openstreetmap.org/node/6336747281",
-      "osm_label": "OpenStreetMap 設施節點 #6336747281",
-      "portal_url": "https://pipe.nlma.gov.tw/",
-      "portal_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
       "gov_links": {
-        "portal_url": "https://pipe.nlma.gov.tw/",
-        "portal_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+        "portal_url": null,
+        "portal_label": null,
         "api_url": null,
         "api_label": null,
         "osm_url": "https://www.openstreetmap.org/node/6336747281",
         "osm_label": "OpenStreetMap 設施節點 #6336747281",
-        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.922461&lon=121.545991&zoom=19",
-        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
+        "nlsc_url": null,
+        "nlsc_label": null
       },
-      "origin_class": "api_open_data"
+      "origin_class": "api_open_data",
+      "osm_url": "https://www.openstreetmap.org/node/6336747281",
+      "osm_label": "OpenStreetMap 設施節點 #6336747281"
     },
     {
       "id": "osm_hydrant_6336749430",
@@ -2051,23 +1880,19 @@
       "depth_m": 1.2,
       "diameter_mm": 150,
       "source": "Taiwan Water Supply GIS (臺北自來水事業處)",
-      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.923748&lon=121.542810&zoom=19",
-      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
-      "osm_url": "https://www.openstreetmap.org/node/6336749430",
-      "osm_label": "OpenStreetMap 設施節點 #6336749430",
-      "portal_url": "https://pipe.nlma.gov.tw/",
-      "portal_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
       "gov_links": {
-        "portal_url": "https://pipe.nlma.gov.tw/",
-        "portal_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+        "portal_url": null,
+        "portal_label": null,
         "api_url": null,
         "api_label": null,
         "osm_url": "https://www.openstreetmap.org/node/6336749430",
         "osm_label": "OpenStreetMap 設施節點 #6336749430",
-        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.923748&lon=121.542810&zoom=19",
-        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
+        "nlsc_url": null,
+        "nlsc_label": null
       },
-      "origin_class": "api_open_data"
+      "origin_class": "api_open_data",
+      "osm_url": "https://www.openstreetmap.org/node/6336749430",
+      "osm_label": "OpenStreetMap 設施節點 #6336749430"
     },
     {
       "id": "osm_hydrant_6336751564",
@@ -2086,23 +1911,19 @@
       "depth_m": 1.2,
       "diameter_mm": 150,
       "source": "Taiwan Water Supply GIS (臺北自來水事業處)",
-      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.918299&lon=121.539059&zoom=19",
-      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
-      "osm_url": "https://www.openstreetmap.org/node/6336751564",
-      "osm_label": "OpenStreetMap 設施節點 #6336751564",
-      "portal_url": "https://pipe.nlma.gov.tw/",
-      "portal_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
       "gov_links": {
-        "portal_url": "https://pipe.nlma.gov.tw/",
-        "portal_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+        "portal_url": null,
+        "portal_label": null,
         "api_url": null,
         "api_label": null,
         "osm_url": "https://www.openstreetmap.org/node/6336751564",
         "osm_label": "OpenStreetMap 設施節點 #6336751564",
-        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.918299&lon=121.539059&zoom=19",
-        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
+        "nlsc_url": null,
+        "nlsc_label": null
       },
-      "origin_class": "api_open_data"
+      "origin_class": "api_open_data",
+      "osm_url": "https://www.openstreetmap.org/node/6336751564",
+      "osm_label": "OpenStreetMap 設施節點 #6336751564"
     },
     {
       "id": "osm_waterway_259222251",
@@ -2207,23 +2028,19 @@
         ]
       ],
       "source": "Taiwan Hydraulic & Culvert GIS (OpenStreetMap Taiwan)",
-      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.915796&lon=121.545625&zoom=19",
-      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
-      "osm_url": "https://www.openstreetmap.org/way/259222251",
-      "osm_label": "OpenStreetMap 圖資廊道 #259222251",
-      "portal_url": "https://pipe.nlma.gov.tw/",
-      "portal_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
       "gov_links": {
-        "portal_url": "https://pipe.nlma.gov.tw/",
-        "portal_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+        "portal_url": null,
+        "portal_label": null,
         "api_url": null,
         "api_label": null,
         "osm_url": "https://www.openstreetmap.org/way/259222251",
-        "osm_label": "OpenStreetMap 圖資廊道 #259222251",
-        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.915796&lon=121.545625&zoom=19",
-        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
+        "osm_label": "OpenStreetMap 圖資線段 #259222251",
+        "nlsc_url": null,
+        "nlsc_label": null
       },
-      "origin_class": "api_open_data"
+      "origin_class": "api_open_data",
+      "osm_url": "https://www.openstreetmap.org/way/259222251",
+      "osm_label": "OpenStreetMap 圖資線段 #259222251"
     },
     {
       "id": "osm_waterway_481238496",
@@ -2278,23 +2095,19 @@
         ]
       ],
       "source": "Taiwan Hydraulic & Culvert GIS (OpenStreetMap Taiwan)",
-      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.921236&lon=121.545570&zoom=19",
-      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
-      "osm_url": "https://www.openstreetmap.org/way/481238496",
-      "osm_label": "OpenStreetMap 圖資廊道 #481238496",
-      "portal_url": "https://pipe.nlma.gov.tw/",
-      "portal_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
       "gov_links": {
-        "portal_url": "https://pipe.nlma.gov.tw/",
-        "portal_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+        "portal_url": null,
+        "portal_label": null,
         "api_url": null,
         "api_label": null,
         "osm_url": "https://www.openstreetmap.org/way/481238496",
-        "osm_label": "OpenStreetMap 圖資廊道 #481238496",
-        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.921236&lon=121.545570&zoom=19",
-        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
+        "osm_label": "OpenStreetMap 圖資線段 #481238496",
+        "nlsc_url": null,
+        "nlsc_label": null
       },
-      "origin_class": "api_open_data"
+      "origin_class": "api_open_data",
+      "osm_url": "https://www.openstreetmap.org/way/481238496",
+      "osm_label": "OpenStreetMap 圖資線段 #481238496"
     },
     {
       "id": "osm_waterway_481238505",
@@ -2384,23 +2197,19 @@
         ]
       ],
       "source": "Taiwan Hydraulic & Culvert GIS (OpenStreetMap Taiwan)",
-      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.921335&lon=121.547344&zoom=19",
-      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
-      "osm_url": "https://www.openstreetmap.org/way/481238505",
-      "osm_label": "OpenStreetMap 圖資廊道 #481238505",
-      "portal_url": "https://pipe.nlma.gov.tw/",
-      "portal_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
       "gov_links": {
-        "portal_url": "https://pipe.nlma.gov.tw/",
-        "portal_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+        "portal_url": null,
+        "portal_label": null,
         "api_url": null,
         "api_label": null,
         "osm_url": "https://www.openstreetmap.org/way/481238505",
-        "osm_label": "OpenStreetMap 圖資廊道 #481238505",
-        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.921335&lon=121.547344&zoom=19",
-        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
+        "osm_label": "OpenStreetMap 圖資線段 #481238505",
+        "nlsc_url": null,
+        "nlsc_label": null
       },
-      "origin_class": "api_open_data"
+      "origin_class": "api_open_data",
+      "osm_url": "https://www.openstreetmap.org/way/481238505",
+      "osm_label": "OpenStreetMap 圖資線段 #481238505"
     },
     {
       "id": "osm_waterway_487011226",
@@ -2535,23 +2344,19 @@
         ]
       ],
       "source": "Taiwan Hydraulic & Culvert GIS (OpenStreetMap Taiwan)",
-      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.922853&lon=121.543005&zoom=19",
-      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
-      "osm_url": "https://www.openstreetmap.org/way/487011226",
-      "osm_label": "OpenStreetMap 圖資廊道 #487011226",
-      "portal_url": "https://pipe.nlma.gov.tw/",
-      "portal_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
       "gov_links": {
-        "portal_url": "https://pipe.nlma.gov.tw/",
-        "portal_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+        "portal_url": null,
+        "portal_label": null,
         "api_url": null,
         "api_label": null,
         "osm_url": "https://www.openstreetmap.org/way/487011226",
-        "osm_label": "OpenStreetMap 圖資廊道 #487011226",
-        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.922853&lon=121.543005&zoom=19",
-        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
+        "osm_label": "OpenStreetMap 圖資線段 #487011226",
+        "nlsc_url": null,
+        "nlsc_label": null
       },
-      "origin_class": "api_open_data"
+      "origin_class": "api_open_data",
+      "osm_url": "https://www.openstreetmap.org/way/487011226",
+      "osm_label": "OpenStreetMap 圖資線段 #487011226"
     },
     {
       "id": "osm_waterway_503903865",
@@ -2641,23 +2446,19 @@
         ]
       ],
       "source": "Taiwan Hydraulic & Culvert GIS (OpenStreetMap Taiwan)",
-      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.919808&lon=121.546665&zoom=19",
-      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
-      "osm_url": "https://www.openstreetmap.org/way/503903865",
-      "osm_label": "OpenStreetMap 圖資廊道 #503903865",
-      "portal_url": "https://pipe.nlma.gov.tw/",
-      "portal_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
       "gov_links": {
-        "portal_url": "https://pipe.nlma.gov.tw/",
-        "portal_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+        "portal_url": null,
+        "portal_label": null,
         "api_url": null,
         "api_label": null,
         "osm_url": "https://www.openstreetmap.org/way/503903865",
-        "osm_label": "OpenStreetMap 圖資廊道 #503903865",
-        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.919808&lon=121.546665&zoom=19",
-        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
+        "osm_label": "OpenStreetMap 圖資線段 #503903865",
+        "nlsc_url": null,
+        "nlsc_label": null
       },
-      "origin_class": "api_open_data"
+      "origin_class": "api_open_data",
+      "osm_url": "https://www.openstreetmap.org/way/503903865",
+      "osm_label": "OpenStreetMap 圖資線段 #503903865"
     },
     {
       "id": "osm_waterway_503903866",
@@ -2727,23 +2528,19 @@
         ]
       ],
       "source": "Taiwan Hydraulic & Culvert GIS (OpenStreetMap Taiwan)",
-      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.916558&lon=121.547117&zoom=19",
-      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
-      "osm_url": "https://www.openstreetmap.org/way/503903866",
-      "osm_label": "OpenStreetMap 圖資廊道 #503903866",
-      "portal_url": "https://pipe.nlma.gov.tw/",
-      "portal_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
       "gov_links": {
-        "portal_url": "https://pipe.nlma.gov.tw/",
-        "portal_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+        "portal_url": null,
+        "portal_label": null,
         "api_url": null,
         "api_label": null,
         "osm_url": "https://www.openstreetmap.org/way/503903866",
-        "osm_label": "OpenStreetMap 圖資廊道 #503903866",
-        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.916558&lon=121.547117&zoom=19",
-        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
+        "osm_label": "OpenStreetMap 圖資線段 #503903866",
+        "nlsc_url": null,
+        "nlsc_label": null
       },
-      "origin_class": "api_open_data"
+      "origin_class": "api_open_data",
+      "osm_url": "https://www.openstreetmap.org/way/503903866",
+      "osm_label": "OpenStreetMap 圖資線段 #503903866"
     },
     {
       "id": "osm_waterway_504118311",
@@ -2798,23 +2595,19 @@
         ]
       ],
       "source": "Taiwan Hydraulic & Culvert GIS (OpenStreetMap Taiwan)",
-      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.920907&lon=121.545403&zoom=19",
-      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
-      "osm_url": "https://www.openstreetmap.org/way/504118311",
-      "osm_label": "OpenStreetMap 圖資廊道 #504118311",
-      "portal_url": "https://pipe.nlma.gov.tw/",
-      "portal_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
       "gov_links": {
-        "portal_url": "https://pipe.nlma.gov.tw/",
-        "portal_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+        "portal_url": null,
+        "portal_label": null,
         "api_url": null,
         "api_label": null,
         "osm_url": "https://www.openstreetmap.org/way/504118311",
-        "osm_label": "OpenStreetMap 圖資廊道 #504118311",
-        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.920907&lon=121.545403&zoom=19",
-        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
+        "osm_label": "OpenStreetMap 圖資線段 #504118311",
+        "nlsc_url": null,
+        "nlsc_label": null
       },
-      "origin_class": "api_open_data"
+      "origin_class": "api_open_data",
+      "osm_url": "https://www.openstreetmap.org/way/504118311",
+      "osm_label": "OpenStreetMap 圖資線段 #504118311"
     },
     {
       "id": "osm_waterway_504118399",
@@ -2869,23 +2662,19 @@
         ]
       ],
       "source": "Taiwan Hydraulic & Culvert GIS (OpenStreetMap Taiwan)",
-      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.921370&lon=121.545462&zoom=19",
-      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
-      "osm_url": "https://www.openstreetmap.org/way/504118399",
-      "osm_label": "OpenStreetMap 圖資廊道 #504118399",
-      "portal_url": "https://pipe.nlma.gov.tw/",
-      "portal_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
       "gov_links": {
-        "portal_url": "https://pipe.nlma.gov.tw/",
-        "portal_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+        "portal_url": null,
+        "portal_label": null,
         "api_url": null,
         "api_label": null,
         "osm_url": "https://www.openstreetmap.org/way/504118399",
-        "osm_label": "OpenStreetMap 圖資廊道 #504118399",
-        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.921370&lon=121.545462&zoom=19",
-        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
+        "osm_label": "OpenStreetMap 圖資線段 #504118399",
+        "nlsc_url": null,
+        "nlsc_label": null
       },
-      "origin_class": "api_open_data"
+      "origin_class": "api_open_data",
+      "osm_url": "https://www.openstreetmap.org/way/504118399",
+      "osm_label": "OpenStreetMap 圖資線段 #504118399"
     },
     {
       "id": "osm_waterway_504118400",
@@ -2970,23 +2759,19 @@
         ]
       ],
       "source": "Taiwan Hydraulic & Culvert GIS (OpenStreetMap Taiwan)",
-      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.923529&lon=121.543828&zoom=19",
-      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
-      "osm_url": "https://www.openstreetmap.org/way/504118400",
-      "osm_label": "OpenStreetMap 圖資廊道 #504118400",
-      "portal_url": "https://pipe.nlma.gov.tw/",
-      "portal_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
       "gov_links": {
-        "portal_url": "https://pipe.nlma.gov.tw/",
-        "portal_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+        "portal_url": null,
+        "portal_label": null,
         "api_url": null,
         "api_label": null,
         "osm_url": "https://www.openstreetmap.org/way/504118400",
-        "osm_label": "OpenStreetMap 圖資廊道 #504118400",
-        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.923529&lon=121.543828&zoom=19",
-        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
+        "osm_label": "OpenStreetMap 圖資線段 #504118400",
+        "nlsc_url": null,
+        "nlsc_label": null
       },
-      "origin_class": "api_open_data"
+      "origin_class": "api_open_data",
+      "osm_url": "https://www.openstreetmap.org/way/504118400",
+      "osm_label": "OpenStreetMap 圖資線段 #504118400"
     },
     {
       "id": "osm_waterway_504118401",
@@ -3036,23 +2821,19 @@
         ]
       ],
       "source": "Taiwan Hydraulic & Culvert GIS (OpenStreetMap Taiwan)",
-      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.921558&lon=121.544340&zoom=19",
-      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
-      "osm_url": "https://www.openstreetmap.org/way/504118401",
-      "osm_label": "OpenStreetMap 圖資廊道 #504118401",
-      "portal_url": "https://pipe.nlma.gov.tw/",
-      "portal_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
       "gov_links": {
-        "portal_url": "https://pipe.nlma.gov.tw/",
-        "portal_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+        "portal_url": null,
+        "portal_label": null,
         "api_url": null,
         "api_label": null,
         "osm_url": "https://www.openstreetmap.org/way/504118401",
-        "osm_label": "OpenStreetMap 圖資廊道 #504118401",
-        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.921558&lon=121.544340&zoom=19",
-        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
+        "osm_label": "OpenStreetMap 圖資線段 #504118401",
+        "nlsc_url": null,
+        "nlsc_label": null
       },
-      "origin_class": "api_open_data"
+      "origin_class": "api_open_data",
+      "osm_url": "https://www.openstreetmap.org/way/504118401",
+      "osm_label": "OpenStreetMap 圖資線段 #504118401"
     },
     {
       "id": "osm_waterway_619107060",
@@ -3112,23 +2893,19 @@
         ]
       ],
       "source": "Taiwan Hydraulic & Culvert GIS (OpenStreetMap Taiwan)",
-      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.915814&lon=121.547419&zoom=19",
-      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
-      "osm_url": "https://www.openstreetmap.org/way/619107060",
-      "osm_label": "OpenStreetMap 圖資廊道 #619107060",
-      "portal_url": "https://pipe.nlma.gov.tw/",
-      "portal_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
       "gov_links": {
-        "portal_url": "https://pipe.nlma.gov.tw/",
-        "portal_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+        "portal_url": null,
+        "portal_label": null,
         "api_url": null,
         "api_label": null,
         "osm_url": "https://www.openstreetmap.org/way/619107060",
-        "osm_label": "OpenStreetMap 圖資廊道 #619107060",
-        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.915814&lon=121.547419&zoom=19",
-        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
+        "osm_label": "OpenStreetMap 圖資線段 #619107060",
+        "nlsc_url": null,
+        "nlsc_label": null
       },
-      "origin_class": "api_open_data"
+      "origin_class": "api_open_data",
+      "osm_url": "https://www.openstreetmap.org/way/619107060",
+      "osm_label": "OpenStreetMap 圖資線段 #619107060"
     },
     {
       "id": "osm_waterway_1394460956",
@@ -3183,23 +2960,19 @@
         ]
       ],
       "source": "Taiwan Hydraulic & Culvert GIS (OpenStreetMap Taiwan)",
-      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.917200&lon=121.541959&zoom=19",
-      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
-      "osm_url": "https://www.openstreetmap.org/way/1394460956",
-      "osm_label": "OpenStreetMap 圖資廊道 #1394460956",
-      "portal_url": "https://pipe.nlma.gov.tw/",
-      "portal_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
       "gov_links": {
-        "portal_url": "https://pipe.nlma.gov.tw/",
-        "portal_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+        "portal_url": null,
+        "portal_label": null,
         "api_url": null,
         "api_label": null,
         "osm_url": "https://www.openstreetmap.org/way/1394460956",
-        "osm_label": "OpenStreetMap 圖資廊道 #1394460956",
-        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.917200&lon=121.541959&zoom=19",
-        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
+        "osm_label": "OpenStreetMap 圖資線段 #1394460956",
+        "nlsc_url": null,
+        "nlsc_label": null
       },
-      "origin_class": "api_open_data"
+      "origin_class": "api_open_data",
+      "osm_url": "https://www.openstreetmap.org/way/1394460956",
+      "osm_label": "OpenStreetMap 圖資線段 #1394460956"
     },
     {
       "id": "osm_waterway_1394460957",
@@ -3274,23 +3047,19 @@
         ]
       ],
       "source": "Taiwan Hydraulic & Culvert GIS (OpenStreetMap Taiwan)",
-      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.916760&lon=121.543416&zoom=19",
-      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
-      "osm_url": "https://www.openstreetmap.org/way/1394460957",
-      "osm_label": "OpenStreetMap 圖資廊道 #1394460957",
-      "portal_url": "https://pipe.nlma.gov.tw/",
-      "portal_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
       "gov_links": {
-        "portal_url": "https://pipe.nlma.gov.tw/",
-        "portal_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+        "portal_url": null,
+        "portal_label": null,
         "api_url": null,
         "api_label": null,
         "osm_url": "https://www.openstreetmap.org/way/1394460957",
-        "osm_label": "OpenStreetMap 圖資廊道 #1394460957",
-        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.916760&lon=121.543416&zoom=19",
-        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
+        "osm_label": "OpenStreetMap 圖資線段 #1394460957",
+        "nlsc_url": null,
+        "nlsc_label": null
       },
-      "origin_class": "api_open_data"
+      "origin_class": "api_open_data",
+      "osm_url": "https://www.openstreetmap.org/way/1394460957",
+      "osm_label": "OpenStreetMap 圖資線段 #1394460957"
     },
     {
       "id": "osm_waterway_1394460965",
@@ -3465,23 +3234,19 @@
         ]
       ],
       "source": "Taiwan Hydraulic & Culvert GIS (OpenStreetMap Taiwan)",
-      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.916702&lon=121.541490&zoom=19",
-      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
-      "osm_url": "https://www.openstreetmap.org/way/1394460965",
-      "osm_label": "OpenStreetMap 圖資廊道 #1394460965",
-      "portal_url": "https://pipe.nlma.gov.tw/",
-      "portal_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
       "gov_links": {
-        "portal_url": "https://pipe.nlma.gov.tw/",
-        "portal_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+        "portal_url": null,
+        "portal_label": null,
         "api_url": null,
         "api_label": null,
         "osm_url": "https://www.openstreetmap.org/way/1394460965",
-        "osm_label": "OpenStreetMap 圖資廊道 #1394460965",
-        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.916702&lon=121.541490&zoom=19",
-        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
+        "osm_label": "OpenStreetMap 圖資線段 #1394460965",
+        "nlsc_url": null,
+        "nlsc_label": null
       },
-      "origin_class": "api_open_data"
+      "origin_class": "api_open_data",
+      "osm_url": "https://www.openstreetmap.org/way/1394460965",
+      "osm_label": "OpenStreetMap 圖資線段 #1394460965"
     },
     {
       "id": "osm_waterway_1394460966",
@@ -3541,23 +3306,19 @@
         ]
       ],
       "source": "Taiwan Hydraulic & Culvert GIS (OpenStreetMap Taiwan)",
-      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.914810&lon=121.542105&zoom=19",
-      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
-      "osm_url": "https://www.openstreetmap.org/way/1394460966",
-      "osm_label": "OpenStreetMap 圖資廊道 #1394460966",
-      "portal_url": "https://pipe.nlma.gov.tw/",
-      "portal_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
       "gov_links": {
-        "portal_url": "https://pipe.nlma.gov.tw/",
-        "portal_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+        "portal_url": null,
+        "portal_label": null,
         "api_url": null,
         "api_label": null,
         "osm_url": "https://www.openstreetmap.org/way/1394460966",
-        "osm_label": "OpenStreetMap 圖資廊道 #1394460966",
-        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.914810&lon=121.542105&zoom=19",
-        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
+        "osm_label": "OpenStreetMap 圖資線段 #1394460966",
+        "nlsc_url": null,
+        "nlsc_label": null
       },
-      "origin_class": "api_open_data"
+      "origin_class": "api_open_data",
+      "osm_url": "https://www.openstreetmap.org/way/1394460966",
+      "osm_label": "OpenStreetMap 圖資線段 #1394460966"
     },
     {
       "id": "osm_waterway_1394460967",
@@ -3687,23 +3448,19 @@
         ]
       ],
       "source": "Taiwan Hydraulic & Culvert GIS (OpenStreetMap Taiwan)",
-      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.916592&lon=121.543971&zoom=19",
-      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
-      "osm_url": "https://www.openstreetmap.org/way/1394460967",
-      "osm_label": "OpenStreetMap 圖資廊道 #1394460967",
-      "portal_url": "https://pipe.nlma.gov.tw/",
-      "portal_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
       "gov_links": {
-        "portal_url": "https://pipe.nlma.gov.tw/",
-        "portal_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+        "portal_url": null,
+        "portal_label": null,
         "api_url": null,
         "api_label": null,
         "osm_url": "https://www.openstreetmap.org/way/1394460967",
-        "osm_label": "OpenStreetMap 圖資廊道 #1394460967",
-        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.916592&lon=121.543971&zoom=19",
-        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
+        "osm_label": "OpenStreetMap 圖資線段 #1394460967",
+        "nlsc_url": null,
+        "nlsc_label": null
       },
-      "origin_class": "api_open_data"
+      "origin_class": "api_open_data",
+      "osm_url": "https://www.openstreetmap.org/way/1394460967",
+      "osm_label": "OpenStreetMap 圖資線段 #1394460967"
     },
     {
       "id": "osm_waterway_1394460986",
@@ -3813,23 +3570,19 @@
         ]
       ],
       "source": "Taiwan Hydraulic & Culvert GIS (OpenStreetMap Taiwan)",
-      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.920999&lon=121.543658&zoom=19",
-      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
-      "osm_url": "https://www.openstreetmap.org/way/1394460986",
-      "osm_label": "OpenStreetMap 圖資廊道 #1394460986",
-      "portal_url": "https://pipe.nlma.gov.tw/",
-      "portal_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
       "gov_links": {
-        "portal_url": "https://pipe.nlma.gov.tw/",
-        "portal_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+        "portal_url": null,
+        "portal_label": null,
         "api_url": null,
         "api_label": null,
         "osm_url": "https://www.openstreetmap.org/way/1394460986",
-        "osm_label": "OpenStreetMap 圖資廊道 #1394460986",
-        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.920999&lon=121.543658&zoom=19",
-        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
+        "osm_label": "OpenStreetMap 圖資線段 #1394460986",
+        "nlsc_url": null,
+        "nlsc_label": null
       },
-      "origin_class": "api_open_data"
+      "origin_class": "api_open_data",
+      "osm_url": "https://www.openstreetmap.org/way/1394460986",
+      "osm_label": "OpenStreetMap 圖資線段 #1394460986"
     },
     {
       "id": "osm_waterway_1394460990",
@@ -3889,23 +3642,19 @@
         ]
       ],
       "source": "Taiwan Hydraulic & Culvert GIS (OpenStreetMap Taiwan)",
-      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.924475&lon=121.543948&zoom=19",
-      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
-      "osm_url": "https://www.openstreetmap.org/way/1394460990",
-      "osm_label": "OpenStreetMap 圖資廊道 #1394460990",
-      "portal_url": "https://pipe.nlma.gov.tw/",
-      "portal_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
       "gov_links": {
-        "portal_url": "https://pipe.nlma.gov.tw/",
-        "portal_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+        "portal_url": null,
+        "portal_label": null,
         "api_url": null,
         "api_label": null,
         "osm_url": "https://www.openstreetmap.org/way/1394460990",
-        "osm_label": "OpenStreetMap 圖資廊道 #1394460990",
-        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.924475&lon=121.543948&zoom=19",
-        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
+        "osm_label": "OpenStreetMap 圖資線段 #1394460990",
+        "nlsc_url": null,
+        "nlsc_label": null
       },
-      "origin_class": "api_open_data"
+      "origin_class": "api_open_data",
+      "osm_url": "https://www.openstreetmap.org/way/1394460990",
+      "osm_label": "OpenStreetMap 圖資線段 #1394460990"
     },
     {
       "id": "osm_waterway_1394460991",
@@ -3960,23 +3709,19 @@
         ]
       ],
       "source": "Taiwan Hydraulic & Culvert GIS (OpenStreetMap Taiwan)",
-      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.924159&lon=121.543888&zoom=19",
-      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
-      "osm_url": "https://www.openstreetmap.org/way/1394460991",
-      "osm_label": "OpenStreetMap 圖資廊道 #1394460991",
-      "portal_url": "https://pipe.nlma.gov.tw/",
-      "portal_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
       "gov_links": {
-        "portal_url": "https://pipe.nlma.gov.tw/",
-        "portal_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+        "portal_url": null,
+        "portal_label": null,
         "api_url": null,
         "api_label": null,
         "osm_url": "https://www.openstreetmap.org/way/1394460991",
-        "osm_label": "OpenStreetMap 圖資廊道 #1394460991",
-        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.924159&lon=121.543888&zoom=19",
-        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
+        "osm_label": "OpenStreetMap 圖資線段 #1394460991",
+        "nlsc_url": null,
+        "nlsc_label": null
       },
-      "origin_class": "api_open_data"
+      "origin_class": "api_open_data",
+      "osm_url": "https://www.openstreetmap.org/way/1394460991",
+      "osm_label": "OpenStreetMap 圖資線段 #1394460991"
     },
     {
       "id": "osm_waterway_1394460992",
@@ -4031,23 +3776,19 @@
         ]
       ],
       "source": "Taiwan Hydraulic & Culvert GIS (OpenStreetMap Taiwan)",
-      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.924159&lon=121.543888&zoom=19",
-      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
-      "osm_url": "https://www.openstreetmap.org/way/1394460992",
-      "osm_label": "OpenStreetMap 圖資廊道 #1394460992",
-      "portal_url": "https://pipe.nlma.gov.tw/",
-      "portal_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
       "gov_links": {
-        "portal_url": "https://pipe.nlma.gov.tw/",
-        "portal_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+        "portal_url": null,
+        "portal_label": null,
         "api_url": null,
         "api_label": null,
         "osm_url": "https://www.openstreetmap.org/way/1394460992",
-        "osm_label": "OpenStreetMap 圖資廊道 #1394460992",
-        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.924159&lon=121.543888&zoom=19",
-        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
+        "osm_label": "OpenStreetMap 圖資線段 #1394460992",
+        "nlsc_url": null,
+        "nlsc_label": null
       },
-      "origin_class": "api_open_data"
+      "origin_class": "api_open_data",
+      "osm_url": "https://www.openstreetmap.org/way/1394460992",
+      "osm_label": "OpenStreetMap 圖資線段 #1394460992"
     },
     {
       "id": "osm_waterway_1394460993",
@@ -4107,3429 +3848,19 @@
         ]
       ],
       "source": "Taiwan Hydraulic & Culvert GIS (OpenStreetMap Taiwan)",
-      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.924273&lon=121.544078&zoom=19",
-      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
-      "osm_url": "https://www.openstreetmap.org/way/1394460993",
-      "osm_label": "OpenStreetMap 圖資廊道 #1394460993",
-      "portal_url": "https://pipe.nlma.gov.tw/",
-      "portal_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
       "gov_links": {
-        "portal_url": "https://pipe.nlma.gov.tw/",
-        "portal_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
+        "portal_url": null,
+        "portal_label": null,
         "api_url": null,
         "api_label": null,
         "osm_url": "https://www.openstreetmap.org/way/1394460993",
-        "osm_label": "OpenStreetMap 圖資廊道 #1394460993",
-        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.924273&lon=121.544078&zoom=19",
-        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
+        "osm_label": "OpenStreetMap 圖資線段 #1394460993",
+        "nlsc_url": null,
+        "nlsc_label": null
       },
-      "origin_class": "api_open_data"
-    },
-    {
-      "id": "road_sanitary_1212796696",
-      "layer": "sanitary",
-      "type": "pipe",
-      "name": "新烏路二段 污水管線 D=400mm",
-      "diameter_mm": 400,
-      "width_m": 0.4,
-      "height_m": 0.4,
-      "length_m": 319.76,
-      "material": "DIP/延性鑄鐵管",
-      "start_coord": [
-        305388.446,
-        2756835.985,
-        40.44
-      ],
-      "end_coord": [
-        305301.958,
-        2756531.961,
-        40.235
-      ],
-      "start_ground_h": 43.19,
-      "end_ground_h": 43.185,
-      "start_rim_h": 43.19,
-      "end_rim_h": 43.185,
-      "start_invert_h": 40.44,
-      "end_invert_h": 40.235,
-      "start_crown_h": 40.84,
-      "end_crown_h": 40.635,
-      "start_depth_m": 2.75,
-      "end_depth_m": 2.95,
-      "start_cover_m": 2.35,
-      "end_cover_m": 2.55,
-      "depth_m": 2.85,
-      "slope_pct": 0.064,
-      "flow_direction": 1,
-      "coords": [
-        [
-          305388.446,
-          2756835.985,
-          40.44
-        ],
-        [
-          305360.913,
-          2756786.716,
-          40.408
-        ],
-        [
-          305349.151,
-          2756754.416,
-          40.379
-        ],
-        [
-          305336.094,
-          2756711.693,
-          40.348
-        ],
-        [
-          305328.896,
-          2756673.015,
-          40.32
-        ],
-        [
-          305312.098,
-          2756611.023,
-          40.291
-        ],
-        [
-          305299.34,
-          2756557.615,
-          40.263
-        ],
-        [
-          305301.958,
-          2756531.961,
-          40.235
-        ]
-      ],
-      "source": "Taipei / Taiwan Sanitary Sewer Corridor GIS",
-      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.916794&lon=121.547763&zoom=19",
-      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
-      "osm_url": "https://www.openstreetmap.org/way/1212796696",
-      "osm_label": "OpenStreetMap 圖資廊道 #1212796696",
-      "portal_url": "https://pipe.nlma.gov.tw/",
-      "portal_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
-      "gov_links": {
-        "portal_url": "https://pipe.nlma.gov.tw/",
-        "portal_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
-        "api_url": null,
-        "api_label": null,
-        "osm_url": "https://www.openstreetmap.org/way/1212796696",
-        "osm_label": "OpenStreetMap 圖資廊道 #1212796696",
-        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.916794&lon=121.547763&zoom=19",
-        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      },
-      "origin_class": "api_open_data"
-    },
-    {
-      "id": "road_sanitary_mh_1212796696",
-      "layer": "sanitary",
-      "type": "manhole",
-      "name": "新烏路二段 污水人孔 WMH-6696",
-      "facility_no": "WMH-6696",
-      "structure_type": "圓形污水人孔",
-      "coord": [
-        305388.446,
-        2756835.985,
-        40.44
-      ],
-      "rim_h": 43.19,
-      "invert_h": 40.44,
-      "depth_m": 2.75,
-      "diameter_mm": 600,
-      "road_name": "新烏路二段",
-      "source": "Taipei / Taiwan Sanitary Sewer Corridor GIS",
-      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.918263&lon=121.548359&zoom=19",
-      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
-      "osm_url": "https://www.openstreetmap.org/?mlat=24.918263&mlon=121.548359#map=19/24.918263/121.548359",
-      "osm_label": "OpenStreetMap 座標圖台",
-      "portal_url": "https://pipe.nlma.gov.tw/",
-      "portal_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
-      "gov_links": {
-        "portal_url": "https://pipe.nlma.gov.tw/",
-        "portal_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
-        "api_url": null,
-        "api_label": null,
-        "osm_url": "https://www.openstreetmap.org/?mlat=24.918263&mlon=121.548359#map=19/24.918263/121.548359",
-        "osm_label": "OpenStreetMap 座標圖台",
-        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.918263&lon=121.548359&zoom=19",
-        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      },
-      "origin_class": "api_open_data"
-    },
-    {
-      "id": "road_water_1212796696",
-      "layer": "water",
-      "type": "pipe",
-      "name": "新烏路二段 自來水配水管 D=250mm",
-      "diameter_mm": 250,
-      "width_m": 0.25,
-      "height_m": 0.25,
-      "length_m": 321.27,
-      "material": "DIP/自來水延性鑄鐵管",
-      "start_coord": [
-        305386.263,
-        2756837.204,
-        41.94
-      ],
-      "end_coord": [
-        305299.471,
-        2756531.708,
-        41.884
-      ],
-      "start_ground_h": 43.19,
-      "end_ground_h": 43.184,
-      "start_rim_h": 43.19,
-      "end_rim_h": 43.184,
-      "start_invert_h": 41.94,
-      "end_invert_h": 41.884,
-      "start_crown_h": 42.19,
-      "end_crown_h": 42.134,
-      "start_depth_m": 1.25,
-      "end_depth_m": 1.3,
-      "start_cover_m": 1.0,
-      "end_cover_m": 1.05,
-      "depth_m": 1.27,
-      "slope_pct": 0.017,
-      "flow_direction": 1,
-      "coords": [
-        [
-          305386.263,
-          2756837.204,
-          41.94
-        ],
-        [
-          305358.564,
-          2756787.571,
-          41.93
-        ],
-        [
-          305346.76,
-          2756755.146,
-          41.921
-        ],
-        [
-          305333.636,
-          2756712.151,
-          41.913
-        ],
-        [
-          305326.483,
-          2756673.668,
-          41.905
-        ],
-        [
-          305309.665,
-          2756611.6,
-          41.898
-        ],
-        [
-          305296.853,
-          2756557.362,
-          41.891
-        ],
-        [
-          305299.471,
-          2756531.708,
-          41.884
-        ]
-      ],
-      "source": "Taipei Water Department Corridor GIS (臺北自來水事業處)",
-      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.916800&lon=121.547739&zoom=19",
-      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
-      "osm_url": "https://www.openstreetmap.org/way/1212796696",
-      "osm_label": "OpenStreetMap 圖資廊道 #1212796696",
-      "portal_url": "https://pipe.nlma.gov.tw/",
-      "portal_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
-      "gov_links": {
-        "portal_url": "https://pipe.nlma.gov.tw/",
-        "portal_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
-        "api_url": null,
-        "api_label": null,
-        "osm_url": "https://www.openstreetmap.org/way/1212796696",
-        "osm_label": "OpenStreetMap 圖資廊道 #1212796696",
-        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.916800&lon=121.547739&zoom=19",
-        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      },
-      "origin_class": "api_open_data"
-    },
-    {
-      "id": "road_electric_1212796696",
-      "layer": "electric",
-      "type": "pipe",
-      "name": "新烏路二段 台電配電管線 D=150mm",
-      "diameter_mm": 150,
-      "width_m": 0.15,
-      "height_m": 0.15,
-      "length_m": 320.18,
-      "material": "PVC/台電地下配電管",
-      "start_coord": [
-        305387.835,
-        2756836.326,
-        41.74
-      ],
-      "end_coord": [
-        305301.261,
-        2756531.89,
-        41.684
-      ],
-      "start_ground_h": 43.19,
-      "end_ground_h": 43.184,
-      "start_rim_h": 43.19,
-      "end_rim_h": 43.184,
-      "start_invert_h": 41.74,
-      "end_invert_h": 41.684,
-      "start_crown_h": 41.89,
-      "end_crown_h": 41.834,
-      "start_depth_m": 1.45,
-      "end_depth_m": 1.5,
-      "start_cover_m": 1.3,
-      "end_cover_m": 1.35,
-      "depth_m": 1.48,
-      "slope_pct": 0.017,
-      "flow_direction": 1,
-      "coords": [
-        [
-          305387.835,
-          2756836.326,
-          41.74
-        ],
-        [
-          305360.256,
-          2756786.955,
-          41.73
-        ],
-        [
-          305348.482,
-          2756754.62,
-          41.721
-        ],
-        [
-          305335.406,
-          2756711.821,
-          41.713
-        ],
-        [
-          305328.221,
-          2756673.198,
-          41.705
-        ],
-        [
-          305311.417,
-          2756611.184,
-          41.698
-        ],
-        [
-          305298.643,
-          2756557.544,
-          41.691
-        ],
-        [
-          305301.261,
-          2756531.89,
-          41.684
-        ]
-      ],
-      "source": "Taipower Underground Distribution Corridor GIS",
-      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.916796&lon=121.547756&zoom=19",
-      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
-      "osm_url": "https://www.openstreetmap.org/way/1212796696",
-      "osm_label": "OpenStreetMap 圖資廊道 #1212796696",
-      "portal_url": "https://pipe.nlma.gov.tw/",
-      "portal_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
-      "gov_links": {
-        "portal_url": "https://pipe.nlma.gov.tw/",
-        "portal_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
-        "api_url": null,
-        "api_label": null,
-        "osm_url": "https://www.openstreetmap.org/way/1212796696",
-        "osm_label": "OpenStreetMap 圖資廊道 #1212796696",
-        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.916796&lon=121.547756&zoom=19",
-        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      },
-      "origin_class": "api_open_data"
-    },
-    {
-      "id": "road_telecom_1212796696",
-      "layer": "telecom",
-      "type": "pipe",
-      "name": "新烏路二段 中華電信光纖管線 D=100mm",
-      "diameter_mm": 100,
-      "width_m": 0.1,
-      "height_m": 0.1,
-      "length_m": 319.39,
-      "material": "HDPE/中華電信光纖管",
-      "start_coord": [
-        305388.97,
-        2756835.692,
-        42.04
-      ],
-      "end_coord": [
-        305302.555,
-        2756532.022,
-        41.985
-      ],
-      "start_ground_h": 43.19,
-      "end_ground_h": 43.185,
-      "start_rim_h": 43.19,
-      "end_rim_h": 43.185,
-      "start_invert_h": 42.04,
-      "end_invert_h": 41.985,
-      "start_crown_h": 42.14,
-      "end_crown_h": 42.085,
-      "start_depth_m": 1.15,
-      "end_depth_m": 1.2,
-      "start_cover_m": 1.05,
-      "end_cover_m": 1.1,
-      "depth_m": 1.17,
-      "slope_pct": 0.017,
-      "flow_direction": 1,
-      "coords": [
-        [
-          305388.97,
-          2756835.692,
-          42.04
-        ],
-        [
-          305361.477,
-          2756786.51,
-          42.03
-        ],
-        [
-          305349.725,
-          2756754.24,
-          42.022
-        ],
-        [
-          305336.684,
-          2756711.584,
-          42.013
-        ],
-        [
-          305329.475,
-          2756672.858,
-          42.005
-        ],
-        [
-          305312.682,
-          2756610.884,
-          41.998
-        ],
-        [
-          305299.937,
-          2756557.676,
-          41.991
-        ],
-        [
-          305302.555,
-          2756532.022,
-          41.985
-        ]
-      ],
-      "source": "Telecom & Broadband Fiber Corridor GIS",
-      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.916793&lon=121.547768&zoom=19",
-      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
-      "osm_url": "https://www.openstreetmap.org/way/1212796696",
-      "osm_label": "OpenStreetMap 圖資廊道 #1212796696",
-      "portal_url": "https://pipe.nlma.gov.tw/",
-      "portal_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
-      "gov_links": {
-        "portal_url": "https://pipe.nlma.gov.tw/",
-        "portal_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
-        "api_url": null,
-        "api_label": null,
-        "osm_url": "https://www.openstreetmap.org/way/1212796696",
-        "osm_label": "OpenStreetMap 圖資廊道 #1212796696",
-        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.916793&lon=121.547768&zoom=19",
-        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      },
-      "origin_class": "api_open_data"
-    },
-    {
-      "id": "road_gas_1212796696",
-      "layer": "gas",
-      "type": "pipe",
-      "name": "新烏路二段 天然瓦斯低壓管 D=100mm",
-      "diameter_mm": 100,
-      "width_m": 0.1,
-      "height_m": 0.1,
-      "length_m": 322.17,
-      "material": "PE/天然氣聚乙烯管",
-      "start_coord": [
-        305384.954,
-        2756837.935,
-        42.19
-      ],
-      "end_coord": [
-        305297.978,
-        2756531.555,
-        42.134
-      ],
-      "start_ground_h": 43.19,
-      "end_ground_h": 43.184,
-      "start_rim_h": 43.19,
-      "end_rim_h": 43.184,
-      "start_invert_h": 42.19,
-      "end_invert_h": 42.134,
-      "start_crown_h": 42.29,
-      "end_crown_h": 42.234,
-      "start_depth_m": 1.0,
-      "end_depth_m": 1.05,
-      "start_cover_m": 0.9,
-      "end_cover_m": 0.95,
-      "depth_m": 1.02,
-      "slope_pct": 0.017,
-      "flow_direction": 1,
-      "coords": [
-        [
-          305384.954,
-          2756837.935,
-          42.19
-        ],
-        [
-          305357.155,
-          2756788.084,
-          42.18
-        ],
-        [
-          305345.326,
-          2756755.584,
-          42.171
-        ],
-        [
-          305332.161,
-          2756712.425,
-          42.163
-        ],
-        [
-          305325.036,
-          2756674.061,
-          42.155
-        ],
-        [
-          305308.206,
-          2756611.946,
-          42.148
-        ],
-        [
-          305295.36,
-          2756557.209,
-          42.141
-        ],
-        [
-          305297.978,
-          2756531.555,
-          42.134
-        ]
-      ],
-      "source": "Municipal Natural Gas Utility Corridor GIS",
-      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.916804&lon=121.547725&zoom=19",
-      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
-      "osm_url": "https://www.openstreetmap.org/way/1212796696",
-      "osm_label": "OpenStreetMap 圖資廊道 #1212796696",
-      "portal_url": "https://pipe.nlma.gov.tw/",
-      "portal_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
-      "gov_links": {
-        "portal_url": "https://pipe.nlma.gov.tw/",
-        "portal_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
-        "api_url": null,
-        "api_label": null,
-        "osm_url": "https://www.openstreetmap.org/way/1212796696",
-        "osm_label": "OpenStreetMap 圖資廊道 #1212796696",
-        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.916804&lon=121.547725&zoom=19",
-        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      },
-      "origin_class": "api_open_data"
-    },
-    {
-      "id": "road_duct_1212796696",
-      "layer": "ducts",
-      "type": "box_culvert",
-      "name": "新烏路二段 纜線共同管溝 0.8x0.8m",
-      "diameter_mm": 800,
-      "width_m": 0.8,
-      "height_m": 0.8,
-      "length_m": 320.72,
-      "material": "RC/共同管道箱涵",
-      "start_coord": [
-        305387.049,
-        2756836.765,
-        40.89
-      ],
-      "end_coord": [
-        305300.366,
-        2756531.799,
-        40.784
-      ],
-      "start_ground_h": 43.19,
-      "end_ground_h": 43.184,
-      "start_rim_h": 43.19,
-      "end_rim_h": 43.184,
-      "start_invert_h": 40.89,
-      "end_invert_h": 40.784,
-      "start_crown_h": 41.69,
-      "end_crown_h": 41.584,
-      "start_depth_m": 2.3,
-      "end_depth_m": 2.4,
-      "start_cover_m": 1.5,
-      "end_cover_m": 1.6,
-      "depth_m": 2.35,
-      "slope_pct": 0.033,
-      "flow_direction": 1,
-      "coords": [
-        [
-          305387.049,
-          2756836.765,
-          40.89
-        ],
-        [
-          305359.41,
-          2756787.263,
-          40.873
-        ],
-        [
-          305347.621,
-          2756754.883,
-          40.856
-        ],
-        [
-          305334.521,
-          2756711.986,
-          40.841
-        ],
-        [
-          305327.352,
-          2756673.433,
-          40.827
-        ],
-        [
-          305310.541,
-          2756611.392,
-          40.813
-        ],
-        [
-          305297.748,
-          2756557.453,
-          40.798
-        ],
-        [
-          305300.366,
-          2756531.799,
-          40.784
-        ]
-      ],
-      "source": "Municipal Broadband & Common Utility Duct GIS",
-      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.916798&lon=121.547747&zoom=19",
-      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
-      "osm_url": "https://www.openstreetmap.org/way/1212796696",
-      "osm_label": "OpenStreetMap 圖資廊道 #1212796696",
-      "portal_url": "https://pipe.nlma.gov.tw/",
-      "portal_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
-      "gov_links": {
-        "portal_url": "https://pipe.nlma.gov.tw/",
-        "portal_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
-        "api_url": null,
-        "api_label": null,
-        "osm_url": "https://www.openstreetmap.org/way/1212796696",
-        "osm_label": "OpenStreetMap 圖資廊道 #1212796696",
-        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.916798&lon=121.547747&zoom=19",
-        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      },
-      "origin_class": "api_open_data"
-    },
-    {
-      "id": "road_streetlight_1212796696",
-      "layer": "streetlights",
-      "type": "pipe",
-      "name": "新烏路二段 路燈照明管線 D=80mm",
-      "diameter_mm": 80,
-      "width_m": 0.08,
-      "height_m": 0.08,
-      "length_m": 319.15,
-      "material": "PVC/路燈專用管",
-      "start_coord": [
-        305389.319,
-        2756835.497,
-        42.39
-      ],
-      "end_coord": [
-        305302.953,
-        2756532.063,
-        42.365
-      ],
-      "start_ground_h": 43.19,
-      "end_ground_h": 43.185,
-      "start_rim_h": 43.19,
-      "end_rim_h": 43.185,
-      "start_invert_h": 42.39,
-      "end_invert_h": 42.365,
-      "start_crown_h": 42.47,
-      "end_crown_h": 42.445,
-      "start_depth_m": 0.8,
-      "end_depth_m": 0.82,
-      "start_cover_m": 0.72,
-      "end_cover_m": 0.74,
-      "depth_m": 0.81,
-      "slope_pct": 0.008,
-      "flow_direction": 1,
-      "coords": [
-        [
-          305389.319,
-          2756835.497,
-          42.39
-        ],
-        [
-          305361.853,
-          2756786.374,
-          42.384
-        ],
-        [
-          305350.108,
-          2756754.124,
-          42.38
-        ],
-        [
-          305337.077,
-          2756711.511,
-          42.375
-        ],
-        [
-          305329.862,
-          2756672.753,
-          42.373
-        ],
-        [
-          305313.071,
-          2756610.792,
-          42.37
-        ],
-        [
-          305300.335,
-          2756557.717,
-          42.367
-        ],
-        [
-          305302.953,
-          2756532.063,
-          42.365
-        ]
-      ],
-      "source": "Municipal Streetlight Circuit GIS",
-      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.916792&lon=121.547772&zoom=19",
-      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
-      "osm_url": "https://www.openstreetmap.org/way/1212796696",
-      "osm_label": "OpenStreetMap 圖資廊道 #1212796696",
-      "portal_url": "https://pipe.nlma.gov.tw/",
-      "portal_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
-      "gov_links": {
-        "portal_url": "https://pipe.nlma.gov.tw/",
-        "portal_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
-        "api_url": null,
-        "api_label": null,
-        "osm_url": "https://www.openstreetmap.org/way/1212796696",
-        "osm_label": "OpenStreetMap 圖資廊道 #1212796696",
-        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.916792&lon=121.547772&zoom=19",
-        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      },
-      "origin_class": "api_open_data"
-    },
-    {
-      "id": "road_sanitary_361500642",
-      "layer": "sanitary",
-      "type": "pipe",
-      "name": "櫻花街 污水管線 D=300mm",
-      "diameter_mm": 300,
-      "width_m": 0.3,
-      "height_m": 0.3,
-      "length_m": 714.24,
-      "material": "DIP/延性鑄鐵管",
-      "start_coord": [
-        305306.842,
-        2757595.038,
-        40.761
-      ],
-      "end_coord": [
-        305362.783,
-        2756896.201,
-        40.541
-      ],
-      "start_ground_h": 43.211,
-      "end_ground_h": 43.191,
-      "start_rim_h": 43.211,
-      "end_rim_h": 43.191,
-      "start_invert_h": 40.761,
-      "end_invert_h": 40.541,
-      "start_crown_h": 41.061,
-      "end_crown_h": 40.841,
-      "start_depth_m": 2.45,
-      "end_depth_m": 2.65,
-      "start_cover_m": 2.15,
-      "end_cover_m": 2.35,
-      "depth_m": 2.55,
-      "slope_pct": 0.031,
-      "flow_direction": 1,
-      "coords": [
-        [
-          305306.842,
-          2757595.038,
-          40.761
-        ],
-        [
-          305307.792,
-          2757589.879,
-          40.75
-        ],
-        [
-          305308.04,
-          2757588.476,
-          40.739
-        ],
-        [
-          305309.994,
-          2757563.525,
-          40.728
-        ],
-        [
-          305309.013,
-          2757515.999,
-          40.718
-        ],
-        [
-          305300.377,
-          2757439.967,
-          40.706
-        ],
-        [
-          305294.716,
-          2757395.992,
-          40.696
-        ],
-        [
-          305285.711,
-          2757326.317,
-          40.685
-        ],
-        [
-          305290.332,
-          2757277.123,
-          40.674
-        ],
-        [
-          305308.263,
-          2757194.985,
-          40.66
-        ],
-        [
-          305317.454,
-          2757188.094,
-          40.648
-        ],
-        [
-          305319.809,
-          2757132.571,
-          40.635
-        ],
-        [
-          305319.84,
-          2757131.566,
-          40.624
-        ],
-        [
-          305324.377,
-          2757098.454,
-          40.611
-        ],
-        [
-          305336.846,
-          2757069.252,
-          40.597
-        ],
-        [
-          305351.292,
-          2757021.534,
-          40.582
-        ],
-        [
-          305364.432,
-          2756977.59,
-          40.568
-        ],
-        [
-          305362.177,
-          2756933.781,
-          40.555
-        ],
-        [
-          305362.783,
-          2756896.201,
-          40.541
-        ]
-      ],
-      "source": "Taipei / Taiwan Sanitary Sewer Corridor GIS",
-      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.921507&lon=121.547579&zoom=19",
-      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
-      "osm_url": "https://www.openstreetmap.org/way/361500642",
-      "osm_label": "OpenStreetMap 圖資廊道 #361500642",
-      "portal_url": "https://pipe.nlma.gov.tw/",
-      "portal_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
-      "gov_links": {
-        "portal_url": "https://pipe.nlma.gov.tw/",
-        "portal_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
-        "api_url": null,
-        "api_label": null,
-        "osm_url": "https://www.openstreetmap.org/way/361500642",
-        "osm_label": "OpenStreetMap 圖資廊道 #361500642",
-        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.921507&lon=121.547579&zoom=19",
-        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      },
-      "origin_class": "api_open_data"
-    },
-    {
-      "id": "road_sanitary_mh_361500642",
-      "layer": "sanitary",
-      "type": "manhole",
-      "name": "櫻花街 污水人孔 WMH-0642",
-      "facility_no": "WMH-0642",
-      "structure_type": "圓形污水人孔",
-      "coord": [
-        305306.842,
-        2757595.038,
-        40.761
-      ],
-      "rim_h": 43.211,
-      "invert_h": 40.761,
-      "depth_m": 2.45,
-      "diameter_mm": 600,
-      "road_name": "櫻花街",
-      "source": "Taipei / Taiwan Sanitary Sewer Corridor GIS",
-      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.925119&lon=121.547581&zoom=19",
-      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
-      "osm_url": "https://www.openstreetmap.org/?mlat=24.925119&mlon=121.547581#map=19/24.925119/121.547581",
-      "osm_label": "OpenStreetMap 座標圖台",
-      "portal_url": "https://pipe.nlma.gov.tw/",
-      "portal_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
-      "gov_links": {
-        "portal_url": "https://pipe.nlma.gov.tw/",
-        "portal_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
-        "api_url": null,
-        "api_label": null,
-        "osm_url": "https://www.openstreetmap.org/?mlat=24.925119&mlon=121.547581#map=19/24.925119/121.547581",
-        "osm_label": "OpenStreetMap 座標圖台",
-        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.925119&lon=121.547581&zoom=19",
-        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      },
-      "origin_class": "api_open_data"
-    },
-    {
-      "id": "road_water_361500642",
-      "layer": "water",
-      "type": "pipe",
-      "name": "櫻花街 自來水配水管 D=200mm",
-      "diameter_mm": 200,
-      "width_m": 0.2,
-      "height_m": 0.2,
-      "length_m": 713.97,
-      "material": "DIP/自來水延性鑄鐵管",
-      "start_coord": [
-        305304.383,
-        2757594.585,
-        41.961
-      ],
-      "end_coord": [
-        305360.283,
-        2756896.16,
-        41.891
-      ],
-      "start_ground_h": 43.211,
-      "end_ground_h": 43.191,
-      "start_rim_h": 43.211,
-      "end_rim_h": 43.191,
-      "start_invert_h": 41.961,
-      "end_invert_h": 41.891,
-      "start_crown_h": 42.161,
-      "end_crown_h": 42.091,
-      "start_depth_m": 1.25,
-      "end_depth_m": 1.3,
-      "start_cover_m": 1.05,
-      "end_cover_m": 1.1,
-      "depth_m": 1.27,
-      "slope_pct": 0.01,
-      "flow_direction": 1,
-      "coords": [
-        [
-          305304.383,
-          2757594.585,
-          41.961
-        ],
-        [
-          305305.333,
-          2757589.429,
-          41.958
-        ],
-        [
-          305305.548,
-          2757588.28,
-          41.955
-        ],
-        [
-          305307.494,
-          2757563.576,
-          41.953
-        ],
-        [
-          305306.529,
-          2757516.282,
-          41.951
-        ],
-        [
-          305297.897,
-          2757440.286,
-          41.948
-        ],
-        [
-          305292.236,
-          2757396.311,
-          41.946
-        ],
-        [
-          305283.222,
-          2757326.083,
-          41.944
-        ],
-        [
-          305287.893,
-          2757276.576,
-          41.941
-        ],
-        [
-          305306.88,
-          2757192.902,
-          41.935
-        ],
-        [
-          305314.956,
-          2757187.988,
-          41.932
-        ],
-        [
-          305317.311,
-          2757132.474,
-          41.926
-        ],
-        [
-          305317.364,
-          2757131.222,
-          41.924
-        ],
-        [
-          305322.078,
-          2757097.471,
-          41.919
-        ],
-        [
-          305334.454,
-          2757068.527,
-          41.914
-        ],
-        [
-          305348.898,
-          2757020.813,
-          41.907
-        ],
-        [
-          305361.935,
-          2756977.718,
-          41.902
-        ],
-        [
-          305359.677,
-          2756933.74,
-          41.896
-        ],
-        [
-          305360.283,
-          2756896.16,
-          41.891
-        ]
-      ],
-      "source": "Taipei Water Department Corridor GIS (臺北自來水事業處)",
-      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.921489&lon=121.547566&zoom=19",
-      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
-      "osm_url": "https://www.openstreetmap.org/way/361500642",
-      "osm_label": "OpenStreetMap 圖資廊道 #361500642",
-      "portal_url": "https://pipe.nlma.gov.tw/",
-      "portal_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
-      "gov_links": {
-        "portal_url": "https://pipe.nlma.gov.tw/",
-        "portal_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
-        "api_url": null,
-        "api_label": null,
-        "osm_url": "https://www.openstreetmap.org/way/361500642",
-        "osm_label": "OpenStreetMap 圖資廊道 #361500642",
-        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.921489&lon=121.547566&zoom=19",
-        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      },
-      "origin_class": "api_open_data"
-    },
-    {
-      "id": "road_electric_361500642",
-      "layer": "electric",
-      "type": "pipe",
-      "name": "櫻花街 台電配電管線 D=150mm",
-      "diameter_mm": 150,
-      "width_m": 0.15,
-      "height_m": 0.15,
-      "length_m": 714.16,
-      "material": "PVC/台電地下配電管",
-      "start_coord": [
-        305306.153,
-        2757594.911,
-        41.761
-      ],
-      "end_coord": [
-        305362.083,
-        2756896.19,
-        41.691
-      ],
-      "start_ground_h": 43.211,
-      "end_ground_h": 43.191,
-      "start_rim_h": 43.211,
-      "end_rim_h": 43.191,
-      "start_invert_h": 41.761,
-      "end_invert_h": 41.691,
-      "start_crown_h": 41.911,
-      "end_crown_h": 41.841,
-      "start_depth_m": 1.45,
-      "end_depth_m": 1.5,
-      "start_cover_m": 1.3,
-      "end_cover_m": 1.35,
-      "depth_m": 1.48,
-      "slope_pct": 0.01,
-      "flow_direction": 1,
-      "coords": [
-        [
-          305306.153,
-          2757594.911,
-          41.761
-        ],
-        [
-          305307.103,
-          2757589.753,
-          41.758
-        ],
-        [
-          305307.342,
-          2757588.422,
-          41.755
-        ],
-        [
-          305309.294,
-          2757563.54,
-          41.753
-        ],
-        [
-          305308.317,
-          2757516.078,
-          41.751
-        ],
-        [
-          305299.683,
-          2757440.056,
-          41.748
-        ],
-        [
-          305294.022,
-          2757396.081,
-          41.746
-        ],
-        [
-          305285.014,
-          2757326.251,
-          41.744
-        ],
-        [
-          305289.649,
-          2757276.97,
-          41.741
-        ],
-        [
-          305307.876,
-          2757194.402,
-          41.735
-        ],
-        [
-          305316.754,
-          2757188.064,
-          41.731
-        ],
-        [
-          305319.109,
-          2757132.544,
-          41.726
-        ],
-        [
-          305319.146,
-          2757131.47,
-          41.724
-        ],
-        [
-          305323.734,
-          2757098.179,
-          41.719
-        ],
-        [
-          305336.176,
-          2757069.049,
-          41.714
-        ],
-        [
-          305350.622,
-          2757021.333,
-          41.707
-        ],
-        [
-          305363.733,
-          2756977.626,
-          41.702
-        ],
-        [
-          305361.477,
-          2756933.77,
-          41.697
-        ],
-        [
-          305362.083,
-          2756896.19,
-          41.691
-        ]
-      ],
-      "source": "Taipower Underground Distribution Corridor GIS",
-      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.921502&lon=121.547575&zoom=19",
-      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
-      "osm_url": "https://www.openstreetmap.org/way/361500642",
-      "osm_label": "OpenStreetMap 圖資廊道 #361500642",
-      "portal_url": "https://pipe.nlma.gov.tw/",
-      "portal_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
-      "gov_links": {
-        "portal_url": "https://pipe.nlma.gov.tw/",
-        "portal_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
-        "api_url": null,
-        "api_label": null,
-        "osm_url": "https://www.openstreetmap.org/way/361500642",
-        "osm_label": "OpenStreetMap 圖資廊道 #361500642",
-        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.921502&lon=121.547575&zoom=19",
-        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      },
-      "origin_class": "api_open_data"
-    },
-    {
-      "id": "road_telecom_361500642",
-      "layer": "telecom",
-      "type": "pipe",
-      "name": "櫻花街 中華電信光纖管線 D=100mm",
-      "diameter_mm": 100,
-      "width_m": 0.1,
-      "height_m": 0.1,
-      "length_m": 714.32,
-      "material": "HDPE/中華電信光纖管",
-      "start_coord": [
-        305307.432,
-        2757595.147,
-        42.061
-      ],
-      "end_coord": [
-        305363.383,
-        2756896.21,
-        41.991
-      ],
-      "start_ground_h": 43.211,
-      "end_ground_h": 43.191,
-      "start_rim_h": 43.211,
-      "end_rim_h": 43.191,
-      "start_invert_h": 42.061,
-      "end_invert_h": 41.991,
-      "start_crown_h": 42.161,
-      "end_crown_h": 42.091,
-      "start_depth_m": 1.15,
-      "end_depth_m": 1.2,
-      "start_cover_m": 1.05,
-      "end_cover_m": 1.1,
-      "depth_m": 1.17,
-      "slope_pct": 0.01,
-      "flow_direction": 1,
-      "coords": [
-        [
-          305307.432,
-          2757595.147,
-          42.061
-        ],
-        [
-          305308.382,
-          2757589.987,
-          42.058
-        ],
-        [
-          305308.638,
-          2757588.523,
-          42.055
-        ],
-        [
-          305310.594,
-          2757563.513,
-          42.053
-        ],
-        [
-          305309.609,
-          2757515.932,
-          42.051
-        ],
-        [
-          305300.972,
-          2757439.89,
-          42.048
-        ],
-        [
-          305295.311,
-          2757395.915,
-          42.046
-        ],
-        [
-          305286.308,
-          2757326.373,
-          42.044
-        ],
-        [
-          305290.918,
-          2757277.254,
-          42.041
-        ],
-        [
-          305308.595,
-          2757195.485,
-          42.035
-        ],
-        [
-          305318.053,
-          2757188.119,
-          42.031
-        ],
-        [
-          305320.408,
-          2757132.594,
-          42.026
-        ],
-        [
-          305320.434,
-          2757131.648,
-          42.024
-        ],
-        [
-          305324.929,
-          2757098.69,
-          42.019
-        ],
-        [
-          305337.421,
-          2757069.425,
-          42.014
-        ],
-        [
-          305351.866,
-          2757021.708,
-          42.007
-        ],
-        [
-          305365.031,
-          2756977.559,
-          42.002
-        ],
-        [
-          305362.777,
-          2756933.79,
-          41.997
-        ],
-        [
-          305363.383,
-          2756896.21,
-          41.991
-        ]
-      ],
-      "source": "Telecom & Broadband Fiber Corridor GIS",
-      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.921512&lon=121.547583&zoom=19",
-      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
-      "osm_url": "https://www.openstreetmap.org/way/361500642",
-      "osm_label": "OpenStreetMap 圖資廊道 #361500642",
-      "portal_url": "https://pipe.nlma.gov.tw/",
-      "portal_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
-      "gov_links": {
-        "portal_url": "https://pipe.nlma.gov.tw/",
-        "portal_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
-        "api_url": null,
-        "api_label": null,
-        "osm_url": "https://www.openstreetmap.org/way/361500642",
-        "osm_label": "OpenStreetMap 圖資廊道 #361500642",
-        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.921512&lon=121.547583&zoom=19",
-        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      },
-      "origin_class": "api_open_data"
-    },
-    {
-      "id": "road_gas_361500642",
-      "layer": "gas",
-      "type": "pipe",
-      "name": "櫻花街 天然瓦斯低壓管 D=100mm",
-      "diameter_mm": 100,
-      "width_m": 0.1,
-      "height_m": 0.1,
-      "length_m": 713.87,
-      "material": "PE/天然氣聚乙烯管",
-      "start_coord": [
-        305302.908,
-        2757594.313,
-        42.211
-      ],
-      "end_coord": [
-        305358.783,
-        2756896.136,
-        42.141
-      ],
-      "start_ground_h": 43.211,
-      "end_ground_h": 43.191,
-      "start_rim_h": 43.211,
-      "end_rim_h": 43.191,
-      "start_invert_h": 42.211,
-      "end_invert_h": 42.141,
-      "start_crown_h": 42.311,
-      "end_crown_h": 42.241,
-      "start_depth_m": 1.0,
-      "end_depth_m": 1.05,
-      "start_cover_m": 0.9,
-      "end_cover_m": 0.95,
-      "depth_m": 1.02,
-      "slope_pct": 0.01,
-      "flow_direction": 1,
-      "coords": [
-        [
-          305302.908,
-          2757594.313,
-          42.211
-        ],
-        [
-          305303.857,
-          2757589.159,
-          42.208
-        ],
-        [
-          305304.052,
-          2757588.163,
-          42.205
-        ],
-        [
-          305305.995,
-          2757563.607,
-          42.203
-        ],
-        [
-          305305.038,
-          2757516.451,
-          42.201
-        ],
-        [
-          305296.41,
-          2757440.477,
-          42.199
-        ],
-        [
-          305290.749,
-          2757396.502,
-          42.196
-        ],
-        [
-          305281.729,
-          2757325.942,
-          42.194
-        ],
-        [
-          305286.429,
-          2757276.249,
-          42.191
-        ],
-        [
-          305306.051,
-          2757191.652,
-          42.185
-        ],
-        [
-          305313.457,
-          2757187.924,
-          42.182
-        ],
-        [
-          305315.812,
-          2757132.416,
-          42.176
-        ],
-        [
-          305315.878,
-          2757131.016,
-          42.174
-        ],
-        [
-          305320.699,
-          2757096.882,
-          42.169
-        ],
-        [
-          305333.018,
-          2757068.093,
-          42.164
-        ],
-        [
-          305347.462,
-          2757020.381,
-          42.157
-        ],
-        [
-          305360.437,
-          2756977.795,
-          42.152
-        ],
-        [
-          305358.177,
-          2756933.716,
-          42.146
-        ],
-        [
-          305358.783,
-          2756896.136,
-          42.141
-        ]
-      ],
-      "source": "Municipal Natural Gas Utility Corridor GIS",
-      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.921477&lon=121.547557&zoom=19",
-      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
-      "osm_url": "https://www.openstreetmap.org/way/361500642",
-      "osm_label": "OpenStreetMap 圖資廊道 #361500642",
-      "portal_url": "https://pipe.nlma.gov.tw/",
-      "portal_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
-      "gov_links": {
-        "portal_url": "https://pipe.nlma.gov.tw/",
-        "portal_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
-        "api_url": null,
-        "api_label": null,
-        "osm_url": "https://www.openstreetmap.org/way/361500642",
-        "osm_label": "OpenStreetMap 圖資廊道 #361500642",
-        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.921477&lon=121.547557&zoom=19",
-        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      },
-      "origin_class": "api_open_data"
-    },
-    {
-      "id": "road_duct_361500642",
-      "layer": "ducts",
-      "type": "box_culvert",
-      "name": "櫻花街 纜線共同管溝 0.8x0.8m",
-      "diameter_mm": 800,
-      "width_m": 0.8,
-      "height_m": 0.8,
-      "length_m": 714.06,
-      "material": "RC/共同管道箱涵",
-      "start_coord": [
-        305305.268,
-        2757594.748,
-        40.911
-      ],
-      "end_coord": [
-        305361.183,
-        2756896.175,
-        40.791
-      ],
-      "start_ground_h": 43.211,
-      "end_ground_h": 43.191,
-      "start_rim_h": 43.211,
-      "end_rim_h": 43.191,
-      "start_invert_h": 40.911,
-      "end_invert_h": 40.791,
-      "start_crown_h": 41.711,
-      "end_crown_h": 41.591,
-      "start_depth_m": 2.3,
-      "end_depth_m": 2.4,
-      "start_cover_m": 1.5,
-      "end_cover_m": 1.6,
-      "depth_m": 2.35,
-      "slope_pct": 0.017,
-      "flow_direction": 1,
-      "coords": [
-        [
-          305305.268,
-          2757594.748,
-          40.911
-        ],
-        [
-          305306.218,
-          2757589.591,
-          40.905
-        ],
-        [
-          305306.445,
-          2757588.351,
-          40.9
-        ],
-        [
-          305308.394,
-          2757563.558,
-          40.894
-        ],
-        [
-          305307.423,
-          2757516.18,
-          40.89
-        ],
-        [
-          305298.79,
-          2757440.171,
-          40.884
-        ],
-        [
-          305293.129,
-          2757396.196,
-          40.88
-        ],
-        [
-          305284.118,
-          2757326.167,
-          40.874
-        ],
-        [
-          305288.771,
-          2757276.773,
-          40.869
-        ],
-        [
-          305307.378,
-          2757193.652,
-          40.86
-        ],
-        [
-          305315.855,
-          2757188.026,
-          40.854
-        ],
-        [
-          305318.21,
-          2757132.509,
-          40.846
-        ],
-        [
-          305318.255,
-          2757131.346,
-          40.84
-        ],
-        [
-          305322.906,
-          2757097.825,
-          40.833
-        ],
-        [
-          305335.315,
-          2757068.788,
-          40.825
-        ],
-        [
-          305349.76,
-          2757021.073,
-          40.816
-        ],
-        [
-          305362.834,
-          2756977.672,
-          40.807
-        ],
-        [
-          305360.577,
-          2756933.755,
-          40.8
-        ],
-        [
-          305361.183,
-          2756896.175,
-          40.791
-        ]
-      ],
-      "source": "Municipal Broadband & Common Utility Duct GIS",
-      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.921495&lon=121.547571&zoom=19",
-      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
-      "osm_url": "https://www.openstreetmap.org/way/361500642",
-      "osm_label": "OpenStreetMap 圖資廊道 #361500642",
-      "portal_url": "https://pipe.nlma.gov.tw/",
-      "portal_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
-      "gov_links": {
-        "portal_url": "https://pipe.nlma.gov.tw/",
-        "portal_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
-        "api_url": null,
-        "api_label": null,
-        "osm_url": "https://www.openstreetmap.org/way/361500642",
-        "osm_label": "OpenStreetMap 圖資廊道 #361500642",
-        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.921495&lon=121.547571&zoom=19",
-        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      },
-      "origin_class": "api_open_data"
-    },
-    {
-      "id": "road_streetlight_361500642",
-      "layer": "streetlights",
-      "type": "pipe",
-      "name": "櫻花街 路燈照明管線 D=80mm",
-      "diameter_mm": 80,
-      "width_m": 0.08,
-      "height_m": 0.08,
-      "length_m": 714.38,
-      "material": "PVC/路燈專用管",
-      "start_coord": [
-        305307.825,
-        2757595.219,
-        42.411
-      ],
-      "end_coord": [
-        305363.783,
-        2756896.217,
-        42.371
-      ],
-      "start_ground_h": 43.211,
-      "end_ground_h": 43.191,
-      "start_rim_h": 43.211,
-      "end_rim_h": 43.191,
-      "start_invert_h": 42.411,
-      "end_invert_h": 42.371,
-      "start_crown_h": 42.491,
-      "end_crown_h": 42.451,
-      "start_depth_m": 0.8,
-      "end_depth_m": 0.82,
-      "start_cover_m": 0.72,
-      "end_cover_m": 0.74,
-      "depth_m": 0.81,
-      "slope_pct": 0.006,
-      "flow_direction": 1,
-      "coords": [
-        [
-          305307.825,
-          2757595.219,
-          42.411
-        ],
-        [
-          305308.775,
-          2757590.059,
-          42.41
-        ],
-        [
-          305309.037,
-          2757588.555,
-          42.409
-        ],
-        [
-          305310.993,
-          2757563.505,
-          42.408
-        ],
-        [
-          305310.006,
-          2757515.887,
-          42.408
-        ],
-        [
-          305301.369,
-          2757439.839,
-          42.406
-        ],
-        [
-          305295.708,
-          2757395.864,
-          42.406
-        ],
-        [
-          305286.707,
-          2757326.411,
-          42.405
-        ],
-        [
-          305291.308,
-          2757277.341,
-          42.404
-        ],
-        [
-          305308.816,
-          2757195.818,
-          42.4
-        ],
-        [
-          305318.453,
-          2757188.136,
-          42.398
-        ],
-        [
-          305320.808,
-          2757132.61,
-          42.395
-        ],
-        [
-          305320.83,
-          2757131.703,
-          42.394
-        ],
-        [
-          305325.297,
-          2757098.847,
-          42.391
-        ],
-        [
-          305337.803,
-          2757069.541,
-          42.387
-        ],
-        [
-          305352.249,
-          2757021.823,
-          42.382
-        ],
-        [
-          305365.431,
-          2756977.539,
-          42.378
-        ],
-        [
-          305363.177,
-          2756933.797,
-          42.375
-        ],
-        [
-          305363.783,
-          2756896.217,
-          42.371
-        ]
-      ],
-      "source": "Municipal Streetlight Circuit GIS",
-      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.921515&lon=121.547585&zoom=19",
-      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
-      "osm_url": "https://www.openstreetmap.org/way/361500642",
-      "osm_label": "OpenStreetMap 圖資廊道 #361500642",
-      "portal_url": "https://pipe.nlma.gov.tw/",
-      "portal_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
-      "gov_links": {
-        "portal_url": "https://pipe.nlma.gov.tw/",
-        "portal_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
-        "api_url": null,
-        "api_label": null,
-        "osm_url": "https://www.openstreetmap.org/way/361500642",
-        "osm_label": "OpenStreetMap 圖資廊道 #361500642",
-        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.921515&lon=121.547585&zoom=19",
-        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      },
-      "origin_class": "api_open_data"
-    },
-    {
-      "id": "road_sanitary_133599802",
-      "layer": "sanitary",
-      "type": "pipe",
-      "name": "自強路 污水管線 D=300mm",
-      "diameter_mm": 300,
-      "width_m": 0.3,
-      "height_m": 0.3,
-      "length_m": 291.34,
-      "material": "DIP/延性鑄鐵管",
-      "start_coord": [
-        305151.852,
-        2757315.935,
-        40.769
-      ],
-      "end_coord": [
-        305171.05,
-        2757602.728,
-        40.563
-      ],
-      "start_ground_h": 43.219,
-      "end_ground_h": 43.213,
-      "start_rim_h": 43.219,
-      "end_rim_h": 43.213,
-      "start_invert_h": 40.769,
-      "end_invert_h": 40.563,
-      "start_crown_h": 41.069,
-      "end_crown_h": 40.863,
-      "start_depth_m": 2.45,
-      "end_depth_m": 2.65,
-      "start_cover_m": 2.15,
-      "end_cover_m": 2.35,
-      "depth_m": 2.55,
-      "slope_pct": 0.071,
-      "flow_direction": 1,
-      "coords": [
-        [
-          305151.852,
-          2757315.935,
-          40.769
-        ],
-        [
-          305161.131,
-          2757380.094,
-          40.742
-        ],
-        [
-          305184.075,
-          2757472.861,
-          40.715
-        ],
-        [
-          305185.947,
-          2757488.066,
-          40.689
-        ],
-        [
-          305184.656,
-          2757501.736,
-          40.664
-        ],
-        [
-          305181.625,
-          2757524.632,
-          40.639
-        ],
-        [
-          305180.667,
-          2757531.888,
-          40.614
-        ],
-        [
-          305174.797,
-          2757575.107,
-          40.588
-        ],
-        [
-          305171.05,
-          2757602.728,
-          40.563
-        ]
-      ],
-      "source": "Taipei / Taiwan Sanitary Sewer Corridor GIS",
-      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.924281&lon=121.546368&zoom=19",
-      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
-      "osm_url": "https://www.openstreetmap.org/way/133599802",
-      "osm_label": "OpenStreetMap 圖資廊道 #133599802",
-      "portal_url": "https://pipe.nlma.gov.tw/",
-      "portal_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
-      "gov_links": {
-        "portal_url": "https://pipe.nlma.gov.tw/",
-        "portal_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
-        "api_url": null,
-        "api_label": null,
-        "osm_url": "https://www.openstreetmap.org/way/133599802",
-        "osm_label": "OpenStreetMap 圖資廊道 #133599802",
-        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.924281&lon=121.546368&zoom=19",
-        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      },
-      "origin_class": "api_open_data"
-    },
-    {
-      "id": "road_sanitary_mh_133599802",
-      "layer": "sanitary",
-      "type": "manhole",
-      "name": "自強路 污水人孔 WMH-9802",
-      "facility_no": "WMH-9802",
-      "structure_type": "圓形污水人孔",
-      "coord": [
-        305151.852,
-        2757315.935,
-        40.769
-      ],
-      "rim_h": 43.219,
-      "invert_h": 40.769,
-      "depth_m": 2.45,
-      "diameter_mm": 600,
-      "road_name": "自強路",
-      "source": "Taipei / Taiwan Sanitary Sewer Corridor GIS",
-      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.922605&lon=121.546036&zoom=19",
-      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
-      "osm_url": "https://www.openstreetmap.org/?mlat=24.922605&mlon=121.546036#map=19/24.922605/121.546036",
-      "osm_label": "OpenStreetMap 座標圖台",
-      "portal_url": "https://pipe.nlma.gov.tw/",
-      "portal_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
-      "gov_links": {
-        "portal_url": "https://pipe.nlma.gov.tw/",
-        "portal_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
-        "api_url": null,
-        "api_label": null,
-        "osm_url": "https://www.openstreetmap.org/?mlat=24.922605&mlon=121.546036#map=19/24.922605/121.546036",
-        "osm_label": "OpenStreetMap 座標圖台",
-        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.922605&lon=121.546036&zoom=19",
-        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      },
-      "origin_class": "api_open_data"
-    },
-    {
-      "id": "road_water_133599802",
-      "layer": "water",
-      "type": "pipe",
-      "name": "自強路 自來水配水管 D=200mm",
-      "diameter_mm": 200,
-      "width_m": 0.2,
-      "height_m": 0.2,
-      "length_m": 292.04,
-      "material": "DIP/自來水延性鑄鐵管",
-      "start_coord": [
-        305154.327,
-        2757315.577,
-        41.969
-      ],
-      "end_coord": [
-        305173.527,
-        2757603.064,
-        41.913
-      ],
-      "start_ground_h": 43.219,
-      "end_ground_h": 43.213,
-      "start_rim_h": 43.219,
-      "end_rim_h": 43.213,
-      "start_invert_h": 41.969,
-      "end_invert_h": 41.913,
-      "start_crown_h": 42.169,
-      "end_crown_h": 42.113,
-      "start_depth_m": 1.25,
-      "end_depth_m": 1.3,
-      "start_cover_m": 1.05,
-      "end_cover_m": 1.1,
-      "depth_m": 1.27,
-      "slope_pct": 0.019,
-      "flow_direction": 1,
-      "coords": [
-        [
-          305154.327,
-          2757315.577,
-          41.969
-        ],
-        [
-          305163.558,
-          2757379.494,
-          41.961
-        ],
-        [
-          305186.557,
-          2757472.561,
-          41.953
-        ],
-        [
-          305188.436,
-          2757488.302,
-          41.945
-        ],
-        [
-          305187.134,
-          2757502.064,
-          41.939
-        ],
-        [
-          305184.103,
-          2757524.959,
-          41.933
-        ],
-        [
-          305183.144,
-          2757532.224,
-          41.926
-        ],
-        [
-          305177.274,
-          2757575.443,
-          41.919
-        ],
-        [
-          305173.527,
-          2757603.064,
-          41.913
-        ]
-      ],
-      "source": "Taipei Water Department Corridor GIS (臺北自來水事業處)",
-      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.924284&lon=121.546392&zoom=19",
-      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
-      "osm_url": "https://www.openstreetmap.org/way/133599802",
-      "osm_label": "OpenStreetMap 圖資廊道 #133599802",
-      "portal_url": "https://pipe.nlma.gov.tw/",
-      "portal_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
-      "gov_links": {
-        "portal_url": "https://pipe.nlma.gov.tw/",
-        "portal_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
-        "api_url": null,
-        "api_label": null,
-        "osm_url": "https://www.openstreetmap.org/way/133599802",
-        "osm_label": "OpenStreetMap 圖資廊道 #133599802",
-        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.924284&lon=121.546392&zoom=19",
-        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      },
-      "origin_class": "api_open_data"
-    },
-    {
-      "id": "road_electric_133599802",
-      "layer": "electric",
-      "type": "pipe",
-      "name": "自強路 台電配電管線 D=150mm",
-      "diameter_mm": 150,
-      "width_m": 0.15,
-      "height_m": 0.15,
-      "length_m": 291.54,
-      "material": "PVC/台電地下配電管",
-      "start_coord": [
-        305152.545,
-        2757315.835,
-        41.769
-      ],
-      "end_coord": [
-        305171.743,
-        2757602.822,
-        41.713
-      ],
-      "start_ground_h": 43.219,
-      "end_ground_h": 43.213,
-      "start_rim_h": 43.219,
-      "end_rim_h": 43.213,
-      "start_invert_h": 41.769,
-      "end_invert_h": 41.713,
-      "start_crown_h": 41.919,
-      "end_crown_h": 41.863,
-      "start_depth_m": 1.45,
-      "end_depth_m": 1.5,
-      "start_cover_m": 1.3,
-      "end_cover_m": 1.35,
-      "depth_m": 1.48,
-      "slope_pct": 0.019,
-      "flow_direction": 1,
-      "coords": [
-        [
-          305152.545,
-          2757315.835,
-          41.769
-        ],
-        [
-          305161.81,
-          2757379.926,
-          41.761
-        ],
-        [
-          305184.769,
-          2757472.777,
-          41.753
-        ],
-        [
-          305186.644,
-          2757488.132,
-          41.745
-        ],
-        [
-          305185.35,
-          2757501.828,
-          41.739
-        ],
-        [
-          305182.319,
-          2757524.723,
-          41.733
-        ],
-        [
-          305181.36,
-          2757531.982,
-          41.727
-        ],
-        [
-          305175.49,
-          2757575.201,
-          41.719
-        ],
-        [
-          305171.743,
-          2757602.822,
-          41.713
-        ]
-      ],
-      "source": "Taipower Underground Distribution Corridor GIS",
-      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.924282&lon=121.546375&zoom=19",
-      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
-      "osm_url": "https://www.openstreetmap.org/way/133599802",
-      "osm_label": "OpenStreetMap 圖資廊道 #133599802",
-      "portal_url": "https://pipe.nlma.gov.tw/",
-      "portal_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
-      "gov_links": {
-        "portal_url": "https://pipe.nlma.gov.tw/",
-        "portal_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
-        "api_url": null,
-        "api_label": null,
-        "osm_url": "https://www.openstreetmap.org/way/133599802",
-        "osm_label": "OpenStreetMap 圖資廊道 #133599802",
-        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.924282&lon=121.546375&zoom=19",
-        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      },
-      "origin_class": "api_open_data"
-    },
-    {
-      "id": "road_telecom_133599802",
-      "layer": "telecom",
-      "type": "pipe",
-      "name": "自強路 中華電信光纖管線 D=100mm",
-      "diameter_mm": 100,
-      "width_m": 0.1,
-      "height_m": 0.1,
-      "length_m": 291.18,
-      "material": "HDPE/中華電信光纖管",
-      "start_coord": [
-        305151.259,
-        2757316.021,
-        42.07
-      ],
-      "end_coord": [
-        305170.455,
-        2757602.647,
-        42.013
-      ],
-      "start_ground_h": 43.22,
-      "end_ground_h": 43.213,
-      "start_rim_h": 43.22,
-      "end_rim_h": 43.213,
-      "start_invert_h": 42.07,
-      "end_invert_h": 42.013,
-      "start_crown_h": 42.17,
-      "end_crown_h": 42.113,
-      "start_depth_m": 1.15,
-      "end_depth_m": 1.2,
-      "start_cover_m": 1.05,
-      "end_cover_m": 1.1,
-      "depth_m": 1.17,
-      "slope_pct": 0.02,
-      "flow_direction": 1,
-      "coords": [
-        [
-          305151.259,
-          2757316.021,
-          42.07
-        ],
-        [
-          305160.548,
-          2757380.238,
-          42.061
-        ],
-        [
-          305183.479,
-          2757472.933,
-          42.053
-        ],
-        [
-          305185.35,
-          2757488.01,
-          42.045
-        ],
-        [
-          305184.061,
-          2757501.657,
-          42.039
-        ],
-        [
-          305181.03,
-          2757524.553,
-          42.033
-        ],
-        [
-          305180.072,
-          2757531.807,
-          42.026
-        ],
-        [
-          305174.202,
-          2757575.026,
-          42.019
-        ],
-        [
-          305170.455,
-          2757602.647,
-          42.013
-        ]
-      ],
-      "source": "Telecom & Broadband Fiber Corridor GIS",
-      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.924280&lon=121.546362&zoom=19",
-      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
-      "osm_url": "https://www.openstreetmap.org/way/133599802",
-      "osm_label": "OpenStreetMap 圖資廊道 #133599802",
-      "portal_url": "https://pipe.nlma.gov.tw/",
-      "portal_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
-      "gov_links": {
-        "portal_url": "https://pipe.nlma.gov.tw/",
-        "portal_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
-        "api_url": null,
-        "api_label": null,
-        "osm_url": "https://www.openstreetmap.org/way/133599802",
-        "osm_label": "OpenStreetMap 圖資廊道 #133599802",
-        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.924280&lon=121.546362&zoom=19",
-        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      },
-      "origin_class": "api_open_data"
-    },
-    {
-      "id": "road_gas_133599802",
-      "layer": "gas",
-      "type": "pipe",
-      "name": "自強路 天然瓦斯低壓管 D=100mm",
-      "diameter_mm": 100,
-      "width_m": 0.1,
-      "height_m": 0.1,
-      "length_m": 292.45,
-      "material": "PE/天然氣聚乙烯管",
-      "start_coord": [
-        305155.811,
-        2757315.363,
-        42.219
-      ],
-      "end_coord": [
-        305175.013,
-        2757603.266,
-        42.163
-      ],
-      "start_ground_h": 43.219,
-      "end_ground_h": 43.213,
-      "start_rim_h": 43.219,
-      "end_rim_h": 43.213,
-      "start_invert_h": 42.219,
-      "end_invert_h": 42.163,
-      "start_crown_h": 42.319,
-      "end_crown_h": 42.263,
-      "start_depth_m": 1.0,
-      "end_depth_m": 1.05,
-      "start_cover_m": 0.9,
-      "end_cover_m": 0.95,
-      "depth_m": 1.02,
-      "slope_pct": 0.019,
-      "flow_direction": 1,
-      "coords": [
-        [
-          305155.811,
-          2757315.363,
-          42.219
-        ],
-        [
-          305165.014,
-          2757379.134,
-          42.211
-        ],
-        [
-          305188.046,
-          2757472.381,
-          42.203
-        ],
-        [
-          305189.929,
-          2757488.443,
-          42.195
-        ],
-        [
-          305188.621,
-          2757502.261,
-          42.189
-        ],
-        [
-          305185.59,
-          2757525.155,
-          42.183
-        ],
-        [
-          305184.63,
-          2757532.426,
-          42.176
-        ],
-        [
-          305178.76,
-          2757575.645,
-          42.169
-        ],
-        [
-          305175.013,
-          2757603.266,
-          42.163
-        ]
-      ],
-      "source": "Municipal Natural Gas Utility Corridor GIS",
-      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.924286&lon=121.546407&zoom=19",
-      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
-      "osm_url": "https://www.openstreetmap.org/way/133599802",
-      "osm_label": "OpenStreetMap 圖資廊道 #133599802",
-      "portal_url": "https://pipe.nlma.gov.tw/",
-      "portal_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
-      "gov_links": {
-        "portal_url": "https://pipe.nlma.gov.tw/",
-        "portal_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
-        "api_url": null,
-        "api_label": null,
-        "osm_url": "https://www.openstreetmap.org/way/133599802",
-        "osm_label": "OpenStreetMap 圖資廊道 #133599802",
-        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.924286&lon=121.546407&zoom=19",
-        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      },
-      "origin_class": "api_open_data"
-    },
-    {
-      "id": "road_streetlight_133599802",
-      "layer": "streetlights",
-      "type": "pipe",
-      "name": "自強路 路燈照明管線 D=80mm",
-      "diameter_mm": 80,
-      "width_m": 0.08,
-      "height_m": 0.08,
-      "length_m": 291.07,
-      "material": "PVC/路燈專用管",
-      "start_coord": [
-        305150.863,
-        2757316.078,
-        42.42
-      ],
-      "end_coord": [
-        305170.059,
-        2757602.593,
-        42.393
-      ],
-      "start_ground_h": 43.22,
-      "end_ground_h": 43.213,
-      "start_rim_h": 43.22,
-      "end_rim_h": 43.213,
-      "start_invert_h": 42.42,
-      "end_invert_h": 42.393,
-      "start_crown_h": 42.5,
-      "end_crown_h": 42.473,
-      "start_depth_m": 0.8,
-      "end_depth_m": 0.82,
-      "start_cover_m": 0.72,
-      "end_cover_m": 0.74,
-      "depth_m": 0.81,
-      "slope_pct": 0.009,
-      "flow_direction": 1,
-      "coords": [
-        [
-          305150.863,
-          2757316.078,
-          42.42
-        ],
-        [
-          305160.16,
-          2757380.334,
-          42.414
-        ],
-        [
-          305183.082,
-          2757472.981,
-          42.41
-        ],
-        [
-          305184.952,
-          2757487.972,
-          42.407
-        ],
-        [
-          305183.664,
-          2757501.605,
-          42.404
-        ],
-        [
-          305180.633,
-          2757524.501,
-          42.401
-        ],
-        [
-          305179.676,
-          2757531.753,
-          42.399
-        ],
-        [
-          305173.806,
-          2757574.972,
-          42.395
-        ],
-        [
-          305170.059,
-          2757602.593,
-          42.393
-        ]
-      ],
-      "source": "Municipal Streetlight Circuit GIS",
-      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.924280&lon=121.546358&zoom=19",
-      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
-      "osm_url": "https://www.openstreetmap.org/way/133599802",
-      "osm_label": "OpenStreetMap 圖資廊道 #133599802",
-      "portal_url": "https://pipe.nlma.gov.tw/",
-      "portal_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
-      "gov_links": {
-        "portal_url": "https://pipe.nlma.gov.tw/",
-        "portal_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
-        "api_url": null,
-        "api_label": null,
-        "osm_url": "https://www.openstreetmap.org/way/133599802",
-        "osm_label": "OpenStreetMap 圖資廊道 #133599802",
-        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.924280&lon=121.546358&zoom=19",
-        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      },
-      "origin_class": "api_open_data"
-    },
-    {
-      "id": "road_sanitary_133599840",
-      "layer": "sanitary",
-      "type": "pipe",
-      "name": "屈尺路 污水管線 D=300mm",
-      "diameter_mm": 300,
-      "width_m": 0.3,
-      "height_m": 0.3,
-      "length_m": 288.73,
-      "material": "DIP/延性鑄鐵管",
-      "start_coord": [
-        305439.783,
-        2757316.801,
-        40.758
-      ],
-      "end_coord": [
-        305153.257,
-        2757314.116,
-        40.569
-      ],
-      "start_ground_h": 43.208,
-      "end_ground_h": 43.219,
-      "start_rim_h": 43.208,
-      "end_rim_h": 43.219,
-      "start_invert_h": 40.758,
-      "end_invert_h": 40.569,
-      "start_crown_h": 41.058,
-      "end_crown_h": 40.869,
-      "start_depth_m": 2.45,
-      "end_depth_m": 2.65,
-      "start_cover_m": 2.15,
-      "end_cover_m": 2.35,
-      "depth_m": 2.55,
-      "slope_pct": 0.065,
-      "flow_direction": 1,
-      "coords": [
-        [
-          305439.783,
-          2757316.801,
-          40.758
-        ],
-        [
-          305421.254,
-          2757317.723,
-          40.73
-        ],
-        [
-          305284.153,
-          2757324.567,
-          40.706
-        ],
-        [
-          305244.288,
-          2757323.759,
-          40.679
-        ],
-        [
-          305207.964,
-          2757312.376,
-          40.653
-        ],
-        [
-          305198.563,
-          2757311.208,
-          40.624
-        ],
-        [
-          305182.3,
-          2757310.854,
-          40.597
-        ],
-        [
-          305153.257,
-          2757314.116,
-          40.569
-        ]
-      ],
-      "source": "Taipei / Taiwan Sanitary Sewer Corridor GIS",
-      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.922571&lon=121.546591&zoom=19",
-      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
-      "osm_url": "https://www.openstreetmap.org/way/133599840",
-      "osm_label": "OpenStreetMap 圖資廊道 #133599840",
-      "portal_url": "https://pipe.nlma.gov.tw/",
-      "portal_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
-      "gov_links": {
-        "portal_url": "https://pipe.nlma.gov.tw/",
-        "portal_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
-        "api_url": null,
-        "api_label": null,
-        "osm_url": "https://www.openstreetmap.org/way/133599840",
-        "osm_label": "OpenStreetMap 圖資廊道 #133599840",
-        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.922571&lon=121.546591&zoom=19",
-        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      },
-      "origin_class": "api_open_data"
-    },
-    {
-      "id": "road_sanitary_mh_133599840",
-      "layer": "sanitary",
-      "type": "manhole",
-      "name": "屈尺路 污水人孔 WMH-9840",
-      "facility_no": "WMH-9840",
-      "structure_type": "圓形污水人孔",
-      "coord": [
-        305439.783,
-        2757316.801,
-        40.758
-      ],
-      "rim_h": 43.208,
-      "invert_h": 40.758,
-      "depth_m": 2.45,
-      "diameter_mm": 600,
-      "road_name": "屈尺路",
-      "source": "Taipei / Taiwan Sanitary Sewer Corridor GIS",
-      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.922602&lon=121.548886&zoom=19",
-      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
-      "osm_url": "https://www.openstreetmap.org/?mlat=24.922602&mlon=121.548886#map=19/24.922602/121.548886",
-      "osm_label": "OpenStreetMap 座標圖台",
-      "portal_url": "https://pipe.nlma.gov.tw/",
-      "portal_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
-      "gov_links": {
-        "portal_url": "https://pipe.nlma.gov.tw/",
-        "portal_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
-        "api_url": null,
-        "api_label": null,
-        "osm_url": "https://www.openstreetmap.org/?mlat=24.922602&mlon=121.548886#map=19/24.922602/121.548886",
-        "osm_label": "OpenStreetMap 座標圖台",
-        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.922602&lon=121.548886&zoom=19",
-        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      },
-      "origin_class": "api_open_data"
-    },
-    {
-      "id": "road_water_133599840",
-      "layer": "water",
-      "type": "pipe",
-      "name": "屈尺路 自來水配水管 D=200mm",
-      "diameter_mm": 200,
-      "width_m": 0.2,
-      "height_m": 0.2,
-      "length_m": 288.57,
-      "material": "DIP/自來水延性鑄鐵管",
-      "start_coord": [
-        305439.908,
-        2757319.298,
-        41.958
-      ],
-      "end_coord": [
-        305153.536,
-        2757316.6,
-        41.919
-      ],
-      "start_ground_h": 43.208,
-      "end_ground_h": 43.219,
-      "start_rim_h": 43.208,
-      "end_rim_h": 43.219,
-      "start_invert_h": 41.958,
-      "end_invert_h": 41.919,
-      "start_crown_h": 42.158,
-      "end_crown_h": 42.119,
-      "start_depth_m": 1.25,
-      "end_depth_m": 1.3,
-      "start_cover_m": 1.05,
-      "end_cover_m": 1.1,
-      "depth_m": 1.27,
-      "slope_pct": 0.014,
-      "flow_direction": 1,
-      "coords": [
-        [
-          305439.908,
-          2757319.298,
-          41.958
-        ],
-        [
-          305421.379,
-          2757320.22,
-          41.952
-        ],
-        [
-          305284.098,
-          2757327.067,
-          41.949
-        ],
-        [
-          305243.539,
-          2757326.144,
-          41.944
-        ],
-        [
-          305207.653,
-          2757314.857,
-          41.938
-        ],
-        [
-          305198.507,
-          2757313.708,
-          41.931
-        ],
-        [
-          305182.579,
-          2757313.338,
-          41.925
-        ],
-        [
-          305153.536,
-          2757316.6,
-          41.919
-        ]
-      ],
-      "source": "Taipei Water Department Corridor GIS (臺北自來水事業處)",
-      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.922593&lon=121.546588&zoom=19",
-      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
-      "osm_url": "https://www.openstreetmap.org/way/133599840",
-      "osm_label": "OpenStreetMap 圖資廊道 #133599840",
-      "portal_url": "https://pipe.nlma.gov.tw/",
-      "portal_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
-      "gov_links": {
-        "portal_url": "https://pipe.nlma.gov.tw/",
-        "portal_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
-        "api_url": null,
-        "api_label": null,
-        "osm_url": "https://www.openstreetmap.org/way/133599840",
-        "osm_label": "OpenStreetMap 圖資廊道 #133599840",
-        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.922593&lon=121.546588&zoom=19",
-        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      },
-      "origin_class": "api_open_data"
-    },
-    {
-      "id": "road_electric_133599840",
-      "layer": "electric",
-      "type": "pipe",
-      "name": "屈尺路 台電配電管線 D=150mm",
-      "diameter_mm": 150,
-      "width_m": 0.15,
-      "height_m": 0.15,
-      "length_m": 288.68,
-      "material": "PVC/台電地下配電管",
-      "start_coord": [
-        305439.818,
-        2757317.5,
-        41.758
-      ],
-      "end_coord": [
-        305153.336,
-        2757314.812,
-        41.719
-      ],
-      "start_ground_h": 43.208,
-      "end_ground_h": 43.219,
-      "start_rim_h": 43.208,
-      "end_rim_h": 43.219,
-      "start_invert_h": 41.758,
-      "end_invert_h": 41.719,
-      "start_crown_h": 41.908,
-      "end_crown_h": 41.869,
-      "start_depth_m": 1.45,
-      "end_depth_m": 1.5,
-      "start_cover_m": 1.3,
-      "end_cover_m": 1.35,
-      "depth_m": 1.48,
-      "slope_pct": 0.014,
-      "flow_direction": 1,
-      "coords": [
-        [
-          305439.818,
-          2757317.5,
-          41.758
-        ],
-        [
-          305421.289,
-          2757318.422,
-          41.752
-        ],
-        [
-          305284.138,
-          2757325.267,
-          41.749
-        ],
-        [
-          305244.079,
-          2757324.426,
-          41.744
-        ],
-        [
-          305207.877,
-          2757313.071,
-          41.738
-        ],
-        [
-          305198.547,
-          2757311.908,
-          41.731
-        ],
-        [
-          305182.379,
-          2757311.55,
-          41.725
-        ],
-        [
-          305153.336,
-          2757314.812,
-          41.719
-        ]
-      ],
-      "source": "Taipower Underground Distribution Corridor GIS",
-      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.922577&lon=121.546590&zoom=19",
-      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
-      "osm_url": "https://www.openstreetmap.org/way/133599840",
-      "osm_label": "OpenStreetMap 圖資廊道 #133599840",
-      "portal_url": "https://pipe.nlma.gov.tw/",
-      "portal_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
-      "gov_links": {
-        "portal_url": "https://pipe.nlma.gov.tw/",
-        "portal_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
-        "api_url": null,
-        "api_label": null,
-        "osm_url": "https://www.openstreetmap.org/way/133599840",
-        "osm_label": "OpenStreetMap 圖資廊道 #133599840",
-        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.922577&lon=121.546590&zoom=19",
-        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      },
-      "origin_class": "api_open_data"
-    },
-    {
-      "id": "road_telecom_133599840",
-      "layer": "telecom",
-      "type": "pipe",
-      "name": "屈尺路 中華電信光纖管線 D=100mm",
-      "diameter_mm": 100,
-      "width_m": 0.1,
-      "height_m": 0.1,
-      "length_m": 288.77,
-      "material": "HDPE/中華電信光纖管",
-      "start_coord": [
-        305439.754,
-        2757316.202,
-        42.058
-      ],
-      "end_coord": [
-        305153.19,
-        2757313.52,
-        42.019
-      ],
-      "start_ground_h": 43.208,
-      "end_ground_h": 43.219,
-      "start_rim_h": 43.208,
-      "end_rim_h": 43.219,
-      "start_invert_h": 42.058,
-      "end_invert_h": 42.019,
-      "start_crown_h": 42.158,
-      "end_crown_h": 42.119,
-      "start_depth_m": 1.15,
-      "end_depth_m": 1.2,
-      "start_cover_m": 1.05,
-      "end_cover_m": 1.1,
-      "depth_m": 1.17,
-      "slope_pct": 0.014,
-      "flow_direction": 1,
-      "coords": [
-        [
-          305439.754,
-          2757316.202,
-          42.058
-        ],
-        [
-          305421.224,
-          2757317.124,
-          42.052
-        ],
-        [
-          305284.166,
-          2757323.968,
-          42.049
-        ],
-        [
-          305244.468,
-          2757323.186,
-          42.044
-        ],
-        [
-          305208.038,
-          2757311.781,
-          42.038
-        ],
-        [
-          305198.577,
-          2757310.609,
-          42.031
-        ],
-        [
-          305182.233,
-          2757310.258,
-          42.025
-        ],
-        [
-          305153.19,
-          2757313.52,
-          42.019
-        ]
-      ],
-      "source": "Telecom & Broadband Fiber Corridor GIS",
-      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.922565&lon=121.546592&zoom=19",
-      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
-      "osm_url": "https://www.openstreetmap.org/way/133599840",
-      "osm_label": "OpenStreetMap 圖資廊道 #133599840",
-      "portal_url": "https://pipe.nlma.gov.tw/",
-      "portal_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
-      "gov_links": {
-        "portal_url": "https://pipe.nlma.gov.tw/",
-        "portal_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
-        "api_url": null,
-        "api_label": null,
-        "osm_url": "https://www.openstreetmap.org/way/133599840",
-        "osm_label": "OpenStreetMap 圖資廊道 #133599840",
-        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.922565&lon=121.546592&zoom=19",
-        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      },
-      "origin_class": "api_open_data"
-    },
-    {
-      "id": "road_gas_133599840",
-      "layer": "gas",
-      "type": "pipe",
-      "name": "屈尺路 天然瓦斯低壓管 D=100mm",
-      "diameter_mm": 100,
-      "width_m": 0.1,
-      "height_m": 0.1,
-      "length_m": 288.47,
-      "material": "PE/天然氣聚乙烯管",
-      "start_coord": [
-        305439.982,
-        2757320.796,
-        42.208
-      ],
-      "end_coord": [
-        305153.704,
-        2757318.091,
-        42.169
-      ],
-      "start_ground_h": 43.208,
-      "end_ground_h": 43.219,
-      "start_rim_h": 43.208,
-      "end_rim_h": 43.219,
-      "start_invert_h": 42.208,
-      "end_invert_h": 42.169,
-      "start_crown_h": 42.308,
-      "end_crown_h": 42.269,
-      "start_depth_m": 1.0,
-      "end_depth_m": 1.05,
-      "start_cover_m": 0.9,
-      "end_cover_m": 0.95,
-      "depth_m": 1.02,
-      "slope_pct": 0.014,
-      "flow_direction": 1,
-      "coords": [
-        [
-          305439.982,
-          2757320.796,
-          42.208
-        ],
-        [
-          305421.454,
-          2757321.718,
-          42.202
-        ],
-        [
-          305284.065,
-          2757328.566,
-          42.199
-        ],
-        [
-          305243.09,
-          2757327.575,
-          42.194
-        ],
-        [
-          305207.467,
-          2757316.345,
-          42.188
-        ],
-        [
-          305198.473,
-          2757315.207,
-          42.181
-        ],
-        [
-          305182.747,
-          2757314.829,
-          42.175
-        ],
-        [
-          305153.704,
-          2757318.091,
-          42.169
-        ]
-      ],
-      "source": "Municipal Natural Gas Utility Corridor GIS",
-      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.922607&lon=121.546586&zoom=19",
-      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
-      "osm_url": "https://www.openstreetmap.org/way/133599840",
-      "osm_label": "OpenStreetMap 圖資廊道 #133599840",
-      "portal_url": "https://pipe.nlma.gov.tw/",
-      "portal_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
-      "gov_links": {
-        "portal_url": "https://pipe.nlma.gov.tw/",
-        "portal_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
-        "api_url": null,
-        "api_label": null,
-        "osm_url": "https://www.openstreetmap.org/way/133599840",
-        "osm_label": "OpenStreetMap 圖資廊道 #133599840",
-        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.922607&lon=121.546586&zoom=19",
-        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      },
-      "origin_class": "api_open_data"
-    },
-    {
-      "id": "road_sanitary_1435855810",
-      "layer": "sanitary",
-      "type": "pipe",
-      "name": "次要道路 污水管線 D=300mm",
-      "diameter_mm": 300,
-      "width_m": 0.3,
-      "height_m": 0.3,
-      "length_m": 115.41,
-      "material": "DIP/延性鑄鐵管",
-      "start_coord": [
-        305347.471,
-        2756756.476,
-        40.735
-      ],
-      "end_coord": [
-        305438.571,
-        2756735.096,
-        40.539
-      ],
-      "start_ground_h": 43.185,
-      "end_ground_h": 43.189,
-      "start_rim_h": 43.185,
-      "end_rim_h": 43.189,
-      "start_invert_h": 40.735,
-      "end_invert_h": 40.539,
-      "start_crown_h": 41.035,
-      "end_crown_h": 40.839,
-      "start_depth_m": 2.45,
-      "end_depth_m": 2.65,
-      "start_cover_m": 2.15,
-      "end_cover_m": 2.35,
-      "depth_m": 2.55,
-      "slope_pct": 0.17,
-      "flow_direction": 1,
-      "coords": [
-        [
-          305347.471,
-          2756756.476,
-          40.735
-        ],
-        [
-          305371.808,
-          2756758.715,
-          40.67
-        ],
-        [
-          305416.205,
-          2756773.276,
-          40.606
-        ],
-        [
-          305438.571,
-          2756735.096,
-          40.539
-        ]
-      ],
-      "source": "Taipei / Taiwan Sanitary Sewer Corridor GIS",
-      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.917696&lon=121.548631&zoom=19",
-      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
-      "osm_url": "https://www.openstreetmap.org/way/1435855810",
-      "osm_label": "OpenStreetMap 圖資廊道 #1435855810",
-      "portal_url": "https://pipe.nlma.gov.tw/",
-      "portal_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
-      "gov_links": {
-        "portal_url": "https://pipe.nlma.gov.tw/",
-        "portal_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
-        "api_url": null,
-        "api_label": null,
-        "osm_url": "https://www.openstreetmap.org/way/1435855810",
-        "osm_label": "OpenStreetMap 圖資廊道 #1435855810",
-        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.917696&lon=121.548631&zoom=19",
-        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      },
-      "origin_class": "api_open_data"
-    },
-    {
-      "id": "road_sanitary_mh_1435855810",
-      "layer": "sanitary",
-      "type": "manhole",
-      "name": "次要道路 污水人孔 WMH-5810",
-      "facility_no": "WMH-5810",
-      "structure_type": "圓形污水人孔",
-      "coord": [
-        305347.471,
-        2756756.476,
-        40.735
-      ],
-      "rim_h": 43.185,
-      "invert_h": 40.735,
-      "depth_m": 2.45,
-      "diameter_mm": 600,
-      "road_name": "次要道路",
-      "source": "Taipei / Taiwan Sanitary Sewer Corridor GIS",
-      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.917547&lon=121.547950&zoom=19",
-      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
-      "osm_url": "https://www.openstreetmap.org/?mlat=24.917547&mlon=121.547950#map=19/24.917547/121.547950",
-      "osm_label": "OpenStreetMap 座標圖台",
-      "portal_url": "https://pipe.nlma.gov.tw/",
-      "portal_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
-      "gov_links": {
-        "portal_url": "https://pipe.nlma.gov.tw/",
-        "portal_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
-        "api_url": null,
-        "api_label": null,
-        "osm_url": "https://www.openstreetmap.org/?mlat=24.917547&mlon=121.547950#map=19/24.917547/121.547950",
-        "osm_label": "OpenStreetMap 座標圖台",
-        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.917547&lon=121.547950&zoom=19",
-        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      },
-      "origin_class": "api_open_data"
-    },
-    {
-      "id": "road_water_1435855810",
-      "layer": "water",
-      "type": "pipe",
-      "name": "次要道路 自來水配水管 D=200mm",
-      "diameter_mm": 200,
-      "width_m": 0.2,
-      "height_m": 0.2,
-      "length_m": 113.56,
-      "material": "DIP/自來水延性鑄鐵管",
-      "start_coord": [
-        305347.705,
-        2756753.987,
-        41.935
-      ],
-      "end_coord": [
-        305436.413,
-        2756733.832,
-        41.889
-      ],
-      "start_ground_h": 43.185,
-      "end_ground_h": 43.189,
-      "start_rim_h": 43.185,
-      "end_rim_h": 43.189,
-      "start_invert_h": 41.935,
-      "end_invert_h": 41.889,
-      "start_crown_h": 42.135,
-      "end_crown_h": 42.089,
-      "start_depth_m": 1.25,
-      "end_depth_m": 1.3,
-      "start_cover_m": 1.05,
-      "end_cover_m": 1.1,
-      "depth_m": 1.27,
-      "slope_pct": 0.041,
-      "flow_direction": 1,
-      "coords": [
-        [
-          305347.705,
-          2756753.987,
-          41.935
-        ],
-        [
-          305372.653,
-          2756756.362,
-          41.92
-        ],
-        [
-          305414.047,
-          2756772.012,
-          41.906
-        ],
-        [
-          305436.413,
-          2756733.832,
-          41.889
-        ]
-      ],
-      "source": "Taipei Water Department Corridor GIS (臺北自來水事業處)",
-      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.917685&lon=121.548610&zoom=19",
-      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
-      "osm_url": "https://www.openstreetmap.org/way/1435855810",
-      "osm_label": "OpenStreetMap 圖資廊道 #1435855810",
-      "portal_url": "https://pipe.nlma.gov.tw/",
-      "portal_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
-      "gov_links": {
-        "portal_url": "https://pipe.nlma.gov.tw/",
-        "portal_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
-        "api_url": null,
-        "api_label": null,
-        "osm_url": "https://www.openstreetmap.org/way/1435855810",
-        "osm_label": "OpenStreetMap 圖資廊道 #1435855810",
-        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.917685&lon=121.548610&zoom=19",
-        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      },
-      "origin_class": "api_open_data"
-    },
-    {
-      "id": "road_electric_1435855810",
-      "layer": "electric",
-      "type": "pipe",
-      "name": "次要道路 台電配電管線 D=150mm",
-      "diameter_mm": 150,
-      "width_m": 0.15,
-      "height_m": 0.15,
-      "length_m": 114.89,
-      "material": "PVC/台電地下配電管",
-      "start_coord": [
-        305347.537,
-        2756755.779,
-        41.735
-      ],
-      "end_coord": [
-        305437.967,
-        2756734.742,
-        41.689
-      ],
-      "start_ground_h": 43.185,
-      "end_ground_h": 43.189,
-      "start_rim_h": 43.185,
-      "end_rim_h": 43.189,
-      "start_invert_h": 41.735,
-      "end_invert_h": 41.689,
-      "start_crown_h": 41.885,
-      "end_crown_h": 41.839,
-      "start_depth_m": 1.45,
-      "end_depth_m": 1.5,
-      "start_cover_m": 1.3,
-      "end_cover_m": 1.35,
-      "depth_m": 1.48,
-      "slope_pct": 0.04,
-      "flow_direction": 1,
-      "coords": [
-        [
-          305347.537,
-          2756755.779,
-          41.735
-        ],
-        [
-          305372.045,
-          2756758.056,
-          41.72
-        ],
-        [
-          305415.601,
-          2756772.922,
-          41.706
-        ],
-        [
-          305437.967,
-          2756734.742,
-          41.689
-        ]
-      ],
-      "source": "Taipower Underground Distribution Corridor GIS",
-      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.917693&lon=121.548625&zoom=19",
-      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
-      "osm_url": "https://www.openstreetmap.org/way/1435855810",
-      "osm_label": "OpenStreetMap 圖資廊道 #1435855810",
-      "portal_url": "https://pipe.nlma.gov.tw/",
-      "portal_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
-      "gov_links": {
-        "portal_url": "https://pipe.nlma.gov.tw/",
-        "portal_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
-        "api_url": null,
-        "api_label": null,
-        "osm_url": "https://www.openstreetmap.org/way/1435855810",
-        "osm_label": "OpenStreetMap 圖資廊道 #1435855810",
-        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.917693&lon=121.548625&zoom=19",
-        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      },
-      "origin_class": "api_open_data"
-    },
-    {
-      "id": "road_telecom_1435855810",
-      "layer": "telecom",
-      "type": "pipe",
-      "name": "次要道路 中華電信光纖管線 D=100mm",
-      "diameter_mm": 100,
-      "width_m": 0.1,
-      "height_m": 0.1,
-      "length_m": 115.87,
-      "material": "HDPE/中華電信光纖管",
-      "start_coord": [
-        305347.415,
-        2756757.073,
-        42.035
-      ],
-      "end_coord": [
-        305439.088,
-        2756735.399,
-        41.989
-      ],
-      "start_ground_h": 43.185,
-      "end_ground_h": 43.189,
-      "start_rim_h": 43.185,
-      "end_rim_h": 43.189,
-      "start_invert_h": 42.035,
-      "end_invert_h": 41.989,
-      "start_crown_h": 42.135,
-      "end_crown_h": 42.089,
-      "start_depth_m": 1.15,
-      "end_depth_m": 1.2,
-      "start_cover_m": 1.05,
-      "end_cover_m": 1.1,
-      "depth_m": 1.17,
-      "slope_pct": 0.04,
-      "flow_direction": 1,
-      "coords": [
-        [
-          305347.415,
-          2756757.073,
-          42.035
-        ],
-        [
-          305371.605,
-          2756759.279,
-          42.02
-        ],
-        [
-          305416.722,
-          2756773.579,
-          42.006
-        ],
-        [
-          305439.088,
-          2756735.399,
-          41.989
-        ]
-      ],
-      "source": "Telecom & Broadband Fiber Corridor GIS",
-      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.917699&lon=121.548636&zoom=19",
-      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
-      "osm_url": "https://www.openstreetmap.org/way/1435855810",
-      "osm_label": "OpenStreetMap 圖資廊道 #1435855810",
-      "portal_url": "https://pipe.nlma.gov.tw/",
-      "portal_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
-      "gov_links": {
-        "portal_url": "https://pipe.nlma.gov.tw/",
-        "portal_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
-        "api_url": null,
-        "api_label": null,
-        "osm_url": "https://www.openstreetmap.org/way/1435855810",
-        "osm_label": "OpenStreetMap 圖資廊道 #1435855810",
-        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.917699&lon=121.548636&zoom=19",
-        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      },
-      "origin_class": "api_open_data"
-    },
-    {
-      "id": "road_sanitary_312539841",
-      "layer": "sanitary",
-      "type": "pipe",
-      "name": "屈尺路 污水管線 D=300mm",
-      "diameter_mm": 300,
-      "width_m": 0.3,
-      "height_m": 0.3,
-      "length_m": 39.93,
-      "material": "DIP/延性鑄鐵管",
-      "start_coord": [
-        305153.111,
-        2757314.139,
-        40.769
-      ],
-      "end_coord": [
-        305114.212,
-        2757323.095,
-        40.571
-      ],
-      "start_ground_h": 43.219,
-      "end_ground_h": 43.221,
-      "start_rim_h": 43.219,
-      "end_rim_h": 43.221,
-      "start_invert_h": 40.769,
-      "end_invert_h": 40.571,
-      "start_crown_h": 41.069,
-      "end_crown_h": 40.871,
-      "start_depth_m": 2.45,
-      "end_depth_m": 2.65,
-      "start_cover_m": 2.15,
-      "end_cover_m": 2.35,
-      "depth_m": 2.55,
-      "slope_pct": 0.496,
-      "flow_direction": 1,
-      "coords": [
-        [
-          305153.111,
-          2757314.139,
-          40.769
-        ],
-        [
-          305131.381,
-          2757318.645,
-          40.67
-        ],
-        [
-          305114.212,
-          2757323.095,
-          40.571
-        ]
-      ],
-      "source": "Taipei / Taiwan Sanitary Sewer Corridor GIS",
-      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.922630&lon=121.545833&zoom=19",
-      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
-      "osm_url": "https://www.openstreetmap.org/way/312539841",
-      "osm_label": "OpenStreetMap 圖資廊道 #312539841",
-      "portal_url": "https://pipe.nlma.gov.tw/",
-      "portal_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
-      "gov_links": {
-        "portal_url": "https://pipe.nlma.gov.tw/",
-        "portal_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
-        "api_url": null,
-        "api_label": null,
-        "osm_url": "https://www.openstreetmap.org/way/312539841",
-        "osm_label": "OpenStreetMap 圖資廊道 #312539841",
-        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.922630&lon=121.545833&zoom=19",
-        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      },
-      "origin_class": "api_open_data"
-    },
-    {
-      "id": "road_sanitary_mh_312539841",
-      "layer": "sanitary",
-      "type": "manhole",
-      "name": "屈尺路 污水人孔 WMH-9841",
-      "facility_no": "WMH-9841",
-      "structure_type": "圓形污水人孔",
-      "coord": [
-        305153.111,
-        2757314.139,
-        40.769
-      ],
-      "rim_h": 43.219,
-      "invert_h": 40.769,
-      "depth_m": 2.45,
-      "diameter_mm": 600,
-      "road_name": "屈尺路",
-      "source": "Taipei / Taiwan Sanitary Sewer Corridor GIS",
-      "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.922589&lon=121.546048&zoom=19",
-      "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)",
-      "osm_url": "https://www.openstreetmap.org/?mlat=24.922589&mlon=121.546048#map=19/24.922589/121.546048",
-      "osm_label": "OpenStreetMap 座標圖台",
-      "portal_url": "https://pipe.nlma.gov.tw/",
-      "portal_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
-      "gov_links": {
-        "portal_url": "https://pipe.nlma.gov.tw/",
-        "portal_label": "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)",
-        "api_url": null,
-        "api_label": null,
-        "osm_url": "https://www.openstreetmap.org/?mlat=24.922589&mlon=121.546048#map=19/24.922589/121.546048",
-        "osm_label": "OpenStreetMap 座標圖台",
-        "nlsc_url": "https://maps.nlsc.gov.tw/T09/mapshow.action?lat=24.922589&lon=121.546048&zoom=19",
-        "nlsc_label": "內政部國土測繪圖資服務雲 (NLSC)"
-      },
-      "origin_class": "api_open_data"
+      "origin_class": "api_open_data",
+      "osm_url": "https://www.openstreetmap.org/way/1394460993",
+      "osm_label": "OpenStreetMap 圖資線段 #1394460993"
     }
   ],
   "query_timestamp": "2026-10-31T10:52:36.527835+00:00",

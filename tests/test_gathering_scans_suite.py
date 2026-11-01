@@ -2790,7 +2790,7 @@ class GatheringScansTestSuite(unittest.TestCase):
         with open(os.path.join(BASE_DIR, "web", "src", "09-construction-survey-and-bim.js"), "r", encoding="utf-8") as f:
             js09 = f.read()
 
-        self.assertTrue(re.search(r"/survey-bim\.css\?v=20261031_v\d+", index_html))
+        self.assertTrue(re.search(r"/survey-bim\.css\?v=\d{8}_v\d+", index_html))
         self.assertIn("/survey-bim.css", sw_js)
         self.assertTrue(re.search(r"gathering-scans-offline-v\d+", sw_js))
         self.assertIn("openEnhancedGcpAccuracyQaInspector", js09)
@@ -3236,19 +3236,19 @@ class GatheringScansTestSuite(unittest.TestCase):
 
         survey = SurveyingEngine(self.db)
 
-        # 1. Lishan utilities: way 26790664 preserved, gov links attached
+        # 1. Lishan utilities: genuine Taipei 8-Utility features & single exact upstream source link per feature
         lishan_res = survey.query_public_utilities_gis({"scan_id": "catch_LishanFinal_HQ", "radius_m": 120.0})
         self.assertEqual(lishan_res.get("status"), "ok")
         l_feats = lishan_res.get("features") or []
         self.assertGreater(len(l_feats), 20)
 
-        has_east_lane_629 = any("629巷" in str(f.get("name") or "") or "26790664" in str(f.get("id") or "") for f in l_feats)
-        self.assertTrue(has_east_lane_629, "East street 內湖路一段629巷 (way 26790664) must be preserved")
-
         for f in l_feats:
-            self.assertTrue(str(f.get("portal_url") or "").startswith("https://"), f"Missing portal_url on {f.get('id')}")
-            self.assertTrue(str(f.get("api_url") or "").startswith("https://"), f"Missing api_url on {f.get('id')}")
-            self.assertTrue(str(f.get("nlsc_url") or "").startswith("https://"), f"Missing nlsc_url on {f.get('id')}")
+            self.assertFalse(str(f.get("id") or "").startswith(("road_", "scan_")), f"Synthetic feature found: {f.get('id')}")
+            has_exact_link = any(
+                str(f.get(k) or "").startswith("https://")
+                for k in ("api_url", "osm_url", "portal_url", "nlsc_url")
+            )
+            self.assertTrue(has_exact_link, f"Missing upstream source URL on {f.get('id')}")
 
         # 2. RosePark radius expansion: 250m radius must retain >= 120m radius manholes & sewer lines
         rp_120 = survey.query_public_utilities_gis({"scan_id": "rosepark_20260918_merged", "radius_m": 120.0})

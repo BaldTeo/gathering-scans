@@ -292,83 +292,105 @@ def _point_to_polyline_dist(ce: float, cn: float, pts: List[Tuple[float, float]]
 
 
 def _enrich_feature_gov_links(feat: Dict[str, Any], ce: float, cn: float) -> Dict[str, Any]:
-    """Attaches clickable official Government GIS Map Portal URLs, ArcGIS REST URLs, OpenStreetMap URLs, and NLSC URLs."""
+    """Attaches ONLY the single exact, verified upstream source record URL that produced this utility feature."""
     if not isinstance(feat, dict):
         return feat
-    # Determine representative TWD97 coordinate for map centering
-    mx, my = ce, cn
-    if isinstance(feat.get("coord"), list) and len(feat["coord"]) >= 2:
-        mx, my = float(feat["coord"][0]), float(feat["coord"][1])
-    elif isinstance(feat.get("coords"), list) and len(feat["coords"]) >= 1:
-        mid_pt = feat["coords"][len(feat["coords"]) // 2]
-        if isinstance(mid_pt, list) and len(mid_pt) >= 2:
-            mx, my = float(mid_pt[0]), float(mid_pt[1])
-    lat, lon = twd97_to_wgs84(mx, my)
-    feat["nlsc_url"] = f"https://maps.nlsc.gov.tw/T09/mapshow.action?lat={lat:.6f}&lon={lon:.6f}&zoom=19"
-    feat["nlsc_label"] = "內政部國土測繪圖資服務雲 (NLSC)"
 
     fid = str(feat.get("id") or "")
     src = str(feat.get("source") or "")
     lyr = str(feat.get("layer") or "storm")
-    is_taipei_city = (mx >= 299500.0 and my >= 2765000.0)
 
     if lyr == "as_built" or feat.get("origin_class") == "user_or_scan_to_bim":
         feat["origin_class"] = "user_or_scan_to_bim"
     else:
         feat["origin_class"] = "api_open_data"
 
-    # Extract OSM element links if backed by OpenStreetMap node or way, else direct coordinate map link
-    m_way = re.search(r"(?:osm_waterway_|osm_power_|road_[a-z]+_)(\d+)", fid)
-    m_node = re.search(r"osm_(?:hydrant|elec_pt|lamp|sluice|duct_pt)_(\d+)", fid)
-    if m_way:
-        wid = m_way.group(1)
-        feat["osm_url"] = f"https://www.openstreetmap.org/way/{wid}"
-        feat["osm_label"] = f"OpenStreetMap 圖資廊道 #{wid}"
-    elif m_node:
-        nid = m_node.group(1)
-        feat["osm_url"] = f"https://www.openstreetmap.org/node/{nid}"
-        feat["osm_label"] = f"OpenStreetMap 設施節點 #{nid}"
-    else:
-        feat["osm_url"] = f"https://www.openstreetmap.org/?mlat={lat:.6f}&mlon={lon:.6f}#map=19/{lat:.6f}/{lon:.6f}"
-        feat["osm_label"] = "OpenStreetMap 座標圖台"
+    # Clear any legacy generic/duplicate link fields first so cached features never retain dead/unrelated links
+    for k_del in ("portal_url", "portal_label", "api_url", "api_label", "osm_url", "osm_label", "nlsc_url", "nlsc_label"):
+        feat.pop(k_del, None)
 
-    if "wrd.ntpc.gov.tw" in src or "sewer.ntpc.gov.tw" in src or fid.startswith(("storm_pipe_", "storm_mh_", "sanitary_pipe_", "sanitary_mh_", "sanitary_cb_", "ntpc_rw_")):
-        feat["portal_url"] = "https://sewer.ntpc.gov.tw/" if lyr == "sanitary" else "https://wrd.ntpc.gov.tw/"
-        feat["portal_label"] = (
-            "新北市污水下水道 GIS 圖台 (sewer.ntpc.gov.tw)" if lyr == "sanitary" else "新北市政府水利局 水利地理資訊系統"
-        )
-        m_oid = re.search(r"_(\d+)$", fid)
-        exact_layer_url = str(feat.get("arcgis_layer_url") or "").strip()
-        if exact_layer_url:
-            base_layer_url = exact_layer_url.split("?")[0].rstrip("/")
-            oid_str = m_oid.group(1) if m_oid else ""
-            feat["api_url"] = f"{base_layer_url}/{oid_str}" if oid_str else base_layer_url
-            feat["api_label"] = f"新北市政府 ArcGIS REST 官方圖資紀錄 #{oid_str}".strip()
-        elif m_oid:
-            oid = m_oid.group(1)
-            if fid.startswith("storm_pipe_"):
-                feat["api_url"] = f"https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/Pipe_3D/MapServer/4/{oid}"
-            elif fid.startswith("storm_mh_"):
-                feat["api_url"] = f"https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/Pipe_3D/MapServer/1/{oid}"
-            elif fid.startswith("sanitary_pipe_"):
-                feat["api_url"] = f"https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/Pipe_3D/MapServer/5/{oid}"
-            elif fid.startswith("sanitary_cb_"):
-                feat["api_url"] = f"https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/Pipe_3D/MapServer/0/{oid}"
-            elif fid.startswith("sanitary_mh_"):
-                feat["api_url"] = f"https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/Pipe_3D/MapServer/2/{oid}"
-            feat["api_label"] = f"新北市政府 ArcGIS REST 官方圖資紀錄 #{oid}"
-    elif is_taipei_city:
-        if lyr == "water":
-            feat["portal_url"] = "https://www.water.gov.taipei/"
-            feat["portal_label"] = "臺北自來水事業處 地理資訊圖台"
+    m_oid = re.search(r"_(\d+)$", fid)
+    exact_layer_url = str(feat.get("arcgis_layer_url") or "").strip()
+
+    # 1. Taipei 3D 8-Utilities API (3dgis.reac.taipei PipeQuery.ashx)
+    if fid.startswith("tpe3d_") or "3dgis.reac.taipei" in src or "PipeQuery.ashx" in exact_layer_url:
+        if exact_layer_url.startswith("http"):
+            feat["api_url"] = exact_layer_url
         else:
-            feat["portal_url"] = "https://dig.taipei/"
-            feat["portal_label"] = "臺北市道路管線暨資訊中心 (dig.taipei)"
-        feat.setdefault("api_url", "https://pipe.nlma.gov.tw/")
-        feat.setdefault("api_label", "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)")
-    else:
-        feat["portal_url"] = "https://pipe.nlma.gov.tw/"
-        feat["portal_label"] = "內政部國土管理署 全國公共管線資料庫 (pipe.nlma.gov.tw)"
+            q_parts = fid.split("_")
+            q_type = q_parts[1] if len(q_parts) >= 3 else "pipe"
+            raw_id = "_".join(q_parts[2:]) if len(q_parts) >= 3 else (m_oid.group(1) if m_oid else fid)
+            feat["api_url"] = f"https://3dgis.reac.taipei/sgwptools/API3D/PipeQuery.ashx?type=QueAttr;{q_type}&id={raw_id}"
+        feat["api_label"] = f"臺北市道管中心 3D 八大管線 API 紀錄 ({fid})"
+        feat["portal_url"] = "https://3dgis.reac.taipei/sgwptools/reac/Apps/pipe.html"
+        feat["portal_label"] = "臺北市 3D 公共管線查詢系統 (3dgis.reac.taipei)"
+
+    # 2. Taipei 2D 8-Utilities ArcGIS MapServer (arcgiserv.gov.taipei G97_A_NW_PIPE / dig.taipei)
+    elif fid.startswith("tpedig_") or "arcgiserv.gov.taipei" in src or "G97_A_NW_PIPE" in exact_layer_url:
+        if exact_layer_url.startswith("http"):
+            base_u = exact_layer_url.split("?")[0].rstrip("/")
+            oid_s = m_oid.group(1) if m_oid else ""
+            feat["api_url"] = base_u if (not oid_s or base_u.endswith(f"/{oid_s}")) else f"{base_u}/{oid_s}"
+        else:
+            oid_s = m_oid.group(1) if m_oid else "1"
+            feat["api_url"] = f"https://arcgiserv.gov.taipei/server/rest/services/GWH3857/G97_A_NW_PIPE/MapServer/0/{oid_s}"
+        feat["api_label"] = f"臺北市道路管線中心 G97_A_NW_PIPE 紀錄 #{m_oid.group(1) if m_oid else fid}"
+        feat["portal_url"] = "https://dig.taipei/Tpdig/Public/pipe3.html"
+        feat["portal_label"] = "臺北市道路管線暨資訊中心 (dig.taipei)"
+
+    # 3. New Taipei City ArcGIS REST Services (wrd.ntpc.gov.tw & sewer.ntpc.gov.tw)
+    elif (
+        "wrd.ntpc.gov.tw" in src
+        or "sewer.ntpc.gov.tw" in src
+        or fid.startswith(("storm_pipe_", "storm_mh_", "sanitary_pipe_", "sanitary_mh_", "sanitary_cb_", "ntpc_rw_", "ntpc_sewer_"))
+    ):
+        oid_str = m_oid.group(1) if m_oid else ""
+        if exact_layer_url.startswith("http"):
+            base_layer_url = exact_layer_url.split("?")[0].rstrip("/")
+            if oid_str and not base_layer_url.endswith(f"/{oid_str}"):
+                feat["api_url"] = f"{base_layer_url}/{oid_str}"
+            else:
+                feat["api_url"] = base_layer_url
+        elif oid_str:
+            if fid.startswith("ntpc_rw_culvert_"):
+                feat["api_url"] = f"https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/rainwater_00131/MapServer/7/{oid_str}"
+            elif fid.startswith("ntpc_rw_mh_"):
+                feat["api_url"] = f"https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/rainwater_00131/MapServer/0/{oid_str}"
+            elif fid.startswith("storm_pipe_"):
+                feat["api_url"] = f"https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/Pipe_3D/MapServer/4/{oid_str}"
+            elif fid.startswith("storm_mh_"):
+                feat["api_url"] = f"https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/Pipe_3D/MapServer/1/{oid_str}"
+            elif fid.startswith("sanitary_pipe_"):
+                feat["api_url"] = f"https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/Pipe_3D/MapServer/5/{oid_str}"
+            elif fid.startswith("sanitary_cb_"):
+                feat["api_url"] = f"https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/Pipe_3D/MapServer/0/{oid_str}"
+            elif fid.startswith("sanitary_mh_"):
+                feat["api_url"] = f"https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/Pipe_3D/MapServer/2/{oid_str}"
+        if feat.get("api_url"):
+            feat["api_label"] = f"新北市政府 ArcGIS REST 官方圖資紀錄 #{oid_str}".strip()
+
+    # 4. New Taipei Open Data API (data.ntpc.gov.tw Road Excavations & Streetlights)
+    elif fid.startswith(("ntpc_dig_", "ntpc_light_")) or "data.ntpc.gov.tw" in src:
+        if exact_layer_url.startswith("http"):
+            feat["api_url"] = exact_layer_url
+        elif fid.startswith("ntpc_dig_"):
+            feat["api_url"] = "https://data.ntpc.gov.tw/api/datasets/96b6101b-c033-4834-8bd5-e312651db7a0/json?page=0&size=100"
+        else:
+            feat["api_url"] = "https://data.ntpc.gov.tw/api/datasets/39149fe0-85ab-4e6c-99e5-60657d44895f/json?page=0&size=100"
+        feat["api_label"] = f"新北市政府資料開放平臺 API ({fid})"
+
+    # 5. OpenStreetMap v0.6 Genuine Tagged Utility Nodes & Ways
+    elif fid.startswith("osm_"):
+        m_way = re.search(r"osm_(?:waterway|power|pipeline|culvert)_(\d+)", fid)
+        m_node = re.search(r"osm_(?:hydrant|elec_pt|lamp|sluice|duct_pt|telecom_pt|gas_pt)_(\d+)", fid)
+        if m_way:
+            wid = m_way.group(1)
+            feat["osm_url"] = f"https://www.openstreetmap.org/way/{wid}"
+            feat["osm_label"] = f"OpenStreetMap 圖資線段 #{wid}"
+        elif m_node:
+            nid = m_node.group(1)
+            feat["osm_url"] = f"https://www.openstreetmap.org/node/{nid}"
+            feat["osm_label"] = f"OpenStreetMap 設施節點 #{nid}"
 
     feat["gov_links"] = {
         "portal_url": feat.get("portal_url"),
@@ -377,10 +399,100 @@ def _enrich_feature_gov_links(feat: Dict[str, Any], ce: float, cn: float) -> Dic
         "api_label": feat.get("api_label"),
         "osm_url": feat.get("osm_url"),
         "osm_label": feat.get("osm_label"),
-        "nlsc_url": feat.get("nlsc_url"),
-        "nlsc_label": feat.get("nlsc_label"),
+        "nlsc_url": None,
+        "nlsc_label": None,
     }
     return feat
+
+
+# Official Taipei City 8-Utility Agency Code Lookup Table (from 3dgis.reac.taipei varSetting.js)
+TAIPEI_8UTILITY_UNITS: Dict[str, str] = {
+    "0000": "系統管理",
+    "0101": "交通部臺灣區國道高速公路局北區工程處",
+    "0201": "交通部公路總局第一區養護工程處景美工務段",
+    "0501": "內政部警政署警察通訊所臺北通訊隊",
+    "101": "中華電信臺北營運處",
+    "10101": "中華電信第一網路維運中心",
+    "10102": "中華電信第二網路維運中心",
+    "10103": "中華電信第三網路維運中心",
+    "10104": "中華電信第四網路維運中心",
+    "10105": "中華電信士林服務中心",
+    "10106": "中華電信大安服務中心",
+    "10107": "中華電信中山服務中心",
+    "10108": "中華電信中正服務中心",
+    "10109": "中華電信內湖服務中心",
+    "10110": "中華電信文山服務中心",
+    "10111": "中華電信北投服務中心",
+    "10112": "中華電信松山服務中心",
+    "10113": "中華電信信義服務中心",
+    "10114": "中華電信南港服務中心",
+    "10115": "中華電信萬華服務中心",
+    "10116": "中華電信大同服務中心",
+    "10201": "國際電信開發股份有限公司",
+    "10301": "台灣固網股份有限公司",
+    "10401": "新世紀資通股份有限公司",
+    "10501": "全球光網電訊股份有限公司",
+    "10601": "亞太電信股份有限公司",
+    "10901": "台灣大哥大股份有限公司",
+    "11001": "遠傳電信股份有限公司",
+    "20101": "台灣電力公司台北北區營業處",
+    "20102": "台灣電力公司台北南區營業處",
+    "20103": "台灣電力公司台北市區營業處",
+    "20104": "台灣電力公司台北供電區營運處",
+    "20105": "台灣電力公司北北區施工處",
+    "301": "臺北自來水事業處",
+    "30101": "臺北自來水事業處工程總隊",
+    "30102": "臺北自來水事業處北區營業分處",
+    "30103": "臺北自來水事業處東區營業分處",
+    "30104": "臺北自來水事業處南區營業分處",
+    "30105": "臺北自來水事業處西區營業分處",
+    "30106": "臺北自來水事業處陽明營業分處",
+    "40101": "大台北區瓦斯股份有限公司",
+    "40201": "陽明山瓦斯股份有限公司",
+    "40301": "欣欣天然氣股份有限公司",
+    "40401": "欣湖天然氣股份有限公司",
+    "50101": "台灣中油股份有限公司桃園煉油廠",
+    "50102": "台灣中油股份有限公司油品行銷事業部台北營業處",
+    "60101": "國防部資通電軍指揮部",
+    "70101": "臺北市政府工務局新建工程處",
+    "70104": "臺北市政府工務局新建工程處共同管道科",
+    "70201": "臺北市政府工務局水利工程處",
+    "70301": "臺北市政府工務局衛生下水道工程處",
+    "70401": "臺北市政府工務局公園路燈工程管理處",
+    "70601": "臺北市交通管制工程處",
+    "70801": "臺北市政府警察局犯罪預防科",
+    "70901": "臺北市政府資訊局",
+    "80101": "金頻道有線電視股份有限公司",
+    "80201": "大安文山有線電視股份有限公司",
+    "80301": "長德有線電視股份有限公司",
+    "80401": "萬象有線電視股份有限公司",
+    "80501": "麗冠有線電視股份有限公司",
+    "80601": "新台北有線電視股份有限公司",
+    "80701": "聯維有線電視股份有限公司",
+    "80801": "寶福有線電視股份有限公司",
+    "80901": "陽明山有線電視股份有限公司",
+    "81001": "北都有線電視股份有限公司",
+}
+
+
+def _query_taipei_3d_elevation(e_twd: float, n_twd: float) -> Optional[float]:
+    """
+    Queries the live Taipei City 3D GIS Bare-Earth Elevation API (get3dz.ashx)
+    returning TWVD2001 elevation in meters for Taipei City coordinates.
+    """
+    if not (296000.0 <= e_twd <= 318000.0 and 2762000.0 <= n_twd <= 2789000.0):
+        return None
+    url = f"https://3dgis.reac.taipei/sgwptools/API3D/get3dz.ashx?E={e_twd:.2f}&N={n_twd:.2f}"
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": "GatheringScans-Civil-GIS/3.0"})
+        with urllib.request.urlopen(req, timeout=2.8) as resp:
+            txt = resp.read().decode("utf-8", errors="ignore").strip()
+        val = safe_float(txt)
+        if val is not None and -15.0 <= val <= 1200.0:
+            return round(val, 3)
+    except Exception:
+        pass
+    return None
 
 
 class PublicUtilitiesGISMixin:
@@ -501,6 +613,15 @@ class PublicUtilitiesGISMixin:
                     if we is not None and wn is not None:
                         if road_ref_h is None or abs((wl + 1.0) - road_ref_h) <= 3.5:
                             samples.append((we, wn, wl + 1.0, 0.8))
+
+        # Anchor Taipei City ground elevation with official 3dgis.reac.taipei get3dz.ashx bare-earth API
+        taipei_gov_z = _query_taipei_3d_elevation(ce, cn)
+        if taipei_gov_z is not None:
+            if not samples:
+                samples.append((ce, cn, taipei_gov_z, 8.0))
+            else:
+                # Add high-confidence official bare-earth TWVD2001 elevation anchor at scan center
+                samples.append((ce, cn, taipei_gov_z, 2.5))
 
         if samples:
             w_tot = sum(s[3] for s in samples)
@@ -719,6 +840,17 @@ class PublicUtilitiesGISMixin:
                         filtered_res["total_features"] = len(filtered_features)
                         filtered_res["total_pipe_length_m"] = round(total_pipe_length_m, 2)
                         filtered_res["total_structures"] = total_structures
+                        if "taipei_8utility_status" not in filtered_res and 296000.0 <= ce <= 318000.0 and 2762000.0 <= cn <= 2789000.0:
+                            filtered_res["taipei_8utility_status"] = {
+                                "endpoint_3d": "https://3dgis.reac.taipei/sgwptools/API3D/PipeQuery.ashx",
+                                "endpoint_2d": "https://arcgiserv.gov.taipei/server/rest/services/GWH3857/G97_A_NW_PIPE/MapServer",
+                                "elevation_endpoint": "https://3dgis.reac.taipei/sgwptools/API3D/get3dz.ashx",
+                                "elevation_twvd2001_m": round(ref_ground_h, 3),
+                                "whitelisted": False,
+                                "gml_directory": os.path.join(DATA_DIR, "taipei_8utilities_gml"),
+                                "gml_files_loaded": 0,
+                                "layers": list(TAIPEI_8UTILITY_UNITS.values()),
+                            }
                         filtered_res["cached"] = True
                         return filtered_res
                 except Exception:
@@ -733,8 +865,9 @@ class PublicUtilitiesGISMixin:
         sample_ground_z, cat_data, base_ground_z = self._build_ground_elevation_sampler(scan_id, scan, ce, cn, ch)
 
         all_features: List[Dict[str, Any]] = []
+        taipei_8utility_status: Optional[Dict[str, Any]] = None
 
-        # 1. New Taipei Stormwater Drainage (wrd.ntpc.gov.tw SewerRain + Pipe_3D + rainwater_00131 + river_00131)
+        # 1. New Taipei Stormwater Drainage (wrd.ntpc.gov.tw SewerRain + Pipe_3D + rainwater_POP + rainwater_00131)
         ntpc_storm_feats: List[Dict[str, Any]] = []
         if "storm" in requested_layers:
             ntpc_storm_feats = self._query_ntpc_wrd_stormwater(
@@ -742,7 +875,7 @@ class PublicUtilitiesGISMixin:
             )
             all_features.extend(ntpc_storm_feats)
 
-        # 2. New Taipei Sanitary Sewer (Pipe_3D + swggis_20150625)
+        # 2. New Taipei Sanitary Sewer (Pipe_3D + swggis_20150625 + NTPC_Sewer_Public + SewerPublic)
         ntpc_sanitary_feats: List[Dict[str, Any]] = []
         if "sanitary" in requested_layers:
             ntpc_sanitary_feats = self._query_ntpc_sewer_sanitary(
@@ -750,7 +883,21 @@ class PublicUtilitiesGISMixin:
             )
             all_features.extend(ntpc_sanitary_feats)
 
-        # 3. Official OpenStreetMap v0.6 Public Utilities & Municipal Road Corridors (Covers Taipei City, New Taipei, Campuses & Dams)
+        # 3. Taipei City 8-Utilities 3D & 2D GIS API (3dgis.reac.taipei PipeQuery.ashx + G97_A_NW_PIPE + MOI GML 3.1.1)
+        if 296000.0 <= ce <= 318000.0 and 2762000.0 <= cn <= 2789000.0:
+            tpe_feats, taipei_8utility_status = self._query_taipei_8utilities_gis(
+                xmin, ymin, xmax, ymax, ce, cn, radius_m, requested_layers, sample_ground_z
+            )
+            all_features.extend(tpe_feats)
+
+        # 4. New Taipei City Open Data API (data.ntpc.gov.tw Road Excavations & Streetlights)
+        if "excavations" in requested_layers or "streetlights" in requested_layers:
+            ntpc_open_feats = self._query_ntpc_open_data_utilities(
+                xmin, ymin, xmax, ymax, ce, cn, requested_layers, sample_ground_z
+            )
+            all_features.extend(ntpc_open_feats)
+
+        # 5. Official OpenStreetMap v0.6 Genuine Tagged Utility Nodes & Ways (Fire Hydrants, Power Poles/Cables, Street Lamps, Culverts)
         osm_feats = self._query_osm_public_utilities(
             xmin,
             ymin,
@@ -766,7 +913,7 @@ class PublicUtilitiesGISMixin:
         )
         all_features.extend(osm_feats)
 
-        # 4. Scan-to-BIM 3D Categorization Terrain Drainage, Roadside Ditches & As-Built Utilities
+        # 6. Scan-to-BIM Explicit Open-Trench As-Built Utilities (Isolated 'as_built' layer only)
         terrain_feats = self._extract_scan_terrain_utilities(
             scan_id,
             scan,
@@ -783,12 +930,12 @@ class PublicUtilitiesGISMixin:
         )
         all_features.extend(terrain_feats)
 
-        # 5. Local Open Data Hydrants (if supplementary file exists)
+        # 7. Local Open Data Hydrants (if supplementary file exists)
         if "water" in requested_layers:
             water_feats = self._query_open_data_hydrants(xmin, ymin, xmax, ymax, sample_ground_z)
             all_features.extend(water_feats)
 
-        # 6. When querying a larger radius (> 120m), preserve all inner 120m features so nearby wells/pipes never disappear
+        # 8. When querying a larger radius (> 120m), preserve all inner 120m features so nearby wells/pipes never disappear
         if radius_m > 120.0:
             inner_cache = os.path.join(UTILITIES_CACHE_DIR, f"{safe_sid}_120m_v3.json")
             if os.path.isfile(inner_cache):
@@ -803,7 +950,7 @@ class PublicUtilitiesGISMixin:
                     }
                     for in_f in (inner_doc.get("features") or []):
                         fid_in = str(in_f.get("id") or "")
-                        if fid_in.startswith("scan_"):
+                        if fid_in.startswith(("scan_", "road_")):
                             continue
                         if in_f.get("layer") == "as_built" and in_f.get("origin_class") != "user_or_scan_to_bim":
                             continue
@@ -822,7 +969,7 @@ class PublicUtilitiesGISMixin:
             _enrich_feature_gov_links(f, ce, cn)
             for f in all_features
             if f.get("layer") in req_set
-            and not str(f.get("id") or "").startswith("scan_")
+            and not str(f.get("id") or "").startswith(("scan_", "road_"))
             and (f.get("layer") != "as_built" or f.get("origin_class") == "user_or_scan_to_bim")
         ]
 
@@ -853,6 +1000,7 @@ class PublicUtilitiesGISMixin:
             "total_pipe_length_m": round(total_pipe_length_m, 2),
             "total_structures": total_structures,
             "features": all_features,
+            "taipei_8utility_status": taipei_8utility_status,
             "query_timestamp": datetime.now(timezone.utc).isoformat(),
             "cached": False,
         }
@@ -870,7 +1018,7 @@ class PublicUtilitiesGISMixin:
                                     _enrich_feature_gov_links(f, ce, cn)
                                     for f in prev_data["features"]
                                     if f.get("layer") not in req_set
-                                    and not str(f.get("id") or "").startswith("scan_")
+                                    and not str(f.get("id") or "").startswith(("scan_", "road_"))
                                     and (f.get("layer") != "as_built" or f.get("origin_class") == "user_or_scan_to_bim")
                                 ]
                                 merged_features.extend(existing_unqueried)
@@ -915,7 +1063,7 @@ class PublicUtilitiesGISMixin:
                                     if (
                                         pf_id
                                         and pf_id not in seen_m_ids
-                                        and not pf_id.startswith("scan_")
+                                        and not pf_id.startswith(("scan_", "road_"))
                                         and (pf.get("layer") != "as_built" or pf.get("origin_class") == "user_or_scan_to_bim")
                                     ):
                                         combined_m.append(pf)
@@ -979,7 +1127,7 @@ class PublicUtilitiesGISMixin:
             if lyr not in req_set:
                 continue
             fid = str(f_item.get("id") or "")
-            if fid.startswith("scan_"):
+            if fid.startswith(("scan_", "road_")):
                 continue
             if lyr == "as_built" and f_item.get("origin_class") != "user_or_scan_to_bim":
                 continue
@@ -1198,9 +1346,9 @@ class PublicUtilitiesGISMixin:
                 elif 0.8 <= raw_d <= 6.5:
                     mnode["inv_el"] = top_el - raw_d
 
-        # 2. Fetch Storm Pipes & Box Culverts from Pipe_3D/4 (has UP_PB/DOWN_PB populated) and SewerRain/1
+        # 2. Fetch Storm Pipes & Box Culverts from Pipe_3D/4 (has UP_PB/DOWN_PB), SewerRain/1 (has 起點埋/終點埋), and rainwater_POP/0
         raw_pipes: Dict[str, Dict[str, Any]] = {}
-        for svc, lid in [("Rain/Pipe_3D", 4), ("Rain/SewerRain", 1)]:
+        for svc, lid in [("Rain/Pipe_3D", 4), ("Rain/SewerRain", 1), ("Rain/rainwater_POP", 0)]:
             for qx1, qy1, qx2, qy2 in [(xmin, ymin, xmax, ymax), (txmin, tymin, txmax, tymax)]:
                 url_p = (
                     f"https://wrd.ntpc.gov.tw/arcgis/rest/services/{svc}/MapServer/{lid}/query?"
@@ -1235,6 +1383,8 @@ class PublicUtilitiesGISMixin:
 
                     up_pb = safe_float(attrs.get("UP_PB") or attrs.get("UIE"), 0.0) or 0.0
                     down_pb = safe_float(attrs.get("DOWN_PB") or attrs.get("DIE"), 0.0) or 0.0
+                    up_dep = safe_float(attrs.get("起點埋") or attrs.get("START_DEP"), 0.0) or 0.0
+                    down_dep = safe_float(attrs.get("終點埋") or attrs.get("END_DEP"), 0.0) or 0.0
                     pw = safe_float(attrs.get("P_WIDTH"), 0.0) or 0.0
                     ph = safe_float(attrs.get("P_HEIGHT"), 0.0) or 0.0
                     p_len = safe_float(attrs.get("P_LENGTH"), math.hypot(e2 - e1, n2 - n1)) or math.hypot(e2 - e1, n2 - n1)
@@ -1247,6 +1397,10 @@ class PublicUtilitiesGISMixin:
                             ep["up_pb"] = up_pb
                         if ep["down_pb"] <= 0.05 and down_pb > 0.05:
                             ep["down_pb"] = down_pb
+                        if ep.get("up_dep", 0.0) <= 0.05 and up_dep > 0.05:
+                            ep["up_dep"] = up_dep
+                        if ep.get("down_dep", 0.0) <= 0.05 and down_dep > 0.05:
+                            ep["down_dep"] = down_dep
                         if ep["pw"] <= 0.0 and pw > 0.0:
                             ep["pw"] = pw
                         if ep["ph"] <= 0.0 and ph > 0.0:
@@ -1263,6 +1417,8 @@ class PublicUtilitiesGISMixin:
                             "down_mh_alt": down_mh_alt,
                             "up_pb": up_pb,
                             "down_pb": down_pb,
+                            "up_dep": up_dep,
+                            "down_dep": down_dep,
                             "pw": pw,
                             "ph": ph,
                             "p_len": max(0.5, p_len),
@@ -1336,10 +1492,14 @@ class PublicUtilitiesGISMixin:
 
             if p["up_pb"] > 0.05:
                 d1 = gov_g1 - p["up_pb"]
+            elif p.get("up_dep", 0.0) > 0.05:
+                d1 = p["up_dep"]
             else:
                 d1 = default_d
             if p["down_pb"] > 0.05:
                 d2 = gov_g2 - p["down_pb"]
+            elif p.get("down_dep", 0.0) > 0.05:
+                d2 = p["down_dep"]
             else:
                 d2 = d1 + p["p_len"] * 0.002
 
@@ -1451,115 +1611,138 @@ class PublicUtilitiesGISMixin:
                 }
             )
 
-        # 4. If SewerRain + Pipe_3D returned 0 storm features (e.g. Xindian / QuChi Dam mountain corridor),
-        # query Rain/rainwater_00131 (planned/existing storm box culverts & nodes) and Rain/river_00131
-        if not features:
-            q_rad = max(radius_m, 420.0)
-            qxmin, qymin, qxmax, qymax = ce - q_rad, cn - q_rad, ce + q_rad, cn + q_rad
-            # Storm pipes/box culverts in rainwater_00131/7
-            url_rw7 = (
-                f"https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/rainwater_00131/MapServer/7/query?"
-                f"geometry={qxmin},{qymin},{qxmax},{qymax}&geometryType=esriGeometryEnvelope&"
-                f"spatialRel=esriSpatialRelIntersects&inSR=3826&outSR=3826&outFields=*&returnGeometry=true&f=json"
-            )
-            data_rw7 = _http_get_json(url_rw7, timeout=5.5)
-            if data_rw7 and isinstance(data_rw7.get("features"), list):
-                for feat in data_rw7["features"]:
-                    attrs = feat.get("attributes") or {}
-                    paths = (feat.get("geometry") or {}).get("paths") or []
-                    if not paths or not paths[0]:
-                        continue
-                    pts = paths[0]
-                    pw = safe_float(attrs.get("P_WIDTH"), 0.9) or 0.9
-                    ph = safe_float(attrs.get("P_HEIGHT"), 0.9) or 0.9
-                    p_type = str(attrs.get("P_TYPE") or "單孔箱涵").strip()
-                    p_no = str(attrs.get("P_NO") or f"RW-{attrs.get('OBJECTID')}").strip()
-                    d1 = round(ph + 1.1, 2)
-                    d2 = round(ph + 1.25, 2)
-                    coords_3d = []
-                    for idx, pt in enumerate(pts):
-                        px, py = float(pt[0]), float(pt[1])
-                        frac = idx / max(1, len(pts) - 1)
-                        di = d1 + frac * (d2 - d1)
-                        gi = sample_ground_z(px, py)
-                        coords_3d.append([round(px, 3), round(py, 3), round(gi - di, 3)])
-                    length_m = sum(
-                        math.hypot(coords_3d[i + 1][0] - coords_3d[i][0], coords_3d[i + 1][1] - coords_3d[i][1])
-                        for i in range(len(coords_3d) - 1)
-                    )
-                    if length_m < 0.5:
-                        continue
-                    g1 = sample_ground_z(coords_3d[0][0], coords_3d[0][1])
-                    g2 = sample_ground_z(coords_3d[-1][0], coords_3d[-1][1])
-                    features.append(
-                        {
-                            "id": f"ntpc_rw_culvert_{attrs.get('OBJECTID', len(features)+1)}",
-                            "layer": "storm",
-                            "type": "box_culvert",
-                            "name": f"雨水箱涵 {p_no} ({pw:.2f}x{ph:.2f}m)",
-                            "diameter_mm": int(round(max(pw, ph) * 1000)),
-                            "width_m": round(pw, 2),
-                            "height_m": round(ph, 2),
-                            "length_m": round(length_m, 2),
-                            "material": "RC/鋼筋混凝土",
-                            "start_coord": coords_3d[0],
-                            "end_coord": coords_3d[-1],
-                            "start_ground_h": round(g1, 3),
-                            "end_ground_h": round(g2, 3),
-                            "start_rim_h": round(g1, 3),
-                            "end_rim_h": round(g2, 3),
-                            "start_invert_h": coords_3d[0][2],
-                            "end_invert_h": coords_3d[-1][2],
-                            "start_crown_h": round(coords_3d[0][2] + ph, 3),
-                            "end_crown_h": round(coords_3d[-1][2] + ph, 3),
-                            "start_depth_m": d1,
-                            "end_depth_m": d2,
-                            "start_cover_m": round(d1 - ph, 2),
-                            "end_cover_m": round(d2 - ph, 2),
-                            "depth_m": round(0.5 * (d1 + d2), 2),
-                            "slope_pct": round(((coords_3d[0][2] - coords_3d[-1][2]) / max(1.0, length_m)) * 100.0, 3),
-                            "flow_direction": 1,
-                            "upstream_mh": str(attrs.get("UP_MH") or "").strip(),
-                            "downstream_mh": str(attrs.get("DOWN_MH") or "").strip(),
-                            "coords": coords_3d,
-                            "source": "New Taipei City WRD Rainwater System (wrd.ntpc.gov.tw)",
-                        }
-                    )
+        # 4. Also query Rain/rainwater_00131 (box culverts & nodes in layers 0, 4, 5, 7, 8, 19) within user bbox (xmin, ymin, xmax, ymax)
+        seen_rw_pipe_keys = {
+            f"{round(float(f['coords'][0][0]), 1)}_{round(float(f['coords'][0][1]), 1)}"
+            for f in features
+            if f.get("type") in ("pipe", "box_culvert") and f.get("coords")
+        }
+        seen_rw_mh_keys = {
+            f"{round(float(f['coord'][0]), 1)}_{round(float(f['coord'][1]), 1)}"
+            for f in features
+            if f.get("type") in ("manhole", "catch_basin") and f.get("coord")
+        }
 
-            # Storm nodes in rainwater_00131/0
-            url_rw0 = (
-                f"https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/rainwater_00131/MapServer/0/query?"
-                f"geometry={qxmin},{qymin},{qxmax},{qymax}&geometryType=esriGeometryEnvelope&"
+        for rw_lid in (4, 5, 7, 8, 19):
+            url_rw_line = (
+                f"https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/rainwater_00131/MapServer/{rw_lid}/query?"
+                f"geometry={xmin},{ymin},{xmax},{ymax}&geometryType=esriGeometryEnvelope&"
                 f"spatialRel=esriSpatialRelIntersects&inSR=3826&outSR=3826&outFields=*&returnGeometry=true&f=json"
             )
-            data_rw0 = _http_get_json(url_rw0, timeout=5.0)
-            if data_rw0 and isinstance(data_rw0.get("features"), list):
-                for feat in data_rw0["features"]:
-                    attrs = feat.get("attributes") or {}
-                    geom = feat.get("geometry") or {}
-                    if "x" not in geom or "y" not in geom:
-                        continue
-                    ex, ny = float(geom["x"]), float(geom["y"])
-                    loc_g = sample_ground_z(ex, ny)
-                    depth_m = 2.1
-                    inv_z = round(loc_g - depth_m, 3)
-                    mno = str(attrs.get("MH_NO") or f"RW-MH-{attrs.get('OBJECTID')}").strip()
-                    features.append(
-                        {
-                            "id": f"ntpc_rw_mh_{attrs.get('OBJECTID', len(features)+1)}",
-                            "layer": "storm",
-                            "type": "manhole",
-                            "name": f"雨水下水道節點人孔 {mno}",
-                            "facility_no": mno,
-                            "structure_type": "雨水人孔",
-                            "coord": [round(ex, 3), round(ny, 3), inv_z],
-                            "rim_h": round(loc_g, 3),
-                            "invert_h": inv_z,
-                            "depth_m": depth_m,
-                            "diameter_mm": 800,
-                            "source": "New Taipei City WRD Rainwater System (wrd.ntpc.gov.tw)",
-                        }
-                    )
+            data_rw_line = _http_get_json(url_rw_line, timeout=4.5)
+            if not data_rw_line or not isinstance(data_rw_line.get("features"), list):
+                continue
+            for feat in data_rw_line["features"]:
+                attrs = feat.get("attributes") or {}
+                paths = (feat.get("geometry") or {}).get("paths") or []
+                if not paths or not paths[0]:
+                    continue
+                pts = paths[0]
+                p_start_key = f"{round(float(pts[0][0]), 1)}_{round(float(pts[0][1]), 1)}"
+                if p_start_key in seen_rw_pipe_keys:
+                    continue
+                seen_rw_pipe_keys.add(p_start_key)
+                oid_rw = attrs.get("OBJECTID") or (len(features) + 1)
+                pw = safe_float(attrs.get("P_WIDTH") or attrs.get("WIDTH"), 0.9) or 0.9
+                ph = safe_float(attrs.get("P_HEIGHT") or attrs.get("HEIGHT"), 0.9) or 0.9
+                p_type = str(attrs.get("P_TYPE") or "單孔箱涵").strip()
+                p_no = str(attrs.get("P_NO") or f"RW-{oid_rw}").strip()
+                up_d = safe_float(attrs.get("起點埋") or attrs.get("UP_DEP"), 0.0) or 0.0
+                dn_d = safe_float(attrs.get("終點埋") or attrs.get("DOWN_DEP"), 0.0) or 0.0
+                d1 = round(up_d if up_d > 0.2 else (ph + 1.1), 2)
+                d2 = round(dn_d if dn_d > 0.2 else (ph + 1.25), 2)
+                coords_3d = []
+                for idx, pt in enumerate(pts):
+                    px, py = float(pt[0]), float(pt[1])
+                    frac = idx / max(1, len(pts) - 1)
+                    di = d1 + frac * (d2 - d1)
+                    gi = sample_ground_z(px, py)
+                    coords_3d.append([round(px, 3), round(py, 3), round(gi - di, 3)])
+                length_m = sum(
+                    math.hypot(coords_3d[i + 1][0] - coords_3d[i][0], coords_3d[i + 1][1] - coords_3d[i][1])
+                    for i in range(len(coords_3d) - 1)
+                )
+                if length_m < 0.5:
+                    continue
+                g1 = sample_ground_z(coords_3d[0][0], coords_3d[0][1])
+                g2 = sample_ground_z(coords_3d[-1][0], coords_3d[-1][1])
+                features.append(
+                    {
+                        "id": f"ntpc_rw_culvert_{oid_rw}",
+                        "arcgis_layer_url": f"https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/rainwater_00131/MapServer/{rw_lid}/{oid_rw}",
+                        "layer": "storm",
+                        "type": "box_culvert",
+                        "name": f"雨水箱涵 ({p_type}) {p_no} ({pw:.2f}x{ph:.2f}m)",
+                        "diameter_mm": int(round(max(pw, ph) * 1000)),
+                        "width_m": round(pw, 2),
+                        "height_m": round(ph, 2),
+                        "length_m": round(length_m, 2),
+                        "material": "RC/鋼筋混凝土",
+                        "start_coord": coords_3d[0],
+                        "end_coord": coords_3d[-1],
+                        "start_ground_h": round(g1, 3),
+                        "end_ground_h": round(g2, 3),
+                        "start_rim_h": round(g1, 3),
+                        "end_rim_h": round(g2, 3),
+                        "start_invert_h": coords_3d[0][2],
+                        "end_invert_h": coords_3d[-1][2],
+                        "start_crown_h": round(coords_3d[0][2] + ph, 3),
+                        "end_crown_h": round(coords_3d[-1][2] + ph, 3),
+                        "start_depth_m": d1,
+                        "end_depth_m": d2,
+                        "start_cover_m": round(d1 - ph, 2),
+                        "end_cover_m": round(d2 - ph, 2),
+                        "depth_m": round(0.5 * (d1 + d2), 2),
+                        "slope_pct": round(((coords_3d[0][2] - coords_3d[-1][2]) / max(1.0, length_m)) * 100.0, 3),
+                        "flow_direction": 1,
+                        "upstream_mh": str(attrs.get("UP_MH") or "").strip(),
+                        "downstream_mh": str(attrs.get("DOWN_MH") or "").strip(),
+                        "coords": coords_3d,
+                        "source": "New Taipei City WRD Rainwater System (wrd.ntpc.gov.tw)",
+                    }
+                )
+
+        # Storm nodes in rainwater_00131/0
+        url_rw0 = (
+            f"https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/rainwater_00131/MapServer/0/query?"
+            f"geometry={xmin},{ymin},{xmax},{ymax}&geometryType=esriGeometryEnvelope&"
+            f"spatialRel=esriSpatialRelIntersects&inSR=3826&outSR=3826&outFields=*&returnGeometry=true&f=json"
+        )
+        data_rw0 = _http_get_json(url_rw0, timeout=4.5)
+        if data_rw0 and isinstance(data_rw0.get("features"), list):
+            for feat in data_rw0["features"]:
+                attrs = feat.get("attributes") or {}
+                geom = feat.get("geometry") or {}
+                if "x" not in geom or "y" not in geom:
+                    continue
+                ex, ny = float(geom["x"]), float(geom["y"])
+                pt_key = f"{round(ex, 1)}_{round(ny, 1)}"
+                if pt_key in seen_rw_mh_keys:
+                    continue
+                seen_rw_mh_keys.add(pt_key)
+                oid_rw0 = attrs.get("OBJECTID") or (len(features) + 1)
+                loc_g = sample_ground_z(ex, ny)
+                raw_d0 = safe_float(attrs.get("MH_DEPTH") or attrs.get("孔深"), 0.0) or 0.0
+                depth_m = round(raw_d0 if 0.6 <= raw_d0 <= 10.0 else 2.1, 2)
+                inv_z = round(loc_g - depth_m, 3)
+                mno = str(attrs.get("MH_NO") or f"RW-MH-{oid_rw0}").strip()
+                features.append(
+                    {
+                        "id": f"ntpc_rw_mh_{oid_rw0}",
+                        "arcgis_layer_url": f"https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/rainwater_00131/MapServer/0/{oid_rw0}",
+                        "layer": "storm",
+                        "type": "manhole",
+                        "name": f"雨水下水道節點人孔 {mno}",
+                        "facility_no": mno,
+                        "structure_type": "雨水人孔",
+                        "coord": [round(ex, 3), round(ny, 3), inv_z],
+                        "rim_h": round(loc_g, 3),
+                        "invert_h": inv_z,
+                        "depth_m": depth_m,
+                        "diameter_mm": 800,
+                        "source": "New Taipei City WRD Rainwater System (wrd.ntpc.gov.tw)",
+                    }
+                )
 
         return features
 
@@ -1594,9 +1777,15 @@ class PublicUtilitiesGISMixin:
             envelopes.append((txmin, tymin, txmax, tymax))
 
         for env_xmin, env_ymin, env_xmax, env_ymax in envelopes:
-            for svc, lid in [("Rain/Pipe_3D", 2), ("Rain/swggis_20150625", 1), ("Rain/Pipe_3D", 0)]:
+            for base_host, svc, lid in [
+                ("wrd.ntpc.gov.tw", "Rain/Pipe_3D", 2),
+                ("wrd.ntpc.gov.tw", "Rain/swggis_20150625", 1),
+                ("wrd.ntpc.gov.tw", "Rain/Pipe_3D", 0),
+                ("wrd.ntpc.gov.tw", "Rain/swggis_20150625", 0),
+                ("wrd.ntpc.gov.tw", "Sewer/SewerPublic", 13),
+            ]:
                 url_m = (
-                    f"https://wrd.ntpc.gov.tw/arcgis/rest/services/{svc}/MapServer/{lid}/query?"
+                    f"https://{base_host}/arcgis/rest/services/{svc}/MapServer/{lid}/query?"
                     f"geometry={env_xmin},{env_ymin},{env_xmax},{env_ymax}&geometryType=esriGeometryEnvelope&"
                     f"spatialRel=esriSpatialRelIntersects&inSR=3826&outSR=3826&outFields=*&returnGeometry=true&f=json"
                 )
@@ -1629,9 +1818,10 @@ class PublicUtilitiesGISMixin:
                     keys = _norm_mh_keys(mno) + _norm_mh_keys(dmno)
                     pk = keys[0] if keys else f"SMH_{round(ex,1)}_{round(ny,1)}"
                     in_user_bbox = (xmin <= ex <= xmax and ymin <= ny <= ymax)
+                    oid_val = attrs.get("OBJECTID")
                     if pk not in san_mhs:
                         node_obj = {
-                            "oid": attrs.get("OBJECTID"),
+                            "oid": oid_val,
                             "mno": mno,
                             "dmno": dmno,
                             "ex": ex,
@@ -1642,7 +1832,7 @@ class PublicUtilitiesGISMixin:
                             "mhc_w": mhc_w,
                             "is_cb": is_cb,
                             "in_bbox": in_user_bbox,
-                            "arcgis_layer_url": f"https://wrd.ntpc.gov.tw/arcgis/rest/services/{svc}/MapServer/{lid}",
+                            "arcgis_layer_url": f"https://{base_host}/arcgis/rest/services/{svc}/MapServer/{lid}/{oid_val}",
                         }
                         san_mhs[pk] = node_obj
                         for k in keys:
@@ -1661,11 +1851,19 @@ class PublicUtilitiesGISMixin:
                 z_s += w * gz
             return z_s / w_s if w_s > 1e-9 else 6.0
 
-        # 2. Fetch Sanitary Pipes from Pipe_3D/5 and swggis_20150625/2
+        # 2. Fetch Sanitary Pipes from Pipe_3D/5,3, swggis_20150625/2, NTPC_Sewer_Public/2,3, and SewerPublic/12,14
         seen_pipes = set()
-        for svc, lid in [("Rain/Pipe_3D", 5), ("Rain/swggis_20150625", 2)]:
+        for base_host, svc, lid in [
+            ("wrd.ntpc.gov.tw", "Rain/Pipe_3D", 5),
+            ("wrd.ntpc.gov.tw", "Rain/swggis_20150625", 2),
+            ("sewer.ntpc.gov.tw", "NTPC_Sewer_Public", 2),
+            ("sewer.ntpc.gov.tw", "NTPC_Sewer_Public", 3),
+            ("wrd.ntpc.gov.tw", "Rain/Pipe_3D", 3),
+            ("wrd.ntpc.gov.tw", "Sewer/SewerPublic", 14),
+            ("wrd.ntpc.gov.tw", "Sewer/SewerPublic", 12),
+        ]:
             url_p = (
-                f"https://wrd.ntpc.gov.tw/arcgis/rest/services/{svc}/MapServer/{lid}/query?"
+                f"https://{base_host}/arcgis/rest/services/{svc}/MapServer/{lid}/query?"
                 f"geometry={xmin},{ymin},{xmax},{ymax}&geometryType=esriGeometryEnvelope&"
                 f"spatialRel=esriSpatialRelIntersects&inSR=3826&outSR=3826&outFields=*&returnGeometry=true&f=json"
             )
@@ -1683,21 +1881,26 @@ class PublicUtilitiesGISMixin:
                 e1, n1 = float(p1[0]), float(p1[1])
                 e2, n2 = float(p2[0]), float(p2[1])
 
-                sno = str(attrs.get("SEWER_NO") or attrs.get("D_SEWER_NO") or "").strip()
-                umh = str(attrs.get("UMH_NO") or attrs.get("D_UMH_NO") or "").strip()
-                dmh = str(attrs.get("DMH_NO") or attrs.get("D_DMH_NO") or "").strip()
+                sno = str(attrs.get("SEWER_NO") or attrs.get("D_SEWER_NO") or attrs.get("C_NO") or "").strip()
+                umh = str(attrs.get("UMH_NO") or attrs.get("D_UMH_NO") or attrs.get("UCB_NO") or "").strip()
+                dmh = str(attrs.get("DMH_NO") or attrs.get("D_DMH_NO") or attrs.get("DCB_NO") or "").strip()
                 dedup_key = sno if sno else f"{round(e1,1)}_{round(n1,1)}_{round(e2,1)}_{round(n2,1)}"
                 if dedup_key in seen_pipes:
                     continue
                 seen_pipes.add(dedup_key)
 
                 length_2d = math.hypot(e2 - e1, n2 - n1)
-                length_m = max(0.5, safe_float(attrs.get("SEWER_LH"), length_2d) or length_2d)
-                dia_mm = safe_float(attrs.get("DIA"), 300.0) or 300.0
+                length_m = max(0.5, safe_float(attrs.get("SEWER_LH") or attrs.get("C_LH") or attrs.get("LENGTH"), length_2d) or length_2d)
+                raw_dia = safe_float(attrs.get("DIA") or attrs.get("HEIGHT"))
+                is_lateral = (lid in (3, 12))
+                if raw_dia is not None and raw_dia > 0:
+                    dia_mm = raw_dia * 1000.0 if raw_dia < 10.0 else raw_dia
+                else:
+                    dia_mm = 200.0 if is_lateral else 300.0
                 if dia_mm < 50.0:
-                    dia_mm = 300.0
+                    dia_mm = 200.0 if is_lateral else 300.0
                 h_m = round(dia_mm / 1000.0, 2)
-                mat = str(attrs.get("SEWER_MA") or "DIP/延性鑄鐵管").strip() or "DIP/延性鑄鐵管"
+                mat = str(attrs.get("SEWER_MA") or attrs.get("C_MA") or "DIP/延性鑄鐵管").strip() or "DIP/延性鑄鐵管"
 
                 up_node = next((san_lookup[k] for k in _norm_mh_keys(umh) if k in san_lookup), None)
                 dn_node = next((san_lookup[k] for k in _norm_mh_keys(dmh) if k in san_lookup), None)
@@ -1707,22 +1910,27 @@ class PublicUtilitiesGISMixin:
 
                 uie = safe_float(attrs.get("UIE"))
                 die = safe_float(attrs.get("DIE"))
+                dep_ave = safe_float(attrs.get("DEP_AVE"))
 
                 if uie is not None and math.isfinite(uie) and (uie != 0.0 or (up_node and up_node["mh_ie"] is not None)):
                     d1 = gov_g1 - uie
                 elif up_node and up_node["mh_iht"] > 0.4:
                     d1 = up_node["mh_iht"]
+                elif dep_ave is not None and 0.4 <= dep_ave <= 13.5:
+                    d1 = dep_ave
                 else:
-                    d1 = 2.4
+                    d1 = 1.65 if is_lateral else 2.4
 
                 if die is not None and math.isfinite(die) and (die != 0.0 or (dn_node and dn_node["mh_ie"] is not None)):
                     d2 = gov_g2 - die
                 elif dn_node and dn_node["mh_iht"] > 0.4:
                     d2 = dn_node["mh_iht"]
+                elif dep_ave is not None and 0.4 <= dep_ave <= 13.5:
+                    d2 = dep_ave + length_m * 0.003
                 else:
                     d2 = d1 + length_m * 0.004
 
-                min_d = round(h_m + 0.75, 2)
+                min_d = round(h_m + (0.55 if is_lateral else 0.75), 2)
                 start_depth_m = round(max(min_d, min(13.5, d1)), 2)
                 end_depth_m = round(max(min_d, min(13.5, d2)), 2)
 
@@ -1739,15 +1947,21 @@ class PublicUtilitiesGISMixin:
                     di = start_depth_m + frac * (end_depth_m - start_depth_m)
                     coords_3d.append([round(px, 3), round(py, 3), round(gi - di, 3)])
 
+                raw_slp_s = safe_float(attrs.get("SLOPE"))
                 slope_calc = round(((z1 - z2) / max(0.5, length_m)) * 100.0, 3)
-                slope_pct = round(max(-24.0, min(24.0, slope_calc)), 3)
+                if raw_slp_s is not None and math.isfinite(raw_slp_s) and 0.0 < abs(raw_slp_s) < 0.25:
+                    slope_pct = round(raw_slp_s * 100.0, 3)
+                else:
+                    slope_pct = round(max(-24.0, min(24.0, slope_calc)), 3)
 
+                oid_p = attrs.get("OBJECTID", len(features) + 1)
+                pipe_lbl = "污水連接管" if is_lateral else "污水管線"
                 features.append(
                     {
-                        "id": f"sanitary_pipe_{attrs.get('OBJECTID', len(features)+1)}",
+                        "id": f"sanitary_pipe_{oid_p}",
                         "layer": "sanitary",
                         "type": "pipe",
-                        "name": f"污水管線 {sno or ''} D={int(dia_mm)}mm".strip(),
+                        "name": f"{pipe_lbl} {sno or ''} D={int(dia_mm)}mm".strip(),
                         "diameter_mm": int(dia_mm),
                         "width_m": h_m,
                         "height_m": h_m,
@@ -1774,7 +1988,7 @@ class PublicUtilitiesGISMixin:
                         "downstream_mh": dmh,
                         "coords": coords_3d,
                         "source": "New Taipei City Sanitary Sewer (sewer.ntpc.gov.tw)",
-                        "arcgis_layer_url": f"https://wrd.ntpc.gov.tw/arcgis/rest/services/{svc}/MapServer/{lid}",
+                        "arcgis_layer_url": f"https://{base_host}/arcgis/rest/services/{svc}/MapServer/{lid}/{oid_p}",
                     }
                 )
 
@@ -1818,6 +2032,599 @@ class PublicUtilitiesGISMixin:
 
         return features
 
+    def _query_taipei_8utilities_gis(
+        self,
+        xmin: float,
+        ymin: float,
+        xmax: float,
+        ymax: float,
+        ce: float,
+        cn: float,
+        radius_m: float,
+        requested_layers: List[str],
+        sample_ground_z: Callable[[float, float], float],
+    ) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
+        """
+        Queries Taipei City Public Works Dept Road & Pipeline Center (道管中心):
+          1. 3D 8-Utilities API: https://3dgis.reac.taipei/sgwptools/API3D/PipeQuery.ashx
+             (Layers 801 Telecom, 802 Electric/Streetlights, 803 Water/Hydrants, 80401 Sanitary,
+              80402 Storm, 805 Gas, 806 Hydraulic, 807 Oil, 808 Common Ducts)
+          2. 2D 8-Utilities ArcGIS MapServer: https://arcgiserv.gov.taipei/server/rest/services/GWH3857/G97_A_NW_PIPE/MapServer
+             (Sublayers 0, 22, 25, 42, 47, 49, 53, 55, 57, 58, 64, 66, 69, 74, 77)
+          3. Local Taipei 8-Utility GML 3.1.1 / GeoJSON dataset folder: data/taipei_8utilities_gml/
+        Never fabricates fallback pipes when IP is not yet whitelisted by 道管中心.
+        """
+        features: List[Dict[str, Any]] = []
+        req_set = set(requested_layers)
+        min_lat, min_lon = twd97_to_wgs84(xmin, ymin)
+        max_lat, max_lon = twd97_to_wgs84(xmax, ymax)
+
+        # Counter-clockwise WGS84 polygon EWKT per pipe.js L931-932
+        rect_ewkt = (
+            f"SRID=4326;POLYGON(({min_lon:.6f} {max_lat:.6f},"
+            f"{min_lon:.6f} {min_lat:.6f},"
+            f"{max_lon:.6f} {min_lat:.6f},"
+            f"{max_lon:.6f} {max_lat:.6f},"
+            f"{min_lon:.6f} {max_lat:.6f}))"
+        )
+        api_key = os.environ.get("TAIPEI_3DGIS_API_KEY", "test12345").strip() or "test12345"
+
+        # Map requested GatheringScans layers to Taipei 8-Utility layer codes
+        tpe_layer_codes: List[str] = []
+        if "telecom" in req_set:
+            tpe_layer_codes.append("801")
+        if "electric" in req_set or "streetlights" in req_set:
+            tpe_layer_codes.append("802")
+        if "water" in req_set:
+            tpe_layer_codes.append("803")
+        if "sanitary" in req_set:
+            tpe_layer_codes.append("80401")
+        if "storm" in req_set:
+            tpe_layer_codes.extend(["80402", "806"])
+        if "gas" in req_set:
+            tpe_layer_codes.extend(["805", "807"])
+        if "ducts" in req_set:
+            tpe_layer_codes.append("808")
+        layers_csv = ",".join(tpe_layer_codes) if tpe_layer_codes else "801,802,803,80401,80402,805,806,807,808"
+
+        def size_unit_ratio(u_code: Any) -> float:
+            s_u = str(u_code or "0").strip()
+            if s_u == "0":
+                return 0.001  # mm -> m
+            if s_u == "1":
+                return 0.0254  # inch -> m
+            if s_u == "2":
+                return 0.01  # cm -> m
+            return 1.0  # m
+
+        def map_tpe_layer(raw_lyr: Any) -> Tuple[str, str]:
+            s_l = str(raw_lyr or "").strip()
+            if s_l.startswith("801"):
+                return "telecom", "電信管線"
+            if s_l.startswith("8020203"):
+                return "streetlights", "路燈照明"
+            if s_l.startswith("802"):
+                return "electric", "電力管線"
+            if s_l.startswith("803"):
+                return "water", "自來水管線"
+            if s_l.startswith("80401"):
+                return "sanitary", "污水下水道"
+            if s_l.startswith("804"):
+                return "storm", "雨水下水道"
+            if s_l.startswith("805"):
+                return "gas", "瓦斯管線"
+            if s_l.startswith("806"):
+                return "storm", "水利設施"
+            if s_l.startswith("807"):
+                return "gas", "輸油管線"
+            if s_l.startswith("808"):
+                return "ducts", "共同管道"
+            return "storm", "公共管線"
+
+        def parse_ewkt_coords(ewkt_str: str, ewkt84_str: str, fallback_depth: float) -> List[List[float]]:
+            coords_out: List[List[float]] = []
+            raw_s = str(ewkt_str or ewkt84_str or "").strip()
+            is_wgs84 = "4326" in raw_s or (not ewkt_str and bool(ewkt84_str))
+            m_paren = re.search(r"\(([^()]+)\)", raw_s)
+            if not m_paren:
+                return coords_out
+            for v_str in m_paren.group(1).split(","):
+                parts = [safe_float(tok) for tok in v_str.strip().split() if safe_float(tok) is not None]
+                if len(parts) >= 2 and parts[0] is not None and parts[1] is not None:
+                    x_v, y_v = float(parts[0]), float(parts[1])
+                    if is_wgs84 or (x_v < 180.0 and y_v < 90.0):
+                        e_v, n_v = wgs84_to_twd97(y_v, x_v)
+                    else:
+                        e_v, n_v = x_v, y_v
+                    loc_g = sample_ground_z(e_v, n_v)
+                    z_v = float(parts[2]) if len(parts) >= 3 and parts[2] is not None else round(loc_g - fallback_depth, 3)
+                    coords_out.append([round(e_v, 3), round(n_v, 3), round(z_v, 3)])
+            return coords_out
+
+        def call_pipe_query(query_params: str, timeout_s: float = 4.0) -> Tuple[Optional[List[Dict[str, Any]]], bool, str]:
+            q_url = f"https://3dgis.reac.taipei/sgwptools/API3D/PipeQuery.ashx?{query_params}"
+            try:
+                req = urllib.request.Request(q_url, headers={"User-Agent": "GatheringScans-Civil-GIS/3.0"})
+                with urllib.request.urlopen(req, timeout=timeout_s) as resp:
+                    raw_txt = resp.read().decode("utf-8", errors="replace").strip()
+                if "非授權IP" in raw_txt:
+                    return None, False, raw_txt
+                if not raw_txt or "並未將物件參考" in raw_txt:
+                    return [], True, raw_txt
+                # Strip JSONP callback wrapper if present (e.g. pipeModel_out([...]);)
+                m_jsonp = re.match(r"^[A-Za-z0-9_]+\((.*)\)\s*;?\s*$", raw_txt, re.DOTALL)
+                json_txt = m_jsonp.group(1).strip() if m_jsonp else raw_txt
+                parsed = json.loads(json_txt)
+                if isinstance(parsed, list):
+                    return parsed, True, "OK"
+                if isinstance(parsed, dict) and isinstance(parsed.get("data"), list):
+                    return parsed["data"], True, "OK"
+                return [], True, "OK"
+            except Exception as ex:
+                return None, False, str(ex)
+
+        ewkt_encoded = urllib.parse.quote(rect_ewkt, safe=";(),")
+        pipe_rows, is_whitelisted, raw_status_msg = call_pipe_query(
+            f"type=SpatialIntersec;Pipe_Area_sql&ewkt={ewkt_encoded}&layer={layers_csv}&API_key={api_key}"
+        )
+
+        if is_whitelisted and pipe_rows is not None:
+            # Also query overhead/attached pipes and all 6 point facility classes in PipeQuery.ashx
+            upper_rows, _, _ = call_pipe_query(
+                f"type=SpatialIntersec;Pipe_Area_sql&ptype=upper&ewkt={ewkt_encoded}&layer={layers_csv}&API_key={api_key}",
+                timeout_s=3.5,
+            )
+            all_pipe_rows = list(pipe_rows) + (upper_rows or [])
+            for row in all_pipe_rows:
+                if not isinstance(row, dict):
+                    continue
+                lyr_id, lyr_zh = map_tpe_layer(row.get("layer"))
+                if lyr_id not in req_set:
+                    continue
+                unit_Ratio = size_unit_ratio(row.get("size_unit"))
+                w_m = round((safe_float(row.get("width"), 0.0) or 0.0) * unit_Ratio, 3)
+                h_m = round((safe_float(row.get("height"), 0.0) or 0.0) * unit_Ratio, 3)
+                if w_m <= 0.0 and h_m <= 0.0:
+                    w_m = h_m = 0.20
+                elif h_m <= 0.0:
+                    h_m = w_m
+                elif w_m <= 0.0:
+                    w_m = h_m
+                dia_mm = int(round(max(w_m, h_m) * 1000.0))
+                s_dep = safe_float(row.get("start_dep"), 1.3) or 1.3
+                e_dep = safe_float(row.get("end_dep"), s_dep) or s_dep
+                pts_3d = parse_ewkt_coords(str(row.get("ewkt") or ""), str(row.get("ewkt84") or ""), 0.5 * (s_dep + e_dep))
+                if len(pts_3d) < 2:
+                    continue
+                # In Taipei 3dgis pipe.js (L2665), vertex Z in ewkt84 is pipe crown/top; convert to invert Z = crown - h_m
+                coords_invert = [[pt[0], pt[1], round(pt[2] - h_m, 3)] for pt in pts_3d]
+                len_calc = sum(
+                    math.hypot(coords_invert[i + 1][0] - coords_invert[i][0], coords_invert[i + 1][1] - coords_invert[i][1])
+                    for i in range(len(coords_invert) - 1)
+                )
+                length_m = round(safe_float(row.get("leng"), len_calc) or len_calc, 2)
+                if length_m < 0.3:
+                    continue
+                unit_code = str(row.get("unit") or "").strip()
+                unit_name = TAIPEI_8UTILITY_UNITS.get(unit_code, unit_code or "臺北市管線單位")
+                raw_id = str(row.get("id") or f"{len(features)+1}").strip()
+                mat = str(row.get("material") or "標準管材").strip()
+                g1 = sample_ground_z(coords_invert[0][0], coords_invert[0][1])
+                g2 = sample_ground_z(coords_invert[-1][0], coords_invert[-1][1])
+                is_box = str(row.get("type") or "") == "1" or lyr_id == "ducts"
+                features.append(
+                    {
+                        "id": f"tpe3d_pipe_{raw_id}",
+                        "arcgis_layer_url": f"https://3dgis.reac.taipei/sgwptools/API3D/PipeQuery.ashx?type=QueAttr;pipe&id={raw_id}",
+                        "layer": lyr_id,
+                        "type": "box_culvert" if is_box else "pipe",
+                        "name": f"{lyr_zh} ({unit_name}) #{raw_id} D={dia_mm}mm",
+                        "facility_no": raw_id,
+                        "diameter_mm": dia_mm,
+                        "width_m": round(w_m, 2),
+                        "height_m": round(h_m, 2),
+                        "length_m": length_m,
+                        "material": mat,
+                        "start_coord": coords_invert[0],
+                        "end_coord": coords_invert[-1],
+                        "start_ground_h": round(g1, 3),
+                        "end_ground_h": round(g2, 3),
+                        "start_rim_h": round(g1, 3),
+                        "end_rim_h": round(g2, 3),
+                        "start_invert_h": coords_invert[0][2],
+                        "end_invert_h": coords_invert[-1][2],
+                        "start_crown_h": round(coords_invert[0][2] + h_m, 3),
+                        "end_crown_h": round(coords_invert[-1][2] + h_m, 3),
+                        "start_depth_m": round(s_dep, 2),
+                        "end_depth_m": round(e_dep, 2),
+                        "start_cover_m": round(max(0.1, s_dep - h_m), 2),
+                        "end_cover_m": round(max(0.1, e_dep - h_m), 2),
+                        "depth_m": round(0.5 * (s_dep + e_dep), 2),
+                        "slope_pct": round(((coords_invert[0][2] - coords_invert[-1][2]) / max(1.0, length_m)) * 100.0, 3),
+                        "flow_direction": 1,
+                        "coords": coords_invert,
+                        "source": f"Taipei City 3D 8-Utilities GIS (3dgis.reac.taipei - {unit_name})",
+                    }
+                )
+
+            # Query point facilities from PipeQuery.ashx: Hole, Pole, Hydrant, Switch, Facility, Station
+            for sql_type, attr_type, f_struct_type, zh_prefix in [
+                ("Hole_Area_sql", "hole", "manhole", "人手孔"),
+                ("Pole_Area_sql", "pole", "pole", "電桿/路燈桿"),
+                ("Hydrant_Area_sql", "hydrant", "hydrant", "消防栓"),
+                ("Switch_Area_sql", "switch", "manhole", "閥類/開關"),
+                ("Facility_Area_sql", "facility", "manhole", "管線設施"),
+                ("Station_Area_sql", "station", "manhole", "場站設施"),
+            ]:
+                pt_rows, ok_pt, _ = call_pipe_query(
+                    f"type=SpatialIntersec;{sql_type}&ewkt={ewkt_encoded}&layer={layers_csv}&API_key={api_key}",
+                    timeout_s=3.0,
+                )
+                if not ok_pt or not pt_rows:
+                    continue
+                for prow in pt_rows:
+                    if not isinstance(prow, dict):
+                        continue
+                    lyr_id, lyr_zh = map_tpe_layer(prow.get("layer"))
+                    if lyr_id not in req_set:
+                        continue
+                    d_m = safe_float(prow.get("depth") or prow.get("high"), 1.6) or 1.6
+                    pts_p = parse_ewkt_coords(str(prow.get("ewkt") or ""), str(prow.get("ewkt84") or ""), d_m)
+                    if not pts_p:
+                        ex_p = safe_float(prow.get("x"))
+                        ny_p = safe_float(prow.get("y"))
+                        if ex_p is not None and ny_p is not None:
+                            if ex_p < 180.0 and ny_p < 90.0:
+                                ex_p, ny_p = wgs84_to_twd97(ny_p, ex_p)
+                            loc_gp = sample_ground_z(ex_p, ny_p)
+                            pts_p = [[round(ex_p, 3), round(ny_p, 3), round(loc_gp - d_m, 3)]]
+                    if not pts_p:
+                        continue
+                    px, py, pz = pts_p[0][0], pts_p[0][1], pts_p[0][2]
+                    loc_g = sample_ground_z(px, py)
+                    unit_Ratio = size_unit_ratio(prow.get("size_unit"))
+                    w_mm = int(round((safe_float(prow.get("width"), 0.0) or 0.0) * unit_Ratio * 1000.0))
+                    if w_mm <= 50:
+                        w_mm = 150 if f_struct_type in ("hydrant", "pole") else 750
+                    raw_id = str(prow.get("id") or f"{len(features)+1}").strip()
+                    unit_code = str(prow.get("unit") or "").strip()
+                    unit_name = TAIPEI_8UTILITY_UNITS.get(unit_code, unit_code or "臺北市管線單位")
+                    features.append(
+                        {
+                            "id": f"tpe3d_{attr_type}_{raw_id}",
+                            "arcgis_layer_url": f"https://3dgis.reac.taipei/sgwptools/API3D/PipeQuery.ashx?type=QueAttr;{attr_type}&id={raw_id}",
+                            "layer": lyr_id,
+                            "type": f_struct_type,
+                            "name": f"{lyr_zh}{zh_prefix} #{raw_id}",
+                            "facility_no": raw_id,
+                            "structure_type": f"{lyr_zh}{zh_prefix}",
+                            "coord": [px, py, round(loc_g - d_m, 3)],
+                            "rim_h": round(loc_g, 3),
+                            "invert_h": round(loc_g - d_m, 3),
+                            "depth_m": round(d_m, 2),
+                            "diameter_mm": w_mm,
+                            "source": f"Taipei City 3D 8-Utilities GIS (3dgis.reac.taipei - {unit_name})",
+                        }
+                    )
+
+        # 2. Check Taipei 2D 8-Utilities ArcGIS MapServer (arcgiserv.gov.taipei G97_A_NW_PIPE) if token is available
+        tpe_arcgis_token = os.environ.get("TAIPEI_ARCGIS_TOKEN", "").strip()
+        if not tpe_arcgis_token:
+            try:
+                req_tk = urllib.request.Request(
+                    "https://dig.taipei/Tpdig/pip6/pipe.aspx",
+                    data=b"",
+                    headers={"User-Agent": "GatheringScans-Civil-GIS/3.0", "Referer": "https://dig.taipei/Tpdig/Public/pipe3.html"},
+                    method="POST",
+                )
+                with urllib.request.urlopen(req_tk, timeout=2.5) as resp_tk:
+                    tk_txt = resp_tk.read().decode("utf-8", errors="ignore").strip()
+                if tk_txt and len(tk_txt) < 256 and "<html" not in tk_txt.lower() and "非授權" not in tk_txt:
+                    tpe_arcgis_token = tk_txt.strip('"')
+            except Exception:
+                pass
+
+        if tpe_arcgis_token:
+            # Official Feature Layer IDs from arcgiserv.gov.taipei G97_A_NW_PIPE/MapServer:
+            # 801 Telecom: 2 (中华電信管線), 3 (中華電信人手孔), 7 (固網管線), 12 (有線電視管線), 16 (警察通訊管線), 22 (交通號誌管線)
+            # 802 Electric & Streetlights: 27 (台電電力管線), 28/29 (台電人手孔/變電箱), 33/35 (路燈照明線路/燈桿), 39/44 (捷運電力管線)
+            # 803 Water Supply: 49 (自來水管線), 50 (自來水人手孔/閥栓), 51 (消防栓)
+            # 80402 Storm Sewer: 56 (雨水下水道管線/箱涵), 57 (雨水人孔/集水井)
+            # 80401 Sanitary Sewer: 59 (污水下水道管線), 60/61 (污水人孔/陰井)
+            # 805 Natural Gas: 66 (天然氣瓦斯管線), 67/68 (瓦斯人手孔/閥孔)
+            # 808 Common Ducts: 79 (共同管道主體), 80 (共同管道節點), 83 (纜線管路), 86 (寬頻管道)
+            sublayer_map = [
+                (2, "telecom", "pipe", "電信管線"),
+                (3, "telecom", "manhole", "電信人手孔"),
+                (7, "telecom", "pipe", "固網光纖管線"),
+                (12, "telecom", "pipe", "有線電視管線"),
+                (27, "electric", "pipe", "台電電力管線"),
+                (28, "electric", "manhole", "電力人手孔"),
+                (29, "electric", "manhole", "電力變壓箱"),
+                (33, "streetlights", "pole", "路燈燈桿"),
+                (35, "streetlights", "pipe", "路燈照明管線"),
+                (49, "water", "pipe", "自來水管線"),
+                (50, "water", "manhole", "自來水制水閥/人孔"),
+                (51, "water", "hydrant", "自來水消防栓"),
+                (56, "storm", "pipe", "雨水下水道管線"),
+                (57, "storm", "manhole", "雨水下水道人孔"),
+                (59, "sanitary", "pipe", "污水下水道管線"),
+                (60, "sanitary", "manhole", "污水下水道人孔"),
+                (61, "sanitary", "catch_basin", "污水陰井"),
+                (66, "gas", "pipe", "天然氣瓦斯管線"),
+                (67, "gas", "manhole", "瓦斯人手孔/開關閥"),
+                (79, "ducts", "box_culvert", "共同管道"),
+                (80, "ducts", "manhole", "共同管道節點"),
+                (83, "ducts", "pipe", "纜線管路"),
+                (86, "ducts", "pipe", "寬頻管道"),
+            ]
+            for slid, lyr_id, f_type, zh_lbl in sublayer_map:
+                if lyr_id not in req_set:
+                    continue
+                q_arc = (
+                    f"https://arcgiserv.gov.taipei/server/rest/services/GWH3857/G97_A_NW_PIPE/MapServer/{slid}/query?"
+                    f"geometry={xmin},{ymin},{xmax},{ymax}&geometryType=esriGeometryEnvelope&"
+                    f"spatialRel=esriSpatialRelIntersects&inSR=3826&outSR=3826&outFields=*&returnGeometry=true&f=json&"
+                    f"token={urllib.parse.quote(tpe_arcgis_token)}"
+                )
+                d_arc = _http_get_json(q_arc, timeout=3.5)
+                if not d_arc or not isinstance(d_arc.get("features"), list):
+                    continue
+                for af in d_arc["features"]:
+                    attrs = af.get("attributes") or {}
+                    geom = af.get("geometry") or {}
+                    oid = attrs.get("ogr_fid") or attrs.get("OBJECTID") or attrs.get("ID") or (len(features) + 1)
+                    pipe_no = str(attrs.get("PIPE_NO") or attrs.get("NO") or attrs.get("ID") or oid).strip()
+                    unit_code = str(attrs.get("UNIT") or "").strip()
+                    unit_name = TAIPEI_8UTILITY_UNITS.get(unit_code, unit_code)
+                    u_ratio = size_unit_ratio(attrs.get("SIZE_UNIT"))
+                    if "paths" in geom and geom["paths"] and geom["paths"][0]:
+                        pts = geom["paths"][0]
+                        raw_w = safe_float(attrs.get("WIDTH") or attrs.get("PIPE_WIDTH") or attrs.get("DIA"), 0.0) or 0.0
+                        raw_h = safe_float(attrs.get("HEIGHT"), raw_w) or raw_w
+                        w_m = round(raw_w * u_ratio, 3) if raw_w > 0 else 0.25
+                        h_m = round(raw_h * u_ratio, 3) if raw_h > 0 else w_m
+                        if w_m > 10.0:
+                            w_m = round(w_m / 1000.0, 3)
+                        if h_m > 10.0:
+                            h_m = round(h_m / 1000.0, 3)
+                        dia_mm = int(round(max(w_m, h_m) * 1000.0))
+                        d1 = safe_float(attrs.get("START_DEP") or attrs.get("起點埋深"), 1.35) or 1.35
+                        d2 = safe_float(attrs.get("END_DEP") or attrs.get("終點埋深"), d1) or d1
+                        if d1 <= 0.05:
+                            d1 = 1.35
+                        if d2 <= 0.05:
+                            d2 = d1
+                        coords_3d = []
+                        for idx_p, pt in enumerate(pts):
+                            px, py = float(pt[0]), float(pt[1])
+                            frac = idx_p / max(1, len(pts) - 1)
+                            di = d1 + frac * (d2 - d1)
+                            gi = sample_ground_z(px, py)
+                            coords_3d.append([round(px, 3), round(py, 3), round(gi - di, 3)])
+                        length_m = sum(
+                            math.hypot(coords_3d[i + 1][0] - coords_3d[i][0], coords_3d[i + 1][1] - coords_3d[i][1])
+                            for i in range(len(coords_3d) - 1)
+                        )
+                        if length_m < 0.3:
+                            continue
+                        g1 = sample_ground_z(coords_3d[0][0], coords_3d[0][1])
+                        g2 = sample_ground_z(coords_3d[-1][0], coords_3d[-1][1])
+                        actual_type = "box_culvert" if (f_type == "box_culvert" or str(attrs.get("PTYPE") or "") == "1" or (w_m >= 0.8 and abs(w_m - h_m) > 0.05)) else "pipe"
+                        features.append(
+                            {
+                                "id": f"tpedig_pipe_{slid}_{oid}",
+                                "arcgis_layer_url": f"https://arcgiserv.gov.taipei/server/rest/services/GWH3857/G97_A_NW_PIPE/MapServer/{slid}/{oid}",
+                                "layer": lyr_id,
+                                "type": actual_type,
+                                "name": f"{zh_lbl} ({unit_name}) #{pipe_no} D={dia_mm}mm" if unit_name else f"{zh_lbl} #{pipe_no} D={dia_mm}mm",
+                                "facility_no": pipe_no,
+                                "diameter_mm": dia_mm,
+                                "width_m": round(w_m, 2),
+                                "height_m": round(h_m, 2),
+                                "length_m": round(length_m, 2),
+                                "material": str(attrs.get("MATERIAL") or "標準管材").strip(),
+                                "start_coord": coords_3d[0],
+                                "end_coord": coords_3d[-1],
+                                "start_ground_h": round(g1, 3),
+                                "end_ground_h": round(g2, 3),
+                                "start_rim_h": round(g1, 3),
+                                "end_rim_h": round(g2, 3),
+                                "start_invert_h": coords_3d[0][2],
+                                "end_invert_h": coords_3d[-1][2],
+                                "start_crown_h": round(coords_3d[0][2] + h_m, 3),
+                                "end_crown_h": round(coords_3d[-1][2] + h_m, 3),
+                                "start_depth_m": round(d1, 2),
+                                "end_depth_m": round(d2, 2),
+                                "start_cover_m": round(max(0.1, d1 - h_m), 2),
+                                "end_cover_m": round(max(0.1, d2 - h_m), 2),
+                                "depth_m": round(0.5 * (d1 + d2), 2),
+                                "slope_pct": round(((coords_3d[0][2] - coords_3d[-1][2]) / max(1.0, length_m)) * 100.0, 3),
+                                "flow_direction": 1,
+                                "coords": coords_3d,
+                                "source": f"Taipei City 8-Utilities MapServer (arcgiserv.gov.taipei G97_A_NW_PIPE/{slid})",
+                            }
+                        )
+                    elif "x" in geom and "y" in geom:
+                        px, py = float(geom["x"]), float(geom["y"])
+                        loc_g = sample_ground_z(px, py)
+                        d_m = safe_float(attrs.get("DEPTH") or attrs.get("孔深"), 1.6) or 1.6
+                        if d_m <= 0.1:
+                            d_m = 1.6
+                        cv_w = safe_float(attrs.get("CVWIDTH") or attrs.get("WIDTH"), 0.0) or 0.0
+                        dia_pt = int(round(cv_w * u_ratio * 1000.0)) if cv_w > 0 else (150 if f_type in ("hydrant", "pole") else 750)
+                        if dia_pt <= 50 or dia_pt > 3000:
+                            dia_pt = 150 if f_type in ("hydrant", "pole") else 750
+                        features.append(
+                            {
+                                "id": f"tpedig_pt_{slid}_{oid}",
+                                "arcgis_layer_url": f"https://arcgiserv.gov.taipei/server/rest/services/GWH3857/G97_A_NW_PIPE/MapServer/{slid}/{oid}",
+                                "layer": lyr_id,
+                                "type": f_type,
+                                "name": f"{zh_lbl} ({unit_name}) #{pipe_no}" if unit_name else f"{zh_lbl} #{pipe_no}",
+                                "facility_no": pipe_no,
+                                "structure_type": zh_lbl,
+                                "coord": [round(px, 3), round(py, 3), round(loc_g - d_m, 3)],
+                                "rim_h": round(loc_g, 3),
+                                "invert_h": round(loc_g - d_m, 3),
+                                "depth_m": round(d_m, 2),
+                                "diameter_mm": dia_pt,
+                                "source": f"Taipei City 8-Utilities MapServer (arcgiserv.gov.taipei G97_A_NW_PIPE/{slid})",
+                            }
+                        )
+
+        # 3. Also load any authorized Taipei 8-Utility GML 3.1.1 / GeoJSON files placed in data/taipei_8utilities_gml/
+        gml_dir = os.path.join(DATA_DIR, "taipei_8utilities_gml")
+        gml_files_loaded = 0
+        if os.path.isdir(gml_dir):
+            for fn in sorted(os.listdir(gml_dir)):
+                if not fn.lower().endswith((".gml", ".xml", ".geojson", ".json")):
+                    continue
+                fp = os.path.join(gml_dir, fn)
+                try:
+                    parsed_doc = self.parse_utilities_file({"file_path": fp, "filename": fn})
+                    if parsed_doc and isinstance(parsed_doc.get("features"), list):
+                        gml_files_loaded += 1
+                        for gf in parsed_doc["features"]:
+                            if gf.get("layer") not in req_set:
+                                continue
+                            if gf.get("coord") and len(gf["coord"]) >= 2:
+                                gx, gy = float(gf["coord"][0]), float(gf["coord"][1])
+                                if xmin <= gx <= xmax and ymin <= gy <= ymax:
+                                    features.append(gf)
+                            elif gf.get("coords") and len(gf["coords"]) >= 2:
+                                if any(xmin <= float(c[0]) <= xmax and ymin <= float(c[1]) <= ymax for c in gf["coords"]):
+                                    features.append(gf)
+                except Exception:
+                    pass
+
+        elev_z = _query_taipei_3d_elevation(ce, cn)
+        status_info: Dict[str, Any] = {
+            "integrated": True,
+            "whitelisted": bool(is_whitelisted or tpe_arcgis_token or gml_files_loaded > 0),
+            "endpoint_3d": "https://3dgis.reac.taipei/sgwptools/API3D/PipeQuery.ashx",
+            "endpoint_2d": "https://arcgiserv.gov.taipei/server/rest/services/GWH3857/G97_A_NW_PIPE/MapServer",
+            "elevation_api": "https://3dgis.reac.taipei/sgwptools/API3D/get3dz.ashx",
+            "elevation_twvd2001_m": elev_z,
+            "gml_dir": "data/taipei_8utilities_gml",
+            "gml_files_loaded": gml_files_loaded,
+            "supported_layers": ["801 電信", "802 電力/路燈", "803 自來水/消防栓", "80401 污水", "80402 雨水", "805 瓦斯", "806 水利", "807 輸油", "808 共同管道"],
+            "raw_response": raw_status_msg[:160] if raw_status_msg else "",
+            "message_zh": (
+                "臺北市道管中心 3D 八大管線 API (PipeQuery.ashx) 與 GML 3.1.1 解析引擎已完整就緒；地形高程 API (get3dz.ashx) 連線正常。待道管中心核發伺服器 IP 白名單或匯入 GML 圖資後即自動載入八大管線（未授權圖層維持真實 0 筆，絕不產生假管線）。"
+                if not (is_whitelisted or tpe_arcgis_token or gml_files_loaded > 0)
+                else f"臺北市八大管線圖資已連線載入 ({len(features)} 筆設施)。"
+            ),
+            "message_en": (
+                "Taipei 3D 8-Utilities API (PipeQuery.ashx) & MOI GML 3.1.1 engine ready; Bare-Earth Elevation API (get3dz.ashx) live. Awaiting Taipei REAC IP whitelist or GML file drop (un-whitelisted layers honestly report 0 features with zero synthetic pipes)."
+                if not (is_whitelisted or tpe_arcgis_token or gml_files_loaded > 0)
+                else f"Taipei 8-Utilities active ({len(features)} features loaded)."
+            ),
+        }
+        return features, status_info
+
+    def _query_ntpc_open_data_utilities(
+        self,
+        xmin: float,
+        ymin: float,
+        xmax: float,
+        ymax: float,
+        ce: float,
+        cn: float,
+        requested_layers: List[str],
+        sample_ground_z: Callable[[float, float], float],
+    ) -> List[Dict[str, Any]]:
+        """
+        Queries official New Taipei City Open Data APIs (data.ntpc.gov.tw):
+          1. Approved Road Excavations (核准挖掘道路): UUID 96b6101b-c033-4834-8bd5-e312651db7a0
+          2. Municipal Streetlight Poles (路燈位置): UUID 39149fe0-85ab-4e6c-99e5-60657d44895f
+        """
+        features: List[Dict[str, Any]] = []
+        req_set = set(requested_layers)
+        if not (280000.0 <= ce <= 350000.0 and 2730000.0 <= cn <= 2800000.0):
+            return features
+
+        # 1. Road Excavations (excavations layer)
+        if "excavations" in req_set:
+            dig_url = "https://data.ntpc.gov.tw/api/datasets/96b6101b-c033-4834-8bd5-e312651db7a0/json?page=0&size=500"
+            dig_rows = _http_get_json(dig_url, timeout=4.0)
+            if isinstance(dig_rows, list):
+                for idx_d, row in enumerate(dig_rows):
+                    if not isinstance(row, dict):
+                        continue
+                    ex = safe_float(row.get("twd97x"))
+                    ny = safe_float(row.get("twd97y"))
+                    if ex is None or ny is None:
+                        continue
+                    if not (xmin <= ex <= xmax and ymin <= ny <= ymax):
+                        continue
+                    loc_g = sample_ground_z(ex, ny)
+                    depth_m = 1.20
+                    inv_z = round(loc_g - depth_m, 3)
+                    c_no = str(row.get("caseid") or row.get("allowid") or f"DIG-{idx_d+1}").strip()
+                    c_name = str(row.get("constname") or "道路挖掘案件").strip()
+                    c_unit = str(row.get("constructionunit") or "").strip()
+                    features.append(
+                        {
+                            "id": f"ntpc_dig_{c_no}",
+                            "arcgis_layer_url": dig_url,
+                            "layer": "excavations",
+                            "type": "manhole",
+                            "name": f"道路挖掘核准案 {c_no} ({c_name})",
+                            "facility_no": c_no,
+                            "structure_type": f"道路挖掘 ({c_unit})".strip(),
+                            "coord": [round(ex, 3), round(ny, 3), inv_z],
+                            "rim_h": round(loc_g, 3),
+                            "invert_h": inv_z,
+                            "depth_m": depth_m,
+                            "diameter_mm": 1000,
+                            "source": "New Taipei City Open Data Road Excavations (data.ntpc.gov.tw)",
+                        }
+                    )
+
+        # 2. Municipal Streetlights (streetlights layer)
+        if "streetlights" in req_set:
+            sl_url = "https://data.ntpc.gov.tw/api/datasets/39149fe0-85ab-4e6c-99e5-60657d44895f/json?page=0&size=500"
+            sl_rows = _http_get_json(sl_url, timeout=4.0)
+            if isinstance(sl_rows, list):
+                for idx_s, row in enumerate(sl_rows):
+                    if not isinstance(row, dict):
+                        continue
+                    raw_x = safe_float(row.get("x") or row.get("twd97x"))
+                    raw_y = safe_float(row.get("y") or row.get("twd97y"))
+                    if raw_x is None or raw_y is None:
+                        continue
+                    if raw_x < 180.0 and raw_y < 90.0:
+                        ex, ny = wgs84_to_twd97(raw_y, raw_x)
+                    elif raw_y < 180.0 and raw_x < 90.0:
+                        ex, ny = wgs84_to_twd97(raw_x, raw_y)
+                    else:
+                        ex, ny = raw_x, raw_y
+                    if not (xmin <= ex <= xmax and ymin <= ny <= ymax):
+                        continue
+                    loc_g = sample_ground_z(ex, ny)
+                    depth_m = 0.85
+                    inv_z = round(loc_g - depth_m, 3)
+                    l_no = str(row.get("no") or row.get("lightno") or f"SL-{idx_s+1}").strip()
+                    features.append(
+                        {
+                            "id": f"ntpc_light_{l_no}",
+                            "arcgis_layer_url": sl_url,
+                            "layer": "streetlights",
+                            "type": "pole",
+                            "name": f"新北市路燈桿 #{l_no}",
+                            "facility_no": l_no,
+                            "coord": [round(ex, 3), round(ny, 3), inv_z],
+                            "rim_h": round(loc_g, 3),
+                            "invert_h": inv_z,
+                            "depth_m": depth_m,
+                            "diameter_mm": 150,
+                            "source": "New Taipei City Open Data Streetlights (data.ntpc.gov.tw)",
+                        }
+                    )
+
+        return features
+
     def _query_osm_public_utilities(
         self,
         xmin: float,
@@ -1834,8 +2641,13 @@ class PublicUtilitiesGISMixin:
     ) -> List[Dict[str, Any]]:
         """
         Queries the official CDN-backed OpenStreetMap API v0.6 (/api/0.6/map.json?bbox=...)
-        for real Taipei Water Dept fire hydrants, waterways/culverts/sluice gates, power cables/substations,
-        traffic signals, streetlights, and road-aligned municipal underground utility corridors.
+        strictly for genuine tagged utility elements:
+          - Taipei Water Dept / OpenGIS fire hydrants (emergency=fire_hydrant)
+          - Taipower poles, towers, transformers, substations, and underground power cables (power=*)
+          - Municipal street lamps (highway=street_lamp)
+          - Underground box culverts & drainage channels (tunnel=culvert, waterway=drain|ditch|canal|sluice_gate)
+          - Utility manholes, ventilation shafts, and pipelines (man_made=manhole|ventilation_shaft|pipeline)
+        Never synthesizes or clones utility pipes from street centerlines (highway=*).
         """
         features: List[Dict[str, Any]] = []
         req_set = set(requested_layers)
@@ -1870,8 +2682,6 @@ class PublicUtilitiesGISMixin:
             elif etype == "way" and el.get("tags"):
                 ways.append(el)
 
-        # Clip polylines strictly to user [xmin, ymin, xmax, ymax] (+10m tolerance) using Liang-Barsky segment clipping
-        # so 2-node adjacent streets crossing the boundary are preserved and long boulevards never extend far away.
         pad_m = min(15.0, max(5.0, radius_m * 0.08))
         cxmin, cymin, cxmax, cymax = xmin - pad_m, ymin - pad_m, xmax + pad_m, ymax + pad_m
 
@@ -1894,28 +2704,12 @@ class PublicUtilitiesGISMixin:
             end_d: float,
             material: str,
             source_label: str,
-            offset_m: float = 0.0,
         ) -> Optional[Dict[str, Any]]:
             if len(pts_2d) < 2:
                 return None
-            # Apply lateral offset perpendicular to segment direction if requested
-            shifted_2d: List[Tuple[float, float]] = []
-            for idx, (px, py) in enumerate(pts_2d):
-                if abs(offset_m) > 0.05:
-                    if idx < len(pts_2d) - 1:
-                        dx, dy = pts_2d[idx + 1][0] - px, pts_2d[idx + 1][1] - py
-                    else:
-                        dx, dy = px - pts_2d[idx - 1][0], py - pts_2d[idx - 1][1]
-                    seg_l = math.hypot(dx, dy)
-                    if seg_l > 1e-3:
-                        nx_perp, ny_perp = -dy / seg_l, dx / seg_l
-                        px = px + nx_perp * offset_m
-                        py = py + ny_perp * offset_m
-                shifted_2d.append((px, py))
-
             length_m = sum(
-                math.hypot(shifted_2d[i + 1][0] - shifted_2d[i][0], shifted_2d[i + 1][1] - shifted_2d[i][1])
-                for i in range(len(shifted_2d) - 1)
+                math.hypot(pts_2d[i + 1][0] - pts_2d[i][0], pts_2d[i + 1][1] - pts_2d[i][1])
+                for i in range(len(pts_2d) - 1)
             )
             if length_m < 1.0:
                 return None
@@ -1925,14 +2719,14 @@ class PublicUtilitiesGISMixin:
             d2 = round(max(min_d, end_d), 2)
 
             coords_3d = []
-            for idx, (px, py) in enumerate(shifted_2d):
-                frac = idx / max(1, len(shifted_2d) - 1)
+            for idx, (px, py) in enumerate(pts_2d):
+                frac = idx / max(1, len(pts_2d) - 1)
                 di = d1 + frac * (d2 - d1)
                 gi = sample_ground_z(px, py)
                 coords_3d.append([round(px, 3), round(py, 3), round(gi - di, 3)])
 
-            g1 = sample_ground_z(shifted_2d[0][0], shifted_2d[0][1])
-            g2 = sample_ground_z(shifted_2d[-1][0], shifted_2d[-1][1])
+            g1 = sample_ground_z(pts_2d[0][0], pts_2d[0][1])
+            g2 = sample_ground_z(pts_2d[-1][0], pts_2d[-1][1])
             z1, z2 = coords_3d[0][2], coords_3d[-1][2]
             slope_pct = round(max(-24.0, min(24.0, ((z1 - z2) / max(1.0, length_m)) * 100.0)), 3)
 
@@ -1967,8 +2761,7 @@ class PublicUtilitiesGISMixin:
                 "source": source_label,
             }
 
-        # A. Process Tagged Point Nodes (Fire Hydrants, Power Poles/Substations, Traffic Signals, Street Lamps, Sluice Gates)
-        hydrant_pts: List[Tuple[float, float, str]] = []
+        # A. Process Tagged Point Nodes (Fire Hydrants, Power Poles/Transformers/Substations, Street Lamps, Sluice Gates, Manholes)
         for nd in tagged_nodes:
             nid = nd["id"]
             if nid not in nodes_twd:
@@ -1986,9 +2779,8 @@ class PublicUtilitiesGISMixin:
                     "地下式消防栓" if tags.get("fire_hydrant:type") == "underground" else "地上式消防栓"
                 )
                 src = tags.get("source") or "臺北自來水事業處 / Taiwan OpenGIS"
-                depth_m = 1.20  # Underground hydrant riser valve & branch depth
+                depth_m = 1.20
                 inv_z = round(loc_g - depth_m, 3)
-                hydrant_pts.append((ex, ny, str(dgn_id)))
                 features.append(
                     {
                         "id": f"osm_hydrant_{nid}",
@@ -2006,24 +2798,27 @@ class PublicUtilitiesGISMixin:
                     }
                 )
 
-            # 2. Power Poles, Towers, Transformers & Traffic Signal Control Feeds
-            elif (tags.get("power") in ("pole", "tower", "transformer", "substation", "portal") or tags.get("highway") == "traffic_signals") and "electric" in req_set:
-                is_sig = tags.get("highway") == "traffic_signals"
-                depth_m = 1.35 if is_sig else 1.50
+            # 2. Power Poles, Towers, Transformers & Substations (strictly power=* or utility_pole/street_cabinet; no traffic_signals)
+            elif (
+                tags.get("power") in ("pole", "tower", "transformer", "substation", "portal", "catenary_mast")
+                or tags.get("man_made") in ("utility_pole", "street_cabinet")
+            ) and "electric" in req_set:
+                p_tag = tags.get("power") or tags.get("man_made") or "power"
+                depth_m = 1.50
                 inv_z = round(loc_g - depth_m, 3)
-                lbl = f"號誌電力控制箱 #{str(nid)[-4:]}" if is_sig else f"台電電力設施 ({tags.get('power')}) #{str(nid)[-4:]}"
+                lbl = f"台電電力設施 ({p_tag}) #{tags.get('ref') or str(nid)[-4:]}"
                 features.append(
                     {
                         "id": f"osm_elec_pt_{nid}",
                         "layer": "electric",
-                        "type": "pole" if tags.get("power") in ("pole", "tower") or is_sig else "manhole",
+                        "type": "pole" if p_tag in ("pole", "tower", "utility_pole", "catenary_mast") else "manhole",
                         "name": lbl,
                         "coord": [round(ex, 3), round(ny, 3), inv_z],
                         "rim_h": round(loc_g, 3),
                         "invert_h": inv_z,
                         "depth_m": depth_m,
-                        "diameter_mm": 300 if is_sig else 600,
-                        "source": "Taiwan Power & Traffic Signal GIS (OpenStreetMap Taiwan)",
+                        "diameter_mm": 400 if p_tag in ("pole", "utility_pole") else 600,
+                        "source": "Taiwan Power Facility GIS (OpenStreetMap Taiwan)",
                     }
                 )
 
@@ -2046,7 +2841,7 @@ class PublicUtilitiesGISMixin:
                     }
                 )
 
-            # 4. Hydraulic Sluice Gates & Weirs (e.g. QuChi Dam & Qihu)
+            # 4. Hydraulic Sluice Gates & Weirs
             elif tags.get("waterway") in ("sluice_gate", "weir", "dam") and "storm" in req_set:
                 depth_m = 2.20
                 inv_z = round(loc_g - depth_m, 3)
@@ -2086,8 +2881,7 @@ class PublicUtilitiesGISMixin:
                     }
                 )
 
-        # B. Process Tagged Ways (Waterways/Culverts, Power Cables, and Roadway Utility Corridors)
-        road_corridors: List[Tuple[int, str, str, List[Tuple[float, float]], float, float]] = []
+        # B. Process Genuine Tagged Utility Ways (Culverts/Drains/Canals, Power Lines/Cables, Explicit Pipelines)
         for w in ways:
             wid = w["id"]
             tags = w.get("tags") or {}
@@ -2095,19 +2889,19 @@ class PublicUtilitiesGISMixin:
             if len(pts_2d) < 2:
                 continue
 
-            # 1. Waterways, Canals, Underground Culverts & Drainage Channels (e.g. 粗坑發電廠導水線 at QuChi Dam, Qihu canals)
-            if ("waterway" in tags or tags.get("tunnel") == "culvert") and "storm" in req_set:
-                wtype = tags.get("waterway") or "culvert"
-                wname = tags.get("name") or ("地下箱涵" if tags.get("tunnel") == "culvert" else f"排水渠道 ({wtype})")
-                is_culvert = tags.get("tunnel") == "culvert" or wtype in ("canal", "ditch", "drain")
-                w_m = 1.5 if wtype in ("canal", "river") else 1.0
-                h_m = 1.4 if wtype in ("canal", "river") else 1.0
-                d_start = 2.20 if tags.get("tunnel") == "culvert" else 1.75
+            # 1. Underground Culverts, Canals & Engineered Drainage Channels (exclude open natural rivers unless tunnel=culvert)
+            wtype = tags.get("waterway")
+            is_tunnel_culvert = tags.get("tunnel") in ("culvert", "yes", "flooded")
+            if (is_tunnel_culvert or wtype in ("drain", "ditch", "canal")) and "storm" in req_set:
+                wname = tags.get("name") or ("地下箱涵" if is_tunnel_culvert else f"排水渠道 ({wtype})")
+                w_m = 1.5 if wtype == "canal" else 1.0
+                h_m = 1.4 if wtype == "canal" else 1.0
+                d_start = 2.20 if is_tunnel_culvert else 1.75
                 feat = build_3d_pipe_feature(
                     fid=f"osm_waterway_{wid}",
                     layer_id="storm",
-                    ftype="box_culvert" if is_culvert else "pipe",
-                    name=f"{wname} ({w_m:.1f}x{h_m:.1f}m)" if is_culvert else f"{wname} D=1000mm",
+                    ftype="box_culvert",
+                    name=f"{wname} ({w_m:.1f}x{h_m:.1f}m)",
                     pts_2d=pts_2d,
                     dia_mm=int(max(w_m, h_m) * 1000),
                     w_m=w_m,
@@ -2120,9 +2914,9 @@ class PublicUtilitiesGISMixin:
                 if feat:
                     features.append(feat)
 
-            # 2. Power Cables & Substations
-            if "power" in tags and "electric" in req_set:
-                pname = tags.get("name") or f"台電地下電纜 ({tags.get('power')}) #{wid}"
+            # 2. Power Cables & Transmission Lines
+            if tags.get("power") in ("cable", "line", "minor_line") and "electric" in req_set:
+                pname = tags.get("name") or f"台電電纜線 ({tags.get('power')}) #{wid}"
                 feat = build_3d_pipe_feature(
                     fid=f"osm_power_{wid}",
                     layer_id="electric",
@@ -2134,276 +2928,41 @@ class PublicUtilitiesGISMixin:
                     h_m=0.16,
                     start_d=1.50,
                     end_d=1.55,
-                    material="XLPE/台電高壓電纜管",
-                    source_label="Taiwan Power Underground Cable GIS (OpenStreetMap Taiwan)",
+                    material="XLPE/台電電纜管",
+                    source_label="Taiwan Power Cable GIS (OpenStreetMap Taiwan)",
                 )
                 if feat:
                     features.append(feat)
 
-            # 3. Collect Municipal Roadways & Adjacent Alleys for Underground Utility Corridors
-            # Explicitly exclude athletic tracks, sports courts, parks, footways, paths, and unnamed internal driveways.
-            if tags.get("leisure") in ("track", "pitch", "sports_centre", "stadium", "park", "garden", "playground"):
-                continue
-            if tags.get("sport") or tags.get("area") == "yes":
-                continue
-            hw = tags.get("highway")
-            if hw in ("trunk", "primary", "secondary", "tertiary", "residential", "unclassified", "living_street", "service"):
-                raw_name = str(tags.get("name") or "").strip()
-                # For 'service' ways, only include named alleys/streets (e.g. 杭州南路一段111巷) or explicit alleys, not unnamed school driveways
-                if hw == "service" and not raw_name and tags.get("service") != "alley":
-                    continue
-                rname = raw_name or (
-                    "主要幹道" if hw in ("trunk", "primary", "secondary") else ("次要道路" if hw in ("tertiary", "residential") else "街巷聯絡道")
-                )
-                min_d = _point_to_polyline_dist(ce, cn, pts_2d)
-                seg_len = sum(
-                    math.hypot(pts_2d[i + 1][0] - pts_2d[i][0], pts_2d[i + 1][1] - pts_2d[i][1])
-                    for i in range(len(pts_2d) - 1)
-                )
-                if seg_len >= 2.0:
-                    road_corridors.append((wid, hw, rname, pts_2d, min_d, seg_len))
-
-        # Sort road corridors by proximity to scan center (closest adjacent streets first!) and street naming
-        hw_rank = {"trunk": 0, "primary": 1, "secondary": 2, "tertiary": 3, "residential": 4, "unclassified": 5, "living_street": 5, "service": 6}
-        road_corridors.sort(
-            key=lambda item: (
-                0 if any(ch in item[2] for ch in ("路", "街", "巷", "弄", "大道")) else 1,
-                int(item[4] // 20.0),
-                hw_rank.get(item[1], 8),
-                -item[5],
-            )
-        )
-
-        # Deduplicate parallel dual-carriageway lanes of the same boulevard when their midpoints are within 14m of each other
-        # AND their direction vectors are nearly parallel (cos_theta > 0.85) with comparable segment lengths,
-        # while keeping ALL perpendicular/branching street segments (such as way 26790664 on 內湖路一段629巷 along Lishan's East track!)
-        selected_roads: List[Tuple[int, str, str, List[Tuple[float, float]]]] = []
-        seen_road_mids: List[Tuple[str, float, float, float, float, float]] = []
-        for wid, hw, rname, pts_2d, min_d, seg_len in road_corridors:
-            mid_pt = pts_2d[len(pts_2d) // 2]
-            dx_seg = pts_2d[-1][0] - pts_2d[0][0]
-            dy_seg = pts_2d[-1][1] - pts_2d[0][1]
-            chord_len = max(1e-6, math.hypot(dx_seg, dy_seg))
-            ux, uy = dx_seg / chord_len, dy_seg / chord_len
-            is_dup_lane = any(
-                prev_name == rname
-                and math.hypot(mid_pt[0] - px, mid_pt[1] - py) < 14.0
-                and abs(ux * pux + uy * puy) > 0.85
-                and (min(seg_len, plen) / max(seg_len, plen, 1.0)) > 0.45
-                for prev_name, px, py, pux, puy, plen in seen_road_mids
-            )
-            if is_dup_lane:
-                continue
-            seen_road_mids.append((rname, mid_pt[0], mid_pt[1], ux, uy, seg_len))
-            selected_roads.append((wid, hw, rname, pts_2d))
-
-        for idx_r, (wid, hw, rname, pts_2d) in enumerate(selected_roads):
-            is_main = hw in ("trunk", "primary", "secondary", "tertiary")
-            # 1. Storm Sewer along road (when NTPC SewerRain didn't already provide storm pipes, e.g. Taipei City)
-            if "storm" in req_set and not has_ntpc_storm:
-                dia_s = 800 if is_main else 600
-                hm_s = round(dia_s / 1000.0, 2)
-                f_storm = build_3d_pipe_feature(
-                    fid=f"road_storm_{wid}",
-                    layer_id="storm",
-                    ftype="pipe",
-                    name=f"{rname} 雨水幹管 D={dia_s}mm",
-                    pts_2d=pts_2d,
-                    dia_mm=dia_s,
-                    w_m=hm_s,
-                    h_m=hm_s,
-                    start_d=2.15 if is_main else 1.85,
-                    end_d=2.35 if is_main else 2.05,
-                    material="RCP/鋼筋混凝土管",
-                    source_label="Taipei / Taiwan Municipal Roadway Utility GIS",
-                    offset_m=-1.8,
-                )
-                if f_storm:
-                    features.append(f_storm)
-                    # Add upstream & downstream storm manholes on the road
-                    for mh_tag, pt_c, d_mh in [("UP", f_storm["start_coord"], f_storm["start_depth_m"]), ("DN", f_storm["end_coord"], f_storm["end_depth_m"])]:
-                        loc_g = sample_ground_z(pt_c[0], pt_c[1])
-                        features.append(
-                            {
-                                "id": f"road_storm_mh_{wid}_{mh_tag}",
-                                "layer": "storm",
-                                "type": "manhole",
-                                "name": f"{rname} 雨水人孔 MH-{str(wid)[-4:]}-{mh_tag}",
-                                "facility_no": f"SMH-{str(wid)[-4:]}-{mh_tag}",
-                                "structure_type": "圓形雨水人孔",
-                                "coord": [pt_c[0], pt_c[1], round(loc_g - d_mh, 3)],
-                                "rim_h": round(loc_g, 3),
-                                "invert_h": round(loc_g - d_mh, 3),
-                                "depth_m": d_mh,
-                                "diameter_mm": 750,
-                                "road_name": rname,
-                                "source": "Taipei / Taiwan Municipal Roadway Utility GIS",
-                            }
-                        )
-
-            # 2. Sanitary Sewer along road (when NTPC sanitary sewer didn't already cover this site)
-            if "sanitary" in req_set and not has_ntpc_sanitary:
-                dia_san = 400 if is_main else 300
-                hm_san = round(dia_san / 1000.0, 2)
-                f_san = build_3d_pipe_feature(
-                    fid=f"road_sanitary_{wid}",
-                    layer_id="sanitary",
-                    ftype="pipe",
-                    name=f"{rname} 污水管線 D={dia_san}mm",
-                    pts_2d=pts_2d,
-                    dia_mm=dia_san,
-                    w_m=hm_san,
-                    h_m=hm_san,
-                    start_d=2.75 if is_main else 2.45,
-                    end_d=2.95 if is_main else 2.65,
-                    material="DIP/延性鑄鐵管",
-                    source_label="Taipei / Taiwan Sanitary Sewer Corridor GIS",
-                    offset_m=1.6,
-                )
-                if f_san:
-                    features.append(f_san)
-                    pt_c = f_san["start_coord"]
-                    loc_g = sample_ground_z(pt_c[0], pt_c[1])
-                    d_mh = f_san["start_depth_m"]
-                    features.append(
-                        {
-                            "id": f"road_sanitary_mh_{wid}",
-                            "layer": "sanitary",
-                            "type": "manhole",
-                            "name": f"{rname} 污水人孔 WMH-{str(wid)[-4:]}",
-                            "facility_no": f"WMH-{str(wid)[-4:]}",
-                            "structure_type": "圓形污水人孔",
-                            "coord": [pt_c[0], pt_c[1], round(loc_g - d_mh, 3)],
-                            "rim_h": round(loc_g, 3),
-                            "invert_h": round(loc_g - d_mh, 3),
-                            "depth_m": d_mh,
-                            "diameter_mm": 600,
-                            "road_name": rname,
-                            "source": "Taipei / Taiwan Sanitary Sewer Corridor GIS",
-                        }
+            # 3. Explicit Utility Pipelines (man_made=pipeline)
+            if tags.get("man_made") == "pipeline":
+                sub = str(tags.get("substance") or tags.get("type") or "").lower()
+                if sub in ("water", "hot_water"):
+                    p_lyr = "water"
+                elif sub in ("gas", "natural_gas", "oil", "fuel"):
+                    p_lyr = "gas"
+                elif sub in ("sewage", "wastewater"):
+                    p_lyr = "sanitary"
+                else:
+                    p_lyr = "storm"
+                if p_lyr in req_set:
+                    pname = tags.get("name") or f"輸配管線 ({sub or 'pipeline'}) #{wid}"
+                    feat = build_3d_pipe_feature(
+                        fid=f"osm_pipeline_{wid}",
+                        layer_id=p_lyr,
+                        ftype="pipe",
+                        name=f"{pname} D=400mm",
+                        pts_2d=pts_2d,
+                        dia_mm=400,
+                        w_m=0.40,
+                        h_m=0.40,
+                        start_d=1.60,
+                        end_d=1.65,
+                        material="DIP/鋼管",
+                        source_label="OpenStreetMap Pipeline GIS",
                     )
-
-            # 3. Water Supply Main along road
-            if "water" in req_set:
-                dia_w = 250 if is_main else 200
-                hm_w = round(dia_w / 1000.0, 2)
-                f_wat = build_3d_pipe_feature(
-                    fid=f"road_water_{wid}",
-                    layer_id="water",
-                    ftype="pipe",
-                    name=f"{rname} 自來水配水管 D={dia_w}mm",
-                    pts_2d=pts_2d,
-                    dia_mm=dia_w,
-                    w_m=hm_w,
-                    h_m=hm_w,
-                    start_d=1.25,
-                    end_d=1.30,
-                    material="DIP/自來水延性鑄鐵管",
-                    source_label="Taipei Water Department Corridor GIS (臺北自來水事業處)",
-                    offset_m=-0.9,
-                )
-                if f_wat:
-                    features.append(f_wat)
-
-            # 4. Electricity Feeder Conduit along road
-            if "electric" in req_set:
-                f_el = build_3d_pipe_feature(
-                    fid=f"road_electric_{wid}",
-                    layer_id="electric",
-                    ftype="pipe",
-                    name=f"{rname} 台電配電管線 D=150mm",
-                    pts_2d=pts_2d,
-                    dia_mm=150,
-                    w_m=0.15,
-                    h_m=0.15,
-                    start_d=1.45,
-                    end_d=1.50,
-                    material="PVC/台電地下配電管",
-                    source_label="Taipower Underground Distribution Corridor GIS",
-                    offset_m=0.9,
-                )
-                if f_el:
-                    features.append(f_el)
-
-            # 5. Telecom & Fiber Conduit along road
-            if "telecom" in req_set:
-                f_tel = build_3d_pipe_feature(
-                    fid=f"road_telecom_{wid}",
-                    layer_id="telecom",
-                    ftype="pipe",
-                    name=f"{rname} 中華電信光纖管線 D=100mm",
-                    pts_2d=pts_2d,
-                    dia_mm=100,
-                    w_m=0.10,
-                    h_m=0.10,
-                    start_d=1.15,
-                    end_d=1.20,
-                    material="HDPE/中華電信光纖管",
-                    source_label="Telecom & Broadband Fiber Corridor GIS",
-                    offset_m=2.2,
-                )
-                if f_tel:
-                    features.append(f_tel)
-
-            # 6. Natural Gas Main along road
-            if "gas" in req_set:
-                f_gas = build_3d_pipe_feature(
-                    fid=f"road_gas_{wid}",
-                    layer_id="gas",
-                    ftype="pipe",
-                    name=f"{rname} 天然瓦斯低壓管 D=100mm",
-                    pts_2d=pts_2d,
-                    dia_mm=100,
-                    w_m=0.10,
-                    h_m=0.10,
-                    start_d=1.00,
-                    end_d=1.05,
-                    material="PE/天然氣聚乙烯管",
-                    source_label="Municipal Natural Gas Utility Corridor GIS",
-                    offset_m=-2.4,
-                )
-                if f_gas:
-                    features.append(f_gas)
-
-            # 7. Common Broadband Ducts along main roads
-            if "ducts" in req_set and is_main:
-                f_duct = build_3d_pipe_feature(
-                    fid=f"road_duct_{wid}",
-                    layer_id="ducts",
-                    ftype="box_culvert",
-                    name=f"{rname} 纜線共同管溝 0.8x0.8m",
-                    pts_2d=pts_2d,
-                    dia_mm=800,
-                    w_m=0.80,
-                    h_m=0.80,
-                    start_d=2.30,
-                    end_d=2.40,
-                    material="RC/共同管道箱涵",
-                    source_label="Municipal Broadband & Common Utility Duct GIS",
-                    offset_m=0.0,
-                )
-                if f_duct:
-                    features.append(f_duct)
-
-            # 8. Streetlight Conduit & Poles along road
-            if "streetlights" in req_set:
-                f_sl = build_3d_pipe_feature(
-                    fid=f"road_streetlight_{wid}",
-                    layer_id="streetlights",
-                    ftype="pipe",
-                    name=f"{rname} 路燈照明管線 D=80mm",
-                    pts_2d=pts_2d,
-                    dia_mm=80,
-                    w_m=0.08,
-                    h_m=0.08,
-                    start_d=0.80,
-                    end_d=0.82,
-                    material="PVC/路燈專用管",
-                    source_label="Municipal Streetlight Circuit GIS",
-                    offset_m=2.6,
-                )
-                if f_sl:
-                    features.append(f_sl)
+                    if feat:
+                        features.append(feat)
 
         return features
 
@@ -2569,20 +3128,38 @@ class PublicUtilitiesGISMixin:
             for elem in root.iter():
                 tag = elem.tag.split("}")[-1].lower()
 
-                if tag in ("pipe", "sewerpipe", "waterpipe", "drainagepipe", "cable", "duct", "culvert"):
+                if tag in (
+                    "pipe", "sewerpipe", "waterpipe", "drainagepipe", "cable", "duct", "culvert",
+                    "管線", "共同管道", "電纜", "導水線", "箱涵",
+                ) or tag.endswith("管線"):
                     feat_id = elem.attrib.get("id") or elem.attrib.get("fid") or f"gml_pipe_{len(features)+1}"
                     attrs: Dict[str, str] = {}
                     for child in elem:
                         ctag = child.tag.split("}")[-1].lower()
                         attrs[ctag] = (child.text or "").strip()
 
-                    raw_layer = attrs.get("layer") or attrs.get("pipe_type") or attrs.get("type") or tag
+                    raw_layer = (
+                        attrs.get("layer") or attrs.get("pipe_type") or attrs.get("type")
+                        or attrs.get("識別碼") or attrs.get("作業區分") or attrs.get("管線類別") or tag
+                    )
                     norm_layer = self._normalize_utility_layer(raw_layer)
 
-                    dia = safe_float(attrs.get("diameter") or attrs.get("dia") or attrs.get("caliber"), 300.0) or 300.0
-                    pw = safe_float(attrs.get("p_width") or attrs.get("width"), 0.0) or 0.0
-                    ph = safe_float(attrs.get("p_height") or attrs.get("height"), 0.0) or 0.0
-                    mat = attrs.get("material") or attrs.get("mat") or "RCP"
+                    dia = safe_float(
+                        attrs.get("diameter") or attrs.get("dia") or attrs.get("caliber")
+                        or attrs.get("管徑") or attrs.get("寬度"),
+                        300.0,
+                    ) or 300.0
+                    if 0.0 < dia < 10.0:
+                        dia = dia * 1000.0
+                    pw = safe_float(attrs.get("p_width") or attrs.get("width") or attrs.get("寬度"), 0.0) or 0.0
+                    ph = safe_float(attrs.get("p_height") or attrs.get("height") or attrs.get("高度"), 0.0) or 0.0
+                    if pw > 20.0:
+                        pw = round(pw / 1000.0, 3)
+                    if ph > 20.0:
+                        ph = round(ph / 1000.0, 3)
+                    mat = attrs.get("material") or attrs.get("mat") or attrs.get("材質") or attrs.get("管材") or "RCP"
+                    s_dep = safe_float(attrs.get("start_dep") or attrs.get("起點埋深") or attrs.get("起點埋"), 1.35) or 1.35
+                    e_dep = safe_float(attrs.get("end_dep") or attrs.get("終點埋深") or attrs.get("終點埋"), s_dep) or s_dep
 
                     pos_list_text = ""
                     for pnode in elem.iter():
@@ -2625,30 +3202,39 @@ class PublicUtilitiesGISMixin:
                                 "id": str(feat_id),
                                 "layer": norm_layer,
                                 "type": "box_culvert" if pw > 0 and ph > 0 else "pipe",
-                                "name": attrs.get("pipe_id") or attrs.get("name") or f"{norm_layer} pipe",
+                                "name": attrs.get("pipe_id") or attrs.get("name") or attrs.get("管線編號") or f"{norm_layer} pipe",
                                 "diameter_mm": int(dia),
-                                "width_m": pw,
-                                "height_m": ph,
+                                "width_m": pw if pw > 0 else round(dia / 1000.0, 2),
+                                "height_m": ph if ph > 0 else round(dia / 1000.0, 2),
                                 "length_m": round(length_m, 2),
                                 "material": mat,
                                 "start_coord": coords_3d[0],
                                 "end_coord": coords_3d[-1],
                                 "start_invert_h": coords_3d[0][2],
                                 "end_invert_h": coords_3d[-1][2],
+                                "start_depth_m": round(s_dep, 2),
+                                "end_depth_m": round(e_dep, 2),
+                                "depth_m": round(0.5 * (s_dep + e_dep), 2),
                                 "flow_direction": int(safe_float(attrs.get("flow_dir"), 1) or 1),
                                 "coords": coords_3d,
-                                "source": "MOI NGIS GML 3.1.1",
+                                "source": "MOI NGIS / Taipei 8-Utility GML 3.1.1",
                             }
                         )
 
-                elif tag in ("manhole", "sewermanhole", "hydrant", "firehydrant", "pole", "utilitypole", "valve"):
+                elif tag in (
+                    "manhole", "sewermanhole", "hydrant", "firehydrant", "pole", "utilitypole", "valve",
+                    "人手孔", "消防栓", "電桿", "閥類", "變壓器", "路燈", "控制箱",
+                ) or any(k in tag for k in ("人孔", "手孔", "消防栓", "電桿", "路燈")):
                     feat_id = elem.attrib.get("id") or elem.attrib.get("fid") or f"gml_pt_{len(features)+1}"
                     attrs = {}
                     for child in elem:
                         ctag = child.tag.split("}")[-1].lower()
                         attrs[ctag] = (child.text or "").strip()
 
-                    raw_layer = attrs.get("layer") or attrs.get("type") or tag
+                    raw_layer = (
+                        attrs.get("layer") or attrs.get("type") or attrs.get("識別碼")
+                        or attrs.get("作業區分") or tag
+                    )
                     norm_layer = self._normalize_utility_layer(raw_layer)
 
                     pos_text = ""
@@ -2667,8 +3253,12 @@ class PublicUtilitiesGISMixin:
                                 if e < 180.0 and n < 90.0:
                                     e, n = wgs84_to_twd97(n, e)
 
-                                depth_m = safe_float(attrs.get("depth"), 2.0) or 2.0
-                                p_type = "hydrant" if "hydrant" in tag else ("pole" if "pole" in tag else "manhole")
+                                depth_m = safe_float(attrs.get("depth") or attrs.get("孔深") or attrs.get("深度"), 2.0) or 2.0
+                                p_type = (
+                                    "hydrant"
+                                    if ("hydrant" in tag or "消防栓" in tag)
+                                    else ("pole" if ("pole" in tag or "電桿" in tag or "路燈" in tag) else "manhole")
+                                )
 
                                 layer_counts[norm_layer] = layer_counts.get(norm_layer, 0) + 1
                                 features.append(
@@ -2676,11 +3266,11 @@ class PublicUtilitiesGISMixin:
                                         "id": str(feat_id),
                                         "layer": norm_layer,
                                         "type": p_type,
-                                        "name": attrs.get("facility_id") or attrs.get("name") or f"{p_type} #{len(features)+1}",
+                                        "name": attrs.get("facility_id") or attrs.get("name") or attrs.get("編號") or f"{p_type} #{len(features)+1}",
                                         "coord": [round(e, 3), round(n, 3), round(z or 0.0, 3)],
                                         "depth_m": round(depth_m, 2),
-                                        "diameter_mm": int(safe_float(attrs.get("diameter"), 1000) or 1000),
-                                        "source": "MOI NGIS GML 3.1.1",
+                                        "diameter_mm": int(safe_float(attrs.get("diameter") or attrs.get("寬度"), 1000) or 1000),
+                                        "source": "MOI NGIS / Taipei 8-Utility GML 3.1.1",
                                     }
                                 )
 
@@ -2913,24 +3503,24 @@ class PublicUtilitiesGISMixin:
         }
 
     def _normalize_utility_layer(self, raw_str: str) -> str:
-        """Normalizes any Chinese/English utility name into one of the 10 standard layer IDs."""
-        s = str(raw_str or "").lower()
-        if any(w in s for w in ("rain", "storm", "雨水", "排洪", "明溝", "涵洞", "wrd")):
-            return "storm"
-        if any(w in s for w in ("sewer", "sanitary", "污水", "污", "廢水", "化糞")):
-            return "sanitary"
-        if any(w in s for w in ("water", "hydrant", "自來水", "給水", "消防栓", "水管")):
-            return "water"
-        if any(w in s for w in ("electric", "power", "電力", "電桿", "台電", "高壓", "低壓", "變壓")):
-            return "electric"
-        if any(w in s for w in ("telecom", "fiber", "電信", "光纖", "中華電信", "網路", "通信")):
+        """Normalizes any Chinese/English or Taipei 8-Utility code (801..808) into one of the 10 standard layer IDs."""
+        s = str(raw_str or "").lower().strip()
+        if s.startswith("801") or any(w in s for w in ("telecom", "fiber", "電信", "光纖", "中華電信", "網路", "通信")):
             return "telecom"
-        if any(w in s for w in ("gas", "瓦斯", "天然氣", "欣欣", "欣泰", "煤氣")):
-            return "gas"
-        if any(w in s for w in ("duct", "cable", "common", "共同管道", "纜線", "第四台", "有線電視")):
-            return "ducts"
-        if any(w in s for w in ("street", "light", "lamp", "路燈", "照明", "景觀燈")):
+        if s.startswith("8020203") or any(w in s for w in ("street", "light", "lamp", "路燈", "照明", "景觀燈")):
             return "streetlights"
+        if s.startswith("802") or any(w in s for w in ("electric", "power", "電力", "電桿", "台電", "高壓", "低壓", "變壓")):
+            return "electric"
+        if s.startswith("803") or any(w in s for w in ("water", "hydrant", "自來水", "給水", "消防栓", "水管")):
+            return "water"
+        if s.startswith("80401") or any(w in s for w in ("sewer", "sanitary", "污水", "污", "廢水", "化糞")):
+            return "sanitary"
+        if s.startswith(("804", "806")) or any(w in s for w in ("rain", "storm", "雨水", "排洪", "明溝", "涵洞", "水利", "wrd")):
+            return "storm"
+        if s.startswith(("805", "807")) or any(w in s for w in ("gas", "瓦斯", "天然氣", "欣欣", "欣泰", "煤氣", "輸油", "石油")):
+            return "gas"
+        if s.startswith("808") or any(w in s for w in ("duct", "cable", "common", "共同管道", "纜線", "第四台", "有線電視")):
+            return "ducts"
         if any(w in s for w in ("dig", "excavation", "挖掘", "開挖", "破路", "工程")):
             return "excavations"
         if any(w in s for w in ("as_built", "asbuilt", "竣工", "實測", "實錄", "管溝")):

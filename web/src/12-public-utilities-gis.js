@@ -77,6 +77,7 @@
     radiusM: 120.0,
     isCached: false,
     cacheTimestamp: "",
+    taipei8UtilityStatus: null,
     groundXrayPct: 38, // Default 38% X-Ray translucency (= 0.62 terrain opacity) when Utilities active
     groundOpacity: 0.62,
     features: [],
@@ -413,6 +414,24 @@
            </span>`
         : "";
 
+    const tpeStatus = UTILS_STATE.taipei8UtilityStatus;
+    const tpeBannerHtml =
+      tpeStatus && tpeStatus.integrated
+        ? `<div style="margin-top:7px;padding:6px 8px;border-radius:6px;font-size:10px;line-height:1.45;background:${
+            tpeStatus.whitelisted ? "rgba(16,185,129,0.10)" : "rgba(56,189,248,0.09)"
+          };border:1px solid ${tpeStatus.whitelisted ? "rgba(16,185,129,0.32)" : "rgba(56,189,248,0.28)"};color:var(--ui-text-secondary);">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:4px;font-weight:700;color:${
+              tpeStatus.whitelisted ? "#34d399" : "#38bdf8"
+            };margin-bottom:2px;">
+              <span>${SVG.INFO} ${t("臺北市道管中心 3D 八大管線 API (801–808)", "Taipei 3D 8-Utilities API (801–808)")}</span>
+              <span style="font-size:9px;padding:1px 5px;border-radius:3px;background:rgba(15,23,42,0.35);">${
+                tpeStatus.whitelisted ? t("已授權連線", "AUTHORIZED") : t("功能已就緒 / 待IP白名單", "READY / AWAITING IP")
+              }</span>
+            </div>
+            <div>${escapeHtml(t(tpeStatus.message_zh || "", tpeStatus.message_en || ""))}</div>
+          </div>`
+        : "";
+
     const html = `
       <div class="gs-util-panel-container">
         <!-- Search & Control Header -->
@@ -452,6 +471,7 @@
               <span class="gs-util-metric-lbl">${t("人孔/設施", "Manholes")}</span>
             </div>
           </div>
+          ${tpeBannerHtml}
         </div>
 
         <!-- 10 Layers Toggle List -->
@@ -829,6 +849,7 @@
         UTILS_STATE.groundReferenceH = Number(res.ground_reference_h ?? res.center?.ground_h ?? res.center?.h);
         UTILS_STATE.isCached = Boolean(res.cached);
         UTILS_STATE.cacheTimestamp = String(res.query_timestamp || "");
+        UTILS_STATE.taipei8UtilityStatus = res.taipei_8utility_status || null;
         UTILS_STATE.features = mergeUserAsBuiltFeatures(scanId, res.features);
 
         if (!UTILS_STATE.active || (typeof STATE !== "undefined" && STATE.activeTool !== "utilities")) {
