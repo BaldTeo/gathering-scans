@@ -2673,10 +2673,11 @@ class CategorizationHeuristicsMixin:
             w.writerow([])
 
             w.writerow(["=== 3. TREES & 1.3M TRUNK DBH SCHEDULE (喬木與胸高直徑 DBH 清冊) ==="])
-            w.writerow(["Tree ID", "Height (m)", "Trunk DBH at 1.3m (cm)", "DBH Method", "Crown Diameter (m)", "Crown Area (m²)", "Trunk Easting E (m)", "Trunk Northing N (m)", "Ground Elev H (m)", "Verified RTK Photo"])
+            w.writerow(["Tree ID", "Height (m)", "Trunk DBH at 1.3m (cm)", "DBH Method", "AI Vision Verified", "AI Visual Inspection (Object Seen)", "Crown Diameter (m)", "Crown Area (m²)", "Trunk Easting E (m)", "Trunk Northing N (m)", "Ground Elev H (m)", "Verified RTK Photo"])
             for t in data["trees"]:
                 tr_twd = t["trunk_twd97"]
-                w.writerow([t["id"], t["height_m"], t["dbh_cm"], t["dbh_method"], t["crown_diameter_m"], t["crown_area_m2"], tr_twd[0], tr_twd[1], tr_twd[2], t.get("verified_photo") or "—"])
+                ai_v_str = "Yes (AI+3D Trunk)" if t.get("ai_vision_verified") else ("3D Trunk Only" if t.get("trunk_verified_3d") else "No")
+                w.writerow([t["id"], t["height_m"], t["dbh_cm"], t["dbh_method"], ai_v_str, t.get("object_seen") or t.get("ai_vision_label") or "—", t["crown_diameter_m"], t["crown_area_m2"], tr_twd[0], tr_twd[1], tr_twd[2], t.get("verified_photo") or "—"])
             w.writerow([])
 
             w.writerow(["=== 4. WATER BODIES & UN-MODELLED WATER VOIDS (水體與未建模河道水域空洞) ==="])
@@ -2707,7 +2708,8 @@ class CategorizationHeuristicsMixin:
         )
         tree_rows = "".join(
             f"<tr><td><b>{t['id']}</b></td><td><b>{t['dbh_cm']:.1f} cm</b></td><td>{t['height_m']:.2f} m</td>"
-            f"<td>{t['crown_diameter_m']:.2f} m ({t['crown_area_m2']:.1f} m²)</td><td>{t['dbh_method']}</td>"
+            f"<td>{t['crown_diameter_m']:.2f} m ({t['crown_area_m2']:.1f} m²)</td>"
+            f"<td>{'✓ AI+3D 樹幹' if t.get('ai_vision_verified') else '✓ 3D 樹幹'} · {t.get('object_seen') or t.get('ai_vision_label') or t['dbh_method']}</td>"
             f"<td>E:{t['trunk_twd97'][0]:.2f}, N:{t['trunk_twd97'][1]:.2f}, H:+{t['trunk_twd97'][2]:.2f}m</td><td>{t.get('verified_photo') or '—'}</td></tr>"
             for t in data["trees"]
         )
@@ -2719,7 +2721,7 @@ class CategorizationHeuristicsMixin:
         )
         wall_rows = "".join(
             f"<tr><td><b>{wl['id']}</b></td><td>{wl['name']}</td><td>{wl['length_m']:.2f} m</td>"
-            f"<td>{wl['mean_height_m']:.2f} m (Max {wl['max_height_m']:.2f} m)</td><td><b>{wl['vertical_area_m2']:,.2f} m²</b></td>"
+            f"<td>{wl['mean_height_m']:.2f} m (Max {wl['max_height_m']:.2f} m)</td><td><b>{wl['vertical_area_m2']:,.1f} m²</b></td>"
             f"<td>{wl['azimuth_deg']}° / {wl['tilt_deg']}°</td><td>E:{wl['center_twd97'][0]:.2f}, N:{wl['center_twd97'][1]:.2f}</td><td>{wl.get('verified_photo') or '—'}</td></tr>"
             for wl in data["walls"]
         )
@@ -2782,7 +2784,7 @@ class CategorizationHeuristicsMixin:
     <div class="kpi">
       <div class="kpi-label">Trees & Trunk DBH (喬木與胸徑)</div>
       <div class="kpi-val" style="color:#059669;">{s['trees_count']} 株 · DBH {s['trees_mean_dbh_cm']:.1f} cm</div>
-      <div class="kpi-label">Max DBH: {s['trees_max_dbh_cm']:.1f} cm · Mean H: {s['trees_mean_height_m']:.1f} m</div>
+      <div class="kpi-label">AI Vision Verified: {s.get('trees_ai_verified_count', s['trees_count'])} 株 · Max DBH: {s['trees_max_dbh_cm']:.1f} cm</div>
     </div>
     <div class="kpi">
       <div class="kpi-label">Water & Voids (水域與未建模水面)</div>
@@ -2817,7 +2819,7 @@ class CategorizationHeuristicsMixin:
   </table>
   <table>
     <thead><tr><th colspan="7">5. Individual Trees & 1.3m Breast-Height Trunk DBH Schedule (喬木樹高、冠幅與 1.3m 胸徑 DBH 清冊)</th></tr>
-    <tr><th>Tree ID</th><th>1.3m Trunk DBH (胸徑)</th><th>Tree Height (樹高)</th><th>Crown Diam & Area (冠幅)</th><th>DBH Fit Method</th><th>Trunk Base (TWD97 E, N, H)</th><th>Verified RTK Photo</th></tr></thead>
+    <tr><th>Tree ID</th><th>1.3m Trunk DBH (胸徑)</th><th>Tree Height (樹高)</th><th>Crown Diam & Area (冠幅)</th><th>AI Vision & DBH Verification</th><th>Trunk Base (TWD97 E, N, H)</th><th>Verified RTK Photo</th></tr></thead>
     <tbody>{tree_rows}</tbody>
   </table>
 </body>

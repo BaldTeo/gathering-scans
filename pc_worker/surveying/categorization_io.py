@@ -1288,10 +1288,16 @@ class CategorizationIoMixin:
                 cn_i = float(c_info.get("n") or 0.0)
                 cached_v = _lookup_coord_cache(ce_i, cn_i)
                 if isinstance(cached_v, dict) and "is_real_tree" in cached_v:
+                    c_real = bool(cached_v.get("is_real_tree", True))
+                    c_obj = str(cached_v.get("object_seen") or "Verified tree trunk").strip()
+                    c_low = c_obj.lower()
+                    if c_real and not any(w in c_low for w in ("tree", "trunk", "sapling", "palm", "banyan", "camphor", "conifer", "woodland", "forest", "grove", "stem", "bark")):
+                        if any(nw in c_low for nw in ("vining plant", "climbing vine", "low green hedge", "shrubs and low vegetation", "pillar", "column", "lamp", "pole", "scooter", "vehicle")):
+                            c_real = False
                     per_tree_verdicts[t_tag] = {
                         "tag": t_tag,
-                        "is_real_tree": bool(cached_v.get("is_real_tree", True)),
-                        "object_seen": str(cached_v.get("object_seen") or "Verified tree trunk"),
+                        "is_real_tree": c_real,
+                        "object_seen": c_obj,
                         "ai_vision_verified": True,
                     }
                 else:
@@ -1324,9 +1330,9 @@ class CategorizationIoMixin:
                     f"Candidate tags in this batch (in reading order left-to-right, top-to-bottom): {batch_tags}. "
                     "Each tile shows the projected 1.3m breast-height location of a 3D cylindrical stem candidate inside the green target ring/crosshair, plus a 2nd camera angle inset ('View 2') in the corner when available. "
                     "For EVERY tag in this batch, inspect what physical object is at the green target ring (and in View 2) and return a structured verdict `{tag, is_real_tree, object_seen}`:\n"
-                    "- Set `is_real_tree: true` for any genuine living tree, sapling, palm, bamboo/woody tree stem, street tree, or forest/park tree (KEEP genuine trees even if viewed through foreground leaves/branches, in shadow, or at a distance along a hillside/park).\n"
-                    "- Set `is_real_tree: false` ONLY when the crosshair clearly points to a non-tree man-made false positive with no real tree trunk there: e.g., a building concrete column, porch/arcade pillar, building wall/window/door/facade, corrugated sheet-metal construction fence, street lamp post, utility/traffic pole, basketball hoop post, pavilion pillar, water tank, or vehicle.\n"
-                    "- In `object_seen`, write a concise 3-8 word description of the exact physical object visible at the reticle (e.g. 'Broadleaf park tree trunk and canopy', 'Camphor street tree trunk', 'Concrete building arcade column', 'Metal street lamp pole')."
+                    "- Set `is_real_tree: true` ONLY for a genuine standing tree, sapling, palm, or woody tree stem with a trunk (KEEP genuine trees even if viewed through foreground leaves/branches, in shadow, or at a distance along a hillside/park).\n"
+                    "- Set `is_real_tree: false` when the crosshair points to a man-made structure OR non-tree vegetation without a tree trunk: e.g., a building concrete column, porch/arcade pillar, building wall/window/door/facade, corrugated sheet-metal construction fence, street lamp post, utility/traffic pole, basketball hoop post, pavilion pillar, water tank, vehicle, OR a low hedge, bush/shrub without a tree trunk, or climbing vine on a fence/wall.\n"
+                    "- In `object_seen`, write a concise 3-8 word description of the exact physical object visible at the reticle (e.g. 'Broadleaf park tree trunk and canopy', 'Camphor street tree trunk', 'Concrete building arcade column', 'Climbing vine on metal fence')."
                 )
                 batch_req = {
                     "contents": [
@@ -1379,6 +1385,10 @@ class CategorizationIoMixin:
                         continue
                     is_real = bool(v_obj.get("is_real_tree", True))
                     obj_s = str(v_obj.get("object_seen") or ("Verified tree trunk" if is_real else "Non-tree structure")).strip()
+                    obj_lower = obj_s.lower()
+                    if is_real and not any(w in obj_lower for w in ("tree", "trunk", "sapling", "palm", "banyan", "camphor", "conifer", "woodland", "forest", "grove", "stem", "bark")):
+                        if any(nw in obj_lower for nw in ("vining plant", "climbing vine", "low green hedge", "shrubs and low vegetation", "pillar", "column", "lamp", "pole", "scooter", "vehicle")):
+                            is_real = False
                     v_entry = {
                         "tag": t_tag,
                         "is_real_tree": is_real,

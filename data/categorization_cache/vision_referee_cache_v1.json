@@ -635,7 +635,7 @@
       "object_seen": "Blurred background building structure"
     },
     "303022.5_2770028.0": {
-      "is_real_tree": true,
+      "is_real_tree": false,
       "object_seen": "Low green hedge and foliage"
     },
     "302967.8_2770059.1": {
@@ -1247,7 +1247,7 @@
       "object_seen": "Concrete building exterior wall facade"
     },
     "303020.6_2770005.6": {
-      "is_real_tree": true,
+      "is_real_tree": false,
       "object_seen": "Vining plant growing on metal fence"
     },
     "303025.5_2770028.7": {
@@ -1263,11 +1263,11 @@
       "object_seen": "Small leafy tree canopy and branches"
     },
     "303020.6_2770029.6": {
-      "is_real_tree": true,
+      "is_real_tree": false,
       "object_seen": "Dense climbing vine vegetation on wall"
     },
     "303032.2_2770044.6": {
-      "is_real_tree": true,
+      "is_real_tree": false,
       "object_seen": "Shrubs and low vegetation along wall"
     },
     "302984.0_2770027.6": {
@@ -2130,221 +2130,6 @@
       "is_real_tree": true,
       "object_seen": "Mature street tree foliage and branches"
     }
-  },
-  "d98bfcb60efe95a4": {
-    "ai_verified": true,
-    "ai_model": "Gemini 3.5 Flash Multimodal + Ground Photo Referee",
-    "ai_summary_zh": "本場區（NTU_Dorm_260915）為一處都市鋪面環境，經三維光達與影像量測驗證，共計有4處鋪面道路與走道（總面積953.2平方公尺）、11棵真實樹木（平均胸徑31.0公分）以及38道擋土牆或建築立面（總垂直面積546.0平方公尺）。場區內無任何水域或河川空洞（場區無水域）。",
-    "ai_summary_en": "This site (NTU_Dorm_260915) is an urban paved environment. Based on 3D LiDAR and photogrammetry verification, it contains 4 paved roads and walkways covering 953.2 square meters, 11 verified trees with a mean DBH of 31.0 cm, and 38 retaining or building walls with a total vertical area of 546.0 square meters. There are no water bodies or river voids on site.",
-    "road_surface_note": "Paved asphalt concrete and concrete walkway surfaces in good condition.",
-    "road_corridor_subtype": "paved_asphalt_concrete",
-    "road_corridor_label_zh": "鋪面道路與走道",
-    "road_corridor_label_en": "Paved Roads and Walkways",
-    "water_body_label_zh": "無水域",
-    "rejected_false_positive_tags": [
-      "T1",
-      "T11",
-      "T12",
-      "T13",
-      "T14",
-      "T15",
-      "T16",
-      "T17",
-      "T18",
-      "T2",
-      "T23",
-      "T26",
-      "T29",
-      "T3",
-      "T30",
-      "T4",
-      "T6",
-      "T8",
-      "T9"
-    ],
-    "per_tree_verdicts": {
-      "T1": {
-        "tag": "T1",
-        "is_real_tree": false,
-        "object_seen": "Brick building wall corner facade",
-        "ai_vision_verified": true
-      },
-      "T2": {
-        "tag": "T2",
-        "is_real_tree": false,
-        "object_seen": "Blurred background building wall",
-        "ai_vision_verified": true
-      },
-      "T3": {
-        "tag": "T3",
-        "is_real_tree": false,
-        "object_seen": "Blurred background building and road",
-        "ai_vision_verified": true
-      },
-      "T4": {
-        "tag": "T4",
-        "is_real_tree": false,
-        "object_seen": "Blurred background building structure",
-        "ai_vision_verified": true
-      },
-      "T5": {
-        "tag": "T5",
-        "is_real_tree": true,
-        "object_seen": "Low green hedge and foliage",
-        "ai_vision_verified": true
-      },
-      "T6": {
-        "tag": "T6",
-        "is_real_tree": false,
-        "object_seen": "Blurred background building structure",
-        "ai_vision_verified": true
-      },
-      "T7": {
-        "tag": "T7",
-        "is_real_tree": true,
-        "object_seen": "Street tree trunk near brick wall",
-        "ai_vision_verified": true
-      },
-      "T8": {
-        "tag": "T8",
-        "is_real_tree": false,
-        "object_seen": "Blurred background building and street",
-        "ai_vision_verified": true
-      },
-      "T9": {
-        "tag": "T9",
-        "is_real_tree": false,
-        "object_seen": "Tiled building exterior wall and base",
-        "ai_vision_verified": true
-      },
-      "T10": {
-        "tag": "T10",
-        "is_real_tree": true,
-        "object_seen": "Mature street tree trunk with vine",
-        "ai_vision_verified": true
-      },
-      "T11": {
-        "tag": "T11",
-        "is_real_tree": false,
-        "object_seen": "Green corrugated sheet metal construction fence",
-        "ai_vision_verified": true
-      },
-      "T12": {
-        "tag": "T12",
-        "is_real_tree": false,
-        "object_seen": "Tiled building exterior wall and entrance",
-        "ai_vision_verified": true
-      },
-      "T13": {
-        "tag": "T13",
-        "is_real_tree": false,
-        "object_seen": "Tiled building wall with window grille",
-        "ai_vision_verified": true
-      },
-      "T14": {
-        "tag": "T14",
-        "is_real_tree": false,
-        "object_seen": "Concrete roadway and parked scooters",
-        "ai_vision_verified": true
-      },
-      "T15": {
-        "tag": "T15",
-        "is_real_tree": false,
-        "object_seen": "White painted building exterior wall",
-        "ai_vision_verified": true
-      },
-      "T16": {
-        "tag": "T16",
-        "is_real_tree": false,
-        "object_seen": "Road intersection with parked scooters",
-        "ai_vision_verified": true
-      },
-      "T17": {
-        "tag": "T17",
-        "is_real_tree": false,
-        "object_seen": "Street curb with parked scooters",
-        "ai_vision_verified": true
-      },
-      "T18": {
-        "tag": "T18",
-        "is_real_tree": false,
-        "object_seen": "Building exterior wall and alleyway",
-        "ai_vision_verified": true
-      },
-      "T19": {
-        "tag": "T19",
-        "is_real_tree": true,
-        "object_seen": "Dense green park tree canopy and branches",
-        "ai_vision_verified": true
-      },
-      "T20": {
-        "tag": "T20",
-        "is_real_tree": true,
-        "object_seen": "Mature tree trunk with security cameras",
-        "ai_vision_verified": true
-      },
-      "T21": {
-        "tag": "T21",
-        "is_real_tree": true,
-        "object_seen": "Large street tree trunk on sidewalk",
-        "ai_vision_verified": true
-      },
-      "T22": {
-        "tag": "T22",
-        "is_real_tree": true,
-        "object_seen": "Green street tree canopy and trunk",
-        "ai_vision_verified": true
-      },
-      "T23": {
-        "tag": "T23",
-        "is_real_tree": false,
-        "object_seen": "Concrete building corner and sidewalk edge",
-        "ai_vision_verified": true
-      },
-      "T24": {
-        "tag": "T24",
-        "is_real_tree": true,
-        "object_seen": "Green foliage and tree trunk behind bushes",
-        "ai_vision_verified": true
-      },
-      "T25": {
-        "tag": "T25",
-        "is_real_tree": true,
-        "object_seen": "Small sapling tree growing behind fence",
-        "ai_vision_verified": true
-      },
-      "T26": {
-        "tag": "T26",
-        "is_real_tree": false,
-        "object_seen": "Dark stone building pillar and doorway",
-        "ai_vision_verified": true
-      },
-      "T27": {
-        "tag": "T27",
-        "is_real_tree": true,
-        "object_seen": "Medium woodland tree trunk behind railing",
-        "ai_vision_verified": true
-      },
-      "T28": {
-        "tag": "T28",
-        "is_real_tree": true,
-        "object_seen": "Bushy tree foliage resting on concrete wall",
-        "ai_vision_verified": true
-      },
-      "T29": {
-        "tag": "T29",
-        "is_real_tree": false,
-        "object_seen": "Granite column of store storefront entrance",
-        "ai_vision_verified": true
-      },
-      "T30": {
-        "tag": "T30",
-        "is_real_tree": false,
-        "object_seen": "Brick facade and doorway entrance pillar",
-        "ai_vision_verified": true
-      }
-    },
-    "photo_verified_count": 34
   },
   "826546233522334c": {
     "ai_verified": true,
@@ -3853,110 +3638,6 @@
     },
     "photo_verified_count": 34
   },
-  "ceb02a53fc0586ee": {
-    "ai_verified": true,
-    "ai_model": "Gemini 3.5 Flash Multimodal + Ground Photo Referee",
-    "ai_summary_zh": "本場區（NTU_Dorm_260917）經3D攝影測量與光達掃描驗證，包含1處鋪面道路與人行道廊道（面積1003.2平方公尺）、10棵經胸徑與Vision確認之真實樹木，以及17處擋土牆與建築外牆（總垂直面積144.8平方公尺）。經AI檢視確認場區內完全無水域（場區無水域），並排除了4個誤判標籤。",
-    "ai_summary_en": "This site (NTU_Dorm_260917) has been verified via 3D photogrammetry and LiDAR scanning, containing 1 paved road and walkway corridor (1003.2 m2), 10 vision-verified trees (mean DBH 30.7 cm), and 17 retaining or building walls (144.8 m2 vertical area). AI vision inspection confirms there are NO water bodies on site, with 4 false-positive tree tags successfully rejected.",
-    "road_surface_note": "Paved asphalt concrete surface in good condition with standard urban markings.",
-    "road_corridor_subtype": "paved_asphalt_concrete",
-    "road_corridor_label_zh": "鋪面柏油道路與人行道",
-    "road_corridor_label_en": "Paved Asphalt Concrete Road and Walkway",
-    "water_body_label_zh": "無水域",
-    "rejected_false_positive_tags": [
-      "T1",
-      "T12",
-      "T14",
-      "T4"
-    ],
-    "per_tree_verdicts": {
-      "T1": {
-        "tag": "T1",
-        "is_real_tree": false,
-        "object_seen": "Concrete building exterior wall facade",
-        "ai_vision_verified": true
-      },
-      "T2": {
-        "tag": "T2",
-        "is_real_tree": true,
-        "object_seen": "Vining plant growing on metal fence",
-        "ai_vision_verified": true
-      },
-      "T3": {
-        "tag": "T3",
-        "is_real_tree": true,
-        "object_seen": "Bushy tree foliage behind fence",
-        "ai_vision_verified": true
-      },
-      "T4": {
-        "tag": "T4",
-        "is_real_tree": false,
-        "object_seen": "Metal street pole on sidewalk",
-        "ai_vision_verified": true
-      },
-      "T5": {
-        "tag": "T5",
-        "is_real_tree": true,
-        "object_seen": "Small leafy tree canopy and branches",
-        "ai_vision_verified": true
-      },
-      "T6": {
-        "tag": "T6",
-        "is_real_tree": true,
-        "object_seen": "Dense climbing vine vegetation on wall",
-        "ai_vision_verified": true
-      },
-      "T7": {
-        "tag": "T7",
-        "is_real_tree": true,
-        "object_seen": "Shrubs and low vegetation along wall",
-        "ai_vision_verified": true
-      },
-      "T8": {
-        "tag": "T8",
-        "is_real_tree": true,
-        "object_seen": "Large mature banyan tree trunk",
-        "ai_vision_verified": true
-      },
-      "T9": {
-        "tag": "T9",
-        "is_real_tree": true,
-        "object_seen": "Large mature banyan tree branch and trunk",
-        "ai_vision_verified": true
-      },
-      "T10": {
-        "tag": "T10",
-        "is_real_tree": true,
-        "object_seen": "Small leafy tree trunk and foliage",
-        "ai_vision_verified": true
-      },
-      "T11": {
-        "tag": "T11",
-        "is_real_tree": true,
-        "object_seen": "Mature street tree trunk with signage",
-        "ai_vision_verified": true
-      },
-      "T12": {
-        "tag": "T12",
-        "is_real_tree": false,
-        "object_seen": "Tiled building exterior corner pillar",
-        "ai_vision_verified": true
-      },
-      "T13": {
-        "tag": "T13",
-        "is_real_tree": true,
-        "object_seen": "Dense leafy tree foliage and branches",
-        "ai_vision_verified": true
-      },
-      "T14": {
-        "tag": "T14",
-        "is_real_tree": false,
-        "object_seen": "Rainwater downspout pipe on wall",
-        "ai_vision_verified": true
-      }
-    },
-    "photo_verified_count": 17
-  },
   "bdebfc6e3995570f": {
     "ai_verified": true,
     "ai_model": "Gemini 3.5 Flash Multimodal + Ground Photo Referee",
@@ -5452,5 +5133,328 @@
     ],
     "per_tree_verdicts": {},
     "photo_verified_count": 5
+  },
+  "d98bfcb60efe95a4": {
+    "ai_verified": true,
+    "ai_model": "Gemini 3.5 Flash Multimodal + Ground Photo Referee",
+    "ai_summary_zh": "本場區（NTU_Dorm_260915）經3D攝影測量與光達掃描驗證，包含4處鋪面道路與人行道（總面積953.2平方公尺）、10棵經Vision確認的真實樹木，以及38處擋土牆與建築牆面（垂直面積546.0平方公尺）。場區內無任何水體或河川空洞（場區無水域），並已排除20處非樹木之誤報標籤。",
+    "ai_summary_en": "This site (NTU_Dorm_260915) has been verified via 3D photogrammetry and LiDAR scanning, containing 4 paved roads and walkways (953.2 m2 total), 10 vision-verified genuine trees, and 38 retaining or building walls (546.0 m2 vertical area). There are no water bodies or river voids on site (0.0 m2), with 20 non-tree false positive tags successfully rejected.",
+    "road_surface_note": "Asphalt concrete and paved tile walkways in good condition with clear markings.",
+    "road_corridor_subtype": "paved_asphalt_concrete",
+    "road_corridor_label_zh": "鋪面道路與人行道",
+    "road_corridor_label_en": "Paved Roads and Walkways",
+    "water_body_label_zh": "場區無水域",
+    "rejected_false_positive_tags": [
+      "T1",
+      "T11",
+      "T12",
+      "T13",
+      "T14",
+      "T15",
+      "T16",
+      "T17",
+      "T18",
+      "T2",
+      "T23",
+      "T26",
+      "T29",
+      "T3",
+      "T30",
+      "T4",
+      "T5",
+      "T6",
+      "T8",
+      "T9"
+    ],
+    "per_tree_verdicts": {
+      "T1": {
+        "tag": "T1",
+        "is_real_tree": false,
+        "object_seen": "Brick building wall corner facade",
+        "ai_vision_verified": true
+      },
+      "T2": {
+        "tag": "T2",
+        "is_real_tree": false,
+        "object_seen": "Blurred background building wall",
+        "ai_vision_verified": true
+      },
+      "T3": {
+        "tag": "T3",
+        "is_real_tree": false,
+        "object_seen": "Blurred background building and road",
+        "ai_vision_verified": true
+      },
+      "T4": {
+        "tag": "T4",
+        "is_real_tree": false,
+        "object_seen": "Blurred background building structure",
+        "ai_vision_verified": true
+      },
+      "T5": {
+        "tag": "T5",
+        "is_real_tree": false,
+        "object_seen": "Low green hedge and foliage",
+        "ai_vision_verified": true
+      },
+      "T6": {
+        "tag": "T6",
+        "is_real_tree": false,
+        "object_seen": "Blurred background building structure",
+        "ai_vision_verified": true
+      },
+      "T7": {
+        "tag": "T7",
+        "is_real_tree": true,
+        "object_seen": "Street tree trunk near brick wall",
+        "ai_vision_verified": true
+      },
+      "T8": {
+        "tag": "T8",
+        "is_real_tree": false,
+        "object_seen": "Blurred background building and street",
+        "ai_vision_verified": true
+      },
+      "T9": {
+        "tag": "T9",
+        "is_real_tree": false,
+        "object_seen": "Tiled building exterior wall and base",
+        "ai_vision_verified": true
+      },
+      "T10": {
+        "tag": "T10",
+        "is_real_tree": true,
+        "object_seen": "Mature street tree trunk with vine",
+        "ai_vision_verified": true
+      },
+      "T11": {
+        "tag": "T11",
+        "is_real_tree": false,
+        "object_seen": "Green corrugated sheet metal construction fence",
+        "ai_vision_verified": true
+      },
+      "T12": {
+        "tag": "T12",
+        "is_real_tree": false,
+        "object_seen": "Tiled building exterior wall and entrance",
+        "ai_vision_verified": true
+      },
+      "T13": {
+        "tag": "T13",
+        "is_real_tree": false,
+        "object_seen": "Tiled building wall with window grille",
+        "ai_vision_verified": true
+      },
+      "T14": {
+        "tag": "T14",
+        "is_real_tree": false,
+        "object_seen": "Concrete roadway and parked scooters",
+        "ai_vision_verified": true
+      },
+      "T15": {
+        "tag": "T15",
+        "is_real_tree": false,
+        "object_seen": "White painted building exterior wall",
+        "ai_vision_verified": true
+      },
+      "T16": {
+        "tag": "T16",
+        "is_real_tree": false,
+        "object_seen": "Road intersection with parked scooters",
+        "ai_vision_verified": true
+      },
+      "T17": {
+        "tag": "T17",
+        "is_real_tree": false,
+        "object_seen": "Street curb with parked scooters",
+        "ai_vision_verified": true
+      },
+      "T18": {
+        "tag": "T18",
+        "is_real_tree": false,
+        "object_seen": "Building exterior wall and alleyway",
+        "ai_vision_verified": true
+      },
+      "T19": {
+        "tag": "T19",
+        "is_real_tree": true,
+        "object_seen": "Dense green park tree canopy and branches",
+        "ai_vision_verified": true
+      },
+      "T20": {
+        "tag": "T20",
+        "is_real_tree": true,
+        "object_seen": "Mature tree trunk with security cameras",
+        "ai_vision_verified": true
+      },
+      "T21": {
+        "tag": "T21",
+        "is_real_tree": true,
+        "object_seen": "Large street tree trunk on sidewalk",
+        "ai_vision_verified": true
+      },
+      "T22": {
+        "tag": "T22",
+        "is_real_tree": true,
+        "object_seen": "Green street tree canopy and trunk",
+        "ai_vision_verified": true
+      },
+      "T23": {
+        "tag": "T23",
+        "is_real_tree": false,
+        "object_seen": "Concrete building corner and sidewalk edge",
+        "ai_vision_verified": true
+      },
+      "T24": {
+        "tag": "T24",
+        "is_real_tree": true,
+        "object_seen": "Green foliage and tree trunk behind bushes",
+        "ai_vision_verified": true
+      },
+      "T25": {
+        "tag": "T25",
+        "is_real_tree": true,
+        "object_seen": "Small sapling tree growing behind fence",
+        "ai_vision_verified": true
+      },
+      "T26": {
+        "tag": "T26",
+        "is_real_tree": false,
+        "object_seen": "Dark stone building pillar and doorway",
+        "ai_vision_verified": true
+      },
+      "T27": {
+        "tag": "T27",
+        "is_real_tree": true,
+        "object_seen": "Medium woodland tree trunk behind railing",
+        "ai_vision_verified": true
+      },
+      "T28": {
+        "tag": "T28",
+        "is_real_tree": true,
+        "object_seen": "Bushy tree foliage resting on concrete wall",
+        "ai_vision_verified": true
+      },
+      "T29": {
+        "tag": "T29",
+        "is_real_tree": false,
+        "object_seen": "Granite column of store storefront entrance",
+        "ai_vision_verified": true
+      },
+      "T30": {
+        "tag": "T30",
+        "is_real_tree": false,
+        "object_seen": "Brick facade and doorway entrance pillar",
+        "ai_vision_verified": true
+      }
+    },
+    "photo_verified_count": 34
+  },
+  "ceb02a53fc0586ee": {
+    "ai_verified": true,
+    "ai_model": "Gemini 3.5 Flash Multimodal + Ground Photo Referee",
+    "ai_summary_zh": "本場區經三維光達與攝影測量檢測，共計識別出1處鋪面道路/人行道（面積1003.2平方公尺）、7株經驗證之樹木（平均胸徑30.7公分）以及17處擋土牆/建築牆面（垂直面積144.8平方公尺）。場區內完全無水域分佈，並已排除7個非樹木之誤報標記。",
+    "ai_summary_en": "Based on 3D LiDAR and photogrammetry inspection, the site features 1 paved road/walkway covering 1003.2 m2, 7 verified urban/park trees with a mean DBH of 30.7 cm, and 17 retaining/building walls with a vertical area of 144.8 m2. There are no water bodies present on site, and 7 non-tree false positive tags were successfully rejected.",
+    "road_surface_note": "柏油與人行道鋪面狀況良好，無積水與凹陷。",
+    "road_corridor_subtype": "paved_asphalt_concrete",
+    "road_corridor_label_zh": "鋪面道路",
+    "road_corridor_label_en": "Paved Road",
+    "water_body_label_zh": "無水域",
+    "rejected_false_positive_tags": [
+      "T1",
+      "T12",
+      "T14",
+      "T2",
+      "T4",
+      "T6",
+      "T7"
+    ],
+    "per_tree_verdicts": {
+      "T1": {
+        "tag": "T1",
+        "is_real_tree": false,
+        "object_seen": "Concrete building exterior wall facade",
+        "ai_vision_verified": true
+      },
+      "T2": {
+        "tag": "T2",
+        "is_real_tree": false,
+        "object_seen": "Vining plant growing on metal fence",
+        "ai_vision_verified": true
+      },
+      "T3": {
+        "tag": "T3",
+        "is_real_tree": true,
+        "object_seen": "Bushy tree foliage behind fence",
+        "ai_vision_verified": true
+      },
+      "T4": {
+        "tag": "T4",
+        "is_real_tree": false,
+        "object_seen": "Metal street pole on sidewalk",
+        "ai_vision_verified": true
+      },
+      "T5": {
+        "tag": "T5",
+        "is_real_tree": true,
+        "object_seen": "Small leafy tree canopy and branches",
+        "ai_vision_verified": true
+      },
+      "T6": {
+        "tag": "T6",
+        "is_real_tree": false,
+        "object_seen": "Dense climbing vine vegetation on wall",
+        "ai_vision_verified": true
+      },
+      "T7": {
+        "tag": "T7",
+        "is_real_tree": false,
+        "object_seen": "Shrubs and low vegetation along wall",
+        "ai_vision_verified": true
+      },
+      "T8": {
+        "tag": "T8",
+        "is_real_tree": true,
+        "object_seen": "Large mature banyan tree trunk",
+        "ai_vision_verified": true
+      },
+      "T9": {
+        "tag": "T9",
+        "is_real_tree": true,
+        "object_seen": "Large mature banyan tree branch and trunk",
+        "ai_vision_verified": true
+      },
+      "T10": {
+        "tag": "T10",
+        "is_real_tree": true,
+        "object_seen": "Small leafy tree trunk and foliage",
+        "ai_vision_verified": true
+      },
+      "T11": {
+        "tag": "T11",
+        "is_real_tree": true,
+        "object_seen": "Mature street tree trunk with signage",
+        "ai_vision_verified": true
+      },
+      "T12": {
+        "tag": "T12",
+        "is_real_tree": false,
+        "object_seen": "Tiled building exterior corner pillar",
+        "ai_vision_verified": true
+      },
+      "T13": {
+        "tag": "T13",
+        "is_real_tree": true,
+        "object_seen": "Dense leafy tree foliage and branches",
+        "ai_vision_verified": true
+      },
+      "T14": {
+        "tag": "T14",
+        "is_real_tree": false,
+        "object_seen": "Rainwater downspout pipe on wall",
+        "ai_vision_verified": true
+      }
+    },
+    "photo_verified_count": 17
   }
 }

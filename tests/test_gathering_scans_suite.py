@@ -1900,7 +1900,7 @@ class GatheringScansTestSuite(unittest.TestCase):
                 self.assertTrue(bool(tr.get("verified_photo")), f"Missing verified_photo in {cfp}: {tr.get('id')}")
                 self.assertTrue(bool(tr.get("object_seen") or tr.get("ai_vision_label")), f"Missing object_seen in {cfp}: {tr.get('id')}")
 
-        # 5. Edge case: when Gemini fails/times out, _refine_categorization_with_gemini_multimodal must return ai_verified=False and never cache fake verification
+        # 5. Edge case: when Gemini fails/times out or when camera_catalog is empty, _refine_categorization_with_gemini_multimodal must return ai_verified=False and never cache fake verification
         from unittest.mock import patch
         import numpy as np
         from pc_worker.surveying_engine import SurveyingEngine
@@ -1919,6 +1919,23 @@ class GatheringScansTestSuite(unittest.TestCase):
             )
         self.assertFalse(fail_res.get("ai_verified"))
         self.assertEqual(fail_res.get("per_tree_verdicts"), {})
+
+        # 6. Verify CSV & HTML engineering reports include AI Vision Verified & Object Seen columns and that non-tree vines/hedges are excluded
+        for tr_ntu in ntu_cat.get("trees", []):
+            self.assertNotIn("low green hedge", str(tr_ntu.get("object_seen") or "").lower())
+            self.assertNotIn("vining plant", str(tr_ntu.get("object_seen") or "").lower())
+        ntu_csv_path = os.path.join(BASE_DIR, "data", "reports", "categorization_report_ntudorm_20260915_baseline.csv")
+        ntu_html_path = os.path.join(BASE_DIR, "data", "reports", "categorization_report_ntudorm_20260915_baseline.html")
+        if os.path.isfile(ntu_csv_path) and os.path.isfile(ntu_html_path):
+            with open(ntu_csv_path, "r", encoding="utf-8-sig") as cf:
+                csv_txt = cf.read()
+            with open(ntu_html_path, "r", encoding="utf-8") as hf:
+                html_txt = hf.read()
+            self.assertIn("AI Vision Verified", csv_txt)
+            self.assertIn("AI Visual Inspection (Object Seen)", csv_txt)
+            self.assertIn("Yes (AI+3D Trunk)", csv_txt)
+            self.assertIn("AI Vision & DBH Verification", html_txt)
+            self.assertIn("✓ AI+3D 樹幹", html_txt)
 
     def test_23_silent_subprocess_queue_order_progress_and_rerun_visibility(self):
         """Verify Task 1 & Task 2: silent subprocess patch, psutil process check, auto-tile retry cache,
