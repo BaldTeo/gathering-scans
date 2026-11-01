@@ -456,26 +456,46 @@
       }
 
       // Collect meshes/points from studioThree (tilesRenderer, modelPivot, multiAlignGroup, fallbackGroup)
+      // Strictly prefer leaf/finest loaded 3D tiles and exclude hidden ancestor LOD tiles or Google Map helpers
       const meshes = [];
       const pointClouds = [];
       const seenGeoms = new Set();
+      const cellFineMask = new Uint8Array(totalGridCells);
       const THREE = window.THREE;
 
-      const collectFromRoot = (rootObj, parentWorldMat = null) => {
+      const isNodeVisibleUnderRoot = (node, rootStop) => {
+        let cur = node;
+        while (cur) {
+          if (cur.visible === false) return false;
+          if (cur === rootStop) break;
+          cur = cur.parent;
+        }
+        return true;
+      };
+
+      const collectFromRoot = (rootObj, parentWorldMat = null, isCoarseFallback = false) => {
         if (!rootObj) return;
         const isDetached = Boolean(parentWorldMat && rootObj.parent === null);
         if (!isDetached && rootObj.visible === false) return;
         if (typeof rootObj.updateMatrixWorld === "function") rootObj.updateMatrixWorld(true);
         rootObj.traverse((child) => {
-          if (!child.visible || !child.geometry || !child.geometry.attributes?.position) return;
-          if (seenGeoms.has(child.geometry) || child.userData?.isAlignBoxHelper) return;
+          if (!child.geometry || !child.geometry.attributes?.position) return;
+          if (!isNodeVisibleUnderRoot(child, rootObj)) return;
+          if (
+            seenGeoms.has(child.geometry) ||
+            child.userData?.isAlignBoxHelper ||
+            child.userData?.isGoogleMap ||
+            child.name?.includes("googleMap")
+          ) {
+            return;
+          }
           seenGeoms.add(child.geometry);
           let matWorld = child.matrixWorld;
           if (isDetached && THREE) {
             matWorld = new THREE.Matrix4().multiplyMatrices(parentWorldMat, child.matrixWorld);
           }
-          if (child.isMesh) meshes.push({ mesh: child, matWorld });
-          else if (child.isPoints) pointClouds.push({ pc: child, matWorld });
+          if (child.isMesh) meshes.push({ mesh: child, matWorld, isCoarseFallback: Boolean(isCoarseFallback) });
+          else if (child.isPoints) pointClouds.push({ pc: child, matWorld, isCoarseFallback: Boolean(isCoarseFallback) });
         });
       };
 
@@ -485,34 +505,63 @@
         if (tr && tr.root && st.modelPivot?.visible) {
           st.modelPivot.updateMatrixWorld(true);
           const grpMat = tr.group ? tr.group.matrixWorld : st.modelPivot.matrixWorld;
+          const hasAnyLoadedScene = (node) => {
+            if (!node) return false;
+            if (node.engineData?.scene) return true;
+            const ch = node.children;
+            if (Array.isArray(ch)) {
+              for (let i = 0; i < ch.length; i++) {
+                if (hasAnyLoadedScene(ch[i])) return true;
+              }
+            }
+            return false;
+          };
+          const hasFullCoverageScene = (node) => {
+            if (!node) return false;
+            if (node.engineData?.scene) return true;
+            const ch = node.children;
+            return Array.isArray(ch) && ch.length > 0 && ch.every((c) => hasFullCoverageScene(c));
+          };
           const walkTile = (node) => {
             if (!node) return;
             const ch = Array.isArray(node.children) ? node.children : [];
-            if (ch.length > 0) ch.forEach(walkTile);
-            if (node.engineData?.scene) collectFromRoot(node.engineData.scene, grpMat);
+            const loadedChildren = ch.filter((c) => hasAnyLoadedScene(c));
+            if (loadedChildren.length > 0) {
+              for (let i = 0; i < loadedChildren.length; i++) {
+                walkTile(loadedChildren[i]);
+              }
+              if (!ch.every((c) => hasFullCoverageScene(c)) && node.engineData?.scene) {
+                collectFromRoot(node.engineData.scene, grpMat, true);
+              }
+            } else if (node.engineData?.scene) {
+              collectFromRoot(node.engineData.scene, grpMat, false);
+            }
           };
           walkTile(tr.root);
         }
-        collectFromRoot(st.modelPivot, null);
-        if (window.STATE?.multiAlign?.active) collectFromRoot(st.multiAlignGroup, null);
+        collectFromRoot(st.modelPivot, null, false);
+        if (window.STATE?.multiAlign?.active) collectFromRoot(st.multiAlignGroup, null, false);
         if (meshes.length === 0 && pointClouds.length === 0) {
-          collectFromRoot(st.fallbackGroup, null);
-          collectFromRoot(st.scanRoot, null);
+          collectFromRoot(st.fallbackGroup, null, true);
+          collectFromRoot(st.scanRoot, null, false);
         }
       }
 
-      const binLocalPoint = (lx, ly, lz) => {
-        if (lx < minX || lx > maxX || ly < minY || ly > maxY || lz < minZ || lz > maxZ) return;
-        const dx = lx - c0.x, dy = ly - c0.y, dz = lz - c0.z;
-        const signedN = dx * n0.x + dy * n0.y + dz * n0.z;
+      // Process fine leaf meshes before any coarse fallback meshes
+      meshes.sort((a, b) => Number(a.isCoarseFallback) - Number(b.isCoarseFallback));
+
+      const binCellSample = (idx, lx, ly, lz, signedN, isCoarse) => {
         if (Math.abs(signedN) > normalMargin) return;
-        const pu = dx * u0.x + dy * u0.y + dz * u0.z;
-        const pv = dx * v0.x + dy * v0.y + dz * v0.z;
-        if (pu < minU || pu > maxU || pv < minV || pv > maxV) return;
-        const c = Math.min(cols - 1, Math.max(0, Math.floor((pu - minU) / du)));
-        const r = Math.min(rows - 1, Math.max(0, Math.floor((pv - minV) / dv)));
-        const idx = r * cols + c;
         if (!cellInside[idx]) return;
+        if (isCoarse && cellFineMask[idx]) return;
+        if (!isCoarse && !cellFineMask[idx] && cellCount[idx] > 0) {
+          cellCount[idx] = 0;
+          cellSumX[idx] = 0;
+          cellSumY[idx] = 0;
+          cellSumZ[idx] = 0;
+          cellFrontN[idx] = -1e9;
+        }
+        if (!isCoarse) cellFineMask[idx] = 1;
         // If a significantly closer front surface (by > 0.18m) is found in this cell, replace back-wall samples
         if (cellCount[idx] > 0) {
           if (signedN > cellFrontN[idx] + 0.18) {
@@ -534,6 +583,20 @@
         cellSumY[idx] += ly;
         cellSumZ[idx] += lz;
         cellCount[idx] += 1;
+      };
+
+      const binLocalPoint = (lx, ly, lz, isCoarse = false) => {
+        if (lx < minX || lx > maxX || ly < minY || ly > maxY || lz < minZ || lz > maxZ) return;
+        const dx = lx - c0.x, dy = ly - c0.y, dz = lz - c0.z;
+        const signedN = dx * n0.x + dy * n0.y + dz * n0.z;
+        if (Math.abs(signedN) > normalMargin) return;
+        const pu = dx * u0.x + dy * u0.y + dz * u0.z;
+        const pv = dx * v0.x + dy * v0.y + dz * v0.z;
+        if (pu < minU || pu > maxU || pv < minV || pv > maxV) return;
+        const c = Math.min(cols - 1, Math.max(0, Math.floor((pu - minU) / du)));
+        const r = Math.min(rows - 1, Math.max(0, Math.floor((pv - minV) / dv)));
+        const idx = r * cols + c;
+        binCellSample(idx, lx, ly, lz, signedN, isCoarse);
       };
 
       // Build work queue over meshes + point clouds
@@ -583,6 +646,7 @@
         while (meshIdx < meshes.length && performance.now() - tStart < budgetMs) {
           const entry = meshes[meshIdx];
           const mesh = entry.mesh;
+          const isCoarse = Boolean(entry.isCoarseFallback);
           const geom = mesh.geometry;
           const posAttr = geom.attributes.position;
           const idxAttr = geom.index;
@@ -620,31 +684,63 @@
               if (cosAngle < 0.35) continue;
             }
 
-            // Bin vertices and centroid
-            binLocalPoint(vA.x, vA.y, vA.z);
-            binLocalPoint(vB.x, vB.y, vB.z);
-            binLocalPoint(vC.x, vC.y, vC.z);
-            const mx = (vA.x + vB.x + vC.x) / 3.0;
-            const my = (vA.y + vB.y + vC.y) / 3.0;
-            const mz = (vA.z + vB.z + vC.z) / 3.0;
-            binLocalPoint(mx, my, mz);
+            const dxA = vA.x - c0.x, dyA = vA.y - c0.y, dzA = vA.z - c0.z;
+            const uA = dxA * u0.x + dyA * u0.y + dzA * u0.z;
+            const vA_uv = dxA * v0.x + dyA * v0.y + dzA * v0.z;
+            const nA = dxA * n0.x + dyA * n0.y + dzA * n0.z;
 
-            // Sub-sample larger triangles so grid cells never have gaps
-            const e1 = Math.hypot(e1x, e1y, e1z);
-            const e2 = Math.hypot(vC.x - vB.x, vC.y - vB.y, vC.z - vB.z);
-            const maxEdge = Math.max(e1, e2);
-            if (maxEdge > du * 0.85) {
-              const steps = Math.min(8, Math.ceil(maxEdge / (du * 0.75)));
-              for (let s1 = 1; s1 <= steps; s1++) {
-                const a = s1 / (steps + 1);
-                for (let s2 = 0; s1 + s2 <= steps; s2++) {
-                  const b = s2 / (steps + 1);
-                  const c = 1.0 - a - b;
-                  binLocalPoint(
-                    vA.x * a + vB.x * b + vC.x * c,
-                    vA.y * a + vB.y * b + vC.y * c,
-                    vA.z * a + vB.z * b + vC.z * c
-                  );
+            const dxB = vB.x - c0.x, dyB = vB.y - c0.y, dzB = vB.z - c0.z;
+            const uB = dxB * u0.x + dyB * u0.y + dzB * u0.z;
+            const vB_uv = dxB * v0.x + dyB * v0.y + dzB * v0.z;
+            const nB = dxB * n0.x + dyB * n0.y + dzB * n0.z;
+
+            const dxC = vC.x - c0.x, dyC = vC.y - c0.y, dzC = vC.z - c0.z;
+            const uC = dxC * u0.x + dyC * u0.y + dzC * u0.z;
+            const vC_uv = dxC * v0.x + dyC * v0.y + dzC * v0.z;
+            const nC = dxC * n0.x + dyC * n0.y + dzC * n0.z;
+
+            if (Math.min(nA, nB, nC) > normalMargin || Math.max(nA, nB, nC) < -normalMargin) continue;
+            const uMinTri = Math.min(uA, uB, uC), uMaxTri = Math.max(uA, uB, uC);
+            const vMinTri = Math.min(vA_uv, vB_uv, vC_uv), vMaxTri = Math.max(vA_uv, vB_uv, vC_uv);
+            if (uMaxTri < minU || uMinTri > maxU || vMaxTri < minV || vMinTri > maxV) continue;
+
+            // Bin vertices and centroid (captures micro-triangles smaller than cell size)
+            binLocalPoint(vA.x, vA.y, vA.z, isCoarse);
+            binLocalPoint(vB.x, vB.y, vB.z, isCoarse);
+            binLocalPoint(vC.x, vC.y, vC.z, isCoarse);
+            binLocalPoint(
+              (vA.x + vB.x + vC.x) / 3.0,
+              (vA.y + vB.y + vC.y) / 3.0,
+              (vA.z + vB.z + vC.z) / 3.0,
+              isCoarse
+            );
+
+            // Exact 2D barycentric triangle rasterization in (u, v) grid coordinates
+            // Guarantees 100% of mesh-covered interior cells are populated without holes regardless of triangle size
+            const denom = (vB_uv - vC_uv) * (uA - uC) + (uC - uB) * (vA_uv - vC_uv);
+            if (Math.abs(denom) > 1e-10) {
+              const invDenom = 1.0 / denom;
+              const cMin = Math.max(0, Math.floor((uMinTri - minU) / du));
+              const cMax = Math.min(cols - 1, Math.floor((uMaxTri - minU) / du));
+              const rMin = Math.max(0, Math.floor((vMinTri - minV) / dv));
+              const rMax = Math.min(rows - 1, Math.floor((vMaxTri - minV) / dv));
+              for (let r = rMin; r <= rMax; r++) {
+                const cv = minV + (r + 0.5) * dv;
+                for (let c = cMin; c <= cMax; c++) {
+                  const idx = r * cols + c;
+                  if (!cellInside[idx]) continue;
+                  if (isCoarse && cellFineMask[idx]) continue;
+                  const cu = minU + (c + 0.5) * du;
+                  const w0 = ((vB_uv - vC_uv) * (cu - uC) + (uC - uB) * (cv - vC_uv)) * invDenom;
+                  const w1 = ((vC_uv - vA_uv) * (cu - uC) + (uA - uC) * (cv - vC_uv)) * invDenom;
+                  const w2 = 1.0 - w0 - w1;
+                  if (w0 >= -0.02 && w1 >= -0.02 && w2 >= -0.02) {
+                    const ix = w0 * vA.x + w1 * vB.x + w2 * vC.x;
+                    const iy = w0 * vA.y + w1 * vB.y + w2 * vC.y;
+                    const iz = w0 * vA.z + w1 * vB.z + w2 * vC.z;
+                    const iSignedN = w0 * nA + w1 * nB + w2 * nC;
+                    binCellSample(idx, ix, iy, iz, iSignedN, isCoarse);
+                  }
                 }
               }
             }
@@ -661,6 +757,7 @@
         while (meshIdx >= meshes.length && ptCloudIdx < pointClouds.length && performance.now() - tStart < budgetMs) {
           const pcEntry = pointClouds[ptCloudIdx];
           const pc = pcEntry.pc;
+          const isCoarse = Boolean(pcEntry.isCoarseFallback);
           const geom = pc.geometry;
           const posAttr = geom.attributes.position;
           const matWorld = pcEntry.matWorld || pc.matrixWorld;
@@ -669,7 +766,7 @@
 
           for (let i = ptCursor; i < batchEnd; i++) {
             vA.fromBufferAttribute(posAttr, i).applyMatrix4(matWorld);
-            binLocalPoint(vA.x, vA.y, vA.z);
+            binLocalPoint(vA.x, vA.y, vA.z, isCoarse);
           }
 
           processedUnits += batchEnd - ptCursor;
@@ -688,6 +785,39 @@
         if (meshIdx < meshes.length || ptCloudIdx < pointClouds.length) {
           scheduleNextChunk();
           return;
+        }
+
+        // Fill any isolated 1-cell seam cracks surrounded by >= 4 valid neighbor cells
+        const origCount = new Uint32Array(cellCount);
+        for (let r = 0; r < rows; r++) {
+          for (let c = 0; c < cols; c++) {
+            const idx = r * cols + c;
+            if (!cellInside[idx] || origCount[idx] > 0) continue;
+            let nx = 0, ny = 0, nz = 0, nValid = 0;
+            for (let dr = -1; dr <= 1; dr++) {
+              const nr = r + dr;
+              if (nr < 0 || nr >= rows) continue;
+              for (let dc = -1; dc <= 1; dc++) {
+                if (dr === 0 && dc === 0) continue;
+                const nc = c + dc;
+                if (nc < 0 || nc >= cols) continue;
+                const nIdx = nr * cols + nc;
+                if (origCount[nIdx] > 0) {
+                  const invN = 1.0 / origCount[nIdx];
+                  nx += cellSumX[nIdx] * invN;
+                  ny += cellSumY[nIdx] * invN;
+                  nz += cellSumZ[nIdx] * invN;
+                  nValid++;
+                }
+              }
+            }
+            if (nValid >= 4) {
+              cellSumX[idx] = nx / nValid;
+              cellSumY[idx] = ny / nValid;
+              cellSumZ[idx] = nz / nValid;
+              cellCount[idx] = 1;
+            }
+          }
         }
 
         // Finalize sampled cells
@@ -1056,10 +1186,10 @@
     const activeCells = cells.filter((c) => showPass3D || c.status === "high" || c.status === "low");
 
     if (activeCells.length > 0) {
-      const unitBox = new THREE.BoxGeometry(cache.du * 0.92, cache.dv * 0.92, 1.0);
+      const unitBox = new THREE.BoxGeometry(cache.du * 0.94, cache.dv * 0.94, 1.0);
       const instMat = new THREE.MeshBasicMaterial({
         transparent: true,
-        opacity: 0.82,
+        opacity: 0.84,
         depthTest: false,
       });
       const instMesh = new THREE.InstancedMesh(unitBox, instMat, activeCells.length);
@@ -1075,7 +1205,7 @@
         const absMm = Math.abs(c.devMm);
         const ratio = Math.min(3.5, absMm / tolMm);
         // Visual prism thickness scaled for clear 3D visibility while preserving sign
-        const prismThickM = Math.max(0.018, Math.min(0.45, Math.abs(c.devM) * 1.5 + 0.012));
+        const prismThickM = Math.max(0.014, Math.min(0.14, Math.abs(c.devM) * 0.65 + 0.01));
         const sign = c.devM >= 0 ? 1.0 : -1.0;
 
         posVec.set(c.planeX, c.planeY, c.planeZ).addScaledVector(fn, sign * prismThickM * 0.5);
@@ -1128,6 +1258,9 @@
       window.studioThree.overlayGroup.add(surfaceQa3DGroup);
     } else {
       window.studioThree.scene.add(surfaceQa3DGroup);
+    }
+    if (window.studioThree.renderer && window.studioThree.camera) {
+      window.studioThree.renderer.render(window.studioThree.scene, window.studioThree.camera);
     }
   }
 
@@ -1831,6 +1964,7 @@
 </body>
 </html>`;
 
+    QA_STATE.lastReportHtml = reportHtml;
     const win = window.open("", "_blank");
     if (win && win.document) {
       win.document.open();
@@ -1839,6 +1973,7 @@
     } else {
       downloadBlob(reportHtml, `flatness_qa_report_${res.scan_id || "scan"}.html`, "text/html;charset=utf-8;");
     }
+    return reportHtml;
   }
 
   // =========================================================================
@@ -2774,6 +2909,7 @@
   window.openCompareVolumeTakeoffInspector = openCompareVolumeTakeoffInspector;
   window.openRtkStakeoutInspector = openRtkStakeoutInspector;
   window.onQaPanelsClosed = onQaPanelsClosed;
+  window.QA_STATE = QA_STATE;
 
   window.handleQaTool3DCanvasPick = function (tool, pt, twd, isNearStartVertex) {
     if (!twd) return false;
