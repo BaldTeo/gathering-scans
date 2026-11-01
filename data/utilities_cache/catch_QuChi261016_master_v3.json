@@ -108,9 +108,9 @@
     }
   },
   "layer_counts": {
-    "storm": 59,
+    "storm": 22,
     "sanitary": 0,
-    "water": 6,
+    "water": 21,
     "electric": 0,
     "telecom": 0,
     "gas": 0,
@@ -119,2723 +119,10 @@
     "excavations": 0,
     "as_built": 0
   },
-  "total_features": 65,
-  "total_pipe_length_m": 11883.7,
-  "total_structures": 26,
+  "total_features": 43,
+  "total_pipe_length_m": 9084.31,
+  "total_structures": 21,
   "features": [
-    {
-      "id": "ntpc_rw_culvert_547",
-      "layer": "storm",
-      "type": "box_culvert",
-      "name": "雨水箱涵 CB1-CB2(規劃既有) (0.89x0.89m)",
-      "diameter_mm": 890,
-      "width_m": 0.89,
-      "height_m": 0.89,
-      "length_m": 195.55,
-      "material": "RC/鋼筋混凝土",
-      "start_coord": [
-        305316.76,
-        2757867.821,
-        41.219
-      ],
-      "end_coord": [
-        305186.754,
-        2757794.254,
-        41.07
-      ],
-      "start_ground_h": 43.209,
-      "end_ground_h": 43.21,
-      "start_rim_h": 43.209,
-      "end_rim_h": 43.21,
-      "start_invert_h": 41.219,
-      "end_invert_h": 41.07,
-      "start_crown_h": 42.109,
-      "end_crown_h": 41.96,
-      "start_depth_m": 1.99,
-      "end_depth_m": 2.14,
-      "start_cover_m": 1.1,
-      "end_cover_m": 1.25,
-      "depth_m": 2.06,
-      "slope_pct": 0.076,
-      "flow_direction": 1,
-      "upstream_mh": "CB1",
-      "downstream_mh": "CB2",
-      "coords": [
-        [
-          305316.76,
-          2757867.821,
-          41.219
-        ],
-        [
-          305303.587,
-          2757836.437,
-          41.202
-        ],
-        [
-          305271.003,
-          2757844.085,
-          41.187
-        ],
-        [
-          305240.334,
-          2757851.283,
-          41.17
-        ],
-        [
-          305221.779,
-          2757855.34,
-          41.153
-        ],
-        [
-          305211.647,
-          2757856.786,
-          41.137
-        ],
-        [
-          305203.86,
-          2757838.725,
-          41.12
-        ],
-        [
-          305199.28,
-          2757826.925,
-          41.103
-        ],
-        [
-          305191.201,
-          2757806.112,
-          41.087
-        ],
-        [
-          305186.754,
-          2757794.254,
-          41.07
-        ]
-      ],
-      "source": "New Taipei City WRD Rainwater System (wrd.ntpc.gov.tw)",
-      "gov_links": {
-        "portal_url": null,
-        "portal_label": null,
-        "api_url": "https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/rainwater_00131/MapServer/7/547",
-        "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #547",
-        "osm_url": null,
-        "osm_label": null,
-        "nlsc_url": null,
-        "nlsc_label": null
-      },
-      "origin_class": "api_open_data",
-      "api_url": "https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/rainwater_00131/MapServer/7/547",
-      "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #547"
-    },
-    {
-      "id": "ntpc_rw_culvert_418",
-      "layer": "storm",
-      "type": "box_culvert",
-      "name": "雨水箱涵 CC3-CC (1.20x1.20m)",
-      "diameter_mm": 1200,
-      "width_m": 1.2,
-      "height_m": 1.2,
-      "length_m": 85.74,
-      "material": "RC/鋼筋混凝土",
-      "start_coord": [
-        305192.959,
-        2757169.328,
-        40.917
-      ],
-      "end_coord": [
-        305160.979,
-        2757089.778,
-        40.765
-      ],
-      "start_ground_h": 43.217,
-      "end_ground_h": 43.215,
-      "start_rim_h": 43.217,
-      "end_rim_h": 43.215,
-      "start_invert_h": 40.917,
-      "end_invert_h": 40.765,
-      "start_crown_h": 42.117,
-      "end_crown_h": 41.965,
-      "start_depth_m": 2.3,
-      "end_depth_m": 2.45,
-      "start_cover_m": 1.1,
-      "end_cover_m": 1.25,
-      "depth_m": 2.38,
-      "slope_pct": 0.177,
-      "flow_direction": 1,
-      "upstream_mh": "CC3",
-      "downstream_mh": "CC",
-      "coords": [
-        [
-          305192.959,
-          2757169.328,
-          40.917
-        ],
-        [
-          305160.979,
-          2757089.778,
-          40.765
-        ]
-      ],
-      "source": "New Taipei City WRD Rainwater System (wrd.ntpc.gov.tw)",
-      "gov_links": {
-        "portal_url": null,
-        "portal_label": null,
-        "api_url": "https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/rainwater_00131/MapServer/7/418",
-        "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #418",
-        "osm_url": null,
-        "osm_label": null,
-        "nlsc_url": null,
-        "nlsc_label": null
-      },
-      "origin_class": "api_open_data",
-      "api_url": "https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/rainwater_00131/MapServer/7/418",
-      "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #418"
-    },
-    {
-      "id": "ntpc_rw_culvert_424",
-      "layer": "storm",
-      "type": "box_culvert",
-      "name": "雨水箱涵 CC1-CC2 (0.80x0.80m)",
-      "diameter_mm": 800,
-      "width_m": 0.8,
-      "height_m": 0.8,
-      "length_m": 155.99,
-      "material": "RC/鋼筋混凝土",
-      "start_coord": [
-        305299.373,
-        2757336.497,
-        41.313
-      ],
-      "end_coord": [
-        305327.784,
-        2757183.542,
-        41.159
-      ],
-      "start_ground_h": 43.213,
-      "end_ground_h": 43.209,
-      "start_rim_h": 43.213,
-      "end_rim_h": 43.209,
-      "start_invert_h": 41.313,
-      "end_invert_h": 41.159,
-      "start_crown_h": 42.113,
-      "end_crown_h": 41.959,
-      "start_depth_m": 1.9,
-      "end_depth_m": 2.05,
-      "start_cover_m": 1.1,
-      "end_cover_m": 1.25,
-      "depth_m": 1.97,
-      "slope_pct": 0.099,
-      "flow_direction": 1,
-      "upstream_mh": "CC1",
-      "downstream_mh": "CC2",
-      "coords": [
-        [
-          305299.373,
-          2757336.497,
-          41.313
-        ],
-        [
-          305299.082,
-          2757322.543,
-          41.276
-        ],
-        [
-          305302.841,
-          2757293.674,
-          41.237
-        ],
-        [
-          305315.242,
-          2757239.749,
-          41.198
-        ],
-        [
-          305327.784,
-          2757183.542,
-          41.159
-        ]
-      ],
-      "source": "New Taipei City WRD Rainwater System (wrd.ntpc.gov.tw)",
-      "gov_links": {
-        "portal_url": null,
-        "portal_label": null,
-        "api_url": "https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/rainwater_00131/MapServer/7/424",
-        "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #424",
-        "osm_url": null,
-        "osm_label": null,
-        "nlsc_url": null,
-        "nlsc_label": null
-      },
-      "origin_class": "api_open_data",
-      "api_url": "https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/rainwater_00131/MapServer/7/424",
-      "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #424"
-    },
-    {
-      "id": "ntpc_rw_culvert_544",
-      "layer": "storm",
-      "type": "box_culvert",
-      "name": "雨水箱涵 CB4c-CB4(規劃既有) (1.39x1.39m)",
-      "diameter_mm": 1390,
-      "width_m": 1.39,
-      "height_m": 1.39,
-      "length_m": 57.97,
-      "material": "RC/鋼筋混凝土",
-      "start_coord": [
-        305198.861,
-        2757532.269,
-        40.723
-      ],
-      "end_coord": [
-        305190.606,
-        2757589.643,
-        40.573
-      ],
-      "start_ground_h": 43.213,
-      "end_ground_h": 43.213,
-      "start_rim_h": 43.213,
-      "end_rim_h": 43.213,
-      "start_invert_h": 40.723,
-      "end_invert_h": 40.573,
-      "start_crown_h": 42.113,
-      "end_crown_h": 41.963,
-      "start_depth_m": 2.49,
-      "end_depth_m": 2.64,
-      "start_cover_m": 1.1,
-      "end_cover_m": 1.25,
-      "depth_m": 2.57,
-      "slope_pct": 0.259,
-      "flow_direction": 1,
-      "upstream_mh": "CB4c",
-      "downstream_mh": "CB4",
-      "coords": [
-        [
-          305198.861,
-          2757532.269,
-          40.723
-        ],
-        [
-          305191.807,
-          2757582.185,
-          40.648
-        ],
-        [
-          305190.606,
-          2757589.643,
-          40.573
-        ]
-      ],
-      "source": "New Taipei City WRD Rainwater System (wrd.ntpc.gov.tw)",
-      "gov_links": {
-        "portal_url": null,
-        "portal_label": null,
-        "api_url": "https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/rainwater_00131/MapServer/7/544",
-        "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #544",
-        "osm_url": null,
-        "osm_label": null,
-        "nlsc_url": null,
-        "nlsc_label": null
-      },
-      "origin_class": "api_open_data",
-      "api_url": "https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/rainwater_00131/MapServer/7/544",
-      "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #544"
-    },
-    {
-      "id": "ntpc_rw_culvert_421",
-      "layer": "storm",
-      "type": "box_culvert",
-      "name": "雨水箱涵 CA3-CA4 (2.20x2.20m)",
-      "diameter_mm": 2200,
-      "width_m": 2.2,
-      "height_m": 2.2,
-      "length_m": 78.0,
-      "material": "RC/鋼筋混凝土",
-      "start_coord": [
-        305383.049,
-        2756987.237,
-        39.897
-      ],
-      "end_coord": [
-        305383.482,
-        2756909.47,
-        39.743
-      ],
-      "start_ground_h": 43.197,
-      "end_ground_h": 43.193,
-      "start_rim_h": 43.197,
-      "end_rim_h": 43.193,
-      "start_invert_h": 39.897,
-      "end_invert_h": 39.743,
-      "start_crown_h": 42.097,
-      "end_crown_h": 41.943,
-      "start_depth_m": 3.3,
-      "end_depth_m": 3.45,
-      "start_cover_m": 1.1,
-      "end_cover_m": 1.25,
-      "depth_m": 3.38,
-      "slope_pct": 0.197,
-      "flow_direction": 1,
-      "upstream_mh": "CA3",
-      "downstream_mh": "CA4",
-      "coords": [
-        [
-          305383.049,
-          2756987.237,
-          39.897
-        ],
-        [
-          305380.505,
-          2756957.563,
-          39.845
-        ],
-        [
-          305381.334,
-          2756931.061,
-          39.794
-        ],
-        [
-          305383.482,
-          2756909.47,
-          39.743
-        ]
-      ],
-      "source": "New Taipei City WRD Rainwater System (wrd.ntpc.gov.tw)",
-      "gov_links": {
-        "portal_url": null,
-        "portal_label": null,
-        "api_url": "https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/rainwater_00131/MapServer/7/421",
-        "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #421",
-        "osm_url": null,
-        "osm_label": null,
-        "nlsc_url": null,
-        "nlsc_label": null
-      },
-      "origin_class": "api_open_data",
-      "api_url": "https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/rainwater_00131/MapServer/7/421",
-      "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #421"
-    },
-    {
-      "id": "ntpc_rw_culvert_545",
-      "layer": "storm",
-      "type": "box_culvert",
-      "name": "雨水箱涵 CB5-CB4(規劃既有) (1.70x1.60m)",
-      "diameter_mm": 1700,
-      "width_m": 1.7,
-      "height_m": 1.6,
-      "length_m": 70.84,
-      "material": "RC/鋼筋混凝土",
-      "start_coord": [
-        305181.069,
-        2757659.799,
-        40.512
-      ],
-      "end_coord": [
-        305190.606,
-        2757589.643,
-        40.363
-      ],
-      "start_ground_h": 43.212,
-      "end_ground_h": 43.213,
-      "start_rim_h": 43.212,
-      "end_rim_h": 43.213,
-      "start_invert_h": 40.512,
-      "end_invert_h": 40.363,
-      "start_crown_h": 42.112,
-      "end_crown_h": 41.963,
-      "start_depth_m": 2.7,
-      "end_depth_m": 2.85,
-      "start_cover_m": 1.1,
-      "end_cover_m": 1.25,
-      "depth_m": 2.78,
-      "slope_pct": 0.21,
-      "flow_direction": 1,
-      "upstream_mh": "CB5",
-      "downstream_mh": "CB4",
-      "coords": [
-        [
-          305181.069,
-          2757659.799,
-          40.512
-        ],
-        [
-          305181.295,
-          2757653.38,
-          40.462
-        ],
-        [
-          305189.149,
-          2757600.186,
-          40.413
-        ],
-        [
-          305190.606,
-          2757589.643,
-          40.363
-        ]
-      ],
-      "source": "New Taipei City WRD Rainwater System (wrd.ntpc.gov.tw)",
-      "gov_links": {
-        "portal_url": null,
-        "portal_label": null,
-        "api_url": "https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/rainwater_00131/MapServer/7/545",
-        "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #545",
-        "osm_url": null,
-        "osm_label": null,
-        "nlsc_url": null,
-        "nlsc_label": null
-      },
-      "origin_class": "api_open_data",
-      "api_url": "https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/rainwater_00131/MapServer/7/545",
-      "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #545"
-    },
-    {
-      "id": "ntpc_rw_culvert_422",
-      "layer": "storm",
-      "type": "box_culvert",
-      "name": "雨水箱涵 CC2-CC3 (1.00x1.00m)",
-      "diameter_mm": 1000,
-      "width_m": 1.0,
-      "height_m": 1.0,
-      "length_m": 135.57,
-      "material": "RC/鋼筋混凝土",
-      "start_coord": [
-        305327.784,
-        2757183.542,
-        41.109
-      ],
-      "end_coord": [
-        305192.959,
-        2757169.328,
-        40.967
-      ],
-      "start_ground_h": 43.209,
-      "end_ground_h": 43.217,
-      "start_rim_h": 43.209,
-      "end_rim_h": 43.217,
-      "start_invert_h": 41.109,
-      "end_invert_h": 40.967,
-      "start_crown_h": 42.109,
-      "end_crown_h": 41.967,
-      "start_depth_m": 2.1,
-      "end_depth_m": 2.25,
-      "start_cover_m": 1.1,
-      "end_cover_m": 1.25,
-      "depth_m": 2.17,
-      "slope_pct": 0.105,
-      "flow_direction": 1,
-      "upstream_mh": "CC2",
-      "downstream_mh": "CC3",
-      "coords": [
-        [
-          305327.784,
-          2757183.542,
-          41.109
-        ],
-        [
-          305192.959,
-          2757169.328,
-          40.967
-        ]
-      ],
-      "source": "New Taipei City WRD Rainwater System (wrd.ntpc.gov.tw)",
-      "gov_links": {
-        "portal_url": null,
-        "portal_label": null,
-        "api_url": "https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/rainwater_00131/MapServer/7/422",
-        "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #422",
-        "osm_url": null,
-        "osm_label": null,
-        "nlsc_url": null,
-        "nlsc_label": null
-      },
-      "origin_class": "api_open_data",
-      "api_url": "https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/rainwater_00131/MapServer/7/422",
-      "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #422"
-    },
-    {
-      "id": "ntpc_rw_culvert_542",
-      "layer": "storm",
-      "type": "box_culvert",
-      "name": "雨水箱涵 CB4-CB5(規劃既有) (2.20x2.00m)",
-      "diameter_mm": 2200,
-      "width_m": 2.2,
-      "height_m": 2.0,
-      "length_m": 121.0,
-      "material": "RC/鋼筋混凝土",
-      "start_coord": [
-        305190.606,
-        2757589.643,
-        40.113
-      ],
-      "end_coord": [
-        305070.555,
-        2757599.338,
-        39.963
-      ],
-      "start_ground_h": 43.213,
-      "end_ground_h": 43.213,
-      "start_rim_h": 43.213,
-      "end_rim_h": 43.213,
-      "start_invert_h": 40.113,
-      "end_invert_h": 39.963,
-      "start_crown_h": 42.113,
-      "end_crown_h": 41.963,
-      "start_depth_m": 3.1,
-      "end_depth_m": 3.25,
-      "start_cover_m": 1.1,
-      "end_cover_m": 1.25,
-      "depth_m": 3.17,
-      "slope_pct": 0.124,
-      "flow_direction": 1,
-      "upstream_mh": "CB4",
-      "downstream_mh": "CB5",
-      "coords": [
-        [
-          305190.606,
-          2757589.643,
-          40.113
-        ],
-        [
-          305120.113,
-          2757589.578,
-          40.038
-        ],
-        [
-          305070.555,
-          2757599.338,
-          39.963
-        ]
-      ],
-      "source": "New Taipei City WRD Rainwater System (wrd.ntpc.gov.tw)",
-      "gov_links": {
-        "portal_url": null,
-        "portal_label": null,
-        "api_url": "https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/rainwater_00131/MapServer/7/542",
-        "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #542",
-        "osm_url": null,
-        "osm_label": null,
-        "nlsc_url": null,
-        "nlsc_label": null
-      },
-      "origin_class": "api_open_data",
-      "api_url": "https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/rainwater_00131/MapServer/7/542",
-      "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #542"
-    },
-    {
-      "id": "ntpc_rw_culvert_425",
-      "layer": "storm",
-      "type": "box_culvert",
-      "name": "雨水箱涵 CA4-CA (2.20x2.20m)",
-      "diameter_mm": 2200,
-      "width_m": 2.2,
-      "height_m": 2.2,
-      "length_m": 135.16,
-      "material": "RC/鋼筋混凝土",
-      "start_coord": [
-        305383.482,
-        2756909.47,
-        39.893
-      ],
-      "end_coord": [
-        305249.559,
-        2756891.233,
-        39.734
-      ],
-      "start_ground_h": 43.193,
-      "end_ground_h": 43.184,
-      "start_rim_h": 43.193,
-      "end_rim_h": 43.184,
-      "start_invert_h": 39.893,
-      "end_invert_h": 39.734,
-      "start_crown_h": 42.093,
-      "end_crown_h": 41.934,
-      "start_depth_m": 3.3,
-      "end_depth_m": 3.45,
-      "start_cover_m": 1.1,
-      "end_cover_m": 1.25,
-      "depth_m": 3.38,
-      "slope_pct": 0.118,
-      "flow_direction": 1,
-      "upstream_mh": "CA4",
-      "downstream_mh": "CA",
-      "coords": [
-        [
-          305383.482,
-          2756909.47,
-          39.893
-        ],
-        [
-          305249.559,
-          2756891.233,
-          39.734
-        ]
-      ],
-      "source": "New Taipei City WRD Rainwater System (wrd.ntpc.gov.tw)",
-      "gov_links": {
-        "portal_url": null,
-        "portal_label": null,
-        "api_url": "https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/rainwater_00131/MapServer/7/425",
-        "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #425",
-        "osm_url": null,
-        "osm_label": null,
-        "nlsc_url": null,
-        "nlsc_label": null
-      },
-      "origin_class": "api_open_data",
-      "api_url": "https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/rainwater_00131/MapServer/7/425",
-      "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #425"
-    },
-    {
-      "id": "ntpc_rw_culvert_419",
-      "layer": "storm",
-      "type": "box_culvert",
-      "name": "雨水箱涵 CA1-CA2 (1.70x1.70m)",
-      "diameter_mm": 1700,
-      "width_m": 1.7,
-      "height_m": 1.7,
-      "length_m": 441.08,
-      "material": "RC/鋼筋混凝土",
-      "start_coord": [
-        305497.89,
-        2757462.01,
-        40.408
-      ],
-      "end_coord": [
-        305529.936,
-        2757026.401,
-        40.25
-      ],
-      "start_ground_h": 43.208,
-      "end_ground_h": 43.2,
-      "start_rim_h": 43.208,
-      "end_rim_h": 43.2,
-      "start_invert_h": 40.408,
-      "end_invert_h": 40.25,
-      "start_crown_h": 42.108,
-      "end_crown_h": 41.95,
-      "start_depth_m": 2.8,
-      "end_depth_m": 2.95,
-      "start_cover_m": 1.1,
-      "end_cover_m": 1.25,
-      "depth_m": 2.88,
-      "slope_pct": 0.036,
-      "flow_direction": 1,
-      "upstream_mh": "CA1",
-      "downstream_mh": "CA2",
-      "coords": [
-        [
-          305497.89,
-          2757462.01,
-          40.408
-        ],
-        [
-          305498.507,
-          2757456.045,
-          40.406
-        ],
-        [
-          305498.712,
-          2757454.013,
-          40.404
-        ],
-        [
-          305498.938,
-          2757451.984,
-          40.402
-        ],
-        [
-          305499.183,
-          2757449.956,
-          40.4
-        ],
-        [
-          305499.448,
-          2757447.932,
-          40.399
-        ],
-        [
-          305510.646,
-          2757395.0,
-          40.397
-        ],
-        [
-          305510.89,
-          2757393.139,
-          40.395
-        ],
-        [
-          305511.11,
-          2757391.275,
-          40.393
-        ],
-        [
-          305511.304,
-          2757389.408,
-          40.391
-        ],
-        [
-          305511.474,
-          2757387.539,
-          40.389
-        ],
-        [
-          305511.62,
-          2757385.668,
-          40.387
-        ],
-        [
-          305511.74,
-          2757383.795,
-          40.385
-        ],
-        [
-          305511.836,
-          2757381.92,
-          40.382
-        ],
-        [
-          305511.907,
-          2757380.045,
-          40.38
-        ],
-        [
-          305511.954,
-          2757378.169,
-          40.379
-        ],
-        [
-          305511.975,
-          2757376.292,
-          40.377
-        ],
-        [
-          305511.972,
-          2757374.415,
-          40.375
-        ],
-        [
-          305511.944,
-          2757372.539,
-          40.373
-        ],
-        [
-          305511.891,
-          2757370.662,
-          40.371
-        ],
-        [
-          305511.813,
-          2757368.787,
-          40.369
-        ],
-        [
-          305511.711,
-          2757366.913,
-          40.367
-        ],
-        [
-          305511.584,
-          2757365.041,
-          40.365
-        ],
-        [
-          305511.432,
-          2757363.17,
-          40.363
-        ],
-        [
-          305511.255,
-          2757361.302,
-          40.361
-        ],
-        [
-          305511.054,
-          2757359.436,
-          40.36
-        ],
-        [
-          305510.828,
-          2757357.572,
-          40.358
-        ],
-        [
-          305510.578,
-          2757355.712,
-          40.356
-        ],
-        [
-          305510.303,
-          2757353.856,
-          40.354
-        ],
-        [
-          305510.003,
-          2757352.003,
-          40.352
-        ],
-        [
-          305509.679,
-          2757350.154,
-          40.35
-        ],
-        [
-          305509.331,
-          2757348.31,
-          40.348
-        ],
-        [
-          305508.958,
-          2757346.471,
-          40.346
-        ],
-        [
-          305508.561,
-          2757344.636,
-          40.344
-        ],
-        [
-          305508.14,
-          2757342.807,
-          40.342
-        ],
-        [
-          305507.695,
-          2757340.984,
-          40.341
-        ],
-        [
-          305507.226,
-          2757339.167,
-          40.339
-        ],
-        [
-          305506.732,
-          2757337.356,
-          40.337
-        ],
-        [
-          305506.215,
-          2757335.552,
-          40.335
-        ],
-        [
-          305505.674,
-          2757333.755,
-          40.333
-        ],
-        [
-          305505.11,
-          2757331.965,
-          40.331
-        ],
-        [
-          305504.521,
-          2757330.183,
-          40.329
-        ],
-        [
-          305503.91,
-          2757328.408,
-          40.327
-        ],
-        [
-          305503.275,
-          2757326.642,
-          40.325
-        ],
-        [
-          305502.616,
-          2757324.885,
-          40.323
-        ],
-        [
-          305501.935,
-          2757323.136,
-          40.322
-        ],
-        [
-          305501.23,
-          2757321.396,
-          40.32
-        ],
-        [
-          305500.503,
-          2757319.666,
-          40.318
-        ],
-        [
-          305499.752,
-          2757317.946,
-          40.316
-        ],
-        [
-          305499.372,
-          2757315.751,
-          40.314
-        ],
-        [
-          305499.016,
-          2757313.551,
-          40.312
-        ],
-        [
-          305498.684,
-          2757311.348,
-          40.31
-        ],
-        [
-          305498.376,
-          2757309.141,
-          40.308
-        ],
-        [
-          305498.092,
-          2757306.932,
-          40.306
-        ],
-        [
-          305497.832,
-          2757304.719,
-          40.304
-        ],
-        [
-          305497.595,
-          2757302.503,
-          40.303
-        ],
-        [
-          305497.384,
-          2757300.285,
-          40.301
-        ],
-        [
-          305497.196,
-          2757298.065,
-          40.299
-        ],
-        [
-          305497.032,
-          2757295.843,
-          40.297
-        ],
-        [
-          305496.893,
-          2757293.62,
-          40.295
-        ],
-        [
-          305496.777,
-          2757291.395,
-          40.293
-        ],
-        [
-          305496.686,
-          2757289.168,
-          40.291
-        ],
-        [
-          305496.619,
-          2757286.942,
-          40.289
-        ],
-        [
-          305496.577,
-          2757284.714,
-          40.287
-        ],
-        [
-          305496.558,
-          2757282.486,
-          40.285
-        ],
-        [
-          305496.564,
-          2757280.258,
-          40.284
-        ],
-        [
-          305496.594,
-          2757278.03,
-          40.281
-        ],
-        [
-          305496.648,
-          2757275.803,
-          40.279
-        ],
-        [
-          305496.727,
-          2757273.576,
-          40.277
-        ],
-        [
-          305496.83,
-          2757271.351,
-          40.275
-        ],
-        [
-          305496.957,
-          2757269.126,
-          40.273
-        ],
-        [
-          305497.108,
-          2757266.903,
-          40.271
-        ],
-        [
-          305497.283,
-          2757264.682,
-          40.269
-        ],
-        [
-          305497.482,
-          2757262.463,
-          40.267
-        ],
-        [
-          305497.706,
-          2757260.246,
-          40.265
-        ],
-        [
-          305497.953,
-          2757258.032,
-          40.264
-        ],
-        [
-          305498.225,
-          2757255.821,
-          40.262
-        ],
-        [
-          305498.521,
-          2757253.612,
-          40.26
-        ],
-        [
-          305512.615,
-          2757148.002,
-          40.255
-        ],
-        [
-          305529.936,
-          2757026.401,
-          40.25
-        ]
-      ],
-      "source": "New Taipei City WRD Rainwater System (wrd.ntpc.gov.tw)",
-      "gov_links": {
-        "portal_url": null,
-        "portal_label": null,
-        "api_url": "https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/rainwater_00131/MapServer/7/419",
-        "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #419",
-        "osm_url": null,
-        "osm_label": null,
-        "nlsc_url": null,
-        "nlsc_label": null
-      },
-      "origin_class": "api_open_data",
-      "api_url": "https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/rainwater_00131/MapServer/7/419",
-      "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #419"
-    },
-    {
-      "id": "ntpc_rw_culvert_420",
-      "layer": "storm",
-      "type": "box_culvert",
-      "name": "雨水箱涵 CA2-CA3 (2.00x2.00m)",
-      "diameter_mm": 2000,
-      "width_m": 2.0,
-      "height_m": 2.0,
-      "length_m": 155.07,
-      "material": "RC/鋼筋混凝土",
-      "start_coord": [
-        305529.936,
-        2757026.401,
-        40.1
-      ],
-      "end_coord": [
-        305383.049,
-        2756987.237,
-        39.947
-      ],
-      "start_ground_h": 43.2,
-      "end_ground_h": 43.197,
-      "start_rim_h": 43.2,
-      "end_rim_h": 43.197,
-      "start_invert_h": 40.1,
-      "end_invert_h": 39.947,
-      "start_crown_h": 42.1,
-      "end_crown_h": 41.947,
-      "start_depth_m": 3.1,
-      "end_depth_m": 3.25,
-      "start_cover_m": 1.1,
-      "end_cover_m": 1.25,
-      "depth_m": 3.17,
-      "slope_pct": 0.099,
-      "flow_direction": 1,
-      "upstream_mh": "CA2",
-      "downstream_mh": "CA3",
-      "coords": [
-        [
-          305529.936,
-          2757026.401,
-          40.1
-        ],
-        [
-          305520.253,
-          2757026.426,
-          40.096
-        ],
-        [
-          305504.563,
-          2757025.786,
-          40.093
-        ],
-        [
-          305493.036,
-          2757024.826,
-          40.088
-        ],
-        [
-          305476.065,
-          2757023.866,
-          40.084
-        ],
-        [
-          305465.498,
-          2757022.266,
-          40.081
-        ],
-        [
-          305458.134,
-          2757019.386,
-          40.077
-        ],
-        [
-          305451.934,
-          2757015.56,
-          40.073
-        ],
-        [
-          305450.264,
-          2757014.402,
-          40.07
-        ],
-        [
-          305448.581,
-          2757013.264,
-          40.066
-        ],
-        [
-          305446.884,
-          2757012.147,
-          40.062
-        ],
-        [
-          305445.173,
-          2757011.05,
-          40.059
-        ],
-        [
-          305443.449,
-          2757009.975,
-          40.055
-        ],
-        [
-          305439.963,
-          2757007.886,
-          40.051
-        ],
-        [
-          305438.201,
-          2757006.874,
-          40.048
-        ],
-        [
-          305436.427,
-          2757005.883,
-          40.044
-        ],
-        [
-          305434.641,
-          2757004.914,
-          40.039
-        ],
-        [
-          305432.844,
-          2757003.966,
-          40.036
-        ],
-        [
-          305431.035,
-          2757003.041,
-          40.032
-        ],
-        [
-          305429.215,
-          2757002.137,
-          40.028
-        ],
-        [
-          305427.384,
-          2757001.255,
-          40.025
-        ],
-        [
-          305424.939,
-          2757000.753,
-          40.021
-        ],
-        [
-          305423.692,
-          2756999.559,
-          40.018
-        ],
-        [
-          305421.83,
-          2756998.745,
-          40.014
-        ],
-        [
-          305419.959,
-          2756997.953,
-          40.01
-        ],
-        [
-          305418.078,
-          2756997.184,
-          40.007
-        ],
-        [
-          305416.188,
-          2756996.438,
-          40.003
-        ],
-        [
-          305414.289,
-          2756995.715,
-          39.999
-        ],
-        [
-          305412.382,
-          2756995.015,
-          39.996
-        ],
-        [
-          305410.466,
-          2756994.338,
-          39.992
-        ],
-        [
-          305408.542,
-          2756993.684,
-          39.988
-        ],
-        [
-          305406.61,
-          2756993.054,
-          39.985
-        ],
-        [
-          305404.671,
-          2756992.447,
-          39.981
-        ],
-        [
-          305402.725,
-          2756991.864,
-          39.977
-        ],
-        [
-          305400.771,
-          2756991.304,
-          39.974
-        ],
-        [
-          305398.811,
-          2756990.769,
-          39.97
-        ],
-        [
-          305396.845,
-          2756990.257,
-          39.966
-        ],
-        [
-          305394.872,
-          2756989.769,
-          39.962
-        ],
-        [
-          305392.894,
-          2756989.304,
-          39.958
-        ],
-        [
-          305390.911,
-          2756988.864,
-          39.954
-        ],
-        [
-          305388.922,
-          2756988.448,
-          39.951
-        ],
-        [
-          305383.049,
-          2756987.237,
-          39.947
-        ]
-      ],
-      "source": "New Taipei City WRD Rainwater System (wrd.ntpc.gov.tw)",
-      "gov_links": {
-        "portal_url": null,
-        "portal_label": null,
-        "api_url": "https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/rainwater_00131/MapServer/7/420",
-        "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #420",
-        "osm_url": null,
-        "osm_label": null,
-        "nlsc_url": null,
-        "nlsc_label": null
-      },
-      "origin_class": "api_open_data",
-      "api_url": "https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/rainwater_00131/MapServer/7/420",
-      "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #420"
-    },
-    {
-      "id": "ntpc_rw_culvert_540",
-      "layer": "storm",
-      "type": "box_culvert",
-      "name": "雨水箱涵 CB6-CB(規劃既有) (3.50x2.00m)",
-      "diameter_mm": 3500,
-      "width_m": 3.5,
-      "height_m": 2.0,
-      "length_m": 406.32,
-      "material": "RC/鋼筋混凝土",
-      "start_coord": [
-        304884.065,
-        2757594.621,
-        40.112
-      ],
-      "end_coord": [
-        304835.715,
-        2757193.47,
-        39.893
-      ],
-      "start_ground_h": 43.212,
-      "end_ground_h": 43.143,
-      "start_rim_h": 43.212,
-      "end_rim_h": 43.143,
-      "start_invert_h": 40.112,
-      "end_invert_h": 39.893,
-      "start_crown_h": 42.112,
-      "end_crown_h": 41.893,
-      "start_depth_m": 3.1,
-      "end_depth_m": 3.25,
-      "start_cover_m": 1.1,
-      "end_cover_m": 1.25,
-      "depth_m": 3.17,
-      "slope_pct": 0.054,
-      "flow_direction": 1,
-      "upstream_mh": "CB6",
-      "downstream_mh": "CB",
-      "coords": [
-        [
-          304884.065,
-          2757594.621,
-          40.112
-        ],
-        [
-          304835.855,
-          2757372.288,
-          40.034
-        ],
-        [
-          304835.715,
-          2757193.47,
-          39.893
-        ]
-      ],
-      "source": "New Taipei City WRD Rainwater System (wrd.ntpc.gov.tw)",
-      "gov_links": {
-        "portal_url": null,
-        "portal_label": null,
-        "api_url": "https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/rainwater_00131/MapServer/7/540",
-        "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #540",
-        "osm_url": null,
-        "osm_label": null,
-        "nlsc_url": null,
-        "nlsc_label": null
-      },
-      "origin_class": "api_open_data",
-      "api_url": "https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/rainwater_00131/MapServer/7/540",
-      "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #540"
-    },
-    {
-      "id": "ntpc_rw_culvert_546",
-      "layer": "storm",
-      "type": "box_culvert",
-      "name": "雨水箱涵 CB2-CB3(規劃既有) (1.29x1.20m)",
-      "diameter_mm": 1290,
-      "width_m": 1.29,
-      "height_m": 1.2,
-      "length_m": 137.84,
-      "material": "RC/鋼筋混凝土",
-      "start_coord": [
-        305186.754,
-        2757794.254,
-        40.91
-      ],
-      "end_coord": [
-        305181.069,
-        2757659.799,
-        40.762
-      ],
-      "start_ground_h": 43.21,
-      "end_ground_h": 43.212,
-      "start_rim_h": 43.21,
-      "end_rim_h": 43.212,
-      "start_invert_h": 40.91,
-      "end_invert_h": 40.762,
-      "start_crown_h": 42.11,
-      "end_crown_h": 41.962,
-      "start_depth_m": 2.3,
-      "end_depth_m": 2.45,
-      "start_cover_m": 1.1,
-      "end_cover_m": 1.25,
-      "depth_m": 2.38,
-      "slope_pct": 0.107,
-      "flow_direction": 1,
-      "upstream_mh": "CB2",
-      "downstream_mh": "CB3",
-      "coords": [
-        [
-          305186.754,
-          2757794.254,
-          40.91
-        ],
-        [
-          305181.991,
-          2757786.633,
-          40.908
-        ],
-        [
-          305181.318,
-          2757785.044,
-          40.906
-        ],
-        [
-          305180.668,
-          2757783.446,
-          40.903
-        ],
-        [
-          305180.041,
-          2757781.838,
-          40.9
-        ],
-        [
-          305179.436,
-          2757780.222,
-          40.898
-        ],
-        [
-          305178.855,
-          2757778.598,
-          40.895
-        ],
-        [
-          305178.296,
-          2757776.966,
-          40.893
-        ],
-        [
-          305177.761,
-          2757775.326,
-          40.89
-        ],
-        [
-          305177.249,
-          2757773.678,
-          40.887
-        ],
-        [
-          305176.76,
-          2757772.024,
-          40.885
-        ],
-        [
-          305176.294,
-          2757770.362,
-          40.882
-        ],
-        [
-          305175.852,
-          2757768.694,
-          40.879
-        ],
-        [
-          305175.434,
-          2757767.021,
-          40.877
-        ],
-        [
-          305175.039,
-          2757765.341,
-          40.874
-        ],
-        [
-          305174.668,
-          2757763.656,
-          40.872
-        ],
-        [
-          305174.321,
-          2757761.966,
-          40.869
-        ],
-        [
-          305173.998,
-          2757760.271,
-          40.866
-        ],
-        [
-          305173.699,
-          2757758.572,
-          40.864
-        ],
-        [
-          305173.424,
-          2757756.869,
-          40.861
-        ],
-        [
-          305173.173,
-          2757755.162,
-          40.858
-        ],
-        [
-          305172.947,
-          2757753.452,
-          40.856
-        ],
-        [
-          305172.744,
-          2757751.738,
-          40.853
-        ],
-        [
-          305172.566,
-          2757750.022,
-          40.85
-        ],
-        [
-          305172.412,
-          2757748.304,
-          40.848
-        ],
-        [
-          305172.282,
-          2757746.583,
-          40.845
-        ],
-        [
-          305172.177,
-          2757744.861,
-          40.843
-        ],
-        [
-          305172.095,
-          2757743.138,
-          40.84
-        ],
-        [
-          305172.039,
-          2757741.413,
-          40.837
-        ],
-        [
-          305172.006,
-          2757739.688,
-          40.835
-        ],
-        [
-          305171.998,
-          2757737.963,
-          40.832
-        ],
-        [
-          305172.015,
-          2757736.238,
-          40.829
-        ],
-        [
-          305172.056,
-          2757734.513,
-          40.827
-        ],
-        [
-          305172.121,
-          2757732.789,
-          40.824
-        ],
-        [
-          305172.201,
-          2757729.95,
-          40.822
-        ],
-        [
-          305172.306,
-          2757727.111,
-          40.819
-        ],
-        [
-          305172.435,
-          2757724.274,
-          40.816
-        ],
-        [
-          305172.588,
-          2757721.437,
-          40.814
-        ],
-        [
-          305172.765,
-          2757718.602,
-          40.811
-        ],
-        [
-          305172.967,
-          2757715.769,
-          40.808
-        ],
-        [
-          305173.193,
-          2757712.938,
-          40.806
-        ],
-        [
-          305173.443,
-          2757710.108,
-          40.803
-        ],
-        [
-          305173.717,
-          2757707.281,
-          40.8
-        ],
-        [
-          305174.015,
-          2757704.456,
-          40.798
-        ],
-        [
-          305174.338,
-          2757701.634,
-          40.795
-        ],
-        [
-          305174.685,
-          2757698.815,
-          40.793
-        ],
-        [
-          305175.055,
-          2757695.999,
-          40.791
-        ],
-        [
-          305175.45,
-          2757693.186,
-          40.788
-        ],
-        [
-          305175.869,
-          2757690.376,
-          40.786
-        ],
-        [
-          305176.312,
-          2757687.571,
-          40.783
-        ],
-        [
-          305176.779,
-          2757684.769,
-          40.78
-        ],
-        [
-          305177.27,
-          2757681.971,
-          40.778
-        ],
-        [
-          305177.785,
-          2757679.178,
-          40.775
-        ],
-        [
-          305178.323,
-          2757676.389,
-          40.773
-        ],
-        [
-          305178.886,
-          2757673.604,
-          40.77
-        ],
-        [
-          305179.472,
-          2757670.825,
-          40.767
-        ],
-        [
-          305180.082,
-          2757668.051,
-          40.765
-        ],
-        [
-          305181.069,
-          2757659.799,
-          40.762
-        ]
-      ],
-      "source": "New Taipei City WRD Rainwater System (wrd.ntpc.gov.tw)",
-      "gov_links": {
-        "portal_url": null,
-        "portal_label": null,
-        "api_url": "https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/rainwater_00131/MapServer/7/546",
-        "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #546",
-        "osm_url": null,
-        "osm_label": null,
-        "nlsc_url": null,
-        "nlsc_label": null
-      },
-      "origin_class": "api_open_data",
-      "api_url": "https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/rainwater_00131/MapServer/7/546",
-      "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #546"
-    },
-    {
-      "id": "ntpc_rw_culvert_417",
-      "layer": "storm",
-      "type": "box_culvert",
-      "name": "雨水箱涵 CB4a-CB4c (0.89x0.89m)",
-      "diameter_mm": 890,
-      "width_m": 0.89,
-      "height_m": 0.89,
-      "length_m": 121.31,
-      "material": "RC/鋼筋混凝土",
-      "start_coord": [
-        305319.905,
-        2757524.267,
-        41.221
-      ],
-      "end_coord": [
-        305198.861,
-        2757532.269,
-        41.073
-      ],
-      "start_ground_h": 43.211,
-      "end_ground_h": 43.213,
-      "start_rim_h": 43.211,
-      "end_rim_h": 43.213,
-      "start_invert_h": 41.221,
-      "end_invert_h": 41.073,
-      "start_crown_h": 42.111,
-      "end_crown_h": 41.963,
-      "start_depth_m": 1.99,
-      "end_depth_m": 2.14,
-      "start_cover_m": 1.1,
-      "end_cover_m": 1.25,
-      "depth_m": 2.06,
-      "slope_pct": 0.122,
-      "flow_direction": 1,
-      "upstream_mh": "CB4a",
-      "downstream_mh": "CB4c",
-      "coords": [
-        [
-          305319.905,
-          2757524.267,
-          41.221
-        ],
-        [
-          305273.918,
-          2757527.213,
-          41.172
-        ],
-        [
-          305248.189,
-          2757528.699,
-          41.123
-        ],
-        [
-          305198.861,
-          2757532.269,
-          41.073
-        ]
-      ],
-      "source": "New Taipei City WRD Rainwater System (wrd.ntpc.gov.tw)",
-      "gov_links": {
-        "portal_url": null,
-        "portal_label": null,
-        "api_url": "https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/rainwater_00131/MapServer/7/417",
-        "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #417",
-        "osm_url": null,
-        "osm_label": null,
-        "nlsc_url": null,
-        "nlsc_label": null
-      },
-      "origin_class": "api_open_data",
-      "api_url": "https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/rainwater_00131/MapServer/7/417",
-      "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #417"
-    },
-    {
-      "id": "ntpc_rw_culvert_543",
-      "layer": "storm",
-      "type": "box_culvert",
-      "name": "雨水箱涵 CB4b-CB4c(規劃既有) (0.89x0.89m)",
-      "diameter_mm": 890,
-      "width_m": 0.89,
-      "height_m": 0.89,
-      "length_m": 191.37,
-      "material": "RC/鋼筋混凝土",
-      "start_coord": [
-        305123.584,
-        2757404.722,
-        41.228
-      ],
-      "end_coord": [
-        305198.861,
-        2757532.269,
-        41.073
-      ],
-      "start_ground_h": 43.218,
-      "end_ground_h": 43.213,
-      "start_rim_h": 43.218,
-      "end_rim_h": 43.213,
-      "start_invert_h": 41.228,
-      "end_invert_h": 41.073,
-      "start_crown_h": 42.118,
-      "end_crown_h": 41.963,
-      "start_depth_m": 1.99,
-      "end_depth_m": 2.14,
-      "start_cover_m": 1.1,
-      "end_cover_m": 1.25,
-      "depth_m": 2.06,
-      "slope_pct": 0.081,
-      "flow_direction": 1,
-      "upstream_mh": "CB4b",
-      "downstream_mh": "CB4c",
-      "coords": [
-        [
-          305123.584,
-          2757404.722,
-          41.228
-        ],
-        [
-          305182.311,
-          2757402.288,
-          41.201
-        ],
-        [
-          305200.012,
-          2757470.822,
-          41.174
-        ],
-        [
-          305201.828,
-          2757489.885,
-          41.149
-        ],
-        [
-          305202.282,
-          2757509.401,
-          41.124
-        ],
-        [
-          305200.012,
-          2757522.109,
-          41.099
-        ],
-        [
-          305198.861,
-          2757532.269,
-          41.073
-        ]
-      ],
-      "source": "New Taipei City WRD Rainwater System (wrd.ntpc.gov.tw)",
-      "gov_links": {
-        "portal_url": null,
-        "portal_label": null,
-        "api_url": "https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/rainwater_00131/MapServer/7/543",
-        "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #543",
-        "osm_url": null,
-        "osm_label": null,
-        "nlsc_url": null,
-        "nlsc_label": null
-      },
-      "origin_class": "api_open_data",
-      "api_url": "https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/rainwater_00131/MapServer/7/543",
-      "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #543"
-    },
-    {
-      "id": "ntpc_rw_culvert_423",
-      "layer": "storm",
-      "type": "box_culvert",
-      "name": "雨水箱涵 CB3a-CB3 (0.80x0.80m)",
-      "diameter_mm": 800,
-      "width_m": 0.8,
-      "height_m": 0.8,
-      "length_m": 124.03,
-      "material": "RC/鋼筋混凝土",
-      "start_coord": [
-        305304.952,
-        2757665.661,
-        41.311
-      ],
-      "end_coord": [
-        305181.069,
-        2757659.799,
-        41.162
-      ],
-      "start_ground_h": 43.211,
-      "end_ground_h": 43.212,
-      "start_rim_h": 43.211,
-      "end_rim_h": 43.212,
-      "start_invert_h": 41.311,
-      "end_invert_h": 41.162,
-      "start_crown_h": 42.111,
-      "end_crown_h": 41.962,
-      "start_depth_m": 1.9,
-      "end_depth_m": 2.05,
-      "start_cover_m": 1.1,
-      "end_cover_m": 1.25,
-      "depth_m": 1.97,
-      "slope_pct": 0.12,
-      "flow_direction": 1,
-      "upstream_mh": "CB3a",
-      "downstream_mh": "CB3",
-      "coords": [
-        [
-          305304.952,
-          2757665.661,
-          41.311
-        ],
-        [
-          305295.335,
-          2757664.981,
-          41.261
-        ],
-        [
-          305193.399,
-          2757660.736,
-          41.212
-        ],
-        [
-          305181.069,
-          2757659.799,
-          41.162
-        ]
-      ],
-      "source": "New Taipei City WRD Rainwater System (wrd.ntpc.gov.tw)",
-      "gov_links": {
-        "portal_url": null,
-        "portal_label": null,
-        "api_url": "https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/rainwater_00131/MapServer/7/423",
-        "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #423",
-        "osm_url": null,
-        "osm_label": null,
-        "nlsc_url": null,
-        "nlsc_label": null
-      },
-      "origin_class": "api_open_data",
-      "api_url": "https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/rainwater_00131/MapServer/7/423",
-      "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #423"
-    },
-    {
-      "id": "ntpc_rw_culvert_541",
-      "layer": "storm",
-      "type": "box_culvert",
-      "name": "雨水箱涵 CB5-CB6(規劃既有) (2.20x2.00m)",
-      "diameter_mm": 2200,
-      "width_m": 2.2,
-      "height_m": 2.0,
-      "length_m": 186.55,
-      "material": "RC/鋼筋混凝土",
-      "start_coord": [
-        305070.555,
-        2757599.338,
-        40.113
-      ],
-      "end_coord": [
-        304884.065,
-        2757594.621,
-        39.962
-      ],
-      "start_ground_h": 43.213,
-      "end_ground_h": 43.212,
-      "start_rim_h": 43.213,
-      "end_rim_h": 43.212,
-      "start_invert_h": 40.113,
-      "end_invert_h": 39.962,
-      "start_crown_h": 42.113,
-      "end_crown_h": 41.962,
-      "start_depth_m": 3.1,
-      "end_depth_m": 3.25,
-      "start_cover_m": 1.1,
-      "end_cover_m": 1.25,
-      "depth_m": 3.17,
-      "slope_pct": 0.081,
-      "flow_direction": 1,
-      "upstream_mh": "CB5",
-      "downstream_mh": "CB6",
-      "coords": [
-        [
-          305070.555,
-          2757599.338,
-          40.113
-        ],
-        [
-          304884.065,
-          2757594.621,
-          39.962
-        ]
-      ],
-      "source": "New Taipei City WRD Rainwater System (wrd.ntpc.gov.tw)",
-      "gov_links": {
-        "portal_url": null,
-        "portal_label": null,
-        "api_url": "https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/rainwater_00131/MapServer/7/541",
-        "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #541",
-        "osm_url": null,
-        "osm_label": null,
-        "nlsc_url": null,
-        "nlsc_label": null
-      },
-      "origin_class": "api_open_data",
-      "api_url": "https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/rainwater_00131/MapServer/7/541",
-      "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #541"
-    },
-    {
-      "id": "ntpc_rw_mh_687",
-      "layer": "storm",
-      "type": "manhole",
-      "name": "雨水下水道節點人孔 CC2",
-      "facility_no": "CC2",
-      "structure_type": "雨水人孔",
-      "coord": [
-        305327.784,
-        2757183.542,
-        41.109
-      ],
-      "rim_h": 43.209,
-      "invert_h": 41.109,
-      "depth_m": 2.1,
-      "diameter_mm": 800,
-      "source": "New Taipei City WRD Rainwater System (wrd.ntpc.gov.tw)",
-      "gov_links": {
-        "portal_url": null,
-        "portal_label": null,
-        "api_url": "https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/rainwater_00131/MapServer/0/687",
-        "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #687",
-        "osm_url": null,
-        "osm_label": null,
-        "nlsc_url": null,
-        "nlsc_label": null
-      },
-      "origin_class": "api_open_data",
-      "api_url": "https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/rainwater_00131/MapServer/0/687",
-      "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #687"
-    },
-    {
-      "id": "ntpc_rw_mh_679",
-      "layer": "storm",
-      "type": "manhole",
-      "name": "雨水下水道節點人孔 CB3a",
-      "facility_no": "CB3a",
-      "structure_type": "雨水人孔",
-      "coord": [
-        305304.952,
-        2757665.661,
-        41.111
-      ],
-      "rim_h": 43.211,
-      "invert_h": 41.111,
-      "depth_m": 2.1,
-      "diameter_mm": 800,
-      "source": "New Taipei City WRD Rainwater System (wrd.ntpc.gov.tw)",
-      "gov_links": {
-        "portal_url": null,
-        "portal_label": null,
-        "api_url": "https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/rainwater_00131/MapServer/0/679",
-        "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #679",
-        "osm_url": null,
-        "osm_label": null,
-        "nlsc_url": null,
-        "nlsc_label": null
-      },
-      "origin_class": "api_open_data",
-      "api_url": "https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/rainwater_00131/MapServer/0/679",
-      "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #679"
-    },
-    {
-      "id": "ntpc_rw_mh_693",
-      "layer": "storm",
-      "type": "manhole",
-      "name": "雨水下水道節點人孔 CA4",
-      "facility_no": "CA4",
-      "structure_type": "雨水人孔",
-      "coord": [
-        305383.482,
-        2756909.47,
-        41.093
-      ],
-      "rim_h": 43.193,
-      "invert_h": 41.093,
-      "depth_m": 2.1,
-      "diameter_mm": 800,
-      "source": "New Taipei City WRD Rainwater System (wrd.ntpc.gov.tw)",
-      "gov_links": {
-        "portal_url": null,
-        "portal_label": null,
-        "api_url": "https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/rainwater_00131/MapServer/0/693",
-        "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #693",
-        "osm_url": null,
-        "osm_label": null,
-        "nlsc_url": null,
-        "nlsc_label": null
-      },
-      "origin_class": "api_open_data",
-      "api_url": "https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/rainwater_00131/MapServer/0/693",
-      "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #693"
-    },
-    {
-      "id": "ntpc_rw_mh_676",
-      "layer": "storm",
-      "type": "manhole",
-      "name": "雨水下水道節點人孔 CB1",
-      "facility_no": "CB1",
-      "structure_type": "雨水人孔",
-      "coord": [
-        305316.76,
-        2757867.821,
-        41.109
-      ],
-      "rim_h": 43.209,
-      "invert_h": 41.109,
-      "depth_m": 2.1,
-      "diameter_mm": 800,
-      "source": "New Taipei City WRD Rainwater System (wrd.ntpc.gov.tw)",
-      "gov_links": {
-        "portal_url": null,
-        "portal_label": null,
-        "api_url": "https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/rainwater_00131/MapServer/0/676",
-        "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #676",
-        "osm_url": null,
-        "osm_label": null,
-        "nlsc_url": null,
-        "nlsc_label": null
-      },
-      "origin_class": "api_open_data",
-      "api_url": "https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/rainwater_00131/MapServer/0/676",
-      "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #676"
-    },
-    {
-      "id": "ntpc_rw_mh_690",
-      "layer": "storm",
-      "type": "manhole",
-      "name": "雨水下水道節點人孔 CA1",
-      "facility_no": "CA1",
-      "structure_type": "雨水人孔",
-      "coord": [
-        305497.89,
-        2757462.01,
-        41.108
-      ],
-      "rim_h": 43.208,
-      "invert_h": 41.108,
-      "depth_m": 2.1,
-      "diameter_mm": 800,
-      "source": "New Taipei City WRD Rainwater System (wrd.ntpc.gov.tw)",
-      "gov_links": {
-        "portal_url": null,
-        "portal_label": null,
-        "api_url": "https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/rainwater_00131/MapServer/0/690",
-        "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #690",
-        "osm_url": null,
-        "osm_label": null,
-        "nlsc_url": null,
-        "nlsc_label": null
-      },
-      "origin_class": "api_open_data",
-      "api_url": "https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/rainwater_00131/MapServer/0/690",
-      "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #690"
-    },
-    {
-      "id": "ntpc_rw_mh_685",
-      "layer": "storm",
-      "type": "manhole",
-      "name": "雨水下水道節點人孔 CB4b",
-      "facility_no": "CB4b",
-      "structure_type": "雨水人孔",
-      "coord": [
-        305123.583,
-        2757404.722,
-        41.118
-      ],
-      "rim_h": 43.218,
-      "invert_h": 41.118,
-      "depth_m": 2.1,
-      "diameter_mm": 800,
-      "source": "New Taipei City WRD Rainwater System (wrd.ntpc.gov.tw)",
-      "gov_links": {
-        "portal_url": null,
-        "portal_label": null,
-        "api_url": "https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/rainwater_00131/MapServer/0/685",
-        "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #685",
-        "osm_url": null,
-        "osm_label": null,
-        "nlsc_url": null,
-        "nlsc_label": null
-      },
-      "origin_class": "api_open_data",
-      "api_url": "https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/rainwater_00131/MapServer/0/685",
-      "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #685"
-    },
-    {
-      "id": "ntpc_rw_mh_691",
-      "layer": "storm",
-      "type": "manhole",
-      "name": "雨水下水道節點人孔 CA2",
-      "facility_no": "CA2",
-      "structure_type": "雨水人孔",
-      "coord": [
-        305529.936,
-        2757026.401,
-        41.1
-      ],
-      "rim_h": 43.2,
-      "invert_h": 41.1,
-      "depth_m": 2.1,
-      "diameter_mm": 800,
-      "source": "New Taipei City WRD Rainwater System (wrd.ntpc.gov.tw)",
-      "gov_links": {
-        "portal_url": null,
-        "portal_label": null,
-        "api_url": "https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/rainwater_00131/MapServer/0/691",
-        "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #691",
-        "osm_url": null,
-        "osm_label": null,
-        "nlsc_url": null,
-        "nlsc_label": null
-      },
-      "origin_class": "api_open_data",
-      "api_url": "https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/rainwater_00131/MapServer/0/691",
-      "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #691"
-    },
-    {
-      "id": "ntpc_rw_mh_688",
-      "layer": "storm",
-      "type": "manhole",
-      "name": "雨水下水道節點人孔 CC3",
-      "facility_no": "CC3",
-      "structure_type": "雨水人孔",
-      "coord": [
-        305192.959,
-        2757169.328,
-        41.117
-      ],
-      "rim_h": 43.217,
-      "invert_h": 41.117,
-      "depth_m": 2.1,
-      "diameter_mm": 800,
-      "source": "New Taipei City WRD Rainwater System (wrd.ntpc.gov.tw)",
-      "gov_links": {
-        "portal_url": null,
-        "portal_label": null,
-        "api_url": "https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/rainwater_00131/MapServer/0/688",
-        "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #688",
-        "osm_url": null,
-        "osm_label": null,
-        "nlsc_url": null,
-        "nlsc_label": null
-      },
-      "origin_class": "api_open_data",
-      "api_url": "https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/rainwater_00131/MapServer/0/688",
-      "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #688"
-    },
-    {
-      "id": "ntpc_rw_mh_694",
-      "layer": "storm",
-      "type": "manhole",
-      "name": "雨水下水道節點人孔 CA",
-      "facility_no": "CA",
-      "structure_type": "雨水人孔",
-      "coord": [
-        305249.559,
-        2756891.233,
-        41.084
-      ],
-      "rim_h": 43.184,
-      "invert_h": 41.084,
-      "depth_m": 2.1,
-      "diameter_mm": 800,
-      "source": "New Taipei City WRD Rainwater System (wrd.ntpc.gov.tw)",
-      "gov_links": {
-        "portal_url": null,
-        "portal_label": null,
-        "api_url": "https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/rainwater_00131/MapServer/0/694",
-        "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #694",
-        "osm_url": null,
-        "osm_label": null,
-        "nlsc_url": null,
-        "nlsc_label": null
-      },
-      "origin_class": "api_open_data",
-      "api_url": "https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/rainwater_00131/MapServer/0/694",
-      "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #694"
-    },
-    {
-      "id": "ntpc_rw_mh_682",
-      "layer": "storm",
-      "type": "manhole",
-      "name": "雨水下水道節點人孔 CB6",
-      "facility_no": "CB6",
-      "structure_type": "雨水人孔",
-      "coord": [
-        304884.065,
-        2757594.621,
-        41.112
-      ],
-      "rim_h": 43.212,
-      "invert_h": 41.112,
-      "depth_m": 2.1,
-      "diameter_mm": 800,
-      "source": "New Taipei City WRD Rainwater System (wrd.ntpc.gov.tw)",
-      "gov_links": {
-        "portal_url": null,
-        "portal_label": null,
-        "api_url": "https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/rainwater_00131/MapServer/0/682",
-        "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #682",
-        "osm_url": null,
-        "osm_label": null,
-        "nlsc_url": null,
-        "nlsc_label": null
-      },
-      "origin_class": "api_open_data",
-      "api_url": "https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/rainwater_00131/MapServer/0/682",
-      "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #682"
-    },
-    {
-      "id": "ntpc_rw_mh_677",
-      "layer": "storm",
-      "type": "manhole",
-      "name": "雨水下水道節點人孔 CB2",
-      "facility_no": "CB2",
-      "structure_type": "雨水人孔",
-      "coord": [
-        305186.754,
-        2757794.254,
-        41.11
-      ],
-      "rim_h": 43.21,
-      "invert_h": 41.11,
-      "depth_m": 2.1,
-      "diameter_mm": 800,
-      "source": "New Taipei City WRD Rainwater System (wrd.ntpc.gov.tw)",
-      "gov_links": {
-        "portal_url": null,
-        "portal_label": null,
-        "api_url": "https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/rainwater_00131/MapServer/0/677",
-        "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #677",
-        "osm_url": null,
-        "osm_label": null,
-        "nlsc_url": null,
-        "nlsc_label": null
-      },
-      "origin_class": "api_open_data",
-      "api_url": "https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/rainwater_00131/MapServer/0/677",
-      "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #677"
-    },
-    {
-      "id": "ntpc_rw_mh_683",
-      "layer": "storm",
-      "type": "manhole",
-      "name": "雨水下水道節點人孔 CB4c",
-      "facility_no": "CB4c",
-      "structure_type": "雨水人孔",
-      "coord": [
-        305198.861,
-        2757532.269,
-        41.113
-      ],
-      "rim_h": 43.213,
-      "invert_h": 41.113,
-      "depth_m": 2.1,
-      "diameter_mm": 800,
-      "source": "New Taipei City WRD Rainwater System (wrd.ntpc.gov.tw)",
-      "gov_links": {
-        "portal_url": null,
-        "portal_label": null,
-        "api_url": "https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/rainwater_00131/MapServer/0/683",
-        "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #683",
-        "osm_url": null,
-        "osm_label": null,
-        "nlsc_url": null,
-        "nlsc_label": null
-      },
-      "origin_class": "api_open_data",
-      "api_url": "https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/rainwater_00131/MapServer/0/683",
-      "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #683"
-    },
-    {
-      "id": "ntpc_rw_mh_689",
-      "layer": "storm",
-      "type": "manhole",
-      "name": "雨水下水道節點人孔 CC",
-      "facility_no": "CC",
-      "structure_type": "雨水人孔",
-      "coord": [
-        305160.979,
-        2757089.778,
-        41.115
-      ],
-      "rim_h": 43.215,
-      "invert_h": 41.115,
-      "depth_m": 2.1,
-      "diameter_mm": 800,
-      "source": "New Taipei City WRD Rainwater System (wrd.ntpc.gov.tw)",
-      "gov_links": {
-        "portal_url": null,
-        "portal_label": null,
-        "api_url": "https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/rainwater_00131/MapServer/0/689",
-        "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #689",
-        "osm_url": null,
-        "osm_label": null,
-        "nlsc_url": null,
-        "nlsc_label": null
-      },
-      "origin_class": "api_open_data",
-      "api_url": "https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/rainwater_00131/MapServer/0/689",
-      "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #689"
-    },
-    {
-      "id": "ntpc_rw_mh_680",
-      "layer": "storm",
-      "type": "manhole",
-      "name": "雨水下水道節點人孔 CB4",
-      "facility_no": "CB4",
-      "structure_type": "雨水人孔",
-      "coord": [
-        305190.606,
-        2757589.643,
-        41.113
-      ],
-      "rim_h": 43.213,
-      "invert_h": 41.113,
-      "depth_m": 2.1,
-      "diameter_mm": 800,
-      "source": "New Taipei City WRD Rainwater System (wrd.ntpc.gov.tw)",
-      "gov_links": {
-        "portal_url": null,
-        "portal_label": null,
-        "api_url": "https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/rainwater_00131/MapServer/0/680",
-        "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #680",
-        "osm_url": null,
-        "osm_label": null,
-        "nlsc_url": null,
-        "nlsc_label": null
-      },
-      "origin_class": "api_open_data",
-      "api_url": "https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/rainwater_00131/MapServer/0/680",
-      "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #680"
-    },
-    {
-      "id": "ntpc_rw_mh_686",
-      "layer": "storm",
-      "type": "manhole",
-      "name": "雨水下水道節點人孔 CC1",
-      "facility_no": "CC1",
-      "structure_type": "雨水人孔",
-      "coord": [
-        305299.373,
-        2757336.497,
-        41.113
-      ],
-      "rim_h": 43.213,
-      "invert_h": 41.113,
-      "depth_m": 2.1,
-      "diameter_mm": 800,
-      "source": "New Taipei City WRD Rainwater System (wrd.ntpc.gov.tw)",
-      "gov_links": {
-        "portal_url": null,
-        "portal_label": null,
-        "api_url": "https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/rainwater_00131/MapServer/0/686",
-        "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #686",
-        "osm_url": null,
-        "osm_label": null,
-        "nlsc_url": null,
-        "nlsc_label": null
-      },
-      "origin_class": "api_open_data",
-      "api_url": "https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/rainwater_00131/MapServer/0/686",
-      "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #686"
-    },
-    {
-      "id": "ntpc_rw_mh_681",
-      "layer": "storm",
-      "type": "manhole",
-      "name": "雨水下水道節點人孔 CB5",
-      "facility_no": "CB5",
-      "structure_type": "雨水人孔",
-      "coord": [
-        305070.555,
-        2757599.338,
-        41.113
-      ],
-      "rim_h": 43.213,
-      "invert_h": 41.113,
-      "depth_m": 2.1,
-      "diameter_mm": 800,
-      "source": "New Taipei City WRD Rainwater System (wrd.ntpc.gov.tw)",
-      "gov_links": {
-        "portal_url": null,
-        "portal_label": null,
-        "api_url": "https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/rainwater_00131/MapServer/0/681",
-        "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #681",
-        "osm_url": null,
-        "osm_label": null,
-        "nlsc_url": null,
-        "nlsc_label": null
-      },
-      "origin_class": "api_open_data",
-      "api_url": "https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/rainwater_00131/MapServer/0/681",
-      "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #681"
-    },
-    {
-      "id": "ntpc_rw_mh_695",
-      "layer": "storm",
-      "type": "manhole",
-      "name": "雨水下水道節點人孔 CB",
-      "facility_no": "CB",
-      "structure_type": "雨水人孔",
-      "coord": [
-        304835.715,
-        2757193.47,
-        41.043
-      ],
-      "rim_h": 43.143,
-      "invert_h": 41.043,
-      "depth_m": 2.1,
-      "diameter_mm": 800,
-      "source": "New Taipei City WRD Rainwater System (wrd.ntpc.gov.tw)",
-      "gov_links": {
-        "portal_url": null,
-        "portal_label": null,
-        "api_url": "https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/rainwater_00131/MapServer/0/695",
-        "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #695",
-        "osm_url": null,
-        "osm_label": null,
-        "nlsc_url": null,
-        "nlsc_label": null
-      },
-      "origin_class": "api_open_data",
-      "api_url": "https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/rainwater_00131/MapServer/0/695",
-      "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #695"
-    },
-    {
-      "id": "ntpc_rw_mh_678",
-      "layer": "storm",
-      "type": "manhole",
-      "name": "雨水下水道節點人孔 CB3",
-      "facility_no": "CB3",
-      "structure_type": "雨水人孔",
-      "coord": [
-        305181.069,
-        2757659.799,
-        41.112
-      ],
-      "rim_h": 43.212,
-      "invert_h": 41.112,
-      "depth_m": 2.1,
-      "diameter_mm": 800,
-      "source": "New Taipei City WRD Rainwater System (wrd.ntpc.gov.tw)",
-      "gov_links": {
-        "portal_url": null,
-        "portal_label": null,
-        "api_url": "https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/rainwater_00131/MapServer/0/678",
-        "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #678",
-        "osm_url": null,
-        "osm_label": null,
-        "nlsc_url": null,
-        "nlsc_label": null
-      },
-      "origin_class": "api_open_data",
-      "api_url": "https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/rainwater_00131/MapServer/0/678",
-      "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #678"
-    },
-    {
-      "id": "ntpc_rw_mh_684",
-      "layer": "storm",
-      "type": "manhole",
-      "name": "雨水下水道節點人孔 CB4a",
-      "facility_no": "CB4a",
-      "structure_type": "雨水人孔",
-      "coord": [
-        305319.905,
-        2757524.267,
-        41.111
-      ],
-      "rim_h": 43.211,
-      "invert_h": 41.111,
-      "depth_m": 2.1,
-      "diameter_mm": 800,
-      "source": "New Taipei City WRD Rainwater System (wrd.ntpc.gov.tw)",
-      "gov_links": {
-        "portal_url": null,
-        "portal_label": null,
-        "api_url": "https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/rainwater_00131/MapServer/0/684",
-        "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #684",
-        "osm_url": null,
-        "osm_label": null,
-        "nlsc_url": null,
-        "nlsc_label": null
-      },
-      "origin_class": "api_open_data",
-      "api_url": "https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/rainwater_00131/MapServer/0/684",
-      "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #684"
-    },
-    {
-      "id": "ntpc_rw_mh_692",
-      "layer": "storm",
-      "type": "manhole",
-      "name": "雨水下水道節點人孔 CA3",
-      "facility_no": "CA3",
-      "structure_type": "雨水人孔",
-      "coord": [
-        305383.049,
-        2756987.237,
-        41.097
-      ],
-      "rim_h": 43.197,
-      "invert_h": 41.097,
-      "depth_m": 2.1,
-      "diameter_mm": 800,
-      "source": "New Taipei City WRD Rainwater System (wrd.ntpc.gov.tw)",
-      "gov_links": {
-        "portal_url": null,
-        "portal_label": null,
-        "api_url": "https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/rainwater_00131/MapServer/0/692",
-        "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #692",
-        "osm_url": null,
-        "osm_label": null,
-        "nlsc_url": null,
-        "nlsc_label": null
-      },
-      "origin_class": "api_open_data",
-      "api_url": "https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/rainwater_00131/MapServer/0/692",
-      "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #692"
-    },
     {
       "id": "osm_hydrant_6336426010",
       "layer": "water",
@@ -2899,6 +186,68 @@
       "osm_label": "OpenStreetMap 設施節點 #6336428629"
     },
     {
+      "id": "osm_hydrant_6336437026",
+      "layer": "water",
+      "type": "hydrant",
+      "name": "地下式消防栓 #4322",
+      "facility_no": "4322",
+      "structure_type": "地下式消防栓",
+      "coord": [
+        305260.128,
+        2756894.538,
+        41.985
+      ],
+      "rim_h": 43.185,
+      "invert_h": 41.985,
+      "depth_m": 1.2,
+      "diameter_mm": 150,
+      "source": "Taiwan Water Supply GIS (臺北自來水事業處)",
+      "gov_links": {
+        "portal_url": null,
+        "portal_label": null,
+        "api_url": null,
+        "api_label": null,
+        "osm_url": "https://www.openstreetmap.org/node/6336437026",
+        "osm_label": "OpenStreetMap 設施節點 #6336437026",
+        "nlsc_url": null,
+        "nlsc_label": null
+      },
+      "origin_class": "api_open_data",
+      "osm_url": "https://www.openstreetmap.org/node/6336437026",
+      "osm_label": "OpenStreetMap 設施節點 #6336437026"
+    },
+    {
+      "id": "osm_hydrant_6336437063",
+      "layer": "water",
+      "type": "hydrant",
+      "name": "地下式消防栓 #4323",
+      "facility_no": "4323",
+      "structure_type": "地下式消防栓",
+      "coord": [
+        305054.207,
+        2757428.898,
+        42.018
+      ],
+      "rim_h": 43.218,
+      "invert_h": 42.018,
+      "depth_m": 1.2,
+      "diameter_mm": 150,
+      "source": "Taiwan Water Supply GIS (臺北自來水事業處)",
+      "gov_links": {
+        "portal_url": null,
+        "portal_label": null,
+        "api_url": null,
+        "api_label": null,
+        "osm_url": "https://www.openstreetmap.org/node/6336437063",
+        "osm_label": "OpenStreetMap 設施節點 #6336437063",
+        "nlsc_url": null,
+        "nlsc_label": null
+      },
+      "origin_class": "api_open_data",
+      "osm_url": "https://www.openstreetmap.org/node/6336437063",
+      "osm_label": "OpenStreetMap 設施節點 #6336437063"
+    },
+    {
       "id": "osm_hydrant_6336442423",
       "layer": "water",
       "type": "hydrant",
@@ -2928,6 +277,130 @@
       "origin_class": "api_open_data",
       "osm_url": "https://www.openstreetmap.org/node/6336442423",
       "osm_label": "OpenStreetMap 設施節點 #6336442423"
+    },
+    {
+      "id": "osm_hydrant_6336456284",
+      "layer": "water",
+      "type": "hydrant",
+      "name": "地下式消防栓 #4322",
+      "facility_no": "4322",
+      "structure_type": "地下式消防栓",
+      "coord": [
+        305150.667,
+        2757212.794,
+        42.022
+      ],
+      "rim_h": 43.222,
+      "invert_h": 42.022,
+      "depth_m": 1.2,
+      "diameter_mm": 150,
+      "source": "Taiwan Water Supply GIS (臺北自來水事業處)",
+      "gov_links": {
+        "portal_url": null,
+        "portal_label": null,
+        "api_url": null,
+        "api_label": null,
+        "osm_url": "https://www.openstreetmap.org/node/6336456284",
+        "osm_label": "OpenStreetMap 設施節點 #6336456284",
+        "nlsc_url": null,
+        "nlsc_label": null
+      },
+      "origin_class": "api_open_data",
+      "osm_url": "https://www.openstreetmap.org/node/6336456284",
+      "osm_label": "OpenStreetMap 設施節點 #6336456284"
+    },
+    {
+      "id": "osm_hydrant_6336458706",
+      "layer": "water",
+      "type": "hydrant",
+      "name": "地下式消防栓 #4222",
+      "facility_no": "4222",
+      "structure_type": "地下式消防栓",
+      "coord": [
+        304686.697,
+        2757100.627,
+        41.927
+      ],
+      "rim_h": 43.127,
+      "invert_h": 41.927,
+      "depth_m": 1.2,
+      "diameter_mm": 150,
+      "source": "Taiwan Water Supply GIS (臺北自來水事業處)",
+      "gov_links": {
+        "portal_url": null,
+        "portal_label": null,
+        "api_url": null,
+        "api_label": null,
+        "osm_url": "https://www.openstreetmap.org/node/6336458706",
+        "osm_label": "OpenStreetMap 設施節點 #6336458706",
+        "nlsc_url": null,
+        "nlsc_label": null
+      },
+      "origin_class": "api_open_data",
+      "osm_url": "https://www.openstreetmap.org/node/6336458706",
+      "osm_label": "OpenStreetMap 設施節點 #6336458706"
+    },
+    {
+      "id": "osm_hydrant_6336462424",
+      "layer": "water",
+      "type": "hydrant",
+      "name": "地下式消防栓 #4322",
+      "facility_no": "4322",
+      "structure_type": "地下式消防栓",
+      "coord": [
+        305303.402,
+        2756891.722,
+        41.988
+      ],
+      "rim_h": 43.188,
+      "invert_h": 41.988,
+      "depth_m": 1.2,
+      "diameter_mm": 150,
+      "source": "Taiwan Water Supply GIS (臺北自來水事業處)",
+      "gov_links": {
+        "portal_url": null,
+        "portal_label": null,
+        "api_url": null,
+        "api_label": null,
+        "osm_url": "https://www.openstreetmap.org/node/6336462424",
+        "osm_label": "OpenStreetMap 設施節點 #6336462424",
+        "nlsc_url": null,
+        "nlsc_label": null
+      },
+      "origin_class": "api_open_data",
+      "osm_url": "https://www.openstreetmap.org/node/6336462424",
+      "osm_label": "OpenStreetMap 設施節點 #6336462424"
+    },
+    {
+      "id": "osm_hydrant_6336462461",
+      "layer": "water",
+      "type": "hydrant",
+      "name": "地下式消防栓 #4323",
+      "facility_no": "4323",
+      "structure_type": "地下式消防栓",
+      "coord": [
+        305103.949,
+        2757361.874,
+        42.02
+      ],
+      "rim_h": 43.22,
+      "invert_h": 42.02,
+      "depth_m": 1.2,
+      "diameter_mm": 150,
+      "source": "Taiwan Water Supply GIS (臺北自來水事業處)",
+      "gov_links": {
+        "portal_url": null,
+        "portal_label": null,
+        "api_url": null,
+        "api_label": null,
+        "osm_url": "https://www.openstreetmap.org/node/6336462461",
+        "osm_label": "OpenStreetMap 設施節點 #6336462461",
+        "nlsc_url": null,
+        "nlsc_label": null
+      },
+      "origin_class": "api_open_data",
+      "osm_url": "https://www.openstreetmap.org/node/6336462461",
+      "osm_label": "OpenStreetMap 設施節點 #6336462461"
     },
     {
       "id": "osm_hydrant_6336468858",
@@ -2961,6 +434,99 @@
       "osm_label": "OpenStreetMap 設施節點 #6336468858"
     },
     {
+      "id": "osm_hydrant_6336469595",
+      "layer": "water",
+      "type": "hydrant",
+      "name": "地下式消防栓 #4222",
+      "facility_no": "4222",
+      "structure_type": "地下式消防栓",
+      "coord": [
+        304735.4,
+        2757172.674,
+        41.886
+      ],
+      "rim_h": 43.086,
+      "invert_h": 41.886,
+      "depth_m": 1.2,
+      "diameter_mm": 150,
+      "source": "Taiwan Water Supply GIS (臺北自來水事業處)",
+      "gov_links": {
+        "portal_url": null,
+        "portal_label": null,
+        "api_url": null,
+        "api_label": null,
+        "osm_url": "https://www.openstreetmap.org/node/6336469595",
+        "osm_label": "OpenStreetMap 設施節點 #6336469595",
+        "nlsc_url": null,
+        "nlsc_label": null
+      },
+      "origin_class": "api_open_data",
+      "osm_url": "https://www.openstreetmap.org/node/6336469595",
+      "osm_label": "OpenStreetMap 設施節點 #6336469595"
+    },
+    {
+      "id": "osm_hydrant_6336473916",
+      "layer": "water",
+      "type": "hydrant",
+      "name": "地下式消防栓 #4322",
+      "facility_no": "4322",
+      "structure_type": "地下式消防栓",
+      "coord": [
+        305334.634,
+        2756713.958,
+        41.984
+      ],
+      "rim_h": 43.184,
+      "invert_h": 41.984,
+      "depth_m": 1.2,
+      "diameter_mm": 150,
+      "source": "Taiwan Water Supply GIS (臺北自來水事業處)",
+      "gov_links": {
+        "portal_url": null,
+        "portal_label": null,
+        "api_url": null,
+        "api_label": null,
+        "osm_url": "https://www.openstreetmap.org/node/6336473916",
+        "osm_label": "OpenStreetMap 設施節點 #6336473916",
+        "nlsc_url": null,
+        "nlsc_label": null
+      },
+      "origin_class": "api_open_data",
+      "osm_url": "https://www.openstreetmap.org/node/6336473916",
+      "osm_label": "OpenStreetMap 設施節點 #6336473916"
+    },
+    {
+      "id": "osm_hydrant_6336482452",
+      "layer": "water",
+      "type": "hydrant",
+      "name": "地下式消防栓 #4322",
+      "facility_no": "4322",
+      "structure_type": "地下式消防栓",
+      "coord": [
+        305235.456,
+        2756986.231,
+        41.995
+      ],
+      "rim_h": 43.195,
+      "invert_h": 41.995,
+      "depth_m": 1.2,
+      "diameter_mm": 150,
+      "source": "Taiwan Water Supply GIS (臺北自來水事業處)",
+      "gov_links": {
+        "portal_url": null,
+        "portal_label": null,
+        "api_url": null,
+        "api_label": null,
+        "osm_url": "https://www.openstreetmap.org/node/6336482452",
+        "osm_label": "OpenStreetMap 設施節點 #6336482452",
+        "nlsc_url": null,
+        "nlsc_label": null
+      },
+      "origin_class": "api_open_data",
+      "osm_url": "https://www.openstreetmap.org/node/6336482452",
+      "osm_label": "OpenStreetMap 設施節點 #6336482452"
+    },
+    {
       "id": "osm_hydrant_6336486868",
       "layer": "water",
       "type": "hydrant",
@@ -2992,6 +558,68 @@
       "osm_label": "OpenStreetMap 設施節點 #6336486868"
     },
     {
+      "id": "osm_hydrant_6336740898",
+      "layer": "water",
+      "type": "hydrant",
+      "name": "地下式消防栓 #4222",
+      "facility_no": "4222",
+      "structure_type": "地下式消防栓",
+      "coord": [
+        304769.286,
+        2757261.776,
+        41.976
+      ],
+      "rim_h": 43.176,
+      "invert_h": 41.976,
+      "depth_m": 1.2,
+      "diameter_mm": 150,
+      "source": "Taiwan Water Supply GIS (臺北自來水事業處)",
+      "gov_links": {
+        "portal_url": null,
+        "portal_label": null,
+        "api_url": null,
+        "api_label": null,
+        "osm_url": "https://www.openstreetmap.org/node/6336740898",
+        "osm_label": "OpenStreetMap 設施節點 #6336740898",
+        "nlsc_url": null,
+        "nlsc_label": null
+      },
+      "origin_class": "api_open_data",
+      "osm_url": "https://www.openstreetmap.org/node/6336740898",
+      "osm_label": "OpenStreetMap 設施節點 #6336740898"
+    },
+    {
+      "id": "osm_hydrant_6336741986",
+      "layer": "water",
+      "type": "hydrant",
+      "name": "地下式消防栓 #4322",
+      "facility_no": "4322",
+      "structure_type": "地下式消防栓",
+      "coord": [
+        305350.671,
+        2756897.938,
+        41.991
+      ],
+      "rim_h": 43.191,
+      "invert_h": 41.991,
+      "depth_m": 1.2,
+      "diameter_mm": 150,
+      "source": "Taiwan Water Supply GIS (臺北自來水事業處)",
+      "gov_links": {
+        "portal_url": null,
+        "portal_label": null,
+        "api_url": null,
+        "api_label": null,
+        "osm_url": "https://www.openstreetmap.org/node/6336741986",
+        "osm_label": "OpenStreetMap 設施節點 #6336741986",
+        "nlsc_url": null,
+        "nlsc_label": null
+      },
+      "origin_class": "api_open_data",
+      "osm_url": "https://www.openstreetmap.org/node/6336741986",
+      "osm_label": "OpenStreetMap 設施節點 #6336741986"
+    },
+    {
       "id": "osm_hydrant_6336742446",
       "layer": "water",
       "type": "hydrant",
@@ -3021,6 +649,130 @@
       "origin_class": "api_open_data",
       "osm_url": "https://www.openstreetmap.org/node/6336742446",
       "osm_label": "OpenStreetMap 設施節點 #6336742446"
+    },
+    {
+      "id": "osm_hydrant_6336744019",
+      "layer": "water",
+      "type": "hydrant",
+      "name": "地下式消防栓 #4221",
+      "facility_no": "4221",
+      "structure_type": "地下式消防栓",
+      "coord": [
+        304664.975,
+        2756568.954,
+        41.983
+      ],
+      "rim_h": 43.183,
+      "invert_h": 41.983,
+      "depth_m": 1.2,
+      "diameter_mm": 150,
+      "source": "Taiwan Water Supply GIS (臺北自來水事業處)",
+      "gov_links": {
+        "portal_url": null,
+        "portal_label": null,
+        "api_url": null,
+        "api_label": null,
+        "osm_url": "https://www.openstreetmap.org/node/6336744019",
+        "osm_label": "OpenStreetMap 設施節點 #6336744019",
+        "nlsc_url": null,
+        "nlsc_label": null
+      },
+      "origin_class": "api_open_data",
+      "osm_url": "https://www.openstreetmap.org/node/6336744019",
+      "osm_label": "OpenStreetMap 設施節點 #6336744019"
+    },
+    {
+      "id": "osm_hydrant_6336747281",
+      "layer": "water",
+      "type": "hydrant",
+      "name": "地下式消防栓 #4322",
+      "facility_no": "4322",
+      "structure_type": "地下式消防栓",
+      "coord": [
+        305147.388,
+        2757299.942,
+        42.02
+      ],
+      "rim_h": 43.22,
+      "invert_h": 42.02,
+      "depth_m": 1.2,
+      "diameter_mm": 150,
+      "source": "Taiwan Water Supply GIS (臺北自來水事業處)",
+      "gov_links": {
+        "portal_url": null,
+        "portal_label": null,
+        "api_url": null,
+        "api_label": null,
+        "osm_url": "https://www.openstreetmap.org/node/6336747281",
+        "osm_label": "OpenStreetMap 設施節點 #6336747281",
+        "nlsc_url": null,
+        "nlsc_label": null
+      },
+      "origin_class": "api_open_data",
+      "osm_url": "https://www.openstreetmap.org/node/6336747281",
+      "osm_label": "OpenStreetMap 設施節點 #6336747281"
+    },
+    {
+      "id": "osm_hydrant_6336749430",
+      "layer": "water",
+      "type": "hydrant",
+      "name": "地下式消防栓 #4323",
+      "facility_no": "4323",
+      "structure_type": "地下式消防栓",
+      "coord": [
+        304825.518,
+        2757441.297,
+        42.011
+      ],
+      "rim_h": 43.211,
+      "invert_h": 42.011,
+      "depth_m": 1.2,
+      "diameter_mm": 150,
+      "source": "Taiwan Water Supply GIS (臺北自來水事業處)",
+      "gov_links": {
+        "portal_url": null,
+        "portal_label": null,
+        "api_url": null,
+        "api_label": null,
+        "osm_url": "https://www.openstreetmap.org/node/6336749430",
+        "osm_label": "OpenStreetMap 設施節點 #6336749430",
+        "nlsc_url": null,
+        "nlsc_label": null
+      },
+      "origin_class": "api_open_data",
+      "osm_url": "https://www.openstreetmap.org/node/6336749430",
+      "osm_label": "OpenStreetMap 設施節點 #6336749430"
+    },
+    {
+      "id": "osm_hydrant_6336751564",
+      "layer": "water",
+      "type": "hydrant",
+      "name": "地下式消防栓 #4222",
+      "facility_no": "4222",
+      "structure_type": "地下式消防栓",
+      "coord": [
+        304449.03,
+        2756836.238,
+        41.999
+      ],
+      "rim_h": 43.199,
+      "invert_h": 41.999,
+      "depth_m": 1.2,
+      "diameter_mm": 150,
+      "source": "Taiwan Water Supply GIS (臺北自來水事業處)",
+      "gov_links": {
+        "portal_url": null,
+        "portal_label": null,
+        "api_url": null,
+        "api_label": null,
+        "osm_url": "https://www.openstreetmap.org/node/6336751564",
+        "osm_label": "OpenStreetMap 設施節點 #6336751564",
+        "nlsc_url": null,
+        "nlsc_label": null
+      },
+      "origin_class": "api_open_data",
+      "osm_url": "https://www.openstreetmap.org/node/6336751564",
+      "osm_label": "OpenStreetMap 設施節點 #6336751564"
     },
     {
       "id": "osm_waterway_259222251",
@@ -5338,5 +3090,5 @@
     }
   ],
   "query_timestamp": "2026-10-31T10:52:51.743801+00:00",
-  "cached": true
+  "cached": false
 }

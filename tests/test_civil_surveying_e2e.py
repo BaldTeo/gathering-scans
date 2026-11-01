@@ -1997,6 +1997,7 @@ class TestSurfaceDrainagePondingAndCustomSlopeTiers(unittest.TestCase):
         self.assertGreater(res_low_thresh["total_ponding_volume_m3"], 100.0)
 
 
+@unittest.skipIf(not hasattr(SurveyingEngine, "fit_scan_to_bim_primitives"), "Scan-to-BIM removed per user request")
 class TestScanToBimGeometricFitting(unittest.TestCase):
     """
     Milestone 6: Scan-to-BIM Simplified Classified Geometric Model:
@@ -2221,6 +2222,7 @@ class TestScanToBimGeometricFitting(unittest.TestCase):
         self.assertGreater(prim["properties"]["volume_m3"], 0.0)
 
 
+@unittest.skipIf(not hasattr(SurveyingEngine, "export_scan_to_bim"), "Scan-to-BIM removed per user request")
 class TestScanToBimExporters(unittest.TestCase):
     """
     Milestone 6: Pure Python Standard Library CAD/BIM Exporters:
@@ -2675,15 +2677,25 @@ class TestPublicUtilitiesGISIntegration(unittest.TestCase):
         self.assertGreater(len(res_qihu2.get("features", [])), 1000)
         self.assertLess(elapsed_ms, 50.0, f"QiHu repeat query took {elapsed_ms:.2f}ms (> 50ms)")
 
-        # 6A. Rose Park stormwater drain culvert classification integrity
+        # 6A. Rose Park stormwater drain culvert classification & zero duplicate coincident segments
         storm_feats = [f for f in res_default.get("features", []) if f.get("layer") == "storm"]
         self.assertGreater(len(storm_feats), 10)
-        for sf in storm_feats:
+        seen_rp_segs = set()
+        for sf in res_default.get("features", []):
+            fid = str(sf.get("id") or "")
+            self.assertFalse(fid.startswith(("ntpc_rw_culvert_", "ntpc_rw_pipe_5_")), f"Schematic 45-deg leader leaked: {fid}")
             self.assertNotIn("規劃", sf.get("name", ""), f"Unbuilt conceptual feature leaked: {sf}")
             if sf.get("type") == "box_culvert":
                 self.assertNotIn("連接管", sf.get("name", ""), f"Catch-basin lateral misclassified as box_culvert: {sf}")
                 self.assertGreater(float(sf.get("width_m", 0)), 0.0)
                 self.assertGreater(float(sf.get("height_m", 0)), 0.0)
+            if sf.get("type") in ("pipe", "box_culvert") and isinstance(sf.get("coords"), list) and len(sf["coords"]) >= 2:
+                cs = sf["coords"]
+                pa = (round(float(cs[0][0]), 1), round(float(cs[0][1]), 1))
+                pb = (round(float(cs[-1][0]), 1), round(float(cs[-1][1]), 1))
+                skey = (sf.get("layer"), min(pa, pb), max(pa, pb), len(cs))
+                self.assertNotIn(skey, seen_rp_segs, f"Duplicate coincident segment in Rose Park: {fid}")
+                seen_rp_segs.add(skey)
 
         # 6B. Zero-roll box culvert cross-section basis across 45 deg, 135 deg, 141 deg, and sloped alignments
         def compute_zero_roll_basis(fx, fy, fz):
@@ -2730,6 +2742,8 @@ class TestPublicUtilitiesGISIntegration(unittest.TestCase):
 
         self.assertIn("radiusM: 250.0", js_code)
         self.assertIn("serverMasterRadiusM: 500.0", js_code)
+        self.assertIn("studioThree.modelPivot", js_code)
+        self.assertIn("seen3DSegments", js_code)
         self.assertIn("computeZeroRollBasis(", js_code)
         self.assertIn("ensureAdaptiveCameraNearPlane(", js_code)
         self.assertIn("gsUtilHoverTooltip", js_code)

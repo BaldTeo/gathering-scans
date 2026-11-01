@@ -113,14 +113,14 @@
     "water": 313,
     "electric": 361,
     "telecom": 369,
-    "gas": 247,
+    "gas": 246,
     "ducts": 0,
     "streetlights": 73,
     "excavations": 0,
     "as_built": 0
   },
-  "total_features": 1746,
-  "total_pipe_length_m": 28842.39,
+  "total_features": 1745,
+  "total_pipe_length_m": 28710.21,
   "total_structures": 369,
   "features": [
     {
@@ -100519,117 +100519,6 @@
         "portal_label": "臺北市道路管線暨資訊中心 (dig.taipei)",
         "api_url": "https://arcgiserv.gov.taipei/server/rest/services/GWH3857/G97_A_NW_PIPE/MapServer/66/77433",
         "api_label": "臺北市道路管線中心 G97_A_NW_PIPE 紀錄 #77433",
-        "osm_url": null,
-        "osm_label": null,
-        "nlsc_url": null,
-        "nlsc_label": null
-      }
-    },
-    {
-      "id": "tpedig_pipe_66_164194",
-      "arcgis_layer_url": "https://arcgiserv.gov.taipei/server/rest/services/GWH3857/G97_A_NW_PIPE/MapServer/66/164194",
-      "layer": "gas",
-      "type": "pipe",
-      "name": "天然氣瓦斯管線 (大台北瓦斯) #1.0 D=250mm",
-      "facility_no": "1.0",
-      "diameter_mm": 250,
-      "width_m": 0.25,
-      "height_m": 0.25,
-      "length_m": 132.18,
-      "material": "PVC",
-      "start_coord": [
-        303018.41,
-        2770210.91,
-        7.523
-      ],
-      "end_coord": [
-        303019.75,
-        2770109.57,
-        7.513
-      ],
-      "start_ground_h": 8.723,
-      "end_ground_h": 8.713,
-      "start_rim_h": 8.723,
-      "end_rim_h": 8.713,
-      "start_invert_h": 7.523,
-      "end_invert_h": 7.513,
-      "start_crown_h": 7.773,
-      "end_crown_h": 7.763,
-      "start_depth_m": 1.2,
-      "end_depth_m": 1.2,
-      "start_cover_m": 0.95,
-      "end_cover_m": 0.95,
-      "depth_m": 1.2,
-      "slope_pct": 0.008,
-      "flow_direction": 1,
-      "coords": [
-        [
-          303018.41,
-          2770210.91,
-          7.523
-        ],
-        [
-          303018.49,
-          2770210.68,
-          7.523
-        ],
-        [
-          303004.13,
-          2770156.64,
-          7.513
-        ],
-        [
-          302999.18,
-          2770140.83,
-          7.508
-        ],
-        [
-          302996.74,
-          2770141.3,
-          7.507
-        ],
-        [
-          302990.73,
-          2770117.43,
-          7.495
-        ],
-        [
-          303010.53,
-          2770112.96,
-          7.507
-        ],
-        [
-          303010.53,
-          2770110.55,
-          7.506
-        ],
-        [
-          303012.13,
-          2770110.55,
-          7.507
-        ],
-        [
-          303012.13,
-          2770110.15,
-          7.507
-        ],
-        [
-          303019.75,
-          2770109.57,
-          7.513
-        ]
-      ],
-      "source": "Taipei City 8-Utilities MapServer (arcgiserv.gov.taipei G97_A_NW_PIPE/66)",
-      "origin_class": "api_open_data",
-      "api_url": "https://arcgiserv.gov.taipei/server/rest/services/GWH3857/G97_A_NW_PIPE/MapServer/66/164194",
-      "api_label": "臺北市道路管線中心 G97_A_NW_PIPE 紀錄 #164194",
-      "portal_url": "https://dig.taipei/Tpdig/Public/pipe3.html",
-      "portal_label": "臺北市道路管線暨資訊中心 (dig.taipei)",
-      "gov_links": {
-        "portal_url": "https://dig.taipei/Tpdig/Public/pipe3.html",
-        "portal_label": "臺北市道路管線暨資訊中心 (dig.taipei)",
-        "api_url": "https://arcgiserv.gov.taipei/server/rest/services/GWH3857/G97_A_NW_PIPE/MapServer/66/164194",
-        "api_label": "臺北市道路管線中心 G97_A_NW_PIPE 紀錄 #164194",
         "osm_url": null,
         "osm_label": null,
         "nlsc_url": null,

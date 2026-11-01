@@ -110,8 +110,8 @@
   "layer_counts": {
     "storm": 35,
     "sanitary": 24,
-    "water": 101,
-    "electric": 139,
+    "water": 100,
+    "electric": 138,
     "telecom": 93,
     "gas": 19,
     "ducts": 0,
@@ -119,9 +119,9 @@
     "excavations": 0,
     "as_built": 0
   },
-  "total_features": 509,
-  "total_pipe_length_m": 12994.45,
-  "total_structures": 99,
+  "total_features": 507,
+  "total_pipe_length_m": 12965.86,
+  "total_structures": 98,
   "features": [
     {
       "id": "tpedig_pipe_2_296553",
@@ -12294,82 +12294,6 @@
         "portal_label": "臺北市道路管線暨資訊中心 (dig.taipei)",
         "api_url": "https://arcgiserv.gov.taipei/server/rest/services/GWH3857/G97_A_NW_PIPE/MapServer/27/98891",
         "api_label": "臺北市道路管線中心 G97_A_NW_PIPE 紀錄 #98891",
-        "osm_url": null,
-        "osm_label": null,
-        "nlsc_url": null,
-        "nlsc_label": null
-      }
-    },
-    {
-      "id": "tpedig_pipe_27_182340",
-      "arcgis_layer_url": "https://arcgiserv.gov.taipei/server/rest/services/GWH3857/G97_A_NW_PIPE/MapServer/27/182340",
-      "layer": "electric",
-      "type": "pipe",
-      "name": "台電電力管線 (台電市區) #1.0 D=250mm",
-      "facility_no": "1.0",
-      "diameter_mm": 250,
-      "width_m": 0.25,
-      "height_m": 0.25,
-      "length_m": 28.59,
-      "material": "PVCP",
-      "start_coord": [
-        304238.63,
-        2769575.41,
-        6.155
-      ],
-      "end_coord": [
-        304237.76,
-        2769546.83,
-        6.148
-      ],
-      "start_ground_h": 6.755,
-      "end_ground_h": 6.748,
-      "start_rim_h": 6.755,
-      "end_rim_h": 6.748,
-      "start_invert_h": 6.155,
-      "end_invert_h": 6.148,
-      "start_crown_h": 6.405,
-      "end_crown_h": 6.398,
-      "start_depth_m": 0.6,
-      "end_depth_m": 0.6,
-      "start_cover_m": 0.35,
-      "end_cover_m": 0.35,
-      "depth_m": 0.6,
-      "slope_pct": 0.024,
-      "flow_direction": 1,
-      "coords": [
-        [
-          304238.63,
-          2769575.41,
-          6.155
-        ],
-        [
-          304238.62,
-          2769575.28,
-          6.155
-        ],
-        [
-          304238.62,
-          2769575.01,
-          6.155
-        ],
-        [
-          304237.76,
-          2769546.83,
-          6.148
-        ]
-      ],
-      "source": "Taipei City 8-Utilities MapServer (arcgiserv.gov.taipei G97_A_NW_PIPE/27)",
-      "origin_class": "api_open_data",
-      "api_url": "https://arcgiserv.gov.taipei/server/rest/services/GWH3857/G97_A_NW_PIPE/MapServer/27/182340",
-      "api_label": "臺北市道路管線中心 G97_A_NW_PIPE 紀錄 #182340",
-      "portal_url": "https://dig.taipei/Tpdig/Public/pipe3.html",
-      "portal_label": "臺北市道路管線暨資訊中心 (dig.taipei)",
-      "gov_links": {
-        "portal_url": "https://dig.taipei/Tpdig/Public/pipe3.html",
-        "portal_label": "臺北市道路管線暨資訊中心 (dig.taipei)",
-        "api_url": "https://arcgiserv.gov.taipei/server/rest/services/GWH3857/G97_A_NW_PIPE/MapServer/27/182340",
-        "api_label": "臺北市道路管線中心 G97_A_NW_PIPE 紀錄 #182340",
         "osm_url": null,
         "osm_label": null,
         "nlsc_url": null,
@@ -33621,37 +33545,6 @@
         "api_label": null,
         "osm_url": "https://www.openstreetmap.org/node/6336744656",
         "osm_label": "OpenStreetMap 設施節點 #6336744656",
-        "nlsc_url": null,
-        "nlsc_label": null
-      }
-    },
-    {
-      "id": "osm_hydrant_6336746892",
-      "layer": "water",
-      "type": "hydrant",
-      "name": "地上式消防栓 #4243",
-      "facility_no": "4243",
-      "structure_type": "地上式消防栓",
-      "coord": [
-        304239.544,
-        2769479.873,
-        5.576
-      ],
-      "rim_h": 6.776,
-      "invert_h": 5.576,
-      "depth_m": 1.2,
-      "diameter_mm": 150,
-      "source": "Taiwan Water Supply GIS (臺北自來水事業處)",
-      "origin_class": "api_open_data",
-      "osm_url": "https://www.openstreetmap.org/node/6336746892",
-      "osm_label": "OpenStreetMap 設施節點 #6336746892",
-      "gov_links": {
-        "portal_url": null,
-        "portal_label": null,
-        "api_url": null,
-        "api_label": null,
-        "osm_url": "https://www.openstreetmap.org/node/6336746892",
-        "osm_label": "OpenStreetMap 設施節點 #6336746892",
         "nlsc_url": null,
         "nlsc_label": null
       }

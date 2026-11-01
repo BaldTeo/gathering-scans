@@ -1482,6 +1482,17 @@ class CloudAndTunnelHandlerMixin:
                         self.send_json(local_cat)
                         return True
 
+        # 1c-bis. Serve Public Utilities GIS queries, uploads & exports directly on VPS (avoids PC tunnel queuing/freezing)
+        if path in (
+            "/api/survey/utilities-query",
+            "/api/surveying/utilities-query",
+            "/api/survey/utilities-parse",
+            "/api/surveying/utilities-parse",
+            "/api/survey/utilities-export",
+            "/api/surveying/utilities-export",
+        ):
+            return False
+
         # 1d. Serve uploaded comment photos directly from local VPS disk if already mirrored
         if method == "GET" and (path == "/api/comment-photo" or path.startswith("/api/comments/photo/")):
             if path.startswith("/api/comments/photo/"):

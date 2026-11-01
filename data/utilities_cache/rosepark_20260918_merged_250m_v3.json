@@ -108,8 +108,8 @@
     }
   },
   "layer_counts": {
-    "storm": 66,
-    "sanitary": 939,
+    "storm": 63,
+    "sanitary": 933,
     "water": 0,
     "electric": 0,
     "telecom": 0,
@@ -119,9 +119,9 @@
     "excavations": 0,
     "as_built": 0
   },
-  "total_features": 1005,
-  "total_pipe_length_m": 7706.97,
-  "total_structures": 762,
+  "total_features": 996,
+  "total_pipe_length_m": 7618.9,
+  "total_structures": 756,
   "features": [
     {
       "id": "storm_pipe_376",
@@ -2215,39 +2215,6 @@
       "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #8238"
     },
     {
-      "id": "storm_mh_1792",
-      "arcgis_layer_url": "https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/Pipe_3D/MapServer/1/1792",
-      "layer": "storm",
-      "type": "manhole",
-      "name": "雨水人孔 3141-20F",
-      "facility_no": "3141-20F",
-      "structure_type": "虛人孔",
-      "coord": [
-        295905.825,
-        2768694.396,
-        7.167
-      ],
-      "rim_h": 9.017,
-      "invert_h": 7.167,
-      "depth_m": 1.85,
-      "diameter_mm": 750,
-      "road_name": "",
-      "source": "New Taipei City WRD SewerRain (wrd.ntpc.gov.tw)",
-      "gov_links": {
-        "portal_url": null,
-        "portal_label": null,
-        "api_url": "https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/Pipe_3D/MapServer/1/1792",
-        "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #1792",
-        "osm_url": null,
-        "osm_label": null,
-        "nlsc_url": null,
-        "nlsc_label": null
-      },
-      "origin_class": "api_open_data",
-      "api_url": "https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/Pipe_3D/MapServer/1/1792",
-      "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #1792"
-    },
-    {
       "id": "storm_mh_1771",
       "arcgis_layer_url": "https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/Pipe_3D/MapServer/1/1771",
       "layer": "storm",
@@ -2677,39 +2644,6 @@
       "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #1783"
     },
     {
-      "id": "storm_mh_8231",
-      "arcgis_layer_url": "https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/SewerRain/MapServer/0/8231",
-      "layer": "storm",
-      "type": "manhole",
-      "name": "雨水人孔 3142-F09",
-      "facility_no": "3142-F09",
-      "structure_type": "虛人孔(2)",
-      "coord": [
-        295873.792,
-        2768764.695,
-        4.365
-      ],
-      "rim_h": 9.025,
-      "invert_h": 4.365,
-      "depth_m": 4.66,
-      "diameter_mm": 750,
-      "road_name": "",
-      "source": "New Taipei City WRD SewerRain (wrd.ntpc.gov.tw)",
-      "gov_links": {
-        "portal_url": null,
-        "portal_label": null,
-        "api_url": "https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/SewerRain/MapServer/0/8231",
-        "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #8231",
-        "osm_url": null,
-        "osm_label": null,
-        "nlsc_url": null,
-        "nlsc_label": null
-      },
-      "origin_class": "api_open_data",
-      "api_url": "https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/SewerRain/MapServer/0/8231",
-      "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #8231"
-    },
-    {
       "id": "storm_mh_1588",
       "arcgis_layer_url": "https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/Pipe_3D/MapServer/1/1588",
       "layer": "storm",
@@ -2906,39 +2840,6 @@
       "origin_class": "api_open_data",
       "api_url": "https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/SewerRain/MapServer/0/16137",
       "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #16137"
-    },
-    {
-      "id": "storm_mh_16138",
-      "arcgis_layer_url": "https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/SewerRain/MapServer/0/16138",
-      "layer": "storm",
-      "type": "manhole",
-      "name": "雨水人孔 3141-F09",
-      "facility_no": "3141-F09",
-      "structure_type": "圓形(0)",
-      "coord": [
-        295851.536,
-        2768301.543,
-        7.193
-      ],
-      "rim_h": 9.043,
-      "invert_h": 7.193,
-      "depth_m": 1.85,
-      "diameter_mm": 750,
-      "road_name": "",
-      "source": "New Taipei City WRD SewerRain (wrd.ntpc.gov.tw)",
-      "gov_links": {
-        "portal_url": null,
-        "portal_label": null,
-        "api_url": "https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/SewerRain/MapServer/0/16138",
-        "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #16138",
-        "osm_url": null,
-        "osm_label": null,
-        "nlsc_url": null,
-        "nlsc_label": null
-      },
-      "origin_class": "api_open_data",
-      "api_url": "https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/SewerRain/MapServer/0/16138",
-      "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #16138"
     },
     {
       "id": "storm_mh_1950",
@@ -17147,201 +17048,6 @@
       "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #5194"
     },
     {
-      "id": "sanitary_pipe_47092.0",
-      "layer": "sanitary",
-      "type": "pipe",
-      "name": "污水管線 3141-32-3141-12 D=200mm",
-      "diameter_mm": 200,
-      "width_m": 0.2,
-      "height_m": 0.2,
-      "length_m": 22.24,
-      "material": "PVC",
-      "start_coord": [
-        295833.758,
-        2768516.24,
-        6.064
-      ],
-      "end_coord": [
-        295845.577,
-        2768497.345,
-        5.703
-      ],
-      "start_ground_h": 9.014,
-      "end_ground_h": 9.013,
-      "start_rim_h": 9.014,
-      "end_rim_h": 9.013,
-      "start_invert_h": 6.064,
-      "end_invert_h": 5.703,
-      "start_crown_h": 6.264,
-      "end_crown_h": 5.903,
-      "start_depth_m": 2.95,
-      "end_depth_m": 3.31,
-      "start_cover_m": 2.75,
-      "end_cover_m": 3.11,
-      "depth_m": 3.13,
-      "slope_pct": 1.623,
-      "flow_direction": 1,
-      "upstream_mh": "3141-32",
-      "downstream_mh": "3141-12",
-      "coords": [
-        [
-          295833.758,
-          2768516.24,
-          6.064
-        ],
-        [
-          295845.577,
-          2768497.345,
-          5.703
-        ]
-      ],
-      "source": "New Taipei City Sanitary Sewer (sewer.ntpc.gov.tw)",
-      "arcgis_layer_url": "https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/swggis_20150625/MapServer/2",
-      "gov_links": {
-        "portal_url": null,
-        "portal_label": null,
-        "api_url": "https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/swggis_20150625/MapServer/2",
-        "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #",
-        "osm_url": null,
-        "osm_label": null,
-        "nlsc_url": null,
-        "nlsc_label": null
-      },
-      "origin_class": "api_open_data",
-      "api_url": "https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/swggis_20150625/MapServer/2",
-      "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #"
-    },
-    {
-      "id": "sanitary_pipe_47093.0",
-      "layer": "sanitary",
-      "type": "pipe",
-      "name": "污水管線 3141-33-3141-32 D=200mm",
-      "diameter_mm": 200,
-      "width_m": 0.2,
-      "height_m": 0.2,
-      "length_m": 30.33,
-      "material": "PVC",
-      "start_coord": [
-        295839.243,
-        2768546.087,
-        6.533
-      ],
-      "end_coord": [
-        295833.758,
-        2768516.24,
-        6.064
-      ],
-      "start_ground_h": 9.013,
-      "end_ground_h": 9.014,
-      "start_rim_h": 9.013,
-      "end_rim_h": 9.014,
-      "start_invert_h": 6.533,
-      "end_invert_h": 6.064,
-      "start_crown_h": 6.733,
-      "end_crown_h": 6.264,
-      "start_depth_m": 2.48,
-      "end_depth_m": 2.95,
-      "start_cover_m": 2.28,
-      "end_cover_m": 2.75,
-      "depth_m": 2.71,
-      "slope_pct": 1.546,
-      "flow_direction": 1,
-      "upstream_mh": "3141-33",
-      "downstream_mh": "3141-32",
-      "coords": [
-        [
-          295839.243,
-          2768546.087,
-          6.533
-        ],
-        [
-          295833.758,
-          2768516.24,
-          6.064
-        ]
-      ],
-      "source": "New Taipei City Sanitary Sewer (sewer.ntpc.gov.tw)",
-      "arcgis_layer_url": "https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/swggis_20150625/MapServer/2",
-      "gov_links": {
-        "portal_url": null,
-        "portal_label": null,
-        "api_url": "https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/swggis_20150625/MapServer/2",
-        "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #",
-        "osm_url": null,
-        "osm_label": null,
-        "nlsc_url": null,
-        "nlsc_label": null
-      },
-      "origin_class": "api_open_data",
-      "api_url": "https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/swggis_20150625/MapServer/2",
-      "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #"
-    },
-    {
-      "id": "sanitary_pipe_47094.0",
-      "layer": "sanitary",
-      "type": "pipe",
-      "name": "污水管線 3141-34-3141-33 D=200mm",
-      "diameter_mm": 200,
-      "width_m": 0.2,
-      "height_m": 0.2,
-      "length_m": 35.5,
-      "material": "PVC",
-      "start_coord": [
-        295841.923,
-        2768581.474,
-        6.363
-      ],
-      "end_coord": [
-        295839.243,
-        2768546.087,
-        6.533
-      ],
-      "start_ground_h": 9.013,
-      "end_ground_h": 9.013,
-      "start_rim_h": 9.013,
-      "end_rim_h": 9.013,
-      "start_invert_h": 6.363,
-      "end_invert_h": 6.533,
-      "start_crown_h": 6.563,
-      "end_crown_h": 6.733,
-      "start_depth_m": 2.65,
-      "end_depth_m": 2.48,
-      "start_cover_m": 2.45,
-      "end_cover_m": 2.28,
-      "depth_m": 2.56,
-      "slope_pct": -0.479,
-      "flow_direction": 1,
-      "upstream_mh": "3141-34",
-      "downstream_mh": "3141-33",
-      "coords": [
-        [
-          295841.923,
-          2768581.474,
-          6.363
-        ],
-        [
-          295839.243,
-          2768546.087,
-          6.533
-        ]
-      ],
-      "source": "New Taipei City Sanitary Sewer (sewer.ntpc.gov.tw)",
-      "arcgis_layer_url": "https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/swggis_20150625/MapServer/2",
-      "gov_links": {
-        "portal_url": null,
-        "portal_label": null,
-        "api_url": "https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/swggis_20150625/MapServer/2",
-        "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #",
-        "osm_url": null,
-        "osm_label": null,
-        "nlsc_url": null,
-        "nlsc_label": null
-      },
-      "origin_class": "api_open_data",
-      "api_url": "https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/swggis_20150625/MapServer/2",
-      "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #"
-    },
-    {
       "id": "sanitary_mh_2133",
       "layer": "sanitary",
       "type": "manhole",
@@ -21854,38 +21560,6 @@
       "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #3207"
     },
     {
-      "id": "sanitary_mh_26906.0",
-      "layer": "sanitary",
-      "type": "manhole",
-      "name": "污水人孔 3141-33",
-      "facility_no": "3141-33",
-      "structure_type": "污水人孔",
-      "coord": [
-        295839.243,
-        2768546.087,
-        6.533
-      ],
-      "rim_h": 9.013,
-      "invert_h": 6.533,
-      "depth_m": 2.48,
-      "diameter_mm": 600,
-      "source": "New Taipei City Sanitary Sewer (sewer.ntpc.gov.tw)",
-      "arcgis_layer_url": "https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/swggis_20150625/MapServer/1",
-      "gov_links": {
-        "portal_url": null,
-        "portal_label": null,
-        "api_url": "https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/swggis_20150625/MapServer/1",
-        "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #",
-        "osm_url": null,
-        "osm_label": null,
-        "nlsc_url": null,
-        "nlsc_label": null
-      },
-      "origin_class": "api_open_data",
-      "api_url": "https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/swggis_20150625/MapServer/1",
-      "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #"
-    },
-    {
       "id": "sanitary_cb_12525",
       "layer": "sanitary",
       "type": "catch_basin",
@@ -22430,38 +22104,6 @@
       "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #3208"
     },
     {
-      "id": "sanitary_mh_26907.0",
-      "layer": "sanitary",
-      "type": "manhole",
-      "name": "污水人孔 3141-34",
-      "facility_no": "3141-34",
-      "structure_type": "污水人孔",
-      "coord": [
-        295841.923,
-        2768581.474,
-        6.363
-      ],
-      "rim_h": 9.013,
-      "invert_h": 6.363,
-      "depth_m": 2.65,
-      "diameter_mm": 600,
-      "source": "New Taipei City Sanitary Sewer (sewer.ntpc.gov.tw)",
-      "arcgis_layer_url": "https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/swggis_20150625/MapServer/1",
-      "gov_links": {
-        "portal_url": null,
-        "portal_label": null,
-        "api_url": "https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/swggis_20150625/MapServer/1",
-        "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #",
-        "osm_url": null,
-        "osm_label": null,
-        "nlsc_url": null,
-        "nlsc_label": null
-      },
-      "origin_class": "api_open_data",
-      "api_url": "https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/swggis_20150625/MapServer/1",
-      "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #"
-    },
-    {
       "id": "sanitary_cb_12616",
       "layer": "sanitary",
       "type": "catch_basin",
@@ -22684,38 +22326,6 @@
       "origin_class": "api_open_data",
       "api_url": "https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/Pipe_3D/MapServer/2/3206",
       "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #3206"
-    },
-    {
-      "id": "sanitary_mh_26905.0",
-      "layer": "sanitary",
-      "type": "manhole",
-      "name": "污水人孔 3141-32",
-      "facility_no": "3141-32",
-      "structure_type": "污水人孔",
-      "coord": [
-        295833.758,
-        2768516.24,
-        6.064
-      ],
-      "rim_h": 9.014,
-      "invert_h": 6.064,
-      "depth_m": 2.95,
-      "diameter_mm": 750,
-      "source": "New Taipei City Sanitary Sewer (sewer.ntpc.gov.tw)",
-      "arcgis_layer_url": "https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/swggis_20150625/MapServer/1",
-      "gov_links": {
-        "portal_url": null,
-        "portal_label": null,
-        "api_url": "https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/swggis_20150625/MapServer/1",
-        "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #",
-        "osm_url": null,
-        "osm_label": null,
-        "nlsc_url": null,
-        "nlsc_label": null
-      },
-      "origin_class": "api_open_data",
-      "api_url": "https://wrd.ntpc.gov.tw/arcgis/rest/services/Rain/swggis_20150625/MapServer/1",
-      "api_label": "新北市政府 ArcGIS REST 官方圖資紀錄 #"
     },
     {
       "id": "sanitary_cb_12553",

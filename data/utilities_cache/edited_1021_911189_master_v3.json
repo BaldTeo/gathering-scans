@@ -110,7 +110,7 @@
   "layer_counts": {
     "storm": 2,
     "sanitary": 0,
-    "water": 3,
+    "water": 23,
     "electric": 2,
     "telecom": 0,
     "gas": 0,
@@ -119,9 +119,9 @@
     "excavations": 0,
     "as_built": 0
   },
-  "total_features": 7,
+  "total_features": 27,
   "total_pipe_length_m": 3014.97,
-  "total_structures": 4,
+  "total_structures": 24,
   "features": [
     {
       "id": "osm_elec_pt_5017462377",
@@ -184,6 +184,37 @@
       "osm_label": "OpenStreetMap 設施節點 #6336422252"
     },
     {
+      "id": "osm_hydrant_6336425541",
+      "layer": "water",
+      "type": "hydrant",
+      "name": "地下式消防栓 #4318",
+      "facility_no": "4318",
+      "structure_type": "地下式消防栓",
+      "coord": [
+        305355.454,
+        2754489.15,
+        56.341
+      ],
+      "rim_h": 57.541,
+      "invert_h": 56.341,
+      "depth_m": 1.2,
+      "diameter_mm": 150,
+      "source": "Taiwan Water Supply GIS (臺北自來水事業處)",
+      "origin_class": "api_open_data",
+      "gov_links": {
+        "portal_url": null,
+        "portal_label": null,
+        "api_url": null,
+        "api_label": null,
+        "osm_url": "https://www.openstreetmap.org/node/6336425541",
+        "osm_label": "OpenStreetMap 設施節點 #6336425541",
+        "nlsc_url": null,
+        "nlsc_label": null
+      },
+      "osm_url": "https://www.openstreetmap.org/node/6336425541",
+      "osm_label": "OpenStreetMap 設施節點 #6336425541"
+    },
+    {
       "id": "osm_hydrant_6336427104",
       "layer": "water",
       "type": "hydrant",
@@ -244,6 +275,595 @@
       },
       "osm_url": "https://www.openstreetmap.org/node/6336429288",
       "osm_label": "OpenStreetMap 設施節點 #6336429288"
+    },
+    {
+      "id": "osm_hydrant_6336432948",
+      "layer": "water",
+      "type": "hydrant",
+      "name": "地下式消防栓 #4318",
+      "facility_no": "4318",
+      "structure_type": "地下式消防栓",
+      "coord": [
+        305484.01,
+        2754579.776,
+        56.164
+      ],
+      "rim_h": 57.364,
+      "invert_h": 56.164,
+      "depth_m": 1.2,
+      "diameter_mm": 150,
+      "source": "Taiwan Water Supply GIS (臺北自來水事業處)",
+      "origin_class": "api_open_data",
+      "gov_links": {
+        "portal_url": null,
+        "portal_label": null,
+        "api_url": null,
+        "api_label": null,
+        "osm_url": "https://www.openstreetmap.org/node/6336432948",
+        "osm_label": "OpenStreetMap 設施節點 #6336432948",
+        "nlsc_url": null,
+        "nlsc_label": null
+      },
+      "osm_url": "https://www.openstreetmap.org/node/6336432948",
+      "osm_label": "OpenStreetMap 設施節點 #6336432948"
+    },
+    {
+      "id": "osm_hydrant_6336436658",
+      "layer": "water",
+      "type": "hydrant",
+      "name": "地下式消防栓 #4318",
+      "facility_no": "4318",
+      "structure_type": "地下式消防栓",
+      "coord": [
+        305596.375,
+        2754871.798,
+        57.429
+      ],
+      "rim_h": 58.629,
+      "invert_h": 57.429,
+      "depth_m": 1.2,
+      "diameter_mm": 150,
+      "source": "Taiwan Water Supply GIS (臺北自來水事業處)",
+      "origin_class": "api_open_data",
+      "gov_links": {
+        "portal_url": null,
+        "portal_label": null,
+        "api_url": null,
+        "api_label": null,
+        "osm_url": "https://www.openstreetmap.org/node/6336436658",
+        "osm_label": "OpenStreetMap 設施節點 #6336436658",
+        "nlsc_url": null,
+        "nlsc_label": null
+      },
+      "osm_url": "https://www.openstreetmap.org/node/6336436658",
+      "osm_label": "OpenStreetMap 設施節點 #6336436658"
+    },
+    {
+      "id": "osm_hydrant_6336437768",
+      "layer": "water",
+      "type": "hydrant",
+      "name": "地下式消防栓 #4419",
+      "facility_no": "4419",
+      "structure_type": "地下式消防栓",
+      "coord": [
+        305849.384,
+        2755085.649,
+        56.881
+      ],
+      "rim_h": 58.081,
+      "invert_h": 56.881,
+      "depth_m": 1.2,
+      "diameter_mm": 150,
+      "source": "Taiwan Water Supply GIS (臺北自來水事業處)",
+      "origin_class": "api_open_data",
+      "gov_links": {
+        "portal_url": null,
+        "portal_label": null,
+        "api_url": null,
+        "api_label": null,
+        "osm_url": "https://www.openstreetmap.org/node/6336437768",
+        "osm_label": "OpenStreetMap 設施節點 #6336437768",
+        "nlsc_url": null,
+        "nlsc_label": null
+      },
+      "osm_url": "https://www.openstreetmap.org/node/6336437768",
+      "osm_label": "OpenStreetMap 設施節點 #6336437768"
+    },
+    {
+      "id": "osm_hydrant_6336442457",
+      "layer": "water",
+      "type": "hydrant",
+      "name": "地下式消防栓 #4418",
+      "facility_no": "4418",
+      "structure_type": "地下式消防栓",
+      "coord": [
+        305754.609,
+        2754635.844,
+        57.314
+      ],
+      "rim_h": 58.514,
+      "invert_h": 57.314,
+      "depth_m": 1.2,
+      "diameter_mm": 150,
+      "source": "Taiwan Water Supply GIS (臺北自來水事業處)",
+      "origin_class": "api_open_data",
+      "gov_links": {
+        "portal_url": null,
+        "portal_label": null,
+        "api_url": null,
+        "api_label": null,
+        "osm_url": "https://www.openstreetmap.org/node/6336442457",
+        "osm_label": "OpenStreetMap 設施節點 #6336442457",
+        "nlsc_url": null,
+        "nlsc_label": null
+      },
+      "osm_url": "https://www.openstreetmap.org/node/6336442457",
+      "osm_label": "OpenStreetMap 設施節點 #6336442457"
+    },
+    {
+      "id": "osm_hydrant_6336453962",
+      "layer": "water",
+      "type": "hydrant",
+      "name": "地下式消防栓 #4318",
+      "facility_no": "4318",
+      "structure_type": "地下式消防栓",
+      "coord": [
+        305211.942,
+        2754338.287,
+        56.464
+      ],
+      "rim_h": 57.664,
+      "invert_h": 56.464,
+      "depth_m": 1.2,
+      "diameter_mm": 150,
+      "source": "Taiwan Water Supply GIS (臺北自來水事業處)",
+      "origin_class": "api_open_data",
+      "gov_links": {
+        "portal_url": null,
+        "portal_label": null,
+        "api_url": null,
+        "api_label": null,
+        "osm_url": "https://www.openstreetmap.org/node/6336453962",
+        "osm_label": "OpenStreetMap 設施節點 #6336453962",
+        "nlsc_url": null,
+        "nlsc_label": null
+      },
+      "osm_url": "https://www.openstreetmap.org/node/6336453962",
+      "osm_label": "OpenStreetMap 設施節點 #6336453962"
+    },
+    {
+      "id": "osm_hydrant_6336465119",
+      "layer": "water",
+      "type": "hydrant",
+      "name": "地下式消防栓 #4419",
+      "facility_no": "4419",
+      "structure_type": "地下式消防栓",
+      "coord": [
+        305650.109,
+        2754989.449,
+        56.817
+      ],
+      "rim_h": 58.017,
+      "invert_h": 56.817,
+      "depth_m": 1.2,
+      "diameter_mm": 150,
+      "source": "Taiwan Water Supply GIS (臺北自來水事業處)",
+      "origin_class": "api_open_data",
+      "gov_links": {
+        "portal_url": null,
+        "portal_label": null,
+        "api_url": null,
+        "api_label": null,
+        "osm_url": "https://www.openstreetmap.org/node/6336465119",
+        "osm_label": "OpenStreetMap 設施節點 #6336465119",
+        "nlsc_url": null,
+        "nlsc_label": null
+      },
+      "osm_url": "https://www.openstreetmap.org/node/6336465119",
+      "osm_label": "OpenStreetMap 設施節點 #6336465119"
+    },
+    {
+      "id": "osm_hydrant_6336469629",
+      "layer": "water",
+      "type": "hydrant",
+      "name": "地下式消防栓 #4418",
+      "facility_no": "4418",
+      "structure_type": "地下式消防栓",
+      "coord": [
+        305625.746,
+        2754683.715,
+        55.128
+      ],
+      "rim_h": 56.328,
+      "invert_h": 55.128,
+      "depth_m": 1.2,
+      "diameter_mm": 150,
+      "source": "Taiwan Water Supply GIS (臺北自來水事業處)",
+      "origin_class": "api_open_data",
+      "gov_links": {
+        "portal_url": null,
+        "portal_label": null,
+        "api_url": null,
+        "api_label": null,
+        "osm_url": "https://www.openstreetmap.org/node/6336469629",
+        "osm_label": "OpenStreetMap 設施節點 #6336469629",
+        "nlsc_url": null,
+        "nlsc_label": null
+      },
+      "osm_url": "https://www.openstreetmap.org/node/6336469629",
+      "osm_label": "OpenStreetMap 設施節點 #6336469629"
+    },
+    {
+      "id": "osm_hydrant_6336472051",
+      "layer": "water",
+      "type": "hydrant",
+      "name": "地下式消防栓 #4318",
+      "facility_no": "4318",
+      "structure_type": "地下式消防栓",
+      "coord": [
+        305299.779,
+        2754450.845,
+        56.393
+      ],
+      "rim_h": 57.593,
+      "invert_h": 56.393,
+      "depth_m": 1.2,
+      "diameter_mm": 150,
+      "source": "Taiwan Water Supply GIS (臺北自來水事業處)",
+      "origin_class": "api_open_data",
+      "gov_links": {
+        "portal_url": null,
+        "portal_label": null,
+        "api_url": null,
+        "api_label": null,
+        "osm_url": "https://www.openstreetmap.org/node/6336472051",
+        "osm_label": "OpenStreetMap 設施節點 #6336472051",
+        "nlsc_url": null,
+        "nlsc_label": null
+      },
+      "osm_url": "https://www.openstreetmap.org/node/6336472051",
+      "osm_label": "OpenStreetMap 設施節點 #6336472051"
+    },
+    {
+      "id": "osm_hydrant_6336473141",
+      "layer": "water",
+      "type": "hydrant",
+      "name": "地下式消防栓 #4419",
+      "facility_no": "4419",
+      "structure_type": "地下式消防栓",
+      "coord": [
+        305868.112,
+        2754944.421,
+        57.705
+      ],
+      "rim_h": 58.905,
+      "invert_h": 57.705,
+      "depth_m": 1.2,
+      "diameter_mm": 150,
+      "source": "Taiwan Water Supply GIS (臺北自來水事業處)",
+      "origin_class": "api_open_data",
+      "gov_links": {
+        "portal_url": null,
+        "portal_label": null,
+        "api_url": null,
+        "api_label": null,
+        "osm_url": "https://www.openstreetmap.org/node/6336473141",
+        "osm_label": "OpenStreetMap 設施節點 #6336473141",
+        "nlsc_url": null,
+        "nlsc_label": null
+      },
+      "osm_url": "https://www.openstreetmap.org/node/6336473141",
+      "osm_label": "OpenStreetMap 設施節點 #6336473141"
+    },
+    {
+      "id": "osm_hydrant_6336475610",
+      "layer": "water",
+      "type": "hydrant",
+      "name": "地下式消防栓 #4419",
+      "facility_no": "4419",
+      "structure_type": "地下式消防栓",
+      "coord": [
+        305947.396,
+        2754959.298,
+        58.389
+      ],
+      "rim_h": 59.589,
+      "invert_h": 58.389,
+      "depth_m": 1.2,
+      "diameter_mm": 150,
+      "source": "Taiwan Water Supply GIS (臺北自來水事業處)",
+      "origin_class": "api_open_data",
+      "gov_links": {
+        "portal_url": null,
+        "portal_label": null,
+        "api_url": null,
+        "api_label": null,
+        "osm_url": "https://www.openstreetmap.org/node/6336475610",
+        "osm_label": "OpenStreetMap 設施節點 #6336475610",
+        "nlsc_url": null,
+        "nlsc_label": null
+      },
+      "osm_url": "https://www.openstreetmap.org/node/6336475610",
+      "osm_label": "OpenStreetMap 設施節點 #6336475610"
+    },
+    {
+      "id": "osm_hydrant_6336481984",
+      "layer": "water",
+      "type": "hydrant",
+      "name": "地下式消防栓 #4318",
+      "facility_no": "4318",
+      "structure_type": "地下式消防栓",
+      "coord": [
+        305515.942,
+        2754603.011,
+        56.203
+      ],
+      "rim_h": 57.403,
+      "invert_h": 56.203,
+      "depth_m": 1.2,
+      "diameter_mm": 150,
+      "source": "Taiwan Water Supply GIS (臺北自來水事業處)",
+      "origin_class": "api_open_data",
+      "gov_links": {
+        "portal_url": null,
+        "portal_label": null,
+        "api_url": null,
+        "api_label": null,
+        "osm_url": "https://www.openstreetmap.org/node/6336481984",
+        "osm_label": "OpenStreetMap 設施節點 #6336481984",
+        "nlsc_url": null,
+        "nlsc_label": null
+      },
+      "osm_url": "https://www.openstreetmap.org/node/6336481984",
+      "osm_label": "OpenStreetMap 設施節點 #6336481984"
+    },
+    {
+      "id": "osm_hydrant_6336483654",
+      "layer": "water",
+      "type": "hydrant",
+      "name": "地下式消防栓 #4419",
+      "facility_no": "4419",
+      "structure_type": "地下式消防栓",
+      "coord": [
+        305602.973,
+        2754928.991,
+        56.979
+      ],
+      "rim_h": 58.179,
+      "invert_h": 56.979,
+      "depth_m": 1.2,
+      "diameter_mm": 150,
+      "source": "Taiwan Water Supply GIS (臺北自來水事業處)",
+      "origin_class": "api_open_data",
+      "gov_links": {
+        "portal_url": null,
+        "portal_label": null,
+        "api_url": null,
+        "api_label": null,
+        "osm_url": "https://www.openstreetmap.org/node/6336483654",
+        "osm_label": "OpenStreetMap 設施節點 #6336483654",
+        "nlsc_url": null,
+        "nlsc_label": null
+      },
+      "osm_url": "https://www.openstreetmap.org/node/6336483654",
+      "osm_label": "OpenStreetMap 設施節點 #6336483654"
+    },
+    {
+      "id": "osm_hydrant_6336487656",
+      "layer": "water",
+      "type": "hydrant",
+      "name": "地下式消防栓 #4419",
+      "facility_no": "4419",
+      "structure_type": "地下式消防栓",
+      "coord": [
+        305950.995,
+        2754956.256,
+        58.441
+      ],
+      "rim_h": 59.641,
+      "invert_h": 58.441,
+      "depth_m": 1.2,
+      "diameter_mm": 150,
+      "source": "Taiwan Water Supply GIS (臺北自來水事業處)",
+      "origin_class": "api_open_data",
+      "gov_links": {
+        "portal_url": null,
+        "portal_label": null,
+        "api_url": null,
+        "api_label": null,
+        "osm_url": "https://www.openstreetmap.org/node/6336487656",
+        "osm_label": "OpenStreetMap 設施節點 #6336487656",
+        "nlsc_url": null,
+        "nlsc_label": null
+      },
+      "osm_url": "https://www.openstreetmap.org/node/6336487656",
+      "osm_label": "OpenStreetMap 設施節點 #6336487656"
+    },
+    {
+      "id": "osm_hydrant_6336491679",
+      "layer": "water",
+      "type": "hydrant",
+      "name": "地下式消防栓 #4318",
+      "facility_no": "4318",
+      "structure_type": "地下式消防栓",
+      "coord": [
+        305412.309,
+        2754527.582,
+        56.267
+      ],
+      "rim_h": 57.467,
+      "invert_h": 56.267,
+      "depth_m": 1.2,
+      "diameter_mm": 150,
+      "source": "Taiwan Water Supply GIS (臺北自來水事業處)",
+      "origin_class": "api_open_data",
+      "gov_links": {
+        "portal_url": null,
+        "portal_label": null,
+        "api_url": null,
+        "api_label": null,
+        "osm_url": "https://www.openstreetmap.org/node/6336491679",
+        "osm_label": "OpenStreetMap 設施節點 #6336491679",
+        "nlsc_url": null,
+        "nlsc_label": null
+      },
+      "osm_url": "https://www.openstreetmap.org/node/6336491679",
+      "osm_label": "OpenStreetMap 設施節點 #6336491679"
+    },
+    {
+      "id": "osm_hydrant_6336742480",
+      "layer": "water",
+      "type": "hydrant",
+      "name": "地下式消防栓 #4419",
+      "facility_no": "4419",
+      "structure_type": "地下式消防栓",
+      "coord": [
+        305706.527,
+        2755052.703,
+        56.725
+      ],
+      "rim_h": 57.925,
+      "invert_h": 56.725,
+      "depth_m": 1.2,
+      "diameter_mm": 150,
+      "source": "Taiwan Water Supply GIS (臺北自來水事業處)",
+      "origin_class": "api_open_data",
+      "gov_links": {
+        "portal_url": null,
+        "portal_label": null,
+        "api_url": null,
+        "api_label": null,
+        "osm_url": "https://www.openstreetmap.org/node/6336742480",
+        "osm_label": "OpenStreetMap 設施節點 #6336742480",
+        "nlsc_url": null,
+        "nlsc_label": null
+      },
+      "osm_url": "https://www.openstreetmap.org/node/6336742480",
+      "osm_label": "OpenStreetMap 設施節點 #6336742480"
+    },
+    {
+      "id": "osm_hydrant_6336744389",
+      "layer": "water",
+      "type": "hydrant",
+      "name": "地下式消防栓 #4418",
+      "facility_no": "4418",
+      "structure_type": "地下式消防栓",
+      "coord": [
+        305736.033,
+        2754672.498,
+        57.726
+      ],
+      "rim_h": 58.926,
+      "invert_h": 57.726,
+      "depth_m": 1.2,
+      "diameter_mm": 150,
+      "source": "Taiwan Water Supply GIS (臺北自來水事業處)",
+      "origin_class": "api_open_data",
+      "gov_links": {
+        "portal_url": null,
+        "portal_label": null,
+        "api_url": null,
+        "api_label": null,
+        "osm_url": "https://www.openstreetmap.org/node/6336744389",
+        "osm_label": "OpenStreetMap 設施節點 #6336744389",
+        "nlsc_url": null,
+        "nlsc_label": null
+      },
+      "osm_url": "https://www.openstreetmap.org/node/6336744389",
+      "osm_label": "OpenStreetMap 設施節點 #6336744389"
+    },
+    {
+      "id": "osm_hydrant_6336747012",
+      "layer": "water",
+      "type": "hydrant",
+      "name": "地下式消防栓 #4318",
+      "facility_no": "4318",
+      "structure_type": "地下式消防栓",
+      "coord": [
+        305202.02,
+        2754318.476,
+        56.471
+      ],
+      "rim_h": 57.671,
+      "invert_h": 56.471,
+      "depth_m": 1.2,
+      "diameter_mm": 150,
+      "source": "Taiwan Water Supply GIS (臺北自來水事業處)",
+      "origin_class": "api_open_data",
+      "gov_links": {
+        "portal_url": null,
+        "portal_label": null,
+        "api_url": null,
+        "api_label": null,
+        "osm_url": "https://www.openstreetmap.org/node/6336747012",
+        "osm_label": "OpenStreetMap 設施節點 #6336747012",
+        "nlsc_url": null,
+        "nlsc_label": null
+      },
+      "osm_url": "https://www.openstreetmap.org/node/6336747012",
+      "osm_label": "OpenStreetMap 設施節點 #6336747012"
+    },
+    {
+      "id": "osm_hydrant_6336750288",
+      "layer": "water",
+      "type": "hydrant",
+      "name": "地下式消防栓 #4419",
+      "facility_no": "4419",
+      "structure_type": "地下式消防栓",
+      "coord": [
+        305775.646,
+        2755138.007,
+        56.766
+      ],
+      "rim_h": 57.966,
+      "invert_h": 56.766,
+      "depth_m": 1.2,
+      "diameter_mm": 150,
+      "source": "Taiwan Water Supply GIS (臺北自來水事業處)",
+      "origin_class": "api_open_data",
+      "gov_links": {
+        "portal_url": null,
+        "portal_label": null,
+        "api_url": null,
+        "api_label": null,
+        "osm_url": "https://www.openstreetmap.org/node/6336750288",
+        "osm_label": "OpenStreetMap 設施節點 #6336750288",
+        "nlsc_url": null,
+        "nlsc_label": null
+      },
+      "osm_url": "https://www.openstreetmap.org/node/6336750288",
+      "osm_label": "OpenStreetMap 設施節點 #6336750288"
+    },
+    {
+      "id": "osm_hydrant_6336751598",
+      "layer": "water",
+      "type": "hydrant",
+      "name": "地下式消防栓 #4418",
+      "facility_no": "4418",
+      "structure_type": "地下式消防栓",
+      "coord": [
+        305753.972,
+        2754762.967,
+        58.285
+      ],
+      "rim_h": 59.485,
+      "invert_h": 58.285,
+      "depth_m": 1.2,
+      "diameter_mm": 150,
+      "source": "Taiwan Water Supply GIS (臺北自來水事業處)",
+      "origin_class": "api_open_data",
+      "gov_links": {
+        "portal_url": null,
+        "portal_label": null,
+        "api_url": null,
+        "api_label": null,
+        "osm_url": "https://www.openstreetmap.org/node/6336751598",
+        "osm_label": "OpenStreetMap 設施節點 #6336751598",
+        "nlsc_url": null,
+        "nlsc_label": null
+      },
+      "osm_url": "https://www.openstreetmap.org/node/6336751598",
+      "osm_label": "OpenStreetMap 設施節點 #6336751598"
     },
     {
       "id": "osm_waterway_165201862",
@@ -608,5 +1228,5 @@
     }
   ],
   "query_timestamp": "2026-10-31T13:31:17.166513+00:00",
-  "cached": true
+  "cached": false
 }

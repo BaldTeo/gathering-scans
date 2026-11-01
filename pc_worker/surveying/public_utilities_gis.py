@@ -194,7 +194,7 @@ def _load_utilities_json_cached(fp: str) -> Optional[Dict[str, Any]]:
 
 
 def _save_utilities_json_cached(fp: str, data: Dict[str, Any]) -> None:
-    """Writes a utilities cache JSON file atomically and updates the in-memory cache."""
+    """Writes a utilities cache JSON file atomically and updates the in-memory cache (mirroring to host_docker on VPS)."""
     if not fp or not isinstance(data, dict):
         return
     try:
@@ -202,6 +202,13 @@ def _save_utilities_json_cached(fp: str, data: Dict[str, Any]) -> None:
         with open(fp, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
         _UTILITIES_MEM_CACHE[fp] = (os.path.getmtime(fp), data)
+        # If running inside the VPS Docker container (/app/data/utilities_cache), mirror to mounted /host_docker volume
+        norm_fp = fp.replace("\\", "/")
+        if norm_fp.startswith("/app/data/utilities_cache/") and os.path.isdir("/host_docker/gathering_scans"):
+            host_fp = "/host_docker/gathering_scans/" + norm_fp[len("/app/") :]
+            os.makedirs(os.path.dirname(host_fp), exist_ok=True)
+            with open(host_fp, "w", encoding="utf-8") as hf:
+                json.dump(data, hf, ensure_ascii=False, indent=2)
     except Exception:
         pass
 
@@ -1007,37 +1014,26 @@ class PublicUtilitiesGISMixin:
         water_feats = self._query_open_data_hydrants(fxmin, fymin, fxmax, fymax, sample_ground_z)
         all_features.extend(water_feats)
 
-        # 8. Preserve all inner 120m features so nearby wells/pipes never disappear
-        if fetch_radius_m > 120.0:
-            inner_cache = os.path.join(UTILITIES_CACHE_DIR, f"{safe_sid}_120m_v3.json")
-            inner_doc = _load_utilities_json_cached(inner_cache)
-            if inner_doc:
-                seen_ids = {str(f.get("id") or "") for f in all_features}
-                seen_fnos = {
-                    (str(f.get("layer") or ""), str(f.get("facility_no") or ""))
-                    for f in all_features
-                    if f.get("facility_no")
-                }
-                for in_f in (inner_doc.get("features") or []):
-                    fid_in = str(in_f.get("id") or "")
-                    if fid_in.startswith(("scan_", "road_")):
-                        continue
-                    if in_f.get("layer") == "as_built" and in_f.get("origin_class") != "user_or_scan_to_bim":
-                        continue
-                    fno_key = (str(in_f.get("layer") or ""), str(in_f.get("facility_no") or ""))
-                    if fid_in not in seen_ids and (not in_f.get("facility_no") or fno_key not in seen_fnos):
-                        all_features.append(in_f)
-                        seen_ids.add(fid_in)
-                        if in_f.get("facility_no"):
-                            seen_fnos.add(fno_key)
-
-        # Enrich all 500m master features with official Government GIS links
-        master_features = [
+        # Clean, deduplicate, and enrich all 500m master features with official Government GIS links
+        raw_master_candidates = [
             _enrich_feature_gov_links(f, ce, cn)
             for f in all_features
             if not str(f.get("id") or "").startswith(("scan_", "road_"))
             and (f.get("layer") != "as_built" or f.get("origin_class") == "user_or_scan_to_bim")
         ]
+        master_features = self._filter_cached_utilities_to_radius(
+            raw_features=raw_master_candidates,
+            req_set=set(UTILITY_LAYERS.keys()),
+            ce=ce,
+            cn=cn,
+            xmin=fxmin,
+            ymin=fymin,
+            xmax=fxmax,
+            ymax=fymax,
+            radius_m=fetch_radius_m,
+            is_exact_radius=True,
+            sample_ground_z=sample_ground_z,
+        )
 
         # Persist 500m master cache on server automatically whenever features are found
         if master_features:
@@ -1078,24 +1074,21 @@ class PublicUtilitiesGISMixin:
             if scan_dir_cache_file:
                 _save_utilities_json_cached(scan_dir_cache_file, master_payload)
 
-        # Filter to requested radius_m and requested_layers for the response
+        # Always filter and deduplicate to requested radius_m and requested_layers for the response
         req_set = set(requested_layers)
-        if abs(fetch_radius_m - radius_m) < 0.5:
-            response_features = [f for f in master_features if f.get("layer") in req_set]
-        else:
-            response_features = self._filter_cached_utilities_to_radius(
-                raw_features=master_features,
-                req_set=req_set,
-                ce=ce,
-                cn=cn,
-                xmin=xmin,
-                ymin=ymin,
-                xmax=xmax,
-                ymax=ymax,
-                radius_m=radius_m,
-                is_exact_radius=False,
-                sample_ground_z=sample_ground_z,
-            )
+        response_features = self._filter_cached_utilities_to_radius(
+            raw_features=master_features,
+            req_set=req_set,
+            ce=ce,
+            cn=cn,
+            xmin=xmin,
+            ymin=ymin,
+            xmax=xmax,
+            ymax=ymax,
+            radius_m=radius_m,
+            is_exact_radius=abs(fetch_radius_m - radius_m) < 0.5,
+            sample_ground_z=sample_ground_z,
+        )
 
         layer_counts = {k: 0 for k in UTILITY_LAYERS.keys()}
         total_pipe_length_m = 0.0
@@ -1148,44 +1141,62 @@ class PublicUtilitiesGISMixin:
         is_exact_radius: bool,
         sample_ground_z: Callable[[float, float], float],
     ) -> List[Dict[str, Any]]:
-        """Filters and clips cached scan utilities to any requested radius_m without external HTTP calls."""
+        """Filters, strips schematic/planning artifacts, and deduplicates cached scan utilities to any requested radius_m."""
         out: List[Dict[str, Any]] = []
         cxmin, cymin, cxmax, cymax = xmin - 4.0, ymin - 4.0, xmax + 4.0, ymax + 4.0
         pxmin, pymin, pxmax, pymax = xmin - 12.0, ymin - 12.0, xmax + 12.0, ymax + 12.0
         sxmin, symin, sxmax, symax = xmin - 15.0, ymin - 15.0, xmax + 15.0, ymax + 15.0
+        seen_line_geoms: set = set()
+        seen_point_geoms: set = set()
 
         def _ensure_links(feat_dict: Dict[str, Any]) -> Dict[str, Any]:
             if "gov_links" in feat_dict and isinstance(feat_dict["gov_links"], dict):
                 return feat_dict
             return _enrich_feature_gov_links(dict(feat_dict), ce, cn)
 
+        def _append_dedup(feat_dict: Dict[str, Any]) -> None:
+            lyr_k = str(feat_dict.get("layer") or "")
+            ft_k = str(feat_dict.get("type") or "")
+            if ft_k in ("pipe", "box_culvert"):
+                cs = feat_dict.get("coords")
+                if isinstance(cs, list) and len(cs) >= 2:
+                    p_a = (round(float(cs[0][0]), 1), round(float(cs[0][1]), 1))
+                    p_b = (round(float(cs[-1][0]), 1), round(float(cs[-1][1]), 1))
+                    lkey = (lyr_k, min(p_a, p_b), max(p_a, p_b), len(cs))
+                    if lkey in seen_line_geoms:
+                        return
+                    seen_line_geoms.add(lkey)
+            elif ft_k in ("manhole", "catch_basin", "hydrant", "pole"):
+                cd = feat_dict.get("coord")
+                if isinstance(cd, list) and len(cd) >= 2:
+                    pkey = (lyr_k, ft_k, round(float(cd[0]), 1), round(float(cd[1]), 1))
+                    if pkey in seen_point_geoms:
+                        return
+                    seen_point_geoms.add(pkey)
+            out.append(_ensure_links(feat_dict))
+
         for f_item in raw_features:
             lyr = f_item.get("layer")
             if lyr not in req_set:
                 continue
             fid = str(f_item.get("id") or "")
-            if fid.startswith(("scan_", "road_")):
+            if fid.startswith(("scan_", "road_", "ntpc_rw_culvert_", "ntpc_rw_pipe_5_", "ntpc_rw_pipe_8_", "ntpc_rw_mh_")):
                 continue
             if lyr == "as_built" and f_item.get("origin_class") != "user_or_scan_to_bim":
                 continue
-            arc_url = str(f_item.get("arcgis_layer_url") or "")
+            arc_url = str(f_item.get("arcgis_layer_url") or f_item.get("api_url") or "")
             fname = str(f_item.get("name") or "")
-            if "rainwater_00131/MapServer/0/" in arc_url or "rainwater_00131/MapServer/7/" in arc_url or "規劃" in fname:
-                continue
-            if f_item.get("type") == "box_culvert" and (
-                "連接管" in fname
-                or "rainwater_00131/MapServer/5/" in arc_url
-                or "rainwater_00131/MapServer/8/" in arc_url
+            if (
+                "rainwater_00131/MapServer/0" in arc_url
+                or "rainwater_00131/MapServer/5" in arc_url
+                or "rainwater_00131/MapServer/7" in arc_url
+                or "rainwater_00131/MapServer/8" in arc_url
+                or "規劃" in fname
             ):
-                f_item = dict(f_item)
-                f_item["type"] = "pipe"
-                f_item["diameter_mm"] = 300
-                f_item["width_m"] = None
-                f_item["height_m"] = None
-                f_item["name"] = re.sub(r"\(\d+\.\d+x\d+\.\d+m\)", "D=300mm", fname).replace("雨水箱涵", "雨水連接管")
+                continue
 
             if is_exact_radius:
-                out.append(_ensure_links(f_item))
+                _append_dedup(f_item)
                 continue
 
             ftype = f_item.get("type")
@@ -1194,7 +1205,7 @@ class PublicUtilitiesGISMixin:
                 if isinstance(coord, list) and len(coord) >= 2:
                     ex, ny = float(coord[0]), float(coord[1])
                     if pxmin <= ex <= pxmax and pymin <= ny <= pymax:
-                        out.append(_ensure_links(f_item))
+                        _append_dedup(f_item)
             elif ftype in ("pipe", "box_culvert"):
                 coords = f_item.get("coords")
                 if not isinstance(coords, list) or len(coords) < 2:
@@ -1232,14 +1243,14 @@ class PublicUtilitiesGISMixin:
                     f_copy["start_coord"] = new_coords[0]
                     f_copy["end_coord"] = new_coords[-1]
                     f_copy["length_m"] = round(seg_len, 2)
-                    out.append(_ensure_links(f_copy))
+                    _append_dedup(f_copy)
                 else:
                     pts_2d = [(float(pt[0]), float(pt[1])) for pt in coords if isinstance(pt, list) and len(pt) >= 2]
                     clipped_check = _clip_polyline_to_bbox(pts_2d, sxmin, symin, sxmax, symax)
                     if len(clipped_check) >= 2:
-                        out.append(_ensure_links(f_item))
+                        _append_dedup(f_item)
             else:
-                out.append(_ensure_links(f_item))
+                _append_dedup(f_item)
 
         return out
 
@@ -1406,6 +1417,7 @@ class PublicUtilitiesGISMixin:
 
         # 2. Fetch Storm Pipes & Box Culverts from Pipe_3D/4 (has UP_PB/DOWN_PB), SewerRain/1 (has 起點埋/終點埋), and rainwater_POP/0
         raw_pipes: Dict[str, Dict[str, Any]] = {}
+        geom_to_pkey: Dict[Tuple[Tuple[float, float], Tuple[float, float]], str] = {}
         pipe_tasks = []
         for svc, lid in [("Rain/Pipe_3D", 4), ("Rain/SewerRain", 1), ("Rain/rainwater_POP", 0)]:
             for qx1, qy1, qx2, qy2 in [(xmin, ymin, xmax, ymax), (txmin, tymin, txmax, tymax)]:
@@ -1454,7 +1466,11 @@ class PublicUtilitiesGISMixin:
                 p_len = safe_float(attrs.get("P_LENGTH"), math.hypot(e2 - e1, n2 - n1)) or math.hypot(e2 - e1, n2 - n1)
                 raw_slope = safe_float(attrs.get("P_SLOPE"))
 
-                pkey = pno if pno else f"{up_mh}_{down_mh}_{round(e1,1)}_{round(n1,1)}"
+                pt_a = (round(e1, 1), round(n1, 1))
+                pt_b = (round(e2, 1), round(n2, 1))
+                geom_key = (min(pt_a, pt_b), max(pt_a, pt_b))
+                pkey = geom_to_pkey.get(geom_key) or (pno if pno else f"{up_mh}_{down_mh}_{round(e1,1)}_{round(n1,1)}")
+                geom_to_pkey[geom_key] = pkey
                 if pkey in raw_pipes:
                     ep = raw_pipes[pkey]
                     if ep["up_pb"] <= 0.05 and up_pb > 0.05:
@@ -1675,14 +1691,18 @@ class PublicUtilitiesGISMixin:
                 }
             )
 
-        # 4. Also query Rain/rainwater_00131 surveyed layers (4: 箱涵, 5: 連接管, 8: 涵管, 19: 側溝).
-        # Exclude unbuilt conceptual planning layers (0: 規劃節點, 7: 規劃管線) when surveyed Pipe_3D/SewerRain data exists.
+        # 4. Also query Rain/rainwater_00131 side ditches (19: 側溝) and fallback surveyed layer (8: 雨水下水道調查管線 only when Pipe_3D/SewerRain is empty).
+        # Never query layer 5 (15m 45° schematic catch-basin leader lines) or layer 0/7 (unbuilt conceptual planning lines).
         seen_rw_pipe_keys = set()
         for f in features:
             if f.get("type") in ("pipe", "box_culvert") and f.get("coords"):
                 c0, c1 = f["coords"][0], f["coords"][-1]
-                seen_rw_pipe_keys.add(f"{round(float(c0[0]), 1)}_{round(float(c0[1]), 1)}")
-                seen_rw_pipe_keys.add(f"{round(float(c0[0]), 1)}_{round(float(c0[1]), 1)}_{round(float(c1[0]), 1)}_{round(float(c1[1]), 1)}")
+                k0 = f"{round(float(c0[0]), 1)}_{round(float(c0[1]), 1)}"
+                k1 = f"{round(float(c1[0]), 1)}_{round(float(c1[1]), 1)}"
+                seen_rw_pipe_keys.add(k0)
+                seen_rw_pipe_keys.add(k1)
+                seen_rw_pipe_keys.add(f"{k0}_{k1}")
+                seen_rw_pipe_keys.add(f"{k1}_{k0}")
         for p in raw_pipes.values():
             if p.get("pno"):
                 seen_rw_pipe_keys.add(p["pno"])
@@ -1693,7 +1713,7 @@ class PublicUtilitiesGISMixin:
             if f.get("type") in ("manhole", "catch_basin") and f.get("coord")
         }
 
-        rw_line_lids = (4, 5, 8, 19) if len(raw_pipes) > 0 else (4, 5, 7, 8, 19)
+        rw_line_lids = (19,) if len(raw_pipes) > 0 else (8, 19)
         rw_tasks = [
             (
                 rw_lid,
@@ -1720,11 +1740,14 @@ class PublicUtilitiesGISMixin:
                 oid_rw = attrs.get("OBJECTID") or (len(features) + 1)
                 p_no = str(attrs.get("P_NO") or attrs.get("CP_NO") or attrs.get("B_NO") or f"RW-{oid_rw}").strip()
                 p_start_key = f"{round(float(pts[0][0]), 1)}_{round(float(pts[0][1]), 1)}"
-                p_pair_key = f"{round(float(pts[0][0]), 1)}_{round(float(pts[0][1]), 1)}_{round(float(pts[-1][0]), 1)}_{round(float(pts[-1][1]), 1)}"
-                if p_start_key in seen_rw_pipe_keys or p_pair_key in seen_rw_pipe_keys or (p_no and p_no in seen_rw_pipe_keys):
+                p_end_key = f"{round(float(pts[-1][0]), 1)}_{round(float(pts[-1][1]), 1)}"
+                p_pair_key = f"{p_start_key}_{p_end_key}"
+                p_rev_key = f"{p_end_key}_{p_start_key}"
+                if p_start_key in seen_rw_pipe_keys or p_pair_key in seen_rw_pipe_keys or p_rev_key in seen_rw_pipe_keys or (p_no and p_no in seen_rw_pipe_keys):
                     continue
                 seen_rw_pipe_keys.add(p_start_key)
                 seen_rw_pipe_keys.add(p_pair_key)
+                seen_rw_pipe_keys.add(p_rev_key)
                 if p_no:
                     seen_rw_pipe_keys.add(p_no)
 
@@ -2019,10 +2042,14 @@ class PublicUtilitiesGISMixin:
                 sno = str(attrs.get("SEWER_NO") or attrs.get("D_SEWER_NO") or attrs.get("C_NO") or "").strip()
                 umh = str(attrs.get("UMH_NO") or attrs.get("D_UMH_NO") or attrs.get("UCB_NO") or "").strip()
                 dmh = str(attrs.get("DMH_NO") or attrs.get("D_DMH_NO") or attrs.get("DCB_NO") or "").strip()
-                dedup_key = sno if sno else f"{round(e1,1)}_{round(n1,1)}_{round(e2,1)}_{round(n2,1)}"
-                if dedup_key in seen_pipes:
+                pt_a = (round(e1, 1), round(n1, 1))
+                pt_b = (round(e2, 1), round(n2, 1))
+                geom_pair_key = f"{min(pt_a, pt_b)}_{max(pt_a, pt_b)}"
+                if (sno and sno in seen_pipes) or geom_pair_key in seen_pipes:
                     continue
-                seen_pipes.add(dedup_key)
+                if sno:
+                    seen_pipes.add(sno)
+                seen_pipes.add(geom_pair_key)
 
                 length_2d = math.hypot(e2 - e1, n2 - n1)
                 length_m = max(0.5, safe_float(attrs.get("SEWER_LH") or attrs.get("C_LH") or attrs.get("LENGTH"), length_2d) or length_2d)

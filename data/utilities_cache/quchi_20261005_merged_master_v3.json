@@ -1,0 +1,3094 @@
+{
+  "status": "ok",
+  "scan_id": "quchi_20261005_merged",
+  "center": {
+    "e": 304891.922,
+    "n": 2757029.5,
+    "h": 43.201
+  },
+  "ground_reference_h": 43.201,
+  "radius_m": 1000.0,
+  "bbox": {
+    "xmin": 303891.922,
+    "ymin": 2756029.5,
+    "xmax": 305891.922,
+    "ymax": 2758029.5
+  },
+  "crs": "TWD97 / TM2 zone 121 + TWVD 2001 height - EPSG:3826+8904",
+  "layers": {
+    "storm": {
+      "id": "storm",
+      "name_zh": "雨水下水道",
+      "name_en": "Storm Sewer",
+      "color": "#06b6d4",
+      "default_depth_m": 2.2,
+      "default_dia_mm": 600,
+      "symbol": "cylindrical_or_box"
+    },
+    "sanitary": {
+      "id": "sanitary",
+      "name_zh": "污水下水道",
+      "name_en": "Sanitary Sewer",
+      "color": "#d97706",
+      "default_depth_m": 2.8,
+      "default_dia_mm": 300,
+      "symbol": "cylindrical"
+    },
+    "water": {
+      "id": "water",
+      "name_zh": "自來水與消防栓",
+      "name_en": "Water Supply & Hydrants",
+      "color": "#3b82f6",
+      "default_depth_m": 1.2,
+      "default_dia_mm": 200,
+      "symbol": "cylindrical"
+    },
+    "electric": {
+      "id": "electric",
+      "name_zh": "電力管線與電桿",
+      "name_en": "Electricity & Poles",
+      "color": "#ef4444",
+      "default_depth_m": 1.5,
+      "default_dia_mm": 150,
+      "symbol": "cylindrical"
+    },
+    "telecom": {
+      "id": "telecom",
+      "name_zh": "電信與光纖管線",
+      "name_en": "Telecom & Fiber",
+      "color": "#10b981",
+      "default_depth_m": 1.2,
+      "default_dia_mm": 100,
+      "symbol": "cylindrical"
+    },
+    "gas": {
+      "id": "gas",
+      "name_zh": "天然瓦斯管線",
+      "name_en": "Natural Gas",
+      "color": "#eab308",
+      "default_depth_m": 1.0,
+      "default_dia_mm": 100,
+      "symbol": "cylindrical"
+    },
+    "ducts": {
+      "id": "ducts",
+      "name_zh": "共同管道與纜線寬頻",
+      "name_en": "Common & Broadband Ducts",
+      "color": "#8b5cf6",
+      "default_depth_m": 2.6,
+      "default_dia_mm": 1000,
+      "symbol": "box"
+    },
+    "streetlights": {
+      "id": "streetlights",
+      "name_zh": "路燈與照明管線",
+      "name_en": "Streetlights",
+      "color": "#f59e0b",
+      "default_depth_m": 0.8,
+      "default_dia_mm": 80,
+      "symbol": "vertical_pole"
+    },
+    "excavations": {
+      "id": "excavations",
+      "name_zh": "即時道路挖掘工程",
+      "name_en": "Active Road Excavations",
+      "color": "#ec4899",
+      "default_depth_m": 1.5,
+      "default_dia_mm": 0,
+      "symbol": "trench_polygon"
+    },
+    "as_built": {
+      "id": "as_built",
+      "name_zh": "管溝開挖竣工實測",
+      "name_en": "Open-Trench As-Built Traced",
+      "color": "#14b8a6",
+      "default_depth_m": 1.8,
+      "default_dia_mm": 200,
+      "symbol": "cylindrical"
+    }
+  },
+  "layer_counts": {
+    "storm": 22,
+    "sanitary": 0,
+    "water": 21,
+    "electric": 0,
+    "telecom": 0,
+    "gas": 0,
+    "ducts": 0,
+    "streetlights": 0,
+    "excavations": 0,
+    "as_built": 0
+  },
+  "total_features": 43,
+  "total_pipe_length_m": 9084.31,
+  "total_structures": 21,
+  "features": [
+    {
+      "id": "osm_hydrant_6336426010",
+      "layer": "water",
+      "type": "hydrant",
+      "name": "地下式消防栓 #4322",
+      "facility_no": "4322",
+      "structure_type": "地下式消防栓",
+      "coord": [
+        305162.795,
+        2757193.525,
+        42.02
+      ],
+      "rim_h": 43.22,
+      "invert_h": 42.02,
+      "depth_m": 1.2,
+      "diameter_mm": 150,
+      "source": "Taiwan Water Supply GIS (臺北自來水事業處)",
+      "gov_links": {
+        "portal_url": null,
+        "portal_label": null,
+        "api_url": null,
+        "api_label": null,
+        "osm_url": "https://www.openstreetmap.org/node/6336426010",
+        "osm_label": "OpenStreetMap 設施節點 #6336426010",
+        "nlsc_url": null,
+        "nlsc_label": null
+      },
+      "origin_class": "api_open_data",
+      "osm_url": "https://www.openstreetmap.org/node/6336426010",
+      "osm_label": "OpenStreetMap 設施節點 #6336426010"
+    },
+    {
+      "id": "osm_hydrant_6336428629",
+      "layer": "water",
+      "type": "hydrant",
+      "name": "地下式消防栓 #4323",
+      "facility_no": "4323",
+      "structure_type": "地下式消防栓",
+      "coord": [
+        305038.113,
+        2757505.35,
+        42.015
+      ],
+      "rim_h": 43.215,
+      "invert_h": 42.015,
+      "depth_m": 1.2,
+      "diameter_mm": 150,
+      "source": "Taiwan Water Supply GIS (臺北自來水事業處)",
+      "gov_links": {
+        "portal_url": null,
+        "portal_label": null,
+        "api_url": null,
+        "api_label": null,
+        "osm_url": "https://www.openstreetmap.org/node/6336428629",
+        "osm_label": "OpenStreetMap 設施節點 #6336428629",
+        "nlsc_url": null,
+        "nlsc_label": null
+      },
+      "origin_class": "api_open_data",
+      "osm_url": "https://www.openstreetmap.org/node/6336428629",
+      "osm_label": "OpenStreetMap 設施節點 #6336428629"
+    },
+    {
+      "id": "osm_hydrant_6336437026",
+      "layer": "water",
+      "type": "hydrant",
+      "name": "地下式消防栓 #4322",
+      "facility_no": "4322",
+      "structure_type": "地下式消防栓",
+      "coord": [
+        305260.128,
+        2756894.538,
+        41.985
+      ],
+      "rim_h": 43.185,
+      "invert_h": 41.985,
+      "depth_m": 1.2,
+      "diameter_mm": 150,
+      "source": "Taiwan Water Supply GIS (臺北自來水事業處)",
+      "gov_links": {
+        "portal_url": null,
+        "portal_label": null,
+        "api_url": null,
+        "api_label": null,
+        "osm_url": "https://www.openstreetmap.org/node/6336437026",
+        "osm_label": "OpenStreetMap 設施節點 #6336437026",
+        "nlsc_url": null,
+        "nlsc_label": null
+      },
+      "origin_class": "api_open_data",
+      "osm_url": "https://www.openstreetmap.org/node/6336437026",
+      "osm_label": "OpenStreetMap 設施節點 #6336437026"
+    },
+    {
+      "id": "osm_hydrant_6336437063",
+      "layer": "water",
+      "type": "hydrant",
+      "name": "地下式消防栓 #4323",
+      "facility_no": "4323",
+      "structure_type": "地下式消防栓",
+      "coord": [
+        305054.207,
+        2757428.898,
+        42.018
+      ],
+      "rim_h": 43.218,
+      "invert_h": 42.018,
+      "depth_m": 1.2,
+      "diameter_mm": 150,
+      "source": "Taiwan Water Supply GIS (臺北自來水事業處)",
+      "gov_links": {
+        "portal_url": null,
+        "portal_label": null,
+        "api_url": null,
+        "api_label": null,
+        "osm_url": "https://www.openstreetmap.org/node/6336437063",
+        "osm_label": "OpenStreetMap 設施節點 #6336437063",
+        "nlsc_url": null,
+        "nlsc_label": null
+      },
+      "origin_class": "api_open_data",
+      "osm_url": "https://www.openstreetmap.org/node/6336437063",
+      "osm_label": "OpenStreetMap 設施節點 #6336437063"
+    },
+    {
+      "id": "osm_hydrant_6336442423",
+      "layer": "water",
+      "type": "hydrant",
+      "name": "地下式消防栓 #4222",
+      "facility_no": "4222",
+      "structure_type": "地下式消防栓",
+      "coord": [
+        304490.85,
+        2756937.887,
+        42.006
+      ],
+      "rim_h": 43.206,
+      "invert_h": 42.006,
+      "depth_m": 1.2,
+      "diameter_mm": 150,
+      "source": "Taiwan Water Supply GIS (臺北自來水事業處)",
+      "gov_links": {
+        "portal_url": null,
+        "portal_label": null,
+        "api_url": null,
+        "api_label": null,
+        "osm_url": "https://www.openstreetmap.org/node/6336442423",
+        "osm_label": "OpenStreetMap 設施節點 #6336442423",
+        "nlsc_url": null,
+        "nlsc_label": null
+      },
+      "origin_class": "api_open_data",
+      "osm_url": "https://www.openstreetmap.org/node/6336442423",
+      "osm_label": "OpenStreetMap 設施節點 #6336442423"
+    },
+    {
+      "id": "osm_hydrant_6336456284",
+      "layer": "water",
+      "type": "hydrant",
+      "name": "地下式消防栓 #4322",
+      "facility_no": "4322",
+      "structure_type": "地下式消防栓",
+      "coord": [
+        305150.667,
+        2757212.794,
+        42.022
+      ],
+      "rim_h": 43.222,
+      "invert_h": 42.022,
+      "depth_m": 1.2,
+      "diameter_mm": 150,
+      "source": "Taiwan Water Supply GIS (臺北自來水事業處)",
+      "gov_links": {
+        "portal_url": null,
+        "portal_label": null,
+        "api_url": null,
+        "api_label": null,
+        "osm_url": "https://www.openstreetmap.org/node/6336456284",
+        "osm_label": "OpenStreetMap 設施節點 #6336456284",
+        "nlsc_url": null,
+        "nlsc_label": null
+      },
+      "origin_class": "api_open_data",
+      "osm_url": "https://www.openstreetmap.org/node/6336456284",
+      "osm_label": "OpenStreetMap 設施節點 #6336456284"
+    },
+    {
+      "id": "osm_hydrant_6336458706",
+      "layer": "water",
+      "type": "hydrant",
+      "name": "地下式消防栓 #4222",
+      "facility_no": "4222",
+      "structure_type": "地下式消防栓",
+      "coord": [
+        304686.697,
+        2757100.627,
+        41.927
+      ],
+      "rim_h": 43.127,
+      "invert_h": 41.927,
+      "depth_m": 1.2,
+      "diameter_mm": 150,
+      "source": "Taiwan Water Supply GIS (臺北自來水事業處)",
+      "gov_links": {
+        "portal_url": null,
+        "portal_label": null,
+        "api_url": null,
+        "api_label": null,
+        "osm_url": "https://www.openstreetmap.org/node/6336458706",
+        "osm_label": "OpenStreetMap 設施節點 #6336458706",
+        "nlsc_url": null,
+        "nlsc_label": null
+      },
+      "origin_class": "api_open_data",
+      "osm_url": "https://www.openstreetmap.org/node/6336458706",
+      "osm_label": "OpenStreetMap 設施節點 #6336458706"
+    },
+    {
+      "id": "osm_hydrant_6336462424",
+      "layer": "water",
+      "type": "hydrant",
+      "name": "地下式消防栓 #4322",
+      "facility_no": "4322",
+      "structure_type": "地下式消防栓",
+      "coord": [
+        305303.402,
+        2756891.722,
+        41.988
+      ],
+      "rim_h": 43.188,
+      "invert_h": 41.988,
+      "depth_m": 1.2,
+      "diameter_mm": 150,
+      "source": "Taiwan Water Supply GIS (臺北自來水事業處)",
+      "gov_links": {
+        "portal_url": null,
+        "portal_label": null,
+        "api_url": null,
+        "api_label": null,
+        "osm_url": "https://www.openstreetmap.org/node/6336462424",
+        "osm_label": "OpenStreetMap 設施節點 #6336462424",
+        "nlsc_url": null,
+        "nlsc_label": null
+      },
+      "origin_class": "api_open_data",
+      "osm_url": "https://www.openstreetmap.org/node/6336462424",
+      "osm_label": "OpenStreetMap 設施節點 #6336462424"
+    },
+    {
+      "id": "osm_hydrant_6336462461",
+      "layer": "water",
+      "type": "hydrant",
+      "name": "地下式消防栓 #4323",
+      "facility_no": "4323",
+      "structure_type": "地下式消防栓",
+      "coord": [
+        305103.949,
+        2757361.874,
+        42.02
+      ],
+      "rim_h": 43.22,
+      "invert_h": 42.02,
+      "depth_m": 1.2,
+      "diameter_mm": 150,
+      "source": "Taiwan Water Supply GIS (臺北自來水事業處)",
+      "gov_links": {
+        "portal_url": null,
+        "portal_label": null,
+        "api_url": null,
+        "api_label": null,
+        "osm_url": "https://www.openstreetmap.org/node/6336462461",
+        "osm_label": "OpenStreetMap 設施節點 #6336462461",
+        "nlsc_url": null,
+        "nlsc_label": null
+      },
+      "origin_class": "api_open_data",
+      "osm_url": "https://www.openstreetmap.org/node/6336462461",
+      "osm_label": "OpenStreetMap 設施節點 #6336462461"
+    },
+    {
+      "id": "osm_hydrant_6336468858",
+      "layer": "water",
+      "type": "hydrant",
+      "name": "地下式消防栓 #4221",
+      "facility_no": "4221",
+      "structure_type": "地下式消防栓",
+      "coord": [
+        304792.095,
+        2756636.075,
+        41.975
+      ],
+      "rim_h": 43.175,
+      "invert_h": 41.975,
+      "depth_m": 1.2,
+      "diameter_mm": 150,
+      "source": "Taiwan Water Supply GIS (臺北自來水事業處)",
+      "gov_links": {
+        "portal_url": null,
+        "portal_label": null,
+        "api_url": null,
+        "api_label": null,
+        "osm_url": "https://www.openstreetmap.org/node/6336468858",
+        "osm_label": "OpenStreetMap 設施節點 #6336468858",
+        "nlsc_url": null,
+        "nlsc_label": null
+      },
+      "origin_class": "api_open_data",
+      "osm_url": "https://www.openstreetmap.org/node/6336468858",
+      "osm_label": "OpenStreetMap 設施節點 #6336468858"
+    },
+    {
+      "id": "osm_hydrant_6336469595",
+      "layer": "water",
+      "type": "hydrant",
+      "name": "地下式消防栓 #4222",
+      "facility_no": "4222",
+      "structure_type": "地下式消防栓",
+      "coord": [
+        304735.4,
+        2757172.674,
+        41.886
+      ],
+      "rim_h": 43.086,
+      "invert_h": 41.886,
+      "depth_m": 1.2,
+      "diameter_mm": 150,
+      "source": "Taiwan Water Supply GIS (臺北自來水事業處)",
+      "gov_links": {
+        "portal_url": null,
+        "portal_label": null,
+        "api_url": null,
+        "api_label": null,
+        "osm_url": "https://www.openstreetmap.org/node/6336469595",
+        "osm_label": "OpenStreetMap 設施節點 #6336469595",
+        "nlsc_url": null,
+        "nlsc_label": null
+      },
+      "origin_class": "api_open_data",
+      "osm_url": "https://www.openstreetmap.org/node/6336469595",
+      "osm_label": "OpenStreetMap 設施節點 #6336469595"
+    },
+    {
+      "id": "osm_hydrant_6336473916",
+      "layer": "water",
+      "type": "hydrant",
+      "name": "地下式消防栓 #4322",
+      "facility_no": "4322",
+      "structure_type": "地下式消防栓",
+      "coord": [
+        305334.634,
+        2756713.958,
+        41.984
+      ],
+      "rim_h": 43.184,
+      "invert_h": 41.984,
+      "depth_m": 1.2,
+      "diameter_mm": 150,
+      "source": "Taiwan Water Supply GIS (臺北自來水事業處)",
+      "gov_links": {
+        "portal_url": null,
+        "portal_label": null,
+        "api_url": null,
+        "api_label": null,
+        "osm_url": "https://www.openstreetmap.org/node/6336473916",
+        "osm_label": "OpenStreetMap 設施節點 #6336473916",
+        "nlsc_url": null,
+        "nlsc_label": null
+      },
+      "origin_class": "api_open_data",
+      "osm_url": "https://www.openstreetmap.org/node/6336473916",
+      "osm_label": "OpenStreetMap 設施節點 #6336473916"
+    },
+    {
+      "id": "osm_hydrant_6336482452",
+      "layer": "water",
+      "type": "hydrant",
+      "name": "地下式消防栓 #4322",
+      "facility_no": "4322",
+      "structure_type": "地下式消防栓",
+      "coord": [
+        305235.456,
+        2756986.231,
+        41.995
+      ],
+      "rim_h": 43.195,
+      "invert_h": 41.995,
+      "depth_m": 1.2,
+      "diameter_mm": 150,
+      "source": "Taiwan Water Supply GIS (臺北自來水事業處)",
+      "gov_links": {
+        "portal_url": null,
+        "portal_label": null,
+        "api_url": null,
+        "api_label": null,
+        "osm_url": "https://www.openstreetmap.org/node/6336482452",
+        "osm_label": "OpenStreetMap 設施節點 #6336482452",
+        "nlsc_url": null,
+        "nlsc_label": null
+      },
+      "origin_class": "api_open_data",
+      "osm_url": "https://www.openstreetmap.org/node/6336482452",
+      "osm_label": "OpenStreetMap 設施節點 #6336482452"
+    },
+    {
+      "id": "osm_hydrant_6336486868",
+      "layer": "water",
+      "type": "hydrant",
+      "name": "地下式消防栓 #4321",
+      "facility_no": "4321",
+      "structure_type": "地下式消防栓",
+      "coord": [
+        304839.034,
+        2756631.411,
+        41.975
+      ],
+      "rim_h": 43.175,
+      "invert_h": 41.975,
+      "depth_m": 1.2,
+      "diameter_mm": 150,
+      "source": "Taiwan Water Supply GIS (臺北自來水事業處)",
+      "gov_links": {
+        "portal_url": null,
+        "portal_label": null,
+        "api_url": null,
+        "api_label": null,
+        "osm_url": "https://www.openstreetmap.org/node/6336486868",
+        "osm_label": "OpenStreetMap 設施節點 #6336486868",
+        "nlsc_url": null,
+        "nlsc_label": null
+      },
+      "origin_class": "api_open_data",
+      "osm_url": "https://www.openstreetmap.org/node/6336486868",
+      "osm_label": "OpenStreetMap 設施節點 #6336486868"
+    },
+    {
+      "id": "osm_hydrant_6336740898",
+      "layer": "water",
+      "type": "hydrant",
+      "name": "地下式消防栓 #4222",
+      "facility_no": "4222",
+      "structure_type": "地下式消防栓",
+      "coord": [
+        304769.286,
+        2757261.776,
+        41.976
+      ],
+      "rim_h": 43.176,
+      "invert_h": 41.976,
+      "depth_m": 1.2,
+      "diameter_mm": 150,
+      "source": "Taiwan Water Supply GIS (臺北自來水事業處)",
+      "gov_links": {
+        "portal_url": null,
+        "portal_label": null,
+        "api_url": null,
+        "api_label": null,
+        "osm_url": "https://www.openstreetmap.org/node/6336740898",
+        "osm_label": "OpenStreetMap 設施節點 #6336740898",
+        "nlsc_url": null,
+        "nlsc_label": null
+      },
+      "origin_class": "api_open_data",
+      "osm_url": "https://www.openstreetmap.org/node/6336740898",
+      "osm_label": "OpenStreetMap 設施節點 #6336740898"
+    },
+    {
+      "id": "osm_hydrant_6336741986",
+      "layer": "water",
+      "type": "hydrant",
+      "name": "地下式消防栓 #4322",
+      "facility_no": "4322",
+      "structure_type": "地下式消防栓",
+      "coord": [
+        305350.671,
+        2756897.938,
+        41.991
+      ],
+      "rim_h": 43.191,
+      "invert_h": 41.991,
+      "depth_m": 1.2,
+      "diameter_mm": 150,
+      "source": "Taiwan Water Supply GIS (臺北自來水事業處)",
+      "gov_links": {
+        "portal_url": null,
+        "portal_label": null,
+        "api_url": null,
+        "api_label": null,
+        "osm_url": "https://www.openstreetmap.org/node/6336741986",
+        "osm_label": "OpenStreetMap 設施節點 #6336741986",
+        "nlsc_url": null,
+        "nlsc_label": null
+      },
+      "origin_class": "api_open_data",
+      "osm_url": "https://www.openstreetmap.org/node/6336741986",
+      "osm_label": "OpenStreetMap 設施節點 #6336741986"
+    },
+    {
+      "id": "osm_hydrant_6336742446",
+      "layer": "water",
+      "type": "hydrant",
+      "name": "地下式消防栓 #4223",
+      "facility_no": "4223",
+      "structure_type": "地下式消防栓",
+      "coord": [
+        304782.859,
+        2757353.533,
+        42.003
+      ],
+      "rim_h": 43.203,
+      "invert_h": 42.003,
+      "depth_m": 1.2,
+      "diameter_mm": 150,
+      "source": "Taiwan Water Supply GIS (臺北自來水事業處)",
+      "gov_links": {
+        "portal_url": null,
+        "portal_label": null,
+        "api_url": null,
+        "api_label": null,
+        "osm_url": "https://www.openstreetmap.org/node/6336742446",
+        "osm_label": "OpenStreetMap 設施節點 #6336742446",
+        "nlsc_url": null,
+        "nlsc_label": null
+      },
+      "origin_class": "api_open_data",
+      "osm_url": "https://www.openstreetmap.org/node/6336742446",
+      "osm_label": "OpenStreetMap 設施節點 #6336742446"
+    },
+    {
+      "id": "osm_hydrant_6336744019",
+      "layer": "water",
+      "type": "hydrant",
+      "name": "地下式消防栓 #4221",
+      "facility_no": "4221",
+      "structure_type": "地下式消防栓",
+      "coord": [
+        304664.975,
+        2756568.954,
+        41.983
+      ],
+      "rim_h": 43.183,
+      "invert_h": 41.983,
+      "depth_m": 1.2,
+      "diameter_mm": 150,
+      "source": "Taiwan Water Supply GIS (臺北自來水事業處)",
+      "gov_links": {
+        "portal_url": null,
+        "portal_label": null,
+        "api_url": null,
+        "api_label": null,
+        "osm_url": "https://www.openstreetmap.org/node/6336744019",
+        "osm_label": "OpenStreetMap 設施節點 #6336744019",
+        "nlsc_url": null,
+        "nlsc_label": null
+      },
+      "origin_class": "api_open_data",
+      "osm_url": "https://www.openstreetmap.org/node/6336744019",
+      "osm_label": "OpenStreetMap 設施節點 #6336744019"
+    },
+    {
+      "id": "osm_hydrant_6336747281",
+      "layer": "water",
+      "type": "hydrant",
+      "name": "地下式消防栓 #4322",
+      "facility_no": "4322",
+      "structure_type": "地下式消防栓",
+      "coord": [
+        305147.388,
+        2757299.942,
+        42.02
+      ],
+      "rim_h": 43.22,
+      "invert_h": 42.02,
+      "depth_m": 1.2,
+      "diameter_mm": 150,
+      "source": "Taiwan Water Supply GIS (臺北自來水事業處)",
+      "gov_links": {
+        "portal_url": null,
+        "portal_label": null,
+        "api_url": null,
+        "api_label": null,
+        "osm_url": "https://www.openstreetmap.org/node/6336747281",
+        "osm_label": "OpenStreetMap 設施節點 #6336747281",
+        "nlsc_url": null,
+        "nlsc_label": null
+      },
+      "origin_class": "api_open_data",
+      "osm_url": "https://www.openstreetmap.org/node/6336747281",
+      "osm_label": "OpenStreetMap 設施節點 #6336747281"
+    },
+    {
+      "id": "osm_hydrant_6336749430",
+      "layer": "water",
+      "type": "hydrant",
+      "name": "地下式消防栓 #4323",
+      "facility_no": "4323",
+      "structure_type": "地下式消防栓",
+      "coord": [
+        304825.518,
+        2757441.297,
+        42.011
+      ],
+      "rim_h": 43.211,
+      "invert_h": 42.011,
+      "depth_m": 1.2,
+      "diameter_mm": 150,
+      "source": "Taiwan Water Supply GIS (臺北自來水事業處)",
+      "gov_links": {
+        "portal_url": null,
+        "portal_label": null,
+        "api_url": null,
+        "api_label": null,
+        "osm_url": "https://www.openstreetmap.org/node/6336749430",
+        "osm_label": "OpenStreetMap 設施節點 #6336749430",
+        "nlsc_url": null,
+        "nlsc_label": null
+      },
+      "origin_class": "api_open_data",
+      "osm_url": "https://www.openstreetmap.org/node/6336749430",
+      "osm_label": "OpenStreetMap 設施節點 #6336749430"
+    },
+    {
+      "id": "osm_hydrant_6336751564",
+      "layer": "water",
+      "type": "hydrant",
+      "name": "地下式消防栓 #4222",
+      "facility_no": "4222",
+      "structure_type": "地下式消防栓",
+      "coord": [
+        304449.03,
+        2756836.238,
+        41.999
+      ],
+      "rim_h": 43.199,
+      "invert_h": 41.999,
+      "depth_m": 1.2,
+      "diameter_mm": 150,
+      "source": "Taiwan Water Supply GIS (臺北自來水事業處)",
+      "gov_links": {
+        "portal_url": null,
+        "portal_label": null,
+        "api_url": null,
+        "api_label": null,
+        "osm_url": "https://www.openstreetmap.org/node/6336751564",
+        "osm_label": "OpenStreetMap 設施節點 #6336751564",
+        "nlsc_url": null,
+        "nlsc_label": null
+      },
+      "origin_class": "api_open_data",
+      "osm_url": "https://www.openstreetmap.org/node/6336751564",
+      "osm_label": "OpenStreetMap 設施節點 #6336751564"
+    },
+    {
+      "id": "osm_waterway_259222251",
+      "layer": "storm",
+      "type": "pipe",
+      "name": "新店溪 D=1000mm",
+      "diameter_mm": 1500,
+      "width_m": 1.5,
+      "height_m": 1.4,
+      "length_m": 3282.86,
+      "material": "RC/鋼筋混凝土箱涵",
+      "start_coord": [
+        305287.18,
+        2756161.213,
+        41.14
+      ],
+      "end_coord": [
+        303845.803,
+        2757621.712,
+        41.155
+      ],
+      "start_ground_h": 43.19,
+      "end_ground_h": 43.205,
+      "start_rim_h": 43.19,
+      "end_rim_h": 43.205,
+      "start_invert_h": 41.14,
+      "end_invert_h": 41.155,
+      "start_crown_h": 42.54,
+      "end_crown_h": 42.555,
+      "start_depth_m": 2.05,
+      "end_depth_m": 2.05,
+      "start_cover_m": 0.65,
+      "end_cover_m": 0.65,
+      "depth_m": 2.05,
+      "slope_pct": -0.0,
+      "flow_direction": 1,
+      "coords": [
+        [
+          305287.18,
+          2756161.213,
+          41.14
+        ],
+        [
+          305256.687,
+          2756245.792,
+          41.138
+        ],
+        [
+          305261.983,
+          2756327.946,
+          41.137
+        ],
+        [
+          305281.124,
+          2756373.559,
+          41.137
+        ],
+        [
+          305291.839,
+          2756464.43,
+          41.135
+        ],
+        [
+          305287.159,
+          2756497.874,
+          41.135
+        ],
+        [
+          305271.358,
+          2756505.973,
+          41.134
+        ],
+        [
+          305257.472,
+          2756510.16,
+          41.134
+        ],
+        [
+          305218.833,
+          2756495.395,
+          41.133
+        ],
+        [
+          305176.657,
+          2756491.127,
+          41.132
+        ],
+        [
+          305113.412,
+          2756561.619,
+          41.128
+        ],
+        [
+          305059.862,
+          2756703.428,
+          41.114
+        ],
+        [
+          304977.729,
+          2756892.818,
+          40.758
+        ],
+        [
+          304814.754,
+          2756964.696,
+          40.776
+        ],
+        [
+          304730.533,
+          2756964.371,
+          41.189
+        ],
+        [
+          304649.561,
+          2756914.027,
+          41.149
+        ],
+        [
+          304453.05,
+          2756693.599,
+          41.143
+        ],
+        [
+          304231.32,
+          2756534.748,
+          41.146
+        ],
+        [
+          304033.12,
+          2756483.657,
+          41.148
+        ],
+        [
+          303918.858,
+          2756531.557,
+          41.149
+        ],
+        [
+          303886.683,
+          2756630.001,
+          41.15
+        ],
+        [
+          303887.092,
+          2756711.05,
+          41.15
+        ],
+        [
+          303886.274,
+          2756734.141,
+          41.15
+        ],
+        [
+          303947.251,
+          2756920.345,
+          41.152
+        ],
+        [
+          303905.183,
+          2757156.365,
+          41.154
+        ],
+        [
+          303868.763,
+          2757402.697,
+          41.155
+        ],
+        [
+          303853.698,
+          2757501.651,
+          41.155
+        ],
+        [
+          303845.803,
+          2757621.712,
+          41.155
+        ]
+      ],
+      "source": "Taiwan Hydraulic & Culvert GIS (OpenStreetMap Taiwan)",
+      "gov_links": {
+        "portal_url": null,
+        "portal_label": null,
+        "api_url": null,
+        "api_label": null,
+        "osm_url": "https://www.openstreetmap.org/way/259222251",
+        "osm_label": "OpenStreetMap 圖資線段 #259222251",
+        "nlsc_url": null,
+        "nlsc_label": null
+      },
+      "origin_class": "api_open_data",
+      "osm_url": "https://www.openstreetmap.org/way/259222251",
+      "osm_label": "OpenStreetMap 圖資線段 #259222251"
+    },
+    {
+      "id": "osm_waterway_481238496",
+      "layer": "storm",
+      "type": "box_culvert",
+      "name": "排水渠道 (canal) (1.5x1.4m)",
+      "diameter_mm": 1500,
+      "width_m": 1.5,
+      "height_m": 1.4,
+      "length_m": 27.25,
+      "material": "RC/鋼筋混凝土箱涵",
+      "start_coord": [
+        305113.394,
+        2757160.351,
+        41.177
+      ],
+      "end_coord": [
+        305094.481,
+        2757178.973,
+        41.179
+      ],
+      "start_ground_h": 43.227,
+      "end_ground_h": 43.229,
+      "start_rim_h": 43.227,
+      "end_rim_h": 43.229,
+      "start_invert_h": 41.177,
+      "end_invert_h": 41.179,
+      "start_crown_h": 42.577,
+      "end_crown_h": 42.579,
+      "start_depth_m": 2.05,
+      "end_depth_m": 2.05,
+      "start_cover_m": 0.65,
+      "end_cover_m": 0.65,
+      "depth_m": 2.05,
+      "slope_pct": -0.007,
+      "flow_direction": 1,
+      "coords": [
+        [
+          305113.394,
+          2757160.351,
+          41.177
+        ],
+        [
+          305105.449,
+          2757164.141,
+          41.178
+        ],
+        [
+          305094.481,
+          2757178.973,
+          41.179
+        ]
+      ],
+      "source": "Taiwan Hydraulic & Culvert GIS (OpenStreetMap Taiwan)",
+      "gov_links": {
+        "portal_url": null,
+        "portal_label": null,
+        "api_url": null,
+        "api_label": null,
+        "osm_url": "https://www.openstreetmap.org/way/481238496",
+        "osm_label": "OpenStreetMap 圖資線段 #481238496",
+        "nlsc_url": null,
+        "nlsc_label": null
+      },
+      "origin_class": "api_open_data",
+      "osm_url": "https://www.openstreetmap.org/way/481238496",
+      "osm_label": "OpenStreetMap 圖資線段 #481238496"
+    },
+    {
+      "id": "osm_waterway_481238505",
+      "layer": "storm",
+      "type": "pipe",
+      "name": "排水渠道 (stream) D=1000mm",
+      "diameter_mm": 1000,
+      "width_m": 1.0,
+      "height_m": 1.0,
+      "length_m": 900.07,
+      "material": "RC/鋼筋混凝土箱涵",
+      "start_coord": [
+        305862.955,
+        2757526.725,
+        41.455
+      ],
+      "end_coord": [
+        305179.385,
+        2757097.048,
+        41.314
+      ],
+      "start_ground_h": 43.205,
+      "end_ground_h": 43.214,
+      "start_rim_h": 43.205,
+      "end_rim_h": 43.214,
+      "start_invert_h": 41.455,
+      "end_invert_h": 41.314,
+      "start_crown_h": 42.455,
+      "end_crown_h": 42.314,
+      "start_depth_m": 1.75,
+      "end_depth_m": 1.9,
+      "start_cover_m": 0.75,
+      "end_cover_m": 0.9,
+      "depth_m": 1.82,
+      "slope_pct": 0.016,
+      "flow_direction": 1,
+      "coords": [
+        [
+          305862.955,
+          2757526.725,
+          41.455
+        ],
+        [
+          305829.383,
+          2757503.826,
+          41.45
+        ],
+        [
+          305809.183,
+          2757478.545,
+          41.445
+        ],
+        [
+          305794.376,
+          2757473.445,
+          41.44
+        ],
+        [
+          305786.841,
+          2757461.019,
+          41.436
+        ],
+        [
+          305753.993,
+          2757438.954,
+          41.431
+        ],
+        [
+          305731.799,
+          2757434.533,
+          41.426
+        ],
+        [
+          305711.836,
+          2757413.174,
+          41.421
+        ],
+        [
+          305690.617,
+          2757402.455,
+          41.416
+        ],
+        [
+          305661.926,
+          2757403.668,
+          41.412
+        ],
+        [
+          305646.539,
+          2757392.252,
+          41.408
+        ],
+        [
+          305634.997,
+          2757351.576,
+          41.402
+        ],
+        [
+          305619.613,
+          2757344.081,
+          41.397
+        ],
+        [
+          305593.283,
+          2757308.64,
+          41.392
+        ],
+        [
+          305566.688,
+          2757293.568,
+          41.388
+        ],
+        [
+          305532.22,
+          2757262.071,
+          41.383
+        ],
+        [
+          305528.377,
+          2757255.576,
+          41.379
+        ],
+        [
+          305536.184,
+          2757236.002,
+          41.373
+        ],
+        [
+          305527.281,
+          2757219.428,
+          41.368
+        ],
+        [
+          305520.857,
+          2757217.021,
+          41.363
+        ],
+        [
+          305502.94,
+          2757228.878,
+          41.358
+        ],
+        [
+          305492.844,
+          2757227.874,
+          41.354
+        ],
+        [
+          305436.134,
+          2757186.262,
+          41.35
+        ],
+        [
+          305414.083,
+          2757193.838,
+          41.345
+        ],
+        [
+          305381.582,
+          2757182.941,
+          41.341
+        ],
+        [
+          305327.9,
+          2757184.497,
+          41.338
+        ],
+        [
+          305315.855,
+          2757188.026,
+          41.334
+        ],
+        [
+          305284.622,
+          2757175.816,
+          41.33
+        ],
+        [
+          305259.794,
+          2757158.436,
+          41.326
+        ],
+        [
+          305222.359,
+          2757143.454,
+          41.323
+        ],
+        [
+          305203.87,
+          2757104.512,
+          41.317
+        ],
+        [
+          305179.385,
+          2757097.048,
+          41.314
+        ]
+      ],
+      "source": "Taiwan Hydraulic & Culvert GIS (OpenStreetMap Taiwan)",
+      "gov_links": {
+        "portal_url": null,
+        "portal_label": null,
+        "api_url": null,
+        "api_label": null,
+        "osm_url": "https://www.openstreetmap.org/way/481238505",
+        "osm_label": "OpenStreetMap 圖資線段 #481238505",
+        "nlsc_url": null,
+        "nlsc_label": null
+      },
+      "origin_class": "api_open_data",
+      "osm_url": "https://www.openstreetmap.org/way/481238505",
+      "osm_label": "OpenStreetMap 圖資線段 #481238505"
+    },
+    {
+      "id": "osm_waterway_487011226",
+      "layer": "storm",
+      "type": "pipe",
+      "name": "排水渠道 (stream) D=1000mm",
+      "diameter_mm": 1000,
+      "width_m": 1.0,
+      "height_m": 1.0,
+      "length_m": 306.65,
+      "material": "RC/鋼筋混凝土箱涵",
+      "start_coord": [
+        304864.139,
+        2757432.236,
+        41.462
+      ],
+      "end_coord": [
+        304813.815,
+        2757156.849,
+        41.029
+      ],
+      "start_ground_h": 43.212,
+      "end_ground_h": 42.929,
+      "start_rim_h": 43.212,
+      "end_rim_h": 42.929,
+      "start_invert_h": 41.462,
+      "end_invert_h": 41.029,
+      "start_crown_h": 42.462,
+      "end_crown_h": 42.029,
+      "start_depth_m": 1.75,
+      "end_depth_m": 1.9,
+      "start_cover_m": 0.75,
+      "end_cover_m": 0.9,
+      "depth_m": 1.82,
+      "slope_pct": 0.141,
+      "flow_direction": 1,
+      "coords": [
+        [
+          304864.139,
+          2757432.236,
+          41.462
+        ],
+        [
+          304855.813,
+          2757420.295,
+          41.454
+        ],
+        [
+          304844.603,
+          2757409.717,
+          41.444
+        ],
+        [
+          304836.161,
+          2757401.553,
+          41.435
+        ],
+        [
+          304833.135,
+          2757390.486,
+          41.427
+        ],
+        [
+          304831.071,
+          2757381.14,
+          41.417
+        ],
+        [
+          304833.222,
+          2757368.577,
+          41.408
+        ],
+        [
+          304838.815,
+          2757359.262,
+          41.4
+        ],
+        [
+          304846.328,
+          2757349.578,
+          41.392
+        ],
+        [
+          304845.59,
+          2757342.142,
+          41.383
+        ],
+        [
+          304836.861,
+          2757337.533,
+          41.374
+        ],
+        [
+          304830.497,
+          2757324.958,
+          41.362
+        ],
+        [
+          304830.346,
+          2757309.893,
+          41.352
+        ],
+        [
+          304843.928,
+          2757275.145,
+          41.341
+        ],
+        [
+          304841.615,
+          2757262.486,
+          41.328
+        ],
+        [
+          304832.082,
+          2757249.267,
+          41.312
+        ],
+        [
+          304830.882,
+          2757236.236,
+          41.296
+        ],
+        [
+          304832.101,
+          2757221.952,
+          41.279
+        ],
+        [
+          304813.815,
+          2757156.849,
+          41.029
+        ]
+      ],
+      "source": "Taiwan Hydraulic & Culvert GIS (OpenStreetMap Taiwan)",
+      "gov_links": {
+        "portal_url": null,
+        "portal_label": null,
+        "api_url": null,
+        "api_label": null,
+        "osm_url": "https://www.openstreetmap.org/way/487011226",
+        "osm_label": "OpenStreetMap 圖資線段 #487011226",
+        "nlsc_url": null,
+        "nlsc_label": null
+      },
+      "origin_class": "api_open_data",
+      "osm_url": "https://www.openstreetmap.org/way/487011226",
+      "osm_label": "OpenStreetMap 圖資線段 #487011226"
+    },
+    {
+      "id": "osm_waterway_503903865",
+      "layer": "storm",
+      "type": "box_culvert",
+      "name": "地下箱涵 (1.5x1.4m)",
+      "diameter_mm": 1500,
+      "width_m": 1.5,
+      "height_m": 1.4,
+      "length_m": 445.93,
+      "material": "RC/鋼筋混凝土箱涵",
+      "start_coord": [
+        305232.954,
+        2756756.891,
+        40.976
+      ],
+      "end_coord": [
+        305113.394,
+        2757160.351,
+        40.877
+      ],
+      "start_ground_h": 43.176,
+      "end_ground_h": 43.227,
+      "start_rim_h": 43.176,
+      "end_rim_h": 43.227,
+      "start_invert_h": 40.976,
+      "end_invert_h": 40.877,
+      "start_crown_h": 42.376,
+      "end_crown_h": 42.277,
+      "start_depth_m": 2.2,
+      "end_depth_m": 2.35,
+      "start_cover_m": 0.8,
+      "end_cover_m": 0.95,
+      "depth_m": 2.28,
+      "slope_pct": 0.022,
+      "flow_direction": 1,
+      "coords": [
+        [
+          305232.954,
+          2756756.891,
+          40.976
+        ],
+        [
+          305230.883,
+          2756794.743,
+          40.959
+        ],
+        [
+          305243.415,
+          2756845.723,
+          40.947
+        ],
+        [
+          305240.579,
+          2756880.249,
+          40.932
+        ],
+        [
+          305239.42,
+          2756899.717,
+          40.917
+        ],
+        [
+          305216.618,
+          2757006.348,
+          40.916
+        ],
+        [
+          305179.385,
+          2757097.048,
+          40.914
+        ],
+        [
+          305169.141,
+          2757114.84,
+          40.9
+        ],
+        [
+          305148.882,
+          2757141.774,
+          40.888
+        ],
+        [
+          305113.394,
+          2757160.351,
+          40.877
+        ]
+      ],
+      "source": "Taiwan Hydraulic & Culvert GIS (OpenStreetMap Taiwan)",
+      "gov_links": {
+        "portal_url": null,
+        "portal_label": null,
+        "api_url": null,
+        "api_label": null,
+        "osm_url": "https://www.openstreetmap.org/way/503903865",
+        "osm_label": "OpenStreetMap 圖資線段 #503903865",
+        "nlsc_url": null,
+        "nlsc_label": null
+      },
+      "origin_class": "api_open_data",
+      "osm_url": "https://www.openstreetmap.org/way/503903865",
+      "osm_label": "OpenStreetMap 圖資線段 #503903865"
+    },
+    {
+      "id": "osm_waterway_503903866",
+      "layer": "storm",
+      "type": "box_culvert",
+      "name": "排水渠道 (canal) (1.5x1.4m)",
+      "diameter_mm": 1500,
+      "width_m": 1.5,
+      "height_m": 1.4,
+      "length_m": 179.14,
+      "material": "RC/鋼筋混凝土箱涵",
+      "start_coord": [
+        305293.92,
+        2756589.892,
+        41.133
+      ],
+      "end_coord": [
+        305232.954,
+        2756756.891,
+        41.126
+      ],
+      "start_ground_h": 43.183,
+      "end_ground_h": 43.176,
+      "start_rim_h": 43.183,
+      "end_rim_h": 43.176,
+      "start_invert_h": 41.133,
+      "end_invert_h": 41.126,
+      "start_crown_h": 42.533,
+      "end_crown_h": 42.526,
+      "start_depth_m": 2.05,
+      "end_depth_m": 2.05,
+      "start_cover_m": 0.65,
+      "end_cover_m": 0.65,
+      "depth_m": 2.05,
+      "slope_pct": 0.004,
+      "flow_direction": 1,
+      "coords": [
+        [
+          305293.92,
+          2756589.892,
+          41.133
+        ],
+        [
+          305286.052,
+          2756607.25,
+          41.133
+        ],
+        [
+          305270.489,
+          2756629.197,
+          41.131
+        ],
+        [
+          305263.722,
+          2756646.549,
+          41.131
+        ],
+        [
+          305250.915,
+          2756693.949,
+          41.129
+        ],
+        [
+          305232.954,
+          2756756.891,
+          41.126
+        ]
+      ],
+      "source": "Taiwan Hydraulic & Culvert GIS (OpenStreetMap Taiwan)",
+      "gov_links": {
+        "portal_url": null,
+        "portal_label": null,
+        "api_url": null,
+        "api_label": null,
+        "osm_url": "https://www.openstreetmap.org/way/503903866",
+        "osm_label": "OpenStreetMap 圖資線段 #503903866",
+        "nlsc_url": null,
+        "nlsc_label": null
+      },
+      "origin_class": "api_open_data",
+      "osm_url": "https://www.openstreetmap.org/way/503903866",
+      "osm_label": "OpenStreetMap 圖資線段 #503903866"
+    },
+    {
+      "id": "osm_waterway_504118311",
+      "layer": "storm",
+      "type": "pipe",
+      "name": "排水渠道 (sluice_gate) D=1000mm",
+      "diameter_mm": 1000,
+      "width_m": 1.0,
+      "height_m": 1.0,
+      "length_m": 27.76,
+      "material": "RC/鋼筋混凝土箱涵",
+      "start_coord": [
+        305073.933,
+        2757131.649,
+        41.484
+      ],
+      "end_coord": [
+        305100.7,
+        2757124.291,
+        41.329
+      ],
+      "start_ground_h": 43.234,
+      "end_ground_h": 43.229,
+      "start_rim_h": 43.234,
+      "end_rim_h": 43.229,
+      "start_invert_h": 41.484,
+      "end_invert_h": 41.329,
+      "start_crown_h": 42.484,
+      "end_crown_h": 42.329,
+      "start_depth_m": 1.75,
+      "end_depth_m": 1.9,
+      "start_cover_m": 0.75,
+      "end_cover_m": 0.9,
+      "depth_m": 1.82,
+      "slope_pct": 0.558,
+      "flow_direction": 1,
+      "coords": [
+        [
+          305073.933,
+          2757131.649,
+          41.484
+        ],
+        [
+          305088.748,
+          2757127.577,
+          41.406
+        ],
+        [
+          305100.7,
+          2757124.291,
+          41.329
+        ]
+      ],
+      "source": "Taiwan Hydraulic & Culvert GIS (OpenStreetMap Taiwan)",
+      "gov_links": {
+        "portal_url": null,
+        "portal_label": null,
+        "api_url": null,
+        "api_label": null,
+        "osm_url": "https://www.openstreetmap.org/way/504118311",
+        "osm_label": "OpenStreetMap 圖資線段 #504118311",
+        "nlsc_url": null,
+        "nlsc_label": null
+      },
+      "origin_class": "api_open_data",
+      "osm_url": "https://www.openstreetmap.org/way/504118311",
+      "osm_label": "OpenStreetMap 圖資線段 #504118311"
+    },
+    {
+      "id": "osm_waterway_504118399",
+      "layer": "storm",
+      "type": "pipe",
+      "name": "排水渠道 (sluice_gate) D=1000mm",
+      "diameter_mm": 1000,
+      "width_m": 1.0,
+      "height_m": 1.0,
+      "length_m": 25.18,
+      "material": "RC/鋼筋混凝土箱涵",
+      "start_coord": [
+        305095.202,
+        2757183.096,
+        41.479
+      ],
+      "end_coord": [
+        305088.703,
+        2757158.79,
+        41.331
+      ],
+      "start_ground_h": 43.229,
+      "end_ground_h": 43.231,
+      "start_rim_h": 43.229,
+      "end_rim_h": 43.231,
+      "start_invert_h": 41.479,
+      "end_invert_h": 41.331,
+      "start_crown_h": 42.479,
+      "end_crown_h": 42.331,
+      "start_depth_m": 1.75,
+      "end_depth_m": 1.9,
+      "start_cover_m": 0.75,
+      "end_cover_m": 0.9,
+      "depth_m": 1.82,
+      "slope_pct": 0.588,
+      "flow_direction": 1,
+      "coords": [
+        [
+          305095.202,
+          2757183.096,
+          41.479
+        ],
+        [
+          305094.481,
+          2757178.973,
+          41.404
+        ],
+        [
+          305088.703,
+          2757158.79,
+          41.331
+        ]
+      ],
+      "source": "Taiwan Hydraulic & Culvert GIS (OpenStreetMap Taiwan)",
+      "gov_links": {
+        "portal_url": null,
+        "portal_label": null,
+        "api_url": null,
+        "api_label": null,
+        "osm_url": "https://www.openstreetmap.org/way/504118399",
+        "osm_label": "OpenStreetMap 圖資線段 #504118399",
+        "nlsc_url": null,
+        "nlsc_label": null
+      },
+      "origin_class": "api_open_data",
+      "osm_url": "https://www.openstreetmap.org/way/504118399",
+      "osm_label": "OpenStreetMap 圖資線段 #504118399"
+    },
+    {
+      "id": "osm_waterway_504118400",
+      "layer": "storm",
+      "type": "box_culvert",
+      "name": "粗坑發電廠導水線 (1.5x1.4m)",
+      "diameter_mm": 1500,
+      "width_m": 1.5,
+      "height_m": 1.4,
+      "length_m": 643.25,
+      "material": "RC/鋼筋混凝土箱涵",
+      "start_coord": [
+        304981.058,
+        2757199.276,
+        41.191
+      ],
+      "end_coord": [
+        305015.823,
+        2757797.317,
+        41.161
+      ],
+      "start_ground_h": 43.241,
+      "end_ground_h": 43.211,
+      "start_rim_h": 43.241,
+      "end_rim_h": 43.211,
+      "start_invert_h": 41.191,
+      "end_invert_h": 41.161,
+      "start_crown_h": 42.591,
+      "end_crown_h": 42.561,
+      "start_depth_m": 2.05,
+      "end_depth_m": 2.05,
+      "start_cover_m": 0.65,
+      "end_cover_m": 0.65,
+      "depth_m": 2.05,
+      "slope_pct": 0.005,
+      "flow_direction": 1,
+      "coords": [
+        [
+          304981.058,
+          2757199.276,
+          41.191
+        ],
+        [
+          304958.696,
+          2757203.816,
+          41.19
+        ],
+        [
+          304942.522,
+          2757217.154,
+          41.184
+        ],
+        [
+          304934.018,
+          2757239.583,
+          41.178
+        ],
+        [
+          304928.449,
+          2757417.406,
+          41.166
+        ],
+        [
+          304931.692,
+          2757457.638,
+          41.165
+        ],
+        [
+          304948.607,
+          2757481.188,
+          41.165
+        ],
+        [
+          304953.41,
+          2757499.916,
+          41.165
+        ],
+        [
+          304989.52,
+          2757588.197,
+          41.163
+        ],
+        [
+          305010.412,
+          2757642.722,
+          41.163
+        ],
+        [
+          305017.432,
+          2757715.844,
+          41.162
+        ],
+        [
+          305018.84,
+          2757760.234,
+          41.161
+        ],
+        [
+          305017.284,
+          2757787.941,
+          41.161
+        ],
+        [
+          305015.823,
+          2757797.317,
+          41.161
+        ]
+      ],
+      "source": "Taiwan Hydraulic & Culvert GIS (OpenStreetMap Taiwan)",
+      "gov_links": {
+        "portal_url": null,
+        "portal_label": null,
+        "api_url": null,
+        "api_label": null,
+        "osm_url": "https://www.openstreetmap.org/way/504118400",
+        "osm_label": "OpenStreetMap 圖資線段 #504118400",
+        "nlsc_url": null,
+        "nlsc_label": null
+      },
+      "origin_class": "api_open_data",
+      "osm_url": "https://www.openstreetmap.org/way/504118400",
+      "osm_label": "OpenStreetMap 圖資線段 #504118400"
+    },
+    {
+      "id": "osm_waterway_504118401",
+      "layer": "storm",
+      "type": "box_culvert",
+      "name": "粗坑發電廠導水線 (1.5x1.4m)",
+      "diameter_mm": 1500,
+      "width_m": 1.5,
+      "height_m": 1.4,
+      "length_m": 115.23,
+      "material": "RC/鋼筋混凝土箱涵",
+      "start_coord": [
+        305094.481,
+        2757178.973,
+        41.029
+      ],
+      "end_coord": [
+        304981.058,
+        2757199.276,
+        40.891
+      ],
+      "start_ground_h": 43.229,
+      "end_ground_h": 43.241,
+      "start_rim_h": 43.229,
+      "end_rim_h": 43.241,
+      "start_invert_h": 41.029,
+      "end_invert_h": 40.891,
+      "start_crown_h": 42.429,
+      "end_crown_h": 42.291,
+      "start_depth_m": 2.2,
+      "end_depth_m": 2.35,
+      "start_cover_m": 0.8,
+      "end_cover_m": 0.95,
+      "depth_m": 2.28,
+      "slope_pct": 0.12,
+      "flow_direction": 1,
+      "coords": [
+        [
+          305094.481,
+          2757178.973,
+          41.029
+        ],
+        [
+          304981.058,
+          2757199.276,
+          40.891
+        ]
+      ],
+      "source": "Taiwan Hydraulic & Culvert GIS (OpenStreetMap Taiwan)",
+      "gov_links": {
+        "portal_url": null,
+        "portal_label": null,
+        "api_url": null,
+        "api_label": null,
+        "osm_url": "https://www.openstreetmap.org/way/504118401",
+        "osm_label": "OpenStreetMap 圖資線段 #504118401",
+        "nlsc_url": null,
+        "nlsc_label": null
+      },
+      "origin_class": "api_open_data",
+      "osm_url": "https://www.openstreetmap.org/way/504118401",
+      "osm_label": "OpenStreetMap 圖資線段 #504118401"
+    },
+    {
+      "id": "osm_waterway_619107060",
+      "layer": "storm",
+      "type": "box_culvert",
+      "name": "地下箱涵 (1.5x1.4m)",
+      "diameter_mm": 1500,
+      "width_m": 1.5,
+      "height_m": 1.4,
+      "length_m": 106.06,
+      "material": "RC/鋼筋混凝土箱涵",
+      "start_coord": [
+        305298.175,
+        2756483.973,
+        40.985
+      ],
+      "end_coord": [
+        305293.92,
+        2756589.892,
+        40.833
+      ],
+      "start_ground_h": 43.185,
+      "end_ground_h": 43.183,
+      "start_rim_h": 43.185,
+      "end_rim_h": 43.183,
+      "start_invert_h": 40.985,
+      "end_invert_h": 40.833,
+      "start_crown_h": 42.385,
+      "end_crown_h": 42.233,
+      "start_depth_m": 2.2,
+      "end_depth_m": 2.35,
+      "start_cover_m": 0.8,
+      "end_cover_m": 0.95,
+      "depth_m": 2.28,
+      "slope_pct": 0.143,
+      "flow_direction": 1,
+      "coords": [
+        [
+          305298.175,
+          2756483.973,
+          40.985
+        ],
+        [
+          305295.326,
+          2756516.615,
+          40.935
+        ],
+        [
+          305294.589,
+          2756564.363,
+          40.884
+        ],
+        [
+          305293.92,
+          2756589.892,
+          40.833
+        ]
+      ],
+      "source": "Taiwan Hydraulic & Culvert GIS (OpenStreetMap Taiwan)",
+      "gov_links": {
+        "portal_url": null,
+        "portal_label": null,
+        "api_url": null,
+        "api_label": null,
+        "osm_url": "https://www.openstreetmap.org/way/619107060",
+        "osm_label": "OpenStreetMap 圖資線段 #619107060",
+        "nlsc_url": null,
+        "nlsc_label": null
+      },
+      "origin_class": "api_open_data",
+      "osm_url": "https://www.openstreetmap.org/way/619107060",
+      "osm_label": "OpenStreetMap 圖資線段 #619107060"
+    },
+    {
+      "id": "osm_waterway_1167445843",
+      "layer": "storm",
+      "type": "box_culvert",
+      "name": "翡翠水庫原水專管 (1.5x1.4m)",
+      "diameter_mm": 1500,
+      "width_m": 1.5,
+      "height_m": 1.4,
+      "length_m": 231.21,
+      "material": "RC/鋼筋混凝土箱涵",
+      "start_coord": [
+        305407.887,
+        2756388.724,
+        40.989
+      ],
+      "end_coord": [
+        305293.92,
+        2756589.892,
+        40.833
+      ],
+      "start_ground_h": 43.189,
+      "end_ground_h": 43.183,
+      "start_rim_h": 43.189,
+      "end_rim_h": 43.183,
+      "start_invert_h": 40.989,
+      "end_invert_h": 40.833,
+      "start_crown_h": 42.389,
+      "end_crown_h": 42.233,
+      "start_depth_m": 2.2,
+      "end_depth_m": 2.35,
+      "start_cover_m": 0.8,
+      "end_cover_m": 0.95,
+      "depth_m": 2.28,
+      "slope_pct": 0.067,
+      "flow_direction": 1,
+      "coords": [
+        [
+          305407.887,
+          2756388.724,
+          40.989
+        ],
+        [
+          305293.92,
+          2756589.892,
+          40.833
+        ]
+      ],
+      "source": "Taiwan Hydraulic & Culvert GIS (OpenStreetMap Taiwan)",
+      "gov_links": {
+        "portal_url": null,
+        "portal_label": null,
+        "api_url": null,
+        "api_label": null,
+        "osm_url": "https://www.openstreetmap.org/way/1167445843",
+        "osm_label": "OpenStreetMap 圖資線段 #1167445843",
+        "nlsc_url": null,
+        "nlsc_label": null
+      },
+      "origin_class": "api_open_data",
+      "osm_url": "https://www.openstreetmap.org/way/1167445843",
+      "osm_label": "OpenStreetMap 圖資線段 #1167445843"
+    },
+    {
+      "id": "osm_waterway_1394460956",
+      "layer": "storm",
+      "type": "box_culvert",
+      "name": "排水渠道 (drain) (1.0x1.0m)",
+      "diameter_mm": 1000,
+      "width_m": 1.0,
+      "height_m": 1.0,
+      "length_m": 22.36,
+      "material": "RC/鋼筋混凝土箱涵",
+      "start_coord": [
+        304740.256,
+        2756709.394,
+        41.42
+      ],
+      "end_coord": [
+        304753.561,
+        2756726.793,
+        41.268
+      ],
+      "start_ground_h": 43.17,
+      "end_ground_h": 43.168,
+      "start_rim_h": 43.17,
+      "end_rim_h": 43.168,
+      "start_invert_h": 41.42,
+      "end_invert_h": 41.268,
+      "start_crown_h": 42.42,
+      "end_crown_h": 42.268,
+      "start_depth_m": 1.75,
+      "end_depth_m": 1.9,
+      "start_cover_m": 0.75,
+      "end_cover_m": 0.9,
+      "depth_m": 1.82,
+      "slope_pct": 0.68,
+      "flow_direction": 1,
+      "coords": [
+        [
+          304740.256,
+          2756709.394,
+          41.42
+        ],
+        [
+          304742.464,
+          2756715.662,
+          41.345
+        ],
+        [
+          304753.561,
+          2756726.793,
+          41.268
+        ]
+      ],
+      "source": "Taiwan Hydraulic & Culvert GIS (OpenStreetMap Taiwan)",
+      "gov_links": {
+        "portal_url": null,
+        "portal_label": null,
+        "api_url": null,
+        "api_label": null,
+        "osm_url": "https://www.openstreetmap.org/way/1394460956",
+        "osm_label": "OpenStreetMap 圖資線段 #1394460956",
+        "nlsc_url": null,
+        "nlsc_label": null
+      },
+      "origin_class": "api_open_data",
+      "osm_url": "https://www.openstreetmap.org/way/1394460956",
+      "osm_label": "OpenStreetMap 圖資線段 #1394460956"
+    },
+    {
+      "id": "osm_waterway_1394460957",
+      "layer": "storm",
+      "type": "box_culvert",
+      "name": "廣興圳三支線 (1.0x1.0m)",
+      "diameter_mm": 1000,
+      "width_m": 1.0,
+      "height_m": 1.0,
+      "length_m": 134.36,
+      "material": "RC/鋼筋混凝土箱涵",
+      "start_coord": [
+        304951.626,
+        2756658.3,
+        41.421
+      ],
+      "end_coord": [
+        304845.098,
+        2756703.887,
+        41.27
+      ],
+      "start_ground_h": 43.171,
+      "end_ground_h": 43.17,
+      "start_rim_h": 43.171,
+      "end_rim_h": 43.17,
+      "start_invert_h": 41.421,
+      "end_invert_h": 41.27,
+      "start_crown_h": 42.421,
+      "end_crown_h": 42.27,
+      "start_depth_m": 1.75,
+      "end_depth_m": 1.9,
+      "start_cover_m": 0.75,
+      "end_cover_m": 0.9,
+      "depth_m": 1.82,
+      "slope_pct": 0.112,
+      "flow_direction": 1,
+      "coords": [
+        [
+          304951.626,
+          2756658.3,
+          41.421
+        ],
+        [
+          304932.404,
+          2756670.751,
+          41.396
+        ],
+        [
+          304900.787,
+          2756683.562,
+          41.371
+        ],
+        [
+          304889.811,
+          2756667.413,
+          41.347
+        ],
+        [
+          304870.797,
+          2756680.95,
+          41.322
+        ],
+        [
+          304856.175,
+          2756694.904,
+          41.296
+        ],
+        [
+          304845.098,
+          2756703.887,
+          41.27
+        ]
+      ],
+      "source": "Taiwan Hydraulic & Culvert GIS (OpenStreetMap Taiwan)",
+      "gov_links": {
+        "portal_url": null,
+        "portal_label": null,
+        "api_url": null,
+        "api_label": null,
+        "osm_url": "https://www.openstreetmap.org/way/1394460957",
+        "osm_label": "OpenStreetMap 圖資線段 #1394460957",
+        "nlsc_url": null,
+        "nlsc_label": null
+      },
+      "origin_class": "api_open_data",
+      "osm_url": "https://www.openstreetmap.org/way/1394460957",
+      "osm_label": "OpenStreetMap 圖資線段 #1394460957"
+    },
+    {
+      "id": "osm_waterway_1394460965",
+      "layer": "storm",
+      "type": "box_culvert",
+      "name": "廣興圳二支線 (1.0x1.0m)",
+      "diameter_mm": 1000,
+      "width_m": 1.0,
+      "height_m": 1.0,
+      "length_m": 811.21,
+      "material": "RC/鋼筋混凝土箱涵",
+      "start_coord": [
+        304908.696,
+        2756484.005,
+        41.43
+      ],
+      "end_coord": [
+        304496.826,
+        2756376.064,
+        41.29
+      ],
+      "start_ground_h": 43.18,
+      "end_ground_h": 43.19,
+      "start_rim_h": 43.18,
+      "end_rim_h": 43.19,
+      "start_invert_h": 41.43,
+      "end_invert_h": 41.29,
+      "start_crown_h": 42.43,
+      "end_crown_h": 42.29,
+      "start_depth_m": 1.75,
+      "end_depth_m": 1.9,
+      "start_cover_m": 0.75,
+      "end_cover_m": 0.9,
+      "depth_m": 1.82,
+      "slope_pct": 0.017,
+      "flow_direction": 1,
+      "coords": [
+        [
+          304908.696,
+          2756484.005,
+          41.43
+        ],
+        [
+          304904.81,
+          2756490.857,
+          41.425
+        ],
+        [
+          304897.999,
+          2756498.916,
+          41.421
+        ],
+        [
+          304880.07,
+          2756529.017,
+          41.415
+        ],
+        [
+          304860.272,
+          2756551.711,
+          41.41
+        ],
+        [
+          304847.55,
+          2756565.528,
+          41.405
+        ],
+        [
+          304791.845,
+          2756640.482,
+          41.398
+        ],
+        [
+          304768.265,
+          2756674.405,
+          41.391
+        ],
+        [
+          304740.256,
+          2756709.394,
+          41.384
+        ],
+        [
+          304735.96,
+          2756707.76,
+          41.38
+        ],
+        [
+          304735.116,
+          2756698.995,
+          41.377
+        ],
+        [
+          304732.3,
+          2756690.832,
+          41.373
+        ],
+        [
+          304708.203,
+          2756671.739,
+          41.371
+        ],
+        [
+          304695.309,
+          2756660.312,
+          41.368
+        ],
+        [
+          304671.524,
+          2756628.96,
+          41.366
+        ],
+        [
+          304673.182,
+          2756621.013,
+          41.362
+        ],
+        [
+          304695.984,
+          2756592.272,
+          41.357
+        ],
+        [
+          304697.645,
+          2756583.727,
+          41.354
+        ],
+        [
+          304701.107,
+          2756581.792,
+          41.349
+        ],
+        [
+          304717.448,
+          2756559.693,
+          41.345
+        ],
+        [
+          304690.358,
+          2756541.53,
+          41.341
+        ],
+        [
+          304672.039,
+          2756568.096,
+          41.337
+        ],
+        [
+          304656.817,
+          2756555.408,
+          41.333
+        ],
+        [
+          304650.443,
+          2756547.64,
+          41.329
+        ],
+        [
+          304645.589,
+          2756541.352,
+          41.325
+        ],
+        [
+          304629.85,
+          2756513.875,
+          41.321
+        ],
+        [
+          304616.29,
+          2756481.754,
+          41.318
+        ],
+        [
+          304576.16,
+          2756422.59,
+          41.315
+        ],
+        [
+          304562.607,
+          2756406.431,
+          41.312
+        ],
+        [
+          304545.322,
+          2756394.311,
+          41.307
+        ],
+        [
+          304533.211,
+          2756388.935,
+          41.303
+        ],
+        [
+          304528.28,
+          2756386.7,
+          41.299
+        ],
+        [
+          304508.107,
+          2756381.835,
+          41.295
+        ],
+        [
+          304496.826,
+          2756376.064,
+          41.29
+        ]
+      ],
+      "source": "Taiwan Hydraulic & Culvert GIS (OpenStreetMap Taiwan)",
+      "gov_links": {
+        "portal_url": null,
+        "portal_label": null,
+        "api_url": null,
+        "api_label": null,
+        "osm_url": "https://www.openstreetmap.org/way/1394460965",
+        "osm_label": "OpenStreetMap 圖資線段 #1394460965",
+        "nlsc_url": null,
+        "nlsc_label": null
+      },
+      "origin_class": "api_open_data",
+      "osm_url": "https://www.openstreetmap.org/way/1394460965",
+      "osm_label": "OpenStreetMap 圖資線段 #1394460965"
+    },
+    {
+      "id": "osm_waterway_1394460966",
+      "layer": "storm",
+      "type": "box_culvert",
+      "name": "廣興圳二支線一分線 (1.0x1.0m)",
+      "diameter_mm": 1000,
+      "width_m": 1.0,
+      "height_m": 1.0,
+      "length_m": 190.26,
+      "material": "RC/鋼筋混凝土箱涵",
+      "start_coord": [
+        304847.55,
+        2756565.528,
+        41.428
+      ],
+      "end_coord": [
+        304730.075,
+        2756486.051,
+        41.283
+      ],
+      "start_ground_h": 43.178,
+      "end_ground_h": 43.183,
+      "start_rim_h": 43.178,
+      "end_rim_h": 43.183,
+      "start_invert_h": 41.428,
+      "end_invert_h": 41.283,
+      "start_crown_h": 42.428,
+      "end_crown_h": 42.283,
+      "start_depth_m": 1.75,
+      "end_depth_m": 1.9,
+      "start_cover_m": 0.75,
+      "end_cover_m": 0.9,
+      "depth_m": 1.82,
+      "slope_pct": 0.076,
+      "flow_direction": 1,
+      "coords": [
+        [
+          304847.55,
+          2756565.528,
+          41.428
+        ],
+        [
+          304782.055,
+          2756478.781,
+          41.382
+        ],
+        [
+          304758.317,
+          2756450.995,
+          41.333
+        ],
+        [
+          304730.075,
+          2756486.051,
+          41.283
+        ]
+      ],
+      "source": "Taiwan Hydraulic & Culvert GIS (OpenStreetMap Taiwan)",
+      "gov_links": {
+        "portal_url": null,
+        "portal_label": null,
+        "api_url": null,
+        "api_label": null,
+        "osm_url": "https://www.openstreetmap.org/way/1394460966",
+        "osm_label": "OpenStreetMap 圖資線段 #1394460966",
+        "nlsc_url": null,
+        "nlsc_label": null
+      },
+      "origin_class": "api_open_data",
+      "osm_url": "https://www.openstreetmap.org/way/1394460966",
+      "osm_label": "OpenStreetMap 圖資線段 #1394460966"
+    },
+    {
+      "id": "osm_waterway_1394460967",
+      "layer": "storm",
+      "type": "box_culvert",
+      "name": "廣興圳幹線 (1.0x1.0m)",
+      "diameter_mm": 1000,
+      "width_m": 1.0,
+      "height_m": 1.0,
+      "length_m": 906.8,
+      "material": "RC/鋼筋混凝土箱涵",
+      "start_coord": [
+        304595.846,
+        2756105.259,
+        41.441
+      ],
+      "end_coord": [
+        304818.906,
+        2756767.162,
+        41.262
+      ],
+      "start_ground_h": 43.191,
+      "end_ground_h": 43.162,
+      "start_rim_h": 43.191,
+      "end_rim_h": 43.162,
+      "start_invert_h": 41.441,
+      "end_invert_h": 41.262,
+      "start_crown_h": 42.441,
+      "end_crown_h": 42.262,
+      "start_depth_m": 1.75,
+      "end_depth_m": 1.9,
+      "start_cover_m": 0.75,
+      "end_cover_m": 0.9,
+      "depth_m": 1.82,
+      "slope_pct": 0.02,
+      "flow_direction": 1,
+      "coords": [
+        [
+          304595.846,
+          2756105.259,
+          41.441
+        ],
+        [
+          304616.074,
+          2756126.894,
+          41.436
+        ],
+        [
+          304630.018,
+          2756131.125,
+          41.431
+        ],
+        [
+          304649.931,
+          2756130.529,
+          41.425
+        ],
+        [
+          304672.345,
+          2756148.54,
+          41.421
+        ],
+        [
+          304714.562,
+          2756178.482,
+          41.415
+        ],
+        [
+          304742.612,
+          2756194.222,
+          41.41
+        ],
+        [
+          304773.402,
+          2756219.533,
+          41.404
+        ],
+        [
+          304807.058,
+          2756237.855,
+          41.399
+        ],
+        [
+          304820.465,
+          2756272.8,
+          41.393
+        ],
+        [
+          304835.631,
+          2756309.778,
+          41.388
+        ],
+        [
+          304855.306,
+          2756335.721,
+          41.382
+        ],
+        [
+          304865.312,
+          2756374.706,
+          41.376
+        ],
+        [
+          304885.074,
+          2756447.259,
+          41.369
+        ],
+        [
+          304897.008,
+          2756458.959,
+          41.363
+        ],
+        [
+          304908.696,
+          2756484.005,
+          41.357
+        ],
+        [
+          304939.306,
+          2756536.265,
+          41.351
+        ],
+        [
+          304932.879,
+          2756552.068,
+          41.345
+        ],
+        [
+          304937.558,
+          2756566.763,
+          41.34
+        ],
+        [
+          304933.899,
+          2756585.08,
+          41.334
+        ],
+        [
+          304928.212,
+          2756600.21,
+          41.328
+        ],
+        [
+          304925.69,
+          2756622.087,
+          41.322
+        ],
+        [
+          304934.287,
+          2756639.567,
+          41.317
+        ],
+        [
+          304945.966,
+          2756649.051,
+          41.311
+        ],
+        [
+          304951.626,
+          2756658.3,
+          41.305
+        ],
+        [
+          304955.764,
+          2756671.997,
+          41.299
+        ],
+        [
+          304950.628,
+          2756685.578,
+          41.293
+        ],
+        [
+          304923.614,
+          2756716.794,
+          41.289
+        ],
+        [
+          304885.875,
+          2756737.257,
+          41.286
+        ],
+        [
+          304852.144,
+          2756753.217,
+          41.279
+        ],
+        [
+          304831.666,
+          2756758.928,
+          41.27
+        ],
+        [
+          304818.906,
+          2756767.162,
+          41.262
+        ]
+      ],
+      "source": "Taiwan Hydraulic & Culvert GIS (OpenStreetMap Taiwan)",
+      "gov_links": {
+        "portal_url": null,
+        "portal_label": null,
+        "api_url": null,
+        "api_label": null,
+        "osm_url": "https://www.openstreetmap.org/way/1394460967",
+        "osm_label": "OpenStreetMap 圖資線段 #1394460967",
+        "nlsc_url": null,
+        "nlsc_label": null
+      },
+      "origin_class": "api_open_data",
+      "osm_url": "https://www.openstreetmap.org/way/1394460967",
+      "osm_label": "OpenStreetMap 圖資線段 #1394460967"
+    },
+    {
+      "id": "osm_waterway_1394460986",
+      "layer": "storm",
+      "type": "box_culvert",
+      "name": "排水渠道 (canal) (1.5x1.4m)",
+      "diameter_mm": 1500,
+      "width_m": 1.5,
+      "height_m": 1.4,
+      "length_m": 609.3,
+      "material": "RC/鋼筋混凝土箱涵",
+      "start_coord": [
+        305105.449,
+        2757164.141,
+        41.178
+      ],
+      "end_coord": [
+        304730.533,
+        2756964.371,
+        41.189
+      ],
+      "start_ground_h": 43.228,
+      "end_ground_h": 43.239,
+      "start_rim_h": 43.228,
+      "end_rim_h": 43.239,
+      "start_invert_h": 41.178,
+      "end_invert_h": 41.189,
+      "start_crown_h": 42.578,
+      "end_crown_h": 42.589,
+      "start_depth_m": 2.05,
+      "end_depth_m": 2.05,
+      "start_cover_m": 0.65,
+      "end_cover_m": 0.65,
+      "depth_m": 2.05,
+      "slope_pct": -0.002,
+      "flow_direction": 1,
+      "coords": [
+        [
+          305105.449,
+          2757164.141,
+          41.178
+        ],
+        [
+          305088.748,
+          2757127.577,
+          41.181
+        ],
+        [
+          305075.641,
+          2757098.858,
+          41.184
+        ],
+        [
+          305050.835,
+          2757068.043,
+          41.195
+        ],
+        [
+          305024.324,
+          2757057.026,
+          41.222
+        ],
+        [
+          304990.179,
+          2757060.523,
+          41.286
+        ],
+        [
+          304949.282,
+          2757090.399,
+          41.232
+        ],
+        [
+          304912.388,
+          2757137.138,
+          41.223
+        ],
+        [
+          304847.285,
+          2757155.465,
+          40.972
+        ],
+        [
+          304813.815,
+          2757156.849,
+          40.879
+        ],
+        [
+          304778.539,
+          2757140.104,
+          40.849
+        ],
+        [
+          304750.299,
+          2757086.381,
+          41.077
+        ],
+        [
+          304736.713,
+          2757028.119,
+          41.331
+        ],
+        [
+          304730.533,
+          2756964.371,
+          41.189
+        ]
+      ],
+      "source": "Taiwan Hydraulic & Culvert GIS (OpenStreetMap Taiwan)",
+      "gov_links": {
+        "portal_url": null,
+        "portal_label": null,
+        "api_url": null,
+        "api_label": null,
+        "osm_url": "https://www.openstreetmap.org/way/1394460986",
+        "osm_label": "OpenStreetMap 圖資線段 #1394460986",
+        "nlsc_url": null,
+        "nlsc_label": null
+      },
+      "origin_class": "api_open_data",
+      "osm_url": "https://www.openstreetmap.org/way/1394460986",
+      "osm_label": "OpenStreetMap 圖資線段 #1394460986"
+    },
+    {
+      "id": "osm_waterway_1394460990",
+      "layer": "storm",
+      "type": "box_culvert",
+      "name": "地下箱涵 (1.5x1.4m)",
+      "diameter_mm": 1500,
+      "width_m": 1.5,
+      "height_m": 1.4,
+      "length_m": 26.93,
+      "material": "RC/鋼筋混凝土箱涵",
+      "start_coord": [
+        304942.009,
+        2757504.523,
+        41.014
+      ],
+      "end_coord": [
+        304934.659,
+        2757528.839,
+        40.864
+      ],
+      "start_ground_h": 43.214,
+      "end_ground_h": 43.214,
+      "start_rim_h": 43.214,
+      "end_rim_h": 43.214,
+      "start_invert_h": 41.014,
+      "end_invert_h": 40.864,
+      "start_crown_h": 42.414,
+      "end_crown_h": 42.264,
+      "start_depth_m": 2.2,
+      "end_depth_m": 2.35,
+      "start_cover_m": 0.8,
+      "end_cover_m": 0.95,
+      "depth_m": 2.28,
+      "slope_pct": 0.557,
+      "flow_direction": 1,
+      "coords": [
+        [
+          304942.009,
+          2757504.523,
+          41.014
+        ],
+        [
+          304943.046,
+          2757515.404,
+          40.964
+        ],
+        [
+          304940.109,
+          2757522.26,
+          40.914
+        ],
+        [
+          304934.659,
+          2757528.839,
+          40.864
+        ]
+      ],
+      "source": "Taiwan Hydraulic & Culvert GIS (OpenStreetMap Taiwan)",
+      "gov_links": {
+        "portal_url": null,
+        "portal_label": null,
+        "api_url": null,
+        "api_label": null,
+        "osm_url": "https://www.openstreetmap.org/way/1394460990",
+        "osm_label": "OpenStreetMap 圖資線段 #1394460990",
+        "nlsc_url": null,
+        "nlsc_label": null
+      },
+      "origin_class": "api_open_data",
+      "osm_url": "https://www.openstreetmap.org/way/1394460990",
+      "osm_label": "OpenStreetMap 圖資線段 #1394460990"
+    },
+    {
+      "id": "osm_waterway_1394460991",
+      "layer": "storm",
+      "type": "pipe",
+      "name": "排水渠道 (sluice_gate) D=1000mm",
+      "diameter_mm": 1000,
+      "width_m": 1.0,
+      "height_m": 1.0,
+      "length_m": 20.12,
+      "material": "RC/鋼筋混凝土箱涵",
+      "start_coord": [
+        304924.517,
+        2757491.15,
+        41.464
+      ],
+      "end_coord": [
+        304943.173,
+        2757483.615,
+        41.315
+      ],
+      "start_ground_h": 43.214,
+      "end_ground_h": 43.215,
+      "start_rim_h": 43.214,
+      "end_rim_h": 43.215,
+      "start_invert_h": 41.464,
+      "end_invert_h": 41.315,
+      "start_crown_h": 42.464,
+      "end_crown_h": 42.315,
+      "start_depth_m": 1.75,
+      "end_depth_m": 1.9,
+      "start_cover_m": 0.75,
+      "end_cover_m": 0.9,
+      "depth_m": 1.82,
+      "slope_pct": 0.741,
+      "flow_direction": 1,
+      "coords": [
+        [
+          304924.517,
+          2757491.15,
+          41.464
+        ],
+        [
+          304934.199,
+          2757487.234,
+          41.39
+        ],
+        [
+          304943.173,
+          2757483.615,
+          41.315
+        ]
+      ],
+      "source": "Taiwan Hydraulic & Culvert GIS (OpenStreetMap Taiwan)",
+      "gov_links": {
+        "portal_url": null,
+        "portal_label": null,
+        "api_url": null,
+        "api_label": null,
+        "osm_url": "https://www.openstreetmap.org/way/1394460991",
+        "osm_label": "OpenStreetMap 圖資線段 #1394460991",
+        "nlsc_url": null,
+        "nlsc_label": null
+      },
+      "origin_class": "api_open_data",
+      "osm_url": "https://www.openstreetmap.org/way/1394460991",
+      "osm_label": "OpenStreetMap 圖資線段 #1394460991"
+    },
+    {
+      "id": "osm_waterway_1394460992",
+      "layer": "storm",
+      "type": "box_culvert",
+      "name": "排水渠道 (canal) (1.5x1.4m)",
+      "diameter_mm": 1500,
+      "width_m": 1.5,
+      "height_m": 1.4,
+      "length_m": 48.67,
+      "material": "RC/鋼筋混凝土箱涵",
+      "start_coord": [
+        304931.692,
+        2757457.638,
+        41.165
+      ],
+      "end_coord": [
+        304942.009,
+        2757504.523,
+        41.164
+      ],
+      "start_ground_h": 43.215,
+      "end_ground_h": 43.214,
+      "start_rim_h": 43.215,
+      "end_rim_h": 43.214,
+      "start_invert_h": 41.165,
+      "end_invert_h": 41.164,
+      "start_crown_h": 42.565,
+      "end_crown_h": 42.564,
+      "start_depth_m": 2.05,
+      "end_depth_m": 2.05,
+      "start_cover_m": 0.65,
+      "end_cover_m": 0.65,
+      "depth_m": 2.05,
+      "slope_pct": 0.002,
+      "flow_direction": 1,
+      "coords": [
+        [
+          304931.692,
+          2757457.638,
+          41.165
+        ],
+        [
+          304934.199,
+          2757487.234,
+          41.165
+        ],
+        [
+          304942.009,
+          2757504.523,
+          41.164
+        ]
+      ],
+      "source": "Taiwan Hydraulic & Culvert GIS (OpenStreetMap Taiwan)",
+      "gov_links": {
+        "portal_url": null,
+        "portal_label": null,
+        "api_url": null,
+        "api_label": null,
+        "osm_url": "https://www.openstreetmap.org/way/1394460992",
+        "osm_label": "OpenStreetMap 圖資線段 #1394460992",
+        "nlsc_url": null,
+        "nlsc_label": null
+      },
+      "origin_class": "api_open_data",
+      "osm_url": "https://www.openstreetmap.org/way/1394460992",
+      "osm_label": "OpenStreetMap 圖資線段 #1394460992"
+    },
+    {
+      "id": "osm_waterway_1394460993",
+      "layer": "storm",
+      "type": "pipe",
+      "name": "排水渠道 (sluice_gate) D=1000mm",
+      "diameter_mm": 1000,
+      "width_m": 1.0,
+      "height_m": 1.0,
+      "length_m": 23.71,
+      "material": "RC/鋼筋混凝土箱涵",
+      "start_coord": [
+        304935.625,
+        2757507.089,
+        41.464
+      ],
+      "end_coord": [
+        304957.609,
+        2757498.216,
+        41.315
+      ],
+      "start_ground_h": 43.214,
+      "end_ground_h": 43.215,
+      "start_rim_h": 43.214,
+      "end_rim_h": 43.215,
+      "start_invert_h": 41.464,
+      "end_invert_h": 41.315,
+      "start_crown_h": 42.464,
+      "end_crown_h": 42.315,
+      "start_depth_m": 1.75,
+      "end_depth_m": 1.9,
+      "start_cover_m": 0.75,
+      "end_cover_m": 0.9,
+      "depth_m": 1.82,
+      "slope_pct": 0.629,
+      "flow_direction": 1,
+      "coords": [
+        [
+          304935.625,
+          2757507.089,
+          41.464
+        ],
+        [
+          304942.009,
+          2757504.523,
+          41.414
+        ],
+        [
+          304953.41,
+          2757499.916,
+          41.365
+        ],
+        [
+          304957.609,
+          2757498.216,
+          41.315
+        ]
+      ],
+      "source": "Taiwan Hydraulic & Culvert GIS (OpenStreetMap Taiwan)",
+      "gov_links": {
+        "portal_url": null,
+        "portal_label": null,
+        "api_url": null,
+        "api_label": null,
+        "osm_url": "https://www.openstreetmap.org/way/1394460993",
+        "osm_label": "OpenStreetMap 圖資線段 #1394460993",
+        "nlsc_url": null,
+        "nlsc_label": null
+      },
+      "origin_class": "api_open_data",
+      "osm_url": "https://www.openstreetmap.org/way/1394460993",
+      "osm_label": "OpenStreetMap 圖資線段 #1394460993"
+    }
+  ],
+  "query_timestamp": "2026-10-31T10:52:51.743801+00:00",
+  "cached": false
+}

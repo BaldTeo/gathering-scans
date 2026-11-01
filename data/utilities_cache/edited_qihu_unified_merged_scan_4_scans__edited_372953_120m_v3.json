@@ -110,8 +110,8 @@
   "layer_counts": {
     "storm": 6,
     "sanitary": 163,
-    "water": 234,
-    "electric": 133,
+    "water": 233,
+    "electric": 132,
     "telecom": 193,
     "gas": 52,
     "ducts": 0,
@@ -119,9 +119,9 @@
     "excavations": 0,
     "as_built": 0
   },
-  "total_features": 863,
-  "total_pipe_length_m": 14169.82,
-  "total_structures": 202,
+  "total_features": 861,
+  "total_pipe_length_m": 14133.8,
+  "total_structures": 201,
   "features": [
     {
       "id": "tpedig_pipe_2_69532",
@@ -19486,72 +19486,6 @@
         "portal_label": "臺北市道路管線暨資訊中心 (dig.taipei)",
         "api_url": "https://arcgiserv.gov.taipei/server/rest/services/GWH3857/G97_A_NW_PIPE/MapServer/27/191329",
         "api_label": "臺北市道路管線中心 G97_A_NW_PIPE 紀錄 #191329",
-        "osm_url": null,
-        "osm_label": null,
-        "nlsc_url": null,
-        "nlsc_label": null
-      }
-    },
-    {
-      "id": "tpedig_pipe_27_191103",
-      "arcgis_layer_url": "https://arcgiserv.gov.taipei/server/rest/services/GWH3857/G97_A_NW_PIPE/MapServer/27/191103",
-      "layer": "electric",
-      "type": "pipe",
-      "name": "台電電力管線 (台電北區) #6.0 D=250mm",
-      "facility_no": "6.0",
-      "diameter_mm": 250,
-      "width_m": 0.25,
-      "height_m": 0.25,
-      "length_m": 36.02,
-      "material": "PVC",
-      "start_coord": [
-        300662.63,
-        2781019.9,
-        9.132
-      ],
-      "end_coord": [
-        300626.68,
-        2781017.68,
-        9.249
-      ],
-      "start_ground_h": 10.332,
-      "end_ground_h": 10.449,
-      "start_rim_h": 10.332,
-      "end_rim_h": 10.449,
-      "start_invert_h": 9.132,
-      "end_invert_h": 9.249,
-      "start_crown_h": 9.382,
-      "end_crown_h": 9.499,
-      "start_depth_m": 1.2,
-      "end_depth_m": 1.2,
-      "start_cover_m": 0.95,
-      "end_cover_m": 0.95,
-      "depth_m": 1.2,
-      "slope_pct": -0.325,
-      "flow_direction": 1,
-      "coords": [
-        [
-          300662.63,
-          2781019.9,
-          9.132
-        ],
-        [
-          300626.68,
-          2781017.68,
-          9.249
-        ]
-      ],
-      "source": "Taipei City 8-Utilities MapServer (arcgiserv.gov.taipei G97_A_NW_PIPE/27)",
-      "origin_class": "api_open_data",
-      "api_url": "https://arcgiserv.gov.taipei/server/rest/services/GWH3857/G97_A_NW_PIPE/MapServer/27/191103",
-      "api_label": "臺北市道路管線中心 G97_A_NW_PIPE 紀錄 #191103",
-      "portal_url": "https://dig.taipei/Tpdig/Public/pipe3.html",
-      "portal_label": "臺北市道路管線暨資訊中心 (dig.taipei)",
-      "gov_links": {
-        "portal_url": "https://dig.taipei/Tpdig/Public/pipe3.html",
-        "portal_label": "臺北市道路管線暨資訊中心 (dig.taipei)",
-        "api_url": "https://arcgiserv.gov.taipei/server/rest/services/GWH3857/G97_A_NW_PIPE/MapServer/27/191103",
-        "api_label": "臺北市道路管線中心 G97_A_NW_PIPE 紀錄 #191103",
         "osm_url": null,
         "osm_label": null,
         "nlsc_url": null,
@@ -55926,37 +55860,6 @@
         "api_label": null,
         "osm_url": "https://www.openstreetmap.org/node/6336482156",
         "osm_label": "OpenStreetMap 設施節點 #6336482156",
-        "nlsc_url": null,
-        "nlsc_label": null
-      }
-    },
-    {
-      "id": "osm_hydrant_6336482414",
-      "layer": "water",
-      "type": "hydrant",
-      "name": "地下式消防栓 #3762",
-      "facility_no": "3762",
-      "structure_type": "地下式消防栓",
-      "coord": [
-        300450.009,
-        2781091.117,
-        9.767
-      ],
-      "rim_h": 10.967,
-      "invert_h": 9.767,
-      "depth_m": 1.2,
-      "diameter_mm": 150,
-      "source": "Taiwan Water Supply GIS (臺北自來水事業處)",
-      "origin_class": "api_open_data",
-      "osm_url": "https://www.openstreetmap.org/node/6336482414",
-      "osm_label": "OpenStreetMap 設施節點 #6336482414",
-      "gov_links": {
-        "portal_url": null,
-        "portal_label": null,
-        "api_url": null,
-        "api_label": null,
-        "osm_url": "https://www.openstreetmap.org/node/6336482414",
-        "osm_label": "OpenStreetMap 設施節點 #6336482414",
         "nlsc_url": null,
         "nlsc_label": null
       }
