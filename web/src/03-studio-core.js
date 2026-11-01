@@ -2802,7 +2802,7 @@
     const topSafeY = isMobile ? (mobHudOpen ? 116 : 74) : 68;
     const bottomSafeY = isMobile
       ? h - (panelOpen && !panelMinimized ? Math.min(240, (panelEl.offsetHeight || 180) + 96) : 102)
-      : h - 84;
+      : h - 108;
     const placedRects = [];
     const candidateOffsets = [
       [0, 0],
