@@ -17,8 +17,10 @@
     activeScanId: "",
     primitives: [],
     overlayVisible: false,
+    keepOverlayOnClose: false,
+    scanOpacity: 0.50,
     threeGroup: null,
-    selectedCategories: new Set(["buildings", "walls", "roads", "trees", "water", "pipes"]),
+    selectedCategories: new Set(["buildings", "walls", "tanks", "roads", "trees", "water", "pipes"]),
     params: {
       tolerance_m: 0.25,
       wall_thickness_m: 0.25,
@@ -28,6 +30,62 @@
     },
     hoveredPrimitiveId: null,
   };
+
+  /**
+   * Apply or restore BIM scan mesh transparency on a single Three.js Material
+   */
+  function applyBimOpacityToMaterial(mat, opacity) {
+    if (!mat) return;
+    if (!mat.userData) mat.userData = {};
+    if (opacity < 0.999) {
+      if (mat.userData._origTransparent === undefined) {
+        mat.userData._origTransparent = Boolean(mat.transparent);
+        mat.userData._origOpacity = typeof mat.opacity === "number" ? mat.opacity : 1.0;
+        mat.userData._origDepthWrite = mat.depthWrite !== false;
+      }
+      mat.transparent = true;
+      mat.opacity = opacity;
+      mat.depthWrite = opacity >= 0.85;
+      mat.needsUpdate = true;
+    } else if (mat.userData._origTransparent !== undefined) {
+      mat.transparent = mat.userData._origTransparent;
+      mat.opacity = mat.userData._origOpacity;
+      mat.depthWrite = mat.userData._origDepthWrite;
+      delete mat.userData._origTransparent;
+      delete mat.userData._origOpacity;
+      delete mat.userData._origDepthWrite;
+      mat.needsUpdate = true;
+    }
+  }
+
+  /**
+   * Set 3D scan mesh opacity (0.50 when BIM is active, 1.0 when BIM is closed/disabled)
+   */
+  function setScanMeshOpacityForBim(opacity) {
+    const targetOp = Math.max(0.05, Math.min(1.0, Number(opacity) || 1.0));
+    STATE.bimScanOpacity = targetOp;
+    const studioThree = window.studioThree;
+    if (!studioThree) return;
+    [studioThree.modelPivot, studioThree.fallbackGroup].forEach((grp) => {
+      if (!grp) return;
+      grp.traverse((node) => {
+        if (node && node.isMesh && node.material && !node.userData?.isBimPrimitive && !node.userData?.isGaussianSplatMesh) {
+          const mats = Array.isArray(node.material) ? node.material : [node.material];
+          mats.forEach((m) => applyBimOpacityToMaterial(m, targetOp));
+        }
+      });
+    });
+    if (studioThree.renderer && studioThree.scene && studioThree.camera) {
+      studioThree.renderer.render(studioThree.scene, studioThree.camera);
+    }
+  }
+
+  window.__applyBimOpacityToMaterial = function (mat) {
+    if (typeof STATE.bimScanOpacity === "number" && STATE.bimScanOpacity < 0.999) {
+      applyBimOpacityToMaterial(mat, STATE.bimScanOpacity);
+    }
+  };
+  window.setScanMeshOpacityForBim = setScanMeshOpacityForBim;
 
   // Inline Crisp SVGs (Strictly Zero Emojis)
   const ICONS = {
@@ -62,10 +120,16 @@
     const curScanId = STATE.activeScanId || "";
     if (BIM_STATE.activeScanId !== curScanId) {
       BIM_STATE.primitives = [];
-      clearBimThreeMeshes();
+      clearBimThreeMeshes(false);
       BIM_STATE.overlayVisible = false;
       BIM_STATE.activeScanId = curScanId;
     }
+
+    // Immediately set 3D scan mesh to 50% transparency (or current user-chosen BIM opacity) when BIM tool opens
+    if (!Number.isFinite(BIM_STATE.scanOpacity) || BIM_STATE.scanOpacity > 0.95) {
+      BIM_STATE.scanOpacity = 0.50;
+    }
+    setScanMeshOpacityForBim(BIM_STATE.scanOpacity);
 
     const titleHtml = `<div style="display:flex;align-items:center;gap:6px;">${ICONS.cube}<span>${tr("AI Scan-to-BIM 幾何實體模型", "AI Scan-to-BIM Primitives")}</span></div>`;
     const bodyHtml = renderBimInspectorBody();
@@ -92,8 +156,8 @@
    * Render side panel HTML content
    */
   function renderBimInspectorBody() {
-    const isDark = document.documentElement.getAttribute("data-theme") === "dark" || document.body.classList.contains("theme-dark");
     const scanId = STATE.activeScanId || tr("未選擇掃描", "No Scan");
+    const opPct = Math.round((BIM_STATE.scanOpacity ?? 0.50) * 100);
 
     return `
       <div class="bim-container" id="bimInspectorRoot">
@@ -125,6 +189,19 @@
           </div>
         </div>
 
+        <!-- Section-Box-Style Keep BIM Overlay & Scan 50% Opacity Controls -->
+        <div class="bim-categories-box" style="border-color:rgba(56,189,248,0.35);background:rgba(56,189,248,0.06);">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px;">
+            <span style="font-size:10.5px;font-weight:700;color:var(--ui-text-primary);">${tr("掃描網格透明度", "3D Scan Opacity")}</span>
+            <span id="lblBimScanOpacityPct" style="font-size:10.5px;font-weight:700;color:#38bdf8;">${opPct}%</span>
+          </div>
+          <input type="range" id="rngBimScanOpacity" min="0.10" max="1.00" step="0.05" value="${(BIM_STATE.scanOpacity ?? 0.50).toFixed(2)}" style="width:100%;margin-bottom:6px;accent-color:#38bdf8;" />
+          <label style="display:flex;align-items:center;gap:6px;font-size:10.5px;color:var(--ui-text-secondary);cursor:pointer;user-select:none;">
+            <input type="checkbox" id="chkKeepBimOverlay" ${BIM_STATE.keepOverlayOnClose ? "checked" : ""} style="accent-color:#10b981;cursor:pointer;" />
+            <span>${tr("關閉面板後保留 BIM 模型與 50% 掃描半透明 (Keep BIM Model & 50% Scan Opacity)", "Keep BIM Model & 50% Scan Opacity when closing tool")}</span>
+          </label>
+        </div>
+
         <!-- Gemini AI BIM Reasoning Card -->
         <div class="bim-categories-box" style="border-color:rgba(16,185,129,0.35);background:rgba(16,185,129,0.06);">
           <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;margin-bottom:4px;">
@@ -145,8 +222,17 @@
         <div class="bim-categories-box">
           <div style="font-size:10px;font-weight:700;color:var(--ui-text-secondary);margin-bottom:2px;">${tr("地物分類篩選", "Element Categories")}</div>
           <div class="bim-category-row">
+            <span class="bim-cat-pill ${BIM_STATE.selectedCategories.has("buildings") ? "active" : ""}" data-cat="buildings">
+              <span class="bim-dot" style="background:#3b82f6;"></span>${tr("建築/圓頂", "Buildings & Roofs")}
+            </span>
             <span class="bim-cat-pill ${BIM_STATE.selectedCategories.has("walls") ? "active" : ""}" data-cat="walls">
-              <span class="bim-dot" style="background:#f43f5e;"></span>${tr("結構牆體", "Walls")}
+              <span class="bim-dot" style="background:#f43f5e;"></span>${tr("牆體/木圍籬", "Walls & Fences")}
+            </span>
+            <span class="bim-cat-pill ${BIM_STATE.selectedCategories.has("tanks") ? "active" : ""}" data-cat="tanks">
+              <span class="bim-dot" style="background:#0284c7;"></span>${tr("圓柱儲水塔", "Water Tanks")}
+            </span>
+            <span class="bim-cat-pill ${BIM_STATE.selectedCategories.has("pipes") ? "active" : ""}" data-cat="pipes" title="${tr("僅顯示自建或 Scan-to-BIM 管線，與官方 API 管線圖層嚴格隔離", "User / Scan-to-BIM pipes only — strictly isolated from Official API Utilities")}">
+              <span class="bim-dot" style="background:#f97316;"></span>${tr("自建/BIM管線", "BIM Pipes")}
             </span>
             <span class="bim-cat-pill ${BIM_STATE.selectedCategories.has("trees") ? "active" : ""}" data-cat="trees">
               <span class="bim-dot" style="background:#10b981;"></span>${tr("喬木植栽", "Trees")}
@@ -156,12 +242,6 @@
             </span>
             <span class="bim-cat-pill ${BIM_STATE.selectedCategories.has("water") ? "active" : ""}" data-cat="water">
               <span class="bim-dot" style="background:#06b6d4;"></span>${tr("水體水域", "Water")}
-            </span>
-            <span class="bim-cat-pill ${BIM_STATE.selectedCategories.has("buildings") ? "active" : ""}" data-cat="buildings">
-              <span class="bim-dot" style="background:#3b82f6;"></span>${tr("建築設施", "Buildings")}
-            </span>
-            <span class="bim-cat-pill ${BIM_STATE.selectedCategories.has("pipes") ? "active" : ""}" data-cat="pipes" title="${tr("僅顯示自建或 Scan-to-BIM 管線，與官方 API 管線圖層嚴格隔離", "User / Scan-to-BIM pipes only — strictly isolated from Official API Utilities")}">
-              <span class="bim-dot" style="background:#f97316;"></span>${tr("自建/BIM管線", "BIM Pipes")}
             </span>
           </div>
         </div>
@@ -270,6 +350,26 @@
 
     const btnObj = document.getElementById("btnBimExportObj");
     if (btnObj) btnObj.addEventListener("click", () => exportBimFormat("obj"));
+
+    // Scan Opacity Slider (default 50%)
+    const rngOp = document.getElementById("rngBimScanOpacity");
+    const lblOp = document.getElementById("lblBimScanOpacityPct");
+    if (rngOp) {
+      rngOp.addEventListener("input", () => {
+        const val = Math.max(0.10, Math.min(1.00, parseFloat(rngOp.value) || 0.50));
+        BIM_STATE.scanOpacity = val;
+        if (lblOp) lblOp.textContent = `${Math.round(val * 100)}%`;
+        setScanMeshOpacityForBim(val);
+      });
+    }
+
+    // Keep BIM Overlay & 50% Scan Opacity Checkbox (Section-Box style)
+    const chkKeep = document.getElementById("chkKeepBimOverlay");
+    if (chkKeep) {
+      chkKeep.addEventListener("change", () => {
+        BIM_STATE.keepOverlayOnClose = Boolean(chkKeep.checked);
+      });
+    }
   }
 
   /**
@@ -443,7 +543,15 @@
         const props = prim.properties || {};
         let dimStr = "";
         if (prim.category === "walls") {
-          dimStr = `L:${props.length_m}m · H:${props.height_m}m`;
+          dimStr = props.radius_m
+            ? `R:${props.radius_m}m · L:${props.length_m}m · H:${props.height_m}m`
+            : `L:${props.length_m}m · H:${props.height_m}m`;
+        } else if (prim.category === "tanks") {
+          dimStr = `Ø:${props.diameter_m || (props.radius_m * 2).toFixed(2)}m · H:${props.height_m}m · V:${props.volume_m3}m³`;
+        } else if (prim.category === "buildings") {
+          dimStr = props.radius_m
+            ? `R:${props.radius_m}m · H:${props.height_m}m · V:${props.volume_m3}m³`
+            : `H:${props.height_m || "-"}m · V:${props.volume_m3}m³`;
         } else if (prim.category === "trees") {
           dimStr = `DBH:${props.dbh_cm}cm · H:${props.height_m}m`;
         } else if (prim.category === "roads" || prim.category === "water") {
@@ -511,14 +619,15 @@
     }
 
     if (BIM_STATE.overlayVisible) {
+      setScanMeshOpacityForBim(BIM_STATE.scanOpacity ?? 0.50);
       renderBimThreeMeshes();
       if (typeof showToast === "function") {
-        showToast(tr("已開啟 Scan-to-BIM 3D 幾何實體預覽", "BIM 3D Solid Preview Enabled"));
+        showToast(tr("已開啟 Scan-to-BIM 3D 幾何實體預覽 (掃描 50% 透明)", "BIM 3D Solid Preview Enabled (50% Scan Opacity)"));
       }
     } else {
-      clearBimThreeMeshes();
+      clearBimThreeMeshes(true);
       if (typeof showToast === "function") {
-        showToast(tr("已關閉 BIM 3D 實體預覽", "BIM 3D Preview Hidden"));
+        showToast(tr("已關閉 BIM 3D 實體預覽並恢復 100% 掃描不透明度", "BIM 3D Preview Hidden & 100% Scan Opacity Restored"));
       }
     }
   }
@@ -527,7 +636,7 @@
    * Render 3D geometric solid meshes in Three.js Studio Scene
    */
   function renderBimThreeMeshes() {
-    clearBimThreeMeshes();
+    clearBimThreeMeshes(false);
     const studioThree = window.studioThree;
     if (!studioThree || !studioThree.scene) return;
 
@@ -536,34 +645,12 @@
       BIM_STATE.threeGroup.name = "BIM_PRIMITIVES_OVERLAY_GROUP";
       studioThree.scene.add(BIM_STATE.threeGroup);
     }
+    BIM_STATE.threeGroup.visible = true;
 
     const originTwd = (typeof localToTwd97 === "function") ? localToTwd97({ x: 0, y: 0, z: 0 }) : { e: 0, n: 0, h: 0 };
 
-    // Ghost / dim raw photogrammetric mesh to make solid BIM model pop vividly
-    if (studioThree.modelPivot) {
-      studioThree.modelPivot.traverse((m) => {
-        if (m.isMesh) {
-          if (m.userData._origTransparent === undefined) {
-            m.userData._origTransparent = m.transparent;
-            m.userData._origOpacity = m.opacity !== undefined ? m.opacity : 1.0;
-          }
-          m.transparent = true;
-          m.opacity = 0.25;
-        }
-      });
-    }
-    if (studioThree.fallbackGroup) {
-      studioThree.fallbackGroup.traverse((m) => {
-        if (m.isMesh) {
-          if (m.userData._origTransparent === undefined) {
-            m.userData._origTransparent = m.transparent;
-            m.userData._origOpacity = m.opacity !== undefined ? m.opacity : 1.0;
-          }
-          m.transparent = true;
-          m.opacity = 0.25;
-        }
-      });
-    }
+    // Apply 50% (or user-selected) scan mesh transparency on all material instances
+    setScanMeshOpacityForBim(BIM_STATE.scanOpacity ?? 0.50);
 
     const visiblePrims = BIM_STATE.primitives.filter((p) => BIM_STATE.selectedCategories.has(p.category));
 
@@ -578,16 +665,23 @@
       const faces = meshData.faces;
       if (vTwd.length === 0 || faces.length === 0) return;
 
-      // Construct Three.js BufferGeometry from vertices & faces
+      // Construct Three.js BufferGeometry from vertices & faces aligned with studioThree.tilesCenter
       const geom = new THREE.BufferGeometry();
       const posArray = new Float32Array(vTwd.length * 3);
 
       for (let i = 0; i < vTwd.length; i++) {
         const pt = vTwd[i];
-        // Convert to local Studio vector: x = dE, y = dH, z = -dN
-        let lx = Number(pt[0]) - originTwd.e;
-        let ly = Number(pt[2]) - originTwd.h;
-        let lz = originTwd.n - Number(pt[1]);
+        let lx, ly, lz;
+        if (typeof twd97ToStudioLocalVec === "function" && Math.abs(Number(pt[0])) > 50000) {
+          const vec = twd97ToStudioLocalVec(Number(pt[0]), Number(pt[1]), Number(pt[2]), null, null);
+          lx = vec.x;
+          ly = vec.y;
+          lz = vec.z;
+        } else {
+          lx = Number(pt[0]) - originTwd.e;
+          ly = Number(pt[2]) - originTwd.h;
+          lz = originTwd.n - Number(pt[1]);
+        }
         if ((Math.abs(lx) > 2000 || Math.abs(lz) > 2000) && vLoc && Array.isArray(vLoc[i]) && vLoc[i].length >= 3) {
           lx = Number(vLoc[i][0]);
           ly = Number(vLoc[i][1]);
@@ -616,6 +710,7 @@
       else if (prim.category === "roads") opacity = 0.92;
       else if (prim.category === "trees") opacity = 0.90;
       else if (prim.category === "walls") opacity = 0.92;
+      else if (prim.category === "tanks") opacity = 0.92;
       else if (prim.category === "buildings") opacity = 0.90;
 
       const mat = new THREE.MeshStandardMaterial({
@@ -660,32 +755,13 @@
   }
 
   /**
-   * Clear 3D solid overlays from scene & restore mesh opacity
+   * Clear 3D solid overlays from scene & optionally restore 100% scan mesh opacity
    */
-  function clearBimThreeMeshes() {
-    const studioThree = window.studioThree;
-    if (studioThree) {
-      if (studioThree.modelPivot) {
-        studioThree.modelPivot.traverse((m) => {
-          if (m.isMesh && m.userData._origTransparent !== undefined) {
-            m.transparent = m.userData._origTransparent;
-            m.opacity = m.userData._origOpacity;
-            delete m.userData._origTransparent;
-            delete m.userData._origOpacity;
-          }
-        });
-      }
-      if (studioThree.fallbackGroup) {
-        studioThree.fallbackGroup.traverse((m) => {
-          if (m.isMesh && m.userData._origTransparent !== undefined) {
-            m.transparent = m.userData._origTransparent;
-            m.opacity = m.userData._origOpacity;
-            delete m.userData._origTransparent;
-            delete m.userData._origOpacity;
-          }
-        });
-      }
+  function clearBimThreeMeshes(restoreScanOpacity = true) {
+    if (restoreScanOpacity) {
+      setScanMeshOpacityForBim(1.0);
     }
+    const studioThree = window.studioThree;
     if (BIM_STATE.threeGroup && studioThree && studioThree.scene) {
       while (BIM_STATE.threeGroup.children.length > 0) {
         const obj = BIM_STATE.threeGroup.children[0];
@@ -696,7 +772,22 @@
         }
         BIM_STATE.threeGroup.remove(obj);
       }
+      BIM_STATE.threeGroup.visible = false;
     }
+    if (studioThree && studioThree.renderer && studioThree.scene && studioThree.camera) {
+      studioThree.renderer.render(studioThree.scene, studioThree.camera);
+    }
+  }
+
+  /**
+   * Called when closing the BIM side panel or switching tools (respects #chkKeepBimOverlay)
+   */
+  function clearBimOverlayIfNotKept() {
+    if (BIM_STATE.keepOverlayOnClose) {
+      return;
+    }
+    BIM_STATE.overlayVisible = false;
+    clearBimThreeMeshes(true);
   }
 
   /**
@@ -795,20 +886,25 @@
 
   // Register on window and studio tool system
   window.openScanToBimInspector = openScanToBimInspector;
-  window.onBimPanelClosed = clearBimThreeMeshes;
+  window.onBimPanelClosed = clearBimOverlayIfNotKept;
+  window.clearBimOverlayIfNotKept = clearBimOverlayIfNotKept;
+  window.__onBimTilesetLoaded = function (scan) {
+    if (scan && BIM_STATE.activeScanId && scan.scan_id !== BIM_STATE.activeScanId) {
+      BIM_STATE.overlayVisible = false;
+      clearBimThreeMeshes(true);
+      return;
+    }
+    if (BIM_STATE.overlayVisible && BIM_STATE.primitives.length > 0) {
+      renderBimThreeMeshes();
+    }
+  };
   window.__GS_BIM = {
     openInspector: openScanToBimInspector,
     fit: runScanToBimFitting,
     toggleOverlay: toggleBim3DOverlay,
+    setScanOpacity: setScanMeshOpacityForBim,
+    clearIfNotKept: clearBimOverlayIfNotKept,
     export: exportBimFormat,
     getState: () => BIM_STATE,
   };
-
-  // Wire into Studio toolbar/dock if present
-  document.addEventListener("DOMContentLoaded", () => {
-    const btnDock = document.getElementById("btnStudioBim");
-    if (btnDock) {
-      btnDock.addEventListener("click", () => openScanToBimInspector());
-    }
-  });
 })();

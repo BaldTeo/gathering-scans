@@ -94,11 +94,13 @@ class CategorizationIoMixin:
         return ""
 
     @staticmethod
-    def _fit_pratt_circle_2d(x: np.ndarray, y: np.ndarray) -> Tuple[float, float, float]:
-        """Algebraic Pratt/Kasa circle fit returning (cx, cy, radius_m) for 2D trunk points."""
+    def _fit_pratt_circle_2d(
+        x: np.ndarray, y: np.ndarray, min_r: float = 0.04, max_r: float = 0.95
+    ) -> Tuple[float, float, float]:
+        """Algebraic Pratt/Kasa circle fit returning (cx, cy, radius_m) with configurable radius bounds."""
         n = len(x)
         if n < 3:
-            return float(np.mean(x)), float(np.mean(y)), 0.12
+            return float(np.mean(x)), float(np.mean(y)), float(np.clip(0.12, min_r, max_r))
         mx = float(np.mean(x))
         my = float(np.mean(y))
         u = x - mx
@@ -111,12 +113,13 @@ class CategorizationIoMixin:
             vc = 0.5 * float(c_vec[1])
             r_sq = float(c_vec[2]) + uc * uc + vc * vc
             r = math.sqrt(max(r_sq, 1e-4))
-            if not (0.03 <= r <= 1.25):
+            if not (min_r * 0.65 <= r <= max_r * 1.35):
                 r = float(np.median(np.hypot(u, v)))
-            return mx + uc, my + vc, float(np.clip(r, 0.04, 0.95))
+                uc, vc = 0.0, 0.0
+            return mx + uc, my + vc, float(np.clip(r, min_r, max_r))
         except Exception:
             r = float(np.median(np.hypot(u, v)))
-            return mx, my, float(np.clip(r, 0.04, 0.95))
+            return mx, my, float(np.clip(r, min_r, max_r))
 
     @staticmethod
     def _load_scan_textured_triangles_twd97(
@@ -801,61 +804,74 @@ class CategorizationIoMixin:
         target_e: float,
         target_n: float,
         target_h: float,
+        z_max_filled: Optional[np.ndarray] = None,
+        e_min: float = 0.0,
+        n_min: float = 0.0,
+        res: float = 0.25,
     ) -> Optional[Dict[str, Any]]:
-        """Fast pure-math pinhole frustum projection to link any 3D feature to its best calibrated mobile phone photo."""
+        """Fast pure-math pinhole frustum projection + Z-buffered DSM line-of-sight occlusion check."""
         if not camera_catalog:
             return None
+        from pc_worker.surveying.bim_geometry_extractor import is_3d_point_visible_from_camera
+
         best_score = 1e9
         best_info: Optional[Dict[str, Any]] = None
-        for cam in camera_catalog:
-            try:
-                dx = target_e - float(cam["e"])
-                dy = target_n - float(cam["n"])
-                dz = target_h - float(cam["h"])
-            except Exception:
-                continue
-            dist_3d = math.sqrt(dx * dx + dy * dy + dz * dz)
-            if dist_3d < 0.75 or dist_3d > 28.0:
-                continue
-            r_vec = cam.get("right")
-            d_vec = cam.get("down")
-            f_vec = cam.get("forward")
-            if not (isinstance(r_vec, list) and isinstance(d_vec, list) and isinstance(f_vec, list) and len(f_vec) == 3):
-                yr = math.radians(float(cam.get("yaw_deg") or 0.0))
-                pr = math.radians(float(cam.get("pitch_deg") or -18.0))
-                f_vec = [math.sin(yr) * math.cos(pr), math.cos(yr) * math.cos(pr), math.sin(pr)]
-                r_vec = [math.cos(yr), -math.sin(yr), 0.0]
-                d_vec = [
-                    f_vec[1] * r_vec[2] - f_vec[2] * r_vec[1],
-                    f_vec[2] * r_vec[0] - f_vec[0] * r_vec[2],
-                    f_vec[0] * r_vec[1] - f_vec[1] * r_vec[0],
-                ]
-            zc = dx * f_vec[0] + dy * f_vec[1] + dz * f_vec[2]
-            if zc <= 0.45:
-                continue
-            xc = dx * r_vec[0] + dy * r_vec[1] + dz * r_vec[2]
-            yc = dx * d_vec[0] + dy * d_vec[1] + dz * d_vec[2]
-            fx_n = float(cam.get("fx_norm") or 0.92674)
-            fy_n = float(cam.get("fy_norm") or 0.69505)
-            u = 0.5 + fx_n * (xc / zc)
-            v = 0.5 + fy_n * (yc / zc)
-            if not (0.08 <= u <= 0.92 and 0.08 <= v <= 0.92):
-                continue
-            abs_p = str(cam.get("abs_path") or "")
-            if abs_p and not os.path.isfile(abs_p):
-                continue
-            off_center = math.hypot(u - 0.5, v - 0.5)
-            dist_penalty = abs(dist_3d - 4.8) * 0.45 + (3.5 if dist_3d < 1.6 else 0.0)
-            cal_bonus = 0.0 if cam.get("calibrated", True) else 4.0
-            score = dist_penalty + off_center * 6.5 + cal_bonus
-            if score < best_score:
-                best_score = score
-                best_info = {
-                    "verified_photo": str(cam.get("filename") or ""),
-                    "verified_photo_uv": [round(float(u), 4), round(float(v), 4)],
-                    "verified_photo_dist_m": round(float(dist_3d), 2),
-                    "ai_photo_verified": True,
-                }
+        for pass_occl in (True, False):
+            for cam in camera_catalog:
+                try:
+                    dx = target_e - float(cam["e"])
+                    dy = target_n - float(cam["n"])
+                    dz = target_h - float(cam["h"])
+                except Exception:
+                    continue
+                dist_3d = math.sqrt(dx * dx + dy * dy + dz * dz)
+                if dist_3d < 0.75 or dist_3d > 28.0:
+                    continue
+                if pass_occl and z_max_filled is not None:
+                    if not is_3d_point_visible_from_camera(target_e, target_n, target_h, cam, z_max_filled, e_min, n_min, res):
+                        continue
+                r_vec = cam.get("right")
+                d_vec = cam.get("down")
+                f_vec = cam.get("forward")
+                if not (isinstance(r_vec, list) and isinstance(d_vec, list) and isinstance(f_vec, list) and len(f_vec) == 3):
+                    yr = math.radians(float(cam.get("yaw_deg") or 0.0))
+                    pr = math.radians(float(cam.get("pitch_deg") or -18.0))
+                    f_vec = [math.sin(yr) * math.cos(pr), math.cos(yr) * math.cos(pr), math.sin(pr)]
+                    r_vec = [math.cos(yr), -math.sin(yr), 0.0]
+                    d_vec = [
+                        f_vec[1] * r_vec[2] - f_vec[2] * r_vec[1],
+                        f_vec[2] * r_vec[0] - f_vec[0] * r_vec[2],
+                        f_vec[0] * r_vec[1] - f_vec[1] * r_vec[0],
+                    ]
+                zc = dx * f_vec[0] + dy * f_vec[1] + dz * f_vec[2]
+                if zc <= 0.45:
+                    continue
+                xc = dx * r_vec[0] + dy * r_vec[1] + dz * r_vec[2]
+                yc = dx * d_vec[0] + dy * d_vec[1] + dz * d_vec[2]
+                fx_n = float(cam.get("fx_norm") or 0.92674)
+                fy_n = float(cam.get("fy_norm") or 0.69505)
+                u = 0.5 + fx_n * (xc / zc)
+                v = 0.5 + fy_n * (yc / zc)
+                if not (0.08 <= u <= 0.92 and 0.08 <= v <= 0.92):
+                    continue
+                abs_p = str(cam.get("abs_path") or "")
+                if abs_p and not os.path.isfile(abs_p):
+                    continue
+                off_center = math.hypot(u - 0.5, v - 0.5)
+                dist_penalty = abs(dist_3d - 4.8) * 0.45 + (3.5 if dist_3d < 1.6 else 0.0)
+                cal_bonus = 0.0 if cam.get("calibrated", True) else 4.0
+                score = dist_penalty + off_center * 6.5 + cal_bonus
+                if score < best_score:
+                    best_score = score
+                    best_info = {
+                        "verified_photo": str(cam.get("filename") or ""),
+                        "verified_photo_uv": [round(float(u), 4), round(float(v), 4)],
+                        "verified_photo_dist_m": round(float(dist_3d), 2),
+                        "ai_photo_verified": True,
+                        "los_unoccluded": pass_occl,
+                    }
+            if best_info is not None:
+                break
         return best_info
 
     def _crop_rtk_photo_for_3d_feature(
@@ -1379,6 +1395,7 @@ class CategorizationIoMixin:
         result["status"] = "ok"
         result["has_categorization"] = True
         result["saved_on_server"] = True
+        result.setdefault("categorization_schema_version", 4)
         result.setdefault("overlay_visible_default", False)
         if not isinstance(result.get("layer_filters"), dict):
             result["layer_filters"] = {
@@ -1387,6 +1404,9 @@ class CategorizationIoMixin:
                 "water": True,
                 "walls": True,
                 "stockpiles": True,
+                "buildings": True,
+                "tanks": True,
+                "pipes": True,
             }
         for cpath in self._get_categorization_cache_paths(scan_id, scan):
             try:
@@ -1635,6 +1655,10 @@ class CategorizationIoMixin:
         trees_list = [t for t in (res.get("trees") or []) if not _is_removed(t, "trees")] + added_trees
         walls_list = [w for w in (res.get("walls") or []) if not _is_removed(w, "walls")] + added_walls
         water_list = [w for w in (res.get("water_bodies") or []) if not _is_removed(w, "water_bodies")] + added_water
+        buildings_list = [b for b in (res.get("buildings") or []) if not _is_removed(b, "buildings")]
+        tanks_list = [wt for wt in (res.get("water_tanks") or []) if not _is_removed(wt, "water_tanks")]
+        pipes_list = [p for p in (res.get("pipes") or []) if not _is_removed(p, "pipes")]
+        furniture_list = [sf for sf in (res.get("street_furniture") or []) if not _is_removed(sf, "street_furniture")]
 
         for idx_r, r_obj in enumerate(roads_list, 1):
             if not str(r_obj.get("id") or "").startswith("RM"):
@@ -1647,7 +1671,8 @@ class CategorizationIoMixin:
                 t_obj["id"] = f"T{idx_t}"
                 t_obj["name"] = f"喬木 T{idx_t}"
         for idx_w, w_obj in enumerate(walls_list, 1):
-            if not str(w_obj.get("id") or "").startswith("WLM"):
+            w_id_cur = str(w_obj.get("id") or "")
+            if not (w_id_cur.startswith("WLM") or w_id_cur.startswith("CW_") or w_id_cur.startswith("CF")):
                 w_obj["id"] = f"WL{idx_w}"
                 w_obj["name"] = f"擋土牆/垂直牆面 WL{idx_w}"
 
@@ -1655,6 +1680,10 @@ class CategorizationIoMixin:
         res["trees"] = trees_list
         res["walls"] = walls_list
         res["water_bodies"] = water_list
+        res["buildings"] = buildings_list
+        res["water_tanks"] = tanks_list
+        res["pipes"] = pipes_list
+        res["street_furniture"] = furniture_list
         res["manual_overrides"] = {
             "removed_ids": sorted(list(removed_ids)),
             "removed_centers": removed_centers,

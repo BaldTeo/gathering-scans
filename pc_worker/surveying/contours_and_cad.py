@@ -1652,22 +1652,38 @@ class ContoursAndCadMixin:
         for d in self._get_single_scan_camera_dirs(scan):
             if d not in dirs:
                 dirs.append(d)
-        extra_raw = scan.get("extra_json")
-        extra_obj: Dict[str, Any] = {}
-        if isinstance(extra_raw, dict):
-            extra_obj = extra_raw
-        elif isinstance(extra_raw, str) and extra_raw.strip():
-            try:
-                extra_obj = json.loads(extra_raw)
-            except Exception:
-                extra_obj = {}
-        deriv_id = str(scan.get("derived_from_scan_id") or extra_obj.get("derived_from_scan_id") or "").strip()
-        if deriv_id:
+
+        # Walk multi-hop derived_from_scan_id chain recursively (up to 8 hops) so multi-generation
+        # edited scans (e.g. edited_daan_cleared -> catch_DaAn) always inherit parent RTK cameras
+        visited_ids = {str(scan.get("scan_id") or "").strip()}
+        cur_scan: Optional[Dict[str, Any]] = scan
+        hops = 0
+        while cur_scan and hops < 8:
+            hops += 1
+            extra_raw = cur_scan.get("extra_json")
+            extra_obj: Dict[str, Any] = {}
+            if isinstance(extra_raw, dict):
+                extra_obj = extra_raw
+            elif isinstance(extra_raw, str) and extra_raw.strip():
+                try:
+                    extra_obj = json.loads(extra_raw)
+                except Exception:
+                    extra_obj = {}
+            deriv_id = str(cur_scan.get("derived_from_scan_id") or extra_obj.get("derived_from_scan_id") or "").strip()
+            if not deriv_id or deriv_id in visited_ids:
+                break
+            visited_ids.add(deriv_id)
             d_scan = self.db.get_scan(deriv_id)
-            if d_scan:
-                for d in self._get_single_scan_camera_dirs(d_scan):
-                    if d not in dirs:
-                        dirs.append(d)
+            if not d_scan:
+                for fb_d in (os.path.join(SCANS_ROOT_DIR, deriv_id), os.path.join(SCANS_ROOT_DIR, deriv_id, "inputs")):
+                    if os.path.isdir(fb_d) and fb_d not in dirs:
+                        dirs.append(fb_d)
+                break
+            for d in self._get_single_scan_camera_dirs(d_scan):
+                if d not in dirs:
+                    dirs.append(d)
+            cur_scan = d_scan
+
         for mf in self._flatten_merged_from_leaves(self._extract_merged_from_list(scan)):
             for sid_key in ("scan_id", "derived_from_scan_id"):
                 sid = str(mf.get(sid_key) or "").strip()

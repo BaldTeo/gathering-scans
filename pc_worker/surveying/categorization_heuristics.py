@@ -63,6 +63,15 @@ from pc_worker.surveying.dsm_and_volume import (
     DsmAndVolumeMixin,
 )
 from pc_worker.surveying.categorization_io import CategorizationIoMixin
+from pc_worker.surveying.bim_geometry_extractor import (
+    compute_mesh_eigenvalue_features,
+    profile_capture_modality,
+    classify_scan_environment_regime,
+    extract_3d_buildings_and_circular_roofs,
+    extract_cylindrical_water_tanks,
+    extract_curved_and_circular_walls_and_fences,
+    extract_3d_tubular_pipes,
+)
 
 
 class CategorizationHeuristicsMixin:
@@ -129,7 +138,11 @@ class CategorizationHeuristicsMixin:
         )
 
         if not force_recompute:
-            if isinstance(prev_cached, dict) and prev_cached.get("status") == "ok":
+            if (
+                isinstance(prev_cached, dict)
+                and prev_cached.get("status") == "ok"
+                and (cached_only or int(prev_cached.get("categorization_schema_version") or 0) >= 4)
+            ):
                 return prev_cached
             if cached_only:
                 return {
@@ -512,36 +525,117 @@ class CategorizationHeuristicsMixin:
                 np.add.at(el_grn_a, (in_c[eg], ie_c[eg]), area_3d[eg].astype(np.float32))
         canopy_grn_frac_grid = uniform_filter(el_grn_a, size=9) / np.maximum(uniform_filter(el_tot_a, size=9), 1e-5)
 
-        # Upgraded Building Roof & Footprint Mask (captures park buildings >= 8.5 m2 like RosePark Toilet Building as well as multi-story dorms)
-        bldg_roof_tri = (tri_hag_tree >= 1.85) & (nz_abs >= 0.78) & (exg < 0.025) & (sat < 0.22)
-        bldg_occ_grid = np.zeros((ny, nx), dtype=bool)
-        bldg_footprint_m2_grid = np.zeros((ny, nx), dtype=np.float32)
-        if np.any(bldg_roof_tri):
-            r_grid = np.zeros((ny, nx), dtype=np.float32)
-            np.add.at(r_grid, (in_c[bldg_roof_tri], ie_c[bldg_roof_tri]), area_3d[bldg_roof_tri].astype(np.float32))
-            br_sp = bldg_roof_tri[splat_t_idx]
-            bldg_raw = np.zeros((ny, nx), dtype=bool)
-            bldg_raw[in_all[br_sp], ie_all[br_sp]] = True
-            bldg_raw = binary_closing(bldg_raw | (r_grid >= 0.04), structure=np.ones((5, 5), dtype=bool))
-            b_lbl, n_bldg = nd_label(bldg_raw)
-            for bid in range(1, n_bldg + 1):
-                b_comp = b_lbl == bid
-                comp_area_m2 = float(int(np.count_nonzero(b_comp)) * cell_area)
-                if float(r_grid[b_comp].sum()) >= 8.5 and comp_area_m2 >= 6.0:
-                    comp_sgrn = float(steep_grn_frac_grid[b_comp].mean())
-                    comp_h75 = float(np.percentile(hag_tree_grid[b_comp], 75.0))
-                    # Reject medium-height park tree canopy domes (3.8m < comp_h75 < 7.8m and comp_sgrn > 0.48) while keeping park buildings (<=3.8m) & multi-story dorm roofs (>=7.8m)
-                    if not (3.8 < comp_h75 < 7.8 and comp_sgrn > 0.48):
-                        filled_b = binary_fill_holes(b_comp)
-                        bldg_occ_grid |= filled_b
-                        dil_b = binary_dilation(filled_b, structure=np.ones((15, 15), dtype=bool))
-                        bldg_footprint_m2_grid[dil_b] = np.maximum(bldg_footprint_m2_grid[dil_b], comp_area_m2)
-            if np.any(bldg_occ_grid):
-                bldg_occ_grid = binary_dilation(bldg_occ_grid, structure=np.ones((13, 13), dtype=bool))
+        # =================================================================================
+        # 5-STAGE TOPOLOGICAL 3D GEOMETRY EXTRACTION (Roofs -> Tanks -> Curved Fences -> Pipes -> Planar Walls)
+        # =================================================================================
+        cam_catalog = self._load_or_build_camera_catalog(scan)
+        cam_profile = profile_capture_modality(cam_catalog, h_dtm_grid, e_min, n_min, res)
+        regime_info = classify_scan_environment_regime(scan, centroids, normals, area_2d, area_3d, exg, cam_profile)
+        tensor_features = compute_mesh_eigenvalue_features(centroids, normals, area_3d)
+
+        # Stage 1: Color-Invariant Circular Pavilion Roofs, Polygonal Buildings & Coupled Cylindrical Pavilion Walls
+        bldg_res = extract_3d_buildings_and_circular_roofs(
+            centroids,
+            normals,
+            area_2d,
+            area_3d,
+            rgb,
+            exg,
+            sat,
+            tri_hag_tree,
+            tensor_features["tri_r_normal"],
+            z_max_filled,
+            h_dtm_grid,
+            ortho_rgb,
+            ortho_exg,
+            steep_grn_frac_grid,
+            in_c,
+            ie_c,
+            in_all,
+            ie_all,
+            splat_t_idx,
+            e_min,
+            n_min,
+            res,
+            ce,
+            cn,
+            ch,
+            regime_info,
+        )
+        buildings_list: List[Dict[str, Any]] = bldg_res["buildings"]
+        coupled_cyl_walls: List[Dict[str, Any]] = bldg_res["coupled_cylindrical_walls"]
+        bldg_occ_grid: np.ndarray = bldg_res["bldg_occ_grid"]
+        bldg_footprint_m2_grid: np.ndarray = bldg_res["bldg_footprint_m2_grid"]
+        cyl_wall_tri_mask: np.ndarray = bldg_res["cyl_wall_tri_mask"]
+
+        # Stage 2: Cylindrical Water Storage Tanks (IfcTank) & Conical Plaza Bollards (before wall/fence splitting!)
+        tank_res = extract_cylindrical_water_tanks(
+            centroids,
+            normals,
+            area_2d,
+            area_3d,
+            rgb,
+            exg,
+            sat,
+            tri_hag_tree,
+            h_dtm_grid,
+            bldg_occ_grid,
+            in_c,
+            ie_c,
+            e_min,
+            n_min,
+            res,
+            ce,
+            cn,
+            ch,
+        )
+        water_tanks_list: List[Dict[str, Any]] = tank_res["water_tanks"]
+        street_furniture_list: List[Dict[str, Any]] = tank_res["street_furniture"]
+        tank_tri_mask: np.ndarray = tank_res["tank_tri_mask"]
+        water_tank_occ_grid: np.ndarray = tank_res["water_tank_occ_grid"]
+        bollard_occ_grid: np.ndarray = tank_res["bollard_occ_grid"]
+
+        # Stage 3: Circular Wooden Fences & Curved Enclosure Walls (before planar wall splitting!)
+        fence_res = extract_curved_and_circular_walls_and_fences(
+            centroids,
+            normals,
+            area_3d,
+            rgb,
+            exg,
+            sat,
+            tri_hag_tree,
+            h_dtm_grid,
+            tank_tri_mask,
+            cyl_wall_tri_mask,
+            water_tanks_list,
+            e_min,
+            n_min,
+            res,
+            ce,
+            cn,
+            ch,
+        )
+        circular_fences_list: List[Dict[str, Any]] = fence_res["circular_fences"]
+        fence_tri_mask: np.ndarray = fence_res["fence_tri_mask"]
+
+        # Stage 4: 3D Tubular Pipes, Inter-Tank Manifolds & Overhead Pavilion Steel Pipe Trusses (IfcFlowSegment)
+        pipes_list: List[Dict[str, Any]] = extract_3d_tubular_pipes(
+            centroids,
+            normals,
+            area_3d,
+            exg,
+            tri_hag_tree,
+            tensor_features,
+            water_tanks_list,
+            buildings_list,
+            ce,
+            cn,
+            ch,
+        )
 
         # =================================================================================
-        # CATEGORY 4 (PRE-COMPUTED): WALLS (Retaining & Building Walls / 擋土牆與垂直牆面)
-        # Pre-computed before Trees & Roads so retaining walls & building facades never trigger false trees!
+        # CATEGORY 4 (PRE-COMPUTED): WALLS (Retaining, Building, Cylindrical Pavilion & Circular Wooden Fence Walls)
+        # Pre-computed before Trees & Roads so retaining walls, fences & building facades never trigger false trees!
         # =================================================================================
         in_bldg_c = bldg_occ_grid[in_c, ie_c]
         bldg_fp_c = bldg_footprint_m2_grid[in_c, ie_c]
@@ -558,9 +652,12 @@ class CategorizationHeuristicsMixin:
             & ((elev_exg_grid[in_c, ie_c] <= 0.052) | ((is_achromatic_wall | is_tall_facade) & canopy_safe_achrom) | in_bldg_c)
             & ((steep_grn_c < 0.26) | ((is_achromatic_wall | is_tall_facade) & canopy_safe_achrom) | in_bldg_c)
             & (area_3d >= 0.004)
+            & (~tank_tri_mask)
+            & (~cyl_wall_tri_mask)
+            & (~fence_tri_mask)
         )
         vert_idx = np.nonzero(vert_tri_mask)[0]
-        walls_list: List[Dict[str, Any]] = []
+        walls_list: List[Dict[str, Any]] = list(coupled_cyl_walls) + list(circular_fences_list)
 
         if len(vert_idx) >= 12:
             v_cent = centroids[vert_idx]
@@ -871,8 +968,10 @@ class CategorizationHeuristicsMixin:
                         break
 
         for idx_wl, wl_obj in enumerate(walls_list, 1):
-            wl_obj["id"] = f"WL{idx_wl}"
-            wl_obj["name"] = f"擋土牆/垂直牆面 WL{idx_wl}"
+            cur_wid = str(wl_obj.get("id") or "")
+            if not (cur_wid.startswith("CW_") or cur_wid.startswith("CF")):
+                wl_obj["id"] = f"WL{idx_wl}"
+                wl_obj["name"] = f"擋土牆/垂直牆面 WL{idx_wl}"
 
         wall_occ_grid = np.zeros((ny, nx), dtype=bool)
         if np.any(vert_tri_mask):
@@ -958,7 +1057,7 @@ class CategorizationHeuristicsMixin:
                 return True
             return False
 
-        # Green Canopy + Pruned/Columnar Tree Stems (excluding buildings & retaining walls)
+        # Green Canopy + Pruned/Columnar Tree Stems (excluding buildings, circular roofs, water tanks, bollards & retaining/circular walls)
         green_canopy_mask = (
             (
                 (hag_tree_grid >= 1.8)
@@ -967,6 +1066,8 @@ class CategorizationHeuristicsMixin:
             & (hag_tree_grid <= 16.5)
             & ((elev_exg_grid > 0.022) | (ortho_exg > 0.025))
             & (~bldg_occ_grid)
+            & (~water_tank_occ_grid)
+            & (~bollard_occ_grid)
             & (~coplanar_wall_grid)
             & raw_occ_closed
         )
@@ -983,6 +1084,9 @@ class CategorizationHeuristicsMixin:
             & (exg > -0.095)
             & (exg < 0.260)
             & ((rb_diff >= 0.024) | (exg >= 0.028))
+            & (~tank_tri_mask)
+            & (~cyl_wall_tri_mask)
+            & (~fence_tri_mask)
         )
         if np.any(stem_tri_cand):
             st_idx = np.nonzero(stem_tri_cand)[0]
@@ -997,7 +1101,15 @@ class CategorizationHeuristicsMixin:
             np.add.at(st_grid_cnt, (in_c[st_idx], ie_c[st_idx]), 1)
             np.add.at(st_grid_a3d, (in_c[st_idx], ie_c[st_idx]), st_a3d)
             st_occ = binary_closing((st_grid_cnt >= 3) | (st_grid_a3d >= 0.07), structure=np.ones((2, 2), dtype=bool))
-            st_occ = st_occ & (~bldg_occ_grid) & (~coplanar_wall_grid) & (hag_tree_grid >= 1.55) & (hag_tree_grid <= 16.5)
+            st_occ = (
+                st_occ
+                & (~bldg_occ_grid)
+                & (~water_tank_occ_grid)
+                & (~bollard_occ_grid)
+                & (~coplanar_wall_grid)
+                & (hag_tree_grid >= 1.55)
+                & (hag_tree_grid <= 16.5)
+            )
             st_lbl, n_st = nd_label(st_occ)
             if n_st > 0:
                 pt_st_cid = st_lbl[in_c[st_idx], ie_c[st_idx]]
@@ -2148,11 +2260,22 @@ class CategorizationHeuristicsMixin:
                 "name_zh": "建築屋頂與人造設施 (Buildings & Structures)",
                 "name_en": "Building Roofs & Elevated Structures",
                 "color": "#3b82f6",
-                "count": 1 if bldg_area_2d >= 4.0 else 0,
-                "planar_area_m2": round(bldg_area_2d, 2),
-                "planar_area_ping": round(bldg_area_2d * 0.3025, 2),
+                "count": max(len(buildings_list), 1 if bldg_area_2d >= 4.0 else 0),
+                "planar_area_m2": round(max(bldg_area_2d, sum(float(b.get("footprint_area_m2") or 0.0) for b in buildings_list)), 2),
+                "planar_area_ping": round(max(bldg_area_2d, sum(float(b.get("footprint_area_m2") or 0.0) for b in buildings_list)) * 0.3025, 2),
                 "surface_area_3d_m2": round(bldg_area_3d, 2),
-                "site_share_pct": round(100.0 * bldg_area_2d / max(total_mesh_2d, 1.0), 1),
+                "site_share_pct": round(100.0 * max(bldg_area_2d, sum(float(b.get("footprint_area_m2") or 0.0) for b in buildings_list)) / max(total_mesh_2d, 1.0), 1),
+            },
+            {
+                "key": "water_tanks_and_mep",
+                "name_zh": "儲水塔與管線設施 (Water Tanks & MEP Pipes)",
+                "name_en": "Water Storage Tanks & MEP Piping",
+                "color": "#0284c7",
+                "count": len(water_tanks_list) + len(pipes_list),
+                "planar_area_m2": round(sum(float(wt.get("planar_area_m2") or 0.0) for wt in water_tanks_list), 2),
+                "planar_area_ping": round(sum(float(wt.get("planar_area_m2") or 0.0) for wt in water_tanks_list) * 0.3025, 2),
+                "surface_area_3d_m2": round(sum(float(wt.get("surface_area_3d_m2") or 0.0) for wt in water_tanks_list), 2),
+                "site_share_pct": round(100.0 * sum(float(wt.get("planar_area_m2") or 0.0) for wt in water_tanks_list) / max(total_mesh_2d, 1.0), 1),
             },
             {
                 "key": "drainage_curbs",
@@ -2195,6 +2318,10 @@ class CategorizationHeuristicsMixin:
             "walls_count": len(walls_list),
             "walls_total_length_m": walls_len_total,
             "walls_vertical_area_m2": walls_vert_area_total,
+            "buildings_count": len(buildings_list),
+            "water_tanks_count": len(water_tanks_list),
+            "pipes_count": len(pipes_list),
+            "street_furniture_count": len(street_furniture_list),
             "stockpiles_count": len(stockpiles_list),
             "bare_earth_area_m2": round(bare_area_2d, 2),
             "grass_area_m2": round(grass_area_2d, 2),
@@ -2258,20 +2385,20 @@ class CategorizationHeuristicsMixin:
         )
         photo_matches = ai_info.get("photo_matches") if isinstance(ai_info.get("photo_matches"), dict) else {}
 
-        # Link every detected 3D feature to its best calibrated mobile phone photo via frustum projection (before re-indexing)
+        # Link every detected 3D feature to its best calibrated mobile phone photo via frustum projection + Z-buffer occlusion check
         if cam_catalog and hasattr(self, "_match_feature_to_rtk_photo_fast"):
             for tr in trees_list:
                 pm = photo_matches.get(tr["id"]) or self._match_feature_to_rtk_photo_fast(
-                    cam_catalog, float(tr["trunk_twd97"][0]), float(tr["trunk_twd97"][1]), float(tr["trunk_twd97"][2]) + 1.3
+                    cam_catalog, float(tr["trunk_twd97"][0]), float(tr["trunk_twd97"][1]), float(tr["trunk_twd97"][2]) + 1.3, z_max_filled, e_min, n_min, res
                 )
                 if pm:
                     tr.update(pm)
                 tr["ai_vision_verified"] = bool(ai_info.get("ai_verified", True))
-            for item_grp in (roads_list, water_list, walls_list, stockpiles_list):
+            for item_grp in (roads_list, water_list, walls_list, stockpiles_list, buildings_list, water_tanks_list, pipes_list, street_furniture_list):
                 for it_o in item_grp:
                     c_pt = it_o.get("center_twd97") or [0.0, 0.0, 0.0]
                     pm = photo_matches.get(it_o["id"]) or self._match_feature_to_rtk_photo_fast(
-                        cam_catalog, float(c_pt[0]), float(c_pt[1]), float(c_pt[2])
+                        cam_catalog, float(c_pt[0]), float(c_pt[1]), float(c_pt[2]), z_max_filled, e_min, n_min, res
                     )
                     if pm:
                         it_o.update(pm)
@@ -2292,8 +2419,10 @@ class CategorizationHeuristicsMixin:
             for idx_w, w_obj in enumerate(water_list, 1):
                 w_obj["id"] = f"W{idx_w}"
             for idx_wl, wl_obj in enumerate(walls_list, 1):
-                wl_obj["id"] = f"WL{idx_wl}"
-                wl_obj["name"] = f"擋土牆/垂直牆面 WL{idx_wl}"
+                cur_wid = str(wl_obj.get("id") or "")
+                if not (cur_wid.startswith("CW_") or cur_wid.startswith("CF")):
+                    wl_obj["id"] = f"WL{idx_wl}"
+                    wl_obj["name"] = f"擋土牆/垂直牆面 WL{idx_wl}"
             for idx_s, sp_obj in enumerate(stockpiles_list, 1):
                 sp_obj["id"] = f"S{idx_s}"
                 sp_obj["name"] = f"土石堆置區 S{idx_s} (Material Stockpile Mound)"
@@ -2361,6 +2490,8 @@ class CategorizationHeuristicsMixin:
         result = {
             "ok": True,
             "status": "ok",
+            "categorization_schema_version": 4,
+            "environment_regime": regime_info,
             "has_categorization": True,
             "saved_on_server": True,
             "from_server_cache": False,
@@ -2371,6 +2502,9 @@ class CategorizationHeuristicsMixin:
                 "water": True,
                 "walls": True,
                 "stockpiles": True,
+                "buildings": True,
+                "tanks": True,
+                "pipes": True,
             },
             "scan_id": scan_id,
             "scan_name": scan.get("name") or scan_id,
@@ -2393,6 +2527,10 @@ class CategorizationHeuristicsMixin:
             "trees": trees_list,
             "water_bodies": water_list,
             "walls": walls_list,
+            "buildings": buildings_list,
+            "water_tanks": water_tanks_list,
+            "pipes": pipes_list,
+            "street_furniture": street_furniture_list,
             "stockpiles": stockpiles_list,
             "report_html_url": f"/api/reports/{html_name}",
             "report_csv_url": f"/api/reports/{csv_name}",

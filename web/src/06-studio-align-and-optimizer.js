@@ -4070,6 +4070,12 @@
           }
           return;
         }
+        if (tool === "bim" && isPanelOpen) {
+          if (typeof closeSidePanel === "function") {
+            closeSidePanel();
+          }
+          return;
+        }
         if (
           STATE.measurePoints.length > 0 ||
           ["distance", "area", "angle", "coordinates", "laser"].includes(tool) ||

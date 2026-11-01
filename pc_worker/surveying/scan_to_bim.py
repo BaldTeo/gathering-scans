@@ -599,6 +599,75 @@ def _generate_pipe_cylinder_mesh(
     }
 
 
+def _generate_circular_dome_roof_mesh(
+    eave_center: Tuple[float, float, float],
+    radius: float,
+    thickness: float = 0.28,
+    dome_rise: float = 0.48,
+    radial_segments: int = 36,
+) -> Dict[str, Any]:
+    """
+    Generate a 36-segment circular pavilion roof solid with cylindrical eave fascia ring,
+    flat/coffered ceiling soffit, and gently domed conical/spherical upper roof deck (IfcRoof).
+    """
+    cx, cy, cz = eave_center
+    r = max(0.5, float(radius))
+    t = max(0.15, float(thickness))
+    rise = max(0.20, float(dome_rise))
+    verts: List[Tuple[float, float, float]] = []
+    faces: List[Tuple[int, int, int]] = []
+
+    # 0 .. N-1: Bottom eave ring (z = cz - t)
+    for i in range(radial_segments):
+        ang = 2.0 * math.pi * float(i) / float(radial_segments)
+        verts.append((cx + r * math.cos(ang), cy + r * math.sin(ang), cz - t))
+
+    # N .. 2N-1: Upper eave rim ring (z = cz)
+    for i in range(radial_segments):
+        ang = 2.0 * math.pi * float(i) / float(radial_segments)
+        verts.append((cx + r * math.cos(ang), cy + r * math.sin(ang), cz))
+
+    # 2N .. 3N-1: Mid-dome ring (r_mid = 0.52 * r, z = cz + 0.68 * rise)
+    r_mid = r * 0.52
+    z_mid = cz + rise * 0.68
+    for i in range(radial_segments):
+        ang = 2.0 * math.pi * float(i) / float(radial_segments)
+        verts.append((cx + r_mid * math.cos(ang), cy + r_mid * math.sin(ang), z_mid))
+
+    # 3N: Bottom soffit center (z = cz - t * 0.5)
+    b_center_idx = len(verts)
+    verts.append((cx, cy, cz - t * 0.5))
+
+    # 3N + 1: Top dome apex center (z = cz + rise)
+    t_apex_idx = len(verts)
+    verts.append((cx, cy, cz + rise))
+
+    for i in range(radial_segments):
+        nxt = (i + 1) % radial_segments
+        b0, b1 = i, nxt
+        e0, e1 = i + radial_segments, nxt + radial_segments
+        m0, m1 = i + 2 * radial_segments, nxt + 2 * radial_segments
+
+        # Outer eave fascia skirt
+        faces.append((b0, b1, e1))
+        faces.append((b0, e1, e0))
+
+        # Lower dome band (eave rim -> mid-dome ring)
+        faces.append((e0, e1, m1))
+        faces.append((e0, m1, m0))
+
+        # Upper dome cap fan (mid-dome ring -> apex)
+        faces.append((t_apex_idx, m0, m1))
+
+        # Bottom soffit fan
+        faces.append((b_center_idx, b1, b0))
+
+    return {
+        "vertices": verts,
+        "faces": faces,
+    }
+
+
 def _safe_float(val: Any, default: float = 0.0) -> float:
     try:
         f = float(val)
@@ -661,7 +730,7 @@ class ScanToBimMixin:
 
         categories = payload.get("categories")
         if not isinstance(categories, list) or not categories:
-            categories = ["buildings", "walls", "roads", "trees", "water", "pipes"]
+            categories = ["buildings", "walls", "tanks", "roads", "trees", "water", "pipes"]
         active_cats = set(str(c).lower().strip() for c in categories)
 
         tolerance_m = max(0.05, _safe_float(payload.get("tolerance_m"), 0.25))
@@ -670,14 +739,25 @@ class ScanToBimMixin:
         min_wall_len = max(0.5, _safe_float(payload.get("min_wall_length_m"), 1.0))
         min_tree_h = max(0.5, _safe_float(payload.get("min_tree_height_m"), 1.5))
 
-        # Retrieve categorization
-        cat_data = payload.get("categorization_data") or payload.get("classified_objects")
-        if not isinstance(cat_data, dict):
+        # Retrieve categorization (or automatically run v4 3D geometry + categorization engine if missing/stale)
+        explicit_cat = payload.get("categorization_data") or payload.get("classified_objects")
+        cat_data = explicit_cat if isinstance(explicit_cat, dict) else None
+        if cat_data is None:
             cat_data = getattr(self, "get_saved_categorization", lambda s: None)(scan_id)
-        if not isinstance(cat_data, dict) or not cat_data.get("ok"):
-            cat_data = getattr(self, "categorize_scan_surfaces_and_objects", lambda p: {})(
-                {"scan_id": scan_id, "cached_only": True}
-            )
+            if (
+                not isinstance(cat_data, dict)
+                or not cat_data.get("ok")
+                or int(cat_data.get("categorization_schema_version") or 0) < 4
+            ):
+                try:
+                    cat_data = getattr(self, "categorize_scan_surfaces_and_objects", lambda p: {})(
+                        {"scan_id": scan_id, "force_recompute": True}
+                    )
+                except Exception:
+                    if not isinstance(cat_data, dict) or not cat_data.get("ok"):
+                        cat_data = getattr(self, "categorize_scan_surfaces_and_objects", lambda p: {})(
+                            {"scan_id": scan_id, "cached_only": True}
+                        )
 
         if not isinstance(cat_data, dict) or not cat_data.get("ok"):
             # Provide graceful analytical fallback if scan has not been categorized yet
@@ -759,6 +839,12 @@ class ScanToBimMixin:
                     t_poly = _safe_coord_list(w.get("top_polyline_twd97"), min_len=2)
                     mean_h = _safe_float(w.get("mean_height_m") or w.get("height_m"), 2.0)
                     azimuth = _safe_float(w.get("azimuth_deg"), 0.0)
+                    w_thick = max(0.10, _safe_float(w.get("thickness_m"), wall_thickness_m))
+                    w_subtype = str(w.get("subtype") or "retaining_wall")
+                    w_ifc = str(w.get("ifc_class") or ("IfcRailing" if w_subtype == "circular_wooden_fence" else "IfcWall"))
+                    w_color = str(w.get("color") or ("#d97706" if w_subtype == "circular_wooden_fence" else ("#e2e8f0" if w_subtype == "cylindrical_wall" else "#f43f5e")))
+                    w_name = str(w.get("name") or f"Wall {w_id}")
+                    w_radius = _safe_float(w.get("radius_m"), 0.0)
                     c_twd = _safe_coord_point(w.get("center_twd97"), default=(anc_e, anc_n, anc_h))
 
                     mesh_data: Dict[str, Any] = {"vertices": [], "faces": []}
@@ -766,39 +852,46 @@ class ScanToBimMixin:
                         mesh_data = _generate_extruded_wall_prism_mesh(
                             b_poly,
                             t_poly,
-                            thickness_m=wall_thickness_m,
+                            thickness_m=w_thick,
                         )
                     else:
                         # Bounding prism fallback
                         mesh_data = _generate_box_mesh(
                             c_twd,
                             dx=length_m,
-                            dy=wall_thickness_m,
+                            dy=w_thick,
                             dz=mean_h,
                             azimuth_deg=azimuth,
                         )
 
                     v_twd = [list(v) for v in mesh_data["vertices"]]
                     v_loc = [_to_studio_local(tuple(v)) for v in mesh_data["vertices"]]
-                    vol_m3 = round(length_m * mean_h * wall_thickness_m, 2)
+                    vol_m3 = round(length_m * mean_h * w_thick, 2)
                     vert_area = round(_safe_float(w.get("vertical_area_m2"), length_m * mean_h), 2)
+                    w_props = {
+                        "subtype": w_subtype,
+                        "length_m": round(length_m, 2),
+                        "height_m": round(mean_h, 2),
+                        "thickness_m": round(w_thick, 2),
+                        "radius_m": round(w_radius, 2) if w_radius > 0 else 0.0,
+                        "diameter_m": round(w_radius * 2.0, 2) if w_radius > 0 else 0.0,
+                        "azimuth_deg": round(azimuth, 1),
+                        "vertical_area_m2": vert_area,
+                        "area_m2": vert_area,
+                        "volume_m3": vol_m3,
+                    }
 
                     primitives.append({
                         "id": f"BIM_{w_id}",
                         "source_id": w_id,
                         "category": "walls",
-                        "ifc_class": "IfcWall",
-                        "name": f"Wall {w_id}",
-                        "primitive_type": "extruded_prism",
-                        "color": "#f43f5e",
-                        "properties": {
-                            "length_m": round(length_m, 2),
-                            "height_m": round(mean_h, 2),
-                            "thickness_m": round(wall_thickness_m, 2),
-                            "azimuth_deg": round(azimuth, 1),
-                            "vertical_area_m2": vert_area,
-                            "volume_m3": vol_m3,
-                        },
+                        "subtype": w_subtype,
+                        "ifc_class": w_ifc,
+                        "name": w_name,
+                        "primitive_type": "circular_ring_wall" if w_radius > 0 else "extruded_prism",
+                        "color": w_color,
+                        "properties": w_props,
+                        "dimensions": dict(w_props),
                         "transform": {
                             "center_twd97": [round(c, 3) for c in c_twd],
                             "center_local": [round(c, 3) for c in _to_studio_local(c_twd)],
@@ -1035,16 +1128,13 @@ class ScanToBimMixin:
                     continue
 
         # -------------------------------------------------------------------
-        # 5. BUILDINGS & STRUCTURES -> 3D Bounding Prisms
+        # 5. BUILDINGS, CIRCULAR PAVILION ROOFS & STREET FURNITURE
         # -------------------------------------------------------------------
         if "buildings" in active_cats:
-            # Check for buildings in categorization or manual overrides
             bldg_entries = cat_data.get("buildings_structures") or cat_data.get("buildings") or []
             if not bldg_entries:
-                # Check breakdown key
                 for item in cat_data.get("categories_breakdown") or []:
                     if item.get("key") == "buildings_structures" and item.get("count", 0) > 0:
-                        # Synthetic structure block from site bounds or walls
                         p_area = float(item.get("planar_area_m2") or 150.0)
                         dim = math.sqrt(max(25.0, p_area))
                         bldg_entries = [{
@@ -1061,43 +1151,192 @@ class ScanToBimMixin:
             for b in bldg_entries:
                 try:
                     b_id = str(b.get("id") or "B1")
+                    b_subtype = str(b.get("subtype") or "polygonal_building")
+                    b_name = str(b.get("name") or f"Structure {b_id}")
+                    b_color = str(b.get("color") or "#3b82f6")
+                    b_ifc = str(b.get("ifc_class") or ("IfcRoof" if b_subtype == "circular_roof" else "IfcBuildingElementProxy"))
                     c_twd = _safe_coord_point(b.get("center_twd97"), (anc_e, anc_n, anc_h + 2.5))
-                    dx = max(0.1, _safe_float(b.get("dx"), 12.0))
-                    dy = max(0.1, _safe_float(b.get("dy"), 8.0))
-                    h = max(0.1, _safe_float(b.get("height_m"), 6.0))
-                    az = _safe_float(b.get("azimuth_deg"), 0.0)
+                    h = max(0.2, _safe_float(b.get("height_m"), 6.0))
+                    r_roof = _safe_float(b.get("radius_m"), 0.0)
 
-                    mesh_data = _generate_box_mesh(
-                        (c_twd[0], c_twd[1], c_twd[2]),
-                        dx=dx,
-                        dy=dy,
-                        dz=h,
-                        azimuth_deg=az,
-                    )
+                    if b_subtype == "circular_roof" and r_roof >= 1.2:
+                        eave_z = _safe_float(b.get("eave_elevation_m"), c_twd[2])
+                        dome_rise = max(0.30, _safe_float(b.get("dome_rise_m"), 0.48))
+                        mesh_data = _generate_circular_dome_roof_mesh(
+                            (c_twd[0], c_twd[1], eave_z),
+                            radius=r_roof,
+                            thickness=0.28,
+                            dome_rise=dome_rise,
+                            radial_segments=36,
+                        )
+                        fp_area = round(math.pi * r_roof * r_roof, 2)
+                        vol_m3 = round(fp_area * (0.28 + 0.5 * dome_rise), 2)
+                        b_props = {
+                            "subtype": "circular_roof",
+                            "radius_m": round(r_roof, 2),
+                            "diameter_m": round(r_roof * 2.0, 2),
+                            "height_m": round(h, 2),
+                            "dome_rise_m": round(dome_rise, 2),
+                            "footprint_area_m2": fp_area,
+                            "area_m2": fp_area,
+                            "volume_m3": vol_m3,
+                        }
+                        prim_type = "circular_dome_roof"
+                    else:
+                        dx = max(0.1, _safe_float(b.get("dx"), 12.0))
+                        dy = max(0.1, _safe_float(b.get("dy"), 8.0))
+                        az = _safe_float(b.get("azimuth_deg"), 0.0)
+                        b_poly = _safe_coord_list(b.get("boundary_twd97"), min_len=3)
+                        if len(b_poly) >= 3 and b_subtype == "polygonal_building":
+                            gz = _safe_float(b.get("ground_elevation_m"), c_twd[2] - 0.5 * h)
+                            b_base = [(p[0], p[1], gz) for p in b_poly]
+                            mesh_data = _generate_extruded_polygon_mesh(b_base, extrusion_depth=h, extrude_direction="up")
+                        else:
+                            mesh_data = _generate_box_mesh(
+                                (c_twd[0], c_twd[1], c_twd[2]),
+                                dx=dx,
+                                dy=dy,
+                                dz=h,
+                                azimuth_deg=az,
+                            )
+                        fp_area = round(_safe_float(b.get("footprint_area_m2"), dx * dy), 2)
+                        vol_m3 = round(fp_area * h, 2)
+                        b_props = {
+                            "subtype": b_subtype,
+                            "length_m": round(dx, 2),
+                            "width_m": round(dy, 2),
+                            "height_m": round(h, 2),
+                            "footprint_area_m2": fp_area,
+                            "area_m2": fp_area,
+                            "volume_m3": vol_m3,
+                        }
+                        prim_type = "cuboid"
+
                     if not mesh_data["faces"]:
                         continue
 
                     v_twd = [list(v) for v in mesh_data["vertices"]]
                     v_loc = [_to_studio_local(tuple(v)) for v in mesh_data["vertices"]]
-                    vol_m3 = round(dx * dy * h, 2)
 
                     primitives.append({
                         "id": f"BIM_{b_id}",
                         "source_id": b_id,
                         "category": "buildings",
-                        "ifc_class": "IfcBuildingElementProxy",
+                        "subtype": b_subtype,
+                        "ifc_class": b_ifc,
                         "ifc_predefined_type": "USERDEFINED",
-                        "ifc_object_type": "BUILDING",
-                        "name": f"Structure {b_id}",
-                        "primitive_type": "cuboid",
-                        "color": "#3b82f6",
-                        "properties": {
-                            "length_m": round(dx, 2),
-                            "width_m": round(dy, 2),
-                            "height_m": round(h, 2),
-                            "footprint_area_m2": round(dx * dy, 2),
-                            "volume_m3": vol_m3,
+                        "ifc_object_type": "ROOF" if b_subtype == "circular_roof" else "BUILDING",
+                        "name": b_name,
+                        "primitive_type": prim_type,
+                        "color": b_color,
+                        "properties": b_props,
+                        "dimensions": dict(b_props),
+                        "transform": {
+                            "center_twd97": [round(c, 3) for c in c_twd],
+                            "center_local": [round(c, 3) for c in _to_studio_local(tuple(c_twd))],
                         },
+                        "mesh": {
+                            "vertices_twd97": v_twd,
+                            "vertices_local": v_loc,
+                            "faces": mesh_data["faces"],
+                        },
+                    })
+                except Exception:
+                    continue
+
+            # Also emit Conical Plaza Bollards / Street Furniture (BL1..BLn)
+            for sf in (cat_data.get("street_furniture") or []):
+                if not isinstance(sf, dict):
+                    continue
+                try:
+                    sf_id = str(sf.get("id") or "BL1")
+                    c_twd = _safe_coord_point(sf.get("center_twd97"), (anc_e, anc_n, anc_h))
+                    r_bl = max(0.15, _safe_float(sf.get("radius_m"), 0.30))
+                    h_bl = max(0.30, _safe_float(sf.get("height_m"), 0.65))
+                    gz_bl = _safe_float(sf.get("ground_elevation_m"), c_twd[2] - 0.5 * h_bl)
+                    mesh_data = _generate_cylinder_mesh((c_twd[0], c_twd[1], gz_bl), radius=r_bl, height=h_bl, radial_segments=16)
+                    v_twd = [list(v) for v in mesh_data["vertices"]]
+                    v_loc = [_to_studio_local(tuple(v)) for v in mesh_data["vertices"]]
+                    sf_props = {
+                        "subtype": str(sf.get("subtype") or "conical_bollard"),
+                        "diameter_m": round(r_bl * 2.0, 2),
+                        "radius_m": round(r_bl, 2),
+                        "height_m": round(h_bl, 2),
+                        "area_m2": round(math.pi * r_bl * r_bl, 2),
+                        "volume_m3": round(math.pi * r_bl * r_bl * h_bl, 3),
+                    }
+                    primitives.append({
+                        "id": f"BIM_{sf_id}",
+                        "source_id": sf_id,
+                        "category": "buildings",
+                        "subtype": sf_props["subtype"],
+                        "ifc_class": "IfcDiscreteAccessory",
+                        "name": str(sf.get("name") or f"Plaza Bollard {sf_id}"),
+                        "primitive_type": "cylinder",
+                        "color": str(sf.get("color") or "#94a3b8"),
+                        "properties": sf_props,
+                        "dimensions": dict(sf_props),
+                        "transform": {
+                            "center_twd97": [round(c, 3) for c in c_twd],
+                            "center_local": [round(c, 3) for c in _to_studio_local(tuple(c_twd))],
+                        },
+                        "mesh": {
+                            "vertices_twd97": v_twd,
+                            "vertices_local": v_loc,
+                            "faces": mesh_data["faces"],
+                        },
+                    })
+                except Exception:
+                    continue
+
+        # -------------------------------------------------------------------
+        # 5B. CYLINDRICAL WATER STORAGE TANKS -> IfcTank 3D Cylindrical Solids
+        # -------------------------------------------------------------------
+        if any(c in active_cats for c in ("tanks", "water", "pipes", "buildings")):
+            tanks_list = cat_data.get("water_tanks") or payload.get("water_tanks") or []
+            for wt in tanks_list:
+                if not isinstance(wt, dict):
+                    continue
+                try:
+                    wt_id = str(wt.get("id") or "WT1")
+                    c_twd = _safe_coord_point(wt.get("center_twd97"), (anc_e, anc_n, anc_h))
+                    r_wt = max(0.35, _safe_float(wt.get("radius_m"), 0.80))
+                    h_wt = max(1.0, _safe_float(wt.get("height_m"), 2.40))
+                    gz_wt = _safe_float(wt.get("ground_elevation_m"), c_twd[2] - 0.5 * h_wt)
+                    mesh_data = _generate_cylinder_mesh(
+                        (c_twd[0], c_twd[1], gz_wt),
+                        radius=r_wt,
+                        height=h_wt,
+                        radial_segments=24,
+                    )
+                    if not mesh_data["faces"]:
+                        continue
+                    v_twd = [list(v) for v in mesh_data["vertices"]]
+                    v_loc = [_to_studio_local(tuple(v)) for v in mesh_data["vertices"]]
+                    fp_area = round(math.pi * r_wt * r_wt, 2)
+                    vol_m3 = round(fp_area * h_wt, 2)
+                    wt_props = {
+                        "subtype": "water_tank",
+                        "radius_m": round(r_wt, 2),
+                        "diameter_m": round(r_wt * 2.0, 2),
+                        "height_m": round(h_wt, 2),
+                        "planar_area_m2": fp_area,
+                        "area_m2": fp_area,
+                        "volume_m3": vol_m3,
+                    }
+                    primitives.append({
+                        "id": f"BIM_{wt_id}",
+                        "source_id": wt_id,
+                        "category": "tanks",
+                        "subtype": "water_tank",
+                        "ifc_class": "IfcTank",
+                        "ifc_predefined_type": "STORAGE",
+                        "ifc_object_type": "WATER_STORAGE_TANK",
+                        "name": str(wt.get("name") or f"Water Tank {wt_id}"),
+                        "primitive_type": "cylinder",
+                        "color": str(wt.get("color") or "#0284c7"),
+                        "properties": wt_props,
+                        "dimensions": dict(wt_props),
                         "transform": {
                             "center_twd97": [round(c, 3) for c in c_twd],
                             "center_local": [round(c, 3) for c in _to_studio_local(tuple(c_twd))],
@@ -1144,25 +1383,31 @@ class ScanToBimMixin:
                     v_twd = [list(v) for v in mesh_data["vertices"]]
                     v_loc = [_to_studio_local(tuple(v)) for v in mesh_data["vertices"]]
                     vol_m3 = round(math.pi * r_pipe * r_pipe * length_m, 3)
+                    p_subtype = str(p.get("subtype") or "pipe")
+                    p_props = {
+                        "subtype": p_subtype,
+                        "length_m": round(length_m, 2),
+                        "diameter_m": round(dia, 3),
+                        "diameter_mm": int(round(dia * 1000.0)),
+                        "slope_pct": round(abs(dz / max(1e-4, math.hypot(dx, dy))) * 100.0, 2),
+                        "invert_start_m": round(p_start[2], 3),
+                        "invert_end_m": round(p_end[2], 3),
+                        "volume_m3": vol_m3,
+                    }
 
                     primitives.append({
                         "id": f"BIM_{p_id}",
                         "source_id": p_id,
                         "category": "pipes",
+                        "subtype": p_subtype,
                         "ifc_class": "IfcFlowSegment",
                         "ifc_predefined_type": "USERDEFINED",
                         "ifc_object_type": "PIPE",
-                        "name": f"Pipe {p_id}",
+                        "name": str(p.get("name") or f"Pipe {p_id}"),
                         "primitive_type": "pipe_cylinder",
-                        "color": "#f97316",
-                        "properties": {
-                            "length_m": round(length_m, 2),
-                            "diameter_mm": int(dia * 1000.0),
-                            "slope_pct": round(abs(dz / max(1e-4, math.hypot(dx, dy))) * 100.0, 2),
-                            "invert_start_m": round(p_start[2], 3),
-                            "invert_end_m": round(p_end[2], 3),
-                            "volume_m3": vol_m3,
-                        },
+                        "color": str(p.get("color") or "#f97316"),
+                        "properties": p_props,
+                        "dimensions": dict(p_props),
                         "transform": {
                             "center_twd97": [round(c, 3) for c in c_pt],
                             "center_local": [round(c, 3) for c in _to_studio_local(c_pt)],
@@ -1194,6 +1439,8 @@ class ScanToBimMixin:
         total_vol = 0.0
 
         for prim in primitives:
+            if "dimensions" not in prim and isinstance(prim.get("properties"), dict):
+                prim["dimensions"] = dict(prim["properties"])
             c_key = prim["category"]
             cat_counts[c_key] = cat_counts.get(c_key, 0) + 1
             v = float(prim.get("properties", {}).get("volume_m3") or 0.0)
@@ -1222,7 +1469,7 @@ class ScanToBimMixin:
             "total_volume_m3": round(total_vol, 2),
             "categories_summary": {
                 c: {"count": cat_counts.get(c, 0), "volume_m3": cat_vols.get(c, 0.0)}
-                for c in ["buildings", "walls", "roads", "trees", "water", "pipes"]
+                for c in ["buildings", "walls", "tanks", "roads", "trees", "water", "pipes"]
             },
             "ai_assisted": True,
             "ai_model": ai_result.get("ai_model", "gemini-3.8-flash"),
@@ -1274,12 +1521,13 @@ class ScanToBimMixin:
         and engineering QA recommendations.
         """
         default_materials = {
-            "walls": ("IfcWallStandardCase", "Reinforced Concrete C280 / Retaining Masonry", "Perimeter Barrier & Grade Retaining"),
-            "buildings": ("IfcBuildingElementProxy", "Reinforced Concrete Structure (RC)", "Primary Load-Bearing Superstructure"),
+            "walls": ("IfcWallStandardCase", "Reinforced Concrete C280 / Timber Fence", "Perimeter Barrier & Cylindrical Pavilion Wall"),
+            "buildings": ("IfcRoof", "Architectural Domed Roof / Reinforced Concrete (RC)", "Primary Pavilion Roof & Superstructure"),
+            "tanks": ("IfcTank", "Stainless Steel / HDPE Cylindrical Water Storage Tank", "Potable & Utility Water Storage"),
             "roads": ("IfcCivilElement", "Dense-Graded Asphaltic Concrete (AC-20) / Acrylic Wearing Course", "Vehicular & Pedestrian Wearing Surface"),
             "trees": ("IfcGeographicElement", "Subtropical Broadleaf Biomass & Rootzone", "Landscape Canopy & Microclimate Shading"),
             "water": ("IfcGeographicElement", "Hydrostatic Surface Water Body", "Stormwater Retention & Detention Basin"),
-            "pipes": ("IfcFlowSegment", "HDPE / Reinforced Concrete Culvert Pipe (RCP)", "Subsurface Gravity Drainage Conveyance"),
+            "pipes": ("IfcFlowSegment", "Galvanized Steel / HDPE Manifold & Truss Pipe", "Water Supply Manifold & Overhead Structural Truss"),
         }
         for prim in primitives:
             cat = str(prim.get("category") or "buildings")
@@ -1691,6 +1939,7 @@ class ScanToBimMixin:
         # Material styles per category
         color_map = {
             "walls": (0.82, 0.82, 0.84),
+            "tanks": (0.01, 0.52, 0.78),
             "trees": (0.15, 0.72, 0.28),
             "roads": (0.28, 0.28, 0.32),
             "water": (0.12, 0.68, 0.88),
@@ -1762,8 +2011,14 @@ class ScanToBimMixin:
             ifc_cls = prim.get("ifc_class") or "IfcBuildingElementProxy"
             id_elem = next_id()
 
-            if ifc_cls == "IfcWall":
+            if ifc_cls in ("IfcWall", "IfcWallStandardCase"):
                 lines.append(f"#{id_elem}=IFCWALL('{create_ifc_guid()}',#{id_owner},'{prim_name}',$,'WALL',#{id_local_placement},#{id_prod_shape},'{prim_id_str}',.SOLIDWALL.);")
+            elif ifc_cls == "IfcRailing":
+                lines.append(f"#{id_elem}=IFCRAILING('{create_ifc_guid()}',#{id_owner},'{prim_name}',$,'FENCE',#{id_local_placement},#{id_prod_shape},'{prim_id_str}',.BALUSTRADE.);")
+            elif ifc_cls == "IfcRoof":
+                lines.append(f"#{id_elem}=IFCROOF('{create_ifc_guid()}',#{id_owner},'{prim_name}',$,'CIRCULAR_DOME_ROOF',#{id_local_placement},#{id_prod_shape},'{prim_id_str}',.DOME_ROOF.);")
+            elif ifc_cls == "IfcTank":
+                lines.append(f"#{id_elem}=IFCTANK('{create_ifc_guid()}',#{id_owner},'{prim_name}',$,'WATER_TANK',#{id_local_placement},#{id_prod_shape},'{prim_id_str}',.STORAGE.);")
             elif ifc_cls == "IfcCivilElement":
                 lines.append(f"#{id_elem}=IFCCIVILELEMENT('{create_ifc_guid()}',#{id_owner},'{prim_name}',$,'CIVIL_ROAD',#{id_local_placement},#{id_prod_shape},'{prim_id_str}');")
             elif ifc_cls == "IfcFlowSegment":
@@ -1804,6 +2059,7 @@ class ScanToBimMixin:
         # DXF Tables & Layers
         layer_colors = {
             "BIM_WALLS": 1,        # Red
+            "BIM_TANKS": 140,      # Sky Blue
             "BIM_TREES": 3,        # Green
             "BIM_ROADS": 8,        # Dark Grey
             "BIM_WATER": 4,        # Cyan
@@ -1835,6 +2091,7 @@ class ScanToBimMixin:
 
         cat_layer_map = {
             "walls": "BIM_WALLS",
+            "tanks": "BIM_TANKS",
             "trees": "BIM_TREES",
             "roads": "BIM_ROADS",
             "water": "BIM_WATER",
@@ -1889,6 +2146,7 @@ class ScanToBimMixin:
 
         materials = {
             "Mat_Wall": {"kd": "0.82 0.82 0.84", "d": "0.95"},
+            "Mat_Tank": {"kd": "0.01 0.52 0.78", "d": "0.95"},
             "Mat_Tree": {"kd": "0.15 0.72 0.28", "d": "0.85"},
             "Mat_Road": {"kd": "0.28 0.28 0.32", "d": "1.0"},
             "Mat_Water": {"kd": "0.12 0.68 0.88", "d": "0.65"},
@@ -1909,6 +2167,7 @@ class ScanToBimMixin:
 
         cat_mat_map = {
             "walls": "Mat_Wall",
+            "tanks": "Mat_Tank",
             "trees": "Mat_Tree",
             "roads": "Mat_Road",
             "water": "Mat_Water",
