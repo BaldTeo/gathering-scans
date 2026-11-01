@@ -43,13 +43,23 @@
     const titleEl = document.getElementById("sidePanelTitle");
     const bodyEl = document.getElementById("sidePanelBody");
     if (!panel || !titleEl || !bodyEl) return;
-    if (STATE.activeTool !== "utilities" && typeof window.onUtilitiesPanelClosed === "function") window.onUtilitiesPanelClosed();
-    if (typeof window.onQaPanelsClosed === "function") window.onQaPanelsClosed(STATE.activeTool);
+    const prevPanelTool = panel.getAttribute("data-active-tool") || "";
+    const isG1 = typeof window.isStudioGroup1Tool === "function" && window.isStudioGroup1Tool(STATE.activeTool);
+    const nextPanelTool = isG1 ? (window.UTILS_STATE?.active ? "utilities" : prevPanelTool || STATE.activeTool || "") : STATE.activeTool || "";
+    if (nextPanelTool !== "utilities" && !window.UTILS_STATE?.active && typeof window.onUtilitiesPanelClosed === "function") {
+      window.onUtilitiesPanelClosed();
+    }
+    if (prevPanelTool === "categorize" && nextPanelTool !== "categorize") {
+      STATE.categorizeOverlayVisible = false;
+      if (typeof clearCategorizeVisualsOnly === "function") clearCategorizeVisualsOnly();
+      if (typeof syncCategorizeVisibilityUI === "function") syncCategorizeVisibilityUI();
+    }
+    if (typeof window.onQaPanelsClosed === "function") window.onQaPanelsClosed(nextPanelTool);
     const tTitle = typeof window.translateDynamicHtml === "function" ? window.translateDynamicHtml(String(title || "")) : String(title || "");
     const tBody = typeof window.translateDynamicHtml === "function" ? window.translateDynamicHtml(String(htmlContent || "")) : String(htmlContent || "");
     titleEl.innerHTML = tTitle;
     bodyEl.innerHTML = tBody;
-    panel.setAttribute("data-active-tool", STATE.activeTool || "");
+    panel.setAttribute("data-active-tool", nextPanelTool);
     panel.classList.remove("hidden");
     panel.classList.add("active", "open");
     panel.classList.toggle("mobile-minimized", Boolean(STATE.sidePanelMinimized));
@@ -76,12 +86,14 @@
   });
 
   function closeSidePanel() {
+    const panel = document.getElementById("studioSidePanel");
+    const panelTool = panel ? panel.getAttribute("data-active-tool") || "" : "";
     clearSectionBoxClippingIfNotKept();
     if (typeof clearPhotoTargetVisuals3D === "function") clearPhotoTargetVisuals3D(true);
     if (studioThree?.cameraTrajectoryGroup) studioThree.cameraTrajectoryGroup.visible = false;
     if (studioThree?.photoFrustumGroup) studioThree.photoFrustumGroup.visible = false;
     if (studioThree?.photoTargetGroup) studioThree.photoTargetGroup.visible = false;
-    if (STATE.activeTool === "categorize") {
+    if (STATE.activeTool === "categorize" || panelTool === "categorize") {
       STATE.categorizeOverlayVisible = false;
       STATE.categorizeLabelsVisible = false;
       if (typeof clearCategorizeVisualsOnly === "function") clearCategorizeVisualsOnly();
@@ -89,15 +101,18 @@
     }
     if (typeof window.onUtilitiesPanelClosed === "function") window.onUtilitiesPanelClosed();
     if (typeof window.onQaPanelsClosed === "function") window.onQaPanelsClosed("");
-    if (STATE.activeTool === "crop_delete" || STATE.activeTool === "crop" || STATE.activeTool === "optimizer") {
-      cancelLassoToolMode(false);
-    } else if (["section", "profile", "crs", "generate_scan", "rtk", "photos", "comments", "drainage", "gcp_qa", "bookmarks", "categorize", "utilities", "flatness", "trench", "stakeout", "compare_volume", "stationing"].includes(STATE.activeTool)) {
-      setActiveStudioTool(STATE.multiAlign?.active ? "align_merge" : "orbit");
-    }
-    const panel = document.getElementById("studioSidePanel");
     if (panel) {
+      panel.setAttribute("data-active-tool", "");
       panel.classList.remove("active", "open", "mobile-minimized", "gs-panel-minimized");
       panel.classList.add("hidden");
+    }
+    const isG1 = typeof window.isStudioGroup1Tool === "function" && window.isStudioGroup1Tool(STATE.activeTool);
+    if (isG1) {
+      setActiveStudioTool(STATE.activeTool);
+    } else if (STATE.activeTool === "crop_delete" || STATE.activeTool === "crop" || STATE.activeTool === "optimizer") {
+      cancelLassoToolMode(false);
+    } else if (["section", "profile", "crs", "generate_scan", "rtk", "photos", "comments", "drainage", "gcp_qa", "bookmarks", "categorize", "utilities", "flatness", "trench", "stakeout", "compare_volume", "stationing"].includes(STATE.activeTool || panelTool)) {
+      setActiveStudioTool(STATE.multiAlign?.active ? "align_merge" : "orbit");
     }
     STATE.sidePanelMinimized = false;
     if (typeof syncStudioMobileToolHud === "function") syncStudioMobileToolHud();
@@ -2811,27 +2826,19 @@
         syncCategorizeVisibilityUI();
         renderCategorizePanelContent(res);
         const s = res.summary || {};
-        const waterToastZh =
-          Number(s.water_count || 0) > 0 && s.water_level_twvd2001_m !== null && s.water_level_twvd2001_m !== undefined
-            ? `${s.water_count} 處水域 · +${Number(s.water_level_twvd2001_m).toFixed(2)}m`
-            : `0 處水域`;
-        const waterToastEn =
-          Number(s.water_count || 0) > 0 && s.water_level_twvd2001_m !== null && s.water_level_twvd2001_m !== undefined
-            ? `${s.water_count} Water Zones · +${Number(s.water_level_twvd2001_m).toFixed(2)}m`
-            : `0 Water Zones`;
         const visTagZh = STATE.categorizeOverlayVisible ? "3D 圖層顯示中" : "已儲存於伺服器 · 預設隱藏";
         const visTagEn = STATE.categorizeOverlayVisible ? "3D Overlays Visible" : "Saved on Server · Hidden by Default";
         showToast(
           tr(
-            `AI 分類完成 · ${visTagZh}：道路 ${s.roads_count || 0} 處 · ${s.roads_planar_area_m2 || 0}m²、樹木 ${s.trees_count || 0} 棵 · 平均胸徑 ${s.trees_mean_dbh_cm || 0}cm、${waterToastZh}、牆體 ${s.walls_count || 0} 處`,
-            `Categorized · ${visTagEn}: ${s.roads_count || 0} Roads · ${s.roads_planar_area_m2 || 0}m², ${s.trees_count || 0} Trees · DBH ${s.trees_mean_dbh_cm || 0}cm, ${waterToastEn}, ${s.walls_count || 0} Walls`
+            `🌳 AI 喬木與胸徑分析完成 · ${visTagZh}：共 ${s.trees_count || 0} 棵喬木 · 平均胸徑 DBH ${s.trees_mean_dbh_cm || 0} cm`,
+            `🌳 Trees & DBH Ready · ${visTagEn}: ${s.trees_count || 0} Trees · Mean DBH ${s.trees_mean_dbh_cm || 0} cm`
           )
         );
       } catch (err) {
         if (box) {
-          box.innerHTML = `<div style="color:#ef4444;font-size:11.5px;padding:10px;">${tr("AI 分類錯誤：", "Categorization Error: ")}${escapeHtml(err.message)}</div>`;
+          box.innerHTML = `<div style="color:#ef4444;font-size:11.5px;padding:10px;">${tr("AI 喬木與 DBH 分析錯誤：", "Trees & DBH Error: ")}${escapeHtml(err.message)}</div>`;
         }
-        showToast(tr(`AI 分類錯誤：${err.message}`, `Categorization Error: ${err.message}`));
+        showToast(tr(`AI 喬木與 DBH 分析錯誤：${err.message}`, `Trees & DBH Error: ${err.message}`));
       }
     };
 

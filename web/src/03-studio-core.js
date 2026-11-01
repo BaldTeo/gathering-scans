@@ -2391,15 +2391,16 @@
     }
     if (studioThree.multiAlignGroup && studioThree.multiAlignGroup.visible) {
       studioThree.multiAlignGroup.traverse((c) => {
-        if (c.isMesh && isMeshVisibleUnderRoot(c, studioThree.multiAlignGroup) && !c.userData?.isAlignBoxHelper) {
-          targets.push(c);
-        }
+        if (c.isMesh && isMeshVisibleUnderRoot(c, studioThree.multiAlignGroup) && !c.userData?.isAlignBoxHelper) targets.push(c);
       });
     }
     if (studioThree.fallbackGroup && studioThree.fallbackGroup.visible) {
       studioThree.fallbackGroup.traverse((c) => {
         if (c.isMesh && isMeshVisibleUnderRoot(c, studioThree.fallbackGroup)) targets.push(c);
       });
+    }
+    if (typeof window.collectExtraStudioPickTargets === "function") {
+      window.collectExtraStudioPickTargets(targets);
     }
 
     const rawHits = studioThree.raycaster.intersectObjects(targets, true);
@@ -2412,11 +2413,7 @@
         ? findNearestSnappableToolVertex(clientX, clientY, window.innerWidth <= 768 ? 28 : 24, STATE.movingVertex)
         : null;
 
-    if (snappedVertex && snappedVertex.point) {
-      updateStudioSnapIndicator(snappedVertex.point, true);
-    } else {
-      updateStudioSnapIndicator(null, false);
-    }
+    updateStudioSnapIndicator(snappedVertex?.point || null, Boolean(snappedVertex?.point));
 
     if (hits.length > 0) {
       const h0 = hits[0];
@@ -2426,11 +2423,12 @@
       if (STATE.snapEnabled) {
         if (snappedVertex && snappedVertex.point) {
           p.copy(snappedVertex.point);
+          if (snappedVertex.source === "utilities" || snappedVertex.source === "categorize") {
+            rawPoint.copy(snappedVertex.point);
+          }
           snappedToToolVertex = true;
         } else {
-          p.x = Math.round(p.x * 20) / 20;
-          p.y = Math.round(p.y * 20) / 20;
-          p.z = Math.round(p.z * 20) / 20;
+          p.set(Math.round(p.x * 20) / 20, Math.round(p.y * 20) / 20, Math.round(p.z * 20) / 20);
         }
       }
       const normal = new THREE.Vector3(0, 1, 0);
@@ -2440,15 +2438,7 @@
           normal.copy(h0.face.normal).applyMatrix3(_pickNormalMat).normalize();
         } catch (_) {}
       }
-      return {
-        point: p,
-        rawPoint,
-        normal,
-        distance: h0.distance,
-        object: h0.object,
-        snappedToToolVertex,
-        snappedVertex: snappedVertex || null,
-      };
+      return { point: p, rawPoint, normal, distance: h0.distance, object: h0.object, snappedToToolVertex, snappedVertex: snappedVertex || null };
     }
 
     if (STATE.snapEnabled && snappedVertex && snappedVertex.point) {
@@ -2468,21 +2458,22 @@
 
   function getAllSnappableToolVertices(excludeMovingVertex = null) {
     const list = [];
-    const pushV = (pt, meta) => {
+    const pushV = (pt, meta, idxArg = -1, editableArg = true) => {
       if (!pt || !Number.isFinite(pt.x) || !Number.isFinite(pt.y) || !Number.isFinite(pt.z)) return;
+      const metaObj = typeof meta === "string" ? { source: meta, pointIndex: idxArg, editable: editableArg } : meta || {};
       if (excludeMovingVertex) {
         if (excludeMovingVertex.point === pt) return;
         if (
-          excludeMovingVertex.source === meta.source &&
+          excludeMovingVertex.source === metaObj.source &&
           excludeMovingVertex.measId &&
-          excludeMovingVertex.measId === meta.measId &&
-          excludeMovingVertex.pointKey === meta.pointKey &&
-          excludeMovingVertex.pointIndex === meta.pointIndex
+          excludeMovingVertex.measId === metaObj.measId &&
+          excludeMovingVertex.pointKey === metaObj.pointKey &&
+          excludeMovingVertex.pointIndex === metaObj.pointIndex
         ) {
           return;
         }
       }
-      list.push(Object.assign({ point: pt, editable: meta.editable !== false }, meta));
+      list.push(Object.assign({ point: pt, editable: metaObj.editable !== false }, metaObj));
     };
 
     (STATE.completedMeasurements || []).forEach((m) => {
@@ -2497,9 +2488,7 @@
       } else if (m.type === "coordinates") {
         pushV(m.pt, { source: "completed", measId: m.id, measType: "coordinates", pointKey: "pt", label: m.label || "Coord" });
       } else if (m.type === "area" && Array.isArray(m.points)) {
-        m.points.forEach((pt, idx) => {
-          pushV(pt, { source: "completed", measId: m.id, measType: "area", pointIndex: idx, label: `Area V${idx + 1}` });
-        });
+        m.points.forEach((pt, idx) => pushV(pt, { source: "completed", measId: m.id, measType: "area", pointIndex: idx, label: `Area V${idx + 1}` }));
       } else if (m.type === "laser") {
         pushV(m.originPt, { source: "completed", measId: m.id, measType: "laser", pointKey: "originPt", editable: false });
         pushV(m.pA, { source: "completed", measId: m.id, measType: "laser", pointKey: "pA", editable: false });
@@ -2510,54 +2499,28 @@
     });
 
     if (Array.isArray(STATE.measurePoints)) {
-      STATE.measurePoints.forEach((pt, idx) => {
-        pushV(pt, {
-          source: "measurePoints",
-          measId: "__in_progress__",
-          measType: STATE.activeTool || "measure",
-          pointIndex: idx,
-          label: `Point #${idx + 1}`,
-          editable: false,
-        });
-      });
+      STATE.measurePoints.forEach((pt, idx) =>
+        pushV(pt, { source: "measurePoints", measId: "__in_progress__", measType: STATE.activeTool || "measure", pointIndex: idx, label: `Point #${idx + 1}`, editable: false })
+      );
     }
-
     if (Array.isArray(STATE.cutFillPolygonPoints) && STATE.cutFillPolygonPoints.length > 0 && STATE.measurePoints.length === 0) {
-      STATE.cutFillPolygonPoints.forEach((pt, idx) => {
-        pushV(pt, {
-          source: "cutFillPolygonPoints",
-          measId: "__cut_fill__",
-          measType: "volume",
-          pointIndex: idx,
-          label: `Volume V${idx + 1}`,
-        });
-      });
+      STATE.cutFillPolygonPoints.forEach((pt, idx) =>
+        pushV(pt, { source: "cutFillPolygonPoints", measId: "__cut_fill__", measType: "volume", pointIndex: idx, label: `Volume V${idx + 1}` })
+      );
     }
-
     if (Array.isArray(STATE.profileEndpoints) && STATE.profileEndpoints.length >= 2) {
-      STATE.profileEndpoints.forEach((pt, idx) => {
-        pushV(pt, {
-          source: "profileEndpoints",
-          measId: "__profile__",
-          measType: "profile",
-          pointIndex: idx,
-          label: idx === 0 ? "Profile A" : "Profile B",
-        });
-      });
+      STATE.profileEndpoints.forEach((pt, idx) =>
+        pushV(pt, { source: "profileEndpoints", measId: "__profile__", measType: "profile", pointIndex: idx, label: idx === 0 ? "Profile A" : "Profile B" })
+      );
     }
-
     if (Array.isArray(STATE.sectionBoxEndpoints) && STATE.sectionBoxEndpoints.length >= 2) {
-      STATE.sectionBoxEndpoints.forEach((pt, idx) => {
-        pushV(pt, {
-          source: "sectionBoxEndpoints",
-          measId: "__section__",
-          measType: "section",
-          pointIndex: idx,
-          label: idx === 0 ? "Section P1" : "Section P2",
-        });
-      });
+      STATE.sectionBoxEndpoints.forEach((pt, idx) =>
+        pushV(pt, { source: "sectionBoxEndpoints", measId: "__section__", measType: "section", pointIndex: idx, label: idx === 0 ? "Section P1" : "Section P2" })
+      );
     }
-
+    if (typeof window.collectExtraSnappableVertices === "function") {
+      window.collectExtraSnappableVertices(pushV);
+    }
     return list;
   }
   window.getAllSnappableToolVertices = getAllSnappableToolVertices;
@@ -3963,19 +3926,33 @@
     });
   }
 
-  function setActiveStudioTool(toolName) {
+  const STUDIO_GROUP1_TOOLS = new Set(["distance", "angle", "area", "coordinates", "laser", "clear"]);
+  function isStudioGroup1Tool(toolName) {
+    return STUDIO_GROUP1_TOOLS.has(String(toolName || ""));
+  }
+  window.isStudioGroup1Tool = isStudioGroup1Tool;
+
+  function setActiveStudioTool(toolName, opts = {}) {
     if (!toolName) return;
     if (STATE.multiAlign?.active && MULTI_ALIGN_DISABLED_TOOLS.has(toolName)) {
       showToast("Unavailable during Multi-Scan Editing — merge scans first (or exit Multi-Scan mode)");
       return;
     }
+    const isG1 = isStudioGroup1Tool(toolName);
+    const keepSidePanel = Boolean(isG1 || opts?.keepSidePanel);
+    const sidePanelEl = document.getElementById("studioSidePanel");
+    const openPanelTool =
+      sidePanelEl && !sidePanelEl.classList.contains("hidden")
+        ? sidePanelEl.getAttribute("data-active-tool") || ""
+        : "";
+
     if ((toolName === "crop" || toolName === "crop_delete" || toolName === "lasso") && STATE.scanLodMode !== "max") {
       applyScanLodMode("max", true);
       if (typeof showToast === "function") {
         showToast(tr("已自動鎖定「精細 (L2)」畫質以確保套索裁切跨圖層精準同步", "Locked to Max Detail (L2) for multi-LOD accurate Lasso editing"));
       }
     }
-    if (STATE.activeTool === "section" && toolName !== "section") {
+    if (!keepSidePanel && STATE.activeTool === "section" && toolName !== "section") {
       clearSectionBoxClippingIfNotKept();
     }
     if (
@@ -3999,29 +3976,36 @@
       STATE.categorizeEditMode = null;
       STATE.categorizeEditPoints = [];
       STATE.categorizeTempPoints = [];
-      STATE.categorizeOverlayVisible = false;
-      if (typeof clearCategorizeVisualsOnly === "function") clearCategorizeVisualsOnly();
-      if (typeof syncCategorizeVisibilityUI === "function") syncCategorizeVisibilityUI();
+      if (!keepSidePanel) {
+        STATE.categorizeOverlayVisible = false;
+        if (typeof clearCategorizeVisualsOnly === "function") clearCategorizeVisualsOnly();
+        if (typeof syncCategorizeVisibilityUI === "function") syncCategorizeVisibilityUI();
+      }
     }
-    if (toolName !== "profile" && typeof clearProfileVisualsOnly === "function") clearProfileVisualsOnly();
-    if (toolName !== "utilities" && typeof window.onUtilitiesPanelClosed === "function") window.onUtilitiesPanelClosed();
+    if (!keepSidePanel && toolName !== "profile" && typeof clearProfileVisualsOnly === "function") {
+      clearProfileVisualsOnly();
+    }
+    if (!keepSidePanel && toolName !== "utilities" && typeof window.onUtilitiesPanelClosed === "function") {
+      window.onUtilitiesPanelClosed();
+    }
     if (typeof window.onQaPanelsClosed === "function") window.onQaPanelsClosed(toolName);
-    if (STATE.activeTool === "photos" && toolName !== "photos" && typeof clearPhotoTargetVisuals3D === "function") {
-      clearPhotoTargetVisuals3D(true);
-    }
-    if (toolName !== "photos" && toolName !== "rtk") {
-      if (typeof clearPhotoTargetVisuals3D === "function") clearPhotoTargetVisuals3D(true);
-      if (studioThree?.cameraTrajectoryGroup) studioThree.cameraTrajectoryGroup.visible = false;
-      if (studioThree?.photoFrustumGroup) studioThree.photoFrustumGroup.visible = false;
-      if (studioThree?.photoTargetGroup) studioThree.photoTargetGroup.visible = false;
+    if (!keepSidePanel) {
+      if (STATE.activeTool === "photos" && toolName !== "photos" && typeof clearPhotoTargetVisuals3D === "function") {
+        clearPhotoTargetVisuals3D(true);
+      }
+      if (toolName !== "photos" && toolName !== "rtk") {
+        if (typeof clearPhotoTargetVisuals3D === "function") clearPhotoTargetVisuals3D(true);
+        if (studioThree?.cameraTrajectoryGroup) studioThree.cameraTrajectoryGroup.visible = false;
+        if (studioThree?.photoFrustumGroup) studioThree.photoFrustumGroup.visible = false;
+        if (studioThree?.photoTargetGroup) studioThree.photoTargetGroup.visible = false;
+      }
     }
     if (STATE.activeTool !== toolName) STATE.measurePoints = [];
     STATE.activeTool = toolName;
     SHARE_TELEMETRY.recordToolSelected(toolName);
-    const sidePanelEl = document.getElementById("studioSidePanel");
-    if (sidePanelEl) {
+    if (sidePanelEl && !keepSidePanel) {
       sidePanelEl.setAttribute("data-active-tool", toolName || "");
-      if (["distance", "angle", "area", "coordinates", "laser", "clear", "orbit"].includes(toolName)) {
+      if (toolName === "orbit") {
         sidePanelEl.classList.remove("active", "open", "mobile-minimized", "gs-panel-minimized");
         sidePanelEl.classList.add("hidden");
       }
@@ -4043,11 +4027,11 @@
       )
       .forEach((b) => {
         const key = b.dataset.tool || b.dataset.dock || "";
-        const isActive = key === toolName;
+        const isActive = key === toolName || (keepSidePanel && openPanelTool && key === openPanelTool);
         b.classList.toggle("active", isActive);
       });
     const bottomDock = document.getElementById("bimBottomDock");
-    if (bottomDock && (toolName === "orbit" || window.innerWidth >= 560)) {
+    if (bottomDock && (toolName === "orbit" || window.innerWidth >= 560) && !isG1) {
       bottomDock.scrollLeft = 0;
     }
     const lassoSvg = document.getElementById("studioLassoSvg");
@@ -4127,62 +4111,53 @@
     });
   }
 
-  function clearMeasurements() {
-    STATE._volumeCalcSeq = (STATE._volumeCalcSeq || 0) + 1;
-    if (typeof hideVolumeProgressHudPill === "function") {
-      hideVolumeProgressHudPill();
-    }
+  function clearMeasurements(opts = {}) {
     STATE.movingVertex = null;
     STATE.measurePoints = [];
     STATE.completedMeasurements = [];
-    STATE.cutFillPolygonPoints = [];
-    STATE.maskBoundaryPoints = [];
-    STATE.polygonLocked = false;
     if (studioThree) {
       studioThree._snapIndicatorRing = null;
       studioThree._movingVertexRing = null;
     }
-    if (typeof clearLassoSelectionState === "function") {
-      clearLassoSelectionState();
-    }
     clearTempDistanceVisuals();
     clearAreaVisualsOnly();
+    if (opts && opts.onlyGroup1) {
+      rebuildAllCompletedMeasurements3D();
+      return;
+    }
+    STATE._volumeCalcSeq = (STATE._volumeCalcSeq || 0) + 1;
+    if (typeof hideVolumeProgressHudPill === "function") hideVolumeProgressHudPill();
+    STATE.cutFillPolygonPoints = [];
+    STATE.maskBoundaryPoints = [];
+    STATE.polygonLocked = false;
+    if (typeof clearLassoSelectionState === "function") clearLassoSelectionState();
     clearVolumeVisualsOnly();
-    if (typeof clearProfileVisualsOnly === "function") {
-      clearProfileVisualsOnly();
-    }
+    if (typeof clearProfileVisualsOnly === "function") clearProfileVisualsOnly();
     STATE.categorizeOverlayVisible = false;
-    if (typeof clearCategorizeVisualsOnly === "function") {
-      clearCategorizeVisualsOnly();
-    }
-    if (typeof syncCategorizeVisibilityUI === "function") {
-      syncCategorizeVisibilityUI();
-    }
-    if (typeof clearDrainageVisuals3D === "function") {
-      clearDrainageVisuals3D();
-    }
-    if (typeof clearGcpQaMarkers3D === "function") {
-      clearGcpQaMarkers3D();
-    }
-    if (typeof clearRtkPhotoFrustums3D === "function") {
-      clearRtkPhotoFrustums3D();
-    }
-    if (typeof clearPhotoTargetVisuals3D === "function") {
-      clearPhotoTargetVisuals3D();
-    }
-    if (studioThree) {
+    if (typeof clearCategorizeVisualsOnly === "function") clearCategorizeVisualsOnly();
+    if (typeof syncCategorizeVisibilityUI === "function") syncCategorizeVisibilityUI();
+    if (typeof clearDrainageVisuals3D === "function") clearDrainageVisuals3D();
+    if (typeof clearGcpQaMarkers3D === "function") clearGcpQaMarkers3D();
+    if (typeof clearRtkPhotoFrustums3D === "function") clearRtkPhotoFrustums3D();
+    if (typeof clearPhotoTargetVisuals3D === "function") clearPhotoTargetVisuals3D();
+    if (studioThree && studioThree.overlayGroup) {
+      const keepList = [];
+      studioThree.overlayGroup.children.forEach((c) => {
+        if (c && (c === window.UTILS_STATE?.threeGroup || c.name === "PublicUtilitiesGroup")) {
+          keepList.push(c);
+        }
+      });
       while (studioThree.overlayGroup.children.length > 0) {
         studioThree.overlayGroup.remove(studioThree.overlayGroup.children[0]);
       }
+      keepList.forEach((c) => studioThree.overlayGroup.add(c));
     }
     STATE.badges2D = STATE.badges2D.filter((b) => {
       if (b.isCommentPin) return true;
       b.el?.remove();
       return false;
     });
-    if (typeof renderCommentPins3D === "function") {
-      renderCommentPins3D();
-    }
+    if (typeof renderCommentPins3D === "function") renderCommentPins3D();
   }
 
   function rebuildAllCompletedMeasurements3D() {
@@ -4201,7 +4176,9 @@
         c === studioThree.sectionBoxGizmoGroup ||
         c === studioThree.drainageGroup ||
         c === studioThree.gcpQaGroup ||
-        c === studioThree.photoFrustumGroup
+        c === studioThree.photoFrustumGroup ||
+        c === window.UTILS_STATE?.threeGroup ||
+        c.name === "PublicUtilitiesGroup"
       ) {
         return;
       }

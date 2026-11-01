@@ -3416,7 +3416,45 @@ class GatheringScansTestSuite(unittest.TestCase):
                 self.assertGreaterEqual(float(tr_o.get("dbh_cm") or 0.0), 7.5)
                 self.assertTrue(tr_o.get("trunk_verified_3d"))
 
+    def test_42_utilities_vertical_elevation_keep_layers_and_group1_tool_coexistence(self):
+        """
+        Verify:
+        1. Open waterway channels (e.g. QiHu 磺港溪 排水河道 osm_waterway_*) are marked is_open_channel=True with shallow surface depth (0.45m) instead of buried 2.25m below gorge floor.
+        2. Utilities panel provides 'keepLayersOnClose' (#chkUtilKeepOnClose) and vertical elevation Z-offset (#rngUtilZOffset).
+        3. Group 1 tools (distance, angle, area, coordinates, laser, clear) do NOT close right-pane tools (#studioSidePanel) and can raycast/snap to 3D utilities & categorized trees/walls.
+        """
+        from pc_worker.surveying_engine import SurveyingEngine
+
+        survey = SurveyingEngine(self.db)
+        qihu_res = survey.query_public_utilities_gis(
+            {"scan_id": "edited_qihu_unified_merged_scan_4_scans__edited_372953", "radius_m": 250.0, "force_refresh": False}
+        )
+        self.assertEqual(qihu_res.get("status"), "ok")
+        q_feats = qihu_res.get("features") or []
+        open_waterways = [f for f in q_feats if str(f.get("id") or "").startswith("osm_waterway_") and f.get("is_open_channel")]
+        self.assertGreaterEqual(len(open_waterways), 1, "Expected open waterway channel in QiHu Park utilities")
+        for ow in open_waterways:
+            self.assertLessEqual(float(ow.get("start_depth_m") or 0.0), 0.65)
+            self.assertLessEqual(float(ow.get("height_m") or 0.0), 0.90)
+
+        with open(os.path.join(BASE_DIR, "web", "src", "12-public-utilities-gis.js"), "r", encoding="utf-8") as f:
+            js12 = f.read()
+        self.assertIn("keepLayersOnClose:", js12)
+        self.assertIn('id="chkUtilKeepOnClose"', js12)
+        self.assertIn('id="rngUtilZOffset"', js12)
+        self.assertIn("window.collectExtraStudioPickTargets", js12)
+        self.assertIn("window.collectExtraSnappableVertices", js12)
+        self.assertIn("STATE.lastCategorizeResult", js12)
+
+        with open(os.path.join(BASE_DIR, "web", "src", "03-studio-core.js"), "r", encoding="utf-8") as f:
+            js03 = f.read()
+        self.assertIn("window.isStudioGroup1Tool = isStudioGroup1Tool;", js03)
+        self.assertIn("window.collectExtraStudioPickTargets(", js03)
+        self.assertIn("window.collectExtraSnappableVertices(", js03)
+        self.assertIn("const keepSidePanel = Boolean(isG1 || opts?.keepSidePanel);", js03)
+
 
 if __name__ == "__main__":
     unittest.main()
+
 

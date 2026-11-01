@@ -100,6 +100,13 @@
 
   function onQaPanelsClosed(nextTool) {
     const active = String(nextTool || "");
+    if (typeof window.isStudioGroup1Tool === "function" && window.isStudioGroup1Tool(active)) {
+      QA_STATE.isPickingFlatnessPoint = false;
+      QA_STATE.isPickingUtilityPoint = false;
+      QA_STATE.isPickingComparePoly = false;
+      QA_STATE.isPickingStakeoutPoint = false;
+      return;
+    }
     if (active !== "flatness") {
       QA_STATE.isPickingFlatnessPoint = false;
       surfaceQa3DGroup = clear3DGroup(surfaceQa3DGroup);

@@ -66,6 +66,11 @@
   // Module state (Default shown radius = 250m; Server auto-queries and caches 1000m / 1km; legacy serverMasterRadiusM: 500.0 upgraded)
   const UTILS_STATE = {
     active: false,
+    keepLayersOnClose:
+      typeof localStorage !== "undefined" && localStorage.getItem("gs_util_keep_on_close") !== null
+        ? localStorage.getItem("gs_util_keep_on_close") !== "0"
+        : true,
+    verticalOffsetM: 0.0,
     loadedScanId: null,
     lastCenter: null,
     radiusM: 250.0,
@@ -87,7 +92,7 @@
     threeGroup: null,
     layerMeshes: [], // Merged per-layer THREE.Mesh objects with userData.triToFeature for O(1) raycast picking
     pipeMeshMap: new Map(), // featId_seg -> { mesh, layer, feature, v1, v2, dist, dir }
-    groundGridCache: { scanId: null, meshCount: 0, sampler: null },
+    groundGridCache: { scanId: null, meshCount: 0, catCount: 0, sampler: null },
   };
 
   /**
@@ -268,6 +273,17 @@
    * Dynamically adapts `studioThree.camera.near` based on camera distance so 24-bit depth buffer
    * precision is up to 100x sharper when zoomed out (eliminating distant pipe Z-fighting flicker).
    */
+  function hasVisibleUtilities3D() {
+    return Boolean(
+      UTILS_STATE.active ||
+        (UTILS_STATE.keepLayersOnClose &&
+          UTILS_STATE.threeGroup &&
+          UTILS_STATE.threeGroup.visible &&
+          Array.isArray(UTILS_STATE.features) &&
+          UTILS_STATE.features.length > 0)
+    );
+  }
+
   function ensureAdaptiveCameraNearPlane() {
     const studioThree = window.studioThree;
     if (!studioThree || !studioThree.camera) return;
@@ -277,7 +293,7 @@
       const cam = studioThree.camera;
       const target = studioThree.controls && studioThree.controls.target ? studioThree.controls.target : new THREE.Vector3(0, 0, 0);
       const dist = cam.position.distanceTo(target);
-      const desiredNear = UTILS_STATE.active
+      const desiredNear = hasVisibleUtilities3D()
         ? Math.max(0.05, Math.min(4.5, dist * 0.008))
         : 0.03;
       if (Math.abs(cam.near - desiredNear) > desiredNear * 0.12) {
@@ -320,11 +336,11 @@
     if (studioThree.tilesRenderer && !studioThree.tilesRenderer.__gsUtilXrayLoadBound) {
       studioThree.tilesRenderer.__gsUtilXrayLoadBound = true;
       studioThree.tilesRenderer.addEventListener("load-model", () => {
-        if (UTILS_STATE.active && UTILS_STATE.groundXrayPct > 1) {
+        if (hasVisibleUtilities3D() && UTILS_STATE.groundXrayPct > 1) {
           applyUtilitiesGroundXray(UTILS_STATE.groundXrayPct);
         }
         if (
-          UTILS_STATE.active &&
+          hasVisibleUtilities3D() &&
           UTILS_STATE.groundGridCache &&
           UTILS_STATE.groundGridCache.meshCount === 0 &&
           Array.isArray(UTILS_STATE.features) &&
@@ -335,7 +351,7 @@
       });
     }
 
-    const isTranslucent = UTILS_STATE.active && pct > 1;
+    const isTranslucent = hasVisibleUtilities3D() && pct > 1;
     roots.forEach((rootGroup) => {
       rootGroup.traverse((child) => {
         if (!child || !child.isMesh || !child.material) return;
@@ -450,7 +466,7 @@
     UTILS_STATE.features = [];
     UTILS_STATE.selectedFeature = null;
     UTILS_STATE.hoveredFeature = null;
-    UTILS_STATE.groundGridCache = { scanId: null, meshCount: 0, sampler: null };
+    UTILS_STATE.groundGridCache = { scanId: null, meshCount: 0, catCount: 0, sampler: null };
     Object.keys(UTILITY_LAYERS).forEach((k) => {
       UTILITY_LAYERS[k].count = 0;
     });
@@ -469,6 +485,11 @@
     stopLoadingProgressTicker();
     UTILS_STATE.active = false;
     hideUtilityHoverTooltip();
+    if (UTILS_STATE.keepLayersOnClose && Array.isArray(UTILS_STATE.features) && UTILS_STATE.features.length > 0) {
+      updateLayerVisibility3D();
+      applyUtilitiesGroundXray(UTILS_STATE.groundXrayPct);
+      return;
+    }
     clearUtilitiesVisuals3D();
     restoreUtilitiesGroundOpacity();
   }
@@ -563,11 +584,7 @@
    * Closes the Public Utilities GIS inspector.
    */
   function closeUtilitiesInspector() {
-    stopLoadingProgressTicker();
-    UTILS_STATE.active = false;
-    hideUtilityHoverTooltip();
-    clearUtilitiesVisuals3D();
-    restoreUtilitiesGroundOpacity();
+    onUtilitiesPanelClosed();
     if (typeof closeSidePanel === "function") {
       closeSidePanel();
     }
@@ -778,15 +795,26 @@
           </div>
         </div>
 
-        <!-- Subsurface Ground X-Ray Translucency Controls -->
+        <!-- Subsurface Ground X-Ray Translucency & Vertical Calibration Controls -->
         <div class="gs-util-section-card">
           <div class="gs-util-section-header">
-            <span>${SVG.LAYERS} ${t("地底透視強度", "Subsurface Ground X-Ray")}</span>
+            <span>${SVG.LAYERS} ${t("地底透視與高程設定", "Subsurface X-Ray & Elevation")}</span>
           </div>
           <div style="display:flex;align-items:center;gap:8px;margin-top:6px;">
-            <span style="font-size:10px;color:var(--ui-text-muted);min-width:44px;">${t("地面透視", "X-Ray")}</span>
+            <span style="font-size:10px;color:var(--ui-text-muted);min-width:48px;">${t("地面透視", "X-Ray")}</span>
             <input type="range" id="rngUtilGroundXray" class="gs-brightness-slider" min="0" max="80" step="2" value="${UTILS_STATE.groundXrayPct}" style="flex:1;" />
-            <span style="font-size:11px;font-weight:600;min-width:32px;text-align:right;" id="lblUtilGroundXray">${UTILS_STATE.groundXrayPct}%</span>
+            <span style="font-size:11px;font-weight:600;min-width:34px;text-align:right;" id="lblUtilGroundXray">${UTILS_STATE.groundXrayPct}%</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;margin-top:6px;">
+            <span style="font-size:10px;color:var(--ui-text-muted);min-width:48px;" title="${t("微調全體管線 3D 垂直高程 (點擊右側數值重置為 0.0m)", "Fine-tune 3D utility vertical elevation offset (click value to reset to 0.0m)")}">${t("高程微調", "Z Offset")}</span>
+            <input type="range" id="rngUtilZOffset" class="gs-brightness-slider" min="-5.0" max="5.0" step="0.1" value="${Number(UTILS_STATE.verticalOffsetM || 0).toFixed(1)}" style="flex:1;" />
+            <span style="font-size:11px;font-weight:600;min-width:38px;text-align:right;cursor:pointer;color:var(--ui-accent-primary,#38bdf8);" id="lblUtilZOffset" title="${t("點擊重置為 0.0m", "Click to reset to 0.0m")}">${(Number(UTILS_STATE.verticalOffsetM || 0) >= 0 ? "+" : "") + Number(UTILS_STATE.verticalOffsetM || 0).toFixed(1)}m</span>
+          </div>
+          <div style="margin-top:8px;padding-top:6px;border-top:1px dashed rgba(148,163,184,0.22);">
+            <label class="gs-util-checkbox-label" style="font-size:11px;cursor:pointer;display:flex;align-items:center;gap:6px;">
+              <input type="checkbox" id="chkUtilKeepOnClose" ${UTILS_STATE.keepLayersOnClose ? "checked" : ""} />
+              <span>${t("關閉面板後保留 3D 管線圖層", "Keep 3D utility layers visible when closed")}</span>
+            </label>
           </div>
         </div>
 
@@ -1081,6 +1109,39 @@
       };
     }
 
+    // Vertical Z-Offset slider & reset label
+    const rngZOffset = document.getElementById("rngUtilZOffset");
+    const lblZOffset = document.getElementById("lblUtilZOffset");
+    if (rngZOffset) {
+      rngZOffset.oninput = () => {
+        const zVal = Math.max(-5.0, Math.min(5.0, parseFloat(rngZOffset.value) || 0));
+        UTILS_STATE.verticalOffsetM = Number(zVal.toFixed(2));
+        if (lblZOffset) lblZOffset.textContent = `${(zVal >= 0 ? "+" : "") + zVal.toFixed(1)}m`;
+        renderUtilities3D();
+        updateUtilitiesPanelMetricsInPlace();
+      };
+    }
+    if (lblZOffset) {
+      lblZOffset.onclick = () => {
+        UTILS_STATE.verticalOffsetM = 0.0;
+        if (rngZOffset) rngZOffset.value = "0.0";
+        lblZOffset.textContent = "+0.0m";
+        renderUtilities3D();
+        updateUtilitiesPanelMetricsInPlace();
+      };
+    }
+
+    // Keep 3D layers on close checkbox
+    const chkKeep = document.getElementById("chkUtilKeepOnClose");
+    if (chkKeep) {
+      chkKeep.onchange = () => {
+        UTILS_STATE.keepLayersOnClose = Boolean(chkKeep.checked);
+        try {
+          localStorage.setItem("gs_util_keep_on_close", UTILS_STATE.keepLayersOnClose ? "1" : "0");
+        } catch (_) {}
+      };
+    }
+
     // Import GML / GeoJSON / KML
     const btnUpload = document.getElementById("btnUtilUpload");
     const inpFile = document.getElementById("inpUtilFile");
@@ -1122,6 +1183,12 @@
     }
   }
 
+  function isUtilitiesSidePanelOpen() {
+    if (UTILS_STATE.active) return true;
+    const sp = typeof document !== "undefined" ? document.getElementById("studioSidePanel") : null;
+    return Boolean(sp && !sp.classList.contains("hidden") && sp.getAttribute("data-active-tool") === "utilities");
+  }
+
   /**
    * Queries genuine Taiwan Open APIs in the background via `/api/survey/utilities-query`
    * with a non-blocking progress bar. Always ensures 1000m (1km) is queried and cached on the server
@@ -1145,7 +1212,7 @@
       UTILS_STATE.taipei8UtilityStatus = memMaster.taipei8UtilityStatus || null;
       const clipped = filterMasterFeaturesToRadius(memMaster.features, memMaster.center, displayRadiusM);
       UTILS_STATE.features = mergeUserAsBuiltFeatures(scanId, clipped);
-      if (UTILS_STATE.active) {
+      if (isUtilitiesSidePanelOpen() || UTILS_STATE.keepLayersOnClose) {
         renderUtilities3D({ center: memMaster.center, ground_reference_h: memMaster.groundReferenceH });
         if (!UTILS_STATE.selectedFeature || !UTILS_STATE.features.includes(UTILS_STATE.selectedFeature)) {
           UTILS_STATE.selectedFeature =
@@ -1153,7 +1220,9 @@
             UTILS_STATE.features[0] ||
             null;
         }
-        renderUtilitiesSidePanel();
+        if (isUtilitiesSidePanelOpen()) {
+          renderUtilitiesSidePanel();
+        }
         stopLoadingProgressTicker();
         applyUtilitiesGroundXray(UTILS_STATE.groundXrayPct);
       }
@@ -1238,7 +1307,8 @@
 
         stopLoadingProgressTicker();
 
-        if (!UTILS_STATE.active || (typeof STATE !== "undefined" && STATE.activeTool !== "utilities")) {
+        const panelStillOpen = isUtilitiesSidePanelOpen();
+        if (!panelStillOpen && !UTILS_STATE.keepLayersOnClose) {
           return;
         }
 
@@ -1252,7 +1322,9 @@
             UTILS_STATE.features[0] ||
             null;
         }
-        renderUtilitiesSidePanel();
+        if (panelStillOpen) {
+          renderUtilitiesSidePanel();
+        }
         stopLoadingProgressTicker();
         applyUtilitiesGroundXray(UTILS_STATE.groundXrayPct);
 
@@ -1421,18 +1493,28 @@
   function createCanopyRejectingGroundSampler(payload, originTwd) {
     const meshes = typeof getStudioRaycastMeshes === "function" ? getStudioRaycastMeshes() : [];
     const currentScanId = String((typeof STATE !== "undefined" && STATE.activeScanId) || "");
+    const catData = typeof STATE !== "undefined" ? STATE.lastCategorizeResult || STATE.categorizeData : null;
+    const catCount =
+      catData
+        ? (Array.isArray(catData.roads) ? catData.roads.length : 0) +
+          (Array.isArray(catData.trees) ? catData.trees.length : 0) +
+          (Array.isArray(catData.water_bodies) ? catData.water_bodies.length : 0)
+        : 0;
     if (
       UTILS_STATE.groundGridCache.sampler &&
       UTILS_STATE.groundGridCache.scanId === currentScanId &&
-      UTILS_STATE.groundGridCache.meshCount === (meshes ? meshes.length : 0)
+      UTILS_STATE.groundGridCache.meshCount === (meshes ? meshes.length : 0) &&
+      UTILS_STATE.groundGridCache.catCount === catCount
     ) {
       return UTILS_STATE.groundGridCache.sampler;
     }
 
-    const cellSize = 4.0;
-    const cellMinY = new Map(); // "gx_gz" -> lowest bare-earth local Y in 4m cell
-    const anchorPts = []; // [{ x, z, y }]
+    const cellSize = 2.0;
+    const cellMinY = new Map(); // "gx_gz" -> lowest local Y in 2m cell
+    const roadAnchorPts = []; // [{ x, z, y }] verified road & tree-base ground anchors
     const roadSamplesY = [];
+    const waterSamplesY = [];
+    const allMeshYs = [];
 
     function addGroundSample(lx, lz, ly, isRoadAnchor = false) {
       if (!Number.isFinite(lx) || !Number.isFinite(lz) || !Number.isFinite(ly)) return;
@@ -1445,12 +1527,11 @@
       }
       if (isRoadAnchor) {
         roadSamplesY.push(ly);
-        anchorPts.push({ x: lx, z: lz, y: ly });
+        roadAnchorPts.push({ x: lx, z: lz, y: ly });
       }
     }
 
-    // 1. Ingest categorized roads and tree trunk bases
-    const catData = typeof STATE !== "undefined" ? STATE.categorizeData : null;
+    // 1. Ingest categorized roads, tree trunk bases, and water bodies (from STATE.lastCategorizeResult)
     if (catData) {
       if (Array.isArray(catData.roads)) {
         catData.roads.forEach((r) => {
@@ -1471,6 +1552,8 @@
               const pt = r.boundary_twd97[i];
               if (Array.isArray(pt) && pt.length >= 3) {
                 addGroundSample(Number(pt[0]) - originTwd.e, originTwd.n - Number(pt[1]), Number(pt[2]) - originTwd.h, true);
+              } else if (Array.isArray(pt) && pt.length >= 2 && Number.isFinite(ry)) {
+                addGroundSample(Number(pt[0]) - originTwd.e, originTwd.n - Number(pt[1]), ry, true);
               }
             }
           }
@@ -1478,8 +1561,28 @@
       }
       if (Array.isArray(catData.trees)) {
         catData.trees.forEach((trObj) => {
-          if (Array.isArray(trObj.base_local) && trObj.base_local.length >= 3) {
-            addGroundSample(Number(trObj.base_local[0]), Number(trObj.base_local[2]), Number(trObj.base_local[1]), true);
+          const tLoc = trObj.trunk_local || trObj.base_local;
+          if (Array.isArray(tLoc) && tLoc.length >= 3) {
+            addGroundSample(Number(tLoc[0]), Number(tLoc[2]), Number(tLoc[1]), true);
+          } else if (Array.isArray(trObj.trunk_twd97) && trObj.trunk_twd97.length >= 3) {
+            addGroundSample(
+              Number(trObj.trunk_twd97[0]) - originTwd.e,
+              originTwd.n - Number(trObj.trunk_twd97[1]),
+              Number(trObj.trunk_twd97[2]) - originTwd.h,
+              true
+            );
+          }
+        });
+      }
+      if (Array.isArray(catData.water_bodies)) {
+        catData.water_bodies.forEach((wb) => {
+          const wy = Number.isFinite(wb.elevation_local_y)
+            ? Number(wb.elevation_local_y)
+            : Number.isFinite(wb.elevation_twd97_z)
+            ? Number(wb.elevation_twd97_z) - originTwd.h
+            : NaN;
+          if (Number.isFinite(wy)) {
+            waterSamplesY.push(wy);
           }
         });
       }
@@ -1493,7 +1596,7 @@
         const pos = m && m.geometry && m.geometry.attributes && m.geometry.attributes.position;
         if (pos && pos.count) totalVerts += pos.count;
       });
-      const targetSamples = 24000;
+      const targetSamples = 28000;
       const stride = Math.max(1, Math.floor(totalVerts / targetSamples));
 
       meshes.forEach((m) => {
@@ -1505,23 +1608,17 @@
           tmpV.fromBufferAttribute(pos, i).applyMatrix4(matW);
           if (Number.isFinite(tmpV.y) && tmpV.y > -200 && tmpV.y < 500) {
             addGroundSample(tmpV.x, tmpV.z, tmpV.y, false);
+            allMeshYs.push(tmpV.y);
           }
         }
       });
     }
 
-    // Collect sparse cell centers for fast nearest-cell interpolation outside direct cell hits
-    cellMinY.forEach((ly, key) => {
-      const parts = key.split("_");
-      const cx = (Number(parts[0]) + 0.5) * cellSize;
-      const cz = (Number(parts[1]) + 0.5) * cellSize;
-      roadSamplesY.push(ly);
-      if (anchorPts.length < 600) {
-        anchorPts.push({ x: cx, z: cz, y: ly });
-      }
-    });
+    allMeshYs.sort((a, b) => a - b);
+    const minScanY = allMeshYs.length > 0 ? allMeshYs[Math.floor(allMeshYs.length * 0.03)] : -3.5;
+    const medianScanY = allMeshYs.length > 0 ? allMeshYs[Math.floor(allMeshYs.length * 0.45)] : 0.2;
 
-    let roadRefY = 0.0;
+    let roadRefY = medianScanY;
     const centerGroundH = Number(
       payload?.ground_reference_h ??
         payload?.center?.ground_h ??
@@ -1531,64 +1628,117 @@
         UTILS_STATE.lastCenter?.h
     );
     if (roadSamplesY.length > 0) {
-      roadSamplesY.sort((a, b) => a - b);
-      const idx25 = Math.max(0, Math.min(roadSamplesY.length - 1, Math.floor(roadSamplesY.length * 0.25)));
-      roadRefY = roadSamplesY[idx25];
+      const sortedRoad = roadSamplesY.slice().sort((a, b) => a - b);
+      roadRefY = sortedRoad[Math.floor(sortedRoad.length * 0.45)];
     } else if (Number.isFinite(centerGroundH) && centerGroundH > -100) {
       roadRefY = centerGroundH - originTwd.h;
     }
 
-    const queryCache = new Map();
-    const sampler = function sampleLocalGroundY(lx, lz, fallbackGroundH) {
-      const gx = Math.floor(lx / cellSize);
-      const gz = Math.floor(lz / cellSize);
-      const cKey = `${gx}_${gz}`;
-      if (queryCache.has(cKey)) return queryCache.get(cKey);
-
-      // Check 3x3 neighborhood in the 4m bare-earth grid and pick the minimum bare-earth Y (rejecting tree canopies/cars)
-      let minNeighborY = Infinity;
-      for (let dx = -1; dx <= 1; dx++) {
-        for (let dz = -1; dz <= 1; dz++) {
-          const val = cellMinY.get(`${gx + dx}_${gz + dz}`);
-          if (val !== undefined && val < minNeighborY) {
-            minNeighborY = val;
-          }
+    // If no explicit categorized road anchors yet, promote cells near roadRefY as road anchors (excluding deep river gorges)
+    if (roadAnchorPts.length < 8 && cellMinY.size > 0) {
+      cellMinY.forEach((ly, key) => {
+        if (ly >= roadRefY - 1.5 && ly <= roadRefY + 2.5 && roadAnchorPts.length < 500) {
+          const parts = key.split("_");
+          roadAnchorPts.push({
+            x: (Number(parts[0]) + 0.5) * cellSize,
+            z: (Number(parts[1]) + 0.5) * cellSize,
+            y: ly,
+          });
         }
-      }
-      if (Number.isFinite(minNeighborY)) {
-        queryCache.set(cKey, minNeighborY);
-        return minNeighborY;
-      }
+      });
+    }
 
-      // Outside 3D scan mesh footprint: use backend surveyed ground_h if valid, or inverse-distance weighted nearest anchor
-      if (Number.isFinite(Number(fallbackGroundH)) && Number(fallbackGroundH) > -100) {
-        const fbY = Number(fallbackGroundH) - originTwd.h;
-        queryCache.set(cKey, fbY);
-        return fbY;
-      }
+    const waterRefY =
+      waterSamplesY.length > 0
+        ? Math.max(minScanY + 0.15, waterSamplesY.reduce((a, b) => a + b, 0) / waterSamplesY.length)
+        : Math.max(minScanY + 0.15, roadRefY - 2.6);
 
-      if (anchorPts.length > 0) {
-        let minD2 = Infinity;
+    function estimateLocalRoadY(lx, lz, fallbackGroundH) {
+      let anchorY = NaN;
+      if (roadAnchorPts.length > 0) {
+        let wSum = 0.0;
+        let wySum = 0.0;
         let nearestY = roadRefY;
-        for (let i = 0; i < anchorPts.length; i++) {
-          const p = anchorPts[i];
+        let minD2 = Infinity;
+        for (let i = 0; i < roadAnchorPts.length; i++) {
+          const p = roadAnchorPts[i];
           const d2 = (p.x - lx) * (p.x - lx) + (p.z - lz) * (p.z - lz);
           if (d2 < minD2) {
             minD2 = d2;
             nearestY = p.y;
           }
+          if (d2 <= 2500.0) {
+            const w = 1.0 / (d2 + 9.0);
+            wSum += w;
+            wySum += w * p.y;
+          }
         }
-        queryCache.set(cKey, nearestY);
-        return nearestY;
+        anchorY = wSum > 0 ? wySum / wSum : nearestY;
       }
 
-      queryCache.set(cKey, roadRefY);
+      const fbH = Number(fallbackGroundH);
+      const hasValidFb = Number.isFinite(fbH) && fbH > -100;
+      const fbLocalY = hasValidFb ? fbH - originTwd.h : NaN;
+
+      if (Number.isFinite(anchorY) && Number.isFinite(fbLocalY)) {
+        // Guard against legacy cached stream-bed fallbackGroundH on road utilities
+        const safeFbY = Math.max(roadRefY - 1.2, fbLocalY);
+        return 0.65 * anchorY + 0.35 * safeFbY;
+      }
+      if (Number.isFinite(anchorY)) return anchorY;
+      if (Number.isFinite(fbLocalY)) return Math.max(roadRefY - 1.2, fbLocalY);
       return roadRefY;
+    }
+
+    const sampler = function sampleLocalGroundY(lx, lz, fallbackGroundH, opts) {
+      const isOpenChannel = Boolean(opts && opts.isOpenChannel);
+      const gx = Math.floor(lx / cellSize);
+      const gz = Math.floor(lz / cellSize);
+
+      if (isOpenChannel) {
+        // Open surface stream/river channel: sample local stream bed, but never drop below the 3D scan's stream bed (minScanY + 0.2m)
+        let minStreamY = Infinity;
+        for (let dx = -1; dx <= 1; dx++) {
+          for (let dz = -1; dz <= 1; dz++) {
+            const val = cellMinY.get(`${gx + dx}_${gz + dz}`);
+            if (val !== undefined && val < minStreamY) minStreamY = val;
+          }
+        }
+        if (Number.isFinite(minStreamY)) {
+          return Math.max(minScanY + 0.2, Math.min(waterRefY + 1.2, minStreamY));
+        }
+        return waterRefY;
+      }
+
+      const localRoadY = estimateLocalRoadY(lx, lz, fallbackGroundH);
+
+      // Check immediate 4-connected neighborhood in 2m grid; clamp to [localRoadY - 0.65, localRoadY + 1.80]
+      // so road/bridge pipes never plunge into adjacent river gorges (e.g. QiHu Park 磺港溪) or float into tree canopies!
+      const offsets = [
+        [0, 0],
+        [-1, 0],
+        [1, 0],
+        [0, -1],
+        [0, 1],
+      ];
+      let bestCellY = Infinity;
+      for (let i = 0; i < offsets.length; i++) {
+        const val = cellMinY.get(`${gx + offsets[i][0]}_${gz + offsets[i][1]}`);
+        if (val !== undefined && val < bestCellY) {
+          bestCellY = val;
+        }
+      }
+      if (Number.isFinite(bestCellY)) {
+        return Math.max(localRoadY - 0.65, Math.min(localRoadY + 1.8, bestCellY));
+      }
+
+      return localRoadY;
     };
 
     UTILS_STATE.groundGridCache = {
       scanId: currentScanId,
       meshCount: meshes ? meshes.length : 0,
+      catCount: catCount,
       sampler: sampler,
     };
     return sampler;
@@ -1662,11 +1812,7 @@
       return;
     }
 
-    if (UTILS_STATE.active) {
-      applyUtilitiesGroundXray(UTILS_STATE.groundXrayPct);
-    }
-    ensureAdaptiveCameraNearPlane();
-
+    const zOffsetM = Number(UTILS_STATE.verticalOffsetM) || 0.0;
     const originTwd = typeof localToTwd97 === "function" ? localToTwd97({ x: 0, y: 0, z: 0 }) : { e: 0, n: 0, h: 0 };
     const sampleLocalGroundY = createCanopyRejectingGroundSampler(payload, originTwd);
     const tpl = getUnitGeometryTemplates();
@@ -1701,14 +1847,21 @@
           (feat.start_coord && feat.end_coord ? [feat.start_coord, feat.end_coord] : null);
         if (!rawCoords || rawCoords.length < 2) return;
 
+        const featName = String(getFeatProp(feat, "name", ""));
+        const featId = String(getFeatProp(feat, "id", ""));
+        const isOpenChannel =
+          Boolean(getFeatProp(feat, "is_open_channel", false)) ||
+          (featId.startsWith("osm_waterway_") && /排水河道|排水渠道|攔水堰/.test(featName));
+
         const diaM = Math.max(0.15, (Number(getFeatProp(feat, "diameter_mm", 300)) || 300) / 1000.0);
         const widthProp = Number(getFeatProp(feat, "width_m", 0));
         const heightProp = Number(getFeatProp(feat, "height_m", 0));
         const isBox = fType === "box_culvert";
         const widthM = isBox ? Math.max(0.35, widthProp || diaM) : diaM;
-        const heightM = isBox ? Math.max(0.35, heightProp || diaM) : diaM;
+        const rawHeightM = isBox ? Math.max(0.35, heightProp || diaM) : diaM;
+        const heightM = isOpenChannel ? Math.min(0.75, rawHeightM) : rawHeightM;
 
-        const defDepth = Number(ldef.defaultDepthM || 2.0);
+        const defDepth = Number(ldef.defaultDepthM || 1.6);
         const rawGroundH = Number(getFeatProp(feat, "ground_h", NaN));
         const startGroundH = Number(getFeatProp(feat, "start_ground_h", Number.isFinite(rawGroundH) ? rawGroundH : NaN));
         const endGroundH = Number(getFeatProp(feat, "end_ground_h", startGroundH));
@@ -1719,7 +1872,9 @@
         const rawEndCoverM = Number(getFeatProp(feat, "end_cover_m", rawStartCoverM));
 
         let startDepthM = Number(getFeatProp(feat, "start_depth_m", NaN));
-        if (!Number.isFinite(startDepthM) || startDepthM <= 0) {
+        if (isOpenChannel) {
+          startDepthM = 0.45;
+        } else if (!Number.isFinite(startDepthM) || startDepthM <= 0) {
           if (Number.isFinite(rawStartCoverM) && rawStartCoverM > 0) {
             startDepthM = rawStartCoverM + heightM;
           } else if (
@@ -1730,12 +1885,14 @@
           ) {
             startDepthM = startGroundH - rawStartInvH;
           } else {
-            startDepthM = Math.max(defDepth, heightM + 1.1);
+            startDepthM = Math.max(defDepth, heightM + 0.8);
           }
         }
 
         let endDepthM = Number(getFeatProp(feat, "end_depth_m", NaN));
-        if (!Number.isFinite(endDepthM) || endDepthM <= 0) {
+        if (isOpenChannel) {
+          endDepthM = 0.50;
+        } else if (!Number.isFinite(endDepthM) || endDepthM <= 0) {
           if (Number.isFinite(rawEndCoverM) && rawEndCoverM > 0) {
             endDepthM = rawEndCoverM + heightM;
           } else if (
@@ -1763,9 +1920,12 @@
               : startGroundH;
 
           const v = twd97ToLocal(c[0], c[1], 0);
-          const groundY = sampleLocalGroundY(v.x, v.z, interpGroundH);
+          const groundY = sampleLocalGroundY(v.x, v.z, interpGroundH, { isOpenChannel }) + zOffsetM;
 
-          const invertDepthM = Math.max(heightM + 0.5, startDepthM + frac * (endDepthM - startDepthM));
+          const rawInterpDepth = startDepthM + frac * (endDepthM - startDepthM);
+          const invertDepthM = isOpenChannel
+            ? Math.min(0.55, Math.max(0.25, rawInterpDepth))
+            : Math.max(heightM + 0.25, rawInterpDepth);
           const invertY = groundY - invertDepthM;
           v.y = invertY + 0.5 * heightM;
 
@@ -1783,7 +1943,7 @@
           endGroundH: lastGroundH,
           startDepthM: firstDepthM,
           endDepthM: lastDepthM,
-          startCoverM: Math.max(0.5, firstDepthM - heightM),
+          startCoverM: Math.max(0.0, firstDepthM - heightM),
           startInvertH: firstGroundH - firstDepthM,
           endInvertH: lastGroundH - lastDepthM,
         };
@@ -1853,7 +2013,7 @@
         const vBase = twd97ToLocal(coord[0], coord[1], 0);
         const rawRimH = Number(getFeatProp(feat, "rim_h", NaN));
         const rawInvH = Number(getFeatProp(feat, "invert_h", NaN));
-        const groundY = sampleLocalGroundY(vBase.x, vBase.z, rawRimH);
+        const groundY = sampleLocalGroundY(vBase.x, vBase.z, rawRimH) + zOffsetM;
 
         const rawDepth = Number(getFeatProp(feat, "depth_m", NaN));
         const calcDepth =
@@ -1861,8 +2021,8 @@
             ? rawDepth
             : Number.isFinite(rawRimH) && Number.isFinite(rawInvH) && rawRimH - rawInvH >= 0.5 && rawRimH - rawInvH <= 15.0
             ? rawRimH - rawInvH
-            : 2.2;
-        const depthM = Math.max(0.8, Math.min(8.0, calcDepth));
+            : 1.8;
+        const depthM = Math.max(0.75, Math.min(8.0, calcDepth));
         const rimY = groundY;
         const invertY = rimY - depthM;
 
@@ -1919,7 +2079,7 @@
       else if (fType === "hydrant" || fType === "pole") {
         const coord = feat.coord || feat.geometry?.coordinates || [0, 0, 0];
         const vBase = twd97ToLocal(coord[0], coord[1], 0);
-        const groundY = sampleLocalGroundY(vBase.x, vBase.z, getFeatProp(feat, "rim_h", NaN));
+        const groundY = sampleLocalGroundY(vBase.x, vBase.z, getFeatProp(feat, "rim_h", NaN)) + zOffsetM;
         const heightM = fType === "pole" ? 6.5 : 0.95;
         const diaM = fType === "pole" ? 0.26 : 0.24;
         const vertBasis = { rx: 1, ry: 0, rz: 0, ux: 0, uy: 0, uz: 1, fx: 0, fy: 1, fz: 0 };
@@ -2365,10 +2525,148 @@
     }
   }
 
+  /**
+   * Appends visible 3D Utility meshes and Categorized Tree/Wall meshes to Studio's raycast targets
+   * so Group 1 tools (distance, angle, area, coordinates, laser) can directly hit them.
+   */
+  function collectExtraStudioPickTargets(targets) {
+    if (!Array.isArray(targets)) return;
+    if (UTILS_STATE.threeGroup && UTILS_STATE.threeGroup.visible && Array.isArray(UTILS_STATE.layerMeshes)) {
+      for (let i = 0; i < UTILS_STATE.layerMeshes.length; i++) {
+        const m = UTILS_STATE.layerMeshes[i];
+        if (m && m.visible !== false) targets.push(m);
+      }
+    }
+    const st = window.studioThree;
+    if (st && st.categoryGroup && st.categoryGroup.visible && typeof STATE !== "undefined" && STATE.categorizeOverlayVisible) {
+      st.categoryGroup.traverse((ch) => {
+        if (ch && ch.isMesh && ch.visible !== false) {
+          targets.push(ch);
+        }
+      });
+    }
+  }
+
+  /**
+   * Pushes snappable 3D vertices for visible Utilities (pipe/culvert/manhole endpoints + closest point on segment under cursor ray)
+   * and visible Categorized Trees (trunk base + 1.3m DBH point) & Walls so Group 1 tools snap to them seamlessly.
+   */
+  function collectExtraSnappableVertices(pushV) {
+    if (typeof pushV !== "function" || !window.THREE) return;
+    const st = window.studioThree;
+
+    // 1. Snap to visible 3D Public Utilities (closest point along ray + endpoints of nearby segments/manholes)
+    if (UTILS_STATE.threeGroup && UTILS_STATE.threeGroup.visible && UTILS_STATE.pipeMeshMap && UTILS_STATE.pipeMeshMap.size > 0) {
+      const rc = st && st.raycaster ? st.raycaster : null;
+      const ro = rc && rc.ray ? rc.ray.origin : null;
+      const rd = rc && rc.ray ? rc.ray.direction : null;
+
+      if (ro && rd) {
+        const rox = ro.x, roy = ro.y, roz = ro.z;
+        const rdx = rd.x, rdy = rd.y, rdz = rd.z;
+        let bestDistSq = Infinity;
+        let bestPt = null;
+        let bestV1 = null;
+        let bestV2 = null;
+
+        UTILS_STATE.pipeMeshMap.forEach((entry) => {
+          const lyr = UTILITY_LAYERS[entry.layer];
+          if (!lyr || lyr.visible === false || !entry.v1 || !entry.v2) return;
+          const v1 = entry.v1;
+          const v2 = entry.v2;
+          const sx = v2.x - v1.x;
+          const sy = v2.y - v1.y;
+          const sz = v2.z - v1.z;
+          const wx = v1.x - rox;
+          const wy = v1.y - roy;
+          const wz = v1.z - roz;
+
+          const b = rdx * sx + rdy * sy + rdz * sz;
+          const c = sx * sx + sy * sy + sz * sz;
+          const d = rdx * wx + rdy * wy + rdz * wz;
+          const e = sx * wx + sy * wy + sz * wz;
+          const denom = c - b * b;
+
+          let tSeg = 0.0;
+          if (denom > 1e-6) {
+            tSeg = (b * d - e) / denom;
+            if (tSeg < 0.0) tSeg = 0.0;
+            else if (tSeg > 1.0) tSeg = 1.0;
+          }
+          const sRay = b * tSeg + d;
+          if (sRay < 0.1) return;
+
+          const px = v1.x + tSeg * sx;
+          const py = v1.y + tSeg * sy;
+          const pz = v1.z + tSeg * sz;
+          const qx = rox + sRay * rdx;
+          const qy = roy + sRay * rdy;
+          const qz = roz + sRay * rdz;
+          const distSq = (px - qx) * (px - qx) + (py - qy) * (py - qy) + (pz - qz) * (pz - qz);
+          const maxWorldTol = Math.max((entry.radiusM || 0.3) * 2.5, sRay * 0.035);
+          if (distSq <= maxWorldTol * maxWorldTol) {
+            // Always push segment endpoints (manhole rim/invert or pipe node) for exact vertex snapping
+            pushV(v1, "utilities", -1, false);
+            pushV(v2, "utilities", -1, false);
+            if (distSq < bestDistSq) {
+              bestDistSq = distSq;
+              bestPt = new THREE.Vector3(px, py, pz);
+              bestV1 = v1;
+              bestV2 = v2;
+            }
+          }
+        });
+
+        if (bestPt) {
+          pushV(bestPt, "utilities", -1, false);
+          if (bestV1) pushV(bestV1, "utilities", -1, false);
+          if (bestV2) pushV(bestV2, "utilities", -1, false);
+        }
+      }
+    }
+
+    // 2. Snap to visible 3D Categorized Trees (trunk base, 1.3m DBH measurement point, and crown top) & Walls
+    if (typeof STATE !== "undefined" && STATE.categorizeOverlayVisible && STATE.lastCategorizeResult) {
+      const cat = STATE.lastCategorizeResult;
+      const originTwd = typeof localToTwd97 === "function" ? localToTwd97({ x: 0, y: 0, z: 0 }) : { e: 0, n: 0, h: 0 };
+      if (STATE.categorizeLayerToggles?.trees !== false && Array.isArray(cat.trees)) {
+        cat.trees.forEach((trObj) => {
+          let tx = NaN, ty = NaN, tz = NaN;
+          const tLoc = trObj.trunk_local || trObj.base_local;
+          if (Array.isArray(tLoc) && tLoc.length >= 3) {
+            tx = Number(tLoc[0]);
+            ty = Number(tLoc[1]);
+            tz = Number(tLoc[2]);
+          } else if (Array.isArray(trObj.trunk_twd97) && trObj.trunk_twd97.length >= 3) {
+            tx = Number(trObj.trunk_twd97[0]) - originTwd.e;
+            ty = Number(trObj.trunk_twd97[2]) - originTwd.h;
+            tz = originTwd.n - Number(trObj.trunk_twd97[1]);
+          }
+          if (Number.isFinite(tx) && Number.isFinite(ty) && Number.isFinite(tz)) {
+            const hM = Math.max(1.8, Number(trObj.height_m) || 4.0);
+            pushV(new THREE.Vector3(tx, ty, tz), "categorize", -1, false);
+            pushV(new THREE.Vector3(tx, ty + Math.min(1.3, hM * 0.45), tz), "categorize", -1, false);
+            pushV(new THREE.Vector3(tx, ty + hM, tz), "categorize", -1, false);
+          }
+        });
+      }
+      if (STATE.categorizeLayerToggles?.walls !== false && Array.isArray(cat.walls)) {
+        cat.walls.forEach((wObj) => {
+          if (Array.isArray(wObj.start_local) && wObj.start_local.length >= 3) {
+            pushV(new THREE.Vector3(Number(wObj.start_local[0]), Number(wObj.start_local[1]), Number(wObj.start_local[2])), "categorize", -1, false);
+          }
+          if (Array.isArray(wObj.end_local) && wObj.end_local.length >= 3) {
+            pushV(new THREE.Vector3(Number(wObj.end_local[0]), Number(wObj.end_local[1]), Number(wObj.end_local[2])), "categorize", -1, false);
+          }
+        });
+      }
+    }
+  }
+
   // Bind pointerdown & pointermove in Studio to select and hover-inspect 3D utility elements
   let _lastHoverPickMs = 0;
   window.addEventListener("pointermove", (ev) => {
-    if (typeof STATE === "undefined" || STATE.activeTool !== "utilities" || !UTILS_STATE.active) {
+    if (typeof STATE === "undefined" || (!isUtilitiesSidePanelOpen() && !hasVisibleUtilities3D())) {
       if (UTILS_STATE.hoveredFeature) hideUtilityHoverTooltip();
       return;
     }
@@ -2404,7 +2702,7 @@
   });
 
   window.addEventListener("pointerdown", (ev) => {
-    if (typeof STATE === "undefined" || STATE.activeTool !== "utilities" || !UTILS_STATE.active) return;
+    if (typeof STATE === "undefined" || !isUtilitiesSidePanelOpen()) return;
     if (ev.target.closest("#studioSidePanel") || ev.target.closest("#studioDock") || ev.target.closest(".bim-dock")) {
       return;
     }
@@ -2425,6 +2723,8 @@
   window.pickUtilityFeatureAtScreenXY = pickUtilityFeatureAtScreenXY;
   window.syncUserTracedUtilityToGisLayer = syncUserTracedUtilityToGisLayer;
   window.clearUserTracedUtilityFromGisLayer = clearUserTracedUtilityFromGisLayer;
+  window.collectExtraStudioPickTargets = collectExtraStudioPickTargets;
+  window.collectExtraSnappableVertices = collectExtraSnappableVertices;
   window.UTILITY_LAYERS = UTILITY_LAYERS;
   window.UTILS_STATE = UTILS_STATE;
 })();

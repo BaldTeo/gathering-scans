@@ -3932,6 +3932,15 @@
       ].includes(STATE.activeTool)
     ) {
       clearTempDistanceVisuals();
+      const panelEl = document.getElementById("studioSidePanel");
+      const isPanelOpen = Boolean(panelEl && !panelEl.classList.contains("hidden") && panelEl.classList.contains("active"));
+      const panelTool = panelEl ? (panelEl.getAttribute("data-active-tool") || "") : "";
+      if (typeof window.isStudioGroup1Tool === "function" && window.isStudioGroup1Tool(STATE.activeTool) && isPanelOpen) {
+        setActiveStudioTool(panelTool || (STATE.multiAlign?.active ? "align_merge" : "orbit"), { keepSidePanel: true });
+        if (typeof syncStudioMobileToolHud === "function") syncStudioMobileToolHud();
+        showToast(tr("已結束量測工具 (Esc)", "Exited measurement tool (Esc)"));
+        return true;
+      }
       if (STATE.activeTool === "section") {
         clearSectionBoxClippingIfNotKept();
       }
@@ -3950,7 +3959,6 @@
       if ((STATE.activeTool === "photos" || STATE.activeTool === "rtk") && typeof clearPhotoTargetVisuals3D === "function") {
         clearPhotoTargetVisuals3D(true);
       }
-      const panelEl = document.getElementById("studioSidePanel");
       if (panelEl) {
         panelEl.classList.remove("active", "open");
         panelEl.classList.add("hidden");
@@ -3998,13 +4006,15 @@
 
     btn.addEventListener("click", (ev) => {
       if (btn.id === "btnClearMeasurements" || btn.id === "btnMeasureClear") {
-        clearMeasurements();
-        if (studioThree && studioThree.contourGroup) {
+        const panelEl = document.getElementById("studioSidePanel");
+        const isPanelOpen = Boolean(panelEl && !panelEl.classList.contains("hidden") && panelEl.classList.contains("active"));
+        clearMeasurements({ onlyGroup1: isPanelOpen });
+        if (!isPanelOpen && studioThree && studioThree.contourGroup) {
           while (studioThree.contourGroup.children.length > 0) {
             studioThree.contourGroup.remove(studioThree.contourGroup.children[0]);
           }
         }
-        showToast("Cleared 3D measurements & overlays");
+        showToast(isPanelOpen ? tr("已清除 3D 量測標記（保留右側面板圖層）", "Cleared 3D measurements (side panel layers preserved)") : "Cleared 3D measurements & overlays");
         return;
       }
 
@@ -4100,7 +4110,8 @@
       }
 
       preserveLassoSelectionBeforeToolSwitch();
-      if (tool !== "photos" && tool !== "rtk" && typeof clearPhotoTargetVisuals3D === "function") {
+      const isGroup1 = typeof window.isStudioGroup1Tool === "function" && window.isStudioGroup1Tool(tool);
+      if (!isGroup1 && tool !== "photos" && tool !== "rtk" && typeof clearPhotoTargetVisuals3D === "function") {
         clearPhotoTargetVisuals3D(true);
       }
       setActiveStudioTool(tool);

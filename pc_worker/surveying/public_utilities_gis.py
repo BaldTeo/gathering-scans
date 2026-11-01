@@ -259,15 +259,51 @@ def _hydrate_utilities_doc(data: Dict[str, Any]) -> Dict[str, Any]:
                     f["source"] = "OpenStreetMap Taiwan Utility GIS"
             cs = f.get("coords")
             if isinstance(cs, list) and len(cs) >= 2:
+                hm = float(f.get("height_m") or (float(f.get("diameter_mm") or 250) / 1000.0))
+                d1 = float(f.get("start_depth_m") or f.get("depth_m") or 1.35)
+                d2 = float(f.get("end_depth_m") or d1)
+                fname = str(f.get("name") or "")
+                if fid.startswith("osm_waterway_"):
+                    is_open_ch = any(k in fname for k in ("排水河道", "排水渠道", "攔水堰")) and "地下箱涵" not in fname
+                    f["is_open_channel"] = is_open_ch
+                    if is_open_ch and d1 > 0.85:
+                        old_d1, old_d2 = d1, d2
+                        hm = min(hm, 0.8)
+                        f["height_m"] = round(hm, 2)
+                        d1, d2 = 0.45, 0.50
+                        f["start_depth_m"], f["end_depth_m"], f["depth_m"] = d1, d2, 0.48
+                        cs = [
+                            [
+                                p[0],
+                                p[1],
+                                round(float(p[2]) + (old_d1 + (idx / max(1, len(cs) - 1)) * (old_d2 - old_d1)) - (d1 + (idx / max(1, len(cs) - 1)) * (d2 - d1)), 3),
+                            ]
+                            for idx, p in enumerate(cs)
+                            if len(p) >= 3
+                        ]
+                        f["coords"] = cs
+                    elif not is_open_ch and d1 > 1.65:
+                        old_d1, old_d2 = d1, d2
+                        hm = min(hm, 1.1)
+                        f["height_m"] = round(hm, 2)
+                        d1, d2 = 1.40, 1.48
+                        f["start_depth_m"], f["end_depth_m"], f["depth_m"] = d1, d2, 1.44
+                        cs = [
+                            [
+                                p[0],
+                                p[1],
+                                round(float(p[2]) + (old_d1 + (idx / max(1, len(cs) - 1)) * (old_d2 - old_d1)) - (d1 + (idx / max(1, len(cs) - 1)) * (d2 - d1)), 3),
+                            ]
+                            for idx, p in enumerate(cs)
+                            if len(p) >= 3
+                        ]
+                        f["coords"] = cs
                 if "start_coord" not in f:
                     f["start_coord"] = cs[0]
                 if "end_coord" not in f:
                     f["end_coord"] = cs[-1]
                 z1 = float(cs[0][2]) if len(cs[0]) >= 3 else 0.0
                 z2 = float(cs[-1][2]) if len(cs[-1]) >= 3 else z1
-                hm = float(f.get("height_m") or (float(f.get("diameter_mm") or 250) / 1000.0))
-                d1 = float(f.get("start_depth_m") or f.get("depth_m") or 1.35)
-                d2 = float(f.get("end_depth_m") or d1)
                 f.setdefault("start_depth_m", round(d1, 2))
                 f.setdefault("end_depth_m", round(d2, 2))
                 f.setdefault("depth_m", round(0.5 * (d1 + d2), 2))
@@ -279,8 +315,9 @@ def _hydrate_utilities_doc(data: Dict[str, Any]) -> Dict[str, Any]:
                 f.setdefault("end_rim_h", f["end_ground_h"])
                 f.setdefault("start_crown_h", round(z1 + hm, 3))
                 f.setdefault("end_crown_h", round(z2 + hm, 3))
-                f.setdefault("start_cover_m", round(max(0.1, d1 - hm), 2))
-                f.setdefault("end_cover_m", round(max(0.1, d2 - hm), 2))
+                min_cov = 0.0 if f.get("is_open_channel") else 0.1
+                f.setdefault("start_cover_m", round(max(min_cov, d1 - hm), 2))
+                f.setdefault("end_cover_m", round(max(min_cov, d2 - hm), 2))
                 f.setdefault("flow_direction", 1)
                 f.setdefault("material", "標準管材")
             else:
@@ -860,13 +897,13 @@ class PublicUtilitiesGISMixin:
                             if road_ref_h is None or abs(wh - road_ref_h) <= 2.0:
                                 samples.append((we, wn, wh, 0.6))
 
-            for wb in (cat_data.get("water_bodies") or []):
-                wc = wb.get("center_twd97")
-                wl = safe_float(wb.get("water_level_twvd2001_m"))
-                if isinstance(wc, list) and len(wc) >= 2 and wl is not None:
-                    we, wn = safe_float(wc[0]), safe_float(wc[1])
-                    if we is not None and wn is not None:
-                        if road_ref_h is None or abs((wl + 1.0) - road_ref_h) <= 3.5:
+            if not road_hs:
+                for wb in (cat_data.get("water_bodies") or []):
+                    wc = wb.get("center_twd97")
+                    wl = safe_float(wb.get("water_level_twvd2001_m"))
+                    if isinstance(wc, list) and len(wc) >= 2 and wl is not None:
+                        we, wn = safe_float(wc[0]), safe_float(wc[1])
+                        if we is not None and wn is not None:
                             samples.append((we, wn, wl + 1.0, 0.8))
 
         # Anchor Taipei City ground elevation with official 3dgis.reac.taipei get3dz.ashx bare-earth API
@@ -3304,6 +3341,7 @@ class PublicUtilitiesGISMixin:
             end_d: float,
             material: str,
             source_label: str,
+            is_open_channel: bool = False,
         ) -> Optional[Dict[str, Any]]:
             if len(pts_2d) < 2:
                 return None
@@ -3314,7 +3352,7 @@ class PublicUtilitiesGISMixin:
             if length_m < 1.0:
                 return None
 
-            min_d = round(h_m + 0.65, 2)
+            min_d = 0.35 if is_open_channel else round(h_m + 0.50, 2)
             d1 = round(max(min_d, start_d), 2)
             d2 = round(max(min_d, end_d), 2)
 
@@ -3340,6 +3378,7 @@ class PublicUtilitiesGISMixin:
                 "height_m": round(h_m, 2),
                 "length_m": round(length_m, 2),
                 "material": material,
+                "is_open_channel": bool(is_open_channel),
                 "start_coord": coords_3d[0],
                 "end_coord": coords_3d[-1],
                 "start_ground_h": round(g1, 3),
@@ -3352,8 +3391,8 @@ class PublicUtilitiesGISMixin:
                 "end_crown_h": round(z2 + h_m, 3),
                 "start_depth_m": d1,
                 "end_depth_m": d2,
-                "start_cover_m": round(d1 - h_m, 2),
-                "end_cover_m": round(d2 - h_m, 2),
+                "start_cover_m": round(max(0.0, d1 - h_m), 2),
+                "end_cover_m": round(max(0.0, d2 - h_m), 2),
                 "depth_m": round(0.5 * (d1 + d2), 2),
                 "slope_pct": slope_pct,
                 "flow_direction": 1,
@@ -3443,7 +3482,7 @@ class PublicUtilitiesGISMixin:
 
             # 4. Hydraulic Sluice Gates & Weirs
             elif tags.get("waterway") in ("sluice_gate", "weir", "dam") and "storm" in req_set:
-                depth_m = 2.20
+                depth_m = 1.10
                 inv_z = round(loc_g - depth_m, 3)
                 wtype = "水門節點" if tags.get("waterway") == "sluice_gate" else "攔水堰/排洪節點"
                 features.append(
@@ -3519,8 +3558,15 @@ class PublicUtilitiesGISMixin:
                 else:
                     w_m = 1.0
 
-                h_m = 1.6 if wtype == "river" else (1.4 if wtype in ("stream", "canal") else 1.0)
-                d_start = 2.20 if is_tunnel_culvert else (1.65 if wtype in ("river", "stream") else 1.75)
+                is_open_ch = bool(not is_tunnel_culvert and wtype in ("river", "stream", "canal", "drain", "ditch", "weir"))
+                if is_open_ch:
+                    h_m = 0.75 if wtype == "river" else 0.60
+                    d_start = 0.45
+                    d_end = 0.50
+                else:
+                    h_m = 1.0 if wtype in ("river", "stream", "canal") else 0.85
+                    d_start = 1.40
+                    d_end = 1.50
                 feat = build_3d_pipe_feature(
                     fid=f"osm_waterway_{wid}",
                     layer_id="storm",
@@ -3531,9 +3577,10 @@ class PublicUtilitiesGISMixin:
                     w_m=w_m,
                     h_m=h_m,
                     start_d=d_start,
-                    end_d=d_start + 0.15,
-                    material="RC/鋼筋混凝土護岸箱涵" if wtype in ("river", "stream") and not is_tunnel_culvert else "RC/鋼筋混凝土箱涵",
+                    end_d=d_end,
+                    material="RC/鋼筋混凝土護岸河道" if is_open_ch else "RC/鋼筋混凝土箱涵",
                     source_label="Taiwan Hydraulic & Culvert GIS (OpenStreetMap Taiwan)",
+                    is_open_channel=is_open_ch,
                 )
                 if feat:
                     features.append(feat)
