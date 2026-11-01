@@ -185,11 +185,45 @@ _SLIM_STRIP_KEYS = (
     "nlsc_label",
     "start_coord",
     "end_coord",
+    "start_ground_h",
+    "end_ground_h",
+    "start_rim_h",
+    "end_rim_h",
+    "start_invert_h",
+    "end_invert_h",
+    "start_crown_h",
+    "end_crown_h",
+    "start_cover_m",
+    "end_cover_m",
+    "arcgis_layer_url",
+    "facility_no",
+    "structure_type",
 )
+
+_KEY_TO_SHORT = {
+    "type": "t",
+    "name": "n",
+    "coords": "cs",
+    "coord": "c",
+    "diameter_mm": "d",
+    "width_m": "w",
+    "height_m": "h",
+    "length_m": "l",
+    "material": "m",
+    "depth_m": "dp",
+    "start_depth_m": "sd",
+    "end_depth_m": "ed",
+    "rim_h": "rh",
+    "invert_h": "ih",
+    "slope_pct": "sl",
+    "flow_direction": "fd",
+    "source": "s",
+}
+_SHORT_TO_KEY = {v: k for k, v in _KEY_TO_SHORT.items()}
 
 
 def _hydrate_utilities_doc(data: Dict[str, Any]) -> Dict[str, Any]:
-    """Hydrates slimmed utility features in-memory so start_coord/end_coord and gov_links are always present."""
+    """Hydrates slimmed utility features in-memory so all full keys, elevations, and gov_links are present."""
     if not isinstance(data, dict):
         return data
     ctr = data.get("center") or {}
@@ -197,17 +231,70 @@ def _hydrate_utilities_doc(data: Dict[str, Any]) -> Dict[str, Any]:
     cn_c = safe_float(ctr.get("n"), 2770000.0) or 2770000.0
     feats = data.get("features")
     if isinstance(feats, list):
-        for f in feats:
-            if not isinstance(f, dict):
+        hydrated_list = []
+        for raw_f in feats:
+            if not isinstance(raw_f, dict):
+                hydrated_list.append(raw_f)
                 continue
+            f: Dict[str, Any] = {}
+            for k, v in raw_f.items():
+                f[_SHORT_TO_KEY.get(k, k)] = v
+            fid = str(f.get("id") or "")
+            if fid.startswith("tpedig_"):
+                parts = fid.split("_")
+                if len(parts) >= 4:
+                    slid_s, oid_s = parts[2], parts[3]
+                    if "arcgis_layer_url" not in f:
+                        f["arcgis_layer_url"] = (
+                            f"https://arcgiserv.gov.taipei/server/rest/services/GWH3857/G97_A_NW_PIPE/MapServer/{slid_s}/{oid_s}"
+                        )
+                    if "source" not in f:
+                        f["source"] = f"Taipei City 8-Utilities MapServer (arcgiserv.gov.taipei G97_A_NW_PIPE/{slid_s})"
+            elif "source" not in f:
+                if fid.startswith("ntpc_rw_"):
+                    f["source"] = "New Taipei City WRD Stormwater GIS (wrd.ntpc.gov.tw)"
+                elif fid.startswith("ntpc_sw_"):
+                    f["source"] = "New Taipei City Sanitary Sewer GIS (wrd.ntpc.gov.tw)"
+                elif fid.startswith("osm_"):
+                    f["source"] = "OpenStreetMap Taiwan Utility GIS"
             cs = f.get("coords")
             if isinstance(cs, list) and len(cs) >= 2:
                 if "start_coord" not in f:
                     f["start_coord"] = cs[0]
                 if "end_coord" not in f:
                     f["end_coord"] = cs[-1]
+                z1 = float(cs[0][2]) if len(cs[0]) >= 3 else 0.0
+                z2 = float(cs[-1][2]) if len(cs[-1]) >= 3 else z1
+                hm = float(f.get("height_m") or (float(f.get("diameter_mm") or 250) / 1000.0))
+                d1 = float(f.get("start_depth_m") or f.get("depth_m") or 1.35)
+                d2 = float(f.get("end_depth_m") or d1)
+                f.setdefault("start_depth_m", round(d1, 2))
+                f.setdefault("end_depth_m", round(d2, 2))
+                f.setdefault("depth_m", round(0.5 * (d1 + d2), 2))
+                f.setdefault("start_invert_h", round(z1, 3))
+                f.setdefault("end_invert_h", round(z2, 3))
+                f.setdefault("start_ground_h", round(z1 + d1, 3))
+                f.setdefault("end_ground_h", round(z2 + d2, 3))
+                f.setdefault("start_rim_h", f["start_ground_h"])
+                f.setdefault("end_rim_h", f["end_ground_h"])
+                f.setdefault("start_crown_h", round(z1 + hm, 3))
+                f.setdefault("end_crown_h", round(z2 + hm, 3))
+                f.setdefault("start_cover_m", round(max(0.1, d1 - hm), 2))
+                f.setdefault("end_cover_m", round(max(0.1, d2 - hm), 2))
+                f.setdefault("flow_direction", 1)
+                f.setdefault("material", "標準管材")
+            else:
+                pt_c = f.get("coord")
+                if isinstance(pt_c, list) and len(pt_c) >= 3:
+                    dm = float(f.get("depth_m") or 1.6)
+                    inv_z = float(pt_c[2])
+                    f.setdefault("invert_h", round(inv_z, 3))
+                    f.setdefault("rim_h", round(inv_z + dm, 3))
+                    f.setdefault("depth_m", round(dm, 2))
             if "gov_links" not in f or not isinstance(f.get("gov_links"), dict):
                 _enrich_feature_gov_links(f, ce_c, cn_c)
+            hydrated_list.append(f)
+        data["features"] = hydrated_list
     return data
 
 
@@ -244,7 +331,7 @@ def _load_utilities_json_cached(fp: str, _depth: int = 0) -> Optional[Dict[str, 
 
 
 def _save_utilities_json_cached(fp: str, data: Dict[str, Any]) -> None:
-    """Writes a compact lossless utilities cache JSON file and updates the hydrated in-memory cache."""
+    """Writes an ultra-compact lossless utilities cache JSON file and updates the hydrated in-memory cache."""
     if not fp or not isinstance(data, dict):
         return
     try:
@@ -255,7 +342,22 @@ def _save_utilities_json_cached(fp: str, data: Dict[str, Any]) -> None:
             slim_feats = []
             for f in data["features"]:
                 if isinstance(f, dict):
-                    sf = {k: v for k, v in f.items() if k not in _SLIM_STRIP_KEYS}
+                    fid = str(f.get("id") or "")
+                    sf = {}
+                    for k, v in f.items():
+                        if k in _SLIM_STRIP_KEYS:
+                            continue
+                        if k == "flow_direction" and v == 1:
+                            continue
+                        if k == "material" and v == "標準管材":
+                            continue
+                        if k == "source" and fid.startswith("tpedig_"):
+                            continue
+                        if k == "coords" and isinstance(v, list):
+                            v = [[round(float(p[0]), 2), round(float(p[1]), 2), round(float(p[2]), 2)] for p in v if len(p) >= 3]
+                        elif k == "coord" and isinstance(v, list) and len(v) >= 3:
+                            v = [round(float(v[0]), 2), round(float(v[1]), 2), round(float(v[2]), 2)]
+                        sf[_KEY_TO_SHORT.get(k, k)] = v
                     slim_feats.append(sf)
                 else:
                     slim_feats.append(f)
@@ -947,6 +1049,8 @@ class PublicUtilitiesGISMixin:
             _add_cand(master_cache_file, False)
             _add_cand(scan_dir_cache_file, False)
             _add_cand(cache_file, False)
+            if is_custom_override_center:
+                _add_cand(os.path.join(UTILITIES_CACHE_DIR, f"{safe_sid}_{int(radius_m)}m_v3.json"), False)
             for fallback_r in (1000, 500, 350, 250, 200, 160, 150, 120, 100, 85, 60):
                 _add_cand(os.path.join(UTILITIES_CACHE_DIR, f"{cache_sid}_{fallback_r}m_v3.json"), False)
 
@@ -959,6 +1063,7 @@ class PublicUtilitiesGISMixin:
                 pass
 
             best_cached_data: Optional[Dict[str, Any]] = None
+            best_cand_fp: str = ""
             best_rank: Tuple[int, int, float] = (-1, -1, -1.0)
             own_master_count = 0
 
@@ -986,6 +1091,7 @@ class PublicUtilitiesGISMixin:
                 if rank > best_rank:
                     best_rank = rank
                     best_cached_data = cached_data
+                    best_cand_fp = cand_fp
 
             if best_cached_data is not None:
                 # Automatically persist <safe_sid>_master_v3.json on the server if missing or stale (< best site master)
@@ -995,16 +1101,32 @@ class PublicUtilitiesGISMixin:
                     and not is_custom_override_center
                     and (not os.path.isfile(master_cache_file) or own_master_count < len(best_cached_data["features"]))
                 ):
-                    persisted_master = dict(best_cached_data)
-                    persisted_master["scan_id"] = scan_id
-                    persisted_master["center"] = {
-                        "e": round(ce, 3),
-                        "n": round(cn, 3),
-                        "h": round(safe_float((best_cached_data.get("center") or {}).get("h"), ch) or ch, 3),
-                    }
-                    _save_utilities_json_cached(master_cache_file, persisted_master)
-                    if scan_dir_cache_file:
-                        _save_utilities_json_cached(scan_dir_cache_file, persisted_master)
+                    if best_cand_fp and os.path.abspath(best_cand_fp) != os.path.abspath(master_cache_file) and os.path.dirname(os.path.abspath(best_cand_fp)) == os.path.dirname(os.path.abspath(master_cache_file)):
+                        redirect_doc = {
+                            "redirect_master_cache": os.path.basename(best_cand_fp),
+                            "scan_id": scan_id,
+                            "radius_m": float(best_cached_data.get("radius_m") or 1000.0),
+                            "master_radius_m": float(best_cached_data.get("radius_m") or 1000.0),
+                            "center": {
+                                "e": round(ce, 3),
+                                "n": round(cn, 3),
+                                "h": round(safe_float((best_cached_data.get("center") or {}).get("h"), ch) or ch, 3),
+                            },
+                        }
+                        try:
+                            with open(master_cache_file, "w", encoding="utf-8") as rf:
+                                json.dump(redirect_doc, rf, ensure_ascii=False)
+                        except Exception:
+                            pass
+                    else:
+                        persisted_master = dict(best_cached_data)
+                        persisted_master["scan_id"] = scan_id
+                        persisted_master["center"] = {
+                            "e": round(ce, 3),
+                            "n": round(cn, 3),
+                            "h": round(safe_float((best_cached_data.get("center") or {}).get("h"), ch) or ch, 3),
+                        }
+                        _save_utilities_json_cached(master_cache_file, persisted_master)
 
                 raw_features = best_cached_data["features"]
                 req_set = set(requested_layers)
@@ -1202,8 +1324,9 @@ class PublicUtilitiesGISMixin:
             }
             if master_cache_file and not is_custom_override_center:
                 _save_utilities_json_cached(master_cache_file, master_payload)
-            fetch_rad_file = os.path.join(UTILITIES_CACHE_DIR, f"{cache_sid}_{int(fetch_radius_m)}m_v3.json")
-            _save_utilities_json_cached(fetch_rad_file, master_payload)
+            else:
+                fetch_rad_file = os.path.join(UTILITIES_CACHE_DIR, f"{cache_sid}_{int(fetch_radius_m)}m_v3.json")
+                _save_utilities_json_cached(fetch_rad_file, master_payload)
             if scan_dir_cache_file and not is_custom_override_center:
                 _save_utilities_json_cached(scan_dir_cache_file, master_payload)
 
