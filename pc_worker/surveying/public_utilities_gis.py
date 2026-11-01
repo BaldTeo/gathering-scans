@@ -170,13 +170,50 @@ UTILITY_LAYERS: Dict[str, Dict[str, Any]] = {
 
 from concurrent.futures import ThreadPoolExecutor
 
-# In-memory cache keyed by absolute file path -> (mtime, parsed_dict) to avoid repeated 15MB disk reads
+# In-memory cache keyed by absolute file path -> (mtime, parsed_dict) to avoid repeated disk reads
 _UTILITIES_MEM_CACHE: Dict[str, Tuple[float, Dict[str, Any]]] = {}
 
+_SLIM_STRIP_KEYS = (
+    "gov_links",
+    "portal_url",
+    "portal_label",
+    "api_url",
+    "api_label",
+    "osm_url",
+    "osm_label",
+    "nlsc_url",
+    "nlsc_label",
+    "start_coord",
+    "end_coord",
+)
 
-def _load_utilities_json_cached(fp: str) -> Optional[Dict[str, Any]]:
-    """Loads a utilities cache JSON file with an in-memory mtime check (<0.1ms on repeat reads)."""
-    if not fp or not os.path.isfile(fp):
+
+def _hydrate_utilities_doc(data: Dict[str, Any]) -> Dict[str, Any]:
+    """Hydrates slimmed utility features in-memory so start_coord/end_coord and gov_links are always present."""
+    if not isinstance(data, dict):
+        return data
+    ctr = data.get("center") or {}
+    ce_c = safe_float(ctr.get("e"), 300000.0) or 300000.0
+    cn_c = safe_float(ctr.get("n"), 2770000.0) or 2770000.0
+    feats = data.get("features")
+    if isinstance(feats, list):
+        for f in feats:
+            if not isinstance(f, dict):
+                continue
+            cs = f.get("coords")
+            if isinstance(cs, list) and len(cs) >= 2:
+                if "start_coord" not in f:
+                    f["start_coord"] = cs[0]
+                if "end_coord" not in f:
+                    f["end_coord"] = cs[-1]
+            if "gov_links" not in f or not isinstance(f.get("gov_links"), dict):
+                _enrich_feature_gov_links(f, ce_c, cn_c)
+    return data
+
+
+def _load_utilities_json_cached(fp: str, _depth: int = 0) -> Optional[Dict[str, Any]]:
+    """Loads a utilities cache JSON file with an in-memory mtime check (<0.1ms on repeat reads) and redirect support."""
+    if not fp or not os.path.isfile(fp) or _depth > 3:
         return None
     try:
         mtime = os.path.getmtime(fp)
@@ -186,6 +223,19 @@ def _load_utilities_json_cached(fp: str) -> Optional[Dict[str, Any]]:
         with open(fp, "r", encoding="utf-8") as f:
             data = json.load(f)
         if isinstance(data, dict):
+            redirect_fn = data.get("redirect_master_cache")
+            if redirect_fn and isinstance(redirect_fn, str):
+                target_fp = os.path.join(os.path.dirname(fp), redirect_fn)
+                target_doc = _load_utilities_json_cached(target_fp, _depth + 1)
+                if isinstance(target_doc, dict):
+                    merged = dict(target_doc)
+                    if data.get("scan_id"):
+                        merged["scan_id"] = data["scan_id"]
+                    if isinstance(data.get("center"), dict):
+                        merged["center"] = data["center"]
+                    _UTILITIES_MEM_CACHE[fp] = (mtime, merged)
+                    return merged
+            _hydrate_utilities_doc(data)
             _UTILITIES_MEM_CACHE[fp] = (mtime, data)
             return data
     except Exception:
@@ -194,13 +244,24 @@ def _load_utilities_json_cached(fp: str) -> Optional[Dict[str, Any]]:
 
 
 def _save_utilities_json_cached(fp: str, data: Dict[str, Any]) -> None:
-    """Writes a utilities cache JSON file atomically and updates the in-memory cache (mirroring to host_docker on VPS)."""
+    """Writes a compact lossless utilities cache JSON file and updates the hydrated in-memory cache."""
     if not fp or not isinstance(data, dict):
         return
     try:
         os.makedirs(os.path.dirname(fp), exist_ok=True)
+        _hydrate_utilities_doc(data)
+        disk_data = dict(data)
+        if isinstance(data.get("features"), list):
+            slim_feats = []
+            for f in data["features"]:
+                if isinstance(f, dict):
+                    sf = {k: v for k, v in f.items() if k not in _SLIM_STRIP_KEYS}
+                    slim_feats.append(sf)
+                else:
+                    slim_feats.append(f)
+            disk_data["features"] = slim_feats
         with open(fp, "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
+            json.dump(disk_data, f, ensure_ascii=False, separators=(",", ":"))
         _UTILITIES_MEM_CACHE[fp] = (os.path.getmtime(fp), data)
         # If running inside the VPS Docker container (/app/data/utilities_cache), mirror to mounted /host_docker volume
         norm_fp = fp.replace("\\", "/")
@@ -208,7 +269,7 @@ def _save_utilities_json_cached(fp: str, data: Dict[str, Any]) -> None:
             host_fp = "/host_docker/gathering_scans/" + norm_fp[len("/app/") :]
             os.makedirs(os.path.dirname(host_fp), exist_ok=True)
             with open(host_fp, "w", encoding="utf-8") as hf:
-                json.dump(data, hf, ensure_ascii=False, indent=2)
+                json.dump(disk_data, hf, ensure_ascii=False, separators=(",", ":"))
     except Exception:
         pass
 
@@ -233,6 +294,51 @@ def _http_get_json(url: str, timeout: float = 6.0) -> Optional[Dict[str, Any]]:
     except Exception:
         pass
     return None
+
+
+def _arcgis_query_all_features(
+    base_url: str,
+    timeout: float = 5.5,
+    page_size: int = 2000,
+    max_pages: int = 15,
+) -> Dict[str, Any]:
+    """
+    Paginates an ArcGIS REST MapServer /query URL using resultOffset & resultRecordCount
+    so the server's maxRecordCount (typically 1000 or 2000) never truncates dense urban utility layers.
+    """
+    sep = "&" if "?" in base_url else "?"
+    first_url = f"{base_url}{sep}resultOffset=0&resultRecordCount={page_size}"
+    first_doc = _http_get_json(first_url, timeout=timeout)
+    if not first_doc or not isinstance(first_doc.get("features"), list):
+        # Fallback in case an older ArcGIS 10.0 server rejects resultOffset
+        fallback_doc = _http_get_json(base_url, timeout=timeout)
+        return fallback_doc if isinstance(fallback_doc, dict) else {"features": []}
+
+    all_feats = list(first_doc["features"])
+    exceeded = bool(first_doc.get("exceededTransferLimit"))
+    # Standard ArcGIS maxRecordCount is 1000 or 2000; if first page is smaller and not exceeded, we have all records
+    if not exceeded and len(all_feats) < 1000:
+        return first_doc
+
+    offset = len(all_feats)
+    for _ in range(1, max_pages):
+        page_url = f"{base_url}{sep}resultOffset={offset}&resultRecordCount={page_size}"
+        page_doc = _http_get_json(page_url, timeout=timeout)
+        if not page_doc or not isinstance(page_doc.get("features"), list):
+            break
+        page_feats = page_doc["features"]
+        if not page_feats:
+            break
+        all_feats.extend(page_feats)
+        offset += len(page_feats)
+        if not page_doc.get("exceededTransferLimit") and len(page_feats) < 1000:
+            break
+
+    out_doc = dict(first_doc)
+    out_doc["features"] = all_feats
+    out_doc["exceededTransferLimit"] = False
+    return out_doc
+
 
 
 def _norm_mh_keys(raw_id: Any) -> List[str]:
@@ -688,11 +794,54 @@ class PublicUtilitiesGISMixin:
 
         return sample_ground_z, cat_data, base_ground_z
 
+    def _resolve_canonical_scan_center(
+        self, scan_id: str, scan: Dict[str, Any]
+    ) -> Tuple[Optional[float], Optional[float], Optional[float]]:
+        """Resolves the true canonical TWD97 (e, n, h) center for a scan_id without being misled by ad-hoc payload overrides."""
+        ce_s = safe_float(scan.get("twd97_e"))
+        cn_s = safe_float(scan.get("twd97_n"))
+        ch_s = safe_float(scan.get("twd97_h") or scan.get("elev_m"))
+        lat_in = safe_float(scan.get("lat"))
+        lon_in = safe_float(scan.get("lon") if scan.get("lon") is not None else scan.get("lng"))
+        if (ce_s is None or cn_s is None) and lat_in is not None and lon_in is not None:
+            ce_s, cn_s = wgs84_to_twd97(lat_in, lon_in)
+            ch_s = safe_float(scan.get("elev_m") if scan.get("elev_m") is not None else scan.get("alt"), 10.0)
+        if (ce_s is None or cn_s is None) and scan_id:
+            cat_fp = os.path.join(DATA_DIR, "categorization_cache", f"{scan_id}_categorization_v3.json")
+            if os.path.isfile(cat_fp):
+                try:
+                    with open(cat_fp, "r", encoding="utf-8") as cf:
+                        cdata = json.load(cf)
+                    anch = (cdata or {}).get("anchor_twd97") or {}
+                    ae_v = safe_float(anch.get("e"))
+                    an_v = safe_float(anch.get("n"))
+                    if ae_v is not None and an_v is not None and abs(ae_v) >= 1000.0 and abs(an_v) >= 1000.0:
+                        ce_s, cn_s = ae_v, an_v
+                        if ch_s is None:
+                            ch_s = safe_float(anch.get("h"))
+                except Exception:
+                    pass
+            if ce_s is None or cn_s is None or abs(ce_s) < 1000.0 or abs(cn_s) < 1000.0:
+                sid_low = scan_id.lower()
+                if "daan" in sid_low:
+                    ce_s, cn_s, ch_s = 304195.809, 2769449.406, 6.801
+                elif "ntudorm" in sid_low:
+                    ce_s, cn_s, ch_s = 303009.961, 2770016.969, 9.429
+                elif "lishan" in sid_low:
+                    ce_s, cn_s, ch_s = 308121.469, 2774980.811, 7.315
+                elif "qihu" in sid_low:
+                    ce_s, cn_s, ch_s = 300550.716, 2780975.538, 10.405
+                elif "quchi" in sid_low:
+                    ce_s, cn_s, ch_s = 304891.922, 2757029.500, 43.201
+                elif "rosepark" in sid_low or "rose_park" in sid_low:
+                    ce_s, cn_s, ch_s = 295966.701, 2768539.373, 11.34
+        return ce_s, cn_s, ch_s
+
     def query_public_utilities_gis(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         """
         Queries genuine live Taiwan Open Data, New Taipei WRD/Sewer ArcGIS REST APIs, and OpenStreetMap v0.6
         for public underground utility pipelines and structures clipped to the active scan radius (default 250m shown,
-        automatically querying and caching 500m on the server), with exact surveyed depth below ground.
+        automatically querying and caching 1000m / 1km on the server), with exact surveyed depth below ground.
         """
         scan_id = str(payload.get("scan_id") or "").strip()
         radius_m = max(10.0, min(1000.0, safe_float(payload.get("radius_m"), 250.0) or 250.0))
@@ -707,16 +856,7 @@ class PublicUtilitiesGISMixin:
         ch = safe_float(payload.get("center_h"))
 
         safe_sid = "".join(c if c.isalnum() or c in "_-" else "_" for c in (scan_id or "pt"))
-        master_cache_file = os.path.join(UTILITIES_CACHE_DIR, f"{safe_sid}_master_v3.json") if scan_id else ""
-
-        if (ce is None or cn is None) and master_cache_file and os.path.isfile(master_cache_file):
-            mc_doc = _load_utilities_json_cached(master_cache_file)
-            if mc_doc:
-                mc_ctr = mc_doc.get("center") or {}
-                ce = safe_float(mc_ctr.get("e"))
-                cn = safe_float(mc_ctr.get("n"))
-                if ch is None:
-                    ch = safe_float(mc_ctr.get("h"))
+        raw_master_cache_file = os.path.join(UTILITIES_CACHE_DIR, f"{safe_sid}_master_v3.json") if scan_id else ""
 
         scan: Dict[str, Any] = {}
         if hasattr(self, "db") and self.db and scan_id:
@@ -727,44 +867,25 @@ class PublicUtilitiesGISMixin:
             except Exception:
                 scan = {}
 
+        canon_e, canon_n, canon_h = self._resolve_canonical_scan_center(scan_id, scan) if scan_id else (None, None, None)
+
+        if (ce is None or cn is None) and raw_master_cache_file and os.path.isfile(raw_master_cache_file):
+            mc_doc = _load_utilities_json_cached(raw_master_cache_file)
+            if mc_doc:
+                mc_ctr = mc_doc.get("center") or {}
+                mc_e = safe_float(mc_ctr.get("e"))
+                mc_n = safe_float(mc_ctr.get("n"))
+                # Only use master cache center if it matches canonical scan center (or canonical is unknown)
+                if mc_e is not None and mc_n is not None:
+                    if canon_e is None or canon_n is None or math.hypot(mc_e - canon_e, mc_n - canon_n) <= 300.0:
+                        ce, cn = mc_e, mc_n
+                        if ch is None:
+                            ch = safe_float(mc_ctr.get("h"))
+
         if ce is None or cn is None:
-            ce = safe_float(scan.get("twd97_e"))
-            cn = safe_float(scan.get("twd97_n"))
-            ch = safe_float(scan.get("twd97_h") or scan.get("elev_m"))
-
-        # Fallback to WGS84 lat/lon or lat/lng if TWD97 not set
-        lat_in = safe_float(scan.get("lat"))
-        lon_in = safe_float(scan.get("lon") if scan.get("lon") is not None else scan.get("lng"))
-        if (ce is None or cn is None) and lat_in is not None and lon_in is not None:
-            ce, cn = wgs84_to_twd97(lat_in, lon_in)
-            ch = safe_float(scan.get("elev_m") if scan.get("elev_m") is not None else scan.get("alt"), 10.0)
-
-        # Fallback to categorization cache anchor_twd97 or sibling site scan if DB record lacked lat/lon/twd97
-        if (ce is None or cn is None) and scan_id:
-            cat_fp = os.path.join(DATA_DIR, "categorization_cache", f"{scan_id}_categorization_v3.json")
-            if os.path.isfile(cat_fp):
-                try:
-                    with open(cat_fp, "r", encoding="utf-8") as cf:
-                        cdata = json.load(cf)
-                    anch = (cdata or {}).get("anchor_twd97") or {}
-                    ce = safe_float(anch.get("e"))
-                    cn = safe_float(anch.get("n"))
-                    if ch is None:
-                        ch = safe_float(anch.get("h"))
-                except Exception:
-                    pass
-            if ce is None or cn is None:
-                sid_low = scan_id.lower()
-                if "daan" in sid_low:
-                    ce, cn, ch = 304195.809, 2769449.406, 6.801
-                elif "ntudorm" in sid_low:
-                    ce, cn, ch = 303009.961, 2770016.969, 9.429
-                elif "lishan" in sid_low:
-                    ce, cn, ch = 308121.469, 2774980.811, 7.315
-                elif "qihu" in sid_low:
-                    ce, cn, ch = 300550.716, 2780975.538, 10.405
-                elif "quchi" in sid_low:
-                    ce, cn, ch = 304891.922, 2757029.500, 43.201
+            ce, cn = canon_e, canon_n
+            if ch is None:
+                ch = canon_h
 
         # Default fallback to Rose Park if neither scan_id nor center_e/n provided
         if ce is None or cn is None:
@@ -773,7 +894,12 @@ class PublicUtilitiesGISMixin:
             ch = 11.34
 
         if ch is None:
-            ch = 12.0
+            ch = canon_h if canon_h is not None else 12.0
+
+        # Guard against cross-site coordinate overrides (e.g. passing Lishan center_e/n with QiHu scan_id in tests)
+        is_custom_override_center = bool(
+            scan_id and canon_e is not None and canon_n is not None and math.hypot(ce - canon_e, cn - canon_n) > 300.0
+        )
 
         xmin = round(ce - radius_m, 3)
         ymin = round(cn - radius_m, 3)
@@ -800,13 +926,13 @@ class PublicUtilitiesGISMixin:
                 "cached": False,
             }
 
-        # Check local v3 cache & site-wide 500m master caches first (zero categorization disk I/O on cache hits)
-        safe_sid = "".join(c if c.isalnum() or c in "_-" else "_" for c in (scan_id or f"pt_{int(ce)}_{int(cn)}"))
-        cache_file = os.path.join(UTILITIES_CACHE_DIR, f"{safe_sid}_{int(radius_m)}m_v3.json")
-        master_cache_file = os.path.join(UTILITIES_CACHE_DIR, f"{safe_sid}_master_v3.json")
+        # Check local v3 cache & site-wide 1000m (1km) master caches first (zero categorization disk I/O on cache hits)
+        cache_sid = (f"pt_{int(ce)}_{int(cn)}" if is_custom_override_center else safe_sid) if scan_id else f"pt_{int(ce)}_{int(cn)}"
+        cache_file = os.path.join(UTILITIES_CACHE_DIR, f"{cache_sid}_{int(radius_m)}m_v3.json")
+        master_cache_file = "" if is_custom_override_center else raw_master_cache_file
         scan_dir_cache_file = ""
         proj_dir = str((scan or {}).get("project_dir") or "").strip()
-        if proj_dir and os.path.isdir(proj_dir):
+        if proj_dir and os.path.isdir(proj_dir) and not is_custom_override_center:
             scan_dir_cache_file = os.path.join(proj_dir, "_utilities_cache_v3.json")
 
         if not force_refresh:
@@ -822,9 +948,9 @@ class PublicUtilitiesGISMixin:
             _add_cand(scan_dir_cache_file, False)
             _add_cand(cache_file, False)
             for fallback_r in (1000, 500, 350, 250, 200, 160, 150, 120, 100, 85, 60):
-                _add_cand(os.path.join(UTILITIES_CACHE_DIR, f"{safe_sid}_{fallback_r}m_v3.json"), False)
+                _add_cand(os.path.join(UTILITIES_CACHE_DIR, f"{cache_sid}_{fallback_r}m_v3.json"), False)
 
-            # Site-wide 500m master cache discovery: share rich 500m master caches across sibling scans at the same site
+            # Site-wide 1000m (1km) master cache discovery: share rich master caches across sibling scans at the same site
             try:
                 for fn in os.listdir(UTILITIES_CACHE_DIR):
                     if fn.endswith("_master_v3.json"):
@@ -846,8 +972,8 @@ class PublicUtilitiesGISMixin:
                 if ce_c is None or cn_c is None:
                     continue
                 dist_center = math.hypot(ce_c - ce, cn_c - cn)
-                is_same_scan = bool(scan_id) and str(cached_data.get("scan_id") or "") == scan_id
-                if cand_fp == master_cache_file:
+                is_same_scan = bool(scan_id) and not is_custom_override_center and str(cached_data.get("scan_id") or "") == scan_id
+                if cand_fp == master_cache_file and dist_center <= 220.0:
                     own_master_count = len(cached_data["features"])
                 if not ((is_same_scan and dist_center <= 220.0) or dist_center <= 220.0):
                     continue
@@ -863,7 +989,12 @@ class PublicUtilitiesGISMixin:
 
             if best_cached_data is not None:
                 # Automatically persist <safe_sid>_master_v3.json on the server if missing or stale (< best site master)
-                if scan_id and master_cache_file and (not os.path.isfile(master_cache_file) or own_master_count < len(best_cached_data["features"])):
+                if (
+                    scan_id
+                    and master_cache_file
+                    and not is_custom_override_center
+                    and (not os.path.isfile(master_cache_file) or own_master_count < len(best_cached_data["features"]))
+                ):
                     persisted_master = dict(best_cached_data)
                     persisted_master["scan_id"] = scan_id
                     persisted_master["center"] = {
@@ -907,7 +1038,7 @@ class PublicUtilitiesGISMixin:
                 filtered_res["scan_id"] = scan_id
                 filtered_res["center"] = {"e": round(ce, 3), "n": round(cn, 3), "h": round(ref_ground_h, 3)}
                 filtered_res["radius_m"] = radius_m
-                filtered_res["master_cached_radius_m"] = float(best_cached_data.get("radius_m") or max(radius_m, 500.0))
+                filtered_res["master_cached_radius_m"] = float(best_cached_data.get("radius_m") or max(radius_m, 1000.0))
                 filtered_res["master_radius_m"] = filtered_res["master_cached_radius_m"]
                 filtered_res["bbox"] = {"xmin": xmin, "ymin": ymin, "xmax": xmax, "ymax": ymax}
                 filtered_res["features"] = filtered_features
@@ -930,8 +1061,8 @@ class PublicUtilitiesGISMixin:
                 return filtered_res
 
         # Cache miss or force_refresh=True: resolve full scan record and build ground elevation sampler.
-        # Automatically query at least 500m for scan queries so the 500m master cache is always persisted on the server!
-        fetch_radius_m = max(radius_m, 500.0) if scan_id else radius_m
+        # Automatically query 1000m (1km) for scan queries so the 1km master cache is always persisted on the server!
+        fetch_radius_m = max(radius_m, 1000.0) if scan_id else radius_m
         fxmin = round(ce - fetch_radius_m, 3)
         fymin = round(cn - fetch_radius_m, 3)
         fxmax = round(ce + fetch_radius_m, 3)
@@ -1014,7 +1145,7 @@ class PublicUtilitiesGISMixin:
         water_feats = self._query_open_data_hydrants(fxmin, fymin, fxmax, fymax, sample_ground_z)
         all_features.extend(water_feats)
 
-        # Clean, deduplicate, and enrich all 500m master features with official Government GIS links
+        # Clean, deduplicate, and enrich all 1000m master features with official Government GIS links
         raw_master_candidates = [
             _enrich_feature_gov_links(f, ce, cn)
             for f in all_features
@@ -1035,7 +1166,7 @@ class PublicUtilitiesGISMixin:
             sample_ground_z=sample_ground_z,
         )
 
-        # Persist 500m master cache on server automatically whenever features are found
+        # Persist 1000m (1km) master cache on server automatically whenever features are found
         if master_features:
             full_layer_counts = {k: 0 for k in UTILITY_LAYERS.keys()}
             full_pipe_len = 0.0
@@ -1055,6 +1186,8 @@ class PublicUtilitiesGISMixin:
                 "center": {"e": round(ce, 3), "n": round(cn, 3), "h": round(base_ground_z, 3)},
                 "ground_reference_h": round(base_ground_z, 3),
                 "radius_m": fetch_radius_m,
+                "master_cached_radius_m": fetch_radius_m,
+                "master_radius_m": fetch_radius_m,
                 "bbox": {"xmin": fxmin, "ymin": fymin, "xmax": fxmax, "ymax": fymax},
                 "crs": "TWD97 / TM2 zone 121 + TWVD 2001 height - EPSG:3826+8904",
                 "layers": UTILITY_LAYERS,
@@ -1067,11 +1200,11 @@ class PublicUtilitiesGISMixin:
                 "query_timestamp": datetime.now(timezone.utc).isoformat(),
                 "cached": False,
             }
-            if master_cache_file:
+            if master_cache_file and not is_custom_override_center:
                 _save_utilities_json_cached(master_cache_file, master_payload)
-            fetch_rad_file = os.path.join(UTILITIES_CACHE_DIR, f"{safe_sid}_{int(fetch_radius_m)}m_v3.json")
+            fetch_rad_file = os.path.join(UTILITIES_CACHE_DIR, f"{cache_sid}_{int(fetch_radius_m)}m_v3.json")
             _save_utilities_json_cached(fetch_rad_file, master_payload)
-            if scan_dir_cache_file:
+            if scan_dir_cache_file and not is_custom_override_center:
                 _save_utilities_json_cached(scan_dir_cache_file, master_payload)
 
         # Always filter and deduplicate to requested radius_m and requested_layers for the response
@@ -1109,6 +1242,7 @@ class PublicUtilitiesGISMixin:
             "ground_reference_h": round(base_ground_z, 3),
             "radius_m": radius_m,
             "master_cached_radius_m": fetch_radius_m,
+            "master_radius_m": fetch_radius_m,
             "bbox": {"xmin": xmin, "ymin": ymin, "xmax": xmax, "ymax": ymax},
             "crs": "TWD97 / TM2 zone 121 + TWVD 2001 height - EPSG:3826+8904",
             "layers": UTILITY_LAYERS,
@@ -1122,7 +1256,7 @@ class PublicUtilitiesGISMixin:
             "cached": False,
         }
 
-        if response_features and cache_file != os.path.join(UTILITIES_CACHE_DIR, f"{safe_sid}_{int(fetch_radius_m)}m_v3.json"):
+        if response_features and cache_file != os.path.join(UTILITIES_CACHE_DIR, f"{cache_sid}_{int(fetch_radius_m)}m_v3.json"):
             _save_utilities_json_cached(cache_file, result)
 
         return result
@@ -1255,7 +1389,7 @@ class PublicUtilitiesGISMixin:
         return out
 
     def ensure_scan_utilities_cached(self, scan_id: str, force: bool = False) -> Dict[str, Any]:
-        """Queries and persists the master utilities snapshot for a scan once upon creation/update."""
+        """Queries and persists the 1000m (1km) master utilities snapshot for a scan once upon creation/update."""
         sid = str(scan_id or "").strip()
         if not sid:
             return {"status": "skipped", "reason": "empty scan_id"}
@@ -1266,7 +1400,7 @@ class PublicUtilitiesGISMixin:
         return self.query_public_utilities_gis(
             {
                 "scan_id": sid,
-                "radius_m": 500.0,
+                "radius_m": 1000.0,
                 "force_refresh": True,
             }
         )
@@ -1322,7 +1456,7 @@ class PublicUtilitiesGISMixin:
                 mh_tasks.append((svc, lid, url_m))
 
         with ThreadPoolExecutor(max_workers=8) as pool:
-            mh_results = list(pool.map(lambda t: (t[0], t[1], _http_get_json(t[2], timeout=5.5)), mh_tasks))
+            mh_results = list(pool.map(lambda t: (t[0], t[1], _arcgis_query_all_features(t[2], timeout=5.5)), mh_tasks))
 
         for svc, lid, data_m in mh_results:
             if not data_m or not isinstance(data_m.get("features"), list):
@@ -1429,7 +1563,7 @@ class PublicUtilitiesGISMixin:
                 pipe_tasks.append((svc, lid, url_p))
 
         with ThreadPoolExecutor(max_workers=8) as pool:
-            pipe_results = list(pool.map(lambda t: (t[0], t[1], _http_get_json(t[2], timeout=5.5)), pipe_tasks))
+            pipe_results = list(pool.map(lambda t: (t[0], t[1], _arcgis_query_all_features(t[2], timeout=5.5)), pipe_tasks))
 
         for svc, lid, data_p in pipe_results:
             if not data_p or not isinstance(data_p.get("features"), list):
@@ -1726,7 +1860,7 @@ class PublicUtilitiesGISMixin:
             for rw_lid in rw_line_lids
         ]
         with ThreadPoolExecutor(max_workers=6) as pool:
-            rw_results = list(pool.map(lambda t: (t[0], _http_get_json(t[1], timeout=4.5)), rw_tasks))
+            rw_results = list(pool.map(lambda t: (t[0], _arcgis_query_all_features(t[1], timeout=4.5)), rw_tasks))
 
         for rw_lid, data_rw_line in rw_results:
             if not data_rw_line or not isinstance(data_rw_line.get("features"), list):
@@ -1856,7 +1990,7 @@ class PublicUtilitiesGISMixin:
                 f"geometry={xmin},{ymin},{xmax},{ymax}&geometryType=esriGeometryEnvelope&"
                 f"spatialRel=esriSpatialRelIntersects&inSR=3826&outSR=3826&outFields=*&returnGeometry=true&f=json"
             )
-            data_rw0 = _http_get_json(url_rw0, timeout=4.5)
+            data_rw0 = _arcgis_query_all_features(url_rw0, timeout=4.5)
             if data_rw0 and isinstance(data_rw0.get("features"), list):
                 for feat in data_rw0["features"]:
                     attrs = feat.get("attributes") or {}
@@ -1939,7 +2073,7 @@ class PublicUtilitiesGISMixin:
                 san_mh_tasks.append((base_host, svc, lid, url_m))
 
         with ThreadPoolExecutor(max_workers=8) as pool:
-            san_mh_results = list(pool.map(lambda t: (t[0], t[1], t[2], _http_get_json(t[3], timeout=5.0)), san_mh_tasks))
+            san_mh_results = list(pool.map(lambda t: (t[0], t[1], t[2], _arcgis_query_all_features(t[3], timeout=5.0)), san_mh_tasks))
 
         for base_host, svc, lid, data_m in san_mh_results:
             if not data_m or not isinstance(data_m.get("features"), list):
@@ -2023,7 +2157,7 @@ class PublicUtilitiesGISMixin:
             san_pipe_tasks.append((base_host, svc, lid, url_p))
 
         with ThreadPoolExecutor(max_workers=8) as pool:
-            san_pipe_results = list(pool.map(lambda t: (t[0], t[1], t[2], _http_get_json(t[3], timeout=5.0)), san_pipe_tasks))
+            san_pipe_results = list(pool.map(lambda t: (t[0], t[1], t[2], _arcgis_query_all_features(t[3], timeout=5.0)), san_pipe_tasks))
 
         for base_host, svc, lid, data_p in san_pipe_results:
             if not data_p or not isinstance(data_p.get("features"), list):
@@ -2469,7 +2603,7 @@ class PublicUtilitiesGISMixin:
                         }
                     )
 
-        # 2. Check Taipei 2D 8-Utilities ArcGIS MapServer (arcgiserv.gov.taipei G97_A_NW_PIPE) if token is available
+        # 2. Query Taipei 2D 8-Utilities ArcGIS MapServer (arcgiserv.gov.taipei G97_A_NW_PIPE) with full pagination
         tpe_arcgis_token = os.environ.get("TAIPEI_ARCGIS_TOKEN", "").strip()
         if not tpe_arcgis_token:
             try:
@@ -2486,154 +2620,171 @@ class PublicUtilitiesGISMixin:
             except Exception:
                 pass
 
-        if tpe_arcgis_token:
-            # Official Feature Layer IDs from arcgiserv.gov.taipei G97_A_NW_PIPE/MapServer:
-            # 801 Telecom: 2 (中华電信管線), 3 (中華電信人手孔), 7 (固網管線), 12 (有線電視管線), 16 (警察通訊管線), 22 (交通號誌管線)
-            # 802 Electric & Streetlights: 27 (台電電力管線), 28/29 (台電人手孔/變電箱), 33/35 (路燈照明線路/燈桿), 39/44 (捷運電力管線)
-            # 803 Water Supply: 49 (自來水管線), 50 (自來水人手孔/閥栓), 51 (消防栓)
-            # 80402 Storm Sewer: 56 (雨水下水道管線/箱涵), 57 (雨水人孔/集水井)
-            # 80401 Sanitary Sewer: 59 (污水下水道管線), 60/61 (污水人孔/陰井)
-            # 805 Natural Gas: 66 (天然氣瓦斯管線), 67/68 (瓦斯人手孔/閥孔)
-            # 808 Common Ducts: 79 (共同管道主體), 80 (共同管道節點), 83 (纜線管路), 86 (寬頻管道)
-            sublayer_map = [
-                (2, "telecom", "pipe", "電信管線"),
-                (3, "telecom", "manhole", "電信人手孔"),
-                (7, "telecom", "pipe", "固網光纖管線"),
-                (12, "telecom", "pipe", "有線電視管線"),
-                (27, "electric", "pipe", "台電電力管線"),
-                (28, "electric", "manhole", "電力人手孔"),
-                (29, "electric", "manhole", "電力變壓箱"),
-                (33, "streetlights", "pole", "路燈燈桿"),
-                (35, "streetlights", "pipe", "路燈照明管線"),
-                (49, "water", "pipe", "自來水管線"),
-                (50, "water", "manhole", "自來水制水閥/人孔"),
-                (51, "water", "hydrant", "自來水消防栓"),
-                (56, "storm", "pipe", "雨水下水道管線"),
-                (57, "storm", "manhole", "雨水下水道人孔"),
-                (59, "sanitary", "pipe", "污水下水道管線"),
-                (60, "sanitary", "manhole", "污水下水道人孔"),
-                (61, "sanitary", "catch_basin", "污水陰井"),
-                (66, "gas", "pipe", "天然氣瓦斯管線"),
-                (67, "gas", "manhole", "瓦斯人手孔/開關閥"),
-                (79, "ducts", "box_culvert", "共同管道"),
-                (80, "ducts", "manhole", "共同管道節點"),
-                (83, "ducts", "pipe", "纜線管路"),
-                (86, "ducts", "pipe", "寬頻管道"),
-            ]
-            for slid, lyr_id, f_type, zh_lbl in sublayer_map:
-                if lyr_id not in req_set:
-                    continue
-                q_arc = (
-                    f"https://arcgiserv.gov.taipei/server/rest/services/GWH3857/G97_A_NW_PIPE/MapServer/{slid}/query?"
-                    f"geometry={xmin},{ymin},{xmax},{ymax}&geometryType=esriGeometryEnvelope&"
-                    f"spatialRel=esriSpatialRelIntersects&inSR=3826&outSR=3826&outFields=*&returnGeometry=true&f=json&"
-                    f"token={urllib.parse.quote(tpe_arcgis_token)}"
+        # Official Feature Layer IDs from arcgiserv.gov.taipei G97_A_NW_PIPE/MapServer:
+        # 801 Telecom: 2 (中華電信管線), 3 (中華電信人手孔), 7 (固網管線), 12 (有線電視管線), 16 (警察通訊管線), 22 (交通號誌管線)
+        # 802 Electric & Streetlights: 27 (台電電力管線), 28/29 (台電人手孔/變電箱), 33/34/35 (路燈照明燈桿/線路)
+        # 803 Water Supply: 49 (自來水管線), 50 (自來水人手孔/閥栓), 51 (消防栓), 52 (自來水閥類設施)
+        # 80402 Storm Sewer: 56 (雨水下水道管線/箱涵), 57 (雨水人孔/集水井), 73 (水利處管線)
+        # 80401 Sanitary Sewer: 59 (污水下水道管線), 60/61/63 (污水人孔/陰井/設施)
+        # 805 Natural Gas: 66 (天然氣瓦斯管線), 67 (瓦斯人手孔/閥孔)
+        # 808 Common Ducts: 79 (共同管道主體), 80 (共同管道節點), 83 (纜線管路), 86 (寬頻管道)
+        sublayer_map = [
+            (2, "telecom", "pipe", "電信管線"),
+            (3, "telecom", "manhole", "電信人手孔"),
+            (7, "telecom", "pipe", "固網光纖管線"),
+            (12, "telecom", "pipe", "有線電視管線"),
+            (16, "telecom", "pipe", "警察通訊管線"),
+            (22, "telecom", "pipe", "交通號誌管線"),
+            (27, "electric", "pipe", "台電電力管線"),
+            (28, "electric", "manhole", "電力人手孔"),
+            (29, "electric", "manhole", "電力變壓箱"),
+            (33, "streetlights", "pole", "路燈燈桿"),
+            (34, "streetlights", "pole", "路燈燈桿"),
+            (35, "streetlights", "pipe", "路燈照明管線"),
+            (49, "water", "pipe", "自來水管線"),
+            (50, "water", "manhole", "自來水制水閥/人孔"),
+            (51, "water", "hydrant", "自來水消防栓"),
+            (52, "water", "manhole", "自來水閥類設施"),
+            (56, "storm", "pipe", "雨水下水道管線"),
+            (57, "storm", "manhole", "雨水下水道人孔"),
+            (59, "sanitary", "pipe", "污水下水道管線"),
+            (60, "sanitary", "manhole", "污水下水道人孔"),
+            (61, "sanitary", "catch_basin", "污水陰井"),
+            (63, "sanitary", "manhole", "污水設施節點"),
+            (66, "gas", "pipe", "天然氣瓦斯管線"),
+            (67, "gas", "manhole", "瓦斯人手孔/開關閥"),
+            (73, "storm", "pipe", "水利處管線"),
+            (79, "ducts", "box_culvert", "共同管道"),
+            (80, "ducts", "manhole", "共同管道節點"),
+            (83, "ducts", "pipe", "纜線管路"),
+            (86, "ducts", "pipe", "寬頻管道"),
+        ]
+        token_param = f"&token={urllib.parse.quote(tpe_arcgis_token)}" if tpe_arcgis_token else ""
+        tpe_arc_tasks = []
+        for slid, lyr_id, f_type, zh_lbl in sublayer_map:
+            if lyr_id not in req_set:
+                continue
+            q_arc = (
+                f"https://arcgiserv.gov.taipei/server/rest/services/GWH3857/G97_A_NW_PIPE/MapServer/{slid}/query?"
+                f"geometry={xmin},{ymin},{xmax},{ymax}&geometryType=esriGeometryEnvelope&"
+                f"spatialRel=esriSpatialRelIntersects&inSR=3826&outSR=3826&outFields=*&returnGeometry=true&f=json"
+                f"{token_param}"
+            )
+            tpe_arc_tasks.append((slid, lyr_id, f_type, zh_lbl, q_arc))
+
+        with ThreadPoolExecutor(max_workers=10) as pool:
+            tpe_arc_results = list(
+                pool.map(
+                    lambda t: (t[0], t[1], t[2], t[3], _arcgis_query_all_features(t[4], timeout=5.5, page_size=2000, max_pages=15)),
+                    tpe_arc_tasks,
                 )
-                d_arc = _http_get_json(q_arc, timeout=3.5)
-                if not d_arc or not isinstance(d_arc.get("features"), list):
-                    continue
-                for af in d_arc["features"]:
-                    attrs = af.get("attributes") or {}
-                    geom = af.get("geometry") or {}
-                    oid = attrs.get("ogr_fid") or attrs.get("OBJECTID") or attrs.get("ID") or (len(features) + 1)
-                    pipe_no = str(attrs.get("PIPE_NO") or attrs.get("NO") or attrs.get("ID") or oid).strip()
-                    unit_code = str(attrs.get("UNIT") or "").strip()
-                    unit_name = TAIPEI_8UTILITY_UNITS.get(unit_code, unit_code)
-                    u_ratio = size_unit_ratio(attrs.get("SIZE_UNIT"))
-                    if "paths" in geom and geom["paths"] and geom["paths"][0]:
-                        pts = geom["paths"][0]
-                        raw_w = safe_float(attrs.get("WIDTH") or attrs.get("PIPE_WIDTH") or attrs.get("DIA"), 0.0) or 0.0
-                        raw_h = safe_float(attrs.get("HEIGHT"), raw_w) or raw_w
-                        w_m = round(raw_w * u_ratio, 3) if raw_w > 0 else 0.25
-                        h_m = round(raw_h * u_ratio, 3) if raw_h > 0 else w_m
-                        if w_m > 10.0:
-                            w_m = round(w_m / 1000.0, 3)
-                        if h_m > 10.0:
-                            h_m = round(h_m / 1000.0, 3)
-                        dia_mm = int(round(max(w_m, h_m) * 1000.0))
-                        d1 = safe_float(attrs.get("START_DEP") or attrs.get("起點埋深"), 1.35) or 1.35
-                        d2 = safe_float(attrs.get("END_DEP") or attrs.get("終點埋深"), d1) or d1
-                        if d1 <= 0.05:
-                            d1 = 1.35
-                        if d2 <= 0.05:
-                            d2 = d1
-                        coords_3d = []
-                        for idx_p, pt in enumerate(pts):
-                            px, py = float(pt[0]), float(pt[1])
-                            frac = idx_p / max(1, len(pts) - 1)
-                            di = d1 + frac * (d2 - d1)
-                            gi = sample_ground_z(px, py)
-                            coords_3d.append([round(px, 3), round(py, 3), round(gi - di, 3)])
-                        length_m = sum(
-                            math.hypot(coords_3d[i + 1][0] - coords_3d[i][0], coords_3d[i + 1][1] - coords_3d[i][1])
-                            for i in range(len(coords_3d) - 1)
-                        )
-                        if length_m < 0.3:
-                            continue
-                        g1 = sample_ground_z(coords_3d[0][0], coords_3d[0][1])
-                        g2 = sample_ground_z(coords_3d[-1][0], coords_3d[-1][1])
-                        actual_type = "box_culvert" if (f_type == "box_culvert" or str(attrs.get("PTYPE") or "") == "1" or (w_m >= 0.8 and abs(w_m - h_m) > 0.05)) else "pipe"
-                        features.append(
-                            {
-                                "id": f"tpedig_pipe_{slid}_{oid}",
-                                "arcgis_layer_url": f"https://arcgiserv.gov.taipei/server/rest/services/GWH3857/G97_A_NW_PIPE/MapServer/{slid}/{oid}",
-                                "layer": lyr_id,
-                                "type": actual_type,
-                                "name": f"{zh_lbl} ({unit_name}) #{pipe_no} D={dia_mm}mm" if unit_name else f"{zh_lbl} #{pipe_no} D={dia_mm}mm",
-                                "facility_no": pipe_no,
-                                "diameter_mm": dia_mm,
-                                "width_m": round(w_m, 2),
-                                "height_m": round(h_m, 2),
-                                "length_m": round(length_m, 2),
-                                "material": str(attrs.get("MATERIAL") or "標準管材").strip(),
-                                "start_coord": coords_3d[0],
-                                "end_coord": coords_3d[-1],
-                                "start_ground_h": round(g1, 3),
-                                "end_ground_h": round(g2, 3),
-                                "start_rim_h": round(g1, 3),
-                                "end_rim_h": round(g2, 3),
-                                "start_invert_h": coords_3d[0][2],
-                                "end_invert_h": coords_3d[-1][2],
-                                "start_crown_h": round(coords_3d[0][2] + h_m, 3),
-                                "end_crown_h": round(coords_3d[-1][2] + h_m, 3),
-                                "start_depth_m": round(d1, 2),
-                                "end_depth_m": round(d2, 2),
-                                "start_cover_m": round(max(0.1, d1 - h_m), 2),
-                                "end_cover_m": round(max(0.1, d2 - h_m), 2),
-                                "depth_m": round(0.5 * (d1 + d2), 2),
-                                "slope_pct": round(((coords_3d[0][2] - coords_3d[-1][2]) / max(1.0, length_m)) * 100.0, 3),
-                                "flow_direction": 1,
-                                "coords": coords_3d,
-                                "source": f"Taipei City 8-Utilities MapServer (arcgiserv.gov.taipei G97_A_NW_PIPE/{slid})",
-                            }
-                        )
-                    elif "x" in geom and "y" in geom:
-                        px, py = float(geom["x"]), float(geom["y"])
-                        loc_g = sample_ground_z(px, py)
-                        d_m = safe_float(attrs.get("DEPTH") or attrs.get("孔深"), 1.6) or 1.6
-                        if d_m <= 0.1:
-                            d_m = 1.6
-                        cv_w = safe_float(attrs.get("CVWIDTH") or attrs.get("WIDTH"), 0.0) or 0.0
-                        dia_pt = int(round(cv_w * u_ratio * 1000.0)) if cv_w > 0 else (150 if f_type in ("hydrant", "pole") else 750)
-                        if dia_pt <= 50 or dia_pt > 3000:
-                            dia_pt = 150 if f_type in ("hydrant", "pole") else 750
-                        features.append(
-                            {
-                                "id": f"tpedig_pt_{slid}_{oid}",
-                                "arcgis_layer_url": f"https://arcgiserv.gov.taipei/server/rest/services/GWH3857/G97_A_NW_PIPE/MapServer/{slid}/{oid}",
-                                "layer": lyr_id,
-                                "type": f_type,
-                                "name": f"{zh_lbl} ({unit_name}) #{pipe_no}" if unit_name else f"{zh_lbl} #{pipe_no}",
-                                "facility_no": pipe_no,
-                                "structure_type": zh_lbl,
-                                "coord": [round(px, 3), round(py, 3), round(loc_g - d_m, 3)],
-                                "rim_h": round(loc_g, 3),
-                                "invert_h": round(loc_g - d_m, 3),
-                                "depth_m": round(d_m, 2),
-                                "diameter_mm": dia_pt,
-                                "source": f"Taipei City 8-Utilities MapServer (arcgiserv.gov.taipei G97_A_NW_PIPE/{slid})",
-                            }
-                        )
+            )
+
+        for slid, lyr_id, f_type, zh_lbl, d_arc in tpe_arc_results:
+            if not d_arc or not isinstance(d_arc.get("features"), list):
+                continue
+            for af in d_arc["features"]:
+                attrs = af.get("attributes") or {}
+                geom = af.get("geometry") or {}
+                oid = attrs.get("ogr_fid") or attrs.get("OBJECTID") or attrs.get("ID") or (len(features) + 1)
+                pipe_no = str(attrs.get("PIPE_NO") or attrs.get("NO") or attrs.get("ID") or oid).strip()
+                unit_code = str(attrs.get("UNIT") or "").strip()
+                unit_name = TAIPEI_8UTILITY_UNITS.get(unit_code, unit_code)
+                u_ratio = size_unit_ratio(attrs.get("SIZE_UNIT"))
+                if "paths" in geom and geom["paths"] and geom["paths"][0]:
+                    pts = geom["paths"][0]
+                    raw_w = safe_float(attrs.get("WIDTH") or attrs.get("PIPE_WIDTH") or attrs.get("DIA"), 0.0) or 0.0
+                    raw_h = safe_float(attrs.get("HEIGHT"), raw_w) or raw_w
+                    w_m = round(raw_w * u_ratio, 3) if raw_w > 0 else 0.25
+                    h_m = round(raw_h * u_ratio, 3) if raw_h > 0 else w_m
+                    if w_m > 10.0:
+                        w_m = round(w_m / 1000.0, 3)
+                    if h_m > 10.0:
+                        h_m = round(h_m / 1000.0, 3)
+                    dia_mm = int(round(max(w_m, h_m) * 1000.0))
+                    d1 = safe_float(attrs.get("START_DEP") or attrs.get("起點埋深"), 1.35) or 1.35
+                    d2 = safe_float(attrs.get("END_DEP") or attrs.get("終點埋深"), d1) or d1
+                    if d1 <= 0.05:
+                        d1 = 1.35
+                    if d2 <= 0.05:
+                        d2 = d1
+                    coords_3d = []
+                    for idx_p, pt in enumerate(pts):
+                        px, py = float(pt[0]), float(pt[1])
+                        frac = idx_p / max(1, len(pts) - 1)
+                        di = d1 + frac * (d2 - d1)
+                        gi = sample_ground_z(px, py)
+                        coords_3d.append([round(px, 3), round(py, 3), round(gi - di, 3)])
+                    length_m = sum(
+                        math.hypot(coords_3d[i + 1][0] - coords_3d[i][0], coords_3d[i + 1][1] - coords_3d[i][1])
+                        for i in range(len(coords_3d) - 1)
+                    )
+                    if length_m < 0.3:
+                        continue
+                    g1 = sample_ground_z(coords_3d[0][0], coords_3d[0][1])
+                    g2 = sample_ground_z(coords_3d[-1][0], coords_3d[-1][1])
+                    actual_type = "box_culvert" if (f_type == "box_culvert" or str(attrs.get("PTYPE") or "") == "1" or (w_m >= 0.8 and abs(w_m - h_m) > 0.05)) else "pipe"
+                    features.append(
+                        {
+                            "id": f"tpedig_pipe_{slid}_{oid}",
+                            "arcgis_layer_url": f"https://arcgiserv.gov.taipei/server/rest/services/GWH3857/G97_A_NW_PIPE/MapServer/{slid}/{oid}",
+                            "layer": lyr_id,
+                            "type": actual_type,
+                            "name": f"{zh_lbl} ({unit_name}) #{pipe_no} D={dia_mm}mm" if unit_name else f"{zh_lbl} #{pipe_no} D={dia_mm}mm",
+                            "facility_no": pipe_no,
+                            "diameter_mm": dia_mm,
+                            "width_m": round(w_m, 2),
+                            "height_m": round(h_m, 2),
+                            "length_m": round(length_m, 2),
+                            "material": str(attrs.get("MATERIAL") or "標準管材").strip(),
+                            "start_coord": coords_3d[0],
+                            "end_coord": coords_3d[-1],
+                            "start_ground_h": round(g1, 3),
+                            "end_ground_h": round(g2, 3),
+                            "start_rim_h": round(g1, 3),
+                            "end_rim_h": round(g2, 3),
+                            "start_invert_h": coords_3d[0][2],
+                            "end_invert_h": coords_3d[-1][2],
+                            "start_crown_h": round(coords_3d[0][2] + h_m, 3),
+                            "end_crown_h": round(coords_3d[-1][2] + h_m, 3),
+                            "start_depth_m": round(d1, 2),
+                            "end_depth_m": round(d2, 2),
+                            "start_cover_m": round(max(0.1, d1 - h_m), 2),
+                            "end_cover_m": round(max(0.1, d2 - h_m), 2),
+                            "depth_m": round(0.5 * (d1 + d2), 2),
+                            "slope_pct": round(((coords_3d[0][2] - coords_3d[-1][2]) / max(1.0, length_m)) * 100.0, 3),
+                            "flow_direction": 1,
+                            "coords": coords_3d,
+                            "source": f"Taipei City 8-Utilities MapServer (arcgiserv.gov.taipei G97_A_NW_PIPE/{slid})",
+                        }
+                    )
+                elif "x" in geom and "y" in geom:
+                    px, py = float(geom["x"]), float(geom["y"])
+                    loc_g = sample_ground_z(px, py)
+                    d_m = safe_float(attrs.get("DEPTH") or attrs.get("孔深"), 1.6) or 1.6
+                    if d_m <= 0.1:
+                        d_m = 1.6
+                    cv_w = safe_float(attrs.get("CVWIDTH") or attrs.get("WIDTH"), 0.0) or 0.0
+                    dia_pt = int(round(cv_w * u_ratio * 1000.0)) if cv_w > 0 else (150 if f_type in ("hydrant", "pole") else 750)
+                    if dia_pt <= 50 or dia_pt > 3000:
+                        dia_pt = 150 if f_type in ("hydrant", "pole") else 750
+                    features.append(
+                        {
+                            "id": f"tpedig_pt_{slid}_{oid}",
+                            "arcgis_layer_url": f"https://arcgiserv.gov.taipei/server/rest/services/GWH3857/G97_A_NW_PIPE/MapServer/{slid}/{oid}",
+                            "layer": lyr_id,
+                            "type": f_type,
+                            "name": f"{zh_lbl} ({unit_name}) #{pipe_no}" if unit_name else f"{zh_lbl} #{pipe_no}",
+                            "facility_no": pipe_no,
+                            "structure_type": zh_lbl,
+                            "coord": [round(px, 3), round(py, 3), round(loc_g - d_m, 3)],
+                            "rim_h": round(loc_g, 3),
+                            "invert_h": round(loc_g - d_m, 3),
+                            "depth_m": round(d_m, 2),
+                            "diameter_mm": dia_pt,
+                            "source": f"Taipei City 8-Utilities MapServer (arcgiserv.gov.taipei G97_A_NW_PIPE/{slid})",
+                        }
+                    )
 
         # 3. Also load any authorized Taipei 8-Utility GML 3.1.1 / GeoJSON files placed in data/taipei_8utilities_gml/
         gml_dir = os.path.join(DATA_DIR, "taipei_8utilities_gml")
@@ -2661,9 +2812,10 @@ class PublicUtilitiesGISMixin:
                     pass
 
         elev_z = _query_taipei_3d_elevation(ce, cn)
+        has_tpe_data = bool(is_whitelisted or tpe_arcgis_token or len(features) > 0 or gml_files_loaded > 0)
         status_info: Dict[str, Any] = {
             "integrated": True,
-            "whitelisted": bool(is_whitelisted or tpe_arcgis_token or gml_files_loaded > 0),
+            "whitelisted": has_tpe_data,
             "endpoint_3d": "https://3dgis.reac.taipei/sgwptools/API3D/PipeQuery.ashx",
             "endpoint_2d": "https://arcgiserv.gov.taipei/server/rest/services/GWH3857/G97_A_NW_PIPE/MapServer",
             "elevation_api": "https://3dgis.reac.taipei/sgwptools/API3D/get3dz.ashx",
@@ -2674,12 +2826,12 @@ class PublicUtilitiesGISMixin:
             "raw_response": raw_status_msg[:160] if raw_status_msg else "",
             "message_zh": (
                 "臺北市道管中心 3D 八大管線 API (PipeQuery.ashx) 與 GML 3.1.1 解析引擎已完整就緒；地形高程 API (get3dz.ashx) 連線正常。待道管中心核發伺服器 IP 白名單或匯入 GML 圖資後即自動載入八大管線（未授權圖層維持真實 0 筆，絕不產生假管線）。"
-                if not (is_whitelisted or tpe_arcgis_token or gml_files_loaded > 0)
+                if not has_tpe_data
                 else f"臺北市八大管線圖資已連線載入 ({len(features)} 筆設施)。"
             ),
             "message_en": (
                 "Taipei 3D 8-Utilities API (PipeQuery.ashx) & MOI GML 3.1.1 engine ready; Bare-Earth Elevation API (get3dz.ashx) live. Awaiting Taipei REAC IP whitelist or GML file drop (un-whitelisted layers honestly report 0 features with zero synthetic pipes)."
-                if not (is_whitelisted or tpe_arcgis_token or gml_files_loaded > 0)
+                if not has_tpe_data
                 else f"Taipei 8-Utilities active ({len(features)} features loaded)."
             ),
         }
@@ -2807,7 +2959,7 @@ class PublicUtilitiesGISMixin:
           - Taipei Water Dept / OpenGIS fire hydrants (emergency=fire_hydrant)
           - Taipower poles, towers, transformers, substations, and underground power cables (power=*)
           - Municipal street lamps (highway=street_lamp)
-          - Underground box culverts & drainage channels (tunnel=culvert, waterway=drain|ditch|canal|sluice_gate)
+          - Underground box culverts, canals, rivers & drainage channels (tunnel=culvert, waterway=drain|ditch|canal|river|stream|weir|sluice_gate)
           - Utility manholes, ventilation shafts, and pipelines (man_made=manhole|ventilation_shaft|pipeline)
         Never synthesizes or clones utility pipes from street centerlines (highway=*).
         """
@@ -2818,18 +2970,66 @@ class PublicUtilitiesGISMixin:
         if not (21.5 <= lat <= 25.5 and 119.5 <= lon <= 122.2):
             return features
 
-        # Convert search radius to degrees (~111,111m per deg lat, ~100,800m per deg lon at 25N)
+        # Convert search radius to degrees (~111,111m per deg lat, ~100,800m per deg lon at 25N).
+        # For large radii (> 420m, e.g. 1000m / 1km), subdivide into 2x2 or 3x3 sub-tiles so no single
+        # tile exceeds OpenStreetMap API v0.6's 50,000-node limit.
         q_rad_m = max(radius_m, 150.0)
-        dlat = min(0.0110, (q_rad_m + 45.0) / 111111.0)
-        dlon = min(0.0115, (q_rad_m + 45.0) / 100800.0)
-        bbox_str = f"{lon - dlon:.6f},{lat - dlat:.6f},{lon + dlon:.6f},{lat + dlat:.6f}"
-        url = f"https://api.openstreetmap.org/api/0.6/map.json?bbox={bbox_str}"
+        dlat = min(0.0150, (q_rad_m + 35.0) / 111111.0)
+        dlon = min(0.0160, (q_rad_m + 35.0) / 100800.0)
+        min_lon_b, max_lon_b = lon - dlon, lon + dlon
+        min_lat_b, max_lat_b = lat - dlat, lat + dlat
 
-        data = _http_get_json(url, timeout=6.5)
-        if not data or not isinstance(data.get("elements"), list):
+        grid_n = 1 if q_rad_m <= 420.0 else (2 if q_rad_m <= 680.0 else 3)
+        tile_bboxes: List[Tuple[float, float, float, float]] = []
+        step_lon = (max_lon_b - min_lon_b) / grid_n
+        step_lat = (max_lat_b - min_lat_b) / grid_n
+        for ix in range(grid_n):
+            for iy in range(grid_n):
+                t_lon0 = min_lon_b + ix * step_lon
+                t_lon1 = min_lon_b + (ix + 1) * step_lon
+                t_lat0 = min_lat_b + iy * step_lat
+                t_lat1 = min_lat_b + (iy + 1) * step_lat
+                tile_bboxes.append((t_lon0, t_lat0, t_lon1, t_lat1))
+
+        def fetch_osm_tile(tb: Tuple[float, float, float, float]) -> List[Dict[str, Any]]:
+            b_str = f"{tb[0]:.6f},{tb[1]:.6f},{tb[2]:.6f},{tb[3]:.6f}"
+            u = f"https://api.openstreetmap.org/api/0.6/map.json?bbox={b_str}"
+            doc = _http_get_json(u, timeout=6.5)
+            if doc and isinstance(doc.get("elements"), list):
+                return doc["elements"]
+            # If a single sub-tile hit the 50k node limit in a dense downtown district, split 2x2 once
+            mx_lon = 0.5 * (tb[0] + tb[2])
+            mx_lat = 0.5 * (tb[1] + tb[3])
+            sub_elems: List[Dict[str, Any]] = []
+            for sb in (
+                (tb[0], tb[1], mx_lon, mx_lat),
+                (mx_lon, tb[1], tb[2], mx_lat),
+                (tb[0], mx_lat, mx_lon, tb[3]),
+                (mx_lon, mx_lat, tb[2], tb[3]),
+            ):
+                sb_str = f"{sb[0]:.6f},{sb[1]:.6f},{sb[2]:.6f},{sb[3]:.6f}"
+                sdoc = _http_get_json(f"https://api.openstreetmap.org/api/0.6/map.json?bbox={sb_str}", timeout=5.5)
+                if sdoc and isinstance(sdoc.get("elements"), list):
+                    sub_elems.extend(sdoc["elements"])
+            return sub_elems
+
+        if len(tile_bboxes) == 1:
+            raw_elem_lists = [fetch_osm_tile(tile_bboxes[0])]
+        else:
+            with ThreadPoolExecutor(max_workers=min(9, len(tile_bboxes))) as pool:
+                raw_elem_lists = list(pool.map(fetch_osm_tile, tile_bboxes))
+
+        elems: List[Dict[str, Any]] = []
+        seen_osm_ids: set = set()
+        for el_list in raw_elem_lists:
+            for el in el_list:
+                ekey = (el.get("type"), el.get("id"))
+                if ekey not in seen_osm_ids:
+                    seen_osm_ids.add(ekey)
+                    elems.append(el)
+        if not elems:
             return features
 
-        elems = data["elements"]
         nodes_twd: Dict[int, Tuple[float, float]] = {}
         tagged_nodes: List[Dict[str, Any]] = []
         ways: List[Dict[str, Any]] = []
@@ -3043,7 +3243,7 @@ class PublicUtilitiesGISMixin:
                     }
                 )
 
-        # B. Process Genuine Tagged Utility Ways (Culverts/Drains/Canals, Power Lines/Cables, Explicit Pipelines)
+        # B. Process Genuine Tagged Utility Ways (Culverts/Drains/Canals/Rivers, Power Lines/Cables, Explicit Pipelines)
         for w in ways:
             wid = w["id"]
             tags = w.get("tags") or {}
@@ -3051,14 +3251,38 @@ class PublicUtilitiesGISMixin:
             if len(pts_2d) < 2:
                 continue
 
-            # 1. Underground Culverts, Canals & Engineered Drainage Channels (exclude open natural rivers unless tunnel=culvert)
-            wtype = tags.get("waterway")
-            is_tunnel_culvert = tags.get("tunnel") in ("culvert", "yes", "flooded")
-            if (is_tunnel_culvert or wtype in ("drain", "ditch", "canal")) and "storm" in req_set:
-                wname = tags.get("name") or ("地下箱涵" if is_tunnel_culvert else f"排水渠道 ({wtype})")
-                w_m = 1.5 if wtype == "canal" else 1.0
-                h_m = 1.4 if wtype == "canal" else 1.0
-                d_start = 2.20 if is_tunnel_culvert else 1.75
+            # 1. Underground Culverts, Canals, Urban Rivers/Streams & Engineered Drainage Channels (strictly waterway=* ways)
+            wtype = str(tags.get("waterway") or "").strip().lower()
+            is_tunnel_culvert = bool(wtype) and (
+                tags.get("tunnel") in ("culvert", "yes", "flooded") or tags.get("culvert") is not None
+            )
+            if (is_tunnel_culvert or wtype in ("drain", "ditch", "canal", "stream", "river", "weir", "pressurised")) and "storm" in req_set:
+                raw_name = str(tags.get("name") or "").strip()
+                if is_tunnel_culvert:
+                    wname = f"{raw_name} 地下箱涵".strip() if raw_name else "地下箱涵"
+                elif wtype in ("river", "stream"):
+                    wname = f"{raw_name} 排水河道".strip() if raw_name else f"排水河道 ({wtype})"
+                elif wtype == "weir":
+                    wname = raw_name or "攔水堰"
+                else:
+                    wname = raw_name or f"排水渠道 ({wtype})"
+
+                osm_w = safe_float(tags.get("width"))
+                if osm_w is not None and 0.4 <= osm_w <= 25.0:
+                    w_m = round(osm_w, 1)
+                elif is_tunnel_culvert:
+                    w_m = 2.4 if wtype in ("river", "stream") else (1.5 if wtype == "canal" else 1.2)
+                elif wtype == "river":
+                    w_m = 3.2
+                elif wtype == "stream":
+                    w_m = 2.0
+                elif wtype == "canal":
+                    w_m = 1.6
+                else:
+                    w_m = 1.0
+
+                h_m = 1.6 if wtype == "river" else (1.4 if wtype in ("stream", "canal") else 1.0)
+                d_start = 2.20 if is_tunnel_culvert else (1.65 if wtype in ("river", "stream") else 1.75)
                 feat = build_3d_pipe_feature(
                     fid=f"osm_waterway_{wid}",
                     layer_id="storm",
@@ -3070,7 +3294,7 @@ class PublicUtilitiesGISMixin:
                     h_m=h_m,
                     start_d=d_start,
                     end_d=d_start + 0.15,
-                    material="RC/鋼筋混凝土箱涵",
+                    material="RC/鋼筋混凝土護岸箱涵" if wtype in ("river", "stream") and not is_tunnel_culvert else "RC/鋼筋混凝土箱涵",
                     source_label="Taiwan Hydraulic & Culvert GIS (OpenStreetMap Taiwan)",
                 )
                 if feat:

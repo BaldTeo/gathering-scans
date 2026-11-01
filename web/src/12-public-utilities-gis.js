@@ -63,20 +63,20 @@
     as_built: { id: "as_built", name_zh: "竣工實測", name_en: "As-Built Traced", color: "#14b8a6", visible: true, count: 0, defaultDepthM: 1.5 },
   };
 
-  // Module state (Default shown radius = 250m; Server auto-queries and caches 500m)
+  // Module state (Default shown radius = 250m; Server auto-queries and caches 1000m / 1km; legacy serverMasterRadiusM: 500.0 upgraded)
   const UTILS_STATE = {
     active: false,
     loadedScanId: null,
     lastCenter: null,
     radiusM: 250.0,
-    serverMasterRadiusM: 500.0,
+    serverMasterRadiusM: 1000.0,
     isCached: false,
     cacheTimestamp: "",
     taipei8UtilityStatus: null,
     groundXrayPct: 38, // Default 38% X-Ray translucency (= 0.62 terrain opacity) when Utilities active
     groundOpacity: 0.62,
     features: [],
-    masterCacheByScan: {}, // scanId -> { center, groundReferenceH, radiusM: 500, features: [...], taipei8UtilityStatus, timestamp }
+    masterCacheByScan: {}, // scanId -> { center, groundReferenceH, radiusM: 1000, features: [...], taipei8UtilityStatus, timestamp }
     userAsBuiltByScan: {}, // scanId -> array of user-traced open-trench features (isolated NON-API layer)
     selectedFeature: null,
     hoveredFeature: null,
@@ -119,6 +119,11 @@
       ["中華電信人手孔", "CHT Telecom Manhole"],
       ["電信光纖管道", "Telecom Fiber Duct"],
       ["雨水下水道箱涵", "Storm Box Culvert"],
+      ["區排箱涵/明渠", "Regional Storm Culvert / Channel"],
+      ["地下箱涵", "Underground Box Culvert"],
+      ["雨水排水幹線", "Stormwater Drain"],
+      ["排水河道", "Stormwater Channel / River"],
+      ["攔水堰", "Weir"],
       ["雨水箱涵", "Storm Box Culvert"],
       ["單孔箱涵", "Single-Cell Box Culvert"],
       ["雙孔箱涵", "Double-Cell Box Culvert"],
@@ -400,7 +405,7 @@
   }
 
   /**
-   * Silently pre-warms and persists the 500m server master cache for `scanId` in the background.
+   * Silently pre-warms and persists the 1000m (1km) server master cache for `scanId` in the background.
    */
   function prewarmScanUtilitiesCache500m(scanId) {
     const sid = String(scanId || "").trim();
@@ -410,14 +415,14 @@
         if (UTILS_STATE.masterCacheByScan[sid]) return;
         const res = await apiPost("/api/survey/utilities-query", {
           scan_id: sid,
-          radius_m: 500.0,
+          radius_m: 1000.0,
           force_refresh: false,
         });
         if (res && res.status === "ok" && Array.isArray(res.features) && res.features.length > 0) {
           UTILS_STATE.masterCacheByScan[sid] = {
             center: res.center || null,
             groundReferenceH: Number(res.ground_reference_h ?? res.center?.ground_h ?? res.center?.h),
-            radiusM: Math.max(500.0, Number(res.master_cached_radius_m || res.radius_m || 500.0)),
+            radiusM: Math.max(1000.0, Number(res.master_cached_radius_m || res.master_radius_m || res.radius_m || 1000.0)),
             features: res.features,
             taipei8UtilityStatus: res.taipei_8utility_status || null,
             timestamp: String(res.query_timestamp || ""),
@@ -429,9 +434,10 @@
 
   /**
    * Called when switching scans so stale utilities from a previous site are cleared,
-   * and automatically triggers a 500m background server cache pre-warm for the new scan.
+   * and automatically triggers a 1000m (1km) background server cache pre-warm for the new scan.
    */
   function resetUtilitiesOnScanChange(newScanId) {
+    stopLoadingProgressTicker();
     UTILS_STATE.active = false;
     UTILS_STATE.loadedScanId = null;
     UTILS_STATE.lastCenter = null;
@@ -454,6 +460,7 @@
    * Called when the side panel is closed or switched to another tool.
    */
   function onUtilitiesPanelClosed() {
+    stopLoadingProgressTicker();
     UTILS_STATE.active = false;
     hideUtilityHoverTooltip();
     clearUtilitiesVisuals3D();
@@ -465,8 +472,8 @@
    */
   function updateUtilitiesLoadingBarDom(visible, pct, msg) {
     UTILS_STATE.isQuerying = Boolean(visible);
-    UTILS_STATE.loadingPct = Math.max(0, Math.min(100, Math.round(Number(pct) || 0)));
-    UTILS_STATE.loadingMsg = String(msg || "");
+    UTILS_STATE.loadingPct = visible ? Math.max(0, Math.min(100, Math.round(Number(pct) || 0))) : 0;
+    UTILS_STATE.loadingMsg = visible ? String(msg || "") : "";
 
     const wrap = document.getElementById("utilLoadingBarWrap");
     const fill = document.getElementById("utilLoadingBarFill");
@@ -483,7 +490,7 @@
     if (pctEl) {
       pctEl.textContent = `${UTILS_STATE.loadingPct}%`;
     }
-    if (msgEl && UTILS_STATE.loadingMsg) {
+    if (msgEl) {
       msgEl.textContent = UTILS_STATE.loadingMsg;
     }
     if (btnQuery) {
@@ -514,7 +521,7 @@
       clearInterval(UTILS_STATE.loadingTimer);
       UTILS_STATE.loadingTimer = null;
     }
-    updateUtilitiesLoadingBarDom(false, 100, "");
+    updateUtilitiesLoadingBarDom(false, 0, "");
   }
 
   /**
@@ -539,6 +546,7 @@
     ) {
       await runUtilitiesQuery(false);
     } else {
+      stopLoadingProgressTicker();
       UTILS_STATE.features = mergeUserAsBuiltFeatures(currentScanId, UTILS_STATE.features);
       renderUtilities3D();
       updateUtilitiesPanelMetricsInPlace();
@@ -549,6 +557,7 @@
    * Closes the Public Utilities GIS inspector.
    */
   function closeUtilitiesInspector() {
+    stopLoadingProgressTicker();
     UTILS_STATE.active = false;
     hideUtilityHoverTooltip();
     clearUtilitiesVisuals3D();
@@ -673,8 +682,8 @@
 
     const cacheBadgeHtml =
       UTILS_STATE.features && UTILS_STATE.features.length > 0
-        ? `<span class="gs-util-cache-pill ${UTILS_STATE.isCached ? "cached" : "live"}" title="${escapeHtml(UTILS_STATE.cacheTimestamp || t("伺服器已自動快取 500m 範圍管線，預設顯示 250m", "500m radius automatically cached on server; showing 250m by default"))}">
-             ${SVG.CHECK} ${UTILS_STATE.isCached ? t("500m已快取", "500m Cached") : t("500m已同步", "500m Synced")}
+        ? `<span class="gs-util-cache-pill ${UTILS_STATE.isCached ? "cached" : "live"}" title="${escapeHtml(UTILS_STATE.cacheTimestamp || t("伺服器已自動快取 1000m (1km) 範圍管線，預設顯示 250m", "1000m (1km) radius automatically cached on server; showing 250m by default"))}">
+             ${SVG.CHECK} ${UTILS_STATE.isCached ? t("1km已快取", "1km Cached") : t("1km已同步", "1km Synced")}
            </span>`
         : "";
 
@@ -701,7 +710,7 @@
         <!-- Search & Control Header -->
         <div class="gs-util-section-card">
           <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:5px;">
-            <label class="gs-util-field-label" style="margin:0;">${t("顯示半徑 (預設 250m / 500m 自動快取)", "Display Radius (250m Default / 500m Cached)")}</label>
+            <label class="gs-util-field-label" style="margin:0;">${t("顯示半徑 (預設 250m / 1km 自動快取)", "Display Radius (250m Default / 1km Cached)")}</label>
             ${cacheBadgeHtml}
           </div>
           <div class="gs-util-row-flex" style="margin-bottom:8px;">
@@ -710,7 +719,7 @@
               <span style="font-size:11px;font-weight:600;color:var(--ui-text-muted);">m</span>
             </div>
             <div style="display:flex;align-items:center;gap:6px;">
-              <button type="button" class="gs-btn gs-btn-primary btn-xs primary" id="btnUtilQuery" title="${t("背景查詢並更新 500m 伺服器管線圖資快取", "Query in background and update 500m server utilities cache")}">
+              <button type="button" class="gs-btn gs-btn-primary btn-xs primary" id="btnUtilQuery" title="${t("同步顯示半徑或按住 Shift 強制重新抓取 1km 伺服器管線圖資", "Sync display radius or Shift+Click to force refresh 1km server utilities cache")}">
                 ${SVG.RESET} ${t("同步", "Sync")}
               </button>
               <button type="button" class="gs-btn btn-xs" id="btnUtilUpload" title="${t("匯入 MOI NGIS GML 3.1.1、GeoJSON 或 KML 管線檔案", "Import MOI NGIS GML 3.1.1, GeoJSON, or KML file")}">
@@ -723,7 +732,7 @@
           <!-- Non-Blocking Background Query Loading Progress Bar -->
           <div id="utilLoadingBarWrap" class="gs-util-loading-bar-wrap" style="display:${UTILS_STATE.isQuerying ? "flex" : "none"};">
             <div class="gs-util-loading-header">
-              <span id="utilLoadingBarMsg">${escapeHtml(UTILS_STATE.loadingMsg || t("正在背景載入 500m 公共管線圖資...", "Loading 500m public utilities in background..."))}</span>
+              <span id="utilLoadingBarMsg">${escapeHtml(UTILS_STATE.loadingMsg || t("正在背景載入 1km 公共管線圖資...", "Loading 1km public utilities in background..."))}</span>
               <span id="utilLoadingBarPct">${UTILS_STATE.loadingPct || 15}%</span>
             </div>
             <div class="gs-util-loading-track">
@@ -957,7 +966,7 @@
   }
 
   /**
-   * Applies a radius change immediately in-place using the cached 500m master features
+   * Applies a radius change immediately in-place using the cached 1000m (1km) master features
    * (without destroying DOM nodes on blur so clicking `#btnUtilQuery` never misfires).
    */
   function applyRadiusChangeFromCacheOrQuery(newRadiusM) {
@@ -965,7 +974,8 @@
     UTILS_STATE.radiusM = r;
     const scanId = String((typeof STATE !== "undefined" && STATE.activeScanId) || "");
     const masterEntry = scanId ? UTILS_STATE.masterCacheByScan[scanId] : null;
-    if (masterEntry && Array.isArray(masterEntry.features) && r <= (masterEntry.radiusM || 500) + 5) {
+    if (masterEntry && Array.isArray(masterEntry.features) && r <= (masterEntry.radiusM || 1000) + 5) {
+      stopLoadingProgressTicker();
       const clipped = filterMasterFeaturesToRadius(masterEntry.features, masterEntry.center, r);
       UTILS_STATE.features = mergeUserAsBuiltFeatures(scanId, clipped);
       renderUtilities3D({
@@ -985,12 +995,14 @@
   function bindUtilitiesPanelEvents() {
     const elQuery = document.getElementById("btnUtilQuery");
     if (elQuery) {
-      elQuery.onclick = async () => {
+      elQuery.onclick = async (ev) => {
         const inpR = document.getElementById("inpUtilRadius");
         if (inpR) {
           UTILS_STATE.radiusM = Math.max(10, Math.min(1000, parseFloat(inpR.value) || 250));
         }
-        await runUtilitiesQuery(true);
+        // Normal click syncs via fast 1km server cache; Shift+Click forces live external API re-crawl
+        const forceLive = Boolean(ev && ev.shiftKey);
+        await runUtilitiesQuery(forceLive);
       };
     }
 
@@ -1090,6 +1102,7 @@
     const btnReset = document.getElementById("btnUtilReset");
     if (btnReset) {
       btnReset.onclick = () => {
+        stopLoadingProgressTicker();
         hideUtilityHoverTooltip();
         clearUtilitiesVisuals3D();
         restoreUtilitiesGroundOpacity();
@@ -1105,18 +1118,19 @@
 
   /**
    * Queries genuine Taiwan Open APIs in the background via `/api/survey/utilities-query`
-   * with a non-blocking progress bar. Always ensures 500m is queried and cached on the server
+   * with a non-blocking progress bar. Always ensures 1000m (1km) is queried and cached on the server
    * while displaying `UTILS_STATE.radiusM` (default 250m) in the 3D scene.
    */
   async function runUtilitiesQuery(forceRefresh = false) {
     if (UTILS_STATE.isQuerying) return;
     const scanId = String((typeof STATE !== "undefined" && STATE.activeScanId) || "");
     const displayRadiusM = Math.max(10.0, Math.min(1000.0, Number(UTILS_STATE.radiusM) || 250.0));
-    const queryRadiusM = Math.max(displayRadiusM, 500.0);
+    const queryRadiusM = Math.max(displayRadiusM, Number(UTILS_STATE.serverMasterRadiusM) || 1000.0);
 
-    // Fast in-memory 500m cache hit when not forcing a live refresh
+    // Fast in-memory 1000m (1km) cache hit when not forcing a live refresh
     const memMaster = scanId ? UTILS_STATE.masterCacheByScan[scanId] : null;
-    if (!forceRefresh && memMaster && Array.isArray(memMaster.features) && memMaster.features.length > 0 && displayRadiusM <= (memMaster.radiusM || 500.0) + 5.0) {
+    if (!forceRefresh && memMaster && Array.isArray(memMaster.features) && memMaster.features.length > 0 && displayRadiusM <= (memMaster.radiusM || 1000.0) + 5.0) {
+      stopLoadingProgressTicker();
       UTILS_STATE.loadedScanId = scanId;
       UTILS_STATE.lastCenter = memMaster.center;
       UTILS_STATE.groundReferenceH = memMaster.groundReferenceH;
@@ -1134,6 +1148,7 @@
             null;
         }
         renderUtilitiesSidePanel();
+        stopLoadingProgressTicker();
         applyUtilitiesGroundXray(UTILS_STATE.groundXrayPct);
       }
       return;
@@ -1141,8 +1156,8 @@
 
     startLoadingProgressTicker(
       forceRefresh
-        ? t("正在背景向政府 API 同步 500m 公共管線並更新伺服器快取...", "Syncing 500m public utilities in background & updating server cache...")
-        : t("正在背景載入 500m 公共管線圖資 (顯示 250m)...", "Loading 500m public utilities in background (displaying 250m)...")
+        ? t("正在背景向政府 API 同步 1km 公共管線並更新伺服器快取...", "Syncing 1km public utilities in background & updating server cache...")
+        : t("正在背景載入 1km 公共管線圖資 (顯示 250m)...", "Loading 1km public utilities in background (displaying 250m)...")
     );
 
     try {
@@ -1167,21 +1182,25 @@
       }
 
       const res = typeof apiPost === "function" ? await apiPost("/api/survey/utilities-query", payload) : null;
+      if (UTILS_STATE.loadingTimer) {
+        clearInterval(UTILS_STATE.loadingTimer);
+        UTILS_STATE.loadingTimer = null;
+      }
       if (res && res.status === "ok" && Array.isArray(res.features)) {
         updateUtilitiesLoadingBarDom(
           true,
           95,
           t("正在建構 3D 批次管網模型...", "Building batched 3D utility network...")
         );
-        // Yield 1 animation frame so the progress bar paints smoothly before 3D mesh generation
-        await new Promise((resolve) => requestAnimationFrame(resolve));
+        // Yield briefly via setTimeout (never requestAnimationFrame, which pauses in background/headless tabs)
+        await new Promise((resolve) => setTimeout(resolve, 16));
 
         const groundRefH = Number(res.ground_reference_h ?? res.center?.ground_h ?? res.center?.h);
         if (scanId) {
           UTILS_STATE.masterCacheByScan[scanId] = {
             center: res.center || null,
             groundReferenceH: groundRefH,
-            radiusM: queryRadiusM,
+            radiusM: Math.max(queryRadiusM, Number(res.master_cached_radius_m || res.master_radius_m || queryRadiusM)),
             features: res.features,
             taipei8UtilityStatus: res.taipei_8utility_status || null,
             timestamp: String(res.query_timestamp || ""),
@@ -1218,6 +1237,7 @@
             null;
         }
         renderUtilitiesSidePanel();
+        stopLoadingProgressTicker();
         applyUtilitiesGroundXray(UTILS_STATE.groundXrayPct);
 
         if (typeof showToast === "function") {

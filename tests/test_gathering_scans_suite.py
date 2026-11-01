@@ -1831,43 +1831,94 @@ class GatheringScansTestSuite(unittest.TestCase):
         self.assertIn("local_dtm_p25_grid = grey_erosion(", heur_py)
         self.assertIn("if n_ts_tight < 8 or n_low_trunk < 3 or n_mid_trunk < 3:", heur_py)
         self.assertIn('"trunk_verified_3d": True,', heur_py)
-        self.assertIn('"ai_vision_verified": True,', heur_py)
+        self.assertIn('"ai_vision_verified": False,', heur_py)
+        self.assertIn('tr["ai_vision_verified"] = is_genuinely_verified', heur_py)
         self.assertIn("for tr in trees_list:\n            seen_cands.add(tr[\"id\"])", heur_py)
         self.assertIn("rej_tags = set(str(x).strip() for x in (ai_info.get(\"rejected_false_positive_tags\") or [])", heur_py)
         self.assertIn('"anchor_twd97": {"e": round(ce, 3), "n": round(cn, 3), "h": round(ch, 3)},', heur_py)
 
-        # 2. Verify Ground-Level Mobile Phone Photo Referee, unified fast RTK photo frustum matcher, and interactive 📸 photo lightbox badge
+        # 2. Verify Ground-Level Mobile Phone Photo Referee (384x384 crops, <=10 candidates/batch, 60s timeout, 2nd-angle PiP), unified fast RTK photo frustum matcher, and interactive 📸 photo lightbox badge
         self.assertIn("def _crop_rtk_photo_for_3d_feature(", io_py)
         self.assertIn("def _match_feature_to_rtk_photo_fast(", io_py)
         self.assertIn("cal_bonus = 0.0 if cam.get(\"calibrated\", True) else 4.0", io_py)
         self.assertIn("for c_info in candidates_info[:125]:", io_py)
+        self.assertIn("tile_sz = 384", io_py)
+        self.assertIn("batch_sz = 10", io_py)
+        self.assertIn("timeout_s=60.0", io_py)
+        self.assertIn('"per_tree_verdicts": per_tree_verdicts', io_py)
         self.assertIn("data-cat-photo-file", js05)
         self.assertIn("window.openPhotoLightboxModal(photoUrl, fname, meta", js05)
 
-        # 3. Verify QiHu_Merged (edited_qihu_merged_2026_10_28_858499) preserves QiHu_Unified trees, strict 3D trunk verification, road planter holes, and water voids
+        # 3. Verify QiHu_Merged (edited_qihu_merged_2026_10_28_858499) preserves QiHu_Unified trees, strict 3D trunk + AI Vision verification, road planter holes, and water voids
         uni_path = os.path.join(BASE_DIR, "data", "categorization_cache", "edited_qihu_unified_merged_scan_4_scans__edited_372953_categorization_v3.json")
         mrg_path = os.path.join(BASE_DIR, "data", "categorization_cache", "edited_qihu_merged_2026_10_28_858499_categorization_v3.json")
+        ntu_path = os.path.join(BASE_DIR, "data", "categorization_cache", "ntudorm_20260915_baseline_categorization_v3.json")
         self.assertTrue(os.path.isfile(uni_path))
         self.assertTrue(os.path.isfile(mrg_path))
+        self.assertTrue(os.path.isfile(ntu_path))
         with open(uni_path, "r", encoding="utf-8") as f:
             uni_cat = json.load(f)
         with open(mrg_path, "r", encoding="utf-8") as f:
             mrg_cat = json.load(f)
+        with open(ntu_path, "r", encoding="utf-8") as f:
+            ntu_cat = json.load(f)
 
         self.assertEqual(float(mrg_cat["summary"]["grid_resolution_m"]), 0.25)
         self.assertIn("anchor_twd97", mrg_cat)
-        self.assertGreaterEqual(int(mrg_cat["summary"]["trees_count"]), int(uni_cat["summary"]["trees_count"]) + 25)
+        self.assertGreaterEqual(int(mrg_cat["summary"]["trees_count"]), int(uni_cat["summary"]["trees_count"]) + 20)
         self.assertTrue(all(t.get("trunk_verified_3d") is True for t in uni_cat.get("trees", [])))
         self.assertTrue(all(t.get("ai_vision_verified") is True for t in uni_cat.get("trees", [])))
+        self.assertTrue(all(bool(t.get("object_seen") or t.get("ai_vision_label")) for t in uni_cat.get("trees", [])))
         self.assertTrue(all(t.get("dbh_method") != "crown_height_allometry" for t in uni_cat.get("trees", [])))
         self.assertTrue(all(t.get("trunk_verified_3d") is True for t in mrg_cat.get("trees", [])))
         self.assertTrue(all(t.get("ai_vision_verified") is True for t in mrg_cat.get("trees", [])))
+        self.assertTrue(all(bool(t.get("object_seen") or t.get("ai_vision_label")) for t in mrg_cat.get("trees", [])))
         self.assertTrue(all(t.get("dbh_method") != "crown_height_allometry" for t in mrg_cat.get("trees", [])))
+        self.assertTrue(all(t.get("ai_vision_verified") is True for t in ntu_cat.get("trees", [])))
+        self.assertLessEqual(int(ntu_cat["summary"]["trees_count"]), 15)
         self.assertGreaterEqual(float(mrg_cat["summary"]["roads_planar_area_m2"]), float(uni_cat["summary"]["roads_planar_area_m2"]))
         self.assertTrue(any(len(r.get("holes_twd97") or []) > 0 for r in mrg_cat.get("roads", [])))
         self.assertGreaterEqual(int(mrg_cat["summary"]["water_count"]), 2)
         self.assertGreaterEqual(float(mrg_cat["summary"]["water_planar_area_m2"]), 1300.0)
         self.assertTrue(all(t.get("verified_photo") for t in mrg_cat.get("trees", [])))
+
+        # 4. Verify all 16 scan caches have real Gemini Vision verification (zero fallback summaries, 100% tree photo + AI verification)
+        import glob
+        cache_files = sorted(glob.glob(os.path.join(BASE_DIR, "data", "categorization_cache", "*_categorization_v3.json")))
+        self.assertEqual(len(cache_files), 16)
+        for cfp in cache_files:
+            with open(cfp, "r", encoding="utf-8") as f:
+                cdoc = json.load(f)
+            self.assertTrue(cdoc.get("ai_verified"), f"ai_verified must be True in {cfp}")
+            self.assertNotIn("3D 幾何自動分類完成", str(cdoc.get("ai_summary_zh") or ""), f"Fallback zh summary found in {cfp}")
+            self.assertNotIn("3D geometric categorization completed:", str(cdoc.get("ai_summary_en") or ""), f"Fallback en summary found in {cfp}")
+            anch = cdoc.get("anchor_twd97") or {}
+            self.assertGreater(abs(float(anch.get("e") or 0.0)), 1000.0, f"Invalid anchor_twd97 in {cfp}")
+            for tr in cdoc.get("trees", []):
+                self.assertTrue(tr.get("trunk_verified_3d") is True, f"Unverified 3D trunk in {cfp}: {tr.get('id')}")
+                self.assertTrue(tr.get("ai_vision_verified") is True, f"Unverified AI vision tree in {cfp}: {tr.get('id')}")
+                self.assertTrue(bool(tr.get("verified_photo")), f"Missing verified_photo in {cfp}: {tr.get('id')}")
+                self.assertTrue(bool(tr.get("object_seen") or tr.get("ai_vision_label")), f"Missing object_seen in {cfp}: {tr.get('id')}")
+
+        # 5. Edge case: when Gemini fails/times out, _refine_categorization_with_gemini_multimodal must return ai_verified=False and never cache fake verification
+        from unittest.mock import patch
+        import numpy as np
+        from pc_worker.surveying_engine import SurveyingEngine
+        eng = SurveyingEngine(self.db)
+        dummy_grid = np.zeros((16, 16, 3), dtype=np.uint8)
+        with patch("urllib.request.urlopen", side_effect=TimeoutError("simulated timeout")):
+            fail_res = eng._refine_categorization_with_gemini_multimodal(
+                scan={"scan_id": "__unit_test_gemini_timeout__", "name": "TestTimeout"},
+                ortho_rgb_u8=dummy_grid,
+                e_min=300540.0,
+                n_min=2780965.0,
+                res=0.25,
+                summary_data={"roads_count": 1, "trees_count": 1, "water_count": 0, "walls_count": 0},
+                candidates_info=[{"tag": "T1", "category": "trees", "e": 300542.0, "n": 2780967.0, "h": 14.0}],
+                camera_catalog=[],
+            )
+        self.assertFalse(fail_res.get("ai_verified"))
+        self.assertEqual(fail_res.get("per_tree_verdicts"), {})
 
     def test_23_silent_subprocess_queue_order_progress_and_rerun_visibility(self):
         """Verify Task 1 & Task 2: silent subprocess patch, psutil process check, auto-tile retry cache,

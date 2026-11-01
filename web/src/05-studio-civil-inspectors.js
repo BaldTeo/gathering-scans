@@ -2367,7 +2367,9 @@
     const fmtCatBadge = (id, col, item) => {
       if (!item || !item.verified_photo) return `<span style="color:${col};font-weight:800;">${escapeHtml(id)}</span>`;
       const uv = Array.isArray(item.verified_photo_uv) ? item.verified_photo_uv : [0.5, 0.5];
-      return `<span style="color:${col};font-weight:800;">${escapeHtml(id)} <button type="button" class="btn-xs" data-cat-photo-file="${escapeHtml(item.verified_photo)}" data-cat-photo-u="${Number(uv[0] || 0.5)}" data-cat-photo-v="${Number(uv[1] || 0.5)}" data-cat-photo-dist="${Number(item.verified_photo_dist_m || 0)}" data-cat-photo-id="${escapeHtml(id)}" style="padding:0 3px;font-size:9.5px;border:none;background:transparent;cursor:pointer;" title="${escapeHtml(`Inspect RTK Mobile Photo: ${item.verified_photo} (${item.verified_photo_dist_m || 0}m)`)}">📸</button></span>`;
+      const objSeen = String(item.ai_vision_label || item.object_seen || "").trim();
+      const titleStr = `Inspect RTK Mobile Photo: ${item.verified_photo} (${item.verified_photo_dist_m || 0}m)${objSeen ? " · AI: " + objSeen : ""}`;
+      return `<span style="color:${col};font-weight:800;">${escapeHtml(id)} <button type="button" class="btn-xs" data-cat-photo-file="${escapeHtml(item.verified_photo)}" data-cat-photo-u="${Number(uv[0] || 0.5)}" data-cat-photo-v="${Number(uv[1] || 0.5)}" data-cat-photo-dist="${Number(item.verified_photo_dist_m || 0)}" data-cat-photo-seen="${escapeHtml(objSeen)}" data-cat-photo-id="${escapeHtml(id)}" style="padding:0 3px;font-size:9.5px;border:none;background:transparent;cursor:pointer;" title="${escapeHtml(titleStr)}">📸</button></span>`;
     };
     const rows = [];
     if ((activeTab === "all" || activeTab === "roads") && flt.roads) {
@@ -2377,6 +2379,7 @@
           catType: "roads",
           badge: fmtCatBadge(r.id, "#f59e0b", r),
           type: tr("道路", "Road"),
+          aiNote: "",
           metric1: `${Number(r.planar_area_m2 || 0).toFixed(1)} m²`,
           metric2: `W ${Number(r.mean_width_m || 0).toFixed(1)}m · ${Number(r.mean_slope_pct || 0).toFixed(1)}%`,
           fly: toFlyAttr(r.center_twd97, r.center_local),
@@ -2386,16 +2389,22 @@
     }
     if ((activeTab === "all" || activeTab === "trees") && flt.trees) {
       (res.trees || []).slice(0, activeTab === "trees" ? 200 : 12).forEach((t) => {
-        const trunkTag = t.trunk_verified_3d ? tr("喬木 ✓樹幹", "Tree ✓Trunk") : tr("喬木", "Tree");
+        const aiObj = String(t.ai_vision_label || t.object_seen || "").trim();
+        const trunkTag = t.ai_vision_verified
+          ? tr("喬木 ✓AI+樹幹", "Tree ✓AI+Trunk")
+          : t.trunk_verified_3d
+          ? tr("喬木 ✓樹幹", "Tree ✓Trunk")
+          : tr("喬木", "Tree");
         rows.push({
           id: t.id,
           catType: "trees",
           badge: fmtCatBadge(t.id, "#10b981", t),
           type: trunkTag,
+          aiNote: aiObj,
           metric1: `DBH ${Number(t.dbh_cm || 0).toFixed(1)} cm`,
           metric2: `H ${Number(t.height_m || 0).toFixed(1)}m · Ø${Number(t.crown_diameter_m || 0).toFixed(1)}m`,
           fly: toFlyAttr(t.trunk_twd97, t.trunk_local),
-          label: `${t.id} · DBH ${t.dbh_cm}cm`,
+          label: `${t.id} · DBH ${t.dbh_cm}cm${aiObj ? " · " + aiObj : ""}`,
         });
       });
     }
@@ -2406,6 +2415,7 @@
           catType: "water_bodies",
           badge: fmtCatBadge(w.id, "#06b6d4", w),
           type: w.detection_mode === "unmodelled_void_shoreline" ? tr("水域空洞", "Water Void") : tr("水體", "Water"),
+          aiNote: "",
           metric1: `${Number(w.planar_area_m2 || 0).toFixed(1)} m²`,
           metric2: `TWVD +${Number(w.water_level_twvd2001_m || 0).toFixed(2)}m`,
           fly: toFlyAttr(w.center_twd97, w.center_local),
@@ -2420,6 +2430,7 @@
           catType: "walls",
           badge: fmtCatBadge(wl.id, "#f43f5e", wl),
           type: tr("擋土牆", "Wall"),
+          aiNote: "",
           metric1: `3D ${Number(wl.vertical_area_m2 || 0).toFixed(1)} m²`,
           metric2: `L ${Number(wl.length_m || 0).toFixed(1)}m · H ${Number(wl.mean_height_m || wl.height_m || 0).toFixed(1)}m`,
           fly: toFlyAttr(wl.center_twd97, wl.center_local),
@@ -2434,6 +2445,7 @@
           catType: "stockpiles",
           badge: fmtCatBadge(sp.id, "#d97706", sp),
           type: tr("土石堆置", "Stockpile"),
+          aiNote: "",
           metric1: `${Number(sp.planar_area_m2 || 0).toFixed(1)} m²`,
           metric2: `~${Number(sp.estimated_volume_m3 || 0).toFixed(1)} m³`,
           fly: toFlyAttr(sp.center_twd97, sp.center_local),
@@ -2478,13 +2490,14 @@
       );
     }
 
-    const rawAiModel = String(res.ai_model || "Gemini 3.6 Flash Multimodal + 3D Geometry");
+    const rawAiModel = String(res.ai_model || "Gemini 2.5 Flash Multimodal + Ground Photo Referee");
     const localizedAiModel = tr(
-      rawAiModel.replace("Multimodal + 3D Geometry", "多模態 + 3D 幾何分析"),
+      rawAiModel.replace("Multimodal + 3D Geometry", "多模態 + 3D 幾何分析").replace("Multimodal + Ground Photo Referee", "多模態 + 地面實景照片逐株驗證"),
       rawAiModel
     );
     const treesCount = Number(s.trees_count ?? (res.trees || []).length);
     const verifiedTrunkCount = (res.trees || []).filter((t) => t.trunk_verified_3d).length;
+    const verifiedAiVisionCount = (res.trees || []).filter((t) => t.ai_vision_verified).length;
 
     const rawCatHtml = `
       ${exportBarHtml}
@@ -2540,7 +2553,7 @@
       <div style="background:rgba(16,185,129,0.10);border:1px solid rgba(16,185,129,0.35);border-radius:8px;padding:8px 10px;margin-bottom:8px;">
         <div style="display:flex;align-items:center;justify-content:space-between;gap:4px;margin-bottom:4px;">
           <span style="font-size:10.5px;font-weight:800;color:#34d399;">✨ ${escapeHtml(localizedAiModel)}</span>
-          <span style="font-size:9.5px;padding:1px 6px;border-radius:99px;background:rgba(6,182,212,0.18);color:#22d3ee;font-weight:700;">${tr("1.3m 樹幹圓擬合 + RTK 驗證", "1.3m Pratt Circle + RTK Verified")}</span>
+          <span style="font-size:9.5px;padding:1px 6px;border-radius:99px;background:rgba(6,182,212,0.18);color:#22d3ee;font-weight:700;">${tr("1.3m 樹幹圓擬合 + AI 視覺驗證", "1.3m Pratt Circle + AI Vision Verified")}</span>
         </div>
         <div style="font-size:11px;color:var(--ui-text-primary);line-height:1.42;">${escapeHtml(tr(res.ai_summary_zh || res.ai_summary_en || "", res.ai_summary_en || res.ai_summary_zh || ""))}</div>
       </div>
@@ -2549,7 +2562,7 @@
         <div class="gs-metric-box" style="border-left:3px solid #10b981;">
           <div class="lbl">${tr("🌳 偵測喬木總數", "🌳 Detected Trees")}</div>
           <div class="val" style="color:#34d399;font-size:14px;">${treesCount} ${tr("棵", "trees")}</div>
-          <div style="font-size:9.5px;color:var(--ui-text-muted);">${tr(`✓ 3D 樹幹幾何驗證 ${verifiedTrunkCount} 棵`, `✓ 3D Trunk Verified: ${verifiedTrunkCount}`)}</div>
+          <div style="font-size:9.5px;color:var(--ui-text-muted);">${tr(`✓ 3D 樹幹 ${verifiedTrunkCount} · AI 視覺 ${verifiedAiVisionCount} 棵`, `✓ 3D Trunk: ${verifiedTrunkCount} · AI Vision: ${verifiedAiVisionCount}`)}</div>
         </div>
         <div class="gs-metric-box" style="border-left:3px solid #fef08a;">
           <div class="lbl">${tr("📏 1.3m 平均胸徑 (DBH)", "📏 Mean 1.3m DBH")}</div>
@@ -2585,7 +2598,7 @@
                 (r) => `
               <tr data-cat-fly="${escapeHtml(r.fly)}" data-cat-id="${escapeHtml(r.id || "")}" data-cat-label="${escapeHtml(r.label)}" style="cursor:pointer;border-top:1px solid rgba(148,163,184,0.14);" title="${tr("點擊將 3D 鏡頭飛至", "Click to fly 3D camera to")} ${escapeHtml(r.label)}">
                 <td style="padding:4px 6px;font-family:monospace;">${r.badge}</td>
-                <td style="padding:4px 6px;">${escapeHtml(r.type)}</td>
+                <td style="padding:4px 6px;" title="${escapeHtml(r.aiNote || "")}">${escapeHtml(r.type)}${r.aiNote ? `<div style="font-size:8.5px;color:var(--ui-text-muted);max-width:115px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(r.aiNote)}</div>` : ""}</td>
                 <td style="padding:4px 6px;font-weight:700;">${escapeHtml(r.metric1)}</td>
                 <td style="padding:4px 6px;color:var(--ui-text-secondary);">${escapeHtml(r.metric2)}</td>
                 <td style="padding:3px 4px;text-align:center;">
@@ -2671,9 +2684,10 @@
         const v = Number(pBtn.getAttribute("data-cat-photo-v") || 0.5);
         const dist = Number(pBtn.getAttribute("data-cat-photo-dist") || 0);
         const fid = pBtn.getAttribute("data-cat-photo-id") || "";
+        const objSeen = pBtn.getAttribute("data-cat-photo-seen") || "";
         const sid = res.scan_id || STATE.activeScanId || "";
         const photoUrl = appendAuthToDownloadUrl(`/api/camera-photo?scan_id=${encodeURIComponent(sid)}&file=${encodeURIComponent(fname)}`);
-        const meta = `${fid} · Verified Mobile Photo (${dist.toFixed(2)}m) · UV (${u.toFixed(2)}, ${v.toFixed(2)})`;
+        const meta = `${fid}${objSeen ? " (" + objSeen + ")" : ""} · Verified Mobile Photo (${dist.toFixed(2)}m) · UV (${u.toFixed(2)}, ${v.toFixed(2)})`;
         if (typeof window.openPhotoLightboxModal === "function") {
           window.openPhotoLightboxModal(photoUrl, fname, meta, [{ url: photoUrl, filename: fname, meta, proj_u: u, proj_v: v }], 0);
         } else {

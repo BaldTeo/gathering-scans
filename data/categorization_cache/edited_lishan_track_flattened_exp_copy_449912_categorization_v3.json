@@ -1,1 +1,1912 @@
-{"ok": true, "status": "ok", "categorization_schema_version": 4, "environment_regime": {"regime": "URBAN_CAMPUS_MULTI_STORY", "modality": "TERRESTRIAL_IPHONE_LIDAR", "footprint_area_m2": 11203.55, "surface_area_3d_m2": 19765.67, "vertical_area_m2": 8008.02, "horizontal_area_m2": 8796.79, "vert_horiz_ratio": 0.91, "vegetation_fraction": 0.622, "relief_z_m": 16.78, "camera_count": 1500}, "has_categorization": true, "saved_on_server": true, "from_server_cache": false, "overlay_visible_default": false, "layer_filters": {"roads": true, "trees": true, "water": true, "walls": true, "stockpiles": true, "buildings": true, "tanks": true, "pipes": true}, "scan_id": "edited_lishan_track_flattened_exp_copy_449912", "scan_name": "edited_lishan_track_flattened_exp_copy_449912", "project_group": "Unassigned Site", "crs": "TWD97 / TM2 zone 121 + TWVD 2001 height - EPSG:3826+8904 [TWGEOID2018h]", "crs_short": "TWD97 (121) + TWVD2001", "anchor_twd97": {"e": 0.0, "n": 0.0, "h": 0.0}, "generated_at": "2026-11-01 13:18:31", "ai_verified": true, "ai_model": "Gemini 2.5 Flash Multimodal + Ground Photo Referee", "ai_summary_zh": "【AI 3D 幾何與地面實景照片多模態判釋】本測區（edited_lishan_track_flattened_exp_copy_449912）經 TWD97 局部地形視窗裸地 DTM 分離、3D 樹幹圓柱斷面驗證（No Trunk = No Tree）與 0 張行動裝置 RTK 實景照片投影驗證：共識別出道路與人行步道鋪面 0 處（平面面積 0.0 m²，已精確扣除草坪與圓形樹穴範圍）、具實體樹幹之公園與行道喬木 0 株（1.3m 胸高斷面 Pratt 圓擬合平均胸徑 DBH 0.0 cm）、場區內無水域或河道空洞（0 處），以及垂直擋土牆與建築結構立面 2 段（3D 垂直立面面積 27.1 m²）。", "ai_summary_en": "[Gemini Vision + 3D Trunk Cylinder & Ground Photo Referee] Multi-scale local DTM, strict 3D trunk cylinder slicing ('No Trunk = No Tree'), and 0 calibrated mobile phone photo projection(s) on 'edited_lishan_track_flattened_exp_copy_449912' verified 0 paved road & walkway corridor(s) (0.0 m² planar, excluding turf lawns & tree planters), 0 trunk-verified urban & park tree(s) (mean 1.3m breast-height DBH 0.0 cm via anti-webbing Pratt circle fit), 0 water bodies (dry urban/campus/park terrain), and 2 retaining/structural wall segment(s) (27.1 m² true 3D vertical face area).", "road_corridor_subtype": "paved_asphalt_concrete", "road_corridor_label_zh": "道路鋪面", "road_corridor_label_en": "Paved Road Corridor", "water_body_label_zh": "河道水域空洞", "summary": {"roads_count": 0, "roads_planar_area_m2": 0, "roads_planar_area_ping": 0.0, "roads_surface_area_3d_m2": 0, "trees_count": 0, "trees_mean_dbh_cm": 0.0, "trees_max_dbh_cm": 0.0, "trees_mean_height_m": 0.0, "trees_canopy_area_m2": 2720.0, "water_count": 0, "water_planar_area_m2": 0, "water_planar_area_ping": 0.0, "water_level_twvd2001_m": null, "walls_count": 2, "walls_total_length_m": 14.69, "walls_vertical_area_m2": 27.1, "buildings_count": 1, "water_tanks_count": 0, "pipes_count": 3, "street_furniture_count": 8, "stockpiles_count": 0, "bare_earth_area_m2": 2134.93, "grass_area_m2": 4316.01, "revetment_area_3d_m2": 2231.64, "clutter_area_m2": 372.9, "total_site_planar_area_m2": 11203.55, "total_site_surface_3d_m2": 19765.67, "grid_resolution_m": 0.25, "triangle_count": 884065}, "categories_breakdown": [{"key": "roads", "name_zh": "道路鋪面 (Paved Road Corridor)", "name_en": "Paved Road Corridor", "color": "#f59e0b", "count": 0, "planar_area_m2": 0, "planar_area_ping": 0.0, "surface_area_3d_m2": 0, "site_share_pct": 0.0}, {"key": "trees", "name_zh": "喬木林冠與胸徑 (Trees & Trunk DBH)", "name_en": "Canopy Trees & 1.3m Trunk DBH", "color": "#10b981", "count": 0, "planar_area_m2": 2720.0, "planar_area_ping": 822.8, "surface_area_3d_m2": 6727.35, "site_share_pct": 24.3}, {"key": "water_bodies", "name_zh": "水域與未建模水面空洞 (Water & Voids)", "name_en": "Water Bodies & Un-Modelled Water Voids", "color": "#06b6d4", "count": 0, "planar_area_m2": 0, "planar_area_ping": 0.0, "surface_area_3d_m2": 0, "site_share_pct": 0.0}, {"key": "walls", "name_zh": "擋土牆與垂直結構面 (Retaining/Building Walls)", "name_en": "Retaining & Structural Vertical Walls", "color": "#f43f5e", "count": 2, "planar_area_m2": 5.14, "planar_area_ping": 1.56, "surface_area_3d_m2": 27.1, "site_share_pct": 0.1}, {"key": "bare_earth_stockpiles", "name_zh": "裸露土石/河灘卵石/堆置區 (Bare Earth & Cobble)", "name_en": "Bare Earth, River Cobble & Stockpiles", "color": "#d97706", "count": 0, "planar_area_m2": 2134.93, "planar_area_ping": 645.82, "surface_area_3d_m2": 2215.28, "site_share_pct": 19.1}, {"key": "low_vegetation_grass", "name_zh": "低矮植生與草坡 (Low Veg & Grass)", "name_en": "Low Vegetation, Shrubs & Grass", "color": "#84cc16", "count": 1, "planar_area_m2": 4316.01, "planar_area_ping": 1305.59, "surface_area_3d_m2": 4557.38, "site_share_pct": 38.5}, {"key": "sloped_revetments", "name_zh": "護岸斜坡與人工邊坡 (Sloped Revetments)", "name_en": "Pitched Revetments & Sloped Banks (30°-68°)", "color": "#a855f7", "count": 1, "planar_area_m2": 1355.3, "planar_area_ping": 409.98, "surface_area_3d_m2": 2231.64, "site_share_pct": 12.1}, {"key": "buildings_structures", "name_zh": "建築屋頂與人造設施 (Buildings & Structures)", "name_en": "Building Roofs & Elevated Structures", "color": "#3b82f6", "count": 1, "planar_area_m2": 359.88, "planar_area_ping": 108.86, "surface_area_3d_m2": 396.15, "site_share_pct": 3.2}, {"key": "water_tanks_and_mep", "name_zh": "儲水塔與管線設施 (Water Tanks & MEP Pipes)", "name_en": "Water Storage Tanks & MEP Piping", "color": "#0284c7", "count": 3, "planar_area_m2": 0, "planar_area_ping": 0.0, "surface_area_3d_m2": 0, "site_share_pct": 0.0}, {"key": "drainage_curbs", "name_zh": "排水邊溝與緣石 (Drainage & Curbs)", "name_en": "Drainage Channels & Road Curbs", "color": "#64748b", "count": 1, "planar_area_m2": 116.04, "planar_area_ping": 35.1, "surface_area_3d_m2": 216.93, "site_share_pct": 1.0}, {"key": "transient_clutter", "name_zh": "施工機具/車輛與雜物 (Vehicles & Clutter)", "name_en": "Vehicles, Equipment & Transient Clutter", "color": "#ec4899", "count": 27, "planar_area_m2": 372.9, "planar_area_ping": 112.8, "surface_area_3d_m2": 1365.54, "site_share_pct": 3.3}], "roads": [], "trees": [], "water_bodies": [], "walls": [{"id": "CW_B1", "name": "粉紅色涼亭圓柱外牆 CW_B1 (Cylindrical Pavilion Wall)", "subtype": "cylindrical_wall", "ifc_class": "IfcWall", "color": "#e2e8f0", "radius_m": 1.77, "diameter_m": 3.54, "length_m": 11.11, "height_m": 2.36, "mean_height_m": 2.36, "max_height_m": 2.36, "thickness_m": 0.22, "vertical_area_m2": 17.04, "coplanarity_rms_m": 0.208, "azimuth_deg": 0.0, "tilt_deg": 90.0, "base_z": 7.745, "top_z": 10.105, "center_twd97": [308163.736, 2774988.695, 8.925], "center_local": [308163.736, 8.925, -2774988.695], "base_polyline_twd97": [[308165.505, 2774988.695, 7.745], [308165.478, 2774989.002, 7.745], [308165.398, 2774989.3, 7.745], [308165.268, 2774989.579, 7.745], [308165.091, 2774989.832, 7.745], [308164.873, 2774990.05, 7.745], [308164.62, 2774990.226, 7.745], [308164.341, 2774990.357, 7.745], [308164.043, 2774990.437, 7.745], [308163.736, 2774990.463, 7.745], [308163.429, 2774990.437, 7.745], [308163.131, 2774990.357, 7.745], [308162.851, 2774990.226, 7.745], [308162.599, 2774990.05, 7.745], [308162.381, 2774989.832, 7.745], [308162.204, 2774989.579, 7.745], [308162.074, 2774989.3, 7.745], [308161.994, 2774989.002, 7.745], [308161.967, 2774988.695, 7.745], [308161.994, 2774988.387, 7.745], [308162.074, 2774988.09, 7.745], [308162.204, 2774987.81, 7.745], [308162.381, 2774987.558, 7.745], [308162.599, 2774987.34, 7.745], [308162.851, 2774987.163, 7.745], [308163.131, 2774987.032, 7.745], [308163.429, 2774986.953, 7.745], [308163.736, 2774986.926, 7.745], [308164.043, 2774986.953, 7.745], [308164.341, 2774987.032, 7.745], [308164.62, 2774987.163, 7.745], [308164.873, 2774987.34, 7.745], [308165.091, 2774987.558, 7.745], [308165.268, 2774987.81, 7.745], [308165.398, 2774988.09, 7.745], [308165.478, 2774988.387, 7.745], [308165.505, 2774988.695, 7.745]], "top_polyline_twd97": [[308165.505, 2774988.695, 10.105], [308165.478, 2774989.002, 10.105], [308165.398, 2774989.3, 10.105], [308165.268, 2774989.579, 10.105], [308165.091, 2774989.832, 10.105], [308164.873, 2774990.05, 10.105], [308164.62, 2774990.226, 10.105], [308164.341, 2774990.357, 10.105], [308164.043, 2774990.437, 10.105], [308163.736, 2774990.463, 10.105], [308163.429, 2774990.437, 10.105], [308163.131, 2774990.357, 10.105], [308162.851, 2774990.226, 10.105], [308162.599, 2774990.05, 10.105], [308162.381, 2774989.832, 10.105], [308162.204, 2774989.579, 10.105], [308162.074, 2774989.3, 10.105], [308161.994, 2774989.002, 10.105], [308161.967, 2774988.695, 10.105], [308161.994, 2774988.387, 10.105], [308162.074, 2774988.09, 10.105], [308162.204, 2774987.81, 10.105], [308162.381, 2774987.558, 10.105], [308162.599, 2774987.34, 10.105], [308162.851, 2774987.163, 10.105], [308163.131, 2774987.032, 10.105], [308163.429, 2774986.953, 10.105], [308163.736, 2774986.926, 10.105], [308164.043, 2774986.953, 10.105], [308164.341, 2774987.032, 10.105], [308164.62, 2774987.163, 10.105], [308164.873, 2774987.34, 10.105], [308165.091, 2774987.558, 10.105], [308165.268, 2774987.81, 10.105], [308165.398, 2774988.09, 10.105], [308165.478, 2774988.387, 10.105], [308165.505, 2774988.695, 10.105]], "base_polyline_local": [[308165.505, 7.745, -2774988.695], [308165.478, 7.745, -2774989.002], [308165.398, 7.745, -2774989.3], [308165.268, 7.745, -2774989.579], [308165.091, 7.745, -2774989.832], [308164.873, 7.745, -2774990.05], [308164.62, 7.745, -2774990.226], [308164.341, 7.745, -2774990.357], [308164.043, 7.745, -2774990.437], [308163.736, 7.745, -2774990.463], [308163.429, 7.745, -2774990.437], [308163.131, 7.745, -2774990.357], [308162.851, 7.745, -2774990.226], [308162.599, 7.745, -2774990.05], [308162.381, 7.745, -2774989.832], [308162.204, 7.745, -2774989.579], [308162.074, 7.745, -2774989.3], [308161.994, 7.745, -2774989.002], [308161.967, 7.745, -2774988.695], [308161.994, 7.745, -2774988.387], [308162.074, 7.745, -2774988.09], [308162.204, 7.745, -2774987.81], [308162.381, 7.745, -2774987.558], [308162.599, 7.745, -2774987.34], [308162.851, 7.745, -2774987.163], [308163.131, 7.745, -2774987.032], [308163.429, 7.745, -2774986.953], [308163.736, 7.745, -2774986.926], [308164.043, 7.745, -2774986.953], [308164.341, 7.745, -2774987.032], [308164.62, 7.745, -2774987.163], [308164.873, 7.745, -2774987.34], [308165.091, 7.745, -2774987.558], [308165.268, 7.745, -2774987.81], [308165.398, 7.745, -2774988.09], [308165.478, 7.745, -2774988.387], [308165.505, 7.745, -2774988.695]], "top_polyline_local": [[308165.505, 10.105, -2774988.695], [308165.478, 10.105, -2774989.002], [308165.398, 10.105, -2774989.3], [308165.268, 10.105, -2774989.579], [308165.091, 10.105, -2774989.832], [308164.873, 10.105, -2774990.05], [308164.62, 10.105, -2774990.226], [308164.341, 10.105, -2774990.357], [308164.043, 10.105, -2774990.437], [308163.736, 10.105, -2774990.463], [308163.429, 10.105, -2774990.437], [308163.131, 10.105, -2774990.357], [308162.851, 10.105, -2774990.226], [308162.599, 10.105, -2774990.05], [308162.381, 10.105, -2774989.832], [308162.204, 10.105, -2774989.579], [308162.074, 10.105, -2774989.3], [308161.994, 10.105, -2774989.002], [308161.967, 10.105, -2774988.695], [308161.994, 10.105, -2774988.387], [308162.074, 10.105, -2774988.09], [308162.204, 10.105, -2774987.81], [308162.381, 10.105, -2774987.558], [308162.599, 10.105, -2774987.34], [308162.851, 10.105, -2774987.163], [308163.131, 10.105, -2774987.032], [308163.429, 10.105, -2774986.953], [308163.736, 10.105, -2774986.926], [308164.043, 10.105, -2774986.953], [308164.341, 10.105, -2774987.032], [308164.62, 10.105, -2774987.163], [308164.873, 10.105, -2774987.34], [308165.091, 10.105, -2774987.558], [308165.268, 10.105, -2774987.81], [308165.398, 10.105, -2774988.09], [308165.478, 10.105, -2774988.387], [308165.505, 10.105, -2774988.695]]}, {"id": "WL2", "name": "擋土牆/垂直牆面 WL2", "subtype": "retaining_wall", "length_m": 3.58, "height_m": 2.81, "mean_height_m": 2.81, "max_height_m": 3.56, "vertical_area_m2": 10.06, "coplanarity_rms_m": 0.085, "azimuth_deg": 106.9, "tilt_deg": 9.8, "center_twd97": [308197.326, 2775043.448, 20.349], "center_local": [308197.326, 20.349, -2775043.448], "base_polyline_twd97": [[308199.542, 2775042.85, 19.075], [308198.809, 2775042.96, 21.409], [308197.672, 2775043.335, 20.072], [308197.07, 2775043.513, 19.942], [308196.597, 2775043.693, 19.775]], "top_polyline_twd97": [[308199.542, 2775042.85, 22.266], [308198.809, 2775042.96, 22.233], [308197.672, 2775043.335, 22.51], [308197.07, 2775043.513, 23.502], [308196.597, 2775043.693, 23.335]], "base_polyline_local": [[308199.542, 19.075, -2775042.85], [308198.809, 21.409, -2775042.96], [308197.672, 20.072, -2775043.335], [308197.07, 19.942, -2775043.513], [308196.597, 19.775, -2775043.693]], "top_polyline_local": [[308199.542, 22.266, -2775042.85], [308198.809, 22.233, -2775042.96], [308197.672, 22.51, -2775043.335], [308197.07, 23.502, -2775043.513], [308196.597, 23.335, -2775043.693]]}], "buildings": [{"id": "B1", "name": "粉紅色圓頂涼亭/公廁屋頂 B1 (Circular Pavilion Roof)", "subtype": "circular_roof", "ifc_class": "IfcRoof", "color": "#f43f5e", "center_twd97": [308163.736, 2774988.695, 10.103], "center_local": [308163.736, 10.103, -2774988.695], "radius_m": 2.13, "diameter_m": 4.26, "dx": 4.26, "dy": 4.26, "height_m": 2.54, "ground_elevation_m": 7.745, "eave_elevation_m": 10.103, "apex_elevation_m": 10.283, "dome_rise_m": 0.35, "footprint_area_m2": 14.25, "planar_area_m2": 14.25, "boundary_twd97": [[308165.866, 2774988.695, 10.103], [308165.833, 2774989.065, 10.103], [308165.737, 2774989.423, 10.103], [308165.58, 2774989.76, 10.103], [308165.368, 2774990.064, 10.103], [308165.105, 2774990.326, 10.103], [308164.801, 2774990.539, 10.103], [308164.464, 2774990.696, 10.103], [308164.106, 2774990.792, 10.103], [308163.736, 2774990.825, 10.103], [308163.366, 2774990.792, 10.103], [308163.007, 2774990.696, 10.103], [308162.671, 2774990.539, 10.103], [308162.367, 2774990.326, 10.103], [308162.104, 2774990.064, 10.103], [308161.891, 2774989.76, 10.103], [308161.734, 2774989.423, 10.103], [308161.638, 2774989.065, 10.103], [308161.606, 2774988.695, 10.103], [308161.638, 2774988.325, 10.103], [308161.734, 2774987.966, 10.103], [308161.891, 2774987.63, 10.103], [308162.104, 2774987.325, 10.103], [308162.367, 2774987.063, 10.103], [308162.671, 2774986.85, 10.103], [308163.007, 2774986.693, 10.103], [308163.366, 2774986.597, 10.103], [308163.736, 2774986.565, 10.103], [308164.106, 2774986.597, 10.103], [308164.464, 2774986.693, 10.103], [308164.801, 2774986.85, 10.103], [308165.105, 2774987.063, 10.103], [308165.368, 2774987.325, 10.103], [308165.58, 2774987.63, 10.103], [308165.737, 2774987.966, 10.103], [308165.833, 2774988.325, 10.103]], "boundary_local": [[308165.866, 10.103, -2774988.695], [308165.833, 10.103, -2774989.065], [308165.737, 10.103, -2774989.423], [308165.58, 10.103, -2774989.76], [308165.368, 10.103, -2774990.064], [308165.105, 10.103, -2774990.326], [308164.801, 10.103, -2774990.539], [308164.464, 10.103, -2774990.696], [308164.106, 10.103, -2774990.792], [308163.736, 10.103, -2774990.825], [308163.366, 10.103, -2774990.792], [308163.007, 10.103, -2774990.696], [308162.671, 10.103, -2774990.539], [308162.367, 10.103, -2774990.326], [308162.104, 10.103, -2774990.064], [308161.891, 10.103, -2774989.76], [308161.734, 10.103, -2774989.423], [308161.638, 10.103, -2774989.065], [308161.606, 10.103, -2774988.695], [308161.638, 10.103, -2774988.325], [308161.734, 10.103, -2774987.966], [308161.891, 10.103, -2774987.63], [308162.104, 10.103, -2774987.325], [308162.367, 10.103, -2774987.063], [308162.671, 10.103, -2774986.85], [308163.007, 10.103, -2774986.693], [308163.366, 10.103, -2774986.597], [308163.736, 10.103, -2774986.565], [308164.106, 10.103, -2774986.597], [308164.464, 10.103, -2774986.693], [308164.801, 10.103, -2774986.85], [308165.105, 10.103, -2774987.063], [308165.368, 10.103, -2774987.325], [308165.58, 10.103, -2774987.63], [308165.737, 10.103, -2774987.966], [308165.833, 10.103, -2774988.325]]}], "water_tanks": [], "pipes": [{"id": "P1", "name": "外露管線/導管 P1 (Exposed Tubular Pipe/Conduit)", "subtype": "exposed_tubular_pipe", "ifc_class": "IfcFlowSegment", "color": "#f97316", "start": [308153.742, 2774988.22, 11.463], "end": [308152.345, 2774987.971, 11.269], "diameter_m": 0.12, "length_m": 1.43, "center_twd97": [308153.043, 2774988.095, 11.366], "center_local": [308153.043, 11.366, -2774988.095], "verified_photo": "LishanFinal_1of4/Image_001015.jpg", "verified_photo_uv": [0.7289, 0.1824], "verified_photo_dist_m": 23.37, "ai_photo_verified": true, "los_unoccluded": true}, {"id": "P2", "name": "外露管線/導管 P2 (Exposed Tubular Pipe/Conduit)", "subtype": "exposed_tubular_pipe", "ifc_class": "IfcFlowSegment", "color": "#f97316", "start": [308156.741, 2774994.634, 11.334], "end": [308155.805, 2774995.125, 12.277], "diameter_m": 0.12, "length_m": 1.42, "center_twd97": [308156.273, 2774994.88, 11.805], "center_local": [308156.273, 11.805, -2774994.88], "verified_photo": "LishanFinal_1of4/Image_001176.jpg", "verified_photo_uv": [0.5484, 0.2074], "verified_photo_dist_m": 24.93, "ai_photo_verified": true, "los_unoccluded": false}, {"id": "P3", "name": "外露管線/導管 P3 (Exposed Tubular Pipe/Conduit)", "subtype": "exposed_tubular_pipe", "ifc_class": "IfcFlowSegment", "color": "#f97316", "start": [308171.879, 2774985.53, 11.557], "end": [308170.63, 2774986.421, 12.107], "diameter_m": 0.12, "length_m": 1.63, "center_twd97": [308171.255, 2774985.976, 11.832], "center_local": [308171.255, 11.832, -2774985.976]}], "street_furniture": [{"id": "BL1", "name": "錐形景觀石墩/車阻 BL1 (Conical Plaza Bollard)", "subtype": "conical_bollard", "ifc_class": "IfcDiscreteAccessory", "color": "#94a3b8", "radius_m": 0.28, "diameter_m": 0.56, "height_m": 0.65, "ground_elevation_m": 6.825, "volume_m3": 0.106, "center_twd97": [308110.5, 2774930.375, 7.15], "center_local": [308110.5, 7.15, -2774930.375]}, {"id": "BL2", "name": "錐形景觀石墩/車阻 BL2 (Conical Plaza Bollard)", "subtype": "conical_bollard", "ifc_class": "IfcDiscreteAccessory", "color": "#94a3b8", "radius_m": 0.25, "diameter_m": 0.5, "height_m": 0.65, "ground_elevation_m": 12.062, "volume_m3": 0.083, "center_twd97": [308151.375, 2774938.875, 12.387], "center_local": [308151.375, 12.387, -2774938.875]}, {"id": "BL3", "name": "錐形景觀石墩/車阻 BL3 (Conical Plaza Bollard)", "subtype": "conical_bollard", "ifc_class": "IfcDiscreteAccessory", "color": "#94a3b8", "radius_m": 0.28, "diameter_m": 0.56, "height_m": 0.65, "ground_elevation_m": 6.683, "volume_m3": 0.106, "center_twd97": [308075.75, 2774939.375, 7.008], "center_local": [308075.75, 7.008, -2774939.375]}, {"id": "BL4", "name": "錐形景觀石墩/車阻 BL4 (Conical Plaza Bollard)", "subtype": "conical_bollard", "ifc_class": "IfcDiscreteAccessory", "color": "#94a3b8", "radius_m": 0.28, "diameter_m": 0.56, "height_m": 0.65, "ground_elevation_m": 7.431, "volume_m3": 0.106, "center_twd97": [308068.875, 2774941.0, 7.756], "center_local": [308068.875, 7.756, -2774941.0]}, {"id": "BL5", "name": "錐形景觀石墩/車阻 BL5 (Conical Plaza Bollard)", "subtype": "conical_bollard", "ifc_class": "IfcDiscreteAccessory", "color": "#94a3b8", "radius_m": 0.32, "diameter_m": 0.63, "height_m": 0.65, "ground_elevation_m": 7.269, "volume_m3": 0.132, "center_twd97": [308118.875, 2774942.425, 7.594], "center_local": [308118.875, 7.594, -2774942.425]}, {"id": "BL6", "name": "錐形景觀石墩/車阻 BL6 (Conical Plaza Bollard)", "subtype": "conical_bollard", "ifc_class": "IfcDiscreteAccessory", "color": "#94a3b8", "radius_m": 0.25, "diameter_m": 0.5, "height_m": 0.65, "ground_elevation_m": 6.806, "volume_m3": 0.083, "center_twd97": [308134.875, 2774947.375, 7.131], "center_local": [308134.875, 7.131, -2774947.375], "verified_photo": "LishanFinal_1of4/Image_000935.jpg", "verified_photo_uv": [0.7051, 0.3025], "verified_photo_dist_m": 21.18, "ai_photo_verified": true, "los_unoccluded": false}, {"id": "BL7", "name": "錐形景觀石墩/車阻 BL7 (Conical Plaza Bollard)", "subtype": "conical_bollard", "ifc_class": "IfcDiscreteAccessory", "color": "#94a3b8", "radius_m": 0.28, "diameter_m": 0.56, "height_m": 0.65, "ground_elevation_m": 6.849, "volume_m3": 0.106, "center_twd97": [308135.25, 2774948.125, 7.174], "center_local": [308135.25, 7.174, -2774948.125], "verified_photo": "LishanFinal_1of4/Image_000935.jpg", "verified_photo_uv": [0.6788, 0.301], "verified_photo_dist_m": 20.54, "ai_photo_verified": true, "los_unoccluded": false}, {"id": "BL8", "name": "錐形景觀石墩/車阻 BL8 (Conical Plaza Bollard)", "subtype": "conical_bollard", "ifc_class": "IfcDiscreteAccessory", "color": "#94a3b8", "radius_m": 0.28, "diameter_m": 0.56, "height_m": 0.65, "ground_elevation_m": 6.208, "volume_m3": 0.106, "center_twd97": [308123.125, 2774959.75, 6.533], "center_local": [308123.125, 6.533, -2774959.75], "verified_photo": "LishanFinal_1of4/Image_000919.jpg", "verified_photo_uv": [0.5656, 0.3595], "verified_photo_dist_m": 12.55, "ai_photo_verified": true, "los_unoccluded": true}], "stockpiles": [], "report_html_url": "/api/reports/categorization_report_edited_lishan_track_flattened_exp_copy_449912.html", "report_csv_url": "/api/reports/categorization_report_edited_lishan_track_flattened_exp_copy_449912.csv", "dxf_url": "/api/contours/Civil3D_Categorized_edited_lishan_track_flattened_exp_copy_449912.dxf", "downloads": {"dxf_url": "/api/contours/Civil3D_Categorized_edited_lishan_track_flattened_exp_copy_449912.dxf", "report_html_url": "/api/reports/categorization_report_edited_lishan_track_flattened_exp_copy_449912.html", "report_csv_url": "/api/reports/categorization_report_edited_lishan_track_flattened_exp_copy_449912.csv"}, "manual_overrides": {"removed_ids": [], "removed_centers": [], "added_trees": [], "added_walls": [], "added_roads": [], "added_water": []}}
+{
+  "ok": true,
+  "status": "ok",
+  "categorization_schema_version": 4,
+  "environment_regime": {
+    "regime": "URBAN_CAMPUS_MULTI_STORY",
+    "modality": "TERRESTRIAL_IPHONE_LIDAR",
+    "footprint_area_m2": 11203.55,
+    "surface_area_3d_m2": 19765.67,
+    "vertical_area_m2": 8008.02,
+    "horizontal_area_m2": 8796.79,
+    "vert_horiz_ratio": 0.91,
+    "vegetation_fraction": 0.622,
+    "relief_z_m": 16.78,
+    "camera_count": 1500
+  },
+  "has_categorization": true,
+  "saved_on_server": true,
+  "from_server_cache": false,
+  "overlay_visible_default": false,
+  "layer_filters": {
+    "roads": true,
+    "trees": true,
+    "water": true,
+    "walls": true,
+    "stockpiles": true,
+    "buildings": true,
+    "tanks": true,
+    "pipes": true
+  },
+  "scan_id": "edited_lishan_track_flattened_exp_copy_449912",
+  "scan_name": "edited_lishan_track_flattened_exp_copy_449912",
+  "project_group": "Unassigned Site",
+  "crs": "TWD97 / TM2 zone 121 + TWVD 2001 height - EPSG:3826+8904 [TWGEOID2018h]",
+  "crs_short": "TWD97 (121) + TWVD2001",
+  "anchor_twd97": {
+    "e": 308182.524,
+    "n": 2775015.772,
+    "h": 13.41
+  },
+  "generated_at": "2026-11-01 14:32:15",
+  "ai_verified": true,
+  "ai_model": "Gemini 3.5 Flash Multimodal + Ground Photo Referee",
+  "ai_summary_zh": "本場區經3D測量與電腦視覺驗證，計有保留/建築牆2座（3D垂直面積27.1平方公尺），無鋪面道路、無實質喬木（0株）及無任何水體設施。場區無水域。",
+  "ai_summary_en": "Based on 3D measurement and computer vision verification, the site contains 2 retaining/building walls (3.0 vertical area 27.1 m2), with 0 paved roads, 0 genuine trees, and 0 water bodies. There are no water bodies on site.",
+  "road_corridor_subtype": "paved_asphalt_concrete",
+  "road_corridor_label_zh": "無鋪面道路",
+  "road_corridor_label_en": "No Paved Road",
+  "water_body_label_zh": "無水體",
+  "summary": {
+    "roads_count": 0,
+    "roads_planar_area_m2": 0,
+    "roads_planar_area_ping": 0.0,
+    "roads_surface_area_3d_m2": 0,
+    "trees_count": 0,
+    "trees_mean_dbh_cm": 0.0,
+    "trees_max_dbh_cm": 0.0,
+    "trees_mean_height_m": 0.0,
+    "trees_canopy_area_m2": 2720.0,
+    "water_count": 0,
+    "water_planar_area_m2": 0,
+    "water_planar_area_ping": 0.0,
+    "water_level_twvd2001_m": null,
+    "walls_count": 2,
+    "walls_total_length_m": 14.69,
+    "walls_vertical_area_m2": 27.1,
+    "buildings_count": 1,
+    "water_tanks_count": 0,
+    "pipes_count": 3,
+    "street_furniture_count": 8,
+    "stockpiles_count": 0,
+    "bare_earth_area_m2": 2134.93,
+    "grass_area_m2": 4316.01,
+    "revetment_area_3d_m2": 2231.64,
+    "clutter_area_m2": 372.9,
+    "total_site_planar_area_m2": 11203.55,
+    "total_site_surface_3d_m2": 19765.67,
+    "grid_resolution_m": 0.25,
+    "triangle_count": 884065,
+    "trees_ai_verified_count": 0
+  },
+  "categories_breakdown": [
+    {
+      "key": "roads",
+      "name_zh": "無鋪面道路 (No Paved Road)",
+      "name_en": "No Paved Road",
+      "color": "#f59e0b",
+      "count": 0,
+      "planar_area_m2": 0,
+      "planar_area_ping": 0.0,
+      "surface_area_3d_m2": 0,
+      "site_share_pct": 0.0
+    },
+    {
+      "key": "trees",
+      "name_zh": "喬木林冠與胸徑 (Trees & Trunk DBH)",
+      "name_en": "Canopy Trees & 1.3m Trunk DBH",
+      "color": "#10b981",
+      "count": 0,
+      "planar_area_m2": 2720.0,
+      "planar_area_ping": 822.8,
+      "surface_area_3d_m2": 6727.35,
+      "site_share_pct": 24.3
+    },
+    {
+      "key": "water_bodies",
+      "name_zh": "水域與未建模水面空洞 (Water & Voids)",
+      "name_en": "Water Bodies & Un-Modelled Water Voids",
+      "color": "#06b6d4",
+      "count": 0,
+      "planar_area_m2": 0,
+      "planar_area_ping": 0.0,
+      "surface_area_3d_m2": 0,
+      "site_share_pct": 0.0
+    },
+    {
+      "key": "walls",
+      "name_zh": "擋土牆與垂直結構面 (Retaining/Building Walls)",
+      "name_en": "Retaining & Structural Vertical Walls",
+      "color": "#f43f5e",
+      "count": 2,
+      "planar_area_m2": 5.14,
+      "planar_area_ping": 1.56,
+      "surface_area_3d_m2": 27.1,
+      "site_share_pct": 0.1
+    },
+    {
+      "key": "bare_earth_stockpiles",
+      "name_zh": "裸露土石/河灘卵石/堆置區 (Bare Earth & Cobble)",
+      "name_en": "Bare Earth, River Cobble & Stockpiles",
+      "color": "#d97706",
+      "count": 0,
+      "planar_area_m2": 2134.93,
+      "planar_area_ping": 645.82,
+      "surface_area_3d_m2": 2215.28,
+      "site_share_pct": 19.1
+    },
+    {
+      "key": "low_vegetation_grass",
+      "name_zh": "低矮植生與草坡 (Low Veg & Grass)",
+      "name_en": "Low Vegetation, Shrubs & Grass",
+      "color": "#84cc16",
+      "count": 1,
+      "planar_area_m2": 4316.01,
+      "planar_area_ping": 1305.59,
+      "surface_area_3d_m2": 4557.38,
+      "site_share_pct": 38.5
+    },
+    {
+      "key": "sloped_revetments",
+      "name_zh": "護岸斜坡與人工邊坡 (Sloped Revetments)",
+      "name_en": "Pitched Revetments & Sloped Banks (30°-68°)",
+      "color": "#a855f7",
+      "count": 1,
+      "planar_area_m2": 1355.3,
+      "planar_area_ping": 409.98,
+      "surface_area_3d_m2": 2231.64,
+      "site_share_pct": 12.1
+    },
+    {
+      "key": "buildings_structures",
+      "name_zh": "建築屋頂與人造設施 (Buildings & Structures)",
+      "name_en": "Building Roofs & Elevated Structures",
+      "color": "#3b82f6",
+      "count": 1,
+      "planar_area_m2": 359.88,
+      "planar_area_ping": 108.86,
+      "surface_area_3d_m2": 396.15,
+      "site_share_pct": 3.2
+    },
+    {
+      "key": "water_tanks_and_mep",
+      "name_zh": "儲水塔與管線設施 (Water Tanks & MEP Pipes)",
+      "name_en": "Water Storage Tanks & MEP Piping",
+      "color": "#0284c7",
+      "count": 3,
+      "planar_area_m2": 0,
+      "planar_area_ping": 0.0,
+      "surface_area_3d_m2": 0,
+      "site_share_pct": 0.0
+    },
+    {
+      "key": "drainage_curbs",
+      "name_zh": "排水邊溝與緣石 (Drainage & Curbs)",
+      "name_en": "Drainage Channels & Road Curbs",
+      "color": "#64748b",
+      "count": 1,
+      "planar_area_m2": 116.04,
+      "planar_area_ping": 35.1,
+      "surface_area_3d_m2": 216.93,
+      "site_share_pct": 1.0
+    },
+    {
+      "key": "transient_clutter",
+      "name_zh": "施工機具/車輛與雜物 (Vehicles & Clutter)",
+      "name_en": "Vehicles, Equipment & Transient Clutter",
+      "color": "#ec4899",
+      "count": 27,
+      "planar_area_m2": 372.9,
+      "planar_area_ping": 112.8,
+      "surface_area_3d_m2": 1365.54,
+      "site_share_pct": 3.3
+    }
+  ],
+  "roads": [],
+  "trees": [],
+  "water_bodies": [],
+  "walls": [
+    {
+      "id": "CW_B1",
+      "name": "粉紅色涼亭圓柱外牆 CW_B1 (Cylindrical Pavilion Wall)",
+      "subtype": "cylindrical_wall",
+      "ifc_class": "IfcWall",
+      "color": "#e2e8f0",
+      "radius_m": 1.77,
+      "diameter_m": 3.54,
+      "length_m": 11.11,
+      "height_m": 2.36,
+      "mean_height_m": 2.36,
+      "max_height_m": 2.36,
+      "thickness_m": 0.22,
+      "vertical_area_m2": 17.04,
+      "coplanarity_rms_m": 0.208,
+      "azimuth_deg": 0.0,
+      "tilt_deg": 90.0,
+      "base_z": 7.745,
+      "top_z": 10.105,
+      "center_twd97": [
+        308163.736,
+        2774988.695,
+        8.925
+      ],
+      "center_local": [
+        308163.736,
+        8.925,
+        -2774988.695
+      ],
+      "base_polyline_twd97": [
+        [
+          308165.505,
+          2774988.695,
+          7.745
+        ],
+        [
+          308165.478,
+          2774989.002,
+          7.745
+        ],
+        [
+          308165.398,
+          2774989.3,
+          7.745
+        ],
+        [
+          308165.268,
+          2774989.579,
+          7.745
+        ],
+        [
+          308165.091,
+          2774989.832,
+          7.745
+        ],
+        [
+          308164.873,
+          2774990.05,
+          7.745
+        ],
+        [
+          308164.62,
+          2774990.226,
+          7.745
+        ],
+        [
+          308164.341,
+          2774990.357,
+          7.745
+        ],
+        [
+          308164.043,
+          2774990.437,
+          7.745
+        ],
+        [
+          308163.736,
+          2774990.463,
+          7.745
+        ],
+        [
+          308163.429,
+          2774990.437,
+          7.745
+        ],
+        [
+          308163.131,
+          2774990.357,
+          7.745
+        ],
+        [
+          308162.851,
+          2774990.226,
+          7.745
+        ],
+        [
+          308162.599,
+          2774990.05,
+          7.745
+        ],
+        [
+          308162.381,
+          2774989.832,
+          7.745
+        ],
+        [
+          308162.204,
+          2774989.579,
+          7.745
+        ],
+        [
+          308162.074,
+          2774989.3,
+          7.745
+        ],
+        [
+          308161.994,
+          2774989.002,
+          7.745
+        ],
+        [
+          308161.967,
+          2774988.695,
+          7.745
+        ],
+        [
+          308161.994,
+          2774988.387,
+          7.745
+        ],
+        [
+          308162.074,
+          2774988.09,
+          7.745
+        ],
+        [
+          308162.204,
+          2774987.81,
+          7.745
+        ],
+        [
+          308162.381,
+          2774987.558,
+          7.745
+        ],
+        [
+          308162.599,
+          2774987.34,
+          7.745
+        ],
+        [
+          308162.851,
+          2774987.163,
+          7.745
+        ],
+        [
+          308163.131,
+          2774987.032,
+          7.745
+        ],
+        [
+          308163.429,
+          2774986.953,
+          7.745
+        ],
+        [
+          308163.736,
+          2774986.926,
+          7.745
+        ],
+        [
+          308164.043,
+          2774986.953,
+          7.745
+        ],
+        [
+          308164.341,
+          2774987.032,
+          7.745
+        ],
+        [
+          308164.62,
+          2774987.163,
+          7.745
+        ],
+        [
+          308164.873,
+          2774987.34,
+          7.745
+        ],
+        [
+          308165.091,
+          2774987.558,
+          7.745
+        ],
+        [
+          308165.268,
+          2774987.81,
+          7.745
+        ],
+        [
+          308165.398,
+          2774988.09,
+          7.745
+        ],
+        [
+          308165.478,
+          2774988.387,
+          7.745
+        ],
+        [
+          308165.505,
+          2774988.695,
+          7.745
+        ]
+      ],
+      "top_polyline_twd97": [
+        [
+          308165.505,
+          2774988.695,
+          10.105
+        ],
+        [
+          308165.478,
+          2774989.002,
+          10.105
+        ],
+        [
+          308165.398,
+          2774989.3,
+          10.105
+        ],
+        [
+          308165.268,
+          2774989.579,
+          10.105
+        ],
+        [
+          308165.091,
+          2774989.832,
+          10.105
+        ],
+        [
+          308164.873,
+          2774990.05,
+          10.105
+        ],
+        [
+          308164.62,
+          2774990.226,
+          10.105
+        ],
+        [
+          308164.341,
+          2774990.357,
+          10.105
+        ],
+        [
+          308164.043,
+          2774990.437,
+          10.105
+        ],
+        [
+          308163.736,
+          2774990.463,
+          10.105
+        ],
+        [
+          308163.429,
+          2774990.437,
+          10.105
+        ],
+        [
+          308163.131,
+          2774990.357,
+          10.105
+        ],
+        [
+          308162.851,
+          2774990.226,
+          10.105
+        ],
+        [
+          308162.599,
+          2774990.05,
+          10.105
+        ],
+        [
+          308162.381,
+          2774989.832,
+          10.105
+        ],
+        [
+          308162.204,
+          2774989.579,
+          10.105
+        ],
+        [
+          308162.074,
+          2774989.3,
+          10.105
+        ],
+        [
+          308161.994,
+          2774989.002,
+          10.105
+        ],
+        [
+          308161.967,
+          2774988.695,
+          10.105
+        ],
+        [
+          308161.994,
+          2774988.387,
+          10.105
+        ],
+        [
+          308162.074,
+          2774988.09,
+          10.105
+        ],
+        [
+          308162.204,
+          2774987.81,
+          10.105
+        ],
+        [
+          308162.381,
+          2774987.558,
+          10.105
+        ],
+        [
+          308162.599,
+          2774987.34,
+          10.105
+        ],
+        [
+          308162.851,
+          2774987.163,
+          10.105
+        ],
+        [
+          308163.131,
+          2774987.032,
+          10.105
+        ],
+        [
+          308163.429,
+          2774986.953,
+          10.105
+        ],
+        [
+          308163.736,
+          2774986.926,
+          10.105
+        ],
+        [
+          308164.043,
+          2774986.953,
+          10.105
+        ],
+        [
+          308164.341,
+          2774987.032,
+          10.105
+        ],
+        [
+          308164.62,
+          2774987.163,
+          10.105
+        ],
+        [
+          308164.873,
+          2774987.34,
+          10.105
+        ],
+        [
+          308165.091,
+          2774987.558,
+          10.105
+        ],
+        [
+          308165.268,
+          2774987.81,
+          10.105
+        ],
+        [
+          308165.398,
+          2774988.09,
+          10.105
+        ],
+        [
+          308165.478,
+          2774988.387,
+          10.105
+        ],
+        [
+          308165.505,
+          2774988.695,
+          10.105
+        ]
+      ],
+      "base_polyline_local": [
+        [
+          308165.505,
+          7.745,
+          -2774988.695
+        ],
+        [
+          308165.478,
+          7.745,
+          -2774989.002
+        ],
+        [
+          308165.398,
+          7.745,
+          -2774989.3
+        ],
+        [
+          308165.268,
+          7.745,
+          -2774989.579
+        ],
+        [
+          308165.091,
+          7.745,
+          -2774989.832
+        ],
+        [
+          308164.873,
+          7.745,
+          -2774990.05
+        ],
+        [
+          308164.62,
+          7.745,
+          -2774990.226
+        ],
+        [
+          308164.341,
+          7.745,
+          -2774990.357
+        ],
+        [
+          308164.043,
+          7.745,
+          -2774990.437
+        ],
+        [
+          308163.736,
+          7.745,
+          -2774990.463
+        ],
+        [
+          308163.429,
+          7.745,
+          -2774990.437
+        ],
+        [
+          308163.131,
+          7.745,
+          -2774990.357
+        ],
+        [
+          308162.851,
+          7.745,
+          -2774990.226
+        ],
+        [
+          308162.599,
+          7.745,
+          -2774990.05
+        ],
+        [
+          308162.381,
+          7.745,
+          -2774989.832
+        ],
+        [
+          308162.204,
+          7.745,
+          -2774989.579
+        ],
+        [
+          308162.074,
+          7.745,
+          -2774989.3
+        ],
+        [
+          308161.994,
+          7.745,
+          -2774989.002
+        ],
+        [
+          308161.967,
+          7.745,
+          -2774988.695
+        ],
+        [
+          308161.994,
+          7.745,
+          -2774988.387
+        ],
+        [
+          308162.074,
+          7.745,
+          -2774988.09
+        ],
+        [
+          308162.204,
+          7.745,
+          -2774987.81
+        ],
+        [
+          308162.381,
+          7.745,
+          -2774987.558
+        ],
+        [
+          308162.599,
+          7.745,
+          -2774987.34
+        ],
+        [
+          308162.851,
+          7.745,
+          -2774987.163
+        ],
+        [
+          308163.131,
+          7.745,
+          -2774987.032
+        ],
+        [
+          308163.429,
+          7.745,
+          -2774986.953
+        ],
+        [
+          308163.736,
+          7.745,
+          -2774986.926
+        ],
+        [
+          308164.043,
+          7.745,
+          -2774986.953
+        ],
+        [
+          308164.341,
+          7.745,
+          -2774987.032
+        ],
+        [
+          308164.62,
+          7.745,
+          -2774987.163
+        ],
+        [
+          308164.873,
+          7.745,
+          -2774987.34
+        ],
+        [
+          308165.091,
+          7.745,
+          -2774987.558
+        ],
+        [
+          308165.268,
+          7.745,
+          -2774987.81
+        ],
+        [
+          308165.398,
+          7.745,
+          -2774988.09
+        ],
+        [
+          308165.478,
+          7.745,
+          -2774988.387
+        ],
+        [
+          308165.505,
+          7.745,
+          -2774988.695
+        ]
+      ],
+      "top_polyline_local": [
+        [
+          308165.505,
+          10.105,
+          -2774988.695
+        ],
+        [
+          308165.478,
+          10.105,
+          -2774989.002
+        ],
+        [
+          308165.398,
+          10.105,
+          -2774989.3
+        ],
+        [
+          308165.268,
+          10.105,
+          -2774989.579
+        ],
+        [
+          308165.091,
+          10.105,
+          -2774989.832
+        ],
+        [
+          308164.873,
+          10.105,
+          -2774990.05
+        ],
+        [
+          308164.62,
+          10.105,
+          -2774990.226
+        ],
+        [
+          308164.341,
+          10.105,
+          -2774990.357
+        ],
+        [
+          308164.043,
+          10.105,
+          -2774990.437
+        ],
+        [
+          308163.736,
+          10.105,
+          -2774990.463
+        ],
+        [
+          308163.429,
+          10.105,
+          -2774990.437
+        ],
+        [
+          308163.131,
+          10.105,
+          -2774990.357
+        ],
+        [
+          308162.851,
+          10.105,
+          -2774990.226
+        ],
+        [
+          308162.599,
+          10.105,
+          -2774990.05
+        ],
+        [
+          308162.381,
+          10.105,
+          -2774989.832
+        ],
+        [
+          308162.204,
+          10.105,
+          -2774989.579
+        ],
+        [
+          308162.074,
+          10.105,
+          -2774989.3
+        ],
+        [
+          308161.994,
+          10.105,
+          -2774989.002
+        ],
+        [
+          308161.967,
+          10.105,
+          -2774988.695
+        ],
+        [
+          308161.994,
+          10.105,
+          -2774988.387
+        ],
+        [
+          308162.074,
+          10.105,
+          -2774988.09
+        ],
+        [
+          308162.204,
+          10.105,
+          -2774987.81
+        ],
+        [
+          308162.381,
+          10.105,
+          -2774987.558
+        ],
+        [
+          308162.599,
+          10.105,
+          -2774987.34
+        ],
+        [
+          308162.851,
+          10.105,
+          -2774987.163
+        ],
+        [
+          308163.131,
+          10.105,
+          -2774987.032
+        ],
+        [
+          308163.429,
+          10.105,
+          -2774986.953
+        ],
+        [
+          308163.736,
+          10.105,
+          -2774986.926
+        ],
+        [
+          308164.043,
+          10.105,
+          -2774986.953
+        ],
+        [
+          308164.341,
+          10.105,
+          -2774987.032
+        ],
+        [
+          308164.62,
+          10.105,
+          -2774987.163
+        ],
+        [
+          308164.873,
+          10.105,
+          -2774987.34
+        ],
+        [
+          308165.091,
+          10.105,
+          -2774987.558
+        ],
+        [
+          308165.268,
+          10.105,
+          -2774987.81
+        ],
+        [
+          308165.398,
+          10.105,
+          -2774988.09
+        ],
+        [
+          308165.478,
+          10.105,
+          -2774988.387
+        ],
+        [
+          308165.505,
+          10.105,
+          -2774988.695
+        ]
+      ],
+      "verified_photo": "LishanFinal_1of4/Image_001176.jpg",
+      "verified_photo_uv": [
+        0.4681,
+        0.301
+      ],
+      "verified_photo_dist_m": 34.13,
+      "verified_photo_angles": 2,
+      "second_verified_photo": "LishanFinal_1of4/Image_001204.jpg",
+      "ai_photo_verified": true
+    },
+    {
+      "id": "WL2",
+      "name": "擋土牆/垂直牆面 WL2",
+      "subtype": "retaining_wall",
+      "length_m": 3.58,
+      "height_m": 2.81,
+      "mean_height_m": 2.81,
+      "max_height_m": 3.56,
+      "vertical_area_m2": 10.06,
+      "coplanarity_rms_m": 0.085,
+      "azimuth_deg": 106.9,
+      "tilt_deg": 9.8,
+      "center_twd97": [
+        308197.326,
+        2775043.448,
+        20.349
+      ],
+      "center_local": [
+        308197.326,
+        20.349,
+        -2775043.448
+      ],
+      "base_polyline_twd97": [
+        [
+          308199.542,
+          2775042.85,
+          19.075
+        ],
+        [
+          308198.809,
+          2775042.96,
+          21.409
+        ],
+        [
+          308197.672,
+          2775043.335,
+          20.072
+        ],
+        [
+          308197.07,
+          2775043.513,
+          19.942
+        ],
+        [
+          308196.597,
+          2775043.693,
+          19.775
+        ]
+      ],
+      "top_polyline_twd97": [
+        [
+          308199.542,
+          2775042.85,
+          22.266
+        ],
+        [
+          308198.809,
+          2775042.96,
+          22.233
+        ],
+        [
+          308197.672,
+          2775043.335,
+          22.51
+        ],
+        [
+          308197.07,
+          2775043.513,
+          23.502
+        ],
+        [
+          308196.597,
+          2775043.693,
+          23.335
+        ]
+      ],
+      "base_polyline_local": [
+        [
+          308199.542,
+          19.075,
+          -2775042.85
+        ],
+        [
+          308198.809,
+          21.409,
+          -2775042.96
+        ],
+        [
+          308197.672,
+          20.072,
+          -2775043.335
+        ],
+        [
+          308197.07,
+          19.942,
+          -2775043.513
+        ],
+        [
+          308196.597,
+          19.775,
+          -2775043.693
+        ]
+      ],
+      "top_polyline_local": [
+        [
+          308199.542,
+          22.266,
+          -2775042.85
+        ],
+        [
+          308198.809,
+          22.233,
+          -2775042.96
+        ],
+        [
+          308197.672,
+          22.51,
+          -2775043.335
+        ],
+        [
+          308197.07,
+          23.502,
+          -2775043.513
+        ],
+        [
+          308196.597,
+          23.335,
+          -2775043.693
+        ]
+      ],
+      "verified_photo": "LishanFinal_1of4/Image_000769.jpg",
+      "verified_photo_uv": [
+        0.1733,
+        0.0719
+      ],
+      "verified_photo_dist_m": 57.17,
+      "verified_photo_angles": 2,
+      "second_verified_photo": "LishanFinal_1of4/Image_000575.jpg",
+      "ai_photo_verified": true
+    }
+  ],
+  "buildings": [
+    {
+      "id": "B1",
+      "name": "粉紅色圓頂涼亭/公廁屋頂 B1 (Circular Pavilion Roof)",
+      "subtype": "circular_roof",
+      "ifc_class": "IfcRoof",
+      "color": "#f43f5e",
+      "center_twd97": [
+        308163.736,
+        2774988.695,
+        10.103
+      ],
+      "center_local": [
+        308163.736,
+        10.103,
+        -2774988.695
+      ],
+      "radius_m": 2.13,
+      "diameter_m": 4.26,
+      "dx": 4.26,
+      "dy": 4.26,
+      "height_m": 2.54,
+      "ground_elevation_m": 7.745,
+      "eave_elevation_m": 10.103,
+      "apex_elevation_m": 10.283,
+      "dome_rise_m": 0.35,
+      "footprint_area_m2": 14.25,
+      "planar_area_m2": 14.25,
+      "boundary_twd97": [
+        [
+          308165.866,
+          2774988.695,
+          10.103
+        ],
+        [
+          308165.833,
+          2774989.065,
+          10.103
+        ],
+        [
+          308165.737,
+          2774989.423,
+          10.103
+        ],
+        [
+          308165.58,
+          2774989.76,
+          10.103
+        ],
+        [
+          308165.368,
+          2774990.064,
+          10.103
+        ],
+        [
+          308165.105,
+          2774990.326,
+          10.103
+        ],
+        [
+          308164.801,
+          2774990.539,
+          10.103
+        ],
+        [
+          308164.464,
+          2774990.696,
+          10.103
+        ],
+        [
+          308164.106,
+          2774990.792,
+          10.103
+        ],
+        [
+          308163.736,
+          2774990.825,
+          10.103
+        ],
+        [
+          308163.366,
+          2774990.792,
+          10.103
+        ],
+        [
+          308163.007,
+          2774990.696,
+          10.103
+        ],
+        [
+          308162.671,
+          2774990.539,
+          10.103
+        ],
+        [
+          308162.367,
+          2774990.326,
+          10.103
+        ],
+        [
+          308162.104,
+          2774990.064,
+          10.103
+        ],
+        [
+          308161.891,
+          2774989.76,
+          10.103
+        ],
+        [
+          308161.734,
+          2774989.423,
+          10.103
+        ],
+        [
+          308161.638,
+          2774989.065,
+          10.103
+        ],
+        [
+          308161.606,
+          2774988.695,
+          10.103
+        ],
+        [
+          308161.638,
+          2774988.325,
+          10.103
+        ],
+        [
+          308161.734,
+          2774987.966,
+          10.103
+        ],
+        [
+          308161.891,
+          2774987.63,
+          10.103
+        ],
+        [
+          308162.104,
+          2774987.325,
+          10.103
+        ],
+        [
+          308162.367,
+          2774987.063,
+          10.103
+        ],
+        [
+          308162.671,
+          2774986.85,
+          10.103
+        ],
+        [
+          308163.007,
+          2774986.693,
+          10.103
+        ],
+        [
+          308163.366,
+          2774986.597,
+          10.103
+        ],
+        [
+          308163.736,
+          2774986.565,
+          10.103
+        ],
+        [
+          308164.106,
+          2774986.597,
+          10.103
+        ],
+        [
+          308164.464,
+          2774986.693,
+          10.103
+        ],
+        [
+          308164.801,
+          2774986.85,
+          10.103
+        ],
+        [
+          308165.105,
+          2774987.063,
+          10.103
+        ],
+        [
+          308165.368,
+          2774987.325,
+          10.103
+        ],
+        [
+          308165.58,
+          2774987.63,
+          10.103
+        ],
+        [
+          308165.737,
+          2774987.966,
+          10.103
+        ],
+        [
+          308165.833,
+          2774988.325,
+          10.103
+        ]
+      ],
+      "boundary_local": [
+        [
+          308165.866,
+          10.103,
+          -2774988.695
+        ],
+        [
+          308165.833,
+          10.103,
+          -2774989.065
+        ],
+        [
+          308165.737,
+          10.103,
+          -2774989.423
+        ],
+        [
+          308165.58,
+          10.103,
+          -2774989.76
+        ],
+        [
+          308165.368,
+          10.103,
+          -2774990.064
+        ],
+        [
+          308165.105,
+          10.103,
+          -2774990.326
+        ],
+        [
+          308164.801,
+          10.103,
+          -2774990.539
+        ],
+        [
+          308164.464,
+          10.103,
+          -2774990.696
+        ],
+        [
+          308164.106,
+          10.103,
+          -2774990.792
+        ],
+        [
+          308163.736,
+          10.103,
+          -2774990.825
+        ],
+        [
+          308163.366,
+          10.103,
+          -2774990.792
+        ],
+        [
+          308163.007,
+          10.103,
+          -2774990.696
+        ],
+        [
+          308162.671,
+          10.103,
+          -2774990.539
+        ],
+        [
+          308162.367,
+          10.103,
+          -2774990.326
+        ],
+        [
+          308162.104,
+          10.103,
+          -2774990.064
+        ],
+        [
+          308161.891,
+          10.103,
+          -2774989.76
+        ],
+        [
+          308161.734,
+          10.103,
+          -2774989.423
+        ],
+        [
+          308161.638,
+          10.103,
+          -2774989.065
+        ],
+        [
+          308161.606,
+          10.103,
+          -2774988.695
+        ],
+        [
+          308161.638,
+          10.103,
+          -2774988.325
+        ],
+        [
+          308161.734,
+          10.103,
+          -2774987.966
+        ],
+        [
+          308161.891,
+          10.103,
+          -2774987.63
+        ],
+        [
+          308162.104,
+          10.103,
+          -2774987.325
+        ],
+        [
+          308162.367,
+          10.103,
+          -2774987.063
+        ],
+        [
+          308162.671,
+          10.103,
+          -2774986.85
+        ],
+        [
+          308163.007,
+          10.103,
+          -2774986.693
+        ],
+        [
+          308163.366,
+          10.103,
+          -2774986.597
+        ],
+        [
+          308163.736,
+          10.103,
+          -2774986.565
+        ],
+        [
+          308164.106,
+          10.103,
+          -2774986.597
+        ],
+        [
+          308164.464,
+          10.103,
+          -2774986.693
+        ],
+        [
+          308164.801,
+          10.103,
+          -2774986.85
+        ],
+        [
+          308165.105,
+          10.103,
+          -2774987.063
+        ],
+        [
+          308165.368,
+          10.103,
+          -2774987.325
+        ],
+        [
+          308165.58,
+          10.103,
+          -2774987.63
+        ],
+        [
+          308165.737,
+          10.103,
+          -2774987.966
+        ],
+        [
+          308165.833,
+          10.103,
+          -2774988.325
+        ]
+      ],
+      "verified_photo": "LishanFinal_1of4/Image_001176.jpg",
+      "verified_photo_uv": [
+        0.4682,
+        0.2747
+      ],
+      "verified_photo_dist_m": 34.16,
+      "ai_photo_verified": true,
+      "los_unoccluded": false
+    }
+  ],
+  "water_tanks": [],
+  "pipes": [
+    {
+      "id": "P1",
+      "name": "外露管線/導管 P1 (Exposed Tubular Pipe/Conduit)",
+      "subtype": "exposed_tubular_pipe",
+      "ifc_class": "IfcFlowSegment",
+      "color": "#f97316",
+      "start": [
+        308153.742,
+        2774988.22,
+        11.463
+      ],
+      "end": [
+        308152.345,
+        2774987.971,
+        11.269
+      ],
+      "diameter_m": 0.12,
+      "length_m": 1.43,
+      "center_twd97": [
+        308153.043,
+        2774988.095,
+        11.366
+      ],
+      "center_local": [
+        308153.043,
+        11.366,
+        -2774988.095
+      ],
+      "verified_photo": "LishanFinal_1of4/Image_001015.jpg",
+      "verified_photo_uv": [
+        0.7289,
+        0.1824
+      ],
+      "verified_photo_dist_m": 23.37,
+      "ai_photo_verified": true,
+      "los_unoccluded": true
+    },
+    {
+      "id": "P2",
+      "name": "外露管線/導管 P2 (Exposed Tubular Pipe/Conduit)",
+      "subtype": "exposed_tubular_pipe",
+      "ifc_class": "IfcFlowSegment",
+      "color": "#f97316",
+      "start": [
+        308156.741,
+        2774994.634,
+        11.334
+      ],
+      "end": [
+        308155.805,
+        2774995.125,
+        12.277
+      ],
+      "diameter_m": 0.12,
+      "length_m": 1.42,
+      "center_twd97": [
+        308156.273,
+        2774994.88,
+        11.805
+      ],
+      "center_local": [
+        308156.273,
+        11.805,
+        -2774994.88
+      ],
+      "verified_photo": "LishanFinal_1of4/Image_001176.jpg",
+      "verified_photo_uv": [
+        0.5484,
+        0.2074
+      ],
+      "verified_photo_dist_m": 24.93,
+      "ai_photo_verified": true,
+      "los_unoccluded": false
+    },
+    {
+      "id": "P3",
+      "name": "外露管線/導管 P3 (Exposed Tubular Pipe/Conduit)",
+      "subtype": "exposed_tubular_pipe",
+      "ifc_class": "IfcFlowSegment",
+      "color": "#f97316",
+      "start": [
+        308171.879,
+        2774985.53,
+        11.557
+      ],
+      "end": [
+        308170.63,
+        2774986.421,
+        12.107
+      ],
+      "diameter_m": 0.12,
+      "length_m": 1.63,
+      "center_twd97": [
+        308171.255,
+        2774985.976,
+        11.832
+      ],
+      "center_local": [
+        308171.255,
+        11.832,
+        -2774985.976
+      ],
+      "verified_photo": "LishanFinal_1of4/Image_001015.jpg",
+      "verified_photo_uv": [
+        0.9491,
+        0.2152
+      ],
+      "verified_photo_dist_m": 40.61,
+      "ai_photo_verified": true,
+      "los_unoccluded": true
+    }
+  ],
+  "street_furniture": [
+    {
+      "id": "BL1",
+      "name": "錐形景觀石墩/車阻 BL1 (Conical Plaza Bollard)",
+      "subtype": "conical_bollard",
+      "ifc_class": "IfcDiscreteAccessory",
+      "color": "#94a3b8",
+      "radius_m": 0.28,
+      "diameter_m": 0.56,
+      "height_m": 0.65,
+      "ground_elevation_m": 6.825,
+      "volume_m3": 0.106,
+      "center_twd97": [
+        308110.5,
+        2774930.375,
+        7.15
+      ],
+      "center_local": [
+        308110.5,
+        7.15,
+        -2774930.375
+      ],
+      "verified_photo": "LishanFinal_1of4/Image_000919.jpg",
+      "verified_photo_uv": [
+        0.6206,
+        0.269
+      ],
+      "verified_photo_dist_m": 44.38,
+      "ai_photo_verified": true,
+      "los_unoccluded": false
+    },
+    {
+      "id": "BL2",
+      "name": "錐形景觀石墩/車阻 BL2 (Conical Plaza Bollard)",
+      "subtype": "conical_bollard",
+      "ifc_class": "IfcDiscreteAccessory",
+      "color": "#94a3b8",
+      "radius_m": 0.25,
+      "diameter_m": 0.5,
+      "height_m": 0.65,
+      "ground_elevation_m": 12.062,
+      "volume_m3": 0.083,
+      "center_twd97": [
+        308151.375,
+        2774938.875,
+        12.387
+      ],
+      "center_local": [
+        308151.375,
+        12.387,
+        -2774938.875
+      ],
+      "verified_photo": "LishanFinal_1of4/Image_000937.jpg",
+      "verified_photo_uv": [
+        0.569,
+        0.219
+      ],
+      "verified_photo_dist_m": 35.69,
+      "ai_photo_verified": true,
+      "los_unoccluded": true
+    },
+    {
+      "id": "BL3",
+      "name": "錐形景觀石墩/車阻 BL3 (Conical Plaza Bollard)",
+      "subtype": "conical_bollard",
+      "ifc_class": "IfcDiscreteAccessory",
+      "color": "#94a3b8",
+      "radius_m": 0.28,
+      "diameter_m": 0.56,
+      "height_m": 0.65,
+      "ground_elevation_m": 6.683,
+      "volume_m3": 0.106,
+      "center_twd97": [
+        308075.75,
+        2774939.375,
+        7.008
+      ],
+      "center_local": [
+        308075.75,
+        7.008,
+        -2774939.375
+      ],
+      "verified_photo": "LishanFinal_1of4/Image_000915.jpg",
+      "verified_photo_uv": [
+        0.7047,
+        0.2792
+      ],
+      "verified_photo_dist_m": 61.45,
+      "ai_photo_verified": true,
+      "los_unoccluded": false
+    },
+    {
+      "id": "BL4",
+      "name": "錐形景觀石墩/車阻 BL4 (Conical Plaza Bollard)",
+      "subtype": "conical_bollard",
+      "ifc_class": "IfcDiscreteAccessory",
+      "color": "#94a3b8",
+      "radius_m": 0.28,
+      "diameter_m": 0.56,
+      "height_m": 0.65,
+      "ground_elevation_m": 7.431,
+      "volume_m3": 0.106,
+      "center_twd97": [
+        308068.875,
+        2774941.0,
+        7.756
+      ],
+      "center_local": [
+        308068.875,
+        7.756,
+        -2774941.0
+      ],
+      "verified_photo": "LishanFinal_1of4/Image_000915.jpg",
+      "verified_photo_uv": [
+        0.7858,
+        0.27
+      ],
+      "verified_photo_dist_m": 66.51,
+      "ai_photo_verified": true,
+      "los_unoccluded": false
+    },
+    {
+      "id": "BL5",
+      "name": "錐形景觀石墩/車阻 BL5 (Conical Plaza Bollard)",
+      "subtype": "conical_bollard",
+      "ifc_class": "IfcDiscreteAccessory",
+      "color": "#94a3b8",
+      "radius_m": 0.32,
+      "diameter_m": 0.63,
+      "height_m": 0.65,
+      "ground_elevation_m": 7.269,
+      "volume_m3": 0.132,
+      "center_twd97": [
+        308118.875,
+        2774942.425,
+        7.594
+      ],
+      "center_local": [
+        308118.875,
+        7.594,
+        -2774942.425
+      ],
+      "verified_photo": "LishanFinal_1of4/Image_000853.jpg",
+      "verified_photo_uv": [
+        0.01,
+        0.283
+      ],
+      "verified_photo_dist_m": 55.59,
+      "ai_photo_verified": true,
+      "los_unoccluded": true
+    },
+    {
+      "id": "BL6",
+      "name": "錐形景觀石墩/車阻 BL6 (Conical Plaza Bollard)",
+      "subtype": "conical_bollard",
+      "ifc_class": "IfcDiscreteAccessory",
+      "color": "#94a3b8",
+      "radius_m": 0.25,
+      "diameter_m": 0.5,
+      "height_m": 0.65,
+      "ground_elevation_m": 6.806,
+      "volume_m3": 0.083,
+      "center_twd97": [
+        308134.875,
+        2774947.375,
+        7.131
+      ],
+      "center_local": [
+        308134.875,
+        7.131,
+        -2774947.375
+      ],
+      "verified_photo": "LishanFinal_1of4/Image_000935.jpg",
+      "verified_photo_uv": [
+        0.7051,
+        0.3025
+      ],
+      "verified_photo_dist_m": 21.18,
+      "ai_photo_verified": true,
+      "los_unoccluded": false
+    },
+    {
+      "id": "BL7",
+      "name": "錐形景觀石墩/車阻 BL7 (Conical Plaza Bollard)",
+      "subtype": "conical_bollard",
+      "ifc_class": "IfcDiscreteAccessory",
+      "color": "#94a3b8",
+      "radius_m": 0.28,
+      "diameter_m": 0.56,
+      "height_m": 0.65,
+      "ground_elevation_m": 6.849,
+      "volume_m3": 0.106,
+      "center_twd97": [
+        308135.25,
+        2774948.125,
+        7.174
+      ],
+      "center_local": [
+        308135.25,
+        7.174,
+        -2774948.125
+      ],
+      "verified_photo": "LishanFinal_1of4/Image_000935.jpg",
+      "verified_photo_uv": [
+        0.6788,
+        0.301
+      ],
+      "verified_photo_dist_m": 20.54,
+      "ai_photo_verified": true,
+      "los_unoccluded": false
+    },
+    {
+      "id": "BL8",
+      "name": "錐形景觀石墩/車阻 BL8 (Conical Plaza Bollard)",
+      "subtype": "conical_bollard",
+      "ifc_class": "IfcDiscreteAccessory",
+      "color": "#94a3b8",
+      "radius_m": 0.28,
+      "diameter_m": 0.56,
+      "height_m": 0.65,
+      "ground_elevation_m": 6.208,
+      "volume_m3": 0.106,
+      "center_twd97": [
+        308123.125,
+        2774959.75,
+        6.533
+      ],
+      "center_local": [
+        308123.125,
+        6.533,
+        -2774959.75
+      ],
+      "verified_photo": "LishanFinal_1of4/Image_000919.jpg",
+      "verified_photo_uv": [
+        0.5656,
+        0.3595
+      ],
+      "verified_photo_dist_m": 12.55,
+      "ai_photo_verified": true,
+      "los_unoccluded": true
+    }
+  ],
+  "stockpiles": [],
+  "report_html_url": "/api/reports/categorization_report_edited_lishan_track_flattened_exp_copy_449912.html",
+  "report_csv_url": "/api/reports/categorization_report_edited_lishan_track_flattened_exp_copy_449912.csv",
+  "dxf_url": "/api/contours/Civil3D_Categorized_edited_lishan_track_flattened_exp_copy_449912.dxf",
+  "downloads": {
+    "dxf_url": "/api/contours/Civil3D_Categorized_edited_lishan_track_flattened_exp_copy_449912.dxf",
+    "report_html_url": "/api/reports/categorization_report_edited_lishan_track_flattened_exp_copy_449912.html",
+    "report_csv_url": "/api/reports/categorization_report_edited_lishan_track_flattened_exp_copy_449912.csv"
+  },
+  "manual_overrides": {
+    "removed_ids": [],
+    "removed_centers": [],
+    "added_trees": [],
+    "added_walls": [],
+    "added_roads": [],
+    "added_water": []
+  }
+}

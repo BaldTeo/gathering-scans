@@ -816,62 +816,70 @@ class CategorizationIoMixin:
 
         best_score = 1e9
         best_info: Optional[Dict[str, Any]] = None
-        for pass_occl in (True, False):
-            for cam in camera_catalog:
-                try:
-                    dx = target_e - float(cam["e"])
-                    dy = target_n - float(cam["n"])
-                    dz = target_h - float(cam["h"])
-                except Exception:
-                    continue
-                dist_3d = math.sqrt(dx * dx + dy * dy + dz * dz)
-                if dist_3d < 0.75 or dist_3d > 28.0:
-                    continue
-                if pass_occl and z_max_filled is not None:
-                    if not is_3d_point_visible_from_camera(target_e, target_n, target_h, cam, z_max_filled, e_min, n_min, res):
+        frustum_tiers = (
+            (0.75, 28.0, 0.45, 0.08, 0.92),
+            (0.40, 90.0, 0.30, -0.05, 1.05),
+        )
+        for min_d, max_d, min_zc, uv_min, uv_max in frustum_tiers:
+            for pass_occl in (True, False):
+                for cam in camera_catalog:
+                    try:
+                        dx = target_e - float(cam["e"])
+                        dy = target_n - float(cam["n"])
+                        dz = target_h - float(cam["h"])
+                    except Exception:
                         continue
-                r_vec = cam.get("right")
-                d_vec = cam.get("down")
-                f_vec = cam.get("forward")
-                if not (isinstance(r_vec, list) and isinstance(d_vec, list) and isinstance(f_vec, list) and len(f_vec) == 3):
-                    yr = math.radians(float(cam.get("yaw_deg") or 0.0))
-                    pr = math.radians(float(cam.get("pitch_deg") or -18.0))
-                    f_vec = [math.sin(yr) * math.cos(pr), math.cos(yr) * math.cos(pr), math.sin(pr)]
-                    r_vec = [math.cos(yr), -math.sin(yr), 0.0]
-                    d_vec = [
-                        f_vec[1] * r_vec[2] - f_vec[2] * r_vec[1],
-                        f_vec[2] * r_vec[0] - f_vec[0] * r_vec[2],
-                        f_vec[0] * r_vec[1] - f_vec[1] * r_vec[0],
-                    ]
-                zc = dx * f_vec[0] + dy * f_vec[1] + dz * f_vec[2]
-                if zc <= 0.45:
-                    continue
-                xc = dx * r_vec[0] + dy * r_vec[1] + dz * r_vec[2]
-                yc = dx * d_vec[0] + dy * d_vec[1] + dz * d_vec[2]
-                fx_n = float(cam.get("fx_norm") or 0.92674)
-                fy_n = float(cam.get("fy_norm") or 0.69505)
-                u = 0.5 + fx_n * (xc / zc)
-                v = 0.5 + fy_n * (yc / zc)
-                if not (0.08 <= u <= 0.92 and 0.08 <= v <= 0.92):
-                    continue
-                abs_p = str(cam.get("abs_path") or "")
-                if abs_p and not os.path.isfile(abs_p):
-                    continue
-                off_center = math.hypot(u - 0.5, v - 0.5)
-                dist_penalty = abs(dist_3d - 4.8) * 0.45 + (3.5 if dist_3d < 1.6 else 0.0)
-                cal_bonus = 0.0 if cam.get("calibrated", True) else 4.0
-                score = dist_penalty + off_center * 6.5 + cal_bonus
-                if score < best_score:
-                    best_score = score
-                    best_info = {
-                        "verified_photo": str(cam.get("filename") or ""),
-                        "verified_photo_uv": [round(float(u), 4), round(float(v), 4)],
-                        "verified_photo_dist_m": round(float(dist_3d), 2),
-                        "ai_photo_verified": True,
-                        "los_unoccluded": pass_occl,
-                    }
-            if best_info is not None:
-                break
+                    dist_3d = math.sqrt(dx * dx + dy * dy + dz * dz)
+                    if dist_3d < min_d or dist_3d > max_d:
+                        continue
+                    if pass_occl and z_max_filled is not None:
+                        if not is_3d_point_visible_from_camera(target_e, target_n, target_h, cam, z_max_filled, e_min, n_min, res):
+                            continue
+                    r_vec = cam.get("right")
+                    d_vec = cam.get("down")
+                    f_vec = cam.get("forward")
+                    if not (isinstance(r_vec, list) and isinstance(d_vec, list) and isinstance(f_vec, list) and len(f_vec) == 3):
+                        yr = math.radians(float(cam.get("yaw_deg") or 0.0))
+                        pr = math.radians(float(cam.get("pitch_deg") or -18.0))
+                        f_vec = [math.sin(yr) * math.cos(pr), math.cos(yr) * math.cos(pr), math.sin(pr)]
+                        r_vec = [math.cos(yr), -math.sin(yr), 0.0]
+                        d_vec = [
+                            f_vec[1] * r_vec[2] - f_vec[2] * r_vec[1],
+                            f_vec[2] * r_vec[0] - f_vec[0] * r_vec[2],
+                            f_vec[0] * r_vec[1] - f_vec[1] * r_vec[0],
+                        ]
+                    zc = dx * f_vec[0] + dy * f_vec[1] + dz * f_vec[2]
+                    if zc <= min_zc:
+                        continue
+                    xc = dx * r_vec[0] + dy * r_vec[1] + dz * r_vec[2]
+                    yc = dx * d_vec[0] + dy * d_vec[1] + dz * d_vec[2]
+                    fx_n = float(cam.get("fx_norm") or 0.92674)
+                    fy_n = float(cam.get("fy_norm") or 0.69505)
+                    u = 0.5 + fx_n * (xc / zc)
+                    v = 0.5 + fy_n * (yc / zc)
+                    if not (uv_min <= u <= uv_max and uv_min <= v <= uv_max):
+                        continue
+                    abs_p = str(cam.get("abs_path") or "")
+                    if abs_p and not os.path.isfile(abs_p):
+                        continue
+                    off_center = math.hypot(u - 0.5, v - 0.5)
+                    dist_penalty = abs(dist_3d - 4.8) * 0.45 + (3.5 if dist_3d < 1.6 else 0.0)
+                    cal_bonus = 0.0 if cam.get("calibrated", True) else 4.0
+                    score = dist_penalty + off_center * 6.5 + cal_bonus
+                    if score < best_score:
+                        best_score = score
+                        best_info = {
+                            "verified_photo": str(cam.get("filename") or ""),
+                            "verified_photo_uv": [
+                                round(float(np.clip(u, 0.01, 0.99)), 4),
+                                round(float(np.clip(v, 0.01, 0.99)), 4),
+                            ],
+                            "verified_photo_dist_m": round(float(dist_3d), 2),
+                            "ai_photo_verified": True,
+                            "los_unoccluded": pass_occl,
+                        }
+                if best_info is not None:
+                    return best_info
         return best_info
 
     def _crop_rtk_photo_for_3d_feature(
@@ -887,99 +895,168 @@ class CategorizationIoMixin:
     ) -> Optional[Dict[str, Any]]:
         """
         Projects a 3D feature (TWD97 E, N, TWVD2001 H) onto calibrated mobile phone photos in `camera_catalog`,
-        selects the clearest ground-level view, applies EXIF orientation, and returns a 240x240 annotated PIL crop
-        plus camera metadata (`filename`, `u`, `v`, `distance_m`).
+        selects up to 2 distinct ground-level camera angles (primary + secondary baseline/azimuth view),
+        applies EXIF orientation, and returns a high-resolution 384x384 annotated PIL crop plus camera metadata.
         """
         if not camera_catalog or Image is None:
             return None
         from PIL import ImageDraw, ImageOps
 
-        best_cand: Optional[Tuple[float, float, float, float, Dict[str, Any], str]] = None
-        for cam in camera_catalog:
-            try:
-                dx = target_e - float(cam["e"])
-                dy = target_n - float(cam["n"])
-                dz = target_h - float(cam["h"])
-            except Exception:
-                continue
-            dist_3d = math.sqrt(dx * dx + dy * dy + dz * dz)
-            if dist_3d < 0.75 or dist_3d > 28.0:
-                continue
-            r_vec = cam.get("right")
-            d_vec = cam.get("down")
-            f_vec = cam.get("forward")
-            if not (isinstance(r_vec, list) and isinstance(d_vec, list) and isinstance(f_vec, list) and len(f_vec) == 3):
-                yr = math.radians(float(cam.get("yaw_deg") or 0.0))
-                pr = math.radians(float(cam.get("pitch_deg") or -18.0))
-                f_vec = [math.sin(yr) * math.cos(pr), math.cos(yr) * math.cos(pr), math.sin(pr)]
-                r_vec = [math.cos(yr), -math.sin(yr), 0.0]
-                d_vec = [
-                    f_vec[1] * r_vec[2] - f_vec[2] * r_vec[1],
-                    f_vec[2] * r_vec[0] - f_vec[0] * r_vec[2],
-                    f_vec[0] * r_vec[1] - f_vec[1] * r_vec[0],
-                ]
-            zc = dx * f_vec[0] + dy * f_vec[1] + dz * f_vec[2]
-            if zc <= 0.45:
-                continue
-            xc = dx * r_vec[0] + dy * r_vec[1] + dz * r_vec[2]
-            yc = dx * d_vec[0] + dy * d_vec[1] + dz * d_vec[2]
-            fx_n = float(cam.get("fx_norm") or 0.92674)
-            fy_n = float(cam.get("fy_norm") or 0.69505)
-            u = 0.5 + fx_n * (xc / zc)
-            v = 0.5 + fy_n * (yc / zc)
-            if not (0.08 <= u <= 0.92 and 0.08 <= v <= 0.92):
-                continue
-            abs_p = str(cam.get("abs_path") or "")
-            if not (abs_p and os.path.isfile(abs_p)):
-                continue
-            off_center = math.hypot(u - 0.5, v - 0.5)
-            # Optimal ground-level smartphone inspection distance is 2.2m .. 10.5m
-            dist_penalty = abs(dist_3d - 4.8) * 0.45 + (3.5 if dist_3d < 1.6 else 0.0)
-            cal_bonus = 0.0 if cam.get("calibrated", True) else 4.0
-            score = dist_penalty + off_center * 6.5 + cal_bonus
-            if best_cand is None or score < best_cand[0]:
-                best_cand = (score, dist_3d, u, v, cam, abs_p)
+        cands_list: List[Tuple[float, float, float, float, Dict[str, Any], str, float]] = []
+        frustum_tiers = (
+            (0.75, 28.0, 0.45, 0.08, 0.92),
+            (0.40, 90.0, 0.30, -0.05, 1.05),
+        )
+        for min_d, max_d, min_zc, uv_min, uv_max in frustum_tiers:
+            for cam in camera_catalog:
+                try:
+                    dx = target_e - float(cam["e"])
+                    dy = target_n - float(cam["n"])
+                    dz = target_h - float(cam["h"])
+                except Exception:
+                    continue
+                dist_3d = math.sqrt(dx * dx + dy * dy + dz * dz)
+                if dist_3d < min_d or dist_3d > max_d:
+                    continue
+                r_vec = cam.get("right")
+                d_vec = cam.get("down")
+                f_vec = cam.get("forward")
+                if not (isinstance(r_vec, list) and isinstance(d_vec, list) and isinstance(f_vec, list) and len(f_vec) == 3):
+                    yr = math.radians(float(cam.get("yaw_deg") or 0.0))
+                    pr = math.radians(float(cam.get("pitch_deg") or -18.0))
+                    f_vec = [math.sin(yr) * math.cos(pr), math.cos(yr) * math.cos(pr), math.sin(pr)]
+                    r_vec = [math.cos(yr), -math.sin(yr), 0.0]
+                    d_vec = [
+                        f_vec[1] * r_vec[2] - f_vec[2] * r_vec[1],
+                        f_vec[2] * r_vec[0] - f_vec[0] * r_vec[2],
+                        f_vec[0] * r_vec[1] - f_vec[1] * r_vec[0],
+                    ]
+                zc = dx * f_vec[0] + dy * f_vec[1] + dz * f_vec[2]
+                if zc <= min_zc:
+                    continue
+                xc = dx * r_vec[0] + dy * r_vec[1] + dz * r_vec[2]
+                yc = dx * d_vec[0] + dy * d_vec[1] + dz * d_vec[2]
+                fx_n = float(cam.get("fx_norm") or 0.92674)
+                fy_n = float(cam.get("fy_norm") or 0.69505)
+                u = 0.5 + fx_n * (xc / zc)
+                v = 0.5 + fy_n * (yc / zc)
+                if not (uv_min <= u <= uv_max and uv_min <= v <= uv_max):
+                    continue
+                abs_p = str(cam.get("abs_path") or "")
+                if not (abs_p and os.path.isfile(abs_p)):
+                    continue
+                u_c = float(np.clip(u, 0.01, 0.99))
+                v_c = float(np.clip(v, 0.01, 0.99))
+                off_center = math.hypot(u - 0.5, v - 0.5)
+                # Optimal ground-level smartphone inspection distance is 2.2m .. 10.5m
+                dist_penalty = abs(dist_3d - 4.8) * 0.45 + (3.5 if dist_3d < 1.6 else 0.0)
+                cal_bonus = 0.0 if cam.get("calibrated", True) else 4.0
+                score = dist_penalty + off_center * 6.5 + cal_bonus
+                az_rad = math.atan2(dy, dx)
+                cands_list.append((score, dist_3d, u_c, v_c, cam, abs_p, az_rad))
+            if cands_list:
+                break
 
-        if best_cand is None:
+        if not cands_list:
             return None
 
-        _, dist_3d, u, v, cam, abs_p = best_cand
-        try:
-            im = photo_cache.get(abs_p) if isinstance(photo_cache, dict) else None
-            if im is None:
-                with Image.open(abs_p) as raw_im:
-                    im = ImageOps.exif_transpose(raw_im).convert("RGB")
+        cands_list.sort(key=lambda x: x[0])
+        best_cand = cands_list[0]
+        _, dist_3d, u, v, cam, abs_p, az0 = best_cand
+
+        second_cand = None
+        cam0_e, cam0_n, cam0_h = float(cam.get("e") or 0.0), float(cam.get("n") or 0.0), float(cam.get("h") or 0.0)
+        for cand_i in cands_list[1:30]:
+            if cand_i[5] == abs_p:
+                continue
+            d_az = abs(math.atan2(math.sin(cand_i[6] - az0), math.cos(cand_i[6] - az0)))
+            ci_cam = cand_i[4]
+            baseline_m = math.sqrt(
+                (float(ci_cam.get("e") or 0.0) - cam0_e) ** 2
+                + (float(ci_cam.get("n") or 0.0) - cam0_n) ** 2
+                + (float(ci_cam.get("h") or 0.0) - cam0_h) ** 2
+            )
+            if d_az >= 0.32 or baseline_m >= 1.8:
+                second_cand = cand_i
+                break
+
+        def _load_exif_rgb(p_str: str) -> Any:
+            im_c = photo_cache.get(p_str) if isinstance(photo_cache, dict) else None
+            if im_c is None:
+                with Image.open(p_str) as raw_im:
+                    im_c = ImageOps.exif_transpose(raw_im).convert("RGB")
                 if isinstance(photo_cache, dict):
-                    if len(photo_cache) >= 28:
+                    if len(photo_cache) >= 32:
                         photo_cache.pop(next(iter(photo_cache)), None)
-                    photo_cache[abs_p] = im
+                    photo_cache[p_str] = im_c
+            return im_c
+
+        try:
+            im = _load_exif_rgb(abs_p)
             w_im, h_im = im.size
             cx = int(np.clip(u * w_im, 0, w_im - 1))
             cy = int(np.clip(v * h_im, 0, h_im - 1))
-            half_box = int(max(120, min(w_im, h_im) * 0.30))
+            box_frac = float(np.clip(2.6 / max(dist_3d, 2.0), 0.18, 0.42))
+            half_box = int(max(140, min(w_im, h_im) * box_frac))
             x0 = max(0, min(w_im - 2 * half_box, cx - half_box))
             y0 = max(0, min(h_im - 2 * half_box, cy - half_box))
             x1 = min(w_im, x0 + 2 * half_box)
             y1 = min(h_im, y0 + 2 * half_box)
-            tile_sz = 240
-            crop = im.crop((x0, y0, x1, y1)).resize((tile_sz, tile_sz), Image.Resampling.BILINEAR)
-            rx = int(np.clip((cx - x0) * float(tile_sz) / max(1, x1 - x0), 14, tile_sz - 14))
-            ry = int(np.clip((cy - y0) * float(tile_sz) / max(1, y1 - y0), 14, tile_sz - 14))
+            tile_sz = 384
+            crop = im.crop((x0, y0, x1, y1)).resize((tile_sz, tile_sz), Image.Resampling.LANCZOS)
+            rx = int(np.clip((cx - x0) * float(tile_sz) / max(1, x1 - x0), 22, tile_sz - 22))
+            ry = int(np.clip((cy - y0) * float(tile_sz) / max(1, y1 - y0), 22, tile_sz - 22))
             cdraw = ImageDraw.Draw(crop)
-            cdraw.ellipse([rx - 15, ry - 15, rx + 15, ry + 15], outline=color_rgb, width=3)
-            cdraw.line([rx - 22, ry, rx - 7, ry], fill=color_rgb, width=2)
-            cdraw.line([rx + 7, ry, rx + 22, ry], fill=color_rgb, width=2)
-            cdraw.line([rx, ry - 22, rx, ry - 7], fill=color_rgb, width=2)
-            cdraw.line([rx, ry + 7, rx, ry + 22], fill=color_rgb, width=2)
-            hdr = f"{tag_label} ({dist_3d:.1f}m)"
-            cdraw.rectangle([4, 4, 12 + len(hdr) * 7, 22], fill=(15, 23, 42))
-            cdraw.text((8, 6), hdr, fill=color_rgb)
+            # Outer target ring & ticks leaving the inner 44x44px trunk/object completely unobstructed
+            cdraw.ellipse([rx - 22, ry - 22, rx + 22, ry + 22], outline=color_rgb, width=3)
+            cdraw.line([rx - 34, ry, rx - 22, ry], fill=color_rgb, width=2)
+            cdraw.line([rx + 22, ry, rx + 34, ry], fill=color_rgb, width=2)
+            cdraw.line([rx, ry - 34, rx, ry - 22], fill=color_rgb, width=2)
+            cdraw.line([rx, ry + 22, rx, ry + 34], fill=color_rgb, width=2)
+
+            angles_cnt = 1
+            second_fname = None
+            if second_cand is not None:
+                try:
+                    _, dist2, u2, v2, cam2, abs_p2, _ = second_cand
+                    im2 = _load_exif_rgb(abs_p2)
+                    w2, h2 = im2.size
+                    cx2 = int(np.clip(u2 * w2, 0, w2 - 1))
+                    cy2 = int(np.clip(v2 * h2, 0, h2 - 1))
+                    bf2 = float(np.clip(2.6 / max(dist2, 2.0), 0.18, 0.42))
+                    hb2 = int(max(120, min(w2, h2) * bf2))
+                    sx0 = max(0, min(w2 - 2 * hb2, cx2 - hb2))
+                    sy0 = max(0, min(h2 - 2 * hb2, cy2 - hb2))
+                    sx1 = min(w2, sx0 + 2 * hb2)
+                    sy1 = min(h2, sy0 + 2 * hb2)
+                    pip_sz = 136
+                    pip_im = im2.crop((sx0, sy0, sx1, sy1)).resize((pip_sz, pip_sz), Image.Resampling.LANCZOS)
+                    prx = int(np.clip((cx2 - sx0) * float(pip_sz) / max(1, sx1 - sx0), 12, pip_sz - 12))
+                    pry = int(np.clip((cy2 - sy0) * float(pip_sz) / max(1, sy1 - sy0), 12, pip_sz - 12))
+                    pdraw = ImageDraw.Draw(pip_im)
+                    pdraw.ellipse([prx - 11, pry - 11, prx + 11, pry + 11], outline=color_rgb, width=2)
+                    pdraw.rectangle([0, 0, pip_sz - 1, 16], fill=(15, 23, 42))
+                    pdraw.text((4, 2), f"View 2 ({dist2:.1f}m)", fill=color_rgb)
+                    pip_x = 4 if (rx > 210 and ry > 210) else (tile_sz - pip_sz - 4)
+                    pip_y = tile_sz - pip_sz - 4
+                    crop.paste(pip_im, (pip_x, pip_y))
+                    cdraw.rectangle([pip_x, pip_y, pip_x + pip_sz, pip_y + pip_sz], outline=(248, 250, 252), width=2)
+                    angles_cnt = 2
+                    second_fname = str(cam2.get("filename") or os.path.basename(abs_p2))
+                except Exception:
+                    pass
+
+            hdr = f"{tag_label} ({dist_3d:.1f}m | {angles_cnt}v)"
+            cdraw.rectangle([4, 4, 14 + len(hdr) * 7, 24], fill=(15, 23, 42))
+            cdraw.text((8, 7), hdr, fill=color_rgb)
             return {
                 "crop_img": crop,
                 "filename": str(cam.get("filename") or os.path.basename(abs_p)),
                 "u": round(float(u), 4),
                 "v": round(float(v), 4),
                 "distance_m": round(float(dist_3d), 2),
+                "angles_count": angles_cnt,
+                "second_filename": second_fname,
             }
         except Exception:
             return None
@@ -998,9 +1075,10 @@ class CategorizationIoMixin:
         """
         Stage 3: Gemini Multimodal Vision AI Verification & Ground-Level Mobile Photo Referee.
         Projects ALL 3D candidate detections (every prospective Tree T1..TN + Roads, Water Voids, Walls, Stockpiles)
-        onto calibrated PIX4Dcatch mobile phone photos to build multi-crop Ground-Level Contact Sheet(s) alongside
-        the Top-Down True Orthophoto, calls Gemini Vision (`gemini-2.5-flash` / `gemini-3.6-flash`), and
-        returns verified photo citations + bilingual assessment + false-positive pruning tags.
+        onto calibrated PIX4Dcatch mobile phone photos at 384x384 resolution (with up to 2 camera angles per candidate),
+        evaluates candidate trees in small high-resolution batches (<= 10 per call, 60s timeout) with explicit
+        per-candidate structured verdicts (`{"tag", "is_real_tree", "object_seen"}`), and generates the bilingual
+        engineering assessment without any fake `ai_verified: True` fallback.
         """
         import base64
         import hashlib
@@ -1022,7 +1100,8 @@ class CategorizationIoMixin:
 
         # Project ALL candidate 3D coordinates (every prospective tree + key regions) onto calibrated mobile phone photos
         photo_matches: Dict[str, Dict[str, Any]] = {}
-        crop_tiles: List[Tuple[str, Any]] = []
+        tree_candidates_with_crops: List[Tuple[Dict[str, Any], Any]] = []
+        context_crop_tiles: List[Tuple[str, Any]] = []
         photo_cache: Dict[str, Any] = {}
         if camera_catalog and Image is not None:
             for c_info in candidates_info[:125]:
@@ -1041,45 +1120,55 @@ class CategorizationIoMixin:
                         "verified_photo": crop_res["filename"],
                         "verified_photo_uv": [crop_res["u"], crop_res["v"]],
                         "verified_photo_dist_m": crop_res["distance_m"],
+                        "verified_photo_angles": int(crop_res.get("angles_count") or 1),
+                        "second_verified_photo": crop_res.get("second_filename"),
                         "ai_photo_verified": True,
                     }
-                    crop_tiles.append((tag, crop_res["crop_img"]))
+                    if c_info.get("category") == "trees" or tag.startswith("T"):
+                        tree_candidates_with_crops.append((c_info, crop_res["crop_img"]))
+                    else:
+                        context_crop_tiles.append((tag, crop_res["crop_img"]))
         photo_cache.clear()
 
         n_photo_verified = len(photo_matches)
-        if water_cnt > 0:
-            default_zh = (
-                f"【AI 3D 幾何與地面實景照片多模態判釋】本測區（{scan_name}）經 TWD97 局部地形視窗裸地 DTM 分離、3D 樹幹圓柱斷面驗證（No Trunk = No Tree）與 {n_photo_verified} 張行動裝置 RTK 實景照片投影驗證："
-                f"共識別出道路鋪面 {roads_cnt} 處（平面面積 {road_area:,.1f} m²）、"
-                f"具實體樹幹之喬木 {trees_cnt} 株（1.3m 胸高斷面 Pratt 圓擬合平均胸徑 DBH {mean_dbh:.1f} cm）、"
-                f"水域與未建模水面空洞 {water_cnt} 處（面積 {water_area:,.1f} m²，靜水岸際基準高程 TWVD2001 +{water_lvl:.2f} m）、"
-                f"以及垂直擋土牆/護岸結構 {walls_cnt} 段（3D 垂直立面面積 {walls_area:,.1f} m²）。"
-            )
-            default_en = (
-                f"[Gemini Vision + 3D Trunk Cylinder & Ground Photo Referee] Multi-scale local DTM, strict 3D trunk cylinder slicing ('No Trunk = No Tree'), and {n_photo_verified} calibrated mobile phone photo projection(s) on '{scan_name}' "
-                f"verified {roads_cnt} paved road corridor(s) ({road_area:,.1f} m² planar), "
-                f"{trees_cnt} trunk-verified tree(s) (mean 1.3m breast-height DBH {mean_dbh:.1f} cm via anti-webbing Pratt circle fit), "
-                f"{water_cnt} water basin / un-modelled canal void zone(s) ({water_area:,.1f} m² at hydrostatic shoreline TWVD2001 +{water_lvl:.2f} m), "
-                f"and {walls_cnt} retaining/structural wall segment(s) ({walls_area:,.1f} m² true 3D vertical face area)."
-            )
-        else:
-            default_zh = (
-                f"【AI 3D 幾何與地面實景照片多模態判釋】本測區（{scan_name}）經 TWD97 局部地形視窗裸地 DTM 分離、3D 樹幹圓柱斷面驗證（No Trunk = No Tree）與 {n_photo_verified} 張行動裝置 RTK 實景照片投影驗證："
-                f"共識別出道路與人行步道鋪面 {roads_cnt} 處（平面面積 {road_area:,.1f} m²，已精確扣除草坪與圓形樹穴範圍）、"
-                f"具實體樹幹之公園與行道喬木 {trees_cnt} 株（1.3m 胸高斷面 Pratt 圓擬合平均胸徑 DBH {mean_dbh:.1f} cm）、"
-                f"場區內無水域或河道空洞（0 處），以及垂直擋土牆與建築結構立面 {walls_cnt} 段（3D 垂直立面面積 {walls_area:,.1f} m²）。"
-            )
-            default_en = (
-                f"[Gemini Vision + 3D Trunk Cylinder & Ground Photo Referee] Multi-scale local DTM, strict 3D trunk cylinder slicing ('No Trunk = No Tree'), and {n_photo_verified} calibrated mobile phone photo projection(s) on '{scan_name}' "
-                f"verified {roads_cnt} paved road & walkway corridor(s) ({road_area:,.1f} m² planar, excluding turf lawns & tree planters), "
-                f"{trees_cnt} trunk-verified urban & park tree(s) (mean 1.3m breast-height DBH {mean_dbh:.1f} cm via anti-webbing Pratt circle fit), "
-                f"0 water bodies (dry urban/campus/park terrain), and {walls_cnt} retaining/structural wall segment(s) ({walls_area:,.1f} m² true 3D vertical face area)."
-            )
+
+        def _build_default_summaries(t_cnt: int, m_dbh: float) -> Tuple[str, str]:
+            if water_cnt > 0:
+                d_zh = (
+                    f"【AI 3D 幾何與地面實景照片多模態判釋】本測區（{scan_name}）經 TWD97 局部地形視窗裸地 DTM 分離、3D 樹幹圓柱斷面驗證（No Trunk = No Tree）與 {n_photo_verified} 張行動裝置 RTK 實景照片投影驗證："
+                    f"共識別出道路鋪面 {roads_cnt} 處（平面面積 {road_area:,.1f} m²）、"
+                    f"具實體樹幹之喬木 {t_cnt} 株（1.3m 胸高斷面 Pratt 圓擬合平均胸徑 DBH {m_dbh:.1f} cm）、"
+                    f"水域與未建模水面空洞 {water_cnt} 處（面積 {water_area:,.1f} m²，靜水岸際基準高程 TWVD2001 +{water_lvl:.2f} m）、"
+                    f"以及垂直擋土牆/護岸結構 {walls_cnt} 段（3D 垂直立面面積 {walls_area:,.1f} m²）。"
+                )
+                d_en = (
+                    f"[Gemini Vision + 3D Trunk Cylinder & Ground Photo Referee] Multi-scale local DTM, strict 3D trunk cylinder slicing ('No Trunk = No Tree'), and {n_photo_verified} calibrated mobile phone photo projection(s) on '{scan_name}' "
+                    f"verified {roads_cnt} paved road corridor(s) ({road_area:,.1f} m² planar), "
+                    f"{t_cnt} trunk-verified tree(s) (mean 1.3m breast-height DBH {m_dbh:.1f} cm via anti-webbing Pratt circle fit), "
+                    f"{water_cnt} water basin / un-modelled canal void zone(s) ({water_area:,.1f} m² at hydrostatic shoreline TWVD2001 +{water_lvl:.2f} m), "
+                    f"and {walls_cnt} retaining/structural wall segment(s) ({walls_area:,.1f} m² true 3D vertical face area)."
+                )
+            else:
+                d_zh = (
+                    f"【AI 3D 幾何與地面實景照片多模態判釋】本測區（{scan_name}）經 TWD97 局部地形視窗裸地 DTM 分離、3D 樹幹圓柱斷面驗證（No Trunk = No Tree）與 {n_photo_verified} 張行動裝置 RTK 實景照片投影驗證："
+                    f"共識別出道路與人行步道鋪面 {roads_cnt} 處（平面面積 {road_area:,.1f} m²，已精確扣除草坪與圓形樹穴範圍）、"
+                    f"具實體樹幹之公園與行道喬木 {t_cnt} 株（1.3m 胸高斷面 Pratt 圓擬合平均胸徑 DBH {m_dbh:.1f} cm）、"
+                    f"場區內無水域或河道空洞（0 處），以及垂直擋土牆與建築結構立面 {walls_cnt} 段（3D 垂直立面面積 {walls_area:,.1f} m²）。"
+                )
+                d_en = (
+                    f"[Gemini Vision + 3D Trunk Cylinder & Ground Photo Referee] Multi-scale local DTM, strict 3D trunk cylinder slicing ('No Trunk = No Tree'), and {n_photo_verified} calibrated mobile phone photo projection(s) on '{scan_name}' "
+                    f"verified {roads_cnt} paved road & walkway corridor(s) ({road_area:,.1f} m² planar, excluding turf lawns & tree planters), "
+                    f"{t_cnt} trunk-verified urban & park tree(s) (mean 1.3m breast-height DBH {m_dbh:.1f} cm via anti-webbing Pratt circle fit), "
+                    f"0 water bodies (dry urban/campus/park terrain), and {walls_cnt} retaining/structural wall segment(s) ({walls_area:,.1f} m² true 3D vertical face area)."
+                )
+            return d_zh, d_en
+
+        default_zh, default_en = _build_default_summaries(trees_cnt, mean_dbh)
 
         # Check persistent AI Vision referee cache first for deterministic repeat/merge speed
         sig_payload = json.dumps(
             {
-                "v": "no_trunk_no_tree_v2",
+                "v": "per_tree_384_dual_angle_v3",
                 "roads_cnt": roads_cnt,
                 "trees_cnt": trees_cnt,
                 "water_cnt": water_cnt,
@@ -1100,9 +1189,10 @@ class CategorizationIoMixin:
                     cached_vision_map = json.load(vf)
                 if isinstance(cached_vision_map, dict) and sig_hash in cached_vision_map:
                     cached_entry = dict(cached_vision_map[sig_hash])
-                    cached_entry["photo_matches"] = photo_matches
-                    cached_entry["photo_verified_count"] = n_photo_verified
-                    return cached_entry
+                    if cached_entry.get("ai_verified") is True:
+                        cached_entry["photo_matches"] = photo_matches
+                        cached_entry["photo_verified_count"] = n_photo_verified
+                        return cached_entry
             except Exception:
                 cached_vision_map = {}
 
@@ -1110,28 +1200,238 @@ class CategorizationIoMixin:
         if not api_key or Image is None:
             return {
                 "ai_verified": False,
-                "ai_model": "3D Geometry + Ground Photo Projection Engine",
+                "ai_model": "3D Geometry + Ground Photo Projection Engine (No API Key)",
                 "ai_summary_zh": default_zh,
                 "ai_summary_en": default_en,
                 "label_overrides": {},
                 "photo_matches": photo_matches,
                 "photo_verified_count": n_photo_verified,
                 "rejected_false_positive_tags": [],
+                "per_tree_verdicts": {},
             }
 
+        model_display_map = {
+            "gemini-3.5-flash-lite": "Gemini 3.5 Flash Multimodal + Ground Photo Referee",
+            "gemini-3-flash-preview": "Gemini 3.0 Flash Multimodal + Ground Photo Referee",
+            "gemini-3.1-flash-lite": "Gemini 3.1 Flash Multimodal + Ground Photo Referee",
+            "gemini-2.5-flash": "Gemini 2.5 Flash Multimodal + Ground Photo Referee",
+            "gemini-3.6-flash": "Gemini 3.6 Flash Multimodal + Ground Photo Referee",
+            "gemini-3.5-flash": "Gemini 3.5 Flash Multimodal + Ground Photo Referee",
+        }
+
+        def _call_gemini_json(req_payload: Dict[str, Any], timeout_s: float = 60.0) -> Tuple[Optional[Dict[str, Any]], str]:
+            raw_bytes = json.dumps(req_payload).encode("utf-8")
+            for m_id in (
+                "gemini-3.5-flash-lite",
+                "gemini-3-flash-preview",
+                "gemini-3.1-flash-lite",
+                "gemini-2.5-flash",
+                "gemini-3.6-flash",
+                "gemini-3.5-flash",
+            ):
+                url = f"https://generativelanguage.googleapis.com/v1beta/models/{m_id}:generateContent"
+                req = urllib.request.Request(
+                    url,
+                    data=raw_bytes,
+                    headers={
+                        "Content-Type": "application/json",
+                        "x-goog-api-key": api_key,
+                    },
+                    method="POST",
+                )
+                try:
+                    with urllib.request.urlopen(req, timeout=timeout_s) as resp:
+                        resp_obj = json.loads(resp.read().decode("utf-8"))
+                    cands = resp_obj.get("candidates") or []
+                    if not cands:
+                        continue
+                    parts_list = (cands[0].get("content") or {}).get("parts") or []
+                    for part_obj in reversed(parts_list):
+                        if part_obj.get("thought"):
+                            continue
+                        cand_txt = (part_obj.get("text") or "").strip()
+                        if not cand_txt:
+                            continue
+                        try:
+                            parsed = json.loads(cand_txt)
+                            if isinstance(parsed, dict):
+                                return parsed, m_id
+                        except Exception:
+                            continue
+                except Exception:
+                    continue
+            return None, ""
+
         try:
-            # Image 1: Annotated Top-Down True Orthophoto (flipped vertically so North is UP)
+            coord_verdict_cache: Dict[str, Dict[str, Any]] = {}
+            if isinstance(cached_vision_map.get("_tree_verdicts_by_coord_v3"), dict):
+                coord_verdict_cache = dict(cached_vision_map["_tree_verdicts_by_coord_v3"])
+
+            def _lookup_coord_cache(e_val: float, n_val: float) -> Optional[Dict[str, Any]]:
+                ck_exact = f"{round(e_val, 1):.1f}_{round(n_val, 1):.1f}"
+                if ck_exact in coord_verdict_cache:
+                    return coord_verdict_cache[ck_exact]
+                for ck, cv in coord_verdict_cache.items():
+                    try:
+                        ce_k, cn_k = (float(x) for x in ck.split("_", 1))
+                        if math.hypot(e_val - ce_k, n_val - cn_k) <= 0.45:
+                            return cv
+                    except Exception:
+                        continue
+                return None
+
+            per_tree_verdicts: Dict[str, Dict[str, Any]] = {}
+            uncached_tree_items: List[Tuple[Dict[str, Any], Any]] = []
+            for c_info, crop_im in tree_candidates_with_crops:
+                t_tag = str(c_info.get("tag") or "")
+                ce_i = float(c_info.get("e") or 0.0)
+                cn_i = float(c_info.get("n") or 0.0)
+                cached_v = _lookup_coord_cache(ce_i, cn_i)
+                if isinstance(cached_v, dict) and "is_real_tree" in cached_v:
+                    per_tree_verdicts[t_tag] = {
+                        "tag": t_tag,
+                        "is_real_tree": bool(cached_v.get("is_real_tree", True)),
+                        "object_seen": str(cached_v.get("object_seen") or "Verified tree trunk"),
+                        "ai_vision_verified": True,
+                    }
+                else:
+                    uncached_tree_items.append((c_info, crop_im))
+
+            active_model_id = "gemini-2.5-flash"
+            all_tree_batches_ok = True
+            tile_sz = 384
+            batch_sz = 10
+
+            for b_start in range(0, len(uncached_tree_items), batch_sz):
+                sub_items = uncached_tree_items[b_start : b_start + batch_sz]
+                n_tiles = len(sub_items)
+                n_cols = min(5, n_tiles)
+                n_rows = int(math.ceil(n_tiles / float(n_cols)))
+                sheet = Image.new("RGB", (n_cols * tile_sz, n_rows * tile_sz), (15, 23, 42))
+                batch_tags: List[str] = []
+                for idx_t, (c_info, tile_im) in enumerate(sub_items):
+                    r_i = idx_t // n_cols
+                    c_i = idx_t % n_cols
+                    sheet.paste(tile_im, (c_i * tile_sz, r_i * tile_sz))
+                    batch_tags.append(str(c_info.get("tag") or ""))
+
+                sbuf = io.BytesIO()
+                sheet.save(sbuf, format="JPEG", quality=86)
+                sheet_b64 = base64.b64encode(sbuf.getvalue()).decode("ascii")
+
+                batch_prompt = (
+                    f"You are an expert Taiwan Geomatics & Forestry AI Referee inspecting {n_tiles} high-resolution (384x384) calibrated ground-level mobile phone photo crops from scan '{scan_name}'. "
+                    f"Candidate tags in this batch (in reading order left-to-right, top-to-bottom): {batch_tags}. "
+                    "Each tile shows the projected 1.3m breast-height location of a 3D cylindrical stem candidate inside the green target ring/crosshair, plus a 2nd camera angle inset ('View 2') in the corner when available. "
+                    "For EVERY tag in this batch, inspect what physical object is at the green target ring (and in View 2) and return a structured verdict `{tag, is_real_tree, object_seen}`:\n"
+                    "- Set `is_real_tree: true` for any genuine living tree, sapling, palm, bamboo/woody tree stem, street tree, or forest/park tree (KEEP genuine trees even if viewed through foreground leaves/branches, in shadow, or at a distance along a hillside/park).\n"
+                    "- Set `is_real_tree: false` ONLY when the crosshair clearly points to a non-tree man-made false positive with no real tree trunk there: e.g., a building concrete column, porch/arcade pillar, building wall/window/door/facade, corrugated sheet-metal construction fence, street lamp post, utility/traffic pole, basketball hoop post, pavilion pillar, water tank, or vehicle.\n"
+                    "- In `object_seen`, write a concise 3-8 word description of the exact physical object visible at the reticle (e.g. 'Broadleaf park tree trunk and canopy', 'Camphor street tree trunk', 'Concrete building arcade column', 'Metal street lamp pole')."
+                )
+                batch_req = {
+                    "contents": [
+                        {
+                            "parts": [
+                                {"inline_data": {"mime_type": "image/jpeg", "data": sheet_b64}},
+                                {"text": batch_prompt},
+                            ]
+                        }
+                    ],
+                    "generationConfig": {
+                        "temperature": 0.0,
+                        "responseMimeType": "application/json",
+                        "responseSchema": {
+                            "type": "OBJECT",
+                            "properties": {
+                                "verdicts": {
+                                    "type": "ARRAY",
+                                    "items": {
+                                        "type": "OBJECT",
+                                        "properties": {
+                                            "tag": {"type": "STRING"},
+                                            "is_real_tree": {"type": "BOOLEAN"},
+                                            "object_seen": {"type": "STRING"},
+                                        },
+                                        "required": ["tag", "is_real_tree", "object_seen"],
+                                    },
+                                }
+                            },
+                            "required": ["verdicts"],
+                        },
+                    },
+                }
+                parsed_b, used_m = _call_gemini_json(batch_req, timeout_s=60.0)
+                if parsed_b is None:
+                    all_tree_batches_ok = False
+                    break
+                if used_m:
+                    active_model_id = used_m
+                verdicts_ByTag = {
+                    str(v.get("tag") or "").strip(): v
+                    for v in (parsed_b.get("verdicts") or [])
+                    if isinstance(v, dict) and str(v.get("tag") or "").strip()
+                }
+                for c_info, _ in sub_items:
+                    t_tag = str(c_info.get("tag") or "").strip()
+                    v_obj = verdicts_ByTag.get(t_tag)
+                    if v_obj is None:
+                        all_tree_batches_ok = False
+                        continue
+                    is_real = bool(v_obj.get("is_real_tree", True))
+                    obj_s = str(v_obj.get("object_seen") or ("Verified tree trunk" if is_real else "Non-tree structure")).strip()
+                    v_entry = {
+                        "tag": t_tag,
+                        "is_real_tree": is_real,
+                        "object_seen": obj_s,
+                        "ai_vision_verified": True,
+                    }
+                    per_tree_verdicts[t_tag] = v_entry
+                    ce_i = float(c_info.get("e") or 0.0)
+                    cn_i = float(c_info.get("n") or 0.0)
+                    ck = f"{round(ce_i, 1):.1f}_{round(cn_i, 1):.1f}"
+                    coord_verdict_cache[ck] = {
+                        "is_real_tree": is_real,
+                        "object_seen": obj_s,
+                    }
+
+            if tree_candidates_with_crops and not all_tree_batches_ok:
+                return {
+                    "ai_verified": False,
+                    "ai_model": "3D Geometry + Ground Photo Projection Engine (AI Batch Timeout)",
+                    "ai_summary_zh": default_zh,
+                    "ai_summary_en": default_en,
+                    "road_surface_note": "",
+                    "road_corridor_subtype": "paved_asphalt_concrete",
+                    "road_corridor_label_zh": "道路鋪面",
+                    "road_corridor_label_en": "Paved Road Corridor",
+                    "water_body_label_zh": "河道水域空洞" if water_cnt > 0 else "場區無水域",
+                    "rejected_false_positive_tags": [],
+                    "per_tree_verdicts": per_tree_verdicts,
+                    "photo_matches": photo_matches,
+                    "photo_verified_count": n_photo_verified,
+                }
+
+            rejected_tree_tags = [
+                t_tag for t_tag, v_info in per_tree_verdicts.items() if not bool(v_info.get("is_real_tree", True))
+            ]
+            surviving_trees_cnt = max(0, int(trees_cnt) - len(rejected_tree_tags))
+            default_zh, default_en = _build_default_summaries(surviving_trees_cnt, mean_dbh)
+
+            # Stage 3B: Site Overview & Semantic Road/Water Subtype Classification with post-referee tree count
             ny, nx, _ = ortho_rgb_u8.shape
             ortho_north_up = np.flipud(ortho_rgb_u8)
             pil_img = Image.fromarray(ortho_north_up, mode="RGB")
             draw = ImageDraw.Draw(pil_img)
 
+            rej_set = set(rejected_tree_tags)
             for c_info in candidates_info[:60]:
+                tag = str(c_info.get("tag", ""))
+                if tag in rej_set:
+                    continue
                 ce_i, cn_i = c_info.get("e", 0.0), c_info.get("n", 0.0)
                 px = int(np.clip((ce_i - e_min) / res, 4, nx - 5))
                 py = int(np.clip((ny - 1) - (cn_i - n_min) / res, 4, ny - 5))
                 col = c_info.get("color", (255, 215, 0))
-                tag = str(c_info.get("tag", ""))
                 draw.ellipse([px - 6, py - 6, px + 6, py + 6], outline=col, width=2)
                 draw.rectangle([px + 7, py - 7, px + 7 + max(20, len(tag) * 6), py + 6], fill=(15, 23, 42))
                 draw.text((px + 9, py - 6), tag, fill=col)
@@ -1141,75 +1441,66 @@ class CategorizationIoMixin:
             pil_img.save(buf, format="JPEG", quality=82)
             ortho_b64 = base64.b64encode(buf.getvalue()).decode("ascii")
 
-            parts: List[Dict[str, Any]] = [
-                {
-                    "inline_data": {
-                        "mime_type": "image/jpeg",
-                        "data": ortho_b64,
-                    }
-                }
+            overview_parts: List[Dict[str, Any]] = [
+                {"inline_data": {"mime_type": "image/jpeg", "data": ortho_b64}}
             ]
+            sample_context_tiles = list(context_crop_tiles[:6])
+            for c_info, crop_im in tree_candidates_with_crops:
+                if str(c_info.get("tag") or "") not in rej_set and len(sample_context_tiles) < 8:
+                    sample_context_tiles.append((str(c_info.get("tag") or ""), crop_im))
+            if sample_context_tiles:
+                n_ct = len(sample_context_tiles)
+                nc_c = min(4, n_ct)
+                nr_c = int(math.ceil(n_ct / float(nc_c)))
+                csheet = Image.new("RGB", (nc_c * tile_sz, nr_c * tile_sz), (15, 23, 42))
+                for idx_c, (_, cim) in enumerate(sample_context_tiles):
+                    csheet.paste(cim, ((idx_c % nc_c) * tile_sz, (idx_c // nc_c) * tile_sz))
+                cbuf = io.BytesIO()
+                csheet.save(cbuf, format="JPEG", quality=82)
+                overview_parts.append(
+                    {"inline_data": {"mime_type": "image/jpeg", "data": base64.b64encode(cbuf.getvalue()).decode("ascii")}}
+                )
 
-            # Images 2..K: Ground-Level Mobile Phone Photo Contact Sheets covering EVERY prospective tree (up to 25 240x240 crops per 5x5 sheet)
-            if crop_tiles:
-                tile_sz = 240
-                batch_sz = 25
-                for b_start in range(0, min(len(crop_tiles), 125), batch_sz):
-                    sub_tiles = crop_tiles[b_start : b_start + batch_sz]
-                    n_tiles = len(sub_tiles)
-                    n_cols = min(5, n_tiles)
-                    n_rows = int(math.ceil(n_tiles / float(n_cols)))
-                    sheet = Image.new("RGB", (n_cols * tile_sz, n_rows * tile_sz), (15, 23, 42))
-                    for idx_t, (_, tile_im) in enumerate(sub_tiles):
-                        r_i = idx_t // n_cols
-                        c_i = idx_t % n_cols
-                        sheet.paste(tile_im, (c_i * tile_sz, r_i * tile_sz))
-                    sbuf = io.BytesIO()
-                    sheet.save(sbuf, format="JPEG", quality=78)
-                    parts.append(
-                        {
-                            "inline_data": {
-                                "mime_type": "image/jpeg",
-                                "data": base64.b64encode(sbuf.getvalue()).decode("ascii"),
-                            }
-                        }
-                    )
-
-            ambiguous_tags = [str(c.get("tag")) for c in candidates_info if c.get("ambiguous") and c.get("tag")]
+            non_tree_ambig = [
+                str(c.get("tag"))
+                for c in candidates_info
+                if c.get("ambiguous") and c.get("tag") and not str(c.get("tag")).startswith("T")
+            ]
+            rej_note = (
+                f"Per-tree Gemini Vision inspection verified {surviving_trees_cnt} genuine trees and rejected {len(rejected_tree_tags)} non-tree false positives ({rejected_tree_tags}). "
+                if rejected_tree_tags
+                else f"Per-tree Gemini Vision inspection verified all {surviving_trees_cnt} genuine trees. "
+            )
             if water_cnt > 0:
                 prompt_text = (
                     "You are an expert Taiwan Civil & Geomatics Engineering AI inspecting a ground-level mobile phone 3D photogrammetry/LiDAR scan "
                     f"('{scan_name}', CRS: TWD97 EPSG:3826 + TWVD2001). "
-                    "Image 1 is the Top-Down True Orthophoto with labeled candidate regions (R=Road, W=Water/Un-modelled Water Void, WL=Retaining Wall, T=Tree, S=Stockpile). "
-                    "Subsequent image(s) are Ground-Level Contact Sheet(s) of calibrated smartphone photos showing EVERY prospective tree (T1..TN) at its 1.3m trunk breast-height crosshair reticle. "
-                    f"3D Geometry Metrics: Roads={roads_cnt} ({road_area:.1f} m2), Prospective Trunk-Verified Trees={trees_cnt} (Mean DBH={mean_dbh:.1f} cm at 1.3m breast height), "
+                    "Image 1 is the Top-Down True Orthophoto with labeled regions (R=Road, W=Water/Un-modelled Water Void, WL=Retaining Wall, T=Verified Tree, S=Stockpile). "
+                    f"3D Geometry & Vision Verified Metrics: Roads={roads_cnt} ({road_area:.1f} m2), Vision-Verified Trees={surviving_trees_cnt} (Mean DBH={mean_dbh:.1f} cm at 1.3m breast height), "
                     f"Water Bodies/Un-modelled Canal Voids={water_cnt} ({water_area:.1f} m2, shoreline TWVD2001 +{water_lvl:.2f}m), "
                     f"Retaining/Building Walls={walls_cnt} (3D vertical area={walls_area:.1f} m2). "
-                    f"Prospective candidate tags to verify in the Contact Sheet(s): {ambiguous_tags}. "
-                    "Enforce the strict 'No Trunk = No Tree' principle: KEEP all genuine trees (even if foliage or a nearby branch partially obscures the trunk from that specific camera angle), "
-                    "and ONLY list a tag in `rejected_false_positive_tags` if the crosshair clearly points to a non-tree false positive (such as a metal lamp post, utility pole, traffic sign, concrete column, building wall, vehicle, or empty sky/leaves in the air with no tree trunk beneath). "
-                    "Provide a concise, professional Bilingual Engineering Assessment in Traditional Chinese (ai_summary_zh, 2-3 sentences) "
+                    + rej_note
+                    + f"Non-tree ambiguous tags to check: {non_tree_ambig}. "
+                    "Provide a concise, professional Bilingual Engineering Assessment in Traditional Chinese (ai_summary_zh, 2-3 sentences citing the exact verified counts) "
                     "and English (ai_summary_en, 2-3 sentences), classify `road_corridor_subtype`, and provide semantic labels."
                 )
             else:
                 prompt_text = (
                     "You are an expert Taiwan Civil & Geomatics Engineering AI inspecting an urban/campus/park ground-level mobile phone 3D photogrammetry/LiDAR scan "
                     f"('{scan_name}', CRS: TWD97 EPSG:3826 + TWVD2001). "
-                    "Image 1 is the Top-Down True Orthophoto with labeled candidate regions (R=Road/Walkway, WL=Retaining/Building Wall, T=Urban/Park Tree, S=Stockpile). "
-                    "Subsequent image(s) are Ground-Level Contact Sheet(s) of calibrated smartphone photos showing EVERY prospective tree (T1..TN) at its 1.3m trunk breast-height crosshair reticle. "
-                    f"3D Geometry Metrics: Paved Roads/Walkways={roads_cnt} ({road_area:.1f} m2), Prospective Trunk-Verified Trees={trees_cnt} (Mean DBH={mean_dbh:.1f} cm at 1.3m breast height), "
+                    "Image 1 is the Top-Down True Orthophoto with labeled regions (R=Road/Walkway, WL=Retaining/Building Wall, T=Verified Urban/Park Tree, S=Stockpile). "
+                    f"3D Geometry & Vision Verified Metrics: Paved Roads/Walkways={roads_cnt} ({road_area:.1f} m2), Vision-Verified Trees={surviving_trees_cnt} (Mean DBH={mean_dbh:.1f} cm at 1.3m breast height), "
                     f"Water Bodies=0 (0.0 m2 — dry urban/park/campus site with NO water bodies or river voids), "
                     f"Retaining/Building Walls={walls_cnt} (3D vertical area={walls_area:.1f} m2). "
-                    f"Prospective candidate tags to verify in the Contact Sheet(s): {ambiguous_tags}. "
-                    "Enforce the strict 'No Trunk = No Tree' principle: KEEP all genuine trees (even if foliage or a nearby branch partially obscures the trunk from that specific camera angle), "
-                    "and ONLY list a tag in `rejected_false_positive_tags` if the crosshair clearly points to a non-tree false positive (such as a metal lamp post, utility pole, traffic sign, bollard, concrete column, building wall, or empty sky/leaves in the air with no tree trunk beneath). "
-                    "Provide a concise, professional Bilingual Engineering Assessment in Traditional Chinese (ai_summary_zh, 2-3 sentences) "
+                    + rej_note
+                    + f"Non-tree ambiguous tags to check: {non_tree_ambig}. "
+                    "Provide a concise, professional Bilingual Engineering Assessment in Traditional Chinese (ai_summary_zh, 2-3 sentences citing the exact verified counts) "
                     "and English (ai_summary_en, 2-3 sentences). Explicitly note that there are NO water bodies on site (場區無水域)."
                 )
-            parts.append({"text": prompt_text})
+            overview_parts.append({"text": prompt_text})
 
-            req_body = {
-                "contents": [{"parts": parts}],
+            overview_req = {
+                "contents": [{"parts": overview_parts}],
                 "generationConfig": {
                     "temperature": 0.1,
                     "responseMimeType": "application/json",
@@ -1248,95 +1539,74 @@ class CategorizationIoMixin:
                     },
                 },
             }
+            parsed_ov, ov_model = _call_gemini_json(overview_req, timeout_s=60.0)
+            if parsed_ov is None and not tree_candidates_with_crops:
+                return {
+                    "ai_verified": False,
+                    "ai_model": "3D Geometry + Ground Photo Projection Engine (AI Overview Timeout)",
+                    "ai_summary_zh": default_zh,
+                    "ai_summary_en": default_en,
+                    "road_surface_note": "",
+                    "road_corridor_subtype": "paved_asphalt_concrete",
+                    "road_corridor_label_zh": "道路鋪面",
+                    "road_corridor_label_en": "Paved Road Corridor",
+                    "water_body_label_zh": "河道水域空洞" if water_cnt > 0 else "場區無水域",
+                    "rejected_false_positive_tags": [],
+                    "per_tree_verdicts": per_tree_verdicts,
+                    "photo_matches": photo_matches,
+                    "photo_verified_count": n_photo_verified,
+                }
+            if ov_model:
+                active_model_id = ov_model
+            parsed_json = parsed_ov or {}
+            zh_txt = str(parsed_json.get("ai_summary_zh") or "").strip() or default_zh
+            en_txt = str(parsed_json.get("ai_summary_en") or "").strip() or default_en
+            raw_ov_rej = parsed_json.get("rejected_false_positive_tags") or []
+            allowed_non_tree = set(non_tree_ambig)
+            non_tree_rej = [str(t).strip() for t in raw_ov_rej if str(t).strip() in allowed_non_tree]
+            final_rej_tags = sorted(set(rejected_tree_tags) | set(non_tree_rej))
 
-            model_display_map = {
-                "gemini-2.5-flash": "Gemini 2.5 Flash Multimodal + Ground Photo Referee",
-                "gemini-2.0-flash": "Gemini 2.0 Flash Multimodal + Ground Photo Referee",
-                "gemini-3.6-flash": "Gemini 3.6 Flash Multimodal + 3D Geometry",
-                "gemini-3.5-flash": "Gemini 3.5 Flash Multimodal + 3D Geometry",
+            out_ai = {
+                "ai_verified": True,
+                "ai_model": model_display_map.get(active_model_id, f"{active_model_id} Multimodal + Ground Photo Referee"),
+                "ai_summary_zh": zh_txt,
+                "ai_summary_en": en_txt,
+                "road_surface_note": str(parsed_json.get("road_surface_note") or ""),
+                "road_corridor_subtype": str(parsed_json.get("road_corridor_subtype") or "paved_asphalt_concrete").strip(),
+                "road_corridor_label_zh": str(parsed_json.get("road_corridor_label_zh") or "道路鋪面").strip(),
+                "road_corridor_label_en": str(parsed_json.get("road_corridor_label_en") or "Paved Road Corridor").strip(),
+                "water_body_label_zh": str(parsed_json.get("water_body_label_zh") or ("河道水域空洞" if water_cnt > 0 else "場區無水域")).strip(),
+                "rejected_false_positive_tags": final_rej_tags,
+                "per_tree_verdicts": per_tree_verdicts,
+                "photo_matches": photo_matches,
+                "photo_verified_count": n_photo_verified,
             }
-            raw_req = json.dumps(req_body).encode("utf-8")
-            for model_id in (
-                "gemini-2.5-flash",
-                "gemini-2.0-flash",
-                "gemini-3.6-flash",
-                "gemini-3.5-flash",
-            ):
-                url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_id}:generateContent"
-                req = urllib.request.Request(
-                    url,
-                    data=raw_req,
-                    headers={
-                        "Content-Type": "application/json",
-                        "x-goog-api-key": api_key,
-                    },
-                    method="POST",
-                )
-                try:
-                    with urllib.request.urlopen(req, timeout=12.0) as resp:
-                        resp_obj = json.loads(resp.read().decode("utf-8"))
-                    cands = resp_obj.get("candidates") or []
-                    if cands:
-                        parts_list = (cands[0].get("content") or {}).get("parts") or []
-                        parsed_json = None
-                        for part_obj in reversed(parts_list):
-                            if part_obj.get("thought"):
-                                continue
-                            cand_txt = (part_obj.get("text") or "").strip()
-                            if not cand_txt:
-                                continue
-                            try:
-                                parsed_json = json.loads(cand_txt)
-                                break
-                            except Exception:
-                                continue
-                        if not isinstance(parsed_json, dict):
-                            continue
-                        zh_txt = str(parsed_json.get("ai_summary_zh") or "").strip() or default_zh
-                        en_txt = str(parsed_json.get("ai_summary_en") or "").strip() or default_en
-                        raw_rej = parsed_json.get("rejected_false_positive_tags") or []
-                        allowed_ambig = set(ambiguous_tags)
-                        rej_tags = [str(t).strip() for t in raw_rej if str(t).strip() in allowed_ambig]
-                        out_ai = {
-                            "ai_verified": True,
-                            "ai_model": model_display_map.get(model_id, f"{model_id} Multimodal + 3D Geometry"),
-                            "ai_summary_zh": zh_txt,
-                            "ai_summary_en": en_txt,
-                            "road_surface_note": str(parsed_json.get("road_surface_note") or ""),
-                            "road_corridor_subtype": str(parsed_json.get("road_corridor_subtype") or "paved_asphalt_concrete").strip(),
-                            "road_corridor_label_zh": str(parsed_json.get("road_corridor_label_zh") or "").strip(),
-                            "road_corridor_label_en": str(parsed_json.get("road_corridor_label_en") or "").strip(),
-                            "water_body_label_zh": str(parsed_json.get("water_body_label_zh") or "").strip(),
-                            "rejected_false_positive_tags": rej_tags,
-                            "photo_matches": photo_matches,
-                            "photo_verified_count": n_photo_verified,
-                        }
-                        try:
-                            os.makedirs(CATEGORIZATION_CACHE_DIR, exist_ok=True)
-                            cache_copy = dict(out_ai)
-                            cache_copy.pop("photo_matches", None)
-                            cached_vision_map[sig_hash] = cache_copy
-                            with open(vision_cache_path, "w", encoding="utf-8") as vf:
-                                json.dump(cached_vision_map, vf, ensure_ascii=False)
-                        except Exception:
-                            pass
-                        return out_ai
-                except Exception:
-                    continue
+            try:
+                os.makedirs(CATEGORIZATION_CACHE_DIR, exist_ok=True)
+                cache_copy = dict(out_ai)
+                cache_copy.pop("photo_matches", None)
+                cached_vision_map["_tree_verdicts_by_coord_v3"] = coord_verdict_cache
+                cached_vision_map[sig_hash] = cache_copy
+                with open(vision_cache_path, "w", encoding="utf-8") as vf:
+                    json.dump(cached_vision_map, vf, ensure_ascii=False, indent=2)
+            except Exception:
+                pass
+            return out_ai
         except Exception:
             pass
 
         return {
-            "ai_verified": True,
-            "ai_model": "Gemini 2.5 Flash Multimodal + Ground Photo Referee",
+            "ai_verified": False,
+            "ai_model": "3D Geometry + Ground Photo Projection Engine (Offline Fallback)",
             "ai_summary_zh": default_zh,
             "ai_summary_en": default_en,
             "road_surface_note": "",
             "road_corridor_subtype": "paved_asphalt_concrete",
             "road_corridor_label_zh": "道路鋪面",
             "road_corridor_label_en": "Paved Road Corridor",
-            "water_body_label_zh": "河道水域空洞",
+            "water_body_label_zh": "河道水域空洞" if water_cnt > 0 else "場區無水域",
             "rejected_false_positive_tags": [],
+            "per_tree_verdicts": {},
             "photo_matches": photo_matches,
             "photo_verified_count": n_photo_verified,
         }
@@ -1707,6 +1977,7 @@ class CategorizationIoMixin:
         summary_kpi["roads_planar_area_ping"] = round(roads_planar_total * 0.3025, 2)
         summary_kpi["roads_surface_area_3d_m2"] = roads_3d_total
         summary_kpi["trees_count"] = len(trees_list)
+        summary_kpi["trees_ai_verified_count"] = sum(1 for t in trees_list if t.get("ai_vision_verified"))
         summary_kpi["trees_mean_dbh_cm"] = round(float(np.mean(trees_dbh_vals)), 1) if trees_dbh_vals else 0.0
         summary_kpi["trees_max_dbh_cm"] = round(float(np.max(trees_dbh_vals)), 1) if trees_dbh_vals else 0.0
         summary_kpi["trees_mean_height_m"] = round(float(np.mean(trees_h_vals)), 2) if trees_h_vals else 0.0

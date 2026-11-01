@@ -155,9 +155,10 @@ class CategorizationHeuristicsMixin:
                 }
 
         scan = self._resolve_scan_record(scan_id)
-        ce = float(scan["twd97_e"]) if scan.get("twd97_e") is not None else 0.0
-        cn = float(scan["twd97_n"]) if scan.get("twd97_n") is not None else 0.0
-        ch = float(scan["twd97_h"]) if scan.get("twd97_h") is not None else 0.0
+        prev_anch = (prev_cached.get("anchor_twd97") if isinstance(prev_cached, dict) else None) or {}
+        ce = float(scan["twd97_e"]) if scan.get("twd97_e") is not None else float(prev_anch.get("e") or 0.0)
+        cn = float(scan["twd97_n"]) if scan.get("twd97_n") is not None else float(prev_anch.get("n") or 0.0)
+        ch = float(scan["twd97_h"]) if scan.get("twd97_h") is not None else float(prev_anch.get("h") or 0.0)
 
         # Stage 0: Load 3D triangles + UV textures in TWD97 (E, N, H)
         mesh_data = self._load_scan_textured_triangles_twd97(scan, ce, cn, ch)
@@ -165,6 +166,10 @@ class CategorizationHeuristicsMixin:
         v1 = mesh_data["v1"]
         v2 = mesh_data["v2"]
         centroids = mesh_data["centroids"]
+        if (abs(ce) < 1000.0 or abs(cn) < 1000.0) and len(centroids) > 0:
+            ce = float(np.mean(centroids[:, 0]))
+            cn = float(np.mean(centroids[:, 1]))
+            ch = float(np.median(centroids[:, 2]))
         normals = mesh_data["normals"]
         area_3d = mesh_data["area_3d"]
         area_2d = mesh_data["area_2d"]
@@ -1708,7 +1713,9 @@ class CategorizationHeuristicsMixin:
                     "dbh_method": dbh_method,
                     "trunk_verified_3d": True,
                     "trunk_triangle_count": int(n_ts_tight),
-                    "ai_vision_verified": True,
+                    "ai_vision_verified": False,
+                    "ai_vision_label": "",
+                    "object_seen": "",
                     "crown_diameter_m": crown_diam_m,
                     "crown_area_m2": crown_area_m2,
                     "ground_elevation_m": round(th_ground, 3),
@@ -2432,6 +2439,7 @@ class CategorizationHeuristicsMixin:
             cam_catalog,
         )
         photo_matches = ai_info.get("photo_matches") if isinstance(ai_info.get("photo_matches"), dict) else {}
+        per_tree_verdicts = ai_info.get("per_tree_verdicts") if isinstance(ai_info.get("per_tree_verdicts"), dict) else {}
 
         # Link every detected 3D feature to its best calibrated mobile phone photo via frustum projection + Z-buffer occlusion check
         if cam_catalog and hasattr(self, "_match_feature_to_rtk_photo_fast"):
@@ -2441,7 +2449,18 @@ class CategorizationHeuristicsMixin:
                 )
                 if pm:
                     tr.update(pm)
-                tr["ai_vision_verified"] = bool(ai_info.get("ai_verified", True))
+                t_verd = per_tree_verdicts.get(tr["id"]) if isinstance(per_tree_verdicts.get(tr["id"]), dict) else None
+                is_genuinely_verified = bool(
+                    ai_info.get("ai_verified", False)
+                    and tr.get("verified_photo")
+                    and t_verd
+                    and t_verd.get("ai_vision_verified")
+                    and t_verd.get("is_real_tree", True)
+                )
+                tr["ai_vision_verified"] = is_genuinely_verified
+                obj_lbl = str((t_verd or {}).get("object_seen") or "").strip()
+                tr["ai_vision_label"] = obj_lbl
+                tr["object_seen"] = obj_lbl
             for item_grp in (roads_list, water_list, walls_list, stockpiles_list, buildings_list, water_tanks_list, pipes_list, street_furniture_list):
                 for it_o in item_grp:
                     c_pt = it_o.get("center_twd97") or [0.0, 0.0, 0.0]
@@ -2450,6 +2469,11 @@ class CategorizationHeuristicsMixin:
                     )
                     if pm:
                         it_o.update(pm)
+        else:
+            for tr in trees_list:
+                tr["ai_vision_verified"] = False
+                tr["ai_vision_label"] = ""
+                tr["object_seen"] = ""
 
         # Apply Gemini Vision Referee false-positive rejections (if any) and recompute KPIs
         rej_tags = set(str(x).strip() for x in (ai_info.get("rejected_false_positive_tags") or []) if str(x).strip())
@@ -2507,6 +2531,8 @@ class CategorizationHeuristicsMixin:
                 elif ec["key"] == "bare_earth_stockpiles":
                     ec["count"] = len(stockpiles_list)
 
+        summary_kpi["trees_ai_verified_count"] = sum(1 for t in trees_list if t.get("ai_vision_verified"))
+
         # Apply Gemini-verified semantic subtype & labels to roads_list, water_list, and categories_breakdown
         ai_road_subtype = str(ai_info.get("road_corridor_subtype") or "paved_asphalt_concrete").strip()
         ai_road_zh = str(ai_info.get("road_corridor_label_zh") or "").strip() or "道路鋪面"
@@ -2561,8 +2587,8 @@ class CategorizationHeuristicsMixin:
             "crs_short": TWD97_TWVD2001_SHORT,
             "anchor_twd97": {"e": round(ce, 3), "n": round(cn, 3), "h": round(ch, 3)},
             "generated_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            "ai_verified": ai_info.get("ai_verified", True),
-            "ai_model": ai_info.get("ai_model", "Gemini 3.6 Flash Multimodal + 3D Geometry"),
+            "ai_verified": bool(ai_info.get("ai_verified", False)),
+            "ai_model": ai_info.get("ai_model", "Gemini 2.5 Flash Multimodal + Ground Photo Referee"),
             "ai_summary_zh": ai_info.get("ai_summary_zh", ""),
             "ai_summary_en": ai_info.get("ai_summary_en", ""),
             "road_corridor_subtype": ai_road_subtype,
