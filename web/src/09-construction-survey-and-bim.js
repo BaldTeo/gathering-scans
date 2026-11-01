@@ -2195,14 +2195,12 @@
     }
     if (clean.length < 3) return evaluateCatmullRomChain3D(clean, numSamples);
 
-    const pFirst = clean[0];
-    const pSecond = clean[1];
-    const pLast = clean[clean.length - 1];
-    const pPrevLast = clean[clean.length - 2];
+    const p0 = clean[0], p1 = clean[1], p2 = clean[2];
+    const pn1 = clean[clean.length - 1], pn2 = clean[clean.length - 2], pn3 = clean[clean.length - 3];
     const ext = [
-      { x: 2 * pFirst.x - pSecond.x, y: 2 * pFirst.y - pSecond.y, z: 2 * pFirst.z - pSecond.z },
+      { x: 3 * p0.x - 3 * p1.x + p2.x, y: 3 * p0.y - 3 * p1.y + p2.y, z: 3 * p0.z - 3 * p1.z + p2.z },
       ...clean,
-      { x: 2 * pLast.x - pPrevLast.x, y: 2 * pLast.y - pPrevLast.y, z: 2 * pLast.z - pPrevLast.z },
+      { x: 3 * pn1.x - 3 * pn2.x + pn3.x, y: 3 * pn1.y - 3 * pn2.y + pn3.y, z: 3 * pn1.z - 3 * pn2.z + pn3.z },
     ];
 
     const nSegs = clean.length - 1;
@@ -2366,10 +2364,16 @@
       w: 1.0,
     }));
 
-    // 3. Fit circle to profile points to report radiusM and support "arc" mode
-    const circleFit = fit2DCircleAlgebraicAndRefine(
-      Array.isArray(config.denseProfilePts2D) && config.denseProfilePts2D.length >= 6 ? config.denseProfilePts2D : ctrlPts2D
-    );
+    // 3. Fit circle to profile points in (originP, e1Axis, e2Axis) frame to report radiusM and support "arc" mode
+    const fitInput2D =
+      Array.isArray(config.denseProfilePts3D) && config.denseProfilePts3D.length >= 6
+        ? config.denseProfilePts3D.map((p) => ({
+            u: (p.x - originP.x) * e1Axis.x + (p.y - originP.y) * e1Axis.y + (p.z - originP.z) * e1Axis.z,
+            v: (p.x - originP.x) * e2Axis.x + (p.y - originP.y) * e2Axis.y + (p.z - originP.z) * e2Axis.z,
+            w: Number.isFinite(p.w) && p.w > 0 ? p.w : 1.0,
+          }))
+        : ctrlPts2D;
+    const circleFit = fit2DCircleAlgebraicAndRefine(fitInput2D);
 
     const N_RAW = 240;
     let rawCurve3D = [];
@@ -2837,7 +2841,7 @@
       extrudeDirMode,
       extrudeDepthM,
       explicitWAxis: wAxis,
-      denseProfilePts2D: dense2D,
+      denseProfilePts3D: pts,
       offsetMode: config.offsetMode || "auto_center",
       preferredNormal: initPlane.normal,
     });

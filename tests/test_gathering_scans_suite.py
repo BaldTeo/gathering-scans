@@ -3899,6 +3899,109 @@ class GatheringScansTestSuite(unittest.TestCase):
         ):
             self.assertIn(token, js12, f"Missing {token} in 12-public-utilities-gis.js")
 
+        import shutil
+        import subprocess
+        import json as _json
+
+        if shutil.which("node"):
+            node_script = """
+const fs = require('fs');
+const vm = require('vm');
+const THREE = require('./web/lib/three.min.js');
+const sandbox = {
+  window: { addEventListener: () => {}, THREE, STATE: { activeScanId: 'edited_daan_652376', activeTool: 'flatness', measurePoints: [] }, studioThree: { scene: new THREE.Scene(), overlayGroup: new THREE.Group(), modelPivot: new THREE.Group() } },
+  THREE,
+  document: {
+    addEventListener: () => {},
+    getElementById: () => null,
+    querySelector: () => null,
+    querySelectorAll: () => [],
+    createElement: () => ({ width: 0, height: 0, style: {}, getContext: () => ({ fillRect: () => {}, strokeRect: () => {}, fillText: () => {} }) })
+  },
+  console,
+  performance: { now: () => Date.now() },
+  setTimeout,
+  clearTimeout,
+  setInterval: () => 1,
+  clearInterval: () => {},
+  URLSearchParams
+};
+sandbox.window.window = sandbox.window;
+sandbox.window.document = sandbox.document;
+sandbox.STATE = sandbox.window.STATE;
+sandbox.studioThree = sandbox.window.studioThree;
+vm.createContext(sandbox);
+vm.runInContext(fs.readFileSync('./web/src/09-construction-survey-and-bim.js', 'utf8'), sandbox);
+vm.runInContext(fs.readFileSync('./web/src/10-construction-qa-and-stakeout.js', 'utf8'), sandbox);
+vm.runInContext(fs.readFileSync('./web/src/12-public-utilities-gis.js', 'utf8'), sandbox);
+
+(async () => {
+  const cylGeo = new THREE.CylinderGeometry(5.0, 5.0, 3.0, 64, 16, true, -Math.PI/4, Math.PI/2);
+  cylGeo.translate(0, 1.5, -5.0);
+  const cylMesh = new THREE.Mesh(cylGeo, new THREE.MeshBasicMaterial({ side: THREE.DoubleSide }));
+  cylMesh.updateMatrixWorld(true);
+  sandbox.studioThree.modelPivot.add(cylMesh);
+
+  sandbox.window.QA_STATE.flatnessPlaneMode = 'curved_extruded';
+  sandbox.window.QA_STATE.flatnessCurveType = 'arc';
+  sandbox.window.QA_STATE.flatnessExtrudeDirMode = 'down_y';
+  sandbox.window.QA_STATE.flatnessExtrudeDepthM = 2.2;
+  sandbox.window.QA_STATE.curvedPickStage = 'spline';
+  sandbox.window.QA_STATE.curvedSplinePoints = [];
+
+  const ctrlPts = [-0.5, -0.17, 0.17, 0.5].map(a => ({ x: 5.0 * Math.sin(a), y: 2.6, z: -5.0 + 5.0 * Math.cos(a) }));
+  ctrlPts.forEach(p => {
+    sandbox.window.handleQaTool3DCanvasPick('flatness', new THREE.Vector3(p.x, p.y, p.z), { e: p.x, n: -p.z, h: p.y }, false);
+  });
+
+  await sandbox.window.applyCurvedSplineExtrusionAnalysis();
+  const wfARes = sandbox.window.QA_STATE.surfaceQaLastResult;
+  const wfAMeta = sandbox.window.QA_STATE.flatnessCache.curvedMeta;
+  const wfARmsMm = sandbox.window.QA_STATE.flatnessCache.rmsMm;
+  const snappedAfterWfA = [];
+  sandbox.window.collectExtraSnappableVertices((pt, meta) => snappedAfterWfA.push({ pt, meta }));
+
+  sandbox.window.startNewFlatnessObjectDraft(false);
+  const polyPts = [
+    new THREE.Vector3(ctrlPts[0].x, 2.6, ctrlPts[0].z),
+    new THREE.Vector3(ctrlPts[3].x, 2.6, ctrlPts[3].z),
+    new THREE.Vector3(ctrlPts[3].x, 0.4, ctrlPts[3].z),
+    new THREE.Vector3(ctrlPts[0].x, 0.4, ctrlPts[0].z)
+  ];
+  await sandbox.window.lockFlatnessPolygonAndAnalyze(polyPts);
+  const wfBRes = sandbox.window.QA_STATE.surfaceQaLastResult;
+  const wfBMeta = sandbox.window.QA_STATE.flatnessCache.curvedMeta;
+  const wfBRmsMm = sandbox.window.QA_STATE.flatnessCache.rmsMm;
+
+  console.log(JSON.stringify({
+    wfARadiusM: wfAMeta.radiusM,
+    wfARmsMm,
+    wfAPassPct: wfARes.pass_rate_pct,
+    snappedCount: snappedAfterWfA.length,
+    wfBRadiusM: wfBMeta.radiusM,
+    wfBRmsMm,
+    wfBPassPct: wfBRes.pass_rate_pct
+  }));
+})();
+"""
+            proc = subprocess.run(
+                ["node", "-e", node_script],
+                cwd=BASE_DIR,
+                capture_output=True,
+                text=True,
+                timeout=20,
+            )
+            self.assertEqual(proc.returncode, 0, f"Node VM curved QA test failed: {proc.stderr}")
+            out = _json.loads(proc.stdout.strip().splitlines()[-1])
+            self.assertAlmostEqual(float(out["wfARadiusM"]), 5.0, delta=0.05)
+            self.assertLess(float(out["wfARmsMm"]), 1.0)
+            self.assertGreaterEqual(float(out["wfAPassPct"]), 99.0)
+            self.assertEqual(int(out["snappedCount"]), 5)
+            self.assertAlmostEqual(float(out["wfBRadiusM"]), 5.0, delta=0.05)
+            self.assertLess(float(out["wfBRmsMm"]), 1.0)
+            self.assertGreaterEqual(float(out["wfBPassPct"]), 99.0)
+
 
 if __name__ == "__main__":
     unittest.main()
+

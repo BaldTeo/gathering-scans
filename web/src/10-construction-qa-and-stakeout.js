@@ -1722,6 +1722,10 @@
       typeof window.__GS_CURVED_QA.buildCurvedDraftPreviewThreeGroup === "function" &&
       (QA_STATE.curvedPickStage || (Array.isArray(QA_STATE.curvedSplinePoints) && QA_STATE.curvedSplinePoints.length > 0 && !QA_STATE.flatnessCache))
     ) {
+      syncCurvedSplineHandlesToStudioState({
+        splinePts: QA_STATE.curvedSplinePoints,
+        extrudeHandlePt: QA_STATE.curvedExtrudeTargetPt,
+      });
       const draftGrp = window.__GS_CURVED_QA.buildCurvedDraftPreviewThreeGroup({
         splinePts: QA_STATE.curvedSplinePoints,
         hoverPt: QA_STATE.curvedHoverPt,
