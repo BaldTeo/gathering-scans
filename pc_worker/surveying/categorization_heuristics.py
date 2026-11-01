@@ -185,6 +185,45 @@ class CategorizationHeuristicsMixin:
         res = 0.25
         cell_area = res * res
         n_tris = len(centroids)
+        if n_tris == 0:
+            if isinstance(prev_cached, dict) and prev_cached.get("status") == "ok":
+                if reset_manual_overrides:
+                    empty_ov = {"removed_ids": [], "removed_centers": [], "added_trees": [], "added_walls": [], "added_roads": [], "added_water": []}
+                    if isinstance(prev_cached.get("_base_trees"), list):
+                        prev_cached["trees"] = [dict(t) for t in prev_cached["_base_trees"] if isinstance(t, dict)]
+                    prev_cached = self._apply_manual_overrides_to_categorization(scan_id, prev_cached, empty_ov)
+                    self._persist_categorization_result(scan_id, prev_cached, scan)
+                return prev_cached
+            empty_res: Dict[str, Any] = {
+                "ok": True,
+                "status": "ok",
+                "scan_id": scan_id,
+                "scan_name": str(scan.get("name") or scan_id),
+                "has_categorization": True,
+                "saved_on_server": True,
+                "overlay_visible_default": False,
+                "anchor_twd97": {"e": round(ce, 3), "n": round(cn, 3), "h": round(ch, 3)},
+                "trees": [],
+                "roads": [],
+                "walls": [],
+                "water_bodies": [],
+                "stockpiles": [],
+                "summary": {
+                    "trees_count": 0,
+                    "trees_mean_dbh_cm": 0.0,
+                    "trees_max_dbh_cm": 0.0,
+                    "trees_mean_height_m": 0.0,
+                    "trees_canopy_area_m2": 0.0,
+                    "roads_count": 0,
+                    "walls_count": 0,
+                    "water_count": 0,
+                },
+                "dxf_url": f"/api/contours/Civil3D_Categorized_{scan_id}.dxf",
+                "report_html_url": f"/api/reports/categorization_report_{scan_id}.html",
+                "report_csv_url": f"/api/reports/categorization_report_{scan_id}.csv",
+            }
+            self._persist_categorization_result(scan_id, empty_res, scan)
+            return empty_res
         tri_indices = np.arange(n_tris, dtype=np.int32)
         base_e = np.concatenate([v0[:, 0], v1[:, 0], v2[:, 0], centroids[:, 0]])
         base_n = np.concatenate([v0[:, 1], v1[:, 1], v2[:, 1], centroids[:, 1]])

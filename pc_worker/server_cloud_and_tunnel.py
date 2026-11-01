@@ -1455,8 +1455,10 @@ class CloudAndTunnelHandlerMixin:
             req_sid = ""
             force_rec = False
             only_upd = False
+            req_action = ""
             req_filters = None
             req_vis_def = False
+            p_obj: Dict[str, Any] = {}
             if method == "GET":
                 req_sid = (parsed_q.get("scan_id") or [""])[0].strip()
             elif method == "POST" and body:
@@ -1464,7 +1466,8 @@ class CloudAndTunnelHandlerMixin:
                     p_obj = json.loads(body.decode("utf-8"))
                     req_sid = str(p_obj.get("scan_id") or "").strip()
                     force_rec = bool(p_obj.get("force_recompute", False))
-                    only_upd = bool(p_obj.get("only_update_filters", False) or p_obj.get("action") == "save_visibility")
+                    req_action = str(p_obj.get("action") or "").strip()
+                    only_upd = bool(p_obj.get("only_update_filters", False) or req_action == "save_visibility")
                     if isinstance(p_obj.get("layer_filters"), dict):
                         req_filters = p_obj["layer_filters"]
                     req_vis_def = bool(p_obj.get("overlay_visible_default", False))
@@ -1474,6 +1477,11 @@ class CloudAndTunnelHandlerMixin:
                 if only_upd:
                     upd_cat = SURVEY.save_categorization_visibility_prefs(req_sid, req_filters, req_vis_def)
                     if isinstance(upd_cat, dict):
+                        self.send_json(upd_cat)
+                        return True
+                elif req_action in ("manual_remove", "manual_add", "manual_reset"):
+                    upd_cat = SURVEY.modify_saved_categorization(req_sid, p_obj)
+                    if isinstance(upd_cat, dict) and upd_cat.get("status") == "ok":
                         self.send_json(upd_cat)
                         return True
                 else:
@@ -1527,10 +1535,15 @@ class CloudAndTunnelHandlerMixin:
             if self._serve_from_gdrive_cloud_if_available(path, share_token=share_token):
                 return True
 
-        # 3. Try up to 4 sockets from the PC reverse tunnel pool (single 900s pass for long optimizer/merge POSTs or large downloads)
+        # 3. Try up to 4 sockets from the PC reverse tunnel pool (single 900s pass for long optimizer/merge/categorize POSTs or large downloads)
+        is_categorize_req = path in ("/api/survey/categorize", "/api/surveying/categorize")
         is_long_post = (
             method == "POST"
-            and (path.startswith("/api/optimizer/") or path in ("/api/scans/merge", "/api/optimizer/merge"))
+            and (
+                path.startswith("/api/optimizer/")
+                or path in ("/api/scans/merge", "/api/optimizer/merge")
+                or is_categorize_req
+            )
         ) or path.startswith("/api/download")
         tun_wait_attempts = 16 if is_long_post else 10
         for _attempt in range(tun_wait_attempts):
@@ -1539,6 +1552,7 @@ class CloudAndTunnelHandlerMixin:
                 time.sleep(0.5 if is_long_post else 0.35)
                 continue
             sent_payload = False
+            headers_sent = False
             try:
                 tun_sock.settimeout(900.0 if is_long_post else 60.0)
                 req_headers = {k: v for k, v in self.headers.items()}
@@ -1592,8 +1606,9 @@ class CloudAndTunnelHandlerMixin:
                         self.send_header(hk, hv)
                         filtered_hdrs[hk] = hv
                 self.end_headers()
+                headers_sent = True
 
-                buf_for_cache = bytearray() if ((cacheable or is_comment_photo_upload) and status_code == 200) else None
+                buf_for_cache = bytearray() if ((cacheable or is_comment_photo_upload or is_categorize_req) and status_code == 200) else None
                 client_Write_ok = True
                 stream_clean = True
 
@@ -1698,6 +1713,17 @@ class CloudAndTunnelHandlerMixin:
                                         cpf.write(bytes(buf_for_cache))
                         except Exception:
                             pass
+                    if is_categorize_req and len(buf_for_cache) > 0:
+                        try:
+                            raw_cat = bytes(buf_for_cache)
+                            if filtered_hdrs.get("Content-Encoding", "").lower() == "gzip" or filtered_hdrs.get("content-encoding", "").lower() == "gzip":
+                                raw_cat = gzip.decompress(raw_cat)
+                            cat_obj = json.loads(raw_cat.decode("utf-8"))
+                            cat_sid = str(cat_obj.get("scan_id") or "").strip()
+                            if cat_sid and cat_obj.get("status") == "ok":
+                                SURVEY._persist_categorization_result(cat_sid, cat_obj)
+                        except Exception:
+                            pass
                     if cacheable:
                         if len(_VPS_RAM_FALLBACK_CACHE) > 2000:
                             _VPS_RAM_FALLBACK_CACHE.clear()
@@ -1720,6 +1746,8 @@ class CloudAndTunnelHandlerMixin:
             except Exception:
                 done_evt.in_use = False
                 done_evt.set()
+                if headers_sent:
+                    return True
                 if is_long_post and sent_payload:
                     break
                 continue

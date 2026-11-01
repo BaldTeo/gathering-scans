@@ -1455,7 +1455,15 @@
     const sep = url.includes("?") ? "&" : "?";
     const fullUrl = STATE.shareToken ? `${url}${sep}share=${encodeURIComponent(STATE.shareToken)}` : url;
     const res = await fetch(fullUrl, { headers: apiHeaders() });
-    const data = await res.json();
+    const rawTxt = await res.text();
+    let data = {};
+    if (rawTxt && rawTxt.trim()) {
+      try {
+        data = JSON.parse(rawTxt);
+      } catch (_) {
+        if (res.ok) throw new Error(`Invalid JSON response (HTTP ${res.status})`);
+      }
+    }
     if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
     return data;
   }
@@ -1464,7 +1472,11 @@
     const sep = url.includes("?") ? "&" : "?";
     const fullUrl = STATE.shareToken ? `${url}${sep}share=${encodeURIComponent(STATE.shareToken)}` : url;
     const isLongAction =
-      url.startsWith("/api/optimizer/") || url === "/api/scans/merge" || url === "/api/optimizer/merge";
+      url.startsWith("/api/optimizer/") ||
+      url === "/api/scans/merge" ||
+      url === "/api/optimizer/merge" ||
+      url === "/api/survey/categorize" ||
+      url === "/api/surveying/categorize";
     const maxAttempts = isLongAction ? 2 : 1;
     let lastErr = null;
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
@@ -1476,10 +1488,24 @@
         headers: apiHeaders(),
         body: JSON.stringify(body),
       });
-      const data = await res.json();
+      const rawTxt = await res.text();
+      let data = {};
+      if (rawTxt && rawTxt.trim()) {
+        try {
+          data = JSON.parse(rawTxt);
+        } catch (_) {
+          lastErr = new Error(`HTTP ${res.status}`);
+          if (attempt + 1 < maxAttempts) continue;
+          throw lastErr;
+        }
+      } else if (res.ok) {
+        lastErr = new Error("Empty server response");
+        if (attempt + 1 < maxAttempts) continue;
+        throw lastErr;
+      }
       if (!res.ok) {
         lastErr = new Error(data.error || `HTTP ${res.status}`);
-        if (res.status === 503 && attempt + 1 < maxAttempts) {
+        if ((res.status === 503 || res.status === 502 || res.status === 504) && attempt + 1 < maxAttempts) {
           continue;
         }
         throw lastErr;

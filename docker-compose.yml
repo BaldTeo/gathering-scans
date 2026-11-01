@@ -13,7 +13,7 @@ services:
       tf = tarfile.open(fileobj=io.BytesIO(raw), mode='r:gz');
       tf.extractall('/tmp/gs_latest');
       shutil.copytree('/tmp/gs_latest/gathering-scans-main', '/app', dirs_exist_ok=True);
-      [shutil.copytree('/host_docker/gathering_scans/' + d, '/app/' + d, dirs_exist_ok=True) for d in ('pc_worker', 'web', 'data/utilities_cache') if os.path.isdir('/host_docker/gathering_scans/' + d)];
+      [shutil.copytree('/host_docker/gathering_scans/' + d, '/app/' + d, dirs_exist_ok=True) for d in ('pc_worker', 'web', 'data/utilities_cache', 'data/categorization_cache') if os.path.isdir('/host_docker/gathering_scans/' + d)];
       shutil.copy2('/host_docker/gathering_scans/server.py', '/app/server.py') if os.path.isfile('/host_docker/gathering_scans/server.py') else None;
       print('[AutoSync] Synced latest /app from GitHub + /host_docker/gathering_scans overlay!')\" && python server.py"
     environment:

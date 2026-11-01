@@ -2999,6 +2999,20 @@ class GatheringScansTestSuite(unittest.TestCase):
         self.assertIn("wall_facade_a =", heur_py)
         self.assertIn("bldg_to_fol_ratio =", heur_py)
 
+        # 4. Verify UI policy (no AI explanation boxes, 0-1 word buttons, 3D mesh catItemId raycasting) & VPS manual_remove handling
+        self.assertNotIn("Combines <b>3D Mesh Geometry</b>", js05)
+        self.assertNotIn("1.3m Pratt Circle + AI Vision Verified", js05)
+        self.assertIn('tr("偵測", "Detect")', js05)
+        self.assertIn('tr("重算", "Recompute")', js05)
+        self.assertIn('tr("新增", "Add")', js05)
+        self.assertIn('tr("刪除", "Remove")', js05)
+        self.assertIn('tr("重設", "Reset")', js05)
+        self.assertIn("trunkMesh.userData.catItemId = t.id;", js05)
+        with open(os.path.join(BASE_DIR, "pc_worker", "server_cloud_and_tunnel.py"), "r", encoding="utf-8") as f:
+            tunnel_py = f.read()
+        self.assertIn('elif req_action in ("manual_remove", "manual_add", "manual_reset"):', tunnel_py)
+        self.assertIn("upd_cat = SURVEY.modify_saved_categorization(req_sid, p_obj)", tunnel_py)
+
     def test_38_milestone7_public_utilities_gis_and_gml_integration(self):
         """
         Milestone 7 Verification: Real Public Utilities GIS Integration with Taiwan Open APIs,
@@ -3488,6 +3502,14 @@ class GatheringScansTestSuite(unittest.TestCase):
         self.assertIn("STATE.lastCategorizeResult", js12)
         self.assertIn("wb.water_level_twvd2001_m", js12)
         self.assertIn("STATE.categorizeFilters?.trees", js12)
+        self.assertIn("forEachStudioTileMaterial", js12)
+        self.assertIn("syncSubsurfaceXrayOverlayMeshes", js12)
+        self.assertIn("THREE.GreaterDepth", js12)
+        self.assertIn("tile-visibility-change", js12)
+
+        with open(os.path.join(BASE_DIR, "web", "lib", "3d-tiles-renderer.bundle.js"), "r", encoding="utf-8") as f:
+            tiles_bundle = f.read()
+        self.assertIn("netAdd=inFrustCount", tiles_bundle)
 
         with open(os.path.join(BASE_DIR, "web", "src", "03-studio-core.js"), "r", encoding="utf-8") as f:
             js03 = f.read()
