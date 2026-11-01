@@ -989,6 +989,11 @@ class PublicUtilitiesGISMixin:
         base = dict(status_in) if isinstance(status_in, dict) else {}
         tpe3d_cnt = sum(1 for f in (features or []) if str(f.get("id") or "").startswith("tpe3d_"))
         tpedig_cnt = sum(1 for f in (features or []) if str(f.get("id") or "").startswith("tpedig_"))
+        gml_feat_cnt = sum(
+            1
+            for f in (features or [])
+            if str(f.get("id") or "").startswith("gml_") or "GML 3.1.1" in str(f.get("source") or "")
+        )
         raw_resp = str(base.get("raw_response") or "")
         is_3d_whitelisted = bool(
             tpe3d_cnt > 0
@@ -999,12 +1004,13 @@ class PublicUtilitiesGISMixin:
         elev_m = base.get("elevation_twvd2001_m")
         if elev_m is None and ref_ground_h is not None:
             elev_m = round(float(ref_ground_h), 3)
-        active_cnt = (tpe3d_cnt + tpedig_cnt) if (tpe3d_cnt + tpedig_cnt) > 0 else len(features or [])
 
         if is_3d_whitelisted:
+            active_cnt = tpe3d_cnt + tpedig_cnt + gml_feat_cnt
             msg_zh = f"臺北市道管中心 3D 八大管線 API (PipeQuery.ashx) 已獲 IP 授權連線載入 ({active_cnt} 筆設施)。"
             msg_en = f"Taipei 3D 8-Utilities API (PipeQuery.ashx) IP-whitelisted & active ({active_cnt} features loaded)."
         elif public_portal_active:
+            active_cnt = tpedig_cnt
             msg_zh = (
                 f"公開市民圖資 (dig.taipei / G97_A_NW_PIPE) 與地形高程 API (get3dz.ashx) 已合法載入 ({active_cnt} 筆設施)；"
                 "受限 3D API (PipeQuery.ashx) 則維持待政府 IP 白名單授權。"
@@ -1013,7 +1019,8 @@ class PublicUtilitiesGISMixin:
                 f"Public Citizen Portal GIS (dig.taipei / G97_A_NW_PIPE) & Elevation API (get3dz.ashx) legally loaded ({active_cnt} features); "
                 "restricted 3D API (PipeQuery.ashx) awaits government IP whitelist."
             )
-        elif gml_loaded > 0:
+        elif gml_loaded > 0 or gml_feat_cnt > 0:
+            active_cnt = gml_feat_cnt if gml_feat_cnt > 0 else len(features or [])
             msg_zh = f"已載入內政部營建署 GML 3.1.1 管線圖資 ({active_cnt} 筆設施)；受限 3D API (PipeQuery.ashx) 待政府 IP 白名單授權。"
             msg_en = f"Loaded MOI NGIS GML 3.1.1 utility files ({active_cnt} features); restricted 3D API (PipeQuery.ashx) awaits government IP whitelist."
         else:

@@ -635,6 +635,22 @@
         : `<div class="gs-util-hint-card">${t("懸停或點擊 3D 管線與人孔檢視埋深與管底高程", "Hover or click 3D pipe or manhole to inspect burial depth & invert elevation")}</div>`;
       box.innerHTML = typeof window.translateDynamicHtml === "function" ? window.translateDynamicHtml(rawHtml) : rawHtml;
     }
+
+    const tpeStatus = UTILS_STATE.taipei8UtilityStatus;
+    const tpeMsgEl = document.getElementById("utilTpeStatusMsg");
+    if (tpeStatus && tpeMsgEl) {
+      const tpedigCnt = (UTILS_STATE.features || []).filter((f) => String(getFeatProp(f, "id", "")).startsWith("tpedig_")).length;
+      const tpe3dCnt = (UTILS_STATE.features || []).filter((f) => String(getFeatProp(f, "id", "")).startsWith("tpe3d_")).length;
+      if (tpeStatus.whitelisted && (tpe3dCnt > 0 || tpedigCnt > 0)) {
+        const cnt = tpe3dCnt + tpedigCnt;
+        tpeStatus.message_zh = `臺北市道管中心 3D 八大管線 API (PipeQuery.ashx) 已獲 IP 授權連線載入 (${cnt} 筆設施)。`;
+        tpeStatus.message_en = `Taipei 3D 8-Utilities API (PipeQuery.ashx) IP-whitelisted & active (${cnt} features loaded).`;
+      } else if (tpeStatus.public_portal_active || tpedigCnt > 0) {
+        tpeStatus.message_zh = `公開市民圖資 (dig.taipei / G97_A_NW_PIPE) 與地形高程 API (get3dz.ashx) 已合法載入 (${tpedigCnt} 筆設施)；受限 3D API (PipeQuery.ashx) 則維持待政府 IP 白名單授權。`;
+        tpeStatus.message_en = `Public Citizen Portal GIS (dig.taipei / G97_A_NW_PIPE) & Elevation API (get3dz.ashx) legally loaded (${tpedigCnt} features); restricted 3D API (PipeQuery.ashx) awaits government IP whitelist.`;
+      }
+      tpeMsgEl.textContent = t(tpeStatus.message_zh || "", tpeStatus.message_en || "");
+    }
   }
 
   /**
@@ -714,21 +730,24 @@
 
     const tpeStatus = UTILS_STATE.taipei8UtilityStatus;
     const isTpe3dWhitelisted = Boolean(tpeStatus && tpeStatus.whitelisted);
-    const isTpePublicActive = Boolean(
-      tpeStatus && !isTpe3dWhitelisted && (tpeStatus.public_portal_active || (UTILS_STATE.features && UTILS_STATE.features.length > 0))
+    const hasTpeDigFeatures = Boolean(
+      Array.isArray(UTILS_STATE.features) && UTILS_STATE.features.some((f) => String(getFeatProp(f, "id", "")).startsWith("tpedig_"))
     );
+    const isTpePublicActive = Boolean(tpeStatus && !isTpe3dWhitelisted && (tpeStatus.public_portal_active || hasTpeDigFeatures));
+    const isTpeGmlActive = Boolean(tpeStatus && !isTpe3dWhitelisted && !isTpePublicActive && Number(tpeStatus.gml_files_loaded) > 0);
+    const isTpeAnyActive = isTpe3dWhitelisted || isTpePublicActive || isTpeGmlActive;
     const tpeBannerHtml =
       tpeStatus && tpeStatus.integrated
-        ? `<div style="margin-top:7px;padding:6px 8px;border-radius:6px;font-size:10px;line-height:1.45;background:${
-            isTpe3dWhitelisted || isTpePublicActive ? "rgba(16,185,129,0.10)" : "rgba(56,189,248,0.09)"
+        ? `<div id="utilTpeStatusBanner" style="margin-top:7px;padding:6px 8px;border-radius:6px;font-size:10px;line-height:1.45;background:${
+            isTpeAnyActive ? "rgba(16,185,129,0.10)" : "rgba(56,189,248,0.09)"
           };border:1px solid ${
-            isTpe3dWhitelisted || isTpePublicActive ? "rgba(16,185,129,0.32)" : "rgba(56,189,248,0.28)"
+            isTpeAnyActive ? "rgba(16,185,129,0.32)" : "rgba(56,189,248,0.28)"
           };color:var(--ui-text-secondary);">
             <div style="display:flex;align-items:center;justify-content:space-between;gap:4px;font-weight:700;color:${
-              isTpe3dWhitelisted || isTpePublicActive ? "#34d399" : "#38bdf8"
+              isTpeAnyActive ? "#34d399" : "#38bdf8"
             };margin-bottom:2px;">
               <span>${SVG.INFO} ${
-                isTpePublicActive
+                isTpePublicActive || isTpeGmlActive
                   ? t("臺北市道管中心八大管線 GIS (801–808)", "Taipei 8-Utilities GIS (801–808)")
                   : t("臺北市道管中心 3D 八大管線 API (801–808)", "Taipei 3D 8-Utilities API (801–808)")
               }</span>
@@ -737,10 +756,12 @@
                   ? t("3D API 已授權", "3D API AUTHORIZED")
                   : isTpePublicActive
                   ? t("公開市民圖資 (3D API 待IP白名單)", "PUBLIC PORTAL (3D API AWAITING IP)")
+                  : isTpeGmlActive
+                  ? t("GML 圖資已載入 (3D API 待IP白名單)", "GML LOADED (3D API AWAITING IP)")
                   : t("功能已就緒 / 待IP白名單", "READY / AWAITING IP")
               }</span>
             </div>
-            <div>${escapeHtml(t(tpeStatus.message_zh || "", tpeStatus.message_en || ""))}</div>
+            <div id="utilTpeStatusMsg">${escapeHtml(t(tpeStatus.message_zh || "", tpeStatus.message_en || ""))}</div>
           </div>`
         : "";
 

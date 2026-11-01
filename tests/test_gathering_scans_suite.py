@@ -3536,9 +3536,88 @@ class GatheringScansTestSuite(unittest.TestCase):
         unknown_res = survey.query_public_utilities_gis({"scan_id": "nonexistent_unlocated_scan_xyz", "radius_m": 250.0})
         self.assertEqual(unknown_res.get("total_features"), 0)
 
+        # Edge cases for _normalize_taipei_8utility_status:
+        # (a) GML-only loaded when public_portal_active=False and whitelisted=False
+        st_gml = survey._normalize_taipei_8utility_status(
+            {"whitelisted": False, "public_portal_active": False, "gml_files_loaded": 2},
+            [{"id": "gml_pipe_1"}, {"id": "gml_pt_2"}, {"id": "osm_hydrant_99"}],
+            304195.0,
+            2769449.0,
+            7.0,
+        )
+        self.assertFalse(st_gml["whitelisted"])
+        self.assertFalse(st_gml["public_portal_active"])
+        self.assertEqual(st_gml["gml_files_loaded"], 2)
+        self.assertIn("Loaded MOI NGIS GML 3.1.1 utility files (2 features)", st_gml["message_en"])
+
+        # (b) Small radius in Taipei with 0 tpedig features but 2 OSM features while master had public_portal_active=True
+        st_small_rad = survey._normalize_taipei_8utility_status(
+            {"whitelisted": False, "public_portal_active": True},
+            [{"id": "osm_hydrant_1"}, {"id": "osm_lamp_2"}],
+            304195.0,
+            2769449.0,
+            7.0,
+        )
+        self.assertFalse(st_small_rad["whitelisted"])
+        self.assertTrue(st_small_rad["public_portal_active"])
+        self.assertIn("(0 features)", st_small_rad["message_en"])
+
+        self.assertIn("GML LOADED (3D API AWAITING IP)", js_src)
+
+    def test_76_drainage_slope_arrows_restored_and_polygon_flatness_takeoff(self):
+        """
+        Verify:
+        1. Drainage tool restores openDrainageAndSlopeInspector in 08-advanced-surveying-and-qa.js
+           with Arrow Density (rngDrainageDensity) & Arrow Length Scale (rngDrainageScale) sliders,
+           disables cyan ponding fan meshes in 09-construction-survey-and-bim.js, and clears arrows on close.
+        2. Flatness tool in 10-construction-qa-and-stakeout.js waits for a 3D polygon, fits a 3D PCA
+           Best-Fit Reference Plane (or Horizontal / Vertical Plumb), samples in time-sliced chunks,
+           defaults to Taiwan PCC +/-3.0 mm tolerance with real-time slider, and computes Excess,
+           Lacking, and Net Material volumes (L and m3) plus printable screenshot report.
+        """
+        with open(os.path.join(BASE_DIR, "web", "src", "08-advanced-surveying-and-qa.js"), "r", encoding="utf-8") as f:
+            js08 = f.read()
+        with open(os.path.join(BASE_DIR, "web", "src", "09-construction-survey-and-bim.js"), "r", encoding="utf-8") as f:
+            js09 = f.read()
+        with open(os.path.join(BASE_DIR, "web", "src", "10-construction-qa-and-stakeout.js"), "r", encoding="utf-8") as f:
+            js10 = f.read()
+        with open(os.path.join(BASE_DIR, "web", "src", "05-studio-civil-inspectors.js"), "r", encoding="utf-8") as f:
+            js05 = f.read()
+
+        # 1. Restored Drainage & Slope Arrow Inspector
+        self.assertIn("window.openDrainageAndSlopeInspector = openDrainageAndSlopeInspector;", js08)
+        self.assertIn("window.clearDrainageVisuals3D = clearDrainageVisuals3D;", js08)
+        self.assertIn('id="rngDrainageDensity"', js08)
+        self.assertIn('id="rngDrainageArrowSize"', js08)
+        self.assertNotIn("window.openDrainageAndSlopeInspector = openEnhancedDrainageAndPondingInspector;", js09)
+        self.assertIn('if (STATE.activeTool === "drainage" || panelTool === "drainage")', js05)
+
+        # 2. Polygon-Based Best-Fit Plane Surface Flatness & Material Takeoff Analyzer
+        for required_token in (
+            "solveSymmetric3x3Eigen",
+            "fitFlatnessReferencePlane",
+            "computeClientFlatnessPolygonAsync",
+            "evaluateCachedFlatnessWithTolerance",
+            "lockFlatnessPolygonAndAnalyze",
+            "refreshFlatnessDraftVisuals",
+            "recomputeFlatnessMetricsAndVisuals",
+            "exportFlatnessReportWithScreenshots",
+            'id="rngFlatnessToleranceMm"',
+            'data-flatness-preset-mm="3.0"',
+            'data-flatness-preset-mm="6.0"',
+            'data-flatness-preset-mm="10.0"',
+            'data-flatness-preset-mm="15.0"',
+            "excess_volume_liters",
+            "lacking_volume_liters",
+            "net_volume_liters",
+            "est_mortar_bags_25kg",
+        ):
+            self.assertIn(required_token, js10, f"Missing {required_token} in 10-construction-qa-and-stakeout.js")
+
 
 if __name__ == "__main__":
     unittest.main()
+
 
 
 
